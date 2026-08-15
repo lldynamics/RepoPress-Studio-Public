@@ -24,6 +24,9 @@ struct AIChatContextInspectorView: View {
   @State var isFollowingLatestMessage = true
   @State var messageAnchorToPreserve: AIPublishingChatMessage.ID?
   @State var isPartialRetryConfirmationPresented = false
+  @State var isDataSharingConsentConfirmationPresented = false
+  @State var pendingDataSharingConsentConfig: AIProviderConfig?
+  @State var pendingDataSharingConsentPresentation: AIDataSharingConsentPresentation?
   @State var isConversationPopoverPresented = false
   @State var isModelQuickSwitchPresented = false
   @State var isAdvancedSettingsExpanded = false
@@ -207,6 +210,24 @@ struct AIChatContextInspectorView: View {
       Button("取消", role: .cancel) {}
     } message: {
       Text("AI 已返回部分内容，软件没有自动重放请求。继续会移除这段未完成回复并重新生成，可能产生重复内容和费用。")
+    }
+    .confirmationDialog(
+      String(localized: "允许发送到远程 AI？"),
+      isPresented: $isDataSharingConsentConfirmationPresented,
+      titleVisibility: .visible
+    ) {
+      Button(String(localized: "同意并发送")) {
+        grantPendingDataSharingConsentAndSubmit()
+      }
+      Button("取消", role: .cancel) {
+        clearPendingDataSharingConsent()
+      }
+    } message: {
+      if let presentation = pendingDataSharingConsentPresentation {
+        Text(
+          "将把本次消息及所选上下文发送到 \(presentation.providerName)（\(presentation.destination)）。同意后，该目的地后续可直接使用；你可随时在设置中撤销。"
+        )
+      }
     }
   }
 }

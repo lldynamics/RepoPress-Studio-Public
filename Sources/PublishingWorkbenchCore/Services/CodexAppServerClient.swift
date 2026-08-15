@@ -37,25 +37,82 @@ public final class CodexAppServerProcessTransport: CodexAppServerTransport, @unc
   }
 
   public static func discoverExecutableURL() -> URL? {
+    discoverRuntimeLocation()?.url
+  }
+
+  public static func inspectRuntime() async -> CodexAppServerRuntimeStatus {
+    guard let location = discoverRuntimeLocation() else {
+      return CodexAppServerRuntimeStatus()
+    }
+    let version = await Task.detached(priority: .utility) {
+      readVersion(executableURL: location.url)
+    }.value
+    return CodexAppServerRuntimeStatus(
+      executableURL: location.url,
+      source: location.source,
+      version: version
+    )
+  }
+
+  private static func discoverRuntimeLocation()
+    -> (url: URL, source: CodexAppServerRuntimeSource)?
+  {
     let fileManager = FileManager.default
+    let bundledCandidates = [
+      Bundle.main.url(forAuxiliaryExecutable: "codex"),
+      Bundle.main.sharedSupportURL?
+        .appendingPathComponent("CodexRuntime", isDirectory: true)
+        .appendingPathComponent("codex", isDirectory: false),
+      Bundle.main.resourceURL?
+        .appendingPathComponent("CodexRuntime", isDirectory: true)
+        .appendingPathComponent("codex", isDirectory: false),
+    ].compactMap { $0 }
+    for candidate in bundledCandidates where fileManager.isExecutableFile(atPath: candidate.path) {
+      return (candidate, .bundled)
+    }
+
     let preferredPaths = [
       "/opt/homebrew/bin/codex",
       "/usr/local/bin/codex",
     ]
     for path in preferredPaths where fileManager.isExecutableFile(atPath: path) {
-      return URL(fileURLWithPath: path)
+      return (URL(fileURLWithPath: path), .homebrew)
     }
 
-    let pathEntries = ProcessInfo.processInfo.environment["PATH"]?
+    let pathEntries =
+      ProcessInfo.processInfo.environment["PATH"]?
       .split(separator: ":", omittingEmptySubsequences: true)
       .map(String.init) ?? []
     for entry in pathEntries {
       let candidate = URL(fileURLWithPath: entry).appendingPathComponent("codex")
       if fileManager.isExecutableFile(atPath: candidate.path) {
-        return candidate
+        return (candidate, .path)
       }
     }
     return nil
+  }
+
+  private static func readVersion(executableURL: URL) -> String? {
+    let process = Process()
+    let outputPipe = Pipe()
+    process.executableURL = executableURL
+    process.arguments = ["--version"]
+    process.standardOutput = outputPipe
+    process.standardError = FileHandle.nullDevice
+    do {
+      try process.run()
+      process.waitUntilExit()
+      guard process.terminationStatus == 0 else { return nil }
+      let data = try outputPipe.fileHandleForReading.readToEnd() ?? Data()
+      guard data.count <= 4_096,
+        let value = String(data: data, encoding: .utf8)?
+          .trimmingCharacters(in: .whitespacesAndNewlines),
+        !value.isEmpty
+      else { return nil }
+      return String(value.prefix(256))
+    } catch {
+      return nil
+    }
   }
 
   public func start() async throws {
@@ -68,7 +125,8 @@ public final class CodexAppServerProcessTransport: CodexAppServerTransport, @unc
       }
 
       let executableURL = configuredExecutableURL ?? Self.discoverExecutableURL()
-      guard let executableURL, FileManager.default.isExecutableFile(atPath: executableURL.path) else {
+      guard let executableURL, FileManager.default.isExecutableFile(atPath: executableURL.path)
+      else {
         throw CodexAppServerError.executableNotFound
       }
 
@@ -99,15 +157,11 @@ public final class CodexAppServerProcessTransport: CodexAppServerTransport, @unc
       let stderr = errorPipe.fileHandleForReading
       self.stderrDrainTask = Task.detached(priority: .utility) {
         while !Task.isCancelled {
-          do {
-            guard let data = try stderr.read(upToCount: Self.maximumStderrChunkByteCount),
-                  !data.isEmpty else {
-              return
-            }
-            _ = data.count
-          } catch {
+          let data = stderr.availableData
+          guard !data.isEmpty else {
             return
           }
+          _ = data.count
         }
       }
     }
@@ -136,15 +190,13 @@ public final class CodexAppServerProcessTransport: CodexAppServerTransport, @unc
       return output
     }
 
-    do {
-      return try await Task.detached(priority: .utility) {
-        try handle.read(upToCount: Self.maximumReadChunkByteCount)
-      }.value
-    } catch is CancellationError {
+    let data = await Task.detached(priority: .utility) {
+      handle.availableData
+    }.value
+    if Task.isCancelled {
       throw CodexAppServerError.cancelled
-    } catch {
-      throw CodexAppServerError.processExited
     }
+    return data.isEmpty ? nil : data
   }
 
   public func terminate() async {
@@ -223,6 +275,14 @@ public actor CodexAppServerClient {
   private var turnStates: [String: TurnState] = [:]
   private var threadIDByTurnID: [String: String] = [:]
 
+  private enum LoginOutcome {
+    case succeeded
+    case failed(CodexAppServerError)
+  }
+
+  private var loginOutcomes: [String: LoginOutcome] = [:]
+  private var loginWaiters: [String: CheckedContinuation<Void, Error>] = [:]
+
   private static let threadDeveloperInstructions =
     "Answer only from the supplied text. Never inspect the filesystem, run commands, or use tools."
 
@@ -248,7 +308,11 @@ public actor CodexAppServerClient {
   public func startChatGPTLogin() async throws -> CodexAppServerLoginResult {
     let value = try await request(
       method: "account/login/start",
-      params: .object(["type": .string("chatgpt")])
+      params: .object([
+        "appBrand": .string("chatgpt"),
+        "type": .string("chatgpt"),
+        "useHostedLoginSuccessPage": .bool(true),
+      ])
     )
     guard let object = value.objectValue else {
       throw CodexAppServerError.invalidResponse
@@ -257,10 +321,72 @@ public actor CodexAppServerClient {
     let loginID = firstString(in: loginObject, keys: ["loginId", "loginID", "id"])
     let authURLString = firstString(in: loginObject, keys: ["authUrl", "authURL", "url"])
     guard let loginID, !loginID.isEmpty,
-          let authURLString, let authURL = URL(string: authURLString) else {
+      let authURLString, let authURL = URL(string: authURLString)
+    else {
       throw CodexAppServerError.invalidResponse
     }
     return CodexAppServerLoginResult(loginID: loginID, authURL: authURL)
+  }
+
+  public func startChatGPTDeviceCodeLogin() async throws -> CodexAppServerDeviceCodeLoginResult {
+    let value = try await request(
+      method: "account/login/start",
+      params: .object(["type": .string("chatgptDeviceCode")])
+    )
+    guard let object = value.objectValue else {
+      throw CodexAppServerError.invalidResponse
+    }
+    let loginObject = object["login"]?.objectValue ?? object
+    let loginID = firstString(in: loginObject, keys: ["loginId", "loginID", "id"])
+    let verificationURLString = firstString(
+      in: loginObject,
+      keys: ["verificationUrl", "verificationURL", "url"]
+    )
+    let userCode = firstString(in: loginObject, keys: ["userCode", "code"])
+    guard let loginID, !loginID.isEmpty,
+      let verificationURLString,
+      let verificationURL = URL(string: verificationURLString),
+      let userCode, !userCode.isEmpty
+    else {
+      throw CodexAppServerError.invalidResponse
+    }
+    return CodexAppServerDeviceCodeLoginResult(
+      loginID: loginID,
+      verificationURL: verificationURL,
+      userCode: userCode
+    )
+  }
+
+  public func waitForLoginCompletion(loginID: String) async throws {
+    try await withTaskCancellationHandler(
+      operation: {
+        try await withCheckedThrowingContinuation { continuation in
+          if let outcome = loginOutcomes.removeValue(forKey: loginID) {
+            resumeLoginWaiter(continuation, with: outcome)
+          } else {
+            loginWaiters[loginID] = continuation
+          }
+        }
+      },
+      onCancel: {
+        Task { [weak self] in
+          await self?.cancelLogin(loginID: loginID)
+        }
+      })
+  }
+
+  public func cancelLogin(loginID: String) async {
+    let waiter = loginWaiters.removeValue(forKey: loginID)
+    loginOutcomes.removeValue(forKey: loginID)
+    waiter?.resume(throwing: CodexAppServerError.cancelled)
+    do {
+      _ = try await request(
+        method: "account/login/cancel",
+        params: .object(["loginId": .string(loginID)])
+      )
+    } catch {
+      // The local waiter is already cancelled; remote cancellation is best effort.
+    }
   }
 
   public func logout() async throws {
@@ -403,26 +529,28 @@ public actor CodexAppServerClient {
       throw CodexAppServerError.invalidResponse
     }
 
-    return try await withTaskCancellationHandler(operation: {
-      try await withCheckedThrowingContinuation { continuation in
-        pendingRequests[requestID] = continuation
-        Task { [weak self] in
-          guard let self else { return }
-          do {
-            try await self.transport.send(data)
-          } catch {
-            await self.failPendingRequest(
-              requestID: requestID,
-              error: Self.mapError(error)
-            )
+    return try await withTaskCancellationHandler(
+      operation: {
+        try await withCheckedThrowingContinuation { continuation in
+          pendingRequests[requestID] = continuation
+          Task { [weak self] in
+            guard let self else { return }
+            do {
+              try await self.transport.send(data)
+            } catch {
+              await self.failPendingRequest(
+                requestID: requestID,
+                error: Self.mapError(error)
+              )
+            }
           }
         }
-      }
-    }, onCancel: {
-      Task { [weak self] in
-        await self?.cancelPendingRequest(requestID: requestID)
-      }
-    })
+      },
+      onCancel: {
+        Task { [weak self] in
+          await self?.cancelPendingRequest(requestID: requestID)
+        }
+      })
   }
 
   private func sendNotification(
@@ -470,13 +598,16 @@ public actor CodexAppServerClient {
       params["cwd"] = .string(workingDirectory.path)
     }
     let value = try await requestWithoutStartup(method: "thread/start", params: .object(params))
-    guard let threadID = identifier(in: value, nestedKeys: ["thread", "threadId", "threadID", "id"]),
-          !threadID.isEmpty else {
+    guard
+      let threadID = identifier(in: value, nestedKeys: ["thread", "threadId", "threadID", "id"]),
+      !threadID.isEmpty
+    else {
       throw CodexAppServerError.invalidResponse
     }
     let responseModel: String?
     if let root = value.objectValue {
-      responseModel = firstString(in: root, keys: ["model"])
+      responseModel =
+        firstString(in: root, keys: ["model"])
         ?? firstString(in: root["thread"]?.objectValue ?? [:], keys: ["model"])
     } else {
       responseModel = nil
@@ -496,35 +627,38 @@ public actor CodexAppServerClient {
     ]
     let value = try await requestWithoutStartup(method: "turn/start", params: .object(params))
     guard let turnID = identifier(in: value, nestedKeys: ["turn", "turnId", "turnID", "id"]),
-          !turnID.isEmpty else {
+      !turnID.isEmpty
+    else {
       throw CodexAppServerError.invalidResponse
     }
     return turnID
   }
 
   private func waitForTurn(threadID: String) async throws -> CodexAppServerCompletion {
-    try await withTaskCancellationHandler(operation: {
-      try await withCheckedThrowingContinuation { continuation in
-        guard var state = turnStates[threadID] else {
-          continuation.resume(throwing: CodexAppServerError.invalidResponse)
-          return
+    try await withTaskCancellationHandler(
+      operation: {
+        try await withCheckedThrowingContinuation { continuation in
+          guard var state = turnStates[threadID] else {
+            continuation.resume(throwing: CodexAppServerError.invalidResponse)
+            return
+          }
+          if let failure = state.failure {
+            removeTurn(threadID: threadID)
+            continuation.resume(throwing: failure)
+          } else if let result = state.result {
+            removeTurn(threadID: threadID)
+            continuation.resume(returning: result)
+          } else {
+            state.waiter = continuation
+            turnStates[threadID] = state
+          }
         }
-        if let failure = state.failure {
-          removeTurn(threadID: threadID)
-          continuation.resume(throwing: failure)
-        } else if let result = state.result {
-          removeTurn(threadID: threadID)
-          continuation.resume(returning: result)
-        } else {
-          state.waiter = continuation
-          turnStates[threadID] = state
+      },
+      onCancel: {
+        Task { [weak self] in
+          await self?.cancelTurn(threadID: threadID)
         }
-      }
-    }, onCancel: {
-      Task { [weak self] in
-        await self?.cancelTurn(threadID: threadID)
-      }
-    })
+      })
   }
 
   private func cancelTurn(threadID: String) {
@@ -614,19 +748,43 @@ public actor CodexAppServerClient {
     guard let params else { return }
     let object = params.objectValue ?? [:]
     let nestedTurn = object["turn"]?.objectValue ?? [:]
-    let threadID = firstString(
-      in: object,
-      keys: ["threadId", "threadID"]
-    ) ?? firstString(in: nestedTurn, keys: ["threadId", "threadID"])
-    let turnID = firstString(
-      in: object,
-      keys: ["turnId", "turnID", "id"]
-    ) ?? firstString(in: nestedTurn, keys: ["id", "turnId", "turnID"])
+    let threadID =
+      firstString(
+        in: object,
+        keys: ["threadId", "threadID"]
+      ) ?? firstString(in: nestedTurn, keys: ["threadId", "threadID"])
+    let turnID =
+      firstString(
+        in: object,
+        keys: ["turnId", "turnID", "id"]
+      ) ?? firstString(in: nestedTurn, keys: ["id", "turnId", "turnID"])
 
     switch method {
+    case "account/login/completed":
+      let loginID = firstString(in: object, keys: ["loginId", "loginID", "id"])
+      guard let loginID, !loginID.isEmpty else { return }
+      let errorObject = object["error"]?.objectValue ?? [:]
+      let errorMessage =
+        firstString(in: errorObject, keys: ["message", "reason"])
+        ?? firstString(in: object, keys: ["errorMessage", "message", "reason"])
+      let succeeded = object["success"]?.boolValue ?? (errorMessage == nil)
+      let outcome: LoginOutcome
+      if succeeded {
+        outcome = .succeeded
+      } else {
+        outcome = .failed(
+          .rpc(
+            code: nil,
+            message: Self.sanitizedMessage(errorMessage ?? "ChatGPT login failed")
+          )
+        )
+      }
+      finishLogin(loginID: loginID, outcome: outcome)
+
     case "item/agentMessage/delta":
       guard let threadID = resolveThreadID(threadID: threadID, turnID: turnID),
-            var state = turnStates[threadID] else { return }
+        var state = turnStates[threadID]
+      else { return }
       if let delta = firstString(in: object, keys: ["delta", "text"]) {
         state.text.append(delta)
       }
@@ -637,12 +795,14 @@ public actor CodexAppServerClient {
       turnStates[threadID] = state
 
     case "turn/completed":
-      let status = firstString(in: nestedTurn, keys: ["status"])
+      let status =
+        firstString(in: nestedTurn, keys: ["status"])
         ?? firstString(in: object, keys: ["status"])
       switch status?.lowercased() {
       case "failed", "error":
         let nestedError = nestedTurn["error"]?.objectValue ?? [:]
-        let message = firstString(in: nestedError, keys: ["message", "reason"])
+        let message =
+          firstString(in: nestedError, keys: ["message", "reason"])
           ?? firstString(in: nestedTurn, keys: ["message", "reason"])
           ?? firstString(in: object, keys: ["message", "reason"])
           ?? "Codex turn failed"
@@ -659,7 +819,8 @@ public actor CodexAppServerClient {
 
     case "turn/failed":
       let errorObject = object["error"]?.objectValue
-      let message = firstString(in: errorObject ?? [:], keys: ["message", "reason"])
+      let message =
+        firstString(in: errorObject ?? [:], keys: ["message", "reason"])
         ?? firstString(in: object, keys: ["message", "reason"])
         ?? "Codex turn failed"
       finishTurn(
@@ -682,7 +843,8 @@ public actor CodexAppServerClient {
     failure: CodexAppServerError?
   ) {
     guard let resolvedThreadID = resolveThreadID(threadID: threadID, turnID: turnID),
-          var state = turnStates[resolvedThreadID] else { return }
+      var state = turnStates[resolvedThreadID]
+    else { return }
     if let turnID {
       state.turnID = turnID
       threadIDByTurnID[turnID] = resolvedThreadID
@@ -708,6 +870,26 @@ public actor CodexAppServerClient {
       waiter.resume(returning: result)
     } else {
       waiter.resume(throwing: CodexAppServerError.invalidResponse)
+    }
+  }
+
+  private func finishLogin(loginID: String, outcome: LoginOutcome) {
+    if let waiter = loginWaiters.removeValue(forKey: loginID) {
+      resumeLoginWaiter(waiter, with: outcome)
+    } else {
+      loginOutcomes[loginID] = outcome
+    }
+  }
+
+  private func resumeLoginWaiter(
+    _ waiter: CheckedContinuation<Void, Error>,
+    with outcome: LoginOutcome
+  ) {
+    switch outcome {
+    case .succeeded:
+      waiter.resume()
+    case .failed(let error):
+      waiter.resume(throwing: error)
     }
   }
 
@@ -748,6 +930,13 @@ public actor CodexAppServerClient {
     for state in states {
       state.waiter?.resume(throwing: error)
     }
+
+    let waiters = loginWaiters.values
+    loginWaiters.removeAll()
+    loginOutcomes.removeAll()
+    for waiter in waiters {
+      waiter.resume(throwing: error)
+    }
   }
 
   private func parseAccountStatus(_ value: CodexAppServerJSONValue) -> CodexAppServerAccountStatus {
@@ -757,12 +946,16 @@ public actor CodexAppServerClient {
     let accountType = firstString(in: account, keys: ["type", "accountType"])
     let email = firstString(in: account, keys: ["email", "emailAddress"])
     let planType = firstString(in: account, keys: ["planType", "plan", "subscription"])
-    let requiresAuth = root["requiresOpenaiAuth"]?.boolValue
+    let requiresAuth =
+      root["requiresOpenaiAuth"]?.boolValue
       ?? root["requiresAuth"]?.boolValue
-    let authenticated = root["authenticated"]?.boolValue
+    let hasAccount = accountID != nil || accountType != nil || email != nil || planType != nil
+    let authenticated =
+      root["authenticated"]?.boolValue
       ?? root["isAuthenticated"]?.boolValue
+      ?? (hasAccount ? true : nil)
       ?? (requiresAuth.map { !$0 })
-      ?? (!account.isEmpty)
+      ?? false
     return CodexAppServerAccountStatus(
       isAuthenticated: authenticated,
       accountID: accountID,
@@ -777,7 +970,8 @@ public actor CodexAppServerClient {
     let object = root["rateLimits"]?.objectValue ?? root
     let primary = parseRateLimitWindow(object["primary"] ?? object["primaryWindow"])
     let secondary = parseRateLimitWindow(object["secondary"] ?? object["secondaryWindow"])
-    let credits = object["creditsRemaining"]?.doubleValue
+    let credits =
+      object["creditsRemaining"]?.doubleValue
       ?? object["credits"]?.objectValue?["remaining"]?.doubleValue
     let planType = firstString(in: object, keys: ["planType", "plan"])
     return CodexAppServerRateLimits(
@@ -788,11 +982,15 @@ public actor CodexAppServerClient {
     )
   }
 
-  private func parseRateLimitWindow(_ value: CodexAppServerJSONValue?) -> CodexAppServerRateLimitWindow? {
+  private func parseRateLimitWindow(_ value: CodexAppServerJSONValue?)
+    -> CodexAppServerRateLimitWindow?
+  {
     guard let object = value?.objectValue else { return nil }
-    let usedPercent = object["usedPercent"]?.doubleValue
+    let usedPercent =
+      object["usedPercent"]?.doubleValue
       ?? object["used"]?.doubleValue
-    let windowMinutes = object["windowMinutes"]?.intValue
+    let windowMinutes =
+      object["windowMinutes"]?.intValue
       ?? object["windowDurationMinutes"]?.intValue
       ?? object["windowDurationMins"]?.intValue
     let resetValue = object["resetsAt"] ?? object["resetAt"]
@@ -847,7 +1045,8 @@ public actor CodexAppServerClient {
       || lowercased.contains("access_token")
       || lowercased.contains("refresh_token")
       || lowercased.contains("api_key")
-      || message.contains("eyJ") {
+      || message.contains("eyJ")
+    {
       return "Sensitive authentication details omitted."
     }
     return String(message.prefix(512))

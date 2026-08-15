@@ -65,6 +65,12 @@ public final class WorkbenchAIFeatureFacade: ObservableObject {
     store.aiStore.aiDataSharingConsentPresentation
   }
 
+  public func dataSharingConsent(
+    for config: AIProviderConfig
+  ) -> AIDataSharingConsentPresentation {
+    store.aiStore.aiDataSharingConsentPresentation(for: config)
+  }
+
   public var isRemoteAIEnabled: Bool {
     store.aiStore.isRemoteAIEnabled
   }
@@ -358,6 +364,16 @@ public final class WorkbenchAIFeatureFacade: ObservableObject {
 
   public func grantDataSharingConsent() {
     store.aiStore.grantAIDataSharingConsent()
+  }
+
+  public func grantDataSharingConsent(
+    for config: AIProviderConfig,
+    enablingRemoteAI: Bool
+  ) {
+    store.aiStore.grantAIDataSharingConsent(
+      for: config,
+      enablingRemoteAI: enablingRemoteAI
+    )
   }
 
   public func revokeDataSharingConsent() {

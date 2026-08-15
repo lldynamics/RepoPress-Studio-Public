@@ -16,17 +16,17 @@ extension CodexAppServerError: LocalizedError {
   public var errorDescription: String? {
     switch self {
     case .executableNotFound:
-      return "未找到 Codex CLI。请先安装 Codex，然后使用 ChatGPT 账户登录。"
+      return "未找到 Codex 运行组件。请先在 AI 设置中完成安装。"
     case .processNotRunning, .processExited, .endOfStream:
-      return "Codex App Server 已停止。请确认 Codex CLI 可用后重试。"
+      return "ChatGPT 连接组件已停止。请在 AI 设置中重新检测后重试。"
     case .invalidJSON, .invalidResponse:
-      return "Codex App Server 返回了无法识别的响应。"
+      return "ChatGPT 连接组件返回了无法识别的响应。"
     case .rpc(_, let message), .turnFailed(let message):
-      return "Codex 请求失败：\(message)"
+      return "ChatGPT 请求失败：\(message)"
     case .turnInterrupted:
-      return "Codex 已中断本次回复。"
+      return "ChatGPT 已中断本次回复。"
     case .cancelled:
-      return "Codex 请求已取消。"
+      return "ChatGPT 请求已取消。"
     }
   }
 }

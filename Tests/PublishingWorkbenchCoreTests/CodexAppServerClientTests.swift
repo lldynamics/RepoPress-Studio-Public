@@ -4,6 +4,28 @@ import XCTest
 @testable import PublishingWorkbenchCore
 
 final class CodexAppServerClientTests: XCTestCase {
+  func testProcessTransportReturnsPartialPipeChunkWithoutWaitingForMaximum() async throws {
+    let transport = CodexAppServerProcessTransport(
+      executableURL: URL(fileURLWithPath: "/bin/cat"),
+      arguments: []
+    )
+    try await transport.start()
+    let payload = Data("small JSONL response\n".utf8)
+    try await transport.send(payload)
+
+    let received = expectation(description: "partial pipe chunk returned")
+    let receiveTask = Task {
+      let data = try await transport.receive()
+      received.fulfill()
+      return data
+    }
+    await fulfillment(of: [received], timeout: 1)
+    await transport.terminate()
+
+    let response = try await receiveTask.value
+    XCTAssertEqual(response, payload)
+  }
+
   func testHandshakeAndAccountReadAreRoutedByRequestID() async throws {
     let transport = ScriptedCodexTransport(mode: .account)
     let client = CodexAppServerClient(transport: transport)
@@ -33,11 +55,74 @@ final class CodexAppServerClientTests: XCTestCase {
     XCTAssertEqual(login.loginID, "login-7")
     XCTAssertEqual(login.authURL.absoluteString, "https://auth.example.test/device")
     let messages = await transport.sentMessages()
-    let loginMessage = try XCTUnwrap(messages.first { $0["method"]?.stringValue == "account/login/start" })
+    let loginMessage = try XCTUnwrap(
+      messages.first { $0["method"]?.stringValue == "account/login/start" })
     XCTAssertEqual(loginMessage["params"]?["type"]?.stringValue, "chatgpt")
+    XCTAssertEqual(loginMessage["params"]?["useHostedLoginSuccessPage"]?.boolValue, true)
+    XCTAssertEqual(loginMessage["params"]?["appBrand"]?.stringValue, "chatgpt")
     let serialized = String(data: await transport.sentBytes(), encoding: .utf8) ?? ""
     XCTAssertFalse(serialized.localizedCaseInsensitiveContains("token"))
     XCTAssertFalse(serialized.localizedCaseInsensitiveContains("authorization"))
+  }
+
+  func testLoginCompletionNotificationResumesWaiter() async throws {
+    let transport = ScriptedCodexTransport(mode: .loginCompletion)
+    let client = CodexAppServerClient(transport: transport)
+
+    let login = try await client.startChatGPTLogin()
+    try await client.waitForLoginCompletion(loginID: login.loginID)
+
+    XCTAssertEqual(login.loginID, "login-7")
+  }
+
+  func testLoginFailureNotificationIsSurfaced() async throws {
+    let transport = ScriptedCodexTransport(mode: .loginFailure)
+    let client = CodexAppServerClient(transport: transport)
+    let login = try await client.startChatGPTLogin()
+
+    await XCTAssertThrowsErrorAsync(
+      try await client.waitForLoginCompletion(loginID: login.loginID)
+    ) { error in
+      XCTAssertEqual(
+        error as? CodexAppServerError,
+        .rpc(code: nil, message: "Browser authorization was denied")
+      )
+    }
+  }
+
+  func testDeviceCodeLoginReturnsVerificationDetails() async throws {
+    let transport = ScriptedCodexTransport(mode: .deviceCode)
+    let client = CodexAppServerClient(transport: transport)
+
+    let login = try await client.startChatGPTDeviceCodeLogin()
+
+    XCTAssertEqual(login.loginID, "login-device-1")
+    XCTAssertEqual(login.verificationURL.absoluteString, "https://auth.example.test/device")
+    XCTAssertEqual(login.userCode, "ABCD-EFGH")
+    let messages = await transport.sentMessages()
+    let loginMessage = try XCTUnwrap(
+      messages.first { $0["method"]?.stringValue == "account/login/start" })
+    XCTAssertEqual(loginMessage["params"]?["type"]?.stringValue, "chatgptDeviceCode")
+  }
+
+  func testCancellingLoginWaitCancelsRemoteLogin() async throws {
+    let transport = ScriptedCodexTransport(mode: .hangingLogin)
+    let client = CodexAppServerClient(transport: transport)
+    let login = try await client.startChatGPTLogin()
+    let task = Task {
+      try await client.waitForLoginCompletion(loginID: login.loginID)
+    }
+
+    task.cancel()
+    await XCTAssertThrowsErrorAsync(try await task.value) { error in
+      XCTAssertEqual(error as? CodexAppServerError, .cancelled)
+    }
+    await transport.waitUntilSent(method: "account/login/cancel")
+    let messages = await transport.sentMessages()
+    let cancelMessage = try XCTUnwrap(
+      messages.first { $0["method"]?.stringValue == "account/login/cancel" }
+    )
+    XCTAssertEqual(cancelMessage["params"]?["loginId"]?.stringValue, "login-7")
   }
 
   func testRateLimitsAndLogoutUseTypedResponses() async throws {
@@ -79,12 +164,14 @@ final class CodexAppServerClientTests: XCTestCase {
     XCTAssertEqual(threadStart["params"]?["sandbox"]?.stringValue, "read-only")
     XCTAssertEqual(threadStart["params"]?["approvalPolicy"]?.stringValue, "never")
     XCTAssertTrue(
-      threadStart["params"]?["developerInstructions"]?.stringValue?.contains("Never inspect the filesystem") == true
+      threadStart["params"]?["developerInstructions"]?.stringValue?.contains(
+        "Never inspect the filesystem") == true
     )
     XCTAssertEqual(threadStart["params"]?["cwd"]?.stringValue, "/tmp/project")
     let turnStart = try XCTUnwrap(messages.first { $0["method"]?.stringValue == "turn/start" })
     XCTAssertEqual(turnStart["params"]?["threadId"]?.stringValue, "thread-1")
-    XCTAssertEqual(turnStart["params"]?["input"]?.arrayValue?.first?["text"]?.stringValue, "Write a short title")
+    XCTAssertEqual(
+      turnStart["params"]?["input"]?.arrayValue?.first?["text"]?.stringValue, "Write a short title")
   }
 
   func testTurnFailedIsSurfacedAsTypedError() async throws {
@@ -141,12 +228,17 @@ final class CodexAppServerClientTests: XCTestCase {
     XCTAssertEqual(interrupt["params"]?["threadId"]?.stringValue, "thread-1")
     XCTAssertEqual(interrupt["params"]?["turnId"]?.stringValue, "turn-1")
   }
+
 }
 
 private actor ScriptedCodexTransport: CodexAppServerTransport {
   enum Mode: Equatable {
     case account
     case login
+    case loginCompletion
+    case loginFailure
+    case deviceCode
+    case hangingLogin
     case rateLimits
     case completion
     case turnFailure
@@ -173,63 +265,99 @@ private actor ScriptedCodexTransport: CodexAppServerTransport {
     bytes.append(data)
     let line = data.drop(while: { $0 == 0x20 || $0 == 0x09 || $0 == 0x0A || $0 == 0x0D })
     guard let object = try? JSONDecoder().decode(CodexAppServerJSONValue.self, from: line),
-          let method = object["method"]?.stringValue else { return }
+      let method = object["method"]?.stringValue
+    else { return }
     messages.append(object)
 
     switch method {
     case "initialize":
-      enqueue(json: #"""
-        {"id":1,"result":{"serverInfo":{"version":"1"}}}
-        """#)
+      enqueue(
+        json: #"""
+          {"id":1,"result":{"serverInfo":{"version":"1"}}}
+          """#)
     case "account/read":
-      enqueue(json: #"""
-        {"id":2,"result":{"account":{"id":"acct-1","type":"chatgpt","email":"writer@example.com","planType":"pro"}}}
-        """#)
+      enqueue(
+        json: #"""
+          {"id":2,"result":{"account":{"id":"acct-1","type":"chatgpt","email":"writer@example.com","planType":"pro"},"requiresOpenaiAuth":true}}
+          """#)
     case "account/login/start":
-      enqueue(json: #"""
-        {"id":2,"result":{"loginId":"login-7","authUrl":"https://auth.example.test/device"}}
-        """#)
+      if mode == .deviceCode {
+        enqueue(
+          json: #"""
+            {"id":2,"result":{"loginId":"login-device-1","verificationUrl":"https://auth.example.test/device","userCode":"ABCD-EFGH"}}
+            """#)
+      } else if mode == .loginCompletion {
+        enqueue(
+          json: #"""
+            {"id":2,"result":{"loginId":"login-7","authUrl":"https://auth.example.test/device"}}
+            {"method":"account/login/completed","params":{"loginId":"login-7","success":true}}
+            """#)
+      } else if mode == .loginFailure {
+        enqueue(
+          json: #"""
+            {"id":2,"result":{"loginId":"login-7","authUrl":"https://auth.example.test/device"}}
+            {"method":"account/login/completed","params":{"loginId":"login-7","success":false,"error":{"message":"Browser authorization was denied"}}}
+            """#)
+      } else {
+        enqueue(
+          json: #"""
+            {"id":2,"result":{"loginId":"login-7","authUrl":"https://auth.example.test/device"}}
+            """#)
+      }
+    case "account/login/cancel":
+      enqueue(
+        json: #"""
+          {"id":3,"result":{}}
+          """#)
     case "account/rateLimits/read":
-      enqueue(json: #"""
-        {"id":2,"result":{"rateLimits":{"primary":{"usedPercent":25,"windowDurationMins":300},"creditsRemaining":42,"planType":"pro"}}}
-        """#)
+      enqueue(
+        json: #"""
+          {"id":2,"result":{"rateLimits":{"primary":{"usedPercent":25,"windowDurationMins":300},"creditsRemaining":42,"planType":"pro"}}}
+          """#)
     case "account/logout":
-      enqueue(json: #"""
-        {"id":3,"result":{}}
-        """#)
+      enqueue(
+        json: #"""
+          {"id":3,"result":{}}
+          """#)
     case "thread/start":
-      enqueue(json: #"""
-        {"id":2,"result":{"thread":{"id":"thread-1","model":"gpt-5-codex"}}}
-        """#)
+      enqueue(
+        json: #"""
+          {"id":2,"result":{"thread":{"id":"thread-1","model":"gpt-5-codex"}}}
+          """#)
     case "turn/start":
       switch mode {
       case .turnFailure:
-        enqueue(json: #"""
-          {"id":3,"result":{"turn":{"id":"turn-1"}}}
-          {"method":"turn/failed","params":{"threadId":"thread-1","turnId":"turn-1","error":{"message":"model unavailable"}}}
-          """#)
+        enqueue(
+          json: #"""
+            {"id":3,"result":{"turn":{"id":"turn-1"}}}
+            {"method":"turn/failed","params":{"threadId":"thread-1","turnId":"turn-1","error":{"message":"model unavailable"}}}
+            """#)
       case .completedFailure:
-        enqueue(json: #"""
-          {"id":3,"result":{"turn":{"id":"turn-1"}}}
-          {"method":"turn/completed","params":{"threadId":"thread-1","turnId":"turn-1","turn":{"id":"turn-1","status":"failed","error":{"message":"quota exceeded"}}}}
-          """#)
+        enqueue(
+          json: #"""
+            {"id":3,"result":{"turn":{"id":"turn-1"}}}
+            {"method":"turn/completed","params":{"threadId":"thread-1","turnId":"turn-1","turn":{"id":"turn-1","status":"failed","error":{"message":"quota exceeded"}}}}
+            """#)
       case .hangingTurn:
-        enqueue(json: #"""
-          {"id":3,"result":{"turn":{"id":"turn-1"}}}
-          """#)
+        enqueue(
+          json: #"""
+            {"id":3,"result":{"turn":{"id":"turn-1"}}}
+            """#)
       default:
-        enqueue(json: #"""
-          {"id":3,"result":{"turn":{"id":"turn-1"}}}
-          {"method":"item/agentMessage/delta","params":{"threadId":"thread-1","turnId":"turn-1","delta":"Hello "}}
-          {"method":"item/agentMessage/delta","params":{"threadId":"thread-1","turnId":"turn-1","delta":"world"}}
-          {"method":"turn/completed","params":{"threadId":"thread-1","turnId":"turn-1"}}
-          """#)
+        enqueue(
+          json: #"""
+            {"id":3,"result":{"turn":{"id":"turn-1"}}}
+            {"method":"item/agentMessage/delta","params":{"threadId":"thread-1","turnId":"turn-1","delta":"Hello "}}
+            {"method":"item/agentMessage/delta","params":{"threadId":"thread-1","turnId":"turn-1","delta":"world"}}
+            {"method":"turn/completed","params":{"threadId":"thread-1","turnId":"turn-1"}}
+            """#)
       }
     case "turn/interrupt":
       if mode == .hangingTurn {
-        enqueue(json: #"""
-          {"id":4,"result":{}}
-          """#)
+        enqueue(
+          json: #"""
+            {"id":4,"result":{}}
+            """#)
       }
     case "initialized":
       if mode == .eofAfterHandshake {

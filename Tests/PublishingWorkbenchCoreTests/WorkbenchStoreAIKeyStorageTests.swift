@@ -4,6 +4,40 @@ import XCTest
 
 @MainActor
 final class WorkbenchStoreAIKeyStorageTests: XCTestCase {
+  func testFirstSendGrantOpensRemoteGateForOnlyTheConfirmedDestination() throws {
+    let suiteName = "WorkbenchStoreAIKeyStorageTests.Consent.\(UUID().uuidString)"
+    let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+    let consentStore = AIDataSharingConsentStore(defaults: defaults)
+    consentStore.setRemoteAIEnabled(false)
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()),
+      keychainTokenStore: KeychainTokenStore(
+        service: "PersonalSitePublisherMac.Tests.Consent.\(UUID().uuidString)",
+        accountPrefix: "consent-tests",
+        inMemory: true
+      ),
+      aiDataSharingConsentStore: consentStore
+    )
+    var confirmedConfig = AIProviderConfig(preset: .codexAppServer)
+    confirmedConfig.applyPresetDefaults()
+    let otherConfig = AIProviderConfig(
+      preset: .custom,
+      baseURL: "https://api.example.test/v1",
+      model: "example-model",
+      requiresAPIKey: false
+    )
+
+    store.aiStore.grantAIDataSharingConsent(
+      for: confirmedConfig,
+      enablingRemoteAI: true
+    )
+
+    XCTAssertTrue(consentStore.presentation(for: confirmedConfig).isGranted)
+    XCTAssertTrue(consentStore.presentation(for: confirmedConfig).isRemoteAIEnabled)
+    XCTAssertFalse(consentStore.presentation(for: otherConfig).isGranted)
+  }
+
   func testEmptyAIBaseURLIsUnconfiguredInsteadOfKeychainFailure() throws {
     let store = WorkbenchStore(
       persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()),

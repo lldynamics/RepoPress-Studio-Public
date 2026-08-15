@@ -2,6 +2,41 @@ import AppKit
 import PublishingWorkbenchCore
 import SwiftUI
 
+enum AIConnectionKind: String, CaseIterable, Identifiable {
+  case chatGPT
+  case local
+  case apiKey
+
+  var id: String { rawValue }
+
+  init(preset: AIProviderPreset) {
+    switch preset {
+    case .codexAppServer:
+      self = .chatGPT
+    case .local:
+      self = .local
+    case .openAICompatible, .deepSeek, .openRouter, .custom:
+      self = .apiKey
+    }
+  }
+
+  var title: String {
+    switch self {
+    case .chatGPT: return String(localized: "ChatGPT 登录")
+    case .local: return String(localized: "本地模型")
+    case .apiKey: return "API Key"
+    }
+  }
+
+  var systemImage: String {
+    switch self {
+    case .chatGPT: return "person.crop.circle.badge.checkmark"
+    case .local: return "desktopcomputer"
+    case .apiKey: return "key.fill"
+    }
+  }
+}
+
 struct AIProviderSection: View {
   let presetBinding: Binding<AIProviderPreset>
   let presetDisplayName: String
@@ -36,20 +71,32 @@ struct AIProviderSection: View {
 
   var body: some View {
     Section {
-      Picker(String(localized: "服务预设"), selection: presetBinding) {
-        ForEach(AIProviderPreset.allCases) { preset in
-          Text(preset.localizedDisplayName).tag(preset)
+      Picker(String(localized: "连接方式"), selection: connectionKindBinding) {
+        ForEach(AIConnectionKind.allCases) { kind in
+          Label(kind.title, systemImage: kind.systemImage).tag(kind)
         }
       }
-      .accessibilityLabel(String(localized: "AI 服务预设"))
-      .accessibilityValue(presetDisplayName)
+      .pickerStyle(.segmented)
+      .accessibilityLabel(String(localized: "AI 连接方式"))
+      .accessibilityValue(AIConnectionKind(preset: presetBinding.wrappedValue).title)
+      .accessibilityIdentifier("settings-ai-connection-kind")
+
+      if AIConnectionKind(preset: presetBinding.wrappedValue) == .apiKey {
+        Picker(String(localized: "API 服务"), selection: presetBinding) {
+          ForEach(apiKeyPresets) { preset in
+            Text(preset.localizedDisplayName).tag(preset)
+          }
+        }
+        .accessibilityLabel(String(localized: "API 服务预设"))
+        .accessibilityValue(presetDisplayName)
+      }
 
       if presetBinding.wrappedValue == .codexAppServer {
         LabeledContent(
           "连接方式",
-          value: String(localized: "Codex App Server（本机 stdio）")
+          value: String(localized: "ChatGPT 套餐")
         )
-        LabeledContent("模型", value: String(localized: "使用 Codex 账户默认模型"))
+        LabeledContent("模型", value: String(localized: "自动选择账户可用模型"))
         Label("无需 API Key", systemImage: "person.crop.circle.badge.checkmark")
           .foregroundStyle(WorkbenchTheme.success)
       } else {
@@ -73,10 +120,12 @@ struct AIProviderSection: View {
         }
       }
     } header: {
-      Text(String(localized: "AI 服务配置"))
+      Text(String(localized: "选择 AI 连接方式"))
     } footer: {
       if presetBinding.wrappedValue == .codexAppServer {
-        Text("由本机 codex app-server 管理 ChatGPT 登录、令牌刷新和请求传输；RepoPress 不读取或保存账户令牌。")
+        Text("使用自己的 ChatGPT 套餐，不需要 API Key；RepoPress 不读取或保存账户令牌。")
+      } else if presetBinding.wrappedValue == .local {
+        Text("内容只发送到这台 Mac 上配置的本地模型服务。")
       } else if presetBinding.wrappedValue == .custom {
         Text(String(localized: "自定义模式下，基础地址与模型默认为空。基础地址会在点击“应用地址”后生效，避免编辑过程中提前替换当前 AI 凭据。"))
       }
@@ -84,6 +133,28 @@ struct AIProviderSection: View {
     .onChange(of: baseURL.wrappedValue) { _, newValue in
       baseURLDraft = newValue
     }
+  }
+
+  private var connectionKindBinding: Binding<AIConnectionKind> {
+    Binding(
+      get: { AIConnectionKind(preset: presetBinding.wrappedValue) },
+      set: { kind in
+        switch kind {
+        case .chatGPT:
+          presetBinding.wrappedValue = .codexAppServer
+        case .local:
+          presetBinding.wrappedValue = .local
+        case .apiKey:
+          if !apiKeyPresets.contains(presetBinding.wrappedValue) {
+            presetBinding.wrappedValue = .openAICompatible
+          }
+        }
+      }
+    )
+  }
+
+  private var apiKeyPresets: [AIProviderPreset] {
+    [.openAICompatible, .deepSeek, .openRouter, .custom]
   }
 
   private var isPresetModifiedFromDefault: Bool {
@@ -201,10 +272,12 @@ struct AIProviderSection: View {
               .padding(.horizontal, 6)
               .padding(.vertical, 2)
               .background(
-                model.wrappedValue == candidate ? WorkbenchTheme.brand.opacity(0.15) : Color.primary.opacity(0.06),
+                model.wrappedValue == candidate
+                  ? WorkbenchTheme.brand.opacity(0.15) : Color.primary.opacity(0.06),
                 in: Capsule()
               )
-              .foregroundStyle(model.wrappedValue == candidate ? WorkbenchTheme.brand : Color.primary)
+              .foregroundStyle(
+                model.wrappedValue == candidate ? WorkbenchTheme.brand : Color.primary)
           }
           .buttonStyle(.plain)
         }
@@ -246,7 +319,8 @@ struct AIProviderSection: View {
   }
 
   private func pasteBaseURLFromClipboard() {
-    let value = NSPasteboard.general.string(forType: .URL)
+    let value =
+      NSPasteboard.general.string(forType: .URL)
       ?? NSPasteboard.general.string(forType: .string)
     guard let value, !value.trimmedForPublishing.isEmpty else { return }
     baseURLDraft = value.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -254,7 +328,8 @@ struct AIProviderSection: View {
 
   private func pasteModelFromClipboard() {
     guard let value = NSPasteboard.general.string(forType: .string) else { return }
-    let normalized = value
+    let normalized =
+      value
       .components(separatedBy: .newlines)
       .joined(separator: " ")
       .trimmingCharacters(in: .whitespacesAndNewlines)

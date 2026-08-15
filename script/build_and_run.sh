@@ -44,6 +44,10 @@ SAFARI_EXTENSION_BUNDLE="$APP_PLUGINS/RepoPressSafariExtension.appex"
 SPARKLE_FRAMEWORK_BUNDLE="$APP_FRAMEWORKS/Sparkle.framework"
 SPARKLE_LICENSE_SOURCE="$ROOT_DIR/Packaging/ThirdPartyNotices/Sparkle-LICENSE.txt"
 SPARKLE_LICENSE_BUNDLE="$APP_RESOURCES/ThirdPartyNotices/Sparkle-LICENSE.txt"
+CODEX_RUNTIME_SOURCE="${REPOPRESS_CODEX_RUNTIME_PATH:-}"
+CODEX_RUNTIME_LICENSE_SOURCE="${REPOPRESS_CODEX_LICENSE_PATH:-}"
+CODEX_RUNTIME_BUNDLE="$APP_RESOURCES/CodexRuntime/codex"
+CODEX_RUNTIME_LICENSE_BUNDLE="$APP_RESOURCES/ThirdPartyNotices/Codex-LICENSE.txt"
 CODESIGN_TOOL="${CODESIGN_TOOL:-/usr/bin/codesign}"
 INSTALL_NAME_TOOL="${INSTALL_NAME_TOOL:-/usr/bin/install_name_tool}"
 OTOOL_TOOL="${OTOOL_TOOL:-/usr/bin/otool}"
@@ -122,6 +126,10 @@ Options:
   --screenshot-surface <id> Select a screenshot demo surface and imply --screenshot-demo.
   --list-screenshot-surfaces
                             Print screenshot surface ids and exit.
+
+Optional bundled Codex runtime:
+  Set REPOPRESS_CODEX_RUNTIME_PATH and REPOPRESS_CODEX_LICENSE_PATH together.
+  The runtime is copied into Shared Resources and signed with the app identity.
 EOF
 }
 
@@ -216,6 +224,24 @@ fi
 if [[ "$APP_STORE_BUILD" == "1" && "$DIRECT_DISTRIBUTION_BUILD" == "1" ]]; then
   echo "--app-store and --direct are mutually exclusive" >&2
   exit 2
+fi
+if [[ -n "$CODEX_RUNTIME_SOURCE" || -n "$CODEX_RUNTIME_LICENSE_SOURCE" ]]; then
+  [[ -n "$CODEX_RUNTIME_SOURCE" && -n "$CODEX_RUNTIME_LICENSE_SOURCE" ]] || {
+    echo "bundled Codex runtime requires both REPOPRESS_CODEX_RUNTIME_PATH and REPOPRESS_CODEX_LICENSE_PATH" >&2
+    exit 2
+  }
+  if [[ "$APP_STORE_BUILD" == "1" ]]; then
+    echo "bundled Codex runtime is unavailable for the App Store build" >&2
+    exit 2
+  fi
+  [[ -f "$CODEX_RUNTIME_SOURCE" && -x "$CODEX_RUNTIME_SOURCE" ]] || {
+    echo "Codex runtime must be an executable file: $CODEX_RUNTIME_SOURCE" >&2
+    exit 2
+  }
+  [[ -f "$CODEX_RUNTIME_LICENSE_SOURCE" && -s "$CODEX_RUNTIME_LICENSE_SOURCE" ]] || {
+    echo "Codex runtime license notice is missing or empty: $CODEX_RUNTIME_LICENSE_SOURCE" >&2
+    exit 2
+  }
 fi
 if [[ "$APP_STORE_BUILD" == "1" ]]; then
   DISTRIBUTION_CHANNEL="AppStore"
@@ -378,6 +404,12 @@ grep -Fq 'EXTERNAL LICENSES' "$SPARKLE_LICENSE_BUNDLE" || {
   echo "packaged Sparkle external-license notices are incomplete" >&2
   exit 1
 }
+if [[ -n "$CODEX_RUNTIME_SOURCE" ]]; then
+  mkdir -p "$APP_RESOURCES/CodexRuntime"
+  cp "$CODEX_RUNTIME_SOURCE" "$CODEX_RUNTIME_BUNDLE"
+  chmod +x "$CODEX_RUNTIME_BUNDLE"
+  cp "$CODEX_RUNTIME_LICENSE_SOURCE" "$CODEX_RUNTIME_LICENSE_BUNDLE"
+fi
 SPARKLE_FRAMEWORK_BUILD_PRODUCT="$BUILD_BIN_DIR/Sparkle.framework"
 [[ -d "$SPARKLE_FRAMEWORK_BUILD_PRODUCT" ]] || {
   echo "SwiftPM Sparkle.framework is missing: $SPARKLE_FRAMEWORK_BUILD_PRODUCT" >&2
@@ -588,6 +620,18 @@ fi
 bash "$ROOT_DIR/script/sign_sparkle_framework.sh" \
   --framework "$SPARKLE_FRAMEWORK_BUNDLE" \
   --identity "$resolved_code_sign_identity" >/dev/null
+if [[ -n "$CODEX_RUNTIME_SOURCE" ]]; then
+  codex_code_sign_arguments=(
+    --force
+    --sign "$resolved_code_sign_identity"
+    --identifier "$BUNDLE_ID.CodexRuntime"
+  )
+  if [[ "$DIRECT_DISTRIBUTION_BUILD" == "1" ]]; then
+    codex_code_sign_arguments+=(--options runtime)
+  fi
+  "$CODESIGN_TOOL" "${codex_code_sign_arguments[@]}" "$CODEX_RUNTIME_BUNDLE"
+  "$CODESIGN_TOOL" --verify --strict --verbose=2 "$CODEX_RUNTIME_BUNDLE"
+fi
 "$CODESIGN_TOOL" "${safari_code_sign_arguments[@]}" "$SAFARI_EXTENSION_BUNDLE"
 "$CODESIGN_TOOL" --verify --strict --verbose=2 "$SAFARI_EXTENSION_BUNDLE"
 "$CODESIGN_TOOL" "${code_sign_arguments[@]}" "$APP_BUNDLE"
