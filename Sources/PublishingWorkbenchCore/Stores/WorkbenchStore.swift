@@ -564,7 +564,7 @@ public final class WorkbenchStore: ObservableObject {
   }
 
   func waitForPendingSave() async {
-    await persistenceStore.waitForCurrentBackgroundSave()
+    await persistenceStore.waitForPendingSave()
   }
 
   /// Saves immediately and reports whether it is safe to let the process exit.

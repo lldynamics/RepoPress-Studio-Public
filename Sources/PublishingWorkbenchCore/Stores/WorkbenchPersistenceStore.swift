@@ -316,6 +316,12 @@ final class WorkbenchPersistenceStore: ObservableObject {
     await task?.value
   }
 
+  func waitForPendingSave() async {
+    let pendingAutosave = autosaveTask
+    await pendingAutosave?.value
+    await waitForCurrentBackgroundSave()
+  }
+
   private func saveInBackground(snapshot: WorkbenchSnapshot) {
     guard hasUnsavedChanges, !isRecoveryWriteProtected else { return }
     let expectedRevision = revisionState.current()
