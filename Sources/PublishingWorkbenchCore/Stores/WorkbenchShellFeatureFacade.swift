@@ -85,10 +85,13 @@ public final class WorkbenchShellFeatureFacade: ObservableObject {
     guard !isChangeNotificationScheduled else { return }
     isChangeNotificationScheduled = true
 
-    // @Published emits before the source property is committed. Forward the
-    // invalidation in the next default-mode cycle so facade getters expose the
-    // new value when SwiftUI recomputes the workspace shell.
-    RunLoop.main.perform(inModes: [.default]) { [weak self] in
+    // @Published emits before the source property is committed. Register both
+    // normal and AppKit event-tracking modes so accessibility clicks cannot
+    // starve the deferred invalidation.
+    RunLoop.main.perform(inModes: [
+      .default,
+      RunLoop.Mode("NSEventTrackingRunLoopMode"),
+    ]) { [weak self] in
       MainActor.assumeIsolated {
         guard let self else { return }
         self.isChangeNotificationScheduled = false

@@ -141,6 +141,42 @@ import XCTest
     }
 
     @MainActor
+    func testSyncAPIPublishUITestFixtureKeepsPublishActionDeterministic() async throws {
+      let directory = FileManager.default.temporaryDirectory
+        .appendingPathComponent(
+          "PersonalSitePublisherMacSyncPublishUITest-\(UUID().uuidString)",
+          isDirectory: true
+        )
+      try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+      defer {
+        unsetenv(ScreenshotDemoDataService.environmentKey)
+        unsetenv(ScreenshotDemoDataService.surfaceEnvironmentKey)
+        unsetenv(ScreenshotDemoDataService.uiTestEnvironmentKey)
+        unsetenv(ScreenshotDemoDataService.uiTestRepositoryRootEnvironmentKey)
+        try? FileManager.default.removeItem(at: directory)
+      }
+      setenv(ScreenshotDemoDataService.environmentKey, "1", 1)
+      setenv(ScreenshotDemoDataService.surfaceEnvironmentKey, "sync-api-publish", 1)
+      setenv(ScreenshotDemoDataService.uiTestEnvironmentKey, "1", 1)
+      setenv(
+        ScreenshotDemoDataService.uiTestRepositoryRootEnvironmentKey,
+        directory.path,
+        1
+      )
+
+      let store = try makeScreenshotStore()
+      ScreenshotDemoDataService.applyRequestedSurfaceIfEnabled(to: store)
+      await Task.yield()
+
+      XCTAssertEqual(store.selectedSection, .sync)
+      XCTAssertFalse(store.repositoryScanState.isScanning)
+      XCTAssertEqual(store.repositoryReport?.rootPath, directory.path)
+      XCTAssertEqual(store.repositoryReport?.preflightIssues, [])
+      XCTAssertEqual(store.localPublishReadiness?.blockingIssueCount, 0)
+      XCTAssertNotNil(store.remotePublishPreviewSnapshot)
+    }
+
+    @MainActor
     private func makeScreenshotStore() throws -> WorkbenchStore {
       let directory = FileManager.default.temporaryDirectory
         .appendingPathComponent(

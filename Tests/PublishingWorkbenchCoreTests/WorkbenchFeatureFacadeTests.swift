@@ -509,6 +509,59 @@ final class WorkbenchFeatureFacadeTests: XCTestCase {
     withExtendedLifetime(cancellable) {}
   }
 
+  func testRootPresentationFacadesRefreshWhileAppKitTracksInput() {
+    let store = makeIsolatedStore()
+    let shell = store.shell
+    let editorNavigation = WorkbenchEditorNavigationFeatureFacade(store: store)
+    let contentPresentation = store.contentPresentation
+    let nextSection: WorkspaceSection = shell.selectedSection == .images ? .sync : .images
+
+    var shellObservedSection = shell.selectedSection
+    var editorObservedSection = editorNavigation.selectedSection
+    var observedDisplayMode = contentPresentation.editorDisplayMode
+    var observedAssistantPresentation = contentPresentation.isAssistantPresented
+    let shellCancellable = shell.objectWillChange.sink {
+      shellObservedSection = shell.selectedSection
+    }
+    let editorCancellable = editorNavigation.objectWillChange.sink {
+      editorObservedSection = editorNavigation.selectedSection
+    }
+    let presentationCancellable = contentPresentation.objectWillChange.sink {
+      observedDisplayMode = contentPresentation.editorDisplayMode
+      observedAssistantPresentation = contentPresentation.isAssistantPresented
+    }
+
+    store.setSelectedSection(nextSection)
+    store.setEditorDisplayMode(.split)
+    store.setAIPublishingAssistantPresented(true)
+
+    let eventTrackingMode = RunLoop.Mode("NSEventTrackingRunLoopMode")
+    let deadline = Date().addingTimeInterval(1)
+    while Date() < deadline {
+      _ = RunLoop.main.run(
+        mode: eventTrackingMode,
+        before: Date().addingTimeInterval(0.01)
+      )
+      if shellObservedSection == nextSection,
+        editorObservedSection == nextSection,
+        observedDisplayMode == .split,
+        observedAssistantPresentation
+      {
+        break
+      }
+    }
+
+    XCTAssertEqual(shellObservedSection, nextSection)
+    XCTAssertEqual(editorObservedSection, nextSection)
+    XCTAssertEqual(observedDisplayMode, .split)
+    XCTAssertTrue(observedAssistantPresentation)
+    withExtendedLifetime([
+      shellCancellable,
+      editorCancellable,
+      presentationCancellable,
+    ]) {}
+  }
+
   func testMarkdownEditorFacadeIgnoresStreamingUpdatesForExistingAssistantMessage() throws {
     let store = makeIsolatedStore()
     let draft = try XCTUnwrap(store.selectedDraft)
