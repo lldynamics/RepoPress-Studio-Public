@@ -143,7 +143,6 @@ struct RSSArticleList: View {
       }
     }
     .accessibilityElement(children: .contain)
-    .accessibilityIdentifier("rss-article-list")
     .focusable()
     .focusEffectDisabled()
     .focused($isArticleListFocused)
