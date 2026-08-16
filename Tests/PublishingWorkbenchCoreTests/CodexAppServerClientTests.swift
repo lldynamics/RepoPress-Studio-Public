@@ -117,7 +117,8 @@ final class CodexAppServerClientTests: XCTestCase {
     await XCTAssertThrowsErrorAsync(try await task.value) { error in
       XCTAssertEqual(error as? CodexAppServerError, .cancelled)
     }
-    await transport.waitUntilSent(method: "account/login/cancel")
+    let didSendCancel = await transport.waitUntilSent(method: "account/login/cancel")
+    XCTAssertTrue(didSendCancel, "Timed out waiting for account/login/cancel")
     let messages = await transport.sentMessages()
     let cancelMessage = try XCTUnwrap(
       messages.first { $0["method"]?.stringValue == "account/login/cancel" }
@@ -214,12 +215,28 @@ final class CodexAppServerClientTests: XCTestCase {
       try await client.complete(prompt: "cancel this turn")
     }
 
-    await transport.waitUntilSent(method: "turn/start")
+    let didSendTurnStart = await transport.waitUntilSent(method: "turn/start")
+    guard didSendTurnStart else {
+      task.cancel()
+      _ = await task.result
+      XCTFail("Timed out waiting for turn/start")
+      return
+    }
+    let activeTurn = await waitForActiveTurn(client: client)
+    guard let activeTurn else {
+      task.cancel()
+      _ = await task.result
+      XCTFail("Timed out waiting for an active turn")
+      return
+    }
+    XCTAssertEqual(activeTurn.threadID, "thread-1")
+    XCTAssertEqual(activeTurn.turnID, "turn-1")
     task.cancel()
     await XCTAssertThrowsErrorAsync(try await task.value) { error in
       XCTAssertEqual(error as? CodexAppServerError, .cancelled)
     }
-    await transport.waitUntilSent(method: "turn/interrupt")
+    let didSendInterrupt = await transport.waitUntilSent(method: "turn/interrupt")
+    XCTAssertTrue(didSendInterrupt, "Timed out waiting for turn/interrupt")
 
     let messages = await transport.sentMessages()
     let interrupt = try XCTUnwrap(
@@ -250,7 +267,6 @@ private actor ScriptedCodexTransport: CodexAppServerTransport {
   private let mode: Mode
   private var queuedChunks: [Data] = []
   private var waitingReceivers: [CheckedContinuation<Data?, Error>] = []
-  private var messageWaiters: [String: [CheckedContinuation<Void, Never>]] = [:]
   private var messages: [CodexAppServerJSONValue] = []
   private var bytes = Data()
   private var isClosed = false
@@ -269,10 +285,6 @@ private actor ScriptedCodexTransport: CodexAppServerTransport {
       let method = object["method"]?.stringValue
     else { return }
     messages.append(object)
-    let waiters = messageWaiters.removeValue(forKey: method) ?? []
-    for waiter in waiters {
-      waiter.resume()
-    }
 
     switch method {
     case "initialize":
@@ -397,13 +409,14 @@ private actor ScriptedCodexTransport: CodexAppServerTransport {
     bytes
   }
 
-  func waitUntilSent(method: String) async {
-    guard !messages.contains(where: { $0["method"]?.stringValue == method }) else {
-      return
+  func waitUntilSent(method: String, timeout: Duration = .seconds(5)) async -> Bool {
+    let clock = ContinuousClock()
+    let deadline = clock.now.advanced(by: timeout)
+    while !messages.contains(where: { $0["method"]?.stringValue == method }) {
+      guard clock.now < deadline else { return false }
+      try? await clock.sleep(for: .milliseconds(1))
     }
-    await withCheckedContinuation { continuation in
-      messageWaiters[method, default: []].append(continuation)
-    }
+    return true
   }
 
   private func enqueue(json: String) {
@@ -446,6 +459,21 @@ private actor ScriptedCodexTransport: CodexAppServerTransport {
     for receiver in receivers {
       receiver.resume(returning: nil)
     }
+  }
+}
+
+private func waitForActiveTurn(
+  client: CodexAppServerClient,
+  timeout: Duration = .seconds(5)
+) async -> CodexAppServerClient.ActiveTurnSnapshot? {
+  let clock = ContinuousClock()
+  let deadline = clock.now.advanced(by: timeout)
+  while true {
+    if let snapshot = await client.activeTurnSnapshot {
+      return snapshot
+    }
+    guard clock.now < deadline else { return nil }
+    try? await clock.sleep(for: .milliseconds(1))
   }
 }
 

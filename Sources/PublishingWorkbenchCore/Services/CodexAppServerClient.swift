@@ -250,6 +250,15 @@ public actor CodexAppServerClient {
   /// The shared runtime used by the settings/login flow and AI requests.
   public static let shared = CodexAppServerClient()
 
+  /// A read-only view of a turn after the client has installed its completion waiter.
+  ///
+  /// This is intentionally internal: tests use it to synchronize cancellation with the
+  /// client's active-turn state without changing the cancellation protocol or production flow.
+  struct ActiveTurnSnapshot: Equatable, Sendable {
+    let threadID: String
+    let turnID: String
+  }
+
   private let transport: any CodexAppServerTransport
   private let encoder: JSONEncoder
   private let decoder: JSONDecoder
@@ -294,6 +303,15 @@ public actor CodexAppServerClient {
     self.encoder = JSONEncoder()
     self.decoder = JSONDecoder()
     self.encoder.outputFormatting = [.sortedKeys]
+  }
+
+  var activeTurnSnapshot: ActiveTurnSnapshot? {
+    for state in turnStates.values {
+      if let turnID = state.turnID, state.waiter != nil {
+        return ActiveTurnSnapshot(threadID: state.threadID, turnID: turnID)
+      }
+    }
+    return nil
   }
 
   public func start() async throws {
