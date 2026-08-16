@@ -27,6 +27,11 @@
       "rationale": "Process lifecycle state is protected by an internal lock and single completion path."
     },
     {
+      "file": "Sources/PublishingWorkbenchCore/Services/GitCommandRunner.swift",
+      "declaration": "GitPipeDrainCoordinator",
+      "rationale": "File-handle callback admission and the active drain count are protected by one NSCondition before the coordinator crosses callback queues."
+    },
+    {
       "file": "Sources/PublishingWorkbenchCore/Services/ImageBatchProcessingActor.swift",
       "declaration": "ImageProcessingCancellationToken",
       "rationale": "Cancellation state is synchronized by the token lock."

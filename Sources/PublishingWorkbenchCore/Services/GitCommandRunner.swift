@@ -516,12 +516,12 @@ private final class GitCommandAsyncOperation: @unchecked Sendable {
   private func installDrainHandler(on handle: FileHandle, stream: GitOutputStream) {
     handle.readabilityHandler = { [weak self] readableHandle in
       guard let self else { return }
-      drainCoordinator.perform {
+      self.drainCoordinator.perform {
         let data = readableHandle.availableData
         if data.isEmpty {
           readableHandle.readabilityHandler = nil
         } else {
-          outputCollector.append(data, to: stream)
+          self.outputCollector.append(data, to: stream)
         }
       }
     }
