@@ -65,6 +65,53 @@ def main() -> int:
     assert "--parallel" not in command, command
     assert command[command.index("--filter") + 1] == batches[0].filter_pattern, command
 
+    assert gate.coverage_batch_retries({}) == 1
+    assert gate.coverage_batch_retries({"SWIFT_COVERAGE_BATCH_RETRIES": "0"}) == 0
+    assert gate.coverage_batch_retries({"SWIFT_COVERAGE_BATCH_RETRIES": "2"}) == 2
+
+    class FakeProcess:
+        next_pid = 1000
+
+        def __init__(self) -> None:
+            self.pid = FakeProcess.next_pid
+            FakeProcess.next_pid += 1
+            self.wait_calls = 0
+
+        def wait(self, timeout: float | None = None) -> int:
+            self.wait_calls += 1
+            if self.pid == 1000 and self.wait_calls == 1:
+                raise subprocess.TimeoutExpired("swift test", timeout)
+            return 0
+
+    processes: list[FakeProcess] = []
+    killed_groups: list[tuple[int, int]] = []
+
+    def fake_popen(*_args: object, **_kwargs: object) -> FakeProcess:
+        process = FakeProcess()
+        processes.append(process)
+        return process
+
+    original_popen = gate.subprocess.Popen
+    original_killpg = gate.os.killpg
+    gate.subprocess.Popen = fake_popen
+    gate.os.killpg = lambda process_group, signal_number: killed_groups.append(
+        (process_group, signal_number)
+    )
+    try:
+        gate.run_coverage_batch(
+            ["swift", "test"],
+            root=Path("/tmp/coverage-root"),
+            environment={},
+            label="PublishingWorkbenchCoreTests: 1 suite, 1 test",
+            timeout_seconds=1,
+            retries=1,
+        )
+    finally:
+        gate.subprocess.Popen = original_popen
+        gate.os.killpg = original_killpg
+    assert len(processes) == 2, processes
+    assert killed_groups == [(1000, gate.signal.SIGTERM)], killed_groups
+
     with tempfile.TemporaryDirectory(prefix="swift-coverage-gate.") as temporary:
         fixture = Path(temporary)
         source = fixture / "Sources" / "Module" / "Feature.swift"

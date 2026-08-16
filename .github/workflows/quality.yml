@@ -23,7 +23,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: quality-${{ github.workflow }}-${{ github.ref }}
+  group: quality-${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event.inputs.risk_level || 'default' }}
   cancel-in-progress: true
 
 jobs:
@@ -64,7 +64,7 @@ jobs:
   quality-quick:
     if: >-
       github.event_name == 'pull_request' ||
-      startsWith(github.ref, 'refs/tags/v') ||
+      (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) ||
       github.event_name == 'workflow_dispatch'
     runs-on: macos-15
     timeout-minutes: 25
@@ -104,7 +104,7 @@ jobs:
   quality-coverage:
     if: >-
       github.event_name == 'pull_request' ||
-      startsWith(github.ref, 'refs/tags/v') ||
+      (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) ||
       (github.event_name == 'workflow_dispatch' && github.event.inputs.risk_level != 'quick')
     runs-on: macos-15
     timeout-minutes: 45
@@ -182,7 +182,7 @@ jobs:
 
   quality-runtime:
     if: >-
-      startsWith(github.ref, 'refs/tags/v') ||
+      (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) ||
       (github.event_name == 'workflow_dispatch' && github.event.inputs.risk_level == 'release')
     runs-on: macos-15
     timeout-minutes: 75
@@ -280,7 +280,7 @@ jobs:
 
   release-performance:
     if: >-
-      startsWith(github.ref, 'refs/tags/v') ||
+      (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) ||
       (github.event_name == 'workflow_dispatch' && github.event.inputs.risk_level == 'release')
     runs-on: macos-15
     timeout-minutes: 45
@@ -324,7 +324,7 @@ jobs:
   swift6-migration:
     if: >-
       github.event_name == 'pull_request' ||
-      startsWith(github.ref, 'refs/tags/v') ||
+      (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) ||
       (github.event_name == 'workflow_dispatch' && github.event.inputs.risk_level != 'quick')
     runs-on: macos-15
     timeout-minutes: 25
@@ -359,7 +359,7 @@ jobs:
   release-quality:
     if: >-
       always() &&
-      (startsWith(github.ref, 'refs/tags/v') ||
+      ((github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) ||
       (github.event_name == 'workflow_dispatch' && github.event.inputs.risk_level == 'release'))
     needs:
       - quality-quick

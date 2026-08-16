@@ -5,6 +5,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WORKFLOW="$ROOT_DIR/.github/workflows/quality.yml"
 TOOLING_WORKFLOW="$ROOT_DIR/.github/workflows/tooling.yml"
 ACCESSIBILITY_RUNTIME_GATE="$ROOT_DIR/script/check_accessibility_runtime.sh"
+RELEASE_CHECKS="$ROOT_DIR/script/release_checks.json"
 CHECKOUT_ACTION="actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803"
 UPLOAD_ARTIFACT_ACTION="actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02"
 
@@ -16,6 +17,7 @@ fail() {
 [[ -f "$WORKFLOW" ]] || fail "missing .github/workflows/quality.yml"
 [[ -f "$TOOLING_WORKFLOW" ]] || fail "missing .github/workflows/tooling.yml"
 [[ -f "$ACCESSIBILITY_RUNTIME_GATE" ]] || fail "missing script/check_accessibility_runtime.sh"
+[[ -f "$RELEASE_CHECKS" ]] || fail "missing script/release_checks.json"
 grep -Eq '^[[:space:]]*push:' "$WORKFLOW" || fail "quality workflow must run on pushes"
 grep -Fq -- '- main' "$WORKFLOW" || fail "quality workflow push trigger must be limited to main"
 grep -Fq -- '- "v*"' "$WORKFLOW" \
@@ -35,6 +37,14 @@ for risk_level in quick pr release; do
   grep -Fq -- "- $risk_level" "$WORKFLOW" \
     || fail "manual quality risk selector must include: $risk_level"
 done
+quality_concurrency="$(sed -n '/^concurrency:/,/^jobs:/p' "$WORKFLOW")"
+grep -Fq 'github.event_name' <<<"$quality_concurrency" \
+  || fail "quality concurrency must isolate different event types"
+grep -Fq 'github.event.inputs.risk_level' <<<"$quality_concurrency" \
+  || fail "quality concurrency must isolate different manual risk layers"
+tooling_concurrency="$(sed -n '/^concurrency:/,/^jobs:/p' "$TOOLING_WORKFLOW")"
+grep -Fq 'github.event_name' <<<"$tooling_concurrency" \
+  || fail "release-tooling concurrency must isolate different event types"
 grep -Fq 'contents: read' "$WORKFLOW" || fail "workflow token permissions must be read-only"
 grep -Fq 'contents: read' "$TOOLING_WORKFLOW" \
   || fail "release-tooling workflow token permissions must be read-only"
@@ -100,15 +110,24 @@ grep -Fq 'name: Require every release quality lane' "$WORKFLOW" \
   || fail "final release check must fail closed when any release lane fails"
 grep -Fq './script/check_release_gate.sh' "$WORKFLOW" \
   || fail "workflow must invoke the shared release gate"
+grep -Fq '"id":"ci-quality","title":"GitHub Actions quality workflow","groups":["quick"]' \
+  "$RELEASE_CHECKS" \
+  || fail "the PR quick gate must execute the CI workflow contract"
+grep -Fq 'bash script/check_ci_quality_workflow.sh' "$TOOLING_WORKFLOW" \
+  || fail "release-tooling CI must execute the workflow contract directly"
 grep -Fq "if: github.event_name == 'push' && startsWith(github.ref, 'refs/heads/')" "$WORKFLOW" \
   || fail "main pushes must use a dedicated quick-only job"
 grep -Fq "github.event.inputs.risk_level == 'pr'" \
   < <(sed -n '/^  quality-build:/,/^  quality-runtime:/p' "$WORKFLOW") \
   || fail "PR distribution builds must be available only in the PR risk layer"
+tag_push_condition="github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')"
+for tag_lane in quality-quick quality-coverage quality-runtime release-performance swift6-migration release-quality; do
+  tag_lane_body="$(sed -n "/^  $tag_lane:/,/^  [a-z]/p" "$WORKFLOW")"
+  grep -Fq "$tag_push_condition" <<<"$tag_lane_body" \
+    || fail "$tag_lane must run for version-tag pushes without treating tag dispatches as releases"
+done
 for release_lane in quality-runtime release-performance; do
   release_lane_body="$(sed -n "/^  $release_lane:/,/^  [a-z]/p" "$WORKFLOW")"
-  grep -Fq "startsWith(github.ref, 'refs/tags/v')" <<<"$release_lane_body" \
-    || fail "$release_lane must run for version tags"
   grep -Fq "github.event.inputs.risk_level == 'release'" <<<"$release_lane_body" \
     || fail "$release_lane must run only for manual release risk"
 done

@@ -31,7 +31,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: release-tooling-${{ github.workflow }}-${{ github.ref }}
+  group: release-tooling-${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -79,6 +79,7 @@ jobs:
         run: python3 script/chromium_extension_release.py package --output-dir .build/chromium-store
       - name: Run release-tooling self-tests
         run: |
+          bash script/check_ci_quality_workflow.sh
           ./script/check_release_gate.sh \
             --tooling \
             --result-json .build/tooling-gate-result.json \
