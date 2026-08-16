@@ -90,6 +90,8 @@ grep -Fq 'bash script/check_ui_runtime.sh --launch' "$WORKFLOW" \
   || fail "quality workflow must verify a real visible Release app launch"
 grep -Fq 'WORKBENCH_XCUI_APP_PATH="$PWD/dist/PersonalSitePublisherMac.app"' "$WORKFLOW" \
   || fail "quality workflow must reuse the verified Release app for UI smoke"
+grep -Fq 'bash script/check_accessibility_runtime.sh --non-screenshot-regression' "$WORKFLOW" \
+  || fail "quality workflow must keep the verified Release app on the non-screenshot regression only"
 grep -Fq 'env -u RELEASE_GATE_PROFILE bash script/check_accessibility_runtime.sh' "$WORKFLOW" \
   || fail "quality workflow must preserve the complete isolated accessibility suite"
 grep -Fq 'name: ui-smoke-result' "$WORKFLOW" \

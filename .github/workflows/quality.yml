@@ -109,7 +109,7 @@ jobs:
           bash script/check_ui_runtime.sh --launch
           env -u RELEASE_GATE_PROFILE bash script/check_accessibility_runtime.sh
           WORKBENCH_XCUI_APP_PATH="$PWD/dist/PersonalSitePublisherMac.app" \
-            bash script/check_accessibility_runtime.sh
+            bash script/check_accessibility_runtime.sh --non-screenshot-regression
           cat > .build/ui-smoke-summary.md <<'EOF'
           # UI Smoke Summary
 
