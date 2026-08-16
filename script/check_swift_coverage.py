@@ -4,8 +4,12 @@
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import json
 import os
+import re
+import shutil
+import signal
 import subprocess
 import sys
 from pathlib import Path
@@ -13,6 +17,27 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_BASELINES = ROOT / "script" / "quality_baselines.json"
+INVENTORY_PATTERN = re.compile(
+    r"^([A-Za-z_][A-Za-z0-9_]*)\.([A-Za-z_][A-Za-z0-9_]*)/"
+    r"([A-Za-z_][A-Za-z0-9_]*)(\(\))?$"
+)
+MAX_SUITES_PER_COVERAGE_BATCH = 8
+MAX_TESTS_PER_COVERAGE_BATCH = 160
+
+
+@dataclasses.dataclass(frozen=True)
+class CoverageBatch:
+    target: str
+    suites: tuple[str, ...]
+    test_count: int
+    filter_pattern: str
+
+    @property
+    def label(self) -> str:
+        return (
+            f"{self.target}: {len(self.suites)} suites, "
+            f"{self.test_count} tests"
+        )
 
 
 def fail(message: str) -> None:
@@ -53,6 +78,148 @@ def source_line_coverage(payload: dict[str, object], root: Path) -> tuple[int, i
     return covered, count, percent
 
 
+def swift_test_arguments(scratch_path: Path, swift_build_root: Path) -> list[str]:
+    return [
+        "--disable-sandbox",
+        "--enable-code-coverage",
+        "--scratch-path",
+        str(scratch_path),
+        "--cache-path",
+        str(swift_build_root / "Library/Caches/org.swift.swiftpm"),
+        "--config-path",
+        str(swift_build_root / "Library/org.swift.swiftpm/configuration"),
+        "--security-path",
+        str(swift_build_root / "Library/org.swift.swiftpm/security"),
+    ]
+
+
+def coverage_list_command(
+    swift: str, scratch_path: Path, swift_build_root: Path
+) -> list[str]:
+    return [
+        swift,
+        "test",
+        *swift_test_arguments(scratch_path, swift_build_root),
+        "--skip-build",
+        "list",
+    ]
+
+
+def coverage_build_command(
+    swift: str, scratch_path: Path, swift_build_root: Path
+) -> list[str]:
+    return [
+        swift,
+        "build",
+        *swift_test_arguments(scratch_path, swift_build_root),
+        "--build-tests",
+    ]
+
+
+def coverage_batch_command(
+    swift: str,
+    scratch_path: Path,
+    swift_build_root: Path,
+    batch: CoverageBatch,
+) -> list[str]:
+    return [
+        swift,
+        "test",
+        *swift_test_arguments(scratch_path, swift_build_root),
+        "--filter",
+        batch.filter_pattern,
+    ]
+
+
+def coverage_batches_from_inventory(output: str) -> list[CoverageBatch]:
+    suite_counts: dict[tuple[str, str], int] = {}
+    rows = [line.strip() for line in output.splitlines() if line.strip()]
+    for row in rows:
+        match = INVENTORY_PATTERN.fullmatch(row)
+        if match is None:
+            fail(f"unsupported Swift test inventory row: {row}")
+        target, suite, _method, _parentheses = match.groups()
+        key = (target, suite)
+        suite_counts[key] = suite_counts.get(key, 0) + 1
+    if not suite_counts:
+        fail("swift test list returned no supported tests")
+
+    batches: list[CoverageBatch] = []
+    for target in sorted({key[0] for key in suite_counts}):
+        current_suites: list[str] = []
+        current_count = 0
+
+        def append_current_batch() -> None:
+            nonlocal current_suites, current_count
+            if not current_suites:
+                return
+            alternatives = "|".join(re.escape(suite) for suite in current_suites)
+            batches.append(
+                CoverageBatch(
+                    target=target,
+                    suites=tuple(current_suites),
+                    test_count=current_count,
+                    filter_pattern=rf"^{re.escape(target)}\.({alternatives})/",
+                )
+            )
+            current_suites = []
+            current_count = 0
+
+        for suite in sorted(key[1] for key in suite_counts if key[0] == target):
+            suite_count = suite_counts[(target, suite)]
+            if current_suites and (
+                len(current_suites) >= MAX_SUITES_PER_COVERAGE_BATCH
+                or current_count + suite_count > MAX_TESTS_PER_COVERAGE_BATCH
+            ):
+                append_current_batch()
+            current_suites.append(suite)
+            current_count += suite_count
+        append_current_batch()
+    return batches
+
+
+def run_coverage_batch(
+    command: list[str],
+    *,
+    root: Path,
+    environment: dict[str, str],
+    label: str,
+    timeout_seconds: float,
+) -> None:
+    process = subprocess.Popen(
+        command,
+        cwd=root,
+        env=environment,
+        start_new_session=True,
+    )
+    try:
+        return_code = process.wait(timeout=timeout_seconds)
+    except subprocess.TimeoutExpired:
+        try:
+            os.killpg(process.pid, signal.SIGTERM)
+            process.wait(timeout=2)
+        except (ProcessLookupError, subprocess.TimeoutExpired):
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            process.wait()
+        fail(f"coverage batch timed out after {timeout_seconds:.0f}s: {label}")
+    if return_code != 0:
+        fail(f"coverage batch failed with status {return_code}: {label}")
+
+
+def find_test_binary(scratch_path: Path) -> Path:
+    candidates = sorted(
+        path
+        for path in scratch_path.rglob("*.xctest/Contents/MacOS/*")
+        if path.is_file() and os.access(path, os.X_OK)
+    )
+    if len(candidates) != 1:
+        fail(f"expected one SwiftPM test binary, found {len(candidates)}")
+    return candidates[0]
+
+
 def run_coverage(root: Path, scratch_path: Path) -> Path:
     swift = os.environ.get("SWIFT_BIN", "swift")
     environment = os.environ.copy()
@@ -73,57 +240,104 @@ def run_coverage(root: Path, scratch_path: Path) -> Path:
     ):
         directory.mkdir(parents=True, exist_ok=True)
 
-    command = [
-        swift,
-        "test",
-        "--disable-sandbox",
-        "--enable-code-coverage",
-        "--scratch-path",
-        str(scratch_path),
-        "--cache-path",
-        str(swift_build_root / "Library/Caches/org.swift.swiftpm"),
-        "--config-path",
-        str(swift_build_root / "Library/org.swift.swiftpm/configuration"),
-        "--security-path",
-        str(swift_build_root / "Library/org.swift.swiftpm/security"),
-    ]
-    print("swift coverage gate: running " + " ".join(command))
+    profile_directory = scratch_path / "isolated-codecov-profiles"
+    if profile_directory.exists():
+        shutil.rmtree(profile_directory)
+    profile_directory.mkdir(parents=True)
+    batch_timeout = float(os.environ.get("SWIFT_COVERAGE_BATCH_TIMEOUT_SECONDS", "300"))
+
     try:
-        subprocess.run(command, cwd=root, env=environment, check=True)
-        path_result = subprocess.run(
-            [
-                swift,
-                "test",
-                "--disable-sandbox",
-                "--show-codecov-path",
-                "--scratch-path",
-                str(scratch_path),
-                "--cache-path",
-                str(swift_build_root / "Library/Caches/org.swift.swiftpm"),
-                "--config-path",
-                str(swift_build_root / "Library/org.swift.swiftpm/configuration"),
-                "--security-path",
-                str(swift_build_root / "Library/org.swift.swiftpm/security"),
-            ],
+        build_command = coverage_build_command(swift, scratch_path, swift_build_root)
+        print("swift coverage gate: building coverage-instrumented tests", flush=True)
+        subprocess.run(
+            build_command,
+            cwd=root,
+            env=environment,
+            check=True,
+        )
+        list_command = coverage_list_command(swift, scratch_path, swift_build_root)
+        print("swift coverage gate: listing the prebuilt coverage tests", flush=True)
+        inventory_result = subprocess.run(
+            list_command,
             cwd=root,
             env=environment,
             text=True,
-            capture_output=True,
+            stdout=subprocess.PIPE,
             check=True,
         )
+        batches = coverage_batches_from_inventory(inventory_result.stdout)
+        test_binary = find_test_binary(scratch_path)
+        print(
+            f"swift coverage gate: running {len(batches)} isolated suite batches",
+            flush=True,
+        )
+        for index, batch in enumerate(batches, start=1):
+            print(
+                f"swift coverage gate: batch {index}/{len(batches)}: "
+                f"{batch.label}",
+                flush=True,
+            )
+            run_coverage_batch(
+                coverage_batch_command(swift, scratch_path, swift_build_root, batch),
+                root=root,
+                environment=environment,
+                label=batch.label,
+                timeout_seconds=batch_timeout,
+            )
+            codecov_directory = test_binary.parents[3] / "codecov"
+            profiles = sorted(codecov_directory.glob("*.profraw"))
+            if not profiles:
+                fail(f"coverage batch produced no profiles: {batch.label}")
+            for profile_index, profile in enumerate(profiles, start=1):
+                shutil.copy2(
+                    profile,
+                    profile_directory
+                    / f"batch-{index:03d}-{profile_index:02d}.profraw",
+                )
+
+        profiles = sorted(profile_directory.glob("*.profraw"))
+        merged_profile = profile_directory / "merged.profdata"
+        xcrun = environment.get("XCRUN_BIN", "xcrun")
+        subprocess.run(
+            [
+                xcrun,
+                "llvm-profdata",
+                "merge",
+                "-sparse",
+                *map(str, profiles),
+                "-o",
+                str(merged_profile),
+            ],
+            cwd=root,
+            env=environment,
+            check=True,
+        )
+        coverage_path = scratch_path / "isolated-codecov.json"
+        with coverage_path.open("w", encoding="utf-8") as coverage_file:
+            subprocess.run(
+                [
+                    xcrun,
+                    "llvm-cov",
+                    "export",
+                    f"-instr-profile={merged_profile}",
+                    str(test_binary),
+                ],
+                cwd=root,
+                env=environment,
+                stdout=coverage_file,
+                check=True,
+            )
+        shutil.rmtree(profile_directory)
+        return coverage_path
     except FileNotFoundError:
         print(
-            "swift coverage gate [environment:tool-unavailable]: swift was not found; "
-            "no network install was attempted",
+            "swift coverage gate [environment:tool-unavailable]: required Swift/LLVM "
+            "tooling was not found; no network install was attempted",
             file=sys.stderr,
         )
         raise SystemExit(69)
     except subprocess.CalledProcessError as error:
         fail(f"coverage command failed with status {error.returncode}")
-    candidates = [Path(line.strip()) for line in path_result.stdout.splitlines() if line.strip()]
-    if not candidates:
-        fail("swift --show-codecov-path returned no path")
-    return candidates[-1]
 
 
 def main() -> int:

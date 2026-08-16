@@ -310,6 +310,11 @@ final class WorkbenchGeneralAIChatTests: XCTestCase {
     defer { try? FileManager.default.removeItem(at: persistenceURL) }
     let store = WorkbenchStore(
       persistence: WorkbenchPersistence(fileURL: persistenceURL),
+      keychainTokenStore: KeychainTokenStore(
+        service: "PersonalSitePublisherMac.Tests.GeneralImageBudget.\(UUID().uuidString)",
+        accountPrefix: "general-image-budget-tests",
+        inMemory: true
+      ),
       aiPublishingAssistantService: AIPublishingAssistantService(
         client: AIChatCompletionClient(transport: transport)
       ),

@@ -3,8 +3,10 @@
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
@@ -13,7 +15,56 @@ ROOT = Path(__file__).resolve().parent.parent
 GATE = ROOT / "script" / "check_swift_coverage.py"
 
 
+def load_gate_module() -> object:
+    spec = importlib.util.spec_from_file_location("check_swift_coverage", GATE)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
 def main() -> int:
+    gate = load_gate_module()
+    inventory = "\n".join(
+        [
+            "ModuleTests.FirstSuite/testOne",
+            "ModuleTests.FirstSuite/testTwo",
+            "ModuleTests.SecondSuite/testThree()",
+            "OtherTests.OnlySuite/testFour",
+        ]
+    )
+    batches = gate.coverage_batches_from_inventory(inventory)
+    assert len(batches) == 2, batches
+    assert sum(batch.test_count for batch in batches) == 4, batches
+    assert batches[0].suites == ("FirstSuite", "SecondSuite"), batches
+    build_command = gate.coverage_build_command(
+        "swift",
+        Path("/tmp/coverage-scratch"),
+        Path("/tmp/coverage-home"),
+    )
+    assert build_command[1] == "build", build_command
+    assert "--enable-code-coverage" in build_command, build_command
+    assert "--build-tests" in build_command, build_command
+    list_command = gate.coverage_list_command(
+        "swift",
+        Path("/tmp/coverage-scratch"),
+        Path("/tmp/coverage-home"),
+    )
+    assert list_command[1] == "test", list_command
+    assert "--skip-build" in list_command, list_command
+    assert list_command[-1] == "list", list_command
+    command = gate.coverage_batch_command(
+        "swift",
+        Path("/tmp/coverage-scratch"),
+        Path("/tmp/coverage-home"),
+        batches[0],
+    )
+    assert "--enable-code-coverage" in command, command
+    assert "--skip-build" not in command, command
+    assert "--parallel" not in command, command
+    assert command[command.index("--filter") + 1] == batches[0].filter_pattern, command
+
     with tempfile.TemporaryDirectory(prefix="swift-coverage-gate.") as temporary:
         fixture = Path(temporary)
         source = fixture / "Sources" / "Module" / "Feature.swift"

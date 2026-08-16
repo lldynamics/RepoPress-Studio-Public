@@ -4,6 +4,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WORKFLOW="$ROOT_DIR/.github/workflows/quality.yml"
 TOOLING_WORKFLOW="$ROOT_DIR/.github/workflows/tooling.yml"
+ACCESSIBILITY_RUNTIME_GATE="$ROOT_DIR/script/check_accessibility_runtime.sh"
 CHECKOUT_ACTION="actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803"
 UPLOAD_ARTIFACT_ACTION="actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02"
 
@@ -14,6 +15,7 @@ fail() {
 
 [[ -f "$WORKFLOW" ]] || fail "missing .github/workflows/quality.yml"
 [[ -f "$TOOLING_WORKFLOW" ]] || fail "missing .github/workflows/tooling.yml"
+[[ -f "$ACCESSIBILITY_RUNTIME_GATE" ]] || fail "missing script/check_accessibility_runtime.sh"
 grep -Eq '^[[:space:]]*push:' "$WORKFLOW" || fail "quality workflow must run on pushes"
 grep -Fq -- '- main' "$WORKFLOW" || fail "quality workflow push trigger must be limited to main"
 if grep -Eq '^[[:space:]]*push:' "$TOOLING_WORKFLOW"; then
@@ -27,17 +29,14 @@ grep -Fq 'contents: read' "$TOOLING_WORKFLOW" \
 grep -Fq 'DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer' "$TOOLING_WORKFLOW" \
   || fail "release-tooling workflow must select the Xcode 26.3 Safari extension toolchain"
 grep -Fq 'DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer' \
-  < <(sed -n '/name: Exercise distribution build and package path/,/name: Publish quality summary/p' "$WORKFLOW") \
-  || fail "pull-request distribution gate must select the Xcode 26.3 Safari extension toolchain"
-grep -Fq 'DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer' \
-  < <(sed -n '/name: Run real launch and UI smoke/,/name: Upload UI smoke evidence/p' "$WORKFLOW") \
-  || fail "pull-request UI smoke must keep the Xcode 26.3 Safari extension toolchain"
+  < <(sed -n '/^  quality-runtime:/,/^  quality:/p' "$WORKFLOW") \
+  || fail "pull-request distribution and UI lane must select the Xcode 26.3 Safari extension toolchain"
 grep -Fq 'echo "PLAYWRIGHT_BROWSERS_PATH=$RUNNER_TEMP/ms-playwright" >> "$GITHUB_ENV"' "$TOOLING_WORKFLOW" \
   || fail "release-tooling workflow must share one Playwright browser path across install and gates"
 grep -Fq 'xcrun -f safari-web-extension-packager' "$TOOLING_WORKFLOW" \
   || fail "release-tooling workflow must verify the Safari extension packager before running gates"
 grep -Fq 'xcrun -f safari-web-extension-packager' \
-  < <(sed -n '/name: Exercise distribution build and package path/,/name: Publish quality summary/p' "$WORKFLOW") \
+  < <(sed -n '/^  quality-runtime:/,/^  quality:/p' "$WORKFLOW") \
   || fail "pull-request distribution gate must verify the Safari extension packager before running"
 for workflow_path in "$WORKFLOW" "$TOOLING_WORKFLOW"; do
   grep -Fq "uses: $CHECKOUT_ACTION" "$workflow_path" \
@@ -51,9 +50,25 @@ for workflow_path in "$WORKFLOW" "$TOOLING_WORKFLOW"; do
 done
 grep -Fq 'runs-on: macos-15' "$WORKFLOW" || fail "workflow must use a macOS runner"
 grep -Fq 'timeout-minutes:' "$WORKFLOW" || fail "workflow must have a job timeout"
-grep -Fq 'timeout-minutes: 75' \
+grep -Fq 'timeout-minutes: 25' \
+  < <(sed -n '/^  quality-quick:/,/^  quality-coverage:/p' "$WORKFLOW") \
+  || fail "pull-request quick lane must keep a bounded independent timeout"
+grep -Fq 'timeout-minutes: 45' \
+  < <(sed -n '/^  quality-coverage:/,/^  quality-runtime:/p' "$WORKFLOW") \
+  || fail "pull-request coverage lane must keep its independent timeout"
+grep -Fq 'timeout-minutes: 60' \
+  < <(sed -n '/^  quality-runtime:/,/^  quality:/p' "$WORKFLOW") \
+  || fail "pull-request runtime lane must reserve enough time for the dual-bundle UI suite"
+for required_lane in quality-quick quality-coverage quality-runtime; do
+  grep -Fq -- "- $required_lane" \
+    < <(sed -n '/^  quality:/,/^  release-performance:/p' "$WORKFLOW") \
+    || fail "final quality check must depend on $required_lane"
+done
+grep -Fq 'runs-on: ubuntu-24.04' \
   < <(sed -n '/^  quality:/,/^  release-performance:/p' "$WORKFLOW") \
-  || fail "pull-request quality job must reserve enough time for the complete dual-bundle UI suite"
+  || fail "final quality aggregation must use the lightweight Linux runner"
+grep -Fq 'name: Require every PR quality lane' "$WORKFLOW" \
+  || fail "final quality check must fail closed when any independent lane fails"
 grep -Fq './script/check_release_gate.sh' "$WORKFLOW" \
   || fail "workflow must invoke the shared release gate"
 grep -Fq "if: github.event_name == 'push'" "$WORKFLOW" \
@@ -65,8 +80,8 @@ for deterministic_language_setting in \
   'defaults write NSGlobalDomain AppleLanguages -array "zh-Hans"' \
   'defaults write NSGlobalDomain AppleLocale "zh_CN"'; do
   setting_count="$(grep -Fc "$deterministic_language_setting" "$WORKFLOW" || true)"
-  [[ "$setting_count" -eq 2 ]] \
-    || fail "main-push and pull-request quality jobs must both configure deterministic Simplified Chinese tests"
+  [[ "$setting_count" -eq 4 ]] \
+    || fail "main-push and all three pull-request lanes must configure deterministic Simplified Chinese tests"
 done
 grep -Fq -- '--quick' "$WORKFLOW" \
   || fail "workflow must run the shared quick gate"
@@ -81,6 +96,12 @@ grep -Fq -- '--summary-markdown .build/quality-gate-summary.md' "$WORKFLOW" \
   || fail "quality workflow must produce a readable quick-gate summary"
 grep -Fq -- '--summary-markdown .build/distribution-gate-summary.md' "$WORKFLOW" \
   || fail "quality workflow must produce a readable distribution summary"
+grep -Fq 'name: quality-quick-result' "$WORKFLOW" \
+  || fail "quick quality lane must upload independent evidence"
+grep -Fq 'name: quality-coverage-result' "$WORKFLOW" \
+  || fail "coverage lane must upload independent evidence"
+grep -Fq 'name: quality-runtime-result' "$WORKFLOW" \
+  || fail "runtime lane must upload independent evidence"
 grep -Fq 'GITHUB_STEP_SUMMARY' "$WORKFLOW" \
   || fail "quality workflow must publish its readable summary"
 swift_test_artifact_count="$(grep -Fc '.build/swift-test-shards/' "$WORKFLOW" || true)"
@@ -94,6 +115,15 @@ grep -Fq 'bash script/check_accessibility_runtime.sh --non-screenshot-regression
   || fail "quality workflow must keep the verified Release app on the non-screenshot regression only"
 grep -Fq 'env -u RELEASE_GATE_PROFILE bash script/check_accessibility_runtime.sh' "$WORKFLOW" \
   || fail "quality workflow must preserve the complete isolated accessibility suite"
+grep -Fq 'WORKBENCH_XCUI_RETRY_FAILURES: 1' "$WORKFLOW" \
+  || fail "hosted macOS UI smoke must enable one bounded failed-test retry"
+for retry_argument in \
+  '-retry-tests-on-failure' \
+  '-test-iterations 2' \
+  '-test-repetition-relaunch-enabled YES'; do
+  grep -Fq -- "$retry_argument" "$ACCESSIBILITY_RUNTIME_GATE" \
+    || fail "accessibility runtime retry must include: $retry_argument"
+done
 grep -Fq 'name: ui-smoke-result' "$WORKFLOW" \
   || fail "quality workflow must retain UI smoke logs and test evidence"
 for release_check in ui-runtime swift-release-build; do
@@ -126,4 +156,4 @@ if grep -Eq '(github_pat_|ghp_[A-Za-z0-9_]{20,}|glpat-[A-Za-z0-9_-]{20,}|Authori
   fail "workflow contains token-like content"
 fi
 
-echo "CI quality workflow gate: main push quick path, pull-request coverage/distribution/UI path, blocking Swift 6 diagnostic, pinned actions, read-only permissions, summaries, and distribution evidence verified"
+echo "CI quality workflow gate: main push quick path, parallel pull-request quick/coverage/runtime lanes, fail-closed final quality check, blocking Swift 6 diagnostic, pinned actions, read-only permissions, summaries, and distribution evidence verified"

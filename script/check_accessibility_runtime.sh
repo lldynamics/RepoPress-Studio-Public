@@ -146,6 +146,16 @@ elif [[ "$NON_SCREENSHOT_REGRESSION" == "1" ]]; then
   xcodebuild_arguments+=(
     "-only-testing:WorkspaceAccessibilityUITests/WorkspaceAccessibilityUITests/testReleaseBundleLaunchesWithoutScreenshotFixture"
   )
+elif [[ "${WORKBENCH_XCUI_RETRY_FAILURES:-0}" == "1" ]]; then
+  # The complete macOS UI suite has occasionally lost one synthetic navigation
+  # event on hosted runners even though the same test passes in isolation. Retry
+  # only the failed case once, in a fresh test-runner process, instead of
+  # rebuilding the app and rerunning the entire suite.
+  xcodebuild_arguments+=(
+    -retry-tests-on-failure
+    -test-iterations 2
+    -test-repetition-relaunch-enabled YES
+  )
 fi
 
 HOME="$RUNTIME_HOME" \

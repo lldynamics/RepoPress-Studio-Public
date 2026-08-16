@@ -49,12 +49,12 @@ jobs:
             .build/main-push-quick-summary.md
             .build/swift-test-shards/
 
-  quality:
+  quality-quick:
     if: github.event_name != 'push'
     runs-on: macos-15
-    timeout-minutes: 75
+    timeout-minutes: 25
     env:
-      SWIFT_BUILD_HOME: /private/tmp/personal-site-publisher-ci-swift-home
+      SWIFT_BUILD_HOME: /private/tmp/personal-site-publisher-ci-quick-home
     steps:
       - name: Check out repository
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
@@ -70,15 +70,73 @@ jobs:
             --quick \
             --result-json .build/quality-gate-result.json \
             --summary-markdown .build/quality-gate-summary.md
+      - name: Publish quick quality summary
+        if: always()
+        run: |
+          if [[ -f .build/quality-gate-summary.md ]]; then
+            cat .build/quality-gate-summary.md >>"$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Upload quick quality result
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: quality-quick-result
+          path: |
+            .build/quality-gate-result.json
+            .build/quality-gate-summary.md
+            .build/swift-test-shards/
+
+  quality-coverage:
+    if: github.event_name != 'push'
+    runs-on: macos-15
+    timeout-minutes: 45
+    env:
+      SWIFT_BUILD_HOME: /private/tmp/personal-site-publisher-ci-coverage-home
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - name: Configure deterministic test language
+        run: |
+          defaults write NSGlobalDomain AppleLanguages -array "zh-Hans"
+          defaults write NSGlobalDomain AppleLocale "zh_CN"
+      - name: Show toolchain
+        run: swift --version
       - name: Measure Swift Sources line coverage
         run: |
           ./script/check_release_gate.sh \
             --check swift-coverage \
             --result-json .build/coverage-gate-result.json \
             --summary-markdown .build/coverage-gate-summary.md
+      - name: Publish coverage summary
+        if: always()
+        run: |
+          if [[ -f .build/coverage-gate-summary.md ]]; then
+            cat .build/coverage-gate-summary.md >>"$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Upload coverage result
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: quality-coverage-result
+          path: |
+            .build/coverage-gate-result.json
+            .build/coverage-gate-summary.md
+
+  quality-runtime:
+    if: github.event_name != 'push'
+    runs-on: macos-15
+    timeout-minutes: 60
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
+      SWIFT_BUILD_HOME: /private/tmp/personal-site-publisher-ci-runtime-home
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - name: Configure deterministic test language
+        run: |
+          defaults write NSGlobalDomain AppleLanguages -array "zh-Hans"
+          defaults write NSGlobalDomain AppleLocale "zh_CN"
       - name: Exercise distribution build and package path
-        env:
-          DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
         run: |
           xcodebuild -version
           xcrun -f safari-web-extension-packager
@@ -87,22 +145,17 @@ jobs:
             --check swift-release-build \
             --result-json .build/distribution-gate-result.json \
             --summary-markdown .build/distribution-gate-summary.md
-      - name: Publish quality summary
+      - name: Publish distribution summary
         if: always()
         run: |
-          for summary in \
-            .build/quality-gate-summary.md \
-            .build/coverage-gate-summary.md \
-            .build/distribution-gate-summary.md; do
-            if [[ -f "$summary" ]]; then
-              cat "$summary" >>"$GITHUB_STEP_SUMMARY"
-            fi
-          done
+          if [[ -f .build/distribution-gate-summary.md ]]; then
+            cat .build/distribution-gate-summary.md >>"$GITHUB_STEP_SUMMARY"
+          fi
       - name: Run real launch and UI smoke
         env:
-          DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
           PERSONAL_SITE_PUBLISHER_RUNTIME_HOME: ${{ runner.temp }}/repopress-ui-smoke-home
           WORKBENCH_XCUI_DERIVED_DATA_PATH: ${{ github.workspace }}/.build/ui-smoke-derived-data
+          WORKBENCH_XCUI_RETRY_FAILURES: 1
         run: |
           mkdir -p "$PERSONAL_SITE_PUBLISHER_RUNTIME_HOME" .build
           exec > >(tee .build/ui-smoke.log) 2>&1
@@ -129,19 +182,35 @@ jobs:
             .build/ui-smoke-summary.md
             .build/ui-smoke-derived-data/Logs/Test
           if-no-files-found: warn
-      - name: Upload unified result
+      - name: Upload distribution result
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: quality-gate-result
+          name: quality-runtime-result
           path: |
-            .build/quality-gate-result.json
-            .build/coverage-gate-result.json
             .build/distribution-gate-result.json
-            .build/quality-gate-summary.md
-            .build/coverage-gate-summary.md
             .build/distribution-gate-summary.md
-            .build/swift-test-shards/
+
+  quality:
+    if: ${{ always() && github.event_name != 'push' }}
+    needs:
+      - quality-quick
+      - quality-coverage
+      - quality-runtime
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Require every PR quality lane
+        env:
+          QUICK_RESULT: ${{ needs.quality-quick.result }}
+          COVERAGE_RESULT: ${{ needs.quality-coverage.result }}
+          RUNTIME_RESULT: ${{ needs.quality-runtime.result }}
+        run: |
+          printf 'quick=%s\ncoverage=%s\nruntime=%s\n' \
+            "$QUICK_RESULT" "$COVERAGE_RESULT" "$RUNTIME_RESULT"
+          [[ "$QUICK_RESULT" == "success" ]]
+          [[ "$COVERAGE_RESULT" == "success" ]]
+          [[ "$RUNTIME_RESULT" == "success" ]]
 
   release-performance:
     if: github.event_name != 'push'
