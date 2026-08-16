@@ -244,8 +244,7 @@ extension RSSArticleList {
                       .contentShape(Rectangle())
                       .id(article.id)
                       .onTapGesture {
-                        selectedArticleID = article.id
-                        isArticleListFocused = true
+                        selectArticle(article.id)
                       }
                   }
                 } header: {
@@ -310,6 +309,10 @@ extension RSSArticleList {
     )
     .tag(article.id)
     .accessibilityIdentifier("rss-article-row-\(article.id)")
+    .accessibilityAddTraits(.isButton)
+    .accessibilityAction {
+      selectArticle(article.id)
+    }
     .contextMenu {
       Button(article.isRead ? "标为未读" : "标为已读") {
         store.markRead(article.id, isRead: !article.isRead)
@@ -322,5 +325,11 @@ extension RSSArticleList {
         Button("打开原文") { openOriginal(article) }
       }
     }
+  }
+
+  private func selectArticle(_ articleID: String) {
+    presentation.revealArticle(articleID, in: store)
+    selectedArticleID = articleID
+    isArticleListFocused = true
   }
 }

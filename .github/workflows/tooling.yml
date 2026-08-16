@@ -1,6 +1,9 @@
 name: Release Tooling CI
 
 on:
+  push:
+    tags:
+      - "v*"
   pull_request:
     paths:
       - "script/**"
