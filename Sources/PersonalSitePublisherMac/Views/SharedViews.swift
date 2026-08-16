@@ -476,12 +476,89 @@ struct QuickHideOverlay: View {
     .accessibilityIdentifier("quick-hide-overlay")
     .accessibilityLabel(status.title)
     .accessibilityHint(status.detail)
+    .background {
+      QuickHideReturnKeyCapture {
+        store.deactivateQuickHide()
+      }
+    }
     .onAppear {
       DispatchQueue.main.async {
         isUnlockButtonFocused = true
         isOverlayFocused = true
       }
     }
+  }
+}
+
+enum QuickHideReturnKeyPolicy {
+  private static let returnKeyCodes: Set<UInt16> = [36, 76]
+  private static let blockingModifiers: NSEvent.ModifierFlags = [
+    .command, .control, .option, .shift,
+  ]
+
+  static func matches(
+    keyCode: UInt16,
+    modifierFlags: NSEvent.ModifierFlags
+  ) -> Bool {
+    returnKeyCodes.contains(keyCode)
+      && modifierFlags.intersection(blockingModifiers).isEmpty
+  }
+}
+
+private struct QuickHideReturnKeyCapture: NSViewRepresentable {
+  let onReturn: @MainActor () -> Void
+
+  func makeNSView(context: Context) -> QuickHideReturnKeyCaptureView {
+    let view = QuickHideReturnKeyCaptureView()
+    view.onReturn = onReturn
+    return view
+  }
+
+  func updateNSView(_ nsView: QuickHideReturnKeyCaptureView, context: Context) {
+    nsView.onReturn = onReturn
+  }
+
+  static func dismantleNSView(
+    _ nsView: QuickHideReturnKeyCaptureView,
+    coordinator: Void
+  ) {
+    nsView.stopMonitoring()
+  }
+}
+
+@MainActor
+private final class QuickHideReturnKeyCaptureView: NSView {
+  var onReturn: @MainActor () -> Void = {}
+  private var eventMonitor: Any?
+
+  override func viewWillMove(toWindow newWindow: NSWindow?) {
+    if newWindow == nil {
+      stopMonitoring()
+    }
+    super.viewWillMove(toWindow: newWindow)
+  }
+
+  override func viewDidMoveToWindow() {
+    super.viewDidMoveToWindow()
+    guard window != nil, eventMonitor == nil else { return }
+    eventMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+      guard let self,
+        self.window?.isKeyWindow == true,
+        QuickHideReturnKeyPolicy.matches(
+          keyCode: event.keyCode,
+          modifierFlags: event.modifierFlags
+        )
+      else { return event }
+
+      self.onReturn()
+      return nil
+    }
+  }
+
+  func stopMonitoring() {
+    guard let eventMonitor else { return }
+    NSEvent.removeMonitor(eventMonitor)
+    self.eventMonitor = nil
   }
 }
 
