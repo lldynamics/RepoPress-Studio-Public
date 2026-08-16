@@ -51,6 +51,9 @@ for workflow_path in "$WORKFLOW" "$TOOLING_WORKFLOW"; do
 done
 grep -Fq 'runs-on: macos-15' "$WORKFLOW" || fail "workflow must use a macOS runner"
 grep -Fq 'timeout-minutes:' "$WORKFLOW" || fail "workflow must have a job timeout"
+grep -Fq 'timeout-minutes: 75' \
+  < <(sed -n '/^  quality:/,/^  release-performance:/p' "$WORKFLOW") \
+  || fail "pull-request quality job must reserve enough time for the complete dual-bundle UI suite"
 grep -Fq './script/check_release_gate.sh' "$WORKFLOW" \
   || fail "workflow must invoke the shared release gate"
 grep -Fq "if: github.event_name == 'push'" "$WORKFLOW" \

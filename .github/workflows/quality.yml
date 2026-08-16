@@ -52,7 +52,7 @@ jobs:
   quality:
     if: github.event_name != 'push'
     runs-on: macos-15
-    timeout-minutes: 45
+    timeout-minutes: 75
     env:
       SWIFT_BUILD_HOME: /private/tmp/personal-site-publisher-ci-swift-home
     steps:
