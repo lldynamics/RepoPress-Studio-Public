@@ -4,6 +4,7 @@ import SwiftUI
 struct AIAdvancedSettingsSection: View {
   @Binding var settings: AIProviderAdvancedSettings
   let reasoningSupport: AIProviderCapabilitySupport
+  let usesCodexAppServer: Bool
 
   var body: some View {
     Section {
@@ -66,13 +67,23 @@ struct AIAdvancedSettingsSection: View {
         }
       }
 
-      Picker("连接备用推理深度", selection: $settings.reasoningPreference) {
-        ForEach(AIProviderReasoningPreference.allCases) { preference in
-          Text(verbatim: preference.localizedTitle).tag(preference)
+      if usesCodexAppServer {
+        Label(
+          "ChatGPT 模型与推理等级在上方账户区设置。",
+          systemImage: "slider.horizontal.3"
+        )
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .accessibilityIdentifier("settings-ai-codex-reasoning-location")
+      } else {
+        Picker("连接备用推理深度", selection: $settings.reasoningPreference) {
+          ForEach(AIProviderReasoningPreference.allCases) { preference in
+            Text(verbatim: preference.localizedTitle).tag(preference)
+          }
         }
+        .disabled(reasoningSupport == .unsupported)
+        .accessibilityHint(reasoningAccessibilityHint)
       }
-      .disabled(reasoningSupport == .unsupported)
-      .accessibilityHint(reasoningAccessibilityHint)
 
       if hasConversationParameterOverrides {
         HStack {
@@ -109,7 +120,7 @@ struct AIAdvancedSettingsSection: View {
     !settings.normalizedSystemPrompt.isEmpty
       || settings.normalizedTemperature != nil
       || settings.normalizedMaximumOutputTokens != nil
-      || settings.reasoningPreference != .automatic
+      || (!usesCodexAppServer && settings.reasoningPreference != .automatic)
   }
 
   private var systemPromptBinding: Binding<String> {
