@@ -20033,38 +20033,6 @@
         }
       }
     },
-    "分屏空间较窄，已临时隐藏；可以手动显示": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "The split view is too narrow, so this is temporarily hidden. You can show it manually."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "分屏空间较窄，已临时隐藏；可以手动显示"
-          }
-        }
-      }
-    },
-    "分屏空间较窄；点击仍显示 Inspector": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "The split view is narrow; click to keep showing the Inspector"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "分屏空间较窄；点击仍显示 Inspector"
-          }
-        }
-      }
-    },
     "分支": {
       "localizations": {
         "en": {
