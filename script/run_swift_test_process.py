@@ -24,6 +24,10 @@ MAC_TARGET = "PersonalSitePublisherMacTests"
 CORE_TARGET = "PublishingWorkbenchCoreTests"
 CACHE_SUITE = "WorkbenchImageTwoTierCacheTests"
 SETTINGS_SUITE = "SettingsSearchAndSavePresentationTests"
+# These tests launch a real child process and keep a streaming reader alive.
+# Run each method in its own xctest host so older XCTest runtimes cannot strand
+# an entire multi-suite batch.
+CORE_CASE_ISOLATED_SUITES = ("CodexAppServerClientTests",)
 INVENTORY_PATTERN = re.compile(
     r"^(PersonalSitePublisherMacTests|PublishingWorkbenchCoreTests)\."
     r"([A-Za-z_][A-Za-z0-9_]*)/([A-Za-z_][A-Za-z0-9_]*)(\(\))?$"
@@ -511,10 +515,31 @@ def build_shards(tests: list[TestSpec]) -> list[Shard]:
             )
         )
 
+    core_case_tests = tuple(
+        sorted(
+            (
+                test
+                for test in tests
+                if test.target == CORE_TARGET
+                and test.suite in CORE_CASE_ISOLATED_SUITES
+            ),
+            key=lambda item: item.raw,
+        )
+    )
+    for index, test in enumerate(core_case_tests, start=1):
+        shards.append(
+            Shard(
+                label=test.raw,
+                slug=f"core-case-{index:02d}",
+                filter_pattern=f"^{re.escape(test.raw)}$",
+                tests=(test,),
+            )
+        )
+
     core_batches = batch_suites(
         tests,
         target=CORE_TARGET,
-        excluded_suites=set(),
+        excluded_suites=set(CORE_CASE_ISOLATED_SUITES),
         maximum_suites=12,
         maximum_tests=150,
     )
