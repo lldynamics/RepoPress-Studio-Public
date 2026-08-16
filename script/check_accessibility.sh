@@ -357,6 +357,11 @@ require_literal \
   "runtime accessibility coverage must click the writing-page AI entry directly"
 
 require_literal \
+  "UITests/WorkspaceAccessibilityUITests/WorkspaceAccessibilityUITests.swift" \
+  "testReleaseBundleLaunchesWithoutScreenshotFixture" \
+  "runtime accessibility coverage must keep a fixture-free packaged Release launch regression"
+
+require_literal \
   "Sources/PersonalSitePublisherMac/Views/ContentView.swift" \
   "WorkspaceToolbarIconButtonStyle(isActive: isAIAssistantWorkspaceVisible)" \
   "the AI toolbar entry must expose its active state visually"

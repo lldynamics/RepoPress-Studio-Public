@@ -141,6 +141,39 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
     )
   }
 
+  func testReleaseBundleLaunchesWithoutScreenshotFixture() throws {
+    let appURL = try runtimeAppURL()
+    let infoPlistURL = appURL.appendingPathComponent("Contents/Info.plist")
+    let infoData = try Data(contentsOf: infoPlistURL)
+    let info = try XCTUnwrap(
+      try PropertyListSerialization.propertyList(from: infoData, format: nil) as? [String: Any]
+    )
+    let isScreenshotCaptureBuild = try XCTUnwrap(
+      info["PersonalSitePublisherScreenshotCaptureBuild"] as? Bool
+    )
+    guard !isScreenshotCaptureBuild else {
+      throw XCTSkip("This regression test only applies to a normal packaged build.")
+    }
+
+    launchApplication(surface: nil)
+
+    let dataRootSetup = element(identifier: "workbench-data-root-setup")
+    let workspace = element(identifier: "workspace-sidebar")
+    let deadline = Date().addingTimeInterval(15)
+    while !dataRootSetup.exists && !workspace.exists && Date() < deadline {
+      RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+    }
+    XCTAssertTrue(
+      dataRootSetup.exists || workspace.exists,
+      "A normal packaged build must expose either first-run setup or the ready workspace without screenshot fixtures."
+    )
+    XCTAssertEqual(
+      application.windows.count,
+      1,
+      "The non-screenshot launch regression must keep one main application window."
+    )
+  }
+
   func testKnowledgeDetailIdentifiersRemainUniqueAndActionSpecific() throws {
     launchApplication(surface: "knowledge-library")
 
@@ -1155,7 +1188,7 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
   }
 
   private func launchApplication(
-    surface: String,
+    surface: String?,
     additionalLaunchArguments: [String] = []
   ) {
     application.terminate()
@@ -1163,13 +1196,25 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
       "-ApplePersistenceIgnoreState", "YES",
       "-NSQuitAlwaysKeepsWindows", "NO",
     ] + additionalLaunchArguments
-    application.launchEnvironment["PERSONAL_SITE_PUBLISHER_SCREENSHOT_DEMO"] = "1"
-    application.launchEnvironment["PERSONAL_SITE_PUBLISHER_SCREENSHOT_SURFACE"] = surface
-    application.launchEnvironment["PERSONAL_SITE_PUBLISHER_SCREENSHOT_KNOWLEDGE_ROOT"] = knowledgeLibraryRootURL.path
-    application.launchEnvironment["PERSONAL_SITE_PUBLISHER_SCREENSHOT_UI_TEST"] = "1"
-    application.launchEnvironment["PERSONAL_SITE_PUBLISHER_SCREENSHOT_UI_TEST_REPOSITORY_ROOT"] = knowledgeLibraryRootURL
-      .appendingPathComponent("repository-fixture", isDirectory: true)
-      .path
+    if let surface {
+      application.launchEnvironment["PERSONAL_SITE_PUBLISHER_SCREENSHOT_DEMO"] = "1"
+      application.launchEnvironment["PERSONAL_SITE_PUBLISHER_SCREENSHOT_SURFACE"] = surface
+      application.launchEnvironment["PERSONAL_SITE_PUBLISHER_SCREENSHOT_KNOWLEDGE_ROOT"] = knowledgeLibraryRootURL.path
+      application.launchEnvironment["PERSONAL_SITE_PUBLISHER_SCREENSHOT_UI_TEST"] = "1"
+      application.launchEnvironment["PERSONAL_SITE_PUBLISHER_SCREENSHOT_UI_TEST_REPOSITORY_ROOT"] = knowledgeLibraryRootURL
+        .appendingPathComponent("repository-fixture", isDirectory: true)
+        .path
+    } else {
+      for key in [
+        "PERSONAL_SITE_PUBLISHER_SCREENSHOT_DEMO",
+        "PERSONAL_SITE_PUBLISHER_SCREENSHOT_SURFACE",
+        "PERSONAL_SITE_PUBLISHER_SCREENSHOT_KNOWLEDGE_ROOT",
+        "PERSONAL_SITE_PUBLISHER_SCREENSHOT_UI_TEST",
+        "PERSONAL_SITE_PUBLISHER_SCREENSHOT_UI_TEST_REPOSITORY_ROOT",
+      ] {
+        application.launchEnvironment.removeValue(forKey: key)
+      }
+    }
     // Settings task sheets may refresh or prune automatic backup fixtures on
     // appearance. Keep all Foundation preferences and temporary demo data in
     // this test-owned directory so opening a sheet cannot touch user data.
@@ -1182,7 +1227,7 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
 
     XCTAssertTrue(
       application.windows.firstMatch.waitForExistence(timeout: 15),
-      "The main workbench window did not appear for the \(surface) surface."
+      "The main workbench window did not appear for the \(surface ?? "non-screenshot") surface."
     )
   }
 
