@@ -106,6 +106,58 @@ import XCTest
       XCTAssertTrue(store.deploymentPollingSettings.isEnabled)
     }
 
+    func testScreenshotUITestPreparationClearsStaleDraftRecovery() throws {
+      let directory = FileManager.default.temporaryDirectory
+        .appendingPathComponent(
+          "PersonalSitePublisherMacScreenshotRecoveryTests-\(UUID().uuidString)",
+          isDirectory: true
+        )
+      try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+      defer {
+        try? FileManager.default.removeItem(at: directory)
+      }
+      let persistence = WorkbenchPersistence(
+        fileURL: directory.appendingPathComponent("workbench.json"))
+      let journal = DraftRecoveryJournal(fileURL: persistence.draftRecoveryJournalURL)
+      let draft = ScreenshotDemoDataService().makeSnapshot().drafts[0]
+      try journal.save([
+        DraftRecoveryRecord(draft: draft, recoveredBodyMarkdown: "UI 测试上次退出时的正文")
+      ])
+
+      try ScreenshotDemoDataService.preparePersistence(
+        persistence,
+        resetsDraftRecovery: true
+      )
+
+      XCTAssertEqual(try journal.load(), [])
+    }
+
+    func testScreenshotPreparationPreservesDraftRecoveryOutsideUITests() throws {
+      let directory = FileManager.default.temporaryDirectory
+        .appendingPathComponent(
+          "PersonalSitePublisherMacScreenshotRecoveryTests-\(UUID().uuidString)",
+          isDirectory: true
+        )
+      try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+      defer {
+        try? FileManager.default.removeItem(at: directory)
+      }
+      let persistence = WorkbenchPersistence(
+        fileURL: directory.appendingPathComponent("workbench.json"))
+      let journal = DraftRecoveryJournal(fileURL: persistence.draftRecoveryJournalURL)
+      let draft = ScreenshotDemoDataService().makeSnapshot().drafts[0]
+      try journal.save([
+        DraftRecoveryRecord(draft: draft, recoveredBodyMarkdown: "用户未保存的正文")
+      ])
+
+      try ScreenshotDemoDataService.preparePersistence(
+        persistence,
+        resetsDraftRecovery: false
+      )
+
+      XCTAssertEqual(try journal.load().map(\.recoveredBodyMarkdown), ["用户未保存的正文"])
+    }
+
     @MainActor
     func testScreenshotDemoSurfacesPrepareStoreForTargetWorkspaces() throws {
       let store = try makeScreenshotStore()

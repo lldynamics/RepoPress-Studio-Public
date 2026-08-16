@@ -370,8 +370,21 @@ public struct ScreenshotDemoDataService {
       return WorkbenchPersistence()
     }
     let persistence = WorkbenchPersistence(fileURL: defaultPersistenceURL)
-    _ = try? persistence.save(ScreenshotDemoDataService().makeSnapshot())
+    try? preparePersistence(
+      persistence,
+      resetsDraftRecovery: ProcessInfo.processInfo.environment[uiTestEnvironmentKey] == "1"
+    )
     return persistence
+  }
+
+  static func preparePersistence(
+    _ persistence: WorkbenchPersistence,
+    resetsDraftRecovery: Bool
+  ) throws {
+    _ = try persistence.save(ScreenshotDemoDataService().makeSnapshot())
+    if resetsDraftRecovery {
+      try DraftRecoveryJournal(fileURL: persistence.draftRecoveryJournalURL).save([])
+    }
   }
 
   @MainActor
