@@ -130,10 +130,22 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
       "rss-reader-sidebar",
       "rss-reader-workspace",
       "rss-article-list",
-      "rss-reader-detail",
     ] {
       assertUniqueIdentifier(identifier)
     }
+
+    let articleRow = application.descendants(matching: .any)
+      .matching(NSPredicate(format: "identifier BEGINSWITH %@", "rss-article-row-"))
+      .firstMatch
+    XCTAssertTrue(
+      articleRow.waitForExistence(timeout: 10),
+      "The RSS fixture article was unavailable."
+    )
+    articleRow
+      .coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+      .tap()
+    assertUniqueIdentifier("rss-reader-detail")
+
     XCTAssertEqual(
       application.windows.count,
       windowCountBeforeSelection,

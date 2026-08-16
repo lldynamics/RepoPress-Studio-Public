@@ -58,6 +58,7 @@ struct RSSArticleReader: View {
     Group {
       if let article {
         loadedArticleView(article)
+          .accessibilityIdentifier("rss-reader-detail")
       } else if let articleHeader {
         ScrollView {
           VStack(alignment: .leading, spacing: 18) {
@@ -101,16 +102,17 @@ struct RSSArticleReader: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("RSS 文章正文正在读取")
+        .accessibilityIdentifier("rss-reader-detail")
       } else {
         RSSReaderEmptyState(
           title: "选择一篇文章",
           message: "从左侧文章列表选择内容，正文会在这里完整显示。",
           systemImage: "text.book.closed"
         )
+        .accessibilityIdentifier("rss-reader-detail")
       }
     }
     .accessibilityElement(children: .contain)
-    .accessibilityIdentifier("rss-reader-detail")
     .onAppear {
       showsTranslatedArticle = translation != nil
     }
