@@ -38,6 +38,26 @@ final class GitCommandRunnerTests: XCTestCase {
     XCTAssertTrue(result.output.contains("warning: simulated fsmonitor failure"))
   }
 
+  func testRapidShortLivedCommandsRetainStandardOutput() throws {
+    let scriptURL = try makeFakeGitExecutable()
+    defer { try? FileManager.default.removeItem(at: scriptURL.deletingLastPathComponent()) }
+    let runner = GitCommandRunner(executableURL: scriptURL)
+
+    for iteration in 0..<100 {
+      let result = runner.run(
+        ["short-output"],
+        rootURL: FileManager.default.temporaryDirectory
+      )
+
+      XCTAssertEqual(result.terminationStatus, 0, "iteration \(iteration)")
+      XCTAssertEqual(
+        result.standardOutput,
+        "content/posts/article.md",
+        "iteration \(iteration)"
+      )
+    }
+  }
+
   func testAsyncSuccessfulCommandKeepsStandardErrorOutOfMachineReadableOutput() async throws {
     let scriptURL = try makeFakeGitExecutable()
     defer { try? FileManager.default.removeItem(at: scriptURL.deletingLastPathComponent()) }
@@ -51,6 +71,26 @@ final class GitCommandRunnerTests: XCTestCase {
     XCTAssertEqual(result.standardOutput, "")
     XCTAssertEqual(result.standardError, "warning: simulated fsmonitor failure")
     XCTAssertTrue(result.output.contains("warning: simulated fsmonitor failure"))
+  }
+
+  func testAsyncRapidShortLivedCommandsRetainStandardOutput() async throws {
+    let scriptURL = try makeFakeGitExecutable()
+    defer { try? FileManager.default.removeItem(at: scriptURL.deletingLastPathComponent()) }
+    let runner = GitCommandRunner(executableURL: scriptURL)
+
+    for iteration in 0..<50 {
+      let result = await runner.runAsync(
+        ["short-output"],
+        rootURL: FileManager.default.temporaryDirectory
+      )
+
+      XCTAssertEqual(result.terminationStatus, 0, "iteration \(iteration)")
+      XCTAssertEqual(
+        result.standardOutput,
+        "content/posts/article.md",
+        "iteration \(iteration)"
+      )
+    }
   }
 
   func testDiagnosticOutputRedactsRemoteURLsAndCredentialValues() throws {
@@ -153,6 +193,10 @@ final class GitCommandRunnerTests: XCTestCase {
     fi
     if [ "$1" = "stderr-warning" ]; then
       printf 'warning: simulated fsmonitor failure\n' >&2
+      exit 0
+    fi
+    if [ "$1" = "short-output" ]; then
+      printf 'content/posts/article.md\n'
       exit 0
     fi
     if [ "$1" = "redaction" ]; then

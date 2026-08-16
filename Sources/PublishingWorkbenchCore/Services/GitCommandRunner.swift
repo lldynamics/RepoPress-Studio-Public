@@ -131,15 +131,18 @@ public struct GitCommandRunner: Sendable {
     process.standardOutput = outputPipe
     process.standardError = errorPipe
     let outputCollector = BoundedOutputCollector(limit: maximumOutputBytes)
+    let drainCoordinator = GitPipeDrainCoordinator()
     installDrainHandler(
       on: outputPipe.fileHandleForReading,
       stream: .standardOutput,
-      collector: outputCollector
+      collector: outputCollector,
+      coordinator: drainCoordinator
     )
     installDrainHandler(
       on: errorPipe.fileHandleForReading,
       stream: .standardError,
-      collector: outputCollector
+      collector: outputCollector,
+      coordinator: drainCoordinator
     )
 
     let inputData = standardInputData(
@@ -169,6 +172,7 @@ public struct GitCommandRunner: Sendable {
     } catch {
       outputPipe.fileHandleForReading.readabilityHandler = nil
       errorPipe.fileHandleForReading.readabilityHandler = nil
+      drainCoordinator.stopAndWait()
       outputPipe.fileHandleForWriting.closeFile()
       errorPipe.fileHandleForWriting.closeFile()
       return GitCommandResult(
@@ -191,6 +195,7 @@ public struct GitCommandRunner: Sendable {
 
     outputPipe.fileHandleForReading.readabilityHandler = nil
     errorPipe.fileHandleForReading.readabilityHandler = nil
+    drainCoordinator.stopAndWait()
     if !process.isRunning {
       outputCollector.append(
         outputPipe.fileHandleForReading.readDataToEndOfFile(),
@@ -256,14 +261,17 @@ public struct GitCommandRunner: Sendable {
   private func installDrainHandler(
     on handle: FileHandle,
     stream: GitOutputStream,
-    collector: BoundedOutputCollector
+    collector: BoundedOutputCollector,
+    coordinator: GitPipeDrainCoordinator
   ) {
     handle.readabilityHandler = { readableHandle in
-      let data = readableHandle.availableData
-      if data.isEmpty {
-        readableHandle.readabilityHandler = nil
-      } else {
-        collector.append(data, to: stream)
+      coordinator.perform {
+        let data = readableHandle.availableData
+        if data.isEmpty {
+          readableHandle.readabilityHandler = nil
+        } else {
+          collector.append(data, to: stream)
+        }
       }
     }
   }
@@ -304,6 +312,7 @@ private final class GitCommandAsyncOperation: @unchecked Sendable {
   private let inputData: Data?
   private let lock = NSLock()
   private let outputCollector: BoundedOutputCollector
+  private let drainCoordinator = GitPipeDrainCoordinator()
   private var process: Process?
   private var outputPipe: Pipe?
   private var errorPipe: Pipe?
@@ -458,6 +467,7 @@ private final class GitCommandAsyncOperation: @unchecked Sendable {
 
     outputPipe?.fileHandleForReading.readabilityHandler = nil
     errorPipe?.fileHandleForReading.readabilityHandler = nil
+    drainCoordinator.stopAndWait()
     if let outputPipe {
       outputCollector.append(
         outputPipe.fileHandleForReading.readDataToEndOfFile(),
@@ -505,11 +515,14 @@ private final class GitCommandAsyncOperation: @unchecked Sendable {
 
   private func installDrainHandler(on handle: FileHandle, stream: GitOutputStream) {
     handle.readabilityHandler = { [weak self] readableHandle in
-      let data = readableHandle.availableData
-      if data.isEmpty {
-        readableHandle.readabilityHandler = nil
-      } else {
-        self?.outputCollector.append(data, to: stream)
+      guard let self else { return }
+      drainCoordinator.perform {
+        let data = readableHandle.availableData
+        if data.isEmpty {
+          readableHandle.readabilityHandler = nil
+        } else {
+          outputCollector.append(data, to: stream)
+        }
       }
     }
   }
@@ -532,6 +545,44 @@ private final class GitCommandAsyncOperation: @unchecked Sendable {
 private enum GitOutputStream {
   case standardOutput
   case standardError
+}
+
+/// Coordinates pipe callbacks with the final synchronous drain. Removing a
+/// `readabilityHandler` does not cancel a callback that is already running. If
+/// that callback has consumed the final bytes but has not appended them yet,
+/// reading the collector immediately can lose short-lived command output.
+private final class GitPipeDrainCoordinator: @unchecked Sendable {
+  private let condition = NSCondition()
+  private var acceptsNewDrains = true
+  private var activeDrainCount = 0
+
+  func perform(_ operation: () -> Void) {
+    condition.lock()
+    guard acceptsNewDrains else {
+      condition.unlock()
+      return
+    }
+    activeDrainCount += 1
+    condition.unlock()
+
+    operation()
+
+    condition.lock()
+    activeDrainCount -= 1
+    if !acceptsNewDrains, activeDrainCount == 0 {
+      condition.broadcast()
+    }
+    condition.unlock()
+  }
+
+  func stopAndWait() {
+    condition.lock()
+    acceptsNewDrains = false
+    while activeDrainCount > 0 {
+      condition.wait()
+    }
+    condition.unlock()
+  }
 }
 
 private enum GitCommandLogRedactor {
