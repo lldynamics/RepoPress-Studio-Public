@@ -46,13 +46,10 @@ struct WorkspaceResponsiveLayoutSnapshot: Equatable {
       ),
       allowsHTMLSourceInspector:
         width >= WorkbenchLayoutMode.minimumHTMLSourceInspectorWorkspaceWidth,
-      canOverrideSplitInspector:
-        editorDisplayMode == .split
-        && width >= WorkbenchLayoutMode.minimumInspectorWorkspaceWidth
-        && !WorkbenchLayoutMode.allowsInspector(
-          width: width,
-          editorDisplayMode: editorDisplayMode
-        ),
+      canOverrideInspector: WorkbenchLayoutMode.canManuallyRevealInspector(
+        width: width,
+        editorDisplayMode: editorDisplayMode
+      ),
       prefersFocusedWriting: WorkbenchLayoutMode.prefersFocusedWriting(
         width: width,
         editorDisplayMode: editorDisplayMode
@@ -66,7 +63,7 @@ struct WorkspaceResponsiveLayoutSnapshot: Equatable {
     let allowsStandardInspector: Bool
     let allowsEditorInspector: Bool
     let allowsHTMLSourceInspector: Bool
-    let canOverrideSplitInspector: Bool
+    let canOverrideInspector: Bool
     let prefersFocusedWriting: Bool
   }
 }
@@ -156,7 +153,7 @@ struct ContentView: View {
         WorkspaceShellSplitLayout(
           store: store,
           isCompact: compactLayout,
-          isFocusMode: effectiveFocusMode,
+          isFocusMode: hidesWorkspaceSidebar,
           workspaceWidth: geometry.size.width,
           isInspectorPresented: isInspectorVisible,
           contentHealthFilter: $contentHealthFilter,
@@ -739,8 +736,8 @@ struct ContentView: View {
   }
 
   private var inspectorToolbarHelp: String {
-    if canOverrideSplitInspector && !allowsInspectorInCurrentLayout {
-      return String(localized: "分屏空间较窄；点击仍显示 Inspector")
+    if canOverrideInspectorInCurrentLayout && !allowsInspectorInCurrentLayout {
+      return String(localized: "窗口较窄；点击后会收起左侧栏并显示 Inspector")
     }
     guard allowsInspectorInCurrentLayout else {
       return String(localized: "扩大窗口后可使用 Inspector")
@@ -754,8 +751,8 @@ struct ContentView: View {
   }
 
   private var inspectorAccessibilityValue: String {
-    if canOverrideSplitInspector && !allowsInspectorInCurrentLayout {
-      return String(localized: "分屏空间较窄，已临时隐藏；可以手动显示")
+    if canOverrideInspectorInCurrentLayout && !allowsInspectorInCurrentLayout {
+      return String(localized: "窗口较窄，已临时隐藏；点击后会收起左侧栏并显示")
     }
     guard allowsInspectorInCurrentLayout else {
       return String(localized: "窗口过窄，已临时隐藏")
@@ -847,6 +844,7 @@ struct ContentView: View {
   }
 
   private func toggleArticleInspector() {
+    let wasAllowed = allowsInspectorInCurrentLayout
     guard prepareInspectorForUserRequest() else { return }
     if effectiveFocusMode {
       isFocusMode = false
@@ -865,6 +863,10 @@ struct ContentView: View {
       if !shellState.isInspectorPresented {
         store.setInspectorPresented(true)
       }
+      return
+    }
+
+    if !wasAllowed && shellState.isInspectorPresented {
       return
     }
 
@@ -903,14 +905,15 @@ struct ContentView: View {
       if !automaticallyHidesSidebarForSplit(snapshot) {
         revealsSidebarInNarrowSplit = false
       }
-      if !canOverrideSplitInspector(snapshot) {
+      if !canOverrideInspector(snapshot) {
         revealsInspectorInNarrowSplit = false
       }
     }
   }
 
   private var allowsInspectorInCurrentLayout: Bool {
-    allowsInspectorByWidth || (canOverrideSplitInspector && revealsInspectorInNarrowSplit)
+    allowsInspectorByWidth
+      || (canOverrideInspectorInCurrentLayout && revealsInspectorInNarrowSplit)
   }
 
   private var allowsInspectorByWidth: Bool {
@@ -925,22 +928,20 @@ struct ContentView: View {
     )
   }
 
-  private var canOverrideSplitInspector: Bool {
-    canOverrideSplitInspector(responsiveLayout)
+  private var canOverrideInspectorInCurrentLayout: Bool {
+    canOverrideInspector(responsiveLayout)
   }
 
-  private func canOverrideSplitInspector(_ snapshot: WorkspaceResponsiveLayoutSnapshot) -> Bool {
+  private func canOverrideInspector(_ snapshot: WorkspaceResponsiveLayoutSnapshot) -> Bool {
     shellState.selectedSection == .writing
-      && snapshot.editorDisplayMode == .split
-      && snapshot.width >= WorkbenchLayoutMode.minimumInspectorWorkspaceWidth
-      && !WorkbenchLayoutMode.allowsInspector(
+      && WorkbenchLayoutMode.canManuallyRevealInspector(
         width: snapshot.width,
         editorDisplayMode: snapshot.editorDisplayMode
       )
   }
 
   private var canRequestInspectorInCurrentLayout: Bool {
-    allowsInspectorInCurrentLayout || canOverrideSplitInspector
+    allowsInspectorInCurrentLayout || canOverrideInspectorInCurrentLayout
   }
 
   private var automaticallyHidesSidebarForSplit: Bool {
@@ -961,12 +962,20 @@ struct ContentView: View {
     isFocusMode || (automaticallyHidesSidebarForSplit && !revealsSidebarInNarrowSplit)
   }
 
+  private var hidesWorkspaceSidebar: Bool {
+    effectiveFocusMode
+      || (revealsInspectorInNarrowSplit
+        && canOverrideInspectorInCurrentLayout
+        && shellState.isInspectorPresented
+        && supportsInspector)
+  }
+
   @discardableResult
   private func prepareInspectorForUserRequest() -> Bool {
     if allowsInspectorInCurrentLayout {
       return true
     }
-    guard canOverrideSplitInspector else {
+    guard canOverrideInspectorInCurrentLayout else {
       return false
     }
     revealsInspectorInNarrowSplit = true

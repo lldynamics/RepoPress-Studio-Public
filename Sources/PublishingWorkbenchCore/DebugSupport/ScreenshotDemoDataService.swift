@@ -388,6 +388,46 @@ public struct ScreenshotDemoDataService {
   }
 
   @MainActor
+  public static func prepareRSSReaderFixtureIfEnabled(in store: RSSReaderStore) {
+    guard isEnabledFromEnvironment,
+      ProcessInfo.processInfo.environment[uiTestEnvironmentKey] == "1",
+      let feedURL = URL(string: "https://demo.example.com/feed.xml")
+    else { return }
+
+    do {
+      let feedID = try store.addFeed(
+        url: feedURL,
+        title: "RepoPress 演示订阅",
+        siteURL: URL(string: "https://demo.example.com")
+      )
+      guard let feedIndex = store.feeds.firstIndex(where: { $0.id == feedID }) else {
+        return
+      }
+      var feed = store.feeds[feedIndex]
+      feed.lastUpdatedAt = Date(timeIntervalSince1970: 1_900_000_000)
+      try store.database?.upsertFeed(feed)
+      store.feeds[feedIndex] = feed
+      store.merge(
+        [
+          RSSParsedArticle(
+            id: "repopress-ui-test-rss-article",
+            title: "RepoPress Studio 发布工作流",
+            link: URL(string: "https://demo.example.com/posts/repopress-studio"),
+            author: "Demo Author",
+            publishedAt: Date(timeIntervalSince1970: 1_899_913_600),
+            summaryHTML: "<p>从写作、检查到发布的本地优先流程。</p>",
+            contentHTML: "<h1>RepoPress Studio</h1><p>这是离线 UI 测试专用文章。</p>"
+          )
+        ],
+        into: feed
+      )
+      store.articleHeaderCount = store.articleHeaders.count
+    } catch {
+      store.lastError = "RSS UI 测试数据准备失败：\(error.localizedDescription)"
+    }
+  }
+
+  @MainActor
   public static func applyRequestedSurfaceIfEnabled(to store: WorkbenchStore) {
     guard isEnabledFromEnvironment, let surface = requestedSurfaceFromEnvironment else {
       return

@@ -29,6 +29,27 @@ final class WorkbenchLayoutModeTests: XCTestCase {
     XCTAssertTrue(WorkbenchLayoutMode.allowsInspector(width: 1180))
   }
 
+  func testCompactWritingCanRevealInspectorByYieldingSidebar() {
+    XCTAssertFalse(
+      WorkbenchLayoutMode.canManuallyRevealInspector(
+        width: 959,
+        editorDisplayMode: .edit
+      )
+    )
+    XCTAssertTrue(
+      WorkbenchLayoutMode.canManuallyRevealInspector(
+        width: 960,
+        editorDisplayMode: .edit
+      )
+    )
+    XCTAssertFalse(
+      WorkbenchLayoutMode.canManuallyRevealInspector(
+        width: 1180,
+        editorDisplayMode: .edit
+      )
+    )
+  }
+
   func testSplitEditorRequiresMoreWidthBeforeShowingInspector() {
     XCTAssertEqual(WorkbenchLayoutMode.minimumSplitInspectorWorkspaceWidth, 1580)
     XCTAssertFalse(
@@ -39,6 +60,18 @@ final class WorkbenchLayoutModeTests: XCTestCase {
     )
     XCTAssertTrue(
       WorkbenchLayoutMode.allowsInspector(width: 1180, editorDisplayMode: .edit)
+    )
+    XCTAssertFalse(
+      WorkbenchLayoutMode.canManuallyRevealInspector(
+        width: 1179,
+        editorDisplayMode: .split
+      )
+    )
+    XCTAssertTrue(
+      WorkbenchLayoutMode.canManuallyRevealInspector(
+        width: 1180,
+        editorDisplayMode: .split
+      )
     )
   }
 

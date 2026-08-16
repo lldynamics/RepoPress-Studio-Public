@@ -9,6 +9,7 @@ public enum WorkbenchLayoutMode {
   public static let defaultWindowHeight: CGFloat = 768
   public static let defaultSidebarWidth: CGFloat = 300
   public static let expandedWorkspaceWidth: CGFloat = 1180
+  public static let minimumCompactInspectorWorkspaceWidth: CGFloat = 960
   public static let minimumRSSReaderSplitWidth: CGFloat = 900
   public static let minimumInspectorWorkspaceWidth: CGFloat = 1180
   public static let minimumHTMLSourceInspectorWorkspaceWidth: CGFloat = 1240
@@ -30,6 +31,22 @@ public enum WorkbenchLayoutMode {
     let minimumWidth = editorDisplayMode == .split
       ? minimumSplitInspectorWorkspaceWidth
       : minimumInspectorWorkspaceWidth
+    return width >= minimumWidth
+  }
+
+  /// A compact writing window can still reveal the Inspector on demand by
+  /// temporarily yielding the primary sidebar. Split editing needs the wider
+  /// expanded-workspace floor so both editor panes remain usable.
+  public static func canManuallyRevealInspector(
+    width: CGFloat,
+    editorDisplayMode: EditorDisplayMode
+  ) -> Bool {
+    guard !allowsInspector(width: width, editorDisplayMode: editorDisplayMode) else {
+      return false
+    }
+    let minimumWidth = editorDisplayMode == .split
+      ? minimumInspectorWorkspaceWidth
+      : minimumCompactInspectorWorkspaceWidth
     return width >= minimumWidth
   }
 
