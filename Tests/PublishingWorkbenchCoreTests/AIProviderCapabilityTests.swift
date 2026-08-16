@@ -64,6 +64,14 @@ final class AIProviderCapabilityTests: XCTestCase {
       .supported
     )
     XCTAssertEqual(
+      AIProviderPreset.codexAppServer.capabilitySupport(for: .reasoningControl),
+      .supported
+    )
+    XCTAssertEqual(
+      AIProviderPreset.codexAppServer.capabilitySupport(for: .modelDiscovery),
+      .supported
+    )
+    XCTAssertEqual(
       AIProviderPreset.codexAppServer.capabilitySupport(for: .visionInput),
       .unsupported
     )
@@ -198,6 +206,18 @@ final class AIProviderCapabilityTests: XCTestCase {
 
     XCTAssertEqual(config.capabilitySupport(for: .toolCalling), .supported)
     XCTAssertEqual(config.capabilitySupport(for: .structuredOutput), .unknown)
+  }
+
+  func testConfiguredCodexPresetUsesAppServerForModelDiscovery() {
+    let config = AIProviderConfig(
+      preset: .codexAppServer,
+      baseURL: AIProviderPreset.codexAppServer.defaultBaseURL,
+      model: AIProviderPreset.codexDefaultModel,
+      requiresAPIKey: false
+    )
+
+    XCTAssertEqual(config.capabilitySupport(for: .reasoningControl), .supported)
+    XCTAssertEqual(config.capabilitySupport(for: .modelDiscovery), .supported)
   }
 
   func testCapabilityEndpointIdentityOmitsSecretsQueryAndFragment() {

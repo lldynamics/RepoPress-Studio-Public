@@ -111,6 +111,176 @@ public struct CodexAppServerAccountStatus: Codable, Equatable, Sendable {
   }
 }
 
+/// A reasoning effort exposed by a model in the Codex app-server model catalog.
+///
+/// The value is intentionally kept as a string. App Server may add an effort
+/// level without requiring clients to ship an update first.
+public struct CodexAppServerReasoningEffortOption: Codable, Equatable, Sendable {
+  public let reasoningEffort: String
+  public let description: String?
+
+  public init(reasoningEffort: String, description: String? = nil) {
+    self.reasoningEffort = Self.trimmed(reasoningEffort)
+    self.description = Self.trimmedOptional(description)
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case reasoningEffort
+    case effort
+    case description
+  }
+
+  public init(from decoder: Decoder) throws {
+    if let singleValue = try? decoder.singleValueContainer(),
+      let value = try? singleValue.decode(String.self)
+    {
+      self.init(reasoningEffort: value)
+      return
+    }
+
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    let value: String
+    if let reasoningEffort = try container.decodeIfPresent(String.self, forKey: .reasoningEffort) {
+      value = reasoningEffort
+    } else {
+      value = try container.decodeIfPresent(String.self, forKey: .effort) ?? ""
+    }
+    self.init(
+      reasoningEffort: value,
+      description: try container.decodeIfPresent(String.self, forKey: .description)
+    )
+  }
+
+  public func encode(to encoder: Encoder) throws {
+    var container = encoder.container(keyedBy: CodingKeys.self)
+    try container.encode(reasoningEffort, forKey: .reasoningEffort)
+    try container.encodeIfPresent(description, forKey: .description)
+  }
+
+  private static func trimmed(_ value: String) -> String {
+    value.trimmingCharacters(in: .whitespacesAndNewlines)
+  }
+
+  private static func trimmedOptional(_ value: String?) -> String? {
+    guard let value else { return nil }
+    let trimmed = trimmed(value)
+    return trimmed.isEmpty ? nil : trimmed
+  }
+}
+
+/// A model advertised by the authenticated Codex app-server account.
+///
+/// Most fields have defaults during decoding so older app-server versions and
+/// partial catalog entries remain usable. The model and display name fall back
+/// to the identifier when omitted.
+public struct CodexAppServerModel: Codable, Equatable, Sendable {
+  public let id: String
+  public let model: String
+  public let displayName: String
+  public let description: String?
+  public let hidden: Bool
+  public let defaultReasoningEffort: String?
+  public let supportedReasoningEfforts: [CodexAppServerReasoningEffortOption]
+  public let inputModalities: [String]
+  public let isDefault: Bool
+  public let upgrade: String?
+
+  public init(
+    id: String,
+    model: String? = nil,
+    displayName: String? = nil,
+    description: String? = nil,
+    hidden: Bool = false,
+    defaultReasoningEffort: String? = nil,
+    supportedReasoningEfforts: [CodexAppServerReasoningEffortOption] = [],
+    inputModalities: [String] = ["text", "image"],
+    isDefault: Bool = false,
+    upgrade: String? = nil
+  ) {
+    let normalizedID = Self.trimmed(id)
+    let normalizedModel = Self.trimmed(model ?? "")
+    let resolvedID = normalizedID.isEmpty ? normalizedModel : normalizedID
+    let resolvedModel = normalizedModel.isEmpty ? resolvedID : normalizedModel
+    let resolvedDisplayName = Self.trimmed(displayName ?? "")
+    self.id = resolvedID
+    self.model = resolvedModel
+    self.displayName = resolvedDisplayName.isEmpty ? resolvedModel : resolvedDisplayName
+    self.description = Self.trimmedOptional(description)
+    self.hidden = hidden
+    self.defaultReasoningEffort = Self.trimmedOptional(defaultReasoningEffort)
+    self.supportedReasoningEfforts = supportedReasoningEfforts
+    self.inputModalities = inputModalities.compactMap { value in
+      let normalized = Self.trimmed(value)
+      return normalized.isEmpty ? nil : normalized
+    }
+    self.isDefault = isDefault
+    self.upgrade = Self.trimmedOptional(upgrade)
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case id
+    case model
+    case displayName
+    case description
+    case hidden
+    case defaultReasoningEffort
+    case supportedReasoningEfforts
+    case inputModalities
+    case isDefault
+    case upgrade
+  }
+
+  public init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    let id = try container.decodeIfPresent(String.self, forKey: .id) ?? ""
+    let model = try container.decodeIfPresent(String.self, forKey: .model)
+    let displayName = try container.decodeIfPresent(String.self, forKey: .displayName)
+    self.init(
+      id: id,
+      model: model,
+      displayName: displayName,
+      description: try container.decodeIfPresent(String.self, forKey: .description),
+      hidden: try container.decodeIfPresent(Bool.self, forKey: .hidden) ?? false,
+      defaultReasoningEffort: try container.decodeIfPresent(
+        String.self,
+        forKey: .defaultReasoningEffort
+      ),
+      supportedReasoningEfforts: try container.decodeIfPresent(
+        [CodexAppServerReasoningEffortOption].self,
+        forKey: .supportedReasoningEfforts
+      ) ?? [],
+      inputModalities: try container.decodeIfPresent([String].self, forKey: .inputModalities)
+        ?? ["text", "image"],
+      isDefault: try container.decodeIfPresent(Bool.self, forKey: .isDefault) ?? false,
+      upgrade: try container.decodeIfPresent(String.self, forKey: .upgrade)
+    )
+  }
+
+  public func encode(to encoder: Encoder) throws {
+    var container = encoder.container(keyedBy: CodingKeys.self)
+    try container.encode(id, forKey: .id)
+    try container.encode(model, forKey: .model)
+    try container.encode(displayName, forKey: .displayName)
+    try container.encodeIfPresent(description, forKey: .description)
+    try container.encode(hidden, forKey: .hidden)
+    try container.encodeIfPresent(defaultReasoningEffort, forKey: .defaultReasoningEffort)
+    try container.encode(supportedReasoningEfforts, forKey: .supportedReasoningEfforts)
+    try container.encode(inputModalities, forKey: .inputModalities)
+    try container.encode(isDefault, forKey: .isDefault)
+    try container.encodeIfPresent(upgrade, forKey: .upgrade)
+  }
+
+  private static func trimmed(_ value: String) -> String {
+    value.trimmingCharacters(in: .whitespacesAndNewlines)
+  }
+
+  private static func trimmedOptional(_ value: String?) -> String? {
+    guard let value else { return nil }
+    let trimmed = trimmed(value)
+    return trimmed.isEmpty ? nil : trimmed
+  }
+}
+
 public struct CodexAppServerLoginResult: Codable, Equatable, Sendable {
   public let loginID: String
   public let authURL: URL

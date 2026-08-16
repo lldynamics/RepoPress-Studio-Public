@@ -143,13 +143,84 @@ final class CodexAppServerClientTests: XCTestCase {
     )
   }
 
+  func testModelListReturnsVisibleModelsAndSupportsMissingOptionalFields() async throws {
+    let transport = ScriptedCodexTransport(mode: .modelCatalogSingle)
+    let client = CodexAppServerClient(transport: transport)
+
+    let models = try await client.models()
+
+    XCTAssertEqual(models.map(\.id), ["visible-model"])
+    let model = try XCTUnwrap(models.first)
+    XCTAssertEqual(model.model, "visible-model")
+    XCTAssertEqual(model.displayName, "Visible Model")
+    XCTAssertEqual(model.description, "A visible model")
+    XCTAssertFalse(model.hidden)
+    XCTAssertEqual(model.defaultReasoningEffort, "medium")
+    XCTAssertEqual(model.supportedReasoningEfforts.map(\.reasoningEffort), ["low", "high"])
+    XCTAssertEqual(model.inputModalities, ["text"])
+    XCTAssertTrue(model.isDefault)
+    XCTAssertEqual(model.upgrade, "pro")
+
+    let decoder = JSONDecoder()
+    let modelOnly = try decoder.decode(
+      CodexAppServerModel.self,
+      from: Data(#"{"model":" model-only "}"#.utf8)
+    )
+    XCTAssertEqual(modelOnly.id, "model-only")
+    XCTAssertEqual(modelOnly.displayName, "model-only")
+    XCTAssertEqual(modelOnly.inputModalities, ["text", "image"])
+
+    let messages = await transport.sentMessages()
+    let request = try XCTUnwrap(messages.first { $0["method"]?.stringValue == "model/list" })
+    XCTAssertEqual(request["params"]?["includeHidden"]?.boolValue, false)
+    XCTAssertEqual(request["params"]?["limit"]?.intValue, 100)
+  }
+
+  func testModelListFollowsCursorPaginationAndCanIncludeHiddenModels() async throws {
+    let transport = ScriptedCodexTransport(mode: .modelCatalogPagination)
+    let client = CodexAppServerClient(transport: transport)
+
+    let models = try await client.models(includeHidden: true)
+
+    XCTAssertEqual(models.map(\.id), ["page-one-model", "hidden-model", "page-two-model"])
+    let messages = await transport.sentMessages()
+    let requests = messages.filter { $0["method"]?.stringValue == "model/list" }
+    XCTAssertEqual(requests.count, 2)
+    XCTAssertNil(requests[0]["params"]?["cursor"]?.stringValue)
+    XCTAssertEqual(requests[1]["params"]?["cursor"]?.stringValue, "page-two")
+    XCTAssertTrue(requests.allSatisfy { $0["params"]?["includeHidden"]?.boolValue == true })
+  }
+
+  func testModelListStopsWhenServerRepeatsCursor() async throws {
+    let transport = ScriptedCodexTransport(mode: .modelCatalogLoop)
+    let client = CodexAppServerClient(transport: transport)
+
+    let models = try await client.models()
+
+    XCTAssertEqual(models.map(\.id), ["loop-one", "loop-two"])
+    let requests = await transport.sentMessages().filter {
+      $0["method"]?.stringValue == "model/list"
+    }
+    XCTAssertEqual(requests.count, 2)
+  }
+
+  func testModelListRejectsAbnormalResponse() async throws {
+    let transport = ScriptedCodexTransport(mode: .modelCatalogInvalid)
+    let client = CodexAppServerClient(transport: transport)
+
+    await XCTAssertThrowsErrorAsync(try await client.models()) { error in
+      XCTAssertEqual(error as? CodexAppServerError, .invalidResponse)
+    }
+  }
+
   func testChunkedJSONLAndAgentMessageDeltasProduceCompletion() async throws {
     let transport = ScriptedCodexTransport(mode: .completion)
     let client = CodexAppServerClient(transport: transport)
 
     let completion = try await client.complete(
       prompt: "Write a short title",
-      model: "gpt-5-codex",
+      model: " gpt-5-codex ",
+      reasoningEffort: " high ",
       workingDirectory: URL(fileURLWithPath: "/tmp/project")
     )
 
@@ -170,6 +241,7 @@ final class CodexAppServerClientTests: XCTestCase {
     XCTAssertEqual(threadStart["params"]?["cwd"]?.stringValue, "/tmp/project")
     let turnStart = try XCTUnwrap(messages.first { $0["method"]?.stringValue == "turn/start" })
     XCTAssertEqual(turnStart["params"]?["threadId"]?.stringValue, "thread-1")
+    XCTAssertEqual(turnStart["params"]?["effort"]?.stringValue, "high")
     XCTAssertEqual(
       turnStart["params"]?["input"]?.arrayValue?.first?["text"]?.stringValue, "Write a short title")
   }
@@ -240,6 +312,10 @@ private actor ScriptedCodexTransport: CodexAppServerTransport {
     case deviceCode
     case hangingLogin
     case rateLimits
+    case modelCatalogSingle
+    case modelCatalogPagination
+    case modelCatalogLoop
+    case modelCatalogInvalid
     case completion
     case turnFailure
     case completedFailure
@@ -324,6 +400,45 @@ private actor ScriptedCodexTransport: CodexAppServerTransport {
         json: #"""
           {"id":3,"result":{}}
           """#)
+    case "model/list":
+      switch mode {
+      case .modelCatalogSingle:
+        enqueue(
+          json: #"""
+            {"id":2,"result":{"data":[{"id":" visible-model ","model":" visible-model ","displayName":" Visible Model ","description":" A visible model ","hidden":false,"defaultReasoningEffort":" medium ","supportedReasoningEfforts":[{"reasoningEffort":" low ","description":" quick "},{"effort":" high "}],"inputModalities":[" text "," "],"isDefault":true,"upgrade":" pro "},{"id":"hidden-model","hidden":true}],"nextCursor":" "}}
+            """#)
+      case .modelCatalogPagination:
+        if object["params"]?["cursor"]?.stringValue == nil {
+          enqueue(
+            json: #"""
+              {"id":2,"result":{"data":[{"id":" page-one-model ","model":" page-one-model ","displayName":"Page One"},{"id":"hidden-model","hidden":true},{"id":"page-one-model","model":"page-one-model"}],"nextCursor":" page-two "}}
+              """#)
+        } else {
+          enqueue(
+            json: #"""
+              {"id":3,"result":{"data":[{"id":"page-two-model","model":"page-two-model","displayName":"Page Two"}],"nextCursor":" "}}
+              """#)
+        }
+      case .modelCatalogLoop:
+        if object["params"]?["cursor"]?.stringValue == nil {
+          enqueue(
+            json: #"""
+              {"id":2,"result":{"data":[{"id":"loop-one","model":"loop-one"}],"nextCursor":" loop "}}
+              """#)
+        } else {
+          enqueue(
+            json: #"""
+              {"id":3,"result":{"data":[{"id":"loop-two","model":"loop-two"}],"nextCursor":" loop "}}
+              """#)
+        }
+      case .modelCatalogInvalid:
+        enqueue(
+          json: #"""
+            {"id":2,"result":{"data":{"not":"an array"}}}
+            """#)
+      default:
+        break
+      }
     case "thread/start":
       enqueue(
         json: #"""

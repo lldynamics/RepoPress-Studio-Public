@@ -188,7 +188,9 @@ extension AIProviderPreset {
     case .reasoningControl:
       switch self {
       case .codexAppServer:
-        return .unsupported
+        // App Server exposes the account's model-specific reasoning levels;
+        // the authenticated model list is the source of truth.
+        return .supported
       case .deepSeek:
         return .supported
       case .openAICompatible:
@@ -211,9 +213,13 @@ extension AIProviderPreset {
       switch self {
       case .local:
         return .supported
+      case .codexAppServer:
+        // App Server discovers account-available models through its own RPC,
+        // not the OpenAI-compatible HTTP endpoint.
+        return .supported
       case .custom:
         return .unknown
-      case .codexAppServer, .openAICompatible, .deepSeek, .openRouter:
+      case .openAICompatible, .deepSeek, .openRouter:
         return .unsupported
       }
 
