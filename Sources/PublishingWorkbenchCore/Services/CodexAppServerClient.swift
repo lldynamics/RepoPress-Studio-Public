@@ -416,18 +416,96 @@ public actor CodexAppServerClient {
     return parseRateLimits(value)
   }
 
+  /// Returns the models available to the authenticated app-server account.
+  ///
+  /// The catalog is paginated by an opaque cursor. The cursor is tracked so a
+  /// malformed or stale server response cannot make the client request the
+  /// same page forever. Hidden models are also filtered locally when callers
+  /// use the default, public catalog.
+  public func models(includeHidden: Bool = false) async throws -> [CodexAppServerModel] {
+    let pageLimit = 100
+    let maximumPages = 1_024
+    var cursor: String?
+    var visitedCursors = Set<String>()
+    var seenModelKeys = Set<String>()
+    var models: [CodexAppServerModel] = []
+    var pageCount = 0
+
+    while pageCount < maximumPages {
+      let cursorKey = cursor ?? ""
+      guard visitedCursors.insert(cursorKey).inserted else { break }
+
+      var params: [String: CodexAppServerJSONValue] = [
+        "includeHidden": .bool(includeHidden),
+        "limit": .number(Double(pageLimit)),
+      ]
+      if let cursor {
+        params["cursor"] = .string(cursor)
+      }
+
+      let value = try await request(method: "model/list", params: .object(params))
+      guard let root = value.objectValue else {
+        throw CodexAppServerError.invalidResponse
+      }
+      let modelValues =
+        root["data"]?.arrayValue
+        ?? root["models"]?.arrayValue
+        ?? root["items"]?.arrayValue
+      guard let modelValues else {
+        throw CodexAppServerError.invalidResponse
+      }
+
+      for modelValue in modelValues {
+        let data: Data
+        do {
+          data = try encoder.encode(modelValue)
+          let model = try decoder.decode(CodexAppServerModel.self, from: data)
+          guard !model.id.isEmpty || !model.model.isEmpty else { continue }
+          guard includeHidden || !model.hidden else { continue }
+          let modelKeys = [model.id, model.model].filter { !$0.isEmpty }
+          guard !modelKeys.contains(where: seenModelKeys.contains) else { continue }
+          modelKeys.forEach { seenModelKeys.insert($0) }
+          models.append(model)
+        } catch {
+          throw CodexAppServerError.invalidResponse
+        }
+      }
+
+      pageCount += 1
+      let pagination = root["pagination"]?.objectValue ?? root["page"]?.objectValue ?? [:]
+      let nextCursor = firstNonEmptyString(
+        in: root,
+        keys: ["nextCursor", "next_cursor"]
+      ) ?? firstNonEmptyString(
+        in: pagination,
+        keys: ["nextCursor", "next_cursor"]
+      )
+      guard let nextCursor, !visitedCursors.contains(nextCursor) else { break }
+      cursor = nextCursor
+    }
+
+    return models
+  }
+
   public func complete(
     prompt: String,
     model: String? = nil,
+    reasoningEffort: String? = nil,
     workingDirectory: URL? = nil
   ) async throws -> CodexAppServerCompletion {
     try await ensureStarted()
-    let thread = try await startThread(model: model, workingDirectory: workingDirectory)
+    let normalizedModel = Self.trimmedNonEmpty(model)
+    let normalizedReasoningEffort = Self.trimmedNonEmpty(reasoningEffort)
+    let thread = try await startThread(model: normalizedModel, workingDirectory: workingDirectory)
     let threadID = thread.id
     turnStates[threadID] = TurnState(threadID: threadID, model: thread.model)
 
     do {
-      let turnID = try await startTurn(threadID: threadID, prompt: prompt)
+      let turnID = try await startTurn(
+        threadID: threadID,
+        prompt: prompt,
+        reasoningEffort: normalizedReasoningEffort
+      )
       if var state = turnStates[threadID] {
         state.turnID = turnID
         turnStates[threadID] = state
@@ -443,11 +521,13 @@ public actor CodexAppServerClient {
   public func completeText(
     prompt: String,
     model: String? = nil,
+    reasoningEffort: String? = nil,
     workingDirectory: URL? = nil
   ) async throws -> String {
     try await complete(
       prompt: prompt,
       model: model,
+      reasoningEffort: reasoningEffort,
       workingDirectory: workingDirectory
     ).text
   }
@@ -633,8 +713,12 @@ public actor CodexAppServerClient {
     return (threadID, responseModel ?? model)
   }
 
-  private func startTurn(threadID: String, prompt: String) async throws -> String {
-    let params: [String: CodexAppServerJSONValue] = [
+  private func startTurn(
+    threadID: String,
+    prompt: String,
+    reasoningEffort: String?
+  ) async throws -> String {
+    var params: [String: CodexAppServerJSONValue] = [
       "input": .array([
         .object([
           "text": .string(prompt),
@@ -643,6 +727,9 @@ public actor CodexAppServerClient {
       ]),
       "threadId": .string(threadID),
     ]
+    if let reasoningEffort {
+      params["effort"] = .string(reasoningEffort)
+    }
     let value = try await requestWithoutStartup(method: "turn/start", params: .object(params))
     guard let turnID = identifier(in: value, nestedKeys: ["turn", "turnId", "turnID", "id"]),
       !turnID.isEmpty
@@ -1055,6 +1142,24 @@ public actor CodexAppServerClient {
       }
     }
     return nil
+  }
+
+  private func firstNonEmptyString(
+    in object: [String: CodexAppServerJSONValue],
+    keys: [String]
+  ) -> String? {
+    for key in keys {
+      guard let value = object[key]?.stringValue else { continue }
+      let trimmed = Self.trimmedNonEmpty(value)
+      if let trimmed { return trimmed }
+    }
+    return nil
+  }
+
+  private static func trimmedNonEmpty(_ value: String?) -> String? {
+    guard let value else { return nil }
+    let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+    return trimmed.isEmpty ? nil : trimmed
   }
 
   private static func sanitizedMessage(_ message: String) -> String {

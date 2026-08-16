@@ -99,7 +99,8 @@ struct AISettingsView: View {
               settings: aiAdvancedSettingsBinding,
               reasoningSupport: activeConnection.config.capabilitySupport(
                 for: .reasoningControl
-              )
+              ),
+              usesCodexAppServer: activeConnection.config.usesCodexAppServer
             )
 
             if activeConnection.config.preset != .local {
@@ -228,6 +229,8 @@ struct AISettingsView: View {
 
   private var codexAccountSection: some View {
     CodexAppServerAccountSection(
+      model: aiProviderStringBinding(\.model),
+      reasoningEffortOverride: aiReasoningEffortOverrideBinding,
       dataSharingConsent: dataSharingConsent,
       grantConsentForConnection: {
         setRemoteAIEnabled(true)
@@ -354,6 +357,17 @@ struct AISettingsView: View {
     )
   }
 
+  private var aiReasoningEffortOverrideBinding: Binding<String?> {
+    Binding(
+      get: { activeConnection.config.resolvedAdvancedSettings.reasoningEffortOverride },
+      set: { value in
+        var settings = activeConnection.config.resolvedAdvancedSettings
+        settings.reasoningEffortOverride = value
+        aiAdvancedSettingsBinding.wrappedValue = settings
+      }
+    )
+  }
+
   private func applyLocalAIConfiguration(baseURL: String, model: String) -> Bool {
     invalidateConnectionReport()
     var connection = activeConnection
@@ -424,8 +438,9 @@ struct AISettingsView: View {
         .font(.callout.weight(.semibold))
 
       if activeConnection.config.usesCodexAppServer {
-        Text("账户默认模型")
+        Text(codexModelSummary)
           .font(.caption)
+          .monospaced()
           .foregroundStyle(.secondary)
           .lineLimit(1)
       } else if !activeConnection.config.normalizedModel.isEmpty {
@@ -443,6 +458,13 @@ struct AISettingsView: View {
         .lineLimit(1)
     }
     .accessibilityElement(children: .combine)
+  }
+
+  private var codexModelSummary: String {
+    let model = activeConnection.config.normalizedModel
+    return model == AIProviderPreset.codexDefaultModel
+      ? String(localized: "账户默认模型")
+      : (model.nilIfEmpty ?? String(localized: "账户默认模型"))
   }
 
   private var aiCredentialStatusTitle: LocalizedStringKey {

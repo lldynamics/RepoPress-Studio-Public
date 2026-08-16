@@ -125,6 +125,16 @@ public final class WorkbenchAIFeatureFacade: ObservableObject {
     store.aiChatSelectedModel
   }
 
+  /// The active reusable connection owns the ChatGPT/App Server effort
+  /// override.  Interactive chat currently resolves this through the active
+  /// connection even when a general conversation is visible; keeping the
+  /// setting at that boundary makes the quick switch sheet and the request
+  /// path agree on which profile is being edited.
+  public var chatReasoningEffortOverride: String? {
+    store.activeAIConnectionProfile.config.resolvedAdvancedSettings
+      .reasoningEffortOverride?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+  }
+
   public var chatFocusedParagraphID: String? {
     store.aiChatFocusedParagraphID
   }
@@ -426,6 +436,20 @@ public final class WorkbenchAIFeatureFacade: ObservableObject {
 
   public func setChatCustomModel(_ model: String) {
     store.setAIChatCustomModel(model)
+  }
+
+  /// Persists the ChatGPT/App Server reasoning effort on the active reusable
+  /// connection profile.  A nil/blank override restores the model default and
+  /// keeps an otherwise empty advanced-settings value absent from the snapshot.
+  public func setChatReasoningEffortOverride(_ effort: String?) {
+    var profile = store.activeAIConnectionProfile
+    var config = profile.config
+    var advancedSettings = config.resolvedAdvancedSettings
+    advancedSettings.reasoningEffortOverride = effort?
+      .trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+    config.advancedSettings = advancedSettings.isDefault ? nil : advancedSettings
+    profile.config = config
+    _ = store.updateAIConnectionProfile(profile)
   }
 
   public func resetChatModelToProfileDefault() {

@@ -101,6 +101,9 @@ struct AIChatModelQuickSwitchSheet: View {
   @State private var customModelInput = ""
   @State private var connectionReport: AIConnectionTestReport?
   @State private var isTestingConnection = false
+  @State var codexModels: [CodexAppServerModel] = []
+  @State var isLoadingCodexModels = false
+  @State var codexModelsError: String?
 
   var body: some View {
     VStack(spacing: 0) {
@@ -164,6 +167,7 @@ struct AIChatModelQuickSwitchSheet: View {
     .workbenchGlassContainer(material: .regularMaterial)
     .onAppear {
       synchronizeCustomModelInput()
+      loadCodexModelsIfNeeded()
     }
     .onChange(of: ai.chatModelGrade) { _, _ in
       connectionReport = nil
@@ -172,13 +176,19 @@ struct AIChatModelQuickSwitchSheet: View {
     .onChange(of: ai.chatSelectedModel) { _, _ in
       connectionReport = nil
       synchronizeCustomModelInput()
+      normalizeCodexReasoningEffort()
+    }
+    .onChange(of: ai.activeChatConnectionProfile.id) { _, _ in
+      codexModels = []
+      codexModelsError = nil
+      loadCodexModelsIfNeeded()
     }
     .onDisappear {
       isTestingConnection = false
     }
   }
 
-  private var currentConfig: AIProviderConfig {
+  var currentConfig: AIProviderConfig {
     guard let draft else { return ai.activeChatConnectionProfile.config }
     return ai.chatProviderConfig(for: draft)
   }
@@ -307,10 +317,36 @@ struct AIChatModelQuickSwitchSheet: View {
 
   private var modelSection: some View {
     VStack(alignment: .leading, spacing: 8) {
-      Text(String(localized: "模型档位"))
+      Text(
+        currentConfig.usesCodexAppServer
+          ? String(localized: "模型与思考等级")
+          : String(localized: "模型档位")
+      )
         .font(.caption.weight(.semibold))
         .foregroundStyle(.secondary)
 
+      if currentConfig.usesCodexAppServer {
+        codexModelSection
+      } else {
+        standardModelSection
+      }
+
+      if !currentConfig.usesCodexAppServer {
+        Button {
+          ai.resetChatModelToProfileDefault()
+          synchronizeCustomModelInput()
+        } label: {
+          Label(String(localized: "恢复站点默认模型"), systemImage: "arrow.counterclockwise")
+        }
+        .buttonStyle(.borderless)
+        .controlSize(.small)
+        .padding(.top, 2)
+      }
+    }
+  }
+
+  private var standardModelSection: some View {
+    Group {
       ForEach(modelCandidates) { candidate in
         Button {
           ai.setChatModelGrade(candidate.grade)
@@ -365,20 +401,12 @@ struct AIChatModelQuickSwitchSheet: View {
             .disabled(customModelInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         }
       }
-
-      Button {
-        ai.resetChatModelToProfileDefault()
-        synchronizeCustomModelInput()
-      } label: {
-        Label(String(localized: "恢复站点默认模型"), systemImage: "arrow.counterclockwise")
-      }
-      .buttonStyle(.borderless)
-      .controlSize(.small)
-      .padding(.top, 2)
     }
   }
 
-  private func synchronizeCustomModelInput() {
+  // Shared with the Codex extension so selecting the account default can keep
+  // the existing custom-model field in sync without duplicating state logic.
+  func synchronizeCustomModelInput() {
     customModelInput = ai.chatSelectedModel.nilIfEmpty
       ?? currentSelection?.activeModel
       ?? ""

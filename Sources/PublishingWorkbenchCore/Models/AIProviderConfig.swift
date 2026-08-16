@@ -754,9 +754,6 @@ public struct AIProviderConfig: Codable, Hashable, Sendable {
       return preset.capabilitySupport(for: capability)
 
     case .modelDiscovery:
-      if preset == .codexAppServer {
-        return .unsupported
-      }
       if preset == .local {
         if isLocalEndpoint {
           return .supported
