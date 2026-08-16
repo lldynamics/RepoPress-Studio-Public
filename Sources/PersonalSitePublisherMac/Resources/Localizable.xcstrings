@@ -53553,6 +53553,38 @@
         }
       }
     },
+    "窗口较窄，已临时隐藏；点击后会收起左侧栏并显示": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Temporarily hidden because the window is narrow; click to hide the sidebar and show it"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "窗口较窄，已临时隐藏；点击后会收起左侧栏并显示"
+          }
+        }
+      }
+    },
+    "窗口较窄；点击后会收起左侧栏并显示 Inspector": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The window is narrow; click to hide the sidebar and show the Inspector"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "窗口较窄；点击后会收起左侧栏并显示 Inspector"
+          }
+        }
+      }
+    },
     "窗口过窄，已临时隐藏": {
       "localizations": {
         "en": {

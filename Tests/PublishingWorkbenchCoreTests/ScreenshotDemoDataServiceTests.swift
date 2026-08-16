@@ -159,6 +159,32 @@ import XCTest
     }
 
     @MainActor
+    func testScreenshotUITestPreparationSeedsOfflineRSSWorkspace() throws {
+      let directory = FileManager.default.temporaryDirectory
+        .appendingPathComponent(
+          "PersonalSitePublisherMacScreenshotRSSTests-\(UUID().uuidString)",
+          isDirectory: true
+        )
+      try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+      defer {
+        unsetenv(ScreenshotDemoDataService.environmentKey)
+        unsetenv(ScreenshotDemoDataService.uiTestEnvironmentKey)
+        try? FileManager.default.removeItem(at: directory)
+      }
+      setenv(ScreenshotDemoDataService.environmentKey, "1", 1)
+      setenv(ScreenshotDemoDataService.uiTestEnvironmentKey, "1", 1)
+      let store = RSSReaderStore(
+        fileURL: directory.appendingPathComponent("reader.sqlite"))
+
+      ScreenshotDemoDataService.prepareRSSReaderFixtureIfEnabled(in: store)
+
+      XCTAssertEqual(store.feeds.map(\.displayTitle), ["RepoPress 演示订阅"])
+      XCTAssertEqual(store.articleHeaders.map(\.title), ["RepoPress Studio 发布工作流"])
+      XCTAssertEqual(store.articleHeaderCount, 1)
+      XCTAssertNil(store.lastError)
+    }
+
+    @MainActor
     func testScreenshotDemoSurfacesPrepareStoreForTargetWorkspaces() throws {
       let store = try makeScreenshotStore()
 

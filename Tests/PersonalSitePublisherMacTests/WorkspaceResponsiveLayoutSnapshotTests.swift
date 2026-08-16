@@ -12,6 +12,10 @@ final class WorkspaceResponsiveLayoutSnapshotTests: XCTestCase {
   }
 
   func testChangesAtEveryLayoutDecisionBoundary() {
+    assertBoundaryChanges(
+      at: WorkbenchLayoutMode.minimumCompactInspectorWorkspaceWidth,
+      mode: .edit
+    )
     assertBoundaryChanges(at: WorkbenchLayoutMode.minimumSplitSidebarWorkspaceWidth, mode: .split)
     assertBoundaryChanges(at: WorkbenchLayoutMode.minimumInspectorWorkspaceWidth, mode: .split)
     assertBoundaryChanges(

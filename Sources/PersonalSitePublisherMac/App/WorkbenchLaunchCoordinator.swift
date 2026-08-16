@@ -529,6 +529,9 @@ final class WorkbenchLaunchCoordinator: ObservableObject {
       fileURL: paths.rssReaderFileURL,
       bootstrap: rssBootstrap
     )
+    #if DEBUG || SCREENSHOT_CAPTURE_BUILD
+      ScreenshotDemoDataService.prepareRSSReaderFixtureIfEnabled(in: rssStore)
+    #endif
     let workbenchStore = WorkbenchStore(
       persistence: paths.persistence,
       initialSnapshotSource: preparation.snapshotSource,

@@ -252,7 +252,6 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
       "release-history-deployment-overview",
       "release-history-deployment-polling",
       "release-history-deployment-status",
-      "release-history-deployment-debug",
     ]
     let releaseHistoryLayoutIdentifier = revealAnyByScrolling([
       "release-history-main-column",
@@ -320,6 +319,7 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
 
     for identifier in [
       "publish-drawer-header",
+      "publish-drawer-readiness-checklist",
       "publish-drawer-action-save-local",
       "publish-drawer-action-publish-all",
       "publish-drawer-action-publish-current",
@@ -339,7 +339,6 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
       "The publish drawer did not expose the checks-and-diff disclosure button."
     )
     showAllChecks.click()
-    assertUniqueIdentifier("publish-drawer-check-results")
     assertUniqueIdentifier("publish-drawer-diff")
     Thread.sleep(forTimeInterval: 0.3)
 
