@@ -120,7 +120,7 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
 
     select(
       "workspace-sidebar-rss",
-      revealing: "rss-reader-workspace"
+      revealing: "rss-article-list"
     )
 
     for identifier in [
