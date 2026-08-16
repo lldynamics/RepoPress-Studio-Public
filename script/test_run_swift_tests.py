@@ -170,6 +170,12 @@ def fixture_inventory() -> list[str]:
         for index in range(1, 14)
     )
     rows.extend(
+        (
+            "PublishingWorkbenchCoreTests.CodexAppServerClientTests/testAccountStatus",
+            "PublishingWorkbenchCoreTests.CodexAppServerClientTests/testProcessTransport",
+        )
+    )
+    rows.extend(
         f"PublishingWorkbenchCoreTests.CoreLarge/testValue{index}"
         for index in range(1, 152)
     )
@@ -357,11 +363,25 @@ def test_successful_partition_and_exact_argv() -> None:
             shard["filter"] == f"^{re.escape(shard['tests'][0])}$"
             for shard in mac_cases
         )
-        core = [shard for shard in shards if shard["slug"].startswith("core-")]
+        core_cases = [
+            shard for shard in shards if shard["slug"].startswith("core-case-")
+        ]
+        assert len(core_cases) == 2
+        assert all(len(shard["tests"]) == 1 for shard in core_cases)
+        assert all(
+            shard["filter"] == f"^{re.escape(shard['tests'][0])}$"
+            for shard in core_cases
+        )
+        core = [
+            shard
+            for shard in shards
+            if shard["slug"].startswith("core-")
+            and not shard["slug"].startswith("core-case-")
+        ]
         assert len(core) == 3
         assert all(not shard["filter"].endswith("$") for shard in core)
         for shard in shards:
-            if shard["slug"].startswith("core-"):
+            if shard in core:
                 suites = {test.split("/", 1)[0] for test in shard["tests"]}
                 assert len(suites) <= 12
                 assert len(shard["tests"]) <= 150 or len(suites) == 1
