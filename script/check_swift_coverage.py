@@ -185,28 +185,50 @@ def run_coverage_batch(
     environment: dict[str, str],
     label: str,
     timeout_seconds: float,
+    retries: int = 0,
 ) -> None:
-    process = subprocess.Popen(
-        command,
-        cwd=root,
-        env=environment,
-        start_new_session=True,
-    )
-    try:
-        return_code = process.wait(timeout=timeout_seconds)
-    except subprocess.TimeoutExpired:
+    for attempt in range(1, retries + 2):
+        process = subprocess.Popen(
+            command,
+            cwd=root,
+            env=environment,
+            start_new_session=True,
+        )
         try:
-            os.killpg(process.pid, signal.SIGTERM)
-            process.wait(timeout=2)
-        except (ProcessLookupError, subprocess.TimeoutExpired):
+            return_code = process.wait(timeout=timeout_seconds)
+        except subprocess.TimeoutExpired:
             try:
-                os.killpg(process.pid, signal.SIGKILL)
-            except ProcessLookupError:
-                pass
-            process.wait()
-        fail(f"coverage batch timed out after {timeout_seconds:.0f}s: {label}")
-    if return_code != 0:
-        fail(f"coverage batch failed with status {return_code}: {label}")
+                os.killpg(process.pid, signal.SIGTERM)
+                process.wait(timeout=2)
+            except (ProcessLookupError, subprocess.TimeoutExpired):
+                try:
+                    os.killpg(process.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+                process.wait()
+            if attempt <= retries:
+                print(
+                    f"swift coverage gate: batch timed out after "
+                    f"{timeout_seconds:.0f}s; retrying ({attempt}/{retries}): {label}",
+                    file=sys.stderr,
+                    flush=True,
+                )
+                continue
+            fail(f"coverage batch timed out after {timeout_seconds:.0f}s: {label}")
+        if return_code != 0:
+            fail(f"coverage batch failed with status {return_code}: {label}")
+        return
+
+
+def coverage_batch_retries(environment: dict[str, str]) -> int:
+    raw_value = environment.get("SWIFT_COVERAGE_BATCH_RETRIES", "1")
+    try:
+        retries = int(raw_value)
+    except ValueError:
+        fail("SWIFT_COVERAGE_BATCH_RETRIES must be a non-negative integer")
+    if retries < 0:
+        fail("SWIFT_COVERAGE_BATCH_RETRIES must be a non-negative integer")
+    return retries
 
 
 def find_test_binary(scratch_path: Path) -> Path:
@@ -245,6 +267,7 @@ def run_coverage(root: Path, scratch_path: Path) -> Path:
         shutil.rmtree(profile_directory)
     profile_directory.mkdir(parents=True)
     batch_timeout = float(os.environ.get("SWIFT_COVERAGE_BATCH_TIMEOUT_SECONDS", "300"))
+    batch_retries = coverage_batch_retries(environment)
 
     try:
         build_command = coverage_build_command(swift, scratch_path, swift_build_root)
@@ -283,6 +306,7 @@ def run_coverage(root: Path, scratch_path: Path) -> Path:
                 environment=environment,
                 label=batch.label,
                 timeout_seconds=batch_timeout,
+                retries=batch_retries,
             )
             codecov_directory = test_binary.parents[3] / "codecov"
             profiles = sorted(codecov_directory.glob("*.profraw"))
