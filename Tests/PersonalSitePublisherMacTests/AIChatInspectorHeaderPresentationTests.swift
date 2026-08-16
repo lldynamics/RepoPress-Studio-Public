@@ -118,6 +118,26 @@ final class AIChatInspectorHeaderPresentationTests: XCTestCase {
     )
   }
 
+  func testCodexProviderShowsConcreteActiveModelInCompactHeader() {
+    var config = AIProviderConfig(preset: .codexAppServer)
+    config.applyPresetDefaults()
+
+    XCTAssertEqual(
+      AIChatInspectorHeaderPresentation.modelSummary(
+        for: config,
+        activeModel: "gpt-5-codex"
+      ),
+      config.preset.localizedDisplayName + " · gpt-5-codex"
+    )
+    XCTAssertEqual(
+      AIChatInspectorHeaderPresentation.modelSummary(
+        for: config,
+        activeModel: nil
+      ),
+      config.preset.localizedDisplayName
+    )
+  }
+
   func testQuickSwitchSheetBuildsFastStandardAndHighQualityCandidates() {
     let config = AIProviderConfig(
       preset: .custom,

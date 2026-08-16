@@ -40,9 +40,13 @@ extension AIChatCompletionClient {
     let explicitReasoningEffort = canSendReasoning ? request.reasoningEffort : nil
     let hasExplicitReasoningOptions = explicitThinking != nil || explicitReasoningEffort != nil
     let advancedReasoningPreference =
-      !canSendReasoning
+      !canSendReasoning || config.usesCodexAppServer
       ? AIProviderReasoningPreference.automatic
       : advancedSettings.reasoningPreference
+    let persistedCodexReasoningEffort =
+      appliesInteractiveOverrides && config.usesCodexAppServer && canSendReasoning
+      ? advancedSettings.normalizedReasoningEffortOverride
+      : nil
     let reasoningOptions = normalizedReasoningOptions(
       explicitThinking: explicitThinking,
       explicitReasoningEffort: explicitReasoningEffort,
@@ -50,6 +54,7 @@ extension AIChatCompletionClient {
       preference: appliesInteractiveOverrides
         ? advancedReasoningPreference
         : .automatic,
+      persistedReasoningEffort: persistedCodexReasoningEffort,
       config: config
     )
     return AIChatCompletionRequest(
@@ -138,6 +143,7 @@ extension AIChatCompletionClient {
     explicitReasoningEffort: String?,
     fallback: AIProviderChatRequestOptions,
     preference: AIProviderReasoningPreference,
+    persistedReasoningEffort: String?,
     config: AIProviderConfig
   ) -> AIProviderChatRequestOptions {
     if explicitThinking != nil || explicitReasoningEffort != nil {
@@ -145,6 +151,14 @@ extension AIChatCompletionClient {
         temperature: fallback.temperature,
         thinking: explicitThinking ?? fallback.thinking,
         reasoningEffort: explicitReasoningEffort
+      )
+    }
+
+    if let persistedReasoningEffort {
+      return AIProviderChatRequestOptions(
+        temperature: fallback.temperature,
+        thinking: fallback.thinking,
+        reasoningEffort: persistedReasoningEffort
       )
     }
 

@@ -66,6 +66,114 @@ final class AIProviderAdvancedSettingsTests: XCTestCase {
     XCTAssertFalse(settings.isDefault)
   }
 
+  func testReasoningEffortOverrideIsTrimmedAndBackwardCompatible() throws {
+    let settings = AIProviderAdvancedSettings(reasoningEffortOverride: "  xhigh  ")
+    XCTAssertEqual(settings.reasoningEffortOverride, "xhigh")
+    XCTAssertEqual(settings.normalizedReasoningEffortOverride, "xhigh")
+    XCTAssertFalse(settings.isDefault)
+
+    let encoded = try JSONEncoder().encode(settings)
+    let decoded = try JSONDecoder().decode(AIProviderAdvancedSettings.self, from: encoded)
+    XCTAssertEqual(decoded.reasoningEffortOverride, "xhigh")
+
+    let empty = try JSONDecoder().decode(
+      AIProviderAdvancedSettings.self,
+      from: Data(#"{"reasoningEffortOverride":"  "}"#.utf8)
+    )
+    XCTAssertNil(empty.reasoningEffortOverride)
+    XCTAssertTrue(empty.isDefault)
+  }
+
+  func testCodexReasoningEffortOverrideEntersInteractiveNormalizedRequest() throws {
+    let client = AIChatCompletionClient()
+    let config = AIProviderConfig(
+      preset: .codexAppServer,
+      baseURL: AIProviderPreset.codexAppServer.defaultBaseURL,
+      model: AIProviderPreset.codexDefaultModel,
+      requiresAPIKey: false,
+      advancedSettings: AIProviderAdvancedSettings(reasoningEffortOverride: " high ")
+    )
+
+    let normalized = try client.normalizedRequest(
+      AIChatCompletionRequest(
+        model: config.model,
+        messages: [AIChatMessage(role: "user", content: "Hello")]
+      ),
+      config: config,
+      purpose: .interactiveChat
+    )
+
+    XCTAssertEqual(normalized.reasoningEffort, "high")
+  }
+
+  func testExplicitSessionReasoningEffortWinsOverCodexPersistedOverride() throws {
+    let client = AIChatCompletionClient()
+    let config = AIProviderConfig(
+      preset: .codexAppServer,
+      baseURL: AIProviderPreset.codexAppServer.defaultBaseURL,
+      model: AIProviderPreset.codexDefaultModel,
+      requiresAPIKey: false,
+      advancedSettings: AIProviderAdvancedSettings(reasoningEffortOverride: "high")
+    )
+
+    let normalized = try client.normalizedRequest(
+      AIChatCompletionRequest(
+        model: config.model,
+        messages: [AIChatMessage(role: "user", content: "Hello")],
+        reasoningEffort: "low"
+      ),
+      config: config,
+      purpose: .interactiveChat
+    )
+
+    XCTAssertEqual(normalized.reasoningEffort, "low")
+  }
+
+  func testCodexPersistedReasoningEffortIsInteractiveOnly() throws {
+    let client = AIChatCompletionClient()
+    let config = AIProviderConfig(
+      preset: .codexAppServer,
+      baseURL: AIProviderPreset.codexAppServer.defaultBaseURL,
+      model: AIProviderPreset.codexDefaultModel,
+      requiresAPIKey: false,
+      advancedSettings: AIProviderAdvancedSettings(reasoningEffortOverride: "high")
+    )
+
+    let normalized = try client.normalizedRequest(
+      AIChatCompletionRequest(
+        model: config.model,
+        messages: [AIChatMessage(role: "user", content: "Return JSON")]
+      ),
+      config: config,
+      purpose: .utilityTask
+    )
+
+    XCTAssertNil(normalized.reasoningEffort)
+  }
+
+  func testCodexLegacyReasoningPreferenceDoesNotCompeteWithAccountEffort() throws {
+    let client = AIChatCompletionClient()
+    let config = AIProviderConfig(
+      preset: .codexAppServer,
+      baseURL: AIProviderPreset.codexAppServer.defaultBaseURL,
+      model: AIProviderPreset.codexDefaultModel,
+      requiresAPIKey: false,
+      advancedSettings: AIProviderAdvancedSettings(reasoningPreference: .high)
+    )
+
+    let normalized = try client.normalizedRequest(
+      AIChatCompletionRequest(
+        model: config.model,
+        messages: [AIChatMessage(role: "user", content: "Hello")]
+      ),
+      config: config,
+      purpose: .interactiveChat
+    )
+
+    XCTAssertNil(normalized.reasoningEffort)
+    XCTAssertNil(normalized.thinking)
+  }
+
   func testInteractiveChatAppliesAdvancedOverridesAndStripsUnknownReasoning() async throws {
     let transport = RecordingAIChatTransport(
       data: successfulResponseData,

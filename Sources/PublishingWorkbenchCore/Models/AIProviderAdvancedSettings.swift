@@ -12,6 +12,10 @@ public struct AIProviderAdvancedSettings: Codable, Hashable, Sendable {
   public var temperature: Double?
   public var maximumOutputTokens: Int?
   public var reasoningPreference: AIProviderReasoningPreference
+  /// Optional App Server reasoning level selected for the authenticated
+  /// ChatGPT/Codex account. A raw string keeps this forward compatible with
+  /// levels added by the service after this build.
+  public var reasoningEffortOverride: String?
   /// Optional for backwards-compatible connection profiles. A missing value
   /// keeps the historical behaviour (the native Agent path is enabled).
   public var allowsApplicationTools: Bool?
@@ -21,12 +25,14 @@ public struct AIProviderAdvancedSettings: Codable, Hashable, Sendable {
     temperature: Double? = nil,
     maximumOutputTokens: Int? = nil,
     reasoningPreference: AIProviderReasoningPreference = .automatic,
+    reasoningEffortOverride: String? = nil,
     allowsApplicationTools: Bool? = nil
   ) {
     self.systemPrompt = systemPrompt
     self.temperature = temperature
     self.maximumOutputTokens = maximumOutputTokens
     self.reasoningPreference = reasoningPreference
+    self.reasoningEffortOverride = Self.normalizeReasoningEffort(reasoningEffortOverride)
     self.allowsApplicationTools = allowsApplicationTools
   }
 
@@ -52,12 +58,21 @@ public struct AIProviderAdvancedSettings: Codable, Hashable, Sendable {
     maximumOutputTokens.map { min(Self.maximumOutputTokenLimit, max(1, $0)) }
   }
 
+  public var normalizedReasoningEffortOverride: String? {
+    Self.normalizeReasoningEffort(reasoningEffortOverride)
+  }
+
   public var isDefault: Bool {
     normalizedSystemPrompt.isEmpty
       && normalizedTemperature == nil
       && normalizedMaximumOutputTokens == nil
       && reasoningPreference == .automatic
+      && normalizedReasoningEffortOverride == nil
       && allowsApplicationTools == nil
+  }
+
+  private static func normalizeReasoningEffort(_ value: String?) -> String? {
+    value?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
   }
 
   private enum CodingKeys: String, CodingKey {
@@ -65,6 +80,7 @@ public struct AIProviderAdvancedSettings: Codable, Hashable, Sendable {
     case temperature
     case maximumOutputTokens
     case reasoningPreference
+    case reasoningEffortOverride
     case allowsApplicationTools
   }
 
@@ -78,6 +94,9 @@ public struct AIProviderAdvancedSettings: Codable, Hashable, Sendable {
         AIProviderReasoningPreference.self,
         forKey: .reasoningPreference
       ) ?? .automatic
+    reasoningEffortOverride = Self.normalizeReasoningEffort(
+      try container.decodeIfPresent(String.self, forKey: .reasoningEffortOverride)
+    )
     allowsApplicationTools = try container.decodeIfPresent(
       Bool.self,
       forKey: .allowsApplicationTools
@@ -90,6 +109,10 @@ public struct AIProviderAdvancedSettings: Codable, Hashable, Sendable {
     try container.encodeIfPresent(temperature, forKey: .temperature)
     try container.encodeIfPresent(maximumOutputTokens, forKey: .maximumOutputTokens)
     try container.encode(reasoningPreference, forKey: .reasoningPreference)
+    try container.encodeIfPresent(
+      normalizedReasoningEffortOverride,
+      forKey: .reasoningEffortOverride
+    )
     try container.encodeIfPresent(allowsApplicationTools, forKey: .allowsApplicationTools)
   }
 }

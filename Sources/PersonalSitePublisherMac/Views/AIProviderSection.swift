@@ -96,7 +96,7 @@ struct AIProviderSection: View {
           "连接方式",
           value: String(localized: "ChatGPT 套餐")
         )
-        LabeledContent("模型", value: String(localized: "自动选择账户可用模型"))
+        LabeledContent("模型", value: codexModelDisplayValue)
         Label("无需 API Key", systemImage: "person.crop.circle.badge.checkmark")
           .foregroundStyle(WorkbenchTheme.success)
       } else {
@@ -155,6 +155,13 @@ struct AIProviderSection: View {
 
   private var apiKeyPresets: [AIProviderPreset] {
     [.openAICompatible, .deepSeek, .openRouter, .custom]
+  }
+
+  private var codexModelDisplayValue: String {
+    let value = model.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines)
+    return value.isEmpty || value == AIProviderPreset.codexDefaultModel
+      ? String(localized: "跟随账户默认")
+      : value
   }
 
   private var isPresetModifiedFromDefault: Bool {

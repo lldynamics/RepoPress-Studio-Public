@@ -176,7 +176,18 @@ enum AIChatInspectorHeaderPresentation {
   ) -> String {
     let provider = providerTitle(for: config)
     if config.usesCodexAppServer {
-      return provider + " · " + String(localized: "账户默认模型")
+      // App Server uses the sentinel only when the account chooses the model.
+      // A concrete model returned by model/list is the active model and should
+      // remain visible in the compact header.
+      guard let activeModel = activeModel?.trimmingCharacters(in: .whitespacesAndNewlines)
+        .nilIfEmpty
+      else {
+        return provider
+      }
+      if activeModel == AIProviderPreset.codexDefaultModel {
+        return provider + " · " + String(localized: "账户默认模型")
+      }
+      return "\(provider) · \(activeModel)"
     }
     guard let activeModel = activeModel?.nilIfEmpty else { return provider }
     return "\(provider) · \(activeModel)"

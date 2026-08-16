@@ -6,6 +6,7 @@ public protocol CodexAppServerChatServing: Sendable {
   func complete(
     prompt: String,
     model: String?,
+    reasoningEffort: String?,
     workingDirectory: URL?
   ) async throws -> CodexAppServerCompletion
 }
@@ -41,6 +42,7 @@ extension AIChatCompletionClient {
     let completion = try await codexAppServerChatService.complete(
       prompt: prompt,
       model: Self.codexAppServerModel(for: prepared.normalizedRequest.model),
+      reasoningEffort: prepared.normalizedRequest.reasoningEffort,
       workingDirectory: FileManager.default.temporaryDirectory
     )
     guard !completion.text.trimmedForPublishing.isEmpty else {

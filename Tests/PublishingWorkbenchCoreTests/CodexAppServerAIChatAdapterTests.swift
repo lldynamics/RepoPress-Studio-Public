@@ -37,6 +37,7 @@ final class CodexAppServerAIChatAdapterTests: XCTestCase {
     XCTAssertEqual(requestCount, 0)
     let request = try XCTUnwrap(recordedRequest)
     XCTAssertNil(request.model)
+    XCTAssertNil(request.reasoningEffort)
     XCTAssertTrue(request.prompt.contains("\"role\":\"system\""))
     XCTAssertTrue(request.prompt.contains("\"content\":\"Write a title.\""))
     XCTAssertEqual(request.workingDirectory, FileManager.default.temporaryDirectory)
@@ -65,6 +66,32 @@ final class CodexAppServerAIChatAdapterTests: XCTestCase {
 
     let forwardedModel = await service.lastRequest?.model
     XCTAssertEqual(forwardedModel, "gpt-5.6-codex")
+  }
+
+  func testCodexReasoningEffortIsForwardedToAppServer() async throws {
+    let service = RecordingCodexChatService(
+      completion: CodexAppServerCompletion(
+        text: "Reply",
+        threadID: "thread-effort",
+        turnID: "turn-effort"
+      )
+    )
+    let client = AIChatCompletionClient(codexAppServerChatService: service)
+    var config = codexConfig
+    config.model = "gpt-5.6-codex"
+
+    _ = try await client.complete(
+      request: AIChatCompletionRequest(
+        model: "gpt-5.6-codex",
+        messages: [AIChatMessage(role: "user", content: "Think carefully")],
+        reasoningEffort: "high"
+      ),
+      config: config,
+      apiKey: nil
+    )
+
+    let forwardedEffort = await service.lastRequest?.reasoningEffort
+    XCTAssertEqual(forwardedEffort, "high")
   }
 
   func testStreamingAPIYieldsFinishedUpdateThroughAppServer() async throws {
@@ -124,6 +151,7 @@ private actor RecordingCodexChatService: CodexAppServerChatServing {
   struct Request: Sendable {
     let prompt: String
     let model: String?
+    let reasoningEffort: String?
     let workingDirectory: URL?
   }
 
@@ -137,11 +165,13 @@ private actor RecordingCodexChatService: CodexAppServerChatServing {
   func complete(
     prompt: String,
     model: String?,
+    reasoningEffort: String?,
     workingDirectory: URL?
   ) async throws -> CodexAppServerCompletion {
     lastRequest = Request(
       prompt: prompt,
       model: model,
+      reasoningEffort: reasoningEffort,
       workingDirectory: workingDirectory
     )
     return completion
