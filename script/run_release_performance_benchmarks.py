@@ -169,7 +169,7 @@ def run_benchmark(
         for line in process.stdout:
             output.append(line)
             log_file.write(line)
-            print(line, end="")
+            print(line, end="", flush=True)
     return_code = process.wait()
     captured = "".join(output)
     if return_code != 0:

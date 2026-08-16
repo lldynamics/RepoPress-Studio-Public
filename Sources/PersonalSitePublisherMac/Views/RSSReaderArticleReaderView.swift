@@ -58,7 +58,6 @@ struct RSSArticleReader: View {
     Group {
       if let article {
         loadedArticleView(article)
-          .accessibilityIdentifier("rss-reader-detail")
       } else if let articleHeader {
         ScrollView {
           VStack(alignment: .leading, spacing: 18) {
@@ -69,6 +68,7 @@ struct RSSArticleReader: View {
             Text(articleHeader.title)
               .font(.workbenchPageTitle)
               .fixedSize(horizontal: false, vertical: true)
+              .accessibilityIdentifier("rss-reader-detail")
             HStack(spacing: 8) {
               feedIcon
               Label(feedTitle ?? "RSS", systemImage: "dot.radiowaves.left.and.right")
@@ -102,7 +102,6 @@ struct RSSArticleReader: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("RSS 文章正文正在读取")
-        .accessibilityIdentifier("rss-reader-detail")
       } else {
         RSSReaderEmptyState(
           title: "选择一篇文章",
@@ -142,6 +141,7 @@ struct RSSArticleReader: View {
           Text("这篇文章没有可显示的正文，建议打开原文阅读。")
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
+            .accessibilityIdentifier("rss-reader-detail")
           Spacer(minLength: 0)
         }
         .padding(WorkbenchSpacing.spacious)
@@ -178,6 +178,7 @@ struct RSSArticleReader: View {
         .frame(minHeight: 240, maxHeight: .infinity)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
         .layoutPriority(1)
+        .accessibilityIdentifier("rss-reader-detail")
         .overlay(alignment: .top) {
           if hasSelectedText {
             ReaderContextualSelectionBar(

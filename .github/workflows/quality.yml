@@ -4,8 +4,20 @@ on:
   push:
     branches:
       - main
+    tags:
+      - "v*"
   pull_request:
   workflow_dispatch:
+    inputs:
+      risk_level:
+        description: CI risk layer to run
+        required: true
+        default: release
+        type: choice
+        options:
+          - quick
+          - pr
+          - release
 
 permissions:
   contents: read
@@ -16,7 +28,7 @@ concurrency:
 
 jobs:
   main-push-quick:
-    if: github.event_name == 'push'
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/heads/')
     runs-on: macos-15
     timeout-minutes: 25
     env:
@@ -50,7 +62,10 @@ jobs:
             .build/swift-test-shards/
 
   quality-quick:
-    if: github.event_name != 'push'
+    if: >-
+      github.event_name == 'pull_request' ||
+      startsWith(github.ref, 'refs/tags/v') ||
+      github.event_name == 'workflow_dispatch'
     runs-on: macos-15
     timeout-minutes: 25
     env:
@@ -87,7 +102,10 @@ jobs:
             .build/swift-test-shards/
 
   quality-coverage:
-    if: github.event_name != 'push'
+    if: >-
+      github.event_name == 'pull_request' ||
+      startsWith(github.ref, 'refs/tags/v') ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.risk_level != 'quick')
     runs-on: macos-15
     timeout-minutes: 45
     env:
@@ -122,13 +140,15 @@ jobs:
             .build/coverage-gate-result.json
             .build/coverage-gate-summary.md
 
-  quality-runtime:
-    if: github.event_name != 'push'
+  quality-build:
+    if: >-
+      github.event_name == 'pull_request' ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.risk_level == 'pr')
     runs-on: macos-15
-    timeout-minutes: 60
+    timeout-minutes: 35
     env:
       DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
-      SWIFT_BUILD_HOME: /private/tmp/personal-site-publisher-ci-runtime-home
+      SWIFT_BUILD_HOME: /private/tmp/personal-site-publisher-ci-build-home
     steps:
       - name: Check out repository
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
@@ -146,6 +166,46 @@ jobs:
             --result-json .build/distribution-gate-result.json \
             --summary-markdown .build/distribution-gate-summary.md
       - name: Publish distribution summary
+        if: always()
+        run: |
+          if [[ -f .build/distribution-gate-summary.md ]]; then
+            cat .build/distribution-gate-summary.md >>"$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Upload PR build result
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: quality-build-result
+          path: |
+            .build/distribution-gate-result.json
+            .build/distribution-gate-summary.md
+
+  quality-runtime:
+    if: >-
+      startsWith(github.ref, 'refs/tags/v') ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.risk_level == 'release')
+    runs-on: macos-15
+    timeout-minutes: 75
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
+      SWIFT_BUILD_HOME: /private/tmp/personal-site-publisher-ci-runtime-home
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - name: Configure deterministic test language
+        run: |
+          defaults write NSGlobalDomain AppleLanguages -array "zh-Hans"
+          defaults write NSGlobalDomain AppleLocale "zh_CN"
+      - name: Exercise release distribution build and package path
+        run: |
+          xcodebuild -version
+          xcrun -f safari-web-extension-packager
+          ./script/check_release_gate.sh \
+            --check ui-runtime \
+            --check swift-release-build \
+            --result-json .build/distribution-gate-result.json \
+            --summary-markdown .build/distribution-gate-summary.md
+      - name: Publish release distribution summary
         if: always()
         run: |
           if [[ -f .build/distribution-gate-summary.md ]]; then
@@ -176,27 +236,31 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: ui-smoke-result
+          name: release-ui-smoke-result
           path: |
             .build/ui-smoke.log
             .build/ui-smoke-summary.md
             .build/ui-smoke-derived-data/Logs/Test
           if-no-files-found: warn
-      - name: Upload distribution result
+      - name: Upload release runtime result
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: quality-runtime-result
+          name: release-runtime-result
           path: |
             .build/distribution-gate-result.json
             .build/distribution-gate-summary.md
 
   quality:
-    if: ${{ always() && github.event_name != 'push' }}
+    if: >-
+      always() &&
+      (github.event_name == 'pull_request' ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.risk_level == 'pr'))
     needs:
       - quality-quick
       - quality-coverage
-      - quality-runtime
+      - quality-build
+      - swift6-migration
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -204,18 +268,22 @@ jobs:
         env:
           QUICK_RESULT: ${{ needs.quality-quick.result }}
           COVERAGE_RESULT: ${{ needs.quality-coverage.result }}
-          RUNTIME_RESULT: ${{ needs.quality-runtime.result }}
+          BUILD_RESULT: ${{ needs.quality-build.result }}
+          SWIFT6_RESULT: ${{ needs.swift6-migration.result }}
         run: |
-          printf 'quick=%s\ncoverage=%s\nruntime=%s\n' \
-            "$QUICK_RESULT" "$COVERAGE_RESULT" "$RUNTIME_RESULT"
+          printf 'quick=%s\ncoverage=%s\nbuild=%s\nswift6=%s\n' \
+            "$QUICK_RESULT" "$COVERAGE_RESULT" "$BUILD_RESULT" "$SWIFT6_RESULT"
           [[ "$QUICK_RESULT" == "success" ]]
           [[ "$COVERAGE_RESULT" == "success" ]]
-          [[ "$RUNTIME_RESULT" == "success" ]]
+          [[ "$BUILD_RESULT" == "success" ]]
+          [[ "$SWIFT6_RESULT" == "success" ]]
 
   release-performance:
-    if: github.event_name != 'push'
+    if: >-
+      startsWith(github.ref, 'refs/tags/v') ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.risk_level == 'release')
     runs-on: macos-15
-    timeout-minutes: 35
+    timeout-minutes: 45
     env:
       SWIFT_BUILD_HOME: /private/tmp/personal-site-publisher-performance-swift-home
       PERFORMANCE_BENCHMARK_REQUIRED: "1"
@@ -254,7 +322,10 @@ jobs:
           if-no-files-found: warn
 
   swift6-migration:
-    if: github.event_name != 'push'
+    if: >-
+      github.event_name == 'pull_request' ||
+      startsWith(github.ref, 'refs/tags/v') ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.risk_level != 'quick')
     runs-on: macos-15
     timeout-minutes: 25
     env:
@@ -275,7 +346,7 @@ jobs:
           {
             echo "# Swift 6 Migration Diagnostic"
             echo
-            echo "This blocking job compiles with \`-swift-version 6\`; a migration diagnostic now prevents a pull request from merging until the blockers are resolved."
+            echo "This blocking job compiles with \`-swift-version 6\`; PR and release gates remain blocked until migration errors are resolved."
           } >>"$GITHUB_STEP_SUMMARY"
       - name: Upload Swift 6 migration diagnostics
         if: always()
@@ -284,3 +355,34 @@ jobs:
           name: swift6-migration-diagnostic
           path: .build/swift6-migration.log
           if-no-files-found: error
+
+  release-quality:
+    if: >-
+      always() &&
+      (startsWith(github.ref, 'refs/tags/v') ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.risk_level == 'release'))
+    needs:
+      - quality-quick
+      - quality-coverage
+      - quality-runtime
+      - release-performance
+      - swift6-migration
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Require every release quality lane
+        env:
+          QUICK_RESULT: ${{ needs.quality-quick.result }}
+          COVERAGE_RESULT: ${{ needs.quality-coverage.result }}
+          RUNTIME_RESULT: ${{ needs.quality-runtime.result }}
+          PERFORMANCE_RESULT: ${{ needs.release-performance.result }}
+          SWIFT6_RESULT: ${{ needs.swift6-migration.result }}
+        run: |
+          printf 'quick=%s\ncoverage=%s\nruntime=%s\nperformance=%s\nswift6=%s\n' \
+            "$QUICK_RESULT" "$COVERAGE_RESULT" "$RUNTIME_RESULT" \
+            "$PERFORMANCE_RESULT" "$SWIFT6_RESULT"
+          [[ "$QUICK_RESULT" == "success" ]]
+          [[ "$COVERAGE_RESULT" == "success" ]]
+          [[ "$RUNTIME_RESULT" == "success" ]]
+          [[ "$PERFORMANCE_RESULT" == "success" ]]
+          [[ "$SWIFT6_RESULT" == "success" ]]
