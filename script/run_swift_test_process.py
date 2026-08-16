@@ -40,6 +40,8 @@ ACTIVE_PROCESS_GROUPS: set[int] = set()
 TERMINATION_GRACE_SECONDS = 2.0
 PROCESS_POLL_INTERVAL_SECONDS = 0.05
 PROCESS_SNAPSHOT_TIMEOUT_SECONDS = 0.25
+DEFAULT_SHARD_RETRIES = 1
+MAX_SHARD_RETRIES = 1
 
 
 @dataclasses.dataclass(frozen=True)
@@ -77,6 +79,22 @@ class ProcessResult:
 
 def fail(message: str) -> None:
     raise ValueError(message)
+
+
+def configured_shard_retries(environment: dict[str, str]) -> int:
+    raw_value = environment.get(
+        "SWIFT_TEST_SHARD_RETRIES", str(DEFAULT_SHARD_RETRIES)
+    )
+    try:
+        retries = int(raw_value)
+    except ValueError:
+        fail("SWIFT_TEST_SHARD_RETRIES must be a non-negative integer")
+    if not 0 <= retries <= MAX_SHARD_RETRIES:
+        fail(
+            "SWIFT_TEST_SHARD_RETRIES must be between 0 and "
+            f"{MAX_SHARD_RETRIES}"
+        )
+    return retries
 
 
 def atomic_write_json(path: Path, payload: dict[str, object]) -> None:
@@ -590,6 +608,7 @@ def shard_payload(shard: Shard, output_directory: Path) -> dict[str, object]:
         "tests": [test.raw for test in shard.tests],
         "logPath": str(output_directory / f"shard-{shard.slug}.log"),
         "samplePath": str(output_directory / f"shard-{shard.slug}.sample.txt"),
+        "attempts": [],
     }
 
 
@@ -611,6 +630,8 @@ def run_all(root: Path) -> int:
     atomic_write_json(result_path, result)
 
     try:
+        shard_retries = configured_shard_retries(os.environ)
+        result["shardRetries"] = shard_retries
         manifest_test_targets(root / "Package.swift")
         minimums = load_minimum_counts(root / "script" / "quality_baselines.json")
     except ValueError as error:
@@ -682,23 +703,76 @@ def run_all(root: Path) -> int:
             shard.filter_pattern,
         ]
         entry.update({"status": "running", "command": command})
+        attempts = entry["attempts"]
+        assert isinstance(attempts, list)
         atomic_write_json(result_path, result)
         print(
             f"swift test shards: running {index + 1}/{len(shards)} "
-            f"{shard.label} ({len(shard.tests)} tests)"
+            f"{shard.label} ({len(shard.tests)} tests)",
+            flush=True,
         )
-        log_path = Path(str(entry["logPath"]))
-        sample_path = Path(str(entry["samplePath"]))
-        process_result = run_child(
-            command,
-            cwd=root,
-            log_path=log_path,
-            timeout_seconds=shard_timeout,
-            sample_path=sample_path,
-            echo_stdout=True,
-        )
-        entry["durationSeconds"] = round(process_result.duration_seconds, 3)
-        entry["returnCode"] = process_result.return_code
+        process_result: ProcessResult | None = None
+        for attempt_number in range(1, shard_retries + 2):
+            if attempt_number == 1:
+                log_path = Path(str(entry["logPath"]))
+                sample_path = Path(str(entry["samplePath"]))
+            else:
+                attempt_stem = output_directory / (
+                    f"shard-{shard.slug}.attempt-{attempt_number}"
+                )
+                log_path = Path(f"{attempt_stem}.log")
+                sample_path = Path(f"{attempt_stem}.sample.txt")
+            attempt = {
+                "attempt": attempt_number,
+                "retry": attempt_number > 1,
+                "status": "running",
+                "logPath": str(log_path),
+                "samplePath": str(sample_path),
+            }
+            attempts.append(attempt)
+            entry.update(
+                {
+                    "attempts": attempts,
+                    "logPath": str(log_path),
+                    "samplePath": str(sample_path),
+                }
+            )
+            atomic_write_json(result_path, result)
+            process_result = run_child(
+                command,
+                cwd=root,
+                log_path=log_path,
+                timeout_seconds=shard_timeout,
+                sample_path=sample_path,
+                echo_stdout=True,
+            )
+            attempt["durationSeconds"] = round(process_result.duration_seconds, 3)
+            attempt["returnCode"] = process_result.return_code
+            attempt["timedOut"] = process_result.timed_out
+            attempt["status"] = (
+                "timed_out"
+                if process_result.timed_out
+                else "passed"
+                if process_result.return_code == 0
+                else "failed"
+            )
+            entry["durationSeconds"] = attempt["durationSeconds"]
+            entry["returnCode"] = process_result.return_code
+            entry["timedOut"] = process_result.timed_out
+            entry["retryCount"] = attempt_number - 1
+            atomic_write_json(result_path, result)
+            if not process_result.timed_out or attempt_number > shard_retries:
+                break
+            entry["status"] = "retrying"
+            atomic_write_json(result_path, result)
+            print(
+                f"swift test shards: timeout on {shard.label}; "
+                f"retrying ({attempt_number}/{shard_retries})",
+                file=sys.stderr,
+                flush=True,
+            )
+
+        assert process_result is not None
         if process_result.return_code != 0:
             entry["status"] = "timed_out" if process_result.timed_out else "failed"
             result.update(

@@ -57,7 +57,8 @@ if fail_at and len(calls) == fail_at:
     raise SystemExit(int(os.environ.get("SWIFT_FAIL_CODE", "19")))
 
 hang_at = int(os.environ.get("SWIFT_HANG_AT", "0"))
-if hang_at and len(calls) == hang_at:
+hang_always = os.environ.get("SWIFT_HANG_ALWAYS", "0") == "1"
+if hang_at and (len(calls) == hang_at or (hang_always and len(calls) >= hang_at)):
     child = subprocess.Popen(
         [os.environ["FAKE_XCTEST"], "60"],
         start_new_session=True,
@@ -263,6 +264,7 @@ def make_fixture(
 def fixture_environment(paths: dict[str, str], **extra: str) -> dict[str, str]:
     environment = os.environ.copy()
     environment.pop("SWIFT_TEST_SHARD_TIMEOUT_SECONDS", None)
+    environment.pop("SWIFT_TEST_SHARD_RETRIES", None)
     environment.pop("SWIFT_TEST_TERMINATION_GRACE_SECONDS", None)
     environment.update(
         {
@@ -406,6 +408,17 @@ def test_manifest_inventory_and_baseline_fail_closed() -> None:
             assert read_result(root)["status"] == "failed"
 
 
+def test_shard_retry_configuration_is_bounded() -> None:
+    temporary, root, paths = make_fixture()
+    with temporary:
+        result = run_fixture(root, paths, SWIFT_TEST_SHARD_RETRIES="2")
+        assert result.returncode == 2, result
+        assert "SWIFT_TEST_SHARD_RETRIES must be between 0 and 1" in result.stderr
+        assert read_calls(paths) == []
+        payload = read_result(root)
+        assert payload["status"] == "failed"
+
+
 def test_nonzero_shard_fails_fast_with_incremental_result() -> None:
     temporary, root, paths = make_fixture()
     with temporary:
@@ -415,7 +428,63 @@ def test_nonzero_shard_fails_fast_with_incremental_result() -> None:
         payload = read_result(root)
         assert payload["status"] == "failed"
         assert payload["returnCode"] == 23
-        assert any(shard["status"] == "failed" for shard in payload["shards"])
+        failed = next(shard for shard in payload["shards"] if shard["status"] == "failed")
+        assert len(failed["attempts"]) == 1
+
+
+def test_timeout_retries_once_then_passes_with_distinct_evidence() -> None:
+    temporary, root, paths = make_fixture()
+    with temporary:
+        result = run_fixture(
+            root,
+            paths,
+            SWIFT_HANG_AT="2",
+            SWIFT_TEST_SHARD_TIMEOUT_SECONDS="0.5",
+            SWIFT_TEST_TERMINATION_GRACE_SECONDS="0.2",
+        )
+        assert result.returncode == 0, result.stderr
+        payload = read_result(root)
+        assert payload["status"] == "passed"
+        retried = next(
+            shard for shard in payload["shards"] if shard["retryCount"] == 1
+        )
+        attempts = retried["attempts"]
+        assert len(attempts) == 2, attempts
+        assert attempts[0]["status"] == "timed_out", attempts
+        assert attempts[0]["timedOut"] is True, attempts
+        assert attempts[0]["retry"] is False, attempts
+        assert attempts[1]["status"] == "passed", attempts
+        assert attempts[1]["retry"] is True, attempts
+        assert attempts[0]["logPath"] != attempts[1]["logPath"], attempts
+        assert attempts[0]["samplePath"] != attempts[1]["samplePath"], attempts
+        assert all(Path(attempt["logPath"]).exists() for attempt in attempts)
+        assert Path(attempts[0]["samplePath"]).exists()
+        assert retried["logPath"] == attempts[-1]["logPath"]
+        assert retried["samplePath"] == attempts[-1]["samplePath"]
+
+
+def test_repeated_timeout_retries_once_then_fails_closed() -> None:
+    temporary, root, paths = make_fixture()
+    with temporary:
+        result = run_fixture(
+            root,
+            paths,
+            SWIFT_HANG_AT="2",
+            SWIFT_HANG_ALWAYS="1",
+            SWIFT_TEST_SHARD_TIMEOUT_SECONDS="0.5",
+            SWIFT_TEST_TERMINATION_GRACE_SECONDS="0.2",
+        )
+        assert result.returncode == 124, result
+        payload = read_result(root)
+        assert payload["status"] == "timed_out"
+        timed_out = next(shard for shard in payload["shards"] if shard["status"] == "timed_out")
+        attempts = timed_out["attempts"]
+        assert len(attempts) == 2, attempts
+        assert all(attempt["status"] == "timed_out" for attempt in attempts), attempts
+        assert all(attempt["timedOut"] is True for attempt in attempts), attempts
+        assert attempts[0]["logPath"] != attempts[1]["logPath"], attempts
+        assert attempts[0]["samplePath"] != attempts[1]["samplePath"], attempts
+        assert all(Path(attempt["logPath"]).exists() for attempt in attempts)
 
 
 def test_timeout_samples_and_removes_child_process_group() -> None:
@@ -425,6 +494,7 @@ def test_timeout_samples_and_removes_child_process_group() -> None:
             root,
             paths,
             SWIFT_HANG_AT="2",
+            SWIFT_TEST_SHARD_RETRIES="0",
             SWIFT_TEST_SHARD_TIMEOUT_SECONDS="0.5",
             SWIFT_TEST_TERMINATION_GRACE_SECONDS="0.2",
         )
@@ -439,6 +509,7 @@ def test_timeout_samples_and_removes_child_process_group() -> None:
         payload = read_result(root)
         assert payload["status"] == "timed_out"
         timed_out = next(shard for shard in payload["shards"] if shard["status"] == "timed_out")
+        assert len(timed_out["attempts"]) == 1
         assert Path(timed_out["samplePath"]).exists()
         sample_calls = json.loads(Path(paths["sample_call_log"]).read_text(encoding="utf-8"))
         assert sample_calls and sample_calls[0][0] == str(child_pid)
@@ -501,7 +572,10 @@ def test_external_sigterm_is_forwarded_to_active_shard() -> None:
 def main() -> int:
     test_successful_partition_and_exact_argv()
     test_manifest_inventory_and_baseline_fail_closed()
+    test_shard_retry_configuration_is_bounded()
     test_nonzero_shard_fails_fast_with_incremental_result()
+    test_timeout_retries_once_then_passes_with_distinct_evidence()
+    test_repeated_timeout_retries_once_then_fails_closed()
     test_timeout_samples_and_removes_child_process_group()
     test_leader_exit_cleans_detached_child_and_fails_missing_counts()
     test_external_sigterm_is_forwarded_to_active_shard()
