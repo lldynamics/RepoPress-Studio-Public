@@ -203,9 +203,9 @@ struct CodexAppServerModelSelectionSection: View {
   }
 
   private func modelTitle(_ model: CodexAppServerModel) -> String {
-    model.displayName == model.model
-      ? model.displayName
-      : "\(model.displayName) (\(model.model))"
+    model.localizedDisplayName == model.model
+      ? model.localizedDisplayName
+      : "\(model.localizedDisplayName) (\(model.model))"
   }
 
   private func effortTitle(_ option: CodexAppServerReasoningEffortOption) -> String {

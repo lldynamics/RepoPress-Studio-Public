@@ -2369,6 +2369,22 @@
         }
       }
     },
+    "2. 模型与推理等级": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "2. Model and Reasoning Effort"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "2. 模型与推理等级"
+          }
+        }
+      }
+    },
     "2. 转换概览": {
       "localizations": {
         "en": {
@@ -3725,6 +3741,54 @@
           "stringUnit": {
             "state": "translated",
             "value": "ChatGPT 尚未登录。"
+          }
+        }
+      }
+    },
+    "ChatGPT 推理等级": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ChatGPT Reasoning Effort"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ChatGPT 推理等级"
+          }
+        }
+      }
+    },
+    "ChatGPT 模型": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ChatGPT Model"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ChatGPT 模型"
+          }
+        }
+      }
+    },
+    "ChatGPT 模型与推理等级在上方账户区设置。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Set the ChatGPT model and reasoning effort in the account section above."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ChatGPT 模型与推理等级在上方账户区设置。"
           }
         }
       }
@@ -16289,6 +16353,22 @@
         }
       }
     },
+    "使用 AI 设置中保存的默认模型": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Use the default model saved in AI Settings"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "使用 AI 设置中保存的默认模型"
+          }
+        }
+      }
+    },
     "使用 ChatGPT 套餐登录，不需要在 RepoPress 中填写 API Key。": {
       "localizations": {
         "en": {
@@ -21649,6 +21729,22 @@
         }
       }
     },
+    "刷新可用模型": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Refresh Available Models"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "刷新可用模型"
+          }
+        }
+      }
+    },
     "刷新完成：成功 %lld、失败 %lld": {
       "localizations": {
         "en": {
@@ -21745,6 +21841,38 @@
         }
       }
     },
+    "刷新模型": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Refresh Models"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "刷新模型"
+          }
+        }
+      }
+    },
+    "刷新模型失败：%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Failed to refresh models: %@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "刷新模型失败：%@"
+          }
+        }
+      }
+    },
     "刷新此订阅": {
       "localizations": {
         "en": {
@@ -21821,6 +21949,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "刷新访问令牌状态"
+          }
+        }
+      }
+    },
+    "刷新账户可用模型": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Refresh Models Available to the Account"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "刷新账户可用模型"
           }
         }
       }
@@ -33649,6 +33793,54 @@
         }
       }
     },
+    "当前模型未声明可选推理等级": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The Current Model Declares No Reasoning Effort Options"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "当前模型未声明可选推理等级"
+          }
+        }
+      }
+    },
+    "当前模型未提供可选思考等级，将使用模型默认设置": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The current model provides no reasoning effort options; the model default will be used"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "当前模型未提供可选思考等级，将使用模型默认设置"
+          }
+        }
+      }
+    },
+    "当前模型未提供可选思考等级，将使用模型默认设置。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The current model provides no reasoning effort options; the model default will be used."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "当前模型未提供可选思考等级，将使用模型默认设置。"
+          }
+        }
+      }
+    },
     "当前正文使用清洗规则 v%@，新版 v%@ 可进一步过滤社交平台界面噪声。重新清洗后，阅读、搜索与 AI 检索会改用新版内容。": {
       "localizations": {
         "en": {
@@ -34877,6 +35069,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "忽略 %@ 的恢复内容"
+          }
+        }
+      }
+    },
+    "思考等级": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reasoning Effort"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "思考等级"
           }
         }
       }
@@ -38189,6 +38397,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "控制快速隐藏、私密内容遮挡和安全状态。"
+          }
+        }
+      }
+    },
+    "推理等级": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reasoning Effort"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "推理等级"
           }
         }
       }
@@ -42621,6 +42845,38 @@
           "stringUnit": {
             "state": "translated",
             "value": "暂时没有足够相关的其他内容。"
+          }
+        }
+      }
+    },
+    "暂未返回可用模型，仍可使用账户默认模型": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No available models were returned; the account default can still be used"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "暂未返回可用模型，仍可使用账户默认模型"
+          }
+        }
+      }
+    },
+    "暂未返回可用模型；仍可使用账户默认模型。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No available models were returned; the account default can still be used."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "暂未返回可用模型；仍可使用账户默认模型。"
           }
         }
       }
@@ -47313,6 +47569,38 @@
         }
       }
     },
+    "模型与思考等级": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Model and Reasoning Effort"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "模型与思考等级"
+          }
+        }
+      }
+    },
+    "模型列表刷新失败：%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Failed to refresh the model list: %@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "模型列表刷新失败：%@"
+          }
+        }
+      }
+    },
     "模型档位": {
       "localizations": {
         "en": {
@@ -47777,6 +48065,38 @@
         }
       }
     },
+    "正在刷新模型": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Refreshing Models"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在刷新模型"
+          }
+        }
+      }
+    },
+    "正在刷新模型列表": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Refreshing Model List"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在刷新模型列表"
+          }
+        }
+      }
+    },
     "正在刷新阅读数据": {
       "localizations": {
         "en": {
@@ -47789,6 +48109,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "正在刷新阅读数据"
+          }
+        }
+      }
+    },
+    "正在加载账户可用模型…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Loading models available to the account…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在加载账户可用模型…"
           }
         }
       }
@@ -48909,6 +49245,38 @@
           "stringUnit": {
             "state": "translated",
             "value": "正在读取本机正文…"
+          }
+        }
+      }
+    },
+    "正在读取账户可用模型": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reading Models Available to the Account"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在读取账户可用模型"
+          }
+        }
+      }
+    },
+    "正在读取账户可用模型…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reading models available to the account…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在读取账户可用模型…"
           }
         }
       }
@@ -56481,22 +56849,6 @@
         }
       }
     },
-    "自动选择账户可用模型": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Automatically select a model available to the account"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "自动选择账户可用模型"
-          }
-        }
-      }
-    },
     "自动重试：%@": {
       "localizations": {
         "en": {
@@ -58833,6 +59185,22 @@
         }
       }
     },
+    "读取账户可用模型失败，请稍后重试。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Failed to read models available to the account. Try again later."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "读取账户可用模型失败，请稍后重试。"
+          }
+        }
+      }
+    },
     "调整 RSS 正文字号、行距和主题": {
       "localizations": {
         "en": {
@@ -58909,6 +59277,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "账户"
+          }
+        }
+      }
+    },
+    "账户暂未返回可用模型；可以点击刷新重试。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The account has not returned any available models. Select Refresh to try again."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "账户暂未返回可用模型；可以点击刷新重试。"
           }
         }
       }
@@ -59633,6 +60017,22 @@
         }
       }
     },
+    "跟随模型默认": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Follow Model Default"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "跟随模型默认"
+          }
+        }
+      }
+    },
     "跟随系统": {
       "localizations": {
         "en": {
@@ -59645,6 +60045,54 @@
           "stringUnit": {
             "state": "translated",
             "value": "跟随系统"
+          }
+        }
+      }
+    },
+    "跟随账户默认": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Follow Account Default"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "跟随账户默认"
+          }
+        }
+      }
+    },
+    "跟随连接默认": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Follow Connection Default"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "跟随连接默认"
+          }
+        }
+      }
+    },
+    "跟随连接默认模型": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Follow Connection Default Model"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "跟随连接默认模型"
           }
         }
       }
@@ -63917,6 +64365,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "重新保存当前工作台设置"
+          }
+        }
+      }
+    },
+    "重新加载模型": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reload Models"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "重新加载模型"
           }
         }
       }

@@ -49,14 +49,14 @@ struct AIChatConnectionStatusCapsule: View {
 
   private var config: AIProviderConfig {
     guard let draft else { return AIProviderConfig() }
-    return ai.chatProviderConfig(for: draft)
+    return chatState.chatProviderConfig(for: draft)
   }
 
   private var model: String {
     guard draft != nil else { return String(localized: "未选择") }
     return AIChatModelSelectionPresentationService.presentation(
-      grade: ai.chatModelGrade,
-      selectedModel: ai.chatSelectedModel,
+      grade: chatState.chatModelGrade,
+      selectedModel: chatState.chatSelectedModel,
       config: config
     ).activeModel.nilIfEmpty ?? String(localized: "未选择")
   }
@@ -73,7 +73,7 @@ struct AIChatConnectionStatusCapsule: View {
     AIChatConnectionStatusPresentation.readiness(
       for: config,
       activeModel: draft == nil ? nil : model,
-      hasToken: ai.tokenAvailability.hasToken,
+      hasToken: chatState.tokenAvailability.hasToken,
       hasDraft: draft != nil
     ).isReady
   }
@@ -86,7 +86,7 @@ struct AIChatConnectionStatusCapsule: View {
     AIChatConnectionStatusPresentation.readiness(
       for: config,
       activeModel: draft == nil ? nil : model,
-      hasToken: ai.tokenAvailability.hasToken,
+      hasToken: chatState.tokenAvailability.hasToken,
       hasDraft: draft != nil
     ).detail
   }
@@ -169,16 +169,16 @@ struct AIChatModelQuickSwitchSheet: View {
       synchronizeCustomModelInput()
       loadCodexModelsIfNeeded()
     }
-    .onChange(of: ai.chatModelGrade) { _, _ in
+    .onChange(of: chatState.chatModelGrade) { _, _ in
       connectionReport = nil
       synchronizeCustomModelInput()
     }
-    .onChange(of: ai.chatSelectedModel) { _, _ in
+    .onChange(of: chatState.chatSelectedModel) { _, _ in
       connectionReport = nil
       synchronizeCustomModelInput()
       normalizeCodexReasoningEffort()
     }
-    .onChange(of: ai.activeChatConnectionProfile.id) { _, _ in
+    .onChange(of: chatState.activeChatConnectionProfile.id) { _, _ in
       codexModels = []
       codexModelsError = nil
       loadCodexModelsIfNeeded()
@@ -189,15 +189,15 @@ struct AIChatModelQuickSwitchSheet: View {
   }
 
   var currentConfig: AIProviderConfig {
-    guard let draft else { return ai.activeChatConnectionProfile.config }
-    return ai.chatProviderConfig(for: draft)
+    guard let draft else { return chatState.activeChatConnectionProfile.config }
+    return chatState.chatProviderConfig(for: draft)
   }
 
   private var currentSelection: AIChatModelSelectionPresentation? {
     guard draft != nil else { return nil }
     return AIChatModelSelectionPresentationService.presentation(
-      grade: ai.chatModelGrade,
-      selectedModel: ai.chatSelectedModel,
+      grade: chatState.chatModelGrade,
+      selectedModel: chatState.chatSelectedModel,
       config: currentConfig
     )
   }
@@ -206,7 +206,7 @@ struct AIChatModelQuickSwitchSheet: View {
     guard draft != nil else { return [] }
     return AIChatInspectorHeaderPresentation.modelGradeCandidates(
       for: currentConfig,
-      currentModel: ai.chatSelectedModel
+      currentModel: chatState.chatSelectedModel
     )
   }
 
@@ -224,7 +224,7 @@ struct AIChatModelQuickSwitchSheet: View {
     AIChatConnectionStatusPresentation.readiness(
       for: currentConfig,
       activeModel: currentSelection?.activeModel,
-      hasToken: ai.tokenAvailability.hasToken,
+      hasToken: chatState.tokenAvailability.hasToken,
       hasDraft: draft != nil
     )
   }
@@ -238,10 +238,12 @@ struct AIChatModelQuickSwitchSheet: View {
         Text(connectionStatusTitle)
           .font(.callout.weight(.semibold))
         Spacer()
-        Text(AIChatInspectorHeaderPresentation.modelSummary(
-          for: currentConfig,
-          activeModel: currentSelection?.activeModel
-        ))
+        Text(
+          AIChatInspectorHeaderPresentation.modelSummary(
+            for: currentConfig,
+            activeModel: currentSelection?.activeModel
+          )
+        )
         .font(.caption.monospaced())
         .foregroundStyle(.secondary)
         .lineLimit(1)
@@ -275,24 +277,26 @@ struct AIChatModelQuickSwitchSheet: View {
         .font(.caption.weight(.semibold))
         .foregroundStyle(.secondary)
 
-      if ai.chatConnectionProfiles.isEmpty {
+      if chatState.chatConnectionProfiles.isEmpty {
         Text(String(localized: "还没有可复用的连接档案。"))
           .font(.caption)
           .foregroundStyle(.secondary)
       } else {
-        ForEach(ai.chatConnectionProfiles) { profile in
+        ForEach(chatState.chatConnectionProfiles) { profile in
           Button {
             ai.selectChatConnectionProfile(profile.id)
             connectionReport = nil
             synchronizeCustomModelInput()
           } label: {
             HStack(spacing: 9) {
-              Image(systemName: ai.activeChatConnectionProfile.id == profile.id
-                ? "checkmark.circle.fill" : "circle")
-                .foregroundStyle(
-                  ai.activeChatConnectionProfile.id == profile.id
-                    ? WorkbenchTheme.primary : Color.secondary
-                )
+              Image(
+                systemName: chatState.activeChatConnectionProfile.id == profile.id
+                  ? "checkmark.circle.fill" : "circle"
+              )
+              .foregroundStyle(
+                chatState.activeChatConnectionProfile.id == profile.id
+                  ? WorkbenchTheme.primary : Color.secondary
+              )
               VStack(alignment: .leading, spacing: 2) {
                 Text(profile.name)
                   .font(.callout.weight(.medium))
@@ -308,7 +312,7 @@ struct AIChatModelQuickSwitchSheet: View {
           }
           .buttonStyle(.plain)
           .accessibilityAddTraits(
-            ai.activeChatConnectionProfile.id == profile.id ? .isSelected : []
+            chatState.activeChatConnectionProfile.id == profile.id ? .isSelected : []
           )
         }
       }
@@ -322,8 +326,8 @@ struct AIChatModelQuickSwitchSheet: View {
           ? String(localized: "模型与思考等级")
           : String(localized: "模型档位")
       )
-        .font(.caption.weight(.semibold))
-        .foregroundStyle(.secondary)
+      .font(.caption.weight(.semibold))
+      .foregroundStyle(.secondary)
 
       if currentConfig.usesCodexAppServer {
         codexModelSection
@@ -352,11 +356,14 @@ struct AIChatModelQuickSwitchSheet: View {
           ai.setChatModelGrade(candidate.grade)
         } label: {
           HStack(spacing: 9) {
-            Image(systemName: ai.chatModelGrade == candidate.grade
-              ? "checkmark.circle.fill" : "circle")
-              .foregroundStyle(
-                ai.chatModelGrade == candidate.grade ? WorkbenchTheme.primary : Color.secondary
-              )
+            Image(
+              systemName: chatState.chatModelGrade == candidate.grade
+                ? "checkmark.circle.fill" : "circle"
+            )
+            .foregroundStyle(
+              chatState.chatModelGrade == candidate.grade
+                ? WorkbenchTheme.primary : Color.secondary
+            )
             VStack(alignment: .leading, spacing: 2) {
               Text(candidate.title)
                 .font(.callout.weight(.medium))
@@ -378,11 +385,14 @@ struct AIChatModelQuickSwitchSheet: View {
         ai.setChatModelGrade(.custom)
       } label: {
         HStack(spacing: 9) {
-          Image(systemName: ai.chatModelGrade == .custom
-            ? "checkmark.circle.fill" : "circle")
-            .foregroundStyle(
-              ai.chatModelGrade == .custom ? WorkbenchTheme.primary : Color.secondary
-            )
+          Image(
+            systemName: chatState.chatModelGrade == .custom
+              ? "checkmark.circle.fill" : "circle"
+          )
+          .foregroundStyle(
+            chatState.chatModelGrade == .custom
+              ? WorkbenchTheme.primary : Color.secondary
+          )
           Text(String(localized: "自定义模型"))
             .font(.callout.weight(.medium))
           Spacer(minLength: 8)
@@ -407,7 +417,8 @@ struct AIChatModelQuickSwitchSheet: View {
   // Shared with the Codex extension so selecting the account default can keep
   // the existing custom-model field in sync without duplicating state logic.
   func synchronizeCustomModelInput() {
-    customModelInput = ai.chatSelectedModel.nilIfEmpty
+    customModelInput =
+      chatState.chatSelectedModel.nilIfEmpty
       ?? currentSelection?.activeModel
       ?? ""
   }

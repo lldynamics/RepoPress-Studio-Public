@@ -319,7 +319,7 @@ func localPublishSourceFileState(
     at: url,
     maximumByteCount: WorkbenchFileReadLimits.maximumLocalPublishTrackedFileByteCount
   )
-  let identifier = UInt64(bitPattern: Int64(values.fileResourceIdentifier?.hashValue ?? 0))
+  let identifier = stableLocalPublishFileIdentifier(values.fileResourceIdentifier)
   return LocalPublishSourceFileState(
     byteSize: Int64(values.fileSize ?? 0),
     sha256: digest,
@@ -327,6 +327,33 @@ func localPublishSourceFileState(
     fileIdentifier: identifier
   )
 #endif
+}
+
+/// Converts Foundation's opaque file-resource identifier into a reproducible value.
+///
+/// `Hashable.hashValue` is intentionally randomized between processes, so it cannot
+/// participate in a persisted preview identity. Unknown identifier representations
+/// fail closed to zero; the source digest and byte size still protect content while
+/// avoiding a false claim that an unstable identity is durable.
+func stableLocalPublishFileIdentifier(_ identifier: Any?) -> UInt64 {
+  switch identifier {
+  case let number as NSNumber:
+    return number.uint64Value
+  case let data as Data:
+    return stableLocalPublishIdentifierDigest(data)
+  case let string as String:
+    return stableLocalPublishIdentifierDigest(Data(string.utf8))
+  case let uuid as UUID:
+    return stableLocalPublishIdentifierDigest(withUnsafeBytes(of: uuid.uuid) { Data($0) })
+  default:
+    return 0
+  }
+}
+
+private func stableLocalPublishIdentifierDigest(_ data: Data) -> UInt64 {
+  SHA256.hash(data: data).prefix(8).reduce(into: UInt64(0)) { value, byte in
+    value = (value << 8) | UInt64(byte)
+  }
 }
 
 #if canImport(Darwin)

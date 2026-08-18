@@ -54,13 +54,13 @@ let package = Package(
         .process("Resources")
       ],
       swiftSettings: [
-        .swiftLanguageMode(.v5)
+        .swiftLanguageMode(.v6)
       ]
     ),
     .target(
       name: "BrowserExtensionProtocolSupport",
       swiftSettings: [
-        .swiftLanguageMode(.v5)
+        .swiftLanguageMode(.v6)
       ]
     ),
     .testTarget(
@@ -70,7 +70,7 @@ let package = Package(
         "PublishingWorkbenchCore",
       ],
       swiftSettings: [
-        .swiftLanguageMode(.v5)
+        .swiftLanguageMode(.v6)
       ]
     ),
     .testTarget(
@@ -80,7 +80,7 @@ let package = Package(
         "PublishingWorkbenchCore",
       ],
       swiftSettings: [
-        .swiftLanguageMode(.v5)
+        .swiftLanguageMode(.v6)
       ]
     ),
   ]

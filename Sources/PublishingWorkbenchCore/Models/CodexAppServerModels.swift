@@ -131,11 +131,13 @@ public struct CodexAppServerReasoningEffortOption: Codable, Equatable, Sendable 
   }
 
   public init(from decoder: Decoder) throws {
-    if let singleValue = try? decoder.singleValueContainer(),
-      let value = try? singleValue.decode(String.self)
-    {
+    do {
+      let singleValue = try decoder.singleValueContainer()
+      let value = try singleValue.decode(String.self)
       self.init(reasoningEffort: value)
       return
+    } catch {
+      // App Server also returns keyed effort objects; decode that shape below.
     }
 
     let container = try decoder.container(keyedBy: CodingKeys.self)

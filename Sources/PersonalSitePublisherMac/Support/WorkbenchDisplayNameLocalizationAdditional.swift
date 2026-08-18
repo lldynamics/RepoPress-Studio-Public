@@ -1,5 +1,11 @@
 import PublishingWorkbenchCore
 
+extension CodexAppServerModel {
+  /// App Server owns this dynamic, account-specific model name. It is already
+  /// presentation content rather than one of RepoPress Studio's catalog keys.
+  var localizedDisplayName: String { displayName }
+}
+
 extension AIPublishingActionKind {
   var workbenchDisplayNameSemanticKey: String {
     switch self {

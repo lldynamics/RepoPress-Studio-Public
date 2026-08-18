@@ -96,11 +96,12 @@ final class AssetResourceManagerServiceTests: XCTestCase {
       at: rootURL.appendingPathComponent("static", isDirectory: true),
       withIntermediateDirectories: true
     )
+    let scanProfile = profile(rootURL: rootURL)
 
     let task = Task {
       withUnsafeCurrentTask { $0?.cancel() }
       return try await AssetResourceManagerService().scanAsync(
-        profile: profile(rootURL: rootURL)
+        profile: scanProfile
       )
     }
 

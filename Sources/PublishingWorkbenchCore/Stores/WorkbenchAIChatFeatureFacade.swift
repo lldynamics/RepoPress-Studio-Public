@@ -12,6 +12,40 @@ public final class WorkbenchAIChatFeatureFacade: ObservableObject {
   private unowned let store: WorkbenchStore
   private var cancellables = Set<AnyCancellable>()
 
+  /// Read-only chat state belongs to this narrow observation boundary. The
+  /// command facade remains available for actions, while quick-switch views
+  /// can avoid depending on unrelated image and site-maintenance publishers.
+  public var tokenAvailability: KeychainTokenAvailability {
+    store.aiTokenAvailability
+  }
+
+  public var chatModelGrade: AIChatModelGrade {
+    store.aiChatModelGrade
+  }
+
+  public var chatSelectedModel: String {
+    store.aiChatSelectedModel
+  }
+
+  public var chatReasoningEffortOverride: String? {
+    store.activeAIConnectionProfile.config.resolvedAdvancedSettings
+      .reasoningEffortOverride?
+      .trimmingCharacters(in: .whitespacesAndNewlines)
+      .nilIfEmpty
+  }
+
+  public var chatConnectionProfiles: [AIConnectionProfile] {
+    store.aiConnectionProfiles
+  }
+
+  public var activeChatConnectionProfile: AIConnectionProfile {
+    store.activeAIConnectionProfile
+  }
+
+  public func chatProviderConfig(for draft: ArticleDraft) -> AIProviderConfig {
+    store.aiProviderConfig(for: store.profile(for: draft))
+  }
+
   public init(store: WorkbenchStore) {
     self.store = store
 

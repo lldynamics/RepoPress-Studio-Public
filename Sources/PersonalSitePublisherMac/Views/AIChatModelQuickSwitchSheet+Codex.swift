@@ -73,7 +73,7 @@ extension AIChatModelQuickSwitchSheet {
                 isCodexModelSelected(model) ? WorkbenchTheme.primary : Color.secondary
               )
               VStack(alignment: .leading, spacing: 2) {
-                Text(model.displayName)
+                Text(model.localizedDisplayName)
                   .font(.callout.weight(.medium))
                 Text(model.model)
                   .font(.caption.monospaced())
@@ -82,7 +82,7 @@ extension AIChatModelQuickSwitchSheet {
                   .truncationMode(.middle)
                 if let description = model.description?.nilIfEmpty {
                   Text(description)
-                    .font(.caption2)
+                    .font(.workbenchMetadata)
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
                 }
@@ -92,7 +92,7 @@ extension AIChatModelQuickSwitchSheet {
             .contentShape(Rectangle())
           }
           .buttonStyle(.plain)
-          .accessibilityLabel(model.displayName)
+          .accessibilityLabel(model.localizedDisplayName)
           .accessibilityValue(
             isCodexModelSelected(model) ? String(localized: "已选择") : model.model
           )
@@ -158,13 +158,13 @@ extension AIChatModelQuickSwitchSheet {
 
   private var isCodexConnectionDefaultSelected: Bool {
     guard currentConfig.usesCodexAppServer else { return false }
-    let selected = ai.chatSelectedModel.trimmingCharacters(in: .whitespacesAndNewlines)
+    let selected = chatState.chatSelectedModel.trimmingCharacters(in: .whitespacesAndNewlines)
     return selected.isEmpty
   }
 
   private var activeCodexModel: CodexAppServerModel? {
     guard currentConfig.usesCodexAppServer else { return nil }
-    let selected = ai.chatSelectedModel.trimmingCharacters(in: .whitespacesAndNewlines)
+    let selected = chatState.chatSelectedModel.trimmingCharacters(in: .whitespacesAndNewlines)
     let resolvedModel = selected.isEmpty ? currentConfig.normalizedModel : selected
     if resolvedModel.isEmpty || resolvedModel == AIProviderPreset.codexDefaultModel {
       return codexModels.first(where: \.isDefault) ?? codexModels.first
@@ -176,7 +176,7 @@ extension AIChatModelQuickSwitchSheet {
 
   private var reasoningEffortBinding: Binding<String> {
     Binding(
-      get: { ai.chatReasoningEffortOverride ?? "" },
+      get: { chatState.chatReasoningEffortOverride ?? "" },
       set: { value in
         ai.setChatReasoningEffortOverride(value.nilIfEmpty)
       }
@@ -184,7 +184,7 @@ extension AIChatModelQuickSwitchSheet {
   }
 
   private func reasoningEffortAccessibilityValue(for model: CodexAppServerModel) -> String {
-    guard let effort = ai.chatReasoningEffortOverride?.nilIfEmpty else {
+    guard let effort = chatState.chatReasoningEffortOverride?.nilIfEmpty else {
       return String(localized: "跟随模型默认")
     }
     return model.supportedReasoningEfforts.first(where: {
@@ -194,7 +194,7 @@ extension AIChatModelQuickSwitchSheet {
 
   private func isCodexModelSelected(_ model: CodexAppServerModel) -> Bool {
     guard !isCodexConnectionDefaultSelected else { return false }
-    let selected = ai.chatSelectedModel.trimmingCharacters(in: .whitespacesAndNewlines)
+    let selected = chatState.chatSelectedModel.trimmingCharacters(in: .whitespacesAndNewlines)
     return selected == model.model || selected == model.id
   }
 
@@ -215,7 +215,7 @@ extension AIChatModelQuickSwitchSheet {
   func normalizeCodexReasoningEffort(for model: CodexAppServerModel? = nil) {
     guard currentConfig.usesCodexAppServer else { return }
     guard let model = model ?? activeCodexModel else { return }
-    guard let override = ai.chatReasoningEffortOverride?.nilIfEmpty else { return }
+    guard let override = chatState.chatReasoningEffortOverride?.nilIfEmpty else { return }
     let supported = model.supportedReasoningEfforts.contains {
       $0.reasoningEffort == override
     }
@@ -235,12 +235,12 @@ extension AIChatModelQuickSwitchSheet {
 
     isLoadingCodexModels = true
     codexModelsError = nil
-    let profileID = ai.activeChatConnectionProfile.id
+    let profileID = chatState.activeChatConnectionProfile.id
     Task {
       do {
         let models = try await CodexAppServerClient.shared.models(includeHidden: false)
         guard !Task.isCancelled else { return }
-        guard ai.activeChatConnectionProfile.id == profileID,
+        guard chatState.activeChatConnectionProfile.id == profileID,
           currentConfig.usesCodexAppServer
         else { return }
         codexModels = models.filter {
@@ -250,7 +250,7 @@ extension AIChatModelQuickSwitchSheet {
         normalizeCodexReasoningEffort()
       } catch {
         guard !Task.isCancelled else { return }
-        guard ai.activeChatConnectionProfile.id == profileID else { return }
+        guard chatState.activeChatConnectionProfile.id == profileID else { return }
         codexModelsError =
           error.localizedDescription.nilIfEmpty
           ?? String(localized: "读取账户可用模型失败，请稍后重试。")
