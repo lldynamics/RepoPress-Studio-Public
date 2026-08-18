@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Keep byte-oriented assertions deterministic when the repository path contains
+# non-ASCII characters and Bash renders shell-escaped command arguments.
+export LC_ALL=C
+
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SCRIPT="$ROOT_DIR/script/capture_release_performance_trace.sh"
 
