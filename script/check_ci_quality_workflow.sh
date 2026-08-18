@@ -30,6 +30,10 @@ if grep -Eq '^[[:space:]]*branches:' "$TOOLING_WORKFLOW"; then
   fail "path-heavy release tooling must not run on branch pushes"
 fi
 grep -Eq '^[[:space:]]*pull_request:' "$WORKFLOW" || fail "workflow must run on pull requests"
+grep -Eq '^[[:space:]]*schedule:' "$WORKFLOW" \
+  || fail "workflow must run on a scheduled nightly release cadence"
+grep -Fq 'cron: "30 1 * * *"' "$WORKFLOW" \
+  || fail "nightly release cadence must remain fixed at 01:30 UTC"
 grep -Eq '^[[:space:]]*workflow_dispatch:' "$WORKFLOW" || fail "workflow must support manual runs"
 grep -Fq 'risk_level:' "$WORKFLOW" \
   || fail "manual quality runs must expose a risk-level selector"
@@ -126,6 +130,20 @@ for tag_lane in quality-quick quality-coverage quality-runtime release-performan
   grep -Fq "$tag_push_condition" <<<"$tag_lane_body" \
     || fail "$tag_lane must run for version-tag pushes without treating tag dispatches as releases"
 done
+for nightly_lane in quality-quick quality-coverage quality-build quality-runtime release-performance swift6-migration; do
+  nightly_lane_body="$(sed -n "/^  $nightly_lane:/,/^  [a-z]/p" "$WORKFLOW")"
+  grep -Fq "github.event_name == 'schedule'" <<<"$nightly_lane_body" \
+    || fail "$nightly_lane must run for the fixed nightly release schedule"
+done
+nightly_release_body="$(sed -n '/^  nightly-release-quality:/,$p' "$WORKFLOW")"
+grep -Fq "always() && github.event_name == 'schedule'" <<<"$nightly_release_body" \
+  || fail "nightly release aggregation must run even when a lane fails"
+for required_lane in quality-quick quality-coverage quality-build quality-runtime release-performance swift6-migration; do
+  grep -Fq -- "- $required_lane" <<<"$nightly_release_body" \
+    || fail "nightly release check must depend on $required_lane"
+done
+grep -Fq 'name: Require every nightly release quality lane' "$WORKFLOW" \
+  || fail "nightly release check must fail closed when any lane fails"
 for release_lane in quality-runtime release-performance; do
   release_lane_body="$(sed -n "/^  $release_lane:/,/^  [a-z]/p" "$WORKFLOW")"
   grep -Fq "github.event.inputs.risk_level == 'release'" <<<"$release_lane_body" \
@@ -220,4 +238,4 @@ if grep -Eq '(github_pat_|ghp_[A-Za-z0-9_]{20,}|glpat-[A-Za-z0-9_-]{20,}|Authori
   fail "workflow contains token-like content"
 fi
 
-echo "CI quality workflow gate: main-push quick layer, parallel PR quick/coverage/Swift 6/Release-build layer, version-tag or manual-release runtime/performance/UI layer, fail-closed aggregators, pinned actions, read-only permissions, summaries, and evidence verified"
+echo "CI quality workflow gate: main-push quick layer, parallel PR quick/coverage/Swift 6/Release-build layer, nightly or version-tag/manual-release runtime/performance/UI layer, fail-closed aggregators, pinned actions, read-only permissions, summaries, and evidence verified"

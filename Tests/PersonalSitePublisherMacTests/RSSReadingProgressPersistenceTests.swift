@@ -5,9 +5,10 @@ import XCTest
 final class RSSReadingProgressPersistenceTests: XCTestCase {
   func testOlderSubmissionCannotOverwriteNewerReadingProgress() async throws {
     let suiteName = "RSSReadingProgressPersistenceTests-\(UUID().uuidString)"
-    let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
-    defer { defaults.removePersistentDomain(forName: suiteName) }
-    let persistence = RSSReadingProgressPersistence(defaults: defaults)
+    defer { UserDefaults(suiteName: suiteName)?.removePersistentDomain(forName: suiteName) }
+    let persistence = RSSReadingProgressPersistence(
+      defaults: try XCTUnwrap(UserDefaults(suiteName: suiteName))
+    )
 
     await persistence.save(
       ["newest": 0.8],
@@ -20,21 +21,17 @@ final class RSSReadingProgressPersistenceTests: XCTestCase {
       revision: 1
     )
 
-    XCTAssertEqual(
-      RSSReadingProgressStore.load(defaults: defaults),
-      ["newest": 0.8]
-    )
-    XCTAssertEqual(
-      RSSReadingProgressStore.loadOrder(defaults: defaults),
-      ["newest"]
-    )
+    let storedDefaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+    XCTAssertEqual(RSSReadingProgressStore.load(defaults: storedDefaults), ["newest": 0.8])
+    XCTAssertEqual(RSSReadingProgressStore.loadOrder(defaults: storedDefaults), ["newest"])
   }
 
   func testNewerSubmissionReplacesEarlierReadingProgress() async throws {
     let suiteName = "RSSReadingProgressPersistenceTests-\(UUID().uuidString)"
-    let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
-    defer { defaults.removePersistentDomain(forName: suiteName) }
-    let persistence = RSSReadingProgressPersistence(defaults: defaults)
+    defer { UserDefaults(suiteName: suiteName)?.removePersistentDomain(forName: suiteName) }
+    let persistence = RSSReadingProgressPersistence(
+      defaults: try XCTUnwrap(UserDefaults(suiteName: suiteName))
+    )
 
     await persistence.save(
       ["article": 0.25],
@@ -47,8 +44,9 @@ final class RSSReadingProgressPersistenceTests: XCTestCase {
       revision: 11
     )
 
+    let storedDefaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
     XCTAssertEqual(
-      RSSReadingProgressStore.load(defaults: defaults)["article"],
+      RSSReadingProgressStore.load(defaults: storedDefaults)["article"],
       0.75
     )
   }

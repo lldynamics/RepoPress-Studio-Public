@@ -2,6 +2,19 @@ import XCTest
 @testable import PublishingWorkbenchCore
 
 final class LocalPublishPreviewServiceTests: XCTestCase {
+  func testStableFileResourceIdentifierDoesNotUseRandomizedHashing() {
+    XCTAssertEqual(stableLocalPublishFileIdentifier(NSNumber(value: 42)), 42)
+    XCTAssertEqual(
+      stableLocalPublishFileIdentifier(Data("resource-id".utf8)),
+      0x8D2C_84EB_1C1F_BB8B
+    )
+    XCTAssertNotEqual(
+      stableLocalPublishFileIdentifier(Data("resource-id".utf8)),
+      stableLocalPublishFileIdentifier(Data("other-resource-id".utf8))
+    )
+    XCTAssertEqual(stableLocalPublishFileIdentifier(NSObject()), 0)
+  }
+
   func testPreviewReportsModifiedMarkdownFile() throws {
     let rootURL = try makeRepositoryFixture()
     defer {

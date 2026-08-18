@@ -44,4 +44,44 @@ final class WorkbenchAIChatFeatureFacadeTests: XCTestCase {
 
     withExtendedLifetime(cancellable) {}
   }
+
+  func testPublishesQuickSwitchModelTokenAndConnectionProjection() throws {
+    let store = makeStore()
+    let facade = WorkbenchAIChatFeatureFacade(store: store)
+    let draft = try XCTUnwrap(store.drafts.first)
+    var changes = 0
+    let cancellable = facade.objectWillChange.sink { changes += 1 }
+
+    store.setAIChatCustomModel("projection-model")
+
+    XCTAssertEqual(facade.chatModelGrade, .custom)
+    XCTAssertEqual(facade.chatSelectedModel, "projection-model")
+    XCTAssertEqual(
+      facade.chatProviderConfig(for: draft),
+      facade.activeChatConnectionProfile.config
+    )
+    XCTAssertGreaterThan(changes, 0)
+
+    let beforeTokenChange = changes
+    store.setAITokenAvailability(KeychainTokenAvailability(hasToken: true))
+    XCTAssertTrue(facade.tokenAvailability.hasToken)
+    XCTAssertGreaterThan(changes, beforeTokenChange)
+
+    let beforeConnectionChange = changes
+    var updatedConnection = facade.activeChatConnectionProfile
+    updatedConnection.config.model = "connection-model"
+    XCTAssertTrue(store.updateAIConnectionProfile(updatedConnection))
+
+    XCTAssertEqual(
+      facade.activeChatConnectionProfile.config.normalizedModel,
+      "connection-model"
+    )
+    XCTAssertEqual(
+      facade.chatProviderConfig(for: draft).normalizedModel,
+      "connection-model"
+    )
+    XCTAssertGreaterThan(changes, beforeConnectionChange)
+
+    withExtendedLifetime(cancellable) {}
+  }
 }

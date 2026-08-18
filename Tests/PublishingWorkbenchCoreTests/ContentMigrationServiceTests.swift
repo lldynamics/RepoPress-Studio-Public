@@ -333,8 +333,10 @@ final class ContentMigrationServiceTests: XCTestCase {
       ["title": "Article \(index)", "content": String(repeating: "Body ", count: 64)]
     }
     try JSONSerialization.data(withJSONObject: ["posts": items]).write(to: url)
+    let migrationService = service
+    let migrationProfile = profile
     let task = Task {
-      try await service.makePlanAsync(sourceURL: url, profile: profile)
+      try await migrationService.makePlanAsync(sourceURL: url, profile: migrationProfile)
     }
 
     task.cancel()
