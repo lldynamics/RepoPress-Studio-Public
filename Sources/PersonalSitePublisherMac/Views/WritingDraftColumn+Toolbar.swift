@@ -160,6 +160,29 @@ extension WritingDraftColumn {
         Spacer(minLength: 0)
 
         Menu {
+          ForEach(WritingDraftListDisplayMode.allCases) { option in
+            Button {
+              displayModeRawValue = option.rawValue
+            } label: {
+              if displayMode == option {
+                Label(writingDraftDisplayModeName(option), systemImage: "checkmark")
+              } else {
+                Text(writingDraftDisplayModeName(option))
+              }
+            }
+          }
+        } label: {
+          Image(systemName: effectiveDisplayMode == .folders ? "folder" : "list.bullet")
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .disabled(store.draftListContentScope == .general)
+        .help(String(localized: "文章分组方式"))
+        .accessibilityLabel(String(localized: "文章分组方式"))
+        .accessibilityValue(writingDraftDisplayModeName(effectiveDisplayMode))
+        .accessibilityIdentifier("writing-draft-display-mode")
+
+        Menu {
           ForEach(WritingDraftSortOrder.allCases) { option in
             Button {
               sortOrderRawValue = option.rawValue
@@ -200,6 +223,15 @@ extension WritingDraftColumn {
     DraftListFilter.primaryFilters.contains(filter)
       ? String(localized: "更多")
       : filter.localizedDisplayName
+  }
+
+  private func writingDraftDisplayModeName(_ mode: WritingDraftListDisplayMode) -> String {
+    switch mode {
+    case .flat:
+      return String(localized: "列表")
+    case .folders:
+      return String(localized: "文件夹")
+    }
   }
 
   private var draftFilterMenu: some View {

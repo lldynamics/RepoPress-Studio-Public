@@ -68,6 +68,8 @@ struct WritingDraftColumn: View {
   @AppStorage("settingsRequestedTabID") var requestedSettingsTabID = ""
   @AppStorage("dataManagementRequestedSection") var dataManagementRequestedSection =
     DataManagementSection.drafts.rawValue
+  @AppStorage("writingDraftListDisplayModeV1") var displayModeRawValue =
+    WritingDraftListDisplayMode.flat.rawValue
   @State var searchText = ""
   @State var filter: DraftListFilter = .all
   @AppStorage("writingDraftSortOrderV1") var sortOrderRawValue = WritingDraftSortOrder
@@ -85,6 +87,8 @@ struct WritingDraftColumn: View {
   @State var debouncedSearchText = ""
   @State var debouncedFilter: DraftListFilter = .all
   @State var draftListCache = WritingDraftListCache()
+  @State var folderExpansionState = WritingDraftFolderExpansionState()
+  @State var folderExpansionSiteID: UUID?
   let draftLoadMorePrefetchThreshold = 15
   @FocusState var isSearchFieldFocused: Bool
   @State var draftPendingDeletion: ArticleDraft?
@@ -116,6 +120,20 @@ struct WritingDraftColumn: View {
     )
   }
 
+  var displayMode: WritingDraftListDisplayMode {
+    WritingDraftListDisplayMode(rawValue: displayModeRawValue) ?? .flat
+  }
+
+  var isFolderDisplayMode: Bool {
+    store.draftListContentScope == .currentSite && displayMode == .folders
+  }
+
+  /// General drafts retain the user's site preference for the next visit but
+  /// always render as a flat list because they have no publishing folders.
+  var effectiveDisplayMode: WritingDraftListDisplayMode {
+    isFolderDisplayMode ? .folders : .flat
+  }
+
   var body: some View {
     VStack(spacing: 0) {
       writingHeader
@@ -140,6 +158,9 @@ struct WritingDraftColumn: View {
     }
     .onDisappear {
       sceneCommandRouter.unregisterWritingDrafts(owner: sceneCommandOwnerID)
+    }
+    .onChange(of: store.activeProfileID) { _, _ in
+      synchronizeFolderExpansionState()
     }
     .confirmationDialog(
       "移到回收站？",
