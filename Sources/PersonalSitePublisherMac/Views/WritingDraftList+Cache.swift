@@ -2,6 +2,57 @@ import PublishingWorkbenchCore
 import SwiftUI
 
 extension WritingDraftColumn {
+  func makeFolderProjection(for drafts: [ArticleDraft]) -> DraftFolderProjection {
+    let maskedDraftIDs = Set(
+      drafts.compactMap { draft in
+        store.privateContentDisplay(for: draft).isMasked ? draft.id : nil
+      }
+    )
+    let projectionOrder = DraftListSortOrder(rawValue: sortOrder.rawValue) ?? .updatedNewest
+    return DraftFolderProjection(
+      profile: store.activeProfile,
+      drafts: drafts,
+      sortOrder: projectionOrder,
+      maskedDraftIDs: maskedDraftIDs
+    )
+  }
+
+  func synchronizeFolderExpansionState() {
+    guard store.draftListContentScope == .currentSite else {
+      folderExpansionState.clearTransientReveal()
+      return
+    }
+
+    let universeProjection = makeFolderProjection(for: store.visibleDrafts)
+    let validFolderIDs = Set(universeProjection.root.allFolderIDs)
+    if folderExpansionSiteID != store.activeProfile.id {
+      folderExpansionState = WritingDraftFolderExpansionState(
+        rootFolderIDs: universeProjection.topLevelNodes.map(\.id)
+      )
+      folderExpansionSiteID = store.activeProfile.id
+    } else {
+      folderExpansionState.reconcile(validFolderIDs: validFolderIDs)
+    }
+
+    updateFolderSearchReveal()
+  }
+
+  func updateFolderSearchReveal() {
+    guard store.draftListContentScope == .currentSite,
+      !debouncedSearchText.isEmpty
+    else {
+      folderExpansionState.clearTransientReveal()
+      return
+    }
+
+    let filteredProjection = makeFolderProjection(for: filteredDrafts)
+    let matchingAncestorIDs = filteredDrafts.flatMap {
+      filteredProjection.ancestorFolderIDs(for: $0.id)
+    }
+    folderExpansionState.clearTransientReveal()
+    folderExpansionState.revealSearchResultAncestors(matchingAncestorIDs)
+  }
+
   func loadMoreDrafts() {
     let nextLimit = draftListLimit + draftPageStep
     let totalCount = filteredDrafts.count
@@ -60,14 +111,28 @@ extension WritingDraftColumn {
       return
     }
     refreshFilteredDraftsCache()
-    guard !filteredDrafts.contains(where: { $0.id == selectedDraftID }) else {
+    if !filteredDrafts.contains(where: { $0.id == selectedDraftID }) {
+      draftFilterDebounceTask?.cancel()
+      searchText = ""
+      filter = .all
+      applyDraftFilterDebounce()
+    }
+
+    guard store.draftListContentScope == .currentSite,
+      let selectedIndex = filteredDrafts.firstIndex(where: { $0.id == selectedDraftID })
+    else {
       return
     }
 
-    draftFilterDebounceTask?.cancel()
-    searchText = ""
-    filter = .all
-    applyDraftFilterDebounce()
+    let projection = makeFolderProjection(for: filteredDrafts)
+    folderExpansionState.revealAncestorsForSelection(
+      projection.ancestorFolderIDs(for: selectedDraftID)
+    )
+    let requiredLimit = selectedIndex + 1
+    if requiredLimit > draftListLimit {
+      draftListLimit = min(filteredDrafts.count, requiredLimit)
+      refreshVisibleRowPresentations()
+    }
   }
 
   func refreshDraftCounts() {
@@ -178,6 +243,7 @@ extension WritingDraftColumn {
         || draftListCache.filter != debouncedFilter || draftListCache.sortOrder != sortOrder
         || draftListCache.draftTaskQueueStateVersion != draftTaskQueueStateVersion
     else {
+      synchronizeFolderExpansionState()
       return
     }
 
@@ -206,6 +272,7 @@ extension WritingDraftColumn {
       }
     draftListCache.filteredDrafts = sortOrder.sorted(matchedDrafts)
     refreshVisibleRowPresentations()
+    synchronizeFolderExpansionState()
   }
 
   func refreshVisibleRowPresentations() {

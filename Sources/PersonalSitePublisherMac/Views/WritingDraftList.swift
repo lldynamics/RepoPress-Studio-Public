@@ -23,6 +23,8 @@ extension WritingDraftColumn {
       } else {
         if filteredDrafts.isEmpty {
           draftListEmptyState
+        } else if isFolderDisplayMode {
+          folderDraftListContent
         } else {
           ForEach(Array(paginatedDrafts.enumerated()), id: \.1.id) { index, draft in
             draftRow(draft)
@@ -43,6 +45,132 @@ extension WritingDraftColumn {
     .listStyle(.sidebar)
     .scrollContentBackground(.hidden)
     .background(Color.clear)
+  }
+
+  @ViewBuilder
+  private var folderDraftListContent: some View {
+    let projection = makeFolderProjection(for: filteredDrafts)
+    let draftsByID = Dictionary(
+      filteredDrafts.map { ($0.id, $0) },
+      uniquingKeysWith: { _, latest in latest }
+    )
+    let entries = WritingDraftFolderListProjection.flatten(
+      root: projection.root,
+      expandedFolderIDs: folderExpansionState.expandedFolderIDs,
+      loadedDraftIDs: Set(paginatedDrafts.map(\.id))
+    )
+
+    ForEach(entries) { entry in
+      folderDraftListEntry(entry, draftsByID: draftsByID)
+    }
+
+    if paginatedDrafts.count < filteredDrafts.count {
+      loadMoreDraftsButton
+    }
+  }
+
+  @ViewBuilder
+  private func folderDraftListEntry(
+    _ entry: WritingDraftFolderListEntry,
+    draftsByID: [UUID: ArticleDraft]
+  ) -> some View {
+    if let folder = entry.folder {
+      folderHeaderRow(folder, depth: entry.depth)
+    } else if let draftID = entry.draftID,
+      let draft = draftsByID[draftID]
+    {
+      draftRow(draft)
+        .padding(.leading, CGFloat(entry.depth) * 14)
+    }
+  }
+
+  private func folderHeaderRow(_ folder: DraftFolderNode, depth: Int) -> some View {
+    let isExpanded = folderExpansionState.isExpanded(folder.id)
+    let displayName = folderDisplayName(for: folder)
+    let expansionLabel =
+      isExpanded
+      ? String(localized: "已展开")
+      : String(localized: "已折叠")
+
+    return Button {
+      withAnimation(WorkbenchMotion.standard) {
+        folderExpansionState.toggle(folder.id)
+      }
+    } label: {
+      HStack(spacing: 7) {
+        Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+          .font(.caption.weight(.semibold))
+          .foregroundStyle(.secondary)
+          .frame(width: 12)
+
+        Image(systemName: folderSystemImage(for: folder))
+          .foregroundStyle(.secondary)
+          .frame(width: 16)
+
+        Text(displayName)
+          .font(.workbenchBody.weight(.medium))
+          .workbenchTruncatedIdentity(displayName)
+
+        Spacer(minLength: 6)
+
+        Text(folder.totalDescendantDraftCount.formatted())
+          .font(.workbenchSupporting.monospacedDigit())
+          .foregroundStyle(.secondary)
+      }
+      .padding(.leading, CGFloat(depth) * 14)
+      .padding(.horizontal, 4)
+      .padding(.vertical, 5)
+      .contentShape(Rectangle())
+    }
+    .buttonStyle(.plain)
+    .listRowInsets(listRowInsets)
+    .listRowSeparator(.hidden)
+    .listRowBackground(Color.clear)
+    .help(folderHeaderHelp(for: folder))
+    .accessibilityLabel(
+      String(localized: "\(displayName)，\(folder.totalDescendantDraftCount) 篇文章")
+    )
+    .accessibilityValue(expansionLabel)
+    .accessibilityIdentifier(
+      "writing-draft-folder-\(RepositoryAccessibilityIdentifier.token(for: folder.id))"
+    )
+  }
+
+  private func folderDisplayName(for folder: DraftFolderNode) -> String {
+    switch folder.kind {
+    case .directory:
+      return folder.name
+    case .protectedContent:
+      return String(localized: "display.draft-list-filter.private-articles")
+    case .unfiled:
+      return String(localized: "未分类")
+    case .root:
+      return String(localized: "文件夹")
+    }
+  }
+
+  private func folderSystemImage(for folder: DraftFolderNode) -> String {
+    switch folder.kind {
+    case .directory:
+      return "folder"
+    case .protectedContent:
+      return "lock.folder"
+    case .unfiled:
+      return "tray"
+    case .root:
+      return "folder"
+    }
+  }
+
+  private func folderHeaderHelp(for folder: DraftFolderNode) -> String {
+    switch folder.kind {
+    case .protectedContent:
+      return String(localized: "display.draft-list-filter.private-articles")
+    case .unfiled:
+      return String(localized: "未分类")
+    case .directory, .root:
+      return folder.directoryPath ?? folderDisplayName(for: folder)
+    }
   }
 
   var draftList: some View {
