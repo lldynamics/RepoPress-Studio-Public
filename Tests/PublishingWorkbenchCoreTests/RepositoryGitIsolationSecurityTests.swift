@@ -1,5 +1,6 @@
 import Foundation
 import XCTest
+
 @testable import PublishingWorkbenchCore
 
 final class RepositoryGitIsolationSecurityTests: XCTestCase {
@@ -182,9 +183,11 @@ final class RepositoryGitIsolationSecurityTests: XCTestCase {
     let injectedConfigURL = rootURL.deletingLastPathComponent()
       .appendingPathComponent("RepoPressGitInjectedConfig-\(UUID().uuidString)")
     defer { try? FileManager.default.removeItem(at: injectedConfigURL) }
-    let script = "#!/bin/sh\nprintf 'included config executed' > \(posixShellQuote(markerURL.path))\n"
+    let script =
+      "#!/bin/sh\nprintf 'included config executed' > \(posixShellQuote(markerURL.path))\n"
     try script.write(to: fsmonitorURL, atomically: true, encoding: .utf8)
-    try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: fsmonitorURL.path)
+    try FileManager.default.setAttributes(
+      [.posixPermissions: 0o755], ofItemAtPath: fsmonitorURL.path)
     try "[core]\n\tfsmonitor = \(fsmonitorURL.path)\n"
       .write(to: injectedConfigURL, atomically: true, encoding: .utf8)
     try runGit(["config", "include.path", injectedConfigURL.path], rootURL: rootURL)
@@ -244,14 +247,16 @@ final class RepositoryGitIsolationSecurityTests: XCTestCase {
     process.standardError = errorPipe
     try process.run()
     process.waitUntilExit()
-    let output = String(
-      data: outputPipe.fileHandleForReading.readDataToEndOfFile(),
-      encoding: .utf8
-    ) ?? ""
-    let error = String(
-      data: errorPipe.fileHandleForReading.readDataToEndOfFile(),
-      encoding: .utf8
-    ) ?? ""
+    let output =
+      String(
+        data: outputPipe.fileHandleForReading.readDataToEndOfFile(),
+        encoding: .utf8
+      ) ?? ""
+    let error =
+      String(
+        data: errorPipe.fileHandleForReading.readDataToEndOfFile(),
+        encoding: .utf8
+      ) ?? ""
     guard process.terminationStatus == 0 else {
       throw NSError(
         domain: "RepositoryGitIsolationSecurityTests",

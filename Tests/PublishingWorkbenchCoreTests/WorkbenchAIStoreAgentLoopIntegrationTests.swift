@@ -85,15 +85,17 @@ final class WorkbenchAIStoreAgentLoopIntegrationTests: XCTestCase {
     XCTAssertEqual(AIOutboundPayloadApprovalBroker.shared.pendingRequestCountForTesting, 0)
     let bodies = await fixture.transport.capturedBodies()
     let first = try jsonBody(bodies[0])
-    XCTAssertTrue((first["tools"] as? [[String: Any]] ?? []).contains { tool in
-      ((tool["function"] as? [String: Any])?["name"] as? String) == "createDraft"
-    })
+    XCTAssertTrue(
+      (first["tools"] as? [[String: Any]] ?? []).contains { tool in
+        ((tool["function"] as? [String: Any])?["name"] as? String) == "createDraft"
+      })
     let second = try jsonBody(bodies[1])
     let messages = try XCTUnwrap(second["messages"] as? [[String: Any]])
-    XCTAssertTrue(messages.contains { message in
-      (message["role"] as? String) == "tool"
-        && (message["content"] as? String)?.contains(createdDraft.id.uuidString) == true
-    })
+    XCTAssertTrue(
+      messages.contains { message in
+        (message["role"] as? String) == "tool"
+          && (message["content"] as? String)?.contains(createdDraft.id.uuidString) == true
+      })
   }
 
   func testUnknownToolCallingCapabilityUsesOrdinaryTextPathWithoutToolDeclaration() async throws {
@@ -232,10 +234,11 @@ final class WorkbenchAIStoreAgentLoopIntegrationTests: XCTestCase {
     let resumedMessages = try XCTUnwrap(
       try jsonBody(bodies[1])["messages"] as? [[String: Any]]
     )
-    XCTAssertTrue(resumedMessages.contains { message in
-      (message["role"] as? String) == "tool"
-        && (message["content"] as? String)?.contains("\"status\":\"rejected\"") == true
-    })
+    XCTAssertTrue(
+      resumedMessages.contains { message in
+        (message["role"] as? String) == "tool"
+          && (message["content"] as? String)?.contains("\"status\":\"rejected\"") == true
+      })
 
     let repeated = await fixture.store.rejectAutomationStep(
       conversationID: conversationID,
@@ -803,7 +806,8 @@ final class WorkbenchAIStoreAgentLoopIntegrationTests: XCTestCase {
     XCTAssertEqual(reviewedMessage.reviewDecisions.map(\.choice), [.rejected])
   }
 
-  func testKnowledgePolicyChangeBeforeRejectCancelsFrozenPromptWithoutAnotherRequest() async throws {
+  func testKnowledgePolicyChangeBeforeRejectCancelsFrozenPromptWithoutAnotherRequest() async throws
+  {
     let fixture = makeStore(
       responses: [
         toolCallResponse(
@@ -1409,15 +1413,18 @@ private actor SequencedAgentAIChatTransport: AIChatTransport {
       !calls.isEmpty,
       var function = calls[0]["function"] as? [String: Any],
       let argumentsText = function["arguments"] as? String,
-      var arguments = (try? JSONSerialization.jsonObject(
-        with: Data(argumentsText.utf8)
-      )) as? [String: Any]
+      var arguments =
+        (try? JSONSerialization.jsonObject(
+          with: Data(argumentsText.utf8)
+        )) as? [String: Any]
     else { return }
     arguments[key] = value
-    guard let argumentsData = try? JSONSerialization.data(
-      withJSONObject: arguments,
-      options: [.sortedKeys]
-    ) else { return }
+    guard
+      let argumentsData = try? JSONSerialization.data(
+        withJSONObject: arguments,
+        options: [.sortedKeys]
+      )
+    else { return }
     function["arguments"] = String(decoding: argumentsData, as: UTF8.self)
     calls[0]["function"] = function
     message["tool_calls"] = calls

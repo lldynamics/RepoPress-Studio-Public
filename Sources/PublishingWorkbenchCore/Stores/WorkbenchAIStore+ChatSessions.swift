@@ -425,7 +425,8 @@ extension WorkbenchAIStore {
         prepared: authorizedTransport.payload,
         privacyService: privacyService
       ),
-      knowledgeAuthorizationBindings: resolvedInitialRequest.knowledgeContext?.authorizationBindings ?? [],
+      knowledgeAuthorizationBindings: resolvedInitialRequest.knowledgeContext?.authorizationBindings
+        ?? [],
       knowledgePolicy: resolvedInitialRequest.knowledgePolicy
     )
   }
@@ -536,7 +537,8 @@ extension WorkbenchAIStore {
     explicitBindings: [KnowledgeAuthorizationBinding]
   ) -> KnowledgeContextSnapshot? {
     var seen = Set<KnowledgeAuthorizationBinding>()
-    let bindings = (automatic?.authorizationBindings ?? [])
+    let bindings =
+      (automatic?.authorizationBindings ?? [])
       .filter { seen.insert($0).inserted }
       + explicitBindings.filter { seen.insert($0).inserted }
 
@@ -625,9 +627,11 @@ extension WorkbenchAIStore {
   }
 
   public func clearAIChat() {
-    guard !blockChatMutationForDeliveryUncertainty(
-      conversationID: aiChatDraftID.flatMap { activeAIChatConversationID(for: $0) }
-    ) else {
+    guard
+      !blockChatMutationForDeliveryUncertainty(
+        conversationID: aiChatDraftID.flatMap { activeAIChatConversationID(for: $0) }
+      )
+    else {
       return
     }
     aiChatConversationTitle = nil
@@ -912,9 +916,11 @@ extension WorkbenchAIStore {
       aiChatMessage = "请先选择一篇文章。"
       return nil
     }
-    guard !blockChatMutationForDeliveryUncertainty(
-      conversationID: activeAIChatConversationID(for: draftID)
-    ) else {
+    guard
+      !blockChatMutationForDeliveryUncertainty(
+        conversationID: activeAIChatConversationID(for: draftID)
+      )
+    else {
       return nil
     }
 
@@ -950,9 +956,11 @@ extension WorkbenchAIStore {
       store.setAIChatMessage("请先选择一篇文章。")
       return
     }
-    guard !blockChatMutationForDeliveryUncertainty(
-      conversationID: activeAIChatConversationID(for: draftID)
-    ) else {
+    guard
+      !blockChatMutationForDeliveryUncertainty(
+        conversationID: activeAIChatConversationID(for: draftID)
+      )
+    else {
       return
     }
 
@@ -1049,8 +1057,9 @@ extension WorkbenchAIStore {
     at date: Date
   ) -> [AIPublishingChatMessage] {
     messages.map { message in
-      guard message.agentContinuation != nil
-        || message.automationPlan?.source == .agentLoop
+      guard
+        message.agentContinuation != nil
+          || message.automationPlan?.source == .agentLoop
       else {
         return message
       }
@@ -1105,9 +1114,11 @@ extension WorkbenchAIStore {
       store.setAIChatMessage("请先切回发生错误的 AI 对话，再重试回复。")
       return nil
     }
-    guard !blockChatMutationForDeliveryUncertainty(
-      conversationID: retryState.conversationID
-    ) else {
+    guard
+      !blockChatMutationForDeliveryUncertainty(
+        conversationID: retryState.conversationID
+      )
+    else {
       return nil
     }
     if let retryAfter = retryState.retryAfter, retryAfter > Date() {
@@ -1157,9 +1168,11 @@ extension WorkbenchAIStore {
       store.setAIChatMessage("找不到可重新生成的 AI 对话。")
       return nil
     }
-    guard !blockChatMutationForDeliveryUncertainty(
-      conversationID: conversationIdentity.conversationID
-    ) else {
+    guard
+      !blockChatMutationForDeliveryUncertainty(
+        conversationID: conversationIdentity.conversationID
+      )
+    else {
       return nil
     }
     guard
@@ -1232,9 +1245,11 @@ extension WorkbenchAIStore {
       store.setAIChatMessage("找不到可重新生成的 AI 对话。")
       return nil
     }
-    guard !blockChatMutationForDeliveryUncertainty(
-      conversationID: conversationIdentity.conversationID
-    ) else {
+    guard
+      !blockChatMutationForDeliveryUncertainty(
+        conversationID: conversationIdentity.conversationID
+      )
+    else {
       return nil
     }
     guard

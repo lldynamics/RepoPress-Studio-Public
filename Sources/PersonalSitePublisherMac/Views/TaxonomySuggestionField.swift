@@ -38,7 +38,9 @@ struct TaxonomySuggestionField: View {
                 .foregroundStyle(selected ? Color.accentColor : Color.primary)
                 .overlay(
                   Capsule()
-                    .stroke(selected ? Color.accentColor.opacity(0.4) : Color.primary.opacity(0.12), lineWidth: 1)
+                    .stroke(
+                      selected ? Color.accentColor.opacity(0.4) : Color.primary.opacity(0.12),
+                      lineWidth: 1)
                 )
               }
               .buttonStyle(.plain)

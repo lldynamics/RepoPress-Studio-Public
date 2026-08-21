@@ -501,7 +501,8 @@ final class WorkbenchAIAgentLoopServiceTests: XCTestCase {
     XCTAssertEqual(requestCount, 1)
   }
 
-  func testAwaitingReviewCheckpointIsCodableAndAcceptedResumeAddsOnlyNewAssistantText() async throws {
+  func testAwaitingReviewCheckpointIsCodableAndAcceptedResumeAddsOnlyNewAssistantText() async throws
+  {
     let draftID = UUID()
     let updatedAt = Date(timeIntervalSinceReferenceDate: 123)
     let transport = AgentLoopTransportFixture(responses: [

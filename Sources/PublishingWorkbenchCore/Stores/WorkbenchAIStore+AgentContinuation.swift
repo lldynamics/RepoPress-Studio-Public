@@ -166,12 +166,13 @@ extension WorkbenchAIStore {
       store.setAIChatMessage(CoreL10n.text("请先停止当前 AI 回复，再结束结果不确定的续跑。"))
       return false
     }
-    guard let binding = agentContinuationBinding(
-      conversationID: conversationID,
-      messageID: messageID,
-      planID: planID,
-      includingArchived: true
-    ),
+    guard
+      let binding = agentContinuationBinding(
+        conversationID: conversationID,
+        messageID: messageID,
+        planID: planID,
+        includingArchived: true
+      ),
       binding.continuation.phase == .deliveryUncertain,
       binding.continuation.revision == expectedRevision
     else {
@@ -222,11 +223,12 @@ extension WorkbenchAIStore {
     planID: UUID,
     resolution: WorkbenchAIAgentToolResolution
   ) async -> Bool {
-    guard let binding = agentContinuationBinding(
-      conversationID: conversationID,
-      messageID: messageID,
-      planID: planID
-    ),
+    guard
+      let binding = agentContinuationBinding(
+        conversationID: conversationID,
+        messageID: messageID,
+        planID: planID
+      ),
       let pending = binding.continuation.checkpoint.pendingCalls.first(where: {
         $0.toolCallID == resolution.toolCallID
       }),
@@ -248,9 +250,11 @@ extension WorkbenchAIStore {
         && binding.continuation.activeStepID == nil)
     guard phaseAllowsResolution else { return false }
 
-    let updatesReviewDraftBaseline = resolution.status == .succeeded
+    let updatesReviewDraftBaseline =
+      resolution.status == .succeeded
       && resolution.targetDraftID == binding.identity.draftID
-    let resolvedReviewDraft = updatesReviewDraftBaseline
+    let resolvedReviewDraft =
+      updatesReviewDraftBaseline
       ? store.drafts.first(where: { $0.id == binding.identity.draftID })
       : nil
     guard !updatesReviewDraftBaseline || resolvedReviewDraft != nil else {
@@ -263,9 +267,11 @@ extension WorkbenchAIStore {
       planID: planID,
       continuationID: binding.continuation.id
     ) { _, continuation in
-      guard !continuation.resolutions.contains(where: {
-        $0.toolCallID == resolution.toolCallID
-      }) else { return false }
+      guard
+        !continuation.resolutions.contains(where: {
+          $0.toolCallID == resolution.toolCallID
+        })
+      else { return false }
       continuation.resolutions.append(resolution)
       continuation.phase = .awaitingReview
       continuation.activeStepID = nil
@@ -314,11 +320,12 @@ extension WorkbenchAIStore {
     messageID: UUID,
     planID: UUID
   ) async {
-    guard let initialBinding = agentContinuationBinding(
-      conversationID: conversationID,
-      messageID: messageID,
-      planID: planID
-    ),
+    guard
+      let initialBinding = agentContinuationBinding(
+        conversationID: conversationID,
+        messageID: messageID,
+        planID: planID
+      ),
       initialBinding.continuation.phase == .awaitingReview,
       initialBinding.message.id == initialBinding.conversation.messages.last?.id
     else {
@@ -336,10 +343,12 @@ extension WorkbenchAIStore {
     }
     guard unresolvedHumanCalls.isEmpty else { return }
 
-    guard let operationID = beginAIChatOperation(
-      statusMessage: CoreL10n.text("正在继续已审阅的 AI 操作…"),
-      clearsManualRetryState: false
-    ) else {
+    guard
+      let operationID = beginAIChatOperation(
+        statusMessage: CoreL10n.text("正在继续已审阅的 AI 操作…"),
+        clearsManualRetryState: false
+      )
+    else {
       return
     }
     defer { finishAIChatOperation(operationID) }
@@ -357,11 +366,12 @@ extension WorkbenchAIStore {
         planID: planID,
         continuationID: continuationID
       )
-      guard let validatedBinding = agentContinuationBinding(
-        conversationID: conversationID,
-        messageID: messageID,
-        planID: planID
-      ),
+      guard
+        let validatedBinding = agentContinuationBinding(
+          conversationID: conversationID,
+          messageID: messageID,
+          planID: planID
+        ),
         validatedBinding.continuation.id == continuationID,
         validatedBinding.plan.steps.count
           == validatedBinding.continuation.checkpoint.pendingCalls.count,
@@ -380,31 +390,35 @@ extension WorkbenchAIStore {
         allowedCommands: initialRuntime.allowedCommands,
         automaticExecutor: { _ in throw CancellationError() }
       )
-      guard checkpointValidator.isValidResumeCheckpoint(
-        context: initialRuntime.loopContext,
-        toolCallingSupport: initialRuntime.taskConfig.capabilitySupport(for: .toolCalling),
-        checkpoint: validatedBinding.continuation.checkpoint
-      ) else {
+      guard
+        checkpointValidator.isValidResumeCheckpoint(
+          context: initialRuntime.loopContext,
+          toolCallingSupport: initialRuntime.taskConfig.capabilitySupport(for: .toolCalling),
+          checkpoint: validatedBinding.continuation.checkpoint
+        )
+      else {
         throw AIOutboundPayloadConfirmationError.drifted
       }
 
       let resumeTransitionSnapshot = captureAgentContinuationStoreSnapshot()
-      guard updateAgentContinuation(
-        conversationID: conversationID,
-        messageID: messageID,
-        planID: planID,
-        continuationID: continuationID,
-        update: { _, continuation in
-        guard continuation.phase == .awaitingReview,
-          continuation.activeStepID == nil
-        else { return false }
-        continuation.phase = .resuming
-        continuation.resumeAttemptID = attemptID
-        continuation.revision += 1
-        continuation.updatedAt = Date()
-          return true
-        }
-      ) else {
+      guard
+        updateAgentContinuation(
+          conversationID: conversationID,
+          messageID: messageID,
+          planID: planID,
+          continuationID: continuationID,
+          update: { _, continuation in
+            guard continuation.phase == .awaitingReview,
+              continuation.activeStepID == nil
+            else { return false }
+            continuation.phase = .resuming
+            continuation.resumeAttemptID = attemptID
+            continuation.revision += 1
+            continuation.updatedAt = Date()
+            return true
+          }
+        )
+      else {
         store.setAIChatMessage(
           CoreL10n.text("无法安全保存 AI 续跑状态，未请求模型。")
         )
@@ -422,16 +436,18 @@ extension WorkbenchAIStore {
         return
       }
 
-      guard try await resolvePendingAutomaticCalls(
-        conversationID: conversationID,
-        messageID: messageID,
-        planID: planID,
-        continuationID: continuationID,
-        attemptID: attemptID,
-        operationID: operationID,
-        preResumeSnapshot: resumeTransitionSnapshot,
-        knowledgeAuthorizationState: knowledgeAuthorizationState
-      ) else {
+      guard
+        try await resolvePendingAutomaticCalls(
+          conversationID: conversationID,
+          messageID: messageID,
+          planID: planID,
+          continuationID: continuationID,
+          attemptID: attemptID,
+          operationID: operationID,
+          preResumeSnapshot: resumeTransitionSnapshot,
+          knowledgeAuthorizationState: knowledgeAuthorizationState
+        )
+      else {
         store.setAIChatMessage(
           CoreL10n.text("无法安全保存 AI 续跑状态，未请求模型。")
         )
@@ -448,11 +464,12 @@ extension WorkbenchAIStore {
         expectedAttemptID: attemptID,
         knowledgeAuthorizationState: knowledgeAuthorizationState
       )
-      guard let readyBinding = agentContinuationBinding(
-        conversationID: conversationID,
-        messageID: messageID,
-        planID: planID
-      ),
+      guard
+        let readyBinding = agentContinuationBinding(
+          conversationID: conversationID,
+          messageID: messageID,
+          planID: planID
+        ),
         readyBinding.continuation.id == continuationID,
         readyBinding.continuation.resolutions.count
           == readyBinding.continuation.checkpoint.pendingCalls.count
@@ -461,22 +478,24 @@ extension WorkbenchAIStore {
       }
 
       let sendingTransitionSnapshot = captureAgentContinuationStoreSnapshot()
-      guard updateAgentContinuation(
-        conversationID: conversationID,
-        messageID: messageID,
-        planID: planID,
-        continuationID: continuationID,
-        update: { _, continuation in
-        guard continuation.phase == .resuming,
-          continuation.resumeAttemptID == attemptID,
-          continuation.activeStepID == nil
-        else { return false }
-        continuation.phase = .sending
-        continuation.revision += 1
-        continuation.updatedAt = Date()
-          return true
-        }
-      ) else {
+      guard
+        updateAgentContinuation(
+          conversationID: conversationID,
+          messageID: messageID,
+          planID: planID,
+          continuationID: continuationID,
+          update: { _, continuation in
+            guard continuation.phase == .resuming,
+              continuation.resumeAttemptID == attemptID,
+              continuation.activeStepID == nil
+            else { return false }
+            continuation.phase = .sending
+            continuation.revision += 1
+            continuation.updatedAt = Date()
+            return true
+          }
+        )
+      else {
         store.setAIChatMessage(
           CoreL10n.text("无法安全保存 AI 发送状态，未请求模型。")
         )
@@ -501,11 +520,12 @@ extension WorkbenchAIStore {
       }
       enteredSending = true
 
-      guard let sendingBinding = agentContinuationBinding(
-        conversationID: conversationID,
-        messageID: messageID,
-        planID: planID
-      ),
+      guard
+        let sendingBinding = agentContinuationBinding(
+          conversationID: conversationID,
+          messageID: messageID,
+          planID: planID
+        ),
         sendingBinding.continuation.id == continuationID,
         sendingBinding.continuation.phase == .sending,
         sendingBinding.continuation.resumeAttemptID == attemptID
@@ -689,11 +709,13 @@ extension WorkbenchAIStore {
     preResumeSnapshot: AgentContinuationStoreSnapshot,
     knowledgeAuthorizationState: AgentContinuationKnowledgeAuthorizationState? = nil
   ) async throws -> Bool {
-    guard let binding = agentContinuationBinding(
-      conversationID: conversationID,
-      messageID: messageID,
-      planID: planID
-    ) else {
+    guard
+      let binding = agentContinuationBinding(
+        conversationID: conversationID,
+        messageID: messageID,
+        planID: planID
+      )
+    else {
       throw AIOutboundPayloadConfirmationError.drifted
     }
     let resolvedIDs = Set(binding.continuation.resolutions.map(\.toolCallID))
@@ -716,11 +738,12 @@ extension WorkbenchAIStore {
         expectedPhase: .resuming,
         expectedAttemptID: attemptID
       )
-      guard let currentBinding = agentContinuationBinding(
-        conversationID: conversationID,
-        messageID: messageID,
-        planID: planID
-      ),
+      guard
+        let currentBinding = agentContinuationBinding(
+          conversationID: conversationID,
+          messageID: messageID,
+          planID: planID
+        ),
         currentBinding.continuation.id == continuationID,
         currentBinding.continuation.checkpoint.allowedCommands.contains(pending.command),
         runtime.allowedCommands.contains(pending.command)
@@ -728,25 +751,27 @@ extension WorkbenchAIStore {
         throw AIOutboundPayloadConfirmationError.drifted
       }
       let activeStepSnapshot = captureAgentContinuationStoreSnapshot()
-      guard updateAgentContinuation(
-        conversationID: conversationID,
-        messageID: messageID,
-        planID: planID,
-        continuationID: continuationID,
-        update: { _, continuation in
-        guard continuation.phase == .resuming,
-          continuation.resumeAttemptID == attemptID,
-          continuation.activeStepID == nil,
-          !continuation.resolutions.contains(where: {
-            $0.toolCallID == pending.toolCallID
-          })
-        else { return false }
-        continuation.activeStepID = pending.automationStepID
-        continuation.revision += 1
-        continuation.updatedAt = Date()
-          return true
-        }
-      ) else {
+      guard
+        updateAgentContinuation(
+          conversationID: conversationID,
+          messageID: messageID,
+          planID: planID,
+          continuationID: continuationID,
+          update: { _, continuation in
+            guard continuation.phase == .resuming,
+              continuation.resumeAttemptID == attemptID,
+              continuation.activeStepID == nil,
+              !continuation.resolutions.contains(where: {
+                $0.toolCallID == pending.toolCallID
+              })
+            else { return false }
+            continuation.activeStepID = pending.automationStepID
+            continuation.revision += 1
+            continuation.updatedAt = Date()
+            return true
+          }
+        )
+      else {
         restoreAgentContinuationStoreSnapshot(activeStepSnapshot)
         if didExecuteAutomaticTool {
           markAgentContinuationDeliveryUncertain(
@@ -872,16 +897,20 @@ extension WorkbenchAIStore {
     continuationID: UUID,
     attemptID: UUID
   ) -> Bool {
-    guard let binding = agentContinuationBinding(
-      conversationID: conversationID,
-      messageID: messageID,
-      planID: planID
-    ), binding.continuation.id == continuationID else {
+    guard
+      let binding = agentContinuationBinding(
+        conversationID: conversationID,
+        messageID: messageID,
+        planID: planID
+      ), binding.continuation.id == continuationID
+    else {
       return false
     }
-    let updatesReviewDraftBaseline = resolution.status == .succeeded
+    let updatesReviewDraftBaseline =
+      resolution.status == .succeeded
       && resolution.targetDraftID == binding.identity.draftID
-    let resolvedReviewDraft = updatesReviewDraftBaseline
+    let resolvedReviewDraft =
+      updatesReviewDraftBaseline
       ? store.drafts.first(where: { $0.id == binding.identity.draftID })
       : nil
     guard !updatesReviewDraftBaseline || resolvedReviewDraft != nil else {
@@ -927,19 +956,21 @@ extension WorkbenchAIStore {
     knowledgeAuthorizationState: AgentContinuationKnowledgeAuthorizationState? = nil
   ) async throws -> AgentContinuationRuntimeContext {
     try Task.checkCancellation()
-    guard let binding = agentContinuationBinding(
-      conversationID: conversationID,
-      messageID: messageID,
-      planID: planID
-    ),
+    guard
+      let binding = agentContinuationBinding(
+        conversationID: conversationID,
+        messageID: messageID,
+        planID: planID
+      ),
       binding.continuation.id == continuationID,
       binding.message.id == binding.conversation.messages.last?.id,
       expectedPhase.map({ binding.continuation.phase == $0 }) ?? true,
       expectedAttemptID.map({ binding.continuation.resumeAttemptID == $0 }) ?? true,
       let promptRevision = binding.continuation.promptRevision,
-      promptRevision == AIPublishingChatAgentPromptRevision(
-        conversation: binding.conversation
-      ),
+      promptRevision
+        == AIPublishingChatAgentPromptRevision(
+          conversation: binding.conversation
+        ),
       aiConversationAgentMode(for: conversationID) != .textOnly,
       let draftID = binding.conversation.draftID,
       let draft = store.drafts.first(where: { $0.id == draftID }),
@@ -966,8 +997,9 @@ extension WorkbenchAIStore {
       throw AIOutboundPayloadConfirmationError.drifted
     }
     let frozenKnowledgeContext: KnowledgeContextSnapshot? = {
-      guard !binding.continuation.knowledgeAuthorizationBindings.isEmpty
-        || !binding.message.knowledgeCitations.isEmpty
+      guard
+        !binding.continuation.knowledgeAuthorizationBindings.isEmpty
+          || !binding.message.knowledgeCitations.isEmpty
       else {
         return nil
       }
@@ -989,11 +1021,12 @@ extension WorkbenchAIStore {
         explicitContextPrompt: nil
       )
     )
-    guard let refreshedBinding = agentContinuationBinding(
-      conversationID: conversationID,
-      messageID: messageID,
-      planID: planID
-    ),
+    guard
+      let refreshedBinding = agentContinuationBinding(
+        conversationID: conversationID,
+        messageID: messageID,
+        planID: planID
+      ),
       refreshedBinding.continuation.id == continuationID,
       refreshedBinding.conversation == binding.conversation,
       let refreshedDraft = store.drafts.first(where: { $0.id == draft.id }),
@@ -1051,10 +1084,12 @@ extension WorkbenchAIStore {
     policy: KnowledgeRetrievalPolicy,
     failureState: AgentContinuationKnowledgeAuthorizationState? = nil
   ) async throws {
-    guard await store.knowledge.validateKnowledgeAuthorizationBindings(
-      continuation.knowledgeAuthorizationBindings,
-      policy: policy
-    ) else {
+    guard
+      await store.knowledge.validateKnowledgeAuthorizationBindings(
+        continuation.knowledgeAuthorizationBindings,
+        policy: policy
+      )
+    else {
       failureState?.markChanged()
       throw AIOutboundPayloadConfirmationError.knowledgeAuthorizationChanged
     }
@@ -1151,11 +1186,13 @@ extension WorkbenchAIStore {
       privacyService: privacyService
     )
     let token = try aiChatAvailableAPIKey(for: afterApproval.profile)
-    guard let currentBinding = agentContinuationBinding(
-      conversationID: conversationID,
-      messageID: messageID,
-      planID: planID
-    ), currentBinding.continuation.id == continuationID else {
+    guard
+      let currentBinding = agentContinuationBinding(
+        conversationID: conversationID,
+        messageID: messageID,
+        planID: planID
+      ), currentBinding.continuation.id == continuationID
+    else {
       throw AIOutboundPayloadConfirmationError.drifted
     }
     try await validateAgentContinuationKnowledgeAuthorization(
@@ -1182,9 +1219,11 @@ extension WorkbenchAIStore {
     guard !content.isEmpty else {
       throw AIOutboundPayloadConfirmationError.drifted
     }
-    guard let currentDraft = store.drafts.first(where: {
-      $0.id == binding.identity.draftID
-    }) else {
+    guard
+      let currentDraft = store.drafts.first(where: {
+        $0.id == binding.identity.draftID
+      })
+    else {
       throw AIOutboundPayloadConfirmationError.drifted
     }
     let extraction = AIChatFollowUpSuggestionService.extractOrInferSuggestions(
@@ -1336,7 +1375,7 @@ extension WorkbenchAIStore {
       planID: planID,
       continuationID: continuationID
     ) { message, continuation in
-      guard (attemptID == nil || continuation.resumeAttemptID == attemptID),
+      guard attemptID == nil || continuation.resumeAttemptID == attemptID,
         !continuation.phase.isTerminal,
         continuation.phase != .deliveryUncertain
       else { return false }
@@ -1368,7 +1407,8 @@ extension WorkbenchAIStore {
       continuationID: continuationID
     ) { _, continuation in
       let matchesStartedAttempt = continuation.resumeAttemptID == attemptID
-      let failedBeforeAttemptWasPersisted = continuation.phase == .awaitingReview
+      let failedBeforeAttemptWasPersisted =
+        continuation.phase == .awaitingReview
         && continuation.resumeAttemptID == nil
       guard matchesStartedAttempt || failedBeforeAttemptWasPersisted else {
         return false
@@ -1451,9 +1491,10 @@ extension WorkbenchAIStore {
     planID: UUID,
     includingArchived: Bool = false
   ) -> AgentContinuationBinding? {
-    guard let conversation = aiConversations.first(where: {
-      $0.id == conversationID && (includingArchived || !$0.isArchived)
-    }),
+    guard
+      let conversation = aiConversations.first(where: {
+        $0.id == conversationID && (includingArchived || !$0.isArchived)
+      }),
       let draftID = conversation.draftID
     else {
       return nil
@@ -1495,9 +1536,10 @@ extension WorkbenchAIStore {
     allowArchived: Bool = false,
     update: (inout AIPublishingChatMessage, inout AIPublishingChatAgentContinuation) -> Bool
   ) -> Bool {
-    guard let conversation = aiConversations.first(where: {
-      $0.id == conversationID && (allowArchived || !$0.isArchived)
-    }),
+    guard
+      let conversation = aiConversations.first(where: {
+        $0.id == conversationID && (allowArchived || !$0.isArchived)
+      }),
       let draftID = conversation.draftID
     else { return false }
     let identity = AIChatConversationIdentity(

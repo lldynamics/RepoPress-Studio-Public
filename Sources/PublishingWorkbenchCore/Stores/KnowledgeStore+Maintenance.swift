@@ -291,7 +291,8 @@ extension KnowledgeStore {
       onlyRemoteAIAllowed: false,
       documentIDs: localDocumentIDs
     )
-    return results
+    return
+      results
       .filter { !$0.document.isArchived && $0.document.allowsLocalSemanticIndex }
       .prefix(limit)
       .map { $0 }

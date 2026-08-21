@@ -1,15 +1,19 @@
 import Foundation
+
 @testable import PublishingWorkbenchCore
 
 enum TestWorkbenchFactory {
-  static func temporaryDirectoryURL(prefix: String = "PersonalSitePublisherMacTests") throws -> URL {
+  static func temporaryDirectoryURL(prefix: String = "PersonalSitePublisherMacTests") throws -> URL
+  {
     let directory = FileManager.default.temporaryDirectory
       .appendingPathComponent("\(prefix)-\(UUID().uuidString)", isDirectory: true)
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     return directory
   }
 
-  static func temporaryPersistenceURL(prefix: String = "PersonalSitePublisherMacTests") throws -> URL {
+  static func temporaryPersistenceURL(prefix: String = "PersonalSitePublisherMacTests") throws
+    -> URL
+  {
     try temporaryDirectoryURL(prefix: prefix).appendingPathComponent("workbench.json")
   }
 

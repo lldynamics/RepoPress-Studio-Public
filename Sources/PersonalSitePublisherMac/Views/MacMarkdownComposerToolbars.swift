@@ -137,10 +137,12 @@ struct MacMarkdownEditorToolbar: View {
       toolbarItemRow(ids: enabledHeaderItemIDs, showsOverflow: false)
 
       // 2. 中度折叠模式
-      toolbarItemRow(ids: mediumHeaderItemIDs, showsOverflow: true, reservedIDs: mediumHeaderItemIDs)
+      toolbarItemRow(
+        ids: mediumHeaderItemIDs, showsOverflow: true, reservedIDs: mediumHeaderItemIDs)
 
       // 3. 紧凑折叠模式
-      toolbarItemRow(ids: compactHeaderItemIDs, showsOverflow: true, reservedIDs: compactHeaderItemIDs)
+      toolbarItemRow(
+        ids: compactHeaderItemIDs, showsOverflow: true, reservedIDs: compactHeaderItemIDs)
     }
     .frame(maxWidth: .infinity, alignment: .trailing)
     .frame(minHeight: 34)

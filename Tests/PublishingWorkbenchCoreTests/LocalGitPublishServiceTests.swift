@@ -1,4 +1,5 @@
 import XCTest
+
 @testable import PublishingWorkbenchCore
 
 final class LocalGitPublishServiceTests: XCTestCase {
@@ -21,14 +22,17 @@ final class LocalGitPublishServiceTests: XCTestCase {
     )
     let package = PublishPackageBuilder().build(draft: draft, profile: profile)
 
-    let result = try LocalGitPublishService().publish(package: package, profile: profile, mode: .directCommit)
+    let result = try LocalGitPublishService().publish(
+      package: package, profile: profile, mode: .directCommit)
 
     XCTAssertEqual(result.mode, .directCommit)
     XCTAssertEqual(result.branchName, "main")
     XCTAssertEqual(result.committedPaths, ["content/posts/direct-commit.md"])
     XCTAssertFalse(result.commitSHA.isEmpty)
     XCTAssertEqual(try git(["status", "--porcelain"], rootURL: rootURL), "")
-    XCTAssertTrue(try git(["show", "--name-only", "--format="], rootURL: rootURL).contains("content/posts/direct-commit.md"))
+    XCTAssertTrue(
+      try git(["show", "--name-only", "--format="], rootURL: rootURL).contains(
+        "content/posts/direct-commit.md"))
   }
 
   func testDirectCommitIgnoresSuccessfulStatusWarningOnStandardError() throws {
@@ -84,11 +88,14 @@ final class LocalGitPublishServiceTests: XCTestCase {
     )
     let package = PublishPackageBuilder().build(draft: draft, profile: profile)
 
-    let result = try LocalGitPublishService().publish(package: package, profile: profile, mode: .reviewBranch)
+    let result = try LocalGitPublishService().publish(
+      package: package, profile: profile, mode: .reviewBranch)
 
     XCTAssertEqual(result.mode, .reviewBranch)
     XCTAssertEqual(result.branchName, "publish/review-commit-20260829")
-    XCTAssertEqual(try git(["rev-parse", "--abbrev-ref", "HEAD"], rootURL: rootURL), "publish/review-commit-20260829")
+    XCTAssertEqual(
+      try git(["rev-parse", "--abbrev-ref", "HEAD"], rootURL: rootURL),
+      "publish/review-commit-20260829")
     XCTAssertEqual(try git(["status", "--porcelain"], rootURL: rootURL), "")
   }
 
@@ -119,8 +126,10 @@ final class LocalGitPublishServiceTests: XCTestCase {
       mode: .directCommit
     )
 
-    XCTAssertEqual(result.committedPaths, ["content/posts/new-name.md", "content/posts/old-name.md"])
-    let nameStatus = try git(["show", "--no-renames", "--name-status", "--format="], rootURL: rootURL)
+    XCTAssertEqual(
+      result.committedPaths, ["content/posts/new-name.md", "content/posts/old-name.md"])
+    let nameStatus = try git(
+      ["show", "--no-renames", "--name-status", "--format="], rootURL: rootURL)
     XCTAssertTrue(nameStatus.contains("A\tcontent/posts/new-name.md"))
     XCTAssertTrue(nameStatus.contains("D\tcontent/posts/old-name.md"))
   }
@@ -192,7 +201,8 @@ final class LocalGitPublishServiceTests: XCTestCase {
     XCTAssertEqual(try git(["rev-parse", "--abbrev-ref", "HEAD"], rootURL: rootURL), "main")
     XCTAssertEqual(try git(["status", "--porcelain"], rootURL: rootURL), "")
     XCTAssertEqual(try String(contentsOf: articleURL, encoding: .utf8), "original article\n")
-    XCTAssertThrowsError(try git(["rev-parse", "--verify", package.reviewBranchName], rootURL: rootURL))
+    XCTAssertThrowsError(
+      try git(["rev-parse", "--verify", package.reviewBranchName], rootURL: rootURL))
   }
 
   func testFailedCommitPreservesExternalEditInsteadOfRollingItBack() throws {
@@ -223,7 +233,7 @@ final class LocalGitPublishServiceTests: XCTestCase {
         gitCommandRunner: GitCommandRunner(executableURL: wrapperURL)
       ).publish(package: package, profile: profile, mode: .directCommit)
     ) { error in
-      guard case let .rollbackFailed(_, rollback) = error as? LocalGitPublishError else {
+      guard case .rollbackFailed(_, let rollback) = error as? LocalGitPublishError else {
         XCTFail("Expected rollbackFailed, got \(error)")
         return
       }
@@ -236,7 +246,8 @@ final class LocalGitPublishServiceTests: XCTestCase {
 
   func testFailsOutsideGitRepository() throws {
     let rootURL = FileManager.default.temporaryDirectory
-      .appendingPathComponent("PersonalSitePublisherMacNoGit-\(UUID().uuidString)", isDirectory: true)
+      .appendingPathComponent(
+        "PersonalSitePublisherMacNoGit-\(UUID().uuidString)", isDirectory: true)
     try FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)
     defer {
       try? FileManager.default.removeItem(at: rootURL)
@@ -245,13 +256,14 @@ final class LocalGitPublishServiceTests: XCTestCase {
     var profile = SiteProfile.defaultProfile
     profile.rememberLocalRepositoryRoot(rootURL)
 
-    let draft = ArticleDraft(siteProfileID: profile.id, title: "No Git", slug: "no-git", bodyMarkdown: "Body")
+    let draft = ArticleDraft(
+      siteProfileID: profile.id, title: "No Git", slug: "no-git", bodyMarkdown: "Body")
     let package = PublishPackageBuilder().build(draft: draft, profile: profile)
 
     XCTAssertThrowsError(
       try LocalGitPublishService().publish(package: package, profile: profile, mode: .directCommit)
     ) { error in
-      guard case let .notGitRepository(path) = error as? LocalGitPublishError else {
+      guard case .notGitRepository(let path) = error as? LocalGitPublishError else {
         XCTFail("Expected notGitRepository")
         return
       }
@@ -261,9 +273,11 @@ final class LocalGitPublishServiceTests: XCTestCase {
 
   func testDirectCommitSupportsLinkedGitWorktree() throws {
     let rootURL = try makeGitRepositoryFixture()
-    let linkedURL = rootURL
+    let linkedURL =
+      rootURL
       .deletingLastPathComponent()
-      .appendingPathComponent("PersonalSitePublisherMacLinked-\(UUID().uuidString)", isDirectory: true)
+      .appendingPathComponent(
+        "PersonalSitePublisherMacLinked-\(UUID().uuidString)", isDirectory: true)
     defer {
       _ = try? git(["worktree", "remove", "--force", linkedURL.path], rootURL: rootURL)
       try? FileManager.default.removeItem(at: linkedURL)
@@ -271,10 +285,11 @@ final class LocalGitPublishServiceTests: XCTestCase {
     }
     try git(["worktree", "add", "-b", "linked-publish", linkedURL.path], rootURL: rootURL)
     var isDirectory: ObjCBool = false
-    XCTAssertTrue(FileManager.default.fileExists(
-      atPath: linkedURL.appendingPathComponent(".git").path,
-      isDirectory: &isDirectory
-    ))
+    XCTAssertTrue(
+      FileManager.default.fileExists(
+        atPath: linkedURL.appendingPathComponent(".git").path,
+        isDirectory: &isDirectory
+      ))
     XCTAssertFalse(isDirectory.boolValue)
 
     var profile = SiteProfile.defaultProfile
@@ -296,14 +311,16 @@ final class LocalGitPublishServiceTests: XCTestCase {
     )
 
     XCTAssertEqual(result.branchName, "linked-publish")
-    XCTAssertTrue(try git(["show", "--name-only", "--format="], rootURL: linkedURL).contains(
-      "content/posts/linked-worktree.md"
-    ))
+    XCTAssertTrue(
+      try git(["show", "--name-only", "--format="], rootURL: linkedURL).contains(
+        "content/posts/linked-worktree.md"
+      ))
   }
 
   private func makeGitRepositoryFixture() throws -> URL {
     let rootURL = FileManager.default.temporaryDirectory
-      .appendingPathComponent("PersonalSitePublisherMacGitTests-\(UUID().uuidString)", isDirectory: true)
+      .appendingPathComponent(
+        "PersonalSitePublisherMacGitTests-\(UUID().uuidString)", isDirectory: true)
     try FileManager.default.createDirectory(
       at: rootURL.appendingPathComponent("content/posts", isDirectory: true),
       withIntermediateDirectories: true
@@ -323,50 +340,54 @@ final class LocalGitPublishServiceTests: XCTestCase {
 
   private func makeGitWrapperEmittingStatusWarning() throws -> URL {
     let directoryURL = FileManager.default.temporaryDirectory
-      .appendingPathComponent("PersonalSitePublisherMacGitWrapper-\(UUID().uuidString)", isDirectory: true)
+      .appendingPathComponent(
+        "PersonalSitePublisherMacGitWrapper-\(UUID().uuidString)", isDirectory: true)
     try FileManager.default.createDirectory(at: directoryURL, withIntermediateDirectories: true)
     let scriptURL = directoryURL.appendingPathComponent("git")
     let script = """
-    #!/bin/sh
-    if [ "$3" = "status" ]; then
-      printf 'warning: simulated fsmonitor failure\n' >&2
-    fi
-    exec /usr/bin/git "$@"
-    """
+      #!/bin/sh
+      if [ "$3" = "status" ]; then
+        printf 'warning: simulated fsmonitor failure\n' >&2
+      fi
+      exec /usr/bin/git "$@"
+      """
     try script.write(to: scriptURL, atomically: true, encoding: .utf8)
     try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: scriptURL.path)
     return scriptURL
   }
 
   private func makeGitWrapperFailingCommit() throws -> URL {
-    try makeGitWrapper(scriptBody: """
-    if [ "$3" = "commit" ]; then
-      printf 'simulated commit failure\n' >&2
-      exit 1
-    fi
-    """)
+    try makeGitWrapper(
+      scriptBody: """
+        if [ "$3" = "commit" ]; then
+          printf 'simulated commit failure\n' >&2
+          exit 1
+        fi
+        """)
   }
 
   private func makeGitWrapperFailingCommitAndEditingConcurrentArticle() throws -> URL {
-    try makeGitWrapper(scriptBody: """
-    if [ "$3" = "commit" ]; then
-      printf 'external editor content\\n' > "$2/content/posts/concurrent.md"
-      printf 'simulated commit failure\n' >&2
-      exit 1
-    fi
-    """)
+    try makeGitWrapper(
+      scriptBody: """
+        if [ "$3" = "commit" ]; then
+          printf 'external editor content\\n' > "$2/content/posts/concurrent.md"
+          printf 'simulated commit failure\n' >&2
+          exit 1
+        fi
+        """)
   }
 
   private func makeGitWrapper(scriptBody: String) throws -> URL {
     let directoryURL = FileManager.default.temporaryDirectory
-      .appendingPathComponent("PersonalSitePublisherMacGitWrapper-\(UUID().uuidString)", isDirectory: true)
+      .appendingPathComponent(
+        "PersonalSitePublisherMacGitWrapper-\(UUID().uuidString)", isDirectory: true)
     try FileManager.default.createDirectory(at: directoryURL, withIntermediateDirectories: true)
     let scriptURL = directoryURL.appendingPathComponent("git")
     let script = """
-    #!/bin/sh
-    \(scriptBody)
-    exec /usr/bin/git "$@"
-    """
+      #!/bin/sh
+      \(scriptBody)
+      exec /usr/bin/git "$@"
+      """
     try script.write(to: scriptURL, atomically: true, encoding: .utf8)
     try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: scriptURL.path)
     return scriptURL
@@ -386,8 +407,10 @@ final class LocalGitPublishServiceTests: XCTestCase {
     try process.run()
     process.waitUntilExit()
 
-    let output = String(data: outputPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
-    let error = String(data: errorPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+    let output =
+      String(data: outputPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+    let error =
+      String(data: errorPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
     guard process.terminationStatus == 0 else {
       throw NSError(
         domain: "LocalGitPublishServiceTests",

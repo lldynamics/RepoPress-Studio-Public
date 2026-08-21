@@ -1,5 +1,6 @@
-import XCTest
 import CoreFoundation
+import XCTest
+
 @testable import PublishingWorkbenchCore
 
 final class CredentialSafeURLSessionTests: XCTestCase {
@@ -294,10 +295,12 @@ final class CredentialSafeURLSessionTests: XCTestCase {
   func testGzipResponseDecodingHonorsDecodedSizeLimit() throws {
     let compressed = try XCTUnwrap(
       Data(
-        base64Encoded: "H4sIALV7cWoAA7MpKi62s0nOSMzLS82xs0lJLU4uyiwoyczPs3McBSMa2OgjpwYbfXgi0QelGQCl7RPqOQIAAA=="
+        base64Encoded:
+          "H4sIALV7cWoAA7MpKi62s0nOSMzLS82xs0lJLU4uyiwoyczPs3McBSMa2OgjpwYbfXgi0QelGQCl7RPqOQIAAA=="
       )
     )
-    let expected = "<rss><channel><description>"
+    let expected =
+      "<rss><channel><description>"
       + String(repeating: "A", count: 512)
       + "</description></channel></rss>"
 
@@ -326,7 +329,8 @@ final class CredentialSafeURLSessionTests: XCTestCase {
   func testGzipDecoderRejectsTruncatedAndMalformedBodies() throws {
     let compressed = try XCTUnwrap(
       Data(
-        base64Encoded: "H4sIANh2cWoAA7MpKi62s0nOSMzLS82xsynJLMlJtXva1/18z8oX6xa9nNFqow8Rs9GHK9IH6QEA+QZ/yTkAAAA="
+        base64Encoded:
+          "H4sIANh2cWoAA7MpKi62s0nOSMzLS82xsynJLMlJtXva1/18z8oX6xa9nNFqow8Rs9GHK9IH6QEA+QZ/yTkAAAA="
       )
     )
 

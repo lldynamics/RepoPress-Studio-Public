@@ -638,10 +638,11 @@ final class WorkbenchGeneralAIChatTests: XCTestCase {
     )
     let second = try jsonBody(bodies[1])
     let messages = try XCTUnwrap(second["messages"] as? [[String: Any]])
-    XCTAssertTrue(messages.contains { message in
-      (message["role"] as? String) == "tool"
-        && (message["content"] as? String)?.contains(createdDraft.id.uuidString) == true
-    })
+    XCTAssertTrue(
+      messages.contains { message in
+        (message["role"] as? String) == "tool"
+          && (message["content"] as? String)?.contains(createdDraft.id.uuidString) == true
+      })
   }
 
   func testGeneralToolCallingSearchesOnlyRemoteAllowedKnowledgeThenReturnsReply() async throws {
@@ -1216,28 +1217,34 @@ final class WorkbenchGeneralAIChatTests: XCTestCase {
     let argumentsString = String(data: argumentsData, encoding: .utf8)!
     return try! JSONSerialization.data(withJSONObject: [
       "model": "general-agent-model",
-      "choices": [[
-        "message": [
-          "role": "assistant",
-          "content": "",
-          "tool_calls": [[
-            "id": "call-\(name)",
-            "type": "function",
-            "function": ["name": name, "arguments": argumentsString],
-          ]],
-        ],
-        "finish_reason": "tool_calls",
-      ]],
+      "choices": [
+        [
+          "message": [
+            "role": "assistant",
+            "content": "",
+            "tool_calls": [
+              [
+                "id": "call-\(name)",
+                "type": "function",
+                "function": ["name": name, "arguments": argumentsString],
+              ]
+            ],
+          ],
+          "finish_reason": "tool_calls",
+        ]
+      ],
     ])
   }
 
   private func textResponse(_ content: String) -> Data {
     try! JSONSerialization.data(withJSONObject: [
       "model": "general-agent-model",
-      "choices": [[
-        "message": ["role": "assistant", "content": content],
-        "finish_reason": "stop",
-      ]],
+      "choices": [
+        [
+          "message": ["role": "assistant", "content": content],
+          "finish_reason": "stop",
+        ]
+      ],
     ])
   }
 

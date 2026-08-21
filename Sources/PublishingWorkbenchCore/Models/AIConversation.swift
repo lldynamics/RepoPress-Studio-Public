@@ -7,7 +7,7 @@ public enum AIConversationScope: Codable, Hashable, Sendable {
   case draft(UUID)
 
   public var draftID: UUID? {
-    guard case let .draft(id) = self else { return nil }
+    guard case .draft(let id) = self else { return nil }
     return id
   }
 
@@ -15,7 +15,7 @@ public enum AIConversationScope: Codable, Hashable, Sendable {
     switch self {
     case .general:
       return "general"
-    case let .draft(id):
+    case .draft(let id):
       return "draft:\(id.uuidString.lowercased())"
     }
   }
@@ -23,7 +23,8 @@ public enum AIConversationScope: Codable, Hashable, Sendable {
   public init(storageKey: String) {
     let prefix = "draft:"
     if storageKey.lowercased().hasPrefix(prefix),
-       let id = UUID(uuidString: String(storageKey.dropFirst(prefix.count))) {
+      let id = UUID(uuidString: String(storageKey.dropFirst(prefix.count)))
+    {
       self = .draft(id)
     } else {
       self = .general
@@ -183,33 +184,46 @@ public struct AIConversation: Codable, Hashable, Identifiable, Sendable {
       )
     }
     self.id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
-    self.scope = storedScope
+    self.scope =
+      storedScope
       ?? legacyDraftID.map(AIConversationScope.draft)
       ?? .general
-    self.connectionProfileID = try container.decodeIfPresent(UUID.self, forKey: .connectionProfileID)
+    self.connectionProfileID = try container.decodeIfPresent(
+      UUID.self, forKey: .connectionProfileID)
     // Snapshots written before per-conversation Agent modes existed inherit
     // the connection's setting, preserving the previous behavior safely.
-    self.agentMode = try container.decodeIfPresent(
-      AIConversationAgentMode.self,
-      forKey: .agentMode
-    ) ?? .inheritConnection
-    self.title = try container.decodeIfPresent(String.self, forKey: .title)?.trimmedForPublishing.nilIfEmpty
-    self.messages = try container.decodeIfPresent([AIPublishingChatMessage].self, forKey: .messages) ?? []
+    self.agentMode =
+      try container.decodeIfPresent(
+        AIConversationAgentMode.self,
+        forKey: .agentMode
+      ) ?? .inheritConnection
+    self.title = try container.decodeIfPresent(String.self, forKey: .title)?.trimmedForPublishing
+      .nilIfEmpty
+    self.messages =
+      try container.decodeIfPresent([AIPublishingChatMessage].self, forKey: .messages) ?? []
     if self.scope == .general {
       // A general owner is authoritative even if an intermediate snapshot
       // carried the old draft-oriented `.site` mode.
       self.contextMode = .general
     } else {
-      self.contextMode = try container.decodeIfPresent(
-        AIPublishingChatContextMode.self,
-        forKey: .contextMode
-      ) ?? .site
+      self.contextMode =
+        try container.decodeIfPresent(
+          AIPublishingChatContextMode.self,
+          forKey: .contextMode
+        ) ?? .site
     }
-    self.knowledgePolicy = try container.decodeIfPresent(KnowledgeRetrievalPolicy.self, forKey: .knowledgePolicy) ?? .automatic
-    self.modelGrade = try container.decodeIfPresent(AIChatModelGrade.self, forKey: .modelGrade) ?? .standard
-    self.reasoningLevel = try container.decodeIfPresent(AIChatReasoningLevel.self, forKey: .reasoningLevel) ?? .deep
-    self.selectedModel = (try container.decodeIfPresent(String.self, forKey: .selectedModel) ?? "").trimmedForPublishing
-    self.focusedParagraphID = try container.decodeIfPresent(String.self, forKey: .focusedParagraphID)?.nilIfEmpty
+    self.knowledgePolicy =
+      try container.decodeIfPresent(KnowledgeRetrievalPolicy.self, forKey: .knowledgePolicy)
+      ?? .automatic
+    self.modelGrade =
+      try container.decodeIfPresent(AIChatModelGrade.self, forKey: .modelGrade) ?? .standard
+    self.reasoningLevel =
+      try container.decodeIfPresent(AIChatReasoningLevel.self, forKey: .reasoningLevel) ?? .deep
+    self.selectedModel =
+      (try container.decodeIfPresent(String.self, forKey: .selectedModel) ?? "")
+      .trimmedForPublishing
+    self.focusedParagraphID = try container.decodeIfPresent(
+      String.self, forKey: .focusedParagraphID)?.nilIfEmpty
     self.createdAt = try container.decodeIfPresent(Date.self, forKey: .createdAt) ?? Date()
     self.updatedAt = max(
       try container.decodeIfPresent(Date.self, forKey: .updatedAt) ?? self.createdAt,
@@ -306,7 +320,8 @@ public enum AIConversationRetentionPolicy {
     preserving preferredConversationIDs: Set<UUID> = []
   ) -> [AIConversation] {
     var seenConversationIDs: Set<UUID> = []
-    let prepared = conversations
+    let prepared =
+      conversations
       .filter { conversation in
         guard let validDraftIDs else { return true }
         guard let draftID = conversation.draftID else { return true }
@@ -331,7 +346,7 @@ public enum AIConversationRetentionPolicy {
             preferredConversationIDs: preferredConversationIDs
           )
         }
-          .prefix(maximumConversationsPerDraft)
+        .prefix(maximumConversationsPerDraft)
       }
       .sorted {
         retentionOrder(
@@ -370,14 +385,16 @@ public enum AIConversationRetentionPolicy {
     ) {
       guard let draftID else { continue }
       if let candidateID = activeIDs[draftID],
-         let candidate = conversationsByID[candidateID],
-         candidate.draftID == draftID,
-         !candidate.isArchived {
+        let candidate = conversationsByID[candidateID],
+        candidate.draftID == draftID,
+        !candidate.isArchived
+      {
         result[draftID] = candidateID
         continue
       }
 
-      result[draftID] = draftConversations
+      result[draftID] =
+        draftConversations
         .filter { !$0.isArchived }
         .max { $0.updatedAt < $1.updatedAt }?
         .id
@@ -399,14 +416,16 @@ public enum AIConversationRetentionPolicy {
       by: { $0.scope.storageKey }
     ) {
       if let candidateID = activeIDs[scopeKey],
-         let candidate = conversationsByID[candidateID],
-         candidate.scope.storageKey == scopeKey,
-         !candidate.isArchived {
+        let candidate = conversationsByID[candidateID],
+        candidate.scope.storageKey == scopeKey,
+        !candidate.isArchived
+      {
         result[scopeKey] = candidateID
         continue
       }
 
-      result[scopeKey] = scopedConversations
+      result[scopeKey] =
+        scopedConversations
         .filter { !$0.isArchived }
         .max { $0.updatedAt < $1.updatedAt }?
         .id

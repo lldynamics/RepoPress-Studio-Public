@@ -1,4 +1,5 @@
 import XCTest
+
 @testable import PublishingWorkbenchCore
 
 final class ImageMetadataEditingServiceTests: XCTestCase {
@@ -80,7 +81,8 @@ final class ImageMetadataEditingServiceTests: XCTestCase {
 
   func testBuildsEscapedMarkdownReferenceAndRejectsMissingAttachment() {
     XCTAssertEqual(
-      service.markdownReference(altText: #"Chart \[Q3]"# + "\nwide", imagePath: "/images/chart.png"),
+      service.markdownReference(
+        altText: #"Chart \[Q3]"# + "\nwide", imagePath: "/images/chart.png"),
       #"![Chart \\\[Q3\] wide](/images/chart.png)"#
     )
 
@@ -106,10 +108,10 @@ final class ImageMetadataEditingServiceTests: XCTestCase {
       siteProfileID: UUID(),
       title: "Escaped image alt",
       bodyMarkdown: """
-      ![](/images/diagram.png "first")
-      ![old](/images/diagram.png)
-      ![](/images/other.png "unrelated")
-      """,
+        ![](/images/diagram.png "first")
+        ![old](/images/diagram.png)
+        ![](/images/other.png "unrelated")
+        """,
       attachments: [attachment]
     )
 

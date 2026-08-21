@@ -116,7 +116,8 @@ final class AIProviderPresetTests: XCTestCase {
       var config = AIWritingStyleConfig(preset: preset)
       XCTAssertFalse(config.tone.isEmpty, "Preset \(preset) should have a default tone")
       XCTAssertFalse(config.audience.isEmpty, "Preset \(preset) should have a default audience")
-      XCTAssertFalse(config.summaryGuidance.isEmpty, "Preset \(preset) should have summary guidance")
+      XCTAssertFalse(
+        config.summaryGuidance.isEmpty, "Preset \(preset) should have summary guidance")
       XCTAssertFalse(config.tagGuidance.isEmpty, "Preset \(preset) should have tag guidance")
       XCTAssertFalse(config.seoGuidance.isEmpty, "Preset \(preset) should have SEO guidance")
     }

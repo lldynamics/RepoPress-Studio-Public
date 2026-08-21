@@ -6,7 +6,8 @@ import Foundation
 /// setting.  This policy only describes the scopes that are eligible when the
 /// master switch is on.  Command execution still has to pass the command
 /// registry and confirmation gates.
-public enum AIAgentPermissionScope: String, Codable, CaseIterable, Identifiable, Hashable, Sendable {
+public enum AIAgentPermissionScope: String, Codable, CaseIterable, Identifiable, Hashable, Sendable
+{
   case localRead
   case draftCreation
   case contentModification

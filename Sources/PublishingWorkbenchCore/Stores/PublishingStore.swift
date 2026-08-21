@@ -55,7 +55,9 @@ extension PublishingStore {
     isLocalRepositoryMutationRunning = false
   }
 
-  func beginRemoteRepositoryMutation(profile: SiteProfile, store: WorkbenchStore) -> RemoteRepositoryOperationContext? {
+  func beginRemoteRepositoryMutation(profile: SiteProfile, store: WorkbenchStore)
+    -> RemoteRepositoryOperationContext?
+  {
     guard remoteRepositoryMutationContext == nil else { return nil }
     let context = RemoteRepositoryOperationContext(profile: profile)
     remoteRepositoryMutationContext = context
@@ -71,7 +73,9 @@ extension PublishingStore {
       && context.stillMatches(store.profiles.first(where: { $0.id == context.profileID }))
   }
 
-  func finishRemoteRepositoryMutation(_ context: RemoteRepositoryOperationContext, store: WorkbenchStore) {
+  func finishRemoteRepositoryMutation(
+    _ context: RemoteRepositoryOperationContext, store: WorkbenchStore
+  ) {
     guard remoteRepositoryMutationContext == context else { return }
     remoteRepositoryMutationContext = nil
     store.setRemoteRepositoryPublishing(false)
@@ -120,7 +124,8 @@ public final class PublishingStore: ObservableObject {
   @Published public internal(set) var customMarkdownSnippets: [MarkdownSnippet]
   @Published public internal(set) var draftVersions: [DraftVersionSnapshot]
   @Published public internal(set) var recycledDrafts: [RecycledDraft]
-  @Published public internal(set) var draftRepositoryCleanupRequests: [DraftRepositoryCleanupRequest]
+  @Published public internal(set) var draftRepositoryCleanupRequests:
+    [DraftRepositoryCleanupRequest]
   @Published public internal(set) var releaseRecords: [ReleaseRecord]
   @Published public internal(set) var selectedSection: WorkspaceSection
   @Published public internal(set) var selectedDraftID: UUID?
@@ -136,7 +141,8 @@ public final class PublishingStore: ObservableObject {
   @Published public internal(set) var batchPublishPlan: BatchPublishPlan?
   @Published public internal(set) var isBatchPublishPlanRefreshing = false
   /// The last explicitly refreshed remote preview for the batch publish plan.
-  @Published public internal(set) var batchRemotePublishPreviewSnapshot: RemoteRepositoryPublishPreview?
+  @Published public internal(set) var batchRemotePublishPreviewSnapshot:
+    RemoteRepositoryPublishPreview?
   @Published public internal(set) var localSitePreviewPlan: LocalSitePreviewPlan?
   @Published public internal(set) var localSitePreviewRuntimeStatus: LocalSitePreviewRuntimeStatus
   @Published public internal(set) var localSitePreviewRefreshToken: UInt64 = 0
@@ -237,8 +243,10 @@ public final class PublishingStore: ObservableObject {
     publishPackageBuilder: PublishPackageBuilder = PublishPackageBuilder(),
     localPublishPreviewService: LocalPublishPreviewService = LocalPublishPreviewService(),
     batchPublishPlanService: BatchPublishPlanService = BatchPublishPlanService(),
-    remoteRepositoryPublishService: RemoteRepositoryPublishService = RemoteRepositoryPublishService(),
-    repositoryTokenStore: KeychainTokenStore = KeychainTokenStore(service: KeychainCredentialServices.repository),
+    remoteRepositoryPublishService: RemoteRepositoryPublishService =
+      RemoteRepositoryPublishService(),
+    repositoryTokenStore: KeychainTokenStore = KeychainTokenStore(
+      service: KeychainCredentialServices.repository),
     localGitPublishService: LocalGitPublishService = LocalGitPublishService(),
     remoteReviewDraftBuilder: RemoteReviewDraftBuilder = RemoteReviewDraftBuilder(),
     batchPublishCommandBuilder: BatchPublishCommandBuilder = BatchPublishCommandBuilder(),
@@ -248,7 +256,8 @@ public final class PublishingStore: ObservableObject {
     siteStarterService: SiteStarterService = SiteStarterService(),
     generalDraftLibraryService: GeneralDraftLibraryService = GeneralDraftLibraryService(),
     localSitePreviewService: LocalSitePreviewService = LocalSitePreviewService(),
-    localSitePreviewProcessService: LocalSitePreviewProcessService = LocalSitePreviewProcessService(),
+    localSitePreviewProcessService: LocalSitePreviewProcessService =
+      LocalSitePreviewProcessService(),
     siteMaintenanceService: SiteMaintenanceService = SiteMaintenanceService(),
     draftLifecycleService: DraftLifecycleService = DraftLifecycleService(),
     imageWorkbenchService: SiteImageWorkbenchService = SiteImageWorkbenchService()
@@ -287,7 +296,8 @@ public final class PublishingStore: ObservableObject {
     self.selectedSection = selectedSection
     self.selectedDraftID = selectedDraftID
     self.draftListContentScope = draftListContentScope
-    self.draftNavigationHistory = draftNavigationHistory
+    self.draftNavigationHistory =
+      draftNavigationHistory
       ?? DraftNavigationHistory(currentDraftID: selectedDraftID)
     self.publishPackage = publishPackage
     self.localPublishPreview = localPublishPreview

@@ -220,6 +220,61 @@
       "file": "Tests/PublishingWorkbenchCoreTests/WorkbenchPersistenceTests.swift",
       "declaration": "PersistencePreparationProbe",
       "rationale": "The probe's invocation and main-thread flags are protected by one NSLock while background-save callbacks report to the test assertions."
+    },
+    {
+      "file": "Sources/PersonalSitePublisherMac/Support/KnowledgeBrowserBridge.swift",
+      "declaration": "BrowserBridgeConnectionBudget",
+      "rationale": "Connection and buffered-byte counters are protected by the budget NSLock before Network callbacks cross the bridge queue."
+    },
+    {
+      "file": "Sources/PersonalSitePublisherMac/Support/KnowledgeBrowserBridge.swift",
+      "declaration": "Lease",
+      "rationale": "Lease release state and reserved bytes are protected by the lease NSLock, and the parent budget performs its own locked accounting."
+    },
+    {
+      "file": "Sources/PersonalSitePublisherMac/Support/KnowledgeBrowserBridge.swift",
+      "declaration": "BrowserBridgeConnectionContext",
+      "rationale": "Connection completion state and timeout ownership are protected by one NSLock while callbacks are scheduled on the bridge's private serial queue."
+    },
+    {
+      "file": "Sources/PersonalSitePublisherMac/Support/KnowledgeBrowserBridge.swift",
+      "declaration": "BrowserBridgeRequestBodyBuffer",
+      "rationale": "Each request owns one buffer, and its receive callbacks append serially on the NWConnection bridge queue before the value is handed off."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/Services/AIChatCompletionClient.swift",
+      "declaration": "AIChatTransportCache",
+      "rationale": "All cache entries, recency counters, and eviction decisions are serialized by the cache NSLock."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/Services/AIDataSharingConsentStore.swift",
+      "declaration": "AIDataSharingConsentStore",
+      "rationale": "The store has immutable configuration and delegates synchronized preference access to thread-safe UserDefaults without retaining mutable grant state."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/Stores/WorkbenchAIStore+AgentContinuation.swift",
+      "declaration": "AgentContinuationKnowledgeAuthorizationState",
+      "rationale": "The continuation authorization flag is read and written only through helpers protected by one NSLock."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/Stores/WorkbenchAIStore+AgentLoop.swift",
+      "declaration": "AgentKnowledgeAuthorizationState",
+      "rationale": "The agent authorization flag is read and written only through helpers protected by one NSLock."
+    },
+    {
+      "file": "Tests/PublishingWorkbenchCoreTests/AIModelDiscoveryServiceTests.swift",
+      "declaration": "ModelDiscoveryStubTransport",
+      "rationale": "Each test owns its stub, and the model discovery service awaits its paginated requests serially before assertions inspect the recorded values."
+    },
+    {
+      "file": "Tests/PublishingWorkbenchCoreTests/AIModelDiscoveryServiceTests.swift",
+      "declaration": "BlockingModelDiscoveryStubTransport",
+      "rationale": "The transport stores immutable response fixtures and delegates cross-task coordination to the ModelDiscoveryRequestBarrier actor."
+    },
+    {
+      "file": "Tests/PublishingWorkbenchCoreTests/CodexAppServerClientTests.swift",
+      "declaration": "SequencedCodexTransportFactory",
+      "rationale": "The factory generation counter is protected by its NSLock before transports are created across client tasks."
     }
   ],
   "forcedOperations": [
@@ -240,9 +295,69 @@
       "kind": "try!",
       "contains": "try! JSONSerialization.data(withJSONObject: [",
       "rationale": "The integration-test response envelopes are fixed JSON-compatible fixtures; serialization failure indicates invalid test setup and should abort immediately."
+    },
+    {
+      "file": "Tests/PublishingWorkbenchCoreTests/AIDataSharingConsentStoreTests.swift",
+      "kind": "try!",
+      "contains": "try! XCTUnwrap(store.codexAccountBindingDigest)",
+      "rationale": "The preceding grant assertions require a stored account-binding digest; absence is invalid test setup and should fail immediately."
+    },
+    {
+      "file": "Tests/PublishingWorkbenchCoreTests/AIModelDiscoveryServiceTests.swift",
+      "kind": "try!",
+      "contains": "try! JSONSerialization.data(withJSONObject: payload)",
+      "rationale": "The pagination response payload is a fixed JSON-compatible test fixture and serialization failure should abort the test."
+    },
+    {
+      "file": "Tests/PublishingWorkbenchCoreTests/WorkbenchAIStoreAgentLoopIntegrationTests.swift",
+      "kind": "try!",
+      "contains": "try! library.setAllowsRemoteAIUse(false, documentID: documentID)",
+      "rationale": "These authorization-revocation callbacks are test setup; a persistence failure prevents the intended race condition and should abort immediately."
+    },
+    {
+      "file": "Tests/PublishingWorkbenchCoreTests/WorkbenchGeneralAIChatTests.swift",
+      "kind": "try!",
+      "contains": "let argumentsData = try! JSONSerialization.data(",
+      "rationale": "The general-agent tool arguments are fixed JSON-compatible test fixtures and serialization failure should abort immediately."
+    },
+    {
+      "file": "Tests/PublishingWorkbenchCoreTests/WorkbenchGeneralAIChatTests.swift",
+      "kind": "try!",
+      "contains": "try! JSONSerialization.data(withJSONObject: [",
+      "rationale": "The general-agent response envelopes are fixed JSON-compatible fixtures and serialization failure should abort immediately."
     }
   ],
   "optionalOperations": [
+    {
+      "file": "Sources/PublishingWorkbenchCore/Models/ArticleDraft.swift",
+      "category": "serializationFallback",
+      "contains": "try? Self.fingerprintEncoder.encode(snapshot)",
+      "rationale": "Fingerprint encoding has a deterministic SHA-256 fallback over stable draft identity and content metadata, and the debug build also records an assertion."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/Services/AIModelDiscoveryService.swift",
+      "category": "parsing",
+      "contains": "try? parsePage(from: data)",
+      "rationale": "The public non-throwing compatibility parser maps malformed model-list payloads to an empty list without caching or mutating provider state."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/Services/CredentialSafeURLSession.swift",
+      "category": "validationFallback",
+      "contains": "try? validatedProxyConfiguration(trimmed)",
+      "rationale": "The legacy permissive session factory treats an invalid optional proxy as absent; credentialed AI requests use the separate strict throwing factory."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/Services/WorkbenchAIAgentLoopService.swift",
+      "category": "validationFallback",
+      "contains": "try? WorkbenchAutomationRegistry.agentInvocation(",
+      "rationale": "Continuation replay reparses the frozen tool call and rejects the entire continuation as invalid when invocation validation fails before execution."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/Stores/WorkbenchAIStore+GeneralChat.swift",
+      "category": "protocolFallback",
+      "contains": "try? aiPublishingAssistantService.resolvedChatTaskConfig(",
+      "rationale": "If Agent capability resolution fails, general chat falls back to the authorized text-only transport and declares or executes no tools."
+    },
     {
       "file": "Sources/PublishingWorkbenchCore/Services/ManagedAttachmentFileStore.swift",
       "category": "temporaryCleanup",

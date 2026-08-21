@@ -1,6 +1,7 @@
 import Foundation
+
 #if canImport(Darwin)
-import Darwin
+  import Darwin
 #endif
 
 public struct GitCommandResult: Sendable, Hashable {
@@ -117,7 +118,10 @@ public struct GitCommandRunner: Sendable {
     GitCommandLogRedactor.redactedDiagnosticText(text)
   }
 
-  @available(*, deprecated, message: "Use runAsync instead in async contexts to avoid blocking cooperative thread pool")
+  @available(
+    *, deprecated,
+    message: "Use runAsync instead in async contexts to avoid blocking cooperative thread pool"
+  )
   public func run(
     _ arguments: [String],
     rootURL: URL,
@@ -192,9 +196,9 @@ public struct GitCommandRunner: Sendable {
     if !didFinish {
       process.terminate()
       if completed.wait(timeout: .now() + 1) == .timedOut {
-#if canImport(Darwin)
-        Darwin.kill(process.processIdentifier, SIGKILL)
-#endif
+        #if canImport(Darwin)
+          Darwin.kill(process.processIdentifier, SIGKILL)
+        #endif
         _ = completed.wait(timeout: .now() + 1)
       }
     }
@@ -220,7 +224,8 @@ public struct GitCommandRunner: Sendable {
     let standardError = Self.redactedDiagnosticText(
       collected.standardError.trimmedForPublishing
     )
-    let statusMessage = didFinish
+    let statusMessage =
+      didFinish
       ? nil
       : "Git command timed out after \(Int(timeout))s: \(Self.redactedCommandDescription(arguments))"
     return GitCommandResult(
@@ -260,11 +265,13 @@ public struct GitCommandRunner: Sendable {
         delimiter: inputDelimiter
       )
     )
-    return await withTaskCancellationHandler(operation: {
-      await operation.run()
-    }, onCancel: {
-      operation.cancel()
-    })
+    return await withTaskCancellationHandler(
+      operation: {
+        await operation.run()
+      },
+      onCancel: {
+        operation.cancel()
+      })
   }
 
   private func installDrainHandler(
@@ -372,8 +379,9 @@ public struct GitCommandRunner: Sendable {
       gitDirectoryURL = gitEntryURL
     } else {
       guard let pointer = boundedUTF8String(at: gitEntryURL),
-            !pointer.contains("\0"),
-            pointer.components(separatedBy: .newlines).count <= 2 else {
+        !pointer.contains("\0"),
+        pointer.components(separatedBy: .newlines).count <= 2
+      else {
         return "Git 工作树元数据指针无效或超过大小限制"
       }
       let trimmedPointer = pointer.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -397,9 +405,10 @@ public struct GitCommandRunner: Sendable {
     let commondirURL = gitDirectoryURL.appendingPathComponent("commondir")
     if fileManager.fileExists(atPath: commondirURL.path) {
       guard !isSymbolicLink(commondirURL),
-            let pointer = boundedUTF8String(at: commondirURL),
-            !pointer.contains("\0"),
-            pointer.components(separatedBy: .newlines).count <= 2 else {
+        let pointer = boundedUTF8String(at: commondirURL),
+        !pointer.contains("\0"),
+        pointer.components(separatedBy: .newlines).count <= 2
+      else {
         return "Git commondir 指针无效或超过大小限制"
       }
       let commonPath = pointer.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -463,8 +472,9 @@ public struct GitCommandRunner: Sendable {
       }
       let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
       guard !trimmed.isEmpty,
-            !trimmed.hasPrefix("#"),
-            !trimmed.hasPrefix(";") else {
+        !trimmed.hasPrefix("#"),
+        !trimmed.hasPrefix(";")
+      else {
         continue
       }
       guard !trimmed.hasSuffix("\\") else {
@@ -476,15 +486,18 @@ public struct GitCommandRunner: Sendable {
           return "Git 配置节格式无效：\(fileName)"
         }
         let body = trimmed.dropFirst().dropLast()
-        guard let name = body.split(
-          whereSeparator: { $0 == " " || $0 == "\t" || $0 == "\"" }
-        ).first,
-        !name.isEmpty,
-        name.utf8.count <= 256 else {
+        guard
+          let name = body.split(
+            whereSeparator: { $0 == " " || $0 == "\t" || $0 == "\"" }
+          ).first,
+          !name.isEmpty,
+          name.utf8.count <= 256
+        else {
           return "Git 配置节格式无效：\(fileName)"
         }
         sectionDescriptor = String(name).lowercased()
-        section = sectionDescriptor.split(separator: ".", maxSplits: 1)
+        section =
+          sectionDescriptor.split(separator: ".", maxSplits: 1)
           .first
           .map(String.init) ?? sectionDescriptor
         if section == "include" || section.hasPrefix("includeif") {
@@ -504,17 +517,19 @@ public struct GitCommandRunner: Sendable {
       }
       let key = String(keyPart).trimmingCharacters(in: .whitespacesAndNewlines)
       guard !key.isEmpty,
-            key.utf8.count <= 256,
-            !key.contains("\0"),
-            key.unicodeScalars.allSatisfy({
-              CharacterSet.alphanumerics.contains($0) || $0 == "-"
-            }),
-            !section.isEmpty else {
+        key.utf8.count <= 256,
+        !key.contains("\0"),
+        key.unicodeScalars.allSatisfy({
+          CharacterSet.alphanumerics.contains($0) || $0 == "-"
+        }),
+        !section.isEmpty
+      else {
         return "Git 配置键格式无效：\(fileName)"
       }
 
       let lowercaseKey = key.lowercased()
-      let normalizedValue = value
+      let normalizedValue =
+        value
         .trimmingCharacters(in: .whitespacesAndNewlines)
         .trimmingCharacters(in: CharacterSet(charactersIn: "\""))
       switch section {
@@ -555,7 +570,8 @@ public struct GitCommandRunner: Sendable {
           return "Git 配置包含外部 remote 命令：remote.*.\(key)"
         }
         if ["url", "pushurl"].contains(lowercaseKey),
-           isExecutableRemoteURL(normalizedValue) {
+          isExecutableRemoteURL(normalizedValue)
+        {
           return "Git 配置包含可执行 remote URL"
         }
       case "url":
@@ -572,7 +588,8 @@ public struct GitCommandRunner: Sendable {
         }
       case "submodule":
         if lowercaseKey == "update",
-           normalizedValue.hasPrefix("!") {
+          normalizedValue.hasPrefix("!")
+        {
           return "Git 配置包含外部 submodule 更新命令"
         }
       case "gc":
@@ -752,9 +769,9 @@ private final class GitCommandAsyncOperation: @unchecked Sendable {
     Task.detached {
       try? await Task.sleep(nanoseconds: 1_000_000_000)
       guard process.isRunning else { return }
-#if canImport(Darwin)
-      Darwin.kill(process.processIdentifier, SIGKILL)
-#endif
+      #if canImport(Darwin)
+        Darwin.kill(process.processIdentifier, SIGKILL)
+      #endif
     }
   }
 
@@ -804,25 +821,28 @@ private final class GitCommandAsyncOperation: @unchecked Sendable {
     if let launchError {
       statusMessage = launchError
     } else if timedOut {
-      statusMessage = "Git command timed out after \(Int(timeout))s: \(GitCommandRunner.redactedCommandDescription(arguments))"
+      statusMessage =
+        "Git command timed out after \(Int(timeout))s: \(GitCommandRunner.redactedCommandDescription(arguments))"
     } else if cancelled {
-      statusMessage = "Git command canceled: \(GitCommandRunner.redactedCommandDescription(arguments))"
+      statusMessage =
+        "Git command canceled: \(GitCommandRunner.redactedCommandDescription(arguments))"
     } else {
       statusMessage = nil
     }
-    continuation?.resume(returning: GitCommandResult(
-      terminationStatus: timedOut ? 124 : (cancelled ? 130 : terminationStatus),
-      standardOutput: standardOutput,
-      standardError: standardError,
-      diagnosticOutput: diagnosticOutput(
-        statusMessage: statusMessage,
+    continuation?.resume(
+      returning: GitCommandResult(
+        terminationStatus: timedOut ? 124 : (cancelled ? 130 : terminationStatus),
         standardOutput: standardOutput,
         standardError: standardError,
-        didTruncate: collected.didTruncate
-      ),
-      didTimeOut: timedOut,
-      wasOutputTruncated: collected.didTruncate
-    ))
+        diagnosticOutput: diagnosticOutput(
+          statusMessage: statusMessage,
+          standardOutput: standardOutput,
+          standardError: standardError,
+          didTruncate: collected.didTruncate
+        ),
+        didTimeOut: timedOut,
+        wasOutputTruncated: collected.didTruncate
+      ))
   }
 
   private func installDrainHandler(on handle: FileHandle, stream: GitOutputStream) {
@@ -899,12 +919,16 @@ private final class GitPipeDrainCoordinator: @unchecked Sendable {
 
 private enum GitCommandLogRedactor {
   private static let urlPattern = #"(?i)\b(?:https?|ssh|git\+https?|git)://[^\s"'<>]+"#
-  private static let scpRemotePattern = #"(?i)(?<![\w./])(?:[^@\s/:]+(?::[^@\s/:]+)?@)?(?:github\.com|gitlab\.com|bitbucket\.org|[a-z0-9.-]+\.[a-z]{2,}):[^\s"'<>]+"#
-  private static let authorizationHeaderPattern = #"((?i:authorization|proxy-authorization)\s*:\s*(?:(?:bearer|basic|token)\s+))[^\s,;&]+"#
+  private static let scpRemotePattern =
+    #"(?i)(?<![\w./])(?:[^@\s/:]+(?::[^@\s/:]+)?@)?(?:github\.com|gitlab\.com|bitbucket\.org|[a-z0-9.-]+\.[a-z]{2,}):[^\s"'<>]+"#
+  private static let authorizationHeaderPattern =
+    #"((?i:authorization|proxy-authorization)\s*:\s*(?:(?:bearer|basic|token)\s+))[^\s,;&]+"#
   private static let bearerPattern = #"(?i)\b(bearer|basic)(\s+)[A-Za-z0-9._~+/=-]+"#
-  private static let optionValuePattern = #"(?i)(--?(?:access[-_]?token|auth[-_]?token|api[-_]?(?:key|token)|private[-_]?token|refresh[-_]?token|client[-_]?secret|password|passwd|secret|authorization|username|user|header|extra[-_]?header))(\s+)[^\s,;&]+"#
+  private static let optionValuePattern =
+    #"(?i)(--?(?:access[-_]?token|auth[-_]?token|api[-_]?(?:key|token)|private[-_]?token|refresh[-_]?token|client[-_]?secret|password|passwd|secret|authorization|username|user|header|extra[-_]?header))(\s+)[^\s,;&]+"#
   private static let tokenAssignmentPattern = #"(?i)(token)(\s*=\s*)[^\s,;&]+"#
-  private static let keyValuePattern = #"(?i)(\b(?:access[-_]?token|auth[-_]?token|api[-_]?(?:key|token)|private[-_]?token|refresh[-_]?token|client[-_]?secret|password|passwd|secret|authorization|proxy-authorization|username|user)\b\s*[:=]\s*)[^\s,;&]+"#
+  private static let keyValuePattern =
+    #"(?i)(\b(?:access[-_]?token|auth[-_]?token|api[-_]?(?:key|token)|private[-_]?token|refresh[-_]?token|client[-_]?secret|password|passwd|secret|authorization|proxy-authorization|username|user)\b\s*[:=]\s*)[^\s,;&]+"#
   private static let homeDirectoryPattern = #"((?:/Users|/home)/)[^/\s"'<>]+"#
 
   static func redactedCommandDescription(_ arguments: [String]) -> String {
@@ -978,7 +1002,8 @@ private enum GitCommandLogRedactor {
     if argument == "-H" {
       return true
     }
-    let normalized = argument
+    let normalized =
+      argument
       .lowercased()
       .replacingOccurrences(of: "_", with: "-")
     let exactOptions: Set<String> = [
@@ -1005,7 +1030,8 @@ private enum GitCommandLogRedactor {
   private static func redactedURLToken(_ raw: String) -> String {
     let (core, trailing) = splitTrailingPunctuation(raw)
     guard let components = URLComponents(string: core),
-          components.host != nil else {
+      components.host != nil
+    else {
       return "[REDACTED_URL]\(trailing)"
     }
     var sanitized = components
@@ -1018,7 +1044,8 @@ private enum GitCommandLogRedactor {
 
   private static func redactedSCPRemoteToken(_ raw: String) -> String {
     let (core, trailing) = splitTrailingPunctuation(raw)
-    let sanitized = core.split(separator: "@", maxSplits: 1, omittingEmptySubsequences: false)
+    let sanitized =
+      core.split(separator: "@", maxSplits: 1, omittingEmptySubsequences: false)
       .last
       .map(String.init) ?? core
     return "\(sanitized)\(trailing)"
@@ -1028,7 +1055,8 @@ private enum GitCommandLogRedactor {
     var core = raw
     var trailing = ""
     while let last = core.last,
-          ",.;:!?)]}".contains(last) {
+      ",.;:!?)]}".contains(last)
+    {
       trailing.insert(last, at: trailing.startIndex)
       core.removeLast()
     }
@@ -1071,7 +1099,8 @@ private enum GitCommandLogRedactor {
       length: absoluteRange.length
     )
     guard relativeRange.location >= 0,
-          NSMaxRange(relativeRange) <= (raw as NSString).length else {
+      NSMaxRange(relativeRange) <= (raw as NSString).length
+    else {
       return ""
     }
     return (raw as NSString).substring(with: relativeRange)

@@ -1,5 +1,5 @@
-
 import Foundation
+
 public struct WorkbenchSnapshot: Codable, Sendable {
   /// Bump this only together with a backwards-compatible decode migration.
   public static let currentFormatVersion = 12

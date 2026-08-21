@@ -869,10 +869,12 @@ struct MacMarkdownComposerView: View {
 
   private func checkSlashCommandTrigger() {
     let location = editorSessionState.selectedRange.location
-    guard let query = MarkdownSlashCommandText.query(
-      in: editorBody,
-      caretUTF16Location: location
-    ) else {
+    guard
+      let query = MarkdownSlashCommandText.query(
+        in: editorBody,
+        caretUTF16Location: location
+      )
+    else {
       isSlashMenuPresented = false
       return
     }
@@ -883,10 +885,12 @@ struct MacMarkdownComposerView: View {
 
   private func applySlashCommand(_ snippet: String) {
     let location = editorSessionState.selectedRange.location
-    guard let replaceRange = MarkdownSlashCommandText.replacementRange(
-      in: editorBody,
-      caretUTF16Location: location
-    ) else { return }
+    guard
+      let replaceRange = MarkdownSlashCommandText.replacementRange(
+        in: editorBody,
+        caretUTF16Location: location
+      )
+    else { return }
 
     if let currentRange = Range(replaceRange, in: editorBody) {
       editorBody.replaceSubrange(currentRange, with: snippet)

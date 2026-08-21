@@ -432,12 +432,14 @@ struct ContentView: View {
   }
 
   private func refreshStaleRSSIfNeeded() {
-    guard RSSReaderBackgroundRefreshPolicy.shouldRefreshStaleFeedsOnEntry(
-      isSceneActive: scenePhase == .active,
-      isSafeMode: store.isSafeMode,
-      isEnabled: isRSSBackgroundRefreshEnabled,
-      isRSSSectionSelected: shellState.selectedSection == .rss
-    ) else { return }
+    guard
+      RSSReaderBackgroundRefreshPolicy.shouldRefreshStaleFeedsOnEntry(
+        isSceneActive: scenePhase == .active,
+        isSafeMode: store.isSafeMode,
+        isEnabled: isRSSBackgroundRefreshEnabled,
+        isRSSSectionSelected: shellState.selectedSection == .rss
+      )
+    else { return }
     let staleInterval = RSSReaderUserPreferences.backgroundRefreshIntervalSeconds(
       rssBackgroundRefreshIntervalMinutes
     )
@@ -614,12 +616,14 @@ struct ContentView: View {
   }
 
   private func refreshExternallyCreatedDrafts() {
-    guard RepositoryDraftDiscoveryPolicy.shouldRunAutomatically(
-      isSafeMode: store.isSafeMode,
-      canUseProtectedWorkbench: shellState.canUseProtectedWorkbench,
-      isEnabled: store.activeProfile.resolvedAutomaticallyImportsNewRepositoryArticles,
-      isRefreshRunning: isRefreshingExternallyCreatedDrafts
-    ) else { return }
+    guard
+      RepositoryDraftDiscoveryPolicy.shouldRunAutomatically(
+        isSafeMode: store.isSafeMode,
+        canUseProtectedWorkbench: shellState.canUseProtectedWorkbench,
+        isEnabled: store.activeProfile.resolvedAutomaticallyImportsNewRepositoryArticles,
+        isRefreshRunning: isRefreshingExternallyCreatedDrafts
+      )
+    else { return }
     isRefreshingExternallyCreatedDrafts = true
     Task { @MainActor in
       defer { isRefreshingExternallyCreatedDrafts = false }

@@ -675,10 +675,11 @@ public struct AIPublishingChatAgentContinuation: Codable, Hashable, Identifiable
     // Continuations written before source authorization bindings existed are
     // intentionally decoded without authority and rejected by the v3 schema
     // check below; no legacy continuation is silently replayable.
-    knowledgeAuthorizationBindings = try container.decodeIfPresent(
-      [KnowledgeAuthorizationBinding].self,
-      forKey: .knowledgeAuthorizationBindings
-    ) ?? []
+    knowledgeAuthorizationBindings =
+      try container.decodeIfPresent(
+        [KnowledgeAuthorizationBinding].self,
+        forKey: .knowledgeAuthorizationBindings
+      ) ?? []
     reviewDraftFingerprint = try container.decodeIfPresent(
       String.self,
       forKey: .reviewDraftFingerprint
@@ -798,7 +799,8 @@ public struct AIPublishingChatMessage: Identifiable, Codable, Hashable, Sendable
     self.knowledgeCitations = knowledgeCitations
     self.toolRuns = toolRuns
     self.reviewDecisions = reviewDecisions
-    self.agentContinuation = agentContinuation?.isValidForPersistence == true
+    self.agentContinuation =
+      agentContinuation?.isValidForPersistence == true
       ? agentContinuation : nil
     self.automationPlan = automationPlan
     self.structuredEditPayload = structuredEditPayload
@@ -846,15 +848,17 @@ public struct AIPublishingChatMessage: Identifiable, Codable, Hashable, Sendable
       try container.decodeIfPresent([KnowledgeCitation].self, forKey: .knowledgeCitations) ?? []
     toolRuns =
       try container.decodeIfPresent([WorkbenchAIAgentToolRunRecord].self, forKey: .toolRuns) ?? []
-    reviewDecisions = try container.decodeIfPresent(
-      [AIPublishingChatReviewDecision].self,
-      forKey: .reviewDecisions
-    ) ?? []
+    reviewDecisions =
+      try container.decodeIfPresent(
+        [AIPublishingChatReviewDecision].self,
+        forKey: .reviewDecisions
+      ) ?? []
     let decodedContinuation = try container.decodeIfPresent(
       AIPublishingChatAgentContinuation.self,
       forKey: .agentContinuation
     )
-    agentContinuation = decodedContinuation?.isValidForPersistence == true
+    agentContinuation =
+      decodedContinuation?.isValidForPersistence == true
       ? decodedContinuation : nil
     automationPlan = try container.decodeIfPresent(
       WorkbenchAutomationPlan.self, forKey: .automationPlan)
@@ -1063,7 +1067,8 @@ public struct AIContextEnvelope: Hashable, Sendable {
     self.explicitContextPrompt = explicitContextPrompt?.trimmedForPublishing.nilIfEmpty
     self.knowledgeContext = knowledgeContext
     self.includesImplicitArticleContext = includesImplicitArticleContext
-    self.transmissionSummary = transmissionSummary
+    self.transmissionSummary =
+      transmissionSummary
       ?? AIContextTransmissionSummaryService.make(references: explicitContextReferences)
   }
 

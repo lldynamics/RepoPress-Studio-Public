@@ -1,7 +1,8 @@
 import CryptoKit
 import Foundation
+
 #if canImport(Darwin)
-import Darwin
+  import Darwin
 #endif
 
 public enum PublishFileDiffStatus: String, Codable, Sendable {
@@ -112,9 +113,11 @@ public struct LocalPublishPreviewService: Sendable {
   }
 
   public func preview(package: PublishPackage, profile: SiteProfile) -> LocalPublishPreview {
-    guard let preview = profile.withLocalRepositoryRootAccess({ rootURL in
-      preview(package: package, rootURL: rootURL)
-    }) else {
+    guard
+      let preview = profile.withLocalRepositoryRootAccess({ rootURL in
+        preview(package: package, rootURL: rootURL)
+      })
+    else {
       return missingRepositoryPreview(package: package)
     }
 
@@ -127,16 +130,20 @@ public struct LocalPublishPreviewService: Sendable {
   /// The synchronous implementation is invoked entirely inside the detached
   /// task so security-scoped repository access starts, is used, and stops on
   /// the same detached operation.
-  public func previewAsync(package: PublishPackage, profile: SiteProfile) async -> LocalPublishPreview {
+  public func previewAsync(package: PublishPackage, profile: SiteProfile) async
+    -> LocalPublishPreview
+  {
     await Task.detached(priority: .userInitiated) {
       preview(package: package, profile: profile)
     }.value
   }
 
   public func write(package: PublishPackage, profile: SiteProfile) throws -> [String] {
-    guard let writtenPaths = try profile.withLocalRepositoryRootAccess({ rootURL in
-      try write(package: package, rootURL: rootURL)
-    }) else {
+    guard
+      let writtenPaths = try profile.withLocalRepositoryRootAccess({ rootURL in
+        try write(package: package, rootURL: rootURL)
+      })
+    else {
       throw LocalPublishPreviewError.missingRepositoryRoot
     }
 
@@ -144,9 +151,11 @@ public struct LocalPublishPreviewService: Sendable {
   }
 
   public func write(preview: LocalPublishPreview, profile: SiteProfile) throws -> [String] {
-    guard let writtenPaths = try profile.withLocalRepositoryRootAccess({ rootURL in
-      try write(preview: preview, rootURL: rootURL)
-    }) else {
+    guard
+      let writtenPaths = try profile.withLocalRepositoryRootAccess({ rootURL in
+        try write(preview: preview, rootURL: rootURL)
+      })
+    else {
       throw LocalPublishPreviewError.missingRepositoryRoot
     }
 
@@ -168,7 +177,9 @@ public struct LocalPublishPreviewService: Sendable {
     }.value
   }
 
-  public func writeAsync(preview: LocalPublishPreview, profile: SiteProfile) async throws -> [String] {
+  public func writeAsync(preview: LocalPublishPreview, profile: SiteProfile) async throws
+    -> [String]
+  {
     guard let rootURL = profile.localRepositoryRootURL else {
       throw LocalPublishPreviewError.missingRepositoryRoot
     }
@@ -207,7 +218,8 @@ public struct LocalPublishPreviewService: Sendable {
       .map(\.repositoryPath)
       .map(posixShellQuote)
       .joined(separator: " ")
-    return "cd \(posixShellQuote(rootPath)) && git add \(paths) && git commit -m \(posixShellQuote(package.commitMessage))"
+    return
+      "cd \(posixShellQuote(rootPath)) && git add \(paths) && git commit -m \(posixShellQuote(package.commitMessage))"
   }
 }
 
@@ -297,39 +309,39 @@ func localPublishSourceFileState(
   at url: URL,
   repositoryPath: String
 ) throws -> LocalPublishSourceFileState {
-#if canImport(Darwin)
-  return try withLocalPublishSourceDescriptor(
-    at: url,
-    repositoryPath: repositoryPath
-  ) { descriptor in
-    try readLocalPublishSource(
-      descriptor: descriptor,
-      repositoryPath: repositoryPath,
-      destinationDescriptor: nil
+  #if canImport(Darwin)
+    return try withLocalPublishSourceDescriptor(
+      at: url,
+      repositoryPath: repositoryPath
+    ) { descriptor in
+      try readLocalPublishSource(
+        descriptor: descriptor,
+        repositoryPath: repositoryPath,
+        destinationDescriptor: nil
+      )
+    }
+  #else
+    let values = try url.resourceValues(forKeys: [
+      .isRegularFileKey,
+      .isSymbolicLinkKey,
+      .fileSizeKey,
+      .fileResourceIdentifierKey,
+    ])
+    guard values.isRegularFile == true, values.isSymbolicLink != true else {
+      throw LocalPublishPreviewError.unsafeSource(repositoryPath)
+    }
+    let digest = try BoundedFileReader.sha256(
+      at: url,
+      maximumByteCount: WorkbenchFileReadLimits.maximumLocalPublishTrackedFileByteCount
     )
-  }
-#else
-  let values = try url.resourceValues(forKeys: [
-    .isRegularFileKey,
-    .isSymbolicLinkKey,
-    .fileSizeKey,
-    .fileResourceIdentifierKey,
-  ])
-  guard values.isRegularFile == true, values.isSymbolicLink != true else {
-    throw LocalPublishPreviewError.unsafeSource(repositoryPath)
-  }
-  let digest = try BoundedFileReader.sha256(
-    at: url,
-    maximumByteCount: WorkbenchFileReadLimits.maximumLocalPublishTrackedFileByteCount
-  )
-  let identifier = stableLocalPublishFileIdentifier(values.fileResourceIdentifier)
-  return LocalPublishSourceFileState(
-    byteSize: Int64(values.fileSize ?? 0),
-    sha256: digest,
-    deviceIdentifier: 0,
-    fileIdentifier: identifier
-  )
-#endif
+    let identifier = stableLocalPublishFileIdentifier(values.fileResourceIdentifier)
+    return LocalPublishSourceFileState(
+      byteSize: Int64(values.fileSize ?? 0),
+      sha256: digest,
+      deviceIdentifier: 0,
+      fileIdentifier: identifier
+    )
+  #endif
 }
 
 /// Converts Foundation's opaque file-resource identifier into a reproducible value.
@@ -360,105 +372,109 @@ private func stableLocalPublishIdentifierDigest(_ data: Data) -> UInt64 {
 }
 
 #if canImport(Darwin)
-func withLocalPublishSourceDescriptor<Result>(
-  at url: URL,
-  repositoryPath: String,
-  operation: (Int32) throws -> Result
-) throws -> Result {
-  let descriptor = url.path.withCString {
-    Darwin.open($0, O_RDONLY | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK)
-  }
-  guard descriptor >= 0 else {
-    if errno == ENOENT {
-      throw LocalPublishPreviewError.missingSource(repositoryPath)
+  func withLocalPublishSourceDescriptor<Result>(
+    at url: URL,
+    repositoryPath: String,
+    operation: (Int32) throws -> Result
+  ) throws -> Result {
+    let descriptor = url.path.withCString {
+      Darwin.open($0, O_RDONLY | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK)
     }
-    throw LocalPublishPreviewError.unsafeSource(repositoryPath)
-  }
-  defer { Darwin.close(descriptor) }
-  return try operation(descriptor)
-}
-
-func readLocalPublishSource(
-  descriptor: Int32,
-  repositoryPath: String,
-  destinationDescriptor: Int32?
-) throws -> LocalPublishSourceFileState {
-  var initialMetadata = stat()
-  guard Darwin.fstat(descriptor, &initialMetadata) == 0,
-        (initialMetadata.st_mode & S_IFMT) == S_IFREG,
-        initialMetadata.st_size >= 0,
-        initialMetadata.st_size <= off_t(WorkbenchFileReadLimits.maximumLocalPublishTrackedFileByteCount) else {
-    throw LocalPublishPreviewError.unsafeSource(repositoryPath)
+    guard descriptor >= 0 else {
+      if errno == ENOENT {
+        throw LocalPublishPreviewError.missingSource(repositoryPath)
+      }
+      throw LocalPublishPreviewError.unsafeSource(repositoryPath)
+    }
+    defer { Darwin.close(descriptor) }
+    return try operation(descriptor)
   }
 
-  var digest = SHA256()
-  var totalBytes: Int64 = 0
-  var buffer = [UInt8](repeating: 0, count: 64 * 1_024)
-  while true {
-    let bytesRead = buffer.withUnsafeMutableBytes { rawBuffer in
-      Darwin.read(descriptor, rawBuffer.baseAddress, rawBuffer.count)
-    }
-    if bytesRead == 0 {
-      break
-    }
-    if bytesRead < 0 {
-      if errno == EINTR { continue }
+  func readLocalPublishSource(
+    descriptor: Int32,
+    repositoryPath: String,
+    destinationDescriptor: Int32?
+  ) throws -> LocalPublishSourceFileState {
+    var initialMetadata = stat()
+    guard Darwin.fstat(descriptor, &initialMetadata) == 0,
+      (initialMetadata.st_mode & S_IFMT) == S_IFREG,
+      initialMetadata.st_size >= 0,
+      initialMetadata.st_size
+        <= off_t(WorkbenchFileReadLimits.maximumLocalPublishTrackedFileByteCount)
+    else {
       throw LocalPublishPreviewError.unsafeSource(repositoryPath)
     }
 
-    totalBytes += Int64(bytesRead)
-    guard totalBytes <= Int64(WorkbenchFileReadLimits.maximumLocalPublishTrackedFileByteCount) else {
-      throw LocalPublishPreviewError.unsafeSource(repositoryPath)
-    }
+    var digest = SHA256()
+    var totalBytes: Int64 = 0
+    var buffer = [UInt8](repeating: 0, count: 64 * 1_024)
+    while true {
+      let bytesRead = buffer.withUnsafeMutableBytes { rawBuffer in
+        Darwin.read(descriptor, rawBuffer.baseAddress, rawBuffer.count)
+      }
+      if bytesRead == 0 {
+        break
+      }
+      if bytesRead < 0 {
+        if errno == EINTR { continue }
+        throw LocalPublishPreviewError.unsafeSource(repositoryPath)
+      }
 
-    if let destinationDescriptor {
-      try buffer.withUnsafeBytes { rawBuffer in
-        guard let baseAddress = rawBuffer.baseAddress else { return }
-        var writtenByteCount = 0
-        while writtenByteCount < bytesRead {
-          let result = Darwin.write(
-            destinationDescriptor,
-            baseAddress.advanced(by: writtenByteCount),
-            bytesRead - writtenByteCount
-          )
-          if result < 0 {
-            if errno == EINTR { continue }
-            throw LocalPublishPreviewError.unsafeSource(repositoryPath)
+      totalBytes += Int64(bytesRead)
+      guard totalBytes <= Int64(WorkbenchFileReadLimits.maximumLocalPublishTrackedFileByteCount)
+      else {
+        throw LocalPublishPreviewError.unsafeSource(repositoryPath)
+      }
+
+      if let destinationDescriptor {
+        try buffer.withUnsafeBytes { rawBuffer in
+          guard let baseAddress = rawBuffer.baseAddress else { return }
+          var writtenByteCount = 0
+          while writtenByteCount < bytesRead {
+            let result = Darwin.write(
+              destinationDescriptor,
+              baseAddress.advanced(by: writtenByteCount),
+              bytesRead - writtenByteCount
+            )
+            if result < 0 {
+              if errno == EINTR { continue }
+              throw LocalPublishPreviewError.unsafeSource(repositoryPath)
+            }
+            guard result > 0 else {
+              throw LocalPublishPreviewError.unsafeSource(repositoryPath)
+            }
+            writtenByteCount += result
           }
-          guard result > 0 else {
-            throw LocalPublishPreviewError.unsafeSource(repositoryPath)
-          }
-          writtenByteCount += result
         }
       }
+      digest.update(data: Data(buffer.prefix(bytesRead)))
     }
-    digest.update(data: Data(buffer.prefix(bytesRead)))
+
+    var finalMetadata = stat()
+    guard Darwin.fstat(descriptor, &finalMetadata) == 0,
+      totalBytes == Int64(initialMetadata.st_size),
+      localPublishSourceMetadataIsUnchanged(initialMetadata, finalMetadata)
+    else {
+      throw LocalPublishPreviewError.unsafeSource(repositoryPath)
+    }
+
+    return LocalPublishSourceFileState(
+      byteSize: totalBytes,
+      sha256: Data(digest.finalize()),
+      deviceIdentifier: UInt64(initialMetadata.st_dev),
+      fileIdentifier: UInt64(initialMetadata.st_ino)
+    )
   }
 
-  var finalMetadata = stat()
-  guard Darwin.fstat(descriptor, &finalMetadata) == 0,
-        totalBytes == Int64(initialMetadata.st_size),
-        localPublishSourceMetadataIsUnchanged(initialMetadata, finalMetadata) else {
-    throw LocalPublishPreviewError.unsafeSource(repositoryPath)
+  private func localPublishSourceMetadataIsUnchanged(_ lhs: stat, _ rhs: stat) -> Bool {
+    lhs.st_dev == rhs.st_dev
+      && lhs.st_ino == rhs.st_ino
+      && lhs.st_size == rhs.st_size
+      && lhs.st_mtimespec.tv_sec == rhs.st_mtimespec.tv_sec
+      && lhs.st_mtimespec.tv_nsec == rhs.st_mtimespec.tv_nsec
+      && lhs.st_ctimespec.tv_sec == rhs.st_ctimespec.tv_sec
+      && lhs.st_ctimespec.tv_nsec == rhs.st_ctimespec.tv_nsec
   }
-
-  return LocalPublishSourceFileState(
-    byteSize: totalBytes,
-    sha256: Data(digest.finalize()),
-    deviceIdentifier: UInt64(initialMetadata.st_dev),
-    fileIdentifier: UInt64(initialMetadata.st_ino)
-  )
-}
-
-private func localPublishSourceMetadataIsUnchanged(_ lhs: stat, _ rhs: stat) -> Bool {
-  lhs.st_dev == rhs.st_dev
-    && lhs.st_ino == rhs.st_ino
-    && lhs.st_size == rhs.st_size
-    && lhs.st_mtimespec.tv_sec == rhs.st_mtimespec.tv_sec
-    && lhs.st_mtimespec.tv_nsec == rhs.st_mtimespec.tv_nsec
-    && lhs.st_ctimespec.tv_sec == rhs.st_ctimespec.tv_sec
-    && lhs.st_ctimespec.tv_nsec == rhs.st_ctimespec.tv_nsec
-}
 #endif
 
 func localPublishFileState(at url: URL, fileManager: FileManager) throws -> LocalPublishFileState {
@@ -469,8 +485,9 @@ func localPublishFileState(at url: URL, fileManager: FileManager) throws -> Loca
   guard !isDirectory.boolValue else {
     throw LocalPublishPreviewError.unsafePath(url.path)
   }
-  return .fileDigest(try BoundedFileReader.sha256(
-    at: url,
-    maximumByteCount: WorkbenchFileReadLimits.maximumLocalPublishTrackedFileByteCount
-  ))
+  return .fileDigest(
+    try BoundedFileReader.sha256(
+      at: url,
+      maximumByteCount: WorkbenchFileReadLimits.maximumLocalPublishTrackedFileByteCount
+    ))
 }

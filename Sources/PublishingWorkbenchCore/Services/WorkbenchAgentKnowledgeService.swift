@@ -281,11 +281,13 @@ public struct WorkbenchAgentKnowledgeService: Sendable {
         maximumSnippetCharacters: Self.maximumExcerptLength
       )
       let title = bounded(result.document.title, maximumLength: Self.maximumTitleLength)
-      let locator = result.chunk.locator?.nilIfEmpty.map {
-        bounded($0, maximumLength: Self.maximumLocatorLength)
-      } ?? result.chunk.headingPath?.nilIfEmpty.map {
-        bounded($0, maximumLength: Self.maximumLocatorLength)
-      }
+      let locator =
+        result.chunk.locator?.nilIfEmpty.map {
+          bounded($0, maximumLength: Self.maximumLocatorLength)
+        }
+        ?? result.chunk.headingPath?.nilIfEmpty.map {
+          bounded($0, maximumLength: Self.maximumLocatorLength)
+        }
       let excerpt = bounded(presentation.snippet, maximumLength: Self.maximumExcerptLength)
       let signals = orderedSignals(result.signals)
       let sourceURL = safeSourceURL(result.document.sourceURL)
@@ -298,7 +300,8 @@ public struct WorkbenchAgentKnowledgeService: Sendable {
         signals: signals,
         sourceURL: sourceURL
       )
-      let cost = result.document.id.uuidString.count
+      let cost =
+        result.document.id.uuidString.count
         + result.chunk.id.uuidString.count
         + title.count
         + (locator?.count ?? 0)
@@ -321,9 +324,10 @@ public struct WorkbenchAgentKnowledgeService: Sendable {
 
   private func safeSourceURL(_ url: URL?) -> URL? {
     guard let url,
-          let scheme = url.scheme?.lowercased(),
-          scheme == "http" || scheme == "https",
-          url.absoluteString.count <= Self.maximumSourceURLLength else {
+      let scheme = url.scheme?.lowercased(),
+      scheme == "http" || scheme == "https",
+      url.absoluteString.count <= Self.maximumSourceURLLength
+    else {
       return nil
     }
     return url

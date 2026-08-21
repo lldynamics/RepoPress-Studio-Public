@@ -3,9 +3,6 @@
   "%@ · %@。请在页面底部运行权限检查确认实际访问。": "%@ · %@. Run the permission check at the bottom of the page to confirm actual access.",
   "%lld 个自动备份校验失败": "%lld automatic backup(s) failed validation",
   "%lld 篇在回收站 · %lld 项仓库待清理": "%lld in Trash · %lld repository item(s) to clean up",
-  "1. API Key": "1. API Key",
-  "2. AI 数据发送授权": "2. AI Data Sharing Consent",
-  "3. 连接测试": "3. Connection Test",
   "AI 助手（按需）": "AI Assistant (Optional)",
   "AI 连接凭据": "AI Connection Credentials",
   "AI 连接测试失败，请检查地址、授权、凭据和网络后重试。": "The AI connection test failed. Check the endpoint, authorization, credentials, and network, then try again.",
@@ -23,7 +20,6 @@
   "内容与路径": "Content and Paths",
   "内容已遮挡": "Content is masked",
   "准备就绪，可以发送一次最小请求验证当前服务。": "Ready to send one minimal request to verify the current service.",
-  "凭据授权与测试": "Credentials, Consent, and Testing",
   "创建、校验和恢复完整工作区，并管理自动备份。": "Create, validate, and restore the full workspace, and manage automatic backups.",
   "发布连接": "Publishing Connections",
   "可本地发布": "Ready for Local Publishing",
@@ -63,7 +59,6 @@
   "本地发布（必需）": "Local Publishing (Required)",
   "权限检查只会在你点击后运行，并使用当前仓库目标与已保存的仓库令牌。": "The permission check runs only when you click it and uses the current repository target and saved repository token.",
   "查看当前站点的发布基础、凭据和功能就绪状态。": "Review publishing prerequisites, credentials, and feature readiness for the current site.",
-  "查看当前连接能力，调整高级对话参数，或检测此 Mac 上的本地 AI 服务。": "Review connection capabilities, adjust advanced chat parameters, or discover local AI services on this Mac.",
   "查看版本历史、回收站、草稿归属和待清理的仓库文件。": "Review version history, Trash, draft assignments, and repository files awaiting cleanup.",
   "查看空间占用，清理资料库数据，或更改存储位置。": "Review storage usage, clean up library data, or change the storage location.",
   "检查当前默认值生成的文章头信息": "Inspect the article front matter generated from the current defaults",
@@ -97,7 +92,6 @@
   "这里仅显示配置就绪状态，不会自动发起线上部署测试。实际结果来自已有的发布后校验。": "This section shows configuration readiness only and does not automatically run an online deployment test. Actual results come from the existing post-publish verification.",
   "进阶配置": "Advanced Configuration",
   "远程仓库": "Remote Repository",
-  "连接与服务": "Connection and Service",
   "连接代码仓库、部署平台和阅读数据服务。": "Connect code repositories, deployment platforms, and reading analytics services.",
   "连接必填": "Required Connection Details",
   "选择…": "Choose…",
@@ -108,6 +102,5 @@
   "钥匙串读取失败": "Failed to read Keychain",
   "隐私与安全": "Privacy and Security",
   "需配置": "Needs Setup",
-  "验证与最近结果": "Verification and Recent Results",
-  "高级能力、对话参数与本地服务": "Advanced Capabilities, Chat Parameters, and Local Services"
+  "验证与最近结果": "Verification and Recent Results"
 }

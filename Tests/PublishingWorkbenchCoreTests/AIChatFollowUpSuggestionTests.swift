@@ -74,7 +74,8 @@ final class AIChatFollowUpSuggestionTests: XCTestCase {
   func testDraftReadAndLinkCheckAreReadOnly() {
     XCTAssertEqual(WorkbenchAutomationRegistry.descriptor(for: .draftRead)?.risk, .readOnly)
     XCTAssertEqual(WorkbenchAutomationRegistry.descriptor(for: .siteCheckLinks)?.risk, .readOnly)
-    XCTAssertEqual(WorkbenchAutomationRegistry.descriptor(for: .siteOptimizeImages)?.risk, .readOnly)
+    XCTAssertEqual(
+      WorkbenchAutomationRegistry.descriptor(for: .siteOptimizeImages)?.risk, .readOnly)
     XCTAssertEqual(WorkbenchAutomationRegistry.descriptor(for: .siteDeployStatus)?.risk, .readOnly)
     XCTAssertEqual(WorkbenchAutomationRegistry.descriptor(for: .webFetch)?.risk, .readOnly)
     XCTAssertEqual(WorkbenchAutomationRegistry.descriptor(for: .webSearch)?.risk, .readOnly)
@@ -82,7 +83,8 @@ final class AIChatFollowUpSuggestionTests: XCTestCase {
 
   func testApplyDiffRequiresExplicitContentChangeRisk() {
     XCTAssertEqual(WorkbenchAutomationRegistry.descriptor(for: .applyDiff)?.risk, .contentChange)
-    XCTAssertEqual(WorkbenchAutomationRegistry.descriptor(for: .generateFrontmatter)?.risk, .contentChange)
+    XCTAssertEqual(
+      WorkbenchAutomationRegistry.descriptor(for: .generateFrontmatter)?.risk, .contentChange)
   }
 
   func testApplyDiffMutationPreviewReplacesTargetTextAccurately() throws {
@@ -102,6 +104,7 @@ final class AIChatFollowUpSuggestionTests: XCTestCase {
     )
 
     let preview = try WorkbenchAutomationDraftMutationService.preview(step: step, draft: draft)
-    XCTAssertEqual(preview.updatedDraft.bodyMarkdown, "Hello brave new world! This is a test draft.")
+    XCTAssertEqual(
+      preview.updatedDraft.bodyMarkdown, "Hello brave new world! This is a test draft.")
   }
 }

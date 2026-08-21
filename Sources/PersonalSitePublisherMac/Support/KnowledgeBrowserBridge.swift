@@ -1,7 +1,7 @@
+import BrowserExtensionProtocolSupport
 import Combine
 import CryptoKit
 import Foundation
-import BrowserExtensionProtocolSupport
 import Network
 import PublishingWorkbenchCore
 
@@ -104,7 +104,8 @@ final class BrowserBridgeConnectionBudget: @unchecked Sendable {
     lock.lock()
     defer { lock.unlock() }
     guard bytes >= 0,
-          bytes <= maximumBufferedBytes - reservedBufferedBytes else {
+      bytes <= maximumBufferedBytes - reservedBufferedBytes
+    else {
       return false
     }
     reservedBufferedBytes += bytes
@@ -259,7 +260,8 @@ final class KnowledgeBrowserBridge: ObservableObject {
     } else {
       self.connectionTokenStore = KnowledgeBrowserConnectionTokenStore()
     }
-    let resolvedImportOperationLedgerURL = importOperationLedgerURL
+    let resolvedImportOperationLedgerURL =
+      importOperationLedgerURL
       ?? (defaults === UserDefaults.standard ? Self.defaultImportOperationLedgerURL : nil)
     self.importOperationLedgerStore = KnowledgeBrowserImportLedgerStore(
       fileURL: resolvedImportOperationLedgerURL,
@@ -301,8 +303,9 @@ final class KnowledgeBrowserBridge: ObservableObject {
 
   func start() {
     guard isEnabled,
-          listener == nil,
-          importOperationLedgerLoadTask == nil else { return }
+      listener == nil,
+      importOperationLedgerLoadTask == nil
+    else { return }
     prepareConnectionTokenIfNeeded()
     state = .starting
     let generation = UUID()
@@ -312,8 +315,9 @@ final class KnowledgeBrowserBridge: ObservableObject {
     importOperationLedgerLoadTask = Task { [weak self] in
       let loadResult = await ledgerStore.loadPruned(at: currentDate)
       guard let self,
-            !Task.isCancelled,
-            self.listenerGeneration == generation else { return }
+        !Task.isCancelled,
+        self.listenerGeneration == generation
+      else { return }
       self.importOperationLedger = loadResult.ledger
       self.importOperationLedgerPersistenceIssue = loadResult.persistenceIssue
       self.importOperationLedgerIssueKind = loadResult.issueKind
@@ -335,13 +339,15 @@ final class KnowledgeBrowserBridge: ObservableObject {
       tokenPersistenceIssue = "浏览器连接令牌无法从本地安全存储读取：\(error.localizedDescription)"
     }
     let storedExpiry = defaults.object(forKey: Self.tokenExpiryDefaultsKey) as? Date
-    invalidatedExpiredToken = if let persistedToken,
-                                 let storedExpiry,
-                                 storedExpiry <= currentDate {
-      persistedToken
-    } else {
-      nil
-    }
+    invalidatedExpiredToken =
+      if let persistedToken,
+        let storedExpiry,
+        storedExpiry <= currentDate
+      {
+        persistedToken
+      } else {
+        nil
+      }
     let lease = KnowledgeBrowserConnectionTokenLease(
       storedToken: persistedToken,
       storedExpiresAt: storedExpiry,
@@ -366,9 +372,11 @@ final class KnowledgeBrowserBridge: ObservableObject {
     do {
       let parameters = NWParameters.tcp
       parameters.allowLocalEndpointReuse = true
-      guard let port = NWEndpoint.Port(
-        rawValue: BrowserExtensionProtocol.loopbackPort
-      ) else {
+      guard
+        let port = NWEndpoint.Port(
+          rawValue: BrowserExtensionProtocol.loopbackPort
+        )
+      else {
         throw KnowledgeBrowserBridgeStartError.invalidLoopbackPort
       }
       parameters.requiredLocalEndpoint = .hostPort(
@@ -385,9 +393,11 @@ final class KnowledgeBrowserBridge: ObservableObject {
           switch state {
           case .ready:
             self.state = .ready
-            self.lastMessage = self.persistenceWarningMessage ?? String(
-              localized: "浏览器扩展可通过本机回环地址连接，连接令牌仍为必需。"
-            )
+            self.lastMessage =
+              self.persistenceWarningMessage
+              ?? String(
+                localized: "浏览器扩展可通过本机回环地址连接，连接令牌仍为必需。"
+              )
           case .failed(let error):
             self.failActiveListener(error.localizedDescription, generation: generation)
           case .cancelled:
@@ -454,8 +464,9 @@ final class KnowledgeBrowserBridge: ObservableObject {
   @discardableResult
   func refreshExpiredConnectionToken() -> Bool {
     guard isEnabled,
-          !connectionToken.isEmpty,
-          now() >= connectionTokenExpiresAt else { return false }
+      !connectionToken.isEmpty,
+      now() >= connectionTokenExpiresAt
+    else { return false }
     rotateConnectionToken()
     lastMessage = "旧连接令牌已过期并失效，请用新令牌重新配对浏览器插件。"
     return true
@@ -546,7 +557,8 @@ final class KnowledgeBrowserBridge: ObservableObject {
   ) {
     guard !context.isFinished else { return }
     context.armReadTimeout()
-    connection.receive(minimumIncompleteLength: 1, maximumLength: 64 * 1_024) { [weak self] data, _, isComplete, error in
+    connection.receive(minimumIncompleteLength: 1, maximumLength: 64 * 1_024) {
+      [weak self] data, _, isComplete, error in
       guard let self else {
         context.finish()
         connection.cancel()
@@ -629,7 +641,8 @@ final class KnowledgeBrowserBridge: ObservableObject {
       return
     }
     context.armReadTimeout()
-    connection.receive(minimumIncompleteLength: 1, maximumLength: 64 * 1_024) { [weak self] data, _, isComplete, error in
+    connection.receive(minimumIncompleteLength: 1, maximumLength: 64 * 1_024) {
+      [weak self] data, _, isComplete, error in
       guard let self else {
         context.finish()
         connection.cancel()
@@ -686,55 +699,68 @@ final class KnowledgeBrowserBridge: ObservableObject {
       return
     }
     if request.method == "GET", request.path == "/v1/status" {
-      sendResponse(.json(status: 200, value: BrowserStatusResponse(
-        ready: state == .ready,
-        protocolVersion: BrowserExtensionProtocol.statusPayloadVersion,
-        application: "PersonalSitePublisherMac",
-        importAvailable: importOperationLedgerPersistenceIssue == nil,
-        warning: persistenceWarningMessage
-      )), on: connection)
+      sendResponse(
+        .json(
+          status: 200,
+          value: BrowserStatusResponse(
+            ready: state == .ready,
+            protocolVersion: BrowserExtensionProtocol.statusPayloadVersion,
+            application: "PersonalSitePublisherMac",
+            importAvailable: importOperationLedgerPersistenceIssue == nil,
+            warning: persistenceWarningMessage
+          )), on: connection)
       return
     }
     if let invalidatedExpiredToken,
-       request.bearerToken == invalidatedExpiredToken {
+      request.bearerToken == invalidatedExpiredToken
+    {
       self.invalidatedExpiredToken = nil
-      sendResponse(.error(
-        status: 401,
-        message: "连接令牌已过期，请从应用复制新令牌重新配对。",
-        code: "token-expired"
-      ), on: connection)
+      sendResponse(
+        .error(
+          status: 401,
+          message: "连接令牌已过期，请从应用复制新令牌重新配对。",
+          code: "token-expired"
+        ), on: connection)
       return
     }
     if refreshExpiredConnectionToken() {
-      sendResponse(.error(
-        status: 401,
-        message: "连接令牌已过期，请从应用复制新令牌重新配对。",
-        code: "token-expired"
-      ), on: connection)
+      sendResponse(
+        .error(
+          status: 401,
+          message: "连接令牌已过期，请从应用复制新令牌重新配对。",
+          code: "token-expired"
+        ), on: connection)
       return
     }
     guard request.headers["authorization"] == "Bearer \(connectionToken)" else {
-      sendResponse(.error(status: 401, message: "连接令牌无效，请重新配对。", code: "invalid-token"), on: connection)
+      sendResponse(
+        .error(status: 401, message: "连接令牌无效，请重新配对。", code: "invalid-token"), on: connection)
       return
     }
 
     if request.method == "GET", request.path == "/v1/folders" {
-      sendResponse(.json(status: 200, value: BrowserFoldersResponse(
-        folders: knowledge.folders.map { BrowserFolderResponse(id: $0.id, name: $0.name) },
-        tokenExpiresAt: ISO8601DateFormatter().string(from: connectionTokenExpiresAt)
-      )), on: connection)
+      sendResponse(
+        .json(
+          status: 200,
+          value: BrowserFoldersResponse(
+            folders: knowledge.folders.map { BrowserFolderResponse(id: $0.id, name: $0.name) },
+            tokenExpiresAt: ISO8601DateFormatter().string(from: connectionTokenExpiresAt)
+          )), on: connection)
       return
     }
 
     if request.method == "POST", request.path == "/v1/suggestions" {
-      guard request.headers["content-type"]?.lowercased().hasPrefix("application/json") == true else {
+      guard request.headers["content-type"]?.lowercased().hasPrefix("application/json") == true
+      else {
         sendResponse(.error(status: 415, message: "只接受 JSON 分类建议请求。"), on: connection)
         return
       }
-      guard let envelope = try? JSONDecoder().decode(
-        BrowserOrganizationSuggestionEnvelope.self,
-        from: request.body
-      ) else {
+      guard
+        let envelope = try? JSONDecoder().decode(
+          BrowserOrganizationSuggestionEnvelope.self,
+          from: request.body
+        )
+      else {
         sendResponse(.error(status: 400, message: "分类建议请求无效。"), on: connection)
         return
       }
@@ -745,25 +771,30 @@ final class KnowledgeBrowserBridge: ObservableObject {
         documents: knowledge.documents,
         folders: knowledge.folders
       )
-      sendResponse(.json(status: 200, value: BrowserOrganizationSuggestionsResponse(
-        folders: suggestions.folders.map {
-          BrowserFolderSuggestionResponse(
-            folder: BrowserFolderResponse(id: $0.folder.id, name: $0.folder.name),
-            score: $0.score,
-            reasons: $0.reasons.map(\.rawValue)
-          )
-        },
-        tags: suggestions.tags
-      )), on: connection)
+      sendResponse(
+        .json(
+          status: 200,
+          value: BrowserOrganizationSuggestionsResponse(
+            folders: suggestions.folders.map {
+              BrowserFolderSuggestionResponse(
+                folder: BrowserFolderResponse(id: $0.folder.id, name: $0.folder.name),
+                score: $0.score,
+                reasons: $0.reasons.map(\.rawValue)
+              )
+            },
+            tags: suggestions.tags
+          )), on: connection)
       return
     }
 
     if request.method == "POST", request.path == "/v1/open" {
-      guard request.headers["content-type"]?.lowercased().hasPrefix("application/json") == true else {
+      guard request.headers["content-type"]?.lowercased().hasPrefix("application/json") == true
+      else {
         sendResponse(.error(status: 415, message: "只接受 JSON 资料定位请求。"), on: connection)
         return
       }
-      guard let envelope = try? JSONDecoder().decode(BrowserOpenEnvelope.self, from: request.body) else {
+      guard let envelope = try? JSONDecoder().decode(BrowserOpenEnvelope.self, from: request.body)
+      else {
         sendResponse(.error(status: 400, message: "资料定位请求无效。"), on: connection)
         return
       }
@@ -774,15 +805,19 @@ final class KnowledgeBrowserBridge: ObservableObject {
       lastOpenedDocumentID = envelope.documentID
       onOpenDocument(envelope.documentID)
       lastMessage = "已打开浏览器刚保存的资料。"
-      sendResponse(.json(status: 200, value: BrowserOpenResponse(
-        documentID: envelope.documentID,
-        opened: true
-      )), on: connection)
+      sendResponse(
+        .json(
+          status: 200,
+          value: BrowserOpenResponse(
+            documentID: envelope.documentID,
+            opened: true
+          )), on: connection)
       return
     }
 
     if request.method == "POST", request.path == "/v1/import" {
-      guard request.headers["content-type"]?.lowercased().hasPrefix("application/json") == true else {
+      guard request.headers["content-type"]?.lowercased().hasPrefix("application/json") == true
+      else {
         sendResponse(.error(status: 415, message: "只接受 JSON 页面数据。"), on: connection)
         return
       }
@@ -795,11 +830,12 @@ final class KnowledgeBrowserBridge: ObservableObject {
         }
       }
       guard importOperationLedgerPersistenceIssue == nil else {
-        sendResponse(.error(
-          status: 503,
-          message: "浏览器保存幂等账本不可用，已暂停导入以避免重复写入。",
-          code: "operation-ledger-unavailable"
-        ), on: connection)
+        sendResponse(
+          .error(
+            status: 503,
+            message: "浏览器保存幂等账本不可用，已暂停导入以避免重复写入。",
+            code: "operation-ledger-unavailable"
+          ), on: connection)
         return
       }
       do {
@@ -824,11 +860,12 @@ final class KnowledgeBrowserBridge: ObservableObject {
           try await persistImportOperationLedger()
         } catch {
           recordImportOperationLedgerPersistenceFailure(error)
-          sendResponse(.error(
-            status: 503,
-            message: "浏览器保存幂等账本无法更新，已暂停导入以避免重复写入。",
-            code: "operation-ledger-unavailable"
-          ), on: connection)
+          sendResponse(
+            .error(
+              status: 503,
+              message: "浏览器保存幂等账本无法更新，已暂停导入以避免重复写入。",
+              code: "operation-ledger-unavailable"
+            ), on: connection)
           return
         }
         switch lookup {
@@ -837,35 +874,39 @@ final class KnowledgeBrowserBridge: ObservableObject {
           sendResponse(.json(status: 200, value: receipt), on: connection)
           return
         case .conflictingRequest:
-          sendResponse(.error(
-            status: 409,
-            message: "同一保存操作 ID 被用于不同内容，已拒绝覆盖。请重新生成保存预览。",
-            code: "operation-id-conflict"
-          ), on: connection)
+          sendResponse(
+            .error(
+              status: 409,
+              message: "同一保存操作 ID 被用于不同内容，已拒绝覆盖。请重新生成保存预览。",
+              code: "operation-id-conflict"
+            ), on: connection)
           return
         case .missingDocument:
-          sendResponse(.error(
-            status: 410,
-            message: "该保存操作对应的资料已被删除，请重新生成保存预览。",
-            code: "operation-result-missing"
-          ), on: connection)
+          sendResponse(
+            .error(
+              status: 410,
+              message: "该保存操作对应的资料已被删除，请重新生成保存预览。",
+              code: "operation-result-missing"
+            ), on: connection)
           return
         case .miss:
           break
         }
         if let activeFingerprint = activeImportOperations[operation.id] {
           if activeFingerprint == operation.fingerprint {
-            sendResponse(.error(
-              status: 425,
-              message: "该保存操作仍在建立索引，请稍后用同一操作 ID 重试。",
-              code: "operation-in-progress"
-            ), on: connection)
+            sendResponse(
+              .error(
+                status: 425,
+                message: "该保存操作仍在建立索引，请稍后用同一操作 ID 重试。",
+                code: "operation-in-progress"
+              ), on: connection)
           } else {
-            sendResponse(.error(
-              status: 409,
-              message: "同一保存操作 ID 正在处理其他内容，已拒绝覆盖。",
-              code: "operation-id-conflict"
-            ), on: connection)
+            sendResponse(
+              .error(
+                status: 409,
+                message: "同一保存操作 ID 正在处理其他内容，已拒绝覆盖。",
+                code: "operation-id-conflict"
+              ), on: connection)
           }
           return
         }
@@ -880,18 +921,21 @@ final class KnowledgeBrowserBridge: ObservableObject {
         guard case .saved(let result, let action) = outcome else {
           if case .requiresDuplicateResolution(let conflict) = outcome {
             lastMessage = "检测到同网址资料，等待选择处理方式。"
-            sendResponse(.json(status: 200, value: BrowserDuplicateResolutionResponse(
-              operationID: operation.id,
-              requiresDuplicateResolution: true,
-              conflict: BrowserDuplicateConflictResponse(
-                documentID: conflict.document.id,
-                title: conflict.document.title,
-                folder: conflict.folder.map { BrowserFolderResponse(id: $0.id, name: $0.name) },
-                fileSizeBytes: conflict.document.sourceByteCount,
-                updatedAt: conflict.document.updatedAt,
-                incomingHasChanges: conflict.incomingHasChanges
-              )
-            )), on: connection)
+            sendResponse(
+              .json(
+                status: 200,
+                value: BrowserDuplicateResolutionResponse(
+                  operationID: operation.id,
+                  requiresDuplicateResolution: true,
+                  conflict: BrowserDuplicateConflictResponse(
+                    documentID: conflict.document.id,
+                    title: conflict.document.title,
+                    folder: conflict.folder.map { BrowserFolderResponse(id: $0.id, name: $0.name) },
+                    fileSizeBytes: conflict.document.sourceByteCount,
+                    updatedAt: conflict.document.updatedAt,
+                    incomingHasChanges: conflict.incomingHasChanges
+                  )
+                )), on: connection)
           }
           return
         }
@@ -933,11 +977,12 @@ final class KnowledgeBrowserBridge: ObservableObject {
           try await persistImportOperationLedger()
         } catch {
           recordImportOperationLedgerPersistenceFailure(error)
-          sendResponse(.error(
-            status: 500,
-            message: "页面已保存，但保存回执未能持久化；请勿刷新页面或重复提交。",
-            code: "operation-receipt-persistence-failed"
-          ), on: connection)
+          sendResponse(
+            .error(
+              status: 500,
+              message: "页面已保存，但保存回执未能持久化；请勿刷新页面或重复提交。",
+              code: "operation-receipt-persistence-failed"
+            ), on: connection)
           return
         }
         sendResponse(.json(status: 200, value: receipt), on: connection)
@@ -977,12 +1022,14 @@ final class KnowledgeBrowserBridge: ObservableObject {
     // only as a bodyless health check. Any request carrying a body must pass
     // the same token gate before the first body byte is accepted.
     if request.method == "GET",
-       request.path == "/v1/status",
-       request.contentLength == 0 {
+      request.path == "/v1/status",
+      request.contentLength == 0
+    {
       return nil
     }
     if let invalidatedExpiredToken,
-       request.bearerToken == invalidatedExpiredToken {
+      request.bearerToken == invalidatedExpiredToken
+    {
       self.invalidatedExpiredToken = nil
       return .error(
         status: 401,
@@ -1012,9 +1059,11 @@ final class KnowledgeBrowserBridge: ObservableObject {
     on connection: NWConnection
   ) {
     let data = response.encodedData()
-    connection.send(content: data, completion: .contentProcessed { _ in
-      connection.cancel()
-    })
+    connection.send(
+      content: data,
+      completion: .contentProcessed { _ in
+        connection.cancel()
+      })
   }
 
   private static let isEnabledDefaultsKey = "KnowledgeBrowserBridge.isEnabled.v1"
@@ -1034,11 +1083,13 @@ final class KnowledgeBrowserBridge: ObservableObject {
   }
 
   private nonisolated static var defaultBrowserBridgeDirectoryURL: URL {
-    let applicationSupport = FileManager.default.urls(
-      for: .applicationSupportDirectory,
-      in: .userDomainMask
-    ).first ?? FileManager.default.temporaryDirectory
-    return applicationSupport
+    let applicationSupport =
+      FileManager.default.urls(
+        for: .applicationSupportDirectory,
+        in: .userDomainMask
+      ).first ?? FileManager.default.temporaryDirectory
+    return
+      applicationSupport
       .appendingPathComponent("PersonalSitePublisherMac", isDirectory: true)
       .appendingPathComponent("BrowserBridge", isDirectory: true)
   }
@@ -1082,11 +1133,12 @@ final class KnowledgeBrowserBridge: ObservableObject {
     let encoder = JSONEncoder()
     encoder.dateEncodingStrategy = .millisecondsSince1970
     encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
-    let data = try encoder.encode(BrowserImportOperationIdentity(
-      capture: envelope.capture,
-      folderID: envelope.folderID,
-      newFolderName: envelope.newFolderName
-    ))
+    let data = try encoder.encode(
+      BrowserImportOperationIdentity(
+        capture: envelope.capture,
+        folderID: envelope.folderID,
+        newFolderName: envelope.newFolderName
+      ))
     let fingerprint = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
     if let operationID = envelope.operationID {
       return BrowserPreparedImport(
@@ -1095,7 +1147,8 @@ final class KnowledgeBrowserBridge: ObservableObject {
         requestFingerprint: fingerprint
       )
     }
-    let derivedID = "\(fingerprint.prefix(8))-\(fingerprint.dropFirst(8).prefix(4))-"
+    let derivedID =
+      "\(fingerprint.prefix(8))-\(fingerprint.dropFirst(8).prefix(4))-"
       + "\(fingerprint.dropFirst(12).prefix(4))-\(fingerprint.dropFirst(16).prefix(4))-"
       + "\(fingerprint.dropFirst(20).prefix(12))"
     guard let operationID = UUID(uuidString: derivedID) else {
@@ -1206,8 +1259,8 @@ enum BrowserExtensionOriginPolicy {
       return true
     }
     guard let components = URLComponents(string: origin),
-          let scheme = components.scheme?.lowercased(),
-          let host = components.host?.lowercased()
+      let scheme = components.scheme?.lowercased(),
+      let host = components.host?.lowercased()
     else {
       return false
     }
@@ -1264,14 +1317,16 @@ struct BrowserBridgeRequestHeaders: Sendable {
       return data.count > maximumHeaderBytes ? .invalid : .incomplete
     }
     guard separatorRange.lowerBound <= maximumHeaderBytes,
-          let headerText = String(data: data[..<separatorRange.lowerBound], encoding: .utf8) else {
+      let headerText = String(data: data[..<separatorRange.lowerBound], encoding: .utf8)
+    else {
       return .invalid
     }
     let lines = headerText.components(separatedBy: "\r\n")
     guard let requestLine = lines.first else { return .invalid }
     let requestParts = requestLine.split(separator: " ", omittingEmptySubsequences: true)
     guard requestParts.count == 3,
-          requestParts[2].hasPrefix("HTTP/1.") else { return .invalid }
+      requestParts[2].hasPrefix("HTTP/1.")
+    else { return .invalid }
     let method = String(requestParts[0]).uppercased()
     let path = String(requestParts[1]).components(separatedBy: "?").first ?? "/"
     var parsedHeaders: [String: String] = [:]
@@ -1280,11 +1335,13 @@ struct BrowserBridgeRequestHeaders: Sendable {
     for line in lines.dropFirst() {
       guard let separator = line.firstIndex(of: ":") else { return .invalid }
       let name = line[..<separator].trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-      let value = line[line.index(after: separator)...].trimmingCharacters(in: .whitespacesAndNewlines)
+      let value = line[line.index(after: separator)...].trimmingCharacters(
+        in: .whitespacesAndNewlines)
       guard !name.isEmpty else { return .invalid }
       if name == "content-length" {
         guard !foundContentLength,
-              let parsedLength = parseContentLength(String(value)) else {
+          let parsedLength = parseContentLength(String(value))
+        else {
           return .invalid
         }
         foundContentLength = true
@@ -1294,22 +1351,25 @@ struct BrowserBridgeRequestHeaders: Sendable {
     }
     let headerLength = separatorRange.upperBound
     guard headerLength <= maximumRequestBytes,
-          contentLength <= maximumRequestBytes - headerLength else {
+      contentLength <= maximumRequestBytes - headerLength
+    else {
       return .invalid
     }
-    return .complete(Self(
-      method: method,
-      path: path,
-      headers: parsedHeaders,
-      contentLength: contentLength,
-      headerLength: headerLength
-    ))
+    return .complete(
+      Self(
+        method: method,
+        path: path,
+        headers: parsedHeaders,
+        contentLength: contentLength,
+        headerLength: headerLength
+      ))
   }
 
   private static func parseContentLength(_ value: String) -> Int? {
     guard !value.isEmpty,
-          value.utf8.allSatisfy({ $0 >= 48 && $0 <= 57 }),
-          let parsed = Int(value) else {
+      value.utf8.allSatisfy({ $0 >= 48 && $0 <= 57 }),
+      let parsed = Int(value)
+    else {
       return nil
     }
     return parsed
@@ -1323,10 +1383,10 @@ struct BrowserBridgeRequestHeaders: Sendable {
 
   var isApprovedExtensionPreflight: Bool {
     guard method == "OPTIONS",
-          isApprovedExtensionOrigin,
-          let requestedMethod = headers["access-control-request-method"]?.uppercased(),
-          ["GET", "POST"].contains(requestedMethod),
-          let requestedHeaders = headers["access-control-request-headers"]?.lowercased()
+      isApprovedExtensionOrigin,
+      let requestedMethod = headers["access-control-request-method"]?.uppercased(),
+      ["GET", "POST"].contains(requestedMethod),
+      let requestedHeaders = headers["access-control-request-headers"]?.lowercased()
     else {
       return false
     }
@@ -1348,7 +1408,8 @@ struct BrowserBridgeRequestHeaders: Sendable {
   var bearerToken: String? {
     let prefix = "Bearer "
     guard let authorization = headers["authorization"],
-          authorization.hasPrefix(prefix) else { return nil }
+      authorization.hasPrefix(prefix)
+    else { return nil }
     return String(authorization.dropFirst(prefix.count))
   }
 }
@@ -1420,18 +1481,18 @@ private struct BrowserBridgeHTTPResponse {
     default: reason = "Error"
     }
     let header = """
-    HTTP/1.1 \(status) \(reason)\r
-    Content-Type: \(contentType)\r
-    Content-Length: \(body.count)\r
-    Cache-Control: no-store\r
-    Access-Control-Allow-Origin: *\r
-    Access-Control-Allow-Methods: GET, POST, OPTIONS\r
-    Access-Control-Allow-Headers: \(BrowserExtensionProtocol.accessControlAllowHeaders)\r
-    Access-Control-Max-Age: 600\r
-    Connection: close\r
-    \r
+      HTTP/1.1 \(status) \(reason)\r
+      Content-Type: \(contentType)\r
+      Content-Length: \(body.count)\r
+      Cache-Control: no-store\r
+      Access-Control-Allow-Origin: *\r
+      Access-Control-Allow-Methods: GET, POST, OPTIONS\r
+      Access-Control-Allow-Headers: \(BrowserExtensionProtocol.accessControlAllowHeaders)\r
+      Access-Control-Max-Age: 600\r
+      Connection: close\r
+      \r
 
-    """
+      """
     var output = Data(header.utf8)
     output.append(body)
     return output

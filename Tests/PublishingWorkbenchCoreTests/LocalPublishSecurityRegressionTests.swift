@@ -1,5 +1,6 @@
 import Foundation
 import XCTest
+
 @testable import PublishingWorkbenchCore
 
 final class LocalPublishSecurityRegressionTests: XCTestCase {
@@ -17,7 +18,8 @@ final class LocalPublishSecurityRegressionTests: XCTestCase {
       ".repopress-local-publish-rollback-\(UUID().uuidString)",
       isDirectory: true
     )
-    try FileManager.default.createDirectory(at: rollbackDirectory, withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(
+      at: rollbackDirectory, withIntermediateDirectories: true)
     let service = LocalPublishPreviewService()
     let variants = [
       ".git/config",
@@ -69,7 +71,8 @@ final class LocalPublishSecurityRegressionTests: XCTestCase {
       ".repopress-local-publish-rollback-\(UUID().uuidString)",
       isDirectory: true
     )
-    try FileManager.default.createDirectory(at: rollbackDirectory, withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(
+      at: rollbackDirectory, withIntermediateDirectories: true)
     try originalContent.write(
       to: rollbackDirectory.appendingPathComponent("0-backup"),
       atomically: true,

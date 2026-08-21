@@ -1,5 +1,6 @@
 import Foundation
 import XCTest
+
 @testable import PublishingWorkbenchCore
 
 final class WorkbenchAgentKnowledgeServiceTests: XCTestCase {
@@ -30,7 +31,10 @@ final class WorkbenchAgentKnowledgeServiceTests: XCTestCase {
     XCTAssertFalse(results.isEmpty)
     XCTAssertTrue(results.allSatisfy { $0.documentID == allowedID })
     XCTAssertTrue(results.allSatisfy { $0.sourceURL?.scheme == "https" })
-    XCTAssertTrue(results.allSatisfy { $0.signals.allSatisfy { ["title", "fullText", "semantic"].contains($0) } })
+    XCTAssertTrue(
+      results.allSatisfy {
+        $0.signals.allSatisfy { ["title", "fullText", "semantic"].contains($0) }
+      })
   }
 
   func testSearchTrimsAndBoundsQueryAndClampsLimit() async throws {
@@ -57,8 +61,11 @@ final class WorkbenchAgentKnowledgeServiceTests: XCTestCase {
       limit: Int.max
     )
     XCTAssertLessThanOrEqual(maximum.count, WorkbenchAgentKnowledgeService.maximumSearchLimit)
-    XCTAssertTrue(maximum.allSatisfy { $0.title.count <= WorkbenchAgentKnowledgeService.maximumTitleLength })
-    XCTAssertTrue(maximum.allSatisfy { $0.excerpt.count <= WorkbenchAgentKnowledgeService.maximumExcerptLength })
+    XCTAssertTrue(
+      maximum.allSatisfy { $0.title.count <= WorkbenchAgentKnowledgeService.maximumTitleLength })
+    XCTAssertTrue(
+      maximum.allSatisfy { $0.excerpt.count <= WorkbenchAgentKnowledgeService.maximumExcerptLength }
+    )
     let total = maximum.reduce(0) { partial, hit in
       partial + hit.documentID.uuidString.count
         + hit.chunkID.uuidString.count

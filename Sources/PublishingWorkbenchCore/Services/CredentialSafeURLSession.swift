@@ -1,8 +1,9 @@
 import Darwin
 import Foundation
 import zlib
+
 #if canImport(FoundationNetworking)
-import FoundationNetworking
+  import FoundationNetworking
 #endif
 
 enum RSSNetworkURLPolicy {
@@ -69,13 +70,17 @@ enum RSSNetworkURLPolicy {
     let containsProxySyntheticAddress = addresses.contains(
       where: \.isProxySyntheticBenchmarkAddress
     )
-    let permitsProxySyntheticAddress = literalAddress == nil
+    let permitsProxySyntheticAddress =
+      literalAddress == nil
       && containsProxySyntheticAddress
       && (proxySyntheticNetworkIsActive ?? hasActiveProxySyntheticNetwork())
-    guard allowsPrivateNetworkAccess || addresses.allSatisfy({ address in
-      address.isPubliclyRoutable
-        || (permitsProxySyntheticAddress && address.isProxySyntheticBenchmarkAddress)
-    }) else {
+    guard
+      allowsPrivateNetworkAccess
+        || addresses.allSatisfy({ address in
+          address.isPubliclyRoutable
+            || (permitsProxySyntheticAddress && address.isProxySyntheticBenchmarkAddress)
+        })
+    else {
       throw RSSReaderError.privateNetworkAccessDenied
     }
     return ValidatedEndpoint(
@@ -92,26 +97,30 @@ enum RSSNetworkURLPolicy {
     allowsPrivateNetworkAccess: Bool = false
   ) throws -> URL {
     guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
-          let scheme = components.scheme?.lowercased() else {
+      let scheme = components.scheme?.lowercased()
+    else {
       throw RSSReaderError.invalidFeedURL
     }
     guard scheme == "http" || scheme == "https" else {
       throw RSSReaderError.unsupportedFeedURL
     }
     guard let host = components.host?.nilIfEmpty,
-          components.user == nil,
-          components.password == nil,
-          components.port.map({ (1...65_535).contains($0) }) ?? true,
-          let candidate = components.url else {
+      components.user == nil,
+      components.password == nil,
+      components.port.map({ (1...65_535).contains($0) }) ?? true,
+      let candidate = components.url
+    else {
       throw RSSReaderError.invalidFeedURL
     }
     if !allowsPrivateNetworkAccess {
-      let normalizedHost = host
+      let normalizedHost =
+        host
         .trimmingCharacters(in: CharacterSet(charactersIn: "[]"))
         .trimmingCharacters(in: CharacterSet(charactersIn: "."))
         .lowercased()
       guard !isLocalHostname(normalizedHost),
-            KnowledgeResolvedAddress(presentation: normalizedHost)?.isPubliclyRoutable != false else {
+        KnowledgeResolvedAddress(presentation: normalizedHost)?.isPubliclyRoutable != false
+      else {
         throw RSSReaderError.privateNetworkAccessDenied
       }
     }
@@ -123,10 +132,12 @@ enum RSSNetworkURLPolicy {
   }
 
   private static func normalizedHost(of url: URL) throws -> String {
-    guard let host = URLComponents(url: url, resolvingAgainstBaseURL: false)?.host?.nilIfEmpty else {
+    guard let host = URLComponents(url: url, resolvingAgainstBaseURL: false)?.host?.nilIfEmpty
+    else {
       throw RSSReaderError.invalidFeedURL
     }
-    return host
+    return
+      host
       .trimmingCharacters(in: CharacterSet(charactersIn: "[]"))
       .trimmingCharacters(in: CharacterSet(charactersIn: "."))
       .lowercased()
@@ -152,30 +163,33 @@ enum RSSNetworkURLPolicy {
       cursor = current.pointee.ifa_next
       let interface = current.pointee
       guard interface.ifa_flags & requiredFlags == requiredFlags,
-            let namePointer = interface.ifa_name,
-            String(cString: namePointer).hasPrefix("utun"),
-            let socketAddress = interface.ifa_addr,
-            socketAddress.pointee.sa_family == sa_family_t(AF_INET) else {
+        let namePointer = interface.ifa_name,
+        String(cString: namePointer).hasPrefix("utun"),
+        let socketAddress = interface.ifa_addr,
+        socketAddress.pointee.sa_family == sa_family_t(AF_INET)
+      else {
         continue
       }
 
       var buffer = [CChar](repeating: 0, count: Int(NI_MAXHOST))
-      guard getnameinfo(
-        socketAddress,
-        socklen_t(socketAddress.pointee.sa_len),
-        &buffer,
-        socklen_t(buffer.count),
-        nil,
-        0,
-        NI_NUMERICHOST
-      ) == 0,
-      let address = KnowledgeResolvedAddress(
-        presentation: String(
-          decoding: buffer.prefix(while: { $0 != 0 }).map { UInt8(bitPattern: $0) },
-          as: UTF8.self
-        )
-      ),
-      address.isProxySyntheticBenchmarkAddress else {
+      guard
+        getnameinfo(
+          socketAddress,
+          socklen_t(socketAddress.pointee.sa_len),
+          &buffer,
+          socklen_t(buffer.count),
+          nil,
+          0,
+          NI_NUMERICHOST
+        ) == 0,
+        let address = KnowledgeResolvedAddress(
+          presentation: String(
+            decoding: buffer.prefix(while: { $0 != 0 }).map { UInt8(bitPattern: $0) },
+            as: UTF8.self
+          )
+        ),
+        address.isProxySyntheticBenchmarkAddress
+      else {
         continue
       }
       return true
@@ -184,11 +198,11 @@ enum RSSNetworkURLPolicy {
   }
 }
 
-private extension KnowledgeResolvedAddress {
+extension KnowledgeResolvedAddress {
   /// RFC 2544 benchmarking addresses are used as synthetic DNS answers by
   /// common macOS packet-tunnel proxies. This includes the IPv4-mapped IPv6
   /// representation returned by some resolvers.
-  var isProxySyntheticBenchmarkAddress: Bool {
+  fileprivate var isProxySyntheticBenchmarkAddress: Bool {
     switch self {
     case .ipv4(let bytes):
       return bytes.count == 4
@@ -196,9 +210,10 @@ private extension KnowledgeResolvedAddress {
         && (18...19).contains(bytes[1])
     case .ipv6(let bytes):
       guard bytes.count == 16,
-            bytes.prefix(10).allSatisfy({ $0 == 0 }),
-            bytes[10] == 0xff,
-            bytes[11] == 0xff else {
+        bytes.prefix(10).allSatisfy({ $0 == 0 }),
+        bytes[10] == 0xff,
+        bytes[11] == 0xff
+      else {
         return false
       }
       return bytes[12] == 198 && (18...19).contains(bytes[13])
@@ -340,10 +355,11 @@ enum RSSNetworkHTTPClient {
     resolver: @escaping RSSNetworkURLPolicy.Resolver = RSSNetworkURLPolicy.defaultResolver
   ) async throws -> (Data, HTTPURLResponse) {
     guard maximumByteCount > 0,
-          let originalURL = originalRequest.url,
-          (originalRequest.httpMethod?.uppercased() ?? "GET") == "GET",
-          originalRequest.httpBody == nil,
-          originalRequest.httpBodyStream == nil else {
+      let originalURL = originalRequest.url,
+      (originalRequest.httpMethod?.uppercased() ?? "GET") == "GET",
+      originalRequest.httpBody == nil,
+      originalRequest.httpBodyStream == nil
+    else {
       throw RSSReaderError.invalidFeedURL
     }
 
@@ -378,19 +394,22 @@ enum RSSNetworkHTTPClient {
           responseHeaders.removeValue(forKey: "content-encoding")
           responseHeaders["content-length"] = String(decodedData.count)
         }
-        guard let response = HTTPURLResponse(
-          url: endpoint.url,
-          statusCode: received.statusCode,
-          httpVersion: "HTTP/1.1",
-          headerFields: responseHeaders
-        ) else {
+        guard
+          let response = HTTPURLResponse(
+            url: endpoint.url,
+            statusCode: received.statusCode,
+            httpVersion: "HTTP/1.1",
+            headerFields: responseHeaders
+          )
+        else {
           throw RSSReaderError.invalidHTTPResponse
         }
         return (decodedData, response)
       }
       guard redirectCount < Self.maximumRedirectCount,
-            let location = received.header("location"),
-            let destination = URL(string: location, relativeTo: endpoint.url)?.absoluteURL else {
+        let location = received.header("location"),
+        let destination = URL(string: location, relativeTo: endpoint.url)?.absoluteURL
+      else {
         throw RSSReaderError.network("网页重定向地址无法安全验证。")
       }
 
@@ -421,16 +440,20 @@ final class CredentialSafeURLSessionDelegate: NSObject, URLSessionTaskDelegate {
       originalRequest?.value(forHTTPHeaderField: header)?.isEmpty == false
     }
     let method = originalRequest?.httpMethod?.uppercased() ?? "GET"
-    let containsSensitiveBody = method != "GET" && method != "HEAD"
+    let containsSensitiveBody =
+      method != "GET" && method != "HEAD"
       && (originalRequest?.httpBody != nil || originalRequest?.httpBodyStream != nil)
     guard containsCredential || containsSensitiveBody else { return proposedRequest }
     guard let sourceURL = responseURL ?? originalRequest?.url,
-          let destinationURL = proposedRequest.url else {
+      let destinationURL = proposedRequest.url
+    else {
       return nil
     }
-    let isAllowed = containsCredential
+    let isAllowed =
+      containsCredential
       ? CredentialedEndpointPolicy.isAllowedCredentialRedirect(from: sourceURL, to: destinationURL)
-      : CredentialedEndpointPolicy.isAllowedSensitiveBodyRedirect(from: sourceURL, to: destinationURL)
+      : CredentialedEndpointPolicy.isAllowedSensitiveBodyRedirect(
+        from: sourceURL, to: destinationURL)
     guard isAllowed else { return nil }
     return proposedRequest
   }
@@ -488,7 +511,8 @@ enum CredentialSafeURLSession {
     timeoutIntervalForResource: TimeInterval = 7 * 24 * 60 * 60,
     proxyURL: String? = nil
   ) -> URLSession {
-    let proxyConfiguration = proxyURL
+    let proxyConfiguration =
+      proxyURL
       .flatMap { value -> CredentialSafeProxyConfiguration? in
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
@@ -550,7 +574,8 @@ enum CredentialSafeURLSession {
       throw CredentialSafeProxyError.invalidPath
     }
 
-    let host = hostValue
+    let host =
+      hostValue
       .trimmingCharacters(in: CharacterSet(charactersIn: "[]"))
       .trimmingCharacters(in: .whitespacesAndNewlines)
       .lowercased()
@@ -561,11 +586,12 @@ enum CredentialSafeURLSession {
     }
 
     let explicitPort = try explicitPort(in: trimmed)
-    let defaultPort = schemeValue == "http"
+    let defaultPort =
+      schemeValue == "http"
       ? 80
       : (schemeValue == "https" ? 443 : 1080)
     let port = explicitPort ?? components.port ?? defaultPort
-    guard (1 ... 65_535).contains(port)
+    guard (1...65_535).contains(port)
     else {
       throw CredentialSafeProxyError.invalidPort
     }
@@ -584,7 +610,8 @@ enum CredentialSafeURLSession {
     }
     let authorityStart = schemeRange.upperBound
     let remainder = value[authorityStart...]
-    let authorityEnd = remainder.firstIndex(where: { "/?#".contains($0) })
+    let authorityEnd =
+      remainder.firstIndex(where: { "/?#".contains($0) })
       ?? remainder.endIndex
     let authority = remainder[..<authorityEnd]
     guard !authority.contains("@") else {
@@ -623,7 +650,7 @@ enum CredentialSafeURLSession {
     guard !portText.isEmpty, let port = Int(portText) else {
       throw CredentialSafeProxyError.invalidPort
     }
-    guard (1 ... 65_535).contains(port) else {
+    guard (1...65_535).contains(port) else {
       throw CredentialSafeProxyError.invalidPort
     }
     return port
@@ -642,7 +669,8 @@ enum CredentialSafeURLSession {
 
     if let proxyConfiguration {
       if proxyConfiguration.isSOCKS {
-        let version: String = proxyConfiguration.scheme == "socks4"
+        let version: String =
+          proxyConfiguration.scheme == "socks4"
           ? (kCFStreamSocketSOCKSVersion4 as String)
           : (kCFStreamSocketSOCKSVersion5 as String)
         configuration.connectionProxyDictionary = [

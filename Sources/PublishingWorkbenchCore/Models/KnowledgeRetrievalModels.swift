@@ -219,10 +219,11 @@ public struct KnowledgeContextSnapshot: Codable, Hashable, Sendable {
     citations = try container.decode([KnowledgeCitation].self, forKey: .citations)
     // Continuations and saved requests written before authorization bindings
     // existed remain readable, but carry no implicit authority.
-    authorizationBindings = try container.decodeIfPresent(
-      [KnowledgeAuthorizationBinding].self,
-      forKey: .authorizationBindings
-    ) ?? []
+    authorizationBindings =
+      try container.decodeIfPresent(
+        [KnowledgeAuthorizationBinding].self,
+        forKey: .authorizationBindings
+      ) ?? []
   }
 
   public var knowledgeBindings: [KnowledgeAuthorizationBinding] {
@@ -235,12 +236,12 @@ public struct KnowledgeContextSnapshot: Codable, Hashable, Sendable {
       let authorText = citation.authors.isEmpty ? "未记录" : citation.authors.joined(separator: "、")
       let locatorText = citation.locator?.nilIfEmpty ?? "未记录"
       return """
-      [\(citation.id)]
-      标题：\(citation.title)
-      作者：\(authorText)
-      位置：\(locatorText)
-      内容：\(citation.excerpt)
-      """
+        [\(citation.id)]
+        标题：\(citation.title)
+        作者：\(authorText)
+        位置：\(locatorText)
+        内容：\(citation.excerpt)
+        """
     }
     .joined(separator: "\n\n")
   }

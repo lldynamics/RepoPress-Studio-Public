@@ -150,7 +150,8 @@ struct AISettingsView: View {
             }
           )
 
-          if activeConnection.config.preset != .local && !activeConnection.config.usesCodexAppServer {
+          if activeConnection.config.preset != .local && !activeConnection.config.usesCodexAppServer
+          {
             LocalAIEngineDiscoverySection { baseURL, model in
               applyLocalAIConfiguration(baseURL: baseURL, model: model)
             }

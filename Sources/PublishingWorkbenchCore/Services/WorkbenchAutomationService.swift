@@ -273,12 +273,13 @@ public enum WorkbenchAutomationRegistry {
     masterEnabled: Bool
   ) -> Set<WorkbenchAutomationCommandID> {
     guard masterEnabled else { return [] }
-    return Set(entries.compactMap { entry in
-      guard entry.isAgentExposed,
-        policy.allows(requiredPermission(for: entry.descriptor.id))
-      else { return nil }
-      return entry.descriptor.id
-    })
+    return Set(
+      entries.compactMap { entry in
+        guard entry.isAgentExposed,
+          policy.allows(requiredPermission(for: entry.descriptor.id))
+        else { return nil }
+        return entry.descriptor.id
+      })
   }
 
   static func agentInvocation(
@@ -390,7 +391,8 @@ extension WorkbenchAutomationPlan {
       return true
     }
     return source == .agentLoop
-      ? !(WorkbenchAutomationRegistry.descriptor(for: step.command)?.allowsAgentAutomaticExecution ?? false)
+      ? !(WorkbenchAutomationRegistry.descriptor(for: step.command)?.allowsAgentAutomaticExecution
+        ?? false)
       : risk.requiresExplicitConfirmation
   }
 }
@@ -966,7 +968,7 @@ public enum WorkbenchAutomationDraftMutationService {
     var matchCount = 0
 
     while searchStart < text.endIndex,
-          let range = text.range(of: needle, range: searchStart..<text.endIndex)
+      let range = text.range(of: needle, range: searchStart..<text.endIndex)
     {
       matchCount += 1
       guard matchCount <= 1 else { return nil }

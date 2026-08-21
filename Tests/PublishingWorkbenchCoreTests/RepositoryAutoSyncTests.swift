@@ -1,5 +1,6 @@
 import Foundation
 import XCTest
+
 @testable import PublishingWorkbenchCore
 
 @MainActor
@@ -114,7 +115,8 @@ final class RepositoryAutoSyncTests: XCTestCase {
     XCTAssertFalse(didRunBeforeDue)
     XCTAssertEqual(store.repositoryAutoSyncState.lastRunAt, start)
 
-    let due = start.addingTimeInterval(TimeInterval(RepositoryAutoSyncSettings.minimumIntervalMinutes * 60))
+    let due = start.addingTimeInterval(
+      TimeInterval(RepositoryAutoSyncSettings.minimumIntervalMinutes * 60))
     let didRunWhenDue = await store.tickRepositoryAutoSync(now: due)
     XCTAssertTrue(didRunWhenDue)
     XCTAssertEqual(store.repositoryAutoSyncState.lastRunAt, due)
@@ -122,12 +124,12 @@ final class RepositoryAutoSyncTests: XCTestCase {
 
   func testAutoSyncStateDecodesLegacyPayloadWithoutRemoteChangedPaths() throws {
     let data = """
-    {
-      "status": "scanned",
-      "remoteChangedFileCount": 2,
-      "message": "自动检查远端已扫描：发现 2 个远端待拉取变化。"
-    }
-    """.data(using: .utf8)!
+      {
+        "status": "scanned",
+        "remoteChangedFileCount": 2,
+        "message": "自动检查远端已扫描：发现 2 个远端待拉取变化。"
+      }
+      """.data(using: .utf8)!
 
     let state = try JSONDecoder.workbench.decode(RepositoryAutoSyncState.self, from: data)
 
@@ -148,7 +150,7 @@ final class RepositoryAutoSyncTests: XCTestCase {
       remoteChangedFileCount: 2,
       remoteChangedPaths: [
         "content/posts/remote-one.md",
-        "static/images/cover.png"
+        "static/images/cover.png",
       ],
       importableRemoteArticleCount: 1,
       nonArticleRemoteChangedFileCount: 1,
@@ -163,10 +165,12 @@ final class RepositoryAutoSyncTests: XCTestCase {
       from: try JSONEncoder.workbench.encode(state)
     )
 
-    XCTAssertEqual(reloaded.remoteChangedPaths, [
-      "content/posts/remote-one.md",
-      "static/images/cover.png"
-    ])
+    XCTAssertEqual(
+      reloaded.remoteChangedPaths,
+      [
+        "content/posts/remote-one.md",
+        "static/images/cover.png",
+      ])
     XCTAssertEqual(reloaded.importableRemoteArticleCount, 1)
     XCTAssertEqual(reloaded.nonArticleRemoteChangedFileCount, 1)
     XCTAssertEqual(reloaded.lastFetchAt, Date(timeIntervalSince1970: 1_800_000_123))
@@ -222,13 +226,13 @@ final class RepositoryAutoSyncTests: XCTestCase {
           refName: "origin/main",
           repositoryPath: path,
           content: """
-          +++
-          title = "Remote Secret"
-          draft = false
-          +++
+            +++
+            title = "Remote Secret"
+            draft = false
+            +++
 
-          Private remote body.
-          """,
+            Private remote body.
+            """,
           repositorySHA: "private-sha"
         )
       ],
@@ -372,7 +376,8 @@ final class RepositoryAutoSyncTests: XCTestCase {
     try git(["clone", remoteURL.path, "local"], rootURL: rootURL)
     try git(["config", "user.email", "tests@example.com"], rootURL: localURL)
     try git(["config", "user.name", "Tests"], rootURL: localURL)
-    try "base\n".write(to: localURL.appendingPathComponent("README.md"), atomically: true, encoding: .utf8)
+    try "base\n".write(
+      to: localURL.appendingPathComponent("README.md"), atomically: true, encoding: .utf8)
     try git(["add", "README.md"], rootURL: localURL)
     try git(["commit", "-m", "Initial"], rootURL: localURL)
     try git(["push", "-u", "origin", "main"], rootURL: localURL)
@@ -508,19 +513,24 @@ final class RepositoryAutoSyncTests: XCTestCase {
 
   func testAutoSyncReportsFetchFailureInsteadOfClaimingScanCompleted() async throws {
     let rootURL = FileManager.default.temporaryDirectory
-      .appendingPathComponent("RepositoryAutoSyncFetchFailure-\(UUID().uuidString)", isDirectory: true)
+      .appendingPathComponent(
+        "RepositoryAutoSyncFetchFailure-\(UUID().uuidString)", isDirectory: true)
     defer { try? FileManager.default.removeItem(at: rootURL) }
     try FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)
     try git(["init", "--initial-branch=main"], rootURL: rootURL)
     try git(["config", "user.email", "tests@example.com"], rootURL: rootURL)
     try git(["config", "user.name", "Tests"], rootURL: rootURL)
-    try "initial\n".write(to: rootURL.appendingPathComponent("README.md"), atomically: true, encoding: .utf8)
+    try "initial\n".write(
+      to: rootURL.appendingPathComponent("README.md"), atomically: true, encoding: .utf8)
     try git(["add", "README.md"], rootURL: rootURL)
     try git(["commit", "-m", "Initial"], rootURL: rootURL)
-    try git(["remote", "add", "origin", rootURL.appendingPathComponent("missing.git").path], rootURL: rootURL)
+    try git(
+      ["remote", "add", "origin", rootURL.appendingPathComponent("missing.git").path],
+      rootURL: rootURL)
     try git(["config", "branch.main.remote", "origin"], rootURL: rootURL)
     try git(["config", "branch.main.merge", "refs/heads/main"], rootURL: rootURL)
-    let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()))
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()))
     await store.rememberRepositoryRootAsync(rootURL)
     store.updateRepositoryAutoSyncSettings(
       RepositoryAutoSyncSettings(isEnabled: true, intervalMinutes: 5, fetchBeforeScan: true)
@@ -558,8 +568,10 @@ final class RepositoryAutoSyncTests: XCTestCase {
     try process.run()
     process.waitUntilExit()
 
-    let output = String(data: outputPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
-    let error = String(data: errorPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+    let output =
+      String(data: outputPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+    let error =
+      String(data: errorPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
     guard process.terminationStatus == 0 else {
       throw NSError(
         domain: "RepositoryAutoSyncTests",

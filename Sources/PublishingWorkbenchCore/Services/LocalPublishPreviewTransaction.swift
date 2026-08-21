@@ -7,61 +7,63 @@ extension LocalPublishPreviewService {
     destinationURL: URL,
     repositoryPath: String
   ) throws {
-    let stagingURL = destinationURL
+    let stagingURL =
+      destinationURL
       .deletingLastPathComponent()
-      .appendingPathComponent(".\(destinationURL.lastPathComponent).publisher-stage-\(UUID().uuidString)")
+      .appendingPathComponent(
+        ".\(destinationURL.lastPathComponent).publisher-stage-\(UUID().uuidString)")
     defer { try? fileManager.removeItem(at: stagingURL) }
 
-#if canImport(Darwin)
-    let stagingDescriptor = stagingURL.path.withCString {
-      Darwin.open(
-        $0,
-        O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC | O_NOFOLLOW,
-        mode_t(S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH)
-      )
-    }
-    guard stagingDescriptor >= 0 else {
-      throw LocalPublishPreviewError.unsafePath(repositoryPath)
-    }
-    var stagingDescriptorIsOpen = true
-    defer {
-      if stagingDescriptorIsOpen {
-        Darwin.close(stagingDescriptor)
+    #if canImport(Darwin)
+      let stagingDescriptor = stagingURL.path.withCString {
+        Darwin.open(
+          $0,
+          O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC | O_NOFOLLOW,
+          mode_t(S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH)
+        )
       }
-    }
+      guard stagingDescriptor >= 0 else {
+        throw LocalPublishPreviewError.unsafePath(repositoryPath)
+      }
+      var stagingDescriptorIsOpen = true
+      defer {
+        if stagingDescriptorIsOpen {
+          Darwin.close(stagingDescriptor)
+        }
+      }
 
-    let copiedSourceState = try withLocalPublishSourceDescriptor(
-      at: sourceURL,
-      repositoryPath: repositoryPath
-    ) { sourceDescriptor in
-      try readLocalPublishSource(
-        descriptor: sourceDescriptor,
-        repositoryPath: repositoryPath,
-        destinationDescriptor: stagingDescriptor
+      let copiedSourceState = try withLocalPublishSourceDescriptor(
+        at: sourceURL,
+        repositoryPath: repositoryPath
+      ) { sourceDescriptor in
+        try readLocalPublishSource(
+          descriptor: sourceDescriptor,
+          repositoryPath: repositoryPath,
+          destinationDescriptor: stagingDescriptor
+        )
+      }
+      if let expectedSourceState, copiedSourceState != expectedSourceState {
+        throw LocalPublishPreviewError.sourcePreviewOutdated(repositoryPath)
+      }
+      guard Darwin.fsync(stagingDescriptor) == 0 else {
+        throw LocalPublishPreviewError.unsafeSource(repositoryPath)
+      }
+      Darwin.close(stagingDescriptor)
+      stagingDescriptorIsOpen = false
+    #else
+      let data = try BoundedFileReader.data(
+        at: sourceURL,
+        maximumByteCount: WorkbenchFileReadLimits.maximumLocalPublishTrackedFileByteCount
       )
-    }
-    if let expectedSourceState, copiedSourceState != expectedSourceState {
-      throw LocalPublishPreviewError.sourcePreviewOutdated(repositoryPath)
-    }
-    guard Darwin.fsync(stagingDescriptor) == 0 else {
-      throw LocalPublishPreviewError.unsafeSource(repositoryPath)
-    }
-    Darwin.close(stagingDescriptor)
-    stagingDescriptorIsOpen = false
-#else
-    let data = try BoundedFileReader.data(
-      at: sourceURL,
-      maximumByteCount: WorkbenchFileReadLimits.maximumLocalPublishTrackedFileByteCount
-    )
-    let copiedSourceState = try localPublishSourceFileState(
-      at: sourceURL,
-      repositoryPath: repositoryPath
-    )
-    guard expectedSourceState == nil || copiedSourceState == expectedSourceState else {
-      throw LocalPublishPreviewError.sourcePreviewOutdated(repositoryPath)
-    }
-    try data.write(to: stagingURL, options: .withoutOverwriting)
-#endif
+      let copiedSourceState = try localPublishSourceFileState(
+        at: sourceURL,
+        repositoryPath: repositoryPath
+      )
+      guard expectedSourceState == nil || copiedSourceState == expectedSourceState else {
+        throw LocalPublishPreviewError.sourcePreviewOutdated(repositoryPath)
+      }
+      try data.write(to: stagingURL, options: .withoutOverwriting)
+    #endif
 
     if fileManager.fileExists(atPath: destinationURL.path) {
       _ = try fileManager.replaceItemAt(destinationURL, withItemAt: stagingURL)
@@ -79,10 +81,12 @@ extension LocalPublishPreviewService {
   /// case-sensitivity so a transaction crafted on a case-insensitive volume
   /// cannot be replayed as a different path on another volume.
   func isGitControlPath(_ repositoryPath: String) -> Bool {
-    let pathForComparison = repositoryPath
+    let pathForComparison =
+      repositoryPath
       .replacingOccurrences(of: "\\", with: "/")
       .normalizedRelativePath()
-    return pathForComparison
+    return
+      pathForComparison
       .split(separator: "/")
       .contains { String($0).caseInsensitiveCompare(".git") == .orderedSame }
   }
@@ -109,10 +113,12 @@ extension LocalPublishPreviewService {
       let data = try Data(contentsOf: transactionURL)
       let transaction = try JSONDecoder().decode(LocalPublishTransaction.self, from: data)
       let root = rootURL.standardizedFileURL
-      let rollbackDirectory = URL(fileURLWithPath: transaction.rollbackDirectoryPath).standardizedFileURL
+      let rollbackDirectory = URL(fileURLWithPath: transaction.rollbackDirectoryPath)
+        .standardizedFileURL
       guard rollbackDirectory.deletingLastPathComponent() == root,
-            rollbackDirectory.lastPathComponent.hasPrefix(".repopress-local-publish-rollback-"),
-            !isSymbolicLink(rollbackDirectory) else {
+        rollbackDirectory.lastPathComponent.hasPrefix(".repopress-local-publish-rollback-"),
+        !isSymbolicLink(rollbackDirectory)
+      else {
         throw LocalPublishPreviewError.recoveryFailed("恢复目录不在本地仓库内")
       }
 
@@ -150,21 +156,26 @@ extension LocalPublishPreviewService {
         }
         if let backupFileName = entry.backupFileName {
           guard !backupFileName.contains("/"),
-                !backupFileName.contains("\\"),
-                !backupFileName.contains("..") else {
+            !backupFileName.contains("\\"),
+            !backupFileName.contains("..")
+          else {
             throw LocalPublishPreviewError.recoveryFailed("恢复备份路径不安全")
           }
-          let backupURL = rollbackDirectory.appendingPathComponent(backupFileName).standardizedFileURL
+          let backupURL = rollbackDirectory.appendingPathComponent(backupFileName)
+            .standardizedFileURL
           guard backupURL.deletingLastPathComponent() == rollbackDirectory,
-                fileManager.fileExists(atPath: backupURL.path),
-                !isSymbolicLink(backupURL) else {
+            fileManager.fileExists(atPath: backupURL.path),
+            !isSymbolicLink(backupURL)
+          else {
             throw LocalPublishPreviewError.recoveryFailed("恢复备份文件缺失：\(entry.repositoryPath)")
           }
           var backupIsDirectory: ObjCBool = false
-          guard !fileManager.fileExists(
-            atPath: backupURL.path,
-            isDirectory: &backupIsDirectory
-          ) || !backupIsDirectory.boolValue else {
+          guard
+            !fileManager.fileExists(
+              atPath: backupURL.path,
+              isDirectory: &backupIsDirectory
+            ) || !backupIsDirectory.boolValue
+          else {
             throw LocalPublishPreviewError.recoveryFailed("恢复备份文件不是普通文件：\(entry.repositoryPath)")
           }
           try fileManager.createDirectory(
@@ -189,7 +200,8 @@ extension LocalPublishPreviewService {
       guard let appliedState = entry.appliedState else {
         throw LocalPublishPreviewError.rollbackConflict(entry.destinationURL.path)
       }
-      let currentState = try localPublishFileState(at: entry.destinationURL, fileManager: fileManager)
+      let currentState = try localPublishFileState(
+        at: entry.destinationURL, fileManager: fileManager)
       guard currentState == appliedState else {
         throw LocalPublishPreviewError.rollbackConflict(entry.destinationURL.path)
       }

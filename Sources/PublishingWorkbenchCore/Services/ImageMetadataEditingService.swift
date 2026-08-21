@@ -24,7 +24,8 @@ public struct ImageMetadataEditingService {
     caption: String,
     isCover: Bool
   ) -> ImageMetadataUpdateResult? {
-    guard let attachmentIndex = draft.attachments.firstIndex(where: { $0.id == attachmentID }) else {
+    guard let attachmentIndex = draft.attachments.firstIndex(where: { $0.id == attachmentID })
+    else {
       return nil
     }
 
@@ -59,7 +60,8 @@ public struct ImageMetadataEditingService {
     altText: String,
     onlyIfEmpty: Bool
   ) -> (markdown: String, count: Int) {
-    let pattern = MarkdownPatterns.imagePrefixPattern
+    let pattern =
+      MarkdownPatterns.imagePrefixPattern
       + NSRegularExpression.escapedPattern(for: imagePath)
       + MarkdownPatterns.imageSuffixPattern
     guard let regex = try? NSRegularExpression(pattern: pattern) else {

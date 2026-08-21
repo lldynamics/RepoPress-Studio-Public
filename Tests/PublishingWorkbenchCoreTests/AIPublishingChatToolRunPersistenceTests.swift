@@ -231,10 +231,11 @@ final class AIPublishingChatToolRunPersistenceTests: XCTestCase {
         context: .general()
       )
     )
-    let encodedTranscript = String(
-      data: try JSONEncoder().encode(transcript),
-      encoding: .utf8
-    ) ?? ""
+    let encodedTranscript =
+      String(
+        data: try JSONEncoder().encode(transcript),
+        encoding: .utf8
+      ) ?? ""
 
     XCTAssertTrue(encodedTranscript.contains("用户可见的最终回答。"))
     XCTAssertFalse(encodedTranscript.contains(privateSummaryMarker))

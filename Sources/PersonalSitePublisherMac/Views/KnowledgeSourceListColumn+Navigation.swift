@@ -7,7 +7,8 @@ extension KnowledgeSourceListColumn {
       Button {
         knowledge.moveDocument(document.id, to: nil)
       } label: {
-        Label(String(localized: "未分类"), systemImage: document.folderID == nil ? "checkmark" : "tray")
+        Label(
+          String(localized: "未分类"), systemImage: document.folderID == nil ? "checkmark" : "tray")
       }
       if !knowledge.folders.isEmpty {
         Divider()

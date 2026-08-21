@@ -22,9 +22,11 @@ extension WorkbenchAIStore {
     _ mode: AIConversationAgentMode,
     for conversationID: UUID
   ) -> Bool {
-    guard let index = aiConversations.firstIndex(where: {
-      $0.id == conversationID && !$0.isArchived
-    }) else {
+    guard
+      let index = aiConversations.firstIndex(where: {
+        $0.id == conversationID && !$0.isArchived
+      })
+    else {
       return false
     }
 

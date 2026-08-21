@@ -36,7 +36,8 @@ struct MarkdownCursorWorkflowControls: View {
         .help(
           fenceMatch.isClosed
             ? String(
-              localized: "代码围栏第 \(fenceMatch.openingLine)–\(fenceMatch.closingLine ?? fenceMatch.openingLine) 行；点击跳转到另一端"
+              localized:
+                "代码围栏第 \(fenceMatch.openingLine)–\(fenceMatch.closingLine ?? fenceMatch.openingLine) 行；点击跳转到另一端"
             )
             : String(localized: "代码围栏未闭合；点击定位到起始标记")
         )
@@ -68,7 +69,8 @@ struct MarkdownCursorWorkflowControls: View {
       if let completion {
         let totalCount = completion.candidates.count
         let prefixCount = min(12, totalCount)
-        let sectionTitle = totalCount > 12
+        let sectionTitle =
+          totalCount > 12
           ? "\(completionSectionTitle(completion.kind))（显示前 \(prefixCount) 项，共 \(totalCount) 项）"
           : completionSectionTitle(completion.kind)
         Section(sectionTitle) {

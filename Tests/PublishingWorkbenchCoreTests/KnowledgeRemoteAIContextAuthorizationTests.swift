@@ -1,5 +1,6 @@
 import Foundation
 import XCTest
+
 @testable import PublishingWorkbenchCore
 
 final class KnowledgeRemoteAIContextAuthorizationTests: XCTestCase {

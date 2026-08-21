@@ -83,18 +83,21 @@ struct MacMarkdownToolbarCustomizationView: View {
 
   private func itemList(for category: MarkdownToolbarCategory) -> some View {
     let allItems = MarkdownToolbarItemID.allCases.filter { $0.defaultCategory == category }
-    let currentIDs = category == .header ? workingConfig.headerItemIDs : workingConfig.formattingItemIDs
+    let currentIDs =
+      category == .header ? workingConfig.headerItemIDs : workingConfig.formattingItemIDs
 
     return VStack(spacing: 4) {
       ForEach(allItems) { item in
         let isPresent = currentIDs.contains(item)
         HStack(spacing: 10) {
-          Toggle(isOn: Binding(
-            get: { isPresent },
-            set: { enabled in
-              toggleItem(item, enabled: enabled, category: category)
-            }
-          )) {
+          Toggle(
+            isOn: Binding(
+              get: { isPresent },
+              set: { enabled in
+                toggleItem(item, enabled: enabled, category: category)
+              }
+            )
+          ) {
             HStack(spacing: 8) {
               Image(systemName: item.systemImage)
                 .frame(width: 20)
@@ -165,17 +168,21 @@ struct MacMarkdownToolbarCustomizationView: View {
     case up, down
   }
 
-  private func isFirstItem(_ item: MarkdownToolbarItemID, category: MarkdownToolbarCategory) -> Bool {
+  private func isFirstItem(_ item: MarkdownToolbarItemID, category: MarkdownToolbarCategory) -> Bool
+  {
     let list = category == .header ? workingConfig.headerItemIDs : workingConfig.formattingItemIDs
     return list.first == item
   }
 
-  private func isLastItem(_ item: MarkdownToolbarItemID, category: MarkdownToolbarCategory) -> Bool {
+  private func isLastItem(_ item: MarkdownToolbarItemID, category: MarkdownToolbarCategory) -> Bool
+  {
     let list = category == .header ? workingConfig.headerItemIDs : workingConfig.formattingItemIDs
     return list.last == item
   }
 
-  private func toggleItem(_ item: MarkdownToolbarItemID, enabled: Bool, category: MarkdownToolbarCategory) {
+  private func toggleItem(
+    _ item: MarkdownToolbarItemID, enabled: Bool, category: MarkdownToolbarCategory
+  ) {
     if category == .header {
       if enabled {
         if !workingConfig.headerItemIDs.contains(item) {
@@ -195,7 +202,9 @@ struct MacMarkdownToolbarCustomizationView: View {
     }
   }
 
-  private func moveItem(_ item: MarkdownToolbarItemID, direction: Direction, category: MarkdownToolbarCategory) {
+  private func moveItem(
+    _ item: MarkdownToolbarItemID, direction: Direction, category: MarkdownToolbarCategory
+  ) {
     var list = category == .header ? workingConfig.headerItemIDs : workingConfig.formattingItemIDs
     guard let index = list.firstIndex(of: item) else { return }
 

@@ -3,6 +3,7 @@ import Foundation
 import ImageIO
 import UniformTypeIdentifiers
 import XCTest
+
 @testable import PublishingWorkbenchCore
 
 final class SiteImageWorkbenchServiceTests: XCTestCase {
@@ -52,9 +53,9 @@ final class SiteImageWorkbenchServiceTests: XCTestCase {
       slug: "image-report",
       coverAttachmentID: attachment.id,
       bodyMarkdown: """
-      ![](/images/2026/cover.png)
-      ![Missing](/images/2026/missing.png)
-      """,
+        ![](/images/2026/cover.png)
+        ![Missing](/images/2026/missing.png)
+        """,
       attachments: [attachment]
     )
 
@@ -104,9 +105,9 @@ final class SiteImageWorkbenchServiceTests: XCTestCase {
       title: "Duplicate Images",
       slug: "duplicate-images",
       bodyMarkdown: """
-      ![First](/images/2026/shared.png)
-      ![Again](/images/2026/shared.png)
-      """,
+        ![First](/images/2026/shared.png)
+        ![Again](/images/2026/shared.png)
+        """,
       attachments: [first, second]
     )
 
@@ -203,9 +204,9 @@ final class SiteImageWorkbenchServiceTests: XCTestCase {
       title: "Metadata",
       slug: "metadata",
       bodyMarkdown: """
-      ![](/images/2026/hero-image.jpg)
-      ![Keep this](/images/2026/detail.jpg)
-      """,
+        ![](/images/2026/hero-image.jpg)
+        ![Keep this](/images/2026/detail.jpg)
+        """,
       attachments: [first, second]
     )
 
@@ -236,10 +237,10 @@ final class SiteImageWorkbenchServiceTests: XCTestCase {
       title: "Escaped metadata",
       slug: "escaped-metadata",
       bodyMarkdown: """
-      ![](/images/2026/hero-wide.jpg "first")
-      ![Keep this](/images/2026/hero-wide.jpg "existing")
-      ![](/images/2026/hero-wide.jpg)
-      """,
+        ![](/images/2026/hero-wide.jpg "first")
+        ![Keep this](/images/2026/hero-wide.jpg "existing")
+        ![](/images/2026/hero-wide.jpg)
+        """,
       attachments: [attachment]
     )
 
@@ -286,7 +287,8 @@ final class SiteImageWorkbenchServiceTests: XCTestCase {
     XCTAssertEqual(result.filledCaptionCount, 1)
     XCTAssertEqual(result.draft.attachments[0].altText, "included image")
     XCTAssertEqual(result.draft.attachments[1].altText, "")
-    XCTAssertTrue(result.draft.bodyMarkdown.contains("![included image](/images/2026/included-image.jpg)"))
+    XCTAssertTrue(
+      result.draft.bodyMarkdown.contains("![included image](/images/2026/included-image.jpg)"))
     XCTAssertTrue(result.draft.bodyMarkdown.contains("![](/images/2026/excluded-image.jpg)"))
   }
 
@@ -313,9 +315,9 @@ final class SiteImageWorkbenchServiceTests: XCTestCase {
       summary: "Use AI to improve image text.",
       coverAttachmentID: missing.id,
       bodyMarkdown: """
-      ![](/images/2026/workflow.png)
-      ![Complete](/images/2026/complete.png)
-      """,
+        ![](/images/2026/workflow.png)
+        ![Complete](/images/2026/complete.png)
+        """,
       attachments: [missing, complete]
     )
 
@@ -449,10 +451,10 @@ final class SiteImageWorkbenchServiceTests: XCTestCase {
       title: "Escaped AI image text",
       slug: "escaped-ai-image-text",
       bodyMarkdown: """
-      ![](/images/2026/workflow.png "first")
-      ![Keep this](/images/2026/workflow.png "existing")
-      ![](/images/2026/workflow.png)
-      """,
+        ![](/images/2026/workflow.png "first")
+        ![Keep this](/images/2026/workflow.png "existing")
+        ![](/images/2026/workflow.png)
+        """,
       attachments: [attachment]
     )
     let suggestion = AIPublishingImageTextSuggestion(
@@ -616,9 +618,9 @@ final class SiteImageWorkbenchServiceTests: XCTestCase {
       title: "WebP Conversion",
       slug: "webp-conversion",
       bodyMarkdown: """
-      ![Diagram](/images/2026/diagram.png)
-      ![Titled](/images/2026/diagram.png "diagram title")
-      """,
+        ![Diagram](/images/2026/diagram.png)
+        ![Titled](/images/2026/diagram.png "diagram title")
+        """,
       attachments: [attachment]
     )
 
@@ -632,10 +634,13 @@ final class SiteImageWorkbenchServiceTests: XCTestCase {
     XCTAssertEqual(result.draft.attachments[0].originalFilename, "diagram.webp")
     XCTAssertEqual(result.draft.attachments[0].relativePublishPath, "/images/2026/diagram.webp")
     XCTAssertEqual(result.draft.attachments[0].repositoryPath, "static/images/2026/diagram.webp")
-    XCTAssertEqual(URL(fileURLWithPath: result.draft.attachments[0].sourceFilePath ?? "").pathExtension, "webp")
-    XCTAssertTrue(FileManager.default.fileExists(atPath: result.draft.attachments[0].sourceFilePath ?? ""))
+    XCTAssertEqual(
+      URL(fileURLWithPath: result.draft.attachments[0].sourceFilePath ?? "").pathExtension, "webp")
+    XCTAssertTrue(
+      FileManager.default.fileExists(atPath: result.draft.attachments[0].sourceFilePath ?? ""))
     XCTAssertTrue(result.draft.bodyMarkdown.contains("![Diagram](/images/2026/diagram.webp)"))
-    XCTAssertTrue(result.draft.bodyMarkdown.contains("![Titled](/images/2026/diagram.webp \"diagram title\")"))
+    XCTAssertTrue(
+      result.draft.bodyMarkdown.contains("![Titled](/images/2026/diagram.webp \"diagram title\")"))
   }
 
   func testCWebPTimeoutStopsProcessAndCleansPartialOutput() throws {
@@ -645,7 +650,8 @@ final class SiteImageWorkbenchServiceTests: XCTestCase {
     let executableURL = directory.appendingPathComponent("slow-cwebp")
     try writeTestImage(at: sourceURL, width: 32, height: 24, type: .png)
     try "#!/bin/sh\nsleep 3\n".write(to: executableURL, atomically: true, encoding: .utf8)
-    try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: executableURL.path)
+    try FileManager.default.setAttributes(
+      [.posixPermissions: 0o755], ofItemAtPath: executableURL.path)
 
     let attachment = DraftAttachment(
       originalFilename: "diagram.png",
@@ -673,7 +679,8 @@ final class SiteImageWorkbenchServiceTests: XCTestCase {
       XCTAssertEqual((error as? ImageWorkbenchError)?.errorDescription, "cwebp 执行超时，已停止。")
     }
     XCTAssertLessThan(Date().timeIntervalSince(startedAt), 1.8)
-    let remainingFiles = try FileManager.default.contentsOfDirectory(atPath: optimizedDirectory.path)
+    let remainingFiles = try FileManager.default.contentsOfDirectory(
+      atPath: optimizedDirectory.path)
     XCTAssertTrue(remainingFiles.isEmpty)
   }
 
@@ -683,7 +690,8 @@ final class SiteImageWorkbenchServiceTests: XCTestCase {
     let executableURL = directory.appendingPathComponent("slow-cwebp")
     try writeTestImage(at: sourceURL, width: 32, height: 24, type: .png)
     try "#!/bin/sh\nsleep 3\n".write(to: executableURL, atomically: true, encoding: .utf8)
-    try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: executableURL.path)
+    try FileManager.default.setAttributes(
+      [.posixPermissions: 0o755], ofItemAtPath: executableURL.path)
 
     let attachment = DraftAttachment(
       originalFilename: "diagram.png",
@@ -734,13 +742,13 @@ final class SiteImageWorkbenchServiceTests: XCTestCase {
     let sourceURL = directory.appendingPathComponent("diagram.svg")
     let optimizedDirectory = directory.appendingPathComponent("optimized", isDirectory: true)
     let sourceSVG = """
-    <svg xmlns="http://www.w3.org/2000/svg" width="120" height="80">
-      <!-- exported by design tool -->
-      <g>
-        <rect width="120" height="80" fill="#fff" />
-      </g>
-    </svg>
-    """
+      <svg xmlns="http://www.w3.org/2000/svg" width="120" height="80">
+        <!-- exported by design tool -->
+        <g>
+          <rect width="120" height="80" fill="#fff" />
+        </g>
+      </svg>
+      """
     try sourceSVG.write(to: sourceURL, atomically: true, encoding: .utf8)
 
     let profile = SiteProfile.defaultProfile
@@ -774,7 +782,8 @@ final class SiteImageWorkbenchServiceTests: XCTestCase {
     XCTAssertEqual(result.draft.attachments[0].relativePublishPath, "/images/2026/diagram.svg")
     XCTAssertEqual(result.draft.attachments[0].repositoryPath, "static/images/2026/diagram.svg")
     XCTAssertNotEqual(result.draft.attachments[0].sourceFilePath, sourceURL.path)
-    let optimizedText = try String(contentsOfFile: result.draft.attachments[0].sourceFilePath ?? "", encoding: .utf8)
+    let optimizedText = try String(
+      contentsOfFile: result.draft.attachments[0].sourceFilePath ?? "", encoding: .utf8)
     XCTAssertFalse(optimizedText.contains("exported by design tool"))
   }
 
@@ -874,8 +883,10 @@ final class SiteImageWorkbenchServiceTests: XCTestCase {
       }
 
     XCTAssertEqual(result.optimizedCount, 1)
-    XCTAssertEqual(result.draft.attachments[0].relativePublishPath, "/images/2026/portrait-cover.jpg")
-    XCTAssertEqual(result.draft.attachments[0].repositoryPath, "static/images/2026/portrait-cover.jpg")
+    XCTAssertEqual(
+      result.draft.attachments[0].relativePublishPath, "/images/2026/portrait-cover.jpg")
+    XCTAssertEqual(
+      result.draft.attachments[0].repositoryPath, "static/images/2026/portrait-cover.jpg")
     XCTAssertNotEqual(result.draft.attachments[0].sourceFilePath, sourceURL.path)
     XCTAssertEqual(croppedDimensions, ImageDimensions(width: 300, height: 168))
   }
@@ -920,7 +931,10 @@ final class SiteImageWorkbenchServiceTests: XCTestCase {
           destinationDirectory: optimizedDirectory
         )
       ) { error in
-        guard case let .unsafeImageDimensions(filename, width, height)? = error as? ImageWorkbenchError else {
+        guard
+          case .unsafeImageDimensions(let filename, let width, let height)? = error
+            as? ImageWorkbenchError
+        else {
           return XCTFail("Expected unsafeImageDimensions, got \(error)")
         }
         XCTAssertEqual(filename, "oversized.jpg")
@@ -961,7 +975,8 @@ final class SiteImageWorkbenchServiceTests: XCTestCase {
         aspectHeight: 9
       )
     ) { error in
-      guard case .cannotCreateOptimizedImage("oversized.jpg")? = error as? ImageWorkbenchError else {
+      guard case .cannotCreateOptimizedImage("oversized.jpg")? = error as? ImageWorkbenchError
+      else {
         return XCTFail("Expected invalid aspect to fail before dimension validation, got \(error)")
       }
     }
@@ -1002,7 +1017,8 @@ final class SiteImageWorkbenchServiceTests: XCTestCase {
     let height = try XCTUnwrap(properties[kCGImagePropertyPixelHeight] as? NSNumber).intValue
 
     XCTAssertEqual(result.optimizedCount, 1)
-    XCTAssertLessThanOrEqual(max(width, height), SiteImageWorkbenchService.maximumCropWorkingPixelDimension)
+    XCTAssertLessThanOrEqual(
+      max(width, height), SiteImageWorkbenchService.maximumCropWorkingPixelDimension)
     XCTAssertEqual(width, SiteImageWorkbenchService.maximumCropWorkingPixelDimension)
   }
 
@@ -1225,15 +1241,17 @@ final class SiteImageWorkbenchServiceTests: XCTestCase {
         bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
       ),
       let image = context.makeImage(),
-      let destination = CGImageDestinationCreateWithURL(url as CFURL, type.identifier as CFString, 1, nil)
+      let destination = CGImageDestinationCreateWithURL(
+        url as CFURL, type.identifier as CFString, 1, nil)
     else {
       XCTFail("Failed to create test image")
       return
     }
 
-    let options = [
-      kCGImageDestinationLossyCompressionQuality: quality
-    ] as CFDictionary
+    let options =
+      [
+        kCGImageDestinationLossyCompressionQuality: quality
+      ] as CFDictionary
     CGImageDestinationAddImage(destination, image, options)
     XCTAssertTrue(CGImageDestinationFinalize(destination))
   }

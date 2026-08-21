@@ -93,22 +93,22 @@ public final class CodexAppServerProcessTransport: CodexAppServerTransport, @unc
       return (URL(fileURLWithPath: path), .homebrew)
     }
 
-#if DEBUG
-    // PATH is intentionally a development-only convenience. A release build
-    // must never silently execute an arbitrary `codex` found in a user-
-    // controlled directory. Production discovery is limited to the bundled
-    // runtime and the explicit, conventional Homebrew locations above.
-    let pathEntries =
-      ProcessInfo.processInfo.environment["PATH"]?
-      .split(separator: ":", omittingEmptySubsequences: true)
-      .map(String.init) ?? []
-    for entry in pathEntries {
-      let candidate = URL(fileURLWithPath: entry).appendingPathComponent("codex")
-      if fileManager.isExecutableFile(atPath: candidate.path) {
-        return (candidate, .path)
+    #if DEBUG
+      // PATH is intentionally a development-only convenience. A release build
+      // must never silently execute an arbitrary `codex` found in a user-
+      // controlled directory. Production discovery is limited to the bundled
+      // runtime and the explicit, conventional Homebrew locations above.
+      let pathEntries =
+        ProcessInfo.processInfo.environment["PATH"]?
+        .split(separator: ":", omittingEmptySubsequences: true)
+        .map(String.init) ?? []
+      for entry in pathEntries {
+        let candidate = URL(fileURLWithPath: entry).appendingPathComponent("codex")
+        if fileManager.isExecutableFile(atPath: candidate.path) {
+          return (candidate, .path)
+        }
       }
-    }
-#endif
+    #endif
     return nil
   }
 
@@ -569,13 +569,15 @@ public actor CodexAppServerClient {
 
       pageCount += 1
       let pagination = root["pagination"]?.objectValue ?? root["page"]?.objectValue ?? [:]
-      let nextCursor = firstNonEmptyString(
-        in: root,
-        keys: ["nextCursor", "next_cursor"]
-      ) ?? firstNonEmptyString(
-        in: pagination,
-        keys: ["nextCursor", "next_cursor"]
-      )
+      let nextCursor =
+        firstNonEmptyString(
+          in: root,
+          keys: ["nextCursor", "next_cursor"]
+        )
+        ?? firstNonEmptyString(
+          in: pagination,
+          keys: ["nextCursor", "next_cursor"]
+        )
       guard let nextCursor, !visitedCursors.contains(nextCursor) else { break }
       cursor = nextCursor
     }
@@ -1197,7 +1199,8 @@ public actor CodexAppServerClient {
     sendDynamicToolCallResponse(
       requestID: requestID,
       success: true,
-      message: "The host recorded this call for validated execution. Do not claim success yet; the actual result will arrive in a later tool-role message."
+      message:
+        "The host recorded this call for validated execution. Do not claim success yet; the actual result will arrive in a later tool-role message."
     )
   }
 
@@ -1562,15 +1565,20 @@ public actor CodexAppServerClient {
       ?? account["authenticated"]?.boolValue
       ?? account["isAuthenticated"]?.boolValue
 
-    let hasAccountData = accountID != nil || email != nil || planType != nil || (accountType != nil && accountType != "apiKey")
-    let isAccountObjectPresent = (accountValue?.objectValue != nil) && !(accountValue?.objectValue?.isEmpty ?? true)
+    let hasAccountData =
+      accountID != nil || email != nil || planType != nil
+      || (accountType != nil && accountType != "apiKey")
+    let isAccountObjectPresent =
+      (accountValue?.objectValue != nil) && !(accountValue?.objectValue?.isEmpty ?? true)
 
     let authenticated: Bool
     if let explicitAuthenticated {
       authenticated = explicitAuthenticated
     } else if isAccountObjectPresent && hasAccountData {
       authenticated = true
-    } else if let requiresAuth = root["requiresOpenaiAuth"]?.boolValue ?? root["requiresAuth"]?.boolValue {
+    } else if let requiresAuth = root["requiresOpenaiAuth"]?.boolValue
+      ?? root["requiresAuth"]?.boolValue
+    {
       authenticated = !requiresAuth
     } else {
       authenticated = hasAccountData

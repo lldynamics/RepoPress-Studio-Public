@@ -208,7 +208,8 @@ struct PublishDrawerReadinessChecklist: View {
   }
 
   private var readinessSections: [PublishDrawerReadinessSection] {
-    let preflight = preflightIssues
+    let preflight =
+      preflightIssues
       .filter { $0.severity != .info }
       .map { issue in
         PublishDrawerReadinessIssue(
@@ -219,7 +220,8 @@ struct PublishDrawerReadinessChecklist: View {
         )
       }
 
-    let imageIssues = imageReport?.issues
+    let imageIssues =
+      imageReport?.issues
       .filter { !$0.isCovered(by: preflightIssues) }
       .map { issue in
         PublishDrawerReadinessIssue(
@@ -241,7 +243,8 @@ struct PublishDrawerReadinessChecklist: View {
         )
       }
 
-    var socialIssues = socialSnapshot?.findings
+    var socialIssues =
+      socialSnapshot?.findings
       .filter { $0.severity != .info }
       .map { finding in
         PublishDrawerReadinessIssue(

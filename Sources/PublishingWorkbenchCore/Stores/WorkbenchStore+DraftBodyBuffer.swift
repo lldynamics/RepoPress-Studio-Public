@@ -71,9 +71,10 @@ extension WorkbenchStore {
 
     let current = draftBodyEditorBuffer(for: draftID)
     let canRebaseUnchangedBody = baseBodyMarkdown == current.bodyMarkdown
-    guard baseRevision == current.revision
-      || bodyMarkdown == current.bodyMarkdown
-      || canRebaseUnchangedBody
+    guard
+      baseRevision == current.revision
+        || bodyMarkdown == current.bodyMarkdown
+        || canRebaseUnchangedBody
     else {
       return DraftBodyEditorBufferStageResult(buffer: current, wasAccepted: false)
     }
@@ -121,15 +122,18 @@ extension WorkbenchStore {
     draftBodyCommitTasks[draftID] = nil
     draftBodyCommitFirstStagedAt[draftID] = nil
 
-    guard var buffer = publishingStore.draftBodyEditorBuffers[draftID], buffer.isDirty else { return }
+    guard var buffer = publishingStore.draftBodyEditorBuffers[draftID], buffer.isDirty else {
+      return
+    }
     guard var draft = drafts.first(where: { $0.id == draftID }) else {
       publishingStore.removeDraftBodyEditorBuffer(for: draftID)
       return
     }
 
-    let imageInputsDidChange = ImageWorkbenchMarkdownReferenceSignature(
-      markdown: draft.bodyMarkdown
-    ) != ImageWorkbenchMarkdownReferenceSignature(markdown: buffer.bodyMarkdown)
+    let imageInputsDidChange =
+      ImageWorkbenchMarkdownReferenceSignature(
+        markdown: draft.bodyMarkdown
+      ) != ImageWorkbenchMarkdownReferenceSignature(markdown: buffer.bodyMarkdown)
     draft.bodyMarkdown = buffer.bodyMarkdown
     publishingStore.updateDraft(draft, store: self)
     buffer.isDirty = false
@@ -177,12 +181,13 @@ extension WorkbenchStore {
 
   func synchronizeDraftBodyEditorBuffer(with draft: ArticleDraft) {
     guard var buffer = publishingStore.draftBodyEditorBuffers[draft.id] else {
-      publishingStore.setDraftBodyEditorBuffer(DraftBodyEditorBuffer(
-        draftID: draft.id,
-        bodyMarkdown: draft.bodyMarkdown,
-        revision: 1,
-        isDirty: false
-      ), for: draft.id)
+      publishingStore.setDraftBodyEditorBuffer(
+        DraftBodyEditorBuffer(
+          draftID: draft.id,
+          bodyMarkdown: draft.bodyMarkdown,
+          revision: 1,
+          isDirty: false
+        ), for: draft.id)
       return
     }
     guard !buffer.isDirty, buffer.bodyMarkdown != draft.bodyMarkdown else {

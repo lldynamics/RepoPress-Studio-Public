@@ -1,5 +1,5 @@
-import Foundation
 import BrowserExtensionProtocolSupport
+import Foundation
 import XCTest
 
 @testable import PersonalSitePublisherMac
@@ -14,7 +14,7 @@ final class KnowledgeBrowserBridgeRequestSecurityTests: XCTestCase {
       "-1",
       "+1",
       "1.0",
-      ""
+      "",
     ]
 
     for value in values {
@@ -28,7 +28,7 @@ final class KnowledgeBrowserBridgeRequestSecurityTests: XCTestCase {
   func testDuplicateContentLengthHeadersAreRejectedCaseInsensitively() {
     let request = makeRequest(headers: [
       "Content-Length: 3",
-      "content-length: 3"
+      "content-length: 3",
     ])
 
     guard case .invalid = BrowserBridgeRequestHeaders.parseState(for: request) else {
@@ -43,7 +43,7 @@ final class KnowledgeBrowserBridgeRequestSecurityTests: XCTestCase {
       headers: [
         "Content-Length: 50300000",
         "X-RepoPress-Protocol: 1",
-        "Origin: https://attacker.invalid"
+        "Origin: https://attacker.invalid",
       ]
     )
 
@@ -63,7 +63,7 @@ final class KnowledgeBrowserBridgeRequestSecurityTests: XCTestCase {
         "Content-Length: 3",
         "Authorization: Bearer test-token",
         "X-RepoPress-Protocol: 1",
-        "Origin: chrome-extension://lnibkmfhfikfbkeehcjbiaalhkiankam"
+        "Origin: chrome-extension://lnibkmfhfikfbkeehcjbiaalhkiankam",
       ]
     )
 

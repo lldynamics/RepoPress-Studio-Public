@@ -50,9 +50,11 @@ extension WorkbenchAIStore {
       store.setAIChatMessage(CoreL10n.text("请先选择一篇文章。"))
       return nil
     }
-    guard !blockChatMutationForDeliveryUncertainty(
-      conversationID: activeAIChatConversationID(for: chatDraft.id)
-    ) else {
+    guard
+      !blockChatMutationForDeliveryUncertainty(
+        conversationID: activeAIChatConversationID(for: chatDraft.id)
+      )
+    else {
       return nil
     }
 
@@ -147,11 +149,12 @@ extension WorkbenchAIStore {
       privacyService: AIOutboundPayloadPrivacyService()
     )
     let agentSettings = config.resolvedAdvancedSettings
-    let conversationAllowsTools = aiConversationAgentMode(
-      for: conversationIdentity.conversationID
-    )?.effectiveAllowsTools(
-      connectionAllowsTools: agentSettings.resolvedAllowsApplicationTools
-    ) ?? false
+    let conversationAllowsTools =
+      aiConversationAgentMode(
+        for: conversationIdentity.conversationID
+      )?.effectiveAllowsTools(
+        connectionAllowsTools: agentSettings.resolvedAllowsApplicationTools
+      ) ?? false
     var allowedAgentCommands = WorkbenchAutomationRegistry.agentCommands(
       allowedBy: agentSettings.resolvedAgentPermissionPolicy,
       masterEnabled: conversationAllowsTools
@@ -163,7 +166,8 @@ extension WorkbenchAIStore {
       let agentTaskConfig = try? aiPublishingAssistantService.resolvedChatTaskConfig(
         for: agentCandidate,
         config: config
-      ), agentTaskConfig.capabilitySupport(for: .toolCalling) == .supported {
+      ), agentTaskConfig.capabilitySupport(for: .toolCalling) == .supported
+    {
       return await generateAgentAIChatReply(
         for: chatDraft,
         conversationIdentity: conversationIdentity,

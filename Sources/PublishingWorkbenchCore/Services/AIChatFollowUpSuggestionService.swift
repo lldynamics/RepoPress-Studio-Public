@@ -25,20 +25,23 @@ public enum AIChatFollowUpSuggestionService {
     guard let openRange = trimmed.range(of: openingTag),
       let closeRange = trimmed.range(of: closingTag, range: openRange.upperBound..<trimmed.endIndex)
     else {
-      let inferred = inferDefaultSuggestions(content: trimmed, draft: draft, hasAutomationPlan: hasAutomationPlan)
+      let inferred = inferDefaultSuggestions(
+        content: trimmed, draft: draft, hasAutomationPlan: hasAutomationPlan)
       return ExtractionResult(displayContent: trimmed, suggestions: inferred)
     }
 
     let jsonSubstring = trimmed[openRange.upperBound..<closeRange.lowerBound]
       .trimmingCharacters(in: .whitespacesAndNewlines)
-    let visibleText = (String(trimmed[..<openRange.lowerBound]) + String(trimmed[closeRange.upperBound...]))
+    let visibleText =
+      (String(trimmed[..<openRange.lowerBound]) + String(trimmed[closeRange.upperBound...]))
       .trimmedForPublishing
 
     guard let data = jsonSubstring.data(using: .utf8),
       let parsed = try? JSONDecoder().decode([AIChatFollowUpSuggestionEnvelope].self, from: data),
       !parsed.isEmpty
     else {
-      let inferred = inferDefaultSuggestions(content: visibleText, draft: draft, hasAutomationPlan: hasAutomationPlan)
+      let inferred = inferDefaultSuggestions(
+        content: visibleText, draft: draft, hasAutomationPlan: hasAutomationPlan)
       return ExtractionResult(displayContent: visibleText, suggestions: inferred)
     }
 
@@ -117,7 +120,9 @@ public enum AIChatFollowUpSuggestionService {
           icon: "list.bullet.indent"
         )
       )
-    } else if lower.contains("修改") || lower.contains("润色") || lower.contains("重构") || lower.contains("替换") {
+    } else if lower.contains("修改") || lower.contains("润色") || lower.contains("重构")
+      || lower.contains("替换")
+    {
       suggestions.append(
         AIChatFollowUpSuggestion(
           title: "检查语气与一致性",

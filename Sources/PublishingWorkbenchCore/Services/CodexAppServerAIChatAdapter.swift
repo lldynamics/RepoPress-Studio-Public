@@ -210,7 +210,8 @@ extension AIChatCompletionClient {
     guard let json = String(data: data, encoding: .utf8) else {
       throw AIChatCompletionClientError.invalidResponse
     }
-    let toolInstruction = allowsTools
+    let toolInstruction =
+      allowsTools
       ? "You may call only the dynamic function tools explicitly supplied by the host. Tool-role messages contain host-validated results. Never claim an application action succeeded until such a result says it did."
       : "Do not use tools."
     return """

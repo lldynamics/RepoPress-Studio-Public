@@ -15,7 +15,8 @@ enum AIConnectionKind: String, CaseIterable, Identifiable {
       self = .chatGPT
     case .local:
       self = .local
-    case .openAICompatible, .deepSeek, .anthropic, .gemini, .siliconFlow, .moonshot, .zhipu, .openRouter, .custom:
+    case .openAICompatible, .deepSeek, .anthropic, .gemini, .siliconFlow, .moonshot, .zhipu,
+      .openRouter, .custom:
       self = .apiKey
     }
   }
