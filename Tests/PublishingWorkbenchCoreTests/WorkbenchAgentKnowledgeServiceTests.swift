@@ -66,14 +66,17 @@ final class WorkbenchAgentKnowledgeServiceTests: XCTestCase {
     XCTAssertTrue(
       maximum.allSatisfy { $0.excerpt.count <= WorkbenchAgentKnowledgeService.maximumExcerptLength }
     )
-    let total = maximum.reduce(0) { partial, hit in
-      partial + hit.documentID.uuidString.count
-        + hit.chunkID.uuidString.count
-        + hit.title.count
-        + (hit.locator?.count ?? 0)
-        + hit.excerpt.count
-        + hit.signals.reduce(0) { $0 + $1.count }
-        + (hit.sourceURL?.absoluteString.count ?? 0)
+    var total = 0
+    for hit in maximum {
+      total += hit.documentID.uuidString.count
+      total += hit.chunkID.uuidString.count
+      total += hit.title.count
+      total += hit.locator?.count ?? 0
+      total += hit.excerpt.count
+      for signal in hit.signals {
+        total += signal.count
+      }
+      total += hit.sourceURL?.absoluteString.count ?? 0
     }
     XCTAssertLessThanOrEqual(total, WorkbenchAgentKnowledgeService.maximumSearchOutputCharacters)
   }
