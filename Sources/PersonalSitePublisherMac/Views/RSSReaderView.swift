@@ -21,8 +21,7 @@ struct RSSReaderView: View {
   @State var selectedArticleLoadError: String?
   @State var selectedArticleIsLoading = false
   @State var selectedArticleReloadToken = 0
-  @State var translationCache:
-    [RSSArticleTranslationCacheKey: RSSArticleTranslationResult] = [:]
+  @State var translationCache: [RSSArticleTranslationCacheKey: RSSArticleTranslationResult] = [:]
   @State var translationIsRunning = false
   @State var translationError: String?
   @State var translationRequestID = UUID()
@@ -83,7 +82,8 @@ struct RSSReaderView: View {
       store.isOfflineCacheFullTextEnabled = isEnabled
     }
     .onChange(of: automaticFullTextExtractionEnabled) { _, isEnabled in
-      guard isEnabled, let article = selectedArticle, presentation.isTruncatedCandidate(article) else { return }
+      guard isEnabled, let article = selectedArticle, presentation.isTruncatedCandidate(article)
+      else { return }
       Task {
         await presentation.fetchFullText(for: article, store: store)
       }
@@ -414,8 +414,10 @@ struct RSSReaderView: View {
     let actionArticle = selectedArticle
     let metrics = displayedArticle.map { presentation.readerMetrics(for: $0) }
     let isTruncated = actionArticle.map { presentation.isTruncatedCandidate($0) } ?? false
-    let isShowingFullText = actionArticle.map { presentation.isShowingFullText(for: $0.id) } ?? false
-    let isFetchingFullText = actionArticle.map { presentation.isFetchingFullText(for: $0.id) } ?? false
+    let isShowingFullText =
+      actionArticle.map { presentation.isShowingFullText(for: $0.id) } ?? false
+    let isFetchingFullText =
+      actionArticle.map { presentation.isFetchingFullText(for: $0.id) } ?? false
     let fullTextError = actionArticle.flatMap { presentation.fullTextError(for: $0.id) }
     return RSSArticleReader(
       articleHeader: selectedArticleHeader,

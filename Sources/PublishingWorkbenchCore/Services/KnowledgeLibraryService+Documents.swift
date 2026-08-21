@@ -8,7 +8,9 @@ extension KnowledgeLibraryService {
     let database = try database()
     var documents = try database.documents()
     for index in documents.indices where documents[index].sourceByteCount == 0 {
-      guard let revision = try database.currentRevision(documentID: documents[index].id) else { continue }
+      guard let revision = try database.currentRevision(documentID: documents[index].id) else {
+        continue
+      }
       let references = [revision.originalStorageReference, revision.normalizedStorageReference]
         .compactMap { $0?.nilIfEmpty }
       var byteCount: Int64?
@@ -113,7 +115,8 @@ extension KnowledgeLibraryService {
       title: title,
       authors: normalizedMetadataValues(metadata.authors, maximumCount: 30, maximumLength: 120),
       language: metadata.language?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty,
-      summary: String(metadata.summary.trimmingCharacters(in: .whitespacesAndNewlines).prefix(8_000)),
+      summary: String(
+        metadata.summary.trimmingCharacters(in: .whitespacesAndNewlines).prefix(8_000)),
       tags: normalizedMetadataValues(metadata.tags, maximumCount: 50, maximumLength: 80)
     )
     try database().updateMetadata(documentID: documentID, metadata: normalized)
@@ -136,7 +139,8 @@ extension KnowledgeLibraryService {
         maximumByteCount: WorkbenchContentFileReadLimits.textDocumentByteCount
       )
     } catch {
-      logger.warning("无法读取文件 \(url.path, privacy: .public): \(error.localizedDescription, privacy: .public)")
+      logger.warning(
+        "无法读取文件 \(url.path, privacy: .public): \(error.localizedDescription, privacy: .public)")
       throw KnowledgeLibraryError.unreadableSource(url.path)
     }
     return text
@@ -166,7 +170,8 @@ extension KnowledgeLibraryService {
           maximumByteCount: WorkbenchContentFileReadLimits.textDocumentByteCount
         )
       } catch {
-        logger.warning("无法读取文件 \(url.path, privacy: .public): \(error.localizedDescription, privacy: .public)")
+        logger.warning(
+          "无法读取文件 \(url.path, privacy: .public): \(error.localizedDescription, privacy: .public)")
         throw KnowledgeLibraryError.unreadableSource(reference)
       }
       return text
@@ -175,7 +180,8 @@ extension KnowledgeLibraryService {
     // Before schema version 7, plain-text browser captures used the original
     // blob itself. Keep those documents inspectable without rewriting history.
     guard let reference = revision.originalStorageReference?.nilIfEmpty,
-          let url = safeStorageFileURL(for: reference) else {
+      let url = safeStorageFileURL(for: reference)
+    else {
       return nil
     }
     let pathExtension = (reference as NSString).pathExtension.lowercased()
@@ -186,10 +192,11 @@ extension KnowledgeLibraryService {
       )
     }
     guard ["html", "htm", "mhtml", "mht"].contains(pathExtension),
-          let data = try? BoundedFileReader.data(
-            at: url,
-            maximumByteCount: WorkbenchContentFileReadLimits.binaryDocumentByteCount
-          ) else {
+      let data = try? BoundedFileReader.data(
+        at: url,
+        maximumByteCount: WorkbenchContentFileReadLimits.binaryDocumentByteCount
+      )
+    else {
       return nil
     }
     return webContentSanitizer.readableOriginalText(from: data)
@@ -218,7 +225,8 @@ extension KnowledgeLibraryService {
         maximumByteCount: WorkbenchContentFileReadLimits.textDocumentByteCount
       )
     } catch {
-      logger.warning("无法读取文件 \(url.path, privacy: .public): \(error.localizedDescription, privacy: .public)")
+      logger.warning(
+        "无法读取文件 \(url.path, privacy: .public): \(error.localizedDescription, privacy: .public)")
       throw KnowledgeLibraryError.unreadableSource(url.path)
     }
     return text
@@ -233,14 +241,16 @@ extension KnowledgeLibraryService {
     let service = self
     return try await Task.detached(priority: .userInitiated) {
       try Task.checkCancellation()
-      guard let record = try service.database().currentDocumentRevision(documentID: documentID) else {
+      guard let record = try service.database().currentDocumentRevision(documentID: documentID)
+      else {
         return nil
       }
       guard !record.document.isArchived, record.document.allowsRemoteAIUse else {
         return nil
       }
       let text = try service.normalizedText(revisionID: record.revision.id)
-      let readableText = record.document.kind == .webpage
+      let readableText =
+        record.document.kind == .webpage
         ? service.webContentSanitizer.sanitizeExtractedReadingText(text)
         : text
       guard !readableText.isEmpty else { return nil }
@@ -285,23 +295,24 @@ extension KnowledgeLibraryService {
         // source deterministically.
         guard seen.insert(binding).inserted else { continue }
         guard !binding.contentHash.isEmpty,
-              let record = try database.currentDocumentRevision(documentID: binding.documentID),
-              record.document.id == binding.documentID,
-              !record.document.isArchived,
-              record.document.allowsRemoteAIUse,
-              record.document.currentRevisionID == binding.revisionID,
-              record.revision.id == binding.revisionID,
-              pinnedDocumentIDs?.contains(binding.documentID) ?? true
+          let record = try database.currentDocumentRevision(documentID: binding.documentID),
+          record.document.id == binding.documentID,
+          !record.document.isArchived,
+          record.document.allowsRemoteAIUse,
+          record.document.currentRevisionID == binding.revisionID,
+          record.revision.id == binding.revisionID,
+          pinnedDocumentIDs?.contains(binding.documentID) ?? true
         else {
           return false
         }
 
         if let chunkID = binding.chunkID {
-          guard let chunk = try database.chunk(
-            id: chunkID,
-            documentID: binding.documentID,
-            revisionID: binding.revisionID
-          ),
+          guard
+            let chunk = try database.chunk(
+              id: chunkID,
+              documentID: binding.documentID,
+              revisionID: binding.revisionID
+            ),
             chunk.contentHash == binding.contentHash,
             KnowledgeChunkingService.contentHash(for: chunk.content) == binding.contentHash
           else {
@@ -325,7 +336,8 @@ extension KnowledgeLibraryService {
     let database = try database()
     var document = try database.restoreRevision(documentID: documentID, revisionID: revisionID)
     if let revision = try database.revision(id: revisionID),
-       let byteCount = storedByteCount(for: revision) {
+      let byteCount = storedByteCount(for: revision)
+    {
       try database.setSourceByteCount(byteCount, documentID: documentID)
       document.sourceByteCount = byteCount
     }
@@ -341,7 +353,8 @@ extension KnowledgeLibraryService {
       throw KnowledgeLibraryError.missingDocument
     }
     guard let comparedRevision = try database().revision(id: revisionID),
-          comparedRevision.documentID == documentID else {
+      comparedRevision.documentID == documentID
+    else {
       throw KnowledgeLibraryError.missingRevision
     }
     return revisionDifferenceService.difference(
@@ -354,8 +367,9 @@ extension KnowledgeLibraryService {
     documentID: UUID
   ) async throws -> KnowledgeSourceRefreshPreview {
     guard let document = try document(id: documentID),
-          let currentRevision = try database().currentRevision(documentID: documentID),
-          let sourceURL = document.sourceURL else {
+      let currentRevision = try database().currentRevision(documentID: documentID),
+      let sourceURL = document.sourceURL
+    else {
       throw KnowledgeLibraryError.sourceRefreshUnavailable
     }
 
@@ -373,7 +387,8 @@ extension KnowledgeLibraryService {
 
     var candidate = importPreview.candidates[0]
     candidate.existingDocumentID = documentID
-    candidate.disposition = candidate.normalizedContentHash == currentRevision.normalizedContentHash
+    candidate.disposition =
+      candidate.normalizedContentHash == currentRevision.normalizedContentHash
       ? .duplicate
       : .update
     candidate.kind = document.kind
@@ -398,9 +413,11 @@ extension KnowledgeLibraryService {
   public func applySourceRefresh(
     _ preview: KnowledgeSourceRefreshPreview
   ) async throws -> KnowledgeImportResult {
-    guard preview.importPreview.candidates.allSatisfy({ candidate in
-      candidate.existingDocumentID == preview.documentID
-    }) else {
+    guard
+      preview.importPreview.candidates.allSatisfy({ candidate in
+        candidate.existingDocumentID == preview.documentID
+      })
+    else {
       throw KnowledgeLibraryError.sourceRefreshUnavailable
     }
     return try await commit(preview.importPreview, destination: .preserveExisting)
@@ -414,11 +431,14 @@ extension KnowledgeLibraryService {
     try database().setAllowsRemoteAIUse(allowsRemoteAIUse, documentIDs: documentIDs)
   }
 
-  public func setAllowsLocalSemanticIndex(_ allowsLocalSemanticIndex: Bool, documentID: UUID) throws {
+  public func setAllowsLocalSemanticIndex(_ allowsLocalSemanticIndex: Bool, documentID: UUID) throws
+  {
     try database().setAllowsLocalSemanticIndex(allowsLocalSemanticIndex, documentID: documentID)
   }
 
-  public func setAllowsLocalSemanticIndex(_ allowsLocalSemanticIndex: Bool, documentIDs: Set<UUID>) throws {
+  public func setAllowsLocalSemanticIndex(_ allowsLocalSemanticIndex: Bool, documentIDs: Set<UUID>)
+    throws
+  {
     try database().setAllowsLocalSemanticIndex(allowsLocalSemanticIndex, documentIDs: documentIDs)
   }
 
@@ -455,7 +475,8 @@ extension KnowledgeLibraryService {
     normalized.highlightedText = String(
       annotation.highlightedText.trimmingCharacters(in: .whitespacesAndNewlines).prefix(20_000)
     )
-    normalized.locator = annotation.locator?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+    normalized.locator =
+      annotation.locator?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
     normalized.updatedAt = Date()
     try database().saveAnnotation(normalized)
     return normalized
@@ -496,7 +517,8 @@ extension KnowledgeLibraryService {
     target: KnowledgeBacklinkTarget
   ) throws {
     guard !target.id.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-          !target.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+      !target.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    else {
       throw KnowledgeLibraryError.invalidMetadata("反向链接目标缺少标题或标识。")
     }
     try database().recordBacklinks(citations: citations, target: target)

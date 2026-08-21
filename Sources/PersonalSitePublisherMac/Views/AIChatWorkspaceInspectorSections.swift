@@ -57,9 +57,9 @@ struct AIChatConversationInspectorSection: View {
                 ),
                 systemImage: "at"
               )
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
+              .font(.caption)
+              .foregroundStyle(.secondary)
+              .fixedSize(horizontal: false, vertical: true)
             }
 
             if !message.knowledgeCitations.isEmpty {

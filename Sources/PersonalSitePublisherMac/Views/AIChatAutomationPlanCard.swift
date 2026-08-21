@@ -193,9 +193,9 @@ struct AIChatAutomationPlanCard: View {
       .foregroundStyle(WorkbenchTheme.warning)
 
       Text(AIChatAgentReviewPresentation.deliveryUncertainDetail)
-      .font(.caption)
-      .foregroundStyle(.secondary)
-      .fixedSize(horizontal: false, vertical: true)
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
 
       HStack(spacing: 8) {
         Button {

@@ -56,11 +56,11 @@ extension AIChatContextInspectorView {
     .accessibilityIdentifier("ai-assistant-inspector")
   }
 
-
   var conversationNavigationRow: some View {
     let conversationCount: Int
     if ai.chatContextMode == .general {
-      conversationCount = ai.generalChatConversationsIncludingArchived.filter { !$0.isArchived }.count
+      conversationCount =
+        ai.generalChatConversationsIncludingArchived.filter { !$0.isArchived }.count
     } else if let draft = ai.selectedChatDraft {
       conversationCount = ai.chatConversations(for: draft.id, includingArchived: false).count
     } else {
@@ -401,31 +401,35 @@ extension AIChatContextInspectorView {
     var items: [(title: String, systemImage: String)] = []
 
     if ai.chatContextMode == .site {
-      items.append((
-        AIChatInspectorHeaderPresentation.contextTitle(for: .site),
-        "doc.text"
-      ))
+      items.append(
+        (
+          AIChatInspectorHeaderPresentation.contextTitle(for: .site),
+          "doc.text"
+        ))
       if let title = ai.selectedChatDraft?.title.trimmedForPublishing.nilIfEmpty {
         items.append((title, "doc"))
       }
       items.append((String(localized: "站点上下文"), "globe"))
     } else if selectedContextReferences.isEmpty {
-      items.append((
-        String(localized: "不自动附加当前文章上下文"),
-        "text.bubble"
-      ))
+      items.append(
+        (
+          String(localized: "不自动附加当前文章上下文"),
+          "text.bubble"
+        ))
     }
 
-    items.append(contentsOf: selectedContextReferences.map { reference in
-      (contextReferenceLabel(reference), "at")
-    })
+    items.append(
+      contentsOf: selectedContextReferences.map { reference in
+        (contextReferenceLabel(reference), "at")
+      })
 
     let knowledgeTitle = localizedKnowledgePolicyTitle(knowledgePolicyBinding.wrappedValue)
     items.append(("\(String(localized: "资料库")) · \(knowledgeTitle)", "books.vertical"))
-    items.append((
-      "Agent · \(localizedAgentModeTitle(agentModeBinding.wrappedValue))",
-      agentModeBinding.wrappedValue == .textOnly ? "text.bubble" : "wand.and.stars"
-    ))
+    items.append(
+      (
+        "Agent · \(localizedAgentModeTitle(agentModeBinding.wrappedValue))",
+        agentModeBinding.wrappedValue == .textOnly ? "text.bubble" : "wand.and.stars"
+      ))
     return items
   }
 
@@ -625,18 +629,22 @@ extension AIChatContextInspectorView {
   }
 
   var generalConnectionAndModelSummary: String {
-    let profile = selectedGeneralConnectionProfile?.name
+    let profile =
+      selectedGeneralConnectionProfile?.name
       ?? String(localized: "连接档案已失效")
     let conversation = displayedGeneralConversation
     let activeModelName: String
     if let selected = conversation?.selectedModel.nilIfEmpty {
       activeModelName = selected
-    } else if let grade = conversation?.modelGrade, let config = selectedGeneralConnectionProfile?.config {
-      activeModelName = AIChatModelSelectionPresentationService.presentation(
-        grade: grade,
-        selectedModel: "",
-        config: config
-      ).activeModel.nilIfEmpty ?? grade.title
+    } else if let grade = conversation?.modelGrade,
+      let config = selectedGeneralConnectionProfile?.config
+    {
+      activeModelName =
+        AIChatModelSelectionPresentationService.presentation(
+          grade: grade,
+          selectedModel: "",
+          config: config
+        ).activeModel.nilIfEmpty ?? grade.title
     } else {
       activeModelName = conversation?.modelGrade.title ?? String(localized: "未选择")
     }

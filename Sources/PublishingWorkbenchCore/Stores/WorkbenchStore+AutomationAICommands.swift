@@ -14,10 +14,12 @@ extension WorkbenchStore {
     onlyStepID: UUID? = nil,
     confirmedStepIDs: Set<UUID> = []
   ) async -> WorkbenchAutomationExecutionResult? {
-    guard let binding = automationMessageBinding(
-      conversationID: conversationID,
-      messageID: messageID
-    ) else {
+    guard
+      let binding = automationMessageBinding(
+        conversationID: conversationID,
+        messageID: messageID
+      )
+    else {
       setAIChatMessage(CoreL10n.text("找不到要执行的自动化计划。"))
       return nil
     }
@@ -50,45 +52,50 @@ extension WorkbenchStore {
       setAIChatMessage(WorkbenchAutomationValidationError.operationInProgress.localizedDescription)
       return nil
     }
-    guard let binding = automationMessageBinding(
-      conversationID: conversationID,
-      messageID: messageID
-    ),
-          binding.plan.source == .agentLoop,
-          let step = binding.plan.steps.first(where: { $0.id == stepID }),
-          let descriptor = WorkbenchAutomationRegistry.descriptor(for: step.command),
-          descriptor.risk == .contentChange,
-          step.status == .proposed || step.status == .awaitingConfirmation,
-          let draftID = step.arguments.draftID,
-          draftID == binding.identity.draftID,
-          let baseline = previewBaselineFingerprint.trimmedForPublishing.nilIfEmpty
+    guard
+      let binding = automationMessageBinding(
+        conversationID: conversationID,
+        messageID: messageID
+      ),
+      binding.plan.source == .agentLoop,
+      let step = binding.plan.steps.first(where: { $0.id == stepID }),
+      let descriptor = WorkbenchAutomationRegistry.descriptor(for: step.command),
+      descriptor.risk == .contentChange,
+      step.status == .proposed || step.status == .awaitingConfirmation,
+      let draftID = step.arguments.draftID,
+      draftID == binding.identity.draftID,
+      let baseline = previewBaselineFingerprint.trimmedForPublishing.nilIfEmpty
     else {
       setAIChatMessage(CoreL10n.text("这条 AI 修改已失效，未执行。"))
       return nil
     }
 
-    guard !binding.message.reviewDecisions.contains(where: {
-      $0.planID == binding.plan.id && $0.stepID == stepID
-    }) else {
+    guard
+      !binding.message.reviewDecisions.contains(where: {
+        $0.planID == binding.plan.id && $0.stepID == stepID
+      })
+    else {
       setAIChatMessage(CoreL10n.text("这条 AI 修改已经有审阅决定，未重复执行。"))
       return nil
     }
 
     flushDraftBodyEditorBuffer(for: draftID)
     guard let currentDraft = drafts.first(where: { $0.id == draftID }),
-          currentDraft.repositoryContentFingerprint == baseline
+      currentDraft.repositoryContentFingerprint == baseline
     else {
       setAIChatMessage(CoreL10n.text("文章已发生变化，AI 修改未执行；请重新预览。"))
       return nil
     }
 
     if binding.message.agentContinuation != nil {
-      guard aiStore.markAgentContinuationApplyingDecision(
-        conversationID: conversationID,
-        messageID: messageID,
-        planID: binding.plan.id,
-        stepID: stepID
-      ) else {
+      guard
+        aiStore.markAgentContinuationApplyingDecision(
+          conversationID: conversationID,
+          messageID: messageID,
+          planID: binding.plan.id,
+          stepID: stepID
+        )
+      else {
         setAIChatMessage(CoreL10n.text("原 AI 对话已变化，未执行这条修改。"))
         return nil
       }
@@ -125,14 +132,14 @@ extension WorkbenchStore {
     previewBaselineFingerprint: String? = nil
   ) async -> Bool {
     guard !aiWorkspaceStore.isAutomationRunning,
-          let binding = automationMessageBinding(
-            conversationID: conversationID,
-            messageID: messageID
-          ),
-          binding.plan.source == .agentLoop,
-          let step = binding.plan.steps.first(where: { $0.id == stepID }),
-          let descriptor = WorkbenchAutomationRegistry.descriptor(for: step.command),
-          descriptor.risk == .contentChange
+      let binding = automationMessageBinding(
+        conversationID: conversationID,
+        messageID: messageID
+      ),
+      binding.plan.source == .agentLoop,
+      let step = binding.plan.steps.first(where: { $0.id == stepID }),
+      let descriptor = WorkbenchAutomationRegistry.descriptor(for: step.command),
+      descriptor.risk == .contentChange
     else {
       setAIChatMessage(CoreL10n.text("这条 AI 修改已失效，未记录拒绝。"))
       return false
@@ -167,7 +174,7 @@ extension WorkbenchStore {
       messageID: messageID
     ) { message in
       guard var plan = message.automationPlan,
-            let index = plan.steps.firstIndex(where: { $0.id == stepID })
+        let index = plan.steps.firstIndex(where: { $0.id == stepID })
       else { return false }
       plan.steps[index].status = .cancelled
       plan.steps[index].resultMessage = CoreL10n.text("用户已拒绝此修改，未执行。")
@@ -187,18 +194,19 @@ extension WorkbenchStore {
     if binding.message.agentContinuation != nil {
       guard let toolCallID,
         await aiStore.recordAgentContinuationResolution(
-        conversationID: conversationID,
-        messageID: messageID,
-        planID: binding.plan.id,
-        resolution: WorkbenchAIAgentToolResolution(
-          toolCallID: toolCallID,
-          automationStepID: stepID,
-          command: step.command,
-          status: .rejected,
-          content: "The user rejected this proposed action; it was not executed.",
-          targetDraftID: step.arguments.draftID
+          conversationID: conversationID,
+          messageID: messageID,
+          planID: binding.plan.id,
+          resolution: WorkbenchAIAgentToolResolution(
+            toolCallID: toolCallID,
+            automationStepID: stepID,
+            command: step.command,
+            status: .rejected,
+            content: "The user rejected this proposed action; it was not executed.",
+            targetDraftID: step.arguments.draftID
+          )
         )
-      ) else {
+      else {
         setAIChatMessage(CoreL10n.text("已拒绝 AI 修改，但未继续请求模型。"))
         return true
       }
@@ -251,14 +259,14 @@ extension WorkbenchStore {
 
     let didUpdate = updateAutomationMessage(binding, messageID: messageID) { message in
       guard var currentPlan = message.automationPlan,
-            currentPlan.id == binding.plan.id
+        currentPlan.id == binding.plan.id
       else { return false }
       if let reviewDecision {
         guard let currentStep = currentPlan.steps.first(where: { $0.id == reviewDecision.stepID }),
-              currentStep.status == .proposed || currentStep.status == .awaitingConfirmation,
-              !message.reviewDecisions.contains(where: {
-                $0.planID == reviewDecision.planID && $0.stepID == reviewDecision.stepID
-              })
+          currentStep.status == .proposed || currentStep.status == .awaitingConfirmation,
+          !message.reviewDecisions.contains(where: {
+            $0.planID == reviewDecision.planID && $0.stepID == reviewDecision.stepID
+          })
         else { return false }
       }
       currentPlan = result.plan
@@ -295,7 +303,8 @@ extension WorkbenchStore {
           $0.command == reviewedStep.command
             && $0.targetDraftID == reviewedStep.arguments.draftID
         }),
-        let toolCallID = reviewDecision.toolCallID {
+        let toolCallID = reviewDecision.toolCallID
+      {
         didRecordContinuationResolution = await aiStore.recordAgentContinuationResolution(
           conversationID: binding.identity.conversationID,
           messageID: messageID,
@@ -337,11 +346,13 @@ extension WorkbenchStore {
     messageID: AIPublishingChatMessage.ID,
     stepID: UUID
   ) -> WorkbenchAutomationDraftPreview? {
-    guard let binding = automationMessageBinding(
-      conversationID: conversationID,
-      messageID: messageID
-    ),
-          let step = binding.plan.steps.first(where: { $0.id == stepID }) else {
+    guard
+      let binding = automationMessageBinding(
+        conversationID: conversationID,
+        messageID: messageID
+      ),
+      let step = binding.plan.steps.first(where: { $0.id == stepID })
+    else {
       setAIChatMessage(CoreL10n.text("找不到要预览的自动化步骤。"))
       return nil
     }
@@ -357,10 +368,12 @@ extension WorkbenchStore {
     conversationID: UUID,
     messageID: AIPublishingChatMessage.ID
   ) {
-    guard let binding = automationMessageBinding(
-      conversationID: conversationID,
-      messageID: messageID
-    ) else { return }
+    guard
+      let binding = automationMessageBinding(
+        conversationID: conversationID,
+        messageID: messageID
+      )
+    else { return }
     if aiWorkspaceStore.isAutomationRunning {
       guard aiWorkspaceStore.activeAutomationPlanID == binding.plan.id else { return }
       aiWorkspaceStore.automationCancellationRequested = true
@@ -375,7 +388,8 @@ extension WorkbenchStore {
       }
       message.automationPlan = plan
       message.agentContinuation = nil
-      for index in message.toolRuns.indices where message.toolRuns[index].status == .awaitingConfirmation {
+      for index in message.toolRuns.indices
+      where message.toolRuns[index].status == .awaitingConfirmation {
         message.toolRuns[index].status = .cancelled
         message.toolRuns[index].completedAt = Date()
         message.toolRuns[index].summary = boundedAutomationReviewSummary(
@@ -396,18 +410,21 @@ extension WorkbenchStore {
     conversationID: UUID,
     messageID: AIPublishingChatMessage.ID
   ) -> AutomationMessageBinding? {
-    guard let conversation = aiConversations.first(where: {
-      $0.id == conversationID && !$0.isArchived
-    }), let draftID = conversation.draftID,
+    guard
+      let conversation = aiConversations.first(where: {
+        $0.id == conversationID && !$0.isArchived
+      }), let draftID = conversation.draftID,
       let message = conversation.messages.first(where: { $0.id == messageID }),
       let plan = message.automationPlan
     else { return nil }
-    guard message.agentContinuation.map({ continuation in
-      continuation.ownerConversationID == conversationID
-        && continuation.ownerScope == conversation.scope
-        && continuation.ownerMessageID == messageID
-        && continuation.planID == plan.id
-    }) ?? true else {
+    guard
+      message.agentContinuation.map({ continuation in
+        continuation.ownerConversationID == conversationID
+          && continuation.ownerScope == conversation.scope
+          && continuation.ownerMessageID == messageID
+          && continuation.planID == plan.id
+      }) ?? true
+    else {
       return nil
     }
     return AutomationMessageBinding(
@@ -439,7 +456,7 @@ extension WorkbenchStore {
     update: (inout AIPublishingChatMessage) -> Bool
   ) -> Bool {
     guard let state = aiStore.aiChatSessionState(for: binding.identity),
-          state.messages.contains(where: { $0.id == messageID })
+      state.messages.contains(where: { $0.id == messageID })
     else {
       return false
     }
@@ -460,17 +477,19 @@ extension WorkbenchStore {
   ) {
     var consumedToolCallIDs = Set<String>()
     for stepRecord in record.steps {
-      guard let toolRunIndex = message.toolRuns.indices.first(where: { index in
-        let run = message.toolRuns[index]
-        guard !consumedToolCallIDs.contains(run.toolCallID),
-              run.command == stepRecord.command,
-              let automationStepID = run.automationStepID,
-              plan.steps.contains(where: {
-                $0.id == automationStepID && $0.command == stepRecord.command
-              })
-        else { return false }
-        return onlyStepID == nil || automationStepID == onlyStepID
-      }) else { continue }
+      guard
+        let toolRunIndex = message.toolRuns.indices.first(where: { index in
+          let run = message.toolRuns[index]
+          guard !consumedToolCallIDs.contains(run.toolCallID),
+            run.command == stepRecord.command,
+            let automationStepID = run.automationStepID,
+            plan.steps.contains(where: {
+              $0.id == automationStepID && $0.command == stepRecord.command
+            })
+          else { return false }
+          return onlyStepID == nil || automationStepID == onlyStepID
+        })
+      else { continue }
 
       consumedToolCallIDs.insert(message.toolRuns[toolRunIndex].toolCallID)
       message.toolRuns[toolRunIndex].status = toolRunStatus(for: stepRecord.status)
@@ -487,7 +506,8 @@ extension WorkbenchStore {
     stepID: UUID,
     toolCallID: String?
   ) {
-    for index in message.toolRuns.indices where
+    for index in message.toolRuns.indices
+    where
       message.toolRuns[index].automationStepID == stepID
       || (toolCallID != nil && message.toolRuns[index].toolCallID == toolCallID)
     {
@@ -539,14 +559,16 @@ extension WorkbenchStore {
 
   @discardableResult
   public func rollbackAutomationRun(_ recordID: UUID) -> Int {
-    guard let record = aiWorkspaceStore.automationRunRecords.first(where: { $0.id == recordID }) else {
+    guard let record = aiWorkspaceStore.automationRunRecords.first(where: { $0.id == recordID })
+    else {
       setAIChatMessage(CoreL10n.text("找不到自动化执行记录。"))
       return 0
     }
     let result = WorkbenchAutomationExecutor.rollbackDetailed(record: record, in: self)
     if result.restoredCount > 0,
-       result.completedWithoutFailures,
-       let index = aiWorkspaceStore.automationRunRecords.firstIndex(where: { $0.id == recordID }) {
+      result.completedWithoutFailures,
+      let index = aiWorkspaceStore.automationRunRecords.firstIndex(where: { $0.id == recordID })
+    {
       aiWorkspaceStore.automationRunRecords[index].rolledBackAt = Date()
       if !flushPendingChanges() {
         setAIChatMessage(CoreL10n.text("本地修改已撤销，但撤销记录保存失败。"))
@@ -578,9 +600,12 @@ extension WorkbenchStore {
   func recordAutomationRun(_ record: WorkbenchAutomationRunRecord) {
     guard record.steps.contains(where: { $0.status.isTerminal }) else { return }
     aiWorkspaceStore.automationRunRecords.insert(record, at: 0)
-    if aiWorkspaceStore.automationRunRecords.count > WorkbenchAutomationRunRecord.maximumHistoryCount {
+    if aiWorkspaceStore.automationRunRecords.count
+      > WorkbenchAutomationRunRecord.maximumHistoryCount
+    {
       aiWorkspaceStore.automationRunRecords = Array(
-        aiWorkspaceStore.automationRunRecords.prefix(WorkbenchAutomationRunRecord.maximumHistoryCount)
+        aiWorkspaceStore.automationRunRecords.prefix(
+          WorkbenchAutomationRunRecord.maximumHistoryCount)
       )
     }
   }

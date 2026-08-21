@@ -24,7 +24,9 @@ public struct WorkbenchAIAgentLoopService: Sendable {
     self.dateProvider = dateProvider
   }
 
-  @available(*, deprecated, renamed: "init(limits:modelTransport:allowedCommands:automaticExecutor:)")
+  @available(
+    *, deprecated, renamed: "init(limits:modelTransport:allowedCommands:automaticExecutor:)"
+  )
   public init(
     limits: WorkbenchAIAgentLoopLimits = .default,
     modelTransport: @escaping WorkbenchAIAgentModelTransport,
@@ -512,9 +514,10 @@ public struct WorkbenchAIAgentLoopService: Sendable {
         let completedAt = dateProvider()
         let status: WorkbenchAIAgentToolRunStatus =
           toolResult.isError ? .failed : .succeeded
-        let summary = toolResult.content.trimmingCharacters(
-          in: .whitespacesAndNewlines
-        ).nilIfEmpty ?? (toolResult.isError ? Self.failedSummary : Self.succeededSummary)
+        let summary =
+          toolResult.content.trimmingCharacters(
+            in: .whitespacesAndNewlines
+          ).nilIfEmpty ?? (toolResult.isError ? Self.failedSummary : Self.succeededSummary)
         state.appendToolRun(
           toolCallID: invocation.toolCallID,
           command: invocation.step.command,
@@ -744,10 +747,11 @@ public struct WorkbenchAIAgentLoopService: Sendable {
         }
         validationDraftVersions[draftID] = expectedUpdatedAt
       }
-      guard let invocation = try? WorkbenchAutomationRegistry.agentInvocation(
-        for: call,
-        draftVersions: validationDraftVersions
-      ),
+      guard
+        let invocation = try? WorkbenchAutomationRegistry.agentInvocation(
+          for: call,
+          draftVersions: validationDraftVersions
+        ),
         invocation.step.command == pending.command,
         invocation.step.arguments == pending.step.arguments
       else {
@@ -1201,8 +1205,8 @@ extension Int {
   }
 }
 
-private extension WorkbenchAIAgentLoopLimits {
-  var isValid: Bool {
+extension WorkbenchAIAgentLoopLimits {
+  fileprivate var isValid: Bool {
     maximumModelRoundCount >= 0
       && maximumToolCallCountPerRound >= 0
       && maximumTotalToolCallCount >= 0
@@ -1214,7 +1218,7 @@ private extension WorkbenchAIAgentLoopLimits {
       && maximumTotalTranscriptByteCount >= 0
   }
 
-  func minimum(with other: WorkbenchAIAgentLoopLimits) -> WorkbenchAIAgentLoopLimits {
+  fileprivate func minimum(with other: WorkbenchAIAgentLoopLimits) -> WorkbenchAIAgentLoopLimits {
     WorkbenchAIAgentLoopLimits(
       maximumModelRoundCount: min(maximumModelRoundCount, other.maximumModelRoundCount),
       maximumToolCallCountPerRound: min(

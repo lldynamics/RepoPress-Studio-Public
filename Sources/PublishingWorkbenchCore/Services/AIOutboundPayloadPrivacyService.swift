@@ -185,7 +185,8 @@ public struct AIOutboundPayloadPrivacyService: Sendable {
   ) -> AIPreparedOutboundPayload {
     let scanned = sanitizedMessageScan(preparedRequest.normalizedRequest.messages)
     let messages = preparedRequest.normalizedRequest.messages
-    let destination = taskConfig.usesCodexAppServer
+    let destination =
+      taskConfig.usesCodexAppServer
       ? "codex-app-server://chatgpt"
       : sanitizedDestination(preparedRequest.endpointURL)
     let payloadMetrics = metrics(for: messages)

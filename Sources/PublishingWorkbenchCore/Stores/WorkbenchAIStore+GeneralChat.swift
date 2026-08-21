@@ -373,7 +373,8 @@ extension WorkbenchAIStore {
         prepared: authorizedTransport.payload,
         privacyService: privacyService
       ),
-      knowledgeAuthorizationBindings: resolvedInitialRequest.context.knowledgeContext?.authorizationBindings ?? [],
+      knowledgeAuthorizationBindings: resolvedInitialRequest.context.knowledgeContext?
+        .authorizationBindings ?? [],
       knowledgePolicy: resolvedInitialRequest.context.knowledgePolicy
     )
   }
@@ -750,7 +751,8 @@ extension WorkbenchAIStore {
             privacyService: privacyService
           )
         } catch let error as AIOutboundPayloadConfirmationError
-          where error == .knowledgeAuthorizationChanged {
+          where error == .knowledgeAuthorizationChanged
+        {
           await authorizationFailureBox.record(error)
           self.requestAIChatCancellation()
           throw CancellationError()
@@ -759,13 +761,15 @@ extension WorkbenchAIStore {
       allowedCommands: allowedCommands,
       automaticExecutor: { [weak self] invocation in
         guard let self else { throw CancellationError() }
-        guard self.isGeneralAgentContextCurrent(
-          conversationID: conversationID,
-          initialConversation: initialConversation,
-          initialRequest: initialRequest,
-          initialProviderConfig: initialProviderConfig,
-          privacyService: privacyService
-        ) else {
+        guard
+          self.isGeneralAgentContextCurrent(
+            conversationID: conversationID,
+            initialConversation: initialConversation,
+            initialRequest: initialRequest,
+            initialProviderConfig: initialProviderConfig,
+            privacyService: privacyService
+          )
+        else {
           throw AIOutboundPayloadConfirmationError.drifted
         }
         do {
@@ -774,7 +778,8 @@ extension WorkbenchAIStore {
             policy: initialRequest.context.knowledgePolicy
           )
         } catch let error as AIOutboundPayloadConfirmationError
-          where error == .knowledgeAuthorizationChanged {
+          where error == .knowledgeAuthorizationChanged
+        {
           await authorizationFailureBox.record(error)
           self.requestAIChatCancellation()
           throw CancellationError()
@@ -823,13 +828,15 @@ extension WorkbenchAIStore {
           toolRuns: result.toolRuns,
           followUpSuggestions: extraction.suggestions
         )
-        guard isGeneralAgentContextCurrent(
-          conversationID: conversationID,
-          initialConversation: initialConversation,
-          initialRequest: initialRequest,
-          initialProviderConfig: initialProviderConfig,
-          privacyService: privacyService
-        ) else {
+        guard
+          isGeneralAgentContextCurrent(
+            conversationID: conversationID,
+            initialConversation: initialConversation,
+            initialRequest: initialRequest,
+            initialProviderConfig: initialProviderConfig,
+            privacyService: privacyService
+          )
+        else {
           throw AIOutboundPayloadConfirmationError.drifted
         }
         try await requireValidAIKnowledgeAuthorization(
@@ -874,13 +881,15 @@ extension WorkbenchAIStore {
     privacyService: AIOutboundPayloadPrivacyService
   ) async throws -> AIChatCompletionResult {
     try checkAIChatOperation(operationID)
-    guard isGeneralAgentContextCurrent(
-      conversationID: conversationID,
-      initialConversation: initialConversation,
-      initialRequest: initialRequest,
-      initialProviderConfig: initialProviderConfig,
-      privacyService: privacyService
-    ) else {
+    guard
+      isGeneralAgentContextCurrent(
+        conversationID: conversationID,
+        initialConversation: initialConversation,
+        initialRequest: initialRequest,
+        initialProviderConfig: initialProviderConfig,
+        privacyService: privacyService
+      )
+    else {
       throw AIOutboundPayloadConfirmationError.drifted
     }
 
@@ -903,13 +912,15 @@ extension WorkbenchAIStore {
       throw AIOutboundPayloadConfirmationError.cancelled
     }
     try checkAIChatOperation(operationID)
-    guard isGeneralAgentContextCurrent(
-      conversationID: conversationID,
-      initialConversation: initialConversation,
-      initialRequest: initialRequest,
-      initialProviderConfig: initialProviderConfig,
-      privacyService: privacyService
-    ) else {
+    guard
+      isGeneralAgentContextCurrent(
+        conversationID: conversationID,
+        initialConversation: initialConversation,
+        initialRequest: initialRequest,
+        initialProviderConfig: initialProviderConfig,
+        privacyService: privacyService
+      )
+    else {
       throw AIOutboundPayloadConfirmationError.drifted
     }
     try await requireValidAIKnowledgeAuthorization(

@@ -785,7 +785,9 @@ public final class WorkbenchStore: ObservableObject {
     publishingStore.draft(for: draftID)
   }
 
-  static func mergedRecoveryRecords(from records: [DraftRecoveryRecord]) -> [UUID: DraftRecoveryRecord] {
+  static func mergedRecoveryRecords(from records: [DraftRecoveryRecord]) -> [UUID:
+    DraftRecoveryRecord]
+  {
     Dictionary(
       records.map { ($0.draftID, $0) },
       uniquingKeysWith: { lhs, rhs in

@@ -411,7 +411,8 @@ struct WorkspaceQuickSearchView: View {
   private func resultRow(_ draft: ArticleDraft) -> some View {
     let display = store.privateContentDisplay(for: draft)
     let title = display.title.nilIfEmpty ?? String(localized: "未命名文章")
-    let detail = display.isMasked
+    let detail =
+      display.isMasked
       ? display.summary
       : (draft.slug.nilIfEmpty ?? display.summary)
 
@@ -608,7 +609,8 @@ struct WorkspaceQuickSearchView: View {
 
   private var preferredDraftIDs: [UUID]? {
     guard scope == .aiFixes,
-          case .ready(let orderedDraftIDs) = contentHealthQueueState else {
+      case .ready(let orderedDraftIDs) = contentHealthQueueState
+    else {
       return nil
     }
     return orderedDraftIDs
@@ -620,7 +622,8 @@ struct WorkspaceQuickSearchView: View {
 
   private func resultCountLabel(for snapshot: WorkspaceQuickSearchSnapshot) -> String {
     let count = snapshot.matchingDrafts.count
-    let limit = normalizedQuery.isEmpty
+    let limit =
+      normalizedQuery.isEmpty
       ? WorkspaceQuickSearchPresentation.recentResultLimit
       : WorkspaceQuickSearchPresentation.searchResultLimit
     return count > limit ? "\(limit)+" : "\(count)"

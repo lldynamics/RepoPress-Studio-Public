@@ -157,7 +157,9 @@ enum SettingsTab: Hashable, CaseIterable, Identifiable {
   }
 
   static let siteSettings: [SettingsTab] = [.configurationStatus, .defaultRules, .token, .ai]
-  static let applicationSettings: [SettingsTab] = [.dataManagement, .appearance, .editor, .rss, .privacy]
+  static let applicationSettings: [SettingsTab] = [
+    .dataManagement, .appearance, .editor, .rss, .privacy,
+  ]
 
   var searchKeywords: [String] {
     switch self {
@@ -175,12 +177,12 @@ enum SettingsTab: Hashable, CaseIterable, Identifiable {
       return [
         "编辑器", "字号", "行距", "正文宽度", "拼写检查", "打字机模式", "当前段落",
         "纸张背景", "自动配对", "段落聚光灯", "打字反馈", "同步滚动", "预览主题", "editor",
-        "preview"
+        "preview",
       ]
     case .rss:
       return [
         "订阅", "OPML", "离线", "内网", "保留", "历史文章", "清理", "远程图片", "自动翻译",
-        "remote image", "translation"
+        "remote image", "translation",
       ]
     case .privacy:
       return ["隐私", "快速隐藏", "临时遮挡", "遮挡", "快捷键"]

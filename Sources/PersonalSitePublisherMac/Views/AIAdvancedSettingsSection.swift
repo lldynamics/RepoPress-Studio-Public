@@ -97,9 +97,11 @@ struct AIAdvancedSettingsSection: View {
             HStack(spacing: 10) {
               Slider(value: temperatureBinding, in: 0...2, step: 0.1)
                 .frame(minWidth: 180)
-              Text(settings.normalizedTemperature ?? 0, format: .number.precision(.fractionLength(1)))
-                .font(.callout.monospacedDigit())
-                .frame(width: 30, alignment: .trailing)
+              Text(
+                settings.normalizedTemperature ?? 0, format: .number.precision(.fractionLength(1))
+              )
+              .font(.callout.monospacedDigit())
+              .frame(width: 30, alignment: .trailing)
             }
           }
           HStack {

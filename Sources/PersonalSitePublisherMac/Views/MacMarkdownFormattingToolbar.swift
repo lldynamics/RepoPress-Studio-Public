@@ -375,7 +375,9 @@ struct MacMarkdownFormattingToolbar: View {
                 .padding(.vertical, 3)
                 .background(
                   RoundedRectangle(cornerRadius: 4)
-                    .fill(targetWordCount == goal ? Color.accentColor.opacity(0.18) : Color.secondary.opacity(0.08))
+                    .fill(
+                      targetWordCount == goal
+                        ? Color.accentColor.opacity(0.18) : Color.secondary.opacity(0.08))
                 )
                 .foregroundStyle(targetWordCount == goal ? Color.accentColor : Color.primary)
             }

@@ -34,9 +34,9 @@ enum MarkdownEditorAutomationPolicy {
 }
 
 struct MarkdownEditorComfortConfiguration: Equatable {
-  static let fontSizeRange = 12.0 ... 24.0
-  static let lineSpacingRange = 0.0 ... 12.0
-  static let bodyWidthRange = 560.0 ... 1_200.0
+  static let fontSizeRange = 12.0...24.0
+  static let lineSpacingRange = 0.0...12.0
+  static let bodyWidthRange = 560.0...1_200.0
 
   static let defaultFontSize = 14.0
   static let defaultLineSpacing = 4.0
@@ -58,13 +58,26 @@ struct MarkdownEditorComfortConfiguration: Equatable {
     defaults.set(defaultFontSize, forKey: MarkdownEditorComfortPreferences.fontSizeKey)
     defaults.set(defaultLineSpacing, forKey: MarkdownEditorComfortPreferences.lineSpacingKey)
     defaults.set(defaultBodyWidth, forKey: MarkdownEditorComfortPreferences.bodyWidthKey)
-    defaults.set(defaultSpellCheckEnabled, forKey: MarkdownEditorComfortPreferences.spellCheckEnabledKey)
-    defaults.set(defaultTypewriterModeEnabled, forKey: MarkdownEditorComfortPreferences.typewriterModeEnabledKey)
-    defaults.set(defaultCurrentParagraphHighlightEnabled, forKey: MarkdownEditorComfortPreferences.currentParagraphHighlightEnabledKey)
-    defaults.set(defaultWarmPaperBackgroundEnabled, forKey: MarkdownEditorComfortPreferences.warmPaperBackgroundEnabledKey)
-    defaults.set(defaultAutomaticPairingEnabled, forKey: MarkdownEditorComfortPreferences.automaticPairingEnabledKey)
-    defaults.set(defaultTypewriterSoundPreset.rawValue, forKey: MarkdownEditorComfortPreferences.typewriterSoundPresetKey)
-    defaults.set(defaultParagraphSpotlightEnabled, forKey: MarkdownEditorComfortPreferences.paragraphSpotlightEnabledKey)
+    defaults.set(
+      defaultSpellCheckEnabled, forKey: MarkdownEditorComfortPreferences.spellCheckEnabledKey)
+    defaults.set(
+      defaultTypewriterModeEnabled,
+      forKey: MarkdownEditorComfortPreferences.typewriterModeEnabledKey)
+    defaults.set(
+      defaultCurrentParagraphHighlightEnabled,
+      forKey: MarkdownEditorComfortPreferences.currentParagraphHighlightEnabledKey)
+    defaults.set(
+      defaultWarmPaperBackgroundEnabled,
+      forKey: MarkdownEditorComfortPreferences.warmPaperBackgroundEnabledKey)
+    defaults.set(
+      defaultAutomaticPairingEnabled,
+      forKey: MarkdownEditorComfortPreferences.automaticPairingEnabledKey)
+    defaults.set(
+      defaultTypewriterSoundPreset.rawValue,
+      forKey: MarkdownEditorComfortPreferences.typewriterSoundPresetKey)
+    defaults.set(
+      defaultParagraphSpotlightEnabled,
+      forKey: MarkdownEditorComfortPreferences.paragraphSpotlightEnabledKey)
   }
 
   let fontSize: Double
@@ -97,8 +110,8 @@ struct MarkdownEditorComfortConfiguration: Equatable {
   }
 }
 
-private extension Double {
-  func clamped(to range: ClosedRange<Double>) -> Double {
+extension Double {
+  fileprivate func clamped(to range: ClosedRange<Double>) -> Double {
     min(max(self, range.lowerBound), range.upperBound)
   }
 }

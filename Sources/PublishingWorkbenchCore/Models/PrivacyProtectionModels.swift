@@ -22,7 +22,8 @@ public struct PrivacyProtectionSettings: Codable, Hashable, Sendable {
   public init(from decoder: Decoder) throws {
     let container = try decoder.container(keyedBy: CodingKeys.self)
     self.init(
-      masksPrivateContent: try container.decodeIfPresent(Bool.self, forKey: .masksPrivateContent) ?? true
+      masksPrivateContent: try container.decodeIfPresent(Bool.self, forKey: .masksPrivateContent)
+        ?? true
     )
   }
 }
@@ -172,7 +173,7 @@ public struct PrivacyProtectionStatus: Hashable, Sendable {
       "- 说明：\(detail)",
       "- 已启用的遮挡设置：\(activeProtections.isEmpty ? "未启用" : activeProtections.joined(separator: "、"))",
       "",
-      "## 行为确认"
+      "## 行为确认",
     ]
 
     lines.append("- [ ] 手动快速隐藏后，主窗口和设置窗口都遮挡工作台内容。")

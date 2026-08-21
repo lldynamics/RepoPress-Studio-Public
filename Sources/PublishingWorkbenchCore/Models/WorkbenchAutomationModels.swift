@@ -134,9 +134,11 @@ public struct WorkbenchAutomationArguments: Codable, Hashable, Sendable {
     let container = try decoder.container(keyedBy: CodingKeys.self)
     section = try container.decodeIfPresent(WorkspaceSection.self, forKey: .section)
     draftID = try container.decodeIfPresent(UUID.self, forKey: .draftID)
-    expectedDraftUpdatedAt = try container.decodeIfPresent(Date.self, forKey: .expectedDraftUpdatedAt)
+    expectedDraftUpdatedAt = try container.decodeIfPresent(
+      Date.self, forKey: .expectedDraftUpdatedAt)
     editorField = try container.decodeIfPresent(String.self, forKey: .editorField)
-    metadataField = try container.decodeIfPresent(AIPublishingMetadataField.self, forKey: .metadataField)
+    metadataField = try container.decodeIfPresent(
+      AIPublishingMetadataField.self, forKey: .metadataField)
     value = try container.decodeIfPresent(String.self, forKey: .value)
     values = try container.decodeIfPresent([String].self, forKey: .values) ?? []
     content = try container.decodeIfPresent(String.self, forKey: .content)

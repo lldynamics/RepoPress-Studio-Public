@@ -108,8 +108,10 @@ public final class WorkbenchActivityStatusFacade: ObservableObject {
     case .gitPush:
       await retryGitTask()
     case .deployment:
-      if let recordID = task.targetID ?? UUID(uuidString: task.id.replacingOccurrences(of: "deployment-", with: "")),
-         let record = store.activeProfileReleaseRecords.first(where: { $0.id == recordID }) {
+      if let recordID = task.targetID
+        ?? UUID(uuidString: task.id.replacingOccurrences(of: "deployment-", with: "")),
+        let record = store.activeProfileReleaseRecords.first(where: { $0.id == recordID })
+      {
         _ = await store.refreshDeploymentStatus(for: record)
       }
     }
@@ -117,7 +119,8 @@ public final class WorkbenchActivityStatusFacade: ObservableObject {
 
   private var aiTask: WorkbenchTaskItem? {
     let ai = store.aiWorkspaceStore
-    let isRunning = ai.isAIChatRunning
+    let isRunning =
+      ai.isAIChatRunning
       || ai.isAIActionRunning
       || ai.isAIMetadataSuggestionRunning
       || ai.isAutomationRunning
@@ -224,9 +227,11 @@ public final class WorkbenchActivityStatusFacade: ObservableObject {
         state: .running
       )
     }
-    guard let repositoryFailure = store.repositoryReport?.preflightIssues.first(where: {
-      $0.severity == .error && $0.field == "repository"
-    }) else {
+    guard
+      let repositoryFailure = store.repositoryReport?.preflightIssues.first(where: {
+        $0.severity == .error && $0.field == "repository"
+      })
+    else {
       return nil
     }
     return WorkbenchTaskItem(
@@ -243,11 +248,13 @@ public final class WorkbenchActivityStatusFacade: ObservableObject {
     let repository = store.repositoryStore
     let publishing = store.publishingStore
     let progress = repository.remoteRepositoryPublishProgress
-    let isRunning = repository.isRemoteRepositoryPublishing
+    let isRunning =
+      repository.isRemoteRepositoryPublishing
       || repository.isRemoteRepositoryChecking
       || publishing.isLocalRepositoryMutationRunning
     if isRunning {
-      let detail = progress?.statusDescription
+      let detail =
+        progress?.statusDescription
         ?? publishing.publishActionMessage
         ?? (repository.isRemoteRepositoryChecking ? "正在检查远端仓库权限…" : "正在执行 Git 操作…")
       return WorkbenchTaskItem(
@@ -323,7 +330,8 @@ public final class WorkbenchActivityStatusFacade: ObservableObject {
       return
     }
     if store.publishingStore.localRepositoryMutationContext != nil
-      || store.repository.report?.hasGitDirectory == false {
+      || store.repository.report?.hasGitDirectory == false
+    {
       _ = await store.writeSelectedDraftToLocalRepository()
     } else {
       await store.commitSelectedDraftUsingPreferredStrategy()
@@ -350,12 +358,13 @@ public final class WorkbenchActivityStatusFacade: ObservableObject {
       .sink { [weak self] _ in
         guard let self else { return }
         let ai = self.store.aiWorkspaceStore
-        guard ai.isAIChatRunning
-          || ai.isAIActionRunning
-          || ai.isAIMetadataSuggestionRunning
-          || ai.isAutomationRunning
-          || ai.isAIImageTextRunning
-          || self.store.aiStore.aiChatManualRetryState != nil
+        guard
+          ai.isAIChatRunning
+            || ai.isAIActionRunning
+            || ai.isAIMetadataSuggestionRunning
+            || ai.isAutomationRunning
+            || ai.isAIImageTextRunning
+            || self.store.aiStore.aiChatManualRetryState != nil
         else {
           return
         }

@@ -10,16 +10,20 @@ extension AIChatContextInspectorView {
     }
 
     let profile = ai.chatContextMode == .general ? nil : ai.chatProfile(for: draft)
-    let relationSuggestions = ai.chatContextMode == .general
+    let relationSuggestions =
+      ai.chatContextMode == .general
       ? []
       : ai.relatedChatArticleSuggestions(for: draft, limit: 5)
-    let displayedGeneralConversation = ai.chatContextMode == .general
+    let displayedGeneralConversation =
+      ai.chatContextMode == .general
       ? ai.generalChatConversation(withID: inspectorSurfaceConversationID)
       : nil
-    let displayedMessages = ai.chatContextMode == .general
+    let displayedMessages =
+      ai.chatContextMode == .general
       ? (displayedGeneralConversation?.messages ?? [])
       : ai.chatMessages
-    let displayedConversationID = ai.chatContextMode == .general
+    let displayedConversationID =
+      ai.chatContextMode == .general
       ? displayedGeneralConversation?.id
       : ai.activeChatConversationID(for: draft.id)
     let displayedConversationTitle: String
@@ -28,7 +32,8 @@ extension AIChatContextInspectorView {
         displayedConversationTitle = title
       } else if let firstUserMessage = displayedMessages.first(where: { $0.role == .user }) {
         displayedConversationTitle = AIPublishingChatConversationPresentation.title(
-          fromUserText: AIPublishingChatMessageCompositionService.displayContent(for: firstUserMessage),
+          fromUserText: AIPublishingChatMessageCompositionService.displayContent(
+            for: firstUserMessage),
           fallbackTitle: String(localized: "通用 AI 对话")
         )
       } else {
@@ -243,18 +248,19 @@ extension AIChatContextInspectorView {
     draft: ArticleDraft,
     clearsComposerOnAccept: Bool
   ) {
-    guard AIChatSurfaceOperationOwnershipPolicy.canStartLocalOperation(
-      localTaskExists: sendTask != nil,
-      globalOperationRunning: ai.isChatRunning
-    ) else { return }
+    guard
+      AIChatSurfaceOperationOwnershipPolicy.canStartLocalOperation(
+        localTaskExists: sendTask != nil,
+        globalOperationRunning: ai.isChatRunning
+      )
+    else { return }
     isFollowingLatestMessage = true
     let ownerToken = UUID()
     let submittedSurfaceConversationID = inspectorSurfaceConversationID
     let existingMessageIDs = Set(
       (ai.chatContextMode == .general
         ? ai.generalChatConversation(withID: submittedSurfaceConversationID)?.messages ?? []
-        : ai.chatMessages
-      ).map(\.id)
+        : ai.chatMessages).map(\.id)
     )
     let requestedImageAttachmentIDs = selectedImageAttachmentIDs
     let requestedContextReferences = selectedContextReferences
@@ -301,9 +307,10 @@ extension AIChatContextInspectorView {
       }
       let currentMessages: [AIPublishingChatMessage]
       if ai.chatContextMode == .general {
-        currentMessages = ai.generalChatConversation(
-          withID: submittedSurfaceConversationID
-        )?.messages
+        currentMessages =
+          ai.generalChatConversation(
+            withID: submittedSurfaceConversationID
+          )?.messages
           ?? ai.activeGeneralChatConversation?.messages
           ?? []
       } else {
@@ -344,10 +351,12 @@ extension AIChatContextInspectorView {
   }
 
   func stopSending() {
-    guard AIChatSurfaceOperationOwnershipPolicy.canCancelLocalOperation(
-      localTaskExists: sendTask != nil,
-      ownerToken: activeSendOwnerToken
-    ) else {
+    guard
+      AIChatSurfaceOperationOwnershipPolicy.canCancelLocalOperation(
+        localTaskExists: sendTask != nil,
+        ownerToken: activeSendOwnerToken
+      )
+    else {
       return
     }
     guard let ownerToken = activeSendOwnerToken else { return }
@@ -356,10 +365,12 @@ extension AIChatContextInspectorView {
   }
 
   func retryLastFailedReply(confirmingPossibleDuplicateCharge: Bool) {
-    guard AIChatSurfaceOperationOwnershipPolicy.canStartLocalOperation(
-      localTaskExists: sendTask != nil,
-      globalOperationRunning: ai.isChatRunning
-    ) else { return }
+    guard
+      AIChatSurfaceOperationOwnershipPolicy.canStartLocalOperation(
+        localTaskExists: sendTask != nil,
+        globalOperationRunning: ai.isChatRunning
+      )
+    else { return }
     isFollowingLatestMessage = true
     isSubmitting = true
     let ownerToken = UUID()
@@ -407,7 +418,7 @@ extension AIChatContextInspectorView {
   }
 
   func focusComposerIfAvailable() {
-    guard (ai.chatContextMode == .general || ai.selectedChatDraft != nil), !isChatBusy else {
+    guard ai.chatContextMode == .general || ai.selectedChatDraft != nil, !isChatBusy else {
       return
     }
     DispatchQueue.main.async {

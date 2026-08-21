@@ -420,7 +420,8 @@ final class CodexAppServerClientTests: XCTestCase {
       turnTimeout: .milliseconds(20)
     )
 
-    await XCTAssertThrowsErrorAsync(try await client.complete(prompt: "timeout this turn")) { error in
+    await XCTAssertThrowsErrorAsync(try await client.complete(prompt: "timeout this turn")) {
+      error in
       XCTAssertEqual(error as? CodexAppServerError, .turnTimedOut)
     }
     let didSendInterrupt = await transport.waitUntilSent(method: "turn/interrupt")

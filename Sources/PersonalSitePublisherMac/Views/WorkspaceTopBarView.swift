@@ -105,9 +105,11 @@ struct WorkspaceTaskCenterToolbarButton: View {
     Button {
       isPresented.toggle()
     } label: {
-      Label("任务", systemImage: activityStatus.activeTaskCount > 0
-        ? "list.bullet.rectangle.fill"
-        : "list.bullet.rectangle")
+      Label(
+        "任务",
+        systemImage: activityStatus.activeTaskCount > 0
+          ? "list.bullet.rectangle.fill"
+          : "list.bullet.rectangle")
     }
     .buttonStyle(
       WorkspaceToolbarIconButtonStyle(
@@ -183,9 +185,12 @@ struct OmniCommandSearchBar: View {
         Color.primary.opacity(0.06),
         in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.searchBar, style: .continuous)
       )
-      .contentShape(RoundedRectangle(cornerRadius: WorkbenchCornerRadius.searchBar, style: .continuous))
+      .contentShape(
+        RoundedRectangle(cornerRadius: WorkbenchCornerRadius.searchBar, style: .continuous))
     }
-    .buttonStyle(WorkbenchFocusRingButtonStyle(cornerRadius: WorkbenchCornerRadius.searchBar, lineWidth: 1.5))
+    .buttonStyle(
+      WorkbenchFocusRingButtonStyle(cornerRadius: WorkbenchCornerRadius.searchBar, lineWidth: 1.5)
+    )
     .layoutPriority(1)
     .help(String(localized: "唤起命令面板与全局搜索 (⌘P)"))
     .accessibilityLabel("全局搜索")
@@ -283,7 +288,8 @@ struct WorkspaceToolbarLeadingContent: View {
     .buttonStyle(WorkbenchFocusRingButtonStyle(cornerRadius: 5, lineWidth: 1.5))
     .help(
       String(
-        localized: "个人网站：\(shell.activeProfile.name) · \(shell.activeProfile.siteKind.localizedDisplayName)"
+        localized:
+          "个人网站：\(shell.activeProfile.name) · \(shell.activeProfile.siteKind.localizedDisplayName)"
       )
     )
     .accessibilityLabel("切换个人网站")
@@ -400,11 +406,11 @@ struct PublishingStatusToolbarControl: View {
       isPresented.toggle()
     } label: {
       statusToolbarLabel(currentToolbarStatus)
-      .font(.workbenchButtonLabel)
-      .accessibilityLabel(contextualStatusTitle)
-      .frame(width: isCompact ? 112 : 128, height: 28)
-      .background(currentToolbarStatus.color.opacity(0.12), in: Capsule())
-      .contentShape(Capsule())
+        .font(.workbenchButtonLabel)
+        .accessibilityLabel(contextualStatusTitle)
+        .frame(width: isCompact ? 112 : 128, height: 28)
+        .background(currentToolbarStatus.color.opacity(0.12), in: Capsule())
+        .contentShape(Capsule())
     }
     .buttonStyle(WorkbenchFocusRingButtonStyle(cornerRadius: 13, lineWidth: 1.5))
     .disabled(!canUseProtectedWorkbench)
@@ -496,7 +502,10 @@ struct PublishingStatusToolbarControl: View {
   private var repositoryStatus: PublishingStatusPopoverItem {
     let area = PublishingStatusArea.repository
     if statusState.activeProfile.purpose.requiresRepositoryReadiness,
-       statusState.activeProfile.localRepositoryRootPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+      statusState.activeProfile.localRepositoryRootPath.trimmingCharacters(
+        in: .whitespacesAndNewlines
+      ).isEmpty
+    {
       return PublishingStatusPopoverItem(
         area: area,
         value: String(localized: "未配置"),
@@ -595,8 +604,9 @@ struct PublishingStatusToolbarControl: View {
     }
 
     guard let readiness = statusState.localPublishReadiness,
-          readiness.writeReadiness != .blocked,
-          readiness.commitReadiness != .blocked else {
+      readiness.writeReadiness != .blocked,
+      readiness.commitReadiness != .blocked
+    else {
       return PublishingStatusPopoverItem(
         area: area,
         value: String(localized: "待运行检查"),
@@ -631,7 +641,9 @@ struct PublishingStatusToolbarControl: View {
       )
     }
 
-    if let failedEntry = entries.first(where: { $0.status == .failed || $0.status == .pendingRemoteRecovery || $0.status == .pendingRetry }) {
+    if let failedEntry = entries.first(where: {
+      $0.status == .failed || $0.status == .pendingRemoteRecovery || $0.status == .pendingRetry
+    }) {
       return PublishingStatusPopoverItem(
         area: area,
         value: failedEntry.status.localizedDisplayName,
@@ -642,7 +654,9 @@ struct PublishingStatusToolbarControl: View {
       )
     }
 
-    if let pendingEntry = entries.first(where: { $0.status == .pendingDeployment || $0.status == .deploying }) {
+    if let pendingEntry = entries.first(where: {
+      $0.status == .pendingDeployment || $0.status == .deploying
+    }) {
       return PublishingStatusPopoverItem(
         area: area,
         value: pendingEntry.status.localizedDisplayName,

@@ -97,7 +97,10 @@ struct MetricTile: View {
     }
     .padding(10)
     .frame(maxWidth: .infinity, alignment: .leading)
-    .background(WorkbenchBackgroundStyle.control, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
+    .background(
+      WorkbenchBackgroundStyle.control,
+      in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
+    )
     .accessibilityElement(children: .ignore)
     .accessibilityLabel(Text(LocalizedStringKey(title)))
     .accessibilityValue(value)
@@ -706,7 +709,8 @@ struct GuidedEmptyStateView: View {
     )
     .overlay(
       RoundedRectangle(cornerRadius: 12, style: .continuous)
-        .strokeBorder(isHovered ? Color.accentColor.opacity(0.45) : Color.primary.opacity(0.08), lineWidth: 1)
+        .strokeBorder(
+          isHovered ? Color.accentColor.opacity(0.45) : Color.primary.opacity(0.08), lineWidth: 1)
     )
     .shadow(color: Color.accentColor.opacity(isHovered ? 0.16 : 0), radius: 10, x: 0, y: 4)
     .scaleEffect(isHovered ? 1.02 : 1.0)

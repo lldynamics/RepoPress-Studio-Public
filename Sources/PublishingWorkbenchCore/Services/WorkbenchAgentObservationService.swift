@@ -77,7 +77,7 @@ public struct WorkbenchAgentDraftSearchService: Sendable {
     var seenDraftIDs = Set<UUID>()
     return hits.compactMap { hit in
       guard !Task.isCancelled,
-            seenDraftIDs.insert(hit.draftID).inserted
+        seenDraftIDs.insert(hit.draftID).inserted
       else {
         return nil
       }
@@ -333,7 +333,8 @@ public struct WorkbenchAgentContentAuditService: Sendable {
   private func boundedProfile(_ profile: SiteProfile) -> SiteProfile {
     var copy = profile
     copy.name = bounded(profile.name, maximumLength: Self.maximumArticleTextLength)
-    copy.repositoryBaseURL = bounded(profile.repositoryBaseURL, maximumLength: Self.maximumArticleTextLength)
+    copy.repositoryBaseURL = bounded(
+      profile.repositoryBaseURL, maximumLength: Self.maximumArticleTextLength)
     copy.localRepositoryRootPath = bounded(
       profile.localRepositoryRootPath,
       maximumLength: Self.maximumArticleTextLength
@@ -347,12 +348,14 @@ public struct WorkbenchAgentContentAuditService: Sendable {
       profile.markdownPathPattern,
       maximumLength: Self.maximumArticleTextLength
     )
-    copy.imagePathPattern = bounded(profile.imagePathPattern, maximumLength: Self.maximumArticleTextLength)
+    copy.imagePathPattern = bounded(
+      profile.imagePathPattern, maximumLength: Self.maximumArticleTextLength)
     copy.publicImagePathPattern = bounded(
       profile.publicImagePathPattern,
       maximumLength: Self.maximumArticleTextLength
     )
-    copy.defaultAuthor = bounded(profile.defaultAuthor, maximumLength: Self.maximumArticleTextLength)
+    copy.defaultAuthor = bounded(
+      profile.defaultAuthor, maximumLength: Self.maximumArticleTextLength)
     copy.defaultTags = profile.defaultTags.prefix(64).map {
       bounded($0, maximumLength: Self.maximumArticleTextLength)
     }
@@ -362,12 +365,15 @@ public struct WorkbenchAgentContentAuditService: Sendable {
     return copy
   }
 
-  private func boundedResult(_ value: String, maximumLength: Int) -> (value: String, wasTruncated: Bool) {
-    let limitedEnd = value.index(
-      value.startIndex,
-      offsetBy: maximumLength,
-      limitedBy: value.endIndex
-    ) ?? value.endIndex
+  private func boundedResult(_ value: String, maximumLength: Int) -> (
+    value: String, wasTruncated: Bool
+  ) {
+    let limitedEnd =
+      value.index(
+        value.startIndex,
+        offsetBy: maximumLength,
+        limitedBy: value.endIndex
+      ) ?? value.endIndex
     guard limitedEnd != value.endIndex else { return (value, false) }
     return (String(value[..<limitedEnd]), true)
   }
@@ -391,7 +397,9 @@ public enum WorkbenchAgentStaticLinkDiagnosticKind: String, Codable, Hashable, S
   case unclosedDestination
 }
 
-public struct WorkbenchAgentStaticLinkReference: Codable, Equatable, Hashable, Identifiable, Sendable {
+public struct WorkbenchAgentStaticLinkReference: Codable, Equatable, Hashable, Identifiable,
+  Sendable
+{
   public var id: String {
     "\(kind.rawValue):\(sourceOffset)"
   }
@@ -415,7 +423,9 @@ public struct WorkbenchAgentStaticLinkReference: Codable, Equatable, Hashable, I
   }
 }
 
-public struct WorkbenchAgentStaticLinkDiagnostic: Codable, Equatable, Hashable, Identifiable, Sendable {
+public struct WorkbenchAgentStaticLinkDiagnostic: Codable, Equatable, Hashable, Identifiable,
+  Sendable
+{
   public var id: String {
     "\(kind.rawValue):\(sourceOffset)"
   }
@@ -508,11 +518,12 @@ public struct WorkbenchAgentStaticLinkInspectionService: Sendable {
   }
 
   private func boundedInput(_ value: String) -> (value: String, wasTruncated: Bool) {
-    let limitedEnd = value.index(
-      value.startIndex,
-      offsetBy: Self.maximumInputLength,
-      limitedBy: value.endIndex
-    ) ?? value.endIndex
+    let limitedEnd =
+      value.index(
+        value.startIndex,
+        offsetBy: Self.maximumInputLength,
+        limitedBy: value.endIndex
+      ) ?? value.endIndex
     guard limitedEnd != value.endIndex else { return (value, false) }
     return (String(value[..<limitedEnd]), true)
   }
@@ -558,10 +569,14 @@ public struct WorkbenchAgentStaticLinkInspectionService: Sendable {
         }
 
         if characters[index] == "<",
-           let end = closingAngleBracket(from: index + 1),
-           end > index + 1 {
+          let end = closingAngleBracket(from: index + 1),
+          end > index + 1
+        {
           let value = String(characters[(index + 1)..<end])
-          if isAutolink(value), result.references.count < WorkbenchAgentStaticLinkInspectionService.maximumReferenceCount {
+          if isAutolink(value),
+            result.references.count
+              < WorkbenchAgentStaticLinkInspectionService.maximumReferenceCount
+          {
             result.references.append(
               WorkbenchAgentStaticLinkReference(
                 kind: .link,
@@ -576,7 +591,8 @@ public struct WorkbenchAgentStaticLinkInspectionService: Sendable {
           continue
         }
 
-        let isImage = characters[index] == "!"
+        let isImage =
+          characters[index] == "!"
           && index + 1 < characters.count
           && characters[index + 1] == "["
         let isLink = characters[index] == "["
@@ -613,7 +629,9 @@ public struct WorkbenchAgentStaticLinkInspectionService: Sendable {
             destination: bounded(destinationResult.destination),
             sourceOffset: index
           )
-          if result.references.count < WorkbenchAgentStaticLinkInspectionService.maximumReferenceCount {
+          if result.references.count
+            < WorkbenchAgentStaticLinkInspectionService.maximumReferenceCount
+          {
             result.references.append(reference)
           }
 
@@ -654,7 +672,8 @@ public struct WorkbenchAgentStaticLinkInspectionService: Sendable {
             afterLabel = characters.count
           }
         } else if afterLabel < characters.count, characters[afterLabel] == "[",
-                  let referenceEnd = closingBracket(from: afterLabel + 1) {
+          let referenceEnd = closingBracket(from: afterLabel + 1)
+        {
           // Reference-style links are discovered without pretending that the
           // reference definition has been resolved.
           let referenceLabel = String(characters[(afterLabel + 1)..<referenceEnd])
@@ -664,7 +683,9 @@ public struct WorkbenchAgentStaticLinkInspectionService: Sendable {
             destination: bounded("[\(referenceLabel)]"),
             sourceOffset: index
           )
-          if result.references.count < WorkbenchAgentStaticLinkInspectionService.maximumReferenceCount {
+          if result.references.count
+            < WorkbenchAgentStaticLinkInspectionService.maximumReferenceCount
+          {
             result.references.append(reference)
           }
           afterLabel = referenceEnd + 1
@@ -798,7 +819,8 @@ public struct WorkbenchAgentStaticLinkInspectionService: Sendable {
       _ diagnostic: WorkbenchAgentStaticLinkDiagnostic,
       to diagnostics: inout [WorkbenchAgentStaticLinkDiagnostic]
     ) {
-      guard diagnostics.count < WorkbenchAgentStaticLinkInspectionService.maximumDiagnosticCount else {
+      guard diagnostics.count < WorkbenchAgentStaticLinkInspectionService.maximumDiagnosticCount
+      else {
         return
       }
       diagnostics.append(diagnostic)

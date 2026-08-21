@@ -4,8 +4,9 @@ import PublishingWorkbenchCore
 import SwiftUI
 import UniformTypeIdentifiers
 import WebKit
+
 #if canImport(Darwin)
-import Darwin
+  import Darwin
 #endif
 struct MarkdownPreviewPane: View {
   let draft: ArticleDraft
@@ -17,7 +18,8 @@ struct MarkdownPreviewPane: View {
   let onScrollProgressChanged: (Double) -> Void
   let onSourceLocationSelected: (Int) -> Void
   @Environment(\.colorScheme) private var colorScheme
-  @AppStorage("markdownEditorPreviewTheme") private var previewThemeRaw = MarkdownPreviewTheme.system.rawValue
+  @AppStorage("markdownEditorPreviewTheme") private var previewThemeRaw = MarkdownPreviewTheme
+    .system.rawValue
   @AppStorage(MarkdownEditorComfortPreferences.automaticPreviewRefreshEnabledKey)
   private var isAutomaticPreviewRefreshEnabled = MarkdownEditorComfortConfiguration
     .defaultAutomaticPreviewRefreshEnabled
@@ -242,10 +244,12 @@ struct MarkdownPreviewPane: View {
   }
 
   private func scheduleHTMLRender(immediate: Bool = false, isAutomatic: Bool = false) {
-    guard MarkdownEditorAutomationPolicy.allows(
-      isAutomatic: isAutomatic,
-      isEnabled: isAutomaticPreviewRefreshEnabled
-    ) else {
+    guard
+      MarkdownEditorAutomationPolicy.allows(
+        isAutomatic: isAutomatic,
+        isEnabled: isAutomaticPreviewRefreshEnabled
+      )
+    else {
       return
     }
     renderTask?.cancel()
@@ -333,7 +337,8 @@ private actor MarkdownPreviewRenderEngine {
   func render(_ input: MarkdownPreviewRenderInput) throws -> MarkdownPreviewRenderSnapshot {
     try Task.checkCancellation()
     let resources = MarkdownPreviewAssetResource.resources(for: input.attachments)
-    let siteStylesheet = input.theme == .site
+    let siteStylesheet =
+      input.theme == .site
       ? SitePreviewStyleService.load(for: input.profile)
       : nil
     let cacheKey = MarkdownPreviewRenderCacheKey(
@@ -387,17 +392,18 @@ private enum MarkdownPreviewHTMLRenderer {
     for block in MarkdownExtendedPreviewService.blocks(in: bodyMarkdown) {
       try Task.checkCancellation()
       switch block {
-      case let .markdown(markdownBlock):
+      case .markdown(let markdownBlock):
         let prepared = MarkdownPreviewAssetService.prepare(
           markdown: markdownBlock,
           attachments: attachments,
           previewURLByAttachmentID: previewURLByAttachmentID
         )
-        renderedBlocks.append(restoredAssetHTML(
-          MarkdownHTMLRenderingService.renderPreviewBodyAllowingSanitizedHTML(prepared.markdown),
-          replacements: prepared.replacements
-        ))
-      case let .mermaid(diagram):
+        renderedBlocks.append(
+          restoredAssetHTML(
+            MarkdownHTMLRenderingService.renderPreviewBodyAllowingSanitizedHTML(prepared.markdown),
+            replacements: prepared.replacements
+          ))
+      case .mermaid(let diagram):
         renderedBlocks.append(mermaidHTML(for: diagram))
       }
     }
@@ -412,26 +418,26 @@ private enum MarkdownPreviewHTMLRenderer {
       siteStylesheet: siteStylesheet
     )
     return """
-    <!doctype html>
-    <html>
-      <head>
-        <meta charset="utf-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data: publisher-asset:; font-src 'none'; media-src publisher-asset:; connect-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'" />
-        <title>\(escapedTitle)</title>
-        <style>
-          \(previewStyles)
-          \(ThinRedScrollbarWebStyle.css)
-        </style>
-      </head>
-      <body>
-        <article class="markdown-content">
-          <header class="article-header"><h1 class="article-title">\(escapedTitle)</h1></header>
-          <div class="article-body">\(body)</div>
-        </article>
-      </body>
-    </html>
-    """
+      <!doctype html>
+      <html>
+        <head>
+          <meta charset="utf-8" />
+          <meta name="viewport" content="width=device-width, initial-scale=1" />
+          <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data: publisher-asset:; font-src 'none'; media-src publisher-asset:; connect-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'" />
+          <title>\(escapedTitle)</title>
+          <style>
+            \(previewStyles)
+            \(ThinRedScrollbarWebStyle.css)
+          </style>
+        </head>
+        <body>
+          <article class="markdown-content">
+            <header class="article-header"><h1 class="article-title">\(escapedTitle)</h1></header>
+            <div class="article-body">\(body)</div>
+          </article>
+        </body>
+      </html>
+      """
   }
 
   private static func preformattedFallback(from markdown: String) -> String {
@@ -449,7 +455,8 @@ private enum MarkdownPreviewHTMLRenderer {
 
   private static func mermaidHTML(for diagram: MarkdownMermaidDiagram) -> String {
     guard !diagram.nodes.isEmpty else {
-      return "<section class=\"mermaid-diagram mermaid-fallback\"><strong>Mermaid 基础流程图预览</strong><span class=\"mermaid-note\">当前不是完整 Mermaid 渲染。</span>\(preformattedFallback(from: diagram.source))</section>"
+      return
+        "<section class=\"mermaid-diagram mermaid-fallback\"><strong>Mermaid 基础流程图预览</strong><span class=\"mermaid-note\">当前不是完整 Mermaid 渲染。</span>\(preformattedFallback(from: diagram.source))</section>"
     }
 
     let nodeWidth = 180.0
@@ -457,16 +464,21 @@ private enum MarkdownPreviewHTMLRenderer {
     let gap = 54.0
     let padding = 34.0
     let isHorizontal = diagram.direction == .leftRight
-    let width = isHorizontal
-      ? padding * 2 + Double(diagram.nodes.count) * nodeWidth + Double(max(0, diagram.nodes.count - 1)) * gap
+    let width =
+      isHorizontal
+      ? padding * 2 + Double(diagram.nodes.count) * nodeWidth + Double(
+        max(0, diagram.nodes.count - 1)) * gap
       : padding * 2 + nodeWidth
-    let height = isHorizontal
+    let height =
+      isHorizontal
       ? padding * 2 + nodeHeight
-      : padding * 2 + Double(diagram.nodes.count) * nodeHeight + Double(max(0, diagram.nodes.count - 1)) * gap
+      : padding * 2 + Double(diagram.nodes.count) * nodeHeight + Double(
+        max(0, diagram.nodes.count - 1)) * gap
 
     var positions: [String: (x: Double, y: Double)] = [:]
     for (index, node) in diagram.nodes.enumerated() {
-      positions[node.id] = isHorizontal
+      positions[node.id] =
+        isHorizontal
         ? (padding + Double(index) * (nodeWidth + gap), padding)
         : (padding, padding + Double(index) * (nodeHeight + gap))
     }
@@ -477,36 +489,38 @@ private enum MarkdownPreviewHTMLRenderer {
       let y1 = isHorizontal ? start.y + nodeHeight / 2 : start.y + nodeHeight
       let x2 = isHorizontal ? end.x : end.x + nodeWidth / 2
       let y2 = isHorizontal ? end.y + nodeHeight / 2 : end.y
-      let label = edge.label.map {
-        "<text class=\"edge-label\" x=\"\((x1 + x2) / 2)\" y=\"\((y1 + y2) / 2 - 6)\" text-anchor=\"middle\">\(escapeHTML($0))</text>"
-      } ?? ""
-      return "<line class=\"edge\" x1=\"\(x1)\" y1=\"\(y1)\" x2=\"\(x2)\" y2=\"\(y2)\" marker-end=\"url(#mermaid-arrow)\"/>\(label)"
+      let label =
+        edge.label.map {
+          "<text class=\"edge-label\" x=\"\((x1 + x2) / 2)\" y=\"\((y1 + y2) / 2 - 6)\" text-anchor=\"middle\">\(escapeHTML($0))</text>"
+        } ?? ""
+      return
+        "<line class=\"edge\" x1=\"\(x1)\" y1=\"\(y1)\" x2=\"\(x2)\" y2=\"\(y2)\" marker-end=\"url(#mermaid-arrow)\"/>\(label)"
     }
     .joined()
 
     let nodes = diagram.nodes.compactMap { node -> String? in
       guard let point = positions[node.id] else { return nil }
       return """
-      <g class="node">
-        <rect x="\(point.x)" y="\(point.y)" width="\(nodeWidth)" height="\(nodeHeight)" rx="10" />
-        <text x="\(point.x + nodeWidth / 2)" y="\(point.y + nodeHeight / 2 + 5)" text-anchor="middle">\(escapeHTML(node.label))</text>
-      </g>
-      """
+        <g class="node">
+          <rect x="\(point.x)" y="\(point.y)" width="\(nodeWidth)" height="\(nodeHeight)" rx="10" />
+          <text x="\(point.x + nodeWidth / 2)" y="\(point.y + nodeHeight / 2 + 5)" text-anchor="middle">\(escapeHTML(node.label))</text>
+        </g>
+        """
     }
     .joined()
 
     return """
-    <section class="mermaid-diagram" aria-label="Mermaid 基础流程图预览">
-      <div class="mermaid-title">Mermaid 基础流程图预览</div>
-      <div class="mermaid-note">当前仅支持基础流程图预览，不是完整 Mermaid。</div>
-      <svg viewBox="0 0 \(width) \(height)" role="img" aria-label="\(escapeHTML(diagram.nodes.map(\.label).joined(separator: "，")))">
-        <defs><marker id="mermaid-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" /></marker></defs>
-        \(edges)
-        \(nodes)
-      </svg>
-      <details><summary>查看 Mermaid 源码</summary>\(preformattedFallback(from: diagram.source))</details>
-    </section>
-    """
+      <section class="mermaid-diagram" aria-label="Mermaid 基础流程图预览">
+        <div class="mermaid-title">Mermaid 基础流程图预览</div>
+        <div class="mermaid-note">当前仅支持基础流程图预览，不是完整 Mermaid。</div>
+        <svg viewBox="0 0 \(width) \(height)" role="img" aria-label="\(escapeHTML(diagram.nodes.map(\.label).joined(separator: "，")))">
+          <defs><marker id="mermaid-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" /></marker></defs>
+          \(edges)
+          \(nodes)
+        </svg>
+        <details><summary>查看 Mermaid 源码</summary>\(preformattedFallback(from: diagram.source))</details>
+      </section>
+      """
   }
 
   private static func escapeHTML(_ value: String) -> String {
@@ -546,80 +560,80 @@ enum MarkdownPreviewTheme: String, CaseIterable, Identifiable, Hashable, Sendabl
     case .system:
       if isDarkAppearance {
         return """
-        :root { color-scheme: dark; }
-        body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', sans-serif; line-height: 1.78; background: #171c17; color: #e3e8e1; padding: 22px; }
-        .markdown-content { max-width: 860px; margin: 0; }
-        .markdown-content a { color: #94c785; }
-        .markdown-content pre { background: #222a21; border: 1px solid #3e4b3a; border-radius: 8px; padding: 12px; }
-        .markdown-content code { font-family: SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
-        .markdown-content table { border-collapse: collapse; margin: 12px 0; }
-        .markdown-content th, .markdown-content td { border: 1px solid #3e4b3a; padding: 6px 10px; }
-        .markdown-content blockquote { border-left: 4px solid #76a96b; margin: 12px 0; padding: 8px 12px; background: #222d21; color: #c5d3c1; }
-        \(extendedPreviewStyles)
-        """
+          :root { color-scheme: dark; }
+          body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', sans-serif; line-height: 1.78; background: #171c17; color: #e3e8e1; padding: 22px; }
+          .markdown-content { max-width: 860px; margin: 0; }
+          .markdown-content a { color: #94c785; }
+          .markdown-content pre { background: #222a21; border: 1px solid #3e4b3a; border-radius: 8px; padding: 12px; }
+          .markdown-content code { font-family: SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+          .markdown-content table { border-collapse: collapse; margin: 12px 0; }
+          .markdown-content th, .markdown-content td { border: 1px solid #3e4b3a; padding: 6px 10px; }
+          .markdown-content blockquote { border-left: 4px solid #76a96b; margin: 12px 0; padding: 8px 12px; background: #222d21; color: #c5d3c1; }
+          \(extendedPreviewStyles)
+          """
       }
       return """
-      :root { color-scheme: light; }
-      body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', sans-serif; line-height: 1.78; background: #f7f9f5; color: #253126; padding: 22px; }
-      .markdown-content { max-width: 860px; margin: 0; }
-      .markdown-content a { color: #427a38; }
-      .markdown-content pre { background: #edf2e9; border: 1px solid #ced9c8; border-radius: 8px; padding: 12px; }
-      .markdown-content code { font-family: SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
-      .markdown-content table { border-collapse: collapse; margin: 12px 0; }
-      .markdown-content th, .markdown-content td { border: 1px solid #ced9c8; padding: 6px 10px; }
-      .markdown-content blockquote { border-left: 4px solid #6f9b65; margin: 12px 0; padding: 8px 12px; background: #e9f1e5; color: #4d624f; }
-      \(extendedPreviewStyles)
-      """
+        :root { color-scheme: light; }
+        body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', sans-serif; line-height: 1.78; background: #f7f9f5; color: #253126; padding: 22px; }
+        .markdown-content { max-width: 860px; margin: 0; }
+        .markdown-content a { color: #427a38; }
+        .markdown-content pre { background: #edf2e9; border: 1px solid #ced9c8; border-radius: 8px; padding: 12px; }
+        .markdown-content code { font-family: SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+        .markdown-content table { border-collapse: collapse; margin: 12px 0; }
+        .markdown-content th, .markdown-content td { border: 1px solid #ced9c8; padding: 6px 10px; }
+        .markdown-content blockquote { border-left: 4px solid #6f9b65; margin: 12px 0; padding: 8px 12px; background: #e9f1e5; color: #4d624f; }
+        \(extendedPreviewStyles)
+        """
     case .site:
       let base = """
-      :root { color-scheme: light dark; }
-      body { margin: 0; padding: 22px; font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif; line-height: 1.7; }
-      .markdown-content { max-width: 960px; margin: 0 auto; }
-      .markdown-content img, .markdown-content video { max-width: 100%; height: auto; }
-      .markdown-content table { border-collapse: collapse; }
-      \(extendedPreviewStyles)
-      """
+        :root { color-scheme: light dark; }
+        body { margin: 0; padding: 22px; font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif; line-height: 1.7; }
+        .markdown-content { max-width: 960px; margin: 0 auto; }
+        .markdown-content img, .markdown-content video { max-width: 100%; height: auto; }
+        .markdown-content table { border-collapse: collapse; }
+        \(extendedPreviewStyles)
+        """
       guard let siteStylesheet else {
         return base
       }
       return base + "\n\n" + siteStylesheet.css
     case .github:
       return """
-      :root { color-scheme: light; }
-      body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; line-height: 1.7; background: #fff; color: #24292f; padding: 20px; }
-      .markdown-content { max-width: 860px; margin: 0; }
-      .markdown-content pre { background: #f6f8fa; border: 1px solid #d0d7de; border-radius: 8px; padding: 12px; }
-      .markdown-content code { font-family: SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
-      .markdown-content a { color: #0969da; }
-      .markdown-content table { border-collapse: collapse; margin: 12px 0; }
-      .markdown-content th, .markdown-content td { border: 1px solid #d0d7de; padding: 6px 10px; }
-      .markdown-content blockquote { border-left: 4px solid #d0d7de; margin: 12px 0; padding: 8px 12px; background: #f6f8fa; color: #57606a; }
-      \(extendedPreviewStyles)
-      """
+        :root { color-scheme: light; }
+        body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; line-height: 1.7; background: #fff; color: #24292f; padding: 20px; }
+        .markdown-content { max-width: 860px; margin: 0; }
+        .markdown-content pre { background: #f6f8fa; border: 1px solid #d0d7de; border-radius: 8px; padding: 12px; }
+        .markdown-content code { font-family: SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+        .markdown-content a { color: #0969da; }
+        .markdown-content table { border-collapse: collapse; margin: 12px 0; }
+        .markdown-content th, .markdown-content td { border: 1px solid #d0d7de; padding: 6px 10px; }
+        .markdown-content blockquote { border-left: 4px solid #d0d7de; margin: 12px 0; padding: 8px 12px; background: #f6f8fa; color: #57606a; }
+        \(extendedPreviewStyles)
+        """
     case .githubDark:
       return """
-      :root { color-scheme: dark; }
-      body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; line-height: 1.7; background: #0d1117; color: #c9d1d9; padding: 20px; }
-      .markdown-content { max-width: 860px; margin: 0; }
-      .markdown-content pre { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 12px; }
-      .markdown-content code { font-family: SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
-      .markdown-content a { color: #58a6ff; }
-      .markdown-content table { border-collapse: collapse; margin: 12px 0; }
-      .markdown-content th, .markdown-content td { border: 1px solid #30363d; padding: 6px 10px; }
-      .markdown-content blockquote { border-left: 4px solid #30363d; margin: 12px 0; padding: 8px 12px; background: #161b22; color: #8b949e; }
-      \(extendedPreviewStyles)
-      """
+        :root { color-scheme: dark; }
+        body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; line-height: 1.7; background: #0d1117; color: #c9d1d9; padding: 20px; }
+        .markdown-content { max-width: 860px; margin: 0; }
+        .markdown-content pre { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 12px; }
+        .markdown-content code { font-family: SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+        .markdown-content a { color: #58a6ff; }
+        .markdown-content table { border-collapse: collapse; margin: 12px 0; }
+        .markdown-content th, .markdown-content td { border: 1px solid #30363d; padding: 6px 10px; }
+        .markdown-content blockquote { border-left: 4px solid #30363d; margin: 12px 0; padding: 8px 12px; background: #161b22; color: #8b949e; }
+        \(extendedPreviewStyles)
+        """
     case .simple:
       return """
-      :root { color-scheme: light; }
-      body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', sans-serif; line-height: 1.85; background: #fffef8; color: #202020; padding: 24px; }
-      .markdown-content { max-width: 900px; margin: 0; }
-      .markdown-content pre { border: 1px solid #ddd; border-radius: 6px; padding: 12px; background: #f7f6f2; }
-      .markdown-content code { font-family: Menlo, SFMono-Regular, Consolas, monospace; }
-      .markdown-content h1, .markdown-content h2, .markdown-content h3 { line-height: 1.25; }
-      .markdown-content img { max-width: 100%; }
-      \(extendedPreviewStyles)
-      """
+        :root { color-scheme: light; }
+        body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', sans-serif; line-height: 1.85; background: #fffef8; color: #202020; padding: 24px; }
+        .markdown-content { max-width: 900px; margin: 0; }
+        .markdown-content pre { border: 1px solid #ddd; border-radius: 6px; padding: 12px; background: #f7f6f2; }
+        .markdown-content code { font-family: Menlo, SFMono-Regular, Consolas, monospace; }
+        .markdown-content h1, .markdown-content h2, .markdown-content h3 { line-height: 1.25; }
+        .markdown-content img { max-width: 100%; }
+        \(extendedPreviewStyles)
+        """
     }
   }
 

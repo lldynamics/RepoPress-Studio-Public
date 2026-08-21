@@ -1,0 +1,52 @@
+{
+  "0.0 精确严谨": "0.0 Precise",
+  "0.7 平衡默认": "0.7 Balanced Default",
+  "2.0 创意发散": "2.0 Creative",
+  "AI 数据发送授权": "AI Data Sharing Consent",
+  "AI 润色与处理": "AI Polishing and Processing",
+  "AI 翻译": "AI Translation",
+  "API Key 凭据": "API Key Credentials",
+  "ChatGPT 模型与推理深度": "ChatGPT Model and Reasoning Effort",
+  "ChatGPT 账户": "ChatGPT Account",
+  "display.ai-writing-style-preset.news-briefing": {
+    "en": "News Briefing",
+    "zh-Hans": "快讯简报"
+  },
+  "display.ai-writing-style-preset.social-post": {
+    "en": "Social Post",
+    "zh-Hans": "社交问答"
+  },
+  "display.ai-writing-style-preset.tech-tutorial": {
+    "en": "Technical Tutorial",
+    "zh-Hans": "技术实战"
+  },
+  "display.ai-writing-style-preset.wechat-article": {
+    "en": "WeChat Article",
+    "zh-Hans": "微信公众号"
+  },
+  "仅对当前 AI 网络请求生效，用于解决海外模型服务网络连通问题。": "Applies only to the current AI network request and can resolve connectivity issues with overseas model services.",
+  "代理地址 (如 http://127.0.0.1:7890 或 socks5://127.0.0.1:7890)": "Proxy address (for example, http://127.0.0.1:7890 or socks5://127.0.0.1:7890)",
+  "允许 AI 使用应用内工具 (Agent)": "Allow AI to Use In-App Tools (Agent)",
+  "全局系统提示词 (System Prompt)": "Global System Prompt",
+  "共 %@ 个可用模型": "%@ models available",
+  "共 %lld 个可用模型": "%lld models available",
+  "列表格式": "List Format",
+  "参数与网络": "Parameters and Network",
+  "场景模板：": "Scenario Template:",
+  "多模态": "Multimodal",
+  "已筛选出 %@ 个": "%@ filtered",
+  "已筛选出 %lld 个": "%lld filtered",
+  "建议下一步：": "Suggested Next Steps:",
+  "思考深度 (Reasoning Effort)": "Reasoning Effort",
+  "恢复默认模型": "Restore Default Model",
+  "搜索与选择已拉取模型 (%@)": "Search and Select Fetched Models (%@)",
+  "搜索与选择已拉取模型 (%lld)": "Search and Select Fetched Models (%lld)",
+  "搜索模型 (如 r1, sonnet, gemini, flash...)": "Search models (for example, r1, sonnet, gemini, flash...)",
+  "服务连通性测试": "Service Connectivity Test",
+  "未找到包含 \"%@\" 的模型": "No models matching \"%@\" were found",
+  "模型与连接": "Model and Connection",
+  "模型生成与推理参数": "Model Generation and Reasoning Parameters",
+  "深度思考": "Deep Reasoning",
+  "网络代理 (Network Proxy)": "Network Proxy",
+  "自定义 Temperature (温度)": "Custom Temperature"
+}

@@ -1,7 +1,7 @@
 import Foundation
 import LocalAuthentication
-import os
 import Security
+import os
 
 private let keychainTokenLogger = Logger(
   subsystem: "com.jinfang.PersonalSitePublisherMac",
@@ -159,17 +159,17 @@ public enum KeychainTokenScope: Hashable, Sendable {
 
 public enum KeychainCredentialServices {
   #if DEBUG
-  public static let ai = "PersonalSitePublisherMac.LocalDevelopment.AIProvider"
-  public static let repository = "PersonalSitePublisherMac.LocalDevelopment.RepositoryProvider"
-  public static let deployment = "PersonalSitePublisherMac.LocalDevelopment.DeploymentProvider"
-  public static let analytics = "PersonalSitePublisherMac.LocalDevelopment.SiteAnalytics"
-  public static let browserBridge = "PersonalSitePublisherMac.LocalDevelopment.BrowserBridge"
+    public static let ai = "PersonalSitePublisherMac.LocalDevelopment.AIProvider"
+    public static let repository = "PersonalSitePublisherMac.LocalDevelopment.RepositoryProvider"
+    public static let deployment = "PersonalSitePublisherMac.LocalDevelopment.DeploymentProvider"
+    public static let analytics = "PersonalSitePublisherMac.LocalDevelopment.SiteAnalytics"
+    public static let browserBridge = "PersonalSitePublisherMac.LocalDevelopment.BrowserBridge"
   #else
-  public static let ai = "PersonalSitePublisherMac.AIProvider"
-  public static let repository = "PersonalSitePublisherMac.RepositoryProvider"
-  public static let deployment = "PersonalSitePublisherMac.DeploymentProvider"
-  public static let analytics = "PersonalSitePublisherMac.SiteAnalytics"
-  public static let browserBridge = "PersonalSitePublisherMac.BrowserBridge"
+    public static let ai = "PersonalSitePublisherMac.AIProvider"
+    public static let repository = "PersonalSitePublisherMac.RepositoryProvider"
+    public static let deployment = "PersonalSitePublisherMac.DeploymentProvider"
+    public static let analytics = "PersonalSitePublisherMac.SiteAnalytics"
+    public static let browserBridge = "PersonalSitePublisherMac.BrowserBridge"
   #endif
 }
 
@@ -240,17 +240,19 @@ public final class KeychainTokenStore: @unchecked Sendable {
     scope: KeychainTokenScope,
     originURLText: String
   ) throws -> String? {
-    try token(forAccount: credentialBoundAccount(
-      for: profile,
-      component: scope.accountComponent,
-      originURLText: originURLText
-    ))
+    try token(
+      forAccount: credentialBoundAccount(
+        for: profile,
+        component: scope.accountComponent,
+        originURLText: originURLText
+      ))
   }
 
   public func aiToken(for profile: SiteProfile) throws -> String? {
     if let connectionID = profile.aiConnectionProfileID,
-       let sharedToken = try aiToken(forConnectionProfileID: connectionID),
-       !sharedToken.isEmpty {
+      let sharedToken = try aiToken(forConnectionProfileID: connectionID),
+      !sharedToken.isEmpty
+    {
       return sharedToken
     }
     return try token(forAccount: aiCredentialAccount(for: profile))
@@ -274,7 +276,9 @@ public final class KeychainTokenStore: @unchecked Sendable {
     try token(forAccount: account(forAccountIdentifier: identifier))
   }
 
-  public func availability(forAccountIdentifier identifier: String) throws -> KeychainTokenAvailability {
+  public func availability(forAccountIdentifier identifier: String) throws
+    -> KeychainTokenAvailability
+  {
     try availability(forAccount: account(forAccountIdentifier: identifier))
   }
 
@@ -290,7 +294,9 @@ public final class KeychainTokenStore: @unchecked Sendable {
     try availability(forAccount: account(for: profile))
   }
 
-  public func availability(for profile: SiteProfile, scope: KeychainTokenScope) throws -> KeychainTokenAvailability {
+  public func availability(for profile: SiteProfile, scope: KeychainTokenScope) throws
+    -> KeychainTokenAvailability
+  {
     try availability(forAccount: account(for: profile, scope: scope))
   }
 
@@ -299,11 +305,12 @@ public final class KeychainTokenStore: @unchecked Sendable {
     scope: KeychainTokenScope,
     originURLText: String
   ) throws -> KeychainTokenAvailability {
-    try availability(forAccount: credentialBoundAccount(
-      for: profile,
-      component: scope.accountComponent,
-      originURLText: originURLText
-    ))
+    try availability(
+      forAccount: credentialBoundAccount(
+        for: profile,
+        component: scope.accountComponent,
+        originURLText: originURLText
+      ))
   }
 
   public func aiTokenAvailability(for profile: SiteProfile) throws -> KeychainTokenAvailability {
@@ -316,11 +323,16 @@ public final class KeychainTokenStore: @unchecked Sendable {
     return try availability(forAccount: aiCredentialAccount(for: profile))
   }
 
-  public func aiTokenAvailability(forConnectionProfileID id: UUID) throws -> KeychainTokenAvailability {
-    try availability(forAccount: account(forAccountIdentifier: aiConnectionProfileAccountIdentifier(id)))
+  public func aiTokenAvailability(forConnectionProfileID id: UUID) throws
+    -> KeychainTokenAvailability
+  {
+    try availability(
+      forAccount: account(forAccountIdentifier: aiConnectionProfileAccountIdentifier(id)))
   }
 
-  public func repositoryTokenAvailability(for profile: SiteProfile) throws -> KeychainTokenAvailability {
+  public func repositoryTokenAvailability(for profile: SiteProfile) throws
+    -> KeychainTokenAvailability
+  {
     let scope = KeychainTokenScope.repository(profile.repositoryProvider)
     return try availability(
       for: profile,
@@ -352,7 +364,7 @@ public final class KeychainTokenStore: @unchecked Sendable {
         },
         legacyCleanupIssue("legacy unscoped repository credential") {
           try deleteToken(for: profile)
-        }
+        },
       ].compactMap { $0 }
       return KeychainTokenMutationReport(cleanupIssues: cleanupIssues)
     }
@@ -396,7 +408,8 @@ public final class KeychainTokenStore: @unchecked Sendable {
     try saveToken(token, forAccount: account(for: profile))
   }
 
-  public func saveToken(_ token: String, for profile: SiteProfile, scope: KeychainTokenScope) throws {
+  public func saveToken(_ token: String, for profile: SiteProfile, scope: KeychainTokenScope) throws
+  {
     try saveToken(token, forAccount: account(for: profile, scope: scope))
   }
 
@@ -477,11 +490,12 @@ public final class KeychainTokenStore: @unchecked Sendable {
     scope: KeychainTokenScope,
     originURLText: String
   ) throws {
-    try deleteToken(forAccount: credentialBoundAccount(
-      for: profile,
-      component: scope.accountComponent,
-      originURLText: originURLText
-    ))
+    try deleteToken(
+      forAccount: credentialBoundAccount(
+        for: profile,
+        component: scope.accountComponent,
+        originURLText: originURLText
+      ))
   }
 
   @discardableResult
@@ -637,10 +651,11 @@ public final class KeychainTokenStore: @unchecked Sendable {
 
       let data = Data(token.utf8)
       var query = baseQuery(account: account)
-      let attributes = [
-        kSecValueData as String: data,
-        kSecAttrGeneric as String: Data(),
-      ] as CFDictionary
+      let attributes =
+        [
+          kSecValueData as String: data,
+          kSecAttrGeneric as String: Data(),
+        ] as CFDictionary
 
       let updateStatus = SecItemUpdate(query as CFDictionary, attributes)
       if updateStatus == errSecSuccess {
@@ -653,7 +668,7 @@ public final class KeychainTokenStore: @unchecked Sendable {
       query[kSecValueData as String] = data
       query[kSecAttrGeneric as String] = Data()
       #if os(iOS) || os(tvOS) || os(watchOS) || os(visionOS)
-      query[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
+        query[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
       #endif
       let addStatus = SecItemAdd(query as CFDictionary, nil)
       if addStatus == errSecSuccess {
@@ -752,12 +767,13 @@ public final class KeychainTokenStore: @unchecked Sendable {
   private func normalizedCredentialOrigin(_ rawValue: String) -> String? {
     let value = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
     guard let components = URLComponents(string: value),
-          let scheme = components.scheme?.lowercased(),
-          scheme == "https",
-          let host = components.host?.lowercased(),
-          !host.isEmpty,
-          components.user == nil,
-          components.password == nil else {
+      let scheme = components.scheme?.lowercased(),
+      scheme == "https",
+      let host = components.host?.lowercased(),
+      !host.isEmpty,
+      components.user == nil,
+      components.password == nil
+    else {
       return nil
     }
     return "\(scheme)://\(host):\(components.port ?? 443)"
@@ -820,7 +836,9 @@ public enum KeychainTokenStoreError: LocalizedError, Equatable {
       case errSecNoSuchKeychain:
         return CoreL10n.text("应用未连接到登录钥匙串。请使用项目的统一启动脚本重新启动；若仍失败，请在“钥匙串访问”中确认 login 钥匙串可用。")
       case errSecInvalidOwnerEdit, -25253:
-        return CoreL10n.text("当前本地构建无法继续使用旧构建创建的钥匙串访问上下文。请重启最新构建后重新保存；如果仍失败，可在“钥匙串访问”中删除对应的 PersonalSitePublisher 旧项后再保存。")
+        return CoreL10n.text(
+          "当前本地构建无法继续使用旧构建创建的钥匙串访问上下文。请重启最新构建后重新保存；如果仍失败，可在“钥匙串访问”中删除对应的 PersonalSitePublisher 旧项后再保存。"
+        )
       case errSecItemNotFound:
         return CoreL10n.text("对应 Profile 的钥匙串条目不存在，请先点击“保存”写入 Token。")
       case errSecUserCanceled:

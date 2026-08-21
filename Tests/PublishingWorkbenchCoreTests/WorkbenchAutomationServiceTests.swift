@@ -84,7 +84,8 @@ final class WorkbenchAutomationServiceTests: XCTestCase {
       .knowledgeSearch: #"{"query":"Swift concurrency"}"#,
       .knowledgeRead: #"{"documentID":"\#(UUID().uuidString)"}"#,
       .auditContent: #"{"draftID":"\#(draftID.uuidString)"}"#,
-      .applyDiff: #"{"draftID":"\#(draftID.uuidString)","originalText":"old","replacementText":"new"}"#,
+      .applyDiff:
+        #"{"draftID":"\#(draftID.uuidString)","originalText":"old","replacementText":"new"}"#,
       .generateFrontmatter: #"{"draftID":"\#(draftID.uuidString)","values":["swift"]}"#,
       .webFetch: #"{"url":"https://example.com"}"#,
       .webSearch: #"{"query":"swift"}"#,

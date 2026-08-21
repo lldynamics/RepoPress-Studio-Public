@@ -47,11 +47,12 @@ extension WorkbenchAIStore {
       )
       let privacyService = AIOutboundPayloadPrivacyService()
       let agentSettings = initialTaskConfig.resolvedAdvancedSettings
-      let conversationAllowsTools = aiConversationAgentMode(
-        for: conversationIdentity.conversationID
-      )?.effectiveAllowsTools(
-        connectionAllowsTools: agentSettings.resolvedAllowsApplicationTools
-      ) ?? false
+      let conversationAllowsTools =
+        aiConversationAgentMode(
+          for: conversationIdentity.conversationID
+        )?.effectiveAllowsTools(
+          connectionAllowsTools: agentSettings.resolvedAllowsApplicationTools
+        ) ?? false
       var allowedCommands = WorkbenchAutomationRegistry.agentCommands(
         allowedBy: agentSettings.resolvedAgentPermissionPolicy,
         masterEnabled: conversationAllowsTools
@@ -410,10 +411,12 @@ extension WorkbenchAIStore {
     policy: KnowledgeRetrievalPolicy,
     failureState: AgentKnowledgeAuthorizationState? = nil
   ) async throws {
-    guard await store.knowledge.validateKnowledgeAuthorizationBindings(
-      bindings,
-      policy: policy
-    ) else {
+    guard
+      await store.knowledge.validateKnowledgeAuthorizationBindings(
+        bindings,
+        policy: policy
+      )
+    else {
       failureState?.markChanged()
       throw AIOutboundPayloadConfirmationError.knowledgeAuthorizationChanged
     }
@@ -430,9 +433,10 @@ extension WorkbenchAIStore {
         CoreL10n.text("当前对话已切换为仅问答模式，未执行工具。")
       )
     }
-    guard WorkbenchAutomationRegistry.descriptor(
-      for: invocation.step.command
-    )?.allowsAgentAutomaticExecution == true
+    guard
+      WorkbenchAutomationRegistry.descriptor(
+        for: invocation.step.command
+      )?.allowsAgentAutomaticExecution == true
     else {
       throw WorkbenchAutomationExecutionError.operationDidNotComplete(
         CoreL10n.text("此 AI 操作必须等待确认。")

@@ -132,20 +132,23 @@ extension KnowledgeLibraryService {
     let database = try database()
     let records = try database.semanticIndexRecords()
     let documentRecords = records.filter { $0.document.id == documentID }
-    guard let anchor = anchorChunkID.flatMap({ chunkID in
-      documentRecords.first { $0.chunk.id == chunkID }
-    }) ?? documentRecords.first else { return [] }
+    guard
+      let anchor = anchorChunkID.flatMap({ chunkID in
+        documentRecords.first { $0.chunk.id == chunkID }
+      }) ?? documentRecords.first
+    else { return [] }
 
     let anchorText: String
     if anchorChunkID != nil {
       anchorText = anchor.searchableText
     } else {
-      anchorText = ([
-        anchor.document.title,
-        anchor.document.summary,
-        anchor.document.authors.joined(separator: " "),
-        anchor.document.tags.joined(separator: " "),
-      ] + documentRecords.prefix(3).map(\.chunk.content))
+      anchorText =
+        ([
+          anchor.document.title,
+          anchor.document.summary,
+          anchor.document.authors.joined(separator: " "),
+          anchor.document.tags.joined(separator: " "),
+        ] + documentRecords.prefix(3).map(\.chunk.content))
         .filter { !$0.isEmpty }
         .joined(separator: "\n")
     }
@@ -156,7 +159,7 @@ extension KnowledgeLibraryService {
       let matches = try database.semanticSearch(
         queryVector: queryVector,
         limit: min(max(records.count, limit * 12), 240),
-      onlyRemoteAIAllowed: false
+        onlyRemoteAIAllowed: false
       )
       for match in matches {
         semanticScores[match.chunk.id] = max(
@@ -220,22 +223,24 @@ extension KnowledgeLibraryService {
       let estimatedTokens = max(1, Int(ceil(Double(excerpt.count) / 3.0)))
       guard estimatedTokens <= remainingBudget else { continue }
 
-      citations.append(KnowledgeCitation(
-        id: "K\(citations.count + 1)",
-        documentID: result.document.id,
-        chunkID: result.chunk.id,
-        title: result.document.title,
-        authors: result.document.authors,
-        locator: result.chunk.locator?.nilIfEmpty ?? result.chunk.headingPath?.nilIfEmpty,
-        excerpt: excerpt,
-        sourceURL: result.document.sourceURL
-      ))
-      authorizationBindings.append(KnowledgeAuthorizationBinding(
-        documentID: result.document.id,
-        revisionID: result.chunk.revisionID,
-        chunkID: result.chunk.id,
-        contentHash: result.chunk.contentHash
-      ))
+      citations.append(
+        KnowledgeCitation(
+          id: "K\(citations.count + 1)",
+          documentID: result.document.id,
+          chunkID: result.chunk.id,
+          title: result.document.title,
+          authors: result.document.authors,
+          locator: result.chunk.locator?.nilIfEmpty ?? result.chunk.headingPath?.nilIfEmpty,
+          excerpt: excerpt,
+          sourceURL: result.document.sourceURL
+        ))
+      authorizationBindings.append(
+        KnowledgeAuthorizationBinding(
+          documentID: result.document.id,
+          revisionID: result.chunk.revisionID,
+          chunkID: result.chunk.id,
+          contentHash: result.chunk.contentHash
+        ))
       usedTokens += estimatedTokens
       documentUseCounts[result.document.id] = currentDocumentCount + 1
     }
@@ -323,18 +328,21 @@ extension KnowledgeLibraryService {
     embeddings.reserveCapacity(repairRecords.count)
     for record in repairRecords {
       try checkSearchCancellation()
-      guard let vector = semanticEmbeddingService.vector(
-        for: record.searchableText,
-        modelIdentifier: modelIdentifier
-      ) else {
+      guard
+        let vector = semanticEmbeddingService.vector(
+          for: record.searchableText,
+          modelIdentifier: modelIdentifier
+        )
+      else {
         continue
       }
       try checkSearchCancellation()
-      embeddings.append(KnowledgeChunkEmbedding(
-        chunkID: record.chunk.id,
-        revisionID: record.chunk.revisionID,
-        vector: vector
-      ))
+      embeddings.append(
+        KnowledgeChunkEmbedding(
+          chunkID: record.chunk.id,
+          revisionID: record.chunk.revisionID,
+          vector: vector
+        ))
     }
     try checkSearchCancellation()
     try database.upsertSemanticEmbeddings(embeddings)
@@ -400,11 +408,12 @@ extension KnowledgeLibraryService {
       try Task.checkCancellation()
       for vector in vectors {
         modelIdentifiers.insert(vector.modelIdentifier)
-        embeddings.append(KnowledgeChunkEmbedding(
-          chunkID: record.chunk.id,
-          revisionID: record.chunk.revisionID,
-          vector: vector
-        ))
+        embeddings.append(
+          KnowledgeChunkEmbedding(
+            chunkID: record.chunk.id,
+            revisionID: record.chunk.revisionID,
+            vector: vector
+          ))
       }
     }
     try Task.checkCancellation()

@@ -1,4 +1,5 @@
 import XCTest
+
 @testable import PublishingWorkbenchCore
 
 final class WorkbenchAgentObservationServiceTests: XCTestCase {
@@ -28,7 +29,9 @@ final class WorkbenchAgentObservationServiceTests: XCTestCase {
     XCTAssertEqual(results.first?.draftID, draftID)
     XCTAssertEqual(results.first?.title, "Swift 新标题")
     XCTAssertEqual(results.first?.field, "title")
-    XCTAssertLessThanOrEqual(results.first?.snippet.count ?? .max, WorkbenchAgentDraftSearchService.maximumOutputTextLength)
+    XCTAssertLessThanOrEqual(
+      results.first?.snippet.count ?? .max, WorkbenchAgentDraftSearchService.maximumOutputTextLength
+    )
   }
 
   func testDraftSearchLimitNeverExceedsTwenty() {
@@ -78,14 +81,14 @@ final class WorkbenchAgentObservationServiceTests: XCTestCase {
 
   func testStaticLinkInspectionSeparatesSyntaxFromReachability() throws {
     let markdown = """
-    [Swift](https://example.com/docs "文档")
-    ![封面](images/cover.png)
-    ![]()
-    [未闭合](relative/path
-    ```markdown
-    [代码中的链接](https://example.com/ignored)
-    ```
-    """
+      [Swift](https://example.com/docs "文档")
+      ![封面](images/cover.png)
+      ![]()
+      [未闭合](relative/path
+      ```markdown
+      [代码中的链接](https://example.com/ignored)
+      ```
+      """
 
     let inspection = try XCTUnwrap(
       WorkbenchAgentStaticLinkInspectionService().inspect(markdown: markdown)
@@ -178,7 +181,10 @@ final class WorkbenchAgentObservationServiceTests: XCTestCase {
     XCTAssertEqual(summary.coverState, "missingSource")
     XCTAssertEqual(summary.issues.count, WorkbenchAgentImageReportFormatter.maximumIssueCount)
     XCTAssertEqual(summary.omittedIssueCount, 10)
-    XCTAssertTrue(summary.issues.allSatisfy { $0.message.count <= WorkbenchAgentImageReportFormatter.maximumOutputTextLength })
+    XCTAssertTrue(
+      summary.issues.allSatisfy {
+        $0.message.count <= WorkbenchAgentImageReportFormatter.maximumOutputTextLength
+      })
     XCTAssertEqual(summary.repairStatus, .notPerformed)
   }
 

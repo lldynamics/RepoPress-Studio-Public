@@ -177,7 +177,9 @@ struct MarkdownFloatingBubbleToolbar: View {
       .frame(height: 14)
   }
 
-  private func iconButton(_ systemName: String, title: String, action: @escaping () -> Void) -> some View {
+  private func iconButton(_ systemName: String, title: String, action: @escaping () -> Void)
+    -> some View
+  {
     Button(action: action) {
       Image(systemName: systemName)
         .font(.system(size: 12, weight: .medium))

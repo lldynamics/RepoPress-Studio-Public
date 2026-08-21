@@ -318,7 +318,8 @@ struct AIChatModelQuickSwitchSheet: View {
 
   private var activeConnectionProfileID: UUID {
     if isGeneralMode {
-      return displayedGeneralConversation?.connectionProfileID ?? chatState.activeChatConnectionProfile.id
+      return displayedGeneralConversation?.connectionProfileID
+        ?? chatState.activeChatConnectionProfile.id
     }
     return chatState.activeChatConnectionProfile.id
   }

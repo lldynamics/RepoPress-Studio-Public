@@ -1,4 +1,5 @@
 import XCTest
+
 @testable import PublishingWorkbenchCore
 
 final class WorkbenchAutomationRollbackSafetyServiceTests: XCTestCase {

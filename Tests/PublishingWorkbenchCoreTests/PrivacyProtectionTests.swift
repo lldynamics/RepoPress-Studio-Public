@@ -1,4 +1,5 @@
 import XCTest
+
 @testable import PublishingWorkbenchCore
 
 @MainActor
@@ -27,13 +28,14 @@ final class PrivacyProtectionTests: XCTestCase {
   func testLegacyAutomaticLockSettingsAreIgnoredAfterFeatureRemoval() throws {
     let url = try temporaryPersistenceURL()
     let profile = SiteProfile.defaultProfile
-    let encoded = try JSONEncoder.workbench.encode(WorkbenchSnapshot(
-      profiles: [profile],
-      activeProfileID: profile.id,
-      drafts: [ArticleDraft(siteProfileID: profile.id, title: "Private", slug: "private")],
-      releaseRecords: [],
-      privacySettings: PrivacyProtectionSettings(masksPrivateContent: true)
-    ))
+    let encoded = try JSONEncoder.workbench.encode(
+      WorkbenchSnapshot(
+        profiles: [profile],
+        activeProfileID: profile.id,
+        drafts: [ArticleDraft(siteProfileID: profile.id, title: "Private", slug: "private")],
+        releaseRecords: [],
+        privacySettings: PrivacyProtectionSettings(masksPrivateContent: true)
+      ))
     var object = try XCTUnwrap(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
     var privacySettings = try XCTUnwrap(object["privacySettings"] as? [String: Any])
     privacySettings["requiresUnlockOnLaunch"] = true
@@ -55,7 +57,8 @@ final class PrivacyProtectionTests: XCTestCase {
       from: Data(#""lockedWhenInactive""#.utf8)
     )
     XCTAssertEqual(decoded, .manualLock)
-    XCTAssertFalse(PrivacyProtectionEventKind.allCases.map(\.rawValue).contains("lockedWhenInactive"))
+    XCTAssertFalse(
+      PrivacyProtectionEventKind.allCases.map(\.rawValue).contains("lockedWhenInactive"))
   }
 
   func testPrivacyEventsUseVisibilityIconsInsteadOfSecurityIcons() {
@@ -121,7 +124,8 @@ final class PrivacyProtectionTests: XCTestCase {
   }
 
   func testProtectedWorkbenchAvailabilityFollowsQuickHideState() throws {
-    let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()))
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()))
     store.setAIPublishingAssistantPresented(true)
 
     XCTAssertTrue(store.canUseProtectedWorkbench)
@@ -144,7 +148,8 @@ final class PrivacyProtectionTests: XCTestCase {
   }
 
   func testQuickHideBlocksRemotePublishingBeforeRepositoryAPIUse() async throws {
-    let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()))
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()))
     store.activateQuickHide(reason: "Manual")
 
     let selectedResult = await store.publishSelectedDraftOnlineUsingPreferredStrategy()
@@ -162,7 +167,8 @@ final class PrivacyProtectionTests: XCTestCase {
   }
 
   func testQuickHideBlocksAIRequestsBeforeConversationChanges() async throws {
-    let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()))
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()))
     let draft = try XCTUnwrap(store.selectedDraft)
     store.activateQuickHide(reason: "Manual")
 
@@ -186,7 +192,8 @@ final class PrivacyProtectionTests: XCTestCase {
   }
 
   func testPrivacyProtectionStatusSummarizesEnabledProtections() throws {
-    let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()))
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()))
     store.updatePrivacySettings(
       PrivacyProtectionSettings(
         masksPrivateContent: true
@@ -223,9 +230,9 @@ final class PrivacyProtectionTests: XCTestCase {
     XCTAssertTrue(markdown.contains("不得包含本地路径、Token、授权头或私密正文"))
   }
 
-
   func testPrivateContentDisplayMasksOnlyPrivateDraftsWhenEnabled() throws {
-    let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()))
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()))
     var settings = store.privacySettings
     settings.masksPrivateContent = true
     store.updatePrivacySettings(settings)
@@ -255,7 +262,8 @@ final class PrivacyProtectionTests: XCTestCase {
   }
 
   func testPrivacyProtectedDraftSearchMatchesTitleButNotHiddenPrivateMetadata() throws {
-    let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()))
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()))
     store.updatePrivacySettings(
       PrivacyProtectionSettings(
         masksPrivateContent: true
@@ -306,7 +314,8 @@ final class PrivacyProtectionTests: XCTestCase {
   }
 
   func testPrivacyProtectedDraftSearchUsesRawMetadataWhenMaskingDisabled() throws {
-    let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()))
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()))
     store.updatePrivacySettings(
       PrivacyProtectionSettings(
         masksPrivateContent: false
@@ -338,7 +347,8 @@ final class PrivacyProtectionTests: XCTestCase {
   }
 
   func testContentHealthSummariesShowPrivateDraftTitleButMaskPathWhenEnabled() throws {
-    let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()))
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()))
     store.updatePrivacySettings(
       PrivacyProtectionSettings(
         masksPrivateContent: true
@@ -363,7 +373,8 @@ final class PrivacyProtectionTests: XCTestCase {
   }
 
   func testContentHealthSummariesUseRawPrivateDraftMetadataWhenMaskingDisabled() throws {
-    let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()))
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()))
     store.updatePrivacySettings(
       PrivacyProtectionSettings(
         masksPrivateContent: false
@@ -386,7 +397,8 @@ final class PrivacyProtectionTests: XCTestCase {
   }
 
   func testSEOSocialPublishPackageMasksPrivateDraftWhenProtectionEnabled() async throws {
-    let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()))
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()))
     store.updatePrivacySettings(
       PrivacyProtectionSettings(
         masksPrivateContent: true

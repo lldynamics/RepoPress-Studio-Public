@@ -18,9 +18,11 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
       .appendingPathComponent("PersonalSitePublisherMac-AccessibilityUITests", isDirectory: true)
       .appendingPathComponent(UUID().uuidString, isDirectory: true)
     if !testDataRoot.isTargetAppContainer {
-      try FileManager.default.createDirectory(at: knowledgeLibraryRootURL, withIntermediateDirectories: true)
+      try FileManager.default.createDirectory(
+        at: knowledgeLibraryRootURL, withIntermediateDirectories: true)
     }
-    screenshotRuntimeRootURL = knowledgeLibraryRootURL
+    screenshotRuntimeRootURL =
+      knowledgeLibraryRootURL
       .appendingPathComponent("runtime", isDirectory: true)
     try FileManager.default.createDirectory(
       at: screenshotRuntimeRootURL.appendingPathComponent("tmp", isDirectory: true),
@@ -540,9 +542,13 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
 
     for iteration in 0..<12 {
       application.typeKey(.escape, modifierFlags: [])
-      guard let fileMenuItem = waitForHittableElement(timeout: 15, query: {
-        application.menuBars.menuBarItems.matching(identifier: "File")
-      }) else {
+      guard
+        let fileMenuItem = waitForHittableElement(
+          timeout: 15,
+          query: {
+            application.menuBars.menuBarItems.matching(identifier: "File")
+          })
+      else {
         XCTFail("File was unavailable during menu stress iteration \(iteration).")
         return
       }
@@ -552,9 +558,13 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
         XCTFail("File did not open during menu stress iteration \(iteration).")
         return
       }
-      guard let siteRepositoryItem = waitForHittableElement(timeout: 5, query: {
-        application.menuItems.matching(identifier: "Site Repository")
-      }) else {
+      guard
+        let siteRepositoryItem = waitForHittableElement(
+          timeout: 5,
+          query: {
+            application.menuItems.matching(identifier: "Site Repository")
+          })
+      else {
         XCTFail("Site Repository was unavailable during menu stress iteration \(iteration).")
         return
       }
@@ -565,9 +575,13 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
         XCTFail("Site Repository did not open during iteration \(iteration).")
         return
       }
-      guard let copyCommand = waitForHittableElement(timeout: 5, query: {
-        application.menuItems.matching(identifier: "Copy Suggested Sync Commands")
-      }) else {
+      guard
+        let copyCommand = waitForHittableElement(
+          timeout: 5,
+          query: {
+            application.menuItems.matching(identifier: "Copy Suggested Sync Commands")
+          })
+      else {
         XCTFail("Copy Suggested Sync Commands was unavailable during iteration \(iteration).")
         return
       }
@@ -590,9 +604,13 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
       closeButton.click()
 
       application.typeKey(.escape, modifierFlags: [])
-      guard let windowMenuItem = waitForHittableElement(timeout: 5, query: {
-        application.menuBars.menuBarItems.matching(identifier: "Window")
-      }) else {
+      guard
+        let windowMenuItem = waitForHittableElement(
+          timeout: 5,
+          query: {
+            application.menuBars.menuBarItems.matching(identifier: "Window")
+          })
+      else {
         XCTFail("Window was unavailable during recovery iteration \(iteration).")
         return
       }
@@ -602,9 +620,13 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
         XCTFail("Window did not open during recovery iteration \(iteration).")
         return
       }
-      guard let reopenItem = waitForHittableElement(timeout: 5, query: {
-        application.menuItems.matching(identifier: "Show RepoPress Studio")
-      }) else {
+      guard
+        let reopenItem = waitForHittableElement(
+          timeout: 5,
+          query: {
+            application.menuItems.matching(identifier: "Show RepoPress Studio")
+          })
+      else {
         XCTFail("Show RepoPress Studio was unavailable during recovery iteration \(iteration).")
         return
       }
@@ -720,10 +742,14 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
     launchApplication(surface: "writing")
 
     let mainWindow = application.windows.firstMatch
-    guard let writingAIEntry = waitForHittableElement(timeout: 10, query: {
-      mainWindow.descendants(matching: .any)
-        .matching(identifier: "markdown-ai-assistant-entry")
-    }) else {
+    guard
+      let writingAIEntry = waitForHittableElement(
+        timeout: 10,
+        query: {
+          mainWindow.descendants(matching: .any)
+            .matching(identifier: "markdown-ai-assistant-entry")
+        })
+    else {
       XCTFail("The writing page must expose the AI collaboration entry.")
       return
     }
@@ -757,10 +783,14 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
 
     let initialWindowCount = application.windows.count
     let mainWindow = application.windows.firstMatch
-    guard let writingAIEntry = waitForHittableElement(timeout: 10, query: {
-      mainWindow.descendants(matching: .any)
-        .matching(identifier: "markdown-ai-assistant-entry")
-    }) else {
+    guard
+      let writingAIEntry = waitForHittableElement(
+        timeout: 10,
+        query: {
+          mainWindow.descendants(matching: .any)
+            .matching(identifier: "markdown-ai-assistant-entry")
+        })
+    else {
       XCTFail("The writing page must expose a directly clickable AI collaboration entry.")
       return
     }
@@ -771,18 +801,27 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
       mainWindowAIInspector.exists,
       "The AI Inspector must be absent before the writing-page entry is clicked."
     )
-    guard let toolbarButton = waitForHittableElement(timeout: 10, query: {
-      mainWindow.descendants(matching: .any)
-        .matching(identifier: "ai-assistant-toolbar-button")
-    }) else {
+    guard
+      let toolbarButton = waitForHittableElement(
+        timeout: 10,
+        query: {
+          mainWindow.descendants(matching: .any)
+            .matching(identifier: "ai-assistant-toolbar-button")
+        })
+    else {
       XCTFail("The main toolbar must keep its AI collaboration entry visible and clickable.")
       return
     }
-    guard let inspectorToolbarButton = waitForHittableElement(timeout: 10, query: {
-      mainWindow.descendants(matching: .any)
-        .matching(identifier: "workspace-inspector-toggle")
-    }) else {
-      XCTFail("The main toolbar must keep the original workspace Inspector entry visible and clickable.")
+    guard
+      let inspectorToolbarButton = waitForHittableElement(
+        timeout: 10,
+        query: {
+          mainWindow.descendants(matching: .any)
+            .matching(identifier: "workspace-inspector-toggle")
+        })
+    else {
+      XCTFail(
+        "The main toolbar must keep the original workspace Inspector entry visible and clickable.")
       return
     }
     XCTAssertFalse(
@@ -1243,16 +1282,19 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
     additionalLaunchArguments: [String] = []
   ) {
     application.terminate()
-    application.launchArguments = [
-      "-ApplePersistenceIgnoreState", "YES",
-      "-NSQuitAlwaysKeepsWindows", "NO",
-    ] + additionalLaunchArguments
+    application.launchArguments =
+      [
+        "-ApplePersistenceIgnoreState", "YES",
+        "-NSQuitAlwaysKeepsWindows", "NO",
+      ] + additionalLaunchArguments
     if let surface {
       application.launchEnvironment["PERSONAL_SITE_PUBLISHER_SCREENSHOT_DEMO"] = "1"
       application.launchEnvironment["PERSONAL_SITE_PUBLISHER_SCREENSHOT_SURFACE"] = surface
-      application.launchEnvironment["PERSONAL_SITE_PUBLISHER_SCREENSHOT_KNOWLEDGE_ROOT"] = knowledgeLibraryRootURL.path
+      application.launchEnvironment["PERSONAL_SITE_PUBLISHER_SCREENSHOT_KNOWLEDGE_ROOT"] =
+        knowledgeLibraryRootURL.path
       application.launchEnvironment["PERSONAL_SITE_PUBLISHER_SCREENSHOT_UI_TEST"] = "1"
-      application.launchEnvironment["PERSONAL_SITE_PUBLISHER_SCREENSHOT_UI_TEST_REPOSITORY_ROOT"] = knowledgeLibraryRootURL
+      application.launchEnvironment["PERSONAL_SITE_PUBLISHER_SCREENSHOT_UI_TEST_REPOSITORY_ROOT"] =
+        knowledgeLibraryRootURL
         .appendingPathComponent("repository-fixture", isDirectory: true)
         .path
     } else {
@@ -1271,7 +1313,8 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
     // this test-owned directory so opening a sheet cannot touch user data.
     application.launchEnvironment["CFFIXED_USER_HOME"] = screenshotRuntimeRootURL.path
     application.launchEnvironment["HOME"] = screenshotRuntimeRootURL.path
-    application.launchEnvironment["TMPDIR"] = screenshotRuntimeRootURL
+    application.launchEnvironment["TMPDIR"] =
+      screenshotRuntimeRootURL
       .appendingPathComponent("tmp", isDirectory: true)
       .path
     application.launch()
@@ -1453,13 +1496,15 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
   }
 
   private func runtimeAppURL() throws -> URL {
-    let configuredPath = ProcessInfo.processInfo.environment["WORKBENCH_XCUI_APP_PATH"]
+    let configuredPath =
+      ProcessInfo.processInfo.environment["WORKBENCH_XCUI_APP_PATH"]
       ?? Bundle(for: Self.self).object(forInfoDictionaryKey: "WorkbenchXCUIAppPath") as? String
     let appURL: URL
     if let configuredPath, !configuredPath.isEmpty {
       appURL = URL(fileURLWithPath: configuredPath, isDirectory: true).standardizedFileURL
     } else {
-      appURL = URL(fileURLWithPath: #filePath)
+      appURL =
+        URL(fileURLWithPath: #filePath)
         .deletingLastPathComponent()
         .deletingLastPathComponent()
         .deletingLastPathComponent()
@@ -1476,20 +1521,22 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
   private func testDataRoot(for appURL: URL) throws -> (url: URL, isTargetAppContainer: Bool) {
     let infoPlistURL = appURL.appendingPathComponent("Contents/Info.plist")
     let data = try Data(contentsOf: infoPlistURL)
-    guard let info = try PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any],
-          let bundleIdentifier = info["CFBundleIdentifier"] as? String else {
+    guard
+      let info = try PropertyListSerialization.propertyList(from: data, format: nil)
+        as? [String: Any],
+      let bundleIdentifier = info["CFBundleIdentifier"] as? String
+    else {
       throw CocoaError(.propertyListReadCorrupt)
     }
     guard info["PersonalSitePublisherDistributionChannel"] as? String == "AppStore" else {
       return (FileManager.default.temporaryDirectory, false)
     }
 
-    let runtimeHome = (
-      ProcessInfo.processInfo.environment["PERSONAL_SITE_PUBLISHER_RUNTIME_HOME"]
-        ?? Bundle(for: Self.self).object(
-          forInfoDictionaryKey: "PersonalSitePublisherRuntimeHome"
-        ) as? String
-    )
+    let runtimeHome =
+      (ProcessInfo.processInfo.environment["PERSONAL_SITE_PUBLISHER_RUNTIME_HOME"]
+      ?? Bundle(for: Self.self).object(
+        forInfoDictionaryKey: "PersonalSitePublisherRuntimeHome"
+      ) as? String)
       .map { URL(fileURLWithPath: $0, isDirectory: true) }
       ?? FileManager.default.homeDirectoryForCurrentUser
     return (

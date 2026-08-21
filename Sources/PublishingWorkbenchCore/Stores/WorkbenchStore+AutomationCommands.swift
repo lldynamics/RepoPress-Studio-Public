@@ -458,9 +458,11 @@ public enum WorkbenchAutomationExecutor {
       let rows = hits.map { hit in
         let title = String(hit.title.prefix(120))
         let snippet = String(hit.snippet.prefix(240))
-        return "- draftID=\(hit.draftID.uuidString); title=\(title); field=\(hit.field); snippet=\(snippet)"
+        return
+          "- draftID=\(hit.draftID.uuidString); title=\(title); field=\(hit.field); snippet=\(snippet)"
       }
-      let body = rows.isEmpty
+      let body =
+        rows.isEmpty
         ? CoreL10n.text("没有找到匹配的公开文章。")
         : rows.joined(separator: "\n")
       return success(
@@ -502,7 +504,8 @@ public enum WorkbenchAutomationExecutor {
         fields.append("excerpt=\(hit.excerpt)")
         return "- " + fields.joined(separator: "; ")
       }
-      let body = rows.isEmpty
+      let body =
+        rows.isEmpty
         ? CoreL10n.text("没有找到允许远程 AI 使用的匹配资料。")
         : rows.joined(separator: "\n")
       return success(
@@ -542,17 +545,21 @@ public enum WorkbenchAutomationExecutor {
 
     case .auditContent:
       let draft = try targetDraft(for: step, in: store, checksVersion: false)
-      guard let summary = WorkbenchAgentContentAuditService().audit(
-        draft: draft,
-        profile: store.profile(for: draft)
-      ) else {
+      guard
+        let summary = WorkbenchAgentContentAuditService().audit(
+          draft: draft,
+          profile: store.profile(for: draft)
+        )
+      else {
         throw CancellationError()
       }
       let findings = summary.findings.prefix(8).map { finding in
         let field = finding.field.map { " [\($0)]" } ?? ""
-        return "- \(finding.severity.rawValue)\(field): \(String(finding.title.prefix(100))) — \(String(finding.message.prefix(220)))"
+        return
+          "- \(finding.severity.rawValue)\(field): \(String(finding.title.prefix(100))) — \(String(finding.message.prefix(220)))"
       }
-      let findingText = findings.isEmpty
+      let findingText =
+        findings.isEmpty
         ? CoreL10n.text("没有可报告的问题。")
         : findings.joined(separator: "\n")
       return success(
@@ -577,9 +584,14 @@ public enum WorkbenchAutomationExecutor {
         maximumByteCount: 500_000
       )
       let rawHTML = String(decoding: response.data, as: UTF8.self)
-      let cleanText = rawHTML
-        .replacingOccurrences(of: "<script[^>]*>[\\s\\S]*?</script>", with: "", options: .regularExpression)
-        .replacingOccurrences(of: "<style[^>]*>[\\s\\S]*?</style>", with: "", options: .regularExpression)
+      let cleanText =
+        rawHTML
+        .replacingOccurrences(
+          of: "<script[^>]*>[\\s\\S]*?</script>", with: "", options: .regularExpression
+        )
+        .replacingOccurrences(
+          of: "<style[^>]*>[\\s\\S]*?</style>", with: "", options: .regularExpression
+        )
         .replacingOccurrences(of: "<[^>]+>", with: " ", options: .regularExpression)
         .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
         .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -596,15 +608,18 @@ public enum WorkbenchAutomationExecutor {
 
     case .siteCheckLinks:
       let draft = try targetDraft(for: step, in: store, checksVersion: false)
-      guard let inspection = WorkbenchAgentStaticLinkInspectionService().inspect(
-        markdown: draft.bodyMarkdown
-      ) else {
+      guard
+        let inspection = WorkbenchAgentStaticLinkInspectionService().inspect(
+          markdown: draft.bodyMarkdown
+        )
+      else {
         throw CancellationError()
       }
       let diagnostics = inspection.diagnostics.prefix(12).map { diagnostic in
         "- offset=\(diagnostic.sourceOffset); kind=\(diagnostic.kind.rawValue); \(String(diagnostic.message.prefix(220)))"
       }
-      let diagnosticText = diagnostics.isEmpty
+      let diagnosticText =
+        diagnostics.isEmpty
         ? CoreL10n.text("未发现 Markdown 链接格式问题。")
         : diagnostics.joined(separator: "\n")
       return success(
@@ -629,7 +644,8 @@ public enum WorkbenchAutomationExecutor {
       let issues = summary.issues.prefix(8).map { issue in
         "- \(issue.severity.rawValue): \(String(issue.title.prefix(100))) — \(String(issue.message.prefix(220)))"
       }
-      let issueText = issues.isEmpty
+      let issueText =
+        issues.isEmpty
         ? CoreL10n.text("真实图片报告未发现问题。")
         : issues.joined(separator: "\n")
       return success(
@@ -654,10 +670,12 @@ public enum WorkbenchAutomationExecutor {
             ?? CoreL10n.text("当前发布记录未配置可用的部署状态来源。")
         )
       }
-      guard let snapshot = await store.refreshDeploymentStatus(
-        for: release,
-        updatesMessage: false
-      ) else {
+      guard
+        let snapshot = await store.refreshDeploymentStatus(
+          for: release,
+          updatesMessage: false
+        )
+      else {
         throw WorkbenchAutomationExecutionError.operationDidNotComplete(
           CoreL10n.text("部署状态服务没有返回经过验证的结果。")
         )

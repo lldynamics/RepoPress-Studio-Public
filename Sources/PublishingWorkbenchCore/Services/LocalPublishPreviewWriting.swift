@@ -137,7 +137,8 @@ extension LocalPublishPreviewService {
       )
 
       for (index, prepared) in preparedWrites.enumerated() {
-        let destinationURL = prepared.file.operation == .delete
+        let destinationURL =
+          prepared.file.operation == .delete
           ? prepared.destinationURL
           : try safeDestinationURLForWrite(
             rootURL: rootURL,
@@ -157,7 +158,8 @@ extension LocalPublishPreviewService {
         case .upsert:
           switch prepared.file.kind {
           case .markdown:
-            try (prepared.file.content ?? "").write(to: destinationURL, atomically: true, encoding: .utf8)
+            try (prepared.file.content ?? "").write(
+              to: destinationURL, atomically: true, encoding: .utf8)
           case .image, .video:
             guard let sourceURL = prepared.sourceURL else {
               throw LocalPublishPreviewError.missingSource(prepared.file.repositoryPath)
@@ -252,7 +254,6 @@ extension LocalPublishPreviewService {
     )
   }
 
-
   private func expectedBaseStates(
     for package: PublishPackage,
     preview: LocalPublishPreview
@@ -265,10 +266,11 @@ extension LocalPublishPreviewService {
     for file in package.files {
       let normalizedPath = file.repositoryPath.normalizedRelativePath()
       guard result[normalizedPath] == nil,
-            let diff = preview.fileDiffs.first(where: {
-              $0.path.normalizedRelativePath() == normalizedPath
-            }),
-            let baselineState = diff.baselineState else {
+        let diff = preview.fileDiffs.first(where: {
+          $0.path.normalizedRelativePath() == normalizedPath
+        }),
+        let baselineState = diff.baselineState
+      else {
         throw LocalPublishPreviewError.invalidPreview(file.repositoryPath)
       }
       result[normalizedPath] = baselineState
@@ -284,10 +286,11 @@ extension LocalPublishPreviewService {
     for file in package.files where file.operation == .upsert && file.kind != .markdown {
       let normalizedPath = file.repositoryPath.normalizedRelativePath()
       guard result[normalizedPath] == nil,
-            let diff = preview.fileDiffs.first(where: {
-              $0.path.normalizedRelativePath() == normalizedPath
-            }),
-            let sourceState = diff.sourceState else {
+        let diff = preview.fileDiffs.first(where: {
+          $0.path.normalizedRelativePath() == normalizedPath
+        }),
+        let sourceState = diff.sourceState
+      else {
         throw LocalPublishPreviewError.invalidPreview(file.repositoryPath)
       }
       result[normalizedPath] = sourceState

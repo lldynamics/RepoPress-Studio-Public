@@ -32,10 +32,11 @@ final class WorkbenchAgentReviewDecisionTests: XCTestCase {
     let transcript = AIPublishingAssistantService().chatMessages(
       for: AIChatRequest(messages: [message], context: .general())
     )
-    let encodedTranscript = String(
-      data: try JSONEncoder().encode(transcript),
-      encoding: .utf8
-    ) ?? ""
+    let encodedTranscript =
+      String(
+        data: try JSONEncoder().encode(transcript),
+        encoding: .utf8
+      ) ?? ""
     XCTAssertTrue(encodedTranscript.contains("review"))
     XCTAssertFalse(encodedTranscript.contains("tool-1"))
     XCTAssertFalse(encodedTranscript.contains("baseline"))
@@ -80,7 +81,8 @@ final class WorkbenchAgentReviewDecisionTests: XCTestCase {
       in: store
     )
     XCTAssertEqual(updatedMessage.reviewDecisions.map(\.choice), [.accepted])
-    XCTAssertEqual(updatedMessage.reviewDecisions.first?.previewBaselineFingerprint, fixture.baseline)
+    XCTAssertEqual(
+      updatedMessage.reviewDecisions.first?.previewBaselineFingerprint, fixture.baseline)
     XCTAssertEqual(updatedMessage.automationPlan?.steps.first?.status, .succeeded)
     XCTAssertEqual(updatedMessage.toolRuns.first?.status, .succeeded)
     XCTAssertNotNil(updatedMessage.toolRuns.first?.completedAt)

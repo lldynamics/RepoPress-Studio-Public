@@ -1,10 +1,11 @@
-import CryptoKit
 import CoreGraphics
+import CryptoKit
 import Foundation
 import ImageIO
 import UniformTypeIdentifiers
+
 #if canImport(Darwin)
-import Darwin
+  import Darwin
 #endif
 extension SiteImageWorkbenchService {
   func isJPEGFilename(_ filename: String) -> Bool {
@@ -33,12 +34,13 @@ extension SiteImageWorkbenchService {
       var bytes = Array(SHA256.hash(data: Data(identity.utf8)).prefix(16))
       bytes[6] = (bytes[6] & 0x0F) | 0x50
       bytes[8] = (bytes[8] & 0x3F) | 0x80
-      stableIssue.id = UUID(uuid: (
-        bytes[0], bytes[1], bytes[2], bytes[3],
-        bytes[4], bytes[5], bytes[6], bytes[7],
-        bytes[8], bytes[9], bytes[10], bytes[11],
-        bytes[12], bytes[13], bytes[14], bytes[15]
-      ))
+      stableIssue.id = UUID(
+        uuid: (
+          bytes[0], bytes[1], bytes[2], bytes[3],
+          bytes[4], bytes[5], bytes[6], bytes[7],
+          bytes[8], bytes[9], bytes[10], bytes[11],
+          bytes[12], bytes[13], bytes[14], bytes[15]
+        ))
       return stableIssue
     }
   }
@@ -87,7 +89,8 @@ extension SiteImageWorkbenchService {
       with: "><",
       options: .regularExpression
     )
-    optimized = optimized
+    optimized =
+      optimized
       .split(separator: "\n", omittingEmptySubsequences: false)
       .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
       .joined(separator: "\n")
@@ -98,7 +101,8 @@ extension SiteImageWorkbenchService {
     let stem = URL(fileURLWithPath: filename)
       .deletingPathExtension()
       .lastPathComponent
-    return stem
+    return
+      stem
       .replacingOccurrences(of: "-", with: " ")
       .replacingOccurrences(of: "_", with: " ")
       .trimmedForPublishing
@@ -164,7 +168,8 @@ extension SiteImageWorkbenchService {
     guard oldPath != newPath else {
       return markdown
     }
-    let pattern = #"(!\[[^\]]*\]\()"#
+    let pattern =
+      #"(!\[[^\]]*\]\()"#
       + NSRegularExpression.escapedPattern(for: oldPath)
       + #"((?:\s+"[^"]*")?\))"#
     guard let regex = try? NSRegularExpression(pattern: pattern) else {

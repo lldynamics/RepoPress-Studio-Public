@@ -69,7 +69,8 @@ enum AIChatConnectionStatusPresentation {
   ) -> AIChatConnectionReadiness {
     guard hasDraft else { return .noDraft }
     guard !config.normalizedBaseURL.isEmpty else { return .missingEndpoint }
-    let model = activeModel?.trimmingCharacters(in: .whitespacesAndNewlines)
+    let model =
+      activeModel?.trimmingCharacters(in: .whitespacesAndNewlines)
       .nilIfEmpty ?? config.normalizedModel
     guard !model.isEmpty else { return .missingModel }
     guard !config.requiresAPIKey || hasToken else { return .missingAPIKey }
@@ -140,9 +141,11 @@ enum AIChatInspectorHeaderPresentation {
 
     switch mode {
     case .site:
-      let articleTitle = draftTitle?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+      let articleTitle =
+        draftTitle?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
         ?? String(localized: "未选择文章")
-      let detail = selectedReferences.isEmpty
+      let detail =
+        selectedReferences.isEmpty
         ? String(
           format: String(localized: "正在使用：%@；默认包含站点和发布工作台上下文。"),
           articleTitle
@@ -158,7 +161,8 @@ enum AIChatInspectorHeaderPresentation {
       )
 
     case .general:
-      let detail = selectedReferences.isEmpty
+      let detail =
+        selectedReferences.isEmpty
         ? String(localized: "不读取当前文章正文、仓库状态或发布检查。")
         : String(
           format: String(localized: "不读取当前文章正文；%@"),
@@ -173,7 +177,8 @@ enum AIChatInspectorHeaderPresentation {
 
   static func providerTitle(for config: AIProviderConfig) -> String {
     switch config.preset {
-    case .codexAppServer, .openAICompatible, .deepSeek, .anthropic, .gemini, .siliconFlow, .moonshot, .zhipu, .openRouter, .local:
+    case .codexAppServer, .openAICompatible, .deepSeek, .anthropic, .gemini, .siliconFlow,
+      .moonshot, .zhipu, .openRouter, .local:
       return config.preset.localizedDisplayName
     case .custom:
       return String(localized: "自定义 API")
@@ -189,8 +194,9 @@ enum AIChatInspectorHeaderPresentation {
       // App Server uses the sentinel only when the account chooses the model.
       // A concrete model returned by model/list is the active model and should
       // remain visible in the compact header.
-      guard let activeModel = activeModel?.trimmingCharacters(in: .whitespacesAndNewlines)
-        .nilIfEmpty
+      guard
+        let activeModel = activeModel?.trimmingCharacters(in: .whitespacesAndNewlines)
+          .nilIfEmpty
       else {
         return provider
       }
