@@ -7,7 +7,7 @@ TOOLING_WORKFLOW="$ROOT_DIR/.github/workflows/tooling.yml"
 ACCESSIBILITY_RUNTIME_GATE="$ROOT_DIR/script/check_accessibility_runtime.sh"
 RELEASE_CHECKS="$ROOT_DIR/script/release_checks.json"
 CHECKOUT_ACTION="actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803"
-UPLOAD_ARTIFACT_ACTION="actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02"
+UPLOAD_ARTIFACT_ACTION="actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a"
 
 fail() {
   echo "CI quality workflow gate: $*" >&2
