@@ -691,7 +691,7 @@ final class LocalPublishPreviewServiceTests: XCTestCase {
         content: "final published content"
       )
     ])
-    try LocalPublishPreviewService().write(package: package, rootURL: rootURL)
+    _ = try LocalPublishPreviewService().write(package: package, rootURL: rootURL)
 
     XCTAssertEqual(
       try String(contentsOf: destinationURL, encoding: .utf8),
