@@ -7,7 +7,6 @@ import XCTest
 @MainActor
 final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
   override func setUp() async throws {
-    try await super.setUp()
     // Production defaults to automatic remote authorization. Tests that need
     // fail-closed fault injection install an explicit provider below.
     AIOutboundPayloadApprovalBroker.shared.testingDecisionProvider = nil
@@ -19,7 +18,6 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
     AIOutboundPayloadApprovalBroker.shared.testingDecisionProvider = nil
     AIOutboundPayloadApprovalBroker.shared.testingConfirmationDateProvider = nil
     AIDataSharingConsentStore().revoke(for: remoteAIConfig)
-    try await super.tearDown()
   }
 
   private var remoteAIConfig: AIProviderConfig {
