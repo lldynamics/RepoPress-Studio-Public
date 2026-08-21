@@ -6,7 +6,6 @@ import XCTest
 @MainActor
 final class WorkbenchGeneralAIChatTests: XCTestCase {
   override func setUp() async throws {
-    try await super.setUp()
     // Production defaults to automatic remote authorization. Tests that need
     // fail-closed fault injection install an explicit provider below.
     AIOutboundPayloadApprovalBroker.shared.testingDecisionProvider = nil
@@ -16,7 +15,6 @@ final class WorkbenchGeneralAIChatTests: XCTestCase {
     AIOutboundPayloadApprovalBroker.shared.cancelPendingRequest()
     AIOutboundPayloadApprovalBroker.shared.testingDecisionProvider = nil
     AIOutboundPayloadApprovalBroker.shared.testingConfirmationDateProvider = nil
-    try await super.tearDown()
   }
 
   func testConnectionProfileKeyAvailabilityIsScopedToDisplayedGeneralConnection() throws {
