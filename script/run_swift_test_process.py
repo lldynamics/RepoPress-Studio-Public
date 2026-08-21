@@ -28,6 +28,16 @@ SETTINGS_SUITE = "SettingsSearchAndSavePresentationTests"
 # Run each method in its own xctest host so older XCTest runtimes cannot strand
 # an entire multi-suite batch.
 CORE_CASE_ISOLATED_SUITES = ("CodexAppServerClientTests",)
+MAC_BATCH_MAX_SUITES = 4
+MAC_BATCH_MAX_TESTS = 60
+CORE_BATCH_MAX_SUITES = 12
+CORE_BATCH_MAX_TESTS = 150
+SWIFT_CACHE_ENVIRONMENT_KEYS = (
+    "HOME",
+    "XDG_CACHE_HOME",
+    "CLANG_MODULE_CACHE_PATH",
+    "SWIFT_MODULE_CACHE_PATH",
+)
 INVENTORY_PATTERN = re.compile(
     r"^(PersonalSitePublisherMacTests|PublishingWorkbenchCoreTests)\."
     r"([A-Za-z_][A-Za-z0-9_]*)/([A-Za-z_][A-Za-z0-9_]*)(\(\))?$"
@@ -272,6 +282,7 @@ def run_child(
     timeout_seconds: float,
     sample_path: Path,
     echo_stdout: bool,
+    environment: dict[str, str] | None = None,
 ) -> ProcessResult:
     global ACTIVE_PROCESS, ACTIVE_PROCESS_GROUPS
 
@@ -290,7 +301,7 @@ def run_child(
             process = subprocess.Popen(
                 command,
                 cwd=cwd,
-                env=os.environ.copy(),
+                env={**os.environ, **(environment or {})},
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
@@ -482,6 +493,63 @@ def batch_suites(
     return batches
 
 
+def swift_test_build_arguments(environment: dict[str, str]) -> list[str]:
+    """Return flags for the one real SwiftPM build/inventory invocation.
+
+    SwiftPM shards all use ``--skip-build`` after inventory discovery, so this
+    is the single place where compiler diagnostics can be made strict.  Keep a
+    narrow opt-out for callers that need to investigate an older toolchain;
+    the default remains warnings-as-errors.
+    """
+
+    raw_value = environment.get("SWIFT_TEST_WARNINGS_AS_ERRORS", "1").strip().lower()
+    if raw_value in {"1", "true", "yes", "on"}:
+        return ["-Xswiftc", "-warnings-as-errors"]
+    if raw_value in {"0", "false", "no", "off"}:
+        return []
+    fail(
+        "SWIFT_TEST_WARNINGS_AS_ERRORS must be a boolean value (1/0, true/false, "
+        "yes/no, or on/off)"
+    )
+
+
+def swift_child_environment(root: Path, output_directory: Path) -> dict[str, str]:
+    """Build an isolated environment for SwiftPM and every shard child.
+
+    SwiftPM otherwise probes ``~/Library`` even when all package artifacts are
+    already in the project.  Default paths stay below the project output
+    directory.  XDG and compiler cache values supplied by the caller are
+    preserved; HOME uses the explicit SWIFT_TEST_HOME/SWIFT_BUILD_HOME hooks
+    because an inherited shell HOME is not a reliable writable cache root.
+    """
+
+    environment = os.environ.copy()
+    build_home = Path(
+        environment.get("SWIFT_TEST_HOME")
+        or environment.get("SWIFT_BUILD_HOME")
+        or output_directory / "home"
+    )
+    # HOME is intentionally not inherited from the invoking shell: on the
+    # managed macOS runner that path can point at an inaccessible user Library.
+    # Callers that need a stable explicit home can use SWIFT_TEST_HOME; the
+    # established SWIFT_BUILD_HOME remains the default integration hook.
+    environment["HOME"] = str(build_home)
+    defaults = {
+        "XDG_CACHE_HOME": build_home / ".cache",
+        "CLANG_MODULE_CACHE_PATH": build_home / ".swift-clang-cache",
+        "SWIFT_MODULE_CACHE_PATH": build_home / ".swift-module-cache",
+    }
+    for key, default_path in defaults.items():
+        if environment.get(key):
+            continue
+        environment[key] = str(default_path)
+    build_home.mkdir(parents=True, exist_ok=True)
+    for key in defaults:
+        if environment[key] == str(defaults[key]):
+            defaults[key].mkdir(parents=True, exist_ok=True)
+    return environment
+
+
 def build_shards(tests: list[TestSpec]) -> list[Shard]:
     cache_tests = tuple(
         test for test in tests if test.target == MAC_TARGET and test.suite == CACHE_SUITE
@@ -512,24 +580,20 @@ def build_shards(tests: list[TestSpec]) -> list[Shard]:
             )
         )
 
-    mac_case_tests = tuple(
-        sorted(
-            (
-                test
-                for test in tests
-                if test.target == MAC_TARGET
-                and test.suite not in {CACHE_SUITE, SETTINGS_SUITE}
-            ),
-            key=lambda item: item.raw,
-        )
+    mac_batches = batch_suites(
+        tests,
+        target=MAC_TARGET,
+        excluded_suites={CACHE_SUITE, SETTINGS_SUITE},
+        maximum_suites=MAC_BATCH_MAX_SUITES,
+        maximum_tests=MAC_BATCH_MAX_TESTS,
     )
-    for index, test in enumerate(mac_case_tests, start=1):
+    for index, (suites, batch_tests) in enumerate(mac_batches, start=1):
         shards.append(
             Shard(
-                label=test.raw,
-                slug=f"mac-{index:02d}",
-                filter_pattern=f"^{re.escape(test.raw)}$",
-                tests=(test,),
+                label=f"{MAC_TARGET} batch {index}",
+                slug=f"mac-batch-{index:02d}",
+                filter_pattern=make_suite_filter(MAC_TARGET, suites),
+                tests=tuple(batch_tests),
             )
         )
 
@@ -558,8 +622,8 @@ def build_shards(tests: list[TestSpec]) -> list[Shard]:
         tests,
         target=CORE_TARGET,
         excluded_suites=set(CORE_CASE_ISOLATED_SUITES),
-        maximum_suites=12,
-        maximum_tests=150,
+        maximum_suites=CORE_BATCH_MAX_SUITES,
+        maximum_tests=CORE_BATCH_MAX_TESTS,
     )
     for index, (suites, batch_tests) in enumerate(core_batches, start=1):
         shards.append(
@@ -620,16 +684,25 @@ def run_all(root: Path) -> int:
     swift_binary = os.environ.get("SWIFT_BIN", "swift")
     list_timeout = float(os.environ.get("SWIFT_TEST_LIST_TIMEOUT_SECONDS", "360"))
     shard_timeout = float(os.environ.get("SWIFT_TEST_SHARD_TIMEOUT_SECONDS", "120"))
+    child_environment = swift_child_environment(root, output_directory)
+    build_arguments: list[str] = []
 
     result: dict[str, object] = {
         "schemaVersion": 1,
         "status": "running",
         "inventory": {},
         "shards": [],
+        "swiftTestBuildArguments": build_arguments,
+        "swiftCacheEnvironment": {
+            key: child_environment[key] for key in SWIFT_CACHE_ENVIRONMENT_KEYS
+        },
     }
     atomic_write_json(result_path, result)
 
     try:
+        build_arguments = swift_test_build_arguments(child_environment)
+        result["swiftTestBuildArguments"] = build_arguments
+        atomic_write_json(result_path, result)
         shard_retries = configured_shard_retries(os.environ)
         result["shardRetries"] = shard_retries
         manifest_test_targets(root / "Package.swift")
@@ -640,7 +713,13 @@ def run_all(root: Path) -> int:
         print(f"swift test shards: {error}", file=sys.stderr)
         return 2
 
-    list_command = [swift_binary, "test", "--disable-sandbox", "list"]
+    list_command = [
+        swift_binary,
+        "test",
+        "--disable-sandbox",
+        *build_arguments,
+        "list",
+    ]
     print("swift test shards: building and reading the complete test inventory")
     list_process = run_child(
         list_command,
@@ -649,6 +728,7 @@ def run_all(root: Path) -> int:
         timeout_seconds=list_timeout,
         sample_path=output_directory / "build-list.sample.txt",
         echo_stdout=False,
+        environment=child_environment,
     )
     result["inventoryCommand"] = list_command
     result["inventoryDurationSeconds"] = round(list_process.duration_seconds, 3)
@@ -745,6 +825,7 @@ def run_all(root: Path) -> int:
                 timeout_seconds=shard_timeout,
                 sample_path=sample_path,
                 echo_stdout=True,
+                environment=child_environment,
             )
             attempt["durationSeconds"] = round(process_result.duration_seconds, 3)
             attempt["returnCode"] = process_result.return_code

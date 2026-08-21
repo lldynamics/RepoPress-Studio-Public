@@ -47,8 +47,27 @@ calls = json.loads(call_log.read_text(encoding="utf-8")) if call_log.exists() el
 calls.append(sys.argv[1:])
 call_log.write_text(json.dumps(calls), encoding="utf-8")
 
+environment_log = Path(os.environ["SWIFT_ENV_LOG"])
+environment_calls = (
+    json.loads(environment_log.read_text(encoding="utf-8"))
+    if environment_log.exists()
+    else []
+)
+environment_calls.append(
+    {
+        key: os.environ.get(key)
+        for key in (
+            "HOME",
+            "XDG_CACHE_HOME",
+            "CLANG_MODULE_CACHE_PATH",
+            "SWIFT_MODULE_CACHE_PATH",
+        )
+    }
+)
+environment_log.write_text(json.dumps(environment_calls), encoding="utf-8")
+
 inventory = [line for line in Path(os.environ["SWIFT_INVENTORY"]).read_text(encoding="utf-8").splitlines() if line]
-if sys.argv[1:] == ["test", "--disable-sandbox", "list"]:
+if sys.argv[1] == "test" and "list" in sys.argv[1:]:
     print("\n".join(inventory))
     raise SystemExit(0)
 
@@ -189,6 +208,7 @@ def make_fixture(
     extra_target: bool = False,
     duplicate_inventory: bool = False,
     raise_baseline: bool = False,
+    missing_suite: str | None = None,
 ) -> tuple[tempfile.TemporaryDirectory[str], Path, dict[str, str]]:
     temporary = tempfile.TemporaryDirectory(prefix="swift-test-processes.")
     root = Path(temporary.name)
@@ -212,12 +232,18 @@ def make_fixture(
     )
 
     inventory = fixture_inventory()
+    if missing_suite is not None:
+        inventory = [
+            row
+            for row in inventory
+            if f".{missing_suite}/" not in row
+        ]
     if duplicate_inventory:
         inventory.append(inventory[0])
     inventory_path = root / "inventory-source.txt"
     inventory_path.write_text("\n".join(inventory) + "\n", encoding="utf-8")
-    mac_count = sum(row.startswith("PersonalSitePublisherMacTests.") for row in fixture_inventory())
-    core_count = sum(row.startswith("PublishingWorkbenchCoreTests.") for row in fixture_inventory())
+    mac_count = sum(row.startswith("PersonalSitePublisherMacTests.") for row in inventory)
+    core_count = sum(row.startswith("PublishingWorkbenchCoreTests.") for row in inventory)
     (script_dir / "quality_baselines.json").write_text(
         json.dumps(
             {
@@ -246,6 +272,7 @@ def make_fixture(
     paths = {
         "call_log": str(root / "calls.json"),
         "sample_call_log": str(root / "sample-calls.json"),
+        "env_log": str(root / "swift-env.json"),
         "inventory": str(inventory_path),
         "hang_child_pid": str(root / "hang-child.pid"),
         "hang_child_pgid": str(root / "hang-child.pgid"),
@@ -263,6 +290,16 @@ def make_fixture(
 
 def fixture_environment(paths: dict[str, str], **extra: str) -> dict[str, str]:
     environment = os.environ.copy()
+    for key in (
+        "HOME",
+        "SWIFT_BUILD_HOME",
+        "SWIFT_TEST_HOME",
+        "XDG_CACHE_HOME",
+        "CLANG_MODULE_CACHE_PATH",
+        "SWIFT_MODULE_CACHE_PATH",
+        "SWIFT_TEST_WARNINGS_AS_ERRORS",
+    ):
+        environment.pop(key, None)
     environment.pop("SWIFT_TEST_SHARD_TIMEOUT_SECONDS", None)
     environment.pop("SWIFT_TEST_SHARD_RETRIES", None)
     environment.pop("SWIFT_TEST_TERMINATION_GRACE_SECONDS", None)
@@ -273,6 +310,7 @@ def fixture_environment(paths: dict[str, str], **extra: str) -> dict[str, str]:
             "SAMPLE_BIN": paths["fake_sample"],
             "SWIFT_CALL_LOG": paths["call_log"],
             "SAMPLE_CALL_LOG": paths["sample_call_log"],
+            "SWIFT_ENV_LOG": paths["env_log"],
             "SWIFT_INVENTORY": paths["inventory"],
             "PS_BIN": paths["fake_ps"],
             "FAKE_XCTEST": paths["fake_xctest"],
@@ -305,6 +343,11 @@ def read_calls(paths: dict[str, str]) -> list[list[str]]:
     return json.loads(path.read_text(encoding="utf-8")) if path.exists() else []
 
 
+def read_environment_calls(paths: dict[str, str]) -> list[dict[str, str | None]]:
+    path = Path(paths["env_log"])
+    return json.loads(path.read_text(encoding="utf-8")) if path.exists() else []
+
+
 def read_result(root: Path) -> dict[str, object]:
     return json.loads(
         (root / ".build" / "swift-test-shards" / "result.json").read_text(encoding="utf-8")
@@ -334,7 +377,13 @@ def test_successful_partition_and_exact_argv() -> None:
         result = run_fixture(root, paths)
         assert result.returncode == 0, result.stderr
         calls = read_calls(paths)
-        assert calls[0] == ["test", "--disable-sandbox", "list"]
+        assert calls[0] == [
+            "test",
+            "--disable-sandbox",
+            "-Xswiftc",
+            "-warnings-as-errors",
+            "list",
+        ]
         assert all(
             call[:4] == ["test", "--disable-sandbox", "--skip-build", "--filter"]
             and "--skip" not in call
@@ -357,13 +406,23 @@ def test_successful_partition_and_exact_argv() -> None:
         mac_cases = [
             shard
             for shard in shards
-            if shard["slug"].startswith(("settings-", "mac-"))
+            if shard["slug"].startswith("settings-")
         ]
-        assert len(mac_cases) == 54
+        assert len(mac_cases) == 6
         assert all(len(shard["tests"]) == 1 for shard in mac_cases)
         assert all(
             shard["filter"] == f"^{re.escape(shard['tests'][0])}$"
             for shard in mac_cases
+        )
+        mac_batches = [
+            shard for shard in shards if shard["slug"].startswith("mac-batch-")
+        ]
+        assert len(mac_batches) == 2
+        assert sum(len(shard["tests"]) for shard in mac_batches) == 48
+        assert all(not shard["filter"].endswith("$") for shard in mac_batches)
+        assert all(
+            len({test.split("/", 1)[0] for test in shard["tests"]}) <= 4
+            for shard in mac_batches
         )
         core_cases = [
             shard for shard in shards if shard["slug"].startswith("core-case-")
@@ -387,10 +446,97 @@ def test_successful_partition_and_exact_argv() -> None:
                 suites = {test.split("/", 1)[0] for test in shard["tests"]}
                 assert len(suites) <= 12
                 assert len(shard["tests"]) <= 150 or len(suites) == 1
+            if shard["slug"].startswith("mac-batch-"):
+                suites = {test.split("/", 1)[0] for test in shard["tests"]}
+                assert len(suites) <= 4
+                assert len(shard["tests"]) <= 60 or len(suites) == 1
             assert shard["executedXCTestCount"] == shard["expectedXCTestCount"]
             assert shard["executedSwiftTestingCount"] == shard["expectedSwiftTestingCount"]
             assert "timeoutSeconds: 120.0" in Path(shard["logPath"]).read_text(encoding="utf-8")
             assert "terminationGraceSeconds: 2.0" in Path(shard["logPath"]).read_text(encoding="utf-8")
+        assert payload["swiftTestBuildArguments"] == ["-Xswiftc", "-warnings-as-errors"]
+
+
+def test_swift_cache_environment_is_local_and_explicit_values_are_preserved() -> None:
+    temporary, root, paths = make_fixture()
+    with temporary:
+        result = run_fixture(root, paths, HOME="/inherited/user-home")
+        assert result.returncode == 0, result.stderr
+        environment_calls = read_environment_calls(paths)
+        assert environment_calls
+        expected_keys = {
+            "HOME",
+            "XDG_CACHE_HOME",
+            "CLANG_MODULE_CACHE_PATH",
+            "SWIFT_MODULE_CACHE_PATH",
+        }
+        assert all(set(call) == expected_keys for call in environment_calls)
+        for key in expected_keys:
+            values = {call[key] for call in environment_calls}
+            assert len(values) == 1
+            value = next(iter(values))
+            assert value is not None
+            assert value.startswith(str(root.resolve() / ".build" / "swift-test-shards"))
+            assert Path(value).exists()
+
+    temporary, root, paths = make_fixture()
+    with temporary:
+        build_home = root / "caller-build-home"
+        result = run_fixture(root, paths, SWIFT_BUILD_HOME=str(build_home))
+        assert result.returncode == 0, result.stderr
+        environment_calls = read_environment_calls(paths)
+        assert environment_calls
+        assert all(call["HOME"] == str(build_home) for call in environment_calls)
+        assert all(
+            value is not None and value.startswith(str(build_home))
+            for call in environment_calls
+            for key, value in call.items()
+            if key != "HOME"
+        )
+
+    temporary, root, paths = make_fixture()
+    with temporary:
+        explicit = {
+            "SWIFT_BUILD_HOME": str(root / "lower-priority-build-home"),
+            "SWIFT_TEST_HOME": str(root / "caller-home"),
+            "XDG_CACHE_HOME": str(root / "caller-xdg-cache"),
+            "CLANG_MODULE_CACHE_PATH": str(root / "caller-clang-cache"),
+            "SWIFT_MODULE_CACHE_PATH": str(root / "caller-swift-cache"),
+        }
+        result = run_fixture(root, paths, **explicit)
+        assert result.returncode == 0, result.stderr
+        environment_calls = read_environment_calls(paths)
+        assert environment_calls
+        expected = {
+            "HOME": explicit["SWIFT_TEST_HOME"],
+            "XDG_CACHE_HOME": explicit["XDG_CACHE_HOME"],
+            "CLANG_MODULE_CACHE_PATH": explicit["CLANG_MODULE_CACHE_PATH"],
+            "SWIFT_MODULE_CACHE_PATH": explicit["SWIFT_MODULE_CACHE_PATH"],
+        }
+        assert all(call == expected for call in environment_calls)
+        payload = read_result(root)
+        assert payload["swiftCacheEnvironment"] == expected
+
+
+def test_warnings_as_errors_can_be_explicitly_disabled() -> None:
+    temporary, root, paths = make_fixture()
+    with temporary:
+        result = run_fixture(root, paths, SWIFT_TEST_WARNINGS_AS_ERRORS="0")
+        assert result.returncode == 0, result.stderr
+        calls = read_calls(paths)
+        assert calls[0] == ["test", "--disable-sandbox", "list"]
+        payload = read_result(root)
+        assert payload["swiftTestBuildArguments"] == []
+
+
+def test_invalid_warnings_as_errors_configuration_fails_closed() -> None:
+    temporary, root, paths = make_fixture()
+    with temporary:
+        result = run_fixture(root, paths, SWIFT_TEST_WARNINGS_AS_ERRORS="maybe")
+        assert result.returncode == 2, result
+        assert "SWIFT_TEST_WARNINGS_AS_ERRORS must be a boolean value" in result.stderr
+        assert read_calls(paths) == []
+        assert read_result(root)["status"] == "failed"
 
 
 def test_manifest_inventory_and_baseline_fail_closed() -> None:
@@ -398,6 +544,11 @@ def test_manifest_inventory_and_baseline_fail_closed() -> None:
         ({"extra_target": True}, "unexpected Swift test target set", 0),
         ({"duplicate_inventory": True}, "duplicate test specifications", 1),
         ({"raise_baseline": True}, "fell below", 1),
+        (
+            {"missing_suite": "WorkbenchImageTwoTierCacheTests"},
+            "required isolated suite is missing",
+            1,
+        ),
     ):
         temporary, root, paths = make_fixture(**options)
         with temporary:
@@ -571,6 +722,9 @@ def test_external_sigterm_is_forwarded_to_active_shard() -> None:
 
 def main() -> int:
     test_successful_partition_and_exact_argv()
+    test_swift_cache_environment_is_local_and_explicit_values_are_preserved()
+    test_warnings_as_errors_can_be_explicitly_disabled()
+    test_invalid_warnings_as_errors_configuration_fails_closed()
     test_manifest_inventory_and_baseline_fail_closed()
     test_shard_retry_configuration_is_bounded()
     test_nonzero_shard_fails_fast_with_incremental_result()
