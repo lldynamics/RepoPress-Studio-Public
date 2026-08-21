@@ -119,7 +119,7 @@ public struct GitCommandRunner: Sendable {
   }
 
   @available(
-    *, deprecated,
+    *, noasync,
     message: "Use runAsync instead in async contexts to avoid blocking cooperative thread pool"
   )
   public func run(
