@@ -399,7 +399,7 @@ final class WorkbenchAIAgentLoopServiceTests: XCTestCase {
         try await Task.sleep(nanoseconds: 5_000_000_000)
         return AIChatCompletionResult(content: "should not complete")
       },
-      readOnlyExecutor: { invocation in
+      automaticExecutor: { invocation in
         await executor.execute(invocation)
       }
     )
@@ -1110,7 +1110,7 @@ final class WorkbenchAIAgentLoopServiceTests: XCTestCase {
           ]
         )
       },
-      readOnlyExecutor: { _ in
+      automaticExecutor: { _ in
         await probe.markStarted()
         try await Task.sleep(nanoseconds: 5_000_000_000)
         return WorkbenchAIAgentToolResult(content: "too late")

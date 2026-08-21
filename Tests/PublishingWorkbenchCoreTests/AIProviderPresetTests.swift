@@ -113,7 +113,7 @@ final class AIProviderPresetTests: XCTestCase {
 
   func testWritingStylePresetsHaveNonEmptyDefaults() {
     for preset in AIWritingStylePreset.allCases where preset != .custom {
-      var config = AIWritingStyleConfig(preset: preset)
+      let config = AIWritingStyleConfig(preset: preset)
       XCTAssertFalse(config.tone.isEmpty, "Preset \(preset) should have a default tone")
       XCTAssertFalse(config.audience.isEmpty, "Preset \(preset) should have a default audience")
       XCTAssertFalse(
