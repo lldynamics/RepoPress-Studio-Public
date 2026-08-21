@@ -241,12 +241,7 @@ public final class WorkbenchStore: ObservableObject {
       previewService: localPublishPreviewService
     )
     self.draftRecoveryJournal = draftRecoveryJournal
-    self.draftRecoveryRecords = Dictionary(
-      loadedDraftRecoveryRecords.map { ($0.draftID, $0) },
-      uniquingKeysWith: { lhs, rhs in
-        lhs.capturedAt >= rhs.capturedAt ? lhs : rhs
-      }
-    )
+    self.draftRecoveryRecords = Self.mergedRecoveryRecords(from: loadedDraftRecoveryRecords)
     self.siteMaintenanceStore = SiteMaintenanceStore()
     self.knowledge = KnowledgeStore(service: knowledgeLibraryService)
 
@@ -356,12 +351,7 @@ public final class WorkbenchStore: ObservableObject {
       }
       return draft.bodyMarkdown != record.recoveredBodyMarkdown
     }
-    self.draftRecoveryRecords = Dictionary(
-      unresolvedDraftRecoveryRecords.map { ($0.draftID, $0) },
-      uniquingKeysWith: { lhs, rhs in
-        lhs.capturedAt >= rhs.capturedAt ? lhs : rhs
-      }
-    )
+    self.draftRecoveryRecords = Self.mergedRecoveryRecords(from: unresolvedDraftRecoveryRecords)
     self.pendingDraftRecoveries = unresolvedDraftRecoveryRecords.sorted {
       $0.capturedAt > $1.capturedAt
     }
@@ -482,9 +472,6 @@ public final class WorkbenchStore: ObservableObject {
       }
       .store(in: &childStoreCancellables)
     repositoryStore.objectWillChange
-      .sink { [weak self] _ in self?.objectWillChange.send() }
-      .store(in: &childStoreCancellables)
-    deploymentStore.objectWillChange
       .sink { [weak self] _ in self?.objectWillChange.send() }
       .store(in: &childStoreCancellables)
     privacyProtectionStore.objectWillChange
@@ -791,6 +778,19 @@ public final class WorkbenchStore: ObservableObject {
       profileName: activeProfile.name,
       draftCount: visibleDrafts.count,
       inputSignature: inputSignature
+    )
+  }
+
+  public func draft(for draftID: UUID) -> ArticleDraft? {
+    publishingStore.draft(for: draftID)
+  }
+
+  static func mergedRecoveryRecords(from records: [DraftRecoveryRecord]) -> [UUID: DraftRecoveryRecord] {
+    Dictionary(
+      records.map { ($0.draftID, $0) },
+      uniquingKeysWith: { lhs, rhs in
+        lhs.capturedAt >= rhs.capturedAt ? lhs : rhs
+      }
     )
   }
 }

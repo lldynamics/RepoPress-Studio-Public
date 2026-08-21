@@ -166,9 +166,10 @@ extension AIProviderPreset {
         // selected streaming probe can prove streaming, but the preset alone
         // must not make the runtime send stream=true.
         return .unknown
-      case .codexAppServer, .openAICompatible, .deepSeek, .openRouter, .local:
+      case .codexAppServer, .openAICompatible, .deepSeek, .anthropic, .gemini, .siliconFlow,
+        .moonshot, .zhipu, .openRouter, .local:
         // These presets retain the existing product contract that their
-        // standard OpenAI-compatible chat transport is statically trusted.
+        // standard chat transport is statically trusted.
         return .supported
       }
 
@@ -177,7 +178,7 @@ extension AIProviderPreset {
       case .codexAppServer:
         // The first App Server bridge deliberately transports text only.
         return .unsupported
-      case .openAICompatible:
+      case .openAICompatible, .anthropic, .gemini, .siliconFlow, .moonshot, .zhipu:
         return .unknown
       case .deepSeek:
         return .unsupported
@@ -191,8 +192,15 @@ extension AIProviderPreset {
         // App Server exposes the account's model-specific reasoning levels;
         // the authenticated model list is the source of truth.
         return .supported
-      case .deepSeek:
+      case .deepSeek, .siliconFlow:
         return .supported
+      case .gemini, .moonshot, .zhipu:
+        return .supported
+      case .anthropic:
+        // Anthropic now uses the native Messages endpoint here, but native
+        // thinking controls are not implemented yet. Keep this unknown until
+        // a concrete capability probe can establish the supported contract.
+        return .unknown
       case .openAICompatible:
         return .unsupported
       case .openRouter, .local, .custom:
@@ -205,7 +213,8 @@ extension AIProviderPreset {
         return .supported
       case .custom:
         return .unknown
-      case .codexAppServer, .openAICompatible, .deepSeek, .openRouter:
+      case .codexAppServer, .openAICompatible, .deepSeek, .anthropic, .gemini, .siliconFlow,
+        .moonshot, .zhipu, .openRouter:
         return .unsupported
       }
 
@@ -217,10 +226,11 @@ extension AIProviderPreset {
         // App Server discovers account-available models through its own RPC,
         // not the OpenAI-compatible HTTP endpoint.
         return .supported
+      case .openAICompatible, .deepSeek, .anthropic, .gemini, .siliconFlow, .moonshot, .zhipu,
+        .openRouter:
+        return .supported
       case .custom:
         return .unknown
-      case .openAICompatible, .deepSeek, .openRouter:
-        return .unsupported
       }
 
     }
@@ -271,11 +281,13 @@ extension AIProviderPreset {
     switch capability {
     case .toolCalling:
       switch self {
-      case .deepSeek:
+      case .deepSeek, .siliconFlow, .anthropic, .gemini, .moonshot, .zhipu:
         return .supported
       case .codexAppServer:
-        // App-level tool calls are not exposed to the local Codex process.
-        return .unsupported
+        // The supported app-server protocol exposes host-owned dynamic tools.
+        // RepoPress registers closed schemas and executes returned calls only
+        // after its own allow-list and confirmation policy validate them.
+        return .supported
       case .openAICompatible, .openRouter, .local, .custom:
         // OpenAI-compatible/local endpoints and routing providers can expose
         // models with different tool support. A preset name is not a probe.

@@ -26,7 +26,8 @@ public enum WorkbenchAutomationRegistry {
       detail: "创建一篇可从回收站恢复的本地草稿",
       systemImage: "square.and.pencil",
       risk: .reversible,
-      arguments: [.value]
+      arguments: [.value],
+      allowsAgentAutomaticExecution: true
     ),
     entry(
       .focusEditor,
@@ -122,6 +123,114 @@ public enum WorkbenchAutomationRegistry {
       systemImage: "paperplane",
       risk: .externalEffect
     ),
+    entry(
+      .draftRead,
+      title: "读取文章",
+      detail: "按大纲、全文或指定段落读取当前文章内容与字数统计",
+      systemImage: "doc.text.magnifyingglass",
+      risk: .readOnly,
+      arguments: [.draftID, .mode, .paragraphIndices],
+      required: [.draftID]
+    ),
+    entry(
+      .searchDrafts,
+      title: "搜索文章",
+      detail: "在允许读取的本地公开文章中搜索，并返回有界摘要与稳定文章 ID",
+      systemImage: "text.magnifyingglass",
+      risk: .readOnly,
+      arguments: [.query],
+      required: [.query]
+    ),
+    entry(
+      .knowledgeSearch,
+      title: "搜索资料库",
+      detail: "仅搜索明确允许远程 AI 使用的本地资料，并返回有界摘要与稳定资料 ID",
+      systemImage: "books.vertical",
+      risk: .readOnly,
+      arguments: [.query],
+      required: [.query]
+    ),
+    entry(
+      .knowledgeRead,
+      title: "读取资料库文档",
+      detail: "按稳定资料 ID 读取明确允许远程 AI 使用的文档，内容有长度上限",
+      systemImage: "doc.text.magnifyingglass",
+      risk: .readOnly,
+      arguments: [.documentID],
+      required: [.documentID]
+    ),
+    entry(
+      .auditContent,
+      title: "审计文章内容",
+      detail: "对指定文章运行本地 SEO 与内容结构检查，不访问网络",
+      systemImage: "checklist",
+      risk: .readOnly,
+      arguments: [.draftID],
+      required: [.draftID]
+    ),
+    entry(
+      .applyDiff,
+      title: "应用局部修改",
+      detail: "预览后对文章指定片段进行精确替换",
+      systemImage: "text.badge.checkmark",
+      risk: .contentChange,
+      arguments: [.draftID, .originalText, .replacementText],
+      required: [.draftID, .originalText, .replacementText]
+    ),
+    entry(
+      .generateFrontmatter,
+      title: "设置文章标签",
+      detail: "根据明确传入的值更新文章标签；不会自动推断标题、分类或其他 Frontmatter 字段",
+      systemImage: "newspaper",
+      risk: .contentChange,
+      arguments: [.draftID, .value, .values],
+      required: [.draftID],
+      semanticRule: .valueOrValues
+    ),
+    entry(
+      .webFetch,
+      title: "抓取网页内容",
+      detail: "安全提取指定 URL 网页的纯文本与 Markdown 内容",
+      systemImage: "globe",
+      risk: .readOnly,
+      arguments: [.url],
+      required: [.url]
+    ),
+    entry(
+      .webSearch,
+      title: "联网搜索",
+      detail: "在线检索与文章主题相关的资料与技术规范",
+      systemImage: "magnifyingglass",
+      risk: .readOnly,
+      arguments: [.query],
+      required: [.query],
+      isAgentExposed: false
+    ),
+    entry(
+      .siteCheckLinks,
+      title: "静态检查文章链接",
+      detail: "在本地解析 Markdown 链接并报告格式与目标类型；不验证网络可用性",
+      systemImage: "link.badge.plus",
+      risk: .readOnly,
+      arguments: [.draftID],
+      required: [.draftID]
+    ),
+    entry(
+      .siteOptimizeImages,
+      title: "检查图片资源",
+      detail: "巡检文章中引用的图片体积大小与 alt 描述完整性",
+      systemImage: "photo.badge.checkmark",
+      risk: .readOnly,
+      arguments: [.draftID],
+      required: [.draftID]
+    ),
+    entry(
+      .siteDeployStatus,
+      title: "查看部署状态",
+      detail: "查看站点最新构建与线上发布健康状态",
+      systemImage: "antenna.radiowaves.left.and.right",
+      risk: .readOnly
+    ),
   ]
 
   public static let descriptors = entries.map(\.descriptor)
@@ -142,9 +251,34 @@ public enum WorkbenchAutomationRegistry {
   /// The same command entries drive model declarations, prompt text, parsing,
   /// and runtime validation. A declaration never grants execution authority.
   public static var agentToolDefinitions: [AIToolDefinition] {
-    entries.map { entry in
-      entry.specification.definition(descriptor: entry.descriptor)
+    entries.compactMap { entry in
+      guard entry.isAgentExposed else { return nil }
+      return entry.specification.definition(descriptor: entry.descriptor)
     }
+  }
+
+  public static func agentToolDefinitions(
+    allowing commands: Set<WorkbenchAutomationCommandID>
+  ) -> [AIToolDefinition] {
+    entries.compactMap { entry in
+      guard entry.isAgentExposed, commands.contains(entry.descriptor.id) else { return nil }
+      return entry.specification.definition(descriptor: entry.descriptor)
+    }
+  }
+
+  /// Converts the persisted fine-grained policy into the command allowlist
+  /// declared to the model. Execution still validates the same allowlist.
+  public static func agentCommands(
+    allowedBy policy: AIAgentPermissionPolicy,
+    masterEnabled: Bool
+  ) -> Set<WorkbenchAutomationCommandID> {
+    guard masterEnabled else { return [] }
+    return Set(entries.compactMap { entry in
+      guard entry.isAgentExposed,
+        policy.allows(requiredPermission(for: entry.descriptor.id))
+      else { return nil }
+      return entry.descriptor.id
+    })
   }
 
   static func agentInvocation(
@@ -152,10 +286,11 @@ public enum WorkbenchAutomationRegistry {
     draftVersions: [UUID: Date]
   ) throws -> WorkbenchAIAgentToolInvocation {
     guard let command = WorkbenchAutomationCommandID(rawValue: toolCall.function.name),
-      let specification = specification(for: command)
+      let entry = byID[command], entry.isAgentExposed
     else {
       throw WorkbenchAutomationAgentToolError.unknownTool(toolCall.function.name)
     }
+    let specification = entry.specification
     guard let data = toolCall.function.arguments.data(using: .utf8) else {
       throw WorkbenchAutomationAgentToolError.invalidJSON
     }
@@ -184,7 +319,8 @@ public enum WorkbenchAutomationRegistry {
   }
 
   public static var promptCatalog: String {
-    entries.map { entry in
+    entries.compactMap { entry in
+      guard entry.isAgentExposed else { return nil }
       let descriptor = entry.descriptor
       return
         "- \(descriptor.id.rawValue): \(descriptor.title)；risk=\(descriptor.risk.rawValue)；arguments=\(entry.specification.promptCatalog)"
@@ -200,7 +336,9 @@ public enum WorkbenchAutomationRegistry {
     risk: WorkbenchAutomationRisk,
     arguments: [WorkbenchAutomationArgumentKey] = [],
     required: Set<WorkbenchAutomationArgumentKey> = [],
-    semanticRule: WorkbenchAutomationSemanticRule = .none
+    semanticRule: WorkbenchAutomationSemanticRule = .none,
+    allowsAgentAutomaticExecution: Bool? = nil,
+    isAgentExposed: Bool = true
   ) -> WorkbenchAutomationRegistryEntry {
     let specification = WorkbenchAutomationCommandSpecification(
       allowedArguments: arguments,
@@ -214,10 +352,35 @@ public enum WorkbenchAutomationRegistry {
         detail: CoreL10n.text(detail),
         systemImage: systemImage,
         risk: risk,
-        requiresDraft: required.contains(.draftID)
+        requiresDraft: required.contains(.draftID),
+        allowsAgentAutomaticExecution: allowsAgentAutomaticExecution
       ),
-      specification: specification
+      specification: specification,
+      isAgentExposed: isAgentExposed
     )
+  }
+
+  private static func requiredPermission(
+    for command: WorkbenchAutomationCommandID
+  ) -> AIAgentPermissionScope {
+    switch command {
+    case .openSection, .selectDraft, .focusEditor, .showInspector, .runPreflight,
+      .refreshPublishPreview, .draftRead, .searchDrafts, .knowledgeSearch,
+      .knowledgeRead, .auditContent,
+      .siteCheckLinks, .siteOptimizeImages:
+      return .localRead
+    case .createDraft:
+      return .draftCreation
+    case .saveWorkbench, .updateMetadata, .appendToBody, .replaceBody, .deleteDraft,
+      .applyDiff, .generateFrontmatter:
+      return .contentModification
+    case .webFetch, .webSearch, .siteDeployStatus:
+      return .networkAccess
+    case .writeLocalRepository:
+      return .repositoryWrite
+    case .publishOnline:
+      return .publishing
+    }
   }
 }
 
@@ -227,7 +390,7 @@ extension WorkbenchAutomationPlan {
       return true
     }
     return source == .agentLoop
-      ? risk.requiresAgentConfirmation
+      ? !(WorkbenchAutomationRegistry.descriptor(for: step.command)?.allowsAgentAutomaticExecution ?? false)
       : risk.requiresExplicitConfirmation
   }
 }
@@ -241,6 +404,7 @@ enum WorkbenchAutomationAgentToolError: Error, Equatable, Sendable {
 private struct WorkbenchAutomationRegistryEntry: Sendable {
   var descriptor: WorkbenchAutomationCommandDescriptor
   var specification: WorkbenchAutomationCommandSpecification
+  var isAgentExposed: Bool
 }
 
 enum WorkbenchAutomationArgumentKey: String, CaseIterable, Hashable, Sendable {
@@ -251,6 +415,13 @@ enum WorkbenchAutomationArgumentKey: String, CaseIterable, Hashable, Sendable {
   case value
   case values
   case content
+  case mode
+  case paragraphIndices
+  case url
+  case query
+  case documentID
+  case originalText
+  case replacementText
 
   var allowedStringValues: [String] {
     switch self {
@@ -260,14 +431,17 @@ enum WorkbenchAutomationArgumentKey: String, CaseIterable, Hashable, Sendable {
       return ["body", "title", "summary", "slug"]
     case .metadataField:
       return AIPublishingMetadataField.allCases.map(\.rawValue)
-    case .draftID, .value, .values, .content:
+    case .mode:
+      return ["outline", "full", "paragraph_range"]
+    case .draftID, .documentID, .value, .values, .content, .paragraphIndices, .url, .query,
+      .originalText, .replacementText:
       return []
     }
   }
 
   var schema: AIStructuredOutputJSONValue {
     switch self {
-    case .section, .editorField, .metadataField:
+    case .section, .editorField, .metadataField, .mode:
       return .object([
         "type": .string("string"),
         "enum": .array(allowedStringValues.map(AIStructuredOutputJSONValue.string)),
@@ -276,6 +450,11 @@ enum WorkbenchAutomationArgumentKey: String, CaseIterable, Hashable, Sendable {
       return .object([
         "type": .string("string"),
         "description": .string("Stable draft UUID from the supplied workbench context."),
+      ])
+    case .documentID:
+      return .object([
+        "type": .string("string"),
+        "description": .string("Stable knowledge document UUID returned by knowledgeSearch."),
       ])
     case .value:
       return .object(["type": .string("string")])
@@ -288,6 +467,32 @@ enum WorkbenchAutomationArgumentKey: String, CaseIterable, Hashable, Sendable {
       return .object([
         "type": .string("string"),
         "description": .string("Markdown content."),
+      ])
+    case .paragraphIndices:
+      return .object([
+        "type": .string("array"),
+        "items": .object(["type": .string("integer"), "minimum": .number(0)]),
+        "description": .string("0-indexed paragraph indices to read."),
+      ])
+    case .url:
+      return .object([
+        "type": .string("string"),
+        "description": .string("Web page URL to fetch."),
+      ])
+    case .query:
+      return .object([
+        "type": .string("string"),
+        "description": .string("Search query."),
+      ])
+    case .originalText:
+      return .object([
+        "type": .string("string"),
+        "description": .string("Original text to match and replace."),
+      ])
+    case .replacementText:
+      return .object([
+        "type": .string("string"),
+        "description": .string("New replacement text."),
       ])
     }
   }
@@ -308,6 +513,20 @@ enum WorkbenchAutomationArgumentKey: String, CaseIterable, Hashable, Sendable {
       return "values: [string]"
     case .content:
       return "content: Markdown"
+    case .mode:
+      return "mode: \(allowedStringValues.joined(separator: "|"))"
+    case .paragraphIndices:
+      return "paragraphIndices: [int]"
+    case .url:
+      return "url: string"
+    case .query:
+      return "query: string"
+    case .documentID:
+      return "documentID: UUID"
+    case .originalText:
+      return "originalText: string"
+    case .replacementText:
+      return "replacementText: string"
     }
   }
 }
@@ -315,6 +534,7 @@ enum WorkbenchAutomationArgumentKey: String, CaseIterable, Hashable, Sendable {
 enum WorkbenchAutomationSemanticRule: Equatable, Sendable {
   case none
   case metadataValue
+  case valueOrValues
 }
 
 struct WorkbenchAutomationCommandSpecification: Sendable {
@@ -329,9 +549,15 @@ struct WorkbenchAutomationCommandSpecification: Sendable {
       return "\(key.promptCatalog) (\(required))"
     }
     .joined(separator: ", ")
-    guard semanticRule == .metadataValue else { return arguments }
-    return arguments
-      + "; tags requires a non-empty value or values; other metadata fields require a non-empty value"
+    switch semanticRule {
+    case .none:
+      return arguments
+    case .metadataValue:
+      return arguments
+        + "; tags requires a non-empty value or values; other metadata fields require a non-empty value"
+    case .valueOrValues:
+      return arguments + "; requires a non-empty value or values"
+    }
   }
 
   func definition(
@@ -348,6 +574,8 @@ struct WorkbenchAutomationCommandSpecification: Sendable {
     ]
     if semanticRule == .metadataValue {
       schema["allOf"] = Self.metadataConditionalSchema
+    } else if semanticRule == .valueOrValues {
+      schema["anyOf"] = Self.valueOrValuesSchema
     }
     return AIToolDefinition(
       function: AIToolFunctionDefinition(
@@ -411,6 +639,31 @@ struct WorkbenchAutomationCommandSpecification: Sendable {
         }
       case (.content, .string(let raw)):
         arguments.content = raw
+      case (.mode, .string(let raw)):
+        guard key.allowedStringValues.contains(raw) else {
+          throw WorkbenchAutomationAgentToolError.argumentMismatch
+        }
+        arguments.mode = raw
+      case (.paragraphIndices, .array(let rawValues)):
+        arguments.paragraphIndices = try rawValues.map { value in
+          guard case .number(let num) = value else {
+            throw WorkbenchAutomationAgentToolError.argumentMismatch
+          }
+          return Int(num)
+        }
+      case (.url, .string(let raw)):
+        arguments.url = raw
+      case (.query, .string(let raw)):
+        arguments.query = raw
+      case (.documentID, .string(let raw)):
+        guard let documentID = UUID(uuidString: raw) else {
+          throw WorkbenchAutomationAgentToolError.argumentMismatch
+        }
+        arguments.documentID = documentID
+      case (.originalText, .string(let raw)):
+        arguments.originalText = raw
+      case (.replacementText, .string(let raw)):
+        arguments.replacementText = raw
       default:
         throw WorkbenchAutomationAgentToolError.argumentMismatch
       }
@@ -438,6 +691,11 @@ struct WorkbenchAutomationCommandSpecification: Sendable {
     {
       throw WorkbenchAutomationValidationError.missingArgument("editorField")
     }
+    if let mode = arguments.mode,
+      !WorkbenchAutomationArgumentKey.mode.allowedStringValues.contains(mode)
+    {
+      throw WorkbenchAutomationValidationError.missingArgument("mode")
+    }
     if semanticRule == .metadataValue {
       guard let field = arguments.metadataField else {
         throw WorkbenchAutomationValidationError.missingArgument("metadataField")
@@ -452,6 +710,11 @@ struct WorkbenchAutomationCommandSpecification: Sendable {
       } else if arguments.value?.nilIfEmpty == nil {
         throw WorkbenchAutomationValidationError.missingArgument("value")
       }
+    } else if semanticRule == .valueOrValues,
+      arguments.value?.nilIfEmpty == nil,
+      !arguments.values.contains(where: { $0.nilIfEmpty != nil })
+    {
+      throw WorkbenchAutomationValidationError.missingArgument("value|values")
     }
   }
 
@@ -474,6 +737,20 @@ struct WorkbenchAutomationCommandSpecification: Sendable {
       return arguments.values.contains(where: { $0.nilIfEmpty != nil })
     case .content:
       return arguments.content?.nilIfEmpty != nil
+    case .mode:
+      return arguments.mode?.nilIfEmpty != nil
+    case .paragraphIndices:
+      return !arguments.paragraphIndices.isEmpty
+    case .url:
+      return arguments.url?.nilIfEmpty != nil
+    case .query:
+      return arguments.query?.nilIfEmpty != nil
+    case .documentID:
+      return arguments.documentID != nil
+    case .originalText:
+      return arguments.originalText?.nilIfEmpty != nil
+    case .replacementText:
+      return arguments.replacementText != nil
     }
   }
 
@@ -496,6 +773,20 @@ struct WorkbenchAutomationCommandSpecification: Sendable {
       return !arguments.values.isEmpty
     case .content:
       return arguments.content != nil
+    case .mode:
+      return arguments.mode != nil
+    case .paragraphIndices:
+      return !arguments.paragraphIndices.isEmpty
+    case .url:
+      return arguments.url != nil
+    case .query:
+      return arguments.query != nil
+    case .documentID:
+      return arguments.documentID != nil
+    case .originalText:
+      return arguments.originalText != nil
+    case .replacementText:
+      return arguments.replacementText != nil
     }
   }
 
@@ -530,6 +821,21 @@ struct WorkbenchAutomationCommandSpecification: Sendable {
         ]),
       ]),
     ])
+  ])
+
+  private static let valueOrValuesSchema: AIStructuredOutputJSONValue = .array([
+    .object([
+      "required": .array([.string("value")]),
+      "properties": .object([
+        "value": .object(["minLength": .number(1)])
+      ]),
+    ]),
+    .object([
+      "required": .array([.string("values")]),
+      "properties": .object([
+        "values": .object(["minItems": .number(1)])
+      ]),
+    ]),
   ])
 }
 
@@ -604,6 +910,28 @@ public enum WorkbenchAutomationDraftMutationService {
         .joined(separator: "\n\n")
     case .replaceBody:
       updated.bodyMarkdown = step.arguments.content?.trimmedForPublishing ?? ""
+    case .applyDiff:
+      guard let original = step.arguments.originalText?.nilIfEmpty,
+        let replacement = step.arguments.replacementText
+      else {
+        throw WorkbenchAutomationValidationError.missingArgument("originalText/replacementText")
+      }
+      guard let match = uniqueMatch(of: original, in: draft.bodyMarkdown) else {
+        throw WorkbenchAutomationValidationError.missingArgument(
+          "originalText (must match exactly once)"
+        )
+      }
+      updated.bodyMarkdown = draft.bodyMarkdown.replacingCharacters(
+        in: match,
+        with: replacement
+      )
+    case .generateFrontmatter:
+      if !step.arguments.values.isEmpty {
+        updated.tags = stableUniqueStrings(step.arguments.values)
+      } else if let val = step.arguments.value?.nilIfEmpty {
+        let components = val.components(separatedBy: CharacterSet(charactersIn: ",，"))
+        updated.tags = stableUniqueStrings(components)
+      }
     default:
       throw WorkbenchAutomationValidationError.unsupportedCommand
     }
@@ -624,6 +952,29 @@ public enum WorkbenchAutomationDraftMutationService {
       guard seen.insert(normalized).inserted else { return nil }
       return trimmed
     }
+  }
+
+  /// Returns the only exact, Unicode-safe match in `text`.
+  ///
+  /// Advancing from the match's lower bound (rather than its upper bound)
+  /// also detects overlapping matches such as `aa` in `aaa`, so an ambiguous
+  /// local edit fails closed instead of replacing an arbitrary set of bytes.
+  private static func uniqueMatch(of needle: String, in text: String) -> Range<String.Index>? {
+    guard !needle.isEmpty else { return nil }
+    var searchStart = text.startIndex
+    var match: Range<String.Index>?
+    var matchCount = 0
+
+    while searchStart < text.endIndex,
+          let range = text.range(of: needle, range: searchStart..<text.endIndex)
+    {
+      matchCount += 1
+      guard matchCount <= 1 else { return nil }
+      match = range
+      searchStart = text.index(after: range.lowerBound)
+    }
+
+    return matchCount == 1 ? match : nil
   }
 }
 

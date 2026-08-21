@@ -123,7 +123,7 @@ enum SettingsTab: Hashable, CaseIterable, Identifiable {
     case .rss:
       return String(localized: "管理 RSS 正文离线保存、OPML、内网访问和历史文章清理。")
     case .privacy:
-      return String(localized: "控制快速隐藏、私密内容遮挡和安全状态。")
+      return String(localized: "控制快速隐藏、私密内容遮挡和快捷键。")
     case .dataManagement:
       return String(localized: "管理草稿生命周期、工作区备份、恢复和内容迁移。")
     }
@@ -183,7 +183,7 @@ enum SettingsTab: Hashable, CaseIterable, Identifiable {
         "remote image", "translation"
       ]
     case .privacy:
-      return ["隐私", "安全", "快速隐藏", "防偷窥", "遮挡", "快捷键"]
+      return ["隐私", "快速隐藏", "临时遮挡", "遮挡", "快捷键"]
     case .dataManagement:
       return ["数据", "草稿", "版本", "回收站", "存储", "清理", "备份", "恢复", "迁移", "导入"]
     }

@@ -371,12 +371,23 @@ public struct CodexAppServerCompletion: Codable, Equatable, Sendable {
   public let threadID: String
   public let turnID: String
   public let model: String?
+  /// Host-facing dynamic tool calls emitted by this turn. The Codex process
+  /// never executes these application commands itself; the workbench Agent
+  /// validates and executes them through its own command registry.
+  public let toolCalls: [AIToolCall]
 
-  public init(text: String, threadID: String, turnID: String, model: String? = nil) {
+  public init(
+    text: String,
+    threadID: String,
+    turnID: String,
+    model: String? = nil,
+    toolCalls: [AIToolCall] = []
+  ) {
     self.text = text
     self.threadID = threadID
     self.turnID = turnID
     self.model = model
+    self.toolCalls = toolCalls
   }
 }
 
@@ -391,6 +402,23 @@ public enum CodexAppServerError: Error, Equatable, Sendable {
   case turnFailed(String)
   case turnInterrupted
   case cancelled
+  /// The ChatGPT account is not currently eligible for the explicitly bound
+  /// data-sharing grant. The user-facing description must stay generic so an
+  /// account ID or email can never escape through an error message.
+  case accountAuthorizationRequired
+}
+
+extension CodexAppServerError {
+  /// Semantic timeout sentinel kept in the RPC-shaped representation so
+  /// existing exhaustive ``LocalizedError`` mappings remain source
+  /// compatible. The message is actionable and deliberately contains no
+  /// server URL, login ID, or authentication material.
+  public static var loginTimedOut: Self {
+    .rpc(
+      code: -32_001,
+      message: "登录等待超时，请返回 AI 设置重新开始登录。"
+    )
+  }
 }
 
 struct CodexAppServerRPCErrorPayload: Decodable, Sendable {

@@ -53,6 +53,20 @@ struct MarkdownEditorComfortConfiguration: Equatable {
   static let defaultRealtimeAnalysisEnabled = MarkdownEditorComfortPreferences
     .defaultRealtimeAnalysisEnabled
 
+  static func resetAllUserDefaults() {
+    let defaults = UserDefaults.standard
+    defaults.set(defaultFontSize, forKey: MarkdownEditorComfortPreferences.fontSizeKey)
+    defaults.set(defaultLineSpacing, forKey: MarkdownEditorComfortPreferences.lineSpacingKey)
+    defaults.set(defaultBodyWidth, forKey: MarkdownEditorComfortPreferences.bodyWidthKey)
+    defaults.set(defaultSpellCheckEnabled, forKey: MarkdownEditorComfortPreferences.spellCheckEnabledKey)
+    defaults.set(defaultTypewriterModeEnabled, forKey: MarkdownEditorComfortPreferences.typewriterModeEnabledKey)
+    defaults.set(defaultCurrentParagraphHighlightEnabled, forKey: MarkdownEditorComfortPreferences.currentParagraphHighlightEnabledKey)
+    defaults.set(defaultWarmPaperBackgroundEnabled, forKey: MarkdownEditorComfortPreferences.warmPaperBackgroundEnabledKey)
+    defaults.set(defaultAutomaticPairingEnabled, forKey: MarkdownEditorComfortPreferences.automaticPairingEnabledKey)
+    defaults.set(defaultTypewriterSoundPreset.rawValue, forKey: MarkdownEditorComfortPreferences.typewriterSoundPresetKey)
+    defaults.set(defaultParagraphSpotlightEnabled, forKey: MarkdownEditorComfortPreferences.paragraphSpotlightEnabledKey)
+  }
+
   let fontSize: Double
   let lineSpacing: Double
   let bodyWidth: Double

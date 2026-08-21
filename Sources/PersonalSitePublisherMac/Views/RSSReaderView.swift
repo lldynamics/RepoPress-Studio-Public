@@ -17,7 +17,6 @@ struct RSSReaderView: View {
   @State var workflowMessage: String?
   @State var workflowIsBusy = false
   @State var isReaderCompact = false
-  @State var isStatusDetailsExpanded = false
   @State var selectedArticlePayload: RSSArticle?
   @State var selectedArticleLoadError: String?
   @State var selectedArticleIsLoading = false
@@ -192,89 +191,6 @@ struct RSSReaderView: View {
       sortOrder: presentation.sortOrder.rawValue,
       mutationRevision: store.mutationRevision
     )
-  }
-
-  private var latestStatusEvent: RSSStatusEvent? {
-    if let lastError = store.lastError {
-      let lines = lastError.split(whereSeparator: \.isNewline).map(String.init)
-      var details = Array(lines.dropFirst())
-      details.append(
-        contentsOf: [
-          store.statusMessage,
-          workflowMessage,
-          presentation.statusMessage,
-        ].compactMap { $0 }.filter { $0 != (lines.first ?? "") })
-      var uniqueDetails: [String] = []
-      for detail in details where !detail.isEmpty && !uniqueDetails.contains(detail) {
-        uniqueDetails.append(detail)
-      }
-      return RSSStatusEvent(
-        title: lines.first ?? lastError,
-        details: uniqueDetails,
-        isError: true
-      )
-    }
-    if let workflowMessage {
-      return RSSStatusEvent(
-        title: workflowMessage,
-        details: [store.statusMessage, presentation.statusMessage]
-          .compactMap { $0 }
-          .filter { $0 != workflowMessage },
-        isError: false
-      )
-    }
-    if let presentationMessage = presentation.statusMessage {
-      return RSSStatusEvent(title: presentationMessage, details: [], isError: false)
-    }
-    if let summary = store.lastRefreshSummary {
-      var details: [String] = []
-      if let statusMessage = store.statusMessage, statusMessage != summary.statusText {
-        details.append(statusMessage)
-      }
-      return RSSStatusEvent(
-        title: refreshSummaryText(summary),
-        details: details,
-        isError: summary.failureCount > 0
-      )
-    }
-    if let statusMessage = store.statusMessage {
-      return RSSStatusEvent(title: statusMessage, details: [], isError: false)
-    }
-    return nil
-  }
-
-  @ViewBuilder
-  private func statusEventView(_ event: RSSStatusEvent) -> some View {
-    if event.details.isEmpty {
-      statusEventLabel(event)
-    } else {
-      DisclosureGroup(isExpanded: $isStatusDetailsExpanded) {
-        VStack(alignment: .leading, spacing: 3) {
-          ForEach(Array(event.details.enumerated()), id: \.offset) { detail in
-            Text(detail.element)
-              .font(.caption)
-              .foregroundStyle(.secondary)
-              .textSelection(.enabled)
-          }
-        }
-        .padding(.top, 3)
-      } label: {
-        statusEventLabel(event)
-      }
-    }
-  }
-
-  private func statusEventLabel(_ event: RSSStatusEvent) -> some View {
-    HStack(spacing: 7) {
-      Image(systemName: event.isError ? "exclamationmark.triangle.fill" : "info.circle")
-        .foregroundStyle(event.isError ? WorkbenchTheme.risk : Color.secondary)
-        .accessibilityHidden(true)
-      Text(event.title)
-        .font(.callout.weight(event.isError ? .semibold : .regular))
-        .foregroundStyle(event.isError ? WorkbenchTheme.risk : Color.primary)
-        .lineLimit(1)
-        .textSelection(.enabled)
-    }
   }
 
   private func handleFilterChange(

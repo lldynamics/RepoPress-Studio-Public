@@ -118,21 +118,28 @@ extension WorkbenchAIStore {
     }
   }
 
-  func explicitGeneralAIChatContextPrompt(
+  func explicitGeneralAIChatContextPromptSnapshot(
     references: [AIContextReference]
-  ) async -> String? {
+  ) async -> AIContextPromptSnapshot? {
     let approved = approvedGeneralAIChatContextReferences(references)
     guard !approved.isEmpty else { return nil }
 
     var remaining = 24_000
     var sections: [String] = []
-    func appendSection(_ value: String) {
+    var authorizationBindings: [KnowledgeAuthorizationBinding] = []
+    func appendSection(
+      _ value: String,
+      authorizationBinding: KnowledgeAuthorizationBinding? = nil
+    ) {
       guard remaining > 0 else { return }
       let minimized = AIOutboundPayloadPrivacyService().sanitize(value).text
       let bounded = String(minimized.prefix(remaining))
       guard !bounded.isEmpty else { return }
       sections.append(bounded)
       remaining -= bounded.count
+      if let authorizationBinding {
+        authorizationBindings.append(authorizationBinding)
+      }
     }
 
     for reference in approved where remaining > 0 {
@@ -181,15 +188,17 @@ extension WorkbenchAIStore {
         guard
           let documentID = reference.resourceID.flatMap(UUID.init(uuidString:)),
           let document = store.knowledge.documents.first(where: { $0.id == documentID }),
-          let text = await store.knowledge.explicitAIContextText(documentID: documentID)
+          let snapshot = await store.knowledge.explicitAIContextSnapshot(documentID: documentID)
         else { continue }
         appendSection(
           """
           <explicit_knowledge_entry title="\(document.title)">
           来源：\(document.sourceURL?.absoluteString.nilIfEmpty ?? document.sourceName.nilIfEmpty ?? "本地资料库")
-          \(String(text.prefix(8_000)))
+          \(String(snapshot.text.prefix(8_000)))
           </explicit_knowledge_entry>
-          """)
+          """,
+          authorizationBinding: snapshot.authorizationBinding
+        )
       case .publishCheck:
         guard
           let draftID = reference.resourceID.flatMap(UUID.init(uuidString:)),
@@ -203,7 +212,17 @@ extension WorkbenchAIStore {
           """)
       }
     }
-    return sections.joined(separator: "\n\n").nilIfEmpty
+    guard let prompt = sections.joined(separator: "\n\n").nilIfEmpty else { return nil }
+    return AIContextPromptSnapshot(
+      prompt: prompt,
+      authorizationBindings: authorizationBindings
+    )
+  }
+
+  func explicitGeneralAIChatContextPrompt(
+    references: [AIContextReference]
+  ) async -> String? {
+    await explicitGeneralAIChatContextPromptSnapshot(references: references)?.prompt
   }
 
   public func availableAIChatContextReferences(
@@ -324,10 +343,10 @@ extension WorkbenchAIStore {
     }
   }
 
-  func explicitAIChatContextPrompt(
+  func explicitAIChatContextPromptSnapshot(
     references: [AIContextReference],
     draft: ArticleDraft
-  ) async -> String? {
+  ) async -> AIContextPromptSnapshot? {
     let approved = approvedAIChatContextReferences(references, for: draft)
     guard !approved.isEmpty else { return nil }
 
@@ -335,14 +354,21 @@ extension WorkbenchAIStore {
     let characterBudget = 24_000
     var remaining = characterBudget
     var sections: [String] = []
+    var authorizationBindings: [KnowledgeAuthorizationBinding] = []
 
-    func appendSection(_ value: String) {
+    func appendSection(
+      _ value: String,
+      authorizationBinding: KnowledgeAuthorizationBinding? = nil
+    ) {
       guard remaining > 0 else { return }
       let minimized = AIOutboundPayloadPrivacyService().sanitize(value).text
       let bounded = String(minimized.prefix(remaining))
       guard !bounded.isEmpty else { return }
       sections.append(bounded)
       remaining -= bounded.count
+      if let authorizationBinding {
+        authorizationBindings.append(authorizationBinding)
+      }
     }
 
     for reference in approved where remaining > 0 {
@@ -385,7 +411,7 @@ extension WorkbenchAIStore {
         guard
           let id = reference.resourceID.flatMap(UUID.init(uuidString:)),
           let document = store.knowledge.documents.first(where: { $0.id == id }),
-          let text = await store.knowledge.explicitAIContextText(documentID: id)
+          let snapshot = await store.knowledge.explicitAIContextSnapshot(documentID: id)
         else {
           continue
         }
@@ -393,9 +419,11 @@ extension WorkbenchAIStore {
           """
           <explicit_knowledge_entry title="\(document.title)">
           来源：\(document.sourceURL?.absoluteString.nilIfEmpty ?? document.sourceName.nilIfEmpty ?? "本地资料库")
-          \(String(text.prefix(8_000)))
+          \(String(snapshot.text.prefix(8_000)))
           </explicit_knowledge_entry>
-          """)
+          """,
+          authorizationBinding: snapshot.authorizationBinding
+        )
       case .publishCheck:
         appendSection(
           """
@@ -405,7 +433,18 @@ extension WorkbenchAIStore {
           """)
       }
     }
-    return sections.joined(separator: "\n\n").nilIfEmpty
+    guard let prompt = sections.joined(separator: "\n\n").nilIfEmpty else { return nil }
+    return AIContextPromptSnapshot(
+      prompt: prompt,
+      authorizationBindings: authorizationBindings
+    )
+  }
+
+  func explicitAIChatContextPrompt(
+    references: [AIContextReference],
+    draft: ArticleDraft
+  ) async -> String? {
+    await explicitAIChatContextPromptSnapshot(references: references, draft: draft)?.prompt
   }
 
   func articleContext(_ article: ArticleDraft, tag: String) -> String {

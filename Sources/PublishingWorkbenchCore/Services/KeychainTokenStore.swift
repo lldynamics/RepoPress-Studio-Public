@@ -174,6 +174,13 @@ public enum KeychainCredentialServices {
 }
 
 public final class KeychainTokenStore: @unchecked Sendable {
+  /// Marks a credential whose secret was cleared because a legacy ACL allowed
+  /// updates but refused deletion. The marker is metadata, so passive status
+  /// checks do not need to request the secret or trigger an auth prompt.
+  static let clearedCredentialMetadataMarker = Data(
+    "com.jinfang.PersonalSitePublisherMac.cleared-credential.v1".utf8
+  )
+
   private let service: String
   private let accountPrefix: String
   private let allowsAuthenticationInteraction: Bool
@@ -567,7 +574,7 @@ public final class KeychainTokenStore: @unchecked Sendable {
     guard let data = result as? Data else {
       throw KeychainTokenStoreError.invalidData
     }
-    return String(data: data, encoding: .utf8)
+    return try Self.tokenString(from: data)
   }
 
   private func availability(forAccount account: String) throws -> KeychainTokenAvailability {
@@ -589,9 +596,25 @@ public final class KeychainTokenStore: @unchecked Sendable {
     guard let attributes = result as? [String: Any] else {
       throw KeychainTokenStoreError.invalidData
     }
+    return Self.availability(from: attributes)
+  }
+
+  static func tokenString(from data: Data) throws -> String? {
+    guard !data.isEmpty else { return nil }
+    guard let token = String(data: data, encoding: .utf8) else {
+      throw KeychainTokenStoreError.invalidData
+    }
+    return token
+  }
+
+  static func availability(from attributes: [String: Any]) -> KeychainTokenAvailability {
+    let isClearedCredential =
+      attributes[kSecAttrGeneric as String] as? Data == clearedCredentialMetadataMarker
     return KeychainTokenAvailability(
-      hasToken: true,
-      updatedAt: attributes[kSecAttrModificationDate as String] as? Date
+      hasToken: !isClearedCredential,
+      updatedAt: isClearedCredential
+        ? nil
+        : attributes[kSecAttrModificationDate as String] as? Date
     )
   }
 
@@ -614,7 +637,10 @@ public final class KeychainTokenStore: @unchecked Sendable {
 
       let data = Data(token.utf8)
       var query = baseQuery(account: account)
-      let attributes = [kSecValueData as String: data] as CFDictionary
+      let attributes = [
+        kSecValueData as String: data,
+        kSecAttrGeneric as String: Data(),
+      ] as CFDictionary
 
       let updateStatus = SecItemUpdate(query as CFDictionary, attributes)
       if updateStatus == errSecSuccess {
@@ -625,6 +651,7 @@ public final class KeychainTokenStore: @unchecked Sendable {
       }
 
       query[kSecValueData as String] = data
+      query[kSecAttrGeneric as String] = Data()
       #if os(iOS) || os(tvOS) || os(watchOS) || os(visionOS)
       query[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
       #endif
@@ -660,11 +687,14 @@ public final class KeychainTokenStore: @unchecked Sendable {
       if Self.isRecoverableDeletionOwnershipStatus(status) {
         // Legacy macOS keychain ACLs can allow a newer signed build to read and
         // update an item but reject deletion as an owner edit. Clearing the
-        // value removes the credential; availability treats empty data as no
-        // token, so the user-facing result remains a real deletion.
+        // value removes the credential. A metadata marker lets passive
+        // availability checks report it as missing without reading the secret.
         let updateStatus = SecItemUpdate(
           baseQuery(account: account) as CFDictionary,
-          [kSecValueData as String: Data()] as CFDictionary
+          [
+            kSecValueData as String: Data(),
+            kSecAttrGeneric as String: Self.clearedCredentialMetadataMarker,
+          ] as CFDictionary
         )
         guard updateStatus == errSecSuccess else {
           throw KeychainTokenStoreError.unhandledStatus(updateStatus)

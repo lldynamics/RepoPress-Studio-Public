@@ -46,6 +46,53 @@ final class CodexAppServerClientTests: XCTestCase {
     XCTAssertEqual(messages.compactMap { $0["id"]?.intValue }, [1, 2])
   }
 
+  func testAccountRequiresAuthWinsOverStaleAccountMetadata() async throws {
+    let transport = ScriptedCodexTransport(mode: .accountRequiresAuth)
+    let client = CodexAppServerClient(transport: transport)
+
+    let account = try await client.accountStatus()
+
+    XCTAssertFalse(account.isAuthenticated)
+    XCTAssertEqual(account.accountID, "stale-acct")
+  }
+
+  func testAccountMetadataInfersAuthenticationWhenFlagsAreAbsent() async throws {
+    let transport = ScriptedCodexTransport(mode: .accountMetadataOnly)
+    let client = CodexAppServerClient(transport: transport)
+
+    let account = try await client.accountStatus()
+
+    XCTAssertTrue(account.isAuthenticated)
+    XCTAssertEqual(account.accountID, "metadata-acct")
+  }
+
+  func testLoginRejectsNonHTTPSOrHostlessAuthURL() async throws {
+    for mode in [
+      ScriptedCodexTransport.Mode.loginInsecureURL,
+      .loginHostlessURL,
+      .loginUserInfoURL,
+    ] {
+      let transport = ScriptedCodexTransport(mode: mode)
+      let client = CodexAppServerClient(transport: transport)
+
+      await XCTAssertThrowsErrorAsync(try await client.startChatGPTLogin()) { error in
+        XCTAssertEqual(error as? CodexAppServerError, .invalidResponse)
+        XCTAssertFalse(String(describing: error).contains("token"))
+      }
+    }
+  }
+
+  func testDeviceCodeLoginRejectsNonHTTPSOrHostlessVerificationURL() async throws {
+    for mode in [ScriptedCodexTransport.Mode.deviceCodeInsecureURL, .deviceCodeHostlessURL] {
+      let transport = ScriptedCodexTransport(mode: mode)
+      let client = CodexAppServerClient(transport: transport)
+
+      await XCTAssertThrowsErrorAsync(try await client.startChatGPTDeviceCodeLogin()) { error in
+        XCTAssertEqual(error as? CodexAppServerError, .invalidResponse)
+      }
+    }
+  }
+
   func testLoginUsesChatGPTTypeAndDoesNotSendCredentials() async throws {
     let transport = ScriptedCodexTransport(mode: .login)
     let client = CodexAppServerClient(transport: transport)
@@ -53,7 +100,7 @@ final class CodexAppServerClientTests: XCTestCase {
     let login = try await client.startChatGPTLogin()
 
     XCTAssertEqual(login.loginID, "login-7")
-    XCTAssertEqual(login.authURL.absoluteString, "https://auth.example.test/device")
+    XCTAssertEqual(login.authURL.absoluteString, "https://auth.example.test/device?state=opaque")
     let messages = await transport.sentMessages()
     let loginMessage = try XCTUnwrap(
       messages.first { $0["method"]?.stringValue == "account/login/start" })
@@ -124,6 +171,71 @@ final class CodexAppServerClientTests: XCTestCase {
       messages.first { $0["method"]?.stringValue == "account/login/cancel" }
     )
     XCTAssertEqual(cancelMessage["params"]?["loginId"]?.stringValue, "login-7")
+  }
+
+  func testLateLoginCompletionAfterCancellationIsNotBufferedAsSuccess() async throws {
+    let transport = ScriptedCodexTransport(mode: .lateCompletionAfterCancel)
+    let client = CodexAppServerClient(
+      transport: transport,
+      loginTimeout: .milliseconds(20)
+    )
+    let login = try await client.startChatGPTLogin()
+    let waitTask = Task {
+      try await client.waitForLoginCompletion(loginID: login.loginID)
+    }
+
+    for _ in 0..<100 {
+      if await client.loginWaiterCount != 0 { break }
+      await Task.yield()
+    }
+    let waiterCount = await client.loginWaiterCount
+    XCTAssertEqual(waiterCount, 1)
+
+    await client.cancelLogin(loginID: login.loginID)
+    await XCTAssertThrowsErrorAsync(try await waitTask.value) { error in
+      XCTAssertEqual(error as? CodexAppServerError, .cancelled)
+    }
+
+    await XCTAssertThrowsErrorAsync(
+      try await client.waitForLoginCompletion(loginID: login.loginID)
+    ) { error in
+      XCTAssertEqual(error as? CodexAppServerError, .loginTimedOut)
+    }
+    let cancelCount = await transport.sentMessageCount(method: "account/login/cancel")
+    XCTAssertEqual(cancelCount, 1)
+  }
+
+  func testLoginWaitTimeoutCancelsOnceClearsWaiterAndKeepsRPCUsable() async throws {
+    let transport = ScriptedCodexTransport(mode: .hangingLogin)
+    let client = CodexAppServerClient(
+      transport: transport,
+      loginTimeout: .milliseconds(20)
+    )
+    let login = try await client.startChatGPTLogin()
+
+    await XCTAssertThrowsErrorAsync(
+      try await client.waitForLoginCompletion(loginID: login.loginID)
+    ) { error in
+      XCTAssertEqual(error as? CodexAppServerError, .loginTimedOut)
+      XCTAssertFalse(String(describing: error).contains("login-7"))
+      XCTAssertFalse(String(describing: error).contains("http"))
+    }
+
+    let waiterCountAfterTimeout = await client.loginWaiterCount
+    XCTAssertEqual(waiterCountAfterTimeout, 0)
+    let didSendCancel = await transport.waitUntilSent(method: "account/login/cancel")
+    XCTAssertTrue(didSendCancel, "Timed out waiting for account/login/cancel")
+    // Allow the timeout task to finish its best-effort remote cancellation,
+    // then ensure a cancellation handler cannot send a second request.
+    try await Task.sleep(for: .milliseconds(20))
+    let cancelCount = await transport.sentMessageCount(method: "account/login/cancel")
+    XCTAssertEqual(cancelCount, 1)
+
+    let account = try await client.accountStatus()
+    XCTAssertTrue(account.isAuthenticated)
+    XCTAssertEqual(account.accountID, "acct-1")
+    let waiterCountAfterRPC = await client.loginWaiterCount
+    XCTAssertEqual(waiterCountAfterRPC, 0)
   }
 
   func testRateLimitsAndLogoutUseTypedResponses() async throws {
@@ -280,6 +392,60 @@ final class CodexAppServerClientTests: XCTestCase {
     }
   }
 
+  func testRPCRequestTimeoutCleansPendingContinuationAndIgnoresLateResponse() async throws {
+    let transport = ScriptedCodexTransport(mode: .lateAccountResponse)
+    let client = CodexAppServerClient(
+      transport: transport,
+      requestTimeout: .milliseconds(20)
+    )
+
+    await XCTAssertThrowsErrorAsync(try await client.accountStatus()) { error in
+      XCTAssertEqual(error as? CodexAppServerError, .requestTimedOut)
+    }
+
+    // The delayed response for request 2 must not resume a consumed
+    // continuation. A later request remains usable and is routed by its own
+    // request ID.
+    try await Task.sleep(for: .milliseconds(40))
+    let account = try await client.accountStatus()
+    XCTAssertEqual(account.accountID, "acct-1")
+    let accountReadCount = await transport.sentMessageCount(method: "account/read")
+    XCTAssertEqual(accountReadCount, 2)
+  }
+
+  func testTurnTimeoutInterruptsAndCleansActiveTurn() async throws {
+    let transport = ScriptedCodexTransport(mode: .hangingTurn)
+    let client = CodexAppServerClient(
+      transport: transport,
+      turnTimeout: .milliseconds(20)
+    )
+
+    await XCTAssertThrowsErrorAsync(try await client.complete(prompt: "timeout this turn")) { error in
+      XCTAssertEqual(error as? CodexAppServerError, .turnTimedOut)
+    }
+    let didSendInterrupt = await transport.waitUntilSent(method: "turn/interrupt")
+    XCTAssertTrue(didSendInterrupt, "Timed out waiting for turn/interrupt")
+    let activeTurn = await client.activeTurnSnapshot
+    XCTAssertNil(activeTurn)
+  }
+
+  func testEOFStartsFreshTransportGenerationOnNextOperation() async throws {
+    let factory = SequencedCodexTransportFactory()
+    let client = CodexAppServerClient(
+      transportFactory: { factory.make() },
+      requestTimeout: .milliseconds(100)
+    )
+
+    await XCTAssertThrowsErrorAsync(try await client.accountStatus()) { error in
+      XCTAssertEqual(error as? CodexAppServerError, .endOfStream)
+    }
+
+    let account = try await client.accountStatus()
+    XCTAssertTrue(account.isAuthenticated)
+    XCTAssertEqual(account.accountID, "acct-1")
+    XCTAssertEqual(factory.makeCount, 2)
+  }
+
   func testCancellingActiveCompletionInterruptsRemoteTurn() async throws {
     let transport = ScriptedCodexTransport(mode: .hangingTurn)
     let client = CodexAppServerClient(transport: transport)
@@ -318,15 +484,72 @@ final class CodexAppServerClientTests: XCTestCase {
     XCTAssertEqual(interrupt["params"]?["turnId"]?.stringValue, "turn-1")
   }
 
+  func testDynamicToolCallIsReturnedToHostAndAcknowledgedWithoutLocalExecution() async throws {
+    let transport = ScriptedCodexTransport(mode: .dynamicTool)
+    let client = CodexAppServerClient(
+      transport: transport,
+      requestTimeout: .seconds(1),
+      turnTimeout: .seconds(1)
+    )
+    let tool = AIToolDefinition(
+      function: AIToolFunctionDefinition(
+        name: "createDraft",
+        description: "Create a blank local draft.",
+        parameters: .object([
+          "type": .string("object"),
+          "properties": .object([
+            "value": .object(["type": .string("string")])
+          ]),
+          "additionalProperties": .bool(false),
+        ])
+      )
+    )
+
+    let completion = try await client.complete(
+      prompt: "Create one draft.",
+      dynamicTools: [tool]
+    )
+
+    XCTAssertEqual(completion.text, "")
+    XCTAssertEqual(completion.toolCalls.count, 1)
+    XCTAssertEqual(completion.toolCalls.first?.id, "dynamic-call-1")
+    XCTAssertEqual(completion.toolCalls.first?.function.name, "createDraft")
+    XCTAssertEqual(
+      completion.toolCalls.first?.function.arguments,
+      #"{"value":"Codex 动态文章"}"#
+    )
+
+    let messages = await transport.sentMessages()
+    let threadStart = try XCTUnwrap(
+      messages.first { $0["method"]?.stringValue == "thread/start" }
+    )
+    let dynamicTools = try XCTUnwrap(
+      threadStart["params"]?["dynamicTools"]?.arrayValue
+    )
+    XCTAssertEqual(dynamicTools.first?["name"]?.stringValue, "createDraft")
+    let response = try XCTUnwrap(
+      messages.first { $0["id"]?.intValue == 91 && $0["method"] == nil }
+    )
+    XCTAssertEqual(response["result"]?["success"]?.boolValue, true)
+  }
+
 }
 
 private actor ScriptedCodexTransport: CodexAppServerTransport {
   enum Mode: Equatable {
     case account
+    case accountRequiresAuth
+    case accountMetadataOnly
     case login
+    case loginInsecureURL
+    case loginHostlessURL
+    case loginUserInfoURL
     case loginCompletion
     case loginFailure
+    case lateCompletionAfterCancel
     case deviceCode
+    case deviceCodeInsecureURL
+    case deviceCodeHostlessURL
     case hangingLogin
     case rateLimits
     case modelCatalogSingle
@@ -337,6 +560,8 @@ private actor ScriptedCodexTransport: CodexAppServerTransport {
     case turnFailure
     case completedFailure
     case hangingTurn
+    case dynamicTool
+    case lateAccountResponse
     case eofAfterHandshake
   }
 
@@ -357,27 +582,87 @@ private actor ScriptedCodexTransport: CodexAppServerTransport {
     guard !isClosed else { throw CodexAppServerError.endOfStream }
     bytes.append(data)
     let line = data.drop(while: { $0 == 0x20 || $0 == 0x09 || $0 == 0x0A || $0 == 0x0D })
-    guard let object = try? JSONDecoder().decode(CodexAppServerJSONValue.self, from: line),
-      let method = object["method"]?.stringValue
+    guard let object = try? JSONDecoder().decode(CodexAppServerJSONValue.self, from: line)
     else { return }
     messages.append(object)
+    guard let method = object["method"]?.stringValue else {
+      if mode == .dynamicTool, object["id"]?.intValue == 91 {
+        enqueue(
+          json: #"""
+            {"method":"turn/completed","params":{"threadId":"thread-1","turnId":"turn-1"}}
+            """#
+        )
+      }
+      return
+    }
+    let requestID = object["id"]?.intValue ?? 0
 
     switch method {
     case "initialize":
       enqueue(
-        json: #"""
-          {"id":1,"result":{"serverInfo":{"version":"1"}}}
-          """#)
+        json: """
+          {"id":\(requestID),"result":{"serverInfo":{"version":"1"}}}
+          """
+      )
     case "account/read":
-      enqueue(
-        json: #"""
-          {"id":2,"result":{"account":{"id":"acct-1","type":"chatgpt","email":"writer@example.com","planType":"pro"},"requiresOpenaiAuth":true}}
-          """#)
+      if mode == .lateAccountResponse && requestID == 2 {
+        Task { [weak self] in
+          try? await Task.sleep(for: .milliseconds(50))
+          await self?.enqueue(
+            json: """
+              {"id":\(requestID),"result":{"authenticated":true,"account":{"id":"late-acct","type":"chatgpt"}}}
+              """
+          )
+        }
+      } else if mode == .accountRequiresAuth {
+        enqueue(
+          json: """
+            {"id":\(requestID),"result":{"authenticated":false,"account":{"id":"stale-acct","type":"chatgpt","email":"stale@example.com"},"requiresOpenaiAuth":true}}
+            """
+        )
+      } else if mode == .accountMetadataOnly {
+        enqueue(
+          json: """
+            {"id":\(requestID),"result":{"account":{"id":"metadata-acct","type":"chatgpt","email":"metadata@example.com"}}}
+            """
+        )
+      } else {
+        enqueue(
+          json: """
+            {"id":\(requestID),"result":{"authenticated":true,"account":{"id":"acct-1","type":"chatgpt","email":"writer@example.com","planType":"pro"},"requiresOpenaiAuth":true}}
+            """
+        )
+      }
     case "account/login/start":
       if mode == .deviceCode {
         enqueue(
           json: #"""
             {"id":2,"result":{"loginId":"login-device-1","verificationUrl":"https://auth.example.test/device","userCode":"ABCD-EFGH"}}
+            """#)
+      } else if mode == .deviceCodeInsecureURL {
+        enqueue(
+          json: #"""
+            {"id":2,"result":{"loginId":"login-device-1","verificationUrl":"http://auth.example.test/device","userCode":"ABCD-EFGH"}}
+            """#)
+      } else if mode == .deviceCodeHostlessURL {
+        enqueue(
+          json: #"""
+            {"id":2,"result":{"loginId":"login-device-1","verificationUrl":"https:///device","userCode":"ABCD-EFGH"}}
+            """#)
+      } else if mode == .loginInsecureURL {
+        enqueue(
+          json: #"""
+            {"id":2,"result":{"loginId":"login-7","authUrl":"http://auth.example.test/device?token=secret"}}
+            """#)
+      } else if mode == .loginHostlessURL {
+        enqueue(
+          json: #"""
+            {"id":2,"result":{"loginId":"login-7","authUrl":"https:///device?token=secret"}}
+            """#)
+      } else if mode == .loginUserInfoURL {
+        enqueue(
+          json: #"""
+            {"id":2,"result":{"loginId":"login-7","authUrl":"https://user:password@auth.example.test/device?token=secret"}}
             """#)
       } else if mode == .loginCompletion {
         enqueue(
@@ -394,14 +679,24 @@ private actor ScriptedCodexTransport: CodexAppServerTransport {
       } else {
         enqueue(
           json: #"""
-            {"id":2,"result":{"loginId":"login-7","authUrl":"https://auth.example.test/device"}}
+            {"id":2,"result":{"loginId":"login-7","authUrl":"https://auth.example.test/device?state=opaque"}}
             """#)
       }
     case "account/login/cancel":
-      enqueue(
-        json: #"""
-          {"id":3,"result":{}}
-          """#)
+      if mode == .lateCompletionAfterCancel {
+        enqueue(
+          json: """
+            {"id":\(requestID),"result":{}}
+            {"method":"account/login/completed","params":{"loginId":"login-7","success":true}}
+            """
+        )
+      } else {
+        enqueue(
+          json: """
+            {"id":\(requestID),"result":{}}
+            """
+        )
+      }
     case "account/rateLimits/read":
       enqueue(
         json: #"""
@@ -475,6 +770,12 @@ private actor ScriptedCodexTransport: CodexAppServerTransport {
           json: #"""
             {"id":3,"result":{"turn":{"id":"turn-1"}}}
             """#)
+      case .dynamicTool:
+        enqueue(
+          json: #"""
+            {"id":3,"result":{"turn":{"id":"turn-1"}}}
+            {"id":91,"method":"item/tool/call","params":{"threadId":"thread-1","turnId":"turn-1","callId":"dynamic-call-1","tool":"createDraft","arguments":{"value":"Codex 动态文章"}}}
+            """#)
       default:
         enqueue(
           json: #"""
@@ -522,6 +823,14 @@ private actor ScriptedCodexTransport: CodexAppServerTransport {
 
   func sentBytes() -> Data {
     bytes
+  }
+
+  func sentMessageCount(method: String) -> Int {
+    messages.reduce(into: 0) { count, message in
+      if message["method"]?.stringValue == method {
+        count += 1
+      }
+    }
   }
 
   func waitUntilSent(method: String, timeout: Duration = .seconds(5)) async -> Bool {
@@ -574,6 +883,25 @@ private actor ScriptedCodexTransport: CodexAppServerTransport {
     for receiver in receivers {
       receiver.resume(returning: nil)
     }
+  }
+}
+
+private final class SequencedCodexTransportFactory: @unchecked Sendable {
+  private let lock = NSLock()
+  private var count = 0
+
+  var makeCount: Int {
+    lock.lock()
+    defer { lock.unlock() }
+    return count
+  }
+
+  func make() -> any CodexAppServerTransport {
+    lock.lock()
+    count += 1
+    let generation = count
+    lock.unlock()
+    return ScriptedCodexTransport(mode: generation == 1 ? .eofAfterHandshake : .account)
   }
 }
 

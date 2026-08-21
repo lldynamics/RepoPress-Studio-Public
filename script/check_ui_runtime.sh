@@ -27,11 +27,9 @@ case "${1:-}" in
     ;;
 esac
 
-build_arguments=(--package-only)
+build_arguments=(--package-only --release)
 if [[ "${RELEASE_GATE_PROFILE:-}" == "app-store" ]]; then
   build_arguments+=(--app-store)
-elif [[ "$MODE" == "launch" ]]; then
-  build_arguments+=(--release)
 fi
 bash "$ROOT_DIR/script/build_and_run.sh" "${build_arguments[@]}" >/dev/null
 
@@ -48,6 +46,10 @@ bundle_id="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$INFO_PLIST
 
 minimum_system="$(/usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' "$INFO_PLIST")"
 [[ "$minimum_system" == "14.0" ]] || fail "unexpected minimum system version: $minimum_system"
+
+build_configuration="$(/usr/libexec/PlistBuddy -c 'Print :PersonalSitePublisherBuildConfiguration' "$INFO_PLIST")"
+[[ "$build_configuration" == "Release" ]] \
+  || fail "packaged app must use the Release configuration"
 
 for file in \
   "$ROOT_DIR/Sources/PersonalSitePublisherMac/Views/ContentView.swift" \
@@ -193,8 +195,6 @@ if grep -Eq "@ObservedObject private var (aiState: WorkbenchAIFeatureFacade|publ
 fi
 
 if [[ "$MODE" == "launch" ]]; then
-  build_configuration="$(/usr/libexec/PlistBuddy -c 'Print :PersonalSitePublisherBuildConfiguration' "$INFO_PLIST")"
-  [[ "$build_configuration" == "Release" ]] || fail "launch verification must use a Release bundle"
   actual_entitlements="$(mktemp "${TMPDIR:-/tmp}/ui-runtime-entitlements.XXXXXX")"
   trap 'rm -f "$actual_entitlements"' EXIT
   codesign -d --entitlements :- "$APP_BUNDLE" >"$actual_entitlements" 2>/dev/null \

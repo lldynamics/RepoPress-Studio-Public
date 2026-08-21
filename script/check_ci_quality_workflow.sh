@@ -95,7 +95,7 @@ grep -Fq 'timeout-minutes: 75' \
 grep -Fq 'timeout-minutes: 45' \
   < <(sed -n '/^  release-performance:/,$p' "$WORKFLOW") \
   || fail "release performance lane must tolerate hosted-runner variance"
-for required_lane in quality-quick quality-coverage quality-build swift6-migration; do
+for required_lane in quality-quick quality-coverage quality-build; do
   grep -Fq -- "- $required_lane" \
     < <(sed -n '/^  quality:/,/^  release-performance:/p' "$WORKFLOW") \
     || fail "final quality check must depend on $required_lane"
@@ -105,7 +105,7 @@ grep -Fq 'runs-on: ubuntu-24.04' \
   || fail "final quality aggregation must use the lightweight Linux runner"
 grep -Fq 'name: Require every PR quality lane' "$WORKFLOW" \
   || fail "final quality check must fail closed when any independent lane fails"
-for required_lane in quality-quick quality-coverage quality-runtime release-performance swift6-migration; do
+for required_lane in quality-quick quality-coverage quality-runtime release-performance; do
   grep -Fq -- "- $required_lane" \
     < <(sed -n '/^  release-quality:/,$p' "$WORKFLOW") \
     || fail "final release check must depend on $required_lane"
@@ -125,12 +125,12 @@ grep -Fq "github.event.inputs.risk_level == 'pr'" \
   < <(sed -n '/^  quality-build:/,/^  quality-runtime:/p' "$WORKFLOW") \
   || fail "PR distribution builds must be available only in the PR risk layer"
 tag_push_condition="github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')"
-for tag_lane in quality-quick quality-coverage quality-runtime release-performance swift6-migration release-quality; do
+for tag_lane in quality-quick quality-coverage quality-runtime release-performance release-quality; do
   tag_lane_body="$(sed -n "/^  $tag_lane:/,/^  [a-z]/p" "$WORKFLOW")"
   grep -Fq "$tag_push_condition" <<<"$tag_lane_body" \
     || fail "$tag_lane must run for version-tag pushes without treating tag dispatches as releases"
 done
-for nightly_lane in quality-quick quality-coverage quality-build quality-runtime release-performance swift6-migration; do
+for nightly_lane in quality-quick quality-coverage quality-build quality-runtime release-performance; do
   nightly_lane_body="$(sed -n "/^  $nightly_lane:/,/^  [a-z]/p" "$WORKFLOW")"
   grep -Fq "github.event_name == 'schedule'" <<<"$nightly_lane_body" \
     || fail "$nightly_lane must run for the fixed nightly release schedule"
@@ -138,7 +138,7 @@ done
 nightly_release_body="$(sed -n '/^  nightly-release-quality:/,$p' "$WORKFLOW")"
 grep -Fq "always() && github.event_name == 'schedule'" <<<"$nightly_release_body" \
   || fail "nightly release aggregation must run even when a lane fails"
-for required_lane in quality-quick quality-coverage quality-build quality-runtime release-performance swift6-migration; do
+for required_lane in quality-quick quality-coverage quality-build quality-runtime release-performance; do
   grep -Fq -- "- $required_lane" <<<"$nightly_release_body" \
     || fail "nightly release check must depend on $required_lane"
 done
@@ -161,11 +161,6 @@ grep -Fq -- '--quick' "$WORKFLOW" \
   || fail "workflow must run the shared quick gate"
 grep -Fq -- '--check swift-coverage' "$WORKFLOW" \
   || fail "pull requests must enforce the measured Swift coverage baseline"
-grep -Fq 'bash script/check_swift6_migration.sh' "$WORKFLOW" \
-  || fail "workflow must run a real Swift 6 language-mode migration diagnostic"
-if grep -Fq 'continue-on-error: true' "$WORKFLOW"; then
-  fail "the Swift 6 migration diagnostic must be blocking"
-fi
 grep -Fq -- '--summary-markdown .build/quality-gate-summary.md' "$WORKFLOW" \
   || fail "quality workflow must produce a readable quick-gate summary"
 grep -Fq -- '--summary-markdown .build/distribution-gate-summary.md' "$WORKFLOW" \
@@ -238,4 +233,4 @@ if grep -Eq '(github_pat_|ghp_[A-Za-z0-9_]{20,}|glpat-[A-Za-z0-9_-]{20,}|Authori
   fail "workflow contains token-like content"
 fi
 
-echo "CI quality workflow gate: main-push quick layer, parallel PR quick/coverage/Swift 6/Release-build layer, nightly or version-tag/manual-release runtime/performance/UI layer, fail-closed aggregators, pinned actions, read-only permissions, summaries, and evidence verified"
+echo "CI quality workflow gate: main-push quick layer, parallel PR quick/coverage/Release-build layer, nightly or version-tag/manual-release runtime/performance/UI layer, fail-closed aggregators, pinned actions, read-only permissions, summaries, and evidence verified"

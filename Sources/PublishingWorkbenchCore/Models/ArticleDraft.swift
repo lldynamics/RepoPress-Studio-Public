@@ -317,6 +317,13 @@ public struct ArticleDraft: Identifiable, Codable, Hashable, Sendable {
     }
   }
 
+  private static let fingerprintEncoder: JSONEncoder = {
+    let encoder = JSONEncoder()
+    encoder.outputFormatting = [.sortedKeys]
+    encoder.dateEncodingStrategy = .millisecondsSince1970
+    return encoder
+  }()
+
   /// Stable content identity for fields controlled by repository Markdown.
   /// Runtime identifiers, timestamps and remote SHAs are excluded so repeated
   /// imports of the same document remain a no-op.
@@ -346,10 +353,11 @@ public struct ArticleDraft: Identifiable, Codable, Hashable, Sendable {
         },
       status: status
     )
-    let encoder = JSONEncoder()
-    encoder.outputFormatting = [.sortedKeys]
-    encoder.dateEncodingStrategy = .millisecondsSince1970
-    let data = (try? encoder.encode(snapshot)) ?? Data()
+    guard let data = try? Self.fingerprintEncoder.encode(snapshot) else {
+      assertionFailure("Failed to encode RepositoryContentFingerprintSnapshot")
+      let fallback = "\(id.uuidString):\(title):\(date.timeIntervalSince1970):\(bodyMarkdown.utf8.count)"
+      return SHA256.hash(data: Data(fallback.utf8)).map { String(format: "%02x", $0) }.joined()
+    }
     return SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
   }
 

@@ -17,6 +17,14 @@ public struct URLSessionAIChatTransport: AIChatTransport, AIChatStreamingTranspo
 
   private let session: URLSession
 
+  var sessionConfiguration: URLSessionConfiguration {
+    session.configuration
+  }
+
+  var sessionIdentity: ObjectIdentifier {
+    ObjectIdentifier(session)
+  }
+
   public init(
     session: URLSession? = nil,
     firstByteTimeout: TimeInterval = AIChatNetworkRecoveryPolicy.default.firstByteTimeout,
@@ -28,6 +36,23 @@ public struct URLSessionAIChatTransport: AIChatTransport, AIChatStreamingTranspo
         timeoutIntervalForRequest: firstByteTimeout,
         timeoutIntervalForResource: resourceTimeout
       )
+  }
+
+  static func makeValidated(
+    firstByteTimeout: TimeInterval,
+    resourceTimeout: TimeInterval,
+    proxyURL: String?
+  ) throws -> URLSessionAIChatTransport {
+    let session = try CredentialSafeURLSession.makeValidated(
+      timeoutIntervalForRequest: firstByteTimeout,
+      timeoutIntervalForResource: resourceTimeout,
+      proxyURL: proxyURL
+    )
+    return URLSessionAIChatTransport(
+      session: session,
+      firstByteTimeout: firstByteTimeout,
+      resourceTimeout: resourceTimeout
+    )
   }
 
   public func data(for request: URLRequest) async throws -> (Data, URLResponse) {

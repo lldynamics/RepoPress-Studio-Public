@@ -65,7 +65,6 @@
   "这些选项只作用于当前工作区；修改设置不会立即执行 Fetch、远端检查或文章导入。": "These options apply only to the current workspace. Changing them does not immediately fetch, check the remote, or import articles.",
   "这些选项只作用于当前工作区；修改设置不会立即请求部署平台状态。": "These options apply only to the current workspace. Changing them does not immediately request deployment status.",
   "远程 AI 总闸已关闭；不会发送任何远程请求。逐服务授权会保留，重新开启后恢复；本地回环 AI 不受影响。": "The Remote AI master switch is off, so no remote requests are sent. Per-service consent is retained and becomes active again when you re-enable it; local loopback AI is unaffected.",
-  "远程 AI 总闸已关闭；当前不会向此服务发送内容。": "The Remote AI master switch is off; no content is currently sent to this service.",
   "远程 AI 总闸已开启；逐服务授权仍单独生效。关闭后不会发送远程请求，原有逐服务授权会保留。": "The Remote AI master switch is on, while per-service consent still applies separately. Turning it off stops remote requests but retains existing per-service consent.",
   "选择音效后，按键会提供轻微的音效与触觉反馈。": "After you choose a sound, keystrokes provide subtle audio and haptic feedback.",
   "阅读默认值": "Reading Defaults",

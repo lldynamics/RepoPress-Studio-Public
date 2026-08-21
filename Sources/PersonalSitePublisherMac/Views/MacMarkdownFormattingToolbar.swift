@@ -440,12 +440,8 @@ struct MacMarkdownFormattingToolbar: View {
   @ViewBuilder
   private func headingMenuButton(showsTitle: Bool) -> some View {
     Menu {
-      ForEach(1...6, id: \.self) { level in
-        Button {
-          onApplyMarkdownFormatting(.heading(level: level))
-        } label: {
-          Label("\(level) 级标题 (H\(level))", systemImage: "textformat.size")
-        }
+      MarkdownHeadingMenuItems { level in
+        onApplyMarkdownFormatting(.heading(level: level))
       }
     } label: {
       if showsTitle {
@@ -471,21 +467,11 @@ struct MacMarkdownFormattingToolbar: View {
   @ViewBuilder
   private func listMenuButton(showsTitle: Bool) -> some View {
     Menu {
-      Button {
-        onApplyAdvancedFormatting(.unorderedList)
-      } label: {
-        Label("无序列表", systemImage: "list.bullet")
-      }
-      Button {
-        onApplyAdvancedFormatting(.orderedList)
-      } label: {
-        Label("有序列表", systemImage: "list.number")
-      }
-      Button {
-        onApplyAdvancedFormatting(.taskList)
-      } label: {
-        Label("任务列表", systemImage: "checklist")
-      }
+      MarkdownListMenuItems(
+        onSelectUnorderedList: { onApplyAdvancedFormatting(.unorderedList) },
+        onSelectOrderedList: { onApplyAdvancedFormatting(.orderedList) },
+        onSelectTaskList: { onApplyAdvancedFormatting(.taskList) }
+      )
     } label: {
       if showsTitle {
         Label("列表", systemImage: "list.bullet")

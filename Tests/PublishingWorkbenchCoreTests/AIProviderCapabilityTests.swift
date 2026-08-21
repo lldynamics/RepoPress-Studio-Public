@@ -77,7 +77,7 @@ final class AIProviderCapabilityTests: XCTestCase {
     )
     XCTAssertEqual(
       AIProviderPreset.codexAppServer.capabilitySupport(for: .toolCalling),
-      .unsupported
+      .supported
     )
     XCTAssertEqual(AIProviderPreset.deepSeek.capabilitySupport(for: .chat), .supported)
     XCTAssertEqual(

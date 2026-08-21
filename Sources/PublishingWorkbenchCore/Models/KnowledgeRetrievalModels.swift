@@ -135,13 +135,99 @@ public struct KnowledgeCitation: Identifiable, Codable, Hashable, Sendable {
   }
 }
 
-public struct KnowledgeContextSnapshot: Hashable, Sendable {
+/// A content binding for one knowledge source that is about to be sent to a
+/// remote AI provider.  Automatic retrieval binds an individual chunk;
+/// explicit @ references bind the exact normalized document revision.
+public struct KnowledgeAuthorizationBinding: Codable, Hashable, Sendable {
+  public let documentID: UUID
+  public let revisionID: UUID
+  public let chunkID: UUID?
+  public let contentHash: String
+
+  public init(
+    documentID: UUID,
+    revisionID: UUID,
+    chunkID: UUID? = nil,
+    contentHash: String
+  ) {
+    self.documentID = documentID
+    self.revisionID = revisionID
+    self.chunkID = chunkID
+    self.contentHash = contentHash
+  }
+}
+
+/// The exact text and authorization binding captured for an explicit
+/// knowledge @ reference.  The binding remains tied to the revision used to
+/// read `text`, even if a newer revision is imported later.
+public struct KnowledgeExplicitContextSnapshot: Hashable, Sendable {
+  public let text: String
+  public let authorizationBinding: KnowledgeAuthorizationBinding
+
+  public init(
+    text: String,
+    authorizationBinding: KnowledgeAuthorizationBinding
+  ) {
+    self.text = text
+    self.authorizationBinding = authorizationBinding
+  }
+
+  public var binding: KnowledgeAuthorizationBinding { authorizationBinding }
+}
+
+/// A prompt assembled from explicit context references plus the knowledge
+/// bindings for the sections that were actually included in the prompt.
+public struct AIContextPromptSnapshot: Hashable, Sendable {
+  public let prompt: String
+  public let authorizationBindings: [KnowledgeAuthorizationBinding]
+
+  public init(
+    prompt: String,
+    authorizationBindings: [KnowledgeAuthorizationBinding] = []
+  ) {
+    self.prompt = prompt
+    self.authorizationBindings = authorizationBindings
+  }
+
+  public var knowledgeBindings: [KnowledgeAuthorizationBinding] { authorizationBindings }
+}
+
+public struct KnowledgeContextSnapshot: Codable, Hashable, Sendable {
   public var query: String
   public var citations: [KnowledgeCitation]
+  public var authorizationBindings: [KnowledgeAuthorizationBinding]
 
-  public init(query: String, citations: [KnowledgeCitation]) {
+  public init(
+    query: String,
+    citations: [KnowledgeCitation],
+    authorizationBindings: [KnowledgeAuthorizationBinding] = []
+  ) {
     self.query = query
     self.citations = citations
+    self.authorizationBindings = authorizationBindings
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case query
+    case citations
+    case authorizationBindings
+  }
+
+  public init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    query = try container.decode(String.self, forKey: .query)
+    citations = try container.decode([KnowledgeCitation].self, forKey: .citations)
+    // Continuations and saved requests written before authorization bindings
+    // existed remain readable, but carry no implicit authority.
+    authorizationBindings = try container.decodeIfPresent(
+      [KnowledgeAuthorizationBinding].self,
+      forKey: .authorizationBindings
+    ) ?? []
+  }
+
+  public var knowledgeBindings: [KnowledgeAuthorizationBinding] {
+    get { authorizationBindings }
+    set { authorizationBindings = newValue }
   }
 
   public var promptText: String {

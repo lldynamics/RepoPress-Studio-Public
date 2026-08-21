@@ -14,7 +14,7 @@ public struct ImageMetadataEditingService {
   public init() {}
 
   public func markdownReference(altText: String, imagePath: String) -> String {
-    "![\(escapedMarkdownAlt(normalizedAltText(altText)))](\(imagePath))"
+    "![\(Self.normalizedMarkdownAlt(altText))](\(imagePath))"
   }
 
   public func updating(
@@ -29,7 +29,7 @@ public struct ImageMetadataEditingService {
     }
 
     var updated = draft
-    let normalizedAlt = normalizedAltText(altText)
+    let normalizedAlt = Self.normalizedAltText(altText)
     updated.attachments[attachmentIndex].altText = normalizedAlt
     updated.attachments[attachmentIndex].caption = caption.trimmedForPublishing
 
@@ -39,10 +39,11 @@ public struct ImageMetadataEditingService {
       updated.coverAttachmentID = nil
     }
 
-    let replacement = replacingMarkdownAlt(
+    let replacement = Self.replacingMarkdownAlt(
       in: updated.bodyMarkdown,
       imagePath: updated.attachments[attachmentIndex].relativePublishPath,
-      altText: normalizedAlt
+      altText: normalizedAlt,
+      onlyIfEmpty: false
     )
     updated.bodyMarkdown = replacement.markdown
 
@@ -52,10 +53,11 @@ public struct ImageMetadataEditingService {
     )
   }
 
-  private func replacingMarkdownAlt(
+  static func replacingMarkdownAlt(
     in markdown: String,
     imagePath: String,
-    altText: String
+    altText: String,
+    onlyIfEmpty: Bool
   ) -> (markdown: String, count: Int) {
     let pattern = MarkdownPatterns.imagePrefixPattern
       + NSRegularExpression.escapedPattern(for: imagePath)
@@ -74,24 +76,36 @@ public struct ImageMetadataEditingService {
     }
 
     let updated = NSMutableString(string: markdown)
-    let escapedAlt = escapedMarkdownAlt(altText)
+    let escapedAlt = normalizedMarkdownAlt(altText)
+    var replacementCount = 0
     for match in matches.reversed() {
+      if onlyIfEmpty {
+        let existingAlt = source.substring(with: match.range(at: 1))
+        guard existingAlt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+          continue
+        }
+      }
       updated.replaceCharacters(in: match.range(at: 1), with: escapedAlt)
+      replacementCount += 1
     }
-    return (updated as String, matches.count)
+    return (updated as String, replacementCount)
   }
 
-  private func normalizedAltText(_ text: String) -> String {
+  private static func normalizedAltText(_ text: String) -> String {
     text
       .components(separatedBy: .whitespacesAndNewlines)
       .filter { !$0.isEmpty }
       .joined(separator: " ")
   }
 
-  private func escapedMarkdownAlt(_ text: String) -> String {
+  private static func escapedMarkdownAlt(_ text: String) -> String {
     text
       .replacingOccurrences(of: "\\", with: "\\\\")
       .replacingOccurrences(of: "[", with: "\\[")
       .replacingOccurrences(of: "]", with: "\\]")
+  }
+
+  private static func normalizedMarkdownAlt(_ text: String) -> String {
+    escapedMarkdownAlt(normalizedAltText(text))
   }
 }

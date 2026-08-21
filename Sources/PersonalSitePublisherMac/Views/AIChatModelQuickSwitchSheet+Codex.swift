@@ -158,13 +158,13 @@ extension AIChatModelQuickSwitchSheet {
 
   private var isCodexConnectionDefaultSelected: Bool {
     guard currentConfig.usesCodexAppServer else { return false }
-    let selected = chatState.chatSelectedModel.trimmingCharacters(in: .whitespacesAndNewlines)
+    let selected = currentSelectedModel.trimmingCharacters(in: .whitespacesAndNewlines)
     return selected.isEmpty
   }
 
   private var activeCodexModel: CodexAppServerModel? {
     guard currentConfig.usesCodexAppServer else { return nil }
-    let selected = chatState.chatSelectedModel.trimmingCharacters(in: .whitespacesAndNewlines)
+    let selected = currentSelectedModel.trimmingCharacters(in: .whitespacesAndNewlines)
     let resolvedModel = selected.isEmpty ? currentConfig.normalizedModel : selected
     if resolvedModel.isEmpty || resolvedModel == AIProviderPreset.codexDefaultModel {
       return codexModels.first(where: \.isDefault) ?? codexModels.first
@@ -194,11 +194,15 @@ extension AIChatModelQuickSwitchSheet {
 
   private func isCodexModelSelected(_ model: CodexAppServerModel) -> Bool {
     guard !isCodexConnectionDefaultSelected else { return false }
-    let selected = chatState.chatSelectedModel.trimmingCharacters(in: .whitespacesAndNewlines)
+    let selected = currentSelectedModel.trimmingCharacters(in: .whitespacesAndNewlines)
     return selected == model.model || selected == model.id
   }
 
   private func selectCodexConnectionDefault() {
+    if isGeneralMode {
+      ai.setGeneralChatSelectedModel("")
+      ai.setGeneralChatModelGrade(.standard)
+    }
     ai.resetChatModelToProfileDefault()
     normalizeCodexReasoningEffort()
     synchronizeCustomModelInput()
@@ -207,6 +211,9 @@ extension AIChatModelQuickSwitchSheet {
   private func selectCodexModel(_ model: CodexAppServerModel) {
     let selectedModel = model.model.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !selectedModel.isEmpty else { return }
+    if isGeneralMode {
+      ai.setGeneralChatSelectedModel(selectedModel)
+    }
     ai.setChatCustomModel(selectedModel)
     normalizeCodexReasoningEffort(for: model)
     synchronizeCustomModelInput()

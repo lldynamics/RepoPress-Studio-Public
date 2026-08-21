@@ -44,11 +44,12 @@ public struct GitCommandResult: Sendable, Hashable {
     self.terminationStatus = terminationStatus
     self.standardOutput = standardOutput
     self.standardError = GitCommandLogRedactor.redactedDiagnosticText(standardError)
-    self.output = Self.combinedDiagnosticOutput(
-      standardOutput: standardOutput,
-      standardError: self.standardError
+    self.output = GitCommandLogRedactor.redactedDiagnosticText(
+      Self.combinedDiagnosticOutput(
+        standardOutput: standardOutput,
+        standardError: self.standardError
+      )
     )
-    self.output = GitCommandLogRedactor.redactedDiagnosticText(self.output)
     self.didTimeOut = didTimeOut
     self.wasOutputTruncated = wasOutputTruncated
   }
@@ -116,15 +117,20 @@ public struct GitCommandRunner: Sendable {
     GitCommandLogRedactor.redactedDiagnosticText(text)
   }
 
+  @available(*, deprecated, message: "Use runAsync instead in async contexts to avoid blocking cooperative thread pool")
   public func run(
     _ arguments: [String],
     rootURL: URL,
     inputLines: [String]? = nil,
     inputDelimiter: GitCommandInputDelimiter = .newline
   ) -> GitCommandResult {
+    if let reason = Self.repositoryConfigurationBlockReason(rootURL: rootURL) {
+      return Self.blockedConfigurationResult(reason)
+    }
     let process = Process()
     process.executableURL = executableURL
     process.arguments = ["-C", rootURL.path] + arguments
+    process.environment = Self.isolatedGitEnvironment()
 
     let outputPipe = Pipe()
     let errorPipe = Pipe()
@@ -240,6 +246,9 @@ public struct GitCommandRunner: Sendable {
     inputLines: [String]? = nil,
     inputDelimiter: GitCommandInputDelimiter = .newline
   ) async -> GitCommandResult {
+    if let reason = Self.repositoryConfigurationBlockReason(rootURL: rootURL) {
+      return Self.blockedConfigurationResult(reason)
+    }
     let operation = GitCommandAsyncOperation(
       executableURL: executableURL,
       timeout: timeout,
@@ -300,6 +309,308 @@ public struct GitCommandRunner: Sendable {
     return Data(
       (lines.joined(separator: delimiter.rawValue) + delimiter.rawValue).utf8
     )
+  }
+
+  /// Git consults repository-local configuration before running commands.
+  /// Supplying this highest-precedence environment config disables the
+  /// fsmonitor command and hooks from an untrusted .git/config while
+  private static let cachedIsolatedGitEnvironment: [String: String] = {
+    var environment = ProcessInfo.processInfo.environment
+    environment["GIT_CONFIG_COUNT"] = "5"
+    environment["GIT_CONFIG_KEY_0"] = "core.fsmonitor"
+    environment["GIT_CONFIG_VALUE_0"] = "false"
+    environment["GIT_CONFIG_KEY_1"] = "core.hooksPath"
+    environment["GIT_CONFIG_VALUE_1"] = "/dev/null"
+    environment["GIT_CONFIG_KEY_2"] = "commit.gpgSign"
+    environment["GIT_CONFIG_VALUE_2"] = "false"
+    environment["GIT_CONFIG_KEY_3"] = "tag.gpgSign"
+    environment["GIT_CONFIG_VALUE_3"] = "false"
+    environment["GIT_CONFIG_KEY_4"] = "log.showSignature"
+    environment["GIT_CONFIG_VALUE_4"] = "false"
+    environment["GIT_EDITOR"] = "/usr/bin/false"
+    environment["GIT_SEQUENCE_EDITOR"] = "/usr/bin/false"
+    environment["GIT_PAGER"] = "/usr/bin/cat"
+    return environment
+  }()
+
+  /// Returns environment variables configured to run Git without invoking
+  /// arbitrary repository hook scripts or interactive prompts, while
+  /// preserving benign repository metadata such as branch and remote
+  /// configuration. `/dev/null` is intentionally used as a non-directory
+  /// hooks root so post-commit hooks are skipped as well as pre-commit hooks.
+  static func isolatedGitEnvironment() -> [String: String] {
+    cachedIsolatedGitEnvironment
+  }
+
+  private static func blockedConfigurationResult(_ reason: String) -> GitCommandResult {
+    GitCommandResult(
+      terminationStatus: 126,
+      standardOutput: "",
+      standardError: "Git command blocked: \(reason)"
+    )
+  }
+
+  /// Returns a reason to fail closed when repository-local configuration can
+  /// turn an otherwise read/write Git operation into an external command.
+  /// This intentionally parses the files directly: invoking `git config` to
+  /// inspect them would first honor the same include and executable settings
+  /// that this gate is meant to protect.
+  private static func repositoryConfigurationBlockReason(rootURL: URL) -> String? {
+    let fileManager = FileManager.default
+    let root = rootURL.standardizedFileURL
+    let gitEntryURL = root.appendingPathComponent(".git")
+    var isDirectory: ObjCBool = false
+    guard fileManager.fileExists(atPath: gitEntryURL.path, isDirectory: &isDirectory) else {
+      return nil
+    }
+    guard !isSymbolicLink(gitEntryURL) else {
+      return "Git 元数据入口是符号链接"
+    }
+
+    let gitDirectoryURL: URL
+    if isDirectory.boolValue {
+      gitDirectoryURL = gitEntryURL
+    } else {
+      guard let pointer = boundedUTF8String(at: gitEntryURL),
+            !pointer.contains("\0"),
+            pointer.components(separatedBy: .newlines).count <= 2 else {
+        return "Git 工作树元数据指针无效或超过大小限制"
+      }
+      let trimmedPointer = pointer.trimmingCharacters(in: .whitespacesAndNewlines)
+      let prefix = "gitdir:"
+      guard trimmedPointer.lowercased().hasPrefix(prefix) else {
+        return "Git 工作树元数据指针无效"
+      }
+      let path = String(trimmedPointer.dropFirst(prefix.count))
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+      guard !path.isEmpty, !path.contains("\0") else {
+        return "Git 工作树元数据指针为空"
+      }
+      gitDirectoryURL = URL(fileURLWithPath: path, relativeTo: root).standardizedFileURL
+    }
+
+    var configurationURLs = [
+      gitDirectoryURL.appendingPathComponent("config"),
+      gitDirectoryURL.appendingPathComponent("config.worktree"),
+    ]
+
+    let commondirURL = gitDirectoryURL.appendingPathComponent("commondir")
+    if fileManager.fileExists(atPath: commondirURL.path) {
+      guard !isSymbolicLink(commondirURL),
+            let pointer = boundedUTF8String(at: commondirURL),
+            !pointer.contains("\0"),
+            pointer.components(separatedBy: .newlines).count <= 2 else {
+        return "Git commondir 指针无效或超过大小限制"
+      }
+      let commonPath = pointer.trimmingCharacters(in: .whitespacesAndNewlines)
+      guard !commonPath.isEmpty else {
+        return "Git commondir 指针为空"
+      }
+      let commonDirectoryURL = URL(
+        fileURLWithPath: commonPath,
+        relativeTo: gitDirectoryURL
+      ).standardizedFileURL
+      configurationURLs.append(commonDirectoryURL.appendingPathComponent("config"))
+      configurationURLs.append(commonDirectoryURL.appendingPathComponent("config.worktree"))
+    }
+
+    var visitedPaths = Set<String>()
+    for configurationURL in configurationURLs {
+      guard visitedPaths.insert(configurationURL.path).inserted else { continue }
+      guard fileManager.fileExists(atPath: configurationURL.path) else { continue }
+      guard !isSymbolicLink(configurationURL) else {
+        return "Git 配置文件是符号链接：\(configurationURL.lastPathComponent)"
+      }
+      guard let configuration = boundedUTF8String(at: configurationURL) else {
+        return "Git 配置文件无法安全读取或超过大小限制：\(configurationURL.lastPathComponent)"
+      }
+      if let reason = blockedConfigurationReason(
+        in: configuration,
+        fileName: configurationURL.lastPathComponent
+      ) {
+        return reason
+      }
+    }
+    return nil
+  }
+
+  private static func boundedUTF8String(at url: URL) -> String? {
+    try? BoundedFileReader.utf8String(
+      at: url,
+      maximumByteCount: 1_024 * 1_024
+    )
+  }
+
+  private static func isSymbolicLink(_ url: URL) -> Bool {
+    (try? FileManager.default.destinationOfSymbolicLink(atPath: url.path)) != nil
+  }
+
+  private static func blockedConfigurationReason(
+    in configuration: String,
+    fileName: String
+  ) -> String? {
+    var section = ""
+    var sectionDescriptor = ""
+    let maximumLineByteCount = 16 * 1_024
+
+    for rawLine in configuration.split(
+      separator: "\n",
+      omittingEmptySubsequences: false
+    ) {
+      let line = String(rawLine)
+      guard line.utf8.count <= maximumLineByteCount else {
+        return "Git 配置行超过大小限制：\(fileName)"
+      }
+      let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+      guard !trimmed.isEmpty,
+            !trimmed.hasPrefix("#"),
+            !trimmed.hasPrefix(";") else {
+        continue
+      }
+      guard !trimmed.hasSuffix("\\") else {
+        return "Git 配置不允许续行：\(fileName)"
+      }
+
+      if trimmed.hasPrefix("[") {
+        guard trimmed.hasSuffix("]") else {
+          return "Git 配置节格式无效：\(fileName)"
+        }
+        let body = trimmed.dropFirst().dropLast()
+        guard let name = body.split(
+          whereSeparator: { $0 == " " || $0 == "\t" || $0 == "\"" }
+        ).first,
+        !name.isEmpty,
+        name.utf8.count <= 256 else {
+          return "Git 配置节格式无效：\(fileName)"
+        }
+        sectionDescriptor = String(name).lowercased()
+        section = sectionDescriptor.split(separator: ".", maxSplits: 1)
+          .first
+          .map(String.init) ?? sectionDescriptor
+        if section == "include" || section.hasPrefix("includeif") {
+          return "Git 配置禁止 include/includeIf：\(fileName)"
+        }
+        continue
+      }
+
+      let keyPart: Substring
+      let value: String
+      if let equalsIndex = trimmed.firstIndex(of: "=") {
+        keyPart = trimmed[..<equalsIndex]
+        value = String(trimmed[trimmed.index(after: equalsIndex)...])
+      } else {
+        keyPart = Substring(trimmed)
+        value = "true"
+      }
+      let key = String(keyPart).trimmingCharacters(in: .whitespacesAndNewlines)
+      guard !key.isEmpty,
+            key.utf8.count <= 256,
+            !key.contains("\0"),
+            key.unicodeScalars.allSatisfy({
+              CharacterSet.alphanumerics.contains($0) || $0 == "-"
+            }),
+            !section.isEmpty else {
+        return "Git 配置键格式无效：\(fileName)"
+      }
+
+      let lowercaseKey = key.lowercased()
+      let normalizedValue = value
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+        .trimmingCharacters(in: CharacterSet(charactersIn: "\""))
+      switch section {
+      case "core":
+        if [
+          "sshcommand",
+          "gitproxy",
+          "askpass",
+          "attributesfile",
+          "alternaterefscommand",
+          "createobject",
+          "worktree",
+        ].contains(lowercaseKey) {
+          return "Git 配置包含可执行 core 选项：core.\(key)"
+        }
+      case "diff":
+        if ["external", "textconv", "command"].contains(lowercaseKey) {
+          return "Git 配置包含可执行 diff 选项：diff.\(key)"
+        }
+      case "filter":
+        if ["clean", "smudge", "process", "command"].contains(lowercaseKey) {
+          return "Git 配置包含可执行 filter 选项：filter.*.\(key)"
+        }
+      case "merge":
+        if lowercaseKey == "driver" {
+          return "Git 配置包含外部 merge 驱动：merge.*.driver"
+        }
+      case "credential":
+        if lowercaseKey == "helper" {
+          return "Git 配置包含外部 credential helper"
+        }
+      case "gpg":
+        if lowercaseKey == "program" {
+          return "Git 配置包含外部签名程序"
+        }
+      case "remote":
+        if ["uploadpack", "receivepack", "vcs"].contains(lowercaseKey) {
+          return "Git 配置包含外部 remote 命令：remote.*.\(key)"
+        }
+        if ["url", "pushurl"].contains(lowercaseKey),
+           isExecutableRemoteURL(normalizedValue) {
+          return "Git 配置包含可执行 remote URL"
+        }
+      case "url":
+        return "Git 配置禁止仓库级 URL 重写：\(sectionDescriptor)"
+      case "protocol":
+        return "Git 配置禁止仓库级协议覆盖：\(sectionDescriptor)"
+      case "difftool", "mergetool", "browser", "man":
+        if lowercaseKey == "cmd" {
+          return "Git 配置包含外部工具命令：\(section).*.cmd"
+        }
+      case "interactive":
+        if lowercaseKey == "difffilter" {
+          return "Git 配置包含外部 interactive diff 过滤器"
+        }
+      case "submodule":
+        if lowercaseKey == "update",
+           normalizedValue.hasPrefix("!") {
+          return "Git 配置包含外部 submodule 更新命令"
+        }
+      case "gc":
+        if lowercaseKey == "recentobjectshook" {
+          return "Git 配置包含外部 GC hook"
+        }
+      case "uploadpack":
+        if lowercaseKey == "packobjectshook" {
+          return "Git 配置包含外部 upload-pack hook"
+        }
+      case "tar":
+        if lowercaseKey == "command" {
+          return "Git 配置包含外部归档命令"
+        }
+      case "sendemail":
+        if ["cccmd", "tocmd", "headercmd"].contains(lowercaseKey) {
+          return "Git 配置包含外部 send-email 命令"
+        }
+      default:
+        break
+      }
+    }
+    return nil
+  }
+
+  private static func isExecutableRemoteURL(_ value: String) -> Bool {
+    let lowercaseValue = value.lowercased()
+    if lowercaseValue.hasPrefix("ext::") {
+      return true
+    }
+    guard let schemeSeparator = lowercaseValue.range(of: "://") else {
+      return lowercaseValue.range(
+        of: #"^[a-z][a-z0-9+.-]*::"#,
+        options: .regularExpression
+      ) != nil
+    }
+    let scheme = lowercaseValue[..<schemeSeparator.lowerBound]
+    return !["file", "git", "http", "https", "ssh"].contains(String(scheme))
   }
 }
 
@@ -366,6 +677,7 @@ private final class GitCommandAsyncOperation: @unchecked Sendable {
     let process = Process()
     process.executableURL = executableURL
     process.arguments = ["-C", rootURL.path] + arguments
+    process.environment = GitCommandRunner.isolatedGitEnvironment()
 
     let outputPipe = Pipe()
     let errorPipe = Pipe()

@@ -88,7 +88,12 @@ public enum WorkbenchAutomationExecutor {
           )
         )
         if plan.source == .agentLoop, onlyStepID == nil {
-          continue
+          // A model-proposed mutation is a hard barrier for the rest of the
+          // plan. Running a later read-only step against the pre-mutation
+          // state would give the model a stale observation and make the
+          // eventual confirmed continuation ambiguous. The caller can resume
+          // one step at a time after confirmation.
+          break
         }
         break
       }
@@ -122,7 +127,7 @@ public enum WorkbenchAutomationExecutor {
 
       updatedPlan.steps[index].status = .running
       do {
-        let stepRecord = try await executeStep(step, in: store)
+        let stepRecord = try await executeStep(step, source: plan.source, in: store)
         updatedPlan.steps[index].status = .succeeded
         updatedPlan.steps[index].resultMessage = stepRecord.message
         records.append(stepRecord)
@@ -186,37 +191,62 @@ public enum WorkbenchAutomationExecutor {
     var restoredCount = 0
     var failureMessages: [String] = []
     for step in record.steps.reversed() where step.status == .succeeded {
-      if let versionID = step.rollbackVersionID {
-        if store.restoreDraftVersion(versionID) {
-          restoredCount += 1
-        } else {
-          failureMessages.append(
-            CoreL10n.format("无法恢复步骤 %@ 的修改前版本。", step.command.rawValue)
-          )
-        }
-        continue
+      let currentDraft = step.targetDraftID.flatMap { draftID in
+        store.drafts.first(where: { $0.id == draftID })
       }
-      guard let draftID = step.targetDraftID else { continue }
+      let postcondition = WorkbenchAutomationRollbackPostcondition(
+        draftID: step.targetDraftID,
+        fingerprint: step.postMutationDraftFingerprint,
+        updatedAt: step.postMutationDraftUpdatedAt,
+        rollbackVersionID: step.rollbackVersionID
+      )
       switch step.command {
       case .createDraft:
-        if store.drafts.contains(where: { $0.id == draftID }) {
+        switch WorkbenchAutomationRollbackSafetyService.evaluate(
+          command: step.command,
+          postcondition: postcondition,
+          currentDraft: currentDraft
+        ) {
+        case .safeToMoveCreatedDraftToTrash:
+          guard let draftID = step.targetDraftID else { continue }
           store.deleteDraft(id: draftID)
-          if store.permanentlyDeleteRecycledDraft(draftID) {
+          if !store.drafts.contains(where: { $0.id == draftID }) {
             restoredCount += 1
           } else {
-            failureMessages.append(CoreL10n.text("无法完整移除自动化创建的文章。"))
+            failureMessages.append(CoreL10n.text("无法将自动化创建的文章移入回收站。"))
           }
+        case .safeToRestoreVersion:
+          failureMessages.append(CoreL10n.text("新建文章的撤销不能恢复其他文章版本。"))
+        case .conflict(let reason):
+          failureMessages.append(reason.displayMessage)
         }
       case .deleteDraft:
+        guard let draftID = step.targetDraftID else { continue }
         if store.restoreRecycledDraft(draftID) {
           restoredCount += 1
         } else {
           failureMessages.append(CoreL10n.text("无法从回收站恢复自动化删除的文章。"))
         }
-      case .updateMetadata, .appendToBody, .replaceBody:
-        failureMessages.append(
-          CoreL10n.format("步骤 %@ 缺少可用的修改前版本。", step.command.rawValue)
-        )
+      case .updateMetadata, .appendToBody, .replaceBody, .applyDiff, .generateFrontmatter:
+        switch WorkbenchAutomationRollbackSafetyService.evaluate(
+          command: step.command,
+          postcondition: postcondition,
+          currentDraft: currentDraft
+        ) {
+        case .safeToRestoreVersion:
+          guard let versionID = step.rollbackVersionID else { continue }
+          if store.restoreDraftVersion(versionID) {
+            restoredCount += 1
+          } else {
+            failureMessages.append(
+              CoreL10n.format("无法恢复步骤 %@ 的修改前版本。", step.command.rawValue)
+            )
+          }
+        case .safeToMoveCreatedDraftToTrash:
+          failureMessages.append(CoreL10n.text("内容修改的撤销不能移除整篇文章。"))
+        case .conflict(let reason):
+          failureMessages.append(reason.displayMessage)
+        }
       default:
         break
       }
@@ -231,6 +261,7 @@ public enum WorkbenchAutomationExecutor {
 
   private static func executeStep(
     _ step: WorkbenchAutomationStep,
+    source: WorkbenchAutomationPlanSource,
     in store: WorkbenchStore
   ) async throws -> WorkbenchAutomationStepRecord {
     try WorkbenchAutomationPlanValidator.validateArguments(step)
@@ -254,7 +285,11 @@ public enum WorkbenchAutomationExecutor {
         step, CoreL10n.format("已打开文章“%@”。", draft.title.nilIfEmpty ?? CoreL10n.text("未命名文章")))
 
     case .createDraft:
-      store.createDraft()
+      if source == .agentLoop {
+        store.createGeneralDraft()
+      } else {
+        store.createDraft()
+      }
       guard var draft = store.selectedDraft else {
         throw WorkbenchAutomationValidationError.draftNotFound
       }
@@ -267,23 +302,19 @@ public enum WorkbenchAutomationExecutor {
         try saveWorkbenchOrThrow(in: store)
       } catch let saveError {
         store.deleteDraft(id: draft.id)
-        let didRemoveCreatedDraft = store.permanentlyDeleteRecycledDraft(draft.id)
         _ = store.flushPendingChanges()
-        guard didRemoveCreatedDraft else {
-          throw WorkbenchAutomationExecutionError.operationDidNotComplete(
-            CoreL10n.format(
-              "新建文章保存失败：%@；自动回滚也失败，请检查回收站。",
-              saveError.localizedDescription
-            )
-          )
-        }
         throw saveError
+      }
+      guard let savedDraft = store.drafts.first(where: { $0.id == draft.id }) else {
+        throw WorkbenchAutomationValidationError.draftNotFound
       }
       return WorkbenchAutomationStepRecord(
         command: step.command,
         status: .succeeded,
         message: CoreL10n.format("已新建文章“%@”。", draft.title.nilIfEmpty ?? CoreL10n.text("未命名文章")),
-        targetDraftID: draft.id
+        targetDraftID: draft.id,
+        postMutationDraftFingerprint: savedDraft.repositoryContentFingerprint,
+        postMutationDraftUpdatedAt: savedDraft.updatedAt
       )
 
     case .focusEditor:
@@ -321,14 +352,14 @@ public enum WorkbenchAutomationExecutor {
       try saveWorkbenchOrThrow(in: store)
       return success(step, CoreL10n.text("工作台已保存。"))
 
-    case .updateMetadata, .appendToBody, .replaceBody:
+    case .updateMetadata, .appendToBody, .replaceBody, .applyDiff, .generateFrontmatter:
       let draft = try targetDraft(for: step, in: store, checksVersion: true)
       let preview = try WorkbenchAutomationDraftMutationService.preview(step: step, draft: draft)
-      let existingVersionIDs = Set(store.versions(for: draft.id).map(\.id))
-      guard store.createManualVersion(for: draft.id),
-        let rollbackVersionID = store.versions(for: draft.id)
-          .first(where: { !existingVersionIDs.contains($0.id) })?.id
-      else {
+      let rollbackVersionID = makeRollbackVersionID(
+        for: draft,
+        in: store
+      )
+      guard let rollbackVersionID else {
         throw WorkbenchAutomationExecutionError.operationDidNotComplete(
           CoreL10n.text("无法创建修改前版本，未执行文章变更。")
         )
@@ -348,12 +379,299 @@ public enum WorkbenchAutomationExecutor {
         _ = store.flushPendingChanges()
         throw saveError
       }
+      guard let savedDraft = store.drafts.first(where: { $0.id == draft.id }) else {
+        throw WorkbenchAutomationValidationError.draftNotFound
+      }
       return WorkbenchAutomationStepRecord(
         command: step.command,
         status: .succeeded,
         message: contentMutationSuccessMessage(step.command),
         targetDraftID: draft.id,
-        rollbackVersionID: rollbackVersionID
+        rollbackVersionID: rollbackVersionID,
+        postMutationDraftFingerprint: savedDraft.repositoryContentFingerprint,
+        postMutationDraftUpdatedAt: savedDraft.updatedAt
+      )
+
+    case .draftRead:
+      let draft = try targetDraft(for: step, in: store, checksVersion: false)
+      let mode = step.arguments.mode ?? "full"
+      let message: String
+      switch mode {
+      case "outline":
+        let headings = draft.bodyMarkdown
+          .components(separatedBy: .newlines)
+          .filter { $0.hasPrefix("#") }
+          .joined(separator: "\n")
+        message = CoreL10n.format(
+          "文章《%@》大纲（总计 %lld 字）：\n%@",
+          draft.title.nilIfEmpty ?? CoreL10n.text("未命名"),
+          draft.bodyMarkdown.count,
+          headings.isEmpty ? CoreL10n.text("（无标题层级）") : headings
+        )
+      case "paragraph_range":
+        let paragraphs = draft.bodyMarkdown
+          .components(separatedBy: "\n\n")
+          .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        let selected: [String]
+        if !step.arguments.paragraphIndices.isEmpty {
+          selected = step.arguments.paragraphIndices.compactMap { idx in
+            guard idx >= 0, idx < paragraphs.count else { return nil }
+            return "[\(idx)] \(paragraphs[idx])"
+          }
+        } else {
+          selected = paragraphs.enumerated().map { "[\($0)] \($1)" }
+        }
+        message = CoreL10n.format(
+          "文章《%@》选定段落（共 %lld 个段落）：\n%@",
+          draft.title.nilIfEmpty ?? CoreL10n.text("未命名"),
+          selected.count,
+          selected.joined(separator: "\n\n")
+        )
+      default:
+        message = CoreL10n.format(
+          "文章《%@》（总计 %lld 字）：\n%@",
+          draft.title.nilIfEmpty ?? CoreL10n.text("未命名"),
+          draft.bodyMarkdown.count,
+          draft.bodyMarkdown
+        )
+      }
+      return success(step, message)
+
+    case .searchDrafts:
+      guard store.canUseProtectedWorkbench else {
+        throw WorkbenchAutomationExecutionError.operationDidNotComplete(
+          store.quickHideOperationMessage
+        )
+      }
+      guard let query = step.arguments.query?.trimmedForPublishing.nilIfEmpty else {
+        throw WorkbenchAutomationValidationError.missingArgument("query")
+      }
+      let profileID = store.activeProfile.id
+      let searchableDrafts = store.drafts.filter {
+        $0.siteProfileID == profileID && !$0.isPrivate
+      }
+      let hits = WorkbenchAgentDraftSearchService().search(
+        query: query,
+        drafts: searchableDrafts,
+        limit: 8
+      )
+      let rows = hits.map { hit in
+        let title = String(hit.title.prefix(120))
+        let snippet = String(hit.snippet.prefix(240))
+        return "- draftID=\(hit.draftID.uuidString); title=\(title); field=\(hit.field); snippet=\(snippet)"
+      }
+      let body = rows.isEmpty
+        ? CoreL10n.text("没有找到匹配的公开文章。")
+        : rows.joined(separator: "\n")
+      return success(
+        step,
+        CoreL10n.format(
+          "本地文章搜索完成，共返回 %lld 条；私密文章未纳入搜索。\n%@",
+          hits.count,
+          body
+        )
+      )
+
+    case .knowledgeSearch:
+      guard store.canUseProtectedWorkbench else {
+        throw WorkbenchAutomationExecutionError.operationDidNotComplete(
+          store.quickHideOperationMessage
+        )
+      }
+      guard let query = step.arguments.query?.trimmedForPublishing.nilIfEmpty else {
+        throw WorkbenchAutomationValidationError.missingArgument("query")
+      }
+      let hits = try await WorkbenchAgentKnowledgeService(
+        library: store.knowledge.service
+      ).search(query: query, limit: 8)
+      let rows = hits.map { hit in
+        var fields = [
+          "documentID=\(hit.documentID.uuidString)",
+          "chunkID=\(hit.chunkID.uuidString)",
+          "title=\(hit.title)",
+        ]
+        if let locator = hit.locator?.nilIfEmpty {
+          fields.append("locator=\(locator)")
+        }
+        if !hit.signals.isEmpty {
+          fields.append("signals=\(hit.signals.joined(separator: ","))")
+        }
+        if let sourceURL = hit.sourceURL {
+          fields.append("sourceURL=\(sourceURL.absoluteString)")
+        }
+        fields.append("excerpt=\(hit.excerpt)")
+        return "- " + fields.joined(separator: "; ")
+      }
+      let body = rows.isEmpty
+        ? CoreL10n.text("没有找到允许远程 AI 使用的匹配资料。")
+        : rows.joined(separator: "\n")
+      return success(
+        step,
+        String(
+          CoreL10n.format(
+            "本地资料库搜索完成，共返回 %lld 条；仅检索明确允许远程 AI 使用且未归档的资料。\n%@",
+            hits.count,
+            body
+          ).prefix(3_800)
+        )
+      )
+
+    case .knowledgeRead:
+      guard store.canUseProtectedWorkbench else {
+        throw WorkbenchAutomationExecutionError.operationDidNotComplete(
+          store.quickHideOperationMessage
+        )
+      }
+      guard let documentID = step.arguments.documentID else {
+        throw WorkbenchAutomationValidationError.missingArgument("documentID")
+      }
+      let document = try await WorkbenchAgentKnowledgeService(
+        library: store.knowledge.service
+      ).read(documentID: documentID)
+      let maximumTextCharacters = 3_400
+      let text = String(document.text.prefix(maximumTextCharacters))
+      let toolOutputWasTruncated = document.isTruncated || document.text.count > text.count
+      return success(
+        step,
+        """
+        已读取允许远程 AI 使用的本地资料；未访问网络，也未读取原始文件。
+        documentID=\(document.documentID.uuidString); title=\(document.title); truncated=\(toolOutputWasTruncated)
+        \(text)
+        """
+      )
+
+    case .auditContent:
+      let draft = try targetDraft(for: step, in: store, checksVersion: false)
+      guard let summary = WorkbenchAgentContentAuditService().audit(
+        draft: draft,
+        profile: store.profile(for: draft)
+      ) else {
+        throw CancellationError()
+      }
+      let findings = summary.findings.prefix(8).map { finding in
+        let field = finding.field.map { " [\($0)]" } ?? ""
+        return "- \(finding.severity.rawValue)\(field): \(String(finding.title.prefix(100))) — \(String(finding.message.prefix(220)))"
+      }
+      let findingText = findings.isEmpty
+        ? CoreL10n.text("没有可报告的问题。")
+        : findings.joined(separator: "\n")
+      return success(
+        step,
+        """
+        本地内容审计完成；未修改文章，也未访问网络。
+        draftID=\(summary.draftID.uuidString); status=\(summary.status.rawValue); errors=\(summary.errorCount); warnings=\(summary.warningCount); informational=\(summary.informationalCount); partial=\(summary.isPartial)
+        \(findingText)
+        """
+      )
+
+    case .webFetch:
+      guard let urlString = step.arguments.url?.trimmedForPublishing.nilIfEmpty,
+        let url = URL(string: urlString)
+      else {
+        throw WorkbenchAutomationValidationError.missingArgument("url")
+      }
+      var request = URLRequest(url: url)
+      request.timeoutInterval = 15
+      let response = try await KnowledgeWebDownloadClient().download(
+        request: request,
+        maximumByteCount: 500_000
+      )
+      let rawHTML = String(decoding: response.data, as: UTF8.self)
+      let cleanText = rawHTML
+        .replacingOccurrences(of: "<script[^>]*>[\\s\\S]*?</script>", with: "", options: .regularExpression)
+        .replacingOccurrences(of: "<style[^>]*>[\\s\\S]*?</style>", with: "", options: .regularExpression)
+        .replacingOccurrences(of: "<[^>]+>", with: " ", options: .regularExpression)
+        .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+      let sample = String(cleanText.prefix(3_000))
+      return success(step, CoreL10n.format("已抓取网页内容（约 %lld 字符）：\n%@", sample.count, sample))
+
+    case .webSearch:
+      guard step.arguments.query?.trimmedForPublishing.nilIfEmpty != nil else {
+        throw WorkbenchAutomationValidationError.missingArgument("query")
+      }
+      throw WorkbenchAutomationExecutionError.operationDidNotComplete(
+        CoreL10n.text("联网搜索服务尚未配置，未执行搜索。请改用已授权的网页抓取或资料库来源。")
+      )
+
+    case .siteCheckLinks:
+      let draft = try targetDraft(for: step, in: store, checksVersion: false)
+      guard let inspection = WorkbenchAgentStaticLinkInspectionService().inspect(
+        markdown: draft.bodyMarkdown
+      ) else {
+        throw CancellationError()
+      }
+      let diagnostics = inspection.diagnostics.prefix(12).map { diagnostic in
+        "- offset=\(diagnostic.sourceOffset); kind=\(diagnostic.kind.rawValue); \(String(diagnostic.message.prefix(220)))"
+      }
+      let diagnosticText = diagnostics.isEmpty
+        ? CoreL10n.text("未发现 Markdown 链接格式问题。")
+        : diagnostics.joined(separator: "\n")
+      return success(
+        step,
+        """
+        本地静态链接检查完成：链接 \(inspection.discoveredLinkCount) 个，图片引用 \(inspection.discoveredImageCount) 个，格式诊断 \(inspection.formatDiagnosticCount) 个，输入截断=\(inspection.inputWasTruncated)。
+        网络可用性未验证；不得据此声称链接可访问。
+        \(diagnosticText)
+        """
+      )
+
+    case .siteOptimizeImages:
+      let draft = try targetDraft(for: step, in: store, checksVersion: false)
+      await store.refreshImageWorkbenchReportInBackground(for: draft)
+      let report = store.cachedImageWorkbenchReport(for: draft)
+      let summary = WorkbenchAgentImageReportFormatter.summary(for: report)
+      guard summary.availability == .available else {
+        throw WorkbenchAutomationExecutionError.operationDidNotComplete(
+          summary.unavailableReason ?? CoreL10n.text("没有可用的真实图片检查报告。")
+        )
+      }
+      let issues = summary.issues.prefix(8).map { issue in
+        "- \(issue.severity.rawValue): \(String(issue.title.prefix(100))) — \(String(issue.message.prefix(220)))"
+      }
+      let issueText = issues.isEmpty
+        ? CoreL10n.text("真实图片报告未发现问题。")
+        : issues.joined(separator: "\n")
+      return success(
+        step,
+        """
+        真实图片报告读取完成；未优化或修改任何文件。
+        images=\(summary.imageCount); issues=\(summary.issueCount); errors=\(summary.errorCount); warnings=\(summary.warningCount); missingAlt=\(summary.missingAltTextCount); missingSource=\(summary.missingSourceCount); optimizableJPEG=\(summary.optimizableJPEGCount); webPConvertible=\(summary.webPConvertibleCount); omittedIssues=\(summary.omittedIssueCount)
+        \(issueText)
+        """
+      )
+
+    case .siteDeployStatus:
+      guard let release = store.activeProfileReleaseRecords.first else {
+        throw WorkbenchAutomationExecutionError.operationDidNotComplete(
+          CoreL10n.text("当前站点没有可检查的发布记录，未执行部署状态检查。")
+        )
+      }
+      guard store.canCheckDeploymentStatus(for: release) else {
+        let readiness = store.deploymentStatusReadiness(for: release)
+        throw WorkbenchAutomationExecutionError.operationDidNotComplete(
+          readiness.fallbackMessage.nilIfEmpty
+            ?? CoreL10n.text("当前发布记录未配置可用的部署状态来源。")
+        )
+      }
+      guard let snapshot = await store.refreshDeploymentStatus(
+        for: release,
+        updatesMessage: false
+      ) else {
+        throw WorkbenchAutomationExecutionError.operationDidNotComplete(
+          CoreL10n.text("部署状态服务没有返回经过验证的结果。")
+        )
+      }
+      let signals = snapshot.signals.prefix(8).map { signal in
+        "- \(signal.level.rawValue): \(String(signal.title.prefix(100))) — \(String(signal.message.prefix(220)))"
+      }
+      return success(
+        step,
+        """
+        已从配置的部署状态来源完成真实检查。
+        provider=\(snapshot.provider.rawValue); level=\(snapshot.level.rawValue); title=\(String(snapshot.title.prefix(160))); message=\(String(snapshot.message.prefix(360)))
+        \(signals.joined(separator: "\n"))
+        """
       )
 
     case .deleteDraft:
@@ -456,6 +774,39 @@ public enum WorkbenchAutomationExecutor {
     }
   }
 
+  private static func makeRollbackVersionID(
+    for draft: ArticleDraft,
+    in store: WorkbenchStore
+  ) -> UUID? {
+    let existingVersions = store.versions(for: draft.id)
+    if let equivalentVersion = existingVersions.first(where: {
+      equivalentDraftContent($0.draft, draft)
+    }) {
+      return equivalentVersion.id
+    }
+
+    guard store.createManualVersion(for: draft.id) else {
+      // A concurrent/manual snapshot may have become equivalent between the
+      // first lookup and createManualVersion's de-duplication check. Re-read
+      // before declaring the mutation unsafe.
+      return store.versions(for: draft.id)
+        .first(where: { equivalentDraftContent($0.draft, draft) })?.id
+    }
+    return store.versions(for: draft.id)
+      .first(where: { !existingVersions.contains($0) })?.id
+  }
+
+  private static func equivalentDraftContent(
+    _ lhs: ArticleDraft,
+    _ rhs: ArticleDraft
+  ) -> Bool {
+    var normalizedLHS = lhs
+    var normalizedRHS = rhs
+    normalizedLHS.updatedAt = .distantPast
+    normalizedRHS.updatedAt = .distantPast
+    return normalizedLHS == normalizedRHS
+  }
+
   private static func success(
     _ step: WorkbenchAutomationStep,
     _ message: String
@@ -478,6 +829,10 @@ public enum WorkbenchAutomationExecutor {
       return CoreL10n.text("正文已追加，并已保存修改前版本。")
     case .replaceBody:
       return CoreL10n.text("正文已替换，并已保存修改前版本。")
+    case .applyDiff:
+      return CoreL10n.text("局部修改已应用，并已保存修改前版本。")
+    case .generateFrontmatter:
+      return CoreL10n.text("Frontmatter 元数据已更新，并已保存修改前版本。")
     default:
       return CoreL10n.text("内容已更新。")
     }

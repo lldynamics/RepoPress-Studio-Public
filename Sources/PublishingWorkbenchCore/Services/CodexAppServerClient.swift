@@ -12,6 +12,20 @@ public protocol CodexAppServerTransport: Sendable {
   func terminate() async
 }
 
+extension CodexAppServerError {
+  /// A stable, typed sentinel for a request which exceeded the client's
+  /// bounded RPC deadline. Keeping this RPC-shaped preserves the existing
+  /// public error surface while avoiding string parsing by callers.
+  public static var requestTimedOut: Self {
+    .rpc(code: -32_002, message: "Codex 请求超时，请重试。")
+  }
+
+  /// A stable, typed sentinel for a model turn which exceeded its deadline.
+  public static var turnTimedOut: Self {
+    .rpc(code: -32_003, message: "Codex turn 执行超时，请重试。")
+  }
+}
+
 /// A `Process` backed stdio transport for `codex app-server`.
 public final class CodexAppServerProcessTransport: CodexAppServerTransport, @unchecked Sendable {
   public static let defaultArguments = ["app-server", "--listen", "stdio://"]
@@ -79,6 +93,11 @@ public final class CodexAppServerProcessTransport: CodexAppServerTransport, @unc
       return (URL(fileURLWithPath: path), .homebrew)
     }
 
+#if DEBUG
+    // PATH is intentionally a development-only convenience. A release build
+    // must never silently execute an arbitrary `codex` found in a user-
+    // controlled directory. Production discovery is limited to the bundled
+    // runtime and the explicit, conventional Homebrew locations above.
     let pathEntries =
       ProcessInfo.processInfo.environment["PATH"]?
       .split(separator: ":", omittingEmptySubsequences: true)
@@ -89,6 +108,7 @@ public final class CodexAppServerProcessTransport: CodexAppServerTransport, @unc
         return (candidate, .path)
       }
     }
+#endif
     return nil
   }
 
@@ -259,16 +279,19 @@ public actor CodexAppServerClient {
     let turnID: String
   }
 
-  private let transport: any CodexAppServerTransport
+  private let transportFactory: @Sendable () -> any CodexAppServerTransport
+  private var transport: any CodexAppServerTransport
   private let encoder: JSONEncoder
   private let decoder: JSONDecoder
 
   private var nextRequestID = 0
   private var pendingRequests: [Int: CheckedContinuation<CodexAppServerJSONValue, Error>] = [:]
+  private var requestTimeoutTasks: [Int: Task<Void, Never>] = [:]
   private var startupTask: Task<Void, Error>?
   private var readerTask: Task<Void, Never>?
   private var isInitialized = false
   private var transportEnded = false
+  private var transportGeneration = 0
   private var lineBuffer = Data()
 
   private struct TurnState {
@@ -276,6 +299,8 @@ public actor CodexAppServerClient {
     var model: String?
     var turnID: String?
     var text = ""
+    var allowedDynamicToolNames = Set<String>()
+    var toolCalls: [AIToolCall] = []
     var result: CodexAppServerCompletion?
     var failure: CodexAppServerError?
     var waiter: CheckedContinuation<CodexAppServerCompletion, Error>?
@@ -283,6 +308,7 @@ public actor CodexAppServerClient {
 
   private var turnStates: [String: TurnState] = [:]
   private var threadIDByTurnID: [String: String] = [:]
+  private var turnTimeoutTasks: [String: Task<Void, Never>] = [:]
 
   private enum LoginOutcome {
     case succeeded
@@ -291,18 +317,86 @@ public actor CodexAppServerClient {
 
   private var loginOutcomes: [String: LoginOutcome] = [:]
   private var loginWaiters: [String: CheckedContinuation<Void, Error>] = [:]
+  private var loginTimeoutTasks: [String: Task<Void, Never>] = [:]
+  private var activeLoginIDs = Set<String>()
+  /// Completed notifications can race with a local cancellation RPC. Keep a
+  /// small tombstone set so a late success cannot be buffered and mistaken for
+  /// a future wait using the same login identifier.
+  private var ignoredLoginOutcomeIDs = Set<String>()
+  private var ignoredLoginOutcomeOrder: [String] = []
+  private let loginTimeout: Duration
+  private let requestTimeout: Duration
+  private let turnTimeout: Duration
 
-  private static let threadDeveloperInstructions =
+  private static let maximumIgnoredLoginOutcomeCount = 64
+
+  private static let textOnlyThreadDeveloperInstructions =
     "Answer only from the supplied text. Never inspect the filesystem, run commands, or use tools."
+
+  private static let dynamicToolThreadDeveloperInstructions =
+    "Answer only from the supplied text. Never inspect the filesystem, run commands, or browse. You may call only the dynamic tools explicitly supplied by RepoPress Studio. Their immediate acknowledgement only records the call; do not claim success until a later tool-role message contains the host-validated result."
 
   public init(
     executableURL: URL? = nil,
-    transport: (any CodexAppServerTransport)? = nil
+    transport: (any CodexAppServerTransport)? = nil,
+    loginTimeout: Duration = CodexAppServerClient.defaultLoginTimeout,
+    requestTimeout: Duration = CodexAppServerClient.defaultRequestTimeout,
+    turnTimeout: Duration = CodexAppServerClient.defaultTurnTimeout
   ) {
-    self.transport = transport ?? CodexAppServerProcessTransport(executableURL: executableURL)
+    if let transport {
+      self.transportFactory = { transport }
+      self.transport = transport
+    } else {
+      let factory: @Sendable () -> any CodexAppServerTransport = {
+        CodexAppServerProcessTransport(executableURL: executableURL)
+      }
+      self.transportFactory = factory
+      self.transport = factory()
+    }
     self.encoder = JSONEncoder()
     self.decoder = JSONDecoder()
     self.encoder.outputFormatting = [.sortedKeys]
+    self.loginTimeout = loginTimeout
+    self.requestTimeout = requestTimeout
+    self.turnTimeout = turnTimeout
+  }
+
+  /// Creates a client whose transport can be replaced after EOF or process
+  /// exit. Production uses this internally for each app-server generation;
+  /// the initializer is also useful for deterministic recovery tests.
+  public init(
+    transportFactory: @escaping @Sendable () -> any CodexAppServerTransport,
+    loginTimeout: Duration = CodexAppServerClient.defaultLoginTimeout,
+    requestTimeout: Duration = CodexAppServerClient.defaultRequestTimeout,
+    turnTimeout: Duration = CodexAppServerClient.defaultTurnTimeout
+  ) {
+    self.transportFactory = transportFactory
+    self.transport = transportFactory()
+    self.encoder = JSONEncoder()
+    self.decoder = JSONDecoder()
+    self.encoder.outputFormatting = [.sortedKeys]
+    self.loginTimeout = loginTimeout
+    self.requestTimeout = requestTimeout
+    self.turnTimeout = turnTimeout
+  }
+
+  /// The login flow is user-facing and must not wait forever if the browser
+  /// callback is lost. Callers can inject a short duration in tests.
+  public static let defaultLoginTimeout: Duration = .seconds(5 * 60)
+
+  /// Ordinary JSON-RPC calls must not leave an actor continuation pending
+  /// forever. Callers can inject a much shorter duration in tests.
+  public static let defaultRequestTimeout: Duration = .seconds(60)
+
+  /// A model turn can legitimately take longer than a metadata RPC, but it
+  /// still needs an upper bound so a lost completion notification cannot keep
+  /// the UI task alive indefinitely.
+  public static let defaultTurnTimeout: Duration = .seconds(5 * 60)
+
+  /// Internal observability for regression tests. The production UI does not
+  /// need to know whether a continuation is installed.
+  var loginWaiterCount: Int {
+    loginWaiters.count
   }
 
   var activeTurnSnapshot: ActiveTurnSnapshot? {
@@ -339,10 +433,11 @@ public actor CodexAppServerClient {
     let loginID = firstString(in: loginObject, keys: ["loginId", "loginID", "id"])
     let authURLString = firstString(in: loginObject, keys: ["authUrl", "authURL", "url"])
     guard let loginID, !loginID.isEmpty,
-      let authURLString, let authURL = URL(string: authURLString)
+      let authURLString, let authURL = Self.validatedLoginURL(authURLString)
     else {
       throw CodexAppServerError.invalidResponse
     }
+    registerLogin(loginID: loginID)
     return CodexAppServerLoginResult(loginID: loginID, authURL: authURL)
   }
 
@@ -363,11 +458,12 @@ public actor CodexAppServerClient {
     let userCode = firstString(in: loginObject, keys: ["userCode", "code"])
     guard let loginID, !loginID.isEmpty,
       let verificationURLString,
-      let verificationURL = URL(string: verificationURLString),
+      let verificationURL = Self.validatedLoginURL(verificationURLString),
       let userCode, !userCode.isEmpty
     else {
       throw CodexAppServerError.invalidResponse
     }
+    registerLogin(loginID: loginID)
     return CodexAppServerDeviceCodeLoginResult(
       loginID: loginID,
       verificationURL: verificationURL,
@@ -381,8 +477,11 @@ public actor CodexAppServerClient {
         try await withCheckedThrowingContinuation { continuation in
           if let outcome = loginOutcomes.removeValue(forKey: loginID) {
             resumeLoginWaiter(continuation, with: outcome)
+          } else if loginWaiters[loginID] != nil {
+            continuation.resume(throwing: CodexAppServerError.invalidResponse)
           } else {
             loginWaiters[loginID] = continuation
+            scheduleLoginTimeout(loginID: loginID)
           }
         }
       },
@@ -396,15 +495,12 @@ public actor CodexAppServerClient {
   public func cancelLogin(loginID: String) async {
     let waiter = loginWaiters.removeValue(forKey: loginID)
     loginOutcomes.removeValue(forKey: loginID)
+    let wasActive = activeLoginIDs.remove(loginID) != nil
+    cancelLoginTimeout(loginID: loginID)
     waiter?.resume(throwing: CodexAppServerError.cancelled)
-    do {
-      _ = try await request(
-        method: "account/login/cancel",
-        params: .object(["loginId": .string(loginID)])
-      )
-    } catch {
-      // The local waiter is already cancelled; remote cancellation is best effort.
-    }
+    guard wasActive || waiter != nil else { return }
+    markLoginOutcomeIgnored(loginID)
+    await sendLoginCancellation(loginID: loginID)
   }
 
   public func logout() async throws {
@@ -493,12 +589,40 @@ public actor CodexAppServerClient {
     reasoningEffort: String? = nil,
     workingDirectory: URL? = nil
   ) async throws -> CodexAppServerCompletion {
+    try await complete(
+      prompt: prompt,
+      model: model,
+      reasoningEffort: reasoningEffort,
+      workingDirectory: workingDirectory,
+      dynamicTools: []
+    )
+  }
+
+  /// Runs an ephemeral text turn with host-owned dynamic function tools.
+  /// App Server only chooses and reports a call; execution authority remains
+  /// in the workbench Agent loop.
+  public func complete(
+    prompt: String,
+    model: String? = nil,
+    reasoningEffort: String? = nil,
+    workingDirectory: URL? = nil,
+    dynamicTools: [AIToolDefinition]
+  ) async throws -> CodexAppServerCompletion {
     try await ensureStarted()
     let normalizedModel = Self.trimmedNonEmpty(model)
     let normalizedReasoningEffort = Self.trimmedNonEmpty(reasoningEffort)
-    let thread = try await startThread(model: normalizedModel, workingDirectory: workingDirectory)
+    let normalizedDynamicTools = try Self.validatedDynamicTools(dynamicTools)
+    let thread = try await startThread(
+      model: normalizedModel,
+      workingDirectory: workingDirectory,
+      dynamicTools: normalizedDynamicTools
+    )
     let threadID = thread.id
-    turnStates[threadID] = TurnState(threadID: threadID, model: thread.model)
+    turnStates[threadID] = TurnState(
+      threadID: threadID,
+      model: thread.model,
+      allowedDynamicToolNames: Set(normalizedDynamicTools.map(\.function.name))
+    )
 
     do {
       let turnID = try await startTurn(
@@ -539,6 +663,7 @@ public actor CodexAppServerClient {
     startupTask = nil
     isInitialized = false
     transportEnded = true
+    transportGeneration &+= 1
     failAll(with: .endOfStream)
     await transport.terminate()
   }
@@ -567,16 +692,35 @@ public actor CodexAppServerClient {
   }
 
   private func startAndHandshake() async throws {
+    let nextTransport: any CodexAppServerTransport
+    if transportGeneration == 0 {
+      // The initializer already created the first transport so a factory is
+      // invoked exactly once per app-server generation.
+      nextTransport = transport
+    } else {
+      nextTransport = transportFactory()
+    }
+    transportGeneration &+= 1
+    let generation = transportGeneration
+    transport = nextTransport
+    // Keep request IDs monotonic across transport generations. This prevents
+    // a late response from a reused/injected transport from colliding with a
+    // request in the newly started generation.
+    lineBuffer.removeAll(keepingCapacity: false)
+
     do {
       transportEnded = false
-      try await transport.start()
-      readerTask = Task { [weak self] in
-        await self?.readLoop()
+      try await nextTransport.start()
+      readerTask = Task { [weak self, nextTransport] in
+        await self?.readLoop(transport: nextTransport, generation: generation)
       }
       _ = try await requestWithoutStartup(
         method: "initialize",
         params: .object([
-          "capabilities": .object(["experimentalApi": .bool(false)]),
+          // Dynamic application tools are an app-server experimental field in
+          // the supported 0.142+ protocol. The workbench still validates every
+          // returned call against its own allow-list and command registry.
+          "capabilities": .object(["experimentalApi": .bool(true)]),
           "clientInfo": .object([
             "name": .string("RepoPress Studio"),
             "title": .string("RepoPress Studio"),
@@ -591,10 +735,11 @@ public actor CodexAppServerClient {
       isInitialized = true
     } catch {
       isInitialized = false
+      transportEnded = true
       readerTask?.cancel()
       readerTask = nil
       failAll(with: Self.mapError(error))
-      await transport.terminate()
+      await nextTransport.terminate()
       throw Self.mapError(error)
     }
   }
@@ -626,15 +771,20 @@ public actor CodexAppServerClient {
     } catch {
       throw CodexAppServerError.invalidResponse
     }
+    let requestTransport = transport
 
     return try await withTaskCancellationHandler(
       operation: {
         try await withCheckedThrowingContinuation { continuation in
           pendingRequests[requestID] = continuation
-          Task { [weak self] in
+          scheduleRequestTimeout(requestID: requestID)
+          Task { [weak self, requestTransport] in
             guard let self else { return }
             do {
-              try await self.transport.send(data)
+              // Bind the request to the transport generation that created it.
+              // A delayed send from an ended generation must never land in a
+              // newly started app-server process.
+              try await requestTransport.send(data)
             } catch {
               await self.failPendingRequest(
                 requestID: requestID,
@@ -670,25 +820,72 @@ public actor CodexAppServerClient {
   }
 
   private func cancelPendingRequest(requestID: Int) {
+    requestTimeoutTasks.removeValue(forKey: requestID)?.cancel()
     guard let continuation = pendingRequests.removeValue(forKey: requestID) else { return }
     continuation.resume(throwing: CodexAppServerError.cancelled)
   }
 
   private func failPendingRequest(requestID: Int, error: CodexAppServerError) {
+    requestTimeoutTasks.removeValue(forKey: requestID)?.cancel()
     guard let continuation = pendingRequests.removeValue(forKey: requestID) else { return }
     continuation.resume(throwing: error)
   }
 
+  private func scheduleRequestTimeout(requestID: Int) {
+    requestTimeoutTasks[requestID]?.cancel()
+    let timeout = requestTimeout
+    requestTimeoutTasks[requestID] = Task { [weak self] in
+      do {
+        try await Task.sleep(for: timeout)
+      } catch {
+        return
+      }
+      guard !Task.isCancelled else { return }
+      await self?.timeoutPendingRequest(requestID: requestID)
+    }
+  }
+
+  private func timeoutPendingRequest(requestID: Int) {
+    guard let continuation = pendingRequests.removeValue(forKey: requestID) else {
+      requestTimeoutTasks.removeValue(forKey: requestID)?.cancel()
+      return
+    }
+    requestTimeoutTasks.removeValue(forKey: requestID)?.cancel()
+    continuation.resume(throwing: CodexAppServerError.requestTimedOut)
+  }
+
   private func startThread(
     model: String?,
-    workingDirectory: URL?
+    workingDirectory: URL?,
+    dynamicTools: [AIToolDefinition]
   ) async throws -> (id: String, model: String?) {
     var params: [String: CodexAppServerJSONValue] = [
       "approvalPolicy": .string("never"),
-      "developerInstructions": .string(Self.threadDeveloperInstructions),
+      "developerInstructions": .string(
+        dynamicTools.isEmpty
+          ? Self.textOnlyThreadDeveloperInstructions
+          : Self.dynamicToolThreadDeveloperInstructions
+      ),
       "ephemeral": .bool(true),
       "sandbox": .string("read-only"),
     ]
+    if !dynamicTools.isEmpty {
+      params["dynamicTools"] = .array(
+        dynamicTools.map { definition in
+          var tool: [String: CodexAppServerJSONValue] = [
+            "type": .string("function"),
+            "name": .string(definition.function.name),
+            "inputSchema": Self.codexJSONValue(definition.function.parameters),
+          ]
+          if let description = definition.function.description?.trimmedForPublishing.nilIfEmpty {
+            tool["description"] = .string(description)
+          } else {
+            tool["description"] = .string(definition.function.name)
+          }
+          return .object(tool)
+        }
+      )
+    }
     if let model, !model.isEmpty {
       params["model"] = .string(model)
     }
@@ -711,6 +908,43 @@ public actor CodexAppServerClient {
       responseModel = nil
     }
     return (threadID, responseModel ?? model)
+  }
+
+  private static func validatedDynamicTools(
+    _ definitions: [AIToolDefinition]
+  ) throws -> [AIToolDefinition] {
+    var names = Set<String>()
+    var validated: [AIToolDefinition] = []
+    validated.reserveCapacity(definitions.count)
+    for definition in definitions {
+      let name = definition.function.name.trimmedForPublishing
+      guard definition.type == "function", !name.isEmpty, names.insert(name).inserted else {
+        throw CodexAppServerError.invalidResponse
+      }
+      var normalized = definition
+      normalized.function.name = name
+      validated.append(normalized)
+    }
+    return validated
+  }
+
+  private static func codexJSONValue(
+    _ value: AIStructuredOutputJSONValue
+  ) -> CodexAppServerJSONValue {
+    switch value {
+    case .object(let object):
+      return .object(object.mapValues(codexJSONValue))
+    case .array(let array):
+      return .array(array.map(codexJSONValue))
+    case .string(let string):
+      return .string(string)
+    case .number(let number):
+      return .number(number)
+    case .bool(let bool):
+      return .bool(bool)
+    case .null:
+      return .null
+    }
   }
 
   private func startTurn(
@@ -744,7 +978,14 @@ public actor CodexAppServerClient {
       operation: {
         try await withCheckedThrowingContinuation { continuation in
           guard var state = turnStates[threadID] else {
-            continuation.resume(throwing: CodexAppServerError.invalidResponse)
+            continuation.resume(
+              throwing: Task.isCancelled ? CodexAppServerError.cancelled : .invalidResponse
+            )
+            return
+          }
+          if Task.isCancelled {
+            removeTurn(threadID: threadID)
+            continuation.resume(throwing: CodexAppServerError.cancelled)
             return
           }
           if let failure = state.failure {
@@ -756,6 +997,7 @@ public actor CodexAppServerClient {
           } else {
             state.waiter = continuation
             turnStates[threadID] = state
+            scheduleTurnTimeout(threadID: threadID)
           }
         }
       },
@@ -767,45 +1009,95 @@ public actor CodexAppServerClient {
   }
 
   private func cancelTurn(threadID: String) {
-    guard var state = turnStates[threadID] else { return }
-    let waiter = state.waiter
+    guard let state = turnStates[threadID], let waiter = state.waiter else { return }
     let turnID = state.turnID
-    state.waiter = nil
-    state.failure = .cancelled
-    turnStates[threadID] = state
-    waiter?.resume(throwing: CodexAppServerError.cancelled)
-    if waiter != nil {
-      removeTurn(threadID: threadID)
-    }
+    let generation = transportGeneration
+    cancelTurnTimeout(threadID: threadID)
+    removeTurn(threadID: threadID)
+    waiter.resume(throwing: CodexAppServerError.cancelled)
     guard let turnID else { return }
     Task { [weak self] in
-      guard let self else { return }
-      do {
-        _ = try await self.requestWithoutStartup(
-          method: "turn/interrupt",
-          params: .object([
-            "threadId": .string(threadID),
-            "turnId": .string(turnID),
-          ])
-        )
-      } catch {
-        // Local cancellation has already completed; remote interruption is best effort.
-      }
+      await self?.interruptTurn(
+        threadID: threadID,
+        turnID: turnID,
+        generation: generation
+      )
     }
   }
 
-  private func readLoop() async {
+  private func scheduleTurnTimeout(threadID: String) {
+    turnTimeoutTasks[threadID]?.cancel()
+    let timeout = turnTimeout
+    turnTimeoutTasks[threadID] = Task { [weak self] in
+      do {
+        try await Task.sleep(for: timeout)
+      } catch {
+        return
+      }
+      guard !Task.isCancelled else { return }
+      await self?.timeoutTurn(threadID: threadID)
+    }
+  }
+
+  private func cancelTurnTimeout(threadID: String) {
+    turnTimeoutTasks.removeValue(forKey: threadID)?.cancel()
+  }
+
+  private func timeoutTurn(threadID: String) async {
+    guard let state = turnStates[threadID], let waiter = state.waiter else {
+      cancelTurnTimeout(threadID: threadID)
+      return
+    }
+    let turnID = state.turnID
+    let generation = transportGeneration
+    cancelTurnTimeout(threadID: threadID)
+    removeTurn(threadID: threadID)
+    waiter.resume(throwing: CodexAppServerError.turnTimedOut)
+    guard let turnID else { return }
+    Task { [weak self] in
+      await self?.interruptTurn(
+        threadID: threadID,
+        turnID: turnID,
+        generation: generation
+      )
+    }
+  }
+
+  private func interruptTurn(threadID: String, turnID: String, generation: Int) async {
+    guard generation == transportGeneration else { return }
+    do {
+      _ = try await requestWithoutStartup(
+        method: "turn/interrupt",
+        params: .object([
+          "threadId": .string(threadID),
+          "turnId": .string(turnID),
+        ])
+      )
+    } catch {
+      // Local cancellation/timeout has already completed; remote interruption
+      // is best effort and must never replace the typed local outcome.
+    }
+  }
+
+  private func readLoop(
+    transport: any CodexAppServerTransport,
+    generation: Int
+  ) async {
     do {
       while !Task.isCancelled {
+        guard generation == transportGeneration else { return }
         guard let chunk = try await transport.receive() else {
-          processEnded(with: .endOfStream)
+          guard generation == transportGeneration else { return }
+          processEnded(with: .endOfStream, generation: generation)
           return
         }
+        guard generation == transportGeneration else { return }
         guard !chunk.isEmpty else { continue }
         try consume(chunk: chunk)
       }
     } catch {
-      processEnded(with: Self.mapError(error))
+      guard generation == transportGeneration else { return }
+      processEnded(with: Self.mapError(error), generation: generation)
     }
   }
 
@@ -828,12 +1120,17 @@ public actor CodexAppServerClient {
 
   private func handle(envelope: CodexAppServerRPCEnvelope) {
     if let method = envelope.method {
+      if method == "item/tool/call", let requestID = envelope.id {
+        handleDynamicToolCall(requestID: requestID, params: envelope.params)
+        return
+      }
       handleNotification(method: method, params: envelope.params)
       return
     }
     guard let requestID = envelope.id else { return }
     // A cancelled request may still receive a late response. It belongs to an
     // already-consumed request ID and must not tear down the shared process.
+    requestTimeoutTasks.removeValue(forKey: requestID)?.cancel()
     guard let continuation = pendingRequests.removeValue(forKey: requestID) else { return }
     if let error = envelope.error {
       continuation.resume(
@@ -846,6 +1143,110 @@ public actor CodexAppServerClient {
       continuation.resume(returning: result)
     } else {
       continuation.resume(throwing: CodexAppServerError.invalidResponse)
+    }
+  }
+
+  private func handleDynamicToolCall(
+    requestID: Int,
+    params: CodexAppServerJSONValue?
+  ) {
+    let object = params?.objectValue ?? [:]
+    let threadID = firstString(in: object, keys: ["threadId", "threadID"])
+    let turnID = firstString(in: object, keys: ["turnId", "turnID"])
+    let toolName = firstString(in: object, keys: ["tool", "name"])?
+      .trimmingCharacters(in: .whitespacesAndNewlines)
+    let callID = firstString(in: object, keys: ["callId", "callID", "id"])?
+      .trimmingCharacters(in: .whitespacesAndNewlines)
+    let namespace = firstString(in: object, keys: ["namespace"])?
+      .trimmingCharacters(in: .whitespacesAndNewlines)
+    let resolvedThreadID = resolveThreadID(threadID: threadID, turnID: turnID)
+
+    guard
+      namespace?.isEmpty != false,
+      let resolvedThreadID,
+      var state = turnStates[resolvedThreadID],
+      let toolName,
+      !toolName.isEmpty,
+      state.allowedDynamicToolNames.contains(toolName),
+      let callID,
+      !callID.isEmpty,
+      !state.toolCalls.contains(where: { $0.id == callID }),
+      let arguments = object["arguments"],
+      let argumentData = try? encoder.encode(arguments),
+      let argumentJSON = String(data: argumentData, encoding: .utf8)
+    else {
+      sendDynamicToolCallResponse(
+        requestID: requestID,
+        success: false,
+        message: "The dynamic tool call was rejected by the host allow-list."
+      )
+      return
+    }
+
+    state.toolCalls.append(
+      AIToolCall(
+        id: callID,
+        function: AIToolFunctionCall(name: toolName, arguments: argumentJSON)
+      )
+    )
+    if let turnID, !turnID.isEmpty {
+      state.turnID = turnID
+      threadIDByTurnID[turnID] = resolvedThreadID
+    }
+    turnStates[resolvedThreadID] = state
+    sendDynamicToolCallResponse(
+      requestID: requestID,
+      success: true,
+      message: "The host recorded this call for validated execution. Do not claim success yet; the actual result will arrive in a later tool-role message."
+    )
+  }
+
+  private func sendDynamicToolCallResponse(
+    requestID: Int,
+    success: Bool,
+    message: String
+  ) {
+    let generation = transportGeneration
+    let responseTransport = transport
+    let result: CodexAppServerJSONValue = .object([
+      "success": .bool(success),
+      "contentItems": .array([
+        .object([
+          "type": .string("inputText"),
+          "text": .string(message),
+        ])
+      ]),
+    ])
+    let response: CodexAppServerJSONValue = .object([
+      "id": .number(Double(requestID)),
+      "result": result,
+    ])
+    let data: Data
+    do {
+      data = try encoder.encode(response) + Data([0x0A])
+    } catch {
+      processEnded(with: .invalidResponse, generation: generation)
+      return
+    }
+    Task { [weak self, responseTransport] in
+      await self?.transmitDynamicToolCallResponse(
+        data,
+        via: responseTransport,
+        generation: generation
+      )
+    }
+  }
+
+  private func transmitDynamicToolCallResponse(
+    _ data: Data,
+    via responseTransport: any CodexAppServerTransport,
+    generation: Int
+  ) async {
+    guard generation == transportGeneration else { return }
+    do {
+      try await responseTransport.send(data)
+    } catch {
+      processEnded(with: Self.mapError(error), generation: generation)
     }
   }
 
@@ -961,11 +1362,13 @@ public actor CodexAppServerClient {
         text: state.text,
         threadID: resolvedThreadID,
         turnID: state.turnID ?? turnID ?? "",
-        model: state.model
+        model: state.model,
+        toolCalls: state.toolCalls
       )
     }
     let waiter = state.waiter
     state.waiter = nil
+    cancelTurnTimeout(threadID: resolvedThreadID)
     turnStates[resolvedThreadID] = state
     guard let waiter else { return }
     removeTurn(threadID: resolvedThreadID)
@@ -979,10 +1382,87 @@ public actor CodexAppServerClient {
   }
 
   private func finishLogin(loginID: String, outcome: LoginOutcome) {
+    if ignoredLoginOutcomeIDs.contains(loginID) {
+      activeLoginIDs.remove(loginID)
+      loginOutcomes.removeValue(forKey: loginID)
+      return
+    }
+    activeLoginIDs.remove(loginID)
+    cancelLoginTimeout(loginID: loginID)
     if let waiter = loginWaiters.removeValue(forKey: loginID) {
       resumeLoginWaiter(waiter, with: outcome)
     } else {
       loginOutcomes[loginID] = outcome
+    }
+  }
+
+  private func registerLogin(loginID: String) {
+    clearIgnoredLoginOutcome(loginID)
+    // A notification can arrive in the same read loop turn as the start
+    // response. In that case the outcome is already buffered and the server
+    // has no active login to cancel.
+    if loginOutcomes[loginID] == nil {
+      activeLoginIDs.insert(loginID)
+    }
+  }
+
+  private func scheduleLoginTimeout(loginID: String) {
+    loginTimeoutTasks[loginID]?.cancel()
+    let timeout = loginTimeout
+    loginTimeoutTasks[loginID] = Task { [weak self] in
+      do {
+        try await Task.sleep(for: timeout)
+      } catch {
+        return
+      }
+      guard !Task.isCancelled else { return }
+      await self?.timeoutLogin(loginID: loginID)
+    }
+  }
+
+  private func cancelLoginTimeout(loginID: String) {
+    loginTimeoutTasks.removeValue(forKey: loginID)?.cancel()
+  }
+
+  private func timeoutLogin(loginID: String) async {
+    guard let waiter = loginWaiters.removeValue(forKey: loginID) else {
+      // Completion or task cancellation won the actor race and already
+      // consumed the continuation. In particular, do not cancel remotely a
+      // second time from this stale timeout task.
+      cancelLoginTimeout(loginID: loginID)
+      return
+    }
+    loginOutcomes.removeValue(forKey: loginID)
+    let wasActive = activeLoginIDs.remove(loginID) != nil
+    cancelLoginTimeout(loginID: loginID)
+    waiter.resume(throwing: CodexAppServerError.loginTimedOut)
+    guard wasActive else { return }
+    markLoginOutcomeIgnored(loginID)
+    await sendLoginCancellation(loginID: loginID)
+  }
+
+  private func markLoginOutcomeIgnored(_ loginID: String) {
+    guard ignoredLoginOutcomeIDs.insert(loginID).inserted else { return }
+    ignoredLoginOutcomeOrder.append(loginID)
+    while ignoredLoginOutcomeOrder.count > Self.maximumIgnoredLoginOutcomeCount {
+      let evicted = ignoredLoginOutcomeOrder.removeFirst()
+      ignoredLoginOutcomeIDs.remove(evicted)
+    }
+  }
+
+  private func clearIgnoredLoginOutcome(_ loginID: String) {
+    guard ignoredLoginOutcomeIDs.remove(loginID) != nil else { return }
+    ignoredLoginOutcomeOrder.removeAll { $0 == loginID }
+  }
+
+  private func sendLoginCancellation(loginID: String) async {
+    do {
+      _ = try await request(
+        method: "account/login/cancel",
+        params: .object(["loginId": .string(loginID)])
+      )
+    } catch {
+      // Local completion has already happened; remote cancellation is best effort.
     }
   }
 
@@ -1009,22 +1489,33 @@ public actor CodexAppServerClient {
   }
 
   private func removeTurn(threadID: String) {
+    cancelTurnTimeout(threadID: threadID)
     if let turnID = turnStates[threadID]?.turnID {
       threadIDByTurnID.removeValue(forKey: turnID)
     }
     turnStates.removeValue(forKey: threadID)
   }
 
-  private func processEnded(with error: CodexAppServerError) {
+  private func processEnded(with error: CodexAppServerError, generation: Int) {
+    guard generation == transportGeneration else { return }
     isInitialized = false
     transportEnded = true
     lineBuffer.removeAll(keepingCapacity: false)
     failAll(with: error)
+    let endedTransport = transport
+    Task {
+      await endedTransport.terminate()
+    }
   }
 
   private func failAll(with error: CodexAppServerError) {
     let requests = pendingRequests.values
     pendingRequests.removeAll()
+    let requestTimeouts = requestTimeoutTasks.values
+    requestTimeoutTasks.removeAll()
+    for task in requestTimeouts {
+      task.cancel()
+    }
     for continuation in requests {
       continuation.resume(throwing: error)
     }
@@ -1032,6 +1523,11 @@ public actor CodexAppServerClient {
     let states = turnStates.values
     turnStates.removeAll()
     threadIDByTurnID.removeAll()
+    let turnTimeouts = turnTimeoutTasks.values
+    turnTimeoutTasks.removeAll()
+    for task in turnTimeouts {
+      task.cancel()
+    }
     for state in states {
       state.waiter?.resume(throwing: error)
     }
@@ -1039,6 +1535,14 @@ public actor CodexAppServerClient {
     let waiters = loginWaiters.values
     loginWaiters.removeAll()
     loginOutcomes.removeAll()
+    let timeoutTasks = loginTimeoutTasks.values
+    loginTimeoutTasks.removeAll()
+    activeLoginIDs.removeAll()
+    ignoredLoginOutcomeIDs.removeAll()
+    ignoredLoginOutcomeOrder.removeAll()
+    for task in timeoutTasks {
+      task.cancel()
+    }
     for waiter in waiters {
       waiter.resume(throwing: error)
     }
@@ -1046,21 +1550,32 @@ public actor CodexAppServerClient {
 
   private func parseAccountStatus(_ value: CodexAppServerJSONValue) -> CodexAppServerAccountStatus {
     let root = value.objectValue ?? [:]
-    let account = root["account"]?.objectValue ?? root
+    let accountValue = root["account"]
+    let account = accountValue?.objectValue ?? (accountValue == nil ? root : [:])
     let accountID = firstString(in: account, keys: ["id", "accountId", "accountID"])
     let accountType = firstString(in: account, keys: ["type", "accountType"])
     let email = firstString(in: account, keys: ["email", "emailAddress"])
     let planType = firstString(in: account, keys: ["planType", "plan", "subscription"])
-    let requiresAuth =
-      root["requiresOpenaiAuth"]?.boolValue
-      ?? root["requiresAuth"]?.boolValue
-    let hasAccount = accountID != nil || accountType != nil || email != nil || planType != nil
-    let authenticated =
+    let explicitAuthenticated =
       root["authenticated"]?.boolValue
       ?? root["isAuthenticated"]?.boolValue
-      ?? (hasAccount ? true : nil)
-      ?? (requiresAuth.map { !$0 })
-      ?? false
+      ?? account["authenticated"]?.boolValue
+      ?? account["isAuthenticated"]?.boolValue
+
+    let hasAccountData = accountID != nil || email != nil || planType != nil || (accountType != nil && accountType != "apiKey")
+    let isAccountObjectPresent = (accountValue?.objectValue != nil) && !(accountValue?.objectValue?.isEmpty ?? true)
+
+    let authenticated: Bool
+    if let explicitAuthenticated {
+      authenticated = explicitAuthenticated
+    } else if isAccountObjectPresent && hasAccountData {
+      authenticated = true
+    } else if let requiresAuth = root["requiresOpenaiAuth"]?.boolValue ?? root["requiresAuth"]?.boolValue {
+      authenticated = !requiresAuth
+    } else {
+      authenticated = hasAccountData
+    }
+
     return CodexAppServerAccountStatus(
       isAuthenticated: authenticated,
       accountID: accountID,
@@ -1160,6 +1675,19 @@ public actor CodexAppServerClient {
     guard let value else { return nil }
     let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
     return trimmed.isEmpty ? nil : trimmed
+  }
+
+  private static func validatedLoginURL(_ rawValue: String) -> URL? {
+    guard let url = URL(string: rawValue),
+      url.scheme?.caseInsensitiveCompare("https") == .orderedSame,
+      let host = url.host,
+      !host.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+      url.user == nil,
+      url.password == nil
+    else {
+      return nil
+    }
+    return url
   }
 
   private static func sanitizedMessage(_ message: String) -> String {

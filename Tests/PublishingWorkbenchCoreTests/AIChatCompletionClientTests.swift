@@ -1,3 +1,4 @@
+import CoreFoundation
 import Foundation
 import XCTest
 
@@ -84,6 +85,73 @@ final class AIChatCompletionClientTests: XCTestCase {
     XCTAssertEqual(request.url?.absoluteString, "https://api.deepseek.com/chat/completions")
     XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer secret")
     XCTAssertEqual(result.content, "Done")
+  }
+
+  func testDefaultClientBindsProfileProxyToItsURLSessionTransport() throws {
+    let client = AIChatCompletionClient()
+    let config = AIProviderConfig(
+      preset: .custom,
+      baseURL: "https://example.com/v1",
+      model: "model",
+      requiresAPIKey: false,
+      advancedSettings: AIProviderAdvancedSettings(
+        proxyURL: "socks5://127.0.0.1:1080"
+      )
+    )
+
+    let selected = try XCTUnwrap(
+      try client.transport(for: config) as? URLSessionAIChatTransport
+    )
+    let dictionary = try XCTUnwrap(selected.sessionConfiguration.connectionProxyDictionary)
+    XCTAssertEqual(
+      dictionary[kCFStreamPropertySOCKSProxyHost as String] as? String,
+      "127.0.0.1"
+    )
+    XCTAssertEqual(
+      dictionary[kCFStreamPropertySOCKSProxyPort as String] as? Int,
+      1080
+    )
+
+    let selectedAgain = try XCTUnwrap(
+      try client.transport(for: config) as? URLSessionAIChatTransport
+    )
+    XCTAssertEqual(selected.sessionIdentity, selectedAgain.sessionIdentity)
+    let copiedClient = client
+    let selectedFromCopy = try XCTUnwrap(
+      try copiedClient.transport(for: config) as? URLSessionAIChatTransport
+    )
+    XCTAssertEqual(selected.sessionIdentity, selectedFromCopy.sessionIdentity)
+
+    let otherConfig = AIProviderConfig(
+      preset: .custom,
+      baseURL: "https://example.com/v1",
+      model: "model",
+      requiresAPIKey: false,
+      advancedSettings: AIProviderAdvancedSettings(
+        proxyURL: "http://127.0.0.1:8080"
+      )
+    )
+    let other = try XCTUnwrap(
+      try client.transport(for: otherConfig) as? URLSessionAIChatTransport
+    )
+    XCTAssertNotEqual(selected.sessionIdentity, other.sessionIdentity)
+  }
+
+  func testDefaultClientRejectsInvalidProfileProxyBeforeTransport() {
+    let client = AIChatCompletionClient()
+    let config = AIProviderConfig(
+      preset: .custom,
+      baseURL: "https://example.com/v1",
+      model: "model",
+      requiresAPIKey: false,
+      advancedSettings: AIProviderAdvancedSettings(
+        proxyURL: "http://proxy.example:70000"
+      )
+    )
+
+    XCTAssertThrowsError(try client.transport(for: config)) { error in
+      XCTAssertEqual(error as? AIChatCompletionClientError, .invalidProxyURL)
+    }
   }
 
   func testLegacyRequestOmitsAllOptionalToolAndStructuredOutputFields() async throws {
@@ -1054,6 +1122,147 @@ final class AIChatCompletionClientTests: XCTestCase {
     await XCTAssertThrowsErrorAsync(try await consume(stream)) { error in
       XCTAssertTrue(error is AIChatCompletionClientError)
       XCTAssertTrue((error as? AIChatCompletionClientError)?.didReceivePartialContent == true)
+    }
+    let requestCount = await transport.capturedRequestCount()
+    XCTAssertEqual(requestCount, 1)
+  }
+
+  func testSSEDoneMarkerCompletesAfterHeartbeatAndContent() async throws {
+    let transport = RecordingAIChatTransport(
+      data: Data(),
+      statusCode: 200,
+      streamLines: [
+        ": keep-alive",
+        "",
+        #"data: {"choices":[{"delta":{"content":"done"}}]}"#,
+        "",
+        "data: [DONE]",
+        "",
+      ]
+    )
+    let client = AIChatCompletionClient(transport: transport)
+
+    let stream = try await client.stream(
+      request: AIChatCompletionRequest(model: "model", messages: []),
+      config: streamingSupportedConfig(
+        AIProviderConfig(
+          preset: .custom,
+          baseURL: "https://example.com/v1",
+          model: "model",
+          requiresAPIKey: false
+        )),
+      apiKey: nil
+    )
+    var content = ""
+    for try await update in stream {
+      content += update.contentDelta
+    }
+
+    XCTAssertEqual(content, "done")
+    let requestCount = await transport.capturedRequestCount()
+    XCTAssertEqual(requestCount, 1)
+  }
+
+  func testSSEFinishReasonCompletesWithoutDoneMarker() async throws {
+    let transport = RecordingAIChatTransport(
+      data: Data(),
+      statusCode: 200,
+      streamLines: [
+        #"data: {"choices":[{"delta":{"content":"finished"},"finish_reason":"stop"}]}"#,
+        "",
+      ]
+    )
+    let client = AIChatCompletionClient(transport: transport)
+
+    let stream = try await client.stream(
+      request: AIChatCompletionRequest(model: "model", messages: []),
+      config: streamingSupportedConfig(
+        AIProviderConfig(
+          preset: .custom,
+          baseURL: "https://example.com/v1",
+          model: "model",
+          requiresAPIKey: false
+        )),
+      apiKey: nil
+    )
+    var content = ""
+    for try await update in stream {
+      content += update.contentDelta
+    }
+
+    XCTAssertEqual(content, "finished")
+    let requestCount = await transport.capturedRequestCount()
+    XCTAssertEqual(requestCount, 1)
+  }
+
+  func testCleanEOFWithoutTerminalMarkerReportsIncompleteResponse() async throws {
+    let transport = RecordingAIChatTransport(
+      data: Data(),
+      statusCode: 200,
+      streamLines: [
+        #"data: {"choices":[{"delta":{"content":"partial"}}]}"#,
+        "",
+      ]
+    )
+    let client = AIChatCompletionClient(
+      transport: transport,
+      networkRecoveryPolicy: AIChatNetworkRecoveryPolicy(
+        firstByteTimeout: 1,
+        resourceTimeout: 2,
+        maximumAutomaticRetryCount: 2,
+        automaticRetryBaseDelay: 0
+      )
+    )
+
+    let stream = try await client.stream(
+      request: AIChatCompletionRequest(model: "model", messages: []),
+      config: streamingSupportedConfig(
+        AIProviderConfig(
+          preset: .custom,
+          baseURL: "https://example.com/v1",
+          model: "model",
+          requiresAPIKey: false
+        )),
+      apiKey: nil,
+      purpose: .connectionTest
+    )
+
+    await XCTAssertThrowsErrorAsync(try await consume(stream)) { error in
+      guard
+        case .streamInterruptedAfterPartialContent(let message) =
+          error as? AIChatCompletionClientError
+      else {
+        XCTFail("Expected incomplete partial response, got \(error)")
+        return
+      }
+      XCTAssertTrue(message.contains("响应不完整"))
+    }
+    let requestCount = await transport.capturedRequestCount()
+    XCTAssertEqual(requestCount, 1)
+  }
+
+  func testHeartbeatOnlyEOFReportsIncompleteResponseWithoutPartialBoundary() async throws {
+    let transport = RecordingAIChatTransport(
+      data: Data(),
+      statusCode: 200,
+      streamLines: [": keep-alive", "", "event: ping", ""]
+    )
+    let client = AIChatCompletionClient(transport: transport)
+
+    let stream = try await client.stream(
+      request: AIChatCompletionRequest(model: "model", messages: []),
+      config: streamingSupportedConfig(
+        AIProviderConfig(
+          preset: .custom,
+          baseURL: "https://example.com/v1",
+          model: "model",
+          requiresAPIKey: false
+        )),
+      apiKey: nil
+    )
+
+    await XCTAssertThrowsErrorAsync(try await consume(stream)) { error in
+      XCTAssertEqual(error as? AIChatCompletionClientError, .incompleteStream)
     }
     let requestCount = await transport.capturedRequestCount()
     XCTAssertEqual(requestCount, 1)

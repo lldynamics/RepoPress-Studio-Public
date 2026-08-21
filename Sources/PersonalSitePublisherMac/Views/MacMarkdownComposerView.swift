@@ -427,32 +427,7 @@ struct MacMarkdownComposerView: View {
   private var editorOverlaySurface: some View {
     ZStack(alignment: .top) {
       editorSurface
-      insertedImageMetadataOverlay
       writingContextPanelOverlay
-    }
-  }
-
-  @ViewBuilder
-  private var insertedImageMetadataOverlay: some View {
-    if let metadata = activeInsertedImageMetadataBinding,
-      let activeIndex = activeInsertedImageMetadataIndex
-    {
-      InsertedImageMetadataPanel(
-        metadata: metadata,
-        position: activeIndex + 1,
-        total: insertedImageMetadataDrafts.count,
-        canMovePrevious: activeIndex > 0,
-        canMoveNext: activeIndex + 1 < insertedImageMetadataDrafts.count,
-        onSetCover: { isCover in
-          setPendingImageCover(isCover, attachmentID: metadata.wrappedValue.id)
-        },
-        onMovePrevious: moveToPreviousInsertedImage,
-        onApplyAndAdvance: applyInsertedImageMetadataAndAdvance,
-        onOpenInspector: openInsertedImageInspector,
-        onDismiss: dismissInsertedImageMetadata
-      )
-      .padding(.top, 10)
-      .zIndex(3)
     }
   }
 
@@ -779,7 +754,7 @@ struct MacMarkdownComposerView: View {
             HStack {
               MarkdownSlashCommandMenu(
                 filterText: slashCommandQuery ?? "",
-                items: defaultSlashCommands,
+                items: buildDefaultSlashCommands(),
                 selectedIndex: $slashCommandSelectedIndex,
                 onSelect: { item in
                   selectSlashCommand(item)
@@ -814,7 +789,7 @@ struct MacMarkdownComposerView: View {
     )
   }
 
-  var defaultSlashCommands: [SlashCommandItem] {
+  private func buildDefaultSlashCommands() -> [SlashCommandItem] {
     [
       SlashCommandItem(
         id: "h1",
@@ -923,7 +898,7 @@ struct MacMarkdownComposerView: View {
     guard isSlashMenuPresented else { return false }
 
     let filteredItems = MarkdownSlashCommandMenu.filteredItems(
-      from: defaultSlashCommands,
+      from: buildDefaultSlashCommands(),
       matching: slashCommandQuery ?? ""
     )
     switch key {

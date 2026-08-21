@@ -216,17 +216,27 @@ struct AIChatContextInspectorView: View {
       isPresented: $isDataSharingConsentConfirmationPresented,
       titleVisibility: .visible
     ) {
-      Button(String(localized: "同意并发送")) {
-        grantPendingDataSharingConsentAndSubmit()
+      if pendingDataSharingConsentConfig?.usesCodexAppServer == true {
+        Button(String(localized: "前往 ChatGPT 账户设置")) {
+          openCodexAccountSettingsForConsent()
+        }
+      } else {
+        Button(String(localized: "同意并发送")) {
+          grantPendingDataSharingConsentAndSubmit()
+        }
       }
       Button("取消", role: .cancel) {
         clearPendingDataSharingConsent()
       }
     } message: {
       if let presentation = pendingDataSharingConsentPresentation {
-        Text(
-          "将把本次消息及所选上下文发送到 \(presentation.providerName)（\(presentation.destination)）。同意后，该目的地后续可直接使用；你可随时在设置中撤销。"
-        )
+        if pendingDataSharingConsentConfig?.usesCodexAppServer == true {
+          Text("ChatGPT 需要先在 AI 设置中完成当前账户登录和内容发送授权；完成后返回此处再发送。")
+        } else {
+          Text(
+            "将把本次消息及所选上下文发送到 \(presentation.providerName)（\(presentation.destination)）。同意后，该目的地后续可直接使用；你可随时在设置中撤销。"
+          )
+        }
       }
     }
   }

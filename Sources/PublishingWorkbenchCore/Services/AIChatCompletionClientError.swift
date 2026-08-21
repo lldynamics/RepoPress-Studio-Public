@@ -2,8 +2,10 @@ import Foundation
 
 public enum AIChatCompletionClientError: LocalizedError, Equatable, Sendable {
   case invalidBaseURL(String)
+  case invalidProxyURL
   case insecureCredentialURL
   case invalidResponse
+  case incompleteStream
   case streamingUnsupported
   case preparedRequestModeMismatch
   case preparedRequestAlreadyConsumed
@@ -18,16 +20,21 @@ public enum AIChatCompletionClientError: LocalizedError, Equatable, Sendable {
   case streamInterruptedAfterPartialContent(String)
   case unsupportedToolHistory
   case imageContentRequiresVisionCapability
+  case unsupportedAnthropicStructuredOutput
   case emptyContent
 
   public var errorDescription: String? {
     switch self {
     case .invalidBaseURL(let value):
       return "AI Base URL 无效：\(value)"
+    case .invalidProxyURL:
+      return "AI 代理地址无效或协议不受支持；本次未发起直连请求。"
     case .insecureCredentialURL:
       return "AI 请求仅允许 HTTPS，或无 API Key 时的本机回环 HTTP 端点；本次未发起请求。"
     case .invalidResponse:
       return "AI 服务返回了无效响应。"
+    case .incompleteStream:
+      return "AI 流式响应不完整：服务未返回完成标志；为避免重复生成和重复计费，未自动重试。"
     case .streamingUnsupported:
       return "当前 AI 连接不支持流式回复。"
     case .preparedRequestModeMismatch:
@@ -60,6 +67,8 @@ public enum AIChatCompletionClientError: LocalizedError, Equatable, Sendable {
       return "当前连接尚未证明支持工具调用，未发送工具历史。"
     case .imageContentRequiresVisionCapability:
       return "当前连接尚未证明支持视觉输入，未发送仅图片消息。"
+    case .unsupportedAnthropicStructuredOutput:
+      return "Anthropic 原生 Messages 暂不支持当前结构化输出约束；本次未发送请求。"
     case .emptyContent:
       return "AI 服务没有返回可用内容。"
     }
@@ -83,12 +92,14 @@ public enum AIChatCompletionClientError: LocalizedError, Equatable, Sendable {
       return true
     case .httpStatus(let status, _, _):
       return [408, 425, 429, 500, 502, 503, 504].contains(status)
-    case .invalidBaseURL, .insecureCredentialURL, .invalidResponse, .responseTooLarge,
+    case .invalidBaseURL, .invalidProxyURL, .insecureCredentialURL, .invalidResponse,
+      .incompleteStream, .responseTooLarge,
       .streamingUnsupported, .preparedRequestModeMismatch, .preparedRequestAlreadyConsumed,
       .preparedRequestConfigurationMismatch, .preparedRequestCapabilityExpired,
       .preparedRequestAuthorizationExpired,
       .streamInterruptedAfterPartialContent,
-      .unsupportedToolHistory, .imageContentRequiresVisionCapability, .emptyContent:
+      .unsupportedToolHistory, .imageContentRequiresVisionCapability,
+      .unsupportedAnthropicStructuredOutput, .emptyContent:
       return false
     }
   }

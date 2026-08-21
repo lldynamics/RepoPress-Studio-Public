@@ -23,9 +23,12 @@ struct AISettingsView: View {
   let refreshKeyAvailability: () -> Void
   let setCredentialStorageMode: (AICredentialStorageMode) -> Void
   let testConnection: (Set<AIProviderCapabilityProbeKind>) async -> AIConnectionTestReport?
+  let discoverModels: (UUID, AIProviderConfig) async throws -> [AIModelDescriptor]
   let setRemoteAIEnabled: (Bool) -> Void
   let grantDataSharingConsent: () -> Void
   let revokeDataSharingConsent: () -> Void
+  let isCodexDataSharingConsentGranted: (CodexAppServerAccountStatus?) -> Bool
+  let grantCodexDataSharingConsent: (CodexAppServerAccountStatus) -> Void
 
   @State private var aiAPIKeyInput = ""
   @State private var aiConnectionReport: AIConnectionTestReport?
@@ -33,7 +36,6 @@ struct AISettingsView: View {
   @State private var connectionTestTask: Task<Void, Never>?
   @State private var connectionTestRequestID = UUID()
   @State private var selectedSection: AISettingsSection = .connection
-  @State private var expansionState = AISettingsExpansionState()
   @State private var hasAttemptedConnectionTest = false
   @State private var selectedCapabilityProbes: Set<AIProviderCapabilityProbeKind> = []
 
@@ -67,51 +69,18 @@ struct AISettingsView: View {
             requiresAPIKeyBinding: aiProviderBoolBinding(\.requiresAPIKey),
             requiresAPIKeyDisplayValue: activeConnection.config.requiresAPIKey
               ? String(localized: "开启")
-              : String(localized: "关闭")
+              : String(localized: "关闭"),
+            connectionProfileID: activeConnection.id,
+            discoverModels: discoverModels
           )
 
           if activeConnection.config.usesCodexAppServer {
             codexAccountSection
-          }
-
-          if activeConnection.config.preset == .local {
+          } else if activeConnection.config.preset == .local {
             LocalAIEngineDiscoverySection { baseURL, model in
               applyLocalAIConfiguration(baseURL: baseURL, model: model)
             }
-          }
-
-          Section {
-            DisclosureGroup(
-              String(localized: "高级能力、对话参数与本地服务"),
-              isExpanded: $expansionState.advancedConnection
-            ) {
-              Text("查看当前连接能力，调整高级对话参数，或检测此 Mac 上的本地 AI 服务。")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            }
-            .accessibilityIdentifier("settings-ai-advanced-disclosure")
-          }
-
-          if expansionState.advancedConnection {
-            AIProviderCapabilitiesSection(config: activeConnection.config)
-
-            AIAdvancedSettingsSection(
-              settings: aiAdvancedSettingsBinding,
-              reasoningSupport: activeConnection.config.capabilitySupport(
-                for: .reasoningControl
-              ),
-              usesCodexAppServer: activeConnection.config.usesCodexAppServer
-            )
-
-            if activeConnection.config.preset != .local {
-              LocalAIEngineDiscoverySection { baseURL, model in
-                applyLocalAIConfiguration(baseURL: baseURL, model: model)
-              }
-            }
-          }
-
-        case .credentials:
-          if !activeConnection.config.usesCodexAppServer {
+          } else {
             AIKeychainSection(
               aiAPIKeyInput: $aiAPIKeyInput,
               shouldFocusInput: shouldFocusAPIKey,
@@ -137,10 +106,36 @@ struct AISettingsView: View {
                 invalidateConnectionReport()
               }
             )
+
+            AIConnectionTestSection(
+              config: activeConnection.config,
+              tokenAvailability: tokenAvailability,
+              dataSharingConsent: dataSharingConsent,
+              report: isConnectionReportStale ? nil : aiConnectionReport,
+              isReportStale: isConnectionReportStale,
+              isAIActionRunning: isActionRunning,
+              isConnectionTestRunning: connectionTestTask != nil,
+              hasAttemptedConnectionTest: hasAttemptedConnectionTest,
+              actionMessage: actionMessage,
+              selectedProbeCapabilities: $selectedCapabilityProbes,
+              onTestConnection: startConnectionTest
+            )
           }
+
+        case .credentials:
+          AIAdvancedSettingsSection(
+            settings: aiAdvancedSettingsBinding,
+            reasoningSupport: activeConnection.config.capabilitySupport(
+              for: .reasoningControl
+            ),
+            usesCodexAppServer: activeConnection.config.usesCodexAppServer
+          )
+
+          AIProviderCapabilitiesSection(config: activeConnection.config)
 
           AIDataSharingConsentSection(
             presentation: dataSharingConsent,
+            isCodexAppServer: activeConnection.config.usesCodexAppServer,
             setRemoteAIEnabled: { enabled in
               setRemoteAIEnabled(enabled)
               invalidateConnectionReport()
@@ -155,19 +150,11 @@ struct AISettingsView: View {
             }
           )
 
-          AIConnectionTestSection(
-            config: activeConnection.config,
-            tokenAvailability: tokenAvailability,
-            dataSharingConsent: dataSharingConsent,
-            report: isConnectionReportStale ? nil : aiConnectionReport,
-            isReportStale: isConnectionReportStale,
-            isAIActionRunning: isActionRunning,
-            isConnectionTestRunning: connectionTestTask != nil,
-            hasAttemptedConnectionTest: hasAttemptedConnectionTest,
-            actionMessage: actionMessage,
-            selectedProbeCapabilities: $selectedCapabilityProbes,
-            onTestConnection: startConnectionTest
-          )
+          if activeConnection.config.preset != .local && !activeConnection.config.usesCodexAppServer {
+            LocalAIEngineDiscoverySection { baseURL, model in
+              applyLocalAIConfiguration(baseURL: baseURL, model: model)
+            }
+          }
 
         case .writingStyle:
           AIWritingStyleSection(
@@ -231,10 +218,9 @@ struct AISettingsView: View {
     CodexAppServerAccountSection(
       model: aiProviderStringBinding(\.model),
       reasoningEffortOverride: aiReasoningEffortOverrideBinding,
-      dataSharingConsent: dataSharingConsent,
+      isCodexDataSharingConsentGranted: isCodexDataSharingConsentGranted,
       grantConsentForConnection: {
-        setRemoteAIEnabled(true)
-        grantDataSharingConsent()
+        grantCodexDataSharingConsent($0)
         invalidateConnectionReport()
       },
       testConnection: {
@@ -511,10 +497,6 @@ struct AISettingsView: View {
   }
 }
 
-struct AISettingsExpansionState: Equatable {
-  var advancedConnection = false
-}
-
 enum AISettingsSection: String, CaseIterable, Identifiable {
   case connection
   case credentials
@@ -536,9 +518,9 @@ enum AISettingsSection: String, CaseIterable, Identifiable {
   var title: String {
     switch self {
     case .connection:
-      return String(localized: "连接与服务")
+      return String(localized: "模型与连接")
     case .credentials:
-      return String(localized: "凭据授权与测试")
+      return String(localized: "参数与网络")
     case .writingStyle:
       return String(localized: "写作风格")
     }
@@ -547,9 +529,9 @@ enum AISettingsSection: String, CaseIterable, Identifiable {
   var systemImage: String {
     switch self {
     case .connection:
-      return "point.3.connected.trianglepath.dotted"
+      return "sparkles"
     case .credentials:
-      return "key"
+      return "slider.horizontal.3"
     case .writingStyle:
       return "text.quote"
     }

@@ -1,6 +1,44 @@
 import PublishingWorkbenchCore
 import SwiftUI
 
+struct MarkdownHeadingMenuItems: View {
+  let onSelectHeading: (Int) -> Void
+
+  var body: some View {
+    ForEach(1...6, id: \.self) { level in
+      Button {
+        onSelectHeading(level)
+      } label: {
+        Label("\(level) 级标题 (H\(level))", systemImage: "textformat.size")
+      }
+    }
+  }
+}
+
+struct MarkdownListMenuItems: View {
+  let onSelectUnorderedList: () -> Void
+  let onSelectOrderedList: () -> Void
+  let onSelectTaskList: () -> Void
+
+  var body: some View {
+    Button {
+      onSelectUnorderedList()
+    } label: {
+      Label("无序列表", systemImage: "list.bullet")
+    }
+    Button {
+      onSelectOrderedList()
+    } label: {
+      Label("有序列表", systemImage: "list.number")
+    }
+    Button {
+      onSelectTaskList()
+    } label: {
+      Label("任务列表", systemImage: "checklist")
+    }
+  }
+}
+
 struct MarkdownFloatingBubbleToolbar: View {
   let isSelectionAIActionRunning: Bool
   let onApplyFormatting: (MarkdownFormattingCommand) -> Void
@@ -11,12 +49,8 @@ struct MarkdownFloatingBubbleToolbar: View {
   var body: some View {
     HStack(spacing: 4) {
       Menu {
-        ForEach(1...6, id: \.self) { level in
-          Button {
-            onApplyFormatting(.heading(level: level))
-          } label: {
-            Label("\(level) 级标题 (H\(level))", systemImage: "textformat.size")
-          }
+        MarkdownHeadingMenuItems { level in
+          onApplyFormatting(.heading(level: level))
         }
       } label: {
         HStack(spacing: 2) {
@@ -34,6 +68,7 @@ struct MarkdownFloatingBubbleToolbar: View {
       .buttonStyle(.plain)
       .foregroundStyle(.primary)
       .help("插入或切换标题 (H1-H6)")
+      .accessibilityLabel("标题层级")
 
       divider
 
@@ -50,21 +85,11 @@ struct MarkdownFloatingBubbleToolbar: View {
       divider
 
       Menu {
-        Button {
-          onApplyAdvancedFormatting(.unorderedList)
-        } label: {
-          Label("无序列表", systemImage: "list.bullet")
-        }
-        Button {
-          onApplyAdvancedFormatting(.orderedList)
-        } label: {
-          Label("有序列表", systemImage: "list.number")
-        }
-        Button {
-          onApplyAdvancedFormatting(.taskList)
-        } label: {
-          Label("任务列表", systemImage: "checklist")
-        }
+        MarkdownListMenuItems(
+          onSelectUnorderedList: { onApplyAdvancedFormatting(.unorderedList) },
+          onSelectOrderedList: { onApplyAdvancedFormatting(.orderedList) },
+          onSelectTaskList: { onApplyAdvancedFormatting(.taskList) }
+        )
       } label: {
         HStack(spacing: 2) {
           Image(systemName: "list.bullet")
@@ -80,6 +105,7 @@ struct MarkdownFloatingBubbleToolbar: View {
       .buttonStyle(.plain)
       .foregroundStyle(.primary)
       .help("转换为列表（无序、有序、任务列表）")
+      .accessibilityLabel("列表格式")
 
       divider
 
@@ -102,7 +128,7 @@ struct MarkdownFloatingBubbleToolbar: View {
                 .rewriteSelection(AIPublishingRewriteConfiguration(operation: operation))
               )
             } label: {
-              Label(operation.localizedDisplayName, systemImage: "wand.and.stars")
+              Label(operation.localizedDisplayName, systemImage: operation.systemImage)
             }
           }
         }
@@ -112,6 +138,7 @@ struct MarkdownFloatingBubbleToolbar: View {
       }
       .menuIndicator(.hidden)
       .foregroundStyle(WorkbenchTheme.progress)
+      .accessibilityLabel("AI 润色与处理")
 
       Menu {
         Button {
@@ -130,6 +157,7 @@ struct MarkdownFloatingBubbleToolbar: View {
       }
       .menuIndicator(.hidden)
       .foregroundStyle(WorkbenchTheme.brand)
+      .accessibilityLabel("AI 翻译")
     }
     .padding(.horizontal, 8)
     .padding(.vertical, 4)
@@ -158,5 +186,6 @@ struct MarkdownFloatingBubbleToolbar: View {
     .buttonStyle(.plain)
     .foregroundStyle(.primary)
     .help(title)
+    .accessibilityLabel(title)
   }
 }

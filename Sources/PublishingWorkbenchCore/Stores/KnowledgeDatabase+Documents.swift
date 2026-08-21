@@ -367,20 +367,6 @@ extension KnowledgeDatabase {
     }
   }
 
-  func setCapturedTextStorageReference(_ reference: String, revisionID: UUID) throws {
-    try withLock {
-      let statement = try prepare("""
-      UPDATE knowledge_revisions
-      SET captured_text_storage_ref = ?
-      WHERE id = ? AND (captured_text_storage_ref IS NULL OR captured_text_storage_ref = '');
-      """)
-      defer { sqlite3_finalize(statement) }
-      bind(reference, at: 1, to: statement)
-      bind(revisionID.uuidString, at: 2, to: statement)
-      guard sqlite3_step(statement) == SQLITE_DONE else { throw databaseError() }
-    }
-  }
-
   func revision(id: UUID) throws -> KnowledgeDocumentRevision? {
     try withLock {
       let statement = try prepare("""

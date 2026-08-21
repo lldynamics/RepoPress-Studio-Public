@@ -43,6 +43,20 @@ struct AIChatDraftDiffPreviewSheet: View {
   @Environment(\.dismiss) private var dismiss
   let preview: AIChatDraftDiffPreview
   let onApply: () -> Void
+  let onReject: (() -> Void)?
+  let isAgentReview: Bool
+
+  init(
+    preview: AIChatDraftDiffPreview,
+    isAgentReview: Bool = false,
+    onReject: (() -> Void)? = nil,
+    onApply: @escaping () -> Void
+  ) {
+    self.preview = preview
+    self.onApply = onApply
+    self.onReject = onReject
+    self.isAgentReview = isAgentReview
+  }
 
   var body: some View {
     VStack(spacing: 0) {
@@ -127,23 +141,46 @@ struct AIChatDraftDiffPreviewSheet: View {
           .font(.caption.monospacedDigit())
           .foregroundStyle(.secondary)
         Spacer()
-        Text("应用前不会改动文章，可随时取消。")
+        Text(isAgentReview ? "应用前不会改动文章，可稍后决定。" : "应用前不会改动文章，可随时取消。")
           .font(.caption)
           .foregroundStyle(.tertiary)
-        Button("取消") { dismiss() }
-          .keyboardShortcut(.cancelAction)
+        if isAgentReview {
+          Button("稍后决定") { dismiss() }
+            .keyboardShortcut(.cancelAction)
+            .accessibilityIdentifier(AIChatAgentReviewPresentation.laterAccessibilityIdentifier)
+
+          Button("拒绝修改") {
+            onReject?()
+            dismiss()
+          }
+          .accessibilityIdentifier(AIChatAgentReviewPresentation.rejectAccessibilityIdentifier)
+        } else {
+          Button("取消") { dismiss() }
+            .keyboardShortcut(.cancelAction)
+        }
+
         Button("接受修改") {
           onApply()
           dismiss()
         }
         .workbenchProminentActionStyle()
         .keyboardShortcut(.defaultAction)
+        .accessibilityIdentifier(
+          isAgentReview
+            ? AIChatAgentReviewPresentation.acceptAccessibilityIdentifier
+            : "ai-draft-diff-accept"
+        )
       }
       .padding(12)
     }
     .frame(minWidth: 820, idealWidth: 1_020, minHeight: 620, idealHeight: 760)
     .workbenchGlassContainer(material: .regularMaterial)
     .accessibilityLabel("AI 修改 Diff 预览")
+    .accessibilityIdentifier(
+      isAgentReview
+        ? AIChatAgentReviewPresentation.sheetAccessibilityIdentifier
+        : "ai-draft-diff-sheet"
+    )
   }
 
   private var comparison: DraftVersionComparison {

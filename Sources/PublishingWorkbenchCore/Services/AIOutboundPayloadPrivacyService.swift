@@ -421,7 +421,8 @@ public struct AIOutboundPayloadPrivacyService: Sendable {
         updated.locator = citation.locator.map { sanitize($0).text }
         updated.excerpt = sanitize(citation.excerpt).text
         return updated
-      }
+      },
+      authorizationBindings: context.authorizationBindings
     )
   }
 

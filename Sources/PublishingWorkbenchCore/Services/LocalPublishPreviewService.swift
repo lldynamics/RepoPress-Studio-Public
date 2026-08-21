@@ -199,6 +199,9 @@ public struct LocalPublishPreviewService: Sendable {
     guard let rootPath = profile.localRepositoryRootURL?.path else {
       return nil
     }
+    guard package.files.allSatisfy({ !isGitControlPath($0.repositoryPath) }) else {
+      return nil
+    }
 
     let paths = package.files
       .map(\.repositoryPath)

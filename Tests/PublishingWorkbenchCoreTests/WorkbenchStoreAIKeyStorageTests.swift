@@ -21,6 +21,14 @@ final class WorkbenchStoreAIKeyStorageTests: XCTestCase {
     )
     var confirmedConfig = AIProviderConfig(preset: .codexAppServer)
     confirmedConfig.applyPresetDefaults()
+    // Codex grants are account-bound and cannot be created by the legacy
+    // status-less consent API. This test explicitly models the live account
+    // that the user confirmed before checking the remote-gate behavior.
+    let confirmedAccount = CodexAppServerAccountStatus(
+      isAuthenticated: true,
+      accountID: "acct-first-send-consent-test",
+      accountType: "chatgpt"
+    )
     let otherConfig = AIProviderConfig(
       preset: .custom,
       baseURL: "https://api.example.test/v1",
@@ -30,7 +38,8 @@ final class WorkbenchStoreAIKeyStorageTests: XCTestCase {
 
     store.aiStore.grantAIDataSharingConsent(
       for: confirmedConfig,
-      enablingRemoteAI: true
+      enablingRemoteAI: true,
+      codexAccountStatus: confirmedAccount
     )
 
     XCTAssertTrue(consentStore.presentation(for: confirmedConfig).isGranted)

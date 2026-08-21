@@ -162,14 +162,15 @@ final class LocalGitPublishServiceTests: XCTestCase {
 
   func testFailedReviewCommitRestoresFilesIndexAndOriginalBranch() throws {
     let rootURL = try makeGitRepositoryFixture()
-    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let wrapperURL = try makeGitWrapperFailingCommit()
+    defer {
+      try? FileManager.default.removeItem(at: rootURL)
+      try? FileManager.default.removeItem(at: wrapperURL.deletingLastPathComponent())
+    }
     let articleURL = rootURL.appendingPathComponent("content/posts/rollback.md")
     try "original article\n".write(to: articleURL, atomically: true, encoding: .utf8)
     try git(["add", "content/posts/rollback.md"], rootURL: rootURL)
     try git(["commit", "-m", "Seed rollback article"], rootURL: rootURL)
-    let hookURL = rootURL.appendingPathComponent(".git/hooks/pre-commit")
-    try "#!/bin/sh\nexit 1\n".write(to: hookURL, atomically: true, encoding: .utf8)
-    try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: hookURL.path)
 
     var profile = SiteProfile.defaultProfile
     profile.rememberLocalRepositoryRoot(rootURL)
@@ -183,7 +184,9 @@ final class LocalGitPublishServiceTests: XCTestCase {
     let package = PublishPackageBuilder().build(draft: draft, profile: profile)
 
     XCTAssertThrowsError(
-      try LocalGitPublishService().publish(package: package, profile: profile, mode: .reviewBranch)
+      try LocalGitPublishService(
+        gitCommandRunner: GitCommandRunner(executableURL: wrapperURL)
+      ).publish(package: package, profile: profile, mode: .reviewBranch)
     )
 
     XCTAssertEqual(try git(["rev-parse", "--abbrev-ref", "HEAD"], rootURL: rootURL), "main")
@@ -194,18 +197,15 @@ final class LocalGitPublishServiceTests: XCTestCase {
 
   func testFailedCommitPreservesExternalEditInsteadOfRollingItBack() throws {
     let rootURL = try makeGitRepositoryFixture()
-    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let wrapperURL = try makeGitWrapperFailingCommitAndEditingConcurrentArticle()
+    defer {
+      try? FileManager.default.removeItem(at: rootURL)
+      try? FileManager.default.removeItem(at: wrapperURL.deletingLastPathComponent())
+    }
     let articleURL = rootURL.appendingPathComponent("content/posts/concurrent.md")
     try "original article\n".write(to: articleURL, atomically: true, encoding: .utf8)
     try git(["add", "content/posts/concurrent.md"], rootURL: rootURL)
     try git(["commit", "-m", "Seed concurrent article"], rootURL: rootURL)
-    let hookURL = rootURL.appendingPathComponent(".git/hooks/pre-commit")
-    try """
-    #!/bin/sh
-    printf 'external editor content\\n' > content/posts/concurrent.md
-    exit 1
-    """.write(to: hookURL, atomically: true, encoding: .utf8)
-    try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: hookURL.path)
 
     var profile = SiteProfile.defaultProfile
     profile.rememberLocalRepositoryRoot(rootURL)
@@ -219,7 +219,9 @@ final class LocalGitPublishServiceTests: XCTestCase {
     let package = PublishPackageBuilder().build(draft: draft, profile: profile)
 
     XCTAssertThrowsError(
-      try LocalGitPublishService().publish(package: package, profile: profile, mode: .directCommit)
+      try LocalGitPublishService(
+        gitCommandRunner: GitCommandRunner(executableURL: wrapperURL)
+      ).publish(package: package, profile: profile, mode: .directCommit)
     ) { error in
       guard case let .rollbackFailed(_, rollback) = error as? LocalGitPublishError else {
         XCTFail("Expected rollbackFailed, got \(error)")
@@ -329,6 +331,40 @@ final class LocalGitPublishServiceTests: XCTestCase {
     if [ "$3" = "status" ]; then
       printf 'warning: simulated fsmonitor failure\n' >&2
     fi
+    exec /usr/bin/git "$@"
+    """
+    try script.write(to: scriptURL, atomically: true, encoding: .utf8)
+    try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: scriptURL.path)
+    return scriptURL
+  }
+
+  private func makeGitWrapperFailingCommit() throws -> URL {
+    try makeGitWrapper(scriptBody: """
+    if [ "$3" = "commit" ]; then
+      printf 'simulated commit failure\n' >&2
+      exit 1
+    fi
+    """)
+  }
+
+  private func makeGitWrapperFailingCommitAndEditingConcurrentArticle() throws -> URL {
+    try makeGitWrapper(scriptBody: """
+    if [ "$3" = "commit" ]; then
+      printf 'external editor content\\n' > "$2/content/posts/concurrent.md"
+      printf 'simulated commit failure\n' >&2
+      exit 1
+    fi
+    """)
+  }
+
+  private func makeGitWrapper(scriptBody: String) throws -> URL {
+    let directoryURL = FileManager.default.temporaryDirectory
+      .appendingPathComponent("PersonalSitePublisherMacGitWrapper-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: directoryURL, withIntermediateDirectories: true)
+    let scriptURL = directoryURL.appendingPathComponent("git")
+    let script = """
+    #!/bin/sh
+    \(scriptBody)
     exec /usr/bin/git "$@"
     """
     try script.write(to: scriptURL, atomically: true, encoding: .utf8)

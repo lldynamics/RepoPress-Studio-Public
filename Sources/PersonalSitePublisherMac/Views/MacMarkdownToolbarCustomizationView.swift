@@ -35,7 +35,7 @@ struct MacMarkdownToolbarCustomizationView: View {
     }
     .padding(.vertical, 16)
     .frame(width: 520, height: 560)
-    .background(.bar)
+    .background(.regularMaterial)
   }
 
   private var headerView: some View {
@@ -204,10 +204,12 @@ struct MacMarkdownToolbarCustomizationView: View {
 
     list.swapAt(index, targetIndex)
 
-    if category == .header {
-      workingConfig.headerItemIDs = list
-    } else {
-      workingConfig.formattingItemIDs = list
+    withAnimation(.easeInOut(duration: 0.2)) {
+      if category == .header {
+        workingConfig.headerItemIDs = list
+      } else {
+        workingConfig.formattingItemIDs = list
+      }
     }
   }
 }

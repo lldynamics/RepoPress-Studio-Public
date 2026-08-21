@@ -195,6 +195,7 @@ struct ContentView: View {
 
         if shellState.isQuickHideActive {
           QuickHideOverlay(store: store)
+            .transition(.opacity.combined(with: .scale(scale: 0.97)))
             .zIndex(2)
         }
       }
@@ -215,6 +216,7 @@ struct ContentView: View {
     .safeAreaInset(edge: .top, spacing: 0) {
       if store.isSafeMode {
         WorkbenchSafeModeBanner()
+          .transition(.opacity.combined(with: .move(edge: .top)))
       }
     }
     .environment(

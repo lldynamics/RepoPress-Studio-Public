@@ -23,7 +23,7 @@ struct PrivacySettingsView: View {
 
           VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 4) {
-              Text("快速隐藏 / 防偷窥保护")
+              Text("快速隐藏 / 临时遮挡")
                 .font(.subheadline.weight(.semibold))
               Spacer()
               HStack(spacing: 2) {

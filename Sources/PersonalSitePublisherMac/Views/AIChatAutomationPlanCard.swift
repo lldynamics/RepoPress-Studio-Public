@@ -4,13 +4,16 @@ import SwiftUI
 struct AIChatAutomationPlanCard: View {
   let message: AIPublishingChatMessage
   let plan: WorkbenchAutomationPlan
+  let conversationID: UUID?
   let currentDraft: ArticleDraft
+  let isChatRunning: Bool
   let isAutomationRunning: Bool
   let latestRunRecord: WorkbenchAutomationRunRecord?
   let actions: AIChatContextInspectorActions
 
   @State private var draftPreview: AutomationDraftPreviewItem?
   @State private var externalConfirmationStep: WorkbenchAutomationStep?
+  @State private var isResolvingDeliveryUncertain = false
 
   var body: some View {
     VStack(alignment: .leading, spacing: 10) {
@@ -25,6 +28,16 @@ struct AIChatAutomationPlanCard: View {
       Text(plan.goal)
         .font(.callout.weight(.medium))
         .fixedSize(horizontal: false, vertical: true)
+
+      if let continuation = message.agentContinuation,
+        AIChatAgentReviewPresentation.isDeliveryUncertain(phase: continuation.phase)
+      {
+        deliveryUncertainNotice(continuation: continuation)
+      } else if let continuation = message.agentContinuation,
+        AIChatAgentReviewPresentation.isDeliveryUncertainTerminal(phase: continuation.phase)
+      {
+        deliveryUncertainEndedNotice
+      }
 
       VStack(spacing: 0) {
         ForEach(Array(plan.steps.enumerated()), id: \.element.id) { index, step in
@@ -47,37 +60,44 @@ struct AIChatAutomationPlanCard: View {
         HStack(spacing: 8) {
           if hasExecutableSafeSteps {
             Button {
-              actions.executeAutomationPlan(message.id)
+              guard let conversationID else { return }
+              actions.executeAutomationPlan(conversationID, message.id)
             } label: {
               Label("执行安全步骤", systemImage: "play.fill")
             }
             .workbenchProminentActionStyle()
-            .disabled(isAutomationRunning)
+            .disabled(isBusy || conversationID == nil)
           }
 
           Button(role: .cancel) {
-            actions.cancelAutomationPlan(message.id)
+            guard let conversationID else { return }
+            actions.cancelAutomationPlan(conversationID, message.id)
           } label: {
             Text("取消计划")
           }
+          .disabled(isBusy || conversationID == nil)
 
           Spacer(minLength: 0)
         }
         .controlSize(.small)
       }
 
-      if let latestRunRecord, latestRunRecord.hasRollback {
-        Button {
-          actions.rollbackAutomationRun(latestRunRecord.id)
-        } label: {
-          Label("撤销本次本地修改", systemImage: "arrow.uturn.backward")
+      if AIChatAgentReviewPresentation.allowsRollbackAction(
+        phase: deliveryUncertainContinuationPhase
+      ) {
+        if let latestRunRecord, latestRunRecord.hasRollback {
+          Button {
+            actions.rollbackAutomationRun(latestRunRecord.id)
+          } label: {
+            Label("撤销本次本地修改", systemImage: "arrow.uturn.backward")
+          }
+          .controlSize(.small)
+          .disabled(isBusy)
+        } else if latestRunRecord?.rolledBackAt != nil {
+          Label("本次本地修改已撤销", systemImage: "arrow.uturn.backward.circle.fill")
+            .font(.caption)
+            .foregroundStyle(.secondary)
         }
-        .controlSize(.small)
-        .disabled(isAutomationRunning)
-      } else if latestRunRecord?.rolledBackAt != nil {
-        Label("本次本地修改已撤销", systemImage: "arrow.uturn.backward.circle.fill")
-          .font(.caption)
-          .foregroundStyle(.secondary)
       }
     }
     .padding(11)
@@ -95,10 +115,33 @@ struct AIChatAutomationPlanCard: View {
           originalDraft: item.preview.originalDraft,
           updatedDraft: item.preview.updatedDraft,
           citations: []
-        )
-      ) {
-        actions.executeAutomationStep(message.id, item.stepID)
-      }
+        ),
+        isAgentReview: item.isAgentReview,
+        onReject: item.isAgentReview
+          ? {
+            guard !isBusy, let conversationID else { return }
+            actions.rejectAutomationStep(
+              conversationID,
+              message.id,
+              item.stepID,
+              item.preview.originalDraft.repositoryContentFingerprint
+            )
+          }
+          : nil,
+        onApply: {
+          guard !isBusy, let conversationID else { return }
+          if item.isAgentReview {
+            actions.acceptAutomationStep(
+              conversationID,
+              message.id,
+              item.stepID,
+              item.preview.originalDraft.repositoryContentFingerprint
+            )
+          } else {
+            actions.executeAutomationStep(conversationID, message.id, item.stepID)
+          }
+        }
+      )
     }
     .confirmationDialog(
       externalConfirmationTitle,
@@ -113,7 +156,8 @@ struct AIChatAutomationPlanCard: View {
       {
         Button(descriptor.title, role: .destructive) {
           externalConfirmationStep = nil
-          actions.executeAutomationStep(message.id, step.id)
+          guard !isBusy, let conversationID else { return }
+          actions.executeAutomationStep(conversationID, message.id, step.id)
         }
       }
       Button("取消", role: .cancel) {
@@ -134,6 +178,148 @@ struct AIChatAutomationPlanCard: View {
     Label(statusTitle, systemImage: statusSystemImage)
       .font(.caption.weight(.semibold))
       .foregroundStyle(statusColor)
+  }
+
+  @ViewBuilder
+  private func deliveryUncertainNotice(
+    continuation: AIPublishingChatAgentContinuation
+  ) -> some View {
+    VStack(alignment: .leading, spacing: 8) {
+      Label(
+        AIChatAgentReviewPresentation.deliveryUncertainWarning,
+        systemImage: "exclamationmark.triangle.fill"
+      )
+      .font(.callout.weight(.semibold))
+      .foregroundStyle(WorkbenchTheme.warning)
+
+      Text(AIChatAgentReviewPresentation.deliveryUncertainDetail)
+      .font(.caption)
+      .foregroundStyle(.secondary)
+      .fixedSize(horizontal: false, vertical: true)
+
+      HStack(spacing: 8) {
+        Button {
+          resolveDeliveryUncertain(
+            continuation: continuation,
+            branchConversation: false
+          )
+        } label: {
+          Label(
+            AIChatAgentReviewPresentation.deliveryUncertainAbandonTitle,
+            systemImage: "checkmark.circle"
+          )
+        }
+        .accessibilityIdentifier(
+          AIChatAgentReviewPresentation.deliveryUncertainAbandonAccessibilityIdentifier
+        )
+        .accessibilityLabel(
+          AIChatAgentReviewPresentation.deliveryUncertainAbandonTitle
+        )
+        .accessibilityHint("结束这次续跑并保留当前审计记录；不会重试。")
+        .disabled(deliveryUncertainActionDisabled)
+
+        Button {
+          resolveDeliveryUncertain(
+            continuation: continuation,
+            branchConversation: true
+          )
+        } label: {
+          Label(
+            AIChatAgentReviewPresentation.deliveryUncertainBranchTitle,
+            systemImage: "arrow.branch"
+          )
+        }
+        .accessibilityIdentifier(
+          AIChatAgentReviewPresentation.deliveryUncertainBranchAccessibilityIdentifier
+        )
+        .accessibilityLabel(
+          AIChatAgentReviewPresentation.deliveryUncertainBranchTitle
+        )
+        .accessibilityHint("先结束当前续跑并保留审计记录，再从此消息创建新对话。")
+        .disabled(deliveryUncertainActionDisabled)
+      }
+      .controlSize(.small)
+    }
+    .padding(9)
+    .background(
+      WorkbenchTheme.warning.opacity(0.10),
+      in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
+    )
+    .overlay {
+      RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
+        .stroke(WorkbenchTheme.warning.opacity(0.32), lineWidth: 1)
+    }
+    .accessibilityElement(children: .contain)
+    .accessibilityIdentifier(
+      AIChatAgentReviewPresentation.deliveryUncertainAccessibilityIdentifier
+    )
+    .accessibilityLabel(
+      AIChatAgentReviewPresentation.deliveryUncertainWarning
+        + "。"
+        + AIChatAgentReviewPresentation.deliveryUncertainDetail
+    )
+  }
+
+  private var deliveryUncertainEndedNotice: some View {
+    Label(
+      AIChatAgentReviewPresentation.deliveryUncertainEndedTitle,
+      systemImage: "checkmark.circle.fill"
+    )
+    .font(.caption.weight(.semibold))
+    .foregroundStyle(WorkbenchTheme.success)
+    .accessibilityIdentifier(
+      AIChatAgentReviewPresentation.deliveryUncertainAccessibilityIdentifier
+        + "-ended"
+    )
+    .accessibilityLabel(AIChatAgentReviewPresentation.deliveryUncertainEndedTitle)
+    .accessibilityHint("当前续跑已结束，原审计记录仍然保留。")
+  }
+
+  private var deliveryUncertainContinuationPhase: AIPublishingChatAgentContinuationPhase? {
+    message.agentContinuation?.phase
+  }
+
+  private var hasDeliveryUncertainResolutionState: Bool {
+    guard let phase = deliveryUncertainContinuationPhase else { return false }
+    return AIChatAgentReviewPresentation.isDeliveryUncertain(phase: phase)
+      || AIChatAgentReviewPresentation.isDeliveryUncertainTerminal(phase: phase)
+  }
+
+  private var deliveryUncertainActionDisabled: Bool {
+    guard let phase = deliveryUncertainContinuationPhase else { return true }
+    return isResolvingDeliveryUncertain
+      || !AIChatAgentReviewPresentation.canResolveDeliveryUncertain(
+        phase: phase,
+        isBusy: isBusy,
+        conversationID: conversationID
+      )
+  }
+
+  private func resolveDeliveryUncertain(
+    continuation: AIPublishingChatAgentContinuation,
+    branchConversation: Bool
+  ) {
+    guard !deliveryUncertainActionDisabled,
+      let conversationID
+    else { return }
+
+    isResolvingDeliveryUncertain = true
+    let didAbandon = actions.abandonAgentContinuation(
+      conversationID,
+      message.id,
+      continuation.planID,
+      continuation.id,
+      continuation.revision
+    )
+    guard didAbandon else {
+      isResolvingDeliveryUncertain = false
+      return
+    }
+
+    if branchConversation {
+      actions.branchConversation(message.id, currentDraft)
+    }
+    isResolvingDeliveryUncertain = false
   }
 
   @ViewBuilder
@@ -182,7 +368,7 @@ struct AIChatAutomationPlanCard: View {
           Text(confirmationButtonTitle(for: step, risk: descriptor.risk))
         }
         .controlSize(.small)
-        .disabled(isAutomationRunning)
+        .disabled(isBusy || conversationID == nil)
       }
     }
     .padding(.horizontal, 9)
@@ -193,25 +379,41 @@ struct AIChatAutomationPlanCard: View {
     for step: WorkbenchAutomationStep,
     risk: WorkbenchAutomationRisk
   ) {
+    guard !isBusy, let conversationID else { return }
     if step.command == .publishOnline,
       step.publishAuthorization == nil
     {
-      actions.executeAutomationStep(message.id, step.id)
+      actions.executeAutomationStep(conversationID, message.id, step.id)
     } else if risk == .contentChange {
-      guard let preview = actions.previewAutomationStep(message.id, step.id) else { return }
-      draftPreview = AutomationDraftPreviewItem(stepID: step.id, preview: preview)
+      guard
+        let preview = actions.previewAutomationStep(
+          conversationID,
+          message.id,
+          step.id
+        )
+      else { return }
+      draftPreview = AutomationDraftPreviewItem(
+        stepID: step.id,
+        preview: preview,
+        isAgentReview: AIChatAgentReviewPresentation.isContentChangeReview(
+          plan: plan,
+          step: step
+        )
+      )
     } else {
       externalConfirmationStep = step
     }
   }
 
   private func shouldOfferConfirmation(for step: WorkbenchAutomationStep) -> Bool {
+    guard !hasDeliveryUncertainResolutionState else { return false }
     guard step.status == .proposed || step.status == .awaitingConfirmation else { return false }
     return plan.requiresConfirmation(for: step)
   }
 
   private var hasExecutableSafeSteps: Bool {
-    plan.steps.contains { step in
+    guard message.agentContinuation == nil else { return false }
+    return plan.steps.contains { step in
       guard step.status == .proposed,
         WorkbenchAutomationRegistry.descriptor(for: step.command) != nil
       else { return false }
@@ -219,12 +421,25 @@ struct AIChatAutomationPlanCard: View {
     }
   }
 
+  private var isBusy: Bool {
+    isChatRunning || isAutomationRunning
+  }
+
   private var showsPlanActions: Bool {
-    plan.steps.contains { !$0.status.isTerminal }
+    !hasDeliveryUncertainResolutionState
+      && plan.steps.contains { !$0.status.isTerminal }
   }
 
   private var statusTitle: LocalizedStringKey {
-    switch plan.status {
+    if let phase = deliveryUncertainContinuationPhase {
+      if AIChatAgentReviewPresentation.isDeliveryUncertain(phase: phase) {
+        return LocalizedStringKey(AIChatAgentReviewPresentation.deliveryUncertainWarning)
+      }
+      if AIChatAgentReviewPresentation.isDeliveryUncertainTerminal(phase: phase) {
+        return LocalizedStringKey(AIChatAgentReviewPresentation.deliveryUncertainEndedTitle)
+      }
+    }
+    return switch plan.status {
     case .proposed: "待执行"
     case .running: "执行中"
     case .awaitingConfirmation: "等待确认"
@@ -236,7 +451,15 @@ struct AIChatAutomationPlanCard: View {
   }
 
   private var statusSystemImage: String {
-    switch plan.status {
+    if let phase = deliveryUncertainContinuationPhase {
+      if AIChatAgentReviewPresentation.isDeliveryUncertain(phase: phase) {
+        return "exclamationmark.triangle.fill"
+      }
+      if AIChatAgentReviewPresentation.isDeliveryUncertainTerminal(phase: phase) {
+        return "checkmark.circle.fill"
+      }
+    }
+    return switch plan.status {
     case .proposed: "clock"
     case .running: "hourglass"
     case .awaitingConfirmation: "hand.raised"
@@ -248,7 +471,15 @@ struct AIChatAutomationPlanCard: View {
   }
 
   private var statusColor: Color {
-    switch plan.status {
+    if let phase = deliveryUncertainContinuationPhase {
+      if AIChatAgentReviewPresentation.isDeliveryUncertain(phase: phase) {
+        return WorkbenchTheme.warning
+      }
+      if AIChatAgentReviewPresentation.isDeliveryUncertainTerminal(phase: phase) {
+        return WorkbenchTheme.success
+      }
+    }
+    return switch plan.status {
     case .succeeded: WorkbenchTheme.success
     case .failed: WorkbenchTheme.risk
     case .awaitingConfirmation, .partiallySucceeded: WorkbenchTheme.warning
@@ -379,4 +610,5 @@ private struct AutomationDraftPreviewItem: Identifiable {
   var id: UUID { stepID }
   let stepID: UUID
   let preview: WorkbenchAutomationDraftPreview
+  let isAgentReview: Bool
 }

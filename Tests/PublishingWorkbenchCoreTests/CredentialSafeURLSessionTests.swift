@@ -1,4 +1,5 @@
 import XCTest
+import CoreFoundation
 @testable import PublishingWorkbenchCore
 
 final class CredentialSafeURLSessionTests: XCTestCase {
@@ -147,6 +148,75 @@ final class CredentialSafeURLSessionTests: XCTestCase {
     ) { error in
       guard case RSSReaderError.privateNetworkAccessDenied = error else {
         return XCTFail("Expected private DNS answer to be rejected, got \(error)")
+      }
+    }
+  }
+
+  func testValidatedHTTPProxyIsInstalledInEphemeralSession() throws {
+    let session = try CredentialSafeURLSession.makeValidated(
+      proxyURL: "http://Proxy.Example:8080"
+    )
+    let dictionary = try XCTUnwrap(session.configuration.connectionProxyDictionary)
+
+    XCTAssertEqual(
+      dictionary[kCFNetworkProxiesHTTPProxy as String] as? String,
+      "proxy.example"
+    )
+    XCTAssertEqual(
+      dictionary[kCFNetworkProxiesHTTPPort as String] as? Int,
+      8080
+    )
+    XCTAssertEqual(
+      dictionary[kCFNetworkProxiesHTTPSProxy as String] as? String,
+      "proxy.example"
+    )
+  }
+
+  func testValidatedHTTPSProxyUsesTheExplicitHTTPSPort() throws {
+    let session = try CredentialSafeURLSession.makeValidated(
+      proxyURL: "https://proxy.example:9443/"
+    )
+    let dictionary = try XCTUnwrap(session.configuration.connectionProxyDictionary)
+
+    XCTAssertEqual(
+      dictionary[kCFNetworkProxiesHTTPSPort as String] as? Int,
+      9443
+    )
+  }
+
+  func testValidatedSOCKSProxySelectsTheRequestedVersion() throws {
+    let session = try CredentialSafeURLSession.makeValidated(
+      proxyURL: "socks4://127.0.0.1:1080"
+    )
+    let dictionary = try XCTUnwrap(session.configuration.connectionProxyDictionary)
+
+    XCTAssertEqual(
+      dictionary[kCFStreamPropertySOCKSProxyHost as String] as? String,
+      "127.0.0.1"
+    )
+    XCTAssertEqual(
+      dictionary[kCFStreamPropertySOCKSVersion as String] as? String,
+      kCFStreamSocketSOCKSVersion4 as String
+    )
+  }
+
+  func testInvalidProxyConfigurationFailsClosedBeforeSessionCreation() {
+    let invalidValues = [
+      "ftp://proxy.example:8080",
+      "http://:8080",
+      "http://proxy.example:0",
+      "http://proxy.example:65536",
+      "http://proxy.example:70000",
+      "http://user:password@proxy.example:8080",
+      "http://proxy.example/path",
+    ]
+
+    for value in invalidValues {
+      XCTAssertThrowsError(
+        try CredentialSafeURLSession.makeValidated(proxyURL: value),
+        "Expected strict proxy validation to reject \(value)"
+      ) { error in
+        XCTAssertTrue(error is CredentialSafeProxyError)
       }
     }
   }

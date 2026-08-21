@@ -156,13 +156,13 @@ public struct LocalGitPublishService: Sendable {
       }
 
       let commitResult = try runGit(
-        ["commit", "-m", package.commitMessage, "--"] + packagePaths,
+        ["commit", "--no-verify", "-m", package.commitMessage, "--"] + packagePaths,
         rootURL: rootURL
       )
       didCommit = true
       commandLog.append(
         GitCommandRunner.redactedCommandDescription(
-          ["commit", "-m", package.commitMessage, "--"] + packagePaths
+          ["commit", "--no-verify", "-m", package.commitMessage, "--"] + packagePaths
         )
       )
       outputChunks.append(commitResult.output)
@@ -255,13 +255,13 @@ public struct LocalGitPublishService: Sendable {
       }
 
       let commitResult = try await runGitAsync(
-        ["commit", "-m", package.commitMessage, "--"] + packagePaths,
+        ["commit", "--no-verify", "-m", package.commitMessage, "--"] + packagePaths,
         rootURL: rootURL
       )
       didCommit = true
       commandLog.append(
         GitCommandRunner.redactedCommandDescription(
-          ["commit", "-m", package.commitMessage, "--"] + packagePaths
+          ["commit", "--no-verify", "-m", package.commitMessage, "--"] + packagePaths
         )
       )
       outputChunks.append(commitResult.output)

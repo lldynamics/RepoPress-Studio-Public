@@ -434,10 +434,6 @@ private enum MarkdownPreviewHTMLRenderer {
     """
   }
 
-  private static func markdownHTMLBody(for markdown: String) -> String {
-    MarkdownHTMLRenderingService.renderBody(markdown)
-  }
-
   private static func preformattedFallback(from markdown: String) -> String {
     "<pre><code>\(escapeHTML(markdown))</code></pre>"
   }

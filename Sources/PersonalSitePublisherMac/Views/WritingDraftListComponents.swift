@@ -196,24 +196,31 @@ struct WritingDraftRow: View {
 }
 
 struct WritingDraftSkeletonRow: View {
+  @State private var isPulsing = false
+
   var body: some View {
     HStack(spacing: 8) {
-      Circle()
+      RoundedRectangle(cornerRadius: 4, style: .continuous)
+        .fill(Color.secondary.opacity(0.18))
         .frame(width: 16, height: 16)
 
-      VStack(alignment: .leading, spacing: 4) {
-        Text("标题占位")
-          .font(.workbenchBody.weight(.medium))
-          .lineLimit(1)
+      VStack(alignment: .leading, spacing: 6) {
+        RoundedRectangle(cornerRadius: 3, style: .continuous)
+          .fill(Color.secondary.opacity(0.22))
+          .frame(width: 120, height: 14)
 
-        Text("上次修改占位 · 0000 字/词 · 发布中")
-          .font(.workbenchSupporting)
-          .lineLimit(1)
+        RoundedRectangle(cornerRadius: 3, style: .continuous)
+          .fill(Color.secondary.opacity(0.14))
+          .frame(width: 180, height: 11)
       }
     }
     .padding(.horizontal, 4)
     .padding(.vertical, 5)
-    .redacted(reason: .placeholder)
-    .foregroundStyle(.secondary)
+    .opacity(isPulsing ? 0.45 : 1.0)
+    .animation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true), value: isPulsing)
+    .onAppear {
+      isPulsing = true
+    }
+    .accessibilityHidden(true)
   }
 }

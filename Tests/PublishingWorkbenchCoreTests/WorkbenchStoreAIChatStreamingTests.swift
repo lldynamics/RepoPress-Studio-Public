@@ -6,20 +6,20 @@ import XCTest
 
 @MainActor
 final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
-  override func setUp() {
-    super.setUp()
+  override func setUp() async throws {
+    try await super.setUp()
     // Production defaults to automatic remote authorization. Tests that need
     // fail-closed fault injection install an explicit provider below.
     AIOutboundPayloadApprovalBroker.shared.testingDecisionProvider = nil
     AIDataSharingConsentStore().grant(for: remoteAIConfig)
   }
 
-  override func tearDown() {
+  override func tearDown() async throws {
     AIOutboundPayloadApprovalBroker.shared.cancelPendingRequest()
     AIOutboundPayloadApprovalBroker.shared.testingDecisionProvider = nil
     AIOutboundPayloadApprovalBroker.shared.testingConfirmationDateProvider = nil
     AIDataSharingConsentStore().revoke(for: remoteAIConfig)
-    super.tearDown()
+    try await super.tearDown()
   }
 
   private var remoteAIConfig: AIProviderConfig {
@@ -590,6 +590,8 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
     )
     store.updateActiveProfile(profile)
     let draft = try XCTUnwrap(store.selectedDraft)
+    store.prepareAIChat(for: draft)
+    store.setAIChatKnowledgePolicy(.off)
 
     let canceledSubmission = Task {
       await store.sendAIChatMessage("请取消", draft: draft)
@@ -729,6 +731,8 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
     profile.aiProviderConfig = streamingSupportedConfig(profile.aiProviderConfig)
     store.updateActiveProfile(profile)
     let draft = try XCTUnwrap(store.selectedDraft)
+    store.prepareAIChat(for: draft)
+    store.setAIChatKnowledgePolicy(.off)
     let item = MaintenanceActionItem(
       id: "link-\(draft.id.uuidString)",
       kind: .linkAudit,
@@ -792,6 +796,8 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
     profile.aiProviderConfig = streamingSupportedConfig(profile.aiProviderConfig)
     store.updateActiveProfile(profile)
     let draft = try XCTUnwrap(store.selectedDraft)
+    store.prepareAIChat(for: draft)
+    store.setAIChatKnowledgePolicy(.off)
     let record = ReleaseRecord(
       kind: .remotePublishFailure,
       title: "线上提交失败：\(draft.title)",
@@ -868,6 +874,8 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
     draft.summary = "这篇文章用于验证 SEO 社交预览可以发送到 AI 助手 Inspector。"
     draft.tags = ["SEO", "Mac"]
     store.updateDraft(draft)
+    store.prepareAIChat(for: draft)
+    store.setAIChatKnowledgePolicy(.off)
 
     store.prepareSEOSocialPreview(for: draft)
     let reply = await store.sendSEOSocialPreviewToAI(for: draft)
@@ -1026,6 +1034,8 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
     profile.aiProviderConfig = streamingSupportedConfig(profile.aiProviderConfig)
     store.updateActiveProfile(profile)
     let draft = try XCTUnwrap(store.selectedDraft)
+    store.prepareAIChat(for: draft)
+    store.setAIChatKnowledgePolicy(.off)
 
     let partialReply = await store.sendAIChatMessage("请生成。", draft: draft)
 
@@ -1819,6 +1829,127 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
     XCTAssertFalse(requestText.contains("第二篇还在编辑"))
   }
 
+  func testArticleKnowledgeSnapshotIsFrozenWhenUnrelatedDataChangesDuringAuthorization()
+    async throws
+  {
+    let directory = try TestWorkbenchFactory.temporaryDirectoryURL(
+      prefix: "WorkbenchArticleKnowledgeFreeze"
+    )
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let library = KnowledgeLibraryService(
+      rootURL: directory.appendingPathComponent("knowledge", isDirectory: true)
+    )
+    _ = try await commitKnowledgeTestDocument(
+      title: "蓝鲸航线资料",
+      text: "BlueWhaleRoute 的首版研究结论应保持在本次授权后的请求中。",
+      allowsRemoteAIUse: true,
+      library: library
+    )
+    let transport = RecordingAIChatTransport(
+      data: Data(),
+      statusCode: 200,
+      streamLines: [
+        #"data: {"choices":[{"delta":{"content":"已完成"},"finish_reason":"stop"}]}"#,
+        "",
+      ]
+    )
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(
+        fileURL: directory.appendingPathComponent("workbench.json")
+      ),
+      knowledgeLibraryService: library,
+      aiPublishingAssistantService: AIPublishingAssistantService(
+        client: AIChatCompletionClient(transport: transport)
+      )
+    )
+    var profile = store.activeProfile
+    profile.aiProviderConfig = streamingSupportedConfig(remoteAIConfig)
+    store.updateActiveProfile(profile)
+    await store.knowledge.reload()
+    let draft = try XCTUnwrap(store.selectedDraft)
+    var previewFingerprint: String?
+    AIOutboundPayloadApprovalBroker.shared.testingDecisionProvider = { preview in
+      previewFingerprint = preview.fingerprint
+      _ = try? await self.commitKnowledgeTestDocument(
+        title: "无关资料",
+        text: "这次授权窗口新增的无关资料不应进入已冻结上下文。",
+        allowsRemoteAIUse: true,
+        library: library
+      )
+      return .confirm
+    }
+    defer { AIOutboundPayloadApprovalBroker.shared.testingDecisionProvider = nil }
+
+    let reply = await store.sendAIChatMessage("请解释 BlueWhaleRoute。", draft: draft)
+
+    XCTAssertEqual(reply?.content, "已完成")
+    XCTAssertNotNil(previewFingerprint)
+    let requestCount = await transport.capturedRequestCount()
+    XCTAssertEqual(requestCount, 1)
+    let recordedRequest = await transport.capturedRequest()
+    let request = try XCTUnwrap(recordedRequest)
+    let body = try XCTUnwrap(request.httpBody)
+    let bodyText = try XCTUnwrap(String(data: body, encoding: .utf8))
+    XCTAssertTrue(bodyText.contains("BlueWhaleRoute 的首版研究结论"))
+    XCTAssertFalse(bodyText.contains("这次授权窗口新增的无关资料"))
+  }
+
+  func testArticleExplicitKnowledgeRevocationDuringAuthorizationPerformsZeroTransport()
+    async throws
+  {
+    let directory = try TestWorkbenchFactory.temporaryDirectoryURL(
+      prefix: "WorkbenchArticleExplicitKnowledgeRevocation"
+    )
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let library = KnowledgeLibraryService(
+      rootURL: directory.appendingPathComponent("knowledge", isDirectory: true)
+    )
+    let documentID = try await commitKnowledgeTestDocument(
+      title: "显式文章资料",
+      text: "这段资料只在用户明确 @ 引用时进入文章对话。",
+      allowsRemoteAIUse: true,
+      library: library
+    )
+    let transport = RecordingAIChatTransport(data: Data(), statusCode: 200)
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(
+        fileURL: directory.appendingPathComponent("workbench.json")
+      ),
+      knowledgeLibraryService: library,
+      aiPublishingAssistantService: AIPublishingAssistantService(
+        client: AIChatCompletionClient(transport: transport)
+      )
+    )
+    var profile = store.activeProfile
+    profile.aiProviderConfig = streamingSupportedConfig(remoteAIConfig)
+    store.updateActiveProfile(profile)
+    await store.knowledge.reload()
+    let draft = try XCTUnwrap(store.selectedDraft)
+    store.prepareAIChat(for: draft)
+    store.setAIChatKnowledgePolicy(.off)
+    let reference = AIContextReference.knowledgeEntry(
+      documentID: documentID,
+      title: "显式文章资料",
+      characterCount: 100
+    )
+    AIOutboundPayloadApprovalBroker.shared.testingDecisionProvider = { _ in
+      try? library.setAllowsRemoteAIUse(false, documentID: documentID)
+      return .confirm
+    }
+    defer { AIOutboundPayloadApprovalBroker.shared.testingDecisionProvider = nil }
+
+    let reply = await store.sendAIChatMessage(
+      "请仅根据这份资料回答。",
+      draft: draft,
+      contextReferences: [reference]
+    )
+
+    XCTAssertNil(reply)
+    let requestCount = await transport.capturedRequestCount()
+    XCTAssertEqual(requestCount, 0)
+    XCTAssertEqual(store.aiChatMessage, "资料权限或版本已变化，本次未发送，请重新生成。")
+  }
+
   private func aiTokenStoreForTest() -> KeychainTokenStore {
     KeychainTokenStore(
       service: "PSPMAIChatTests.\(UUID().uuidString.prefix(8))",
@@ -1882,5 +2013,28 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
     )
     config.capabilityProbeEvidence = evidence
     return config
+  }
+
+  private func commitKnowledgeTestDocument(
+    title: String,
+    text: String,
+    allowsRemoteAIUse: Bool,
+    library: KnowledgeLibraryService
+  ) async throws -> UUID {
+    let hash = KnowledgeChunkingService.contentHash(for: text)
+    let candidate = KnowledgeImportCandidate(
+      kind: .markdown,
+      title: title,
+      sourceName: "\(title).md",
+      allowsRemoteAIUse: allowsRemoteAIUse,
+      originalContentHash: hash,
+      normalizedText: text,
+      normalizedContentHash: hash,
+      sections: [KnowledgeExtractedSection(headingPath: title, text: text)]
+    )
+    let result = try await library.commit(
+      KnowledgeImportPreview(sourceName: "fixture", candidates: [candidate])
+    )
+    return try XCTUnwrap(result.documentIDs.first)
   }
 }

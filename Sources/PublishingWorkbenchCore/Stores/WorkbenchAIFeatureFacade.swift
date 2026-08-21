@@ -71,6 +71,16 @@ public final class WorkbenchAIFeatureFacade: ObservableObject {
     store.aiStore.aiDataSharingConsentPresentation(for: config)
   }
 
+  public func dataSharingConsent(
+    for config: AIProviderConfig,
+    codexAccountStatus: CodexAppServerAccountStatus?
+  ) -> AIDataSharingConsentPresentation {
+    store.aiStore.aiDataSharingConsentPresentation(
+      for: config,
+      codexAccountStatus: codexAccountStatus
+    )
+  }
+
   public var isRemoteAIEnabled: Bool {
     store.aiStore.isRemoteAIEnabled
   }
@@ -168,6 +178,20 @@ public final class WorkbenchAIFeatureFacade: ObservableObject {
     store.aiStore.activeGeneralAIChatConversation
   }
 
+  public func conversationAgentMode(
+    for conversationID: UUID
+  ) -> AIConversationAgentMode? {
+    store.aiStore.aiConversationAgentMode(for: conversationID)
+  }
+
+  @discardableResult
+  public func setConversationAgentMode(
+    _ mode: AIConversationAgentMode,
+    conversationID: UUID
+  ) -> Bool {
+    store.aiStore.setAIConversationAgentMode(mode, for: conversationID)
+  }
+
   public func generalChatConversation(
     withID conversationID: UUID,
     includingArchived: Bool = true
@@ -229,6 +253,17 @@ public final class WorkbenchAIFeatureFacade: ObservableObject {
   ) -> Bool {
     store.aiStore.setGeneralAIChatModelGrade(
       modelGrade,
+      conversationID: conversationID
+    )
+  }
+
+  @discardableResult
+  public func setGeneralChatSelectedModel(
+    _ model: String,
+    conversationID: UUID? = nil
+  ) -> Bool {
+    store.aiStore.setGeneralAIChatSelectedModel(
+      model,
       conversationID: conversationID
     )
   }
@@ -372,18 +407,36 @@ public final class WorkbenchAIFeatureFacade: ObservableObject {
     await store.testAIConnection(probeCapabilities: probeCapabilities)
   }
 
+  public func discoverModels(
+    for connectionProfileID: UUID,
+    config: AIProviderConfig
+  ) async throws -> [AIModelDescriptor] {
+    try await store.aiStore.discoverAIModels(
+      forConnectionProfileID: connectionProfileID,
+      requestedConfig: config
+    )
+  }
+
   public func grantDataSharingConsent() {
     store.aiStore.grantAIDataSharingConsent()
   }
 
   public func grantDataSharingConsent(
     for config: AIProviderConfig,
-    enablingRemoteAI: Bool
+    enablingRemoteAI: Bool,
+    codexAccountStatus: CodexAppServerAccountStatus? = nil
   ) {
     store.aiStore.grantAIDataSharingConsent(
       for: config,
-      enablingRemoteAI: enablingRemoteAI
+      enablingRemoteAI: enablingRemoteAI,
+      codexAccountStatus: codexAccountStatus
     )
+  }
+
+  public func grantCodexDataSharingConsent(
+    for accountStatus: CodexAppServerAccountStatus
+  ) {
+    store.aiStore.grantCodexAIDataSharingConsent(for: accountStatus)
   }
 
   public func revokeDataSharingConsent() {
@@ -445,7 +498,8 @@ public final class WorkbenchAIFeatureFacade: ObservableObject {
     var profile = store.activeAIConnectionProfile
     var config = profile.config
     var advancedSettings = config.resolvedAdvancedSettings
-    advancedSettings.reasoningEffortOverride = effort?
+    advancedSettings.reasoningEffortOverride =
+      effort?
       .trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
     config.advancedSettings = advancedSettings.isDefault ? nil : advancedSettings
     profile.config = config
@@ -676,27 +730,87 @@ public final class WorkbenchAIFeatureFacade: ObservableObject {
   }
 
   @discardableResult
+  public func abandonAgentContinuation(
+    conversationID: UUID,
+    messageID: AIPublishingChatMessage.ID,
+    planID: UUID,
+    continuationID: UUID,
+    expectedRevision: Int
+  ) -> Bool {
+    store.aiStore.abandonAgentContinuation(
+      conversationID: conversationID,
+      messageID: messageID,
+      planID: planID,
+      continuationID: continuationID,
+      expectedRevision: expectedRevision
+    )
+  }
+
+  @discardableResult
   public func executeAutomationPlan(
+    conversationID: UUID,
     messageID: AIPublishingChatMessage.ID,
     onlyStepID: UUID? = nil,
     confirmedStepIDs: Set<UUID> = []
   ) async -> WorkbenchAutomationExecutionResult? {
     await store.executeAutomationPlan(
+      conversationID: conversationID,
       messageID: messageID,
       onlyStepID: onlyStepID,
       confirmedStepIDs: confirmedStepIDs
     )
   }
 
+  @discardableResult
+  public func acceptAutomationStep(
+    conversationID: UUID,
+    messageID: AIPublishingChatMessage.ID,
+    stepID: UUID,
+    previewBaselineFingerprint: String
+  ) async -> WorkbenchAutomationExecutionResult? {
+    await store.acceptAutomationStep(
+      conversationID: conversationID,
+      messageID: messageID,
+      stepID: stepID,
+      previewBaselineFingerprint: previewBaselineFingerprint
+    )
+  }
+
+  @discardableResult
+  public func rejectAutomationStep(
+    conversationID: UUID,
+    messageID: AIPublishingChatMessage.ID,
+    stepID: UUID,
+    previewBaselineFingerprint: String? = nil
+  ) async -> Bool {
+    await store.rejectAutomationStep(
+      conversationID: conversationID,
+      messageID: messageID,
+      stepID: stepID,
+      previewBaselineFingerprint: previewBaselineFingerprint
+    )
+  }
+
   public func automationDraftPreview(
+    conversationID: UUID,
     messageID: AIPublishingChatMessage.ID,
     stepID: UUID
   ) -> WorkbenchAutomationDraftPreview? {
-    store.automationDraftPreview(messageID: messageID, stepID: stepID)
+    store.automationDraftPreview(
+      conversationID: conversationID,
+      messageID: messageID,
+      stepID: stepID
+    )
   }
 
-  public func cancelAutomationPlan(messageID: AIPublishingChatMessage.ID) {
-    store.cancelAutomationPlan(messageID: messageID)
+  public func cancelAutomationPlan(
+    conversationID: UUID,
+    messageID: AIPublishingChatMessage.ID
+  ) {
+    store.cancelAutomationPlan(
+      conversationID: conversationID,
+      messageID: messageID
+    )
   }
 
   @discardableResult

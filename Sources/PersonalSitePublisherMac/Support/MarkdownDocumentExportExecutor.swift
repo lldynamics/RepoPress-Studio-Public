@@ -28,6 +28,7 @@ enum MarkdownDocumentExportExecutionError: LocalizedError {
   case invalidPayload
   case noPresentationView
   case printFailed
+  case webContentPolicyUnavailable
 
   var errorDescription: String? {
     switch self {
@@ -37,6 +38,43 @@ enum MarkdownDocumentExportExecutionError: LocalizedError {
       "当前没有可用于显示分享菜单的窗口。"
     case .printFailed:
       "打印任务未能提交。"
+    case .webContentPolicyUnavailable:
+      "无法建立导出页面的网络隔离策略。"
+    }
+  }
+}
+
+@MainActor
+enum MarkdownExportWebContentSecurity {
+  static let contentRuleListIdentifier =
+    "com.jinfang.PersonalSitePublisherMac.markdown-export-network-isolation.v1"
+  static let contentRuleListJSON =
+    #"[{"trigger":{"url-filter":"^https?://","url-filter-is-case-sensitive":false},"action":{"type":"block"}}]"#
+
+  static func makeConfiguration() async throws -> WKWebViewConfiguration {
+    let ruleList = try await compiledContentRuleList()
+    let configuration = WKWebViewConfiguration()
+    configuration.websiteDataStore = .nonPersistent()
+    configuration.defaultWebpagePreferences.allowsContentJavaScript = false
+    configuration.preferences.javaScriptCanOpenWindowsAutomatically = false
+    configuration.userContentController.add(ruleList)
+    return configuration
+  }
+
+  private static func compiledContentRuleList() async throws -> WKContentRuleList {
+    try await withCheckedThrowingContinuation { continuation in
+      WKContentRuleListStore.default().compileContentRuleList(
+        forIdentifier: contentRuleListIdentifier,
+        encodedContentRuleList: contentRuleListJSON
+      ) { ruleList, error in
+        if let ruleList {
+          continuation.resume(returning: ruleList)
+        } else {
+          continuation.resume(
+            throwing: error ?? MarkdownDocumentExportExecutionError.webContentPolicyUnavailable
+          )
+        }
+      }
     }
   }
 }
@@ -144,8 +182,10 @@ enum MarkdownDocumentExportExecutor {
     guard case .html(let html) = plan.payload else {
       throw MarkdownDocumentExportExecutionError.invalidPayload
     }
+    let configuration = try await MarkdownExportWebContentSecurity.makeConfiguration()
     let webView = WKWebView(
-      frame: NSRect(x: 0, y: 0, width: 816, height: 1056)
+      frame: NSRect(x: 0, y: 0, width: 816, height: 1056),
+      configuration: configuration
     )
     let loader = MarkdownExportHTMLLoader()
     try await loader.load(html: html, in: webView)

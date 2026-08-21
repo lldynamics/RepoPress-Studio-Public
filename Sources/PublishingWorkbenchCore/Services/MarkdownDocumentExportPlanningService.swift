@@ -289,6 +289,7 @@ public struct MarkdownDocumentExportPlanningService: Sendable {
       <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta http-equiv="Content-Security-Policy" content="\(Self.networkIsolationContentSecurityPolicy)">
         <title>\(escapedHTML(title))</title>
       </head>
       <body>
@@ -308,6 +309,11 @@ public struct MarkdownDocumentExportPlanningService: Sendable {
   }
 
   private static let maximumBasenameLength = 96
+  static let networkIsolationContentSecurityPolicy =
+    "default-src 'none'; script-src 'none'; style-src 'unsafe-inline'; "
+    + "img-src data: file: publisher-asset:; media-src data: file: publisher-asset:; "
+    + "font-src data:; connect-src 'none'; frame-src 'none'; object-src 'none'; "
+    + "base-uri 'none'; form-action 'none';"
   private static let reservedBasenames: Set<String> = [
     "CON", "PRN", "AUX", "NUL",
     "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",

@@ -659,10 +659,6 @@
     "en": "Line-Level Differences",
     "zh-Hans": "行级差异"
   },
-  "警告（%lld）": {
-    "en": "Warnings (%lld)",
-    "zh-Hans": "警告（%lld）"
-  },
   "记录处理": {
     "en": "Record Processing",
     "zh-Hans": "记录处理"

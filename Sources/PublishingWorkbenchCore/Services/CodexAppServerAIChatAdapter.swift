@@ -13,6 +13,81 @@ public protocol CodexAppServerChatServing: Sendable {
 
 extension CodexAppServerClient: CodexAppServerChatServing {}
 
+/// Optional extension implemented by app-server clients that can expose
+/// application-owned function tools. Keeping this separate preserves source
+/// compatibility for simple text-only test doubles and third-party clients.
+public protocol CodexAppServerToolChatServing: CodexAppServerChatServing {
+  func complete(
+    prompt: String,
+    model: String?,
+    reasoningEffort: String?,
+    workingDirectory: URL?,
+    dynamicTools: [AIToolDefinition]
+  ) async throws -> CodexAppServerCompletion
+}
+
+extension CodexAppServerClient: CodexAppServerToolChatServing {}
+
+/// The live account-status dependency is kept separate from the chat service
+/// so tests can provide a deterministic account response without starting a
+/// Codex process.
+public protocol CodexAppServerAccountStatusProviding: Sendable {
+  func accountStatus() async throws -> CodexAppServerAccountStatus
+}
+
+extension CodexAppServerClient: CodexAppServerAccountStatusProviding {}
+
+public protocol CodexAppServerRequestAuthorizing: Sendable {
+  func authorize(config: AIProviderConfig) async throws
+}
+
+/// Fail-closed authorization used immediately before the app-server request.
+/// It intentionally receives the same consent store used by the workbench,
+/// rather than creating a private/default store.
+public struct CodexAppServerRequestAuthorizer: CodexAppServerRequestAuthorizing {
+  private let consentStore: AIDataSharingConsentStore
+  private let accountStatusProvider: any CodexAppServerAccountStatusProviding
+
+  public init(
+    consentStore: AIDataSharingConsentStore,
+    accountStatusProvider: any CodexAppServerAccountStatusProviding
+  ) {
+    self.consentStore = consentStore
+    self.accountStatusProvider = accountStatusProvider
+  }
+
+  public func authorize(config: AIProviderConfig) async throws {
+    guard config.usesCodexAppServer else { return }
+    let accountStatus: CodexAppServerAccountStatus
+    do {
+      accountStatus = try await accountStatusProvider.accountStatus()
+    } catch is CancellationError {
+      throw CancellationError()
+    } catch let error as CodexAppServerError {
+      switch error {
+      case .cancelled, .executableNotFound, .processNotRunning, .processExited, .endOfStream:
+        throw error
+      default:
+        // RPC/response errors may contain server-controlled details. Keep
+        // those details out of the authorization failure shown to users.
+        throw CodexAppServerError.accountAuthorizationRequired
+      }
+    } catch {
+      // Account/status failures are deliberately normalized so RPC payloads
+      // cannot disclose identity or server-side authentication details.
+      throw CodexAppServerError.accountAuthorizationRequired
+    }
+    guard
+      consentStore.isCodexAccountAuthorized(
+        for: config,
+        accountStatus: accountStatus
+      )
+    else {
+      throw CodexAppServerError.accountAuthorizationRequired
+    }
+  }
+}
+
 extension CodexAppServerError: LocalizedError {
   public var errorDescription: String? {
     switch self {
@@ -28,6 +103,8 @@ extension CodexAppServerError: LocalizedError {
       return "ChatGPT 已中断本次回复。"
     case .cancelled:
       return "ChatGPT 请求已取消。"
+    case .accountAuthorizationRequired:
+      return "ChatGPT 账户已变化或尚未完成授权，请重新登录并同意内容发送。"
     }
   }
 }
@@ -38,18 +115,45 @@ extension AIChatCompletionClient {
     config: AIProviderConfig
   ) async throws -> AIChatCompletionResult {
     try validatePrepared(prepared, against: config, apiKey: nil)
-    let prompt = try Self.codexAppServerPrompt(for: prepared.normalizedRequest.messages)
-    let completion = try await codexAppServerChatService.complete(
-      prompt: prompt,
-      model: Self.codexAppServerModel(for: prepared.normalizedRequest.model),
-      reasoningEffort: prepared.normalizedRequest.reasoningEffort,
-      workingDirectory: FileManager.default.temporaryDirectory
+    guard let codexAppServerRequestAuthorizer else {
+      throw CodexAppServerError.accountAuthorizationRequired
+    }
+    try await codexAppServerRequestAuthorizer.authorize(config: config)
+    let dynamicTools = prepared.normalizedRequest.tools ?? []
+    let prompt = try Self.codexAppServerPrompt(
+      for: prepared.normalizedRequest.messages,
+      allowsTools: !dynamicTools.isEmpty
     )
-    guard !completion.text.trimmedForPublishing.isEmpty else {
+    let completion: CodexAppServerCompletion
+    if dynamicTools.isEmpty {
+      completion = try await codexAppServerChatService.complete(
+        prompt: prompt,
+        model: Self.codexAppServerModel(for: prepared.normalizedRequest.model),
+        reasoningEffort: prepared.normalizedRequest.reasoningEffort,
+        workingDirectory: FileManager.default.temporaryDirectory
+      )
+    } else {
+      guard
+        let toolService = codexAppServerChatService as? any CodexAppServerToolChatServing
+      else {
+        throw AIChatCompletionClientError.unsupportedToolHistory
+      }
+      completion = try await toolService.complete(
+        prompt: prompt,
+        model: Self.codexAppServerModel(for: prepared.normalizedRequest.model),
+        reasoningEffort: prepared.normalizedRequest.reasoningEffort,
+        workingDirectory: FileManager.default.temporaryDirectory,
+        dynamicTools: dynamicTools
+      )
+    }
+    guard
+      !completion.text.trimmedForPublishing.isEmpty || !completion.toolCalls.isEmpty
+    else {
       throw AIChatCompletionClientError.emptyContent
     }
     return AIChatCompletionResult(
       content: completion.text,
+      toolCalls: completion.toolCalls,
       rawModel: completion.model
     )
   }
@@ -60,15 +164,23 @@ extension AIChatCompletionClient {
     return model
   }
 
-  static func codexAppServerPrompt(for messages: [AIChatMessage]) throws -> String {
+  static func codexAppServerPrompt(
+    for messages: [AIChatMessage],
+    allowsTools: Bool = false
+  ) throws -> String {
     struct BridgeMessage: Encodable {
       let role: String
       let content: String
+      let toolCalls: [AIToolCall]?
+      let toolCallID: String?
     }
 
     let bridgeMessages = try messages.map { message -> BridgeMessage in
-      guard message.toolCalls == nil, message.toolCallID?.nilIfEmpty == nil,
-            message.role.lowercased() != "tool" else {
+      let hasToolHistory =
+        message.toolCalls?.isEmpty == false
+        || message.toolCallID?.nilIfEmpty != nil
+        || message.role.lowercased() == "tool"
+      guard allowsTools || !hasToolHistory else {
         throw AIChatCompletionClientError.unsupportedToolHistory
       }
 
@@ -84,7 +196,12 @@ extension AIChatCompletionClient {
       case nil:
         text = ""
       }
-      return BridgeMessage(role: message.role, content: text)
+      return BridgeMessage(
+        role: message.role,
+        content: text,
+        toolCalls: message.toolCalls,
+        toolCallID: message.toolCallID?.nilIfEmpty
+      )
     }
 
     let encoder = JSONEncoder()
@@ -93,8 +210,11 @@ extension AIChatCompletionClient {
     guard let json = String(data: data, encoding: .utf8) else {
       throw AIChatCompletionClientError.invalidResponse
     }
+    let toolInstruction = allowsTools
+      ? "You may call only the dynamic function tools explicitly supplied by the host. Tool-role messages contain host-validated results. Never claim an application action succeeded until such a result says it did."
+      : "Do not use tools."
     return """
-      You are the text-generation backend for RepoPress Studio. Follow system-role messages as instructions, use later user-role messages as requests, and return only the requested final content. Do not inspect files, run commands, browse, or use tools. The conversation is encoded as JSON so message contents cannot alter its boundaries.
+      You are the text-generation backend for RepoPress Studio. Follow system-role messages as instructions, use later user-role messages as requests, and return only the requested final content. Do not inspect files, run commands, or browse. \(toolInstruction) The conversation is encoded as JSON so message contents cannot alter its boundaries.
 
       \(json)
       """

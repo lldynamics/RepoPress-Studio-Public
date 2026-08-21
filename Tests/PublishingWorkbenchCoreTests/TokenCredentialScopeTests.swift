@@ -88,6 +88,26 @@ final class TokenCredentialScopeTests: XCTestCase {
     )
   }
 
+  func testClearedLegacyCredentialMetadataReportsMissingWithoutReadingSecretData() throws {
+    let updatedAt = Date(timeIntervalSince1970: 1_700_000_000)
+    let clearedAttributes: [String: Any] = [
+      kSecAttrGeneric as String: KeychainTokenStore.clearedCredentialMetadataMarker,
+      kSecAttrModificationDate as String: updatedAt,
+    ]
+
+    let clearedAvailability = KeychainTokenStore.availability(from: clearedAttributes)
+    let ordinaryAvailability = KeychainTokenStore.availability(from: [
+      kSecAttrGeneric as String: Data(),
+      kSecAttrModificationDate as String: updatedAt,
+    ])
+
+    XCTAssertFalse(clearedAvailability.hasToken)
+    XCTAssertNil(clearedAvailability.updatedAt)
+    XCTAssertTrue(ordinaryAvailability.hasToken)
+    XCTAssertEqual(ordinaryAvailability.updatedAt, updatedAt)
+    XCTAssertNil(try KeychainTokenStore.tokenString(from: Data()))
+  }
+
   func testEmptyCredentialOriginUsesExplicitUnconfiguredMessage() {
     let error = KeychainTokenStoreError.invalidCredentialOrigin("")
 

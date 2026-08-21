@@ -31,10 +31,6 @@
     "en": "Article body preserving headings, lists, block quotes, code blocks, and links",
     "zh-Hans": "保留标题、列表、引用、代码块和链接的文章正文"
   },
-  "允许加载当前文章的远程图片": {
-    "en": "Allow Loading Remote Images in the Current Article",
-    "zh-Hans": "允许加载当前文章的远程图片"
-  },
   "删除高亮": {
     "en": "Delete Highlight",
     "zh-Hans": "删除高亮"
@@ -54,14 +50,6 @@
   "在资料库中打开“%@”": {
     "en": "Open “%@” in the Knowledge Library",
     "zh-Hans": "在资料库中打开“%@”"
-  },
-  "已选择正文文字，可高亮或添加批注": {
-    "en": "Body text selected. You can highlight it or add a note.",
-    "zh-Hans": "已选择正文文字，可高亮或添加批注"
-  },
-  "已选文本": {
-    "en": "Selected Text",
-    "zh-Hans": "已选文本"
   },
   "引用 %@": {
     "en": "References: %@",

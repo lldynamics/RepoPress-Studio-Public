@@ -147,33 +147,13 @@ extension SiteImageWorkbenchService {
     imagePath: String,
     altText: String
   ) -> (text: String, replacementCount: Int) {
-    let pattern = #"!\[([^\]]*)\]\("#
-      + NSRegularExpression.escapedPattern(for: imagePath)
-      + #"\)"#
-    guard let regex = try? NSRegularExpression(pattern: pattern) else {
-      return (markdown, 0)
-    }
-
-    var updated = markdown
-    var replacementCount = 0
-    let range = NSRange(markdown.startIndex..<markdown.endIndex, in: markdown)
-    let matches = regex.matches(in: markdown, range: range)
-
-    for match in matches.reversed() {
-      guard
-        let fullRange = Range(match.range(at: 0), in: updated),
-        let altRange = Range(match.range(at: 1), in: updated)
-      else {
-        continue
-      }
-
-      if updated[altRange].trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-        updated.replaceSubrange(fullRange, with: "![\(altText)](\(imagePath))")
-        replacementCount += 1
-      }
-    }
-
-    return (updated, replacementCount)
+    let replacement = ImageMetadataEditingService.replacingMarkdownAlt(
+      in: markdown,
+      imagePath: imagePath,
+      altText: altText,
+      onlyIfEmpty: true
+    )
+    return (replacement.markdown, replacement.count)
   }
 
   func replaceMarkdownImagePath(

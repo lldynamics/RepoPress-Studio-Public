@@ -5,8 +5,8 @@ import SwiftUI
 struct CodexAppServerAccountSection: View {
   let model: Binding<String>
   let reasoningEffortOverride: Binding<String?>
-  let dataSharingConsent: AIDataSharingConsentPresentation
-  let grantConsentForConnection: () -> Void
+  let isCodexDataSharingConsentGranted: (CodexAppServerAccountStatus?) -> Bool
+  let grantConsentForConnection: (CodexAppServerAccountStatus) -> Void
   let testConnection: () async -> AIConnectionTestReport?
 
   @State private var runtimeStatus: CodexAppServerRuntimeStatus?
@@ -26,7 +26,7 @@ struct CodexAppServerAccountSection: View {
 
   var body: some View {
     Group {
-      Section("1. ChatGPT 账户") {
+      Section("ChatGPT 账户") {
         CodexAppServerRuntimeStatusContent(
           runtimeStatus: runtimeStatus,
           openInstallationGuide: openRuntimeInstallationGuide,
@@ -68,7 +68,7 @@ struct CodexAppServerAccountSection: View {
         }
 
         HStack(spacing: 10) {
-          if runtimeStatus?.isAvailable == true, accountStatus?.accountType != "chatgpt" {
+          if runtimeStatus?.isAvailable == true, accountStatus?.isAuthenticated != true {
             Button(loginButtonTitle) {
               startBrowserLogin()
             }
@@ -86,6 +86,31 @@ struct CodexAppServerAccountSection: View {
             .accessibilityIdentifier("settings-ai-codex-account-logout")
           }
 
+          if let accountStatus,
+            accountStatus.isAuthenticated,
+            !isCodexDataSharingConsentGranted(accountStatus)
+          {
+            Button("同意并测试 ChatGPT 连接") {
+              grantConsentForConnection(accountStatus)
+              startPostLoginConnectionTest()
+            }
+            .workbenchProminentActionStyle()
+            .disabled(isWorking)
+            .accessibilityIdentifier("settings-ai-codex-account-consent")
+          }
+
+          if let accountStatus,
+            accountStatus.isAuthenticated,
+            isCodexDataSharingConsentGranted(accountStatus)
+          {
+            Button("测试 ChatGPT 连接") {
+              startPostLoginConnectionTest()
+            }
+            .buttonStyle(.borderless)
+            .disabled(isWorking)
+            .accessibilityIdentifier("settings-ai-codex-account-test")
+          }
+
           if isLoginFlowActive, accountStatus?.isAuthenticated != true {
             Button("取消登录", role: .cancel) {
               operationTask?.cancel()
@@ -95,7 +120,7 @@ struct CodexAppServerAccountSection: View {
           }
         }
 
-        if runtimeStatus?.isAvailable == true, accountStatus?.accountType != "chatgpt" {
+        if runtimeStatus?.isAvailable == true, accountStatus?.isAuthenticated != true {
           Button("改用设备码登录") {
             startDeviceCodeLogin()
           }
@@ -165,7 +190,8 @@ struct CodexAppServerAccountSection: View {
       titleVisibility: .visible
     ) {
       Button("同意并测试") {
-        grantConsentForConnection()
+        guard let accountStatus else { return }
+        grantConsentForConnection(accountStatus)
         startPostLoginConnectionTest()
       }
       Button("稍后", role: .cancel) {}
@@ -401,7 +427,7 @@ struct CodexAppServerAccountSection: View {
       return
     }
     isError = false
-    if dataSharingConsent.isGranted {
+    if isCodexDataSharingConsentGranted(accountStatus) {
       await runPostLoginConnectionTest()
     } else {
       isWorking = false

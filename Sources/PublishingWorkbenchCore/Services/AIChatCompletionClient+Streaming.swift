@@ -63,11 +63,15 @@ extension AIChatCompletionClient {
       return codexAppServerStream(prepared: prepared, config: config)
     }
 
-    guard let streamingTransport = transport as? AIChatStreamingTransport else {
+    let selectedTransport = try transport(for: config)
+    guard let streamingTransport = selectedTransport as? AIChatStreamingTransport else {
       throw AIChatCompletionClientError.streamingUnsupported
     }
 
-    let nonStreamingFallbackPrepared = try makeNonStreamingVariant(from: prepared)
+    let nonStreamingFallbackPrepared = try makeNonStreamingVariant(
+      from: prepared,
+      config: config
+    )
 
     return recoveredStreamUpdates(
       prepared: prepared,
@@ -173,10 +177,15 @@ extension AIChatCompletionClient {
 
             let updates = streamUpdates(
               from: boundedLines,
-              sensitiveValues: sensitiveValues
+              sensitiveValues: sensitiveValues,
+              requiresAnthropicMessageStop: config.usesAnthropicAPI
             )
             for try await update in updates {
               try Task.checkCancellation()
+              // Any successfully decoded SSE update means the remote service
+              // has accepted and started processing this request. Preserve the
+              // no-replay boundary even for role/reasoning-only metadata;
+              // heartbeat/comment/blank lines never become updates.
               responseStarted = true
               continuation.yield(update)
             }
@@ -194,6 +203,18 @@ extension AIChatCompletionClient {
               error,
               policy: networkRecoveryPolicy
             )
+            if case .incompleteStream = normalizedError {
+              if responseStarted {
+                continuation.finish(
+                  throwing: AIChatCompletionClientError.streamInterruptedAfterPartialContent(
+                    normalizedError.localizedDescription
+                  )
+                )
+              } else {
+                continuation.finish(throwing: normalizedError)
+              }
+              return
+            }
             if responseStarted {
               continuation.finish(
                 throwing: AIChatCompletionClientError.streamInterruptedAfterPartialContent(
@@ -365,7 +386,7 @@ extension AIChatCompletionClient {
         }
       }
       let coordinatorTask = Task(priority: .userInitiated) {
-        var receivedFirstLine = false
+        var receivedFirstDataLine = false
         defer {
           sourceTask.cancel()
           firstByteTimeoutTask.cancel()
@@ -377,8 +398,8 @@ extension AIChatCompletionClient {
           guard !Task.isCancelled else { break }
           switch event {
           case .line(let line):
-            if !receivedFirstLine {
-              receivedFirstLine = true
+            if !receivedFirstDataLine, Self.isSSEDataBearingLine(line) {
+              receivedFirstDataLine = true
               firstByteTimeoutTask.cancel()
             }
             continuation.yield(line)
@@ -392,7 +413,7 @@ extension AIChatCompletionClient {
             continuation.finish(throwing: error.value)
             return
           case .firstByteTimedOut:
-            guard !receivedFirstLine else { continue }
+            guard !receivedFirstDataLine else { continue }
             continuation.finish(
               throwing: AIChatCompletionClientError.firstByteTimedOut(firstByteTimeout)
             )
@@ -416,6 +437,33 @@ extension AIChatCompletionClient {
     }
   }
 
+  private static func isSSEDataBearingLine(_ line: String) -> Bool {
+    let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmed.isEmpty,
+      !trimmed.hasPrefix(":"),
+      !trimmed.hasPrefix("event:")
+    else {
+      return false
+    }
+    if trimmed.hasPrefix("data:") {
+      let payload = trimmed.dropFirst("data:".count)
+        .trimmingCharacters(in: .whitespaces)
+      guard !payload.isEmpty else { return false }
+      if let data = payload.data(using: .utf8),
+        anthropicEventType(from: data) == "ping"
+      {
+        return false
+      }
+      return true
+    }
+    if let data = trimmed.data(using: .utf8),
+      anthropicEventType(from: data) == "ping"
+    {
+      return false
+    }
+    return trimmed == "[DONE]" || trimmed.hasPrefix("{") || trimmed.hasPrefix("[")
+  }
+
   func performWithTimeout<Value: Sendable>(
     seconds: TimeInterval,
     timeoutError: AIChatCompletionClientError,
@@ -435,7 +483,7 @@ extension AIChatCompletionClient {
     }
   }
 
-  private func sleep(seconds: TimeInterval) async throws {
+  func sleep(seconds: TimeInterval) async throws {
     guard seconds > 0 else {
       try Task.checkCancellation()
       return
@@ -451,7 +499,7 @@ extension AIChatCompletionClient {
     max(0.001, timeout - Date().timeIntervalSince(startDate))
   }
 
-  private static func normalizedTransportError(
+  static func normalizedTransportError(
     _ error: Error,
     policy: AIChatNetworkRecoveryPolicy
   ) -> AIChatCompletionClientError {
@@ -487,7 +535,7 @@ extension AIChatCompletionClient {
     )
   }
 
-  private func shouldAutomaticallyRetry(
+  func shouldAutomaticallyRetry(
     _ error: AIChatCompletionClientError,
     completedRetryCount: Int
   ) -> Bool {
@@ -502,7 +550,7 @@ extension AIChatCompletionClient {
     return true
   }
 
-  private func automaticRetryDelay(
+  func automaticRetryDelay(
     for error: AIChatCompletionClientError,
     completedRetryCount: Int
   ) -> TimeInterval {

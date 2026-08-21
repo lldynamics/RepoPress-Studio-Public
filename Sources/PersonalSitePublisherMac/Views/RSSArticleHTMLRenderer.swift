@@ -384,7 +384,7 @@ enum RSSArticleHTMLRenderer {
       <html lang="\(escapeAttribute(languageTag))">
       <head>
         <meta name="viewport" content="width=device-width, initial-scale=1">
-        <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src https: http: file:; connect-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none';">
+        <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'none'; style-src 'unsafe-inline'; img-src data: file:; connect-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none';">
         <style>
           :root { color-scheme: \(theme.cssColorScheme); --rss-font-size: \(normalizedFontSize)px; --rss-line-spacing: \(normalizedLineSpacing); --rss-background: \(theme.cssBackground); --rss-foreground: \(theme.cssForeground); --rss-secondary-foreground: \(theme.cssSecondaryForeground); --rss-link: \(theme.cssLink); }
           html, body { width: 100%; max-width: 100%; min-height: 100%; overflow-x: hidden; }
@@ -601,9 +601,15 @@ enum RSSArticleHTMLRenderer {
           hasRenderableContent: true
         )
       }
+
+      // A WKWebView subresource request cannot reuse the RSS client's
+      // DNS-pinned connection. Emitting the remote URL here would therefore
+      // reopen loopback/private-network access and DNS-rebinding redirects.
+      // Only images that have already crossed the safe downloader boundary
+      // and are present in the local media cache are rendered as images.
+      guard !altText.isEmpty else { return .empty }
       return SanitizedTag(
-        html:
-          "<img src=\"\(escapeAttribute(imageURL.absoluteString))\" alt=\"\(alt)\" loading=\"lazy\" referrerpolicy=\"no-referrer\">",
+        html: "<span class=\"remote-image-disabled\">\(escapeText(altText))</span>",
         hasRenderableContent: true
       )
     }

@@ -58,6 +58,12 @@ final class PrivacyProtectionTests: XCTestCase {
     XCTAssertFalse(PrivacyProtectionEventKind.allCases.map(\.rawValue).contains("lockedWhenInactive"))
   }
 
+  func testPrivacyEventsUseVisibilityIconsInsteadOfSecurityIcons() {
+    XCTAssertEqual(PrivacyProtectionEventKind.lockedOnLaunch.systemImage, "eye.slash")
+    XCTAssertEqual(PrivacyProtectionEventKind.manualLock.systemImage, "eye.slash.fill")
+    XCTAssertEqual(PrivacyProtectionEventKind.unlocked.systemImage, "eye")
+  }
+
   func testManualQuickHideAndReturnToWorkbench() throws {
     let url = try temporaryPersistenceURL()
     let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: url))
@@ -205,8 +211,9 @@ final class PrivacyProtectionTests: XCTestCase {
 
     let markdown = status.checklistMarkdown
 
-    XCTAssertTrue(markdown.contains("# 快速隐藏和私密内容保护"))
+    XCTAssertTrue(markdown.contains("# 快速隐藏和私密内容遮挡"))
     XCTAssertTrue(markdown.contains("- 当前状态：快速隐藏已启用"))
+    XCTAssertTrue(markdown.contains("- 已启用的遮挡设置：私密内容遮挡"))
     XCTAssertTrue(markdown.contains("私密内容遮挡"))
     XCTAssertTrue(markdown.contains("手动快速隐藏后"))
     XCTAssertTrue(markdown.contains("写作、AI、同步和发布操作不可用"))

@@ -83,11 +83,11 @@ public enum PrivacyProtectionEventKind: String, Codable, CaseIterable, Hashable,
   public var systemImage: String {
     switch self {
     case .lockedOnLaunch:
-      return "lock.shield"
+      return "eye.slash"
     case .manualLock:
-      return "lock.fill"
+      return "eye.slash.fill"
     case .unlocked:
-      return "lock.open"
+      return "eye"
     case .settingsUpdated:
       return "slider.horizontal.3"
     }
@@ -166,11 +166,11 @@ public struct PrivacyProtectionStatus: Hashable, Sendable {
 
   public var checklistMarkdown: String {
     var lines: [String] = [
-      "# 快速隐藏和私密内容保护",
+      "# 快速隐藏和私密内容遮挡",
       "",
       "- 当前状态：\(title)",
       "- 说明：\(detail)",
-      "- 启用保护：\(activeProtections.isEmpty ? "未启用" : activeProtections.joined(separator: "、"))",
+      "- 已启用的遮挡设置：\(activeProtections.isEmpty ? "未启用" : activeProtections.joined(separator: "、"))",
       "",
       "## 行为确认"
     ]

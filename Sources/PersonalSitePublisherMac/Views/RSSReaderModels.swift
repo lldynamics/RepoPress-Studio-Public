@@ -62,9 +62,3 @@ struct RSSReaderFilterChangeToken: Equatable {
     )
   }
 }
-
-struct RSSStatusEvent: Equatable {
-  let title: String
-  let details: [String]
-  let isError: Bool
-}

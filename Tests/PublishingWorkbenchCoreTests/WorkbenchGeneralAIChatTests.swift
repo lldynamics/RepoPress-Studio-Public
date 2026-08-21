@@ -5,18 +5,18 @@ import XCTest
 
 @MainActor
 final class WorkbenchGeneralAIChatTests: XCTestCase {
-  override func setUp() {
-    super.setUp()
+  override func setUp() async throws {
+    try await super.setUp()
     // Production defaults to automatic remote authorization. Tests that need
     // fail-closed fault injection install an explicit provider below.
     AIOutboundPayloadApprovalBroker.shared.testingDecisionProvider = nil
   }
 
-  override func tearDown() {
+  override func tearDown() async throws {
     AIOutboundPayloadApprovalBroker.shared.cancelPendingRequest()
     AIOutboundPayloadApprovalBroker.shared.testingDecisionProvider = nil
     AIOutboundPayloadApprovalBroker.shared.testingConfirmationDateProvider = nil
-    super.tearDown()
+    try await super.tearDown()
   }
 
   func testConnectionProfileKeyAvailabilityIsScopedToDisplayedGeneralConnection() throws {
@@ -448,6 +448,46 @@ final class WorkbenchGeneralAIChatTests: XCTestCase {
     XCTAssertEqual(requestCount, 0)
   }
 
+  func testExplicitArticleContextStillDetectsDriftWhileKnowledgeIsFrozen() async throws {
+    let approvalBroker = AIOutboundPayloadApprovalBroker.shared
+    let (store, transport, config, consentStore, persistenceURL) = makeRemoteGeneralPayloadStore(
+      suffix: "ExplicitArticleDrift"
+    )
+    defer {
+      consentStore.revoke(for: config)
+      try? FileManager.default.removeItem(at: persistenceURL)
+    }
+    var draft = try XCTUnwrap(store.selectedDraft)
+    draft.title = "授权前文章"
+    draft.bodyMarkdown = "授权前正文"
+    store.updateDraft(draft)
+    let reference = AIContextReference.currentArticle(
+      draftID: draft.id,
+      title: draft.title,
+      characterCount: draft.bodyMarkdown.count
+    )
+    let conversation = try XCTUnwrap(store.aiStore.startNewGeneralAIChatConversation())
+    approvalBroker.testingDecisionProvider = { _ in
+      guard var changedDraft = store.drafts.first(where: { $0.id == draft.id }) else {
+        return .cancel
+      }
+      changedDraft.bodyMarkdown = "授权期间已修改的正文"
+      store.updateDraft(changedDraft)
+      return .confirm
+    }
+    defer { approvalBroker.testingDecisionProvider = nil }
+
+    let reply = await store.aiStore.sendGeneralAIChatMessage(
+      "检查显式文章上下文",
+      conversationID: conversation.id,
+      contextReferences: [reference]
+    )
+
+    XCTAssertNil(reply)
+    let requestCount = await transport.capturedRequestCount()
+    XCTAssertEqual(requestCount, 0)
+  }
+
   func
     testGeneralConversationSendsWithoutDraftAndStreamsIntoScopedHistoryWithoutPerRequestPayloadPrompt()
     async throws
@@ -520,6 +560,302 @@ final class WorkbenchGeneralAIChatTests: XCTestCase {
       separator: "\n")
     XCTAssertTrue(serializedMessages.contains("不依赖文章回答我。"))
     XCTAssertFalse(serializedMessages.contains("当前 Mac 工作台上下文"))
+  }
+
+  func testGeneralToolCallingOnlyCreatesDraftThenReturnsReplyInGeneralConversation() async throws {
+    let transport = SequencedGeneralAIChatTransport(responses: [
+      functionResponse(
+        name: "createDraft",
+        arguments: ["value": "通用新建文章"]
+      ),
+      textResponse("已在本地新建空白文章。"),
+    ])
+    let baseConfig = AIProviderConfig(
+      preset: .custom,
+      baseURL: "https://api.openai.example/v1",
+      model: "general-agent-model",
+      requiresAPIKey: false,
+      advancedSettings: AIProviderAdvancedSettings(allowsApplicationTools: true)
+    )
+    let config = capabilitySupportedConfig(baseConfig, capabilities: [.toolCalling])
+    let consentStore = AIDataSharingConsentStore()
+    consentStore.grant(for: config)
+    defer { consentStore.revoke(for: config) }
+    let persistenceURL = FileManager.default.temporaryDirectory
+      .appendingPathComponent("WorkbenchGeneralAgent-\(UUID().uuidString).json")
+    defer { try? FileManager.default.removeItem(at: persistenceURL) }
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: persistenceURL),
+      keychainTokenStore: KeychainTokenStore(
+        service: "WorkbenchGeneralAgent.\(UUID().uuidString.prefix(8))",
+        accountPrefix: "general-agent",
+        inMemory: true
+      ),
+      aiPublishingAssistantService: AIPublishingAssistantService(
+        client: AIChatCompletionClient(transport: transport)
+      ),
+      aiDataSharingConsentStore: consentStore
+    )
+    configureActiveAIConnection(in: store, config: config)
+    AIOutboundPayloadApprovalBroker.shared.testingDecisionProvider = { _ in .confirm }
+    defer { AIOutboundPayloadApprovalBroker.shared.testingDecisionProvider = nil }
+    let originalDraftCount = store.drafts.count
+    let conversation = try XCTUnwrap(
+      store.aiStore.startNewGeneralAIChatConversation()
+    )
+    XCTAssertTrue(
+      store.aiStore.setGeneralAIChatKnowledgePolicy(
+        .off,
+        conversationID: conversation.id
+      )
+    )
+
+    let reply = await store.aiStore.sendGeneralAIChatMessage(
+      "请直接新建一篇通用新建文章",
+      conversationID: conversation.id
+    )
+
+    XCTAssertEqual(reply?.content, "已在本地新建空白文章。")
+    XCTAssertEqual(reply?.toolRuns.map(\.command), [.createDraft])
+    XCTAssertEqual(reply?.toolRuns.map(\.status), [.succeeded])
+    XCTAssertEqual(store.drafts.count, originalDraftCount + 1)
+    let createdDraft = try XCTUnwrap(store.selectedDraft)
+    XCTAssertEqual(createdDraft.title, "通用新建文章")
+    XCTAssertEqual(
+      store.aiStore.activeGeneralAIChatConversation?.messages.map(\.content),
+      ["请直接新建一篇通用新建文章", "已在本地新建空白文章。"]
+    )
+    let record = try XCTUnwrap(store.automationRunRecords.first)
+    XCTAssertEqual(record.steps.first?.command, .createDraft)
+    XCTAssertEqual(record.steps.first?.targetDraftID, createdDraft.id)
+    let bodies = await transport.capturedBodies()
+    XCTAssertEqual(bodies.count, 2)
+    let first = try jsonBody(bodies[0])
+    let tools = try XCTUnwrap(first["tools"] as? [[String: Any]])
+    XCTAssertEqual(
+      tools.compactMap { ($0["function"] as? [String: Any])?["name"] as? String },
+      ["createDraft"]
+    )
+    let second = try jsonBody(bodies[1])
+    let messages = try XCTUnwrap(second["messages"] as? [[String: Any]])
+    XCTAssertTrue(messages.contains { message in
+      (message["role"] as? String) == "tool"
+        && (message["content"] as? String)?.contains(createdDraft.id.uuidString) == true
+    })
+  }
+
+  func testGeneralToolCallingSearchesOnlyRemoteAllowedKnowledgeThenReturnsReply() async throws {
+    let transport = SequencedGeneralAIChatTransport(responses: [
+      functionResponse(
+        name: "knowledgeSearch",
+        arguments: ["query": "Agent 资料边界"]
+      ),
+      textResponse("已根据允许使用的资料回答。"),
+    ])
+    let baseConfig = AIProviderConfig(
+      preset: .custom,
+      baseURL: "https://api.openai.example/v1",
+      model: "general-knowledge-agent-model",
+      requiresAPIKey: false,
+      advancedSettings: AIProviderAdvancedSettings(allowsApplicationTools: true)
+    )
+    let config = capabilitySupportedConfig(baseConfig, capabilities: [.toolCalling])
+    let consentStore = AIDataSharingConsentStore()
+    consentStore.grant(for: config)
+    defer { consentStore.revoke(for: config) }
+    let directory = try TestWorkbenchFactory.temporaryDirectoryURL(
+      prefix: "WorkbenchGeneralKnowledgeAgent"
+    )
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let knowledgeLibrary = KnowledgeLibraryService(
+      rootURL: directory.appendingPathComponent("knowledge", isDirectory: true)
+    )
+    let allowedID = try await commitKnowledgeTestDocument(
+      title: "允许的 Agent 资料",
+      text: "Agent 资料边界：这段内容允许远程 AI 使用。",
+      allowsRemoteAIUse: true,
+      library: knowledgeLibrary
+    )
+    let deniedID = try await commitKnowledgeTestDocument(
+      title: "私有 Agent 资料",
+      text: "Agent 资料边界：这段私有内容不能发送。",
+      allowsRemoteAIUse: false,
+      library: knowledgeLibrary
+    )
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(
+        fileURL: directory.appendingPathComponent("workbench.json")
+      ),
+      knowledgeLibraryService: knowledgeLibrary,
+      keychainTokenStore: KeychainTokenStore(
+        service: "WorkbenchGeneralKnowledgeAgent.\(UUID().uuidString.prefix(8))",
+        accountPrefix: "general-knowledge-agent",
+        inMemory: true
+      ),
+      aiPublishingAssistantService: AIPublishingAssistantService(
+        client: AIChatCompletionClient(transport: transport)
+      ),
+      aiDataSharingConsentStore: consentStore
+    )
+    configureActiveAIConnection(in: store, config: config)
+    await store.knowledge.reload()
+    let conversation = try XCTUnwrap(
+      store.aiStore.startNewGeneralAIChatConversation()
+    )
+
+    let reply = await store.aiStore.sendGeneralAIChatMessage(
+      "请搜索 Agent 资料边界后回答。",
+      conversationID: conversation.id
+    )
+
+    XCTAssertEqual(reply?.content, "已根据允许使用的资料回答。")
+    XCTAssertEqual(reply?.toolRuns.map(\.command), [.knowledgeSearch])
+    XCTAssertEqual(reply?.toolRuns.map(\.status), [.succeeded])
+    XCTAssertTrue(store.automationRunRecords.isEmpty)
+    let bodies = await transport.capturedBodies()
+    XCTAssertEqual(bodies.count, 2)
+    let second = try jsonBody(bodies[1])
+    let messages = try XCTUnwrap(second["messages"] as? [[String: Any]])
+    let toolContent = try XCTUnwrap(
+      messages.first(where: { ($0["role"] as? String) == "tool" })?["content"] as? String
+    )
+    XCTAssertTrue(toolContent.contains(allowedID.uuidString))
+    XCTAssertFalse(toolContent.contains(deniedID.uuidString))
+  }
+
+  func testGeneralExplicitKnowledgeRevocationDuringAuthorizationPerformsZeroTransport()
+    async throws
+  {
+    let directory = try TestWorkbenchFactory.temporaryDirectoryURL(
+      prefix: "WorkbenchGeneralExplicitKnowledgeRevocation"
+    )
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let knowledgeLibrary = KnowledgeLibraryService(
+      rootURL: directory.appendingPathComponent("knowledge", isDirectory: true)
+    )
+    let documentID = try await commitKnowledgeTestDocument(
+      title: "通用显式资料",
+      text: "通用对话显式资料撤权后不应再发送任何请求。",
+      allowsRemoteAIUse: true,
+      library: knowledgeLibrary
+    )
+    let transport = RecordingAIChatTransport(data: Data(), statusCode: 200)
+    let config = capabilitySupportedConfig(
+      AIProviderConfig(
+        preset: .custom,
+        baseURL: "https://api.openai.example/v1",
+        model: "general-explicit-revocation",
+        requiresAPIKey: false
+      ),
+      capabilities: [.streamingResponse]
+    )
+    let consentStore = AIDataSharingConsentStore(
+      storageKey: "GeneralExplicitKnowledgeRevocation.\(UUID().uuidString)"
+    )
+    consentStore.grant(for: config)
+    defer { consentStore.revoke(for: config) }
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(
+        fileURL: directory.appendingPathComponent("workbench.json")
+      ),
+      knowledgeLibraryService: knowledgeLibrary,
+      keychainTokenStore: KeychainTokenStore(
+        service: "GeneralExplicitKnowledgeRevocation.\(UUID().uuidString)",
+        accountPrefix: "general-explicit-revocation",
+        inMemory: true
+      ),
+      aiPublishingAssistantService: AIPublishingAssistantService(
+        client: AIChatCompletionClient(transport: transport)
+      ),
+      aiDataSharingConsentStore: consentStore
+    )
+    configureActiveAIConnection(in: store, config: config)
+    await store.knowledge.reload()
+    let conversation = try XCTUnwrap(
+      store.aiStore.startNewGeneralAIChatConversation()
+    )
+    XCTAssertTrue(
+      store.aiStore.setGeneralAIChatKnowledgePolicy(
+        .off,
+        conversationID: conversation.id
+      )
+    )
+    let reference = AIContextReference.knowledgeEntry(
+      documentID: documentID,
+      title: "通用显式资料",
+      characterCount: 100
+    )
+    AIOutboundPayloadApprovalBroker.shared.testingDecisionProvider = { _ in
+      try? knowledgeLibrary.setAllowsRemoteAIUse(false, documentID: documentID)
+      return .confirm
+    }
+    defer { AIOutboundPayloadApprovalBroker.shared.testingDecisionProvider = nil }
+
+    let reply = await store.aiStore.sendGeneralAIChatMessage(
+      "请只使用这份显式资料。",
+      conversationID: conversation.id,
+      contextReferences: [reference]
+    )
+
+    XCTAssertNil(reply)
+    let requestCount = await transport.capturedRequestCount()
+    XCTAssertEqual(requestCount, 0)
+    XCTAssertEqual(
+      store.aiChatMessage,
+      "资料权限或版本已变化，本次未发送，请重新生成。"
+    )
+  }
+
+  func testGeneralConversationTextOnlyModeDoesNotDeclareAgentTools() async throws {
+    let transport = SequencedGeneralAIChatTransport(responses: [
+      textResponse("仅用文字回答。")
+    ])
+    let baseConfig = AIProviderConfig(
+      preset: .custom,
+      baseURL: "https://api.openai.example/v1",
+      model: "general-text-only-model",
+      requiresAPIKey: false,
+      advancedSettings: AIProviderAdvancedSettings(allowsApplicationTools: true)
+    )
+    let config = capabilitySupportedConfig(baseConfig, capabilities: [.toolCalling])
+    let consentStore = AIDataSharingConsentStore()
+    consentStore.grant(for: config)
+    defer { consentStore.revoke(for: config) }
+    let directory = try TestWorkbenchFactory.temporaryDirectoryURL(
+      prefix: "WorkbenchGeneralTextOnly"
+    )
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(
+        fileURL: directory.appendingPathComponent("workbench.json")
+      ),
+      keychainTokenStore: KeychainTokenStore(
+        service: "WorkbenchGeneralTextOnly.\(UUID().uuidString.prefix(8))",
+        accountPrefix: "general-text-only",
+        inMemory: true
+      ),
+      aiPublishingAssistantService: AIPublishingAssistantService(
+        client: AIChatCompletionClient(transport: transport)
+      ),
+      aiDataSharingConsentStore: consentStore
+    )
+    configureActiveAIConnection(in: store, config: config)
+    let conversation = try XCTUnwrap(
+      store.aiStore.startNewGeneralAIChatConversation()
+    )
+    XCTAssertTrue(
+      store.aiStore.setAIConversationAgentMode(.textOnly, for: conversation.id)
+    )
+
+    let reply = await store.aiStore.sendGeneralAIChatMessage(
+      "不要使用工具。",
+      conversationID: conversation.id
+    )
+
+    XCTAssertEqual(reply?.content, "仅用文字回答。")
+    let bodies = await transport.capturedBodies()
+    XCTAssertEqual(bodies.count, 1)
+    XCTAssertNil(try jsonBody(try XCTUnwrap(bodies.first))["tools"])
   }
 
   func testGeneralConversationCancellationKeepsUserMessageAndAllowsRetry() async throws {
@@ -869,6 +1205,69 @@ final class WorkbenchGeneralAIChatTests: XCTestCase {
     XCTAssertTrue(store.aiChatMessage?.contains("失败") == true)
   }
 
+  private func functionResponse(
+    name: String,
+    arguments: [String: Any]
+  ) -> Data {
+    let argumentsData = try! JSONSerialization.data(
+      withJSONObject: arguments,
+      options: [.sortedKeys]
+    )
+    let argumentsString = String(data: argumentsData, encoding: .utf8)!
+    return try! JSONSerialization.data(withJSONObject: [
+      "model": "general-agent-model",
+      "choices": [[
+        "message": [
+          "role": "assistant",
+          "content": "",
+          "tool_calls": [[
+            "id": "call-\(name)",
+            "type": "function",
+            "function": ["name": name, "arguments": argumentsString],
+          ]],
+        ],
+        "finish_reason": "tool_calls",
+      ]],
+    ])
+  }
+
+  private func textResponse(_ content: String) -> Data {
+    try! JSONSerialization.data(withJSONObject: [
+      "model": "general-agent-model",
+      "choices": [[
+        "message": ["role": "assistant", "content": content],
+        "finish_reason": "stop",
+      ]],
+    ])
+  }
+
+  private func commitKnowledgeTestDocument(
+    title: String,
+    text: String,
+    allowsRemoteAIUse: Bool,
+    library: KnowledgeLibraryService
+  ) async throws -> UUID {
+    let hash = KnowledgeChunkingService.contentHash(for: text)
+    let candidate = KnowledgeImportCandidate(
+      kind: .markdown,
+      title: title,
+      sourceName: "\(title).md",
+      allowsRemoteAIUse: allowsRemoteAIUse,
+      originalContentHash: hash,
+      normalizedText: text,
+      normalizedContentHash: hash,
+      sections: [KnowledgeExtractedSection(headingPath: title, text: text)]
+    )
+    let result = try await library.commit(
+      KnowledgeImportPreview(sourceName: "fixture", candidates: [candidate])
+    )
+    return try XCTUnwrap(result.documentIDs.first)
+  }
+
+  private func jsonBody(_ data: Data) throws -> [String: Any] {
+    try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+  }
+
   private func makeRemoteGeneralPayloadStore(
     suffix: String
   ) -> (
@@ -938,5 +1337,31 @@ final class WorkbenchGeneralAIChatTests: XCTestCase {
     }
     config.capabilityProbeEvidence = evidence
     return config
+  }
+}
+
+private actor SequencedGeneralAIChatTransport: AIChatTransport {
+  private let responses: [Data]
+  private var requests: [URLRequest] = []
+
+  init(responses: [Data]) {
+    self.responses = responses
+  }
+
+  func data(for request: URLRequest) async throws -> (Data, URLResponse) {
+    let index = requests.count
+    requests.append(request)
+    let responseData = responses[min(index, max(0, responses.count - 1))]
+    let response = HTTPURLResponse(
+      url: request.url!,
+      statusCode: 200,
+      httpVersion: nil,
+      headerFields: nil
+    )!
+    return (responseData, response)
+  }
+
+  func capturedBodies() -> [Data] {
+    requests.compactMap(\.httpBody)
   }
 }

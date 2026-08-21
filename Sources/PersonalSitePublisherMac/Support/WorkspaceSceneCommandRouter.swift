@@ -215,12 +215,10 @@ final class WorkspaceSceneCommandRouter: @preconcurrency ObservableObject {
   private func scheduleChangeNotification() {
     guard !isChangeNotificationScheduled else { return }
     isChangeNotificationScheduled = true
-    RunLoop.main.perform(inModes: [.default]) { [weak self] in
-      MainActor.assumeIsolated {
-        guard let self else { return }
-        self.isChangeNotificationScheduled = false
-        self.objectWillChange.send()
-      }
+    Task { @MainActor [weak self] in
+      guard let self else { return }
+      self.isChangeNotificationScheduled = false
+      self.objectWillChange.send()
     }
   }
 

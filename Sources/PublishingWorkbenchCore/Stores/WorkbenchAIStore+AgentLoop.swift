@@ -1,5 +1,25 @@
 import Foundation
 
+/// `WorkbenchAIAgentLoopService` converts model-transport errors into a result
+/// termination. Keep a small side channel so a revoked knowledge binding can
+/// still use the dedicated zero-send cancellation path.
+private final class AgentKnowledgeAuthorizationState: @unchecked Sendable {
+  private let lock = NSLock()
+  private var changed = false
+
+  func markChanged() {
+    lock.lock()
+    changed = true
+    lock.unlock()
+  }
+
+  var didChange: Bool {
+    lock.lock()
+    defer { lock.unlock() }
+    return changed
+  }
+}
+
 /// The native article agent runtime. This file intentionally owns only the
 /// store wiring: the loop policy and the automation registry remain in their
 /// dedicated services. Every model round is treated as an independent,
@@ -26,9 +46,36 @@ extension WorkbenchAIStore {
         taskConfig: initialTaskConfig
       )
       let privacyService = AIOutboundPayloadPrivacyService()
+      let agentSettings = initialTaskConfig.resolvedAdvancedSettings
+      let conversationAllowsTools = aiConversationAgentMode(
+        for: conversationIdentity.conversationID
+      )?.effectiveAllowsTools(
+        connectionAllowsTools: agentSettings.resolvedAllowsApplicationTools
+      ) ?? false
+      var allowedCommands = WorkbenchAutomationRegistry.agentCommands(
+        allowedBy: agentSettings.resolvedAgentPermissionPolicy,
+        masterEnabled: conversationAllowsTools
+      )
+      if initialRequest.knowledgePolicy != .automatic {
+        allowedCommands.subtract([.knowledgeSearch, .knowledgeRead])
+      }
+      let knowledgeAuthorizationState = AgentKnowledgeAuthorizationState()
       let loop = WorkbenchAIAgentLoopService(
         modelTransport: { [weak self] roundRequest in
           guard let self else { throw CancellationError() }
+          do {
+            try await self.validateAgentKnowledgeAuthorization(
+              bindings: initialRequest.knowledgeContext?.authorizationBindings ?? [],
+              policy: initialRequest.knowledgePolicy,
+              failureState: knowledgeAuthorizationState
+            )
+          } catch let error as AIOutboundPayloadConfirmationError
+            where error == .knowledgeAuthorizationChanged
+          {
+            // The loop treats ordinary executor errors as failed tool
+            // results and would otherwise issue another model round.
+            throw CancellationError()
+          }
           return try await self.authorizedAgentModelCompletion(
             roundRequest,
             chatDraft: chatDraft,
@@ -37,14 +84,38 @@ extension WorkbenchAIStore {
             initialRequest: initialRequest,
             initialProviderConfig: initialProviderConfig,
             initialTaskConfig: initialTaskConfig,
-            privacyService: privacyService
+            privacyService: privacyService,
+            knowledgeAuthorizationState: knowledgeAuthorizationState
           )
         },
-        readOnlyExecutor: { [weak self] invocation in
+        allowedCommands: allowedCommands,
+        automaticExecutor: { [weak self] invocation in
           guard let self else { throw CancellationError() }
-          return try await self.executeAgentReadOnlyInvocation(
+          guard
+            await self.isAgentContextCurrent(
+              initialRequest: initialRequest,
+              initialProviderConfig: initialProviderConfig,
+              conversationIdentity: conversationIdentity,
+              privacyService: privacyService
+            )
+          else {
+            throw AIOutboundPayloadConfirmationError.drifted
+          }
+          do {
+            try await self.validateAgentKnowledgeAuthorization(
+              bindings: initialRequest.knowledgeContext?.authorizationBindings ?? [],
+              policy: initialRequest.knowledgePolicy,
+              failureState: knowledgeAuthorizationState
+            )
+          } catch let error as AIOutboundPayloadConfirmationError
+            where error == .knowledgeAuthorizationChanged
+          {
+            throw CancellationError()
+          }
+          return try await self.executeAgentAutomaticInvocation(
             invocation,
-            operationID: operationID
+            operationID: operationID,
+            conversationID: conversationIdentity.conversationID
           )
         }
       )
@@ -55,22 +126,36 @@ extension WorkbenchAIStore {
         toolCallingSupport: initialTaskConfig.capabilitySupport(for: .toolCalling)
       )
       try checkAIChatOperation(operationID)
+      if knowledgeAuthorizationState.didChange {
+        throw AIOutboundPayloadConfirmationError.knowledgeAuthorizationChanged
+      }
 
       switch result.termination {
       case .completed:
-        let content = result.assistantText
+        let rawContent = result.assistantText
           .joined(separator: "\n\n")
           .trimmedForPublishing
-        guard !content.isEmpty else {
+        guard !rawContent.isEmpty else {
           store.setAIChatMessage("AI 讨论失败：AI 没有返回可显示的内容。")
           return nil
         }
+        try await validateAgentKnowledgeAuthorization(
+          bindings: initialRequest.knowledgeContext?.authorizationBindings ?? [],
+          policy: initialRequest.knowledgePolicy
+        )
+        let extraction = AIChatFollowUpSuggestionService.extractOrInferSuggestions(
+          content: rawContent,
+          draft: initialRequest.draft,
+          hasAutomationPlan: false
+        )
         var assistantMessage = AIPublishingChatMessage(
           role: .assistant,
-          content: content,
+          content: extraction.displayContent,
           model: initialTaskConfig.normalizedModel,
           contextMode: initialRequest.contextMode,
-          knowledgeCitations: initialRequest.knowledgeContext?.citations ?? []
+          knowledgeCitations: initialRequest.knowledgeContext?.citations ?? [],
+          toolRuns: result.toolRuns,
+          followUpSuggestions: extraction.suggestions
         )
         assistantMessage = aiPublishingAssistantService.preparingProtectedEdit(
           in: assistantMessage,
@@ -85,22 +170,72 @@ extension WorkbenchAIStore {
         return assistantMessage
 
       case .awaitingReview:
-        guard let pendingPlan = result.pendingPlan else {
+        guard let pendingPlan = result.pendingPlan,
+          let checkpoint = result.checkpoint,
+          let originConversation = aiConversations.first(where: {
+            $0.id == conversationIdentity.conversationID
+              && $0.draftID == conversationIdentity.draftID
+          })
+        else {
           store.setAIChatMessage("AI 讨论失败：未能生成可审阅的操作计划。")
           return nil
         }
-        let content = result.assistantText
+        let rawContent = result.assistantText
           .joined(separator: "\n\n")
           .trimmedForPublishing
+        try await validateAgentKnowledgeAuthorization(
+          bindings: initialRequest.knowledgeContext?.authorizationBindings ?? [],
+          policy: initialRequest.knowledgePolicy
+        )
+        let extraction = AIChatFollowUpSuggestionService.extractOrInferSuggestions(
+          content: rawContent,
+          draft: initialRequest.draft,
+          hasAutomationPlan: true
+        )
+        let assistantMessageID = UUID()
+        let requestTemplate: AIChatCompletionRequest = {
+          var template = baseRequest
+          // The checkpoint owns the complete transcript. Keeping this request
+          // shell message-free avoids persisting a second copy of the same
+          // conversation and prevents a later resume from accidentally
+          // appending a second trusted boundary.
+          template.messages = []
+          return template
+        }()
+        let continuation = AIPublishingChatAgentContinuation(
+          ownerConversationID: conversationIdentity.conversationID,
+          ownerScope: .draft(chatDraft.id),
+          ownerMessageID: assistantMessageID,
+          planID: pendingPlan.id,
+          requestTemplate: requestTemplate,
+          checkpoint: checkpoint,
+          providerConfig: initialProviderConfig,
+          taskConfig: initialTaskConfig,
+          promptRevision: AIPublishingChatAgentPromptRevision(
+            conversation: originConversation
+          ),
+          reviewDraftFingerprint: chatDraft.repositoryContentFingerprint,
+          reviewDraftUpdatedAt: chatDraft.updatedAt,
+          knowledgeAuthorizationBindings:
+            initialRequest.knowledgeContext?.authorizationBindings ?? []
+        )
+        guard continuation.isValidForPersistence else {
+          store.setAIChatMessage("AI 讨论失败：无法安全保存待确认操作。")
+          return nil
+        }
         var assistantMessage = AIPublishingChatMessage(
+          id: assistantMessageID,
           role: .assistant,
-          content: content.isEmpty
+          content: extraction.displayContent.isEmpty
             ? CoreL10n.text("AI 已生成一份待确认的应用内操作计划。")
-            : content,
+            : extraction.displayContent,
           model: initialTaskConfig.normalizedModel,
           contextMode: initialRequest.contextMode,
           knowledgeCitations: initialRequest.knowledgeContext?.citations ?? [],
-          automationPlan: pendingPlan
+          toolRuns: result.toolRuns,
+          agentContinuation: continuation,
+          automationPlan: pendingPlan,
+          followUpSuggestions: extraction.suggestions
         )
         assistantMessage = aiPublishingAssistantService.preparingProtectedEdit(
           in: assistantMessage,
@@ -119,11 +254,21 @@ extension WorkbenchAIStore {
         else {
           throw AIOutboundPayloadConfirmationError.drifted
         }
+        try await validateAgentKnowledgeAuthorization(
+          bindings: initialRequest.knowledgeContext?.authorizationBindings ?? [],
+          policy: initialRequest.knowledgePolicy
+        )
         updateAIChatSession(for: conversationIdentity) { messages in
           messages.append(assistantMessage)
         }
         recordAIResponseBacklinks(message: assistantMessage, request: initialRequest)
-        store.setAIChatMessage("AI 已生成待确认操作计划。")
+        if store.flushPendingChanges() {
+          store.setAIChatMessage("AI 已生成待确认操作计划。")
+        } else {
+          store.setAIChatMessage(
+            "AI 已生成待确认操作计划，但暂时无法安全保存；请勿退出应用。"
+          )
+        }
         return assistantMessage
 
       case .cancelled:
@@ -134,6 +279,11 @@ extension WorkbenchAIStore {
         store.setAIChatMessage("AI 讨论失败：AI 操作回合未完成。")
         return nil
       }
+    } catch let error as AIOutboundPayloadConfirmationError
+      where error == .knowledgeAuthorizationChanged
+    {
+      store.setAIChatMessage(error.localizedDescription)
+      return nil
     } catch is CancellationError {
       store.setAIChatMessage("AI 回复已停止。")
       return nil
@@ -154,7 +304,8 @@ extension WorkbenchAIStore {
     initialRequest: AIPublishingChatRequest,
     initialProviderConfig: AIProviderConfig,
     initialTaskConfig: AIProviderConfig,
-    privacyService: AIOutboundPayloadPrivacyService
+    privacyService: AIOutboundPayloadPrivacyService,
+    knowledgeAuthorizationState: AgentKnowledgeAuthorizationState? = nil
   ) async throws -> AIChatCompletionResult {
     try checkAIChatOperation(operationID)
     guard
@@ -167,6 +318,11 @@ extension WorkbenchAIStore {
     else {
       throw AIOutboundPayloadConfirmationError.drifted
     }
+    try await validateAgentKnowledgeAuthorization(
+      bindings: initialRequest.knowledgeContext?.authorizationBindings ?? [],
+      policy: initialRequest.knowledgePolicy,
+      failureState: knowledgeAuthorizationState
+    )
 
     let initialTransport = try aiPublishingAssistantService.prepareTransport(
       completion: roundRequest,
@@ -193,6 +349,11 @@ extension WorkbenchAIStore {
     else {
       throw AIOutboundPayloadConfirmationError.drifted
     }
+    try await validateAgentKnowledgeAuthorization(
+      bindings: initialRequest.knowledgeContext?.authorizationBindings ?? [],
+      policy: initialRequest.knowledgePolicy,
+      failureState: knowledgeAuthorizationState
+    )
     let refreshedConfig = privacyService.sanitizedProviderConfig(
       store.aiProviderConfig(for: initialRequest.profile)
     )
@@ -231,6 +392,11 @@ extension WorkbenchAIStore {
       privacyService: privacyService
     )
     let token = try aiChatAvailableAPIKey(for: initialRequest.profile)
+    try await validateAgentKnowledgeAuthorization(
+      bindings: initialRequest.knowledgeContext?.authorizationBindings ?? [],
+      policy: initialRequest.knowledgePolicy,
+      failureState: knowledgeAuthorizationState
+    )
     try authorization.consume()
     try checkAIChatOperation(operationID)
     return try await aiPublishingAssistantService.completePreparedResult(
@@ -239,19 +405,41 @@ extension WorkbenchAIStore {
     )
   }
 
-  private func executeAgentReadOnlyInvocation(
+  private func validateAgentKnowledgeAuthorization(
+    bindings: [KnowledgeAuthorizationBinding],
+    policy: KnowledgeRetrievalPolicy,
+    failureState: AgentKnowledgeAuthorizationState? = nil
+  ) async throws {
+    guard await store.knowledge.validateKnowledgeAuthorizationBindings(
+      bindings,
+      policy: policy
+    ) else {
+      failureState?.markChanged()
+      throw AIOutboundPayloadConfirmationError.knowledgeAuthorizationChanged
+    }
+  }
+
+  func executeAgentAutomaticInvocation(
     _ invocation: WorkbenchAIAgentToolInvocation,
-    operationID: UUID
+    operationID: UUID,
+    conversationID: UUID
   ) async throws -> WorkbenchAIAgentToolResult {
     try checkAIChatOperation(operationID)
-    guard WorkbenchAutomationRegistry.descriptor(for: invocation.step.command)?.risk == .readOnly
+    guard aiConversationAgentMode(for: conversationID) != .textOnly else {
+      throw WorkbenchAutomationExecutionError.operationDidNotComplete(
+        CoreL10n.text("当前对话已切换为仅问答模式，未执行工具。")
+      )
+    }
+    guard WorkbenchAutomationRegistry.descriptor(
+      for: invocation.step.command
+    )?.allowsAgentAutomaticExecution == true
     else {
       throw WorkbenchAutomationExecutionError.operationDidNotComplete(
-        CoreL10n.text("非只读 AI 操作必须等待确认。")
+        CoreL10n.text("此 AI 操作必须等待确认。")
       )
     }
     let plan = WorkbenchAutomationPlan(
-      goal: CoreL10n.text("执行 AI 请求的只读工作台操作"),
+      goal: CoreL10n.text("执行 AI 请求允许自动运行的工作台操作"),
       steps: [invocation.step],
       source: .agentLoop
     )
@@ -264,16 +452,29 @@ extension WorkbenchAIStore {
         return self.aiChatCancellationRequested() || Task.isCancelled
       }
     )
-    try checkAIChatOperation(operationID)
     guard let record = result.record.steps.first else {
+      try checkAIChatOperation(operationID)
       return WorkbenchAIAgentToolResult(
-        content: CoreL10n.text("只读操作没有返回结果。"),
+        content: CoreL10n.text("应用内操作没有返回结果。"),
         isError: true
       )
     }
+
+    // Automatic mutations must remain auditable and undoable even if the
+    // enclosing model operation is cancelled immediately afterwards. Pure
+    // read-only observations intentionally stay out of automation history.
+    if result.record.steps.contains(where: { stepRecord in
+      stepRecord.status == .succeeded
+        && WorkbenchAutomationRegistry.descriptor(for: stepRecord.command)?.risk != .readOnly
+    }) {
+      store.recordAutomationRun(result.record)
+      store.save()
+    }
+    try checkAIChatOperation(operationID)
     return WorkbenchAIAgentToolResult(
       content: String(record.message.prefix(4_000)),
-      isError: record.status != .succeeded
+      isError: record.status != .succeeded,
+      targetDraftID: record.targetDraftID
     )
   }
 
@@ -300,6 +501,7 @@ extension WorkbenchAIStore {
       return false
     }
     guard let session = aiChatSessionState(for: conversationIdentity),
+      aiConversationAgentMode(for: conversationIdentity.conversationID) != .textOnly,
       privacyService.sanitizedChatMessages(session.messages) == initialRequest.messages,
       session.contextMode == initialRequest.contextMode,
       session.knowledgePolicy == initialRequest.knowledgePolicy,

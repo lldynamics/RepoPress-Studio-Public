@@ -33,6 +33,10 @@ public struct RecentlyDeletedProfile: Sendable {
 }
 
 extension PublishingStore {
+  public func draft(for draftID: UUID) -> ArticleDraft? {
+    drafts.first(where: { $0.id == draftID })
+  }
+
   func repositoryAccessToken(for profile: SiteProfile) throws -> String? {
     try repositoryTokenStore.repositoryToken(for: profile)
   }

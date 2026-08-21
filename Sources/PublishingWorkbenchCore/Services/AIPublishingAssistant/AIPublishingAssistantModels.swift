@@ -418,6 +418,335 @@ public enum AIPublishingChatContextMode: String, Codable, CaseIterable, Identifi
   }
 }
 
+public enum AIPublishingChatReviewDecisionChoice: String, Codable, Hashable, Sendable {
+  case accepted
+  case rejected
+}
+
+/// A conversation-bound decision for one Agent-proposed content mutation.
+/// This is persisted beside the chat message for auditability and is never
+/// included in the model transcript.
+public struct AIPublishingChatReviewDecision: Codable, Hashable, Sendable {
+  public var choice: AIPublishingChatReviewDecisionChoice
+  public var planID: UUID
+  public var stepID: UUID
+  public var toolCallID: String?
+  public var decidedAt: Date
+  public var previewBaselineFingerprint: String?
+
+  public init(
+    choice: AIPublishingChatReviewDecisionChoice,
+    planID: UUID,
+    stepID: UUID,
+    toolCallID: String? = nil,
+    decidedAt: Date = Date(),
+    previewBaselineFingerprint: String? = nil
+  ) {
+    self.choice = choice
+    self.planID = planID
+    self.stepID = stepID
+    self.toolCallID = toolCallID?.trimmedForPublishing.nilIfEmpty
+    self.decidedAt = decidedAt
+    self.previewBaselineFingerprint = previewBaselineFingerprint?.trimmedForPublishing.nilIfEmpty
+  }
+}
+
+/// Durable state for an Agent round paused at a native review boundary.
+/// Credentials, outbound approvals, nonces, and transport authorizations are
+/// intentionally excluded. A phase that may already have contacted the model
+/// is never eligible for automatic replay after relaunch.
+public struct AIPublishingChatAgentPromptRevision: Codable, Hashable, Sendable {
+  public var connectionProfileID: UUID?
+  public var agentMode: AIConversationAgentMode
+  public var contextMode: AIPublishingChatContextMode
+  public var knowledgePolicy: KnowledgeRetrievalPolicy
+  public var modelGrade: AIChatModelGrade
+  public var reasoningLevel: AIChatReasoningLevel
+  public var selectedModel: String
+  public var focusedParagraphID: String?
+
+  public init(
+    connectionProfileID: UUID? = nil,
+    agentMode: AIConversationAgentMode = .inheritConnection,
+    contextMode: AIPublishingChatContextMode = .site,
+    knowledgePolicy: KnowledgeRetrievalPolicy = .automatic,
+    modelGrade: AIChatModelGrade = .standard,
+    reasoningLevel: AIChatReasoningLevel = .deep,
+    selectedModel: String = "",
+    focusedParagraphID: String? = nil
+  ) {
+    self.connectionProfileID = connectionProfileID
+    self.agentMode = agentMode
+    self.contextMode = contextMode
+    self.knowledgePolicy = knowledgePolicy
+    self.modelGrade = modelGrade
+    self.reasoningLevel = reasoningLevel
+    self.selectedModel = selectedModel.trimmedForPublishing
+    self.focusedParagraphID = focusedParagraphID?.nilIfEmpty
+  }
+
+  public init(conversation: AIConversation) {
+    self.init(
+      connectionProfileID: conversation.connectionProfileID,
+      agentMode: conversation.agentMode,
+      contextMode: conversation.contextMode,
+      knowledgePolicy: conversation.knowledgePolicy,
+      modelGrade: conversation.modelGrade,
+      reasoningLevel: conversation.reasoningLevel,
+      selectedModel: conversation.selectedModel,
+      focusedParagraphID: conversation.focusedParagraphID
+    )
+  }
+}
+
+public enum AIPublishingChatAgentContinuationPhase: String, Codable, Hashable, Sendable {
+  case awaitingReview
+  case applyingDecision
+  case resuming
+  case sending
+  case deliveryUncertain
+  case cancelled
+  case abandonedAfterDeliveryUncertain
+
+  /// A terminal continuation is retained as audit history but must never be
+  /// resumed or treated as pending work after a reload.
+  public var isTerminal: Bool {
+    switch self {
+    case .cancelled, .abandonedAfterDeliveryUncertain:
+      return true
+    case .awaitingReview, .applyingDecision, .resuming, .sending,
+      .deliveryUncertain:
+      return false
+    }
+  }
+
+  /// Whether retention and destructive chat operations must keep treating the
+  /// continuation as pending user disposition. This intentionally covers
+  /// every non-terminal phase, not just the uncertain-delivery phase.
+  public var requiresExplicitDisposition: Bool { !isTerminal }
+
+  public var allowsAutomaticResume: Bool {
+    self == .awaitingReview
+  }
+}
+
+public struct AIPublishingChatAgentContinuation: Codable, Hashable, Identifiable, Sendable {
+  public static let currentSchemaVersion = 3
+  public static let maximumEncodedByteCount = 1_500_000
+
+  public var schemaVersion: Int
+  public var id: UUID
+  public var ownerConversationID: UUID
+  public var ownerScope: AIConversationScope
+  public var ownerMessageID: UUID
+  public var planID: UUID
+  public var phase: AIPublishingChatAgentContinuationPhase
+  public var revision: Int
+  public var activeStepID: UUID?
+  public var resumeAttemptID: UUID?
+  public var requestTemplate: AIChatCompletionRequest
+  public var checkpoint: WorkbenchAIAgentLoopCheckpoint
+  public var resolutions: [WorkbenchAIAgentToolResolution]
+  public var providerConfig: AIProviderConfig
+  public var taskConfig: AIProviderConfig
+  public var promptRevision: AIPublishingChatAgentPromptRevision?
+  /// The exact knowledge sources included in the first model-facing prompt.
+  /// These are persisted independently from the prompt revision so a resumed
+  /// Agent can re-check source authorization without re-running retrieval.
+  public var knowledgeAuthorizationBindings: [KnowledgeAuthorizationBinding]
+  public var reviewDraftFingerprint: String?
+  public var reviewDraftUpdatedAt: Date?
+  public var createdAt: Date
+  public var updatedAt: Date
+
+  public init(
+    schemaVersion: Int = AIPublishingChatAgentContinuation.currentSchemaVersion,
+    id: UUID = UUID(),
+    ownerConversationID: UUID,
+    ownerScope: AIConversationScope,
+    ownerMessageID: UUID,
+    planID: UUID,
+    phase: AIPublishingChatAgentContinuationPhase = .awaitingReview,
+    revision: Int = 0,
+    activeStepID: UUID? = nil,
+    resumeAttemptID: UUID? = nil,
+    requestTemplate: AIChatCompletionRequest,
+    checkpoint: WorkbenchAIAgentLoopCheckpoint,
+    resolutions: [WorkbenchAIAgentToolResolution] = [],
+    providerConfig: AIProviderConfig,
+    taskConfig: AIProviderConfig,
+    promptRevision: AIPublishingChatAgentPromptRevision,
+    reviewDraftFingerprint: String,
+    reviewDraftUpdatedAt: Date,
+    knowledgeAuthorizationBindings: [KnowledgeAuthorizationBinding] = [],
+    createdAt: Date = Date(),
+    updatedAt: Date? = nil
+  ) {
+    self.schemaVersion = schemaVersion
+    self.id = id
+    self.ownerConversationID = ownerConversationID
+    self.ownerScope = ownerScope
+    self.ownerMessageID = ownerMessageID
+    self.planID = planID
+    self.phase = phase
+    self.revision = max(0, revision)
+    self.activeStepID = activeStepID
+    self.resumeAttemptID = resumeAttemptID
+    self.requestTemplate = requestTemplate
+    self.checkpoint = checkpoint
+    self.resolutions = resolutions
+    self.providerConfig = providerConfig
+    self.taskConfig = taskConfig
+    self.promptRevision = promptRevision
+    self.knowledgeAuthorizationBindings = knowledgeAuthorizationBindings
+    self.reviewDraftFingerprint = reviewDraftFingerprint.trimmedForPublishing.nilIfEmpty
+    self.reviewDraftUpdatedAt = reviewDraftUpdatedAt
+    self.createdAt = createdAt
+    self.updatedAt = max(updatedAt ?? createdAt, createdAt)
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case schemaVersion
+    case id
+    case ownerConversationID
+    case ownerScope
+    case ownerMessageID
+    case planID
+    case phase
+    case revision
+    case activeStepID
+    case resumeAttemptID
+    case requestTemplate
+    case checkpoint
+    case resolutions
+    case providerConfig
+    case taskConfig
+    case promptRevision
+    case knowledgeAuthorizationBindings
+    case reviewDraftFingerprint
+    case reviewDraftUpdatedAt
+    case createdAt
+    case updatedAt
+  }
+
+  public init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    schemaVersion = try container.decode(Int.self, forKey: .schemaVersion)
+    id = try container.decode(UUID.self, forKey: .id)
+    ownerConversationID = try container.decode(UUID.self, forKey: .ownerConversationID)
+    ownerScope = try container.decode(AIConversationScope.self, forKey: .ownerScope)
+    ownerMessageID = try container.decode(UUID.self, forKey: .ownerMessageID)
+    planID = try container.decode(UUID.self, forKey: .planID)
+
+    let decodedPhase = try container.decode(
+      AIPublishingChatAgentContinuationPhase.self,
+      forKey: .phase
+    )
+    // A snapshot can be written after the model/tool boundary but before the
+    // process exits. Those transient phases are never safe to replay after
+    // decoding because the provider or local executor may already have seen
+    // the request. Recover them as an explicit, non-replayable uncertainty.
+    let recoveredFromTransientPhase: Bool
+    switch decodedPhase {
+    case .applyingDecision, .resuming, .sending:
+      phase = .deliveryUncertain
+      recoveredFromTransientPhase = true
+    case .awaitingReview, .deliveryUncertain, .cancelled,
+      .abandonedAfterDeliveryUncertain:
+      phase = decodedPhase
+      recoveredFromTransientPhase = false
+    }
+    revision = try container.decode(Int.self, forKey: .revision)
+    let decodedActiveStepID = try container.decodeIfPresent(UUID.self, forKey: .activeStepID)
+    activeStepID = recoveredFromTransientPhase ? nil : decodedActiveStepID
+    resumeAttemptID = try container.decodeIfPresent(UUID.self, forKey: .resumeAttemptID)
+    requestTemplate = try container.decode(AIChatCompletionRequest.self, forKey: .requestTemplate)
+    checkpoint = try container.decode(WorkbenchAIAgentLoopCheckpoint.self, forKey: .checkpoint)
+    resolutions = try container.decode(
+      [WorkbenchAIAgentToolResolution].self,
+      forKey: .resolutions
+    )
+    providerConfig = try container.decode(AIProviderConfig.self, forKey: .providerConfig)
+    taskConfig = try container.decode(AIProviderConfig.self, forKey: .taskConfig)
+    promptRevision = try container.decodeIfPresent(
+      AIPublishingChatAgentPromptRevision.self,
+      forKey: .promptRevision
+    )
+    // Continuations written before source authorization bindings existed are
+    // intentionally decoded without authority and rejected by the v3 schema
+    // check below; no legacy continuation is silently replayable.
+    knowledgeAuthorizationBindings = try container.decodeIfPresent(
+      [KnowledgeAuthorizationBinding].self,
+      forKey: .knowledgeAuthorizationBindings
+    ) ?? []
+    reviewDraftFingerprint = try container.decodeIfPresent(
+      String.self,
+      forKey: .reviewDraftFingerprint
+    )
+    reviewDraftUpdatedAt = try container.decodeIfPresent(
+      Date.self,
+      forKey: .reviewDraftUpdatedAt
+    )
+    createdAt = try container.decode(Date.self, forKey: .createdAt)
+    updatedAt = try container.decode(Date.self, forKey: .updatedAt)
+  }
+
+  public func encode(to encoder: Encoder) throws {
+    var container = encoder.container(keyedBy: CodingKeys.self)
+    try container.encode(schemaVersion, forKey: .schemaVersion)
+    try container.encode(id, forKey: .id)
+    try container.encode(ownerConversationID, forKey: .ownerConversationID)
+    try container.encode(ownerScope, forKey: .ownerScope)
+    try container.encode(ownerMessageID, forKey: .ownerMessageID)
+    try container.encode(planID, forKey: .planID)
+    try container.encode(phase, forKey: .phase)
+    try container.encode(revision, forKey: .revision)
+    try container.encodeIfPresent(activeStepID, forKey: .activeStepID)
+    try container.encodeIfPresent(resumeAttemptID, forKey: .resumeAttemptID)
+    try container.encode(requestTemplate, forKey: .requestTemplate)
+    try container.encode(checkpoint, forKey: .checkpoint)
+    try container.encode(resolutions, forKey: .resolutions)
+    try container.encode(providerConfig, forKey: .providerConfig)
+    try container.encode(taskConfig, forKey: .taskConfig)
+    try container.encodeIfPresent(promptRevision, forKey: .promptRevision)
+    try container.encode(
+      knowledgeAuthorizationBindings,
+      forKey: .knowledgeAuthorizationBindings
+    )
+    try container.encodeIfPresent(reviewDraftFingerprint, forKey: .reviewDraftFingerprint)
+    try container.encodeIfPresent(reviewDraftUpdatedAt, forKey: .reviewDraftUpdatedAt)
+    try container.encode(createdAt, forKey: .createdAt)
+    try container.encode(updatedAt, forKey: .updatedAt)
+  }
+
+  public var isValidForPersistence: Bool {
+    guard schemaVersion == Self.currentSchemaVersion,
+      checkpoint.schemaVersion == WorkbenchAIAgentLoopCheckpoint.currentSchemaVersion,
+      ownerScope.draftID != nil,
+      promptRevision != nil,
+      reviewDraftFingerprint?.trimmedForPublishing.nilIfEmpty != nil,
+      reviewDraftUpdatedAt != nil,
+      checkpoint.pendingCalls.count <= WorkbenchAutomationPlan.maximumStepCount,
+      resolutions.count <= checkpoint.pendingCalls.count,
+      resolutions.allSatisfy({
+        $0.content.utf8.count <= WorkbenchAIAgentToolResolution.maximumContentByteCount
+      })
+    else {
+      return false
+    }
+    let pendingIDs = Set(checkpoint.pendingCalls.map(\.toolCallID))
+    let resolutionIDs = resolutions.map(\.toolCallID)
+    guard Set(resolutionIDs).count == resolutionIDs.count,
+      Set(resolutionIDs).isSubset(of: pendingIDs)
+    else {
+      return false
+    }
+    return (try? JSONEncoder().encode(self).count).map {
+      $0 <= Self.maximumEncodedByteCount
+    } ?? false
+  }
+}
+
 public struct AIPublishingChatMessage: Identifiable, Codable, Hashable, Sendable {
   public var id: UUID
   public var role: AIPublishingChatRole
@@ -428,9 +757,13 @@ public struct AIPublishingChatMessage: Identifiable, Codable, Hashable, Sendable
   public var imageAttachments: [AIChatImageAttachment]
   public var contextReferences: [AIContextReference]
   public var knowledgeCitations: [KnowledgeCitation]
+  public var toolRuns: [WorkbenchAIAgentToolRunRecord]
+  public var reviewDecisions: [AIPublishingChatReviewDecision]
+  public var agentContinuation: AIPublishingChatAgentContinuation?
   public var automationPlan: WorkbenchAutomationPlan?
   public var structuredEditPayload: AIPublishingChatStructuredEditPayload?
   public var translationDraftPlan: AITranslationDraftPlan?
+  public var followUpSuggestions: [AIChatFollowUpSuggestion]
   public var allowsDraftAppend: Bool
   public var createdAt: Date
 
@@ -444,9 +777,13 @@ public struct AIPublishingChatMessage: Identifiable, Codable, Hashable, Sendable
     imageAttachments: [AIChatImageAttachment] = [],
     contextReferences: [AIContextReference] = [],
     knowledgeCitations: [KnowledgeCitation] = [],
+    toolRuns: [WorkbenchAIAgentToolRunRecord] = [],
+    reviewDecisions: [AIPublishingChatReviewDecision] = [],
+    agentContinuation: AIPublishingChatAgentContinuation? = nil,
     automationPlan: WorkbenchAutomationPlan? = nil,
     structuredEditPayload: AIPublishingChatStructuredEditPayload? = nil,
     translationDraftPlan: AITranslationDraftPlan? = nil,
+    followUpSuggestions: [AIChatFollowUpSuggestion] = [],
     allowsDraftAppend: Bool = true,
     createdAt: Date = Date()
   ) {
@@ -459,9 +796,14 @@ public struct AIPublishingChatMessage: Identifiable, Codable, Hashable, Sendable
     self.imageAttachments = imageAttachments
     self.contextReferences = contextReferences
     self.knowledgeCitations = knowledgeCitations
+    self.toolRuns = toolRuns
+    self.reviewDecisions = reviewDecisions
+    self.agentContinuation = agentContinuation?.isValidForPersistence == true
+      ? agentContinuation : nil
     self.automationPlan = automationPlan
     self.structuredEditPayload = structuredEditPayload
     self.translationDraftPlan = translationDraftPlan
+    self.followUpSuggestions = followUpSuggestions
     self.allowsDraftAppend = allowsDraftAppend
     self.createdAt = createdAt
   }
@@ -476,9 +818,13 @@ public struct AIPublishingChatMessage: Identifiable, Codable, Hashable, Sendable
     case imageAttachments
     case contextReferences
     case knowledgeCitations
+    case toolRuns
+    case reviewDecisions
+    case agentContinuation
     case automationPlan
     case structuredEditPayload
     case translationDraftPlan
+    case followUpSuggestions
     case allowsDraftAppend
     case createdAt
   }
@@ -498,6 +844,18 @@ public struct AIPublishingChatMessage: Identifiable, Codable, Hashable, Sendable
       try container.decodeIfPresent([AIContextReference].self, forKey: .contextReferences) ?? []
     knowledgeCitations =
       try container.decodeIfPresent([KnowledgeCitation].self, forKey: .knowledgeCitations) ?? []
+    toolRuns =
+      try container.decodeIfPresent([WorkbenchAIAgentToolRunRecord].self, forKey: .toolRuns) ?? []
+    reviewDecisions = try container.decodeIfPresent(
+      [AIPublishingChatReviewDecision].self,
+      forKey: .reviewDecisions
+    ) ?? []
+    let decodedContinuation = try container.decodeIfPresent(
+      AIPublishingChatAgentContinuation.self,
+      forKey: .agentContinuation
+    )
+    agentContinuation = decodedContinuation?.isValidForPersistence == true
+      ? decodedContinuation : nil
     automationPlan = try container.decodeIfPresent(
       WorkbenchAutomationPlan.self, forKey: .automationPlan)
     structuredEditPayload =
@@ -510,6 +868,11 @@ public struct AIPublishingChatMessage: Identifiable, Codable, Hashable, Sendable
         AITranslationDraftPlan.self,
         forKey: .translationDraftPlan
       )
+    followUpSuggestions =
+      try container.decodeIfPresent(
+        [AIChatFollowUpSuggestion].self,
+        forKey: .followUpSuggestions
+      ) ?? []
     allowsDraftAppend = try container.decodeIfPresent(Bool.self, forKey: .allowsDraftAppend) ?? true
     createdAt = try container.decodeIfPresent(Date.self, forKey: .createdAt) ?? Date()
   }

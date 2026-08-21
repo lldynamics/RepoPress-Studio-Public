@@ -66,24 +66,19 @@ extension WritingDraftColumn {
           Label("新建通用草稿", systemImage: "square.and.pencil")
         }
       } label: {
-        Color.clear
-          .frame(width: 66, height: 28)
-      }
-      .menuStyle(.borderlessButton)
-      .menuIndicator(.hidden)
-      .frame(width: 66, height: 28)
-      .background(
-        WorkbenchTheme.primaryActionFill,
-        in: RoundedRectangle(cornerRadius: 7, style: .continuous)
-      )
-      .overlay {
         Label("新建", systemImage: "plus")
           .labelStyle(.titleAndIcon)
           .font(.workbenchButtonLabel.weight(.bold))
           .foregroundStyle(WorkbenchTheme.primaryActionForeground)
-          .allowsHitTesting(false)
-          .accessibilityHidden(true)
+          .padding(.horizontal, 10)
+          .frame(height: 28)
+          .background(
+            WorkbenchTheme.primaryActionFill,
+            in: RoundedRectangle(cornerRadius: 7, style: .continuous)
+          )
       }
+      .menuStyle(.borderlessButton)
+      .menuIndicator(.hidden)
       .controlSize(.regular)
       .fixedSize()
       .help("新建文章或通用草稿")
@@ -209,7 +204,7 @@ extension WritingDraftColumn {
   private var contentScopePicker: some View {
     Picker("内容范围", selection: contentScopeSelection) {
       Text("当前站点").tag(DraftListContentScope.currentSite)
-      Text("draft.scope.general").tag(DraftListContentScope.general)
+      Text(String(localized: "通用草稿", comment: "草稿范围：通用草稿")).tag(DraftListContentScope.general)
     }
     .pickerStyle(.segmented)
     .labelsHidden()

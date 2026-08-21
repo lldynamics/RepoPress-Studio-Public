@@ -50,6 +50,11 @@ extension WorkbenchAIStore {
       store.setAIChatMessage(CoreL10n.text("请先选择一篇文章。"))
       return nil
     }
+    guard !blockChatMutationForDeliveryUncertainty(
+      conversationID: activeAIChatConversationID(for: chatDraft.id)
+    ) else {
+      return nil
+    }
 
     let profile = store.profile(for: chatDraft)
     let privacyService = AIOutboundPayloadPrivacyService()
@@ -141,7 +146,20 @@ extension WorkbenchAIStore {
       conversationIdentity: conversationIdentity,
       privacyService: AIOutboundPayloadPrivacyService()
     )
-    if config.resolvedAdvancedSettings.resolvedAllowsApplicationTools,
+    let agentSettings = config.resolvedAdvancedSettings
+    let conversationAllowsTools = aiConversationAgentMode(
+      for: conversationIdentity.conversationID
+    )?.effectiveAllowsTools(
+      connectionAllowsTools: agentSettings.resolvedAllowsApplicationTools
+    ) ?? false
+    var allowedAgentCommands = WorkbenchAutomationRegistry.agentCommands(
+      allowedBy: agentSettings.resolvedAgentPermissionPolicy,
+      masterEnabled: conversationAllowsTools
+    )
+    if agentCandidate.knowledgePolicy != .automatic {
+      allowedAgentCommands.subtract([.knowledgeSearch, .knowledgeRead])
+    }
+    if !allowedAgentCommands.isEmpty,
       let agentTaskConfig = try? aiPublishingAssistantService.resolvedChatTaskConfig(
         for: agentCandidate,
         config: config
@@ -161,7 +179,8 @@ extension WorkbenchAIStore {
       attempt = try await aiChatRequest(
         for: chatDraft,
         conversationIdentity: conversationIdentity,
-        transportConfig: config
+        transportConfig: config,
+        initialRequest: agentCandidate
       )
     } catch is CancellationError {
       store.setAIChatMessage("AI 回复已停止。")
@@ -181,6 +200,10 @@ extension WorkbenchAIStore {
       // The next call sends the exact automatically sanitized body; no fallback
       // or normalization is allowed to reuse this one-shot authorization.
       let token = try aiChatAvailableAPIKey(for: profile)
+      try await requireValidAIKnowledgeAuthorization(
+        attempt.knowledgeAuthorizationBindings,
+        policy: attempt.knowledgePolicy
+      )
       try attempt.authorization.consume()
       switch attempt.transport.preparedRequest.mode {
       case .streaming:
@@ -279,7 +302,13 @@ extension WorkbenchAIStore {
       guard !finalContent.isEmpty else {
         throw AIChatCompletionClientError.emptyContent
       }
-      assistantMessage.content = finalContent
+      let extraction = AIChatFollowUpSuggestionService.extractOrInferSuggestions(
+        content: finalContent,
+        draft: request.draft,
+        hasAutomationPlan: assistantMessage.automationPlan != nil
+      )
+      assistantMessage.content = extraction.displayContent
+      assistantMessage.followUpSuggestions = extraction.suggestions
       assistantMessage = aiPublishingAssistantService.preparingProtectedEdit(
         in: assistantMessage,
         request: request
@@ -349,6 +378,13 @@ extension WorkbenchAIStore {
       apiKey: apiKey
     )
     try checkAIChatOperation(operationID)
+    let extraction = AIChatFollowUpSuggestionService.extractOrInferSuggestions(
+      content: assistantMessage.content,
+      draft: request.draft,
+      hasAutomationPlan: assistantMessage.automationPlan != nil
+    )
+    assistantMessage.content = extraction.displayContent
+    assistantMessage.followUpSuggestions = extraction.suggestions
     assistantMessage = aiPublishingAssistantService.preparingProtectedEdit(
       in: assistantMessage,
       request: request

@@ -31,7 +31,7 @@ struct DraftOperationBaseline: Equatable, Sendable {
 
 extension WorkbenchStore {
   func draftOperationBaseline(for draftID: UUID) -> DraftOperationBaseline? {
-    guard let draft = drafts.first(where: { $0.id == draftID }) else { return nil }
+    guard let draft = draft(for: draftID) else { return nil }
     return DraftOperationBaseline(
       draft: draft,
       bodyRevision: draftBodyEditorBuffer(for: draftID).revision
@@ -39,7 +39,7 @@ extension WorkbenchStore {
   }
 
   func draftStillMatchesOperationBaseline(_ baseline: DraftOperationBaseline) -> Bool {
-    guard drafts.first(where: { $0.id == baseline.draft.id }) == baseline.draft else {
+    guard draft(for: baseline.draft.id) == baseline.draft else {
       return false
     }
     let buffer = draftBodyEditorBuffer(for: baseline.draft.id)
@@ -53,7 +53,7 @@ extension WorkbenchStore {
 
     return DraftBodyEditorBuffer(
       draftID: draftID,
-      bodyMarkdown: drafts.first(where: { $0.id == draftID })?.bodyMarkdown ?? "",
+      bodyMarkdown: draft(for: draftID)?.bodyMarkdown ?? "",
       revision: 0,
       isDirty: false
     )
@@ -159,10 +159,9 @@ extension WorkbenchStore {
     let firstStagedAt = draftBodyCommitFirstStagedAt[draftID] ?? now
     draftBodyCommitFirstStagedAt[draftID] = firstStagedAt
     let idleDelayNanoseconds: UInt64 = 1_500_000_000
-    let maximumDelayNanoseconds = UInt64(max(
-      0,
-      firstStagedAt.addingTimeInterval(5).timeIntervalSince(now) * 1_000_000_000
-    ))
+    let remainingSeconds = firstStagedAt.addingTimeInterval(5).timeIntervalSince(now)
+    let safeRemainingNanoseconds = min(max(0, remainingSeconds) * 1_000_000_000, Double(UInt64.max))
+    let maximumDelayNanoseconds = UInt64(safeRemainingNanoseconds)
     let delayNanoseconds = min(idleDelayNanoseconds, maximumDelayNanoseconds)
     draftBodyCommitTasks[draftID] = Task { [weak self] in
       do {

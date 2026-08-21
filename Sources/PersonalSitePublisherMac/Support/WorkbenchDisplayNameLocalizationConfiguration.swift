@@ -137,6 +137,11 @@ extension AIProviderPreset {
     case .codexAppServer: "display.ai-provider-preset.codex-app-server"
     case .openAICompatible: "display.ai-provider-preset.openai-compatible"
     case .deepSeek: "display.ai-provider-preset.deepseek"
+    case .anthropic: "display.ai-provider-preset.anthropic"
+    case .gemini: "display.ai-provider-preset.gemini"
+    case .siliconFlow: "display.ai-provider-preset.siliconflow"
+    case .moonshot: "display.ai-provider-preset.moonshot"
+    case .zhipu: "display.ai-provider-preset.zhipu"
     case .openRouter: "display.ai-provider-preset.openrouter"
     case .local: "display.ai-provider-preset.local"
     case .custom: "display.ai-provider-preset.custom"
@@ -148,6 +153,11 @@ extension AIProviderPreset {
     case .codexAppServer: "Codex Subscription"
     case .openAICompatible: displayName
     case .deepSeek: "DeepSeek"
+    case .anthropic: "Anthropic (Claude)"
+    case .gemini: "Google Gemini"
+    case .siliconFlow: "SiliconFlow (硅基流动)"
+    case .moonshot: "Moonshot (Kimi)"
+    case .zhipu: "智谱 GLM"
     case .openRouter: "OpenRouter"
     case .local: "Local Model"
     case .custom: "Custom"
@@ -159,6 +169,10 @@ extension AIWritingStylePreset {
   var workbenchDisplayNameSemanticKey: String {
     switch self {
     case .jinfangZola: "display.ai-writing-style-preset.jinfang-zola"
+    case .wechatArticle: "display.ai-writing-style-preset.wechat-article"
+    case .techTutorial: "display.ai-writing-style-preset.tech-tutorial"
+    case .newsBriefing: "display.ai-writing-style-preset.news-briefing"
+    case .socialPost: "display.ai-writing-style-preset.social-post"
     case .technicalNote: "display.ai-writing-style-preset.technical-note"
     case .personalEssay: "display.ai-writing-style-preset.personal-essay"
     case .custom: "display.ai-writing-style-preset.custom"
@@ -168,6 +182,10 @@ extension AIWritingStylePreset {
   var fallbackDisplayName: String {
     switch self {
     case .jinfangZola: "Jinfang Zola"
+    case .wechatArticle: "微信公众号"
+    case .techTutorial: "技术实战"
+    case .newsBriefing: "快讯简报"
+    case .socialPost: "社交问答"
     case .technicalNote: "Technical Note"
     case .personalEssay: "Personal Essay"
     case .custom: "Custom"

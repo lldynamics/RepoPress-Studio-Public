@@ -152,6 +152,7 @@ public enum AIOutboundPayloadConfirmationError: LocalizedError, Equatable, Senda
   case cancelled
   case expired
   case drifted
+  case knowledgeAuthorizationChanged
   case alreadyConsumed
 
   public var errorDescription: String? {
@@ -164,6 +165,8 @@ public enum AIOutboundPayloadConfirmationError: LocalizedError, Equatable, Senda
       return "AI 发送授权已过期，本次未发送，请重试。"
     case .drifted:
       return "发送前 AI 载荷发生变化，本次未发送，请重试。"
+    case .knowledgeAuthorizationChanged:
+      return "资料权限或版本已变化，本次未发送，请重新生成。"
     case .alreadyConsumed:
       return "本次 AI 发送授权已使用，请重试。"
     }
