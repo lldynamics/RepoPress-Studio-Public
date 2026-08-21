@@ -222,6 +222,41 @@ final class SiteImageWorkbenchServiceTests: XCTestCase {
     XCTAssertTrue(result.draft.bodyMarkdown.contains("![Keep this](/images/2026/detail.jpg)"))
   }
 
+  func testFillMissingMetadataEscapesAltPreservesTitlesAndOnlyReplacesEmptyDuplicates() {
+    let profile = SiteProfile.defaultProfile
+    let attachment = DraftAttachment(
+      originalFilename: "hero [wide].jpg",
+      relativePublishPath: "/images/2026/hero-wide.jpg",
+      repositoryPath: "static/images/2026/hero-wide.jpg",
+      altText: "",
+      caption: ""
+    )
+    let draft = ArticleDraft(
+      siteProfileID: profile.id,
+      title: "Escaped metadata",
+      slug: "escaped-metadata",
+      bodyMarkdown: """
+      ![](/images/2026/hero-wide.jpg "first")
+      ![Keep this](/images/2026/hero-wide.jpg "existing")
+      ![](/images/2026/hero-wide.jpg)
+      """,
+      attachments: [attachment]
+    )
+
+    let result = SiteImageWorkbenchService().fillMissingMetadata(draft: draft)
+
+    XCTAssertEqual(result.filledAltTextCount, 1)
+    XCTAssertEqual(result.updatedMarkdownReferenceCount, 2)
+    XCTAssertEqual(
+      result.draft.bodyMarkdown,
+      #"""
+      ![hero \[wide\]](/images/2026/hero-wide.jpg "first")
+      ![Keep this](/images/2026/hero-wide.jpg "existing")
+      ![hero \[wide\]](/images/2026/hero-wide.jpg)
+      """#
+    )
+  }
+
   func testFillMissingMetadataOnlyChangesIncludedAttachments() {
     let profile = SiteProfile.defaultProfile
     let included = DraftAttachment(
@@ -398,6 +433,51 @@ final class SiteImageWorkbenchServiceTests: XCTestCase {
     XCTAssertEqual(result.draft.attachments[0].altText, "用于说明图片发布工作流的截图")
     XCTAssertEqual(result.draft.attachments[0].caption, "图片工作台检查发布前图片字段。")
     XCTAssertEqual(result.draft.bodyMarkdown, "![用于说明图片发布工作流的截图](/images/2026/workflow.png)")
+  }
+
+  func testApplyImageTextSuggestionsEscapesAltPreservesTitlesAndOnlyFillsEmptyRefs() {
+    let profile = SiteProfile.defaultProfile
+    let attachment = DraftAttachment(
+      originalFilename: "workflow.png",
+      relativePublishPath: "/images/2026/workflow.png",
+      repositoryPath: "static/images/2026/workflow.png",
+      altText: "",
+      caption: ""
+    )
+    let draft = ArticleDraft(
+      siteProfileID: profile.id,
+      title: "Escaped AI image text",
+      slug: "escaped-ai-image-text",
+      bodyMarkdown: """
+      ![](/images/2026/workflow.png "first")
+      ![Keep this](/images/2026/workflow.png "existing")
+      ![](/images/2026/workflow.png)
+      """,
+      attachments: [attachment]
+    )
+    let suggestion = AIPublishingImageTextSuggestion(
+      id: attachment.id.uuidString,
+      draftID: draft.id,
+      attachmentID: attachment.id,
+      filename: "workflow.png",
+      imagePath: "/images/2026/workflow.png",
+      altText: #"AI \path [wide]"#,
+      caption: "AI caption",
+      reason: ""
+    )
+
+    let result = SiteImageWorkbenchService().applyImageTextSuggestions([suggestion], to: draft)
+
+    XCTAssertEqual(result.appliedAltTextCount, 1)
+    XCTAssertEqual(result.updatedMarkdownReferenceCount, 2)
+    XCTAssertEqual(
+      result.draft.bodyMarkdown,
+      #"""
+      ![AI \\path \[wide\]](/images/2026/workflow.png "first")
+      ![Keep this](/images/2026/workflow.png "existing")
+      ![AI \\path \[wide\]](/images/2026/workflow.png)
+      """#
+    )
   }
 
   func testApplyImageTextSuggestionsPreservesExistingAttachmentText() {

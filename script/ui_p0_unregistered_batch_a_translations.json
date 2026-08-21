@@ -51,10 +51,6 @@
     "en": "Repository Tips",
     "zh-Hans": "仓库提示"
   },
-  "关闭 AI 行内工具": {
-    "en": "Close Inline AI Tools",
-    "zh-Hans": "关闭 AI 行内工具"
-  },
   "写入标题、摘要或正文后，这里会自动关联本地资料。": {
     "en": "Related local knowledge will appear here automatically after you add a title, summary, or body text.",
     "zh-Hans": "写入标题、摘要或正文后，这里会自动关联本地资料。"
@@ -119,14 +115,6 @@
     "en": "Insert at Cursor",
     "zh-Hans": "插入到光标处"
   },
-  "改变选中文本的语气": {
-    "en": "Change the tone of the selected text",
-    "zh-Hans": "改变选中文本的语气"
-  },
-  "放弃": {
-    "en": "Discard",
-    "zh-Hans": "放弃"
-  },
   "文章导语": {
     "en": "Article Lead",
     "zh-Hans": "文章导语"
@@ -158,10 +146,6 @@
   "正在查找相关网页、摘录和参考代码…": {
     "en": "Searching for Related Web Pages, Excerpts, and Reference Code…",
     "zh-Hans": "正在查找相关网页、摘录和参考代码…"
-  },
-  "正在生成 AI 行内建议": {
-    "en": "Generating Inline AI Suggestion",
-    "zh-Hans": "正在生成 AI 行内建议"
   },
   "清空 AI Base URL": {
     "en": "Clear AI Base URL",
@@ -199,10 +183,6 @@
     "en": "Semantic Colors",
     "zh-Hans": "语义色"
   },
-  "语气": {
-    "en": "Tone",
-    "zh-Hans": "语气"
-  },
   "资料库中的“允许发送给远程 AI”是独立的逐条权限，默认关闭；只有资料权限和本处授权同时满足时，资料片段才会发送。": {
     "en": "The “Allow Sending to Remote AI” permission in the knowledge library is set independently for each item and is off by default. Knowledge excerpts are sent only when both the item permission and this authorization are enabled.",
     "zh-Hans": "资料库中的“允许发送给远程 AI”是独立的逐条权限，默认关闭；只有资料权限和本处授权同时满足时，资料片段才会发送。"
@@ -234,9 +214,5 @@
   "远程 AI 权限": {
     "en": "Remote AI Permission",
     "zh-Hans": "远程 AI 权限"
-  },
-  "采用": {
-    "en": "Apply",
-    "zh-Hans": "采用"
   }
 }

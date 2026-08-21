@@ -4,13 +4,15 @@ import SwiftUI
 struct InteractiveBreadcrumbView: View {
   let markdownPath: String
   let fileURL: URL?
+  let pathSegments: [String]
 
   @State private var hoveredSegmentIndex: Int? = nil
 
-  var pathSegments: [String] {
+  init(markdownPath: String, fileURL: URL?) {
+    self.markdownPath = markdownPath
+    self.fileURL = fileURL
     let cleaned = markdownPath.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-    guard !cleaned.isEmpty else { return [markdownPath] }
-    return cleaned.components(separatedBy: "/")
+    self.pathSegments = cleaned.isEmpty ? [markdownPath] : cleaned.components(separatedBy: "/")
   }
 
   var body: some View {
@@ -32,8 +34,18 @@ struct InteractiveBreadcrumbView: View {
                     : Color.clear
                 )
             )
+            .contentShape(RoundedRectangle(cornerRadius: 4))
             .onHover { isHovered in
-              hoveredSegmentIndex = isHovered ? index : nil
+              withAnimation(.easeInOut(duration: 0.12)) {
+                hoveredSegmentIndex = isHovered ? index : nil
+              }
+            }
+            .onTapGesture {
+              if isLast {
+                revealInFinder()
+              } else {
+                copyToClipboard(pathSegments.prefix(index + 1).joined(separator: "/"))
+              }
             }
 
           if !isLast {

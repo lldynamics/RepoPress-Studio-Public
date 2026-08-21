@@ -26,6 +26,37 @@ struct AIWritingStyleSection: View {
       }
 
       Section("写作风格") {
+        VStack(alignment: .leading, spacing: 6) {
+          Text("场景模板：")
+            .font(.workbenchMetadata)
+            .foregroundStyle(.secondary)
+          ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 6) {
+              ForEach(AIWritingStylePreset.allCases.filter { $0 != .custom }) { preset in
+                Button {
+                  presetBinding.wrappedValue = preset
+                } label: {
+                  Text(preset.localizedDisplayName)
+                    .font(.caption.weight(presetBinding.wrappedValue == preset ? .bold : .medium))
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(
+                      presetBinding.wrappedValue == preset
+                        ? WorkbenchTheme.brand.opacity(0.15)
+                        : Color.primary.opacity(0.06),
+                      in: RoundedRectangle(cornerRadius: 6)
+                    )
+                    .foregroundStyle(
+                      presetBinding.wrappedValue == preset ? WorkbenchTheme.brand : Color.primary
+                    )
+                }
+                .buttonStyle(.plain)
+              }
+            }
+          }
+        }
+        .padding(.vertical, 2)
+
         Picker("预设", selection: presetBinding) {
           ForEach(AIWritingStylePreset.allCases) { preset in
             Text(preset.localizedDisplayName).tag(preset)

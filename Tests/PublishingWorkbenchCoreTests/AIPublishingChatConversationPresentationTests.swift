@@ -303,6 +303,17 @@ final class AIPublishingChatConversationPresentationTests: XCTestCase {
       "AI API Key 未保存，请先到设置里保存当前 Profile 的 API Key。"
     )
 
+    let noKeyRequired = AIPublishingChatConversationPresentation.sendReadiness(
+      inputText: "帮我检查摘要",
+      selectedImageCount: 0,
+      isSending: false,
+      config: openAINoKeyConfig,
+      aiTokenAvailability: KeychainTokenAvailability(hasToken: false),
+      grade: .standard,
+      selectedModel: ""
+    )
+    XCTAssertTrue(noKeyRequired.canSend)
+    XCTAssertNil(noKeyRequired.configurationIssue)
   }
 
   func testImageImportPresentationSelectsImportedImagesWithinRemainingSlots() {

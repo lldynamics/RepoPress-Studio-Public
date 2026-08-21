@@ -66,7 +66,12 @@ struct MarkdownCursorWorkflowControls: View {
   private var completionMenu: some View {
     Menu {
       if let completion {
-        Section(completionSectionTitle(completion.kind)) {
+        let totalCount = completion.candidates.count
+        let prefixCount = min(12, totalCount)
+        let sectionTitle = totalCount > 12
+          ? "\(completionSectionTitle(completion.kind))（显示前 \(prefixCount) 项，共 \(totalCount) 项）"
+          : completionSectionTitle(completion.kind)
+        Section(sectionTitle) {
           ForEach(completion.candidates.prefix(12)) { candidate in
             Button {
               onApplyCompletion(candidate)

@@ -23,10 +23,6 @@
     "en": "AI Polish",
     "zh-Hans": "AI 润色"
   },
-  "AI 行内工具": {
-    "en": "Inline AI Tools",
-    "zh-Hans": "AI 行内工具"
-  },
   "AI 连接与模型": {
     "en": "AI Connection and Model",
     "zh-Hans": "AI 连接与模型"
@@ -191,10 +187,6 @@
     "en": "Scan Markdown references across the repository, clean up orphaned resources, and safely compress large images.",
     "zh-Hans": "扫描全仓库 Markdown 引用，清理孤立资源并安全压缩大图。"
   },
-  "技术": {
-    "en": "Technical",
-    "zh-Hans": "技术"
-  },
   "拖入正文插入引用块": {
     "en": "Drag into the Article to Insert a Quote Block",
     "zh-Hans": "拖入正文插入引用块"
@@ -214,10 +206,6 @@
   "更多工具栏操作": {
     "en": "More Toolbar Actions",
     "zh-Hans": "更多工具栏操作"
-  },
-  "服务商：%@%@": {
-    "en": "Provider: %@%@",
-    "zh-Hans": "服务商：%@%@"
   },
   "未找到匹配命令": {
     "en": "No matching commands found",

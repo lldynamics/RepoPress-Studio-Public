@@ -106,12 +106,12 @@ struct WorkspaceQuickSearchView: View {
   }
 
   var body: some View {
-    let snapshot = searchSnapshot
-
     VStack(spacing: 0) {
-      searchField
-        .padding(.horizontal, WorkspaceSidebarMetrics.horizontalPadding)
-        .padding(.vertical, WorkspaceSidebarMetrics.toolbarVerticalPadding)
+      if scope != .imageResources {
+        searchField
+          .padding(.horizontal, WorkspaceSidebarMetrics.horizontalPadding)
+          .padding(.vertical, WorkspaceSidebarMetrics.toolbarVerticalPadding)
+      }
 
       if let repositoryContextStage {
         repositoryStageNavigation(repositoryContextStage)
@@ -129,7 +129,11 @@ struct WorkspaceQuickSearchView: View {
 
       Divider()
 
-      searchResultsContent(snapshot)
+      if scope == .imageResources {
+        imageResourceState
+      } else {
+        searchResultsContent(searchSnapshot)
+      }
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     .accessibilityElement(children: .contain)
@@ -336,9 +340,7 @@ struct WorkspaceQuickSearchView: View {
 
   @ViewBuilder
   private func searchResultsContent(_ snapshot: WorkspaceQuickSearchSnapshot) -> some View {
-    if scope == .imageResources {
-      imageResourceState
-    } else if store.visibleDrafts.isEmpty {
+    if store.visibleDrafts.isEmpty {
       noArticlesState
     } else if scope == .aiFixes {
       switch contentHealthQueueState {

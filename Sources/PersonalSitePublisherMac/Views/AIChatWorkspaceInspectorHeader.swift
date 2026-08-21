@@ -123,16 +123,12 @@ extension AIChatContextInspectorView {
         conversationPickerContent
       }
 
-      if ai.chatContextMode == .general {
-        generalConnectionAndModelMenu
-      } else {
-        AIChatConnectionStatusCapsule(
-          ai: ai,
-          chatState: chatState,
-          draft: ai.selectedChatDraft
-        ) {
-          isModelQuickSwitchPresented = true
-        }
+      AIChatConnectionStatusCapsule(
+        ai: ai,
+        chatState: chatState,
+        draft: ai.selectedChatDraft
+      ) {
+        isModelQuickSwitchPresented = true
       }
 
       Button {
@@ -426,6 +422,10 @@ extension AIChatContextInspectorView {
 
     let knowledgeTitle = localizedKnowledgePolicyTitle(knowledgePolicyBinding.wrappedValue)
     items.append(("\(String(localized: "资料库")) · \(knowledgeTitle)", "books.vertical"))
+    items.append((
+      "Agent · \(localizedAgentModeTitle(agentModeBinding.wrappedValue))",
+      agentModeBinding.wrappedValue == .textOnly ? "text.bubble" : "wand.and.stars"
+    ))
     return items
   }
 
@@ -466,6 +466,14 @@ extension AIChatContextInspectorView {
           Text(localizedKnowledgePolicyTitle(policy)).tag(policy)
         }
       }
+
+      Picker(String(localized: "对话能力"), selection: agentModeBinding) {
+        Text(localizedAgentModeTitle(.inheritConnection))
+          .tag(AIConversationAgentMode.inheritConnection)
+        Text(localizedAgentModeTitle(.textOnly))
+          .tag(AIConversationAgentMode.textOnly)
+      }
+      .disabled(isChatBusy || ai.conversationAgentMode(for: inspectorSurfaceConversationID) == nil)
 
       Divider()
 
@@ -619,9 +627,20 @@ extension AIChatContextInspectorView {
   var generalConnectionAndModelSummary: String {
     let profile = selectedGeneralConnectionProfile?.name
       ?? String(localized: "连接档案已失效")
-    let model = displayedGeneralConversation?.modelGrade.title
-      ?? String(localized: "未选择")
-    return "\(profile) · \(model)"
+    let conversation = displayedGeneralConversation
+    let activeModelName: String
+    if let selected = conversation?.selectedModel.nilIfEmpty {
+      activeModelName = selected
+    } else if let grade = conversation?.modelGrade, let config = selectedGeneralConnectionProfile?.config {
+      activeModelName = AIChatModelSelectionPresentationService.presentation(
+        grade: grade,
+        selectedModel: "",
+        config: config
+      ).activeModel.nilIfEmpty ?? grade.title
+    } else {
+      activeModelName = conversation?.modelGrade.title ?? String(localized: "未选择")
+    }
+    return "\(profile) · \(activeModelName)"
   }
 
   var currentAIProviderConfig: AIProviderConfig {
@@ -670,6 +689,15 @@ extension AIChatContextInspectorView {
     }
   }
 
+  func localizedAgentModeTitle(_ mode: AIConversationAgentMode) -> String {
+    switch mode {
+    case .inheritConnection:
+      return String(localized: "跟随连接")
+    case .textOnly:
+      return String(localized: "仅问答")
+    }
+  }
+
   func openAISettings() {
     requestedSettingsTabID = SettingsDestination.ai(.connection).id
     openSettings()
@@ -707,6 +735,22 @@ extension AIChatContextInspectorView {
         } else {
           ai.setChatKnowledgePolicy($0)
         }
+      }
+    )
+  }
+
+  var agentModeBinding: Binding<AIConversationAgentMode> {
+    Binding(
+      get: {
+        ai.conversationAgentMode(for: inspectorSurfaceConversationID)
+          ?? .inheritConnection
+      },
+      set: { mode in
+        guard !isChatBusy else { return }
+        _ = ai.setConversationAgentMode(
+          mode,
+          conversationID: inspectorSurfaceConversationID
+        )
       }
     )
   }

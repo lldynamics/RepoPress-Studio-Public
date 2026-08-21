@@ -640,7 +640,6 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
 
     for identifier in [
       "workspace-quick-search",
-      "workspace-quick-search-field",
       "image-sidebar-stage-navigation",
       "image-sidebar-stage-overview",
       "image-sidebar-stage-resources",
@@ -658,6 +657,10 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
     ] {
       assertUniqueIdentifier(identifier)
     }
+    XCTAssertFalse(
+      element(identifier: "workspace-quick-search-field").exists,
+      "The image workspace must not expose an article search field that cannot return image results."
+    )
 
     select(
       "image-sidebar-stage-resources",
@@ -711,6 +714,42 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
     ] {
       assertUniqueIdentifier(identifier)
     }
+  }
+
+  func testAIComposerUsesReturnForNewlineAndKeepsCommandReturnOutOfText() throws {
+    launchApplication(surface: "writing")
+
+    let mainWindow = application.windows.firstMatch
+    guard let writingAIEntry = waitForHittableElement(timeout: 10, query: {
+      mainWindow.descendants(matching: .any)
+        .matching(identifier: "markdown-ai-assistant-entry")
+    }) else {
+      XCTFail("The writing page must expose the AI collaboration entry.")
+      return
+    }
+    writingAIEntry.click()
+
+    let input = mainWindow.descendants(matching: .any)
+      .matching(identifier: "ai-assistant-input")
+      .firstMatch
+    XCTAssertTrue(input.waitForExistence(timeout: 10))
+    input.click()
+    input.typeText("123")
+    application.typeKey(XCUIKeyboardKey.return.rawValue, modifierFlags: [])
+    input.typeText("456")
+
+    let multilineDraft = try XCTUnwrap(input.value as? String)
+    XCTAssertEqual(
+      multilineDraft,
+      "123\n456",
+      "Plain Return must insert a newline instead of submitting or swallowing the key."
+    )
+    application.typeKey(XCUIKeyboardKey.return.rawValue, modifierFlags: [.command])
+    XCTAssertEqual(
+      input.value as? String,
+      multilineDraft,
+      "Command-Return must stay out of the text system instead of inserting another newline."
+    )
   }
 
   func testAICollaborationInspectorStaysInMainWindowAndPreservesDraft() throws {

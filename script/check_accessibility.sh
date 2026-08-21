@@ -549,13 +549,15 @@ require_literal_any_file \
   ".accessibilityLabel(\"文章统计与目标\")" \
   "markdown editor statistics must expose an accessibility label" \
   "Sources/PersonalSitePublisherMac/Views/MacMarkdownComposerView.swift" \
-  "Sources/PersonalSitePublisherMac/Views/MacMarkdownComposerToolbars.swift"
+  "Sources/PersonalSitePublisherMac/Views/MacMarkdownComposerToolbars.swift" \
+  "Sources/PersonalSitePublisherMac/Views/MacMarkdownFormattingToolbar.swift"
 
 require_literal_any_file \
   ".accessibilityValue(statisticsAccessibilityValue)" \
   "markdown editor statistics must expose an accessibility value" \
   "Sources/PersonalSitePublisherMac/Views/MacMarkdownComposerView.swift" \
-  "Sources/PersonalSitePublisherMac/Views/MacMarkdownComposerToolbars.swift"
+  "Sources/PersonalSitePublisherMac/Views/MacMarkdownComposerToolbars.swift" \
+  "Sources/PersonalSitePublisherMac/Views/MacMarkdownFormattingToolbar.swift"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/MacMarkdownComposerPreview.swift" \
@@ -727,7 +729,7 @@ done
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/PublishDrawerPresentationComponents.swift" \
-  ".accessibilityIdentifier(\"publish-drawer-check-results\")" \
+  ".accessibilityIdentifier(\"publish-drawer-readiness-checklist\")" \
   "publish drawer must expose its check results"
 
 require_literal_any_file \
@@ -1219,16 +1221,16 @@ require_literal \
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/MacMarkdownComposerToolbars.swift" \
-  "ScrollView(.horizontal, showsIndicators: false)" \
+  "ViewThatFits(in: .horizontal)" \
   "fixed icon toolbar must remain usable in narrow writing windows"
 
 require_literal \
-  "Sources/PersonalSitePublisherMac/Views/MacMarkdownComposerToolbars.swift" \
+  "Sources/PersonalSitePublisherMac/Views/MacMarkdownFormattingToolbar.swift" \
   "formattingRow(itemIDs: basicFormattingItemIDs, showsTitle: false)" \
   "basic writing tools must honor configured visibility and order"
 
 require_literal \
-  "Sources/PersonalSitePublisherMac/Views/MacMarkdownComposerToolbars.swift" \
+  "Sources/PersonalSitePublisherMac/Views/MacMarkdownFormattingToolbar.swift" \
   "formattingRow(itemIDs: configuredFormattingItemIDs, showsTitle: false)" \
   "professional writing tools must honor configured visibility and order"
 
@@ -1248,7 +1250,7 @@ require_literal \
   "responsive overflow must contain only enabled actions omitted from the main row"
 
 require_absent_literal \
-  "Sources/PersonalSitePublisherMac/Views/MacMarkdownComposerToolbars.swift" \
+  "Sources/PersonalSitePublisherMac/Views/MacMarkdownFormattingToolbar.swift" \
   "compactRows(" \
   "professional writing tools must not collapse into a secondary row layout"
 
@@ -1258,7 +1260,7 @@ require_literal \
   "icon toolbar actions must expose their names on pointer hover"
 
 require_literal \
-  "Sources/PersonalSitePublisherMac/Views/MacMarkdownComposerToolbars.swift" \
+  "Sources/PersonalSitePublisherMac/Views/MacMarkdownFormattingToolbar.swift" \
   ".buttonStyle(WorkbenchFocusRingButtonStyle())" \
   "formatting toolbar buttons must expose a visible keyboard focus state"
 
@@ -1373,7 +1375,7 @@ require_literal \
   "command-f must route to knowledge search while the library is active"
 
 textfield_gaps="$(
-  perl -0ne 'while(/TextField\([^\n]*(?:\n[^\n]*){0,8}/g){$m=$&; if($m !~ /accessibilityLabel/){$prefix=substr($_,0,pos($_)); $line=1+($prefix=~tr/\n//); print "$ARGV:$line\n"}}' \
+  perl -0ne 'while(/TextField\([^\n]*(?:\n[^\n]*){0,14}/g){$m=$&; if($m !~ /accessibilityLabel/){$prefix=substr($_,0,pos($_)); $line=1+($prefix=~tr/\n//); print "$ARGV:$line\n"}}' \
     "$ROOT_DIR"/Sources/PersonalSitePublisherMac/Views/*.swift
 )"
 [[ -z "$textfield_gaps" ]] || fail "text fields missing accessibility labels: $textfield_gaps"

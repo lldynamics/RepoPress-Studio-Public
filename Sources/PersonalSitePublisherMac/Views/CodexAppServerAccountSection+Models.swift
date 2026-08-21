@@ -16,7 +16,7 @@ struct CodexAppServerModelSelectionSection: View {
   @State private var selectionMessage: String?
 
   var body: some View {
-    Section("2. 模型与推理等级") {
+    Section("ChatGPT 模型与推理深度") {
       Picker("模型", selection: modelBinding) {
         Text("跟随账户默认")
           .tag(AIProviderPreset.codexDefaultModel)

@@ -1,0 +1,34 @@
+{
+  "从这里新建对话": {
+    "en": "Start a New Conversation Here",
+    "zh-Hans": "从这里新建对话"
+  },
+  "先结束当前续跑并保留审计记录，再从此消息创建新对话。": {
+    "en": "End this continuation while preserving its audit record, then start a new conversation from this message.",
+    "zh-Hans": "先结束当前续跑并保留审计记录，再从此消息创建新对话。"
+  },
+  "已结束，记录保留": {
+    "en": "Ended, Record Preserved",
+    "zh-Hans": "已结束，记录保留"
+  },
+  "当前续跑已结束，原审计记录仍然保留。": {
+    "en": "This continuation has ended, and its original audit record is still preserved.",
+    "zh-Hans": "当前续跑已结束，原审计记录仍然保留。"
+  },
+  "结束续跑并保留记录": {
+    "en": "End Continuation and Preserve Record",
+    "zh-Hans": "结束续跑并保留记录"
+  },
+  "结束这次续跑并保留当前审计记录；不会重试。": {
+    "en": "End this continuation and preserve its current audit record. It will not be retried.",
+    "zh-Hans": "结束这次续跑并保留当前审计记录；不会重试。"
+  },
+  "续跑结果不确定，系统没有自动重试": {
+    "en": "The continuation result is uncertain. The system did not retry it automatically.",
+    "zh-Hans": "续跑结果不确定，系统没有自动重试"
+  },
+  "请结束续跑并保留记录，或从这里新建对话。": {
+    "en": "End the continuation and preserve its record, or start a new conversation here.",
+    "zh-Hans": "请结束续跑并保留记录，或从这里新建对话。"
+  }
+}

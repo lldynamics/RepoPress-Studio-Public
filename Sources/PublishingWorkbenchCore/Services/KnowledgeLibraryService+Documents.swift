@@ -224,6 +224,99 @@ extension KnowledgeLibraryService {
     return text
   }
 
+  /// Captures an explicit @ reference from one authoritative document/revision
+  /// read. The returned binding is tied to the revision's normalized hash;
+  /// callers must validate it again immediately before remote transport.
+  public func explicitAIContextSnapshot(
+    documentID: UUID
+  ) async throws -> KnowledgeExplicitContextSnapshot? {
+    let service = self
+    return try await Task.detached(priority: .userInitiated) {
+      try Task.checkCancellation()
+      guard let record = try service.database().currentDocumentRevision(documentID: documentID) else {
+        return nil
+      }
+      guard !record.document.isArchived, record.document.allowsRemoteAIUse else {
+        return nil
+      }
+      let text = try service.normalizedText(revisionID: record.revision.id)
+      let readableText = record.document.kind == .webpage
+        ? service.webContentSanitizer.sanitizeExtractedReadingText(text)
+        : text
+      guard !readableText.isEmpty else { return nil }
+      return KnowledgeExplicitContextSnapshot(
+        text: readableText,
+        authorizationBinding: KnowledgeAuthorizationBinding(
+          documentID: record.document.id,
+          revisionID: record.revision.id,
+          contentHash: record.revision.normalizedContentHash
+        )
+      )
+    }.value
+  }
+
+  /// Validates every captured binding against SQLite and the current remote-AI
+  /// policy. Empty bindings are valid because a request may contain no
+  /// knowledge context. Any malformed or stale binding fails closed.
+  public func validateKnowledgeAuthorizationBindings(
+    _ bindings: [KnowledgeAuthorizationBinding],
+    policy: KnowledgeRetrievalPolicy
+  ) async throws -> Bool {
+    guard !bindings.isEmpty else { return true }
+    let service = self
+    return try await Task.detached(priority: .userInitiated) {
+      try Task.checkCancellation()
+      let database = try service.database()
+      let pinnedDocumentIDs: Set<UUID>?
+      switch policy {
+      case .off:
+        // `.off` disables automatic retrieval only. Explicit @ references
+        // still carry bindings and must be validated against source state.
+        pinnedDocumentIDs = nil
+      case .automatic:
+        pinnedDocumentIDs = nil
+      case .pinnedOnly:
+        pinnedDocumentIDs = try database.pinnedDocumentIDs()
+      }
+
+      var seen = Set<KnowledgeAuthorizationBinding>()
+      for binding in bindings {
+        // Duplicate bindings are harmless, but still validate every unique
+        // source deterministically.
+        guard seen.insert(binding).inserted else { continue }
+        guard !binding.contentHash.isEmpty,
+              let record = try database.currentDocumentRevision(documentID: binding.documentID),
+              record.document.id == binding.documentID,
+              !record.document.isArchived,
+              record.document.allowsRemoteAIUse,
+              record.document.currentRevisionID == binding.revisionID,
+              record.revision.id == binding.revisionID,
+              pinnedDocumentIDs?.contains(binding.documentID) ?? true
+        else {
+          return false
+        }
+
+        if let chunkID = binding.chunkID {
+          guard let chunk = try database.chunk(
+            id: chunkID,
+            documentID: binding.documentID,
+            revisionID: binding.revisionID
+          ),
+            chunk.contentHash == binding.contentHash,
+            KnowledgeChunkingService.contentHash(for: chunk.content) == binding.contentHash
+          else {
+            return false
+          }
+        } else {
+          guard record.revision.normalizedContentHash == binding.contentHash else {
+            return false
+          }
+        }
+      }
+      return true
+    }.value
+  }
+
   @discardableResult
   public func restoreRevision(
     documentID: UUID,

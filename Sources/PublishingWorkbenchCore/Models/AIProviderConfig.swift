@@ -4,6 +4,11 @@ public enum AIProviderPreset: String, Codable, CaseIterable, Identifiable, Senda
   case codexAppServer
   case openAICompatible
   case deepSeek
+  case anthropic
+  case gemini
+  case siliconFlow
+  case moonshot
+  case zhipu
   case openRouter
   case local
   case custom
@@ -23,6 +28,16 @@ public enum AIProviderPreset: String, Codable, CaseIterable, Identifiable, Senda
       return CoreL10n.text("OpenAI 兼容")
     case .deepSeek:
       return "DeepSeek"
+    case .anthropic:
+      return "Anthropic (Claude)"
+    case .gemini:
+      return "Google Gemini"
+    case .siliconFlow:
+      return "SiliconFlow (硅基流动)"
+    case .moonshot:
+      return "Moonshot (Kimi)"
+    case .zhipu:
+      return CoreL10n.text("智谱 GLM")
     case .openRouter:
       return "OpenRouter"
     case .local:
@@ -43,6 +58,16 @@ public enum AIProviderPreset: String, Codable, CaseIterable, Identifiable, Senda
       return "https://api.openai.com/v1"
     case .deepSeek:
       return "https://api.deepseek.com"
+    case .anthropic:
+      return "https://api.anthropic.com/v1"
+    case .gemini:
+      return "https://generativelanguage.googleapis.com/v1beta/openai"
+    case .siliconFlow:
+      return "https://api.siliconflow.cn/v1"
+    case .moonshot:
+      return "https://api.moonshot.cn/v1"
+    case .zhipu:
+      return "https://open.bigmodel.cn/api/paas/v4"
     case .openRouter:
       return "https://openrouter.ai/api/v1"
     case .local:
@@ -62,6 +87,16 @@ public enum AIProviderPreset: String, Codable, CaseIterable, Identifiable, Senda
       return "gpt-4.1-mini"
     case .deepSeek:
       return "deepseek-v4-flash"
+    case .anthropic:
+      return "claude-sonnet-4-6"
+    case .gemini:
+      return "gemini-2.0-flash"
+    case .siliconFlow:
+      return "deepseek-ai/DeepSeek-V3"
+    case .moonshot:
+      return "moonshot-v1-auto"
+    case .zhipu:
+      return "glm-4-flash"
     case .openRouter, .custom:
       return ""
     case .local:
@@ -304,6 +339,16 @@ public enum AIChatModelCatalog {
       return AIProviderPreset.deepSeek.defaultModel
     case .openAICompatible:
       return AIProviderPreset.openAICompatible.defaultModel
+    case .anthropic:
+      return AIProviderPreset.anthropic.defaultModel
+    case .gemini:
+      return AIProviderPreset.gemini.defaultModel
+    case .siliconFlow:
+      return AIProviderPreset.siliconFlow.defaultModel
+    case .moonshot:
+      return AIProviderPreset.moonshot.defaultModel
+    case .zhipu:
+      return AIProviderPreset.zhipu.defaultModel
     case .local:
       return AIProviderPreset.local.defaultModel
     case .openRouter, .custom:
@@ -319,6 +364,16 @@ public enum AIChatModelCatalog {
       return AIProviderPreset.deepSeekHighQualityModel
     case .openAICompatible:
       return "gpt-4.1"
+    case .anthropic:
+      return "claude-sonnet-4-6"
+    case .gemini:
+      return "gemini-1.5-pro"
+    case .siliconFlow:
+      return "deepseek-ai/DeepSeek-R1"
+    case .moonshot:
+      return "moonshot-v1-32k"
+    case .zhipu:
+      return "glm-4-plus"
     case .openRouter, .local, .custom:
       return fallback
     }
@@ -521,12 +576,27 @@ public struct AIProviderConfig: Codable, Hashable, Sendable {
     switch preset {
     case .deepSeek:
       return true
-    case .codexAppServer, .openAICompatible, .openRouter, .local, .custom:
+    case .codexAppServer, .openAICompatible, .anthropic, .gemini, .siliconFlow, .moonshot, .zhipu,
+      .openRouter, .local, .custom:
       let rawBaseURL = normalizedBaseURL.lowercased()
       if let host = URL(string: rawBaseURL)?.host?.lowercased() {
         return host == "api.deepseek.com"
       }
       return rawBaseURL.contains("api.deepseek.com")
+    }
+  }
+
+  public var usesAnthropicAPI: Bool {
+    switch preset {
+    case .anthropic:
+      return true
+    case .codexAppServer, .openAICompatible, .deepSeek, .gemini, .siliconFlow, .moonshot, .zhipu,
+      .openRouter, .local, .custom:
+      let rawBaseURL = normalizedBaseURL.lowercased()
+      if let host = URL(string: rawBaseURL)?.host?.lowercased() {
+        return host == "api.anthropic.com"
+      }
+      return rawBaseURL.contains("api.anthropic.com")
     }
   }
 
@@ -548,7 +618,8 @@ public struct AIProviderConfig: Codable, Hashable, Sendable {
     guard !requiresAPIKey || baseURL.scheme?.lowercased() == "https" else {
       return nil
     }
-    return URL(string: trimmed + "/chat/completions")
+    let path = usesAnthropicAPI ? "/messages" : "/chat/completions"
+    return URL(string: trimmed + path)
   }
 
   public func requestModel(resolving candidate: String? = nil) -> String {
@@ -801,6 +872,10 @@ public struct AIProviderConfig: Codable, Hashable, Sendable {
 
 public enum AIWritingStylePreset: String, Codable, CaseIterable, Identifiable, Sendable {
   case jinfangZola
+  case wechatArticle
+  case techTutorial
+  case newsBriefing
+  case socialPost
   case technicalNote
   case personalEssay
   case custom
@@ -811,6 +886,14 @@ public enum AIWritingStylePreset: String, Codable, CaseIterable, Identifiable, S
     switch self {
     case .jinfangZola:
       return CoreL10n.text("锦方 Zola")
+    case .wechatArticle:
+      return CoreL10n.text("微信公众号")
+    case .techTutorial:
+      return CoreL10n.text("技术实战")
+    case .newsBriefing:
+      return CoreL10n.text("快讯简报")
+    case .socialPost:
+      return CoreL10n.text("社交问答")
     case .technicalNote:
       return CoreL10n.text("技术笔记")
     case .personalEssay:
@@ -824,6 +907,14 @@ public enum AIWritingStylePreset: String, Codable, CaseIterable, Identifiable, S
     switch self {
     case .jinfangZola:
       return "克制、实用、直接，避免营销口吻和夸张形容。"
+    case .wechatArticle:
+      return "生动、亲切、通透，善用故事化引入与结构化小标题，语言通俗且有说服力。"
+    case .techTutorial:
+      return "严谨、准确、逻辑清晰，重视原理剖析、分步实操与避坑指南。"
+    case .newsBriefing:
+      return "极简、客观、高度精炼，突出时效性，直奔主题，避免主观抒情。"
+    case .socialPost:
+      return "随和真诚、观点鲜明、互动感强，善用金句提炼与生活化比喻。"
     case .technicalNote:
       return "准确、结构清晰，优先说明背景、做法、限制和结论。"
     case .personalEssay:
@@ -837,6 +928,14 @@ public enum AIWritingStylePreset: String, Codable, CaseIterable, Identifiable, S
     switch self {
     case .jinfangZola:
       return "关注个人网站、静态博客、工程工具和内容维护的读者。"
+    case .wechatArticle:
+      return "中文自媒体受众、关注效率、个人成长、实用技巧与深度思考的读者。"
+    case .techTutorial:
+      return "软件工程师、开发者、技术架构师与计算机相关专业学习者。"
+    case .newsBriefing:
+      return "希望在短时间内掌握核心动态、行业趋势与新闻要点的忙碌读者。"
+    case .socialPost:
+      return "社交媒体活跃探索者、技术与生活社区讨论者。"
     case .technicalNote:
       return "需要复现步骤、判断取舍或理解实现细节的技术读者。"
     case .personalEssay:
@@ -850,6 +949,14 @@ public enum AIWritingStylePreset: String, Codable, CaseIterable, Identifiable, S
     switch self {
     case .jinfangZola:
       return "生成 80 到 140 字中文摘要，先说文章解决的问题，再说主要结论。"
+    case .wechatArticle:
+      return "生成 60 到 100 字引人入胜的导读摘要，抛出核心痛点或悬念，吸引读者阅读全文。"
+    case .techTutorial:
+      return "生成 80 到 140 字结构化摘要，概述技术背景、核心方案选型与最终落地收益。"
+    case .newsBriefing:
+      return "生成 50 字以内的 TL;DR 一句话核心要点，快速概括最重要事实。"
+    case .socialPost:
+      return "生成 40 到 80 字金句式摘要，提炼出最具启发性或共鸣的核心观点。"
     case .technicalNote:
       return "生成 60 到 120 字中文摘要，突出技术对象、关键步骤和适用边界。"
     case .personalEssay:
@@ -863,6 +970,14 @@ public enum AIWritingStylePreset: String, Codable, CaseIterable, Identifiable, S
     switch self {
     case .jinfangZola:
       return "优先提取工具、框架、站点类型和维护场景，3 到 6 个短标签，不要泛泛使用“随笔”。"
+    case .wechatArticle:
+      return "优先提取热点关键词、受众兴趣和内容分类标签，3 到 5 个。"
+    case .techTutorial:
+      return "提取核心语言、框架、算法或架构工具名，保持专业规范。"
+    case .newsBriefing:
+      return "提取事件主体、涉及机构/产品和所属行业标签。"
+    case .socialPost:
+      return "提取话题标签、讨论主题与生活哲学。"
     case .technicalNote:
       return "优先使用技术栈、问题域和具体工具名，避免重复 title 里的长词组。"
     case .personalEssay:
@@ -876,6 +991,14 @@ public enum AIWritingStylePreset: String, Codable, CaseIterable, Identifiable, S
     switch self {
     case .jinfangZola:
       return "重点检查 description、tags/categories、og_preview_img、标题清晰度和旧文章维护问题。"
+    case .wechatArticle:
+      return "检查标题是否具有吸引力、头图与朋友圈分享卡片是否工整、文章首尾互动引导是否完整。"
+    case .techTutorial:
+      return "检查代码块是否有完整语法高亮、步骤标题是否包含技术关键词、报错与排错方案是否易于检索。"
+    case .newsBriefing:
+      return "确保首段包含 5W1H 核心事实，方便社交媒体与 RSS 阅读器抓取首要资讯。"
+    case .socialPost:
+      return "突出核心金句，提升社交网络传播与引用率。"
     case .technicalNote:
       return "重点检查标题是否包含技术对象、摘要是否可搜索、代码块和图片说明是否完整。"
     case .personalEssay:

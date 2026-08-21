@@ -13,10 +13,6 @@ enum TestWorkbenchFactory {
     try temporaryDirectoryURL(prefix: prefix).appendingPathComponent("workbench.json")
   }
 
-  static func temporaryProjectRoot(prefix: String = "PersonalSitePublisherMacProjectRootTests") throws -> URL {
-    try temporaryDirectoryURL(prefix: prefix)
-  }
-
   static func persistence(
     fileURL: URL? = nil,
     prefix: String = "PersonalSitePublisherMacTests"

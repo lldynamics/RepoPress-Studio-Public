@@ -86,6 +86,16 @@ enum AIChatConnectionStatusPresentation {
       return "Custom"
     case .deepSeek:
       return "DeepSeek"
+    case .anthropic:
+      return "Claude"
+    case .gemini:
+      return "Gemini"
+    case .siliconFlow:
+      return "SiliconFlow"
+    case .moonshot:
+      return "Moonshot"
+    case .zhipu:
+      return "GLM"
     case .openRouter:
       return "OpenRouter"
     case .openAICompatible:
@@ -163,7 +173,7 @@ enum AIChatInspectorHeaderPresentation {
 
   static func providerTitle(for config: AIProviderConfig) -> String {
     switch config.preset {
-    case .codexAppServer, .openAICompatible, .deepSeek, .openRouter, .local:
+    case .codexAppServer, .openAICompatible, .deepSeek, .anthropic, .gemini, .siliconFlow, .moonshot, .zhipu, .openRouter, .local:
       return config.preset.localizedDisplayName
     case .custom:
       return String(localized: "自定义 API")
@@ -228,8 +238,67 @@ enum AIChatInspectorHeaderPresentation {
   }
 }
 
+/// Presentation policy for the human review surface used by Agent content
+/// changes. Keeping this as a value-only policy makes the keyboard and
+/// accessibility contract testable without constructing a SwiftUI sheet.
+enum AIChatAgentReviewPresentation {
+  static let sheetAccessibilityIdentifier = "ai-agent-review-sheet"
+  static let laterAccessibilityIdentifier = "ai-agent-review-later"
+  static let rejectAccessibilityIdentifier = "ai-agent-review-reject"
+  static let acceptAccessibilityIdentifier = "ai-agent-review-accept"
+  static let deliveryUncertainAccessibilityIdentifier = "ai-agent-delivery-uncertain"
+  static let deliveryUncertainAbandonAccessibilityIdentifier =
+    "ai-agent-delivery-uncertain-abandon"
+  static let deliveryUncertainBranchAccessibilityIdentifier =
+    "ai-agent-delivery-uncertain-branch"
+
+  static let deliveryUncertainWarning = String(localized: "续跑结果不确定，系统没有自动重试")
+  static let deliveryUncertainDetail =
+    String(localized: "请结束续跑并保留记录，或从这里新建对话。")
+  static let deliveryUncertainAbandonTitle = String(localized: "结束续跑并保留记录")
+  static let deliveryUncertainBranchTitle = String(localized: "从这里新建对话")
+  static let deliveryUncertainEndedTitle = String(localized: "已结束，记录保留")
+
+  static func isDeliveryUncertain(
+    phase: AIPublishingChatAgentContinuationPhase
+  ) -> Bool {
+    phase == .deliveryUncertain
+  }
+
+  static func isDeliveryUncertainTerminal(
+    phase: AIPublishingChatAgentContinuationPhase
+  ) -> Bool {
+    phase == .abandonedAfterDeliveryUncertain
+  }
+
+  static func canResolveDeliveryUncertain(
+    phase: AIPublishingChatAgentContinuationPhase,
+    isBusy: Bool,
+    conversationID: UUID?
+  ) -> Bool {
+    !isBusy && conversationID != nil && isDeliveryUncertain(phase: phase)
+  }
+
+  static func allowsRollbackAction(
+    phase: AIPublishingChatAgentContinuationPhase?
+  ) -> Bool {
+    guard let phase else { return true }
+    return !isDeliveryUncertain(phase: phase)
+      && !isDeliveryUncertainTerminal(phase: phase)
+  }
+
+  static func isContentChangeReview(
+    plan: WorkbenchAutomationPlan,
+    step: WorkbenchAutomationStep
+  ) -> Bool {
+    plan.source == .agentLoop
+      && WorkbenchAutomationRegistry.descriptor(for: step.command)?.risk == .contentChange
+  }
+}
+
 struct AIChatInspectorDraftContext {
   let draft: ArticleDraft
+  let conversationID: UUID?
   let conversationTitle: String
   let messages: [AIPublishingChatMessage]
   let totalMessageCount: Int
@@ -266,9 +335,13 @@ struct AIChatContextInspectorActions {
   let createTranslationDraft: (AITranslationDraftPlan) -> Void
   let localFeedbackDecision: (AIPublishingChatMessage) -> AILocalEditFeedbackDecision?
   let recordLocalFeedback: (AILocalEditFeedbackDecision, AIPublishingChatMessage) -> Void
-  let executeAutomationPlan: (AIPublishingChatMessage.ID) -> Void
-  let executeAutomationStep: (AIPublishingChatMessage.ID, UUID) -> Void
-  let previewAutomationStep: (AIPublishingChatMessage.ID, UUID) -> WorkbenchAutomationDraftPreview?
-  let cancelAutomationPlan: (AIPublishingChatMessage.ID) -> Void
+  let executeAutomationPlan: (UUID, AIPublishingChatMessage.ID) -> Void
+  let executeAutomationStep: (UUID, AIPublishingChatMessage.ID, UUID) -> Void
+  let acceptAutomationStep: (UUID, AIPublishingChatMessage.ID, UUID, String) -> Void
+  let rejectAutomationStep: (UUID, AIPublishingChatMessage.ID, UUID, String?) -> Void
+  let previewAutomationStep:
+    (UUID, AIPublishingChatMessage.ID, UUID) -> WorkbenchAutomationDraftPreview?
+  let cancelAutomationPlan: (UUID, AIPublishingChatMessage.ID) -> Void
   let rollbackAutomationRun: (UUID) -> Void
+  let abandonAgentContinuation: (UUID, UUID, UUID, UUID, Int) -> Bool
 }

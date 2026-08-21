@@ -27,7 +27,6 @@
   "主题色板与卡片": "Accent Palette and Cards",
   "仓库管理入口集中在这里；实际写入和线上发布在下一步卡片或统一发布流程中确认。": "Repository management starts here; confirm actual writes and online publishing in the next-step card or unified publishing flow.",
   "低频的 OPML 导入和导出放在这里；文件只包含订阅名称与地址，不包含文章缓存或阅读状态。": "Infrequent OPML import and export actions live here. Files include only feed names and addresses, not article caches or reading state.",
-  "使用五档风格或不同改写方式处理选区": "Process the selection using five writing styles or different rewrite operations",
   "保存文章、摘录笔记、插入写作引用或新建灵感草稿": "Save the article, capture a note, insert a writing citation, or create an idea draft",
   "停止朗读": "Stop Reading Aloud",
   "全站文章双向关联图谱": "Site-wide Bidirectional Article Graph",

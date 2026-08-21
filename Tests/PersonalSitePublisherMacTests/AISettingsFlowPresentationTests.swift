@@ -22,14 +22,8 @@ final class AISettingsFlowPresentationTests: XCTestCase {
   func testAISectionsUseTaskOrientedTitles() {
     XCTAssertEqual(
       AISettingsSection.allCases.map(\.title),
-      ["连接与服务", "凭据授权与测试", "写作风格"]
+      ["模型与连接", "参数与网络", "写作风格"]
     )
-  }
-
-  func testAdvancedConnectionSettingsStartCollapsed() {
-    let state = AISettingsExpansionState()
-
-    XCTAssertFalse(state.advancedConnection)
   }
 
   func testConnectionTestRequiresEndpointThenKeyThenConsent() {
@@ -184,6 +178,36 @@ final class AISettingsFlowPresentationTests: XCTestCase {
     )
   }
 
+  func testCodexConsentRedirectsToLiveAccountSettingsInsteadOfStatuslessGrant() {
+    var codexConfig = AIProviderConfig(preset: .codexAppServer)
+    codexConfig.applyPresetDefaults()
+    let codexConsent = AIDataSharingConsentPresentation(
+      providerName: "ChatGPT",
+      destination: "Codex / ChatGPT",
+      destinationState: .remote,
+      isGranted: false
+    )
+    XCTAssertTrue(
+      AIChatDataSharingConsentPolicy.requiresAccountSettingsRedirect(
+        for: codexConfig,
+        presentation: codexConsent
+      )
+    )
+
+    let apiConfig = AIProviderConfig(
+      preset: .custom,
+      baseURL: "https://api.example.com/v1",
+      model: "example-model",
+      requiresAPIKey: true
+    )
+    XCTAssertFalse(
+      AIChatDataSharingConsentPolicy.requiresAccountSettingsRedirect(
+        for: apiConfig,
+        presentation: codexConsent
+      )
+    )
+  }
+
   func testKeychainFeedbackKeepsCredentialFailuresVisibleWithoutEchoingConnectionTests() {
     let failure = AIKeychainActionFeedback(message: "AI API Key 保存失败：访问被拒绝")
     XCTAssertEqual(failure?.message, "AI API Key 保存失败：访问被拒绝")
@@ -197,5 +221,24 @@ final class AISettingsFlowPresentationTests: XCTestCase {
 
   func testAutomaticInlineAICompletionDefaultsOff() {
     XCTAssertFalse(AIWritingPreferences.defaultAutomaticInlineCompletionEnabled)
+  }
+
+  func testAgentPermissionScopesExposeAccessibleTitlesAndDescriptions() {
+    XCTAssertEqual(AIAgentPermissionScope.allCases.count, 6)
+    for scope in AIAgentPermissionScope.allCases {
+      XCTAssertFalse(scope.id.isEmpty)
+      XCTAssertFalse(scope.localizedTitle.isEmpty)
+      XCTAssertFalse(scope.localizedDescription.isEmpty)
+    }
+  }
+
+  func testAgentPermissionMasterOffLeavesNoEffectiveScopeForSettingsPresentation() {
+    let settings = AIProviderAdvancedSettings(
+      allowsApplicationTools: false,
+      agentPermissionPolicy: .all
+    )
+
+    XCTAssertTrue(settings.resolvedAgentPermissionPolicy.isFullyEnabled)
+    XCTAssertTrue(settings.effectiveAgentPermissionPolicy.isDisabled)
   }
 }

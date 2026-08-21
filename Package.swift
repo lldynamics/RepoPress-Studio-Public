@@ -77,6 +77,7 @@ let package = Package(
       name: "PersonalSitePublisherMacTests",
       dependencies: [
         "PersonalSitePublisherMac",
+        "BrowserExtensionProtocolSupport",
         "PublishingWorkbenchCore",
       ],
       swiftSettings: [

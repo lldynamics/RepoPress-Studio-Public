@@ -21,6 +21,194 @@ enum KnowledgeBrowserBridgeState: Equatable {
   }
 }
 
+/// Bounds the amount of work that can be held by the loopback bridge while
+/// requests are waiting for a header, an authorization decision, or a body.
+/// The lease is deliberately independent of the main actor because Network
+/// callbacks run on the bridge's private queue.
+final class BrowserBridgeConnectionBudget: @unchecked Sendable {
+  static let defaultMaximumConnections = 8
+  static let defaultMaximumBufferedBytes = BrowserExtensionProtocol.maximumInputBytes
+
+  final class Lease: @unchecked Sendable {
+    private let budget: BrowserBridgeConnectionBudget
+    private let lock = NSLock()
+    private var released = false
+    private var reservedBytes = 0
+
+    fileprivate init(budget: BrowserBridgeConnectionBudget) {
+      self.budget = budget
+    }
+
+    func reserve(_ bytes: Int) -> Bool {
+      guard bytes >= 0 else { return false }
+      lock.lock()
+      defer { lock.unlock() }
+      guard !released, budget.reserve(bytes) else { return false }
+      reservedBytes += bytes
+      return true
+    }
+
+    func release() {
+      lock.lock()
+      guard !released else {
+        lock.unlock()
+        return
+      }
+      released = true
+      let bytes = reservedBytes
+      reservedBytes = 0
+      lock.unlock()
+      budget.release(bytes: bytes)
+    }
+
+    deinit {
+      release()
+    }
+  }
+
+  private let maximumConnections: Int
+  private let maximumBufferedBytes: Int
+  private let lock = NSLock()
+  private var activeConnections = 0
+  private var reservedBufferedBytes = 0
+
+  init(
+    maximumConnections: Int = BrowserBridgeConnectionBudget.defaultMaximumConnections,
+    maximumBufferedBytes: Int = BrowserBridgeConnectionBudget.defaultMaximumBufferedBytes
+  ) {
+    self.maximumConnections = max(1, maximumConnections)
+    self.maximumBufferedBytes = max(0, maximumBufferedBytes)
+  }
+
+  func acquire() -> Lease? {
+    lock.lock()
+    defer { lock.unlock() }
+    guard activeConnections < maximumConnections else { return nil }
+    activeConnections += 1
+    return Lease(budget: self)
+  }
+
+  var activeConnectionCount: Int {
+    lock.lock()
+    defer { lock.unlock() }
+    return activeConnections
+  }
+
+  var reservedByteCount: Int {
+    lock.lock()
+    defer { lock.unlock() }
+    return reservedBufferedBytes
+  }
+
+  private func reserve(_ bytes: Int) -> Bool {
+    lock.lock()
+    defer { lock.unlock() }
+    guard bytes >= 0,
+          bytes <= maximumBufferedBytes - reservedBufferedBytes else {
+      return false
+    }
+    reservedBufferedBytes += bytes
+    return true
+  }
+
+  private func release(bytes: Int) {
+    lock.lock()
+    activeConnections = max(0, activeConnections - 1)
+    reservedBufferedBytes = max(0, reservedBufferedBytes - bytes)
+    lock.unlock()
+  }
+}
+
+private final class BrowserBridgeConnectionContext: @unchecked Sendable {
+  static let maximumReadIdleDuration: TimeInterval = 10
+
+  let lease: BrowserBridgeConnectionBudget.Lease
+  private let queue: DispatchQueue
+  private let lock = NSLock()
+  private weak var connection: NWConnection?
+  private var timeoutWorkItem: DispatchWorkItem?
+  private var timeoutToken: UUID?
+  private var finished = false
+
+  init(lease: BrowserBridgeConnectionBudget.Lease, queue: DispatchQueue) {
+    self.lease = lease
+    self.queue = queue
+  }
+
+  func attach(to connection: NWConnection) {
+    self.connection = connection
+  }
+
+  func reserve(_ bytes: Int) -> Bool {
+    lease.reserve(bytes)
+  }
+
+  func armReadTimeout() {
+    let token = UUID()
+    let workItem = DispatchWorkItem { [weak self] in
+      self?.timeoutElapsed(token: token)
+    }
+    lock.lock()
+    guard !finished else {
+      lock.unlock()
+      return
+    }
+    timeoutWorkItem?.cancel()
+    timeoutWorkItem = workItem
+    timeoutToken = token
+    lock.unlock()
+    queue.asyncAfter(
+      deadline: .now() + Self.maximumReadIdleDuration,
+      execute: workItem
+    )
+  }
+
+  func disarmReadTimeout() {
+    lock.lock()
+    let workItem = timeoutWorkItem
+    timeoutWorkItem = nil
+    timeoutToken = nil
+    lock.unlock()
+    workItem?.cancel()
+  }
+
+  var isFinished: Bool {
+    lock.lock()
+    defer { lock.unlock() }
+    return finished
+  }
+
+  func finish() {
+    lock.lock()
+    guard !finished else {
+      lock.unlock()
+      return
+    }
+    finished = true
+    let workItem = timeoutWorkItem
+    timeoutWorkItem = nil
+    timeoutToken = nil
+    lock.unlock()
+    workItem?.cancel()
+    lease.release()
+  }
+
+  private func timeoutElapsed(token: UUID) {
+    lock.lock()
+    guard !finished, timeoutToken == token else {
+      lock.unlock()
+      return
+    }
+    finished = true
+    timeoutWorkItem = nil
+    timeoutToken = nil
+    let connection = self.connection
+    lock.unlock()
+    lease.release()
+    connection?.cancel()
+  }
+}
+
 @MainActor
 final class KnowledgeBrowserBridge: ObservableObject {
   nonisolated static var endpointURL: String {
@@ -47,6 +235,7 @@ final class KnowledgeBrowserBridge: ObservableObject {
   private let importOperationLedgerStore: KnowledgeBrowserImportLedgerStore
   private var activeImportOperations: [UUID: String] = [:]
   private let queue = DispatchQueue(label: "com.jinfang.PersonalSitePublisherMac.browser-bridge")
+  private let connectionBudget = BrowserBridgeConnectionBudget()
   private var importOperationLedgerLoadTask: Task<Void, Never>?
   private var listener: NWListener?
   private var listenerGeneration: UUID?
@@ -328,56 +517,156 @@ final class KnowledgeBrowserBridge: ObservableObject {
   }
 
   nonisolated private func receiveRequest(on connection: NWConnection) {
+    guard let lease = connectionBudget.acquire() else {
+      connection.start(queue: queue)
+      sendResponse(
+        .error(status: 429, message: "浏览器桥接当前连接数已达上限，请稍后重试。"),
+        on: connection
+      )
+      return
+    }
+    let context = BrowserBridgeConnectionContext(lease: lease, queue: queue)
+    context.attach(to: connection)
+    connection.stateUpdateHandler = { [weak context] state in
+      switch state {
+      case .cancelled, .failed:
+        context?.finish()
+      default:
+        break
+      }
+    }
     connection.start(queue: queue)
-    receiveChunk(on: connection, accumulated: Data())
+    receiveHeader(on: connection, accumulated: Data(), context: context)
   }
 
-  nonisolated private func receiveChunk(
+  nonisolated private func receiveHeader(
     on connection: NWConnection,
-    accumulated: Data
+    accumulated: Data,
+    context: BrowserBridgeConnectionContext
   ) {
+    guard !context.isFinished else { return }
+    context.armReadTimeout()
     connection.receive(minimumIncompleteLength: 1, maximumLength: 64 * 1_024) { [weak self] data, _, isComplete, error in
       guard let self else {
+        context.finish()
         connection.cancel()
         return
       }
+      guard !context.isFinished else { return }
       if error != nil {
+        context.finish()
         connection.cancel()
         return
       }
       var buffer = accumulated
       if let data { buffer.append(data) }
-      guard buffer.count <= BrowserBridgeHTTPRequest.maximumRequestBytes else {
-        self.sendResponse(.error(status: 413, message: "页面数据超过 48 MB。"), on: connection)
-        return
-      }
-
-      switch BrowserBridgeHTTPRequest.completionState(for: buffer) {
-      case .complete(let requestLength):
-        let requestData = Data(buffer.prefix(requestLength))
-        guard let request = BrowserBridgeHTTPRequest(data: requestData) else {
-          self.sendResponse(.error(status: 400, message: "请求格式无效。"), on: connection)
+      switch BrowserBridgeRequestHeaders.parseState(for: buffer) {
+      case .complete(let requestHeaders):
+        let pendingBody = Data(buffer.dropFirst(requestHeaders.headerLength))
+        guard pendingBody.count <= requestHeaders.contentLength else {
+          context.finish()
+          self.sendResponse(.error(status: 400, message: "请求正文长度无效。"), on: connection)
           return
         }
         Task { @MainActor [weak self] in
-          await self?.handle(request, connection: connection)
+          guard let self else {
+            context.finish()
+            connection.cancel()
+            return
+          }
+          if let rejection = self.headerAuthorizationFailure(for: requestHeaders) {
+            context.finish()
+            self.sendResponse(rejection, on: connection)
+            return
+          }
+          guard context.reserve(requestHeaders.contentLength) else {
+            context.finish()
+            self.sendResponse(
+              .error(status: 429, message: "浏览器桥接当前缓冲区已满，请稍后重试。"),
+              on: connection
+            )
+            return
+          }
+          self.receiveBody(
+            on: connection,
+            requestHeaders: requestHeaders,
+            buffer: BrowserBridgeRequestBodyBuffer(data: pendingBody),
+            context: context
+          )
         }
       case .incomplete:
         guard !isComplete else {
+          context.finish()
           self.sendResponse(.error(status: 400, message: "请求内容不完整。"), on: connection)
           return
         }
-        self.receiveChunk(on: connection, accumulated: buffer)
+        self.receiveHeader(on: connection, accumulated: buffer, context: context)
       case .invalid:
+        context.finish()
         self.sendResponse(.error(status: 400, message: "请求头无效。"), on: connection)
       }
     }
   }
 
+  nonisolated private func receiveBody(
+    on connection: NWConnection,
+    requestHeaders: BrowserBridgeRequestHeaders,
+    buffer: BrowserBridgeRequestBodyBuffer,
+    context: BrowserBridgeConnectionContext
+  ) {
+    guard !context.isFinished else { return }
+    if buffer.data.count == requestHeaders.contentLength {
+      context.disarmReadTimeout()
+      let request = BrowserBridgeHTTPRequest(headers: requestHeaders, body: buffer.data)
+      Task { @MainActor [weak self] in
+        guard let self else {
+          context.finish()
+          connection.cancel()
+          return
+        }
+        await self.handle(request, connection: connection, context: context)
+      }
+      return
+    }
+    context.armReadTimeout()
+    connection.receive(minimumIncompleteLength: 1, maximumLength: 64 * 1_024) { [weak self] data, _, isComplete, error in
+      guard let self else {
+        context.finish()
+        connection.cancel()
+        return
+      }
+      guard !context.isFinished else { return }
+      if error != nil {
+        context.finish()
+        connection.cancel()
+        return
+      }
+      if let data { buffer.data.append(data) }
+      guard buffer.data.count <= requestHeaders.contentLength else {
+        context.finish()
+        self.sendResponse(.error(status: 400, message: "请求正文长度无效。"), on: connection)
+        return
+      }
+      if isComplete, buffer.data.count != requestHeaders.contentLength {
+        context.finish()
+        self.sendResponse(.error(status: 400, message: "请求内容不完整。"), on: connection)
+        return
+      }
+      self.receiveBody(
+        on: connection,
+        requestHeaders: requestHeaders,
+        buffer: buffer,
+        context: context
+      )
+    }
+  }
+
   private func handle(
     _ request: BrowserBridgeHTTPRequest,
-    connection: NWConnection
+    connection: NWConnection,
+    context: BrowserBridgeConnectionContext
   ) async {
+    defer { context.finish() }
     if request.method == "OPTIONS" {
       guard request.isApprovedExtensionPreflight else {
         sendResponse(
@@ -662,6 +951,62 @@ final class KnowledgeBrowserBridge: ObservableObject {
     sendResponse(.error(status: 404, message: "接口不存在。"), on: connection)
   }
 
+  private func headerAuthorizationFailure(
+    for request: BrowserBridgeRequestHeaders
+  ) -> BrowserBridgeHTTPResponse? {
+    if request.method == "OPTIONS" {
+      guard request.contentLength == 0 else {
+        return .error(status: 400, message: "预检请求不应包含正文。")
+      }
+      return request.isApprovedExtensionPreflight
+        ? nil
+        : .error(
+          status: 403,
+          message: "只接受已安装的浏览器扩展。",
+          code: "invalid-origin"
+        )
+    }
+    guard request.isLoopbackBridgeRequest else {
+      return .error(
+        status: 403,
+        message: "只接受已配对的浏览器扩展。",
+        code: "invalid-transport"
+      )
+    }
+    // The status endpoint is intentionally usable without a bearer token, but
+    // only as a bodyless health check. Any request carrying a body must pass
+    // the same token gate before the first body byte is accepted.
+    if request.method == "GET",
+       request.path == "/v1/status",
+       request.contentLength == 0 {
+      return nil
+    }
+    if let invalidatedExpiredToken,
+       request.bearerToken == invalidatedExpiredToken {
+      self.invalidatedExpiredToken = nil
+      return .error(
+        status: 401,
+        message: "连接令牌已过期，请从应用复制新令牌重新配对。",
+        code: "token-expired"
+      )
+    }
+    if refreshExpiredConnectionToken() {
+      return .error(
+        status: 401,
+        message: "连接令牌已过期，请从应用复制新令牌重新配对。",
+        code: "token-expired"
+      )
+    }
+    guard request.headers["authorization"] == "Bearer \(connectionToken)" else {
+      return .error(
+        status: 401,
+        message: "连接令牌无效，请重新配对。",
+        code: "invalid-token"
+      )
+    }
+    return nil
+  }
+
   nonisolated private func sendResponse(
     _ response: BrowserBridgeHTTPResponse,
     on connection: NWConnection
@@ -853,12 +1198,6 @@ private struct BrowserOpenResponse: Encodable {
   var opened: Bool
 }
 
-private enum BrowserBridgeRequestCompletionState {
-  case incomplete
-  case complete(Int)
-  case invalid
-}
-
 enum BrowserExtensionOriginPolicy {
   static func allows(_ origin: String?) -> Bool {
     guard let origin else {
@@ -895,7 +1234,21 @@ enum BrowserExtensionOriginPolicy {
   }
 }
 
-private struct BrowserBridgeHTTPRequest {
+enum BrowserBridgeRequestHeaderParseState {
+  case incomplete
+  case complete(BrowserBridgeRequestHeaders)
+  case invalid
+}
+
+private final class BrowserBridgeRequestBodyBuffer: @unchecked Sendable {
+  var data: Data
+
+  init(data: Data) {
+    self.data = data
+  }
+}
+
+struct BrowserBridgeRequestHeaders: Sendable {
   static let maximumRequestBytes = BrowserExtensionProtocol.maximumInputBytes
   static let maximumHeaderBytes = 32 * 1_024
   private static let headerSeparator = Data("\r\n\r\n".utf8)
@@ -903,31 +1256,63 @@ private struct BrowserBridgeHTTPRequest {
   var method: String
   var path: String
   var headers: [String: String]
-  var body: Data
+  var contentLength: Int
+  var headerLength: Int
 
-  init?(data: Data) {
-    guard let separatorRange = data.range(of: Self.headerSeparator),
-          separatorRange.lowerBound <= Self.maximumHeaderBytes,
+  static func parseState(for data: Data) -> BrowserBridgeRequestHeaderParseState {
+    guard let separatorRange = data.range(of: headerSeparator) else {
+      return data.count > maximumHeaderBytes ? .invalid : .incomplete
+    }
+    guard separatorRange.lowerBound <= maximumHeaderBytes,
           let headerText = String(data: data[..<separatorRange.lowerBound], encoding: .utf8) else {
-      return nil
+      return .invalid
     }
     let lines = headerText.components(separatedBy: "\r\n")
-    guard let requestLine = lines.first else { return nil }
+    guard let requestLine = lines.first else { return .invalid }
     let requestParts = requestLine.split(separator: " ", omittingEmptySubsequences: true)
     guard requestParts.count == 3,
-          requestParts[2].hasPrefix("HTTP/1.") else { return nil }
-    method = String(requestParts[0]).uppercased()
-    path = String(requestParts[1]).components(separatedBy: "?").first ?? "/"
+          requestParts[2].hasPrefix("HTTP/1.") else { return .invalid }
+    let method = String(requestParts[0]).uppercased()
+    let path = String(requestParts[1]).components(separatedBy: "?").first ?? "/"
     var parsedHeaders: [String: String] = [:]
+    var contentLength = 0
+    var foundContentLength = false
     for line in lines.dropFirst() {
-      guard let separator = line.firstIndex(of: ":") else { return nil }
+      guard let separator = line.firstIndex(of: ":") else { return .invalid }
       let name = line[..<separator].trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
       let value = line[line.index(after: separator)...].trimmingCharacters(in: .whitespacesAndNewlines)
-      guard !name.isEmpty else { return nil }
+      guard !name.isEmpty else { return .invalid }
+      if name == "content-length" {
+        guard !foundContentLength,
+              let parsedLength = parseContentLength(String(value)) else {
+          return .invalid
+        }
+        foundContentLength = true
+        contentLength = parsedLength
+      }
       parsedHeaders[name] = value
     }
-    headers = parsedHeaders
-    body = Data(data[separatorRange.upperBound...])
+    let headerLength = separatorRange.upperBound
+    guard headerLength <= maximumRequestBytes,
+          contentLength <= maximumRequestBytes - headerLength else {
+      return .invalid
+    }
+    return .complete(Self(
+      method: method,
+      path: path,
+      headers: parsedHeaders,
+      contentLength: contentLength,
+      headerLength: headerLength
+    ))
+  }
+
+  private static func parseContentLength(_ value: String) -> Int? {
+    guard !value.isEmpty,
+          value.utf8.allSatisfy({ $0 >= 48 && $0 <= 57 }),
+          let parsed = Int(value) else {
+      return nil
+    }
+    return parsed
   }
 
   var isLoopbackBridgeRequest: Bool {
@@ -966,31 +1351,31 @@ private struct BrowserBridgeHTTPRequest {
           authorization.hasPrefix(prefix) else { return nil }
     return String(authorization.dropFirst(prefix.count))
   }
+}
 
-  static func completionState(for data: Data) -> BrowserBridgeRequestCompletionState {
-    guard let separatorRange = data.range(of: headerSeparator) else {
-      return data.count > maximumHeaderBytes ? .invalid : .incomplete
-    }
-    guard separatorRange.lowerBound <= maximumHeaderBytes,
-          let headerText = String(data: data[..<separatorRange.lowerBound], encoding: .utf8) else {
-      return .invalid
-    }
-    let contentLengthLine = headerText.components(separatedBy: "\r\n").first {
-      $0.lowercased().hasPrefix("content-length:")
-    }
-    let contentLength: Int
-    if let contentLengthLine,
-       let separator = contentLengthLine.firstIndex(of: ":"),
-       let value = Int(contentLengthLine[contentLengthLine.index(after: separator)...]
-        .trimmingCharacters(in: .whitespacesAndNewlines)),
-       value >= 0 {
-      contentLength = value
-    } else {
-      contentLength = 0
-    }
-    let requestLength = separatorRange.upperBound + contentLength
-    guard requestLength <= maximumRequestBytes else { return .invalid }
-    return data.count >= requestLength ? .complete(requestLength) : .incomplete
+private struct BrowserBridgeHTTPRequest: Sendable {
+  let requestHeaders: BrowserBridgeRequestHeaders
+  let body: Data
+
+  init(headers: BrowserBridgeRequestHeaders, body: Data) {
+    requestHeaders = headers
+    self.body = body
+  }
+
+  var method: String { requestHeaders.method }
+  var path: String { requestHeaders.path }
+  var headers: [String: String] { requestHeaders.headers }
+
+  var isLoopbackBridgeRequest: Bool {
+    requestHeaders.isLoopbackBridgeRequest
+  }
+
+  var isApprovedExtensionPreflight: Bool {
+    requestHeaders.isApprovedExtensionPreflight
+  }
+
+  var bearerToken: String? {
+    requestHeaders.bearerToken
   }
 }
 
@@ -1024,6 +1409,7 @@ private struct BrowserBridgeHTTPResponse {
     case 400: reason = "Bad Request"
     case 401: reason = "Unauthorized"
     case 403: reason = "Forbidden"
+    case 429: reason = "Too Many Requests"
     case 404: reason = "Not Found"
     case 409: reason = "Conflict"
     case 410: reason = "Gone"

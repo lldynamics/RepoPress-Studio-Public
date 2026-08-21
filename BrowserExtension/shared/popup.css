@@ -354,10 +354,6 @@ button:disabled {
   gap: 6px;
 }
 
-.shortcut-group {
-  display: contents;
-}
-
 .shortcut-label {
   align-self: center;
   color: GrayText;

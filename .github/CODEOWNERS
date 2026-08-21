@@ -1,13 +1,1 @@
 * @lldynamics
-
-/.github/ @lldynamics
-/Package.swift @lldynamics
-/Package.resolved @lldynamics
-/package-lock.json @lldynamics
-/BrowserExtension/browser-extension-protocol.json @lldynamics
-/BrowserExtension/Chrome/manifest.json @lldynamics
-/BrowserExtension/Firefox/manifest.json @lldynamics
-/BrowserExtension/Safari/manifest.json @lldynamics
-/BrowserExtension/shared/ @lldynamics
-/Packaging/ @lldynamics
-/script/ @lldynamics

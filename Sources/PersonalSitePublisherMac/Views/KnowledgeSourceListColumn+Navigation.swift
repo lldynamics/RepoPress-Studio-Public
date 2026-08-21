@@ -37,16 +37,6 @@ extension KnowledgeSourceListColumn {
     }
   }
 
-  private var selectedScopeSystemImage: String {
-    switch knowledge.folderScope {
-    case .all: "books.vertical"
-    case .unfiled: "tray"
-    case .folder: "folder"
-    case .smartCollection(let rule): rule.systemImage
-    case .savedCollection: "bookmark"
-    }
-  }
-
   @ViewBuilder
   var emptyFolderState: some View {
     switch knowledge.folderScope {

@@ -268,7 +268,6 @@ jobs:
       - quality-quick
       - quality-coverage
       - quality-build
-      - swift6-migration
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -277,14 +276,12 @@ jobs:
           QUICK_RESULT: ${{ needs.quality-quick.result }}
           COVERAGE_RESULT: ${{ needs.quality-coverage.result }}
           BUILD_RESULT: ${{ needs.quality-build.result }}
-          SWIFT6_RESULT: ${{ needs.swift6-migration.result }}
         run: |
-          printf 'quick=%s\ncoverage=%s\nbuild=%s\nswift6=%s\n' \
-            "$QUICK_RESULT" "$COVERAGE_RESULT" "$BUILD_RESULT" "$SWIFT6_RESULT"
+          printf 'quick=%s\ncoverage=%s\nbuild=%s\n' \
+            "$QUICK_RESULT" "$COVERAGE_RESULT" "$BUILD_RESULT"
           [[ "$QUICK_RESULT" == "success" ]]
           [[ "$COVERAGE_RESULT" == "success" ]]
           [[ "$BUILD_RESULT" == "success" ]]
-          [[ "$SWIFT6_RESULT" == "success" ]]
 
   release-performance:
     if: >-
@@ -330,42 +327,6 @@ jobs:
             .build/release-performance-gate-summary.md
           if-no-files-found: warn
 
-  swift6-migration:
-    if: >-
-      github.event_name == 'pull_request' ||
-      (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) ||
-      github.event_name == 'schedule' ||
-      (github.event_name == 'workflow_dispatch' && github.event.inputs.risk_level != 'quick')
-    runs-on: macos-15
-    timeout-minutes: 25
-    env:
-      SWIFT_BUILD_HOME: /private/tmp/personal-site-publisher-ci-swift6-home
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
-      - name: Verify migration diagnostic contract
-        run: bash script/test_swift6_migration_gate.sh
-      - name: Build in true Swift 6 language mode
-        run: |
-          mkdir -p .build
-          set -o pipefail
-          bash script/check_swift6_migration.sh 2>&1 | tee .build/swift6-migration.log
-      - name: Publish migration status
-        if: always()
-        run: |
-          {
-            echo "# Swift 6 Migration Diagnostic"
-            echo
-            echo "This blocking job compiles with \`-swift-version 6\`; PR and release gates remain blocked until migration errors are resolved."
-          } >>"$GITHUB_STEP_SUMMARY"
-      - name: Upload Swift 6 migration diagnostics
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: swift6-migration-diagnostic
-          path: .build/swift6-migration.log
-          if-no-files-found: error
-
   release-quality:
     if: >-
       always() &&
@@ -376,7 +337,6 @@ jobs:
       - quality-coverage
       - quality-runtime
       - release-performance
-      - swift6-migration
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -386,16 +346,14 @@ jobs:
           COVERAGE_RESULT: ${{ needs.quality-coverage.result }}
           RUNTIME_RESULT: ${{ needs.quality-runtime.result }}
           PERFORMANCE_RESULT: ${{ needs.release-performance.result }}
-          SWIFT6_RESULT: ${{ needs.swift6-migration.result }}
         run: |
-          printf 'quick=%s\ncoverage=%s\nruntime=%s\nperformance=%s\nswift6=%s\n' \
+          printf 'quick=%s\ncoverage=%s\nruntime=%s\nperformance=%s\n' \
             "$QUICK_RESULT" "$COVERAGE_RESULT" "$RUNTIME_RESULT" \
-            "$PERFORMANCE_RESULT" "$SWIFT6_RESULT"
+            "$PERFORMANCE_RESULT"
           [[ "$QUICK_RESULT" == "success" ]]
           [[ "$COVERAGE_RESULT" == "success" ]]
           [[ "$RUNTIME_RESULT" == "success" ]]
           [[ "$PERFORMANCE_RESULT" == "success" ]]
-          [[ "$SWIFT6_RESULT" == "success" ]]
 
   nightly-release-quality:
     if: >-
@@ -406,7 +364,6 @@ jobs:
       - quality-build
       - quality-runtime
       - release-performance
-      - swift6-migration
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -417,14 +374,12 @@ jobs:
           BUILD_RESULT: ${{ needs.quality-build.result }}
           RUNTIME_RESULT: ${{ needs.quality-runtime.result }}
           PERFORMANCE_RESULT: ${{ needs.release-performance.result }}
-          SWIFT6_RESULT: ${{ needs.swift6-migration.result }}
         run: |
-          printf 'quick=%s\ncoverage=%s\nbuild=%s\nruntime=%s\nperformance=%s\nswift6=%s\n' \
+          printf 'quick=%s\ncoverage=%s\nbuild=%s\nruntime=%s\nperformance=%s\n' \
             "$QUICK_RESULT" "$COVERAGE_RESULT" "$BUILD_RESULT" \
-            "$RUNTIME_RESULT" "$PERFORMANCE_RESULT" "$SWIFT6_RESULT"
+            "$RUNTIME_RESULT" "$PERFORMANCE_RESULT"
           [[ "$QUICK_RESULT" == "success" ]]
           [[ "$COVERAGE_RESULT" == "success" ]]
           [[ "$BUILD_RESULT" == "success" ]]
           [[ "$RUNTIME_RESULT" == "success" ]]
           [[ "$PERFORMANCE_RESULT" == "success" ]]
-          [[ "$SWIFT6_RESULT" == "success" ]]

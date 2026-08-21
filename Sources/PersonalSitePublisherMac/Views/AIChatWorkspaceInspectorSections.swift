@@ -66,6 +66,10 @@ struct AIChatConversationInspectorSection: View {
               knowledgeCitations(message.knowledgeCitations)
             }
 
+            if !message.toolRuns.isEmpty {
+              AIChatToolRunCard(runs: message.toolRuns)
+            }
+
             if let payload = message.structuredEditPayload {
               AIChatStructuredEditReviewCard(
                 message: message,
@@ -91,13 +95,27 @@ struct AIChatConversationInspectorSection: View {
               AIChatAutomationPlanCard(
                 message: message,
                 plan: plan,
+                conversationID: context.conversationID,
                 currentDraft: context.draft,
+                isChatRunning: context.isChatRunning,
                 isAutomationRunning: context.isAutomationRunning,
                 latestRunRecord: context.automationRunRecords.first {
                   $0.planID == plan.id && ($0.hasRollback || $0.rolledBackAt != nil)
                 } ?? context.automationRunRecords.first { $0.planID == plan.id },
                 actions: actions
               )
+            }
+
+            if message.id == latestAssistantMessageID,
+              !message.followUpSuggestions.isEmpty
+            {
+              AIChatFollowUpSuggestionsView(
+                suggestions: message.followUpSuggestions,
+                isChatRunning: context.isChatRunning,
+                draft: context.draft
+              ) { suggestion in
+                actions.sendMessage(suggestion.prompt, context.draft)
+              }
             }
 
             if message.id == latestAssistantMessageID,

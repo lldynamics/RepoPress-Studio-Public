@@ -9,7 +9,15 @@ struct MarkdownFindMatchSnapshot: Equatable {
   static let empty = MarkdownFindMatchSnapshot(ranges: [], errorMessage: nil)
 
   func position(selectedRange: NSRange) -> MarkdownFindPosition {
-    let currentIndex = ranges.firstIndex { NSEqualRanges($0, selectedRange) }
+    guard !ranges.isEmpty else {
+      return MarkdownFindPosition(currentNumber: nil, total: 0)
+    }
+    let currentIndex: Int?
+    if let exact = ranges.firstIndex(where: { NSEqualRanges($0, selectedRange) }) {
+      currentIndex = exact
+    } else {
+      currentIndex = ranges.firstIndex(where: { NSIntersectionRange($0, selectedRange).length > 0 })
+    }
     return MarkdownFindPosition(
       currentNumber: currentIndex.map { $0 + 1 },
       total: ranges.count

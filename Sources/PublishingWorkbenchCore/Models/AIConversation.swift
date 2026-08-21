@@ -31,6 +31,27 @@ public enum AIConversationScope: Codable, Hashable, Sendable {
   }
 }
 
+/// The authority a single conversation may use when the connected profile
+/// offers Agent tools.  A conversation can only narrow the connection-level
+/// permission; it can never grant tools when the connection has disabled them.
+public enum AIConversationAgentMode: String, Codable, Hashable, Sendable {
+  /// Follow the connection's current tool permission.
+  case inheritConnection
+  /// Keep this conversation text-only, regardless of the connection setting.
+  case textOnly
+
+  /// Resolves the effective permission for this conversation.  This is
+  /// deliberately a one-way reduction: `.textOnly` can never become `true`.
+  public func effectiveAllowsTools(connectionAllowsTools: Bool) -> Bool {
+    switch self {
+    case .inheritConnection:
+      return connectionAllowsTools
+    case .textOnly:
+      return false
+    }
+  }
+}
+
 /// A locally persisted AI conversation. Credentials are intentionally excluded
 /// and are resolved from the explicitly stored connection profile through the
 /// user-selected credential storage mode when a request is sent.
@@ -42,6 +63,7 @@ public struct AIConversation: Codable, Hashable, Identifiable, Sendable {
   public var id: UUID
   public var scope: AIConversationScope
   public var connectionProfileID: UUID?
+  public var agentMode: AIConversationAgentMode
   public var title: String?
   public var messages: [AIPublishingChatMessage]
   public var contextMode: AIPublishingChatContextMode
@@ -64,6 +86,7 @@ public struct AIConversation: Codable, Hashable, Identifiable, Sendable {
     case scope
     case draftID
     case connectionProfileID
+    case agentMode
     case title
     case messages
     case contextMode
@@ -81,6 +104,7 @@ public struct AIConversation: Codable, Hashable, Identifiable, Sendable {
     id: UUID = UUID(),
     scope: AIConversationScope,
     connectionProfileID: UUID? = nil,
+    agentMode: AIConversationAgentMode = .inheritConnection,
     title: String? = nil,
     messages: [AIPublishingChatMessage] = [],
     contextMode: AIPublishingChatContextMode = .general,
@@ -96,6 +120,7 @@ public struct AIConversation: Codable, Hashable, Identifiable, Sendable {
     self.id = id
     self.scope = scope
     self.connectionProfileID = connectionProfileID
+    self.agentMode = agentMode
     self.title = title?.trimmedForPublishing.nilIfEmpty
     self.messages = messages
     self.contextMode = contextMode
@@ -114,6 +139,7 @@ public struct AIConversation: Codable, Hashable, Identifiable, Sendable {
     id: UUID = UUID(),
     draftID: UUID,
     connectionProfileID: UUID? = nil,
+    agentMode: AIConversationAgentMode = .inheritConnection,
     title: String? = nil,
     messages: [AIPublishingChatMessage] = [],
     contextMode: AIPublishingChatContextMode = .site,
@@ -130,6 +156,7 @@ public struct AIConversation: Codable, Hashable, Identifiable, Sendable {
       id: id,
       scope: .draft(draftID),
       connectionProfileID: connectionProfileID,
+      agentMode: agentMode,
       title: title,
       messages: messages,
       contextMode: contextMode,
@@ -160,6 +187,12 @@ public struct AIConversation: Codable, Hashable, Identifiable, Sendable {
       ?? legacyDraftID.map(AIConversationScope.draft)
       ?? .general
     self.connectionProfileID = try container.decodeIfPresent(UUID.self, forKey: .connectionProfileID)
+    // Snapshots written before per-conversation Agent modes existed inherit
+    // the connection's setting, preserving the previous behavior safely.
+    self.agentMode = try container.decodeIfPresent(
+      AIConversationAgentMode.self,
+      forKey: .agentMode
+    ) ?? .inheritConnection
     self.title = try container.decodeIfPresent(String.self, forKey: .title)?.trimmedForPublishing.nilIfEmpty
     self.messages = try container.decodeIfPresent([AIPublishingChatMessage].self, forKey: .messages) ?? []
     if self.scope == .general {
@@ -195,6 +228,7 @@ public struct AIConversation: Codable, Hashable, Identifiable, Sendable {
       try container.encode(draftID, forKey: .draftID)
     }
     try container.encodeIfPresent(connectionProfileID, forKey: .connectionProfileID)
+    try container.encode(agentMode, forKey: .agentMode)
     try container.encodeIfPresent(title, forKey: .title)
     try container.encode(messages, forKey: .messages)
     try container.encode(contextMode, forKey: .contextMode)

@@ -1,0 +1,22 @@
+{
+  "应用前不会改动文章，可稍后决定。": {
+    "en": "The article will not change before you apply this. You can decide later.",
+    "zh-Hans": "应用前不会改动文章，可稍后决定。"
+  },
+  "稍后决定": {
+    "en": "Decide Later",
+    "zh-Hans": "稍后决定"
+  },
+  "拒绝修改": {
+    "en": "Reject Change",
+    "zh-Hans": "拒绝修改"
+  },
+  "已拒绝": {
+    "en": "Rejected",
+    "zh-Hans": "已拒绝"
+  },
+  "用户已拒绝此工具调用，未执行。": {
+    "en": "You rejected this tool call; it was not executed.",
+    "zh-Hans": "用户已拒绝此工具调用，未执行。"
+  }
+}

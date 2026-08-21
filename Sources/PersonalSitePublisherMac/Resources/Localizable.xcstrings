@@ -177,6 +177,22 @@
         }
       }
     },
+    "%@ [%@]": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ [%@]"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ [%@]"
+          }
+        }
+      }
+    },
     "%@ · %@": {
       "localizations": {
         "en": {
@@ -3217,38 +3233,6 @@
         }
       }
     },
-    "AI 行内工具": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Inline AI Tools"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "AI 行内工具"
-          }
-        }
-      }
-    },
-    "AI 行内操作状态：%@": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Inline AI action status: %@"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "AI 行内操作状态：%@"
-          }
-        }
-      }
-    },
     "AI 解释专业术语/概念": {
       "localizations": {
         "en": {
@@ -3869,6 +3853,54 @@
           "stringUnit": {
             "state": "translated",
             "value": "ChatGPT 登录需要本机 Codex 运行组件。安装后点“重新检测”；RepoPress 不会静默安装或修改系统。"
+          }
+        }
+      }
+    },
+    "ChatGPT 账户已变化或尚未完成绑定；请重新登录并重新同意内容发送。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The ChatGPT account changed or is not bound yet. Sign in again and consent to content sharing."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ChatGPT 账户已变化或尚未完成绑定；请重新登录并重新同意内容发送。"
+          }
+        }
+      }
+    },
+    "ChatGPT 账户绑定和重新同意由上方的 ChatGPT 账户区管理。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ChatGPT account binding and renewed consent are managed in the ChatGPT account section above."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ChatGPT 账户绑定和重新同意由上方的 ChatGPT 账户区管理。"
+          }
+        }
+      }
+    },
+    "ChatGPT 需要先在 AI 设置中完成当前账户登录和内容发送授权；完成后返回此处再发送。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sign in to the current ChatGPT account and authorize content sharing in AI Settings before sending here."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ChatGPT 需要先在 AI 设置中完成当前账户登录和内容发送授权；完成后返回此处再发送。"
           }
         }
       }
@@ -4561,22 +4593,6 @@
         }
       }
     },
-    "HTTP 200 OK": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "HTTP 200 OK"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "HTTP 200 OK"
-          }
-        }
-      }
-    },
     "Hexo 规范": {
       "localizations": {
         "en": {
@@ -4989,22 +5005,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Markdown…"
-          }
-        }
-      }
-    },
-    "Mermaid 本地渲染脚本不可用": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "The local Mermaid rendering script is unavailable"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Mermaid 本地渲染脚本不可用"
           }
         }
       }
@@ -6241,6 +6241,22 @@
         }
       }
     },
+    "display.ai-provider-preset.anthropic": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Anthropic (Claude)"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Anthropic（Claude）"
+          }
+        }
+      }
+    },
     "display.ai-provider-preset.codex-app-server": {
       "localizations": {
         "en": {
@@ -6289,6 +6305,22 @@
         }
       }
     },
+    "display.ai-provider-preset.gemini": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Google Gemini"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Google Gemini"
+          }
+        }
+      }
+    },
     "display.ai-provider-preset.local": {
       "localizations": {
         "en": {
@@ -6301,6 +6333,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "本地模型"
+          }
+        }
+      }
+    },
+    "display.ai-provider-preset.moonshot": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Moonshot (Kimi)"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Moonshot（Kimi）"
           }
         }
       }
@@ -6333,6 +6381,38 @@
           "stringUnit": {
             "state": "translated",
             "value": "OpenRouter"
+          }
+        }
+      }
+    },
+    "display.ai-provider-preset.siliconflow": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "SiliconFlow"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "SiliconFlow（硅基流动）"
+          }
+        }
+      }
+    },
+    "display.ai-provider-preset.zhipu": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zhipu GLM"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "智谱 GLM"
           }
         }
       }
@@ -15121,6 +15201,22 @@
         }
       }
     },
+    "仅对当前 AI 连接生效，不影响系统其它应用或主工作台网络。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Applies only to the current AI connection and does not affect other apps or the main workbench network."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "仅对当前 AI 连接生效，不影响系统其它应用或主工作台网络。"
+          }
+        }
+      }
+    },
     "仅对没有文字层的页面使用本机 Vision OCR；一次最多处理 200 页。": {
       "localizations": {
         "en": {
@@ -15421,6 +15517,38 @@
           "stringUnit": {
             "state": "translated",
             "value": "从备份导入…"
+          }
+        }
+      }
+    },
+    "从已拉取模型中选择 (%@)": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Choose from fetched models (%@)"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "从已拉取模型中选择 (%@)"
+          }
+        }
+      }
+    },
+    "从已拉取模型中选择 (%lld)": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Choose from fetched models (%lld)"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "从已拉取模型中选择 (%lld)"
           }
         }
       }
@@ -16033,6 +16161,22 @@
         }
       }
     },
+    "代理地址（如 http://127.0.0.1:7890 或 socks5://127.0.0.1:7890）": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Proxy address (for example, http://127.0.0.1:7890 or socks5://127.0.0.1:7890)"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "代理地址（如 http://127.0.0.1:7890 或 socks5://127.0.0.1:7890）"
+          }
+        }
+      }
+    },
     "代码围栏未闭合；点击定位到起始标记": {
       "localizations": {
         "en": {
@@ -16417,22 +16561,6 @@
         }
       }
     },
-    "使用五档风格或不同改写方式处理选区": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Process the selection using five writing styles or different rewrite operations"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "使用五档风格或不同改写方式处理选区"
-          }
-        }
-      }
-    },
     "使用填写的 Owner、Repo 和分支创建远端仓库": {
       "localizations": {
         "en": {
@@ -16769,22 +16897,6 @@
         }
       }
     },
-    "保存到 macOS 系统钥匙串。只有选择此项后，应用才会读取或修改 AI API Key 的钥匙串项目。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Save the key to macOS Keychain. The app reads or modifies the AI API key Keychain item only when this option is selected."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "保存到 macOS 系统钥匙串。只有选择此项后，应用才会读取或修改 AI API Key 的钥匙串项目。"
-          }
-        }
-      }
-    },
     "保存到%@": {
       "localizations": {
         "en": {
@@ -16861,6 +16973,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "保存后退出可保留源码更改；也可以返回编辑器继续处理。"
+          }
+        }
+      }
+    },
+    "保存在此 Mac 的应用支持目录，文件权限限制为仅当前用户可读写（0600）。内容以明文保存，请勿共享或上传该配置文件。应用不会访问 AI 钥匙串项目。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stored in this Mac's Application Support directory with owner-only read/write permissions (0600). The contents are plain text; do not share or upload this file. The app does not access AI Keychain items."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "保存在此 Mac 的应用支持目录，文件权限限制为仅当前用户可读写（0600）。内容以明文保存，请勿共享或上传该配置文件。应用不会访问 AI 钥匙串项目。"
           }
         }
       }
@@ -17617,18 +17745,274 @@
         }
       }
     },
-    "允许加载当前文章的远程图片": {
+    "Agent 权限范围 (Agent Permissions)": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Allow Loading Remote Images in the Current Article"
+            "value": "Agent Permission Scopes"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "允许加载当前文章的远程图片"
+            "value": "Agent 权限范围 (Agent Permissions)"
+          }
+        }
+      }
+    },
+    "读取本地内容": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Read Local Content"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "读取本地内容"
+          }
+        }
+      }
+    },
+    "新建文章草稿": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Create Article Drafts"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "新建文章草稿"
+          }
+        }
+      }
+    },
+    "修改文章内容": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Modify Article Content"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "修改文章内容"
+          }
+        }
+      }
+    },
+    "访问网络": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Access the Network"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "访问网络"
+          }
+        }
+      }
+    },
+    "写入代码仓库": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Write to Repositories"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "写入代码仓库"
+          }
+        }
+      }
+    },
+    "发布网站": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Publish the Website"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "发布网站"
+          }
+        }
+      }
+    },
+    "允许 Agent 读取当前工作区中与请求相关的本地文章和元数据。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Allow the Agent to read relevant local articles and metadata in the current workspace."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "允许 Agent 读取当前工作区中与请求相关的本地文章和元数据。"
+          }
+        }
+      }
+    },
+    "允许 Agent 创建新的空白文章草稿；正文写入仍受单独确认保护。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Allow the Agent to create blank article drafts; writing the body still requires separate confirmation."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "允许 Agent 创建新的空白文章草稿；正文写入仍受单独确认保护。"
+          }
+        }
+      }
+    },
+    "允许 Agent 提议或执行文章正文、摘要和元数据的修改。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Allow the Agent to propose or execute changes to article bodies, summaries, and metadata."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "允许 Agent 提议或执行文章正文、摘要和元数据的修改。"
+          }
+        }
+      }
+    },
+    "允许 Agent 使用已声明的网络工具访问外部资料或服务。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Allow the Agent to use declared network tools to access external sources or services."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "允许 Agent 使用已声明的网络工具访问外部资料或服务。"
+          }
+        }
+      }
+    },
+    "允许 Agent 写入本地或远端代码仓库；实际写入仍遵守确认流程。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Allow the Agent to write to local or remote repositories; actual writes still follow the confirmation flow."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "允许 Agent 写入本地或远端代码仓库；实际写入仍遵守确认流程。"
+          }
+        }
+      }
+    },
+    "允许 Agent 执行发布相关工具；发布操作仍需要最终确认。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Allow the Agent to run publishing tools; publishing still requires final confirmation."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "允许 Agent 执行发布相关工具；发布操作仍需要最终确认。"
+          }
+        }
+      }
+    },
+    "恢复默认 Agent 权限": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Restore Default Agent Permissions"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "恢复默认 Agent 权限"
+          }
+        }
+      }
+    },
+    "开启后，支持的连接可以调用已勾选权限内的应用内工具；新建空白文章可直接执行，内容修改、删除、仓库写入和发布仍需单独确认。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "When on, supported connections can call in-app tools covered by the selected scopes. Creating a blank article can run immediately; content changes, deletion, repository writes, and publishing still require separate confirmation."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "开启后，支持的连接可以调用已勾选权限内的应用内工具；新建空白文章可直接执行，内容修改、删除、仓库写入和发布仍需单独确认。"
+          }
+        }
+      }
+    },
+    "仅允许下方已勾选的 Agent 权限；关闭总开关后所有权限都会暂时禁用。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Only the Agent permissions selected below are allowed; turning off the master switch temporarily disables every scope."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "仅允许下方已勾选的 Agent 权限；关闭总开关后所有权限都会暂时禁用。"
+          }
+        }
+      }
+    },
+    "Agent 总开关已关闭。下方权限保留当前选择，但暂时全部禁用。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The Agent master switch is off. The selections below are preserved but temporarily disabled."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Agent 总开关已关闭。下方权限保留当前选择，但暂时全部禁用。"
           }
         }
       }
@@ -18881,22 +19265,6 @@
         }
       }
     },
-    "关闭 AI 行内工具": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Close Inline AI Tools"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "关闭 AI 行内工具"
-          }
-        }
-      }
-    },
     "关闭上下文面板": {
       "localizations": {
         "en": {
@@ -19005,22 +19373,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "关闭后可使用预览中的刷新按钮，或打开诊断/大纲时手动分析。"
-          }
-        }
-      }
-    },
-    "关闭已选文本操作": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Close selected text operations"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "关闭已选文本操作"
           }
         }
       }
@@ -21745,38 +22097,6 @@
         }
       }
     },
-    "刷新完成：成功 %lld、失败 %lld": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Refresh complete: %1$lld succeeded, %2$lld failed"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "刷新完成：成功 %1$lld、失败 %2$lld"
-          }
-        }
-      }
-    },
-    "刷新完成：成功 %lld、失败 %lld、暂缓 %lld": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Refresh complete: %1$lld succeeded, %2$lld failed, %3$lld deferred"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "刷新完成：成功 %lld、失败 %lld、暂缓 %lld"
-          }
-        }
-      }
-    },
     "刷新报告": {
       "localizations": {
         "en": {
@@ -21997,6 +22317,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "前往"
+          }
+        }
+      }
+    },
+    "前往 ChatGPT 账户设置": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open ChatGPT Account Settings"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "前往 ChatGPT 账户设置"
           }
         }
       }
@@ -24573,6 +24909,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "同意并测试"
+          }
+        }
+      }
+    },
+    "同意并测试 ChatGPT 连接": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Consent and Test ChatGPT Connection"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "同意并测试 ChatGPT 连接"
           }
         }
       }
@@ -28113,22 +28465,6 @@
         }
       }
     },
-    "定位到文章": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Go to Article"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "定位到文章"
-          }
-        }
-      }
-    },
     "定位到第 %@ 行的%@": {
       "localizations": {
         "en": {
@@ -29713,6 +30049,22 @@
         }
       }
     },
+    "尚未绑定 ChatGPT 账户；请在上方账户区登录并重新同意。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No ChatGPT account is bound yet. Sign in and consent again in the account section above."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "尚未绑定 ChatGPT 账户；请在上方账户区登录并重新同意。"
+          }
+        }
+      }
+    },
     "尚未记录部署检查结果。": {
       "localizations": {
         "en": {
@@ -30189,6 +30541,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "已保存 API Key"
+          }
+        }
+      }
+    },
+    "已保存 ChatGPT 目的地授权；当前账户是否可用请以上方实时账户状态为准。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ChatGPT destination consent is saved. Use the live account status above to determine whether the current account is authorized."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已保存 ChatGPT 目的地授权；当前账户是否可用请以上方实时账户状态为准。"
           }
         }
       }
@@ -31153,22 +31521,6 @@
         }
       }
     },
-    "已显示 Mermaid 源码文本。请重新安装包含本地脚本的应用后重试。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "The Mermaid source text is shown. Reinstall an app bundle that includes the local script, then try again."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "已显示 Mermaid 源码文本。请重新安装包含本地脚本的应用后重试。"
-          }
-        }
-      }
-    },
     "已显示全部 %lld 个变化，可展开逐文件审阅。": {
       "localizations": {
         "en": {
@@ -31745,22 +32097,6 @@
         }
       }
     },
-    "已选择正文文字，可高亮或添加批注": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Body text selected. You can highlight it or add a note."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "已选择正文文字，可高亮或添加批注"
-          }
-        }
-      }
-    },
     "已选择：%@": {
       "localizations": {
         "en": {
@@ -31773,22 +32109,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "已选择：%@"
-          }
-        }
-      }
-    },
-    "已选文本": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Selected Text"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "已选文本"
           }
         }
       }
@@ -32209,6 +32529,86 @@
         }
       }
     },
+    "应用前不会改动文章，可稍后决定。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The article will not change before you apply this. You can decide later."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "应用前不会改动文章，可稍后决定。"
+          }
+        }
+      }
+    },
+    "稍后决定": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Decide Later"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "稍后决定"
+          }
+        }
+      }
+    },
+    "拒绝修改": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reject Change"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "拒绝修改"
+          }
+        }
+      }
+    },
+    "已拒绝": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rejected"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已拒绝"
+          }
+        }
+      }
+    },
+    "用户已拒绝此工具调用，未执行。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "You rejected this tool call; it was not executed."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "用户已拒绝此工具调用，未执行。"
+          }
+        }
+      }
+    },
     "应用前会再次校验本地草稿；如已变化将停止改写，也不会自动写入仓库。": {
       "localizations": {
         "en": {
@@ -32481,22 +32881,6 @@
         }
       }
     },
-    "建议已生成，确认后替换选中文本": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Suggestion ready. Confirm to replace the selected text."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "建议已生成，确认后替换选中文本"
-          }
-        }
-      }
-    },
     "开启": {
       "localizations": {
         "en": {
@@ -32529,18 +32913,18 @@
         }
       }
     },
-    "开启后，支持的连接可以调用只读应用内工具；内容修改、发布等高风险操作仍需单独确认。": {
+    "开启后，支持的连接可以调用应用内工具；新建空白文章可直接执行，内容修改、删除、仓库写入和发布仍需单独确认。": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "When on, supported connections can call read-only in-app tools. Content changes, publishing, and other high-risk actions still require separate confirmation."
+            "value": "When on, supported connections can call in-app tools. Creating a blank article can run immediately; content changes, deletion, repository writes, and publishing still require separate confirmation."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "开启后，支持的连接可以调用只读应用内工具；内容修改、发布等高风险操作仍需单独确认。"
+            "value": "开启后，支持的连接可以调用应用内工具；新建空白文章可直接执行，内容修改、删除、仓库写入和发布仍需单独确认。"
           }
         }
       }
@@ -33777,22 +34161,6 @@
         }
       }
     },
-    "当前检查通过。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "The current check passed."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "当前检查通过。"
-          }
-        }
-      }
-    },
     "当前模型未声明可选推理等级": {
       "localizations": {
         "en": {
@@ -34977,18 +35345,18 @@
         }
       }
     },
-    "快速隐藏 / 防偷窥保护": {
+    "快速隐藏 / 临时遮挡": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Quick Hide / Anti-Peeping Protection"
+            "value": "Quick Hide / Temporary Masking"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "快速隐藏 / 防偷窥保护"
+            "value": "快速隐藏 / 临时遮挡"
           }
         }
       }
@@ -37745,22 +38113,6 @@
         }
       }
     },
-    "技术": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Technical"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "技术"
-          }
-        }
-      }
-    },
     "技术支持": {
       "localizations": {
         "en": {
@@ -37917,6 +38269,38 @@
           "stringUnit": {
             "state": "translated",
             "value": "报告可能已过期"
+          }
+        }
+      }
+    },
+    "拉取可用模型": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fetch Available Models"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "拉取可用模型"
+          }
+        }
+      }
+    },
+    "拉取模型列表失败：%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Failed to fetch the model list: %@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "拉取模型列表失败：%@"
           }
         }
       }
@@ -38385,18 +38769,18 @@
         }
       }
     },
-    "控制快速隐藏、私密内容遮挡和安全状态。": {
+    "控制快速隐藏、私密内容遮挡和快捷键。": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Control Quick Hide, private-content masking, and security status."
+            "value": "Control Quick Hide, private-content masking, and its keyboard shortcut."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "控制快速隐藏、私密内容遮挡和安全状态。"
+            "value": "控制快速隐藏、私密内容遮挡和快捷键。"
           }
         }
       }
@@ -38413,6 +38797,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "推理等级"
+          }
+        }
+      }
+    },
+    "推荐保存到 macOS 系统钥匙串。只有选择此项后，应用才会读取或修改 AI API Key 的钥匙串项目。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Saving to the macOS Keychain is recommended. The app reads or modifies the AI API Key Keychain item only when this option is selected."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "推荐保存到 macOS 系统钥匙串。只有选择此项后，应用才会读取或修改 AI API Key 的钥匙串项目。"
           }
         }
       }
@@ -39905,22 +40305,6 @@
         }
       }
     },
-    "改变选中文本的语气": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Change the tone of the selected text"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "改变选中文本的语气"
-          }
-        }
-      }
-    },
     "改用 ChatGPT 套餐登录": {
       "localizations": {
         "en": {
@@ -39965,22 +40349,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "放大资料阅读区域后可显示检查器"
-          }
-        }
-      }
-    },
-    "放弃": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Discard"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "放弃"
           }
         }
       }
@@ -43921,22 +44289,6 @@
         }
       }
     },
-    "服务商：%@%@": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Provider: %@%@"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "服务商：%@%@"
-          }
-        }
-      }
-    },
     "服务已响应": {
       "localizations": {
         "en": {
@@ -44769,6 +45121,22 @@
         }
       }
     },
+    "未返回任何可用模型。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No available models were returned."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未返回任何可用模型。"
+          }
+        }
+      }
+    },
     "未选择": {
       "localizations": {
         "en": {
@@ -45345,18 +45713,18 @@
         }
       }
     },
-    "本地配置文件（默认）": {
+    "本地配置文件（明文）": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Local Configuration File (Default)"
+            "value": "Local Configuration File (Plain Text)"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "本地配置文件（默认）"
+            "value": "本地配置文件（明文）"
           }
         }
       }
@@ -46529,22 +46897,6 @@
         }
       }
     },
-    "标注与标签": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Annotations and Tags"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "标注与标签"
-          }
-        }
-      }
-    },
     "标注当前命中…": {
       "localizations": {
         "en": {
@@ -47313,22 +47665,6 @@
         }
       }
     },
-    "检查结果": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Check Results"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "检查结果"
-          }
-        }
-      }
-    },
     "检查这台 Mac 上尚未发布的文章、图片和配置修改。": {
       "localizations": {
         "en": {
@@ -47597,6 +47933,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "模型列表刷新失败：%@"
+          }
+        }
+      }
+    },
+    "模型发现失败": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Model Discovery Failed"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "模型发现失败"
           }
         }
       }
@@ -48113,6 +48465,22 @@
         }
       }
     },
+    "正在加载": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Loading"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在加载"
+          }
+        }
+      }
+    },
     "正在加载账户可用模型…": {
       "localizations": {
         "en": {
@@ -48509,6 +48877,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "正在扫描资源和 Markdown 引用…"
+          }
+        }
+      }
+    },
+    "正在拉取可用模型": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fetching Available Models"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在拉取可用模型"
           }
         }
       }
@@ -48929,22 +49313,6 @@
         }
       }
     },
-    "正在生成 AI 行内建议": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Generating Inline AI Suggestion"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "正在生成 AI 行内建议"
-          }
-        }
-      }
-    },
     "正在生成文章预览": {
       "localizations": {
         "en": {
@@ -48973,22 +49341,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "正在生成站点…"
-          }
-        }
-      }
-    },
-    "正在生成行内建议…": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Generating Inline Suggestion…"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "正在生成行内建议…"
           }
         }
       }
@@ -49293,22 +49645,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "正常"
-          }
-        }
-      }
-    },
-    "正式": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Formal"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "正式"
           }
         }
       }
@@ -49645,6 +49981,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "正文较长，当前详情只显示前 100,000 个字符；全文已完整保存并可检索。"
+          }
+        }
+      }
+    },
+    "此保存模式是所有 AI API 连接共用的全局偏好。切换位置不会静默读取、复制或删除其他位置的旧凭据；请在目标位置重新保存。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This storage mode is a global preference shared by all AI API connections. Switching locations never silently reads, copies, or deletes credentials in another location; save the key again at the new location."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "此保存模式是所有 AI API 连接共用的全局偏好。切换位置不会静默读取、复制或删除其他位置的旧凭据；请在目标位置重新保存。"
           }
         }
       }
@@ -50621,6 +50973,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "测试 AI 连接"
+          }
+        }
+      }
+    },
+    "测试 ChatGPT 连接": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Test ChatGPT Connection"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "测试 ChatGPT 连接"
           }
         }
       }
@@ -55185,18 +55553,18 @@
         }
       }
     },
-    "系统钥匙串": {
+    "系统钥匙串（推荐，默认）": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "System Keychain"
+            "value": "System Keychain (Recommended, Default)"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "系统钥匙串"
+            "value": "系统钥匙串（推荐，默认）"
           }
         }
       }
@@ -55277,22 +55645,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "繁体中文"
-          }
-        }
-      }
-    },
-    "纠错": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Fix Grammar"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "纠错"
           }
         }
       }
@@ -56253,6 +56605,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "网站更新"
+          }
+        }
+      }
+    },
+    "网络代理 (Proxy)": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Network Proxy"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "网络代理 (Proxy)"
           }
         }
       }
@@ -57601,22 +57969,6 @@
         }
       }
     },
-    "警告（%lld）": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Warnings (%lld)"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "警告（%lld）"
-          }
-        }
-      }
-    },
     "订阅": {
       "localizations": {
         "en": {
@@ -58289,22 +58641,6 @@
         }
       }
     },
-    "语气": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Tone"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "语气"
-          }
-        }
-      }
-    },
     "语言": {
       "localizations": {
         "en": {
@@ -58685,6 +59021,38 @@
           "stringUnit": {
             "state": "translated",
             "value": "请先将光标移到 Markdown 正文。"
+          }
+        }
+      }
+    },
+    "请先应用 API 基础地址，再拉取模型。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apply the API base address before fetching models."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请先应用 API 基础地址，再拉取模型。"
+          }
+        }
+      }
+    },
+    "请先应用地址": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apply the Address First"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请先应用地址"
           }
         }
       }
@@ -60369,22 +60737,6 @@
         }
       }
     },
-    "轻松": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Casual"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "轻松"
-          }
-        }
-      }
-    },
     "载入期间源码发生了新的编辑；为避免丢失内容，本次打开已取消。": {
       "localizations": {
         "en": {
@@ -61709,22 +62061,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "远程 AI 总闸已关闭；不会发送任何远程请求。逐服务授权会保留，重新开启后恢复；本地回环 AI 不受影响。"
-          }
-        }
-      }
-    },
-    "远程 AI 总闸已关闭；当前不会向此服务发送内容。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "The Remote AI master switch is off; no content is currently sent to this service."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "远程 AI 总闸已关闭；当前不会向此服务发送内容。"
           }
         }
       }
@@ -64113,6 +64449,22 @@
         }
       }
     },
+    "配置 AI 独立网络代理": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Configure an AI-specific Network Proxy"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "配置 AI 独立网络代理"
+          }
+        }
+      }
+    },
     "配置 Hexo / Hugo / Astro 静态建站框架目录": {
       "localizations": {
         "en": {
@@ -64157,22 +64509,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "配置状态"
-          }
-        }
-      }
-    },
-    "采用": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Apply"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "采用"
           }
         }
       }
@@ -64381,6 +64717,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "重新加载模型"
+          }
+        }
+      }
+    },
+    "重新同意并启用此 AI 服务": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Consent Again and Enable This AI Service"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "重新同意并启用此 AI 服务"
           }
         }
       }
@@ -66641,22 +66993,6 @@
         }
       }
     },
-    "默认保存在此 Mac 的应用支持目录，文件权限限制为仅当前用户可读写（0600）。内容是明文，请勿共享该配置文件。应用不会访问 AI 钥匙串项目。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "By default, the key is stored in this Mac's Application Support directory with owner-only read/write permissions (0600). It is plain text, so do not share this configuration file. The app does not access the AI Keychain item."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "默认保存在此 Mac 的应用支持目录，文件权限限制为仅当前用户可读写（0600）。内容是明文，请勿共享该配置文件。应用不会访问 AI 钥匙串项目。"
-          }
-        }
-      }
-    },
     "默认入口只保留 8 个高频能力；其他动作、快捷提示和工作流可在这里搜索。": {
       "localizations": {
         "en": {
@@ -66893,6 +67229,262 @@
           "stringUnit": {
             "state": "translated",
             "value": "🎉 已达成目标字数！（超出 %lld 字）"
+          }
+        }
+      }
+    },
+    "Agent 工具记录": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Agent Tool Runs"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Agent 工具记录"
+          }
+        }
+      }
+    },
+    "仅问答": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Text Only"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "仅问答"
+          }
+        }
+      }
+    },
+    "对话能力": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conversation Capabilities"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "对话能力"
+          }
+        }
+      }
+    },
+    "尚未执行，等待你确认。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Not run yet; awaiting your confirmation."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "尚未执行，等待你确认。"
+          }
+        }
+      }
+    },
+    "工具已完成。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tool completed."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "工具已完成。"
+          }
+        }
+      }
+    },
+    "工具未能完成。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tool could not complete."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "工具未能完成。"
+          }
+        }
+      }
+    },
+    "工具调用已取消。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The tool call was cancelled."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "工具调用已取消。"
+          }
+        }
+      }
+    },
+    "从这里新建对话": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Start a New Conversation Here"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "从这里新建对话"
+          }
+        }
+      }
+    },
+    "先结束当前续跑并保留审计记录，再从此消息创建新对话。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "End this continuation while preserving its audit record, then start a new conversation from this message."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "先结束当前续跑并保留审计记录，再从此消息创建新对话。"
+          }
+        }
+      }
+    },
+    "已结束，记录保留": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ended, Record Preserved"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已结束，记录保留"
+          }
+        }
+      }
+    },
+    "当前续跑已结束，原审计记录仍然保留。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This continuation has ended, and its original audit record is still preserved."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "当前续跑已结束，原审计记录仍然保留。"
+          }
+        }
+      }
+    },
+    "结束续跑并保留记录": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "End Continuation and Preserve Record"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "结束续跑并保留记录"
+          }
+        }
+      }
+    },
+    "结束这次续跑并保留当前审计记录；不会重试。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "End this continuation and preserve its current audit record. It will not be retried."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "结束这次续跑并保留当前审计记录；不会重试。"
+          }
+        }
+      }
+    },
+    "续跑结果不确定，系统没有自动重试": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The continuation result is uncertain. The system did not retry it automatically."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "续跑结果不确定，系统没有自动重试"
+          }
+        }
+      }
+    },
+    "请结束续跑并保留记录，或从这里新建对话。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "End the continuation and preserve its record, or start a new conversation here."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请结束续跑并保留记录，或从这里新建对话。"
+          }
+        }
+      }
+    },
+    "跟随连接": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Follow Connection"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "跟随连接"
           }
         }
       }

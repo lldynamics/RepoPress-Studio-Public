@@ -80,8 +80,8 @@ final class ImageMetadataEditingServiceTests: XCTestCase {
 
   func testBuildsEscapedMarkdownReferenceAndRejectsMissingAttachment() {
     XCTAssertEqual(
-      service.markdownReference(altText: "Chart [Q3]\nwide", imagePath: "/images/chart.png"),
-      "![Chart \\[Q3\\] wide](/images/chart.png)"
+      service.markdownReference(altText: #"Chart \[Q3]"# + "\nwide", imagePath: "/images/chart.png"),
+      #"![Chart \\\[Q3\] wide](/images/chart.png)"#
     )
 
     let draft = ArticleDraft(siteProfileID: UUID(), title: "Missing")
@@ -93,6 +93,44 @@ final class ImageMetadataEditingServiceTests: XCTestCase {
         caption: "Caption",
         isCover: false
       )
+    )
+  }
+
+  func testUpdatesAllDuplicateReferencesAndPreservesTheirTitlesWhileEscapingAlt() throws {
+    let attachment = DraftAttachment(
+      originalFilename: "diagram.png",
+      relativePublishPath: "/images/diagram.png",
+      repositoryPath: "static/images/diagram.png"
+    )
+    let draft = ArticleDraft(
+      siteProfileID: UUID(),
+      title: "Escaped image alt",
+      bodyMarkdown: """
+      ![](/images/diagram.png "first")
+      ![old](/images/diagram.png)
+      ![](/images/other.png "unrelated")
+      """,
+      attachments: [attachment]
+    )
+
+    let result = try XCTUnwrap(
+      service.updating(
+        draft: draft,
+        attachmentID: attachment.id,
+        altText: #"  Folder \images [wide]  "#,
+        caption: "",
+        isCover: false
+      )
+    )
+
+    XCTAssertEqual(result.updatedMarkdownReferenceCount, 2)
+    XCTAssertEqual(
+      result.draft.bodyMarkdown,
+      #"""
+      ![Folder \\images \[wide\]](/images/diagram.png "first")
+      ![Folder \\images \[wide\]](/images/diagram.png)
+      ![](/images/other.png "unrelated")
+      """#
     )
   }
 }

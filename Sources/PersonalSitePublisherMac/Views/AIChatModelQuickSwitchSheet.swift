@@ -10,6 +10,14 @@ struct AIChatConnectionStatusCapsule: View {
   @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
   @State private var pulse = false
 
+  private var isGeneralMode: Bool {
+    ai.chatContextMode == .general || draft == nil
+  }
+
+  private var displayedGeneralConversation: AIConversation? {
+    ai.activeGeneralChatConversation
+  }
+
   var body: some View {
     Button(action: open) {
       HStack(spacing: 6) {
@@ -34,7 +42,7 @@ struct AIChatConnectionStatusCapsule: View {
       .overlay(Capsule().stroke(statusColor.opacity(0.20), lineWidth: 1))
     }
     .buttonStyle(.plain)
-    .disabled(draft == nil)
+    .disabled(draft == nil && ai.chatContextMode != .general)
     .help(statusDetail)
     .accessibilityLabel(String(localized: "AI 连接与模型"))
     .accessibilityValue(statusDetail)
@@ -48,11 +56,25 @@ struct AIChatConnectionStatusCapsule: View {
   }
 
   private var config: AIProviderConfig {
+    if isGeneralMode {
+      return ai.activeGeneralChatProviderConfig ?? chatState.activeChatConnectionProfile.config
+    }
     guard let draft else { return AIProviderConfig() }
     return chatState.chatProviderConfig(for: draft)
   }
 
   private var model: String {
+    if isGeneralMode {
+      if let selected = displayedGeneralConversation?.selectedModel.nilIfEmpty {
+        return selected
+      }
+      let grade = displayedGeneralConversation?.modelGrade ?? chatState.chatModelGrade
+      return AIChatModelSelectionPresentationService.presentation(
+        grade: grade,
+        selectedModel: "",
+        config: config
+      ).activeModel.nilIfEmpty ?? String(localized: "未选择")
+    }
     guard draft != nil else { return String(localized: "未选择") }
     return AIChatModelSelectionPresentationService.presentation(
       grade: chatState.chatModelGrade,
@@ -65,16 +87,16 @@ struct AIChatConnectionStatusCapsule: View {
     AIChatConnectionStatusPresentation.summary(
       for: config,
       activeModel: model,
-      hasDraft: draft != nil
+      hasDraft: draft != nil || isGeneralMode
     )
   }
 
   private var isReady: Bool {
     AIChatConnectionStatusPresentation.readiness(
       for: config,
-      activeModel: draft == nil ? nil : model,
+      activeModel: (draft == nil && !isGeneralMode) ? nil : model,
       hasToken: chatState.tokenAvailability.hasToken,
-      hasDraft: draft != nil
+      hasDraft: draft != nil || isGeneralMode
     ).isReady
   }
 
@@ -85,9 +107,9 @@ struct AIChatConnectionStatusCapsule: View {
   private var statusDetail: String {
     AIChatConnectionStatusPresentation.readiness(
       for: config,
-      activeModel: draft == nil ? nil : model,
+      activeModel: (draft == nil && !isGeneralMode) ? nil : model,
       hasToken: chatState.tokenAvailability.hasToken,
-      hasDraft: draft != nil
+      hasDraft: draft != nil || isGeneralMode
     ).detail
   }
 }
@@ -150,7 +172,7 @@ struct AIChatModelQuickSwitchSheet: View {
             )
           }
         }
-        .disabled(isTestingConnection || draft == nil)
+        .disabled(isTestingConnection)
 
         Spacer()
 
@@ -188,25 +210,48 @@ struct AIChatModelQuickSwitchSheet: View {
     }
   }
 
+  var isGeneralMode: Bool {
+    ai.chatContextMode == .general || draft == nil
+  }
+
+  var displayedGeneralConversation: AIConversation? {
+    ai.activeGeneralChatConversation
+  }
+
   var currentConfig: AIProviderConfig {
+    if isGeneralMode {
+      return ai.activeGeneralChatProviderConfig ?? chatState.activeChatConnectionProfile.config
+    }
     guard let draft else { return chatState.activeChatConnectionProfile.config }
     return chatState.chatProviderConfig(for: draft)
   }
 
+  var currentGrade: AIChatModelGrade {
+    if isGeneralMode {
+      return displayedGeneralConversation?.modelGrade ?? chatState.chatModelGrade
+    }
+    return chatState.chatModelGrade
+  }
+
+  var currentSelectedModel: String {
+    if isGeneralMode {
+      return displayedGeneralConversation?.selectedModel ?? chatState.chatSelectedModel
+    }
+    return chatState.chatSelectedModel
+  }
+
   private var currentSelection: AIChatModelSelectionPresentation? {
-    guard draft != nil else { return nil }
     return AIChatModelSelectionPresentationService.presentation(
-      grade: chatState.chatModelGrade,
-      selectedModel: chatState.chatSelectedModel,
+      grade: currentGrade,
+      selectedModel: currentSelectedModel,
       config: currentConfig
     )
   }
 
   private var modelCandidates: [AIChatInspectorModelGradeCandidate] {
-    guard draft != nil else { return [] }
     return AIChatInspectorHeaderPresentation.modelGradeCandidates(
       for: currentConfig,
-      currentModel: chatState.chatSelectedModel
+      currentModel: currentSelectedModel
     )
   }
 
@@ -225,7 +270,7 @@ struct AIChatModelQuickSwitchSheet: View {
       for: currentConfig,
       activeModel: currentSelection?.activeModel,
       hasToken: chatState.tokenAvailability.hasToken,
-      hasDraft: draft != nil
+      hasDraft: draft != nil || isGeneralMode
     )
   }
 
@@ -271,6 +316,13 @@ struct AIChatModelQuickSwitchSheet: View {
     return String(localized: "Endpoint：") + currentConfig.normalizedBaseURL
   }
 
+  private var activeConnectionProfileID: UUID {
+    if isGeneralMode {
+      return displayedGeneralConversation?.connectionProfileID ?? chatState.activeChatConnectionProfile.id
+    }
+    return chatState.activeChatConnectionProfile.id
+  }
+
   private var connectionProfilesSection: some View {
     VStack(alignment: .leading, spacing: 8) {
       Text(String(localized: "连接配置档案"))
@@ -284,17 +336,20 @@ struct AIChatModelQuickSwitchSheet: View {
       } else {
         ForEach(chatState.chatConnectionProfiles) { profile in
           Button {
+            if isGeneralMode {
+              ai.setGeneralChatConnectionProfile(profile.id)
+            }
             ai.selectChatConnectionProfile(profile.id)
             connectionReport = nil
             synchronizeCustomModelInput()
           } label: {
             HStack(spacing: 9) {
               Image(
-                systemName: chatState.activeChatConnectionProfile.id == profile.id
+                systemName: activeConnectionProfileID == profile.id
                   ? "checkmark.circle.fill" : "circle"
               )
               .foregroundStyle(
-                chatState.activeChatConnectionProfile.id == profile.id
+                activeConnectionProfileID == profile.id
                   ? WorkbenchTheme.primary : Color.secondary
               )
               VStack(alignment: .leading, spacing: 2) {
@@ -312,7 +367,7 @@ struct AIChatModelQuickSwitchSheet: View {
           }
           .buttonStyle(.plain)
           .accessibilityAddTraits(
-            chatState.activeChatConnectionProfile.id == profile.id ? .isSelected : []
+            activeConnectionProfileID == profile.id ? .isSelected : []
           )
         }
       }
@@ -337,10 +392,14 @@ struct AIChatModelQuickSwitchSheet: View {
 
       if !currentConfig.usesCodexAppServer {
         Button {
+          if isGeneralMode {
+            ai.setGeneralChatModelGrade(.standard)
+            ai.setGeneralChatSelectedModel("")
+          }
           ai.resetChatModelToProfileDefault()
           synchronizeCustomModelInput()
         } label: {
-          Label(String(localized: "恢复站点默认模型"), systemImage: "arrow.counterclockwise")
+          Label(String(localized: "恢复默认模型"), systemImage: "arrow.counterclockwise")
         }
         .buttonStyle(.borderless)
         .controlSize(.small)
@@ -353,15 +412,19 @@ struct AIChatModelQuickSwitchSheet: View {
     Group {
       ForEach(modelCandidates) { candidate in
         Button {
+          if isGeneralMode {
+            ai.setGeneralChatModelGrade(candidate.grade)
+            ai.setGeneralChatSelectedModel("")
+          }
           ai.setChatModelGrade(candidate.grade)
         } label: {
           HStack(spacing: 9) {
             Image(
-              systemName: chatState.chatModelGrade == candidate.grade
+              systemName: isGradeCandidateSelected(candidate)
                 ? "checkmark.circle.fill" : "circle"
             )
             .foregroundStyle(
-              chatState.chatModelGrade == candidate.grade
+              isGradeCandidateSelected(candidate)
                 ? WorkbenchTheme.primary : Color.secondary
             )
             VStack(alignment: .leading, spacing: 2) {
@@ -382,15 +445,18 @@ struct AIChatModelQuickSwitchSheet: View {
 
       Button {
         synchronizeCustomModelInput()
+        if isGeneralMode {
+          ai.setGeneralChatModelGrade(.custom)
+        }
         ai.setChatModelGrade(.custom)
       } label: {
         HStack(spacing: 9) {
           Image(
-            systemName: chatState.chatModelGrade == .custom
+            systemName: currentGrade == .custom
               ? "checkmark.circle.fill" : "circle"
           )
           .foregroundStyle(
-            chatState.chatModelGrade == .custom
+            currentGrade == .custom
               ? WorkbenchTheme.primary : Color.secondary
           )
           Text(String(localized: "自定义模型"))
@@ -414,11 +480,15 @@ struct AIChatModelQuickSwitchSheet: View {
     }
   }
 
+  private func isGradeCandidateSelected(_ candidate: AIChatInspectorModelGradeCandidate) -> Bool {
+    currentGrade == candidate.grade && (currentSelectedModel.isEmpty || candidate.grade == .custom)
+  }
+
   // Shared with the Codex extension so selecting the account default can keep
   // the existing custom-model field in sync without duplicating state logic.
   func synchronizeCustomModelInput() {
     customModelInput =
-      chatState.chatSelectedModel.nilIfEmpty
+      currentSelectedModel.nilIfEmpty
       ?? currentSelection?.activeModel
       ?? ""
   }
@@ -427,6 +497,9 @@ struct AIChatModelQuickSwitchSheet: View {
     let model = customModelInput.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !model.isEmpty else { return }
     customModelInput = model
+    if isGeneralMode {
+      ai.setGeneralChatSelectedModel(model)
+    }
     ai.setChatCustomModel(model)
   }
 

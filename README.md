@@ -32,7 +32,7 @@ RepoPress Studio 是 RepoPress 的桌面版本：用 Markdown 管理内容，以
 - 质量脚本：Python 3 和系统开发工具。
 - 浏览器扩展测试：Node.js 与 npm；日常 Swift 开发不依赖 Node。
 
-`PublishingWorkbenchCore` 已使用 Swift 6 语言模式；Mac App 和测试 target 当前仍使用 Swift 5 语言模式，并在严格并发门禁下逐步迁移。
+`PublishingWorkbenchCore`、Mac App 和测试 target 均已使用 Swift 6 语言模式。
 
 ## 快速开始
 

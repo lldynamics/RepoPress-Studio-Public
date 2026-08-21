@@ -59,7 +59,7 @@ for (const locale of ["zh_CN", "en"]) {
   localeMessageKeys.set(locale, Object.keys(messages).sort());
   for (const requiredKey of [
     "actionTitle", "extensionDescription", "extensionName", "popupTitle",
-    "nativeConnectionHint", "folderSearchLabel", "folderSearchResultCount",
+    "folderSearchLabel", "folderSearchResultCount",
     "folderSearchEmpty", "queueTitle"
   ]) {
     assert.ok(messages[requiredKey], `${locale}.${requiredKey} is missing`);

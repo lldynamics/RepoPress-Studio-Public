@@ -90,6 +90,10 @@ grep -Fq 'SPARKLE_FRAMEWORK_BUNDLE="$APP_FRAMEWORKS/Sparkle.framework"' \
   || fail "build_and_run.sh does not stage Sparkle.framework"
 grep -Fq 'SUEnableInstallerLauncherService' "$ROOT_DIR/script/build_and_run.sh" \
   || fail "Direct Release Info.plist omits Sparkle installer launcher support"
+grep -Fq 'build_arguments=(--package-only --release)' "$ROOT_DIR/script/check_ui_runtime.sh" \
+  || fail "packaged UI artifact gate does not build a Release app bundle"
+grep -Fq 'packaged app must use the Release configuration' "$ROOT_DIR/script/check_ui_runtime.sh" \
+  || fail "packaged UI artifact gate does not verify its embedded build configuration"
 
 chrome_checks="$(bash "$ROOT_DIR/script/check_release_gate.sh" --profile chrome --list)"
 grep -q $'^chrome-extension-store-readiness\tstrict\t' <<<"$chrome_checks" \

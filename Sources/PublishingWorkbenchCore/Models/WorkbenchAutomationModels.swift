@@ -45,6 +45,18 @@ public enum WorkbenchAutomationCommandID: String, Codable, CaseIterable, Identif
   case deleteDraft
   case writeLocalRepository
   case publishOnline
+  case draftRead
+  case searchDrafts
+  case knowledgeSearch
+  case knowledgeRead
+  case auditContent
+  case applyDiff
+  case generateFrontmatter
+  case webFetch
+  case webSearch
+  case siteCheckLinks
+  case siteOptimizeImages
+  case siteDeployStatus
 
   public var id: String { rawValue }
 }
@@ -58,6 +70,13 @@ public struct WorkbenchAutomationArguments: Codable, Hashable, Sendable {
   public var value: String?
   public var values: [String]
   public var content: String?
+  public var mode: String?
+  public var paragraphIndices: [Int]
+  public var url: String?
+  public var query: String?
+  public var documentID: UUID?
+  public var originalText: String?
+  public var replacementText: String?
 
   public init(
     section: WorkspaceSection? = nil,
@@ -67,7 +86,14 @@ public struct WorkbenchAutomationArguments: Codable, Hashable, Sendable {
     metadataField: AIPublishingMetadataField? = nil,
     value: String? = nil,
     values: [String] = [],
-    content: String? = nil
+    content: String? = nil,
+    mode: String? = nil,
+    paragraphIndices: [Int] = [],
+    url: String? = nil,
+    query: String? = nil,
+    documentID: UUID? = nil,
+    originalText: String? = nil,
+    replacementText: String? = nil
   ) {
     self.section = section
     self.draftID = draftID
@@ -77,6 +103,73 @@ public struct WorkbenchAutomationArguments: Codable, Hashable, Sendable {
     self.value = value
     self.values = values
     self.content = content
+    self.mode = mode
+    self.paragraphIndices = paragraphIndices
+    self.url = url
+    self.query = query
+    self.documentID = documentID
+    self.originalText = originalText
+    self.replacementText = replacementText
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case section
+    case draftID
+    case expectedDraftUpdatedAt
+    case editorField
+    case metadataField
+    case value
+    case values
+    case content
+    case mode
+    case paragraphIndices
+    case url
+    case query
+    case documentID
+    case originalText
+    case replacementText
+  }
+
+  public init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    section = try container.decodeIfPresent(WorkspaceSection.self, forKey: .section)
+    draftID = try container.decodeIfPresent(UUID.self, forKey: .draftID)
+    expectedDraftUpdatedAt = try container.decodeIfPresent(Date.self, forKey: .expectedDraftUpdatedAt)
+    editorField = try container.decodeIfPresent(String.self, forKey: .editorField)
+    metadataField = try container.decodeIfPresent(AIPublishingMetadataField.self, forKey: .metadataField)
+    value = try container.decodeIfPresent(String.self, forKey: .value)
+    values = try container.decodeIfPresent([String].self, forKey: .values) ?? []
+    content = try container.decodeIfPresent(String.self, forKey: .content)
+    mode = try container.decodeIfPresent(String.self, forKey: .mode)
+    paragraphIndices = try container.decodeIfPresent([Int].self, forKey: .paragraphIndices) ?? []
+    url = try container.decodeIfPresent(String.self, forKey: .url)
+    query = try container.decodeIfPresent(String.self, forKey: .query)
+    documentID = try container.decodeIfPresent(UUID.self, forKey: .documentID)
+    originalText = try container.decodeIfPresent(String.self, forKey: .originalText)
+    replacementText = try container.decodeIfPresent(String.self, forKey: .replacementText)
+  }
+
+  public func encode(to encoder: Encoder) throws {
+    var container = encoder.container(keyedBy: CodingKeys.self)
+    try container.encodeIfPresent(section, forKey: .section)
+    try container.encodeIfPresent(draftID, forKey: .draftID)
+    try container.encodeIfPresent(expectedDraftUpdatedAt, forKey: .expectedDraftUpdatedAt)
+    try container.encodeIfPresent(editorField, forKey: .editorField)
+    try container.encodeIfPresent(metadataField, forKey: .metadataField)
+    try container.encodeIfPresent(value, forKey: .value)
+    if !values.isEmpty {
+      try container.encode(values, forKey: .values)
+    }
+    try container.encodeIfPresent(content, forKey: .content)
+    try container.encodeIfPresent(mode, forKey: .mode)
+    if !paragraphIndices.isEmpty {
+      try container.encode(paragraphIndices, forKey: .paragraphIndices)
+    }
+    try container.encodeIfPresent(url, forKey: .url)
+    try container.encodeIfPresent(query, forKey: .query)
+    try container.encodeIfPresent(documentID, forKey: .documentID)
+    try container.encodeIfPresent(originalText, forKey: .originalText)
+    try container.encodeIfPresent(replacementText, forKey: .replacementText)
   }
 }
 
@@ -243,6 +336,12 @@ public struct WorkbenchAutomationCommandDescriptor: Identifiable, Hashable, Send
   public var systemImage: String
   public var risk: WorkbenchAutomationRisk
   public var requiresDraft: Bool
+  /// Whether an agent loop may execute this command without an explicit
+  /// confirmation step. This is intentionally command-level rather than
+  /// derived from the broad risk category: a reversible command may still
+  /// need review, while a narrowly scoped command such as createDraft can be
+  /// explicitly allowed.
+  public var allowsAgentAutomaticExecution: Bool
 
   public init(
     id: WorkbenchAutomationCommandID,
@@ -250,7 +349,8 @@ public struct WorkbenchAutomationCommandDescriptor: Identifiable, Hashable, Send
     detail: String,
     systemImage: String,
     risk: WorkbenchAutomationRisk,
-    requiresDraft: Bool = false
+    requiresDraft: Bool = false,
+    allowsAgentAutomaticExecution: Bool? = nil
   ) {
     self.id = id
     self.title = title
@@ -258,6 +358,8 @@ public struct WorkbenchAutomationCommandDescriptor: Identifiable, Hashable, Send
     self.systemImage = systemImage
     self.risk = risk
     self.requiresDraft = requiresDraft
+    self.allowsAgentAutomaticExecution =
+      allowsAgentAutomaticExecution ?? (risk == .readOnly)
   }
 }
 
@@ -268,6 +370,9 @@ public struct WorkbenchAutomationStepRecord: Identifiable, Codable, Hashable, Se
   public var message: String
   public var targetDraftID: UUID?
   public var rollbackVersionID: UUID?
+  /// Exact post-mutation state used as a compare-and-swap rollback guard.
+  public var postMutationDraftFingerprint: String?
+  public var postMutationDraftUpdatedAt: Date?
   public var completedAt: Date
 
   public init(
@@ -277,6 +382,8 @@ public struct WorkbenchAutomationStepRecord: Identifiable, Codable, Hashable, Se
     message: String,
     targetDraftID: UUID? = nil,
     rollbackVersionID: UUID? = nil,
+    postMutationDraftFingerprint: String? = nil,
+    postMutationDraftUpdatedAt: Date? = nil,
     completedAt: Date = Date()
   ) {
     self.id = id
@@ -285,6 +392,8 @@ public struct WorkbenchAutomationStepRecord: Identifiable, Codable, Hashable, Se
     self.message = message
     self.targetDraftID = targetDraftID
     self.rollbackVersionID = rollbackVersionID
+    self.postMutationDraftFingerprint = postMutationDraftFingerprint
+    self.postMutationDraftUpdatedAt = postMutationDraftUpdatedAt
     self.completedAt = completedAt
   }
 }
@@ -319,10 +428,23 @@ public struct WorkbenchAutomationRunRecord: Identifiable, Codable, Hashable, Sen
   }
 
   public var hasRollback: Bool {
-    rolledBackAt == nil
-      && steps.contains {
-        $0.rollbackVersionID != nil || $0.command == .createDraft || $0.command == .deleteDraft
+    guard rolledBackAt == nil else { return false }
+    return steps.contains { step in
+      guard step.status == .succeeded else { return false }
+      switch step.command {
+      case .createDraft:
+        return step.targetDraftID != nil
+          && step.postMutationDraftFingerprint?.isEmpty == false
+      case .updateMetadata, .appendToBody, .replaceBody, .applyDiff, .generateFrontmatter:
+        return step.targetDraftID != nil
+          && step.rollbackVersionID != nil
+          && step.postMutationDraftFingerprint?.isEmpty == false
+      case .deleteDraft:
+        return step.targetDraftID != nil
+      default:
+        return false
       }
+    }
   }
 }
 

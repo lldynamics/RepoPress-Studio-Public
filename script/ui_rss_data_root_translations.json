@@ -76,7 +76,6 @@
   "本机文章": "Articles on This Mac",
   "来源": "Source",
   "松": "Loose",
-  "标注与标签": "Annotations and Tags",
   "标签 %@": "Tag: %@",
   "检测到 %lld 个订阅可能包含访问凭证。%@\n\n%@": "Detected %lld subscriptions that may contain access credentials. %@\n\n%@",
   "正在发现 RSS / Atom 订阅…": "Discovering RSS / Atom subscriptions…",

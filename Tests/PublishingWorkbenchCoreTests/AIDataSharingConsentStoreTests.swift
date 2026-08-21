@@ -1,4 +1,5 @@
 import XCTest
+
 @testable import PublishingWorkbenchCore
 
 final class AIDataSharingConsentStoreTests: XCTestCase {
@@ -47,8 +48,10 @@ final class AIDataSharingConsentStoreTests: XCTestCase {
     )
 
     XCTAssertFalse(store.isRemoteAIEnabled)
-    XCTAssertFalse(store.presentation(for: config).isGranted)
-    XCTAssertFalse(store.presentation(for: config).isRemoteAIEnabled)
+    let presentation = store.presentation(for: config)
+    XCTAssertFalse(presentation.isGranted)
+    XCTAssertFalse(presentation.hasDestinationGrant)
+    XCTAssertFalse(presentation.isRemoteAIEnabled)
   }
 
   func testExistingDestinationGrantMakesMissingRemoteMasterKeyEnabled() {
@@ -59,7 +62,8 @@ final class AIDataSharingConsentStoreTests: XCTestCase {
       model: "custom-model",
       requiresAPIKey: true
     )
-    defaults.set([config.dataSharingConsentIdentifier], forKey: AIDataSharingConsentStore.defaultStorageKey)
+    defaults.set(
+      [config.dataSharingConsentIdentifier], forKey: AIDataSharingConsentStore.defaultStorageKey)
 
     XCTAssertTrue(store.isRemoteAIEnabled)
     XCTAssertTrue(store.presentation(for: config).isGranted)
@@ -103,12 +107,31 @@ final class AIDataSharingConsentStoreTests: XCTestCase {
     XCTAssertTrue(store.presentation(for: remote).isGranted)
 
     store.setRemoteAIEnabled(false)
-    XCTAssertFalse(store.presentation(for: remote).isGranted)
-    XCTAssertTrue(store.presentation(for: remote).isRemoteAIEnabled == false)
+    let disabledRemotePresentation = store.presentation(for: remote)
+    XCTAssertFalse(disabledRemotePresentation.isGranted)
+    XCTAssertFalse(disabledRemotePresentation.isRemoteAIEnabled)
+    XCTAssertTrue(disabledRemotePresentation.hasDestinationGrant)
     XCTAssertTrue(store.presentation(for: local).isGranted)
 
     store.setRemoteAIEnabled(true)
     XCTAssertTrue(store.presentation(for: remote).isGranted)
+  }
+
+  func testRemoteMasterOffWithoutDestinationGrantHasNoRetainedGrant() {
+    let store = AIDataSharingConsentStore(defaults: defaults)
+    let remote = AIProviderConfig(
+      preset: .custom,
+      baseURL: "https://api.custom-ai.com/v1",
+      model: "custom-model",
+      requiresAPIKey: true
+    )
+
+    store.setRemoteAIEnabled(false)
+
+    let presentation = store.presentation(for: remote)
+    XCTAssertFalse(presentation.isGranted)
+    XCTAssertFalse(presentation.hasDestinationGrant)
+    XCTAssertFalse(presentation.isRemoteAIEnabled)
   }
 
   func testDestinationGrantCannotReenableExplicitlyDisabledRemoteMaster() {
@@ -173,6 +196,111 @@ final class AIDataSharingConsentStoreTests: XCTestCase {
     XCTAssertEqual(presentation.destinationState, .remote)
     XCTAssertTrue(presentation.requiresConsent)
     XCTAssertFalse(presentation.isGranted)
+  }
+
+  func testLegacyCodexGrantFailsClosedUntilAccountIsExplicitlyReauthorized() {
+    let store = AIDataSharingConsentStore(defaults: defaults)
+    var config = AIProviderConfig(preset: .codexAppServer)
+    config.applyPresetDefaults()
+    defaults.set(
+      [config.dataSharingConsentIdentifier],
+      forKey: AIDataSharingConsentStore.defaultStorageKey
+    )
+    let account = CodexAppServerAccountStatus(
+      isAuthenticated: true,
+      accountID: "acct-legacy-test",
+      accountType: "chatgpt",
+      email: "legacy@example.com"
+    )
+
+    XCTAssertFalse(store.presentation(for: config).isGranted)
+    let presentation = store.presentation(for: config, codexAccountStatus: account)
+    XCTAssertFalse(presentation.isGranted)
+    XCTAssertTrue(presentation.requiresAccountReauthorization)
+    XCTAssertFalse(store.isCodexAccountAuthorized(for: config, accountStatus: account))
+  }
+
+  func testCodexGrantBindsDigestToSameAccountAndRejectsChangedOrMissingIdentity() {
+    let store = AIDataSharingConsentStore(defaults: defaults)
+    var config = AIProviderConfig(preset: .codexAppServer)
+    config.applyPresetDefaults()
+    let account = CodexAppServerAccountStatus(
+      isAuthenticated: true,
+      accountID: "acct-bound-test",
+      accountType: "chatgpt",
+      email: "bound@example.com"
+    )
+
+    XCTAssertTrue(store.grant(for: config, codexAccountStatus: account))
+    // Synchronous destination checks may pass a stored binding through to the
+    // request helper; the live authorizer still revalidates the account below.
+    XCTAssertTrue(store.presentation(for: config).isGranted)
+    XCTAssertTrue(store.isCodexAccountAuthorized(for: config, accountStatus: account))
+    XCTAssertTrue(
+      store.presentation(for: config, codexAccountStatus: account).isGranted
+    )
+
+    let digest = try! XCTUnwrap(store.codexAccountBindingDigest)
+    XCTAssertFalse(digest.contains("acct-bound-test"))
+    XCTAssertFalse(digest.contains("bound@example.com"))
+    let persisted = defaults.dictionaryRepresentation().values
+      .compactMap { $0 as? String }
+      .joined(separator: "|")
+    XCTAssertFalse(persisted.contains("acct-bound-test"))
+    XCTAssertFalse(persisted.contains("bound@example.com"))
+
+    let changedAccount = CodexAppServerAccountStatus(
+      isAuthenticated: true,
+      accountID: "acct-other-test",
+      accountType: "chatgpt",
+      email: "bound@example.com"
+    )
+    XCTAssertFalse(store.isCodexAccountAuthorized(for: config, accountStatus: changedAccount))
+    XCTAssertFalse(
+      store.presentation(for: config, codexAccountStatus: changedAccount).isGranted
+    )
+
+    let loggedOut = CodexAppServerAccountStatus(
+      isAuthenticated: false,
+      accountID: "acct-bound-test",
+      accountType: "chatgpt",
+      email: "bound@example.com"
+    )
+    XCTAssertFalse(store.isCodexAccountAuthorized(for: config, accountStatus: loggedOut))
+
+    let missingIdentity = CodexAppServerAccountStatus(
+      isAuthenticated: true,
+      accountType: "chatgpt"
+    )
+    XCTAssertFalse(store.isCodexAccountAuthorized(for: config, accountStatus: missingIdentity))
+  }
+
+  func testCodexEmailFallbackIsNormalizedButAccountIDRemainsPreferred() {
+    let store = AIDataSharingConsentStore(defaults: defaults)
+    var config = AIProviderConfig(preset: .codexAppServer)
+    config.applyPresetDefaults()
+    let emailAccount = CodexAppServerAccountStatus(
+      isAuthenticated: true,
+      email: "  User@Example.COM "
+    )
+
+    XCTAssertTrue(store.grant(for: config, codexAccountStatus: emailAccount))
+    let normalizedEmailAccount = CodexAppServerAccountStatus(
+      isAuthenticated: true,
+      email: "user@example.com"
+    )
+    XCTAssertTrue(
+      store.isCodexAccountAuthorized(for: config, accountStatus: normalizedEmailAccount)
+    )
+
+    let accountIDTakesPriority = CodexAppServerAccountStatus(
+      isAuthenticated: true,
+      accountID: "acct-new-stable-id",
+      email: "user@example.com"
+    )
+    XCTAssertFalse(
+      store.isCodexAccountAuthorized(for: config, accountStatus: accountIDTakesPriority)
+    )
   }
 
   func testEmptyDestinationIsUnconfiguredInsteadOfLocalOrGranted() {

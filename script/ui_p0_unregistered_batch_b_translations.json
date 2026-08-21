@@ -3,10 +3,6 @@
     "en": "/%@",
     "zh-Hans": "/%@"
   },
-  "AI 行内操作状态：%@": {
-    "en": "Inline AI action status: %@",
-    "zh-Hans": "AI 行内操作状态：%@"
-  },
   "Apply": {
     "en": "Apply",
     "zh-Hans": "应用"
@@ -79,10 +75,6 @@
     "en": "Scanned %@ Markdown files; remote URLs, code blocks, and inline code are not treated as local resources.",
     "zh-Hans": "已扫描 %@ 个 Markdown 文件；远程 URL、代码块和行内代码不会被当作本地资源。"
   },
-  "建议已生成，确认后替换选中文本": {
-    "en": "Suggestion ready. Confirm to replace the selected text.",
-    "zh-Hans": "建议已生成，确认后替换选中文本"
-  },
   "开始瘦身": {
     "en": "Start Compression",
     "zh-Hans": "开始压缩"
@@ -106,14 +98,6 @@
   "检查当前文章并打开发布准备": {
     "en": "Check the Current Article and Open Publishing Readiness",
     "zh-Hans": "检查当前文章并打开发布准备"
-  },
-  "正在生成行内建议…": {
-    "en": "Generating Inline Suggestion…",
-    "zh-Hans": "正在生成行内建议…"
-  },
-  "正式": {
-    "en": "Formal",
-    "zh-Hans": "正式"
   },
   "没有发现失效引用": {
     "en": "No Broken References Found",
@@ -147,10 +131,6 @@
     "en": "Paste URL from Clipboard",
     "zh-Hans": "粘贴剪贴板地址"
   },
-  "纠错": {
-    "en": "Fix Grammar",
-    "zh-Hans": "纠错"
-  },
   "组件与片段": {
     "en": "Components and Snippets",
     "zh-Hans": "组件与片段"
@@ -174,10 +154,6 @@
   "资源扫描摘要": {
     "en": "Resource Scan Summary",
     "zh-Hans": "资源扫描摘要"
-  },
-  "轻松": {
-    "en": "Casual",
-    "zh-Hans": "轻松"
   },
   "还有 %@ 个相关片段，可在资料库中查看全部结果。": {
     "en": "Additional related excerpts: %@. View all results in the knowledge base.",

@@ -81,7 +81,7 @@ struct WorkspaceToolbarMenuLabel: View {
         }
       }
     }
-    .font(.caption.weight(.medium))
+    .font(.workbenchButtonLabel)
     .frame(minWidth: showsTitle ? nil : 28, minHeight: 24)
     .padding(.horizontal, showsTitle ? 6 : 0)
     .contentShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
@@ -181,34 +181,14 @@ struct OmniCommandSearchBar: View {
       .frame(width: isCompact ? 70 : 220, height: 28)
       .background(
         Color.primary.opacity(0.06),
-        in: RoundedRectangle(cornerRadius: 7, style: .continuous)
+        in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.searchBar, style: .continuous)
       )
-      .contentShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+      .contentShape(RoundedRectangle(cornerRadius: WorkbenchCornerRadius.searchBar, style: .continuous))
     }
-    .buttonStyle(WorkspaceToolbarFocusRingButtonStyle(cornerRadius: 7))
+    .buttonStyle(WorkbenchFocusRingButtonStyle(cornerRadius: WorkbenchCornerRadius.searchBar, lineWidth: 1.5))
     .layoutPriority(1)
     .help(String(localized: "唤起命令面板与全局搜索 (⌘P)"))
     .accessibilityLabel("全局搜索")
-  }
-}
-
-struct WorkspaceToolbarFocusRingButtonStyle: ButtonStyle {
-  let cornerRadius: CGFloat
-
-  @Environment(\.isFocused) private var isFocused
-
-  func makeBody(configuration: Configuration) -> some View {
-    configuration.label
-      .overlay {
-        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-          .strokeBorder(
-            isFocused ? Color.accentColor : Color.clear,
-            lineWidth: isFocused ? 1.5 : 0
-          )
-          .padding(1)
-      }
-      .opacity(configuration.isPressed ? 0.82 : 1)
-      .animation(WorkbenchMotion.quick, value: configuration.isPressed)
   }
 }
 
@@ -228,22 +208,21 @@ struct WorkspaceToolbarIconButtonStyle: ButtonStyle {
       .font(.workbenchButtonLabel)
       .symbolVariant(isActive ? .fill : .none)
       .foregroundStyle(isActive ? WorkbenchTheme.navigationSelection : Color.secondary)
+      .padding(.horizontal, showsTitle ? 8 : 4)
       .frame(minWidth: showsTitle ? nil : 28, minHeight: 28)
-      .padding(.horizontal, showsTitle ? 8 : 6)
       .fixedSize(horizontal: showsTitle, vertical: false)
       .background {
-        RoundedRectangle(cornerRadius: 5, style: .continuous)
+        RoundedRectangle(cornerRadius: 6, style: .continuous)
           .fill(backgroundColor(isPressed: configuration.isPressed))
       }
       .overlay {
-        RoundedRectangle(cornerRadius: 5, style: .continuous)
+        RoundedRectangle(cornerRadius: 6, style: .continuous)
           .strokeBorder(
             isFocused ? Color.accentColor : Color.clear,
             lineWidth: isFocused ? 1.5 : 0
           )
-          .padding(1)
       }
-      .contentShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
+      .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
   }
 
   @ViewBuilder
@@ -301,7 +280,7 @@ struct WorkspaceToolbarLeadingContent: View {
     }
     .menuStyle(.borderlessButton)
     .menuIndicator(.hidden)
-    .buttonStyle(WorkspaceToolbarFocusRingButtonStyle(cornerRadius: 5))
+    .buttonStyle(WorkbenchFocusRingButtonStyle(cornerRadius: 5, lineWidth: 1.5))
     .help(
       String(
         localized: "个人网站：\(shell.activeProfile.name) · \(shell.activeProfile.siteKind.localizedDisplayName)"
@@ -359,6 +338,21 @@ private enum PublishingStatusSeverity: Int {
   case active
   case warning
   case error
+
+  var symbol: String {
+    switch self {
+    case .ready:
+      return "checkmark.circle.fill"
+    case .pending:
+      return "clock.fill"
+    case .active:
+      return "arrow.triangle.2.circlepath.circle.fill"
+    case .warning:
+      return "exclamationmark.triangle.fill"
+    case .error:
+      return "xmark.circle.fill"
+    }
+  }
 }
 
 struct PublishingStatusToolbarControl: View {
@@ -412,7 +406,7 @@ struct PublishingStatusToolbarControl: View {
       .background(currentToolbarStatus.color.opacity(0.12), in: Capsule())
       .contentShape(Capsule())
     }
-    .buttonStyle(WorkspaceToolbarFocusRingButtonStyle(cornerRadius: 13))
+    .buttonStyle(WorkbenchFocusRingButtonStyle(cornerRadius: 13, lineWidth: 1.5))
     .disabled(!canUseProtectedWorkbench)
     .help(
       String(
@@ -456,10 +450,10 @@ struct PublishingStatusToolbarControl: View {
 
   @ViewBuilder
   private func statusToolbarLabel(_ status: PublishingStatusPopoverItem) -> some View {
-    HStack(spacing: 6) {
-      Circle()
-        .fill(status.color)
-        .frame(width: 7, height: 7)
+    HStack(spacing: 5) {
+      Image(systemName: status.severity.symbol)
+        .font(.system(size: 8, weight: .semibold))
+        .foregroundStyle(status.color)
       Text(status.value)
         .foregroundStyle(.primary)
         .lineLimit(1)

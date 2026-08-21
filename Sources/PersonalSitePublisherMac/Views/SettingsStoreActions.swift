@@ -12,10 +12,6 @@ struct SettingsStoreActions {
     store.activateQuickHide(reason: "已从隐私设置快速隐藏工作台内容。")
   }
 
-  func exitQuickHideFromSettings() {
-    store.deactivateQuickHide()
-  }
-
   func updatePrivacySettings(_ settings: PrivacyProtectionSettings) {
     store.updatePrivacySettings(settings)
   }

@@ -74,6 +74,19 @@ extension LocalPublishPreviewService {
     rootURL.standardizedFileURL.appendingPathComponent(Self.transactionFileName)
   }
 
+  /// A local publish package may write site content, but it must never write
+  /// Git's control plane.  Keep this check independent from the filesystem's
+  /// case-sensitivity so a transaction crafted on a case-insensitive volume
+  /// cannot be replayed as a different path on another volume.
+  func isGitControlPath(_ repositoryPath: String) -> Bool {
+    let pathForComparison = repositoryPath
+      .replacingOccurrences(of: "\\", with: "/")
+      .normalizedRelativePath()
+    return pathForComparison
+      .split(separator: "/")
+      .contains { String($0).caseInsensitiveCompare(".git") == .orderedSame }
+  }
+
   func persistLocalPublishTransaction(
     _ transaction: LocalPublishTransaction,
     at url: URL
@@ -90,6 +103,9 @@ extension LocalPublishPreviewService {
     let transactionURL = localPublishTransactionURL(for: rootURL)
     guard fileManager.fileExists(atPath: transactionURL.path) else { return }
     do {
+      guard !isSymbolicLink(transactionURL) else {
+        throw LocalPublishPreviewError.recoveryFailed("事务日志不能是符号链接")
+      }
       let data = try Data(contentsOf: transactionURL)
       let transaction = try JSONDecoder().decode(LocalPublishTransaction.self, from: data)
       let root = rootURL.standardizedFileURL
@@ -98,6 +114,19 @@ extension LocalPublishPreviewService {
             rollbackDirectory.lastPathComponent.hasPrefix(".repopress-local-publish-rollback-"),
             !isSymbolicLink(rollbackDirectory) else {
         throw LocalPublishPreviewError.recoveryFailed("恢复目录不在本地仓库内")
+      }
+
+      // Validate the complete journal before changing any destination. A
+      // forged entry later in the list must not allow an earlier content path
+      // to be restored before recovery fails closed on a Git path.
+      for entry in transaction.entries {
+        guard !isGitControlPath(entry.repositoryPath) else {
+          throw LocalPublishPreviewError.recoveryFailed("恢复路径属于 Git 管理目录：\(entry.repositoryPath)")
+        }
+        _ = try validatedDestinationURLForWrite(
+          rootURL: root,
+          repositoryPath: entry.repositoryPath
+        )
       }
 
       if transaction.phase == .committed {
@@ -109,6 +138,9 @@ extension LocalPublishPreviewService {
       }
 
       for entry in transaction.entries.reversed() {
+        guard !isGitControlPath(entry.repositoryPath) else {
+          throw LocalPublishPreviewError.recoveryFailed("恢复路径属于 Git 管理目录：\(entry.repositoryPath)")
+        }
         let destinationURL = try validatedDestinationURLForWrite(
           rootURL: root,
           repositoryPath: entry.repositoryPath
@@ -124,8 +156,16 @@ extension LocalPublishPreviewService {
           }
           let backupURL = rollbackDirectory.appendingPathComponent(backupFileName).standardizedFileURL
           guard backupURL.deletingLastPathComponent() == rollbackDirectory,
-                fileManager.fileExists(atPath: backupURL.path) else {
+                fileManager.fileExists(atPath: backupURL.path),
+                !isSymbolicLink(backupURL) else {
             throw LocalPublishPreviewError.recoveryFailed("恢复备份文件缺失：\(entry.repositoryPath)")
+          }
+          var backupIsDirectory: ObjCBool = false
+          guard !fileManager.fileExists(
+            atPath: backupURL.path,
+            isDirectory: &backupIsDirectory
+          ) || !backupIsDirectory.boolValue else {
+            throw LocalPublishPreviewError.recoveryFailed("恢复备份文件不是普通文件：\(entry.repositoryPath)")
           }
           try fileManager.createDirectory(
             at: destinationURL.deletingLastPathComponent(),

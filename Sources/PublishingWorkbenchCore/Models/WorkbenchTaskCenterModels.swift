@@ -98,6 +98,7 @@ public struct WorkbenchTaskItem: Identifiable, Codable, Equatable, Hashable, Sen
   public let state: WorkbenchTaskState
   public let failureReason: String?
   public let canRetry: Bool
+  public let targetID: UUID?
 
   public init(
     id: String,
@@ -107,7 +108,8 @@ public struct WorkbenchTaskItem: Identifiable, Codable, Equatable, Hashable, Sen
     progress: Double? = nil,
     state: WorkbenchTaskState,
     failureReason: String? = nil,
-    canRetry: Bool = false
+    canRetry: Bool = false,
+    targetID: UUID? = nil
   ) {
     self.id = id
     self.kind = kind
@@ -117,6 +119,7 @@ public struct WorkbenchTaskItem: Identifiable, Codable, Equatable, Hashable, Sen
     self.state = state
     self.failureReason = failureReason
     self.canRetry = canRetry
+    self.targetID = targetID
   }
 
   public var isActive: Bool {

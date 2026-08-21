@@ -832,18 +832,6 @@ struct RSSArticleReader: View {
     }
   }
 
-  private var annotationActionsMenu: some View {
-    Menu {
-      annotationActionItems
-    } label: {
-      Label("标注与标签", systemImage: "highlighter")
-    }
-    .menuStyle(.button)
-    .help("文章操作")
-    .accessibilityLabel("标注与标签")
-    .accessibilityIdentifier("rss-reader-annotation-actions")
-  }
-
   private func annotationSummaryButton(for article: RSSArticle) -> some View {
     Button("查看标注", systemImage: "list.bullet.rectangle") {
       showsAnnotationSummary = true
@@ -1013,51 +1001,6 @@ struct RSSArticleReader: View {
         .accessibilityLabel("在浏览器中打开原文")
         .help(link.absoluteString)
     }
-  }
-
-  private var remoteImageToggle: some View {
-    Toggle("加载远程图片", isOn: $allowRemoteImages)
-      .toggleStyle(.checkbox)
-      .accessibilityLabel("允许加载当前文章的远程图片")
-  }
-
-  private var remoteImageStatus: some View {
-    EmptyView()
-  }
-
-  private var selectionPalette: some View {
-    VStack(alignment: .leading, spacing: 8) {
-      HStack {
-        Label("已选文本", systemImage: "text.quote")
-          .font(.headline)
-        Spacer()
-        Button("关闭", systemImage: "xmark") {
-          selectedText = ""
-        }
-        .labelStyle(.iconOnly)
-        .buttonStyle(.borderless)
-        .accessibilityLabel("关闭已选文本操作")
-      }
-      Text(selectedText)
-        .lineLimit(3)
-        .textSelection(.enabled)
-        .foregroundStyle(.secondary)
-      HStack(spacing: 8) {
-        Button("高亮", systemImage: "highlighter", action: onBeginHighlight)
-          .workbenchProminentActionStyle()
-          .keyboardShortcut("h", modifiers: [.command, .control])
-        Button("添加批注", systemImage: "note.text.badge.plus", action: onBeginNote)
-          .buttonStyle(.bordered)
-          .keyboardShortcut("n", modifiers: [.command, .control])
-      }
-    }
-    .padding(WorkbenchSpacing.card)
-    .background(
-      WorkbenchBackgroundStyle.card,
-      in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
-    )
-    .accessibilityElement(children: .contain)
-    .accessibilityLabel("已选择正文文字，可高亮或添加批注")
   }
 
   private func annotationSummary(for article: RSSArticle) -> some View {

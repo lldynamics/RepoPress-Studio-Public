@@ -390,10 +390,17 @@ public struct WorkbenchSnapshot: Codable, Sendable {
     preferredConversationIDs: Set<UUID>
   ) -> [AIConversation] {
     let validDraftIDs = Set(drafts.map(\.id) + recycledDrafts.map(\.id))
+    let pendingAgentConversationIDs = Set(
+      conversations.compactMap { conversation in
+        conversation.messages.contains(where: { message in
+          message.agentContinuation?.phase.requiresExplicitDisposition == true
+        }) ? conversation.id : nil
+      }
+    )
     return AIConversationRetentionPolicy.limited(
       conversations,
       validDraftIDs: validDraftIDs,
-      preserving: preferredConversationIDs
+      preserving: preferredConversationIDs.union(pendingAgentConversationIDs)
     )
   }
 

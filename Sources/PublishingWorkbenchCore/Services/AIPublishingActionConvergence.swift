@@ -148,6 +148,25 @@ public enum AIPublishingRewriteOperation: String, CaseIterable, Hashable, Identi
     }
   }
 
+  public var systemImage: String {
+    switch self {
+    case .rewrite:
+      return "arrow.triangle.2.circlepath"
+    case .polish:
+      return "wand.and.stars"
+    case .expand:
+      return "text.append"
+    case .condense:
+      return "scissors"
+    case .simplify:
+      return "text.badge.minus"
+    case .summarize:
+      return "doc.text.below.ecg"
+    case .removeRedundancy:
+      return "scissors.badge.ellipsis"
+    }
+  }
+
   public var promptInstruction: String {
     switch self {
     case .rewrite:

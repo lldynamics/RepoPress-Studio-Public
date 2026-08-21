@@ -15,7 +15,7 @@ enum AIConnectionKind: String, CaseIterable, Identifiable {
       self = .chatGPT
     case .local:
       self = .local
-    case .openAICompatible, .deepSeek, .openRouter, .custom:
+    case .openAICompatible, .deepSeek, .anthropic, .gemini, .siliconFlow, .moonshot, .zhipu, .openRouter, .custom:
       self = .apiKey
     }
   }
@@ -46,7 +46,15 @@ struct AIProviderSection: View {
   let modelDisplayValue: String
   let requiresAPIKeyBinding: Binding<Bool>
   let requiresAPIKeyDisplayValue: String
+  let connectionProfileID: UUID
+  let discoverModels: (UUID, AIProviderConfig) async throws -> [AIModelDescriptor]
   @State private var baseURLDraft: String
+  @State private var discoveredModels: [AIModelDescriptor] = []
+  @State private var isDiscoveringModels = false
+  @State private var discoveryErrorMessage: String?
+  @State private var modelDiscoveryTask: Task<Void, Never>?
+  @State private var modelDiscoveryRequestID = UUID()
+  @State private var isSearchPopoverPresented = false
 
   init(
     presetBinding: Binding<AIProviderPreset>,
@@ -56,7 +64,9 @@ struct AIProviderSection: View {
     model: Binding<String>,
     modelDisplayValue: String,
     requiresAPIKeyBinding: Binding<Bool>,
-    requiresAPIKeyDisplayValue: String
+    requiresAPIKeyDisplayValue: String,
+    connectionProfileID: UUID,
+    discoverModels: @escaping (UUID, AIProviderConfig) async throws -> [AIModelDescriptor]
   ) {
     self.presetBinding = presetBinding
     self.presetDisplayName = presetDisplayName
@@ -66,6 +76,8 @@ struct AIProviderSection: View {
     self.modelDisplayValue = modelDisplayValue
     self.requiresAPIKeyBinding = requiresAPIKeyBinding
     self.requiresAPIKeyDisplayValue = requiresAPIKeyDisplayValue
+    self.connectionProfileID = connectionProfileID
+    self.discoverModels = discoverModels
     _baseURLDraft = State(initialValue: baseURL.wrappedValue)
   }
 
@@ -133,6 +145,15 @@ struct AIProviderSection: View {
     .onChange(of: baseURL.wrappedValue) { _, newValue in
       baseURLDraft = newValue
     }
+    .onChange(of: presetBinding.wrappedValue) { _, _ in
+      invalidateModelDiscovery()
+    }
+    .onChange(of: connectionProfileID) { _, _ in
+      invalidateModelDiscovery()
+    }
+    .onDisappear {
+      invalidateModelDiscovery()
+    }
   }
 
   private var connectionKindBinding: Binding<AIConnectionKind> {
@@ -154,7 +175,17 @@ struct AIProviderSection: View {
   }
 
   private var apiKeyPresets: [AIProviderPreset] {
-    [.openAICompatible, .deepSeek, .openRouter, .custom]
+    [
+      .openAICompatible,
+      .deepSeek,
+      .anthropic,
+      .gemini,
+      .siliconFlow,
+      .moonshot,
+      .zhipu,
+      .openRouter,
+      .custom,
+    ]
   }
 
   private var codexModelDisplayValue: String {
@@ -290,7 +321,57 @@ struct AIProviderSection: View {
         }
       }
 
+      if !discoveredModels.isEmpty {
+        HStack(spacing: 8) {
+          Button {
+            isSearchPopoverPresented = true
+          } label: {
+            HStack(spacing: 5) {
+              Image(systemName: "magnifyingglass")
+              Text("搜索与选择已拉取模型 (\(discoveredModels.count))")
+              Image(systemName: "chevron.right").font(.workbenchMetadata)
+            }
+            .font(.caption)
+            .foregroundStyle(WorkbenchTheme.brand)
+          }
+          .buttonStyle(.borderless)
+          .popover(isPresented: $isSearchPopoverPresented) {
+            AIModelSearchPopoverView(
+              models: discoveredModels,
+              selectedModel: model.wrappedValue,
+              onSelect: { selected in
+                model.wrappedValue = selected
+                isSearchPopoverPresented = false
+              }
+            )
+          }
+
+          Spacer()
+        }
+      }
+
       HStack(spacing: 10) {
+        Button(String(localized: "拉取可用模型")) {
+          fetchModelsFromAPI()
+        }
+        .font(.workbenchMetadata)
+        .buttonStyle(.borderless)
+        .disabled(isDiscoveringModels || !canDiscoverModels)
+        .accessibilityLabel(String(localized: "拉取可用模型"))
+        .accessibilityValue(
+          isDiscoveringModels
+            ? String(localized: "正在加载")
+            : (hasUnappliedBaseURL
+              ? String(localized: "请先应用地址")
+              : String(localized: "可用"))
+        )
+
+        if isDiscoveringModels {
+          ProgressView()
+            .controlSize(.small)
+            .accessibilityLabel(String(localized: "正在拉取可用模型"))
+        }
+
         Button(String(localized: "粘贴剪贴板模型")) {
           pasteModelFromClipboard()
         }
@@ -305,6 +386,14 @@ struct AIProviderSection: View {
         .buttonStyle(.borderless)
         .accessibilityIdentifier("ai-model-restore-default")
       }
+
+      if let discoveryErrorMessage {
+        Text(discoveryErrorMessage)
+          .font(.workbenchMetadata)
+          .foregroundStyle(WorkbenchTheme.warning)
+          .accessibilityLabel(String(localized: "模型发现失败"))
+          .accessibilityValue(discoveryErrorMessage)
+      }
     }
   }
 
@@ -316,12 +405,22 @@ struct AIProviderSection: View {
       return ["gpt-4o", "gpt-4o-mini", "o3-mini"]
     case .deepSeek:
       return ["deepseek-chat", "deepseek-reasoner"]
+    case .anthropic:
+      return ["claude-sonnet-4-6", "claude-opus-4-6", "claude-haiku-4-5"]
+    case .gemini:
+      return ["gemini-2.0-flash", "gemini-1.5-pro", "gemini-1.5-flash"]
+    case .siliconFlow:
+      return ["deepseek-ai/DeepSeek-V3", "deepseek-ai/DeepSeek-R1", "Qwen/Qwen2.5-72B-Instruct"]
+    case .moonshot:
+      return ["moonshot-v1-auto", "moonshot-v1-8k", "moonshot-v1-32k"]
+    case .zhipu:
+      return ["glm-4-flash", "glm-4-plus", "glm-4-air"]
     case .openRouter:
-      return ["anthropic/claude-3.5-sonnet", "google/gemini-2.0-flash-001", "deepseek/deepseek-r1"]
+      return ["anthropic/claude-sonnet-4-6", "google/gemini-2.0-flash-001", "deepseek/deepseek-r1"]
     case .local:
       return ["llama3.2", "qwen2.5-coder", "deepseek-r1"]
     case .custom:
-      return ["gpt-4o", "deepseek-chat", "claude-3-5-sonnet-20241022"]
+      return ["gpt-4o", "deepseek-chat", "claude-sonnet-4-6"]
     }
   }
 
@@ -363,5 +462,202 @@ struct AIProviderSection: View {
   private func applyBaseURLDraft() {
     baseURL.wrappedValue = baseURLDraft.trimmingCharacters(in: .whitespacesAndNewlines)
     baseURLDraft = baseURL.wrappedValue
+  }
+
+  private var canDiscoverModels: Bool {
+    !baseURL.wrappedValue.trimmedForPublishing.isEmpty && !hasUnappliedBaseURL
+  }
+
+  private func fetchModelsFromAPI() {
+    guard canDiscoverModels else {
+      discoveryErrorMessage = String(localized: "请先应用 API 基础地址，再拉取模型。")
+      return
+    }
+    modelDiscoveryTask?.cancel()
+    let requestID = UUID()
+    modelDiscoveryRequestID = requestID
+    isDiscoveringModels = true
+    discoveryErrorMessage = nil
+    let config = AIProviderConfig(
+      preset: presetBinding.wrappedValue,
+      baseURL: baseURL.wrappedValue,
+      model: model.wrappedValue,
+      requiresAPIKey: requiresAPIKeyBinding.wrappedValue
+    )
+    modelDiscoveryTask = Task {
+      do {
+        let models = try await discoverModels(connectionProfileID, config)
+        try Task.checkCancellation()
+        await MainActor.run {
+          guard self.modelDiscoveryRequestID == requestID else { return }
+          self.discoveredModels = models
+          self.isDiscoveringModels = false
+          self.modelDiscoveryTask = nil
+          if models.isEmpty {
+            self.discoveryErrorMessage = String(localized: "未返回任何可用模型。")
+          }
+        }
+      } catch is CancellationError {
+        await MainActor.run {
+          guard self.modelDiscoveryRequestID == requestID else { return }
+          self.isDiscoveringModels = false
+          self.modelDiscoveryTask = nil
+        }
+      } catch {
+        await MainActor.run {
+          guard self.modelDiscoveryRequestID == requestID else { return }
+          self.isDiscoveringModels = false
+          self.modelDiscoveryTask = nil
+          self.discoveryErrorMessage = String(localized: "拉取模型列表失败：\(error.localizedDescription)")
+        }
+      }
+    }
+  }
+
+  private func invalidateModelDiscovery() {
+    modelDiscoveryRequestID = UUID()
+    modelDiscoveryTask?.cancel()
+    modelDiscoveryTask = nil
+    isDiscoveringModels = false
+    discoveredModels = []
+    discoveryErrorMessage = nil
+  }
+}
+
+struct AIModelSearchPopoverView: View {
+  let models: [AIModelDescriptor]
+  let selectedModel: String
+  let onSelect: (String) -> Void
+  @State private var searchText = ""
+
+  var filteredModels: [AIModelDescriptor] {
+    let trimmed = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+    if trimmed.isEmpty {
+      return models
+    }
+    return models.filter {
+      $0.id.localizedCaseInsensitiveContains(trimmed)
+        || $0.name.localizedCaseInsensitiveContains(trimmed)
+    }
+  }
+
+  var body: some View {
+    VStack(spacing: 0) {
+      HStack(spacing: 6) {
+        Image(systemName: "magnifyingglass")
+          .foregroundStyle(.secondary)
+        TextField(String(localized: "搜索模型 (如 r1, sonnet, gemini, flash...)"), text: $searchText)
+          .textFieldStyle(.plain)
+          .font(.body)
+          .accessibilityLabel(
+            String(localized: "搜索模型 (如 r1, sonnet, gemini, flash...)")
+          )
+        if !searchText.isEmpty {
+          Button {
+            searchText = ""
+          } label: {
+            Image(systemName: "xmark.circle.fill")
+              .foregroundStyle(.secondary)
+          }
+          .buttonStyle(.plain)
+        }
+      }
+      .padding(8)
+      .background(Color.primary.opacity(0.04))
+
+      Divider()
+
+      if filteredModels.isEmpty {
+        VStack(spacing: 6) {
+          Spacer()
+          Image(systemName: "questionmark.folder")
+            .font(.title2)
+            .foregroundStyle(.secondary)
+          Text("未找到包含 \"\(searchText)\" 的模型")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+          Spacer()
+        }
+        .frame(minHeight: 140)
+      } else {
+        ScrollView {
+          LazyVStack(spacing: 2) {
+            ForEach(filteredModels) { descriptor in
+              Button {
+                onSelect(descriptor.id)
+              } label: {
+                HStack(spacing: 8) {
+                  VStack(alignment: .leading, spacing: 2) {
+                    Text(descriptor.name)
+                      .font(.callout.monospaced())
+                      .foregroundStyle(Color.primary)
+                    if descriptor.id != descriptor.name {
+                      Text(descriptor.id)
+                        .font(.workbenchMetadata.monospaced())
+                        .foregroundStyle(.secondary)
+                    }
+                  }
+
+                  Spacer()
+
+                  if descriptor.isReasoning {
+                    Text("深度思考")
+                      .font(.workbenchMetadata.weight(.medium))
+                      .padding(.horizontal, 5)
+                      .padding(.vertical, 2)
+                      .background(Color.purple.opacity(0.15), in: Capsule())
+                      .foregroundStyle(.purple)
+                  }
+
+                  if descriptor.isVision {
+                    Text("多模态")
+                      .font(.workbenchMetadata.weight(.medium))
+                      .padding(.horizontal, 5)
+                      .padding(.vertical, 2)
+                      .background(Color.blue.opacity(0.15), in: Capsule())
+                      .foregroundStyle(.blue)
+                  }
+
+                  if descriptor.id == selectedModel {
+                    Image(systemName: "checkmark")
+                      .font(.caption.weight(.bold))
+                      .foregroundStyle(WorkbenchTheme.brand)
+                  }
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .contentShape(Rectangle())
+                .background(
+                  descriptor.id == selectedModel
+                    ? WorkbenchTheme.brand.opacity(0.08)
+                    : Color.clear,
+                  in: RoundedRectangle(cornerRadius: 4)
+                )
+              }
+              .buttonStyle(.plain)
+            }
+          }
+          .padding(6)
+        }
+        .frame(minHeight: 200, maxHeight: 320)
+      }
+
+      Divider()
+
+      HStack {
+        Text("共 \(models.count) 个可用模型")
+          .font(.workbenchMetadata)
+          .foregroundStyle(.secondary)
+        Spacer()
+        if !searchText.isEmpty {
+          Text("已筛选出 \(filteredModels.count) 个")
+            .font(.workbenchMetadata)
+            .foregroundStyle(WorkbenchTheme.brand)
+        }
+      }
+      .padding(.horizontal, 10)
+      .padding(.vertical, 6)
+    }
+    .frame(width: 360)
   }
 }

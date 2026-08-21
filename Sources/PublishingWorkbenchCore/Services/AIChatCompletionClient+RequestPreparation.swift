@@ -64,7 +64,7 @@ extension AIChatCompletionClient {
       normalizedRequest: normalized,
       endpointIdentity: config.capabilityEndpointIdentity,
       endpointURL: url,
-      encodedBody: try encoder.encode(normalized),
+      encodedBody: try canonicalEncodedBody(for: normalized, config: config),
       mode: mode,
       purpose: purpose,
       capabilitySupportSnapshot: capabilitySupportSnapshot(for: config),
@@ -96,11 +96,6 @@ extension AIChatCompletionClient {
     apiKey: String?
   ) async throws -> AIChatCompletionResult {
     try validatePrepared(prepared, against: config, apiKey: apiKey)
-    let url = try validatedRequestURL(config: config, apiKey: apiKey)
-    guard url == prepared.endpointURL else {
-      throw AIChatCompletionClientError.preparedRequestConfigurationMismatch
-    }
-
     if config.usesCodexAppServer {
       return try await completeWithCodexAppServer(
         prepared: prepared,
@@ -108,15 +103,56 @@ extension AIChatCompletionClient {
       )
     }
 
-    var request = URLRequest(url: url)
-    request.timeoutInterval = networkRecoveryPolicy.firstByteTimeout
-    request.httpMethod = "POST"
-    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-    if let apiKey = apiKey?.nilIfEmpty {
-      request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+    var completedRetryCount = 0
+    while true {
+      try Task.checkCancellation()
+      do {
+        return try await sendCompletePreparedAttempt(
+          prepared: prepared,
+          config: config,
+          apiKey: apiKey
+        )
+      } catch let attemptError as AIChatNonStreamingAttemptError {
+        guard case .beforeResponse(let normalizedError) = attemptError,
+          !Task.isCancelled,
+          allowsNonStreamingAutomaticReplay(for: prepared.purpose),
+          shouldAutomaticallyRetry(
+            normalizedError,
+            completedRetryCount: completedRetryCount
+          )
+        else {
+          switch attemptError {
+          case .beforeResponse(let error), .afterResponse(let error):
+            throw error
+          }
+        }
+
+        let delay = automaticRetryDelay(
+          for: normalizedError,
+          completedRetryCount: completedRetryCount
+        )
+        completedRetryCount += 1
+        try await sleep(seconds: delay)
+      }
     }
-    request.httpBody = prepared.encodedBody
-    let preparedRequest = request
+  }
+
+  private func sendCompletePreparedAttempt(
+    prepared: AIPreparedAIChatCompletionRequest,
+    config: AIProviderConfig,
+    apiKey: String?
+  ) async throws -> AIChatCompletionResult {
+    try validatePrepared(prepared, against: config, apiKey: apiKey)
+    let url = try validatedRequestURL(config: config, apiKey: apiKey)
+    guard url == prepared.endpointURL else {
+      throw AIChatCompletionClientError.preparedRequestConfigurationMismatch
+    }
+
+    let preparedRequest = try makeURLRequest(
+      from: prepared,
+      config: config,
+      apiKey: apiKey
+    )
 
     let data: Data
     let response: URLResponse
@@ -138,36 +174,66 @@ extension AIChatCompletionClient {
         maximumByteCount: URLSessionAIChatTransport.maximumResponseByteCount
       )
     } catch let error as HTTPResponseLimitError {
-      throw AIChatCompletionClientError.responseTooLarge(
-        maximumBytes: error.maximumByteCount
+      throw AIChatNonStreamingAttemptError.afterResponse(
+        .responseTooLarge(maximumBytes: error.maximumByteCount)
+      )
+    } catch {
+      if error is CancellationError || Task.isCancelled {
+        throw CancellationError()
+      }
+      throw AIChatNonStreamingAttemptError.beforeResponse(
+        Self.normalizedTransportError(error, policy: networkRecoveryPolicy)
       )
     }
     guard let httpResponse = response as? HTTPURLResponse else {
-      throw AIChatCompletionClientError.invalidResponse
+      throw AIChatNonStreamingAttemptError.afterResponse(.invalidResponse)
     }
     guard (200..<300).contains(httpResponse.statusCode) else {
       let body = HTTPErrorResponseSanitizer.sanitize(
         data: data,
         sensitiveValues: [apiKey].compactMap { $0 }
       )
-      throw httpError(statusResponse: httpResponse, body: body)
+      throw AIChatNonStreamingAttemptError.beforeResponse(
+        httpError(statusResponse: httpResponse, body: body)
+      )
     }
 
-    let payload = try decoder.decode(AIChatCompletionResponse.self, from: data)
-    guard let message = payload.choices.first?.message else {
-      throw AIChatCompletionClientError.emptyContent
+    do {
+      if config.usesAnthropicAPI {
+        let payload = try decoder.decode(AnthropicMessagesResponse.self, from: data)
+        return try payload.result(using: encoder)
+      }
+
+      let payload = try decoder.decode(AIChatCompletionResponse.self, from: data)
+      guard let message = payload.choices.first?.message else {
+        throw AIChatCompletionClientError.emptyContent
+      }
+      let content = message.contentText
+      let toolCalls = message.toolCalls ?? []
+      guard content.nilIfEmpty != nil || !toolCalls.isEmpty else {
+        throw AIChatCompletionClientError.emptyContent
+      }
+      return AIChatCompletionResult(
+        content: content,
+        toolCalls: toolCalls,
+        rawModel: payload.model,
+        tokenUsage: payload.usage?.tokenUsage
+      )
+    } catch let error as AIChatCompletionClientError {
+      throw AIChatNonStreamingAttemptError.afterResponse(error)
+    } catch {
+      throw AIChatNonStreamingAttemptError.afterResponse(.invalidResponse)
     }
-    let content = message.contentText
-    let toolCalls = message.toolCalls ?? []
-    guard content.nilIfEmpty != nil || !toolCalls.isEmpty else {
-      throw AIChatCompletionClientError.emptyContent
+  }
+
+  private func canonicalEncodedBody(
+    for request: AIChatCompletionRequest,
+    config: AIProviderConfig
+  ) throws -> Data {
+    if config.usesAnthropicAPI {
+      return try encoder.encode(makeAnthropicMessagesRequest(from: request))
     }
-    return AIChatCompletionResult(
-      content: content,
-      toolCalls: toolCalls,
-      rawModel: payload.model,
-      tokenUsage: payload.usage?.tokenUsage
-    )
+    return try encoder.encode(request)
   }
 
   private func performPreparedDataTransport(
@@ -180,7 +246,8 @@ extension AIChatCompletionClient {
     // may have been waiting for task scheduling or a timeout race after the
     // initial validation/one-shot consumption above.
     try validatePrepared(prepared, against: config, apiKey: apiKey)
-    return try await transport.data(for: request)
+    let selectedTransport = try transport(for: config)
+    return try await selectedTransport.data(for: request)
   }
   func httpError(
     statusResponse: HTTPURLResponse,
@@ -273,7 +340,12 @@ extension AIChatCompletionClient {
     request.timeoutInterval = networkRecoveryPolicy.firstByteTimeout
     request.httpMethod = "POST"
     request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-    if let apiKey = apiKey?.nilIfEmpty {
+    if config.usesAnthropicAPI {
+      if let apiKey = apiKey?.nilIfEmpty {
+        request.setValue(apiKey, forHTTPHeaderField: "x-api-key")
+      }
+      request.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
+    } else if let apiKey = apiKey?.nilIfEmpty {
       request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
     }
     request.httpBody = prepared.encodedBody
@@ -281,7 +353,8 @@ extension AIChatCompletionClient {
   }
 
   func makeNonStreamingVariant(
-    from prepared: AIPreparedAIChatCompletionRequest
+    from prepared: AIPreparedAIChatCompletionRequest,
+    config: AIProviderConfig
   ) throws -> AIPreparedAIChatCompletionRequest {
     var normalized = prepared.normalizedRequest
     normalized.stream = nil
@@ -290,7 +363,7 @@ extension AIChatCompletionClient {
       normalizedRequest: normalized,
       endpointIdentity: prepared.endpointIdentity,
       endpointURL: prepared.endpointURL,
-      encodedBody: try encoder.encode(normalized),
+      encodedBody: try canonicalEncodedBody(for: normalized, config: config),
       mode: .nonStreaming,
       purpose: prepared.purpose,
       capabilitySupportSnapshot: prepared.capabilitySupportSnapshot,
@@ -306,6 +379,17 @@ extension AIChatCompletionClient {
       return networkRecoveryPolicy.automaticReplay == .beforeContent
     case .utilityTask, .connectionTest, .capabilityProbe:
       return networkRecoveryPolicy.nonInteractiveAutomaticReplay == .beforeContent
+    }
+  }
+
+  private func allowsNonStreamingAutomaticReplay(
+    for purpose: AIProviderRequestPurpose
+  ) -> Bool {
+    switch purpose {
+    case .connectionTest, .capabilityProbe:
+      return networkRecoveryPolicy.nonInteractiveAutomaticReplay == .beforeContent
+    case .interactiveChat, .utilityTask:
+      return false
     }
   }
 

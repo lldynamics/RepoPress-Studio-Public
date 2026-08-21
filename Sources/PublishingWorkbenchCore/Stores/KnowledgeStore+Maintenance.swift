@@ -300,24 +300,36 @@ extension KnowledgeStore {
   /// Resolves one user-selected knowledge document for an explicit AI @
   /// reference. This does not change library selection and refuses documents
   /// that are archived or not authorized for AI use.
-  public func explicitAIContextText(documentID: UUID) async -> String? {
-    guard
-      let document = documents.first(where: {
-        $0.id == documentID && !$0.isArchived && $0.allowsRemoteAIUse
-      })
-    else {
-      return nil
-    }
+  public func explicitAIContextSnapshot(
+    documentID: UUID
+  ) async -> KnowledgeExplicitContextSnapshot? {
     do {
-      let text = try await service.normalizedTextAsync(documentID: documentID)
-      if document.kind == .webpage {
-        return KnowledgeWebContentSanitizer().sanitizeExtractedReadingText(text)
-      }
-      return text
+      return try await service.explicitAIContextSnapshot(documentID: documentID)
     } catch {
       lastError = error.localizedDescription
       statusMessage = "读取 @ 资料失败：\(error.localizedDescription)"
       return nil
+    }
+  }
+
+  public func explicitAIContextText(documentID: UUID) async -> String? {
+    await explicitAIContextSnapshot(documentID: documentID)?.text
+  }
+
+  /// Checks captured knowledge bindings against the SQLite authority, rather
+  /// than the store's presentation cache. This closes the gap between a
+  /// preview and the actual transport when permissions, revisions, archive
+  /// state, or pinned membership changed meanwhile.
+  public func validateKnowledgeAuthorizationBindings(
+    _ bindings: [KnowledgeAuthorizationBinding],
+    policy: KnowledgeRetrievalPolicy
+  ) async -> Bool {
+    do {
+      return try await service.validateKnowledgeAuthorizationBindings(bindings, policy: policy)
+    } catch {
+      lastError = error.localizedDescription
+      statusMessage = "资料权限校验失败，本次未发送。"
+      return false
     }
   }
 }

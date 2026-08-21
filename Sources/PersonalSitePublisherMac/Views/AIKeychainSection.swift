@@ -19,7 +19,7 @@ struct AIKeychainSection: View {
   @State private var isKeyRevealed = false
 
   var body: some View {
-    Section("1. API Key") {
+    Section(String(localized: "API Key 凭据")) {
       Picker("保存位置", selection: storageModeBinding) {
         ForEach(AICredentialStorageMode.allCases) { mode in
           Text(storageModeTitle(mode)).tag(mode)
@@ -27,6 +27,15 @@ struct AIKeychainSection: View {
       }
       .accessibilityLabel("AI API Key 保存位置")
       .accessibilityHint("只有选择系统钥匙串后，AI 功能才会访问钥匙串中的 API Key")
+
+      Text(
+        String(
+          localized:
+            "此保存模式是所有 AI API 连接共用的全局偏好。切换位置不会静默读取、复制或删除其他位置的旧凭据；请在目标位置重新保存。"
+        )
+      )
+      .font(.callout)
+      .foregroundStyle(.secondary)
 
       HStack(spacing: 8) {
         if isKeyRevealed {
@@ -62,6 +71,7 @@ struct AIKeychainSection: View {
       .accessibilityHint("输入后保存到\(storageModeTitle(storageMode))")
 
       Button(saveButtonTitle) {
+        aiAPIKeyInput.wrappedValue = Self.sanitizeAPIKey(aiAPIKeyInput.wrappedValue)
         onSaveAPIKey()
       }
       .workbenchProminentActionStyle()
@@ -150,9 +160,9 @@ struct AIKeychainSection: View {
   private func storageModeTitle(_ mode: AICredentialStorageMode) -> String {
     switch mode {
     case .localFile:
-      return String(localized: "本地配置文件（默认）")
+      return String(localized: "本地配置文件（明文）")
     case .keychain:
-      return String(localized: "系统钥匙串")
+      return String(localized: "系统钥匙串（推荐，默认）")
     case .session:
       return String(localized: "仅本次会话")
     }
@@ -173,9 +183,9 @@ struct AIKeychainSection: View {
     switch storageMode {
     case .localFile:
       return String(
-        localized: "默认保存在此 Mac 的应用支持目录，文件权限限制为仅当前用户可读写（0600）。内容是明文，请勿共享该配置文件。应用不会访问 AI 钥匙串项目。")
+        localized: "保存在此 Mac 的应用支持目录，文件权限限制为仅当前用户可读写（0600）。内容以明文保存，请勿共享或上传该配置文件。应用不会访问 AI 钥匙串项目。")
     case .keychain:
-      return String(localized: "保存到 macOS 系统钥匙串。只有选择此项后，应用才会读取或修改 AI API Key 的钥匙串项目。")
+      return String(localized: "推荐保存到 macOS 系统钥匙串。只有选择此项后，应用才会读取或修改 AI API Key 的钥匙串项目。")
     case .session:
       return String(localized: "只保存在应用内存中，退出 RepoPress Studio 后自动清除，不写配置文件或钥匙串。")
     }
@@ -212,6 +222,16 @@ struct AIKeychainSection: View {
     case .accessFailed:
       return WorkbenchTheme.warning
     }
+  }
+
+  static func sanitizeAPIKey(_ raw: String) -> String {
+    var text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+    if (text.hasPrefix("\"") && text.hasSuffix("\""))
+      || (text.hasPrefix("'") && text.hasSuffix("'"))
+    {
+      text = String(text.dropFirst().dropLast()).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+    return text
   }
 }
 

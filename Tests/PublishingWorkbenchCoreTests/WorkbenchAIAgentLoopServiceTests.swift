@@ -31,6 +31,19 @@ final class WorkbenchAIAgentLoopServiceTests: XCTestCase {
     )
     XCTAssertEqual(result.transcript[3].toolCallID, "call-1")
     XCTAssertTrue(textContent(result.transcript[3])?.contains("inspector is visible") == true)
+    XCTAssertEqual(result.toolRuns.count, 1)
+    XCTAssertEqual(result.toolRuns[0].toolCallID, "call-1")
+    XCTAssertEqual(result.toolRuns[0].command, .showInspector)
+    XCTAssertEqual(result.toolRuns[0].status, .succeeded)
+    XCTAssertEqual(result.toolRuns[0].summary, "inspector is visible")
+    let executedStepIDs = await executor.stepIDs()
+    XCTAssertEqual(result.toolRuns[0].automationStepID, executedStepIDs.first)
+    XCTAssertNil(result.toolRuns[0].targetDraftID)
+    XCTAssertNotNil(result.toolRuns[0].completedAt)
+    XCTAssertGreaterThanOrEqual(
+      result.toolRuns[0].completedAt ?? .distantPast,
+      result.toolRuns[0].startedAt
+    )
 
     let requests = await transport.recordedRequests()
     XCTAssertEqual(requests.count, 2)
@@ -38,7 +51,7 @@ final class WorkbenchAIAgentLoopServiceTests: XCTestCase {
     XCTAssertEqual(requests[0].toolChoice, .auto)
     XCTAssertEqual(
       requests[0].tools?.map(\.function.name),
-      WorkbenchAutomationRegistry.descriptors.map { $0.id.rawValue }
+      WorkbenchAutomationRegistry.agentToolDefinitions.map(\.function.name)
     )
   }
 
@@ -117,6 +130,7 @@ final class WorkbenchAIAgentLoopServiceTests: XCTestCase {
     XCTAssertEqual(result.termination, .rejected(.unknownTool("runShell")))
     XCTAssertEqual(result.assistantText, [])
     XCTAssertEqual(result.transcript.map(\.role), ["system", "user"])
+    XCTAssertTrue(result.toolRuns.isEmpty)
     let invocationCount = await executor.invocationCount()
     let requestCount = await transport.requestCount()
     XCTAssertEqual(invocationCount, 0)
@@ -171,6 +185,7 @@ final class WorkbenchAIAgentLoopServiceTests: XCTestCase {
       mismatchResult.termination,
       .rejected(.argumentMismatch(toolCallID: "bad-args", toolName: "openSection"))
     )
+    XCTAssertTrue(mismatchResult.toolRuns.isEmpty)
     let mismatchInvocationCount = await mismatchExecutor.invocationCount()
     XCTAssertEqual(mismatchInvocationCount, 0)
   }
@@ -469,12 +484,530 @@ final class WorkbenchAIAgentLoopServiceTests: XCTestCase {
     XCTAssertEqual(
       result.pendingPlan?.steps.dropFirst().map(\.status),
       [
-        .awaitingConfirmation, .awaitingConfirmation, .awaitingConfirmation,
+        .proposed, .awaitingConfirmation, .awaitingConfirmation,
       ])
+    XCTAssertEqual(
+      result.toolRuns.map(\.status),
+      Array(repeating: .awaitingConfirmation, count: 4)
+    )
+    XCTAssertTrue(result.toolRuns.allSatisfy { $0.completedAt == nil })
+    XCTAssertEqual(
+      result.toolRuns[2].automationStepID,
+      result.pendingPlan?.steps[2].id
+    )
     let invocationCount = await executor.invocationCount()
     let requestCount = await transport.requestCount()
     XCTAssertEqual(invocationCount, 0)
     XCTAssertEqual(requestCount, 1)
+  }
+
+  func testAwaitingReviewCheckpointIsCodableAndAcceptedResumeAddsOnlyNewAssistantText() async throws {
+    let draftID = UUID()
+    let updatedAt = Date(timeIntervalSinceReferenceDate: 123)
+    let transport = AgentLoopTransportFixture(responses: [
+      AIChatCompletionResult(
+        content: "请审阅这项修改。",
+        toolCalls: [
+          toolCall(
+            id: "review-accept",
+            name: "updateMetadata",
+            arguments:
+              #"{"draftID":"\#(draftID.uuidString)","metadataField":"summary","value":"new"}"#
+          )
+        ]
+      ),
+      AIChatCompletionResult(content: "恢复后继续完成。"),
+    ])
+    let executor = AgentLoopExecutorFixture()
+    let service = makeService(transport: transport, executor: executor)
+    let context = WorkbenchAIAgentContext(
+      goal: "修改摘要",
+      draftVersions: [draftID: updatedAt]
+    )
+
+    let paused = await service.run(
+      request: request(),
+      context: context,
+      toolCallingSupport: .supported
+    )
+    guard let checkpoint = paused.checkpoint,
+      let pending = checkpoint.pendingCalls.first
+    else {
+      return XCTFail("Expected a persisted review checkpoint")
+    }
+    XCTAssertEqual(paused.termination, .awaitingReview)
+    XCTAssertEqual(checkpoint.trustedBoundaryIndex, 0)
+    XCTAssertEqual(checkpoint.toolRuns.count, checkpoint.pendingCalls.count)
+
+    let encoded = try JSONEncoder().encode(checkpoint)
+    let decoded = try JSONDecoder().decode(
+      WorkbenchAIAgentLoopCheckpoint.self,
+      from: encoded
+    )
+    XCTAssertEqual(decoded, checkpoint)
+
+    let resumed = await service.resume(
+      request: request(),
+      context: WorkbenchAIAgentContext(
+        goal: "修改摘要",
+        draftVersions: [draftID: updatedAt.addingTimeInterval(1)]
+      ),
+      toolCallingSupport: .supported,
+      checkpoint: decoded,
+      resolutions: [
+        WorkbenchAIAgentToolResolution(
+          toolCallID: pending.toolCallID,
+          automationStepID: pending.automationStepID,
+          command: pending.command,
+          status: .succeeded,
+          content: "摘要已应用。",
+          targetDraftID: draftID,
+          resolvedAt: updatedAt.addingTimeInterval(1)
+        )
+      ]
+    )
+
+    XCTAssertEqual(resumed.termination, .completed)
+    XCTAssertEqual(resumed.assistantText, ["恢复后继续完成。"])
+    XCTAssertEqual(resumed.toolRuns.map(\.status), [.succeeded])
+    XCTAssertEqual(resumed.transcript.filter { $0.role == "tool" }.count, 1)
+    XCTAssertEqual(resumed.transcript.last?.role, "assistant")
+    let acceptedInvocationCount = await executor.invocationCount()
+    let acceptedRequestCount = await transport.requestCount()
+    XCTAssertEqual(acceptedInvocationCount, 0)
+    XCTAssertEqual(acceptedRequestCount, 2)
+  }
+
+  func testResumeCountsOnlyAgentSuffixWhenRequestContainsAssistantHistory() async {
+    let draftID = UUID()
+    let updatedAt = Date(timeIntervalSinceReferenceDate: 321)
+    let transport = AgentLoopTransportFixture(responses: [
+      AIChatCompletionResult(
+        content: "请审阅。",
+        toolCalls: [
+          toolCall(
+            id: "history-review",
+            name: "updateMetadata",
+            arguments:
+              #"{"draftID":"\#(draftID.uuidString)","metadataField":"summary","value":"new"}"#
+          )
+        ]
+      ),
+      AIChatCompletionResult(content: "继续完成。"),
+    ])
+    let service = makeService(
+      transport: transport,
+      executor: AgentLoopExecutorFixture()
+    )
+    let historicalRequest = AIChatCompletionRequest(
+      model: "fixture-model",
+      messages: [
+        AIChatMessage(role: "system", content: "workspace context"),
+        AIChatMessage(role: "user", content: "earlier question"),
+        AIChatMessage(role: "assistant", content: "earlier answer"),
+        AIChatMessage(role: "user", content: "update it"),
+      ]
+    )
+    let context = WorkbenchAIAgentContext(
+      goal: "历史对话中的修改",
+      draftVersions: [draftID: updatedAt]
+    )
+
+    let paused = await service.run(
+      request: historicalRequest,
+      context: context,
+      toolCallingSupport: .supported
+    )
+    guard let checkpoint = paused.checkpoint,
+      let pending = checkpoint.pendingCalls.first
+    else {
+      return XCTFail("Expected a persisted review checkpoint")
+    }
+    XCTAssertEqual(checkpoint.agentTranscriptStartIndex, 5)
+    XCTAssertEqual(checkpoint.modelRoundCount, 1)
+
+    let resumed = await service.resume(
+      request: historicalRequest,
+      context: context,
+      toolCallingSupport: .supported,
+      checkpoint: checkpoint,
+      resolutions: [
+        WorkbenchAIAgentToolResolution(
+          toolCallID: pending.toolCallID,
+          automationStepID: pending.automationStepID,
+          command: pending.command,
+          status: .rejected,
+          content: "The user rejected this proposed action; it was not executed.",
+          targetDraftID: draftID
+        )
+      ]
+    )
+
+    XCTAssertEqual(resumed.termination, .completed)
+    XCTAssertEqual(resumed.modelRoundCount, 2)
+    let requestCount = await transport.requestCount()
+    XCTAssertEqual(requestCount, 2)
+  }
+
+  func testResumeRejectedResolutionUsesRejectedToolStatusAndPreservesCallOrder() async {
+    let draftID = UUID()
+    let transport = AgentLoopTransportFixture(responses: [
+      AIChatCompletionResult(
+        content: "请审阅两项修改。",
+        toolCalls: [
+          toolCall(
+            id: "review-first",
+            name: "updateMetadata",
+            arguments:
+              #"{"draftID":"\#(draftID.uuidString)","metadataField":"summary","value":"one"}"#
+          ),
+          toolCall(
+            id: "review-second",
+            name: "updateMetadata",
+            arguments:
+              #"{"draftID":"\#(draftID.uuidString)","metadataField":"title","value":"two"}"#
+          ),
+        ]
+      ),
+      AIChatCompletionResult(content: "已处理审阅结果。"),
+    ])
+    let executor = AgentLoopExecutorFixture()
+    let service = makeService(transport: transport, executor: executor)
+    let context = WorkbenchAIAgentContext(
+      goal: "批量修改",
+      draftVersions: [draftID: Date()]
+    )
+    let paused = await service.run(
+      request: request(),
+      context: context,
+      toolCallingSupport: .supported
+    )
+    guard let checkpoint = paused.checkpoint else {
+      return XCTFail("Expected a persisted review checkpoint")
+    }
+    let reversedResolutions = checkpoint.pendingCalls.reversed().map { pending in
+      WorkbenchAIAgentToolResolution(
+        toolCallID: pending.toolCallID,
+        automationStepID: pending.automationStepID,
+        command: pending.command,
+        status: pending.toolCallID == "review-first" ? .rejected : .succeeded,
+        content: pending.toolCallID == "review-first" ? "用户拒绝" : "已应用",
+        targetDraftID: draftID
+      )
+    }
+
+    let resumed = await service.resume(
+      request: request(),
+      context: context,
+      toolCallingSupport: .supported,
+      checkpoint: checkpoint,
+      resolutions: Array(reversedResolutions)
+    )
+
+    XCTAssertEqual(resumed.termination, .completed)
+    XCTAssertEqual(
+      resumed.transcript.filter { $0.role == "tool" }.compactMap(\.toolCallID),
+      ["review-first", "review-second"]
+    )
+    XCTAssertEqual(
+      resumed.toolRuns.map(\.status),
+      [.rejected, .succeeded]
+    )
+    let requests = await transport.recordedRequests()
+    let toolMessages = requests[1].messages.filter { $0.role == "tool" }
+    XCTAssertTrue(textContent(toolMessages[0])?.contains("rejected") == true)
+    let rejectedInvocationCount = await executor.invocationCount()
+    XCTAssertEqual(rejectedInvocationCount, 0)
+  }
+
+  func testResumeRejectsPartialExtraDuplicateAndTamperedCheckpointBeforeTransport() async {
+    let draftID = UUID()
+    let transport = AgentLoopTransportFixture(responses: [
+      AIChatCompletionResult(
+        content: "请审阅。",
+        toolCalls: [
+          toolCall(
+            id: "review-validate",
+            name: "updateMetadata",
+            arguments:
+              #"{"draftID":"\#(draftID.uuidString)","metadataField":"summary","value":"new"}"#
+          )
+        ]
+      )
+    ])
+    let service = makeService(transport: transport, executor: AgentLoopExecutorFixture())
+    let context = WorkbenchAIAgentContext(
+      goal: "验证恢复",
+      draftVersions: [draftID: Date()]
+    )
+    let paused = await service.run(
+      request: request(),
+      context: context,
+      toolCallingSupport: .supported
+    )
+    guard let checkpoint = paused.checkpoint,
+      let pending = checkpoint.pendingCalls.first
+    else {
+      return XCTFail("Expected a persisted review checkpoint")
+    }
+    let resolution = WorkbenchAIAgentToolResolution(
+      toolCallID: pending.toolCallID,
+      automationStepID: pending.automationStepID,
+      command: pending.command,
+      status: .rejected,
+      content: "拒绝"
+    )
+    XCTAssertTrue(
+      service.isValidResumeCheckpoint(
+        context: context,
+        toolCallingSupport: .supported,
+        checkpoint: checkpoint
+      )
+    )
+
+    let partial = await service.resume(
+      request: request(), context: context, toolCallingSupport: .supported,
+      checkpoint: checkpoint, resolutions: []
+    )
+    XCTAssertEqual(partial.termination, .rejected(.incompleteReviewedRound))
+
+    let extra = await service.resume(
+      request: request(), context: context, toolCallingSupport: .supported,
+      checkpoint: checkpoint, resolutions: [resolution, resolution]
+    )
+    XCTAssertEqual(extra.termination, .rejected(.invalidContinuation))
+
+    var tampered = checkpoint
+    tampered.totalArgumentByteCount += 1
+    XCTAssertFalse(
+      service.isValidResumeCheckpoint(
+        context: context,
+        toolCallingSupport: .supported,
+        checkpoint: tampered
+      )
+    )
+    let corrupted = await service.resume(
+      request: request(), context: context, toolCallingSupport: .supported,
+      checkpoint: tampered, resolutions: [resolution]
+    )
+    XCTAssertEqual(corrupted.termination, .rejected(.invalidContinuation))
+
+    var shiftedStart = checkpoint
+    shiftedStart.agentTranscriptStartIndex += 1
+    let shifted = await service.resume(
+      request: request(), context: context, toolCallingSupport: .supported,
+      checkpoint: shiftedStart, resolutions: [resolution]
+    )
+    XCTAssertEqual(shifted.termination, .rejected(.invalidContinuation))
+    let validationRequestCount = await transport.requestCount()
+    XCTAssertEqual(validationRequestCount, 1)
+  }
+
+  func testResumeDoesNotResetPersistedModelRoundLimit() async {
+    let draftID = UUID()
+    let context = WorkbenchAIAgentContext(
+      goal: "保持累计轮次",
+      draftVersions: [draftID: Date()]
+    )
+    let transport = AgentLoopTransportFixture(responses: [
+      AIChatCompletionResult(
+        content: "请审阅。",
+        toolCalls: [
+          toolCall(
+            id: "round-limit-review",
+            name: "updateMetadata",
+            arguments:
+              #"{"draftID":"\#(draftID.uuidString)","metadataField":"summary","value":"new"}"#
+          )
+        ]
+      )
+    ])
+    let service = makeService(
+      limits: WorkbenchAIAgentLoopLimits(maximumModelRoundCount: 1),
+      transport: transport,
+      executor: AgentLoopExecutorFixture()
+    )
+    let paused = await service.run(
+      request: request(),
+      context: context,
+      toolCallingSupport: .supported
+    )
+    guard let checkpoint = paused.checkpoint,
+      let pending = checkpoint.pendingCalls.first
+    else {
+      return XCTFail("Expected a persisted review checkpoint")
+    }
+
+    let resumed = await service.resume(
+      request: request(),
+      context: context,
+      toolCallingSupport: .supported,
+      checkpoint: checkpoint,
+      resolutions: [
+        WorkbenchAIAgentToolResolution(
+          toolCallID: pending.toolCallID,
+          automationStepID: pending.automationStepID,
+          command: pending.command,
+          status: .rejected,
+          content: "The user rejected this proposed action; it was not executed.",
+          targetDraftID: draftID
+        )
+      ]
+    )
+
+    XCTAssertEqual(resumed.termination, .limitReached(.modelRounds(maximum: 1)))
+    let requestCount = await transport.requestCount()
+    XCTAssertEqual(requestCount, 1)
+  }
+
+  func testCreateDraftIsAutomaticallyExecutedInAStandaloneRound() async {
+    let transport = AgentLoopTransportFixture(responses: [
+      AIChatCompletionResult(
+        content: "",
+        toolCalls: [
+          toolCall(id: "create", name: "createDraft", arguments: #"{"value":"新建文章"}"#)
+        ]
+      ),
+      AIChatCompletionResult(content: "已新建文章。"),
+    ])
+    let executor = AgentLoopExecutorFixture(resultContent: "created")
+    let service = makeService(transport: transport, executor: executor)
+
+    let result = await service.run(
+      request: request(content: "请新建一篇新建文章"),
+      context: WorkbenchAIAgentContext(goal: "新建文章"),
+      toolCallingSupport: .supported
+    )
+
+    XCTAssertEqual(result.termination, .completed)
+    XCTAssertNil(result.pendingPlan)
+    XCTAssertEqual(result.modelRoundCount, 2)
+    XCTAssertEqual(result.assistantText, ["已新建文章。"])
+    let commands = await executor.commands()
+    XCTAssertEqual(commands, [.createDraft])
+    let requests = await transport.recordedRequests()
+    XCTAssertEqual(requests.count, 2)
+    XCTAssertEqual(
+      requests[0].tools?.map(\.function.name),
+      WorkbenchAutomationRegistry.agentToolDefinitions.map(\.function.name)
+    )
+    XCTAssertEqual(result.toolRuns.map(\.status), [.succeeded])
+  }
+
+  func testAutomaticToolFailureIsRecordedWithoutExposingThrownError() async {
+    let transport = AgentLoopTransportFixture(responses: [
+      AIChatCompletionResult(
+        content: "",
+        toolCalls: [toolCall(id: "failed", name: "showInspector")]
+      ),
+      AIChatCompletionResult(content: "继续完成。"),
+    ])
+    let executor = AgentLoopExecutorFixture(
+      resultContent: "工具返回的失败摘要",
+      isError: true
+    )
+    let service = makeService(transport: transport, executor: executor)
+
+    let result = await service.run(
+      request: request(),
+      context: WorkbenchAIAgentContext(goal: "记录失败"),
+      toolCallingSupport: .supported
+    )
+
+    XCTAssertEqual(result.termination, .completed)
+    XCTAssertEqual(result.toolRuns.count, 1)
+    XCTAssertEqual(result.toolRuns[0].status, .failed)
+    XCTAssertEqual(result.toolRuns[0].summary, "工具返回的失败摘要")
+    XCTAssertNotNil(result.toolRuns[0].automationStepID)
+    XCTAssertNotNil(result.toolRuns[0].completedAt)
+  }
+
+  func testThrownAutomaticToolErrorUsesSanitizedRunSummary() async {
+    let transport = AgentLoopTransportFixture(responses: [
+      AIChatCompletionResult(
+        content: "",
+        toolCalls: [toolCall(id: "thrown", name: "showInspector")]
+      ),
+      AIChatCompletionResult(content: "已继续。"),
+    ])
+    let service = WorkbenchAIAgentLoopService(
+      modelTransport: { request in
+        try await transport.complete(request)
+      },
+      automaticExecutor: { _ in
+        throw AgentLoopTransportFixture.FixtureError.exhausted
+      }
+    )
+
+    let result = await service.run(
+      request: request(),
+      context: WorkbenchAIAgentContext(goal: "隐藏错误"),
+      toolCallingSupport: .supported
+    )
+
+    XCTAssertEqual(result.termination, .completed)
+    XCTAssertEqual(result.toolRuns[0].status, .failed)
+    XCTAssertEqual(result.toolRuns[0].summary, "The application tool failed.")
+    XCTAssertFalse(result.toolRuns[0].summary.contains("exhausted"))
+  }
+
+  func testToolRunSummaryAndClockAreBoundedAndDeterministic() async {
+    let timestamp = Date(timeIntervalSinceReferenceDate: 1234)
+    let longSummary = String(repeating: "x", count: 700)
+    let transport = AgentLoopTransportFixture(responses: [
+      AIChatCompletionResult(
+        content: "",
+        toolCalls: [toolCall(id: "long", name: "showInspector")]
+      ),
+      AIChatCompletionResult(content: "完成。"),
+    ])
+    let executor = AgentLoopExecutorFixture(resultContent: longSummary)
+    let service = makeService(
+      transport: transport,
+      executor: executor,
+      dateProvider: { timestamp }
+    )
+
+    let result = await service.run(
+      request: request(),
+      context: WorkbenchAIAgentContext(goal: "摘要长度"),
+      toolCallingSupport: .supported
+    )
+
+    guard let record = result.toolRuns.first else {
+      return XCTFail("Expected a tool run record")
+    }
+    XCTAssertEqual(record.summary.count, WorkbenchAIAgentToolRunRecord.maximumSummaryLength)
+    XCTAssertTrue(record.summary.hasSuffix("..."))
+    XCTAssertEqual(record.startedAt, timestamp)
+    XCTAssertEqual(record.completedAt, timestamp)
+  }
+
+  func testAllowedCommandsFilterDeclarationsAndRejectUnallowedModelCall() async {
+    let transport = AgentLoopTransportFixture(responses: [
+      AIChatCompletionResult(
+        content: "",
+        toolCalls: [toolCall(id: "read", name: "showInspector")]
+      )
+    ])
+    let executor = AgentLoopExecutorFixture()
+    let service = makeService(
+      transport: transport,
+      executor: executor,
+      allowedCommands: [.createDraft]
+    )
+
+    let result = await service.run(
+      request: request(),
+      context: WorkbenchAIAgentContext(goal: "create"),
+      toolCallingSupport: .supported
+    )
+
+    XCTAssertEqual(result.termination, .rejected(.toolNotAllowed("showInspector")))
+    let requests = await transport.recordedRequests()
+    XCTAssertEqual(requests.first?.tools?.map(\.function.name), ["createDraft"])
+    let invocationCount = await executor.invocationCount()
+    XCTAssertEqual(invocationCount, 0)
   }
 
   func testToolResultPromptInjectionCannotRunUnknownOrConfirmationBypassTool() async {
@@ -597,6 +1130,9 @@ final class WorkbenchAIAgentLoopServiceTests: XCTestCase {
     XCTAssertEqual(result.termination, .cancelled)
     XCTAssertEqual(result.transcript.map(\.role), ["system", "user"])
     XCTAssertEqual(result.assistantText, [])
+    XCTAssertEqual(result.toolRuns.map(\.status), [.cancelled])
+    XCTAssertNotNil(result.toolRuns[0].automationStepID)
+    XCTAssertNotNil(result.toolRuns[0].completedAt)
   }
 
   func testCumulativeArgumentBoundaryStopsBeforeSecondRoundExecution() async {
@@ -742,16 +1278,22 @@ final class WorkbenchAIAgentLoopServiceTests: XCTestCase {
   private func makeService(
     limits: WorkbenchAIAgentLoopLimits = .default,
     transport: AgentLoopTransportFixture,
-    executor: AgentLoopExecutorFixture
+    executor: AgentLoopExecutorFixture,
+    allowedCommands: Set<WorkbenchAutomationCommandID> = Set(
+      WorkbenchAutomationCommandID.allCases
+    ),
+    dateProvider: @escaping WorkbenchAIAgentDateProvider = { Date() }
   ) -> WorkbenchAIAgentLoopService {
     WorkbenchAIAgentLoopService(
       limits: limits,
       modelTransport: { request in
         try await transport.complete(request)
       },
-      readOnlyExecutor: { invocation in
+      allowedCommands: allowedCommands,
+      automaticExecutor: { invocation in
         await executor.execute(invocation)
-      }
+      },
+      dateProvider: dateProvider
     )
   }
 }
@@ -787,15 +1329,17 @@ private actor AgentLoopTransportFixture {
 
 private actor AgentLoopExecutorFixture {
   private let resultContent: String
+  private let isError: Bool
   private var invocations: [WorkbenchAIAgentToolInvocation] = []
 
-  init(resultContent: String = "ok") {
+  init(resultContent: String = "ok", isError: Bool = false) {
     self.resultContent = resultContent
+    self.isError = isError
   }
 
   func execute(_ invocation: WorkbenchAIAgentToolInvocation) -> WorkbenchAIAgentToolResult {
     invocations.append(invocation)
-    return WorkbenchAIAgentToolResult(content: resultContent)
+    return WorkbenchAIAgentToolResult(content: resultContent, isError: isError)
   }
 
   func invocationCount() -> Int {
@@ -808,6 +1352,10 @@ private actor AgentLoopExecutorFixture {
 
   func commands() -> [WorkbenchAutomationCommandID] {
     invocations.map { $0.step.command }
+  }
+
+  func stepIDs() -> [UUID] {
+    invocations.map { $0.step.id }
   }
 }
 

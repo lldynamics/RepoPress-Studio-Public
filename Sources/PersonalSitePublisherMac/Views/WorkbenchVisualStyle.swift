@@ -164,12 +164,6 @@ enum WorkbenchTheme {
   static var document: Color { `default`.document }
   static var documentForeground: Color { `default`.documentForeground }
   static var finance: Color { `default`.finance }
-  static let financeForeground = adaptive(
-    light: (0.46, 0.32, 0.08),
-    dark: (0.88, 0.72, 0.44),
-    lightHighContrast: (0.36, 0.23, 0.03),
-    darkHighContrast: (0.96, 0.82, 0.54)
-  )
   static var inventory: Color { `default`.inventory }
   static var inventoryForeground: Color { `default`.inventoryForeground }
 
@@ -211,6 +205,7 @@ enum WorkbenchWritingSurface {
       .aqua,
       .darkAqua,
     ]) {
+    // WCAG AAA 决策：高对比度模式下自动降级为系统纯色背景，确保文本与背景对比度达到最高标准 (>= 7:1)
     case .accessibilityHighContrastAqua, .accessibilityHighContrastDarkAqua:
       return .textBackgroundColor
     case .darkAqua:
@@ -224,6 +219,7 @@ enum WorkbenchWritingSurface {
 enum WorkbenchCornerRadius {
   static let chartBar: CGFloat = 3
   static let control: CGFloat = 6
+  static let searchBar: CGFloat = 7
   static let card: CGFloat = 8
 }
 
@@ -241,6 +237,8 @@ enum WorkbenchPageMetrics {
 
 /// 共享空间节奏；名称描述布局角色，而不是单个调用点。
 enum WorkbenchSpacing {
+  /// 图标与紧密元素间距
+  static let icon: CGFloat = 6
   /// 密集控件内容、紧凑行和小间距。
   static let control: CGFloat = 8
   /// 卡片内容和成组表单控件。
@@ -260,7 +258,6 @@ enum WorkbenchMotion {
   static let standard = Animation.easeInOut(duration: 0.16)
   static let deliberate = Animation.easeInOut(duration: 0.20)
   static let hoverSpring = Animation.spring(response: 0.25, dampingFraction: 0.75)
-  static let gentleSpring = Animation.spring(response: 0.25, dampingFraction: 0.80)
   static let emphasisSpring = Animation.spring(response: 0.20, dampingFraction: 0.70)
   static let ambientPulse = Animation.easeInOut(duration: 1.35).repeatForever(autoreverses: true)
 }
@@ -292,9 +289,6 @@ enum WorkbenchSheetMetrics {
       }
     }
   }
-
-  /// 根据可见屏幕计算弹窗高度的宿主所使用的上限。
-  static let maxHeightRatio: CGFloat = 0.90
 }
 
 enum WorkbenchSettingsMetrics {
@@ -308,12 +302,8 @@ enum WorkbenchSettingsMetrics {
 }
 
 enum WorkbenchOpacity {
-  static let subtleBackground = 0.20
-  static let panelBackground = 0.28
-  static let cardBackground = 0.35
   static let controlBackground = 0.45
   static let badgeBackground = 0.55
-  static let codeBlockBackground = 0.06
   static let selectionBackground = 0.12
   static let accentBackground = 0.16
   static let noticeBackground = 0.10
@@ -338,27 +328,6 @@ enum WorkbenchBackgroundStyle {
   /// 交互控件和紧凑徽标使用最强的中性表面。
   static var control: AnyShapeStyle {
     surface(opacity: 0.10)
-  }
-
-  // 兼容别名暂时映射到上面的三级表面，避免旧视图在渐进迁移期间重新引入额外灰阶。
-  @available(*, deprecated, message: "请使用 WorkbenchBackgroundStyle.card")
-  static var subtle: AnyShapeStyle {
-    card
-  }
-
-  @available(*, deprecated, message: "请使用 WorkbenchBackgroundStyle.card")
-  static var panel: AnyShapeStyle {
-    card
-  }
-
-  @available(*, deprecated, message: "请使用 WorkbenchBackgroundStyle.control")
-  static var badge: AnyShapeStyle {
-    control
-  }
-
-  @available(*, deprecated, message: "请使用 WorkbenchBackgroundStyle.control")
-  static var codeBlock: AnyShapeStyle {
-    control
   }
 
   private static func surface(opacity: Double) -> AnyShapeStyle {
@@ -497,6 +466,7 @@ struct WorkbenchListDisclosureFooter: View {
 /// 视图提供自定义背景时很容易丢失原生焦点环，因此由共享按钮样式绘制焦点环。
 struct WorkbenchFocusRingButtonStyle: ButtonStyle {
   var cornerRadius: CGFloat = WorkbenchCornerRadius.control
+  var lineWidth: CGFloat = 1.5
 
   @Environment(\.isFocused) private var isFocused
 
@@ -504,9 +474,9 @@ struct WorkbenchFocusRingButtonStyle: ButtonStyle {
     configuration.label
       .overlay {
         RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-          .stroke(
+          .strokeBorder(
             isFocused ? Color.accentColor : Color.clear,
-            lineWidth: isFocused ? 2 : 0
+            lineWidth: isFocused ? lineWidth : 0
           )
       }
       .opacity(configuration.isPressed ? 0.82 : 1)
@@ -560,7 +530,6 @@ extension Font {
 
   static let workbenchCardTitle: Font = .callout.weight(.semibold)
   static let workbenchMetricValue: Font = .title3.weight(.semibold)
-  static let workbenchPath: Font = .caption.monospaced()
 }
 
 extension View {

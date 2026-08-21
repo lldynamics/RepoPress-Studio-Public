@@ -108,11 +108,10 @@ public final class WorkbenchActivityStatusFacade: ObservableObject {
     case .gitPush:
       await retryGitTask()
     case .deployment:
-      guard let recordID = UUID(uuidString: task.id.replacingOccurrences(of: "deployment-", with: "")),
-            let record = store.activeProfileReleaseRecords.first(where: { $0.id == recordID }) else {
-        return
+      if let recordID = task.targetID ?? UUID(uuidString: task.id.replacingOccurrences(of: "deployment-", with: "")),
+         let record = store.activeProfileReleaseRecords.first(where: { $0.id == recordID }) {
+        _ = await store.refreshDeploymentStatus(for: record)
       }
-      _ = await store.refreshDeploymentStatus(for: record)
     }
   }
 
@@ -301,7 +300,8 @@ public final class WorkbenchActivityStatusFacade: ObservableObject {
         detail: snapshot.message,
         state: .failed,
         failureReason: snapshot.message,
-        canRetry: candidate != nil
+        canRetry: candidate != nil,
+        targetID: candidate?.id
       )
     }
     return WorkbenchTaskItem(
@@ -309,7 +309,8 @@ public final class WorkbenchActivityStatusFacade: ObservableObject {
       kind: .deployment,
       detail: store.deploymentStore.deploymentStatusMessage ?? snapshot?.message ?? "正在检查部署状态…",
       state: .running,
-      canRetry: false
+      canRetry: false,
+      targetID: candidate?.id
     )
   }
 
@@ -321,7 +322,8 @@ public final class WorkbenchActivityStatusFacade: ObservableObject {
       _ = await store.publishSelectedDraftOnlineUsingPreferredStrategy()
       return
     }
-    if store.publishingStore.publishActionMessage?.contains("写入") == true {
+    if store.publishingStore.localRepositoryMutationContext != nil
+      || store.repository.report?.hasGitDirectory == false {
       _ = await store.writeSelectedDraftToLocalRepository()
     } else {
       await store.commitSelectedDraftUsingPreferredStrategy()
@@ -344,6 +346,7 @@ public final class WorkbenchActivityStatusFacade: ObservableObject {
   private func observeAIMessage(_ publisher: Published<String?>.Publisher) {
     publisher
       .dropFirst()
+      .throttle(for: .milliseconds(120), scheduler: RunLoop.main, latest: true)
       .sink { [weak self] _ in
         guard let self else { return }
         let ai = self.store.aiWorkspaceStore

@@ -22,7 +22,9 @@ final class WorkbenchAutomationServiceTests: XCTestCase {
 
     XCTAssertEqual(
       definitions.map(\.function.name),
-      WorkbenchAutomationRegistry.descriptors.map { $0.id.rawValue }
+      WorkbenchAutomationRegistry.descriptors
+        .filter { $0.id != .webSearch }
+        .map { $0.id.rawValue }
     )
     XCTAssertTrue(definitions.allSatisfy { $0.type == "function" })
     for definition in definitions {
@@ -77,6 +79,18 @@ final class WorkbenchAutomationServiceTests: XCTestCase {
       .deleteDraft: #"{"draftID":"\#(draftID.uuidString)"}"#,
       .writeLocalRepository: #"{"draftID":"\#(draftID.uuidString)"}"#,
       .publishOnline: "{}",
+      .draftRead: #"{"draftID":"\#(draftID.uuidString)","mode":"full"}"#,
+      .searchDrafts: #"{"query":"swift"}"#,
+      .knowledgeSearch: #"{"query":"Swift concurrency"}"#,
+      .knowledgeRead: #"{"documentID":"\#(UUID().uuidString)"}"#,
+      .auditContent: #"{"draftID":"\#(draftID.uuidString)"}"#,
+      .applyDiff: #"{"draftID":"\#(draftID.uuidString)","originalText":"old","replacementText":"new"}"#,
+      .generateFrontmatter: #"{"draftID":"\#(draftID.uuidString)","values":["swift"]}"#,
+      .webFetch: #"{"url":"https://example.com"}"#,
+      .webSearch: #"{"query":"swift"}"#,
+      .siteCheckLinks: #"{"draftID":"\#(draftID.uuidString)"}"#,
+      .siteOptimizeImages: #"{"draftID":"\#(draftID.uuidString)"}"#,
+      .siteDeployStatus: "{}",
     ]
 
     XCTAssertEqual(Set(argumentsByCommand.keys), Set(WorkbenchAutomationCommandID.allCases))
@@ -96,6 +110,59 @@ final class WorkbenchAutomationServiceTests: XCTestCase {
       XCTAssertEqual(invocation.step.command, command)
       XCTAssertNoThrow(try WorkbenchAutomationPlanValidator.validateArguments(invocation.step))
     }
+  }
+
+  func testAgentPermissionPolicyProducesAClosedToolAllowlist() throws {
+    let legacyCommands = WorkbenchAutomationRegistry.agentCommands(
+      allowedBy: .legacySafeDefault,
+      masterEnabled: true
+    )
+
+    XCTAssertTrue(legacyCommands.contains(.draftRead))
+    XCTAssertTrue(legacyCommands.contains(.searchDrafts))
+    XCTAssertTrue(legacyCommands.contains(.knowledgeSearch))
+    XCTAssertTrue(legacyCommands.contains(.knowledgeRead))
+    XCTAssertTrue(legacyCommands.contains(.auditContent))
+    XCTAssertTrue(legacyCommands.contains(.createDraft))
+    XCTAssertFalse(legacyCommands.contains(.replaceBody))
+    XCTAssertFalse(legacyCommands.contains(.webFetch))
+    XCTAssertFalse(legacyCommands.contains(.siteDeployStatus))
+    XCTAssertFalse(legacyCommands.contains(.writeLocalRepository))
+    XCTAssertFalse(legacyCommands.contains(.publishOnline))
+    XCTAssertFalse(legacyCommands.contains(.webSearch))
+
+    XCTAssertTrue(
+      WorkbenchAutomationRegistry.agentCommands(
+        allowedBy: .all,
+        masterEnabled: false
+      ).isEmpty
+    )
+    let allExposed = WorkbenchAutomationRegistry.agentCommands(
+      allowedBy: .all,
+      masterEnabled: true
+    )
+    XCTAssertTrue(allExposed.contains(.siteDeployStatus))
+    XCTAssertFalse(allExposed.contains(.webSearch))
+  }
+
+  func testUnimplementedWebSearchIsNotDeclaredOrAcceptedAsAnAgentTool() {
+    XCTAssertFalse(
+      WorkbenchAutomationRegistry.agentToolDefinitions.contains {
+        $0.function.name == WorkbenchAutomationCommandID.webSearch.rawValue
+      }
+    )
+    XCTAssertThrowsError(
+      try WorkbenchAutomationRegistry.agentInvocation(
+        for: AIToolCall(
+          id: "hidden-search",
+          function: AIToolFunctionCall(
+            name: WorkbenchAutomationCommandID.webSearch.rawValue,
+            arguments: #"{"query":"swift"}"#
+          )
+        ),
+        draftVersions: [:]
+      )
+    )
   }
 
   func testMetadataConditionsUseTheSameParserAndValidatorRules() throws {
@@ -130,6 +197,64 @@ final class WorkbenchAutomationServiceTests: XCTestCase {
     )
   }
 
+  func testTagUpdateToolRejectsAnEmptyNoOp() {
+    let draftID = UUID()
+    assertAgentArgumentsRejected(
+      command: .generateFrontmatter,
+      arguments: #"{"draftID":"\#(draftID.uuidString)"}"#,
+      draftVersions: [draftID: Date()]
+    )
+  }
+
+  func testApplyDiffRequiresExactlyOneUnicodeSafeMatch() throws {
+    let siteProfileID = UUID()
+    let draft = ArticleDraft(
+      siteProfileID: siteProfileID,
+      title: "局部修改",
+      bodyMarkdown: "第一段 🧪正文\n\n第二段 🧪正文"
+    )
+
+    let repeated = WorkbenchAutomationStep(
+      command: .applyDiff,
+      arguments: WorkbenchAutomationArguments(
+        draftID: draft.id,
+        originalText: "🧪正文",
+        replacementText: "✅正文"
+      )
+    )
+    XCTAssertThrowsError(
+      try WorkbenchAutomationDraftMutationService.preview(step: repeated, draft: draft)
+    )
+
+    let missing = WorkbenchAutomationStep(
+      command: .applyDiff,
+      arguments: WorkbenchAutomationArguments(
+        draftID: draft.id,
+        originalText: "不存在的片段",
+        replacementText: "替换"
+      )
+    )
+    XCTAssertThrowsError(
+      try WorkbenchAutomationDraftMutationService.preview(step: missing, draft: draft)
+    )
+
+    var uniqueDraft = draft
+    uniqueDraft.bodyMarkdown = "前缀 🧪正文 后缀"
+    let unique = WorkbenchAutomationStep(
+      command: .applyDiff,
+      arguments: WorkbenchAutomationArguments(
+        draftID: uniqueDraft.id,
+        originalText: "🧪正文",
+        replacementText: "✅正文"
+      )
+    )
+    let preview = try WorkbenchAutomationDraftMutationService.preview(
+      step: unique,
+      draft: uniqueDraft
+    )
+    XCTAssertEqual(preview.updatedDraft.bodyMarkdown, "前缀 ✅正文 后缀")
+  }
+
   func testAgentArgumentsRejectExtraNullAndInvalidEnumValues() {
     let draftID = UUID()
     let draftVersions = [draftID: Date()]
@@ -152,6 +277,11 @@ final class WorkbenchAutomationServiceTests: XCTestCase {
     assertAgentArgumentsRejected(
       command: .focusEditor,
       arguments: #"{"draftID":"\#(draftID.uuidString)","editorField":"terminal"}"#,
+      draftVersions: draftVersions
+    )
+    assertAgentArgumentsRejected(
+      command: .knowledgeRead,
+      arguments: #"{"documentID":"not-a-uuid"}"#,
       draftVersions: draftVersions
     )
     assertAgentArgumentsRejected(
@@ -243,6 +373,110 @@ final class WorkbenchAutomationServiceTests: XCTestCase {
     XCTAssertEqual(store.selectedDraftID, draft.id)
   }
 
+  func testAgentLoopPureReadOnlyPlanStillExecutesAllSteps() async throws {
+    let store = try TestWorkbenchFactory.makeStore(prefix: "AgentReadOnlyPlan")
+    let draft = try XCTUnwrap(store.selectedDraft)
+    let plan = WorkbenchAutomationPlan(
+      goal: "读取并检查文章",
+      steps: [
+        WorkbenchAutomationStep(
+          command: .draftRead,
+          arguments: WorkbenchAutomationArguments(draftID: draft.id, mode: "outline")
+        ),
+        WorkbenchAutomationStep(
+          command: .runPreflight,
+          arguments: WorkbenchAutomationArguments(draftID: draft.id)
+        ),
+      ],
+      source: .agentLoop
+    )
+
+    let result = await WorkbenchAutomationExecutor.execute(plan: plan, in: store)
+
+    XCTAssertEqual(result.plan.steps.map(\.status), [.succeeded, .succeeded])
+    XCTAssertEqual(result.record.steps.map(\.status), [.succeeded, .succeeded])
+  }
+
+  func testAgentLoopConfirmationIsABarrierUntilEachStepIsResumed() async throws {
+    let store = try TestWorkbenchFactory.makeStore(prefix: "AgentConfirmationBarrier")
+    let draft = try XCTUnwrap(store.selectedDraft)
+    let mutation = WorkbenchAutomationStep(
+      command: .appendToBody,
+      arguments: WorkbenchAutomationArguments(
+        draftID: draft.id,
+        expectedDraftUpdatedAt: draft.updatedAt,
+        content: "确认后追加的段落"
+      )
+    )
+    let readOnly = WorkbenchAutomationStep(
+      command: .runPreflight,
+      arguments: WorkbenchAutomationArguments(draftID: draft.id)
+    )
+    let plan = WorkbenchAutomationPlan(
+      goal: "先修改再检查",
+      steps: [mutation, readOnly],
+      source: .agentLoop
+    )
+
+    let blocked = await WorkbenchAutomationExecutor.execute(plan: plan, in: store)
+
+    XCTAssertEqual(blocked.plan.steps[0].status, .awaitingConfirmation)
+    XCTAssertEqual(blocked.plan.steps[1].status, .proposed)
+    XCTAssertEqual(blocked.record.steps.map(\.status), [.awaitingConfirmation])
+    XCTAssertEqual(store.selectedDraft?.bodyMarkdown, draft.bodyMarkdown)
+
+    let confirmed = await WorkbenchAutomationExecutor.execute(
+      plan: blocked.plan,
+      in: store,
+      onlyStepID: mutation.id,
+      confirmedStepIDs: [mutation.id]
+    )
+    XCTAssertEqual(confirmed.plan.steps[0].status, .succeeded)
+    XCTAssertEqual(confirmed.plan.steps[1].status, .proposed)
+    XCTAssertTrue(store.selectedDraft?.bodyMarkdown.contains("确认后追加的段落") == true)
+
+    let resumedReadOnly = await WorkbenchAutomationExecutor.execute(
+      plan: confirmed.plan,
+      in: store,
+      onlyStepID: readOnly.id
+    )
+    XCTAssertEqual(resumedReadOnly.plan.steps[1].status, .succeeded)
+    XCTAssertEqual(resumedReadOnly.record.steps.map(\.status), [.succeeded])
+  }
+
+  func testWebFetchRejectsLoopbackAndPrivateAddressesBeforeTransport() async throws {
+    let store = try TestWorkbenchFactory.makeStore(prefix: "WebFetchSecurity")
+    let blockedURLs = [
+      "https://127.0.0.1/secret",
+      "https://192.168.1.1/admin",
+      "http://example.com/insecure",
+    ]
+
+    for blockedURL in blockedURLs {
+      let step = WorkbenchAutomationStep(
+        command: .webFetch,
+        arguments: WorkbenchAutomationArguments(url: blockedURL)
+      )
+      let plan = WorkbenchAutomationPlan(
+        goal: "抓取网页",
+        steps: [step],
+        source: .agentLoop
+      )
+      let result = await WorkbenchAutomationExecutor.execute(plan: plan, in: store)
+
+      XCTAssertEqual(result.plan.steps.first?.status, .failed, blockedURL)
+      let message = result.record.steps.first?.message ?? ""
+      XCTAssertTrue(
+        message.contains("阻止")
+          || message.contains("私网")
+          || message.contains("本机")
+          || message.contains("HTTPS"),
+        message
+      )
+      XCTAssertFalse(message.contains("抓取完成") || message.contains("抓取已尝试"), message)
+    }
+  }
+
   func testContentMutationRequiresConfirmationAndCreatesRollbackVersion() async throws {
     let store = try TestWorkbenchFactory.makeStore(prefix: "AutomationContentMutation")
     let draft = try XCTUnwrap(store.selectedDraft)
@@ -269,10 +503,43 @@ final class WorkbenchAutomationServiceTests: XCTestCase {
     XCTAssertEqual(confirmed.plan.steps.first?.status, .succeeded)
     XCTAssertTrue(store.selectedDraft?.bodyMarkdown.contains("新增段落") == true)
     XCTAssertNotNil(confirmed.record.steps.first?.rollbackVersionID)
+    XCTAssertNotNil(confirmed.record.steps.first?.postMutationDraftFingerprint)
+    XCTAssertNotNil(confirmed.record.steps.first?.postMutationDraftUpdatedAt)
 
     let restoredCount = WorkbenchAutomationExecutor.rollback(record: confirmed.record, in: store)
     XCTAssertEqual(restoredCount, 1)
     XCTAssertEqual(store.selectedDraft?.bodyMarkdown, draft.bodyMarkdown)
+  }
+
+  func testRollbackRefusesToOverwriteEditsMadeAfterAgentMutation() async throws {
+    let store = try TestWorkbenchFactory.makeStore(prefix: "AutomationRollbackDrift")
+    let original = try XCTUnwrap(store.selectedDraft)
+    let step = WorkbenchAutomationStep(
+      command: .appendToBody,
+      arguments: WorkbenchAutomationArguments(
+        draftID: original.id,
+        expectedDraftUpdatedAt: original.updatedAt,
+        content: "Agent 段落"
+      )
+    )
+    let plan = WorkbenchAutomationPlan(goal: "追加段落", steps: [step])
+    let executed = await WorkbenchAutomationExecutor.execute(
+      plan: plan,
+      in: store,
+      confirmedStepIDs: [step.id]
+    )
+    var edited = try XCTUnwrap(store.selectedDraft)
+    edited.bodyMarkdown += "\n\n用户稍后编辑"
+    store.updateDraft(edited)
+
+    let rollback = WorkbenchAutomationExecutor.rollbackDetailed(
+      record: executed.record,
+      in: store
+    )
+
+    XCTAssertEqual(rollback.restoredCount, 0)
+    XCTAssertTrue(rollback.failureMessages.contains { $0.contains("已被编辑") })
+    XCTAssertTrue(store.selectedDraft?.bodyMarkdown.contains("用户稍后编辑") == true)
   }
 
   func testExecutorRejectsContentMutationWhenDraftChangedAfterPlanning() async throws {
@@ -335,6 +602,44 @@ final class WorkbenchAutomationServiceTests: XCTestCase {
     XCTAssertEqual(decoded.automationRunRecords.first?.goal, record.goal)
     XCTAssertEqual(decoded.automationRunRecords.first?.steps.map(\.command), [.saveWorkbench])
     XCTAssertEqual(decoded.formatVersion, WorkbenchSnapshot.currentFormatVersion)
+  }
+
+  func testLegacyMutationRecordWithoutPostconditionDoesNotAdvertiseUnsafeRollback() {
+    let legacyRecord = WorkbenchAutomationRunRecord(
+      planID: UUID(),
+      goal: "旧版记录",
+      startedAt: Date(),
+      steps: [
+        WorkbenchAutomationStepRecord(
+          command: .replaceBody,
+          status: .succeeded,
+          message: "旧版修改",
+          targetDraftID: UUID(),
+          rollbackVersionID: UUID()
+        )
+      ]
+    )
+
+    XCTAssertFalse(legacyRecord.hasRollback)
+  }
+
+  func testFailedMutationRecordDoesNotAdvertiseRollbackEvenWithPostcondition() {
+    let failedRecord = WorkbenchAutomationRunRecord(
+      planID: UUID(),
+      goal: "失败记录",
+      startedAt: Date(),
+      steps: [
+        WorkbenchAutomationStepRecord(
+          command: .createDraft,
+          status: .failed,
+          message: "failed",
+          targetDraftID: UUID(),
+          postMutationDraftFingerprint: "recorded-fingerprint"
+        )
+      ]
+    )
+
+    XCTAssertFalse(failedRecord.hasRollback)
   }
 
   private func assertAgentArgumentsRejected(

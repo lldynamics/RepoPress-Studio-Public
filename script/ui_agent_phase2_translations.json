@@ -1,0 +1,10 @@
+{
+  "Agent 工具记录": "Agent Tool Runs",
+  "仅问答": "Text Only",
+  "对话能力": "Conversation Capabilities",
+  "尚未执行，等待你确认。": "Not run yet; awaiting your confirmation.",
+  "工具已完成。": "Tool completed.",
+  "工具未能完成。": "Tool could not complete.",
+  "工具调用已取消。": "The tool call was cancelled.",
+  "跟随连接": "Follow Connection"
+}

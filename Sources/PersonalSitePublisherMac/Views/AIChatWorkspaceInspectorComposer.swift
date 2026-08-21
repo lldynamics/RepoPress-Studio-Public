@@ -8,6 +8,14 @@ enum AIChatDataSharingConsentPolicy {
   ) -> Bool {
     presentation.requiresConsent && !presentation.isGranted
   }
+
+  static func requiresAccountSettingsRedirect(
+    for config: AIProviderConfig,
+    presentation: AIDataSharingConsentPresentation
+  ) -> Bool {
+    config.usesCodexAppServer
+      && requiresConfirmation(presentation)
+  }
 }
 
 extension AIChatContextInspectorView {
@@ -99,21 +107,31 @@ extension AIChatContextInspectorView {
           .accessibilityLabel("待发送图片")
         }
 
-        TextField(
-          ai.chatContextMode == .general
-            ? String(localized: "开始通用聊天…")
-            : String(localized: "询问当前文章…"),
-          text: inspectorComposerTextBinding,
-          axis: .vertical
-        )
-        .accessibilityLabel("AI 消息")
-        .accessibilityIdentifier("ai-assistant-input")
-        .textFieldStyle(.plain)
-        .font(.body)
-        .lineLimit(2...6)
-        .disabled(isComposerInputUnavailable)
-        .focused($isComposerFocused)
-        .onKeyPress(.return, phases: .down, action: handleComposerReturn)
+        ZStack(alignment: .topLeading) {
+          if inputText.isEmpty {
+            Text(
+              ai.chatContextMode == .general
+                ? String(localized: "开始通用聊天…")
+                : String(localized: "询问当前文章…")
+            )
+            .font(.body)
+            .foregroundStyle(.tertiary)
+            .padding(.top, 7)
+            .padding(.leading, 5)
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+          }
+
+          TextEditor(text: inspectorComposerTextBinding)
+            .accessibilityLabel("AI 消息")
+            .accessibilityIdentifier("ai-assistant-input")
+            .accessibilityHint("输入问题；⌘Return 发送")
+            .scrollContentBackground(.hidden)
+            .font(.body)
+            .disabled(isComposerInputUnavailable)
+            .focused($isComposerFocused)
+        }
+        .frame(minHeight: 44, idealHeight: 72, maxHeight: 122)
 
         HStack(spacing: 8) {
           contextReferenceMenu
@@ -179,7 +197,7 @@ extension AIChatContextInspectorView {
           .help(
             isSending
               ? String(localized: "停止生成")
-              : String(localized: "发送")
+              : String(localized: "发送当前输入；也可以按 Command-Return")
           )
           .accessibilityLabel(
             isSending
@@ -431,9 +449,19 @@ extension AIChatContextInspectorView {
 
   func grantPendingDataSharingConsentAndSubmit() {
     guard let config = pendingDataSharingConsentConfig else { return }
+    guard !config.usesCodexAppServer else {
+      openCodexAccountSettingsForConsent()
+      return
+    }
     ai.grantDataSharingConsent(for: config, enablingRemoteAI: true)
     clearPendingDataSharingConsent()
     submitMessage()
+  }
+
+  func openCodexAccountSettingsForConsent() {
+    requestedSettingsTabID = SettingsDestination.ai(.connection).id
+    clearPendingDataSharingConsent()
+    openSettings()
   }
 
   func clearPendingDataSharingConsent() {
@@ -534,16 +562,6 @@ extension AIChatContextInspectorView {
     }
   }
 
-  func handleComposerReturn(_ keyPress: KeyPress) -> KeyPress.Result {
-    guard !keyPress.modifiers.contains(.shift) else {
-      return .ignored
-    }
-    guard canSubmitMessage else {
-      return .handled
-    }
-    submitMessage()
-    return .handled
-  }
 }
 
 extension AIChatContextInspectorView {

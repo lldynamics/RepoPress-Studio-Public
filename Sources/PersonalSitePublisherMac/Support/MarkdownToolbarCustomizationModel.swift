@@ -125,6 +125,39 @@ enum MarkdownToolbarItemID: String, CaseIterable, Codable, Hashable, Identifiabl
     }
   }
 
+  /// 是否属于 AI 工具组。
+  /// 工具栏会在此组第一项之前自动插入分隔线。
+  var isAIGroupItem: Bool {
+    switch self {
+    case .aiActions, .autoInlineAI, .aiChat:
+      return true
+    default:
+      return false
+    }
+  }
+
+  /// 资源不足时的折叠优先级。
+  /// 数字越小越优先保留，同级内依用户排序保留。
+  var collapseOrder: Int {
+    switch self {
+    case .saveStatus:           return 0   // 常驻，不参与折叠
+    case .preparePublish:       return 0   // 常驻，不参与折叠
+    case .editorDisplayMode:    return 1   // 视图模式，最高优先
+    case .aiChat:               return 2   // AI 对话，核心入口
+    case .autoInlineAI:         return 3
+    case .findReplace:          return 4
+    case .aiActions:            return 5
+    case .writingToolDensity:   return 6
+    case .contextPanelMenu:     return 7
+    case .localPreview:         return 8
+    case .exportMenu:           return 9
+    case .outline:              return 10
+    case .shortcutHelp:         return 11
+    case .copyRichText:         return 12
+    default:                    return 99
+    }
+  }
+
   var defaultCategory: MarkdownToolbarCategory {
     switch self {
     case .saveStatus, .editorDisplayMode, .writingToolDensity, .findReplace, .outline,

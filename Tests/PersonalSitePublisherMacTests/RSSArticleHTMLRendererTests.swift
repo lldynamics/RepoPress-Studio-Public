@@ -226,7 +226,7 @@ final class RSSArticleHTMLRendererTests: XCTestCase {
     XCTAssertTrue(rendered.contains("远程图片已关闭"))
   }
 
-  func testRemoteImageIsOnlyIncludedAfterExplicitOptIn() throws {
+  func testUncachedRemoteImageFailsClosedAfterExplicitOptIn() throws {
     let article = RSSArticle(
       id: "image-article",
       feedID: UUID(),
@@ -239,8 +239,9 @@ final class RSSArticleHTMLRendererTests: XCTestCase {
     let allowed = RSSArticleHTMLRenderer.render(article: article, allowRemoteImages: true)
 
     XCTAssertFalse(blocked.contains("src=\"https://example.com/image.jpg\""))
-    XCTAssertTrue(allowed.contains("src=\"https://example.com/image.jpg\""))
-    XCTAssertTrue(allowed.contains("loading=\"lazy\""))
+    XCTAssertFalse(allowed.contains("src=\"https://example.com/image.jpg\""))
+    XCTAssertTrue(allowed.contains("<span class=\"remote-image-disabled\">封面</span>"))
+    XCTAssertFalse(allowed.contains("loading=\"lazy\""))
   }
 
   func testArchivedImageIsRenderedWhenRemoteImagesAreDisabled() throws {

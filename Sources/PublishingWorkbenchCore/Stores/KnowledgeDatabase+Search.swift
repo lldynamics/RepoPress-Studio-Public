@@ -2,6 +2,95 @@ import Foundation
 import SQLite3
 
 extension KnowledgeDatabase {
+  private func decodeRevision(
+    _ statement: OpaquePointer?,
+    offset: Int32
+  ) throws -> KnowledgeDocumentRevision {
+    KnowledgeDocumentRevision(
+      id: try requiredUUID(statement, offset, field: "knowledge_revisions.id"),
+      documentID: try requiredUUID(
+        statement,
+        offset + 1,
+        field: "knowledge_revisions.document_id"
+      ),
+      originalContentHash: text(statement, offset + 2) ?? "",
+      normalizedContentHash: text(statement, offset + 3) ?? "",
+      parserVersion: Int(sqlite3_column_int(statement, offset + 4)),
+      importedAt: Date(timeIntervalSince1970: sqlite3_column_double(statement, offset + 5)),
+      sourceModifiedAt: sqlite3_column_type(statement, offset + 6) == SQLITE_NULL
+        ? nil
+        : Date(timeIntervalSince1970: sqlite3_column_double(statement, offset + 6)),
+      originalStorageReference: text(statement, offset + 7),
+      capturedTextStorageReference: text(statement, offset + 8),
+      normalizedStorageReference: text(statement, offset + 9) ?? ""
+    )
+  }
+
+  /// Reads the document and its current revision under one database lock so a
+  /// caller can bind explicit context to the exact revision that was read.
+  func currentDocumentRevision(
+    documentID: UUID
+  ) throws -> (document: KnowledgeDocument, revision: KnowledgeDocumentRevision)? {
+    try withCancellableLock {
+      () throws -> (document: KnowledgeDocument, revision: KnowledgeDocumentRevision)? in
+      try withCancellationProgressHandler {
+        () throws -> (document: KnowledgeDocument, revision: KnowledgeDocumentRevision)? in
+        let statement = try prepare("""
+        SELECT d.id, d.kind, d.title, d.authors_json, d.language, d.summary,
+               d.tags_json, d.source_url, d.source_name, d.folder_id,
+               d.source_byte_count, d.allows_ai_use, d.allows_local_semantic_index,
+               d.is_archived, d.imported_at, d.updated_at, d.current_revision_id,
+               r.id, r.document_id, r.original_hash, r.normalized_hash,
+               r.parser_version, r.imported_at, r.source_modified_at,
+               r.original_storage_ref, r.captured_text_storage_ref,
+               r.normalized_storage_ref
+        FROM knowledge_documents d
+        JOIN knowledge_revisions r ON r.id = d.current_revision_id
+        WHERE d.id = ?
+        LIMIT 1;
+        """)
+        defer { sqlite3_finalize(statement) }
+        bind(documentID.uuidString, at: 1, to: statement)
+        let result = sqlite3_step(statement)
+        guard result == SQLITE_ROW || result == SQLITE_DONE else { throw databaseError() }
+        guard result == SQLITE_ROW else { return nil }
+        return (
+          document: try decodeDocument(statement, offset: 0),
+          revision: try decodeRevision(statement, offset: 17)
+        )
+      }
+    }
+  }
+
+  /// Returns a chunk only when all three identity components match.  This is
+  /// deliberately stricter than looking up by chunk ID alone: a stale
+  /// continuation must not bind a chunk from a different revision.
+  func chunk(
+    id: UUID,
+    documentID: UUID,
+    revisionID: UUID
+  ) throws -> KnowledgeChunk? {
+    try withCancellableLock {
+      try withCancellationProgressHandler {
+        let statement = try prepare("""
+        SELECT id, document_id, revision_id, ordinal, heading_path, locator,
+               content, token_estimate, content_hash
+        FROM knowledge_chunks
+        WHERE id = ? AND document_id = ? AND revision_id = ?
+        LIMIT 1;
+        """)
+        defer { sqlite3_finalize(statement) }
+        bind(id.uuidString, at: 1, to: statement)
+        bind(documentID.uuidString, at: 2, to: statement)
+        bind(revisionID.uuidString, at: 3, to: statement)
+        let result = sqlite3_step(statement)
+        guard result == SQLITE_ROW || result == SQLITE_DONE else { throw databaseError() }
+        guard result == SQLITE_ROW else { return nil }
+        return try decodeChunk(statement, offset: 0)
+      }
+    }
+  }
+
   func search(
     query: String,
     limit: Int,

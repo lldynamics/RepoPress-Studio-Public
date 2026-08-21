@@ -75,10 +75,21 @@ public final class WorkbenchAIStore: ObservableObject {
   ) {
     self.store = store
     self.workspace = workspace
-    self.aiPublishingAssistantService = aiPublishingAssistantService
     self.aiCredentialStore = aiCredentialStore
     self.aiConnectionTestService = aiConnectionTestService
     self.aiDataSharingConsentStore = aiDataSharingConsentStore
+    // Bind the app-server request gate to this exact store instance. This is
+    // intentionally done at the Workbench boundary so the client used by all
+    // publishing/general AI flows cannot silently fall back to a second
+    // default consent store.
+    self.aiPublishingAssistantService = AIPublishingAssistantService(
+      client: aiPublishingAssistantService.client.withCodexAppServerRequestAuthorizer(
+        CodexAppServerRequestAuthorizer(
+          consentStore: aiDataSharingConsentStore,
+          accountStatusProvider: CodexAppServerClient.shared
+        )
+      )
+    )
     self.imageWorkbenchService = imageWorkbenchService
     self.seoAuditService = seoAuditService
     self.seoSocialPreviewService = seoSocialPreviewService
@@ -177,10 +188,18 @@ public final class WorkbenchAIStore: ObservableObject {
   public var aiConversations: [AIConversation] {
     get { workspace.aiConversations }
     set {
+      let pendingAgentConversationIDs = Set(
+        newValue.compactMap { conversation in
+          conversation.messages.contains(where: { message in
+            message.agentContinuation?.phase.requiresExplicitDisposition == true
+          }) ? conversation.id : nil
+        }
+      )
       let limitedConversations = AIConversationRetentionPolicy.limited(
         newValue,
         preserving: Set(workspace.activeAIConversationIDsByDraftID.values)
           .union(workspace.activeAIConversationIDsByScope.values)
+          .union(pendingAgentConversationIDs)
       )
       workspace.aiConversations = limitedConversations
       workspace.activeAIConversationIDsByDraftID =
@@ -458,17 +477,40 @@ public final class WorkbenchAIStore: ObservableObject {
     let config = connection.config
     let configKey = AIProviderCapabilityCacheKey(config: config)
     let consent = aiDataSharingConsentStore.presentation(for: config)
-    guard consent.isGranted else {
+    if config.usesCodexAppServer {
+      do {
+        try await CodexAppServerRequestAuthorizer(
+          consentStore: aiDataSharingConsentStore,
+          accountStatusProvider: CodexAppServerClient.shared
+        ).authorize(config: config)
+      } catch {
+        aiActionMessage = error.localizedDescription
+        return nil
+      }
+    } else if !consent.isGranted {
       aiActionMessage = "请先明确同意向 \(consent.destination) 发送 AI 连接测试数据。"
       return nil
     }
     do {
       let token = try aiChatAvailableAPIKey(for: store.activeProfile)
-      let report = try await aiConnectionTestService.testConnection(
-        config: config,
-        apiKey: token,
-        probeCapabilities: probeCapabilities
-      )
+      let report: AIConnectionTestReport
+      if config.usesCodexAppServer {
+        // WorkbenchStore's connection-test service is constructed before the
+        // Workbench consent store is available and therefore owns a default
+        // client. Route Codex's test through the already-bound publishing
+        // client so this prompt uses the same account authorization dependency
+        // as every other AI request.
+        report = try await testCodexConnection(
+          config: config,
+          probeCapabilities: probeCapabilities
+        )
+      } else {
+        report = try await aiConnectionTestService.testConnection(
+          config: config,
+          apiKey: token,
+          probeCapabilities: probeCapabilities
+        )
+      }
       try Task.checkCancellation()
 
       if let capabilityProbeReport = report.capabilityProbeReport {
@@ -503,6 +545,55 @@ public final class WorkbenchAIStore: ObservableObject {
     }
   }
 
+  private func testCodexConnection(
+    config: AIProviderConfig,
+    probeCapabilities: Set<AIProviderCapabilityProbeKind>
+  ) async throws -> AIConnectionTestReport {
+    guard let endpoint = config.chatCompletionsURL else {
+      throw AIConnectionTestError.invalidBaseURL(config.normalizedBaseURL)
+    }
+    let result = try await aiPublishingAssistantService.client.complete(
+      request: AIChatCompletionRequest(
+        model: config.normalizedModel,
+        messages: [
+          AIChatMessage(role: "system", content: "Return only OK."),
+          AIChatMessage(role: "user", content: "ping"),
+        ],
+        temperature: 0,
+        maximumOutputTokens: 8
+      ),
+      config: config,
+      apiKey: nil,
+      purpose: .connectionTest
+    )
+    let capabilityProbeReport: AIProviderCapabilityProbeReport?
+    if probeCapabilities.isEmpty {
+      capabilityProbeReport = nil
+    } else {
+      capabilityProbeReport = try await AIProviderCapabilityProbeService(
+        client: aiPublishingAssistantService.client
+      ).probe(
+        config: config,
+        apiKey: nil,
+        capabilities: probeCapabilities,
+        forceRefresh: false,
+        existingChatProof: probeCapabilities.contains(.chat)
+          ? AIProviderCapabilityChatProbeProof(
+            key: AIProviderCapabilityCacheKey(config: config),
+            result: result
+          )
+          : nil
+      )
+    }
+    return AIConnectionTestReport(
+      providerName: config.normalizedDisplayName,
+      model: config.normalizedModel,
+      endpoint: endpoint,
+      responsePreview: result.content,
+      capabilityProbeReport: capabilityProbeReport
+    )
+  }
+
   public var aiDataSharingConsentPresentation: AIDataSharingConsentPresentation {
     aiDataSharingConsentPresentation(for: store.aiProviderConfig(for: store.activeProfile))
   }
@@ -511,6 +602,16 @@ public final class WorkbenchAIStore: ObservableObject {
     for config: AIProviderConfig
   ) -> AIDataSharingConsentPresentation {
     aiDataSharingConsentStore.presentation(for: config)
+  }
+
+  public func aiDataSharingConsentPresentation(
+    for config: AIProviderConfig,
+    codexAccountStatus: CodexAppServerAccountStatus?
+  ) -> AIDataSharingConsentPresentation {
+    aiDataSharingConsentStore.presentation(
+      for: config,
+      codexAccountStatus: codexAccountStatus
+    )
   }
 
   public var isRemoteAIEnabled: Bool {
@@ -537,23 +638,46 @@ public final class WorkbenchAIStore: ObservableObject {
 
   public func grantAIDataSharingConsent(
     for config: AIProviderConfig,
-    enablingRemoteAI: Bool = false
+    enablingRemoteAI: Bool = false,
+    codexAccountStatus: CodexAppServerAccountStatus? = nil
   ) {
     if enablingRemoteAI, !config.isLocalEndpoint, !config.dataSharingDestination.isEmpty {
       aiDataSharingConsentStore.setRemoteAIEnabled(true)
     }
-    aiDataSharingConsentStore.grant(for: config)
-    let presentation = aiDataSharingConsentStore.presentation(for: config)
+    let granted = aiDataSharingConsentStore.grant(
+      for: config,
+      codexAccountStatus: codexAccountStatus
+    )
+    let presentation = aiDataSharingConsentStore.presentation(
+      for: config,
+      codexAccountStatus: codexAccountStatus
+    )
     if config.isLocalEndpoint {
       aiActionMessage = "当前为本地 AI 服务，内容不会发送给第三方服务商。"
     } else if config.dataSharingDestination.isEmpty {
       aiActionMessage = "尚未配置 API 基础地址，授权暂不生效。"
+    } else if config.usesCodexAppServer && !granted {
+      aiActionMessage = "请先登录 ChatGPT，并在当前账户下重新同意内容发送。"
     } else if !presentation.isRemoteAIEnabled {
       aiActionMessage = "已保留此服务的逐项授权，但远程 AI 总闸已关闭；当前不会发送远程请求。"
     } else {
       aiActionMessage =
         "已允许向 \(config.normalizedDisplayName)（\(config.dataSharingDestination)）发送内容。"
     }
+  }
+
+  /// Explicit Codex consent is bound to the account status obtained by the
+  /// account section immediately after login. A status-less call remains
+  /// fail-closed and cannot upgrade a legacy grant.
+  public func grantCodexAIDataSharingConsent(
+    for accountStatus: CodexAppServerAccountStatus
+  ) {
+    let config = store.aiProviderConfig(for: store.activeProfile)
+    grantAIDataSharingConsent(
+      for: config,
+      enablingRemoteAI: true,
+      codexAccountStatus: accountStatus
+    )
   }
 
   public func revokeAIDataSharingConsent() {

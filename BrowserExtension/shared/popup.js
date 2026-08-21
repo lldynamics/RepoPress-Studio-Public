@@ -1894,16 +1894,6 @@ async function bridgeFetch(path, token) {
   });
 }
 
-async function bridgePost(path, token, body) {
-  return sendRuntimeMessage({
-    type: "bridge-request",
-    path,
-    method: "POST",
-    token,
-    body
-  });
-}
-
 function setBusy(button, busy, label) {
   button.disabled = busy;
   button.textContent = label;

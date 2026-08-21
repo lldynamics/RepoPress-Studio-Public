@@ -544,27 +544,6 @@ final class RepositoryAutoSyncTests: XCTestCase {
     return directory.appendingPathComponent("workbench.json")
   }
 
-  private func autoSyncReport(
-    branchStatus: RepositoryBranchStatus?,
-    remoteChangedFiles: [RepositoryChangedFile]
-  ) -> RepositoryScanReport {
-    RepositoryScanReport(
-      rootPath: "/tmp/site",
-      detectedKind: .zola,
-      expectedKind: .zola,
-      hasGitDirectory: true,
-      contentRootExists: true,
-      assetRootExists: true,
-      markdownFileCount: 0,
-      imageFileCount: 0,
-      branchStatus: branchStatus,
-      changedFiles: [],
-      remoteChangedFiles: remoteChangedFiles,
-      preflightIssues: [],
-      scannedAt: Date(timeIntervalSince1970: 1_800_000_000)
-    )
-  }
-
   @discardableResult
   private func git(_ arguments: [String], rootURL: URL) throws -> String {
     let process = Process()

@@ -18,6 +18,9 @@ extension LocalPublishPreviewService {
     }
     var seenDestinationPaths = Set<String>()
     let preparedWrites = try package.files.map { file -> PreparedLocalPublishWrite in
+      guard !isGitControlPath(file.repositoryPath) else {
+        throw LocalPublishPreviewError.unsafePath(file.repositoryPath)
+      }
       let destinationURL = try validatedDestinationURLForWrite(
         rootURL: rootURL,
         repositoryPath: file.repositoryPath
@@ -93,6 +96,9 @@ extension LocalPublishPreviewService {
       // persist the journal. A process stop at any later point can restore all
       // paths, including files that did not exist before this publish.
       for (index, prepared) in preparedWrites.enumerated() {
+        guard !isGitControlPath(prepared.file.repositoryPath) else {
+          throw LocalPublishPreviewError.unsafePath(prepared.file.repositoryPath)
+        }
         let destinationURL = prepared.destinationURL
         try validatePreviewBaseline(
           for: prepared.file,

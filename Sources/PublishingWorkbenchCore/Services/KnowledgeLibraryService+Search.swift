@@ -204,6 +204,7 @@ extension KnowledgeLibraryService {
     guard !candidates.isEmpty else { return nil }
 
     var citations: [KnowledgeCitation] = []
+    var authorizationBindings: [KnowledgeAuthorizationBinding] = []
     var usedTokens = 0
     var documentUseCounts: [UUID: Int] = [:]
 
@@ -229,12 +230,22 @@ extension KnowledgeLibraryService {
         excerpt: excerpt,
         sourceURL: result.document.sourceURL
       ))
+      authorizationBindings.append(KnowledgeAuthorizationBinding(
+        documentID: result.document.id,
+        revisionID: result.chunk.revisionID,
+        chunkID: result.chunk.id,
+        contentHash: result.chunk.contentHash
+      ))
       usedTokens += estimatedTokens
       documentUseCounts[result.document.id] = currentDocumentCount + 1
     }
 
     guard !citations.isEmpty else { return nil }
-    return KnowledgeContextSnapshot(query: query, citations: citations)
+    return KnowledgeContextSnapshot(
+      query: query,
+      citations: citations,
+      authorizationBindings: authorizationBindings
+    )
   }
 
   public func contextAsync(

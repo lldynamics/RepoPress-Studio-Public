@@ -192,10 +192,6 @@ final class RSSReaderPresentationState: ObservableObject {
     return sections
   }
 
-  func scopedSourceIDs(in store: RSSReaderStore) -> Set<UUID> {
-    scopedFacets(in: store).sourceIDs
-  }
-
   func scopedAuthors(in store: RSSReaderStore) -> [String] {
     scopedFacets(in: store).authors
   }

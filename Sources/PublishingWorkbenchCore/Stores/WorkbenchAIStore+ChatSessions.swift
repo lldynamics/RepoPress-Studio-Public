@@ -3,6 +3,24 @@ import Foundation
 struct AIAuthorizedPublishingChatAttempt {
   let transport: AIPreparedPublishingChatTransport
   let authorization: AIOutboundPayloadTransportAuthorization
+  let knowledgeAuthorizationBindings: [KnowledgeAuthorizationBinding]
+  let knowledgePolicy: KnowledgeRetrievalPolicy
+}
+
+/// The knowledge portion of a request has deliberately distinct states so an
+/// intentional `nil` snapshot is never mistaken for "retrieve again".
+enum AIKnowledgeContextAssembly {
+  case derive
+  /// Reuses the first knowledge snapshot while resolving non-knowledge
+  /// explicit context again. This preserves drift checks for selections,
+  /// articles, profiles, and publish checks.
+  case frozenKnowledge(KnowledgeContextSnapshot?)
+  /// Reuses the complete prompt shell. Continuation validation uses this
+  /// while resolving task configuration from an already-persisted transcript.
+  case frozen(
+    knowledgeContext: KnowledgeContextSnapshot?,
+    explicitContextPrompt: String?
+  )
 }
 
 extension WorkbenchAIStore {
@@ -335,16 +353,23 @@ extension WorkbenchAIStore {
     for draft: ArticleDraft,
     conversationIdentity: AIChatConversationIdentity,
     transportConfig: AIProviderConfig,
-    transportVariant: AIOutboundPayloadTransportVariant? = nil
+    transportVariant: AIOutboundPayloadTransportVariant? = nil,
+    initialRequest: AIPublishingChatRequest? = nil
   ) async throws -> AIAuthorizedPublishingChatAttempt {
     let privacyService = AIOutboundPayloadPrivacyService()
-    let initialRequest = await assembledAIChatRequest(
-      for: draft,
-      conversationIdentity: conversationIdentity,
-      privacyService: privacyService
-    )
+    let resolvedInitialRequest: AIPublishingChatRequest
+    if let initialRequest {
+      resolvedInitialRequest = initialRequest
+    } else {
+      resolvedInitialRequest = await assembledAIChatRequest(
+        for: draft,
+        conversationIdentity: conversationIdentity,
+        privacyService: privacyService,
+        knowledgeContextAssembly: .derive
+      )
+    }
     let initialTransport = try aiPublishingAssistantService.prepareTransport(
-      for: initialRequest,
+      for: resolvedInitialRequest,
       config: transportConfig,
       privacyService: privacyService,
       transportVariant: transportVariant
@@ -361,10 +386,16 @@ extension WorkbenchAIStore {
       throw CancellationError()
     }
 
+    try await requireValidAIKnowledgeAuthorization(
+      resolvedInitialRequest.knowledgeContext?.authorizationBindings ?? [],
+      policy: resolvedInitialRequest.knowledgePolicy
+    )
+
     let refreshedRequest = await assembledAIChatRequest(
       for: draft,
       conversationIdentity: conversationIdentity,
-      privacyService: privacyService
+      privacyService: privacyService,
+      knowledgeContextAssembly: .frozenKnowledge(resolvedInitialRequest.knowledgeContext)
     )
     let refreshedConfig = privacyService.sanitizedProviderConfig(
       store.aiProviderConfig(for: refreshedRequest.profile)
@@ -393,14 +424,17 @@ extension WorkbenchAIStore {
         confirmation: confirmation,
         prepared: authorizedTransport.payload,
         privacyService: privacyService
-      )
+      ),
+      knowledgeAuthorizationBindings: resolvedInitialRequest.knowledgeContext?.authorizationBindings ?? [],
+      knowledgePolicy: resolvedInitialRequest.knowledgePolicy
     )
   }
 
   func assembledAIChatRequest(
     for draft: ArticleDraft,
     conversationIdentity: AIChatConversationIdentity,
-    privacyService: AIOutboundPayloadPrivacyService
+    privacyService: AIOutboundPayloadPrivacyService,
+    knowledgeContextAssembly: AIKnowledgeContextAssembly = .derive
   ) async -> AIPublishingChatRequest {
     let session =
       aiChatSessionState(for: conversationIdentity)
@@ -417,18 +451,41 @@ extension WorkbenchAIStore {
     let latestQuestion = session.messages.last(where: { $0.role == .user })?.content
     let explicitContextReferences =
       session.messages.last(where: { $0.role == .user })?.contextReferences ?? []
-    let explicitContextPrompt = await explicitAIChatContextPrompt(
-      references: explicitContextReferences,
-      draft: artifacts.draft
-    )
-    let knowledgeContext = await store.knowledge.context(
-      query: knowledgeQuery(
-        draft: artifacts.draft,
-        selectedText: editorSelection?.selectedText ?? focusedParagraph?.text,
-        instruction: latestQuestion
-      ),
-      policy: session.knowledgePolicy
-    )
+    let explicitContextPrompt: String?
+    let knowledgeContext: KnowledgeContextSnapshot?
+    switch knowledgeContextAssembly {
+    case .derive:
+      let explicitSnapshot = await explicitAIChatContextPromptSnapshot(
+        references: explicitContextReferences,
+        draft: artifacts.draft
+      )
+      explicitContextPrompt = explicitSnapshot?.prompt
+      let automaticContext = await store.knowledge.context(
+        query: knowledgeQuery(
+          draft: artifacts.draft,
+          selectedText: editorSelection?.selectedText ?? focusedParagraph?.text,
+          instruction: latestQuestion
+        ),
+        policy: session.knowledgePolicy
+      )
+      knowledgeContext = mergedAIKnowledgeContext(
+        automatic: automaticContext,
+        explicitBindings: explicitSnapshot?.authorizationBindings ?? []
+      )
+    case .frozenKnowledge(let frozenContext):
+      let explicitSnapshot = await explicitAIChatContextPromptSnapshot(
+        references: explicitContextReferences,
+        draft: artifacts.draft
+      )
+      explicitContextPrompt = explicitSnapshot?.prompt
+      knowledgeContext = mergedAIKnowledgeContext(
+        automatic: frozenContext,
+        explicitBindings: explicitSnapshot?.authorizationBindings ?? []
+      )
+    case .frozen(let frozenContext, let frozenPrompt):
+      explicitContextPrompt = frozenPrompt
+      knowledgeContext = frozenContext
+    }
     let sanitizedFocusedParagraph = focusedParagraph.map { paragraph in
       var updated = paragraph
       updated.title = privacyService.sanitize(paragraph.title).text
@@ -468,6 +525,49 @@ extension WorkbenchAIStore {
         uniqueKeysWithValues: store.drafts.map { ($0.id, $0.updatedAt) }
       )
     )
+  }
+
+  /// Reuses the first retrieval result and keeps explicit @ references in the
+  /// same hidden authorization envelope. Empty citations are intentional when
+  /// a request has only an explicit binding; the binding itself is never
+  /// serialized into the model prompt.
+  func mergedAIKnowledgeContext(
+    automatic: KnowledgeContextSnapshot?,
+    explicitBindings: [KnowledgeAuthorizationBinding]
+  ) -> KnowledgeContextSnapshot? {
+    var seen = Set<KnowledgeAuthorizationBinding>()
+    let bindings = (automatic?.authorizationBindings ?? [])
+      .filter { seen.insert($0).inserted }
+      + explicitBindings.filter { seen.insert($0).inserted }
+
+    guard let automatic else {
+      guard !bindings.isEmpty else { return nil }
+      return KnowledgeContextSnapshot(
+        query: "",
+        citations: [],
+        authorizationBindings: bindings
+      )
+    }
+
+    return KnowledgeContextSnapshot(
+      query: automatic.query,
+      citations: automatic.citations,
+      authorizationBindings: bindings
+    )
+  }
+
+  func requireValidAIKnowledgeAuthorization(
+    _ bindings: [KnowledgeAuthorizationBinding],
+    policy: KnowledgeRetrievalPolicy
+  ) async throws {
+    guard !bindings.isEmpty else { return }
+    let valid = await store.knowledge.validateKnowledgeAuthorizationBindings(
+      bindings,
+      policy: policy
+    )
+    guard valid else {
+      throw AIOutboundPayloadConfirmationError.knowledgeAuthorizationChanged
+    }
   }
 
   func knowledgeQuery(
@@ -525,6 +625,11 @@ extension WorkbenchAIStore {
   }
 
   public func clearAIChat() {
+    guard !blockChatMutationForDeliveryUncertainty(
+      conversationID: aiChatDraftID.flatMap { activeAIChatConversationID(for: $0) }
+    ) else {
+      return
+    }
     aiChatConversationTitle = nil
     aiChatMessages = []
     aiChatManualRetryState = nil
@@ -647,6 +752,9 @@ extension WorkbenchAIStore {
     if aiConversations[index].isArchived {
       return true
     }
+    guard !blockChatMutationForDeliveryUncertainty(conversationID: conversationID) else {
+      return false
+    }
 
     let now = Date()
     var updatedConversations = aiConversations
@@ -712,6 +820,9 @@ extension WorkbenchAIStore {
     let isActive = activeConversationID(for: conversation.scope) == conversationID
     guard !isActive || !isAIChatRunning else {
       aiChatMessage = "请先停止当前 AI 回复，再删除这条对话。"
+      return false
+    }
+    guard !blockChatMutationForDeliveryUncertainty(conversationID: conversationID) else {
       return false
     }
 
@@ -801,6 +912,11 @@ extension WorkbenchAIStore {
       aiChatMessage = "请先选择一篇文章。"
       return nil
     }
+    guard !blockChatMutationForDeliveryUncertainty(
+      conversationID: activeAIChatConversationID(for: draftID)
+    ) else {
+      return nil
+    }
 
     cacheCurrentAIChatSessionForAIStore()
     let now = Date()
@@ -832,6 +948,11 @@ extension WorkbenchAIStore {
 
     guard let draftID = store.aiChatDraftID else {
       store.setAIChatMessage("请先选择一篇文章。")
+      return
+    }
+    guard !blockChatMutationForDeliveryUncertainty(
+      conversationID: activeAIChatConversationID(for: draftID)
+    ) else {
       return
     }
 
@@ -899,10 +1020,14 @@ extension WorkbenchAIStore {
     let branchTitle = aiChatConversationTitle.map {
       String("\($0) · 分支".prefix(80))
     }
+    let branchMessages = agentSafeBranchMessages(
+      Array(store.aiChatMessages.prefix(index + 1)),
+      at: now
+    )
     let conversation = AIConversation(
       draftID: draftID,
       title: branchTitle,
-      messages: Array(store.aiChatMessages.prefix(index + 1)),
+      messages: branchMessages,
       contextMode: aiChatContextMode,
       knowledgePolicy: aiChatKnowledgePolicy,
       modelGrade: aiChatModelGrade,
@@ -917,6 +1042,39 @@ extension WorkbenchAIStore {
     store.setAIChatMessage("已从所选消息创建分支。")
     store.save()
     return conversation
+  }
+
+  private func agentSafeBranchMessages(
+    _ messages: [AIPublishingChatMessage],
+    at date: Date
+  ) -> [AIPublishingChatMessage] {
+    messages.map { message in
+      guard message.agentContinuation != nil
+        || message.automationPlan?.source == .agentLoop
+      else {
+        return message
+      }
+      var copy = message
+      copy.agentContinuation = nil
+      if var plan = copy.automationPlan {
+        for index in plan.steps.indices where !plan.steps[index].status.isTerminal {
+          plan.steps[index].status = .cancelled
+          plan.steps[index].resultMessage = CoreL10n.text(
+            "对话分支不会复制未完成的 Agent 操作。"
+          )
+        }
+        copy.automationPlan = plan
+      }
+      for index in copy.toolRuns.indices
+      where copy.toolRuns[index].status == .awaitingConfirmation {
+        copy.toolRuns[index].status = .cancelled
+        copy.toolRuns[index].completedAt = date
+        copy.toolRuns[index].summary = CoreL10n.text(
+          "对话分支不会复制未完成的 Agent 操作。"
+        )
+      }
+      return copy
+    }
   }
 
   public func cancelAIChatReply() {
@@ -945,6 +1103,11 @@ extension WorkbenchAIStore {
     }
     guard activeAIChatConversationID(for: chatDraft.id) == retryState.conversationID else {
       store.setAIChatMessage("请先切回发生错误的 AI 对话，再重试回复。")
+      return nil
+    }
+    guard !blockChatMutationForDeliveryUncertainty(
+      conversationID: retryState.conversationID
+    ) else {
       return nil
     }
     if let retryAfter = retryState.retryAfter, retryAfter > Date() {
@@ -992,6 +1155,11 @@ extension WorkbenchAIStore {
     cacheCurrentAIChatSessionForAIStore()
     guard let conversationIdentity = aiChatConversationIdentity(for: chatDraft.id) else {
       store.setAIChatMessage("找不到可重新生成的 AI 对话。")
+      return nil
+    }
+    guard !blockChatMutationForDeliveryUncertainty(
+      conversationID: conversationIdentity.conversationID
+    ) else {
       return nil
     }
     guard
@@ -1062,6 +1230,11 @@ extension WorkbenchAIStore {
     cacheCurrentAIChatSessionForAIStore()
     guard let conversationIdentity = aiChatConversationIdentity(for: chatDraft.id) else {
       store.setAIChatMessage("找不到可重新生成的 AI 对话。")
+      return nil
+    }
+    guard !blockChatMutationForDeliveryUncertainty(
+      conversationID: conversationIdentity.conversationID
+    ) else {
       return nil
     }
     guard

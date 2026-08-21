@@ -14,18 +14,6 @@ extension RSSReaderView {
     )
   }
 
-  func refreshSummaryText(_ summary: RSSRefreshSummary) -> String {
-    if summary.skippedCount > 0 {
-      return String(
-        localized:
-          "刷新完成：成功 \(summary.successCount)、失败 \(summary.failureCount)、暂缓 \(summary.skippedCount)"
-      )
-    }
-    return String(
-      localized: "刷新完成：成功 \(summary.successCount)、失败 \(summary.failureCount)"
-    )
-  }
-
   var selectedArticle: RSSArticle? {
     guard let article = selectedArticlePayload,
       article.id == presentation.selectedArticleID

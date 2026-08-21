@@ -47,6 +47,12 @@ struct SettingsAITabFactory {
       testConnection: { probeCapabilities in
         await context.store.ai.testConnection(probeCapabilities: probeCapabilities)
       },
+      discoverModels: { connectionProfileID, config in
+        try await context.store.ai.discoverModels(
+          for: connectionProfileID,
+          config: config
+        )
+      },
       setRemoteAIEnabled: { enabled in
         context.store.ai.setRemoteAIEnabled(enabled)
       },
@@ -55,6 +61,15 @@ struct SettingsAITabFactory {
       },
       revokeDataSharingConsent: {
         context.store.ai.revokeDataSharingConsent()
+      },
+      isCodexDataSharingConsentGranted: { accountStatus in
+        context.store.ai.dataSharingConsent(
+          for: context.store.activeAIConnectionProfile.config,
+          codexAccountStatus: accountStatus
+        ).isGranted
+      },
+      grantCodexDataSharingConsent: { accountStatus in
+        context.store.ai.grantCodexDataSharingConsent(for: accountStatus)
       }
     )
   }

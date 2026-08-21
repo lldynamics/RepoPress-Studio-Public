@@ -82,7 +82,7 @@ struct AIConnectionTestSection: View {
   let onTestConnection: () -> Void
 
   var body: some View {
-    Section("3. 连接测试") {
+    Section(String(localized: "服务连通性测试")) {
       connectionStatus
 
       Button {

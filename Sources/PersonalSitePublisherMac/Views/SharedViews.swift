@@ -451,7 +451,7 @@ struct QuickHideOverlay: View {
       if !status.activeProtections.isEmpty {
         HStack(spacing: 8) {
           ForEach(status.activeProtections, id: \.self) { protection in
-            Label(protection, systemImage: "checkmark.shield")
+            Label(protection, systemImage: "eye.slash")
               .font(.caption)
               .padding(.horizontal, 8)
               .padding(.vertical, 5)
@@ -710,5 +710,6 @@ struct GuidedEmptyStateView: View {
     )
     .shadow(color: Color.accentColor.opacity(isHovered ? 0.16 : 0), radius: 10, x: 0, y: 4)
     .scaleEffect(isHovered ? 1.02 : 1.0)
+    .animation(WorkbenchMotion.hoverSpring, value: isHovered)
   }
 }

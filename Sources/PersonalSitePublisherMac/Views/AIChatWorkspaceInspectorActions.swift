@@ -19,6 +19,9 @@ extension AIChatContextInspectorView {
     let displayedMessages = ai.chatContextMode == .general
       ? (displayedGeneralConversation?.messages ?? [])
       : ai.chatMessages
+    let displayedConversationID = ai.chatContextMode == .general
+      ? displayedGeneralConversation?.id
+      : ai.activeChatConversationID(for: draft.id)
     let displayedConversationTitle: String
     if ai.chatContextMode == .general {
       if let title = displayedGeneralConversation?.title?.trimmedForPublishing.nilIfEmpty {
@@ -43,6 +46,7 @@ extension AIChatContextInspectorView {
     return AIChatContextInspectorState(
       draft: AIChatInspectorDraftContext(
         draft: draft,
+        conversationID: displayedConversationID,
         conversationTitle: displayedConversationTitle,
         messages: Array(displayedMessages.suffix(visibleMessageLimit)),
         totalMessageCount: displayedMessages.count,
@@ -151,28 +155,73 @@ extension AIChatContextInspectorView {
       recordLocalFeedback: { decision, message in
         ai.recordLocalFeedback(decision, for: message)
       },
-      executeAutomationPlan: { messageID in
-        Task {
-          _ = await ai.executeAutomationPlan(messageID: messageID)
-        }
-      },
-      executeAutomationStep: { messageID, stepID in
+      executeAutomationPlan: { conversationID, messageID in
         Task {
           _ = await ai.executeAutomationPlan(
+            conversationID: conversationID,
+            messageID: messageID
+          )
+        }
+      },
+      executeAutomationStep: { conversationID, messageID, stepID in
+        Task {
+          _ = await ai.executeAutomationPlan(
+            conversationID: conversationID,
             messageID: messageID,
             onlyStepID: stepID,
             confirmedStepIDs: Set([stepID])
           )
         }
       },
-      previewAutomationStep: { messageID, stepID in
-        ai.automationDraftPreview(messageID: messageID, stepID: stepID)
+      acceptAutomationStep: { conversationID, messageID, stepID, baseline in
+        Task {
+          _ = await ai.acceptAutomationStep(
+            conversationID: conversationID,
+            messageID: messageID,
+            stepID: stepID,
+            previewBaselineFingerprint: baseline
+          )
+        }
       },
-      cancelAutomationPlan: { messageID in
-        ai.cancelAutomationPlan(messageID: messageID)
+      rejectAutomationStep: { conversationID, messageID, stepID, baseline in
+        Task {
+          _ = await ai.rejectAutomationStep(
+            conversationID: conversationID,
+            messageID: messageID,
+            stepID: stepID,
+            previewBaselineFingerprint: baseline
+          )
+        }
+      },
+      previewAutomationStep: { conversationID, messageID, stepID in
+        ai.automationDraftPreview(
+          conversationID: conversationID,
+          messageID: messageID,
+          stepID: stepID
+        )
+      },
+      cancelAutomationPlan: { conversationID, messageID in
+        ai.cancelAutomationPlan(
+          conversationID: conversationID,
+          messageID: messageID
+        )
       },
       rollbackAutomationRun: { recordID in
         _ = ai.rollbackAutomationRun(recordID)
+      },
+      abandonAgentContinuation: {
+        conversationID,
+        messageID,
+        planID,
+        continuationID,
+        expectedRevision in
+        ai.abandonAgentContinuation(
+          conversationID: conversationID,
+          messageID: messageID,
+          planID: planID,
+          continuationID: continuationID,
+          expectedRevision: expectedRevision
+        )
       }
     )
   }
