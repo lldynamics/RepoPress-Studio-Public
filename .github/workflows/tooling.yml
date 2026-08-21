@@ -69,7 +69,7 @@ jobs:
             --summary-markdown .build/browser-extension-gate-summary.md
       - name: Upload real-browser extension evidence
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: browser-extension-e2e
           path: output/playwright/browser-extension-e2e/
@@ -84,14 +84,14 @@ jobs:
             --result-json .build/tooling-gate-result.json \
             --summary-markdown .build/tooling-gate-summary.md
       - name: Upload Chrome and Edge store submission ZIPs
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: chromium-store-submission-zips
           path: .build/chromium-store/*.zip
           if-no-files-found: error
       - name: Upload unified result
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: release-tooling-result
           path: |
