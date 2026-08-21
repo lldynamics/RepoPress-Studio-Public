@@ -24,8 +24,9 @@ final class RepositoryGitIsolationSecurityTests: XCTestCase {
     try runGit(["config", "core.fsmonitor", fsmonitorURL.path], rootURL: rootURL)
 
     let runner = GitCommandRunner()
-    let syncResult = runner.run(
+    let syncResult = runSync(
       ["status", "--porcelain=v1", "--branch"],
+      with: runner,
       rootURL: rootURL
     )
     XCTAssertEqual(syncResult.terminationStatus, 0, syncResult.output)
@@ -38,7 +39,11 @@ final class RepositoryGitIsolationSecurityTests: XCTestCase {
     XCTAssertEqual(asyncResult.terminationStatus, 0, asyncResult.output)
     XCTAssertFalse(FileManager.default.fileExists(atPath: markerURL.path))
 
-    let syncWorkTree = runner.run(["rev-parse", "--is-inside-work-tree"], rootURL: rootURL)
+    let syncWorkTree = runSync(
+      ["rev-parse", "--is-inside-work-tree"],
+      with: runner,
+      rootURL: rootURL
+    )
     XCTAssertEqual(syncWorkTree.terminationStatus, 0)
     XCTAssertEqual(syncWorkTree.standardOutput, "true")
     let asyncWorkTree = await runner.runAsync(
@@ -266,4 +271,12 @@ final class RepositoryGitIsolationSecurityTests: XCTestCase {
     }
     return output.trimmingCharacters(in: .whitespacesAndNewlines)
   }
+}
+
+private func runSync(
+  _ arguments: [String],
+  with runner: GitCommandRunner,
+  rootURL: URL
+) -> GitCommandResult {
+  runner.run(arguments, rootURL: rootURL)
 }
