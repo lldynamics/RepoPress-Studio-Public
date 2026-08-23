@@ -1098,8 +1098,15 @@ extension WorkbenchAIStore {
   public func retryLastFailedAIChatReply(
     confirmingPossibleDuplicateCharge: Bool = false,
     draft: ArticleDraft? = nil,
-    ownerToken: UUID? = nil
+    ownerToken: UUID? = nil,
+    expectedContextMode: AIPublishingChatContextMode? = nil
   ) async -> AIPublishingChatMessage? {
+    guard expectedContextMode == nil || expectedContextMode == aiChatContextMode else {
+      store.setAIChatMessage(
+        CoreL10n.text("AI 对话上下文已变化，本次未发送，请重试。")
+      )
+      return nil
+    }
     guard let retryState = aiChatManualRetryState else {
       store.setAIChatMessage("当前没有可重试的 AI 请求。")
       return nil

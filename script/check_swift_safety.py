@@ -390,7 +390,7 @@ def main() -> int:
             "new force operations or @unchecked Sendable declarations require a narrow, reviewed rationale "
             "in script/swift_safety_exceptions.json"
         )
-    if stale_unchecked or stale_forced:
+    if stale_unchecked or stale_forced or stale_optional:
         for file, declaration in stale_unchecked:
             print(f"stale @unchecked Sendable exception: {file}:{declaration}", file=sys.stderr)
         for file, kind, contains in stale_forced:

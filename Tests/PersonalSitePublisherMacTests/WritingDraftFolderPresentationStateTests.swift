@@ -1,3 +1,4 @@
+import PublishingWorkbenchCore
 import XCTest
 
 @testable import PersonalSitePublisherMac
@@ -74,6 +75,47 @@ final class WritingDraftFolderPresentationStateTests: XCTestCase {
     XCTAssertEqual(first, second)
     XCTAssertEqual(first.userExpandedFolderIDs, Set(roots))
     XCTAssertTrue(first.transientlyRevealedFolderIDs.isEmpty)
+  }
+
+  func testDefaultTopLevelExpansionKeepsProtectedContentCollapsed() throws {
+    let profileID = UUID(uuidString: "11111111-1111-4111-8111-111111111111")!
+    let profile = SiteProfile(
+      id: profileID,
+      name: "测试站点",
+      contentRoot: "content",
+      markdownPathPattern: "content/{slug}.md"
+    )
+    let publicDraft = ArticleDraft(
+      siteProfileID: profileID,
+      title: "公开文章",
+      slug: "posts/public"
+    )
+    let privateDraft = ArticleDraft(
+      siteProfileID: profileID,
+      title: "隐私文章",
+      slug: "private/secret",
+      visibility: .private
+    )
+    let projection = DraftFolderProjection(
+      profile: profile,
+      drafts: [publicDraft, privateDraft],
+      maskedDraftIDs: [privateDraft.id]
+    )
+    let protectedNode = try XCTUnwrap(
+      projection.topLevelNodes.first { $0.kind == .protectedContent }
+    )
+    var state = WritingDraftFolderExpansionState(
+      defaultExpandedTopLevelNodes: projection.topLevelNodes
+    )
+
+    XCTAssertFalse(state.isExpanded(protectedNode.id))
+    XCTAssertEqual(
+      state.userExpandedFolderIDs,
+      Set(projection.topLevelNodes.filter { $0.kind != .protectedContent }.map(\.id))
+    )
+
+    state.toggle(protectedNode.id)
+    XCTAssertTrue(state.isExpanded(protectedNode.id))
   }
 
   func testSetExpandedChangesOnlyUserChoice() {

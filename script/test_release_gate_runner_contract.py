@@ -51,7 +51,7 @@ def main() -> int:
                     "description": "fixture",
                     "defaultTimeoutSeconds": 1,
                     "profiles": {
-                        "common": ["ui-runtime", "timeout"],
+                        "common": ["ui-runtime", "timeout", "standard", "strict"],
                         "direct": [],
                         "chrome": [],
                     },
@@ -73,6 +73,22 @@ def main() -> int:
                             "evidence": ["timeout classification"],
                             "strictness": "always",
                             "command": ["bash", "script/timeout.sh"],
+                        },
+                        {
+                            "id": "standard",
+                            "title": "Standard fixture",
+                            "source": ["script/package-ok.sh"],
+                            "evidence": ["standard profile inclusion"],
+                            "strictness": "standard",
+                            "command": ["bash", "script/package-ok.sh"],
+                        },
+                        {
+                            "id": "strict",
+                            "title": "Strict fixture",
+                            "source": ["script/package-ok.sh"],
+                            "evidence": ["strict profile inclusion"],
+                            "strictness": "strict",
+                            "command": ["bash", "script/package-ok.sh"],
                         },
                     ],
                 }
@@ -96,6 +112,45 @@ def main() -> int:
             cwd=fixture,
             check=True,
         )
+        direct_list = subprocess.run(
+            [
+                "python3",
+                str(script / "release_gate_runner.py"),
+                "--profile",
+                "direct",
+                "--list",
+            ],
+            cwd=fixture,
+            text=True,
+            capture_output=True,
+            check=True,
+        ).stdout
+        assert "ui-runtime\talways\t" in direct_list, direct_list
+        assert "standard\tstandard\t" in direct_list, direct_list
+        assert "strict\tstrict\t" in direct_list, direct_list
+        standard_list = subprocess.run(
+            ["python3", str(script / "release_gate_runner.py"), "--list"],
+            cwd=fixture,
+            text=True,
+            capture_output=True,
+            check=True,
+        ).stdout
+        assert "standard\tstandard\t" in standard_list, standard_list
+        assert "strict\tstrict\t" not in standard_list, standard_list
+        explicit_strict_list = subprocess.run(
+            [
+                "python3",
+                str(script / "release_gate_runner.py"),
+                "--check",
+                "strict",
+                "--list",
+            ],
+            cwd=fixture,
+            text=True,
+            capture_output=True,
+            check=True,
+        ).stdout
+        assert "strict\tstrict\t" in explicit_strict_list, explicit_strict_list
         result_path = fixture / ".build" / "result.json"
         process = subprocess.Popen(
             [

@@ -152,4 +152,24 @@ extension WorkbenchStore {
     }
     return summary
   }
+
+  @discardableResult
+  func autoImportRemoteArticleDrafts(
+    remoteFiles: [RepositoryChangedFile],
+    snapshots: [RepositoryFileSnapshot],
+    locallyChangedPaths: Set<String>,
+    profileID: UUID
+  ) -> RemoteArticleAutoImportSummary {
+    let summary = publishingStore.autoImportRemoteArticleDrafts(
+      remoteFiles: remoteFiles,
+      snapshots: snapshots,
+      locallyChangedPaths: locallyChangedPaths,
+      profileID: profileID,
+      store: self
+    )
+    if summary.importedCount > 0 || summary.unchangedCount > 0 {
+      invalidateDraftDerivedCaches()
+    }
+    return summary
+  }
 }

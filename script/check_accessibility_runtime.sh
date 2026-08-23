@@ -7,19 +7,15 @@ DERIVED_DATA_PATH="${WORKBENCH_XCUI_DERIVED_DATA_PATH:-/private/tmp/PersonalSite
 RUNTIME_HOME="${PERSONAL_SITE_PUBLISHER_RUNTIME_HOME:-${HOME:?HOME is required}}"
 TEST_DIST_DIR=""
 TEST_BUNDLE_ID=""
-REQUIRE_APP_STORE=0
 NON_SCREENSHOT_REGRESSION=0
 LSREGISTER_TOOL="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
 
 usage() {
-  echo "usage: check_accessibility_runtime.sh [--require-app-store|--non-screenshot-regression]" >&2
+  echo "usage: check_accessibility_runtime.sh [--non-screenshot-regression]" >&2
 }
 
 case "${1:-}" in
   "")
-    ;;
-  --require-app-store)
-    REQUIRE_APP_STORE=1
     ;;
   --non-screenshot-regression)
     NON_SCREENSHOT_REGRESSION=1
@@ -37,10 +33,6 @@ esac
 if [[ "$#" -gt 1 ]]; then
   usage
   echo "runtime accessibility gate: expected at most one argument" >&2
-  exit 2
-fi
-if [[ "$REQUIRE_APP_STORE" == "1" && -z "$APP_PATH" ]]; then
-  echo "runtime accessibility gate: --require-app-store requires an explicit WORKBENCH_XCUI_APP_PATH" >&2
   exit 2
 fi
 if [[ "$NON_SCREENSHOT_REGRESSION" == "1" && -z "$APP_PATH" ]]; then
@@ -74,9 +66,6 @@ if [[ -z "$APP_PATH" ]]; then
   TEST_DIST_DIR="$(mktemp -d /private/tmp/PersonalSitePublisherMac-AccessibilityApp.XXXXXX)"
   TEST_BUNDLE_ID="com.jinfang.PersonalSitePublisherMac.AccessibilityTests.${TEST_DIST_DIR##*.}"
   build_arguments=(--package-only)
-  if [[ "${RELEASE_GATE_PROFILE:-}" == "app-store" ]]; then
-    build_arguments+=(--app-store)
-  fi
   PERSONAL_SITE_PUBLISHER_DIST_DIR="$TEST_DIST_DIR" \
     PERSONAL_SITE_PUBLISHER_CAPTURE_BUILD=1 \
     PERSONAL_SITE_PUBLISHER_BUNDLE_ID="$TEST_BUNDLE_ID" \
@@ -89,7 +78,7 @@ if [[ ! -d "$APP_PATH" ]]; then
   exit 1
 fi
 
-if [[ "$REQUIRE_APP_STORE" == "1" || "$NON_SCREENSHOT_REGRESSION" == "1" ]]; then
+if [[ "$NON_SCREENSHOT_REGRESSION" == "1" ]]; then
   info_plist="$APP_PATH/Contents/Info.plist"
   [[ -f "$info_plist" ]] || {
     echo "runtime accessibility gate: packaged app Info.plist is missing: $info_plist" >&2
@@ -99,10 +88,6 @@ if [[ "$REQUIRE_APP_STORE" == "1" || "$NON_SCREENSHOT_REGRESSION" == "1" ]]; the
     echo "runtime accessibility gate: packaged app Info.plist is invalid" >&2
     exit 1
   }
-  distribution_channel="$(
-    /usr/libexec/PlistBuddy -c 'Print :PersonalSitePublisherDistributionChannel' \
-      "$info_plist" 2>/dev/null || true
-  )"
   build_configuration="$(
     /usr/libexec/PlistBuddy -c 'Print :PersonalSitePublisherBuildConfiguration' \
       "$info_plist" 2>/dev/null || true
@@ -119,15 +104,7 @@ if [[ "$REQUIRE_APP_STORE" == "1" || "$NON_SCREENSHOT_REGRESSION" == "1" ]]; the
     echo "runtime accessibility gate: packaged UI regression must not use a screenshot-capture binary" >&2
     exit 1
   }
-  if [[ "$REQUIRE_APP_STORE" == "1" ]]; then
-    [[ "$distribution_channel" == "AppStore" ]] || {
-      echo "runtime accessibility gate: App Store UI regression requires distribution channel AppStore, got: ${distribution_channel:-missing}" >&2
-      exit 1
-    }
-    echo "runtime accessibility gate: verified explicit AppStore Release bundle before XCUITest"
-  else
-    echo "runtime accessibility gate: verified explicit non-screenshot Release bundle before XCUITest"
-  fi
+  echo "runtime accessibility gate: verified explicit non-screenshot Release bundle before XCUITest"
 fi
 
 xcodebuild_arguments=(
@@ -138,11 +115,7 @@ xcodebuild_arguments=(
   WORKBENCH_XCUI_APP_PATH="$APP_PATH"
   PERSONAL_SITE_PUBLISHER_RUNTIME_HOME="$RUNTIME_HOME"
 )
-if [[ "$REQUIRE_APP_STORE" == "1" ]]; then
-  xcodebuild_arguments+=(
-    "-only-testing:WorkspaceAccessibilityUITests/WorkspaceAccessibilityUITests/testAppStoreEnglishMenusExposeFreeBYOKAIAndReopenMainWindow"
-  )
-elif [[ "$NON_SCREENSHOT_REGRESSION" == "1" ]]; then
+if [[ "$NON_SCREENSHOT_REGRESSION" == "1" ]]; then
   xcodebuild_arguments+=(
     "-only-testing:WorkspaceAccessibilityUITests/WorkspaceAccessibilityUITests/testReleaseBundleLaunchesWithoutScreenshotFixture"
   )
@@ -163,9 +136,7 @@ HOME="$RUNTIME_HOME" \
   WORKBENCH_XCUI_APP_PATH="$APP_PATH" \
   xcodebuild "${xcodebuild_arguments[@]}" test
 
-if [[ "$REQUIRE_APP_STORE" == "1" ]]; then
-  echo "runtime accessibility gate: App Store UI regression passed"
-elif [[ "$NON_SCREENSHOT_REGRESSION" == "1" ]]; then
+if [[ "$NON_SCREENSHOT_REGRESSION" == "1" ]]; then
   echo "runtime accessibility gate: non-screenshot Release regression passed"
 else
   echo "runtime accessibility gate: passed"

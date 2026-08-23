@@ -463,10 +463,6 @@
     "en": "Refreshing",
     "zh-Hans": "正在刷新"
   },
-  "正在汇总全部变更": {
-    "en": "Summarizing All Changes",
-    "zh-Hans": "正在汇总全部变更"
-  },
   "正文共 %lld 行": {
     "en": "Body: %lld Lines",
     "zh-Hans": "正文共 %lld 行"
@@ -522,10 +518,6 @@
   "生成模板和首篇文章": {
     "en": "Generate Template and First Article",
     "zh-Hans": "生成模板和首篇文章"
-  },
-  "用于线上发布": {
-    "en": "For Live Publishing",
-    "zh-Hans": "用于线上发布"
   },
   "确认导入 %lld 篇": {
     "en": "Confirm Import of %lld Articles",

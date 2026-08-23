@@ -371,7 +371,7 @@ extension PublishingStore {
         packages: publishableItems.map(\.package),
         result: result
       )
-      store.recordRemoteRepositoryPublishInAutoSync(result)
+      store.recordRemoteRepositoryPublishInAutoSync(result, profileID: profile.id)
       setPublishActionMessage(
         "批量\(mode.displayName)完成：\(publishableItems.count) 篇、\(result.changedPaths.count) 个文件。",
         status: .success

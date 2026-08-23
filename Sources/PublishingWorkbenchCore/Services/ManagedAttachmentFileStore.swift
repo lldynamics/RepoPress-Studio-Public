@@ -19,10 +19,10 @@ public enum ManagedAttachmentFileStoreError: LocalizedError, Equatable, Sendable
 
 /// Owns durable copies of user-selected draft attachments.
 ///
-/// The App Store build cannot rely on an `NSOpenPanel` URL remaining readable
-/// after relaunch. New attachments are therefore copied into the app-owned
-/// data root (or the legacy Application Support default) before their paths are
-/// added to a draft. The existing
+/// A user-selected `NSOpenPanel` URL is not a durable ownership boundary and may
+/// become unreadable after relaunch. New attachments are therefore copied into
+/// the app-owned data root (or the legacy Application Support default) before
+/// their paths are added to a draft. The existing
 /// `DraftAttachment.sourceFilePath` field continues to store the resolved
 /// absolute path, so snapshots created by older builds remain decodable.
 public struct ManagedAttachmentFileStore: Sendable {

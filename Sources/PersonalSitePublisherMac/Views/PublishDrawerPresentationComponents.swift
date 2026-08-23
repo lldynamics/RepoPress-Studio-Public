@@ -1,6 +1,137 @@
 import PublishingWorkbenchCore
 import SwiftUI
 
+/// Pure presentation state for the batch online-publish action.
+///
+/// Keeping the gate explanation separate from the SwiftUI view makes it
+/// possible to test every disabled state without constructing a store or
+/// starting a network operation.
+enum PublishDrawerBatchPermissionState: Equatable {
+  case unchecked
+  case readOnly
+  case writable
+}
+
+struct PublishDrawerBatchActionPresentation {
+  struct State: Equatable {
+    var repositoryConfigured: Bool
+    var hasToken: Bool
+    var tokenAccessFailureMessage: String?
+    var permission: PublishDrawerBatchPermissionState
+    var blockingIssueTitle: String?
+    var hasRemoteConflict: Bool
+    var publishableArticleCount: Int?
+    var changedFileCount: Int?
+    var isPlanRefreshing: Bool
+    var isPermissionChecking: Bool
+    var isPublishing: Bool
+
+    init(
+      repositoryConfigured: Bool,
+      hasToken: Bool,
+      tokenAccessFailureMessage: String? = nil,
+      permission: PublishDrawerBatchPermissionState = .unchecked,
+      blockingIssueTitle: String? = nil,
+      hasRemoteConflict: Bool = false,
+      publishableArticleCount: Int? = nil,
+      changedFileCount: Int? = nil,
+      isPlanRefreshing: Bool = false,
+      isPermissionChecking: Bool = false,
+      isPublishing: Bool = false
+    ) {
+      self.repositoryConfigured = repositoryConfigured
+      self.hasToken = hasToken
+      self.tokenAccessFailureMessage = tokenAccessFailureMessage
+      self.permission = permission
+      self.blockingIssueTitle = blockingIssueTitle
+      self.hasRemoteConflict = hasRemoteConflict
+      self.publishableArticleCount = publishableArticleCount
+      self.changedFileCount = changedFileCount
+      self.isPlanRefreshing = isPlanRefreshing
+      self.isPermissionChecking = isPermissionChecking
+      self.isPublishing = isPublishing
+    }
+  }
+
+  static let title = String(localized: "发布所有可发布文章")
+  static let detail = String(
+    localized: "仅包含应用管理的文章发布包；不会包含 CSS、模板、脚本等其他 Git 工作区变更。发布前会显示完整文件清单。"
+  )
+  static let actionTitle = String(localized: "发布所有可发布文章…")
+
+  static func isEnabled(_ state: State) -> Bool {
+    guard !state.isPlanRefreshing,
+          !state.isPermissionChecking,
+          !state.isPublishing,
+          state.repositoryConfigured,
+          state.hasToken,
+          state.tokenAccessFailureMessage == nil,
+          state.permission == .writable,
+          state.blockingIssueTitle == nil,
+          !state.hasRemoteConflict,
+          let articleCount = state.publishableArticleCount,
+          articleCount > 0
+    else {
+      return false
+    }
+    return true
+  }
+
+  static func status(_ state: State) -> String {
+    if state.isPlanRefreshing {
+      return String(localized: "正在汇总文章发布包")
+    }
+    if state.isPermissionChecking {
+      return String(localized: "正在检查仓库写入权限")
+    }
+    if state.isPublishing {
+      return String(localized: "正在发布文章")
+    }
+    if !state.repositoryConfigured {
+      return String(localized: "先配置线上仓库")
+    }
+    if let blockingIssueTitle = state.blockingIssueTitle {
+      return blockingIssueTitle
+    }
+    if state.tokenAccessFailureMessage != nil {
+      return String(localized: "仓库 Token 状态读取失败")
+    }
+    if !state.hasToken {
+      return String(localized: "请先保存仓库 Token")
+    }
+    switch state.permission {
+    case .unchecked:
+      return String(localized: "请先检查仓库写入权限")
+    case .readOnly:
+      return String(localized: "Token 没有仓库写入权限")
+    case .writable:
+      break
+    }
+    if state.hasRemoteConflict {
+      return String(localized: "远端存在冲突，请先核对")
+    }
+    guard let articleCount = state.publishableArticleCount else {
+      return String(localized: "正在准备文章发布包")
+    }
+    guard articleCount > 0 else {
+      return String(localized: "没有可发布文章")
+    }
+    let fileCount = state.changedFileCount ?? 0
+    return String(
+      format: String(localized: "可发布 %d 篇文章 · %d 个文章文件"),
+      articleCount,
+      fileCount
+    )
+  }
+
+  static func accessibilityHint(isEnabled: Bool, status: String) -> String {
+    if isEnabled {
+      return String(localized: "执行此操作")
+    }
+    return status
+  }
+}
+
 struct PublishDrawerActionChoice: View {
   let title: String
   let detail: String
@@ -40,6 +171,13 @@ struct PublishDrawerActionChoice: View {
         .keyboardShortcut(.defaultAction)
         .disabled(!isEnabled)
         .accessibilityIdentifier(actionIdentifier)
+        .accessibilityHint(
+          PublishDrawerBatchActionPresentation.accessibilityHint(
+            isEnabled: isEnabled,
+            status: status
+          )
+        )
+        .help(status)
       } else {
         Button(action: action) {
           Label(actionTitle, systemImage: actionSystemImage)
@@ -47,6 +185,13 @@ struct PublishDrawerActionChoice: View {
         .buttonStyle(.bordered)
         .disabled(!isEnabled)
         .accessibilityIdentifier(actionIdentifier)
+        .accessibilityHint(
+          PublishDrawerBatchActionPresentation.accessibilityHint(
+            isEnabled: isEnabled,
+            status: status
+          )
+        )
+        .help(status)
       }
     }
     .padding(14)

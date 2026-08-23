@@ -38,7 +38,7 @@ critical_paths=(
   script
   .github
   docs/privacy-support-copy.md
-  docs/app-store/public-pages
+  docs/public-pages
 )
 
 untracked=()

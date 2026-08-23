@@ -51,10 +51,6 @@
     "en": "Configured",
     "zh-Hans": "已配置"
   },
-  "待发布 %d 篇 · %d 个文件": {
-    "en": "%d articles · %d files pending publication",
-    "zh-Hans": "待发布 %d 篇 · %d 个文件"
-  },
   "待推送": {
     "en": "Pending Push",
     "zh-Hans": "待推送"

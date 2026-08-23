@@ -3,8 +3,8 @@
   "swiftFormatWarningMaximum": 12435,
   "sourceLineCoveragePercentMinimum": 38.0,
   "swiftTestMinimumCountsByTarget": {
-    "PersonalSitePublisherMacTests": 252,
-    "PublishingWorkbenchCoreTests": 1612
+    "PersonalSitePublisherMacTests": 331,
+    "PublishingWorkbenchCoreTests": 2054
   },
   "releasePerformance": {
     "schemaVersion": 1,

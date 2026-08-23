@@ -42,11 +42,20 @@ struct EditorSettingsView: View {
   var body: some View {
     Form {
       Section {
+        editorLivePreviewCard
+      } header: {
+        Text("排版效果实时预览")
+      } footer: {
+        Text("拖动下方滑块或切换开关，此处会即时呈现文章在编辑器内的排版与视觉氛围。")
+      }
+
+      Section {
         preferenceSlider(
           title: "字号",
           value: $fontSize,
           range: MarkdownEditorComfortConfiguration.fontSizeRange,
           step: 1,
+          defaultValue: MarkdownEditorComfortConfiguration.defaultFontSize,
           formattedValue: "\(Int(fontSize)) pt",
           accessibilityIdentifier: "editor-font-size"
         )
@@ -56,6 +65,7 @@ struct EditorSettingsView: View {
           value: $lineSpacing,
           range: MarkdownEditorComfortConfiguration.lineSpacingRange,
           step: 1,
+          defaultValue: MarkdownEditorComfortConfiguration.defaultLineSpacing,
           formattedValue: "\(Int(lineSpacing)) pt",
           accessibilityIdentifier: "editor-line-spacing"
         )
@@ -65,6 +75,7 @@ struct EditorSettingsView: View {
           value: $bodyWidth,
           range: MarkdownEditorComfortConfiguration.bodyWidthRange,
           step: 20,
+          defaultValue: MarkdownEditorComfortConfiguration.defaultBodyWidth,
           formattedValue: "\(Int(bodyWidth)) pt",
           accessibilityIdentifier: "editor-body-width"
         )
@@ -192,13 +203,36 @@ struct EditorSettingsView: View {
     value: Binding<Double>,
     range: ClosedRange<Double>,
     step: Double,
+    defaultValue: Double,
     formattedValue: String,
     accessibilityIdentifier: String
   ) -> some View {
     VStack(alignment: .leading, spacing: 6) {
-      HStack {
+      HStack(alignment: .center) {
         Text(title)
+
+        if value.wrappedValue != defaultValue {
+          Button {
+            value.wrappedValue = defaultValue
+          } label: {
+            Image(systemName: "arrow.counterclockwise")
+              .font(.caption2)
+              .foregroundStyle(.secondary)
+          }
+          .buttonStyle(.plain)
+          .help("恢复默认值 \(Int(defaultValue)) pt")
+          .accessibilityLabel(
+            Text(
+              String(
+                format: String(localized: "恢复默认值 %lld pt"),
+                Int64(defaultValue)
+              )
+            )
+          )
+        }
+
         Spacer()
+
         Text(formattedValue)
           .foregroundStyle(.secondary)
           .monospacedDigit()
@@ -209,6 +243,84 @@ struct EditorSettingsView: View {
         .accessibilityValue(formattedValue)
         .accessibilityIdentifier(accessibilityIdentifier)
     }
+  }
+
+  private var editorLivePreviewCard: some View {
+    VStack(alignment: .leading, spacing: CGFloat(lineSpacing) + 4) {
+      HStack(alignment: .firstTextBaseline) {
+        Text("晨光中的写作与思考")
+          .font(.system(size: max(14, CGFloat(fontSize) + 2), weight: .bold))
+          .foregroundStyle(.primary)
+
+        Spacer()
+
+        HStack(spacing: 6) {
+          if isWarmPaperBackgroundEnabled {
+            previewTag(title: "暖纸", icon: "sun.max")
+          }
+          if isParagraphSpotlightEnabled {
+            previewTag(title: "聚焦模式", icon: "scope")
+          }
+          if isTypewriterModeEnabled {
+            previewTag(title: "打字机居中", icon: "text.aligncenter")
+          }
+          previewTag(
+            title: MarkdownPreviewTheme(rawValue: previewThemeRawValue)?.title ?? "默认主题",
+            icon: "paintpalette"
+          )
+        }
+      }
+      .padding(.bottom, 2)
+
+      Text("清晰的排版如同清晨微风，使阅读与创作自然流淌。当字号与行距恰到好处时，文字便拥有了呼吸的节奏。")
+        .font(.system(size: CGFloat(fontSize)))
+        .lineSpacing(CGFloat(lineSpacing))
+        .foregroundStyle(.primary)
+        .opacity(isParagraphSpotlightEnabled ? 0.45 : 1.0)
+
+      HStack(spacing: 0) {
+        if isCurrentParagraphHighlightEnabled {
+          RoundedRectangle(cornerRadius: 2)
+            .fill(Color.accentColor)
+            .frame(width: 3)
+            .padding(.trailing, 8)
+        }
+
+        Text("段落聚光灯与当前段落高亮能够帮助创作者排除视觉杂音，将心流完全凝聚在当下的字里行间。")
+          .font(.system(size: CGFloat(fontSize)))
+          .lineSpacing(CGFloat(lineSpacing))
+          .foregroundStyle(.primary)
+      }
+      .padding(.vertical, isCurrentParagraphHighlightEnabled ? 4 : 0)
+      .padding(.horizontal, isCurrentParagraphHighlightEnabled ? 6 : 0)
+      .background(
+        isCurrentParagraphHighlightEnabled
+          ? Color.accentColor.opacity(0.08)
+          : Color.clear,
+        in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
+      )
+    }
+    .padding(14)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .background(
+      WorkbenchWritingSurface.color(usesWarmPaper: isWarmPaperBackgroundEnabled),
+      in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
+    )
+    .overlay {
+      RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
+        .strokeBorder(Color(nsColor: .separatorColor).opacity(0.6))
+    }
+    .accessibilityElement(children: .combine)
+    .accessibilityLabel("排版效果实时预览")
+  }
+
+  private func previewTag(title: String, icon: String) -> some View {
+    Label(title, systemImage: icon)
+      .font(.caption2.weight(.medium))
+      .foregroundStyle(.secondary)
+      .padding(.horizontal, 6)
+      .padding(.vertical, 2)
+      .background(Color.primary.opacity(0.06), in: Capsule())
   }
 
   private func preferenceToggle(

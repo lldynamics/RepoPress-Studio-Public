@@ -28,9 +28,6 @@ case "${1:-}" in
 esac
 
 build_arguments=(--package-only --release)
-if [[ "${RELEASE_GATE_PROFILE:-}" == "app-store" ]]; then
-  build_arguments+=(--app-store)
-fi
 bash "$ROOT_DIR/script/build_and_run.sh" "${build_arguments[@]}" >/dev/null
 
 [[ -d "$APP_BUNDLE" ]] || fail "app bundle was not created"

@@ -13,11 +13,9 @@ struct AIChatContextInspectorView: View {
   @AppStorage("settingsRequestedTabID") var requestedSettingsTabID = ""
   let ai: WorkbenchAIFeatureFacade
   @StateObject var chatState: WorkbenchAIChatFeatureFacade
+  @ObservedObject var operationSession: AIChatSurfaceOperationSession
   @Binding var surfaceState: AIChatSurfaceState
   @State var inspectorTransientConversationID = UUID()
-  @State var isSubmitting = false
-  @State var sendTask: Task<Void, Never>?
-  @State var activeSendOwnerToken: UUID?
   @State var latestMessageScrollTask: Task<Void, Never>?
   @State var draftDiffPreview: AIChatDraftDiffPreview?
   @State var visibleMessageLimit = 8
@@ -36,12 +34,14 @@ struct AIChatContextInspectorView: View {
 
   init(
     store: WorkbenchStore,
-    surfaceState: Binding<AIChatSurfaceState>
+    surfaceState: Binding<AIChatSurfaceState>,
+    operationSession: AIChatSurfaceOperationSession
   ) {
     ai = store.ai
     _chatState = StateObject(
       wrappedValue: WorkbenchAIChatFeatureFacade(store: store)
     )
+    _operationSession = ObservedObject(wrappedValue: operationSession)
     _surfaceState = surfaceState
   }
 
@@ -53,6 +53,11 @@ struct AIChatContextInspectorView: View {
 
       if isAIKeyMissing {
         missingAIKeyBanner
+        Divider()
+      }
+
+      if agentToolAvailability?.message != nil {
+        agentToolsUnavailableBanner
         Divider()
       }
 
@@ -137,9 +142,12 @@ struct AIChatContextInspectorView: View {
     }
     .onDisappear {
       latestMessageScrollTask?.cancel()
-      if ownsInspectorOperation {
-        stopSending()
-      }
+      _ = operationSession.handle(
+        .transientSurfaceDisappearance,
+        forwardingTo: { ownerToken in
+          ai.cancelChatReply(expectedOwnerToken: ownerToken)
+        }
+      )
     }
     .onChange(of: ai.selectedChatDraft?.id) { _, _ in
       if ai.chatContextMode != .general {

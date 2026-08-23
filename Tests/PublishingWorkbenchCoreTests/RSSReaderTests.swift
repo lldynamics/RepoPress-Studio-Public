@@ -1154,6 +1154,107 @@ final class RSSReaderTests: XCTestCase {
     }
   }
 
+  func testUntrustedRSSAndOPMLXMLRejectDeclarationsAfterLongPreamble() throws {
+    let longPreamble = String(repeating: "preamble", count: 3_000)
+    let rss = """
+      <?xml version="1.0"?>
+      <!--\(longPreamble)-->
+      <!DOCTYPE rss [<!ENTITY expanded "must not expand">]>
+      <rss version="2.0"><channel><title>Blocked</title></channel></rss>
+      """
+    let feedURL = try XCTUnwrap(URL(string: "https://example.com/feed.xml"))
+    XCTAssertThrowsError(
+      try RSSFeedParser.parse(data: Data(rss.utf8), feedURL: feedURL)
+    ) { error in
+      guard case let RSSReaderError.parseFailed(message) = error else {
+        return XCTFail("Expected RSS parse failure, got \(error)")
+      }
+      XCTAssertTrue(message.contains("DTD") || message.contains("实体"))
+    }
+
+    let opml = """
+      <?xml version="1.0"?>
+      <!--\(longPreamble)-->
+      <!DOCTYPE opml>
+      <opml version="2.0"><body>
+        <outline text="Blocked" xmlUrl="https://example.com/feed.xml"/>
+      </body></opml>
+      """
+    XCTAssertThrowsError(try RSSOPMLParser.parse(data: Data(opml.utf8))) { error in
+      XCTAssertEqual(
+        error as? RSSReaderError,
+        .invalidOPML("文件包含不安全的 DTD 或实体声明")
+      )
+    }
+
+    var utf16 = Data([0xFF, 0xFE])
+    utf16.append(
+      Data(
+        "<!DOCTYPE opml><opml version=\"2.0\"><body><outline xmlUrl=\"https://example.com/feed.xml\"/></body></opml>"
+          .data(using: .utf16LittleEndian)!
+      )
+    )
+    XCTAssertThrowsError(try RSSOPMLParser.parse(data: utf16)) { error in
+      XCTAssertEqual(
+        error as? RSSReaderError,
+        .invalidOPML("文件包含不安全的 DTD 或实体声明")
+      )
+    }
+
+    var utf32 = Data([0x00, 0x00, 0xFE, 0xFF])
+    utf32.append(
+      Data(
+        "<!DOCTYPE opml><opml version=\"2.0\"><body/></opml>"
+          .data(using: .utf32BigEndian)!
+      )
+    )
+    XCTAssertThrowsError(try RSSOPMLParser.parse(data: utf32)) { error in
+      XCTAssertEqual(
+        error as? RSSReaderError,
+        .invalidOPML("文件包含不安全的 DTD 或实体声明")
+      )
+    }
+  }
+
+  func testRSSAndOPMLXMLRejectElementDepthAndRecordLimits() throws {
+    let feedURL = try XCTUnwrap(URL(string: "https://example.com/feed.xml"))
+    let nested = String(repeating: "<nested>", count: 300)
+      + String(repeating: "</nested>", count: 300)
+    let deepRSS = "<rss><channel>\(nested)</channel></rss>"
+    XCTAssertThrowsError(
+      try RSSFeedParser.parse(data: Data(deepRSS.utf8), feedURL: feedURL)
+    ) { error in
+      guard case let RSSReaderError.parseFailed(message) = error else {
+        return XCTFail("Expected RSS depth failure, got \(error)")
+      }
+      XCTAssertTrue(message.contains("深度") || message.contains("嵌套"))
+    }
+
+    let rssItems = (0...10_000).map { index in
+      "<item><title>Article \(index)</title></item>"
+    }.joined()
+    let largeRSS = "<rss><channel>\(rssItems)</channel></rss>"
+    XCTAssertThrowsError(
+      try RSSFeedParser.parse(data: Data(largeRSS.utf8), feedURL: feedURL)
+    ) { error in
+      guard case let RSSReaderError.parseFailed(message) = error else {
+        return XCTFail("Expected RSS record failure, got \(error)")
+      }
+      XCTAssertTrue(message.contains("记录"))
+    }
+
+    let items = (0...10_000).map { index in
+      "<outline text=\"Feed \(index)\" xmlUrl=\"https://example.com/\(index).xml\"/>"
+    }.joined()
+    let opml = "<opml version=\"2.0\"><body>\(items)</body></opml>"
+    XCTAssertThrowsError(try RSSOPMLParser.parse(data: Data(opml.utf8))) { error in
+      guard case let RSSReaderError.invalidOPML(message) = error else {
+        return XCTFail("Expected OPML record failure, got \(error)")
+      }
+      XCTAssertTrue(message.contains("条目"))
+    }
+  }
+
   func testFeedBodyOfflineCachePolicyDefaultsAndPersists() throws {
     let suiteName = "RSSReaderTests-" + UUID().uuidString
     let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))

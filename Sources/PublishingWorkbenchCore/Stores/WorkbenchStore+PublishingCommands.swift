@@ -179,8 +179,11 @@ extension WorkbenchStore {
     publishingStore.markDraftsAsPublishedIfDirectRemoteCommit(mode: mode, draftIDs: draftIDs)
   }
 
-  public func recordRemoteRepositoryPublishInAutoSync(_ result: RemoteRepositoryPublishResult) {
-    repositoryDeploymentCoordinator.recordRemotePublish(result)
+  public func recordRemoteRepositoryPublishInAutoSync(
+    _ result: RemoteRepositoryPublishResult,
+    profileID: UUID
+  ) {
+    repositoryDeploymentCoordinator.recordRemotePublish(result, profileID: profileID)
   }
 
   public func shouldRefreshDeploymentStatusAfterRemoteOperation(_ record: ReleaseRecord) -> Bool {

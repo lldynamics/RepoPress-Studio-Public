@@ -16,6 +16,7 @@ struct MacMarkdownEditorToolbar: View {
   let availableWritingContextPanels: [MarkdownWritingContextPanel]
   let actions: MarkdownEditorToolbarActions
   @EnvironmentObject private var localPreviewState: WorkbenchLocalSitePreviewFeatureFacade
+  @EnvironmentObject private var zenModeController: ZenModeController
   @State private var isLocalPreviewPopoverPresented = false
   @State private var selectedPublishAssets = AIPublishingAssetKind.defaultSelection
   @AppStorage("workspace.customToolbarConfig") private var customToolbarConfigRawValue = ""
@@ -90,6 +91,32 @@ struct MacMarkdownEditorToolbar: View {
         onDismiss: { isCustomizationSheetPresented = false }
       )
     }
+    .onKeyPress(.tab) {
+      zenModeController.beginKeyboardNavigation()
+      return .ignored
+    }
+    .onKeyPress(.leftArrow) {
+      zenModeController.beginKeyboardNavigation()
+      return .ignored
+    }
+    .onKeyPress(.rightArrow) {
+      zenModeController.beginKeyboardNavigation()
+      return .ignored
+    }
+    .onKeyPress(.upArrow) {
+      zenModeController.beginKeyboardNavigation()
+      return .ignored
+    }
+    .onKeyPress(.downArrow) {
+      zenModeController.beginKeyboardNavigation()
+      return .ignored
+    }
+    .onExitCommand {
+      zenModeController.endKeyboardNavigation()
+    }
+    .onDisappear {
+      zenModeController.endKeyboardNavigation()
+    }
   }
 
   private var titleArea: some View {
@@ -148,6 +175,7 @@ struct MacMarkdownEditorToolbar: View {
     .frame(minHeight: 34)
     .accessibilityElement(children: .contain)
     .accessibilityLabel("写作工具栏")
+    .accessibilityIdentifier("markdown-editor-toolbar")
   }
 
   /// 渲染一行工具栏按钮，在文档工具组和 AI 工具组之间自动插入分隔线。

@@ -1391,7 +1391,10 @@ final class DeploymentStatusServiceTests: XCTestCase {
       )
     )
     var object = try XCTUnwrap(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+    object["formatVersion"] = 12
     object.removeValue(forKey: "deploymentPollingSettings")
+    object.removeValue(forKey: "deploymentPollingSettingsByProfileID")
+    object.removeValue(forKey: "deploymentPollingStateByProfileID")
     let json = try JSONSerialization.data(withJSONObject: object)
 
     let snapshot = try JSONDecoder.workbench.decode(WorkbenchSnapshot.self, from: json)
@@ -1400,6 +1403,185 @@ final class DeploymentStatusServiceTests: XCTestCase {
     XCTAssertEqual(snapshot.deploymentPollingSettings.normalizedIntervalMinutes, 10)
     XCTAssertEqual(snapshot.deploymentPollingState.status, .idle)
     XCTAssertTrue(snapshot.deploymentStatusSnapshots.isEmpty)
+  }
+
+  func testOperationalTickProcessesTwoProfilesWithoutChangingActiveProfile() async throws {
+    let transport = SequencedDeploymentTransport(responses: [
+      deploymentResponse(statusCode: 200, json: #"{"status":"ok"}"#),
+      deploymentResponse(statusCode: 200, json: #"{"status":"ok"}"#),
+    ])
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()),
+      deploymentStatusService: DeploymentStatusService(transport: transport)
+    )
+    let firstID = store.activeProfileID
+    let secondID = store.createProfile(named: "Secondary").id
+    store.selectProfile(firstID)
+    store.updateActiveProfile { profile in
+      profile.deploymentProvider = .custom
+      profile.deploymentStatusEndpointURL = "https://status.example.com/first"
+    }
+    store.selectProfile(secondID)
+    store.updateActiveProfile { profile in
+      profile.deploymentProvider = .custom
+      profile.deploymentStatusEndpointURL = "https://status.example.com/second"
+    }
+    let firstRecord = ReleaseRecord(
+      kind: .remoteDirectCommit,
+      title: "线上发布：First",
+      summary: "first",
+      siteProfileID: firstID
+    )
+    let secondRecord = ReleaseRecord(
+      kind: .remoteDirectCommit,
+      title: "线上发布：Second",
+      summary: "second",
+      siteProfileID: secondID
+    )
+    store.setReleaseRecords([firstRecord, secondRecord])
+    store.updateDeploymentPollingSettings(
+      DeploymentPollingSettings(isEnabled: true, intervalMinutes: 5),
+      for: firstID
+    )
+    store.updateDeploymentPollingSettings(
+      DeploymentPollingSettings(isEnabled: true, intervalMinutes: 5),
+      for: secondID
+    )
+    store.selectProfile(firstID)
+
+    let didRun = await store.tickRepositoryAndDeploymentPolling(
+      now: Date(timeIntervalSince1970: 1_900_001_000)
+    )
+
+    XCTAssertTrue(didRun)
+    XCTAssertEqual(store.activeProfileID, firstID)
+    XCTAssertEqual(store.deploymentPollingState(for: firstID).status, .checked)
+    XCTAssertEqual(store.deploymentPollingState(for: secondID).status, .checked)
+    XCTAssertEqual(store.deploymentPollingState(for: firstID).checkedRecords.map(\.recordID), [firstRecord.id])
+    XCTAssertEqual(store.deploymentPollingState(for: secondID).checkedRecords.map(\.recordID), [secondRecord.id])
+    let checkedRequests = await transport.capturedRequests()
+    XCTAssertEqual(checkedRequests.count, 2)
+    await store.waitForPendingSave()
+    let reloaded = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: store.persistenceStore.persistence.fileURL)
+    )
+    XCTAssertEqual(reloaded.deploymentPollingState(for: firstID).status, .checked)
+    XCTAssertEqual(reloaded.deploymentPollingState(for: secondID).status, .checked)
+  }
+
+  func testActiveLegacyDeploymentRecordPollsButSecondaryNeverClaimsIt() async throws {
+    let transport = SequencedDeploymentTransport(responses: [
+      deploymentResponse(statusCode: 200, json: #"{"status":"ok"}"#),
+    ])
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()),
+      deploymentStatusService: DeploymentStatusService(transport: transport)
+    )
+    let firstID = store.activeProfileID
+    let secondID = store.createProfile(named: "Secondary").id
+    store.selectProfile(firstID)
+    store.updateActiveProfile { profile in
+      profile.deploymentProvider = .custom
+      profile.deploymentStatusEndpointURL = "https://status.example.com/legacy"
+    }
+    store.selectProfile(secondID)
+    store.updateActiveProfile { profile in
+      profile.deploymentProvider = .custom
+      profile.deploymentStatusEndpointURL = "https://status.example.com/secondary"
+    }
+    let legacyRecord = ReleaseRecord(
+      kind: .remoteDirectCommit,
+      title: "Legacy publish",
+      summary: "legacy",
+      siteProfileID: nil,
+      commitSHA: "legacy-commit"
+    )
+    store.setReleaseRecords([legacyRecord])
+    store.updateDeploymentPollingSettings(
+      DeploymentPollingSettings(isEnabled: true, intervalMinutes: 5),
+      for: firstID
+    )
+    store.updateDeploymentPollingSettings(
+      DeploymentPollingSettings(isEnabled: true, intervalMinutes: 5),
+      for: secondID
+    )
+    store.selectProfile(firstID)
+
+    XCTAssertEqual(store.deploymentPollingEligibleRecords.map(\.id), [legacyRecord.id])
+    let activeDidRun = await store.deploymentStore.runDeploymentPolling(
+      for: firstID,
+      store: store,
+      now: Date(timeIntervalSince1970: 1_900_002_000)
+    )
+
+    XCTAssertTrue(activeDidRun)
+    XCTAssertEqual(store.deploymentPollingState(for: firstID).status, .checked)
+    XCTAssertEqual(store.deploymentPollingState(for: firstID).checkedRecords.map(\.recordID), [legacyRecord.id])
+    XCTAssertTrue(
+      store.deploymentStore.deploymentPollingEligibleRecords(
+        for: secondID,
+        store: store,
+        includeLegacyRecords: true
+      ).isEmpty
+    )
+
+    let secondaryDidRun = await store.deploymentStore.runDeploymentPolling(
+      for: secondID,
+      store: store,
+      now: Date(timeIntervalSince1970: 1_900_002_001)
+    )
+
+    XCTAssertTrue(secondaryDidRun)
+    XCTAssertEqual(store.deploymentPollingState(for: secondID).status, .noEligibleRecords)
+    XCTAssertEqual(store.deploymentPollingState(for: secondID).checkedRecordCount, 0)
+    let checkedRequests = await transport.capturedRequests()
+    XCTAssertEqual(checkedRequests.count, 1)
+    XCTAssertEqual(store.activeProfileID, firstID)
+  }
+
+  func testDeploymentPollingDropsStaleResultWhenSettingsChangeDuringStatusCheck() async throws {
+    let transport = SequencedDeploymentTransport(responses: [
+      deploymentResponse(
+        statusCode: 200,
+        json: #"{"status":"ok"}"#,
+        delayNanoseconds: 300_000_000
+      ),
+    ])
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()),
+      deploymentStatusService: DeploymentStatusService(transport: transport)
+    )
+    store.updateActiveProfile { profile in
+      profile.deploymentProvider = .custom
+      profile.deploymentStatusEndpointURL = "https://status.example.com/stale"
+    }
+    let record = ReleaseRecord(
+      kind: .remoteDirectCommit,
+      title: "Stale polling",
+      summary: "stale",
+      siteProfileID: store.activeProfileID,
+      commitSHA: "stale-commit"
+    )
+    store.setReleaseRecords([record])
+    store.updateDeploymentPollingSettings(
+      DeploymentPollingSettings(isEnabled: true, intervalMinutes: 5)
+    )
+
+    let pollingTask = Task {
+      await store.runDeploymentPolling(now: Date(timeIntervalSince1970: 1_900_003_000))
+    }
+    let requestCaptured = await transport.waitForRequestCount(1)
+    XCTAssertTrue(requestCaptured)
+    store.updateDeploymentPollingSettings(
+      DeploymentPollingSettings(isEnabled: false, intervalMinutes: 5)
+    )
+
+    let didRun = await pollingTask.value
+    XCTAssertFalse(didRun)
+    XCTAssertEqual(store.deploymentPollingState.status, .disabled)
+    XCTAssertEqual(store.deploymentPollingState.checkedRecords, [])
+    let checkedRequests = await transport.capturedRequests()
+    XCTAssertEqual(checkedRequests.count, 1)
   }
 
   func testDeploymentPollingPersistsSettingsAndSkipsWhenNoEligibleRecords() async throws {
@@ -1660,6 +1842,20 @@ private actor SequencedDeploymentTransport: RemoteRepositoryHTTPTransport {
 
   func capturedRequests() -> [URLRequest] {
     requests
+  }
+
+  func waitForRequestCount(_ count: Int) async -> Bool {
+    for _ in 0..<1_000 {
+      if requests.count >= count {
+        return true
+      }
+      do {
+        try await Task.sleep(nanoseconds: 1_000_000)
+      } catch {
+        return false
+      }
+    }
+    return requests.count >= count
   }
 }
 

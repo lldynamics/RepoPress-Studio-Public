@@ -51,7 +51,7 @@ extension WorkbenchStore {
   }
 
   func setRepositoryReport(_ report: RepositoryScanReport?) {
-    repositoryStore.repositoryReport = report
+    repositoryStore.replaceRepositoryReport(report, profileID: activeProfileID)
     invalidateDraftDerivedCaches()
   }
 

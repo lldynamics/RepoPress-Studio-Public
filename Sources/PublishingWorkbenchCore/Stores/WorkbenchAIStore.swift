@@ -22,15 +22,18 @@ public struct AIChatManualRetryState: Equatable, Sendable {
 
 public struct AIGeneralChatManualRetryState: Equatable, Sendable {
   public let conversationID: UUID
+  public let operationID: UUID
   public let requiresDuplicateChargeConfirmation: Bool
   public let retryAfter: Date?
 
   public init(
     conversationID: UUID,
+    operationID: UUID,
     requiresDuplicateChargeConfirmation: Bool,
     retryAfter: Date? = nil
   ) {
     self.conversationID = conversationID
+    self.operationID = operationID
     self.requiresDuplicateChargeConfirmation = requiresDuplicateChargeConfirmation
     self.retryAfter = retryAfter
   }

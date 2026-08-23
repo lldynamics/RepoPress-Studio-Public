@@ -109,7 +109,6 @@ struct SettingsView: View {
           Text("没有匹配的设置")
             .font(.callout)
             .foregroundStyle(.secondary)
-            .accessibilityLabel("没有匹配的设置")
         } else {
           if !visibleSiteSettings.isEmpty {
             Section("站点") {
@@ -220,13 +219,41 @@ struct SettingsView: View {
           }
         }
       } else {
-        settingsPageIdentity
-          .frame(maxWidth: .infinity, alignment: .leading)
+        ViewThatFits(in: .horizontal) {
+          HStack(alignment: .center, spacing: WorkbenchSpacing.section) {
+            settingsPageIdentity
+              .frame(minWidth: 250, alignment: .leading)
+
+            Spacer(minLength: WorkbenchSpacing.content)
+
+            globalScopeBadge
+          }
+
+          VStack(alignment: .leading, spacing: WorkbenchSpacing.card) {
+            settingsPageIdentity
+
+            globalScopeBadge
+              .frame(maxWidth: .infinity, alignment: .trailing)
+          }
+        }
       }
     }
     .padding(.horizontal, WorkbenchSpacing.page)
     .padding(.vertical, WorkbenchSpacing.card)
     .background(Color(nsColor: .windowBackgroundColor))
+  }
+
+  private var globalScopeBadge: some View {
+    Label("全局应用偏好", systemImage: "globe")
+      .font(.caption.weight(.medium))
+      .foregroundStyle(.secondary)
+      .padding(.horizontal, 8)
+      .padding(.vertical, 5)
+      .background(
+        Color.primary.opacity(0.06),
+        in: Capsule()
+      )
+      .accessibilityLabel("全局应用偏好，适用于所有站点")
   }
 
   private var settingsPageIdentity: some View {

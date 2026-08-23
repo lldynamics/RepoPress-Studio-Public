@@ -1308,6 +1308,7 @@ final class AIPublishingAssistantServiceTests: XCTestCase {
 
     XCTAssertTrue(sentText.contains("通用 AI 对话助手"))
     XCTAssertTrue(sentText.contains("不得展示思考、推理、权衡、草稿或内部决策过程"))
+    XCTAssertTrue(sentText.contains("检查 AI 设置中的 Agent 总开关、权限范围和模型工具调用能力"))
     XCTAssertTrue(sentText.contains("帮我解释一个通用 Swift 问题。"))
     XCTAssertFalse(sentText.contains("当前 Mac 工作台上下文"))
     XCTAssertFalse(sentText.contains("Private Article Context"))

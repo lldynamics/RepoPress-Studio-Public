@@ -9,6 +9,7 @@ struct MetadataColumn: View {
   let repositoryContextStage: RepositoryContextStage
   @ObservedObject var repositorySourceSession: RepositoryHTMLSourceSession
   @Binding private var aiChatSurfaceState: AIChatSurfaceState
+  private let aiChatOperationSession: AIChatSurfaceOperationSession
   let prioritizesChecks: Bool
 
   init(
@@ -17,6 +18,7 @@ struct MetadataColumn: View {
     repositoryContextStage: RepositoryContextStage,
     repositorySourceSession: RepositoryHTMLSourceSession,
     aiChatSurfaceState: Binding<AIChatSurfaceState>,
+    aiChatOperationSession: AIChatSurfaceOperationSession,
     prioritizesChecks: Bool = false
   ) {
     self.store = store
@@ -28,6 +30,7 @@ struct MetadataColumn: View {
     self.repositoryContextStage = repositoryContextStage
     _repositorySourceSession = ObservedObject(wrappedValue: repositorySourceSession)
     _aiChatSurfaceState = aiChatSurfaceState
+    self.aiChatOperationSession = aiChatOperationSession
     self.prioritizesChecks = prioritizesChecks
   }
 
@@ -40,7 +43,8 @@ struct MetadataColumn: View {
       case .aiAssistant:
         AIChatContextInspectorView(
           store: store,
-          surfaceState: $aiChatSurfaceState
+          surfaceState: $aiChatSurfaceState,
+          operationSession: aiChatOperationSession
         )
       case .siteStarter:
         SiteStarterInspectorView(state: SiteStarterInspectorState(store: store))

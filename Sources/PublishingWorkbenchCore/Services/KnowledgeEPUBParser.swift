@@ -17,6 +17,9 @@ struct KnowledgeEPUBParser: Sendable {
   private let maximumExpandedBytes = 200 * 1_024 * 1_024
   private let maximumEntryBytes = 32 * 1_024 * 1_024
   private let maximumChapterCount = 2_000
+  private let maximumPackageRecordCount = 10_000
+  private let maximumXMLCharacterCount = 5 * 1_024 * 1_024
+  private let maximumXMLElementDepth = 256
   private let maximumExtractedCharacters = 20_000_000
 
   func parse(data: Data, sourceName: String) throws -> KnowledgeEPUBBook {
@@ -130,36 +133,83 @@ struct KnowledgeEPUBParser: Sendable {
 
   private func packageDocumentPath(from data: Data, sourceName: String) throws -> String {
     try validateXML(data, sourceName: sourceName)
-    let collector = EPUBContainerXMLCollector()
+    let collector = EPUBContainerXMLCollector(maximumRecordCount: maximumPackageRecordCount)
     let parser = XMLParser(data: data)
     parser.delegate = collector
     parser.shouldProcessNamespaces = true
     parser.shouldResolveExternalEntities = false
-    guard parser.parse(), let path = collector.preferredRootfilePath?.nilIfEmpty else {
+    guard parser.parse() else {
+      if collector.didExceedRecordLimit {
+        throw KnowledgeLibraryError.sourceLimitExceeded(
+          "EPUB container rootfile 记录超过 \(maximumPackageRecordCount) 条：\(sourceName)"
+        )
+      }
       let detail = parser.parserError?.localizedDescription ?? "container.xml 无有效 rootfile"
       throw KnowledgeLibraryError.unreadableSource("\(sourceName)（\(detail)）")
+    }
+    guard !collector.didExceedRecordLimit else {
+      throw KnowledgeLibraryError.sourceLimitExceeded(
+        "EPUB container rootfile 记录超过 \(maximumPackageRecordCount) 条：\(sourceName)"
+      )
+    }
+    guard let path = collector.preferredRootfilePath?.nilIfEmpty else {
+      throw KnowledgeLibraryError.unreadableSource(
+        "\(sourceName)（container.xml 无有效 rootfile）"
+      )
     }
     return try EPUBArchivePath.canonical(path, sourceName: sourceName)
   }
 
   private func packageDocument(from data: Data, sourceName: String) throws -> EPUBPackageDocument {
     try validateXML(data, sourceName: sourceName)
-    let collector = EPUBPackageXMLCollector()
+    let collector = EPUBPackageXMLCollector(maximumRecordCount: maximumPackageRecordCount)
     let parser = XMLParser(data: data)
     parser.delegate = collector
     parser.shouldProcessNamespaces = true
     parser.shouldResolveExternalEntities = false
     guard parser.parse() else {
+      if collector.didExceedRecordLimit {
+        throw KnowledgeLibraryError.sourceLimitExceeded(
+          "EPUB 包内清单和章节记录超过 \(maximumPackageRecordCount) 条：\(sourceName)"
+        )
+      }
       let detail = parser.parserError?.localizedDescription ?? "OPF 元数据无效"
       throw KnowledgeLibraryError.unreadableSource("\(sourceName)（\(detail)）")
+    }
+    guard !collector.didExceedRecordLimit else {
+      throw KnowledgeLibraryError.sourceLimitExceeded(
+        "EPUB 包内清单和章节记录超过 \(maximumPackageRecordCount) 条：\(sourceName)"
+      )
     }
     return collector.document
   }
 
   private func validateXML(_ data: Data, sourceName: String) throws {
-    let prefix = String(decoding: data.prefix(16_384), as: UTF8.self).uppercased()
-    guard !prefix.contains("<!DOCTYPE"), !prefix.contains("<!ENTITY") else {
-      throw KnowledgeLibraryError.unreadableSource("\(sourceName)（EPUB 元数据包含不安全的 XML 声明）")
+    do {
+      try UntrustedXMLParserGuard.validate(
+        data: data,
+        limits: UntrustedXMLParserGuard.Limits(
+          maximumCharacterCount: maximumXMLCharacterCount,
+          maximumElementDepth: maximumXMLElementDepth
+        )
+      )
+    } catch let failure as UntrustedXMLParserGuard.Failure {
+      switch failure {
+      case .forbiddenDeclaration:
+        throw KnowledgeLibraryError.unreadableSource(
+          "\(sourceName)（EPUB 元数据包含不安全的 DTD 或实体声明）"
+        )
+      case .characterLimitExceeded:
+        throw KnowledgeLibraryError.sourceLimitExceeded(
+          "EPUB 元数据展开后的字符数超过 \(maximumXMLCharacterCount)：\(sourceName)"
+        )
+      case .elementDepthExceeded:
+        throw KnowledgeLibraryError.sourceLimitExceeded(
+          "EPUB 元数据元素嵌套深度超过 \(maximumXMLElementDepth)：\(sourceName)"
+        )
+      case .cancelled:
+        throw CancellationError()
+      }
     }
   }
 
@@ -285,8 +335,15 @@ private struct EPUBPackageDocument: Sendable {
 }
 
 private final class EPUBContainerXMLCollector: NSObject, XMLParserDelegate {
+  private let maximumRecordCount: Int
   private(set) var preferredRootfilePath: String?
   private var fallbackRootfilePath: String?
+  private var recordCount = 0
+  private(set) var didExceedRecordLimit = false
+
+  init(maximumRecordCount: Int) {
+    self.maximumRecordCount = max(1, maximumRecordCount)
+  }
 
   func parser(
     _ parser: XMLParser,
@@ -297,6 +354,12 @@ private final class EPUBContainerXMLCollector: NSObject, XMLParserDelegate {
   ) {
     guard localName(elementName, qName) == "rootfile",
           let path = attributeDict["full-path"]?.nilIfEmpty else { return }
+    guard recordCount < maximumRecordCount else {
+      didExceedRecordLimit = true
+      parser.abortParsing()
+      return
+    }
+    recordCount += 1
     if attributeDict["media-type"] == "application/oebps-package+xml" {
       preferredRootfilePath = preferredRootfilePath ?? path
     } else {
@@ -310,6 +373,7 @@ private final class EPUBContainerXMLCollector: NSObject, XMLParserDelegate {
 }
 
 private final class EPUBPackageXMLCollector: NSObject, XMLParserDelegate {
+  private let maximumRecordCount: Int
   private var metadataDepth = 0
   private var currentMetadataElement: String?
   private var metadataBuffer = ""
@@ -320,6 +384,12 @@ private final class EPUBPackageXMLCollector: NSObject, XMLParserDelegate {
   private var tags: [String] = []
   private var manifest: [String: EPUBManifestItem] = [:]
   private var spine: [EPUBSpineItem] = []
+  private var recordCount = 0
+  private(set) var didExceedRecordLimit = false
+
+  init(maximumRecordCount: Int) {
+    self.maximumRecordCount = max(1, maximumRecordCount)
+  }
 
   var document: EPUBPackageDocument {
     EPUBPackageDocument(
@@ -353,6 +423,12 @@ private final class EPUBPackageXMLCollector: NSObject, XMLParserDelegate {
     if name == "item",
        let id = attributeDict["id"]?.nilIfEmpty,
        let href = attributeDict["href"]?.nilIfEmpty {
+      guard recordCount < maximumRecordCount else {
+        didExceedRecordLimit = true
+        parser.abortParsing()
+        return
+      }
+      recordCount += 1
       manifest[id] = EPUBManifestItem(
         href: href,
         mediaType: attributeDict["media-type"]?.lowercased() ?? "",
@@ -366,6 +442,12 @@ private final class EPUBPackageXMLCollector: NSObject, XMLParserDelegate {
       return
     }
     if name == "itemref", let idref = attributeDict["idref"]?.nilIfEmpty {
+      guard recordCount < maximumRecordCount else {
+        didExceedRecordLimit = true
+        parser.abortParsing()
+        return
+      }
+      recordCount += 1
       spine.append(EPUBSpineItem(
         idref: idref,
         isLinear: attributeDict["linear"]?.lowercased() != "no"

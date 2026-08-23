@@ -212,12 +212,12 @@ for release_check in ui-runtime swift-release-build; do
   grep -Fq -- "--check $release_check" <<<"$release_runtime_body" \
     || fail "release runtime lane must exercise distribution check: $release_check"
 done
-for dependency_path in \
-  "Sources/PublishingWorkbenchCore/Models/**" \
-  Sources/PublishingWorkbenchCore/Services/KeychainTokenStore.swift; do
-  grep -Fq "$dependency_path" "$TOOLING_WORKFLOW" \
-    || fail "release-tooling workflow must watch browser dependency: $dependency_path"
-done
+python3 "$ROOT_DIR/script/check_tooling_workflow_source_paths.py" \
+  --manifest "$RELEASE_CHECKS" \
+  --workflow "$TOOLING_WORKFLOW" \
+  || fail "release-tooling workflow paths do not cover every browser release input"
+python3 "$ROOT_DIR/script/test_tooling_workflow_source_paths.py" \
+  || fail "release-tooling workflow source-path regression tests failed"
 grep -Fq -- '--summary-markdown .build/browser-extension-gate-summary.md' "$TOOLING_WORKFLOW" \
   || fail "release-tooling workflow must summarize the browser extension gate"
 grep -Fq -- '--summary-markdown .build/tooling-gate-summary.md' "$TOOLING_WORKFLOW" \

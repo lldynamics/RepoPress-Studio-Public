@@ -107,6 +107,11 @@
       "rationale": "Process lifecycle mutations are protected by the service lock."
     },
     {
+      "file": "Sources/PublishingWorkbenchCore/Services/LocalSitePreviewTrustStore.swift",
+      "declaration": "LocalSitePreviewTrustStore",
+      "rationale": "Trust-document reads and writes are serialized by one NSLock, and store configuration is immutable after initialization."
+    },
+    {
       "file": "Sources/PublishingWorkbenchCore/Services/SiteDraftFileStore.swift",
       "declaration": "SiteDraftFileStore",
       "rationale": "Mutable repository-path cache access is serialized by the instance lock; immutable publishing dependencies conform to Sendable."
@@ -513,12 +518,6 @@
       "category": "probeFallback",
       "contains": "try? remoteRepositoryPublishService.apiBaseURL(for: profile)",
       "rationale": "Comparing a cached permission check is a conservative non-mutating probe; an invalid current profile cannot be treated as a verified match."
-    },
-    {
-      "file": "Sources/PublishingWorkbenchCore/Stores/WorkbenchAIStore.swift",
-      "category": "legacyCleanup",
-      "contains": "try? keychainTokenStore.deleteLegacyAIToken(for: store.activeProfile)",
-      "rationale": "The legacy per-site credential is intentionally cleaned up separately; failure must not make the primary shared-key save/delete appear unsuccessful."
     },
     {
       "file": "Sources/PublishingWorkbenchCore/Stores/WorkbenchPersistenceArchives.swift",

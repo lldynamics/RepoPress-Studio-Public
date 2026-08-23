@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PROJECT_ROOT="${PRIVACY_SUPPORT_ROOT:-$ROOT_DIR}"
 COPY_FILE="${PRIVACY_SUPPORT_COPY_FILE:-$PROJECT_ROOT/docs/privacy-support-copy.md}"
-PUBLIC_DIR="$PROJECT_ROOT/docs/app-store/public-pages"
+PUBLIC_DIR="$PROJECT_ROOT/docs/public-pages"
 PRIVACY_ZH="$PUBLIC_DIR/privacy-zh-Hans.html"
 PRIVACY_EN="$PUBLIC_DIR/privacy-en.html"
 SUPPORT_ZH="$PUBLIC_DIR/support-zh-Hans.html"

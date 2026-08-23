@@ -83,7 +83,7 @@ public struct ScreenshotDemoDataService {
       bodyMarkdown: """
       # RepoPress Studio 发布流程
 
-      这是一篇用于 App Store 截图的演示文章，所有账号、URL 和路径都是安全示例。
+      这是一篇用于发行演示截图的文章，所有账号、URL 和路径都是安全示例。
 
       ## 发布前检查
 

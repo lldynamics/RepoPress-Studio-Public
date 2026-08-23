@@ -14,11 +14,34 @@ public struct RSSOPMLSubscription: Equatable, Hashable, Sendable {
 
 public enum RSSOPMLParser {
   private static let maximumDocumentSize = 5 * 1024 * 1024
+  private static let maximumXMLCharacterCount = 5 * 1_024 * 1_024
+  private static let maximumXMLElementDepth = 256
+  private static let maximumOutlineCount = 10_000
 
   public static func parse(data: Data) throws -> [RSSOPMLSubscription] {
     guard !data.isEmpty else { throw RSSReaderError.invalidOPML("文件为空") }
     guard data.count <= maximumDocumentSize else {
       throw RSSReaderError.invalidOPML("文件超过 5 MB")
+    }
+    do {
+      try UntrustedXMLParserGuard.validate(
+        data: data,
+        limits: UntrustedXMLParserGuard.Limits(
+          maximumCharacterCount: maximumXMLCharacterCount,
+          maximumElementDepth: maximumXMLElementDepth
+        )
+      )
+    } catch let failure as UntrustedXMLParserGuard.Failure {
+      switch failure {
+      case .forbiddenDeclaration:
+        throw RSSReaderError.invalidOPML("文件包含不安全的 DTD 或实体声明")
+      case .characterLimitExceeded:
+        throw RSSReaderError.invalidOPML("文件展开后的字符数超过安全上限")
+      case .elementDepthExceeded:
+        throw RSSReaderError.invalidOPML("文件元素嵌套深度超过安全上限")
+      case .cancelled:
+        throw RSSReaderError.invalidOPML("文件解析已取消")
+      }
     }
     let delegate = ParserDelegate()
     let parser = XMLParser(data: data)
@@ -44,6 +67,7 @@ public enum RSSOPMLParser {
     private var seenURLs = Set<String>()
     private var elementStack: [String] = []
     private var bodyDepth: Int?
+    private var outlineCount = 0
 
     func parser(
       _ parser: XMLParser,
@@ -59,6 +83,14 @@ public enum RSSOPMLParser {
         return
       }
       elementStack.append(name)
+      if name == "outline" {
+        guard outlineCount < RSSOPMLParser.maximumOutlineCount else {
+          failure = .invalidOPML("OPML 条目超过 \(RSSOPMLParser.maximumOutlineCount) 条")
+          parser.abortParsing()
+          return
+        }
+        outlineCount += 1
+      }
       if name == "body", elementStack.count == 2, elementStack.first == "opml" {
         bodyDepth = elementStack.count
         isValidOPMLDocument = true

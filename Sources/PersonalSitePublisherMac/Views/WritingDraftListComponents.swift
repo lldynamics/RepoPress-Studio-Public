@@ -196,6 +196,7 @@ struct WritingDraftRow: View {
 }
 
 struct WritingDraftSkeletonRow: View {
+  @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
   @State private var isPulsing = false
 
   var body: some View {
@@ -216,10 +217,18 @@ struct WritingDraftSkeletonRow: View {
     }
     .padding(.horizontal, 4)
     .padding(.vertical, 5)
-    .opacity(isPulsing ? 0.45 : 1.0)
-    .animation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true), value: isPulsing)
+    .opacity(accessibilityReduceMotion ? 1 : (isPulsing ? 0.45 : 1.0))
+    .animation(
+      accessibilityReduceMotion
+        ? nil
+        : .easeInOut(duration: 0.9).repeatForever(autoreverses: true),
+      value: isPulsing
+    )
     .onAppear {
-      isPulsing = true
+      isPulsing = !accessibilityReduceMotion
+    }
+    .onChange(of: accessibilityReduceMotion) { _, shouldReduceMotion in
+      isPulsing = !shouldReduceMotion
     }
     .accessibilityHidden(true)
   }

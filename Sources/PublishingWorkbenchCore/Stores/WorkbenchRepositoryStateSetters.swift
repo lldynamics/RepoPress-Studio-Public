@@ -2,7 +2,14 @@ import Foundation
 
 extension WorkbenchStore {
   func setRepositoryAutoSyncState(_ state: RepositoryAutoSyncState) {
-    repositoryStore.repositoryAutoSyncState = state
+    setRepositoryAutoSyncState(state, for: activeProfileID)
+  }
+
+  func setRepositoryAutoSyncState(_ state: RepositoryAutoSyncState, for profileID: UUID) {
+    repositoryStore.repositoryAutoSyncStateByProfileID[profileID] = state
+    if profileID == activeProfileID {
+      repositoryStore.repositoryAutoSyncState = state
+    }
   }
 
   func setRemoteRepositoryPublishing(_ isPublishing: Bool) {
@@ -34,6 +41,6 @@ extension WorkbenchStore {
   }
 
   func setRemoteRepositoryAccessCheck(_ check: RemoteRepositoryAccessCheck?) {
-    repositoryStore.remoteRepositoryAccessCheck = check
+    repositoryStore.setRemoteRepositoryAccessCheck(check, for: activeProfileID)
   }
 }

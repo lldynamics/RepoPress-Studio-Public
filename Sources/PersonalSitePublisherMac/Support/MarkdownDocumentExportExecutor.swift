@@ -51,8 +51,10 @@ enum MarkdownExportWebContentSecurity {
   static let contentRuleListJSON =
     #"[{"trigger":{"url-filter":"^https?://","url-filter-is-case-sensitive":false},"action":{"type":"block"}}]"#
 
-  static func makeConfiguration() async throws -> WKWebViewConfiguration {
-    let ruleList = try await compiledContentRuleList()
+  static func makeConfiguration(
+    ruleListStore: WKContentRuleListStore = .default()
+  ) async throws -> WKWebViewConfiguration {
+    let ruleList = try await compiledContentRuleList(in: ruleListStore)
     let configuration = WKWebViewConfiguration()
     configuration.websiteDataStore = .nonPersistent()
     configuration.defaultWebpagePreferences.allowsContentJavaScript = false
@@ -61,9 +63,11 @@ enum MarkdownExportWebContentSecurity {
     return configuration
   }
 
-  private static func compiledContentRuleList() async throws -> WKContentRuleList {
+  private static func compiledContentRuleList(
+    in store: WKContentRuleListStore
+  ) async throws -> WKContentRuleList {
     try await withCheckedThrowingContinuation { continuation in
-      WKContentRuleListStore.default().compileContentRuleList(
+      store.compileContentRuleList(
         forIdentifier: contentRuleListIdentifier,
         encodedContentRuleList: contentRuleListJSON
       ) { ruleList, error in

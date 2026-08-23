@@ -47,9 +47,6 @@ let package = Package(
         "PublishingWorkbenchCore",
         .product(name: "Sparkle", package: "Sparkle"),
       ],
-      exclude: [
-        "AppStore.entitlements"
-      ],
       resources: [
         .process("Resources")
       ],

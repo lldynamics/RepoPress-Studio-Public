@@ -8,6 +8,8 @@ struct MacMarkdownComposerView: View {
   let aiActions: WorkbenchAIFeatureFacade
   @Environment(\.publishDrawerCommandAction) var publishDrawerCommandAction
   @Environment(\.aiChatWorkspaceCommandAction) var aiChatWorkspaceCommandAction
+  @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
+  @Environment(\.accessibilityVoiceOverEnabled) private var accessibilityVoiceOverEnabled
   @EnvironmentObject var sceneCommandRouter: WorkspaceSceneCommandRouter
   @StateObject var editorState: WorkbenchMarkdownEditorFeatureFacade
   @StateObject var editorSessionState: MarkdownComposerEditorSessionState
@@ -453,6 +455,24 @@ struct MacMarkdownComposerView: View {
 
   var body: some View {
     editorWorkspaceLifecycle
+      .onAppear {
+        zenModeController.refreshAccessibilityState(
+          voiceOverEnabled: accessibilityVoiceOverEnabled,
+          reduceMotionEnabled: accessibilityReduceMotion
+        )
+      }
+      .onChange(of: accessibilityReduceMotion) { _, shouldReduceMotion in
+        zenModeController.refreshAccessibilityState(
+          voiceOverEnabled: accessibilityVoiceOverEnabled,
+          reduceMotionEnabled: shouldReduceMotion
+        )
+      }
+      .onChange(of: accessibilityVoiceOverEnabled) { _, isVoiceOverEnabled in
+        zenModeController.refreshAccessibilityState(
+          voiceOverEnabled: isVoiceOverEnabled,
+          reduceMotionEnabled: accessibilityReduceMotion
+        )
+      }
       .task(id: markdownSSGDerivedDataKey) {
         await refreshMarkdownSSGDerivedData(for: markdownSSGDerivedDataKey)
       }
@@ -639,7 +659,7 @@ struct MacMarkdownComposerView: View {
         )
         .opacity(zenModeController.toolbarOpacity)
         .onHover { isHovered in
-          zenModeController.isHovered = isHovered
+          zenModeController.updateHovered(isHovered)
         }
         .environmentObject(zenModeController)
         Divider()

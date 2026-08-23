@@ -66,8 +66,17 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
     profile.aiProviderConfig = streamingSupportedConfig(profile.aiProviderConfig)
     store.updateActiveProfile(profile)
     let draft = try XCTUnwrap(store.selectedDraft)
+    let expectedDraftConversation = AIChatDraftConversationExpectation(
+      draftID: draft.id,
+      conversation: nil
+    )
 
-    let reply = await store.sendAIChatMessage("打个招呼。", draft: draft)
+    let reply = await store.ai.sendChatMessage(
+      "打个招呼。",
+      draft: draft,
+      expectedContextMode: .site,
+      expectedDraftConversation: expectedDraftConversation
+    )
 
     XCTAssertEqual(reply?.content, "你好。")
     XCTAssertEqual(reply?.tokenUsage?.totalTokens, 10)
@@ -84,6 +93,181 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
     let body = try XCTUnwrap(capturedRequest.httpBody)
     let payload = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
     XCTAssertEqual(payload["stream"] as? Bool, true)
+  }
+
+  func testExpectedArticleContextChangeFailsClosedBeforeTransport() async throws {
+    let transport = RecordingAIChatTransport(
+      data: Data(),
+      statusCode: 200
+    )
+    let persistenceURL = FileManager.default.temporaryDirectory
+      .appendingPathComponent(UUID().uuidString)
+      .appendingPathExtension("json")
+    defer { try? FileManager.default.removeItem(at: persistenceURL) }
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: persistenceURL),
+      keychainTokenStore: aiTokenStoreForTest(),
+      aiPublishingAssistantService: AIPublishingAssistantService(
+        client: AIChatCompletionClient(transport: transport)
+      )
+    )
+    let draft = try XCTUnwrap(store.selectedDraft)
+    store.prepareAIChat(for: draft)
+    store.setAIChatContextMode(.general)
+
+    let reply = await store.ai.sendChatMessage(
+      "仍按原文章上下文发送",
+      draft: draft,
+      expectedContextMode: .site
+    )
+
+    XCTAssertNil(reply)
+    XCTAssertEqual(
+      store.aiChatMessage,
+      "AI 对话上下文已变化，本次未发送，请重试。"
+    )
+    let capturedRequestCount = await transport.capturedRequestCount()
+    XCTAssertEqual(capturedRequestCount, 0)
+    XCTAssertTrue(store.aiChatMessages.isEmpty)
+  }
+
+  func testExpectedArticleRetryContextChangeFailsClosedBeforeTransport() async throws {
+    let transport = RecordingAIChatTransport(
+      data: Data(),
+      statusCode: 200
+    )
+    let persistenceURL = FileManager.default.temporaryDirectory
+      .appendingPathComponent(UUID().uuidString)
+      .appendingPathExtension("json")
+    defer { try? FileManager.default.removeItem(at: persistenceURL) }
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: persistenceURL),
+      keychainTokenStore: aiTokenStoreForTest(),
+      aiPublishingAssistantService: AIPublishingAssistantService(
+        client: AIChatCompletionClient(transport: transport)
+      )
+    )
+    let draft = try XCTUnwrap(store.selectedDraft)
+    let conversationID = try XCTUnwrap(store.startNewAIChatConversation(draft: draft)).id
+    store.aiStore.aiChatManualRetryState = AIChatManualRetryState(
+      draftID: draft.id,
+      conversationID: conversationID,
+      requiresDuplicateChargeConfirmation: false
+    )
+    store.setAIChatContextMode(.general)
+
+    let reply = await store.ai.retryLastFailedChatReply(
+      confirmingPossibleDuplicateCharge: false,
+      draft: draft,
+      expectedContextMode: .site
+    )
+
+    XCTAssertNil(reply)
+    XCTAssertEqual(
+      store.aiChatMessage,
+      "AI 对话上下文已变化，本次未发送，请重试。"
+    )
+    let capturedRequestCount = await transport.capturedRequestCount()
+    XCTAssertEqual(capturedRequestCount, 0)
+    XCTAssertNotNil(store.aiChatManualRetryState)
+  }
+
+  func testExpectedMissingArticleConversationChangeFailsClosedBeforeTransport() async throws {
+    let transport = RecordingAIChatTransport(
+      data: Data(),
+      statusCode: 200
+    )
+    let persistenceURL = FileManager.default.temporaryDirectory
+      .appendingPathComponent(UUID().uuidString)
+      .appendingPathExtension("json")
+    defer { try? FileManager.default.removeItem(at: persistenceURL) }
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: persistenceURL),
+      keychainTokenStore: aiTokenStoreForTest(),
+      aiPublishingAssistantService: AIPublishingAssistantService(
+        client: AIChatCompletionClient(transport: transport)
+      )
+    )
+    let draft = try XCTUnwrap(store.selectedDraft)
+    let expectedDraftConversation = AIChatDraftConversationExpectation(
+      draftID: draft.id,
+      conversation: nil
+    )
+    _ = try XCTUnwrap(
+      store.startNewAIChatConversation(draft: draft)
+    )
+
+    let reply = await store.ai.sendChatMessage(
+      "仍发往原对话",
+      draft: draft,
+      expectedContextMode: .site,
+      expectedDraftConversation: expectedDraftConversation
+    )
+
+    XCTAssertNil(reply)
+    XCTAssertEqual(
+      store.aiChatMessage,
+      "AI 对话上下文已变化，本次未发送，请重试。"
+    )
+    let capturedRequestCount = await transport.capturedRequestCount()
+    XCTAssertEqual(capturedRequestCount, 0)
+    XCTAssertTrue(store.aiChatMessages.isEmpty)
+    XCTAssertTrue(
+      store.aiChatConversations(for: draft.id).allSatisfy(\.messages.isEmpty)
+    )
+  }
+
+  func testExpectedArticleConversationClearFailsClosedBeforeTransport() async throws {
+    let transport = RecordingAIChatTransport(
+      data: Data(),
+      statusCode: 200
+    )
+    let persistenceURL = FileManager.default.temporaryDirectory
+      .appendingPathComponent(UUID().uuidString)
+      .appendingPathExtension("json")
+    defer { try? FileManager.default.removeItem(at: persistenceURL) }
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: persistenceURL),
+      keychainTokenStore: aiTokenStoreForTest(),
+      aiPublishingAssistantService: AIPublishingAssistantService(
+        client: AIChatCompletionClient(transport: transport)
+      )
+    )
+    let draft = try XCTUnwrap(store.selectedDraft)
+    _ = try XCTUnwrap(store.startNewAIChatConversation(draft: draft))
+    store.aiStore.aiChatMessages = [
+      AIPublishingChatMessage(role: .user, content: "清空前的历史")
+    ]
+    store.aiStore.cacheCurrentAIChatSessionForAIStore()
+    let frozenConversation = try XCTUnwrap(
+      store.aiStore.activeAIChatConversation(for: draft.id)
+    )
+    let expectedDraftConversation = AIChatDraftConversationExpectation(
+      draftID: draft.id,
+      conversation: frozenConversation
+    )
+
+    store.clearAIChat()
+    XCTAssertTrue(store.aiChatMessages.isEmpty)
+
+    let reply = await store.ai.sendChatMessage(
+      "不应重新写入已清空的对话",
+      draft: draft,
+      expectedContextMode: .site,
+      expectedDraftConversation: expectedDraftConversation
+    )
+
+    XCTAssertNil(reply)
+    XCTAssertEqual(
+      store.aiChatMessage,
+      "AI 对话上下文已变化，本次未发送，请重试。"
+    )
+    let capturedRequestCount = await transport.capturedRequestCount()
+    XCTAssertEqual(capturedRequestCount, 0)
+    XCTAssertTrue(store.aiChatMessages.isEmpty)
+    XCTAssertTrue(
+      try XCTUnwrap(store.aiStore.activeAIChatConversation(for: draft.id)).messages.isEmpty
+    )
   }
 
   func testRemoteArticleRequestSerializationUsesMinimizedSanitizedPayload() async throws {
@@ -1055,9 +1239,10 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
     XCTAssertEqual(authorizationDecisionCount, 1)
     XCTAssertEqual(store.aiChatMessages.map(\.content), ["请生成。", "部分回复"])
 
-    let regeneratedReply = await store.retryLastFailedAIChatReply(
+    let regeneratedReply = await store.ai.retryLastFailedChatReply(
       confirmingPossibleDuplicateCharge: true,
-      draft: draft
+      draft: draft,
+      expectedContextMode: .site
     )
     XCTAssertEqual(regeneratedReply?.content, "重新生成完成")
     XCTAssertEqual(store.aiChatMessages.map(\.content), ["请生成。", "重新生成完成"])

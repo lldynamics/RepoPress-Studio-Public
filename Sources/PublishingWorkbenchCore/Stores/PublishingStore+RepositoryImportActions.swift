@@ -145,9 +145,17 @@ extension PublishingStore {
         profile: profile,
         excludingRepositoryPaths: existingRepositoryPaths
       )
+    } catch is CancellationError {
+      if localImportOperationContext == operation {
+        localImportOperationContext = nil
+      }
+      return 0
     } catch {
       if localImportOperationContext == operation {
         localImportOperationContext = nil
+      }
+      if announcesInsertions {
+        setPublishActionMessage(error.localizedDescription, status: .failure)
       }
       return 0
     }
@@ -177,6 +185,9 @@ extension PublishingStore {
       return existingPaths.insert(repositoryPath).inserted
     }
     guard !missingDrafts.isEmpty else {
+      if announcesInsertions, let issue = result.issues.first {
+        setPublishActionMessage(issue.message, status: .failure)
+      }
       return 0
     }
 
@@ -188,10 +199,14 @@ extension PublishingStore {
       store.schedulePreflightRefresh()
     }
     if announcesInsertions {
-      setPublishActionMessage(
-        "已发现并加入本地列表 \(missingDrafts.count) 篇外部新文章。",
-        status: .success
-      )
+      if let issue = result.issues.first {
+        setPublishActionMessage(issue.message, status: .warning)
+      } else {
+        setPublishActionMessage(
+          "已发现并加入本地列表 \(missingDrafts.count) 篇外部新文章。",
+          status: .success
+        )
+      }
     }
     store.save()
     return missingDrafts.count
@@ -501,10 +516,12 @@ extension PublishingStore {
       store: store
     )
     selectedSection = .writing
-    setPublishActionMessage(
-      "已从文章变更导入 \(summary.insertedCount) 篇、更新 \(summary.updatedCount) 篇。",
-      status: .success
-    )
+    if result.issues.isEmpty {
+      setPublishActionMessage(
+        "已从文章变更导入 \(summary.insertedCount) 篇、更新 \(summary.updatedCount) 篇。",
+        status: .success
+      )
+    }
     store.save()
     return summary
   }
@@ -721,6 +738,30 @@ extension PublishingStore {
     return summary
   }
 
+  /// Explicitly binds an automatic import to the frozen operation profile.
+  /// The importer still requires that profile to be active because its draft
+  /// mutation and editor-buffer safeguards are intentionally foreground-only.
+  /// A background caller for another site therefore fails closed instead of
+  /// importing into whichever site the user currently sees.
+  @discardableResult
+  public func autoImportRemoteArticleDrafts(
+    remoteFiles: [RepositoryChangedFile],
+    snapshots: [RepositoryFileSnapshot],
+    locallyChangedPaths: Set<String>,
+    profileID: UUID,
+    store: WorkbenchStore
+  ) -> RemoteArticleAutoImportSummary {
+    guard profileID == store.activeProfileID else {
+      return RemoteArticleAutoImportSummary()
+    }
+    return autoImportRemoteArticleDrafts(
+      remoteFiles: remoteFiles,
+      snapshots: snapshots,
+      locallyChangedPaths: locallyChangedPaths,
+      store: store
+    )
+  }
+
   private func remoteContentImportResult(
     paths: [String],
     profile: SiteProfile,
@@ -851,10 +892,21 @@ extension PublishingStore {
       siteStarterResult = nil
       siteStarterPushResult = nil
       selectedDraftID = store.visibleDrafts.first?.id
-      setPublishActionMessage(
-        CoreL10n.format("已导入已有站点：%@。", result.profile.name),
-        status: .success
-      )
+      if let issue = importedDrafts.issues.first {
+        setPublishActionMessage(
+          CoreL10n.format(
+            "已添加站点“%@”，但文章读取未完成：%@",
+            result.profile.name,
+            issue.message
+          ),
+          status: .warning
+        )
+      } else {
+        setPublishActionMessage(
+          CoreL10n.format("已导入已有站点：%@。", result.profile.name),
+          status: .success
+        )
+      }
       store.save()
       return result
     } catch {
@@ -1038,7 +1090,20 @@ extension PublishingStore {
     {
       store.schedulePreflightRefresh()
     }
-    if plan.conflictCount > 0 {
+    if let issue = result.issues.first {
+      let changedCount = plan.summary.insertedCount + plan.summary.updatedCount
+      setPublishActionMessage(
+        changedCount == 0
+          ? CoreL10n.format("导入失败：%@", issue.message)
+          : CoreL10n.format(
+            "导入未全部完成：已新增 %lld 篇、更新 %lld 篇；%@",
+            plan.summary.insertedCount,
+            plan.summary.updatedCount,
+            issue.message
+          ),
+        status: changedCount == 0 ? .failure : .warning
+      )
+    } else if plan.conflictCount > 0 {
       setPublishActionMessage(
         "导入完成：新增 \(plan.summary.insertedCount) 篇、更新 \(plan.summary.updatedCount) 篇；\(plan.conflictCount) 篇在导入期间被本地修改，已保留本地版本。",
         status: .warning

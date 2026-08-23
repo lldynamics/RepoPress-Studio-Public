@@ -79,10 +79,28 @@ done
   || fail "Developer ID packaging entrypoint is missing"
 grep -Fq 'DIRECT_DISTRIBUTION_BUILD' "$ROOT_DIR/script/build_and_run.sh" \
   || fail "build_and_run.sh does not expose the Direct Release packaging channel"
+grep -Fq 'DISTRIBUTION_CHANNEL="Development"' "$ROOT_DIR/script/build_and_run.sh" \
+  || fail "build_and_run.sh does not expose the Development packaging channel"
+grep -Fq 'DISTRIBUTION_CHANNEL="Direct"' "$ROOT_DIR/script/build_and_run.sh" \
+  || fail "build_and_run.sh does not expose the Developer ID packaging channel"
 if grep -Eq '^[[:space:]]*-Xswiftc[[:space:]]+(APP_STORE_BUILD|DIRECT_DISTRIBUTION_BUILD)[[:space:]]*$' \
   "$ROOT_DIR/script/build_and_run.sh"; then
   fail "distribution packaging must not change the compiled Swift capability set"
 fi
+if [[ -e "$ROOT_DIR/Sources/PersonalSitePublisherMac/AppStore.entitlements" ]]; then
+  fail "obsolete App Store entitlements must remain deleted"
+fi
+for path in \
+  "$ROOT_DIR/Package.swift" \
+  "$ROOT_DIR/script/build_and_run.sh" \
+  "$ROOT_DIR/script/check_launch_performance.sh" \
+  "$ROOT_DIR/script/check_ui_runtime.sh" \
+  "$ROOT_DIR/script/check_accessibility_runtime.sh" \
+  "$ROOT_DIR/UITests/WorkspaceAccessibilityUITests/WorkspaceAccessibilityUITests.swift"; do
+  if grep -Ein 'APP_STORE|--app-store|require-app-store|RELEASE_GATE_PROFILE[[:space:]]*=[[:space:]]*app-store' "$path"; then
+    fail "${path#$ROOT_DIR/} still exposes the removed App Store build path"
+  fi
+done
 grep -Fq 'APP_FRAMEWORKS="$APP_CONTENTS/Frameworks"' "$ROOT_DIR/script/build_and_run.sh" \
   || fail "build_and_run.sh does not create the standard Frameworks directory"
 grep -Fq 'SPARKLE_FRAMEWORK_BUNDLE="$APP_FRAMEWORKS/Sparkle.framework"' \
@@ -102,6 +120,10 @@ grep -q $'^chrome-extension-store-readiness\tstrict\t' <<<"$chrome_checks" \
 direct_checks="$(bash "$ROOT_DIR/script/check_release_gate.sh" --profile direct --list)"
 grep -q $'^direct-release-package-path\talways\t' <<<"$direct_checks" \
   || fail "Direct profile omitted the Developer ID package workflow"
+grep -q $'^swift-coverage\tstandard\t' <<<"$direct_checks" \
+  || fail "Direct profile omitted the standard coverage gate"
+grep -q $'^release-performance\tstandard\t' <<<"$direct_checks" \
+  || fail "Direct profile omitted the standard performance gate"
 grep -q $'^direct-release-notarization-readiness\tstrict\t' <<<"$direct_checks" \
   || fail "Direct profile omitted signed/notarized artifact validation"
 if grep -Eq '^chrome-extension-store-readiness\t' \

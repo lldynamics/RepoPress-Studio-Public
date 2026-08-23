@@ -102,4 +102,126 @@ final class WorkbenchTaskCenterFacadeTests: XCTestCase {
       store.activityStatus.taskCenterItems.first { $0.kind == .gitPush }
     )
   }
+
+  func testAIRetryWithoutConfirmationDoesNotClearRetryStateOrSend() async throws {
+    let store = WorkbenchStore()
+    let draft = try XCTUnwrap(store.selectedDraft)
+    let retryState = AIChatManualRetryState(
+      draftID: draft.id,
+      conversationID: UUID(),
+      requiresDuplicateChargeConfirmation: true
+    )
+    store.aiStore.aiChatManualRetryState = retryState
+    store.setAIChatMessage("AI 讨论失败：网络超时")
+
+    let task = try XCTUnwrap(
+      store.activityStatus.taskCenterItems.first { $0.kind == .aiRequest }
+    )
+    XCTAssertTrue(task.requiresDuplicateChargeConfirmation)
+
+    await store.activityStatus.retryTask(task)
+
+    XCTAssertEqual(store.aiStore.aiChatManualRetryState, retryState)
+  }
+
+  func testGeneralAIRetryRequiresExactOperationAndConfirmation() async throws {
+    let store = WorkbenchStore()
+    let conversation = try XCTUnwrap(
+      store.aiStore.startNewGeneralAIChatConversation()
+    )
+    let retryState = AIGeneralChatManualRetryState(
+      conversationID: conversation.id,
+      operationID: UUID(),
+      requiresDuplicateChargeConfirmation: true
+    )
+    store.aiStore.aiGeneralChatManualRetryState = retryState
+    store.setAIChatMessage("AI 通用对话失败：网络超时")
+
+    let task = try XCTUnwrap(
+      store.activityStatus.taskCenterItems.first { $0.kind == .aiRequest }
+    )
+    guard case .generalAIChat(
+      let taskConversationID,
+      let taskOperationID,
+      let requiresConfirmation
+    )? = task.retryIntent else {
+      return XCTFail("expected a typed general AI retry intent")
+    }
+    XCTAssertEqual(taskConversationID, conversation.id)
+    XCTAssertEqual(taskOperationID, retryState.operationID)
+    XCTAssertTrue(requiresConfirmation)
+
+    await store.activityStatus.retryTask(task)
+
+    XCTAssertEqual(store.aiStore.aiGeneralChatManualRetryState, retryState)
+    XCTAssertFalse(store.isAIChatRunning)
+
+    let changedRetryState = AIGeneralChatManualRetryState(
+      conversationID: conversation.id,
+      operationID: UUID(),
+      requiresDuplicateChargeConfirmation: true
+    )
+    store.aiStore.aiGeneralChatManualRetryState = changedRetryState
+    await store.activityStatus.retryTask(
+      task,
+      confirmingPossibleDuplicateCharge: true
+    )
+
+    XCTAssertEqual(store.aiStore.aiGeneralChatManualRetryState, changedRetryState)
+    XCTAssertFalse(store.isAIChatRunning)
+  }
+
+  func testImageSummaryRetryFailsClosedForAnotherProfile() async throws {
+    let store = WorkbenchStore()
+    let task = WorkbenchTaskItem(
+      id: "image-summary",
+      kind: .imageProcessing,
+      detail: "图片资源扫描失败",
+      state: .failed,
+      retryIntent: .imageSummary(profileID: UUID())
+    )
+
+    await store.activityStatus.retryTask(task)
+
+    XCTAssertNil(store.imageStore.siteSummaryErrorMessage)
+    XCTAssertFalse(store.imageStore.isSiteSummaryLoading)
+  }
+
+  func testBatchGitFailureCarriesBatchIntentInsteadOfSelectedDraft() throws {
+    let store = WorkbenchStore()
+    let firstDraftID = UUID()
+    let secondDraftID = UUID()
+    let record = ReleaseRecord(
+      kind: .remotePublishFailure,
+      title: "批量线上发布失败",
+      summary: "批量发布失败",
+      siteProfileID: store.activeProfileID,
+      batchItems: [
+        ReleaseRecordBatchItem(
+          draftID: firstDraftID,
+          draftTitle: "第一篇",
+          markdownPath: "content/first.md",
+          changedPaths: ["content/first.md"]
+        ),
+        ReleaseRecordBatchItem(
+          draftID: secondDraftID,
+          draftTitle: "第二篇",
+          markdownPath: "content/second.md",
+          changedPaths: ["content/second.md"]
+        ),
+      ]
+    )
+    store.setReleaseRecords([record])
+    store.setPublishActionMessage("批量线上发布失败", status: .failure)
+
+    let task = try XCTUnwrap(
+      store.activityStatus.taskCenterItems.first { $0.kind == .gitPush }
+    )
+    guard case .gitRemoteBatch(let profileID, let draftIDs)? = task.retryIntent else {
+      return XCTFail("expected a typed batch retry intent")
+    }
+    XCTAssertEqual(profileID, store.activeProfileID)
+    XCTAssertEqual(draftIDs, [firstDraftID, secondDraftID])
+    XCTAssertTrue(task.canRetry)
+  }
 }

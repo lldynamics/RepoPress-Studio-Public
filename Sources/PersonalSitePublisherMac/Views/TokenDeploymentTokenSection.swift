@@ -9,6 +9,7 @@ struct TokenDeploymentTokenSection: View {
   let onDeleteToken: () -> Void
   let onRefreshTokenState: () -> Void
   @State private var isDeleteConfirmationPresented = false
+  @State private var isJustSaved = false
 
   var body: some View {
     Section("部署凭据") {
@@ -16,10 +17,34 @@ struct TokenDeploymentTokenSection: View {
         .accessibilityLabel("部署平台访问令牌")
         .accessibilityHint(deploymentTokenHint)
 
-      HStack {
-        Button(String(localized: "保存部署访问令牌"), action: onSaveToken)
-          .workbenchProminentActionStyle()
-          .disabled(deploymentTokenInput.wrappedValue.trimmedForPublishing.isEmpty)
+      HStack(alignment: .center, spacing: 10) {
+        Button(String(localized: "保存部署访问令牌")) {
+          onSaveToken()
+          withAnimation {
+            isJustSaved = true
+          }
+          Task {
+            try? await Task.sleep(for: .seconds(2.5))
+            await MainActor.run {
+              withAnimation {
+                isJustSaved = false
+              }
+            }
+          }
+        }
+        .workbenchProminentActionStyle()
+        .disabled(deploymentTokenInput.wrappedValue.trimmedForPublishing.isEmpty)
+
+        if isJustSaved {
+          Label("已保存", systemImage: "checkmark.circle.fill")
+            .font(.caption.weight(.medium))
+            .foregroundStyle(WorkbenchTheme.success)
+            .transition(.opacity)
+        } else if !deploymentTokenInput.wrappedValue.trimmedForPublishing.isEmpty {
+          Text("待保存修改")
+            .font(.caption.weight(.medium))
+            .foregroundStyle(WorkbenchTheme.warning)
+        }
       }
 
       HStack {

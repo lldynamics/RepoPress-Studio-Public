@@ -23,10 +23,10 @@ SAFARI_ENTITLEMENTS = ROOT / "Packaging/SafariWebExtension.entitlements"
 
 COPY_FILES = (
     (ROOT / "docs/privacy-support-copy.md", "en"),
-    (ROOT / "docs/app-store/public-pages/privacy-zh-Hans.html", "zh"),
-    (ROOT / "docs/app-store/public-pages/privacy-en.html", "en"),
-    (ROOT / "docs/app-store/public-pages/support-zh-Hans.html", "zh"),
-    (ROOT / "docs/app-store/public-pages/support-en.html", "en"),
+    (ROOT / "docs/public-pages/privacy-zh-Hans.html", "zh"),
+    (ROOT / "docs/public-pages/privacy-en.html", "en"),
+    (ROOT / "docs/public-pages/support-zh-Hans.html", "zh"),
+    (ROOT / "docs/public-pages/support-en.html", "en"),
 )
 
 DIRECT_ENABLED = {

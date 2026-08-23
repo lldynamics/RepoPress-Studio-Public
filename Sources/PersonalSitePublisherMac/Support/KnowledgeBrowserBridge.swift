@@ -306,7 +306,7 @@ final class KnowledgeBrowserBridge: ObservableObject {
       listener == nil,
       importOperationLedgerLoadTask == nil
     else { return }
-    prepareConnectionTokenIfNeeded()
+    guard prepareConnectionTokenIfNeeded() else { return }
     state = .starting
     let generation = UUID()
     listenerGeneration = generation
@@ -327,44 +327,97 @@ final class KnowledgeBrowserBridge: ObservableObject {
     }
   }
 
-  private func prepareConnectionTokenIfNeeded() {
-    guard connectionToken.isEmpty else { return }
+  @discardableResult
+  private func prepareConnectionTokenIfNeeded() -> Bool {
+    guard connectionToken.isEmpty else { return true }
     let currentDate = now()
-    var tokenPersistenceIssue: String?
     let persistedToken: String?
     do {
       persistedToken = try connectionTokenStore.token()
     } catch {
-      persistedToken = nil
-      tokenPersistenceIssue = "浏览器连接令牌无法从本地安全存储读取：\(error.localizedDescription)"
+      failClosedConnectionToken(
+        "浏览器连接令牌无法从本地安全存储读取：\(error.localizedDescription)"
+      )
+      return false
     }
-    let storedExpiry = defaults.object(forKey: Self.tokenExpiryDefaultsKey) as? Date
-    invalidatedExpiredToken =
-      if let persistedToken,
-        let storedExpiry,
-        storedExpiry <= currentDate
-      {
-        persistedToken
-      } else {
-        nil
+
+    let metadata = persistedConnectionTokenLeaseMetadata()
+    if case .invalid = metadata {
+      failClosedConnectionToken("浏览器连接令牌租约记录无效，桥接已关闭。")
+      return false
+    }
+
+    let lease: KnowledgeBrowserConnectionTokenLease
+    var tokenToInvalidate: String?
+    switch metadata {
+    case .valid(let record):
+      guard let persistedToken, persistedToken.count >= 32 else {
+        lease = newConnectionTokenLease(at: currentDate)
+        break
       }
-    let lease = KnowledgeBrowserConnectionTokenLease(
-      storedToken: persistedToken,
-      storedExpiresAt: storedExpiry,
-      now: currentDate,
-      generateToken: Self.makeConnectionToken
-    )
+      guard record.tokenDigest == Self.connectionTokenDigest(persistedToken) else {
+        tokenToInvalidate = persistedToken
+        lease = newConnectionTokenLease(at: currentDate)
+        break
+      }
+      guard record.expiresAt > currentDate else {
+        tokenToInvalidate = persistedToken
+        lease = newConnectionTokenLease(at: currentDate)
+        break
+      }
+      connectionToken = persistedToken
+      connectionTokenExpiresAt = record.expiresAt
+      defaults.removeObject(forKey: Self.tokenExpiryDefaultsKey)
+      connectionTokenPersistenceIssue = nil
+      lastMessage = nil
+      return true
+    case .absent:
+      let legacyExpiry = defaults.object(forKey: Self.tokenExpiryDefaultsKey) as? Date
+      if let persistedToken {
+        guard persistedToken.count >= 32 else {
+          failClosedConnectionToken("浏览器连接令牌内容无效，桥接已关闭。")
+          return false
+        }
+        if legacyExpiry != nil {
+          // Older builds advanced this independent expiry even when Keychain
+          // replacement failed. Never trust that state during migration;
+          // rotate the raw token into the checked lease record instead.
+          tokenToInvalidate = persistedToken
+          lease = newConnectionTokenLease(at: currentDate)
+        } else {
+          // A disabled bridge could have a raw token without any lease. Keep
+          // the token for compatibility, then record its lease safely.
+          lease = KnowledgeBrowserConnectionTokenLease(
+            storedToken: persistedToken,
+            storedExpiresAt: nil,
+            now: currentDate,
+            generateToken: Self.makeConnectionToken
+          )
+        }
+      } else {
+        lease = newConnectionTokenLease(at: currentDate)
+      }
+    case .invalid:
+      // Handled above so the switch remains exhaustive if the enum changes.
+      failClosedConnectionToken("浏览器连接令牌租约记录无效，桥接已关闭。")
+      return false
+    }
+
+    do {
+      try persistConnectionTokenLease(token: lease.token, expiresAt: lease.expiresAt)
+    } catch {
+      failClosedConnectionToken(
+        "浏览器连接令牌无法写入本地安全存储：\(error.localizedDescription)"
+      )
+      return false
+    }
+
     connectionToken = lease.token
     connectionTokenExpiresAt = lease.expiresAt
-    do {
-      try connectionTokenStore.persist(connectionToken)
-      tokenPersistenceIssue = nil
-    } catch {
-      tokenPersistenceIssue = "浏览器连接令牌无法写入本地安全存储：\(error.localizedDescription)"
-    }
-    connectionTokenPersistenceIssue = tokenPersistenceIssue
-    defaults.set(connectionTokenExpiresAt, forKey: Self.tokenExpiryDefaultsKey)
-    lastMessage = tokenPersistenceIssue
+    invalidatedExpiredToken = tokenToInvalidate
+    connectionTokenPersistenceIssue = nil
+    lastMessage = nil
+    return true
   }
 
   private func startListener(generation: UUID) {
@@ -442,22 +495,36 @@ final class KnowledgeBrowserBridge: ObservableObject {
     lastMessage = "浏览器桥接启动失败：\(detail)"
   }
 
-  func rotateConnectionToken() {
-    guard isEnabled else { return }
+  @discardableResult
+  func rotateConnectionToken() -> Bool {
+    guard isEnabled else { return false }
     let token = Self.makeConnectionToken()
-    connectionToken = token
-    connectionTokenExpiresAt = now().addingTimeInterval(
+    let currentDate = now()
+    let expiresAt = currentDate.addingTimeInterval(
       KnowledgeBrowserConnectionTokenLease.defaultLifetime
     )
-    defaults.set(connectionTokenExpiresAt, forKey: Self.tokenExpiryDefaultsKey)
     do {
-      try connectionTokenStore.persist(token)
+      try persistConnectionTokenLease(token: token, expiresAt: expiresAt)
+      connectionToken = token
+      connectionTokenExpiresAt = expiresAt
       connectionTokenPersistenceIssue = nil
       lastMessage = "连接令牌已更新，浏览器插件需要重新连接。"
+      return true
     } catch {
-      connectionTokenPersistenceIssue =
-        "浏览器连接令牌无法写入本地安全存储：\(error.localizedDescription)"
-      lastMessage = connectionTokenPersistenceIssue
+      let message = "浏览器连接令牌无法写入本地安全存储：\(error.localizedDescription)"
+      connectionTokenPersistenceIssue = message
+      if let failure = error as? ConnectionTokenPersistenceFailure,
+        case .keychain = failure,
+        !connectionToken.isEmpty,
+        currentDate < connectionTokenExpiresAt
+      {
+        // Keychain failure leaves the old token and its old lease intact;
+        // retain that valid lease instead of advertising an unpersisted one.
+        lastMessage = message
+      } else {
+        failClosedConnectionToken(message)
+      }
+      return false
     }
   }
 
@@ -467,7 +534,7 @@ final class KnowledgeBrowserBridge: ObservableObject {
       !connectionToken.isEmpty,
       now() >= connectionTokenExpiresAt
     else { return false }
-    rotateConnectionToken()
+    guard rotateConnectionToken() else { return false }
     lastMessage = "旧连接令牌已过期并失效，请用新令牌重新配对浏览器插件。"
     return true
   }
@@ -1069,6 +1136,7 @@ final class KnowledgeBrowserBridge: ObservableObject {
   private static let isEnabledDefaultsKey = "KnowledgeBrowserBridge.isEnabled.v1"
   private static let legacyTokenDefaultsKey = "KnowledgeBrowserBridge.connectionToken.v1"
   private static let tokenExpiryDefaultsKey = "KnowledgeBrowserBridge.connectionTokenExpiresAt.v1"
+  private static let tokenLeaseDefaultsKey = "KnowledgeBrowserBridge.connectionTokenLease.v2"
   private static let importOperationLedgerDefaultsKey =
     "KnowledgeBrowserBridge.completedImportOperations.v1"
 
@@ -1124,6 +1192,80 @@ final class KnowledgeBrowserBridge: ObservableObject {
     return warnings.isEmpty ? nil : warnings.joined(separator: "\n")
   }
 
+  private func newConnectionTokenLease(at date: Date) -> KnowledgeBrowserConnectionTokenLease {
+    KnowledgeBrowserConnectionTokenLease(
+      storedToken: nil,
+      storedExpiresAt: nil,
+      now: date,
+      generateToken: Self.makeConnectionToken
+    )
+  }
+
+  private func persistedConnectionTokenLeaseMetadata()
+    -> PersistedConnectionTokenLeaseMetadataState
+  {
+    guard let data = defaults.data(forKey: Self.tokenLeaseDefaultsKey) else {
+      return .absent
+    }
+    guard let metadata = try? JSONDecoder().decode(
+      PersistedConnectionTokenLeaseMetadata.self,
+      from: data
+    ),
+      metadata.version == PersistedConnectionTokenLeaseMetadata.currentVersion,
+      metadata.tokenDigest.count == 64,
+      metadata.expiresAt.timeIntervalSinceReferenceDate.isFinite
+    else {
+      return .invalid
+    }
+    return .valid(metadata)
+  }
+
+  private func persistConnectionTokenLease(
+    token: String,
+    expiresAt: Date
+  ) throws {
+    do {
+      try connectionTokenStore.persist(token)
+    } catch {
+      throw ConnectionTokenPersistenceFailure.keychain(error)
+    }
+
+    let metadata = PersistedConnectionTokenLeaseMetadata(
+      version: PersistedConnectionTokenLeaseMetadata.currentVersion,
+      tokenDigest: Self.connectionTokenDigest(token),
+      expiresAt: expiresAt
+    )
+    guard let data = try? JSONEncoder().encode(metadata) else {
+      throw ConnectionTokenPersistenceFailure.metadata
+    }
+    defaults.set(data, forKey: Self.tokenLeaseDefaultsKey)
+    guard defaults.data(forKey: Self.tokenLeaseDefaultsKey) == data else {
+      throw ConnectionTokenPersistenceFailure.metadata
+    }
+    defaults.removeObject(forKey: Self.tokenExpiryDefaultsKey)
+  }
+
+  private func failClosedConnectionToken(_ message: String) {
+    connectionToken = ""
+    connectionTokenExpiresAt = .distantPast
+    invalidatedExpiredToken = nil
+    connectionTokenPersistenceIssue = message
+    listenerGeneration = nil
+    importOperationLedgerLoadTask?.cancel()
+    importOperationLedgerLoadTask = nil
+    let listener = self.listener
+    self.listener = nil
+    listener?.cancel()
+    state = .failed(message)
+    lastMessage = message
+  }
+
+  private static func connectionTokenDigest(_ token: String) -> String {
+    SHA256.hash(data: Data(token.utf8))
+      .map { String(format: "%02x", $0) }
+      .joined()
+  }
+
   private nonisolated static func prepareBrowserImport(
     from body: Data
   ) throws -> BrowserPreparedImport {
@@ -1170,6 +1312,34 @@ final class KnowledgeBrowserBridge: ObservableObject {
       + UUID().uuidString.replacingOccurrences(of: "-", with: "")
   }
 
+}
+
+private struct PersistedConnectionTokenLeaseMetadata: Codable {
+  static let currentVersion = 1
+
+  var version: Int
+  var tokenDigest: String
+  var expiresAt: Date
+}
+
+private enum PersistedConnectionTokenLeaseMetadataState {
+  case absent
+  case valid(PersistedConnectionTokenLeaseMetadata)
+  case invalid
+}
+
+private enum ConnectionTokenPersistenceFailure: LocalizedError {
+  case keychain(Error)
+  case metadata
+
+  var errorDescription: String? {
+    switch self {
+    case .keychain(let error):
+      return error.localizedDescription
+    case .metadata:
+      return "连接令牌租约记录无法安全保存。"
+    }
+  }
 }
 
 private struct BrowserPreparedImport: Sendable {

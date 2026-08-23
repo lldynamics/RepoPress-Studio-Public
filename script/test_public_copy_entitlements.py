@@ -17,7 +17,7 @@ CHECKER = ROOT / "script/check_public_copy_entitlements.py"
 
 def make_fixture(base: Path) -> Path:
     fixture = base / "project"
-    (fixture / "docs/app-store/public-pages").mkdir(parents=True)
+    (fixture / "docs/public-pages").mkdir(parents=True)
     (fixture / "Packaging").mkdir(parents=True)
     shutil.copy2(ROOT / "docs/privacy-support-copy.md", fixture / "docs")
     for name in (
@@ -27,8 +27,8 @@ def make_fixture(base: Path) -> Path:
         "support-en.html",
     ):
         shutil.copy2(
-            ROOT / "docs/app-store/public-pages" / name,
-            fixture / "docs/app-store/public-pages" / name,
+            ROOT / "docs/public-pages" / name,
+            fixture / "docs/public-pages" / name,
         )
     shutil.copy2(
         ROOT / "Packaging/DirectDistribution.entitlements",
@@ -81,7 +81,7 @@ with tempfile.TemporaryDirectory(prefix="public-copy-entitlements.") as director
             f"{accepted.stdout}{accepted.stderr}"
         )
 
-    privacy_en = fixture / "docs/app-store/public-pages/privacy-en.html"
+    privacy_en = fixture / "docs/public-pages/privacy-en.html"
     privacy_en.write_text(
         privacy_en.read_text(encoding="utf-8")
         + "\n<p>The app uses the macOS sandbox.</p>\n",
@@ -107,7 +107,7 @@ with tempfile.TemporaryDirectory(prefix="public-copy-entitlements.") as director
 
     shutil.rmtree(fixture)
     fixture = make_fixture(fixture_root)
-    support_en = fixture / "docs/app-store/public-pages/support-en.html"
+    support_en = fixture / "docs/public-pages/support-en.html"
     support_en.write_text(
         support_en.read_text(encoding="utf-8").replace(
             "do not provide App Sandbox isolation",

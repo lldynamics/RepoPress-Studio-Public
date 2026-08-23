@@ -290,7 +290,8 @@ public final class WorkbenchAIFeatureFacade: ObservableObject {
     connectionProfileID: UUID? = nil,
     imageAttachments: [AIChatImageAttachment] = [],
     contextReferences: [AIContextReference] = [],
-    ownerToken: UUID? = nil
+    ownerToken: UUID? = nil,
+    expectedConversation: AIChatGeneralConversationExpectation? = nil
   ) async -> AIPublishingChatMessage? {
     await store.aiStore.sendGeneralAIChatMessage(
       text,
@@ -298,7 +299,8 @@ public final class WorkbenchAIFeatureFacade: ObservableObject {
       connectionProfileID: connectionProfileID,
       imageAttachments: imageAttachments,
       contextReferences: contextReferences,
-      ownerToken: ownerToken
+      ownerToken: ownerToken,
+      expectedConversation: expectedConversation
     )
   }
 
@@ -822,12 +824,14 @@ public final class WorkbenchAIFeatureFacade: ObservableObject {
   public func retryLastFailedChatReply(
     confirmingPossibleDuplicateCharge: Bool,
     draft: ArticleDraft? = nil,
-    ownerToken: UUID? = nil
+    ownerToken: UUID? = nil,
+    expectedContextMode: AIPublishingChatContextMode? = nil
   ) async -> AIPublishingChatMessage? {
     await store.retryLastFailedAIChatReply(
       confirmingPossibleDuplicateCharge: confirmingPossibleDuplicateCharge,
       draft: draft,
-      ownerToken: ownerToken
+      ownerToken: ownerToken,
+      expectedContextMode: expectedContextMode
     )
   }
 
@@ -837,14 +841,18 @@ public final class WorkbenchAIFeatureFacade: ObservableObject {
     draft: ArticleDraft? = nil,
     imageAttachments: [AIChatImageAttachment] = [],
     contextReferences: [AIContextReference] = [],
-    ownerToken: UUID? = nil
+    ownerToken: UUID? = nil,
+    expectedContextMode: AIPublishingChatContextMode? = nil,
+    expectedDraftConversation: AIChatDraftConversationExpectation? = nil
   ) async -> AIPublishingChatMessage? {
     await store.sendAIChatMessage(
       text,
       draft: draft,
       imageAttachments: imageAttachments,
       contextReferences: contextReferences,
-      ownerToken: ownerToken
+      ownerToken: ownerToken,
+      expectedContextMode: expectedContextMode,
+      expectedDraftConversation: expectedDraftConversation
     )
   }
 

@@ -393,7 +393,7 @@ extension PublishingStore {
       prependReleaseRecord(releaseRecord)
       markDraftsAsPublishedIfDirectRemoteCommit(mode: mode, draftIDs: [package.draftID])
       confirmDirectRemotePublishLifecycle(packages: [package], result: result)
-      store.recordRemoteRepositoryPublishInAutoSync(result)
+      store.recordRemoteRepositoryPublishInAutoSync(result, profileID: profile.id)
       let commitSummary = result.commitSHA.map { String($0.prefix(8)) } ?? CoreL10n.text("无 commit")
       setPublishActionMessage(
         CoreL10n.format("%@完成：%@", mode.displayName, commitSummary),

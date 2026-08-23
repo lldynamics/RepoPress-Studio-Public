@@ -21,6 +21,8 @@ public final class RepositoryStore: ObservableObject {
   @Published public internal(set) var localRepositoryRecentCommits: [RepositoryCommitInfo]
   @Published public internal(set) var repositoryTokenAvailability: KeychainTokenAvailability
   @Published public internal(set) var remoteRepositoryAccessCheck: RemoteRepositoryAccessCheck?
+  @Published public internal(set) var remoteRepositoryAccessCheckByProfileID:
+    [UUID: RemoteRepositoryAccessCheck]
   @Published public internal(set) var remoteRepositoryCreationResult: RemoteRepositoryCreationResult?
   @Published public internal(set) var remoteRepositoryPublishResult: RemoteRepositoryPublishResult?
   @Published public internal(set) var remoteRepositoryPublishProgress: RemoteRepositoryPublishProgress?
@@ -29,15 +31,37 @@ public final class RepositoryStore: ObservableObject {
   @Published public internal(set) var isRemoteRepositoryChecking: Bool
   @Published public internal(set) var isRemoteRepositoryPublishing: Bool
   @Published public internal(set) var isLocalRepositoryBranchOperationRunning: Bool
-  @Published public internal(set) var repositoryAutoSyncSettings: RepositoryAutoSyncSettings
-  @Published public internal(set) var repositoryAutoSyncState: RepositoryAutoSyncState
+  @Published public internal(set) var repositoryAutoSyncSettings: RepositoryAutoSyncSettings {
+    didSet {
+      guard let profileID = boundAutomationProfileID else { return }
+      repositoryAutoSyncSettingsByProfileID[profileID] = repositoryAutoSyncSettings
+    }
+  }
+  @Published public internal(set) var repositoryAutoSyncState: RepositoryAutoSyncState {
+    didSet {
+      guard let profileID = boundAutomationProfileID else { return }
+      repositoryAutoSyncStateByProfileID[profileID] = repositoryAutoSyncState
+    }
+  }
+  @Published public internal(set) var repositoryAutoSyncSettingsByProfileID:
+    [UUID: RepositoryAutoSyncSettings]
+  @Published public internal(set) var repositoryAutoSyncStateByProfileID:
+    [UUID: RepositoryAutoSyncState]
+  private var repositoryReportProfileID: UUID?
+  private var repositoryScanProfileID: UUID?
   private var repositoryScanTask: Task<Void, Never>?
   private var repositoryScanWorkTask: Task<RepositoryScanSnapshot?, Never>?
   private var repositoryScanWorkGeneration: UInt64 = 0
   private var repositoryScanGeneration: UInt64 = 0
   private var repositoryAutoSyncTask: Task<Bool, Never>?
   private var repositoryAutoSyncGeneration: UInt64 = 0
+  private var repositoryAutoSyncBackgroundGenerationByProfileID: [UUID: UInt64] = [:]
   private var remoteRepositoryCheckContext: RemoteRepositoryOperationContext?
+  private var boundAutomationProfileID: UUID?
+#if DEBUG
+  // Test-only barrier for exercising stale-result invalidation without a real Git race.
+  var backgroundRepositoryAutoSyncTestHook: (() async -> Void)?
+#endif
 
   init(
     repositoryReport: RepositoryScanReport? = nil,
@@ -47,6 +71,7 @@ public final class RepositoryStore: ObservableObject {
     localRepositoryRecentCommits: [RepositoryCommitInfo] = [],
     repositoryTokenAvailability: KeychainTokenAvailability = KeychainTokenAvailability(hasToken: false),
     remoteRepositoryAccessCheck: RemoteRepositoryAccessCheck? = nil,
+    remoteRepositoryAccessCheckByProfileID: [UUID: RemoteRepositoryAccessCheck] = [:],
     remoteRepositoryCreationResult: RemoteRepositoryCreationResult? = nil,
     remoteRepositoryPublishResult: RemoteRepositoryPublishResult? = nil,
     remoteRepositoryPublishProgress: RemoteRepositoryPublishProgress? = nil,
@@ -57,6 +82,9 @@ public final class RepositoryStore: ObservableObject {
     isLocalRepositoryBranchOperationRunning: Bool = false,
     repositoryAutoSyncSettings: RepositoryAutoSyncSettings = .default,
     repositoryAutoSyncState: RepositoryAutoSyncState = .idle,
+    repositoryAutoSyncSettingsByProfileID: [UUID: RepositoryAutoSyncSettings] = [:],
+    repositoryAutoSyncStateByProfileID: [UUID: RepositoryAutoSyncState] = [:],
+    activeProfileID: UUID? = nil,
     repositoryService: LocalRepositoryService = LocalRepositoryService(),
     repositoryTokenStore: KeychainTokenStore = KeychainTokenStore(service: KeychainCredentialServices.repository),
     remoteRepositoryPublishService: RemoteRepositoryPublishService = RemoteRepositoryPublishService(),
@@ -72,7 +100,10 @@ public final class RepositoryStore: ObservableObject {
     self.localRepositoryBranches = localRepositoryBranches
     self.localRepositoryRecentCommits = localRepositoryRecentCommits
     self.repositoryTokenAvailability = repositoryTokenAvailability
-    self.remoteRepositoryAccessCheck = remoteRepositoryAccessCheck
+    self.remoteRepositoryAccessCheckByProfileID = remoteRepositoryAccessCheckByProfileID
+    self.remoteRepositoryAccessCheck = activeProfileID.flatMap {
+      remoteRepositoryAccessCheckByProfileID[$0]
+    } ?? remoteRepositoryAccessCheck
     self.remoteRepositoryCreationResult = remoteRepositoryCreationResult
     self.remoteRepositoryPublishResult = remoteRepositoryPublishResult
     self.remoteRepositoryPublishProgress = remoteRepositoryPublishProgress
@@ -81,14 +112,26 @@ public final class RepositoryStore: ObservableObject {
     self.isRemoteRepositoryChecking = isRemoteRepositoryChecking
     self.isRemoteRepositoryPublishing = isRemoteRepositoryPublishing
     self.isLocalRepositoryBranchOperationRunning = isLocalRepositoryBranchOperationRunning
-    self.repositoryAutoSyncSettings = repositoryAutoSyncSettings
-    self.repositoryAutoSyncState = repositoryAutoSyncState
+    self.repositoryAutoSyncSettingsByProfileID = repositoryAutoSyncSettingsByProfileID
+    self.repositoryAutoSyncStateByProfileID = repositoryAutoSyncStateByProfileID
+    self.repositoryAutoSyncSettings = activeProfileID.flatMap {
+      repositoryAutoSyncSettingsByProfileID[$0]
+    } ?? repositoryAutoSyncSettings
+    self.repositoryAutoSyncState = activeProfileID.flatMap {
+      repositoryAutoSyncStateByProfileID[$0]
+    } ?? repositoryAutoSyncState
+    self.boundAutomationProfileID = activeProfileID
+    repositoryReportProfileID = nil
+    repositoryScanProfileID = nil
   }
 
   public func repositoryReport(for profile: SiteProfile, store: WorkbenchStore) -> RepositoryScanReport? {
     guard let repositoryReport else { return nil }
+    if let repositoryReportProfileID, repositoryReportProfileID != profile.id {
+      return nil
+    }
     guard let configuredIdentity = LocalRepositoryIdentity(profile: profile) else {
-      return profile.id == store.activeProfileID ? repositoryReport : nil
+      return repositoryReportProfileID == profile.id ? repositoryReport : nil
     }
     return LocalRepositoryIdentity(rootPath: repositoryReport.rootPath) == configuredIdentity
       ? repositoryReport
@@ -110,8 +153,9 @@ public final class RepositoryStore: ObservableObject {
     repositoryScanWorkTask?.cancel()
     repositoryScanGeneration &+= 1
     let scanGeneration = repositoryScanGeneration
-    repositoryScanState = .scanning()
     let profile = store.activeProfile
+    repositoryScanProfileID = profile.id
+    repositoryScanState = .scanning()
     let operation = LocalRepositoryOperationContext(profile: profile)
     let repositoryService = repositoryService
     let previousScanWork = repositoryScanWorkTask
@@ -155,6 +199,7 @@ public final class RepositoryStore: ObservableObject {
         return
       }
       repositoryReport = snapshot.report
+      repositoryReportProfileID = operation.profileID
       localRepositoryBranches = snapshot.branches
       localRepositoryRecentCommits = snapshot.recentCommits
       repositoryScanState = .finished(report: snapshot.report)
@@ -210,6 +255,16 @@ public final class RepositoryStore: ObservableObject {
     repositoryScanWorkTask = nil
   }
 
+  func replaceRepositoryReport(_ report: RepositoryScanReport?, profileID: UUID?) {
+    repositoryReportProfileID = report == nil ? nil : profileID
+    repositoryReport = report
+  }
+
+  func repositoryScanState(for profileID: UUID) -> RepositoryScanState {
+    guard let repositoryScanProfileID else { return repositoryScanState }
+    return repositoryScanProfileID == profileID ? repositoryScanState : .idle
+  }
+
   private func isCurrentRepositoryAutoSync(
     generation: UInt64,
     operation: LocalRepositoryOperationContext,
@@ -224,6 +279,23 @@ public final class RepositoryStore: ObservableObject {
     repositoryAutoSyncTask = nil
   }
 
+  private func beginBackgroundRepositoryAutoSyncRun(for profileID: UUID) -> UInt64 {
+    repositoryAutoSyncBackgroundGenerationByProfileID[profileID, default: 0] &+= 1
+    return repositoryAutoSyncBackgroundGenerationByProfileID[profileID] ?? 0
+  }
+
+  private func isCurrentBackgroundRepositoryAutoSync(
+    profileID: UUID,
+    generation: UInt64,
+    settings: RepositoryAutoSyncSettings,
+    frozenProfile: SiteProfile,
+    store: WorkbenchStore
+  ) -> Bool {
+    repositoryAutoSyncBackgroundGenerationByProfileID[profileID] == generation
+      && repositoryAutoSyncSettings(for: profileID) == settings
+      && store.profiles.first(where: { $0.id == profileID }) == frozenProfile
+  }
+
   public func rememberRepositoryRootAsync(_ url: URL, store: WorkbenchStore) async {
     var profile = store.activeProfile
     _ = profile.rememberLocalRepositoryRoot(url)
@@ -233,7 +305,10 @@ public final class RepositoryStore: ObservableObject {
   }
 
   public func repositorySyncCommandPlan(store: WorkbenchStore) -> RepositorySyncCommandPlan? {
-    repositorySyncCommandBuilder.plan(report: repositoryReport, profile: store.activeProfile)
+    repositorySyncCommandBuilder.plan(
+      report: repositoryReport(for: store.activeProfile, store: store),
+      profile: store.activeProfile
+    )
   }
 
   public var repositoryAutoSyncReviewMarkdown: String {
@@ -267,7 +342,10 @@ public final class RepositoryStore: ObservableObject {
   }
 
   public func applyDetectedRepositoryRemote(store: WorkbenchStore) {
-    guard let remote = repositoryReport?.originRemote else {
+    guard
+      let currentReport = repositoryReport(for: store.activeProfile, store: store),
+      let remote = currentReport.originRemote
+    else {
       store.setPublishActionMessage(
         CoreL10n.text("没有检测到 origin 远端。"),
         status: .warning
@@ -279,7 +357,7 @@ public final class RepositoryStore: ObservableObject {
     profile.repositoryBaseURL = remote.repositoryBaseURL
     profile.repoOwner = remote.owner
     profile.repoName = remote.name
-    if let detectedBranch = repositoryReport?.branchStatus?.branchName?.nilIfEmpty {
+    if let detectedBranch = currentReport.branchStatus?.branchName?.nilIfEmpty {
       profile.branch = detectedBranch
     }
     store.updateActiveProfile(profile)
@@ -288,6 +366,54 @@ public final class RepositoryStore: ObservableObject {
       status: .success
     )
     store.save()
+  }
+
+  /// Fills only the missing repository identity fields from the active
+  /// profile's validated scan report. An explicit, complete configuration is
+  /// never replaced implicitly by a local Git origin.
+  @discardableResult
+  private func applyDetectedRepositoryRemoteIfNeeded(store: WorkbenchStore) -> SiteProfile {
+    let profile = store.activeProfile
+    let owner = profile.repoOwner.trimmedForPublishing
+    let name = profile.repoName.trimmedForPublishing
+    guard owner.isEmpty || name.isEmpty else { return profile }
+    guard
+      let report = repositoryReport(for: profile, store: store),
+      let remote = report.originRemote
+    else {
+      return profile
+    }
+    guard
+      (owner.isEmpty || owner == remote.owner.trimmedForPublishing),
+      (name.isEmpty || name == remote.name.trimmedForPublishing)
+    else {
+      // A partially entered target that disagrees with origin is ambiguous;
+      // leave it untouched and let the remote service return its structured
+      // configuration result rather than probing a guessed repository.
+      return profile
+    }
+
+    var updated = profile
+    // A missing owner/name means the configured remote is incomplete. Use the
+    // detected provider and endpoint as a pair so a GitLab origin cannot be
+    // checked via the default GitHub client. Preserve any matching identity
+    // component to avoid silently changing a user's partially entered target.
+    updated.repositoryProvider = remote.provider
+    updated.repositoryBaseURL = remote.repositoryBaseURL
+    if owner.isEmpty {
+      updated.repoOwner = remote.owner
+    }
+    if name.isEmpty {
+      updated.repoName = remote.name
+    }
+    if let branch = report.branchStatus?.branchName?.nilIfEmpty {
+      updated.branch = branch
+    }
+
+    guard updated != profile else { return profile }
+    store.updateActiveProfile(updated)
+    store.save()
+    return updated
   }
 
   public func setRepositoryProvider(_ provider: RepositoryProvider, store: WorkbenchStore) {
@@ -414,31 +540,114 @@ public final class RepositoryStore: ObservableObject {
   }
 
   public func updateRepositoryAutoSyncSettings(_ settings: RepositoryAutoSyncSettings, store: WorkbenchStore) {
+    updateRepositoryAutoSyncSettings(settings, for: store.activeProfileID, store: store)
+  }
+
+  public func updateRepositoryAutoSyncSettings(
+    _ settings: RepositoryAutoSyncSettings,
+    for profileID: UUID,
+    store: WorkbenchStore
+  ) {
+    guard store.profiles.contains(where: { $0.id == profileID }) else { return }
     invalidateRepositoryAutoSyncRun()
-    repositoryAutoSyncSettings = settings
-    repositoryAutoSyncState.nextRunAt = settings.isEnabled ? settings.nextRunDate(after: Date()) : nil
+    repositoryAutoSyncBackgroundGenerationByProfileID[profileID, default: 0] &+= 1
+    let normalized = RepositoryAutoSyncSettings(
+      isEnabled: settings.isEnabled,
+      intervalMinutes: settings.normalizedIntervalMinutes,
+      fetchBeforeScan: settings.fetchBeforeScan,
+      autoImportRemoteArticles: settings.autoImportRemoteArticles
+    )
+    repositoryAutoSyncSettingsByProfileID[profileID] = normalized
+    var state = repositoryAutoSyncStateByProfileID[profileID] ?? .idle
+    state.nextRunAt = normalized.isEnabled ? normalized.nextRunDate(after: Date()) : nil
+    if !normalized.isEnabled {
+      state.status = .disabled
+      state.message = CoreL10n.text("自动检查远端未启用。")
+    }
+    repositoryAutoSyncStateByProfileID[profileID] = state
+    if profileID == boundAutomationProfileID {
+      repositoryAutoSyncSettings = normalized
+      repositoryAutoSyncState = state
+    }
     store.save()
   }
 
+  public func repositoryAutoSyncSettings(for profileID: UUID) -> RepositoryAutoSyncSettings {
+    repositoryAutoSyncSettingsByProfileID[profileID] ?? .default
+  }
+
+  public func repositoryAutoSyncState(for profileID: UUID) -> RepositoryAutoSyncState {
+    repositoryAutoSyncStateByProfileID[profileID] ?? .idle
+  }
+
+  /// Rebinds the compatibility scalar view when the publishing UI changes
+  /// sites. The previous scalar values are flushed before loading the target
+  /// site's map entries, so a profile switch cannot move runtime state across
+  /// sites.
+  func setActiveProfile(_ profileID: UUID, validProfileIDs: Set<UUID>) {
+    if let boundAutomationProfileID {
+      repositoryAutoSyncSettingsByProfileID[boundAutomationProfileID] = repositoryAutoSyncSettings
+      repositoryAutoSyncStateByProfileID[boundAutomationProfileID] = repositoryAutoSyncState
+      if let remoteRepositoryAccessCheck {
+        remoteRepositoryAccessCheckByProfileID[boundAutomationProfileID] = remoteRepositoryAccessCheck
+      } else {
+        remoteRepositoryAccessCheckByProfileID.removeValue(forKey: boundAutomationProfileID)
+      }
+    }
+    repositoryAutoSyncSettingsByProfileID = repositoryAutoSyncSettingsByProfileID.filter {
+      validProfileIDs.contains($0.key)
+    }
+    repositoryAutoSyncStateByProfileID = repositoryAutoSyncStateByProfileID.filter {
+      validProfileIDs.contains($0.key)
+    }
+    repositoryAutoSyncBackgroundGenerationByProfileID =
+      repositoryAutoSyncBackgroundGenerationByProfileID.filter {
+        validProfileIDs.contains($0.key)
+      }
+    remoteRepositoryAccessCheckByProfileID = remoteRepositoryAccessCheckByProfileID.filter {
+      validProfileIDs.contains($0.key)
+    }
+    for profileID in validProfileIDs {
+      repositoryAutoSyncSettingsByProfileID[profileID] =
+        repositoryAutoSyncSettingsByProfileID[profileID] ?? .default
+      repositoryAutoSyncStateByProfileID[profileID] =
+        repositoryAutoSyncStateByProfileID[profileID] ?? .idle
+    }
+    boundAutomationProfileID = profileID
+    repositoryAutoSyncSettings = repositoryAutoSyncSettingsByProfileID[profileID] ?? .default
+    repositoryAutoSyncState = repositoryAutoSyncStateByProfileID[profileID] ?? .idle
+    remoteRepositoryAccessCheck = remoteRepositoryAccessCheckByProfileID[profileID]
+  }
+
   public func recordRemoteRepositoryPublishInAutoSync(_ result: RemoteRepositoryPublishResult) {
+    guard let profileID = boundAutomationProfileID else { return }
+    recordRemoteRepositoryPublishInAutoSync(result, for: profileID)
+  }
+
+  public func recordRemoteRepositoryPublishInAutoSync(
+    _ result: RemoteRepositoryPublishResult,
+    for profileID: UUID
+  ) {
+    var state = repositoryAutoSyncState(for: profileID)
     let publishedPaths = Set(result.changedPaths.map { $0.normalizedRelativePath() })
-    repositoryAutoSyncState.remoteChangedPaths.removeAll {
+    state.remoteChangedPaths.removeAll {
       publishedPaths.contains($0.normalizedRelativePath())
     }
-    repositoryAutoSyncState.remoteChangedFileCount = repositoryAutoSyncState.remoteChangedPaths.count
-    repositoryAutoSyncState.importableRemoteArticleCount = repositoryAutoSyncState.remoteChangedPaths.filter {
+    state.remoteChangedFileCount = state.remoteChangedPaths.count
+    state.importableRemoteArticleCount = state.remoteChangedPaths.filter {
       ["md", "markdown", "mdx"].contains(URL(fileURLWithPath: $0).pathExtension.lowercased())
     }.count
-    repositoryAutoSyncState.nonArticleRemoteChangedFileCount = max(
+    state.nonArticleRemoteChangedFileCount = max(
       0,
-      repositoryAutoSyncState.remoteChangedFileCount - repositoryAutoSyncState.importableRemoteArticleCount
+      state.remoteChangedFileCount - state.importableRemoteArticleCount
     )
-    repositoryAutoSyncState.lastRemotePublishAt = Date()
-    repositoryAutoSyncState.lastRemotePublishProvider = result.provider
-    repositoryAutoSyncState.lastRemotePublishMode = result.mode
-    repositoryAutoSyncState.lastRemotePublishPaths = result.changedPaths
+    state.lastRemotePublishAt = Date()
+    state.lastRemotePublishProvider = result.provider
+    state.lastRemotePublishMode = result.mode
+    state.lastRemotePublishPaths = result.changedPaths
     let removedCount = publishedPaths.count
-    repositoryAutoSyncState.message = "最近线上发布：\(result.changedPaths.count) 个文件；已从远端同步队列移除 \(removedCount) 个同路径项。"
+    state.message = "最近线上发布：\(result.changedPaths.count) 个文件；已从远端同步队列移除 \(removedCount) 个同路径项。"
+    setRepositoryAutoSyncState(state, for: profileID)
   }
 
   func remoteFileSnapshot(profile: SiteProfile, repositoryPath: String) -> RepositoryFileSnapshot? {
@@ -447,17 +656,40 @@ public final class RepositoryStore: ObservableObject {
 
   @discardableResult
   public func tickRepositoryAutoSync(store: WorkbenchStore, now: Date = Date()) async -> Bool {
+    await tickRepositoryAutoSync(for: store.activeProfileID, store: store, now: now)
+  }
+
+  @discardableResult
+  public func tickRepositoryAutoSync(
+    for profileID: UUID,
+    store: WorkbenchStore,
+    now: Date = Date()
+  ) async -> Bool {
     guard repositoryAutoSyncTask == nil else {
       return false
     }
-    guard repositoryAutoSyncSettings.isDue(lastRunAt: repositoryAutoSyncState.lastRunAt, now: now) else {
+    let settings = repositoryAutoSyncSettings(for: profileID)
+    let state = repositoryAutoSyncState(for: profileID)
+    guard settings.isDue(lastRunAt: state.lastRunAt, now: now) else {
       return false
     }
-    return await runRepositoryAutoSync(store: store, now: now)
+    return await runRepositoryAutoSync(for: profileID, store: store, now: now)
   }
 
   @discardableResult
   public func runRepositoryAutoSync(store: WorkbenchStore, now: Date = Date()) async -> Bool {
+    await runRepositoryAutoSync(for: store.activeProfileID, store: store, now: now)
+  }
+
+  @discardableResult
+  public func runRepositoryAutoSync(
+    for profileID: UUID,
+    store: WorkbenchStore,
+    now: Date = Date()
+  ) async -> Bool {
+    guard profileID == store.activeProfileID else {
+      return await runBackgroundRepositoryAutoSync(for: profileID, store: store, now: now)
+    }
     if let repositoryAutoSyncTask {
       return await repositoryAutoSyncTask.value
     }
@@ -479,6 +711,177 @@ public final class RepositoryStore: ObservableObject {
       repositoryAutoSyncTask = nil
     }
     return didRun
+  }
+
+  /// Performs the non-importing portion of a repository check for a site that
+  /// is not currently selected. It freezes the profile before leaving the
+  /// actor and only writes the explicit profile's map entry. Remote article
+  /// import intentionally remains a foreground operation because its draft
+  /// mutation pipeline is active-profile bound.
+  private func runBackgroundRepositoryAutoSync(
+    for profileID: UUID,
+    store: WorkbenchStore,
+    now: Date
+  ) async -> Bool {
+    guard let profile = store.profiles.first(where: { $0.id == profileID }) else {
+      return false
+    }
+    let settings = repositoryAutoSyncSettings(for: profileID)
+    guard settings.isEnabled else {
+      setRepositoryAutoSyncState(
+        RepositoryAutoSyncState(
+          status: .disabled,
+          message: CoreL10n.text("自动检查远端未启用。")
+        ),
+        for: profileID
+      )
+      return false
+    }
+    let runGeneration = beginBackgroundRepositoryAutoSyncRun(for: profileID)
+#if DEBUG
+    if let testHook = backgroundRepositoryAutoSyncTestHook {
+      await testHook()
+    }
+#endif
+    guard isCurrentBackgroundRepositoryAutoSync(
+      profileID: profileID,
+      generation: runGeneration,
+      settings: settings,
+      frozenProfile: profile,
+      store: store
+    ) else {
+      return false
+    }
+    guard !profile.localRepositoryRootPath.trimmedForPublishing.isEmpty else {
+      var state = repositoryAutoSyncState(for: profileID)
+      state.status = .waitingForRepository
+      state.lastRunAt = now
+      state.nextRunAt = settings.nextRunDate(after: now)
+      state.message = backgroundRepositoryAutoSyncMessage(
+        CoreL10n.text("自动检查远端等待本地仓库路径。"),
+        settings: settings
+      )
+      setRepositoryAutoSyncState(state, for: profileID)
+      store.save()
+      return true
+    }
+
+    if settings.fetchBeforeScan {
+      let repositoryService = repositoryService
+      let fetch = await Task.detached(priority: .utility) {
+        repositoryService.fetchUpstream(profile: profile)
+      }.value
+      guard isCurrentBackgroundRepositoryAutoSync(
+        profileID: profileID,
+        generation: runGeneration,
+        settings: settings,
+        frozenProfile: profile,
+        store: store
+      ) else {
+        return false
+      }
+      var state = repositoryAutoSyncState(for: profileID)
+      state.lastFetchAt = now
+      state.fetchSucceeded = fetch.status == .succeeded
+      state.fetchMessage = fetch.message
+      if fetch.status == .failed {
+        state.status = .fetchFailed
+        state.lastRunAt = now
+        state.nextRunAt = settings.nextRunDate(after: now)
+        state.message = backgroundRepositoryAutoSyncMessage(
+          CoreL10n.format(
+            "自动检查远端 Fetch 失败，已保留上次检查结果：%@",
+            fetch.message
+          ),
+          settings: settings
+        )
+        setRepositoryAutoSyncState(state, for: profileID)
+        store.save()
+        return true
+      }
+      setRepositoryAutoSyncState(state, for: profileID)
+    }
+
+    let repositoryService = repositoryService
+    let report = await Task.detached(priority: .utility) {
+      repositoryService.scan(
+        profile: profile,
+        cancellationCheck: {
+          withUnsafeCurrentTask { $0?.isCancelled == true }
+        }
+      )
+    }.value
+    guard isCurrentBackgroundRepositoryAutoSync(
+      profileID: profileID,
+      generation: runGeneration,
+      settings: settings,
+      frozenProfile: profile,
+      store: store
+    ) else {
+      return false
+    }
+    var state = repositoryAutoSyncState(for: profileID)
+    let detectedRemoteFiles = report.remoteChangedFiles
+    let detectedRemoteCount = detectedRemoteFiles.count
+    let articleFiles = report.remoteChangedFilesForRole(
+      role: .article,
+      contentRoot: profile.contentRoot,
+      assetRoot: profile.assetRoot
+    )
+    let importablePaths = articleFiles
+      .filter { $0.kind != .deleted }
+      .map { $0.displayPath.normalizedRelativePath() }
+    state.status = .scanned
+    state.lastRunAt = now
+    state.nextRunAt = settings.nextRunDate(after: now)
+    state.remoteChangedFileCount = detectedRemoteCount
+    state.remoteChangedPaths = detectedRemoteFiles.map(\.displayPath)
+    state.importableRemoteArticleCount = importablePaths.count
+    state.nonArticleRemoteChangedFileCount = max(
+      0,
+      detectedRemoteCount - importablePaths.count
+    )
+    state.lastAutoImportedArticleCount = 0
+    state.lastAutoImportConflictCount = 0
+    state.lastAutoImportDeletionCount = 0
+    state.message = backgroundRepositoryAutoSyncMessage(
+      CoreL10n.format(
+        "自动检查远端完成：发现 %d 个远端变更，其中 %d 篇文章可手动导入。",
+        detectedRemoteCount,
+        importablePaths.count
+      ),
+      settings: settings
+    )
+    setRepositoryAutoSyncState(state, for: profileID)
+    store.save()
+    return true
+  }
+
+  /// A non-active profile cannot safely enter the foreground draft importer:
+  /// that pipeline intentionally guards against mutating the active editor.
+  /// Make that deferred/manual path explicit whenever the profile requested
+  /// automatic article import.
+  private func backgroundRepositoryAutoSyncMessage(
+    _ scanMessage: String,
+    settings: RepositoryAutoSyncSettings
+  ) -> String {
+    guard settings.autoImportRemoteArticles else {
+      return scanMessage
+    }
+    return [
+      scanMessage,
+      CoreL10n.text("该站点未处于前台，已跳过自动导入；切换到该站点后可手动处理。")
+    ].joined(separator: " ")
+  }
+
+  private func setRepositoryAutoSyncState(
+    _ state: RepositoryAutoSyncState,
+    for profileID: UUID
+  ) {
+    repositoryAutoSyncStateByProfileID[profileID] = state
+    if profileID == boundAutomationProfileID {
+      repositoryAutoSyncState = state
+    }
   }
 
   private func performRepositoryAutoSync(
@@ -531,11 +934,12 @@ public final class RepositoryStore: ObservableObject {
     repositoryAutoSyncState.status = .scanned
     repositoryAutoSyncState.lastRunAt = now
     repositoryAutoSyncState.nextRunAt = repositoryAutoSyncSettings.nextRunDate(after: now)
-    let detectedRemoteFiles = repositoryReport?.remoteChangedFiles ?? []
+    let currentReport = repositoryReport(for: store.activeProfile, store: store)
+    let detectedRemoteFiles = currentReport?.remoteChangedFiles ?? []
     let detectedRemoteCount = detectedRemoteFiles.count
     repositoryAutoSyncState.remoteChangedFileCount = detectedRemoteCount
     repositoryAutoSyncState.remoteChangedPaths = detectedRemoteFiles.map(\.displayPath)
-    let articleFiles = repositoryReport?.remoteChangedFilesForRole(
+    let articleFiles = currentReport?.remoteChangedFilesForRole(
       role: .article,
       contentRoot: store.activeProfile.contentRoot,
       assetRoot: store.activeProfile.assetRoot
@@ -551,7 +955,7 @@ public final class RepositoryStore: ObservableObject {
 
     if repositoryAutoSyncSettings.autoImportRemoteArticles {
       let locallyChangedPaths = Set(
-        (repositoryReport?.changedFiles ?? []).map { $0.displayPath.normalizedRelativePath() }
+        (currentReport?.changedFiles ?? []).map { $0.displayPath.normalizedRelativePath() }
       )
       let candidatePaths = articleFiles
         .filter { ($0.kind == .added || $0.kind == .modified) }
@@ -571,7 +975,8 @@ public final class RepositoryStore: ObservableObject {
       let autoImport = store.autoImportRemoteArticleDrafts(
         remoteFiles: articleFiles,
         snapshots: snapshots,
-        locallyChangedPaths: locallyChangedPaths
+        locallyChangedPaths: locallyChangedPaths,
+        profileID: operation.profileID
       )
       let resolvedPaths = Set(autoImport.resolvedPaths.map { $0.normalizedRelativePath() })
       repositoryAutoSyncState.remoteChangedPaths.removeAll {
@@ -626,7 +1031,7 @@ public final class RepositoryStore: ObservableObject {
         token.trimmedForPublishing,
         for: store.activeProfile
       )
-      remoteRepositoryAccessCheck = nil
+      setRemoteRepositoryAccessCheck(nil, for: store.activeProfileID)
       repositoryTokenAvailability = try repositoryTokenAvailability(for: store.activeProfile)
       store.setPublishActionMessage(
         CoreL10n.text("仓库访问 Token 已保存到 Keychain。"),
@@ -680,7 +1085,7 @@ public final class RepositoryStore: ObservableObject {
   public func deleteRepositoryAccessToken(store: WorkbenchStore) {
     do {
       try repositoryTokenStore.deleteRepositoryToken(for: store.activeProfile)
-      remoteRepositoryAccessCheck = nil
+      setRemoteRepositoryAccessCheck(nil, for: store.activeProfileID)
       refreshRepositoryTokenAvailability(store: store)
       store.setPublishActionMessage(
         CoreL10n.text("仓库 Token 已删除。"),
@@ -701,7 +1106,7 @@ public final class RepositoryStore: ObservableObject {
       store.setPublishActionMessage(store.quickHideOperationMessage, status: .warning)
       return nil
     }
-    let profile = store.activeProfile
+    let profile = applyDetectedRepositoryRemoteIfNeeded(store: store)
     guard let operation = beginRemoteRepositoryCheck(profile: profile) else {
       store.setPublishActionMessage(
         CoreL10n.text("已有仓库权限检查或建仓任务正在运行，请等待完成。"),
@@ -714,13 +1119,17 @@ public final class RepositoryStore: ObservableObject {
       let token = try repositoryAccessToken(for: profile)
       let check = try await remoteRepositoryPublishService.checkAccess(profile: profile, token: token)
       guard remoteRepositoryCheckIsCurrent(operation, store: store) else { return nil }
-      remoteRepositoryAccessCheck = check
+      setRemoteRepositoryAccessCheck(check, for: profile.id)
       repositoryTokenAvailability = try repositoryTokenAvailability(for: profile)
       store.setPublishActionMessage(
         check.message,
         status: check.canWrite ? .success : .warning
       )
       store.save()
+      store.refreshPublishPreviewInBackground(for: store.selectedDraft)
+      await store.publishingStore.waitForPublishPreviewRefresh()
+      await store.refreshBatchPublishPlanAsync()
+      guard remoteRepositoryCheckIsCurrent(operation, store: store) else { return nil }
       return check
     } catch {
       guard remoteRepositoryCheckIsCurrent(operation, store: store) else { return nil }
@@ -729,6 +1138,20 @@ public final class RepositoryStore: ObservableObject {
         status: .failure
       )
       return nil
+    }
+  }
+
+  func setRemoteRepositoryAccessCheck(
+    _ check: RemoteRepositoryAccessCheck?,
+    for profileID: UUID
+  ) {
+    if let check {
+      remoteRepositoryAccessCheckByProfileID[profileID] = check
+    } else {
+      remoteRepositoryAccessCheckByProfileID.removeValue(forKey: profileID)
+    }
+    if profileID == boundAutomationProfileID {
+      remoteRepositoryAccessCheck = check
     }
   }
 

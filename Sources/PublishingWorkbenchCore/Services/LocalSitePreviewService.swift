@@ -13,6 +13,7 @@ public struct LocalSitePreviewPlan: Codable, Hashable, Sendable {
   public var notes: [String]
   public var usesDynamicPort: Bool
   public var diagnostics: LocalSitePreviewDiagnostics
+  public var executionIdentity: LocalSitePreviewExecutionIdentity?
 
   public var port: Int? {
     previewURL.port
@@ -27,7 +28,8 @@ public struct LocalSitePreviewPlan: Codable, Hashable, Sendable {
     previewURL: URL,
     notes: [String],
     usesDynamicPort: Bool = false,
-    diagnostics: LocalSitePreviewDiagnostics? = nil
+    diagnostics: LocalSitePreviewDiagnostics? = nil,
+    executionIdentity: LocalSitePreviewExecutionIdentity? = nil
   ) {
     self.siteKind = siteKind
     self.rootPath = rootPath
@@ -41,6 +43,7 @@ public struct LocalSitePreviewPlan: Codable, Hashable, Sendable {
       siteKind: siteKind,
       rootPath: rootPath
     )
+    self.executionIdentity = executionIdentity
   }
 
   private enum CodingKeys: String, CodingKey {
@@ -53,6 +56,7 @@ public struct LocalSitePreviewPlan: Codable, Hashable, Sendable {
     case notes
     case usesDynamicPort
     case diagnostics
+    case executionIdentity
   }
 
   public init(from decoder: Decoder) throws {
@@ -67,6 +71,10 @@ public struct LocalSitePreviewPlan: Codable, Hashable, Sendable {
     usesDynamicPort = try container.decodeIfPresent(Bool.self, forKey: .usesDynamicPort) ?? false
     diagnostics = try container.decodeIfPresent(LocalSitePreviewDiagnostics.self, forKey: .diagnostics)
       ?? LocalSitePreviewDiagnostics(siteKind: siteKind, rootPath: rootPath)
+    executionIdentity = try container.decodeIfPresent(
+      LocalSitePreviewExecutionIdentity.self,
+      forKey: .executionIdentity
+    )
   }
 
   public func encode(to encoder: Encoder) throws {
@@ -80,6 +88,7 @@ public struct LocalSitePreviewPlan: Codable, Hashable, Sendable {
     try container.encode(notes, forKey: .notes)
     try container.encode(usesDynamicPort, forKey: .usesDynamicPort)
     try container.encode(diagnostics, forKey: .diagnostics)
+    try container.encodeIfPresent(executionIdentity, forKey: .executionIdentity)
   }
 }
 
@@ -126,8 +135,15 @@ public final class LocalSitePreviewProcessService: @unchecked Sendable {
   private let processLock = NSLock()
   private let logCollector = LocalSitePreviewLogCollector(maximumLineCount: 80)
   private let stopExecutor = LocalSitePreviewStopExecutor()
+  private let trustStore: LocalSitePreviewTrustStore
 
-  public init() {}
+  public convenience init() {
+    self.init(trustStore: LocalSitePreviewTrustStore())
+  }
+
+  init(trustStore: LocalSitePreviewTrustStore) {
+    self.trustStore = trustStore
+  }
 
   static let trustedToolDirectories = [
       "/opt/homebrew/bin",
@@ -191,12 +207,18 @@ public final class LocalSitePreviewProcessService: @unchecked Sendable {
   public func start(plan: LocalSitePreviewPlan) throws -> LocalSitePreviewRuntimeStatus {
     processLock.lock()
     defer { processLock.unlock() }
-    if let process, process.isRunning {
-      return statusLocked()
-    }
-
     guard plan.diagnostics.isReadyToStart else {
       throw LocalSitePreviewError.dependencyDiagnostics(plan.diagnostics)
+    }
+    let identity = try validatedCurrentIdentity(for: plan)
+    guard trustStore.isAuthorized(identity) else {
+      throw LocalSitePreviewError.authorizationRequired
+    }
+    if let process, process.isRunning {
+      guard activePlan == plan else {
+        throw LocalSitePreviewError.executionPlanChanged
+      }
+      return statusLocked()
     }
     if let port = plan.port, !LocalSitePreviewPortAllocator.isPortAvailable(port) {
       throw LocalSitePreviewError.portUnavailable(port)
@@ -243,6 +265,131 @@ public final class LocalSitePreviewProcessService: @unchecked Sendable {
     startedAt = Date()
 
     return statusLocked()
+  }
+
+  func authorizationRequest(
+    for plan: LocalSitePreviewPlan
+  ) throws -> LocalSitePreviewAuthorizationRequest? {
+    let identity = try validatedCurrentIdentity(for: plan)
+    guard !trustStore.isAuthorized(identity) else { return nil }
+    return LocalSitePreviewAuthorizationRequest(
+      profileID: identity.profileID,
+      fingerprint: identity.fingerprint,
+      repositoryPath: identity.canonicalRootPath,
+      command: identity.command,
+      siteKind: identity.siteKind
+    )
+  }
+
+  func authorize(
+    plan: LocalSitePreviewPlan,
+    matching request: LocalSitePreviewAuthorizationRequest
+  ) throws {
+    let identity = try validatedCurrentIdentity(for: plan)
+    guard
+      request.profileID == identity.profileID,
+      request.fingerprint == identity.fingerprint,
+      request.repositoryPath == identity.canonicalRootPath,
+      request.command == identity.command,
+      request.siteKind == identity.siteKind
+    else {
+      throw LocalSitePreviewError.executionPlanChanged
+    }
+    try trustStore.authorize(identity)
+    guard trustStore.isAuthorized(identity) else {
+      throw LocalSitePreviewError.authorizationStoreUnavailable(
+        CoreL10n.text("授权记录写入后无法重新读取。")
+      )
+    }
+  }
+
+  func isExecutionCurrent(for plan: LocalSitePreviewPlan) -> Bool {
+    do {
+      _ = try validatedCurrentIdentity(for: plan)
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  func invalidateAuthorization(for plan: LocalSitePreviewPlan) {
+    guard let identity = plan.executionIdentity else { return }
+    trustStore.invalidate(identity)
+  }
+
+  private func validatedCurrentIdentity(
+    for plan: LocalSitePreviewPlan
+  ) throws -> LocalSitePreviewExecutionIdentity {
+    guard let plannedIdentity = plan.executionIdentity else {
+      throw LocalSitePreviewError.authorizationRequired
+    }
+    let canonicalRootPath = URL(fileURLWithPath: plan.rootPath, isDirectory: true)
+      .standardizedFileURL
+      .resolvingSymlinksInPath()
+      .path
+    var isDirectory: ObjCBool = false
+    guard
+      canonicalRootPath == plan.rootPath,
+      canonicalRootPath == plannedIdentity.canonicalRootPath,
+      FileManager.default.fileExists(atPath: canonicalRootPath, isDirectory: &isDirectory),
+      isDirectory.boolValue,
+      plan.siteKind == plannedIdentity.siteKind,
+      plan.executablePath == plannedIdentity.executablePath,
+      plan.arguments == plannedIdentity.arguments,
+      plan.command == plannedIdentity.command,
+      Self.isTrustedExecutable(atPath: plan.executablePath)
+    else {
+      trustStore.invalidate(plannedIdentity)
+      throw LocalSitePreviewError.executionPlanChanged
+    }
+
+    let currentIdentity: LocalSitePreviewExecutionIdentity
+    do {
+      currentIdentity = try LocalSitePreviewExecutionFingerprint.currentIdentity(
+        for: plan,
+        plannedIdentity: plannedIdentity
+      )
+    } catch {
+      trustStore.invalidate(plannedIdentity)
+      throw LocalSitePreviewError.executionPlanChanged
+    }
+    guard currentIdentity == plannedIdentity else {
+      trustStore.invalidate(plannedIdentity)
+      throw LocalSitePreviewError.executionPlanChanged
+    }
+    return currentIdentity
+  }
+
+  private static func isTrustedExecutable(atPath path: String) -> Bool {
+    let standardizedURL = URL(fileURLWithPath: path).standardizedFileURL
+    let parentPath = standardizedURL.deletingLastPathComponent().path
+    guard trustedToolDirectories.contains(parentPath) else { return false }
+    let resolvedURL = standardizedURL.resolvingSymlinksInPath().standardizedFileURL
+    let trustedResolvedRoots = [
+      "/opt/homebrew",
+      "/usr/local",
+      "/usr",
+      "/bin",
+      "/sbin",
+    ]
+    guard trustedResolvedRoots.contains(where: { rootPath in
+      resolvedURL.path == rootPath || resolvedURL.path.hasPrefix(rootPath + "/")
+    }), FileManager.default.isExecutableFile(atPath: resolvedURL.path) else {
+      return false
+    }
+#if canImport(Darwin)
+    var metadata = stat()
+    guard resolvedURL.path.withCString({ Darwin.lstat($0, &metadata) }) == 0 else {
+      return false
+    }
+    return (metadata.st_mode & S_IFMT) == S_IFREG
+#else
+    let values = try? resolvedURL.resourceValues(forKeys: [
+      .isRegularFileKey,
+      .isSymbolicLinkKey,
+    ])
+    return values?.isRegularFile == true && values?.isSymbolicLink != true
+#endif
   }
 
   public func stop() {
@@ -414,7 +561,7 @@ public struct LocalSitePreviewService {
         .resolvingSymlinksInPath()
         .path == configuredRootPath
     } ?? false
-    let rootPath = reportMatchesProfile ? repositoryReport?.rootPath ?? configuredRootPath : configuredRootPath
+    let rootPath = configuredRootPath
     let detectedSiteKind = reportMatchesProfile ? repositoryReport?.detectedKind : nil
     let siteKind = detectedSiteKind ?? profile.siteKind
 
@@ -467,10 +614,13 @@ public struct LocalSitePreviewService {
       )
     }
 
-    let executablePath = executableResolver(executableName)
-      ?? Self.trustedExecutableCandidates(named: executableName).first
-      ?? executableName
-    if let resolvedPath = executableResolver(executableName) {
+    let resolvedExecutablePath = executableResolver(executableName)
+    let executablePath = URL(
+      fileURLWithPath: resolvedExecutablePath
+        ?? Self.trustedExecutableCandidates(named: executableName).first
+        ?? executableName
+    ).standardizedFileURL.path
+    if let resolvedPath = resolvedExecutablePath {
       dependencies.append(
         LocalSitePreviewDependencyDiagnostic(
           id: "executable",
@@ -494,10 +644,35 @@ public struct LocalSitePreviewService {
       )
     }
 
+    let manifestSnapshot: LocalSitePreviewExecutionFingerprint.ManifestSnapshot?
+    do {
+      manifestSnapshot = try LocalSitePreviewExecutionFingerprint.captureManifest(
+        rootPath: rootPath,
+        siteKind: siteKind
+      )
+    } catch {
+      manifestSnapshot = nil
+      if siteKind == .jekyll {
+        issues.append(
+          LocalSitePreviewIssue(
+            id: "jekyll-manifest",
+            title: CoreL10n.text("无法安全读取 Jekyll 配置"),
+            message: CoreL10n.format(
+              "Gemfile 或 Gemfile.lock 无法在不跟随符号链接的情况下有界读取：%@",
+              error.localizedDescription
+            ),
+            severity: .error
+          )
+        )
+      }
+    }
+
     if let scriptName {
-      let packageURL = URL(fileURLWithPath: rootPath, isDirectory: true)
-        .appendingPathComponent("package.json")
-      if let data = try? Data(contentsOf: packageURL),
+      if let data = try? BoundedFileReader.data(
+        relativePath: "package.json",
+        under: URL(fileURLWithPath: rootPath, isDirectory: true),
+        maximumByteCount: Self.maximumPackageJSONByteCount
+      ),
          let object = try? JSONSerialization.jsonObject(with: data),
          let package = object as? [String: Any] {
         let scripts = (package["scripts"] as? [String: Any]) ?? [:]
@@ -645,6 +820,20 @@ public struct LocalSitePreviewService {
       dependencies: dependencies,
       issues: issues
     )
+    let executionIdentity: LocalSitePreviewExecutionIdentity?
+    do {
+      executionIdentity = try LocalSitePreviewExecutionFingerprint.makeIdentity(
+        profileID: profile.id,
+        rootPath: rootPath,
+        siteKind: siteKind,
+        executablePath: executablePath,
+        arguments: arguments,
+        command: command,
+        manifestSnapshot: manifestSnapshot
+      )
+    } catch {
+      executionIdentity = nil
+    }
 
     return LocalSitePreviewPlan(
       siteKind: siteKind,
@@ -655,7 +844,8 @@ public struct LocalSitePreviewService {
       previewURL: previewURL,
       notes: notes,
       usesDynamicPort: allocation?.usesDynamicPort == true,
-      diagnostics: diagnostics
+      diagnostics: diagnostics,
+      executionIdentity: executionIdentity
     )
   }
 
@@ -696,6 +886,8 @@ public struct LocalSitePreviewService {
       return 4000
     }
   }
+
+  private static let maximumPackageJSONByteCount = 1 * 1_024 * 1_024
 
   private static func packageManagerName(in rootPath: String) -> String {
     let rootURL = URL(fileURLWithPath: rootPath, isDirectory: true)

@@ -346,6 +346,7 @@ final class CodexAppServerClientTests: XCTestCase {
     let threadStart = try XCTUnwrap(messages.first { $0["method"]?.stringValue == "thread/start" })
     XCTAssertEqual(threadStart["params"]?["ephemeral"]?.boolValue, true)
     XCTAssertEqual(threadStart["params"]?["sandbox"]?.stringValue, "read-only")
+    XCTAssertNil(threadStart["params"]?["dynamicTools"])
     XCTAssertEqual(threadStart["params"]?["approvalPolicy"]?.stringValue, "never")
     XCTAssertTrue(
       threadStart["params"]?["developerInstructions"]?.stringValue?.contains(
@@ -527,11 +528,25 @@ final class CodexAppServerClientTests: XCTestCase {
     let dynamicTools = try XCTUnwrap(
       threadStart["params"]?["dynamicTools"]?.arrayValue
     )
+    XCTAssertEqual(dynamicTools.count, 1)
+    XCTAssertEqual(dynamicTools.first?["type"]?.stringValue, "function")
     XCTAssertEqual(dynamicTools.first?["name"]?.stringValue, "createDraft")
+    XCTAssertEqual(
+      dynamicTools.first?["inputSchema"]?["type"]?.stringValue,
+      "object"
+    )
+    XCTAssertEqual(
+      dynamicTools.first?["inputSchema"]?["properties"]?["value"]?["type"]?.stringValue,
+      "string"
+    )
     let response = try XCTUnwrap(
       messages.first { $0["id"]?.intValue == 91 && $0["method"] == nil }
     )
     XCTAssertEqual(response["result"]?["success"]?.boolValue, true)
+    XCTAssertEqual(
+      response["result"]?["contentItems"]?.arrayValue?.first?["type"]?.stringValue,
+      "inputText"
+    )
   }
 
 }

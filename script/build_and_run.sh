@@ -3,7 +3,6 @@ set -euo pipefail
 
 MODE="run"
 BUILD_CONFIGURATION="debug"
-APP_STORE_BUILD=0
 DIRECT_DISTRIBUTION_BUILD=0
 APP_NAME="PersonalSitePublisherMac"
 APP_DISPLAY_NAME="RepoPress Studio"
@@ -22,7 +21,6 @@ VERSION_VALUES="$(
 )"
 IFS=$'\t' read -r MARKETING_VERSION BUILD_NUMBER <<<"$VERSION_VALUES"
 DIST_DIR="${PERSONAL_SITE_PUBLISHER_DIST_DIR:-$ROOT_DIR/dist}"
-APP_STORE_SWIFT_SCRATCH_PATH="${APP_STORE_SWIFT_SCRATCH_PATH:-$ROOT_DIR/.build/app-store-swift}"
 APP_BUNDLE="$DIST_DIR/$APP_NAME.app"
 APP_CONTENTS="$APP_BUNDLE/Contents"
 APP_MACOS="$APP_CONTENTS/MacOS"
@@ -35,7 +33,6 @@ APP_ICON_SOURCE="$ROOT_DIR/Sources/PersonalSitePublisherMac/Resources/AppIcon.ic
 LOCALIZATION_SOURCE="$ROOT_DIR/Sources/PersonalSitePublisherMac/Resources"
 LOCALIZATION_CATALOG="$LOCALIZATION_SOURCE/Localizable.xcstrings"
 LOCAL_DEVELOPMENT_ENTITLEMENTS="$ROOT_DIR/Packaging/LocalDevelopment.entitlements"
-APP_STORE_ENTITLEMENTS="$ROOT_DIR/Sources/PersonalSitePublisherMac/AppStore.entitlements"
 DIRECT_DISTRIBUTION_ENTITLEMENTS="$ROOT_DIR/Packaging/DirectDistribution.entitlements"
 SAFARI_EXTENSION_ENTITLEMENTS="$ROOT_DIR/Packaging/SafariWebExtension.entitlements"
 SAFARI_EXTENSION_BUNDLE_ID="${SAFARI_WEB_EXTENSION_BUNDLE_ID:-$BUNDLE_ID.SafariExtension}"
@@ -120,7 +117,6 @@ Modes:
 
 Options:
   --release                 Build with SwiftPM's Release configuration.
-  --app-store               Build the Mac App Store Release variant.
   --direct                  Build the Developer ID direct-distribution Release variant.
   --configuration <name>   Select debug or release (default: debug).
   --screenshot-surface <id> Select a screenshot demo surface and imply --screenshot-demo.
@@ -149,11 +145,6 @@ list_screenshot_surfaces() {
 while [[ "$#" -gt 0 ]]; do
   case "$1" in
     --release)
-      BUILD_CONFIGURATION="release"
-      shift
-      ;;
-    --app-store)
-      APP_STORE_BUILD=1
       BUILD_CONFIGURATION="release"
       shift
       ;;
@@ -213,16 +204,8 @@ case "$BUILD_CONFIGURATION" in
     ;;
 esac
 
-if [[ "$APP_STORE_BUILD" == "1" && "$BUILD_CONFIGURATION" != "release" ]]; then
-  echo "App Store builds require the Release configuration" >&2
-  exit 2
-fi
 if [[ "$DIRECT_DISTRIBUTION_BUILD" == "1" && "$BUILD_CONFIGURATION" != "release" ]]; then
   echo "direct-distribution builds require the Release configuration" >&2
-  exit 2
-fi
-if [[ "$APP_STORE_BUILD" == "1" && "$DIRECT_DISTRIBUTION_BUILD" == "1" ]]; then
-  echo "--app-store and --direct are mutually exclusive" >&2
   exit 2
 fi
 if [[ -n "$CODEX_RUNTIME_SOURCE" || -n "$CODEX_RUNTIME_LICENSE_SOURCE" ]]; then
@@ -230,10 +213,6 @@ if [[ -n "$CODEX_RUNTIME_SOURCE" || -n "$CODEX_RUNTIME_LICENSE_SOURCE" ]]; then
     echo "bundled Codex runtime requires both REPOPRESS_CODEX_RUNTIME_PATH and REPOPRESS_CODEX_LICENSE_PATH" >&2
     exit 2
   }
-  if [[ "$APP_STORE_BUILD" == "1" ]]; then
-    echo "bundled Codex runtime is unavailable for the App Store build" >&2
-    exit 2
-  fi
   [[ -f "$CODEX_RUNTIME_SOURCE" && -x "$CODEX_RUNTIME_SOURCE" ]] || {
     echo "Codex runtime must be an executable file: $CODEX_RUNTIME_SOURCE" >&2
     exit 2
@@ -243,10 +222,8 @@ if [[ -n "$CODEX_RUNTIME_SOURCE" || -n "$CODEX_RUNTIME_LICENSE_SOURCE" ]]; then
     exit 2
   }
 fi
-if [[ "$APP_STORE_BUILD" == "1" ]]; then
-  DISTRIBUTION_CHANNEL="AppStore"
-  EXTERNAL_AI_AVAILABLE_PLIST="  <true/>"
-elif [[ "$DIRECT_DISTRIBUTION_BUILD" == "1" ]]; then
+EXTERNAL_AI_AVAILABLE_PLIST="  <true/>"
+if [[ "$DIRECT_DISTRIBUTION_BUILD" == "1" ]]; then
   if [[ "$BUNDLE_ID" != "com.jinfang.PersonalSitePublisherMac" ]]; then
     echo "DirectDistribution.entitlements is bound to com.jinfang.PersonalSitePublisherMac" >&2
     exit 2
@@ -276,10 +253,8 @@ if public_key != public_key.strip() or not public_key or any(character.isspace()
 PY
   fi
   DISTRIBUTION_CHANNEL="Direct"
-  EXTERNAL_AI_AVAILABLE_PLIST="  <true/>"
 else
   DISTRIBUTION_CHANNEL="Development"
-  EXTERNAL_AI_AVAILABLE_PLIST="  <true/>"
 fi
 if [[ "$DIRECT_DISTRIBUTION_BUILD" == "1" ]]; then
   escaped_update_feed_url="$(xml_escape "$UPDATE_FEED_URL")"
@@ -354,11 +329,6 @@ swift_build_options=(
   -c "$BUILD_CONFIGURATION"
   --disable-sandbox
 )
-if [[ "$APP_STORE_BUILD" == "1" ]]; then
-  swift_build_options+=(
-    --scratch-path "$APP_STORE_SWIFT_SCRATCH_PATH"
-  )
-fi
 if [[ "${PERSONAL_SITE_PUBLISHER_CAPTURE_BUILD:-0}" == "1" ]]; then
   swift_build_options+=(
     -Xswiftc -D
@@ -588,12 +558,6 @@ if [[ "$BUILD_CONFIGURATION" == "debug" ]]; then
     exit 1
   }
   code_sign_arguments+=(--entitlements "$LOCAL_DEVELOPMENT_ENTITLEMENTS")
-elif [[ "$APP_STORE_BUILD" == "1" ]]; then
-  [[ -f "$APP_STORE_ENTITLEMENTS" ]] || {
-    echo "App Store entitlements are missing: $APP_STORE_ENTITLEMENTS" >&2
-    exit 1
-  }
-  code_sign_arguments+=(--entitlements "$APP_STORE_ENTITLEMENTS")
 elif [[ "$DIRECT_DISTRIBUTION_BUILD" == "1" ]]; then
   [[ -f "$DIRECT_DISTRIBUTION_ENTITLEMENTS" ]] || {
     echo "direct-distribution entitlements are missing: $DIRECT_DISTRIBUTION_ENTITLEMENTS" >&2

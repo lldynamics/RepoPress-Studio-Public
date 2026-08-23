@@ -27,7 +27,7 @@ extension WritingDraftColumn {
     let validFolderIDs = Set(universeProjection.root.allFolderIDs)
     if folderExpansionSiteID != store.activeProfile.id {
       folderExpansionState = WritingDraftFolderExpansionState(
-        rootFolderIDs: universeProjection.topLevelNodes.map(\.id)
+        defaultExpandedTopLevelNodes: universeProjection.topLevelNodes
       )
       folderExpansionSiteID = store.activeProfile.id
     } else {

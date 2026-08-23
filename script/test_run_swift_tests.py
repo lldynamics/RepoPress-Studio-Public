@@ -120,6 +120,29 @@ if detached_exit_at and len(calls) == detached_exit_at:
     )
     raise SystemExit(0)
 
+pgid_escape_at = int(os.environ.get("SWIFT_PGID_ESCAPE_AT", "0"))
+if pgid_escape_at and len(calls) == pgid_escape_at:
+    # Keep a static pre-detach snapshot: the fixture proves that the runner
+    # must retain the descendant PID, not merely its initial process group.
+    child = subprocess.Popen(
+        [os.environ["FAKE_PGID_ESCAPE_XCTEST"], "60"],
+    )
+    Path(os.environ["HANG_CHILD_PID"]).write_text(str(child.pid), encoding="utf-8")
+    Path(os.environ["HANG_CHILD_PGID"]).write_text(str(os.getpgid(child.pid)), encoding="utf-8")
+    Path(os.environ["HANG_ROOT_PGID"]).write_text(str(os.getpgrp()), encoding="utf-8")
+    Path(os.environ["PROCESS_SNAPSHOT_PATH"]).write_text(
+        "\n".join(
+            (
+                f"{os.getpid()} {os.getppid()} {os.getpgrp()} {sys.executable} {__file__}",
+                f"{child.pid} {os.getpid()} {os.getpgid(child.pid)} "
+                f"{os.environ['FAKE_PGID_ESCAPE_XCTEST']}",
+            )
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    time.sleep(60)
+
 try:
     filter_value = sys.argv[sys.argv.index("--filter") + 1]
 except (ValueError, IndexError):
@@ -132,6 +155,21 @@ print(f"✔ Test run with {swift_testing} tests in 1 suite passed")
 '''
 
 
+FAKE_PGID_ESCAPE_XCTEST = r'''#!/usr/bin/env python3
+import os
+import time
+from pathlib import Path
+
+time.sleep(0.05)
+try:
+    os.setsid()
+except PermissionError:
+    os.setpgrp()
+Path(os.environ["PGID_ESCAPE_READY"]).write_text(str(os.getpgrp()), encoding="utf-8")
+time.sleep(60)
+'''
+
+
 FAKE_PS = r'''#!/usr/bin/env python3
 import os
 from pathlib import Path
@@ -140,6 +178,11 @@ snapshot = Path(os.environ["PROCESS_SNAPSHOT_PATH"])
 if snapshot.exists():
     Path(os.environ["PROCESS_SNAPSHOT_OBSERVED"]).write_text("observed\n", encoding="utf-8")
     print(snapshot.read_text(encoding="utf-8"), end="")
+'''
+
+
+FAILING_FAKE_PS = r'''#!/usr/bin/env python3
+raise SystemExit(1)
 '''
 
 
@@ -178,6 +221,13 @@ def fixture_inventory() -> list[str]:
         for index in range(1, 7)
     )
     rows.extend(
+        (
+            "PersonalSitePublisherMacTests.WebContentNetworkSecurityTests/testContentRule",
+            "PersonalSitePublisherMacTests.WebContentNetworkSecurityTests/testContentSecurityPolicy",
+            "PersonalSitePublisherMacTests.WebContentNetworkSecurityTests/testNetworkImages",
+        )
+    )
+    rows.extend(
         f"PersonalSitePublisherMacTests.MacSuite{index}/testValue"
         for index in range(1, 8)
     )
@@ -188,6 +238,12 @@ def fixture_inventory() -> list[str]:
     rows.extend(
         f"PublishingWorkbenchCoreTests.CoreSuite{index}/testValue"
         for index in range(1, 14)
+    )
+    rows.extend(
+        (
+            "PublishingWorkbenchCoreTests.AIModelDiscoveryServiceTests/testCatalog",
+            "PublishingWorkbenchCoreTests.AIModelDiscoveryServiceTests/testProxy",
+        )
     )
     rows.extend(
         (
@@ -263,11 +319,17 @@ def make_fixture(
     fake_ps = bin_dir / "ps"
     fake_ps.write_text(FAKE_PS, encoding="utf-8")
     fake_ps.chmod(0o755)
+    failing_ps = bin_dir / "failing-ps"
+    failing_ps.write_text(FAILING_FAKE_PS, encoding="utf-8")
+    failing_ps.chmod(0o755)
     fake_sample = bin_dir / "sample"
     fake_sample.write_text(FAKE_SAMPLE, encoding="utf-8")
     fake_sample.chmod(0o755)
     fake_xctest = bin_dir / "Fixture.xctest"
     fake_xctest.symlink_to("/bin/sleep")
+    fake_pgid_escape_xctest = bin_dir / "PGIDEscapeFixture.xctest"
+    fake_pgid_escape_xctest.write_text(FAKE_PGID_ESCAPE_XCTEST, encoding="utf-8")
+    fake_pgid_escape_xctest.chmod(0o755)
 
     paths = {
         "call_log": str(root / "calls.json"),
@@ -282,8 +344,11 @@ def make_fixture(
         "slow_ps_started": str(root / "slow-ps-started.txt"),
         "fake_swift": str(fake_swift),
         "fake_ps": str(fake_ps),
+        "failing_ps": str(failing_ps),
         "fake_sample": str(fake_sample),
         "fake_xctest": str(fake_xctest),
+        "fake_pgid_escape_xctest": str(fake_pgid_escape_xctest),
+        "pgid_escape_ready": str(root / "pgid-escape-ready"),
     }
     return temporary, root, paths
 
@@ -314,12 +379,14 @@ def fixture_environment(paths: dict[str, str], **extra: str) -> dict[str, str]:
             "SWIFT_INVENTORY": paths["inventory"],
             "PS_BIN": paths["fake_ps"],
             "FAKE_XCTEST": paths["fake_xctest"],
+            "FAKE_PGID_ESCAPE_XCTEST": paths["fake_pgid_escape_xctest"],
             "HANG_CHILD_PID": paths["hang_child_pid"],
             "HANG_CHILD_PGID": paths["hang_child_pgid"],
             "HANG_ROOT_PGID": paths["hang_root_pgid"],
             "PROCESS_SNAPSHOT_PATH": paths["process_snapshot"],
             "PROCESS_SNAPSHOT_OBSERVED": paths["process_snapshot_observed"],
             "SLOW_PS_STARTED": paths["slow_ps_started"],
+            "PGID_ESCAPE_READY": paths["pgid_escape_ready"],
             "SWIFT_TEST_LIST_TIMEOUT_SECONDS": "5",
             **extra,
         }
@@ -403,6 +470,14 @@ def test_successful_partition_and_exact_argv() -> None:
         assert len(cache) == 1
         assert len(cache[0]["tests"]) == 2
         assert cache[0]["filter"] == r"^PersonalSitePublisherMacTests\.(WorkbenchImageTwoTierCacheTests)/"
+        web_content_security = [
+            shard for shard in shards if shard["slug"] == "web-content-security"
+        ]
+        assert len(web_content_security) == 1
+        assert len(web_content_security[0]["tests"]) == 3
+        assert web_content_security[0]["filter"] == (
+            r"^PersonalSitePublisherMacTests\.(WebContentNetworkSecurityTests)/"
+        )
         mac_cases = [
             shard
             for shard in shards
@@ -427,8 +502,13 @@ def test_successful_partition_and_exact_argv() -> None:
         core_cases = [
             shard for shard in shards if shard["slug"].startswith("core-case-")
         ]
-        assert len(core_cases) == 2
+        assert len(core_cases) == 4
         assert all(len(shard["tests"]) == 1 for shard in core_cases)
+        assert {
+            test.split("/", 1)[0].rsplit(".", 1)[-1]
+            for shard in core_cases
+            for test in shard["tests"]
+        } == {"AIModelDiscoveryServiceTests", "CodexAppServerClientTests"}
         assert all(
             shard["filter"] == f"^{re.escape(shard['tests'][0])}$"
             for shard in core_cases
@@ -549,6 +629,11 @@ def test_manifest_inventory_and_baseline_fail_closed() -> None:
             "required isolated suite is missing",
             1,
         ),
+        (
+            {"missing_suite": "WebContentNetworkSecurityTests"},
+            "required isolated suite is missing",
+            1,
+        ),
     ):
         temporary, root, paths = make_fixture(**options)
         with temporary:
@@ -666,6 +751,41 @@ def test_timeout_samples_and_removes_child_process_group() -> None:
         assert sample_calls and sample_calls[0][0] == str(child_pid)
 
 
+def test_timeout_kills_descendant_after_it_changes_process_group() -> None:
+    temporary, root, paths = make_fixture()
+    with temporary:
+        try:
+            result = run_fixture(
+                root,
+                paths,
+                SWIFT_PGID_ESCAPE_AT="2",
+                PS_BIN=paths["failing_ps"],
+                SWIFT_TEST_SHARD_RETRIES="0",
+                SWIFT_TEST_SHARD_TIMEOUT_SECONDS="0.5",
+                SWIFT_TEST_TERMINATION_GRACE_SECONDS="0.2",
+            )
+            assert result.returncode == 124, result
+            wait_for_path(Path(paths["pgid_escape_ready"]))
+            child_pid = int(Path(paths["hang_child_pid"]).read_text(encoding="utf-8"))
+            child_pgid = int(Path(paths["hang_child_pgid"]).read_text(encoding="utf-8"))
+            escaped_pgid = int(
+                Path(paths["pgid_escape_ready"]).read_text(encoding="utf-8")
+            )
+            root_pgid = int(Path(paths["hang_root_pgid"]).read_text(encoding="utf-8"))
+            assert child_pgid == root_pgid
+            assert escaped_pgid != root_pgid
+            time.sleep(0.1)
+            assert not process_exists(child_pid), child_pid
+        finally:
+            if Path(paths["hang_child_pid"]).exists():
+                child_pid = int(Path(paths["hang_child_pid"]).read_text(encoding="utf-8"))
+                if process_exists(child_pid):
+                    try:
+                        os.kill(child_pid, signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass
+
+
 def test_leader_exit_cleans_detached_child_and_fails_missing_counts() -> None:
     temporary, root, paths = make_fixture()
     with temporary:
@@ -731,6 +851,7 @@ def main() -> int:
     test_timeout_retries_once_then_passes_with_distinct_evidence()
     test_repeated_timeout_retries_once_then_fails_closed()
     test_timeout_samples_and_removes_child_process_group()
+    test_timeout_kills_descendant_after_it_changes_process_group()
     test_leader_exit_cleans_detached_child_and_fails_missing_counts()
     test_external_sigterm_is_forwarded_to_active_shard()
     print("swift test process runner contract: passed")

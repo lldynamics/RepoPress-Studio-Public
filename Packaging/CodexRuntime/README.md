@@ -16,5 +16,6 @@ the same identity as RepoPress, and verifies the final bundle seal. Release main
 responsible for selecting the correct architecture, verifying the upstream checksum and license,
 and running notarization on the completed direct-distribution artifact.
 
-App Store builds reject this option because spawning a bundled command-line runtime is not part of
-the App Store sandbox distribution path.
+Bundling this optional runtime is limited to the signed direct-distribution artifact. Builds that
+do not provide these reviewed inputs use the system-installed `codex` executable or leave the
+runtime unavailable; this option does not change the direct-distribution boundary.

@@ -32,6 +32,37 @@ public enum AIConversationScope: Codable, Hashable, Sendable {
   }
 }
 
+/// Freezes the article conversation selected by a UI surface before any
+/// asynchronous attachment preparation begins. The complete value is retained
+/// so an in-place mutation, such as clearing a conversation without changing
+/// its ID, also fails the pending send closed. A `nil` conversation is a
+/// meaningful expectation: none existed at submission time.
+public struct AIChatDraftConversationExpectation: Equatable, Sendable {
+  public let draftID: UUID
+  public let conversation: AIConversation?
+
+  public var conversationID: UUID? { conversation?.id }
+
+  public init(draftID: UUID, conversation: AIConversation?) {
+    self.draftID = draftID
+    self.conversation = conversation
+  }
+}
+
+/// Freezes whether a general conversation existed before asynchronous UI
+/// preparation, including its exact contents and settings. The outer optional
+/// at API call sites means "do not validate"; this value with a `nil`
+/// conversation means "validate that none exists".
+public struct AIChatGeneralConversationExpectation: Equatable, Sendable {
+  public let conversation: AIConversation?
+
+  public var conversationID: UUID? { conversation?.id }
+
+  public init(conversation: AIConversation?) {
+    self.conversation = conversation
+  }
+}
+
 /// The authority a single conversation may use when the connected profile
 /// offers Agent tools.  A conversation can only narrow the connection-level
 /// permission; it can never grant tools when the connection has disabled them.

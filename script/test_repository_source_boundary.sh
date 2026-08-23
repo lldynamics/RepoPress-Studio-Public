@@ -41,12 +41,12 @@ rm -f "$TMP_DIR/docs/local-notes.md"
 REPOSITORY_SOURCE_BOUNDARY_ROOT="$TMP_DIR" bash "$CHECK" --release >/dev/null \
   || fail "clean committed checkout should pass release mode"
 
-mkdir -p "$TMP_DIR/docs/app-store/public-pages"
-printf 'untracked release note\n' >"$TMP_DIR/docs/app-store/public-pages/untracked.html"
+mkdir -p "$TMP_DIR/docs/public-pages"
+printf 'untracked release note\n' >"$TMP_DIR/docs/public-pages/untracked.html"
 if REPOSITORY_SOURCE_BOUNDARY_ROOT="$TMP_DIR" bash "$CHECK" >/dev/null 2>&1; then
   fail "untracked public page should fail"
 fi
-rm -f "$TMP_DIR/docs/app-store/public-pages/untracked.html"
+rm -f "$TMP_DIR/docs/public-pages/untracked.html"
 
 printf 'let missing = true\n' >"$TMP_DIR/Sources/App/Missing.swift"
 if REPOSITORY_SOURCE_BOUNDARY_ROOT="$TMP_DIR" bash "$CHECK" >/dev/null 2>&1; then

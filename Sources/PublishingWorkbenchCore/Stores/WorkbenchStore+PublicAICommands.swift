@@ -185,12 +185,14 @@ extension WorkbenchStore {
   public func retryLastFailedAIChatReply(
     confirmingPossibleDuplicateCharge: Bool = false,
     draft: ArticleDraft? = nil,
-    ownerToken: UUID? = nil
+    ownerToken: UUID? = nil,
+    expectedContextMode: AIPublishingChatContextMode? = nil
   ) async -> AIPublishingChatMessage? {
     await aiStore.retryLastFailedAIChatReply(
       confirmingPossibleDuplicateCharge: confirmingPossibleDuplicateCharge,
       draft: draft,
-      ownerToken: ownerToken
+      ownerToken: ownerToken,
+      expectedContextMode: expectedContextMode
     )
   }
 
@@ -215,14 +217,18 @@ extension WorkbenchStore {
     draft: ArticleDraft? = nil,
     imageAttachments: [AIChatImageAttachment] = [],
     contextReferences: [AIContextReference] = [],
-    ownerToken: UUID? = nil
+    ownerToken: UUID? = nil,
+    expectedContextMode: AIPublishingChatContextMode? = nil,
+    expectedDraftConversation: AIChatDraftConversationExpectation? = nil
   ) async -> AIPublishingChatMessage? {
     await aiStore.sendAIChatMessage(
       text,
       draft: draft,
       imageAttachments: imageAttachments,
       contextReferences: contextReferences,
-      ownerToken: ownerToken
+      ownerToken: ownerToken,
+      expectedContextMode: expectedContextMode,
+      expectedDraftConversation: expectedDraftConversation
     )
   }
 

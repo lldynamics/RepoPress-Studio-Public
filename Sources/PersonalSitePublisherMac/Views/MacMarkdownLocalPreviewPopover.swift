@@ -6,6 +6,7 @@ struct MacMarkdownLocalPreviewPopover: View {
   let currentArticleURL: URL?
 
   @State private var isCheckingReachability = false
+  @State private var pendingAuthorizationRequest: LocalSitePreviewAuthorizationRequest?
 
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
@@ -15,8 +16,16 @@ struct MacMarkdownLocalPreviewPopover: View {
     }
     .frame(width: 360)
     .task(id: state.activeProfileID) {
+      pendingAuthorizationRequest = nil
       state.refreshStatus()
     }
+    .localSitePreviewTrustConfirmation(
+      request: $pendingAuthorizationRequest,
+      entryPoint: .markdownPopover,
+      authorize: { request in
+        state.authorizeAndStart(request)
+      }
+    )
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("markdown-local-site-preview-popover")
   }
@@ -184,7 +193,10 @@ struct MacMarkdownLocalPreviewPopover: View {
       if state.runtimeStatus.isRunning {
         state.stop()
       } else {
-        state.start()
+        pendingAuthorizationRequest = LocalSitePreviewTrustConfirmationPolicy.request(
+          from: state.start(),
+          entryPoint: .markdownPopover
+        )
       }
     } label: {
       Label(

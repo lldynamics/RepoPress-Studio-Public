@@ -80,4 +80,4 @@ Apple 安全时间戳、公证票据和磁盘镜像元数据会变化，因此 m
 
 `Packaging/BuildVersion.xcconfig` 是 `MARKETING_VERSION` 和 `CURRENT_PROJECT_VERSION` 的唯一提交来源。SwiftPM-first 工程不会自动递增构建号；详细规则见 [`release-versioning.md`](release-versioning.md)。
 
-本地检查不能证明 App Store Connect 会接受某个构建号，也不能替代对真实下载地址、appcast 和线上产物的发布后验证。
+本地检查不能证明某个构建号从未在更新渠道中发布，也不能替代对真实下载地址、appcast 和线上产物的发布后验证。

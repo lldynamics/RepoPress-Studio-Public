@@ -19,13 +19,29 @@ final class RepositoryDeploymentCoordinator {
 
   @discardableResult
   func tickOperationalPolling(store: WorkbenchStore, now: Date) async -> Bool {
-    let repositoryDidRun = await repositoryStore.tickRepositoryAutoSync(store: store, now: now)
-    let deploymentDidRun = await deploymentStore.tickDeploymentPolling(store: store, now: now)
-    return repositoryDidRun || deploymentDidRun
+    let profiles = store.profiles.filter { $0.purpose == .publishing }
+    var didRun = false
+    for profile in profiles {
+      // Both stores receive an explicit profile ID. The repository store uses
+      // a non-importing background path for non-active profiles, while the
+      // deployment store resolves credentials and release records from the
+      // frozen profile without selecting it in the UI.
+      didRun = await repositoryStore.tickRepositoryAutoSync(
+        for: profile.id,
+        store: store,
+        now: now
+      ) || didRun
+      didRun = await deploymentStore.tickDeploymentPolling(
+        for: profile.id,
+        store: store,
+        now: now
+      ) || didRun
+    }
+    return didRun
   }
 
-  func recordRemotePublish(_ result: RemoteRepositoryPublishResult) {
-    repositoryStore.recordRemoteRepositoryPublishInAutoSync(result)
+  func recordRemotePublish(_ result: RemoteRepositoryPublishResult, profileID: UUID) {
+    repositoryStore.recordRemoteRepositoryPublishInAutoSync(result, for: profileID)
   }
 
   func shouldRefreshDeployment(after record: ReleaseRecord, store: WorkbenchStore) -> Bool {

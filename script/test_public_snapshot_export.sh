@@ -37,10 +37,16 @@ cmp -s "$ROOT_DIR/TRADEMARKS.md" "$SNAPSHOT_DIR/TRADEMARKS.md" \
   || fail "public trademark policy differs from its reviewed source"
 [[ -f "$SNAPSHOT_DIR/Sources/PersonalSitePublisherMac/Support/ThinRedScroller.swift" ]] \
   || fail "current untracked source files were not included"
+[[ ! -e "$SNAPSHOT_DIR/RELEASE_CHECKLIST.md" ]] \
+  || fail "internal release checklist was exported"
 [[ ! -e "$SNAPSHOT_DIR/APP_STORE_CHECKLIST.md" ]] \
-  || fail "internal App Store checklist was exported"
+  || fail "legacy internal App Store checklist was exported"
+[[ ! -e "$SNAPSHOT_DIR/docs/release-screenshots" ]] \
+  || fail "release screenshots were exported"
 [[ ! -e "$SNAPSHOT_DIR/docs/app-store-screenshots" ]] \
-  || fail "App Store screenshots were exported"
+  || fail "legacy App Store screenshots were exported"
+[[ ! -e "$SNAPSHOT_DIR/docs/private-release" ]] \
+  || fail "private release material was exported"
 [[ ! -e "$SNAPSHOT_DIR/docs/release-evidence" ]] \
   || fail "internal release evidence was exported"
 [[ ! -e "$SNAPSHOT_DIR/BrowserExtension/release-ledger.json" ]] \
@@ -70,12 +76,12 @@ if bash "$CHECKER" "$SNAPSHOT_DIR" >/dev/null 2>&1; then
 fi
 rm -f "$SNAPSHOT_DIR/.env"
 
-mkdir -p "$SNAPSHOT_DIR/docs/app-store-screenshots"
-printf 'unreviewed image\n' >"$SNAPSHOT_DIR/docs/app-store-screenshots/private.png"
+mkdir -p "$SNAPSHOT_DIR/docs/release-screenshots"
+printf 'unreviewed image\n' >"$SNAPSHOT_DIR/docs/release-screenshots/private.png"
 if bash "$CHECKER" "$SNAPSHOT_DIR" >/dev/null 2>&1; then
   fail "unreviewed screenshot paths must fail the public snapshot gate"
 fi
-rm -rf "$SNAPSHOT_DIR/docs/app-store-screenshots"
+rm -rf "$SNAPSHOT_DIR/docs/release-screenshots"
 
 ln -s README.md "$SNAPSHOT_DIR/local-link"
 if bash "$CHECKER" "$SNAPSHOT_DIR" >/dev/null 2>&1; then
@@ -108,11 +114,11 @@ git -C "$SNAPSHOT_DIR" config user.email "public-gate@example.invalid"
 git -C "$SNAPSHOT_DIR" config user.name "Public Gate Test"
 git -C "$SNAPSHOT_DIR" add -A
 git -C "$SNAPSHOT_DIR" commit -qm "public baseline"
-mkdir -p "$SNAPSHOT_DIR/docs/app-store-screenshots"
-printf 'historical private image\n' >"$SNAPSHOT_DIR/docs/app-store-screenshots/private.png"
+mkdir -p "$SNAPSHOT_DIR/docs/release-screenshots"
+printf 'historical private image\n' >"$SNAPSHOT_DIR/docs/release-screenshots/private.png"
 git -C "$SNAPSHOT_DIR" add -A
 git -C "$SNAPSHOT_DIR" commit -qm "add private fixture"
-rm -rf "$SNAPSHOT_DIR/docs/app-store-screenshots"
+rm -rf "$SNAPSHOT_DIR/docs/release-screenshots"
 git -C "$SNAPSHOT_DIR" add -A
 git -C "$SNAPSHOT_DIR" commit -qm "remove private fixture"
 if bash "$CHECKER" "$SNAPSHOT_DIR" >/dev/null 2>&1; then

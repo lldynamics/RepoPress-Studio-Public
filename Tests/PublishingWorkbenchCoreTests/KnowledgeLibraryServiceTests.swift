@@ -1175,6 +1175,121 @@ final class KnowledgeLibraryServiceTests: XCTestCase {
     }
   }
 
+  func testEPUBRejectsDTDAfterLongPreamble() throws {
+    let rootURL = temporaryDirectory(named: "knowledge-epub-xml-security")
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let preamble = String(repeating: "preamble", count: 3_000)
+    let sourceURL = try makeEPUB(
+      in: rootURL,
+      packageXML: """
+      <?xml version="1.0" encoding="UTF-8"?>
+      <!--\(preamble)-->
+      <!DOCTYPE package [<!ENTITY blocked "must not expand">]>
+      <package xmlns="http://www.idpf.org/2007/opf" version="3.0">
+        <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+          <dc:title>&blocked;</dc:title>
+        </metadata>
+        <manifest><item id="chapter" href="chapter.xhtml" media-type="application/xhtml+xml"/></manifest>
+        <spine><itemref idref="chapter"/></spine>
+      </package>
+      """,
+      chapters: [
+        "OEBPS/chapter.xhtml": "<html><body><h1>Chapter</h1><p>Body</p></body></html>"
+      ]
+    )
+
+    XCTAssertThrowsError(
+      try KnowledgeEPUBParser().parse(
+        data: Data(contentsOf: sourceURL),
+        sourceName: "attack.epub"
+      )
+    ) { error in
+      guard case let KnowledgeLibraryError.unreadableSource(message) = error else {
+        return XCTFail("Expected unreadableSource, got \(error)")
+      }
+      XCTAssertTrue(message.contains("DTD") || message.contains("实体"))
+    }
+  }
+
+  func testEPUBXMLEnforcesCharacterAndElementDepthLimits() throws {
+    let rootURL = temporaryDirectory(named: "knowledge-epub-xml-limits")
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let nestedPrefix = String(repeating: "<nested>", count: 300)
+    let nestedSuffix = String(repeating: "</nested>", count: 300)
+    let deepPackage = """
+      <?xml version="1.0" encoding="UTF-8"?>
+      <package xmlns="http://www.idpf.org/2007/opf" version="3.0">
+        \(nestedPrefix)<metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>Deep</dc:title></metadata>\(nestedSuffix)
+        <manifest><item id="chapter" href="chapter.xhtml" media-type="application/xhtml+xml"/></manifest>
+        <spine><itemref idref="chapter"/></spine>
+      </package>
+      """
+    let largeTitle = String(repeating: "x", count: 5 * 1_024 * 1_024 + 1)
+    let largePackage = """
+      <?xml version="1.0" encoding="UTF-8"?>
+      <package xmlns="http://www.idpf.org/2007/opf" version="3.0">
+        <metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>\(largeTitle)</dc:title></metadata>
+        <manifest><item id="chapter" href="chapter.xhtml" media-type="application/xhtml+xml"/></manifest>
+        <spine><itemref idref="chapter"/></spine>
+      </package>
+      """
+
+    for (index, packageXML) in [deepPackage, largePackage].enumerated() {
+      let sourceURL = try makeEPUB(
+        in: rootURL.appendingPathComponent("case-\(index)", isDirectory: true),
+        packageXML: packageXML,
+        chapters: [
+          "OEBPS/chapter.xhtml": "<html><body><h1>Chapter</h1><p>Body</p></body></html>"
+        ]
+      )
+      XCTAssertThrowsError(
+        try KnowledgeEPUBParser().parse(
+          data: Data(contentsOf: sourceURL),
+          sourceName: "limits-\(index).epub"
+        )
+      ) { error in
+        guard case KnowledgeLibraryError.sourceLimitExceeded = error else {
+          return XCTFail("Expected sourceLimitExceeded, got \(error)")
+        }
+      }
+    }
+  }
+
+  func testEPUBPackageRecordCountIsBounded() throws {
+    let rootURL = temporaryDirectory(named: "knowledge-epub-record-limit")
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let items = (0...10_000).map { index in
+      "<item id=\"item-\(index)\" href=\"chapter-\(index).xhtml\" media-type=\"text/html\"/>"
+    }.joined()
+    let packageXML = """
+      <?xml version="1.0" encoding="UTF-8"?>
+      <package xmlns="http://www.idpf.org/2007/opf" version="3.0">
+        <metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>Many items</dc:title></metadata>
+        <manifest>\(items)</manifest>
+        <spine><itemref idref="item-0"/></spine>
+      </package>
+      """
+    let sourceURL = try makeEPUB(
+      in: rootURL,
+      packageXML: packageXML,
+      chapters: [
+        "OEBPS/chapter-0.xhtml": "<html><body><h1>Chapter</h1><p>Body</p></body></html>"
+      ]
+    )
+
+    XCTAssertThrowsError(
+      try KnowledgeEPUBParser().parse(
+        data: Data(contentsOf: sourceURL),
+        sourceName: "record-limit.epub"
+      )
+    ) { error in
+      guard case let KnowledgeLibraryError.sourceLimitExceeded(message) = error else {
+        return XCTFail("Expected sourceLimitExceeded, got \(error)")
+      }
+      XCTAssertTrue(message.contains("记录"))
+    }
+  }
+
   func testFoldersPersistClassificationSizeAndSurviveReimport() async throws {
     let rootURL = temporaryDirectory(named: "knowledge-folders")
     defer { try? FileManager.default.removeItem(at: rootURL) }

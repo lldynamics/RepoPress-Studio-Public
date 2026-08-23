@@ -137,8 +137,18 @@ public final class WorkbenchLocalSitePreviewFeatureFacade: ObservableObject {
     store.publishingStore.localSitePreviewRefreshToken
   }
 
-  public func start() {
-    store.startLocalSitePreview()
+  public func start() -> LocalSitePreviewStartDisposition {
+    store.publishingStore.refreshLocalSitePreviewPlan(
+      for: store.activeProfile,
+      repositoryReport: store.repositoryReport(for: store.activeProfile)
+    )
+    return store.publishingStore.startLocalSitePreview()
+  }
+
+  public func authorizeAndStart(
+    _ request: LocalSitePreviewAuthorizationRequest
+  ) -> LocalSitePreviewStartDisposition {
+    store.publishingStore.authorizeAndStartLocalSitePreview(request)
   }
 
   public func stop() {

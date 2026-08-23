@@ -609,14 +609,29 @@ extension RepositoryWorkspaceView {
             .font(.caption.monospaced())
             .foregroundStyle(.secondary)
             .workbenchTruncatedIdentity(remote.remoteURL, lineLimit: 2)
+          let permissionAction = RepositoryPermissionActionPresentation.make(
+            configuredOwner: store.activeProfile.repoOwner,
+            configuredRepository: store.activeProfile.repoName,
+            detectedOrigin: remote
+          )
           Button {
-            store.applyDetectedRepositoryRemote()
+            Task {
+              await store.checkRepositoryTokenAccess()
+            }
           } label: {
-            Label("用于线上发布", systemImage: "paperplane")
+            Label(permissionAction.title, systemImage: "person.badge.key")
               .frame(maxWidth: .infinity)
           }
           .buttonStyle(.bordered)
           .controlSize(.regular)
+          .disabled(
+            !permissionAction.isEnabled
+              || store.isRemoteRepositoryChecking
+              || store.isRemoteRepositoryPublishing
+          )
+          .help(permissionAction.help)
+          .accessibilityLabel(permissionAction.title)
+          .accessibilityHint(permissionAction.help)
         }
       }
       .font(.callout)

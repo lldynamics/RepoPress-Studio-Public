@@ -148,7 +148,9 @@ public final class WorkbenchStore: ObservableObject {
   public var draftRepositoryCleanupRequests: [DraftRepositoryCleanupRequest] {
     publishingStore.draftRepositoryCleanupRequests
   }
-  public var repositoryReport: RepositoryScanReport? { repositoryStore.repositoryReport }
+  public var repositoryReport: RepositoryScanReport? {
+    repositoryStore.repositoryReport(for: activeProfile, store: self)
+  }
   public var imageWorkbenchReport: ImageWorkbenchReport? { publishingStore.imageWorkbenchReport }
 
   public init(
@@ -375,8 +377,15 @@ public final class WorkbenchStore: ObservableObject {
     )
     self.repositoryStore = RepositoryStore(
       remoteRepositoryAccessCheck: snapshot?.remoteRepositoryAccessCheck,
+      remoteRepositoryAccessCheckByProfileID:
+        snapshot?.remoteRepositoryAccessCheckByProfileID ?? [:],
       repositoryAutoSyncSettings: snapshot?.repositoryAutoSyncSettings ?? .default,
       repositoryAutoSyncState: snapshot?.repositoryAutoSyncState ?? .idle,
+      repositoryAutoSyncSettingsByProfileID:
+        snapshot?.repositoryAutoSyncSettingsByProfileID ?? [:],
+      repositoryAutoSyncStateByProfileID:
+        snapshot?.repositoryAutoSyncStateByProfileID ?? [:],
+      activeProfileID: initialActiveProfileID,
       repositoryService: repositoryService,
       repositoryTokenStore: repositoryTokenStore,
       remoteRepositoryPublishService: remoteRepositoryPublishService,
@@ -394,6 +403,11 @@ public final class WorkbenchStore: ObservableObject {
       deploymentStatusHistory: snapshot?.deploymentStatusHistory ?? [:],
       deploymentPollingSettings: snapshot?.deploymentPollingSettings ?? .default,
       deploymentPollingState: snapshot?.deploymentPollingState ?? .idle,
+      deploymentPollingSettingsByProfileID:
+        snapshot?.deploymentPollingSettingsByProfileID ?? [:],
+      deploymentPollingStateByProfileID:
+        snapshot?.deploymentPollingStateByProfileID ?? [:],
+      activeProfileID: initialActiveProfileID,
       deploymentStatusService: deploymentStatusService,
       deploymentTokenStore: deploymentTokenStore,
       releaseLedgerService: releaseLedgerService
@@ -447,6 +461,14 @@ public final class WorkbenchStore: ObservableObject {
       siteMaintenanceService: siteMaintenanceService,
       imageWorkbenchService: imageWorkbenchService
     )
+    repositoryStore.setActiveProfile(
+      initialActiveProfileID,
+      validProfileIDs: Set(initialProfiles.map(\.id))
+    )
+    deploymentStore.setActiveProfile(
+      initialActiveProfileID,
+      validProfileIDs: Set(initialProfiles.map(\.id))
+    )
     publishingStore.objectWillChange
       .sink { [weak self] _ in self?.objectWillChange.send() }
       .store(in: &childStoreCancellables)
@@ -467,6 +489,14 @@ public final class WorkbenchStore: ObservableObject {
         else {
           return
         }
+        self.repositoryStore.setActiveProfile(
+          profileID,
+          validProfileIDs: Set(self.publishingStore.profiles.map(\.id))
+        )
+        self.deploymentStore.setActiveProfile(
+          profileID,
+          validProfileIDs: Set(self.publishingStore.profiles.map(\.id))
+        )
         self.aiStore.refreshAIKeyAvailability(for: profile)
         self.refreshSiteAnalyticsTokenAvailability(for: profile)
       }

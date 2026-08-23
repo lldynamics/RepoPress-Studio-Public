@@ -1265,6 +1265,36 @@ require_literal \
   "formatting toolbar buttons must expose a visible keyboard focus state"
 
 require_literal \
+  "Sources/PersonalSitePublisherMac/Support/ZenModeController.swift" \
+  "isKeyboardNavigationActive" \
+  "Zen mode must keep a typed keyboard-navigation session"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Support/ZenModeController.swift" \
+  "isVoiceOverEnabled" \
+  "Zen mode must keep its toolbar visible while VoiceOver is enabled"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Support/ZenModeController.swift" \
+  "isReduceMotionEnabled" \
+  "Zen mode transitions must honor Reduce Motion"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/MacMarkdownComposerToolbars.swift" \
+  ".accessibilityIdentifier(\"markdown-editor-toolbar\")" \
+  "the editor toolbar must expose a stable accessibility identifier"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/MacMarkdownFormattingToolbar.swift" \
+  ".accessibilityIdentifier(\"markdown-formatting-toolbar\")" \
+  "the formatting toolbar must expose a stable accessibility identifier"
+
+require_literal \
+  "UITests/WorkspaceAccessibilityUITests/WorkspaceAccessibilityUITests.swift" \
+  "testWritingMinimumWindowAndAccessibilityTypeKeepsEditorAndToolbarsAccessible" \
+  "minimum-window accessibility smoke must remain independently selectable"
+
+require_literal \
   "Sources/PersonalSitePublisherMac/Views/MarkdownEditorComfortControl.swift" \
   "Label(\"编辑显示与辅助功能\", systemImage: \"textformat.size.smaller\")" \
   "editor display accessibility control must expose text when space permits"

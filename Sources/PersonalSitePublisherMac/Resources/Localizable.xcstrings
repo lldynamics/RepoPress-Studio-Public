@@ -1393,6 +1393,22 @@
         }
       }
     },
+    "%@：": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@:"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@："
+          }
+        }
+      }
+    },
     "%@：%@": {
       "localizations": {
         "en": {
@@ -2093,6 +2109,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "%lld/%lld 项基础配置已就绪"
+          }
+        }
+      }
+    },
+    "(%@)": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "(%@)"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "(%@)"
           }
         }
       }
@@ -3485,6 +3517,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "Agent 工具记录"
+          }
+        }
+      }
+    },
+    "Agent 已在当前连接中关闭；AI 只能回答，不能新建文章。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Agent is disabled for the current connection. AI can answer questions but cannot create articles."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Agent 已在当前连接中关闭；AI 只能回答，不能新建文章。"
           }
         }
       }
@@ -5869,6 +5917,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "Tera"
+          }
+        }
+      }
+    },
+    "Token 没有仓库写入权限": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The Token Does Not Have Repository Write Access"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Token 没有仓库写入权限"
           }
         }
       }
@@ -15169,6 +15233,22 @@
         }
       }
     },
+    "仅包含应用管理的文章发布包；不会包含 CSS、模板、脚本等其他 Git 工作区变更。发布前会显示完整文件清单。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Includes only article publish packages managed by the app; CSS, templates, scripts, and other Git working tree changes are excluded. The complete file list is shown before publishing."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "仅包含应用管理的文章发布包；不会包含 CSS、模板、脚本等其他 Git 工作区变更。发布前会显示完整文件清单。"
+          }
+        }
+      }
+    },
     "仅发布当前文章": {
       "localizations": {
         "en": {
@@ -15757,6 +15837,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "仓库 Repo 或 Project"
+          }
+        }
+      }
+    },
+    "仓库 Token 状态读取失败": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Could Not Read Repository Token Status"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "仓库 Token 状态读取失败"
           }
         }
       }
@@ -16481,6 +16577,22 @@
         }
       }
     },
+    "使用 %@ 并检查权限": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Use %@ and Check Permissions"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "使用 %@ 并检查权限"
+          }
+        }
+      }
+    },
     "使用 AI 自动生成段落": {
       "localizations": {
         "en": {
@@ -16589,6 +16701,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "使用所选模型更新当前 AI 连接档案"
+          }
+        }
+      }
+    },
+    "使用扫描到的 origin %@ 写入当前站点配置，然后检查仓库写入权限。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Use the detected origin %@ for this site, then check repository write access."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "使用扫描到的 origin %@ 写入当前站点配置，然后检查仓库写入权限。"
           }
         }
       }
@@ -18177,6 +18305,22 @@
         }
       }
     },
+    "先配置线上仓库": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Configure the Online Repository First"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "先配置线上仓库"
+          }
+        }
+      }
+    },
     "光标位置": {
       "localizations": {
         "en": {
@@ -18205,6 +18349,38 @@
           "stringUnit": {
             "state": "translated",
             "value": "全局 Front Matter 预设"
+          }
+        }
+      }
+    },
+    "全局应用偏好": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Global App Preferences"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "全局应用偏好"
+          }
+        }
+      }
+    },
+    "全局应用偏好，适用于所有站点": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Global App Preferences, Applied to All Sites"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "全局应用偏好，适用于所有站点"
           }
         }
       }
@@ -18385,6 +18561,22 @@
         }
       }
     },
+    "全部可发布文章（%d 篇）": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "All Publishable Articles (%d)"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "全部可发布文章（%d 篇）"
+          }
+        }
+      }
+    },
     "全部命中": {
       "localizations": {
         "en": {
@@ -18413,22 +18605,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "全部已读（%lld）"
-          }
-        }
-      }
-    },
-    "全部待发布变更（%d 篇文章）": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "All Pending Changes (%d Articles)"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "全部待发布变更（%d 篇文章）"
           }
         }
       }
@@ -22753,22 +22929,6 @@
         }
       }
     },
-    "发布所有变更": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Publish All Changes"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "发布所有变更"
-          }
-        }
-      }
-    },
     "发布所有变更…": {
       "localizations": {
         "en": {
@@ -22781,6 +22941,38 @@
           "stringUnit": {
             "state": "translated",
             "value": "发布所有变更…"
+          }
+        }
+      }
+    },
+    "发布所有可发布文章": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Publish All Publishable Articles"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "发布所有可发布文章"
+          }
+        }
+      }
+    },
+    "发布所有可发布文章…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Publish All Publishable Articles…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "发布所有可发布文章…"
           }
         }
       }
@@ -24141,6 +24333,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "可压缩 JPEG"
+          }
+        }
+      }
+    },
+    "可发布 %d 篇文章 · %d 个文章文件": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%d Publishable Articles · %d Article Files"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "可发布 %d 篇文章 · %d 个文章文件"
           }
         }
       }
@@ -29473,6 +29681,22 @@
         }
       }
     },
+    "将要执行的命令": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Command to Run"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "将要执行的命令"
+          }
+        }
+      }
+    },
     "小": {
       "localizations": {
         "en": {
@@ -30189,6 +30413,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "已从末尾继续查找。"
+          }
+        }
+      }
+    },
+    "已保存": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Saved"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已保存"
           }
         }
       }
@@ -33041,6 +33281,22 @@
         }
       }
     },
+    "当前仓库配置与扫描到的 origin 不一致，请完成或修正 Owner/Namespace 和 Repo/Project。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The configured repository does not match the detected origin. Complete or correct Owner/Namespace and Repo/Project."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "当前仓库配置与扫描到的 origin 不一致，请完成或修正 Owner/Namespace 和 Repo/Project。"
+          }
+        }
+      }
+    },
     "当前值": {
       "localizations": {
         "en": {
@@ -33713,6 +33969,38 @@
         }
       }
     },
+    "当前模型不支持工具调用；新建文章功能不可用。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The current model does not support tool calling, so article creation is unavailable."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "当前模型不支持工具调用；新建文章功能不可用。"
+          }
+        }
+      }
+    },
+    "当前模型尚未确认支持工具调用；新建文章功能暂不可用。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The current model has not yet been confirmed to support tool calling, so article creation is temporarily unavailable."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "当前模型尚未确认支持工具调用；新建文章功能暂不可用。"
+          }
+        }
+      }
+    },
     "当前模型未声明可选推理等级": {
       "localizations": {
         "en": {
@@ -34225,6 +34513,22 @@
         }
       }
     },
+    "当前连接未授权“新建文章草稿”权限。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The current connection has not been granted permission to create article drafts."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "当前连接未授权“新建文章草稿”权限。"
+          }
+        }
+      }
+    },
     "当前连接档案没有 Base URL，点击下方档案即可快速切换到已配置服务。": {
       "localizations": {
         "en": {
@@ -34401,6 +34705,22 @@
         }
       }
     },
+    "待保存修改": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unsaved Changes"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "待保存修改"
+          }
+        }
+      }
+    },
     "待修复向量": {
       "localizations": {
         "en": {
@@ -34461,22 +34781,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "待发布"
-          }
-        }
-      }
-    },
-    "待发布 %d 篇 · %d 个文件": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%d articles · %d files pending publication"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "待发布 %d 篇 · %d 个文件"
           }
         }
       }
@@ -35613,6 +35917,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "恢复默认 Agent 权限"
+          }
+        }
+      }
+    },
+    "恢复默认值 %lld pt": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Restore Default %lld pt"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "恢复默认值 %lld pt"
           }
         }
       }
@@ -37089,6 +37409,22 @@
         }
       }
     },
+    "执行此操作": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Perform This Action"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "执行此操作"
+          }
+        }
+      }
+    },
     "执行线上回滚": {
       "localizations": {
         "en": {
@@ -37729,22 +38065,6 @@
         }
       }
     },
-    "把当前站点中所有通过检查且有变化的文章合并为一次提交和推送；执行前会显示完整文件清单。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Combines all changed articles in the current site that pass checks into a single commit and push. The complete file list will be shown before publishing."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "把当前站点中所有通过检查且有变化的文章合并为一次提交和推送；执行前会显示完整文件清单。"
-          }
-        }
-      }
-    },
     "把本地图片导入当前文章": {
       "localizations": {
         "en": {
@@ -37933,6 +38253,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "拖入正文插入引用块"
+          }
+        }
+      }
+    },
+    "拖动下方滑块或切换开关，此处会即时呈现文章在编辑器内的排版与视觉氛围。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Drag the sliders or toggle the switches below to preview the editor typography and visual atmosphere in real time."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "拖动下方滑块或切换开关，此处会即时呈现文章在编辑器内的排版与视觉氛围。"
           }
         }
       }
@@ -38269,6 +38605,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "排版优化"
+          }
+        }
+      }
+    },
+    "排版效果实时预览": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Live Typography Preview"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "排版效果实时预览"
           }
         }
       }
@@ -39825,6 +40177,22 @@
         }
       }
     },
+    "支持的占位符变量：": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Supported Placeholder Variables:"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "支持的占位符变量："
+          }
+        }
+      }
+    },
     "收藏/取消收藏 RSS 文章": {
       "localizations": {
         "en": {
@@ -39901,6 +40269,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "收起相关内容"
+          }
+        }
+      }
+    },
+    "改为跟随连接": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Inherit Connection Setting"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "改为跟随连接"
           }
         }
       }
@@ -42541,6 +42925,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "显示更多文章"
+          }
+        }
+      }
+    },
+    "晨光中的写作与思考": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Writing and Reflection in the Morning Light"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "晨光中的写作与思考"
           }
         }
       }
@@ -45377,6 +45777,38 @@
         }
       }
     },
+    "本地预览会在这台 Mac 上执行仓库中的代码。确认后会在这台 Mac 上记住此仓库和命令；仅当你信任它们时继续。命令或项目清单变更后需重新确认。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Local preview executes code from this repository on your Mac. Confirming remembers this repository and command on this Mac; continue only if you trust them. You will be asked to confirm again if the command or project manifest changes."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "本地预览会在这台 Mac 上执行仓库中的代码。确认后会在这台 Mac 上记住此仓库和命令；仅当你信任它们时继续。命令或项目清单变更后需重新确认。"
+          }
+        }
+      }
+    },
+    "本对话为仅问答模式；不会提供新建文章等应用工具。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This conversation is in Q&A-only mode, so in-app tools such as creating articles are unavailable."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "本对话为仅问答模式；不会提供新建文章等应用工具。"
+          }
+        }
+      }
+    },
     "本文引用的资料": {
       "localizations": {
         "en": {
@@ -46833,6 +47265,22 @@
         }
       }
     },
+    "格式工具栏": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Formatting Toolbar"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "格式工具栏"
+          }
+        }
+      }
+    },
     "档案名称": {
       "localizations": {
         "en": {
@@ -47041,6 +47489,22 @@
         }
       }
     },
+    "检查并启动预览": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Review and Start Preview"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "检查并启动预览"
+          }
+        }
+      }
+    },
     "检查当前文章并打开发布准备": {
       "localizations": {
         "en": {
@@ -47069,6 +47533,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "检查当前文章的元数据、正文和发布风险"
+          }
+        }
+      }
+    },
+    "检查当前配置仓库的写入权限": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Check Write Access for the Configured Repository"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "检查当前配置仓库的写入权限"
           }
         }
       }
@@ -47825,6 +48305,22 @@
         }
       }
     },
+    "正在准备文章发布包": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Preparing Article Publish Packages"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在准备文章发布包"
+          }
+        }
+      }
+    },
     "正在准备检查快照": {
       "localizations": {
         "en": {
@@ -48077,6 +48573,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "正在发布"
+          }
+        }
+      }
+    },
+    "正在发布文章": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Publishing Articles"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在发布文章"
           }
         }
       }
@@ -48657,6 +49169,22 @@
         }
       }
     },
+    "正在检查仓库写入权限": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Checking Repository Write Access"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在检查仓库写入权限"
+          }
+        }
+      }
+    },
     "正在检查仓库权限...": {
       "localizations": {
         "en": {
@@ -48769,18 +49297,18 @@
         }
       }
     },
-    "正在汇总全部变更": {
+    "正在汇总文章发布包": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Summarizing All Changes"
+            "value": "Collecting Article Publish Packages"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "正在汇总全部变更"
+            "value": "正在汇总文章发布包"
           }
         }
       }
@@ -49761,6 +50289,22 @@
         }
       }
     },
+    "段落聚光灯与当前段落高亮能够帮助创作者排除视觉杂音，将心流完全凝聚在当下的字里行间。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Paragraph spotlighting and current-paragraph highlighting reduce visual noise so you can stay focused on the words in front of you."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "段落聚光灯与当前段落高亮能够帮助创作者排除视觉杂音，将心流完全凝聚在当下的字里行间。"
+          }
+        }
+      }
+    },
     "每条资料会导出为一个带元数据的 Markdown 文件；资料库本身不会被修改。": {
       "localizations": {
         "en": {
@@ -50269,22 +50813,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "没有待写入变化。"
-          }
-        }
-      }
-    },
-    "没有待发布变更": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "No Changes to Publish"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "没有待发布变更"
           }
         }
       }
@@ -51021,6 +51549,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "添加选中的 %lld 个订阅"
+          }
+        }
+      }
+    },
+    "清晰的排版如同清晨微风，使阅读与创作自然流淌。当字号与行距恰到好处时，文字便拥有了呼吸的节奏。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Clear typography lets reading and writing flow naturally. With balanced type size and line spacing, the text gains a comfortable rhythm."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "清晰的排版如同清晨微风，使阅读与创作自然流淌。当字号与行距恰到好处时，文字便拥有了呼吸的节奏。"
           }
         }
       }
@@ -52385,22 +52929,6 @@
         }
       }
     },
-    "用于线上发布": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "For Live Publishing"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "用于线上发布"
-          }
-        }
-      }
-    },
     "用户已拒绝此工具调用，未执行。": {
       "localizations": {
         "en": {
@@ -53057,6 +53585,22 @@
         }
       }
     },
+    "确认并启动": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Confirm and Start"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "确认并启动"
+          }
+        }
+      }
+    },
     "确认并开始（%d 张）": {
       "localizations": {
         "en": {
@@ -53181,6 +53725,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "确认转换"
+          }
+        }
+      }
+    },
+    "确认运行本地预览命令": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Confirm Local Preview Command"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "确认运行本地预览命令"
           }
         }
       }
@@ -58289,6 +58849,22 @@
         }
       }
     },
+    "请先保存仓库 Token": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Save a Repository Token First"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请先保存仓库 Token"
+          }
+        }
+      }
+    },
     "请先停止当前 AI 回复，再关闭 AI 助手。": {
       "localizations": {
         "en": {
@@ -58577,6 +59153,22 @@
         }
       }
     },
+    "请先检查仓库写入权限": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Check Repository Write Access First"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请先检查仓库写入权限"
+          }
+        }
+      }
+    },
     "请先选择一篇文章。": {
       "localizations": {
         "en": {
@@ -58669,6 +59261,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "请先配置 API 基础地址。配置完成后，应用会判断数据只发送到本机，还是需要第三方授权。"
+          }
+        }
+      }
+    },
+    "请先配置仓库 Owner/Namespace 和 Repo/Project，或扫描包含 origin 的站点仓库。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Configure the repository Owner/Namespace and Repo/Project, or scan a site repository with an origin."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请先配置仓库 Owner/Namespace 和 Repo/Project，或扫描包含 origin 的站点仓库。"
           }
         }
       }
@@ -61693,6 +62301,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "远端变更"
+          }
+        }
+      }
+    },
+    "远端存在冲突，请先核对": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Remote Conflicts Detected; Review Them First"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "远端存在冲突，请先核对"
           }
         }
       }

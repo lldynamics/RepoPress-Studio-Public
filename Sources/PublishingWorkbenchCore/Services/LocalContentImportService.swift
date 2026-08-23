@@ -238,6 +238,22 @@ public struct LocalContentImportService: Sendable {
     var importedDrafts: [ArticleDraft] = []
     var skippedPaths: [String] = []
     var issues: [LocalContentImportIssue] = []
+    var isDirectory: ObjCBool = false
+    guard fileManager.fileExists(atPath: rootURL.path, isDirectory: &isDirectory),
+      isDirectory.boolValue
+    else {
+      return LocalContentImportResult(
+        importedDrafts: [],
+        skippedPaths: [],
+        issues: [
+          LocalContentImportIssue(
+            path: rootURL.path,
+            kind: .repositoryAccessUnavailable,
+            message: "无法访问站点本地仓库。"
+          )
+        ]
+      )
+    }
     let contentIndex = contentIndexStore?.snapshot(profile: profile, rootURL: rootURL)
     var refreshedIndexEntries: [String: LocalContentImportIndexEntry] = [:]
 

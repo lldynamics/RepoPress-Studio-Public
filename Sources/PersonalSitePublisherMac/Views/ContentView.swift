@@ -98,6 +98,7 @@ struct ContentView: View {
   @State private var commandPaletteEditorCommands: MarkdownEditorCommandActions?
   @State private var responsiveLayout = WorkspaceResponsiveLayoutSnapshot.initial
   @State private var aiChatInspectorSurfaceState = AIChatSurfaceState(surface: .inspector)
+  @StateObject private var aiChatInspectorOperationSession = AIChatSurfaceOperationSession()
   @State private var contentHealthFilter: ContentHealthContextFilter = .overview
   @State private var imageWorkbenchContextStage: ImageWorkbenchContextStage = .overview
   @State private var repositoryContextStage: RepositoryContextStage = .overview
@@ -172,6 +173,7 @@ struct ContentView: View {
             repositoryContextStage: repositoryContextStage,
             repositorySourceSession: repositorySourceSession,
             aiChatSurfaceState: $aiChatInspectorSurfaceState,
+            aiChatOperationSession: aiChatInspectorOperationSession,
             prioritizesChecks: compactLayout
           )
           .inspectorColumnWidth(
@@ -321,6 +323,12 @@ struct ContentView: View {
     }
     .onDisappear {
       sceneCommandRouter.clearAll()
+      _ = aiChatInspectorOperationSession.handle(
+        .ownerTeardown,
+        forwardingTo: { ownerToken in
+          store.ai.cancelChatReply(expectedOwnerToken: ownerToken)
+        }
+      )
     }
     .task {
       await MainRunLoopUpdateDeferral.waitForNextDefaultModeCycle()
@@ -1005,6 +1013,7 @@ struct ContentView: View {
     let store: WorkbenchStore
     let width: CGFloat
     @State private var surfaceState = AIChatSurfaceState(surface: .inspector)
+    @StateObject private var operationSession = AIChatSurfaceOperationSession()
 
     var body: some View {
       HStack(spacing: 0) {
@@ -1012,7 +1021,8 @@ struct ContentView: View {
         Divider()
         AIChatContextInspectorView(
           store: store,
-          surfaceState: $surfaceState
+          surfaceState: $surfaceState,
+          operationSession: operationSession
         )
         .frame(width: width)
         .frame(maxHeight: .infinity)

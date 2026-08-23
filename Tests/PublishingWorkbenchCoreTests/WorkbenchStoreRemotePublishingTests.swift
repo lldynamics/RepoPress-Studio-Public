@@ -734,6 +734,58 @@ extension WorkbenchStoreProfileTests {
     XCTAssertTrue(preview.checklistMarkdown.contains("- content/posts/online-review-preview.md"))
   }
 
+  func testRemoteRepositoryPublishPreviewAllowsInvalidNonEmptySlugAsWarning() throws {
+    let store = try TestWorkbenchFactory.makeStore()
+
+    var profile = store.activeProfile
+    profile.repositoryProvider = .github
+    profile.repositoryBaseURL = RepositoryProvider.github.defaultBaseURL
+    profile.repoOwner = "owner"
+    profile.repoName = "site"
+    profile.branch = "main"
+    profile.repositoryPublishStrategy = .reviewRequest
+    profile.markdownPathPattern = "content/posts/{slug}.md"
+    store.updateActiveProfile(profile)
+    store.setRepositoryTokenAvailability(KeychainTokenAvailability(hasToken: true))
+    store.setRemoteRepositoryAccessCheck(RemoteRepositoryAccessCheck(
+      provider: .github,
+      repositoryName: "owner/site",
+      apiBaseURL: "https://api.github.com",
+      defaultBranch: "main",
+      canRead: true,
+      canWrite: true,
+      message: "GitHub Token 具备仓库写入权限。"
+    ))
+
+    let draft = ArticleDraft(
+      siteProfileID: profile.id,
+      title: "Existing Article",
+      slug: "Existing Article",
+      draft: false,
+      bodyMarkdown: "This body is intentionally long enough to verify publishing with an invalid slug warning."
+    )
+    store.setDrafts([draft])
+    store.setSelectedDraftID(draft.id)
+    store.setRepositoryReport(RepositoryScanReport(
+      rootPath: "/tmp/site",
+      detectedKind: profile.siteKind,
+      expectedKind: profile.siteKind,
+      hasGitDirectory: true,
+      contentRootExists: true,
+      assetRootExists: true,
+      markdownFileCount: 0,
+      imageFileCount: 0,
+      changedFiles: [],
+      remoteChangedFiles: [],
+      preflightIssues: []
+    ))
+
+    let preview = store.remoteRepositoryPublishPreview(for: draft)
+
+    XCTAssertTrue(preview.canPublish)
+    XCTAssertFalse(preview.blockingIssues.contains { $0.title == "Slug 格式非法" })
+  }
+
   func testRemoteRepositoryPublishPreviewRequiresTokenBeforeOnlinePublish() throws {
     let store = try TestWorkbenchFactory.makeStore()
 
@@ -1043,6 +1095,187 @@ extension WorkbenchStoreProfileTests {
     XCTAssertFalse(preview.checklistMarkdown.contains(CoreL10n.text("PR 创建权限将在实际创建时验证")))
     XCTAssertTrue(preview.warningIssues.contains { $0.title == CoreL10n.text("远端状态待确认") })
     XCTAssertTrue(preview.checklistMarkdown.contains(CoreL10n.text("## 远端状态待确认")))
+  }
+
+  func testPermissionCheckFillsMissingRepositoryConfigurationFromDetectedOrigin() async throws {
+    let transport = SequencedWorkbenchRemoteRepositoryTransport(responses: [
+      workbenchRemoteResponse(
+        json: #"{"full_name":"owner/site","default_branch":"main","permissions":{"push":true}}"#
+      ),
+    ])
+    let tokenStore = repositoryTokenStoreForTest()
+    let persistenceURL = try temporaryPersistenceURL(prefix: "DetectedOriginPermission")
+    let rootURL = try preparedGitRepositoryRoot()
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: persistenceURL),
+      remoteRepositoryPublishService: RemoteRepositoryPublishService(transport: transport),
+      repositoryTokenStore: tokenStore
+    )
+
+    var profile = store.activeProfile
+    profile.rememberLocalRepositoryRoot(rootURL)
+    store.updateActiveProfile(profile)
+    let storeProfileForCleanup = profile
+    defer { try? tokenStore.deleteRepositoryToken(for: storeProfileForCleanup) }
+    try tokenStore.saveRepositoryToken("github-token", for: profile)
+    store.refreshRepositoryTokenAvailability()
+    store.setRepositoryReport(RepositoryScanReport(
+      rootPath: rootURL.path,
+      detectedKind: .zola,
+      expectedKind: .zola,
+      hasGitDirectory: true,
+      contentRootExists: true,
+      assetRootExists: true,
+      markdownFileCount: 1,
+      imageFileCount: 0,
+      branchStatus: RepositoryBranchStatus(branchName: "production", upstreamName: "origin/production"),
+      originRemote: RepositoryRemote(
+        remoteURL: "https://github.com/owner/site.git",
+        provider: .github,
+        repositoryBaseURL: RepositoryProvider.github.defaultBaseURL,
+        owner: "owner",
+        name: "site"
+      ),
+      changedFiles: [],
+      preflightIssues: []
+    ))
+    let draft = ArticleDraft(
+      siteProfileID: profile.id,
+      title: "Detected Origin",
+      slug: "detected-origin",
+      draft: false,
+      bodyMarkdown: "This body is long enough to exercise the detected-origin permission check."
+    )
+    store.setDrafts([draft])
+    store.setSelectedDraftID(draft.id)
+
+    let check = await store.checkRepositoryTokenAccess()
+
+    XCTAssertTrue(check?.canWrite == true)
+    XCTAssertEqual(store.activeProfile.repoOwner, "owner")
+    XCTAssertEqual(store.activeProfile.repoName, "site")
+    XCTAssertEqual(store.activeProfile.repositoryProvider, .github)
+    XCTAssertEqual(store.activeProfile.branch, "production")
+    XCTAssertTrue(store.remotePublishPreviewSnapshot?.accessCheck?.canWrite == true)
+    XCTAssertTrue(store.batchRemotePublishPreviewSnapshot?.accessCheck?.canWrite == true)
+    await store.waitForPendingSave()
+
+    let reloaded = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: persistenceURL),
+      repositoryTokenStore: tokenStore
+    )
+    XCTAssertEqual(reloaded.activeProfile.repoOwner, "owner")
+    XCTAssertEqual(reloaded.activeProfile.repoName, "site")
+    XCTAssertTrue(reloaded.activeRemoteRepositoryAccessCheck?.canWrite == true)
+  }
+
+  func testPermissionCheckDoesNotReplaceCompleteRepositoryConfigurationWithDetectedOrigin() async throws {
+    let transport = SequencedWorkbenchRemoteRepositoryTransport(responses: [
+      workbenchRemoteResponse(
+        json: #"{"full_name":"detected/site","default_branch":"main","permissions":{"push":true}}"#
+      ),
+    ])
+    let tokenStore = repositoryTokenStoreForTest()
+    let rootURL = try preparedGitRepositoryRoot()
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let store = WorkbenchStore(
+      persistence: try TestWorkbenchFactory.persistence(prefix: "CompleteRepositoryConfiguration"),
+      remoteRepositoryPublishService: RemoteRepositoryPublishService(transport: transport),
+      repositoryTokenStore: tokenStore
+    )
+
+    var profile = store.activeProfile
+    profile.rememberLocalRepositoryRoot(rootURL)
+    profile.repositoryProvider = .github
+    profile.repositoryBaseURL = RepositoryProvider.github.defaultBaseURL
+    profile.repoOwner = "configured"
+    profile.repoName = "site"
+    profile.branch = "release"
+    store.updateActiveProfile(profile)
+    defer { try? tokenStore.deleteRepositoryToken(for: profile) }
+    try tokenStore.saveRepositoryToken("github-token", for: profile)
+    store.refreshRepositoryTokenAvailability()
+    store.setRepositoryReport(RepositoryScanReport(
+      rootPath: rootURL.path,
+      detectedKind: .zola,
+      expectedKind: .zola,
+      hasGitDirectory: true,
+      contentRootExists: true,
+      assetRootExists: true,
+      markdownFileCount: 1,
+      imageFileCount: 0,
+      originRemote: RepositoryRemote(
+        remoteURL: "https://github.com/detected/site.git",
+        provider: .github,
+        repositoryBaseURL: RepositoryProvider.github.defaultBaseURL,
+        owner: "detected",
+        name: "site"
+      ),
+      changedFiles: [],
+      preflightIssues: []
+    ))
+
+    let check = await store.checkRepositoryTokenAccess()
+
+    XCTAssertTrue(check?.canWrite == true)
+    XCTAssertEqual(store.activeProfile.repoOwner, "configured")
+    XCTAssertEqual(store.activeProfile.repoName, "site")
+    XCTAssertEqual(store.activeProfile.branch, "release")
+    let requests = await transport.capturedRequests()
+    XCTAssertEqual(requests.first?.url?.path, "/repos/configured/site")
+  }
+
+  func testPermissionCheckLeavesMismatchedPartialConfigurationUntouched() async throws {
+    let transport = CountingRemoteRepositoryTransport()
+    let tokenStore = repositoryTokenStoreForTest()
+    let rootURL = try preparedGitRepositoryRoot()
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let store = WorkbenchStore(
+      persistence: try TestWorkbenchFactory.persistence(prefix: "PartialRepositoryConfiguration"),
+      remoteRepositoryPublishService: RemoteRepositoryPublishService(transport: transport),
+      repositoryTokenStore: tokenStore
+    )
+
+    var profile = store.activeProfile
+    profile.rememberLocalRepositoryRoot(rootURL)
+    profile.repositoryProvider = .github
+    profile.repositoryBaseURL = RepositoryProvider.github.defaultBaseURL
+    profile.repoOwner = "configured"
+    profile.repoName = ""
+    store.updateActiveProfile(profile)
+    defer { try? tokenStore.deleteRepositoryToken(for: profile) }
+    try tokenStore.saveRepositoryToken("github-token", for: profile)
+    store.refreshRepositoryTokenAvailability()
+    store.setRepositoryReport(RepositoryScanReport(
+      rootPath: rootURL.path,
+      detectedKind: .zola,
+      expectedKind: .zola,
+      hasGitDirectory: true,
+      contentRootExists: true,
+      assetRootExists: true,
+      markdownFileCount: 1,
+      imageFileCount: 0,
+      originRemote: RepositoryRemote(
+        remoteURL: "https://gitlab.com/detected/site.git",
+        provider: .gitlab,
+        repositoryBaseURL: "https://gitlab.com",
+        owner: "detected",
+        name: "site"
+      ),
+      changedFiles: [],
+      preflightIssues: []
+    ))
+
+    let check = await store.checkRepositoryTokenAccess()
+
+    XCTAssertNil(check)
+    XCTAssertEqual(store.activeProfile.repositoryProvider, .github)
+    XCTAssertEqual(store.activeProfile.repositoryBaseURL, RepositoryProvider.github.defaultBaseURL)
+    XCTAssertEqual(store.activeProfile.repoOwner, "configured")
+    XCTAssertTrue(store.activeProfile.repoName.isEmpty)
+    let requestCount = await transport.requestCount()
+    XCTAssertEqual(requestCount, 0)
   }
 
   func testRepositoryPermissionCheckFailureUsesStructuredFailureStatus() async throws {
