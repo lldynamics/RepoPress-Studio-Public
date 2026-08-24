@@ -57,7 +57,7 @@ struct MacMarkdownTextView: NSViewRepresentable {
   var onSSGSnippetShortcut: (MarkdownCompletionCandidate) -> Void
   var onSlashCommandKey: (MarkdownSlashCommandKey) -> Bool = { _ in false }
   var onTypingFeedback: () -> Void = {}
-  var onScrollProgressChanged: (Double) -> Void
+  var onScrollPositionChanged: (MarkdownScrollSyncPosition) -> Void
   var onDroppedFiles: ([URL]) -> Void
   var onDroppedMarkdown: (String, NSRange, KnowledgeCitation?) -> Void
 
@@ -77,7 +77,7 @@ struct MacMarkdownTextView: NSViewRepresentable {
       onGhostTextAccepted: onGhostTextAccepted,
       onGhostTextDismissed: onGhostTextDismissed,
       onSSGSnippetShortcut: onSSGSnippetShortcut,
-      onScrollProgressChanged: onScrollProgressChanged,
+      onScrollPositionChanged: onScrollPositionChanged,
       onDroppedFiles: onDroppedFiles,
       onDroppedMarkdown: onDroppedMarkdown
     )
@@ -304,6 +304,11 @@ struct MacMarkdownTextView: NSViewRepresentable {
     context.coordinator.applyRestoredScroll(scrollRestorationUpdate, in: nsView)
   }
 
+  static func dismantleNSView(_ nsView: NSScrollView, coordinator: Coordinator) {
+    (nsView.documentView as? NSTextView)?.delegate = nil
+    coordinator.scrollSyncBridge.invalidate()
+  }
+
   @MainActor
   final class Coordinator: NSObject, NSTextViewDelegate {
     @Binding var text: String
@@ -311,13 +316,14 @@ struct MacMarkdownTextView: NSViewRepresentable {
     @Binding var isFrontMatterSelection: Bool
     var bodyMarkdown: String
     var bodyUTF16Offset: Int
+    var bodyLineUTF16Offsets: [Int]
     var representedText: String
     let onStatisticsChanged: (MarkdownEditorStatistics) -> Void
     let onPasteMessage: (String) -> Void
     var onGhostTextAccepted: (String) -> Void
     var onGhostTextDismissed: () -> Void
     var onSSGSnippetShortcut: (MarkdownCompletionCandidate) -> Void
-    let onScrollProgressChanged: (Double) -> Void
+    let onScrollPositionChanged: (MarkdownScrollSyncPosition) -> Void
     let onDroppedFiles: ([URL]) -> Void
     let onDroppedMarkdown: (String, NSRange, KnowledgeCitation?) -> Void
     weak var textView: NSTextView?
@@ -380,13 +386,14 @@ struct MacMarkdownTextView: NSViewRepresentable {
       onGhostTextAccepted: @escaping (String) -> Void,
       onGhostTextDismissed: @escaping () -> Void,
       onSSGSnippetShortcut: @escaping (MarkdownCompletionCandidate) -> Void,
-      onScrollProgressChanged: @escaping (Double) -> Void,
+      onScrollPositionChanged: @escaping (MarkdownScrollSyncPosition) -> Void,
       onDroppedFiles: @escaping ([URL]) -> Void,
       onDroppedMarkdown: @escaping (String, NSRange, KnowledgeCitation?) -> Void
     ) {
       _text = text
       self.bodyMarkdown = bodyMarkdown
       self.bodyUTF16Offset = bodyUTF16Offset
+      bodyLineUTF16Offsets = Self.lineUTF16Offsets(in: bodyMarkdown)
       representedText = text.wrappedValue
       _selectedRange = selectedRange
       _isFrontMatterSelection = isFrontMatterSelection
@@ -400,14 +407,14 @@ struct MacMarkdownTextView: NSViewRepresentable {
       self.onGhostTextAccepted = onGhostTextAccepted
       self.onGhostTextDismissed = onGhostTextDismissed
       self.onSSGSnippetShortcut = onSSGSnippetShortcut
-      self.onScrollProgressChanged = onScrollProgressChanged
+      self.onScrollPositionChanged = onScrollPositionChanged
       self.onDroppedFiles = onDroppedFiles
       self.onDroppedMarkdown = onDroppedMarkdown
       self.ghostText = ghostText
       self.ssgSnippets = ssgSnippets
       scrollSyncBridge = MarkdownScrollViewSyncBridge(
         source: .editor,
-        onProgressChanged: onScrollProgressChanged
+        onPositionChanged: onScrollPositionChanged
       )
     }
 
@@ -421,7 +428,7 @@ struct MacMarkdownTextView: NSViewRepresentable {
       diagnostics: [MarkdownInlineDiagnostic],
       onStatisticsChanged: @escaping (MarkdownEditorStatistics) -> Void,
       onPasteMessage: @escaping (String) -> Void,
-      onScrollProgressChanged: @escaping (Double) -> Void,
+      onScrollPositionChanged: @escaping (MarkdownScrollSyncPosition) -> Void,
       onDroppedFiles: @escaping ([URL]) -> Void
     ) {
       self.init(
@@ -439,15 +446,34 @@ struct MacMarkdownTextView: NSViewRepresentable {
         onGhostTextAccepted: { _ in },
         onGhostTextDismissed: {},
         onSSGSnippetShortcut: { _ in },
-        onScrollProgressChanged: onScrollProgressChanged,
+        onScrollPositionChanged: onScrollPositionChanged,
         onDroppedFiles: onDroppedFiles,
         onDroppedMarkdown: { _, _, _ in }
       )
     }
 
     func updateDocumentContext(bodyMarkdown: String, bodyUTF16Offset: Int) {
+      if self.bodyMarkdown != bodyMarkdown {
+        bodyLineUTF16Offsets = Self.lineUTF16Offsets(in: bodyMarkdown)
+      }
       self.bodyMarkdown = bodyMarkdown
       self.bodyUTF16Offset = bodyUTF16Offset
+    }
+
+    private static func lineUTF16Offsets(in text: String) -> [Int] {
+      let source = text as NSString
+      var offsets = [0]
+      var searchLocation = 0
+      while searchLocation < source.length {
+        let newlineRange = source.range(
+          of: "\n",
+          range: NSRange(location: searchLocation, length: source.length - searchLocation)
+        )
+        guard newlineRange.location != NSNotFound else { break }
+        searchLocation = NSMaxRange(newlineRange)
+        offsets.append(searchLocation)
+      }
+      return offsets
     }
 
     func installGhostTextOverlay(on textView: NSTextView) {
@@ -1021,7 +1047,74 @@ struct MacMarkdownTextView: NSViewRepresentable {
     }
 
     func observeScrolling(in scrollView: NSScrollView) {
-      scrollSyncBridge.observe(scrollView)
+      scrollSyncBridge.observe(
+        scrollView,
+        sourceLineProvider: { [weak self] scrollView in
+          self?.topVisibleSourceLine(in: scrollView)
+        },
+        sourceLineApplier: { [weak self] sourceLine, scrollView in
+          self?.scroll(toSourceLine: sourceLine, in: scrollView) == true
+        }
+      )
+    }
+
+    private func topVisibleSourceLine(in scrollView: NSScrollView) -> Int? {
+      guard let textView = scrollView.documentView as? NSTextView else { return nil }
+      let point = NSPoint(
+        x: textView.textContainerInset.width + 1,
+        y: scrollView.documentVisibleRect.minY + textView.textContainerInset.height + 1
+      )
+      let documentLocation = textView.characterIndexForInsertion(at: point)
+      let bodyLocation = max(0, documentLocation - bodyUTF16Offset)
+
+      var lowerBound = 0
+      var upperBound = bodyLineUTF16Offsets.count
+      while lowerBound < upperBound {
+        let middle = (lowerBound + upperBound) / 2
+        if bodyLineUTF16Offsets[middle] <= bodyLocation {
+          lowerBound = middle + 1
+        } else {
+          upperBound = middle
+        }
+      }
+      return max(1, lowerBound)
+    }
+
+    private func scroll(toSourceLine sourceLine: Int, in scrollView: NSScrollView) -> Bool {
+      guard let textView = scrollView.documentView as? NSTextView,
+        let layoutManager = textView.layoutManager,
+        !bodyLineUTF16Offsets.isEmpty
+      else {
+        return false
+      }
+      let lineIndex = min(max(sourceLine - 1, 0), bodyLineUTF16Offsets.count - 1)
+      let documentLength = (textView.string as NSString).length
+      let characterLocation = min(
+        max(0, bodyUTF16Offset + bodyLineUTF16Offsets[lineIndex]),
+        documentLength
+      )
+      guard documentLength > 0 else {
+        scrollView.contentView.scroll(to: .zero)
+        scrollView.reflectScrolledClipView(scrollView.contentView)
+        return true
+      }
+      let characterRange = NSRange(
+        location: min(characterLocation, documentLength - 1),
+        length: 1
+      )
+      layoutManager.ensureLayout(forCharacterRange: characterRange)
+      let glyphIndex = layoutManager.glyphIndexForCharacter(at: characterRange.location)
+      let lineRect = layoutManager.lineFragmentRect(forGlyphAt: glyphIndex, effectiveRange: nil)
+      let maximumY = max(0, textView.frame.height - scrollView.contentView.bounds.height)
+      let targetY = min(
+        max(0, lineRect.minY + textView.textContainerInset.height),
+        maximumY
+      )
+      scrollView.contentView.scroll(
+        to: NSPoint(x: scrollView.contentView.bounds.origin.x, y: targetY)
+      )
+      scrollView.reflectScrolledClipView(scrollView.contentView)
+      return true
     }
 
     func applySynchronizedScroll(

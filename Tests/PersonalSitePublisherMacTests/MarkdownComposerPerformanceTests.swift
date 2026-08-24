@@ -4,6 +4,17 @@ import XCTest
 @testable import PersonalSitePublisherMac
 
 final class MarkdownComposerPerformanceTests: XCTestCase {
+  func testScrollSyncPositionNormalizesAnchorAndProgressFallback() {
+    XCTAssertEqual(
+      MarkdownScrollSyncPosition(sourceLine: 45, progress: 1.4),
+      MarkdownScrollSyncPosition(sourceLine: 45, progress: 1)
+    )
+    XCTAssertEqual(
+      MarkdownScrollSyncPosition(sourceLine: 0, progress: -.infinity),
+      MarkdownScrollSyncPosition(sourceLine: nil, progress: 0)
+    )
+  }
+
   func testScrollProgressCoalescerDeliversOnlyLatestProgressPerIdleBurst() {
     var coalescer = MarkdownScrollProgressCoalescer()
 

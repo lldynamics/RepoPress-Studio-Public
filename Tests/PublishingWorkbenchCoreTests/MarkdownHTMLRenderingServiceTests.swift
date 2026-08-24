@@ -1,21 +1,22 @@
 import XCTest
+
 @testable import PublishingWorkbenchCore
 
 final class MarkdownHTMLRenderingServiceTests: XCTestCase {
   func testPreservesGuideArticleBlockStructure() {
     let markdown = """
-    # 开始使用
+      # 开始使用
 
-    这是第一段。
+      这是第一段。
 
-    ## 推荐顺序
+      ## 推荐顺序
 
-    1. 连接站点
-    2. 编辑文章
+      1. 连接站点
+      2. 编辑文章
 
-    - **编辑**：集中输入。
-    - **预览**：检查结果。
-    """
+      - **编辑**：集中输入。
+      - **预览**：检查结果。
+      """
 
     let html = MarkdownHTMLRenderingService.renderBody(markdown)
 
@@ -39,18 +40,18 @@ final class MarkdownHTMLRenderingServiceTests: XCTestCase {
 
   func testRendersCodeQuoteTableAndSafeLinks() {
     let markdown = """
-    > 引用
+      > 引用
 
-    | 名称 | 值 |
-    | --- | --- |
-    | A | 1 |
+      | 名称 | 值 |
+      | --- | --- |
+      | A | 1 |
 
-    ```swift
-    let value = "<safe>"
-    ```
+      ```swift
+      let value = "<safe>"
+      ```
 
-    [安全](https://example.com) [危险](javascript:alert(1))
-    """
+      [安全](https://example.com) [危险](javascript:alert(1))
+      """
 
     let html = MarkdownHTMLRenderingService.renderBody(markdown)
 
@@ -74,10 +75,10 @@ final class MarkdownHTMLRenderingServiceTests: XCTestCase {
 
   func testExplicitPreviewRendererAllowsSanitizedDetailsButNotScript() {
     let markdown = """
-    <details open><summary>查看详情</summary><mark>安全内容</mark></details>
+      <details open><summary>查看详情</summary><mark>安全内容</mark></details>
 
-    <script>alert('unsafe')</script>
-    """
+      <script>alert('unsafe')</script>
+      """
 
     let html = MarkdownHTMLRenderingService.renderPreviewBodyAllowingSanitizedHTML(markdown)
 
@@ -85,5 +86,54 @@ final class MarkdownHTMLRenderingServiceTests: XCTestCase {
     XCTAssertFalse(html.contains("<p><details"))
     XCTAssertFalse(html.contains("<script>"))
     XCTAssertTrue(html.contains("&lt;script&gt;"))
+  }
+
+  func testPreviewSourceLineAnchorsTrackVariableHeightBlocksAndFenceBlankLines() {
+    let markdown =
+      "# 标题\n\n第一段。\n\n![图片](https://example.com/large.png)\n\n```swift\nlet first = 1\n\nlet last = 3\n```\n\n## 结尾"
+
+    let html =
+      MarkdownHTMLRenderingService
+      .renderPreviewBodyWithSourceLineAnchorsAllowingSanitizedHTML(markdown)
+
+    XCTAssertTrue(html.contains(#"<h1 data-source-line="1">标题</h1>"#))
+    XCTAssertTrue(html.contains(#"<p data-source-line="3">第一段。</p>"#))
+    XCTAssertTrue(html.contains(#"<p data-source-line="5"><img"#))
+    XCTAssertTrue(html.contains(#"<pre data-source-line="7"><code class="language-swift">"#))
+    XCTAssertTrue(html.contains("let first = 1\n\nlet last = 3"))
+    XCTAssertTrue(html.contains(#"<h2 data-source-line="13">结尾</h2>"#))
+  }
+
+  func testPreviewSourceLineAnchorsCoverListsTablesQuotesAndThematicBreaks() {
+    let markdown = "\n\n- 第一项\n- 第二项\n\n| 名称 | 值 |\n| --- | --- |\n| A | 1 |\n\n> 引用\n\n---"
+
+    let html =
+      MarkdownHTMLRenderingService
+      .renderPreviewBodyWithSourceLineAnchorsAllowingSanitizedHTML(markdown)
+
+    XCTAssertTrue(html.contains(#"<ul data-source-line="3">"#))
+    XCTAssertTrue(html.contains(#"<table data-source-line="6">"#))
+    XCTAssertTrue(html.contains(#"<blockquote data-source-line="10">"#))
+    XCTAssertTrue(html.contains(#"<hr data-source-line="12">"#))
+  }
+
+  func testSourceLineAnchorsArePreviewOnlyAndHonorStartingLine() {
+    let markdown = "# 标题\n\n正文"
+
+    let anchoredPreview =
+      MarkdownHTMLRenderingService
+      .renderPreviewBodyWithSourceLineAnchorsAllowingSanitizedHTML(
+        markdown,
+        startingAtLine: 41
+      )
+    let ordinaryBody = MarkdownHTMLRenderingService.renderBody(markdown)
+    let ordinaryPreview =
+      MarkdownHTMLRenderingService
+      .renderPreviewBodyAllowingSanitizedHTML(markdown)
+
+    XCTAssertTrue(anchoredPreview.contains(#"<h1 data-source-line="41">"#))
+    XCTAssertTrue(anchoredPreview.contains(#"<p data-source-line="43">"#))
+    XCTAssertFalse(ordinaryBody.contains("data-source-line"))
+    XCTAssertFalse(ordinaryPreview.contains("data-source-line"))
   }
 }

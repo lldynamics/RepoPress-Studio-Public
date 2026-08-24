@@ -15,7 +15,7 @@ struct MarkdownPreviewPane: View {
   @Binding var isSynchronizedScrollingEnabled: Bool
   let scrollSyncUpdate: MarkdownScrollSyncUpdate?
   let scrollRestorationUpdate: MarkdownScrollSyncUpdate?
-  let onScrollProgressChanged: (Double) -> Void
+  let onScrollPositionChanged: (MarkdownScrollSyncPosition) -> Void
   let onSourceLocationSelected: (Int) -> Void
   @Environment(\.colorScheme) private var colorScheme
   @AppStorage("markdownEditorPreviewTheme") private var previewThemeRaw = MarkdownPreviewTheme
@@ -208,7 +208,7 @@ struct MarkdownPreviewPane: View {
           assetResources: assetResources,
           scrollSyncUpdate: isSynchronizedScrollingEnabled ? scrollSyncUpdate : nil,
           scrollRestorationUpdate: scrollRestorationUpdate,
-          onScrollProgressChanged: onScrollProgressChanged,
+          onScrollPositionChanged: onScrollPositionChanged,
           onSourceLocationSelected: onSourceLocationSelected
         )
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -389,6 +389,10 @@ private enum MarkdownPreviewHTMLRenderer {
       title: title,
       markdown: markdown
     )
+    var nextSourceLine = startingSourceLine(
+      for: bodyMarkdown,
+      in: markdown
+    )
     for block in MarkdownExtendedPreviewService.blocks(in: bodyMarkdown) {
       try Task.checkCancellation()
       switch block {
@@ -400,11 +404,17 @@ private enum MarkdownPreviewHTMLRenderer {
         )
         renderedBlocks.append(
           restoredAssetHTML(
-            MarkdownHTMLRenderingService.renderPreviewBodyAllowingSanitizedHTML(prepared.markdown),
+            MarkdownHTMLRenderingService
+              .renderPreviewBodyWithSourceLineAnchorsAllowingSanitizedHTML(
+                prepared.markdown,
+                startingAtLine: nextSourceLine
+              ),
             replacements: prepared.replacements
           ))
+        nextSourceLine += markdownBlock.filter { $0 == "\n" }.count
       case .mermaid(let diagram):
-        renderedBlocks.append(mermaidHTML(for: diagram))
+        renderedBlocks.append(mermaidHTML(for: diagram, sourceLine: nextSourceLine))
+        nextSourceLine += diagram.source.filter { $0 == "\n" }.count + 3
       }
     }
     try Task.checkCancellation()
@@ -453,10 +463,13 @@ private enum MarkdownPreviewHTMLRenderer {
     }
   }
 
-  private static func mermaidHTML(for diagram: MarkdownMermaidDiagram) -> String {
+  private static func mermaidHTML(
+    for diagram: MarkdownMermaidDiagram,
+    sourceLine: Int
+  ) -> String {
     guard !diagram.nodes.isEmpty else {
       return
-        "<section class=\"mermaid-diagram mermaid-fallback\"><strong>Mermaid 基础流程图预览</strong><span class=\"mermaid-note\">当前不是完整 Mermaid 渲染。</span>\(preformattedFallback(from: diagram.source))</section>"
+        "<section class=\"mermaid-diagram mermaid-fallback\" data-source-line=\"\(sourceLine)\"><strong>Mermaid 基础流程图预览</strong><span class=\"mermaid-note\">当前不是完整 Mermaid 渲染。</span>\(preformattedFallback(from: diagram.source))</section>"
     }
 
     let nodeWidth = 180.0
@@ -510,7 +523,7 @@ private enum MarkdownPreviewHTMLRenderer {
     .joined()
 
     return """
-      <section class="mermaid-diagram" aria-label="Mermaid 基础流程图预览">
+      <section class="mermaid-diagram" data-source-line="\(sourceLine)" aria-label="Mermaid 基础流程图预览">
         <div class="mermaid-title">Mermaid 基础流程图预览</div>
         <div class="mermaid-note">当前仅支持基础流程图预览，不是完整 Mermaid。</div>
         <svg viewBox="0 0 \(width) \(height)" role="img" aria-label="\(escapeHTML(diagram.nodes.map(\.label).joined(separator: "，")))">
@@ -525,6 +538,19 @@ private enum MarkdownPreviewHTMLRenderer {
 
   private static func escapeHTML(_ value: String) -> String {
     MarkupEscaping.html(value)
+  }
+
+  private static func startingSourceLine(
+    for bodyMarkdown: String,
+    in sourceMarkdown: String
+  ) -> Int {
+    guard bodyMarkdown != sourceMarkdown,
+      !bodyMarkdown.isEmpty,
+      let range = sourceMarkdown.range(of: bodyMarkdown, options: .backwards)
+    else {
+      return 1
+    }
+    return sourceMarkdown[..<range.lowerBound].filter { $0 == "\n" }.count + 1
   }
 }
 

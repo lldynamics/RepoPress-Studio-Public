@@ -37,46 +37,52 @@ extension MacMarkdownComposerView {
 
   func updateSynchronizedScroll(
     source: MarkdownScrollSyncSource,
-    progress: Double
+    position: MarkdownScrollSyncPosition
   ) {
-    let normalizedProgress = min(max(progress.isFinite ? progress : 0, 0), 1)
+    let normalizedProgress = position.progress
     let equalityTolerance = 0.001
-    var didChange = false
+    var didProgressChange = false
     switch source {
     case .editor:
       if abs(editorScrollProgress - normalizedProgress) >= equalityTolerance {
         editorScrollProgress = normalizedProgress
-        didChange = true
+        didProgressChange = true
       }
       if isSynchronizedScrollingEnabled {
         if abs(previewScrollProgress - normalizedProgress) >= equalityTolerance {
           previewScrollProgress = normalizedProgress
-          didChange = true
+          didProgressChange = true
         }
       }
     case .preview:
       if abs(previewScrollProgress - normalizedProgress) >= equalityTolerance {
         previewScrollProgress = normalizedProgress
-        didChange = true
+        didProgressChange = true
       }
       if isSynchronizedScrollingEnabled {
         if abs(editorScrollProgress - normalizedProgress) >= equalityTolerance {
           editorScrollProgress = normalizedProgress
-          didChange = true
+          didProgressChange = true
         }
       }
     }
-    guard didChange else { return }
-    saveCurrentEditorSession()
+    if didProgressChange {
+      saveCurrentEditorSession()
+    }
 
     guard isSynchronizedScrollingEnabled else { return }
     if let scrollSyncUpdate,
       scrollSyncUpdate.source == source,
+      scrollSyncUpdate.sourceLine == position.sourceLine,
       abs(scrollSyncUpdate.progress - normalizedProgress) < equalityTolerance
     {
       return
     }
-    scrollSyncUpdate = MarkdownScrollSyncUpdate(source: source, progress: normalizedProgress)
+    scrollSyncUpdate = MarkdownScrollSyncUpdate(
+      source: source,
+      progress: normalizedProgress,
+      sourceLine: position.sourceLine
+    )
   }
 
   func restoreEditorSession(for draftID: UUID) {

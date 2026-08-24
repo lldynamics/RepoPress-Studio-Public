@@ -272,7 +272,7 @@ final class MarkdownEditorAppKitInteractionTests: XCTestCase {
       diagnostics: [],
       onStatisticsChanged: { _ in },
       onPasteMessage: { _ in },
-      onScrollProgressChanged: { _ in },
+      onScrollPositionChanged: { _ in },
       onDroppedFiles: { _ in }
     )
     let textView = NSTextView()
@@ -312,7 +312,7 @@ final class MarkdownEditorAppKitInteractionTests: XCTestCase {
       diagnostics: [],
       onStatisticsChanged: { _ in },
       onPasteMessage: { _ in },
-      onScrollProgressChanged: { _ in },
+      onScrollPositionChanged: { _ in },
       onDroppedFiles: { _ in }
     )
     let textView = NSTextView()
@@ -357,7 +357,7 @@ final class MarkdownEditorAppKitInteractionTests: XCTestCase {
       diagnostics: [],
       onStatisticsChanged: { _ in },
       onPasteMessage: { _ in },
-      onScrollProgressChanged: { _ in },
+      onScrollPositionChanged: { _ in },
       onDroppedFiles: { _ in }
     )
     let textView = NSTextView()
@@ -565,7 +565,7 @@ final class MarkdownEditorAppKitInteractionTests: XCTestCase {
       diagnostics: [],
       onStatisticsChanged: { _ in },
       onPasteMessage: { _ in },
-      onScrollProgressChanged: { _ in },
+      onScrollPositionChanged: { _ in },
       onDroppedFiles: { _ in }
     )
   }

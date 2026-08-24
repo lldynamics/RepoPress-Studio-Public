@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 import PublishingWorkbenchCore
+import QuartzCore
 
 enum MarkdownScrollSyncSource: Equatable, Hashable {
   case editor
@@ -10,16 +11,33 @@ enum MarkdownScrollSyncSource: Equatable, Hashable {
 struct MarkdownScrollSyncUpdate: Equatable, Identifiable {
   let id: UUID
   let source: MarkdownScrollSyncSource
-  let progress: Double
+  let position: MarkdownScrollSyncPosition
 
-  init(source: MarkdownScrollSyncSource, progress: Double) {
+  var progress: Double { position.progress }
+  var sourceLine: Int? { position.sourceLine }
+
+  init(
+    source: MarkdownScrollSyncSource,
+    progress: Double,
+    sourceLine: Int? = nil
+  ) {
     id = UUID()
     self.source = source
+    position = MarkdownScrollSyncPosition(sourceLine: sourceLine, progress: progress)
+  }
+}
+
+struct MarkdownScrollSyncPosition: Equatable, Sendable {
+  let sourceLine: Int?
+  let progress: Double
+
+  init(sourceLine: Int?, progress: Double) {
+    self.sourceLine = sourceLine.flatMap { $0 > 0 ? $0 : nil }
     self.progress = min(max(progress.isFinite ? progress : 0, 0), 1)
   }
 }
 
-/// Coalesces scroll callbacks until the bridge's idle debounce fires. Keeping
+/// Coalesces scroll callbacks until the bridge's next display-link frame. Keeping
 /// this state separate makes event semantics deterministic and prevents equal
 /// progress values from publishing or persisting again.
 struct MarkdownScrollProgressCoalescer: Equatable, Sendable {
@@ -75,15 +93,17 @@ struct MarkdownScrollProgressCoalescer: Equatable, Sendable {
 @MainActor
 final class MarkdownScrollViewSyncBridge: NSObject {
   private let source: MarkdownScrollSyncSource
-  private let onProgressChanged: (Double) -> Void
+  private let onPositionChanged: (MarkdownScrollSyncPosition) -> Void
   private let service = MarkdownScrollSynchronizationService()
   private weak var scrollView: NSScrollView?
+  private var sourceLineProvider: ((NSScrollView) -> Int?)?
+  private var sourceLineApplier: ((Int, NSScrollView) -> Bool)?
   private var lastAppliedSynchronizationUpdateID: UUID?
   private var lastAppliedRestorationUpdateID: UUID?
   private var progressCoalescer = MarkdownScrollProgressCoalescer()
-  private var progressDeliveryTask: Task<Void, Never>?
+  private var displayLink: CADisplayLink?
+  private var hasPendingDisplayLinkDelivery = false
   private var isApplyingUpdate = false
-  private let progressDeliveryDelay: Duration = .milliseconds(32)
 
   private enum UpdatePurpose {
     case synchronization
@@ -92,25 +112,44 @@ final class MarkdownScrollViewSyncBridge: NSObject {
 
   init(
     source: MarkdownScrollSyncSource,
-    onProgressChanged: @escaping (Double) -> Void
+    onPositionChanged: @escaping (MarkdownScrollSyncPosition) -> Void
   ) {
     self.source = source
-    self.onProgressChanged = onProgressChanged
+    self.onPositionChanged = onPositionChanged
     super.init()
   }
 
-  deinit {
+  func invalidate() {
     NotificationCenter.default.removeObserver(self)
+    displayLink?.invalidate()
+    displayLink = nil
+    scrollView = nil
+    sourceLineProvider = nil
+    sourceLineApplier = nil
+    hasPendingDisplayLinkDelivery = false
   }
 
-  func observe(_ scrollView: NSScrollView) {
+  func observe(
+    _ scrollView: NSScrollView,
+    sourceLineProvider: ((NSScrollView) -> Int?)? = nil,
+    sourceLineApplier: ((Int, NSScrollView) -> Bool)? = nil
+  ) {
     NotificationCenter.default.removeObserver(self)
+    displayLink?.invalidate()
     self.scrollView = scrollView
+    self.sourceLineProvider = sourceLineProvider
+    self.sourceLineApplier = sourceLineApplier
     lastAppliedSynchronizationUpdateID = nil
     lastAppliedRestorationUpdateID = nil
     progressCoalescer.reset()
-    progressDeliveryTask?.cancel()
-    progressDeliveryTask = nil
+    hasPendingDisplayLinkDelivery = false
+    let displayLink = scrollView.displayLink(
+      target: self,
+      selector: #selector(displayLinkDidFire(_:))
+    )
+    displayLink.isPaused = true
+    displayLink.add(to: .main, forMode: .common)
+    self.displayLink = displayLink
     scrollView.contentView.postsBoundsChangedNotifications = true
     NotificationCenter.default.addObserver(
       self,
@@ -157,6 +196,18 @@ final class MarkdownScrollViewSyncBridge: NSObject {
     }
 
     scrollView.layoutSubtreeIfNeeded()
+    if let sourceLine = update.sourceLine,
+      purpose == .synchronization,
+      sourceLineApplier?(sourceLine, scrollView) == true
+    {
+      setLastAppliedUpdateID(update.id, for: purpose)
+      isApplyingUpdate = true
+      progressCoalescer.markDelivered(update.progress)
+      DispatchQueue.main.async { [weak self] in
+        self?.isApplyingUpdate = false
+      }
+      return
+    }
     let viewportLength = Double(scrollView.contentView.bounds.height)
     let contentLength = Double(scrollView.documentView?.frame.height ?? 0)
     let scrollableLength = max(0, contentLength - viewportLength)
@@ -223,23 +274,25 @@ final class MarkdownScrollViewSyncBridge: NSObject {
       viewportLength: Double(scrollView.contentView.bounds.height),
       contentLength: Double(scrollView.documentView?.frame.height ?? 0)
     )
-    guard progressCoalescer.receive(progress) else {
-      return
-    }
-    guard progressDeliveryTask == nil else { return }
-    progressDeliveryTask = Task { @MainActor [weak self] in
-      guard let self else { return }
-      do {
-        try await Task.sleep(for: self.progressDeliveryDelay)
-      } catch {
-        return
-      }
-      guard !Task.isCancelled else { return }
-      let progress = self.progressCoalescer.deliverLatest()
-      self.progressDeliveryTask = nil
-      guard let progress else { return }
-      self.onProgressChanged(progress)
-    }
+    _ = progressCoalescer.receive(progress)
+    hasPendingDisplayLinkDelivery = true
+    displayLink?.isPaused = false
   }
 
+  @objc
+  private func displayLinkDidFire(_ displayLink: CADisplayLink) {
+    guard hasPendingDisplayLinkDelivery, !isApplyingUpdate else {
+      displayLink.isPaused = true
+      return
+    }
+    hasPendingDisplayLinkDelivery = false
+    displayLink.isPaused = true
+    guard let progress = progressCoalescer.deliverLatest(), let scrollView else { return }
+    onPositionChanged(
+      MarkdownScrollSyncPosition(
+        sourceLine: sourceLineProvider?(scrollView),
+        progress: progress
+      )
+    )
+  }
 }

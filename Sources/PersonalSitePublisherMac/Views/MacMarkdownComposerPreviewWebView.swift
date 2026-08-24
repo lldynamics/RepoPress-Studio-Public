@@ -4,8 +4,9 @@ import PublishingWorkbenchCore
 import SwiftUI
 import UniformTypeIdentifiers
 import WebKit
+
 #if canImport(Darwin)
-import Darwin
+  import Darwin
 #endif
 struct MarkdownPreviewWebView: NSViewRepresentable {
   let html: String
@@ -13,7 +14,7 @@ struct MarkdownPreviewWebView: NSViewRepresentable {
   let assetResources: [MarkdownPreviewAssetResource]
   let scrollSyncUpdate: MarkdownScrollSyncUpdate?
   let scrollRestorationUpdate: MarkdownScrollSyncUpdate?
-  let onScrollProgressChanged: (Double) -> Void
+  let onScrollPositionChanged: (MarkdownScrollSyncPosition) -> Void
   let onSourceLocationSelected: (Int) -> Void
 
   @MainActor
@@ -21,18 +22,25 @@ struct MarkdownPreviewWebView: NSViewRepresentable {
     var lastLoadedRenderID: UUID?
     var latestScrollSyncUpdate: MarkdownScrollSyncUpdate?
     var latestScrollRestorationUpdate: MarkdownScrollSyncUpdate?
-    private let scrollSyncBridge: MarkdownScrollViewSyncBridge
+    private weak var webView: WKWebView?
+    private var lastAppliedAnchorUpdateID: UUID?
+    private var anchorEvaluationGeneration: UInt64 = 0
+    private var isApplyingAnchorScroll = false
+    private let onScrollPositionChanged: (MarkdownScrollSyncPosition) -> Void
+    private lazy var scrollSyncBridge = MarkdownScrollViewSyncBridge(
+      source: .preview,
+      onPositionChanged: { [weak self] position in
+        self?.resolveTopVisibleSourceLine(for: position)
+      }
+    )
     private let onSourceLocationSelected: (Int) -> Void
     let assetSchemeHandler = MarkdownPreviewAssetSchemeHandler()
 
     init(
-      onScrollProgressChanged: @escaping (Double) -> Void,
+      onScrollPositionChanged: @escaping (MarkdownScrollSyncPosition) -> Void,
       onSourceLocationSelected: @escaping (Int) -> Void
     ) {
-      scrollSyncBridge = MarkdownScrollViewSyncBridge(
-        source: .preview,
-        onProgressChanged: onScrollProgressChanged
-      )
+      self.onScrollPositionChanged = onScrollPositionChanged
       self.onSourceLocationSelected = onSourceLocationSelected
       super.init()
     }
@@ -46,12 +54,25 @@ struct MarkdownPreviewWebView: NSViewRepresentable {
         }
         return
       }
+      self.webView = webView
       scrollSyncBridge.observe(scrollView)
     }
 
     func applySynchronizedScroll(includingOwnSource: Bool = false) {
+      guard let update = latestScrollSyncUpdate,
+        includingOwnSource || update.source != .preview
+      else {
+        return
+      }
+      if let sourceLine = update.sourceLine,
+        update.id != lastAppliedAnchorUpdateID,
+        let webView
+      {
+        applyAnchor(sourceLine, update: update, in: webView)
+        return
+      }
       scrollSyncBridge.apply(
-        latestScrollSyncUpdate,
+        update,
         includingOwnSource: includingOwnSource
       )
     }
@@ -60,12 +81,76 @@ struct MarkdownPreviewWebView: NSViewRepresentable {
       scrollSyncBridge.restore(latestScrollRestorationUpdate)
     }
 
+    func invalidate() {
+      anchorEvaluationGeneration &+= 1
+      scrollSyncBridge.invalidate()
+      webView = nil
+    }
+
+    private func resolveTopVisibleSourceLine(for position: MarkdownScrollSyncPosition) {
+      guard !isApplyingAnchorScroll, let webView else { return }
+      anchorEvaluationGeneration &+= 1
+      let generation = anchorEvaluationGeneration
+      let script = """
+        (() => {
+          const anchors = document.querySelectorAll('[data-source-line]');
+          for (const anchor of anchors) {
+            const rect = anchor.getBoundingClientRect();
+            if (rect.bottom > 0 && rect.top < window.innerHeight) {
+              return Number(anchor.dataset.sourceLine);
+            }
+          }
+          return null;
+        })()
+        """
+      webView.evaluateJavaScript(script) { [weak self] result, _ in
+        guard let self, generation == self.anchorEvaluationGeneration else { return }
+        let sourceLine = (result as? NSNumber)?.intValue
+        self.onScrollPositionChanged(
+          MarkdownScrollSyncPosition(sourceLine: sourceLine, progress: position.progress)
+        )
+      }
+    }
+
+    private func applyAnchor(
+      _ sourceLine: Int,
+      update: MarkdownScrollSyncUpdate,
+      in webView: WKWebView
+    ) {
+      lastAppliedAnchorUpdateID = update.id
+      isApplyingAnchorScroll = true
+      anchorEvaluationGeneration &+= 1
+      let script = """
+        (() => {
+          const requestedLine = \(sourceLine);
+          var target = null;
+          for (const anchor of document.querySelectorAll('[data-source-line]')) {
+            const line = Number(anchor.dataset.sourceLine);
+            if (!Number.isFinite(line) || line > requestedLine) { break; }
+            target = anchor;
+          }
+          if (!target) { return false; }
+          target.scrollIntoView({ block: 'start', inline: 'nearest', behavior: 'auto' });
+          return true;
+        })()
+        """
+      webView.evaluateJavaScript(script) { [weak self] result, _ in
+        guard let self else { return }
+        if (result as? NSNumber)?.boolValue != true {
+          self.scrollSyncBridge.apply(update)
+        }
+        DispatchQueue.main.async { [weak self] in
+          self?.isApplyingAnchorScroll = false
+        }
+      }
+    }
+
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
       DispatchQueue.main.async { [weak self, weak webView] in
         guard let webView else { return }
         self?.observeScrolling(in: webView, allowDeferredRetry: false)
-        self?.applySynchronizedScroll(includingOwnSource: true)
         self?.applyRestoredScroll()
+        self?.applySynchronizedScroll(includingOwnSource: true)
       }
     }
 
@@ -112,7 +197,7 @@ struct MarkdownPreviewWebView: NSViewRepresentable {
 
   func makeCoordinator() -> Coordinator {
     Coordinator(
-      onScrollProgressChanged: onScrollProgressChanged,
+      onScrollPositionChanged: onScrollPositionChanged,
       onSourceLocationSelected: onSourceLocationSelected
     )
   }
@@ -144,5 +229,10 @@ struct MarkdownPreviewWebView: NSViewRepresentable {
     context.coordinator.assetSchemeHandler.update(resources: assetResources)
     context.coordinator.lastLoadedRenderID = renderID
     nsView.loadHTMLString(html, baseURL: nil)
+  }
+
+  static func dismantleNSView(_ nsView: WKWebView, coordinator: Coordinator) {
+    nsView.navigationDelegate = nil
+    coordinator.invalidate()
   }
 }

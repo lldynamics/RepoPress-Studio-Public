@@ -382,7 +382,8 @@ struct MacMarkdownComposerView: View {
       guard isEnabled, let scrollSyncUpdate else { return }
       self.scrollSyncUpdate = MarkdownScrollSyncUpdate(
         source: scrollSyncUpdate.source,
-        progress: scrollSyncUpdate.progress
+        progress: scrollSyncUpdate.progress,
+        sourceLine: scrollSyncUpdate.sourceLine
       )
     }
     .modifier(
@@ -584,8 +585,8 @@ struct MacMarkdownComposerView: View {
       isSynchronizedScrollingEnabled: $isSynchronizedScrollingEnabled,
       scrollSyncUpdate: scrollSyncUpdate,
       scrollRestorationUpdate: previewScrollRestorationUpdate,
-      onScrollProgressChanged: { progress in
-        updateSynchronizedScroll(source: .preview, progress: progress)
+      onScrollPositionChanged: { position in
+        updateSynchronizedScroll(source: .preview, position: position)
       },
       onSourceLocationSelected: { location in
         if editorState.editorDisplayMode == .preview {
@@ -710,8 +711,8 @@ struct MacMarkdownComposerView: View {
             }
             TypewriterAudioService.shared.playKeyClick(preset: preset)
           },
-          onScrollProgressChanged: { progress in
-            updateSynchronizedScroll(source: .editor, progress: progress)
+          onScrollPositionChanged: { position in
+            updateSynchronizedScroll(source: .editor, position: position)
           },
           onDroppedFiles: { urls in
             insertImageReferences(urls)
