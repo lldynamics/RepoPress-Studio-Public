@@ -43,11 +43,22 @@ grep -Fxq "$TMP_DIR/strict-concurrency" "$ARGS_FILE" || fail "gate used an unexp
 grep -Fxq "$TMP_DIR/swift-cache" "$ARGS_FILE" || fail "gate omitted isolated SwiftPM cache path"
 grep -Fxq "$TMP_DIR/swift-home/Library/org.swift.swiftpm/configuration" "$ARGS_FILE" || fail "gate omitted isolated SwiftPM configuration path"
 grep -Fxq "$TMP_DIR/swift-home/Library/org.swift.swiftpm/security" "$ARGS_FILE" || fail "gate omitted isolated SwiftPM security path"
-grep -Fxq -- "-swift-version" "$ARGS_FILE" || fail "gate omitted an explicit Swift language mode"
-grep -Fxq -- "5" "$ARGS_FILE" || fail "gate must use Swift 5 language mode"
+if grep -Fxq -- "-swift-version" "$ARGS_FILE"; then
+  fail "gate must inherit the Swift language modes declared by Package.swift"
+fi
 grep -Fxq -- "-strict-concurrency=complete" "$ARGS_FILE" || fail "gate omitted complete strict concurrency"
 grep -Fxq -- "-warnings-as-errors" "$ARGS_FILE" || fail "gate omitted warnings-as-errors"
 grep -Fq "$TMP_DIR/swift-home" "$ENV_FILE" || fail "gate did not isolate Swift build caches"
+
+PACKAGE_V6_TARGET_COUNT="$(grep -Ec '^[[:space:]]*\.(target|executableTarget|testTarget)\(' "$ROOT_DIR/Package.swift")"
+[[ "$PACKAGE_V6_TARGET_COUNT" -eq 5 ]] || fail "Package.swift target inventory changed; expected five Swift 6 targets"
+PACKAGE_V6_MODE_COUNT="$(grep -Ec '\.swiftLanguageMode\(\.v6\)' "$ROOT_DIR/Package.swift")"
+[[ "$PACKAGE_V6_MODE_COUNT" -eq 5 ]] || fail "Package.swift must keep Swift 6 language mode on all five targets"
+README_SWIFT_LABEL="Swift"
+README_LEGACY_LANGUAGE_MODE="5"
+if grep -Fq "$README_SWIFT_LABEL $README_LEGACY_LANGUAGE_MODE" "$ROOT_DIR/README.public.md"; then
+  fail "README.public.md still describes a legacy Swift target"
+fi
 
 if env -u XDG_CACHE_HOME -u CLANG_MODULE_CACHE_PATH -u SWIFT_MODULE_CACHE_PATH \
   STRICT_BUILD_ARGS_FILE="$ARGS_FILE" \
@@ -61,4 +72,4 @@ if env -u XDG_CACHE_HOME -u CLANG_MODULE_CACHE_PATH -u SWIFT_MODULE_CACHE_PATH \
   fail "gate accepted a failing Swift build"
 fi
 
-echo "swift 5 complete-concurrency gate test: passed"
+echo "manifest Swift 6 complete-concurrency gate test: passed"

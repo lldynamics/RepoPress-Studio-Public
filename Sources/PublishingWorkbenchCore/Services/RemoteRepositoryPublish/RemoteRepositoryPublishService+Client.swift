@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 
 extension RemoteRepositoryPublishService {
   func githubRequest<Body: Encodable>(
@@ -372,6 +373,53 @@ extension RemoteRepositoryPublishService {
         )
       }
     }
+  }
+
+  /// GitHub's Contents API returns the Git blob SHA for a file. Comparing the
+  /// exact upload payload against that SHA lets a retry safely adopt a remote
+  /// file that is already identical, even when the draft lost its baseline.
+  func gitBlobSHA(for data: Data) -> String {
+    var blob = Data("blob \(data.count)\0".utf8)
+    blob.append(data)
+    return Insecure.SHA1.hash(data: blob)
+      .map { String(format: "%02x", $0) }
+      .joined()
+  }
+
+  func githubRemoteContentMatches(data: Data, remoteSHA: String?) -> Bool {
+    guard let remoteSHA = remoteSHA?.trimmedForPublishing.nilIfEmpty else {
+      return false
+    }
+    return gitBlobSHA(for: data).caseInsensitiveCompare(remoteSHA) == .orderedSame
+  }
+
+  func githubLegacyDeleteContentMatches(
+    file: PublishPackageFile,
+    remoteSHA: String?
+  ) -> Bool {
+    guard file.operation == .delete,
+          file.expectedRemoteSHA?.trimmedForPublishing.nilIfEmpty == nil,
+          let expectedGitBlobSHA = file.expectedGitBlobSHA?.trimmedForPublishing.nilIfEmpty,
+          let remoteSHA = remoteSHA?.trimmedForPublishing.nilIfEmpty else {
+      return false
+    }
+    return expectedGitBlobSHA.caseInsensitiveCompare(remoteSHA) == .orderedSame
+  }
+
+  func gitLabLegacyDeleteContentMatches(
+    file: PublishPackageFile,
+    remoteContent: Data?
+  ) -> Bool {
+    guard file.operation == .delete,
+          file.expectedRemoteSHA?.trimmedForPublishing.nilIfEmpty == nil,
+          let expectedContentSHA256 = file.expectedContentSHA256?.trimmedForPublishing.nilIfEmpty,
+          let remoteContent else {
+      return false
+    }
+    let actual = SHA256.hash(data: remoteContent)
+      .map { String(format: "%02x", $0) }
+      .joined()
+    return expectedContentSHA256.caseInsensitiveCompare(actual) == .orderedSame
   }
 
   func validateExpectedRemoteVersion(

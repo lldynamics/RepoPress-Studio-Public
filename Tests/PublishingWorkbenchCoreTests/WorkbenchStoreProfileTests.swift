@@ -1084,7 +1084,8 @@ final class WorkbenchStoreProfileTests: XCTestCase {
       defaultBranch: "main",
       canRead: true,
       canWrite: true,
-      message: "Legacy permission"
+      message: "Legacy permission",
+      checkedAt: Date(timeIntervalSince1970: 1_800_000_000)
     )
     let snapshot = WorkbenchSnapshot(
       profiles: [profile],
@@ -1105,6 +1106,29 @@ final class WorkbenchStoreProfileTests: XCTestCase {
 
     XCTAssertEqual(decoded.remoteRepositoryAccessCheckByProfileID[profile.id], check)
     XCTAssertEqual(decoded.remoteRepositoryAccessCheck, check)
+  }
+
+  func testExpiredRemoteRepositoryAccessCheckRequiresFreshValidation() throws {
+    let store = try TestWorkbenchFactory.makeStore(prefix: "ExpiredRepositoryAccess")
+    var profile = store.activeProfile
+    profile.repoOwner = "owner"
+    profile.repoName = "site"
+    store.updateActiveProfile(profile)
+    store.setRemoteRepositoryAccessCheck(
+      RemoteRepositoryAccessCheck(
+        provider: .github,
+        repositoryName: "owner/site",
+        apiBaseURL: RepositoryProvider.github.defaultBaseURL,
+        defaultBranch: "main",
+        canRead: true,
+        canWrite: true,
+        message: "Old permission result",
+        checkedAt: Date().addingTimeInterval(-RemoteRepositoryAccessCheck.maximumCacheAge - 1)
+      )
+    )
+
+    XCTAssertNil(store.activeRemoteRepositoryAccessCheck)
+    XCTAssertTrue(store.hasStaleRemoteRepositoryAccessCheckForActiveProfile)
   }
 
   func testLocalPreviewAuthorizationSurvivesProfileRoundTripWithoutCrossProfileReuse() throws {

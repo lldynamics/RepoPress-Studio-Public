@@ -215,6 +215,112 @@ final class LocalRepositoryServiceTests: XCTestCase {
     })
   }
 
+  func testGitStatusPreservesUnicodeSpacesQuotesAndRenamePaths() throws {
+    let rootURL = FileManager.default.temporaryDirectory
+      .appendingPathComponent("PersonalSitePublisherMacNULStatusTests-\(UUID().uuidString)", isDirectory: true)
+    defer {
+      try? FileManager.default.removeItem(at: rootURL)
+    }
+
+    let contentURL = rootURL.appendingPathComponent("content/posts", isDirectory: true)
+    try FileManager.default.createDirectory(at: contentURL, withIntermediateDirectories: true)
+    let modifiedPath = "content/posts/修改 中文 文件.md"
+    let untrackedPath = "content/posts/未跟踪 空格.md"
+    let oldRenamePath = "content/posts/旧 中文.md"
+    let newRenamePath = "content/posts/新 \" 标题.md"
+
+    for path in [modifiedPath, oldRenamePath] {
+      try "original\n".write(
+        to: rootURL.appendingPathComponent(path),
+        atomically: true,
+        encoding: .utf8
+      )
+    }
+
+    try git(["init", "-b", "main"], rootURL: rootURL)
+    try git(["config", "user.email", "tests@example.com"], rootURL: rootURL)
+    try git(["config", "user.name", "Tests"], rootURL: rootURL)
+    try git(["add", "."], rootURL: rootURL)
+    try git(["commit", "-m", "Initial"], rootURL: rootURL)
+
+    try "modified\n".write(
+      to: rootURL.appendingPathComponent(modifiedPath),
+      atomically: true,
+      encoding: .utf8
+    )
+    try git(["mv", oldRenamePath, newRenamePath], rootURL: rootURL)
+    try "untracked\n".write(
+      to: rootURL.appendingPathComponent(untrackedPath),
+      atomically: true,
+      encoding: .utf8
+    )
+
+    let status = LocalRepositoryService().gitStatus(rootURL: rootURL)
+    let changedFiles = status.changedFiles
+
+    let modified = try XCTUnwrap(changedFiles.first { $0.path == modifiedPath })
+    XCTAssertEqual(modified.kind, .modified)
+
+    let untracked = try XCTUnwrap(changedFiles.first { $0.path == untrackedPath })
+    XCTAssertEqual(untracked.kind, .untracked)
+
+    let renamed = try XCTUnwrap(
+      changedFiles.first { $0.path == "\(oldRenamePath) -> \(newRenamePath)" }
+    )
+    XCTAssertEqual(renamed.kind, .renamed)
+    XCTAssertEqual(renamed.displayPath, newRenamePath)
+    XCTAssertFalse(changedFiles.contains { $0.path.contains("\\344") })
+  }
+
+  func testRemoteNameStatusPreservesUnicodeRenameAndCopyPaths() throws {
+    let rootURL = FileManager.default.temporaryDirectory
+      .appendingPathComponent("PersonalSitePublisherMacNULRemoteTests-\(UUID().uuidString)", isDirectory: true)
+    defer {
+      try? FileManager.default.removeItem(at: rootURL)
+    }
+
+    let contentURL = rootURL.appendingPathComponent("content/posts", isDirectory: true)
+    try FileManager.default.createDirectory(at: contentURL, withIntermediateDirectories: true)
+    let oldPath = "content/posts/旧 中文.md"
+    let newPath = "content/posts/新 \" 标题.md"
+    try "remote\n".write(
+      to: rootURL.appendingPathComponent(oldPath),
+      atomically: true,
+      encoding: .utf8
+    )
+
+    try git(["init", "-b", "main"], rootURL: rootURL)
+    try git(["config", "user.email", "tests@example.com"], rootURL: rootURL)
+    try git(["config", "user.name", "Tests"], rootURL: rootURL)
+    try git(["add", "."], rootURL: rootURL)
+    try git(["commit", "-m", "Initial"], rootURL: rootURL)
+    try git(["switch", "-c", "remote-work"], rootURL: rootURL)
+    try git(["mv", oldPath, newPath], rootURL: rootURL)
+    try git(["commit", "-am", "Rename remote article"], rootURL: rootURL)
+    let remoteCommit = try git(["rev-parse", "HEAD"], rootURL: rootURL)
+    try git(["switch", "main"], rootURL: rootURL)
+    try git(["update-ref", "refs/remotes/origin/main", remoteCommit], rootURL: rootURL)
+
+    let service = LocalRepositoryService()
+    let changedFiles = service.remoteChangedFiles(rootURL: rootURL, upstreamName: "origin/main")
+    let renamed = try XCTUnwrap(changedFiles.first)
+    XCTAssertEqual(renamed.status, "R100")
+    XCTAssertEqual(renamed.path, "\(oldPath) -> \(newPath)")
+    XCTAssertEqual(renamed.kind, .renamed)
+    XCTAssertEqual(renamed.displayPath, newPath)
+
+    let copied = try XCTUnwrap(
+      service.parseNameStatus(
+        ["C100", oldPath, newPath].joined(separator: "\0") + "\0"
+      ).first
+    )
+    XCTAssertEqual(copied.status, "C100")
+    XCTAssertEqual(copied.path, "\(oldPath) -> \(newPath)")
+    // RepositoryChangeKind has no separate copy case; preserve the existing
+    // classifier's `.other` mapping while still retaining both real paths.
+    XCTAssertEqual(copied.kind, .other)
+  }
+
   func testFetchUpstreamRefreshesRemoteTrackingBranchBeforeScan() throws {
     let rootURL = FileManager.default.temporaryDirectory
       .appendingPathComponent("PersonalSitePublisherMacFetchTests-\(UUID().uuidString)", isDirectory: true)

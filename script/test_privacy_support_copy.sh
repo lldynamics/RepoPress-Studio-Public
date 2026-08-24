@@ -76,4 +76,24 @@ if gate_accepts_fixture 2>/dev/null; then
   fail "gate accepted public privacy copy without the Chrome extension boundary"
 fi
 
+make_fixture
+perl -0pi -e 's/By default, API keys are stored in macOS Keychain/By default, API keys are stored in a plain-text Application Support configuration file/g' \
+  "$FIXTURE_ROOT/docs/public-pages/privacy-en.html"
+if gate_accepts_fixture 2>/dev/null; then
+  fail "gate accepted stale plain-text Application Support credential default in English privacy page"
+fi
+
+make_fixture
+perl -0pi -e 's/API Key 默认保存在 macOS Keychain/API Key 默认以明文保存在仅当前 macOS 用户可读写的 Application Support 配置文件中/g' \
+  "$FIXTURE_ROOT/docs/public-pages/privacy-zh-Hans.html"
+if gate_accepts_fixture 2>/dev/null; then
+  fail "gate accepted stale plain-text Application Support credential default in Chinese privacy page"
+fi
+
+make_fixture
+printf '\n<!-- manual out of sync edit -->\n' >>"$FIXTURE_ROOT/docs/public-pages/support-en.html"
+if gate_accepts_fixture 2>/dev/null; then
+  fail "gate accepted public page that drifted out of sync with generator"
+fi
+
 echo "privacy support copy test: passed"

@@ -1,6 +1,22 @@
 {
   "sourceLanguage": "zh-Hans",
   "strings": {
+    " · 另有 %d 篇网站草稿未纳入发布": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": " · %d website drafts excluded from publishing"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": " · 另有 %d 篇网站草稿未纳入发布"
+          }
+        }
+      }
+    },
     "# 大标题": {
       "localizations": {
         "en": {
@@ -1517,6 +1533,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "%d 篇文章"
+          }
+        }
+      }
+    },
+    "%d 篇网站草稿未纳入发布，请单独同步": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%d website drafts are excluded from publishing; sync them individually"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%d 篇网站草稿未纳入发布，请单独同步"
           }
         }
       }
@@ -5233,6 +5265,22 @@
         }
       }
     },
+    "PR/MR 已关闭…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "PR/MR Is Closed…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "PR/MR 已关闭…"
+          }
+        }
+      }
+    },
     "PR/MR 描述": {
       "localizations": {
         "en": {
@@ -5293,22 +5341,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "RSS / Atom 地址或博客首页"
-          }
-        }
-      }
-    },
-    "RSS 只保存 Feed 实际返回的摘要和正文。旧版本已经保存的网页快照和媒体缓存仍可读取，但不会再自动抓取或归档新内容。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "RSS stores only the summary and body returned by the feed. Web snapshots and media cached by earlier versions remain readable, but new content is no longer fetched or archived automatically."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "RSS 只保存 Feed 实际返回的摘要和正文。旧版本已经保存的网页快照和媒体缓存仍可读取，但不会再自动抓取或归档新内容。"
           }
         }
       }
@@ -5613,6 +5645,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "RSS 高亮"
+          }
+        }
+      }
+    },
+    "RSS 默认保存 Feed 返回的摘要和正文。启用全文提取或离线缓存全文后，还会访问原网站并保存净化后的正文；关闭这些选项后不会新增原网页全文。历史网页快照和媒体缓存仍可读取。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "RSS saves the summary and body returned by the feed by default. When full-text extraction or offline full-text caching is enabled, the app also visits the original website and saves a sanitized body. No new webpage full text is added while both options are off. Historical webpage snapshots and media caches remain readable."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "RSS 默认保存 Feed 返回的摘要和正文。启用全文提取或离线缓存全文后，还会访问原网站并保存净化后的正文；关闭这些选项后不会新增原网页全文。历史网页快照和媒体缓存仍可读取。"
           }
         }
       }
@@ -10401,6 +10449,166 @@
         }
       }
     },
+    "display.draft-repository-remote-cleanup-status.completed": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unpublished from Website"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已从网站下线"
+          }
+        }
+      }
+    },
+    "display.draft-repository-remote-cleanup-status.pending": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pending Unpublish"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "待下线"
+          }
+        }
+      }
+    },
+    "display.draft-repository-remote-cleanup-status.review-requested": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Waiting for PR/MR Merge"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "等待 PR/MR 合并"
+          }
+        }
+      }
+    },
+    "display.draft-repository-sync-state.awaiting-review": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Waiting for PR/MR Merge"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "等待 PR/MR 合并"
+          }
+        }
+      }
+    },
+    "display.draft-repository-sync-state.diverged": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Local and Remote Diverged"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "本地与远端已分叉"
+          }
+        }
+      }
+    },
+    "display.draft-repository-sync-state.failed": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sync Failed"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "同步失败"
+          }
+        }
+      }
+    },
+    "display.draft-repository-sync-state.local-changed": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Local Changes"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "有本地修改"
+          }
+        }
+      }
+    },
+    "display.draft-repository-sync-state.local-only": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "App-Only Draft"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "仅软件草稿"
+          }
+        }
+      }
+    },
+    "display.draft-repository-sync-state.project-saved": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Written to Project, Not Synced"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已写入项目，未同步远端"
+          }
+        }
+      }
+    },
+    "display.draft-repository-sync-state.synced": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Synced with Remote"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已与远端同步"
+          }
+        }
+      }
+    },
     "display.draft-status.draft": {
       "localizations": {
         "en": {
@@ -14161,6 +14369,22 @@
         }
       }
     },
+    "一键下线会核对远端版本、提交删除并清理本地 Markdown；PR/MR 模式会等待合并确认。可能被其他文章复用的图片不会自动删除。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "One-step unpublish verifies the remote version, commits the deletion, and removes the local Markdown. In PR/MR mode, it waits for merge confirmation. Images that may be reused by other articles are not deleted automatically."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "一键下线会核对远端版本、提交删除并清理本地 Markdown；PR/MR 模式会等待合并确认。可能被其他文章复用的图片不会自动删除。"
+          }
+        }
+      }
+    },
     "一键应用到当前编辑器": {
       "localizations": {
         "en": {
@@ -14589,6 +14813,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "下移"
+          }
+        }
+      }
+    },
+    "下线 PR/MR 已关闭？": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Is the Unpublish PR/MR Closed?"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "下线 PR/MR 已关闭？"
           }
         }
       }
@@ -15217,6 +15457,22 @@
         }
       }
     },
+    "仅保存在软件": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Saved Only in App"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "仅保存在软件"
+          }
+        }
+      }
+    },
     "仅允许下方已勾选的 Agent 权限；关闭总开关后所有权限都会暂时禁用。": {
       "localizations": {
         "en": {
@@ -15229,22 +15485,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "仅允许下方已勾选的 Agent 权限；关闭总开关后所有权限都会暂时禁用。"
-          }
-        }
-      }
-    },
-    "仅包含应用管理的文章发布包；不会包含 CSS、模板、脚本等其他 Git 工作区变更。发布前会显示完整文件清单。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Includes only article publish packages managed by the app; CSS, templates, scripts, and other Git working tree changes are excluded. The complete file list is shown before publishing."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "仅包含应用管理的文章发布包；不会包含 CSS、模板、脚本等其他 Git 工作区变更。发布前会显示完整文件清单。"
           }
         }
       }
@@ -15453,6 +15693,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "仅用于自定义 HTTPS 状态端点"
+          }
+        }
+      }
+    },
+    "仅移到回收站…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Move to Trash Only…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "仅移到回收站…"
           }
         }
       }
@@ -15677,6 +15933,38 @@
           "stringUnit": {
             "state": "translated",
             "value": "从站点仓库导入文章…"
+          }
+        }
+      }
+    },
+    "从网站下线…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unpublish from Website…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "从网站下线…"
+          }
+        }
+      }
+    },
+    "从网站下线这篇文章？": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unpublish This Article?"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "从网站下线这篇文章？"
           }
         }
       }
@@ -17553,22 +17841,6 @@
         }
       }
     },
-    "保留文件": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Keep File"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "保留文件"
-          }
-        }
-      }
-    },
     "保留最近": {
       "localizations": {
         "en": {
@@ -17581,6 +17853,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "保留最近"
+          }
+        }
+      }
+    },
+    "保留本地文件": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Keep Local File"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "保留本地文件"
           }
         }
       }
@@ -18561,6 +18849,22 @@
         }
       }
     },
+    "全部取消": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Deselect All"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "全部取消"
+          }
+        }
+      }
+    },
     "全部可发布文章（%d 篇）": {
       "localizations": {
         "en": {
@@ -18605,6 +18909,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "全部已读（%lld）"
+          }
+        }
+      }
+    },
+    "全部待下线文章（%d 篇）": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "All Articles Pending Unpublish (%d)"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "全部待下线文章（%d 篇）"
           }
         }
       }
@@ -19585,6 +19905,22 @@
         }
       }
     },
+    "其余资料默认已勾选；展开后可逐项取消，再确认导入。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The remaining items are selected by default. Expand the list to deselect individual items before confirming the import."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "其余资料默认已勾选；展开后可逐项取消，再确认导入。"
+          }
+        }
+      }
+    },
     "内容、资源和公开图片的目录及路径模板": {
       "localizations": {
         "en": {
@@ -20045,6 +20381,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "写作生成"
+          }
+        }
+      }
+    },
+    "写作阶段": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Writing Stage"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "写作阶段"
           }
         }
       }
@@ -20813,6 +21165,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "创建、校验和恢复完整工作区，并管理自动备份。"
+          }
+        }
+      }
+    },
+    "创建下线 PR/MR": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "create an unpublish PR/MR"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "创建下线 PR/MR"
           }
         }
       }
@@ -22257,6 +22625,22 @@
         }
       }
     },
+    "加入站点项目": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Add to Site Project"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "加入站点项目"
+          }
+        }
+      }
+    },
     "加粗": {
       "localizations": {
         "en": {
@@ -22321,6 +22705,22 @@
         }
       }
     },
+    "勾选后会在确认导入时保存这条资料": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This item will be saved when the import is confirmed"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "勾选后会在确认导入时保存这条资料"
+          }
+        }
+      }
+    },
     "勾选多个发布资产，一次生成完整发布包": {
       "localizations": {
         "en": {
@@ -22381,6 +22781,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "包含封面图字段"
+          }
+        }
+      }
+    },
+    "包含应用管理的文章发布包和待下线 Markdown；不会包含 CSS、模板、脚本等其他 Git 工作区变更。发布前会显示完整文件清单。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Includes app-managed article publish packages and pending Markdown deletions. Other Git workspace changes, such as CSS, templates, and scripts, are excluded. A complete file list is shown before publishing."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "包含应用管理的文章发布包和待下线 Markdown；不会包含 CSS、模板、脚本等其他 Git 工作区变更。发布前会显示完整文件清单。"
           }
         }
       }
@@ -22721,6 +23137,22 @@
         }
       }
     },
+    "发布 %d 篇并下线 %d 篇文章": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Publish %d and Unpublish %d Articles"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "发布 %d 篇并下线 %d 篇文章"
+          }
+        }
+      }
+    },
     "发布中心已打开；默认操作为发布所有变更，也可以仅发布当前文章。": {
       "localizations": {
         "en": {
@@ -22945,34 +23377,34 @@
         }
       }
     },
-    "发布所有可发布文章": {
+    "发布所有待处理变更": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Publish All Publishable Articles"
+            "value": "Publish All Pending Changes"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "发布所有可发布文章"
+            "value": "发布所有待处理变更"
           }
         }
       }
     },
-    "发布所有可发布文章…": {
+    "发布所有待处理变更…": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Publish All Publishable Articles…"
+            "value": "Publish All Pending Changes…"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "发布所有可发布文章…"
+            "value": "发布所有待处理变更…"
           }
         }
       }
@@ -23281,22 +23713,6 @@
         }
       }
     },
-    "发布路径": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Publishing Path"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "发布路径"
-          }
-        }
-      }
-    },
     "发布连接": {
       "localizations": {
         "en": {
@@ -23569,6 +23985,22 @@
         }
       }
     },
+    "取消勾选后不会保存这条资料": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This item will not be saved when deselected"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "取消勾选后不会保存这条资料"
+          }
+        }
+      }
+    },
     "取消固定": {
       "localizations": {
         "en": {
@@ -23713,22 +24145,6 @@
         }
       }
     },
-    "另有 %@ 条资料将在确认后处理。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%@ more sources will be processed after confirmation."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "另有 %@ 条资料将在确认后处理。"
-          }
-        }
-      }
-    },
     "另有 %@ 条重定向候选。": {
       "localizations": {
         "en": {
@@ -23777,22 +24193,6 @@
         }
       }
     },
-    "另有 %lld 条资料将在确认后处理。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld additional items will be processed after confirmation."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "另有 %lld 条资料将在确认后处理。"
-          }
-        }
-      }
-    },
     "另有 %lld 条重定向候选。": {
       "localizations": {
         "en": {
@@ -23825,18 +24225,18 @@
         }
       }
     },
-    "只会保存你确认的内容；搜索索引在本机建立。": {
+    "只会保存已勾选的内容；搜索索引在本机建立。": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Only confirmed content is saved, and the search index is built on this Mac."
+            "value": "Only selected content will be saved. The search index is built on this Mac."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "只会保存你确认的内容；搜索索引在本机建立。"
+            "value": "只会保存已勾选的内容；搜索索引在本机建立。"
           }
         }
       }
@@ -23953,6 +24353,22 @@
         }
       }
     },
+    "只同步当前网站草稿到远端；不会纳入批量正式发布，也不会移除 draft 标记。请确认远端、分支和完整文件清单。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Syncs only the current website draft to the remote repository. It is excluded from formal batch publishing and keeps its draft marker. Confirm the remote, branch, and complete file list."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "只同步当前网站草稿到远端；不会纳入批量正式发布，也不会移除 draft 标记。请确认远端、分支和完整文件清单。"
+          }
+        }
+      }
+    },
     "只显示 .html / .htm": {
       "localizations": {
         "en": {
@@ -24029,6 +24445,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "只有勾选的「新增」和「更新」项会被应用；相同文章和冲突项不会改写本地草稿。"
+          }
+        }
+      }
+    },
+    "只有启用全文提取或离线缓存全文时，才会从原网站新增净化后的正文；媒体归档已停止新增，历史数据仅作兼容读取。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sanitized body content is added from the original website only when full-text extraction or offline full-text caching is enabled. New media archives are no longer created; historical data remains available for compatibility."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "只有启用全文提取或离线缓存全文时，才会从原网站新增净化后的正文；媒体归档已停止新增，历史数据仅作兼容读取。"
           }
         }
       }
@@ -24333,6 +24765,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "可压缩 JPEG"
+          }
+        }
+      }
+    },
+    "可发布 %d 篇 · 待下线 %d 篇 · %d 个文件": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%d Ready · %d Pending Unpublish · %d Files"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "可发布 %d 篇 · 待下线 %d 篇 · %d 个文件"
           }
         }
       }
@@ -24785,6 +25233,22 @@
         }
       }
     },
+    "同步分支": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sync Branch"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "同步分支"
+          }
+        }
+      }
+    },
     "同步前请审阅远端变更队列。": {
       "localizations": {
         "en": {
@@ -24817,6 +25281,54 @@
         }
       }
     },
+    "同步当前网站草稿": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sync Current Website Draft"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "同步当前网站草稿"
+          }
+        }
+      }
+    },
+    "同步当前网站草稿…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sync Current Website Draft…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "同步当前网站草稿…"
+          }
+        }
+      }
+    },
+    "同步方式": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sync Method"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "同步方式"
+          }
+        }
+      }
+    },
     "同步概况": {
       "localizations": {
         "en": {
@@ -24845,6 +25357,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "同步滚动"
+          }
+        }
+      }
+    },
+    "同步警告": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sync Warnings"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "同步警告"
           }
         }
       }
@@ -28161,6 +28689,22 @@
         }
       }
     },
+    "完整同步文件清单": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Complete Sync File List"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "完整同步文件清单"
+          }
+        }
+      }
+    },
     "完整备份包含工作台、资料库、RSS、附件和发布记录；导入前会先校验并显示内容预览，API Key 不会写入备份。": {
       "localizations": {
         "en": {
@@ -29361,34 +29905,18 @@
         }
       }
     },
-    "将发布 %@ 个文件": {
+    "将发布 %d 个文件": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Publishing %@ files"
+            "value": "Publish %d Files"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "将发布 %@ 个文件"
-          }
-        }
-      }
-    },
-    "将发布 %lld 个文件": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld files will be published"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "将发布 %lld 个文件"
+            "value": "将发布 %d 个文件"
           }
         }
       }
@@ -29405,6 +29933,38 @@
           "stringUnit": {
             "state": "translated",
             "value": "将发送 %lld 项上下文，共约 %lld 字：%@"
+          }
+        }
+      }
+    },
+    "将同步 %d 个草稿文件": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sync %d Draft Files"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "将同步 %d 个草稿文件"
+          }
+        }
+      }
+    },
+    "将对 %@ %@。执行前会核对远端版本；远端文件已不存在时按成功处理。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "For %@, the app will %@. It verifies the remote version first; an already missing remote file is treated as success."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "将对 %@ %@。执行前会核对远端版本；远端文件已不存在时按成功处理。"
           }
         }
       }
@@ -30657,6 +31217,22 @@
         }
       }
     },
+    "已写入项目": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Written to Project"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已写入项目"
+          }
+        }
+      }
+    },
     "已初始化": {
       "localizations": {
         "en": {
@@ -31745,6 +32321,22 @@
         }
       }
     },
+    "已绑定项目文件": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Project File Bound"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已绑定项目文件"
+          }
+        }
+      }
+    },
     "已结束，记录保留": {
       "localizations": {
         "en": {
@@ -31969,6 +32561,22 @@
         }
       }
     },
+    "已选择 %@/%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Selected %1$@/%2$@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已选择 %1$@/%2$@"
+          }
+        }
+      }
+    },
     "已选择 %lld / %lld 篇": {
       "localizations": {
         "en": {
@@ -32045,6 +32653,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "已选择 %lld 篇文章"
+          }
+        }
+      }
+    },
+    "已选择 %lld/%lld": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Selected %lld/%lld"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已选择 %lld/%lld"
           }
         }
       }
@@ -34305,22 +34929,6 @@
         }
       }
     },
-    "当前站点未选择本地项目；站点草稿暂存在软件中，选择项目后会自动写入。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "No local project is selected for this site. The site draft is temporarily stored in the app and will be written after you select a project."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "当前站点未选择本地项目；站点草稿暂存在软件中，选择项目后会自动写入。"
-          }
-        }
-      }
-    },
     "当前站点的摘要、标签和 Front Matter 暂无可由 AI 协助修复的问题。": {
       "localizations": {
         "en": {
@@ -34429,6 +35037,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "当前续跑已结束，原审计记录仍然保留。"
+          }
+        }
+      }
+    },
+    "当前网站草稿的远端同步预览未通过": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The remote sync preview for the current website draft did not pass"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "当前网站草稿的远端同步预览未通过"
           }
         }
       }
@@ -34701,6 +35325,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "影响明细"
+          }
+        }
+      }
+    },
+    "待下线 %d 篇文章 · %d 个文件": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%d Pending Unpublish · %d Files"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "待下线 %d 篇文章 · %d 个文件"
           }
         }
       }
@@ -36813,6 +37453,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "打开当前文章的最终发布确认页"
+          }
+        }
+      }
+    },
+    "打开当前网站草稿的单篇同步确认页；不会纳入批量正式发布": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open the single-draft sync confirmation. This draft is excluded from formal batch publishing."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "打开当前网站草稿的单篇同步确认页；不会纳入批量正式发布"
           }
         }
       }
@@ -45473,6 +46129,22 @@
         }
       }
     },
+    "本地保存": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Local Save"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "本地保存"
+          }
+        }
+      }
+    },
     "本地发布基础已经就绪，可按需继续配置线上发布与 AI。": {
       "localizations": {
         "en": {
@@ -46637,6 +47309,70 @@
           "stringUnit": {
             "state": "translated",
             "value": "查看全部资料"
+          }
+        }
+      }
+    },
+    "查看其余 %@ 条提醒": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Show %@ More Warnings"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "查看其余 %@ 条提醒"
+          }
+        }
+      }
+    },
+    "查看其余 %@ 条资料": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Show %@ More Items"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "查看其余 %@ 条资料"
+          }
+        }
+      }
+    },
+    "查看其余 %lld 条提醒": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Show %lld More Warnings"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "查看其余 %lld 条提醒"
+          }
+        }
+      }
+    },
+    "查看其余 %lld 条资料": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Show %lld More Items"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "查看其余 %lld 条资料"
           }
         }
       }
@@ -48257,6 +48993,22 @@
         }
       }
     },
+    "正在写入项目": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Writing to Project"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在写入项目"
+          }
+        }
+      }
+    },
     "正在准备": {
       "localizations": {
         "en": {
@@ -48525,6 +49277,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "正在刷新阅读数据"
+          }
+        }
+      }
+    },
+    "正在加入项目": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Adding to Project"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在加入项目"
           }
         }
       }
@@ -49729,6 +50497,22 @@
         }
       }
     },
+    "正式发布候选": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Formal Publish Candidate"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正式发布候选"
+          }
+        }
+      }
+    },
     "正式文章": {
       "localizations": {
         "en": {
@@ -50829,6 +51613,38 @@
           "stringUnit": {
             "state": "translated",
             "value": "没有待发布文件。"
+          }
+        }
+      }
+    },
+    "没有待同步文件。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "There Are No Files to Sync."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "没有待同步文件。"
+          }
+        }
+      }
+    },
+    "没有待处理变更": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No Pending Changes"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "没有待处理变更"
           }
         }
       }
@@ -52465,6 +53281,22 @@
         }
       }
     },
+    "状态与归属": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Status and Ownership"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "状态与归属"
+          }
+        }
+      }
+    },
     "状态端点 URL": {
       "localizations": {
         "en": {
@@ -53265,6 +54097,22 @@
         }
       }
     },
+    "直接提交远端删除": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "commit the remote deletion directly"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "直接提交远端删除"
+          }
+        }
+      }
+    },
     "相关内容": {
       "localizations": {
         "en": {
@@ -53441,6 +54289,22 @@
         }
       }
     },
+    "确认下线": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Confirm Unpublish"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "确认下线"
+          }
+        }
+      }
+    },
     "确认创建仓库": {
       "localizations": {
         "en": {
@@ -53469,6 +54333,54 @@
           "stringUnit": {
             "state": "translated",
             "value": "确认危险操作"
+          }
+        }
+      }
+    },
+    "确认同步网站草稿": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Confirm Website Draft Sync"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "确认同步网站草稿"
+          }
+        }
+      }
+    },
+    "确认后才创建项目 Markdown；以后编辑会自动保存到该文件。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Project Markdown is created only after confirmation. Future edits are saved to that file automatically."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "确认后才创建项目 Markdown；以后编辑会自动保存到该文件。"
+          }
+        }
+      }
+    },
+    "确认后立即同步当前网站草稿": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sync the current website draft after confirmation"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "确认后立即同步当前网站草稿"
           }
         }
       }
@@ -53581,6 +54493,38 @@
           "stringUnit": {
             "state": "translated",
             "value": "确认导入 %lld 篇"
+          }
+        }
+      }
+    },
+    "确认已关闭并恢复文章": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Confirm Closed and Restore Article"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "确认已关闭并恢复文章"
+          }
+        }
+      }
+    },
+    "确认已关闭，重新加入下线队列": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Confirm Closed and Requeue Unpublish"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "确认已关闭，重新加入下线队列"
           }
         }
       }
@@ -54749,6 +55693,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "站点生成器"
+          }
+        }
+      }
+    },
+    "站点稿件": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Site Content"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "站点稿件"
           }
         }
       }
@@ -56689,6 +57649,54 @@
         }
       }
     },
+    "网站草稿": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Website Draft"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "网站草稿"
+          }
+        }
+      }
+    },
+    "网站草稿同步确认": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Website Draft Sync Confirmation"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "网站草稿同步确认"
+          }
+        }
+      }
+    },
+    "网站草稿，默认不参与批量发布": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Website draft; excluded from batch publishing by default"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "网站草稿，默认不参与批量发布"
+          }
+        }
+      }
+    },
     "网络代理 (Network Proxy)": {
       "localizations": {
         "en": {
@@ -56717,22 +57725,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "网络安全"
-          }
-        }
-      }
-    },
-    "网页全文快照和媒体归档已停止新增；历史数据仅作兼容读取。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "New full-page snapshots and media archives are no longer created; historical data remains readable for compatibility."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "网页全文快照和媒体归档已停止新增；历史数据仅作兼容读取。"
           }
         }
       }
@@ -57617,6 +58609,22 @@
         }
       }
     },
+    "草稿同步目标": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Draft Sync Target"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "草稿同步目标"
+          }
+        }
+      }
+    },
     "草稿归属": {
       "localizations": {
         "en": {
@@ -58045,6 +59053,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "警告"
+          }
+        }
+      }
+    },
+    "计划路径：%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Planned path: %@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "计划路径：%@"
           }
         }
       }
@@ -58877,6 +59901,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "请先停止当前 AI 回复，再关闭 AI 助手。"
+          }
+        }
+      }
+    },
+    "请先在 GitHub/GitLab 确认该 PR/MR 已关闭且不会再被合并。错误确认可能导致恢复后的文章仍被远端合并操作删除。\n\n%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "First confirm on GitHub/GitLab that the PR/MR is closed and can no longer be merged. An incorrect confirmation could let a later remote merge delete the restored article.\n\n%@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请先在 GitHub/GitLab 确认该 PR/MR 已关闭且不会再被合并。错误确认可能导致恢复后的文章仍被远端合并操作删除。\n\n%@"
           }
         }
       }
@@ -60849,6 +61889,22 @@
         }
       }
     },
+    "软件会把「%@」移到回收站、%@，并清理本地 Markdown；图片资源不会自动删除。失败项会保留在发布抽屉中重试。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The app will move “%@” to the Trash, %@, and remove its local Markdown. Image assets are not deleted automatically. Failed steps remain in the publish drawer for retry."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "软件会把「%@」移到回收站、%@，并清理本地 Markdown；图片资源不会自动删除。失败项会保留在发布抽屉中重试。"
+          }
+        }
+      }
+    },
     "软件会读取同步状态，不会自动修改文件。": {
       "localizations": {
         "en": {
@@ -62049,22 +63105,6 @@
         }
       }
     },
-    "这里只删除文章 Markdown，不自动删除可能被其他文章复用的图片。远端仓库可在提交并推送本地删除后同步。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Only the article Markdown is deleted here. Images that may be shared by other articles are preserved. Commit and push the local deletion to sync the remote repository."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "这里只删除文章 Markdown，不自动删除可能被其他文章复用的图片。远端仓库可在提交并推送本地删除后同步。"
-          }
-        }
-      }
-    },
     "进度": {
       "localizations": {
         "en": {
@@ -62301,6 +63341,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "远端变更"
+          }
+        }
+      }
+    },
+    "远端同步": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Remote Sync"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "远端同步"
           }
         }
       }
@@ -63997,6 +65053,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "通用草稿已导出：%@"
+          }
+        }
+      }
+    },
+    "通用草稿，不属于站点": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "General draft; not assigned to a site"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "通用草稿，不属于站点"
           }
         }
       }
@@ -66061,6 +67133,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "项目保存失败"
+          }
+        }
+      }
+    },
+    "项目写入失败：%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Project write failed: %@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "项目写入失败：%@"
           }
         }
       }

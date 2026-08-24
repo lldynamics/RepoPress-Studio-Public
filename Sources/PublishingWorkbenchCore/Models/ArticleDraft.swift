@@ -217,6 +217,9 @@ public struct ArticleDraft: Identifiable, Codable, Hashable, Sendable {
   /// direct publish. It intentionally stays unchanged while the user edits so
   /// background sync can prove that an existing draft is safe to replace.
   public var repositoryImportFingerprint: String?
+  /// Atomic repository ownership and sync state. The three legacy projections above remain
+  /// encoded during migration, while repository-aware flows update this value as a unit.
+  public private(set) var repositoryBinding: DraftRepositoryBinding?
   public var reusedFromSourceSnapshot: GeneralDraftReuseSourceSnapshot?
   /// Stable identity for built-in software guides. This is intentionally
   /// independent from the editable title and slug so user content with the
@@ -249,6 +252,7 @@ public struct ArticleDraft: Identifiable, Codable, Hashable, Sendable {
     repositoryPath: String? = nil,
     repositorySHA: String? = nil,
     repositoryImportFingerprint: String? = nil,
+    repositoryBinding: DraftRepositoryBinding? = nil,
     reusedFromSourceSnapshot: GeneralDraftReuseSourceSnapshot? = nil,
     softwareGuideID: String? = nil,
     softwareGuideTemplateVersion: Int? = nil
@@ -275,6 +279,10 @@ public struct ArticleDraft: Identifiable, Codable, Hashable, Sendable {
     self.repositoryPath = repositoryPath
     self.repositorySHA = repositorySHA
     self.repositoryImportFingerprint = repositoryImportFingerprint
+    self.repositoryBinding = repositoryBinding ?? Self.legacyRepositoryBinding(
+      path: repositoryPath,
+      remoteRevision: repositorySHA
+    )
     self.reusedFromSourceSnapshot = reusedFromSourceSnapshot
     self.softwareGuideID = softwareGuideID
     self.softwareGuideTemplateVersion = softwareGuideTemplateVersion
@@ -308,15 +316,229 @@ public struct ArticleDraft: Identifiable, Codable, Hashable, Sendable {
     scopeStorage = .general
     draft = true
     status = .draft
-    repositoryPath = nil
-    repositorySHA = nil
-    repositoryImportFingerprint = nil
+    detachFromRepository()
   }
 
   public mutating func normalizeLegacyScope() {
     if scopeStorage == nil {
       scopeStorage = .site(siteProfileID)
     }
+  }
+
+  /// Migrates pre-binding snapshots and invalidates a revision that belongs to another
+  /// repository or branch. Local project placement is retained, but remote CAS evidence is
+  /// cleared until the new target is verified.
+  public mutating func normalizeRepositoryBinding(for profile: SiteProfile) {
+    guard let path = repositoryPath?.normalizedRelativePath().nilIfEmpty else {
+      repositoryBinding = nil
+      repositorySHA = nil
+      repositoryImportFingerprint = nil
+      return
+    }
+
+    let identity = DraftRepositoryIdentity(profile: profile)
+    if var binding = repositoryBinding {
+      if let boundIdentity = binding.identity, boundIdentity != identity {
+        binding = DraftRepositoryBinding(
+          identity: identity,
+          repositoryPath: path,
+          renderedContentDigest: nil,
+          verification: .legacyUnverified,
+          syncState: .projectSaved
+        )
+        repositorySHA = nil
+        repositoryImportFingerprint = nil
+      } else {
+        binding.identity = identity
+        binding.repositoryPath = path
+        binding.remoteRevision = repositorySHA?.trimmedForPublishing.nilIfEmpty
+          ?? binding.remoteRevision
+      }
+      repositoryBinding = binding
+      return
+    }
+
+    repositoryBinding = DraftRepositoryBinding(
+      identity: identity,
+      repositoryPath: path,
+      remoteRevision: repositorySHA,
+      verification: .legacyUnverified,
+      syncState: repositorySHA == nil ? .projectSaved : .synced
+    )
+  }
+
+  public mutating func recordProjectFile(
+    profile: SiteProfile,
+    repositoryPath: String,
+    renderedContentDigest: String
+  ) {
+    let normalizedPath = repositoryPath.normalizedRelativePath()
+    let identity = DraftRepositoryIdentity(profile: profile)
+    let canRetainRemoteRevision =
+      repositoryBinding?.identity == identity
+      && self.repositoryPath?.normalizedRelativePath() == normalizedPath
+    let retainedRevision = canRetainRemoteRevision ? repositorySHA : nil
+    let retainedImportFingerprint = canRetainRemoteRevision ? repositoryImportFingerprint : nil
+    let retainedVerification = canRetainRemoteRevision
+      ? (repositoryBinding?.verification ?? .legacyUnverified)
+      : .legacyUnverified
+    let recordedDigest = retainedRevision == nil
+      ? renderedContentDigest
+      : repositoryBinding?.renderedContentDigest
+    let retainedPendingReviewDigest = canRetainRemoteRevision
+      ? repositoryBinding?.pendingReviewContentDigest
+      : nil
+    let recordedSyncState: DraftRepositorySyncState
+    if repositoryBinding?.syncState == .awaitingReview,
+      let retainedPendingReviewDigest,
+      retainedPendingReviewDigest == renderedContentDigest
+    {
+      recordedSyncState = .awaitingReview
+    } else if retainedRevision == nil {
+      recordedSyncState = .projectSaved
+    } else if recordedDigest == renderedContentDigest {
+      // Startup reconciliation and explicit writes of identical bytes do not
+      // create a local change relative to the confirmed remote baseline.
+      recordedSyncState = .synced
+    } else {
+      recordedSyncState = .localChanged
+    }
+    self.repositoryPath = normalizedPath
+    repositorySHA = retainedRevision
+    repositoryImportFingerprint = retainedImportFingerprint
+    repositoryBinding = DraftRepositoryBinding(
+      identity: identity,
+      repositoryPath: normalizedPath,
+      remoteRevision: retainedRevision,
+      renderedContentDigest: recordedDigest,
+      projectFileContentDigest: renderedContentDigest,
+      pendingReviewContentDigest: recordedSyncState == .awaitingReview
+        ? retainedPendingReviewDigest
+        : nil,
+      verification: retainedVerification,
+      syncState: recordedSyncState,
+      verifiedAt: canRetainRemoteRevision ? repositoryBinding?.verifiedAt : nil
+    )
+  }
+
+  public mutating func confirmRepositoryBinding(
+    profile: SiteProfile,
+    repositoryPath: String,
+    remoteRevision: String,
+    renderedContentDigest: String,
+    verifiedAt: Date = Date()
+  ) {
+    let normalizedPath = repositoryPath.normalizedRelativePath()
+    let normalizedRevision = remoteRevision.trimmedForPublishing
+    self.repositoryPath = normalizedPath
+    repositorySHA = normalizedRevision
+    repositoryImportFingerprint = repositoryContentFingerprint
+    repositoryBinding = DraftRepositoryBinding(
+      identity: DraftRepositoryIdentity(profile: profile),
+      repositoryPath: normalizedPath,
+      remoteRevision: normalizedRevision,
+      renderedContentDigest: renderedContentDigest,
+      projectFileContentDigest: renderedContentDigest,
+      verification: .verified,
+      syncState: .synced,
+      verifiedAt: verifiedAt
+    )
+  }
+
+  public mutating func markRepositorySyncState(_ state: DraftRepositorySyncState) {
+    guard var binding = repositoryBinding else { return }
+    binding.syncState = state
+    if state != .awaitingReview {
+      binding.pendingReviewContentDigest = nil
+    }
+    repositoryBinding = binding
+  }
+
+  public mutating func markRepositoryAwaitingReview(profile: SiteProfile) {
+    guard var binding = repositoryBinding else { return }
+    binding.pendingReviewContentDigest = renderedRepositoryContentDigest(profile: profile)
+    binding.syncState = .awaitingReview
+    repositoryBinding = binding
+  }
+
+  public mutating func detachFromRepository() {
+    repositoryPath = nil
+    repositorySHA = nil
+    repositoryImportFingerprint = nil
+    repositoryBinding = nil
+  }
+
+  /// Editor bindings own content and workflow fields, never repository concurrency state.
+  public mutating func preserveRepositoryState(from current: ArticleDraft) {
+    repositoryPath = current.repositoryPath
+    repositorySHA = current.repositorySHA
+    repositoryImportFingerprint = current.repositoryImportFingerprint
+    repositoryBinding = current.repositoryBinding
+  }
+
+  mutating func replaceRepositoryPathForProjection(_ path: String?) {
+    repositoryPath = path?.normalizedRelativePath().nilIfEmpty
+    guard var binding = repositoryBinding, let repositoryPath else {
+      if path == nil { repositoryBinding = nil }
+      return
+    }
+    binding.repositoryPath = repositoryPath
+    repositoryBinding = binding
+  }
+
+  public func repositorySyncState(for profile: SiteProfile) -> DraftRepositorySyncState {
+    guard let binding = repositoryBinding else { return .localOnly }
+    guard binding.identity == nil || binding.identity == DraftRepositoryIdentity(profile: profile)
+    else { return .diverged }
+    switch binding.syncState {
+    case .diverged, .failed:
+      return binding.syncState
+    case .awaitingReview:
+      guard let pendingDigest = binding.pendingReviewContentDigest else {
+        return .awaitingReview
+      }
+      return pendingDigest == renderedRepositoryContentDigest(profile: profile)
+        ? .awaitingReview
+        : .localChanged
+    case .localOnly:
+      return .localOnly
+    case .projectSaved:
+      return .projectSaved
+    case .localChanged:
+      // This state is set by a successful local project write while a remote
+      // revision is retained. It is authoritative until a verified remote
+      // operation establishes a new baseline.
+      return .localChanged
+    case .synced:
+      guard binding.remoteRevision != nil else { return .projectSaved }
+      guard let baseline = binding.renderedContentDigest else { return .localChanged }
+      return baseline == renderedRepositoryContentDigest(profile: profile) ? .synced : .localChanged
+    }
+  }
+
+  public func renderedRepositoryContentDigest(profile: SiteProfile) -> String {
+    let document = FrontMatterRenderer().renderDocument(draft: self, profile: profile)
+    return Self.repositoryDocumentDigest(document)
+  }
+
+  public static func repositoryDocumentDigest(_ document: String) -> String {
+    SHA256.hash(data: Data(document.utf8))
+      .map { String(format: "%02x", $0) }
+      .joined()
+  }
+
+  private static func legacyRepositoryBinding(
+    path: String?,
+    remoteRevision: String?
+  ) -> DraftRepositoryBinding? {
+    guard let path = path?.normalizedRelativePath().nilIfEmpty else { return nil }
+    return DraftRepositoryBinding(
+      identity: nil,
+      repositoryPath: path,
+      remoteRevision: remoteRevision,
+      verification: .legacyUnverified,
+      syncState: remoteRevision == nil ? .projectSaved : .synced
+    )
   }
 
   private static let fingerprintEncoder: JSONEncoder = {

@@ -45,9 +45,11 @@ released iOS app.
 - Python 3 and the macOS development tools for quality scripts
 - Node.js and npm only for browser-extension tests and packaging
 
-The package manifest uses Swift tools 6.0. The core target uses Swift 6 language
-mode, while the macOS app and test targets currently retain Swift 5 language
-mode under strict concurrency checks.
+The package manifest uses Swift tools 6.0, and all five SwiftPM targets use
+Swift 6 language mode. The strict build gate inherits those manifest-declared
+modes while enforcing complete concurrency checking and warnings-as-errors; a
+separate migration diagnostic explicitly exercises Swift 6 mode as a regression
+check.
 
 ## Build and test
 

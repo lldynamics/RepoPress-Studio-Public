@@ -40,6 +40,11 @@ public struct PublishPackageFile: Identifiable, Codable, Hashable, Sendable {
   public var sourceFilePath: String?
   public var byteSize: Int64
   public var expectedRemoteSHA: String?
+  /// Optional exact-content evidence used only to adopt a legacy delete when
+  /// the draft has no recorded provider version. These digests never weaken a
+  /// known-version comparison.
+  public var expectedContentSHA256: String?
+  public var expectedGitBlobSHA: String?
 
   public init(
     kind: PublishFileKind,
@@ -48,7 +53,9 @@ public struct PublishPackageFile: Identifiable, Codable, Hashable, Sendable {
     content: String? = nil,
     sourceFilePath: String? = nil,
     byteSize: Int64 = 0,
-    expectedRemoteSHA: String? = nil
+    expectedRemoteSHA: String? = nil,
+    expectedContentSHA256: String? = nil,
+    expectedGitBlobSHA: String? = nil
   ) {
     self.kind = kind
     self.operation = operation
@@ -57,6 +64,8 @@ public struct PublishPackageFile: Identifiable, Codable, Hashable, Sendable {
     self.sourceFilePath = sourceFilePath
     self.byteSize = byteSize
     self.expectedRemoteSHA = expectedRemoteSHA
+    self.expectedContentSHA256 = expectedContentSHA256
+    self.expectedGitBlobSHA = expectedGitBlobSHA
   }
 
   private enum CodingKeys: String, CodingKey {
@@ -67,6 +76,8 @@ public struct PublishPackageFile: Identifiable, Codable, Hashable, Sendable {
     case sourceFilePath
     case byteSize
     case expectedRemoteSHA
+    case expectedContentSHA256
+    case expectedGitBlobSHA
   }
 
   public init(from decoder: Decoder) throws {
@@ -78,6 +89,11 @@ public struct PublishPackageFile: Identifiable, Codable, Hashable, Sendable {
     sourceFilePath = try container.decodeIfPresent(String.self, forKey: .sourceFilePath)
     byteSize = try container.decodeIfPresent(Int64.self, forKey: .byteSize) ?? 0
     expectedRemoteSHA = try container.decodeIfPresent(String.self, forKey: .expectedRemoteSHA)
+    expectedContentSHA256 = try container.decodeIfPresent(
+      String.self,
+      forKey: .expectedContentSHA256
+    )
+    expectedGitBlobSHA = try container.decodeIfPresent(String.self, forKey: .expectedGitBlobSHA)
   }
 }
 
@@ -142,7 +158,11 @@ public struct PublishPackageBuilder: Sendable {
         kind: .markdown,
         repositoryPath: markdownPath,
         content: frontMatterRenderer.renderDocument(draft: draft, profile: profile),
-        expectedRemoteSHA: expectedRemoteSHA(for: draft, markdownPath: markdownPath)
+        expectedRemoteSHA: verifiedRemoteRevision(
+          for: draft,
+          profile: profile,
+          repositoryPath: markdownPath
+        )
       )
     ]
 
@@ -164,7 +184,11 @@ public struct PublishPackageBuilder: Sendable {
           kind: .markdown,
           operation: .delete,
           repositoryPath: previousMarkdownPath,
-          expectedRemoteSHA: draft.repositorySHA?.trimmedForPublishing.nilIfEmpty
+          expectedRemoteSHA: verifiedRemoteRevision(
+            for: draft,
+            profile: profile,
+            repositoryPath: previousMarkdownPath
+          )
         )
       )
     }
@@ -198,11 +222,20 @@ public struct PublishPackageBuilder: Sendable {
     return "publish/\(slug)-\(dateToken)"
   }
 
-  private func expectedRemoteSHA(for draft: ArticleDraft, markdownPath: String) -> String? {
-    guard draft.repositoryPath?.normalizedRelativePath() == markdownPath.normalizedRelativePath() else {
+  private func verifiedRemoteRevision(
+    for draft: ArticleDraft,
+    profile: SiteProfile,
+    repositoryPath: String
+  ) -> String? {
+    guard let binding = draft.repositoryBinding,
+      binding.verification == .verified,
+      binding.identity == DraftRepositoryIdentity(profile: profile),
+      binding.repositoryPath.normalizedRelativePath()
+        == repositoryPath.normalizedRelativePath()
+    else {
       return nil
     }
-    return draft.repositorySHA?.trimmedForPublishing.nilIfEmpty
+    return binding.remoteRevision?.trimmedForPublishing.nilIfEmpty
   }
 
   private func previousMarkdownPath(for draft: ArticleDraft, currentPath: String) -> String? {

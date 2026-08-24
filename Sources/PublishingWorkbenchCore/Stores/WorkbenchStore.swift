@@ -94,6 +94,8 @@ public final class WorkbenchStore: ObservableObject {
   var draftBodyCommitTasks: [UUID: Task<Void, Never>] = [:]
   var draftBodyCommitFirstStagedAt: [UUID: Date] = [:]
   var siteDraftFileAutosaveTasks: [UUID: Task<Void, Never>] = [:]
+  var siteDraftFileReconciliationTask: Task<Void, Never>?
+  var siteDraftFileReconciliationGeneration: UInt64 = 0
   var siteDraftFileWritesInProgress: Set<UUID> = []
   var siteDraftFileSaveGenerations: [UUID: UInt64] = [:]
   var siteMaintenanceRefreshTask: Task<SiteMaintenanceReport, Error>?

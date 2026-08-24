@@ -45,6 +45,29 @@ extension ArticleVisibility {
   var fallbackDisplayName: String { displayName }
 }
 
+extension DraftRepositorySyncState {
+  var workbenchDisplayNameSemanticKey: String {
+    switch self {
+    case .localOnly:
+      return "display.draft-repository-sync-state.local-only"
+    case .projectSaved:
+      return "display.draft-repository-sync-state.project-saved"
+    case .synced:
+      return "display.draft-repository-sync-state.synced"
+    case .localChanged:
+      return "display.draft-repository-sync-state.local-changed"
+    case .diverged:
+      return "display.draft-repository-sync-state.diverged"
+    case .awaitingReview:
+      return "display.draft-repository-sync-state.awaiting-review"
+    case .failed:
+      return "display.draft-repository-sync-state.failed"
+    }
+  }
+
+  var fallbackDisplayName: String { displayName }
+}
+
 extension PreflightSeverity {
   var workbenchDisplayNameSemanticKey: String {
     switch self {
@@ -154,6 +177,21 @@ extension DraftRepositoryCleanupStatus {
       return "display.draft-repository-cleanup-status.completed"
     case .kept:
       return "display.draft-repository-cleanup-status.kept"
+    }
+  }
+
+  var fallbackDisplayName: String { displayName }
+}
+
+extension DraftRepositoryRemoteCleanupStatus {
+  var workbenchDisplayNameSemanticKey: String {
+    switch self {
+    case .pending:
+      return "display.draft-repository-remote-cleanup-status.pending"
+    case .reviewRequested:
+      return "display.draft-repository-remote-cleanup-status.review-requested"
+    case .completed:
+      return "display.draft-repository-remote-cleanup-status.completed"
     }
   }
 

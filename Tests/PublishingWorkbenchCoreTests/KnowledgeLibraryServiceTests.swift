@@ -6,6 +6,57 @@ import XCTest
 @testable import PublishingWorkbenchCore
 
 final class KnowledgeLibraryServiceTests: XCTestCase {
+  func testRSSImportPreviewUsesCachedContentAndPreservesMetadata() async throws {
+    let rootURL = temporaryDirectory(named: "knowledge-rss-cached-import")
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let service = KnowledgeLibraryService(rootURL: rootURL.appendingPathComponent("store"))
+    let article = RSSArticle(
+      id: "rss-cached-1",
+      feedID: UUID(),
+      title: "缓存文章标题",
+      link: URL(string: "https://example.com/cached-article"),
+      author: "缓存作者",
+      summaryHTML: "<p>不应覆盖正文的摘要标记 summary-fallback</p>",
+      contentHTML: "<article><h1>缓存正文</h1><p>只应从本机读取 cached-body-unique。</p></article>",
+      webPageSnapshotHTML: "<p>不应使用的旧快照 snapshot-fallback</p>",
+      tags: ["RSS", "离线"]
+    )
+
+    let preview = try await service.makeRSSImportPreview(article: article)
+    let importedCandidate = try XCTUnwrap(preview.candidates.first)
+
+    XCTAssertEqual(importedCandidate.kind, .article)
+    XCTAssertEqual(importedCandidate.title, "缓存文章标题")
+    XCTAssertEqual(importedCandidate.authors, ["缓存作者"])
+    XCTAssertEqual(importedCandidate.tags, ["RSS", "离线"])
+    XCTAssertEqual(importedCandidate.sourceURL, article.link)
+    XCTAssertTrue(importedCandidate.normalizedText.contains("cached-body-unique"))
+    XCTAssertFalse(importedCandidate.normalizedText.contains("summary-fallback"))
+    XCTAssertFalse(importedCandidate.normalizedText.contains("snapshot-fallback"))
+
+    _ = try await service.commit(preview)
+    let repeatedPreview = try await service.makeRSSImportPreview(article: article)
+    XCTAssertEqual(repeatedPreview.candidates.first?.disposition, .duplicate)
+  }
+
+  func testRSSImportPreviewFallsBackToCachedSnapshotWithoutLink() async throws {
+    let rootURL = temporaryDirectory(named: "knowledge-rss-snapshot-import")
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let service = KnowledgeLibraryService(rootURL: rootURL.appendingPathComponent("store"))
+    let article = RSSArticle(
+      id: "rss-cached-2",
+      feedID: UUID(),
+      title: "无链接缓存文章",
+      webPageSnapshotHTML: "<p>本机历史快照 snapshot-only-unique</p>"
+    )
+
+    let preview = try await service.makeRSSImportPreview(article: article)
+    let importedCandidate = try XCTUnwrap(preview.candidates.first)
+
+    XCTAssertNil(importedCandidate.sourceURL)
+    XCTAssertTrue(importedCandidate.normalizedText.contains("snapshot-only-unique"))
+  }
+
   func testSemanticVectorsDoNotSynchronouslyLoadUnpreparedContextualModel() {
     let vectors = KnowledgeSemanticEmbeddingService().vectors(
       for: "本地资料库通过混合检索找到相关章节"

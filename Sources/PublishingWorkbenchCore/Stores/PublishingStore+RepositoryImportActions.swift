@@ -36,8 +36,15 @@ extension PublishingStore {
       return LocalContentImportMergeSummary(insertedCount: 0, updatedCount: 0, skippedCount: 0)
     }
     store.flushDraftBodyEditorBuffers()
+    let imported = hydrateLocalRepositoryBaselines(
+      localContentImportService.importDrafts(profile: store.activeProfile),
+      profile: store.activeProfile,
+      store: store
+    )
     return mergeImportedDrafts(
-      localContentImportService.importDrafts(profile: store.activeProfile), store: store)
+      imported,
+      store: store
+    )
   }
 
   @discardableResult
@@ -89,8 +96,13 @@ extension PublishingStore {
       return LocalContentImportMergeSummary(insertedCount: 0, updatedCount: 0, skippedCount: 0)
     }
     localImportOperationContext = nil
-    return mergeImportedDrafts(
+    let hydratedResult = hydrateLocalRepositoryBaselines(
       result,
+      profile: profile,
+      store: store
+    )
+    return mergeImportedDrafts(
+      hydratedResult,
       expectedBaselinesByRepositoryPath: draftBaselinesByRepositoryPath,
       store: store
     )
@@ -133,12 +145,7 @@ extension PublishingStore {
     }
     let operation = LocalRepositoryOperationContext(profile: profile)
     localImportOperationContext = operation
-    let existingRepositoryPaths = Set(
-      drafts.compactMap { draft -> String? in
-        guard draft.belongs(toSiteProfileID: profile.id) else { return nil }
-        return draft.repositoryPath?.normalizedRelativePath().nilIfEmpty
-      }
-    )
+    let existingRepositoryPaths = automaticImportExcludedRepositoryPaths(profileID: profile.id)
     let result: LocalContentImportResult
     do {
       result = try await localContentImportService.importMissingDraftsAsync(
@@ -168,14 +175,14 @@ extension PublishingStore {
       return 0
     }
     localImportOperationContext = nil
-
-    var existingPaths = Set(
-      drafts.compactMap { draft -> String? in
-        guard draft.belongs(toSiteProfileID: profile.id) else { return nil }
-        return draft.repositoryPath?.normalizedRelativePath().nilIfEmpty
-      }
+    let hydratedResult = hydrateLocalRepositoryBaselines(
+      result,
+      profile: profile,
+      store: store
     )
-    let missingDrafts = result.importedDrafts.filter { draft in
+
+    var existingPaths = automaticImportExcludedRepositoryPaths(profileID: profile.id)
+    let missingDrafts = hydratedResult.importedDrafts.filter { draft in
       guard draft.belongs(toSiteProfileID: profile.id),
         let repositoryPath = draft.repositoryPath?.normalizedRelativePath().nilIfEmpty
       else {
@@ -185,7 +192,7 @@ extension PublishingStore {
       return existingPaths.insert(repositoryPath).inserted
     }
     guard !missingDrafts.isEmpty else {
-      if announcesInsertions, let issue = result.issues.first {
+      if announcesInsertions, let issue = hydratedResult.issues.first {
         setPublishActionMessage(issue.message, status: .failure)
       }
       return 0
@@ -199,7 +206,7 @@ extension PublishingStore {
       store.schedulePreflightRefresh()
     }
     if announcesInsertions {
-      if let issue = result.issues.first {
+      if let issue = hydratedResult.issues.first {
         setPublishActionMessage(issue.message, status: .warning)
       } else {
         setPublishActionMessage(
@@ -218,11 +225,15 @@ extension PublishingStore {
     store: WorkbenchStore
   ) -> LocalContentImportMergeSummary {
     store.flushDraftBodyEditorBuffers()
-    let summary = mergeImportedDrafts(
+    let imported = hydrateLocalRepositoryBaselines(
       localContentImportService.importDraft(
-        profile: store.activeProfile, repositoryPath: repositoryPath),
+        profile: store.activeProfile,
+        repositoryPath: repositoryPath
+      ),
+      profile: store.activeProfile,
       store: store
     )
+    let summary = mergeImportedDrafts(imported, store: store)
     let normalizedPath = repositoryPath.normalizedRelativePath()
     if let imported = drafts.first(where: {
       $0.belongs(toSiteProfileID: store.activeProfileID) && $0.repositoryPath == normalizedPath
@@ -510,13 +521,18 @@ extension PublishingStore {
       return LocalContentImportMergeSummary(insertedCount: 0, updatedCount: 0, skippedCount: 0)
     }
     localImportOperationContext = nil
-    let summary = mergeImportedDrafts(
+    let hydratedResult = hydrateLocalRepositoryBaselines(
       result,
+      profile: profile,
+      store: store
+    )
+    let summary = mergeImportedDrafts(
+      hydratedResult,
       expectedBaselinesByRepositoryPath: baselines,
       store: store
     )
     selectedSection = .writing
-    if result.issues.isEmpty {
+    if hydratedResult.issues.isEmpty {
       setPublishActionMessage(
         "已从文章变更导入 \(summary.insertedCount) 篇、更新 \(summary.updatedCount) 篇。",
         status: .success
@@ -628,7 +644,15 @@ extension PublishingStore {
       }
 
       if file.kind == .deleted {
-        summary.deletionPaths.append(path)
+        if confirmExpectedRemoteRepositoryDeletion(
+          profileID: profile.id,
+          repositoryPath: path
+        ) {
+          summary.resolvedPaths.append(path)
+          didMutateDrafts = true
+        } else {
+          summary.deletionPaths.append(path)
+        }
         continue
       }
       guard file.kind == .added || file.kind == .modified else {
@@ -655,6 +679,7 @@ extension PublishingStore {
         continue
       }
       let remoteFingerprint = remoteDraft.repositoryContentFingerprint
+      let remoteRenderedDigest = remoteDraft.renderedRepositoryContentDigest(profile: profile)
       remoteDraft.repositoryImportFingerprint = remoteFingerprint
 
       guard
@@ -693,6 +718,7 @@ extension PublishingStore {
       }
 
       let existingFingerprint = existing.repositoryContentFingerprint
+      let existingRenderedDigest = existing.renderedRepositoryContentDigest(profile: profile)
       let normalizedRemoteSHA = snapshot.repositorySHA?.trimmedForPublishing.nilIfEmpty
       if let normalizedRemoteSHA,
         existing.repositorySHA?.trimmedForPublishing == normalizedRemoteSHA
@@ -702,10 +728,18 @@ extension PublishingStore {
         continue
       }
 
-      if existingFingerprint == remoteFingerprint {
+      if existingRenderedDigest == remoteRenderedDigest {
         var confirmed = existing
-        confirmed.repositorySHA = normalizedRemoteSHA
-        confirmed.repositoryImportFingerprint = remoteFingerprint
+        if let normalizedRemoteSHA {
+          confirmed.confirmRepositoryBinding(
+            profile: profile,
+            repositoryPath: path,
+            remoteRevision: normalizedRemoteSHA,
+            renderedContentDigest: confirmed.renderedRepositoryContentDigest(profile: profile)
+          )
+        } else {
+          confirmed.repositoryImportFingerprint = remoteFingerprint
+        }
         drafts[existingIndex] = confirmed
         summary.unchangedCount += 1
         summary.resolvedPaths.append(path)
@@ -713,7 +747,14 @@ extension PublishingStore {
         continue
       }
 
-      guard existing.repositoryImportFingerprint == existingFingerprint else {
+      let localStillMatchesBaseline =
+        existing.repositoryBinding?.renderedContentDigest == existingRenderedDigest
+        || existing.repositoryImportFingerprint == existingFingerprint
+      guard localStillMatchesBaseline else {
+        var diverged = existing
+        diverged.markRepositorySyncState(.diverged)
+        drafts[existingIndex] = diverged
+        didMutateDrafts = didMutateDrafts || diverged != existing
         summary.conflictPaths.append(path)
         continue
       }
@@ -736,6 +777,25 @@ extension PublishingStore {
       store.save()
     }
     return summary
+  }
+
+  /// Paths owned by active drafts, the recycle bin, or an unfinished cleanup
+  /// request are tombstoned for automatic discovery. This prevents a Markdown
+  /// file from being re-created as a new draft between recycling and cleanup.
+  func automaticImportExcludedRepositoryPaths(profileID: UUID) -> Set<String> {
+    let activePaths = drafts.compactMap { draft -> String? in
+      guard draft.belongs(toSiteProfileID: profileID) else { return nil }
+      return draft.repositoryPath?.normalizedRelativePath().nilIfEmpty
+    }
+    let recycledPaths = recycledDrafts.compactMap { recycled -> String? in
+      guard recycled.draft.belongs(toSiteProfileID: profileID) else { return nil }
+      return recycled.draft.repositoryPath?.normalizedRelativePath().nilIfEmpty
+    }
+    let cleanupPaths = draftRepositoryCleanupRequests.compactMap { request -> String? in
+      guard request.siteProfileID == profileID, request.needsAttention else { return nil }
+      return request.repositoryPath.normalizedRelativePath().nilIfEmpty
+    }
+    return Set(activePaths + recycledPaths + cleanupPaths)
   }
 
   /// Explicitly binds an automatic import to the frozen operation profile.
@@ -790,6 +850,54 @@ extension PublishingStore {
       skippedPaths.append(contentsOf: imported.skippedPaths)
     }
     return LocalContentImportResult(importedDrafts: importedDrafts, skippedPaths: skippedPaths)
+  }
+
+  /// Local files are the working tree, so their first import does not carry
+  /// the upstream version that the publish preflight needs for a safe update.
+  /// Hydrate that baseline only when the upstream snapshot exists; new local
+  /// files remain untracked and continue to require the normal create path.
+  private func hydrateLocalRepositoryBaselines(
+    _ result: LocalContentImportResult,
+    profile: SiteProfile,
+    store: WorkbenchStore
+  ) -> LocalContentImportResult {
+    var hydrated = result
+    hydrated.importedDrafts = result.importedDrafts.map { draft in
+      guard draft.repositorySHA?.trimmedForPublishing.nilIfEmpty == nil,
+        let repositoryPath = draft.repositoryPath?.normalizedRelativePath().nilIfEmpty,
+        let snapshot = store.repositoryStore.remoteFileSnapshot(
+          profile: profile,
+          repositoryPath: repositoryPath
+        ),
+        let remoteSHA = snapshot.repositorySHA?.trimmedForPublishing.nilIfEmpty
+      else {
+        return draft
+      }
+
+      var updated = draft
+      var renderedDigest = updated.renderedRepositoryContentDigest(profile: profile)
+      var remoteImportFingerprint: String?
+      if let remoteDraft = localContentImportService.importDraft(
+        document: snapshot.content,
+        repositoryPath: repositoryPath,
+        profile: profile,
+        repositorySHA: remoteSHA
+      ).importedDrafts.first {
+        remoteImportFingerprint = remoteDraft.repositoryContentFingerprint
+        renderedDigest = remoteDraft.renderedRepositoryContentDigest(profile: profile)
+      }
+      updated.confirmRepositoryBinding(
+        profile: profile,
+        repositoryPath: repositoryPath,
+        remoteRevision: remoteSHA,
+        renderedContentDigest: renderedDigest
+      )
+      if let remoteImportFingerprint {
+        updated.repositoryImportFingerprint = remoteImportFingerprint
+      }
+      return updated
+    }
+    return hydrated
   }
 
   @discardableResult
@@ -884,7 +992,12 @@ extension PublishingStore {
       }
       profiles.append(result.profile)
       activeProfileID = result.profile.id
-      let importSummary = mergeImportedDrafts(importedDrafts, store: store)
+      let hydratedDrafts = hydrateLocalRepositoryBaselines(
+        importedDrafts,
+        profile: result.profile,
+        store: store
+      )
+      let importSummary = mergeImportedDrafts(hydratedDrafts, store: store)
       result.importedDraftCount = importSummary.insertedCount
       result.updatedDraftCount = importSummary.updatedCount
       result.skippedPathCount = importSummary.skippedCount
@@ -892,7 +1005,7 @@ extension PublishingStore {
       siteStarterResult = nil
       siteStarterPushResult = nil
       selectedDraftID = store.visibleDrafts.first?.id
-      if let issue = importedDrafts.issues.first {
+      if let issue = hydratedDrafts.issues.first {
         setPublishActionMessage(
           CoreL10n.format(
             "已添加站点“%@”，但文章读取未完成：%@",

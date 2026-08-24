@@ -224,4 +224,5 @@ final class WorkbenchTaskCenterFacadeTests: XCTestCase {
     XCTAssertEqual(draftIDs, [firstDraftID, secondDraftID])
     XCTAssertTrue(task.canRetry)
   }
+
 }

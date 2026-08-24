@@ -175,6 +175,15 @@ extension PublishingStore {
       guard remoteRepositoryMutationIsCurrent(operation, store: store) else { return nil }
       store.setRemoteRepositoryReviewWithdrawalResult(result)
       store.setRepositoryTokenAvailability(KeychainTokenAvailability(hasToken: true))
+      let withdrawnReviewURLs = Set(
+        [record.reviewURL, result.reviewURL].compactMap {
+          $0?.trimmedForPublishing.nilIfEmpty
+        }
+      )
+      _ = restoreRemoteCleanupRequestsAfterReviewWithdrawal(
+        reviewURLs: withdrawnReviewURLs,
+        profileID: profile.id
+      )
       prependReleaseRecord(
         .remoteReviewWithdrawal(original: record, profile: profile, result: result)
       )
@@ -347,6 +356,14 @@ extension PublishingStore {
       return nil
     }
 
+    guard await ensureDraftMaterializedForRemotePublish(
+      package: package,
+      profile: profile,
+      store: store
+    ) else {
+      return nil
+    }
+
     guard remoteRepositoryMutationContext == nil else {
       setPublishActionMessage(
         CoreL10n.text("已有远端仓库操作正在运行，请等待完成。"),
@@ -393,10 +410,16 @@ extension PublishingStore {
       prependReleaseRecord(releaseRecord)
       markDraftsAsPublishedIfDirectRemoteCommit(mode: mode, draftIDs: [package.draftID])
       confirmDirectRemotePublishLifecycle(packages: [package], result: result)
+      if mode == .reviewRequest {
+        markRemotePublishReviewSuccess(packages: [package])
+      }
       store.recordRemoteRepositoryPublishInAutoSync(result, profileID: profile.id)
       let commitSummary = result.commitSHA.map { String($0.prefix(8)) } ?? CoreL10n.text("无 commit")
+      let adoptedSummary = result.automaticallyAdoptedPaths.isEmpty
+        ? ""
+        : "；自动认领 \(result.automaticallyAdoptedPaths.count) 个已存在且内容一致的文件"
       setPublishActionMessage(
-        CoreL10n.format("%@完成：%@", mode.displayName, commitSummary),
+        CoreL10n.format("%@完成：%@%@", mode.displayName, commitSummary, adoptedSummary),
         status: .success
       )
       if store.shouldRefreshDeploymentStatusAfterRemoteOperation(releaseRecord) {
@@ -432,6 +455,7 @@ extension PublishingStore {
         commitSHA: partialFailure?.commitSHA
       )
       prependReleaseRecord(releaseRecord)
+      markRemotePublishFailure(packages: [package], error: error)
       setPublishActionMessage(message, status: .failure)
       if store.shouldRefreshDeploymentStatusAfterRemoteOperation(releaseRecord) {
         await store.refreshDeploymentStatus(for: releaseRecord, updatesMessage: false)

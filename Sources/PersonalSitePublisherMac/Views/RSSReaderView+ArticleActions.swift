@@ -482,10 +482,7 @@ extension RSSReaderView {
     _ article: RSSArticle,
     into knowledge: KnowledgeStore
   ) async throws -> KnowledgeDocument {
-    guard let link = article.link else {
-      throw RSSReaderError.invalidFeedURL
-    }
-    let preview = try await knowledge.makeWebImportPreview(url: link)
+    let preview = try await knowledge.makeRSSImportPreview(article: article)
     let destination = RSSArticleWorkflow.preferredImportDestination(
       article: article,
       documents: knowledge.documents,

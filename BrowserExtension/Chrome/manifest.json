@@ -3,7 +3,7 @@
   "name": "__MSG_extensionName__",
   "description": "__MSG_extensionDescription__",
   "default_locale": "zh_CN",
-  "version": "0.30.3",
+  "version": "0.30.4",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAtoT3hFghUv83iS8MfcFeDVjR9/04bNLnHwJvOk6yWGxWc+JAr1u/uCPqfd4x/6xusAWGdRdyJKI0fG2WwxM1jvLNrekpJPVzjIHt7qNCWd/kt9uqQHNzO4SzOBM+ajNuDAsFBgk0LLk0XHpq1RkDXjNkMyMipVohYLvIE2ecc59kCYskIPy5vBzX24ZHEg12AFFV/ztxY4kShq+mOL+4It/GHmatIM5JZuamNqYJwY4rU9aNUHrwkVc0ev5EzDXjffLPjzZ5n1KhqLppQCB2S6kDukIzQaDVy+NuLGkP8gyM5SzK9oKR1ydZUwlD2qBCW/x1h28Rlfz4Q8xppCAm/QIDAQAB",
   "minimum_chrome_version": "109",
   "icons": {

@@ -583,7 +583,7 @@ public struct ReleaseRecord: Identifiable, Codable, Hashable, Sendable {
     writtenPaths: [String],
     createdAt: Date = Date()
   ) -> ReleaseRecord {
-    ReleaseRecord(
+    return ReleaseRecord(
       kind: .localWrite,
       title: "写入本地仓库：\(package.title)",
       summary: "已写入 \(writtenPaths.count) 个文件到工作树。",
@@ -694,14 +694,23 @@ public struct ReleaseRecord: Identifiable, Codable, Hashable, Sendable {
   public static func batchRemotePublish(
     profile: SiteProfile,
     items: [BatchPublishPlanItem],
+    cleanupCount: Int = 0,
     result: RemoteRepositoryPublishResult,
     createdAt: Date = Date()
   ) -> ReleaseRecord {
     let kind: ReleaseRecordKind = result.mode == .reviewRequest ? .remoteReviewRequest : .remoteDirectCommit
+    let operationSummary: String
+    if cleanupCount == 0 {
+      operationSummary = "\(items.count) 篇文章"
+    } else if items.isEmpty {
+      operationSummary = "下线 \(cleanupCount) 篇"
+    } else {
+      operationSummary = "发布 \(items.count) 篇 · 下线 \(cleanupCount) 篇"
+    }
     return ReleaseRecord(
       kind: kind,
       title: "批量\(kind.displayName)：\(profile.name)",
-      summary: "\(result.provider.displayName) · \(items.count) 篇文章 · \(result.changedPaths.count) 个文件"
+      summary: "\(result.provider.displayName) · \(operationSummary) · \(result.changedPaths.count) 个文件"
         + (result.commitSHA.map { " · \(String($0.prefix(8)))" } ?? ""),
       siteProfileID: profile.id,
       siteName: profile.name,
@@ -756,16 +765,25 @@ public struct ReleaseRecord: Identifiable, Codable, Hashable, Sendable {
     package: PublishPackage,
     profile: SiteProfile,
     items: [BatchPublishPlanItem],
+    cleanupCount: Int = 0,
     mode: RemoteRepositoryPublishMode,
     errorMessage: String,
     changedPaths: [String]? = nil,
     commitSHA: String? = nil,
     createdAt: Date = Date()
   ) -> ReleaseRecord {
-    ReleaseRecord(
+    let operationSummary: String
+    if cleanupCount == 0 {
+      operationSummary = "\(items.count) 篇文章未完成线上发布"
+    } else if items.isEmpty {
+      operationSummary = "\(cleanupCount) 篇文章下线未完成"
+    } else {
+      operationSummary = "发布 \(items.count) 篇、下线 \(cleanupCount) 篇未完成"
+    }
+    return ReleaseRecord(
       kind: .remotePublishFailure,
       title: "批量\(mode.displayName)失败：\(profile.name)",
-      summary: "\(items.count) 篇文章未完成线上发布：\(errorMessage)",
+      summary: "\(operationSummary)：\(errorMessage)",
       siteProfileID: profile.id,
       siteName: profile.name,
       changedPaths: changedPaths ?? package.files.map(\.repositoryPath),

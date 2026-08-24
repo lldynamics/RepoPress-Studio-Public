@@ -1157,7 +1157,8 @@ public final class RepositoryStore: ObservableObject {
 
   public func activeRemoteRepositoryAccessCheck(store: WorkbenchStore) -> RemoteRepositoryAccessCheck? {
     guard let check = remoteRepositoryAccessCheck,
-          remoteRepositoryAccessCheck(check, matches: store.activeProfile) else {
+          remoteRepositoryAccessCheck(check, matches: store.activeProfile),
+          check.isFresh() else {
       return nil
     }
     return check
@@ -1165,7 +1166,7 @@ public final class RepositoryStore: ObservableObject {
 
   public func hasStaleRemoteRepositoryAccessCheckForActiveProfile(store: WorkbenchStore) -> Bool {
     guard let check = remoteRepositoryAccessCheck else { return false }
-    return !remoteRepositoryAccessCheck(check, matches: store.activeProfile)
+    return !remoteRepositoryAccessCheck(check, matches: store.activeProfile) || !check.isFresh()
   }
 
   private func remoteRepositoryAccessCheck(

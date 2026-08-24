@@ -12,6 +12,101 @@ enum PublishDrawerBatchPermissionState: Equatable {
   case writable
 }
 
+enum PublishDrawerRemoteOperationPurpose: Equatable {
+  case publication
+  case websiteDraftSync
+
+  var confirmationTitle: String {
+    switch self {
+    case .publication:
+      return String(localized: "最终发布确认")
+    case .websiteDraftSync:
+      return String(localized: "网站草稿同步确认")
+    }
+  }
+
+  var confirmationDetail: String {
+    switch self {
+    case .publication:
+      return String(localized: "请确认远端、分支、发布方式和完整文件清单。确认后会立即写入远端。")
+    case .websiteDraftSync:
+      return String(
+        localized: "只同步当前网站草稿到远端；不会纳入批量正式发布，也不会移除 draft 标记。请确认远端、分支和完整文件清单。"
+      )
+    }
+  }
+
+  var targetSectionTitle: String {
+    self == .websiteDraftSync
+      ? String(localized: "草稿同步目标")
+      : String(localized: "发布目标")
+  }
+
+  var modeLabel: String {
+    self == .websiteDraftSync ? String(localized: "同步方式") : String(localized: "模式")
+  }
+
+  var branchLabel: String {
+    self == .websiteDraftSync ? String(localized: "同步分支") : String(localized: "发布分支")
+  }
+
+  var fileListTitle: String {
+    self == .websiteDraftSync ? String(localized: "完整同步文件清单") : String(localized: "完整文件清单")
+  }
+
+  var emptyFileMessage: String {
+    self == .websiteDraftSync ? String(localized: "没有待同步文件。") : String(localized: "没有待发布文件。")
+  }
+
+  var warningTitle: String {
+    self == .websiteDraftSync ? String(localized: "同步警告") : String(localized: "发布警告")
+  }
+
+  func footerSummary(fileCount: Int) -> String {
+    if self == .websiteDraftSync {
+      return String(format: String(localized: "将同步 %d 个草稿文件"), fileCount)
+    }
+    return String(format: String(localized: "将发布 %d 个文件"), fileCount)
+  }
+
+  var confirmActionTitle: String {
+    self == .websiteDraftSync ? String(localized: "确认同步网站草稿") : String(localized: "确认线上发布")
+  }
+
+  var confirmAccessibilityHint: String {
+    self == .websiteDraftSync
+      ? String(localized: "确认后立即同步当前网站草稿")
+      : String(localized: "确认后立即执行远端发布")
+  }
+}
+
+struct PublishDrawerSingleArticleActionPresentation: Equatable {
+  let actionTitle: String
+  let accessibilityLabel: String
+  let enabledHint: String
+  let disabledHint: String
+  let confirmationPurpose: PublishDrawerRemoteOperationPurpose
+
+  static func make(isWebsiteDraft: Bool) -> Self {
+    if isWebsiteDraft {
+      return Self(
+        actionTitle: String(localized: "同步当前网站草稿…"),
+        accessibilityLabel: String(localized: "同步当前网站草稿"),
+        enabledHint: String(localized: "打开当前网站草稿的单篇同步确认页；不会纳入批量正式发布"),
+        disabledHint: String(localized: "当前网站草稿的远端同步预览未通过"),
+        confirmationPurpose: .websiteDraftSync
+      )
+    }
+    return Self(
+      actionTitle: String(localized: "仅发布当前文章…"),
+      accessibilityLabel: String(localized: "仅发布当前文章"),
+      enabledHint: String(localized: "打开当前文章的最终发布确认页"),
+      disabledHint: String(localized: "当前文章的线上发布预览未通过"),
+      confirmationPurpose: .publication
+    )
+  }
+}
+
 struct PublishDrawerBatchActionPresentation {
   struct State: Equatable {
     var repositoryConfigured: Bool
@@ -21,6 +116,8 @@ struct PublishDrawerBatchActionPresentation {
     var blockingIssueTitle: String?
     var hasRemoteConflict: Bool
     var publishableArticleCount: Int?
+    var draftSyncArticleCount: Int
+    var pendingDeletionCount: Int
     var changedFileCount: Int?
     var isPlanRefreshing: Bool
     var isPermissionChecking: Bool
@@ -34,6 +131,8 @@ struct PublishDrawerBatchActionPresentation {
       blockingIssueTitle: String? = nil,
       hasRemoteConflict: Bool = false,
       publishableArticleCount: Int? = nil,
+      draftSyncArticleCount: Int = 0,
+      pendingDeletionCount: Int = 0,
       changedFileCount: Int? = nil,
       isPlanRefreshing: Bool = false,
       isPermissionChecking: Bool = false,
@@ -46,6 +145,8 @@ struct PublishDrawerBatchActionPresentation {
       self.blockingIssueTitle = blockingIssueTitle
       self.hasRemoteConflict = hasRemoteConflict
       self.publishableArticleCount = publishableArticleCount
+      self.draftSyncArticleCount = draftSyncArticleCount
+      self.pendingDeletionCount = pendingDeletionCount
       self.changedFileCount = changedFileCount
       self.isPlanRefreshing = isPlanRefreshing
       self.isPermissionChecking = isPermissionChecking
@@ -53,11 +154,11 @@ struct PublishDrawerBatchActionPresentation {
     }
   }
 
-  static let title = String(localized: "发布所有可发布文章")
+  static let title = String(localized: "发布所有待处理变更")
   static let detail = String(
-    localized: "仅包含应用管理的文章发布包；不会包含 CSS、模板、脚本等其他 Git 工作区变更。发布前会显示完整文件清单。"
+    localized: "包含应用管理的文章发布包和待下线 Markdown；不会包含 CSS、模板、脚本等其他 Git 工作区变更。发布前会显示完整文件清单。"
   )
-  static let actionTitle = String(localized: "发布所有可发布文章…")
+  static let actionTitle = String(localized: "发布所有待处理变更…")
 
   static func isEnabled(_ state: State) -> Bool {
     guard !state.isPlanRefreshing,
@@ -70,7 +171,7 @@ struct PublishDrawerBatchActionPresentation {
           state.blockingIssueTitle == nil,
           !state.hasRemoteConflict,
           let articleCount = state.publishableArticleCount,
-          articleCount > 0
+          articleCount > 0 || state.pendingDeletionCount > 0
     else {
       return false
     }
@@ -113,15 +214,42 @@ struct PublishDrawerBatchActionPresentation {
     guard let articleCount = state.publishableArticleCount else {
       return String(localized: "正在准备文章发布包")
     }
-    guard articleCount > 0 else {
-      return String(localized: "没有可发布文章")
+    guard articleCount > 0 || state.pendingDeletionCount > 0 else {
+      if state.draftSyncArticleCount > 0 {
+        return String(
+          format: String(localized: "%d 篇网站草稿未纳入发布，请单独同步"),
+          state.draftSyncArticleCount
+        )
+      }
+      return String(localized: "没有待处理变更")
     }
     let fileCount = state.changedFileCount ?? 0
+    let draftSuffix = state.draftSyncArticleCount > 0
+      ? String(
+        format: String(localized: " · 另有 %d 篇网站草稿未纳入发布"),
+        state.draftSyncArticleCount
+      )
+      : ""
+    if articleCount == 0 {
+      return String(
+        format: String(localized: "待下线 %d 篇文章 · %d 个文件"),
+        state.pendingDeletionCount,
+        fileCount
+      ) + draftSuffix
+    }
+    if state.pendingDeletionCount > 0 {
+      return String(
+        format: String(localized: "可发布 %d 篇 · 待下线 %d 篇 · %d 个文件"),
+        articleCount,
+        state.pendingDeletionCount,
+        fileCount
+      ) + draftSuffix
+    }
     return String(
       format: String(localized: "可发布 %d 篇文章 · %d 个文章文件"),
       articleCount,
       fileCount
-    )
+    ) + draftSuffix
   }
 
   static func accessibilityHint(isEnabled: Bool, status: String) -> String {

@@ -43,7 +43,6 @@ extension PublishingStore {
     store.runPreflight()
     store.scheduleImageWorkbenchReportRefresh(for: draft)
     store.save()
-    store.scheduleSiteDraftFileAutosave(for: draft, immediate: true)
     return draft
   }
 
@@ -111,7 +110,6 @@ extension PublishingStore {
     store.runPreflight()
     store.scheduleImageWorkbenchReportRefresh(for: draft)
     store.save()
-    store.scheduleSiteDraftFileAutosave(for: draft, immediate: true)
   }
 
   public func createGeneralDraft(store: WorkbenchStore) {
@@ -185,7 +183,7 @@ extension PublishingStore {
   public func deleteDraft(id draftID: UUID, store: WorkbenchStore) {
     guard let draft = drafts.first(where: { $0.id == draftID }) else { return }
     let deletedSelectedDraft = selectedDraftID == draftID
-    moveDraftToRecycleBin(draft)
+    moveDraftToRecycleBin(draft, store: store)
     drafts.removeAll { $0.id == draftID }
     draftNavigationHistory.remove(draftID)
     if deletedSelectedDraft || !drafts.contains(where: { $0.id == selectedDraftID }) {

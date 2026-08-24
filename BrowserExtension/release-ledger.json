@@ -534,6 +534,20 @@
         }
       ],
       "publications": []
+    },
+    {
+      "version": "0.30.4",
+      "sourceSHA256": "70d953bdf79d6b52cc548c7fb28f32391dc10b57adfc78302fa419f471e9f56b",
+      "createdAt": "2026-08-23T11:57:18Z",
+      "artifacts": [
+        {
+          "kind": "chrome-zip",
+          "file": "knowledge-capture-chrome-0.30.4.zip",
+          "sha256": "162acae74a6bc183778ad3e463eb8abf545cb943dff8df856289518281630b1a",
+          "recordedAt": "2026-08-23T11:57:18Z"
+        }
+      ],
+      "publications": []
     }
   ]
 }

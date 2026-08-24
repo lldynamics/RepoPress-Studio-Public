@@ -1,5 +1,21 @@
 import Foundation
 
+public enum AIProviderCategory: String, CaseIterable, Identifiable, Sendable {
+  case chatGPTAccount
+  case apiService
+
+  public var id: String { rawValue }
+
+  public var displayName: String {
+    switch self {
+    case .chatGPTAccount:
+      return CoreL10n.text("ChatGPT 账户登录")
+    case .apiService:
+      return CoreL10n.text("标准 API 凭据")
+    }
+  }
+}
+
 public enum AIProviderPreset: String, Codable, CaseIterable, Identifiable, Sendable {
   case codexAppServer
   case openAICompatible
@@ -19,6 +35,20 @@ public enum AIProviderPreset: String, Codable, CaseIterable, Identifiable, Senda
   private static let legacyDeepSeekProRawValue = "deepSeekPro"
 
   public var id: String { rawValue }
+
+  public var category: AIProviderCategory {
+    switch self {
+    case .codexAppServer:
+      return .chatGPTAccount
+    case .openAICompatible, .deepSeek, .anthropic, .gemini, .siliconFlow, .moonshot, .zhipu,
+      .openRouter, .local, .custom:
+      return .apiService
+    }
+  }
+
+  public var usesOpenAICompatibleProtocol: Bool {
+    self != .codexAppServer
+  }
 
   public var displayName: String {
     switch self {
@@ -523,6 +553,16 @@ public struct AIProviderConfig: Codable, Hashable, Sendable {
 
   public var usesCodexAppServer: Bool {
     preset == .codexAppServer
+  }
+
+  /// Dual-track classification: indicates whether this config uses ChatGPT official account login
+  /// or a standard OpenAI-compatible API credential.
+  public var isChatGPTAccountTrack: Bool {
+    usesCodexAppServer
+  }
+
+  public var isOpenAICompatibleAPITrack: Bool {
+    !usesCodexAppServer
   }
 
   public var dataSharingDestination: String {

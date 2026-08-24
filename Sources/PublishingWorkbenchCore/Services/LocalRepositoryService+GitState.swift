@@ -7,7 +7,10 @@ struct RepositoryGitStatus {
 }
 extension LocalRepositoryService {
   func gitStatus(rootURL: URL) -> RepositoryGitStatus {
-    let result = gitCommandRunner.run(["status", "--porcelain=v1", "--branch"], rootURL: rootURL)
+    let result = gitCommandRunner.run(
+      ["status", "--porcelain=v1", "--branch", "-z"],
+      rootURL: rootURL
+    )
     guard result.terminationStatus == 0 else {
       return RepositoryGitStatus(branchStatus: nil, changedFiles: [], remoteChangedFiles: [])
     }
@@ -17,21 +20,11 @@ extension LocalRepositoryService {
       return RepositoryGitStatus(branchStatus: nil, changedFiles: [], remoteChangedFiles: [])
     }
 
-    var branchStatus: RepositoryBranchStatus?
+    let parsedStatus = parsePorcelainStatus(output)
+    let branchStatus = parsedStatus.branchStatus
     var changedFiles: [RepositoryChangedFile] = []
-
-    for line in output.split(separator: "\n").map(String.init) {
-      if line.hasPrefix("## ") {
-        branchStatus = parseBranchStatusLine(line)
-        continue
-      }
-
-      guard line.count >= 4 else { continue }
-      let status = String(line.prefix(2))
-      let pathStart = line.index(line.startIndex, offsetBy: 3)
-      let path = String(line[pathStart...])
-      let kind = changeKind(status: status)
-      var changedFile = RepositoryChangedFile(status: status, path: path, kind: kind)
+    for file in parsedStatus.changedFiles {
+      var changedFile = file
       changedFile.lineDiff = diffForChangedFile(changedFile, rootURL: rootURL)
       changedFiles.append(changedFile)
     }
@@ -49,7 +42,7 @@ extension LocalRepositoryService {
 
   func remoteChangedFiles(rootURL: URL, upstreamName: String) -> [RepositoryChangedFile] {
     guard let output = runGitOutput(
-      ["diff", "--name-status", "HEAD...\(upstreamName)", "--"],
+      ["diff", "-M", "--name-status", "-z", "HEAD...\(upstreamName)", "--"],
       rootURL: rootURL
     ) else {
       return []
@@ -133,7 +126,11 @@ extension LocalRepositoryService {
   }
 
   func parseNameStatus(_ output: String) -> [RepositoryChangedFile] {
-    output.split(separator: "\n").compactMap { line -> RepositoryChangedFile? in
+    if output.contains("\0") {
+      return parseNULNameStatus(output)
+    }
+
+    return output.split(separator: "\n").compactMap { line -> RepositoryChangedFile? in
       let parts = line.split(separator: "\t", omittingEmptySubsequences: false).map(String.init)
       guard let status = parts.first?.nilIfEmpty, parts.count >= 2 else {
         return nil
@@ -148,6 +145,93 @@ extension LocalRepositoryService {
 
       return RepositoryChangedFile(status: status, path: path, kind: changeKind(status: status))
     }
+  }
+
+  private func parsePorcelainStatus(
+    _ output: String
+  ) -> (branchStatus: RepositoryBranchStatus?, changedFiles: [RepositoryChangedFile]) {
+    // `git status --porcelain=v1 -z` emits a branch header followed by NUL
+    // separated records. Rename/copy records put the destination in the
+    // status record and the source in the following NUL-delimited field.
+    let fields = output
+      .split(separator: "\0", omittingEmptySubsequences: true)
+      .map(String.init)
+    var branchStatus: RepositoryBranchStatus?
+    var changedFiles: [RepositoryChangedFile] = []
+    var index = 0
+
+    while index < fields.count {
+      let field = fields[index]
+      index += 1
+
+      if field.hasPrefix("## ") {
+        branchStatus = parseBranchStatusLine(field)
+        continue
+      }
+
+      guard field.count >= 4 else { continue }
+      let status = String(field.prefix(2))
+      let path = String(field.dropFirst(3))
+      guard !path.isEmpty else { continue }
+
+      var normalizedPath = path
+      if isRenameOrCopyStatus(status), index < fields.count {
+        let sourcePath = fields[index]
+        index += 1
+        normalizedPath = "\(sourcePath) -> \(path)"
+      }
+
+      changedFiles.append(
+        RepositoryChangedFile(
+          status: status,
+          path: normalizedPath,
+          kind: changeKind(status: status)
+        )
+      )
+    }
+
+    return (branchStatus, changedFiles)
+  }
+
+  private func parseNULNameStatus(_ output: String) -> [RepositoryChangedFile] {
+    // `git diff --name-status -z` emits status, path, and (for rename/copy)
+    // the second path as independent NUL-delimited fields. This avoids Git's
+    // quotePath octal escaping and remains safe for spaces, quotes, and UTF-8.
+    let fields = output
+      .split(separator: "\0", omittingEmptySubsequences: true)
+      .map(String.init)
+    var files: [RepositoryChangedFile] = []
+    var index = 0
+
+    while index < fields.count {
+      let status = fields[index]
+      index += 1
+      guard !status.isEmpty, index < fields.count else { break }
+
+      let sourceOrPath = fields[index]
+      index += 1
+      var path = sourceOrPath
+      if isRenameOrCopyStatus(status) {
+        guard index < fields.count else { break }
+        let destinationPath = fields[index]
+        index += 1
+        path = "\(sourceOrPath) -> \(destinationPath)"
+      }
+
+      files.append(
+        RepositoryChangedFile(
+          status: status,
+          path: path,
+          kind: changeKind(status: status)
+        )
+      )
+    }
+
+    return files
+  }
+
+  private func isRenameOrCopyStatus(_ status: String) -> Bool {
+    status.contains("R") || status.contains("C")
   }
 
   func gitOriginRemote(rootURL: URL) -> RepositoryRemote? {

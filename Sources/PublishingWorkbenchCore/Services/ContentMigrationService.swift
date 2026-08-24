@@ -307,7 +307,12 @@ public struct ContentMigrationService: Sendable {
         createdAt: date,
         updatedAt: record.updatedAt ?? date
       )
-      draft.repositoryPath = profile.markdownPath(for: draft)
+      let repositoryPath = profile.markdownPath(for: draft)
+      draft.recordProjectFile(
+        profile: profile,
+        repositoryPath: repositoryPath,
+        renderedContentDigest: draft.renderedRepositoryContentDigest(profile: profile)
+      )
       drafts.append(draft)
 
       if let sourcePath = normalizedSourcePath(record.link), !sourcePath.isEmpty {

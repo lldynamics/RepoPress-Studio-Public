@@ -1,0 +1,37 @@
+{
+  "PR/MR 已关闭…": "PR/MR Is Closed…",
+  "display.draft-repository-remote-cleanup-status.completed": {
+    "en": "Unpublished from Website",
+    "zh-Hans": "已从网站下线"
+  },
+  "display.draft-repository-remote-cleanup-status.pending": {
+    "en": "Pending Unpublish",
+    "zh-Hans": "待下线"
+  },
+  "display.draft-repository-remote-cleanup-status.review-requested": {
+    "en": "Waiting for PR/MR Merge",
+    "zh-Hans": "等待 PR/MR 合并"
+  },
+  "一键下线会核对远端版本、提交删除并清理本地 Markdown；PR/MR 模式会等待合并确认。可能被其他文章复用的图片不会自动删除。": "One-step unpublish verifies the remote version, commits the deletion, and removes the local Markdown. In PR/MR mode, it waits for merge confirmation. Images that may be reused by other articles are not deleted automatically.",
+  "下线 PR/MR 已关闭？": "Is the Unpublish PR/MR Closed?",
+  "仅移到回收站…": "Move to Trash Only…",
+  "从网站下线…": "Unpublish from Website…",
+  "从网站下线这篇文章？": "Unpublish This Article?",
+  "保留本地文件": "Keep Local File",
+  "全部待下线文章（%d 篇）": "All Articles Pending Unpublish (%d)",
+  "创建下线 PR/MR": "create an unpublish PR/MR",
+  "包含应用管理的文章发布包和待下线 Markdown；不会包含 CSS、模板、脚本等其他 Git 工作区变更。发布前会显示完整文件清单。": "Includes app-managed article publish packages and pending Markdown deletions. Other Git workspace changes, such as CSS, templates, and scripts, are excluded. A complete file list is shown before publishing.",
+  "发布 %d 篇并下线 %d 篇文章": "Publish %d and Unpublish %d Articles",
+  "发布所有待处理变更": "Publish All Pending Changes",
+  "发布所有待处理变更…": "Publish All Pending Changes…",
+  "可发布 %d 篇 · 待下线 %d 篇 · %d 个文件": "%d Ready · %d Pending Unpublish · %d Files",
+  "将对 %@ %@。执行前会核对远端版本；远端文件已不存在时按成功处理。": "For %@, the app will %@. It verifies the remote version first; an already missing remote file is treated as success.",
+  "待下线 %d 篇文章 · %d 个文件": "%d Pending Unpublish · %d Files",
+  "没有待处理变更": "No Pending Changes",
+  "直接提交远端删除": "commit the remote deletion directly",
+  "确认下线": "Confirm Unpublish",
+  "确认已关闭并恢复文章": "Confirm Closed and Restore Article",
+  "确认已关闭，重新加入下线队列": "Confirm Closed and Requeue Unpublish",
+  "请先在 GitHub/GitLab 确认该 PR/MR 已关闭且不会再被合并。错误确认可能导致恢复后的文章仍被远端合并操作删除。\n\n%@": "First confirm on GitHub/GitLab that the PR/MR is closed and can no longer be merged. An incorrect confirmation could let a later remote merge delete the restored article.\n\n%@",
+  "软件会把「%@」移到回收站、%@，并清理本地 Markdown；图片资源不会自动删除。失败项会保留在发布抽屉中重试。": "The app will move “%@” to the Trash, %@, and remove its local Markdown. Image assets are not deleted automatically. Failed steps remain in the publish drawer for retry."
+}

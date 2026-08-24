@@ -80,7 +80,7 @@ public final class PrivacyProtectionStore: ObservableObject {
     protectedDraft.tags = []
     protectedDraft.categories = []
     protectedDraft.authors = []
-    protectedDraft.repositoryPath = nil
+    protectedDraft.detachFromRepository()
     return protectedDraft
   }
 

@@ -43,9 +43,7 @@ swift build \
   --cache-path "$SWIFT_PACKAGE_CACHE_PATH" \
   --config-path "$SWIFT_BUILD_HOME/Library/org.swift.swiftpm/configuration" \
   --security-path "$SWIFT_BUILD_HOME/Library/org.swift.swiftpm/security" \
-  -Xswiftc -swift-version \
-  -Xswiftc 5 \
   -Xswiftc -strict-concurrency=complete \
   -Xswiftc -warnings-as-errors
 
-echo "swift complete-concurrency gate: Swift 5 mode, complete concurrency checking, and warnings-as-errors passed"
+echo "swift complete-concurrency gate: Package.swift language modes, complete concurrency checking, and warnings-as-errors passed"

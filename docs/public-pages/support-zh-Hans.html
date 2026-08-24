@@ -52,7 +52,7 @@
 
     <section>
       <h2>AI 与数据授权</h2>
-      <p>AI 功能支持 BYOK（用户自备 Key）、自定义 HTTPS 地址和本机模型。API Key 默认以明文保存在仅当前 macOS 用户可读写的 Application Support 配置文件中（目录权限 0700、文件权限 0600）；用户也可以主动选择 macOS Keychain 或仅本次会话。使用远程服务时，用户自行选择并承担服务商费用；RepoPress Studio 不销售服务商 Key、访问权限或调用包。</p>
+      <p>AI 功能支持 BYOK（用户自备 Key）、自定义 HTTPS 地址和本机模型。API Key 默认保存在 macOS Keychain；用户也可以主动选择仅当前 macOS 用户可读写的本地 Application Support 配置文件（目录权限 0700、文件权限 0600）或仅本次会话。使用远程服务时，用户自行选择并承担服务商费用；RepoPress Studio 不销售服务商 Key、访问权限或调用包。</p>
       <p>首次向每个自定义远程 API 地址发送请求前，应用会显示完整目标地址和可能发送的数据类别，并要求用户明确同意。请求由这台 Mac 直接发送给所选服务商，开发者不转发也不接收 Key、提示词、请求或回复。</p>
       <p><code>localhost</code>、<code>127.0.0.1</code> 和 <code>::1</code> 是本机回环地址，不会把 AI 内容发送给远程服务商。</p>
     </section>

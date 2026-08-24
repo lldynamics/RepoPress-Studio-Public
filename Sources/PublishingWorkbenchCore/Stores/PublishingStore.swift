@@ -287,7 +287,16 @@ public final class PublishingStore: ObservableObject {
     self.aiFixQueueService = AIPublishingFixQueueService()
     self.profiles = profiles
     self.activeProfileID = activeProfileID
-    self.drafts = drafts
+    let profilesByID = Dictionary(uniqueKeysWithValues: profiles.map { ($0.id, $0) })
+    self.drafts = drafts.map { draft in
+      var normalized = draft
+      if normalized.isGeneralDraft {
+        normalized.detachFromRepository()
+      } else if let profile = profilesByID[normalized.siteProfileID] {
+        normalized.normalizeRepositoryBinding(for: profile)
+      }
+      return normalized
+    }
     self.customMarkdownSnippets = customMarkdownSnippets
     self.draftVersions = draftVersions
     self.recycledDrafts = recycledDrafts

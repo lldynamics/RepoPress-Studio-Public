@@ -1,403 +1,162 @@
-# AI 对话能力升级设计文档
+# AI 对话与 Agent：当前架构与演进边界
 
-> 范围：① 独立对话窗口 / 迷你对话（Part A）＋ ⑥ Agent 工具调用（Part B）
-> 状态：设计稿，待评审
-> 面向版本：RepoPress（macOS 14+，Swift 5.9+）
+> 状态：实现现状文档
+> 更新时间：2026-08-23
+> 适用版本：macOS 14+、Swift 6
 
----
+本文记录 RepoPress Studio 当前已经落地的 AI 对话、上下文和 Agent
+边界。源码和测试是最终事实来源；本文不保留未落地的窗口设计、工期承诺
+或路线图。
 
-## 0. 背景与目标
+## 1. 能力总览
 
-RepoPress 已具备完整的 AI 对话底座（多 Provider、SSE 流式、会话持久化、文章上下文、写作辅助动作），
-但目前对话入口**绑定在文章侧栏 Inspector 内**，且协议层**不支持工具调用（tool calling）**。
+当前实现包含两种明确的会话作用域：
 
-本设计解决两个核心问题：
-
-1. **对话脱离文章**：让 AI 对话成为一等公民——独立窗口、快捷键唤起、通用对话（不依赖草稿）。
-2. **从“问答”到“干活”**：让模型能调用本地工具（检索知识库、抓取 URL、读取/修改草稿、检查站点状态），
-   把对话升级为可执行的 Agent。
-
-设计原则：
-
-- **复用优先**：不重造轮子，尽量复用 `WorkbenchAIStore` / `AIChatCompletionClient` / 现有写作辅助服务。
-- **渐进式**：每个方向分阶段落地，每阶段可独立验收、独立发布。
-- **安全默认**：所有“写”类工具必须显式确认；凭据不落盘（继续走 Keychain）。
-
----
-
-## 1. 现状盘点（与本次设计相关的关键事实）
-
-### 1.1 已具备
-
-| 能力 | 位置 | 说明 |
+| 作用域 | 持久化语义 | 上下文默认值 |
 | --- | --- | --- |
-| 多 Provider 配置 | `Models/AIProviderConfig.swift`、`Models/AIConnectionProfile.swift` | OpenAI 兼容 / DeepSeek / OpenRouter / 本地 Ollama / 自定义，多档案 |
-| 流式传输（SSE） | `Services/AIChatCompletionClient.swift` | `AsyncThrowingStream`、字节上限、用量统计、`AIChatStreamingTransport` |
-| 会话持久化 | `Models/AIConversation.swift`、`Stores/AIWorkspaceStore.swift` | 每条会话带 `draftID`，按文章归档 |
-| 文章上下文 | `Stores/WorkbenchAIStore+ChatSessions.swift`、`WorkbenchAIStore+ContextReferences.swift` | `contextMode`（site/general）、上下文引用、段落聚焦 |
-| 写作辅助动作 | `Services/AIPublishingAssistantService*.swift`、`AIPublishingActionConvergence.swift` | 改写、审查、元数据修复、HTML 翻译、代码块、直接编辑等 |
-| 知识库语义检索 | `Stores/KnowledgeDatabase+Search.swift` | FTS + LIKE + 语义向量（`KnowledgeChunkEmbedding`） |
-| 数据共享同意 | `Services/AIDataSharingConsentStore.swift` | 已有 consent 体系 |
-| 窗口/场景 | `App/PersonalSitePublisherMacApp.swift` | 单一 `WindowGroup("main-workbench")` + AppDelegate 管理 |
+| `AIConversationScope.general` | `storageKey == "general"`，不归属任何草稿 | 通用对话；不会因为当前选中的文章或发布界面而自动附加内容 |
+| `AIConversationScope.draft(UUID)` | `storageKey == "draft:<uuid>"` | 与指定草稿关联的文章、站点和用户选定引用 |
 
-### 1.2 关键约束（设计必须绕开的坑）
+`AIConversation.draftID` 是从 `scope` 派生的可选兼容投影：通用会话返回
+`nil`，草稿会话返回草稿 ID。新代码应优先判断 `scope`，避免把通用会话误当
+成文章会话。
 
-1. **`AIConversation.draftID: UUID` 为非可选**，`activeAIConversationIDsByDraftID: [UUID: UUID]` 以 draft 为主键。
-   → 通用对话需要把 `draftID` 可空化，或引入独立“通用会话”存储域。
-2. **`sendAIChatMessage` 强制要求草稿**（无草稿时报「请先选择一篇文章」）。
-   → 需要一条不依赖草稿的发送路径，且仍能按需“附加”文章上下文。
-3. **`AIChatCompletionClient` 请求模型没有 `tools` / `tool_choice`，响应模型没有 `tool_calls`**。
-   → Agent 方向必须先扩展协议层（这是 Part B 的前置依赖）。
-4. **Provider 能力差异大**（本地 Ollama、OpenAI 兼容 vs DeepSeek 原生）。
-   → 工具调用必须带“能力探测 + 优雅降级”。
+通用会话已经具备新建、切换、归档、模型/连接档案选择、思考级别、知识库
+策略、图片附件、流式回复和手动重试。连接档案 ID 明确保存在会话中，密钥
+仍由 Keychain 提供，不写入会话快照。
 
----
+## 2. 上下文与隐私边界
 
-# Part A：独立对话窗口 / 迷你对话
+`AIContextAssembler.generalEnvelope` 是通用请求的入口。它只接收调用方
+显式提供的上下文引用、显式提示和知识库快照，不会自行扫描当前编辑器、
+当前草稿、仓库或发布状态。
 
-## A1. 目标与非目标
+因此：
 
-**目标**
+- 通用会话默认只发送会话消息和通用系统边界。
+- 文章、段落、知识条目只有在用户选择并经过当前发送链路授权后才进入请求。
+- 知识库检索遵循会话的 `KnowledgeRetrievalPolicy`；资料授权撤销、绑定漂移
+  或远程请求确认失败时，发送在传输前终止。
+- AI 请求经过数据共享同意、凭据解析、载荷预览和授权确认；凭据不进入
+  持久化 JSON，也不进入公开仓库。
 
-- 新增独立的 AI 对话窗口（`⌘⇧Space` 唤起），支持**不依赖文章**的通用对话。
-- 通用对话可“附加”当前文章 / 选中段落 / 知识库条目作为上下文（而不是强制绑定）。
-- 提供轻量“迷你对话”弹出层：快捷键唤起、单轮快问快答、Esc 关闭，适合随手提问。
-- 独立窗口内具备完整能力：流式输出、模型切换、会话历史、图片附件、代码块应用、插入正文。
+通用会话可以在用户明确提出并获得相应权限时通过 Agent 工具创建或操作草稿；
+这不改变会话本身的 `general` 归属，也不等于隐式读取当前文章。
 
-**非目标（本阶段不做）**
+## 3. ChatCompletion 协议与 Provider 能力
 
-- 不做会话的云端同步（继续纯本地持久化）。
-- 不做多窗口同时打开同一条会话的冲突解决（单窗口即可，后续再说）。
+请求/响应模型已包含 OpenAI-compatible 的工具协议：
 
-## A2. 数据模型解耦：通用对话作用域
+- `AIChatCompletionRequest.tools` 与 `toolChoice` 描述本轮可用工具。
+- `AIChatMessage.toolCalls`、`toolCallID` 表示助手工具调用和工具结果消息。
+- `AIChatCompletionResult.toolCalls` 表示完整响应中的调用。
+- `AIChatStreamUpdate.toolCallDeltas` 和累积的 `toolCalls` 支持流式工具块；
+  SSE 适配器按调用索引合并增量。
 
-### A2.1 方案选型
+`AIChatCompletionClient` 在请求归一化时读取具体连接档案和模型的
+`AIProviderProtocolCapability.toolCalling` 状态。能力状态有
+`supported`、`unsupported` 和 `unknown` 三种；探测服务负责生成证据。
+普通文本聊天可以在没有 Agent 能力时继续使用，Agent 执行则要求能力状态
+为 `supported`，否则以能力不可用结束，不伪造工具结果。
 
-| 方案 | 说明 | 评价 |
-| --- | --- | --- |
-| A. `draftID` 可空化 | `AIConversation.draftID: UUID?`，`nil` 表示通用会话 | ✅ 改动小、语义清晰；需迁移已持久化数据（解码兼容） |
-| B. 独立存储域 | 新增 `generalConversations: [AIConversation]` 数组 | 隔离干净，但双份存储/双份 API，长期维护成本高 |
+不同 Provider 的协议细节和能力可能不同，不能把某个 Provider 的探测结果
+当成全局保证。未知能力、无效响应或工具协议历史不匹配都必须维持失败关闭
+的行为。
 
-**结论：选 A**。理由：`AIConversation` 已自包含会话全部状态（`sessionState`），
-`draftID` 仅是“归属键”。可空化后：
+## 4. Agent 执行与安全边界
 
-- 旧数据：`draftID` 仍是必填字段，解码不受影响（只把声明改为可选）。
-- `activeAIConversationIDsByDraftID` 的键保持 `UUID` 不变，仅当 `draftID == nil` 时走新的
-  `activeGeneralConversationID: UUID?` 字段（追加，非覆盖）。
+Agent 循环由 `WorkbenchAIAgentLoopService` 驱动，工作台通过
+`WorkbenchAIStore+AgentLoop.swift` 接入，待确认的继续执行由
+`WorkbenchAIStore+AgentContinuation.swift` 处理。工具定义和参数校验来自
+`WorkbenchAutomationService.swift` 的白名单注册表。
 
-### A2.2 迁移策略
+一轮执行的基本流程是：
 
-1. `AIConversation.draftID` 声明改为 `UUID?`；`Codable` 用 `decodeIfPresent`，旧存档自动兼容。
-2. `AIWorkspacePersistence` 增加可选字段 `activeGeneralConversationID: UUID?`，默认 `nil`，向前兼容。
-3. 新增会话时若 `draftID == nil`，写入 `aiConversations` 数组（`draftID: nil`），
-   不进入 `activeAIConversationIDsByDraftID`。
-4. 增加一次性的本地校验：确保 `nil` draft 会话不进 `maximumConversationsPerDraft` 计数
-   （沿用全局 `maximumConversationCount` 即可）。
+```text
+用户消息 → 模型请求（显式工具白名单） → 文本回复或 tool_calls
+                                      ├─ 只读且允许自动执行 → 执行并回传结果
+                                      └─ 外部影响或写操作 → 生成待确认计划/检查点
+```
 
-## A3. 独立对话窗口
+安全约束包括：
 
-### A3.1 场景注册
+- 工具名、参数 JSON、调用 ID、目标草稿版本和允许命令集合在执行前校验。
+- 未知工具、重复调用 ID、无效 JSON、参数不匹配、能力/权限不足时整轮终止，
+  不执行后续调用。
+- Agent 能力限定为注册表中的工作台命令，不含通用 shell、任意路径文件写入或
+  任意外部命令。
+- 具有外部影响的操作不会静默落盘。命令描述中的
+  `allowsAgentAutomaticExecution` 决定是否可以自动执行，其余操作进入
+  `awaitingConfirmation`，由用户审阅计划后继续。
+- `WorkbenchAIAgentLoopLimits` 同时限制模型轮数、单轮/总工具调用数、参数
+  与结果字节数、助手输出和完整 transcript 大小。默认值为 6 轮、单轮 4 次、
+  总计 12 次调用，并对各类字节数设上限。
+- 取消、模型传输错误、工具执行错误和限制触发都会产生明确终止状态；失败
+  不会把未验证的助手轮次当成成功结果。
+- `WorkbenchAIAgentLoopCheckpoint` 保存可信边界、待处理调用、已执行记录、
+  预算和允许命令。恢复前会重新校验 transcript、草稿版本、能力、权限和
+  检查点完整性；校验失败时不联系模型，也不执行工具。
 
-在 `App/PersonalSitePublisherMacApp.swift` 增加：
+知识库工具还要满足资料授权绑定。授权变化、知识快照漂移或远程确认失效时，
+请求在知识内容继续流动前关闭。
+
+## 5. 当前 UI 形态
+
+应用场景目前只有一个：
 
 ```swift
-Window("AI 对话", id: "ai-chat-window") {
-  AIChatWindowRootView()
-    .frame(minWidth: 420, minHeight: 560)
-}
-.defaultSize(width: 520, height: 720)
+WindowGroup("RepoPress Studio", id: "main-workbench") { ... }
 ```
 
-- 窗口数据流：`AIChatWindowRootView` 通过 `@EnvironmentObject` / AppDelegate 持有的 `WorkbenchStore`
-  拿到 `WorkbenchAIStore`（与主工作窗共享同一 store，避免双实例状态分裂）。
-- 若 store 尚未就绪（主窗未初始化），窗口显示 `ContentUnavailableView` + “打开主工作窗”按钮。
-
-### A3.2 视图树
-
-```
-AIChatWindowRootView
-├── AIChatWindowToolbar        // 会话选择、新建会话、模型快速切换、上下文附加、设置
-├── AIChatMessageList          // 复用现有 AIChatWorkspaceInspector 的消息渲染组件
-│   ├── 消息气泡（用户/助手）
-│   ├── 代码块（复制/应用/插入光标）
-│   └── 流式输入中的打字机效果（沿用 aiChatStreamPublishInterval 节流）
-├── AIChatWindowComposer       // 复用 AIChatWorkspaceInspectorComposer 能力
-│   ├── 文本输入 + 图片附件
-│   ├── 上下文模式切换（通用 / 站点+文章）
-│   └── 发送 / 停止生成
-└── AIChatContextAttachmentBar // 可附加：当前文章、选中段落、知识库引用（@ 入口）
-```
-
-**复用清单**（尽量直接复用现有 View / Service，减少重复 UI）：
-
-- `Views/AIChatWorkspaceInspectorComposer.swift`
-- `Views/AIChatWorkspaceInspectorHeader.swift`（模型切换、会话选择）
-- `Views/AIChatModelQuickSwitchSheet.swift`
-- `Services/AIPublishingChatConversationPresentation.swift`（标题生成）
-- `Stores/WorkbenchAIStore+ChatReplies.swift` 的发送链路（改造见 A4.2）
-
-### A3.3 快捷键与命令
-
-在 `.commands` 中注册：
-
-```swift
-CommandGroup(after: .appInfo) {
-  Button("AI 对话") { openWindow(id: "ai-chat-window") }
-    .keyboardShortcut(" ", modifiers: [.command, .shift])
-}
-```
-
-同时在 `WorkbenchLaunchRootView` 用 `WorkspaceCommandPaletteAction` 思路，把
-`⌘⇧Space` 的行为做成“若窗口已开则聚焦，未开则打开并聚焦”。
-
-## A4. 迷你对话（Mini Chat）
-
-### A4.1 形态
-
-- **形态**：悬浮输入条（`NSPanel` + `nonactivatingPanel`）或 SwiftUI `.overlay` 全屏置顶浮层。
-  推荐 `NSPanel`（`NSPanel.StyleMask.nonactivatingPanel`），因为它不抢主窗焦点、行为更接近
-  Spotlight / Raycast。
-- **唤起**：同一快捷键 `⌘⇧Space` 双语义——短按唤起迷你对话；迷你对话内再次 `⌘⇧Space`
-  或“展开”按钮则切换为完整窗口。
-- **交互**：
-  - `Enter` 发送，`Esc` 关闭，`↑/↓` 切换历史提问。
-  - 支持 `/` 前缀命令：`/ask`（通用）、`/with 文章名`（附加当前文章）、`/k 关键词`（附加知识库检索结果）。
-  - 发送后原地显示流式回复摘要（最多 ~300 字）+ “在窗口打开”按钮。
-
-### A4.2 发送路径（关键改造）
-
-新增不依赖草稿的发送方法（放在 `WorkbenchAIStore+ChatReplies.swift`）：
-
-```swift
-public func sendAIGeneralChatMessage(
-  _ text: String,
-  imageAttachments: [AIChatImageAttachment] = [],
-  attachedContext: AIChatWindowAttachedContext? = nil   // 可选附加：文章/段落/知识库
-) async -> AIPublishingChatMessage?
-```
-
-- 内部走与 `sendAIChatMessage` 相同的：Key 校验 → 能力校验 → `beginAIChatOperation` →
-  流式消费 → `upsertAIChatConversation` 链路。
-- `attachedContext` 仅用于**本次请求的上下文注入**（不改变会话归属），
-  并复用现有 `availableAIChatContextReferences` / `AIContextReference` 结构。
-- 通用会话的 Provider 解析：`draftID == nil` 时使用“默认站点档案”或用户手动选择的档案
-  （新增 `AIProviderProfileScope.general` 解析规则，见 A5）。
-
-## A5. 文件级改动清单（Part A）
-
-| 文件 | 改动 | 工作量 |
-| --- | --- | --- |
-| `Models/AIConversation.swift` | `draftID` 可空化；`decodeIfPresent`；`isGeneral` 计算属性 | S |
-| `Stores/AIWorkspaceStore.swift` | 增加 `activeGeneralConversationID`；通用会话 CRUD 辅助 | M |
-| `Stores/WorkbenchAIStore+ChatSessions.swift` | `prepareAIChat(for:)` 支持 nil draft；新增通用会话选择/新建 | M |
-| `Stores/WorkbenchAIStore+ChatReplies.swift` | 新增 `sendAIGeneralChatMessage`；抽取公共发送核心 | M |
-| `Models/AIProviderConfig.swift` | `AIProviderProfileScope.general` 档案解析 | S |
-| `App/PersonalSitePublisherMacApp.swift` | 注册 `ai-chat-window` 场景 + `⌘⇧Space` 命令 | S |
-| `Views/AIChatWindowRootView.swift`（新） | 窗口根视图 + 状态装配 | M |
-| `Views/AIChatWindowMessageList.swift`（新） | 复用消息渲染的消息列表 | S |
-| `Views/AIChatWindowComposer.swift`（新） | 复用 Composer 能力的输入区 | S |
-| `Views/AIChatMiniPanel.swift`（新） | NSPanel 迷你对话浮层 | M |
-| `Support/AIChatWindowPresentationSupport.swift`（新） | 窗口/浮层唤起、聚焦、切换逻辑 | S |
-| `App/PersonalSitePublisherMacAppDelegate` 相关 | 窗口聚焦/恢复钩子 | S |
-| 测试 | `AIConversation` 解码兼容、通用会话 CRUD、无草稿发送 | M |
-
-> 规模估算：Part A 总计约 **1–2 周**（含测试），纯 UI + 数据层小改，无网络协议改动。
-
----
-
-# Part B：Agent 工具调用
-
-## B1. 目标与非目标
-
-**目标**
-
-- 协议层支持 OpenAI 兼容的 `tools` / `tool_choice` / `tool_calls`（SSE 流式 + 非流式）。
-- 内置工具集 v1（只读为主 + 少量受控写操作）。
-- 可中断、可确认、可追踪的 Agent 执行循环，进度在对话中实时呈现。
-- 对不支持工具调用的 Provider 自动降级（退回纯文本 + prompt 约束）。
-
-**非目标（本阶段不做）**
-
-- 不做多 Agent / 子 Agent 编排。
-- 不做任意外部命令执行、文件系统任意写入（安全边界内）。
-- 不做模型自行连续多轮工具调用的“无限循环”放任（设硬上限）。
-
-## B2. 协议层扩展（前置依赖）
-
-### B2.1 请求侧
-
-在 `Services/AIChatCompletionClient.swift`：
-
-```swift
-public struct AIChatTool: Codable, Hashable, Sendable {
-  public enum Kind: String, Codable { case function }
-  public var type: Kind
-  public var function: AIChatToolFunction
-}
-
-public struct AIChatToolFunction: Codable, Hashable, Sendable {
-  public var name: String
-  public var description: String
-  public var parameters: JSONValue   // JSON Schema 子集
-}
-
-// AIChatCompletionRequest 增加：
-public var tools: [AIChatTool]?
-public var toolChoice: AIChatToolChoice?   // enum: auto / none / required / named(String)
-```
-
-> `JSONValue`：项目现有 JSON 编码工具可复用；若没有，新增一个极小的 `Codable` 任意值类型。
-
-### B2.2 响应侧
-
-- `AIChatMessage` 增加 `toolCalls: [AIChatToolCall]?`；`AIChatToolCall` 含 `id`、`name`、`arguments(String)`。
-- `AIChatMessageContent` 增加 `.toolRole` 形态，用于把“工具结果”作为 `role: "tool"` 消息回传。
-- SSE 流式解析（`Services/AIChatCompletionClient.swift` 的 `recoveredStreamUpdates`）需能透传
-  `tool_calls` delta；**v1 建议简化**：检测到工具调用意图后，切换到“非流式收完整 tool_calls 块”，
-  文本部分仍走流式（大部分 OpenAI 兼容实现支持 `stream_options.include_usage` 与工具块一起返回）。
-
-## B3. 工具注册中心与工具集 v1
-
-### B3.1 注册中心
-
-```swift
-public protocol AIChatToolHandler: Sendable {
-  var name: String { get }
-  var description: String { get }
-  var schema: JSONValue { get }                 // JSON Schema
-  var requiresConfirmation: Bool { get }        // true → 写操作，需用户确认
-  var permissionScope: AIChatToolPermission { get }
-  func run(_ arguments: [String: JSONValue]) async throws -> AIChatToolResult
-}
-
-@MainActor
-public final class AIChatToolRegistry {
-  func tool(_ name: String) -> AIChatToolHandler?
-  func allTools() -> [AIChatTool]
-  func tools(for capability: AIProviderToolCapability) -> [AIChatTool]
-}
-```
-
-### B3.2 工具集 v1（全部只读 + 2 个受控写）
-
-| 工具 | 权限 | 确认 | 复用实现 |
-| --- | --- | --- | --- |
-| `knowledge.search` | 只读 | 否 | `KnowledgeDatabase+Search.swift`（FTS/LIKE/语义），返回 Top-N 命中摘要 |
-| `knowledge.read` | 只读 | 否 | 读取指定知识条目正文（截断到上下文预算） |
-| `draft.read` | 只读 | 否 | 读取当前文章 / 指定段落（`ArticleDraft` + `focusedParagraphID`） |
-| `web.fetch` | 只读 | 否 | 复用 `RSSNetworkHTTPClient` 的抓取管线；仅 HTTPS、大小上限、去重 |
-| `site.status` | 只读 | 否 | 复用 `SiteMaintenance` / 状态端点检查，返回部署健康摘要 |
-| `draft.applyEdit` | 写 | **是** | 复用 `AIPublishingChatDraftApplicationService`（diff 预览 → 确认 → 应用） |
-| `draft.insertAtCursor` | 写 | **是** | 复用现有 `insertAtCursor` 应用模式 |
-
-> 知识库语义检索已有 embedding 表，`knowledge.search` 直接可用，无需新增向量管线。
-
-### B3.3 Provider 能力探测
-
-在 `AIProviderCapability.swift` 增加 `supportsToolCalling: Bool`：
-
-- OpenAI 兼容 / OpenRouter / DeepSeek（v4 系）：默认支持，可让用户关闭。
-- 本地 Ollama：由 `GET /api/tags` 的模型能力或连接测试结果探测，不支持则自动降级。
-
-## B4. 执行循环与安全模型
-
-### B4.1 循环（AIAgentSession）
-
-```
-用户消息 → [模型调用(带 tools)] → 响应
-  ├─ 纯文本 → 结束
-  └─ tool_calls → 逐个执行：
-       ├─ requiresConfirmation == true → 挂起，等用户确认（diff 预览）
-       └─ 否则直接执行 → 结果以 role:"tool" 回传 → 回到 [模型调用]
-  硬上限：单轮最多 8 次工具调用，超出强制收敛为总结文本
-```
-
-- 挂在 `WorkbenchAIStore` 下，新增 `aiAgentSessionCoordinator`（仿照现有 `aiChatOperationCoordinator`）。
-- 可取消：沿用 `Task.cancel` + 现有 byte/line 上限的取消传播。
-
-### B4.2 安全默认
-
-1. **写操作必须确认**：`draft.applyEdit` / `draft.insertAtCursor` 默认 `requiresConfirmation`，
-   在对话中渲染“变更预览卡片”（复用 `AIChatDraftDiffPreview.swift`），用户点“应用”才落盘。
-2. **会话内权限可降级**：用户可在会话头部把 Agent 模式切到“仅问答”，此时 `tools` 不注入。
-3. **数据边界**：`web.fetch` 仅 HTTPS、单次 ≤ 1 MB、不携带凭据（复用 `RSSSubscriptionURLPrivacy` 的凭据剥离）。
-4. **Consent 复用**：知识库检索是否允许远程 AI 处理，沿用 `AIDataSharingConsentStore` 与
-   `onlyRemoteAIAllowed` 参数。
-
-## B5. 流式与进度呈现
-
-- 对话消息模型 `AIPublishingChatMessage` 增加 `toolRunRecords: [AIChatToolRunRecord]`（本地呈现用，
-  不入请求体）。
-- 进度 UI：消息流中渲染工具调用卡片（工具名、状态：运行中/成功/失败/等待确认/已取消、耗时、摘要）。
-- 现有 `AIChatScrollBottomPreferenceKey` 自动滚动继续生效；工具卡片不打断打字机节奏。
-
-## B6. 降级策略
-
-| 场景 | 行为 |
-| --- | --- |
-| Provider 不支持 tools | 不注入 `tools`；改用系统提示词约束“可使用以下知识：…”，并隐藏工具 UI |
-| 流式不支持工具块 | 自动切非流式收工具块（B2.2），文本段保持流式 |
-| 工具调用超时/失败 | 失败结果回传模型继续生成；连续 3 次失败则该轮禁用该工具 |
-| 用户无确认操作 | 工具挂起超过 2 分钟自动取消并回传“用户未确认” |
-
-## B7. 文件级改动清单（Part B）
-
-| 文件 | 改动 | 工作量 |
-| --- | --- | --- |
-| `Services/AIChatCompletionClient.swift` | `AIChatTool`/`AIChatToolCall`/`toolChoice`；请求与响应字段；SSE 工具块处理 | L |
-| `Services/AIChatMessageContent.swift`（或并入 client） | `.toolRole` 形态 | S |
-| `Models/AIProviderCapability.swift` | `supportsToolCalling` 探测 | S |
-| `Services/AIChatToolRegistry.swift`（新） | 注册中心 + schema | M |
-| `Services/AIChatToolKit/`（新目录） | 7 个工具实现 + 单元测试 | L |
-| `Services/AIAgentSession.swift`（新） | 执行循环、上限、取消、收敛 | M |
-| `Stores/WorkbenchAIStore+Agent.swift`（新） | 会话装配、确认桥接、进度发布 | M |
-| `Models/AIPublishingChatMessage.swift` | `toolRunRecords` 本地呈现字段 | S |
-| `Views/AIChatToolRunCard.swift`（新） | 工具卡片 UI（复用现有视觉样式） | M |
-| `Views/AIChatDraftDiffPreview.swift` | 复用写操作确认 | S（复用） |
-| 测试 | 协议编解码、循环上限、降级、写确认、凭据剥离 | L |
-
-> 规模估算：Part B 协议 + 工具集 v1 约 **2–3 周**（含测试），是两部分中工作量最大的。
-
----
-
-## 3. 分期路线图
-
-| 阶段 | 内容 | 依赖 | 验收标准 |
-| --- | --- | --- | --- |
-| **P0（Part A 数据层）** | `AIConversation.draftID` 可空化 + 迁移 + 通用会话 CRUD | 无 | 旧存档无感迁移；通用会话可持久化 |
-| **P1（Part A 独立窗口）** | 窗口场景 + 视图树 + `sendAIGeneralChatMessage` + `⌘⇧Space` | P0 | 无草稿可对话；可附加文章/段落/知识库 |
-| **P2（Part A 迷你对话）** | NSPanel 浮层 + `/` 命令 + 摘要展开 | P1 | 3 秒内唤起；Esc 关闭；可转完整窗口 |
-| **P3（Part B 协议层）** | tools/tool_calls 编解码 + 能力探测 | 无（可与 P0 并行） | 三款 Provider（DeepSeek/OpenAI 兼容/Ollama）端到端通 |
-| **P4（Part B 工具集 v1）** | 注册中心 + 7 工具 + 执行循环 + 确认桥接 | P3 | 对话中可检索知识库/抓 URL/改草稿（带确认） |
-| **P5（打磨）** | 工具卡片 UI、用量统计、降级兜底、回归测试 | P4 | 全流程稳定，无回归 |
-
-建议执行顺序：**P0 → P1 → P3 → P2 → P4 → P5**（P3 协议层尽早启动，因为它独立且是 Agent 前置）。
-
----
-
-## 4. 风险与开放问题
-
-1. **SSE 工具块兼容性**：不同实现（OpenAI / DeepSeek / Ollama）对 `tool_calls` 流式块格式有差异。
-   → P3 用真实 Provider 各跑一遍端到端夹具，必要时 v1 统一走“非流式收工具块”。
-2. **通用会话的 Provider 归属**：无草稿时用哪个档案/站点？建议默认“上次使用的档案 + 全局默认”，
-   并在窗口工具栏显式展示，避免用户困惑。
-3. **上下文预算**：工具结果回传会吃掉 token。→ 每个工具结果强制截断（默认 ≤ 8 KB），
-   并复用 `AIConversation` 的 `maximumTextCharacters` 预算。
-4. **确认桥接的并发**：写工具挂起时若用户同时发起新消息，需锁住会话输入（复用 `isChatRunning` 语义）。
-5. **`⌘⇧Space` 冲突**：该组合在部分输入法/系统设置下可能被占用，需提供设置项可改键位。
-
----
-
-## 附录：复用资产速查
-
-| 需求 | 复用 |
-| --- | --- |
-| 消息渲染 / 代码块 | `Views/AIChatWorkspaceInspector*.swift` |
-| 会话选择 / 模型切换 | `Views/AIChatConversationPicker.swift`、`AIChatModelQuickSwitchSheet.swift` |
-| 标题生成 | `Services/AIPublishingChatConversationPresentation.swift` |
-| 知识检索 | `Stores/KnowledgeDatabase+Search.swift` |
-| 抓取管线 | `Services/RSSNetworkHTTPClient`、`RSSSubscriptionURLPrivacy` |
-| 草稿编辑应用 | `Services/AIPublishingChatDraftApplicationService.swift`、`AIChatDraftDiffPreview.swift` |
-| 站点健康 | `SiteMaintenance` 相关服务 |
-| 凭据存储 | `KeychainTokenStore`（AIProvider） |
-| 数据同意 | `AIDataSharingConsentStore` |
+AI 主要呈现在主工作台的 Inspector/上下文面板中，通用和草稿会话共用该表面，
+通过界面中的上下文模式、会话选择和模型切换完成操作。当前没有独立的 AI
+`Window`、迷你 `NSPanel` 或全局唤起快捷键。独立 AI 窗口、迷你面板和跨窗口
+聚焦属于后续产品方向；实现前需要补充窗口生命周期、共享 Store、恢复行为、
+辅助功能和多窗口并发策略，不能在文档或发布说明中当作现有功能。
+
+## 6. 维护规则与剩余演进项
+
+维护本文时应遵循以下边界：
+
+1. 先更新源码和回归测试，再更新本索引；不要把设计草图写成完成状态。
+2. 新增 Agent 命令必须进入注册表、能力白名单、参数验证、确认策略、执行
+   记录和恢复校验，并补充未知工具、权限变化、取消及限制触发测试。
+3. 新增 Provider 时必须单独记录工具调用、流式响应、结构化输出和视觉能力
+   的探测证据；`unknown` 不能被展示为可用。
+4. 若实现独立窗口或迷你面板，应先定义 Store 共享和关闭/恢复语义，再添加
+   UI；不得通过复制第二个 AI Store 绕过会话一致性和授权边界。
+
+尚未实现、但可以单独立项的方向：独立 AI 窗口和迷你面板、多窗口会话协同、
+更细的 Provider 能力提示、工具运行记录的可视化，以及在不扩大权限的前提下
+增加更多只读工作台工具。这些方向不改变当前通用会话和 Agent 的安全默认值。
+
+## 7. 源码与测试索引
+
+核心实现：
+
+- `Sources/PublishingWorkbenchCore/Models/AIConversation.swift`
+- `Sources/PublishingWorkbenchCore/Services/AIContextAssembler.swift`
+- `Sources/PublishingWorkbenchCore/Services/AIChatCompletionModels.swift`
+- `Sources/PublishingWorkbenchCore/Services/AIChatCompletionResponses.swift`
+- `Sources/PublishingWorkbenchCore/Services/AIChatCompletionClient+RequestNormalization.swift`
+- `Sources/PublishingWorkbenchCore/Services/AIChatCompletionClient+SSE.swift`
+- `Sources/PublishingWorkbenchCore/Services/AIChatCompletionClient+Streaming.swift`
+- `Sources/PublishingWorkbenchCore/Models/AIProviderCapability.swift`
+- `Sources/PublishingWorkbenchCore/Services/AIProviderCapabilityProbeService.swift`
+- `Sources/PublishingWorkbenchCore/Services/WorkbenchAIAgentLoopService.swift`
+- `Sources/PublishingWorkbenchCore/Models/WorkbenchAIAgentLoopModels.swift`
+- `Sources/PublishingWorkbenchCore/Services/WorkbenchAutomationService.swift`
+- `Sources/PublishingWorkbenchCore/Stores/WorkbenchAIStore+GeneralChat.swift`
+- `Sources/PublishingWorkbenchCore/Stores/WorkbenchAIStore+AgentLoop.swift`
+- `Sources/PublishingWorkbenchCore/Stores/WorkbenchAIStore+AgentContinuation.swift`
+- `Sources/PersonalSitePublisherMac/App/PersonalSitePublisherMacApp.swift`
+- `Sources/PersonalSitePublisherMac/Views/AIChatWorkspaceInspectorComponents.swift`
+
+回归覆盖：
+
+- `Tests/PublishingWorkbenchCoreTests/AIConversationScopeMigrationTests.swift`
+- `Tests/PublishingWorkbenchCoreTests/WorkbenchGeneralAIChatTests.swift`
+- `Tests/PublishingWorkbenchCoreTests/AIChatCompletionClientTests.swift`
+- `Tests/PublishingWorkbenchCoreTests/WorkbenchAIAgentLoopServiceTests.swift`
+- `Tests/PublishingWorkbenchCoreTests/WorkbenchAIStoreAgentLoopIntegrationTests.swift`
+- `Tests/PublishingWorkbenchCoreTests/WorkbenchAgentKnowledgeAuthorizationTests.swift`

@@ -412,7 +412,12 @@ public struct SiteStarterService: Sendable {
       summary: "由 Site Starter 生成的第一篇内容。",
       bodyMarkdown: body
     )
-    draft.repositoryPath = profile.markdownPath(for: draft)
+    let repositoryPath = profile.markdownPath(for: draft)
+    draft.recordProjectFile(
+      profile: profile,
+      repositoryPath: repositoryPath,
+      renderedContentDigest: draft.renderedRepositoryContentDigest(profile: profile)
+    )
     return draft
   }
 

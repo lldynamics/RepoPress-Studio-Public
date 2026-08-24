@@ -74,7 +74,7 @@ final class PublishDrawerPresentationTests: XCTestCase {
     XCTAssertFalse(PublishDrawerBatchActionPresentation.isEnabled(empty))
     XCTAssertEqual(
       PublishDrawerBatchActionPresentation.status(empty),
-      "没有可发布文章"
+      "没有待处理变更"
     )
 
     let refreshing = PublishDrawerBatchActionPresentation.State(
@@ -121,7 +121,7 @@ final class PublishDrawerPresentationTests: XCTestCase {
     )
     XCTAssertEqual(
       PublishDrawerBatchActionPresentation.title,
-      "发布所有可发布文章"
+      "发布所有待处理变更"
     )
     XCTAssertTrue(
       PublishDrawerBatchActionPresentation.detail.contains("CSS")
@@ -132,6 +132,95 @@ final class PublishDrawerPresentationTests: XCTestCase {
     XCTAssertTrue(
       PublishDrawerBatchActionPresentation.detail.contains("脚本")
     )
+  }
+
+  func testBatchActionAllowsCleanupOnlyQueue() {
+    let cleanupOnly = PublishDrawerBatchActionPresentation.State(
+      repositoryConfigured: true,
+      hasToken: true,
+      permission: .writable,
+      publishableArticleCount: 0,
+      pendingDeletionCount: 2,
+      changedFileCount: 2
+    )
+
+    XCTAssertTrue(PublishDrawerBatchActionPresentation.isEnabled(cleanupOnly))
+    XCTAssertEqual(
+      PublishDrawerBatchActionPresentation.status(cleanupOnly),
+      "待下线 2 篇文章 · 2 个文件"
+    )
+  }
+
+  func testBatchActionSummarizesPublishAndCleanupTogether() {
+    let mixed = PublishDrawerBatchActionPresentation.State(
+      repositoryConfigured: true,
+      hasToken: true,
+      permission: .writable,
+      publishableArticleCount: 3,
+      pendingDeletionCount: 2,
+      changedFileCount: 7
+    )
+
+    XCTAssertTrue(PublishDrawerBatchActionPresentation.isEnabled(mixed))
+    XCTAssertEqual(
+      PublishDrawerBatchActionPresentation.status(mixed),
+      "可发布 3 篇 · 待下线 2 篇 · 7 个文件"
+    )
+  }
+
+  func testBatchActionExplainsThatWebsiteDraftsUseSeparateSyncQueue() {
+    let draftOnly = PublishDrawerBatchActionPresentation.State(
+      repositoryConfigured: true,
+      hasToken: true,
+      permission: .writable,
+      publishableArticleCount: 0,
+      draftSyncArticleCount: 2,
+      changedFileCount: 2
+    )
+
+    XCTAssertFalse(PublishDrawerBatchActionPresentation.isEnabled(draftOnly))
+    XCTAssertEqual(
+      PublishDrawerBatchActionPresentation.status(draftOnly),
+      "2 篇网站草稿未纳入发布，请单独同步"
+    )
+
+    var mixed = draftOnly
+    mixed.publishableArticleCount = 1
+    XCTAssertEqual(
+      PublishDrawerBatchActionPresentation.status(mixed),
+      "可发布 1 篇文章 · 2 个文章文件 · 另有 2 篇网站草稿未纳入发布"
+    )
+  }
+
+  func testSingleWebsiteDraftActionUsesExplicitSyncLanguage() {
+    let presentation = PublishDrawerSingleArticleActionPresentation.make(
+      isWebsiteDraft: true
+    )
+
+    XCTAssertEqual(presentation.actionTitle, "同步当前网站草稿…")
+    XCTAssertEqual(presentation.accessibilityLabel, "同步当前网站草稿")
+    XCTAssertTrue(presentation.enabledHint.contains("不会纳入批量正式发布"))
+    XCTAssertEqual(
+      presentation.confirmationPurpose.confirmationTitle,
+      "网站草稿同步确认"
+    )
+    XCTAssertTrue(
+      presentation.confirmationPurpose.confirmationDetail.contains("不会移除 draft 标记")
+    )
+    XCTAssertEqual(
+      presentation.confirmationPurpose.confirmActionTitle,
+      "确认同步网站草稿"
+    )
+  }
+
+  func testSingleFormalArticleActionKeepsPublicationLanguage() {
+    let presentation = PublishDrawerSingleArticleActionPresentation.make(
+      isWebsiteDraft: false
+    )
+
+    XCTAssertEqual(presentation.actionTitle, "仅发布当前文章…")
+    XCTAssertEqual(presentation.confirmationPurpose, .publication)
+    XCTAssertEqual(presentation.confirmationPurpose.confirmationTitle, "最终发布确认")
   }
 
   func testPermissionActionUsesDetectedOriginWhenProfileIsMissing() {

@@ -211,10 +211,6 @@
     "en": "Destination",
     "zh-Hans": "发送地址"
   },
-  "另有 %lld 条资料将在确认后处理。": {
-    "en": "%lld additional items will be processed after confirmation.",
-    "zh-Hans": "另有 %lld 条资料将在确认后处理。"
-  },
   "另有 %lld 项": {
     "en": "%lld more items",
     "zh-Hans": "另有 %lld 项"
@@ -302,10 +298,6 @@
   "将删除「%@」及其 %lld 篇草稿；可在本次会话中通过“撤销删除”恢复。": {
     "en": "This will delete \"%@\" and its %lld drafts. You can restore them with Undo Delete during this session.",
     "zh-Hans": "将删除「%@」及其 %lld 篇草稿；可在本次会话中通过“撤销删除”恢复。"
-  },
-  "将发布 %lld 个文件": {
-    "en": "%lld files will be published",
-    "zh-Hans": "将发布 %lld 个文件"
   },
   "将当前资料正文插入正在编辑的文章": {
     "en": "Insert this item's content into the article being edited",

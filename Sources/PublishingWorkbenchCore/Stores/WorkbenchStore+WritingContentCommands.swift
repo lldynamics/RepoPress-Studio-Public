@@ -454,7 +454,9 @@ extension WorkbenchStore {
       persistenceStore.markStatus("编辑冲突：已保留另一窗口的最新版本")
       return false
     }
-    updateDraft(draft)
+    var contentUpdate = draft
+    contentUpdate.preserveRepositoryState(from: current)
+    updateDraft(contentUpdate)
     return true
   }
 
@@ -468,6 +470,16 @@ extension WorkbenchStore {
     cancelSiteDraftFileAutosave(for: draftID)
     publishingStore.deleteDraft(id: draftID, store: self)
     invalidateDraftDerivedCaches()
+  }
+
+  @discardableResult
+  public func unpublishDraft(id draftID: UUID) async -> RemoteRepositoryPublishResult? {
+    discardDraftBodyEditorBuffer(for: draftID)
+    cancelSiteDraftFileAutosave(for: draftID)
+    let result = await publishingStore.unpublishDraft(id: draftID, store: self)
+    invalidateDraftDerivedCaches()
+    refreshBatchPublishPlanInBackground()
+    return result
   }
 
   public func versions(for draftID: UUID) -> [DraftVersionSnapshot] {
@@ -517,6 +529,10 @@ extension WorkbenchStore {
     publishingStore.pendingRepositoryCleanupRequests()
   }
 
+  public var pendingRemoteRepositoryCleanupRequests: [DraftRepositoryCleanupRequest] {
+    publishingStore.pendingRemoteRepositoryCleanupRequests(profileID: activeProfileID)
+  }
+
   public func repositoryCleanupPreview(for requestID: UUID) -> LocalPublishPreview? {
     publishingStore.repositoryCleanupPreview(for: requestID)
   }
@@ -532,6 +548,26 @@ extension WorkbenchStore {
   @discardableResult
   public func keepRepositoryFile(_ requestID: UUID) -> Bool {
     publishingStore.keepRepositoryFile(requestID, store: self)
+  }
+
+  @discardableResult
+  public func acknowledgeRemoteCleanupReviewClosed(_ requestID: UUID) -> Bool {
+    publishingStore.acknowledgeRemoteCleanupReviewClosed(
+      requestID: requestID,
+      store: self
+    )
+  }
+
+  @discardableResult
+  public func publishRepositoryCleanupRequestOnline(
+    _ requestID: UUID
+  ) async -> RemoteRepositoryPublishResult? {
+    let result = await publishingStore.publishRepositoryCleanupRequestOnline(
+      requestID,
+      store: self
+    )
+    refreshBatchPublishPlanInBackground()
+    return result
   }
 
   public func focusDraft(_ id: UUID, section: WorkspaceSection? = nil) -> Bool {

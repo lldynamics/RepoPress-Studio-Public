@@ -78,6 +78,7 @@ extension SiteAnalyticsProvider: WorkbenchDisplayNameLocalizable {
 extension EditorDisplayMode: WorkbenchDisplayNameLocalizable {}
 extension DraftStatus: WorkbenchDisplayNameLocalizable {}
 extension ArticleVisibility: WorkbenchDisplayNameLocalizable {}
+extension DraftRepositorySyncState: WorkbenchDisplayNameLocalizable {}
 extension PreflightSeverity: WorkbenchDisplayNameLocalizable {}
 extension LocalPublishActionReadiness: WorkbenchDisplayNameLocalizable {}
 extension PublishFileDiffStatus: WorkbenchDisplayNameLocalizable {}
@@ -85,6 +86,7 @@ extension PublishFileKind: WorkbenchDisplayNameLocalizable {}
 extension PublishFileOperation: WorkbenchDisplayNameLocalizable {}
 extension DraftVersionReason: WorkbenchDisplayNameLocalizable {}
 extension DraftRepositoryCleanupStatus: WorkbenchDisplayNameLocalizable {}
+extension DraftRepositoryRemoteCleanupStatus: WorkbenchDisplayNameLocalizable {}
 extension RemoteRepositoryPublishMode: WorkbenchDisplayNameLocalizable {}
 extension DeploymentStatusLevel: WorkbenchDisplayNameLocalizable {}
 extension ReleaseRecordKind: WorkbenchDisplayNameLocalizable {}

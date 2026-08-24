@@ -51,7 +51,7 @@ require_terms "$COPY_FILE" "docs/privacy-support-copy.md" \
   "custom HTTPS endpoint" \
   "local loopback" \
   "explicit consent" \
-  "API keys are stored in macOS Keychain" \
+  "By default, API keys are stored in macOS Keychain" \
   "developer does not proxy or receive" \
   "localhost" \
   "127.0.0.1:17843" \
@@ -80,6 +80,7 @@ require_terms "$PRIVACY_EN" "English public privacy page" \
   "BYOK" \
   "custom remote API" \
   "explicit consent" \
+  "By default, API keys are stored in macOS Keychain" \
   "developer does not proxy or receive" \
   "localhost" \
   "127.0.0.1:17843" \
@@ -97,6 +98,7 @@ require_terms "$SUPPORT_EN" "English public support page" \
   "BYOK" \
   "custom remote API" \
   "explicit consent" \
+  "By default, API keys are stored in macOS Keychain" \
   "developer does not proxy or receive" \
   "localhost" \
   "127.0.0.1:17843" \
@@ -115,6 +117,7 @@ require_terms "$PRIVACY_ZH" "Chinese public privacy page" \
   "BYOK" \
   "自定义远程 API" \
   "明确同意" \
+  "API Key 默认保存在 macOS Keychain" \
   "开发者不转发也不接收" \
   "localhost" \
   "127.0.0.1:17843" \
@@ -132,6 +135,7 @@ require_terms "$SUPPORT_ZH" "Chinese public support page" \
   "BYOK" \
   "自定义远程 API" \
   "明确同意" \
+  "API Key 默认保存在 macOS Keychain" \
   "开发者不转发也不接收" \
   "localhost" \
   "127.0.0.1:17843" \
@@ -144,6 +148,12 @@ require_terms "$SUPPORT_ZH" "Chinese public support page" \
   "User-Agent 或应用版本"
 
 for file in "${COPY_FILES[@]}"; do
+  if grep -Fqi "By default, API keys are stored in a plain-text Application Support" "$file"; then
+    fail "public copy claims API keys are stored in plain text by default: $(basename "$file")"
+  fi
+  if grep -Fqi "API Key 默认以明文保存在" "$file"; then
+    fail "public copy claims API keys are stored in plain text by default: $(basename "$file")"
+  fi
   if grep -Eq '(/Users/|/Volumes/|file:///Users/|file:///Volumes/)' "$file"; then
     fail "public copy contains a local filesystem path: $(basename "$file")"
   fi
@@ -157,4 +167,9 @@ for file in "$PRIVACY_ZH" "$PRIVACY_EN" "$SUPPORT_ZH" "$SUPPORT_EN"; do
   grep -Fqi '</html>' "$file" || fail "public page is incomplete: $file"
 done
 
-echo "privacy support copy gate: free website distribution, BYOK consent, browser loopback, Sparkle update logging, and redaction boundaries verified"
+if [[ -f "$ROOT_DIR/script/generate_public_pages.py" ]]; then
+  python3 "$ROOT_DIR/script/generate_public_pages.py" --check --root "$PROJECT_ROOT" >/dev/null \
+    || fail "public pages do not match generator output from canonical source"
+fi
+
+echo "privacy support copy gate: free website distribution, BYOK consent, Keychain default storage, browser loopback, Sparkle update logging, and redaction boundaries verified"

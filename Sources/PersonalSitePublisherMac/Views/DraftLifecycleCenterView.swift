@@ -17,6 +17,8 @@ struct DraftLifecycleCenterView: View {
   @Environment(\.dismiss) private var dismiss
   @State private var draftPendingPermanentDeletion: RecycledDraft?
   @State private var cleanupPendingExecution: DraftRepositoryCleanupConfirmation?
+  @State private var remoteCleanupPendingExecution: DraftRepositoryCleanupRequest?
+  @State private var remoteCleanupReviewClosurePending: DraftRepositoryCleanupRequest?
   @State private var versionPendingComparison: DraftVersionSnapshot?
   @State private var versionPendingRestore: DraftVersionSnapshot?
   @State private var ownershipTransferPlan: DraftOwnershipTransferPlan?
@@ -73,6 +75,53 @@ struct DraftLifecycleCenterView: View {
       }
     } message: { recycled in
       Text("「\(recycled.draft.title.nilIfEmpty ?? "未命名文章")」的回收站副本和版本历史将被删除。仓库待清理记录仍会保留。")
+    }
+    .confirmationDialog(
+      "从网站下线这篇文章？",
+      isPresented: remoteCleanupExecutionPresented,
+      titleVisibility: .visible,
+      presenting: remoteCleanupPendingExecution
+    ) { request in
+      Button("确认下线", role: .destructive) {
+        let requestID = request.id
+        remoteCleanupPendingExecution = nil
+        Task {
+          await store.publishRepositoryCleanupRequestOnline(requestID)
+        }
+      }
+      Button("取消", role: .cancel) {
+        remoteCleanupPendingExecution = nil
+      }
+    } message: { request in
+      let strategy = store.profiles.first(where: { $0.id == request.siteProfileID })?
+        .repositoryPublishStrategy == .direct
+        ? String(localized: "直接提交远端删除")
+        : String(localized: "创建下线 PR/MR")
+      Text("将对 \(request.repositoryPath) \(strategy)。执行前会核对远端版本；远端文件已不存在时按成功处理。")
+    }
+    .confirmationDialog(
+      "下线 PR/MR 已关闭？",
+      isPresented: remoteCleanupReviewClosurePresented,
+      titleVisibility: .visible,
+      presenting: remoteCleanupReviewClosurePending
+    ) { request in
+      if store.recycledDrafts.contains(where: { $0.id == request.draftID }) {
+        Button("确认已关闭并恢复文章") {
+          if store.acknowledgeRemoteCleanupReviewClosed(request.id) {
+            _ = store.restoreRecycledDraft(request.draftID)
+          }
+          remoteCleanupReviewClosurePending = nil
+        }
+      }
+      Button("确认已关闭，重新加入下线队列") {
+        _ = store.acknowledgeRemoteCleanupReviewClosed(request.id)
+        remoteCleanupReviewClosurePending = nil
+      }
+      Button("取消", role: .cancel) {
+        remoteCleanupReviewClosurePending = nil
+      }
+    } message: { request in
+      Text("请先在 GitHub/GitLab 确认该 PR/MR 已关闭且不会再被合并。错误确认可能导致恢复后的文章仍被远端合并操作删除。\n\n\(request.repositoryPath)")
     }
     .confirmationDialog(
       "清理本地仓库文件？",
@@ -303,17 +352,51 @@ struct DraftLifecycleCenterView: View {
                 Text(request.repositoryPath)
                   .font(.caption.monospaced())
                   .textSelection(.enabled)
+                if let profile = store.profiles.first(where: { $0.id == request.siteProfileID }) {
+                  Label(profile.name, systemImage: "square.stack.3d.up")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                }
                 cleanupPreviewSummary(request)
+                Label(
+                  request.remoteStatus.localizedDisplayName,
+                  systemImage: remoteCleanupStatusImage(request.remoteStatus)
+                )
+                .font(.caption)
+                .foregroundStyle(remoteCleanupStatusColor(request.remoteStatus))
+                if let errorMessage = request.lastRemoteErrorMessage?.nilIfEmpty {
+                  Text(errorMessage)
+                    .font(.caption)
+                    .foregroundStyle(WorkbenchTheme.warning)
+                    .lineLimit(2)
+                }
+                if let reviewURL = request.remoteReviewURL?.nilIfEmpty,
+                   let url = URL(string: reviewURL) {
+                  Link("打开下线 PR/MR", destination: url)
+                    .font(.caption)
+                }
               }
               Spacer()
-              Button("保留文件") {
-                _ = store.keepRepositoryFile(request.id)
+              if request.needsRemoteCleanup {
+                Button("从网站下线…", role: .destructive) {
+                  remoteCleanupPendingExecution = request
+                }
+                .disabled(store.isRemoteRepositoryPublishing || store.isRemoteRepositoryChecking)
+              } else if request.isAwaitingRemoteReview {
+                Button("PR/MR 已关闭…") {
+                  remoteCleanupReviewClosurePending = request
+                }
               }
-              Button("清理本地文件", role: .destructive) {
-                cleanupPendingExecution = DraftRepositoryCleanupConfirmation(
-                  request: request,
-                  preview: store.repositoryCleanupPreview(for: request.id)
-                )
+              if request.needsLocalCleanup {
+                Button("保留本地文件") {
+                  _ = store.keepRepositoryFile(request.id)
+                }
+                Button("清理本地文件", role: .destructive) {
+                  cleanupPendingExecution = DraftRepositoryCleanupConfirmation(
+                    request: request,
+                    preview: store.repositoryCleanupPreview(for: request.id)
+                  )
+                }
               }
             }
           }
@@ -323,7 +406,7 @@ struct DraftLifecycleCenterView: View {
     } header: {
       Label("仓库待清理", systemImage: "externaldrive.badge.xmark")
     } footer: {
-      Text("这里只删除文章 Markdown，不自动删除可能被其他文章复用的图片。远端仓库可在提交并推送本地删除后同步。")
+      Text("一键下线会核对远端版本、提交删除并清理本地 Markdown；PR/MR 模式会等待合并确认。可能被其他文章复用的图片不会自动删除。")
     }
   }
 
@@ -356,6 +439,44 @@ struct DraftLifecycleCenterView: View {
       get: { cleanupPendingExecution != nil },
       set: { if !$0 { cleanupPendingExecution = nil } }
     )
+  }
+
+  private var remoteCleanupExecutionPresented: Binding<Bool> {
+    Binding(
+      get: { remoteCleanupPendingExecution != nil },
+      set: { if !$0 { remoteCleanupPendingExecution = nil } }
+    )
+  }
+
+  private var remoteCleanupReviewClosurePresented: Binding<Bool> {
+    Binding(
+      get: { remoteCleanupReviewClosurePending != nil },
+      set: { if !$0 { remoteCleanupReviewClosurePending = nil } }
+    )
+  }
+
+  private func remoteCleanupStatusImage(
+    _ status: DraftRepositoryRemoteCleanupStatus
+  ) -> String {
+    switch status {
+    case .pending:
+      return "globe.badge.chevron.backward"
+    case .reviewRequested:
+      return "arrow.triangle.pull"
+    case .completed:
+      return "checkmark.circle"
+    }
+  }
+
+  private func remoteCleanupStatusColor(
+    _ status: DraftRepositoryRemoteCleanupStatus
+  ) -> Color {
+    switch status {
+    case .pending, .reviewRequested:
+      return WorkbenchTheme.warning
+    case .completed:
+      return WorkbenchTheme.success
+    }
   }
 
   private var versionRestorePresented: Binding<Bool> {

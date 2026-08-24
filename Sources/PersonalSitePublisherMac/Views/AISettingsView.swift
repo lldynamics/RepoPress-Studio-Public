@@ -76,36 +76,38 @@ struct AISettingsView: View {
 
           if activeConnection.config.usesCodexAppServer {
             codexAccountSection
-          } else if activeConnection.config.preset == .local {
-            LocalAIEngineDiscoverySection { baseURL, model in
-              applyLocalAIConfiguration(baseURL: baseURL, model: model)
-            }
           } else {
-            AIKeychainSection(
-              aiAPIKeyInput: $aiAPIKeyInput,
-              shouldFocusInput: shouldFocusAPIKey,
-              navigationRequestID: healthNavigationRequestID,
-              config: activeConnection.config,
-              storageMode: credentialStorageMode,
-              tokenAvailability: tokenAvailability,
-              actionMessage: actionMessage,
-              onSaveAPIKey: {
-                guard saveAPIKey(aiAPIKeyInput) else { return }
-                aiAPIKeyInput = ""
-                invalidateConnectionReport()
-              },
-              onDeleteAPIKey: {
-                deleteAPIKey()
-                aiAPIKeyInput = ""
-                invalidateConnectionReport()
-              },
-              onRefreshState: refreshKeyAvailability,
-              onChangeStorageMode: { mode in
-                setCredentialStorageMode(mode)
-                aiAPIKeyInput = ""
-                invalidateConnectionReport()
+            if activeConnection.config.preset == .local {
+              LocalAIEngineDiscoverySection { baseURL, model in
+                applyLocalAIConfiguration(baseURL: baseURL, model: model)
               }
-            )
+            } else {
+              AIKeychainSection(
+                aiAPIKeyInput: $aiAPIKeyInput,
+                shouldFocusInput: shouldFocusAPIKey,
+                navigationRequestID: healthNavigationRequestID,
+                config: activeConnection.config,
+                storageMode: credentialStorageMode,
+                tokenAvailability: tokenAvailability,
+                actionMessage: actionMessage,
+                onSaveAPIKey: {
+                  guard saveAPIKey(aiAPIKeyInput) else { return }
+                  aiAPIKeyInput = ""
+                  invalidateConnectionReport()
+                },
+                onDeleteAPIKey: {
+                  deleteAPIKey()
+                  aiAPIKeyInput = ""
+                  invalidateConnectionReport()
+                },
+                onRefreshState: refreshKeyAvailability,
+                onChangeStorageMode: { mode in
+                  setCredentialStorageMode(mode)
+                  aiAPIKeyInput = ""
+                  invalidateConnectionReport()
+                }
+              )
+            }
 
             AIConnectionTestSection(
               config: activeConnection.config,

@@ -591,7 +591,23 @@ public struct LocalContentImportService: Sendable {
       repositoryPath: repositoryPath,
       repositorySHA: repositorySHA?.trimmedForPublishing.nilIfEmpty
     )
-    importedDraft.repositoryImportFingerprint = importedDraft.repositoryContentFingerprint
+    let renderedDigest = importedDraft.renderedRepositoryContentDigest(profile: profile)
+    if let repositorySHA = repositorySHA?.trimmedForPublishing.nilIfEmpty {
+      importedDraft.confirmRepositoryBinding(
+        profile: profile,
+        repositoryPath: repositoryPath,
+        remoteRevision: repositorySHA,
+        renderedContentDigest: renderedDigest,
+        verifiedAt: fileModificationDate
+      )
+    } else {
+      importedDraft.recordProjectFile(
+        profile: profile,
+        repositoryPath: repositoryPath,
+        renderedContentDigest: renderedDigest
+      )
+      importedDraft.repositoryImportFingerprint = importedDraft.repositoryContentFingerprint
+    }
     return importedDraft
   }
 

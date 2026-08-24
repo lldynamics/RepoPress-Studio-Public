@@ -1,10 +1,34 @@
 import Foundation
-import PublishingWorkbenchCore
 import XCTest
 
+@testable import PublishingWorkbenchCore
 @testable import PersonalSitePublisherMac
 
 final class RSSArticleWorkflowTests: XCTestCase {
+  @MainActor
+  func testImportArticleUsesCachedPayloadWithoutSourceURL() async throws {
+    let rootURL = FileManager.default.temporaryDirectory
+      .appendingPathComponent("RSSCachedKnowledgeImport-\(UUID().uuidString)", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let knowledge = KnowledgeStore(
+      service: KnowledgeLibraryService(rootURL: rootURL.appendingPathComponent("store"))
+    )
+    let article = RSSArticle(
+      id: "offline-rss",
+      feedID: UUID(),
+      title: "离线 RSS 文章",
+      contentHTML: "<p>无需原网页即可保存 offline-rss-unique</p>"
+    )
+
+    let document = try await RSSReaderView.importArticle(article, into: knowledge)
+
+    XCTAssertEqual(document.title, "离线 RSS 文章")
+    XCTAssertNil(document.sourceURL)
+    XCTAssertTrue(knowledge.documents.contains(where: { $0.id == document.id }))
+    let storedText = try knowledge.service.normalizedText(documentID: document.id)
+    XCTAssertTrue(storedText.contains("offline-rss-unique"))
+  }
+
   func testHighlightBlockquoteContainsExcerptSourceAndNote() throws {
     let article = RSSArticle(
       id: "news-1",

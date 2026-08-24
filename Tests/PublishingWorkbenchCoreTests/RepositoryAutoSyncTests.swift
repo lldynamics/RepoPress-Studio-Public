@@ -453,7 +453,52 @@ final class RepositoryAutoSyncTests: XCTestCase {
 
     XCTAssertEqual(summary.importedCount, 0)
     XCTAssertEqual(summary.deletionPaths, ["content/posts/keep-me.md"])
-    XCTAssertEqual(store.drafts, [draft])
+    let retained = try XCTUnwrap(store.drafts.first)
+    XCTAssertEqual(store.drafts.count, 1)
+    XCTAssertEqual(retained.id, draft.id)
+    XCTAssertEqual(retained.bodyMarkdown, draft.bodyMarkdown)
+    XCTAssertEqual(retained.repositoryPath, draft.repositoryPath)
+    XCTAssertEqual(
+      retained.repositoryBinding?.identity,
+      DraftRepositoryIdentity(profile: store.activeProfile)
+    )
+  }
+
+  func testAutomaticRemoteDeletionCompletesMatchingUnpublishRequest() throws {
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL())
+    )
+    let draft = ArticleDraft(
+      siteProfileID: store.activeProfileID,
+      title: "Expected deletion",
+      slug: "expected-deletion",
+      bodyMarkdown: "Local body.",
+      repositoryPath: "content/posts/expected-deletion.md",
+      repositorySHA: "known-sha"
+    )
+    store.setDrafts([draft])
+    store.setSelectedDraftID(draft.id)
+    store.deleteDraft(id: draft.id)
+
+    let summary = store.autoImportRemoteArticleDrafts(
+      remoteFiles: [
+        RepositoryChangedFile(
+          status: "D",
+          path: "content/posts/expected-deletion.md",
+          kind: .deleted
+        )
+      ],
+      snapshots: [],
+      locallyChangedPaths: []
+    )
+
+    XCTAssertEqual(summary.deletionPaths, [])
+    XCTAssertEqual(summary.resolvedPaths, ["content/posts/expected-deletion.md"])
+    XCTAssertEqual(
+      store.draftRepositoryCleanupRequests.first?.remoteStatus,
+      .completed
+    )
+    XCTAssertEqual(store.draftRepositoryCleanupRequests.first?.status, .pending)
   }
 
   func testAutomaticRemoteArticleImportIncludesPrivateDirectory() throws {

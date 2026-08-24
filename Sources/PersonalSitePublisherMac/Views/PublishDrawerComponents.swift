@@ -149,6 +149,7 @@ struct PublishDrawerFileDiffRow: View {
 struct RemotePublishConfirmationView: View {
   let targetLabel: String
   let targetTitle: String
+  var purpose: PublishDrawerRemoteOperationPurpose = .publication
   let preview: RemoteRepositoryPublishPreview
   let reviewDraft: RemoteReviewDraft?
   let isPublishing: Bool
@@ -159,9 +160,9 @@ struct RemotePublishConfirmationView: View {
   var body: some View {
     VStack(spacing: 0) {
       VStack(alignment: .leading, spacing: 8) {
-        Label("最终发布确认", systemImage: "checkmark.shield")
+        Label(purpose.confirmationTitle, systemImage: "checkmark.shield")
           .font(.title3.weight(.semibold))
-        Text("请确认远端、分支、发布方式和完整文件清单。确认后会立即写入远端。")
+        Text(purpose.confirmationDetail)
           .foregroundStyle(.secondary)
       }
       .frame(maxWidth: .infinity, alignment: .leading)
@@ -171,11 +172,11 @@ struct RemotePublishConfirmationView: View {
 
       ScrollView {
         VStack(alignment: .leading, spacing: 14) {
-          PublishDrawerCard(title: "发布目标", systemImage: "network") {
+          PublishDrawerCard(title: purpose.targetSectionTitle, systemImage: "network") {
             PublishDrawerInfoRow(title: targetLabel, value: targetTitle, systemImage: "doc.text")
             PublishDrawerInfoRow(title: "远端", value: preview.repositoryName, systemImage: "shippingbox")
-            PublishDrawerInfoRow(title: "模式", value: preview.mode.localizedDisplayName, systemImage: "arrow.up.circle")
-            PublishDrawerInfoRow(title: "发布分支", value: preview.branchName, systemImage: "arrow.triangle.branch")
+            PublishDrawerInfoRow(title: purpose.modeLabel, value: preview.mode.localizedDisplayName, systemImage: "arrow.up.circle")
+            PublishDrawerInfoRow(title: purpose.branchLabel, value: preview.branchName, systemImage: "arrow.triangle.branch")
             PublishDrawerInfoRow(title: "目标分支", value: preview.targetBranch, systemImage: "arrow.down.to.line")
             PublishDrawerInfoRow(title: "权限", value: preview.accessSummary, systemImage: "person.badge.key")
           }
@@ -212,9 +213,9 @@ struct RemotePublishConfirmationView: View {
             }
           }
 
-          PublishDrawerCard(title: "完整文件清单", systemImage: "doc.on.doc") {
+          PublishDrawerCard(title: purpose.fileListTitle, systemImage: "doc.on.doc") {
             if preview.changedPaths.isEmpty {
-              Label("没有待发布文件。", systemImage: "equal.circle")
+              Label(purpose.emptyFileMessage, systemImage: "equal.circle")
                 .foregroundStyle(.secondary)
             } else {
               ForEach(preview.changedPaths, id: \.self) { path in
@@ -226,7 +227,7 @@ struct RemotePublishConfirmationView: View {
           }
 
           if !preview.warningIssues.isEmpty {
-            PublishDrawerCard(title: "发布警告", systemImage: "exclamationmark.triangle") {
+            PublishDrawerCard(title: purpose.warningTitle, systemImage: "exclamationmark.triangle") {
               ForEach(preview.warningIssues) { issue in
                 VStack(alignment: .leading, spacing: 2) {
                   Text(issue.title)
@@ -249,18 +250,18 @@ struct RemotePublishConfirmationView: View {
         Button("取消", action: cancelAction)
           .keyboardShortcut(.cancelAction)
         Spacer()
-        Text("将发布 \(preview.changedPaths.count) 个文件")
+        Text(purpose.footerSummary(fileCount: preview.changedPaths.count))
           .font(.caption)
           .foregroundStyle(.secondary)
         Button {
           confirmAction()
         } label: {
-          Label("确认线上发布", systemImage: "paperplane.fill")
+          Label(purpose.confirmActionTitle, systemImage: "paperplane.fill")
         }
         .workbenchProminentActionStyle()
         .keyboardShortcut(.defaultAction)
         .disabled(!preview.canPublish || preview.changedPaths.isEmpty || isPublishing)
-        .accessibilityHint("确认后立即执行远端发布")
+        .accessibilityHint(purpose.confirmAccessibilityHint)
       }
       .padding(16)
     }

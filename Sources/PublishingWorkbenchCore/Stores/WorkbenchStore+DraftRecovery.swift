@@ -142,9 +142,7 @@ extension WorkbenchStore {
       recoveredDraft.assignToGeneralDraft(editingProfileID: activeProfileID)
     }
     recoveredDraft.title = "\(record.title)\(titleSuffix)"
-    recoveredDraft.repositoryPath = nil
-    recoveredDraft.repositorySHA = nil
-    recoveredDraft.repositoryImportFingerprint = nil
+    recoveredDraft.detachFromRepository()
     return recoveredDraft
   }
 

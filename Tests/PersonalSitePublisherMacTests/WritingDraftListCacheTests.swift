@@ -135,4 +135,145 @@ final class WritingDraftListCacheTests: XCTestCase {
     XCTAssertNil(cache.rowPresentations[deletedID])
     XCTAssertEqual(cache.rowPresentationBuildCount, 37)
   }
+
+  func testFolderCacheReusesProjectionLookupAndFlattenedEntries() {
+    let profile = folderCacheProfile()
+    let drafts = folderCacheDrafts(profileID: profile.id)
+    var cache = WritingDraftListCache()
+    let draftIDs = Set(drafts.map(\.id))
+
+    cache.updateFolderProjectionCache(
+      presentationRevision: 1,
+      profile: profile,
+      universeDrafts: drafts,
+      filteredDrafts: drafts,
+      query: "",
+      sortOrder: .updatedNewest,
+      maskedDraftIDs: []
+    )
+    cache.updateFolderEntriesCache(
+      expandedFolderIDs: [],
+      loadedDraftIDs: draftIDs
+    )
+
+    XCTAssertEqual(cache.folderProjectionBuildCount, 2)
+    XCTAssertEqual(cache.folderEntriesBuildCount, 1)
+    XCTAssertEqual(Set(cache.folderDraftsByID.keys), draftIDs)
+
+    cache.updateFolderProjectionCache(
+      presentationRevision: 1,
+      profile: profile,
+      universeDrafts: drafts,
+      filteredDrafts: drafts,
+      query: "",
+      sortOrder: .updatedNewest,
+      maskedDraftIDs: []
+    )
+    cache.updateFolderEntriesCache(
+      expandedFolderIDs: [],
+      loadedDraftIDs: draftIDs
+    )
+
+    XCTAssertEqual(cache.folderProjectionBuildCount, 2)
+    XCTAssertEqual(cache.folderEntriesBuildCount, 1)
+  }
+
+  func testFolderCacheInvalidatesByQuerySortSiteRevisionExpansionAndPage() {
+    let profile = folderCacheProfile()
+    let drafts = folderCacheDrafts(profileID: profile.id)
+    var cache = WritingDraftListCache()
+    let draftIDs = Set(drafts.map(\.id))
+    let initialSort: DraftListSortOrder = .updatedNewest
+
+    func update(
+      _ cache: inout WritingDraftListCache,
+      revision: UInt64,
+      profile: SiteProfile,
+      query: String,
+      sortOrder: DraftListSortOrder
+    ) {
+      cache.updateFolderProjectionCache(
+        presentationRevision: revision,
+        profile: profile,
+        universeDrafts: drafts,
+        filteredDrafts: drafts,
+        query: query,
+        sortOrder: sortOrder,
+        maskedDraftIDs: []
+      )
+    }
+
+    update(&cache, revision: 1, profile: profile, query: "", sortOrder: initialSort)
+    cache.updateFolderEntriesCache(expandedFolderIDs: [], loadedDraftIDs: draftIDs)
+    XCTAssertEqual(cache.folderProjectionBuildCount, 2)
+    XCTAssertEqual(cache.folderEntriesBuildCount, 1)
+
+    update(&cache, revision: 1, profile: profile, query: "文章", sortOrder: initialSort)
+    XCTAssertEqual(cache.folderProjectionBuildCount, 3)
+    cache.updateFolderEntriesCache(expandedFolderIDs: [], loadedDraftIDs: draftIDs)
+    XCTAssertEqual(cache.folderEntriesBuildCount, 2)
+
+    update(&cache, revision: 1, profile: profile, query: "文章", sortOrder: .titleAscending)
+    XCTAssertEqual(cache.folderProjectionBuildCount, 5)
+
+    var changedProfile = profile
+    changedProfile.contentRoot = "site-content"
+    update(
+      &cache,
+      revision: 1,
+      profile: changedProfile,
+      query: "文章",
+      sortOrder: .titleAscending
+    )
+    XCTAssertEqual(cache.folderProjectionBuildCount, 7)
+
+    update(
+      &cache,
+      revision: 2,
+      profile: changedProfile,
+      query: "文章",
+      sortOrder: .titleAscending
+    )
+    XCTAssertEqual(cache.folderProjectionBuildCount, 9)
+
+    let folderID = cache.filteredFolderProjection!.root.allFolderIDs[0]
+    cache.updateFolderEntriesCache(
+      expandedFolderIDs: [folderID],
+      loadedDraftIDs: draftIDs
+    )
+    XCTAssertEqual(cache.folderEntriesBuildCount, 3)
+    cache.updateFolderEntriesCache(
+      expandedFolderIDs: [folderID],
+      loadedDraftIDs: [drafts[0].id]
+    )
+    XCTAssertEqual(cache.folderEntriesBuildCount, 4)
+  }
+
+  private func folderCacheProfile() -> SiteProfile {
+    SiteProfile(
+      id: UUID(uuidString: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")!,
+      name: "缓存测试站点",
+      contentRoot: "content",
+      markdownPathPattern: "content/posts/{slug}.md"
+    )
+  }
+
+  private func folderCacheDrafts(profileID: UUID) -> [ArticleDraft] {
+    [
+      ArticleDraft(
+        id: UUID(uuidString: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb")!,
+        siteProfileID: profileID,
+        title: "文章 A",
+        slug: "2025/文章-a",
+        updatedAt: Date(timeIntervalSince1970: 100)
+      ),
+      ArticleDraft(
+        id: UUID(uuidString: "cccccccc-cccc-4ccc-8ccc-cccccccccccc")!,
+        siteProfileID: profileID,
+        title: "文章 B",
+        slug: "2026/文章-b",
+        updatedAt: Date(timeIntervalSince1970: 200)
+      ),
+    ]
+  }
 }

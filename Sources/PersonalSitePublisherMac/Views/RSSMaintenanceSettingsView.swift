@@ -41,7 +41,7 @@ struct RSSMaintenanceSettingsView: View {
       Section(String(localized: "本地 RSS 缓存")) {
         LabeledContent("订阅数量", value: store.feeds.count.formatted())
         LabeledContent("本机文章", value: store.articleHeaders.count.formatted())
-        Text("RSS 只保存 Feed 实际返回的摘要和正文。旧版本已经保存的网页快照和媒体缓存仍可读取，但不会再自动抓取或归档新内容。")
+        Text("RSS 默认保存 Feed 返回的摘要和正文。启用全文提取或离线缓存全文后，还会访问原网站并保存净化后的正文；关闭这些选项后不会新增原网页全文。历史网页快照和媒体缓存仍可读取。")
           .font(.callout)
           .foregroundStyle(.secondary)
           .fixedSize(horizontal: false, vertical: true)
@@ -210,7 +210,7 @@ struct RSSMaintenanceSettingsView: View {
           accessibilityIdentifier: "rss-feed-body-offline-cache"
         )
 
-        Text("网页全文快照和媒体归档已停止新增；历史数据仅作兼容读取。")
+        Text("只有启用全文提取或离线缓存全文时，才会从原网站新增净化后的正文；媒体归档已停止新增，历史数据仅作兼容读取。")
           .font(.workbenchSupporting)
           .foregroundStyle(.secondary)
           .fixedSize(horizontal: false, vertical: true)

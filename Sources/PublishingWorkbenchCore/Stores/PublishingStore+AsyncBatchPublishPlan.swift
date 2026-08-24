@@ -8,6 +8,7 @@ extension PublishingStore {
     let drafts = store.visibleDrafts
     let profile = store.activeProfile
     let repositoryReport = store.repositoryReport
+    let cleanupRequests = pendingRemoteRepositoryCleanupRequests(profileID: profile.id)
     let service = batchPublishPlanService
 
     isBatchPublishPlanRefreshing = true
@@ -32,19 +33,21 @@ extension PublishingStore {
       guard !Task.isCancelled,
             store.activeProfile == profile,
             store.visibleDrafts == drafts,
-            store.repositoryReport == repositoryReport else {
+            store.repositoryReport == repositoryReport,
+            self.pendingRemoteRepositoryCleanupRequests(profileID: profile.id) == cleanupRequests else {
         return
       }
 
       self.batchPublishPlan = plan
       self.batchRemotePublishPreviewSnapshot = self.remoteRepositoryPublishPreview(
         for: plan,
+        cleanupRequests: cleanupRequests,
         store: store
       )
-      self.batchRemoteReviewDraft = self.remoteReviewDraftBuilder.buildBatch(
-        plan: plan,
-        profile: profile
-      )
+      self.batchRemoteReviewDraft = self.remotePublishPackage(
+        for: plan,
+        cleanupRequests: cleanupRequests
+      ).map { self.remoteReviewDraftBuilder.build(package: $0, profile: profile) }
     }
   }
 

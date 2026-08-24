@@ -45,6 +45,20 @@ public struct BatchPublishPlanItem: Identifiable, Codable, Hashable, Sendable {
   public var package: PublishPackage
   public var preview: LocalPublishPreview
   public var preflightIssues: [PreflightIssue]
+  /// Whether this item is a site front-matter draft and should be routed to the
+  /// explicit draft-sync queue instead of the default online publish queue.
+  public var isSiteDraft: Bool
+
+  private enum CodingKeys: String, CodingKey {
+    case draftID
+    case draftTitle
+    case markdownPath
+    case readiness
+    case package
+    case preview
+    case preflightIssues
+    case isSiteDraft
+  }
 
   public init(
     draftID: UUID,
@@ -53,7 +67,8 @@ public struct BatchPublishPlanItem: Identifiable, Codable, Hashable, Sendable {
     readiness: BatchPublishReadiness,
     package: PublishPackage,
     preview: LocalPublishPreview,
-    preflightIssues: [PreflightIssue]
+    preflightIssues: [PreflightIssue],
+    isSiteDraft: Bool = false
   ) {
     self.draftID = draftID
     self.draftTitle = draftTitle
@@ -62,6 +77,33 @@ public struct BatchPublishPlanItem: Identifiable, Codable, Hashable, Sendable {
     self.package = package
     self.preview = preview
     self.preflightIssues = preflightIssues
+    self.isSiteDraft = isSiteDraft
+  }
+
+  public init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    draftID = try container.decode(UUID.self, forKey: .draftID)
+    draftTitle = try container.decode(String.self, forKey: .draftTitle)
+    markdownPath = try container.decode(String.self, forKey: .markdownPath)
+    readiness = try container.decode(BatchPublishReadiness.self, forKey: .readiness)
+    package = try container.decode(PublishPackage.self, forKey: .package)
+    preview = try container.decode(LocalPublishPreview.self, forKey: .preview)
+    preflightIssues = try container.decode([PreflightIssue].self, forKey: .preflightIssues)
+    // Plans persisted before draft routing was introduced are formal publish
+    // candidates by definition.
+    isSiteDraft = try container.decodeIfPresent(Bool.self, forKey: .isSiteDraft) ?? false
+  }
+
+  public func encode(to encoder: Encoder) throws {
+    var container = encoder.container(keyedBy: CodingKeys.self)
+    try container.encode(draftID, forKey: .draftID)
+    try container.encode(draftTitle, forKey: .draftTitle)
+    try container.encode(markdownPath, forKey: .markdownPath)
+    try container.encode(readiness, forKey: .readiness)
+    try container.encode(package, forKey: .package)
+    try container.encode(preview, forKey: .preview)
+    try container.encode(preflightIssues, forKey: .preflightIssues)
+    try container.encode(isSiteDraft, forKey: .isSiteDraft)
   }
 
   public var allIssues: [PreflightIssue] {
@@ -137,8 +179,20 @@ public struct BatchPublishPlan: Codable, Hashable, Sendable {
 
   public var remotePublishableItems: [BatchPublishPlanItem] {
     items.filter { item in
-      item.readiness != .blocked && item.changedFileCount > 0
+      item.readiness != .blocked && item.changedFileCount > 0 && !item.isSiteDraft
     }
+  }
+
+  /// Changed, non-blocked site drafts that are intentionally excluded from
+  /// online publishing until an explicit draft-sync action is requested.
+  public var draftSyncItems: [BatchPublishPlanItem] {
+    items.filter { item in
+      item.readiness != .blocked && item.changedFileCount > 0 && item.isSiteDraft
+    }
+  }
+
+  public var draftSyncCount: Int {
+    draftSyncItems.count
   }
 
   public var changedFileCount: Int {
@@ -214,7 +268,8 @@ public struct BatchPublishPlanService: Sendable {
         readiness: readiness(preflightIssues: issues, preview: preview),
         package: package,
         preview: preview,
-        preflightIssues: issues
+        preflightIssues: issues,
+        isSiteDraft: draft.draft
       )
     }
 

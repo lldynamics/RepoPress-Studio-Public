@@ -23,6 +23,11 @@ struct MacMarkdownEditorToolbar: View {
   @State private var isCustomizationSheetPresented = false
   @Namespace private var editorModeNamespace
 
+  // Keep the chat symbol in one place. The previous multi-bubble sparkle
+  // symbol is not available in the macOS 14 SF Symbols set, and ViewThatFits
+  // measures each toolbar candidate before selecting the one that fits.
+  private static let aiChatSystemImage = "bubble.left"
+
   private var currentToolbarConfig: MarkdownToolbarConfiguration {
     MarkdownToolbarConfiguration.decodeFromJSON(customToolbarConfigRawValue)
   }
@@ -384,7 +389,7 @@ struct MacMarkdownEditorToolbar: View {
             .accessibilityHidden(true)
         }
       } else {
-        editorActionLabel("AI 对话", systemName: "bubble.left.and.sparkles", showsTitle: showsTitle)
+        editorActionLabel("AI 对话", systemName: Self.aiChatSystemImage, showsTitle: showsTitle)
       }
     }
     .buttonStyle(MarkdownEditorToolbarButtonStyle(showsTitle: showsTitle))

@@ -49,19 +49,8 @@ extension WritingDraftColumn {
 
   @ViewBuilder
   private var folderDraftListContent: some View {
-    let projection = makeFolderProjection(for: filteredDrafts)
-    let draftsByID = Dictionary(
-      filteredDrafts.map { ($0.id, $0) },
-      uniquingKeysWith: { _, latest in latest }
-    )
-    let entries = WritingDraftFolderListProjection.flatten(
-      root: projection.root,
-      expandedFolderIDs: folderExpansionState.expandedFolderIDs,
-      loadedDraftIDs: Set(paginatedDrafts.map(\.id))
-    )
-
-    ForEach(entries) { entry in
-      folderDraftListEntry(entry, draftsByID: draftsByID)
+    ForEach(draftListCache.folderEntries) { entry in
+      folderDraftListEntry(entry, draftsByID: draftListCache.folderDraftsByID)
     }
 
     if paginatedDrafts.count < filteredDrafts.count {
@@ -96,6 +85,7 @@ extension WritingDraftColumn {
       withAnimation(WorkbenchMotion.standard) {
         folderExpansionState.toggle(folder.id)
       }
+      updateFolderEntriesCache()
     } label: {
       HStack(spacing: 7) {
         Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
@@ -173,7 +163,7 @@ extension WritingDraftColumn {
     }
   }
 
-  var draftList: some View {
+  private var draftListWithInputEvents: some View {
     draftListBase
       .onDeleteCommand {
         requestDeleteSelectedDraft()
@@ -182,7 +172,7 @@ extension WritingDraftColumn {
         synchronizeDraftSelectionFromStore()
         applyDraftFilterDebounce()
         refreshDraftListLoadingState()
-        refreshDraftCounts()
+        refreshDraftCountsWithoutFiltering()
       }
       .task(
         id: DraftListImageSummaryRefreshInput(
@@ -198,53 +188,44 @@ extension WritingDraftColumn {
         scheduleDraftFilterDebounce()
       }
       .onChange(of: sortOrderRawValue) { _, _ in
-        resetDraftPagination()
-        refreshDraftCounts()
+        handleDraftListSortChange()
       }
+  }
+
+  private var draftListWithStoreEvents: some View {
+    draftListWithInputEvents
       .onChange(of: debouncedSearchText) { _, _ in
-        resetDraftPagination()
-        refreshFilteredDraftsCache()
-        refreshDraftCounts()
+        handleDraftListFilterChange()
       }
       .onChange(of: debouncedFilter) { _, _ in
-        resetDraftPagination()
-        refreshFilteredDraftsCache()
-        refreshDraftCounts()
+        handleDraftListFilterChange()
       }
       .onChange(of: draftListState.taskQueueStateVersion) { _, _ in
-        refreshFilteredDraftsCache()
-        refreshDraftCounts()
+        handleDraftListStoreUpdate()
       }
       .onChange(of: draftListState.repositoryReport) { _, _ in
-        refreshFilteredDraftsCache()
-        refreshDraftCounts()
+        handleDraftListStoreUpdate()
       }
       .onChange(of: draftListState.presentationRevision) { _, _ in
-        refreshFilteredDraftsCache()
-        revealSelectedDraftIfNeeded()
-        let newDrafts = visibleDraftSnapshot
-        synchronizeDraftSelection(with: newDrafts)
-        if isDraftListLoading && !newDrafts.isEmpty {
-          isDraftListLoading = false
-          draftListLoadingTask?.cancel()
-        }
-        refreshFilteredDraftsCache()
-        refreshDraftCounts()
-        refreshDraftListLoadingState()
-        resetDraftPagination()
+        handleDraftListPresentationRevisionChange()
+      }
+      .onChange(of: draftListState.contentScope) { _, _ in
+        applyDraftFilterDebounce()
+      }
+      .onChange(of: displayModeRawValue) { _, _ in
+        synchronizeFolderExpansionState()
       }
       .onChange(of: draftListState.selectedDraftID) { _, _ in
         revealSelectedDraftIfNeeded()
         synchronizeDraftSelectionFromStore()
       }
       .onChange(of: filteredDrafts.count) { _, newCount in
-        if newCount == 0 {
-          draftListLimit = 0
-        } else if newCount < draftListLimit {
-          draftListLimit = newCount
-        }
-        refreshDraftCounts()
+        handleFilteredDraftCountChange(newCount)
       }
+  }
+
+  var draftList: some View {
+    draftListWithStoreEvents
       .accessibilityLabel("文章列表")
       .accessibilityValue(draftListAccessibilityValue)
       .accessibilityIdentifier("writing-draft-list")
@@ -349,10 +330,25 @@ extension WritingDraftColumn {
 
     Divider()
 
-    Button(role: .destructive) {
-      requestDelete(draft)
-    } label: {
-      Label("删除文章", systemImage: "trash")
+    if !draft.isGeneralDraft,
+       draft.repositoryPath?.trimmedForPublishing.nilIfEmpty != nil {
+      Button(role: .destructive) {
+        requestUnpublish(draft)
+      } label: {
+        Label("从网站下线…", systemImage: "globe.badge.chevron.backward")
+      }
+
+      Button {
+        requestDelete(draft)
+      } label: {
+        Label("仅移到回收站…", systemImage: "trash")
+      }
+    } else {
+      Button(role: .destructive) {
+        requestDelete(draft)
+      } label: {
+        Label("删除文章", systemImage: "trash")
+      }
     }
   }
 }

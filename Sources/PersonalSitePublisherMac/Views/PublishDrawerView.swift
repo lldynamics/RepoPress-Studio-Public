@@ -155,6 +155,9 @@ struct PublishDrawerView: View {
     let canPublishCurrentArticle = singleArticlePreview?.canPublish == true
       && !store.isRemoteRepositoryChecking
       && !store.isRemoteRepositoryPublishing
+    let singleArticleAction = PublishDrawerSingleArticleActionPresentation.make(
+      isWebsiteDraft: draft.draft
+    )
 
     return PublishDrawerCard(title: "选择操作", systemImage: "cursorarrow.click.2") {
       LazyVGrid(
@@ -198,16 +201,16 @@ struct PublishDrawerView: View {
       Button {
         pendingSingleOnlinePublishDraft = draft
       } label: {
-        Label("仅发布当前文章…", systemImage: "doc.badge.arrow.up")
+        Label(singleArticleAction.actionTitle, systemImage: "doc.badge.arrow.up")
       }
       .buttonStyle(.link)
       .disabled(!canPublishCurrentArticle)
       .accessibilityIdentifier("publish-drawer-action-publish-current")
-      .accessibilityLabel("仅发布当前文章")
+      .accessibilityLabel(singleArticleAction.accessibilityLabel)
       .accessibilityHint(
         canPublishCurrentArticle
-          ? String(localized: "打开当前文章的最终发布确认页")
-          : String(localized: "当前文章的线上发布预览未通过")
+          ? singleArticleAction.enabledHint
+          : singleArticleAction.disabledHint
       )
     }
   }
@@ -247,6 +250,8 @@ struct PublishDrawerView: View {
       hasRemoteConflict: preview?.mode == .directCommit
         && preview?.remoteRiskState == .conflict,
       publishableArticleCount: plan?.remotePublishableItems.count,
+      draftSyncArticleCount: plan?.draftSyncCount ?? 0,
+      pendingDeletionCount: store.pendingRemoteRepositoryCleanupRequests.count,
       changedFileCount: plan.map { preview?.changedPaths.count ?? $0.changedFileCount },
       isPlanRefreshing: store.isBatchPublishPlanRefreshing,
       isPermissionChecking: store.isRemoteRepositoryChecking,
@@ -424,7 +429,9 @@ struct PublishDrawerView: View {
       await store.refreshBatchPublishPlanAsync()
       guard let preview = store.batchRemotePublishPreviewSnapshot,
             preview.canPublish,
-            store.batchPublishPlan?.remotePublishableItems.isEmpty == false else {
+            let plan = store.batchPublishPlan,
+            !plan.remotePublishableItems.isEmpty
+              || !store.pendingRemoteRepositoryCleanupRequests.isEmpty else {
         return
       }
       reviewedAllChangesPaths = Set(preview.changedPaths)
@@ -463,10 +470,7 @@ struct PublishDrawerView: View {
        let plan = store.batchPublishPlan {
       RemotePublishConfirmationView(
         targetLabel: String(localized: "发布范围"),
-        targetTitle: String(
-          format: String(localized: "全部可发布文章（%d 篇）"),
-          plan.remotePublishableItems.count
-        ),
+        targetTitle: allChangesTargetTitle(plan: plan),
         preview: preview,
         reviewDraft: store.batchRemoteReviewDraft,
         isPublishing: store.isRemoteRepositoryPublishing,
@@ -499,9 +503,13 @@ struct PublishDrawerView: View {
   @ViewBuilder
   private func singleArticleOnlinePublishConfirmation(draft: ArticleDraft) -> some View {
     if let preview = store.cachedRemotePublishPreview(for: draft) {
+      let presentation = PublishDrawerSingleArticleActionPresentation.make(
+        isWebsiteDraft: draft.draft
+      )
       RemotePublishConfirmationView(
-        targetLabel: String(localized: "文章"),
+        targetLabel: draft.draft ? String(localized: "网站草稿") : String(localized: "文章"),
         targetTitle: draft.title,
+        purpose: presentation.confirmationPurpose,
         preview: preview,
         reviewDraft: store.cachedRemoteReviewDraft(for: draft),
         isPublishing: store.isRemoteRepositoryPublishing,
@@ -529,6 +537,28 @@ struct PublishDrawerView: View {
       .frame(minWidth: 420, minHeight: 260)
       .padding(WorkbenchSpacing.spacious)
     }
+  }
+
+  private func allChangesTargetTitle(plan: BatchPublishPlan) -> String {
+    let publishCount = plan.remotePublishableItems.count
+    let cleanupCount = store.pendingRemoteRepositoryCleanupRequests.count
+    if cleanupCount == 0 {
+      return String(
+        format: String(localized: "全部可发布文章（%d 篇）"),
+        publishCount
+      )
+    }
+    if publishCount == 0 {
+      return String(
+        format: String(localized: "全部待下线文章（%d 篇）"),
+        cleanupCount
+      )
+    }
+    return String(
+      format: String(localized: "发布 %d 篇并下线 %d 篇文章"),
+      publishCount,
+      cleanupCount
+    )
   }
 
 }

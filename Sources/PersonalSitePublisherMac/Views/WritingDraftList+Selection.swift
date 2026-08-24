@@ -13,6 +13,17 @@ extension WritingDraftColumn {
     )
   }
 
+  var unpublishConfirmationPresented: Binding<Bool> {
+    Binding(
+      get: { draftPendingUnpublish != nil },
+      set: { isPresented in
+        if !isPresented {
+          draftPendingUnpublish = nil
+        }
+      }
+    )
+  }
+
   var skeletonPlaceholderCount: Int {
     8
   }
@@ -105,6 +116,10 @@ extension WritingDraftColumn {
 
   func requestDelete(_ draft: ArticleDraft) {
     draftPendingDeletion = draft
+  }
+
+  func requestUnpublish(_ draft: ArticleDraft) {
+    draftPendingUnpublish = draft
   }
 
   func requestDeleteSelectedDraft() {
