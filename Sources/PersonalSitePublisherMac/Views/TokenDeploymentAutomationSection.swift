@@ -6,26 +6,26 @@ struct TokenDeploymentAutomationSection: View {
 
   var body: some View {
     Section("当前工作区部署自动化") {
-      Toggle("启用当前工作区部署状态轮询", isOn: deploymentPollingEnabledBinding)
+      Toggle("启用当前工作区部署状态自动检查", isOn: deploymentPollingEnabledBinding)
         .toggleStyle(.switch)
-        .accessibilityLabel("启用当前工作区部署状态轮询")
+        .accessibilityLabel("启用当前工作区部署状态自动检查")
         .accessibilityValue(
           store.deploymentPollingSettings.isEnabled ? "开启" : "关闭"
         )
         .accessibilityIdentifier("token-deployment-polling-enabled")
 
-      Picker("当前工作区轮询间隔", selection: deploymentPollingIntervalBinding) {
+      Picker("当前工作区最短检查间隔", selection: deploymentPollingIntervalBinding) {
         ForEach(TokenDeploymentAutomationSettingsSupport.intervalOptions, id: \.self) { minutes in
           Text("\(minutes) 分钟").tag(minutes)
         }
       }
       .pickerStyle(.menu)
       .disabled(!store.deploymentPollingSettings.isEnabled)
-      .accessibilityLabel("当前工作区部署状态轮询间隔")
+      .accessibilityLabel("当前工作区部署状态自动检查最短间隔")
       .accessibilityValue("\(store.deploymentPollingSettings.normalizedIntervalMinutes) 分钟")
       .accessibilityIdentifier("token-deployment-polling-interval")
 
-      Text("这些选项只作用于当前工作区；修改设置不会立即请求部署平台状态。")
+      Text("这些选项只作用于当前工作区；发布或回到前台时会按需检查，所选分钟数用于限制最短重检间隔。")
         .font(.caption)
         .foregroundStyle(.secondary)
     }

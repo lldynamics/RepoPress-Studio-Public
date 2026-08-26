@@ -55,7 +55,7 @@ extension RepositoryWorkspaceView {
           systemImage: store.repositoryAutoSyncState.status.systemImage
         )
         MetricTile(
-          title: "间隔",
+          title: "最短间隔",
           value: store.repositoryAutoSyncSettings.isEnabled
             ? String(
               format: String(localized: "%d 分钟"),
@@ -85,7 +85,7 @@ extension RepositoryWorkspaceView {
           Label("上次：\(lastRunAt.workbenchShortText)", systemImage: "clock.arrow.circlepath")
         }
         if let nextRunAt = store.repositoryAutoSyncState.nextRunAt, store.repositoryAutoSyncSettings.isEnabled {
-          Label("下次：\(nextRunAt.workbenchShortText)", systemImage: "clock")
+          Label("可再次自动检查：\(nextRunAt.workbenchShortText)", systemImage: "clock")
         }
         if let lastFetchAt = store.repositoryAutoSyncState.lastFetchAt {
           Label("Fetch：\(lastFetchAt.workbenchShortText)", systemImage: store.repositoryAutoSyncState.fetchSucceeded == false ? "exclamationmark.arrow.triangle.2.circlepath" : "arrow.triangle.2.circlepath")
@@ -243,7 +243,7 @@ extension RepositoryWorkspaceView {
   }
 
   private var repositoryAutoSyncIntervalPicker: some View {
-    Picker("检查间隔", selection: repositoryAutoSyncIntervalBinding) {
+    Picker("最短检查间隔", selection: repositoryAutoSyncIntervalBinding) {
       ForEach(repositoryAutoSyncIntervalOptions, id: \.self) { minutes in
         Text("\(minutes) 分钟").tag(minutes)
       }
@@ -252,7 +252,7 @@ extension RepositoryWorkspaceView {
     .tint(WorkbenchTheme.navigationSelection)
     .frame(maxWidth: 360)
     .disabled(!store.repositoryAutoSyncSettings.isEnabled)
-    .accessibilityLabel("远端自动检查间隔")
+    .accessibilityLabel("远端自动检查最短间隔")
     .accessibilityValue(
       String(
         format: String(localized: "%d 分钟"),
@@ -322,8 +322,8 @@ extension RepositoryWorkspaceView {
 
   private var repositoryAutoSyncDescription: String {
     store.repositoryAutoSyncSettings.autoImportRemoteArticles
-      ? String(localized: "定时执行 Fetch 与差异检查；仅自动导入可确认没有本地编辑的文章。")
-      : String(localized: "定时执行 Fetch 与差异检查；文章导入需要手动确认。")
+      ? String(localized: "保存、发布、切换分支或回到前台时按需检查；仅自动导入可确认没有本地编辑的文章。")
+      : String(localized: "保存、发布、切换分支或回到前台时按需检查；文章导入需要手动确认。")
   }
 
   private var repositoryAutoSyncEnabledBinding: Binding<Bool> {

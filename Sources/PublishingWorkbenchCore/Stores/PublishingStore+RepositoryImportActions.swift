@@ -227,7 +227,24 @@ extension PublishingStore {
     await importMissingDraftsFromLocalRepository(
       store: store,
       privateDraftsOnly: false,
-      announcesInsertions: true
+      announcesInsertions: true,
+      repositoryPaths: nil
+    )
+  }
+
+  /// Imports only the Markdown paths reported by a repository content watcher.
+  /// Known draft/recycle-bin paths are filtered before parsing, so an editor's
+  /// own autosave event does not trigger a full content-tree traversal.
+  @discardableResult
+  public func importMissingDraftsFromLocalRepository(
+    repositoryPaths: [String],
+    store: WorkbenchStore
+  ) async -> Int {
+    await importMissingDraftsFromLocalRepository(
+      store: store,
+      privateDraftsOnly: false,
+      announcesInsertions: false,
+      repositoryPaths: repositoryPaths
     )
   }
 
@@ -237,14 +254,16 @@ extension PublishingStore {
     await importMissingDraftsFromLocalRepository(
       store: store,
       privateDraftsOnly: true,
-      announcesInsertions: false
+      announcesInsertions: false,
+      repositoryPaths: nil
     )
   }
 
   private func importMissingDraftsFromLocalRepository(
     store: WorkbenchStore,
     privateDraftsOnly: Bool,
-    announcesInsertions: Bool
+    announcesInsertions: Bool,
+    repositoryPaths: [String]?
   ) async -> Int {
     let profile = store.activeProfile
     guard !profile.localRepositoryRootPath.trimmedForPublishing.isEmpty else {
@@ -259,10 +278,27 @@ extension PublishingStore {
     let existingRepositoryPaths = automaticImportExcludedRepositoryPaths(profileID: profile.id)
     let result: LocalContentImportResult
     do {
-      result = try await localContentImportService.importMissingDraftsAsync(
-        profile: profile,
-        excludingRepositoryPaths: existingRepositoryPaths
-      )
+      if let repositoryPaths {
+        let candidatePaths = repositoryPaths
+          .map { $0.normalizedRelativePath() }
+          .filter { path in
+            !existingRepositoryPaths.contains(path)
+              && localContentImportService.isImportableArticleRepositoryPath(path, profile: profile)
+          }
+        guard !candidatePaths.isEmpty else {
+          localImportOperationContext = nil
+          return 0
+        }
+        result = try await localContentImportService.importDraftsAsync(
+          profile: profile,
+          repositoryPaths: Array(Set(candidatePaths)).sorted()
+        )
+      } else {
+        result = try await localContentImportService.importMissingDraftsAsync(
+          profile: profile,
+          excludingRepositoryPaths: existingRepositoryPaths
+        )
+      }
     } catch is CancellationError {
       if localImportOperationContext == operation {
         localImportOperationContext = nil

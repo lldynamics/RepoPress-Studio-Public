@@ -95,9 +95,9 @@
     "en": "Move Up",
     "zh-Hans": "上移"
   },
-  "下次：%@": {
-    "en": "Next: %@",
-    "zh-Hans": "下次：%@"
+  "可再次自动检查：%@": {
+    "en": "Eligible for another automatic check: %@",
+    "zh-Hans": "可再次自动检查：%@"
   },
   "仓库凭据": {
     "en": "Repository Credentials",
@@ -615,10 +615,6 @@
     "en": "Temporarily hidden because the window is too narrow",
     "zh-Hans": "窗口过窄，已临时隐藏"
   },
-  "立即轮询": {
-    "en": "Poll Now",
-    "zh-Hans": "立即轮询"
-  },
   "编辑元数据": {
     "en": "Edit Metadata",
     "zh-Hans": "编辑元数据"
@@ -667,9 +663,9 @@
     "en": "Jump",
     "zh-Hans": "跳转"
   },
-  "轮询间隔": {
-    "en": "Polling Interval",
-    "zh-Hans": "轮询间隔"
+  "最短检查间隔": {
+    "en": "Minimum Check Interval",
+    "zh-Hans": "最短检查间隔"
   },
   "输入文章标题": {
     "en": "Enter Article Title",

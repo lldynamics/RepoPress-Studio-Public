@@ -271,6 +271,7 @@ extension WorkbenchStore {
           repositoryPath: result.repositoryPath,
           savedAt: Date()
         )
+        scheduleDueOperationalRefresh()
       } catch {
         if case LocalPublishPreviewError.missingRepositoryRoot = error {
           // The app-level recovery copy remains available until the user
@@ -364,6 +365,7 @@ extension WorkbenchStore {
       )
       setPublishActionMessage(CoreL10n.text("已将草稿加入项目并写入文件。"), status: .success)
       save()
+      scheduleDueOperationalRefresh()
       return true
     } catch {
       siteDraftFileWritesInProgress.remove(draftID)
@@ -445,6 +447,7 @@ extension WorkbenchStore {
       savedAt: Date()
     )
     scheduleAutosave()
+    scheduleDueOperationalRefresh()
   }
 
   private func failSiteDraftFileWrite(

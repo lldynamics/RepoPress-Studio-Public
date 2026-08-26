@@ -745,8 +745,8 @@ require_literal \
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/ReleaseHistoryDetailView.swift" \
-  ".accessibilityLabel(\"启用部署轮询\")" \
-  "deployment polling toggle must expose an accessibility label"
+  ".accessibilityLabel(\"启用部署状态自动检查\")" \
+  "on-demand deployment status toggle must expose an accessibility label"
 
 require_literal_any_file \
   ".accessibilityLabel(\"复制全部外部调试链接\")" \

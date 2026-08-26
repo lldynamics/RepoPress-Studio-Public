@@ -12897,6 +12897,22 @@
         }
       }
     },
+    "display.site-kind.foam": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Foam"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Foam"
+          }
+        }
+      }
+    },
     "display.site-kind.hexo": {
       "localizations": {
         "en": {
@@ -12941,6 +12957,38 @@
           "stringUnit": {
             "state": "translated",
             "value": "Jekyll"
+          }
+        }
+      }
+    },
+    "display.site-kind.nextjs": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Next.js (Contentlayer / Velite)"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Next.js（Contentlayer / Velite）"
+          }
+        }
+      }
+    },
+    "display.site-kind.quartz": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quartz"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quartz"
           }
         }
       }
@@ -14753,18 +14801,18 @@
         }
       }
     },
-    "下次：%@": {
+    "可再次自动检查：%@": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Next: %@"
+            "value": "Eligible for another automatic check: %@"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "下次：%@"
+            "value": "可再次自动检查：%@"
           }
         }
       }
@@ -25473,18 +25521,18 @@
         }
       }
     },
-    "启用当前工作区部署状态轮询": {
+    "启用当前工作区部署状态自动检查": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Enable Deployment Status Polling for This Workspace"
+            "value": "Enable Automatic Deployment Status Checks for This Workspace"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "启用当前工作区部署状态轮询"
+            "value": "启用当前工作区部署状态自动检查"
           }
         }
       }
@@ -25537,18 +25585,18 @@
         }
       }
     },
-    "启用部署轮询": {
+    "启用部署状态自动检查": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Enable Deployment Polling"
+            "value": "Enable Automatic Deployment Status Checks"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "启用部署轮询"
+            "value": "启用部署状态自动检查"
           }
         }
       }
@@ -28033,18 +28081,18 @@
         }
       }
     },
-    "复制部署轮询清单": {
+    "复制部署检查清单": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Copy Deployment Polling Checklist"
+            "value": "Copy Deployment Check Checklist"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "复制部署轮询清单"
+            "value": "复制部署检查清单"
           }
         }
       }
@@ -28737,34 +28785,34 @@
         }
       }
     },
-    "定时执行 Fetch 与差异检查；仅自动导入可确认没有本地编辑的文章。": {
+    "保存、发布、切换分支或回到前台时按需检查；仅自动导入可确认没有本地编辑的文章。": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Run scheduled Fetch and diff checks, importing only articles confirmed to have no local edits."
+            "value": "Check on demand after saves, publishes, branch switches, or returning to the foreground; import only articles confirmed to have no local edits."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "定时执行 Fetch 与差异检查；仅自动导入可确认没有本地编辑的文章。"
+            "value": "保存、发布、切换分支或回到前台时按需检查；仅自动导入可确认没有本地编辑的文章。"
           }
         }
       }
     },
-    "定时执行 Fetch 与差异检查；文章导入需要手动确认。": {
+    "保存、发布、切换分支或回到前台时按需检查；文章导入需要手动确认。": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Run scheduled Fetch and diff checks; article imports require manual confirmation."
+            "value": "Check on demand after saves, publishes, branch switches, or returning to the foreground; article imports require manual confirmation."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "定时执行 Fetch 与差异检查；文章导入需要手动确认。"
+            "value": "保存、发布、切换分支或回到前台时按需检查；文章导入需要手动确认。"
           }
         }
       }
@@ -33953,18 +34001,18 @@
         }
       }
     },
-    "当前工作区检查间隔": {
+    "当前工作区最短检查间隔": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Check Interval for This Workspace"
+            "value": "Minimum Check Interval for This Workspace"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "当前工作区检查间隔"
+            "value": "当前工作区最短检查间隔"
           }
         }
       }
@@ -34001,50 +34049,34 @@
         }
       }
     },
-    "当前工作区轮询间隔": {
+    "当前工作区远端自动检查最短间隔": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Polling Interval for This Workspace"
+            "value": "Minimum Automatic Remote Check Interval for This Workspace"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "当前工作区轮询间隔"
+            "value": "当前工作区远端自动检查最短间隔"
           }
         }
       }
     },
-    "当前工作区远端自动检查间隔": {
+    "当前工作区部署状态自动检查最短间隔": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Automatic Remote Check Interval for This Workspace"
+            "value": "Minimum Automatic Deployment Status Check Interval for This Workspace"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "当前工作区远端自动检查间隔"
-          }
-        }
-      }
-    },
-    "当前工作区部署状态轮询间隔": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Deployment Status Polling Interval for This Workspace"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "当前工作区部署状态轮询间隔"
+            "value": "当前工作区部署状态自动检查最短间隔"
           }
         }
       }
@@ -35469,22 +35501,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "待补齐：%@"
-          }
-        }
-      }
-    },
-    "待轮询": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Pending Polls"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "待轮询"
           }
         }
       }
@@ -48209,22 +48225,6 @@
         }
       }
     },
-    "检查间隔": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Check Interval"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "检查间隔"
-          }
-        }
-      }
-    },
     "检查项": {
       "localizations": {
         "en": {
@@ -54961,18 +54961,18 @@
         }
       }
     },
-    "立即执行部署轮询": {
+    "立即检查部署状态": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Poll Deployment Now"
+            "value": "Check Deployment Status Now"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "立即执行部署轮询"
+            "value": "立即检查部署状态"
           }
         }
       }
@@ -55053,22 +55053,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "立即离线缓存所有文章全文"
-          }
-        }
-      }
-    },
-    "立即轮询": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Poll Now"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "立即轮询"
           }
         }
       }
@@ -61377,18 +61361,18 @@
         }
       }
     },
-    "轮询间隔": {
+    "最短检查间隔": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Polling Interval"
+            "value": "Minimum Check Interval"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "轮询间隔"
+            "value": "最短检查间隔"
           }
         }
       }
@@ -62417,34 +62401,34 @@
         }
       }
     },
-    "这些选项只作用于当前工作区；修改设置不会立即执行 Fetch、远端检查或文章导入。": {
+    "这些选项只作用于当前工作区；保存、发布、切换分支或回到前台时会按需检查，所选分钟数用于限制最短重检间隔。": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "These options apply only to the current workspace. Changing them does not immediately fetch, check the remote, or import articles."
+            "value": "These options apply only to the current workspace. Checks run on demand after saves, publishes, branch switches, or returning to the foreground; the selected minutes set the minimum interval between checks."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "这些选项只作用于当前工作区；修改设置不会立即执行 Fetch、远端检查或文章导入。"
+            "value": "这些选项只作用于当前工作区；保存、发布、切换分支或回到前台时会按需检查，所选分钟数用于限制最短重检间隔。"
           }
         }
       }
     },
-    "这些选项只作用于当前工作区；修改设置不会立即请求部署平台状态。": {
+    "这些选项只作用于当前工作区；发布或回到前台时会按需检查，所选分钟数用于限制最短重检间隔。": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "These options apply only to the current workspace. Changing them does not immediately request deployment status."
+            "value": "These options apply only to the current workspace. Checks run on demand after publishing or returning to the foreground; the selected minutes set the minimum interval between checks."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "这些选项只作用于当前工作区；修改设置不会立即请求部署平台状态。"
+            "value": "这些选项只作用于当前工作区；发布或回到前台时会按需检查，所选分钟数用于限制最短重检间隔。"
           }
         }
       }
@@ -62945,18 +62929,18 @@
         }
       }
     },
-    "远端自动检查间隔": {
+    "远端自动检查最短间隔": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Automatic Remote Check Interval"
+            "value": "Minimum Automatic Remote Check Interval"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "远端自动检查间隔"
+            "value": "远端自动检查最短间隔"
           }
         }
       }
@@ -64913,34 +64897,34 @@
         }
       }
     },
-    "部署轮询": {
+    "部署状态自动检查": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Deployment Polling"
+            "value": "Automatic Deployment Status Checks"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "部署轮询"
+            "value": "部署状态自动检查"
           }
         }
       }
     },
-    "部署轮询间隔": {
+    "部署状态自动检查最短间隔": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Deployment Polling Interval"
+            "value": "Minimum Automatic Deployment Status Check Interval"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "部署轮询间隔"
+            "value": "部署状态自动检查最短间隔"
           }
         }
       }
@@ -65841,18 +65825,18 @@
         }
       }
     },
-    "间隔": {
+    "最短间隔": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Interval"
+            "value": "Minimum Interval"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "间隔"
+            "value": "最短间隔"
           }
         }
       }

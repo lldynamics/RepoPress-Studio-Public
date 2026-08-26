@@ -150,7 +150,7 @@
   "请关闭确认页，刷新发布快照后重新审阅。": "Close this confirmation page, refresh the publishing snapshot, and review it again.",
   "请确认远端、分支、发布方式和完整文件清单。确认后会立即写入远端。": "Confirm the remote repository, branches, publishing method, and full file list. Confirmation writes to the remote repository immediately.",
   "这些规则会随当前站点配置进入 AI 聊天、元数据建议、发布检查、选区编辑和图片替代文本/说明建议。": "These rules follow the current site configuration into AI chat, metadata suggestions, publishing checks, selection editing, and image alt-text or caption suggestions.",
-  "远端自动检查间隔": "Automatic Remote Check Interval",
+  "远端自动检查最短间隔": "Minimum Automatic Remote Check Interval",
   "退出空列表项": "Exit Empty List Item",
   "选中文字后按 ⌘V": "Select text, then press ⌘V",
   "选择": "Choose",

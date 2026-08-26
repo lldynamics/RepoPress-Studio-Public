@@ -539,7 +539,7 @@ struct ReleaseHistoryDetailView: View {
   @ViewBuilder
   private var deploymentPollingSummary: some View {
     VStack(alignment: .leading, spacing: 10) {
-      Text("部署轮询")
+      Text("部署状态自动检查")
         .font(.workbenchSectionTitle)
         .accessibilityAddTraits(.isHeader)
       Text(store.deploymentPollingState.message)
@@ -550,34 +550,34 @@ struct ReleaseHistoryDetailView: View {
         Button {
           copy(
             store.deploymentPollingState.followUpChecklistMarkdown,
-            message: "已复制部署轮询后续清单。"
+            message: "已复制部署检查后续清单。"
           )
         } label: {
           releaseHistoryActionLabel("复制清单", systemImage: "checklist")
         }
         .disabled(store.deploymentPollingState.checkedRecords.isEmpty)
-        .accessibilityLabel("复制部署轮询清单")
+        .accessibilityLabel("复制部署检查清单")
         .accessibilityIdentifier("release-history-polling-copy-checklist")
         Button {
           Task {
             await store.runDeploymentPolling()
           }
         } label: {
-          releaseHistoryActionLabel("立即轮询", systemImage: "arrow.clockwise")
+          releaseHistoryActionLabel("立即检查", systemImage: "arrow.clockwise")
         }
         .disabled(!store.deploymentPollingSettings.isEnabled || store.isDeploymentStatusChecking)
-        .accessibilityLabel("立即执行部署轮询")
+        .accessibilityLabel("立即检查部署状态")
         .accessibilityIdentifier("release-history-polling-run-now")
       }
 
       VStack(alignment: .leading, spacing: 8) {
-        Toggle("启用部署轮询", isOn: deploymentPollingEnabledBinding)
+        Toggle("启用部署状态自动检查", isOn: deploymentPollingEnabledBinding)
           .toggleStyle(.switch)
-          .accessibilityLabel("启用部署轮询")
+          .accessibilityLabel("启用部署状态自动检查")
           .accessibilityValue(store.deploymentPollingSettings.isEnabled ? "开启" : "关闭")
           .accessibilityIdentifier("release-history-polling-enabled")
 
-        Picker("轮询间隔", selection: deploymentPollingIntervalBinding) {
+        Picker("最短检查间隔", selection: deploymentPollingIntervalBinding) {
           ForEach(deploymentPollingIntervalOptions, id: \.self) { minutes in
             Text("\(minutes) 分钟").tag(minutes)
           }
@@ -586,7 +586,7 @@ struct ReleaseHistoryDetailView: View {
         .tint(WorkbenchTheme.navigationSelection)
         .frame(maxWidth: 320)
         .disabled(!store.deploymentPollingSettings.isEnabled || store.isDeploymentStatusChecking)
-        .accessibilityLabel("部署轮询间隔")
+        .accessibilityLabel("部署状态自动检查最短间隔")
         .accessibilityValue("\(store.deploymentPollingSettings.normalizedIntervalMinutes) 分钟")
         .accessibilityIdentifier("release-history-polling-interval")
       }
@@ -598,12 +598,12 @@ struct ReleaseHistoryDetailView: View {
           systemImage: store.deploymentPollingState.status.systemImage
         )
         MetricTile(
-          title: "待轮询",
+          title: "待检查",
           value: "\(store.deploymentPollingEligibleRecords.count)",
           systemImage: "hourglass"
         )
         MetricTile(
-          title: "间隔",
+          title: "最短间隔",
           value: store.deploymentPollingSettings.isEnabled ? "\(store.deploymentPollingSettings.normalizedIntervalMinutes) 分钟" : "-",
           systemImage: "timer"
         )
@@ -629,7 +629,7 @@ struct ReleaseHistoryDetailView: View {
           Label("上次：\(lastRunAt.workbenchShortText)", systemImage: "clock.arrow.circlepath")
         }
         if let nextRunAt = store.deploymentPollingState.nextRunAt, store.deploymentPollingSettings.isEnabled {
-          Label("下次：\(nextRunAt.workbenchShortText)", systemImage: "clock")
+          Label("可再次自动检查：\(nextRunAt.workbenchShortText)", systemImage: "clock")
         }
       }
       .font(.caption)

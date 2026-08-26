@@ -128,11 +128,11 @@ struct ContentView: View {
   #if DEBUG || SCREENSHOT_CAPTURE_BUILD
     @State private var didApplyScreenshotDemoSurface = false
   #endif
-  @State private var isRefreshingExternallyCreatedDrafts = false
   @State private var isDraftRecoveryPresented = false
   @State private var modalPresentation = WorkspaceModalPresentationState()
   @State private var commandPaletteEditorCommands: MarkdownEditorCommandActions?
   @State private var responsiveLayout = WorkspaceResponsiveLayoutSnapshot.initial
+  @State private var repositoryContentMonitorClientID = UUID()
   @State private var aiChatInspectorSurfaceState = AIChatSurfaceState(surface: .inspector)
   // These reference models need stable window lifetime, but ContentView does
   // not read their published values. Feature leaves observe them directly.
@@ -142,20 +142,9 @@ struct ContentView: View {
   @State private var repositoryContextStage: RepositoryContextStage = .overview
   @StateObject private var repositorySourceSession: RepositoryHTMLSourceSession
   @State private var localSitePreviewState: WorkbenchLocalSitePreviewFeatureFacade
+  @StateObject private var repositoryContentChangeMonitor: RepositoryContentChangeMonitorCoordinator
   @State private var sceneCommandRouter = WorkspaceSceneCommandRouter()
   @StateObject private var windowSession: WorkspaceWindowSession
-
-  private var repositoryAutoSyncTaskID: RepositoryAutoSyncTaskID {
-    RepositoryAutoSyncTaskID(
-      scenePhase: scenePhase,
-      isSafeMode: store.isSafeMode
-    )
-  }
-
-  private struct RepositoryAutoSyncTaskID: Equatable {
-    let scenePhase: ScenePhase
-    let isSafeMode: Bool
-  }
 
   private var shellState: WorkbenchRootPresentationFeatureFacade { rootPresentation }
   private var presentationState: WorkbenchRootPresentationFeatureFacade { rootPresentation }
@@ -167,6 +156,9 @@ struct ContentView: View {
     _repositorySourceSession = StateObject(wrappedValue: RepositoryHTMLSourceSession())
     _localSitePreviewState = State(
       initialValue: WorkbenchLocalSitePreviewFeatureFacade(store: store)
+    )
+    _repositoryContentChangeMonitor = StateObject(
+      wrappedValue: RepositoryContentChangeMonitorCoordinator.shared(store: store)
     )
     _windowSession = StateObject(
       wrappedValue: WorkspaceWindowSession(
@@ -353,11 +345,13 @@ struct ContentView: View {
     .onAppear {
       restoreWindowSessionStorageIfNeeded()
       synchronizeWindowSessionActivity()
+      configureRepositoryContentChangeMonitor()
     }
     .onChange(of: sceneCommandRouterRootUpdateKey, initial: true) { _, _ in
       updateSceneCommandRouterRootActions()
     }
     .onDisappear {
+      repositoryContentChangeMonitor.stop(clientID: repositoryContentMonitorClientID)
       sceneCommandRouter.clearAll()
       _ = aiChatInspectorOperationSession.handle(
         .ownerTeardown,
@@ -379,13 +373,17 @@ struct ContentView: View {
     .onChange(of: shellState.isQuickHideActive) { _, isActive in
       if isActive {
         modalPresentation.dismiss()
-      } else if !store.isSafeMode {
-        refreshExternallyCreatedDrafts()
       }
     }
-    .onChange(of: scenePhase) { _, newPhase in
-      guard newPhase == .active, !store.isSafeMode else { return }
+    .onChange(of: scenePhase) { oldPhase, newPhase in
+      guard newPhase == .active else {
+        repositoryContentChangeMonitor.stop(clientID: repositoryContentMonitorClientID)
+        return
+      }
+      guard oldPhase != .active, !store.isSafeMode else { return }
+      configureRepositoryContentChangeMonitor()
       refreshExternallyCreatedDrafts()
+      scheduleDueOperationalRefresh()
       refreshStaleRSSIfNeeded()
     }
     .onChange(of: controlActiveState) { _, _ in
@@ -417,9 +415,6 @@ struct ContentView: View {
         hideInspectorIfNeeded()
       }
     }
-    .task(id: repositoryAutoSyncTaskID) {
-      await runRepositoryAutoSyncLoop()
-    }
     .alert(
       String(localized: "工作台数据恢复"),
       isPresented: persistenceRecoveryAlertPresented,
@@ -432,6 +427,7 @@ struct ContentView: View {
 
   private func handleContentViewAppear() {
     applyWorkbenchPreferences()
+    configureRepositoryContentChangeMonitor()
     if !store.pendingDraftRecoveries.isEmpty {
       isDraftRecoveryPresented = true
     }
@@ -642,23 +638,6 @@ struct ContentView: View {
     }
   #endif
 
-  private func runRepositoryAutoSyncLoop() async {
-    guard scenePhase == .active, !store.isSafeMode else { return }
-
-    while !Task.isCancelled {
-      do {
-        try await Task.sleep(for: .seconds(60))
-      } catch {
-        return
-      }
-
-      guard !Task.isCancelled, scenePhase == .active, !store.isSafeMode else {
-        return
-      }
-      await store.tickRepositoryAndDeploymentPolling(now: Date())
-    }
-  }
-
   private func openDraftFullTextSearch() {
     guard shellState.canUseProtectedWorkbench else { return }
     guard activateCurrentWindowSharedContext() else { return }
@@ -686,6 +665,7 @@ struct ContentView: View {
         }
       }
       if !store.isSafeMode {
+        configureRepositoryContentChangeMonitor()
         refreshExternallyCreatedDrafts()
       }
       didApplyInitialWorkbenchPreferences = true
@@ -703,18 +683,21 @@ struct ContentView: View {
   }
 
   private func refreshExternallyCreatedDrafts() {
-    guard
-      RepositoryDraftDiscoveryPolicy.shouldRunAutomatically(
-        isSafeMode: store.isSafeMode,
-        canUseProtectedWorkbench: shellState.canUseProtectedWorkbench,
-        isEnabled: store.activeProfile.resolvedAutomaticallyImportsNewRepositoryArticles,
-        isRefreshRunning: isRefreshingExternallyCreatedDrafts
-      )
-    else { return }
-    isRefreshingExternallyCreatedDrafts = true
+    repositoryContentChangeMonitor.requestImport()
+  }
+
+  private func configureRepositoryContentChangeMonitor() {
+    guard scenePhase == .active, !store.isSafeMode else {
+      repositoryContentChangeMonitor.stop(clientID: repositoryContentMonitorClientID)
+      return
+    }
+    repositoryContentChangeMonitor.start(clientID: repositoryContentMonitorClientID)
+  }
+
+  private func scheduleDueOperationalRefresh() {
+    guard scenePhase == .active, !store.isSafeMode else { return }
     Task { @MainActor in
-      defer { isRefreshingExternallyCreatedDrafts = false }
-      _ = await store.importMissingDraftsFromLocalRepository()
+      _ = await store.tickRepositoryAndDeploymentPolling(now: Date())
     }
   }
 

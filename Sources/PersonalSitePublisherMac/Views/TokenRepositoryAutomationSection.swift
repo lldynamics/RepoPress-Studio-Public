@@ -14,14 +14,14 @@ struct TokenRepositoryAutomationSection: View {
         )
         .accessibilityIdentifier("token-repository-auto-sync-enabled")
 
-      Picker("当前工作区检查间隔", selection: repositoryAutoSyncIntervalBinding) {
+      Picker("当前工作区最短检查间隔", selection: repositoryAutoSyncIntervalBinding) {
         ForEach(TokenRepositoryAutomationSettingsSupport.intervalOptions, id: \.self) { minutes in
           Text("\(minutes) 分钟").tag(minutes)
         }
       }
       .pickerStyle(.menu)
       .disabled(!store.repositoryAutoSyncSettings.isEnabled)
-      .accessibilityLabel("当前工作区远端自动检查间隔")
+      .accessibilityLabel("当前工作区远端自动检查最短间隔")
       .accessibilityValue("\(store.repositoryAutoSyncSettings.normalizedIntervalMinutes) 分钟")
       .accessibilityIdentifier("token-repository-auto-sync-interval")
 
@@ -43,7 +43,7 @@ struct TokenRepositoryAutomationSection: View {
         )
         .accessibilityIdentifier("token-repository-auto-sync-auto-import")
 
-      Text("这些选项只作用于当前工作区；修改设置不会立即执行 Fetch、远端检查或文章导入。")
+      Text("这些选项只作用于当前工作区；保存、发布、切换分支或回到前台时会按需检查，所选分钟数用于限制最短重检间隔。")
         .font(.caption)
         .foregroundStyle(.secondary)
     }

@@ -268,7 +268,7 @@ public final class DeploymentStore: ObservableObject {
       state.nextRunAt = normalized.nextRunDate(after: now)
       if state.lastRunAt == nil {
         state.message = CoreL10n.format(
-          "部署轮询已开启，将每 %@ 分钟检查待部署记录。",
+          "部署状态自动检查已开启；发布或回到前台时按需执行，最短间隔 %@ 分钟。",
           String(normalized.normalizedIntervalMinutes)
         )
       }

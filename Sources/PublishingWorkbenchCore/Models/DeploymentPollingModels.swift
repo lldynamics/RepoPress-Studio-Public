@@ -146,7 +146,7 @@ public struct DeploymentPollingState: Codable, Hashable, Sendable {
       lines.append(CoreL10n.format("- 上次运行：%@", formatter.string(from: lastRunAt)))
     }
     if let nextRunAt {
-      lines.append(CoreL10n.format("- 下次运行：%@", formatter.string(from: nextRunAt)))
+      lines.append(CoreL10n.format("- 可再次自动检查：%@", formatter.string(from: nextRunAt)))
     }
 
     lines.append("")

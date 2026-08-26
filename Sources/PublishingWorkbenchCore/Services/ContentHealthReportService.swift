@@ -4,15 +4,39 @@ public struct ContentHealthReportService: Sendable {
   private let preflightService: PreflightCheckService
   private let imageWorkbenchService: SiteImageWorkbenchService
   private let aiFixQueueService: AIPublishingFixQueueService
+  private let cache: ContentHealthReportCache
+  private let cacheNamespace: UUID
 
   public init(
     preflightService: PreflightCheckService = PreflightCheckService(),
     imageWorkbenchService: SiteImageWorkbenchService = SiteImageWorkbenchService(),
     aiFixQueueService: AIPublishingFixQueueService = AIPublishingFixQueueService()
   ) {
+    self.init(
+      preflightService: preflightService,
+      imageWorkbenchService: imageWorkbenchService,
+      aiFixQueueService: aiFixQueueService,
+      cache: ContentHealthReportCache()
+    )
+  }
+
+  init(
+    preflightService: PreflightCheckService = PreflightCheckService(),
+    imageWorkbenchService: SiteImageWorkbenchService = SiteImageWorkbenchService(),
+    aiFixQueueService: AIPublishingFixQueueService = AIPublishingFixQueueService(),
+    cache: ContentHealthReportCache
+  ) {
     self.preflightService = preflightService
     self.imageWorkbenchService = imageWorkbenchService
     self.aiFixQueueService = aiFixQueueService
+    self.cache = cache
+    self.cacheNamespace = UUID()
+  }
+
+  /// Internal counters keep focused cache tests from relying on result equality
+  /// alone. The report result itself never depends on the cache being available.
+  var cacheStatistics: ContentHealthReportCacheStatistics {
+    cache.statistics
   }
 
   public func report(
@@ -39,6 +63,7 @@ public struct ContentHealthReportService: Sendable {
   ) rethrows -> ContentHealthReport {
     try cancellationCheck()
     let duplicateIndex = PreflightDuplicateIndex(drafts: drafts, profile: profile)
+    cache.prune(keepingDraftIDs: Set(drafts.map(\.id)))
     var draftSummaries: [DraftPreflightSummary] = []
     draftSummaries.reserveCapacity(drafts.count)
     for draft in drafts {
@@ -47,6 +72,19 @@ public struct ContentHealthReportService: Sendable {
         title: draft.title,
         markdownPath: profile.markdownPath(for: draft)
       )
+      let cacheKey = ContentHealthReportCacheKey.make(
+        draft: draft,
+        profile: profile,
+        presentation: presentation,
+        hasDuplicateTitle: duplicateIndex.hasDuplicateTitle(for: draft.id) ?? false,
+        hasDuplicatePath: duplicateIndex.hasDuplicatePath(for: draft.id) ?? false,
+        serviceNamespace: cacheNamespace
+      )
+      if let cachedSummary = cache.lookup(cacheKey) {
+        draftSummaries.append(cachedSummary)
+        continue
+      }
+
       let preflightIssues = preflightService.run(
         draft: draft,
         allDrafts: drafts,
@@ -58,13 +96,16 @@ public struct ContentHealthReportService: Sendable {
       let imageIssues = imageReport.issues
         .filter { !$0.isCovered(by: preflightIssues) }
         .compactMap(\.preflightIssue)
-
-      draftSummaries.append(DraftPreflightSummary(
+      let summary = DraftPreflightSummary(
         draftID: draft.id,
         draftTitle: presentation.title,
         markdownPath: presentation.markdownPath,
         issues: merge(preflightIssues: preflightIssues, imageIssues: imageIssues)
-      ))
+      )
+      draftSummaries.append(summary)
+      if let cacheKey {
+        cache.insert(summary, for: cacheKey)
+      }
     }
     try cancellationCheck()
     let publicRiskSummary = ContentHealthProjection.publicRiskSummary(from: draftSummaries)
