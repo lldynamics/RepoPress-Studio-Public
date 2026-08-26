@@ -6,6 +6,7 @@ struct InteractiveBreadcrumbView: View {
   let fileURL: URL?
   let pathSegments: [String]
 
+  @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
   @State private var hoveredSegmentIndex: Int? = nil
 
   init(markdownPath: String, fileURL: URL?) {
@@ -21,32 +22,39 @@ struct InteractiveBreadcrumbView: View {
         let isLast = index == pathSegments.count - 1
 
         HStack(spacing: 3) {
-          Text(segment)
-            .font(.caption.monospaced())
-            .foregroundStyle(isLast ? .primary : .secondary)
-            .padding(.horizontal, 4)
-            .padding(.vertical, 1)
-            .background(
-              RoundedRectangle(cornerRadius: 4)
-                .fill(
-                  hoveredSegmentIndex == index
-                    ? Color.primary.opacity(0.08)
-                    : Color.clear
-                )
-            )
-            .contentShape(RoundedRectangle(cornerRadius: 4))
-            .onHover { isHovered in
+          Button {
+            if isLast {
+              revealInFinder()
+            } else {
+              copyToClipboard(pathSegments.prefix(index + 1).joined(separator: "/"))
+            }
+          } label: {
+            Text(segment)
+              .font(.caption.monospaced())
+              .foregroundStyle(isLast ? .primary : .secondary)
+              .padding(.horizontal, 4)
+              .padding(.vertical, 1)
+              .background(
+                RoundedRectangle(cornerRadius: 4)
+                  .fill(
+                    hoveredSegmentIndex == index
+                      ? Color.primary.opacity(0.08)
+                      : Color.clear
+                  )
+              )
+              .contentShape(RoundedRectangle(cornerRadius: 4))
+          }
+          .buttonStyle(.plain)
+          .accessibilityHint(isLast ? "在 Finder 中显示" : "复制相对路径")
+          .onHover { isHovered in
+            if accessibilityReduceMotion {
+              hoveredSegmentIndex = isHovered ? index : nil
+            } else {
               withAnimation(.easeInOut(duration: 0.12)) {
                 hoveredSegmentIndex = isHovered ? index : nil
               }
             }
-            .onTapGesture {
-              if isLast {
-                revealInFinder()
-              } else {
-                copyToClipboard(pathSegments.prefix(index + 1).joined(separator: "/"))
-              }
-            }
+          }
 
           if !isLast {
             Image(systemName: "chevron.right")

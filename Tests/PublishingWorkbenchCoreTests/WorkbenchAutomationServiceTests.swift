@@ -374,6 +374,94 @@ final class WorkbenchAutomationServiceTests: XCTestCase {
     XCTAssertEqual(store.selectedDraftID, draft.id)
   }
 
+  func testExecutorRunsPreflightForExplicitDraftWithoutChangingSelection() async throws {
+    let store = try TestWorkbenchFactory.makeStore(prefix: "AutomationExplicitPreflight")
+    let draftA = try XCTUnwrap(store.selectedDraft)
+
+    store.createDraft()
+    var draftB = try XCTUnwrap(store.selectedDraft)
+    draftB.title = "文章 B"
+    draftB.slug = "article-b"
+    draftB.bodyMarkdown = String(repeating: "这是文章 B 的正文。", count: 12)
+    store.updateDraft(draftB)
+
+    let expectedAIssueCount = store.preflightIssues(for: draftA).count
+    let expectedBIssueCount = store.preflightIssues(for: draftB).count
+    XCTAssertNotEqual(expectedAIssueCount, expectedBIssueCount)
+
+    XCTAssertTrue(store.focusDraft(draftA.id))
+    XCTAssertEqual(store.selectedDraftID, draftA.id)
+
+    let step = WorkbenchAutomationStep(
+      command: .runPreflight,
+      arguments: WorkbenchAutomationArguments(draftID: draftB.id)
+    )
+    let result = await WorkbenchAutomationExecutor.execute(
+      plan: WorkbenchAutomationPlan(goal: "检查文章 B", steps: [step]),
+      in: store
+    )
+
+    let record = try XCTUnwrap(result.record.steps.first)
+    XCTAssertEqual(record.status, .succeeded)
+    XCTAssertEqual(
+      record.message,
+      CoreL10n.format("发布检查完成：%lld 个问题。", expectedBIssueCount)
+    )
+    XCTAssertEqual(store.selectedDraftID, draftA.id)
+  }
+
+  func testExecutorRefreshesExplicitDraftWithoutChangingSelectionOrProjection() async throws {
+    let store = try TestWorkbenchFactory.makeStore(prefix: "AutomationExplicitPreview")
+    let profile = store.activeProfile
+    let draftA = ArticleDraft(
+      siteProfileID: profile.id,
+      title: "文章 A",
+      slug: "automation-preview-a",
+      draft: false,
+      bodyMarkdown: "文章 A 保持选中，作为自动化预览的当前投影。"
+    )
+    let draftB = ArticleDraft(
+      siteProfileID: profile.id,
+      title: "文章 B",
+      slug: "automation-preview-b",
+      draft: false,
+      bodyMarkdown: "文章 B 由自动化命令显式刷新，但不能改动文章 A 的窗口状态。"
+    )
+    store.setDrafts([draftA, draftB])
+    store.setSelectedDraftID(draftA.id)
+    store.refreshPublishPreview(for: draftA)
+
+    let activeProfileID = store.activeProfileID
+    let projectedPackage = store.publishPackage
+    let projectedPreview = store.localPublishPreview
+    let projectedReadiness = store.localPublishReadiness
+    let projectedRemote = store.remotePublishPreviewSnapshot
+    let projectedReviewDraft = store.remoteReviewDraft
+
+    let step = WorkbenchAutomationStep(
+      command: .refreshPublishPreview,
+      arguments: WorkbenchAutomationArguments(draftID: draftB.id)
+    )
+    let result = await WorkbenchAutomationExecutor.execute(
+      plan: WorkbenchAutomationPlan(goal: "刷新文章 B 预览", steps: [step]),
+      in: store
+    )
+
+    let record = try XCTUnwrap(result.record.steps.first)
+    XCTAssertEqual(record.status, .succeeded)
+    let cachedB = try XCTUnwrap(store.cachedPublishPreview(for: draftB.id))
+    XCTAssertEqual(cachedB.context.draftID, draftB.id)
+    XCTAssertEqual(cachedB.publishPackage.draftID, draftB.id)
+    XCTAssertEqual(cachedB.localPublishPreview.package.draftID, draftB.id)
+    XCTAssertEqual(store.selectedDraftID, draftA.id)
+    XCTAssertEqual(store.activeProfileID, activeProfileID)
+    XCTAssertEqual(store.publishPackage, projectedPackage)
+    XCTAssertEqual(store.localPublishPreview, projectedPreview)
+    XCTAssertEqual(store.localPublishReadiness, projectedReadiness)
+    XCTAssertEqual(store.remotePublishPreviewSnapshot, projectedRemote)
+    XCTAssertEqual(store.remoteReviewDraft, projectedReviewDraft)
+  }
+
   func testAgentLoopPureReadOnlyPlanStillExecutesAllSteps() async throws {
     let store = try TestWorkbenchFactory.makeStore(prefix: "AgentReadOnlyPlan")
     let draft = try XCTUnwrap(store.selectedDraft)

@@ -1,4 +1,5 @@
 import Foundation
+import PublishingAICore
 
 extension AIChatCompletionClient {
   func streamUpdates(

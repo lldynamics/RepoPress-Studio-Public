@@ -3,10 +3,16 @@ import XCTest
 
 final class SiteStarterServiceTests: XCTestCase {
   func testBuiltInTemplatesCoverSupportedSiteKindsAndPreviewMetadata() {
-    XCTAssertEqual(SiteStarterTemplate.builtIn.count, 1)
-    XCTAssertEqual(SiteStarterTemplate.builtIn.first?.id, .zolaPersonalBlog)
-    XCTAssertEqual(SiteStarterTemplate.builtIn.first?.siteKind, .zola)
+    XCTAssertEqual(
+      SiteStarterTemplate.builtIn.map(\.id),
+      [.zolaPersonalBlog, .astroPersonalBlog, .hugoPersonalBlog, .vitePressDocumentation]
+    )
+    XCTAssertEqual(
+      Set(SiteStarterTemplate.builtIn.map(\.siteKind)),
+      Set([.zola, .astro, .hugo, .vitePress])
+    )
     XCTAssertEqual(Set(SiteStarterTemplate.builtIn.map(\.id)).count, SiteStarterTemplate.builtIn.count)
+    XCTAssertFalse(SiteStarterTemplate.builtIn.contains { [.hexo, .jekyll].contains($0.siteKind) })
 
     for template in SiteStarterTemplate.builtIn {
       XCTAssertFalse(template.preview.headline.isEmpty)
@@ -14,8 +20,8 @@ final class SiteStarterServiceTests: XCTestCase {
     }
   }
 
-  func testLegacyTemplateIDsDecodeToTheMaintainedZolaStarter() throws {
-    for legacyID in ["zolaPortfolio", "astroPersonalBlog", "hugoPersonalBlog", "hexoPersonalBlog", "jekyllPersonalBlog"] {
+  func testLegacyTemplateIDsDecodeToMaintainedModernStarters() throws {
+    for legacyID in ["zolaPortfolio", "hexoPersonalBlog", "jekyllPersonalBlog"] {
       let decoded = try JSONDecoder().decode(
         SiteStarterTemplateID.self,
         from: Data("\"\(legacyID)\"".utf8)
@@ -23,8 +29,19 @@ final class SiteStarterServiceTests: XCTestCase {
       XCTAssertEqual(decoded, .zolaPersonalBlog, legacyID)
     }
 
-    let encoded = try JSONEncoder().encode(SiteStarterTemplateID.zolaPersonalBlog)
-    XCTAssertEqual(String(data: encoded, encoding: .utf8), "\"zolaPersonalBlog\"")
+    let astro = try JSONDecoder().decode(
+      SiteStarterTemplateID.self,
+      from: Data("\"astroPersonalBlog\"".utf8)
+    )
+    let hugo = try JSONDecoder().decode(
+      SiteStarterTemplateID.self,
+      from: Data("\"hugoPersonalBlog\"".utf8)
+    )
+    XCTAssertEqual(astro, .astroPersonalBlog)
+    XCTAssertEqual(hugo, .hugoPersonalBlog)
+
+    let encoded = try JSONEncoder().encode(SiteStarterTemplateID.vitePressDocumentation)
+    XCTAssertEqual(String(data: encoded, encoding: .utf8), "\"vitePressDocumentation\"")
   }
 
   func testCreatesZolaStarterWithGitHubPagesWorkflowAndRemote() throws {
@@ -78,6 +95,88 @@ final class SiteStarterServiceTests: XCTestCase {
     let article = try read("content/posts/2026/welcome.md", rootURL: rootURL)
     XCTAssertTrue(article.contains("欢迎来到 工程笔记"))
     XCTAssertTrue(article.contains("由 Site Starter 生成的第一篇内容。"))
+  }
+
+  func testCreatesAstroStarterWithNetlifyConfiguration() throws {
+    let rootURL = try temporaryDirectoryURL()
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+
+    let result = try SiteStarterService().createSite(
+      request: SiteStarterRequest(
+        templateID: .astroPersonalBlog,
+        rootPath: rootURL.path,
+        siteName: "Astro Notes",
+        baseURL: "https://example.net",
+        deploymentTarget: .netlify,
+        initializeGit: false,
+        configureOriginRemote: false,
+        now: fixedDate
+      )
+    )
+
+    XCTAssertEqual(result.profile.siteKind, .astro)
+    XCTAssertEqual(result.initialDraft.repositoryPath, "src/content/blog/welcome.mdx")
+    XCTAssertTrue(result.createdFilePaths.contains("package.json"))
+    XCTAssertTrue(result.createdFilePaths.contains("astro.config.mjs"))
+    XCTAssertTrue(result.createdFilePaths.contains("netlify.toml"))
+    XCTAssertTrue(try read("netlify.toml", rootURL: rootURL).contains("publish = \"dist\""))
+    XCTAssertFalse(result.createdFilePaths.contains("Gemfile"))
+  }
+
+  func testCreatesHugoStarterWithVercelConfiguration() throws {
+    let rootURL = try temporaryDirectoryURL()
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+
+    let result = try SiteStarterService().createSite(
+      request: SiteStarterRequest(
+        templateID: .hugoPersonalBlog,
+        rootPath: rootURL.path,
+        siteName: "Hugo Notes",
+        deploymentTarget: .vercel,
+        initializeGit: false,
+        configureOriginRemote: false,
+        now: fixedDate
+      )
+    )
+
+    XCTAssertEqual(result.profile.siteKind, .hugo)
+    XCTAssertEqual(result.initialDraft.repositoryPath, "content/posts/welcome.md")
+    XCTAssertTrue(result.createdFilePaths.contains("hugo.toml"))
+    XCTAssertTrue(result.createdFilePaths.contains("vercel.json"))
+    XCTAssertTrue(try read("vercel.json", rootURL: rootURL).contains("\"buildCommand\": \"hugo --minify\""))
+  }
+
+  func testCreatesVitePressStarterWithGitHubPagesWorkflow() throws {
+    let rootURL = try temporaryDirectoryURL()
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+
+    let result = try SiteStarterService().createSite(
+      request: SiteStarterRequest(
+        templateID: .vitePressDocumentation,
+        rootPath: rootURL.path,
+        siteName: "Engineering Docs",
+        baseURL: "https://lldynamics.github.io/engineering-docs",
+        branch: "main",
+        deploymentTarget: .githubPages,
+        initializeGit: false,
+        configureOriginRemote: false,
+        now: fixedDate
+      )
+    )
+
+    XCTAssertEqual(result.profile.siteKind, .vitePress)
+    XCTAssertEqual(result.initialDraft.repositoryPath, "docs/posts/welcome.md")
+    XCTAssertTrue(result.createdFilePaths.contains("docs/.vitepress/config.mts"))
+    XCTAssertTrue(result.createdFilePaths.contains("docs/index.md"))
+    XCTAssertTrue(result.createdFilePaths.contains(".github/workflows/pages.yml"))
+
+    let config = try read("docs/.vitepress/config.mts", rootURL: rootURL)
+    XCTAssertTrue(config.contains("base: \"/engineering-docs/\""))
+    XCTAssertTrue(config.contains("search: { provider: 'local' }"))
+
+    let workflow = try read(".github/workflows/pages.yml", rootURL: rootURL)
+    XCTAssertTrue(workflow.contains("npm run build"))
+    XCTAssertTrue(workflow.contains("path: docs/.vitepress/dist"))
   }
 
   func testConfiguresGitHubOriginAfterStarterGeneration() async throws {

@@ -128,8 +128,7 @@ public struct LocalPublishPreviewService: Sendable {
   /// performing repository traversal or file reads on the caller's executor.
   ///
   /// The synchronous implementation is invoked entirely inside the detached
-  /// task so security-scoped repository access starts, is used, and stops on
-  /// the same detached operation.
+  /// task so repository file reads stay off the caller's executor.
   public func previewAsync(package: PublishPackage, profile: SiteProfile) async
     -> LocalPublishPreview
   {
@@ -166,12 +165,6 @@ public struct LocalPublishPreviewService: Sendable {
     guard let rootURL = profile.localRepositoryRootURL else {
       throw LocalPublishPreviewError.missingRepositoryRoot
     }
-    let didStartAccessing = rootURL.startAccessingSecurityScopedResource()
-    defer {
-      if didStartAccessing {
-        rootURL.stopAccessingSecurityScopedResource()
-      }
-    }
     return try await Task.detached(priority: .userInitiated) {
       try write(package: package, rootURL: rootURL)
     }.value
@@ -182,12 +175,6 @@ public struct LocalPublishPreviewService: Sendable {
   {
     guard let rootURL = profile.localRepositoryRootURL else {
       throw LocalPublishPreviewError.missingRepositoryRoot
-    }
-    let didStartAccessing = rootURL.startAccessingSecurityScopedResource()
-    defer {
-      if didStartAccessing {
-        rootURL.stopAccessingSecurityScopedResource()
-      }
     }
     return try await Task.detached(priority: .userInitiated) {
       try write(preview: preview, rootURL: rootURL)

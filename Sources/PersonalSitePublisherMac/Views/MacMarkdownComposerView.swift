@@ -8,9 +8,15 @@ struct MacMarkdownComposerView: View {
   let aiActions: WorkbenchAIFeatureFacade
   @Environment(\.publishDrawerCommandAction) var publishDrawerCommandAction
   @Environment(\.aiChatWorkspaceCommandAction) var aiChatWorkspaceCommandAction
+  @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
+  @Environment(\.accessibilityVoiceOverEnabled) private var accessibilityVoiceOverEnabled
   @EnvironmentObject var sceneCommandRouter: WorkspaceSceneCommandRouter
   @StateObject var editorState: WorkbenchMarkdownEditorFeatureFacade
   @StateObject var editorSessionState: MarkdownComposerEditorSessionState
+  /// Stored as reference state rather than an observed object so delayed
+  /// whole-document statistics invalidate only the formatting toolbar that
+  /// observes this model, not the complete composer hierarchy.
+  @State var editorStatisticsState = MarkdownComposerStatisticsState()
   @StateObject var zenModeController = ZenModeController()
   @State var attachmentState = MarkdownComposerAttachmentState()
   @State var selectionActionState = MarkdownComposerSelectionActionState()
@@ -20,9 +26,9 @@ struct MacMarkdownComposerView: View {
   @State var markdownSSGDerivedData = MarkdownComposerSSGDerivedData.empty
   @State var editorSessionSaveTask: Task<Void, Never>?
   @State var editorSessionSaveGeneration: UInt64 = 0
+  @StateObject var findMatchRefreshCoordinator = MarkdownFindMatchRefreshCoordinator()
   @State var markdownAnalysisTaskIsAutomatic = false
   @State var sceneCommandOwnerID = UUID()
-  @AppStorage("markdownEditorSynchronizedScrolling") var isSynchronizedScrollingEnabled = true
   @AppStorage("workspace.writingToolDensity") var writingToolDensityRawValue =
     MarkdownWritingToolDensity.basic.rawValue
   @AppStorage(MarkdownEditorComfortPreferences.fontSizeKey)
@@ -43,9 +49,6 @@ struct MacMarkdownComposerView: View {
     .defaultWarmPaperBackgroundEnabled
   @AppStorage(MarkdownEditorComfortPreferences.automaticPairingEnabledKey)
   var isAutomaticPairingEnabled = MarkdownEditorComfortConfiguration.defaultAutomaticPairingEnabled
-  @AppStorage(MarkdownEditorComfortPreferences.typewriterSoundPresetKey)
-  var typewriterSoundPresetRawValue = MarkdownEditorComfortConfiguration
-    .defaultTypewriterSoundPreset.rawValue
   @AppStorage(MarkdownEditorComfortPreferences.paragraphSpotlightEnabledKey)
   var isParagraphSpotlightEnabled = MarkdownEditorComfortConfiguration
     .defaultParagraphSpotlightEnabled
@@ -58,10 +61,6 @@ struct MacMarkdownComposerView: View {
   @AppStorage(AIWritingPreferences.automaticInlineCompletionEnabledKey)
   var isAutomaticInlineAICompletionEnabled =
     AIWritingPreferences.defaultAutomaticInlineCompletionEnabled
-  @AppStorage(MarkdownEditorDisplayModePreferences.siteArticleKey)
-  var siteArticleDisplayModeRawValue = EditorDisplayMode.edit.rawValue
-  @AppStorage(MarkdownEditorDisplayModePreferences.generalDraftKey)
-  var generalDraftDisplayModeRawValue = EditorDisplayMode.edit.rawValue
   let findReplaceService = MarkdownFindReplaceService()
   let outlineService = MarkdownOutlineService()
   let markdownAnalysisService = MarkdownEditorAnalysisService()
@@ -101,8 +100,8 @@ struct MacMarkdownComposerView: View {
   }
 
   var markdownEditorToolbarActions: MarkdownEditorToolbarActions {
-    MarkdownEditorToolbarActions(
-      onSetEditorDisplayMode: setPreferredEditorDisplayMode,
+    let aiAvailability = markdownComposerAIAvailabilitySnapshot
+    return MarkdownEditorToolbarActions(
       onSetWritingToolDensity: { writingToolDensityRawValue = $0.rawValue },
       onShowFindReplace: showFindReplace,
       onShowOutline: showOutline,
@@ -116,11 +115,12 @@ struct MacMarkdownComposerView: View {
         isAITemplateLibraryPresented = true
       },
       onExportDocument: performMarkdownDocumentExport,
+      // Menu state is render-local; action handlers below still read live state.
       selectionAIActionAvailability: { kind in
-        selectionAIActionAvailability(kind)
+        aiAvailability.selectionAvailability(for: kind)
       },
       articleAIActionAvailability: { kind in
-        articleAIActionAvailability(kind)
+        aiAvailability.articleAvailability(for: kind)
       },
       onPerformSelectionAIAction: performSelectionAIAction,
       onPerformArticleAIAction: performArticleAIAction,
@@ -130,30 +130,6 @@ struct MacMarkdownComposerView: View {
       onFormatChineseTypography: formatChineseTypography,
       onCopyForWeChatAndZhihu: copyForWeChatAndZhihu
     )
-  }
-
-  var preferredEditorDisplayMode: EditorDisplayMode {
-    MarkdownEditorDisplayModePreferences.mode(
-      for: MarkdownEditorDisplayModePreferenceScope(
-        isGeneralDraft: draft.isGeneralDraft
-      ),
-      siteArticleRawValue: siteArticleDisplayModeRawValue,
-      generalDraftRawValue: generalDraftDisplayModeRawValue
-    )
-  }
-
-  func setPreferredEditorDisplayMode(_ mode: EditorDisplayMode) {
-    if draft.isGeneralDraft {
-      generalDraftDisplayModeRawValue = mode.rawValue
-    } else {
-      siteArticleDisplayModeRawValue = mode.rawValue
-    }
-    store.setEditorDisplayMode(mode)
-  }
-
-  func restorePreferredEditorDisplayMode() {
-    guard store.editorDisplayMode != preferredEditorDisplayMode else { return }
-    store.setEditorDisplayMode(preferredEditorDisplayMode)
   }
 
   var canonicalFrontMatter: String {
@@ -212,15 +188,6 @@ struct MacMarkdownComposerView: View {
       profile: store.profile(for: draft),
       bodyMarkdown: buffer.bodyMarkdown
     )
-    let findMatchSnapshot = makeFindMatchSnapshot(
-      text: buffer.bodyMarkdown,
-      query: editorSession.findQuery,
-      options: MarkdownFindOptions(
-        caseSensitive: editorSession.isFindCaseSensitive,
-        wholeWord: editorSession.isFindWholeWord,
-        usesRegularExpression: editorSession.isFindRegularExpression
-      )
-    )
     let state = MarkdownComposerEditorSessionState(
       editorBody: buffer.bodyMarkdown,
       editorDocument: editorDocument,
@@ -231,17 +198,12 @@ struct MacMarkdownComposerView: View {
       isFindCaseSensitive: editorSession.isFindCaseSensitive,
       isFindWholeWord: editorSession.isFindWholeWord,
       isFindRegularExpression: editorSession.isFindRegularExpression,
-      findMatchSnapshot: findMatchSnapshot,
+      findMatchSnapshot: .empty,
       editorScrollRestorationUpdate: MarkdownScrollSyncUpdate(
         source: .editor,
         progress: editorSession.editorScrollProgress
       ),
-      previewScrollRestorationUpdate: MarkdownScrollSyncUpdate(
-        source: .preview,
-        progress: editorSession.previewScrollProgress
-      ),
       editorScrollProgress: editorSession.editorScrollProgress,
-      previewScrollProgress: editorSession.previewScrollProgress,
       editorBodyRevision: buffer.revision
     )
     state.findReplaceMessage =
@@ -256,10 +218,8 @@ struct MacMarkdownComposerView: View {
       MacMarkdownEditorToolbar(
         title: $draft.title,
         store: store,
+        draftID: draft.id,
         markdownPath: editorState.profile(for: draft).markdownPath(for: draft),
-        lastSaveStatus: editorState.lastSaveStatus,
-        hasUnsavedChanges: editorState.hasUnsavedChanges,
-        editorDisplayMode: editorState.editorDisplayMode,
         isSelectionAIActionRunning: isSelectionAIActionRunning,
         canOpenAIChat: aiChatWorkspaceCommandAction?.isAvailable ?? true,
         aiChatUnavailableReason: aiChatWorkspaceCommandAction?.unavailableReason,
@@ -308,12 +268,12 @@ struct MacMarkdownComposerView: View {
       // never fire while SwiftUI is still installing focused values.
       await MainRunLoopUpdateDeferral.waitForNextDefaultModeCycle()
       guard !Task.isCancelled else { return }
-      restorePreferredEditorDisplayMode()
       syncEditorBodyFromStore()
+      refreshFindMatchSnapshot()
       syncActiveEditorSelection()
       refreshMarkdownCursorContextSnapshot()
       applyEditorFocusRequest()
-      scheduleMarkdownAnalysis(immediate: true, isAutomatic: true)
+      scheduleMarkdownAnalysis(isAutomatic: true)
       scheduleInlineGhostText()
     }
     .onChange(of: editorState.editorFocusRequest?.id) { _, _ in
@@ -348,7 +308,7 @@ struct MacMarkdownComposerView: View {
     }
     .onChange(of: isRealtimeAnalysisEnabled) { _, isEnabled in
       if isEnabled {
-        scheduleMarkdownAnalysis(immediate: true, isAutomatic: true)
+        scheduleMarkdownAnalysis(isAutomatic: true)
       } else {
         invalidateMarkdownAnalysis()
       }
@@ -376,13 +336,6 @@ struct MacMarkdownComposerView: View {
     .onChange(of: isFindReplacePresented) { _, _ in
       saveCurrentEditorSession()
     }
-    .onChange(of: isSynchronizedScrollingEnabled) { _, isEnabled in
-      guard isEnabled, let scrollSyncUpdate else { return }
-      self.scrollSyncUpdate = MarkdownScrollSyncUpdate(
-        source: scrollSyncUpdate.source,
-        progress: scrollSyncUpdate.progress
-      )
-    }
     .modifier(
       MarkdownDocumentSynchronizationModifier(
         editorDocument: editorDocument,
@@ -400,6 +353,7 @@ struct MacMarkdownComposerView: View {
       syncEditorBodyFromStore()
     }
     .onChange(of: draft.id) { oldDraftID, _ in
+      cancelFindMatchRefresh()
       editorState.trackDraft(draft.id)
       flushEditorSessionSave(for: oldDraftID)
       cancelAttachmentImport()
@@ -410,17 +364,12 @@ struct MacMarkdownComposerView: View {
       cancelAIPromptClipboardTask()
       editorEditRequest = nil
       markdownTextFocusRequest = nil
-      scrollSyncUpdate = nil
       store.flushDraftBodyEditorBuffer(for: oldDraftID)
       syncEditorBodyFromStore(force: true)
       resetEditorDocumentFromDraft()
       restoreEditorSession(for: draft.id)
-      restorePreferredEditorDisplayMode()
       syncActiveEditorSelection()
-      scheduleMarkdownAnalysis(immediate: true, isAutomatic: true)
-    }
-    .onChange(of: draft.isGeneralDraft) { _, _ in
-      restorePreferredEditorDisplayMode()
+      scheduleMarkdownAnalysis(isAutomatic: true)
     }
   }
 
@@ -453,6 +402,24 @@ struct MacMarkdownComposerView: View {
 
   var body: some View {
     editorWorkspaceLifecycle
+      .onAppear {
+        zenModeController.refreshAccessibilityState(
+          voiceOverEnabled: accessibilityVoiceOverEnabled,
+          reduceMotionEnabled: accessibilityReduceMotion
+        )
+      }
+      .onChange(of: accessibilityReduceMotion) { _, shouldReduceMotion in
+        zenModeController.refreshAccessibilityState(
+          voiceOverEnabled: accessibilityVoiceOverEnabled,
+          reduceMotionEnabled: shouldReduceMotion
+        )
+      }
+      .onChange(of: accessibilityVoiceOverEnabled) { _, isVoiceOverEnabled in
+        zenModeController.refreshAccessibilityState(
+          voiceOverEnabled: isVoiceOverEnabled,
+          reduceMotionEnabled: accessibilityReduceMotion
+        )
+      }
       .task(id: markdownSSGDerivedDataKey) {
         await refreshMarkdownSSGDerivedData(for: markdownSSGDerivedDataKey)
       }
@@ -516,6 +483,7 @@ struct MacMarkdownComposerView: View {
 
   private func handleComposerDisappear() {
     sceneCommandRouter.unregisterMarkdownEditor(owner: sceneCommandOwnerID)
+    cancelFindMatchRefresh()
     editorSessionSaveTask?.cancel()
     editorSessionSaveTask = nil
     markdownAnalysisTask?.cancel()
@@ -529,24 +497,8 @@ struct MacMarkdownComposerView: View {
   }
 
   var editorSurface: some View {
-    Group {
-      switch editorState.editorDisplayMode {
-      case .edit:
-        markdownEditor
-          .padding(14)
-      case .preview:
-        markdownPreview
-          .padding(14)
-      case .split:
-        HSplitView {
-          markdownEditor
-            .frame(minWidth: 320)
-          markdownPreview
-            .frame(minWidth: 320)
-        }
-        .padding(14)
-      }
-    }
+    markdownEditor
+      .padding(14)
     .frame(minWidth: 360, maxWidth: .infinity, maxHeight: .infinity)
   }
 
@@ -556,46 +508,11 @@ struct MacMarkdownComposerView: View {
     return updated
   }
 
-  var markdownPreview: some View {
-    MarkdownPreviewPane(
-      draft: previewDraft,
-      profile: activeProfile,
-      showsSynchronizedScrollingControl: editorState.editorDisplayMode == .split,
-      isSynchronizedScrollingEnabled: $isSynchronizedScrollingEnabled,
-      scrollSyncUpdate: scrollSyncUpdate,
-      scrollRestorationUpdate: previewScrollRestorationUpdate,
-      onScrollProgressChanged: { progress in
-        updateSynchronizedScroll(source: .preview, progress: progress)
-      },
-      onSourceLocationSelected: { location in
-        if editorState.editorDisplayMode == .preview {
-          store.setEditorDisplayMode(.split)
-        }
-        focusMarkdownText(
-          for: UUID(),
-          selectedRange: NSRange(location: location, length: 0),
-          message: "已从预览定位到 Markdown 源码。"
-        )
-      }
-    )
-    .background(Color(nsColor: .textBackgroundColor))
-    .clipShape(RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
-    .overlay(
-      RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
-        .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
-    )
-  }
-
   var markdownEditor: some View {
     VStack(spacing: 0) {
       if zenModeController.isFormattingBarVisible {
         MacMarkdownFormattingToolbar(
-          characterCount: editorStatistics.characterCount,
-          hanCharacterCount: editorStatistics.hanCharacterCount,
-          wordCount: editorStatistics.wordCount,
-          writingUnitCount: editorStatistics.writingUnitCount,
-          lineCount: editorStatistics.lineCount,
-          readingMinutes: editorStatistics.readingMinutes,
+          statisticsState: editorStatisticsState,
           cursorPosition: markdownCursorPosition,
           fenceMatch: activeMarkdownFenceMatch,
           completion: markdownCursorCompletion,
@@ -639,7 +556,7 @@ struct MacMarkdownComposerView: View {
         )
         .opacity(zenModeController.toolbarOpacity)
         .onHover { isHovered in
-          zenModeController.isHovered = isHovered
+          zenModeController.updateHovered(isHovered)
         }
         .environmentObject(zenModeController)
         Divider()
@@ -656,13 +573,14 @@ struct MacMarkdownComposerView: View {
           isFrontMatterSelection: $editorSessionState.isFrontMatterSelection,
           comfortConfiguration: editorComfortConfiguration,
           diagnostics: inlineDiagnostics,
+          attachments: draft.attachments,
           editRequest: editorEditRequest,
           focusRequest: markdownTextFocusRequest,
           ghostText: inlineGhostText,
           ssgSnippets: markdownSSGSnippets,
-          scrollSyncUpdate: isSynchronizedScrollingEnabled ? scrollSyncUpdate : nil,
+          scrollSyncUpdate: nil,
           scrollRestorationUpdate: editorScrollRestorationUpdate,
-          onStatisticsChanged: { editorStatistics = $0 },
+          onStatisticsChanged: { editorStatisticsState.update($0) },
           onFileDropTargetChanged: { isImageDropTargeted = $0 },
           onPasteMessage: { message in
             selectionActionMessage = message
@@ -684,14 +602,11 @@ struct MacMarkdownComposerView: View {
           onSlashCommandKey: { key in
             handleSlashCommandKey(key)
           },
-          onTypingFeedback: {
-            guard let preset = TypewriterSoundPreset(rawValue: typewriterSoundPresetRawValue) else {
-              return
-            }
-            TypewriterAudioService.shared.playKeyClick(preset: preset)
+          onLiveBodyChange: { previousBody, updatedBody in
+            handleLiveEditorBodyChange(from: previousBody, to: updatedBody)
           },
-          onScrollProgressChanged: { progress in
-            updateSynchronizedScroll(source: .editor, progress: progress)
+          onScrollPositionChanged: { position in
+            updateEditorScrollPosition(position)
           },
           onDroppedFiles: { urls in
             insertImageReferences(urls)

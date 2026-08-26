@@ -23,7 +23,7 @@ extension WritingDraftColumn {
       .help(String(localized: "批量移动、复制或转为通用草稿"))
 
       Button(String(localized: "取消选择")) {
-        if let selectedDraftID = store.selectedDraftID {
+        if let selectedDraftID {
           selectedDraftIDs = [selectedDraftID]
         } else {
           selectedDraftIDs = []

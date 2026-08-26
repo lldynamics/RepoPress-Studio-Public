@@ -237,6 +237,37 @@ final class DraftRecoveryJournalTests: XCTestCase {
     XCTAssertEqual(try journal.load().first?.recoveredBodyMarkdown, "新内容")
   }
 
+  func testDebouncedJournalCapturesLatestRecoveryFromBurst() async throws {
+    let persistenceURL = try TestWorkbenchFactory.temporaryPersistenceURL(
+      prefix: "DraftRecoveryBurst"
+    )
+    let directoryURL = persistenceURL.deletingLastPathComponent()
+    defer { try? FileManager.default.removeItem(at: directoryURL) }
+    let persistence = WorkbenchPersistence(fileURL: persistenceURL)
+    let store = WorkbenchStore(persistence: persistence, safeMode: true)
+    let draft = try XCTUnwrap(store.selectedDraft)
+
+    let firstStage = store.stageDraftBody(
+      "连续输入的第一版正文。",
+      for: draft.id,
+      baseRevision: 0
+    )
+    let firstRevision = try XCTUnwrap(firstStage?.buffer.revision)
+    let secondStage = store.stageDraftBody(
+      "连续输入的最后正文。",
+      for: draft.id,
+      baseRevision: firstRevision
+    )
+    XCTAssertTrue(secondStage?.wasAccepted == true)
+
+    await store.waitForPendingDraftRecoveryJournalWrite()
+
+    let journal = DraftRecoveryJournal(fileURL: persistence.draftRecoveryJournalURL)
+    let records = try journal.load()
+    XCTAssertEqual(records.first?.recoveredBodyMarkdown, "连续输入的最后正文。")
+    XCTAssertFalse(records.contains { $0.recoveredBodyMarkdown == "连续输入的第一版正文。" })
+  }
+
   func testEditingAfterDeferringRecoveryMaterializesOldRecoveryBeforeReplacingJournal() async throws {
     let persistenceURL = try TestWorkbenchFactory.temporaryPersistenceURL(
       prefix: "DraftRecoveryDeferredEditing"

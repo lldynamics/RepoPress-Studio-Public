@@ -175,6 +175,8 @@ public enum ContentMigrationError: LocalizedError {
 public struct ContentMigrationLimits: Sendable {
   public var maximumSourceFileBytes: Int
   public var maximumRecordCount: Int
+  public var maximumXMLCharacterCount: Int
+  public var maximumXMLElementDepth: Int
   public var maximumMarkdownFileCount: Int
   public var maximumMarkdownFileBytes: Int
   public var maximumMarkdownFolderBytes: Int
@@ -184,10 +186,14 @@ public struct ContentMigrationLimits: Sendable {
     maximumRecordCount: Int = 10_000,
     maximumMarkdownFileCount: Int = 10_000,
     maximumMarkdownFileBytes: Int = 20 * 1_024 * 1_024,
-    maximumMarkdownFolderBytes: Int = 100 * 1_024 * 1_024
+    maximumMarkdownFolderBytes: Int = 100 * 1_024 * 1_024,
+    maximumXMLCharacterCount: Int = 20 * 1_024 * 1_024,
+    maximumXMLElementDepth: Int = 256
   ) {
     self.maximumSourceFileBytes = max(1, maximumSourceFileBytes)
     self.maximumRecordCount = max(1, maximumRecordCount)
+    self.maximumXMLCharacterCount = max(1, maximumXMLCharacterCount)
+    self.maximumXMLElementDepth = max(1, maximumXMLElementDepth)
     self.maximumMarkdownFileCount = max(1, maximumMarkdownFileCount)
     self.maximumMarkdownFileBytes = max(1, maximumMarkdownFileBytes)
     self.maximumMarkdownFolderBytes = max(1, maximumMarkdownFolderBytes)
@@ -301,7 +307,12 @@ public struct ContentMigrationService: Sendable {
         createdAt: date,
         updatedAt: record.updatedAt ?? date
       )
-      draft.repositoryPath = profile.markdownPath(for: draft)
+      let repositoryPath = profile.markdownPath(for: draft)
+      draft.recordProjectFile(
+        profile: profile,
+        repositoryPath: repositoryPath,
+        renderedContentDigest: draft.renderedRepositoryContentDigest(profile: profile)
+      )
       drafts.append(draft)
 
       if let sourcePath = normalizedSourcePath(record.link), !sourcePath.isEmpty {
@@ -442,18 +453,46 @@ public struct ContentMigrationService: Sendable {
   }
 
   private func xmlRecords(data: Data, sourceKind: ContentMigrationSourceKind) throws -> [ContentMigrationRecord] {
+    do {
+      try UntrustedXMLParserGuard.validate(
+        data: data,
+        limits: UntrustedXMLParserGuard.Limits(
+          maximumCharacterCount: limits.maximumXMLCharacterCount,
+          maximumElementDepth: limits.maximumXMLElementDepth
+        )
+      )
+    } catch let failure as UntrustedXMLParserGuard.Failure {
+      switch failure {
+      case .forbiddenDeclaration:
+        throw ContentMigrationError.invalidExport("XML 包含不安全的 DTD 或实体声明，已拒绝导入")
+      case .characterLimitExceeded:
+        throw ContentMigrationError.sourceLimitExceeded(
+          "XML 展开后的字符数超过 \(limits.maximumXMLCharacterCount)，请拆分后分批导入。"
+        )
+      case .elementDepthExceeded:
+        throw ContentMigrationError.sourceLimitExceeded(
+          "XML 元素嵌套深度超过 \(limits.maximumXMLElementDepth)，请检查导出文件。"
+        )
+      case .cancelled:
+        throw CancellationError()
+      }
+    }
+
     let collector = XMLItemCollector(
       sourceKind: sourceKind,
       maximumRecordCount: limits.maximumRecordCount
     )
     let parser = XMLParser(data: data)
     parser.delegate = collector
+    parser.shouldResolveExternalEntities = false
     let didParse = parser.parse()
     if collector.wasCancelled {
       throw CancellationError()
     }
     if collector.didExceedRecordLimit {
-      throw ContentMigrationError.sourceLimitExceeded("导出记录超过 10,000 条，请拆分后分批导入。")
+      throw ContentMigrationError.sourceLimitExceeded(
+        "导出记录超过 \(limits.maximumRecordCount) 条，请拆分后分批导入。"
+      )
     }
     guard didParse else {
       throw ContentMigrationError.invalidExport(parser.parserError?.localizedDescription ?? "XML 解析失败")

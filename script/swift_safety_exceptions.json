@@ -17,17 +17,17 @@
       "rationale": "Process and pipe lifecycle state is protected by one NSLock; each async operation snapshots its dedicated file handle under that lock before use."
     },
     {
-      "file": "Sources/PublishingWorkbenchCore/Services/GitCommandRunner.swift",
+      "file": "Sources/PublishingGitCore/GitCommandRunner.swift",
       "declaration": "BoundedOutputCollector",
       "rationale": "Collected output is protected by an internal lock."
     },
     {
-      "file": "Sources/PublishingWorkbenchCore/Services/GitCommandRunner.swift",
+      "file": "Sources/PublishingGitCore/GitCommandRunner.swift",
       "declaration": "GitCommandAsyncOperation",
       "rationale": "Process lifecycle state is protected by an internal lock and single completion path."
     },
     {
-      "file": "Sources/PublishingWorkbenchCore/Services/GitCommandRunner.swift",
+      "file": "Sources/PublishingGitCore/GitCommandRunner.swift",
       "declaration": "GitPipeDrainCoordinator",
       "rationale": "File-handle callback admission and the active drain count are protected by one NSCondition before the coordinator crosses callback queues."
     },
@@ -62,24 +62,19 @@
       "rationale": "Mutable database access is delegated to its serialized database boundary."
     },
     {
-      "file": "Sources/PublishingWorkbenchCore/Services/KnowledgeSemanticEmbeddingService.swift",
+      "file": "Sources/PublishingKnowledgeCore/KnowledgeSemanticEmbeddingService.swift",
       "declaration": "KnowledgeSemanticEmbeddingService",
-      "rationale": "Service configuration is immutable and request work is operation-local."
+      "rationale": "Mutable contextual-model caches and preparation state are protected by dedicated locks; request-local vector work does not escape."
     },
     {
-      "file": "Sources/PublishingWorkbenchCore/Services/KnowledgeWebDownloadClient.swift",
+      "file": "Sources/PublishingKnowledgeCore/KnowledgeWebDownloadClient.swift",
       "declaration": "KnowledgePinnedHTTPSOperation",
-      "rationale": "URLSession operation state is synchronized by its lock and single completion path."
+      "rationale": "NWConnection operation state is confined to its serial queue and single completion path."
     },
     {
       "file": "Sources/PersonalSitePublisherMac/Views/RSSArticleHTMLRenderer.swift",
       "declaration": "RSSArticleRenderCache",
       "rationale": "The synchronous HTML LRU is shared by WebView renders; its cache and recency mutations are protected by one NSLock."
-    },
-    {
-      "file": "Sources/PublishingWorkbenchCore/Stores/KnowledgeSemanticVectorStorage.swift",
-      "declaration": "KnowledgeSemanticVectorLRUCache",
-      "rationale": "The decoded-vector cache is an independent synchronous hot-path boundary; values and recency are protected by one NSLock instead of actor suspension."
     },
     {
       "file": "Sources/PublishingWorkbenchCore/Stores/RSSReaderDatabase.swift",
@@ -107,27 +102,32 @@
       "rationale": "Process lifecycle mutations are protected by the service lock."
     },
     {
+      "file": "Sources/PublishingWorkbenchCore/Services/LocalSitePreviewTrustStore.swift",
+      "declaration": "LocalSitePreviewTrustStore",
+      "rationale": "Trust-document reads and writes are serialized by one NSLock, and store configuration is immutable after initialization."
+    },
+    {
       "file": "Sources/PublishingWorkbenchCore/Services/SiteDraftFileStore.swift",
       "declaration": "SiteDraftFileStore",
       "rationale": "Mutable repository-path cache access is serialized by the instance lock; immutable publishing dependencies conform to Sendable."
     },
     {
-      "file": "Sources/PublishingWorkbenchCore/Services/WorkbenchDataRootBookmark.swift",
-      "declaration": "WorkbenchDataRootBookmarkStore",
-      "rationale": "Launch config is immutable; UserDefaults and the injected Sendable bookmark/security-scope callbacks support moving blocking root resolution and probing off the main actor."
+      "file": "Sources/PublishingWorkbenchCore/Services/WorkbenchDataRootPathStore.swift",
+      "declaration": "WorkbenchDataRootPathStore",
+      "rationale": "The immutable UserDefaults handle and probe callback are configured at initialization, and the store is only used for serialized preference reads and writes."
     },
     {
-      "file": "Sources/PublishingWorkbenchCore/Services/SendableFoundationDependencies.swift",
+      "file": "Sources/PublishingCoreSupport/SendableFoundationDependencies.swift",
       "declaration": "SendableFileManager",
       "rationale": "Wrapper exposes only documented thread-safe FileManager operations and has no mutable state."
     },
     {
-      "file": "Sources/PublishingWorkbenchCore/Services/SendableFoundationDependencies.swift",
+      "file": "Sources/PublishingCoreSupport/SendableFoundationDependencies.swift",
       "declaration": "SerializedJSONDecoder",
       "rationale": "JSONDecoder access is serialized by the wrapper lock."
     },
     {
-      "file": "Sources/PublishingWorkbenchCore/Services/SendableFoundationDependencies.swift",
+      "file": "Sources/PublishingCoreSupport/SendableFoundationDependencies.swift",
       "declaration": "SerializedJSONEncoder",
       "rationale": "JSONEncoder access is serialized by the wrapper lock."
     },
@@ -152,7 +152,7 @@
       "rationale": "Test probe state is protected by its lock and is only used to assert cancellation."
     },
     {
-      "file": "Tests/PublishingWorkbenchCoreTests/KnowledgeWebDownloadClientTests.swift",
+      "file": "Tests/PublishingKnowledgeCoreTests/KnowledgeWebDownloadClientTests.swift",
       "declaration": "TransportProbe",
       "rationale": "Test transport observations are protected by the probe lock."
     },
@@ -197,12 +197,12 @@
       "rationale": "Test watcher observations and fulfillment state are protected by the state lock."
     },
     {
-      "file": "Tests/PublishingWorkbenchCoreTests/WorkbenchDataRootTests.swift",
-      "declaration": "SecurityScopeRecorder",
-      "rationale": "Test security-scope callback observations are stored behind one NSLock and exposed through atomic helpers."
+      "file": "Tests/PersonalSitePublisherMacTests/WorkbenchLaunchCoordinatorTests.swift",
+      "declaration": "PathProbeRecorder",
+      "rationale": "Off-main path-probe observations are protected by one NSLock while the injected callback crosses task boundaries."
     },
     {
-      "file": "Sources/PublishingWorkbenchCore/Services/AIChatCompletionPreparedRequest.swift",
+      "file": "Sources/PublishingAICore/AIChatCompletionPreparedRequest.swift",
       "declaration": "AIPreparedRequestConsumption",
       "rationale": "The one-shot consumption flag is protected by its NSLock, so prepared-request use remains atomic when the Sendable value crosses task boundaries."
     },
@@ -275,6 +275,41 @@
       "file": "Tests/PublishingWorkbenchCoreTests/CodexAppServerClientTests.swift",
       "declaration": "SequencedCodexTransportFactory",
       "rationale": "The factory generation counter is protected by its NSLock before transports are created across client tasks."
+    },
+    {
+      "file": "Sources/PersonalSitePublisherMac/Support/WorkbenchThumbnailView.swift",
+      "declaration": "WorkbenchQuickLookRequest",
+      "rationale": "QLThumbnailGenerator.Request is initialized once and exposes no mutable state here; the same instance is intentionally shared only between generation and cancellation, matching Quick Look's request identity contract."
+    },
+    {
+      "file": "Sources/PersonalSitePublisherMac/Views/MarkdownInlineAttachmentOverlayView.swift",
+      "declaration": "Payload",
+      "rationale": "Payload contains only an immutable CGImage value and an Int64; it carries no cache, actor, or mutable reference state when returned across the cache actor boundary."
+    },
+    {
+      "file": "Sources/PublishingMarkdownCore/MarkdownCursorContextService.swift",
+      "declaration": "MarkdownCursorDocumentIndexCache",
+      "rationale": "All revision, source, selection, index, and diagnostic-counter state is read or mutated under the same NSLock; build and incremental callbacks run within that lock and receive value snapshots."
+    },
+    {
+      "file": "Tests/PersonalSitePublisherMacTests/MarkdownFindMatchRefreshCoordinatorTests.swift",
+      "declaration": "MarkdownFindScannerCancellationGate",
+      "rationale": "The gate owns only two immutable DispatchSemaphore handles; cross-task state transitions use the semaphores' thread-safe signal and wait operations."
+    },
+    {
+      "file": "Tests/PublishingWorkbenchCoreTests/LocalRepositoryServiceTests.swift",
+      "declaration": "LocalRepositoryCancellationProbe",
+      "rationale": "cancelAfterCheck is immutable, and checkCount is incremented only while holding the probe's NSLock before each callback returns its cancellation decision."
+    },
+    {
+      "file": "Tests/PublishingMarkdownCoreTests/MarkdownFindReplaceServiceTests.swift",
+      "declaration": "MarkdownFindCancellationCounter",
+      "rationale": "cancelAfter is immutable, and both count mutation and checkCount observation are serialized by the same NSLock while the scanner invokes the cancellation callback."
+    },
+    {
+      "file": "Tests/PublishingWorkbenchCoreTests/RepositoryImportBackgroundTests.swift",
+      "declaration": "ImportThreadProbe",
+      "rationale": "total and main are mutated and observed only while holding the same NSLock; record reads Thread.isMainThread inside that critical section before publishing counters across import callbacks."
     }
   ],
   "forcedOperations": [
@@ -329,6 +364,18 @@
   ],
   "optionalOperations": [
     {
+      "file": "Sources/PublishingGitCore/GitCommandRunner.swift",
+      "category": "validationFallback",
+      "contains": "try? SafeFileReader.utf8String(",
+      "rationale": "Git configuration validation treats an unreadable or oversized file as unsafe; the caller converts nil into an explicit validation error naming the affected configuration file."
+    },
+    {
+      "file": "Sources/PublishingMarkdownCore/MarkdownSyntaxHighlightParser.swift",
+      "category": "parsing",
+      "contains": "try? Self.languageConfiguration(",
+      "rationale": "The inline Tree-sitter grammar is optional nested-language enrichment; failure keeps the required base Markdown layer active instead of disabling syntax highlighting."
+    },
+    {
       "file": "Sources/PublishingWorkbenchCore/Models/ArticleDraft.swift",
       "category": "serializationFallback",
       "contains": "try? Self.fingerprintEncoder.encode(snapshot)",
@@ -377,18 +424,6 @@
       "rationale": "The screenshot harness writes a secondary diagnostic file and does not affect product data."
     },
     {
-      "file": "Sources/PersonalSitePublisherMac/Support/WorkbenchImageTwoTierCache.swift",
-      "category": "cacheBestEffort",
-      "contains": "try? fileManager.createDirectory",
-      "rationale": "Disk thumbnail cache creation is optional; a cache miss remains safe and the source image is still available."
-    },
-    {
-      "file": "Sources/PersonalSitePublisherMac/Support/WorkbenchImageTwoTierCache.swift",
-      "category": "cacheBestEffort",
-      "contains": "try? fileManager.setAttributes",
-      "rationale": "Updating cache recency metadata is optional and cannot invalidate the source image."
-    },
-    {
       "file": "Sources/PersonalSitePublisherMac/Views/RSSReaderPresentationState.swift",
       "category": "networkDiscovery",
       "contains": "try? await RSSFeedDiscoveryService(",
@@ -419,19 +454,19 @@
       "rationale": "Health reporting treats unavailable storage metadata as an unknown size and continues with the remaining references."
     },
     {
-      "file": "Sources/PublishingWorkbenchCore/Services/KnowledgePDFOCRService.swift",
+      "file": "Sources/PublishingKnowledgeCore/KnowledgePDFOCRService.swift",
       "category": "probeFallback",
       "contains": "try? request.supportedRecognitionLanguages()",
       "rationale": "OCR language discovery is advisory; unsupported language metadata causes the caller to use its supported default path."
     },
     {
-      "file": "Sources/PublishingWorkbenchCore/Services/KnowledgeSemanticEmbeddingService.swift",
+      "file": "Sources/PublishingKnowledgeCore/KnowledgeSemanticEmbeddingService.swift",
       "category": "cacheBestEffort",
       "contains": "try? await model.requestAssets()",
       "rationale": "On-device model asset preparation is optional background work and a missing model is reported through the embedding availability path."
     },
     {
-      "file": "Sources/PublishingWorkbenchCore/Services/KnowledgeSemanticEmbeddingService.swift",
+      "file": "Sources/PublishingKnowledgeCore/KnowledgeSemanticEmbeddingService.swift",
       "category": "cacheBestEffort",
       "contains": "try? model.embeddingResult(for:",
       "rationale": "A single unavailable local embedding is treated as a cache/model miss; database state is not mutated by this probe."
@@ -449,19 +484,19 @@
       "rationale": "External-modification detection is conservative: an unreadable state is treated as changed and blocks automatic cleanup."
     },
     {
-      "file": "Sources/PublishingWorkbenchCore/Services/MarkdownFindReplaceService.swift",
+      "file": "Sources/PublishingMarkdownCore/MarkdownFindReplaceService.swift",
       "category": "userActionFallback",
       "contains": "try? find(",
       "rationale": "The non-throwing find command is a UI convenience wrapper; invalid query syntax produces no match rather than mutating content."
     },
     {
-      "file": "Sources/PublishingWorkbenchCore/Services/MarkdownFindReplaceService.swift",
+      "file": "Sources/PublishingMarkdownCore/MarkdownFindReplaceService.swift",
       "category": "userActionFallback",
       "contains": "try? replaceCurrentOrNext(",
       "rationale": "The non-throwing replace wrapper returns an unchanged editor mutation when the query is invalid; it does not persist a partial edit."
     },
     {
-      "file": "Sources/PublishingWorkbenchCore/Services/MarkdownFindReplaceService.swift",
+      "file": "Sources/PublishingMarkdownCore/MarkdownFindReplaceService.swift",
       "category": "userActionFallback",
       "contains": "try? replaceAll(",
       "rationale": "The non-throwing replace-all wrapper returns an unchanged editor mutation when validation fails."
@@ -515,12 +550,6 @@
       "rationale": "Comparing a cached permission check is a conservative non-mutating probe; an invalid current profile cannot be treated as a verified match."
     },
     {
-      "file": "Sources/PublishingWorkbenchCore/Stores/WorkbenchAIStore.swift",
-      "category": "legacyCleanup",
-      "contains": "try? keychainTokenStore.deleteLegacyAIToken(for: store.activeProfile)",
-      "rationale": "The legacy per-site credential is intentionally cleaned up separately; failure must not make the primary shared-key save/delete appear unsuccessful."
-    },
-    {
       "file": "Sources/PublishingWorkbenchCore/Stores/WorkbenchPersistenceArchives.swift",
       "category": "serializationFallback",
       "contains": "try? JSONSerialization.data(",
@@ -533,7 +562,7 @@
       "rationale": "Unreadable recovery journals expose both outcomes to the user: quarantine success names the file, while failure explicitly says the original was kept."
     },
     {
-      "file": "Sources/PublishingWorkbenchCore/Models/AIToolCallingModels.swift",
+      "file": "Sources/PublishingAICore/AIToolCallingModels.swift",
       "category": "parsing",
       "contains": "try? singleValueContainer.decode(String.self)",
       "rationale": "Tool-choice decoding first probes the scalar mode form; a failed string decode intentionally falls through to the keyed function form."

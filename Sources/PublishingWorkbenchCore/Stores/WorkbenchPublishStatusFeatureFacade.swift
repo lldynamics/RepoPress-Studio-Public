@@ -21,7 +21,6 @@ public final class WorkbenchPublishStatusFeatureFacade: ObservableObject {
     observe(store.publishingStore.$releaseRecords)
     observe(store.repositoryStore.$repositoryReport)
     observe(store.deploymentStore.$deploymentStatusSnapshots)
-
     // Body edits do not change the toolbar label. The presentation revision is
     // the explicit draft-derived boundary, so a metadata/title change is
     // visible even when an in-place array mutation does not emit `$drafts`.
@@ -47,8 +46,8 @@ public final class WorkbenchPublishStatusFeatureFacade: ObservableObject {
     store.repositoryReport
   }
 
-  public var selectedDraft: ArticleDraft? {
-    store.selectedDraft
+  public var selectedDraftID: UUID? {
+    store.selectedDraftID
   }
 
   public var preflightIssues: [PreflightIssue] {

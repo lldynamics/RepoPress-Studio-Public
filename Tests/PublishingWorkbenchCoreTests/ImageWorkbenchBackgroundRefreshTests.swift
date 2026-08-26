@@ -107,6 +107,104 @@ final class ImageWorkbenchBackgroundRefreshTests: XCTestCase {
   }
 
   @MainActor
+  func testBackgroundReportsAreIsolatedPerDraftAndProjectOnlySelectedDraft() async throws {
+    let baseService = SiteImageWorkbenchService()
+    let tracker = AsyncReportInvocationTracker()
+    let service = SiteImageWorkbenchService(
+      asyncReportOperation: { draft, profile in
+        await tracker.recordStart(title: draft.title)
+        if draft.title == "A" {
+          try await Task.sleep(for: .milliseconds(200))
+        } else {
+          try await Task.sleep(for: .milliseconds(10))
+        }
+        var report = baseService.report(draft: draft, profile: profile)
+        report.issues = [
+          ImageWorkbenchIssue(
+            severity: .warning,
+            title: draft.title,
+            message: "Result for \(draft.title)"
+          )
+        ]
+        return report
+      }
+    )
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: temporaryPersistenceURL()),
+      imageWorkbenchService: service
+    )
+    let profile = store.activeProfile
+    var draftA = try XCTUnwrap(store.drafts.first)
+    draftA.title = "A"
+    let draftB = ArticleDraft(
+      siteProfileID: profile.id,
+      title: "B",
+      slug: "b",
+      bodyMarkdown: "No image attachments"
+    )
+    store.setDrafts([draftA, draftB])
+    store.setSelectedDraftID(draftA.id)
+    draftA = try XCTUnwrap(store.drafts.first(where: { $0.id == draftA.id }))
+
+    let refreshA = Task { @MainActor in
+      await store.refreshImageWorkbenchReportInBackground(for: draftA, force: true)
+    }
+    let didStartA = await tracker.waitUntilStarted(title: "A")
+    XCTAssertTrue(didStartA)
+
+    let refreshB = Task { @MainActor in
+      await store.refreshImageWorkbenchReportInBackground(for: draftB, force: true)
+    }
+    let didStartB = await tracker.waitUntilStarted(title: "B")
+    XCTAssertTrue(didStartB)
+
+    await refreshB.value
+    XCTAssertNotNil(store.cachedImageWorkbenchReport(for: draftB))
+    XCTAssertNil(
+      store.imageWorkbenchReport,
+      "A non-selected report must not replace the selected A projection while A is still loading."
+    )
+    XCTAssertTrue(store.isImageWorkbenchReportLoading(for: draftA))
+    XCTAssertFalse(store.isImageWorkbenchReportLoading(for: draftB))
+
+    await refreshA.value
+    XCTAssertNotNil(store.cachedImageWorkbenchReport(for: draftA))
+    XCTAssertNotNil(store.cachedImageWorkbenchReport(for: draftB))
+    XCTAssertEqual(store.imageWorkbenchReport?.draftID, draftA.id)
+    XCTAssertEqual(store.imageWorkbenchReport?.issues.first?.title, "A")
+    XCTAssertFalse(store.isImageWorkbenchReportLoading(for: draftA))
+    XCTAssertFalse(store.isImageWorkbenchReportLoading(for: draftB))
+  }
+
+  @MainActor
+  func testSelectingDraftImmediatelyRestoresItsCachedReportProjection() throws {
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: temporaryPersistenceURL())
+    )
+    let profile = store.activeProfile
+    var draftA = try XCTUnwrap(store.drafts.first)
+    draftA.title = "A"
+    let draftB = ArticleDraft(
+      siteProfileID: profile.id,
+      title: "B",
+      slug: "b",
+      bodyMarkdown: "No image attachments"
+    )
+    store.setDrafts([draftA, draftB])
+
+    store.selectDraft(draftA.id)
+    store.refreshImageWorkbenchReport()
+    XCTAssertEqual(store.imageWorkbenchReport?.draftID, draftA.id)
+
+    store.selectDraft(draftB.id)
+    store.refreshImageWorkbenchReport()
+    XCTAssertEqual(store.imageWorkbenchReport?.draftID, draftB.id)
+
+    store.selectDraft(draftA.id)
+    XCTAssertEqual(store.imageWorkbenchReport?.draftID, draftA.id)
+  }
+
+  @MainActor
   func testScheduledCacheRefreshKeepsRootStoreAliveUntilAsyncChildrenFinish() async throws {
     let gate = ImageRefreshLifetimeGate(expectedStarts: 2)
     let baseService = SiteImageWorkbenchService()
@@ -335,6 +433,88 @@ final class ImageWorkbenchBackgroundRefreshTests: XCTestCase {
     XCTAssertEqual(snapshot.active, 0)
     XCTAssertLessThanOrEqual(snapshot.maximumActive, 2)
     XCTAssertNotNil(store.cachedImageWorkbenchReport(for: final))
+  }
+
+  @MainActor
+  func testReconcileRemovesDeletedDraftReportStateAndKeepsSelectedProjection() async throws {
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: temporaryPersistenceURL())
+    )
+    let profile = store.activeProfile
+    var draftA = try XCTUnwrap(store.drafts.first)
+    draftA.title = "A"
+    let draftB = ArticleDraft(
+      siteProfileID: profile.id,
+      title: "B",
+      slug: "b",
+      bodyMarkdown: "No image attachments"
+    )
+    store.setDrafts([draftA, draftB])
+
+    store.selectDraft(draftA.id)
+    store.refreshImageWorkbenchReport()
+    store.selectDraft(draftB.id)
+    store.refreshImageWorkbenchReport()
+    store.selectDraft(draftA.id)
+
+    XCTAssertNotNil(store.cachedImageWorkbenchReport(for: draftA))
+    XCTAssertNotNil(store.cachedImageWorkbenchReport(for: draftB))
+    XCTAssertEqual(store.imageWorkbenchReport?.draftID, draftA.id)
+
+    store.setDrafts([draftA])
+    try await Task.sleep(for: .milliseconds(10))
+
+    XCTAssertNotNil(store.cachedImageWorkbenchReport(for: draftA))
+    XCTAssertNil(store.cachedImageWorkbenchReport(for: draftB))
+    XCTAssertEqual(
+      store.imageWorkbenchReport?.draftID,
+      draftA.id,
+      "Removing a non-selected draft must not replace the selected report projection."
+    )
+    XCTAssertFalse(store.isImageWorkbenchReportLoading(for: draftB))
+  }
+
+  @MainActor
+  func testReconcileCancelsDeletedDraftRefreshAndRejectsLateResult() async throws {
+    let tracker = CancellableReportInvocationTracker()
+    let baseService = SiteImageWorkbenchService()
+    let service = SiteImageWorkbenchService(
+      asyncReportOperation: { draft, profile in
+        try await tracker.perform(title: draft.title)
+        return baseService.report(draft: draft, profile: profile)
+      }
+    )
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: temporaryPersistenceURL()),
+      imageWorkbenchService: service
+    )
+    let profile = store.activeProfile
+    let draftA = try XCTUnwrap(store.drafts.first)
+    let draftB = ArticleDraft(
+      siteProfileID: profile.id,
+      title: "B",
+      slug: "b",
+      bodyMarkdown: "No image attachments"
+    )
+    store.setDrafts([draftA, draftB])
+    store.selectDraft(draftA.id)
+
+    let refreshB = Task { @MainActor in
+      await store.refreshImageWorkbenchReportInBackground(for: draftB, force: true)
+    }
+    let didStartB = await tracker.waitUntilStarted(title: "B")
+    XCTAssertTrue(didStartB)
+    XCTAssertTrue(store.isImageWorkbenchReportLoading(for: draftB))
+
+    store.imageStore.reconcileDraftReportState(validDraftIDs: [draftA.id])
+    XCTAssertFalse(store.isImageWorkbenchReportLoading(for: draftB))
+    XCTAssertNil(store.cachedImageWorkbenchReport(for: draftB))
+
+    await refreshB.value
+    let snapshot = await tracker.snapshot
+    XCTAssertEqual(snapshot.cancelled, 1)
+    XCTAssertNil(store.cachedImageWorkbenchReport(for: draftB))
+    XCTAssertFalse(store.isImageWorkbenchReportLoading(for: draftB))
   }
 
   private func temporaryPersistenceURL() -> URL {

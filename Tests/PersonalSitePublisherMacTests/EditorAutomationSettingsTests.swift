@@ -3,14 +3,11 @@ import XCTest
 @testable import PersonalSitePublisherMac
 
 final class EditorAutomationSettingsTests: XCTestCase {
-  func testEditorAutomationDefaultsPreserveLegacyBehavior() {
-    XCTAssertTrue(MarkdownEditorComfortPreferences.defaultAutomaticPreviewRefreshEnabled)
+  func testEditorAutomationDefaultsCoverRealtimeAnalysisOnly() {
     XCTAssertTrue(MarkdownEditorComfortPreferences.defaultRealtimeAnalysisEnabled)
-    XCTAssertTrue(MarkdownEditorComfortConfiguration.defaultAutomaticPreviewRefreshEnabled)
     XCTAssertTrue(MarkdownEditorComfortConfiguration.defaultRealtimeAnalysisEnabled)
 
     let keys = [
-      MarkdownEditorComfortPreferences.automaticPreviewRefreshEnabledKey,
       MarkdownEditorComfortPreferences.realtimeAnalysisEnabledKey,
     ]
     XCTAssertEqual(Set(keys).count, keys.count)
@@ -31,6 +28,21 @@ final class EditorAutomationSettingsTests: XCTestCase {
     )
     XCTAssertTrue(
       MarkdownEditorAutomationPolicy.allows(isAutomatic: false, isEnabled: false)
+    )
+  }
+
+  func testAutomaticWorkUsesQuietIdleWindow() {
+    XCTAssertEqual(
+      MarkdownEditorAutomationPolicy.automaticWorkIdleDelayMilliseconds,
+      1_200
+    )
+    XCTAssertGreaterThanOrEqual(
+      MarkdownEditorAutomationPolicy.automaticWorkIdleDelayMilliseconds,
+      1_000
+    )
+    XCTAssertLessThanOrEqual(
+      MarkdownEditorAutomationPolicy.automaticWorkIdleDelayMilliseconds,
+      1_500
     )
   }
 }

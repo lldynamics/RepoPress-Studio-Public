@@ -85,6 +85,52 @@ final class WorkbenchGeneralAIChatTests: XCTestCase {
     }
   }
 
+  func testExpectedMissingGeneralConversationChangeFailsClosedBeforeTransport() async throws {
+    let transport = RecordingAIChatTransport(data: Data(), statusCode: 200)
+    let persistenceURL = FileManager.default.temporaryDirectory
+      .appendingPathComponent("GeneralConversationExpectation-\(UUID().uuidString).json")
+    defer { try? FileManager.default.removeItem(at: persistenceURL) }
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: persistenceURL),
+      aiPublishingAssistantService: AIPublishingAssistantService(
+        client: AIChatCompletionClient(transport: transport)
+      )
+    )
+    let expectedConversation = AIChatGeneralConversationExpectation(
+      conversation: nil
+    )
+    let restoredConversation = AIConversation(
+      scope: .general,
+      connectionProfileID: store.activeAIConnectionProfile.id,
+      messages: [
+        AIPublishingChatMessage(role: .user, content: "旧对话内容")
+      ]
+    )
+    store.aiStore.aiConversations = [restoredConversation]
+    store.aiStore.activeAIConversationIDsByScope = [
+      AIConversationScope.general.storageKey: restoredConversation.id
+    ]
+
+    let reply = await store.ai.sendGeneralChatMessage(
+      "仍按无对话状态发送",
+      conversationID: nil,
+      connectionProfileID: store.activeAIConnectionProfile.id,
+      expectedConversation: expectedConversation
+    )
+
+    XCTAssertNil(reply)
+    XCTAssertEqual(
+      store.aiChatMessage,
+      "AI 对话上下文已变化，本次未发送，请重试。"
+    )
+    let capturedRequestCount = await transport.capturedRequestCount()
+    XCTAssertEqual(capturedRequestCount, 0)
+    XCTAssertEqual(
+      store.aiStore.generalAIChatConversation(withID: restoredConversation.id)?.messages,
+      restoredConversation.messages
+    )
+  }
+
   func testGeneralKnowledgePolicyOffRoutesToGeneralConversationAndSkipsRetrieval() async throws {
     let persistenceURL = FileManager.default.temporaryDirectory
       .appendingPathComponent("WorkbenchGeneralKnowledgePolicy-\(UUID().uuidString).json")
@@ -272,6 +318,7 @@ final class WorkbenchGeneralAIChatTests: XCTestCase {
     store.aiStore.activeAIConversationIDsByScope = ["general": conversation.id]
     let retryState = AIGeneralChatManualRetryState(
       conversationID: conversation.id,
+      operationID: UUID(),
       requiresDuplicateChargeConfirmation: false
     )
     store.aiStore.aiGeneralChatManualRetryState = retryState
@@ -287,6 +334,28 @@ final class WorkbenchGeneralAIChatTests: XCTestCase {
       [userMessage]
     )
     XCTAssertTrue(store.aiChatMessage?.contains("连接档案") == true)
+  }
+
+  func testGeneralRetryRejectsStaleOperationID() async throws {
+    let store = WorkbenchStore()
+    let conversation = try XCTUnwrap(
+      store.aiStore.startNewGeneralAIChatConversation()
+    )
+    let retryState = AIGeneralChatManualRetryState(
+      conversationID: conversation.id,
+      operationID: UUID(),
+      requiresDuplicateChargeConfirmation: false
+    )
+    store.aiStore.aiGeneralChatManualRetryState = retryState
+
+    let reply = await store.aiStore.retryLastFailedGeneralAIChatReply(
+      conversationID: conversation.id,
+      operationID: UUID()
+    )
+
+    XCTAssertNil(reply)
+    XCTAssertEqual(store.aiStore.aiGeneralChatManualRetryState, retryState)
+    XCTAssertFalse(store.isAIChatRunning)
   }
 
   func testImageBudgetRejectsTwoAttachmentsBeforeTransportWithoutDroppingThem() async throws {
@@ -643,6 +712,223 @@ final class WorkbenchGeneralAIChatTests: XCTestCase {
       })
   }
 
+  func testGeneralExplicitDraftCreationFailsClosedWhenConnectionToolsAreDisabled()
+    async throws
+  {
+    let transport = SequencedGeneralAIChatTransport(responses: [
+      functionResponse(name: "createDraft", arguments: ["value": "不应创建"])
+    ])
+    let baseConfig = AIProviderConfig(
+      preset: .custom,
+      baseURL: "https://api.openai.example/v1",
+      model: "general-tools-disabled",
+      requiresAPIKey: false,
+      advancedSettings: AIProviderAdvancedSettings(allowsApplicationTools: false)
+    )
+    let config = capabilityConfig(baseConfig, outcome: .supported)
+    let (store, consentStore, directory) = try makeGeneralToolingStore(
+      transport: transport,
+      config: config,
+      prefix: "WorkbenchGeneralToolsDisabled"
+    )
+    defer {
+      consentStore.revoke(for: config)
+      try? FileManager.default.removeItem(at: directory)
+    }
+    let conversation = try XCTUnwrap(store.aiStore.startNewGeneralAIChatConversation())
+    let initialDraftCount = store.drafts.count
+
+    let reply = await store.aiStore.sendGeneralAIChatMessage(
+      "可以帮我新建一篇不应创建的文章吗？",
+      conversationID: conversation.id
+    )
+
+    XCTAssertNil(reply)
+    XCTAssertEqual(store.drafts.count, initialDraftCount)
+    XCTAssertTrue(store.aiChatMessage?.contains("关闭应用工具") == true)
+    let bodies = await transport.capturedBodies()
+    XCTAssertEqual(bodies.count, 0)
+  }
+
+  func testGeneralDraftCreationConsultationKeepsOrdinaryTextFallbackWhenToolsAreDisabled()
+    async throws
+  {
+    let transport = SequencedGeneralAIChatTransport(responses: [
+      textResponse("可以；请先在 AI 设置中启用 Agent。")
+    ])
+    let baseConfig = AIProviderConfig(
+      preset: .custom,
+      baseURL: "https://api.openai.example/v1",
+      model: "general-tools-disabled-consultation",
+      requiresAPIKey: false,
+      advancedSettings: AIProviderAdvancedSettings(allowsApplicationTools: false)
+    )
+    let config = capabilityConfig(baseConfig, outcome: .supported)
+    let (store, consentStore, directory) = try makeGeneralToolingStore(
+      transport: transport,
+      config: config,
+      prefix: "WorkbenchGeneralToolsDisabledConsultation"
+    )
+    defer {
+      consentStore.revoke(for: config)
+      try? FileManager.default.removeItem(at: directory)
+    }
+    let conversation = try XCTUnwrap(store.aiStore.startNewGeneralAIChatConversation())
+
+    let reply = await store.aiStore.sendGeneralAIChatMessage(
+      "可以实现我直接在 AI 对话中，说“帮我新建一篇 XXX 的文章”然后直接新建吗？",
+      conversationID: conversation.id
+    )
+
+    XCTAssertEqual(reply?.content, "可以；请先在 AI 设置中启用 Agent。")
+    let bodies = await transport.capturedBodies()
+    XCTAssertEqual(bodies.count, 1)
+    XCTAssertNil(try jsonBody(try XCTUnwrap(bodies.first))["tools"])
+  }
+
+  func testGeneralNewsArticleQuestionIsNotMisclassifiedAsDraftCreation() async throws {
+    let transport = SequencedGeneralAIChatTransport(responses: [
+      textResponse("Here is the summary.")
+    ])
+    let config = AIProviderConfig(
+      preset: .custom,
+      baseURL: "https://api.openai.example/v1",
+      model: "general-news-article",
+      requiresAPIKey: false,
+      advancedSettings: AIProviderAdvancedSettings(allowsApplicationTools: false)
+    )
+    let (store, consentStore, directory) = try makeGeneralToolingStore(
+      transport: transport,
+      config: config,
+      prefix: "WorkbenchGeneralNewsArticle"
+    )
+    defer {
+      consentStore.revoke(for: config)
+      try? FileManager.default.removeItem(at: directory)
+    }
+    let conversation = try XCTUnwrap(store.aiStore.startNewGeneralAIChatConversation())
+
+    let reply = await store.aiStore.sendGeneralAIChatMessage(
+      "Summarize a news article.",
+      conversationID: conversation.id
+    )
+
+    XCTAssertEqual(reply?.content, "Here is the summary.")
+    let bodies = await transport.capturedBodies()
+    XCTAssertEqual(bodies.count, 1)
+    XCTAssertNil(try jsonBody(try XCTUnwrap(bodies.first))["tools"])
+  }
+
+  func testGeneralExplicitDraftCreationFailsClosedWhenDraftPermissionIsMissing()
+    async throws
+  {
+    let transport = SequencedGeneralAIChatTransport(responses: [
+      functionResponse(name: "createDraft", arguments: ["value": "不应创建"])
+    ])
+    let baseConfig = AIProviderConfig(
+      preset: .custom,
+      baseURL: "https://api.openai.example/v1",
+      model: "general-draft-permission-disabled",
+      requiresAPIKey: false,
+      advancedSettings: AIProviderAdvancedSettings(
+        allowsApplicationTools: true,
+        agentPermissionPolicy: AIAgentPermissionPolicy(enabledScopes: [.localRead])
+      )
+    )
+    let config = capabilityConfig(baseConfig, outcome: .supported)
+    let (store, consentStore, directory) = try makeGeneralToolingStore(
+      transport: transport,
+      config: config,
+      prefix: "WorkbenchGeneralDraftPermissionDisabled"
+    )
+    defer {
+      consentStore.revoke(for: config)
+      try? FileManager.default.removeItem(at: directory)
+    }
+    let conversation = try XCTUnwrap(store.aiStore.startNewGeneralAIChatConversation())
+
+    let reply = await store.aiStore.sendGeneralAIChatMessage(
+      "请创建一篇权限不足的文章。",
+      conversationID: conversation.id
+    )
+
+    XCTAssertNil(reply)
+    XCTAssertTrue(store.aiChatMessage?.contains("新建文章草稿") == true)
+    let bodies = await transport.capturedBodies()
+    XCTAssertEqual(bodies.count, 0)
+  }
+
+  func testGeneralExplicitDraftCreationFailsClosedWhenToolCallingCapabilityIsUnknown()
+    async throws
+  {
+    let transport = SequencedGeneralAIChatTransport(responses: [
+      functionResponse(name: "createDraft", arguments: ["value": "不应创建"])
+    ])
+    let config = AIProviderConfig(
+      preset: .custom,
+      baseURL: "https://api.openai.example/v1",
+      model: "general-tools-unknown",
+      requiresAPIKey: false,
+      advancedSettings: AIProviderAdvancedSettings(allowsApplicationTools: true)
+    )
+    let (store, consentStore, directory) = try makeGeneralToolingStore(
+      transport: transport,
+      config: config,
+      prefix: "WorkbenchGeneralToolsUnknown"
+    )
+    defer {
+      consentStore.revoke(for: config)
+      try? FileManager.default.removeItem(at: directory)
+    }
+    let conversation = try XCTUnwrap(store.aiStore.startNewGeneralAIChatConversation())
+
+    let reply = await store.aiStore.sendGeneralAIChatMessage(
+      "请新建一篇能力未知的文章。",
+      conversationID: conversation.id
+    )
+
+    XCTAssertNil(reply)
+    XCTAssertTrue(store.aiChatMessage?.contains("尚未证明支持工具调用") == true)
+    let bodies = await transport.capturedBodies()
+    XCTAssertEqual(bodies.count, 0)
+  }
+
+  func testGeneralExplicitDraftCreationFailsClosedWhenToolCallingCapabilityIsUnsupported()
+    async throws
+  {
+    let transport = SequencedGeneralAIChatTransport(responses: [
+      functionResponse(name: "createDraft", arguments: ["value": "不应创建"])
+    ])
+    let baseConfig = AIProviderConfig(
+      preset: .custom,
+      baseURL: "https://api.openai.example/v1",
+      model: "general-tools-unsupported",
+      requiresAPIKey: false,
+      advancedSettings: AIProviderAdvancedSettings(allowsApplicationTools: true)
+    )
+    let config = capabilityConfig(baseConfig, outcome: .unsupported)
+    let (store, consentStore, directory) = try makeGeneralToolingStore(
+      transport: transport,
+      config: config,
+      prefix: "WorkbenchGeneralToolsUnsupported"
+    )
+    defer {
+      consentStore.revoke(for: config)
+      try? FileManager.default.removeItem(at: directory)
+    }
+    let conversation = try XCTUnwrap(store.aiStore.startNewGeneralAIChatConversation())
+
+    let reply = await store.aiStore.sendGeneralAIChatMessage(
+      "请新增一篇当前模型不支持工具的文章。",
+      conversationID: conversation.id
+    )
+
+    XCTAssertNil(reply)
+    XCTAssertTrue(store.aiChatMessage?.contains("不支持工具调用") == true)
+    let bodies = await transport.capturedBodies()
+    XCTAssertEqual(bodies.count, 0)
+  }
+
   func testGeneralToolCallingSearchesOnlyRemoteAllowedKnowledgeThenReturnsReply() async throws {
     let transport = SequencedGeneralAIChatTransport(responses: [
       functionResponse(
@@ -855,6 +1141,41 @@ final class WorkbenchGeneralAIChatTests: XCTestCase {
     let bodies = await transport.capturedBodies()
     XCTAssertEqual(bodies.count, 1)
     XCTAssertNil(try jsonBody(try XCTUnwrap(bodies.first))["tools"])
+  }
+
+  func testGeneralExplicitDraftCreationFailsClosedInTextOnlyConversation() async throws {
+    let transport = SequencedGeneralAIChatTransport(responses: [
+      functionResponse(name: "createDraft", arguments: ["value": "不应创建"])
+    ])
+    let baseConfig = AIProviderConfig(
+      preset: .custom,
+      baseURL: "https://api.openai.example/v1",
+      model: "general-text-only-create",
+      requiresAPIKey: false,
+      advancedSettings: AIProviderAdvancedSettings(allowsApplicationTools: true)
+    )
+    let config = capabilityConfig(baseConfig, outcome: .supported)
+    let (store, consentStore, directory) = try makeGeneralToolingStore(
+      transport: transport,
+      config: config,
+      prefix: "WorkbenchGeneralTextOnlyCreate"
+    )
+    defer {
+      consentStore.revoke(for: config)
+      try? FileManager.default.removeItem(at: directory)
+    }
+    let conversation = try XCTUnwrap(store.aiStore.startNewGeneralAIChatConversation())
+    XCTAssertTrue(store.aiStore.setAIConversationAgentMode(.textOnly, for: conversation.id))
+
+    let reply = await store.aiStore.sendGeneralAIChatMessage(
+      "请直接新建一篇仅文字模式的文章。",
+      conversationID: conversation.id
+    )
+
+    XCTAssertNil(reply)
+    XCTAssertTrue(store.aiChatMessage?.contains("仅文字模式") == true)
+    let bodies = await transport.capturedBodies()
+    XCTAssertEqual(bodies.count, 0)
   }
 
   func testGeneralConversationCancellationKeepsUserMessageAndAllowsRetry() async throws {
@@ -1150,7 +1471,8 @@ final class WorkbenchGeneralAIChatTests: XCTestCase {
     let client = AIChatCompletionClient(
       transport: transport,
       networkRecoveryPolicy: AIChatNetworkRecoveryPolicy(
-        maximumAutomaticRetryCount: 0
+        maximumAutomaticRetryCount: 0,
+        partialTextRecovery: .disabled
       )
     )
     let config = capabilitySupportedConfig(
@@ -1327,6 +1649,21 @@ final class WorkbenchGeneralAIChatTests: XCTestCase {
     _ base: AIProviderConfig,
     capabilities: Set<AIProviderCapabilityProbeKind>
   ) -> AIProviderConfig {
+    capabilityConfig(base, capabilities: capabilities, outcome: .supported)
+  }
+
+  private func capabilityConfig(
+    _ base: AIProviderConfig,
+    outcome: AIProviderCapabilityProbeOutcome
+  ) -> AIProviderConfig {
+    capabilityConfig(base, capabilities: [.toolCalling], outcome: outcome)
+  }
+
+  private func capabilityConfig(
+    _ base: AIProviderConfig,
+    capabilities: Set<AIProviderCapabilityProbeKind>,
+    outcome: AIProviderCapabilityProbeOutcome
+  ) -> AIProviderConfig {
     var config = base
     let now = Date()
     let key = AIProviderCapabilityCacheKey(config: config)
@@ -1335,13 +1672,45 @@ final class WorkbenchGeneralAIChatTests: XCTestCase {
       evidence[capability] = AIProviderCapabilityProbeEvidence(
         key: key,
         capability: capability,
-        outcome: .supported,
+        outcome: outcome,
         observedAt: now,
         expiresAt: now.addingTimeInterval(60)
       )
     }
     config.capabilityProbeEvidence = evidence
     return config
+  }
+
+  private func makeGeneralToolingStore(
+    transport: SequencedGeneralAIChatTransport,
+    config: AIProviderConfig,
+    prefix: String
+  ) throws -> (
+    store: WorkbenchStore,
+    consentStore: AIDataSharingConsentStore,
+    directory: URL
+  ) {
+    let consentStore = AIDataSharingConsentStore(
+      storageKey: "\(prefix).\(UUID().uuidString)"
+    )
+    consentStore.grant(for: config)
+    let directory = try TestWorkbenchFactory.temporaryDirectoryURL(prefix: prefix)
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(
+        fileURL: directory.appendingPathComponent("workbench.json")
+      ),
+      keychainTokenStore: KeychainTokenStore(
+        service: "\(prefix).\(UUID().uuidString)",
+        accountPrefix: prefix,
+        inMemory: true
+      ),
+      aiPublishingAssistantService: AIPublishingAssistantService(
+        client: AIChatCompletionClient(transport: transport)
+      ),
+      aiDataSharingConsentStore: consentStore
+    )
+    configureActiveAIConnection(in: store, config: config)
+    return (store, consentStore, directory)
   }
 }
 

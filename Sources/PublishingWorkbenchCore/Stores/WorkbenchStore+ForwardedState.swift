@@ -1,6 +1,22 @@
 import Foundation
+import PublishingGitCore
 
 extension WorkbenchStore {
+  public var repositoryMergeConflictSession: RepositoryMergeConflictSession? {
+    repositoryStore.repositoryMergeConflictSession(for: activeProfile, store: self)
+  }
+
+  public func resolveRepositoryMergeConflict(
+    repositoryPath: String,
+    finalContent: String
+  ) async throws {
+    try await repositoryStore.resolveRepositoryMergeConflict(
+      repositoryPath: repositoryPath,
+      finalContent: finalContent,
+      store: self
+    )
+  }
+
   public var releaseRecords: [ReleaseRecord] { publishingStore.releaseRecords }
   public var selectedSection: WorkspaceSection { publishingStore.selectedSection }
   public var selectedDraftID: UUID? { publishingStore.selectedDraftID }
@@ -25,7 +41,6 @@ extension WorkbenchStore {
   public var isSiteStarterOperationRunning: Bool { publishingStore.isSiteStarterOperationRunning }
   public var preflightIssues: [PreflightIssue] { publishingStore.preflightIssues }
   public var isInspectorPresented: Bool { publishingStore.isInspectorPresented }
-  public var editorDisplayMode: EditorDisplayMode { publishingStore.editorDisplayMode }
   public var editorFocusRequest: EditorFocusRequest? { publishingStore.editorFocusRequest }
   public var imageInspectorFocusRequest: ImageInspectorFocusRequest? {
     publishingStore.imageInspectorFocusRequest
@@ -53,10 +68,25 @@ extension WorkbenchStore {
 }
 
 extension WorkbenchStore {
-  public var repositoryScanState: RepositoryScanState { repositoryStore.repositoryScanState }
+  public var repositoryScanState: RepositoryScanState {
+    repositoryStore.repositoryScanState(for: activeProfileID)
+  }
   public var localGitPublishResult: LocalGitPublishResult? { repositoryStore.localGitPublishResult }
-  public var localRepositoryBranches: [RepositoryBranch] { repositoryStore.localRepositoryBranches }
-  public var localRepositoryRecentCommits: [RepositoryCommitInfo] { repositoryStore.localRepositoryRecentCommits }
+  public var localRepositoryBranches: [RepositoryBranch] {
+    repositoryReport == nil ? [] : repositoryStore.localRepositoryBranches
+  }
+  public var localRepositoryRecentCommits: [RepositoryCommitInfo] {
+    repositoryReport == nil ? [] : repositoryStore.localRepositoryRecentCommits
+  }
+  public var localRepositoryReleaseHistory: RepositoryReleaseHistorySnapshot {
+    guard repositoryReport != nil else {
+      return RepositoryReleaseHistorySnapshot(
+        historyAvailability: .unavailable,
+        notesAvailability: .unavailable
+      )
+    }
+    return repositoryStore.localRepositoryReleaseHistory
+  }
   public var repositoryTokenAvailability: KeychainTokenAvailability { repositoryStore.repositoryTokenAvailability }
   public var remoteRepositoryAccessCheck: RemoteRepositoryAccessCheck? { repositoryStore.remoteRepositoryAccessCheck }
   public var remoteRepositoryCreationResult: RemoteRepositoryCreationResult? { repositoryStore.remoteRepositoryCreationResult }
@@ -71,6 +101,12 @@ extension WorkbenchStore {
   }
   public var repositoryAutoSyncSettings: RepositoryAutoSyncSettings { repositoryStore.repositoryAutoSyncSettings }
   public var repositoryAutoSyncState: RepositoryAutoSyncState { repositoryStore.repositoryAutoSyncState }
+  public func repositoryAutoSyncSettings(for profileID: UUID) -> RepositoryAutoSyncSettings {
+    repositoryStore.repositoryAutoSyncSettings(for: profileID)
+  }
+  public func repositoryAutoSyncState(for profileID: UUID) -> RepositoryAutoSyncState {
+    repositoryStore.repositoryAutoSyncState(for: profileID)
+  }
 }
 
 extension WorkbenchStore {
@@ -80,6 +116,12 @@ extension WorkbenchStore {
   public var deploymentStatusMessage: String? { deploymentStore.deploymentStatusMessage }
   public var deploymentPollingSettings: DeploymentPollingSettings { deploymentStore.deploymentPollingSettings }
   public var deploymentPollingState: DeploymentPollingState { deploymentStore.deploymentPollingState }
+  public func deploymentPollingSettings(for profileID: UUID) -> DeploymentPollingSettings {
+    deploymentStore.deploymentPollingSettings(for: profileID)
+  }
+  public func deploymentPollingState(for profileID: UUID) -> DeploymentPollingState {
+    deploymentStore.deploymentPollingState(for: profileID)
+  }
   public var deploymentTokenAvailability: KeychainTokenAvailability { deploymentStore.deploymentTokenAvailability }
 }
 

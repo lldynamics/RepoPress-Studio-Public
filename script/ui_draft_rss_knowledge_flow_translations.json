@@ -1,0 +1,79 @@
+{
+  " · 另有 %d 篇网站草稿未纳入发布": " · %d website drafts excluded from publishing",
+  "%d 篇网站草稿未纳入发布，请单独同步": "%d website drafts are excluded from publishing; sync them individually",
+  "RSS 默认保存 Feed 返回的摘要和正文。启用全文提取或离线缓存全文后，还会访问原网站并保存净化后的正文；关闭这些选项后不会新增原网页全文。历史网页快照和媒体缓存仍可读取。": "RSS saves the summary and body returned by the feed by default. When full-text extraction or offline full-text caching is enabled, the app also visits the original website and saves a sanitized body. No new webpage full text is added while both options are off. Historical webpage snapshots and media caches remain readable.",
+  "display.draft-repository-sync-state.awaiting-review": {
+    "en": "Waiting for PR/MR Merge",
+    "zh-Hans": "等待 PR/MR 合并"
+  },
+  "display.draft-repository-sync-state.diverged": {
+    "en": "Local and Remote Diverged",
+    "zh-Hans": "本地与远端已分叉"
+  },
+  "display.draft-repository-sync-state.failed": {
+    "en": "Sync Failed",
+    "zh-Hans": "同步失败"
+  },
+  "display.draft-repository-sync-state.local-changed": {
+    "en": "Local Changes",
+    "zh-Hans": "有本地修改"
+  },
+  "display.draft-repository-sync-state.local-only": {
+    "en": "App-Only Draft",
+    "zh-Hans": "仅软件草稿"
+  },
+  "display.draft-repository-sync-state.project-saved": {
+    "en": "Written to Project, Not Synced",
+    "zh-Hans": "已写入项目，未同步远端"
+  },
+  "display.draft-repository-sync-state.synced": {
+    "en": "Synced with Remote",
+    "zh-Hans": "已与远端同步"
+  },
+  "仅保存在软件": "Saved Only in App",
+  "全部取消": "Deselect All",
+  "其余资料默认已勾选；展开后可逐项取消，再确认导入。": "The remaining items are selected by default. Expand the list to deselect individual items before confirming the import.",
+  "写作阶段": "Writing Stage",
+  "加入站点项目": "Add to Site Project",
+  "勾选后会在确认导入时保存这条资料": "This item will be saved when the import is confirmed",
+  "取消勾选后不会保存这条资料": "This item will not be saved when deselected",
+  "只会保存已勾选的内容；搜索索引在本机建立。": "Only selected content will be saved. The search index is built on this Mac.",
+  "只同步当前网站草稿到远端；不会纳入批量正式发布，也不会移除 draft 标记。请确认远端、分支和完整文件清单。": "Syncs only the current website draft to the remote repository. It is excluded from formal batch publishing and keeps its draft marker. Confirm the remote, branch, and complete file list.",
+  "只有启用全文提取或离线缓存全文时，才会从原网站新增净化后的正文；媒体归档已停止新增，历史数据仅作兼容读取。": "Sanitized body content is added from the original website only when full-text extraction or offline full-text caching is enabled. New media archives are no longer created; historical data remains available for compatibility.",
+  "同步分支": "Sync Branch",
+  "同步当前网站草稿": "Sync Current Website Draft",
+  "同步当前网站草稿…": "Sync Current Website Draft…",
+  "同步方式": "Sync Method",
+  "同步警告": "Sync Warnings",
+  "完整同步文件清单": "Complete Sync File List",
+  "将发布 %d 个文件": "Publish %d Files",
+  "将同步 %d 个草稿文件": "Sync %d Draft Files",
+  "已写入项目": "Written to Project",
+  "已绑定项目文件": "Project File Bound",
+  "已选择 %@/%@": "Selected %1$@/%2$@",
+  "已选择 %lld/%lld": "Selected %lld/%lld",
+  "当前网站草稿的远端同步预览未通过": "The remote sync preview for the current website draft did not pass",
+  "打开当前网站草稿的单篇同步确认页；不会纳入批量正式发布": "Open the single-draft sync confirmation. This draft is excluded from formal batch publishing.",
+  "本地保存": "Local Save",
+  "查看其余 %@ 条提醒": "Show %@ More Warnings",
+  "查看其余 %@ 条资料": "Show %@ More Items",
+  "查看其余 %lld 条提醒": "Show %lld More Warnings",
+  "查看其余 %lld 条资料": "Show %lld More Items",
+  "正在写入项目": "Writing to Project",
+  "正在加入项目": "Adding to Project",
+  "正式发布候选": "Formal Publish Candidate",
+  "没有待同步文件。": "There Are No Files to Sync.",
+  "状态与归属": "Status and Ownership",
+  "确认同步网站草稿": "Confirm Website Draft Sync",
+  "确认后才创建项目 Markdown；以后编辑会自动保存到该文件。": "Project Markdown is created only after confirmation. Future edits are saved to that file automatically.",
+  "确认后立即同步当前网站草稿": "Sync the current website draft after confirmation",
+  "站点稿件": "Site Content",
+  "网站草稿": "Website Draft",
+  "网站草稿同步确认": "Website Draft Sync Confirmation",
+  "网站草稿，默认不参与批量发布": "Website draft; excluded from batch publishing by default",
+  "草稿同步目标": "Draft Sync Target",
+  "计划路径：%@": "Planned path: %@",
+  "远端同步": "Remote Sync",
+  "通用草稿，不属于站点": "General draft; not assigned to a site",
+  "项目写入失败：%@": "Project write failed: %@"
+}

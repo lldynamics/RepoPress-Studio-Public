@@ -119,7 +119,7 @@ enum SettingsTab: Hashable, CaseIterable, Identifiable {
     case .appearance:
       return String(localized: "设置应用语言、启动行为、主题和强调色。")
     case .editor:
-      return String(localized: "集中管理文章编辑、预览和打字反馈偏好。")
+      return String(localized: "集中管理文章编辑、正文分析与写作体验偏好。")
     case .rss:
       return String(localized: "管理 RSS 正文离线保存、OPML、内网访问和历史文章清理。")
     case .privacy:
@@ -176,8 +176,7 @@ enum SettingsTab: Hashable, CaseIterable, Identifiable {
     case .editor:
       return [
         "编辑器", "字号", "行距", "正文宽度", "拼写检查", "打字机模式", "当前段落",
-        "纸张背景", "自动配对", "段落聚光灯", "打字反馈", "同步滚动", "预览主题", "editor",
-        "preview",
+        "纸张背景", "自动配对", "段落聚光灯", "editor",
       ]
     case .rss:
       return [

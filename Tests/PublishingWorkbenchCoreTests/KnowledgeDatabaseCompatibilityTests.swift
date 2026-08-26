@@ -128,6 +128,32 @@ final class KnowledgeDatabaseCompatibilityTests: XCTestCase {
     }
   }
 
+  func testCachedStatementResetsBindingsAfterThrowAndReusesCompiledStatement() throws {
+    let rootURL = temporaryDirectory(named: "knowledge-statement-cache-reset")
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let database = try KnowledgeDatabase(
+      fileURL: rootURL.appendingPathComponent("library.sqlite")
+    )
+    let sql = "SELECT ?;"
+    var firstStatement: OpaquePointer?
+
+    XCTAssertThrowsError(
+      try database.withCachedStatement(sql) { statement -> Void in
+        firstStatement = statement
+        database.bind("stale-binding", at: 1, to: statement)
+        guard sqlite3_step(statement) == SQLITE_ROW else { throw database.databaseError() }
+        throw NSError(domain: "KnowledgeDatabaseCompatibilityTests.expected", code: 1)
+      }
+    )
+
+    let secondStatement = try database.withCachedStatement(sql) { statement in
+      guard sqlite3_step(statement) == SQLITE_ROW else { throw database.databaseError() }
+      XCTAssertEqual(sqlite3_column_type(statement, 0), SQLITE_NULL)
+      return statement
+    }
+    XCTAssertEqual(firstStatement, secondStatement)
+  }
+
   func testBackupManifestWithFutureDatabaseVersionIsRejectedBeforeRestore() async throws {
     let rootURL = temporaryDirectory(named: "knowledge-future-backup")
     defer { try? FileManager.default.removeItem(at: rootURL) }
@@ -174,24 +200,26 @@ final class KnowledgeDatabaseCompatibilityTests: XCTestCase {
     authorsJSON: String,
     tagsJSON: String
   ) throws {
-    let statement = try database.prepare("""
-    INSERT INTO knowledge_documents (
-      id, kind, title, authors_json, language, summary, tags_json,
-      source_url, source_name, folder_id, source_byte_count,
-      allows_ai_use, is_archived, imported_at, updated_at, current_revision_id
-    ) VALUES (?, ?, ?, ?, NULL, ?, ?, NULL, ?, NULL, 0, 1, 0, 0, 0, ?);
-    """)
-    defer { sqlite3_finalize(statement) }
-    database.bind(id, at: 1, to: statement)
-    database.bind(KnowledgeDocumentKind.markdown.rawValue, at: 2, to: statement)
-    database.bind("Corrupt fixture", at: 3, to: statement)
-    database.bind(authorsJSON, at: 4, to: statement)
-    database.bind("", at: 5, to: statement)
-    database.bind(tagsJSON, at: 6, to: statement)
-    database.bind("fixture.md", at: 7, to: statement)
-    database.bind(UUID().uuidString, at: 8, to: statement)
-    guard sqlite3_step(statement) == SQLITE_DONE else {
-      throw database.databaseError()
+    try database.withCachedStatement(
+      """
+      INSERT INTO knowledge_documents (
+        id, kind, title, authors_json, language, summary, tags_json,
+        source_url, source_name, folder_id, source_byte_count,
+        allows_ai_use, is_archived, imported_at, updated_at, current_revision_id
+      ) VALUES (?, ?, ?, ?, NULL, ?, ?, NULL, ?, NULL, 0, 1, 0, 0, 0, ?);
+      """
+    ) { statement in
+      database.bind(id, at: 1, to: statement)
+      database.bind(KnowledgeDocumentKind.markdown.rawValue, at: 2, to: statement)
+      database.bind("Corrupt fixture", at: 3, to: statement)
+      database.bind(authorsJSON, at: 4, to: statement)
+      database.bind("", at: 5, to: statement)
+      database.bind(tagsJSON, at: 6, to: statement)
+      database.bind("fixture.md", at: 7, to: statement)
+      database.bind(UUID().uuidString, at: 8, to: statement)
+      guard sqlite3_step(statement) == SQLITE_DONE else {
+        throw database.databaseError()
+      }
     }
   }
 

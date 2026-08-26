@@ -1,17 +1,48 @@
 import Foundation
 
 public enum RSSFeedParser {
+  private static let maximumXMLCharacterCount = 20 * 1_024 * 1_024
+  private static let maximumXMLElementDepth = 256
+  private static let maximumArticleCount = 10_000
+
   public static func parse(data: Data, feedURL: URL) throws -> RSSParsedFeed {
     guard !data.isEmpty else {
       throw RSSReaderError.parseFailed("响应为空")
     }
 
-    let delegate = Delegate(feedURL: feedURL)
+    do {
+      try UntrustedXMLParserGuard.validate(
+        data: data,
+        limits: UntrustedXMLParserGuard.Limits(
+          maximumCharacterCount: maximumXMLCharacterCount,
+          maximumElementDepth: maximumXMLElementDepth
+        )
+      )
+    } catch let failure as UntrustedXMLParserGuard.Failure {
+      switch failure {
+      case .forbiddenDeclaration:
+        throw RSSReaderError.parseFailed("XML 文档包含不安全的 DTD 或实体声明")
+      case .characterLimitExceeded:
+        throw RSSReaderError.parseFailed("XML 文档展开后的字符数超过安全上限")
+      case .elementDepthExceeded:
+        throw RSSReaderError.parseFailed("XML 文档元素嵌套深度超过安全上限")
+      case .cancelled:
+        throw RSSReaderError.parseFailed("XML 文档解析已取消")
+      }
+    }
+
+    let delegate = Delegate(
+      feedURL: feedURL,
+      maximumArticleCount: maximumArticleCount
+    )
     let parser = XMLParser(data: data)
     parser.delegate = delegate
     parser.shouldProcessNamespaces = true
     parser.shouldResolveExternalEntities = false
     guard parser.parse() else {
+      if delegate.didExceedArticleLimit {
+        throw RSSReaderError.parseFailed("订阅文章记录超过 \(maximumArticleCount) 条")
+      }
       throw RSSReaderError.parseFailed(
         parser.parserError?.localizedDescription ?? "XML 文档格式不正确"
       )
@@ -109,6 +140,7 @@ public enum RSSFeedParser {
     private static let htmlVoidTags: Set<String> = ["area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "source", "track", "wbr"]
 
     private let feedURL: URL
+    private let maximumArticleCount: Int
     private var feedTitle = ""
     private var feedSiteURL: URL?
     private var feedIconURL: URL?
@@ -124,6 +156,7 @@ public enum RSSFeedParser {
     private var elementDepth = 0
     private var elementStack: [ElementKey] = []
     private var parsedArticles: [RSSParsedArticle] = []
+    private(set) var didExceedArticleLimit = false
 
     var isRecognizedFeedDocument: Bool {
       switch rootElement {
@@ -145,8 +178,9 @@ public enum RSSFeedParser {
       )
     }
 
-    init(feedURL: URL) {
+    init(feedURL: URL, maximumArticleCount: Int) {
       self.feedURL = feedURL
+      self.maximumArticleCount = max(1, maximumArticleCount)
     }
 
     func parser(
@@ -193,6 +227,11 @@ public enum RSSFeedParser {
       if textCapture != nil { return }
 
       if currentArticle == nil, isArticleElement(key) {
+        guard articleIndex < maximumArticleCount else {
+          didExceedArticleLimit = true
+          parser.abortParsing()
+          return
+        }
         currentArticle = ArticleDraft()
         articleOwner = (key, depth)
         articleIndex += 1

@@ -238,6 +238,22 @@ public struct LocalContentImportService: Sendable {
     var importedDrafts: [ArticleDraft] = []
     var skippedPaths: [String] = []
     var issues: [LocalContentImportIssue] = []
+    var isDirectory: ObjCBool = false
+    guard fileManager.fileExists(atPath: rootURL.path, isDirectory: &isDirectory),
+      isDirectory.boolValue
+    else {
+      return LocalContentImportResult(
+        importedDrafts: [],
+        skippedPaths: [],
+        issues: [
+          LocalContentImportIssue(
+            path: rootURL.path,
+            kind: .repositoryAccessUnavailable,
+            message: "无法访问站点本地仓库。"
+          )
+        ]
+      )
+    }
     let contentIndex = contentIndexStore?.snapshot(profile: profile, rootURL: rootURL)
     var refreshedIndexEntries: [String: LocalContentImportIndexEntry] = [:]
 
@@ -575,7 +591,23 @@ public struct LocalContentImportService: Sendable {
       repositoryPath: repositoryPath,
       repositorySHA: repositorySHA?.trimmedForPublishing.nilIfEmpty
     )
-    importedDraft.repositoryImportFingerprint = importedDraft.repositoryContentFingerprint
+    let renderedDigest = importedDraft.renderedRepositoryContentDigest(profile: profile)
+    if let repositorySHA = repositorySHA?.trimmedForPublishing.nilIfEmpty {
+      importedDraft.confirmRepositoryBinding(
+        profile: profile,
+        repositoryPath: repositoryPath,
+        remoteRevision: repositorySHA,
+        renderedContentDigest: renderedDigest,
+        verifiedAt: fileModificationDate
+      )
+    } else {
+      importedDraft.recordProjectFile(
+        profile: profile,
+        repositoryPath: repositoryPath,
+        renderedContentDigest: renderedDigest
+      )
+      importedDraft.repositoryImportFingerprint = importedDraft.repositoryContentFingerprint
+    }
     return importedDraft
   }
 
@@ -825,15 +857,15 @@ public struct LocalContentImportService: Sendable {
   }
 
   private func safeMarkdownRepositoryPath(_ repositoryPath: String, profile: SiteProfile) -> String? {
-    let displayPath = repositoryPath.components(separatedBy: " -> ").last?.trimmedForPublishing ?? repositoryPath.trimmedForPublishing
-    guard !displayPath.isEmpty,
-          !displayPath.hasPrefix("/"),
-          !displayPath.contains("\\"),
-          !displayPath.contains("://") else {
+    let literalPath = repositoryPath.trimmedForPublishing
+    guard !literalPath.isEmpty,
+          !literalPath.hasPrefix("/"),
+          !literalPath.contains("\\"),
+          !literalPath.contains("://") else {
       return nil
     }
 
-    let normalizedPath = displayPath.normalizedRelativePath()
+    let normalizedPath = literalPath.normalizedRelativePath()
     let pathComponents = normalizedPath.split(separator: "/")
     let pathExtension = (normalizedPath as NSString).pathExtension.lowercased()
     guard !normalizedPath.isEmpty,

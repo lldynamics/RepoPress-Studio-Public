@@ -61,15 +61,33 @@ struct PersonalSitePublisherMacApp: App {
 #endif
   }
 
+  @ViewBuilder
+  private var mainWorkbenchRoot: some View {
+#if DEBUG || SCREENSHOT_CAPTURE_BUILD
+    if let dynamicTypeSize = ScreenshotCaptureWindowBridge.dynamicTypeSizeOverride {
+      workbenchLaunchRoot
+        .environment(\.dynamicTypeSize, dynamicTypeSize)
+    } else {
+      workbenchLaunchRoot
+    }
+#else
+    workbenchLaunchRoot
+#endif
+  }
+
+  private var workbenchLaunchRoot: some View {
+    WorkbenchLaunchRootView(
+      coordinator: launchCoordinator,
+      onReady: { store, browserBridge in
+        appDelegate.workbenchStore = store
+        appDelegate.browserBridge = browserBridge
+      }
+    )
+  }
+
   var body: some Scene {
     WindowGroup("RepoPress Studio", id: "main-workbench") {
-      WorkbenchLaunchRootView(
-        coordinator: launchCoordinator,
-        onReady: { store, browserBridge in
-          appDelegate.workbenchStore = store
-          appDelegate.browserBridge = browserBridge
-        }
-      )
+      mainWorkbenchRoot
         .frame(
           minWidth: WorkbenchLayoutMode.minimumWindowWidth,
           minHeight: WorkbenchLayoutMode.minimumWindowHeight

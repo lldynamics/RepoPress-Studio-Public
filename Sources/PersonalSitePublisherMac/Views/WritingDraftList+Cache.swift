@@ -2,32 +2,21 @@ import PublishingWorkbenchCore
 import SwiftUI
 
 extension WritingDraftColumn {
-  func makeFolderProjection(for drafts: [ArticleDraft]) -> DraftFolderProjection {
-    let maskedDraftIDs = Set(
-      drafts.compactMap { draft in
-        store.privateContentDisplay(for: draft).isMasked ? draft.id : nil
-      }
-    )
-    let projectionOrder = DraftListSortOrder(rawValue: sortOrder.rawValue) ?? .updatedNewest
-    return DraftFolderProjection(
-      profile: store.activeProfile,
-      drafts: drafts,
-      sortOrder: projectionOrder,
-      maskedDraftIDs: maskedDraftIDs
-    )
-  }
-
   func synchronizeFolderExpansionState() {
     guard store.draftListContentScope == .currentSite else {
       folderExpansionState.clearTransientReveal()
+      draftListCache.clearFolderProjectionCache()
       return
     }
 
-    let universeProjection = makeFolderProjection(for: store.visibleDrafts)
+    updateFolderProjectionCache()
+    guard let universeProjection = draftListCache.universeFolderProjection else {
+      return
+    }
     let validFolderIDs = Set(universeProjection.root.allFolderIDs)
     if folderExpansionSiteID != store.activeProfile.id {
       folderExpansionState = WritingDraftFolderExpansionState(
-        rootFolderIDs: universeProjection.topLevelNodes.map(\.id)
+        defaultExpandedTopLevelNodes: universeProjection.topLevelNodes
       )
       folderExpansionSiteID = store.activeProfile.id
     } else {
@@ -35,6 +24,45 @@ extension WritingDraftColumn {
     }
 
     updateFolderSearchReveal()
+    updateFolderEntriesCache()
+  }
+
+  func updateFolderProjectionCache() {
+    guard store.draftListContentScope == .currentSite else {
+      draftListCache.clearFolderProjectionCache()
+      return
+    }
+
+    let maskedDraftIDs = Set(
+      store.visibleDrafts.compactMap { draft in
+        store.privateContentDisplay(for: draft).isMasked ? draft.id : nil
+      }
+    )
+    let projectionOrder = DraftListSortOrder(rawValue: sortOrder.rawValue) ?? .updatedNewest
+    draftListCache.updateFolderProjectionCache(
+      presentationRevision: draftListState.presentationRevision,
+      profile: store.activeProfile,
+      universeDrafts: store.visibleDrafts,
+      filteredDrafts: filteredDrafts,
+      query: debouncedSearchText,
+      sortOrder: projectionOrder,
+      maskedDraftIDs: maskedDraftIDs
+    )
+  }
+
+  func updateFolderEntriesCache() {
+    guard store.draftListContentScope == .currentSite else {
+      draftListCache.clearFolderProjectionCache()
+      return
+    }
+
+    let loadedDraftIDs = Set(
+      draftListCache.filteredDrafts.prefix(draftListLimit).map(\.id)
+    )
+    draftListCache.updateFolderEntriesCache(
+      expandedFolderIDs: folderExpansionState.expandedFolderIDs,
+      loadedDraftIDs: loadedDraftIDs
+    )
   }
 
   func updateFolderSearchReveal() {
@@ -45,7 +73,10 @@ extension WritingDraftColumn {
       return
     }
 
-    let filteredProjection = makeFolderProjection(for: filteredDrafts)
+    guard let filteredProjection = draftListCache.filteredFolderProjection else {
+      folderExpansionState.clearTransientReveal()
+      return
+    }
     let matchingAncestorIDs = filteredDrafts.flatMap {
       filteredProjection.ancestorFolderIDs(for: $0.id)
     }
@@ -100,17 +131,63 @@ extension WritingDraftColumn {
     debouncedSearchText = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
     debouncedFilter = filter
     refreshFilteredDraftsCache()
-    resetDraftPagination()
-    refreshDraftCounts()
+    resetDraftPagination(refreshFilter: false)
+    refreshDraftCounts(refreshFilter: false)
   }
 
-  func revealSelectedDraftIfNeeded() {
-    guard let selectedDraftID = draftListState.selectedDraftID,
+  func refreshDraftCountsWithoutFiltering() {
+    refreshDraftCounts(refreshFilter: false)
+  }
+
+  func handleDraftListSortChange() {
+    resetDraftPagination()
+    refreshDraftCountsWithoutFiltering()
+  }
+
+  func handleDraftListFilterChange() {
+    refreshFilteredDraftsCache()
+    resetDraftPagination(refreshFilter: false)
+    refreshDraftCountsWithoutFiltering()
+  }
+
+  func handleDraftListStoreUpdate() {
+    refreshFilteredDraftsCache()
+    refreshDraftCountsWithoutFiltering()
+  }
+
+  func handleDraftListPresentationRevisionChange() {
+    refreshFilteredDraftsCache()
+    revealSelectedDraftIfNeeded(refreshFilter: false)
+    let newDrafts = visibleDraftSnapshot
+    synchronizeDraftSelection(with: newDrafts)
+    if isDraftListLoading && !newDrafts.isEmpty {
+      isDraftListLoading = false
+      draftListLoadingTask?.cancel()
+    }
+    resetDraftPagination(refreshFilter: false)
+    refreshDraftCountsWithoutFiltering()
+    refreshDraftListLoadingState()
+  }
+
+  func handleFilteredDraftCountChange(_ newCount: Int) {
+    if newCount == 0 {
+      draftListLimit = 0
+    } else if newCount < draftListLimit {
+      draftListLimit = newCount
+    }
+    updateFolderEntriesCache()
+    refreshDraftCountsWithoutFiltering()
+  }
+
+  func revealSelectedDraftIfNeeded(refreshFilter: Bool = true) {
+    guard let selectedDraftID,
       store.writingDrafts.contains(where: { $0.id == selectedDraftID })
     else {
       return
     }
-    refreshFilteredDraftsCache()
+    if refreshFilter {
+      refreshFilteredDraftsCache()
+    }
     if !filteredDrafts.contains(where: { $0.id == selectedDraftID }) {
       draftFilterDebounceTask?.cancel()
       searchText = ""
@@ -124,7 +201,9 @@ extension WritingDraftColumn {
       return
     }
 
-    let projection = makeFolderProjection(for: filteredDrafts)
+    guard let projection = draftListCache.filteredFolderProjection else {
+      return
+    }
     folderExpansionState.revealAncestorsForSelection(
       projection.ancestorFolderIDs(for: selectedDraftID)
     )
@@ -133,10 +212,13 @@ extension WritingDraftColumn {
       draftListLimit = min(filteredDrafts.count, requiredLimit)
       refreshVisibleRowPresentations()
     }
+    updateFolderEntriesCache()
   }
 
-  func refreshDraftCounts() {
-    refreshFilteredDraftsCache()
+  func refreshDraftCounts(refreshFilter: Bool = true) {
+    if refreshFilter {
+      refreshFilteredDraftsCache()
+    }
     let nextFilteredCount = filteredDrafts.count
     let nextVisibleCount = visibleDraftSnapshot.count
     let delta = nextVisibleCount - visibleDraftCount
@@ -174,11 +256,14 @@ extension WritingDraftColumn {
     36
   }
 
-  func resetDraftPagination() {
-    refreshFilteredDraftsCache()
+  func resetDraftPagination(refreshFilter: Bool = true) {
+    if refreshFilter {
+      refreshFilteredDraftsCache()
+    }
     guard !filteredDrafts.isEmpty else {
       draftListLimit = 0
       draftListCache.resetPaginationTrigger()
+      updateFolderEntriesCache()
       return
     }
     draftListLimit = min(filteredDrafts.count, draftPageStep)
@@ -228,10 +313,15 @@ extension WritingDraftColumn {
 
   func refreshFilteredDraftsCache() {
     let presentationRevision = draftListState.presentationRevision
-    let didRefreshPresentation = draftListCache.presentationRevision != presentationRevision
+    let didRefreshPresentation =
+      draftListCache.presentationRevision != presentationRevision
+      || draftListCache.sourceProfileID != store.activeProfileID
+      || draftListCache.sourceContentScope != store.draftListContentScope
     if didRefreshPresentation {
       let sourceDrafts = store.writingDrafts
       draftListCache.presentationRevision = presentationRevision
+      draftListCache.sourceProfileID = store.activeProfileID
+      draftListCache.sourceContentScope = store.draftListContentScope
       draftListCache.sourceDrafts = sourceDrafts
     }
     let visibleDrafts = draftListCache.sourceDrafts
@@ -243,7 +333,6 @@ extension WritingDraftColumn {
         || draftListCache.filter != debouncedFilter || draftListCache.sortOrder != sortOrder
         || draftListCache.draftTaskQueueStateVersion != draftTaskQueueStateVersion
     else {
-      synchronizeFolderExpansionState()
       return
     }
 
@@ -271,8 +360,8 @@ extension WritingDraftColumn {
           )
       }
     draftListCache.filteredDrafts = sortOrder.sorted(matchedDrafts)
-    refreshVisibleRowPresentations()
     synchronizeFolderExpansionState()
+    refreshVisibleRowPresentations()
   }
 
   func refreshVisibleRowPresentations() {
@@ -283,5 +372,6 @@ extension WritingDraftColumn {
       profileFor: { store.profile(for: $0) },
       displayFor: { store.privateContentDisplay(for: $0) }
     )
+    updateFolderEntriesCache()
   }
 }

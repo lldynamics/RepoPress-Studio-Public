@@ -1,6 +1,44 @@
+import CryptoKit
 import Foundation
 
+struct DraftRepositoryDeletionEvidence: Hashable, Sendable {
+  let contentSHA256: String
+  let gitBlobSHA: String
+}
+
 extension LocalPublishPreviewService {
+  func deletionEvidence(
+    repositoryPath: String,
+    profile: SiteProfile
+  ) -> DraftRepositoryDeletionEvidence? {
+    do {
+      return try profile.withLocalRepositoryRootAccess { rootURL in
+        guard let destinationURL = destinationURL(
+          rootURL: rootURL,
+          repositoryPath: repositoryPath
+        ) else {
+          throw LocalPublishPreviewError.unsafePath(repositoryPath)
+        }
+        let content = try readExistingMarkdownContent(at: destinationURL)
+        let data = Data(content.utf8)
+        let contentSHA256 = SHA256.hash(data: data)
+          .map { String(format: "%02x", $0) }
+          .joined()
+        var blob = Data("blob \(data.count)\0".utf8)
+        blob.append(data)
+        let gitBlobSHA = Insecure.SHA1.hash(data: blob)
+          .map { String(format: "%02x", $0) }
+          .joined()
+        return DraftRepositoryDeletionEvidence(
+          contentSHA256: contentSHA256,
+          gitBlobSHA: gitBlobSHA
+        )
+      }
+    } catch {
+      return nil
+    }
+  }
+
   func preview(package: PublishPackage, rootURL: URL) -> LocalPublishPreview {
     var diffs: [PublishFileDiff] = []
     var issues: [PreflightIssue] = []

@@ -2,7 +2,7 @@ import Foundation
 import PublishingWorkbenchCore
 
 struct MarkdownComposerSSGDerivedDataKey: Hashable {
-  let body: String
+  let bodyRevision: UInt64
   let draftID: UUID
   let siteProfileID: UUID
   let title: String
@@ -46,7 +46,7 @@ struct MarkdownComposerSSGDerivedData: Sendable {
 extension MacMarkdownComposerView {
   var markdownSSGDerivedDataKey: MarkdownComposerSSGDerivedDataKey {
     MarkdownComposerSSGDerivedDataKey(
-      body: editorBody,
+      bodyRevision: editorBodyRevision,
       draftID: draft.id,
       siteProfileID: draft.siteProfileID,
       title: draft.title,
@@ -70,7 +70,9 @@ extension MacMarkdownComposerView {
     for key: MarkdownComposerSSGDerivedDataKey
   ) async {
     do {
-      try await Task.sleep(for: .milliseconds(120))
+      try await Task.sleep(
+        for: MarkdownEditorAutomationPolicy.automaticWorkIdleDelay
+      )
     } catch {
       return
     }
@@ -104,9 +106,6 @@ extension MacMarkdownComposerView {
 
   func focusSSGComponentOccurrence(_ occurrence: MarkdownSSGComponentOccurrence) {
     guard requireBodyEditingContext() else { return }
-    if editorState.editorDisplayMode == .preview {
-      store.setEditorDisplayMode(.split)
-    }
     selectedRange = occurrence.sourceRange
     markdownTextFocusRequest = MarkdownTextFocusRequest(
       id: UUID(),

@@ -8,7 +8,7 @@ struct KnowledgeContextRecommendationCard: View {
   let draft: ArticleDraft
   let store: WorkbenchStore
   @ObservedObject private var knowledge: KnowledgeStore
-  @StateObject private var editorState: WorkbenchMarkdownEditorFeatureFacade
+  @StateObject private var queryCoordinator: KnowledgeContextQueryRefreshCoordinator
   @State private var recommendations: [KnowledgeSearchResult] = []
   @State private var isLoading = false
   @State private var errorMessage: String?
@@ -17,46 +17,11 @@ struct KnowledgeContextRecommendationCard: View {
     self.draft = draft
     self.store = store
     _knowledge = ObservedObject(wrappedValue: store.knowledge)
-    _editorState = StateObject(
-      wrappedValue: WorkbenchMarkdownEditorFeatureFacade(
-        store: store,
-        draftID: draft.id
+    _queryCoordinator = StateObject(
+      wrappedValue: KnowledgeContextQueryRefreshCoordinator(
+        draft: draft,
+        store: store
       )
-    )
-  }
-
-  private var liveBodyMarkdown: String {
-    editorState.draftBodyEditorBuffer(for: draft.id).bodyMarkdown
-  }
-
-  private var liveSelectedRange: NSRange? {
-    guard let selection = store.activeEditorSelection,
-      selection.draftID == draft.id,
-      selection.bodyUTF16Count == (liveBodyMarkdown as NSString).length
-    else {
-      return nil
-    }
-
-    let source = liveBodyMarkdown as NSString
-    let range = selection.range
-    guard range.location >= 0,
-      range.length >= 0,
-      range.location <= source.length,
-      range.length <= source.length - range.location
-    else {
-      return nil
-    }
-    guard range.length == 0 || source.substring(with: range) == selection.selectedText else {
-      return nil
-    }
-    return range
-  }
-
-  private var query: String {
-    KnowledgeContextQueryService.query(
-      for: draft,
-      bodyMarkdown: liveBodyMarkdown,
-      selectedRange: liveSelectedRange
     )
   }
 
@@ -71,10 +36,12 @@ struct KnowledgeContextRecommendationCard: View {
   }
 
   var body: some View {
+    let currentQuery = queryCoordinator.query
+    let currentMetadata = KnowledgeContextQueryMetadata(draft: draft)
     VStack(alignment: .leading, spacing: 9) {
       header
 
-      if query.isEmpty {
+      if currentQuery.isEmpty {
         Text("写入标题、摘要或正文后，这里会自动关联本地资料。")
           .font(.workbenchSupporting)
           .foregroundStyle(.secondary)
@@ -90,7 +57,7 @@ struct KnowledgeContextRecommendationCard: View {
         emptyState
       } else {
         ForEach(Array(recommendations.prefix(4))) { result in
-          recommendationRow(result)
+          recommendationRow(result, query: currentQuery)
         }
         if recommendations.count > 4 {
           Text("还有 \(recommendations.count - 4) 个相关片段，可在资料库中查看全部结果。")
@@ -107,11 +74,11 @@ struct KnowledgeContextRecommendationCard: View {
     }
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("knowledge-context-recommendation-card")
-    .task(id: query) {
-      await loadRecommendations(for: query)
+    .task(id: currentQuery) {
+      await loadRecommendations(for: currentQuery)
     }
-    .onChange(of: draft.id) { _, draftID in
-      editorState.trackDraft(draftID)
+    .onChange(of: currentMetadata) { _, metadata in
+      queryCoordinator.updateMetadata(metadata)
     }
   }
 
@@ -165,7 +132,10 @@ struct KnowledgeContextRecommendationCard: View {
     }
   }
 
-  private func recommendationRow(_ result: KnowledgeSearchResult) -> some View {
+  private func recommendationRow(
+    _ result: KnowledgeSearchResult,
+    query: String
+  ) -> some View {
     let hit = KnowledgeSearchPresentationService().presentation(
       for: result,
       query: query,
@@ -275,24 +245,25 @@ struct KnowledgeContextRecommendationCard: View {
   }
 
   private func loadRecommendations(for query: String) async {
-    recommendations = []
-    errorMessage = nil
     guard !query.trimmedForPublishing.isEmpty else {
+      recommendations = []
+      errorMessage = nil
       isLoading = false
       return
     }
 
     isLoading = true
     do {
-      try await Task.sleep(for: .milliseconds(420))
       let results = try await knowledge.contextRecommendations(query: query, limit: 6)
       guard !Task.isCancelled else { return }
       recommendations = results
+      errorMessage = nil
       isLoading = false
     } catch is CancellationError {
       return
     } catch {
       guard !Task.isCancelled else { return }
+      recommendations = []
       errorMessage = error.localizedDescription
       isLoading = false
     }

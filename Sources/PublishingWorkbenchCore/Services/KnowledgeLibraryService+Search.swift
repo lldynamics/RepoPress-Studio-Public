@@ -1,4 +1,10 @@
 import Foundation
+import PublishingCoreSupport
+import PublishingKnowledgeCore
+
+private enum KnowledgeSearchTokenSupport {
+  static let tokenizer = LocalBPETokenizer(encoding: .o200kBase)
+}
 
 extension KnowledgeLibraryService {
   public func search(
@@ -218,9 +224,12 @@ extension KnowledgeLibraryService {
       let remainingBudget = tokenBudget - usedTokens
       guard remainingBudget > 100 else { break }
 
-      let maximumCharacters = min(1_500, remainingBudget * 3)
-      let excerpt = clipped(result.chunk.content, maximumCharacters: maximumCharacters)
-      let estimatedTokens = max(1, Int(ceil(Double(excerpt.count) / 3.0)))
+      let maximumTokens = min(1_500, remainingBudget)
+      let excerpt = clippedToTokenBudget(
+        result.chunk.content,
+        maximumTokens: maximumTokens
+      )
+      let estimatedTokens = max(1, KnowledgeSearchTokenSupport.tokenizer.tokenCount(excerpt))
       guard estimatedTokens <= remainingBudget else { continue }
 
       citations.append(
@@ -251,6 +260,51 @@ extension KnowledgeLibraryService {
       citations: citations,
       authorizationBindings: authorizationBindings
     )
+  }
+
+  private func clippedToTokenBudget(_ text: String, maximumTokens: Int) -> String {
+    guard maximumTokens > 0 else { return "" }
+    let tokenizer = KnowledgeSearchTokenSupport.tokenizer
+    guard tokenizer.tokenCount(text) > maximumTokens else { return text }
+
+    let paragraphs = text
+      .components(separatedBy: "\n\n")
+      .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+      .filter { !$0.isEmpty }
+    guard paragraphs.count >= 2 else {
+      let scalars = Array(text.unicodeScalars)
+      var low = 0
+      var high = scalars.count
+      var best = ""
+      while low <= high {
+        let middle = (low + high) / 2
+        let prefix = String(String.UnicodeScalarView(scalars.prefix(middle)))
+        if tokenizer.tokenCount(prefix + "…") <= maximumTokens {
+          best = prefix
+          low = middle + 1
+        } else {
+          high = middle - 1
+        }
+      }
+      return (best + "…").trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    var head = paragraphs[0]
+    var tail = paragraphs[paragraphs.count - 1]
+    var candidate = head + "\n…\n" + tail
+    while tokenizer.tokenCount(candidate) > maximumTokens {
+      if head.count >= tail.count, head.count > 1 {
+        head = String(head.dropLast(max(1, head.count / 8)))
+      } else if tail.count > 1 {
+        tail = String(tail.dropFirst(max(1, tail.count / 8)))
+      } else {
+        break
+      }
+      candidate = head + "\n…\n" + tail
+    }
+    return tokenizer.tokenCount(candidate) <= maximumTokens
+      ? candidate
+      : String(head.prefix(1)) + "…"
   }
 
   public func contextAsync(

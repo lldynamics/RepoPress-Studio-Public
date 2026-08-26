@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 import XCTest
 @testable import PublishingWorkbenchCore
@@ -488,15 +489,20 @@ final class RemoteRepositoryPublishServiceTests: XCTestCase {
     profile.branch = "main"
     profile.markdownPathPattern = "content/posts/{slug}.md"
 
-    let draft = ArticleDraft(
+    var draft = ArticleDraft(
       siteProfileID: profile.id,
       title: "GitHub Direct",
       date: fixedDate(),
       slug: "github-direct",
       draft: false,
       bodyMarkdown: "This body is intentionally long enough for GitHub direct publishing.",
+      repositoryPath: "content/posts/github-direct.md"
+    )
+    draft.confirmRepositoryBinding(
+      profile: profile,
       repositoryPath: "content/posts/github-direct.md",
-      repositorySHA: "existing-file-sha"
+      remoteRevision: "existing-file-sha",
+      renderedContentDigest: draft.renderedRepositoryContentDigest(profile: profile)
     )
     let package = PublishPackageBuilder().build(draft: draft, profile: profile)
 
@@ -548,16 +554,22 @@ final class RemoteRepositoryPublishServiceTests: XCTestCase {
     profile.repoName = "site"
     profile.branch = "main"
     profile.markdownPathPattern = "content/posts/{slug}.md"
-    let draft = ArticleDraft(
+    var draft = ArticleDraft(
       siteProfileID: profile.id,
       title: "New Path",
       date: fixedDate(),
-      slug: "new-path",
+      slug: "old-path",
       draft: false,
       bodyMarkdown: "This body is intentionally long enough for GitHub path migration coverage.",
-      repositoryPath: "content/posts/old-path.md",
-      repositorySHA: "old-content-sha"
+      repositoryPath: "content/posts/old-path.md"
     )
+    draft.confirmRepositoryBinding(
+      profile: profile,
+      repositoryPath: "content/posts/old-path.md",
+      remoteRevision: "old-content-sha",
+      renderedContentDigest: draft.renderedRepositoryContentDigest(profile: profile)
+    )
+    draft.slug = "new-path"
     let package = PublishPackageBuilder().build(draft: draft, profile: profile)
 
     let result = try await service.publish(
@@ -580,6 +592,156 @@ final class RemoteRepositoryPublishServiceTests: XCTestCase {
     let entries = try XCTUnwrap(treeBody["tree"] as? [[String: Any]])
     XCTAssertEqual(entries.map { $0["path"] as? String }, ["content/posts/new-path.md", "content/posts/old-path.md"])
     XCTAssertTrue(entries[1]["sha"] is NSNull)
+  }
+
+  func testGitHubDirectDeleteTreatsMissingRemoteFileAsIdempotentSuccess() async throws {
+    let transport = SequencedRemoteRepositoryTransport(responses: [
+      response(statusCode: 404, json: #"{"message":"not found"}"#),
+    ])
+    let service = RemoteRepositoryPublishService(transport: transport)
+    let profile = githubProfileForDeletion()
+    let package = deletionPackage(
+      path: "content/posts/already-gone.md",
+      expectedRemoteSHA: "previous-sha"
+    )
+
+    let result = try await service.publish(
+      package: package,
+      profile: profile,
+      mode: .directCommit,
+      token: "secret-token"
+    )
+
+    XCTAssertTrue(result.changedPaths.isEmpty)
+    XCTAssertNil(result.commitSHA)
+    let requests = await transport.capturedRequests()
+    XCTAssertEqual(requests.map(\.httpMethod), ["GET"])
+  }
+
+  func testGitHubDirectDeleteAdoptsMatchingLocalContentEvidenceWithoutRemoteSHA() async throws {
+    let content = Data("published markdown".utf8)
+    let hashingService = RemoteRepositoryPublishService()
+    let remoteSHA = hashingService.gitBlobSHA(for: content)
+    let transport = SequencedRemoteRepositoryTransport(responses: [
+      response(json: "{\"sha\":\"\(remoteSHA)\"}"),
+      response(json: #"{"content":null,"commit":{"sha":"delete-commit"}}"#),
+    ])
+    let service = RemoteRepositoryPublishService(transport: transport)
+    let profile = githubProfileForDeletion()
+    let package = deletionPackage(
+      path: "content/posts/legacy-delete.md",
+      expectedGitBlobSHA: remoteSHA
+    )
+
+    let result = try await service.publish(
+      package: package,
+      profile: profile,
+      mode: .directCommit,
+      token: "secret-token"
+    )
+
+    XCTAssertEqual(result.changedPaths, ["content/posts/legacy-delete.md"])
+    XCTAssertEqual(result.commitSHA, "delete-commit")
+    let requests = await transport.capturedRequests()
+    XCTAssertEqual(requests.map(\.httpMethod), ["GET", "DELETE"])
+  }
+
+  func testGitHubDirectDeleteRejectsMismatchedLocalContentEvidenceWithoutRemoteSHA() async throws {
+    let transport = SequencedRemoteRepositoryTransport(responses: [
+      response(json: #"{"sha":"remote-different-sha"}"#),
+    ])
+    let service = RemoteRepositoryPublishService(transport: transport)
+    let profile = githubProfileForDeletion()
+    let package = deletionPackage(
+      path: "content/posts/legacy-conflict.md",
+      expectedGitBlobSHA: "local-blob-sha"
+    )
+
+    do {
+      _ = try await service.publish(
+        package: package,
+        profile: profile,
+        mode: .directCommit,
+        token: "secret-token"
+      )
+      XCTFail("Expected untracked remote conflict")
+    } catch let error as RemoteRepositoryPublishError {
+      guard case .untrackedRemoteFile(let path, let actualSHA) = error else {
+        return XCTFail("Unexpected error: \(error)")
+      }
+      XCTAssertEqual(path, "content/posts/legacy-conflict.md")
+      XCTAssertEqual(actualSHA, "remote-different-sha")
+    }
+    let requests = await transport.capturedRequests()
+    XCTAssertEqual(requests.map(\.httpMethod), ["GET"])
+  }
+
+  func testGitHubReviewDeleteRejectsTargetVersionDriftAndRemovesNewBranch() async throws {
+    let transport = SequencedRemoteRepositoryTransport(responses: [
+      response(json: #"{"object":{"sha":"base-sha"}}"#),
+      response(json: #"{"ref":"refs/heads/cleanup/article","object":{"sha":"base-sha"}}"#),
+      response(json: #"{"sha":"expected-sha"}"#),
+      response(json: #"{"sha":"new-target-sha"}"#),
+      response(statusCode: 204, json: ""),
+    ])
+    let service = RemoteRepositoryPublishService(transport: transport)
+    let profile = githubProfileForDeletion()
+    let package = deletionPackage(
+      path: "content/posts/review-conflict.md",
+      expectedRemoteSHA: "expected-sha"
+    )
+
+    do {
+      _ = try await service.publish(
+        package: package,
+        profile: profile,
+        mode: .reviewRequest,
+        token: "secret-token"
+      )
+      XCTFail("Expected review delete to reject target drift")
+    } catch let error as RemoteRepositoryPublishError {
+      XCTAssertEqual(
+        error,
+        .remoteVersionConflict(
+          path: "content/posts/review-conflict.md",
+          expectedSHA: "expected-sha",
+          actualSHA: "new-target-sha"
+        )
+      )
+    }
+
+    let requests = await transport.capturedRequests()
+    XCTAssertEqual(requests.map(\.httpMethod), ["GET", "POST", "GET", "GET", "DELETE"])
+    XCTAssertEqual(
+      requests.last?.url?.path,
+      "/repos/owner/site/git/refs/heads/cleanup/article"
+    )
+  }
+
+  func testGitHubReviewDeleteReportsPathAwaitingMerge() async throws {
+    let path = "content/posts/review-delete.md"
+    let transport = SequencedRemoteRepositoryTransport(responses: [
+      response(json: #"{"object":{"sha":"base-sha"}}"#),
+      response(json: #"{"ref":"refs/heads/cleanup/article","object":{"sha":"base-sha"}}"#),
+      response(json: #"{"sha":"expected-sha"}"#),
+      response(json: #"{"sha":"expected-sha"}"#),
+      response(json: #"{"content":null,"commit":{"sha":"delete-commit"}}"#),
+      response(json: #"{"html_url":"https://github.com/owner/site/pull/9"}"#),
+    ])
+    let service = RemoteRepositoryPublishService(transport: transport)
+    let profile = githubProfileForDeletion()
+    let package = deletionPackage(path: path, expectedRemoteSHA: "expected-sha")
+
+    let result = try await service.publish(
+      package: package,
+      profile: profile,
+      mode: .reviewRequest,
+      token: "secret-token"
+    )
+
+    XCTAssertEqual(result.changedPaths, [path])
+    XCTAssertEqual(result.reviewPendingPaths, [path])
+    XCTAssertEqual(result.reviewURL, "https://github.com/owner/site/pull/9")
   }
 
   func testGitHubAtomicPublishReturnsNoOpWhenEveryBlobIsUnchanged() async throws {
@@ -631,10 +793,83 @@ final class RemoteRepositoryPublishServiceTests: XCTestCase {
 
     XCTAssertTrue(result.changedPaths.isEmpty)
     XCTAssertNil(result.commitSHA)
-    XCTAssertNil(result.remoteVersionsByPath)
+    XCTAssertEqual(
+      result.remoteVersionsByPath,
+      [
+        "content/posts/first.md": "first-blob-sha",
+        "content/posts/second.md": "second-blob-sha",
+      ]
+    )
     let requests = await transport.capturedRequests()
     XCTAssertEqual(requests.map(\.httpMethod), ["GET", "GET", "GET", "POST", "GET", "POST"])
     XCTAssertFalse(requests.contains { $0.httpMethod == "POST" && $0.url?.path.contains("/git/trees") == true })
+    XCTAssertFalse(requests.contains { $0.httpMethod == "POST" && $0.url?.path.contains("/git/commits") == true })
+    XCTAssertFalse(requests.contains { $0.httpMethod == "PATCH" })
+  }
+
+  func testGitHubAtomicPublishAutoAdoptsExistingIdenticalContentWithoutLocalSHA() async throws {
+    let hashingService = RemoteRepositoryPublishService()
+    let firstContent = Data("first identical body".utf8)
+    let secondContent = Data("second identical body".utf8)
+    let firstPath = "content/posts/first-identical.md"
+    let secondPath = "content/posts/second-identical.md"
+    let firstSHA = hashingService.gitBlobSHA(for: firstContent)
+    let secondSHA = hashingService.gitBlobSHA(for: secondContent)
+    let transport = SequencedRemoteRepositoryTransport(responses: [
+      response(json: #"{"object":{"sha":"base-commit-sha"}}"#),
+      response(json: #"{"sha":"base-commit-sha","tree":{"sha":"base-tree-sha"},"parents":[{"sha":"parent-sha"}]}"#),
+      response(json: "{\"sha\":\"\(firstSHA)\"}"),
+      response(json: "{\"sha\":\"\(secondSHA)\"}"),
+    ])
+    let service = RemoteRepositoryPublishService(transport: transport)
+    var profile = SiteProfile.defaultProfile
+    profile.repositoryProvider = .github
+    profile.repositoryBaseURL = "https://api.github.com"
+    profile.repoOwner = "owner"
+    profile.repoName = "site"
+    profile.branch = "main"
+    let package = PublishPackage(
+      draftID: UUID(),
+      title: "Already Published Atomic Publish",
+      markdownPath: firstPath,
+      files: [
+        PublishPackageFile(
+          kind: .markdown,
+          repositoryPath: firstPath,
+          content: String(decoding: firstContent, as: UTF8.self)
+        ),
+        PublishPackageFile(
+          kind: .markdown,
+          repositoryPath: secondPath,
+          content: String(decoding: secondContent, as: UTF8.self)
+        ),
+      ],
+      commitMessage: "Publish already published files",
+      reviewBranchName: "publish/already-published",
+      reviewTitle: "Already published",
+      reviewChecklist: []
+    )
+
+    let result = try await service.publish(
+      package: package,
+      profile: profile,
+      mode: .directCommit,
+      token: "secret-token"
+    )
+
+    XCTAssertTrue(result.changedPaths.isEmpty)
+    XCTAssertNil(result.commitSHA)
+    XCTAssertEqual(result.automaticallyAdoptedPaths, [firstPath, secondPath])
+    XCTAssertEqual(
+      result.remoteVersionsByPath,
+      [
+        firstPath: firstSHA,
+        secondPath: secondSHA,
+      ]
+    )
+    let requests = await transport.capturedRequests()
+    XCTAssertEqual(requests.map(\.httpMethod), ["GET", "GET", "GET", "GET"])
+    XCTAssertFalse(requests.contains { $0.url?.path.contains("/git/trees") == true })
     XCTAssertFalse(requests.contains { $0.httpMethod == "POST" && $0.url?.path.contains("/git/commits") == true })
     XCTAssertFalse(requests.contains { $0.httpMethod == "PATCH" })
   }
@@ -717,15 +952,20 @@ final class RemoteRepositoryPublishServiceTests: XCTestCase {
     profile.branch = "main"
     profile.markdownPathPattern = "content/posts/{slug}.md"
 
-    let draft = ArticleDraft(
+    var draft = ArticleDraft(
       siteProfileID: profile.id,
       title: "GitHub Conflict",
       date: fixedDate(),
       slug: "github-conflict",
       draft: false,
       bodyMarkdown: "This body is intentionally long enough for GitHub direct remote conflict coverage.",
+      repositoryPath: "content/posts/github-conflict.md"
+    )
+    draft.confirmRepositoryBinding(
+      profile: profile,
       repositoryPath: "content/posts/github-conflict.md",
-      repositorySHA: "old-remote-sha"
+      remoteRevision: "old-remote-sha",
+      renderedContentDigest: draft.renderedRepositoryContentDigest(profile: profile)
     )
     let package = PublishPackageBuilder().build(draft: draft, profile: profile)
 
@@ -813,6 +1053,92 @@ final class RemoteRepositoryPublishServiceTests: XCTestCase {
     XCTAssertEqual(requests[0].url?.path, "/repos/owner/site/contents/content/posts/github-unknown-remote.md")
   }
 
+  func testGitHubDirectPublishAutoAdoptsExistingIdenticalContentWithoutLocalSHA() async throws {
+    var profile = SiteProfile.defaultProfile
+    profile.repositoryProvider = .github
+    profile.repositoryBaseURL = "https://api.github.com"
+    profile.repoOwner = "owner"
+    profile.repoName = "site"
+    profile.branch = "main"
+    profile.markdownPathPattern = "content/posts/{slug}.md"
+
+    let draft = ArticleDraft(
+      siteProfileID: profile.id,
+      title: "GitHub Already Published",
+      date: fixedDate(),
+      slug: "github-already-published",
+      draft: false,
+      bodyMarkdown: "This body is intentionally long enough for GitHub identical content adoption coverage."
+    )
+    let package = PublishPackageBuilder().build(draft: draft, profile: profile)
+    let hashingService = RemoteRepositoryPublishService()
+    let content = try XCTUnwrap(package.markdownFile?.content)
+    let remoteSHA = hashingService.gitBlobSHA(for: Data(content.utf8))
+    let transport = SequencedRemoteRepositoryTransport(
+      responses: [response(json: "{\"sha\":\"\(remoteSHA)\"}")]
+    )
+    let service = RemoteRepositoryPublishService(transport: transport)
+
+    let result = try await service.publish(
+      package: package,
+      profile: profile,
+      mode: .directCommit,
+      token: "secret-token"
+    )
+
+    XCTAssertTrue(result.changedPaths.isEmpty)
+    XCTAssertNil(result.commitSHA)
+    XCTAssertEqual(result.remoteVersion(for: package.markdownPath), remoteSHA)
+    XCTAssertEqual(result.automaticallyAdoptedPaths, [package.markdownPath])
+    let requests = await transport.capturedRequests()
+    XCTAssertEqual(requests.map(\.httpMethod), ["GET"])
+  }
+
+  func testGitHubDirectPublishReturnsRemoteVersionWhenKnownSHAContentIsUnchanged() async throws {
+    var profile = SiteProfile.defaultProfile
+    profile.repositoryProvider = .github
+    profile.repositoryBaseURL = "https://api.github.com"
+    profile.repoOwner = "owner"
+    profile.repoName = "site"
+    profile.branch = "main"
+    profile.markdownPathPattern = "content/posts/{slug}.md"
+
+    let draft = ArticleDraft(
+      siteProfileID: profile.id,
+      title: "GitHub Known Baseline",
+      date: fixedDate(),
+      slug: "github-known-baseline",
+      draft: false,
+      bodyMarkdown: "This body is intentionally long enough for GitHub known baseline no-op coverage."
+    )
+    var package = PublishPackageBuilder().build(draft: draft, profile: profile)
+    let content = try XCTUnwrap(package.markdownFile?.content)
+    let hashingService = RemoteRepositoryPublishService()
+    let remoteSHA = hashingService.gitBlobSHA(for: Data(content.utf8))
+    package.files[0].expectedRemoteSHA = remoteSHA
+    let transport = SequencedRemoteRepositoryTransport(
+      responses: [response(json: "{\"sha\":\"\(remoteSHA)\"}")]
+    )
+    let service = RemoteRepositoryPublishService(transport: transport)
+
+    let result = try await service.publish(
+      package: package,
+      profile: profile,
+      mode: .directCommit,
+      token: "secret-token"
+    )
+
+    XCTAssertTrue(result.changedPaths.isEmpty)
+    XCTAssertNil(result.commitSHA)
+    XCTAssertEqual(result.remoteVersion(for: package.markdownPath), remoteSHA)
+    XCTAssertEqual(
+      result.remoteVersionsByPath,
+      [package.markdownPath: remoteSHA]
+    )
+    let requests = await transport.capturedRequests()
+    XCTAssertEqual(requests.map(\.httpMethod), ["GET"])
+  }
+
   func testGitLabDirectPublishMigratesPathInSingleCommit() async throws {
     let transport = SequencedRemoteRepositoryTransport(responses: [
       response(statusCode: 404, json: #"{"message":"not found"}"#),
@@ -827,16 +1153,22 @@ final class RemoteRepositoryPublishServiceTests: XCTestCase {
     profile.repoName = "site"
     profile.branch = "main"
     profile.markdownPathPattern = "content/posts/{slug}.md"
-    let draft = ArticleDraft(
+    var draft = ArticleDraft(
       siteProfileID: profile.id,
       title: "New Path",
       date: fixedDate(),
-      slug: "new-path",
+      slug: "old-path",
       draft: false,
       bodyMarkdown: "This body is intentionally long enough for GitLab path migration coverage.",
-      repositoryPath: "content/posts/old-path.md",
-      repositorySHA: "old-commit-sha"
+      repositoryPath: "content/posts/old-path.md"
     )
+    draft.confirmRepositoryBinding(
+      profile: profile,
+      repositoryPath: "content/posts/old-path.md",
+      remoteRevision: "old-commit-sha",
+      renderedContentDigest: draft.renderedRepositoryContentDigest(profile: profile)
+    )
+    draft.slug = "new-path"
     let package = PublishPackageBuilder().build(draft: draft, profile: profile)
 
     let result = try await service.publish(
@@ -857,6 +1189,92 @@ final class RemoteRepositoryPublishServiceTests: XCTestCase {
     XCTAssertEqual(actions[1]["file_path"] as? String, "content/posts/old-path.md")
     XCTAssertEqual(actions[1]["last_commit_id"] as? String, "old-commit-sha")
     XCTAssertNil(actions[1]["content"])
+  }
+
+  func testGitLabDirectDeleteTreatsMissingRemoteFileAsIdempotentSuccess() async throws {
+    let transport = SequencedRemoteRepositoryTransport(responses: [
+      response(statusCode: 404, json: #"{"message":"not found"}"#),
+    ])
+    let service = RemoteRepositoryPublishService(transport: transport)
+    let profile = gitLabProfileForDeletion()
+    let package = deletionPackage(
+      path: "content/posts/already-gone-gitlab.md",
+      expectedRemoteSHA: "previous-commit"
+    )
+
+    let result = try await service.publish(
+      package: package,
+      profile: profile,
+      mode: .directCommit,
+      token: "gitlab-token"
+    )
+
+    XCTAssertTrue(result.changedPaths.isEmpty)
+    XCTAssertNil(result.commitSHA)
+    let requests = await transport.capturedRequests()
+    XCTAssertEqual(requests.map(\.httpMethod), ["GET"])
+  }
+
+  func testGitLabDirectDeleteAdoptsMatchingLocalContentEvidenceWithoutRemoteCommitID() async throws {
+    let content = Data("published markdown".utf8)
+    let digest = SHA256.hash(data: content).map { String(format: "%02x", $0) }.joined()
+    let transport = SequencedRemoteRepositoryTransport(responses: [
+      response(json: #"{"file_path":"content/posts/legacy-gitlab.md","last_commit_id":"remote-commit","content":"published markdown","encoding":"text"}"#),
+      response(json: #"{"id":"delete-commit"}"#),
+    ])
+    let service = RemoteRepositoryPublishService(transport: transport)
+    let profile = gitLabProfileForDeletion()
+    let package = deletionPackage(
+      path: "content/posts/legacy-gitlab.md",
+      expectedContentSHA256: digest
+    )
+
+    let result = try await service.publish(
+      package: package,
+      profile: profile,
+      mode: .directCommit,
+      token: "gitlab-token"
+    )
+
+    XCTAssertEqual(result.changedPaths, ["content/posts/legacy-gitlab.md"])
+    XCTAssertEqual(result.commitSHA, "delete-commit")
+    let requests = await transport.capturedRequests()
+    XCTAssertEqual(requests.map(\.httpMethod), ["GET", "POST"])
+  }
+
+  func testGitLabReviewDeleteRejectsTargetVersionDriftBeforeCreatingCommit() async throws {
+    let transport = SequencedRemoteRepositoryTransport(responses: [
+      response(statusCode: 404, json: #"{"message":"not found"}"#),
+      response(json: #"{"file_path":"content/posts/review-conflict.md","last_commit_id":"new-target-commit","content":"new content","encoding":"text"}"#),
+    ])
+    let service = RemoteRepositoryPublishService(transport: transport)
+    let profile = gitLabProfileForDeletion()
+    let package = deletionPackage(
+      path: "content/posts/review-conflict.md",
+      expectedRemoteSHA: "expected-commit"
+    )
+
+    do {
+      _ = try await service.publish(
+        package: package,
+        profile: profile,
+        mode: .reviewRequest,
+        token: "gitlab-token"
+      )
+      XCTFail("Expected review delete to reject target drift")
+    } catch let error as RemoteRepositoryPublishError {
+      XCTAssertEqual(
+        error,
+        .remoteVersionConflict(
+          path: "content/posts/review-conflict.md",
+          expectedSHA: "expected-commit",
+          actualSHA: "new-target-commit"
+        )
+      )
+    }
+
+    let requests = await transport.capturedRequests()
+    XCTAssertEqual(requests.map(\.httpMethod), ["GET", "GET"])
   }
 
   func testGitLabReviewPublishCreatesCommitActionsAndMergeRequest() async throws {
@@ -962,15 +1380,20 @@ final class RemoteRepositoryPublishServiceTests: XCTestCase {
     profile.branch = "main"
     profile.markdownPathPattern = "content/posts/{slug}.md"
 
-    let draft = ArticleDraft(
+    var draft = ArticleDraft(
       siteProfileID: profile.id,
       title: "GitLab Direct",
       date: fixedDate(),
       slug: "gitlab-direct",
       draft: false,
       bodyMarkdown: "This body is intentionally long enough for GitLab direct publishing.",
+      repositoryPath: "content/posts/gitlab-direct.md"
+    )
+    draft.confirmRepositoryBinding(
+      profile: profile,
       repositoryPath: "content/posts/gitlab-direct.md",
-      repositorySHA: "existing-gitlab-commit"
+      remoteRevision: "existing-gitlab-commit",
+      renderedContentDigest: draft.renderedRepositoryContentDigest(profile: profile)
     )
     let package = PublishPackageBuilder().build(draft: draft, profile: profile)
 
@@ -1047,7 +1470,10 @@ final class RemoteRepositoryPublishServiceTests: XCTestCase {
 
     XCTAssertTrue(result.changedPaths.isEmpty)
     XCTAssertNil(result.commitSHA)
-    XCTAssertNil(result.remoteVersionsByPath)
+    XCTAssertEqual(
+      result.remoteVersionsByPath,
+      ["content/posts/unchanged.md": "existing-gitlab-commit"]
+    )
     let requests = await transport.capturedRequests()
     XCTAssertEqual(requests.map(\.httpMethod), ["GET"])
   }
@@ -1065,15 +1491,20 @@ final class RemoteRepositoryPublishServiceTests: XCTestCase {
     profile.branch = "main"
     profile.markdownPathPattern = "content/posts/{slug}.md"
 
-    let draft = ArticleDraft(
+    var draft = ArticleDraft(
       siteProfileID: profile.id,
       title: "GitLab Conflict",
       date: fixedDate(),
       slug: "gitlab-conflict",
       draft: false,
       bodyMarkdown: "This body is intentionally long enough for GitLab direct remote conflict coverage.",
+      repositoryPath: "content/posts/gitlab-conflict.md"
+    )
+    draft.confirmRepositoryBinding(
+      profile: profile,
       repositoryPath: "content/posts/gitlab-conflict.md",
-      repositorySHA: "old-gitlab-commit"
+      remoteRevision: "old-gitlab-commit",
+      renderedContentDigest: draft.renderedRepositoryContentDigest(profile: profile)
     )
     let package = PublishPackageBuilder().build(draft: draft, profile: profile)
 
@@ -1162,6 +1593,53 @@ final class RemoteRepositoryPublishServiceTests: XCTestCase {
     let requests = await transport.capturedRequests()
     XCTAssertEqual(requests.map(\.httpMethod), ["GET"])
     XCTAssertEqual(percentEncodedPath(requests[0].url), "/api/v4/projects/group%2Fsite/repository/files/content%2Fposts%2Fgitlab-unknown-remote.md")
+  }
+
+  func testGitLabDirectPublishAutoAdoptsExistingIdenticalContentWithoutLocalCommitID() async throws {
+    var profile = SiteProfile.defaultProfile
+    profile.repositoryProvider = .gitlab
+    profile.repositoryBaseURL = "https://gitlab.com"
+    profile.repoOwner = "group"
+    profile.repoName = "site"
+    profile.branch = "main"
+    profile.markdownPathPattern = "content/posts/{slug}.md"
+
+    let draft = ArticleDraft(
+      siteProfileID: profile.id,
+      title: "GitLab Already Published",
+      date: fixedDate(),
+      slug: "gitlab-already-published",
+      draft: false,
+      bodyMarkdown: "This body is intentionally long enough for GitLab identical content adoption coverage."
+    )
+    let package = PublishPackageBuilder().build(draft: draft, profile: profile)
+    let content = try XCTUnwrap(package.markdownFile?.content)
+    let jsonData = try JSONSerialization.data(
+      withJSONObject: [
+        "file_path": package.markdownPath,
+        "last_commit_id": "existing-gitlab-commit",
+        "content": content,
+        "encoding": "text",
+      ]
+    )
+    let transport = SequencedRemoteRepositoryTransport(
+      responses: [response(json: String(decoding: jsonData, as: UTF8.self))]
+    )
+    let service = RemoteRepositoryPublishService(transport: transport)
+
+    let result = try await service.publish(
+      package: package,
+      profile: profile,
+      mode: .directCommit,
+      token: "gitlab-token"
+    )
+
+    XCTAssertTrue(result.changedPaths.isEmpty)
+    XCTAssertNil(result.commitSHA)
+    XCTAssertEqual(result.remoteVersion(for: package.markdownPath), "existing-gitlab-commit")
+    XCTAssertEqual(result.automaticallyAdoptedPaths, [package.markdownPath])
+    let requests = await transport.capturedRequests()
+    XCTAssertEqual(requests.map(\.httpMethod), ["GET"])
   }
 
   func testGitLabReviewPublishUpdatesExistingReviewBranchOnRetry() async throws {
@@ -1453,6 +1931,8 @@ final class RemoteRepositoryPublishServiceTests: XCTestCase {
     XCTAssertEqual(check.permissionSummary, CoreL10n.text("未确认写入权限。"))
     XCTAssertEqual(check.minimumWritePermission, CoreL10n.text("需要仓库写入权限。"))
     XCTAssertNil(check.tokenScopeSummary)
+    XCTAssertNil(check.checkedAt)
+    XCTAssertFalse(check.isFresh())
   }
 
   func testRemoteAPIHTTPErrorDescriptionsIncludeActionableTokenAndPermissionGuidance() async throws {
@@ -1859,6 +2339,53 @@ final class RemoteRepositoryPublishServiceTests: XCTestCase {
     ) { error in
       XCTAssertTrue(error is ThrowingRemoteRequestBody.EncodingFailure)
     }
+  }
+
+  private func githubProfileForDeletion() -> SiteProfile {
+    var profile = SiteProfile.defaultProfile
+    profile.repositoryProvider = .github
+    profile.repositoryBaseURL = "https://api.github.com"
+    profile.repoOwner = "owner"
+    profile.repoName = "site"
+    profile.branch = "main"
+    return profile
+  }
+
+  private func gitLabProfileForDeletion() -> SiteProfile {
+    var profile = SiteProfile.defaultProfile
+    profile.repositoryProvider = .gitlab
+    profile.repositoryBaseURL = "https://gitlab.com"
+    profile.repoOwner = "group"
+    profile.repoName = "site"
+    profile.branch = "main"
+    return profile
+  }
+
+  private func deletionPackage(
+    path: String,
+    expectedRemoteSHA: String? = nil,
+    expectedContentSHA256: String? = nil,
+    expectedGitBlobSHA: String? = nil
+  ) -> PublishPackage {
+    PublishPackage(
+      draftID: UUID(),
+      title: "Delete article",
+      markdownPath: path,
+      files: [
+        PublishPackageFile(
+          kind: .markdown,
+          operation: .delete,
+          repositoryPath: path,
+          expectedRemoteSHA: expectedRemoteSHA,
+          expectedContentSHA256: expectedContentSHA256,
+          expectedGitBlobSHA: expectedGitBlobSHA
+        )
+      ],
+      commitMessage: "Delete article",
+      reviewBranchName: "cleanup/article",
+      reviewTitle: "Delete article",
+      reviewChecklist: []
+    )
   }
 
   private func fixedDate() -> Date {

@@ -54,8 +54,13 @@ struct RepositoryWorkspaceView: View {
           pendingRemoteArticleImportFiles = []
         },
         confirmAction: { repositoryPaths in
-          _ = store.importRemoteArticleDraftsFromRepository(repositoryPaths: repositoryPaths)
+          let frozenPaths = repositoryPaths
           pendingRemoteArticleImportFiles = []
+          Task { @MainActor in
+            _ = await store.importRemoteArticleDraftsFromRepository(
+              repositoryPaths: frozenPaths
+            )
+          }
         }
       )
     }

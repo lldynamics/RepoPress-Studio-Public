@@ -1,5 +1,4 @@
 import Combine
-import CryptoKit
 import Foundation
 
 extension RSSReaderStore {
@@ -87,53 +86,6 @@ extension RSSReaderStore {
       articles.map { ($0.id, $0) },
       uniquingKeysWith: { newer, _ in newer }
     )
-  }
-
-  func articleStorageID(
-    feedID: UUID,
-    parsedID: String,
-    link: URL?,
-    existingHeaders _: [RSSArticleHeader],
-    incomingLinksByParsedID: [String: Set<String>],
-    firstIncomingLinkByParsedID: [String: String],
-    existingCollisionIDsByLink: [String: String] = [:],
-    existingBaseLinkByBaseID: [String: String] = [:]
-  ) -> String {
-    let baseID = "\(feedID.uuidString):\(parsedID)"
-    guard let link else { return baseID }
-    let normalizedLink = normalizedArticleLink(link)
-    if let existingCollision = existingCollisionIDsByLink["\(baseID)|\(normalizedLink)"] {
-      return existingCollision
-    }
-
-    let incomingLinks = incomingLinksByParsedID[parsedID] ?? []
-    guard incomingLinks.count > 1 else {
-      // A single item whose URL moved is treated as a normal publisher update.
-      // A collision is only provable when the same feed snapshot contains
-      // multiple different URLs for the same GUID.
-      return baseID
-    }
-
-    let existingBaseLink = existingBaseLinkByBaseID[baseID]
-    if existingBaseLink == normalizedLink
-      || (existingBaseLink == nil && firstIncomingLinkByParsedID[parsedID] == normalizedLink)
-    {
-      return baseID
-    }
-    return collisionArticleID(baseID: baseID, normalizedLink: normalizedLink)
-  }
-
-  func normalizedArticleLink(_ url: URL) -> String {
-    var components = URLComponents(url: url, resolvingAgainstBaseURL: false)
-    components?.fragment = nil
-    return components?.url?.absoluteString ?? url.absoluteString
-  }
-
-  func collisionArticleID(baseID: String, normalizedLink: String) -> String {
-    let digest = SHA256.hash(data: Data(normalizedLink.utf8))
-      .map { String(format: "%02x", $0) }
-      .joined()
-    return "\(baseID):link-\(String(digest.prefix(24)))"
   }
 
   func mergingLegacyArticles(

@@ -126,6 +126,73 @@ public struct LocalSitePreviewPortAllocation: Hashable, Sendable {
   }
 }
 
+public struct LocalSitePreviewExecutionIdentity: Codable, Hashable, Sendable {
+  public let profileID: UUID
+  public let canonicalRootPath: String
+  public let siteKind: SiteKind
+  public let executablePath: String
+  public let resolvedExecutablePath: String
+  public let arguments: [String]
+  public let command: String
+  public let manifestRelativePaths: [String]
+  public let manifestDigest: String
+  public let fingerprint: String
+
+  public init(
+    profileID: UUID,
+    canonicalRootPath: String,
+    siteKind: SiteKind,
+    executablePath: String,
+    resolvedExecutablePath: String,
+    arguments: [String],
+    command: String,
+    manifestRelativePaths: [String],
+    manifestDigest: String,
+    fingerprint: String
+  ) {
+    self.profileID = profileID
+    self.canonicalRootPath = canonicalRootPath
+    self.siteKind = siteKind
+    self.executablePath = executablePath
+    self.resolvedExecutablePath = resolvedExecutablePath
+    self.arguments = arguments
+    self.command = command
+    self.manifestRelativePaths = manifestRelativePaths
+    self.manifestDigest = manifestDigest
+    self.fingerprint = fingerprint
+  }
+}
+
+public struct LocalSitePreviewAuthorizationRequest: Hashable, Identifiable, Sendable {
+  public var id: String { fingerprint }
+
+  public let profileID: UUID
+  public let fingerprint: String
+  public let repositoryPath: String
+  public let command: String
+  public let siteKind: SiteKind
+
+  public init(
+    profileID: UUID,
+    fingerprint: String,
+    repositoryPath: String,
+    command: String,
+    siteKind: SiteKind
+  ) {
+    self.profileID = profileID
+    self.fingerprint = fingerprint
+    self.repositoryPath = repositoryPath
+    self.command = command
+    self.siteKind = siteKind
+  }
+}
+
+public enum LocalSitePreviewStartDisposition: Hashable, Sendable {
+  case started
+  case needsConfirmation(LocalSitePreviewAuthorizationRequest)
+  case failed(String)
+}
+
 public struct LocalSitePreviewPortAllocator: Sendable {
   private let isPortAvailableHandler: @Sendable (Int) -> Bool
   private let dynamicPortHandler: @Sendable () -> Int?
@@ -220,6 +287,9 @@ public enum LocalSitePreviewError: LocalizedError, Sendable {
   case invalidRoot(String)
   case dependencyDiagnostics(LocalSitePreviewDiagnostics)
   case portUnavailable(Int)
+  case authorizationRequired
+  case executionPlanChanged
+  case authorizationStoreUnavailable(String)
   case launchFailed(String)
 
   public var errorDescription: String? {
@@ -234,6 +304,12 @@ public enum LocalSitePreviewError: LocalizedError, Sendable {
       return "本地预览依赖检查未通过：\(messages.joined(separator: "；"))"
     case .portUnavailable(let port):
       return "本地预览端口 \(port) 已被占用，请重新分配端口后再试。"
+    case .authorizationRequired:
+      return CoreL10n.text("本地预览需要先确认当前仓库和启动命令。")
+    case .executionPlanChanged:
+      return CoreL10n.text("本地预览计划已变更，请重新检查并确认后再启动。")
+    case .authorizationStoreUnavailable(let message):
+      return CoreL10n.format("无法保存本地预览授权：%@", message)
     case .launchFailed(let message):
       return "本地预览启动失败：\(message)"
     }

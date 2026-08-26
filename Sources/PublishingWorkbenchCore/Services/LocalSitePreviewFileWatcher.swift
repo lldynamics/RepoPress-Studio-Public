@@ -175,6 +175,8 @@ public final class LocalSitePreviewFileWatcher: @unchecked Sendable {
     switch siteKind {
     case .astro:
       return []
+    case .vitePress:
+      return ["dist"]
     case .zola, .hugo, .hexo:
       return ["public"]
     case .jekyll:

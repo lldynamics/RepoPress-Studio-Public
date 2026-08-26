@@ -294,6 +294,12 @@ public final class RSSReaderStore: ObservableObject {
   var backgroundRefreshTimer: Timer?
   var retryTimer: Timer?
   var backgroundRefreshInterval: TimeInterval?
+  /// Diagnostic state used by regression tests to prove the refresh worker
+  /// completed its payload/merge/persistence phase outside the main actor.
+  var lastRefreshWorkRanOffMainActor = false
+  /// Optional suspension point used by concurrency regression tests to make
+  /// a user-state mutation race the detached persistence boundary.
+  var refreshWorkerBeforePersistenceHook: (@Sendable () async -> Void)?
 
   struct DeletedFeedSnapshot {
     var feed: RSSFeed
@@ -332,12 +338,6 @@ public final class RSSReaderStore: ObservableObject {
 
   struct BatchReadSnapshot {
     var states: [BatchReadState]
-  }
-
-  struct MergeResult {
-    var headers: [RSSArticleHeader]
-    var articlesToUpsert: [RSSArticle]
-    var highlights: [RSSArticleHighlight]
   }
 
   static let articlePayloadCacheCapacity = 16

@@ -3,6 +3,95 @@ import XCTest
 @testable import PublishingWorkbenchCore
 
 extension WorkbenchStoreProfileTests {
+  func testDirectRemoteWebsiteDraftSyncDoesNotMarkWorkflowPublished() throws {
+    let store = try TestWorkbenchFactory.makeStore()
+    var profile = store.activeProfile
+    profile.repoOwner = "owner"
+    profile.repoName = "site"
+    profile.markdownPathPattern = "content/posts/{slug}.md"
+    store.updateActiveProfile(profile)
+    var draft = ArticleDraft(
+      siteProfileID: profile.id,
+      title: "Website draft",
+      slug: "website-draft",
+      draft: true,
+      bodyMarkdown: "This remains a website draft after explicit remote synchronization.",
+      status: .ready
+    )
+    draft.recordProjectFile(
+      profile: profile,
+      repositoryPath: "content/posts/website-draft.md",
+      renderedContentDigest: draft.renderedRepositoryContentDigest(profile: profile)
+    )
+    let package = PublishPackageBuilder().build(draft: draft, profile: profile)
+    store.setDrafts([draft])
+
+    store.markDraftsAsPublishedIfDirectRemoteCommit(
+      mode: .directCommit,
+      draftIDs: [draft.id]
+    )
+    store.publishingStore.confirmDirectRemotePublishLifecycle(
+      packages: [package],
+      result: RemoteRepositoryPublishResult(
+        provider: .github,
+        mode: .directCommit,
+        branchName: "main",
+        targetBranch: "main",
+        changedPaths: [package.markdownPath],
+        commitSHA: "commit-sha",
+        remoteVersionsByPath: [package.markdownPath: "remote-sha"]
+      )
+    )
+
+    let synchronized = try XCTUnwrap(store.drafts.first)
+    XCTAssertTrue(synchronized.draft)
+    XCTAssertEqual(synchronized.status, .ready)
+    XCTAssertEqual(synchronized.repositorySyncState(for: profile), .synced)
+  }
+
+  func testDirectRemotePublishNoOpPreservesKnownMarkdownVersionWhenLegacyResultIsSparse() throws {
+    let store = try TestWorkbenchFactory.makeStore()
+    var profile = store.activeProfile
+    profile.markdownPathPattern = "content/posts/{slug}.md"
+    store.updateActiveProfile(profile)
+    var draft = ArticleDraft(
+      siteProfileID: profile.id,
+      title: "No-op baseline",
+      slug: "no-op-baseline",
+      bodyMarkdown: "The remote document already contains these exact bytes.",
+      repositoryPath: "content/posts/no-op-baseline.md"
+    )
+    draft.confirmRepositoryBinding(
+      profile: profile,
+      repositoryPath: "content/posts/no-op-baseline.md",
+      remoteRevision: "known-markdown-sha",
+      renderedContentDigest: draft.renderedRepositoryContentDigest(profile: profile)
+    )
+    let package = PublishPackageBuilder().build(draft: draft, profile: profile)
+    store.setDrafts([draft])
+
+    store.publishingStore.confirmDirectRemotePublishLifecycle(
+      packages: [package],
+      result: RemoteRepositoryPublishResult(
+        provider: .github,
+        mode: .directCommit,
+        branchName: "main",
+        targetBranch: "main",
+        changedPaths: [],
+        commitSHA: nil,
+        remoteVersionsByPath: nil
+      )
+    )
+
+    let confirmed = try XCTUnwrap(store.drafts.first)
+    XCTAssertEqual(confirmed.repositorySHA, "known-markdown-sha")
+    XCTAssertEqual(confirmed.repositoryBinding?.remoteRevision, "known-markdown-sha")
+    XCTAssertEqual(
+      PublishPackageBuilder().build(draft: confirmed, profile: profile).markdownFile?.expectedRemoteSHA,
+      "known-markdown-sha"
+    )
+  }
+
   func testDirectRemotePublishPersistsAttachmentVersionsForNextPublish() throws {
     let store = try TestWorkbenchFactory.makeStore()
     var profile = store.activeProfile
@@ -47,6 +136,119 @@ extension WorkbenchStoreProfileTests {
     XCTAssertEqual(nextPackage.files.first { $0.kind == .image }?.expectedRemoteSHA, "image-sha")
   }
 
+  func testOneStepUnpublishDeletesRemoteAndLocalMarkdownButKeepsImages() async throws {
+    let rootURL = try temporaryDirectoryURL(prefix: "OneStepUnpublish")
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let articleURL = rootURL.appendingPathComponent("content/posts/unpublish.md")
+    let imageURL = rootURL.appendingPathComponent("static/images/shared.png")
+    try FileManager.default.createDirectory(
+      at: articleURL.deletingLastPathComponent(),
+      withIntermediateDirectories: true
+    )
+    try FileManager.default.createDirectory(
+      at: imageURL.deletingLastPathComponent(),
+      withIntermediateDirectories: true
+    )
+    try "published markdown".write(to: articleURL, atomically: true, encoding: .utf8)
+    try Data([1, 2, 3]).write(to: imageURL)
+
+    let transport = SequencedWorkbenchRemoteRepositoryTransport(responses: [
+      workbenchRemoteResponse(json: #"{"full_name":"owner/site","default_branch":"main","permissions":{"push":true}}"#),
+      workbenchRemoteResponse(json: #"{"sha":"known-sha"}"#),
+      workbenchRemoteResponse(json: #"{"content":null,"commit":{"sha":"delete-commit"}}"#),
+    ])
+    let tokenStore = repositoryTokenStoreForTest()
+    let store = WorkbenchStore(
+      persistence: try TestWorkbenchFactory.persistence(),
+      remoteRepositoryPublishService: RemoteRepositoryPublishService(transport: transport),
+      repositoryTokenStore: tokenStore
+    )
+    var profile = store.activeProfile
+    profile.repositoryProvider = .github
+    profile.repositoryBaseURL = RepositoryProvider.github.defaultBaseURL
+    profile.repoOwner = "owner"
+    profile.repoName = "site"
+    profile.branch = "main"
+    profile.repositoryPublishStrategy = .direct
+    profile.rememberLocalRepositoryRoot(rootURL)
+    store.updateActiveProfile(profile)
+    defer { _ = try? tokenStore.deleteRepositoryToken(for: profile) }
+    try tokenStore.saveRepositoryToken("github-token", for: profile)
+    store.refreshRepositoryTokenAvailability()
+
+    let draft = ArticleDraft(
+      siteProfileID: profile.id,
+      title: "Unpublish",
+      slug: "unpublish",
+      bodyMarkdown: "published markdown",
+      repositoryPath: "content/posts/unpublish.md",
+      repositorySHA: "known-sha"
+    )
+    store.setDrafts([draft])
+    store.setSelectedDraftID(draft.id)
+
+    let result = await store.unpublishDraft(id: draft.id)
+
+    XCTAssertEqual(result?.commitSHA, "delete-commit")
+    XCTAssertTrue(store.drafts.isEmpty)
+    XCTAssertEqual(store.recycledDrafts.map(\.id), [draft.id])
+    XCTAssertFalse(FileManager.default.fileExists(atPath: articleURL.path))
+    XCTAssertTrue(FileManager.default.fileExists(atPath: imageURL.path))
+    XCTAssertTrue(store.pendingRepositoryCleanupRequests.isEmpty)
+    XCTAssertEqual(store.draftRepositoryCleanupRequests.first?.status, .completed)
+    XCTAssertEqual(store.draftRepositoryCleanupRequests.first?.remoteStatus, .completed)
+    let requests = await transport.capturedRequests()
+    XCTAssertEqual(requests.map(\.httpMethod), ["GET", "GET", "DELETE"])
+  }
+
+  func testUnpublishRequestUsesItsOwnProfileWhenAnotherSiteIsActive() async throws {
+    let transport = SequencedWorkbenchRemoteRepositoryTransport(responses: [
+      workbenchRemoteResponse(json: #"{"full_name":"owner/secondary-site","default_branch":"main","permissions":{"push":true}}"#),
+      workbenchRemoteResponse(json: #"{"sha":"known-sha"}"#),
+      workbenchRemoteResponse(json: #"{"content":null,"commit":{"sha":"delete-commit"}}"#),
+    ])
+    let tokenStore = repositoryTokenStoreForTest()
+    let store = WorkbenchStore(
+      persistence: try TestWorkbenchFactory.persistence(prefix: "CrossProfileUnpublish"),
+      remoteRepositoryPublishService: RemoteRepositoryPublishService(transport: transport),
+      repositoryTokenStore: tokenStore
+    )
+    let originalProfileID = store.activeProfileID
+    let secondaryProfile = store.createProfile(named: "Secondary")
+    var configuredSecondary = store.activeProfile
+    configuredSecondary.repositoryProvider = .github
+    configuredSecondary.repositoryBaseURL = RepositoryProvider.github.defaultBaseURL
+    configuredSecondary.repoOwner = "owner"
+    configuredSecondary.repoName = "secondary-site"
+    configuredSecondary.branch = "main"
+    configuredSecondary.repositoryPublishStrategy = .direct
+    store.updateActiveProfile(configuredSecondary)
+    store.selectProfile(originalProfileID)
+    defer { _ = try? tokenStore.deleteRepositoryToken(for: configuredSecondary) }
+    try tokenStore.saveRepositoryToken("secondary-token", for: configuredSecondary)
+
+    let draft = ArticleDraft(
+      siteProfileID: secondaryProfile.id,
+      title: "Secondary article",
+      slug: "secondary-article",
+      bodyMarkdown: "Published on the secondary site.",
+      repositoryPath: "content/posts/secondary-article.md",
+      repositorySHA: "known-sha"
+    )
+    store.setDrafts([draft])
+
+    let result = await store.unpublishDraft(id: draft.id)
+
+    XCTAssertEqual(store.activeProfileID, originalProfileID)
+    XCTAssertEqual(result?.commitSHA, "delete-commit")
+    XCTAssertEqual(store.draftRepositoryCleanupRequests.first?.remoteStatus, .completed)
+    let requests = await transport.capturedRequests()
+    XCTAssertEqual(requests.map(\.httpMethod), ["GET", "GET", "DELETE"])
+    XCTAssertTrue(requests.allSatisfy { request in
+      request.url?.path.contains("/repos/owner/secondary-site") == true
+    })
+  }
+
   func testOnlineDirectPublishBlocksRemoteSamePathConflictBeforeCallingAPI() async throws {
     let transport = CountingRemoteRepositoryTransport()
     let store = WorkbenchStore(
@@ -70,7 +272,8 @@ extension WorkbenchStoreProfileTests {
       title: "Online Direct Conflict",
       slug: "online-direct-conflict",
       draft: false,
-      bodyMarkdown: "This body is intentionally long enough so online API publish conflict handling is driven by upstream changes."
+      bodyMarkdown: "This body is intentionally long enough so online API publish conflict handling is driven by upstream changes.",
+      repositoryPath: "content/posts/online-direct-conflict.md"
     )
     store.setDrafts([draft])
     store.setSelectedDraftID(draft.id)
@@ -110,6 +313,132 @@ extension WorkbenchStoreProfileTests {
     let cachedPreview = try XCTUnwrap(store.remotePublishPreviewSnapshot)
     XCTAssertEqual(cachedPreview.changedPaths, preview.changedPaths)
     XCTAssertEqual(cachedPreview.remoteConflictPaths, preview.remoteConflictPaths)
+  }
+
+  func testOnlinePublishWithoutLocalProjectDoesNotCallRemoteTransport() async throws {
+    let transport = CountingRemoteRepositoryTransport()
+    let store = WorkbenchStore(
+      persistence: try TestWorkbenchFactory.persistence(prefix: "RemoteRequiresLocalProject"),
+      remoteRepositoryPublishService: RemoteRepositoryPublishService(transport: transport)
+    )
+    var profile = store.activeProfile
+    profile.repositoryProvider = .github
+    profile.repositoryBaseURL = RepositoryProvider.github.defaultBaseURL
+    profile.repoOwner = "owner"
+    profile.repoName = "site"
+    profile.branch = "main"
+    profile.repositoryPublishStrategy = .direct
+    profile.markdownPathPattern = "content/posts/{slug}.md"
+    profile.localRepositoryRootPath = ""
+    store.updateActiveProfile(profile)
+    store.setRepositoryTokenAvailability(KeychainTokenAvailability(hasToken: true))
+    store.setRemoteRepositoryAccessCheck(RemoteRepositoryAccessCheck(
+      provider: .github,
+      repositoryName: "owner/site",
+      apiBaseURL: RepositoryProvider.github.defaultBaseURL,
+      defaultBranch: "main",
+      canRead: true,
+      canWrite: true,
+      message: "GitHub Token 具备仓库写入权限。"
+    ))
+    let draft = ArticleDraft(
+      siteProfileID: profile.id,
+      title: "Local checkout required",
+      slug: "local-checkout-required",
+      draft: false,
+      bodyMarkdown: "This body is intentionally long enough so only project materialization blocks the remote call."
+    )
+    store.setDrafts([draft])
+    store.setSelectedDraftID(draft.id)
+    store.setPublishPackage(store.publishingPackage(for: draft))
+
+    let result = await store.publishSelectedDraftOnlineUsingPreferredStrategy()
+    let requestCount = await transport.requestCount()
+
+    XCTAssertNil(result)
+    XCTAssertEqual(requestCount, 0)
+    XCTAssertNil(store.drafts.first?.repositoryPath)
+    XCTAssertNil(store.drafts.first?.repositoryBinding)
+  }
+
+  func testOnlinePublishRefreshesStaleProjectMarkdownBeforeFirstRemoteRequest() async throws {
+    let rootURL = try temporaryDirectoryURL(prefix: "RemoteRefreshesStaleProjectFile")
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let repositoryPath = "content/posts/refresh-stale-project.md"
+    let markdownURL = rootURL.appendingPathComponent(repositoryPath)
+    try FileManager.default.createDirectory(
+      at: markdownURL.deletingLastPathComponent(),
+      withIntermediateDirectories: true
+    )
+    try "STALE_DISK_SENTINEL\n".write(to: markdownURL, atomically: true, encoding: .utf8)
+
+    let transport = SequencedWorkbenchRemoteRepositoryTransport(
+      responses: [
+        workbenchRemoteResponse(statusCode: 404, json: #"{"message":"not found"}"#),
+        workbenchRemoteResponse(
+          json: #"{"content":{"path":"content/posts/refresh-stale-project.md","sha":"fresh-remote-sha"},"commit":{"sha":"fresh-commit-sha"}}"#
+        ),
+      ],
+      inspectedLocalFileURL: markdownURL
+    )
+    let tokenStore = repositoryTokenStoreForTest()
+    let store = WorkbenchStore(
+      persistence: try TestWorkbenchFactory.persistence(prefix: "RemoteRefreshesStaleProjectFile"),
+      remoteRepositoryPublishService: RemoteRepositoryPublishService(transport: transport),
+      repositoryTokenStore: tokenStore
+    )
+
+    var profile = store.activeProfile
+    profile.repositoryProvider = .github
+    profile.repositoryBaseURL = RepositoryProvider.github.defaultBaseURL
+    profile.repoOwner = "owner"
+    profile.repoName = "site"
+    profile.branch = "main"
+    profile.repositoryPublishStrategy = .direct
+    profile.markdownPathPattern = "content/posts/{slug}.md"
+    profile.rememberLocalRepositoryRoot(rootURL)
+    store.updateActiveProfile(profile)
+    defer { try? tokenStore.deleteToken(for: profile) }
+    try tokenStore.saveRepositoryToken("github-token", for: profile)
+    store.refreshRepositoryTokenAvailability()
+    store.setRemoteRepositoryAccessCheck(RemoteRepositoryAccessCheck(
+      provider: .github,
+      repositoryName: "owner/site",
+      apiBaseURL: RepositoryProvider.github.defaultBaseURL,
+      defaultBranch: "main",
+      canRead: true,
+      canWrite: true,
+      message: "GitHub Token 具备仓库写入权限。"
+    ))
+
+    var draft = ArticleDraft(
+      siteProfileID: profile.id,
+      title: "Refresh stale project file",
+      slug: "refresh-stale-project",
+      draft: false,
+      bodyMarkdown: "This current payload must replace stale project bytes before any remote request begins.",
+      status: .ready,
+      repositoryPath: repositoryPath
+    )
+    draft.recordProjectFile(
+      profile: profile,
+      repositoryPath: repositoryPath,
+      renderedContentDigest: draft.renderedRepositoryContentDigest(profile: profile)
+    )
+    store.setDrafts([draft])
+    store.setSelectedDraftID(draft.id)
+    store.setPublishPackage(store.publishingPackage(for: draft))
+
+    let result = await store.publishSelectedDraftOnlineUsingPreferredStrategy()
+    let localContentsAtFirstRequest = await transport.inspectedLocalFileContentsAtFirstRequest()
+
+    XCTAssertEqual(result?.commitSHA, "fresh-commit-sha")
+    XCTAssertTrue(localContentsAtFirstRequest?.contains("This current payload must replace") == true)
+    XCTAssertFalse(localContentsAtFirstRequest?.contains("STALE_DISK_SENTINEL") == true)
+    XCTAssertEqual(
+      ArticleDraft.repositoryDocumentDigest(try String(contentsOf: markdownURL, encoding: .utf8)),
+      store.drafts.first?.repositoryBinding?.projectFileContentDigest
+    )
   }
 
   func testRemotePublishRiskAssessmentDistinguishesUnknownCleanAndConflict() {
@@ -182,6 +511,8 @@ extension WorkbenchStoreProfileTests {
   }
 
   func testOnlineDirectPublishMarksDraftPublishedAndRecordsDeploymentStatus() async throws {
+    let rootURL = try temporaryDirectoryURL(prefix: "OnlineDirectLocalProject")
+    defer { try? FileManager.default.removeItem(at: rootURL) }
     let publishTransport = SequencedWorkbenchRemoteRepositoryTransport(responses: [
       workbenchRemoteResponse(statusCode: 404, json: #"{"message":"not found"}"#),
       workbenchRemoteResponse(json: #"{"content":{"path":"content/posts/online-direct-success.md","sha":"online-direct-content-sha"},"commit":{"sha":"online-direct-commit"}}"#),
@@ -207,6 +538,7 @@ extension WorkbenchStoreProfileTests {
     profile.deploymentProvider = .custom
     profile.deploymentStatusEndpointURL = "https://status.example.com/site"
     profile.markdownPathPattern = "content/posts/{slug}.md"
+    profile.rememberLocalRepositoryRoot(rootURL)
     store.updateActiveProfile(profile)
     defer {
       try? tokenStore.deleteToken(for: profile)
@@ -256,6 +588,10 @@ extension WorkbenchStoreProfileTests {
     XCTAssertFalse(store.drafts.first?.draft ?? true)
     XCTAssertEqual(store.drafts.first?.repositoryPath, "content/posts/online-direct-success.md")
     XCTAssertEqual(store.drafts.first?.repositorySHA, "online-direct-content-sha")
+    XCTAssertTrue(FileManager.default.fileExists(
+      atPath: rootURL.appendingPathComponent("content/posts/online-direct-success.md").path
+    ))
+    XCTAssertEqual(store.drafts.first?.repositorySyncState(for: profile), .synced)
     let record = try XCTUnwrap(store.releaseRecords.first)
     XCTAssertEqual(record.kind, .remoteDirectCommit)
     XCTAssertEqual(store.deploymentStatusSnapshot(for: record)?.level, .success)
@@ -278,6 +614,8 @@ extension WorkbenchStoreProfileTests {
   }
 
   func testOnlineReviewPublishWaitsForMergeWithoutDeploymentStatusRefresh() async throws {
+    let rootURL = try temporaryDirectoryURL(prefix: "OnlineReviewLocalProject")
+    defer { try? FileManager.default.removeItem(at: rootURL) }
     let publishTransport = SequencedWorkbenchRemoteRepositoryTransport(responses: [
       workbenchRemoteResponse(json: #"{"object":{"sha":"base-sha"}}"#),
       workbenchRemoteResponse(json: #"{"ref":"refs/heads/publish/online-review-20260829","object":{"sha":"base-sha"}}"#),
@@ -306,6 +644,7 @@ extension WorkbenchStoreProfileTests {
     profile.deploymentProvider = .custom
     profile.deploymentStatusEndpointURL = "https://status.example.com/site"
     profile.markdownPathPattern = "content/posts/{slug}.md"
+    profile.rememberLocalRepositoryRoot(rootURL)
     store.updateActiveProfile(profile)
     defer {
       try? tokenStore.deleteToken(for: profile)
@@ -345,6 +684,10 @@ extension WorkbenchStoreProfileTests {
     XCTAssertEqual(store.activeProfileReleaseLedger.entries.first?.status, .pendingReview)
     XCTAssertEqual(store.activeProfileReleaseLedger.summary.reviewPendingCount, 1)
     XCTAssertEqual(store.activeProfileReleaseLedger.deploymentOverview.checkedRecordCount, 0)
+    XCTAssertTrue(FileManager.default.fileExists(
+      atPath: rootURL.appendingPathComponent("content/posts/online-review.md").path
+    ))
+    XCTAssertEqual(store.drafts.first?.repositorySyncState(for: profile), .awaitingReview)
 
     let publishRequests = await publishTransport.capturedRequests()
     XCTAssertEqual(publishRequests.map(\.httpMethod), ["GET", "POST", "GET", "PUT", "POST"])
@@ -734,6 +1077,58 @@ extension WorkbenchStoreProfileTests {
     XCTAssertTrue(preview.checklistMarkdown.contains("- content/posts/online-review-preview.md"))
   }
 
+  func testRemoteRepositoryPublishPreviewAllowsInvalidNonEmptySlugAsWarning() throws {
+    let store = try TestWorkbenchFactory.makeStore()
+
+    var profile = store.activeProfile
+    profile.repositoryProvider = .github
+    profile.repositoryBaseURL = RepositoryProvider.github.defaultBaseURL
+    profile.repoOwner = "owner"
+    profile.repoName = "site"
+    profile.branch = "main"
+    profile.repositoryPublishStrategy = .reviewRequest
+    profile.markdownPathPattern = "content/posts/{slug}.md"
+    store.updateActiveProfile(profile)
+    store.setRepositoryTokenAvailability(KeychainTokenAvailability(hasToken: true))
+    store.setRemoteRepositoryAccessCheck(RemoteRepositoryAccessCheck(
+      provider: .github,
+      repositoryName: "owner/site",
+      apiBaseURL: "https://api.github.com",
+      defaultBranch: "main",
+      canRead: true,
+      canWrite: true,
+      message: "GitHub Token 具备仓库写入权限。"
+    ))
+
+    let draft = ArticleDraft(
+      siteProfileID: profile.id,
+      title: "Existing Article",
+      slug: "Existing Article",
+      draft: false,
+      bodyMarkdown: "This body is intentionally long enough to verify publishing with an invalid slug warning."
+    )
+    store.setDrafts([draft])
+    store.setSelectedDraftID(draft.id)
+    store.setRepositoryReport(RepositoryScanReport(
+      rootPath: "/tmp/site",
+      detectedKind: profile.siteKind,
+      expectedKind: profile.siteKind,
+      hasGitDirectory: true,
+      contentRootExists: true,
+      assetRootExists: true,
+      markdownFileCount: 0,
+      imageFileCount: 0,
+      changedFiles: [],
+      remoteChangedFiles: [],
+      preflightIssues: []
+    ))
+
+    let preview = store.remoteRepositoryPublishPreview(for: draft)
+
+    XCTAssertTrue(preview.canPublish)
+    XCTAssertFalse(preview.blockingIssues.contains { $0.title == "Slug 格式非法" })
+  }
+
   func testRemoteRepositoryPublishPreviewRequiresTokenBeforeOnlinePublish() throws {
     let store = try TestWorkbenchFactory.makeStore()
 
@@ -1045,6 +1440,187 @@ extension WorkbenchStoreProfileTests {
     XCTAssertTrue(preview.checklistMarkdown.contains(CoreL10n.text("## 远端状态待确认")))
   }
 
+  func testPermissionCheckFillsMissingRepositoryConfigurationFromDetectedOrigin() async throws {
+    let transport = SequencedWorkbenchRemoteRepositoryTransport(responses: [
+      workbenchRemoteResponse(
+        json: #"{"full_name":"owner/site","default_branch":"main","permissions":{"push":true}}"#
+      ),
+    ])
+    let tokenStore = repositoryTokenStoreForTest()
+    let persistenceURL = try temporaryPersistenceURL(prefix: "DetectedOriginPermission")
+    let rootURL = try preparedGitRepositoryRoot()
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: persistenceURL),
+      remoteRepositoryPublishService: RemoteRepositoryPublishService(transport: transport),
+      repositoryTokenStore: tokenStore
+    )
+
+    var profile = store.activeProfile
+    profile.rememberLocalRepositoryRoot(rootURL)
+    store.updateActiveProfile(profile)
+    let storeProfileForCleanup = profile
+    defer { _ = try? tokenStore.deleteRepositoryToken(for: storeProfileForCleanup) }
+    try tokenStore.saveRepositoryToken("github-token", for: profile)
+    store.refreshRepositoryTokenAvailability()
+    store.setRepositoryReport(RepositoryScanReport(
+      rootPath: rootURL.path,
+      detectedKind: .zola,
+      expectedKind: .zola,
+      hasGitDirectory: true,
+      contentRootExists: true,
+      assetRootExists: true,
+      markdownFileCount: 1,
+      imageFileCount: 0,
+      branchStatus: RepositoryBranchStatus(branchName: "production", upstreamName: "origin/production"),
+      originRemote: RepositoryRemote(
+        remoteURL: "https://github.com/owner/site.git",
+        provider: .github,
+        repositoryBaseURL: RepositoryProvider.github.defaultBaseURL,
+        owner: "owner",
+        name: "site"
+      ),
+      changedFiles: [],
+      preflightIssues: []
+    ))
+    let draft = ArticleDraft(
+      siteProfileID: profile.id,
+      title: "Detected Origin",
+      slug: "detected-origin",
+      draft: false,
+      bodyMarkdown: "This body is long enough to exercise the detected-origin permission check."
+    )
+    store.setDrafts([draft])
+    store.setSelectedDraftID(draft.id)
+
+    let check = await store.checkRepositoryTokenAccess()
+
+    XCTAssertTrue(check?.canWrite == true)
+    XCTAssertEqual(store.activeProfile.repoOwner, "owner")
+    XCTAssertEqual(store.activeProfile.repoName, "site")
+    XCTAssertEqual(store.activeProfile.repositoryProvider, .github)
+    XCTAssertEqual(store.activeProfile.branch, "production")
+    XCTAssertTrue(store.remotePublishPreviewSnapshot?.accessCheck?.canWrite == true)
+    XCTAssertTrue(store.batchRemotePublishPreviewSnapshot?.accessCheck?.canWrite == true)
+    await store.waitForPendingSave()
+
+    let reloaded = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: persistenceURL),
+      repositoryTokenStore: tokenStore
+    )
+    XCTAssertEqual(reloaded.activeProfile.repoOwner, "owner")
+    XCTAssertEqual(reloaded.activeProfile.repoName, "site")
+    XCTAssertTrue(reloaded.activeRemoteRepositoryAccessCheck?.canWrite == true)
+  }
+
+  func testPermissionCheckDoesNotReplaceCompleteRepositoryConfigurationWithDetectedOrigin() async throws {
+    let transport = SequencedWorkbenchRemoteRepositoryTransport(responses: [
+      workbenchRemoteResponse(
+        json: #"{"full_name":"detected/site","default_branch":"main","permissions":{"push":true}}"#
+      ),
+    ])
+    let tokenStore = repositoryTokenStoreForTest()
+    let rootURL = try preparedGitRepositoryRoot()
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let store = WorkbenchStore(
+      persistence: try TestWorkbenchFactory.persistence(prefix: "CompleteRepositoryConfiguration"),
+      remoteRepositoryPublishService: RemoteRepositoryPublishService(transport: transport),
+      repositoryTokenStore: tokenStore
+    )
+
+    var profile = store.activeProfile
+    profile.rememberLocalRepositoryRoot(rootURL)
+    profile.repositoryProvider = .github
+    profile.repositoryBaseURL = RepositoryProvider.github.defaultBaseURL
+    profile.repoOwner = "configured"
+    profile.repoName = "site"
+    profile.branch = "release"
+    store.updateActiveProfile(profile)
+    defer { _ = try? tokenStore.deleteRepositoryToken(for: profile) }
+    try tokenStore.saveRepositoryToken("github-token", for: profile)
+    store.refreshRepositoryTokenAvailability()
+    store.setRepositoryReport(RepositoryScanReport(
+      rootPath: rootURL.path,
+      detectedKind: .zola,
+      expectedKind: .zola,
+      hasGitDirectory: true,
+      contentRootExists: true,
+      assetRootExists: true,
+      markdownFileCount: 1,
+      imageFileCount: 0,
+      originRemote: RepositoryRemote(
+        remoteURL: "https://github.com/detected/site.git",
+        provider: .github,
+        repositoryBaseURL: RepositoryProvider.github.defaultBaseURL,
+        owner: "detected",
+        name: "site"
+      ),
+      changedFiles: [],
+      preflightIssues: []
+    ))
+
+    let check = await store.checkRepositoryTokenAccess()
+
+    XCTAssertTrue(check?.canWrite == true)
+    XCTAssertEqual(store.activeProfile.repoOwner, "configured")
+    XCTAssertEqual(store.activeProfile.repoName, "site")
+    XCTAssertEqual(store.activeProfile.branch, "release")
+    let requests = await transport.capturedRequests()
+    XCTAssertEqual(requests.first?.url?.path, "/repos/configured/site")
+  }
+
+  func testPermissionCheckLeavesMismatchedPartialConfigurationUntouched() async throws {
+    let transport = CountingRemoteRepositoryTransport()
+    let tokenStore = repositoryTokenStoreForTest()
+    let rootURL = try preparedGitRepositoryRoot()
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let store = WorkbenchStore(
+      persistence: try TestWorkbenchFactory.persistence(prefix: "PartialRepositoryConfiguration"),
+      remoteRepositoryPublishService: RemoteRepositoryPublishService(transport: transport),
+      repositoryTokenStore: tokenStore
+    )
+
+    var profile = store.activeProfile
+    profile.rememberLocalRepositoryRoot(rootURL)
+    profile.repositoryProvider = .github
+    profile.repositoryBaseURL = RepositoryProvider.github.defaultBaseURL
+    profile.repoOwner = "configured"
+    profile.repoName = ""
+    store.updateActiveProfile(profile)
+    defer { _ = try? tokenStore.deleteRepositoryToken(for: profile) }
+    try tokenStore.saveRepositoryToken("github-token", for: profile)
+    store.refreshRepositoryTokenAvailability()
+    store.setRepositoryReport(RepositoryScanReport(
+      rootPath: rootURL.path,
+      detectedKind: .zola,
+      expectedKind: .zola,
+      hasGitDirectory: true,
+      contentRootExists: true,
+      assetRootExists: true,
+      markdownFileCount: 1,
+      imageFileCount: 0,
+      originRemote: RepositoryRemote(
+        remoteURL: "https://gitlab.com/detected/site.git",
+        provider: .gitlab,
+        repositoryBaseURL: "https://gitlab.com",
+        owner: "detected",
+        name: "site"
+      ),
+      changedFiles: [],
+      preflightIssues: []
+    ))
+
+    let check = await store.checkRepositoryTokenAccess()
+
+    XCTAssertNil(check)
+    XCTAssertEqual(store.activeProfile.repositoryProvider, .github)
+    XCTAssertEqual(store.activeProfile.repositoryBaseURL, RepositoryProvider.github.defaultBaseURL)
+    XCTAssertEqual(store.activeProfile.repoOwner, "configured")
+    XCTAssertTrue(store.activeProfile.repoName.isEmpty)
+    let requestCount = await transport.requestCount()
+    XCTAssertEqual(requestCount, 0)
+  }
+
   func testRepositoryPermissionCheckFailureUsesStructuredFailureStatus() async throws {
     let transport = SequencedWorkbenchRemoteRepositoryTransport(responses: [
       workbenchRemoteResponse(
@@ -1229,7 +1805,8 @@ extension WorkbenchStoreProfileTests {
       title: "Blocked Permission Check",
       slug: "blocked-permission-check",
       draft: false,
-      bodyMarkdown: "This body is intentionally long enough so permission checks block before online API publishing."
+      bodyMarkdown: "This body is intentionally long enough so permission checks block before online API publishing.",
+      repositoryPath: "content/posts/blocked-permission-check.md"
     )
     store.setDrafts([draft])
     store.setSelectedDraftID(draft.id)
@@ -1426,7 +2003,8 @@ extension WorkbenchStoreProfileTests {
       title: "Read Only Token",
       slug: "read-only-token",
       draft: false,
-      bodyMarkdown: "This body is intentionally long enough for read only token blocking."
+      bodyMarkdown: "This body is intentionally long enough for read only token blocking.",
+      repositoryPath: "content/posts/read-only-token.md"
     )
     store.setDrafts([draft])
     store.setSelectedDraftID(draft.id)
@@ -1570,6 +2148,7 @@ extension WorkbenchStoreProfileTests {
     profile.deploymentProvider = .custom
     profile.deploymentStatusEndpointURL = "https://status.example.com/partial"
     profile.markdownPathPattern = "content/posts/{slug}.md"
+    profile.rememberLocalRepositoryRoot(rootURL)
     store.updateActiveProfile(profile)
     defer {
       try? tokenStore.deleteToken(for: profile)
@@ -1597,7 +2176,8 @@ extension WorkbenchStoreProfileTests {
       slug: "partial-failure",
       draft: false,
       bodyMarkdown: "This body is intentionally long enough for partial online publishing failure coverage.",
-      attachments: [attachment]
+      attachments: [attachment],
+      repositoryPath: "content/posts/partial-failure.md"
     )
     store.setDrafts([draft])
     store.setSelectedDraftID(draft.id)
@@ -1623,6 +2203,8 @@ extension WorkbenchStoreProfileTests {
   }
 
   func testCancelledOnlinePublishStopsAfterTransportCancellation() async throws {
+    let rootURL = try temporaryDirectoryURL(prefix: "CancelledRemoteLocalProject")
+    defer { try? FileManager.default.removeItem(at: rootURL) }
     let transport = CountingRemoteRepositoryTransport(failureCode: .cancelled)
     let tokenStore = repositoryTokenStoreForTest()
     let store = WorkbenchStore(
@@ -1639,6 +2221,7 @@ extension WorkbenchStoreProfileTests {
     profile.branch = "main"
     profile.repositoryPublishStrategy = .direct
     profile.markdownPathPattern = "content/posts/{slug}.md"
+    profile.rememberLocalRepositoryRoot(rootURL)
     store.updateActiveProfile(profile)
     defer { try? tokenStore.deleteToken(for: profile) }
     try tokenStore.saveRepositoryToken("github-token", for: profile)
@@ -1658,7 +2241,8 @@ extension WorkbenchStoreProfileTests {
       title: "Cancelled Publish",
       slug: "cancelled-publish",
       draft: false,
-      bodyMarkdown: "This body is intentionally long enough for cancellation coverage."
+      bodyMarkdown: "This body is intentionally long enough for cancellation coverage.",
+      repositoryPath: "content/posts/cancelled-publish.md"
     )
     store.setDrafts([draft])
     store.setSelectedDraftID(draft.id)
@@ -1774,6 +2358,16 @@ extension WorkbenchStoreProfileTests {
     XCTAssertEqual(store.publishActionFeedback?.status, .success)
     XCTAssertEqual(store.drafts.map(\.status), [.published, .published])
     XCTAssertTrue(store.drafts.allSatisfy { !$0.draft })
+    XCTAssertTrue(FileManager.default.fileExists(
+      atPath: rootURL.appendingPathComponent("content/posts/batch-one.md").path
+    ))
+    XCTAssertTrue(FileManager.default.fileExists(
+      atPath: rootURL.appendingPathComponent("content/posts/batch-two.md").path
+    ))
+    XCTAssertEqual(
+      Set(store.drafts.compactMap { $0.repositoryPath }),
+      Set(["content/posts/batch-one.md", "content/posts/batch-two.md"])
+    )
     XCTAssertEqual(store.repositoryAutoSyncState.remoteChangedPaths, ["config.toml"])
     XCTAssertEqual(store.repositoryAutoSyncState.remoteChangedFileCount, 1)
     XCTAssertEqual(store.repositoryAutoSyncState.importableRemoteArticleCount, 0)
@@ -2007,7 +2601,7 @@ extension WorkbenchStoreProfileTests {
     store.updateActiveProfile(profile)
     await store.scanRepositoryAsync()
 
-    let summary = store.importRemoteDraftFromRepository(repositoryPath: "content/posts/remote.md")
+    let summary = await store.importRemoteDraftFromRepository(repositoryPath: "content/posts/remote.md")
 
     XCTAssertEqual(summary.insertedCount, 1)
     XCTAssertEqual(summary.updatedCount, 0)
@@ -2078,7 +2672,7 @@ extension WorkbenchStoreProfileTests {
     XCTAssertEqual(store.repositoryAutoSyncState.nonArticleRemoteChangedFileCount, 1)
     XCTAssertTrue(store.repositoryAutoSyncState.message.contains("其中 2 篇文章可手动导入"))
 
-    let summary = store.importRemoteChangedArticleDraftsFromRepository()
+    let summary = await store.importRemoteChangedArticleDraftsFromRepository()
 
     XCTAssertEqual(summary.insertedCount, 2)
     XCTAssertEqual(summary.updatedCount, 0)
@@ -2087,6 +2681,64 @@ extension WorkbenchStoreProfileTests {
     XCTAssertEqual(store.selectedSection, .writing)
     XCTAssertEqual(store.publishActionMessage, "已从远端文章变更导入 2 篇、更新 0 篇。")
   }
+
+#if DEBUG
+  func testRemoteArticleImportDropsResultWhenActiveProfileChangesDuringSnapshot() async throws {
+    let rootURL = try preparedGitRepositoryRoot()
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+
+    try git(["switch", "-c", "remote-work"], rootURL: rootURL)
+    try remoteArticle(title: "Remote Draft", slug: "remote-draft", body: "Remote body.")
+      .write(
+        to: rootURL.appendingPathComponent("content/posts/remote-draft.md"),
+        atomically: true,
+        encoding: .utf8
+      )
+    try git(["add", "content/posts/remote-draft.md"], rootURL: rootURL)
+    try git(["commit", "-m", "Remote draft"], rootURL: rootURL)
+    let remoteCommit = try git(["rev-parse", "HEAD"], rootURL: rootURL)
+    try git(["switch", "main"], rootURL: rootURL)
+    try git(["remote", "add", "origin", "https://example.invalid/site.git"], rootURL: rootURL)
+    try git(["update-ref", "refs/remotes/origin/main", remoteCommit], rootURL: rootURL)
+    try git(["config", "branch.main.remote", "origin"], rootURL: rootURL)
+    try git(["config", "branch.main.merge", "refs/heads/main"], rootURL: rootURL)
+
+    let store = try TestWorkbenchFactory.makeStore()
+    var profile = store.activeProfile
+    profile.rememberLocalRepositoryRoot(rootURL)
+    profile.contentRoot = "content"
+    store.updateActiveProfile(profile)
+    let originalProfileID = profile.id
+    let secondaryProfile = store.createProfile(named: "Secondary")
+    store.selectProfile(originalProfileID)
+
+    let gate = RemoteImportTestGate()
+    store.repositoryStore.remoteFileSnapshotTestHook = {
+      await gate.waitUntilEntered()
+    }
+    let importTask = Task { @MainActor in
+      await store.importRemoteDraftFromRepository(
+        repositoryPath: "content/posts/remote-draft.md"
+      )
+    }
+    for _ in 0..<20 {
+      if await gate.hasEntered() { break }
+      try await Task.sleep(nanoseconds: 10_000_000)
+    }
+    let didEnterSnapshotWork = await gate.hasEntered()
+    XCTAssertTrue(didEnterSnapshotWork)
+
+    store.selectProfile(secondaryProfile.id)
+    await gate.release()
+    let summary = await importTask.value
+    store.repositoryStore.remoteFileSnapshotTestHook = nil
+
+    XCTAssertEqual(summary.changedCount, 0)
+    XCTAssertFalse(store.drafts.contains { $0.repositoryPath == "content/posts/remote-draft.md" })
+    XCTAssertEqual(store.activeProfileID, secondaryProfile.id)
+    XCTAssertEqual(store.publishActionMessage, "当前站点已变化，未导入原站点远端文章。")
+  }
+#endif
 }
 
 private actor CountingRemoteRepositoryTransport: RemoteRepositoryHTTPTransport {
@@ -2110,12 +2762,24 @@ private actor CountingRemoteRepositoryTransport: RemoteRepositoryHTTPTransport {
 private actor SequencedWorkbenchRemoteRepositoryTransport: RemoteRepositoryHTTPTransport {
   private var responses: [WorkbenchRemoteRepositoryTransportResponse]
   private var requests: [URLRequest] = []
+  private let inspectedLocalFileURL: URL?
+  private var inspectedLocalFileContents: String?
 
-  init(responses: [WorkbenchRemoteRepositoryTransportResponse]) {
+  init(
+    responses: [WorkbenchRemoteRepositoryTransportResponse],
+    inspectedLocalFileURL: URL? = nil
+  ) {
     self.responses = responses
+    self.inspectedLocalFileURL = inspectedLocalFileURL
   }
 
   func data(for request: URLRequest) async throws -> (Data, URLResponse) {
+    if requests.isEmpty, let inspectedLocalFileURL {
+      inspectedLocalFileContents = try? String(
+        contentsOf: inspectedLocalFileURL,
+        encoding: .utf8
+      )
+    }
     requests.append(request)
     guard !responses.isEmpty else {
       XCTFail("Unexpected remote repository request: \(request.url?.absoluteString ?? "")")
@@ -2134,6 +2798,10 @@ private actor SequencedWorkbenchRemoteRepositoryTransport: RemoteRepositoryHTTPT
 
   func capturedRequests() -> [URLRequest] {
     requests
+  }
+
+  func inspectedLocalFileContentsAtFirstRequest() -> String? {
+    inspectedLocalFileContents
   }
 }
 
@@ -2184,3 +2852,24 @@ private func workbenchRemoteResponse(
 ) -> WorkbenchRemoteRepositoryTransportResponse {
   WorkbenchRemoteRepositoryTransportResponse(statusCode: statusCode, data: Data(json.utf8))
 }
+
+#if DEBUG
+private actor RemoteImportTestGate {
+  private var entered = false
+  private var continuation: CheckedContinuation<Void, Never>?
+
+  func waitUntilEntered() async {
+    entered = true
+    await withCheckedContinuation { continuation = $0 }
+  }
+
+  func hasEntered() -> Bool {
+    entered
+  }
+
+  func release() {
+    continuation?.resume()
+    continuation = nil
+  }
+}
+#endif

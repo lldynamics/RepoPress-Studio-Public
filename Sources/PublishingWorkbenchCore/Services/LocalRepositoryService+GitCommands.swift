@@ -1,4 +1,5 @@
 import Foundation
+import PublishingGitCore
 
 extension LocalRepositoryService {
   func fetchUpstream(rootURL: URL) -> RepositoryFetchResult {
@@ -40,21 +41,7 @@ extension LocalRepositoryService {
   }
 
   func remoteName(fromUpstreamName upstreamName: String) -> String? {
-    let trimmed = upstreamName.trimmedForPublishing
-    guard !trimmed.isEmpty,
-          !trimmed.hasPrefix("/"),
-          !trimmed.contains("\\"),
-          !trimmed.contains(".."),
-          !trimmed.contains("://"),
-          let slashIndex = trimmed.firstIndex(of: "/") else {
-      return nil
-    }
-    let remote = String(trimmed[..<slashIndex]).trimmedForPublishing
-    guard !remote.isEmpty,
-          remote.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "-" || $0 == "_" || $0 == "." }) else {
-      return nil
-    }
-    return remote
+    GitRemoteParser.remoteName(fromUpstreamName: upstreamName)
   }
 
   func localBranches(rootURL: URL) -> [RepositoryBranch] {
@@ -81,26 +68,13 @@ extension LocalRepositoryService {
   }
 
   func parseBranchListLine(_ line: String) -> RepositoryBranch? {
-    let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard !trimmed.isEmpty else {
-      return nil
-    }
-
-    let parts = trimmed.split(separator: "|", maxSplits: 2, omittingEmptySubsequences: false).map(String.init)
-    guard let name = parts.first?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty else {
-      return nil
-    }
-
-    let head = parts.count > 1 ? parts[1].trimmingCharacters(in: .whitespacesAndNewlines) : ""
-    let upstream = parts.count > 2 ? parts[2].trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty : nil
-    let isCurrent = head == "*"
-    return RepositoryBranch(name: name, isCurrent: isCurrent, upstreamName: upstream)
+    GitRepositoryOutputParser().parseBranchListLine(line)
   }
 
   func recentCommits(rootURL: URL, limit: Int) -> [RepositoryCommitInfo] {
     let format = "%H\t%an\t%ad\t%s"
     guard let output = runGitOutput(
-      ["log", "-n", "\(limit)", "--date=iso", "--pretty=format:\(format)"],
+      ["log", "-n", "\(limit)", "--date=iso-strict", "--pretty=format:\(format)"],
       rootURL: rootURL
     ) else {
       return []
@@ -112,47 +86,11 @@ extension LocalRepositoryService {
   }
 
   func parseRecentCommitLine(_ line: String) -> RepositoryCommitInfo? {
-    let parts = line.split(separator: "\t", maxSplits: 3, omittingEmptySubsequences: false).map(String.init)
-    guard parts.count == 4 else {
-      return nil
-    }
-
-    let sha = parts[0].trimmedForPublishing
-    let author = parts[1].trimmedForPublishing
-    let dateText = parts[2].trimmedForPublishing
-    let message = parts[3].trimmedForPublishing
-
-    guard !sha.isEmpty, !author.isEmpty, !message.isEmpty else {
-      return nil
-    }
-
-    return RepositoryCommitInfo(
-      sha: sha,
-      shortSHA: String(sha.prefix(8)),
-      author: author,
-      date: parseGitDate(dateText),
-      message: message
-    )
+    GitRepositoryOutputParser().parseRecentCommitLine(line, fallbackDate: Date())
   }
 
   func parseGitDate(_ text: String) -> Date {
-    let trimmedText = text.trimmedForPublishing
-    guard !trimmedText.isEmpty else {
-      return Date()
-    }
-
-    let strictISO8601 = ISO8601DateFormatter()
-    strictISO8601.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-    if let date = strictISO8601.date(from: trimmedText) {
-      return date
-    }
-
-    strictISO8601.formatOptions = [.withInternetDateTime]
-    if let date = strictISO8601.date(from: trimmedText) {
-      return date
-    }
-
-    return Date()
+    GitRepositoryOutputParser().parseGitDate(text, fallbackDate: Date())
   }
 
   func ignoredRepositoryPaths(rootURL: URL, paths: [String]) -> [String] {
@@ -202,172 +140,33 @@ extension LocalRepositoryService {
   }
 
   func parseRepositoryRemote(_ remoteURL: String) -> RepositoryRemote? {
-    let trimmed = remoteURL.trimmedForPublishing
-    guard let remotePath = remotePathComponents(from: trimmed) else {
-      return nil
-    }
-
-    let pathComponents = remotePath.path
-      .split(separator: "/")
-      .map(String.init)
-      .filter { !$0.isEmpty }
-    guard pathComponents.count >= 2,
-          let provider = repositoryProvider(forHost: remotePath.host) else {
-      return nil
-    }
-
-    var repositoryName = pathComponents.last ?? ""
-    if repositoryName.hasSuffix(".git") {
-      repositoryName.removeLast(4)
-    }
-    let owner = pathComponents.dropLast().joined(separator: "/")
-    guard !owner.isEmpty, !repositoryName.isEmpty else {
-      return nil
-    }
-
-    return RepositoryRemote(
-      remoteURL: sanitizedRepositoryRemoteURL(
-        trimmed,
-        host: remotePath.host,
-        path: remotePath.path
-      ),
-      provider: provider,
-      repositoryBaseURL: repositoryBaseURL(provider: provider, host: remotePath.host),
-      owner: owner,
-      name: repositoryName
-    )
-  }
-
-  func remotePathComponents(from remoteURL: String) -> (host: String, path: String)? {
-    if !remoteURL.contains("://"),
-       let colonIndex = scpHostPathSeparator(in: remoteURL) {
-      let hostPart = String(remoteURL[..<colonIndex])
-      let host = hostPart.components(separatedBy: "@").last ?? hostPart
-      let pathStart = remoteURL.index(after: colonIndex)
-      return (host: host, path: String(remoteURL[pathStart...]))
-    }
-
-    guard let url = URL(string: remoteURL),
-          let host = url.host?.nilIfEmpty else {
-      return nil
-    }
-    return (host: host, path: url.path)
-  }
-
-  func scpHostPathSeparator(in remoteURL: String) -> String.Index? {
-    let searchStart = remoteURL.lastIndex(of: "@").map { remoteURL.index(after: $0) }
-      ?? remoteURL.startIndex
-    return remoteURL[searchStart...].firstIndex(of: ":")
-  }
-
-  func sanitizedRepositoryRemoteURL(
-    _ remoteURL: String,
-    host: String,
-    path: String
-  ) -> String {
-    if remoteURL.contains("://"), var components = URLComponents(string: remoteURL) {
-      components.user = nil
-      components.password = nil
-      components.query = nil
-      components.fragment = nil
-      if let sanitized = components.string?.nilIfEmpty {
-        return sanitized
-      }
-    }
-
-    // SCP-style remotes have no standard URL representation. Retain only the
-    // host and repository path so usernames, passwords, and token-like user
-    // fields can never reach the model or selectable UI text.
-    return "\(host):\(path)"
-  }
-
-  func repositoryProvider(forHost host: String) -> RepositoryProvider? {
-    let lowercaseHost = host.lowercased()
-    if lowercaseHost.contains("github") {
-      return .github
-    }
-    if lowercaseHost.contains("gitlab") {
-      return .gitlab
-    }
-    return nil
-  }
-
-  func repositoryBaseURL(provider: RepositoryProvider, host: String) -> String {
-    switch provider {
-    case .github:
-      return host.lowercased() == "github.com" ? RepositoryProvider.github.defaultBaseURL : "https://\(host)"
-    case .gitlab:
-      return "https://\(host)"
-    }
+    GitRemoteParser.parseRepositoryRemote(remoteURL)
   }
 
   func parseBranchStatusLine(_ line: String) -> RepositoryBranchStatus? {
-    let text = line.replacingOccurrences(of: "## ", with: "")
-    if text.hasPrefix("HEAD ") || text == "HEAD (no branch)" {
-      return RepositoryBranchStatus(branchName: nil, upstreamName: nil, isDetached: true)
-    }
-
-    if text.hasPrefix("No commits yet on ") {
-      let branch = text.replacingOccurrences(of: "No commits yet on ", with: "")
-      return RepositoryBranchStatus(branchName: branch.nilIfEmpty, upstreamName: nil)
-    }
-
-    let parts = text.components(separatedBy: "...")
-    guard let branchName = parts.first?.nilIfEmpty else {
-      return nil
-    }
-
-    guard parts.count > 1 else {
-      return RepositoryBranchStatus(branchName: branchName, upstreamName: nil)
-    }
-
-    let upstreamAndSync = parts[1]
-    if let bracketStart = upstreamAndSync.firstIndex(of: "[") {
-      let upstream = String(upstreamAndSync[..<bracketStart]).trimmedForPublishing.nilIfEmpty
-      let syncText = String(upstreamAndSync[bracketStart...])
-      return RepositoryBranchStatus(
-        branchName: branchName,
-        upstreamName: upstream,
-        aheadCount: parseSyncCount(label: "ahead", in: syncText),
-        behindCount: parseSyncCount(label: "behind", in: syncText)
-      )
-    }
-
-    return RepositoryBranchStatus(
-      branchName: branchName,
-      upstreamName: upstreamAndSync.trimmedForPublishing.nilIfEmpty
-    )
+    GitRepositoryOutputParser().parseBranchStatusLine(line)
   }
 
   func parseSyncCount(label: String, in text: String) -> Int {
-    let pattern = #"\#(label) ([0-9]+)"#
-    guard
-      let regex = try? NSRegularExpression(pattern: pattern),
-      let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..<text.endIndex, in: text)),
-      let range = Range(match.range(at: 1), in: text)
-    else {
-      return 0
-    }
-    return Int(text[range]) ?? 0
-  }
-
-  func changeKind(status: String) -> RepositoryChangeKind {
-    if status == "??" { return .untracked }
-    if status.contains("A") { return .added }
-    if status.contains("M") { return .modified }
-    if status.contains("D") { return .deleted }
-    if status.contains("R") { return .renamed }
-    return .other
+    GitRepositoryOutputParser().parseSyncCount(label: label, in: text)
   }
 
   func diffForChangedFile(_ file: RepositoryChangedFile, rootURL: URL) -> String? {
-    if file.kind == .untracked {
-      return runGitDiff(["diff", "--no-index", "--", "/dev/null", file.displayPath], rootURL: rootURL)
+    guard let plan = RepositoryLocalDiffCommandPolicy().plan(for: file) else {
+      return nil
     }
 
-    let stagedDiff = runGitDiff(["diff", "--cached", "--", file.displayPath], rootURL: rootURL)
-    let unstagedDiff = runGitDiff(["diff", "--", file.displayPath], rootURL: rootURL)
-    let combined = [stagedDiff, unstagedDiff]
+    if file.kind == .untracked {
+      guard let arguments = plan.argumentsInExecutionOrder.first else {
+        return nil
+      }
+      return runGitDiff(arguments, rootURL: rootURL)
+    }
+
+    let diffs = plan.argumentsInExecutionOrder.map { arguments in
+      runGitDiff(arguments, rootURL: rootURL)
+    }
+    let combined = diffs
       .compactMap { $0?.trimmedForPublishing.nilIfEmpty }
       .joined(separator: "\n")
     return limitedDiff(combined)

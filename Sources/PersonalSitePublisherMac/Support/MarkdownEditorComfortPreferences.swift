@@ -9,12 +9,9 @@ enum MarkdownEditorComfortPreferences {
   static let currentParagraphHighlightEnabledKey = "markdownEditorCurrentParagraphHighlightEnabled"
   static let warmPaperBackgroundEnabledKey = "markdownEditorWarmPaperBackgroundEnabled"
   static let automaticPairingEnabledKey = "markdownEditorAutomaticPairingEnabled"
-  static let typewriterSoundPresetKey = "markdownEditorTypewriterSoundPreset"
   static let paragraphSpotlightEnabledKey = "markdownEditorParagraphSpotlightEnabled"
-  static let automaticPreviewRefreshEnabledKey = "markdownEditorAutomaticPreviewRefreshEnabled"
   static let realtimeAnalysisEnabledKey = "markdownEditorRealtimeAnalysisEnabled"
 
-  static let defaultAutomaticPreviewRefreshEnabled = true
   static let defaultRealtimeAnalysisEnabled = true
 }
 
@@ -28,6 +25,15 @@ enum AIWritingPreferences {
 /// Manual commands are always allowed; persisted switches only control work
 /// requested as a consequence of an input change or preference update.
 enum MarkdownEditorAutomationPolicy {
+  /// Full-document automation waits until the editor has been quiet before it
+  /// starts. Keeping this in one policy makes the debounce observable in tests
+  /// and keeps diagnostics and SSG derived data on the same cadence.
+  static let automaticWorkIdleDelayMilliseconds = 1_200
+
+  static var automaticWorkIdleDelay: Duration {
+    .milliseconds(automaticWorkIdleDelayMilliseconds)
+  }
+
   static func allows(isAutomatic: Bool, isEnabled: Bool) -> Bool {
     !isAutomatic || isEnabled
   }
@@ -46,10 +52,7 @@ struct MarkdownEditorComfortConfiguration: Equatable {
   static let defaultCurrentParagraphHighlightEnabled = true
   static let defaultWarmPaperBackgroundEnabled = false
   static let defaultAutomaticPairingEnabled = true
-  static let defaultTypewriterSoundPreset = MarkdownTypingFeedbackPolicy.defaultPreset
   static let defaultParagraphSpotlightEnabled = false
-  static let defaultAutomaticPreviewRefreshEnabled = MarkdownEditorComfortPreferences
-    .defaultAutomaticPreviewRefreshEnabled
   static let defaultRealtimeAnalysisEnabled = MarkdownEditorComfortPreferences
     .defaultRealtimeAnalysisEnabled
 
@@ -72,9 +75,6 @@ struct MarkdownEditorComfortConfiguration: Equatable {
     defaults.set(
       defaultAutomaticPairingEnabled,
       forKey: MarkdownEditorComfortPreferences.automaticPairingEnabledKey)
-    defaults.set(
-      defaultTypewriterSoundPreset.rawValue,
-      forKey: MarkdownEditorComfortPreferences.typewriterSoundPresetKey)
     defaults.set(
       defaultParagraphSpotlightEnabled,
       forKey: MarkdownEditorComfortPreferences.paragraphSpotlightEnabledKey)

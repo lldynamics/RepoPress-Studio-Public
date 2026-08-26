@@ -103,6 +103,19 @@ def main() -> int:
         assert "1 production and 0 test audited @unchecked Sendable" in accepted.stdout, accepted.stdout
         assert "2 classified try?" in accepted.stdout, accepted.stdout
 
+        optional_only_stale = json.loads(json.dumps(reviewed))
+        optional_only_stale["optionalOperations"].append(
+            {
+                "file": "Sources/Fixture.swift",
+                "category": "parsing",
+                "contains": "try? removedOptional()",
+                "rationale": "Fixture deliberately verifies optional-only stale detection.",
+            }
+        )
+        stale_optional = run_gate(root, optional_only_stale)
+        assert stale_optional.returncode != 0, stale_optional
+        assert "stale try? exception" in stale_optional.stderr, stale_optional.stderr
+
         source.write_text("struct SafeValue: Sendable {}\n", encoding="utf-8")
         stale = run_gate(root, reviewed)
         assert stale.returncode != 0, stale

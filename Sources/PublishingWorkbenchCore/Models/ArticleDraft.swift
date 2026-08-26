@@ -206,7 +206,18 @@ public struct ArticleDraft: Identifiable, Codable, Hashable, Sendable {
   public var visibility: ArticleVisibility
   public var summary: String
   public var coverAttachmentID: UUID?
-  public var bodyMarkdown: String
+  public var bodyMarkdown: String {
+    didSet {
+      if bodyMarkdown != oldValue {
+        wordCountNeedsRefreshStorage = true
+      }
+    }
+  }
+  /// Persisted writing-unit count used by list rows and other lightweight projections.
+  /// Optional backing storage keeps snapshots created before this field backward compatible.
+  private var wordCountStorage: Int?
+  /// Missing legacy values are dirty so the next body commit refreshes the count.
+  private var wordCountNeedsRefreshStorage: Bool?
   public var attachments: [DraftAttachment]
   public var status: DraftStatus
   public var createdAt: Date
@@ -217,6 +228,9 @@ public struct ArticleDraft: Identifiable, Codable, Hashable, Sendable {
   /// direct publish. It intentionally stays unchanged while the user edits so
   /// background sync can prove that an existing draft is safe to replace.
   public var repositoryImportFingerprint: String?
+  /// Atomic repository ownership and sync state. The three legacy projections above remain
+  /// encoded during migration, while repository-aware flows update this value as a unit.
+  public private(set) var repositoryBinding: DraftRepositoryBinding?
   public var reusedFromSourceSnapshot: GeneralDraftReuseSourceSnapshot?
   /// Stable identity for built-in software guides. This is intentionally
   /// independent from the editable title and slug so user content with the
@@ -242,6 +256,7 @@ public struct ArticleDraft: Identifiable, Codable, Hashable, Sendable {
     summary: String = "",
     coverAttachmentID: UUID? = nil,
     bodyMarkdown: String = "",
+    wordCount: Int? = nil,
     attachments: [DraftAttachment] = [],
     status: DraftStatus = .draft,
     createdAt: Date = Date(),
@@ -249,6 +264,7 @@ public struct ArticleDraft: Identifiable, Codable, Hashable, Sendable {
     repositoryPath: String? = nil,
     repositorySHA: String? = nil,
     repositoryImportFingerprint: String? = nil,
+    repositoryBinding: DraftRepositoryBinding? = nil,
     reusedFromSourceSnapshot: GeneralDraftReuseSourceSnapshot? = nil,
     softwareGuideID: String? = nil,
     softwareGuideTemplateVersion: Int? = nil
@@ -268,6 +284,8 @@ public struct ArticleDraft: Identifiable, Codable, Hashable, Sendable {
     self.summary = summary
     self.coverAttachmentID = coverAttachmentID
     self.bodyMarkdown = bodyMarkdown
+    self.wordCountStorage = wordCount.map { max(0, $0) }
+    self.wordCountNeedsRefreshStorage = wordCount == nil
     self.attachments = attachments
     self.status = status
     self.createdAt = createdAt
@@ -275,9 +293,30 @@ public struct ArticleDraft: Identifiable, Codable, Hashable, Sendable {
     self.repositoryPath = repositoryPath
     self.repositorySHA = repositorySHA
     self.repositoryImportFingerprint = repositoryImportFingerprint
+    self.repositoryBinding = repositoryBinding ?? Self.legacyRepositoryBinding(
+      path: repositoryPath,
+      remoteRevision: repositorySHA
+    )
     self.reusedFromSourceSnapshot = reusedFromSourceSnapshot
     self.softwareGuideID = softwareGuideID
     self.softwareGuideTemplateVersion = softwareGuideTemplateVersion
+  }
+
+  public var wordCount: Int {
+    wordCountStorage ?? 0
+  }
+
+  public var wordCountNeedsRefresh: Bool {
+    wordCountNeedsRefreshStorage ?? true
+  }
+
+  /// Applies an asynchronously derived count only when it still describes the current body.
+  @discardableResult
+  public mutating func storeWordCount(_ count: Int, for bodyMarkdown: String) -> Bool {
+    guard self.bodyMarkdown == bodyMarkdown else { return false }
+    wordCountStorage = max(0, count)
+    wordCountNeedsRefreshStorage = false
+    return true
   }
 
   public var isPrivate: Bool {
@@ -308,15 +347,229 @@ public struct ArticleDraft: Identifiable, Codable, Hashable, Sendable {
     scopeStorage = .general
     draft = true
     status = .draft
-    repositoryPath = nil
-    repositorySHA = nil
-    repositoryImportFingerprint = nil
+    detachFromRepository()
   }
 
   public mutating func normalizeLegacyScope() {
     if scopeStorage == nil {
       scopeStorage = .site(siteProfileID)
     }
+  }
+
+  /// Migrates pre-binding snapshots and invalidates a revision that belongs to another
+  /// repository or branch. Local project placement is retained, but remote CAS evidence is
+  /// cleared until the new target is verified.
+  public mutating func normalizeRepositoryBinding(for profile: SiteProfile) {
+    guard let path = repositoryPath?.normalizedRelativePath().nilIfEmpty else {
+      repositoryBinding = nil
+      repositorySHA = nil
+      repositoryImportFingerprint = nil
+      return
+    }
+
+    let identity = DraftRepositoryIdentity(profile: profile)
+    if var binding = repositoryBinding {
+      if let boundIdentity = binding.identity, boundIdentity != identity {
+        binding = DraftRepositoryBinding(
+          identity: identity,
+          repositoryPath: path,
+          renderedContentDigest: nil,
+          verification: .legacyUnverified,
+          syncState: .projectSaved
+        )
+        repositorySHA = nil
+        repositoryImportFingerprint = nil
+      } else {
+        binding.identity = identity
+        binding.repositoryPath = path
+        binding.remoteRevision = repositorySHA?.trimmedForPublishing.nilIfEmpty
+          ?? binding.remoteRevision
+      }
+      repositoryBinding = binding
+      return
+    }
+
+    repositoryBinding = DraftRepositoryBinding(
+      identity: identity,
+      repositoryPath: path,
+      remoteRevision: repositorySHA,
+      verification: .legacyUnverified,
+      syncState: repositorySHA == nil ? .projectSaved : .synced
+    )
+  }
+
+  public mutating func recordProjectFile(
+    profile: SiteProfile,
+    repositoryPath: String,
+    renderedContentDigest: String
+  ) {
+    let normalizedPath = repositoryPath.normalizedRelativePath()
+    let identity = DraftRepositoryIdentity(profile: profile)
+    let canRetainRemoteRevision =
+      repositoryBinding?.identity == identity
+      && self.repositoryPath?.normalizedRelativePath() == normalizedPath
+    let retainedRevision = canRetainRemoteRevision ? repositorySHA : nil
+    let retainedImportFingerprint = canRetainRemoteRevision ? repositoryImportFingerprint : nil
+    let retainedVerification = canRetainRemoteRevision
+      ? (repositoryBinding?.verification ?? .legacyUnverified)
+      : .legacyUnverified
+    let recordedDigest = retainedRevision == nil
+      ? renderedContentDigest
+      : repositoryBinding?.renderedContentDigest
+    let retainedPendingReviewDigest = canRetainRemoteRevision
+      ? repositoryBinding?.pendingReviewContentDigest
+      : nil
+    let recordedSyncState: DraftRepositorySyncState
+    if repositoryBinding?.syncState == .awaitingReview,
+      let retainedPendingReviewDigest,
+      retainedPendingReviewDigest == renderedContentDigest
+    {
+      recordedSyncState = .awaitingReview
+    } else if retainedRevision == nil {
+      recordedSyncState = .projectSaved
+    } else if recordedDigest == renderedContentDigest {
+      // Startup reconciliation and explicit writes of identical bytes do not
+      // create a local change relative to the confirmed remote baseline.
+      recordedSyncState = .synced
+    } else {
+      recordedSyncState = .localChanged
+    }
+    self.repositoryPath = normalizedPath
+    repositorySHA = retainedRevision
+    repositoryImportFingerprint = retainedImportFingerprint
+    repositoryBinding = DraftRepositoryBinding(
+      identity: identity,
+      repositoryPath: normalizedPath,
+      remoteRevision: retainedRevision,
+      renderedContentDigest: recordedDigest,
+      projectFileContentDigest: renderedContentDigest,
+      pendingReviewContentDigest: recordedSyncState == .awaitingReview
+        ? retainedPendingReviewDigest
+        : nil,
+      verification: retainedVerification,
+      syncState: recordedSyncState,
+      verifiedAt: canRetainRemoteRevision ? repositoryBinding?.verifiedAt : nil
+    )
+  }
+
+  public mutating func confirmRepositoryBinding(
+    profile: SiteProfile,
+    repositoryPath: String,
+    remoteRevision: String,
+    renderedContentDigest: String,
+    verifiedAt: Date = Date()
+  ) {
+    let normalizedPath = repositoryPath.normalizedRelativePath()
+    let normalizedRevision = remoteRevision.trimmedForPublishing
+    self.repositoryPath = normalizedPath
+    repositorySHA = normalizedRevision
+    repositoryImportFingerprint = repositoryContentFingerprint
+    repositoryBinding = DraftRepositoryBinding(
+      identity: DraftRepositoryIdentity(profile: profile),
+      repositoryPath: normalizedPath,
+      remoteRevision: normalizedRevision,
+      renderedContentDigest: renderedContentDigest,
+      projectFileContentDigest: renderedContentDigest,
+      verification: .verified,
+      syncState: .synced,
+      verifiedAt: verifiedAt
+    )
+  }
+
+  public mutating func markRepositorySyncState(_ state: DraftRepositorySyncState) {
+    guard var binding = repositoryBinding else { return }
+    binding.syncState = state
+    if state != .awaitingReview {
+      binding.pendingReviewContentDigest = nil
+    }
+    repositoryBinding = binding
+  }
+
+  public mutating func markRepositoryAwaitingReview(profile: SiteProfile) {
+    guard var binding = repositoryBinding else { return }
+    binding.pendingReviewContentDigest = renderedRepositoryContentDigest(profile: profile)
+    binding.syncState = .awaitingReview
+    repositoryBinding = binding
+  }
+
+  public mutating func detachFromRepository() {
+    repositoryPath = nil
+    repositorySHA = nil
+    repositoryImportFingerprint = nil
+    repositoryBinding = nil
+  }
+
+  /// Editor bindings own content and workflow fields, never repository concurrency state.
+  public mutating func preserveRepositoryState(from current: ArticleDraft) {
+    repositoryPath = current.repositoryPath
+    repositorySHA = current.repositorySHA
+    repositoryImportFingerprint = current.repositoryImportFingerprint
+    repositoryBinding = current.repositoryBinding
+  }
+
+  mutating func replaceRepositoryPathForProjection(_ path: String?) {
+    repositoryPath = path?.normalizedRelativePath().nilIfEmpty
+    guard var binding = repositoryBinding, let repositoryPath else {
+      if path == nil { repositoryBinding = nil }
+      return
+    }
+    binding.repositoryPath = repositoryPath
+    repositoryBinding = binding
+  }
+
+  public func repositorySyncState(for profile: SiteProfile) -> DraftRepositorySyncState {
+    guard let binding = repositoryBinding else { return .localOnly }
+    guard binding.identity == nil || binding.identity == DraftRepositoryIdentity(profile: profile)
+    else { return .diverged }
+    switch binding.syncState {
+    case .diverged, .failed:
+      return binding.syncState
+    case .awaitingReview:
+      guard let pendingDigest = binding.pendingReviewContentDigest else {
+        return .awaitingReview
+      }
+      return pendingDigest == renderedRepositoryContentDigest(profile: profile)
+        ? .awaitingReview
+        : .localChanged
+    case .localOnly:
+      return .localOnly
+    case .projectSaved:
+      return .projectSaved
+    case .localChanged:
+      // This state is set by a successful local project write while a remote
+      // revision is retained. It is authoritative until a verified remote
+      // operation establishes a new baseline.
+      return .localChanged
+    case .synced:
+      guard binding.remoteRevision != nil else { return .projectSaved }
+      guard let baseline = binding.renderedContentDigest else { return .localChanged }
+      return baseline == renderedRepositoryContentDigest(profile: profile) ? .synced : .localChanged
+    }
+  }
+
+  public func renderedRepositoryContentDigest(profile: SiteProfile) -> String {
+    let document = FrontMatterRenderer().renderDocument(draft: self, profile: profile)
+    return Self.repositoryDocumentDigest(document)
+  }
+
+  public static func repositoryDocumentDigest(_ document: String) -> String {
+    SHA256.hash(data: Data(document.utf8))
+      .map { String(format: "%02x", $0) }
+      .joined()
+  }
+
+  private static func legacyRepositoryBinding(
+    path: String?,
+    remoteRevision: String?
+  ) -> DraftRepositoryBinding? {
+    guard let path = path?.normalizedRelativePath().nilIfEmpty else { return nil }
+    return DraftRepositoryBinding(
+      identity: nil,
+      repositoryPath: path,
+      remoteRevision: remoteRevision,
+      verification: .legacyUnverified,
+      syncState: remoteRevision == nil ? .projectSaved : .synced
+    )
   }
 
   private static let fingerprintEncoder: JSONEncoder = {
@@ -687,13 +940,12 @@ public struct ArticleDraft: Identifiable, Codable, Hashable, Sendable {
 
         先填写清晰标题，再检查自动生成的 slug。slug 会成为文章路径的一部分，发布后尽量不要频繁修改。
 
-        ## 2. 编辑、预览与分屏
+        ## 2. 编辑与预览
 
         中央编辑器支持 Markdown、查找替换、常用格式、表格、链接和图片。显示模式包括：
 
         - **编辑**：集中输入，并使用单行快捷操作和格式化工具。
-        - **预览**：检查标题层级、链接、代码块、表格和图片的最终效果。
-        - **分屏**：一边修改，一边核对渲染结果；长文会尽量保持同步滚动。
+        - **预览**：按需检查标题层级、链接、代码块、表格和图片的最终效果。
 
         ## 3. 补全发布信息
 
@@ -755,7 +1007,7 @@ public struct ArticleDraft: Identifiable, Codable, Hashable, Sendable {
       slug: "personal-site-publisher-knowledge-library",
       tags: ["使用指南", "资料库", "研究"],
       categories: ["指南"],
-      summary: "导入本地文档或通过 Safari、Chrome、Firefox 保存网页，建立可搜索、可引用且保留来源的长期资料库。",
+      summary: "导入本地文档或通过 Chrome、Firefox 保存网页，建立可搜索、可引用且保留来源的长期资料库。",
       bodyMarkdown: """
         # 资料库：整理并引用长期资料
 
@@ -770,13 +1022,12 @@ public struct ArticleDraft: Identifiable, Codable, Hashable, Sendable {
 
         ## 从浏览器保存网页
 
-        打开“浏览器资料采集”查看本机连接和令牌。当前版本支持 Safari、Chrome 与 Firefox：
+        打开“浏览器资料采集”查看本机连接和令牌。当前版本支持 Chrome 与 Firefox。macOS 应用不内嵌浏览器扩展，两个扩展都需要单独安装：
 
-        - **Safari 扩展**已内嵌在 RepoPress Studio App 包内，只需到 Safari 设置中启用。
         - **Chrome 扩展**不包含在 App 包内，需要从 Chrome 网上应用店单独安装和更新。
         - **Firefox 扩展**不包含在 App 包内，从 `about:debugging` 临时加载 `BrowserExtension/Firefox/manifest.json`。
 
-        扩展只连接 `127.0.0.1` 本机地址，并使用随机令牌验证。令牌只粘贴到你安装的扩展中，不要放到网页、文章或截图。Chrome 优先保存自包含 MHTML；Safari 和 Firefox 在大小上限内保存离线 HTML。应用暂时关闭时，扩展会在浏览器本地排队并稍后重试。
+        扩展只连接 `127.0.0.1` 本机地址，并使用随机令牌验证。令牌只粘贴到你安装的扩展中，不要放到网页、文章或截图。Chrome 优先保存自包含 MHTML；Firefox 在大小上限内保存离线 HTML。应用暂时关闭时，扩展会在浏览器本地排队并稍后重试。
 
         ## 搜索与引用
 
@@ -1001,7 +1252,7 @@ public struct ArticleDraft: Identifiable, Codable, Hashable, Sendable {
       tags: ["Guide", "Library", "Research"],
       categories: ["Guides"],
       summary:
-        "Import local documents or save pages from Safari, Chrome, and Firefox to build a searchable, citable library with clear provenance.",
+        "Import local documents or save pages from Chrome and Firefox to build a searchable, citable library with clear provenance.",
       bodyMarkdown: """
         # Library: Organize and Cite Long-Term Sources
 
@@ -1016,13 +1267,12 @@ public struct ArticleDraft: Identifiable, Codable, Hashable, Sendable {
 
         ## Save pages from a browser
 
-        Open Browser Capture to see the local connection and token. This release supports Safari, Chrome, and Firefox:
+        Open Browser Capture to see the local connection and token. This release supports Chrome and Firefox. The macOS app contains no embedded browser extension, so install both extensions separately:
 
-        - The **Safari extension** is embedded in the RepoPress Studio app bundle; enable it in Safari Settings.
         - The **Chrome extension is not included in the app bundle**. Install and update it separately through the Chrome Web Store.
         - The **Firefox extension is not included in the app bundle**. Load `BrowserExtension/Firefox/manifest.json` temporarily from `about:debugging`.
 
-        Extensions connect only to `127.0.0.1` and authenticate with a random token. Paste that token only into your installed extension—never into a webpage, article, or screenshot. Chrome prefers self-contained MHTML; Safari and Firefox save offline HTML within their size limit. If RepoPress Studio is closed, the extension queues the item locally and retries later.
+        Extensions connect only to `127.0.0.1` and authenticate with a random token. Paste that token only into your installed extension—never into a webpage, article, or screenshot. Chrome prefers self-contained MHTML; Firefox saves offline HTML within its size limit. If RepoPress Studio is closed, the extension queues the item locally and retries later.
 
         ## Search and cite
 

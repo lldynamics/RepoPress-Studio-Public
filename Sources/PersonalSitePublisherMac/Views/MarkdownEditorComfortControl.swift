@@ -19,9 +19,6 @@ struct MarkdownEditorComfortControl: View {
   private var isWarmPaperBackgroundEnabled = MarkdownEditorComfortConfiguration.defaultWarmPaperBackgroundEnabled
   @AppStorage(MarkdownEditorComfortPreferences.automaticPairingEnabledKey)
   private var isAutomaticPairingEnabled = MarkdownEditorComfortConfiguration.defaultAutomaticPairingEnabled
-  @AppStorage(MarkdownEditorComfortPreferences.typewriterSoundPresetKey)
-  private var typewriterSoundPresetRawValue = MarkdownEditorComfortConfiguration
-    .defaultTypewriterSoundPreset.rawValue
   @AppStorage(MarkdownEditorComfortPreferences.paragraphSpotlightEnabledKey)
   private var isParagraphSpotlightEnabled = MarkdownEditorComfortConfiguration
     .defaultParagraphSpotlightEnabled
@@ -105,13 +102,6 @@ struct MarkdownEditorComfortControl: View {
       Toggle("段落焦点聚光灯（非焦点段落柔和淡出）", isOn: $isParagraphSpotlightEnabled)
         .toggleStyle(.switch)
 
-      Picker("打字音效与微触觉", selection: $typewriterSoundPresetRawValue) {
-        ForEach(TypewriterSoundPreset.allCases) { preset in
-          Text(preset.title).tag(preset.rawValue)
-        }
-      }
-      .pickerStyle(.menu)
-
       Divider()
 
       HStack {
@@ -171,7 +161,6 @@ struct MarkdownEditorComfortControl: View {
     isCurrentParagraphHighlightEnabled = MarkdownEditorComfortConfiguration.defaultCurrentParagraphHighlightEnabled
     isWarmPaperBackgroundEnabled = MarkdownEditorComfortConfiguration.defaultWarmPaperBackgroundEnabled
     isAutomaticPairingEnabled = MarkdownEditorComfortConfiguration.defaultAutomaticPairingEnabled
-    typewriterSoundPresetRawValue = MarkdownEditorComfortConfiguration.defaultTypewriterSoundPreset.rawValue
     isParagraphSpotlightEnabled = MarkdownEditorComfortConfiguration.defaultParagraphSpotlightEnabled
   }
 }

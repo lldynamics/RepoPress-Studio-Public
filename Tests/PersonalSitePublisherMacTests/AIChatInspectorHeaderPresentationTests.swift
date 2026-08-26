@@ -3,6 +3,93 @@ import XCTest
 @testable import PublishingWorkbenchCore
 
 final class AIChatInspectorHeaderPresentationTests: XCTestCase {
+  func testAgentToolAvailabilityExplainsEveryFailClosedLayer() {
+    var enabledCodex = AIProviderConfig(preset: .codexAppServer)
+    enabledCodex.applyPresetDefaults()
+
+    XCTAssertEqual(
+      AIChatAgentToolAvailabilityPresentation.availability(
+        config: enabledCodex,
+        conversationMode: .inheritConnection
+      ),
+      .available
+    )
+    XCTAssertEqual(
+      AIChatAgentToolAvailabilityPresentation.availability(
+        config: enabledCodex,
+        conversationMode: .textOnly
+      ),
+      .conversationTextOnly
+    )
+
+    var connectionDisabled = enabledCodex
+    connectionDisabled.advancedSettings = AIProviderAdvancedSettings(
+      allowsApplicationTools: false
+    )
+    XCTAssertEqual(
+      AIChatAgentToolAvailabilityPresentation.availability(
+        config: connectionDisabled,
+        conversationMode: .inheritConnection
+      ),
+      .connectionDisabled
+    )
+
+    var draftCreationDenied = enabledCodex
+    draftCreationDenied.advancedSettings = AIProviderAdvancedSettings(
+      allowsApplicationTools: true,
+      agentPermissionPolicy: AIAgentPermissionPolicy(enabledScopes: [.localRead])
+    )
+    XCTAssertEqual(
+      AIChatAgentToolAvailabilityPresentation.availability(
+        config: draftCreationDenied,
+        conversationMode: .inheritConnection
+      ),
+      .draftCreationDenied
+    )
+
+    let unknownCustom = AIProviderConfig(
+      preset: .custom,
+      baseURL: "https://api.example.com/v1",
+      model: "unknown-tools",
+      requiresAPIKey: false,
+      advancedSettings: AIProviderAdvancedSettings(allowsApplicationTools: true)
+    )
+    XCTAssertEqual(
+      AIChatAgentToolAvailabilityPresentation.availability(
+        config: unknownCustom,
+        conversationMode: .inheritConnection
+      ),
+      .capabilityUnknown
+    )
+    XCTAssertEqual(
+      AIChatAgentToolAvailabilityPresentation.availability(
+        config: unknownCustom,
+        conversationMode: .inheritConnection
+      ).actionTitle,
+      "打开 AI 设置"
+    )
+
+    var unsupportedCustom = unknownCustom
+    let now = Date()
+    let key = AIProviderCapabilityCacheKey(config: unsupportedCustom)
+    unsupportedCustom.capabilityProbeEvidence = [
+      .toolCalling: AIProviderCapabilityProbeEvidence(
+        key: key,
+        capability: .toolCalling,
+        outcome: .unsupported,
+        observedAt: now,
+        expiresAt: now.addingTimeInterval(60)
+      )
+    ]
+    XCTAssertEqual(
+      AIChatAgentToolAvailabilityPresentation.availability(
+        config: unsupportedCustom,
+        conversationMode: .inheritConnection
+      ),
+      .capabilityUnsupported
+    )
+  }
+
   func testConversationTitleUsesTrimmedTitleOrNewConversationFallback() {
     XCTAssertEqual(
       AIChatInspectorHeaderPresentation.conversationTitle("  发布方案讨论  "),

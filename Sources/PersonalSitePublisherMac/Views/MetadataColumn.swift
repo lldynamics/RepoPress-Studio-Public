@@ -3,44 +3,50 @@ import SwiftUI
 
 struct MetadataColumn: View {
   private let store: WorkbenchStore
-  @ObservedObject private var navigation: WorkbenchEditorNavigationFeatureFacade
+  let selectedSection: WorkspaceSection
+  let selectedDraftID: UUID?
   @ObservedObject private var contentPresentation: WorkbenchContentPresentationFeatureFacade
   let rssStore: RSSReaderStore
   let repositoryContextStage: RepositoryContextStage
   @ObservedObject var repositorySourceSession: RepositoryHTMLSourceSession
   @Binding private var aiChatSurfaceState: AIChatSurfaceState
+  private let aiChatOperationSession: AIChatSurfaceOperationSession
   let prioritizesChecks: Bool
 
   init(
     store: WorkbenchStore,
+    selectedSection: WorkspaceSection,
+    selectedDraftID: UUID?,
     rssStore: RSSReaderStore,
     repositoryContextStage: RepositoryContextStage,
     repositorySourceSession: RepositoryHTMLSourceSession,
     aiChatSurfaceState: Binding<AIChatSurfaceState>,
+    aiChatOperationSession: AIChatSurfaceOperationSession,
     prioritizesChecks: Bool = false
   ) {
     self.store = store
-    _navigation = ObservedObject(
-      wrappedValue: WorkbenchEditorNavigationFeatureFacade(store: store)
-    )
+    self.selectedSection = selectedSection
+    self.selectedDraftID = selectedDraftID
     _contentPresentation = ObservedObject(wrappedValue: store.contentPresentation)
     self.rssStore = rssStore
     self.repositoryContextStage = repositoryContextStage
     _repositorySourceSession = ObservedObject(wrappedValue: repositorySourceSession)
     _aiChatSurfaceState = aiChatSurfaceState
+    self.aiChatOperationSession = aiChatOperationSession
     self.prioritizesChecks = prioritizesChecks
   }
 
   var body: some View {
     ZStack(alignment: .topLeading) {
       switch WorkspaceInspectorPresentation.route(
-        for: navigation.selectedSection,
+        for: selectedSection,
         isAIAssistantPresented: contentPresentation.isAssistantPresented
       ) {
       case .aiAssistant:
         AIChatContextInspectorView(
           store: store,
-          surfaceState: $aiChatSurfaceState
+          surfaceState: $aiChatSurfaceState,
+          operationSession: aiChatOperationSession
         )
       case .siteStarter:
         SiteStarterInspectorView(state: SiteStarterInspectorState(store: store))
@@ -88,13 +94,13 @@ struct MetadataColumn: View {
 
   @ViewBuilder
   private var articleInspector: some View {
-    if let fallbackDraft = navigation.selectedDraft {
+    if let selectedDraftID, let fallbackDraft = store.draft(for: selectedDraftID) {
       let draft = Binding<ArticleDraft>(
-        get: { navigation.selectedDraft ?? fallbackDraft },
+        get: { store.draft(for: selectedDraftID) ?? fallbackDraft },
         set: { store.updateDraftFromEditor($0) }
       )
       WorkspaceTaskInspector(
-        section: navigation.selectedSection,
+        section: selectedSection,
         draft: draft,
         store: store,
         rssStore: rssStore,

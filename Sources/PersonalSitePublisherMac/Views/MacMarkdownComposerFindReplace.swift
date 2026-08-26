@@ -3,7 +3,6 @@ import Foundation
 import PublishingWorkbenchCore
 import SwiftUI
 import UniformTypeIdentifiers
-import WebKit
 #if canImport(Darwin)
 import Darwin
 #endif
@@ -37,6 +36,7 @@ struct FindReplaceBar: View {
       isFindFieldFocused = true
     }
     .onKeyPress(.return) {
+      guard canUseFindReplace else { return .handled }
       if NSApp.currentEvent?.modifierFlags.contains(.shift) == true {
         onFindPrevious()
       } else {

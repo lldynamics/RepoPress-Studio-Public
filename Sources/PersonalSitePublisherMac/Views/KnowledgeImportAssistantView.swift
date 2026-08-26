@@ -15,6 +15,9 @@ struct KnowledgeImportAssistantView: View {
   @State private var analysisTask: Task<Void, Never>?
   @State private var isFileDropTargeted = false
   @State private var didAnalyzeInitialSources = false
+  @State private var selectedCandidateIDs: Set<UUID> = []
+  @State private var showsRemainingCandidates = false
+  @State private var showsRemainingWarnings = false
 
   init(
     knowledge: KnowledgeStore,
@@ -220,49 +223,143 @@ struct KnowledgeImportAssistantView: View {
 
   private func candidateList(_ preview: KnowledgeImportPreview) -> some View {
     VStack(alignment: .leading, spacing: 8) {
-      Text("3. 内容预览")
-        .font(.headline)
-      ForEach(preview.candidates.prefix(50)) { candidate in
-        HStack(alignment: .top, spacing: 12) {
-          Image(systemName: candidate.kind.systemImage)
-            .frame(width: 18)
-            .foregroundStyle(.secondary)
-          VStack(alignment: .leading, spacing: 3) {
-            Text(candidate.title)
-              .font(.callout.weight(.medium))
-              .workbenchTruncatedIdentity(candidate.title)
-            Text(candidateDetail(candidate))
-              .font(.caption)
-              .foregroundStyle(.secondary)
-              .lineLimit(2)
+      HStack(spacing: 10) {
+        Text("3. 内容预览")
+          .font(.headline)
+        Text("已选择 \(selectedCandidateIDs.count)/\(preview.candidates.count)")
+          .font(.caption)
+          .foregroundStyle(.secondary)
+        Spacer()
+        Button("全选") {
+          selectedCandidateIDs = Set(preview.candidates.map(\.id))
+        }
+        .buttonStyle(.link)
+        .disabled(
+          isCommitting
+            || isAnalyzing
+            || selectedCandidateIDs.count == preview.candidates.count
+        )
+        Button("全部取消") {
+          selectedCandidateIDs.removeAll()
+        }
+        .buttonStyle(.link)
+        .disabled(isCommitting || isAnalyzing || selectedCandidateIDs.isEmpty)
+      }
+
+      ForEach(preview.candidates.prefix(KnowledgeImportSelectionPresentation.initialCandidateLimit)) {
+        candidate in
+        candidateRow(candidate)
+      }
+      let remainingCandidates = preview.candidates.dropFirst(
+        KnowledgeImportSelectionPresentation.initialCandidateLimit
+      )
+      if !remainingCandidates.isEmpty {
+        DisclosureGroup(isExpanded: $showsRemainingCandidates) {
+          LazyVStack(alignment: .leading, spacing: 8) {
+            ForEach(remainingCandidates) { candidate in
+              candidateRow(candidate)
+            }
           }
-          Spacer()
-          Text(candidate.disposition.localizedDisplayNameKey)
-            .font(.caption.weight(.medium))
-            .foregroundStyle(candidate.disposition == .duplicate ? Color.secondary : Color.accentColor)
+          .padding(.top, 8)
+        } label: {
+          Text("查看其余 \(remainingCandidates.count) 条资料")
+            .font(.callout.weight(.medium))
         }
         .padding(10)
-        .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
-      }
-      if preview.candidates.count > 50 {
-        Text("另有 \(preview.candidates.count - 50) 条资料将在确认后处理。")
+        .background(
+          WorkbenchBackgroundStyle.card,
+          in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
+        )
+        Text("其余资料默认已勾选；展开后可逐项取消，再确认导入。")
           .font(.caption)
           .foregroundStyle(.secondary)
       }
     }
   }
 
+  private func candidateRow(_ candidate: KnowledgeImportCandidate) -> some View {
+    Toggle(isOn: candidateSelectionBinding(candidate.id)) {
+      HStack(alignment: .top, spacing: 12) {
+        Image(systemName: candidate.kind.systemImage)
+          .frame(width: 18)
+          .foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 3) {
+          Text(candidate.title)
+            .font(.callout.weight(.medium))
+            .workbenchTruncatedIdentity(candidate.title)
+          Text(candidateDetail(candidate))
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .lineLimit(2)
+        }
+        Spacer()
+        Text(candidate.disposition.localizedDisplayNameKey)
+          .font(.caption.weight(.medium))
+          .foregroundStyle(candidate.disposition == .duplicate ? Color.secondary : Color.accentColor)
+      }
+    }
+    .toggleStyle(.checkbox)
+    .disabled(isCommitting || isAnalyzing)
+    .padding(10)
+    .background(
+      WorkbenchBackgroundStyle.card,
+      in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
+    )
+    .accessibilityHint(
+      selectedCandidateIDs.contains(candidate.id)
+        ? String(localized: "取消勾选后不会保存这条资料")
+        : String(localized: "勾选后会在确认导入时保存这条资料")
+    )
+  }
+
+  private func candidateSelectionBinding(_ candidateID: UUID) -> Binding<Bool> {
+    Binding(
+      get: { selectedCandidateIDs.contains(candidateID) },
+      set: { isSelected in
+        if isSelected {
+          selectedCandidateIDs.insert(candidateID)
+        } else {
+          selectedCandidateIDs.remove(candidateID)
+        }
+      }
+    )
+  }
+
   @ViewBuilder
   private func warningList(_ preview: KnowledgeImportPreview) -> some View {
-    let warnings = preview.warnings + preview.candidates.flatMap(\.warnings)
+    let warnings = preview.warnings
+      + preview.candidates
+        .filter { selectedCandidateIDs.contains($0.id) }
+        .flatMap(\.warnings)
     if !warnings.isEmpty {
       VStack(alignment: .leading, spacing: 6) {
         Text("注意")
           .font(.headline)
-        ForEach(Array(warnings.prefix(12).enumerated()), id: \.offset) { _, warning in
+        ForEach(
+          Array(warnings.prefix(KnowledgeImportSelectionPresentation.initialWarningLimit).enumerated()),
+          id: \.offset
+        ) { _, warning in
           Label(warning, systemImage: "exclamationmark.triangle")
             .font(.caption)
             .foregroundStyle(WorkbenchTheme.warning)
+        }
+        let remainingWarnings = warnings.dropFirst(
+          KnowledgeImportSelectionPresentation.initialWarningLimit
+        )
+        if !remainingWarnings.isEmpty {
+          DisclosureGroup(isExpanded: $showsRemainingWarnings) {
+            VStack(alignment: .leading, spacing: 6) {
+              ForEach(Array(remainingWarnings.enumerated()), id: \.offset) { _, warning in
+                Label(warning, systemImage: "exclamationmark.triangle")
+                  .font(.caption)
+                  .foregroundStyle(WorkbenchTheme.warning)
+              }
+            }
+            .padding(.top, 6)
+          } label: {
+            Text("查看其余 \(remainingWarnings.count) 条提醒")
+              .font(.caption.weight(.medium))
+          }
         }
       }
     }
@@ -276,12 +373,16 @@ struct KnowledgeImportAssistantView: View {
 
       Spacer()
 
-      Text("只会保存你确认的内容；搜索索引在本机建立。")
+      Text("只会保存已勾选的内容；搜索索引在本机建立。")
         .font(.caption)
         .foregroundStyle(.secondary)
       if let preview {
+        let selectedPreview = KnowledgeImportSelectionPresentation.selectedPreview(
+          from: preview,
+          selectedCandidateIDs: selectedCandidateIDs
+        )
         Button {
-          commit(preview)
+          commit(selectedPreview)
         } label: {
           if isCommitting {
             Label(String(localized: "正在建立索引"), systemImage: "hourglass")
@@ -289,7 +390,7 @@ struct KnowledgeImportAssistantView: View {
             Label(
               String(
                 format: String(localized: "确认导入 %@ 条"),
-                "\(preview.importableCount)"
+                "\(selectedPreview.importableCount)"
               ),
               systemImage: "tray.and.arrow.down.fill"
             )
@@ -297,7 +398,7 @@ struct KnowledgeImportAssistantView: View {
         }
         .workbenchProminentActionStyle()
         .keyboardShortcut(.defaultAction)
-        .disabled(isCommitting || isAnalyzing || preview.importableCount == 0)
+        .disabled(isCommitting || isAnalyzing || selectedPreview.importableCount == 0)
       }
     }
     .padding(WorkbenchSpacing.content)
@@ -331,14 +432,6 @@ struct KnowledgeImportAssistantView: View {
       return
     }
     analyze {
-      let accessedURLs = fileURLs.map { url in
-        (url, url.startAccessingSecurityScopedResource())
-      }
-      defer {
-        for (url, didStartAccessing) in accessedURLs where didStartAccessing {
-          url.stopAccessingSecurityScopedResource()
-        }
-      }
       return try await knowledge.makeImportPreview(
         sourceURLs: fileURLs,
         options: KnowledgeImportOptions(
@@ -374,13 +467,20 @@ struct KnowledgeImportAssistantView: View {
     analysisTask = Task {
       defer { isAnalyzing = false }
       do {
-        preview = try await operation()
+        let generatedPreview = try await operation()
         try Task.checkCancellation()
+        preview = generatedPreview
+        selectedCandidateIDs = Set(generatedPreview.candidates.map(\.id))
+        showsRemainingCandidates = false
+        showsRemainingWarnings = false
         statusMessage = .success(String(localized: "预览已生成，请检查后确认导入。"))
       } catch is CancellationError {
         return
       } catch {
         preview = nil
+        selectedCandidateIDs.removeAll()
+        showsRemainingCandidates = false
+        showsRemainingWarnings = false
         statusMessage = .failure(
           String(
             format: String(localized: "失败：%@"),
@@ -457,5 +557,21 @@ struct KnowledgeImportAssistantView: View {
         return WorkbenchTheme.risk
       }
     }
+  }
+}
+
+enum KnowledgeImportSelectionPresentation {
+  static let initialCandidateLimit = 50
+  static let initialWarningLimit = 12
+
+  static func selectedPreview(
+    from preview: KnowledgeImportPreview,
+    selectedCandidateIDs: Set<UUID>
+  ) -> KnowledgeImportPreview {
+    KnowledgeImportPreview(
+      sourceName: preview.sourceName,
+      candidates: preview.candidates.filter { selectedCandidateIDs.contains($0.id) },
+      warnings: preview.warnings
+    )
   }
 }

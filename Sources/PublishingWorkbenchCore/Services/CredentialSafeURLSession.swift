@@ -1,5 +1,6 @@
 import Darwin
 import Foundation
+import PublishingKnowledgeCore
 import zlib
 
 #if canImport(FoundationNetworking)

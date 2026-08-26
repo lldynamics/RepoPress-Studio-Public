@@ -55,7 +55,9 @@ extension MacMarkdownComposerView {
       }
       if !immediate {
         do {
-          try await Task.sleep(for: .milliseconds(250))
+          try await Task.sleep(
+            for: MarkdownEditorAutomationPolicy.automaticWorkIdleDelay
+          )
         } catch {
           return
         }
@@ -84,10 +86,6 @@ extension MacMarkdownComposerView {
   }
 
   func selectOutlineItem(_ item: MarkdownOutlineItem) {
-    if editorState.editorDisplayMode == .preview {
-      store.setEditorDisplayMode(.edit)
-    }
-
     let bodyLength = (editorBody as NSString).length
     selectedRange = NSRange(
       location: min(max(item.headingLocation, 0), bodyLength),
@@ -144,17 +142,11 @@ extension MacMarkdownComposerView {
       selectionActionMessage = "章节已变化，请刷新大纲后重试。"
       return
     }
-    if editorState.editorDisplayMode == .preview {
-      store.setEditorDisplayMode(.edit)
-    }
     editorEditRequest = MarkdownTextEditRequest(expectedText: editorBody, edit: edit)
     selectionActionMessage = message
   }
 
   func showFindReplace() {
-    if editorState.editorDisplayMode == .preview {
-      store.setEditorDisplayMode(.edit)
-    }
     let selected = selectedText(in: editorBody).trimmedForPublishing
     if !selected.isEmpty, !selected.contains("\n") {
       findQuery = selected
@@ -178,6 +170,12 @@ extension MacMarkdownComposerView {
       EditorAccessibilityAnnouncementCenter.announceFindMessage(
         String(localized: "输入查找内容。")
       )
+      return
+    }
+    guard !findMatchRefreshCoordinator.isPending else {
+      let message = String(localized: "正在搜索…")
+      findReplaceMessage = message
+      EditorAccessibilityAnnouncementCenter.announceFindMessage(message)
       return
     }
 
@@ -355,9 +353,6 @@ extension MacMarkdownComposerView {
   }
 
   private func applyAdvancedMarkdownEdit(_ edit: MarkdownSmartEdit) {
-    if editorState.editorDisplayMode == .preview {
-      store.setEditorDisplayMode(.edit)
-    }
     selectedRange = edit.selectedRange
     editorEditRequest = MarkdownTextEditRequest(
       expectedText: editorBody,
@@ -476,9 +471,6 @@ extension MacMarkdownComposerView {
   }
 
   func selectDiagnostic(_ diagnostic: MarkdownInlineDiagnostic) {
-    if editorState.editorDisplayMode == .preview {
-      store.setEditorDisplayMode(.edit)
-    }
     selectedRange = clamped(diagnostic.range, length: (editorBody as NSString).length)
     EditorAccessibilityAnnouncementCenter.announce(
       "已定位：\(diagnostic.title)",
@@ -490,9 +482,6 @@ extension MacMarkdownComposerView {
     guard let edit = MarkdownInlineDiagnosticService.quickFix(for: diagnostic, in: editorBody) else {
       selectionActionMessage = "这项诊断没有可自动应用的修复。"
       return
-    }
-    if editorState.editorDisplayMode == .preview {
-      store.setEditorDisplayMode(.edit)
     }
     editorEditRequest = MarkdownTextEditRequest(expectedText: editorBody, edit: edit)
     selectionActionMessage = "已修复：\(diagnostic.title)"

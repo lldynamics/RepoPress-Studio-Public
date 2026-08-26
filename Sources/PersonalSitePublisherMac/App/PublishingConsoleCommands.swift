@@ -7,6 +7,7 @@ struct PublishingConsoleCommands: Commands {
   @ObservedObject private var presentation: WorkbenchCommandPresentationFeatureFacade
   @FocusedObject private var commandRouter: WorkspaceSceneCommandRouter?
   @Environment(\.openSettings) private var openSettings
+  @Environment(\.openWindow) private var openWindow
 
   init(store: WorkbenchStore) {
     self.store = store
@@ -15,6 +16,13 @@ struct PublishingConsoleCommands: Commands {
 
   var body: some Commands {
     CommandGroup(replacing: .newItem) {
+      Button(String(localized: "新建窗口")) {
+        openWindow(id: "main-workbench")
+      }
+      .keyboardShortcut("n", modifiers: [.command, .shift])
+
+      Divider()
+
       Button(String(localized: "新建文章")) {
         if writingDraftCommands != nil {
           commandRouter?.writingDraftCommandActions?.createDraft()

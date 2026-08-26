@@ -8,7 +8,7 @@ The SwiftPM packaging script copies these values into
 then compare the packaged `Info.plist` with the same file, so a stale or
 independently hardcoded value fails the release checks.
 
-Before producing an App Store build:
+Before producing a Developer ID release or any other formal release candidate:
 
 1. Set the intended public version in `MARKETING_VERSION`.
 2. Increase `CURRENT_PROJECT_VERSION` to a positive integer not previously
@@ -19,5 +19,6 @@ Before producing an App Store build:
 
 This repository is SwiftPM-first and has no Xcode project to auto-increment the
 build number. The committed value must therefore be advanced manually or by an
-explicit CI release step before each App Store upload. Local validation cannot
-prove that App Store Connect will accept a reused build number.
+explicit CI release step before each formal release candidate. Local validation
+cannot prove that a build number has never been published in the configured
+update channel.

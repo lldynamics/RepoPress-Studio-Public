@@ -2,12 +2,7 @@ import PublishingWorkbenchCore
 import SwiftUI
 
 struct MacMarkdownFormattingToolbar: View {
-  let characterCount: Int
-  let hanCharacterCount: Int
-  let wordCount: Int
-  let writingUnitCount: Int
-  let lineCount: Int
-  let readingMinutes: Int
+  @ObservedObject var statisticsState: MarkdownComposerStatisticsState
   let cursorPosition: MarkdownCursorPosition?
   let fenceMatch: MarkdownFenceMatch?
   let completion: MarkdownCompletionContext?
@@ -35,6 +30,14 @@ struct MacMarkdownFormattingToolbar: View {
   @AppStorage("workspace.customToolbarConfig") private var customToolbarConfigRawValue = ""
   @AppStorage("workspace.editorTargetWordCount") private var targetWordCount: Int = 0
   @State private var isStatsPopoverPresented = false
+  @EnvironmentObject private var zenModeController: ZenModeController
+
+  private var characterCount: Int { statisticsState.value.characterCount }
+  private var hanCharacterCount: Int { statisticsState.value.hanCharacterCount }
+  private var wordCount: Int { statisticsState.value.wordCount }
+  private var writingUnitCount: Int { statisticsState.value.writingUnitCount }
+  private var lineCount: Int { statisticsState.value.lineCount }
+  private var readingMinutes: Int { statisticsState.value.readingMinutes }
 
   private var toolbarConfiguration: MarkdownToolbarConfiguration {
     MarkdownToolbarConfiguration.decodeFromJSON(customToolbarConfigRawValue)
@@ -77,6 +80,35 @@ struct MacMarkdownFormattingToolbar: View {
     .padding(.horizontal, 10)
     .padding(.vertical, 6)
     .background(.bar)
+    .accessibilityElement(children: .contain)
+    .accessibilityLabel("格式工具栏")
+    .accessibilityIdentifier("markdown-formatting-toolbar")
+    .onKeyPress(.tab) {
+      zenModeController.beginKeyboardNavigation()
+      return .ignored
+    }
+    .onKeyPress(.leftArrow) {
+      zenModeController.beginKeyboardNavigation()
+      return .ignored
+    }
+    .onKeyPress(.rightArrow) {
+      zenModeController.beginKeyboardNavigation()
+      return .ignored
+    }
+    .onKeyPress(.upArrow) {
+      zenModeController.beginKeyboardNavigation()
+      return .ignored
+    }
+    .onKeyPress(.downArrow) {
+      zenModeController.beginKeyboardNavigation()
+      return .ignored
+    }
+    .onExitCommand {
+      zenModeController.endKeyboardNavigation()
+    }
+    .onDisappear {
+      zenModeController.endKeyboardNavigation()
+    }
   }
 
   private func formattingRow(
@@ -580,5 +612,7 @@ private struct ZenModeToggleButton: View {
     )
     .help(zenModeController.isZenModeActive ? "退出沉浸模式" : "开启沉浸模式（打字时自动淡出工具栏）")
     .accessibilityLabel("沉浸模式")
+    .accessibilityValue(zenModeController.isZenModeActive ? "已开启" : "未开启")
+    .accessibilityIdentifier("markdown-zen-mode-toggle")
   }
 }

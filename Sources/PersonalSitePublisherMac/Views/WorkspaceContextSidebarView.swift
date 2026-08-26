@@ -53,7 +53,8 @@ struct WorkspaceSidebarHeaderIcon: View {
 
 struct WorkspacePrimarySidebar: View {
   let store: WorkbenchStore
-  @ObservedObject private var shell: WorkbenchShellFeatureFacade
+  let selectedSection: WorkspaceSection
+  let selectedDraftID: UUID?
   @Binding var contentHealthFilter: ContentHealthContextFilter
   @Binding var imageWorkbenchContextStage: ImageWorkbenchContextStage
   @Binding var repositoryContextStage: RepositoryContextStage
@@ -61,19 +62,26 @@ struct WorkspacePrimarySidebar: View {
   let rssStore: RSSReaderStore
   let rssPresentation: RSSReaderPresentationState
   let onSelectSection: (WorkspaceSection) -> Void
+  let onSelectDraft: (UUID?) -> Void
+  let onFocusDraft: (UUID, WorkspaceSection) -> Void
 
   init(
     store: WorkbenchStore,
+    selectedSection: WorkspaceSection,
+    selectedDraftID: UUID?,
     contentHealthFilter: Binding<ContentHealthContextFilter>,
     imageWorkbenchContextStage: Binding<ImageWorkbenchContextStage>,
     repositoryContextStage: Binding<RepositoryContextStage>,
     contentHealthSidebarProjection: ContentHealthSidebarProjection,
     rssStore: RSSReaderStore,
     rssPresentation: RSSReaderPresentationState,
-    onSelectSection: @escaping (WorkspaceSection) -> Void
+    onSelectSection: @escaping (WorkspaceSection) -> Void,
+    onSelectDraft: @escaping (UUID?) -> Void,
+    onFocusDraft: @escaping (UUID, WorkspaceSection) -> Void
   ) {
     self.store = store
-    _shell = ObservedObject(wrappedValue: store.shell)
+    self.selectedSection = selectedSection
+    self.selectedDraftID = selectedDraftID
     _contentHealthFilter = contentHealthFilter
     _imageWorkbenchContextStage = imageWorkbenchContextStage
     _repositoryContextStage = repositoryContextStage
@@ -81,6 +89,8 @@ struct WorkspacePrimarySidebar: View {
     self.rssStore = rssStore
     self.rssPresentation = rssPresentation
     self.onSelectSection = onSelectSection
+    self.onSelectDraft = onSelectDraft
+    self.onFocusDraft = onFocusDraft
   }
 
   var body: some View {
@@ -103,13 +113,13 @@ struct WorkspacePrimarySidebar: View {
           store: store,
           scope: quickSearchScope,
           contentHealthSidebarProjection: contentHealthSidebarProjection,
-          contentHealthFilter: shell.selectedSection == .contentHealth
+          contentHealthFilter: selectedSection == .contentHealth
             ? $contentHealthFilter
             : nil,
-          imageWorkbenchContextStage: shell.selectedSection == .images
+          imageWorkbenchContextStage: selectedSection == .images
             ? $imageWorkbenchContextStage
             : nil,
-          repositoryContextStage: shell.selectedSection == .sync
+          repositoryContextStage: selectedSection == .sync
             ? $repositoryContextStage
             : nil
         )
@@ -123,13 +133,13 @@ struct WorkspacePrimarySidebar: View {
   }
 
   private var showsContextList: Bool {
-    shell.selectedSection == .writing
-      || shell.selectedSection == .library
-      || shell.selectedSection == .rss
+    selectedSection == .writing
+      || selectedSection == .library
+      || selectedSection == .rss
   }
 
   private var quickSearchScope: WorkspaceQuickSearchScope {
-    switch shell.selectedSection {
+    switch selectedSection {
     case .images:
       return .imageResources
     case .contentHealth:
@@ -142,6 +152,7 @@ struct WorkspacePrimarySidebar: View {
   private var taskNavigation: some View {
     WorkspaceTaskNavigation(
       store: store,
+      selectedSection: selectedSection,
       contentHealthFilter: $contentHealthFilter,
       onSelectSection: onSelectSection
     )
@@ -149,9 +160,15 @@ struct WorkspacePrimarySidebar: View {
 
   @ViewBuilder
   private var contextList: some View {
-    switch shell.selectedSection {
+    switch selectedSection {
     case .writing:
-      WritingDraftColumn(store: store, isCompact: true)
+      WritingDraftColumn(
+        store: store,
+        isCompact: true,
+        selectedDraftID: selectedDraftID,
+        onSelectDraft: onSelectDraft,
+        onFocusDraft: onFocusDraft
+      )
     case .library:
       KnowledgeSourceListColumn(store: store, knowledge: store.knowledge)
     case .rss:

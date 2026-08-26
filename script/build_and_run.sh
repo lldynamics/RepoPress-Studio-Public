@@ -3,17 +3,17 @@ set -euo pipefail
 
 MODE="run"
 BUILD_CONFIGURATION="debug"
-APP_STORE_BUILD=0
 DIRECT_DISTRIBUTION_BUILD=0
 APP_NAME="PersonalSitePublisherMac"
 APP_DISPLAY_NAME="RepoPress Studio"
+APP_BUNDLE_NAME="${PERSONAL_SITE_PUBLISHER_BUNDLE_NAME:-$APP_DISPLAY_NAME}"
 BUNDLE_ID="${PERSONAL_SITE_PUBLISHER_BUNDLE_ID:-com.jinfang.PersonalSitePublisherMac}"
 MIN_SYSTEM_VERSION="14.0"
 APP_CATEGORY="${APP_CATEGORY:-public.app-category.developer-tools}"
 HUMAN_READABLE_COPYRIGHT="${APP_COPYRIGHT:-Copyright © 2026 Jinfang. All rights reserved.}"
-SCREENSHOT_SURFACE="writing"
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$ROOT_DIR/script/bundle_output_lock.sh"
 VERSION_CONFIG="${BUILD_VERSION_CONFIG:-$ROOT_DIR/Packaging/BuildVersion.xcconfig}"
 VERSION_VALUES="$(
   bash "$ROOT_DIR/script/check_build_version.sh" \
@@ -22,12 +22,10 @@ VERSION_VALUES="$(
 )"
 IFS=$'\t' read -r MARKETING_VERSION BUILD_NUMBER <<<"$VERSION_VALUES"
 DIST_DIR="${PERSONAL_SITE_PUBLISHER_DIST_DIR:-$ROOT_DIR/dist}"
-APP_STORE_SWIFT_SCRATCH_PATH="${APP_STORE_SWIFT_SCRATCH_PATH:-$ROOT_DIR/.build/app-store-swift}"
-APP_BUNDLE="$DIST_DIR/$APP_NAME.app"
+APP_BUNDLE="$DIST_DIR/$APP_BUNDLE_NAME.app"
 APP_CONTENTS="$APP_BUNDLE/Contents"
 APP_MACOS="$APP_CONTENTS/MacOS"
 APP_RESOURCES="$APP_CONTENTS/Resources"
-APP_PLUGINS="$APP_CONTENTS/PlugIns"
 APP_FRAMEWORKS="$APP_CONTENTS/Frameworks"
 APP_BINARY="$APP_MACOS/$APP_NAME"
 INFO_PLIST="$APP_CONTENTS/Info.plist"
@@ -35,19 +33,10 @@ APP_ICON_SOURCE="$ROOT_DIR/Sources/PersonalSitePublisherMac/Resources/AppIcon.ic
 LOCALIZATION_SOURCE="$ROOT_DIR/Sources/PersonalSitePublisherMac/Resources"
 LOCALIZATION_CATALOG="$LOCALIZATION_SOURCE/Localizable.xcstrings"
 LOCAL_DEVELOPMENT_ENTITLEMENTS="$ROOT_DIR/Packaging/LocalDevelopment.entitlements"
-APP_STORE_ENTITLEMENTS="$ROOT_DIR/Sources/PersonalSitePublisherMac/AppStore.entitlements"
 DIRECT_DISTRIBUTION_ENTITLEMENTS="$ROOT_DIR/Packaging/DirectDistribution.entitlements"
-SAFARI_EXTENSION_ENTITLEMENTS="$ROOT_DIR/Packaging/SafariWebExtension.entitlements"
-SAFARI_EXTENSION_BUNDLE_ID="${SAFARI_WEB_EXTENSION_BUNDLE_ID:-$BUNDLE_ID.SafariExtension}"
-SAFARI_EXTENSION_BUILD_PRODUCT="$ROOT_DIR/.build/safari-web-extension/product/RepoPressSafariExtension.appex"
-SAFARI_EXTENSION_BUNDLE="$APP_PLUGINS/RepoPressSafariExtension.appex"
 SPARKLE_FRAMEWORK_BUNDLE="$APP_FRAMEWORKS/Sparkle.framework"
 SPARKLE_LICENSE_SOURCE="$ROOT_DIR/Packaging/ThirdPartyNotices/Sparkle-LICENSE.txt"
 SPARKLE_LICENSE_BUNDLE="$APP_RESOURCES/ThirdPartyNotices/Sparkle-LICENSE.txt"
-CODEX_RUNTIME_SOURCE="${REPOPRESS_CODEX_RUNTIME_PATH:-}"
-CODEX_RUNTIME_LICENSE_SOURCE="${REPOPRESS_CODEX_LICENSE_PATH:-}"
-CODEX_RUNTIME_BUNDLE="$APP_RESOURCES/CodexRuntime/codex"
-CODEX_RUNTIME_LICENSE_BUNDLE="$APP_RESOURCES/ThirdPartyNotices/Codex-LICENSE.txt"
 CODESIGN_TOOL="${CODESIGN_TOOL:-/usr/bin/codesign}"
 INSTALL_NAME_TOOL="${INSTALL_NAME_TOOL:-/usr/bin/install_name_tool}"
 OTOOL_TOOL="${OTOOL_TOOL:-/usr/bin/otool}"
@@ -63,6 +52,7 @@ SWIFT_BUILD_HOME="${SWIFT_BUILD_HOME:-/private/tmp/personal-site-publisher-swift
 SWIFT_BUILD_XDG_CACHE_HOME="${SWIFT_BUILD_XDG_CACHE_HOME:-$SWIFT_BUILD_HOME/.cache}"
 SWIFT_BUILD_CLANG_MODULE_CACHE_PATH="${SWIFT_BUILD_CLANG_MODULE_CACHE_PATH:-$SWIFT_BUILD_HOME/.swift-clang-cache}"
 SWIFT_BUILD_MODULE_CACHE_PATH="${SWIFT_BUILD_MODULE_CACHE_PATH:-$SWIFT_BUILD_HOME/.swift-module-cache}"
+SWIFT_BUILD_SCRATCH_PATH="${SWIFT_BUILD_SCRATCH_PATH:-}"
 
 mkdir -p \
   "$SWIFT_BUILD_HOME" \
@@ -91,18 +81,6 @@ print(html.escape(sys.argv[1], quote=True))
 PY
 }
 
-required_screenshot_surfaces=(
-  writing
-  ai-chat
-  knowledge-library
-  sync-api-publish
-  seo-social-preview
-  deployment-status
-  maintenance
-  general-drafts
-  privacy-lock
-)
-
 usage() {
   cat >&2 <<'EOF'
 usage: script/build_and_run.sh [mode] [options]
@@ -116,44 +94,17 @@ Modes:
   --verify-process          Build, open, and verify only that the process starts.
   --launch-baseline        Build, then measure bundle-open to visible-window time.
   --package-only | package  Build the .app bundle and print its path.
-  --screenshot-demo [id]    Build and launch screenshot demo data for a surface.
 
 Options:
   --release                 Build with SwiftPM's Release configuration.
-  --app-store               Build the Mac App Store Release variant.
   --direct                  Build the Developer ID direct-distribution Release variant.
   --configuration <name>   Select debug or release (default: debug).
-  --screenshot-surface <id> Select a screenshot demo surface and imply --screenshot-demo.
-  --list-screenshot-surfaces
-                            Print screenshot surface ids and exit.
-
-Optional bundled Codex runtime:
-  Set REPOPRESS_CODEX_RUNTIME_PATH and REPOPRESS_CODEX_LICENSE_PATH together.
-  The runtime is copied into Shared Resources and signed with the app identity.
 EOF
-}
-
-contains_screenshot_surface() {
-  local candidate="$1"
-  local id
-  for id in "${required_screenshot_surfaces[@]}"; do
-    [[ "$id" == "$candidate" ]] && return 0
-  done
-  return 1
-}
-
-list_screenshot_surfaces() {
-  printf '%s\n' "${required_screenshot_surfaces[@]}"
 }
 
 while [[ "$#" -gt 0 ]]; do
   case "$1" in
     --release)
-      BUILD_CONFIGURATION="release"
-      shift
-      ;;
-    --app-store)
-      APP_STORE_BUILD=1
       BUILD_CONFIGURATION="release"
       shift
       ;;
@@ -170,24 +121,6 @@ while [[ "$#" -gt 0 ]]; do
     run|--debug|debug|--logs|logs|--telemetry|telemetry|--verify|verify|--verify-process|verify-process|--launch-baseline|launch-baseline|--package-only|package)
       MODE="$1"
       shift
-      ;;
-    --screenshot-demo|screenshot-demo)
-      MODE="screenshot-demo"
-      shift
-      if [[ "$#" -gt 0 && "${1:0:1}" != "-" ]]; then
-        SCREENSHOT_SURFACE="$1"
-        shift
-      fi
-      ;;
-    --screenshot-surface)
-      [[ "$#" -ge 2 ]] || { usage; exit 2; }
-      MODE="screenshot-demo"
-      SCREENSHOT_SURFACE="$2"
-      shift 2
-      ;;
-    --list-screenshot-surfaces)
-      list_screenshot_surfaces
-      exit 0
       ;;
     --help|-h)
       usage
@@ -213,40 +146,12 @@ case "$BUILD_CONFIGURATION" in
     ;;
 esac
 
-if [[ "$APP_STORE_BUILD" == "1" && "$BUILD_CONFIGURATION" != "release" ]]; then
-  echo "App Store builds require the Release configuration" >&2
-  exit 2
-fi
 if [[ "$DIRECT_DISTRIBUTION_BUILD" == "1" && "$BUILD_CONFIGURATION" != "release" ]]; then
   echo "direct-distribution builds require the Release configuration" >&2
   exit 2
 fi
-if [[ "$APP_STORE_BUILD" == "1" && "$DIRECT_DISTRIBUTION_BUILD" == "1" ]]; then
-  echo "--app-store and --direct are mutually exclusive" >&2
-  exit 2
-fi
-if [[ -n "$CODEX_RUNTIME_SOURCE" || -n "$CODEX_RUNTIME_LICENSE_SOURCE" ]]; then
-  [[ -n "$CODEX_RUNTIME_SOURCE" && -n "$CODEX_RUNTIME_LICENSE_SOURCE" ]] || {
-    echo "bundled Codex runtime requires both REPOPRESS_CODEX_RUNTIME_PATH and REPOPRESS_CODEX_LICENSE_PATH" >&2
-    exit 2
-  }
-  if [[ "$APP_STORE_BUILD" == "1" ]]; then
-    echo "bundled Codex runtime is unavailable for the App Store build" >&2
-    exit 2
-  fi
-  [[ -f "$CODEX_RUNTIME_SOURCE" && -x "$CODEX_RUNTIME_SOURCE" ]] || {
-    echo "Codex runtime must be an executable file: $CODEX_RUNTIME_SOURCE" >&2
-    exit 2
-  }
-  [[ -f "$CODEX_RUNTIME_LICENSE_SOURCE" && -s "$CODEX_RUNTIME_LICENSE_SOURCE" ]] || {
-    echo "Codex runtime license notice is missing or empty: $CODEX_RUNTIME_LICENSE_SOURCE" >&2
-    exit 2
-  }
-fi
-if [[ "$APP_STORE_BUILD" == "1" ]]; then
-  DISTRIBUTION_CHANNEL="AppStore"
-  EXTERNAL_AI_AVAILABLE_PLIST="  <true/>"
-elif [[ "$DIRECT_DISTRIBUTION_BUILD" == "1" ]]; then
+EXTERNAL_AI_AVAILABLE_PLIST="  <true/>"
+if [[ "$DIRECT_DISTRIBUTION_BUILD" == "1" ]]; then
   if [[ "$BUNDLE_ID" != "com.jinfang.PersonalSitePublisherMac" ]]; then
     echo "DirectDistribution.entitlements is bound to com.jinfang.PersonalSitePublisherMac" >&2
     exit 2
@@ -276,10 +181,8 @@ if public_key != public_key.strip() or not public_key or any(character.isspace()
 PY
   fi
   DISTRIBUTION_CHANNEL="Direct"
-  EXTERNAL_AI_AVAILABLE_PLIST="  <true/>"
 else
   DISTRIBUTION_CHANNEL="Development"
-  EXTERNAL_AI_AVAILABLE_PLIST="  <true/>"
 fi
 if [[ "$DIRECT_DISTRIBUTION_BUILD" == "1" ]]; then
   escaped_update_feed_url="$(xml_escape "$UPDATE_FEED_URL")"
@@ -305,13 +208,6 @@ else
   SCREENSHOT_CAPTURE_BUILD_PLIST="  <false/>"
 fi
 
-if [[ "$MODE" == "screenshot-demo" ]] && ! contains_screenshot_surface "$SCREENSHOT_SURFACE"; then
-  echo "unknown screenshot surface: $SCREENSHOT_SURFACE" >&2
-  echo "known screenshot surfaces:" >&2
-  list_screenshot_surfaces >&2
-  exit 2
-fi
-
 app_process_pids() {
   # On macOS, pgrep -x can compare against a truncated process name for this
   # 24-character executable. Match the absolute executable command instead so
@@ -323,29 +219,74 @@ app_process_is_running() {
   [[ -n "$(app_process_pids)" ]]
 }
 
+running_product_apps() {
+  local pid=""
+  local record=""
+  local app_binary=""
+  local app_bundle=""
+  local candidate_bundle_id=""
+
+  while IFS= read -r pid; do
+    [[ -n "$pid" ]] || continue
+    app_binary=""
+    while IFS= read -r record; do
+      case "$record" in
+        n*/Contents/MacOS/"$APP_NAME")
+          app_binary="${record#n}"
+          break
+          ;;
+      esac
+    done < <(/usr/sbin/lsof -a -p "$pid" -d txt -Fn 2>/dev/null || true)
+    [[ -n "$app_binary" ]] || continue
+
+    app_bundle="${app_binary%/Contents/MacOS/$APP_NAME}"
+    candidate_bundle_id="$(
+      /usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' \
+        "$app_bundle/Contents/Info.plist" 2>/dev/null || true
+    )"
+    [[ "$candidate_bundle_id" == "$BUNDLE_ID" ]] || continue
+    printf '%s\t%s\n' "$pid" "$app_bundle"
+  done < <(pgrep -f "/Contents/MacOS/${APP_NAME}([[:space:]]|$)" 2>/dev/null || true)
+}
+
+product_process_pids() {
+  local pid=""
+  local app_bundle=""
+  while IFS=$'\t' read -r pid app_bundle; do
+    [[ -n "$pid" ]] && printf '%s\n' "$pid"
+  done < <(running_product_apps)
+}
+
+product_process_is_running() {
+  [[ -n "$(product_process_pids)" ]]
+}
+
 stop_running_app_processes() {
   local pid=""
   local attempts=50
   while IFS= read -r pid; do
     [[ -z "$pid" ]] || kill "$pid" >/dev/null 2>&1 || true
-  done < <(app_process_pids)
-  # Do not terminate by process name: isolated UI-test apps intentionally use
-  # the same executable name and may run alongside this release build.
+  done < <(product_process_pids)
+  # Match both the executable name and bundle identifier. Isolated UI-test
+  # apps intentionally use a distinct bundle identifier and remain untouched,
+  # while installed or archived copies of this product cannot survive a
+  # canonical relaunch and leave an older window alongside the new build.
 
   while [[ "$attempts" -gt 0 ]]; do
-    if ! app_process_is_running; then
+    if ! product_process_is_running; then
       return 0
     fi
     sleep 0.1
     attempts="$((attempts - 1))"
   done
 
-  echo "failed to stop the existing $APP_NAME process before rebuilding" >&2
+  echo "failed to stop every running $APP_DISPLAY_NAME instance before rebuilding" >&2
+  running_product_apps >&2
   return 1
 }
 
 case "$MODE" in
-  run|--debug|debug|--logs|logs|--telemetry|telemetry|--verify|verify|--verify-process|verify-process|--launch-baseline|launch-baseline|screenshot-demo)
+  run|--debug|debug|--logs|logs|--telemetry|telemetry|--verify|verify|--verify-process|verify-process|--launch-baseline|launch-baseline)
     stop_running_app_processes
     ;;
 esac
@@ -354,10 +295,8 @@ swift_build_options=(
   -c "$BUILD_CONFIGURATION"
   --disable-sandbox
 )
-if [[ "$APP_STORE_BUILD" == "1" ]]; then
-  swift_build_options+=(
-    --scratch-path "$APP_STORE_SWIFT_SCRATCH_PATH"
-  )
+if [[ -n "$SWIFT_BUILD_SCRATCH_PATH" ]]; then
+  swift_build_options+=(--scratch-path "$SWIFT_BUILD_SCRATCH_PATH")
 fi
 if [[ "${PERSONAL_SITE_PUBLISHER_CAPTURE_BUILD:-0}" == "1" ]]; then
   swift_build_options+=(
@@ -366,9 +305,6 @@ if [[ "${PERSONAL_SITE_PUBLISHER_CAPTURE_BUILD:-0}" == "1" ]]; then
   )
 fi
 python3 "$ROOT_DIR/script/generate_browser_extension_protocol.py" --check
-bash "$ROOT_DIR/script/sync_safari_browser_extension.sh" --check
-bash "$ROOT_DIR/script/build_safari_web_extension.sh" \
-  --configuration "$BUILD_CONFIGURATION"
 swift_build build "${swift_build_options[@]}" --disable-index-store --product "$APP_NAME"
 BUILD_BIN_DIR="$(swift_build build "${swift_build_options[@]}" --show-bin-path)"
 case "$BUILD_BIN_DIR" in
@@ -383,11 +319,17 @@ BUILD_BINARY="$BUILD_BIN_DIR/$APP_NAME"
   echo "$BUILD_CONFIGURATION app executable is missing or not executable: $BUILD_BINARY" >&2
   exit 1
 }
+
+# Only the assembled bundle replacement is serialized. SwiftPM compilation
+# can still run in parallel, while two builders targeting the same explicit
+# bundle cannot remove/copy into it at the same time. A different
+# PERSONAL_SITE_PUBLISHER_DIST_DIR receives a different lock path.
+acquire_bundle_output_lock "$APP_BUNDLE"
+trap 'release_bundle_output_lock' EXIT
 rm -rf "$APP_BUNDLE"
 mkdir -p \
   "$APP_MACOS" \
   "$APP_RESOURCES/ThirdPartyNotices" \
-  "$APP_PLUGINS" \
   "$APP_FRAMEWORKS"
 cp "$BUILD_BINARY" "$APP_BINARY"
 chmod +x "$APP_BINARY"
@@ -404,12 +346,6 @@ grep -Fq 'EXTERNAL LICENSES' "$SPARKLE_LICENSE_BUNDLE" || {
   echo "packaged Sparkle external-license notices are incomplete" >&2
   exit 1
 }
-if [[ -n "$CODEX_RUNTIME_SOURCE" ]]; then
-  mkdir -p "$APP_RESOURCES/CodexRuntime"
-  cp "$CODEX_RUNTIME_SOURCE" "$CODEX_RUNTIME_BUNDLE"
-  chmod +x "$CODEX_RUNTIME_BUNDLE"
-  cp "$CODEX_RUNTIME_LICENSE_SOURCE" "$CODEX_RUNTIME_LICENSE_BUNDLE"
-fi
 SPARKLE_FRAMEWORK_BUILD_PRODUCT="$BUILD_BIN_DIR/Sparkle.framework"
 [[ -d "$SPARKLE_FRAMEWORK_BUILD_PRODUCT" ]] || {
   echo "SwiftPM Sparkle.framework is missing: $SPARKLE_FRAMEWORK_BUILD_PRODUCT" >&2
@@ -433,11 +369,6 @@ app_load_commands="$($OTOOL_TOOL -l "$APP_BINARY")"
 if ! grep -Fq 'path @executable_path/../Frameworks ' <<<"$app_load_commands"; then
   "$INSTALL_NAME_TOOL" -add_rpath '@executable_path/../Frameworks' "$APP_BINARY"
 fi
-[[ -d "$SAFARI_EXTENSION_BUILD_PRODUCT" ]] || {
-  echo "Safari Web Extension build product is missing: $SAFARI_EXTENSION_BUILD_PRODUCT" >&2
-  exit 1
-}
-ditto "$SAFARI_EXTENSION_BUILD_PRODUCT" "$SAFARI_EXTENSION_BUNDLE"
 cp "$APP_ICON_SOURCE" "$APP_RESOURCES/AppIcon.icns"
 cp -R "$LOCALIZATION_SOURCE"/*.lproj "$APP_RESOURCES"/
 xcrun xcstringstool compile "$LOCALIZATION_CATALOG" --output-directory "$APP_RESOURCES"
@@ -445,14 +376,14 @@ xcrun xcstringstool compile "$LOCALIZATION_CATALOG" --output-directory "$APP_RES
 # Keep the Core target's localization bundle inside Contents/Resources so the
 # assembled app follows the standard macOS bundle layout and can be sealed by
 # codesign. CoreL10n resolves this packaged location before SwiftPM's build path.
-core_resource_bundle="$BUILD_BIN_DIR/${APP_NAME}_PublishingWorkbenchCore.bundle"
+core_resource_bundle="$BUILD_BIN_DIR/${APP_NAME}_PublishingCoreSupport.bundle"
 [[ -d "$core_resource_bundle" ]] || {
   echo "SwiftPM Core resource bundle is missing: $core_resource_bundle" >&2
   exit 1
 }
 cp -R "$core_resource_bundle" "$APP_RESOURCES/"
-core_resource_info="$APP_RESOURCES/${APP_NAME}_PublishingWorkbenchCore.bundle/Info.plist"
-python3 - "$core_resource_info" "$BUNDLE_ID.PublishingWorkbenchCoreResources" "$MARKETING_VERSION" "$BUILD_NUMBER" <<'PY'
+core_resource_info="$APP_RESOURCES/${APP_NAME}_PublishingCoreSupport.bundle/Info.plist"
+python3 - "$core_resource_info" "$BUNDLE_ID.PublishingCoreSupportResources" "$MARKETING_VERSION" "$BUILD_NUMBER" <<'PY'
 import plistlib
 from pathlib import Path
 import sys
@@ -469,7 +400,7 @@ else:
 info.update({
     "CFBundleDevelopmentRegion": info.get("CFBundleDevelopmentRegion", "zh-Hans"),
     "CFBundleIdentifier": bundle_identifier,
-    "CFBundleName": "PublishingWorkbenchCoreResources",
+    "CFBundleName": "PublishingCoreSupportResources",
     "CFBundlePackageType": "BNDL",
     "CFBundleShortVersionString": marketing_version,
     "CFBundleVersion": build_number,
@@ -477,6 +408,22 @@ info.update({
 with info_path.open("wb") as handle:
     plistlib.dump(info, handle, fmt=plistlib.FMT_XML, sort_keys=True)
 PY
+
+# SwiftPM keeps Tree-sitter's query files in dependency resource bundles next
+# to the executable. Preserve both grammar bundles when assembling the .app so
+# syntax highlighting can resolve its queries outside SwiftPM's build folder.
+tree_sitter_resource_bundles=(
+  "TreeSitterMarkdown_TreeSitterMarkdown.bundle"
+  "TreeSitterMarkdown_TreeSitterMarkdownInline.bundle"
+)
+for tree_sitter_resource_bundle in "${tree_sitter_resource_bundles[@]}"; do
+  tree_sitter_resource_source="$BUILD_BIN_DIR/$tree_sitter_resource_bundle"
+  [[ -d "$tree_sitter_resource_source" ]] || {
+    echo "SwiftPM Tree-sitter resource bundle is missing: $tree_sitter_resource_source" >&2
+    exit 1
+  }
+  cp -R "$tree_sitter_resource_source" "$APP_RESOURCES/"
+done
 
 cat >"$INFO_PLIST" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -509,10 +456,6 @@ cat >"$INFO_PLIST" <<PLIST
 $EXTERNAL_AI_AVAILABLE_PLIST
   <key>PersonalSitePublisherScreenshotCaptureBuild</key>
 $SCREENSHOT_CAPTURE_BUILD_PLIST
-  <key>PersonalSitePublisherBrowserExtensionAvailable</key>
-  <false/>
-  <key>PersonalSitePublisherSafariWebExtensionAvailable</key>
-  <true/>
 $SPARKLE_UPDATE_INFO_PLIST
   <key>LSMinimumSystemVersion</key>
   <string>$MIN_SYSTEM_VERSION</string>
@@ -588,12 +531,6 @@ if [[ "$BUILD_CONFIGURATION" == "debug" ]]; then
     exit 1
   }
   code_sign_arguments+=(--entitlements "$LOCAL_DEVELOPMENT_ENTITLEMENTS")
-elif [[ "$APP_STORE_BUILD" == "1" ]]; then
-  [[ -f "$APP_STORE_ENTITLEMENTS" ]] || {
-    echo "App Store entitlements are missing: $APP_STORE_ENTITLEMENTS" >&2
-    exit 1
-  }
-  code_sign_arguments+=(--entitlements "$APP_STORE_ENTITLEMENTS")
 elif [[ "$DIRECT_DISTRIBUTION_BUILD" == "1" ]]; then
   [[ -f "$DIRECT_DISTRIBUTION_ENTITLEMENTS" ]] || {
     echo "direct-distribution entitlements are missing: $DIRECT_DISTRIBUTION_ENTITLEMENTS" >&2
@@ -604,36 +541,9 @@ elif [[ "$DIRECT_DISTRIBUTION_BUILD" == "1" ]]; then
     --entitlements "$DIRECT_DISTRIBUTION_ENTITLEMENTS"
   )
 fi
-[[ -f "$SAFARI_EXTENSION_ENTITLEMENTS" ]] || {
-  echo "Safari Web Extension entitlements are missing: $SAFARI_EXTENSION_ENTITLEMENTS" >&2
-  exit 1
-}
-safari_code_sign_arguments=(
-  --force
-  --sign "$resolved_code_sign_identity"
-  --identifier "$SAFARI_EXTENSION_BUNDLE_ID"
-  --entitlements "$SAFARI_EXTENSION_ENTITLEMENTS"
-)
-if [[ "$DIRECT_DISTRIBUTION_BUILD" == "1" ]]; then
-  safari_code_sign_arguments+=(--options runtime)
-fi
 bash "$ROOT_DIR/script/sign_sparkle_framework.sh" \
   --framework "$SPARKLE_FRAMEWORK_BUNDLE" \
   --identity "$resolved_code_sign_identity" >/dev/null
-if [[ -n "$CODEX_RUNTIME_SOURCE" ]]; then
-  codex_code_sign_arguments=(
-    --force
-    --sign "$resolved_code_sign_identity"
-    --identifier "$BUNDLE_ID.CodexRuntime"
-  )
-  if [[ "$DIRECT_DISTRIBUTION_BUILD" == "1" ]]; then
-    codex_code_sign_arguments+=(--options runtime)
-  fi
-  "$CODESIGN_TOOL" "${codex_code_sign_arguments[@]}" "$CODEX_RUNTIME_BUNDLE"
-  "$CODESIGN_TOOL" --verify --strict --verbose=2 "$CODEX_RUNTIME_BUNDLE"
-fi
-"$CODESIGN_TOOL" "${safari_code_sign_arguments[@]}" "$SAFARI_EXTENSION_BUNDLE"
-"$CODESIGN_TOOL" --verify --strict --verbose=2 "$SAFARI_EXTENSION_BUNDLE"
 "$CODESIGN_TOOL" "${code_sign_arguments[@]}" "$APP_BUNDLE"
 "$CODESIGN_TOOL" --verify --deep --strict --verbose=2 "$APP_BUNDLE"
 if [[ "$resolved_code_sign_identity" == "-" ]]; then
@@ -641,6 +551,9 @@ if [[ "$resolved_code_sign_identity" == "-" ]]; then
 else
   echo "local app signing identity: $resolved_code_sign_identity"
 fi
+# Release before any optional launch, logging, or UI verification so those
+# long-running modes do not serialize independent app use after packaging.
+release_bundle_output_lock
 
 wait_for_main_window() {
   local attempts="${1:-20}"
@@ -718,7 +631,50 @@ wait_for_running_process() {
   return 1
 }
 
+verify_single_running_product() {
+  local pid=""
+  local app_bundle=""
+  local running_count=0
+  local target_count=0
+  local target_pid=""
+  local actual_version=""
+  local actual_build=""
+
+  while IFS=$'\t' read -r pid app_bundle; do
+    [[ -n "$pid" ]] || continue
+    running_count="$((running_count + 1))"
+    if [[ "$app_bundle" == "$APP_BUNDLE" ]]; then
+      target_count="$((target_count + 1))"
+      target_pid="$pid"
+    else
+      echo "unexpected running $APP_DISPLAY_NAME copy: pid=$pid bundle=$app_bundle" >&2
+    fi
+  done < <(running_product_apps)
+
+  if [[ "$running_count" != "1" || "$target_count" != "1" ]]; then
+    echo "launch identity verification failed: expected exactly one process from $APP_BUNDLE" >&2
+    return 1
+  fi
+
+  actual_version="$(
+    /usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$INFO_PLIST" 2>/dev/null || true
+  )"
+  actual_build="$(
+    /usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$INFO_PLIST" 2>/dev/null || true
+  )"
+  if [[ "$actual_version" != "$MARKETING_VERSION" || "$actual_build" != "$BUILD_NUMBER" ]]; then
+    echo "launch identity verification failed: expected $MARKETING_VERSION ($BUILD_NUMBER), got ${actual_version:-missing} (${actual_build:-missing})" >&2
+    return 1
+  fi
+
+  echo "launch identity verification: pid=$target_pid bundle=$APP_BUNDLE version=$actual_version ($actual_build)"
+}
+
 prepare_bundle_for_launch() {
+  # SwiftPM dependency resources may be copied as read-only files. xattr
+  # requires owner write access while walking the bundle, even when the only
+  # removable attributes live on other files.
+  /bin/chmod -R u+w "$APP_BUNDLE"
   /usr/bin/xattr -cr "$APP_BUNDLE"
 }
 
@@ -777,6 +733,7 @@ case "$MODE" in
     run_bundle
     sleep 1
     if app_process_is_running; then
+      verify_single_running_product || exit 1
       verify_main_window_or_process || {
         echo "启动校验失败：进程存活，但在可查询窗口的环境中未检测到可见主窗口。" >&2
         exit 1
@@ -793,6 +750,7 @@ case "$MODE" in
       echo "进程启动校验失败：未检测到运行中的进程" >&2
       exit 1
     }
+    verify_single_running_product || exit 1
     echo "process launch verification: running process detected; window visibility was not checked"
     ;;
   --launch-baseline|launch-baseline)
@@ -830,12 +788,6 @@ case "$MODE" in
     ;;
   --package-only|package)
     echo "$APP_BUNDLE"
-    ;;
-  --screenshot-demo|screenshot-demo)
-    HOME="$RUNTIME_HOME" \
-      PERSONAL_SITE_PUBLISHER_SCREENSHOT_DEMO=1 \
-      PERSONAL_SITE_PUBLISHER_SCREENSHOT_SURFACE="$SCREENSHOT_SURFACE" \
-      "$APP_BINARY" >/tmp/personal-site-publisher-screenshot-demo.log 2>&1 &
     ;;
   *)
     usage

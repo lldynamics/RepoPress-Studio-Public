@@ -1,3 +1,4 @@
+import Foundation
 import XCTest
 @testable import PublishingWorkbenchCore
 
@@ -47,6 +48,96 @@ final class BatchPublishPlanServiceTests: XCTestCase {
     XCTAssertEqual(plan.blockedCount, 1)
     XCTAssertEqual(plan.unchangedCount, 1)
     XCTAssertEqual(Set(plan.writableItems.map(\.draftID)), Set([readyDraft.id]))
+    XCTAssertEqual(Set(plan.remotePublishableItems.map(\.draftID)), Set([readyDraft.id]))
+    XCTAssertEqual(plan.draftSyncItems.map(\.draftID), [needsReviewDraft.id])
+    XCTAssertEqual(plan.draftSyncCount, 1)
+    XCTAssertTrue(plan.items.first { $0.draftID == needsReviewDraft.id }?.isSiteDraft == true)
+  }
+
+  func testReadyAndNeedsReviewSiteDraftsMoveToDraftSyncWithoutRemotePublish() throws {
+    let rootURL = try makeRepositoryRoot()
+    defer {
+      try? FileManager.default.removeItem(at: rootURL)
+    }
+
+    var profile = SiteProfile.defaultProfile
+    profile.rememberLocalRepositoryRoot(rootURL)
+    profile.markdownPathPattern = "content/posts/{slug}.md"
+
+    var readySiteDraft = longDraft(profile: profile, title: "Ready Site Draft", slug: "ready-site-draft")
+    readySiteDraft.draft = true
+    var reviewSiteDraft = longDraft(profile: profile, title: "Review Site Draft", slug: "review-site-draft")
+    reviewSiteDraft.draft = true
+    reviewSiteDraft.bodyMarkdown = "Too short."
+    let publicDraft = longDraft(profile: profile, title: "Public Article", slug: "public-article")
+
+    let plan = BatchPublishPlanService().plan(
+      drafts: [readySiteDraft, reviewSiteDraft, publicDraft],
+      profile: profile,
+      repositoryReport: nil
+    )
+
+    XCTAssertEqual(
+      plan.items.first { $0.draftID == readySiteDraft.id }?.readiness,
+      .needsReview
+    )
+    XCTAssertEqual(
+      plan.items.first { $0.draftID == reviewSiteDraft.id }?.readiness,
+      .needsReview
+    )
+    XCTAssertEqual(
+      Set(plan.remotePublishableItems.map(\.draftID)),
+      Set([publicDraft.id])
+    )
+    XCTAssertEqual(
+      plan.draftSyncItems.map(\.draftID),
+      [readySiteDraft.id, reviewSiteDraft.id]
+    )
+    XCTAssertEqual(plan.draftSyncCount, 2)
+    XCTAssertTrue(plan.draftSyncItems.allSatisfy(\.isSiteDraft))
+
+    // A caller may explicitly clear warnings after review. Classification still
+    // keeps that ready item in the draft-sync lane rather than formal publish.
+    var explicitlyReviewed = try XCTUnwrap(
+      plan.items.first { $0.draftID == readySiteDraft.id }
+    )
+    explicitlyReviewed.readiness = .ready
+    let reviewedPlan = BatchPublishPlan(
+      profileID: profile.id,
+      siteName: profile.name,
+      items: [explicitlyReviewed]
+    )
+    XCTAssertTrue(reviewedPlan.remotePublishableItems.isEmpty)
+    XCTAssertEqual(reviewedPlan.draftSyncItems.map(\.draftID), [readySiteDraft.id])
+  }
+
+  func testLegacyPlanItemJSONDefaultsToFormalPublishCandidate() throws {
+    let rootURL = try makeRepositoryRoot()
+    defer {
+      try? FileManager.default.removeItem(at: rootURL)
+    }
+
+    var profile = SiteProfile.defaultProfile
+    profile.rememberLocalRepositoryRoot(rootURL)
+    profile.markdownPathPattern = "content/posts/{slug}.md"
+    let draft = longDraft(profile: profile, title: "Legacy Plan", slug: "legacy-plan")
+    let item = try XCTUnwrap(
+      BatchPublishPlanService()
+        .plan(drafts: [draft], profile: profile, repositoryReport: nil)
+        .items
+        .first
+    )
+
+    let encoded = try JSONEncoder().encode(item)
+    var object = try XCTUnwrap(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+    object.removeValue(forKey: "isSiteDraft")
+    let legacyJSON = try JSONSerialization.data(withJSONObject: object)
+
+    let decoded = try JSONDecoder().decode(BatchPublishPlanItem.self, from: legacyJSON)
+
+    XCTAssertFalse(decoded.isSiteDraft)
+    XCTAssertEqual(decoded.draftID, item.draftID)
+    XCTAssertEqual(decoded.readiness, item.readiness)
   }
 
   func testPlanMarksRemoteSamePathChangesAsNeedsReview() throws {
@@ -340,6 +431,15 @@ final class WorkbenchStoreBatchPublishTests: XCTestCase {
     XCTAssertFalse(
       FileManager.default.fileExists(atPath: rootURL.appendingPathComponent("content/posts/.md").path)
     )
+    let materializedReadyDraft = try XCTUnwrap(
+      store.drafts.first(where: { $0.id == readyDraft.id })
+    )
+    XCTAssertEqual(materializedReadyDraft.repositoryPath, "content/posts/ready-batch.md")
+    XCTAssertEqual(
+      materializedReadyDraft.repositoryBinding?.repositoryPath,
+      "content/posts/ready-batch.md"
+    )
+    XCTAssertNil(store.drafts.first(where: { $0.id == needsReviewDraft.id })?.repositoryPath)
     XCTAssertEqual(store.releaseRecords.first?.kind, .batchLocalWrite)
     XCTAssertTrue(store.publishActionMessage?.contains("已批量写入 1 篇") == true)
     XCTAssertEqual(store.publishActionFeedback?.status, .success)

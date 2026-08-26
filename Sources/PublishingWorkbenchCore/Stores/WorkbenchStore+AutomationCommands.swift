@@ -337,15 +337,20 @@ public enum WorkbenchAutomationExecutor {
 
     case .runPreflight:
       let draft = try targetDraft(for: step, in: store, checksVersion: false)
-      guard store.focusDraft(draft.id) else {
-        throw WorkbenchAutomationValidationError.draftNotFound
+      guard let result = await store.runPreflight(for: draft.id) else {
+        throw WorkbenchAutomationExecutionError.operationDidNotComplete(
+          CoreL10n.text("文章在检查期间发生变化或已不存在，未完成发布检查。")
+        )
       }
-      await store.runPreflightAndWait()
-      return success(step, CoreL10n.format("发布检查完成：%lld 个问题。", store.preflightIssues.count))
+      return success(step, CoreL10n.format("发布检查完成：%lld 个问题。", result.issues.count))
 
     case .refreshPublishPreview:
       let draft = try targetDraft(for: step, in: store, checksVersion: false)
-      store.refreshPublishPreview(for: draft)
+      guard await store.refreshPublishPreview(for: draft.id) != nil else {
+        throw WorkbenchAutomationExecutionError.operationDidNotComplete(
+          CoreL10n.text("文章在刷新期间发生变化或已不存在，未完成发布预览。")
+        )
+      }
       return success(step, CoreL10n.text("已刷新发布预览。"))
 
     case .saveWorkbench:
@@ -739,6 +744,16 @@ public enum WorkbenchAutomationExecutor {
           CoreL10n.text("缺少本次确认对应的不可变发布快照")
         )
       }
+      // Rebuild and validate the exact current package before entering the
+      // batch publisher. The publisher returns validation failures as nil
+      // plus UI state, which is too lossy for the automation executor to
+      // distinguish scope drift from a real operation failure. This guard
+      // keeps all authorization/scope drift on the awaiting-confirmation
+      // path and therefore guarantees zero transport.
+      try await validatePublishAuthorizationBeforeExecution(
+        authorization,
+        in: store
+      )
       store.selectSection(.sync)
       guard
         let result = await store.publishBatchReadyDraftsOnlineUsingPreferredStrategy(
@@ -760,6 +775,41 @@ public enum WorkbenchAutomationExecutor {
         CoreL10n.format("全部变更已发布，共处理 %lld 个文件。", result.changedPaths.count)
       )
     }
+  }
+
+  private static func validatePublishAuthorizationBeforeExecution(
+    _ authorization: AIPublishAuthorizationSnapshot,
+    in store: WorkbenchStore
+  ) async throws {
+    try AIPublishAuthorizationService.validateTarget(
+      authorization,
+      profile: store.activeProfile
+    )
+
+    await store.refreshBatchPublishPlanAsync()
+    let profile = store.activeProfile
+    guard let plan = store.batchPublishPlan,
+      plan.profileID == profile.id,
+      let package = store.remotePublishPackage(for: plan)
+    else {
+      throw AIPublishAuthorizationError.changed(
+        CoreL10n.text("执行前复核发现授权范围已变化")
+      )
+    }
+
+    let preview = store.remoteRepositoryPublishPreview(
+      package: package,
+      profile: profile,
+      mode: store.preferredRemoteRepositoryPublishMode(for: profile),
+      extraWarningIssues: store.batchRemoteRepositoryPublishWarningIssues(for: plan)
+    )
+    try AIPublishAuthorizationService.validate(
+      authorization,
+      package: package,
+      preview: preview,
+      profile: profile,
+      repositoryReport: store.repositoryReport(for: profile)
+    )
   }
 
   private static func targetDraft(

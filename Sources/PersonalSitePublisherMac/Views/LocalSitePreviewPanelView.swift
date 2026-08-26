@@ -4,6 +4,7 @@ import SwiftUI
 struct LocalSitePreviewPanelView: View {
   @EnvironmentObject private var state: WorkbenchLocalSitePreviewFeatureFacade
   @State private var navigationError: String?
+  @State private var pendingAuthorizationRequest: LocalSitePreviewAuthorizationRequest?
 
   var body: some View {
     VStack(spacing: 0) {
@@ -12,11 +13,15 @@ struct LocalSitePreviewPanelView: View {
       content
     }
     .workbenchSheetSize(.full)
-    .task(id: state.activeProfileID) {
-      guard let plan = state.plan, plan.diagnostics.isReadyToStart,
-        !state.runtimeStatus.isRunning
-      else { return }
-      state.start()
+    .localSitePreviewTrustConfirmation(
+      request: $pendingAuthorizationRequest,
+      entryPoint: .panel,
+      authorize: { request in
+        state.authorizeAndStart(request)
+      }
+    )
+    .onChange(of: state.activeProfileID) {
+      pendingAuthorizationRequest = nil
     }
   }
 
@@ -65,7 +70,7 @@ struct LocalSitePreviewPanelView: View {
         .buttonStyle(.bordered)
       } else {
         Button {
-          state.start()
+          requestStart()
         } label: {
           Label("启动预览", systemImage: "play.circle")
         }
@@ -234,5 +239,12 @@ struct LocalSitePreviewPanelView: View {
 
   private var previewURL: URL? {
     state.runtimeStatus.previewURL ?? state.plan?.previewURL
+  }
+
+  private func requestStart() {
+    pendingAuthorizationRequest = LocalSitePreviewTrustConfirmationPolicy.request(
+      from: state.start(),
+      entryPoint: .panel
+    )
   }
 }

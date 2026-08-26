@@ -446,7 +446,8 @@ extension WorkbenchAIStore {
     connectionProfileID: UUID? = nil,
     imageAttachments: [AIChatImageAttachment] = [],
     contextReferences: [AIContextReference] = [],
-    ownerToken: UUID? = nil
+    ownerToken: UUID? = nil,
+    expectedConversation: AIChatGeneralConversationExpectation? = nil
   ) async -> AIPublishingChatMessage? {
     guard !Task.isCancelled else { return nil }
     guard store.canUseProtectedWorkbench else {
@@ -457,6 +458,30 @@ extension WorkbenchAIStore {
     guard !trimmed.isEmpty || !imageAttachments.isEmpty else {
       store.setAIChatMessage("请先输入要发送给 AI 的内容。")
       return nil
+    }
+    if let expectedConversation {
+      let expectationIsCurrent: Bool
+      if let expectedSnapshot = expectedConversation.conversation {
+        expectationIsCurrent =
+          conversationID == expectedSnapshot.id
+          && expectedSnapshot.scope == .general
+          && !expectedSnapshot.isArchived
+          && aiConversations.first(where: {
+            $0.id == expectedSnapshot.id
+              && $0.scope == .general
+              && !$0.isArchived
+          }) == expectedSnapshot
+      } else {
+        expectationIsCurrent =
+          conversationID == nil
+          && activeGeneralAIChatConversationID == nil
+      }
+      guard expectationIsCurrent else {
+        store.setAIChatMessage(
+          CoreL10n.text("AI 对话上下文已变化，本次未发送，请重试。")
+        )
+        return nil
+      }
     }
     let selectedImageAttachments = Array(
       imageAttachments.prefix(AIPublishingChatImageAttachmentPresentation.maxSelectedImageCount)
@@ -617,12 +642,42 @@ extension WorkbenchAIStore {
     // General chat may opt into the same native agent loop as article chat,
     // but its allowlist is deliberately limited to creating a blank local
     // draft and reading the remote-AI-allowed portion of the knowledge
-    // library. Unsupported or disabled tool calling keeps the ordinary text
-    // transport below, which declares no tools.
+    // library. Ordinary questions may use the text transport when tool calling
+    // is unavailable; an explicit draft-creation request is stopped locally
+    // instead of being sent to a model that was not given createDraft.
     let agentSettings = minimizedConfig.resolvedAdvancedSettings
     let conversationAllowsTools = conversation.agentMode.effectiveAllowsTools(
       connectionAllowsTools: agentSettings.resolvedAllowsApplicationTools
     )
+    let explicitlyRequestsDraftCreation = generalAIChatRequestsDraftCreation(
+      conversation.messages.last(where: { $0.role == .user })?.content ?? ""
+    )
+    if explicitlyRequestsDraftCreation {
+      guard conversationAllowsTools else {
+        if conversation.agentMode == .textOnly {
+          store.setAIChatMessage(
+            CoreL10n.text(
+              "当前通用对话处于仅文字模式，未创建文章。请切换为继承连接设置并开启应用工具后重试。"
+            )
+          )
+        } else {
+          store.setAIChatMessage(
+            CoreL10n.text(
+              "当前 AI 连接已关闭应用工具，未创建文章。请在连接设置中开启应用工具后重试。"
+            )
+          )
+        }
+        return nil
+      }
+      guard agentSettings.resolvedAgentPermissionPolicy.allows(.draftCreation) else {
+        store.setAIChatMessage(
+          CoreL10n.text(
+            "当前 AI 连接未授予“新建文章草稿”权限，未创建文章。请在 Agent 权限中开启后重试。"
+          )
+        )
+        return nil
+      }
+    }
     let initialRequest = await assembledGeneralAIChatRequest(
       for: conversation,
       privacyService: AIOutboundPayloadPrivacyService(),
@@ -636,11 +691,25 @@ extension WorkbenchAIStore {
       allowedBy: agentSettings.resolvedAgentPermissionPolicy,
       masterEnabled: conversationAllowsTools
     ).intersection(generalAgentScope)
+    guard
+      !explicitlyRequestsDraftCreation
+      || allowedGeneralAgentCommands.contains(.createDraft)
+    else {
+      store.setAIChatMessage(
+        CoreL10n.text(
+          "当前 AI 连接未授予“新建文章草稿”权限，未创建文章。请在 Agent 权限中开启后重试。"
+        )
+      )
+      return nil
+    }
     if !allowedGeneralAgentCommands.isEmpty {
-      if let agentTaskConfig = try? aiPublishingAssistantService.resolvedChatTaskConfig(
+      let agentTaskConfig = try? aiPublishingAssistantService.resolvedChatTaskConfig(
         for: initialRequest,
         config: minimizedConfig
-      ), agentTaskConfig.capabilitySupport(for: .toolCalling) == .supported {
+      )
+      if let agentTaskConfig,
+        agentTaskConfig.capabilitySupport(for: .toolCalling) == .supported
+      {
         return await generateGeneralAgentAIChatReply(
           conversationID: conversationID,
           operationID: operationID,
@@ -649,6 +718,28 @@ extension WorkbenchAIStore {
           initialProviderConfig: minimizedConfig,
           initialTaskConfig: agentTaskConfig
         )
+      }
+      if explicitlyRequestsDraftCreation {
+        let support = agentTaskConfig?.capabilitySupport(for: .toolCalling) ?? .unknown
+        switch support {
+        case .unknown:
+          store.setAIChatMessage(
+            CoreL10n.text(
+              "当前 AI 连接尚未证明支持工具调用，未创建文章。请先探测工具调用能力后重试。"
+            )
+          )
+        case .unsupported:
+          store.setAIChatMessage(
+            CoreL10n.text(
+              "当前 AI 连接不支持工具调用，未创建文章。请切换支持工具调用的模型或连接。"
+            )
+          )
+        case .supported:
+          // The supported case returns through the Agent branch above. Keep
+          // this guard defensive if task-config resolution changes later.
+          store.setAIChatMessage(CoreL10n.text("AI 工具调用配置未完成，未创建文章，请重试。"))
+        }
+        return nil
       }
     }
 
@@ -696,7 +787,11 @@ extension WorkbenchAIStore {
         $0.role == .assistant
       }
     } catch let error as AIChatCompletionClientError {
-      configureGeneralManualRetry(for: error, conversationID: conversationID)
+      configureGeneralManualRetry(
+        for: error,
+        conversationID: conversationID,
+        operationID: operationID
+      )
       store.setAIChatMessage("AI 通用对话失败：\(error.localizedDescription)")
       if error.didReceivePartialContent {
         return aiConversations.first(where: { $0.id == conversationID })?.messages.last {
@@ -708,6 +803,47 @@ extension WorkbenchAIStore {
       store.setAIChatMessage("AI 通用对话失败：\(error.localizedDescription)")
       return nil
     }
+  }
+
+  /// Detects only direct article-creation instructions. General questions
+  /// about how to create an article must continue through the ordinary text
+  /// path, while an explicit create request must never be handed to a model
+  /// that was not given `createDraft`.
+  private func generalAIChatRequestsDraftCreation(_ text: String) -> Bool {
+    let normalized = text.lowercased()
+    let compact = normalized.filter { !$0.isWhitespace && !$0.isNewline }
+    guard !compact.isEmpty else { return false }
+
+    // Meta questions may quote the exact command the user wants to learn
+    // about. They should remain questions instead of being executed merely
+    // because the quoted example contains “帮我新建…”.
+    let informationalMarkers = [
+      "如何", "怎么", "怎样", "教程", "方法", "步骤", "流程",
+      "是否支持", "能否实现", "可以实现", "能不能实现", "可不可以实现",
+      "howto", "howdo", "canrepopress", "doesrepopress", "isitpossible",
+    ]
+    guard !informationalMarkers.contains(where: compact.contains) else {
+      return false
+    }
+
+    let hasChineseTarget = ["文章", "草稿", "博文", "博客", "帖子"]
+      .contains(where: compact.contains)
+    let hasChineseCreateInstruction = [
+      "请新建", "请创建", "请新增", "帮我新建", "帮我创建", "帮我新增",
+      "给我新建", "给我创建", "替我新建", "替我创建", "为我新建", "为我创建",
+      "直接新建", "直接创建", "我要新建", "我要创建", "新建一篇", "创建一篇",
+      "新增一篇", "建立一篇", "新建文章", "创建文章", "新建草稿", "创建草稿",
+    ].contains(where: compact.contains)
+    if hasChineseTarget && hasChineseCreateInstruction {
+      return true
+    }
+
+    // Keep English matching token based: substring checks such as "new" in
+    // "news article" would otherwise turn ordinary reading questions into
+    // application commands.
+    let englishInstruction =
+      #"\b(create|make|start)\s+(me\s+)?(a\s+|an\s+)?(new\s+)?(article|draft|blog\s+post|post)\b"#
+    return normalized.range(of: englishInstruction, options: .regularExpression) != nil
   }
 
   private func generateGeneralAgentAIChatReply(
@@ -1135,7 +1271,8 @@ extension WorkbenchAIStore {
 
   private func configureGeneralManualRetry(
     for error: AIChatCompletionClientError,
-    conversationID: UUID
+    conversationID: UUID,
+    operationID: UUID
   ) {
     guard error.supportsManualRetry else {
       aiGeneralChatManualRetryState = nil
@@ -1143,6 +1280,7 @@ extension WorkbenchAIStore {
     }
     aiGeneralChatManualRetryState = AIGeneralChatManualRetryState(
       conversationID: conversationID,
+      operationID: operationID,
       requiresDuplicateChargeConfirmation: error.didReceivePartialContent,
       retryAfter: error.retryAfterSeconds.map { Date().addingTimeInterval($0) }
     )
@@ -1152,6 +1290,7 @@ extension WorkbenchAIStore {
   public func retryLastFailedGeneralAIChatReply(
     confirmingPossibleDuplicateCharge: Bool = false,
     conversationID: UUID? = nil,
+    operationID: UUID? = nil,
     ownerToken: UUID? = nil
   ) async -> AIPublishingChatMessage? {
     guard let retryState = aiGeneralChatManualRetryState else {
@@ -1160,6 +1299,10 @@ extension WorkbenchAIStore {
     }
     if let conversationID, retryState.conversationID != conversationID {
       store.setAIChatMessage("当前对话没有可重试的通用 AI 请求。")
+      return nil
+    }
+    if let operationID, retryState.operationID != operationID {
+      store.setAIChatMessage("当前通用 AI 请求已变化，未执行旧任务重试。")
       return nil
     }
     guard

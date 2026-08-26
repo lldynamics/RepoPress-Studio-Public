@@ -254,9 +254,7 @@ extension PublishingStore {
     result.assignToSite(targetProfile.id)
     result.status = .draft
     result.draft = true
-    result.repositoryPath = nil
-    result.repositorySHA = nil
-    result.repositoryImportFingerprint = nil
+    result.detachFromRepository()
     result.reusedFromSourceSnapshot = GeneralDraftReuseSourceSnapshot.make(
       from: source,
       sourceProfileName: sourceProfileName

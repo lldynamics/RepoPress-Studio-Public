@@ -23,9 +23,14 @@ struct WorkbenchPersistenceSnapshotInput: Sendable {
   let privacySettings: PrivacyProtectionSettings
   let repositoryAutoSyncSettings: RepositoryAutoSyncSettings
   let repositoryAutoSyncState: RepositoryAutoSyncState
+  let repositoryAutoSyncSettingsByProfileID: [UUID: RepositoryAutoSyncSettings]
+  let repositoryAutoSyncStateByProfileID: [UUID: RepositoryAutoSyncState]
   let remoteRepositoryAccessCheck: RemoteRepositoryAccessCheck?
+  let remoteRepositoryAccessCheckByProfileID: [UUID: RemoteRepositoryAccessCheck]
   let deploymentPollingSettings: DeploymentPollingSettings
   let deploymentPollingState: DeploymentPollingState
+  let deploymentPollingSettingsByProfileID: [UUID: DeploymentPollingSettings]
+  let deploymentPollingStateByProfileID: [UUID: DeploymentPollingState]
   let deploymentStatusSnapshots: [UUID: DeploymentStatusSnapshot]
   let deploymentStatusHistory: [UUID: [DeploymentStatusSnapshot]]
 
@@ -52,9 +57,14 @@ struct WorkbenchPersistenceSnapshotInput: Sendable {
     privacySettings: PrivacyProtectionSettings,
     repositoryAutoSyncSettings: RepositoryAutoSyncSettings,
     repositoryAutoSyncState: RepositoryAutoSyncState,
+    repositoryAutoSyncSettingsByProfileID: [UUID: RepositoryAutoSyncSettings],
+    repositoryAutoSyncStateByProfileID: [UUID: RepositoryAutoSyncState],
     remoteRepositoryAccessCheck: RemoteRepositoryAccessCheck?,
+    remoteRepositoryAccessCheckByProfileID: [UUID: RemoteRepositoryAccessCheck],
     deploymentPollingSettings: DeploymentPollingSettings,
     deploymentPollingState: DeploymentPollingState,
+    deploymentPollingSettingsByProfileID: [UUID: DeploymentPollingSettings],
+    deploymentPollingStateByProfileID: [UUID: DeploymentPollingState],
     deploymentStatusSnapshots: [UUID: DeploymentStatusSnapshot],
     deploymentStatusHistory: [UUID: [DeploymentStatusSnapshot]]
   ) {
@@ -80,9 +90,14 @@ struct WorkbenchPersistenceSnapshotInput: Sendable {
     self.privacySettings = privacySettings
     self.repositoryAutoSyncSettings = repositoryAutoSyncSettings
     self.repositoryAutoSyncState = repositoryAutoSyncState
+    self.repositoryAutoSyncSettingsByProfileID = repositoryAutoSyncSettingsByProfileID
+    self.repositoryAutoSyncStateByProfileID = repositoryAutoSyncStateByProfileID
     self.remoteRepositoryAccessCheck = remoteRepositoryAccessCheck
+    self.remoteRepositoryAccessCheckByProfileID = remoteRepositoryAccessCheckByProfileID
     self.deploymentPollingSettings = deploymentPollingSettings
     self.deploymentPollingState = deploymentPollingState
+    self.deploymentPollingSettingsByProfileID = deploymentPollingSettingsByProfileID
+    self.deploymentPollingStateByProfileID = deploymentPollingStateByProfileID
     self.deploymentStatusSnapshots = deploymentStatusSnapshots
     self.deploymentStatusHistory = deploymentStatusHistory
   }
@@ -115,9 +130,14 @@ extension WorkbenchPersistence {
       privacyProtectionEvents: [],
       repositoryAutoSyncSettings: input.repositoryAutoSyncSettings,
       repositoryAutoSyncState: input.repositoryAutoSyncState,
+      repositoryAutoSyncSettingsByProfileID: input.repositoryAutoSyncSettingsByProfileID,
+      repositoryAutoSyncStateByProfileID: input.repositoryAutoSyncStateByProfileID,
       remoteRepositoryAccessCheck: input.remoteRepositoryAccessCheck,
+      remoteRepositoryAccessCheckByProfileID: input.remoteRepositoryAccessCheckByProfileID,
       deploymentPollingSettings: input.deploymentPollingSettings,
       deploymentPollingState: input.deploymentPollingState,
+      deploymentPollingSettingsByProfileID: input.deploymentPollingSettingsByProfileID,
+      deploymentPollingStateByProfileID: input.deploymentPollingStateByProfileID,
       deploymentStatusSnapshots: Array(input.deploymentStatusSnapshots.values),
       deploymentStatusHistory: input.deploymentStatusHistory
     )
@@ -151,9 +171,15 @@ extension WorkbenchPersistence {
       privacySettings: store.privacySettings,
       repositoryAutoSyncSettings: store.repositoryAutoSyncSettings,
       repositoryAutoSyncState: store.repositoryAutoSyncState,
+      repositoryAutoSyncSettingsByProfileID: store.repositoryStore.repositoryAutoSyncSettingsByProfileID,
+      repositoryAutoSyncStateByProfileID: store.repositoryStore.repositoryAutoSyncStateByProfileID,
       remoteRepositoryAccessCheck: store.remoteRepositoryAccessCheck,
+      remoteRepositoryAccessCheckByProfileID:
+        store.repositoryStore.remoteRepositoryAccessCheckByProfileID,
       deploymentPollingSettings: store.deploymentPollingSettings,
       deploymentPollingState: store.deploymentPollingState,
+      deploymentPollingSettingsByProfileID: store.deploymentStore.deploymentPollingSettingsByProfileID,
+      deploymentPollingStateByProfileID: store.deploymentStore.deploymentPollingStateByProfileID,
       deploymentStatusSnapshots: store.deploymentStatusSnapshots,
       deploymentStatusHistory: store.deploymentStatusHistory
     )

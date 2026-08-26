@@ -24,6 +24,7 @@ struct WorkspaceTaskMetadataSection: View {
   @State private var summaryGenerationSucceeded = false
   @State private var summaryGenerationRequestID: UUID?
   @State private var summaryGenerationTask: Task<Void, Never>?
+  @State private var isAddingDraftToProject = false
 
   init(
     draft: Binding<ArticleDraft>,
@@ -110,15 +111,55 @@ struct WorkspaceTaskMetadataSection: View {
             }
           }
 
-          InspectorSection("发布路径") {
+          InspectorSection("状态与归属") {
             InspectorStatRow(title: "站点", value: state.siteName, systemImage: "globe")
             InspectorStatRow(
-              title: "状态", value: draft.status.localizedDisplayName,
+              title: "写作阶段", value: draft.status.localizedDisplayName,
               systemImage: draft.status.systemImage)
-            Text(state.markdownPath)
+            InspectorStatRow(
+              title: "站点稿件",
+              value: siteDraftStatusDescription,
+              systemImage: draft.draft ? "doc.badge.clock" : "doc.badge.checkmark"
+            )
+            InspectorStatRow(
+              title: "本地保存",
+              value: localSaveStatusDescription,
+              systemImage: localSaveStatusSystemImage
+            )
+            InspectorStatRow(
+              title: "远端同步",
+              value: remoteSyncState.localizedDisplayName,
+              systemImage: remoteSyncState.systemImage
+            )
+
+            Text(draft.repositoryPath?.normalizedRelativePath() ?? "计划路径：\(state.markdownPath)")
               .font(.caption.monospaced())
               .foregroundStyle(.secondary)
-              .workbenchTruncatedIdentity(state.markdownPath, lineLimit: 3)
+              .workbenchTruncatedIdentity(
+                draft.repositoryPath?.normalizedRelativePath() ?? state.markdownPath,
+                lineLimit: 3
+              )
+
+            if !draft.isGeneralDraft, draft.repositoryPath?.nilIfEmpty == nil {
+              Button {
+                addDraftToProject()
+              } label: {
+                if isAddingDraftToProject {
+                  HStack(spacing: 6) {
+                    ProgressView()
+                      .controlSize(.small)
+                    Text("正在加入项目")
+                  }
+                } else {
+                  Label("加入站点项目", systemImage: "folder.badge.plus")
+                }
+              }
+              .buttonStyle(.bordered)
+              .controlSize(.small)
+              .disabled(isAddingDraftToProject)
+              .help("确认后才创建项目 Markdown；以后编辑会自动保存到该文件。")
+              .accessibilityIdentifier("metadata-add-draft-to-project")
+            }
           }
         }
       }
@@ -129,6 +170,59 @@ struct WorkspaceTaskMetadataSection: View {
     }
     .onDisappear {
       cancelSummaryGeneration()
+    }
+  }
+
+  private var siteDraftStatusDescription: String {
+    if draft.isGeneralDraft {
+      return String(localized: "通用草稿，不属于站点")
+    }
+    return draft.draft
+      ? String(localized: "网站草稿，默认不参与批量发布")
+      : String(localized: "正式发布候选")
+  }
+
+  private var localSaveStatusDescription: String {
+    if draft.isGeneralDraft {
+      return String(localized: "已保存在软件")
+    }
+    switch store.siteDraftFileSaveStates[draft.id] {
+    case .pending:
+      return String(localized: "正在写入项目")
+    case .saved:
+      return String(localized: "已写入项目")
+    case .failed(_, let message):
+      return String(localized: "项目写入失败：\(message)")
+    case nil:
+      return draft.repositoryPath?.nilIfEmpty == nil
+        ? String(localized: "仅保存在软件")
+        : String(localized: "已绑定项目文件")
+    }
+  }
+
+  private var localSaveStatusSystemImage: String {
+    switch store.siteDraftFileSaveStates[draft.id] {
+    case .pending: return "arrow.triangle.2.circlepath"
+    case .saved: return "checkmark.circle"
+    case .failed: return "exclamationmark.triangle"
+    case nil: return draft.repositoryPath?.nilIfEmpty == nil ? "internaldrive" : "doc"
+    }
+  }
+
+  private var remoteSyncState: DraftRepositorySyncState {
+    draft.repositorySyncState(for: store.profile(for: draft))
+  }
+
+  private func addDraftToProject() {
+    guard !isAddingDraftToProject else { return }
+    let draftID = draft.id
+    isAddingDraftToProject = true
+    Task { @MainActor in
+      _ = await store.writeSiteDraftToProject(draftID: draftID)
+      if let latest = store.drafts.first(where: { $0.id == draftID }) {
+        draft = latest
+      }
+      isAddingDraftToProject = false
     }
   }
 
@@ -811,6 +905,7 @@ struct WorkspaceTaskSEOSection: View {
 struct WorkspaceTaskChecksState {
   let issues: [PreflightIssue]
   let publicRisk: PublicRiskSummary
+  let deploymentStatus: DeploymentStatusSnapshot?
 
   var errorCount: Int {
     issues.filter { $0.severity == .error }.count
@@ -850,6 +945,13 @@ struct WorkspaceTaskChecksSection: View {
 
       InspectorSection("公开风险") {
         publicRiskSummaryBlock(state.publicRisk)
+      }
+
+      if let deploymentStatus = state.deploymentStatus,
+         deploymentStatus.level == .failed
+           || deploymentStatus.level == .running
+           || deploymentStatus.signals.contains(where: { !$0.logExcerpt.isEmpty }) {
+        WorkspaceDeploymentLogInspectorSection(snapshot: deploymentStatus)
       }
 
       InspectorSection("问题队列") {
@@ -941,7 +1043,6 @@ private struct IssueCompactRow: View {
 
 struct WorkspaceTaskImageState {
   let report: ImageWorkbenchReport?
-  let siteSummary: ImageWorkbenchSiteSummary?
   let actionMessage: String?
   let focusedAttachmentID: UUID?
 }
@@ -960,7 +1061,6 @@ struct WorkspaceTaskImageSection: View {
 
   var body: some View {
     let report = state.report
-    let siteSummary = state.siteSummary
 
     return VStack(alignment: .leading, spacing: 14) {
       InspectorSection("当前文章") {
@@ -1008,23 +1108,7 @@ struct WorkspaceTaskImageSection: View {
         }
       }
 
-      InspectorSection("批处理") {
-        if let siteSummary {
-          InspectorStatRow(
-            title: "站点图片", value: "\(siteSummary.imageCount)", systemImage: "photo.stack")
-          InspectorStatRow(
-            title: "站点缺 alt", value: "\(siteSummary.missingAltTextCount)", systemImage: "text.quote"
-          )
-          InspectorStatRow(
-            title: "可压缩 JPEG", value: "\(siteSummary.optimizableJPEGCount)",
-            systemImage: "arrow.down.forward")
-        } else {
-          ProgressView {
-            Text("正在统计站点图片…")
-          }
-          .controlSize(.small)
-        }
-
+      InspectorSection("图片工作台") {
         Button {
           actions.openImageWorkbench()
         } label: {

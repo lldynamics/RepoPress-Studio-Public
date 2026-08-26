@@ -70,4 +70,21 @@ extension WorkbenchStore {
   public func runRepositoryAutoSync(now: Date = Date()) async -> Bool {
     await repositoryStore.runRepositoryAutoSync(store: self, now: now)
   }
+
+  @discardableResult
+  public func tickRepositoryAutoSync(for profileID: UUID, now: Date = Date()) async -> Bool {
+    await repositoryStore.tickRepositoryAutoSync(for: profileID, store: self, now: now)
+  }
+
+  @discardableResult
+  public func runRepositoryAutoSync(for profileID: UUID, now: Date = Date()) async -> Bool {
+    await repositoryStore.runRepositoryAutoSync(for: profileID, store: self, now: now)
+  }
+
+  public func updateRepositoryAutoSyncSettings(
+    _ settings: RepositoryAutoSyncSettings,
+    for profileID: UUID
+  ) {
+    repositoryStore.updateRepositoryAutoSyncSettings(settings, for: profileID, store: self)
+  }
 }

@@ -2,8 +2,19 @@ import Foundation
 
 extension WorkbenchStore {
   public func updateActiveProfile(_ profile: SiteProfile) {
+    let previousProfile = publishingStore.profiles.first(where: { $0.id == profile.id })
     let synchronizedProfile = synchronizeSelectedAIConnectionIfNeeded(with: profile)
     publishingStore.activeProfile = synchronizedProfile
+    if previousProfile.map(DraftRepositoryIdentity.init(profile:))
+      != DraftRepositoryIdentity(profile: synchronizedProfile)
+    {
+      publishingStore.drafts = publishingStore.drafts.map { draft in
+        guard draft.belongs(toSiteProfileID: synchronizedProfile.id) else { return draft }
+        var normalized = draft
+        normalized.normalizeRepositoryBinding(for: synchronizedProfile)
+        return normalized
+      }
+    }
     invalidateDraftDerivedCaches()
   }
 
@@ -46,12 +57,20 @@ extension WorkbenchStore {
   }
 
   func setDrafts(_ drafts: [ArticleDraft]) {
-    publishingStore.drafts = drafts
+    publishingStore.drafts = drafts.map { draft in
+      var normalized = draft
+      if normalized.isGeneralDraft {
+        normalized.detachFromRepository()
+      } else {
+        normalized.normalizeRepositoryBinding(for: profile(for: normalized))
+      }
+      return normalized
+    }
     invalidateDraftDerivedCaches()
   }
 
   func setRepositoryReport(_ report: RepositoryScanReport?) {
-    repositoryStore.repositoryReport = report
+    repositoryStore.replaceRepositoryReport(report, profileID: activeProfileID)
     invalidateDraftDerivedCaches()
   }
 

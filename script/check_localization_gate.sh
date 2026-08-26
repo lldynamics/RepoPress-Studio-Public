@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 RESOURCE_DIR="$ROOT_DIR/Sources/PersonalSitePublisherMac/Resources"
-CORE_RESOURCE_DIR="$ROOT_DIR/Sources/PublishingWorkbenchCore/Resources"
+CORE_RESOURCE_DIR="$ROOT_DIR/Sources/PublishingCoreSupport/Resources"
 PACKAGE_FILE="$ROOT_DIR/Package.swift"
 CATALOG_FILE="$RESOURCE_DIR/Localizable.xcstrings"
 
@@ -99,4 +99,4 @@ python3 "$ROOT_DIR/script/sync_ui_localizations.py" --check \
   || fail "declared UI-scope keys are missing complete zh-Hans/en catalog coverage"
 
 echo "localization gate: UI scope has $catalog_key_count translated catalog keys and compiles for zh-Hans/en; InfoPlist metadata is valid"
-echo "localization gate: migrated PublishingWorkbenchCore presentation keys compile and have matching zh-Hans/en placeholders"
+echo "localization gate: publishing core presentation keys compile and have matching zh-Hans/en placeholders"

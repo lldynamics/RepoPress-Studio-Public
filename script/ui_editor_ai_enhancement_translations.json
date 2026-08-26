@@ -323,10 +323,6 @@
     "en": "Target language: %@ · The new draft remains unpublished by default",
     "zh-Hans": "目标语言：%@ · 新草稿默认保持未发布"
   },
-  "真实站点 CSS": {
-    "en": "Live Site CSS",
-    "zh-Hans": "真实站点 CSS"
-  },
   "立即离线缓存所有文章全文": {
     "en": "Offline Cache Full Text for All Articles Now",
     "zh-Hans": "立即离线缓存所有文章全文"

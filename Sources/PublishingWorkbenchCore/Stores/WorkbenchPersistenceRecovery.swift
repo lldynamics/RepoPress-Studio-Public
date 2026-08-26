@@ -2,12 +2,6 @@ import Foundation
 
 extension WorkbenchPersistence {
   public func exportRecoveryFiles(to directoryURL: URL) throws -> URL {
-    let didStartAccessing = directoryURL.startAccessingSecurityScopedResource()
-    defer {
-      if didStartAccessing {
-        directoryURL.stopAccessingSecurityScopedResource()
-      }
-    }
     return try archiveRecoveryFiles(
       in: directoryURL,
       folderPrefix: "PersonalSitePublisher-Recovery"
@@ -37,13 +31,6 @@ extension WorkbenchPersistence {
     from sourceURL: URL,
     fileOperations: WorkbenchRecoveryFileOperations
   ) throws -> URL {
-    let didStartAccessing = sourceURL.startAccessingSecurityScopedResource()
-    defer {
-      if didStartAccessing {
-        sourceURL.stopAccessingSecurityScopedResource()
-      }
-    }
-
     let data: Data
     do {
       data = try BoundedFileReader.data(

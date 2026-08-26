@@ -1,14 +1,12 @@
 {
   "documentVersion": 1,
   "activeExtensions": [
-    "safari",
     "chrome",
     "firefox"
   ],
   "extensions": {
     "chromiumDevelopmentID": "lnibkmfhfikfbkeehcjbiaalhkiankam",
     "firefoxID": "knowledge-capture@jinfang.local",
-    "safariBundleID": "com.jinfang.PersonalSitePublisherMac.SafariExtension",
     "chromeProductionID": "ginjcibepmeobaaadmfiagigcpcebmcc",
     "edgeProductionID": null
   },

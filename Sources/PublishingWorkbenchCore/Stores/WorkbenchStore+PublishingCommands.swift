@@ -47,6 +47,16 @@ extension WorkbenchStore {
     return await publishingStore.publishSelectedDraftOnlineUsingPreferredStrategy(store: self)
   }
 
+  /// Pushes the selected article to its isolated `draft/<slug>` preview branch.
+  /// This path never promotes the article to the formal published lifecycle.
+  @discardableResult
+  public func publishSelectedDraftToPreviewBranch() async
+    -> RemoteRepositoryPublishResult?
+  {
+    refreshSelectedDraftPublishingState()
+    return await publishingStore.publishSelectedDraftToPreviewBranch(store: self)
+  }
+
   @discardableResult
   public func resumeRemoteReview(_ record: ReleaseRecord) async -> RemoteRepositoryPublishResult? {
     await publishingStore.resumeRemoteReview(record, store: self)
@@ -101,6 +111,33 @@ extension WorkbenchStore {
   {
     flushDraftBodyEditorBuffer(for: draft.id)
     return publishingStore.remoteRepositoryPublishPreview(for: draft, store: self)
+  }
+
+  /// Returns the isolated preview branch name for one article.
+  public func draftPreviewBranchName(for draft: ArticleDraft) -> String {
+    publishingPackage(for: draft).draftPreviewBranchName
+  }
+
+  /// Builds the same preflight snapshot used by the one-click preview action,
+  /// with dedicated-branch semantics (so target-branch conflicts do not block
+  /// an isolated preview push).
+  public func remoteRepositoryDraftPreview(for draft: ArticleDraft)
+    -> RemoteRepositoryPublishPreview
+  {
+    // This is called while SwiftUI computes the publishing drawer body, so it
+    // must remain a pure snapshot read. The actual publish command flushes the
+    // editor buffer before it assembles the package.
+    let currentDraft = drafts.first(where: { $0.id == draft.id }) ?? draft
+    let package = publishingStore.publishingPackage(for: currentDraft, store: self)
+    let profile = profile(for: currentDraft)
+    let localPreview = publishingStore.localPublishPreview(for: currentDraft, store: self)
+    return publishingStore.remoteRepositoryPublishPreview(
+      package: package,
+      profile: profile,
+      mode: .previewBranch,
+      localPreview: localPreview,
+      store: self
+    )
   }
 
   public func remoteRepositoryPublishPreview(for plan: BatchPublishPlan)
@@ -179,8 +216,11 @@ extension WorkbenchStore {
     publishingStore.markDraftsAsPublishedIfDirectRemoteCommit(mode: mode, draftIDs: draftIDs)
   }
 
-  public func recordRemoteRepositoryPublishInAutoSync(_ result: RemoteRepositoryPublishResult) {
-    repositoryDeploymentCoordinator.recordRemotePublish(result)
+  public func recordRemoteRepositoryPublishInAutoSync(
+    _ result: RemoteRepositoryPublishResult,
+    profileID: UUID
+  ) {
+    repositoryDeploymentCoordinator.recordRemotePublish(result, profileID: profileID)
   }
 
   public func shouldRefreshDeploymentStatusAfterRemoteOperation(_ record: ReleaseRecord) -> Bool {

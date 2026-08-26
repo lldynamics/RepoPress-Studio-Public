@@ -1,5 +1,20 @@
+import Combine
 import Foundation
 import PublishingWorkbenchCore
+
+@MainActor
+final class MarkdownComposerStatisticsState: ObservableObject {
+  @Published private(set) var value: MarkdownEditorStatistics
+
+  init(value: MarkdownEditorStatistics = .empty) {
+    self.value = value
+  }
+
+  func update(_ updatedValue: MarkdownEditorStatistics) {
+    guard value != updatedValue else { return }
+    value = updatedValue
+  }
+}
 
 struct MarkdownEditorStatistics: Equatable, Sendable {
   let characterCount: Int
@@ -141,4 +156,60 @@ struct MarkdownEditorStatistics: Equatable, Sendable {
 struct MarkdownTextEdit {
   let previousText: String
   let replacedRange: NSRange
+
+  /// Recovers a single replacement when AppKit delivers `textDidChange`
+  /// without a preceding `shouldChangeTextIn` callback. This keeps paste,
+  /// accessibility, undo, and input-method commits on the incremental syntax
+  /// path instead of immediately scheduling a full-document repaint.
+  static func inferred(previousText: String, currentText: String) -> Self? {
+    guard previousText != currentText else { return nil }
+    let previous = previousText as NSString
+    let current = currentText as NSString
+    let commonLimit = min(previous.length, current.length)
+    var prefixLength = 0
+    while prefixLength < commonLimit,
+      previous.character(at: prefixLength) == current.character(at: prefixLength)
+    {
+      prefixLength += 1
+    }
+    if prefixLength > 0,
+      prefixLength < previous.length,
+      prefixLength < current.length,
+      isHighSurrogate(previous.character(at: prefixLength - 1))
+    {
+      prefixLength -= 1
+    }
+
+    var suffixLength = 0
+    while suffixLength < previous.length - prefixLength,
+      suffixLength < current.length - prefixLength,
+      previous.character(at: previous.length - suffixLength - 1)
+        == current.character(at: current.length - suffixLength - 1)
+    {
+      suffixLength += 1
+    }
+    if suffixLength > 0,
+      previous.length - suffixLength > prefixLength,
+      current.length - suffixLength > prefixLength,
+      isLowSurrogate(previous.character(at: previous.length - suffixLength))
+    {
+      suffixLength -= 1
+    }
+
+    return MarkdownTextEdit(
+      previousText: previousText,
+      replacedRange: NSRange(
+        location: prefixLength,
+        length: previous.length - prefixLength - suffixLength
+      )
+    )
+  }
+
+  private static func isHighSurrogate(_ value: unichar) -> Bool {
+    (0xD800...0xDBFF).contains(value)
+  }
+
+  private static func isLowSurrogate(_ value: unichar) -> Bool {
+    (0xDC00...0xDFFF).contains(value)
+  }
 }

@@ -159,10 +159,6 @@
     "en": "%lld built-in templates let you create a new site or import an existing repository.",
     "zh-Hans": "内置 %lld 个模板，支持新建站点或导入已有仓库。"
   },
-  "切换到%@模式": {
-    "en": "Switch to %@ mode",
-    "zh-Hans": "切换到%@模式"
-  },
   "删除%@ API Key？": {
     "en": "Delete the %@ API key?",
     "zh-Hans": "删除 %@ API Key？"
@@ -210,10 +206,6 @@
   "发送地址": {
     "en": "Destination",
     "zh-Hans": "发送地址"
-  },
-  "另有 %lld 条资料将在确认后处理。": {
-    "en": "%lld additional items will be processed after confirmation.",
-    "zh-Hans": "另有 %lld 条资料将在确认后处理。"
   },
   "另有 %lld 项": {
     "en": "%lld more items",
@@ -303,10 +295,6 @@
     "en": "This will delete \"%@\" and its %lld drafts. You can restore them with Undo Delete during this session.",
     "zh-Hans": "将删除「%@」及其 %lld 篇草稿；可在本次会话中通过“撤销删除”恢复。"
   },
-  "将发布 %lld 个文件": {
-    "en": "%lld files will be published",
-    "zh-Hans": "将发布 %lld 个文件"
-  },
   "将当前资料正文插入正在编辑的文章": {
     "en": "Insert this item's content into the article being edited",
     "zh-Hans": "将当前资料正文插入正在编辑的文章"
@@ -342,10 +330,6 @@
   "应用站点类型": {
     "en": "Apply Site Type",
     "zh-Hans": "应用站点类型"
-  },
-  "开启编辑与预览同步滚动": {
-    "en": "Enable Synchronized Editor and Preview Scrolling",
-    "zh-Hans": "开启编辑与预览同步滚动"
   },
   "引用文章": {
     "en": "Reference Article",
@@ -570,10 +554,6 @@
   "没有可在本机重新净化的网页资料。": {
     "en": "There are no web items that can be sanitized again on this Mac.",
     "zh-Hans": "没有可在本机重新净化的网页资料。"
-  },
-  "没有待发布变更": {
-    "en": "No Changes to Publish",
-    "zh-Hans": "没有待发布变更"
   },
   "没有活动补全": {
     "en": "No Active Completions",

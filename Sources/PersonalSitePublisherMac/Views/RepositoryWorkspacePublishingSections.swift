@@ -2,9 +2,63 @@ import AppKit
 import PublishingWorkbenchCore
 import SwiftUI
 
+struct RepositoryPermissionActionPresentation: Equatable {
+  let title: String
+  let help: String
+  let isEnabled: Bool
+
+  static func make(
+    configuredOwner: String,
+    configuredRepository: String,
+    detectedOrigin: RepositoryRemote?
+  ) -> Self {
+    let owner = configuredOwner.trimmedForPublishing
+    let repository = configuredRepository.trimmedForPublishing
+    if !owner.isEmpty && !repository.isEmpty {
+      return Self(
+        title: String(localized: "检查权限"),
+        help: String(localized: "检查当前配置仓库的写入权限"),
+        isEnabled: true
+      )
+    }
+    if let detectedOrigin,
+       !detectedOrigin.owner.trimmedForPublishing.isEmpty,
+       !detectedOrigin.name.trimmedForPublishing.isEmpty {
+      let detectedOwner = detectedOrigin.owner.trimmedForPublishing
+      let detectedRepository = detectedOrigin.name.trimmedForPublishing
+      let ownerMatches = owner.isEmpty || owner == detectedOwner
+      let repositoryMatches = repository.isEmpty || repository == detectedRepository
+      guard ownerMatches && repositoryMatches else {
+        return Self(
+          title: String(localized: "检查权限"),
+          help: String(
+            localized: "当前仓库配置与扫描到的 origin 不一致，请完成或修正 Owner/Namespace 和 Repo/Project。"
+          ),
+          isEnabled: false
+        )
+      }
+      let originName = "\(detectedOwner)/\(detectedRepository)"
+      return Self(
+        title: String(format: String(localized: "使用 %@ 并检查权限"), originName),
+        help: String(
+          format: String(localized: "使用扫描到的 origin %@ 写入当前站点配置，然后检查仓库写入权限。"),
+          originName
+        ),
+        isEnabled: true
+      )
+    }
+    return Self(
+      title: String(localized: "检查权限"),
+      help: String(localized: "请先配置仓库 Owner/Namespace 和 Repo/Project，或扫描包含 origin 的站点仓库。"),
+      isEnabled: false
+    )
+  }
+}
+
 extension RepositoryWorkspaceView {
   var onlinePublishCenterSection: some View {
     let latestEntry = store.activeProfileReleaseLedger.entries.first
+    let permissionAction = repositoryPermissionActionPresentation
 
     return VStack(alignment: .leading, spacing: 12) {
       VStack(alignment: .leading, spacing: 3) {
@@ -47,16 +101,21 @@ extension RepositoryWorkspaceView {
         spacing: 10
       ) {
         Button {
-          Task {
-            await store.checkRepositoryTokenAccess()
-          }
+          checkRepositoryPermission()
         } label: {
-          Label("检查权限", systemImage: "person.badge.key")
+          Label(permissionAction.title, systemImage: "person.badge.key")
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .buttonStyle(.bordered)
-        .disabled(store.isRemoteRepositoryChecking || store.isRemoteRepositoryPublishing)
+        .disabled(
+          !permissionAction.isEnabled
+            || store.isRemoteRepositoryChecking
+            || store.isRemoteRepositoryPublishing
+        )
+        .help(permissionAction.help)
         .accessibilityIdentifier("repository-action-check-permission")
+        .accessibilityLabel(permissionAction.title)
+        .accessibilityHint(permissionAction.help)
 
         Button {
           createsPrivateRepository = true
@@ -116,6 +175,20 @@ extension RepositoryWorkspaceView {
     )
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("repository-section-online-publish")
+  }
+
+  private var repositoryPermissionActionPresentation: RepositoryPermissionActionPresentation {
+    RepositoryPermissionActionPresentation.make(
+      configuredOwner: store.activeProfile.repoOwner,
+      configuredRepository: store.activeProfile.repoName,
+      detectedOrigin: store.repositoryReport?.originRemote
+    )
+  }
+
+  private func checkRepositoryPermission() {
+    Task {
+      await store.checkRepositoryTokenAccess()
+    }
   }
 
   @ViewBuilder

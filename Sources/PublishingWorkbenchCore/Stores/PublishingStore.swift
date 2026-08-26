@@ -112,6 +112,13 @@ public final class PublishingStore: ObservableObject {
   var localSitePreviewGeneration: UInt64 = 0
   var localSitePreviewFileWatcher: LocalSitePreviewFileWatcher?
   var localSitePreviewRefreshTask: Task<Void, Never>?
+  /// Draft-scoped publish previews are the source of truth for background
+  /// work. The single-value properties below remain a compatibility
+  /// projection for existing consumers until they migrate to this cache.
+  var draftPublishPreviewSnapshots: [UUID: DraftPublishPreviewSnapshot] = [:]
+  var draftPublishPreviewInputBaselines: [UUID: DraftPublishPreviewInputBaseline] = [:]
+  var draftPublishPreviewRefreshTasks: [UUID: Task<Void, Never>] = [:]
+  var draftPublishPreviewRefreshGenerations: [UUID: UInt64] = [:]
   var publishPreviewRefreshTask: Task<Void, Never>?
   var publishPreviewRefreshGeneration: UInt64 = 0
   var batchPublishPlanRefreshTask: Task<Void, Never>?
@@ -119,7 +126,12 @@ public final class PublishingStore: ObservableObject {
   var siteStarterOperationGeneration: UInt64 = 0
 
   @Published public internal(set) var profiles: [SiteProfile]
-  @Published public internal(set) var activeProfileID: UUID
+  @Published public internal(set) var activeProfileID: UUID {
+    didSet {
+      guard activeProfileID != oldValue else { return }
+      projectSelectedDraftPublishPreview()
+    }
+  }
   @Published public internal(set) var drafts: [ArticleDraft]
   @Published public internal(set) var customMarkdownSnippets: [MarkdownSnippet]
   @Published public internal(set) var draftVersions: [DraftVersionSnapshot]
@@ -128,7 +140,12 @@ public final class PublishingStore: ObservableObject {
     [DraftRepositoryCleanupRequest]
   @Published public internal(set) var releaseRecords: [ReleaseRecord]
   @Published public internal(set) var selectedSection: WorkspaceSection
-  @Published public internal(set) var selectedDraftID: UUID?
+  @Published public internal(set) var selectedDraftID: UUID? {
+    didSet {
+      guard selectedDraftID != oldValue else { return }
+      projectSelectedDraftPublishPreview()
+    }
+  }
   @Published public internal(set) var draftListContentScope: DraftListContentScope
   @Published public internal(set) var draftNavigationHistory: DraftNavigationHistory
   @Published public internal(set) var publishPackage: PublishPackage?
@@ -155,13 +172,21 @@ public final class PublishingStore: ObservableObject {
   @Published public internal(set) var imageWorkbenchReport: ImageWorkbenchReport?
   @Published public internal(set) var preflightIssues: [PreflightIssue]
   @Published public internal(set) var isInspectorPresented: Bool
-  @Published public internal(set) var editorDisplayMode: EditorDisplayMode
   @Published public internal(set) var editorFocusRequest: EditorFocusRequest?
   @Published public internal(set) var imageInspectorFocusRequest: ImageInspectorFocusRequest?
   public internal(set) var markdownEditorSessionStates: [UUID: MarkdownEditorSessionState]
   public internal(set) var draftBodyEditorBuffers: [UUID: DraftBodyEditorBuffer] = [:]
   let draftBodyEditorBufferWillChange = PassthroughSubject<UUID, Never>()
-  @Published public internal(set) var activeEditorSelection: ActiveEditorSelection?
+  /// The live editor selection is intentionally kept out of the broad
+  /// PublishingStore observation graph. High-frequency caret changes belong to
+  /// a draft-scoped observation facade, not to the whole workbench.
+  public internal(set) var activeEditorSelection: ActiveEditorSelection?
+  let activeEditorSelectionDidChange = PassthroughSubject<UUID, Never>()
+  /// Sent after a buffer has been committed to the in-memory projection. The
+  /// existing `willChange` subject remains for broad editor facades that use
+  /// its historical pre-mutation timing; this subject is the narrow, live
+  /// projection boundary and is emitted even when those observers are muted.
+  let draftBodyEditorBufferDidChange = PassthroughSubject<UUID, Never>()
   @Published public internal(set) var automaticallyRefreshPreflightOnEdit: Bool
   @Published public internal(set) var lastSaveStatus: String
   @Published public internal(set) var publishActionFeedback: PublishActionFeedback?
@@ -190,12 +215,14 @@ public final class PublishingStore: ObservableObject {
       draftBodyEditorBufferWillChange.send(draftID)
     }
     draftBodyEditorBuffers[draftID] = buffer
+    draftBodyEditorBufferDidChange.send(draftID)
   }
 
   func removeDraftBodyEditorBuffer(for draftID: UUID) {
     guard draftBodyEditorBuffers[draftID] != nil else { return }
     draftBodyEditorBufferWillChange.send(draftID)
     draftBodyEditorBuffers.removeValue(forKey: draftID)
+    draftBodyEditorBufferDidChange.send(draftID)
   }
 
   init(
@@ -227,7 +254,6 @@ public final class PublishingStore: ObservableObject {
     imageWorkbenchReport: ImageWorkbenchReport? = nil,
     preflightIssues: [PreflightIssue] = [],
     isInspectorPresented: Bool = true,
-    editorDisplayMode: EditorDisplayMode = .edit,
     editorFocusRequest: EditorFocusRequest? = nil,
     imageInspectorFocusRequest: ImageInspectorFocusRequest? = nil,
     markdownEditorSessionStates: [UUID: MarkdownEditorSessionState] = [:],
@@ -287,7 +313,16 @@ public final class PublishingStore: ObservableObject {
     self.aiFixQueueService = AIPublishingFixQueueService()
     self.profiles = profiles
     self.activeProfileID = activeProfileID
-    self.drafts = drafts
+    let profilesByID = Dictionary(uniqueKeysWithValues: profiles.map { ($0.id, $0) })
+    self.drafts = drafts.map { draft in
+      var normalized = draft
+      if normalized.isGeneralDraft {
+        normalized.detachFromRepository()
+      } else if let profile = profilesByID[normalized.siteProfileID] {
+        normalized.normalizeRepositoryBinding(for: profile)
+      }
+      return normalized
+    }
     self.customMarkdownSnippets = customMarkdownSnippets
     self.draftVersions = draftVersions
     self.recycledDrafts = recycledDrafts
@@ -315,7 +350,6 @@ public final class PublishingStore: ObservableObject {
     self.imageWorkbenchReport = imageWorkbenchReport
     self.preflightIssues = preflightIssues
     self.isInspectorPresented = isInspectorPresented
-    self.editorDisplayMode = editorDisplayMode
     self.editorFocusRequest = editorFocusRequest
     self.imageInspectorFocusRequest = imageInspectorFocusRequest
     self.markdownEditorSessionStates = markdownEditorSessionStates
@@ -329,6 +363,30 @@ public final class PublishingStore: ObservableObject {
     self.maintenanceOperationRecords = maintenanceOperationRecords
     self.latestGeneralDraftReusePlan = latestGeneralDraftReusePlan
     self.recentlyDeletedProfile = recentlyDeletedProfile
+    if let selectedDraftID,
+      drafts.contains(where: { $0.id == selectedDraftID }),
+      let profile = profiles.first(where: { $0.id == activeProfileID }),
+      let publishPackage,
+      publishPackage.draftID == selectedDraftID,
+      let localPublishPreview,
+      let localPublishReadiness,
+      let remotePublishPreviewSnapshot,
+      let remoteReviewDraft
+    {
+      draftPublishPreviewSnapshots[selectedDraftID] = DraftPublishPreviewSnapshot(
+        context: DraftExecutionContext(
+          draftID: selectedDraftID,
+          profileID: profile.id,
+          bodyRevision: draftBodyEditorBuffers[selectedDraftID]?.revision ?? 0
+        ),
+        publishPackage: publishPackage,
+        localPublishPreview: localPublishPreview,
+        localPublishReadiness: localPublishReadiness,
+        remotePublishPreview: remotePublishPreviewSnapshot,
+        remoteReviewDraft: remoteReviewDraft
+      )
+    }
+    projectSelectedDraftPublishPreview()
   }
 
   func setPublishActionMessage(

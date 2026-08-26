@@ -130,6 +130,183 @@ final class RSSReaderMaintenanceTests: XCTestCase {
     XCTAssertLessThanOrEqual(maximum, RSSReaderStore.maximumRefreshConcurrency)
   }
 
+  func testRefreshRunsPayloadMergeAndPersistenceOffMainActor() async throws {
+    let rootURL = temporaryRoot()
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let feedURL = try XCTUnwrap(URL(string: "https://example.com/off-main.xml"))
+    let store = RSSReaderStore(
+      fileURL: rootURL.appendingPathComponent("reader.sqlite"),
+      fetchOperation: { url, _, _ in
+        let article = RSSParsedArticle(
+          id: "off-main-article",
+          title: "后台合并",
+          link: url,
+          summaryHTML: "摘要",
+          contentHTML: "正文"
+        )
+        return RSSFeedFetchResult(
+          parsedFeed: RSSParsedFeed(title: "后台合并订阅", articles: [article]),
+          responseURL: url,
+          etag: nil,
+          lastModified: nil,
+          notModified: false
+        )
+      }
+    )
+    let feedID = try store.addFeed(url: feedURL)
+
+    await store.refresh(feedID: feedID)
+
+    XCTAssertTrue(store.lastRefreshWorkRanOffMainActor)
+    XCTAssertEqual(store.articleHeader(id: "\(feedID.uuidString):off-main-article")?.title, "后台合并")
+    XCTAssertEqual(store.lastRefreshSummary, RSSRefreshSummary(successCount: 1))
+  }
+
+  func testRefreshPreservesUserStateChangedDuringDetachedMerge() async throws {
+    let rootURL = temporaryRoot()
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let feedURL = try XCTUnwrap(URL(string: "https://example.com/rebase.xml"))
+    let gate = RSSRefreshGate()
+    let calls = RSSRefreshCallCounter()
+    let store = RSSReaderStore(
+      fileURL: rootURL.appendingPathComponent("reader.sqlite"),
+      fetchOperation: { url, _, _ in
+        let call = await calls.next()
+        let article = RSSParsedArticle(
+          id: "rebase-article",
+          title: call == 1 ? "初始标题" : "更新标题",
+          link: url,
+          summaryHTML: call == 1 ? "初始摘要" : "更新摘要",
+          contentHTML: call == 1 ? "初始正文" : "更新正文"
+        )
+        return RSSFeedFetchResult(
+          parsedFeed: RSSParsedFeed(title: "状态保留", articles: [article]),
+          responseURL: url,
+          etag: nil,
+          lastModified: nil,
+          notModified: false
+        )
+      }
+    )
+    let feedID = try store.addFeed(url: feedURL)
+    await store.refresh(feedID: feedID)
+    let articleID = "\(feedID.uuidString):rebase-article"
+
+    store.refreshWorkerBeforePersistenceHook = {
+      await gate.markStarted()
+      await gate.waitForRelease()
+    }
+    let refreshTask = Task { @MainActor in
+      await store.refresh(feedID: feedID)
+    }
+    await gate.waitForStart()
+    store.markRead(articleID, isRead: true)
+    store.toggleStarred(articleID)
+    store.setArticleTags(["用户标签"], for: articleID)
+    await gate.release()
+    await refreshTask.value
+    store.refreshWorkerBeforePersistenceHook = nil
+
+    let header = try XCTUnwrap(store.articleHeader(id: articleID))
+    XCTAssertEqual(header.title, "更新标题")
+    XCTAssertTrue(header.isRead)
+    XCTAssertTrue(header.isStarred)
+    XCTAssertEqual(header.tags, ["用户标签"])
+
+    let reopened = RSSReaderStore(fileURL: rootURL.appendingPathComponent("reader.sqlite"))
+    let persisted = try XCTUnwrap(reopened.articleHeader(id: articleID))
+    XCTAssertTrue(persisted.isRead)
+    XCTAssertTrue(persisted.isStarred)
+    XCTAssertEqual(persisted.tags, ["用户标签"])
+  }
+
+  func testCancelledRefreshDoesNotCommitAfterDetachedMergeGate() async throws {
+    let rootURL = temporaryRoot()
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let feedURL = try XCTUnwrap(URL(string: "https://example.com/cancelled.xml"))
+    let gate = RSSRefreshGate()
+    let store = RSSReaderStore(
+      fileURL: rootURL.appendingPathComponent("reader.sqlite"),
+      fetchOperation: { url, _, _ in
+        let article = RSSParsedArticle(
+          id: "cancelled-article",
+          title: "不应提交",
+          link: url
+        )
+        return RSSFeedFetchResult(
+          parsedFeed: RSSParsedFeed(title: "取消测试", articles: [article]),
+          responseURL: url,
+          etag: nil,
+          lastModified: nil,
+          notModified: false
+        )
+      }
+    )
+    let feedID = try store.addFeed(url: feedURL)
+    store.refreshWorkerBeforePersistenceHook = {
+      await gate.markStarted()
+      await gate.waitForRelease()
+    }
+    let refreshTask = Task { @MainActor in
+      await store.refresh(feedID: feedID)
+    }
+
+    await gate.waitForStart()
+    refreshTask.cancel()
+    await gate.release()
+    await refreshTask.value
+    store.refreshWorkerBeforePersistenceHook = nil
+
+    XCTAssertFalse(store.articleHeaders.contains { $0.title == "不应提交" })
+    XCTAssertEqual(store.lastRefreshSummary, RSSRefreshSummary(skippedCount: 1))
+    let reopened = RSSReaderStore(fileURL: rootURL.appendingPathComponent("reader.sqlite"))
+    XCTAssertFalse(reopened.articleHeaders.contains { $0.title == "不应提交" })
+  }
+
+  func testRefreshCannotResurrectFeedAfterURLDrift() async throws {
+    let rootURL = temporaryRoot()
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let oldURL = try XCTUnwrap(URL(string: "https://example.com/old.xml"))
+    let newURL = try XCTUnwrap(URL(string: "https://example.com/new.xml"))
+    let gate = RSSRefreshGate()
+    let store = RSSReaderStore(
+      fileURL: rootURL.appendingPathComponent("reader.sqlite"),
+      fetchOperation: { url, _, _ in
+        await gate.markStarted()
+        await gate.waitForRelease()
+        let article = RSSParsedArticle(
+          id: "stale-response",
+          title: "旧地址响应",
+          link: url
+        )
+        return RSSFeedFetchResult(
+          parsedFeed: RSSParsedFeed(title: "旧地址响应", articles: [article]),
+          responseURL: url,
+          etag: nil,
+          lastModified: nil,
+          notModified: false
+        )
+      }
+    )
+    let feedID = try store.addFeed(url: oldURL)
+    let refreshTask = Task { @MainActor in
+      await store.refresh(feedID: feedID)
+    }
+
+    await gate.waitForStart()
+    try store.updateFeedURL(feedID: feedID, newURL: newURL)
+    await gate.release()
+    await refreshTask.value
+
+    XCTAssertEqual(store.feeds.first(where: { $0.id == feedID })?.url, newURL)
+    XCTAssertFalse(store.articleHeaders.contains { $0.title == "旧地址响应" })
+    XCTAssertEqual(store.lastRefreshSummary, RSSRefreshSummary(skippedCount: 1))
+
+    let reopened = RSSReaderStore(fileURL: rootURL.appendingPathComponent("reader.sqlite"))
+    XCTAssertEqual(reopened.feeds.first(where: { $0.id == feedID })?.url, newURL)
+    XCTAssertFalse(reopened.articleHeaders.contains { $0.title == "旧地址响应" })
+  }
+
   private func temporaryRoot() -> URL {
     FileManager.default.temporaryDirectory
       .appendingPathComponent("RSSReaderMaintenanceTests-\(UUID().uuidString)", isDirectory: true)
@@ -151,5 +328,49 @@ private actor RSSRefreshConcurrencyProbe {
 
   func maximum() -> Int {
     maximumActive
+  }
+}
+
+private actor RSSRefreshCallCounter {
+  private var value = 0
+
+  func next() -> Int {
+    value += 1
+    return value
+  }
+}
+
+private actor RSSRefreshGate {
+  private var started = false
+  private var released = false
+  private var startWaiters: [CheckedContinuation<Void, Never>] = []
+  private var releaseWaiters: [CheckedContinuation<Void, Never>] = []
+
+  func markStarted() {
+    started = true
+    let waiters = startWaiters
+    startWaiters.removeAll()
+    waiters.forEach { $0.resume() }
+  }
+
+  func waitForStart() async {
+    if started { return }
+    await withCheckedContinuation { continuation in
+      startWaiters.append(continuation)
+    }
+  }
+
+  func release() {
+    released = true
+    let waiters = releaseWaiters
+    releaseWaiters.removeAll()
+    waiters.forEach { $0.resume() }
+  }
+
+  func waitForRelease() async {
+    if released { return }
+    await withCheckedContinuation { continuation in
+      releaseWaiters.append(continuation)
+    }
   }
 }

@@ -17,6 +17,7 @@ extension PublishingStore {
     }
     if let currentPlan = localSitePreviewPlan,
        profile.id == store.activeProfileID,
+       currentPlan.executionIdentity?.profileID == profile.id,
        let profileRootPath,
        let currentPlanRootPath,
        currentPlanRootPath == profileRootPath {
@@ -52,10 +53,12 @@ extension PublishingStore {
     }
     if localSitePreviewRuntimeStatus.isRunning,
        let currentPlan = localSitePreviewPlan,
+       currentPlan.executionIdentity?.profileID == profile.id,
        let profileRootPath,
        let currentPlanRootPath,
        currentPlan.siteKind == expectedSiteKind,
-       currentPlanRootPath == profileRootPath {
+       currentPlanRootPath == profileRootPath,
+       localSitePreviewProcessService.isExecutionCurrent(for: currentPlan) {
       return
     }
     let updatedPlan = localSitePreviewService.plan(
@@ -63,6 +66,20 @@ extension PublishingStore {
       repositoryReport: repositoryReport
     )
     guard updatedPlan != localSitePreviewPlan else { return }
+
+    // Replacing the plan invalidates every delayed start/reachability task,
+    // even when no preview process is currently running.
+    localSitePreviewGeneration &+= 1
+
+    if let currentPlan = localSitePreviewPlan,
+      let currentIdentity = currentPlan.executionIdentity,
+      let profileRootPath,
+      currentIdentity.profileID == profile.id,
+      currentIdentity.canonicalRootPath == profileRootPath,
+      currentIdentity.fingerprint != updatedPlan?.executionIdentity?.fingerprint
+    {
+      localSitePreviewProcessService.invalidateAuthorization(for: currentPlan)
+    }
 
     if localSitePreviewRuntimeStatus.isRunning {
       requestLocalSitePreviewStop(message: "站点预览配置已变更，正在停止原来的本地预览。")
@@ -135,14 +152,48 @@ extension PublishingStore {
     }
   }
 
-  public func startLocalSitePreview() {
+  @discardableResult
+  public func startLocalSitePreview() -> LocalSitePreviewStartDisposition {
     guard let plan = localSitePreviewPlan else {
       localSitePreviewRuntimeStatus = .stopped
       setPublishActionMessage(
         "请先为当前站点选择本地仓库，才能启动本地预览。",
         status: .warning
       )
-      return
+      return .failed(CoreL10n.text("请先为当前站点选择本地仓库，才能启动本地预览。"))
+    }
+    guard plan.executionIdentity?.profileID == activeProfileID else {
+      let message = CoreL10n.text("本地预览计划不属于当前站点，请重新检查后再启动。")
+      setPublishActionMessage(message, status: .warning)
+      return .failed(message)
+    }
+    guard plan.diagnostics.isReadyToStart else {
+      let message = plan.diagnostics.blockingMessages.first
+        ?? CoreL10n.text("本地预览依赖检查未通过。")
+      setPublishActionMessage(message, status: .warning)
+      return .failed(message)
+    }
+
+    do {
+      if let request = try localSitePreviewProcessService.authorizationRequest(for: plan) {
+        let message = CoreL10n.text("请确认仓库路径和启动命令后再运行本地预览。")
+        localSitePreviewRuntimeStatus = LocalSitePreviewRuntimeStatus(
+          isRunning: false,
+          previewURL: plan.previewURL,
+          message: message
+        )
+        setPublishActionMessage(message, status: .warning)
+        return .needsConfirmation(request)
+      }
+    } catch {
+      let message = error.localizedDescription
+      localSitePreviewRuntimeStatus = LocalSitePreviewRuntimeStatus(
+        isRunning: false,
+        previewURL: plan.previewURL,
+        message: message
+      )
+      setPublishActionMessage(message, status: .failure)
+      return .failed(message)
     }
 
     localSitePreviewGeneration &+= 1
@@ -156,16 +207,51 @@ extension PublishingStore {
       setPublishActionMessage(localSitePreviewRuntimeStatus.message, status: .inProgress)
       Task { [weak self] in
         await stopTask.value
-        guard let self, self.localSitePreviewGeneration == generation else { return }
+        guard let self, self.isCurrentLocalSitePreviewStart(plan: plan, generation: generation)
+        else { return }
         self.startLocalSitePreview(plan: plan, generation: generation)
       }
-      return
+      return .started
     }
 
     startLocalSitePreview(plan: plan, generation: generation)
+    return localSitePreviewRuntimeStatus.isRunning
+      ? .started
+      : .failed(localSitePreviewRuntimeStatus.message)
+  }
+
+  @discardableResult
+  public func authorizeAndStartLocalSitePreview(
+    _ request: LocalSitePreviewAuthorizationRequest
+  ) -> LocalSitePreviewStartDisposition {
+    guard let plan = localSitePreviewPlan else {
+      return .failed(CoreL10n.text("本地预览计划已失效，请重新检查。"))
+    }
+    guard
+      plan.executionIdentity?.profileID == activeProfileID,
+      request.profileID == activeProfileID
+    else {
+      let message = CoreL10n.text("当前站点已变更，旧的本地预览确认已失效。")
+      setPublishActionMessage(message, status: .warning)
+      return .failed(message)
+    }
+    do {
+      try localSitePreviewProcessService.authorize(plan: plan, matching: request)
+    } catch {
+      let message = error.localizedDescription
+      localSitePreviewRuntimeStatus = LocalSitePreviewRuntimeStatus(
+        isRunning: false,
+        previewURL: plan.previewURL,
+        message: message
+      )
+      setPublishActionMessage(message, status: .failure)
+      return .failed(message)
+    }
+    return startLocalSitePreview()
   }
 
   private func startLocalSitePreview(plan: LocalSitePreviewPlan, generation: UInt64) {
+    guard isCurrentLocalSitePreviewStart(plan: plan, generation: generation) else { return }
     do {
       localSitePreviewRuntimeStatus = try localSitePreviewProcessService.start(plan: plan)
       startLocalSitePreviewFileWatcher(for: plan, generation: generation)
@@ -193,6 +279,21 @@ extension PublishingStore {
     }
   }
 
+  private func isCurrentLocalSitePreviewStart(
+    plan: LocalSitePreviewPlan,
+    generation: UInt64
+  ) -> Bool {
+    guard
+      localSitePreviewGeneration == generation,
+      localSitePreviewPlan == plan,
+      let identity = plan.executionIdentity,
+      identity.profileID == activeProfileID
+    else {
+      return false
+    }
+    return localSitePreviewProcessService.isExecutionCurrent(for: plan)
+  }
+
   private func startLocalSitePreviewFileWatcher(
     for plan: LocalSitePreviewPlan,
     generation: UInt64
@@ -201,6 +302,13 @@ extension PublishingStore {
     let watcher = LocalSitePreviewFileWatcher(rootPath: plan.rootPath, siteKind: plan.siteKind) { [weak self] in
       Task { @MainActor [weak self] in
         guard let self, self.localSitePreviewGeneration == generation else { return }
+        guard self.localSitePreviewProcessService.isExecutionCurrent(for: plan) else {
+          self.localSitePreviewProcessService.invalidateAuthorization(for: plan)
+          self.requestLocalSitePreviewStop(
+            message: CoreL10n.text("预览启动命令或项目清单已变更，已停止旧预览；下次启动需重新确认。")
+          )
+          return
+        }
         self.scheduleLocalSitePreviewRefresh(generation: generation)
       }
     }

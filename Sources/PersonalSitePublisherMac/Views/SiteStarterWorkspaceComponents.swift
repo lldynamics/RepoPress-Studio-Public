@@ -48,7 +48,7 @@ enum SiteStarterWizardStep: String, CaseIterable, Identifiable {
   var summary: String {
     switch self {
     case .template:
-      return String(localized: "新建站点使用 Zola 写作起点；导入已有站点时选择其类型，并填写站点名称、描述、作者和 URL。")
+      return String(localized: "新建站点可选 Astro、Hugo、Zola 或 VitePress 起点；导入已有站点时选择其类型。")
     case .localDirectory:
       return String(localized: "选择一个空文件夹作为本地静态站点仓库。")
     case .github:
@@ -210,6 +210,7 @@ struct SiteStarterWizardStatusBadge: View {
 
 struct SiteStarterTemplateStep: View {
   let mode: Binding<SiteStarterMode>
+  let selectedTemplateID: Binding<SiteStarterTemplateID>
   let selectedTemplate: SiteStarterTemplate?
   let importedSiteKind: Binding<SiteKind>
   let siteName: Binding<String>
@@ -230,12 +231,20 @@ struct SiteStarterTemplateStep: View {
       .accessibilityValue(mode.wrappedValue.title)
 
       if mode.wrappedValue == .create {
+        Picker("起步模板", selection: selectedTemplateID) {
+          ForEach(SiteStarterTemplate.builtIn) { template in
+            Text(template.name).tag(template.id)
+          }
+        }
+        .accessibilityLabel("起步模板")
+        .accessibilityValue(selectedTemplate?.name ?? String(localized: "未选择"))
+
         if let template = selectedTemplate {
           VStack(alignment: .leading, spacing: 10) {
             HStack {
               Label(template.summary, systemImage: "bolt")
               Spacer()
-              Text("唯一官方起点")
+              Text(template.siteKind.localizedDisplayName)
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
             }

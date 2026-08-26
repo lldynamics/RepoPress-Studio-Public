@@ -185,12 +185,14 @@ extension WorkbenchStore {
   public func retryLastFailedAIChatReply(
     confirmingPossibleDuplicateCharge: Bool = false,
     draft: ArticleDraft? = nil,
-    ownerToken: UUID? = nil
+    ownerToken: UUID? = nil,
+    expectedContextMode: AIPublishingChatContextMode? = nil
   ) async -> AIPublishingChatMessage? {
     await aiStore.retryLastFailedAIChatReply(
       confirmingPossibleDuplicateCharge: confirmingPossibleDuplicateCharge,
       draft: draft,
-      ownerToken: ownerToken
+      ownerToken: ownerToken,
+      expectedContextMode: expectedContextMode
     )
   }
 
@@ -215,14 +217,18 @@ extension WorkbenchStore {
     draft: ArticleDraft? = nil,
     imageAttachments: [AIChatImageAttachment] = [],
     contextReferences: [AIContextReference] = [],
-    ownerToken: UUID? = nil
+    ownerToken: UUID? = nil,
+    expectedContextMode: AIPublishingChatContextMode? = nil,
+    expectedDraftConversation: AIChatDraftConversationExpectation? = nil
   ) async -> AIPublishingChatMessage? {
     await aiStore.sendAIChatMessage(
       text,
       draft: draft,
       imageAttachments: imageAttachments,
       contextReferences: contextReferences,
-      ownerToken: ownerToken
+      ownerToken: ownerToken,
+      expectedContextMode: expectedContextMode,
+      expectedDraftConversation: expectedDraftConversation
     )
   }
 
@@ -298,6 +304,26 @@ extension WorkbenchStore {
     await aiStore.aiChatImageAttachments(for: draft, attachmentIDs: attachmentIDs)
   }
 
+  public func aiMetadataSuggestion(for draft: ArticleDraft)
+    -> AIPublishingMetadataSuggestion?
+  {
+    aiStore.aiMetadataSuggestion(for: draft)
+  }
+
+  public func aiMetadataSuggestion(for draftID: UUID)
+    -> AIPublishingMetadataSuggestion?
+  {
+    aiStore.aiMetadataSuggestion(for: draftID)
+  }
+
+  public func isAIMetadataSuggestionRunning(for draft: ArticleDraft) -> Bool {
+    aiStore.isAIMetadataSuggestionRunning(for: draft)
+  }
+
+  public func isAIMetadataSuggestionRunning(for draftID: UUID) -> Bool {
+    aiStore.isAIMetadataSuggestionRunning(for: draftID)
+  }
+
   public func makeAttachment(
     from url: URL,
     draft: ArticleDraft,
@@ -308,6 +334,26 @@ extension WorkbenchStore {
       draft: draft,
       fileStore: fileStore ?? managedAttachmentFileStore
     )
+  }
+
+  public func aiImageTextSuggestions(for draft: ArticleDraft)
+    -> [AIPublishingImageTextSuggestion]
+  {
+    aiStore.aiImageTextSuggestions(for: draft)
+  }
+
+  public func aiImageTextSuggestions(for draftID: UUID)
+    -> [AIPublishingImageTextSuggestion]
+  {
+    aiStore.aiImageTextSuggestions(for: draftID)
+  }
+
+  public func isAIImageTextRunning(for draft: ArticleDraft) -> Bool {
+    aiStore.isAIImageTextRunning(for: draft)
+  }
+
+  public func isAIImageTextRunning(for draftID: UUID) -> Bool {
+    aiStore.isAIImageTextRunning(for: draftID)
   }
 
   public func prepareAIImageTextSuggestions(for draft: ArticleDraft) {

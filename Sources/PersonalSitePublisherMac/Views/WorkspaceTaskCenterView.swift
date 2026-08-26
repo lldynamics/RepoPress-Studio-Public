@@ -6,6 +6,7 @@ struct WorkspaceTaskCenterView: View {
   @ObservedObject private var activityStatus: WorkbenchActivityStatusFacade
   let store: WorkbenchStore
   @State private var retryingTaskID: String?
+  @State private var duplicateChargeConfirmationTask: WorkbenchTaskItem?
 
   init(store: WorkbenchStore) {
     self.store = store
@@ -41,6 +42,29 @@ struct WorkspaceTaskCenterView: View {
     }
     .frame(width: 480, height: panelHeight)
     .onExitCommand { dismiss() }
+    .confirmationDialog(
+      "重新生成可能重复计费",
+      isPresented: Binding(
+        get: { duplicateChargeConfirmationTask != nil },
+        set: { isPresented in
+          if !isPresented {
+            duplicateChargeConfirmationTask = nil
+          }
+        }
+      ),
+      titleVisibility: .visible
+    ) {
+      Button("重新生成", role: .destructive) {
+        guard let task = duplicateChargeConfirmationTask else { return }
+        duplicateChargeConfirmationTask = nil
+        beginRetry(task, confirmingPossibleDuplicateCharge: true)
+      }
+      Button("取消", role: .cancel) {
+        duplicateChargeConfirmationTask = nil
+      }
+    } message: {
+      Text("AI 已返回部分内容，软件没有自动重放请求。继续会移除这段未完成回复并重新生成，可能产生重复内容和费用。")
+    }
     .accessibilityLabel("统一任务中心")
     .accessibilityIdentifier("workspace-task-center")
   }
@@ -80,10 +104,26 @@ struct WorkspaceTaskCenterView: View {
   }
 
   private func retry(_ task: WorkbenchTaskItem) {
+    guard task.canRetry else { return }
+    if task.requiresDuplicateChargeConfirmation {
+      guard retryingTaskID == nil else { return }
+      duplicateChargeConfirmationTask = task
+      return
+    }
+    beginRetry(task)
+  }
+
+  private func beginRetry(
+    _ task: WorkbenchTaskItem,
+    confirmingPossibleDuplicateCharge: Bool = false
+  ) {
     guard task.canRetry, retryingTaskID == nil else { return }
     retryingTaskID = task.id
     Task { @MainActor in
-      await activityStatus.retryTask(task)
+      await activityStatus.retryTask(
+        task,
+        confirmingPossibleDuplicateCharge: confirmingPossibleDuplicateCharge
+      )
       retryingTaskID = nil
     }
   }

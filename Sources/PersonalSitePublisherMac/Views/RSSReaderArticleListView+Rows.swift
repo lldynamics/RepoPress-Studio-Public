@@ -5,8 +5,6 @@ import PublishingWorkbenchCore
 /// RSS 文章列表的骨架屏占位：模拟文章行，列表在后台准备时显示，
 /// 避免空白或转圈带来的跳动感。
 struct RSSArticleListSkeleton: View {
-  @State private var isPulsing = false
-
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
       ForEach(0..<8, id: \.self) { _ in
@@ -14,9 +12,6 @@ struct RSSArticleListSkeleton: View {
       }
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-    .opacity(isPulsing ? 0.55 : 1)
-    .animation(WorkbenchMotion.ambientPulse, value: isPulsing)
-    .onAppear { isPulsing = true }
     .accessibilityElement(children: .ignore)
     .accessibilityLabel("正在准备文章列表")
   }
@@ -51,35 +46,16 @@ struct RSSArticleListSkeleton: View {
 
 /// 刷新期间只保留轻量的顶部进度线，避免把正文列表推下去。
 struct RSSArticleRefreshProgressLine: View {
-  @State private var isAnimating = false
-
   var body: some View {
-    GeometryReader { geometry in
-      let segmentWidth = max(48, geometry.size.width * 0.24)
-      ZStack(alignment: .leading) {
-        Rectangle()
-          .fill(Color.accentColor.opacity(0.14))
-        Rectangle()
-          .fill(Color.accentColor.opacity(0.9))
-          .frame(width: segmentWidth)
-          .offset(x: isAnimating ? geometry.size.width : -segmentWidth)
-      }
-    }
-    .frame(height: 2)
-    .clipped()
-    .accessibilityElement(children: .ignore)
-    .accessibilityLabel("正在刷新文章列表")
-    .accessibilityIdentifier("rss-article-refresh-progress")
-    .onAppear {
-      isAnimating = true
-    }
-    .onDisappear {
-      isAnimating = false
-    }
-    .animation(
-      .linear(duration: 1.15).repeatForever(autoreverses: false),
-      value: isAnimating
-    )
+    // A stable accent line communicates the refresh state without a custom
+    // indefinitely-running animation or another state update on every frame.
+    Rectangle()
+      .fill(Color.accentColor.opacity(0.9))
+      .frame(maxWidth: .infinity)
+      .frame(height: 2)
+      .accessibilityElement(children: .ignore)
+      .accessibilityLabel("正在刷新文章列表")
+      .accessibilityIdentifier("rss-article-refresh-progress")
   }
 }
 
@@ -103,6 +79,7 @@ struct RSSArticleRow: View {
   let onToggleRead: () -> Void
   let onToggleStarred: () -> Void
   let onOpenOriginal: () -> Void
+  @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
   @State private var isHovering = false
 
   var body: some View {
@@ -127,8 +104,13 @@ struct RSSArticleRow: View {
         Circle()
           .fill(article.isRead ? Color.clear : Color.accentColor)
           .frame(width: 7, height: 7)
-          .scaleEffect(isHovering && !article.isRead ? 1.15 : 1)
-          .animation(.easeInOut(duration: 0.16), value: isHovering)
+          .scaleEffect(
+            !accessibilityReduceMotion && isHovering && !article.isRead ? 1.15 : 1
+          )
+          .animation(
+            accessibilityReduceMotion ? nil : .easeInOut(duration: 0.16),
+            value: isHovering
+          )
           .overlay {
             Circle()
               .stroke(article.isRead ? Color.secondary.opacity(0.45) : Color.clear, lineWidth: 1)
@@ -206,8 +188,7 @@ struct RSSArticleRow: View {
         articleActionButtons
           .padding(.top, 6)
           .padding(.trailing, 8)
-          .opacity(isHovering ? 1 : 0)
-          .allowsHitTesting(isHovering)
+          .opacity(isHovering ? 1 : 0.72)
       }
     }
     .background(isHovering ? Color.primary.opacity(0.04) : Color.clear)

@@ -44,10 +44,17 @@ extension PublishingStore {
     store: WorkbenchStore
   ) async -> AIPublishingRequestArtifacts {
     let package = publishPackageBuilder.build(draft: draft, profile: profile)
-    let canReuseCachedArtifacts = publishPackage?.hasSamePublishingPayload(as: package) == true
+    let currentBaseline = makeDraftPublishPreviewInputBaseline(
+      for: draft,
+      store: store
+    )
+    let cachedSnapshot = draftPublishPreviewSnapshot(for: draft.id)
+    let canReuseCachedArtifacts =
+      cachedSnapshot?.publishPackage.hasSamePublishingPayload(as: package) == true
+      && rememberedDraftPublishPreviewInputBaseline(for: draft.id) == currentBaseline
 
     let preview: LocalPublishPreview
-    if canReuseCachedArtifacts, let cachedPreview = localPublishPreview {
+    if canReuseCachedArtifacts, let cachedPreview = cachedSnapshot?.localPublishPreview {
       preview = LocalPublishPreview(
         package: package,
         fileDiffs: cachedPreview.fileDiffs,
@@ -59,7 +66,8 @@ extension PublishingStore {
     }
 
     let reviewDraft = canReuseCachedArtifacts
-      ? (remoteReviewDraft ?? remoteReviewDraftBuilder.build(package: package, profile: profile))
+      ? (cachedSnapshot?.remoteReviewDraft
+        ?? remoteReviewDraftBuilder.build(package: package, profile: profile))
       : remoteReviewDraftBuilder.build(package: package, profile: profile)
 
     return AIPublishingRequestArtifacts(

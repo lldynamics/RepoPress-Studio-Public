@@ -145,18 +145,27 @@ struct PublishDrawerView: View {
     let blockingCount = issues.filter { $0.severity == .error }.count
     let localReadiness = store.localPublishReadiness
     let singleArticlePreview = store.cachedRemotePublishPreview(for: draft)
+    let previewBranchPreview = store.remoteRepositoryDraftPreview(for: draft)
     let remotePreview = store.batchRemotePublishPreviewSnapshot
     let batchPlan = store.batchPublishPlan
+    let batchActionState = batchActionState(plan: batchPlan, preview: remotePreview)
     let canSaveLocally = blockingCount == 0
       && localReadiness?.canWrite == true
       && !store.isLocalRepositoryMutationRunning
-    let canPublishOnline = remotePreview?.canPublish == true
-      && batchPlan?.remotePublishableItems.isEmpty == false
-      && !store.isBatchPublishPlanRefreshing
-      && !store.isRemoteRepositoryPublishing
+    let canPublishOnline = PublishDrawerBatchActionPresentation.isEnabled(batchActionState)
     let canPublishCurrentArticle = singleArticlePreview?.canPublish == true
       && !store.isRemoteRepositoryChecking
       && !store.isRemoteRepositoryPublishing
+    let canPushPreviewBranch = previewBranchPreview.canPublish
+      && !store.isRemoteRepositoryChecking
+      && !store.isRemoteRepositoryPublishing
+    let singleArticleAction = PublishDrawerSingleArticleActionPresentation.make(
+      isWebsiteDraft: draft.draft
+    )
+    let previewBranchAction = PublishDrawerPreviewBranchActionPresentation.make(
+      branchName: previewBranchPreview.branchName,
+      targetBranch: previewBranchPreview.targetBranch
+    )
 
     return PublishDrawerCard(title: "选择操作", systemImage: "cursorarrow.click.2") {
       LazyVGrid(
@@ -182,39 +191,83 @@ struct PublishDrawerView: View {
         }
 
         PublishDrawerActionChoice(
-          title: String(localized: "发布所有变更"),
-          detail: String(localized: "把当前站点中所有通过检查且有变化的文章合并为一次提交和推送；执行前会显示完整文件清单。"),
-          status: batchOnlineActionStatus(
-            plan: batchPlan,
-            preview: remotePreview
-          ),
+          title: PublishDrawerBatchActionPresentation.title,
+          detail: PublishDrawerBatchActionPresentation.detail,
+          status: PublishDrawerBatchActionPresentation.status(batchActionState),
           systemImage: "globe",
           tint: WorkbenchTheme.success,
           isEnabled: canPublishOnline,
           isPrimary: true,
-          actionTitle: String(localized: "发布所有变更…"),
+          actionTitle: PublishDrawerBatchActionPresentation.actionTitle,
           actionSystemImage: "paperplane.fill",
           actionIdentifier: "publish-drawer-action-publish-all"
         ) {
           prepareAllChangesOnlinePublish()
+        }
+
+        PublishDrawerActionChoice(
+          title: previewBranchAction.title,
+          detail: previewBranchAction.detail,
+          status: previewBranchActionStatus(preview: previewBranchPreview),
+          systemImage: "arrow.triangle.branch",
+          tint: WorkbenchTheme.navigationSelection,
+          isEnabled: canPushPreviewBranch,
+          isPrimary: false,
+          actionTitle: previewBranchAction.actionTitle,
+          actionSystemImage: "arrow.up.forward.app",
+          actionIdentifier: "publish-drawer-action-preview-branch"
+        ) {
+          publishSingleArticlePreviewBranch(draft)
         }
       }
 
       Button {
         pendingSingleOnlinePublishDraft = draft
       } label: {
-        Label("仅发布当前文章…", systemImage: "doc.badge.arrow.up")
+        Label(singleArticleAction.actionTitle, systemImage: "doc.badge.arrow.up")
       }
       .buttonStyle(.link)
       .disabled(!canPublishCurrentArticle)
       .accessibilityIdentifier("publish-drawer-action-publish-current")
-      .accessibilityLabel("仅发布当前文章")
+      .accessibilityLabel(singleArticleAction.accessibilityLabel)
       .accessibilityHint(
         canPublishCurrentArticle
-          ? String(localized: "打开当前文章的最终发布确认页")
-          : String(localized: "当前文章的线上发布预览未通过")
+          ? singleArticleAction.enabledHint
+          : singleArticleAction.disabledHint
       )
+      Text(
+        String(
+          format: String(localized: "预览分支：%@"),
+          previewBranchPreview.branchName
+        )
+      )
+      .font(.caption)
+      .foregroundStyle(.secondary)
+      .textSelection(.enabled)
+      .accessibilityLabel("草稿预览分支")
+      .accessibilityValue(previewBranchPreview.branchName)
     }
+  }
+
+  private func previewBranchActionStatus(
+    preview: RemoteRepositoryPublishPreview
+  ) -> String {
+    if store.isRemoteRepositoryPublishing {
+      return String(localized: "正在推送草稿预览分支")
+    }
+    if let issue = preview.blockingIssues.first {
+      return issue.title
+    }
+    if preview.tokenAccessFailureMessage != nil {
+      return String(localized: "仓库 Token 状态读取失败")
+    }
+    if !preview.hasToken {
+      return String(localized: "请先保存仓库 Token")
+    }
+    if preview.accessCheck?.canWrite != true {
+      return String(localized: "请先确认仓库写入权限")
+    }
+    return String(localized: "可推送，不改变正式发布状态")
   }
 
   private func localActionStatus(
@@ -230,30 +283,34 @@ struct PublishDrawerView: View {
     return readiness?.writeReadiness.localizedDisplayName ?? String(localized: "正在准备")
   }
 
-  private func batchOnlineActionStatus(
+  private func batchActionState(
     plan: BatchPublishPlan?,
     preview: RemoteRepositoryPublishPreview?
-  ) -> String {
-    if store.isBatchPublishPlanRefreshing {
-      return String(localized: "正在汇总全部变更")
+  ) -> PublishDrawerBatchActionPresentation.State {
+    let owner = store.activeProfile.repoOwner.trimmedForPublishing
+    let repository = store.activeProfile.repoName.trimmedForPublishing
+    let permission: PublishDrawerBatchPermissionState
+    if let accessCheck = preview?.accessCheck {
+      permission = accessCheck.canWrite ? .writable : .readOnly
+    } else {
+      permission = .unchecked
     }
-    if store.isRemoteRepositoryPublishing {
-      return String(localized: "正在发布")
-    }
-    if let firstIssue = preview?.blockingIssues.first {
-      return firstIssue.title
-    }
-    guard let plan else {
-      return String(localized: "正在准备")
-    }
-    let count = plan.remotePublishableItems.count
-    guard count > 0 else {
-      return String(localized: "没有待发布变更")
-    }
-    return String(
-      format: String(localized: "待发布 %d 篇 · %d 个文件"),
-      count,
-      preview?.changedPaths.count ?? plan.changedFileCount
+    return PublishDrawerBatchActionPresentation.State(
+      repositoryConfigured: !owner.isEmpty && !repository.isEmpty,
+      hasToken: preview?.hasToken ?? store.repositoryTokenAvailability.hasToken,
+      tokenAccessFailureMessage: preview?.tokenAccessFailureMessage
+        ?? store.repositoryTokenAvailability.accessFailureMessage,
+      permission: permission,
+      blockingIssueTitle: preview?.blockingIssues.first?.title,
+      hasRemoteConflict: preview?.mode == .directCommit
+        && preview?.remoteRiskState == .conflict,
+      publishableArticleCount: plan?.remotePublishableItems.count,
+      draftSyncArticleCount: plan?.draftSyncCount ?? 0,
+      pendingDeletionCount: store.pendingRemoteRepositoryCleanupRequests.count,
+      changedFileCount: plan.map { preview?.changedPaths.count ?? $0.changedFileCount },
+      isPlanRefreshing: store.isBatchPublishPlanRefreshing,
+      isPermissionChecking: store.isRemoteRepositoryChecking,
+      isPublishing: store.isRemoteRepositoryPublishing
     )
   }
 
@@ -427,7 +484,9 @@ struct PublishDrawerView: View {
       await store.refreshBatchPublishPlanAsync()
       guard let preview = store.batchRemotePublishPreviewSnapshot,
             preview.canPublish,
-            store.batchPublishPlan?.remotePublishableItems.isEmpty == false else {
+            let plan = store.batchPublishPlan,
+            !plan.remotePublishableItems.isEmpty
+              || !store.pendingRemoteRepositoryCleanupRequests.isEmpty else {
         return
       }
       reviewedAllChangesPaths = Set(preview.changedPaths)
@@ -460,16 +519,24 @@ struct PublishDrawerView: View {
     }
   }
 
+  private func publishSingleArticlePreviewBranch(_ draft: ArticleDraft) {
+    let currentSection = publishingFacade.selectedSection
+    _ = publishingFacade.focusDraft(draft.id)
+    Task {
+      await store.publishSelectedDraftToPreviewBranch()
+      publishingFacade.selectSection(currentSection)
+      publishingFacade.refreshPublishPreviewInBackground(for: draft)
+      store.refreshBatchPublishPlanInBackground()
+    }
+  }
+
   @ViewBuilder
   private var allChangesOnlinePublishConfirmation: some View {
     if let preview = store.batchRemotePublishPreviewSnapshot,
        let plan = store.batchPublishPlan {
       RemotePublishConfirmationView(
         targetLabel: String(localized: "发布范围"),
-        targetTitle: String(
-          format: String(localized: "全部待发布变更（%d 篇文章）"),
-          plan.remotePublishableItems.count
-        ),
+        targetTitle: allChangesTargetTitle(plan: plan),
         preview: preview,
         reviewDraft: store.batchRemoteReviewDraft,
         isPublishing: store.isRemoteRepositoryPublishing,
@@ -502,9 +569,13 @@ struct PublishDrawerView: View {
   @ViewBuilder
   private func singleArticleOnlinePublishConfirmation(draft: ArticleDraft) -> some View {
     if let preview = store.cachedRemotePublishPreview(for: draft) {
+      let presentation = PublishDrawerSingleArticleActionPresentation.make(
+        isWebsiteDraft: draft.draft
+      )
       RemotePublishConfirmationView(
-        targetLabel: String(localized: "文章"),
+        targetLabel: draft.draft ? String(localized: "网站草稿") : String(localized: "文章"),
         targetTitle: draft.title,
+        purpose: presentation.confirmationPurpose,
         preview: preview,
         reviewDraft: store.cachedRemoteReviewDraft(for: draft),
         isPublishing: store.isRemoteRepositoryPublishing,
@@ -532,6 +603,28 @@ struct PublishDrawerView: View {
       .frame(minWidth: 420, minHeight: 260)
       .padding(WorkbenchSpacing.spacious)
     }
+  }
+
+  private func allChangesTargetTitle(plan: BatchPublishPlan) -> String {
+    let publishCount = plan.remotePublishableItems.count
+    let cleanupCount = store.pendingRemoteRepositoryCleanupRequests.count
+    if cleanupCount == 0 {
+      return String(
+        format: String(localized: "全部可发布文章（%d 篇）"),
+        publishCount
+      )
+    }
+    if publishCount == 0 {
+      return String(
+        format: String(localized: "全部待下线文章（%d 篇）"),
+        cleanupCount
+      )
+    }
+    return String(
+      format: String(localized: "发布 %d 篇并下线 %d 篇文章"),
+      publishCount,
+      cleanupCount
+    )
   }
 
 }

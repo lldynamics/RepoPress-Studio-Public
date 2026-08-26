@@ -31,7 +31,6 @@ public enum WorkspaceBackupFrequency: String, Codable, CaseIterable, Hashable, S
 public struct WorkspaceBackupScheduleSettings: Codable, Hashable, Sendable {
   public var frequency: WorkspaceBackupFrequency
   public var destinationPath: String?
-  public var destinationBookmarkData: Data?
   public var lastBackupAt: Date?
   public var lastValidationAt: Date?
   public var lastBackupPath: String?
@@ -40,7 +39,6 @@ public struct WorkspaceBackupScheduleSettings: Codable, Hashable, Sendable {
   public init(
     frequency: WorkspaceBackupFrequency = .off,
     destinationPath: String? = nil,
-    destinationBookmarkData: Data? = nil,
     lastBackupAt: Date? = nil,
     lastValidationAt: Date? = nil,
     lastBackupPath: String? = nil,
@@ -48,7 +46,6 @@ public struct WorkspaceBackupScheduleSettings: Codable, Hashable, Sendable {
   ) {
     self.frequency = frequency
     self.destinationPath = destinationPath
-    self.destinationBookmarkData = destinationBookmarkData
     self.lastBackupAt = lastBackupAt
     self.lastValidationAt = lastValidationAt
     self.lastBackupPath = lastBackupPath

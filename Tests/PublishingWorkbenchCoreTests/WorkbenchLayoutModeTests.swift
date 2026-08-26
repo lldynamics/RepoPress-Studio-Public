@@ -31,60 +31,13 @@ final class WorkbenchLayoutModeTests: XCTestCase {
 
   func testCompactWritingCanRevealInspectorByYieldingSidebar() {
     XCTAssertFalse(
-      WorkbenchLayoutMode.canManuallyRevealInspector(
-        width: 959,
-        editorDisplayMode: .edit
-      )
+      WorkbenchLayoutMode.canManuallyRevealInspector(width: 959)
     )
     XCTAssertTrue(
-      WorkbenchLayoutMode.canManuallyRevealInspector(
-        width: 960,
-        editorDisplayMode: .edit
-      )
+      WorkbenchLayoutMode.canManuallyRevealInspector(width: 960)
     )
     XCTAssertFalse(
-      WorkbenchLayoutMode.canManuallyRevealInspector(
-        width: 1180,
-        editorDisplayMode: .edit
-      )
-    )
-  }
-
-  func testSplitEditorRequiresMoreWidthBeforeShowingInspector() {
-    XCTAssertEqual(WorkbenchLayoutMode.minimumSplitInspectorWorkspaceWidth, 1580)
-    XCTAssertFalse(
-      WorkbenchLayoutMode.allowsInspector(width: 1579, editorDisplayMode: .split)
-    )
-    XCTAssertTrue(
-      WorkbenchLayoutMode.allowsInspector(width: 1580, editorDisplayMode: .split)
-    )
-    XCTAssertTrue(
-      WorkbenchLayoutMode.allowsInspector(width: 1180, editorDisplayMode: .edit)
-    )
-    XCTAssertFalse(
-      WorkbenchLayoutMode.canManuallyRevealInspector(
-        width: 1179,
-        editorDisplayMode: .split
-      )
-    )
-    XCTAssertTrue(
-      WorkbenchLayoutMode.canManuallyRevealInspector(
-        width: 1180,
-        editorDisplayMode: .split
-      )
-    )
-  }
-
-  func testNarrowSplitEditorPrefersFocusedWritingLayout() {
-    XCTAssertEqual(WorkbenchLayoutMode.minimumSplitSidebarWorkspaceWidth, 1100)
-    XCTAssertTrue(
-      WorkbenchLayoutMode.prefersFocusedWriting(width: 1099, editorDisplayMode: .split)
-    )
-    XCTAssertFalse(
-      WorkbenchLayoutMode.prefersFocusedWriting(width: 1100, editorDisplayMode: .split)
-    )
-    XCTAssertFalse(
-      WorkbenchLayoutMode.prefersFocusedWriting(width: 980, editorDisplayMode: .edit)
+      WorkbenchLayoutMode.canManuallyRevealInspector(width: 1180)
     )
   }
 

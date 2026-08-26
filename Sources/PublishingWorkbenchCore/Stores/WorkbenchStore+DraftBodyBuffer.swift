@@ -1,4 +1,5 @@
 import Foundation
+import PublishingMarkdownCore
 
 public struct DraftBodyEditorBuffer: Hashable, Sendable {
   public var draftID: UUID
@@ -136,6 +137,7 @@ extension WorkbenchStore {
       ) != ImageWorkbenchMarkdownReferenceSignature(markdown: buffer.bodyMarkdown)
     draft.bodyMarkdown = buffer.bodyMarkdown
     publishingStore.updateDraft(draft, store: self)
+    scheduleDraftWordCountRefresh(for: draftID, bodyMarkdown: buffer.bodyMarkdown)
     buffer.isDirty = false
     publishingStore.setDraftBodyEditorBuffer(buffer, for: draftID)
     invalidateBodyEditingDerivedCaches(
@@ -154,7 +156,72 @@ extension WorkbenchStore {
     draftBodyCommitTasks[draftID]?.cancel()
     draftBodyCommitTasks[draftID] = nil
     draftBodyCommitFirstStagedAt[draftID] = nil
+    draftWordCountRefreshTasks[draftID]?.cancel()
+    draftWordCountRefreshTasks[draftID] = nil
     publishingStore.removeDraftBodyEditorBuffer(for: draftID)
+  }
+
+  func scheduleDraftWordCountRefresh(for draftID: UUID, bodyMarkdown: String) {
+    draftWordCountRefreshTasks[draftID]?.cancel()
+    draftWordCountRefreshTasks[draftID] = Task { [weak self] in
+      let count = await Task.detached(priority: .utility) {
+        MarkdownWritingStatisticsService.statistics(in: bodyMarkdown).writingUnitCount
+      }.value
+      guard !Task.isCancelled, let self else { return }
+      // Do not invalidate an explicit save that is already committing the body snapshot.
+      await self.persistenceStore.waitForCurrentBackgroundSave()
+      guard !Task.isCancelled else { return }
+      self.draftWordCountRefreshTasks[draftID] = nil
+      self.publishingStore.updateDraftWordCount(
+        count,
+        for: draftID,
+        matching: bodyMarkdown,
+        store: self
+      )
+    }
+  }
+
+  func scheduleDirtyDraftWordCountRefreshes(for draftsToRefresh: [ArticleDraft]) {
+    let inputs = draftsToRefresh.compactMap { draft in
+      draft.wordCountNeedsRefresh ? (draft.id, draft.bodyMarkdown) : nil
+    }
+    guard !inputs.isEmpty else { return }
+    draftWordCountBackfillTask?.cancel()
+    draftWordCountBackfillTask = Task { [weak self] in
+      guard let self else { return }
+      for (draftID, bodyMarkdown) in inputs {
+        guard !Task.isCancelled else { return }
+        let count = await Task.detached(priority: .utility) {
+          MarkdownWritingStatisticsService.statistics(in: bodyMarkdown).writingUnitCount
+        }.value
+        guard !Task.isCancelled else { return }
+        self.publishingStore.updateDraftWordCount(
+          count,
+          for: draftID,
+          matching: bodyMarkdown,
+          store: self
+        )
+      }
+      self.draftWordCountBackfillTask = nil
+    }
+  }
+
+  func waitForPendingDraftWordCountRefreshes() async {
+    while true {
+      let refreshTasks = Array(draftWordCountRefreshTasks.values)
+      let backfillTask = draftWordCountBackfillTask
+      guard !refreshTasks.isEmpty || backfillTask != nil else { return }
+
+      for task in refreshTasks {
+        await task.value
+      }
+      await backfillTask?.value
+      await Task.yield()
+
+      if draftWordCountRefreshTasks.isEmpty && draftWordCountBackfillTask == nil {
+        return
+      }
+    }
   }
 
   private func scheduleDraftBodyCommit(for draftID: UUID) {

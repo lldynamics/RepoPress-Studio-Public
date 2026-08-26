@@ -3,6 +3,7 @@ import Foundation
 public enum RemoteRepositoryPublishMode: String, Codable, Sendable {
   case directCommit
   case reviewRequest
+  case previewBranch
 
   public var displayName: String {
     switch self {
@@ -10,7 +11,20 @@ public enum RemoteRepositoryPublishMode: String, Codable, Sendable {
       return CoreL10n.text("线上直接提交")
     case .reviewRequest:
       return CoreL10n.text("线上 PR/MR")
+    case .previewBranch:
+      return CoreL10n.text("草稿预览分支")
     }
+  }
+
+  /// Whether this operation must write to a branch dedicated to the current
+  /// package. Dedicated modes never mutate the configured target branch.
+  public var usesDedicatedBranch: Bool {
+    self == .reviewRequest || self == .previewBranch
+  }
+
+  /// Whether the operation creates or reuses a PR/MR after uploading files.
+  public var createsReview: Bool {
+    self == .reviewRequest
   }
 }
 
@@ -146,6 +160,8 @@ public struct RemoteRepositoryPublishProgress: Codable, Hashable, Sendable {
 }
 
 public struct RemoteRepositoryAccessCheck: Codable, Hashable, Sendable {
+  public static let maximumCacheAge: TimeInterval = 5 * 60
+
   public var provider: RepositoryProvider
   public var repositoryName: String
   public var apiBaseURL: String?
@@ -156,6 +172,7 @@ public struct RemoteRepositoryAccessCheck: Codable, Hashable, Sendable {
   public var tokenScopeSummary: String?
   public var minimumWritePermission: String
   public var message: String
+  public var checkedAt: Date?
 
   public init(
     provider: RepositoryProvider,
@@ -167,7 +184,8 @@ public struct RemoteRepositoryAccessCheck: Codable, Hashable, Sendable {
     permissionSummary: String? = nil,
     tokenScopeSummary: String? = nil,
     minimumWritePermission: String? = nil,
-    message: String
+    message: String,
+    checkedAt: Date = Date()
   ) {
     self.provider = provider
     self.repositoryName = repositoryName
@@ -179,6 +197,16 @@ public struct RemoteRepositoryAccessCheck: Codable, Hashable, Sendable {
     self.tokenScopeSummary = tokenScopeSummary
     self.minimumWritePermission = minimumWritePermission ?? CoreL10n.text("需要仓库写入权限。")
     self.message = message
+    self.checkedAt = checkedAt
+  }
+
+  public func isFresh(
+    at date: Date = Date(),
+    maximumAge: TimeInterval = Self.maximumCacheAge
+  ) -> Bool {
+    guard let checkedAt else { return false }
+    let age = date.timeIntervalSince(checkedAt)
+    return age >= 0 && age <= maximumAge
   }
 
   private enum CodingKeys: String, CodingKey {
@@ -192,6 +220,7 @@ public struct RemoteRepositoryAccessCheck: Codable, Hashable, Sendable {
     case tokenScopeSummary
     case minimumWritePermission
     case message
+    case checkedAt
   }
 
   public init(from decoder: Decoder) throws {
@@ -209,6 +238,7 @@ public struct RemoteRepositoryAccessCheck: Codable, Hashable, Sendable {
       ?? CoreL10n.text("需要仓库写入权限。")
     message = try container.decodeIfPresent(String.self, forKey: .message)
       ?? CoreL10n.text(canWrite ? "Token 具备写入权限。" : "Token 未确认写入权限。")
+    checkedAt = try container.decodeIfPresent(Date.self, forKey: .checkedAt)
   }
 }
 
@@ -336,6 +366,11 @@ public struct RemoteRepositoryPublishResult: Codable, Hashable, Sendable {
   public var changedPaths: [String]
   public var commitSHA: String?
   public var remoteVersionsByPath: [String: String]?
+  /// Delete paths that still exist on the target branch and are waiting for
+  /// the returned PR/MR to merge. An empty array proves that no requested
+  /// deletion remains pending review. Nil preserves compatibility with
+  /// results persisted before per-path review tracking was introduced.
+  public var reviewPendingPaths: [String]?
   public var reviewURL: String?
   public var reviewTitle: String?
 
@@ -349,6 +384,7 @@ public struct RemoteRepositoryPublishResult: Codable, Hashable, Sendable {
     changedPaths: [String],
     commitSHA: String?,
     remoteVersionsByPath: [String: String]? = nil,
+    reviewPendingPaths: [String]? = nil,
     reviewURL: String? = nil,
     reviewTitle: String? = nil
   ) {
@@ -361,12 +397,24 @@ public struct RemoteRepositoryPublishResult: Codable, Hashable, Sendable {
     self.changedPaths = changedPaths
     self.commitSHA = commitSHA
     self.remoteVersionsByPath = remoteVersionsByPath
+    self.reviewPendingPaths = reviewPendingPaths
     self.reviewURL = reviewURL
     self.reviewTitle = reviewTitle
   }
 
   public func remoteVersion(for repositoryPath: String) -> String? {
     remoteVersionsByPath?[repositoryPath.normalizedRelativePath()]?.trimmedForPublishing.nilIfEmpty
+  }
+
+  /// Paths that were already present remotely and matched the upload payload,
+  /// so the publish operation repaired the local baseline without writing a
+  /// new remote commit for them.
+  public var automaticallyAdoptedPaths: [String] {
+    let changed = Set(changedPaths.map { $0.normalizedRelativePath() })
+    let adopted = remoteVersionsByPath?.keys.map { $0.normalizedRelativePath() } ?? []
+    return adopted
+      .filter { !changed.contains($0) }
+      .sorted()
   }
 }
 
@@ -570,7 +618,7 @@ public extension RemoteRepositoryPublishResult {
   }
 
   var branchSummary: String {
-    mode == .reviewRequest
+    mode.usesDedicatedBranch
       ? "\(branchName) -> \(targetBranch)"
       : targetBranch
   }
@@ -654,7 +702,7 @@ public extension RemoteRepositoryPublishResult {
       return []
     }
 
-    let ref = mode == .reviewRequest ? branchName : targetBranch
+    let ref = mode.usesDedicatedBranch ? branchName : targetBranch
     switch provider {
     case .github:
       guard let base = secureVerificationAPIBaseURL(

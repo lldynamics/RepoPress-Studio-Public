@@ -1,3 +1,5 @@
+import PublishingWorkbenchCore
+
 enum WritingDraftListDisplayMode: String, CaseIterable, Identifiable {
   case flat
   case folders
@@ -30,6 +32,17 @@ struct WritingDraftFolderExpansionState: Equatable, Hashable {
   init<S: Sequence>(initiallyExpandedFolderIDs: S) where S.Element == String {
     userExpandedFolderIDs = Set(initiallyExpandedFolderIDs)
     transientlyRevealedFolderIDs = []
+  }
+
+  /// Applies the writing list's first-render policy to the projection roots.
+  /// Ordinary folders stay convenient to scan, while protected content does
+  /// not reveal its rows until the user opens it or navigation needs it.
+  init(defaultExpandedTopLevelNodes nodes: [DraftFolderNode]) {
+    self.init(
+      initiallyExpandedFolderIDs: nodes.compactMap { node -> String? in
+        node.kind == .protectedContent ? nil : node.id
+      }
+    )
   }
 
   /// Convenience spelling for callers whose projection already calls these

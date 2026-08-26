@@ -128,7 +128,7 @@ public struct RemotePublishRiskService: Sendable {
 
     var seenPaths: Set<String> = []
     return repositoryReport.remoteChangedFiles.compactMap { changedFile -> String? in
-      let path = Self.normalizedRepositoryPath(changedFile.displayPath)
+      let path = Self.normalizedRepositoryPath(changedFile.destinationPath)
       guard packagePaths.contains(path), seenPaths.insert(path).inserted else {
         return nil
       }
@@ -137,8 +137,7 @@ public struct RemotePublishRiskService: Sendable {
   }
 
   private static func normalizedRepositoryPath(_ path: String) -> String {
-    let displayPath = path.components(separatedBy: " -> ").last?.trimmedForPublishing ?? path.trimmedForPublishing
-    return displayPath.normalizedRelativePath()
+    return path.trimmedForPublishing.normalizedRelativePath()
   }
 
   private static func pathSummary(_ paths: [String]) -> String {

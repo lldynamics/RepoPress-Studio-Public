@@ -33,13 +33,17 @@ final class PublishPackageBuilderTests: XCTestCase {
   func testMarkdownFileCarriesExpectedRemoteSHAWhenDraftMatchesRepositoryPath() throws {
     var profile = SiteProfile.defaultProfile
     profile.markdownPathPattern = "content/posts/{slug}.md"
-    let draft = ArticleDraft(
+    var draft = ArticleDraft(
       siteProfileID: profile.id,
       title: "Imported Draft",
       slug: "imported-draft",
-      bodyMarkdown: "Long enough body content for expected remote SHA package coverage.",
+      bodyMarkdown: "Long enough body content for expected remote SHA package coverage."
+    )
+    draft.confirmRepositoryBinding(
+      profile: profile,
       repositoryPath: "content/posts/imported-draft.md",
-      repositorySHA: "remote-base-sha"
+      remoteRevision: "remote-base-sha",
+      renderedContentDigest: draft.renderedRepositoryContentDigest(profile: profile)
     )
 
     let package = PublishPackageBuilder().build(draft: draft, profile: profile)
@@ -50,13 +54,17 @@ final class PublishPackageBuilderTests: XCTestCase {
   func testMarkdownFileSkipsExpectedRemoteSHAWhenPathChanged() throws {
     var profile = SiteProfile.defaultProfile
     profile.markdownPathPattern = "content/posts/{slug}.md"
-    let draft = ArticleDraft(
+    var draft = ArticleDraft(
       siteProfileID: profile.id,
       title: "Moved Draft",
       slug: "moved-draft",
-      bodyMarkdown: "Long enough body content for moved remote SHA package coverage.",
+      bodyMarkdown: "Long enough body content for moved remote SHA package coverage."
+    )
+    draft.confirmRepositoryBinding(
+      profile: profile,
       repositoryPath: "content/posts/old-path.md",
-      repositorySHA: "old-remote-sha"
+      remoteRevision: "old-remote-sha",
+      renderedContentDigest: draft.renderedRepositoryContentDigest(profile: profile)
     )
 
     let package = PublishPackageBuilder().build(draft: draft, profile: profile)
@@ -68,6 +76,47 @@ final class PublishPackageBuilderTests: XCTestCase {
     XCTAssertEqual(package.files[1].operation, .delete)
     XCTAssertEqual(package.files[1].repositoryPath, "content/posts/old-path.md")
     XCTAssertEqual(package.files[1].expectedRemoteSHA, "old-remote-sha")
+  }
+
+  func testMarkdownFileRejectsLegacyOrMismatchedRepositoryRevision() {
+    var profile = SiteProfile.defaultProfile
+    profile.repoOwner = "owner"
+    profile.repoName = "site"
+    profile.branch = "main"
+    profile.markdownPathPattern = "content/posts/{slug}.md"
+    let legacyDraft = ArticleDraft(
+      siteProfileID: profile.id,
+      title: "Legacy",
+      slug: "legacy",
+      bodyMarkdown: "Legacy SHA has not been verified for this repository identity.",
+      repositoryPath: "content/posts/legacy.md",
+      repositorySHA: "legacy-sha"
+    )
+
+    XCTAssertNil(
+      PublishPackageBuilder().build(draft: legacyDraft, profile: profile)
+        .markdownFile?.expectedRemoteSHA
+    )
+
+    var verifiedDraft = ArticleDraft(
+      siteProfileID: profile.id,
+      title: "Verified Elsewhere",
+      slug: "verified-elsewhere",
+      bodyMarkdown: "A verified revision is still scoped to one repository identity."
+    )
+    verifiedDraft.confirmRepositoryBinding(
+      profile: profile,
+      repositoryPath: "content/posts/verified-elsewhere.md",
+      remoteRevision: "verified-sha",
+      renderedContentDigest: verifiedDraft.renderedRepositoryContentDigest(profile: profile)
+    )
+    var otherProfile = profile
+    otherProfile.repoName = "other-site"
+
+    XCTAssertNil(
+      PublishPackageBuilder().build(draft: verifiedDraft, profile: otherProfile)
+        .markdownFile?.expectedRemoteSHA
+    )
   }
 
   func testImageFileCarriesExpectedRemoteSHAForSafeRepublish() throws {

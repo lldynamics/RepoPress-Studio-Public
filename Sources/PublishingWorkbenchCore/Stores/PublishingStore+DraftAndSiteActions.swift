@@ -7,9 +7,6 @@ extension PublishingStore {
     }
     selectedDraftID = id
     store.setAIPublishingAssistantPresented(false)
-    if selectedSection == .writing {
-      editorDisplayMode = .edit
-    }
     store.restoreSEOSocialPreviewSnapshotForCurrentSelection()
     store.refreshPreflightForSelection()
     store.scheduleImageWorkbenchReportRefresh()
@@ -43,7 +40,7 @@ extension PublishingStore {
     store.runPreflight()
     store.scheduleImageWorkbenchReportRefresh(for: draft)
     store.save()
-    store.scheduleSiteDraftFileAutosave(for: draft, immediate: true)
+    store.scheduleDraftWordCountRefresh(for: draft.id, bodyMarkdown: draft.bodyMarkdown)
     return draft
   }
 
@@ -81,7 +78,12 @@ extension PublishingStore {
       bodyUTF16Count: bodyUTF16Count
     )
     if activeEditorSelection != selection {
+      let previousDraftID = activeEditorSelection?.draftID
       activeEditorSelection = selection
+      if let previousDraftID, previousDraftID != draftID {
+        activeEditorSelectionDidChange.send(previousDraftID)
+      }
+      activeEditorSelectionDidChange.send(draftID)
     }
   }
 
@@ -92,7 +94,9 @@ extension PublishingStore {
     guard draftID == nil || activeEditorSelection.draftID == draftID else {
       return
     }
+    let clearedDraftID = activeEditorSelection.draftID
     self.activeEditorSelection = nil
+    activeEditorSelectionDidChange.send(clearedDraftID)
   }
 
   public func activeEditorSelectionRange(for draft: ArticleDraft) -> NSRange? {
@@ -111,7 +115,7 @@ extension PublishingStore {
     store.runPreflight()
     store.scheduleImageWorkbenchReportRefresh(for: draft)
     store.save()
-    store.scheduleSiteDraftFileAutosave(for: draft, immediate: true)
+    store.scheduleDraftWordCountRefresh(for: draft.id, bodyMarkdown: draft.bodyMarkdown)
   }
 
   public func createGeneralDraft(store: WorkbenchStore) {
@@ -126,6 +130,7 @@ extension PublishingStore {
     store.runPreflight()
     store.scheduleImageWorkbenchReportRefresh(for: draft)
     store.save()
+    store.scheduleDraftWordCountRefresh(for: draft.id, bodyMarkdown: draft.bodyMarkdown)
   }
 
   public func setDraftListContentScope(_ scope: DraftListContentScope, store: WorkbenchStore) {
@@ -169,12 +174,27 @@ extension PublishingStore {
       store.restoreSEOSocialPreviewSnapshotForCurrentSelection()
     }
     if automaticallyRefreshPreflightOnEdit {
-      store.schedulePreflightRefresh()
+      store.schedulePreflightRefresh(for: updated.id)
     }
     if hasUnsavedDraftChange {
       store.scheduleAutosave()
       store.scheduleSiteDraftFileAutosave(for: updated)
     }
+  }
+
+  func updateDraftWordCount(
+    _ count: Int,
+    for draftID: UUID,
+    matching bodyMarkdown: String,
+    store: WorkbenchStore
+  ) {
+    guard let index = drafts.firstIndex(where: { $0.id == draftID }) else { return }
+    var draft = drafts[index]
+    guard draft.wordCountNeedsRefresh,
+      draft.storeWordCount(count, for: bodyMarkdown)
+    else { return }
+    drafts[index] = draft
+    store.scheduleAutosave()
   }
 
   public func deleteSelectedDraft(store: WorkbenchStore) {
@@ -185,7 +205,7 @@ extension PublishingStore {
   public func deleteDraft(id draftID: UUID, store: WorkbenchStore) {
     guard let draft = drafts.first(where: { $0.id == draftID }) else { return }
     let deletedSelectedDraft = selectedDraftID == draftID
-    moveDraftToRecycleBin(draft)
+    moveDraftToRecycleBin(draft, store: store)
     drafts.removeAll { $0.id == draftID }
     draftNavigationHistory.remove(draftID)
     if deletedSelectedDraft || !drafts.contains(where: { $0.id == selectedDraftID }) {
@@ -435,7 +455,9 @@ extension PublishingStore {
     if let activeEditorSelection,
       removedDraftIDs.contains(activeEditorSelection.draftID)
     {
+      let clearedDraftID = activeEditorSelection.draftID
       self.activeEditorSelection = nil
+      activeEditorSelectionDidChange.send(clearedDraftID)
     }
     activeProfileID = profiles[0].id
     for index in drafts.indices

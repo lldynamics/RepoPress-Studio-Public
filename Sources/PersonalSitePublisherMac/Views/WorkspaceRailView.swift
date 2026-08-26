@@ -3,7 +3,7 @@ import SwiftUI
 
 struct WorkspaceTaskNavigation: View {
   let store: WorkbenchStore
-  @ObservedObject private var shell: WorkbenchShellFeatureFacade
+  let selectedSection: WorkspaceSection
   @Binding var contentHealthFilter: ContentHealthContextFilter
   let onSelectSection: (WorkspaceSection) -> Void
 
@@ -11,11 +11,12 @@ struct WorkspaceTaskNavigation: View {
 
   init(
     store: WorkbenchStore,
+    selectedSection: WorkspaceSection,
     contentHealthFilter: Binding<ContentHealthContextFilter>,
     onSelectSection: @escaping (WorkspaceSection) -> Void
   ) {
     self.store = store
-    _shell = ObservedObject(wrappedValue: store.shell)
+    self.selectedSection = selectedSection
     _contentHealthFilter = contentHealthFilter
     self.onSelectSection = onSelectSection
   }
@@ -46,7 +47,7 @@ struct WorkspaceTaskNavigation: View {
     prominence: NavigationButtonProminence
   ) -> some View {
     let title = workspaceNavigationLocalizedString(section.displayNameLocalizationKey)
-    let isSelected = shell.selectedSection == section
+    let isSelected = selectedSection == section
     let isHovered = hoveredSection == section
 
     return Button {

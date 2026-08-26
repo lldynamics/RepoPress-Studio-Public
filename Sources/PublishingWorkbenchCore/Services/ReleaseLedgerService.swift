@@ -1,13 +1,27 @@
 import Foundation
+import PublishingGitCore
 
 public struct ReleaseLedgerService {
   public init() {}
 
   public func ledger(
     releaseRecords: [ReleaseRecord],
-    deploymentStatusSnapshots: [UUID: DeploymentStatusSnapshot]
+    deploymentStatusSnapshots: [UUID: DeploymentStatusSnapshot],
+    repositoryHistory: RepositoryReleaseHistorySnapshot? = nil,
+    repositoryProfile: SiteProfile? = nil
   ) -> ReleaseLedger {
-    let entries = releaseRecords.map { record in
+    let projectedRecords: [ReleaseRecord]
+    if let repositoryHistory, let repositoryProfile {
+      projectedRecords = ReleaseLedgerGitProjection().records(
+        legacyRecords: releaseRecords,
+        history: repositoryHistory,
+        profile: repositoryProfile
+      )
+    } else {
+      projectedRecords = releaseRecords
+    }
+
+    let entries = projectedRecords.map { record in
       let deploymentStatus = relevantDeploymentStatus(
         deploymentStatusSnapshots[record.id],
         for: record

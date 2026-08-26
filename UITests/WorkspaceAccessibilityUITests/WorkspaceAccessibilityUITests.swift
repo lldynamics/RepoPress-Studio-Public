@@ -13,14 +13,14 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
 
     let appURL = try runtimeAppURL()
     application = XCUIApplication(url: appURL)
-    let testDataRoot = try testDataRoot(for: appURL)
-    knowledgeLibraryRootURL = testDataRoot.url
+    let temporaryTestDataRoot = testDataRoot()
+    knowledgeLibraryRootURL = temporaryTestDataRoot
       .appendingPathComponent("PersonalSitePublisherMac-AccessibilityUITests", isDirectory: true)
       .appendingPathComponent(UUID().uuidString, isDirectory: true)
-    if !testDataRoot.isTargetAppContainer {
-      try FileManager.default.createDirectory(
-        at: knowledgeLibraryRootURL, withIntermediateDirectories: true)
-    }
+    try FileManager.default.createDirectory(
+      at: knowledgeLibraryRootURL,
+      withIntermediateDirectories: true
+    )
     screenshotRuntimeRootURL =
       knowledgeLibraryRootURL
       .appendingPathComponent("runtime", isDirectory: true)
@@ -114,6 +114,51 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
       menu.waitForExistence(timeout: 2),
       "Escape must dismiss the slash command menu."
     )
+  }
+
+  /// Focused responsive/accessibility smoke: this deliberately uses the
+  /// smallest supported window and a large Dynamic Type size, then exercises
+  /// the existing editor keyboard path. It is not a substitute for a manual
+  /// VoiceOver run.
+  func testWritingMinimumWindowAndAccessibilityTypeKeepsEditorAndToolbarsAccessible() throws {
+    launchApplication(
+      surface: "writing",
+      screenshotContentSize: CGSize(width: 900, height: 620),
+      dynamicTypeSize: "accessibility3"
+    )
+
+    let window = application.windows.firstMatch
+    XCTAssertGreaterThanOrEqual(window.frame.width, 900)
+    XCTAssertGreaterThanOrEqual(window.frame.height, 620)
+
+    let requiredIdentifiers = [
+      "workspace-sidebar",
+      "writing-draft-list",
+      "markdown-document-editor",
+      "markdown-editor-toolbar",
+      "markdown-formatting-toolbar",
+      "markdown-zen-mode-toggle",
+      "markdown-outline-button",
+    ]
+    for identifier in requiredIdentifiers {
+      assertUniqueIdentifier(identifier)
+      let control = element(identifier: identifier)
+      XCTAssertFalse(
+        control.label.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+        "Accessibility label must not be empty for \(identifier)."
+      )
+      XCTAssertFalse(control.frame.isEmpty, "Accessibility frame must exist for \(identifier).")
+    }
+
+    let editor = element(identifier: "markdown-document-editor")
+    editor.click()
+    application.typeKey(XCUIKeyboardKey.tab.rawValue, modifierFlags: [])
+    XCTAssertTrue(
+      element(identifier: "markdown-formatting-toolbar").waitForExistence(timeout: 3),
+      "Tab navigation must keep the formatting toolbar in the accessibility tree."
+    )
+    application.typeKey(.escape, modifierFlags: [])
+    XCTAssertTrue(editor.exists, "Escape must not remove the editor from the workspace.")
   }
 
   func testRSSReaderUsesTheMainWorkspaceFramework() throws {
@@ -405,129 +450,6 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
         "\(removedSectionTitle) must remain outside the publish drawer."
       )
     }
-  }
-
-  func testAppStoreEnglishMenusExposeFreeBYOKAIAndReopenMainWindow() throws {
-    let appURL = try runtimeAppURL()
-    let infoPlistURL = appURL.appendingPathComponent("Contents/Info.plist")
-    let infoData = try Data(contentsOf: infoPlistURL)
-    let info = try XCTUnwrap(
-      try PropertyListSerialization.propertyList(from: infoData, format: nil) as? [String: Any]
-    )
-    guard info["PersonalSitePublisherDistributionChannel"] as? String == "AppStore" else {
-      throw XCTSkip("This review regression test only applies to the App Store distribution.")
-    }
-
-    launchApplication(
-      surface: "writing",
-      additionalLaunchArguments: [
-        "-AppleLanguages", "(en)",
-        "-AppleLocale", "en_US",
-      ]
-    )
-    application.activate()
-
-    XCTAssertTrue(
-      application.menuBars.menuBarItems["RepoPress Studio"].waitForExistence(timeout: 15),
-      "The App Store build must use RepoPress Studio as the visible app and menu name."
-    )
-
-    let goMenuItem = application.menuBars.menuBarItems["Go"]
-    XCTAssertTrue(
-      goMenuItem.waitForExistence(timeout: 15),
-      "The English Go menu did not appear."
-    )
-    goMenuItem.click()
-    XCTAssertTrue(
-      application.menuItems["Command Palette and Quick Open"].waitForExistence(timeout: 5),
-      "The Go menu command titles were not localized to English."
-    )
-
-    let goMenu = goMenuItem.menus.firstMatch
-    XCTAssertTrue(
-      goMenu.waitForExistence(timeout: 5),
-      "The Go menu contents were unavailable."
-    )
-    let goMenuLabels = goMenu.menuItems.allElementsBoundByIndex
-      .map(\.label)
-      .filter { !$0.isEmpty }
-    let mixedGoMenuLabels = goMenuLabels.filter(containsCJK)
-    XCTAssertTrue(
-      mixedGoMenuLabels.isEmpty,
-      "The English Go menu contains Chinese labels: \(mixedGoMenuLabels.joined(separator: ", "))."
-    )
-
-    application.typeKey(.escape, modifierFlags: [])
-    let publishMenuItem = application.menuBars.menuBarItems["Publish"]
-    XCTAssertTrue(
-      publishMenuItem.waitForExistence(timeout: 5),
-      "The English Publish menu did not appear."
-    )
-    publishMenuItem.click()
-    let publishMenuLabels = publishMenuItem.menus.firstMatch.menuItems.allElementsBoundByIndex
-      .map(\.label)
-      .filter { !$0.isEmpty }
-    let mixedPublishMenuLabels = publishMenuLabels.filter(containsCJK)
-    XCTAssertTrue(
-      mixedPublishMenuLabels.isEmpty,
-      "The English Publish menu contains Chinese labels: \(mixedPublishMenuLabels.joined(separator: ", "))."
-    )
-
-    application.typeKey(.escape, modifierFlags: [])
-    let aiMenuItem = application.menuBars.menuBarItems["AI"]
-    XCTAssertTrue(
-      aiMenuItem.waitForExistence(timeout: 5),
-      "The App Store build must expose the free BYOK AI menu."
-    )
-    aiMenuItem.click()
-    let openAIChatItem = application.menuItems["Open AI Chat"]
-    let closeAIChatItem = application.menuItems["Close AI Chat"]
-    let aiChatDeadline = Date().addingTimeInterval(5)
-    while !openAIChatItem.exists && !closeAIChatItem.exists && Date() < aiChatDeadline {
-      RunLoop.current.run(until: Date().addingTimeInterval(0.1))
-    }
-    XCTAssertTrue(
-      openAIChatItem.exists || closeAIChatItem.exists,
-      "The App Store AI menu must expose free BYOK AI chat."
-    )
-    let aiMenuLabels = aiMenuItem.menus.firstMatch.menuItems.allElementsBoundByIndex
-      .map(\.label)
-      .filter { !$0.isEmpty }
-    let mixedAIMenuLabels = aiMenuLabels.filter(containsCJK)
-    XCTAssertTrue(
-      mixedAIMenuLabels.isEmpty,
-      "The English AI menu contains Chinese labels: \(mixedAIMenuLabels.joined(separator: ", "))."
-    )
-
-    application.typeKey(.escape, modifierFlags: [])
-    let mainWindow = application.windows.firstMatch
-    let closeButton = mainWindow.buttons[XCUIIdentifierCloseWindow]
-    XCTAssertTrue(
-      closeButton.waitForExistence(timeout: 5),
-      "The main workbench window close button was unavailable."
-    )
-    closeButton.click()
-
-    let windowMenu = application.menuBars.menuBarItems["Window"]
-    XCTAssertTrue(
-      windowMenu.waitForExistence(timeout: 5),
-      "The Window menu was unavailable after closing the main window."
-    )
-    windowMenu.click()
-    let reopenItem = application.menuItems["Show RepoPress Studio"]
-    XCTAssertTrue(
-      reopenItem.waitForExistence(timeout: 5),
-      "Window > Show RepoPress Studio is missing."
-    )
-    reopenItem.click()
-    let reopenDeadline = Date().addingTimeInterval(10)
-    while !application.windows.firstMatch.isHittable, Date() < reopenDeadline {
-      RunLoop.current.run(until: Date().addingTimeInterval(0.1))
-    }
-    XCTAssertTrue(
-      application.windows.firstMatch.isHittable,
-      "Window > Show RepoPress Studio did not reopen the main workbench window."
-    )
   }
 
   func testMenuMutationsAndMainWindowRecoveryRemainStable() throws {
@@ -1279,7 +1201,9 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
 
   private func launchApplication(
     surface: String?,
-    additionalLaunchArguments: [String] = []
+    additionalLaunchArguments: [String] = [],
+    screenshotContentSize: CGSize? = nil,
+    dynamicTypeSize: String? = nil
   ) {
     application.terminate()
     application.launchArguments =
@@ -1307,6 +1231,30 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
       ] {
         application.launchEnvironment.removeValue(forKey: key)
       }
+    }
+    if let screenshotContentSize {
+      application.launchEnvironment[
+        "PERSONAL_SITE_PUBLISHER_SCREENSHOT_CONTENT_WIDTH"
+      ] = String(screenshotContentSize.width)
+      application.launchEnvironment[
+        "PERSONAL_SITE_PUBLISHER_SCREENSHOT_CONTENT_HEIGHT"
+      ] = String(screenshotContentSize.height)
+    } else {
+      application.launchEnvironment.removeValue(
+        forKey: "PERSONAL_SITE_PUBLISHER_SCREENSHOT_CONTENT_WIDTH"
+      )
+      application.launchEnvironment.removeValue(
+        forKey: "PERSONAL_SITE_PUBLISHER_SCREENSHOT_CONTENT_HEIGHT"
+      )
+    }
+    if let dynamicTypeSize {
+      application.launchEnvironment[
+        "PERSONAL_SITE_PUBLISHER_SCREENSHOT_DYNAMIC_TYPE_SIZE"
+      ] = dynamicTypeSize
+    } else {
+      application.launchEnvironment.removeValue(
+        forKey: "PERSONAL_SITE_PUBLISHER_SCREENSHOT_DYNAMIC_TYPE_SIZE"
+      )
     }
     // Settings task sheets may refresh or prune automatic backup fixtures on
     // appearance. Keep all Foundation preferences and temporary demo data in
@@ -1508,7 +1456,7 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
         .deletingLastPathComponent()
         .deletingLastPathComponent()
         .deletingLastPathComponent()
-        .appendingPathComponent("dist/PersonalSitePublisherMac.app", isDirectory: true)
+        .appendingPathComponent("dist/RepoPress Studio.app", isDirectory: true)
         .standardizedFileURL
     }
     guard FileManager.default.fileExists(atPath: appURL.path) else {
@@ -1518,33 +1466,7 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
     return appURL
   }
 
-  private func testDataRoot(for appURL: URL) throws -> (url: URL, isTargetAppContainer: Bool) {
-    let infoPlistURL = appURL.appendingPathComponent("Contents/Info.plist")
-    let data = try Data(contentsOf: infoPlistURL)
-    guard
-      let info = try PropertyListSerialization.propertyList(from: data, format: nil)
-        as? [String: Any],
-      let bundleIdentifier = info["CFBundleIdentifier"] as? String
-    else {
-      throw CocoaError(.propertyListReadCorrupt)
-    }
-    guard info["PersonalSitePublisherDistributionChannel"] as? String == "AppStore" else {
-      return (FileManager.default.temporaryDirectory, false)
-    }
-
-    let runtimeHome =
-      (ProcessInfo.processInfo.environment["PERSONAL_SITE_PUBLISHER_RUNTIME_HOME"]
-      ?? Bundle(for: Self.self).object(
-        forInfoDictionaryKey: "PersonalSitePublisherRuntimeHome"
-      ) as? String)
-      .map { URL(fileURLWithPath: $0, isDirectory: true) }
-      ?? FileManager.default.homeDirectoryForCurrentUser
-    return (
-      runtimeHome
-        .appendingPathComponent("Library/Containers", isDirectory: true)
-        .appendingPathComponent(bundleIdentifier, isDirectory: true)
-        .appendingPathComponent("Data/tmp", isDirectory: true),
-      true
-    )
+  private func testDataRoot() -> URL {
+    FileManager.default.temporaryDirectory
   }
 }

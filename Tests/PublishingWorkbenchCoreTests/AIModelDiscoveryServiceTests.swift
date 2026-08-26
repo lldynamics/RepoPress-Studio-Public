@@ -711,41 +711,6 @@ final class AIModelDiscoveryServiceTests: XCTestCase {
     XCTAssertNil(noNetworkTransport.lastRequest)
   }
 
-  func testCacheExpiresEntriesAndEvictsLeastRecentlyUsedKeys() async {
-    let cache = AIModelDiscoveryCache(ttl: 10, maximumEntryCount: 1)
-    let now = Date(timeIntervalSince1970: 10_000)
-    let modelA = [AIModelDescriptor(id: "model-a")]
-    let modelB = [AIModelDescriptor(id: "model-b")]
-
-    _ = await cache.insert(modelA, for: "opaque-a", now: now)
-    let stillFresh = await cache.value(for: "opaque-a", now: now.addingTimeInterval(9))
-    XCTAssertEqual(stillFresh, modelA)
-    _ = await cache.insert(modelB, for: "opaque-b", now: now.addingTimeInterval(9))
-    let evictedA = await cache.value(for: "opaque-a", now: now.addingTimeInterval(9))
-    XCTAssertNil(evictedA)
-    let freshB = await cache.value(for: "opaque-b", now: now.addingTimeInterval(9))
-    XCTAssertEqual(freshB, modelB)
-    let expiredB = await cache.value(for: "opaque-b", now: now.addingTimeInterval(19))
-    XCTAssertNil(expiredB)
-  }
-
-  func testCacheGenerationDoesNotRemoveConcurrentReplacement() async throws {
-    let cache = AIModelDiscoveryCache()
-    let first = [AIModelDescriptor(id: "first-refresh")]
-    let replacement = [AIModelDescriptor(id: "replacement-refresh")]
-
-    let optionalFirstToken = await cache.insert(first, for: "same-account")
-    let firstToken = try XCTUnwrap(optionalFirstToken)
-    _ = await cache.insert(replacement, for: "same-account")
-    await cache.removeValue(for: "same-account", ifGeneration: firstToken)
-
-    let cachedReplacement = await cache.value(for: "same-account")?.map(\.id)
-    XCTAssertEqual(
-      cachedReplacement,
-      ["replacement-refresh"]
-    )
-  }
-
   func testCancellationDuringPaginationDoesNotCachePartialModels() async throws {
     let endpoint = URL(string: "https://api.openai.com/v1/models")!
     let transport = ModelDiscoveryStubTransport(

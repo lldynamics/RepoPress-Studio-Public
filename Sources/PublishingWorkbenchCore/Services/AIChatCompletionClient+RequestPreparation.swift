@@ -1,5 +1,6 @@
 import CryptoKit
 import Foundation
+import PublishingAICore
 
 extension AIChatCompletionClient {
   public func complete(
@@ -365,6 +366,84 @@ extension AIChatCompletionClient {
       endpointURL: prepared.endpointURL,
       encodedBody: try canonicalEncodedBody(for: normalized, config: config),
       mode: .nonStreaming,
+      purpose: prepared.purpose,
+      capabilitySupportSnapshot: prepared.capabilitySupportSnapshot,
+      capabilityEvidenceSnapshot: prepared.capabilityEvidenceSnapshot,
+      configurationFingerprint: prepared.configurationFingerprint,
+      authorizationExpiresAt: prepared.authorizationExpiresAt
+    )
+  }
+
+  /// Creates a fresh, independently consumable streaming request for a
+  /// bounded plain-text continuation. The original request remains consumed;
+  /// this request carries the same configuration/capability snapshots and,
+  /// importantly, the same authorization deadline.
+  func makePartialTextContinuationPrepared(
+    from prepared: AIPreparedAIChatCompletionRequest,
+    checkpoint: String,
+    config: AIProviderConfig
+  ) throws -> AIPreparedAIChatCompletionRequest {
+    guard !checkpoint.isEmpty else {
+      throw AIChatCompletionClientError.emptyContent
+    }
+
+    var normalized = prepared.normalizedRequest
+    let continuationInstruction = AIChatMessage(
+      role: "user",
+      content: "Continue directly from the assistant checkpoint above. Do not repeat any text already shown; write only the missing continuation."
+    )
+    let tokenBudget = AIChatRequestTokenBudget(model: normalized.model)
+    let initialOutputBudget = tokenBudget.fit(
+      messages: [],
+      requestedOutputTokens: normalized.maximumOutputTokens
+    ).outputTokenBudget
+    let continuationOverhead = tokenBudget.tokenCount(of: [
+      AIChatMessage(role: "assistant", content: ""),
+      continuationInstruction,
+    ])
+    let boundedCheckpoint = tokenBudget.fitTextSuffix(
+      checkpoint,
+      maximumTokens: max(
+        1,
+        tokenBudget.contextWindow
+          - tokenBudget.safetyMargin
+          - initialOutputBudget
+          - continuationOverhead
+          - 32
+      )
+    )
+    let continuationMessages = [
+      AIChatMessage(role: "assistant", content: boundedCheckpoint),
+      continuationInstruction,
+    ]
+    let continuationTokens = tokenBudget.tokenCount(of: continuationMessages)
+    let boundedOriginal = tokenBudget.fit(
+      messages: normalized.messages,
+      requestedOutputTokens: normalized.maximumOutputTokens,
+      additionalPromptTokens: continuationTokens
+    )
+    guard boundedOriginal.fitsContextWindow else {
+      throw AIChatCompletionClientError.requestContextWindowExceeded(
+        contextWindow: boundedOriginal.contextWindow
+      )
+    }
+    normalized.messages = boundedOriginal.messages + continuationMessages
+    normalized.maximumOutputTokens = boundedOriginal.outputTokenBudget
+    // A continuation is explicitly plain-text recovery. Never carry the
+    // original tool protocol into this new request, even if the first stream
+    // happened not to emit a tool delta.
+    normalized.tools = nil
+    normalized.toolChoice = nil
+    normalized.responseFormat = nil
+    normalized.stream = true
+    normalized.streamOptions = AIChatStreamOptions(includeUsage: true)
+
+    return AIPreparedAIChatCompletionRequest(
+      normalizedRequest: normalized,
+      endpointIdentity: prepared.endpointIdentity,
+      endpointURL: prepared.endpointURL,
+      encodedBody: try canonicalEncodedBody(for: normalized, config: config),
+      mode: .streaming,
       purpose: prepared.purpose,
       capabilitySupportSnapshot: prepared.capabilitySupportSnapshot,
       capabilityEvidenceSnapshot: prepared.capabilityEvidenceSnapshot,

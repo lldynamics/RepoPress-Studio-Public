@@ -147,9 +147,7 @@ public struct DraftOwnershipTransferService: Sendable {
     var targetDraft = source
     if let targetProfile {
       targetDraft.assignToSite(targetProfile.id)
-      targetDraft.repositoryPath = nil
-      targetDraft.repositorySHA = nil
-      targetDraft.repositoryImportFingerprint = nil
+      targetDraft.detachFromRepository()
     }
     let targetMarkdownPath = targetProfile.map { $0.markdownPath(for: targetDraft).normalizedRelativePath() }
     let targetPermalink = targetProfile.map {

@@ -52,6 +52,13 @@ extension WorkbenchStore {
     deploymentStore.updateDeploymentPollingSettings(settings, store: self)
   }
 
+  public func updateDeploymentPollingSettings(
+    _ settings: DeploymentPollingSettings,
+    for profileID: UUID
+  ) {
+    deploymentStore.updateDeploymentPollingSettings(settings, for: profileID, store: self)
+  }
+
   @discardableResult
   public func tickDeploymentPolling(now: Date = Date()) async -> Bool {
     await deploymentStore.tickDeploymentPolling(store: self, now: now)

@@ -13,11 +13,12 @@ public final class WorkbenchImageWorkbenchFeatureFacade: ObservableObject {
     // repository mutation redraw image controls.
     observeValue(store.publishingStore.$imageWorkbenchReport)
     observeValue(store.publishingStore.$imageActionMessage)
+    observeValue(store.publishingStore.$imageInspectorFocusRequest)
     observeValue(store.$imageWorkbenchInputRevision)
     observeValue(store.aiWorkspaceStore.$aiTokenAvailability)
     observeValue(store.aiWorkspaceStore.$aiImageTextSuggestionDraftID)
     observeValue(store.aiWorkspaceStore.$aiImageTextSuggestions)
-    observeValue(store.aiWorkspaceStore.$isAIImageTextRunning)
+    observeValue(store.aiStore.$aiImageTextSuggestionRunningDraftIDs)
     observeValue(store.imageStore.$isImageBatchProcessing)
     observeValue(store.imageStore.$imageBatchProgress)
     observeValue(store.imageStore.$isSiteSummaryLoading)
@@ -32,6 +33,10 @@ public final class WorkbenchImageWorkbenchFeatureFacade: ObservableObject {
     get { store.imageActionMessage }
   }
 
+  public var imageInspectorFocusRequest: ImageInspectorFocusRequest? {
+    store.imageInspectorFocusRequest
+  }
+
   public var suggestions: [AIPublishingImageTextSuggestion] {
     get { store.aiImageTextSuggestions }
   }
@@ -41,7 +46,10 @@ public final class WorkbenchImageWorkbenchFeatureFacade: ObservableObject {
   }
 
   public var isGeneratingSuggestions: Bool {
-    get { store.isAIImageTextRunning }
+    get {
+      guard let draftID = store.selectedDraftID else { return false }
+      return store.isAIImageTextRunning(for: draftID)
+    }
   }
 
   public var aiTokenAvailability: KeychainTokenAvailability {

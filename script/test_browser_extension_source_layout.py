@@ -44,12 +44,12 @@ def run(*arguments: str) -> None:
         raise AssertionError(result.stdout)
 
 
-for browser in ("chrome", "safari", "firefox"):
+for browser in ("chrome", "firefox"):
     run("--browser", browser, "--check")
 
 with tempfile.TemporaryDirectory(prefix="browser-extension-source-layout-") as directory:
     output_root = Path(directory)
-    for browser in ("chrome", "safari", "firefox"):
+    for browser in ("chrome", "firefox"):
         output = output_root / browser
         run("--browser", browser, "--output-dir", str(output))
         actual_files = {

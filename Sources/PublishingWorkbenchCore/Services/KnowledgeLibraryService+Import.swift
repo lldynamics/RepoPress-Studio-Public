@@ -68,6 +68,19 @@ extension KnowledgeLibraryService {
     return KnowledgeImportPreview(sourceName: finalURL.absoluteString, candidates: [candidate])
   }
 
+  public func makeRSSImportPreview(article: RSSArticle) async throws -> KnowledgeImportPreview {
+    let service = self
+    let task = Task.detached(priority: .userInitiated) {
+      try Task.checkCancellation()
+      return try service.makeRSSImportPreviewSynchronously(article: article)
+    }
+    return try await withTaskCancellationHandler {
+      try await task.value
+    } onCancel: {
+      task.cancel()
+    }
+  }
+
   public func makeBrowserImportPreview(
     capture: KnowledgeBrowserCapture
   ) async throws -> KnowledgeImportPreview {
@@ -92,6 +105,43 @@ extension KnowledgeLibraryService {
 
     let candidate = try fileCandidate(sourceURL, options: options)
     return KnowledgeImportPreview(sourceName: sourceURL.lastPathComponent, candidates: [candidate])
+  }
+
+  func makeRSSImportPreviewSynchronously(article: RSSArticle) throws -> KnowledgeImportPreview {
+    let contentHTML = article.contentHTML.trimmingCharacters(in: .whitespacesAndNewlines)
+    let summaryHTML = article.summaryHTML.trimmingCharacters(in: .whitespacesAndNewlines)
+    let snapshotHTML = article.webPageSnapshotHTML?
+      .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    let cachedHTML = !contentHTML.isEmpty
+      ? article.contentHTML
+      : !summaryHTML.isEmpty
+      ? article.summaryHTML
+      : snapshotHTML
+    guard !cachedHTML.isEmpty else {
+      throw KnowledgeLibraryError.emptyContent(
+        article.title.nilIfEmpty ?? CoreL10n.text("RSS 文章")
+      )
+    }
+
+    let sourceName = article.link?.host?.nilIfEmpty ?? "RSS"
+    var importedCandidate = try candidate(
+      data: Data(cachedHTML.utf8),
+      sourceName: sourceName,
+      sourceURL: article.link,
+      fileExtension: "html",
+      preferredKind: .article,
+      sourceModifiedAt: article.fetchedAt
+    )
+    importedCandidate.title = article.title.nilIfEmpty ?? importedCandidate.title
+    importedCandidate.authors = article.author?.nilIfEmpty.map { [$0] } ?? []
+    importedCandidate.summary = article.readableSummary
+    importedCandidate.tags = article.tags
+    importedCandidate.capturedText = article.readableText.nilIfEmpty
+
+    return KnowledgeImportPreview(
+      sourceName: "RSS · \(importedCandidate.title)",
+      candidates: [importedCandidate]
+    )
   }
 
   func makeImportPreviewSynchronously(

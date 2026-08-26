@@ -1,4 +1,5 @@
 import Foundation
+import PublishingDomainContracts
 
 public struct SiteProfile: Codable, Hashable, Identifiable, Sendable {
   public static let defaultProfileID = UUID(uuid: (
@@ -18,7 +19,6 @@ public struct SiteProfile: Codable, Hashable, Identifiable, Sendable {
   public var repositoryProvider: RepositoryProvider
   public var repositoryBaseURL: String
   public var localRepositoryRootPath: String
-  public var localRepositoryBookmarkData: Data?
   public var repoOwner: String
   public var repoName: String
   public var branch: String
@@ -64,7 +64,6 @@ public struct SiteProfile: Codable, Hashable, Identifiable, Sendable {
     repositoryProvider: RepositoryProvider = .github,
     repositoryBaseURL: String = RepositoryProvider.github.defaultBaseURL,
     localRepositoryRootPath: String = "",
-    localRepositoryBookmarkData: Data? = nil,
     repoOwner: String = "",
     repoName: String = "",
     branch: String = "main",
@@ -105,7 +104,6 @@ public struct SiteProfile: Codable, Hashable, Identifiable, Sendable {
     self.repositoryProvider = repositoryProvider
     self.repositoryBaseURL = repositoryBaseURL
     self.localRepositoryRootPath = localRepositoryRootPath
-    self.localRepositoryBookmarkData = localRepositoryBookmarkData
     self.repoOwner = repoOwner
     self.repoName = repoName
     self.branch = branch
@@ -206,6 +204,20 @@ public struct SiteProfile: Codable, Hashable, Identifiable, Sendable {
         includeCoverInFrontMatter: true,
         slugValidationRule: .lowercaseKebab
       )
+    case .vitePress:
+      return SitePublishingDefaults(
+        siteKind: .vitePress,
+        frontMatterStyle: .yaml,
+        contentRoot: "docs/posts",
+        assetRoot: "docs/public",
+        markdownPathPattern: "docs/posts/{slug}.md",
+        imagePathPattern: "docs/public/images/{year}/{filename}",
+        publicImagePathPattern: "/images/{year}/{filename}",
+        dateFormat: "yyyy-MM-dd",
+        includeDraftFlagInFrontMatter: true,
+        includeCoverInFrontMatter: true,
+        slugValidationRule: .lowercaseKebab
+      )
     case .hexo:
       return SitePublishingDefaults(
         siteKind: .hexo,
@@ -257,45 +269,9 @@ public struct SiteProfile: Codable, Hashable, Identifiable, Sendable {
   }
 
   public var resolvedLocalRepositoryRootURL: URL? {
-    if let bookmarkedURL = resolvedLocalRepositoryBookmarkURL {
-      return bookmarkedURL
-    }
-
     let trimmed = localRepositoryRootPath.trimmedForPublishing
     guard !trimmed.isEmpty else { return nil }
-    return URL(fileURLWithPath: trimmed, isDirectory: true)
-  }
-
-  public var hasLocalRepositoryBookmark: Bool {
-    localRepositoryBookmarkData != nil
-  }
-
-  private var resolvedLocalRepositoryBookmarkURL: URL? {
-    guard let bookmarkData = localRepositoryBookmarkData else {
-      return nil
-    }
-
-    var isStale = false
-    if let url = try? URL(
-      resolvingBookmarkData: bookmarkData,
-      options: [.withSecurityScope, .withoutUI],
-      relativeTo: nil,
-      bookmarkDataIsStale: &isStale
-    ), !isStale {
-      return url
-    }
-
-    isStale = false
-    if let url = try? URL(
-      resolvingBookmarkData: bookmarkData,
-      options: [.withoutUI],
-      relativeTo: nil,
-      bookmarkDataIsStale: &isStale
-    ), !isStale {
-      return url
-    }
-
-    return nil
+    return URL(fileURLWithPath: trimmed, isDirectory: true).standardizedFileURL
   }
 
   public var repositoryDisplayName: String {
@@ -309,34 +285,14 @@ public struct SiteProfile: Codable, Hashable, Identifiable, Sendable {
 
   @discardableResult
   public mutating func rememberLocalRepositoryRoot(_ url: URL) -> Bool {
-    let standardizedURL = url.standardizedFileURL
-    localRepositoryRootPath = standardizedURL.path
-
-    do {
-      localRepositoryBookmarkData = try standardizedURL.bookmarkData(
-        options: [.withSecurityScope],
-        includingResourceValuesForKeys: nil,
-        relativeTo: nil
-      )
-      return true
-    } catch {
-      localRepositoryBookmarkData = nil
-      return false
-    }
+    localRepositoryRootPath = url.standardizedFileURL.path
+    return true
   }
 
   public func withLocalRepositoryRootAccess<T>(_ operation: (URL) throws -> T) rethrows -> T? {
     guard let rootURL = resolvedLocalRepositoryRootURL else {
       return nil
     }
-
-    let didStartAccessing = rootURL.startAccessingSecurityScopedResource()
-    defer {
-      if didStartAccessing {
-        rootURL.stopAccessingSecurityScopedResource()
-      }
-    }
-
     return try operation(rootURL)
   }
 
@@ -417,45 +373,5 @@ public struct SiteProfile: Codable, Hashable, Identifiable, Sendable {
       .replacingOccurrences(of: "{titleSlug}", with: titleSlug)
       .replacingOccurrences(of: "{filename}", with: filename ?? "")
       .normalizedRelativePath()
-  }
-}
-
-public struct SitePublishingDefaults: Codable, Hashable, Sendable {
-  public var siteKind: SiteKind
-  public var frontMatterStyle: FrontMatterStyle
-  public var contentRoot: String
-  public var assetRoot: String
-  public var markdownPathPattern: String
-  public var imagePathPattern: String
-  public var publicImagePathPattern: String
-  public var dateFormat: String
-  public var includeDraftFlagInFrontMatter: Bool
-  public var includeCoverInFrontMatter: Bool
-  public var slugValidationRule: SiteSlugValidationRule
-
-  public init(
-    siteKind: SiteKind,
-    frontMatterStyle: FrontMatterStyle,
-    contentRoot: String,
-    assetRoot: String,
-    markdownPathPattern: String,
-    imagePathPattern: String,
-    publicImagePathPattern: String,
-    dateFormat: String,
-    includeDraftFlagInFrontMatter: Bool,
-    includeCoverInFrontMatter: Bool,
-    slugValidationRule: SiteSlugValidationRule
-  ) {
-    self.siteKind = siteKind
-    self.frontMatterStyle = frontMatterStyle
-    self.contentRoot = contentRoot
-    self.assetRoot = assetRoot
-    self.markdownPathPattern = markdownPathPattern
-    self.imagePathPattern = imagePathPattern
-    self.publicImagePathPattern = publicImagePathPattern
-    self.dateFormat = dateFormat
-    self.includeDraftFlagInFrontMatter = includeDraftFlagInFrontMatter
-    self.includeCoverInFrontMatter = includeCoverInFrontMatter
-    self.slugValidationRule = slugValidationRule
   }
 }

@@ -120,29 +120,35 @@ extension ReleaseHistoryDetailView {
           deploymentPostPublishChecklist(deploymentStatus)
 
           ForEach(deploymentStatus.signals) { signal in
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-              Image(systemName: signal.level.systemImage)
-                .foregroundStyle(statusForeground(signal.level))
-                .frame(width: 16)
-              Text(signal.title)
-                .font(.callout.weight(.medium))
-              Text(signal.message)
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-              Spacer()
-              if let urlText = signal.urlText,
-                 let url = URL(string: urlText) {
-                Button {
-                  ExternalURLOpener.open(url)
-                } label: {
-                  Label("打开信号", systemImage: "arrow.up.right.square")
+            VStack(alignment: .leading, spacing: 8) {
+              HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Image(systemName: signal.level.systemImage)
+                  .foregroundStyle(statusForeground(signal.level))
+                  .frame(width: 16)
+                Text(signal.title)
+                  .font(.callout.weight(.medium))
+                Text(signal.message)
+                  .font(.callout)
+                  .foregroundStyle(.secondary)
+                  .fixedSize(horizontal: false, vertical: true)
+                Spacer()
+                if let urlText = signal.urlText,
+                   let url = URL(string: urlText) {
+                  Button {
+                    ExternalURLOpener.open(url)
+                  } label: {
+                    Label("打开信号", systemImage: "arrow.up.right.square")
+                  }
+                  .buttonStyle(.bordered)
+                  .help("打开部署信号")
+                  .accessibilityLabel("打开部署信号")
+                  .accessibilityValue(signal.title)
+                  .accessibilityIdentifier("release-record-\(record.id)-open-signal-\(signal.id)")
                 }
-                .buttonStyle(.bordered)
-                .help("打开部署信号")
-                .accessibilityLabel("打开部署信号")
-                .accessibilityValue(signal.title)
-                .accessibilityIdentifier("release-record-\(record.id)-open-signal-\(signal.id)")
+              }
+
+              if !signal.logExcerpt.isEmpty {
+                deploymentLogExcerpt(signal.logExcerpt)
               }
             }
           }
@@ -222,6 +228,90 @@ extension ReleaseHistoryDetailView {
     .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("release-record-\(record.id)")
+  }
+
+  private func deploymentLogExcerpt(_ entries: [DeploymentLogEntry]) -> some View {
+    let orderedEntries = entries.sorted { lhs, rhs in
+      deploymentLogPriority(lhs.level) > deploymentLogPriority(rhs.level)
+    }
+    let primaryFailure = orderedEntries.first(where: { $0.level == .error })
+
+    return DisclosureGroup {
+      VStack(alignment: .leading, spacing: 7) {
+        ForEach(orderedEntries) { entry in
+          HStack(alignment: .top, spacing: 7) {
+            Image(systemName: entry.level.systemImage)
+              .foregroundStyle(deploymentLogForeground(entry.level))
+              .frame(width: 15)
+            VStack(alignment: .leading, spacing: 2) {
+              HStack(spacing: 6) {
+                Text(entry.source)
+                  .font(.caption.weight(.medium))
+                  .foregroundStyle(.secondary)
+                if let stepName = entry.stepName?.nilIfEmpty {
+                  Text(stepName)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .workbenchTruncatedIdentity(stepName)
+                }
+                if let locationText = entry.locationText {
+                  Text(locationText)
+                    .font(.caption.monospaced())
+                    .foregroundStyle(.secondary)
+                    .workbenchTruncatedIdentity(locationText)
+                }
+              }
+              Text(entry.message)
+                .font(.caption.monospaced())
+                .textSelection(.enabled)
+                .fixedSize(horizontal: false, vertical: true)
+                .lineLimit(12)
+            }
+            Spacer(minLength: 0)
+          }
+        }
+      }
+      .padding(.top, 6)
+    } label: {
+      HStack(alignment: .firstTextBaseline, spacing: 7) {
+        Label("构建日志摘录", systemImage: "doc.text.magnifyingglass")
+          .font(.caption.weight(.semibold))
+        Text("\(orderedEntries.count) 条")
+          .font(.caption.monospacedDigit())
+          .foregroundStyle(.secondary)
+        if let primaryFailure {
+          Text("首条失败：\(primaryFailure.message)")
+            .font(.caption.monospaced())
+            .foregroundStyle(WorkbenchTheme.risk)
+            .lineLimit(2)
+            .textSelection(.enabled)
+        }
+        Spacer(minLength: 0)
+      }
+    }
+    .accessibilityIdentifier("release-deployment-log-excerpt")
+  }
+
+  private func deploymentLogPriority(_ level: DeploymentLogLevel) -> Int {
+    switch level {
+    case .error:
+      return 3
+    case .warning:
+      return 2
+    case .info:
+      return 1
+    }
+  }
+
+  private func deploymentLogForeground(_ level: DeploymentLogLevel) -> Color {
+    switch level {
+    case .error:
+      return WorkbenchTheme.risk
+    case .warning:
+      return WorkbenchTheme.warning
+    case .info:
+      return .secondary
+    }
   }
 
   private func releaseRecordStatusBadges(_ entry: ReleaseLedgerEntry) -> some View {

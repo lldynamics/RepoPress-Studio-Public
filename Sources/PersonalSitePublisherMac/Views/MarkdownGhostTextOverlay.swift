@@ -63,29 +63,12 @@ final class MarkdownGhostTextOverlayView: NSView {
       return convert(windowRect, from: nil)
     }
 
-    guard let layoutManager = textView.layoutManager else {
-      return nil
-    }
-    let glyphCount = layoutManager.numberOfGlyphs
-    guard glyphCount > 0 else {
-      return NSRect(
-        x: textView.textContainerOrigin.x,
-        y: textView.textContainerOrigin.y,
-        width: 1,
-        height: fontLineHeight(for: textView)
-      )
-    }
-    let glyphIndex = min(clampedCursor, glyphCount - 1)
-    let lineRect = layoutManager.lineFragmentRect(
-      forGlyphAt: glyphIndex,
-      effectiveRange: nil
-    )
-    let glyphLocation = layoutManager.location(forGlyphAt: glyphIndex)
+    guard documentLength == 0 else { return nil }
     return NSRect(
-      x: textView.textContainerOrigin.x + glyphLocation.x,
-      y: textView.textContainerOrigin.y + lineRect.minY,
+      x: textView.textContainerOrigin.x,
+      y: textView.textContainerOrigin.y,
       width: 1,
-      height: lineRect.height
+      height: fontLineHeight(for: textView)
     )
   }
 

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import ctypes
 import dataclasses
 import json
 import os
@@ -13,25 +14,28 @@ import subprocess
 import sys
 import threading
 import time
+from collections.abc import Collection
 from pathlib import Path
 
 
-ALLOWED_TARGETS = (
-    "PersonalSitePublisherMacTests",
-    "PublishingWorkbenchCoreTests",
-)
 MAC_TARGET = "PersonalSitePublisherMacTests"
 CORE_TARGET = "PublishingWorkbenchCoreTests"
-CACHE_SUITE = "WorkbenchImageTwoTierCacheTests"
 SETTINGS_SUITE = "SettingsSearchAndSavePresentationTests"
-# These tests launch a real child process and keep a streaming reader alive.
-# Run each method in its own xctest host so older XCTest runtimes cannot strand
-# an entire multi-suite batch.
-CORE_CASE_ISOLATED_SUITES = ("CodexAppServerClientTests",)
+WEB_CONTENT_SECURITY_SUITE = "WebContentNetworkSecurityTests"
+# These tests either launch a real child process with a streaming reader or
+# install process-global URL loading hooks. Run each method in its own xctest
+# host so one leaked continuation or global protocol registration cannot
+# strand an entire multi-suite batch.
+CORE_CASE_ISOLATED_SUITES = (
+    "AIModelDiscoveryServiceTests",
+    "CodexAppServerClientTests",
+)
 MAC_BATCH_MAX_SUITES = 4
 MAC_BATCH_MAX_TESTS = 60
 CORE_BATCH_MAX_SUITES = 12
 CORE_BATCH_MAX_TESTS = 150
+LEAF_BATCH_MAX_SUITES = 16
+LEAF_BATCH_MAX_TESTS = 200
 SWIFT_CACHE_ENVIRONMENT_KEYS = (
     "HOME",
     "XDG_CACHE_HOME",
@@ -39,7 +43,7 @@ SWIFT_CACHE_ENVIRONMENT_KEYS = (
     "SWIFT_MODULE_CACHE_PATH",
 )
 INVENTORY_PATTERN = re.compile(
-    r"^(PersonalSitePublisherMacTests|PublishingWorkbenchCoreTests)\."
+    r"^([^\.\s/]+)\."
     r"([A-Za-z_][A-Za-z0-9_]*)/([A-Za-z_][A-Za-z0-9_]*)(\(\))?$"
 )
 XCTEST_COUNT_PATTERN = re.compile(r"Executed\s+(\d+)\s+tests?")
@@ -47,11 +51,45 @@ SWIFT_TESTING_COUNT_PATTERN = re.compile(r"Test run with\s+(\d+)\s+tests?")
 
 ACTIVE_PROCESS: subprocess.Popen[str] | None = None
 ACTIVE_PROCESS_GROUPS: set[int] = set()
+ACTIVE_PROCESS_DESCENDANTS: set[int] = set()
+ACTIVE_PROCESS_IDENTITIES: dict[int, tuple[str, str]] = {}
 TERMINATION_GRACE_SECONDS = 2.0
 PROCESS_POLL_INTERVAL_SECONDS = 0.05
 PROCESS_SNAPSHOT_TIMEOUT_SECONDS = 0.25
 DEFAULT_SHARD_RETRIES = 1
 MAX_SHARD_RETRIES = 1
+
+
+class _ProcBSDInfo(ctypes.Structure):
+    """The stable identity fields from macOS sys/proc_info.h."""
+
+    _fields_ = [
+        ("pbi_flags", ctypes.c_uint32),
+        ("pbi_status", ctypes.c_uint32),
+        ("pbi_xstatus", ctypes.c_uint32),
+        ("pbi_pid", ctypes.c_uint32),
+        ("pbi_ppid", ctypes.c_uint32),
+        ("pbi_uid", ctypes.c_uint32),
+        ("pbi_gid", ctypes.c_uint32),
+        ("pbi_ruid", ctypes.c_uint32),
+        ("pbi_rgid", ctypes.c_uint32),
+        ("pbi_svuid", ctypes.c_uint32),
+        ("pbi_svgid", ctypes.c_uint32),
+        ("rfu_1", ctypes.c_uint32),
+        ("pbi_comm", ctypes.c_char * 16),
+        ("pbi_name", ctypes.c_char * 32),
+        ("pbi_nfiles", ctypes.c_uint32),
+        ("pbi_pgid", ctypes.c_uint32),
+        ("pbi_pjobc", ctypes.c_uint32),
+        ("e_tdev", ctypes.c_uint32),
+        ("e_tpgid", ctypes.c_uint32),
+        ("pbi_nice", ctypes.c_int32),
+        ("pbi_start_tvsec", ctypes.c_uint64),
+        ("pbi_start_tvusec", ctypes.c_uint64),
+    ]
+
+
+_LIBPROC: ctypes.CDLL | None | bool = None
 
 
 @dataclasses.dataclass(frozen=True)
@@ -117,6 +155,153 @@ def atomic_write_json(path: Path, payload: dict[str, object]) -> None:
     os.replace(temporary, path)
 
 
+def libproc_library() -> ctypes.CDLL | None:
+    """Load macOS libproc once; return None on non-macOS or unavailable hosts."""
+
+    global _LIBPROC
+    if _LIBPROC is False:
+        return None
+    if isinstance(_LIBPROC, ctypes.CDLL):
+        return _LIBPROC
+    if sys.platform != "darwin":
+        _LIBPROC = False
+        return None
+    try:
+        library = ctypes.CDLL("/usr/lib/libproc.dylib", use_errno=True)
+        library.proc_listchildpids.argtypes = [
+            ctypes.c_int,
+            ctypes.c_void_p,
+            ctypes.c_int,
+        ]
+        library.proc_listchildpids.restype = ctypes.c_int
+        library.proc_pidinfo.argtypes = [
+            ctypes.c_int,
+            ctypes.c_int,
+            ctypes.c_uint64,
+            ctypes.c_void_p,
+            ctypes.c_int,
+        ]
+        library.proc_pidinfo.restype = ctypes.c_int
+        library.proc_pidpath.argtypes = [
+            ctypes.c_int,
+            ctypes.c_void_p,
+            ctypes.c_uint32,
+        ]
+        library.proc_pidpath.restype = ctypes.c_int
+    except (AttributeError, OSError):
+        _LIBPROC = False
+        return None
+    _LIBPROC = library
+    return library
+
+
+def native_child_process_ids(parent_pid: int) -> set[int] | None:
+    """Return direct children through libproc, or None when unavailable."""
+
+    library = libproc_library()
+    if library is None:
+        return None
+    item_size = ctypes.sizeof(ctypes.c_int)
+    capacity = item_size * 16
+    for _ in range(4):
+        buffer = ctypes.create_string_buffer(capacity)
+        result = library.proc_listchildpids(
+            parent_pid,
+            ctypes.cast(buffer, ctypes.c_void_p),
+            capacity,
+        )
+        if result < 0:
+            return set()
+        # `proc_listchildpids` returns a count of PIDs, while its input
+        # capacity is expressed in bytes.  A one-child probe on macOS returns
+        # 1 (not sizeof(pid_t)); keep the units explicit before sizing the
+        # ctypes view and retrying a truncated result.
+        count = result
+        required_bytes = count * item_size
+        # A full buffer may be a truncation as well as an exact fit; grow once
+        # more so a busy runner cannot silently lose the last child slot.
+        if required_bytes >= capacity:
+            capacity = required_bytes + item_size * 4
+            continue
+        if count == 0:
+            return set()
+        values = (ctypes.c_int * count).from_buffer(buffer)
+        return {int(value) for value in values if int(value) > 0}
+    return set()
+
+
+def native_descendant_process_ids(root_pid: int) -> set[int] | None:
+    """Recursively discover descendants without invoking an external `ps`."""
+
+    if libproc_library() is None:
+        return None
+    discovered: set[int] = set()
+    pending = [root_pid]
+    while pending:
+        parent_pid = pending.pop()
+        child_ids = native_child_process_ids(parent_pid)
+        if child_ids is None:
+            return None
+        for child_pid in child_ids:
+            if child_pid in discovered:
+                continue
+            discovered.add(child_pid)
+            pending.append(child_pid)
+    return discovered
+
+
+def native_process_group_id(process_id: int) -> int | None:
+    try:
+        return os.getpgid(process_id)
+    except (ProcessLookupError, PermissionError, OSError):
+        return None
+
+
+def native_process_identity(process_id: int) -> tuple[str, str] | None:
+    """Return a PID-reuse-resistant start token from proc_pidinfo or /proc."""
+
+    library = libproc_library()
+    if library is not None:
+        info = _ProcBSDInfo()
+        result = library.proc_pidinfo(
+            process_id,
+            3,  # PROC_PIDTBSDINFO
+            0,
+            ctypes.byref(info),
+            ctypes.sizeof(info),
+        )
+        if result >= ctypes.sizeof(info):
+            return (
+                "libproc-start",
+                f"{int(info.pbi_start_tvsec)}:{int(info.pbi_start_tvusec)}",
+            )
+
+    stat_path = Path(f"/proc/{process_id}/stat")
+    try:
+        stat_fields = stat_path.read_text(encoding="utf-8").rsplit(")", 1)[1].split()
+    except (OSError, IndexError):
+        return None
+    # After the comm field, index 19 is field 22 (process start ticks).
+    if len(stat_fields) > 19:
+        return "proc-start", stat_fields[19]
+    return None
+
+
+def native_process_path(process_id: int) -> str | None:
+    library = libproc_library()
+    if library is None:
+        return None
+    buffer = ctypes.create_string_buffer(4096)
+    result = library.proc_pidpath(
+        process_id,
+        ctypes.cast(buffer, ctypes.c_void_p),
+        len(buffer),
+    )
+    if result <= 0:
+        return None
+    return buffer.value.decode("utf-8", errors="replace")
+
+
 def process_snapshot() -> list[tuple[int, int, int, str]]:
     ps_binary = os.environ.get("PS_BIN", "/bin/ps")
     try:
@@ -157,20 +342,51 @@ def descendant_processes(
     return descendants
 
 
-def tracked_process_groups(root_pid: int) -> set[int]:
+def record_process_groups(
+    root_pid: int,
+    process_groups: set[int],
+    process_ids: set[int] | None = None,
+    process_identities: dict[int, tuple[str, str]] | None = None,
+) -> None:
     snapshot = process_snapshot()
-    groups = {root_pid}
-    groups.update(row[2] for row in descendant_processes(root_pid, snapshot))
-    return {group for group in groups if group > 0}
+    descendants = descendant_processes(root_pid, snapshot)
+    observed_ids = {row[0] for row in descendants}
+    process_groups.add(root_pid)
+    process_groups.update(row[2] for row in descendants if row[2] > 0)
 
+    native_ids = native_descendant_process_ids(root_pid)
+    if native_ids is not None:
+        observed_ids.update(native_ids)
+        for process_id in native_ids:
+            process_group_id = native_process_group_id(process_id)
+            if process_group_id is not None and process_group_id > 0:
+                process_groups.add(process_group_id)
 
-def record_process_groups(root_pid: int, process_groups: set[int]) -> None:
-    process_groups.update(tracked_process_groups(root_pid))
+    if process_ids is not None:
+        process_ids.update(observed_ids)
+    if process_identities is not None:
+        ps_commands = {row[0]: row[3] for row in descendants}
+        for process_id in observed_ids:
+            identity = native_process_identity(process_id)
+            if identity is None and process_id in ps_commands:
+                identity = ("ps-command", ps_commands[process_id])
+            if identity is not None:
+                process_identities.setdefault(process_id, identity)
 
 
 def process_group_exists(process_group_id: int) -> bool:
     try:
         os.killpg(process_group_id, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+def process_exists(process_id: int) -> bool:
+    try:
+        os.kill(process_id, 0)
     except ProcessLookupError:
         return False
     except PermissionError:
@@ -184,29 +400,55 @@ def terminate_process_groups(
     grace_seconds: float,
     *,
     refresh_groups: bool = True,
+    process_ids: set[int] | None = None,
+    process_identities: dict[int, tuple[str, str]] | None = None,
 ) -> None:
     groups = set(process_groups)
+    descendants = set(process_ids or ())
+    descendants.add(process.pid)
+    identities = dict(process_identities or {})
     if refresh_groups:
-        groups.update(tracked_process_groups(process.pid))
-    for process_group_id in sorted(groups, reverse=True):
-        try:
-            os.killpg(process_group_id, signal.SIGTERM)
-        except (ProcessLookupError, PermissionError):
-            pass
+        record_process_groups(process.pid, groups, descendants, identities)
+
+    def identity_matches(process_id: int) -> bool:
+        expected = identities.get(process_id)
+        if expected is None:
+            return process_id == process.pid
+        current = native_process_identity(process_id)
+        if current is None:
+            return False
+        return current == expected
+
+    def signal_process_tree(signum: int) -> None:
+        # A XCTest host can call setsid/setpgrp after discovery. Signal each
+        # exact descendant PID as well as the observed session groups; this is
+        # scoped to this runner's process tree and never uses process names.
+        for process_id in sorted(descendants, reverse=True):
+            if not identity_matches(process_id):
+                continue
+            try:
+                os.kill(process_id, signum)
+            except (ProcessLookupError, PermissionError):
+                pass
+        for process_group_id in sorted(groups, reverse=True):
+            try:
+                os.killpg(process_group_id, signum)
+            except (ProcessLookupError, PermissionError):
+                pass
+
+    signal_process_tree(signal.SIGTERM)
 
     deadline = time.monotonic() + grace_seconds
     while time.monotonic() < deadline:
-        if not any(process_group_exists(group) for group in groups):
+        if refresh_groups:
+            record_process_groups(process.pid, groups, descendants, identities)
+        if not any(process_exists(process_id) for process_id in descendants) and not any(
+            process_group_exists(group) for group in groups
+        ):
             break
-        time.sleep(0.05)
+        time.sleep(PROCESS_POLL_INTERVAL_SECONDS)
 
-    for process_group_id in sorted(groups, reverse=True):
-        if not process_group_exists(process_group_id):
-            continue
-        try:
-            os.killpg(process_group_id, signal.SIGKILL)
-        except (ProcessLookupError, PermissionError):
-            pass
+    signal_process_tree(signal.SIGKILL)
     try:
         process.wait(timeout=1)
     except subprocess.TimeoutExpired:
@@ -214,6 +456,7 @@ def terminate_process_groups(
 
 
 def forwarded_signal(signum: int, _frame: object) -> None:
+    global ACTIVE_PROCESS_DESCENDANTS, ACTIVE_PROCESS_IDENTITIES
     process = ACTIVE_PROCESS
     if process is not None:
         # The outer release gate allows five seconds before SIGKILL.  Avoid a
@@ -225,6 +468,8 @@ def forwarded_signal(signum: int, _frame: object) -> None:
             ACTIVE_PROCESS_GROUPS,
             TERMINATION_GRACE_SECONDS,
             refresh_groups=False,
+            process_ids=ACTIVE_PROCESS_DESCENDANTS,
+            process_identities=ACTIVE_PROCESS_IDENTITIES,
         )
     raise SystemExit(128 + signum)
 
@@ -249,9 +494,25 @@ def parse_xctest_pids(
     return sorted(set(matches))
 
 
-def capture_timeout_sample(root_pid: int, sample_path: Path) -> None:
+def capture_timeout_sample(
+    root_pid: int,
+    sample_path: Path,
+    process_ids: set[int] | None = None,
+) -> None:
     sample_path.parent.mkdir(parents=True, exist_ok=True)
     pids = parse_xctest_pids(process_snapshot(), root_pid)
+    if not pids and process_ids:
+        for process_id in sorted(process_ids):
+            if process_id == root_pid:
+                continue
+            process_path = native_process_path(process_id)
+            if process_path and is_xctest_command(process_path):
+                pids.append(process_id)
+        if not pids:
+            # libproc can identify the live descendant even when its executable
+            # path is hidden by a shebang or a restricted `ps`; use it rather
+            # than claiming that no descendant exists.
+            pids = sorted(pid for pid in process_ids if pid != root_pid)
     if not pids:
         sample_path.write_text(
             f"No descendant .xctest process found for Swift process {root_pid}.\n",
@@ -284,7 +545,10 @@ def run_child(
     echo_stdout: bool,
     environment: dict[str, str] | None = None,
 ) -> ProcessResult:
-    global ACTIVE_PROCESS, ACTIVE_PROCESS_GROUPS
+    global ACTIVE_PROCESS
+    global ACTIVE_PROCESS_GROUPS
+    global ACTIVE_PROCESS_DESCENDANTS
+    global ACTIVE_PROCESS_IDENTITIES
 
     log_path.parent.mkdir(parents=True, exist_ok=True)
     if sample_path.exists():
@@ -316,6 +580,11 @@ def run_child(
 
         ACTIVE_PROCESS = process
         ACTIVE_PROCESS_GROUPS = {process.pid}
+        ACTIVE_PROCESS_DESCENDANTS = set()
+        ACTIVE_PROCESS_IDENTITIES = {}
+        root_identity = native_process_identity(process.pid)
+        if root_identity is not None:
+            ACTIVE_PROCESS_IDENTITIES[process.pid] = root_identity
 
         def pump(stream: object, destination: object, capture: bool, echo: bool) -> None:
             if stream is None:
@@ -351,7 +620,12 @@ def run_child(
                 # The xctest host can detach into a new session.  Record every
                 # observed descendant group before waiting so a later leader
                 # exit cannot hide it from cleanup.
-                record_process_groups(process.pid, ACTIVE_PROCESS_GROUPS)
+                record_process_groups(
+                    process.pid,
+                    ACTIVE_PROCESS_GROUPS,
+                    ACTIVE_PROCESS_DESCENDANTS,
+                    ACTIVE_PROCESS_IDENTITIES,
+                )
                 remaining = deadline - time.monotonic()
                 if remaining <= 0:
                     timed_out = True
@@ -359,8 +633,17 @@ def run_child(
                     with log_lock:
                         log_file.write(timeout_message)
                     print(timeout_message, end="", file=sys.stderr)
-                    record_process_groups(process.pid, ACTIVE_PROCESS_GROUPS)
-                    capture_timeout_sample(process.pid, sample_path)
+                    record_process_groups(
+                        process.pid,
+                        ACTIVE_PROCESS_GROUPS,
+                        ACTIVE_PROCESS_DESCENDANTS,
+                        ACTIVE_PROCESS_IDENTITIES,
+                    )
+                    capture_timeout_sample(
+                        process.pid,
+                        sample_path,
+                        set(ACTIVE_PROCESS_DESCENDANTS),
+                    )
                     break
                 try:
                     return_code = process.wait(
@@ -368,18 +651,29 @@ def run_child(
                     )
                     # A successful leader exit can still leave an already
                     # observed detached xctest group behind.
-                    record_process_groups(process.pid, ACTIVE_PROCESS_GROUPS)
+                    record_process_groups(
+                        process.pid,
+                        ACTIVE_PROCESS_GROUPS,
+                        ACTIVE_PROCESS_DESCENDANTS,
+                        ACTIVE_PROCESS_IDENTITIES,
+                    )
                     break
                 except subprocess.TimeoutExpired:
                     continue
         finally:
             terminate_process_groups(
-                process, set(ACTIVE_PROCESS_GROUPS), TERMINATION_GRACE_SECONDS
+                process,
+                set(ACTIVE_PROCESS_GROUPS),
+                TERMINATION_GRACE_SECONDS,
+                process_ids=set(ACTIVE_PROCESS_DESCENDANTS),
+                process_identities=dict(ACTIVE_PROCESS_IDENTITIES),
             )
             stdout_thread.join(timeout=2)
             stderr_thread.join(timeout=2)
             ACTIVE_PROCESS = None
             ACTIVE_PROCESS_GROUPS = set()
+            ACTIVE_PROCESS_DESCENDANTS = set()
+            ACTIVE_PROCESS_IDENTITIES = {}
 
     return ProcessResult(
         return_code=return_code,
@@ -399,20 +693,18 @@ def manifest_test_targets(package_path: Path) -> list[str]:
         fail("Package.swift declares no test targets in the supported form")
     if len(targets) != len(set(targets)):
         fail("Package.swift contains duplicate test target declarations")
-    if set(targets) != set(ALLOWED_TARGETS):
-        fail(
-            "unexpected Swift test target set: expected "
-            f"{list(ALLOWED_TARGETS)}, found {targets}"
-        )
     return targets
 
 
-def parse_inventory(output: str) -> list[TestSpec]:
+def parse_inventory(output: str, allowed_targets: Collection[str]) -> list[TestSpec]:
     rows = [line.strip() for line in output.splitlines() if line.strip()]
     if not rows:
         fail("swift test list returned an empty inventory")
     if len(rows) != len(set(rows)):
         fail("swift test list returned duplicate test specifications")
+    allowed_target_set = set(allowed_targets)
+    if not allowed_target_set:
+        fail("Package.swift declares no test targets in the supported form")
 
     tests: list[TestSpec] = []
     for row in rows:
@@ -420,6 +712,11 @@ def parse_inventory(output: str) -> list[TestSpec]:
         if match is None:
             fail(f"unsupported or unknown Swift test inventory row: {row}")
         target, suite, method, parentheses = match.groups()
+        if target not in allowed_target_set:
+            fail(
+                "unknown Swift test target in inventory: "
+                f"{target} (not declared in Package.swift)"
+            )
         tests.append(
             TestSpec(
                 raw=row,
@@ -432,22 +729,38 @@ def parse_inventory(output: str) -> list[TestSpec]:
     return sorted(tests, key=lambda test: test.raw)
 
 
-def load_minimum_counts(path: Path) -> dict[str, int]:
+def load_minimum_counts(
+    path: Path, expected_targets: Collection[str]
+) -> dict[str, int]:
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as error:
         fail(f"cannot read Swift test count baselines: {error}")
     minimums = payload.get("swiftTestMinimumCountsByTarget")
-    if not isinstance(minimums, dict) or set(minimums) != set(ALLOWED_TARGETS):
-        fail("quality baselines must define every allowed Swift test target and no others")
+    expected_target_set = set(expected_targets)
+    if not isinstance(minimums, dict) or set(minimums) != expected_target_set:
+        found_targets = sorted(minimums) if isinstance(minimums, dict) else []
+        fail(
+            "quality baselines must define every manifest Swift test target and no "
+            f"others: expected {sorted(expected_target_set)}, found {found_targets}"
+        )
     if not all(isinstance(value, int) and not isinstance(value, bool) and value > 0 for value in minimums.values()):
         fail("Swift test target minimum counts must be positive integers")
     return {str(target): int(count) for target, count in minimums.items()}
 
 
-def validate_minimum_counts(tests: list[TestSpec], minimums: dict[str, int]) -> dict[str, int]:
-    counts = {target: 0 for target in ALLOWED_TARGETS}
+def validate_minimum_counts(
+    tests: list[TestSpec],
+    minimums: dict[str, int],
+    expected_targets: Collection[str],
+) -> dict[str, int]:
+    counts = {target: 0 for target in expected_targets}
     for test in tests:
+        if test.target not in counts:
+            fail(
+                "Swift test inventory contains target not present in manifest: "
+                f"{test.target}"
+            )
         counts[test.target] += 1
     for target, minimum in minimums.items():
         if counts[target] < minimum:
@@ -497,16 +810,19 @@ def swift_test_build_arguments(environment: dict[str, str]) -> list[str]:
     """Return flags for the one real SwiftPM build/inventory invocation.
 
     SwiftPM shards all use ``--skip-build`` after inventory discovery, so this
-    is the single place where compiler diagnostics can be made strict.  Keep a
-    narrow opt-out for callers that need to investigate an older toolchain;
-    the default remains warnings-as-errors.
+    is the single place where compiler diagnostics can be made strict. Keep a
+    narrow opt-out for callers that need to investigate an older toolchain's
+    warnings; complete concurrency checking is always required so the test
+    artifact reuses the strict-build compiler settings.
     """
 
+    arguments = ["-Xswiftc", "-strict-concurrency=complete"]
     raw_value = environment.get("SWIFT_TEST_WARNINGS_AS_ERRORS", "1").strip().lower()
     if raw_value in {"1", "true", "yes", "on"}:
-        return ["-Xswiftc", "-warnings-as-errors"]
+        arguments.extend(("-Xswiftc", "-warnings-as-errors"))
+        return arguments
     if raw_value in {"0", "false", "no", "off"}:
-        return []
+        return arguments
     fail(
         "SWIFT_TEST_WARNINGS_AS_ERRORS must be a boolean value (1/0, true/false, "
         "yes/no, or on/off)"
@@ -550,26 +866,48 @@ def swift_child_environment(root: Path, output_directory: Path) -> dict[str, str
     return environment
 
 
-def build_shards(tests: list[TestSpec]) -> list[Shard]:
-    cache_tests = tuple(
-        test for test in tests if test.target == MAC_TARGET and test.suite == CACHE_SUITE
-    )
+def target_slug(target: str) -> str:
+    slug = re.sub(r"[^A-Za-z0-9]+", "-", target).strip("-").lower()
+    return slug or "target"
+
+
+def build_shards(
+    tests: list[TestSpec], target_order: Collection[str] | None = None
+) -> list[Shard]:
+    targets = list(dict.fromkeys(target_order or sorted({test.target for test in tests})))
+    if not targets:
+        fail("Swift test inventory declared no targets")
+    target_set = set(targets)
+    unknown_targets = sorted({test.target for test in tests} - target_set)
+    if unknown_targets:
+        fail(
+            "Swift test inventory contains target not present in manifest: "
+            f"{unknown_targets}"
+        )
+
     settings_tests = tuple(
         test for test in tests if test.target == MAC_TARGET and test.suite == SETTINGS_SUITE
     )
-    if not cache_tests:
-        fail(f"required isolated suite is missing: {MAC_TARGET}.{CACHE_SUITE}")
-    if not settings_tests:
-        fail(f"required isolated suite is missing: {MAC_TARGET}.{SETTINGS_SUITE}")
-
-    shards: list[Shard] = [
-        Shard(
-            label=f"{MAC_TARGET}.{CACHE_SUITE}",
-            slug="cache",
-            filter_pattern=make_suite_filter(MAC_TARGET, [CACHE_SUITE]),
-            tests=cache_tests,
+    web_content_security_tests = tuple(
+        test
+        for test in tests
+        if test.target == MAC_TARGET and test.suite == WEB_CONTENT_SECURITY_SUITE
+    )
+    shards: list[Shard] = []
+    # These two App test suites have process-global state and retain their
+    # historical isolated-process behavior when present.  They are optional:
+    # a deleted or renamed suite must not make the entire inventory invalid.
+    if web_content_security_tests:
+        shards.append(
+            Shard(
+                label=f"{MAC_TARGET}.{WEB_CONTENT_SECURITY_SUITE}",
+                slug="web-content-security",
+                filter_pattern=make_suite_filter(
+                    MAC_TARGET, [WEB_CONTENT_SECURITY_SUITE]
+                ),
+                tests=web_content_security_tests,
+            )
         )
-    ]
     for index, test in enumerate(sorted(settings_tests, key=lambda item: item.raw), start=1):
         shards.append(
             Shard(
@@ -583,7 +921,7 @@ def build_shards(tests: list[TestSpec]) -> list[Shard]:
     mac_batches = batch_suites(
         tests,
         target=MAC_TARGET,
-        excluded_suites={CACHE_SUITE, SETTINGS_SUITE},
+        excluded_suites={SETTINGS_SUITE, WEB_CONTENT_SECURITY_SUITE},
         maximum_suites=MAC_BATCH_MAX_SUITES,
         maximum_tests=MAC_BATCH_MAX_TESTS,
     )
@@ -597,43 +935,70 @@ def build_shards(tests: list[TestSpec]) -> list[Shard]:
             )
         )
 
-    core_case_tests = tuple(
-        sorted(
-            (
-                test
-                for test in tests
-                if test.target == CORE_TARGET
-                and test.suite in CORE_CASE_ISOLATED_SUITES
-            ),
-            key=lambda item: item.raw,
-        )
-    )
-    for index, test in enumerate(core_case_tests, start=1):
-        shards.append(
-            Shard(
-                label=test.raw,
-                slug=f"core-case-{index:02d}",
-                filter_pattern=f"^{re.escape(test.raw)}$",
-                tests=(test,),
+    if CORE_TARGET in target_set:
+        core_case_tests = tuple(
+            sorted(
+                (
+                    test
+                    for test in tests
+                    if test.target == CORE_TARGET
+                    and test.suite in CORE_CASE_ISOLATED_SUITES
+                ),
+                key=lambda item: item.raw,
             )
         )
+        for index, test in enumerate(core_case_tests, start=1):
+            shards.append(
+                Shard(
+                    label=test.raw,
+                    slug=f"core-case-{index:02d}",
+                    filter_pattern=f"^{re.escape(test.raw)}$",
+                    tests=(test,),
+                )
+            )
 
-    core_batches = batch_suites(
-        tests,
-        target=CORE_TARGET,
-        excluded_suites=set(CORE_CASE_ISOLATED_SUITES),
-        maximum_suites=CORE_BATCH_MAX_SUITES,
-        maximum_tests=CORE_BATCH_MAX_TESTS,
-    )
-    for index, (suites, batch_tests) in enumerate(core_batches, start=1):
-        shards.append(
-            Shard(
-                label=f"{CORE_TARGET} batch {index}",
-                slug=f"core-{index:02d}",
-                filter_pattern=make_suite_filter(CORE_TARGET, suites),
-                tests=tuple(batch_tests),
-            )
+        core_batches = batch_suites(
+            tests,
+            target=CORE_TARGET,
+            excluded_suites=set(CORE_CASE_ISOLATED_SUITES),
+            maximum_suites=CORE_BATCH_MAX_SUITES,
+            maximum_tests=CORE_BATCH_MAX_TESTS,
         )
+        for index, (suites, batch_tests) in enumerate(core_batches, start=1):
+            shards.append(
+                Shard(
+                    label=f"{CORE_TARGET} batch {index}",
+                    slug=f"core-{index:02d}",
+                    filter_pattern=make_suite_filter(CORE_TARGET, suites),
+                    tests=tuple(batch_tests),
+                )
+            )
+
+    # Leaf targets are deliberately generic.  Their test ownership and suite
+    # names can evolve independently of the App/Workbench special cases while
+    # still receiving bounded, auditable processes.
+    for target_index, target in enumerate(targets, start=1):
+        if target in {MAC_TARGET, CORE_TARGET}:
+            continue
+        leaf_batches = batch_suites(
+            tests,
+            target=target,
+            excluded_suites=set(),
+            maximum_suites=LEAF_BATCH_MAX_SUITES,
+            maximum_tests=LEAF_BATCH_MAX_TESTS,
+        )
+        for index, (suites, batch_tests) in enumerate(leaf_batches, start=1):
+            shards.append(
+                Shard(
+                    label=f"{target} batch {index}",
+                    slug=(
+                        f"leaf-{target_index:02d}-{target_slug(target)}-"
+                        f"{index:02d}"
+                    ),
+                    filter_pattern=make_suite_filter(target, suites),
+                    tests=tuple(batch_tests),
+                )
+            )
 
     assignments: dict[str, int] = {test.raw: 0 for test in tests}
     for shard in shards:
@@ -705,8 +1070,10 @@ def run_all(root: Path) -> int:
         atomic_write_json(result_path, result)
         shard_retries = configured_shard_retries(os.environ)
         result["shardRetries"] = shard_retries
-        manifest_test_targets(root / "Package.swift")
-        minimums = load_minimum_counts(root / "script" / "quality_baselines.json")
+        manifest_targets = manifest_test_targets(root / "Package.swift")
+        minimums = load_minimum_counts(
+            root / "script" / "quality_baselines.json", manifest_targets
+        )
     except ValueError as error:
         result.update({"status": "failed", "error": str(error)})
         atomic_write_json(result_path, result)
@@ -744,9 +1111,11 @@ def run_all(root: Path) -> int:
         return list_process.return_code
 
     try:
-        tests = parse_inventory(list_process.stdout)
-        counts_by_target = validate_minimum_counts(tests, minimums)
-        shards = build_shards(tests)
+        tests = parse_inventory(list_process.stdout, manifest_targets)
+        counts_by_target = validate_minimum_counts(
+            tests, minimums, manifest_targets
+        )
+        shards = build_shards(tests, manifest_targets)
     except ValueError as error:
         result.update({"status": "failed", "returnCode": 2, "error": str(error)})
         atomic_write_json(result_path, result)
@@ -757,10 +1126,19 @@ def run_all(root: Path) -> int:
     result["inventory"] = {
         "path": str(inventory_path),
         "totalCount": len(tests),
+        "targets": manifest_targets,
         "countsByTarget": counts_by_target,
         "xctestCount": sum(not test.is_swift_testing for test in tests),
         "swiftTestingCount": sum(test.is_swift_testing for test in tests),
         "minimumCountsByTarget": minimums,
+        "shardsByTarget": {
+            target: [
+                shard.slug
+                for shard in shards
+                if any(test.target == target for test in shard.tests)
+            ]
+            for target in manifest_targets
+        },
     }
     result["shards"] = [shard_payload(shard, output_directory) for shard in shards]
     atomic_write_json(result_path, result)

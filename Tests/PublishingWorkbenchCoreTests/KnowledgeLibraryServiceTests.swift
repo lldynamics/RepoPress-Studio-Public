@@ -6,14 +6,55 @@ import XCTest
 @testable import PublishingWorkbenchCore
 
 final class KnowledgeLibraryServiceTests: XCTestCase {
-  func testSemanticVectorsDoNotSynchronouslyLoadUnpreparedContextualModel() {
-    let vectors = KnowledgeSemanticEmbeddingService().vectors(
-      for: "本地资料库通过混合检索找到相关章节"
+  func testRSSImportPreviewUsesCachedContentAndPreservesMetadata() async throws {
+    let rootURL = temporaryDirectory(named: "knowledge-rss-cached-import")
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let service = KnowledgeLibraryService(rootURL: rootURL.appendingPathComponent("store"))
+    let article = RSSArticle(
+      id: "rss-cached-1",
+      feedID: UUID(),
+      title: "缓存文章标题",
+      link: URL(string: "https://example.com/cached-article"),
+      author: "缓存作者",
+      summaryHTML: "<p>不应覆盖正文的摘要标记 summary-fallback</p>",
+      contentHTML: "<article><h1>缓存正文</h1><p>只应从本机读取 cached-body-unique。</p></article>",
+      webPageSnapshotHTML: "<p>不应使用的旧快照 snapshot-fallback</p>",
+      tags: ["RSS", "离线"]
     )
 
-    XCTAssertTrue(vectors.contains { $0.modelIdentifier == "local-semantic-hash-v2" })
-    XCTAssertFalse(vectors.contains { $0.modelIdentifier.hasPrefix("apple-contextual-") })
-    XCTAssertFalse(vectors.contains { $0.modelIdentifier.hasPrefix("apple-sentence-zh") })
+    let preview = try await service.makeRSSImportPreview(article: article)
+    let importedCandidate = try XCTUnwrap(preview.candidates.first)
+
+    XCTAssertEqual(importedCandidate.kind, .article)
+    XCTAssertEqual(importedCandidate.title, "缓存文章标题")
+    XCTAssertEqual(importedCandidate.authors, ["缓存作者"])
+    XCTAssertEqual(importedCandidate.tags, ["RSS", "离线"])
+    XCTAssertEqual(importedCandidate.sourceURL, article.link)
+    XCTAssertTrue(importedCandidate.normalizedText.contains("cached-body-unique"))
+    XCTAssertFalse(importedCandidate.normalizedText.contains("summary-fallback"))
+    XCTAssertFalse(importedCandidate.normalizedText.contains("snapshot-fallback"))
+
+    _ = try await service.commit(preview)
+    let repeatedPreview = try await service.makeRSSImportPreview(article: article)
+    XCTAssertEqual(repeatedPreview.candidates.first?.disposition, .duplicate)
+  }
+
+  func testRSSImportPreviewFallsBackToCachedSnapshotWithoutLink() async throws {
+    let rootURL = temporaryDirectory(named: "knowledge-rss-snapshot-import")
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let service = KnowledgeLibraryService(rootURL: rootURL.appendingPathComponent("store"))
+    let article = RSSArticle(
+      id: "rss-cached-2",
+      feedID: UUID(),
+      title: "无链接缓存文章",
+      webPageSnapshotHTML: "<p>本机历史快照 snapshot-only-unique</p>"
+    )
+
+    let preview = try await service.makeRSSImportPreview(article: article)
+    let importedCandidate = try XCTUnwrap(preview.candidates.first)
+
+    XCTAssertNil(importedCandidate.sourceURL)
+    XCTAssertTrue(importedCandidate.normalizedText.contains("snapshot-only-unique"))
   }
 
   func testSearchAsyncPropagatesCancellationIntoDetachedSearchWork() async throws {
@@ -1172,6 +1213,121 @@ final class KnowledgeLibraryServiceTests: XCTestCase {
       XCTFail("Expected an unsafe EPUB path to be rejected")
     } catch {
       XCTAssertTrue(error.localizedDescription.contains("路径越界"))
+    }
+  }
+
+  func testEPUBRejectsDTDAfterLongPreamble() throws {
+    let rootURL = temporaryDirectory(named: "knowledge-epub-xml-security")
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let preamble = String(repeating: "preamble", count: 3_000)
+    let sourceURL = try makeEPUB(
+      in: rootURL,
+      packageXML: """
+      <?xml version="1.0" encoding="UTF-8"?>
+      <!--\(preamble)-->
+      <!DOCTYPE package [<!ENTITY blocked "must not expand">]>
+      <package xmlns="http://www.idpf.org/2007/opf" version="3.0">
+        <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+          <dc:title>&blocked;</dc:title>
+        </metadata>
+        <manifest><item id="chapter" href="chapter.xhtml" media-type="application/xhtml+xml"/></manifest>
+        <spine><itemref idref="chapter"/></spine>
+      </package>
+      """,
+      chapters: [
+        "OEBPS/chapter.xhtml": "<html><body><h1>Chapter</h1><p>Body</p></body></html>"
+      ]
+    )
+
+    XCTAssertThrowsError(
+      try KnowledgeEPUBParser().parse(
+        data: Data(contentsOf: sourceURL),
+        sourceName: "attack.epub"
+      )
+    ) { error in
+      guard case let KnowledgeLibraryError.unreadableSource(message) = error else {
+        return XCTFail("Expected unreadableSource, got \(error)")
+      }
+      XCTAssertTrue(message.contains("DTD") || message.contains("实体"))
+    }
+  }
+
+  func testEPUBXMLEnforcesCharacterAndElementDepthLimits() throws {
+    let rootURL = temporaryDirectory(named: "knowledge-epub-xml-limits")
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let nestedPrefix = String(repeating: "<nested>", count: 300)
+    let nestedSuffix = String(repeating: "</nested>", count: 300)
+    let deepPackage = """
+      <?xml version="1.0" encoding="UTF-8"?>
+      <package xmlns="http://www.idpf.org/2007/opf" version="3.0">
+        \(nestedPrefix)<metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>Deep</dc:title></metadata>\(nestedSuffix)
+        <manifest><item id="chapter" href="chapter.xhtml" media-type="application/xhtml+xml"/></manifest>
+        <spine><itemref idref="chapter"/></spine>
+      </package>
+      """
+    let largeTitle = String(repeating: "x", count: 5 * 1_024 * 1_024 + 1)
+    let largePackage = """
+      <?xml version="1.0" encoding="UTF-8"?>
+      <package xmlns="http://www.idpf.org/2007/opf" version="3.0">
+        <metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>\(largeTitle)</dc:title></metadata>
+        <manifest><item id="chapter" href="chapter.xhtml" media-type="application/xhtml+xml"/></manifest>
+        <spine><itemref idref="chapter"/></spine>
+      </package>
+      """
+
+    for (index, packageXML) in [deepPackage, largePackage].enumerated() {
+      let sourceURL = try makeEPUB(
+        in: rootURL.appendingPathComponent("case-\(index)", isDirectory: true),
+        packageXML: packageXML,
+        chapters: [
+          "OEBPS/chapter.xhtml": "<html><body><h1>Chapter</h1><p>Body</p></body></html>"
+        ]
+      )
+      XCTAssertThrowsError(
+        try KnowledgeEPUBParser().parse(
+          data: Data(contentsOf: sourceURL),
+          sourceName: "limits-\(index).epub"
+        )
+      ) { error in
+        guard case KnowledgeLibraryError.sourceLimitExceeded = error else {
+          return XCTFail("Expected sourceLimitExceeded, got \(error)")
+        }
+      }
+    }
+  }
+
+  func testEPUBPackageRecordCountIsBounded() throws {
+    let rootURL = temporaryDirectory(named: "knowledge-epub-record-limit")
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let items = (0...10_000).map { index in
+      "<item id=\"item-\(index)\" href=\"chapter-\(index).xhtml\" media-type=\"text/html\"/>"
+    }.joined()
+    let packageXML = """
+      <?xml version="1.0" encoding="UTF-8"?>
+      <package xmlns="http://www.idpf.org/2007/opf" version="3.0">
+        <metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>Many items</dc:title></metadata>
+        <manifest>\(items)</manifest>
+        <spine><itemref idref="item-0"/></spine>
+      </package>
+      """
+    let sourceURL = try makeEPUB(
+      in: rootURL,
+      packageXML: packageXML,
+      chapters: [
+        "OEBPS/chapter-0.xhtml": "<html><body><h1>Chapter</h1><p>Body</p></body></html>"
+      ]
+    )
+
+    XCTAssertThrowsError(
+      try KnowledgeEPUBParser().parse(
+        data: Data(contentsOf: sourceURL),
+        sourceName: "record-limit.epub"
+      )
+    ) { error in
+      guard case let KnowledgeLibraryError.sourceLimitExceeded(message) = error else {
+        return XCTFail("Expected sourceLimitExceeded, got \(error)")
+      }
+      XCTAssertTrue(message.contains("记录"))
     }
   }
 

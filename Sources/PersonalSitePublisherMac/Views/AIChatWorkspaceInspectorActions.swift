@@ -250,30 +250,46 @@ extension AIChatContextInspectorView {
   ) {
     guard
       AIChatSurfaceOperationOwnershipPolicy.canStartLocalOperation(
-        localTaskExists: sendTask != nil,
+        localTaskExists: operationSession.hasActiveTask,
         globalOperationRunning: ai.isChatRunning
       )
     else { return }
     isFollowingLatestMessage = true
     let ownerToken = UUID()
     let submittedSurfaceConversationID = inspectorSurfaceConversationID
+    let submittedContextMode = ai.chatContextMode
+    let submittedGeneralConversation =
+      submittedContextMode == .general
+      ? ai.generalChatConversation(withID: submittedSurfaceConversationID)
+      : nil
+    let submittedGeneralConversationExpectation =
+      submittedContextMode == .general
+      ? AIChatGeneralConversationExpectation(
+        conversation: submittedGeneralConversation
+      )
+      : nil
+    let submittedGeneralConnectionProfileID =
+      submittedContextMode == .general
+      ? submittedGeneralConversation?.connectionProfileID
+        ?? ai.activeGeneralChatConnectionProfile.id
+      : nil
+    let submittedDraftConversation =
+      submittedContextMode == .site
+      ? AIChatDraftConversationExpectation(
+        draftID: draft.id,
+        conversation: ai.chatConversations(for: draft.id).first(where: {
+          $0.id == ai.activeChatConversationID(for: draft.id)
+        })
+      )
+      : nil
     let existingMessageIDs = Set(
-      (ai.chatContextMode == .general
-        ? ai.generalChatConversation(withID: submittedSurfaceConversationID)?.messages ?? []
+      (submittedContextMode == .general
+        ? submittedGeneralConversation?.messages ?? []
         : ai.chatMessages).map(\.id)
     )
     let requestedImageAttachmentIDs = selectedImageAttachmentIDs
     let requestedContextReferences = selectedContextReferences
-    isSubmitting = true
-    activeSendOwnerToken = ownerToken
-    sendTask = Task {
-      defer {
-        if activeSendOwnerToken == ownerToken {
-          isSubmitting = false
-          sendTask = nil
-          activeSendOwnerToken = nil
-        }
-      }
+    _ = operationSession.start(ownerToken: ownerToken) {
       let imageAttachments = await ai.chatImageAttachments(
         for: draft,
         attachmentIDs: requestedImageAttachmentIDs
@@ -282,19 +298,15 @@ extension AIChatContextInspectorView {
         return
       }
       let reply: AIPublishingChatMessage?
-      if ai.chatContextMode == .general {
-        let generalConversationID = ai.generalChatConversation(
-          withID: submittedSurfaceConversationID
-        )?.id
+      if submittedContextMode == .general {
         reply = await ai.sendGeneralChatMessage(
           message,
-          conversationID: generalConversationID,
-          connectionProfileID: ai.generalChatConversation(
-            withID: submittedSurfaceConversationID
-          )?.connectionProfileID,
+          conversationID: submittedGeneralConversation?.id,
+          connectionProfileID: submittedGeneralConnectionProfileID,
           imageAttachments: imageAttachments,
           contextReferences: requestedContextReferences,
-          ownerToken: ownerToken
+          ownerToken: ownerToken,
+          expectedConversation: submittedGeneralConversationExpectation
         )
       } else {
         reply = await ai.sendChatMessage(
@@ -302,11 +314,13 @@ extension AIChatContextInspectorView {
           draft: draft,
           imageAttachments: imageAttachments,
           contextReferences: requestedContextReferences,
-          ownerToken: ownerToken
+          ownerToken: ownerToken,
+          expectedContextMode: submittedContextMode,
+          expectedDraftConversation: submittedDraftConversation
         )
       }
       let currentMessages: [AIPublishingChatMessage]
-      if ai.chatContextMode == .general {
+      if submittedContextMode == .general {
         currentMessages =
           ai.generalChatConversation(
             withID: submittedSurfaceConversationID
@@ -342,7 +356,8 @@ extension AIChatContextInspectorView {
           }
         }
       }
-      if ai.chatContextMode == .general,
+      if submittedContextMode == .general,
+        ai.chatContextMode == .general,
         let activeConversationID = ai.activeGeneralChatConversationID
       {
         setInspectorSurfaceConversationID(activeConversationID)
@@ -353,47 +368,47 @@ extension AIChatContextInspectorView {
   func stopSending() {
     guard
       AIChatSurfaceOperationOwnershipPolicy.canCancelLocalOperation(
-        localTaskExists: sendTask != nil,
-        ownerToken: activeSendOwnerToken
+        localTaskExists: operationSession.hasActiveTask,
+        ownerToken: operationSession.activeOwnerToken
       )
     else {
       return
     }
-    guard let ownerToken = activeSendOwnerToken else { return }
-    sendTask?.cancel()
-    ai.cancelChatReply(expectedOwnerToken: ownerToken)
+    guard let ownerToken = operationSession.activeOwnerToken,
+      operationSession.handle(
+        .explicitStop(ownerToken: ownerToken),
+        forwardingTo: { token in
+          ai.cancelChatReply(expectedOwnerToken: token)
+        }
+      )
+    else { return }
   }
 
   func retryLastFailedReply(confirmingPossibleDuplicateCharge: Bool) {
     guard
       AIChatSurfaceOperationOwnershipPolicy.canStartLocalOperation(
-        localTaskExists: sendTask != nil,
+        localTaskExists: operationSession.hasActiveTask,
         globalOperationRunning: ai.isChatRunning
       )
     else { return }
     isFollowingLatestMessage = true
-    isSubmitting = true
     let ownerToken = UUID()
-    activeSendOwnerToken = ownerToken
-    sendTask = Task {
-      defer {
-        if activeSendOwnerToken == ownerToken {
-          isSubmitting = false
-          sendTask = nil
-          activeSendOwnerToken = nil
-        }
-      }
-      if ai.chatContextMode == .general {
+    let submittedContextMode = ai.chatContextMode
+    let submittedConversationID = inspectorSurfaceConversationID
+    let submittedDraft = ai.selectedChatDraft
+    _ = operationSession.start(ownerToken: ownerToken) {
+      if submittedContextMode == .general {
         _ = await ai.retryLastFailedGeneralChatReply(
           confirmingPossibleDuplicateCharge: confirmingPossibleDuplicateCharge,
-          conversationID: inspectorSurfaceConversationID,
+          conversationID: submittedConversationID,
           ownerToken: ownerToken
         )
-      } else if let draft = ai.selectedChatDraft {
+      } else if let draft = submittedDraft {
         _ = await ai.retryLastFailedChatReply(
           confirmingPossibleDuplicateCharge: confirmingPossibleDuplicateCharge,
           draft: draft,
-          ownerToken: ownerToken
+          ownerToken: ownerToken,
+          expectedContextMode: submittedContextMode
         )
       }
     }

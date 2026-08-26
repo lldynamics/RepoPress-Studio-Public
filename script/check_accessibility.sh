@@ -560,21 +560,6 @@ require_literal_any_file \
   "Sources/PersonalSitePublisherMac/Views/MacMarkdownFormattingToolbar.swift"
 
 require_literal \
-  "Sources/PersonalSitePublisherMac/Views/MacMarkdownComposerPreview.swift" \
-  "title: draft.title.trimmedForPublishing.nilIfEmpty" \
-  "writing preview must include the current article title in its render input"
-
-require_literal \
-  "Sources/PersonalSitePublisherMac/Views/MacMarkdownComposerPreview.swift" \
-  "<header class=\"article-header\"><h1 class=\"article-title\">" \
-  "writing preview must render the article title as a semantic heading"
-
-require_literal \
-  "Sources/PersonalSitePublisherMac/Views/MacMarkdownComposerPreview.swift" \
-  "<title>\\(escapedTitle)</title>" \
-  "writing preview HTML must expose the article title as its document title"
-
-require_literal \
   "Sources/PersonalSitePublisherMac/Views/MacMarkdownTextView+DocumentSupport.swift" \
   "textView.setAccessibilityLabel(String(localized: \"Markdown 文档编辑器\"))" \
   "native markdown text editor must expose a descriptive accessibility name"
@@ -1265,14 +1250,39 @@ require_literal \
   "formatting toolbar buttons must expose a visible keyboard focus state"
 
 require_literal \
-  "Sources/PersonalSitePublisherMac/Views/MarkdownEditorComfortControl.swift" \
-  "Label(\"编辑显示与辅助功能\", systemImage: \"textformat.size.smaller\")" \
-  "editor display accessibility control must expose text when space permits"
+  "Sources/PersonalSitePublisherMac/Support/ZenModeController.swift" \
+  "isKeyboardNavigationActive" \
+  "Zen mode must keep a typed keyboard-navigation session"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Support/ZenModeController.swift" \
+  "isVoiceOverEnabled" \
+  "Zen mode must keep its toolbar visible while VoiceOver is enabled"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Support/ZenModeController.swift" \
+  "isReduceMotionEnabled" \
+  "Zen mode transitions must honor Reduce Motion"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/MacMarkdownComposerToolbars.swift" \
-  ".accessibilityAddTraits(editorDisplayMode == mode ? .isSelected : [])" \
-  "editor display modes must expose selected accessibility traits"
+  ".accessibilityIdentifier(\"markdown-editor-toolbar\")" \
+  "the editor toolbar must expose a stable accessibility identifier"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/MacMarkdownFormattingToolbar.swift" \
+  ".accessibilityIdentifier(\"markdown-formatting-toolbar\")" \
+  "the formatting toolbar must expose a stable accessibility identifier"
+
+require_literal \
+  "UITests/WorkspaceAccessibilityUITests/WorkspaceAccessibilityUITests.swift" \
+  "testWritingMinimumWindowAndAccessibilityTypeKeepsEditorAndToolbarsAccessible" \
+  "minimum-window accessibility smoke must remain independently selectable"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/MarkdownEditorComfortControl.swift" \
+  "Label(\"编辑显示与辅助功能\", systemImage: \"textformat.size.smaller\")" \
+  "editor display accessibility control must expose text when space permits"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/MarkdownSlashCommandMenu.swift" \
@@ -1375,7 +1385,7 @@ require_literal \
   "command-f must route to knowledge search while the library is active"
 
 textfield_gaps="$(
-  perl -0ne 'while(/TextField\([^\n]*(?:\n[^\n]*){0,14}/g){$m=$&; if($m !~ /accessibilityLabel/){$prefix=substr($_,0,pos($_)); $line=1+($prefix=~tr/\n//); print "$ARGV:$line\n"}}' \
+  perl -0ne 'while(/(?<!NS)TextField\([^\n]*(?:\n[^\n]*){0,14}/g){$m=$&; if($m !~ /accessibilityLabel/){$prefix=substr($_,0,pos($_)); $line=1+($prefix=~tr/\n//); print "$ARGV:$line\n"}}' \
     "$ROOT_DIR"/Sources/PersonalSitePublisherMac/Views/*.swift
 )"
 [[ -z "$textfield_gaps" ]] || fail "text fields missing accessibility labels: $textfield_gaps"

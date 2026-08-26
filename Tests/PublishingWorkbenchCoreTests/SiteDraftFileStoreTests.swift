@@ -10,7 +10,6 @@ struct SiteDraftFileStoreTests {
     defer { try? FileManager.default.removeItem(at: rootURL) }
     var profile = SiteProfile.defaultProfile
     profile.localRepositoryRootPath = rootURL.path
-    profile.localRepositoryBookmarkData = nil
     var draft = ArticleDraft.empty(profile: profile)
     draft.title = "实时站点草稿"
     draft.slug = "live-site-draft"
@@ -31,7 +30,6 @@ struct SiteDraftFileStoreTests {
     defer { try? FileManager.default.removeItem(at: rootURL) }
     var profile = SiteProfile.defaultProfile
     profile.localRepositoryRootPath = rootURL.path
-    profile.localRepositoryBookmarkData = nil
     var draft = ArticleDraft.empty(profile: profile)
     draft.slug = "before"
     let fileStore = SiteDraftFileStore()
@@ -58,7 +56,6 @@ struct SiteDraftFileStoreTests {
     defer { try? FileManager.default.removeItem(at: rootURL) }
     var profile = SiteProfile.defaultProfile
     profile.localRepositoryRootPath = rootURL.path
-    profile.localRepositoryBookmarkData = nil
     let draft = ArticleDraft.emptyGeneralDraft(editingProfile: profile)
 
     #expect(throws: SiteDraftFileStoreError.generalDraftCannotBeWritten) {

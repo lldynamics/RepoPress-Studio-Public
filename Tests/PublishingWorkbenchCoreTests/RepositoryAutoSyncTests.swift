@@ -18,7 +18,10 @@ final class RepositoryAutoSyncTests: XCTestCase {
       )
     )
     var object = try XCTUnwrap(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+    object["formatVersion"] = 12
     object.removeValue(forKey: "repositoryAutoSyncSettings")
+    object.removeValue(forKey: "repositoryAutoSyncSettingsByProfileID")
+    object.removeValue(forKey: "repositoryAutoSyncStateByProfileID")
     let json = try JSONSerialization.data(withJSONObject: object)
 
     let snapshot = try JSONDecoder.workbench.decode(WorkbenchSnapshot.self, from: json)
@@ -29,6 +32,110 @@ final class RepositoryAutoSyncTests: XCTestCase {
     XCTAssertFalse(snapshot.repositoryAutoSyncSettings.autoImportRemoteArticles)
     XCTAssertEqual(snapshot.repositoryAutoSyncState.status, .idle)
     XCTAssertTrue(snapshot.repositoryAutoSyncState.remoteChangedPaths.isEmpty)
+  }
+
+  func testLegacyAutomationSnapshotMigratesOnlyToActiveProfile() throws {
+    let active = SiteProfile.defaultProfile
+    let secondary = SiteProfile(id: UUID(), name: "Secondary")
+    let draft = ArticleDraft(siteProfileID: active.id, title: "Legacy", slug: "legacy")
+    let legacyState = RepositoryAutoSyncState(
+      status: .scanned,
+      lastRunAt: Date(timeIntervalSince1970: 1_800_000_001),
+      remoteChangedFileCount: 2,
+      message: "legacy"
+    )
+    let encoded = try JSONEncoder.workbench.encode(
+      WorkbenchSnapshot(
+        profiles: [active, secondary],
+        activeProfileID: active.id,
+        drafts: [draft],
+        releaseRecords: [],
+        repositoryAutoSyncSettings: RepositoryAutoSyncSettings(
+          isEnabled: true,
+          intervalMinutes: 30,
+          fetchBeforeScan: false,
+          autoImportRemoteArticles: true
+        ),
+        repositoryAutoSyncState: legacyState,
+        deploymentPollingSettings: DeploymentPollingSettings(isEnabled: true, intervalMinutes: 20),
+        deploymentPollingState: DeploymentPollingState(status: .checked, checkedRecordCount: 3)
+      )
+    )
+    var object = try XCTUnwrap(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+    object["formatVersion"] = 12
+    object.removeValue(forKey: "repositoryAutoSyncSettingsByProfileID")
+    object.removeValue(forKey: "repositoryAutoSyncStateByProfileID")
+    object.removeValue(forKey: "deploymentPollingSettingsByProfileID")
+    object.removeValue(forKey: "deploymentPollingStateByProfileID")
+    let snapshot = try JSONDecoder.workbench.decode(
+      WorkbenchSnapshot.self,
+      from: JSONSerialization.data(withJSONObject: object)
+    )
+
+    XCTAssertEqual(
+      Set(snapshot.repositoryAutoSyncSettingsByProfileID.keys),
+      Set([active.id, secondary.id])
+    )
+    XCTAssertTrue(snapshot.repositoryAutoSyncSettingsByProfileID[active.id]?.isEnabled == true)
+    XCTAssertEqual(
+      snapshot.repositoryAutoSyncSettingsByProfileID[secondary.id],
+      Optional(RepositoryAutoSyncSettings.default)
+    )
+    XCTAssertEqual(snapshot.repositoryAutoSyncStateByProfileID[active.id], legacyState)
+    XCTAssertEqual(
+      snapshot.repositoryAutoSyncStateByProfileID[secondary.id],
+      Optional(RepositoryAutoSyncState.idle)
+    )
+    XCTAssertTrue(snapshot.deploymentPollingSettingsByProfileID[active.id]?.isEnabled == true)
+    XCTAssertEqual(
+      snapshot.deploymentPollingSettingsByProfileID[secondary.id],
+      Optional(DeploymentPollingSettings.default)
+    )
+    XCTAssertEqual(snapshot.deploymentPollingStateByProfileID[active.id]?.checkedRecordCount, 3)
+    XCTAssertEqual(
+      snapshot.deploymentPollingStateByProfileID[secondary.id],
+      Optional(DeploymentPollingState.idle)
+    )
+  }
+
+  func testAutomationSnapshotRoundTripDropsOrphanProfileIDs() throws {
+    let first = SiteProfile.defaultProfile
+    let second = SiteProfile(id: UUID(), name: "Secondary")
+    let orphan = UUID()
+    let snapshot = WorkbenchSnapshot(
+      profiles: [first, second],
+      activeProfileID: first.id,
+      drafts: [ArticleDraft(siteProfileID: first.id, title: "Draft", slug: "draft")],
+      releaseRecords: [],
+      repositoryAutoSyncSettingsByProfileID: [
+        first.id: RepositoryAutoSyncSettings(isEnabled: true, intervalMinutes: 25),
+        orphan: RepositoryAutoSyncSettings(isEnabled: true, intervalMinutes: 60),
+      ],
+      repositoryAutoSyncStateByProfileID: [orphan: RepositoryAutoSyncState(status: .scanned)],
+      deploymentPollingSettingsByProfileID: [
+        second.id: DeploymentPollingSettings(isEnabled: true, intervalMinutes: 15),
+        orphan: DeploymentPollingSettings(isEnabled: true, intervalMinutes: 60),
+      ],
+      deploymentPollingStateByProfileID: [orphan: DeploymentPollingState(status: .checked)]
+    )
+
+    let reloaded = try JSONDecoder.workbench.decode(
+      WorkbenchSnapshot.self,
+      from: try JSONEncoder.workbench.encode(snapshot)
+    )
+
+    XCTAssertEqual(Set(reloaded.repositoryAutoSyncSettingsByProfileID.keys), [first.id, second.id])
+    XCTAssertEqual(Set(reloaded.repositoryAutoSyncStateByProfileID.keys), [first.id, second.id])
+    XCTAssertEqual(Set(reloaded.deploymentPollingSettingsByProfileID.keys), [first.id, second.id])
+    XCTAssertEqual(Set(reloaded.deploymentPollingStateByProfileID.keys), [first.id, second.id])
+    XCTAssertEqual(
+      reloaded.repositoryAutoSyncSettingsByProfileID[second.id],
+      Optional(RepositoryAutoSyncSettings.default)
+    )
+    XCTAssertEqual(
+      reloaded.deploymentPollingStateByProfileID[first.id],
+      Optional(DeploymentPollingState.idle)
+    )
   }
 
   func testLegacyAIChatSnapshotDefaultsToEmptyPersistentConversations() throws {
@@ -77,6 +184,149 @@ final class RepositoryAutoSyncTests: XCTestCase {
     XCTAssertFalse(reloaded.repositoryAutoSyncSettings.fetchBeforeScan)
     XCTAssertTrue(reloaded.repositoryAutoSyncSettings.autoImportRemoteArticles)
   }
+
+  func testAutomationSettingsAndStatesStayBoundWhenSwitchingProfiles() async throws {
+    let url = try temporaryPersistenceURL()
+    let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: url))
+    let firstID = store.activeProfileID
+    let second = store.createProfile(named: "Secondary")
+    let secondID = second.id
+
+    store.updateRepositoryAutoSyncSettings(
+      RepositoryAutoSyncSettings(isEnabled: true, intervalMinutes: 25),
+      for: firstID
+    )
+    store.updateDeploymentPollingSettings(
+      DeploymentPollingSettings(isEnabled: true, intervalMinutes: 15),
+      for: firstID
+    )
+    store.setRepositoryAutoSyncState(
+      RepositoryAutoSyncState(status: .scanned, message: "first"),
+      for: firstID
+    )
+    store.selectProfile(secondID)
+    store.updateRepositoryAutoSyncSettings(
+      RepositoryAutoSyncSettings(isEnabled: false, intervalMinutes: 40),
+      for: secondID
+    )
+    store.updateDeploymentPollingSettings(
+      DeploymentPollingSettings(isEnabled: true, intervalMinutes: 30),
+      for: secondID
+    )
+    store.setRepositoryAutoSyncState(
+      RepositoryAutoSyncState(status: .fetchFailed, message: "second"),
+      for: secondID
+    )
+    store.selectProfile(firstID)
+    XCTAssertEqual(store.repositoryAutoSyncSettings(for: firstID).normalizedIntervalMinutes, 25)
+    XCTAssertEqual(store.repositoryAutoSyncState.message, "first")
+    XCTAssertEqual(store.deploymentPollingSettings.normalizedIntervalMinutes, 15)
+
+    store.save()
+    await store.waitForPendingSave()
+    let reloaded = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: url))
+    XCTAssertEqual(reloaded.repositoryAutoSyncSettings(for: firstID).normalizedIntervalMinutes, 25)
+    XCTAssertEqual(reloaded.repositoryAutoSyncState(for: firstID).message, "first")
+    XCTAssertEqual(reloaded.repositoryAutoSyncSettings(for: secondID).normalizedIntervalMinutes, 40)
+    XCTAssertEqual(reloaded.repositoryAutoSyncState(for: secondID).message, "second")
+    XCTAssertEqual(reloaded.deploymentPollingSettings(for: firstID).normalizedIntervalMinutes, 15)
+    XCTAssertEqual(reloaded.deploymentPollingSettings(for: secondID).normalizedIntervalMinutes, 30)
+  }
+
+  func testBackgroundTickUsesExplicitSecondaryProfileWithoutImportingIntoActiveSite() async throws {
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL())
+    )
+    let firstID = store.activeProfileID
+    let secondID = store.createProfile(named: "Secondary").id
+    store.selectProfile(firstID)
+    store.updateRepositoryAutoSyncSettings(
+      RepositoryAutoSyncSettings(
+        isEnabled: true,
+        intervalMinutes: 5,
+        autoImportRemoteArticles: true
+      ),
+      for: secondID
+    )
+
+    let didRun = await store.tickRepositoryAutoSync(
+      for: secondID,
+      now: Date(timeIntervalSince1970: 1_900_000_000)
+    )
+
+    XCTAssertTrue(didRun)
+    XCTAssertEqual(store.activeProfileID, firstID)
+    XCTAssertEqual(store.repositoryAutoSyncState(for: firstID), .idle)
+    XCTAssertEqual(
+      store.repositoryAutoSyncState(for: secondID).status,
+      .waitingForRepository
+    )
+    XCTAssertTrue(
+      store.repositoryAutoSyncState(for: secondID).message.contains(
+        "该站点未处于前台，已跳过自动导入；切换到该站点后可手动处理。"
+      )
+    )
+    XCTAssertEqual(store.repositoryAutoSyncState(for: secondID).lastAutoImportedArticleCount, 0)
+    XCTAssertEqual(store.drafts.filter { $0.siteProfileID == firstID }.count, 1)
+  }
+
+#if DEBUG
+  func testBackgroundAutoSyncDropsStaleResultWhenSettingsChangeDuringRun() async throws {
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL())
+    )
+    let firstID = store.activeProfileID
+    let secondID = store.createProfile(named: "Secondary").id
+    store.updateRepositoryAutoSyncSettings(
+      RepositoryAutoSyncSettings(
+        isEnabled: true,
+        intervalMinutes: 5,
+        fetchBeforeScan: true,
+        autoImportRemoteArticles: true
+      ),
+      for: secondID
+    )
+    store.setRepositoryAutoSyncState(
+      RepositoryAutoSyncState(status: .idle, message: "before"),
+      for: secondID
+    )
+    store.selectProfile(firstID)
+
+    let gate = RepositoryAutoSyncTestGate()
+    store.repositoryStore.backgroundRepositoryAutoSyncTestHook = {
+      await gate.wait()
+    }
+
+    let runTask = Task {
+      await store.runRepositoryAutoSync(
+        for: secondID,
+        now: Date(timeIntervalSince1970: 1_900_000_500)
+      )
+    }
+    for _ in 0..<20 where !(await gate.hasEntered()) {
+      try await Task.sleep(nanoseconds: 10_000_000)
+    }
+    let gateEntered = await gate.hasEntered()
+    XCTAssertTrue(gateEntered)
+    store.updateRepositoryAutoSyncSettings(
+      RepositoryAutoSyncSettings(
+        isEnabled: false,
+        intervalMinutes: 30,
+        fetchBeforeScan: true,
+        autoImportRemoteArticles: true
+      ),
+      for: secondID
+    )
+    await gate.release()
+
+    let didRun = await runTask.value
+    XCTAssertFalse(didRun)
+    XCTAssertEqual(store.activeProfileID, firstID)
+    XCTAssertEqual(store.repositoryAutoSyncState(for: secondID).status, .disabled)
+    XCTAssertEqual(store.repositoryAutoSyncState(for: secondID).message, "自动检查远端未启用。")
+    XCTAssertEqual(store.repositoryAutoSyncState(for: firstID), .idle)
+  }
+#endif
 
   func testStorePersistsAutoSyncRunState() async throws {
     let url = try temporaryPersistenceURL()
@@ -205,7 +455,52 @@ final class RepositoryAutoSyncTests: XCTestCase {
 
     XCTAssertEqual(summary.importedCount, 0)
     XCTAssertEqual(summary.deletionPaths, ["content/posts/keep-me.md"])
-    XCTAssertEqual(store.drafts, [draft])
+    let retained = try XCTUnwrap(store.drafts.first)
+    XCTAssertEqual(store.drafts.count, 1)
+    XCTAssertEqual(retained.id, draft.id)
+    XCTAssertEqual(retained.bodyMarkdown, draft.bodyMarkdown)
+    XCTAssertEqual(retained.repositoryPath, draft.repositoryPath)
+    XCTAssertEqual(
+      retained.repositoryBinding?.identity,
+      DraftRepositoryIdentity(profile: store.activeProfile)
+    )
+  }
+
+  func testAutomaticRemoteDeletionCompletesMatchingUnpublishRequest() throws {
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL())
+    )
+    let draft = ArticleDraft(
+      siteProfileID: store.activeProfileID,
+      title: "Expected deletion",
+      slug: "expected-deletion",
+      bodyMarkdown: "Local body.",
+      repositoryPath: "content/posts/expected-deletion.md",
+      repositorySHA: "known-sha"
+    )
+    store.setDrafts([draft])
+    store.setSelectedDraftID(draft.id)
+    store.deleteDraft(id: draft.id)
+
+    let summary = store.autoImportRemoteArticleDrafts(
+      remoteFiles: [
+        RepositoryChangedFile(
+          status: "D",
+          path: "content/posts/expected-deletion.md",
+          kind: .deleted
+        )
+      ],
+      snapshots: [],
+      locallyChangedPaths: []
+    )
+
+    XCTAssertEqual(summary.deletionPaths, [])
+    XCTAssertEqual(summary.resolvedPaths, ["content/posts/expected-deletion.md"])
+    XCTAssertEqual(
+      store.draftRepositoryCleanupRequests.first?.remoteStatus,
+      .completed
+    )
+    XCTAssertEqual(store.draftRepositoryCleanupRequests.first?.status, .pending)
   }
 
   func testAutomaticRemoteArticleImportIncludesPrivateDirectory() throws {
@@ -270,7 +565,6 @@ final class RepositoryAutoSyncTests: XCTestCase {
       )
       store.updateActiveProfile { profile in
         profile.localRepositoryRootPath = persistenceURL.deletingLastPathComponent().path
-        profile.localRepositoryBookmarkData = nil
       }
       let draft = ArticleDraft(
         siteProfileID: store.activeProfileID,
@@ -580,5 +874,24 @@ final class RepositoryAutoSyncTests: XCTestCase {
       )
     }
     return output.trimmingCharacters(in: .whitespacesAndNewlines)
+  }
+}
+
+private actor RepositoryAutoSyncTestGate {
+  private var entered = false
+  private var continuation: CheckedContinuation<Void, Never>?
+
+  func wait() async {
+    entered = true
+    await withCheckedContinuation { continuation = $0 }
+  }
+
+  func hasEntered() -> Bool {
+    entered
+  }
+
+  func release() {
+    continuation?.resume()
+    continuation = nil
   }
 }

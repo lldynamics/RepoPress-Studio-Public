@@ -74,9 +74,12 @@ rg -Fq '"license": "MPL-2.0"' "$ROOT_DIR/package.json" \
   || fail "package.json must declare MPL-2.0"
 
 forbidden_paths=(
+  RELEASE_CHECKLIST.md
   APP_STORE_CHECKLIST.md
   README.public.md
   BrowserExtension/release-ledger.json
+  docs/private-release
+  docs/release-screenshots
   docs/app-store
   docs/app-store-screenshots
   docs/browser-extension-store-assets
@@ -130,9 +133,12 @@ fi
 if git -C "$ROOT_DIR" rev-parse --verify HEAD >/dev/null 2>&1; then
   historical_private_paths=()
   for private_path in \
+    RELEASE_CHECKLIST.md \
     APP_STORE_CHECKLIST.md \
     README.public.md \
     BrowserExtension/release-ledger.json \
+    docs/private-release \
+    docs/release-screenshots \
     docs/app-store \
     docs/app-store-screenshots \
     docs/browser-extension-store-assets \

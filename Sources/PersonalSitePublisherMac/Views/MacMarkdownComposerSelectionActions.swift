@@ -3,7 +3,6 @@ import Foundation
 import PublishingWorkbenchCore
 import SwiftUI
 import UniformTypeIdentifiers
-import WebKit
 #if canImport(Darwin)
 import Darwin
 #endif

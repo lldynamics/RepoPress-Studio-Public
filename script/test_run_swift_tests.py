@@ -19,6 +19,18 @@ RUNNER = ROOT / "script" / "run_swift_tests.sh"
 HELPER = ROOT / "script" / "run_swift_test_process.py"
 
 
+FIXTURE_TEST_TARGETS = (
+    "PublishingMarkdownCoreTests",
+    "PublishingGitCoreTests",
+    "PublishingDomainContractsTests",
+    "PublishingAICoreTests",
+    "PublishingCoreSupportTests",
+    "PublishingKnowledgeCoreTests",
+    "PublishingWorkbenchCoreTests",
+    "PersonalSitePublisherMacTests",
+)
+
+
 PACKAGE_TEMPLATE = """\
 // swift-tools-version: 6.0
 import PackageDescription
@@ -26,12 +38,14 @@ let package = Package(
   name: "Fixture",
   targets: [
     .target(name: "App"),
-    .testTarget(name: "PublishingWorkbenchCoreTests", dependencies: ["App"]),
-    .testTarget(name: "PersonalSitePublisherMacTests", dependencies: ["App"]),
-{extra_target}  ]
+{test_targets}{extra_target}  ]
 )
 """
 
+
+FIXTURE_TEST_TARGET_TEMPLATE = """\
+    .testTarget(name: "{target}", dependencies: ["App"]),
+"""
 
 FAKE_SWIFT = r'''#!/usr/bin/env python3
 import json
@@ -120,6 +134,29 @@ if detached_exit_at and len(calls) == detached_exit_at:
     )
     raise SystemExit(0)
 
+pgid_escape_at = int(os.environ.get("SWIFT_PGID_ESCAPE_AT", "0"))
+if pgid_escape_at and len(calls) == pgid_escape_at:
+    # Keep a static pre-detach snapshot: the fixture proves that the runner
+    # must retain the descendant PID, not merely its initial process group.
+    child = subprocess.Popen(
+        [os.environ["FAKE_PGID_ESCAPE_XCTEST"], "60"],
+    )
+    Path(os.environ["HANG_CHILD_PID"]).write_text(str(child.pid), encoding="utf-8")
+    Path(os.environ["HANG_CHILD_PGID"]).write_text(str(os.getpgid(child.pid)), encoding="utf-8")
+    Path(os.environ["HANG_ROOT_PGID"]).write_text(str(os.getpgrp()), encoding="utf-8")
+    Path(os.environ["PROCESS_SNAPSHOT_PATH"]).write_text(
+        "\n".join(
+            (
+                f"{os.getpid()} {os.getppid()} {os.getpgrp()} {sys.executable} {__file__}",
+                f"{child.pid} {os.getpid()} {os.getpgid(child.pid)} "
+                f"{os.environ['FAKE_PGID_ESCAPE_XCTEST']}",
+            )
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    time.sleep(60)
+
 try:
     filter_value = sys.argv[sys.argv.index("--filter") + 1]
 except (ValueError, IndexError):
@@ -132,6 +169,21 @@ print(f"✔ Test run with {swift_testing} tests in 1 suite passed")
 '''
 
 
+FAKE_PGID_ESCAPE_XCTEST = r'''#!/usr/bin/env python3
+import os
+import time
+from pathlib import Path
+
+time.sleep(0.05)
+try:
+    os.setsid()
+except PermissionError:
+    os.setpgrp()
+Path(os.environ["PGID_ESCAPE_READY"]).write_text(str(os.getpgrp()), encoding="utf-8")
+time.sleep(60)
+'''
+
+
 FAKE_PS = r'''#!/usr/bin/env python3
 import os
 from pathlib import Path
@@ -140,6 +192,11 @@ snapshot = Path(os.environ["PROCESS_SNAPSHOT_PATH"])
 if snapshot.exists():
     Path(os.environ["PROCESS_SNAPSHOT_OBSERVED"]).write_text("observed\n", encoding="utf-8")
     print(snapshot.read_text(encoding="utf-8"), end="")
+'''
+
+
+FAILING_FAKE_PS = r'''#!/usr/bin/env python3
+raise SystemExit(1)
 '''
 
 
@@ -170,12 +227,19 @@ if "-file" in sys.argv:
 
 def fixture_inventory() -> list[str]:
     rows = [
-        "PersonalSitePublisherMacTests.WorkbenchImageTwoTierCacheTests/testCacheA",
-        "PersonalSitePublisherMacTests.WorkbenchImageTwoTierCacheTests/testCacheB",
+        "PersonalSitePublisherMacTests.SettingsSearchAndSavePresentationTests/testSetting1",
+        "PersonalSitePublisherMacTests.SettingsSearchAndSavePresentationTests/testSetting2",
+        "PersonalSitePublisherMacTests.SettingsSearchAndSavePresentationTests/testSetting3",
+        "PersonalSitePublisherMacTests.SettingsSearchAndSavePresentationTests/testSetting4",
+        "PersonalSitePublisherMacTests.SettingsSearchAndSavePresentationTests/testSetting5",
+        "PersonalSitePublisherMacTests.SettingsSearchAndSavePresentationTests/testSetting6",
     ]
     rows.extend(
-        f"PersonalSitePublisherMacTests.SettingsSearchAndSavePresentationTests/testSetting{index}"
-        for index in range(1, 7)
+        (
+            "PersonalSitePublisherMacTests.WebContentNetworkSecurityTests/testContentRule",
+            "PersonalSitePublisherMacTests.WebContentNetworkSecurityTests/testContentSecurityPolicy",
+            "PersonalSitePublisherMacTests.WebContentNetworkSecurityTests/testNetworkImages",
+        )
     )
     rows.extend(
         f"PersonalSitePublisherMacTests.MacSuite{index}/testValue"
@@ -191,6 +255,12 @@ def fixture_inventory() -> list[str]:
     )
     rows.extend(
         (
+            "PublishingWorkbenchCoreTests.AIModelDiscoveryServiceTests/testCatalog",
+            "PublishingWorkbenchCoreTests.AIModelDiscoveryServiceTests/testProxy",
+        )
+    )
+    rows.extend(
+        (
             "PublishingWorkbenchCoreTests.CodexAppServerClientTests/testAccountStatus",
             "PublishingWorkbenchCoreTests.CodexAppServerClientTests/testProcessTransport",
         )
@@ -200,6 +270,18 @@ def fixture_inventory() -> list[str]:
         for index in range(1, 152)
     )
     rows.append("PublishingWorkbenchCoreTests.SwiftTestingSuite/valueContract()")
+    rows.extend(
+        (
+            "PublishingMarkdownCoreTests.MarkdownSuite/testParser",
+            "PublishingMarkdownCoreTests.MarkdownSuite/testRenderer",
+            "PublishingGitCoreTests.GitSuite/testRunner",
+            "PublishingGitCoreTests.GitSuite/testRemote",
+            "PublishingDomainContractsTests.DomainSuite/testContract",
+            "PublishingAICoreTests.AISuite/testProvider",
+            "PublishingCoreSupportTests.SupportSuite/testReader",
+            "PublishingKnowledgeCoreTests.KnowledgeSuite/testSearch",
+        )
+    )
     return sorted(rows)
 
 
@@ -209,6 +291,9 @@ def make_fixture(
     duplicate_inventory: bool = False,
     raise_baseline: bool = False,
     missing_suite: str | None = None,
+    unknown_inventory: bool = False,
+    missing_baseline_target: str | None = None,
+    extra_baseline_target: str | None = None,
 ) -> tuple[tempfile.TemporaryDirectory[str], Path, dict[str, str]]:
     temporary = tempfile.TemporaryDirectory(prefix="swift-test-processes.")
     root = Path(temporary.name)
@@ -222,6 +307,10 @@ def make_fixture(
     (script_dir / HELPER.name).chmod(0o755)
     (root / "Package.swift").write_text(
         PACKAGE_TEMPLATE.format(
+            test_targets="".join(
+                FIXTURE_TEST_TARGET_TEMPLATE.format(target=target)
+                for target in FIXTURE_TEST_TARGETS
+            ),
             extra_target=(
                 '    .testTarget(name: "FutureTests", dependencies: ["App"]),\n'
                 if extra_target
@@ -238,20 +327,31 @@ def make_fixture(
             for row in inventory
             if f".{missing_suite}/" not in row
         ]
+    if extra_target:
+        inventory.append("FutureTests.FutureSuite/testFuture")
+    if unknown_inventory:
+        inventory.append("UnknownInventoryTests.UnknownSuite/testUnknown")
     if duplicate_inventory:
         inventory.append(inventory[0])
     inventory_path = root / "inventory-source.txt"
     inventory_path.write_text("\n".join(inventory) + "\n", encoding="utf-8")
-    mac_count = sum(row.startswith("PersonalSitePublisherMacTests.") for row in inventory)
-    core_count = sum(row.startswith("PublishingWorkbenchCoreTests.") for row in inventory)
+    counts = {
+        target: sum(row.startswith(f"{target}.") for row in inventory)
+        for target in FIXTURE_TEST_TARGETS
+    }
+    if extra_target:
+        counts["FutureTests"] = 1
+    baseline_targets = dict(counts)
+    baseline_targets["PersonalSitePublisherMacTests"] += int(raise_baseline)
+    if missing_baseline_target is not None:
+        baseline_targets.pop(missing_baseline_target, None)
+    if extra_baseline_target is not None:
+        baseline_targets[extra_baseline_target] = 1
     (script_dir / "quality_baselines.json").write_text(
         json.dumps(
             {
                 "schemaVersion": 1,
-                "swiftTestMinimumCountsByTarget": {
-                    "PersonalSitePublisherMacTests": mac_count + (1 if raise_baseline else 0),
-                    "PublishingWorkbenchCoreTests": core_count,
-                },
+                "swiftTestMinimumCountsByTarget": baseline_targets,
             }
         ),
         encoding="utf-8",
@@ -263,11 +363,17 @@ def make_fixture(
     fake_ps = bin_dir / "ps"
     fake_ps.write_text(FAKE_PS, encoding="utf-8")
     fake_ps.chmod(0o755)
+    failing_ps = bin_dir / "failing-ps"
+    failing_ps.write_text(FAILING_FAKE_PS, encoding="utf-8")
+    failing_ps.chmod(0o755)
     fake_sample = bin_dir / "sample"
     fake_sample.write_text(FAKE_SAMPLE, encoding="utf-8")
     fake_sample.chmod(0o755)
     fake_xctest = bin_dir / "Fixture.xctest"
     fake_xctest.symlink_to("/bin/sleep")
+    fake_pgid_escape_xctest = bin_dir / "PGIDEscapeFixture.xctest"
+    fake_pgid_escape_xctest.write_text(FAKE_PGID_ESCAPE_XCTEST, encoding="utf-8")
+    fake_pgid_escape_xctest.chmod(0o755)
 
     paths = {
         "call_log": str(root / "calls.json"),
@@ -282,8 +388,11 @@ def make_fixture(
         "slow_ps_started": str(root / "slow-ps-started.txt"),
         "fake_swift": str(fake_swift),
         "fake_ps": str(fake_ps),
+        "failing_ps": str(failing_ps),
         "fake_sample": str(fake_sample),
         "fake_xctest": str(fake_xctest),
+        "fake_pgid_escape_xctest": str(fake_pgid_escape_xctest),
+        "pgid_escape_ready": str(root / "pgid-escape-ready"),
     }
     return temporary, root, paths
 
@@ -314,12 +423,14 @@ def fixture_environment(paths: dict[str, str], **extra: str) -> dict[str, str]:
             "SWIFT_INVENTORY": paths["inventory"],
             "PS_BIN": paths["fake_ps"],
             "FAKE_XCTEST": paths["fake_xctest"],
+            "FAKE_PGID_ESCAPE_XCTEST": paths["fake_pgid_escape_xctest"],
             "HANG_CHILD_PID": paths["hang_child_pid"],
             "HANG_CHILD_PGID": paths["hang_child_pgid"],
             "HANG_ROOT_PGID": paths["hang_root_pgid"],
             "PROCESS_SNAPSHOT_PATH": paths["process_snapshot"],
             "PROCESS_SNAPSHOT_OBSERVED": paths["process_snapshot_observed"],
             "SLOW_PS_STARTED": paths["slow_ps_started"],
+            "PGID_ESCAPE_READY": paths["pgid_escape_ready"],
             "SWIFT_TEST_LIST_TIMEOUT_SECONDS": "5",
             **extra,
         }
@@ -381,6 +492,8 @@ def test_successful_partition_and_exact_argv() -> None:
             "test",
             "--disable-sandbox",
             "-Xswiftc",
+            "-strict-concurrency=complete",
+            "-Xswiftc",
             "-warnings-as-errors",
             "list",
         ]
@@ -400,9 +513,15 @@ def test_successful_partition_and_exact_argv() -> None:
         assert len(settings) == 6
         assert all(len(shard["tests"]) == 1 for shard in settings)
         cache = [shard for shard in shards if shard["slug"] == "cache"]
-        assert len(cache) == 1
-        assert len(cache[0]["tests"]) == 2
-        assert cache[0]["filter"] == r"^PersonalSitePublisherMacTests\.(WorkbenchImageTwoTierCacheTests)/"
+        assert not cache
+        web_content_security = [
+            shard for shard in shards if shard["slug"] == "web-content-security"
+        ]
+        assert len(web_content_security) == 1
+        assert len(web_content_security[0]["tests"]) == 3
+        assert web_content_security[0]["filter"] == (
+            r"^PersonalSitePublisherMacTests\.(WebContentNetworkSecurityTests)/"
+        )
         mac_cases = [
             shard
             for shard in shards
@@ -427,8 +546,13 @@ def test_successful_partition_and_exact_argv() -> None:
         core_cases = [
             shard for shard in shards if shard["slug"].startswith("core-case-")
         ]
-        assert len(core_cases) == 2
+        assert len(core_cases) == 4
         assert all(len(shard["tests"]) == 1 for shard in core_cases)
+        assert {
+            test.split("/", 1)[0].rsplit(".", 1)[-1]
+            for shard in core_cases
+            for test in shard["tests"]
+        } == {"AIModelDiscoveryServiceTests", "CodexAppServerClientTests"}
         assert all(
             shard["filter"] == f"^{re.escape(shard['tests'][0])}$"
             for shard in core_cases
@@ -441,6 +565,25 @@ def test_successful_partition_and_exact_argv() -> None:
         ]
         assert len(core) == 3
         assert all(not shard["filter"].endswith("$") for shard in core)
+        leaf_targets = set(FIXTURE_TEST_TARGETS) - {
+            "PersonalSitePublisherMacTests",
+            "PublishingWorkbenchCoreTests",
+        }
+        inventory = payload["inventory"]
+        assert set(inventory["targets"]) == set(FIXTURE_TEST_TARGETS)
+        assert set(inventory["countsByTarget"]) == set(FIXTURE_TEST_TARGETS)
+        assert set(inventory["shardsByTarget"]) == set(FIXTURE_TEST_TARGETS)
+        assert all(inventory["shardsByTarget"][target] for target in FIXTURE_TEST_TARGETS)
+        assert all(
+            inventory["shardsByTarget"][target][0].startswith("leaf-")
+            for target in leaf_targets
+        )
+        assert {
+            test.split(".", 1)[0]
+            for shard in shards
+            if shard["slug"].startswith("leaf-")
+            for test in shard["tests"]
+        } == leaf_targets
         for shard in shards:
             if shard in core:
                 suites = {test.split("/", 1)[0] for test in shard["tests"]}
@@ -454,7 +597,12 @@ def test_successful_partition_and_exact_argv() -> None:
             assert shard["executedSwiftTestingCount"] == shard["expectedSwiftTestingCount"]
             assert "timeoutSeconds: 120.0" in Path(shard["logPath"]).read_text(encoding="utf-8")
             assert "terminationGraceSeconds: 2.0" in Path(shard["logPath"]).read_text(encoding="utf-8")
-        assert payload["swiftTestBuildArguments"] == ["-Xswiftc", "-warnings-as-errors"]
+        assert payload["swiftTestBuildArguments"] == [
+            "-Xswiftc",
+            "-strict-concurrency=complete",
+            "-Xswiftc",
+            "-warnings-as-errors",
+        ]
 
 
 def test_swift_cache_environment_is_local_and_explicit_values_are_preserved() -> None:
@@ -524,9 +672,18 @@ def test_warnings_as_errors_can_be_explicitly_disabled() -> None:
         result = run_fixture(root, paths, SWIFT_TEST_WARNINGS_AS_ERRORS="0")
         assert result.returncode == 0, result.stderr
         calls = read_calls(paths)
-        assert calls[0] == ["test", "--disable-sandbox", "list"]
+        assert calls[0] == [
+            "test",
+            "--disable-sandbox",
+            "-Xswiftc",
+            "-strict-concurrency=complete",
+            "list",
+        ]
         payload = read_result(root)
-        assert payload["swiftTestBuildArguments"] == []
+        assert payload["swiftTestBuildArguments"] == [
+            "-Xswiftc",
+            "-strict-concurrency=complete",
+        ]
 
 
 def test_invalid_warnings_as_errors_configuration_fails_closed() -> None:
@@ -539,15 +696,28 @@ def test_invalid_warnings_as_errors_configuration_fails_closed() -> None:
         assert read_result(root)["status"] == "failed"
 
 
-def test_manifest_inventory_and_baseline_fail_closed() -> None:
+def test_manifest_inventory_and_baseline_contracts() -> None:
+    temporary, root, paths = make_fixture(extra_target=True)
+    with temporary:
+        result = run_fixture(root, paths)
+        assert result.returncode == 0, result.stderr
+        payload = read_result(root)
+        assert payload["inventory"]["countsByTarget"]["FutureTests"] == 1
+        assert payload["inventory"]["shardsByTarget"]["FutureTests"]
+
     for options, expected_message, expected_calls in (
-        ({"extra_target": True}, "unexpected Swift test target set", 0),
+        ({"unknown_inventory": True}, "unknown Swift test target", 1),
         ({"duplicate_inventory": True}, "duplicate test specifications", 1),
         ({"raise_baseline": True}, "fell below", 1),
         (
-            {"missing_suite": "WorkbenchImageTwoTierCacheTests"},
-            "required isolated suite is missing",
-            1,
+            {"missing_baseline_target": "PublishingMarkdownCoreTests"},
+            "quality baselines must define every manifest Swift test target",
+            0,
+        ),
+        (
+            {"extra_baseline_target": "GhostTests"},
+            "quality baselines must define every manifest Swift test target",
+            0,
         ),
     ):
         temporary, root, paths = make_fixture(**options)
@@ -557,6 +727,16 @@ def test_manifest_inventory_and_baseline_fail_closed() -> None:
             assert expected_message in result.stderr
             assert len(read_calls(paths)) == expected_calls
             assert read_result(root)["status"] == "failed"
+
+    for missing_suite in (
+        "WorkbenchImageTwoTierCacheTests",
+        "WebContentNetworkSecurityTests",
+        "SettingsSearchAndSavePresentationTests",
+    ):
+        temporary, root, paths = make_fixture(missing_suite=missing_suite)
+        with temporary:
+            result = run_fixture(root, paths)
+            assert result.returncode == 0, result.stderr
 
 
 def test_shard_retry_configuration_is_bounded() -> None:
@@ -666,6 +846,41 @@ def test_timeout_samples_and_removes_child_process_group() -> None:
         assert sample_calls and sample_calls[0][0] == str(child_pid)
 
 
+def test_timeout_kills_descendant_after_it_changes_process_group() -> None:
+    temporary, root, paths = make_fixture()
+    with temporary:
+        try:
+            result = run_fixture(
+                root,
+                paths,
+                SWIFT_PGID_ESCAPE_AT="2",
+                PS_BIN=paths["failing_ps"],
+                SWIFT_TEST_SHARD_RETRIES="0",
+                SWIFT_TEST_SHARD_TIMEOUT_SECONDS="0.5",
+                SWIFT_TEST_TERMINATION_GRACE_SECONDS="0.2",
+            )
+            assert result.returncode == 124, result
+            wait_for_path(Path(paths["pgid_escape_ready"]))
+            child_pid = int(Path(paths["hang_child_pid"]).read_text(encoding="utf-8"))
+            child_pgid = int(Path(paths["hang_child_pgid"]).read_text(encoding="utf-8"))
+            escaped_pgid = int(
+                Path(paths["pgid_escape_ready"]).read_text(encoding="utf-8")
+            )
+            root_pgid = int(Path(paths["hang_root_pgid"]).read_text(encoding="utf-8"))
+            assert child_pgid == root_pgid
+            assert escaped_pgid != root_pgid
+            time.sleep(0.1)
+            assert not process_exists(child_pid), child_pid
+        finally:
+            if Path(paths["hang_child_pid"]).exists():
+                child_pid = int(Path(paths["hang_child_pid"]).read_text(encoding="utf-8"))
+                if process_exists(child_pid):
+                    try:
+                        os.kill(child_pid, signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass
+
+
 def test_leader_exit_cleans_detached_child_and_fails_missing_counts() -> None:
     temporary, root, paths = make_fixture()
     with temporary:
@@ -680,7 +895,9 @@ def test_leader_exit_cleans_detached_child_and_fails_missing_counts() -> None:
         assert not process_exists(child_pid), child_pid
         payload = read_result(root)
         assert payload["status"] == "failed"
-        failed = next(shard for shard in payload["shards"] if shard["slug"] == "cache")
+        failed = next(
+            shard for shard in payload["shards"] if shard["slug"] == "web-content-security"
+        )
         assert failed["status"] == "failed"
         assert "completed test counts" in failed["error"]
 
@@ -725,12 +942,13 @@ def main() -> int:
     test_swift_cache_environment_is_local_and_explicit_values_are_preserved()
     test_warnings_as_errors_can_be_explicitly_disabled()
     test_invalid_warnings_as_errors_configuration_fails_closed()
-    test_manifest_inventory_and_baseline_fail_closed()
+    test_manifest_inventory_and_baseline_contracts()
     test_shard_retry_configuration_is_bounded()
     test_nonzero_shard_fails_fast_with_incremental_result()
     test_timeout_retries_once_then_passes_with_distinct_evidence()
     test_repeated_timeout_retries_once_then_fails_closed()
     test_timeout_samples_and_removes_child_process_group()
+    test_timeout_kills_descendant_after_it_changes_process_group()
     test_leader_exit_cleans_detached_child_and_fails_missing_counts()
     test_external_sigterm_is_forwarded_to_active_shard()
     print("swift test process runner contract: passed")

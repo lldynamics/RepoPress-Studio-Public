@@ -78,19 +78,14 @@ final class LocalPublishPreviewServiceTests: XCTestCase {
     XCTAssertEqual(try Data(contentsOf: destinationURL), invalidUTF8)
   }
 
-  func testPreviewUsesRepositoryBookmarkWhenStoredPathIsStale() throws {
+  func testPreviewUsesStoredRepositoryPath() throws {
     let rootURL = try makeRepositoryFixture()
     defer {
       try? FileManager.default.removeItem(at: rootURL)
     }
 
     var profile = SiteProfile.defaultProfile
-    profile.localRepositoryRootPath = "/stale/path"
-    profile.localRepositoryBookmarkData = try rootURL.bookmarkData(
-      options: [],
-      includingResourceValuesForKeys: nil,
-      relativeTo: nil
-    )
+    profile.localRepositoryRootPath = rootURL.path
     profile.markdownPathPattern = "content/posts/{slug}.md"
 
     let draft = ArticleDraft(
@@ -191,7 +186,6 @@ final class LocalPublishPreviewServiceTests: XCTestCase {
   func testPreviewAsyncMatchesSynchronousPreviewWhenRepositoryIsMissing() async {
     var profile = SiteProfile.defaultProfile
     profile.localRepositoryRootPath = ""
-    profile.localRepositoryBookmarkData = nil
     let package = publishPackage(
       files: [.init(kind: .markdown, repositoryPath: "content/posts/test.md", content: "test")]
     )

@@ -33,8 +33,10 @@ extension WorkbenchStore {
   }
 
   public func runPreflight() {
+    let requestedDraftID = selectedDraftID
     schedulePreflightCalculation(
-      flushEditorBuffers: true,
+      for: requestedDraftID,
+      flushEditorBuffer: true,
       invalidateDerivedCaches: true
     )
   }
@@ -44,18 +46,21 @@ extension WorkbenchStore {
   /// flush editor buffers belonging to other windows or invalidate the list,
   /// task-queue, and image-workbench caches for every draft.
   func refreshPreflightForSelection() {
+    let requestedDraftID = selectedDraftID
     schedulePreflightCalculation(
-      flushEditorBuffers: false,
+      for: requestedDraftID,
+      flushEditorBuffer: false,
       invalidateDerivedCaches: false
     )
   }
 
   private func schedulePreflightCalculation(
-    flushEditorBuffers: Bool,
+    for draftID: UUID?,
+    flushEditorBuffer: Bool,
     invalidateDerivedCaches: Bool
   ) {
-    if flushEditorBuffers {
-      flushDraftBodyEditorBuffers()
+    if flushEditorBuffer, let draftID {
+      flushDraftBodyEditorBuffer(for: draftID)
     }
     preflightRefreshTask?.cancel()
     preflightRefreshGeneration &+= 1
@@ -64,15 +69,28 @@ extension WorkbenchStore {
       invalidateDraftDerivedCaches()
     }
 
-    guard let selectedDraft else {
+    guard let draftID else {
       preflightRefreshTask = nil
       publishingStore.preflightIssues = []
       return
     }
 
-    let profile = profile(for: selectedDraft)
-    let draftsSnapshot = drafts
-    let repositoryReport = repositoryReport(for: selectedDraft)
+    guard selectedDraftID == draftID,
+      let selectedDraft = drafts.first(where: { $0.id == draftID })
+    else {
+      preflightRefreshTask = nil
+      if selectedDraftID == draftID {
+        publishingStore.preflightIssues = []
+      }
+      return
+    }
+
+    let selectedDraftSnapshot = selectedDraft
+    let profileSnapshot = profile(for: selectedDraft)
+    let sameSiteDraftsSnapshot = drafts.filter {
+      $0.belongs(toSiteProfileID: selectedDraft.siteProfileID)
+    }
+    let repositoryReportSnapshot = repositoryReport(for: selectedDraft)
     let preflightService = publishingStore.preflightService
     let generalDraftPublishingIssue = publishingStore.generalDraftPublishingIssue
 
@@ -80,18 +98,18 @@ extension WorkbenchStore {
       let calculationTask: Task<[PreflightIssue]?, Never> = Task.detached(priority: .userInitiated)
       {
         guard !Task.isCancelled else { return nil }
-        if selectedDraft.isGeneralDraft {
+        if selectedDraftSnapshot.isGeneralDraft {
           return [generalDraftPublishingIssue]
         }
-        let allDrafts = draftsSnapshot.filter {
-          $0.belongs(toSiteProfileID: selectedDraft.siteProfileID)
-        }
-        let duplicateIndex = PreflightDuplicateIndex(drafts: allDrafts, profile: profile)
+        let duplicateIndex = PreflightDuplicateIndex(
+          drafts: sameSiteDraftsSnapshot,
+          profile: profileSnapshot
+        )
         return preflightService.run(
-          draft: selectedDraft,
-          allDrafts: allDrafts,
-          profile: profile,
-          repositoryReport: repositoryReport,
+          draft: selectedDraftSnapshot,
+          allDrafts: sameSiteDraftsSnapshot,
+          profile: profileSnapshot,
+          repositoryReport: repositoryReportSnapshot,
           includeRepositoryReadiness: true,
           duplicateIndex: duplicateIndex
         )
@@ -107,8 +125,27 @@ extension WorkbenchStore {
       guard !Task.isCancelled,
         let issues,
         let self,
-        self.preflightRefreshGeneration == generation
+        self.preflightRefreshGeneration == generation,
+        self.selectedDraftID == draftID,
+        let currentDraft = self.drafts.first(where: { $0.id == draftID }),
+        currentDraft.hasSamePreflightInput(as: selectedDraftSnapshot),
+        self.profile(for: currentDraft) == profileSnapshot,
+        self.drafts.filter({
+          $0.belongs(toSiteProfileID: currentDraft.siteProfileID)
+        }).count == sameSiteDraftsSnapshot.count,
+        zip(
+          self.drafts.filter({
+            $0.belongs(toSiteProfileID: currentDraft.siteProfileID)
+          }),
+          sameSiteDraftsSnapshot
+        ).allSatisfy({ current, snapshot in
+          current.id == snapshot.id && current.hasSamePreflightInput(as: snapshot)
+        }),
+        self.repositoryReport(for: currentDraft) == repositoryReportSnapshot
       else {
+        if let self, self.preflightRefreshGeneration == generation {
+          self.preflightRefreshTask = nil
+        }
         return
       }
 
@@ -125,6 +162,20 @@ extension WorkbenchStore {
   }
 
   func schedulePreflightRefresh() {
+    let requestedDraftID = selectedDraftID
+    guard let requestedDraftID else {
+      schedulePreflightCalculation(
+        for: nil,
+        flushEditorBuffer: false,
+        invalidateDerivedCaches: true
+      )
+      return
+    }
+    schedulePreflightRefresh(for: requestedDraftID)
+  }
+
+  func schedulePreflightRefresh(for draftID: UUID) {
+    guard selectedDraftID == draftID else { return }
     preflightRefreshTask?.cancel()
     preflightRefreshTask = Task { [weak self] in
       do {
@@ -135,19 +186,84 @@ extension WorkbenchStore {
       guard !Task.isCancelled, let self else {
         return
       }
-      self.preflightRefreshTask = nil
-      self.runPreflight()
+      guard self.selectedDraftID == draftID else {
+        self.preflightRefreshTask = nil
+        return
+      }
+      self.schedulePreflightCalculation(
+        for: draftID,
+        flushEditorBuffer: true,
+        invalidateDerivedCaches: true
+      )
     }
   }
 
   public func refreshPublishPreview(for draft: ArticleDraft? = nil) {
-    flushDraftBodyEditorBuffers()
+    let targetDraftID = draft?.id ?? selectedDraftID
+    if let targetDraftID {
+      flushDraftBodyEditorBuffer(for: targetDraftID)
+    }
     publishingStore.refreshPublishPreview(for: draft, store: self)
   }
 
+  public func refreshPublishPreview(for draftID: UUID) {
+    if let draft = draft(for: draftID) {
+      refreshPublishPreview(for: draft)
+    } else {
+      publishingStore.refreshPublishPreview(for: draftID, store: self)
+    }
+  }
+
   public func refreshPublishPreviewInBackground(for draft: ArticleDraft? = nil) {
-    flushDraftBodyEditorBuffers()
+    let targetDraftID = draft?.id ?? selectedDraftID
+    if let targetDraftID {
+      flushDraftBodyEditorBuffer(for: targetDraftID)
+    }
     publishingStore.schedulePublishPreviewRefresh(for: draft, store: self)
+  }
+
+  /// Refreshes one explicit draft without changing the active profile or
+  /// selected draft. The returned value is present only when the complete
+  /// input baseline is still current after asynchronous file-system work.
+  public func refreshPublishPreview(
+    for draftID: UUID
+  ) async -> DraftPublishPreviewSnapshot? {
+    flushDraftBodyEditorBuffer(for: draftID)
+    publishingStore.schedulePublishPreviewRefresh(forDraftID: draftID, store: self)
+    await publishingStore.waitForPublishPreviewRefresh(for: draftID)
+    return cachedPublishPreview(for: draftID)
+  }
+
+  public func cachedPublishPreview(
+    for draftID: UUID
+  ) -> DraftPublishPreviewSnapshot? {
+    guard
+      let snapshot = publishingStore.draftPublishPreviewSnapshot(for: draftID),
+      let rememberedBaseline = publishingStore.rememberedDraftPublishPreviewInputBaseline(
+        for: draftID
+      ),
+      let currentBaseline = publishingStore.currentDraftPublishPreviewInputBaseline(
+        for: draftID,
+        store: self
+      ),
+      rememberedBaseline == currentBaseline
+    else {
+      return nil
+    }
+    return snapshot
+  }
+
+  public func waitForPublishPreviewRefresh(for draftID: UUID) async {
+    await publishingStore.waitForPublishPreviewRefresh(for: draftID)
+  }
+
+  public func cancelPublishPreviewRefresh(for draftID: UUID) {
+    publishingStore.cancelPublishPreviewRefresh(for: draftID)
+  }
+
+  public func refreshPublishPreviewInBackground(for draftID: UUID) {
+    flushDraftBodyEditorBuffer(for: draftID)
+    publishingStore.schedulePublishPreviewRefresh(for: draftID, store: self)
   }
 
   public func refreshBatchPublishPlan() {
@@ -178,19 +294,26 @@ extension WorkbenchStore {
   }
 
   public func cachedLocalPublishPreview(for draft: ArticleDraft) -> LocalPublishPreview? {
-    guard publishPackage?.draftID == draft.id else { return nil }
-    return localPublishPreview
+    publishingStore.draftPublishPreviewSnapshot(for: draft.id)?.localPublishPreview
   }
 
   public func cachedRemotePublishPreview(for draft: ArticleDraft) -> RemoteRepositoryPublishPreview?
   {
-    guard publishPackage?.draftID == draft.id else { return nil }
-    return remotePublishPreviewSnapshot
+    publishingStore.draftPublishPreviewSnapshot(for: draft.id)?.remotePublishPreview
   }
 
   public func cachedRemoteReviewDraft(for draft: ArticleDraft) -> RemoteReviewDraft? {
-    guard publishPackage?.draftID == draft.id else { return nil }
-    return remoteReviewDraft
+    publishingStore.draftPublishPreviewSnapshot(for: draft.id)?.remoteReviewDraft
+  }
+
+  public func cachedDraftPublishPreviewSnapshot(
+    for draftID: UUID
+  ) -> DraftPublishPreviewSnapshot? {
+    cachedPublishPreview(for: draftID)
+  }
+
+  public func isPublishPreviewRefreshing(for draftID: UUID) -> Bool {
+    publishingStore.isPublishPreviewRefreshing(for: draftID)
   }
 
   public func localSitePreviewPlan(for draft: ArticleDraft) -> LocalSitePreviewPlan? {
@@ -238,6 +361,41 @@ extension WorkbenchStore {
       flushDraftBodyEditorBuffer(for: selectedDraftID)
     }
     publishingStore.selectDraft(id, store: self)
+  }
+
+  /// Activates the draft remembered by a key window without flushing editor
+  /// buffers staged by other windows. The shared PublishingStore remains the
+  /// compatibility context until sidebar, editor, Inspector, preview, and
+  /// publishing projections can move to one window-owned context atomically.
+  @discardableResult
+  public func activateDraftSelectionContext(_ id: UUID?) -> UUID? {
+    guard let id else {
+      if let selectedDraftID {
+        flushDraftBodyEditorBuffer(for: selectedDraftID)
+      }
+      publishingStore.selectDraft(nil, store: self)
+      return nil
+    }
+    guard let draft = drafts.first(where: { $0.id == id }) else {
+      let fallbackDraft = selectedDraft ?? writingDrafts.first
+      guard let fallbackDraft else {
+        publishingStore.selectDraft(nil, store: self)
+        return nil
+      }
+      return activateDraftSelectionContext(fallbackDraft.id)
+    }
+
+    if selectedDraftID != draft.id, let selectedDraftID {
+      flushDraftBodyEditorBuffer(for: selectedDraftID)
+    }
+    if draft.isGeneralDraft {
+      publishingStore.draftListContentScope = .general
+    } else {
+      publishingStore.activeProfileID = draft.siteProfileID
+      publishingStore.draftListContentScope = .currentSite
+    }
+    publishingStore.selectDraft(draft.id, store: self)
+    return draft.id
   }
 
   @discardableResult
@@ -355,11 +513,6 @@ extension WorkbenchStore {
     scheduleAutosave()
   }
 
-  public func setEditorDisplayMode(_ mode: EditorDisplayMode) {
-    guard publishingStore.editorDisplayMode != mode else { return }
-    publishingStore.editorDisplayMode = mode
-  }
-
   public func setInspectorPresented(_ isPresented: Bool) {
     guard publishingStore.isInspectorPresented != isPresented else { return }
     publishingStore.isInspectorPresented = isPresented
@@ -416,6 +569,12 @@ extension WorkbenchStore {
     updatedWithoutBody.bodyMarkdown = ""
     let isBodyOnlyEdit = previousDraft != nil && previousWithoutBody == updatedWithoutBody
     publishingStore.updateDraft(bufferedDraft, store: self)
+    if bufferedDraft.wordCountNeedsRefresh {
+      scheduleDraftWordCountRefresh(
+        for: bufferedDraft.id,
+        bodyMarkdown: bufferedDraft.bodyMarkdown
+      )
+    }
     if !buffer.isDirty, previousDraft?.bodyMarkdown != bufferedDraft.bodyMarkdown {
       synchronizeDraftBodyEditorBuffer(with: bufferedDraft)
     }
@@ -454,7 +613,9 @@ extension WorkbenchStore {
       persistenceStore.markStatus("编辑冲突：已保留另一窗口的最新版本")
       return false
     }
-    updateDraft(draft)
+    var contentUpdate = draft
+    contentUpdate.preserveRepositoryState(from: current)
+    updateDraft(contentUpdate)
     return true
   }
 
@@ -468,6 +629,16 @@ extension WorkbenchStore {
     cancelSiteDraftFileAutosave(for: draftID)
     publishingStore.deleteDraft(id: draftID, store: self)
     invalidateDraftDerivedCaches()
+  }
+
+  @discardableResult
+  public func unpublishDraft(id draftID: UUID) async -> RemoteRepositoryPublishResult? {
+    discardDraftBodyEditorBuffer(for: draftID)
+    cancelSiteDraftFileAutosave(for: draftID)
+    let result = await publishingStore.unpublishDraft(id: draftID, store: self)
+    invalidateDraftDerivedCaches()
+    refreshBatchPublishPlanInBackground()
+    return result
   }
 
   public func versions(for draftID: UUID) -> [DraftVersionSnapshot] {
@@ -517,6 +688,10 @@ extension WorkbenchStore {
     publishingStore.pendingRepositoryCleanupRequests()
   }
 
+  public var pendingRemoteRepositoryCleanupRequests: [DraftRepositoryCleanupRequest] {
+    publishingStore.pendingRemoteRepositoryCleanupRequests(profileID: activeProfileID)
+  }
+
   public func repositoryCleanupPreview(for requestID: UUID) -> LocalPublishPreview? {
     publishingStore.repositoryCleanupPreview(for: requestID)
   }
@@ -532,6 +707,26 @@ extension WorkbenchStore {
   @discardableResult
   public func keepRepositoryFile(_ requestID: UUID) -> Bool {
     publishingStore.keepRepositoryFile(requestID, store: self)
+  }
+
+  @discardableResult
+  public func acknowledgeRemoteCleanupReviewClosed(_ requestID: UUID) -> Bool {
+    publishingStore.acknowledgeRemoteCleanupReviewClosed(
+      requestID: requestID,
+      store: self
+    )
+  }
+
+  @discardableResult
+  public func publishRepositoryCleanupRequestOnline(
+    _ requestID: UUID
+  ) async -> RemoteRepositoryPublishResult? {
+    let result = await publishingStore.publishRepositoryCleanupRequestOnline(
+      requestID,
+      store: self
+    )
+    refreshBatchPublishPlanInBackground()
+    return result
   }
 
   public func focusDraft(_ id: UUID, section: WorkspaceSection? = nil) -> Bool {
@@ -561,6 +756,7 @@ extension WorkbenchStore {
 
   public func restoreSEOSocialPreviewSnapshotForCurrentSelection() {
     aiStore.restoreSEOSocialPreviewSnapshotForCurrentSelection()
+    imageStore.restoreImageWorkbenchReportProjectionForCurrentSelection()
   }
 
   public func preflightIssues(

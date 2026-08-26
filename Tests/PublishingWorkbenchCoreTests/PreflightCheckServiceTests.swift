@@ -21,6 +21,32 @@ final class PreflightCheckServiceTests: XCTestCase {
     XCTAssertTrue(issues.contains { $0.severity == .error && $0.field == "slug" })
   }
 
+  func testInvalidNonEmptySlugIsAWarningAndDoesNotBlockByItself() {
+    let profile = SiteProfile.defaultProfile
+    let draft = ArticleDraft(
+      siteProfileID: profile.id,
+      title: "Existing Article",
+      slug: "Existing Article",
+      draft: false,
+      bodyMarkdown: "This body is long enough to isolate the non-empty invalid slug warning."
+    )
+
+    let issues = PreflightCheckService().run(
+      draft: draft,
+      allDrafts: [draft],
+      profile: profile,
+      includeRepositoryReadiness: false
+    )
+
+    let slugIssue = issues.first { $0.title == CoreL10n.text("Slug 格式非法") }
+    XCTAssertEqual(slugIssue?.severity, .warning)
+    XCTAssertFalse(
+      issues.contains {
+        $0.field == "slug" && $0.severity == .error
+      }
+    )
+  }
+
   func testReportsDuplicateRenderedPublishPath() {
     let profile = SiteProfile.defaultProfile
     let first = ArticleDraft(

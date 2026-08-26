@@ -17,6 +17,7 @@ struct AIKeychainSection: View {
   @FocusState private var isAPIKeyFocused: Bool
   @State private var isDeleteConfirmationPresented = false
   @State private var isKeyRevealed = false
+  @State private var isJustSaved = false
 
   var body: some View {
     Section(String(localized: "API Key 凭据")) {
@@ -70,13 +71,37 @@ struct AIKeychainSection: View {
       .accessibilityLabel("AI API Key")
       .accessibilityHint("输入后保存到\(storageModeTitle(storageMode))")
 
-      Button(saveButtonTitle) {
-        aiAPIKeyInput.wrappedValue = Self.sanitizeAPIKey(aiAPIKeyInput.wrappedValue)
-        onSaveAPIKey()
+      HStack(alignment: .center, spacing: 10) {
+        Button(saveButtonTitle) {
+          aiAPIKeyInput.wrappedValue = Self.sanitizeAPIKey(aiAPIKeyInput.wrappedValue)
+          onSaveAPIKey()
+          withAnimation {
+            isJustSaved = true
+          }
+          Task {
+            try? await Task.sleep(for: .seconds(2.5))
+            await MainActor.run {
+              withAnimation {
+                isJustSaved = false
+              }
+            }
+          }
+        }
+        .workbenchProminentActionStyle()
+        .disabled(aiAPIKeyInput.wrappedValue.trimmedForPublishing.isEmpty)
+        .accessibilityLabel("保存 AI API Key")
+
+        if isJustSaved {
+          Label("已保存", systemImage: "checkmark.circle.fill")
+            .font(.caption.weight(.medium))
+            .foregroundStyle(WorkbenchTheme.success)
+            .transition(.opacity)
+        } else if !aiAPIKeyInput.wrappedValue.trimmedForPublishing.isEmpty {
+          Text("待保存修改")
+            .font(.caption.weight(.medium))
+            .foregroundStyle(WorkbenchTheme.warning)
+        }
       }
-      .workbenchProminentActionStyle()
-      .disabled(aiAPIKeyInput.wrappedValue.trimmedForPublishing.isEmpty)
-      .accessibilityLabel("保存 AI API Key")
 
       HStack {
         Label(

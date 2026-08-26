@@ -22,7 +22,7 @@ struct RepositoryDraftDiscoverySettingsSection: View {
   let activeProfileBinding: Binding<SiteProfile>
   @State private var scanTask: Task<Void, Never>?
   @State private var statusMessage: String?
-  @State private var statusIsError = false
+  @State private var statusSeverity: AccessibleStatusSeverity = .success
 
   var body: some View {
     Section {
@@ -70,7 +70,7 @@ struct RepositoryDraftDiscoverySettingsSection: View {
       if let statusMessage {
         AccessibleStatusMessage(
           message: statusMessage,
-          severity: statusIsError ? .error : .success,
+          severity: statusSeverity,
           announcesNonUrgentStatus: true
         )
         .fixedSize(horizontal: false, vertical: true)
@@ -109,7 +109,7 @@ struct RepositoryDraftDiscoverySettingsSection: View {
     let profileID = activeProfile.id
     let previousActionFeedback = store.publishActionFeedback
     statusMessage = nil
-    statusIsError = false
+    statusSeverity = .success
     scanTask = Task { @MainActor in
       let insertedCount = await store.importMissingDraftsFromLocalRepository()
       guard !Task.isCancelled, store.activeProfileID == profileID else {
@@ -122,11 +122,26 @@ struct RepositoryDraftDiscoverySettingsSection: View {
         let actionFeedback = store.publishActionFeedback
       {
         statusMessage = actionFeedback.message
-        statusIsError = actionFeedback.status == .failure
+        statusSeverity = accessibilitySeverity(for: actionFeedback.status)
       } else {
         statusMessage = String(localized: "扫描完成，没有发现新的仓库文章。")
       }
       scanTask = nil
+    }
+  }
+
+  private func accessibilitySeverity(
+    for status: PublishActionMessageStatus
+  ) -> AccessibleStatusSeverity {
+    switch status {
+    case .information, .inProgress:
+      return .info
+    case .success:
+      return .success
+    case .warning:
+      return .warning
+    case .failure:
+      return .error
     }
   }
 }

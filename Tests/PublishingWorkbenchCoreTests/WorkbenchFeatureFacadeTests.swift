@@ -137,12 +137,10 @@ final class WorkbenchFeatureFacadeTests: XCTestCase {
     let draft = try XCTUnwrap(store.selectedDraft)
     let presentation = store.contentPresentation
     var presentationChanges = 0
-    var observedEditorDisplayMode = presentation.editorDisplayMode
     var observedAssistantPresentation = presentation.isAssistantPresented
     var pendingExpectation: XCTestExpectation?
     let cancellable = presentation.objectWillChange.sink {
       presentationChanges += 1
-      observedEditorDisplayMode = presentation.editorDisplayMode
       observedAssistantPresentation = presentation.isAssistantPresented
       pendingExpectation?.fulfill()
     }
@@ -164,28 +162,18 @@ final class WorkbenchFeatureFacadeTests: XCTestCase {
     store.setAIChatMessages([streamedMessage])
 
     XCTAssertEqual(presentationChanges, 0)
-    XCTAssertEqual(presentation.editorDisplayMode, .edit)
     XCTAssertFalse(presentation.isAssistantPresented)
-
-    let splitChange = expectation(description: "split presentation forwarded")
-    pendingExpectation = splitChange
-    store.setEditorDisplayMode(.split)
-    XCTAssertEqual(presentationChanges, 0)
-    await fulfillment(of: [splitChange], timeout: 1)
-    XCTAssertEqual(presentationChanges, 1)
-    XCTAssertEqual(observedEditorDisplayMode, .split)
 
     let assistantChange = expectation(description: "assistant presentation forwarded")
     pendingExpectation = assistantChange
     store.setAIPublishingAssistantPresented(true)
     await fulfillment(of: [assistantChange], timeout: 1)
-    XCTAssertEqual(presentationChanges, 2)
+    XCTAssertEqual(presentationChanges, 1)
     XCTAssertTrue(observedAssistantPresentation)
 
     pendingExpectation = nil
-    store.setEditorDisplayMode(.split)
     store.setAIPublishingAssistantPresented(true)
-    XCTAssertEqual(presentationChanges, 2)
+    XCTAssertEqual(presentationChanges, 1)
     withExtendedLifetime(cancellable) {}
   }
 
@@ -392,10 +380,10 @@ final class WorkbenchFeatureFacadeTests: XCTestCase {
     withExtendedLifetime([rootCancellable, activityCancellable]) {}
   }
 
-  func testImageWorkbenchFacadeObservesOnlyItsAIImageState() {
+  func testImageWorkbenchFacadeObservesOnlyItsSelectedDraftAIImageState() throws {
     let store = makeIsolatedStore()
     let imageWorkbench = store.imageWorkbench
-    let draftID = UUID()
+    let draftID = try XCTUnwrap(store.selectedDraft?.id)
     let attachmentID = UUID()
     let suggestion = AIPublishingImageTextSuggestion(
       id: attachmentID.uuidString,
@@ -413,16 +401,25 @@ final class WorkbenchFeatureFacadeTests: XCTestCase {
     let imageCancellable = imageWorkbench.objectWillChange.sink { imageChanges += 1 }
 
     store.setAITokenAvailability(KeychainTokenAvailability(hasToken: true))
-    store.setAIImageTextSuggestionDraftID(draftID)
-    store.setAIImageTextSuggestions([suggestion])
-    store.setAIImageTextRunning(true)
+    let generation = store.aiStore.beginAIImageTextSuggestionOperation(for: draftID)
+    XCTAssertTrue(
+      store.aiStore.installAIImageTextSuggestions(
+        [suggestion],
+        for: draftID,
+        generation: generation
+      )
+    )
 
     XCTAssertTrue(imageWorkbench.aiTokenAvailability.hasToken)
     XCTAssertEqual(imageWorkbench.suggestionDraftID, draftID)
     XCTAssertEqual(imageWorkbench.suggestions, [suggestion])
     XCTAssertTrue(imageWorkbench.isGeneratingSuggestions)
     XCTAssertEqual(rootChanges, 0)
-    XCTAssertGreaterThanOrEqual(imageChanges, 4)
+    XCTAssertGreaterThanOrEqual(imageChanges, 3)
+    store.aiStore.finishAIImageTextSuggestionOperation(
+      for: draftID,
+      generation: generation
+    )
     withExtendedLifetime([rootCancellable, imageCancellable]) {}
   }
 
@@ -509,6 +506,48 @@ final class WorkbenchFeatureFacadeTests: XCTestCase {
     withExtendedLifetime(cancellable) {}
   }
 
+  func testEditorNavigationFacadeIgnoresSelectedDraftContentOnlyUpdates() async throws {
+    let store = makeIsolatedStore()
+    let selectedDraft = try XCTUnwrap(store.selectedDraft)
+    let editorNavigation = WorkbenchEditorNavigationFeatureFacade(store: store)
+    var editorChanges = 0
+    let cancellable = editorNavigation.objectWillChange.sink {
+      editorChanges += 1
+    }
+
+    var updatedDraft = selectedDraft
+    updatedDraft.bodyMarkdown += "\n正文更新不应替换中央编辑器。"
+    store.setDrafts(
+      store.drafts.map { $0.id == updatedDraft.id ? updatedDraft : $0 }
+    )
+
+    try await Task.sleep(for: .milliseconds(80))
+    XCTAssertEqual(editorChanges, 0)
+    XCTAssertEqual(editorNavigation.selectedDraft?.bodyMarkdown, updatedDraft.bodyMarkdown)
+    withExtendedLifetime(cancellable) {}
+  }
+
+  func testEditorNavigationFacadePublishesWhenSelectedDraftIdentityChanges() async throws {
+    let store = makeIsolatedStore()
+    let selectedDraft = try XCTUnwrap(store.selectedDraft)
+    let otherDraft = ArticleDraft.empty(profile: store.activeProfile)
+    store.setDrafts(store.drafts + [otherDraft])
+    let editorNavigation = WorkbenchEditorNavigationFeatureFacade(store: store)
+    let changed = expectation(description: "selected draft identity changed")
+    var observedDraftID = editorNavigation.selectedDraft?.id
+    let cancellable = editorNavigation.objectWillChange.sink {
+      observedDraftID = editorNavigation.selectedDraft?.id
+      changed.fulfill()
+    }
+
+    store.setSelectedDraftID(otherDraft.id)
+    await fulfillment(of: [changed], timeout: 1)
+
+    XCTAssertEqual(observedDraftID, otherDraft.id)
+    XCTAssertNotEqual(observedDraftID, selectedDraft.id)
+    withExtendedLifetime(cancellable) {}
+  }
+
   func testRootPresentationFacadesRefreshWhileAppKitTracksInput() {
     let store = makeIsolatedStore()
     let shell = store.shell
@@ -518,7 +557,6 @@ final class WorkbenchFeatureFacadeTests: XCTestCase {
 
     var shellObservedSection = shell.selectedSection
     var editorObservedSection = editorNavigation.selectedSection
-    var observedDisplayMode = contentPresentation.editorDisplayMode
     var observedAssistantPresentation = contentPresentation.isAssistantPresented
     let shellCancellable = shell.objectWillChange.sink {
       shellObservedSection = shell.selectedSection
@@ -527,12 +565,10 @@ final class WorkbenchFeatureFacadeTests: XCTestCase {
       editorObservedSection = editorNavigation.selectedSection
     }
     let presentationCancellable = contentPresentation.objectWillChange.sink {
-      observedDisplayMode = contentPresentation.editorDisplayMode
       observedAssistantPresentation = contentPresentation.isAssistantPresented
     }
 
     store.setSelectedSection(nextSection)
-    store.setEditorDisplayMode(.split)
     store.setAIPublishingAssistantPresented(true)
 
     let eventTrackingMode = RunLoop.Mode("NSEventTrackingRunLoopMode")
@@ -544,7 +580,6 @@ final class WorkbenchFeatureFacadeTests: XCTestCase {
       )
       if shellObservedSection == nextSection,
         editorObservedSection == nextSection,
-        observedDisplayMode == .split,
         observedAssistantPresentation
       {
         break
@@ -553,7 +588,6 @@ final class WorkbenchFeatureFacadeTests: XCTestCase {
 
     XCTAssertEqual(shellObservedSection, nextSection)
     XCTAssertEqual(editorObservedSection, nextSection)
-    XCTAssertEqual(observedDisplayMode, .split)
     XCTAssertTrue(observedAssistantPresentation)
     withExtendedLifetime([
       shellCancellable,
@@ -589,6 +623,28 @@ final class WorkbenchFeatureFacadeTests: XCTestCase {
     store.setAIChatMessages([streamedMessage, nextMessage])
     XCTAssertEqual(editorChanges, 1)
     withExtendedLifetime(cancellable) {}
+  }
+
+  func testMarkdownEditorSaveStatusChangesStayOnToolbarScopedFacade() throws {
+    let store = makeIsolatedStore()
+    let draft = try XCTUnwrap(store.selectedDraft)
+    let editor = WorkbenchMarkdownEditorFeatureFacade(store: store, draftID: draft.id)
+    let saveStatus = WorkbenchMarkdownEditorSaveStatusFeatureFacade(
+      store: store,
+      draftID: draft.id
+    )
+    var editorChanges = 0
+    var saveStatusChanges = 0
+    let editorCancellable = editor.objectWillChange.sink { editorChanges += 1 }
+    let saveStatusCancellable = saveStatus.objectWillChange.sink { saveStatusChanges += 1 }
+
+    let updatedStatus = "toolbar-scoped-status-" + UUID().uuidString
+    store.persistenceStore.markStatus(updatedStatus)
+
+    XCTAssertEqual(editorChanges, 0)
+    XCTAssertGreaterThan(saveStatusChanges, 0)
+    XCTAssertEqual(store.lastSaveStatus, updatedStatus)
+    withExtendedLifetime([editorCancellable, saveStatusCancellable]) {}
   }
 
   func testMarkdownEditorFacadeObservesOnlyTrackedDraftBodyBuffer() throws {

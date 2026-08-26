@@ -14,9 +14,6 @@ final class EditorAndRSSSettingsTests: XCTestCase {
       MarkdownEditorComfortPreferences.warmPaperBackgroundEnabledKey,
       MarkdownEditorComfortPreferences.automaticPairingEnabledKey,
       MarkdownEditorComfortPreferences.paragraphSpotlightEnabledKey,
-      MarkdownEditorComfortPreferences.typewriterSoundPresetKey,
-      "markdownEditorSynchronizedScrolling",
-      "markdownEditorPreviewTheme",
     ]
 
     XCTAssertEqual(Set(keys).count, keys.count)

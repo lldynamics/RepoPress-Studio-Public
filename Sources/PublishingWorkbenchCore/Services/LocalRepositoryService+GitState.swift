@@ -1,4 +1,5 @@
 import Foundation
+import PublishingGitCore
 
 struct RepositoryGitStatus {
   var branchStatus: RepositoryBranchStatus?
@@ -7,7 +8,10 @@ struct RepositoryGitStatus {
 }
 extension LocalRepositoryService {
   func gitStatus(rootURL: URL) -> RepositoryGitStatus {
-    let result = gitCommandRunner.run(["status", "--porcelain=v1", "--branch"], rootURL: rootURL)
+    let result = gitCommandRunner.run(
+      ["status", "--porcelain=v1", "--branch", "-z"],
+      rootURL: rootURL
+    )
     guard result.terminationStatus == 0 else {
       return RepositoryGitStatus(branchStatus: nil, changedFiles: [], remoteChangedFiles: [])
     }
@@ -17,21 +21,11 @@ extension LocalRepositoryService {
       return RepositoryGitStatus(branchStatus: nil, changedFiles: [], remoteChangedFiles: [])
     }
 
-    var branchStatus: RepositoryBranchStatus?
+    let parsedStatus = GitRepositoryOutputParser().parsePorcelainV1Status(output)
+    let branchStatus = parsedStatus.branchStatus
     var changedFiles: [RepositoryChangedFile] = []
-
-    for line in output.split(separator: "\n").map(String.init) {
-      if line.hasPrefix("## ") {
-        branchStatus = parseBranchStatusLine(line)
-        continue
-      }
-
-      guard line.count >= 4 else { continue }
-      let status = String(line.prefix(2))
-      let pathStart = line.index(line.startIndex, offsetBy: 3)
-      let path = String(line[pathStart...])
-      let kind = changeKind(status: status)
-      var changedFile = RepositoryChangedFile(status: status, path: path, kind: kind)
+    for file in parsedStatus.changedFiles {
+      var changedFile = file
       changedFile.lineDiff = diffForChangedFile(changedFile, rootURL: rootURL)
       changedFiles.append(changedFile)
     }
@@ -48,26 +42,21 @@ extension LocalRepositoryService {
   }
 
   func remoteChangedFiles(rootURL: URL, upstreamName: String) -> [RepositoryChangedFile] {
-    guard let output = runGitOutput(
-      ["diff", "--name-status", "HEAD...\(upstreamName)", "--"],
-      rootURL: rootURL
-    ) else {
+    let policy = RepositoryRemoteDiffCommandPolicy()
+    guard let plan = policy.plan(
+      for: RepositoryRemoteDiffCommandInput(upstreamName: upstreamName)
+    ),
+    let output = runGitOutput(plan.changedFilesArguments, rootURL: rootURL) else {
       return []
     }
 
-    return parseNameStatus(output).map { file in
+    return GitRepositoryOutputParser().parseNameStatus(output).map { file in
       var changedFile = file
-      changedFile.lineDiff = remoteDiffForChangedFile(file, upstreamName: upstreamName, rootURL: rootURL)
+      if let arguments = plan.fileDiffArguments(for: file) {
+        changedFile.lineDiff = runGitDiff(arguments, rootURL: rootURL)
+      }
       return changedFile
     }
-  }
-
-  func remoteDiffForChangedFile(
-    _ file: RepositoryChangedFile,
-    upstreamName: String,
-    rootURL: URL
-  ) -> String? {
-    runGitDiff(["diff", "HEAD...\(upstreamName)", "--", file.displayPath], rootURL: rootURL)
   }
 
   func remoteFileSnapshot(
@@ -75,79 +64,88 @@ extension LocalRepositoryService {
     repositoryPath: String,
     repositoryProvider: RepositoryProvider
   ) -> RepositoryFileSnapshot? {
-    let status = gitStatus(rootURL: rootURL)
-    guard let upstreamName = status.branchStatus?.upstreamName?.nilIfEmpty,
-          let safePath = safeRepositoryFilePath(repositoryPath),
-          let content = runGitOutput(["show", "\(upstreamName):\(safePath)"], rootURL: rootURL) else {
-      return nil
-    }
-    let repositorySHA = remoteFileVersionSHA(
+    remoteFileSnapshots(
       rootURL: rootURL,
-      upstreamName: upstreamName,
-      repositoryPath: safePath,
+      repositoryPaths: [repositoryPath],
       repositoryProvider: repositoryProvider
-    )
-
-    return RepositoryFileSnapshot(
-      refName: upstreamName,
-      repositoryPath: safePath,
-      content: content,
-      repositorySHA: repositorySHA
-    )
+    ).first
   }
 
-  func remoteFileVersionSHA(
+  /// Builds remote snapshots without constructing the full working-tree
+  /// report. Resolving the configured upstream is one lightweight Git call;
+  /// each requested path then performs only its safe content/version reads.
+  /// This is intentionally shared by the single-file and batch entry points.
+  func remoteFileSnapshots(
     rootURL: URL,
-    upstreamName: String,
-    repositoryPath: String,
-    repositoryProvider: RepositoryProvider
-  ) -> String? {
-    switch repositoryProvider {
-    case .github:
-      return runGitOutput(["rev-parse", "\(upstreamName):\(repositoryPath)"], rootURL: rootURL)?
-        .trimmedForPublishing
-        .nilIfEmpty
-    case .gitlab:
-      return runGitOutput(["log", "-n", "1", "--format=%H", upstreamName, "--", repositoryPath], rootURL: rootURL)?
-        .trimmedForPublishing
-        .nilIfEmpty
+    repositoryPaths: [String],
+    repositoryProvider: RepositoryProvider,
+    cancellationCheck: @escaping @Sendable () -> Bool = { false }
+  ) -> [RepositoryFileSnapshot] {
+    guard !cancellationCheck() else {
+      return []
     }
+    guard let upstreamName = configuredUpstreamName(rootURL: rootURL) else {
+      return []
+    }
+
+    let policy = RepositoryFileSnapshotCommandPolicy()
+    var seenPaths = Set<String>()
+    var snapshots: [RepositoryFileSnapshot] = []
+    snapshots.reserveCapacity(repositoryPaths.count)
+
+    for repositoryPath in repositoryPaths {
+      guard !cancellationCheck() else {
+        return snapshots
+      }
+      guard let plan = policy.plan(
+        for: RepositoryFileSnapshotCommandInput(
+          provider: repositoryProvider,
+          upstreamName: upstreamName,
+          exactRepositoryPath: repositoryPath
+        )
+      ), seenPaths.insert(plan.repositoryPath).inserted else {
+        continue
+      }
+      guard let content = runGitOutput(plan.contentArguments, rootURL: rootURL) else {
+        continue
+      }
+      guard !cancellationCheck() else {
+        return snapshots
+      }
+      let repositorySHA = runGitOutput(plan.versionArguments, rootURL: rootURL)?
+        .trimmedForPublishing
+        .nilIfEmpty
+      guard !cancellationCheck() else {
+        return snapshots
+      }
+      snapshots.append(
+        RepositoryFileSnapshot(
+          refName: upstreamName,
+          repositoryPath: plan.repositoryPath,
+          content: content,
+          repositorySHA: repositorySHA
+        )
+      )
+    }
+
+    return snapshots
   }
 
-  func safeRepositoryFilePath(_ repositoryPath: String) -> String? {
-    let displayPath = repositoryPath.components(separatedBy: " -> ").last?.trimmedForPublishing ?? repositoryPath.trimmedForPublishing
-    guard !displayPath.isEmpty,
-          !displayPath.hasPrefix("/"),
-          !displayPath.contains("\\"),
-          !displayPath.contains("://") else {
+  private func configuredUpstreamName(rootURL: URL) -> String? {
+    guard let rawName = runGitOutput(
+      ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"],
+      rootURL: rootURL
+    )?.trimmedForPublishing.nilIfEmpty else {
       return nil
     }
 
-    let normalizedPath = displayPath.normalizedRelativePath()
-    guard !normalizedPath.isEmpty,
-          !normalizedPath.split(separator: "/").contains("..") else {
-      return nil
+    if rawName.hasPrefix("refs/remotes/") {
+      return String(rawName.dropFirst("refs/remotes/".count))
     }
-
-    return normalizedPath
-  }
-
-  func parseNameStatus(_ output: String) -> [RepositoryChangedFile] {
-    output.split(separator: "\n").compactMap { line -> RepositoryChangedFile? in
-      let parts = line.split(separator: "\t", omittingEmptySubsequences: false).map(String.init)
-      guard let status = parts.first?.nilIfEmpty, parts.count >= 2 else {
-        return nil
-      }
-
-      let path: String
-      if status.hasPrefix("R"), parts.count >= 3 {
-        path = "\(parts[1]) -> \(parts[2])"
-      } else {
-        path = parts[1]
-      }
-
-      return RepositoryChangedFile(status: status, path: path, kind: changeKind(status: status))
+    if rawName.hasPrefix("remotes/") {
+      return String(rawName.dropFirst("remotes/".count))
     }
+    return rawName
   }
 
   func gitOriginRemote(rootURL: URL) -> RepositoryRemote? {

@@ -89,12 +89,6 @@ public struct LocalGitPublishService: Sendable {
     guard let rootURL = profile.localRepositoryRootURL else {
       throw LocalGitPublishError.missingRepositoryRoot
     }
-    let didStartAccessing = rootURL.startAccessingSecurityScopedResource()
-    defer {
-      if didStartAccessing {
-        rootURL.stopAccessingSecurityScopedResource()
-      }
-    }
     return try await publishAsync(
       package: package,
       rootURL: rootURL,

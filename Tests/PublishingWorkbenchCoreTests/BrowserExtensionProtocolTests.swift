@@ -2,10 +2,10 @@ import BrowserExtensionProtocolSupport
 import XCTest
 
 final class BrowserExtensionProtocolTests: XCTestCase {
-  func testActiveReleaseSupportsOnlySafariAndChrome() {
+  func testActiveReleaseSupportsChromeAndFirefox() {
     XCTAssertEqual(
       BrowserExtensionProtocol.activeBrowserExtensions,
-      ["safari", "chrome", "firefox"]
+      ["chrome", "firefox"]
     )
   }
 

@@ -6,12 +6,12 @@ import XCTest
 
 @MainActor
 final class WorkbenchLaunchCoordinatorTests: XCTestCase {
-  func testMissingBookmarkStopsBeforeRuntimeCreation() async throws {
+  func testMissingPathStopsBeforeRuntimeCreation() async throws {
     let harness = try makeHarness(rootURL: nil)
     defer { harness.cleanup() }
     harness.sessionRecovery.requestSafeModeOnNextLaunch()
     let coordinator = WorkbenchLaunchCoordinator(
-      bookmarkStore: harness.bookmarkStore,
+      pathStore: harness.pathStore,
       sessionRecovery: harness.sessionRecovery,
       browserBridgeConnectionKeychainStore: harness.browserBridgeConnectionKeychainStore
     )
@@ -26,7 +26,7 @@ final class WorkbenchLaunchCoordinatorTests: XCTestCase {
     XCTAssertNil(coordinator.rssStore)
   }
 
-  func testRememberedRootResolvesBookmarkOffMainActor() async throws {
+  func testRememberedRootResolvesPathOffMainActor() async throws {
     let rootURL = FileManager.default.temporaryDirectory.appendingPathComponent(
       "launch-off-main-data-root-\(UUID().uuidString)",
       isDirectory: true
@@ -38,14 +38,13 @@ final class WorkbenchLaunchCoordinatorTests: XCTestCase {
       appVersion: "test"
     )
     let harness = try makeHarness(
-      rootURL: rootURL,
-      resolveMustBeOffMainActor: true
+      rootURL: rootURL
     )
     defer { harness.cleanup() }
-    try harness.bookmarkStore.rememberSelectedRoot(rootURL, dataID: manifest.dataID)
+    try harness.pathStore.rememberRoot(rootURL, dataID: manifest.dataID)
     harness.sessionRecovery.requestSafeModeOnNextLaunch()
     let coordinator = WorkbenchLaunchCoordinator(
-      bookmarkStore: harness.bookmarkStore,
+      pathStore: harness.pathStore,
       sessionRecovery: harness.sessionRecovery,
       browserBridgeConnectionKeychainStore: harness.browserBridgeConnectionKeychainStore
     )
@@ -54,6 +53,7 @@ final class WorkbenchLaunchCoordinatorTests: XCTestCase {
 
     XCTAssertEqual(coordinator.phase, .ready)
     XCTAssertEqual(coordinator.dataRootPath, rootURL.path)
+    XCTAssertEqual(harness.probeRecorder.mainThreadFlags, [false])
   }
 
   func testCreatingFreshRootFromSelectedParentEntersReadyAndReopens() async throws {
@@ -66,12 +66,11 @@ final class WorkbenchLaunchCoordinatorTests: XCTestCase {
     let rootURL = parentURL.appendingPathComponent("RepoPress Data", isDirectory: true)
     let harness = try makeHarness(
       rootURL: rootURL,
-      bookmarkResolvedURL: parentURL
     )
     defer { harness.cleanup() }
     harness.sessionRecovery.requestSafeModeOnNextLaunch()
     let coordinator = WorkbenchLaunchCoordinator(
-      bookmarkStore: harness.bookmarkStore,
+      pathStore: harness.pathStore,
       sessionRecovery: harness.sessionRecovery,
       browserBridgeConnectionKeychainStore: harness.browserBridgeConnectionKeychainStore
     )
@@ -86,8 +85,8 @@ final class WorkbenchLaunchCoordinatorTests: XCTestCase {
     XCTAssertNotNil(coordinator.store)
     XCTAssertNotNil(coordinator.rssStore)
     XCTAssertEqual(
-      try harness.bookmarkStore.storedRecord()?.relativeRootPath,
-      "RepoPress Data"
+      try harness.pathStore.storedRecord()?.path,
+      rootURL.path
     )
     XCTAssertFalse(
       FileManager.default.fileExists(
@@ -98,7 +97,7 @@ final class WorkbenchLaunchCoordinatorTests: XCTestCase {
     harness.sessionRecovery.markCleanExit()
     harness.sessionRecovery.requestSafeModeOnNextLaunch()
     let restartedCoordinator = WorkbenchLaunchCoordinator(
-      bookmarkStore: harness.bookmarkStore,
+      pathStore: harness.pathStore,
       sessionRecovery: harness.sessionRecovery,
       browserBridgeConnectionKeychainStore: harness.browserBridgeConnectionKeychainStore
     )
@@ -122,12 +121,11 @@ final class WorkbenchLaunchCoordinatorTests: XCTestCase {
     try Data().write(to: rootURL.appendingPathComponent("._failed-stage"))
     let harness = try makeHarness(
       rootURL: rootURL,
-      bookmarkResolvedURL: parentURL
     )
     defer { harness.cleanup() }
     harness.sessionRecovery.requestSafeModeOnNextLaunch()
     let coordinator = WorkbenchLaunchCoordinator(
-      bookmarkStore: harness.bookmarkStore,
+      pathStore: harness.pathStore,
       sessionRecovery: harness.sessionRecovery,
       browserBridgeConnectionKeychainStore: harness.browserBridgeConnectionKeychainStore
     )
@@ -178,12 +176,11 @@ final class WorkbenchLaunchCoordinatorTests: XCTestCase {
     )
     let harness = try makeHarness(
       rootURL: rootURL,
-      bookmarkResolvedURL: parentURL
     )
     defer { harness.cleanup() }
     harness.sessionRecovery.requestSafeModeOnNextLaunch()
     let coordinator = WorkbenchLaunchCoordinator(
-      bookmarkStore: harness.bookmarkStore,
+      pathStore: harness.pathStore,
       sessionRecovery: harness.sessionRecovery,
       browserBridgeConnectionKeychainStore: harness.browserBridgeConnectionKeychainStore
     )
@@ -194,8 +191,8 @@ final class WorkbenchLaunchCoordinatorTests: XCTestCase {
     XCTAssertEqual(coordinator.phase, .ready)
     XCTAssertEqual(coordinator.dataRootPath, rootURL.path)
     XCTAssertEqual(
-      try harness.bookmarkStore.storedRecord()?.relativeRootPath,
-      "RepoPress Data"
+      try harness.pathStore.storedRecord()?.path,
+      rootURL.path
     )
   }
 
@@ -213,10 +210,10 @@ final class WorkbenchLaunchCoordinatorTests: XCTestCase {
     )
     let harness = try makeHarness(rootURL: rootURL)
     defer { harness.cleanup() }
-    try harness.bookmarkStore.rememberSelectedRoot(rootURL, dataID: manifest.dataID)
+    try harness.pathStore.rememberRoot(rootURL, dataID: manifest.dataID)
     harness.sessionRecovery.requestSafeModeOnNextLaunch()
     let coordinator = WorkbenchLaunchCoordinator(
-      bookmarkStore: harness.bookmarkStore,
+      pathStore: harness.pathStore,
       sessionRecovery: harness.sessionRecovery,
       browserBridgeConnectionKeychainStore: harness.browserBridgeConnectionKeychainStore
     )
@@ -379,10 +376,10 @@ final class WorkbenchLaunchCoordinatorTests: XCTestCase {
 
     let harness = try makeHarness(rootURL: rootURL)
     defer { harness.cleanup() }
-    try harness.bookmarkStore.rememberSelectedRoot(rootURL, dataID: manifest.dataID)
+    try harness.pathStore.rememberRoot(rootURL, dataID: manifest.dataID)
     harness.sessionRecovery.requestSafeModeOnNextLaunch()
     let coordinator = WorkbenchLaunchCoordinator(
-      bookmarkStore: harness.bookmarkStore,
+      pathStore: harness.pathStore,
       sessionRecovery: harness.sessionRecovery,
       browserBridgeConnectionKeychainStore: harness.browserBridgeConnectionKeychainStore
     )
@@ -396,40 +393,24 @@ final class WorkbenchLaunchCoordinatorTests: XCTestCase {
   }
 
   private func makeHarness(
-    rootURL: URL?,
-    bookmarkResolvedURL: URL? = nil,
-    resolveMustBeOffMainActor: Bool = false
+    rootURL: URL?
   ) throws -> LaunchCoordinatorHarness {
     let suiteName = "WorkbenchLaunchCoordinatorTests.\(UUID().uuidString)"
     let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
-    let bookmarkStore = WorkbenchDataRootBookmarkStore(
+    let probeRecorder = PathProbeRecorder()
+    let pathStore = WorkbenchDataRootPathStore(
       defaults: defaults,
       storageKey: "selected-root",
-      codec: WorkbenchDataRootBookmarkCodec(
-        create: { _ in Data("bookmark".utf8) },
-        resolve: { _ in
-          if resolveMustBeOffMainActor, Thread.isMainThread {
-            throw NSError(
-              domain: "WorkbenchLaunchCoordinatorTests",
-              code: 1,
-              userInfo: [NSLocalizedDescriptionKey: "bookmark resolution ran on the main thread"]
-            )
-          }
-          guard let resolvedURL = bookmarkResolvedURL ?? rootURL else {
-            throw CocoaError(.fileNoSuchFile)
-          }
-          return WorkbenchDataRootDecodedBookmark(url: resolvedURL, isStale: false)
-        }
-      ),
-      securityScope: WorkbenchDataRootSecurityScope(
-        start: { _ in true },
-        stop: { _ in }
-      )
+      probe: { url in
+        probeRecorder.record(isMainThread: Thread.isMainThread)
+        return WorkbenchDataRootInspector().probe(at: url)
+      }
     )
     return LaunchCoordinatorHarness(
       defaults: defaults,
       suiteName: suiteName,
-      bookmarkStore: bookmarkStore,
+      pathStore: pathStore,
+      probeRecorder: probeRecorder,
       browserBridgeConnectionKeychainStore: makeInMemoryBrowserBridgeConnectionKeychainStore(),
       sessionRecovery: WorkbenchSessionRecovery(
         defaults: defaults,
@@ -442,12 +423,30 @@ final class WorkbenchLaunchCoordinatorTests: XCTestCase {
 private struct LaunchCoordinatorHarness {
   let defaults: UserDefaults
   let suiteName: String
-  let bookmarkStore: WorkbenchDataRootBookmarkStore
+  let pathStore: WorkbenchDataRootPathStore
+  let probeRecorder: PathProbeRecorder
   let browserBridgeConnectionKeychainStore: KeychainTokenStore
   let sessionRecovery: WorkbenchSessionRecovery
 
   func cleanup() {
     defaults.removePersistentDomain(forName: suiteName)
+  }
+}
+
+private final class PathProbeRecorder: @unchecked Sendable {
+  private let lock = NSLock()
+  private var storedMainThreadFlags: [Bool] = []
+
+  var mainThreadFlags: [Bool] {
+    lock.lock()
+    defer { lock.unlock() }
+    return storedMainThreadFlags
+  }
+
+  func record(isMainThread: Bool) {
+    lock.lock()
+    storedMainThreadFlags.append(isMainThread)
+    lock.unlock()
   }
 }
 

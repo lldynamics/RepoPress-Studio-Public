@@ -499,8 +499,47 @@ struct PublishingStatusToolbarControl: View {
     }
   }
 
+  /// The toolbar is rendered once per window, while `WorkbenchStore` keeps a
+  /// shared compatibility selection for commands. Resolve the visible draft
+  /// from the window's explicit identity and only borrow shared projections
+  /// when they are demonstrably for that same draft/profile.
+  private var explicitDraft: ArticleDraft? {
+    selectedDraftID.flatMap(store.draft(for:))
+  }
+
+  private var explicitDraftProfile: SiteProfile? {
+    explicitDraft.map(store.profile(for:))
+  }
+
+  private var windowDraftUsesActiveProfile: Bool {
+    guard let explicitDraftProfile else { return true }
+    return explicitDraftProfile.id == statusState.activeProfile.id
+  }
+
+  private var sharedDraftProjectionMatchesExplicitDraft: Bool {
+    guard let explicitDraft,
+      let explicitDraftProfile,
+      statusState.selectedDraftID == explicitDraft.id
+    else {
+      return false
+    }
+    return statusState.activeProfile.id == explicitDraftProfile.id
+  }
+
   private var repositoryStatus: PublishingStatusPopoverItem {
     let area = PublishingStatusArea.repository
+    if !windowDraftUsesActiveProfile {
+      let profileName = explicitDraftProfile?.name ?? String(localized: "其他站点")
+      return PublishingStatusPopoverItem(
+        area: area,
+        value: String(localized: "未激活"),
+        detail: String(localized: "窗口文章属于“\(profileName)”，当前站点状态未套用。"),
+        statusImage: "externaldrive.badge.questionmark",
+        color: .secondary,
+        severity: .pending
+      )
+    }
+
     if statusState.activeProfile.purpose.requiresRepositoryReadiness,
       statusState.activeProfile.localRepositoryRootPath.trimmingCharacters(
         in: .whitespacesAndNewlines
@@ -561,12 +600,25 @@ struct PublishingStatusToolbarControl: View {
 
   private var draftStatus: PublishingStatusPopoverItem {
     let area = PublishingStatusArea.draft
-    guard let draft = statusState.selectedDraft else {
+    guard let draft = explicitDraft else {
       return PublishingStatusPopoverItem(
         area: area,
         value: String(localized: "未选择文章"),
         detail: String(localized: "选择文章后可查看其发布检查状态。"),
         statusImage: "doc.badge.questionmark",
+        color: .secondary,
+        severity: .pending
+      )
+    }
+
+    // A shared preflight/readiness projection belongs to the compatibility
+    // selection. Never show it for a background window's other draft.
+    guard sharedDraftProjectionMatchesExplicitDraft else {
+      return PublishingStatusPopoverItem(
+        area: area,
+        value: String(localized: "待运行检查"),
+        detail: draft.title.nilIfEmpty ?? String(localized: "请运行发布前检查。"),
+        statusImage: "checklist",
         color: .secondary,
         severity: .pending
       )
@@ -629,6 +681,18 @@ struct PublishingStatusToolbarControl: View {
 
   private var deploymentStatus: PublishingStatusPopoverItem {
     let area = PublishingStatusArea.deployment
+    if !windowDraftUsesActiveProfile {
+      let profileName = explicitDraftProfile?.name ?? String(localized: "其他站点")
+      return PublishingStatusPopoverItem(
+        area: area,
+        value: String(localized: "未激活"),
+        detail: String(localized: "窗口文章属于“\(profileName)”，当前站点发布记录未套用。"),
+        statusImage: "clock.badge.questionmark",
+        color: .secondary,
+        severity: .pending
+      )
+    }
+
     let entries = statusState.activeProfileReleaseLedger.entries
     guard !entries.isEmpty else {
       return PublishingStatusPopoverItem(

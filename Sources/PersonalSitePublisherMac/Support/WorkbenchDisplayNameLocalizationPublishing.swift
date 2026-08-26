@@ -1,20 +1,5 @@
 import PublishingWorkbenchCore
 
-extension EditorDisplayMode {
-  var workbenchDisplayNameSemanticKey: String {
-    switch self {
-    case .edit:
-      return "display.editor-display-mode.edit"
-    case .preview:
-      return "display.editor-display-mode.preview"
-    case .split:
-      return "display.editor-display-mode.split"
-    }
-  }
-
-  var fallbackDisplayName: String { displayName }
-}
-
 extension DraftStatus {
   var workbenchDisplayNameSemanticKey: String {
     switch self {
@@ -39,6 +24,29 @@ extension ArticleVisibility {
       return "display.article-visibility.public"
     case .private:
       return "display.article-visibility.private"
+    }
+  }
+
+  var fallbackDisplayName: String { displayName }
+}
+
+extension DraftRepositorySyncState {
+  var workbenchDisplayNameSemanticKey: String {
+    switch self {
+    case .localOnly:
+      return "display.draft-repository-sync-state.local-only"
+    case .projectSaved:
+      return "display.draft-repository-sync-state.project-saved"
+    case .synced:
+      return "display.draft-repository-sync-state.synced"
+    case .localChanged:
+      return "display.draft-repository-sync-state.local-changed"
+    case .diverged:
+      return "display.draft-repository-sync-state.diverged"
+    case .awaitingReview:
+      return "display.draft-repository-sync-state.awaiting-review"
+    case .failed:
+      return "display.draft-repository-sync-state.failed"
     }
   }
 
@@ -160,6 +168,21 @@ extension DraftRepositoryCleanupStatus {
   var fallbackDisplayName: String { displayName }
 }
 
+extension DraftRepositoryRemoteCleanupStatus {
+  var workbenchDisplayNameSemanticKey: String {
+    switch self {
+    case .pending:
+      return "display.draft-repository-remote-cleanup-status.pending"
+    case .reviewRequested:
+      return "display.draft-repository-remote-cleanup-status.review-requested"
+    case .completed:
+      return "display.draft-repository-remote-cleanup-status.completed"
+    }
+  }
+
+  var fallbackDisplayName: String { displayName }
+}
+
 extension RemoteRepositoryPublishMode {
   var workbenchDisplayNameSemanticKey: String {
     switch self {
@@ -167,6 +190,8 @@ extension RemoteRepositoryPublishMode {
       return "display.remote-repository-publish-mode.direct-commit"
     case .reviewRequest:
       return "display.remote-repository-publish-mode.review-request"
+    case .previewBranch:
+      return "display.remote-repository-publish-mode.preview-branch"
     }
   }
 

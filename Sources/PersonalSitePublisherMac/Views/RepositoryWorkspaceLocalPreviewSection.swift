@@ -33,24 +33,21 @@ extension RepositoryWorkspaceView {
           Button {
             localSitePreviewCommandAction?.open()
           } label: {
-            Label("在应用内预览", systemImage: "rectangle.inset.filled")
-              .frame(maxWidth: .infinity, alignment: .leading)
+            if store.localSitePreviewRuntimeStatus.isRunning {
+              Label("在应用内预览", systemImage: "rectangle.inset.filled")
+                .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+              Label("检查并启动预览", systemImage: "rectangle.inset.filled")
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
           }
           .workbenchProminentActionStyle()
-          .disabled(localSitePreviewCommandAction == nil || !plan.diagnostics.isReadyToStart)
-          .accessibilityIdentifier("repository-preview-open-in-app")
-
-          Button {
-            store.startLocalSitePreview()
-          } label: {
-            Label("启动预览", systemImage: "play.circle")
-              .frame(maxWidth: .infinity, alignment: .leading)
-          }
-          .buttonStyle(.bordered)
           .disabled(
-            store.localSitePreviewRuntimeStatus.isRunning || !plan.diagnostics.isReadyToStart
+            !LocalSitePreviewTrustConfirmationPolicy.repositoryStartOpensConfirmationPanel(
+              commandActionAvailable: localSitePreviewCommandAction != nil
+            ) || !plan.diagnostics.isReadyToStart
           )
-          .accessibilityIdentifier("repository-preview-start")
+          .accessibilityIdentifier("repository-preview-open-in-app")
 
           Button {
             store.stopLocalSitePreview()

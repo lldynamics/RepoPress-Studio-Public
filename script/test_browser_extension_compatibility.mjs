@@ -16,8 +16,8 @@ const protocolDefinition = JSON.parse(await readFile(
 ));
 assert.deepEqual(
   protocolDefinition.activeExtensions,
-  ["safari", "chrome", "firefox"],
-  "this release must expose Safari, Chrome, and Firefox"
+  ["chrome", "firefox"],
+  "this release must expose Chrome and Firefox"
 );
 const loopbackProtocol = protocolDefinition.loopback;
 const generatedProtocolSource = await readFile(
@@ -26,8 +26,6 @@ const generatedProtocolSource = await readFile(
 );
 const firefoxRoot = path.join(extensionRoot, "Firefox");
 const firefoxManifest = JSON.parse(await readFile(path.join(firefoxRoot, "manifest.json"), "utf8"));
-const safariRoot = path.join(extensionRoot, "Safari");
-const safariManifest = JSON.parse(await readFile(path.join(safariRoot, "manifest.json"), "utf8"));
 const firefoxRelease = JSON.parse(await readFile(path.join(extensionRoot, "firefox-release.json"), "utf8"));
 
 assert.equal(manifest.manifest_version, 3);
@@ -99,30 +97,6 @@ assert.equal(firefoxRelease.channel, "unlisted");
 assert.match(firefoxRelease.updateManifestURL, /^https:\/\//);
 assert.match(firefoxRelease.xpiBaseURL, /^https:\/\//);
 assert.ok(!firefoxManifest.permissions.includes("pageCapture"));
-assert.equal(safariManifest.manifest_version, 3);
-assert.equal(safariManifest.name, manifest.name);
-assert.equal(safariManifest.description, manifest.description);
-assert.equal(safariManifest.default_locale, manifest.default_locale);
-assert.equal(safariManifest.version, manifest.version);
-assert.deepEqual(safariManifest.icons, manifest.icons);
-assert.deepEqual(safariManifest.action, manifest.action);
-assert.deepEqual(safariManifest.background, { service_worker: "background.js" });
-assert.deepEqual(safariManifest.content_security_policy, expectedExtensionCSP);
-assert.equal(safariManifest.key, undefined);
-assert.equal(safariManifest.minimum_chrome_version, undefined);
-assert.equal(safariManifest.permissions.includes("pageCapture"), false);
-assert.equal(safariManifest.permissions.includes("nativeMessaging"), false);
-assert.ok(safariManifest.permissions.includes("activeTab"));
-assert.ok(safariManifest.permissions.includes("scripting"));
-assert.ok(safariManifest.permissions.includes("storage"));
-assert.deepEqual(safariManifest.host_permissions, manifest.host_permissions);
-assert.deepEqual(safariManifest.optional_host_permissions, manifest.optional_host_permissions);
-assert.deepEqual(safariManifest.optional_permissions, manifest.optional_permissions);
-assert.deepEqual(safariManifest.commands, manifest.commands);
-assert.match(
-  protocolDefinition.extensions.safariBundleID,
-  /^com\.jinfang\.PersonalSitePublisherMac\.[A-Za-z0-9.-]+$/
-);
 assert.ok(manifest.permissions.includes("scripting"));
 assert.ok(manifest.permissions.includes("alarms"));
 assert.ok(manifest.permissions.includes("contextMenus"));
@@ -179,7 +153,6 @@ assert.deepEqual(
   "Chrome source must contain only its manifest"
 );
 assert.deepEqual(await readdir(firefoxRoot), ["manifest.json"]);
-assert.deepEqual(await readdir(safariRoot), ["manifest.json"]);
 const popupHTML = await readFile(path.join(sharedRoot, "popup.html"), "utf8");
 const popupCSS = await readFile(path.join(sharedRoot, "popup.css"), "utf8");
 assert.match(popupHTML, /<form id="connection-form">/);

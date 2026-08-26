@@ -114,7 +114,10 @@ public struct PreflightCheckService: Sendable {
       ))
     } else if !SlugService.isValid(slug, rule: profile.slugValidationRule) {
       issues.append(.init(
-        severity: .error,
+        // Keep the slug visible in publishing review without preventing an
+        // otherwise safe publish. Unsafe rendered paths are checked
+        // independently below, while an empty slug remains a hard error.
+        severity: .warning,
         title: CoreL10n.text("Slug 格式非法"),
         message: profile.slugValidationRule.detail,
         field: "slug"

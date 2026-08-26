@@ -2,7 +2,7 @@ import Foundation
 
 public struct WorkbenchSnapshot: Codable, Sendable {
   /// Bump this only together with a backwards-compatible decode migration.
-  public static let currentFormatVersion = 12
+  public static let currentFormatVersion = 14
   public static let maximumAIConversationsPerDraft =
     AIConversationRetentionPolicy.maximumConversationsPerDraft
   public static let maximumAIConversationCount =
@@ -32,9 +32,18 @@ public struct WorkbenchSnapshot: Codable, Sendable {
   public var privacyProtectionEvents: [PrivacyProtectionEvent]
   public var repositoryAutoSyncSettings: RepositoryAutoSyncSettings
   public var repositoryAutoSyncState: RepositoryAutoSyncState
+  /// Per-site automation state. The legacy scalar fields above remain as a
+  /// compatibility view of `activeProfileID` for older callers.
+  public var repositoryAutoSyncSettingsByProfileID: [UUID: RepositoryAutoSyncSettings]
+  public var repositoryAutoSyncStateByProfileID: [UUID: RepositoryAutoSyncState]
   public var remoteRepositoryAccessCheck: RemoteRepositoryAccessCheck?
+  /// Per-site permission evidence. The scalar above remains as a compatibility
+  /// view of the active profile and as the legacy snapshot field.
+  public var remoteRepositoryAccessCheckByProfileID: [UUID: RemoteRepositoryAccessCheck]
   public var deploymentPollingSettings: DeploymentPollingSettings
   public var deploymentPollingState: DeploymentPollingState
+  public var deploymentPollingSettingsByProfileID: [UUID: DeploymentPollingSettings]
+  public var deploymentPollingStateByProfileID: [UUID: DeploymentPollingState]
   public var deploymentStatusSnapshots: [DeploymentStatusSnapshot]
   public var deploymentStatusHistory: [UUID: [DeploymentStatusSnapshot]]
 
@@ -62,9 +71,14 @@ public struct WorkbenchSnapshot: Codable, Sendable {
     privacyProtectionEvents: [PrivacyProtectionEvent] = [],
     repositoryAutoSyncSettings: RepositoryAutoSyncSettings = .default,
     repositoryAutoSyncState: RepositoryAutoSyncState = .idle,
+    repositoryAutoSyncSettingsByProfileID: [UUID: RepositoryAutoSyncSettings]? = nil,
+    repositoryAutoSyncStateByProfileID: [UUID: RepositoryAutoSyncState]? = nil,
     remoteRepositoryAccessCheck: RemoteRepositoryAccessCheck? = nil,
+    remoteRepositoryAccessCheckByProfileID: [UUID: RemoteRepositoryAccessCheck]? = nil,
     deploymentPollingSettings: DeploymentPollingSettings = .default,
     deploymentPollingState: DeploymentPollingState = .idle,
+    deploymentPollingSettingsByProfileID: [UUID: DeploymentPollingSettings]? = nil,
+    deploymentPollingStateByProfileID: [UUID: DeploymentPollingState]? = nil,
     deploymentStatusSnapshots: [DeploymentStatusSnapshot] = [],
     deploymentStatusHistory: [UUID: [DeploymentStatusSnapshot]] = [:]
   ) {
@@ -120,11 +134,41 @@ public struct WorkbenchSnapshot: Codable, Sendable {
     self.seoSocialPreviewSnapshots = Self.latestSEOSocialPreviewSnapshots(seoSocialPreviewSnapshots)
     self.privacySettings = privacySettings
     self.privacyProtectionEvents = Self.limitedPrivacyProtectionEvents(privacyProtectionEvents)
-    self.repositoryAutoSyncSettings = repositoryAutoSyncSettings
-    self.repositoryAutoSyncState = repositoryAutoSyncState
-    self.remoteRepositoryAccessCheck = remoteRepositoryAccessCheck
-    self.deploymentPollingSettings = deploymentPollingSettings
-    self.deploymentPollingState = deploymentPollingState
+    self.repositoryAutoSyncSettingsByProfileID = Self.normalizedPerProfileMap(
+      repositoryAutoSyncSettingsByProfileID ?? [activeProfileID: repositoryAutoSyncSettings],
+      profiles: profiles,
+      defaultValue: .default
+    )
+    self.repositoryAutoSyncStateByProfileID = Self.normalizedPerProfileMap(
+      repositoryAutoSyncStateByProfileID ?? [activeProfileID: repositoryAutoSyncState],
+      profiles: profiles,
+      defaultValue: .idle
+    )
+    self.repositoryAutoSyncSettings = self.repositoryAutoSyncSettingsByProfileID[activeProfileID]
+      ?? .default
+    self.repositoryAutoSyncState = self.repositoryAutoSyncStateByProfileID[activeProfileID]
+      ?? .idle
+    let profileIDs = Set(profiles.map(\.id))
+    self.remoteRepositoryAccessCheckByProfileID =
+      (remoteRepositoryAccessCheckByProfileID
+        ?? [activeProfileID: remoteRepositoryAccessCheck].compactMapValues { $0 })
+      .filter { profileIDs.contains($0.key) }
+    self.remoteRepositoryAccessCheck = self.remoteRepositoryAccessCheckByProfileID[activeProfileID]
+      ?? remoteRepositoryAccessCheck
+    self.deploymentPollingSettingsByProfileID = Self.normalizedPerProfileMap(
+      deploymentPollingSettingsByProfileID ?? [activeProfileID: deploymentPollingSettings],
+      profiles: profiles,
+      defaultValue: .default
+    )
+    self.deploymentPollingStateByProfileID = Self.normalizedPerProfileMap(
+      deploymentPollingStateByProfileID ?? [activeProfileID: deploymentPollingState],
+      profiles: profiles,
+      defaultValue: .idle
+    )
+    self.deploymentPollingSettings = self.deploymentPollingSettingsByProfileID[activeProfileID]
+      ?? .default
+    self.deploymentPollingState = self.deploymentPollingStateByProfileID[activeProfileID]
+      ?? .idle
     self.deploymentStatusSnapshots = Self.limitedDeploymentStatusSnapshots(
       deploymentStatusSnapshots)
     self.deploymentStatusHistory = Self.limitedDeploymentStatusHistory(deploymentStatusHistory)
@@ -155,9 +199,14 @@ public struct WorkbenchSnapshot: Codable, Sendable {
     case privacyProtectionEvents
     case repositoryAutoSyncSettings
     case repositoryAutoSyncState
+    case repositoryAutoSyncSettingsByProfileID
+    case repositoryAutoSyncStateByProfileID
     case remoteRepositoryAccessCheck
+    case remoteRepositoryAccessCheckByProfileID
     case deploymentPollingSettings
     case deploymentPollingState
+    case deploymentPollingSettingsByProfileID
+    case deploymentPollingStateByProfileID
     case deploymentStatusSnapshots
     case deploymentStatusHistory
   }
@@ -175,6 +224,10 @@ public struct WorkbenchSnapshot: Codable, Sendable {
 
     // Version 1 had no explicit format marker. Optional fields migrate through
     // stable defaults; retired feature data is archived before the next save.
+    // Version 13 introduces profile-keyed automation maps. Version 14 adds
+    // profile-keyed remote permission evidence. The fallback below
+    // deliberately uses the legacy scalar only for the persisted active site;
+    // every other profile starts from a clean default.
     formatVersion = Self.currentFormatVersion
     profiles = try container.decode([SiteProfile].self, forKey: .profiles)
     aiConnectionProfiles = Array(
@@ -288,30 +341,71 @@ public struct WorkbenchSnapshot: Codable, Sendable {
         forKey: .privacyProtectionEvents
       ) ?? []
     )
-    repositoryAutoSyncSettings =
+    let legacyRepositoryAutoSyncSettings = try container.decodeIfPresent(
+      RepositoryAutoSyncSettings.self,
+      forKey: .repositoryAutoSyncSettings
+    ) ?? .default
+    let legacyRepositoryAutoSyncState = try container.decodeIfPresent(
+      RepositoryAutoSyncState.self,
+      forKey: .repositoryAutoSyncState
+    ) ?? .idle
+    repositoryAutoSyncSettingsByProfileID = Self.normalizedPerProfileMap(
       try container.decodeIfPresent(
-        RepositoryAutoSyncSettings.self,
-        forKey: .repositoryAutoSyncSettings
-      ) ?? .default
-    repositoryAutoSyncState =
+        [UUID: RepositoryAutoSyncSettings].self,
+        forKey: .repositoryAutoSyncSettingsByProfileID
+      ) ?? [activeProfileID: legacyRepositoryAutoSyncSettings],
+      profiles: profiles,
+      defaultValue: .default
+    )
+    repositoryAutoSyncStateByProfileID = Self.normalizedPerProfileMap(
       try container.decodeIfPresent(
-        RepositoryAutoSyncState.self,
-        forKey: .repositoryAutoSyncState
-      ) ?? .idle
+        [UUID: RepositoryAutoSyncState].self,
+        forKey: .repositoryAutoSyncStateByProfileID
+      ) ?? [activeProfileID: legacyRepositoryAutoSyncState],
+      profiles: profiles,
+      defaultValue: .idle
+    )
+    repositoryAutoSyncSettings = repositoryAutoSyncSettingsByProfileID[activeProfileID] ?? .default
+    repositoryAutoSyncState = repositoryAutoSyncStateByProfileID[activeProfileID] ?? .idle
     remoteRepositoryAccessCheck = try container.decodeIfPresent(
       RemoteRepositoryAccessCheck.self,
       forKey: .remoteRepositoryAccessCheck
     )
-    deploymentPollingSettings =
+    let profileIDs = Set(profiles.map(\.id))
+    remoteRepositoryAccessCheckByProfileID =
+      (try container.decodeIfPresent(
+        [UUID: RemoteRepositoryAccessCheck].self,
+        forKey: .remoteRepositoryAccessCheckByProfileID
+      ) ?? [activeProfileID: remoteRepositoryAccessCheck].compactMapValues { $0 })
+      .filter { profileIDs.contains($0.key) }
+    remoteRepositoryAccessCheck = remoteRepositoryAccessCheckByProfileID[activeProfileID]
+      ?? remoteRepositoryAccessCheck
+    let legacyDeploymentPollingSettings = try container.decodeIfPresent(
+      DeploymentPollingSettings.self,
+      forKey: .deploymentPollingSettings
+    ) ?? .default
+    let legacyDeploymentPollingState = try container.decodeIfPresent(
+      DeploymentPollingState.self,
+      forKey: .deploymentPollingState
+    ) ?? .idle
+    deploymentPollingSettingsByProfileID = Self.normalizedPerProfileMap(
       try container.decodeIfPresent(
-        DeploymentPollingSettings.self,
-        forKey: .deploymentPollingSettings
-      ) ?? .default
-    deploymentPollingState =
+        [UUID: DeploymentPollingSettings].self,
+        forKey: .deploymentPollingSettingsByProfileID
+      ) ?? [activeProfileID: legacyDeploymentPollingSettings],
+      profiles: profiles,
+      defaultValue: .default
+    )
+    deploymentPollingStateByProfileID = Self.normalizedPerProfileMap(
       try container.decodeIfPresent(
-        DeploymentPollingState.self,
-        forKey: .deploymentPollingState
-      ) ?? .idle
+        [UUID: DeploymentPollingState].self,
+        forKey: .deploymentPollingStateByProfileID
+      ) ?? [activeProfileID: legacyDeploymentPollingState],
+      profiles: profiles,
+      defaultValue: .idle
+    )
+    deploymentPollingSettings = deploymentPollingSettingsByProfileID[activeProfileID] ?? .default
+    deploymentPollingState = deploymentPollingStateByProfileID[activeProfileID] ?? .idle
     deploymentStatusSnapshots = Self.limitedDeploymentStatusSnapshots(
       try container.decodeIfPresent(
         [DeploymentStatusSnapshot].self,
@@ -330,6 +424,17 @@ public struct WorkbenchSnapshot: Codable, Sendable {
     _ records: [AIPublishingMetadataApplicationRecord]
   ) -> [AIPublishingMetadataApplicationRecord] {
     Array(records.sorted { $0.createdAt > $1.createdAt }.prefix(120))
+  }
+
+  private static func normalizedPerProfileMap<Value>(
+    _ values: [UUID: Value],
+    profiles: [SiteProfile],
+    defaultValue: Value
+  ) -> [UUID: Value] {
+    let profileIDs = profiles.map(\.id)
+    return profileIDs.reduce(into: [:]) { result, profileID in
+      result[profileID] = values[profileID] ?? defaultValue
+    }
   }
 
   private static func limitedAutomationRunRecords(

@@ -7,7 +7,6 @@ final class MarkdownEditorSessionStateTests: XCTestCase {
     let state = MarkdownEditorSessionState(
       selectedRange: NSRange(location: 8, length: 12),
       editorScrollProgress: -0.4,
-      previewScrollProgress: 1.8,
       isFindReplacePresented: true,
       findQuery: "Swift",
       replacementText: "Markdown",
@@ -21,7 +20,6 @@ final class MarkdownEditorSessionStateTests: XCTestCase {
     XCTAssertEqual(normalized.selectionLocation, 8)
     XCTAssertEqual(normalized.selectionLength, 2)
     XCTAssertEqual(normalized.editorScrollProgress, 0)
-    XCTAssertEqual(normalized.previewScrollProgress, 1)
     XCTAssertEqual(normalized.findQuery, "Swift")
     XCTAssertEqual(normalized.replacementText, "Markdown")
     XCTAssertTrue(normalized.isFindReplacePresented)
@@ -41,7 +39,6 @@ final class MarkdownEditorSessionStateTests: XCTestCase {
     let state = MarkdownEditorSessionState(
       selectedRange: NSRange(location: 3, length: 4),
       editorScrollProgress: 0.25,
-      previewScrollProgress: 0.75,
       isFindReplacePresented: true,
       findQuery: "3456",
       replacementText: "replacement",
@@ -91,6 +88,30 @@ final class MarkdownEditorSessionStateTests: XCTestCase {
     XCTAssertTrue(decoded.markdownEditorSessionStates.isEmpty)
   }
 
+  func testLegacySessionIgnoresRemovedPreviewScrollProgress() throws {
+    let data = Data(
+      """
+      {
+        "selectionLocation": 2,
+        "selectionLength": 1,
+        "editorScrollProgress": 0.25,
+        "previewScrollProgress": 0.75,
+        "isFindReplacePresented": false,
+        "findQuery": "",
+        "replacementText": "",
+        "isFindCaseSensitive": false,
+        "isFindWholeWord": false,
+        "isFindRegularExpression": false
+      }
+      """.utf8
+    )
+
+    let decoded = try JSONDecoder().decode(MarkdownEditorSessionState.self, from: data)
+
+    XCTAssertEqual(decoded.editorScrollProgress, 0.25)
+    XCTAssertEqual(decoded.selectedRange(bodyUTF16Count: 10), NSRange(location: 2, length: 1))
+  }
+
   func testStorePersistsWritingSessionPerArticleAndRemovesItAfterPermanentDeletion() throws {
     let persistenceURL = try temporaryPersistenceURL(prefix: "MarkdownEditorSessionState")
     let persistence = WorkbenchPersistence(fileURL: persistenceURL)
@@ -106,7 +127,6 @@ final class MarkdownEditorSessionStateTests: XCTestCase {
     let state = MarkdownEditorSessionState(
       selectedRange: NSRange(location: 2, length: 5),
       editorScrollProgress: 0.3,
-      previewScrollProgress: 0.6,
       isFindReplacePresented: true,
       findQuery: "23456",
       replacementText: "saved",

@@ -15,7 +15,6 @@ SHARED_ROOT = EXTENSION_ROOT / "shared"
 PLATFORM_ROOTS = {
     "chrome": EXTENSION_ROOT / "Chrome",
     "firefox": EXTENSION_ROOT / "Firefox",
-    "safari": EXTENSION_ROOT / "Safari",
 }
 SHARED_FILES = (
     "_locales/en/messages.json",

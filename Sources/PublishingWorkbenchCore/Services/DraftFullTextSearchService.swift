@@ -355,24 +355,33 @@ public struct DraftFullTextSearchService: Sendable {
       }) else {
         continue
       }
+      guard !Task.isCancelled else { return [] }
 
-      var draftHits = sources.flatMap { source in
-        matches(
+      var draftHits: [DraftFullTextSearchHit] = []
+      for source in sources {
+        guard !Task.isCancelled else { return [] }
+        guard let sourceHits = matches(
           in: source,
           query: parsedQuery,
           draft: draft
-        )
+        ) else {
+          return []
+        }
+        draftHits.append(contentsOf: sourceHits)
       }
       if draftHits.isEmpty,
          parsedQuery.textTerms.isEmpty,
          let representativeHit = representativeHit(for: draft, sources: sources) {
         draftHits = [representativeHit]
       }
+      guard !Task.isCancelled else { return [] }
       draftHits.sort(by: hitSort)
       hits.append(contentsOf: draftHits.prefix(matchesPerDraft))
     }
 
+    guard !Task.isCancelled else { return [] }
     hits.sort(by: hitSort)
+    guard !Task.isCancelled else { return [] }
     return Array(hits.prefix(limit))
   }
 
@@ -397,26 +406,21 @@ public struct DraftFullTextSearchService: Sendable {
     in source: SearchSource,
     query: DraftFullTextSearchQuery,
     draft: ArticleDraft
-  ) -> [DraftFullTextSearchHit] {
+  ) -> [DraftFullTextSearchHit]? {
     let sourceTerms = query.highlightTerms(for: source.field)
     guard !sourceTerms.isEmpty else { return [] }
     let usesTextPhrase = sourceTerms == query.textTerms
       && contains(query.textPhrase, in: source.value)
     let needles = usesTextPhrase ? [query.textPhrase] : sourceTerms
-    var matchedRanges = needles.flatMap { matchRanges(of: $0, in: source.value) }
-    matchedRanges.sort {
-      if $0.location == $1.location { return $0.length > $1.length }
-      return $0.location < $1.location
-    }
-    matchedRanges = matchedRanges.reduce(into: []) { result, range in
-      guard !result.contains(where: { NSIntersectionRange($0, range).length > 0 }) else {
-        return
-      }
-      result.append(range)
-    }
-
     let maximumMatches = source.field == .body ? 3 : 1
-    return matchedRanges.prefix(maximumMatches).map { range in
+    guard let matchedRanges = matchRanges(
+      of: needles,
+      in: source.value,
+      maximumMatches: maximumMatches
+    ) else {
+      return nil
+    }
+    return matchedRanges.map { range in
       let snippet = snippet(in: source.value, around: range, field: source.field)
       return DraftFullTextSearchHit(
         draftID: draft.id,
@@ -493,22 +497,82 @@ public struct DraftFullTextSearchService: Sendable {
     )
   }
 
-  private func matchRanges(of needle: String, in value: String) -> [NSRange] {
-    guard !needle.isEmpty else { return [] }
+  /// Finds the globally earliest non-overlapping matches for all needles.
+  ///
+  /// Each needle keeps only its next candidate. Selecting the smallest
+  /// candidate and advancing that needle makes the result equivalent to
+  /// collecting, sorting, and de-duplicating every match, while stopping as
+  /// soon as the field's result bound is reached. `nil` means cancellation;
+  /// callers must discard the entire search rather than return partial hits.
+  private func matchRanges(
+    of needles: [String],
+    in value: String,
+    maximumMatches: Int
+  ) -> [NSRange]? {
+    guard maximumMatches > 0 else { return [] }
+    let nonEmptyNeedles = needles.filter { !$0.isEmpty }
+    guard !nonEmptyNeedles.isEmpty else { return [] }
+
     let source = value as NSString
-    var results: [NSRange] = []
-    var cursor = 0
-    while cursor < source.length {
-      let range = source.range(
-        of: needle,
-        options: Self.comparisonOptions,
-        range: NSRange(location: cursor, length: source.length - cursor)
+    var cursors = Array(repeating: 0, count: nonEmptyNeedles.count)
+    var candidates = nonEmptyNeedles.indices.map { index in
+      Self.nextMatch(
+        of: nonEmptyNeedles[index],
+        in: source,
+        from: cursors[index]
       )
-      guard range.location != NSNotFound, range.length > 0 else { break }
-      results.append(range)
-      cursor = NSMaxRange(range)
+    }
+    var results: [NSRange] = []
+
+    while results.count < maximumMatches {
+      guard !Task.isCancelled else { return nil }
+      guard let candidateIndex = candidates.indices.min(by: { lhs, rhs in
+        guard let lhsRange = candidates[lhs] else { return false }
+        guard let rhsRange = candidates[rhs] else { return true }
+        if lhsRange.location != rhsRange.location {
+          return lhsRange.location < rhsRange.location
+        }
+        return lhsRange.length > rhsRange.length
+      }), let candidate = candidates[candidateIndex] else {
+        break
+      }
+
+      let overlappingRangeEnd = results
+        .filter { NSIntersectionRange($0, candidate).length > 0 }
+        .map(NSMaxRange)
+        .max()
+      if overlappingRangeEnd == nil {
+        results.append(candidate)
+      }
+
+      // When a long match contains many short-needle matches, jump that
+      // needle past the selected range in one step instead of visiting every
+      // character inside the overlap.
+      let nextCursor = max(NSMaxRange(candidate), overlappingRangeEnd ?? 0)
+      guard nextCursor > cursors[candidateIndex] else { break }
+      cursors[candidateIndex] = nextCursor
+      candidates[candidateIndex] = Self.nextMatch(
+        of: nonEmptyNeedles[candidateIndex],
+        in: source,
+        from: nextCursor
+      )
     }
     return results
+  }
+
+  private static func nextMatch(
+    of needle: String,
+    in source: NSString,
+    from cursor: Int
+  ) -> NSRange? {
+    guard cursor < source.length else { return nil }
+    let range = source.range(
+      of: needle,
+      options: comparisonOptions,
+      range: NSRange(location: cursor, length: source.length - cursor)
+    )
+    guard range.location != NSNotFound, range.length > 0 else { return nil }
+    return range
   }
 
   private func contains(_ needle: String, in value: String) -> Bool {

@@ -1176,7 +1176,7 @@ final class WorkbenchAIStoreAgentLoopIntegrationTests: XCTestCase {
     var config = AIProviderConfig(
       preset: .custom,
       baseURL: "https://agent.example/v1",
-      model: "agent-test-model",
+      model: "gpt-4.1",
       requiresAPIKey: false
     )
     if toolCallingSupported {

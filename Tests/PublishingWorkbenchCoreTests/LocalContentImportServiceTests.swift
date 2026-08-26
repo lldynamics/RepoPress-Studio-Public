@@ -510,6 +510,69 @@ final class LocalContentImportServiceTests: XCTestCase {
     XCTAssertEqual(store.publishActionMessage, "已发现并加入本地列表 1 篇外部新文章。")
   }
 
+  func testMissingDraftDiscoveryDoesNotReimportRecycledRepositoryArticle() async throws {
+    let rootURL = try temporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let articleURL = rootURL.appendingPathComponent("content/posts/recycled.md")
+    try FileManager.default.createDirectory(
+      at: articleURL.deletingLastPathComponent(),
+      withIntermediateDirectories: true
+    )
+    try """
+    ---
+    title: "Recycled"
+    slug: recycled
+    ---
+
+    Keep this file until cleanup runs.
+    """.write(to: articleURL, atomically: true, encoding: .utf8)
+
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL())
+    )
+    var profile = store.activeProfile
+    profile.rememberLocalRepositoryRoot(rootURL)
+    profile.contentRoot = "content"
+    store.updateActiveProfile(profile)
+    let draft = ArticleDraft(
+      siteProfileID: profile.id,
+      title: "Recycled",
+      slug: "recycled",
+      bodyMarkdown: "Keep this file until cleanup runs.",
+      repositoryPath: "content/posts/recycled.md"
+    )
+    store.setDrafts([draft])
+    store.setSelectedDraftID(draft.id)
+    store.deleteDraft(id: draft.id)
+
+    let insertedCount = await store.importMissingDraftsFromLocalRepository()
+
+    XCTAssertEqual(insertedCount, 0)
+    XCTAssertTrue(store.drafts.isEmpty)
+    XCTAssertEqual(store.recycledDrafts.map(\.id), [draft.id])
+    XCTAssertEqual(
+      store.pendingRepositoryCleanupRequests.map(\.repositoryPath),
+      ["content/posts/recycled.md"]
+    )
+  }
+
+  func testMissingDraftDiscoveryReportsUnavailableRepositoryInsteadOfNoArticles() async throws {
+    let missingRootURL = FileManager.default.temporaryDirectory.appendingPathComponent(
+      "missing-local-content-root-\(UUID().uuidString)",
+      isDirectory: true
+    )
+    let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()))
+    var profile = store.activeProfile
+    profile.localRepositoryRootPath = missingRootURL.path
+    store.updateActiveProfile(profile)
+
+    let insertedCount = await store.importMissingDraftsFromLocalRepository()
+
+    XCTAssertEqual(insertedCount, 0)
+    XCTAssertEqual(store.publishActionFeedback?.status, .failure)
+    XCTAssertEqual(store.publishActionMessage, "无法访问站点本地仓库。")
+  }
+
   func testRepositoryScanImportsExternallyCreatedArticleIntoWritingList() async throws {
     let rootURL = try temporaryDirectory()
     let postsURL = rootURL.appendingPathComponent("content/posts", isDirectory: true)
@@ -1176,6 +1239,23 @@ final class LocalContentImportServiceTests: XCTestCase {
 
     XCTAssertEqual(summary.changedCount, 0)
     XCTAssertEqual(store.publishActionMessage, "选择本地仓库后才能导入文章。")
+  }
+
+  func testStoreImportReportsUnavailableRepositoryInsteadOfSuccess() throws {
+    let missingRootURL = FileManager.default.temporaryDirectory.appendingPathComponent(
+      "missing-local-content-root-\(UUID().uuidString)",
+      isDirectory: true
+    )
+    let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()))
+    var profile = store.activeProfile
+    profile.localRepositoryRootPath = missingRootURL.path
+    store.updateActiveProfile(profile)
+
+    let summary = store.importDraftsFromLocalRepository()
+
+    XCTAssertEqual(summary.changedCount, 0)
+    XCTAssertEqual(store.publishActionFeedback?.status, .failure)
+    XCTAssertEqual(store.publishActionMessage, "导入失败：无法访问站点本地仓库。")
   }
 
   private func temporaryDirectory() throws -> URL {

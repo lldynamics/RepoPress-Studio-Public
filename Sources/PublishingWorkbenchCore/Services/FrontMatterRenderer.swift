@@ -49,7 +49,7 @@ public struct FrontMatterRenderer: Sendable {
       case .zola:
         lines.append("extra:")
         lines.append("  \(profile.siteKind.coverFrontMatterFieldName): \(yamlString(coverPath))")
-      case .astro, .hugo, .hexo:
+      case .astro, .hugo, .vitePress, .hexo:
         lines.append("\(profile.siteKind.coverFrontMatterFieldName): \(yamlString(coverPath))")
       case .jekyll:
         lines.append("\(profile.siteKind.coverFrontMatterFieldName): \(yamlString(coverPath))")
@@ -93,7 +93,7 @@ public struct FrontMatterRenderer: Sendable {
         lines.append("")
         lines.append("[extra]")
         lines.append("\(profile.siteKind.coverFrontMatterFieldName) = \(tomlString(coverPath))")
-      case .astro, .hugo, .hexo:
+      case .astro, .hugo, .vitePress, .hexo:
         lines.append("\(profile.siteKind.coverFrontMatterFieldName) = \(tomlString(coverPath))")
       case .jekyll:
         lines.append("\(profile.siteKind.coverFrontMatterFieldName) = \(tomlString(coverPath))")

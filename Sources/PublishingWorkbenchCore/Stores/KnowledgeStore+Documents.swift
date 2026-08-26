@@ -212,6 +212,19 @@ extension KnowledgeStore {
     }
   }
 
+  public func makeRSSImportPreview(article: RSSArticle) async throws -> KnowledgeImportPreview {
+    statusMessage = CoreL10n.text("正在读取本机 RSS 缓存…")
+    do {
+      let preview = try await service.makeRSSImportPreview(article: article)
+      statusMessage = CoreL10n.text("RSS 缓存预览已生成。")
+      return preview
+    } catch {
+      lastError = error.localizedDescription
+      statusMessage = CoreL10n.format("RSS 缓存读取失败：%@", error.localizedDescription)
+      throw error
+    }
+  }
+
   public func commit(
     _ preview: KnowledgeImportPreview,
     destination: KnowledgeImportDestination = .preserveExisting

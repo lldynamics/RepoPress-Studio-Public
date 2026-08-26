@@ -44,45 +44,61 @@ extension KnowledgeDatabase {
           try upsertSemanticEmbeddingsUnlocked(record.embeddings)
         }
 
-        for assignment in capturedTextAssignments {
-          try Task.checkCancellation()
-          let statement = try prepare("""
-          UPDATE knowledge_revisions
-          SET captured_text_storage_ref = ?
-          WHERE id = ? AND (captured_text_storage_ref IS NULL OR captured_text_storage_ref = '');
-          """)
-          bind(assignment.storageReference, at: 1, to: statement)
-          bind(assignment.revisionID.uuidString, at: 2, to: statement)
-          guard sqlite3_step(statement) == SQLITE_DONE else {
-            sqlite3_finalize(statement)
-            throw databaseError()
+        if !capturedTextAssignments.isEmpty {
+          let capturedTextSQL = """
+            UPDATE knowledge_revisions
+            SET captured_text_storage_ref = ?
+            WHERE id = ? AND (captured_text_storage_ref IS NULL OR captured_text_storage_ref = '');
+            """
+          try withCachedStatementUnlocked(capturedTextSQL) { statement in
+            for assignment in capturedTextAssignments {
+              try Task.checkCancellation()
+              sqlite3_reset(statement)
+              sqlite3_clear_bindings(statement)
+              bind(assignment.storageReference, at: 1, to: statement)
+              bind(assignment.revisionID.uuidString, at: 2, to: statement)
+              guard sqlite3_step(statement) == SQLITE_DONE else {
+                throw databaseError()
+              }
+              let updatedCount = sqlite3_changes(handle)
+              guard updatedCount == 1 else { throw KnowledgeLibraryError.missingRevision }
+            }
           }
-          let updatedCount = sqlite3_changes(handle)
-          sqlite3_finalize(statement)
-          guard updatedCount == 1 else { throw KnowledgeLibraryError.missingRevision }
         }
 
-        let folderUpdateTime = Date().timeIntervalSince1970
-        for assignment in folderAssignments {
-          try Task.checkCancellation()
-          if let folderID = assignment.folderID, try !folderExistsUnlocked(folderID) {
-            throw KnowledgeLibraryError.missingFolder
+        if !folderAssignments.isEmpty {
+          let folderUpdateTime = Date().timeIntervalSince1970
+          let folderUpdateSQL = """
+            UPDATE knowledge_documents SET folder_id = ?, updated_at = ? WHERE id = ?;
+            """
+          for assignment in folderAssignments {
+            try Task.checkCancellation()
+            if let folderID = assignment.folderID, try !folderExistsUnlocked(folderID) {
+              throw KnowledgeLibraryError.missingFolder
+            }
           }
-          let statement = try prepare("""
-          UPDATE knowledge_documents SET folder_id = ?, updated_at = ? WHERE id = ?;
-          """)
-          bindOptional(assignment.folderID?.uuidString, at: 1, to: statement)
-          sqlite3_bind_double(statement, 2, folderUpdateTime)
-          bind(assignment.documentID.uuidString, at: 3, to: statement)
-          guard sqlite3_step(statement) == SQLITE_DONE else {
-            sqlite3_finalize(statement)
-            throw databaseError()
+          try withCachedStatementUnlocked(folderUpdateSQL) { statement in
+            for assignment in folderAssignments {
+              try Task.checkCancellation()
+              sqlite3_reset(statement)
+              sqlite3_clear_bindings(statement)
+              bindOptional(assignment.folderID?.uuidString, at: 1, to: statement)
+              sqlite3_bind_double(statement, 2, folderUpdateTime)
+              bind(assignment.documentID.uuidString, at: 3, to: statement)
+              guard sqlite3_step(statement) == SQLITE_DONE else {
+                throw databaseError()
+              }
+              let updatedCount = sqlite3_changes(handle)
+              guard updatedCount == 1 else { throw KnowledgeLibraryError.missingDocument }
+            }
           }
-          let updatedCount = sqlite3_changes(handle)
-          sqlite3_finalize(statement)
-          guard updatedCount == 1 else { throw KnowledgeLibraryError.missingDocument }
         }
 
+        if !folderAssignments.isEmpty {
+          // Folder-only batches still update document timestamps used by
+          // semantic tie-breaking.
+          invalidateSemanticFlatVectorIndexesUnlocked()
+        }
         try Task.checkCancellation()
         try executeUnlocked("COMMIT;")
       } catch {
@@ -96,33 +112,34 @@ extension KnowledgeDatabase {
     try withLock {
       try executeUnlocked("BEGIN IMMEDIATE TRANSACTION;")
       do {
-        let revisionStatement = try prepare("""
+        let revisionSQL = """
         SELECT 1 FROM knowledge_revisions
         WHERE id = ? AND document_id = ? LIMIT 1;
-        """)
-        bind(revisionID.uuidString, at: 1, to: revisionStatement)
-        bind(documentID.uuidString, at: 2, to: revisionStatement)
-        let revisionResult = sqlite3_step(revisionStatement)
-        sqlite3_finalize(revisionStatement)
+        """
+        let revisionResult = try withCachedStatementUnlocked(revisionSQL) { statement in
+          bind(revisionID.uuidString, at: 1, to: statement)
+          bind(documentID.uuidString, at: 2, to: statement)
+          return sqlite3_step(statement)
+        }
         guard revisionResult == SQLITE_ROW else {
           if revisionResult != SQLITE_DONE { throw databaseError() }
           throw KnowledgeLibraryError.missingRevision
         }
 
-        let updateStatement = try prepare("""
+        let updateSQL = """
         UPDATE knowledge_documents
         SET current_revision_id = ?, updated_at = ?
         WHERE id = ? AND is_archived = 0;
-        """)
-        bind(revisionID.uuidString, at: 1, to: updateStatement)
-        sqlite3_bind_double(updateStatement, 2, Date().timeIntervalSince1970)
-        bind(documentID.uuidString, at: 3, to: updateStatement)
-        guard sqlite3_step(updateStatement) == SQLITE_DONE else {
-          sqlite3_finalize(updateStatement)
-          throw databaseError()
+        """
+        let updatedCount = try withCachedStatementUnlocked(updateSQL) { statement in
+          bind(revisionID.uuidString, at: 1, to: statement)
+          sqlite3_bind_double(statement, 2, Date().timeIntervalSince1970)
+          bind(documentID.uuidString, at: 3, to: statement)
+          guard sqlite3_step(statement) == SQLITE_DONE else {
+            throw databaseError()
+          }
+          return sqlite3_changes(handle)
         }
-        let updatedCount = sqlite3_changes(handle)
-        sqlite3_finalize(updateStatement)
         guard updatedCount == 1 else { throw KnowledgeLibraryError.missingDocument }
 
         guard let document = try documentUnlocked(id: documentID) else {
@@ -130,6 +147,7 @@ extension KnowledgeDatabase {
         }
         try deleteSearchRows(documentID: documentID)
         try insertSearchRows(revisionID: revisionID, document: document)
+        invalidateSemanticFlatVectorIndexesUnlocked()
         try executeUnlocked("COMMIT;")
         return document
       } catch {
@@ -140,13 +158,16 @@ extension KnowledgeDatabase {
 
   func setAllowsRemoteAIUse(_ allowsRemoteAIUse: Bool, documentID: UUID) throws {
     try withLock {
-      let statement = try prepare("UPDATE knowledge_documents SET allows_ai_use = ?, updated_at = ? WHERE id = ?;")
-      defer { sqlite3_finalize(statement) }
-      sqlite3_bind_int(statement, 1, allowsRemoteAIUse ? 1 : 0)
-      sqlite3_bind_double(statement, 2, Date().timeIntervalSince1970)
-      bind(documentID.uuidString, at: 3, to: statement)
-      guard sqlite3_step(statement) == SQLITE_DONE else { throw databaseError() }
-      guard sqlite3_changes(handle) == 1 else { throw KnowledgeLibraryError.missingDocument }
+      let sql = "UPDATE knowledge_documents SET allows_ai_use = ?, updated_at = ? WHERE id = ?;"
+      let updatedCount = try withCachedStatementUnlocked(sql) { statement in
+        sqlite3_bind_int(statement, 1, allowsRemoteAIUse ? 1 : 0)
+        sqlite3_bind_double(statement, 2, Date().timeIntervalSince1970)
+        bind(documentID.uuidString, at: 3, to: statement)
+        guard sqlite3_step(statement) == SQLITE_DONE else { throw databaseError() }
+        return sqlite3_changes(handle)
+      }
+      guard updatedCount == 1 else { throw KnowledgeLibraryError.missingDocument }
+      invalidateSemanticFlatVectorIndexesUnlocked()
     }
   }
 
@@ -155,22 +176,24 @@ extension KnowledgeDatabase {
     try withLock {
       try executeUnlocked("BEGIN IMMEDIATE TRANSACTION;")
       do {
-        let statement = try prepare("""
+        let sql = """
         UPDATE knowledge_documents
         SET allows_ai_use = ?, updated_at = ?
         WHERE id = ? AND is_archived = 0;
-        """)
-        defer { sqlite3_finalize(statement) }
+        """
         let now = Date().timeIntervalSince1970
-        for documentID in documentIDs.sorted(by: { $0.uuidString < $1.uuidString }) {
-          sqlite3_reset(statement)
-          sqlite3_clear_bindings(statement)
-          sqlite3_bind_int(statement, 1, allowsRemoteAIUse ? 1 : 0)
-          sqlite3_bind_double(statement, 2, now)
-          bind(documentID.uuidString, at: 3, to: statement)
-          guard sqlite3_step(statement) == SQLITE_DONE else { throw databaseError() }
-          guard sqlite3_changes(handle) == 1 else { throw KnowledgeLibraryError.missingDocument }
+        try withCachedStatementUnlocked(sql) { statement in
+          for documentID in documentIDs.sorted(by: { $0.uuidString < $1.uuidString }) {
+            sqlite3_reset(statement)
+            sqlite3_clear_bindings(statement)
+            sqlite3_bind_int(statement, 1, allowsRemoteAIUse ? 1 : 0)
+            sqlite3_bind_double(statement, 2, now)
+            bind(documentID.uuidString, at: 3, to: statement)
+            guard sqlite3_step(statement) == SQLITE_DONE else { throw databaseError() }
+            guard sqlite3_changes(handle) == 1 else { throw KnowledgeLibraryError.missingDocument }
+          }
         }
+        invalidateSemanticFlatVectorIndexesUnlocked()
         try executeUnlocked("COMMIT;")
       } catch {
         try rethrowAfterRollbackUnlocked(error)
@@ -182,20 +205,23 @@ extension KnowledgeDatabase {
     try withLock {
       try executeUnlocked("BEGIN IMMEDIATE TRANSACTION;")
       do {
-        let statement = try prepare("""
+        let sql = """
         UPDATE knowledge_documents
         SET allows_local_semantic_index = ?, updated_at = ?
         WHERE id = ?;
-        """)
-        defer { sqlite3_finalize(statement) }
-        sqlite3_bind_int(statement, 1, allowsLocalSemanticIndex ? 1 : 0)
-        sqlite3_bind_double(statement, 2, Date().timeIntervalSince1970)
-        bind(documentID.uuidString, at: 3, to: statement)
-        guard sqlite3_step(statement) == SQLITE_DONE else { throw databaseError() }
-        guard sqlite3_changes(handle) == 1 else { throw KnowledgeLibraryError.missingDocument }
+        """
+        let updatedCount = try withCachedStatementUnlocked(sql) { statement in
+          sqlite3_bind_int(statement, 1, allowsLocalSemanticIndex ? 1 : 0)
+          sqlite3_bind_double(statement, 2, Date().timeIntervalSince1970)
+          bind(documentID.uuidString, at: 3, to: statement)
+          guard sqlite3_step(statement) == SQLITE_DONE else { throw databaseError() }
+          return sqlite3_changes(handle)
+        }
+        guard updatedCount == 1 else { throw KnowledgeLibraryError.missingDocument }
         if !allowsLocalSemanticIndex {
           try deleteSemanticEmbeddingsUnlocked(documentIDs: [documentID])
         }
+        invalidateSemanticFlatVectorIndexesUnlocked()
         try executeUnlocked("COMMIT;")
       } catch {
         try rethrowAfterRollbackUnlocked(error)
@@ -208,25 +234,27 @@ extension KnowledgeDatabase {
     try withLock {
       try executeUnlocked("BEGIN IMMEDIATE TRANSACTION;")
       do {
-        let statement = try prepare("""
+        let sql = """
         UPDATE knowledge_documents
         SET allows_local_semantic_index = ?, updated_at = ?
         WHERE id = ? AND is_archived = 0;
-        """)
-        defer { sqlite3_finalize(statement) }
+        """
         let now = Date().timeIntervalSince1970
-        for documentID in documentIDs.sorted(by: { $0.uuidString < $1.uuidString }) {
-          sqlite3_reset(statement)
-          sqlite3_clear_bindings(statement)
-          sqlite3_bind_int(statement, 1, allowsLocalSemanticIndex ? 1 : 0)
-          sqlite3_bind_double(statement, 2, now)
-          bind(documentID.uuidString, at: 3, to: statement)
-          guard sqlite3_step(statement) == SQLITE_DONE else { throw databaseError() }
-          guard sqlite3_changes(handle) == 1 else { throw KnowledgeLibraryError.missingDocument }
+        try withCachedStatementUnlocked(sql) { statement in
+          for documentID in documentIDs.sorted(by: { $0.uuidString < $1.uuidString }) {
+            sqlite3_reset(statement)
+            sqlite3_clear_bindings(statement)
+            sqlite3_bind_int(statement, 1, allowsLocalSemanticIndex ? 1 : 0)
+            sqlite3_bind_double(statement, 2, now)
+            bind(documentID.uuidString, at: 3, to: statement)
+            guard sqlite3_step(statement) == SQLITE_DONE else { throw databaseError() }
+            guard sqlite3_changes(handle) == 1 else { throw KnowledgeLibraryError.missingDocument }
+          }
         }
         if !allowsLocalSemanticIndex {
           try deleteSemanticEmbeddingsUnlocked(documentIDs: documentIDs)
         }
+        invalidateSemanticFlatVectorIndexesUnlocked()
         try executeUnlocked("COMMIT;")
       } catch {
         try rethrowAfterRollbackUnlocked(error)
@@ -249,35 +277,31 @@ extension KnowledgeDatabase {
     try withLock {
       try executeUnlocked("BEGIN IMMEDIATE TRANSACTION;")
       do {
-        let archiveStatement = try prepare("""
+        let archiveSQL = """
         UPDATE knowledge_documents
         SET is_archived = 1, updated_at = ?
         WHERE id = ? AND is_archived = 0;
-        """)
-        let recycleStatement = try prepare("""
+        """
+        let recycleSQL = """
         INSERT INTO knowledge_recycle_bin (document_id, deleted_at)
         VALUES (?, ?)
         ON CONFLICT(document_id) DO UPDATE SET deleted_at = excluded.deleted_at;
-        """)
-        defer {
-          sqlite3_finalize(archiveStatement)
-          sqlite3_finalize(recycleStatement)
-        }
+        """
         let now = Date().timeIntervalSince1970
         for documentID in documentIDs.sorted(by: { $0.uuidString < $1.uuidString }) {
-          sqlite3_reset(archiveStatement)
-          sqlite3_clear_bindings(archiveStatement)
-          sqlite3_bind_double(archiveStatement, 1, now)
-          bind(documentID.uuidString, at: 2, to: archiveStatement)
-          guard sqlite3_step(archiveStatement) == SQLITE_DONE else { throw databaseError() }
-          guard sqlite3_changes(handle) == 1 else { throw KnowledgeLibraryError.missingDocument }
-
-          sqlite3_reset(recycleStatement)
-          sqlite3_clear_bindings(recycleStatement)
-          bind(documentID.uuidString, at: 1, to: recycleStatement)
-          sqlite3_bind_double(recycleStatement, 2, now)
-          guard sqlite3_step(recycleStatement) == SQLITE_DONE else { throw databaseError() }
+          try withCachedStatementUnlocked(archiveSQL) { archiveStatement in
+            sqlite3_bind_double(archiveStatement, 1, now)
+            bind(documentID.uuidString, at: 2, to: archiveStatement)
+            guard sqlite3_step(archiveStatement) == SQLITE_DONE else { throw databaseError() }
+            guard sqlite3_changes(handle) == 1 else { throw KnowledgeLibraryError.missingDocument }
+          }
+          try withCachedStatementUnlocked(recycleSQL) { recycleStatement in
+            bind(documentID.uuidString, at: 1, to: recycleStatement)
+            sqlite3_bind_double(recycleStatement, 2, now)
+            guard sqlite3_step(recycleStatement) == SQLITE_DONE else { throw databaseError() }
+          }
         }
+        invalidateSemanticFlatVectorIndexesUnlocked()
         try executeUnlocked("COMMIT;")
       } catch {
         try rethrowAfterRollbackUnlocked(error)
@@ -290,30 +314,26 @@ extension KnowledgeDatabase {
     try withLock {
       try executeUnlocked("BEGIN IMMEDIATE TRANSACTION;")
       do {
-        let restoreStatement = try prepare("""
+        let restoreSQL = """
         UPDATE knowledge_documents
         SET is_archived = 0, updated_at = ?
         WHERE id = ? AND is_archived = 1;
-        """)
-        let clearStatement = try prepare("DELETE FROM knowledge_recycle_bin WHERE document_id = ?;")
-        defer {
-          sqlite3_finalize(restoreStatement)
-          sqlite3_finalize(clearStatement)
-        }
+        """
+        let clearSQL = "DELETE FROM knowledge_recycle_bin WHERE document_id = ?;"
         let now = Date().timeIntervalSince1970
         for documentID in documentIDs.sorted(by: { $0.uuidString < $1.uuidString }) {
-          sqlite3_reset(restoreStatement)
-          sqlite3_clear_bindings(restoreStatement)
-          sqlite3_bind_double(restoreStatement, 1, now)
-          bind(documentID.uuidString, at: 2, to: restoreStatement)
-          guard sqlite3_step(restoreStatement) == SQLITE_DONE else { throw databaseError() }
-          guard sqlite3_changes(handle) == 1 else { throw KnowledgeLibraryError.missingDocument }
-
-          sqlite3_reset(clearStatement)
-          sqlite3_clear_bindings(clearStatement)
-          bind(documentID.uuidString, at: 1, to: clearStatement)
-          guard sqlite3_step(clearStatement) == SQLITE_DONE else { throw databaseError() }
+          try withCachedStatementUnlocked(restoreSQL) { restoreStatement in
+            sqlite3_bind_double(restoreStatement, 1, now)
+            bind(documentID.uuidString, at: 2, to: restoreStatement)
+            guard sqlite3_step(restoreStatement) == SQLITE_DONE else { throw databaseError() }
+            guard sqlite3_changes(handle) == 1 else { throw KnowledgeLibraryError.missingDocument }
+          }
+          try withCachedStatementUnlocked(clearSQL) { clearStatement in
+            bind(documentID.uuidString, at: 1, to: clearStatement)
+            guard sqlite3_step(clearStatement) == SQLITE_DONE else { throw databaseError() }
+          }
         }
+        invalidateSemanticFlatVectorIndexesUnlocked()
         try executeUnlocked("COMMIT;")
       } catch {
         try rethrowAfterRollbackUnlocked(error)
@@ -323,20 +343,21 @@ extension KnowledgeDatabase {
 
   func pinnedDocumentIDs() throws -> Set<UUID> {
     try withLock {
-      let statement = try prepare("SELECT document_id FROM knowledge_pinned_documents;")
-      defer { sqlite3_finalize(statement) }
-      var output = Set<UUID>()
-      while sqlite3_step(statement) == SQLITE_ROW {
-        output.insert(
-          try requiredUUID(
-            statement,
-            0,
-            field: "knowledge_pinned_documents.document_id"
+      let sql = "SELECT document_id FROM knowledge_pinned_documents;"
+      return try withCachedStatementUnlocked(sql) { statement in
+        var output = Set<UUID>()
+        while sqlite3_step(statement) == SQLITE_ROW {
+          output.insert(
+            try requiredUUID(
+              statement,
+              0,
+              field: "knowledge_pinned_documents.document_id"
+            )
           )
-        )
+        }
+        try checkStatementCompletion(statement)
+        return output
       }
-      try checkStatementCompletion(statement)
-      return output
     }
   }
 
@@ -345,16 +366,18 @@ extension KnowledgeDatabase {
       let sql = pinned
         ? "INSERT OR IGNORE INTO knowledge_pinned_documents (document_id) VALUES (?);"
         : "DELETE FROM knowledge_pinned_documents WHERE document_id = ?;"
-      let statement = try prepare(sql)
-      defer { sqlite3_finalize(statement) }
-      bind(documentID.uuidString, at: 1, to: statement)
-      guard sqlite3_step(statement) == SQLITE_DONE else { throw databaseError() }
-      if pinned, sqlite3_changes(handle) == 0 {
-        let documentStatement = try prepare("SELECT 1 FROM knowledge_documents WHERE id = ? LIMIT 1;")
-        defer { sqlite3_finalize(documentStatement) }
-        bind(documentID.uuidString, at: 1, to: documentStatement)
-        guard sqlite3_step(documentStatement) == SQLITE_ROW else {
-          throw KnowledgeLibraryError.missingDocument
+      let requiresDocumentExistenceCheck = try withCachedStatementUnlocked(sql) { statement in
+        bind(documentID.uuidString, at: 1, to: statement)
+        guard sqlite3_step(statement) == SQLITE_DONE else { throw databaseError() }
+        return pinned && sqlite3_changes(handle) == 0
+      }
+      if requiresDocumentExistenceCheck {
+        let documentSQL = "SELECT 1 FROM knowledge_documents WHERE id = ? LIMIT 1;"
+        try withCachedStatementUnlocked(documentSQL) { documentStatement in
+          bind(documentID.uuidString, at: 1, to: documentStatement)
+          guard sqlite3_step(documentStatement) == SQLITE_ROW else {
+            throw KnowledgeLibraryError.missingDocument
+          }
         }
       }
     }
@@ -362,21 +385,22 @@ extension KnowledgeDatabase {
 
   func annotations(documentID: UUID) throws -> [KnowledgeAnnotation] {
     try withLock {
-      let statement = try prepare("""
+      let sql = """
       SELECT id, document_id, revision_id, chunk_id, locator,
              highlighted_text, note, created_at, updated_at
       FROM knowledge_annotations
       WHERE document_id = ?
       ORDER BY updated_at DESC, created_at DESC;
-      """)
-      defer { sqlite3_finalize(statement) }
-      bind(documentID.uuidString, at: 1, to: statement)
-      var output: [KnowledgeAnnotation] = []
-      while sqlite3_step(statement) == SQLITE_ROW {
-        output.append(try decodeAnnotation(statement))
+      """
+      return try withCachedStatementUnlocked(sql) { statement in
+        bind(documentID.uuidString, at: 1, to: statement)
+        var output: [KnowledgeAnnotation] = []
+        while sqlite3_step(statement) == SQLITE_ROW {
+          output.append(try decodeAnnotation(statement))
+        }
+        try checkStatementCompletion(statement)
+        return output
       }
-      try checkStatementCompletion(statement)
-      return output
     }
   }
 
@@ -408,7 +432,7 @@ extension KnowledgeDatabase {
           throw KnowledgeLibraryError.invalidMetadata("标注位置不属于这条资料。")
         }
       }
-      let statement = try prepare("""
+      let sql = """
       INSERT INTO knowledge_annotations (
         id, document_id, revision_id, chunk_id, locator,
         highlighted_text, note, created_at, updated_at
@@ -421,37 +445,39 @@ extension KnowledgeDatabase {
         note = excluded.note,
         updated_at = excluded.updated_at
       WHERE knowledge_annotations.document_id = excluded.document_id;
-      """)
-      defer { sqlite3_finalize(statement) }
-      bind(annotation.id.uuidString, at: 1, to: statement)
-      bind(annotation.documentID.uuidString, at: 2, to: statement)
-      bindOptional(annotation.revisionID?.uuidString, at: 3, to: statement)
-      bindOptional(annotation.chunkID?.uuidString, at: 4, to: statement)
-      bindOptional(annotation.locator, at: 5, to: statement)
-      bind(annotation.highlightedText, at: 6, to: statement)
-      bind(annotation.note, at: 7, to: statement)
-      sqlite3_bind_double(statement, 8, annotation.createdAt.timeIntervalSince1970)
-      sqlite3_bind_double(statement, 9, annotation.updatedAt.timeIntervalSince1970)
-      guard sqlite3_step(statement) == SQLITE_DONE else { throw databaseError() }
-      guard sqlite3_changes(handle) == 1 else {
-        throw KnowledgeLibraryError.invalidMetadata("标注标识与资料不匹配。")
+      """
+      try withCachedStatementUnlocked(sql) { statement in
+        bind(annotation.id.uuidString, at: 1, to: statement)
+        bind(annotation.documentID.uuidString, at: 2, to: statement)
+        bindOptional(annotation.revisionID?.uuidString, at: 3, to: statement)
+        bindOptional(annotation.chunkID?.uuidString, at: 4, to: statement)
+        bindOptional(annotation.locator, at: 5, to: statement)
+        bind(annotation.highlightedText, at: 6, to: statement)
+        bind(annotation.note, at: 7, to: statement)
+        sqlite3_bind_double(statement, 8, annotation.createdAt.timeIntervalSince1970)
+        sqlite3_bind_double(statement, 9, annotation.updatedAt.timeIntervalSince1970)
+        guard sqlite3_step(statement) == SQLITE_DONE else { throw databaseError() }
+        guard sqlite3_changes(handle) == 1 else {
+          throw KnowledgeLibraryError.invalidMetadata("标注标识与资料不匹配。")
+        }
       }
     }
   }
 
   func deleteAnnotation(id: UUID) throws {
     try withLock {
-      let statement = try prepare("DELETE FROM knowledge_annotations WHERE id = ?;")
-      defer { sqlite3_finalize(statement) }
-      bind(id.uuidString, at: 1, to: statement)
-      guard sqlite3_step(statement) == SQLITE_DONE else { throw databaseError() }
-      guard sqlite3_changes(handle) == 1 else { throw KnowledgeLibraryError.missingDocument }
+      let sql = "DELETE FROM knowledge_annotations WHERE id = ?;"
+      try withCachedStatementUnlocked(sql) { statement in
+        bind(id.uuidString, at: 1, to: statement)
+        guard sqlite3_step(statement) == SQLITE_DONE else { throw databaseError() }
+        guard sqlite3_changes(handle) == 1 else { throw KnowledgeLibraryError.missingDocument }
+      }
     }
   }
 
   func backlinks(documentID: UUID) throws -> [KnowledgeBacklink] {
     try withLock {
-      let statement = try prepare("""
+      let sql = """
       SELECT b.id, b.cited_document_id, b.chunk_id, b.target_kind, b.target_id,
              b.target_title, b.target_location, b.created_at,
              COALESCE(c.locator, c.heading_path), c.content
@@ -459,15 +485,16 @@ extension KnowledgeDatabase {
       JOIN knowledge_chunks c ON c.id = b.chunk_id
       WHERE b.cited_document_id = ?
       ORDER BY b.created_at DESC, b.target_title COLLATE NOCASE ASC, c.ordinal ASC;
-      """)
-      defer { sqlite3_finalize(statement) }
-      bind(documentID.uuidString, at: 1, to: statement)
-      var output: [KnowledgeBacklink] = []
-      while sqlite3_step(statement) == SQLITE_ROW {
-        output.append(try decodeBacklink(statement))
+      """
+      return try withCachedStatementUnlocked(sql) { statement in
+        bind(documentID.uuidString, at: 1, to: statement)
+        var output: [KnowledgeBacklink] = []
+        while sqlite3_step(statement) == SQLITE_ROW {
+          output.append(try decodeBacklink(statement))
+        }
+        try checkStatementCompletion(statement)
+        return output
       }
-      try checkStatementCompletion(statement)
-      return output
     }
   }
 
@@ -476,7 +503,7 @@ extension KnowledgeDatabase {
     targetID: String
   ) throws -> [KnowledgeBacklink] {
     try withLock {
-      let statement = try prepare("""
+      let sql = """
       SELECT b.id, b.cited_document_id, b.chunk_id, b.target_kind, b.target_id,
              b.target_title, b.target_location, b.created_at,
              COALESCE(c.locator, c.heading_path), c.content
@@ -484,16 +511,17 @@ extension KnowledgeDatabase {
       JOIN knowledge_chunks c ON c.id = b.chunk_id
       WHERE b.target_kind = ? AND b.target_id = ?
       ORDER BY b.created_at DESC, b.target_title COLLATE NOCASE ASC, c.ordinal ASC;
-      """)
-      defer { sqlite3_finalize(statement) }
-      bind(targetKind.rawValue, at: 1, to: statement)
-      bind(targetID, at: 2, to: statement)
-      var output: [KnowledgeBacklink] = []
-      while sqlite3_step(statement) == SQLITE_ROW {
-        output.append(try decodeBacklink(statement))
+      """
+      return try withCachedStatementUnlocked(sql) { statement in
+        bind(targetKind.rawValue, at: 1, to: statement)
+        bind(targetID, at: 2, to: statement)
+        var output: [KnowledgeBacklink] = []
+        while sqlite3_step(statement) == SQLITE_ROW {
+          output.append(try decodeBacklink(statement))
+        }
+        try checkStatementCompletion(statement)
+        return output
       }
-      try checkStatementCompletion(statement)
-      return output
     }
   }
 
@@ -513,7 +541,7 @@ extension KnowledgeDatabase {
             throw KnowledgeLibraryError.invalidMetadata("引用片段不属于指定资料。")
           }
         }
-        let statement = try prepare("""
+        let sql = """
         INSERT INTO knowledge_backlinks (
           id, cited_document_id, chunk_id, target_kind, target_id,
           target_title, target_location, created_at
@@ -523,21 +551,22 @@ extension KnowledgeDatabase {
           target_title = excluded.target_title,
           target_location = excluded.target_location,
           created_at = excluded.created_at;
-        """)
-        defer { sqlite3_finalize(statement) }
+        """
         let now = Date().timeIntervalSince1970
-        for citation in citations {
-          sqlite3_reset(statement)
-          sqlite3_clear_bindings(statement)
-          bind(UUID().uuidString, at: 1, to: statement)
-          bind(citation.documentID.uuidString, at: 2, to: statement)
-          bind(citation.chunkID.uuidString, at: 3, to: statement)
-          bind(target.kind.rawValue, at: 4, to: statement)
-          bind(target.id, at: 5, to: statement)
-          bind(target.title, at: 6, to: statement)
-          bindOptional(target.location, at: 7, to: statement)
-          sqlite3_bind_double(statement, 8, now)
-          guard sqlite3_step(statement) == SQLITE_DONE else { throw databaseError() }
+        try withCachedStatementUnlocked(sql) { statement in
+          for citation in citations {
+            sqlite3_reset(statement)
+            sqlite3_clear_bindings(statement)
+            bind(UUID().uuidString, at: 1, to: statement)
+            bind(citation.documentID.uuidString, at: 2, to: statement)
+            bind(citation.chunkID.uuidString, at: 3, to: statement)
+            bind(target.kind.rawValue, at: 4, to: statement)
+            bind(target.id, at: 5, to: statement)
+            bind(target.title, at: 6, to: statement)
+            bindOptional(target.location, at: 7, to: statement)
+            sqlite3_bind_double(statement, 8, now)
+            guard sqlite3_step(statement) == SQLITE_DONE else { throw databaseError() }
+          }
         }
         try executeUnlocked("COMMIT;")
       } catch {
@@ -552,16 +581,18 @@ extension KnowledgeDatabase {
       do {
         let storageReferences = try storageReferencesUnlocked(documentID: id)
         try deleteSearchRows(documentID: id)
-        let statement = try prepare("DELETE FROM knowledge_documents WHERE id = ?;")
-        bind(id.uuidString, at: 1, to: statement)
-        guard sqlite3_step(statement) == SQLITE_DONE else {
-          sqlite3_finalize(statement)
-          throw databaseError()
+        let sql = "DELETE FROM knowledge_documents WHERE id = ?;"
+        let deletedCount = try withCachedStatementUnlocked(sql) { statement in
+          bind(id.uuidString, at: 1, to: statement)
+          guard sqlite3_step(statement) == SQLITE_DONE else {
+            throw databaseError()
+          }
+          return sqlite3_changes(handle)
         }
-        sqlite3_finalize(statement)
-        guard sqlite3_changes(handle) == 1 else {
+        guard deletedCount == 1 else {
           throw KnowledgeLibraryError.missingDocument
         }
+        invalidateSemanticFlatVectorIndexesUnlocked()
         let unreferencedStorageReferences = try Set(storageReferences.filter { reference in
           try !storageReferenceIsInUseUnlocked(reference)
         })
@@ -576,44 +607,46 @@ extension KnowledgeDatabase {
   }
 
   func storageReferencesUnlocked(documentID: UUID) throws -> Set<String> {
-    let statement = try prepare("""
+    let sql = """
     SELECT original_storage_ref, captured_text_storage_ref, normalized_storage_ref
     FROM knowledge_revisions
     WHERE document_id = ?;
-    """)
-    defer { sqlite3_finalize(statement) }
-    bind(documentID.uuidString, at: 1, to: statement)
-    var references = Set<String>()
-    while sqlite3_step(statement) == SQLITE_ROW {
-      if let originalReference = text(statement, 0)?.nilIfEmpty {
-        references.insert(originalReference)
+    """
+    return try withCachedStatementUnlocked(sql) { statement in
+      bind(documentID.uuidString, at: 1, to: statement)
+      var references = Set<String>()
+      while sqlite3_step(statement) == SQLITE_ROW {
+        if let originalReference = text(statement, 0)?.nilIfEmpty {
+          references.insert(originalReference)
+        }
+        if let capturedTextReference = text(statement, 1)?.nilIfEmpty {
+          references.insert(capturedTextReference)
+        }
+        if let normalizedReference = text(statement, 2)?.nilIfEmpty {
+          references.insert(normalizedReference)
+        }
       }
-      if let capturedTextReference = text(statement, 1)?.nilIfEmpty {
-        references.insert(capturedTextReference)
-      }
-      if let normalizedReference = text(statement, 2)?.nilIfEmpty {
-        references.insert(normalizedReference)
-      }
+      try checkStatementCompletion(statement)
+      return references
     }
-    try checkStatementCompletion(statement)
-    return references
   }
 
   func storageReferenceIsInUseUnlocked(_ reference: String) throws -> Bool {
-    let statement = try prepare("""
+    let sql = """
     SELECT 1
     FROM knowledge_revisions
     WHERE original_storage_ref = ?
        OR captured_text_storage_ref = ?
        OR normalized_storage_ref = ?
     LIMIT 1;
-    """)
-    defer { sqlite3_finalize(statement) }
-    bind(reference, at: 1, to: statement)
-    bind(reference, at: 2, to: statement)
-    bind(reference, at: 3, to: statement)
-    let result = sqlite3_step(statement)
-    guard result == SQLITE_ROW || result == SQLITE_DONE else { throw databaseError() }
-    return result == SQLITE_ROW
+    """
+    return try withCachedStatementUnlocked(sql) { statement in
+      bind(reference, at: 1, to: statement)
+      bind(reference, at: 2, to: statement)
+      bind(reference, at: 3, to: statement)
+      let result = sqlite3_step(statement)
+      guard result == SQLITE_ROW || result == SQLITE_DONE else { throw databaseError() }
+      return result == SQLITE_ROW
+    }
   }
 }

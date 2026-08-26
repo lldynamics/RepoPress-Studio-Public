@@ -32,51 +32,16 @@ extension MacMarkdownComposerView {
 
   var canUseFindReplace: Bool {
     guard !findQuery.isEmpty else { return false }
+    guard !findMatchRefreshCoordinator.isPending else { return false }
     return findMatchSnapshot.errorMessage == nil
   }
 
-  func updateSynchronizedScroll(
-    source: MarkdownScrollSyncSource,
-    progress: Double
-  ) {
-    let normalizedProgress = min(max(progress.isFinite ? progress : 0, 0), 1)
+  func updateEditorScrollPosition(_ position: MarkdownScrollSyncPosition) {
+    let normalizedProgress = position.progress
     let equalityTolerance = 0.001
-    var didChange = false
-    switch source {
-    case .editor:
-      if abs(editorScrollProgress - normalizedProgress) >= equalityTolerance {
-        editorScrollProgress = normalizedProgress
-        didChange = true
-      }
-      if isSynchronizedScrollingEnabled {
-        if abs(previewScrollProgress - normalizedProgress) >= equalityTolerance {
-          previewScrollProgress = normalizedProgress
-          didChange = true
-        }
-      }
-    case .preview:
-      if abs(previewScrollProgress - normalizedProgress) >= equalityTolerance {
-        previewScrollProgress = normalizedProgress
-        didChange = true
-      }
-      if isSynchronizedScrollingEnabled {
-        if abs(editorScrollProgress - normalizedProgress) >= equalityTolerance {
-          editorScrollProgress = normalizedProgress
-          didChange = true
-        }
-      }
-    }
-    guard didChange else { return }
+    guard abs(editorScrollProgress - normalizedProgress) >= equalityTolerance else { return }
+    editorScrollProgress = normalizedProgress
     saveCurrentEditorSession()
-
-    guard isSynchronizedScrollingEnabled else { return }
-    if let scrollSyncUpdate,
-      scrollSyncUpdate.source == source,
-      abs(scrollSyncUpdate.progress - normalizedProgress) < equalityTolerance
-    {
-      return
-    }
-    scrollSyncUpdate = MarkdownScrollSyncUpdate(source: source, progress: normalizedProgress)
   }
 
   func restoreEditorSession(for draftID: UUID) {
@@ -92,15 +57,9 @@ extension MacMarkdownComposerView {
     isFindWholeWord = editorSession.isFindWholeWord
     isFindRegularExpression = editorSession.isFindRegularExpression
     editorScrollProgress = editorSession.editorScrollProgress
-    previewScrollProgress = editorSession.previewScrollProgress
-    scrollSyncUpdate = nil
     editorScrollRestorationUpdate = MarkdownScrollSyncUpdate(
       source: .editor,
       progress: editorSession.editorScrollProgress
-    )
-    previewScrollRestorationUpdate = MarkdownScrollSyncUpdate(
-      source: .preview,
-      progress: editorSession.previewScrollProgress
     )
     findReplaceMessage =
       findQuery.isEmpty && isFindReplacePresented
@@ -114,7 +73,6 @@ extension MacMarkdownComposerView {
     MarkdownEditorSessionState(
       selectedRange: selectedRange,
       editorScrollProgress: editorScrollProgress,
-      previewScrollProgress: previewScrollProgress,
       isFindReplacePresented: isFindReplacePresented,
       findQuery: findQuery,
       replacementText: replacementText,
@@ -174,6 +132,7 @@ extension MacMarkdownComposerView {
 
   var findMatchStatus: String {
     guard !findQuery.isEmpty else { return "0/0" }
+    guard !findMatchRefreshCoordinator.isPending else { return "…/…" }
     guard findMatchSnapshot.errorMessage == nil else {
       return "—/—"
     }
@@ -183,34 +142,48 @@ extension MacMarkdownComposerView {
 
   var findReplaceFeedbackMessage: String {
     guard !findQuery.isEmpty else { return findReplaceMessage }
+    if findMatchRefreshCoordinator.isPending {
+      return String(localized: "正在搜索…")
+    }
     return findMatchSnapshot.errorMessage ?? findReplaceMessage
   }
 
-  static func makeFindMatchSnapshot(
-    text: String,
-    query: String,
-    options: MarkdownFindOptions
-  ) -> MarkdownFindMatchSnapshot {
-    guard !query.isEmpty else { return .empty }
-    do {
-      return MarkdownFindMatchSnapshot(
-        ranges: try MarkdownFindReplaceService().matches(
-          in: text,
-          query: query,
-          options: options
-        ),
-        errorMessage: nil
+  func refreshFindMatchSnapshot() {
+    let text = editorBody
+    let query = findQuery
+    let options = findOptions
+    let bodyRevision = editorBodyRevision
+    let session = editorSessionState
+
+    // A new request invalidates the previous snapshot immediately. This keeps
+    // find-next/replace from acting on a result for an older body or query
+    // while the replacement scan is running in the background.
+    findMatchSnapshot = .empty
+    findMatchRefreshCoordinator.schedule(
+      text: text,
+      query: query,
+      options: options
+    ) { [weak session] result in
+      guard let session else { return }
+      guard session.editorBody == text,
+        session.editorBodyRevision == bodyRevision,
+        session.findQuery == query,
+        MarkdownFindOptions(
+          caseSensitive: session.isFindCaseSensitive,
+          wholeWord: session.isFindWholeWord,
+          usesRegularExpression: session.isFindRegularExpression
+        ) == options
+      else {
+        return
+      }
+      session.findMatchSnapshot = MarkdownFindMatchSnapshot(
+        ranges: result.ranges,
+        errorMessage: result.errorMessage
       )
-    } catch {
-      return MarkdownFindMatchSnapshot(ranges: [], errorMessage: error.localizedDescription)
     }
   }
 
-  func refreshFindMatchSnapshot() {
-    findMatchSnapshot = Self.makeFindMatchSnapshot(
-      text: editorBody,
-      query: findQuery,
-      options: findOptions
-    )
+  func cancelFindMatchRefresh() {
+    findMatchRefreshCoordinator.cancel()
   }
 }

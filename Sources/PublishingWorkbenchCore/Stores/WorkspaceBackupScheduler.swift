@@ -51,7 +51,6 @@ public final class WorkspaceBackupScheduler: ObservableObject {
   private let defaults: UserDefaults
   private let fileManager: FileManager
   private let defaultDestinationFolderURL: URL?
-  private let bookmarkCodec: WorkbenchDataRootBookmarkCodec
   private var hasStarted = false
   private var backgroundActivity: WorkspaceBackupActivityLease?
 
@@ -59,14 +58,12 @@ public final class WorkspaceBackupScheduler: ObservableObject {
     store: WorkbenchStore,
     defaults: UserDefaults = .standard,
     fileManager: FileManager = .default,
-    defaultDestinationFolderURL: URL? = nil,
-    bookmarkCodec: WorkbenchDataRootBookmarkCodec = .securityScoped
+    defaultDestinationFolderURL: URL? = nil
   ) {
     self.store = store
     self.defaults = defaults
     self.fileManager = fileManager
     self.defaultDestinationFolderURL = defaultDestinationFolderURL?.standardizedFileURL
-    self.bookmarkCodec = bookmarkCodec
     self.settings = Self.loadSettings(from: defaults)
   }
 
@@ -110,7 +107,6 @@ public final class WorkspaceBackupScheduler: ObservableObject {
     let folderURL = url.standardizedFileURL
     var updated = settings
     updated.destinationPath = folderURL.path
-    updated.destinationBookmarkData = try bookmarkCodec.create(for: folderURL)
     settings = updated
     persistSettings()
     Task { @MainActor [weak self] in
@@ -120,7 +116,6 @@ public final class WorkspaceBackupScheduler: ObservableObject {
 
   public func resetDestinationFolder() {
     settings.destinationPath = nil
-    settings.destinationBookmarkData = nil
     persistSettings()
     Task { @MainActor [weak self] in
       await self?.refreshRecentBackups()
@@ -133,11 +128,6 @@ public final class WorkspaceBackupScheduler: ObservableObject {
 
   public func refreshRecentBackups() async {
     let folderURL = resolvedDestinationFolderURL()
-    let didStartAccessing = folderURL.startAccessingSecurityScopedResource()
-    defer {
-      if didStartAccessing { folderURL.stopAccessingSecurityScopedResource() }
-    }
-
     do {
       guard fileManager.fileExists(atPath: folderURL.path) else {
         recentBackups = []
@@ -238,11 +228,6 @@ public final class WorkspaceBackupScheduler: ObservableObject {
     defer { isRunning = false }
 
     let folderURL = resolvedDestinationFolderURL()
-    let didStartAccessing = folderURL.startAccessingSecurityScopedResource()
-    defer {
-      if didStartAccessing { folderURL.stopAccessingSecurityScopedResource() }
-    }
-
     do {
       try fileManager.createDirectory(at: folderURL, withIntermediateDirectories: true)
       let backupURL = folderURL.appendingPathComponent(automaticBackupFilename())
@@ -429,33 +414,6 @@ public final class WorkspaceBackupScheduler: ObservableObject {
   }
 
   private func resolvedDestinationFolderURL() -> URL {
-    if let bookmarkData = settings.destinationBookmarkData {
-      do {
-        let decoded = try bookmarkCodec.resolve(bookmarkData)
-        let bookmarkURL = decoded.url.standardizedFileURL
-        if let injectedURL = injectedDestinationReplacingLegacyDefault(bookmarkURL) {
-          return injectedURL
-        }
-        if decoded.isStale {
-          do {
-            settings.destinationBookmarkData = try bookmarkCodec.create(for: bookmarkURL)
-            settings.destinationPath = bookmarkURL.path
-            persistSettings()
-          } catch {
-            if let defaultDestinationFolderURL {
-              return defaultDestinationFolderURL
-            }
-          }
-        }
-        return bookmarkURL
-      } catch {
-        // A path paired with an invalid bookmark must not redirect a workspace
-        // away from its injected data-root backup directory.
-        if let defaultDestinationFolderURL {
-          return defaultDestinationFolderURL
-        }
-      }
-    }
     if let destinationPath = settings.destinationPath?.nilIfEmpty {
       let destinationURL = URL(fileURLWithPath: destinationPath).standardizedFileURL
       return injectedDestinationReplacingLegacyDefault(destinationURL) ?? destinationURL

@@ -7,7 +7,9 @@ extension WorkbenchAIStore {
     draft: ArticleDraft? = nil,
     imageAttachments: [AIChatImageAttachment] = [],
     contextReferences: [AIContextReference] = [],
-    ownerToken: UUID? = nil
+    ownerToken: UUID? = nil,
+    expectedContextMode: AIPublishingChatContextMode? = nil,
+    expectedDraftConversation: AIChatDraftConversationExpectation? = nil
   ) async -> AIPublishingChatMessage? {
     guard store.canUseProtectedWorkbench else {
       store.setAIChatMessage(aiChatQuickHideOperationMessage())
@@ -18,6 +20,28 @@ extension WorkbenchAIStore {
     guard !trimmed.isEmpty || !imageAttachments.isEmpty else {
       store.setAIChatMessage(CoreL10n.text("请先输入要发送给 AI 的内容。"))
       return nil
+    }
+    guard expectedContextMode == nil || expectedContextMode == aiChatContextMode else {
+      store.setAIChatMessage(
+        CoreL10n.text("AI 对话上下文已变化，本次未发送，请重试。")
+      )
+      return nil
+    }
+    if let expectedDraftConversation {
+      let expectedConversation = expectedDraftConversation.conversation
+      guard
+        aiChatContextMode != .general,
+        let candidateDraft = draft ?? store.selectedDraft,
+        candidateDraft.id == expectedDraftConversation.draftID,
+        expectedConversation?.draftID == candidateDraft.id
+          || expectedConversation == nil,
+        activeAIChatConversation(for: candidateDraft.id) == expectedConversation
+      else {
+        store.setAIChatMessage(
+          CoreL10n.text("AI 对话上下文已变化，本次未发送，请重试。")
+        )
+        return nil
+      }
     }
     if aiChatContextMode == .general {
       return await sendGeneralAIChatMessage(

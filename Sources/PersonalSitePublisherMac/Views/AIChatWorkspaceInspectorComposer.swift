@@ -20,6 +20,55 @@ enum AIChatDataSharingConsentPolicy {
 
 extension AIChatContextInspectorView {
 
+  var agentToolAvailability: AIChatAgentToolAvailability? {
+    guard let mode = ai.conversationAgentMode(for: inspectorSurfaceConversationID) else {
+      return nil
+    }
+    return AIChatAgentToolAvailabilityPresentation.availability(
+      config: currentAIProviderConfig,
+      conversationMode: mode
+    )
+  }
+
+  @ViewBuilder
+  var agentToolsUnavailableBanner: some View {
+    if let availability = agentToolAvailability,
+      let message = availability.message,
+      let actionTitle = availability.actionTitle
+    {
+      HStack(alignment: .center, spacing: 10) {
+        Label(message, systemImage: "wand.and.stars")
+          .font(.workbenchSupporting)
+          .foregroundStyle(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
+
+        Spacer(minLength: 8)
+
+        Button(actionTitle) {
+          switch availability {
+          case .conversationTextOnly:
+            _ = ai.setConversationAgentMode(
+              .inheritConnection,
+              conversationID: inspectorSurfaceConversationID
+            )
+          case .connectionDisabled, .draftCreationDenied, .capabilityUnknown,
+            .capabilityUnsupported:
+            openAISettings()
+          case .available:
+            break
+          }
+        }
+        .controlSize(.small)
+        .disabled(isChatBusy)
+      }
+      .padding(.horizontal, 12)
+      .padding(.vertical, 8)
+      .background(Color.orange.opacity(0.08))
+      .accessibilityElement(children: .contain)
+      .accessibilityIdentifier("ai-assistant-agent-unavailable")
+    }
+  }
+
   var messageComposer: some View {
     VStack(alignment: .leading, spacing: 8) {
       if let status = inspectorStatusText {
@@ -503,8 +552,8 @@ extension AIChatContextInspectorView {
 
   var ownsInspectorOperation: Bool {
     AIChatSurfaceOperationOwnershipPolicy.ownsLocalTask(
-      localTaskExists: sendTask != nil,
-      ownerToken: activeSendOwnerToken
+      localTaskExists: operationSession.hasActiveTask,
+      ownerToken: operationSession.activeOwnerToken
     )
   }
 
@@ -513,7 +562,7 @@ extension AIChatContextInspectorView {
   }
 
   var isChatBusy: Bool {
-    ai.isChatRunning
+    operationSession.hasActiveTask || ai.isChatRunning
   }
 
   var isChatBusyElsewhere: Bool {

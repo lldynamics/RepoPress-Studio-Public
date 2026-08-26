@@ -74,7 +74,15 @@ final class WebContentNetworkSecurityTests: XCTestCase {
     XCTAssertEqual(trigger["url-filter-is-case-sensitive"] as? Bool, false)
     XCTAssertEqual(action["type"] as? String, "block")
 
-    let configuration = try await MarkdownExportWebContentSecurity.makeConfiguration()
+    let storeURL = FileManager.default.temporaryDirectory.appendingPathComponent(
+      "markdown-export-rule-store-\(UUID().uuidString)",
+      isDirectory: true
+    )
+    try FileManager.default.createDirectory(at: storeURL, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: storeURL) }
+    let configuration = try await MarkdownExportWebContentSecurity.makeConfiguration(
+      ruleListStore: WKContentRuleListStore(url: storeURL)
+    )
     XCTAssertFalse(configuration.websiteDataStore.isPersistent)
     XCTAssertFalse(configuration.defaultWebpagePreferences.allowsContentJavaScript)
     XCTAssertFalse(configuration.preferences.javaScriptCanOpenWindowsAutomatically)

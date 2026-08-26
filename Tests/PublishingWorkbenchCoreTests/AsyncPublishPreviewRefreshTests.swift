@@ -27,48 +27,37 @@ final class AsyncPublishPreviewRefreshTests: XCTestCase {
     )
     store.setDrafts([draft])
     store.setSelectedDraftID(draft.id)
-    store.refreshPublishPreview(for: draft)
+    let refreshedSnapshot = await store.refreshPublishPreview(for: draft.id)
+    let expectedSnapshot = try XCTUnwrap(refreshedSnapshot)
 
-    let expectedPackage = try XCTUnwrap(store.publishPackage)
-    let expectedPreview = try XCTUnwrap(store.localPublishPreview)
-    let expectedReadiness = try XCTUnwrap(store.localPublishReadiness)
-    let expectedRemote = try XCTUnwrap(store.remotePublishPreviewSnapshot)
+    store.refreshPublishPreviewInBackground(for: draft.id)
+    XCTAssertTrue(store.isPublishPreviewRefreshing(for: draft.id))
+    await store.waitForPublishPreviewRefresh(for: draft.id)
 
-    store.refreshPublishPreviewInBackground(for: draft)
-    XCTAssertTrue(store.isPublishPreviewRefreshing)
-    await store.publishingStore.waitForPublishPreviewRefresh()
-
-    XCTAssertFalse(store.isPublishPreviewRefreshing)
-    assertEquivalent(try XCTUnwrap(store.publishPackage), expectedPackage)
-    assertEquivalent(try XCTUnwrap(store.localPublishPreview), expectedPreview)
-    assertEquivalent(try XCTUnwrap(store.localPublishReadiness), expectedReadiness)
-    assertEquivalent(try XCTUnwrap(store.remotePublishPreviewSnapshot), expectedRemote)
+    XCTAssertFalse(store.isPublishPreviewRefreshing(for: draft.id))
+    let actualSnapshot = try XCTUnwrap(store.cachedPublishPreview(for: draft.id))
+    assertEquivalent(actualSnapshot, expectedSnapshot)
   }
 
-  func testOlderBackgroundPreviewCannotReplaceNewerDraftPreview() async throws {
+  func testSameDraftOlderGenerationCannotReplaceNewerPreview() async throws {
     let store = try TestWorkbenchFactory.makeStore()
     store.publishingStore.cancelPublishPreviewRefresh()
     let profile = store.activeProfile
-    let firstDraft = ArticleDraft(
+    let draft = ArticleDraft(
       siteProfileID: profile.id,
-      title: "First Preview",
-      slug: "first-preview",
+      title: "Generation Preview",
+      slug: "generation-preview",
       draft: false,
-      bodyMarkdown: "This first body is intentionally long enough for a valid publishing package."
+      bodyMarkdown: "This body is intentionally long enough for generation ordering coverage."
     )
-    let secondDraft = ArticleDraft(
-      siteProfileID: profile.id,
-      title: "Second Preview",
-      slug: "second-preview",
-      draft: false,
-      bodyMarkdown: "This second body is intentionally long enough for a valid publishing package."
-    )
-    store.setDrafts([firstDraft, secondDraft])
-    store.setSelectedDraftID(firstDraft.id)
+    store.setDrafts([draft])
+    store.setSelectedDraftID(draft.id)
 
     let gate = AsyncPublishPreviewGate()
+    let invocation = AsyncPublishPreviewInvocation()
     let provider: PublishingStore.AsyncLocalPublishPreviewProvider = { package, _ in
-      if package.draftID == firstDraft.id {
+      let invocationNumber = await invocation.recordAndReturn(package.draftID)
+      if invocationNumber == 1 {
         await gate.suspendFirstPreview()
       }
       return LocalPublishPreview(
@@ -82,37 +71,39 @@ final class AsyncPublishPreviewRefreshTests: XCTestCase {
           ),
         ],
         issues: [],
-        generatedAt: Date(timeIntervalSince1970: package.draftID == firstDraft.id ? 1 : 2)
+        generatedAt: Date(timeIntervalSince1970: TimeInterval(invocationNumber))
       )
     }
 
     store.publishingStore.schedulePublishPreviewRefresh(
-      for: firstDraft,
+      for: draft.id,
       store: store,
       previewProvider: provider
     )
     let firstTask = store.publishingStore.publishPreviewRefreshTask
     await gate.waitUntilFirstPreviewStarts()
 
-    store.setSelectedDraftID(secondDraft.id)
     store.publishingStore.schedulePublishPreviewRefresh(
-      for: secondDraft,
+      for: draft.id,
       store: store,
       previewProvider: provider
     )
-    await store.publishingStore.waitForPublishPreviewRefresh()
+    await store.waitForPublishPreviewRefresh(for: draft.id)
 
-    XCTAssertEqual(store.publishPackage?.draftID, secondDraft.id)
-    XCTAssertEqual(store.localPublishPreview?.generatedAt, Date(timeIntervalSince1970: 2))
+    let newerSnapshot = try XCTUnwrap(store.cachedPublishPreview(for: draft.id))
+    XCTAssertEqual(newerSnapshot.context.draftID, draft.id)
+    XCTAssertEqual(newerSnapshot.localPublishPreview.generatedAt, Date(timeIntervalSince1970: 2))
 
     await gate.releaseFirstPreview()
     await firstTask?.value
 
-    XCTAssertEqual(store.publishPackage?.draftID, secondDraft.id)
-    XCTAssertEqual(store.localPublishPreview?.generatedAt, Date(timeIntervalSince1970: 2))
+    let finalSnapshot = try XCTUnwrap(store.cachedPublishPreview(for: draft.id))
+    XCTAssertEqual(finalSnapshot.localPublishPreview.generatedAt, Date(timeIntervalSince1970: 2))
+    let generationInvocationIDs = await invocation.draftIDs()
+    XCTAssertEqual(generationInvocationIDs, [draft.id, draft.id])
   }
 
-  func testExplicitNonSelectedDraftCannotReplaceSharedPreviewState() async throws {
+  func testNonSelectedDraftRefreshUsesOwnCacheAndDoesNotDriveSelectedSpinner() async throws {
     let store = try TestWorkbenchFactory.makeStore()
     store.publishingStore.cancelPublishPreviewRefresh()
     let profile = store.activeProfile
@@ -133,23 +124,247 @@ final class AsyncPublishPreviewRefreshTests: XCTestCase {
     store.setDrafts([selectedDraft, otherDraft])
     store.setSelectedDraftID(selectedDraft.id)
     store.refreshPublishPreview(for: selectedDraft)
-    let originalPackage = try XCTUnwrap(store.publishPackage)
+    let originalProfileID = store.activeProfileID
+    let originalPackage = store.publishPackage
+    let originalPreview = store.localPublishPreview
+    let originalReadiness = store.localPublishReadiness
+    let originalRemote = store.remotePublishPreviewSnapshot
+    let originalReviewDraft = store.remoteReviewDraft
 
     let invocation = AsyncPublishPreviewInvocation()
     store.publishingStore.schedulePublishPreviewRefresh(
-      for: otherDraft,
+      for: otherDraft.id,
       store: store,
       previewProvider: { package, _ in
         await invocation.record(package.draftID)
-        return LocalPublishPreview(package: package, fileDiffs: [], issues: [])
+        return LocalPublishPreview(
+          package: package,
+          fileDiffs: [
+            PublishFileDiff(
+              path: package.markdownPath,
+              kind: .markdown,
+              status: .added,
+              byteSize: Int64(package.markdownFile?.content?.utf8.count ?? 0)
+            ),
+          ],
+          issues: []
+        )
       }
     )
-    await store.publishingStore.waitForPublishPreviewRefresh()
-
-    XCTAssertEqual(store.publishPackage?.draftID, originalPackage.draftID)
-    let invokedDraftIDs = await invocation.draftIDs()
-    XCTAssertEqual(invokedDraftIDs, [])
+    XCTAssertTrue(store.isPublishPreviewRefreshing(for: otherDraft.id))
+    XCTAssertFalse(store.isPublishPreviewRefreshing(for: selectedDraft.id))
     XCTAssertFalse(store.isPublishPreviewRefreshing)
+    await store.waitForPublishPreviewRefresh(for: otherDraft.id)
+
+    let cachedOther = try XCTUnwrap(store.cachedPublishPreview(for: otherDraft.id))
+    XCTAssertEqual(cachedOther.context.draftID, otherDraft.id)
+    XCTAssertEqual(cachedOther.publishPackage.draftID, otherDraft.id)
+    XCTAssertEqual(cachedOther.localPublishPreview.package.draftID, otherDraft.id)
+    let invocationDraftIDs = await invocation.draftIDs()
+    XCTAssertEqual(invocationDraftIDs, [otherDraft.id])
+    XCTAssertEqual(store.activeProfileID, originalProfileID)
+    XCTAssertEqual(store.publishPackage, originalPackage)
+    XCTAssertEqual(store.localPublishPreview, originalPreview)
+    XCTAssertEqual(store.localPublishReadiness, originalReadiness)
+    XCTAssertEqual(store.remotePublishPreviewSnapshot, originalRemote)
+    XCTAssertEqual(store.remoteReviewDraft, originalReviewDraft)
+    XCTAssertFalse(store.isPublishPreviewRefreshing)
+  }
+
+  func testDifferentDraftRefreshesRunInParallelWithoutCancellingEachOther() async throws {
+    let store = try TestWorkbenchFactory.makeStore()
+    store.publishingStore.cancelPublishPreviewRefresh()
+    let profile = store.activeProfile
+    let draftA = ArticleDraft(
+      siteProfileID: profile.id,
+      title: "Parallel A",
+      slug: "parallel-a",
+      draft: false,
+      bodyMarkdown: "The first parallel preview has enough content for a valid package."
+    )
+    let draftB = ArticleDraft(
+      siteProfileID: profile.id,
+      title: "Parallel B",
+      slug: "parallel-b",
+      draft: false,
+      bodyMarkdown: "The second parallel preview has enough content for a valid package."
+    )
+    store.setDrafts([draftA, draftB])
+    store.setSelectedDraftID(draftA.id)
+
+    let gateA = AsyncPublishPreviewGate()
+    let gateB = AsyncPublishPreviewGate()
+    let provider: PublishingStore.AsyncLocalPublishPreviewProvider = { package, _ in
+      if package.draftID == draftA.id {
+        await gateA.suspendFirstPreview()
+      } else {
+        await gateB.suspendFirstPreview()
+      }
+      return LocalPublishPreview(package: package, fileDiffs: [], issues: [])
+    }
+
+    store.publishingStore.schedulePublishPreviewRefresh(
+      for: draftA.id,
+      store: store,
+      previewProvider: provider
+    )
+    store.publishingStore.schedulePublishPreviewRefresh(
+      for: draftB.id,
+      store: store,
+      previewProvider: provider
+    )
+
+    await gateA.waitUntilFirstPreviewStarts()
+    await gateB.waitUntilFirstPreviewStarts()
+    XCTAssertTrue(store.isPublishPreviewRefreshing(for: draftA.id))
+    XCTAssertTrue(store.isPublishPreviewRefreshing(for: draftB.id))
+
+    await gateA.releaseFirstPreview()
+    await gateB.releaseFirstPreview()
+    await store.waitForPublishPreviewRefresh(for: draftA.id)
+    await store.waitForPublishPreviewRefresh(for: draftB.id)
+
+    XCTAssertEqual(store.cachedPublishPreview(for: draftA.id)?.context.draftID, draftA.id)
+    XCTAssertEqual(store.cachedPublishPreview(for: draftB.id)?.context.draftID, draftB.id)
+    XCTAssertFalse(store.isPublishPreviewRefreshing(for: draftA.id))
+    XCTAssertFalse(store.isPublishPreviewRefreshing(for: draftB.id))
+  }
+
+  func testSelectionChangeDoesNotProjectRefreshingDraftIntoNewSelection() async throws {
+    let store = try TestWorkbenchFactory.makeStore()
+    store.publishingStore.cancelPublishPreviewRefresh()
+    let profile = store.activeProfile
+    let draftA = ArticleDraft(
+      siteProfileID: profile.id,
+      title: "Selection A",
+      slug: "selection-a",
+      draft: false,
+      bodyMarkdown: "The first selection preview has enough content for a valid package."
+    )
+    let draftB = ArticleDraft(
+      siteProfileID: profile.id,
+      title: "Selection B",
+      slug: "selection-b",
+      draft: false,
+      bodyMarkdown: "The second selection preview has enough content for a valid package."
+    )
+    store.setDrafts([draftA, draftB])
+    store.setSelectedDraftID(draftB.id)
+    store.refreshPublishPreview(for: draftB)
+    let originalBPackage = try XCTUnwrap(store.publishPackage)
+    let originalBPreview = try XCTUnwrap(store.localPublishPreview)
+    let originalBReadiness = try XCTUnwrap(store.localPublishReadiness)
+    let originalBRemote = try XCTUnwrap(store.remotePublishPreviewSnapshot)
+    let originalBReviewDraft = try XCTUnwrap(store.remoteReviewDraft)
+
+    store.setSelectedDraftID(draftA.id)
+    let gate = AsyncPublishPreviewGate()
+    let provider: PublishingStore.AsyncLocalPublishPreviewProvider = { package, _ in
+      await gate.suspendFirstPreview()
+      return LocalPublishPreview(package: package, fileDiffs: [], issues: [])
+    }
+    store.publishingStore.schedulePublishPreviewRefresh(
+      for: draftA.id,
+      store: store,
+      previewProvider: provider
+    )
+    await gate.waitUntilFirstPreviewStarts()
+
+    store.setSelectedDraftID(draftB.id)
+    XCTAssertFalse(store.isPublishPreviewRefreshing)
+    XCTAssertEqual(store.publishPackage, originalBPackage)
+    XCTAssertEqual(store.localPublishPreview, originalBPreview)
+    XCTAssertEqual(store.localPublishReadiness, originalBReadiness)
+    XCTAssertEqual(store.remotePublishPreviewSnapshot, originalBRemote)
+    XCTAssertEqual(store.remoteReviewDraft, originalBReviewDraft)
+
+    await gate.releaseFirstPreview()
+    await store.waitForPublishPreviewRefresh(for: draftA.id)
+
+    XCTAssertEqual(store.cachedPublishPreview(for: draftA.id)?.context.draftID, draftA.id)
+    XCTAssertEqual(store.selectedDraftID, draftB.id)
+    XCTAssertEqual(store.publishPackage, originalBPackage)
+    XCTAssertEqual(store.localPublishPreview, originalBPreview)
+    XCTAssertEqual(store.localPublishReadiness, originalBReadiness)
+    XCTAssertEqual(store.remotePublishPreviewSnapshot, originalBRemote)
+    XCTAssertEqual(store.remoteReviewDraft, originalBReviewDraft)
+  }
+
+  func testBodyChangeDuringRefreshPreventsStalePreviewInstallation() async throws {
+    let store = try TestWorkbenchFactory.makeStore()
+    store.publishingStore.cancelPublishPreviewRefresh()
+    let profile = store.activeProfile
+    let draft = ArticleDraft(
+      siteProfileID: profile.id,
+      title: "Body Stale",
+      slug: "body-stale",
+      draft: false,
+      bodyMarkdown: "The preview must be discarded when the body changes mid-refresh."
+    )
+    store.setDrafts([draft])
+    store.setSelectedDraftID(draft.id)
+
+    let gate = AsyncPublishPreviewGate()
+    let provider: PublishingStore.AsyncLocalPublishPreviewProvider = { package, _ in
+      await gate.suspendFirstPreview()
+      return LocalPublishPreview(package: package, fileDiffs: [], issues: [])
+    }
+    store.publishingStore.schedulePublishPreviewRefresh(
+      for: draft.id,
+      store: store,
+      previewProvider: provider
+    )
+    await gate.waitUntilFirstPreviewStarts()
+
+    var changedDraft = try XCTUnwrap(store.draft(for: draft.id))
+    changedDraft.bodyMarkdown += "\n\nA newer paragraph invalidates the in-flight preview."
+    store.updateDraft(changedDraft)
+    await gate.releaseFirstPreview()
+    await store.waitForPublishPreviewRefresh(for: draft.id)
+
+    XCTAssertNil(store.cachedPublishPreview(for: draft.id))
+  }
+
+  func testCollisionInputChangeDuringRefreshPreventsStalePreviewInstallation() async throws {
+    let store = try TestWorkbenchFactory.makeStore()
+    store.publishingStore.cancelPublishPreviewRefresh()
+    let profile = store.activeProfile
+    let draftA = ArticleDraft(
+      siteProfileID: profile.id,
+      title: "Collision A",
+      slug: "collision-a",
+      draft: false,
+      bodyMarkdown: "The preview must be discarded when another title changes collision inputs."
+    )
+    let draftB = ArticleDraft(
+      siteProfileID: profile.id,
+      title: "Collision B",
+      slug: "collision-b",
+      draft: false,
+      bodyMarkdown: "A second article participates in the duplicate-title baseline."
+    )
+    store.setDrafts([draftA, draftB])
+    store.setSelectedDraftID(draftA.id)
+
+    let gate = AsyncPublishPreviewGate()
+    let provider: PublishingStore.AsyncLocalPublishPreviewProvider = { package, _ in
+      await gate.suspendFirstPreview()
+      return LocalPublishPreview(package: package, fileDiffs: [], issues: [])
+    }
+    store.publishingStore.schedulePublishPreviewRefresh(
+      for: draftA.id,
+      store: store,
+      previewProvider: provider
+    )
+    await gate.waitUntilFirstPreviewStarts()
+
+    var changedDraft = try XCTUnwrap(store.draft(for: draftB.id))
+    changedDraft.title = "Collision B Updated"
+    store.updateDraft(changedDraft)
+    await gate.releaseFirstPreview()
+    await store.waitForPublishPreviewRefresh(for: draftA.id)
+
+    XCTAssertNil(store.cachedPublishPreview(for: draftA.id))
   }
 
   func testSelectedDraftCommandNeverUsesPreviousDraftPackage() throws {
@@ -186,6 +401,18 @@ final class AsyncPublishPreviewRefreshTests: XCTestCase {
     assertEquivalent(actual.package, expected.package)
     XCTAssertEqual(actual.fileDiffs, expected.fileDiffs)
     XCTAssertEqual(issueSignatures(actual.issues), issueSignatures(expected.issues))
+  }
+
+  private func assertEquivalent(
+    _ actual: DraftPublishPreviewSnapshot,
+    _ expected: DraftPublishPreviewSnapshot
+  ) {
+    XCTAssertEqual(actual.context, expected.context)
+    assertEquivalent(actual.publishPackage, expected.publishPackage)
+    assertEquivalent(actual.localPublishPreview, expected.localPublishPreview)
+    assertEquivalent(actual.localPublishReadiness, expected.localPublishReadiness)
+    assertEquivalent(actual.remotePublishPreview, expected.remotePublishPreview)
+    XCTAssertEqual(actual.remoteReviewDraft, expected.remoteReviewDraft)
   }
 
   private func assertEquivalent(_ actual: PublishPackage, _ expected: PublishPackage) {
@@ -241,6 +468,11 @@ private actor AsyncPublishPreviewInvocation {
 
   func record(_ draftID: UUID) {
     recordedDraftIDs.append(draftID)
+  }
+
+  func recordAndReturn(_ draftID: UUID) -> Int {
+    recordedDraftIDs.append(draftID)
+    return recordedDraftIDs.count
   }
 
   func draftIDs() -> [UUID] {

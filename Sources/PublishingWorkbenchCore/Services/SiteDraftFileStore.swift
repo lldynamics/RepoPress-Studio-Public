@@ -56,7 +56,11 @@ public final class SiteDraftFileStore: @unchecked Sendable {
     let key = DraftSiteKey(draftID: draft.id, profileID: profile.id)
     var preparedDraft = draft
     if let latestRepositoryPath = latestRepositoryPaths[key] {
-      preparedDraft.repositoryPath = latestRepositoryPath
+      preparedDraft.recordProjectFile(
+        profile: profile,
+        repositoryPath: latestRepositoryPath,
+        renderedContentDigest: preparedDraft.renderedRepositoryContentDigest(profile: profile)
+      )
     }
 
     var package = packageBuilder.build(draft: preparedDraft, profile: profile)

@@ -163,10 +163,6 @@
     "en": "%lld articles total, %lld pending publication",
     "zh-Hans": "文章总数 %lld，待发布 %lld"
   },
-  "文章预览：%@": {
-    "en": "Article preview: %@",
-    "zh-Hans": "文章预览：%@"
-  },
   "新增 %lld 行，删除 %lld 行，": {
     "en": "%lld lines added, %lld lines deleted,",
     "zh-Hans": "新增 %lld 行，删除 %lld 行，"
@@ -203,10 +199,6 @@
   "第 %@ 步": {
     "en": "Step %@",
     "zh-Hans": "第 %@ 步"
-  },
-  "编辑器模式：%@": {
-    "en": "Editor mode: %@",
-    "zh-Hans": "编辑器模式：%@"
   },
   "自动预检、预览、后台维护和浏览器连接已暂停": "Automatic checks, previews, background maintenance, and browser connections are paused",
   "被%@“%@”引用，": {

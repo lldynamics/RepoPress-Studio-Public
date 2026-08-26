@@ -20,7 +20,6 @@
   "使用自己的 ChatGPT 套餐，不需要 API Key；RepoPress 不读取或保存账户令牌。": "Use your own ChatGPT plan without an API key. RepoPress does not read or store account tokens.",
   "允许发送到远程 AI？": "Allow sending to remote AI?",
   "内容只发送到这台 Mac 上配置的本地模型服务。": "Content is sent only to the local model service configured on this Mac.",
-  "内置运行组件可用": "Bundled runtime available",
   "刷新可用模型": "Refresh Available Models",
   "刷新模型": "Refresh Models",
   "刷新模型失败：%@": "Failed to refresh models: %@",

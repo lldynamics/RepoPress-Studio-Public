@@ -175,6 +175,15 @@ extension PublishingStore {
       guard remoteRepositoryMutationIsCurrent(operation, store: store) else { return nil }
       store.setRemoteRepositoryReviewWithdrawalResult(result)
       store.setRepositoryTokenAvailability(KeychainTokenAvailability(hasToken: true))
+      let withdrawnReviewURLs = Set(
+        [record.reviewURL, result.reviewURL].compactMap {
+          $0?.trimmedForPublishing.nilIfEmpty
+        }
+      )
+      _ = restoreRemoteCleanupRequestsAfterReviewWithdrawal(
+        reviewURLs: withdrawnReviewURLs,
+        profileID: profile.id
+      )
       prependReleaseRecord(
         .remoteReviewWithdrawal(original: record, profile: profile, result: result)
       )
@@ -204,14 +213,12 @@ extension PublishingStore {
 
     let profile = store.profile(for: package)
     let preview = localPublishPreviewService.preview(package: package, profile: profile)
-    localPublishPreview = preview
     let blockingIssues = blockingLocalPublishIssues(
       package: package,
       preview: preview,
       includeRepositoryReadiness: true,
       store: store
     )
-    localPublishReadiness = makeLocalPublishReadiness(package: package, profile: profile, preview: preview, store: store)
     guard blockingIssues.isEmpty else {
       setPublishActionMessage(
         blockedLocalPublishMessage(action: mode.displayName, issues: blockingIssues),
@@ -279,8 +286,6 @@ extension PublishingStore {
   ) -> LocalPublishReadiness {
     let preview = localPublishPreviewService.preview(package: package, profile: profile)
     let readiness = makeLocalPublishReadiness(package: package, profile: profile, preview: preview, store: store)
-    localPublishPreview = preview
-    localPublishReadiness = readiness
     return readiness
   }
 
@@ -301,6 +306,46 @@ extension PublishingStore {
 
     let profile = store.profile(for: package)
     let mode = preferredRemoteRepositoryPublishMode(for: profile)
+    return await publishSelectedDraftOnline(
+      package: package,
+      profile: profile,
+      mode: mode,
+      store: store
+    )
+  }
+
+  /// Pushes only the selected article to its stable `draft/<slug>` branch.
+  /// The operation intentionally uses the same preflight and mutation guards
+  /// as normal online publishing, but never marks the draft as published.
+  @discardableResult
+  public func publishSelectedDraftToPreviewBranch(
+    store: WorkbenchStore
+  ) async -> RemoteRepositoryPublishResult? {
+    guard !blockPublishingIfGeneralDraftSelected(store: store) else { return nil }
+    guard store.canUseProtectedWorkbench else {
+      setPublishActionMessage(store.quickHideOperationMessage, status: .warning)
+      return nil
+    }
+
+    guard let package = publishPackageForSelectedDraft(store: store) else {
+      setPublishActionMessage(CoreL10n.text("没有可线上预览的文章。"), status: .warning)
+      return nil
+    }
+    let profile = store.profile(for: package)
+    return await publishSelectedDraftOnline(
+      package: package,
+      profile: profile,
+      mode: .previewBranch,
+      store: store
+    )
+  }
+
+  private func publishSelectedDraftOnline(
+    package: PublishPackage,
+    profile: SiteProfile,
+    mode: RemoteRepositoryPublishMode,
+    store: WorkbenchStore
+  ) async -> RemoteRepositoryPublishResult? {
     let preview = remoteRepositoryPublishPreview(package: package, profile: profile, mode: mode, store: store)
     if let tokenAccessFailureMessage = preview.tokenAccessFailureMessage {
       setPublishActionMessage(
@@ -344,6 +389,14 @@ extension PublishingStore {
         CoreL10n.text("Token 无写入权限，无法线上发布。"),
         status: .failure
       )
+      return nil
+    }
+
+    guard await ensureDraftMaterializedForRemotePublish(
+      package: package,
+      profile: profile,
+      store: store
+    ) else {
       return nil
     }
 
@@ -393,10 +446,21 @@ extension PublishingStore {
       prependReleaseRecord(releaseRecord)
       markDraftsAsPublishedIfDirectRemoteCommit(mode: mode, draftIDs: [package.draftID])
       confirmDirectRemotePublishLifecycle(packages: [package], result: result)
-      store.recordRemoteRepositoryPublishInAutoSync(result)
+      if mode.createsReview {
+        markRemotePublishReviewSuccess(packages: [package])
+      }
+      if mode != .previewBranch {
+        store.recordRemoteRepositoryPublishInAutoSync(result, profileID: profile.id)
+      }
       let commitSummary = result.commitSHA.map { String($0.prefix(8)) } ?? CoreL10n.text("无 commit")
+      let adoptedSummary = result.automaticallyAdoptedPaths.isEmpty
+        ? ""
+        : "；自动认领 \(result.automaticallyAdoptedPaths.count) 个已存在且内容一致的文件"
+      let branchSummary = mode == .previewBranch
+        ? CoreL10n.format("；分支 %@", result.branchName)
+        : ""
       setPublishActionMessage(
-        CoreL10n.format("%@完成：%@", mode.displayName, commitSummary),
+        CoreL10n.format("%@完成：%@%@%@", mode.displayName, commitSummary, branchSummary, adoptedSummary),
         status: .success
       )
       if store.shouldRefreshDeploymentStatusAfterRemoteOperation(releaseRecord) {
@@ -432,6 +496,7 @@ extension PublishingStore {
         commitSHA: partialFailure?.commitSHA
       )
       prependReleaseRecord(releaseRecord)
+      markRemotePublishFailure(packages: [package], error: error)
       setPublishActionMessage(message, status: .failure)
       if store.shouldRefreshDeploymentStatusAfterRemoteOperation(releaseRecord) {
         await store.refreshDeploymentStatus(for: releaseRecord, updatesMessage: false)

@@ -611,6 +611,12 @@ extension WorkbenchStore {
   }
 
   private func automationCompletionMessage(for plan: WorkbenchAutomationPlan) -> String {
+    if plan.steps.contains(where: { step in
+      step.command == .publishOnline
+        && AIPublishAuthorizationError.isReconfirmationMessage(step.resultMessage)
+    }) {
+      return CoreL10n.text("发布授权已失效，请重新审阅完整文件清单并确认。")
+    }
     switch plan.status {
     case .succeeded:
       return CoreL10n.text("应用内操作计划已完成。")

@@ -4,6 +4,55 @@ import XCTest
 @testable import PublishingWorkbenchCore
 
 final class CodexAppServerClientTests: XCTestCase {
+  func testRuntimeDiscoveryUsesExecutableFromSystemPATH() throws {
+    let fileManager = FileManager.default
+    let rootURL = fileManager.temporaryDirectory
+      .appendingPathComponent("CodexRuntimeDiscoveryTests-\(UUID().uuidString)", isDirectory: true)
+    let binURL = rootURL.appendingPathComponent("bin", isDirectory: true)
+    let executableURL = binURL.appendingPathComponent("codex", isDirectory: false)
+    try fileManager.createDirectory(at: binURL, withIntermediateDirectories: true)
+    defer { try? fileManager.removeItem(at: rootURL) }
+    try Data("#!/bin/sh\nexit 0\n".utf8).write(to: executableURL)
+    try fileManager.setAttributes(
+      [.posixPermissions: 0o755],
+      ofItemAtPath: executableURL.path
+    )
+
+    let location = try XCTUnwrap(
+      CodexAppServerProcessTransport.discoverRuntimeLocation(
+        environment: ["PATH": binURL.path],
+        fallbackCandidates: []
+      )
+    )
+
+    XCTAssertEqual(location.url.path, executableURL.path)
+    XCTAssertEqual(location.source, .path)
+  }
+
+  func testRuntimeDiscoveryUsesConventionalFallbackWithoutPATH() throws {
+    let fileManager = FileManager.default
+    let rootURL = fileManager.temporaryDirectory
+      .appendingPathComponent("CodexRuntimeFallbackTests-\(UUID().uuidString)", isDirectory: true)
+    let executableURL = rootURL.appendingPathComponent("codex", isDirectory: false)
+    try fileManager.createDirectory(at: rootURL, withIntermediateDirectories: true)
+    defer { try? fileManager.removeItem(at: rootURL) }
+    try Data("#!/bin/sh\nexit 0\n".utf8).write(to: executableURL)
+    try fileManager.setAttributes(
+      [.posixPermissions: 0o755],
+      ofItemAtPath: executableURL.path
+    )
+
+    let location = try XCTUnwrap(
+      CodexAppServerProcessTransport.discoverRuntimeLocation(
+        environment: [:],
+        fallbackCandidates: [(executableURL.path, .homebrew)]
+      )
+    )
+
+    XCTAssertEqual(location.url.path, executableURL.path)
+    XCTAssertEqual(location.source, .homebrew)
+  }
+
   func testProcessTransportReturnsPartialPipeChunkWithoutWaitingForMaximum() async throws {
     let transport = CodexAppServerProcessTransport(
       executableURL: URL(fileURLWithPath: "/bin/cat"),
@@ -346,6 +395,7 @@ final class CodexAppServerClientTests: XCTestCase {
     let threadStart = try XCTUnwrap(messages.first { $0["method"]?.stringValue == "thread/start" })
     XCTAssertEqual(threadStart["params"]?["ephemeral"]?.boolValue, true)
     XCTAssertEqual(threadStart["params"]?["sandbox"]?.stringValue, "read-only")
+    XCTAssertNil(threadStart["params"]?["dynamicTools"])
     XCTAssertEqual(threadStart["params"]?["approvalPolicy"]?.stringValue, "never")
     XCTAssertTrue(
       threadStart["params"]?["developerInstructions"]?.stringValue?.contains(
@@ -527,11 +577,25 @@ final class CodexAppServerClientTests: XCTestCase {
     let dynamicTools = try XCTUnwrap(
       threadStart["params"]?["dynamicTools"]?.arrayValue
     )
+    XCTAssertEqual(dynamicTools.count, 1)
+    XCTAssertEqual(dynamicTools.first?["type"]?.stringValue, "function")
     XCTAssertEqual(dynamicTools.first?["name"]?.stringValue, "createDraft")
+    XCTAssertEqual(
+      dynamicTools.first?["inputSchema"]?["type"]?.stringValue,
+      "object"
+    )
+    XCTAssertEqual(
+      dynamicTools.first?["inputSchema"]?["properties"]?["value"]?["type"]?.stringValue,
+      "string"
+    )
     let response = try XCTUnwrap(
       messages.first { $0["id"]?.intValue == 91 && $0["method"] == nil }
     )
     XCTAssertEqual(response["result"]?["success"]?.boolValue, true)
+    XCTAssertEqual(
+      response["result"]?["contentItems"]?.arrayValue?.first?["type"]?.stringValue,
+      "inputText"
+    )
   }
 
 }

@@ -1,19 +1,11 @@
 import Foundation
-
-public protocol AIChatTransport: Sendable {
-  func data(for request: URLRequest) async throws -> (Data, URLResponse)
-}
-
-public protocol AIChatStreamingTransport: AIChatTransport {
-  func lines(for request: URLRequest) async throws -> (
-    AsyncThrowingStream<String, Error>, URLResponse
-  )
-}
+import PublishingAICore
 
 public struct URLSessionAIChatTransport: AIChatTransport, AIChatStreamingTransport {
-  static let maximumResponseByteCount = 16 * 1_024 * 1_024
-  static let maximumStreamingResponseByteCount = 32 * 1_024 * 1_024
-  static let maximumStreamingLineByteCount = 1 * 1_024 * 1_024
+  static let maximumResponseByteCount = AIChatTransportLimits.maximumResponseByteCount
+  static let maximumStreamingResponseByteCount =
+    AIChatTransportLimits.maximumStreamingResponseByteCount
+  static let maximumStreamingLineByteCount = AIChatTransportLimits.maximumStreamingLineByteCount
 
   private let session: URLSession
 

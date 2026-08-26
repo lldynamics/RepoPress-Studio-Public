@@ -3,7 +3,8 @@ import SwiftUI
 
 struct WorkspaceShellSplitLayout: View {
   let store: WorkbenchStore
-  @ObservedObject private var layoutState: WorkbenchWorkspaceLayoutFeatureFacade
+  let selectedSection: WorkspaceSection
+  let selectedDraftID: UUID?
   let isCompact: Bool
   let isFocusMode: Bool
   let workspaceWidth: CGFloat
@@ -15,6 +16,8 @@ struct WorkspaceShellSplitLayout: View {
   let rssStore: RSSReaderStore
   let rssPresentation: RSSReaderPresentationState
   let onSelectSection: (WorkspaceSection) -> Void
+  let onSelectDraft: (UUID?) -> Void
+  let onFocusDraft: (UUID, WorkspaceSection) -> Void
   @AppStorage("workspacePrimarySidebarWidthV2")
   private var storedSidebarWidth = Double(WorkbenchLayoutMode.defaultSidebarWidth)
   @State private var sidebarResizeStartWidth: CGFloat?
@@ -22,6 +25,8 @@ struct WorkspaceShellSplitLayout: View {
 
   init(
     store: WorkbenchStore,
+    selectedSection: WorkspaceSection,
+    selectedDraftID: UUID?,
     isCompact: Bool,
     isFocusMode: Bool,
     workspaceWidth: CGFloat,
@@ -32,10 +37,13 @@ struct WorkspaceShellSplitLayout: View {
     repositorySourceSession: RepositoryHTMLSourceSession,
     rssStore: RSSReaderStore,
     rssPresentation: RSSReaderPresentationState,
-    onSelectSection: @escaping (WorkspaceSection) -> Void
+    onSelectSection: @escaping (WorkspaceSection) -> Void,
+    onSelectDraft: @escaping (UUID?) -> Void,
+    onFocusDraft: @escaping (UUID, WorkspaceSection) -> Void
   ) {
     self.store = store
-    _layoutState = ObservedObject(wrappedValue: store.workspaceLayout)
+    self.selectedSection = selectedSection
+    self.selectedDraftID = selectedDraftID
     self.isCompact = isCompact
     self.isFocusMode = isFocusMode
     self.workspaceWidth = workspaceWidth
@@ -47,6 +55,8 @@ struct WorkspaceShellSplitLayout: View {
     self.rssStore = rssStore
     self.rssPresentation = rssPresentation
     self.onSelectSection = onSelectSection
+    self.onSelectDraft = onSelectDraft
+    self.onFocusDraft = onFocusDraft
   }
 
   var body: some View {
@@ -54,13 +64,17 @@ struct WorkspaceShellSplitLayout: View {
       if !isFocusMode {
         WorkspacePrimarySidebar(
           store: store,
+          selectedSection: selectedSection,
+          selectedDraftID: selectedDraftID,
           contentHealthFilter: $contentHealthFilter,
           imageWorkbenchContextStage: $imageWorkbenchContextStage,
           repositoryContextStage: $repositoryContextStage,
           contentHealthSidebarProjection: contentHealthSidebarProjection,
           rssStore: rssStore,
           rssPresentation: rssPresentation,
-          onSelectSection: onSelectSection
+          onSelectSection: onSelectSection,
+          onSelectDraft: onSelectDraft,
+          onFocusDraft: onFocusDraft
         )
         .frame(width: sidebarWidth)
         .frame(maxHeight: .infinity)
@@ -70,6 +84,8 @@ struct WorkspaceShellSplitLayout: View {
 
       EditorCenterColumn(
         store: store,
+        selectedSection: selectedSection,
+        selectedDraftID: selectedDraftID,
         contentHealthFilter: $contentHealthFilter,
         imageWorkbenchContextStage: $imageWorkbenchContextStage,
         repositoryContextStage: $repositoryContextStage,
@@ -86,7 +102,7 @@ struct WorkspaceShellSplitLayout: View {
     }
     .knowledgeFileDropImport(
       knowledge: store.knowledge,
-      isEnabled: layoutState.selectedSection == .library
+      isEnabled: selectedSection == .library
     )
   }
 
@@ -97,12 +113,12 @@ struct WorkspaceShellSplitLayout: View {
       centerMinimumWidth: centerMinimumWidth,
       inspectorPresented: isInspectorPresented
     )
-    guard layoutState.selectedSection == .rss, !isCompact else { return width }
+    guard selectedSection == .rss, !isCompact else { return width }
     return min(max(width, 260), 300)
   }
 
   private var centerMinimumWidth: CGFloat {
-    if layoutState.selectedSection == .sync, repositoryContextStage == .source {
+    if selectedSection == .sync, repositoryContextStage == .source {
       return 680
     }
     return isCompact ? 460 : 560
@@ -115,7 +131,7 @@ struct WorkspaceShellSplitLayout: View {
       centerMinimumWidth: centerMinimumWidth,
       inspectorPresented: isInspectorPresented
     )
-    guard layoutState.selectedSection == .rss, !isCompact else { return width }
+    guard selectedSection == .rss, !isCompact else { return width }
     return min(max(width, 260), 300)
   }
 

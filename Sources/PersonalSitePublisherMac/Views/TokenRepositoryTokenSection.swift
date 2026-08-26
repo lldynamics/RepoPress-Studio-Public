@@ -14,6 +14,7 @@ struct TokenRepositoryTokenSection: View {
   @State private var isDeleteConfirmationPresented = false
   @State private var isTokenRevealed = false
   @State private var showsPATGuide = false
+  @State private var isJustSaved = false
 
   var body: some View {
     Section("仓库凭据") {
@@ -65,12 +66,36 @@ struct TokenRepositoryTokenSection: View {
       .accessibilityLabel("仓库访问令牌")
       .accessibilityHint("仅用于仓库创建、权限检查、提交、PR/MR 和回滚")
 
-      Button(String(localized: "保存令牌")) {
-        onSaveToken()
+      HStack(alignment: .center, spacing: 10) {
+        Button(String(localized: "保存令牌")) {
+          onSaveToken()
+          withAnimation {
+            isJustSaved = true
+          }
+          Task {
+            try? await Task.sleep(for: .seconds(2.5))
+            await MainActor.run {
+              withAnimation {
+                isJustSaved = false
+              }
+            }
+          }
+        }
+        .workbenchProminentActionStyle()
+        .disabled(repositoryTokenInput.wrappedValue.trimmedForPublishing.isEmpty)
+        .accessibilityLabel("保存仓库访问令牌")
+
+        if isJustSaved {
+          Label("已保存", systemImage: "checkmark.circle.fill")
+            .font(.caption.weight(.medium))
+            .foregroundStyle(WorkbenchTheme.success)
+            .transition(.opacity)
+        } else if !repositoryTokenInput.wrappedValue.trimmedForPublishing.isEmpty {
+          Text("待保存修改")
+            .font(.caption.weight(.medium))
+            .foregroundStyle(WorkbenchTheme.warning)
+        }
       }
-      .workbenchProminentActionStyle()
-      .disabled(repositoryTokenInput.wrappedValue.trimmedForPublishing.isEmpty)
-      .accessibilityLabel("保存仓库访问令牌")
 
       HStack {
         Label(repositoryTokenStatusText, systemImage: tokenStatusSystemImage)

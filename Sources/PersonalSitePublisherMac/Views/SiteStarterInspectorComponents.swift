@@ -162,7 +162,7 @@ struct SiteStarterInspectorView: View {
   private var currentStepFacts: [String] {
     switch selectedStep {
     case .template:
-      return [String(localized: "新建站点固定使用 Zola 写作起点；导入模式按已有站点类型读取内容目录和 Front Matter。")]
+      return [String(localized: "新建站点提供四套现代 SSG 起点；导入模式仍会按已有站点类型读取内容目录和 Front Matter。")]
     case .localDirectory:
       return [String(localized: "目标目录必须是空文件夹；生成后会成为本地站点仓库。")]
     case .github:

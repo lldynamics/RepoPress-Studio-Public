@@ -3,6 +3,13 @@ import Foundation
 extension DeploymentStatusService {
 
   func send<Response: Decodable>(_ request: URLRequest) async throws -> Response {
+    let data = try await sendData(request)
+    return try decoder.decode(Response.self, from: data)
+  }
+
+  /// Sends a bounded provider request when the response is a provider-specific
+  /// event stream rather than a stable Codable envelope.
+  func sendData(_ request: URLRequest) async throws -> Data {
     let (data, response) = try await transport.data(for: request)
     try BoundedHTTPResponseLoader.validate(
       data,
@@ -15,7 +22,7 @@ extension DeploymentStatusService {
     guard (200..<300).contains(httpResponse.statusCode) else {
       throw DeploymentStatusError.httpStatus(httpResponse.statusCode)
     }
-    return try decoder.decode(Response.self, from: data)
+    return data
   }
 
   func githubRequest(

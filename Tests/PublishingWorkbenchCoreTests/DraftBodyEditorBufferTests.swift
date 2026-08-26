@@ -3,6 +3,77 @@ import XCTest
 
 @MainActor
 final class DraftBodyEditorBufferTests: XCTestCase {
+  func testArticleDraftWordCountPersistsAndLegacySnapshotDefaultsToDirty() throws {
+    var draft = ArticleDraft(
+      siteProfileID: SiteProfile.defaultProfile.id,
+      title: "兼容性",
+      bodyMarkdown: "已统计正文"
+    )
+    XCTAssertTrue(draft.storeWordCount(6, for: draft.bodyMarkdown))
+
+    let encoded = try JSONEncoder().encode(draft)
+    let decoded = try JSONDecoder().decode(ArticleDraft.self, from: encoded)
+    XCTAssertEqual(decoded.wordCount, 6)
+    XCTAssertFalse(decoded.wordCountNeedsRefresh)
+
+    var legacyObject = try XCTUnwrap(
+      JSONSerialization.jsonObject(with: encoded) as? [String: Any]
+    )
+    legacyObject.removeValue(forKey: "wordCountStorage")
+    legacyObject.removeValue(forKey: "wordCountNeedsRefreshStorage")
+    let legacyData = try JSONSerialization.data(withJSONObject: legacyObject)
+    let legacy = try JSONDecoder().decode(ArticleDraft.self, from: legacyData)
+    XCTAssertEqual(legacy.wordCount, 0)
+    XCTAssertTrue(legacy.wordCountNeedsRefresh)
+  }
+
+  func testFlushedBodyRefreshesPersistedWordCountAsynchronously() async throws {
+    let store = try TestWorkbenchFactory.makeStore()
+    let draft = try XCTUnwrap(store.selectedDraft)
+    let body = "中文正文 Swift words"
+
+    _ = store.stageDraftBody(body, for: draft.id, baseRevision: 0)
+    store.flushDraftBodyEditorBuffer(for: draft.id)
+
+    let expected = MarkdownWritingStatisticsService.statistics(in: body).writingUnitCount
+    for _ in 0..<100 {
+      if store.drafts.first(where: { $0.id == draft.id })?.wordCount == expected {
+        break
+      }
+      try await Task.sleep(nanoseconds: 10_000_000)
+    }
+
+    let refreshed = try XCTUnwrap(store.drafts.first(where: { $0.id == draft.id }))
+    XCTAssertEqual(refreshed.wordCount, expected)
+    XCTAssertFalse(refreshed.wordCountNeedsRefresh)
+  }
+
+  func testStaleWordCountResultCannotOverwriteNewerBody() async throws {
+    let store = try TestWorkbenchFactory.makeStore()
+    var draft = try XCTUnwrap(store.selectedDraft)
+    let staleBody = String(repeating: "旧正文 ", count: 20_000)
+    let currentBody = "最新正文"
+
+    draft.bodyMarkdown = staleBody
+    store.updateDraft(draft)
+    draft = try XCTUnwrap(store.drafts.first(where: { $0.id == draft.id }))
+    draft.bodyMarkdown = currentBody
+    store.updateDraft(draft)
+
+    let expected = MarkdownWritingStatisticsService.statistics(in: currentBody).writingUnitCount
+    for _ in 0..<100 {
+      if store.drafts.first(where: { $0.id == draft.id })?.wordCount == expected {
+        break
+      }
+      try await Task.sleep(nanoseconds: 10_000_000)
+    }
+
+    let refreshed = try XCTUnwrap(store.drafts.first(where: { $0.id == draft.id }))
+    XCTAssertEqual(refreshed.bodyMarkdown, currentBody)
+    XCTAssertEqual(refreshed.wordCount, expected)
+    XCTAssertFalse(refreshed.wordCountNeedsRefresh)
+  }
+
   func testStaleEditorMetadataIsRejectedInsteadOfOverwritingNewerWindow() throws {
     let store = try TestWorkbenchFactory.makeStore()
     let original = try XCTUnwrap(store.selectedDraft)

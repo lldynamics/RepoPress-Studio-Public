@@ -74,13 +74,6 @@ public struct WorkbenchDiagnosticsExportService: Sendable {
     context: WorkbenchDiagnosticsContext,
     to directoryURL: URL
   ) throws -> URL {
-    let didStartAccessing = directoryURL.startAccessingSecurityScopedResource()
-    defer {
-      if didStartAccessing {
-        directoryURL.stopAccessingSecurityScopedResource()
-      }
-    }
-
     let fileManager = FileManager.default
     try fileManager.createDirectory(at: directoryURL, withIntermediateDirectories: true)
     let stagingDirectoryURL = fileManager.temporaryDirectory.appendingPathComponent(

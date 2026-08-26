@@ -57,8 +57,14 @@ extension AIChatCompletionClient {
       persistedReasoningEffort: persistedCodexReasoningEffort,
       config: config
     )
-    return AIChatCompletionRequest(
-      model: config.requestModel(resolving: request.model),
+    let requestedMaximumOutputTokens = request.maximumOutputTokens
+      ?? (appliesInteractiveOverrides
+        ? advancedSettings.normalizedMaximumOutputTokens
+        : nil)
+    let tokenBudget = AIChatRequestTokenBudget(
+      model: config.requestModel(resolving: request.model)
+    )
+    let boundedRequest = tokenBudget.fit(
       messages: try sanitizedMessages(
         appliesInteractiveOverrides
           ? messages(
@@ -69,11 +75,25 @@ extension AIChatCompletionClient {
         canSendTools: canSendTools,
         canSendVision: canSendVision
       ),
+      requestedOutputTokens: requestedMaximumOutputTokens,
+      additionalPromptTokens: tokenBudget.additionalPromptTokens(
+        tools: canSendTools ? request.tools : nil,
+        responseFormat: canSendStructuredOutput ? request.responseFormat : nil,
+        toolChoice: canSendTools ? request.toolChoice : nil
+      )
+    )
+    guard boundedRequest.fitsContextWindow else {
+      throw AIChatCompletionClientError.requestContextWindowExceeded(
+        contextWindow: boundedRequest.contextWindow
+      )
+    }
+    return AIChatCompletionRequest(
+      model: config.requestModel(resolving: request.model),
+      messages: boundedRequest.messages,
       temperature: requestOptions.temperature,
-      maximumOutputTokens: request.maximumOutputTokens
-        ?? (appliesInteractiveOverrides
-          ? advancedSettings.normalizedMaximumOutputTokens
-          : nil),
+      maximumOutputTokens: requestedMaximumOutputTokens.map { _ in
+        boundedRequest.outputTokenBudget
+      },
       thinking: reasoningOptions.thinking,
       reasoningEffort: hasExplicitReasoningOptions
         ? explicitReasoningEffort

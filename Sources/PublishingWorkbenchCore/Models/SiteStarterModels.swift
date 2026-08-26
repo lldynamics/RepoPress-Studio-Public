@@ -2,21 +2,25 @@ import Foundation
 
 public enum SiteStarterTemplateID: String, Codable, CaseIterable, Identifiable, Sendable {
   case zolaPersonalBlog
+  case astroPersonalBlog
+  case hugoPersonalBlog
+  case vitePressDocumentation
 
   public var id: String { rawValue }
 
   public init(from decoder: Decoder) throws {
     let value = try decoder.singleValueContainer().decode(String.self)
     switch value {
-    case Self.zolaPersonalBlog.rawValue,
-      "zolaPortfolio",
-      "astroPersonalBlog",
-      "hugoPersonalBlog",
-      "hexoPersonalBlog",
-      "jekyllPersonalBlog":
-      // Older requests selected one of six built-in variants. They now all
-      // resolve to the single maintained Zola starting point.
+    case Self.zolaPersonalBlog.rawValue, "zolaPortfolio", "hexoPersonalBlog", "jekyllPersonalBlog":
+      // Retired portfolio, Hexo, and Jekyll starters migrate to the maintained
+      // Zola starting point without reintroducing their dependency stacks.
       self = .zolaPersonalBlog
+    case Self.astroPersonalBlog.rawValue:
+      self = .astroPersonalBlog
+    case Self.hugoPersonalBlog.rawValue:
+      self = .hugoPersonalBlog
+    case Self.vitePressDocumentation.rawValue:
+      self = .vitePressDocumentation
     default:
       throw DecodingError.dataCorruptedError(
         in: try decoder.singleValueContainer(),
@@ -94,6 +98,51 @@ public struct SiteStarterTemplate: Identifiable, Codable, Hashable, Sendable {
         primarySectionTitle: CoreL10n.text("最新文章"),
         sampleItems: [CoreL10n.text("欢迎文章"), CoreL10n.text("工程记录"), CoreL10n.text("读书笔记")],
         accentName: CoreL10n.text("蓝绿")
+      )
+    ),
+    SiteStarterTemplate(
+      id: .astroPersonalBlog,
+      name: CoreL10n.text("Astro 博客"),
+      siteKind: .astro,
+      summary: CoreL10n.text("Astro 内容集合起点，适合轻量博客和后续组件化扩展。"),
+      defaultTags: [CoreL10n.text("写作")],
+      defaultCategories: ["Blog"],
+      preview: SiteStarterTemplatePreview(
+        headline: CoreL10n.text("组件化内容站"),
+        subtitle: CoreL10n.text("Markdown/MDX 内容、简洁布局和前端扩展空间。"),
+        primarySectionTitle: "Blog",
+        sampleItems: [CoreL10n.text("MDX 文章"), CoreL10n.text("组件示例"), CoreL10n.text("静态页面")],
+        accentName: CoreL10n.text("橙红")
+      )
+    ),
+    SiteStarterTemplate(
+      id: .hugoPersonalBlog,
+      name: CoreL10n.text("Hugo 博客"),
+      siteKind: .hugo,
+      summary: CoreL10n.text("Hugo 写作起点，适合快速构建和大量 Markdown 内容。"),
+      defaultTags: [CoreL10n.text("写作")],
+      defaultCategories: ["Blog"],
+      preview: SiteStarterTemplatePreview(
+        headline: CoreL10n.text("高速静态博客"),
+        subtitle: CoreL10n.text("内容目录清晰、构建快，适合文章量增长后的维护。"),
+        primarySectionTitle: "Posts",
+        sampleItems: [CoreL10n.text("第一篇文章"), CoreL10n.text("归档入口"), CoreL10n.text("标签页")],
+        accentName: CoreL10n.text("青色")
+      )
+    ),
+    SiteStarterTemplate(
+      id: .vitePressDocumentation,
+      name: CoreL10n.text("VitePress 文档站"),
+      siteKind: .vitePress,
+      summary: CoreL10n.text("VitePress 文档起点，适合产品手册、工程文档和知识库。"),
+      defaultTags: [CoreL10n.text("文档")],
+      defaultCategories: ["Docs"],
+      preview: SiteStarterTemplatePreview(
+        headline: CoreL10n.text("可搜索的文档站"),
+        subtitle: CoreL10n.text("以 Markdown 为核心，自带导航、侧边栏和本地搜索。"),
+        primarySectionTitle: CoreL10n.text("开始使用"),
+        sampleItems: [CoreL10n.text("快速开始"), CoreL10n.text("使用指南"), CoreL10n.text("更新日志")],
+        accentName: CoreL10n.text("青绿")
       )
     ),
   ]

@@ -384,6 +384,53 @@ final class ContentMigrationServiceTests: XCTestCase {
     }
   }
 
+  func testRejectsXMLDeclarationsAfterLongPreambleDuringMigration() throws {
+    let preamble = String(repeating: "preamble", count: 3_000)
+    let xml = """
+      <?xml version="1.0"?>
+      <!--\(preamble)-->
+      <!DOCTYPE rss [<!ENTITY expanded "must not expand">]>
+      <rss><channel><item><title>Blocked</title></item></channel></rss>
+      """
+
+    XCTAssertThrowsError(try makePlan(contents: xml, extension: "xml")) { error in
+      guard case let ContentMigrationError.invalidExport(message) = error else {
+        return XCTFail("Expected invalidExport, got \(error)")
+      }
+      XCTAssertTrue(message.contains("DTD") || message.contains("实体"))
+    }
+  }
+
+  func testXMLMigrationEnforcesExpandedCharactersAndElementDepthLimits() throws {
+    let limitedService = ContentMigrationService(limits: ContentMigrationLimits(
+      maximumSourceFileBytes: 100_000,
+      maximumRecordCount: 10,
+      maximumMarkdownFileCount: 10,
+      maximumMarkdownFileBytes: 10_000,
+      maximumMarkdownFolderBytes: 20_000,
+      maximumXMLCharacterCount: 64,
+      maximumXMLElementDepth: 4
+    ))
+    let deepXML = "<rss><channel><nested><nested><nested><nested><item><title>Deep</title></item></nested></nested></nested></nested></channel></rss>"
+    let largeTitle = String(repeating: "x", count: 128)
+    let largeXML = "<rss><channel><item><title>\(largeTitle)</title></item></channel></rss>"
+
+    for xml in [deepXML, largeXML] {
+      let url = FileManager.default.temporaryDirectory
+        .appendingPathComponent("migration-\(UUID().uuidString).xml")
+      defer { try? FileManager.default.removeItem(at: url) }
+      try xml.write(to: url, atomically: true, encoding: .utf8)
+
+      XCTAssertThrowsError(
+        try limitedService.makePlan(sourceURL: url, profile: profile)
+      ) { error in
+        guard case ContentMigrationError.sourceLimitExceeded = error else {
+          return XCTFail("Expected sourceLimitExceeded, got \(error)")
+        }
+      }
+    }
+  }
+
   func testRejectsOversizedMarkdownFileAndFolderTotal() throws {
     let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)

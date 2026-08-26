@@ -106,11 +106,6 @@ public final class WorkspaceBackupService: Sendable {
     currentApplicationVersion: String? = nil
   ) throws -> WorkspaceBackupPreview {
     let packageURL = normalizedPackageURL(destinationURL)
-    let didAccess = packageURL.startAccessingSecurityScopedResource()
-    defer {
-      if didAccess { packageURL.stopAccessingSecurityScopedResource() }
-    }
-
     let parentURL = packageURL.deletingLastPathComponent()
     try fileManager.createDirectory(at: parentURL, withIntermediateDirectories: true)
     let temporaryURL = parentURL.appendingPathComponent(
@@ -150,12 +145,6 @@ public final class WorkspaceBackupService: Sendable {
       let destination = temporaryURL.appendingPathComponent(
         preparedAttachment.reference.archiveRelativePath
       )
-      let didStartAccessing = preparedAttachment.sourceURL.startAccessingSecurityScopedResource()
-      defer {
-        if didStartAccessing {
-          preparedAttachment.sourceURL.stopAccessingSecurityScopedResource()
-        }
-      }
       records.append(try copyRegularFile(
         from: preparedAttachment.sourceURL,
         to: destination,
@@ -258,10 +247,6 @@ public final class WorkspaceBackupService: Sendable {
     currentApplicationVersion: String? = nil
   ) throws -> WorkspaceBackupPreview {
     let packageURL = normalizedPackageURL(backupURL)
-    let didAccess = packageURL.startAccessingSecurityScopedResource()
-    defer {
-      if didAccess { packageURL.stopAccessingSecurityScopedResource() }
-    }
     return try validatedBackup(
       at: packageURL,
       currentApplicationVersion: currentApplicationVersion
@@ -274,10 +259,6 @@ public final class WorkspaceBackupService: Sendable {
     currentApplicationVersion: String? = nil
   ) throws -> WorkspaceBackupPreview {
     let sourceURL = normalizedPackageURL(backupURL)
-    let didAccess = sourceURL.startAccessingSecurityScopedResource()
-    defer {
-      if didAccess { sourceURL.stopAccessingSecurityScopedResource() }
-    }
     let validated = try validatedBackup(
       at: sourceURL,
       currentApplicationVersion: currentApplicationVersion

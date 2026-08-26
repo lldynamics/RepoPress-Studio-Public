@@ -1,17 +1,154 @@
-#if DEBUG || SCREENSHOT_CAPTURE_BUILD
 import AppKit
 import PublishingWorkbenchCore
 import SwiftUI
 
-/// Makes automated App Store captures deterministic without relying on
+/// Pure policies shared by the capture bridge and responsive accessibility
+/// tests. The bridge itself remains excluded from normal Release behavior.
+enum ScreenshotCaptureWindowSizingPolicy {
+  static let contentWidthEnvironmentKey =
+    "PERSONAL_SITE_PUBLISHER_SCREENSHOT_CONTENT_WIDTH"
+  static let contentHeightEnvironmentKey =
+    "PERSONAL_SITE_PUBLISHER_SCREENSHOT_CONTENT_HEIGHT"
+  static let dynamicTypeSizeEnvironmentKey =
+    "PERSONAL_SITE_PUBLISHER_SCREENSHOT_DYNAMIC_TYPE_SIZE"
+
+  static func clampedContentSize(
+    requestedWidth: CGFloat?,
+    requestedHeight: CGFloat?,
+    visibleFrameSize: CGSize,
+    minimumSize: CGSize = CGSize(
+      width: WorkbenchLayoutMode.minimumWindowWidth,
+      height: WorkbenchLayoutMode.minimumWindowHeight
+    ),
+    defaultSize: CGSize = CGSize(
+      width: WorkbenchLayoutMode.defaultWindowWidth,
+      height: WorkbenchLayoutMode.defaultWindowHeight
+    ),
+    margin: CGFloat = 40
+  ) -> CGSize {
+    let safeWidth = requestedWidth.flatMap { $0.isFinite && $0 > 0 ? $0 : nil }
+      ?? defaultSize.width
+    let safeHeight = requestedHeight.flatMap { $0.isFinite && $0 > 0 ? $0 : nil }
+      ?? defaultSize.height
+    let maximumWidth = max(minimumSize.width, visibleFrameSize.width - margin)
+    let maximumHeight = max(minimumSize.height, visibleFrameSize.height - margin)
+    return CGSize(
+      width: min(max(safeWidth, minimumSize.width), maximumWidth),
+      height: min(max(safeHeight, minimumSize.height), maximumHeight)
+    )
+  }
+
+  static func contentSizeFromEnvironment(
+    environment: [String: String],
+    visibleFrameSize: CGSize
+  ) -> CGSize {
+    clampedContentSize(
+      requestedWidth: positiveFiniteCGFloat(environment[contentWidthEnvironmentKey]),
+      requestedHeight: positiveFiniteCGFloat(environment[contentHeightEnvironmentKey]),
+      visibleFrameSize: visibleFrameSize
+    )
+  }
+
+  static func dynamicTypeSize(from rawValue: String?) -> DynamicTypeSize? {
+    guard let rawValue else { return nil }
+    let normalized = rawValue
+      .trimmingCharacters(in: .whitespacesAndNewlines)
+      .lowercased()
+      .replacingOccurrences(of: "-", with: "")
+      .replacingOccurrences(of: "_", with: "")
+    switch normalized {
+    case "xsmall": return .xSmall
+    case "small": return .small
+    case "medium": return .medium
+    case "large": return .large
+    case "xlarge": return .xLarge
+    case "xxlarge": return .xxLarge
+    case "xxxlarge": return .xxxLarge
+    case "accessibility1": return .accessibility1
+    case "accessibility2": return .accessibility2
+    case "accessibility3": return .accessibility3
+    case "accessibility4": return .accessibility4
+    case "accessibility5": return .accessibility5
+    default: return nil
+    }
+  }
+
+  private static func positiveFiniteCGFloat(_ rawValue: String?) -> CGFloat? {
+    guard let rawValue,
+          let value = Double(rawValue.trimmingCharacters(in: .whitespacesAndNewlines)),
+          value.isFinite,
+          value > 0
+    else {
+      return nil
+    }
+    return CGFloat(value)
+  }
+}
+
+#if DEBUG || SCREENSHOT_CAPTURE_BUILD
+/// Makes automated release captures deterministic without relying on
 /// Accessibility APIs to discover or resize the SwiftUI window.
 struct ScreenshotCaptureWindowBridge: NSViewRepresentable {
+  static let contentWidthEnvironmentKey =
+    ScreenshotCaptureWindowSizingPolicy.contentWidthEnvironmentKey
+  static let contentHeightEnvironmentKey =
+    ScreenshotCaptureWindowSizingPolicy.contentHeightEnvironmentKey
+  static let dynamicTypeSizeEnvironmentKey =
+    ScreenshotCaptureWindowSizingPolicy.dynamicTypeSizeEnvironmentKey
+
   enum Role: Equatable {
     case workbench
     case settings
   }
 
   var role: Role = .workbench
+
+  /// Returns a legal content size for a screenshot or accessibility fixture.
+  /// Keeping this pure makes the minimum-window contract testable without an
+  /// AppKit window or a running screenshot process.
+  static func clampedContentSize(
+    requestedWidth: CGFloat?,
+    requestedHeight: CGFloat?,
+    visibleFrameSize: CGSize,
+    minimumSize: CGSize = CGSize(
+      width: WorkbenchLayoutMode.minimumWindowWidth,
+      height: WorkbenchLayoutMode.minimumWindowHeight
+    ),
+    defaultSize: CGSize = CGSize(
+      width: WorkbenchLayoutMode.defaultWindowWidth,
+      height: WorkbenchLayoutMode.defaultWindowHeight
+    ),
+    margin: CGFloat = 40
+  ) -> CGSize {
+    ScreenshotCaptureWindowSizingPolicy.clampedContentSize(
+      requestedWidth: requestedWidth,
+      requestedHeight: requestedHeight,
+      visibleFrameSize: visibleFrameSize,
+      minimumSize: minimumSize,
+      defaultSize: defaultSize,
+      margin: margin
+    )
+  }
+
+  static func contentSizeFromEnvironment(
+    environment: [String: String] = ProcessInfo.processInfo.environment,
+    visibleFrameSize: CGSize
+  ) -> CGSize {
+    ScreenshotCaptureWindowSizingPolicy.contentSizeFromEnvironment(
+      environment: environment,
+      visibleFrameSize: visibleFrameSize
+    )
+  }
+
+  static func dynamicTypeSize(from rawValue: String?) -> DynamicTypeSize? {
+    ScreenshotCaptureWindowSizingPolicy.dynamicTypeSize(from: rawValue)
+  }
+
+  static var dynamicTypeSizeOverride: DynamicTypeSize? {
+    dynamicTypeSize(
+      from: ProcessInfo.processInfo.environment[dynamicTypeSizeEnvironmentKey]
+    )
+  }
 
   func makeNSView(context: Context) -> NSView {
     CaptureBridgeView(role: role)
@@ -80,9 +217,8 @@ private final class CaptureBridgeView: NSView {
     } ?? window.screen ?? NSScreen.main
     guard let targetScreen else { return }
     let visibleFrame = targetScreen.visibleFrame
-    let targetContentSize = NSSize(
-      width: min(WorkbenchLayoutMode.defaultWindowWidth, visibleFrame.width - 40),
-      height: min(WorkbenchLayoutMode.defaultWindowHeight, visibleFrame.height - 40)
+    let targetContentSize = ScreenshotCaptureWindowBridge.contentSizeFromEnvironment(
+      visibleFrameSize: visibleFrame.size
     )
     let targetSize = window.frameRect(
       forContentRect: NSRect(origin: .zero, size: targetContentSize)

@@ -39,10 +39,6 @@
     "en": "%lld Related Files",
     "zh-Hans": "%lld 个相关文件"
   },
-  "%lld 个站点样式": {
-    "en": "%lld Site Styles",
-    "zh-Hans": "%lld 个站点样式"
-  },
   "%lld 篇私密文章仅搜索标题": {
     "en": "%lld Private Articles Search Titles Only",
     "zh-Hans": "%lld 篇私密文章仅搜索标题"
@@ -63,9 +59,9 @@
     "en": "Alt",
     "zh-Hans": "Alt"
   },
-  "Chrome 优先生成自包含 MHTML；Safari 和 Firefox 在大小上限内生成离线 HTML。应用未打开时，扩展会把待导入内容保留在浏览器本地队列，应用恢复后再重试。": {
-    "en": "Chrome prefers self-contained MHTML, while Safari and Firefox create offline HTML within the size limit. If the app is closed, the extension keeps pending imports in the browser-local queue and retries when the app is available.",
-    "zh-Hans": "Chrome 优先生成自包含 MHTML；Safari 和 Firefox 在大小上限内生成离线 HTML。应用未打开时，扩展会把待导入内容保留在浏览器本地队列，应用恢复后再重试。"
+  "Chrome 优先生成自包含 MHTML；Firefox 在大小上限内生成离线 HTML。应用未打开时，扩展会把待导入内容保留在浏览器本地队列，应用恢复后再重试。": {
+    "en": "Chrome prefers self-contained MHTML, while Firefox creates offline HTML within the size limit. If the app is closed, the extension keeps pending imports in the browser-local queue and retries when the app is available.",
+    "zh-Hans": "Chrome 优先生成自包含 MHTML；Firefox 在大小上限内生成离线 HTML。应用未打开时，扩展会把待导入内容保留在浏览器本地队列，应用恢复后再重试。"
   },
   "Firefox": {
     "en": "Firefox",
@@ -79,13 +75,9 @@
     "en": "Markdown…",
     "zh-Hans": "Markdown…"
   },
-  "Safari": {
-    "en": "Safari",
-    "zh-Hans": "Safari"
-  },
-  "Safari 扩展随应用安装；Chrome 和 Firefox 扩展独立更新，均通过本机回环接口连接。": {
-    "en": "The Safari extension is installed with the app. Chrome and Firefox extensions update separately and both connect through the local loopback interface.",
-    "zh-Hans": "Safari 扩展随应用安装；Chrome 和 Firefox 扩展独立更新，均通过本机回环接口连接。"
+  "Chrome 和 Firefox 扩展独立安装和更新，均通过本机回环接口连接。": {
+    "en": "Chrome and Firefox extensions are installed and updated separately; both connect through the local loopback interface.",
+    "zh-Hans": "Chrome 和 Firefox 扩展独立安装和更新，均通过本机回环接口连接。"
   },
   "上一步": {
     "en": "Previous",
@@ -103,9 +95,9 @@
     "en": "Discard Preview",
     "zh-Hans": "丢弃预览"
   },
-  "从 Safari、Chrome 或 Firefox 保存网页": {
-    "en": "Save webpages from Safari, Chrome, or Firefox",
-    "zh-Hans": "从 Safari、Chrome 或 Firefox 保存网页"
+  "从 Chrome 或 Firefox 保存网页": {
+    "en": "Save webpages from Chrome or Firefox",
+    "zh-Hans": "从 Chrome 或 Firefox 保存网页"
   },
   "任务": {
     "en": "Tasks",
@@ -126,10 +118,6 @@
   "保存组合智能集合": {
     "en": "Save Combined Smart Collection",
     "zh-Hans": "保存组合智能集合"
-  },
-  "保留文件": {
-    "en": "Keep File",
-    "zh-Hans": "保留文件"
   },
   "先生成替换预览": {
     "en": "Generate Replacement Preview First",
@@ -463,10 +451,6 @@
     "en": "Refreshing",
     "zh-Hans": "正在刷新"
   },
-  "正在汇总全部变更": {
-    "en": "Summarizing All Changes",
-    "zh-Hans": "正在汇总全部变更"
-  },
   "正文共 %lld 行": {
     "en": "Body: %lld Lines",
     "zh-Hans": "正文共 %lld 行"
@@ -522,10 +506,6 @@
   "生成模板和首篇文章": {
     "en": "Generate Template and First Article",
     "zh-Hans": "生成模板和首篇文章"
-  },
-  "用于线上发布": {
-    "en": "For Live Publishing",
-    "zh-Hans": "用于线上发布"
   },
   "确认导入 %lld 篇": {
     "en": "Confirm Import of %lld Articles",

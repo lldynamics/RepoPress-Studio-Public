@@ -393,8 +393,13 @@ final class WorkbenchStoreProfileTests: XCTestCase {
 
   func testApplyDetectedRepositoryRemoteUpdatesReviewConfiguration() throws {
     let store = try TestWorkbenchFactory.makeStore()
+    let rootURL = try temporaryDirectoryURL()
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    var profile = store.activeProfile
+    profile.rememberLocalRepositoryRoot(rootURL)
+    store.updateActiveProfile(profile)
     store.setRepositoryReport(RepositoryScanReport(
-      rootPath: "/tmp/site",
+      rootPath: rootURL.path,
       detectedKind: .zola,
       expectedKind: .zola,
       hasGitDirectory: true,
@@ -422,6 +427,57 @@ final class WorkbenchStoreProfileTests: XCTestCase {
     XCTAssertEqual(store.activeProfile.repoName, "site")
     XCTAssertEqual(store.activeProfile.branch, "production")
     XCTAssertEqual(store.publishActionMessage, "已使用 GitLab group/site 更新 PR/MR 配置。")
+  }
+
+  func testRepositoryReportFromAnotherProfileCannotUpdateCurrentRemoteConfiguration() async throws {
+    let store = try TestWorkbenchFactory.makeStore()
+    let firstRootURL = try temporaryDirectoryURL()
+    let secondRootURL = try temporaryDirectoryURL()
+    defer {
+      try? FileManager.default.removeItem(at: firstRootURL)
+      try? FileManager.default.removeItem(at: secondRootURL)
+    }
+    var firstProfile = store.activeProfile
+    firstProfile.rememberLocalRepositoryRoot(firstRootURL)
+    store.updateActiveProfile(firstProfile)
+    await store.scanRepositoryAsync()
+    store.setRepositoryReport(RepositoryScanReport(
+      rootPath: firstRootURL.path,
+      detectedKind: .zola,
+      expectedKind: .zola,
+      hasGitDirectory: true,
+      contentRootExists: true,
+      assetRootExists: true,
+      markdownFileCount: 1,
+      imageFileCount: 0,
+      branchStatus: RepositoryBranchStatus(branchName: "production", upstreamName: "origin/production"),
+      originRemote: RepositoryRemote(
+        remoteURL: "https://gitlab.com/group/first.git",
+        provider: .gitlab,
+        repositoryBaseURL: "https://gitlab.com",
+        owner: "group",
+        name: "first"
+      ),
+      changedFiles: [],
+      preflightIssues: []
+    ))
+
+    var secondProfile = store.createProfile(named: "Second")
+    secondProfile.rememberLocalRepositoryRoot(secondRootURL)
+    store.updateActiveProfile(secondProfile)
+
+    XCTAssertNil(store.repositoryReport)
+    XCTAssertEqual(store.repositoryScanState, .idle)
+    XCTAssertTrue(store.localRepositoryBranches.isEmpty)
+    XCTAssertTrue(store.localRepositoryRecentCommits.isEmpty)
+    XCTAssertEqual(store.repositorySyncCommandPlan?.title, "先扫描仓库")
+    XCTAssertTrue(store.repositorySyncCommandPlan?.commands.first?.contains(secondRootURL.path) == true)
+    XCTAssertFalse(store.repositorySyncCommandPlan?.commands.joined().contains(firstRootURL.path) == true)
+    store.applyDetectedRepositoryRemote()
+    XCTAssertEqual(store.activeProfile.repositoryProvider, .github)
+    XCTAssertTrue(store.activeProfile.repoOwner.isEmpty)
+    XCTAssertTrue(store.activeProfile.repoName.isEmpty)
+    XCTAssertEqual(store.publishActionMessage, "没有检测到 origin 远端。")
   }
 
   func testSetRepositoryProviderUpdatesDefaultBaseURL() throws {
@@ -594,10 +650,16 @@ final class WorkbenchStoreProfileTests: XCTestCase {
     store.selectProfile(originalProfileID)
     store.refreshPublishPreview(for: draft)
 
-    XCTAssertEqual(store.localPublishReadiness?.writeReadiness, .needsReview)
-    XCTAssertEqual(store.localPublishReadiness?.canWrite, true)
-    XCTAssertEqual(store.localPublishReadiness?.commitReadiness, .blocked)
-    XCTAssertTrue(store.localPublishReadiness?.commitBlockingIssues.contains { $0.title == "未发现 .git" } == true)
+    let backgroundSnapshot = try XCTUnwrap(store.cachedPublishPreview(for: draft.id))
+    XCTAssertEqual(backgroundSnapshot.localPublishReadiness.writeReadiness, .needsReview)
+    XCTAssertEqual(backgroundSnapshot.localPublishReadiness.canWrite, true)
+    XCTAssertEqual(backgroundSnapshot.localPublishReadiness.commitReadiness, .blocked)
+    XCTAssertTrue(
+      backgroundSnapshot.localPublishReadiness.commitBlockingIssues.contains {
+        $0.title == "未发现 .git"
+      }
+    )
+    XCTAssertNotEqual(store.selectedDraftID, draft.id)
 
     await store.writeSelectedDraftToLocalRepository()
 
@@ -969,5 +1031,280 @@ final class WorkbenchStoreProfileTests: XCTestCase {
       issue.title == "远端同路径变更"
         && issue.message.contains("content/posts/remote-same-path.md")
     } == true)
+  }
+
+  func testRemoteRepositoryAccessChecksAreIsolatedByProfileID() throws {
+    let store = try TestWorkbenchFactory.makeStore()
+    var profileA = store.activeProfile
+    profileA.repoOwner = "owner"
+    profileA.repoName = "site"
+    store.updateActiveProfile(profileA)
+    let checkA = RemoteRepositoryAccessCheck(
+      provider: .github,
+      repositoryName: "owner/site",
+      apiBaseURL: RepositoryProvider.github.defaultBaseURL,
+      defaultBranch: "main",
+      canRead: true,
+      canWrite: true,
+      message: "Profile A permission"
+    )
+    store.setRemoteRepositoryAccessCheck(checkA)
+
+    let profileB = store.createProfile(named: "Profile B")
+    var configuredB = store.activeProfile
+    configuredB.repoOwner = "owner"
+    configuredB.repoName = "site"
+    store.updateActiveProfile(configuredB)
+
+    XCTAssertNil(store.activeRemoteRepositoryAccessCheck)
+    let checkB = RemoteRepositoryAccessCheck(
+      provider: .github,
+      repositoryName: "owner/site",
+      apiBaseURL: RepositoryProvider.github.defaultBaseURL,
+      defaultBranch: "main",
+      canRead: true,
+      canWrite: false,
+      message: "Profile B permission"
+    )
+    store.setRemoteRepositoryAccessCheck(checkB)
+
+    store.selectProfile(profileA.id)
+    XCTAssertEqual(store.activeRemoteRepositoryAccessCheck?.message, checkA.message)
+    XCTAssertTrue(store.activeRemoteRepositoryAccessCheck?.canWrite == true)
+    store.selectProfile(profileB.id)
+    XCTAssertEqual(store.activeRemoteRepositoryAccessCheck?.message, checkB.message)
+    XCTAssertFalse(store.activeRemoteRepositoryAccessCheck?.canWrite == true)
+
+    store.setRemoteRepositoryAccessCheck(nil)
+    store.selectProfile(profileA.id)
+    XCTAssertEqual(store.activeRemoteRepositoryAccessCheck?.message, checkA.message)
+    XCTAssertEqual(profileB.id, configuredB.id)
+  }
+
+  func testLegacyScalarRemoteRepositoryAccessCheckMigratesToActiveProfileMap() throws {
+    let profile = SiteProfile.defaultProfile
+    let check = RemoteRepositoryAccessCheck(
+      provider: .github,
+      repositoryName: "owner/site",
+      apiBaseURL: RepositoryProvider.github.defaultBaseURL,
+      defaultBranch: "main",
+      canRead: true,
+      canWrite: true,
+      message: "Legacy permission",
+      checkedAt: Date(timeIntervalSince1970: 1_800_000_000)
+    )
+    let snapshot = WorkbenchSnapshot(
+      profiles: [profile],
+      activeProfileID: profile.id,
+      drafts: [],
+      releaseRecords: [],
+      remoteRepositoryAccessCheck: check
+    )
+    var object = try XCTUnwrap(
+      JSONSerialization.jsonObject(with: JSONEncoder.workbench.encode(snapshot))
+        as? [String: Any]
+    )
+    object["formatVersion"] = 13
+    object.removeValue(forKey: "remoteRepositoryAccessCheckByProfileID")
+    let data = try JSONSerialization.data(withJSONObject: object)
+
+    let decoded = try JSONDecoder.workbench.decode(WorkbenchSnapshot.self, from: data)
+
+    XCTAssertEqual(decoded.remoteRepositoryAccessCheckByProfileID[profile.id], check)
+    XCTAssertEqual(decoded.remoteRepositoryAccessCheck, check)
+  }
+
+  func testExpiredRemoteRepositoryAccessCheckRequiresFreshValidation() throws {
+    let store = try TestWorkbenchFactory.makeStore(prefix: "ExpiredRepositoryAccess")
+    var profile = store.activeProfile
+    profile.repoOwner = "owner"
+    profile.repoName = "site"
+    store.updateActiveProfile(profile)
+    store.setRemoteRepositoryAccessCheck(
+      RemoteRepositoryAccessCheck(
+        provider: .github,
+        repositoryName: "owner/site",
+        apiBaseURL: RepositoryProvider.github.defaultBaseURL,
+        defaultBranch: "main",
+        canRead: true,
+        canWrite: true,
+        message: "Old permission result",
+        checkedAt: Date().addingTimeInterval(-RemoteRepositoryAccessCheck.maximumCacheAge - 1)
+      )
+    )
+
+    XCTAssertNil(store.activeRemoteRepositoryAccessCheck)
+    XCTAssertTrue(store.hasStaleRemoteRepositoryAccessCheckForActiveProfile)
+  }
+
+  func testLocalPreviewAuthorizationSurvivesProfileRoundTripWithoutCrossProfileReuse() throws {
+    let stateRootURL = try temporaryDirectoryURL(prefix: "PreviewProfileRoundTrip")
+    let siteRootURL = try temporaryDirectoryURL(prefix: "PreviewProfileRoundTripSite")
+    defer {
+      try? FileManager.default.removeItem(at: stateRootURL)
+      try? FileManager.default.removeItem(at: siteRootURL)
+    }
+    let trustStore = LocalSitePreviewTrustStore(
+      fileURL: stateRootURL.appendingPathComponent("trust.json")
+    )
+    let processService = LocalSitePreviewProcessService(trustStore: trustStore)
+    let planner = LocalSitePreviewService(
+      executableResolver: { _ in "/bin/sleep" },
+      portAllocator: LocalSitePreviewPortAllocator(
+        isPortAvailable: { _ in true },
+        dynamicPort: { nil }
+      )
+    )
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(
+        fileURL: stateRootURL.appendingPathComponent("workbench.json")
+      ),
+      localSitePreviewService: planner,
+      localSitePreviewProcessService: processService
+    )
+    store.updateActiveProfile { profile in
+      profile.siteKind = .zola
+      profile.localRepositoryRootPath = siteRootURL.path
+    }
+    let profileA = store.activeProfile
+    let profileB = store.createProfile(named: "Preview B")
+    store.updateActiveProfile { profile in
+      profile.siteKind = .zola
+      profile.localRepositoryRootPath = siteRootURL.path
+    }
+
+    store.publishingStore.activeProfileID = profileA.id
+    store.publishingStore.refreshLocalSitePreviewPlan(for: profileA)
+    let planA = try XCTUnwrap(store.localSitePreviewPlan)
+    try processService.authorize(
+      plan: planA,
+      matching: XCTUnwrap(processService.authorizationRequest(for: planA))
+    )
+
+    store.publishingStore.activeProfileID = profileB.id
+    store.publishingStore.refreshLocalSitePreviewPlan(for: store.activeProfile)
+    let planB = try XCTUnwrap(store.localSitePreviewPlan)
+    XCTAssertNotEqual(planA.executionIdentity?.profileID, planB.executionIdentity?.profileID)
+    XCTAssertNotNil(try processService.authorizationRequest(for: planB))
+    XCTAssertNil(try processService.authorizationRequest(for: planA))
+    try processService.authorize(
+      plan: planB,
+      matching: XCTUnwrap(processService.authorizationRequest(for: planB))
+    )
+
+    store.publishingStore.activeProfileID = profileA.id
+    store.publishingStore.refreshLocalSitePreviewPlan(for: store.activeProfile)
+
+    XCTAssertEqual(store.localSitePreviewPlan?.executionIdentity, planA.executionIdentity)
+    XCTAssertNil(try processService.authorizationRequest(for: planA))
+    XCTAssertNil(try processService.authorizationRequest(for: planB))
+  }
+
+  func testDelayedLocalPreviewStartCannotReviveAfterActiveProfileChanges() async throws {
+    let stateRootURL = try temporaryDirectoryURL(prefix: "PreviewDelayedStart")
+    let siteRootURL = try temporaryDirectoryURL(prefix: "PreviewDelayedStartSite")
+    defer {
+      try? FileManager.default.removeItem(at: stateRootURL)
+      try? FileManager.default.removeItem(at: siteRootURL)
+    }
+    let processService = LocalSitePreviewProcessService(
+      trustStore: LocalSitePreviewTrustStore(
+        fileURL: stateRootURL.appendingPathComponent("trust.json")
+      )
+    )
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(
+        fileURL: stateRootURL.appendingPathComponent("workbench.json")
+      ),
+      localSitePreviewProcessService: processService
+    )
+    defer { store.stopLocalSitePreviewImmediately() }
+    store.updateActiveProfile { profile in
+      profile.localRepositoryRootPath = siteRootURL.path
+    }
+    let profileA = store.activeProfile
+    let profileB = store.createProfile(named: "Delayed B")
+    store.updateActiveProfile { profile in
+      profile.localRepositoryRootPath = siteRootURL.path
+    }
+
+    let planA = try makeControlledPreviewPlan(
+      profileID: profileA.id,
+      rootPath: siteRootURL.path,
+      executablePath: "/bin/sh",
+      arguments: ["-c", "trap '' TERM; while true; do sleep 1; done"]
+    )
+    let planB = try makeControlledPreviewPlan(
+      profileID: profileB.id,
+      rootPath: siteRootURL.path,
+      executablePath: "/bin/sleep",
+      arguments: ["5"]
+    )
+
+    store.publishingStore.activeProfileID = profileA.id
+    store.publishingStore.localSitePreviewPlan = planA
+    let requestA = try XCTUnwrap(
+      confirmationRequest(from: store.publishingStore.startLocalSitePreview())
+    )
+    XCTAssertEqual(
+      store.publishingStore.authorizeAndStartLocalSitePreview(requestA),
+      .started
+    )
+    XCTAssertTrue(processService.status.isRunning)
+
+    store.stopLocalSitePreview()
+    XCTAssertNotNil(store.publishingStore.localSitePreviewStopTask)
+    store.publishingStore.activeProfileID = profileB.id
+    store.publishingStore.localSitePreviewPlan = planB
+    let requestB = try XCTUnwrap(
+      confirmationRequest(from: store.publishingStore.startLocalSitePreview())
+    )
+    XCTAssertEqual(
+      store.publishingStore.authorizeAndStartLocalSitePreview(requestB),
+      .started
+    )
+
+    // The delayed B start is already queued behind A's stop. Returning to A
+    // must make that queued request stale even if no new start is requested.
+    store.publishingStore.activeProfileID = profileA.id
+    store.publishingStore.localSitePreviewPlan = planA
+    try await Task.sleep(for: .milliseconds(1_300))
+
+    XCTAssertFalse(processService.status.isRunning)
+  }
+
+  private func makeControlledPreviewPlan(
+    profileID: UUID,
+    rootPath: String,
+    executablePath: String,
+    arguments: [String]
+  ) throws -> LocalSitePreviewPlan {
+    let command = "\(URL(fileURLWithPath: executablePath).lastPathComponent) "
+      + arguments.joined(separator: " ")
+    let identity = try LocalSitePreviewExecutionFingerprint.makeIdentity(
+      profileID: profileID,
+      rootPath: rootPath,
+      siteKind: .zola,
+      executablePath: executablePath,
+      arguments: arguments,
+      command: command
+    )
+    return LocalSitePreviewPlan(
+      siteKind: .zola,
+      rootPath: identity.canonicalRootPath,
+      executablePath: executablePath,
+      arguments: arguments,
+      command: command,
+      previewURL: try XCTUnwrap(URL(string: "http://127.0.0.1")),
+      notes: [],
+      executionIdentity: identity
+    )
+  }
+
+  private func confirmationRequest(
+    from disposition: LocalSitePreviewStartDisposition
+  ) -> LocalSitePreviewAuthorizationRequest? {
+    guard case .needsConfirmation(let request) = disposition else { return nil }
+    return request
   }
 }

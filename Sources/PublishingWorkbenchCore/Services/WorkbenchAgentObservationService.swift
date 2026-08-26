@@ -134,9 +134,9 @@ public struct WorkbenchAgentDraftSearchService: Sendable {
     copy.tags = bounded(draft.tags)
     copy.categories = bounded(draft.categories)
     copy.authors = bounded(draft.authors)
-    copy.repositoryPath = draft.repositoryPath.map {
+    copy.replaceRepositoryPathForProjection(draft.repositoryPath.map {
       bounded($0, maximumLength: Self.maximumIndexedTextLength)
-    }
+    })
     return copy
   }
 

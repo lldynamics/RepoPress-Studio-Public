@@ -713,19 +713,16 @@ def main() -> int:
         # whole tooling suite during every normal/strict release verification.
         checks = [check for check in checks if not is_tooling_self_test(check)]
 
+    if not args.check:
+        checks = [
+            check
+            for check in checks
+            if not (check["strictness"] == "strict" and not strict_profile)
+        ]
     if args.list:
         for check in checks:
-            if strict_profile and check["strictness"] == "standard":
-                continue
             print(f"{check['id']}\t{check['strictness']}\t{check['title']}")
         return 0
-
-    checks = [
-        check
-        for check in checks
-        if not (check["strictness"] == "standard" and strict_profile)
-        and not (check["strictness"] == "strict" and not strict_profile)
-    ]
     mode = (
         "strict"
         if strict_profile

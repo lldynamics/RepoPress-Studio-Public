@@ -16,7 +16,6 @@ from pathlib import Path
 DEFAULT_ROOT = Path(__file__).resolve().parent.parent
 FIREFOX_ID_PATTERN = re.compile(r"^[^\s@]+@[^\s@]+$")
 CHROMIUM_ID_PATTERN = re.compile(r"^[a-p]{32}$")
-BUNDLE_ID_PATTERN = re.compile(r"^[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+$")
 ALLOWED_METHODS = frozenset(("GET", "POST"))
 
 
@@ -84,15 +83,14 @@ def validated_definition(root: Path) -> dict:
         {
             "chromiumDevelopmentID",
             "firefoxID",
-            "safariBundleID",
             "chromeProductionID",
             "edgeProductionID",
         },
         "extensions",
     )
-    if active_extensions != ["safari", "chrome", "firefox"]:
+    if active_extensions != ["chrome", "firefox"]:
         raise ProtocolGenerationError(
-            "activeExtensions must be exactly ['safari', 'chrome', 'firefox'] for this release"
+            "activeExtensions must be exactly ['chrome', 'firefox'] for this release"
         )
     require_exact_keys(
         loopback,
@@ -126,14 +124,6 @@ def validated_definition(root: Path) -> dict:
         extensions["chromiumDevelopmentID"]
     ):
         raise ProtocolGenerationError("extensions.chromiumDevelopmentID is invalid")
-    if (
-        not isinstance(extensions["safariBundleID"], str)
-        or not BUNDLE_ID_PATTERN.fullmatch(extensions["safariBundleID"])
-        or not extensions["safariBundleID"].startswith(
-            "com.jinfang.PersonalSitePublisherMac."
-        )
-    ):
-        raise ProtocolGenerationError("extensions.safariBundleID is invalid")
     for field in ("chromeProductionID", "edgeProductionID"):
         extension_id = extensions[field]
         if extension_id is not None and (
@@ -200,8 +190,6 @@ def render_swift(definition: dict) -> str:
             "  public static let activeBrowserExtensions = [",
             *[f"    {swift_string(channel)}," for channel in active_extensions],
             "  ]",
-            "  public static let safariWebExtensionBundleID =",
-            f"    {swift_string(extensions['safariBundleID'])}",
             "  public static let chromiumDevelopmentExtensionID =",
             f"    {swift_string(extensions['chromiumDevelopmentID'])}",
             "  public static let chromeProductionExtensionID: String? =",

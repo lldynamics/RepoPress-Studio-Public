@@ -19,7 +19,7 @@ final class WorkbenchLaunchCoordinator: ObservableObject {
   @Published private(set) var dataRootPath: String?
   @Published private(set) var isSafeMode = false
 
-  private let bookmarkStore: WorkbenchDataRootBookmarkStore?
+  private let pathStore: WorkbenchDataRootPathStore?
   private let explicitRuntimePaths: WorkbenchRuntimePaths?
   private let browserBridgeConnectionKeychainStore: KeychainTokenStore?
   private let sessionRecovery: WorkbenchSessionRecovery
@@ -28,12 +28,12 @@ final class WorkbenchLaunchCoordinator: ObservableObject {
   private var didStartReadyServices = false
 
   convenience init(
-    bookmarkStore: WorkbenchDataRootBookmarkStore = WorkbenchDataRootBookmarkStore(),
+    pathStore: WorkbenchDataRootPathStore = WorkbenchDataRootPathStore(),
     sessionRecovery: WorkbenchSessionRecovery? = nil,
     browserBridgeConnectionKeychainStore: KeychainTokenStore? = nil
   ) {
     self.init(
-      bookmarkStore: bookmarkStore,
+      pathStore: pathStore,
       explicitRuntimePaths: nil,
       sessionRecovery: sessionRecovery,
       browserBridgeConnectionKeychainStore: browserBridgeConnectionKeychainStore
@@ -50,7 +50,7 @@ final class WorkbenchLaunchCoordinator: ObservableObject {
     browserBridgeConnectionKeychainStore: KeychainTokenStore? = nil
   ) {
     self.init(
-      bookmarkStore: nil,
+      pathStore: nil,
       explicitRuntimePaths: WorkbenchRuntimePaths(
         persistence: persistence,
         knowledgeLibraryService: knowledgeLibraryService,
@@ -64,12 +64,12 @@ final class WorkbenchLaunchCoordinator: ObservableObject {
   }
 
   private init(
-    bookmarkStore: WorkbenchDataRootBookmarkStore?,
+    pathStore: WorkbenchDataRootPathStore?,
     explicitRuntimePaths: WorkbenchRuntimePaths?,
     sessionRecovery: WorkbenchSessionRecovery?,
     browserBridgeConnectionKeychainStore: KeychainTokenStore?
   ) {
-    self.bookmarkStore = bookmarkStore
+    self.pathStore = pathStore
     self.explicitRuntimePaths = explicitRuntimePaths
     self.browserBridgeConnectionKeychainStore = browserBridgeConnectionKeychainStore
     let resolvedSessionRecovery = sessionRecovery ?? .shared
@@ -103,14 +103,10 @@ final class WorkbenchLaunchCoordinator: ObservableObject {
   /// latter is useful after reinstalling the app, when users commonly select
   /// the same external-drive folder they chose during initial setup.
   func restoreExistingDataRoot(at selectedURL: URL) async {
-    guard let bookmarkStore else { return }
+    guard let pathStore else { return }
 
     phase = .preparing(String(localized: "正在校验数据文件夹…"))
     dataRootMessage = nil
-    let didAccess = selectedURL.startAccessingSecurityScopedResource()
-    defer {
-      if didAccess { selectedURL.stopAccessingSecurityScopedResource() }
-    }
 
     let selection = await Task.detached(priority: .utility) {
       Self.resolveDataRootSelection(selectedURL)
@@ -180,12 +176,11 @@ final class WorkbenchLaunchCoordinator: ObservableObject {
     }
 
     do {
-      try bookmarkStore.rememberSelectedRoot(
+      try pathStore.rememberRoot(
         rootURL,
-        accessURL: selectedURL,
         dataID: manifest.dataID
       )
-      try await openStoredRootAndPrepare(using: bookmarkStore)
+      try await openStoredRootAndPrepare(using: pathStore)
     } catch {
       showDataRootSetup(message: friendlyMessage(for: error))
     }
@@ -202,18 +197,13 @@ final class WorkbenchLaunchCoordinator: ObservableObject {
     await createNewDataRoot(in: parentURL)
   }
 
-  /// Testable half of the Powerbox flow. `parentURL` is the directory the
-  /// user actually selected, so its security scope must be retained rather
-  /// than attempting to mint a separate bookmark for the generated child.
+  /// Testable half of the folder-selection flow. `parentURL` is the directory
+  /// the user selected; the generated child is persisted as the active root.
   func createNewDataRoot(in parentURL: URL) async {
-    guard let bookmarkStore else { return }
+    guard let pathStore else { return }
 
     phase = .preparing(String(localized: "正在新建 RepoPress Studio 数据文件夹…"))
     dataRootMessage = nil
-    let didAccess = parentURL.startAccessingSecurityScopedResource()
-    defer {
-      if didAccess { parentURL.stopAccessingSecurityScopedResource() }
-    }
 
     let rootURL = Self.availableDataRootURL(
       in: parentURL,
@@ -227,23 +217,12 @@ final class WorkbenchLaunchCoordinator: ObservableObject {
           appVersion: appVersion
         )
       }.value
-      try bookmarkStore.rememberSelectedRoot(
+      try pathStore.rememberRoot(
         rootURL,
-        accessURL: parentURL,
         dataID: manifest.dataID
       )
-      try await openStoredRootAndPrepare(using: bookmarkStore)
+      try await openStoredRootAndPrepare(using: pathStore)
     } catch {
-      if error is WorkbenchDataRootBookmarkError,
-        case .existing = WorkbenchDataRootInspector().probe(at: rootURL)
-      {
-        showDataRootSetup(
-          message: String(
-            localized: "数据文件夹已创建，但无法保存持续访问权限。请点击“恢复已有数据文件夹…”并选择刚创建的“RepoPress Data”文件夹。"
-          )
-        )
-        return
-      }
       showDataRootSetup(
         message: String(
           format: String(localized: "无法新建数据文件夹：%@"),
@@ -254,7 +233,7 @@ final class WorkbenchLaunchCoordinator: ObservableObject {
   }
 
   func migrateLegacyData() async {
-    guard let bookmarkStore,
+    guard let pathStore,
       Self.legacyDataIsAvailable,
       let parentURL = await WorkbenchDataRootSelectionPanel.chooseDestinationParent(
         forMigration: true
@@ -265,10 +244,6 @@ final class WorkbenchLaunchCoordinator: ObservableObject {
 
     phase = .preparing(String(localized: "正在复制并校验旧版数据…"))
     dataRootMessage = nil
-    let didAccess = parentURL.startAccessingSecurityScopedResource()
-    defer {
-      if didAccess { parentURL.stopAccessingSecurityScopedResource() }
-    }
 
     let sourceURL = Self.legacyDataRootURL
     let rootURL = Self.availableDataRootURL(
@@ -284,12 +259,11 @@ final class WorkbenchLaunchCoordinator: ObservableObject {
           appVersion: appVersion
         )
       }.value
-      try bookmarkStore.rememberSelectedRoot(
+      try pathStore.rememberRoot(
         rootURL,
-        accessURL: parentURL,
         dataID: result.manifest.dataID
       )
-      try await openStoredRootAndPrepare(using: bookmarkStore)
+      try await openStoredRootAndPrepare(using: pathStore)
     } catch {
       showDataRootSetup(
         message: String(
@@ -301,10 +275,10 @@ final class WorkbenchLaunchCoordinator: ObservableObject {
   }
 
   /// Copies the active managed root into a newly created child directory and
-  /// switches the persisted bookmark only after the copy has been verified.
+  /// switches the persisted root path only after the copy has been verified.
   /// The old root is deliberately retained as a user-controlled fallback.
   func relocateCurrentDataRoot(in parentURL: URL) async -> WorkbenchDataRootMigrationResult? {
-    guard let bookmarkStore,
+    guard let pathStore,
       let sourceSession = dataRootSession,
       let store,
       let rssStore
@@ -330,10 +304,6 @@ final class WorkbenchLaunchCoordinator: ObservableObject {
     store.workspaceBackupScheduler.stop()
     browserBridge?.stop()
 
-    let didAccess = parentURL.startAccessingSecurityScopedResource()
-    defer {
-      if didAccess { parentURL.stopAccessingSecurityScopedResource() }
-    }
     let destinationRootURL = Self.availableDataRootURL(
       in: parentURL,
       reuseEmptyExistingRoot: false
@@ -349,9 +319,8 @@ final class WorkbenchLaunchCoordinator: ObservableObject {
         )
       }.value
       installedResult = result
-      try bookmarkStore.rememberSelectedRoot(
+      try pathStore.rememberRoot(
         destinationRootURL,
-        accessURL: parentURL,
         dataID: result.manifest.dataID
       )
       dataRootPath = destinationRootURL.path
@@ -397,20 +366,20 @@ final class WorkbenchLaunchCoordinator: ObservableObject {
   }
 
   private func openRememberedDataRoot() async {
-    guard let bookmarkStore else { return }
+    guard let pathStore else { return }
     phase = .preparing(String(localized: "正在检查数据文件夹…"))
     do {
-      try await openStoredRootAndPrepare(using: bookmarkStore)
+      try await openStoredRootAndPrepare(using: pathStore)
     } catch {
       showDataRootSetup(message: friendlyMessage(for: error))
     }
   }
 
   private func openStoredRootAndPrepare(
-    using bookmarkStore: WorkbenchDataRootBookmarkStore
+    using pathStore: WorkbenchDataRootPathStore
   ) async throws {
     let session = try await Task.detached(priority: .utility) {
-      try bookmarkStore.openStoredRoot()
+      try pathStore.openStoredRoot()
     }.value
     guard let session else {
       showDataRootSetup(
@@ -440,9 +409,9 @@ final class WorkbenchLaunchCoordinator: ObservableObject {
     case .none:
       break
     case .rolledBack:
-      // Re-resolve the bookmark so identity and structure are checked against
-      // the fully rolled-back tree while a fresh security-scope lease is held.
-      try await openStoredRootAndPrepare(using: bookmarkStore)
+      // Re-open the path so identity and structure are checked against the
+      // fully rolled-back tree.
+      try await openStoredRootAndPrepare(using: pathStore)
       return
     case .failed(let detail):
       dataRootSession = nil
@@ -705,19 +674,12 @@ final class WorkbenchLaunchCoordinator: ObservableObject {
   }
 
   private func friendlyMessage(for error: Error) -> String {
-    if let error = error as? WorkbenchDataRootBookmarkError {
+    if let error = error as? WorkbenchDataRootPathError {
       switch error {
       case .dataIdentityMismatch:
         return String(localized: "所选路径中的数据已变成另一个工作区。为避免打开错误数据，请手动重新选择。")
-      case .invalidStoredRecord, .invalidRelativeRootPath:
+      case .invalidStoredRecord, .invalidRootPath:
         return String(localized: "之前保存的数据文件夹记录已损坏，请重新选择。")
-      case .bookmarkCreationFailed(let detail), .bookmarkResolutionFailed(let detail):
-        return String(
-          format: String(localized: "无法获得数据文件夹的持续访问权限：%@"),
-          detail
-        )
-      case .securityScopedAccessDenied:
-        return String(localized: "系统未授予数据文件夹的持续访问权限，请重新选择该文件夹。")
       }
     }
     if let error = error as? WorkbenchDataRootMigrationError {

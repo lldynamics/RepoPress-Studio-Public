@@ -1147,6 +1147,24 @@ final class WorkbenchStoreAIPromptTests: XCTestCase {
     )
   }
 
+  func testActionAvailabilityPreservesWhitespaceSemanticsForLongBodies() {
+    let whitespaceDraft = ArticleDraft(
+      siteProfileID: UUID(),
+      title: "\t\n",
+      summary: " \r\n",
+      bodyMarkdown: String(repeating: " \t\n", count: 40_000)
+    )
+    var bodyDraft = whitespaceDraft
+    bodyDraft.bodyMarkdown = "正文" + whitespaceDraft.bodyMarkdown
+
+    XCTAssertFalse(
+      AIPublishingActionAvailabilityService.canRun(.continueArticle, draft: whitespaceDraft)
+    )
+    XCTAssertTrue(
+      AIPublishingActionAvailabilityService.canRun(.continueArticle, draft: bodyDraft)
+    )
+  }
+
   func testAIMetadataApplicationRecordPersistsAndRollsBackChangedFields() async throws {
     let persistenceURL = try temporaryPersistenceURL()
     let store = WorkbenchStore(
