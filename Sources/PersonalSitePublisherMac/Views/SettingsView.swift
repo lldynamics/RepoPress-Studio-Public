@@ -192,7 +192,17 @@ struct SettingsView: View {
         && !store.activeProfile.repoName.trimmedForPublishing.isEmpty
       return accessState == .accessFailed || (hasRemoteTarget && accessState != .available)
     case .ai:
-      return store.ai.tokenAvailability.accessState == .accessFailed
+      let config = store.aiProviderConfig(for: store.activeProfile)
+      // Codex account/login state is fetched by the account section itself;
+      // the sidebar cannot safely infer a live account from Keychain state.
+      guard !config.usesCodexAppServer else { return false }
+      let missingConnectionValue =
+        config.normalizedBaseURL.isEmpty || config.normalizedModel.isEmpty
+      let missingAPIKey = Self.shouldOpenAIKeyConnection(
+        for: config,
+        tokenAvailability: store.ai.tokenAvailability
+      )
+      return missingConnectionValue || missingAPIKey
     default:
       return false
     }
@@ -393,16 +403,10 @@ struct SettingsView: View {
   ) {
     healthDestination = destination
     healthNavigationRequestID = UUID()
-    switch destination {
-    case .repository:
-      selectSettingsDestination(.token(.repository), healthDestination: destination)
-    case .defaultRules:
-      selectSettingsDestination(.rules(.paths), healthDestination: destination)
-    case .repositoryToken:
-      selectSettingsDestination(.token(.repository), healthDestination: destination)
-    case .aiKey:
-      selectSettingsDestination(.ai(.credentials), healthDestination: destination)
-    }
+    selectSettingsDestination(
+      Self.settingsDestination(for: destination),
+      healthDestination: destination
+    )
   }
 
   private func applyRequestedSettingsTab(_ requestedTabID: String) {
@@ -415,18 +419,28 @@ struct SettingsView: View {
     }
 
     let compatibilityHealthDestination: SettingsConfigurationHealthDestination?
+    var resolvedDestination = destination
     switch destination {
     case .rules(.paths):
       compatibilityHealthDestination = .defaultRules
     case .token(.repository):
       compatibilityHealthDestination = .repositoryToken
     case .ai(.credentials):
-      compatibilityHealthDestination = .aiKey
+      let config = store.aiProviderConfig(for: store.activeProfile)
+      if Self.shouldOpenAIKeyConnection(
+        for: config,
+        tokenAvailability: store.ai.tokenAvailability
+      ) {
+        compatibilityHealthDestination = .aiKey
+        resolvedDestination = .ai(.connection)
+      } else {
+        compatibilityHealthDestination = nil
+      }
     default:
       compatibilityHealthDestination = nil
     }
     selectSettingsDestination(
-      destination,
+      resolvedDestination,
       healthDestination: compatibilityHealthDestination
     )
     requestedSettingsTabID = ""
@@ -445,6 +459,30 @@ struct SettingsView: View {
     navigationDestination = destination
     navigationRequestID = UUID()
     selectedSettingsTab = destination.tab
+  }
+
+  static func settingsDestination(
+    for healthDestination: SettingsConfigurationHealthDestination
+  ) -> SettingsDestination {
+    switch healthDestination {
+    case .repository:
+      return .token(.repository)
+    case .defaultRules:
+      return .rules(.paths)
+    case .repositoryToken:
+      return .token(.repository)
+    case .aiKey:
+      return .ai(.connection)
+    }
+  }
+
+  static func shouldOpenAIKeyConnection(
+    for config: AIProviderConfig,
+    tokenAvailability: KeychainTokenAvailability
+  ) -> Bool {
+    !config.usesCodexAppServer
+      && config.requiresAPIKey
+      && !tokenAvailability.hasToken
   }
 }
 

@@ -279,6 +279,87 @@ final class AIConnectionProfileCommandsTests: XCTestCase {
     )
   }
 
+  func testChangingMalformedCodexSentinelToCodexDeletesSharedKey() throws {
+    let directory = try temporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let tokenStore = testTokenStore()
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: directory.appendingPathComponent("workbench.json")),
+      safeMode: true,
+      keychainTokenStore: tokenStore
+    )
+
+    var malformed = store.activeAIConnectionProfile
+    malformed.config = malformedCodexSentinelConfig()
+    XCTAssertTrue(store.updateAIConnectionProfile(malformed))
+    let connectionID = malformed.id
+    try tokenStore.saveAIToken("shared-codex-transition-key", forConnectionProfileID: connectionID)
+
+    var codex = malformed
+    codex.config.preset = .codexAppServer
+
+    XCTAssertTrue(store.updateAIConnectionProfile(codex))
+    XCTAssertEqual(store.activeAIConnectionProfile.config.preset, .codexAppServer)
+    XCTAssertNil(try tokenStore.aiToken(forConnectionProfileID: connectionID))
+    XCTAssertFalse(store.aiActionMessage?.contains("HTTPS") == true)
+  }
+
+  func testChangingMalformedCodexSentinelWithoutLegacyKeyDoesNotReportHTTPSFailure() throws {
+    let directory = try temporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: directory.appendingPathComponent("workbench.json")),
+      safeMode: true,
+      keychainTokenStore: testTokenStore()
+    )
+
+    var malformed = store.activeAIConnectionProfile
+    malformed.config = malformedCodexSentinelConfig()
+    XCTAssertTrue(store.updateAIConnectionProfile(malformed))
+
+    var codex = malformed
+    codex.config.preset = .codexAppServer
+
+    XCTAssertTrue(store.updateAIConnectionProfile(codex))
+    XCTAssertEqual(store.activeAIConnectionProfile.config.preset, .codexAppServer)
+    XCTAssertFalse(store.aiActionMessage?.contains("HTTPS") == true)
+  }
+
+  func testChangingNonCodexInvalidOriginFailsClosedAndKeepsSharedKey() throws {
+    let directory = try temporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let tokenStore = testTokenStore()
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: directory.appendingPathComponent("workbench.json")),
+      safeMode: true,
+      keychainTokenStore: tokenStore
+    )
+
+    var invalid = store.activeAIConnectionProfile
+    invalid.config = AIProviderConfig(
+      preset: .custom,
+      baseURL: "http://invalid-origin.example/v1",
+      model: "invalid-origin-model",
+      requiresAPIKey: false
+    )
+    XCTAssertTrue(store.updateAIConnectionProfile(invalid))
+    let connectionID = invalid.id
+    try tokenStore.saveAIToken("must-survive-invalid-origin", forConnectionProfileID: connectionID)
+
+    var replacement = invalid
+    replacement.config.baseURL = "https://replacement.example/v1"
+
+    XCTAssertFalse(store.updateAIConnectionProfile(replacement))
+    XCTAssertEqual(
+      store.activeAIConnectionProfile.config.baseURL,
+      "http://invalid-origin.example/v1"
+    )
+    XCTAssertEqual(
+      try tokenStore.aiToken(forConnectionProfileID: connectionID),
+      "must-survive-invalid-origin"
+    )
+  }
+
   func testConnectionDeletionFeedbackResolvesInEnglish() {
     let english = Locale(identifier: "en")
     XCTAssertEqual(
@@ -328,6 +409,19 @@ final class AIConnectionProfileCommandsTests: XCTestCase {
       baseURL: "https://initial.example/v1",
       model: "initial-model",
       requiresAPIKey: true
+    )
+  }
+
+  private func malformedCodexSentinelConfig() -> AIProviderConfig {
+    AIProviderConfig(
+      preset: .custom,
+      baseURL: AIProviderPreset.codexAppServer.defaultBaseURL,
+      model: "codex-transition-model",
+      requiresAPIKey: false,
+      advancedSettings: AIProviderAdvancedSettings(
+        reasoningEffortOverride: "high",
+        allowsApplicationTools: false
+      )
     )
   }
 }
