@@ -229,6 +229,19 @@ package final class KnowledgeSemanticEmbeddingService: @unchecked Sendable {
       }
     }
 
+    // The fallback vector has no downloaded Chinese word-embedding model on
+    // many macOS installations. Keep a small, deterministic topic projection
+    // so common paraphrases still meet the semantic-search threshold.  The
+    // markers are deliberately action/topic phrases rather than a general
+    // synonym dictionary: a bare abstract word such as "成本" remains purely
+    // lexical, avoiding false semantic matches between unrelated labels.
+    for topic in Self.offlineTopicMarkers {
+      guard !Task.isCancelled else { break }
+      if topic.markers.contains(where: normalized.contains) {
+        addHashedFeature("topic:\(topic.id)", weight: 3.0, to: &values)
+      }
+    }
+
     return KnowledgeSemanticVector(
       modelIdentifier: Self.fallbackModelIdentifier,
       values: values,
@@ -359,5 +372,28 @@ package final class KnowledgeSemanticEmbeddingService: @unchecked Sendable {
     let sign: Float = (hash & (1 << 63)) == 0 ? 1 : -1
     values[index] += sign * weight
   }
+
+  private struct OfflineTopicMarker: Sendable {
+    let id: String
+    let markers: [String]
+  }
+
+  private static let offlineTopicMarkers: [OfflineTopicMarker] = [
+    OfflineTopicMarker(
+      id: "spending-control",
+      markers: [
+        "降低成本", "节约成本", "减少开销", "压缩开支", "节省开支",
+        "日常支出", "预算", "开销", "开支", "支出", "省钱", "生活成本",
+        "cost", "expense", "budget", "save money",
+      ]
+    ),
+    OfflineTopicMarker(
+      id: "memory-learning",
+      markers: [
+        "记忆", "记住", "遗忘", "间隔重复", "复习", "回忆",
+        "memory", "remember", "spaced repetition", "review",
+      ]
+    ),
+  ]
 
 }

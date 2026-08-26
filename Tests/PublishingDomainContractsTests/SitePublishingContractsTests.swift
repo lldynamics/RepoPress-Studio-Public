@@ -7,7 +7,7 @@ final class SitePublishingContractsTests: XCTestCase {
   func testSiteValueTypesKeepStableRawValuesAndIDs() {
     XCTAssertEqual(
       SiteKind.allCases.map(\.rawValue),
-      ["zola", "astro", "hugo", "hexo", "jekyll"]
+      ["zola", "astro", "hugo", "vitePress", "hexo", "jekyll"]
     )
     XCTAssertEqual(SiteKind.allCases.map(\.id), SiteKind.allCases.map(\.rawValue))
 
@@ -86,6 +86,19 @@ final class SitePublishingContractsTests: XCTestCase {
         assetRoot: "static",
         markdownPathPattern: "content/posts/{slug}.md",
         imagePathPattern: "static/images/{year}/{filename}",
+        publicImagePathPattern: "/images/{year}/{filename}",
+        dateFormat: "yyyy-MM-dd",
+        includeDraftFlagInFrontMatter: true,
+        includeCoverInFrontMatter: true,
+        slugValidationRule: .lowercaseKebab
+      ),
+      SitePublishingDefaults(
+        siteKind: .vitePress,
+        frontMatterStyle: .yaml,
+        contentRoot: "docs/posts",
+        assetRoot: "docs/public",
+        markdownPathPattern: "docs/posts/{slug}.md",
+        imagePathPattern: "docs/public/images/{year}/{filename}",
         publicImagePathPattern: "/images/{year}/{filename}",
         dateFormat: "yyyy-MM-dd",
         includeDraftFlagInFrontMatter: true,

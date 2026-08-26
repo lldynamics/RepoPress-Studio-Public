@@ -1471,7 +1471,8 @@ final class WorkbenchGeneralAIChatTests: XCTestCase {
     let client = AIChatCompletionClient(
       transport: transport,
       networkRecoveryPolicy: AIChatNetworkRecoveryPolicy(
-        maximumAutomaticRetryCount: 0
+        maximumAutomaticRetryCount: 0,
+        partialTextRecovery: .disabled
       )
     )
     let config = capabilitySupportedConfig(
