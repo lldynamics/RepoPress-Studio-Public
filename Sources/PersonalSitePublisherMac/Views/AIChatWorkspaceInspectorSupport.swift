@@ -2,14 +2,6 @@ import Foundation
 import PublishingWorkbenchCore
 import SwiftUI
 
-struct AIChatScrollBottomPreferenceKey: PreferenceKey {
-  static let defaultValue: CGFloat = 0
-
-  static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-    value = nextValue()
-  }
-}
-
 struct AIChatContextInspectorContent: View {
   let state: AIChatContextInspectorState
   let actions: AIChatContextInspectorActions

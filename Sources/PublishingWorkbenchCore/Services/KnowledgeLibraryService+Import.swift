@@ -1,19 +1,27 @@
 import Foundation
 
+enum KnowledgeImportPreviewExecutionPolicy {
+  static func priority(
+    for sourceURLs: [URL],
+    sourceTreeContainsPDF: Bool = false
+  ) -> TaskPriority {
+    if sourceTreeContainsPDF
+      || sourceURLs.contains(where: { $0.pathExtension.lowercased() == "pdf" })
+    {
+      return .background
+    }
+    return .userInitiated
+  }
+}
+
 extension KnowledgeLibraryService {
   public func makeImportPreview(
     sourceURL: URL,
     options: KnowledgeImportOptions = KnowledgeImportOptions()
   ) async throws -> KnowledgeImportPreview {
     let service = self
-    let task = Task.detached(priority: .userInitiated) {
-      try Task.checkCancellation()
-      return try service.makeImportPreviewSynchronously(sourceURL: sourceURL, options: options)
-    }
-    return try await withTaskCancellationHandler {
-      try await task.value
-    } onCancel: {
-      task.cancel()
+    return try await makeLocalImportPreview(sourceURLs: [sourceURL]) {
+      try service.makeImportPreviewSynchronously(sourceURL: sourceURL, options: options)
     }
   }
 
@@ -22,18 +30,100 @@ extension KnowledgeLibraryService {
     options: KnowledgeImportOptions = KnowledgeImportOptions()
   ) async throws -> KnowledgeImportPreview {
     let service = self
-    let task = Task.detached(priority: .userInitiated) {
-      try Task.checkCancellation()
-      return try service.makeImportPreviewSynchronously(
+    return try await makeLocalImportPreview(sourceURLs: sourceURLs) {
+      try service.makeImportPreviewSynchronously(
         sourceURLs: sourceURLs,
         options: options
       )
+    }
+  }
+
+  private func makeLocalImportPreview(
+    sourceURLs: [URL],
+    operation: @escaping @Sendable () throws -> KnowledgeImportPreview
+  ) async throws -> KnowledgeImportPreview {
+    let directPriority = KnowledgeImportPreviewExecutionPolicy.priority(for: sourceURLs)
+    if directPriority == .background {
+      return try await runDetachedImportPreview(
+        priority: directPriority,
+        operation: operation
+      )
+    }
+
+    let containsDirectory = sourceURLs.contains { sourceURL in
+      var isDirectory: ObjCBool = false
+      return fileManager.fileExists(atPath: sourceURL.path, isDirectory: &isDirectory)
+        && isDirectory.boolValue
+    }
+    guard containsDirectory else {
+      return try await runDetachedImportPreview(
+        priority: directPriority,
+        operation: operation
+      )
+    }
+
+    let service = self
+    let inspectionTask = Task.detached(priority: .background) {
+      try Task.checkCancellation()
+      return try service.containsPDFSource(in: sourceURLs)
+    }
+    let sourceTreeContainsPDF = try await withTaskCancellationHandler {
+      try await inspectionTask.value
+    } onCancel: {
+      inspectionTask.cancel()
+    }
+    try Task.checkCancellation()
+
+    let priority = KnowledgeImportPreviewExecutionPolicy.priority(
+      for: sourceURLs,
+      sourceTreeContainsPDF: sourceTreeContainsPDF
+    )
+    return try await runDetachedImportPreview(priority: priority, operation: operation)
+  }
+
+  private func runDetachedImportPreview(
+    priority: TaskPriority,
+    operation: @escaping @Sendable () throws -> KnowledgeImportPreview
+  ) async throws -> KnowledgeImportPreview {
+    let task = Task.detached(priority: priority) {
+      try Task.checkCancellation()
+      return try operation()
     }
     return try await withTaskCancellationHandler {
       try await task.value
     } onCancel: {
       task.cancel()
     }
+  }
+
+  private func containsPDFSource(in sourceURLs: [URL]) throws -> Bool {
+    for sourceURL in sourceURLs {
+      try Task.checkCancellation()
+      if sourceURL.pathExtension.lowercased() == "pdf" {
+        return true
+      }
+
+      var isDirectory: ObjCBool = false
+      guard fileManager.fileExists(atPath: sourceURL.path, isDirectory: &isDirectory),
+            isDirectory.boolValue,
+            let enumerator = fileManager.enumerator(
+              at: sourceURL,
+              includingPropertiesForKeys: [.isRegularFileKey],
+              options: [.skipsHiddenFiles, .skipsPackageDescendants]
+            ) else {
+        continue
+      }
+
+      for case let fileURL as URL in enumerator {
+        try Task.checkCancellation()
+        guard fileURL.pathExtension.lowercased() == "pdf" else { continue }
+        let values = try? fileURL.resourceValues(forKeys: [.isRegularFileKey])
+        if values?.isRegularFile == true {
+          return true
+        }
+      }
+    }
+    return false
   }
 
   public func makeWebImportPreview(url: URL) async throws -> KnowledgeImportPreview {

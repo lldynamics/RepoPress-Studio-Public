@@ -36,11 +36,19 @@ struct AIChatConversationInspectorSection: View {
         ForEach(context.messages) { message in
           AIChatMessageSurface(role: message.role, timestamp: message.createdAt) {
             if message.role == .assistant {
+              let presentation = AIChatAssistantMessagePresentationPolicy.mode(
+                role: message.role,
+                messageID: message.id,
+                latestMessageID: latestMessageID,
+                isChatRunning: context.isChatRunning
+              )
               AIChatAssistantMessageContent(
                 content: AIPublishingChatMessageCompositionService.displayContent(for: message),
+                presentation: presentation,
                 actions: actions,
                 draft: context.draft
               )
+              .equatable()
             } else {
               Text(verbatim: AIPublishingChatMessageCompositionService.displayContent(for: message))
                 .font(.workbenchBody)
@@ -172,6 +180,10 @@ struct AIChatConversationInspectorSection: View {
 
   private var latestAssistantMessageID: AIPublishingChatMessage.ID? {
     context.messages.last(where: { $0.role == .assistant })?.id
+  }
+
+  private var latestMessageID: AIPublishingChatMessage.ID? {
+    context.messages.last?.id
   }
 
   @ViewBuilder

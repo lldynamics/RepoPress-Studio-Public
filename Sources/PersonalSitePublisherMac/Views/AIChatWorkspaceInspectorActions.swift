@@ -254,7 +254,6 @@ extension AIChatContextInspectorView {
         globalOperationRunning: ai.isChatRunning
       )
     else { return }
-    isFollowingLatestMessage = true
     let ownerToken = UUID()
     let submittedSurfaceConversationID = inspectorSurfaceConversationID
     let submittedContextMode = ai.chatContextMode
@@ -391,7 +390,6 @@ extension AIChatContextInspectorView {
         globalOperationRunning: ai.isChatRunning
       )
     else { return }
-    isFollowingLatestMessage = true
     let ownerToken = UUID()
     let submittedContextMode = ai.chatContextMode
     let submittedConversationID = inspectorSurfaceConversationID
@@ -466,18 +464,12 @@ extension AIChatContextInspectorView {
 
   func scheduleLatestMessageScroll(
     using proxy: ScrollViewProxy,
-    animated: Bool,
-    delayNanoseconds: UInt64 = 0
+    animated: Bool
   ) {
     latestMessageScrollTask?.cancel()
     let targetID = latestMessageID
     latestMessageScrollTask = Task { @MainActor in
-      if delayNanoseconds > 0 {
-        try? await Task.sleep(nanoseconds: delayNanoseconds)
-      }
-      guard !Task.isCancelled,
-        isFollowingLatestMessage,
-        let targetID
+      guard !Task.isCancelled, let targetID
       else { return }
       if animated {
         withAnimation(WorkbenchMotion.standard) {

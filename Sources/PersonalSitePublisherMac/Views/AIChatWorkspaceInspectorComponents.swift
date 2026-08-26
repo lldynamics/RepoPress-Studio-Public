@@ -19,7 +19,6 @@ struct AIChatContextInspectorView: View {
   @State var latestMessageScrollTask: Task<Void, Never>?
   @State var draftDiffPreview: AIChatDraftDiffPreview?
   @State var visibleMessageLimit = 8
-  @State var isFollowingLatestMessage = true
   @State var messageAnchorToPreserve: AIPublishingChatMessage.ID?
   @State var isPartialRetryConfirmationPresented = false
   @State var isDataSharingConsentConfirmationPresented = false
@@ -61,67 +60,34 @@ struct AIChatContextInspectorView: View {
         Divider()
       }
 
-      GeometryReader { viewport in
-        ScrollViewReader { proxy in
-          ScrollView {
-            AIChatContextInspectorContent(state: state, actions: actions)
-              .padding(16)
-
-            Color.clear
-              .frame(height: 1)
-              .background {
-                GeometryReader { geometry in
-                  Color.clear.preference(
-                    key: AIChatScrollBottomPreferenceKey.self,
-                    value: geometry.frame(in: .named("ai-chat-scroll")).maxY
-                  )
-                }
-              }
-          }
-          .coordinateSpace(name: "ai-chat-scroll")
-          .onPreferenceChange(AIChatScrollBottomPreferenceKey.self) { bottomPosition in
-            guard bottomPosition > 0 else { return }
-            isFollowingLatestMessage = bottomPosition <= viewport.size.height + 56
-          }
-          .overlay(alignment: .bottomTrailing) {
-            if !isFollowingLatestMessage, latestMessageID != nil {
-              Button {
-                isFollowingLatestMessage = true
-                scrollToLatestMessage(using: proxy)
-              } label: {
-                Label(
-                  String(localized: "跳到最新"),
-                  systemImage: "arrow.down.circle.fill"
-                )
-              }
-              .controlSize(.small)
-              .padding(10)
-            }
-          }
-          .onAppear {
-            scrollToLatestMessage(using: proxy, animated: false)
-          }
-          .onChange(of: latestMessageID) { _, _ in
-            guard isFollowingLatestMessage else { return }
-            scheduleLatestMessageScroll(
-              using: proxy,
-              animated: !isSending
-            )
-          }
-          .onChange(of: latestMessageContent) { _, _ in
-            guard isFollowingLatestMessage else { return }
-            scheduleLatestMessageScroll(
-              using: proxy,
-              animated: false,
-              delayNanoseconds: 75_000_000
-            )
-          }
-          .onChange(of: visibleMessageLimit) { _, _ in
-            guard let anchor = messageAnchorToPreserve else { return }
-            DispatchQueue.main.async {
-              proxy.scrollTo(anchor, anchor: .top)
-              messageAnchorToPreserve = nil
-            }
+      ScrollViewReader { proxy in
+        ScrollView {
+          AIChatContextInspectorContent(state: state, actions: actions)
+            .padding(16)
+        }
+        .defaultScrollAnchor(.bottom)
+        .onAppear {
+          scrollToLatestMessage(using: proxy, animated: false)
+        }
+        .onChange(of: latestMessageID) { _, _ in
+          scheduleLatestMessageScroll(
+            using: proxy,
+            animated: !isSending
+          )
+        }
+        .onChange(of: latestMessageContent) { _, _ in
+          // Stream content is already published at most every 50 ms. Scroll
+          // each publication so a continuous stream cannot starve a debounce.
+          scheduleLatestMessageScroll(
+            using: proxy,
+            animated: false
+          )
+        }
+        .onChange(of: visibleMessageLimit) { _, _ in
+          guard let anchor = messageAnchorToPreserve else { return }
+          DispatchQueue.main.async {
+            proxy.scrollTo(anchor, anchor: .top)
+            messageAnchorToPreserve = nil
           }
         }
       }
@@ -166,7 +132,6 @@ struct AIChatContextInspectorView: View {
     }
     .onChange(of: ai.chatDraftID) { _, _ in
       visibleMessageLimit = 8
-      isFollowingLatestMessage = true
     }
     .onChange(of: ai.chatContextMode) { _, mode in
       synchronizeInspectorConversationForContextMode(mode)
@@ -180,19 +145,16 @@ struct AIChatContextInspectorView: View {
         synchronizeInspectorSurfaceWithActiveConversation()
       }
       visibleMessageLimit = 8
-      isFollowingLatestMessage = true
     }
     .onChange(of: ai.activeGeneralChatConversationID) { _, _ in
       if ai.chatContextMode == .general {
         synchronizeInspectorSurfaceWithActiveConversation()
       }
       visibleMessageLimit = 8
-      isFollowingLatestMessage = true
     }
     .onChange(of: ai.chatMessages.count) { _, count in
       if count == 0 {
         visibleMessageLimit = 8
-        isFollowingLatestMessage = true
       }
     }
     .sheet(item: $draftDiffPreview) { preview in

@@ -23,6 +23,13 @@ struct LocalSitePreviewPanelView: View {
     .onChange(of: state.activeProfileID) {
       pendingAuthorizationRequest = nil
     }
+    .onDisappear {
+      // The panel owns the lifetime of its local preview. `state.stop()`
+      // marks the runtime stopped immediately and performs process/watcher
+      // termination asynchronously, so dismissing the sheet never waits on
+      // a child process from the main actor.
+      state.stop()
+    }
   }
 
   private var header: some View {

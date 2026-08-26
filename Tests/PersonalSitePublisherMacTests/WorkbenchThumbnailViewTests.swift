@@ -1,5 +1,7 @@
 import CoreGraphics
+import ImageIO
 import QuickLookThumbnailing
+import UniformTypeIdentifiers
 import XCTest
 @testable import PersonalSitePublisherMac
 
@@ -41,5 +43,48 @@ final class WorkbenchThumbnailViewTests: XCTestCase {
 
     XCTAssertEqual(request.quickLookRequest.scale, 1)
     XCTAssertEqual(request.quickLookRequest.size, CGSize(width: 128, height: 128))
+  }
+
+  func testImageIOThumbnailRespectsPixelBudgetFor4KImage() throws {
+    let url = FileManager.default.temporaryDirectory
+      .appendingPathComponent("workbench-thumbnail-\(UUID().uuidString).png")
+    defer { try? FileManager.default.removeItem(at: url) }
+
+    let width = 4_096
+    let height = 2_160
+    let colorSpace = try XCTUnwrap(CGColorSpace(name: CGColorSpace.sRGB))
+    let context = try XCTUnwrap(
+      CGContext(
+        data: nil,
+        width: width,
+        height: height,
+        bitsPerComponent: 8,
+        bytesPerRow: 0,
+        space: colorSpace,
+        bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+      )
+    )
+    context.setFillColor(CGColor(gray: 0.5, alpha: 1))
+    context.fill(CGRect(x: 0, y: 0, width: width, height: height))
+    let image = try XCTUnwrap(context.makeImage())
+    let destination = try XCTUnwrap(
+      CGImageDestinationCreateWithURL(
+        url as CFURL,
+        UTType.png.identifier as CFString,
+        1,
+        nil
+      )
+    )
+    CGImageDestinationAddImage(destination, image, nil)
+    XCTAssertTrue(CGImageDestinationFinalize(destination))
+
+    let thumbnail = try XCTUnwrap(
+      WorkbenchImageIOThumbnailDecoder.downsampledImage(
+        at: url,
+        maxPixelSize: WorkbenchThumbnailSizing.listMaxPixelSize
+      )
+    )
+    XCTAssertLessThanOrEqual(thumbnail.width, WorkbenchThumbnailSizing.listMaxPixelSize)
+    XCTAssertLessThanOrEqual(thumbnail.height, WorkbenchThumbnailSizing.listMaxPixelSize)
   }
 }

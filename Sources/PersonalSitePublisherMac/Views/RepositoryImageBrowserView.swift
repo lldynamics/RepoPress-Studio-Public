@@ -453,7 +453,11 @@ private struct RepositoryImageRow: View {
 
   var body: some View {
     HStack(spacing: 10) {
-      WorkbenchThumbnailView(fileURL: asset.fileURL, maxPixelSize: 96, cornerRadius: 6)
+      WorkbenchThumbnailView(
+        fileURL: asset.fileURL,
+        maxPixelSize: WorkbenchThumbnailSizing.listMaxPixelSize,
+        cornerRadius: 6
+      )
         .frame(width: 36, height: 36)
 
       VStack(alignment: .leading, spacing: 2) {

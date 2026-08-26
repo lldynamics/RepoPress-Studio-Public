@@ -5,6 +5,33 @@ struct AIChatContextInspectorState {
   let draft: AIChatInspectorDraftContext?
 }
 
+enum AIChatAssistantMessagePresentationMode: Equatable {
+  case streamingText
+  case structured
+}
+
+/// Chooses the lightweight text surface only for the assistant message that
+/// is currently receiving the active chat stream. The store already coalesces
+/// streaming token publications into its 50 ms UI updates; this policy keeps
+/// each such update from rebuilding Markdown/code-block views. Completed and
+/// older messages keep their structured presentation.
+enum AIChatAssistantMessagePresentationPolicy {
+  static func mode(
+    role: AIPublishingChatRole,
+    messageID: UUID,
+    latestMessageID: UUID?,
+    isChatRunning: Bool
+  ) -> AIChatAssistantMessagePresentationMode {
+    guard role == .assistant,
+      isChatRunning,
+      messageID == latestMessageID
+    else {
+      return .structured
+    }
+    return .streamingText
+  }
+}
+
 struct AIChatInspectorModelGradeCandidate: Equatable, Identifiable {
   let grade: AIChatModelGrade
   let title: String

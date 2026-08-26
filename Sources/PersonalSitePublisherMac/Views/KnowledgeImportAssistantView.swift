@@ -13,6 +13,7 @@ struct KnowledgeImportAssistantView: View {
   @State private var isCommitting = false
   @State private var statusMessage: StatusMessage?
   @State private var analysisTask: Task<Void, Never>?
+  @State private var analysisGeneration = UUID()
   @State private var isFileDropTargeted = false
   @State private var didAnalyzeInitialSources = false
   @State private var selectedCandidateIDs: Set<UUID> = []
@@ -173,8 +174,16 @@ struct KnowledgeImportAssistantView: View {
         }
 
         if isAnalyzing {
-          ProgressView("正在提取正文并检查重复内容…")
+          HStack(spacing: 10) {
+            ProgressView("正在提取正文并检查重复内容…")
+              .controlSize(.small)
+            Button(String(localized: "取消分析")) {
+              cancelAnalysis()
+            }
+            .buttonStyle(.bordered)
             .controlSize(.small)
+            .accessibilityLabel(String(localized: "取消分析"))
+          }
         }
         if let statusMessage {
           Text(statusMessage.text)
@@ -458,17 +467,31 @@ struct KnowledgeImportAssistantView: View {
     }
   }
 
+  private func cancelAnalysis() {
+    guard isAnalyzing else { return }
+    analysisTask?.cancel()
+    statusMessage = .info(String(localized: "分析已取消。"))
+  }
+
   private func analyze(
     _ operation: @escaping @MainActor () async throws -> KnowledgeImportPreview
   ) {
     analysisTask?.cancel()
+    let generation = UUID()
+    analysisGeneration = generation
     isAnalyzing = true
     statusMessage = nil
     analysisTask = Task {
-      defer { isAnalyzing = false }
+      defer {
+        if analysisGeneration == generation {
+          isAnalyzing = false
+          analysisTask = nil
+        }
+      }
       do {
         let generatedPreview = try await operation()
         try Task.checkCancellation()
+        guard analysisGeneration == generation else { return }
         preview = generatedPreview
         selectedCandidateIDs = Set(generatedPreview.candidates.map(\.id))
         showsRemainingCandidates = false
@@ -477,6 +500,7 @@ struct KnowledgeImportAssistantView: View {
       } catch is CancellationError {
         return
       } catch {
+        guard analysisGeneration == generation else { return }
         preview = nil
         selectedCandidateIDs.removeAll()
         showsRemainingCandidates = false
@@ -541,10 +565,11 @@ struct KnowledgeImportAssistantView: View {
   private enum StatusMessage {
     case success(String)
     case failure(String)
+    case info(String)
 
     var text: String {
       switch self {
-      case let .success(text), let .failure(text):
+      case let .success(text), let .failure(text), let .info(text):
         return text
       }
     }
@@ -555,6 +580,8 @@ struct KnowledgeImportAssistantView: View {
         return WorkbenchTheme.success
       case .failure:
         return WorkbenchTheme.risk
+      case .info:
+        return .secondary
       }
     }
   }

@@ -76,30 +76,50 @@ struct AIChatMessageSurface<Content: View>: View {
   }
 }
 
-struct AIChatAssistantMessageContent: View {
+struct AIChatAssistantMessageContent: View, Equatable {
   let content: String
+  let presentation: AIChatAssistantMessagePresentationMode
   let actions: AIChatContextInspectorActions
   let draft: ArticleDraft
 
+  nonisolated static func == (lhs: Self, rhs: Self) -> Bool {
+    // The command closures stay bound to the same Inspector. Content,
+    // presentation mode, and the action target draft are the value inputs
+    // that determine whether this subtree must be rebuilt.
+    lhs.content == rhs.content
+      && lhs.presentation == rhs.presentation
+      && lhs.draft == rhs.draft
+  }
+
   var body: some View {
     VStack(alignment: .leading, spacing: 9) {
-      ForEach(AIChatCodeBlockPresentationService.segments(in: content)) { segment in
-        switch segment {
-        case let .text(_, text):
-          if !text.isEmpty {
-            Text(verbatim: text)
-              .font(.workbenchBody)
-              .lineSpacing(3)
-              .textSelection(.enabled)
-              .fixedSize(horizontal: false, vertical: true)
+      switch presentation {
+      case .streamingText:
+        Text(verbatim: content)
+          .font(.workbenchBody)
+          .lineSpacing(3)
+          .textSelection(.enabled)
+          .fixedSize(horizontal: false, vertical: true)
+
+      case .structured:
+        ForEach(AIChatCodeBlockPresentationService.segments(in: content)) { segment in
+          switch segment {
+          case let .text(_, text):
+            if !text.isEmpty {
+              Text(verbatim: text)
+                .font(.workbenchBody)
+                .lineSpacing(3)
+                .textSelection(.enabled)
+                .fixedSize(horizontal: false, vertical: true)
+            }
+          case let .code(block):
+            AIChatCodeBlockActionCard(
+              block: block,
+              apply: { actions.applyCodeBlock(block, draft) },
+              insertAtCursor: { actions.insertCodeBlockAtCursor(block, draft) },
+              copy: { actions.copyCodeBlock(block) }
+            )
           }
-        case let .code(block):
-          AIChatCodeBlockActionCard(
-            block: block,
-            apply: { actions.applyCodeBlock(block, draft) },
-            insertAtCursor: { actions.insertCodeBlockAtCursor(block, draft) },
-            copy: { actions.copyCodeBlock(block) }
-          )
         }
       }
     }
