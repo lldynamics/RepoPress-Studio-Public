@@ -342,6 +342,8 @@ private extension DraftVersionEditableField {
     case .tags: String(localized: "标签")
     case .categories: String(localized: "分类")
     case .authors: String(localized: "作者")
+    case .aliases: String(localized: "旧地址别名")
+    case .permalink: String(localized: "固定地址")
     case .draftState: String(localized: "草稿状态")
     case .visibility: String(localized: "可见性")
     case .summary: String(localized: "摘要")

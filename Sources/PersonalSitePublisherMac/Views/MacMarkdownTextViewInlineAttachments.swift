@@ -3,11 +3,13 @@ import ImageIO
 import PublishingWorkbenchCore
 import UniformTypeIdentifiers
 
-/// Stable identity and geometry for a native attachment overlay. The
-/// coordinator retains these separately from NSView instances so subsequent
-/// viewport passes can compare presentation state without making the view the
-/// source of truth.
-struct MarkdownInlineAttachmentOverlayDescriptor: Equatable {
+/// Paint-only state for an editable Markdown inline attachment.
+///
+/// The source Markdown remains authoritative. This value only describes the
+/// derived card that the text view paints for one visible source range. Keeping
+/// the stable key and image value here lets viewport reconciliation reuse the
+/// same presentation without creating an AppKit child view per attachment.
+struct MarkdownInlineAttachmentDrawing: Equatable {
   struct RenderingAttributesSnapshot {
     let range: NSRange
     let attributes: [NSAttributedString.Key: Any]
@@ -22,37 +24,85 @@ struct MarkdownInlineAttachmentOverlayDescriptor: Equatable {
     )
   }
 
+  let key: String
   let content: Content
   let documentRange: NSRange
   let frame: NSRect
   let renderingAttributesSnapshots: [RenderingAttributesSnapshot]
   let originalParagraphStyle: NSParagraphStyle?
+  let minimumLineHeight: CGFloat
+  let image: NSImage?
+  let isImageLoading: Bool
 
   // Rendering attributes are dictionaries containing non-Equatable AppKit
   // values. The snapshot is deliberately excluded from identity comparison:
   // it belongs to the source range being painted and should not cause an
-  // otherwise reusable overlay to be recreated.
+  // otherwise reusable drawing to be recreated.
   static func == (
-    lhs: MarkdownInlineAttachmentOverlayDescriptor,
-    rhs: MarkdownInlineAttachmentOverlayDescriptor
+    lhs: MarkdownInlineAttachmentDrawing,
+    rhs: MarkdownInlineAttachmentDrawing
   ) -> Bool {
-    lhs.content == rhs.content
+    lhs.key == rhs.key
+      && lhs.content == rhs.content
       && lhs.documentRange == rhs.documentRange
       && lhs.frame == rhs.frame
+      && lhs.minimumLineHeight == rhs.minimumLineHeight
+      && lhs.image === rhs.image
+      && lhs.isImageLoading == rhs.isImageLoading
   }
 }
 
-enum MarkdownInlineAttachmentOverlayLayoutMode {
+/// Accessibility-only representation of a paint-only inline attachment.
+///
+/// Editable images and formulas no longer own an AppKit child view, but they
+/// still appear as children of the text view to VoiceOver. The stable key lets
+/// image completion update presentation without replacing the accessibility
+/// object.
+@MainActor
+final class MarkdownInlineAttachmentAccessibilityElement: NSAccessibilityElement {
+  let drawingKey: String
+
+  init(
+    drawing: MarkdownInlineAttachmentDrawing,
+    parent: DroppableMarkdownTextView
+  ) {
+    drawingKey = drawing.key
+    super.init()
+    setAccessibilityElement(true)
+    setAccessibilityParent(parent)
+    update(with: drawing)
+  }
+
+  required init?(coder: NSCoder) {
+    nil
+  }
+
+  func update(with drawing: MarkdownInlineAttachmentDrawing) {
+    setAccessibilityFrameInParentSpace(drawing.frame)
+    switch drawing.content {
+    case .image(_, let accessibilityText):
+      setAccessibilityRole(.image)
+      setAccessibilityLabel(accessibilityText)
+      setAccessibilityValue(nil)
+    case .formula(let source, _, _):
+      setAccessibilityRole(.staticText)
+      setAccessibilityLabel("数学公式")
+      setAccessibilityValue(source)
+    }
+  }
+}
+
+enum MarkdownInlineAttachmentDrawingLayoutMode {
   case block
   case inline
 }
 
-enum MarkdownInlineAttachmentOverlayLayout {
+enum MarkdownInlineAttachmentDrawingLayout {
   static func frame(
     sourceRect: NSRect,
     textViewBounds: NSRect,
     horizontalInset: CGFloat,
-    mode: MarkdownInlineAttachmentOverlayLayoutMode,
+    mode: MarkdownInlineAttachmentDrawingLayoutMode,
     preferredWidth: CGFloat?,
     preferredHeight: CGFloat
   ) -> NSRect? {
@@ -83,7 +133,7 @@ enum MarkdownInlineAttachmentOverlayLayout {
       let sourceWidth = sourceRect.width
       guard sourceWidth > 0 else { return nil }
 
-      // Inline overlays are painted above the Markdown source. If their
+      // Inline drawings are painted above the Markdown source. If their
       // presentation needs more width than the source span reserved by
       // TextKit, extending the frame would cover the next glyph. Returning
       // nil makes the caller restore the source instead of obscuring text.
@@ -115,50 +165,46 @@ enum MarkdownInlineAttachmentOverlayLayout {
   }
 }
 
-private struct MarkdownInlineAttachmentOverlayCandidate {
-  let content: MarkdownInlineAttachmentOverlayDescriptor.Content
-  let viewContent: MarkdownInlineAttachmentOverlayView.Content
+private struct MarkdownInlineAttachmentDrawingCandidate {
+  let content: MarkdownInlineAttachmentDrawing.Content
   let sourceURL: URL?
   let documentRange: NSRange
-  let layout: MarkdownInlineAttachmentOverlayLayoutMode
+  let layout: MarkdownInlineAttachmentDrawingLayoutMode
   let preferredWidth: CGFloat?
   let preferredHeight: CGFloat
   let minimumLineHeight: CGFloat
 }
 
 extension MacMarkdownTextView.Coordinator {
-  private static let inlineAttachmentOverlayViewPoolLimit = 16
   private static let inlineAttachmentImageURLCacheLimit = 128
 
-  /// Invalidates attachment-derived caches without touching active overlays.
+  /// Invalidates attachment-derived caches without touching active drawings.
   /// The caller subsequently schedules a full viewport repaint, which restores
-  /// source attributes and removes those overlays through the normal teardown
-  /// path. Dropping the pool here also prevents an attachment/appearance
-  /// change from reusing a view with stale presentation state.
+  /// source attributes and removes those drawings through the normal teardown
+  /// path.
   func invalidateInlineAttachmentCaches() {
-    inlineAttachmentOverlayViewPool.removeAll(keepingCapacity: false)
     inlineAttachmentImageURLCache.removeAll(keepingCapacity: false)
     inlineAttachmentUnsupportedImagePaths.removeAll(keepingCapacity: false)
     inlineAttachmentFailedImagePaths.removeAll(keepingCapacity: false)
     inlineAttachmentReferenceLookupCache = nil
   }
 
-  func clearInlineAttachmentOverlays(in textView: NSTextView? = nil) {
-    let paintedDescriptors = Array(inlineAttachmentOverlayDescriptors.values)
+  func clearInlineAttachmentDrawings(in textView: NSTextView? = nil) {
+    let targetTextView = textView ?? self.textView
+    let paintedDescriptors = Array(inlineAttachmentDrawingDescriptors.values)
     let paintedRanges = inlineAttachmentPaintedRanges
     for task in inlineAttachmentImageTasks.values {
       task.cancel()
     }
     inlineAttachmentImageTasks.removeAll()
-    for overlay in inlineAttachmentOverlayViews.values {
-      recycleInlineAttachmentOverlayView(overlay)
-    }
-    inlineAttachmentOverlayViews.removeAll()
-    inlineAttachmentOverlayDescriptors.removeAll()
+    inlineAttachmentDrawingDescriptors.removeAll()
     inlineAttachmentPaintedRanges.removeAll()
 
-    guard let textView else { return }
-    let documentLength = (textView.string as NSString).length
+    if let droppableTextView = targetTextView as? DroppableMarkdownTextView {
+      droppableTextView.markdownInlineAttachmentDrawings = [:]
+    }
+    guard let targetTextView else { return }
+    let documentLength = (targetTextView.string as NSString).length
     var restoredRanges = Set<NSRange>()
     for descriptor in paintedDescriptors
       where descriptor.documentRange.location != NSNotFound
@@ -166,14 +212,14 @@ extension MacMarkdownTextView.Coordinator {
     {
       restoreInlineAttachmentRendering(
         in: descriptor.documentRange,
-        textView: textView,
+        textView: targetTextView,
         renderingAttributesSnapshots: descriptor.renderingAttributesSnapshots,
         originalParagraphStyle: descriptor.originalParagraphStyle
       )
       restoredRanges.insert(descriptor.documentRange)
     }
 
-    // Keep the cleanup path defensive for a partially installed overlay. A
+    // Keep the cleanup path defensive for a partially installed drawing. A
     // descriptor is normally present for every painted range, but restoring a
     // remaining range is safer than leaving the source permanently hidden.
     for range in paintedRanges
@@ -181,25 +227,32 @@ extension MacMarkdownTextView.Coordinator {
         && range.location != NSNotFound
         && NSMaxRange(range) <= documentLength
     {
-      restoreInlineAttachmentRendering(in: range, textView: textView)
+      restoreInlineAttachmentRendering(in: range, textView: targetTextView)
     }
   }
 
-  func applyInlineAttachmentOverlays(
+  func applyInlineAttachmentDrawings(
     in textView: NSTextView,
     applicationRange: NSRange,
     preservingExisting: Bool = false
   ) {
+    guard let droppableTextView = textView as? DroppableMarkdownTextView else { return }
     if !preservingExisting {
-      clearInlineAttachmentOverlays(in: textView)
+      clearInlineAttachmentDrawings(in: textView)
     }
     let document = textView.string as NSString
     guard bodyUTF16Offset >= 0, bodyUTF16Offset <= document.length else { return }
+    guard let rangeResolver = MarkdownTextKit2RangeAdapter.rangeResolver(
+      for: applicationRange,
+      in: textView
+    ) else {
+      return
+    }
     let plan = cachedInlineAttachmentPlan(in: document)
 
     let selection = textView.selectedRange()
     let attachmentByReference = attachmentReferenceLookup()
-    var desiredCandidates: [String: MarkdownInlineAttachmentOverlayCandidate] = [:]
+    var desiredCandidates: [String: MarkdownInlineAttachmentDrawingCandidate] = [:]
     var desiredKeys = Set<String>()
     for item in visibleInlineAttachmentItems(in: plan, applicationRange: applicationRange) {
       let documentRange = NSRange(
@@ -210,22 +263,22 @@ extension MacMarkdownTextView.Coordinator {
         !Self.selection(selection, touches: documentRange)
       else { continue }
 
-      let key = inlineAttachmentOverlayKey(for: documentRange)
+      let key = inlineAttachmentDrawingKey(for: documentRange)
       if preservingExisting,
-        inlineAttachmentOverlayViews[key] != nil,
-        let current = inlineAttachmentOverlayDescriptors[key],
-        canReuseInlineAttachmentOverlay(
+        let current = inlineAttachmentDrawingDescriptors[key],
+        canReuseInlineAttachmentDrawing(
           current,
           item: item,
           documentRange: documentRange,
           attachmentByReference: attachmentByReference
         )
       {
-        // A viewport scroll changes which candidates are visible, but it does
-        // not change the document-space geometry of an unchanged overlay.
-        // Keep the existing descriptor and view so TextKit does not have to
-        // ensure layout and enumerate text segments again on every scroll.
+        // A viewport scroll or selection repaint does not change the
+        // document-space geometry of an unchanged drawing. Keep its value
+        // identity and image task; only restore the source-hiding attributes
+        // that a full syntax repaint may have removed.
         desiredKeys.insert(key)
+        applyInlineAttachmentDrawingRendering(current, in: textView)
         continue
       }
 
@@ -248,9 +301,8 @@ extension MacMarkdownTextView.Coordinator {
           ?? attachment.originalFilename
         desiredKeys.insert(key)
         desiredCandidates[key] =
-          MarkdownInlineAttachmentOverlayCandidate(
+          MarkdownInlineAttachmentDrawingCandidate(
           content: .image(path: sourceURL.path, accessibilityText: accessibilityText),
-          viewContent: .image(accessibilityText: accessibilityText),
           sourceURL: sourceURL,
           documentRange: documentRange,
           layout: .block,
@@ -271,13 +323,8 @@ extension MacMarkdownTextView.Coordinator {
         let isInline = displayMode == .inline
         desiredKeys.insert(key)
         desiredCandidates[key] =
-          MarkdownInlineAttachmentOverlayCandidate(
+          MarkdownInlineAttachmentDrawingCandidate(
           content: .formula(
-            source: source,
-            displayMode: displayMode,
-            fontSize: fontSize
-          ),
-          viewContent: .formula(
             source: source,
             displayMode: displayMode,
             fontSize: fontSize
@@ -296,120 +343,145 @@ extension MacMarkdownTextView.Coordinator {
       }
     }
 
-    let obsoleteKeys = inlineAttachmentOverlayViews.keys.filter { key in
+    let obsoleteKeys = inlineAttachmentDrawingDescriptors.keys.filter { key in
       guard let desired = desiredCandidates[key],
-        let current = inlineAttachmentOverlayDescriptors[key]
+        let current = inlineAttachmentDrawingDescriptors[key]
       else { return !desiredKeys.contains(key) }
       return current.content != desired.content || current.documentRange != desired.documentRange
     }
     for key in obsoleteKeys {
-      removeInlineAttachmentOverlay(forKey: key, in: textView)
+      removeInlineAttachmentDrawing(forKey: key, in: textView)
     }
 
-    var didMutateOverlays = !obsoleteKeys.isEmpty
+    var didMutateDrawings = !obsoleteKeys.isEmpty
     for (key, candidate) in desiredCandidates {
-      if let overlay = inlineAttachmentOverlayViews[key],
-        let current = inlineAttachmentOverlayDescriptors[key],
+      if let current = inlineAttachmentDrawingDescriptors[key],
         current.content == candidate.content,
         current.documentRange == candidate.documentRange
       {
-        guard let frame = inlineAttachmentOverlayFrame(for: candidate, in: textView) else {
-          removeInlineAttachmentOverlay(forKey: key, in: textView)
-          didMutateOverlays = true
-          continue
-        }
-        overlay.frame = frame
-        inlineAttachmentOverlayDescriptors[key] = MarkdownInlineAttachmentOverlayDescriptor(
-          content: candidate.content,
-          documentRange: candidate.documentRange,
-          frame: frame,
-          renderingAttributesSnapshots: current.renderingAttributesSnapshots,
-          originalParagraphStyle: current.originalParagraphStyle
-        )
+        // This branch is only reachable when a caller requested a fresh
+        // candidate but the descriptor remained reusable. Preserve geometry,
+        // image value, and task identity rather than re-measuring it.
+        applyInlineAttachmentDrawingRendering(current, in: textView)
         continue
       }
-      installInlineAttachmentOverlay(candidate: candidate, key: key, in: textView)
-      didMutateOverlays = true
+      installInlineAttachmentDrawing(
+        candidate: candidate,
+        key: key,
+        in: textView,
+        rangeResolver: rangeResolver
+      )
+      if inlineAttachmentDrawingDescriptors[key] != nil {
+        didMutateDrawings = true
+      }
     }
-    inlineAttachmentPaintedRanges = inlineAttachmentOverlayDescriptors.values
+    inlineAttachmentPaintedRanges = inlineAttachmentDrawingDescriptors.values
       .map(\.documentRange)
       .sorted { $0.location < $1.location }
-    if didMutateOverlays {
+    droppableTextView.markdownInlineAttachmentDrawings = inlineAttachmentDrawingDescriptors
+    if didMutateDrawings {
       (textView.enclosingScrollView as? MarkdownEditorScrollView)?.invalidateDocumentHeight()
     }
   }
 
-  private func installInlineAttachmentOverlay(
-    candidate: MarkdownInlineAttachmentOverlayCandidate,
+  private func installInlineAttachmentDrawing(
+    candidate: MarkdownInlineAttachmentDrawingCandidate,
     key: String,
-    in textView: NSTextView
+    in textView: NSTextView,
+    rangeResolver: MarkdownTextKit2RangeAdapter.RangeResolver
   ) {
-    // Resolve geometry before hiding the Markdown source. If the inline
-    // presentation does not fit its source span or the current container,
-    // the optional frame is nil and the source remains untouched.
-    guard let frame = inlineAttachmentOverlayFrame(for: candidate, in: textView) else {
+    // Resolve geometry only from the already laid out viewport. If TextKit has
+    // not produced a usable rect yet, leave the Markdown source visible and
+    // let the next viewport pass retry.
+    guard let frame = inlineAttachmentDrawingFrame(
+      for: candidate,
+      in: textView,
+      rangeResolver: rangeResolver
+    ) else {
       return
     }
 
     let renderingAttributesSnapshots = captureRenderingAttributes(
       for: candidate.documentRange,
-      in: textView
+      in: textView,
+      rangeResolver: rangeResolver
     )
     let originalParagraphStyle = textView.textStorage?.attribute(
       .paragraphStyle,
       at: candidate.documentRange.location,
       effectiveRange: nil
     ) as? NSParagraphStyle
-    let paragraphStyle =
-      (syntaxHighlightPalette.defaultAttributes[.paragraphStyle] as? NSParagraphStyle)?
-      .mutableCopy() as? NSMutableParagraphStyle ?? NSMutableParagraphStyle()
-    paragraphStyle.minimumLineHeight = candidate.minimumLineHeight
+    let drawing = MarkdownInlineAttachmentDrawing(
+      key: key,
+      content: candidate.content,
+      documentRange: candidate.documentRange,
+      frame: frame,
+      renderingAttributesSnapshots: renderingAttributesSnapshots,
+      originalParagraphStyle: originalParagraphStyle,
+      minimumLineHeight: candidate.minimumLineHeight,
+      image: nil,
+      isImageLoading: candidate.sourceURL != nil
+    )
+    applyInlineAttachmentDrawingRendering(drawing, in: textView)
+    inlineAttachmentDrawingDescriptors[key] = drawing
+    if let droppableTextView = textView as? DroppableMarkdownTextView {
+      droppableTextView.markdownInlineAttachmentDrawings = inlineAttachmentDrawingDescriptors
+    }
+
+    guard let sourceURL = candidate.sourceURL else { return }
+    inlineAttachmentImageTasks[key]?.cancel()
+    inlineAttachmentImageTasks[key] = Task { @MainActor [weak self, weak textView] in
+      let payload = await MarkdownInlineAttachmentImageCache.shared.image(at: sourceURL)
+      guard let self, let textView, !Task.isCancelled,
+        let current = self.inlineAttachmentDrawingDescriptors[key],
+        current.content == candidate.content
+      else { return }
+      guard let payload else {
+        self.inlineAttachmentFailedImagePaths.insert(sourceURL.path)
+        self.removeInlineAttachmentDrawing(forKey: key, in: textView)
+        return
+      }
+      let updated = MarkdownInlineAttachmentDrawing(
+        key: current.key,
+        content: current.content,
+        documentRange: current.documentRange,
+        frame: current.frame,
+        renderingAttributesSnapshots: current.renderingAttributesSnapshots,
+        originalParagraphStyle: current.originalParagraphStyle,
+        minimumLineHeight: current.minimumLineHeight,
+        image: NSImage(cgImage: payload.image, size: .zero),
+        isImageLoading: false
+      )
+      self.inlineAttachmentDrawingDescriptors[key] = updated
+      self.inlineAttachmentImageTasks[key] = nil
+      if let droppableTextView = textView as? DroppableMarkdownTextView {
+        droppableTextView.markdownInlineAttachmentDrawings = self
+          .inlineAttachmentDrawingDescriptors
+      }
+    }
+  }
+
+  private func applyInlineAttachmentDrawingRendering(
+    _ drawing: MarkdownInlineAttachmentDrawing,
+    in textView: NSTextView
+  ) {
     MarkdownTextKit2RangeAdapter.addRenderingAttributes(
       [
         .foregroundColor: NSColor.clear,
         .underlineColor: NSColor.clear,
       ],
-      for: candidate.documentRange,
+      for: drawing.documentRange,
       in: textView
     )
+    let paragraphStyle =
+      (syntaxHighlightPalette.defaultAttributes[.paragraphStyle] as? NSParagraphStyle)?
+      .mutableCopy() as? NSMutableParagraphStyle ?? NSMutableParagraphStyle()
+    paragraphStyle.minimumLineHeight = drawing.minimumLineHeight
     textView.textStorage?.addAttribute(
       .paragraphStyle,
       value: paragraphStyle,
-      range: candidate.documentRange
+      range: drawing.documentRange
     )
-    let overlay = dequeueInlineAttachmentOverlayView(frame: frame)
-    switch candidate.layout {
-    case .block:
-      overlay.autoresizingMask = [.width]
-    case .inline:
-      overlay.autoresizingMask = []
-    }
-    overlay.configure(candidate.viewContent)
-    textView.addSubview(overlay)
-    inlineAttachmentOverlayViews[key] = overlay
-    inlineAttachmentOverlayDescriptors[key] = MarkdownInlineAttachmentOverlayDescriptor(
-      content: candidate.content,
-      documentRange: candidate.documentRange,
-      frame: frame,
-      renderingAttributesSnapshots: renderingAttributesSnapshots,
-      originalParagraphStyle: originalParagraphStyle
-    )
-
-    guard let sourceURL = candidate.sourceURL else { return }
-    inlineAttachmentImageTasks[key] = Task { @MainActor [weak self, weak textView, weak overlay] in
-      let payload = await MarkdownInlineAttachmentImageCache.shared.image(at: sourceURL)
-      guard let self, let textView, let overlay, !Task.isCancelled,
-        self.inlineAttachmentOverlayViews[key] === overlay,
-        self.inlineAttachmentOverlayDescriptors[key]?.content == candidate.content
-      else { return }
-      guard let payload else {
-        self.inlineAttachmentFailedImagePaths.insert(sourceURL.path)
-        self.removeInlineAttachmentOverlay(forKey: key, in: textView)
-        return
-      }
-      overlay.setImage(NSImage(cgImage: payload.image, size: .zero))
-      self.inlineAttachmentImageTasks[key] = nil
-    }
   }
 
   private func cachedInlineAttachmentPlan(in document: NSString) -> MarkdownInlineAttachmentPlan {
@@ -462,12 +534,12 @@ extension MacMarkdownTextView.Coordinator {
     inlineAttachmentPlanIncrementalUpdateCount += 1
   }
 
-  private func inlineAttachmentOverlayKey(for range: NSRange) -> String {
+  private func inlineAttachmentDrawingKey(for range: NSRange) -> String {
     "attachment:\(range.location)"
   }
 
-  private func canReuseInlineAttachmentOverlay(
-    _ descriptor: MarkdownInlineAttachmentOverlayDescriptor,
+  private func canReuseInlineAttachmentDrawing(
+    _ descriptor: MarkdownInlineAttachmentDrawing,
     item: MarkdownInlineAttachmentItem,
     documentRange: NSRange,
     attachmentByReference: [String: DraftAttachment]
@@ -536,13 +608,16 @@ extension MacMarkdownTextView.Coordinator {
     return plan.items[lowerBound..<end]
   }
 
-  private func inlineAttachmentOverlayFrame(
-    for candidate: MarkdownInlineAttachmentOverlayCandidate,
-    in textView: NSTextView
+  private func inlineAttachmentDrawingFrame(
+    for candidate: MarkdownInlineAttachmentDrawingCandidate,
+    in textView: NSTextView,
+    rangeResolver: MarkdownTextKit2RangeAdapter.RangeResolver
   ) -> NSRect? {
     guard let sourceRect = MarkdownTextKit2RangeAdapter.rect(
       for: candidate.documentRange,
-      in: textView
+      using: rangeResolver,
+      in: textView,
+      ensuringLayout: false
     ) else { return nil }
     let horizontalInset = textView.textContainerInset.width + 6
     let containerSize = textView.textContainer?.containerSize ?? .zero
@@ -556,7 +631,7 @@ extension MacMarkdownTextView.Coordinator {
       width: textView.bounds.width > 0 ? textView.bounds.width : containerSize.width,
       height: textView.bounds.height > 0 ? textView.bounds.height : containerSize.height
     )
-    return MarkdownInlineAttachmentOverlayLayout.frame(
+    return MarkdownInlineAttachmentDrawingLayout.frame(
       sourceRect: sourceRect,
       textViewBounds: viewBounds,
       horizontalInset: horizontalInset,
@@ -568,10 +643,11 @@ extension MacMarkdownTextView.Coordinator {
 
   private func captureRenderingAttributes(
     for range: NSRange,
-    in textView: NSTextView
-  ) -> [MarkdownInlineAttachmentOverlayDescriptor.RenderingAttributesSnapshot] {
+    in textView: NSTextView,
+    rangeResolver: MarkdownTextKit2RangeAdapter.RangeResolver
+  ) -> [MarkdownInlineAttachmentDrawing.RenderingAttributesSnapshot] {
     guard let manager = textView.textLayoutManager,
-      let textRange = MarkdownTextKit2RangeAdapter.textRange(for: range, in: textView)
+      let textRange = rangeResolver.textRange(for: range)
     else {
       return []
     }
@@ -580,8 +656,7 @@ extension MacMarkdownTextView.Coordinator {
       .foregroundColor,
       .underlineColor,
     ]
-    manager.ensureLayout(for: textRange)
-    var snapshots: [MarkdownInlineAttachmentOverlayDescriptor.RenderingAttributesSnapshot] = []
+    var snapshots: [MarkdownInlineAttachmentDrawing.RenderingAttributesSnapshot] = []
     manager.enumerateRenderingAttributes(from: textRange.location, reverse: false) {
       _, attributes, renderingRange in
       guard let fullRenderingRange = MarkdownTextKit2RangeAdapter.range(
@@ -597,7 +672,7 @@ extension MacMarkdownTextView.Coordinator {
       let selectedAttributes = attributes.filter { renderingKeys.contains($0.key) }
       if !selectedAttributes.isEmpty {
         snapshots.append(
-          MarkdownInlineAttachmentOverlayDescriptor.RenderingAttributesSnapshot(
+          MarkdownInlineAttachmentDrawing.RenderingAttributesSnapshot(
             range: intersection,
             attributes: selectedAttributes
           )
@@ -608,14 +683,10 @@ extension MacMarkdownTextView.Coordinator {
     return snapshots
   }
 
-  private func removeInlineAttachmentOverlay(forKey key: String, in textView: NSTextView) {
+  private func removeInlineAttachmentDrawing(forKey key: String, in textView: NSTextView) {
     inlineAttachmentImageTasks[key]?.cancel()
     inlineAttachmentImageTasks[key] = nil
-    let overlay = inlineAttachmentOverlayViews.removeValue(forKey: key)
-    guard let descriptor = inlineAttachmentOverlayDescriptors.removeValue(forKey: key) else {
-      if let overlay {
-        recycleInlineAttachmentOverlayView(overlay)
-      }
+    guard let descriptor = inlineAttachmentDrawingDescriptors.removeValue(forKey: key) else {
       return
     }
     restoreInlineAttachmentRendering(
@@ -625,36 +696,15 @@ extension MacMarkdownTextView.Coordinator {
       originalParagraphStyle: descriptor.originalParagraphStyle
     )
     inlineAttachmentPaintedRanges.removeAll { $0 == descriptor.documentRange }
-    if let overlay {
-      recycleInlineAttachmentOverlayView(overlay)
+    if let droppableTextView = textView as? DroppableMarkdownTextView {
+      droppableTextView.markdownInlineAttachmentDrawings = inlineAttachmentDrawingDescriptors
     }
-  }
-
-  private func dequeueInlineAttachmentOverlayView(
-    frame: NSRect
-  ) -> MarkdownInlineAttachmentOverlayView {
-    let overlay = inlineAttachmentOverlayViewPool.popLast()
-      ?? MarkdownInlineAttachmentOverlayView(frame: frame)
-    overlay.prepareForReuse()
-    overlay.frame = frame
-    return overlay
-  }
-
-  private func recycleInlineAttachmentOverlayView(
-    _ overlay: MarkdownInlineAttachmentOverlayView
-  ) {
-    overlay.removeFromSuperview()
-    overlay.prepareForReuse()
-    guard inlineAttachmentOverlayViewPool.count < Self.inlineAttachmentOverlayViewPoolLimit else {
-      return
-    }
-    inlineAttachmentOverlayViewPool.append(overlay)
   }
 
   private func restoreInlineAttachmentRendering(
     in range: NSRange,
     textView: NSTextView,
-    renderingAttributesSnapshots: [MarkdownInlineAttachmentOverlayDescriptor.RenderingAttributesSnapshot] = [],
+    renderingAttributesSnapshots: [MarkdownInlineAttachmentDrawing.RenderingAttributesSnapshot] = [],
     originalParagraphStyle: NSParagraphStyle? = nil
   ) {
     let documentLength = (textView.string as NSString).length

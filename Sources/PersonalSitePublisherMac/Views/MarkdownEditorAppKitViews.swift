@@ -624,6 +624,60 @@ final class DroppableMarkdownTextView: NSTextView {
   var slashCommandKeyHandler: ((MarkdownSlashCommandKey) -> Bool)?
   var ghostTextAcceptHandler: (() -> Bool)?
   var ghostTextDismissHandler: (() -> Bool)?
+  /// Visible block markers are painted by the text view itself. Keeping this
+  /// as value state avoids one AppKit child view (and one Core Animation
+  /// commit) for every list/quote/task marker in the viewport.
+  var markdownBlockMarkerDrawings: [MarkdownBlockMarkerDrawing] = [] {
+    didSet {
+      guard oldValue != markdownBlockMarkerDrawings else { return }
+      updateMarkdownTaskCheckboxAccessibilityElements()
+      needsDisplay = true
+    }
+  }
+  private(set) var markdownTaskCheckboxAccessibilityElements:
+    [MarkdownTaskCheckboxAccessibilityElement] = []
+  var markdownBlockMarkerFont = NSFont.monospacedSystemFont(ofSize: 14, weight: .regular)
+  var markdownBlockMarkerTaskToggleHandler: ((NSRange, Bool) -> Void)?
+  /// Paint-only image and formula cards keyed by their source location.
+  /// Updating this value invalidates only changed frames and keeps the
+  /// NSTextView hierarchy constant while scrolling or editing.
+  var markdownInlineAttachmentDrawings: [String: MarkdownInlineAttachmentDrawing] = [:] {
+    didSet {
+      guard oldValue != markdownInlineAttachmentDrawings else { return }
+      updateMarkdownInlineAttachmentAccessibilityElements()
+      let changedKeys = Set(oldValue.keys).union(markdownInlineAttachmentDrawings.keys).filter {
+        oldValue[$0] != markdownInlineAttachmentDrawings[$0]
+      }
+      let invalidatedRect = changedKeys.reduce(NSRect.null) { result, key in
+        let oldFrame = oldValue[key]?.frame ?? .null
+        let newFrame = markdownInlineAttachmentDrawings[key]?.frame ?? .null
+        return result.union(oldFrame).union(newFrame)
+      }
+      if invalidatedRect.isNull || invalidatedRect.isEmpty {
+        needsDisplay = true
+      } else {
+        setNeedsDisplay(invalidatedRect)
+      }
+    }
+  }
+  private(set) var markdownInlineAttachmentAccessibilityElements:
+    [MarkdownInlineAttachmentAccessibilityElement] = []
+  private var markdownInlineAttachmentAccessibilityElementsByKey:
+    [String: MarkdownInlineAttachmentAccessibilityElement] = [:]
+  /// The current paragraph spotlight is painted in drawBackground(in:) so it
+  /// does not enter TextKit's rendering-attribute invalidation path.
+  var markdownParagraphHighlightRect: NSRect? {
+    didSet {
+      guard oldValue != markdownParagraphHighlightRect else { return }
+      let invalidatedRect = oldValue?.union(markdownParagraphHighlightRect ?? .null)
+      if let invalidatedRect, !invalidatedRect.isNull, !invalidatedRect.isEmpty {
+        setNeedsDisplay(invalidatedRect)
+      } else {
+        needsDisplay = true
+      }
+    }
+  }
+  var markdownParagraphHighlightColor = NSColor.controlAccentColor.withAlphaComponent(0.07)
   /// Called once when AppKit begins a new first-responder cycle for this view.
   ///
   /// The editor coordinator uses this narrow bridge to restore the editable
@@ -640,6 +694,50 @@ final class DroppableMarkdownTextView: NSTextView {
   private var isResigningFirstResponder = false
   private var hasPreparedCurrentFocusCycle = false
   private var hasAnnouncedResignationForCurrentFocus = false
+
+  override func accessibilityChildren() -> [Any]? {
+    let existingChildren = super.accessibilityChildren() ?? []
+    let markdownChildren: [Any] = markdownTaskCheckboxAccessibilityElements.map { $0 as Any }
+      + markdownInlineAttachmentAccessibilityElements.map { $0 as Any }
+    guard !markdownChildren.isEmpty else {
+      return existingChildren.isEmpty ? nil : existingChildren
+    }
+    return existingChildren + markdownChildren
+  }
+
+  private func updateMarkdownTaskCheckboxAccessibilityElements() {
+    markdownTaskCheckboxAccessibilityElements = markdownBlockMarkerDrawings.compactMap {
+      drawing in
+      guard case .taskList(let isChecked) = drawing.marker.presentation else {
+        return nil
+      }
+      return MarkdownTaskCheckboxAccessibilityElement(
+        markerRange: drawing.marker.range,
+        frame: drawing.frame,
+        isChecked: isChecked,
+        parent: self,
+        onPress: { [weak self] markerRange, checked in
+          self?.markdownBlockMarkerTaskToggleHandler?(markerRange, checked)
+        }
+      )
+    }
+  }
+
+  private func updateMarkdownInlineAttachmentAccessibilityElements() {
+    var nextElementsByKey: [String: MarkdownInlineAttachmentAccessibilityElement] = [:]
+    var nextElements: [MarkdownInlineAttachmentAccessibilityElement] = []
+    for drawing in markdownInlineAttachmentDrawings.values.sorted(by: {
+      $0.documentRange.location < $1.documentRange.location
+    }) {
+      let element = markdownInlineAttachmentAccessibilityElementsByKey[drawing.key]
+        ?? MarkdownInlineAttachmentAccessibilityElement(drawing: drawing, parent: self)
+      element.update(with: drawing)
+      nextElementsByKey[drawing.key] = element
+      nextElements.append(element)
+    }
+    markdownInlineAttachmentAccessibilityElementsByKey = nextElementsByKey
+    markdownInlineAttachmentAccessibilityElements = nextElements
+  }
 
   override func viewDidMoveToWindow() {
     super.viewDidMoveToWindow()
@@ -660,6 +758,103 @@ final class DroppableMarkdownTextView: NSTextView {
 
   override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
     true
+  }
+
+  override func drawBackground(in dirtyRect: NSRect) {
+    super.drawBackground(in: dirtyRect)
+    if let highlightRect = markdownParagraphHighlightRect {
+      let clippedRect = highlightRect.intersection(dirtyRect)
+      if !clippedRect.isNull, !clippedRect.isEmpty {
+        markdownParagraphHighlightColor.setFill()
+        clippedRect.fill()
+      }
+    }
+    drawMarkdownBlockMarkers(in: dirtyRect)
+  }
+
+  override func draw(_ dirtyRect: NSRect) {
+    super.draw(dirtyRect)
+    drawMarkdownInlineAttachments(in: dirtyRect)
+  }
+
+  private func drawMarkdownInlineAttachments(in dirtyRect: NSRect) {
+    for drawing in markdownInlineAttachmentDrawings.values
+      where drawing.frame.intersects(dirtyRect)
+    {
+      NSGraphicsContext.saveGraphicsState()
+      let displayMode: MarkdownFormulaDisplayMode? = {
+        guard case .formula(_, let mode, _) = drawing.content else { return nil }
+        return mode
+      }()
+      let cornerRadius: CGFloat = displayMode == .inline ? 5 : 10
+      let backgroundAlpha: CGFloat = displayMode == .inline ? 0.68 : 0.86
+      let cardPath = NSBezierPath(
+        roundedRect: drawing.frame,
+        xRadius: cornerRadius,
+        yRadius: cornerRadius
+      )
+      NSColor.textBackgroundColor.withAlphaComponent(backgroundAlpha).setFill()
+      cardPath.fill()
+      NSColor.separatorColor.withAlphaComponent(0.45).setStroke()
+      cardPath.lineWidth = 1
+      cardPath.stroke()
+
+      switch drawing.content {
+      case .image:
+        let contentRect = drawing.frame.insetBy(dx: 8, dy: 8)
+        if let image = drawing.image, image.size.width > 0, image.size.height > 0 {
+          let scale = min(
+            contentRect.width / image.size.width,
+            contentRect.height / image.size.height
+          )
+          let size = NSSize(
+            width: image.size.width * scale,
+            height: image.size.height * scale
+          )
+          let imageRect = NSRect(
+            x: contentRect.midX - size.width / 2,
+            y: contentRect.midY - size.height / 2,
+            width: size.width,
+            height: size.height
+          )
+          image.draw(
+            in: imageRect,
+            from: .zero,
+            operation: .sourceOver,
+            fraction: 1,
+            respectFlipped: true,
+            hints: [.interpolation: NSImageInterpolation.high]
+          )
+        } else if let placeholder = NSImage(
+          systemSymbolName: "photo",
+          accessibilityDescription: nil
+        )?.withSymbolConfiguration(
+          NSImage.SymbolConfiguration(pointSize: 28, weight: .regular)
+        ) {
+          let placeholderRect = NSRect(
+            x: contentRect.midX - placeholder.size.width / 2,
+            y: contentRect.midY - placeholder.size.height / 2,
+            width: placeholder.size.width,
+            height: placeholder.size.height
+          )
+          placeholder.draw(in: placeholderRect)
+        }
+      case .formula(let source, _, let fontSize):
+        let contentRect = drawing.frame.insetBy(dx: 12, dy: 4)
+        MarkdownInlineFormulaPresentation.attributedString(
+          for: source,
+          fontSize: fontSize
+        ).draw(
+          with: contentRect,
+          options: [
+            .usesLineFragmentOrigin,
+            .usesFontLeading,
+            .truncatesLastVisibleLine,
+          ]
+        )
+      }
+      NSGraphicsContext.restoreGraphicsState()
+    }
   }
 
   override func becomeFirstResponder() -> Bool {
@@ -717,6 +912,8 @@ final class DroppableMarkdownTextView: NSTextView {
   }
 
   override func mouseDown(with event: NSEvent) {
+    let point = convert(event.locationInWindow, from: nil)
+    if handleMarkdownBlockMarkerClick(at: point) { return }
     super.mouseDown(with: event)
     if window?.firstResponder !== self {
       window?.makeFirstResponder(self)

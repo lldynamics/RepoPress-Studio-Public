@@ -874,6 +874,105 @@ final class RemoteRepositoryPublishServiceTests: XCTestCase {
     XCTAssertFalse(requests.contains { $0.httpMethod == "PATCH" })
   }
 
+  func testGitHubDirectPreflightCollectsAllConflictsAndAdoptsIdenticalFilesWithoutWrites() async throws {
+    let serviceForHashing = RemoteRepositoryPublishService()
+    let adoptedContent = Data("adopted content".utf8)
+    let adoptedSHA = serviceForHashing.gitBlobSHA(for: adoptedContent)
+    let adoptedPath = "./content/posts/preflight-adopt.md"
+    let untrackedPath = "content/posts/preflight-untracked.md"
+    let versionConflictPath = "content/posts/preflight-version.md"
+    let missingDeletePath = "content/posts/preflight-missing.md"
+    let transport = SequencedRemoteRepositoryTransport(responses: [
+      response(json: "{\"sha\":\"\(adoptedSHA)\"}"),
+      response(json: #"{"sha":"remote-untracked"}"#),
+      response(json: #"{"sha":"remote-version"}"#),
+      response(statusCode: 404, json: #"{"message":"not found"}"#),
+    ])
+    let service = RemoteRepositoryPublishService(transport: transport)
+    var profile = SiteProfile.defaultProfile
+    profile.repositoryProvider = .github
+    profile.repositoryBaseURL = "https://api.github.com"
+    profile.repoOwner = "owner"
+    profile.repoName = "site"
+    profile.branch = "main"
+    let package = PublishPackage(
+      draftID: UUID(),
+      title: "GitHub Preflight",
+      markdownPath: adoptedPath,
+      files: [
+        PublishPackageFile(
+          kind: .markdown,
+          repositoryPath: adoptedPath,
+          content: String(decoding: adoptedContent, as: UTF8.self),
+          expectedRemoteSHA: "stale-adoption-baseline"
+        ),
+        PublishPackageFile(
+          kind: .markdown,
+          repositoryPath: untrackedPath,
+          content: "local untracked content"
+        ),
+        PublishPackageFile(
+          kind: .markdown,
+          repositoryPath: versionConflictPath,
+          content: "local version content",
+          expectedRemoteSHA: "expected-version"
+        ),
+        // This path normalizes to the untracked path and must not trigger a
+        // second remote GET or duplicate conflict.
+        PublishPackageFile(
+          kind: .markdown,
+          repositoryPath: "/\(untrackedPath)",
+          content: "duplicate content"
+        ),
+        PublishPackageFile(
+          kind: .markdown,
+          operation: .delete,
+          repositoryPath: missingDeletePath
+        ),
+      ],
+      commitMessage: "Preflight",
+      reviewBranchName: "publish/preflight",
+      reviewTitle: "Preflight",
+      reviewChecklist: []
+    )
+
+    let result = try await service.preflight(
+      package: package,
+      profile: profile,
+      token: "github-token"
+    )
+
+    XCTAssertEqual(
+      result.remoteVersionsByPath,
+      ["content/posts/preflight-adopt.md": adoptedSHA]
+    )
+    XCTAssertEqual(result.automaticallyAdoptedPaths, ["content/posts/preflight-adopt.md"])
+    XCTAssertFalse(result.isSafe)
+    XCTAssertEqual(
+      result.conflicts.map(\.path),
+      [untrackedPath, versionConflictPath]
+    )
+    XCTAssertEqual(result.conflicts[0].kind, .untrackedRemoteFile)
+    XCTAssertNil(result.conflicts[0].expectedSHA)
+    XCTAssertEqual(result.conflicts[0].actualSHA, "remote-untracked")
+    XCTAssertEqual(result.conflicts[1].kind, .remoteVersionConflict)
+    XCTAssertEqual(result.conflicts[1].expectedSHA, "expected-version")
+    XCTAssertEqual(result.conflicts[1].actualSHA, "remote-version")
+
+    let requests = await transport.capturedRequests()
+    XCTAssertEqual(requests.map(\.httpMethod), ["GET", "GET", "GET", "GET"])
+    XCTAssertTrue(requests.allSatisfy { $0.httpBody == nil })
+    XCTAssertEqual(
+      requests.compactMap { percentEncodedPath($0.url) },
+      [
+        "/repos/owner/site/contents/content/posts/preflight-adopt.md",
+        "/repos/owner/site/contents/content/posts/preflight-untracked.md",
+        "/repos/owner/site/contents/content/posts/preflight-version.md",
+        "/repos/owner/site/contents/content/posts/preflight-missing.md",
+      ]
+    )
+  }
+
   func testGitHubAtomicPublishLeavesBranchUntouchedWhenTreeCreationFails() async throws {
     let imageURL = FileManager.default.temporaryDirectory
       .appendingPathComponent("github-partial-\(UUID().uuidString).png")
@@ -1640,6 +1739,102 @@ final class RemoteRepositoryPublishServiceTests: XCTestCase {
     XCTAssertEqual(result.automaticallyAdoptedPaths, [package.markdownPath])
     let requests = await transport.capturedRequests()
     XCTAssertEqual(requests.map(\.httpMethod), ["GET"])
+  }
+
+  func testGitLabDirectPreflightCollectsAllConflictsAndAdoptsIdenticalFilesWithoutWrites() async throws {
+    let adoptedPath = "./content/posts/gitlab-preflight-adopt.md"
+    let untrackedPath = "content/posts/gitlab-preflight-untracked.md"
+    let versionConflictPath = "content/posts/gitlab-preflight-version.md"
+    let missingDeletePath = "content/posts/gitlab-preflight-missing.md"
+    let transport = SequencedRemoteRepositoryTransport(responses: [
+      response(json: #"{"file_path":"content/posts/gitlab-preflight-adopt.md","last_commit_id":"adopt-commit","content":"adopted content","encoding":"text"}"#),
+      response(json: #"{"file_path":"content/posts/gitlab-preflight-untracked.md","last_commit_id":"remote-untracked","content":"remote untracked","encoding":"text"}"#),
+      response(json: #"{"file_path":"content/posts/gitlab-preflight-version.md","last_commit_id":"remote-version","content":"remote version","encoding":"text"}"#),
+      response(statusCode: 404, json: #"{"message":"not found"}"#),
+    ])
+    let service = RemoteRepositoryPublishService(transport: transport)
+    var profile = SiteProfile.defaultProfile
+    profile.repositoryProvider = .gitlab
+    profile.repositoryBaseURL = "https://gitlab.com"
+    profile.repoOwner = "group"
+    profile.repoName = "site"
+    profile.branch = "main"
+    let package = PublishPackage(
+      draftID: UUID(),
+      title: "GitLab Preflight",
+      markdownPath: adoptedPath,
+      files: [
+        PublishPackageFile(
+          kind: .markdown,
+          repositoryPath: adoptedPath,
+          content: "adopted content",
+          expectedRemoteSHA: "stale-adoption-baseline"
+        ),
+        PublishPackageFile(
+          kind: .markdown,
+          repositoryPath: untrackedPath,
+          content: "local untracked content"
+        ),
+        PublishPackageFile(
+          kind: .markdown,
+          repositoryPath: versionConflictPath,
+          content: "local version content",
+          expectedRemoteSHA: "expected-version"
+        ),
+        // This path normalizes to the untracked path and must not trigger a
+        // second remote GET or duplicate conflict.
+        PublishPackageFile(
+          kind: .markdown,
+          repositoryPath: "/\(untrackedPath)",
+          content: "duplicate content"
+        ),
+        PublishPackageFile(
+          kind: .markdown,
+          operation: .delete,
+          repositoryPath: missingDeletePath
+        ),
+      ],
+      commitMessage: "Preflight",
+      reviewBranchName: "publish/preflight",
+      reviewTitle: "Preflight",
+      reviewChecklist: []
+    )
+
+    let result = try await service.preflight(
+      package: package,
+      profile: profile,
+      token: "gitlab-token"
+    )
+
+    XCTAssertEqual(
+      result.remoteVersionsByPath,
+      ["content/posts/gitlab-preflight-adopt.md": "adopt-commit"]
+    )
+    XCTAssertEqual(result.automaticallyAdoptedPaths, ["content/posts/gitlab-preflight-adopt.md"])
+    XCTAssertFalse(result.isSafe)
+    XCTAssertEqual(
+      result.conflicts.map(\.path),
+      [untrackedPath, versionConflictPath]
+    )
+    XCTAssertEqual(result.conflicts[0].kind, .untrackedRemoteFile)
+    XCTAssertNil(result.conflicts[0].expectedSHA)
+    XCTAssertEqual(result.conflicts[0].actualSHA, "remote-untracked")
+    XCTAssertEqual(result.conflicts[1].kind, .remoteVersionConflict)
+    XCTAssertEqual(result.conflicts[1].expectedSHA, "expected-version")
+    XCTAssertEqual(result.conflicts[1].actualSHA, "remote-version")
+
+    let requests = await transport.capturedRequests()
+    XCTAssertEqual(requests.map(\.httpMethod), ["GET", "GET", "GET", "GET"])
+    XCTAssertTrue(requests.allSatisfy { $0.httpBody == nil })
+    XCTAssertEqual(
+      requests.compactMap { percentEncodedPath($0.url) },
+      [
+        "/api/v4/projects/group%2Fsite/repository/files/content%2Fposts%2Fgitlab-preflight-adopt.md",
+        "/api/v4/projects/group%2Fsite/repository/files/content%2Fposts%2Fgitlab-preflight-untracked.md",
+        "/api/v4/projects/group%2Fsite/repository/files/content%2Fposts%2Fgitlab-preflight-version.md",
+        "/api/v4/projects/group%2Fsite/repository/files/content%2Fposts%2Fgitlab-preflight-missing.md",
+      ]
+    )
   }
 
   func testGitLabReviewPublishUpdatesExistingReviewBranchOnRetry() async throws {

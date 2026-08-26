@@ -2261,6 +2261,8 @@ extension WorkbenchStoreProfileTests {
       try? FileManager.default.removeItem(at: rootURL)
     }
     let transport = SequencedWorkbenchRemoteRepositoryTransport(responses: [
+      workbenchRemoteResponse(statusCode: 404, json: #"{"message":"not found"}"#),
+      workbenchRemoteResponse(statusCode: 404, json: #"{"message":"not found"}"#),
       workbenchRemoteResponse(json: #"{"object":{"sha":"base-commit-sha"}}"#),
       workbenchRemoteResponse(json: #"{"sha":"base-commit-sha","tree":{"sha":"base-tree-sha"},"parents":[]}"#),
       workbenchRemoteResponse(statusCode: 404, json: #"{"message":"not found"}"#),
@@ -2380,16 +2382,123 @@ extension WorkbenchStoreProfileTests {
     ])
 
     let requests = await transport.capturedRequests()
-    XCTAssertEqual(requests.map(\.httpMethod), ["GET", "GET", "GET", "POST", "GET", "POST", "POST", "POST", "PATCH"])
-    XCTAssertEqual(requests[0].url?.path, "/repos/owner/site/git/ref/heads/main")
-    XCTAssertEqual(requests[6].url?.path, "/repos/owner/site/git/trees")
-    XCTAssertEqual(requests[7].url?.path, "/repos/owner/site/git/commits")
-    XCTAssertEqual(requests[8].url?.path, "/repos/owner/site/git/refs/heads/main")
-    XCTAssertEqual(requests[3].value(forHTTPHeaderField: "Authorization"), "Bearer github-token")
+    XCTAssertEqual(requests.map(\.httpMethod), ["GET", "GET", "GET", "GET", "GET", "POST", "GET", "POST", "POST", "POST", "PATCH"])
+    XCTAssertEqual(requests[0].url?.path, "/repos/owner/site/contents/content/posts/batch-one.md")
+    XCTAssertEqual(requests[1].url?.path, "/repos/owner/site/contents/content/posts/batch-two.md")
+    XCTAssertEqual(requests[2].url?.path, "/repos/owner/site/git/ref/heads/main")
+    XCTAssertEqual(requests[8].url?.path, "/repos/owner/site/git/trees")
+    XCTAssertEqual(requests[9].url?.path, "/repos/owner/site/git/commits")
+    XCTAssertEqual(requests[10].url?.path, "/repos/owner/site/git/refs/heads/main")
+    XCTAssertEqual(requests[5].value(forHTTPHeaderField: "Authorization"), "Bearer github-token")
 
-    let commitBody = try XCTUnwrap(JSONSerialization.jsonObject(with: try XCTUnwrap(requests[7].httpBody)) as? [String: Any])
+    let commitBody = try XCTUnwrap(JSONSerialization.jsonObject(with: try XCTUnwrap(requests[9].httpBody)) as? [String: Any])
     XCTAssertEqual(commitBody["message"] as? String, "Publish: 2 articles")
     XCTAssertEqual(commitBody["parents"] as? [String], ["base-commit-sha"])
+  }
+
+  func testBatchOnlineDirectPreflightAdoptsIdenticalDraftAndBlocksAllRemoteWritesForConflict() async throws {
+    let rootURL = try preparedGitRepositoryRoot()
+    defer {
+      try? FileManager.default.removeItem(at: rootURL)
+    }
+    let tokenStore = repositoryTokenStoreForTest()
+    let transport = SequencedWorkbenchRemoteRepositoryTransport(responses: [])
+    let store = WorkbenchStore(
+      persistence: try TestWorkbenchFactory.persistence(),
+      remoteRepositoryPublishService: RemoteRepositoryPublishService(transport: transport),
+      repositoryTokenStore: tokenStore
+    )
+
+    var profile = store.activeProfile
+    profile.repositoryProvider = .github
+    profile.repositoryBaseURL = RepositoryProvider.github.defaultBaseURL
+    profile.repoOwner = "owner"
+    profile.repoName = "site"
+    profile.branch = "main"
+    profile.repositoryPublishStrategy = .direct
+    profile.markdownPathPattern = "content/posts/{slug}.md"
+    profile.rememberLocalRepositoryRoot(rootURL)
+    store.updateActiveProfile(profile)
+    defer {
+      try? tokenStore.deleteToken(for: profile)
+    }
+    try tokenStore.saveRepositoryToken("github-token", for: profile)
+    store.refreshRepositoryTokenAvailability()
+    store.setRemoteRepositoryAccessCheck(RemoteRepositoryAccessCheck(
+      provider: .github,
+      repositoryName: "owner/site",
+      apiBaseURL: RepositoryProvider.github.defaultBaseURL,
+      defaultBranch: "main",
+      canRead: true,
+      canWrite: true,
+      message: "GitHub Token 具备仓库写入权限。"
+    ))
+
+    let identicalDraft = ArticleDraft(
+      siteProfileID: profile.id,
+      title: "Batch Identical",
+      slug: "batch-identical",
+      draft: false,
+      bodyMarkdown: "This article body is intentionally longer than the preflight minimum and exactly matches the already published remote Markdown."
+    )
+    let conflictedDraft = ArticleDraft(
+      siteProfileID: profile.id,
+      title: "Batch Conflict",
+      slug: "batch-conflict",
+      draft: false,
+      bodyMarkdown: "This article body is intentionally longer than the preflight minimum and differs from the existing remote Markdown."
+    )
+    store.setDrafts([identicalDraft, conflictedDraft])
+    store.setSelectedDraftID(identicalDraft.id)
+
+    let identicalPackage = store.publishingPackage(for: identicalDraft)
+    let identicalContent = try XCTUnwrap(identicalPackage.markdownFile?.content)
+    let identicalRemoteSHA = RemoteRepositoryPublishService().gitBlobSHA(
+      for: Data(identicalContent.utf8)
+    )
+    await transport.replaceResponses([
+      workbenchRemoteResponse(json: "{\"sha\":\"\(identicalRemoteSHA)\"}"),
+      workbenchRemoteResponse(json: #"{"sha":"remote-conflict-sha"}"#),
+    ])
+    let initialReleaseRecordCount = store.releaseRecords.count
+
+    let result = await store.publishBatchReadyDraftsOnlineUsingPreferredStrategy()
+
+    XCTAssertNil(result)
+    XCTAssertNil(store.remoteRepositoryPublishResult)
+    XCTAssertEqual(store.releaseRecords.count, initialReleaseRecordCount)
+    XCTAssertEqual(store.publishActionFeedback?.status, .warning)
+    XCTAssertTrue(store.publishActionMessage?.contains("远端写入前阻止") == true)
+    XCTAssertTrue(store.publishActionMessage?.contains("content/posts/batch-conflict.md") == true)
+    XCTAssertTrue(store.publishActionMessage?.contains("已安全补认 1 个") == true)
+    XCTAssertEqual(
+      store.drafts.first(where: { $0.id == identicalDraft.id })?.repositorySHA,
+      identicalRemoteSHA
+    )
+    XCTAssertEqual(
+      store.drafts.first(where: { $0.id == identicalDraft.id })?.repositoryBinding?.remoteRevision,
+      identicalRemoteSHA
+    )
+    XCTAssertEqual(
+      store.publishingPackage(for: try XCTUnwrap(
+        store.drafts.first(where: { $0.id == identicalDraft.id })
+      )).markdownFile?.expectedRemoteSHA,
+      identicalRemoteSHA
+    )
+    XCTAssertEqual(
+      store.drafts.first(where: { $0.id == conflictedDraft.id })?.repositorySyncState(for: profile),
+      .diverged
+    )
+    XCTAssertEqual(
+      store.batchRemotePublishPreviewSnapshot?.remoteConflictPaths,
+      ["content/posts/batch-conflict.md"]
+    )
+
+    let requests = await transport.capturedRequests()
+    XCTAssertEqual(requests.map(\.httpMethod), ["GET", "GET"])
+    XCTAssertTrue(requests.allSatisfy { request in
+      !["POST", "PUT", "PATCH", "DELETE"].contains(request.httpMethod ?? "")
+    })
   }
 
   func testBatchOnlineAtomicFailureRequiresNoPartialRecovery() async throws {
@@ -2398,6 +2507,8 @@ extension WorkbenchStoreProfileTests {
       try? FileManager.default.removeItem(at: rootURL)
     }
     let transport = SequencedWorkbenchRemoteRepositoryTransport(responses: [
+      workbenchRemoteResponse(statusCode: 404, json: #"{"message":"not found"}"#),
+      workbenchRemoteResponse(statusCode: 404, json: #"{"message":"not found"}"#),
       workbenchRemoteResponse(json: #"{"object":{"sha":"base-commit-sha"}}"#),
       workbenchRemoteResponse(json: #"{"sha":"base-commit-sha","tree":{"sha":"base-tree-sha"},"parents":[]}"#),
       workbenchRemoteResponse(statusCode: 404, json: #"{"message":"not found"}"#),
@@ -2798,6 +2909,10 @@ private actor SequencedWorkbenchRemoteRepositoryTransport: RemoteRepositoryHTTPT
 
   func capturedRequests() -> [URLRequest] {
     requests
+  }
+
+  func replaceResponses(_ responses: [WorkbenchRemoteRepositoryTransportResponse]) {
+    self.responses = responses
   }
 
   func inspectedLocalFileContentsAtFirstRequest() -> String? {

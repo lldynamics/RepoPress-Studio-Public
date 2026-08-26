@@ -212,6 +212,9 @@ private struct ContentHealthDraftFingerprintSnapshot: Encodable {
   let tags: [String]
   let categories: [String]
   let authors: [String]
+  let aliases: [String]
+  let pendingSlugRedirectPaths: [String]
+  let permalink: String?
   let draft: Bool
   let visibility: ArticleVisibility
   let summary: String
@@ -230,6 +233,9 @@ private struct ContentHealthDraftFingerprintSnapshot: Encodable {
     tags = draft.tags
     categories = draft.categories
     authors = draft.authors
+    aliases = draft.aliases
+    pendingSlugRedirectPaths = draft.pendingSlugRedirectPaths
+    permalink = draft.permalink
     self.draft = draft.draft
     visibility = draft.visibility
     summary = draft.summary

@@ -151,6 +151,27 @@ extension PublishingStore {
     let existingIndex = drafts.firstIndex { $0.id == draft.id }
     let hasUnsavedDraftChange = existingIndex.map { drafts[$0] != draft } ?? true
     var updated = draft
+    if let existingIndex,
+      drafts[existingIndex].slug.trimmedForPublishing != updated.slug.trimmedForPublishing
+    {
+      let existing = drafts[existingIndex]
+      let profile = store.profile(for: existing)
+      let resolver = SiteArticleURLResolver()
+      let previousRoute = resolver.relativeWebPath(
+        from: profile.markdownPath(for: existing),
+        profile: profile,
+        permalink: existing.permalink
+      )
+      let nextRoute = resolver.relativeWebPath(
+        from: profile.markdownPath(for: updated),
+        profile: profile,
+        permalink: updated.permalink
+      )
+      if previousRoute != nextRoute {
+        updated.recordPendingSlugRedirectPath(previousRoute)
+        updated.pendingSlugRedirectPaths.removeAll { $0 == nextRoute }
+      }
+    }
     if hasUnsavedDraftChange,
       let existingIndex,
       drafts[existingIndex].softwareGuideID != nil,

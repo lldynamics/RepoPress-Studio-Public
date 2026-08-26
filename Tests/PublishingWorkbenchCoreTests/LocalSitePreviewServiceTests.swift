@@ -44,6 +44,38 @@ final class LocalSitePreviewServiceTests: XCTestCase {
     XCTAssertEqual(plan.previewURL.absoluteString, "http://127.0.0.1:5173")
   }
 
+  func testNextJSPreviewPlanUsesNpmDev() throws {
+    var profile = SiteProfile.defaultProfile
+    profile.siteKind = .nextJS
+    profile.localRepositoryRootPath = "/tmp/next-site"
+
+    let plan = try XCTUnwrap(LocalSitePreviewService().plan(profile: profile))
+
+    XCTAssertEqual(plan.command, "cd '/tmp/next-site' && 'npm' 'run' 'dev'")
+    XCTAssertEqual(plan.arguments, ["run", "dev"])
+    XCTAssertEqual(plan.previewURL.absoluteString, "http://127.0.0.1:3000")
+  }
+
+  func testQuartzPreviewPlanUsesOfficialServeCommand() throws {
+    var profile = SiteProfile.defaultProfile
+    profile.siteKind = .quartz
+    profile.localRepositoryRootPath = "/tmp/quartz-site"
+
+    let plan = try XCTUnwrap(LocalSitePreviewService().plan(profile: profile))
+
+    XCTAssertEqual(plan.command, "cd '/tmp/quartz-site' && 'npx' 'quartz' 'build' '--serve'")
+    XCTAssertEqual(plan.arguments, ["quartz", "build", "--serve"])
+    XCTAssertEqual(plan.previewURL.absoluteString, "http://127.0.0.1:8080")
+  }
+
+  func testFoamWorkspaceDoesNotInventAStaticSitePreviewCommand() {
+    var profile = SiteProfile.defaultProfile
+    profile.siteKind = .foam
+    profile.localRepositoryRootPath = "/tmp/foam-workspace"
+
+    XCTAssertNil(LocalSitePreviewService().plan(profile: profile))
+  }
+
   func testHugoPreviewPlanUsesDraftServerCommand() throws {
     var profile = SiteProfile.defaultProfile
     profile.siteKind = .hugo

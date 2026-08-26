@@ -983,7 +983,7 @@ public struct HTMLSourceEditingService: Sendable {
         return .liquid
       case .astro:
         return .astro
-      case .vitePress:
+      case .vitePress, .nextJS, .quartz, .foam:
         return .html
       }
     }

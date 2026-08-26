@@ -383,10 +383,12 @@ final class WorkbenchAutomationServiceTests: XCTestCase {
     draftB.title = "文章 B"
     draftB.slug = "article-b"
     draftB.bodyMarkdown = String(repeating: "这是文章 B 的正文。", count: 12)
+      + "\n[待修复链接](/missing-automation-target/)"
     store.updateDraft(draftB)
+    let storedDraftB = try XCTUnwrap(store.draft(for: draftB.id))
 
     let expectedAIssueCount = store.preflightIssues(for: draftA).count
-    let expectedBIssueCount = store.preflightIssues(for: draftB).count
+    let expectedBIssueCount = store.preflightIssues(for: storedDraftB).count
     XCTAssertNotEqual(expectedAIssueCount, expectedBIssueCount)
 
     XCTAssertTrue(store.focusDraft(draftA.id))

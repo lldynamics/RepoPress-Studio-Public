@@ -760,6 +760,8 @@ struct ContentMigrationAssistantView: View {
     case .tags: "标签"
     case .categories: "分类"
     case .authors: "作者"
+    case .aliases: "旧地址别名"
+    case .permalink: "固定地址"
     case .draftState: "草稿状态"
     case .visibility: "可见性"
     case .summary: "摘要"

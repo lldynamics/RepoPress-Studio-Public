@@ -35,20 +35,35 @@ final class MarkdownTextViewSemanticRenderingTests: XCTestCase {
     XCTAssertLessThan(palette.inactiveTaskMarkerLayoutFont.pointSize, palette.baseFont.pointSize)
   }
 
-  func testNativeTaskCheckboxReportsToggledState() throws {
+  func testPaintedTaskCheckboxReportsToggledStateWithoutChildView() throws {
     var toggledState: Bool?
-    let overlay = MarkdownBlockMarkerOverlayView(
-      frame: NSRect(x: 0, y: 0, width: 18, height: 18),
-      presentation: .taskList(isChecked: false),
-      font: NSFont.systemFont(ofSize: 14),
-      onTaskToggle: { toggledState = $0 }
+    let textView = DroppableMarkdownTextView(
+      frame: NSRect(x: 0, y: 0, width: 320, height: 180),
+      textContainer: nil
     )
-    let checkbox = try XCTUnwrap(overlay.subviews.compactMap { $0 as? NSButton }.first)
+    let markerRange = NSRange(location: 0, length: 6)
+    let frame = NSRect(x: 8, y: 8, width: 18, height: 18)
+    textView.markdownBlockMarkerTaskToggleHandler = { _, checked in
+      toggledState = checked
+    }
+    textView.markdownBlockMarkerDrawings = [
+      MarkdownBlockMarkerDrawing(
+        marker: MarkdownSyntaxMarker(
+          range: markerRange,
+          presentation: .taskList(isChecked: false)
+        ),
+        frame: frame,
+        taskHitFrame: frame
+      )
+    ]
+    let checkbox = try XCTUnwrap(
+      textView.markdownTaskCheckboxAccessibilityElements.first
+    )
 
-    XCTAssertEqual(checkbox.state, .off)
-    checkbox.performClick(nil)
-
-    XCTAssertEqual(checkbox.state, .on)
+    XCTAssertTrue(textView.subviews.isEmpty)
+    XCTAssertEqual(checkbox.accessibilityRole(), .checkBox)
+    XCTAssertEqual(checkbox.accessibilityValue() as? NSNumber, NSNumber(value: false))
+    XCTAssertTrue(checkbox.performAccessibilityPress())
     XCTAssertEqual(toggledState, true)
   }
 
@@ -193,7 +208,7 @@ final class MarkdownTextViewSemanticRenderingTests: XCTestCase {
     )
     XCTAssertEqual(font.pointSize, 16, accuracy: 0.01)
 
-    let frame = try XCTUnwrap(MarkdownInlineAttachmentOverlayLayout.frame(
+    let frame = try XCTUnwrap(MarkdownInlineAttachmentDrawingLayout.frame(
       sourceRect: NSRect(x: 140, y: 80, width: 124, height: 22),
       textViewBounds: NSRect(x: 0, y: 0, width: 800, height: 600),
       horizontalInset: 26,
@@ -208,7 +223,7 @@ final class MarkdownTextViewSemanticRenderingTests: XCTestCase {
   }
 
   func testInlineFormulaFallsBackBeforeCoveringFollowingGlyphs() {
-    let frame = MarkdownInlineAttachmentOverlayLayout.frame(
+    let frame = MarkdownInlineAttachmentDrawingLayout.frame(
       sourceRect: NSRect(x: 140, y: 80, width: 72, height: 22),
       textViewBounds: NSRect(x: 0, y: 0, width: 800, height: 600),
       horizontalInset: 26,
@@ -222,7 +237,7 @@ final class MarkdownTextViewSemanticRenderingTests: XCTestCase {
 
   func testBlockOverlayWidthIsClampedToNarrowTextContainer() throws {
     let bounds = NSRect(x: 0, y: 0, width: 80, height: 600)
-    let frame = try XCTUnwrap(MarkdownInlineAttachmentOverlayLayout.frame(
+    let frame = try XCTUnwrap(MarkdownInlineAttachmentDrawingLayout.frame(
       sourceRect: NSRect(x: 24, y: 80, width: 180, height: 22),
       textViewBounds: bounds,
       horizontalInset: 26,

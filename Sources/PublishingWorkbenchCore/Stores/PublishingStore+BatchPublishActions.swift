@@ -386,8 +386,74 @@ extension PublishingStore {
           store.setRemoteRepositoryPublishProgress(progress)
         }
       }
+      var reconciledPackage = package
+      if mode == .directCommit {
+        store.setRemoteRepositoryPublishProgress(
+          .init(
+            stage: .validatingTarget,
+            progress: 0.08,
+            message: CoreL10n.text("正在核对整批远端版本"),
+            detail: CoreL10n.text("完成所有路径检查前不会写入远端")
+          )
+        )
+        let preflight = try await remoteRepositoryPublishService.preflight(
+          package: package,
+          profile: profile,
+          token: token
+        )
+        guard remoteRepositoryMutationIsCurrent(operation, store: store) else { return nil }
+
+        let adoptedCount = confirmDirectRemotePublishPreflightAdoptions(
+          packages: publishableItems.map(\.package),
+          preflight: preflight,
+          profile: profile,
+          store: store
+        )
+        reconciledPackage = packageApplyingRemotePublishPreflight(
+          preflight,
+          to: package
+        )
+
+        guard preflight.conflicts.isEmpty else {
+          let conflictPaths = preflight.conflicts.map(\.repositoryPath)
+          markBatchRemotePublishPreflightConflicts(
+            paths: conflictPaths,
+            packages: publishableItems.map(\.package)
+          )
+          let conflictDetails = preflight.conflicts
+            .map { $0.error.localizedDescription }
+            .joined(separator: "；")
+          let adoptionSummary = adoptedCount > 0
+            ? CoreL10n.format("；已安全补认 %lld 个内容一致的远端文件", adoptedCount)
+            : ""
+          let message = CoreL10n.format(
+            "批量%@已在远端写入前阻止：%@%@",
+            mode.displayName,
+            conflictDetails,
+            adoptionSummary
+          )
+          updateBatchRemotePublishPreviewForPreflightConflicts(
+            paths: conflictPaths,
+            message: message
+          )
+          store.setRemoteRepositoryPublishProgress(
+            .init(
+              stage: .failed,
+              progress: nil,
+              message: CoreL10n.text("批量发布已阻止"),
+              detail: message
+            )
+          )
+          setPublishActionMessage(message, status: .warning)
+          store.save()
+          return nil
+        }
+        if adoptedCount > 0 {
+          store.save()
+        }
+      }
       let result = try await remoteRepositoryPublishService.publish(
-        package: package,
+        package: reconciledPackage,
         profile: profile,
         mode: mode,
         token: token,
@@ -489,5 +555,106 @@ extension PublishingStore {
       store.save()
       return nil
     }
+  }
+
+  private func packageApplyingRemotePublishPreflight(
+    _ preflight: RemoteRepositoryPublishPreflightResult,
+    to package: PublishPackage
+  ) -> PublishPackage {
+    var reconciled = package
+    for index in reconciled.files.indices {
+      let path = reconciled.files[index].repositoryPath.normalizedRelativePath()
+      if let remoteVersion = preflight.remoteVersionsByPath[path]?.trimmedForPublishing.nilIfEmpty {
+        reconciled.files[index].expectedRemoteSHA = remoteVersion
+      }
+    }
+    return reconciled
+  }
+
+  @discardableResult
+  private func confirmDirectRemotePublishPreflightAdoptions(
+    packages: [PublishPackage],
+    preflight: RemoteRepositoryPublishPreflightResult,
+    profile: SiteProfile,
+    store: WorkbenchStore
+  ) -> Int {
+    let adoptedPaths = Set(preflight.automaticallyAdoptedPaths.map { $0.normalizedRelativePath() })
+    guard !adoptedPaths.isEmpty else { return 0 }
+    let packagesByDraftID = Dictionary(uniqueKeysWithValues: packages.map { ($0.draftID, $0) })
+    var changedDraftIDs = Set<UUID>()
+
+    drafts = drafts.map { draft in
+      guard let package = packagesByDraftID[draft.id] else { return draft }
+      var updated = draft
+
+      updated.attachments = updated.attachments.map { attachment in
+        let path = attachment.repositoryPath.normalizedRelativePath()
+        guard adoptedPaths.contains(path),
+          let remoteVersion = preflight.remoteVersionsByPath[path]?.trimmedForPublishing.nilIfEmpty,
+          attachment.repositorySHA?.trimmedForPublishing != remoteVersion
+        else {
+          return attachment
+        }
+        var confirmed = attachment
+        confirmed.repositorySHA = remoteVersion
+        changedDraftIDs.insert(draft.id)
+        return confirmed
+      }
+
+      let markdownPath = package.markdownPath.normalizedRelativePath()
+      if adoptedPaths.contains(markdownPath),
+        let remoteVersion = preflight.remoteVersionsByPath[markdownPath]?.trimmedForPublishing.nilIfEmpty,
+        let publishedContent = package.markdownFile?.content,
+        let currentContent = publishPackageBuilder.build(draft: draft, profile: profile).markdownFile?.content,
+        currentContent == publishedContent
+      {
+        updated.confirmRepositoryBinding(
+          profile: profile,
+          repositoryPath: markdownPath,
+          remoteRevision: remoteVersion,
+          renderedContentDigest: ArticleDraft.repositoryDocumentDigest(publishedContent)
+        )
+        changedDraftIDs.insert(draft.id)
+      }
+      return updated
+    }
+
+    for draftID in changedDraftIDs {
+      removeDraftPublishPreviewSnapshot(for: draftID)
+    }
+    return adoptedPaths.count
+  }
+
+  private func markBatchRemotePublishPreflightConflicts(
+    paths: [String],
+    packages: [PublishPackage]
+  ) {
+    let normalizedPaths = Set(paths.map { $0.normalizedRelativePath() })
+    let conflictedIDs = Set(packages.compactMap { package -> UUID? in
+      package.files.contains {
+        normalizedPaths.contains($0.repositoryPath.normalizedRelativePath())
+      } ? package.draftID : nil
+    })
+    markDraftsRepositorySyncState(.diverged, draftIDs: conflictedIDs)
+  }
+
+  private func updateBatchRemotePublishPreviewForPreflightConflicts(
+    paths: [String],
+    message: String
+  ) {
+    guard var preview = batchRemotePublishPreviewSnapshot else { return }
+    let normalizedPaths = Array(Set(paths.map { $0.normalizedRelativePath() })).sorted()
+    preview.remoteConflictPaths = normalizedPaths
+    preview.remoteRiskState = .conflict
+    preview.blockingIssues.removeAll { $0.field == "remoteBaseline" }
+    preview.blockingIssues.append(
+      PreflightIssue(
+        severity: .error,
+        title: CoreL10n.text("远端同路径变更"),
+        message: message,
+        field: "remoteBaseline"
+      )
+    )
+    batchRemotePublishPreviewSnapshot = preview
   }
 }

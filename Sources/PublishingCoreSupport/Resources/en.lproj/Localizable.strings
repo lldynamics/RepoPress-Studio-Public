@@ -704,6 +704,11 @@
 "正在通过 %@ 核对远端版本并执行%@..." = "Verifying remote versions through %@ before %@...";
 "正在通过 %@ 批量核对远端版本并执行%@..." = "Verifying remote versions through %@ before batch %@...";
 "正在通过 %@ 批量执行%@..." = "Running batch %@ through %@...";
+"正在核对整批远端版本" = "Verifying the entire batch against the remote";
+"完成所有路径检查前不会写入远端" = "No remote writes occur until every path has been checked";
+"批量%@已在远端写入前阻止：%@%@" = "Batch %@ was blocked before any remote writes: %@%@";
+"；已安全补认 %lld 个内容一致的远端文件" = "; safely adopted %lld identical remote files";
+"批量发布已阻止" = "Batch Publish Blocked";
 "通用草稿不能直接发布" = "General Drafts Cannot Be Published Directly";
 "通用草稿" = "General Draft";
 "请先将它复制到目标站点，再执行写入、提交或线上发布。" = "Copy it to a target site before writing, committing, or publishing online.";

@@ -13,23 +13,46 @@ struct MarkdownDiagnosticOverlayUpdateMetrics: Equatable, Sendable {
   )
 }
 
+/// Idle delays for document-wide statistics scans. Incremental updates remain
+/// on the normal short delivery edge; only a long-document fallback scan is
+/// deliberately moved farther from the typing hot path.
+enum MarkdownEditorStatisticsDelayPolicy {
+  static let initialFullScanDelay: TimeInterval = 0.5
+  static let incrementalDeliveryDelay: TimeInterval = 0.5
+  static let longDocumentFullScanDelay: TimeInterval = 2.5
+  static let longDocumentUTF16Threshold = 5_000
+
+  static func fullScanDelay(for text: String, isInitialLoad: Bool) -> TimeInterval {
+    guard !isInitialLoad,
+      (text as NSString).length > longDocumentUTF16Threshold
+    else {
+      return initialFullScanDelay
+    }
+    return longDocumentFullScanDelay
+  }
+}
+
 extension MacMarkdownTextView.Coordinator {
   /// Stops source-only rendering work while the text storage temporarily hosts
   /// the derived read-only presentation, without discarding the parser snapshot
   /// that still belongs to the unchanged Markdown source.
   func suspendSyntaxHighlightingForReadOnlyPresentation(in textView: NSTextView) {
-    cancelPendingInlineAttachmentApplication()
-    clearInlineAttachmentOverlays(in: textView)
-    clearBlockMarkerOverlays()
+    cancelPendingInlineAttachmentDrawingApplication()
+    clearInlineAttachmentDrawings(in: textView)
+    clearBlockMarkerDrawings(in: textView)
+    if let droppableTextView = textView as? DroppableMarkdownTextView {
+      droppableTextView.markdownParagraphHighlightRect = nil
+    }
+    appliedParagraphHighlightRange = nil
     syntaxHighlightDebouncer.cancel()
     syntaxTreeSynchronizationDebouncer.cancel()
     cancelPendingSyntaxAttributeApplication()
   }
 
   func invalidateHighlightedTextCache(in textView: NSTextView? = nil) {
-    cancelPendingInlineAttachmentApplication()
-    clearInlineAttachmentOverlays(in: textView)
-    clearBlockMarkerOverlays()
+    cancelPendingInlineAttachmentDrawingApplication()
+    clearInlineAttachmentDrawings(in: textView)
+    clearBlockMarkerDrawings(in: textView)
     if let textView {
       removePaintedSyntaxAttributes(in: textView)
     }
@@ -51,13 +74,11 @@ extension MacMarkdownTextView.Coordinator {
   }
 
   func removePaintedSyntaxAttributes(in textView: NSTextView) {
-    // Marker overlays already have an identity-aware diff in
-    // `applyBlockMarkerOverlays`. Tearing every AppKit view down before each
-    // keystroke makes the following Core Animation commit rebuild the whole
-    // visible marker hierarchy. Keep unchanged overlays alive and let the
-    // next viewport repaint remove or replace only markers affected by the
-    // edit.
     restoreCollapsedSyntaxMarkerLayout(in: textView)
+    if let droppableTextView = textView as? DroppableMarkdownTextView {
+      droppableTextView.markdownParagraphHighlightRect = nil
+    }
+    appliedParagraphHighlightRange = nil
     guard syntaxPaintedDocumentRevision == syntaxDocumentRevision,
       let paintedSyntaxViewportRange
     else {
@@ -73,12 +94,15 @@ extension MacMarkdownTextView.Coordinator {
     self.paintedSyntaxViewportRange = nil
   }
 
-  func scheduleFullStatistics(for text: String) {
+  func scheduleFullStatistics(for text: String, isInitialLoad: Bool = false) {
     statisticsFullScanCount += 1
     statisticsTask?.cancel()
     statisticsGeneration += 1
     let generation = statisticsGeneration
-    let delay = statisticsDelay
+    let delay = MarkdownEditorStatisticsDelayPolicy.fullScanDelay(
+      for: text,
+      isInitialLoad: isInitialLoad
+    )
     statisticsTask = Task.detached(priority: .userInitiated) { [weak self, text] in
       try? await Task.sleep(for: .seconds(delay))
       guard !Task.isCancelled else { return }
@@ -99,7 +123,7 @@ extension MacMarkdownTextView.Coordinator {
   ) {
     cancelPendingSyntaxAttributeApplication()
     if repaintReason.requiresFullRepaint {
-      cancelPendingInlineAttachmentApplication()
+      cancelPendingInlineAttachmentDrawingApplication()
     }
 
     self.textView = textView
@@ -315,7 +339,7 @@ extension MacMarkdownTextView.Coordinator {
 
     cancelPendingSyntaxAttributeApplication()
     if reason.requiresFullRepaint {
-      cancelPendingInlineAttachmentApplication()
+      cancelPendingInlineAttachmentDrawingApplication()
     }
     syntaxAttributeApplicationGeneration &+= 1
     let generation = syntaxAttributeApplicationGeneration
@@ -383,8 +407,9 @@ extension MacMarkdownTextView.Coordinator {
       "ApplyRenderingAttributes",
       id: renderingAttributesID
     )
-    if !canApplyViewportDelta {
-      clearInlineAttachmentOverlays(in: textView)
+    let preserveInlineAttachmentDrawings = repaintReason.preservesInlineAttachmentDrawings
+    if !canApplyViewportDelta, !preserveInlineAttachmentDrawings {
+      clearInlineAttachmentDrawings(in: textView)
     }
     if canApplyViewportDelta {
       restoreCollapsedSyntaxMarkerLayout(
@@ -491,7 +516,7 @@ extension MacMarkdownTextView.Coordinator {
     )
     let blockMarkerID = syntaxHighlightSignposter.makeSignpostID()
     let blockMarkerInterval = syntaxHighlightSignposter.beginInterval(
-      "ApplyBlockMarkerOverlays",
+      "ApplyBlockMarkerDrawings",
       id: blockMarkerID
     )
     let visibleBlockMarkers = inactiveMarkers.compactMap { marker -> MarkdownSyntaxMarker? in
@@ -499,7 +524,7 @@ extension MacMarkdownTextView.Coordinator {
       guard intersection.length > 0 else { return nil }
       return MarkdownSyntaxMarker(range: intersection, presentation: marker.presentation)
     }
-    applyBlockMarkerOverlays(
+    applyBlockMarkerDrawings(
       visibleBlockMarkers,
       in: textView,
       rangeResolver: MarkdownTextKit2RangeAdapter.rangeResolver(
@@ -508,17 +533,16 @@ extension MacMarkdownTextView.Coordinator {
       )
     )
     syntaxHighlightSignposter.endInterval(
-      "ApplyBlockMarkerOverlays",
+      "ApplyBlockMarkerDrawings",
       blockMarkerInterval
     )
-    scheduleInlineAttachmentOverlayApplication(
+    scheduleInlineAttachmentDrawingApplication(
       in: textView,
-      // Syntax highlighting keeps 50 context lines warm, but native image and
-      // formula views are only useful inside the actual viewport. Building
-      // overlays for the padded range can create dozens of AppKit views during
-      // a single scroll step in attachment-heavy documents.
+      // Syntax highlighting keeps 50 context lines warm, but image and formula
+      // drawings are only useful inside the actual viewport. Avoid measuring
+      // cards for the padded context during attachment-heavy scrolling.
       applicationRange: visibleRange,
-      preservingExisting: canApplyViewportDelta,
+      preservingExisting: canApplyViewportDelta || preserveInlineAttachmentDrawings,
       documentRevision: syntaxDocumentRevision
     )
     syntaxPaintedDocumentRevision = syntaxDocumentRevision
@@ -566,21 +590,21 @@ extension MacMarkdownTextView.Coordinator {
     syntaxAttributeApplicationGeneration &+= 1
   }
 
-  private func scheduleInlineAttachmentOverlayApplication(
+  private func scheduleInlineAttachmentDrawingApplication(
     in textView: NSTextView,
     applicationRange: NSRange,
     preservingExisting: Bool,
     documentRevision: UInt64
   ) {
-    if preservingExisting, inlineAttachmentApplicationTask != nil {
+    if preservingExisting, inlineAttachmentDrawingApplicationTask != nil {
       return
     }
-    cancelPendingInlineAttachmentApplication()
-    let generation = inlineAttachmentApplicationGeneration
-    inlineAttachmentApplicationTask = Task { @MainActor [weak self, weak textView] in
+    cancelPendingInlineAttachmentDrawingApplication()
+    let generation = inlineAttachmentDrawingApplicationGeneration
+    inlineAttachmentDrawingApplicationTask = Task { @MainActor [weak self, weak textView] in
       await MainRunLoopUpdateDeferral.waitForNextDefaultModeCycle()
       guard let self, let textView, !Task.isCancelled,
-        self.inlineAttachmentApplicationGeneration == generation,
+        self.inlineAttachmentDrawingApplicationGeneration == generation,
         self.syntaxDocumentRevision == documentRevision
       else {
         return
@@ -589,28 +613,28 @@ extension MacMarkdownTextView.Coordinator {
         ?? applicationRange
       let inlineAttachmentID = self.syntaxHighlightSignposter.makeSignpostID()
       let inlineAttachmentInterval = self.syntaxHighlightSignposter.beginInterval(
-        "ApplyInlineAttachmentOverlays",
+        "ApplyInlineAttachmentDrawings",
         id: inlineAttachmentID
       )
-      self.applyInlineAttachmentOverlays(
+      self.applyInlineAttachmentDrawings(
         in: textView,
         applicationRange: currentVisibleRange,
         preservingExisting: preservingExisting
       )
       self.syntaxHighlightSignposter.endInterval(
-        "ApplyInlineAttachmentOverlays",
+        "ApplyInlineAttachmentDrawings",
         inlineAttachmentInterval
       )
-      if self.inlineAttachmentApplicationGeneration == generation {
-        self.inlineAttachmentApplicationTask = nil
+      if self.inlineAttachmentDrawingApplicationGeneration == generation {
+        self.inlineAttachmentDrawingApplicationTask = nil
       }
     }
   }
 
-  private func cancelPendingInlineAttachmentApplication() {
-    inlineAttachmentApplicationTask?.cancel()
-    inlineAttachmentApplicationTask = nil
-    inlineAttachmentApplicationGeneration &+= 1
+  private func cancelPendingInlineAttachmentDrawingApplication() {
+    inlineAttachmentDrawingApplicationTask?.cancel()
+    inlineAttachmentDrawingApplicationTask = nil
+    inlineAttachmentDrawingApplicationGeneration &+= 1
   }
 
   private func restoreCollapsedSyntaxMarkerLayout(in textView: NSTextView) {
@@ -736,7 +760,6 @@ extension MacMarkdownTextView.Coordinator {
     invalidatedRanges: [NSRange] = []
   ) -> Bool {
     guard textView.textLayoutManager != nil else { return false }
-    let length = (textView.string as NSString).length
     let paragraphRange = MarkdownEditorOverlayService.currentParagraphRange(
       in: textView.string,
       selectedRange: textView.selectedRange(),
@@ -751,25 +774,11 @@ extension MacMarkdownTextView.Coordinator {
       return false
     }
 
-    if (force || paragraphRange != appliedParagraphHighlightRange),
-      let appliedParagraphHighlightRange,
-      let removableRange = MarkdownEditorOverlayService.clampedNonEmptyRange(
-        appliedParagraphHighlightRange,
-        length: length
-      )
-    {
-      MarkdownTextKit2RangeAdapter.removeRenderingAttribute(
-        .backgroundColor,
-        for: removableRange,
-        in: textView
-      )
+    let paragraphRect = paragraphRange.flatMap {
+      MarkdownTextKit2RangeAdapter.rect(for: $0, in: textView)
     }
-    if let paragraphRange {
-      MarkdownTextKit2RangeAdapter.addRenderingAttributes(
-        [.backgroundColor: NSColor.controlAccentColor.withAlphaComponent(0.07)],
-        for: paragraphRange,
-        in: textView
-      )
+    if let droppableTextView = textView as? DroppableMarkdownTextView {
+      droppableTextView.markdownParagraphHighlightRect = paragraphRect
     }
     appliedParagraphHighlightRange = paragraphRange
     return true

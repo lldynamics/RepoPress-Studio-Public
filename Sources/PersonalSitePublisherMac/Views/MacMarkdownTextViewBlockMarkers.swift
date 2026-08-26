@@ -1,118 +1,75 @@
 import AppKit
 import PublishingWorkbenchCore
 
+/// Paint-only state for a visible Markdown block marker. The source range is
+/// retained for the single task-checkbox hit proxy; the text view owns the
+/// actual drawing and therefore no marker needs a child NSView.
+struct MarkdownBlockMarkerDrawing: Equatable {
+  let marker: MarkdownSyntaxMarker
+  let frame: NSRect
+  let taskHitFrame: NSRect?
+}
+
+/// Accessibility-only representation of a painted task checkbox.
+///
+/// The checkbox is not an `NSView`: the text view owns this element while the
+/// task marker is visible and vends it as an accessibility child. Keeping the
+/// action on the element means VoiceOver uses the same source replacement and
+/// selection-preserving path as a pointer click.
 @MainActor
-final class MarkdownBlockMarkerOverlayView: NSView {
-  private let presentation: MarkdownSyntaxMarker.Presentation
-  private let font: NSFont
-  private let onTaskToggle: ((Bool) -> Void)?
-  private var checkbox: NSButton?
+final class MarkdownTaskCheckboxAccessibilityElement: NSAccessibilityElement {
+  let markerRange: NSRange
+  private let onPress: (NSRange, Bool) -> Void
+  private(set) var isChecked: Bool
 
   init(
-    frame frameRect: NSRect,
-    presentation: MarkdownSyntaxMarker.Presentation,
-    font: NSFont,
-    onTaskToggle: ((Bool) -> Void)? = nil
+    markerRange: NSRange,
+    frame: NSRect,
+    isChecked: Bool,
+    parent: DroppableMarkdownTextView,
+    onPress: @escaping (NSRange, Bool) -> Void
   ) {
-    self.presentation = presentation
-    self.font = font
-    self.onTaskToggle = onTaskToggle
-    super.init(frame: frameRect)
-    setAccessibilityElement(false)
-    if case .taskList(let isChecked) = presentation {
-      let checkbox = NSButton(checkboxWithTitle: "", target: self, action: #selector(toggleTask))
-      checkbox.controlSize = .small
-      checkbox.state = isChecked ? .on : .off
-      checkbox.setAccessibilityLabel(isChecked ? "标记任务为未完成" : "标记任务为已完成")
-      addSubview(checkbox)
-      self.checkbox = checkbox
-    }
+    self.markerRange = markerRange
+    self.onPress = onPress
+    self.isChecked = isChecked
+    super.init()
+    setAccessibilityElement(true)
+    setAccessibilityRole(.checkBox)
+    setAccessibilityParent(parent)
+    setAccessibilityFrameInParentSpace(frame)
+    updateAccessibilityState(isChecked: isChecked, frame: frame)
   }
 
   required init?(coder: NSCoder) {
     nil
   }
 
-  override func hitTest(_ point: NSPoint) -> NSView? {
-    checkbox == nil ? nil : super.hitTest(point)
+  func updateAccessibilityState(isChecked: Bool, frame: NSRect) {
+    self.isChecked = isChecked
+    setAccessibilityFrameInParentSpace(frame)
+    setAccessibilityRole(.checkBox)
+    setAccessibilityLabel(isChecked ? "标记任务为未完成" : "标记任务为已完成")
+    setAccessibilityValue(NSNumber(value: isChecked))
   }
 
-  override func layout() {
-    super.layout()
-    guard let checkbox else { return }
-    let side = min(16, max(12, bounds.height))
-    checkbox.frame = NSRect(
-      x: bounds.minX,
-      y: bounds.midY - (side / 2),
-      width: side,
-      height: side
-    )
-  }
-
-  override func draw(_ dirtyRect: NSRect) {
-    super.draw(dirtyRect)
-    switch presentation {
-    case .unorderedList:
-      drawLabel("•", color: WorkbenchThemeNSColor.success)
-    case .orderedList(let ordinal):
-      drawLabel(ordinal, color: WorkbenchThemeNSColor.success)
-    case .taskList:
-      break
-    case .quote:
-      let barWidth: CGFloat = 2.5
-      let barRect = NSRect(
-        x: bounds.minX + 1,
-        y: bounds.minY + 1,
-        width: barWidth,
-        height: max(2, bounds.height - 2)
-      )
-      WorkbenchThemeNSColor.primary.withAlphaComponent(0.72).setFill()
-      NSBezierPath(roundedRect: barRect, xRadius: barWidth / 2, yRadius: barWidth / 2).fill()
-    case .hidden:
-      break
-    }
-  }
-
-  @objc private func toggleTask() {
-    guard let checkbox else { return }
-    let isChecked = checkbox.state == .on
-    checkbox.setAccessibilityLabel(isChecked ? "标记任务为未完成" : "标记任务为已完成")
-    onTaskToggle?(isChecked)
-  }
-
-  private func drawLabel(_ label: String, color: NSColor) {
-    let paragraphStyle = NSMutableParagraphStyle()
-    paragraphStyle.alignment = .center
-    let attributedLabel = NSAttributedString(
-      string: label,
-      attributes: [
-        .font: font,
-        .foregroundColor: color,
-        .paragraphStyle: paragraphStyle,
-      ]
-    )
-    let size = attributedLabel.size()
-    attributedLabel.draw(
-      in: NSRect(
-        x: bounds.minX,
-        y: bounds.midY - (size.height / 2),
-        width: bounds.width,
-        height: size.height
-      )
-    )
+  @objc(accessibilityPerformPress)
+  func performAccessibilityPress() -> Bool {
+    onPress(markerRange, !isChecked)
+    return true
   }
 }
 
 extension MacMarkdownTextView.Coordinator {
-  func clearBlockMarkerOverlays() {
-    for overlay in blockMarkerOverlayViews.values {
-      overlay.removeFromSuperview()
+  func clearBlockMarkerDrawings(in textView: NSTextView? = nil) {
+    let targetTextView = textView ?? self.textView
+    guard let targetTextView = targetTextView as? DroppableMarkdownTextView else {
+      return
     }
-    blockMarkerOverlayViews.removeAll()
-    blockMarkerOverlayMarkers.removeAll()
+    targetTextView.markdownBlockMarkerDrawings = []
+    targetTextView.markdownBlockMarkerTaskToggleHandler = nil
   }
 
-  func applyBlockMarkerOverlays(
+  func applyBlockMarkerDrawings(
     _ markers: [MarkdownSyntaxMarker],
     in textView: NSTextView,
     rangeResolver: MarkdownTextKit2RangeAdapter.RangeResolver? = nil
@@ -124,59 +81,35 @@ extension MacMarkdownTextView.Coordinator {
       uniquingKeysWith: { _, newest in newest }
     )
 
-    let obsoleteLocations = blockMarkerOverlayViews.keys.filter {
-      desiredMarkers[$0] != blockMarkerOverlayMarkers[$0]
+    guard let droppableTextView = textView as? DroppableMarkdownTextView else {
+      return
     }
-    for location in obsoleteLocations {
-      blockMarkerOverlayViews[location]?.removeFromSuperview()
-      blockMarkerOverlayViews[location] = nil
-      blockMarkerOverlayMarkers[location] = nil
-    }
-
-    if let rangeResolver {
-      rangeResolver.manager.ensureLayout(for: rangeResolver.baseTextRange)
-    }
-    for (location, marker) in desiredMarkers {
-      guard let overlayFrame = blockMarkerOverlayFrame(
+    var drawings: [MarkdownBlockMarkerDrawing] = []
+    drawings.reserveCapacity(desiredMarkers.count)
+    for marker in desiredMarkers.values.sorted(by: { $0.range.location < $1.range.location }) {
+      guard let drawing = blockMarkerDrawing(
         for: marker,
         in: textView,
         rangeResolver: rangeResolver
       ) else {
-        blockMarkerOverlayViews[location]?.removeFromSuperview()
-        blockMarkerOverlayViews[location] = nil
-        blockMarkerOverlayMarkers[location] = nil
         continue
       }
-      if let overlay = blockMarkerOverlayViews[location],
-        blockMarkerOverlayMarkers[location] == marker
-      {
-        overlay.frame = overlayFrame
-        continue
-      }
-      let overlay = MarkdownBlockMarkerOverlayView(
-        frame: overlayFrame,
-        presentation: marker.presentation,
-        font: syntaxHighlightPalette.baseFont,
-        onTaskToggle: { [weak self, weak textView] isChecked in
-          guard let self, let textView else { return }
-          self.setTaskMarker(
-            marker.range,
-            checked: isChecked,
-            in: textView
-          )
-        }
-      )
-      textView.addSubview(overlay)
-      blockMarkerOverlayViews[location] = overlay
-      blockMarkerOverlayMarkers[location] = marker
+      drawings.append(drawing)
     }
+    droppableTextView.markdownBlockMarkerFont = syntaxHighlightPalette.baseFont
+    droppableTextView.markdownBlockMarkerTaskToggleHandler = {
+      [weak self, weak droppableTextView] markerRange, checked in
+      guard let self, let droppableTextView else { return }
+      self.setTaskMarker(markerRange, checked: checked, in: droppableTextView)
+    }
+    droppableTextView.markdownBlockMarkerDrawings = drawings
   }
 
-  private func blockMarkerOverlayFrame(
+  private func blockMarkerDrawing(
     for marker: MarkdownSyntaxMarker,
     in textView: NSTextView,
     rangeResolver: MarkdownTextKit2RangeAdapter.RangeResolver?
-  ) -> NSRect? {
+  ) -> MarkdownBlockMarkerDrawing? {
     let sourceRect = rangeResolver.flatMap {
       MarkdownTextKit2RangeAdapter.rect(
         for: marker.range,
@@ -200,14 +133,23 @@ extension MacMarkdownTextView.Coordinator {
         in: textView
       )
     {
-      return NSRect(
+      let taskFrame = NSRect(
         x: sourceRect.minX,
         y: contentRect.midY - 8,
         width: max(16, sourceRect.width),
         height: 16
       )
+      return MarkdownBlockMarkerDrawing(
+        marker: marker,
+        frame: taskFrame,
+        taskHitFrame: taskFrame.insetBy(dx: -3, dy: -3)
+      )
     }
-    return sourceRect
+    return MarkdownBlockMarkerDrawing(
+      marker: marker,
+      frame: sourceRect,
+      taskHitFrame: nil
+    )
   }
 
   func setTaskMarker(
@@ -235,5 +177,139 @@ extension MacMarkdownTextView.Coordinator {
     textView.insertText(replacement, replacementRange: stateRange)
     textView.setSelectedRange(selection)
     updateSelectionBinding(from: selection)
+    if let droppableTextView = textView as? DroppableMarkdownTextView {
+      droppableTextView.markdownBlockMarkerDrawings = droppableTextView
+        .markdownBlockMarkerDrawings
+        .map { drawing in
+          guard drawing.marker.range == markerRange,
+            case .taskList = drawing.marker.presentation
+          else {
+            return drawing
+          }
+          return MarkdownBlockMarkerDrawing(
+            marker: MarkdownSyntaxMarker(
+              range: markerRange,
+              presentation: .taskList(isChecked: checked)
+            ),
+            frame: drawing.frame,
+            taskHitFrame: drawing.taskHitFrame
+          )
+        }
+    }
+  }
+}
+
+extension DroppableMarkdownTextView {
+  @discardableResult
+  func handleMarkdownBlockMarkerClick(at point: NSPoint) -> Bool {
+    guard let drawing = markdownBlockMarkerDrawings.reversed().first(where: {
+      guard case .taskList = $0.marker.presentation,
+        let taskHitFrame = $0.taskHitFrame
+      else {
+        return false
+      }
+      return taskHitFrame.contains(point)
+    }),
+      case .taskList(let isChecked) = drawing.marker.presentation,
+      let markdownBlockMarkerTaskToggleHandler
+    else {
+      return false
+    }
+    markdownBlockMarkerTaskToggleHandler(drawing.marker.range, !isChecked)
+    return true
+  }
+
+  func drawMarkdownBlockMarkers(in dirtyRect: NSRect) {
+    guard !markdownBlockMarkerDrawings.isEmpty else { return }
+    for drawing in markdownBlockMarkerDrawings where drawing.frame.intersects(dirtyRect) {
+      switch drawing.marker.presentation {
+      case .unorderedList:
+        drawMarkdownBlockMarkerLabel(
+          "•",
+          in: drawing.frame,
+          color: WorkbenchThemeNSColor.success
+        )
+      case .orderedList(let ordinal):
+        drawMarkdownBlockMarkerLabel(
+          ordinal,
+          in: drawing.frame,
+          color: WorkbenchThemeNSColor.success
+        )
+      case .taskList(let isChecked):
+        drawMarkdownTaskCheckbox(in: drawing.frame, isChecked: isChecked)
+      case .quote:
+        let barWidth: CGFloat = 2.5
+        let barRect = NSRect(
+          x: drawing.frame.minX + 1,
+          y: drawing.frame.minY + 1,
+          width: barWidth,
+          height: max(2, drawing.frame.height - 2)
+        )
+        WorkbenchThemeNSColor.primary.withAlphaComponent(0.72).setFill()
+        NSBezierPath(
+          roundedRect: barRect,
+          xRadius: barWidth / 2,
+          yRadius: barWidth / 2
+        ).fill()
+      case .hidden:
+        break
+      }
+    }
+  }
+
+  private func drawMarkdownBlockMarkerLabel(
+    _ label: String,
+    in frame: NSRect,
+    color: NSColor
+  ) {
+    let paragraphStyle = NSMutableParagraphStyle()
+    paragraphStyle.alignment = .center
+    let attributedLabel = NSAttributedString(
+      string: label,
+      attributes: [
+        .font: markdownBlockMarkerFont,
+        .foregroundColor: color,
+        .paragraphStyle: paragraphStyle,
+      ]
+    )
+    let size = attributedLabel.size()
+    attributedLabel.draw(
+      in: NSRect(
+        x: frame.minX,
+        y: frame.midY - (size.height / 2),
+        width: frame.width,
+        height: size.height
+      )
+    )
+  }
+
+  private func drawMarkdownTaskCheckbox(in frame: NSRect, isChecked: Bool) {
+    let side = min(14, max(12, frame.height - 2))
+    let checkboxFrame = NSRect(
+      x: frame.midX - side / 2,
+      y: frame.midY - side / 2,
+      width: side,
+      height: side
+    )
+    let path = NSBezierPath(
+      roundedRect: checkboxFrame,
+      xRadius: 3,
+      yRadius: 3
+    )
+    if isChecked {
+      WorkbenchThemeNSColor.primary.setFill()
+      path.fill()
+      NSColor.white.setStroke()
+      let check = NSBezierPath()
+      check.lineWidth = 1.5
+      check.move(to: NSPoint(x: checkboxFrame.minX + 3, y: checkboxFrame.midY))
+      check.line(to: NSPoint(x: checkboxFrame.midX - 1, y: checkboxFrame.minY + 3.5))
+      check.line(to: NSPoint(x: checkboxFrame.maxX - 2.5, y: checkboxFrame.maxY - 3))
+      check.stroke()
+    } else {
+      NSColor.controlAccentColor.withAlphaComponent(0.78).setStroke()
+      path.lineWidth = 1.25
+      path.stroke()
+    }
   }
 }

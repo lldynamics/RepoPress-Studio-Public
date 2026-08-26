@@ -126,7 +126,8 @@ extension WorkbenchStore {
     let dateRange = SiteAnalyticsDateRange(start: rangeStart, end: now)
     let pagePath = SiteArticleURLResolver().relativeWebPath(
       from: profile.markdownPath(for: draft),
-      siteKind: profile.siteKind
+      profile: profile,
+      permalink: draft.permalink
     )
     let service = siteAnalyticsService
     isSiteAnalyticsLoading = true

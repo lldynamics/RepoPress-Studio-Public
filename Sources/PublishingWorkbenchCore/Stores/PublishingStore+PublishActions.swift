@@ -626,13 +626,18 @@ extension PublishingStore {
       return [generalDraftPublishingIssue]
     }
     let allDrafts = store.drafts.filter { $0.belongs(toSiteProfileID: draft.siteProfileID) }
-    return preflightService.run(
+    let profile = store.profile(for: draft)
+    let baseIssues = preflightService.run(
       draft: draft,
       allDrafts: allDrafts,
-      profile: store.profile(for: draft),
+      profile: profile,
       repositoryReport: store.repositoryReport(for: draft),
       includeRepositoryReadiness: includeRepositoryReadiness
     )
+    return SiteLinkAuditService().report(
+      drafts: allDrafts,
+      profile: profile
+    ).mergingPreflightIssues(baseIssues, for: draft)
   }
 
   func preflightIssues(
@@ -645,14 +650,19 @@ extension PublishingStore {
     if draft.isGeneralDraft {
       return [generalDraftPublishingIssue]
     }
-    return preflightService.run(
+    let profile = store.profile(for: draft)
+    let baseIssues = preflightService.run(
       draft: draft,
       allDrafts: allDrafts,
-      profile: store.profile(for: draft),
+      profile: profile,
       repositoryReport: store.repositoryReport(for: draft),
       includeRepositoryReadiness: includeRepositoryReadiness,
       duplicateIndex: duplicateIndex
     )
+    return SiteLinkAuditService().report(
+      drafts: allDrafts,
+      profile: profile
+    ).mergingPreflightIssues(baseIssues, for: draft)
   }
 
   public func sitePreflightIssues(store: WorkbenchStore) -> [PreflightIssue] {

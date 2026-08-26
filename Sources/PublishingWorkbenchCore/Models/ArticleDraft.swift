@@ -202,6 +202,16 @@ public struct ArticleDraft: Identifiable, Codable, Hashable, Sendable {
   public var tags: [String]
   public var categories: [String]
   public var authors: [String]
+  /// Optional storage keeps workbench snapshots written before digital-garden
+  /// aliases backward compatible.
+  private var aliasesStorage: [String]?
+  /// Routes replaced by an editor-committed Slug change. They stay separate
+  /// from `aliases` until the user chooses whether to rewrite references or
+  /// keep the old route as a redirect. Optional storage keeps older snapshots
+  /// backward compatible.
+  private var pendingSlugRedirectPathsStorage: [String]?
+  /// A framework-provided route override such as Quartz `permalink`.
+  public var permalink: String?
   public var draft: Bool
   public var visibility: ArticleVisibility
   public var summary: String
@@ -251,6 +261,9 @@ public struct ArticleDraft: Identifiable, Codable, Hashable, Sendable {
     tags: [String] = [],
     categories: [String] = [],
     authors: [String] = [],
+    aliases: [String] = [],
+    pendingSlugRedirectPaths: [String] = [],
+    permalink: String? = nil,
     draft: Bool = true,
     visibility: ArticleVisibility = .public,
     summary: String = "",
@@ -279,6 +292,11 @@ public struct ArticleDraft: Identifiable, Codable, Hashable, Sendable {
     self.tags = tags
     self.categories = categories
     self.authors = authors
+    self.aliasesStorage = aliases.isEmpty ? nil : aliases
+    self.pendingSlugRedirectPathsStorage = pendingSlugRedirectPaths.isEmpty
+      ? nil
+      : pendingSlugRedirectPaths
+    self.permalink = permalink?.trimmedForPublishing.nilIfEmpty
     self.draft = draft
     self.visibility = visibility
     self.summary = summary
@@ -321,6 +339,40 @@ public struct ArticleDraft: Identifiable, Codable, Hashable, Sendable {
 
   public var isPrivate: Bool {
     visibility == .private
+  }
+
+  public var aliases: [String] {
+    get { aliasesStorage ?? [] }
+    set { aliasesStorage = newValue.isEmpty ? nil : newValue }
+  }
+
+  public var pendingSlugRedirectPaths: [String] {
+    get { pendingSlugRedirectPathsStorage ?? [] }
+    set { pendingSlugRedirectPathsStorage = newValue.isEmpty ? nil : newValue }
+  }
+
+  public mutating func recordPendingSlugRedirectPath(_ path: String) {
+    let normalized = Self.normalizedRedirectPath(path)
+    guard normalized != "/", !pendingSlugRedirectPaths.contains(normalized) else { return }
+    pendingSlugRedirectPaths.append(normalized)
+  }
+
+  public mutating func clearPendingSlugRedirectPaths() {
+    pendingSlugRedirectPathsStorage = nil
+  }
+
+  private static func normalizedRedirectPath(_ value: String) -> String {
+    var path = value.trimmedForPublishing
+    path = String(path.split(separator: "#", maxSplits: 1).first ?? "")
+    path = String(path.split(separator: "?", maxSplits: 1).first ?? "")
+    guard !path.isEmpty,
+      !path.contains("://"),
+      !path.hasPrefix("//"),
+      !path.contains("\\")
+    else { return "/" }
+    let components = path.split(separator: "/").map(String.init)
+    guard !components.contains("..") else { return "/" }
+    return "/" + components.joined(separator: "/") + "/"
   }
 
   public var scope: ArticleDraftScope {
@@ -593,6 +645,8 @@ public struct ArticleDraft: Identifiable, Codable, Hashable, Sendable {
       tags: tags,
       categories: categories,
       authors: authors,
+      aliases: aliases,
+      permalink: permalink,
       draft: draft,
       visibility: visibility,
       summary: summary,
@@ -1376,6 +1430,8 @@ private struct RepositoryContentFingerprintSnapshot: Encodable {
   var tags: [String]
   var categories: [String]
   var authors: [String]
+  var aliases: [String]
+  var permalink: String?
   var draft: Bool
   var visibility: ArticleVisibility
   var summary: String

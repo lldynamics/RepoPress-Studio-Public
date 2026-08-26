@@ -508,7 +508,7 @@
       "rationale": "SEO preview metadata is auxiliary output; invalid optional metadata is omitted rather than blocking the article."
     },
     {
-      "file": "Sources/PublishingWorkbenchCore/Services/SiteStarterService.swift",
+      "file": "Sources/PublishingWorkbenchCore/Services/SiteStarterRepositoryOperations.swift",
       "category": "probeFallback",
       "contains": "try? runGitOutput(",
       "rationale": "Starter setup probes optional Git metadata and continues with an empty value when the repository is not yet initialized."

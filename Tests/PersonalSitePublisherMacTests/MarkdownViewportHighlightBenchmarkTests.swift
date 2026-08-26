@@ -11,7 +11,7 @@ import XCTest
 final class MarkdownViewportHighlightBenchmarkTests: XCTestCase {
   func testInlineAttachmentLayoutRejectsUnsafeExpansionAndClipsBlocks() throws {
     let container = NSRect(x: 0, y: 0, width: 96, height: 480)
-    let safeBlock = try XCTUnwrap(MarkdownInlineAttachmentOverlayLayout.frame(
+    let safeBlock = try XCTUnwrap(MarkdownInlineAttachmentDrawingLayout.frame(
       sourceRect: NSRect(x: 20, y: 40, width: 200, height: 24),
       textViewBounds: container,
       horizontalInset: 26,
@@ -19,7 +19,7 @@ final class MarkdownViewportHighlightBenchmarkTests: XCTestCase {
       preferredWidth: nil,
       preferredHeight: 164
     ))
-    let unsafeInline = MarkdownInlineAttachmentOverlayLayout.frame(
+    let unsafeInline = MarkdownInlineAttachmentDrawingLayout.frame(
       sourceRect: NSRect(x: 34, y: 40, width: 40, height: 20),
       textViewBounds: container,
       horizontalInset: 26,
@@ -339,26 +339,26 @@ final class MarkdownViewportHighlightBenchmarkTests: XCTestCase {
     textView.string = text
     textView.setSelectedRange(NSRange(location: source.length, length: 0))
 
-    coordinator.applyInlineAttachmentOverlays(
+    coordinator.applyInlineAttachmentDrawings(
       in: textView,
       applicationRange: applicationRange
     )
     let key = "attachment:\(formulaRange.location)"
-    let warmOverlay = try XCTUnwrap(coordinator.inlineAttachmentOverlayViews[key])
+    let warmDrawing = try XCTUnwrap(coordinator.inlineAttachmentDrawingDescriptors[key])
     let planComputationCountAfterWarmup = coordinator.inlineAttachmentPlanComputationCount
 
     var reconcileSamples: [Double] = []
     var reusedOverlayIdentity = true
     for _ in 0..<max(1, iterations) {
       let start = ContinuousClock.now
-      coordinator.applyInlineAttachmentOverlays(
+      coordinator.applyInlineAttachmentDrawings(
         in: textView,
         applicationRange: applicationRange,
         preservingExisting: true
       )
       reconcileSamples.append(Self.milliseconds(since: start))
       reusedOverlayIdentity = reusedOverlayIdentity
-        && coordinator.inlineAttachmentOverlayViews[key] === warmOverlay
+        && coordinator.inlineAttachmentDrawingDescriptors[key] == warmDrawing
     }
     let planComputationCountAfterReconciliation =
       coordinator.inlineAttachmentPlanComputationCount
@@ -369,7 +369,7 @@ final class MarkdownViewportHighlightBenchmarkTests: XCTestCase {
       coordinator.inlineAttachmentPlanDocumentRevision = nil
       coordinator.inlineAttachmentPlanBodyUTF16Offset = nil
       let start = ContinuousClock.now
-      coordinator.applyInlineAttachmentOverlays(
+      coordinator.applyInlineAttachmentDrawings(
         in: textView,
         applicationRange: applicationRange
       )
@@ -379,7 +379,7 @@ final class MarkdownViewportHighlightBenchmarkTests: XCTestCase {
     return MarkdownViewportOverlayReconciliationBenchmarkResult(
       documentUTF16Length: source.length,
       applicationUTF16Length: applicationRange.length,
-      visibleOverlayCount: coordinator.inlineAttachmentOverlayViews.count,
+      visibleOverlayCount: coordinator.inlineAttachmentDrawingDescriptors.count,
       reusedOverlayIdentity: reusedOverlayIdentity,
       planComputationCountAfterWarmup: planComputationCountAfterWarmup,
       planComputationCountAfterReconciliation: planComputationCountAfterReconciliation,

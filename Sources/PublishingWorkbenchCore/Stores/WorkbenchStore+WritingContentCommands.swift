@@ -105,7 +105,7 @@ extension WorkbenchStore {
           drafts: sameSiteDraftsSnapshot,
           profile: profileSnapshot
         )
-        return preflightService.run(
+        let baseIssues = preflightService.run(
           draft: selectedDraftSnapshot,
           allDrafts: sameSiteDraftsSnapshot,
           profile: profileSnapshot,
@@ -113,6 +113,10 @@ extension WorkbenchStore {
           includeRepositoryReadiness: true,
           duplicateIndex: duplicateIndex
         )
+        return SiteLinkAuditService().report(
+          drafts: sameSiteDraftsSnapshot,
+          profile: profileSnapshot
+        ).mergingPreflightIssues(baseIssues, for: selectedDraftSnapshot)
       }
       let issues: [PreflightIssue]? = await withTaskCancellationHandler(
         operation: {

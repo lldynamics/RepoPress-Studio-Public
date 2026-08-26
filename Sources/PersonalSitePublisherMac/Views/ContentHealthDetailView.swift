@@ -577,6 +577,10 @@ struct ContentHealthDetailView: View {
           }
         }
 
+        if let impact = store.slugChangeImpact(for: selectedRow.draftID) {
+          slugChangeResolutionCard(impact)
+        }
+
         if let aiItem = selectedRow.aiFixItem {
           Button {
             runAIFixQueueItem(aiItem)
@@ -621,6 +625,62 @@ struct ContentHealthDetailView: View {
     )
     .accessibilityElement(children: .contain)
     .accessibilityLabel("问题详情")
+  }
+
+  private func slugChangeResolutionCard(_ impact: SlugChangeImpact) -> some View {
+    VStack(alignment: .leading, spacing: 9) {
+      Label("Slug 变更处理", systemImage: "arrow.triangle.branch")
+        .font(.callout.weight(.semibold))
+      Text("\(impact.oldRoutes.joined(separator: "、")) → \(impact.newRoute)")
+        .font(.caption.monospaced())
+        .foregroundStyle(.secondary)
+        .textSelection(.enabled)
+      Text(
+        impact.referenceCount == 0
+          ? "站内未检测到旧引用；仍可保留旧地址，承接搜索引擎和站外来路。"
+          : "检测到 \(impact.affectedDraftCount) 篇文章、\(impact.referenceCount) 处旧引用。"
+      )
+      .font(.caption)
+      .foregroundStyle(.secondary)
+
+      Button {
+        _ = store.updateReferencesForPendingSlugChange(draftID: impact.targetDraftID)
+      } label: {
+        Label(
+          impact.referenceCount == 0
+            ? "确认无需更新站内引用"
+            : "一键更新 \(impact.referenceCount) 处引用",
+          systemImage: "link.badge.plus"
+        )
+      }
+      .workbenchProminentActionStyle()
+      .accessibilityIdentifier("content-health-update-slug-references")
+
+      Button {
+        _ = store.addAliasesForPendingSlugChange(draftID: impact.targetDraftID)
+      } label: {
+        Label("写入 aliases 保留旧地址", systemImage: "arrowshape.turn.up.right")
+      }
+      .buttonStyle(.bordered)
+      .disabled(!impact.conflictingAliasRoutes.isEmpty)
+      .accessibilityIdentifier("content-health-add-slug-aliases")
+
+      if !impact.conflictingAliasRoutes.isEmpty {
+        AccessibleStatusMessage(
+          message: "旧地址与其他文章冲突，不能写入 aliases：\(impact.conflictingAliasRoutes.joined(separator: "、"))",
+          severity: .error
+        )
+      } else {
+        Text("aliases 会写入 Front Matter；是否生成 HTTP 跳转取决于当前框架或重定向插件。")
+          .font(.caption2)
+          .foregroundStyle(.secondary)
+      }
+    }
+    .padding(10)
+    .background(
+      WorkbenchTheme.warning.opacity(WorkbenchOpacity.noticeBackground),
+      in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
+    )
   }
 
   private func selectedHealthRow(

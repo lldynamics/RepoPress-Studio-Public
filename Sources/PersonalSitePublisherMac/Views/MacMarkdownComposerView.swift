@@ -20,6 +20,7 @@ struct MacMarkdownComposerView: View {
   @StateObject var zenModeController = ZenModeController()
   @State var attachmentState = MarkdownComposerAttachmentState()
   @State var selectionActionState = MarkdownComposerSelectionActionState()
+  @State var selectionBubblePresentationState = MarkdownSelectionBubblePresentationState()
   @State var presentationState = MarkdownComposerPresentationState()
   @State var analysisState = MarkdownComposerAnalysisState()
   @State var editorDocumentBodyOffsetCache: Int
@@ -76,6 +77,13 @@ struct MacMarkdownComposerView: View {
   var outlineItems: [MarkdownOutlineItem] {
     guard appliedMarkdownAnalysisGeneration == markdownAnalysisGeneration else { return [] }
     return markdownAnalysis.outlineItems
+  }
+
+  var markdownSelectionBubbleTaskID: MarkdownSelectionBubbleTaskID {
+    MarkdownSelectionBubbleTaskID(
+      draftID: draft.id,
+      selectedRange: editorSessionState.selectedRange
+    )
   }
 
   var editorComfortConfiguration: MarkdownEditorComfortConfiguration {
@@ -276,10 +284,33 @@ struct MacMarkdownComposerView: View {
       scheduleMarkdownAnalysis(isAutomatic: true)
       scheduleInlineGhostText()
     }
+    .task(id: markdownSelectionBubbleTaskID) {
+      let selection = selectedRange
+      guard selection.length > 0, !Task.isCancelled else { return }
+
+      guard
+        let selectionGeneration = selectionBubblePresentationState.selectionDidChange(
+          to: selection
+        )
+      else {
+        return
+      }
+      do {
+        try await Task.sleep(for: MarkdownSelectionBubblePresentationState.presentationDelay)
+      } catch {
+        return
+      }
+      guard !Task.isCancelled else { return }
+      selectionBubblePresentationState.revealIfCurrentSelection(
+        selection,
+        generation: selectionGeneration
+      )
+    }
     .onChange(of: editorState.editorFocusRequest?.id) { _, _ in
       applyEditorFocusRequest()
     }
     .onChange(of: selectedRange) { oldRange, newRange in
+      selectionBubblePresentationState.selectionDidChange(to: newRange)
       if !NSEqualRanges(oldRange, newRange) {
         isInlineSelectionPaletteDismissed = false
         if let selectionEditPreview,
@@ -353,6 +384,7 @@ struct MacMarkdownComposerView: View {
       syncEditorBodyFromStore()
     }
     .onChange(of: draft.id) { oldDraftID, _ in
+      selectionBubblePresentationState.reset()
       cancelFindMatchRefresh()
       editorState.trackDraft(draft.id)
       flushEditorSessionSave(for: oldDraftID)
@@ -628,7 +660,7 @@ struct MacMarkdownComposerView: View {
             .allowsHitTesting(false)
         }
 
-        if editorSessionState.selectedRange.length > 0 {
+        if selectionBubblePresentationState.shouldRender(for: editorSessionState.selectedRange) {
           VStack {
             MarkdownFloatingBubbleToolbar(
               isSelectionAIActionRunning: isSelectionAIActionRunning,

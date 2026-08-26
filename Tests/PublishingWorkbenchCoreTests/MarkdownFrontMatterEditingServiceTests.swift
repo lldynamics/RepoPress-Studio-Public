@@ -2,6 +2,37 @@ import XCTest
 @testable import PublishingWorkbenchCore
 
 final class MarkdownFrontMatterEditingServiceTests: XCTestCase {
+  func testRenderAndApplyPreserveAliasesAndPermalink() throws {
+    var yamlProfile = SiteProfile.defaultProfile
+    yamlProfile.frontMatterStyle = .yaml
+    let draft = ArticleDraft(
+      siteProfileID: yamlProfile.id,
+      title: "Garden",
+      slug: "garden",
+      aliases: ["/old-garden/", "/notes/garden/"],
+      permalink: "/garden-entry/"
+    )
+    let service = MarkdownFrontMatterEditingService()
+
+    let yaml = service.render(draft: draft, profile: yamlProfile)
+    XCTAssertTrue(yaml.contains("aliases: [\"/old-garden/\", \"/notes/garden/\"]"))
+    XCTAssertTrue(yaml.contains("permalink: \"/garden-entry/\""))
+    let yamlResult = service.applying(yaml, to: draft, profile: yamlProfile)
+    XCTAssertTrue(yamlResult.isValid)
+    XCTAssertEqual(yamlResult.draft.aliases, draft.aliases)
+    XCTAssertEqual(yamlResult.draft.permalink, draft.permalink)
+
+    var tomlProfile = yamlProfile
+    tomlProfile.frontMatterStyle = .toml
+    let toml = service.render(draft: draft, profile: tomlProfile)
+    XCTAssertTrue(toml.contains("aliases = [\"/old-garden/\", \"/notes/garden/\"]"))
+    XCTAssertTrue(toml.contains("permalink = \"/garden-entry/\""))
+    let tomlResult = service.applying(toml, to: draft, profile: tomlProfile)
+    XCTAssertTrue(tomlResult.isValid)
+    XCTAssertEqual(tomlResult.draft.aliases, draft.aliases)
+    XCTAssertEqual(tomlResult.draft.permalink, draft.permalink)
+  }
+
   func testYAMLEditUpdatesStructuredMetadataAndPreservesBody() throws {
     var profile = SiteProfile.defaultProfile
     profile.frontMatterStyle = .yaml

@@ -6,6 +6,9 @@ public enum SiteKind: String, Codable, CaseIterable, Identifiable, Sendable {
   case astro
   case hugo
   case vitePress
+  case nextJS
+  case quartz
+  case foam
   case hexo
   case jekyll
 

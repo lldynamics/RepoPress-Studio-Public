@@ -48,6 +48,10 @@ enum MarkdownSyntaxViewportRepaintReason: Equatable, Sendable {
   var requiresFullRepaint: Bool {
     self != .viewport
   }
+
+  var preservesInlineAttachmentDrawings: Bool {
+    self == .viewport || self == .selection
+  }
 }
 
 struct MacMarkdownTextView: NSViewRepresentable {
@@ -206,7 +210,7 @@ struct MacMarkdownTextView: NSViewRepresentable {
     context.coordinator.configureReadOnlyPresentationFocusBridge(on: textView)
     scrollView.documentView = textView
     context.coordinator.observeScrolling(in: scrollView)
-    context.coordinator.scheduleFullStatistics(for: bodyMarkdown)
+    context.coordinator.scheduleFullStatistics(for: bodyMarkdown, isInitialLoad: true)
     context.coordinator.scheduleMarkdownSyntaxHighlighting(for: textView, text: text)
     context.coordinator.updateDiagnostics(diagnostics, in: textView, force: true)
     context.coordinator.updateCurrentParagraphHighlight(in: textView, force: true)
@@ -376,7 +380,7 @@ struct MacMarkdownTextView: NSViewRepresentable {
 
   static func dismantleNSView(_ nsView: NSScrollView, coordinator: Coordinator) {
     coordinator.flushPendingBindingWrites()
-    coordinator.inlineAttachmentApplicationTask?.cancel()
+    coordinator.inlineAttachmentDrawingApplicationTask?.cancel()
     coordinator.cancelReadOnlyPresentationTasks()
     if let textView = nsView.documentView as? DroppableMarkdownTextView {
       textView.willBecomeFirstResponderHandler = nil
@@ -411,8 +415,8 @@ struct MacMarkdownTextView: NSViewRepresentable {
     let syntaxTreeSynchronizationDebouncer = MarkdownSyntaxHighlightDebouncer()
     var syntaxAttributeApplicationTask: Task<Void, Never>?
     var syntaxAttributeApplicationGeneration: UInt64 = 0
-    var inlineAttachmentApplicationTask: Task<Void, Never>?
-    var inlineAttachmentApplicationGeneration: UInt64 = 0
+    var inlineAttachmentDrawingApplicationTask: Task<Void, Never>?
+    var inlineAttachmentDrawingApplicationGeneration: UInt64 = 0
     var syntaxParsedSnapshotCache: MarkdownSyntaxHighlightSnapshot?
     var syntaxParsedRunIndex: MarkdownSyntaxHighlightRunIndex?
     var syntaxPaintedDocumentRevision: UInt64?
@@ -477,9 +481,7 @@ struct MacMarkdownTextView: NSViewRepresentable {
     var readOnlyPresentationCachedBaseFontSize: CGFloat?
     var readOnlyPresentationTask: Task<Void, Never>?
     var readOnlyPresentationImageTasks: [Task<Void, Never>] = []
-    var inlineAttachmentOverlayViews: [String: MarkdownInlineAttachmentOverlayView] = [:]
-    var inlineAttachmentOverlayDescriptors: [String: MarkdownInlineAttachmentOverlayDescriptor] = [:]
-    var inlineAttachmentOverlayViewPool: [MarkdownInlineAttachmentOverlayView] = []
+    var inlineAttachmentDrawingDescriptors: [String: MarkdownInlineAttachmentDrawing] = [:]
     var inlineAttachmentImageTasks: [String: Task<Void, Never>] = [:]
     var inlineAttachmentPaintedRanges: [NSRange] = []
     var inlineAttachmentFailedImagePaths: Set<String> = []
@@ -491,8 +493,6 @@ struct MacMarkdownTextView: NSViewRepresentable {
     var inlineAttachmentPlanComputationCount = 0
     var inlineAttachmentPlanIncrementalUpdateCount = 0
     var inlineAttachmentReferenceLookupCache: [String: DraftAttachment]?
-    var blockMarkerOverlayViews: [Int: MarkdownBlockMarkerOverlayView] = [:]
-    var blockMarkerOverlayMarkers: [Int: MarkdownSyntaxMarker] = [:]
     var appliedParagraphHighlightRange: NSRange?
     var appliedDiagnosticOverlays: [MarkdownEditorDiagnosticOverlay] = []
     var cachedDocumentDiagnosticOverlays: [MarkdownEditorDiagnosticOverlay] = []
@@ -513,7 +513,7 @@ struct MacMarkdownTextView: NSViewRepresentable {
     // 180 ms statistics delivery could start a second window-wide layout.
     // The live body channel above still stages every accepted edit immediately.
     let bindingFlushDelay: TimeInterval = 0.24
-    let statisticsDelay: TimeInterval = 0.5
+    let statisticsDelay = MarkdownEditorStatisticsDelayPolicy.incrementalDeliveryDelay
     var isApplyingAutomaticPairing = false
 
     init(
@@ -991,7 +991,7 @@ struct MacMarkdownTextView: NSViewRepresentable {
 
     deinit {
       syntaxAttributeApplicationTask?.cancel()
-      inlineAttachmentApplicationTask?.cancel()
+      inlineAttachmentDrawingApplicationTask?.cancel()
       inlineAttachmentImageTasks.values.forEach { $0.cancel() }
       readOnlyPresentationTask?.cancel()
       readOnlyPresentationImageTasks.forEach { $0.cancel() }

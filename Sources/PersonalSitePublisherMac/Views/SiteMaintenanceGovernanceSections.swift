@@ -260,6 +260,19 @@ struct SiteMaintenanceLinkAuditSection: View {
                   .font(.caption)
                   .foregroundStyle(.secondary)
                   .lineLimit(2)
+                if let statusCode = item.statusCode {
+                  Text("HTTP \(statusCode)")
+                    .font(.caption2.monospaced())
+                    .foregroundStyle(.secondary)
+                }
+                if let finalTarget = item.finalTarget,
+                  finalTarget != item.target
+                {
+                  Text("最终地址：\(finalTarget)")
+                    .font(.caption2.monospaced())
+                    .foregroundStyle(.secondary)
+                    .workbenchTruncatedIdentity(finalTarget)
+                }
               }
               Spacer()
             }

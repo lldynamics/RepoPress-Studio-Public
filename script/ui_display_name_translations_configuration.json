@@ -87,6 +87,10 @@
     "en": "Astro",
     "zh-Hans": "Astro"
   },
+  "display.site-kind.foam": {
+    "en": "Foam",
+    "zh-Hans": "Foam"
+  },
   "display.site-kind.hexo": {
     "en": "Hexo",
     "zh-Hans": "Hexo"
@@ -98,6 +102,18 @@
   "display.site-kind.jekyll": {
     "en": "Jekyll",
     "zh-Hans": "Jekyll"
+  },
+  "display.site-kind.nextjs": {
+    "en": "Next.js (Contentlayer / Velite)",
+    "zh-Hans": "Next.js（Contentlayer / Velite）"
+  },
+  "display.site-kind.quartz": {
+    "en": "Quartz",
+    "zh-Hans": "Quartz"
+  },
+  "display.site-kind.vitepress": {
+    "en": "VitePress",
+    "zh-Hans": "VitePress"
   },
   "display.site-kind.zola": {
     "en": "Zola",

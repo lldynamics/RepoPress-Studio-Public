@@ -165,6 +165,87 @@ struct MarkdownComposerSelectionActionState {
   var selectionEditPreview: AIPublishingSelectionEditPreview?
 }
 
+/// Value state for the delayed selection bubble presentation.
+///
+/// The view owns the actual cancellation-aware task; this type only records
+/// the latest selection and whether its delay has completed. Keeping the
+/// transition rules here makes rapid selection changes deterministic without
+/// making tests depend on wall-clock scheduling.
+struct MarkdownSelectionBubblePresentationState: Equatable {
+  static let presentationDelay: Duration = .milliseconds(200)
+
+  private(set) var activeSelection: NSRange?
+  private(set) var isVisible = false
+  private(set) var selectionGeneration: UInt64 = 0
+
+  @discardableResult
+  mutating func selectionDidChange(to selection: NSRange) -> UInt64? {
+    guard selection.length > 0 else {
+      reset()
+      return nil
+    }
+
+    if let activeSelection, NSEqualRanges(activeSelection, selection) {
+      return selectionGeneration
+    }
+
+    selectionGeneration &+= 1
+    activeSelection = selection
+    isVisible = false
+    return selectionGeneration
+  }
+
+  mutating func reset() {
+    selectionGeneration &+= 1
+    activeSelection = nil
+    isVisible = false
+  }
+
+  @discardableResult
+  mutating func revealIfCurrentSelection(
+    _ selection: NSRange,
+    generation: UInt64? = nil
+  ) -> Bool {
+    guard
+      selection.length > 0,
+      generation == nil || generation == selectionGeneration,
+      let activeSelection,
+      NSEqualRanges(activeSelection, selection)
+    else {
+      return false
+    }
+
+    isVisible = true
+    return true
+  }
+
+  func shouldRender(for selection: NSRange) -> Bool {
+    guard
+      isVisible,
+      selection.length > 0,
+      let activeSelection
+    else {
+      return false
+    }
+    return NSEqualRanges(activeSelection, selection)
+  }
+}
+
+/// Stable identity for the cancellation-aware selection presentation task.
+/// The draft ID prevents a restored selection in another document from
+/// inheriting a previous document's pending or visible bubble.
+struct MarkdownSelectionBubbleTaskID: Equatable {
+  let draftID: UUID
+  let location: Int
+  let length: Int
+
+  init(draftID: UUID, selectedRange: NSRange) {
+    self.draftID = draftID
+    location = selectedRange.location
+    length = selectedRange.length
+  }
+}
+
 enum MarkdownWritingContextPanel: String, CaseIterable, Identifiable {
   case selectionTools
   case aiReview

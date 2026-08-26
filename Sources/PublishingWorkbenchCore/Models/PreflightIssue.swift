@@ -36,6 +36,9 @@ public enum PreflightIssueCategory: String, Codable, Hashable, Sendable {
   case missingMediaPublishPath
   case unsafeMediaRepositoryPath
   case unregisteredBodyImage
+  case brokenInternalLink
+  case unreachableExternalLink
+  case slugRedirectCandidate
 }
 
 public enum PreflightIssueField: String, Codable, Hashable, Sendable {

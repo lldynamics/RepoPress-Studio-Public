@@ -177,9 +177,13 @@ public final class LocalSitePreviewFileWatcher: @unchecked Sendable {
       return []
     case .vitePress:
       return ["dist"]
+    case .nextJS:
+      return [".next", "out"]
+    case .quartz:
+      return [".quartz-cache", "public"]
     case .zola, .hugo, .hexo:
       return ["public"]
-    case .jekyll:
+    case .jekyll, .foam:
       return []
     }
   }

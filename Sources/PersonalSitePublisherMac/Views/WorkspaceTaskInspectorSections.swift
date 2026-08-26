@@ -25,6 +25,8 @@ struct WorkspaceTaskMetadataSection: View {
   @State private var summaryGenerationRequestID: UUID?
   @State private var summaryGenerationTask: Task<Void, Never>?
   @State private var isAddingDraftToProject = false
+  @State private var slugText: String
+  @FocusState private var isSlugFocused: Bool
 
   init(
     draft: Binding<ArticleDraft>,
@@ -38,6 +40,7 @@ struct WorkspaceTaskMetadataSection: View {
     _summaryAI = ObservedObject(
       wrappedValue: WorkbenchMetadataSummaryFeatureFacade(store: store)
     )
+    _slugText = State(initialValue: draft.wrappedValue.slug)
     self.state = state
     self.tagSuggestions = tagSuggestions
     self.categorySuggestions = categorySuggestions
@@ -53,10 +56,38 @@ struct WorkspaceTaskMetadataSection: View {
             .accessibilityValue(draft.title.isEmpty ? "未填写" : draft.title)
         }
         metadataField("固定链接（Slug）") {
-          TextField("例如 my-article", text: $draft.slug)
+          TextField("例如 my-article", text: $slugText)
             .textFieldStyle(.roundedBorder)
+            .focused($isSlugFocused)
+            .onSubmit(commitSlugEdit)
+            .onChange(of: isSlugFocused) { wasFocused, isFocused in
+              if wasFocused && !isFocused {
+                commitSlugEdit()
+              }
+            }
+            .onChange(of: draft.id) { _, _ in
+              slugText = draft.slug
+            }
+            .onChange(of: draft.slug) { _, currentSlug in
+              if !isSlugFocused {
+                slugText = currentSlug
+              }
+            }
             .accessibilityLabel("文章固定链接")
-            .accessibilityValue(draft.slug.isEmpty ? "未填写" : draft.slug)
+            .accessibilityValue(slugText.isEmpty ? "未填写" : slugText)
+          if !draft.pendingSlugRedirectPaths.isEmpty {
+            Button {
+              store.selectSection(.contentHealth)
+            } label: {
+              Label(
+                "已检测到旧地址，前往内容健康处理",
+                systemImage: "arrow.triangle.branch"
+              )
+            }
+            .buttonStyle(.link)
+            .font(.caption)
+            .accessibilityIdentifier("open-slug-change-resolution")
+          }
         }
         summaryField
       }
@@ -171,6 +202,11 @@ struct WorkspaceTaskMetadataSection: View {
     .onDisappear {
       cancelSummaryGeneration()
     }
+  }
+
+  private func commitSlugEdit() {
+    guard slugText != draft.slug else { return }
+    draft.slug = slugText
   }
 
   private var siteDraftStatusDescription: String {
