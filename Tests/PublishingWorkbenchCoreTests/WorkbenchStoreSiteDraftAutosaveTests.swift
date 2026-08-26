@@ -22,7 +22,6 @@ final class WorkbenchStoreSiteDraftAutosaveTests: XCTestCase {
     )
     store.updateActiveProfile { profile in
       profile.localRepositoryRootPath = rootURL.path
-      profile.localRepositoryBookmarkData = nil
     }
     await store.waitForPendingSiteDraftFileWrites()
 
@@ -79,7 +78,6 @@ final class WorkbenchStoreSiteDraftAutosaveTests: XCTestCase {
     )
     store.updateActiveProfile { profile in
       profile.localRepositoryRootPath = rootURL.path
-      profile.localRepositoryBookmarkData = nil
       profile.markdownPathPattern = "content/posts/{slug}.md"
     }
 
@@ -231,7 +229,6 @@ final class WorkbenchStoreSiteDraftAutosaveTests: XCTestCase {
     )
     store.updateActiveProfile { profile in
       profile.localRepositoryRootPath = rootURL.path
-      profile.localRepositoryBookmarkData = nil
       profile.markdownPathPattern = "content/posts/{slug}.md"
     }
 
@@ -302,7 +299,6 @@ final class WorkbenchStoreSiteDraftAutosaveTests: XCTestCase {
     )
     store.updateActiveProfile { profile in
       profile.localRepositoryRootPath = rootURL.path
-      profile.localRepositoryBookmarkData = nil
     }
     await store.waitForPendingSiteDraftFileWrites()
     let projectFilesBefore = try markdownProjectFiles(in: rootURL)
@@ -334,7 +330,6 @@ final class WorkbenchStoreSiteDraftAutosaveTests: XCTestCase {
   ) throws -> PersistedSiteDraftFixture {
     var profile = SiteProfile.defaultProfile
     profile.localRepositoryRootPath = rootURL.path
-    profile.localRepositoryBookmarkData = nil
     profile.markdownPathPattern = "content/posts/{slug}.md"
     var draft = ArticleDraft(
       siteProfileID: profile.id,

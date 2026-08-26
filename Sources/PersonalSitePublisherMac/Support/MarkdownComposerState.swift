@@ -66,12 +66,21 @@ struct MarkdownFindMatchSnapshot: Equatable {
 
 @MainActor
 final class MarkdownComposerEditorSessionState: ObservableObject {
-  @Published var editorBody: String
+  /// The cursor service lives for the lifetime of the editor session so
+  /// selection changes can reuse the index for the current body revision.
+  /// Body replacement explicitly invalidates it because revisions are local
+  /// to a draft and can repeat when switching drafts.
+  let markdownCursorContextService = MarkdownCursorContextService()
+
+  @Published var editorBody: String {
+    didSet {
+      markdownCursorContextService.prepareForBodyChange()
+    }
+  }
   @Published var editorDocument: String
   @Published var isFrontMatterSelection = false
   @Published var frontMatterIssue: MarkdownFrontMatterEditingIssue?
   @Published var ignoredCanonicalFrontMatter: String?
-  @Published var editorStatistics = MarkdownEditorStatistics.empty
   @Published var selectedRange: NSRange
   @Published var isFindReplacePresented: Bool
   @Published var findQuery: String
@@ -83,12 +92,14 @@ final class MarkdownComposerEditorSessionState: ObservableObject {
   @Published var findMatchSnapshot: MarkdownFindMatchSnapshot
   @Published var editorEditRequest: MarkdownTextEditRequest?
   @Published var markdownTextFocusRequest: MarkdownTextFocusRequest?
-  @Published var scrollSyncUpdate: MarkdownScrollSyncUpdate?
   @Published var editorScrollRestorationUpdate: MarkdownScrollSyncUpdate?
-  @Published var previewScrollRestorationUpdate: MarkdownScrollSyncUpdate?
   @Published var editorScrollProgress: Double
-  @Published var previewScrollProgress: Double
   @Published var editorBodyRevision: UInt64
+  /// The body and revision most recently staged from the live NSTextView.
+  /// These stay out of SwiftUI publication so keyboard input can reach the
+  /// Store before the coalesced editor Binding is committed.
+  var liveBodyMarkdown: String
+  var liveBodyRevision: UInt64
   @Published var markdownCursorContextSnapshot: MarkdownCursorContextSnapshot?
   @Published var markdownCursorCompletionSnapshot: MarkdownCompletionContext?
 
@@ -104,10 +115,10 @@ final class MarkdownComposerEditorSessionState: ObservableObject {
     isFindRegularExpression: Bool,
     findMatchSnapshot: MarkdownFindMatchSnapshot,
     editorScrollRestorationUpdate: MarkdownScrollSyncUpdate?,
-    previewScrollRestorationUpdate: MarkdownScrollSyncUpdate?,
     editorScrollProgress: Double,
-    previewScrollProgress: Double,
     editorBodyRevision: UInt64,
+    liveBodyMarkdown: String? = nil,
+    liveBodyRevision: UInt64? = nil,
     markdownCursorContextSnapshot: MarkdownCursorContextSnapshot? = nil,
     markdownCursorCompletionSnapshot: MarkdownCompletionContext? = nil
   ) {
@@ -122,10 +133,10 @@ final class MarkdownComposerEditorSessionState: ObservableObject {
     self.isFindRegularExpression = isFindRegularExpression
     self.findMatchSnapshot = findMatchSnapshot
     self.editorScrollRestorationUpdate = editorScrollRestorationUpdate
-    self.previewScrollRestorationUpdate = previewScrollRestorationUpdate
     self.editorScrollProgress = editorScrollProgress
-    self.previewScrollProgress = previewScrollProgress
     self.editorBodyRevision = editorBodyRevision
+    self.liveBodyMarkdown = liveBodyMarkdown ?? editorBody
+    self.liveBodyRevision = liveBodyRevision ?? editorBodyRevision
     self.markdownCursorContextSnapshot = markdownCursorContextSnapshot
     self.markdownCursorCompletionSnapshot = markdownCursorCompletionSnapshot
   }
@@ -256,11 +267,6 @@ extension MacMarkdownComposerView {
     nonmutating set { editorSessionState.ignoredCanonicalFrontMatter = newValue }
   }
 
-  var editorStatistics: MarkdownEditorStatistics {
-    get { editorSessionState.editorStatistics }
-    nonmutating set { editorSessionState.editorStatistics = newValue }
-  }
-
   var selectedRange: NSRange {
     get { editorSessionState.selectedRange }
     nonmutating set { editorSessionState.selectedRange = newValue }
@@ -316,29 +322,14 @@ extension MacMarkdownComposerView {
     nonmutating set { editorSessionState.markdownTextFocusRequest = newValue }
   }
 
-  var scrollSyncUpdate: MarkdownScrollSyncUpdate? {
-    get { editorSessionState.scrollSyncUpdate }
-    nonmutating set { editorSessionState.scrollSyncUpdate = newValue }
-  }
-
   var editorScrollRestorationUpdate: MarkdownScrollSyncUpdate? {
     get { editorSessionState.editorScrollRestorationUpdate }
     nonmutating set { editorSessionState.editorScrollRestorationUpdate = newValue }
   }
 
-  var previewScrollRestorationUpdate: MarkdownScrollSyncUpdate? {
-    get { editorSessionState.previewScrollRestorationUpdate }
-    nonmutating set { editorSessionState.previewScrollRestorationUpdate = newValue }
-  }
-
   var editorScrollProgress: Double {
     get { editorSessionState.editorScrollProgress }
     nonmutating set { editorSessionState.editorScrollProgress = newValue }
-  }
-
-  var previewScrollProgress: Double {
-    get { editorSessionState.previewScrollProgress }
-    nonmutating set { editorSessionState.previewScrollProgress = newValue }
   }
 
   var editorBodyRevision: UInt64 {

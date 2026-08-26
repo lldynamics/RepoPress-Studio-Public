@@ -19,9 +19,20 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 SOURCE_ROOT = ROOT / "Sources" / "PersonalSitePublisherMac"
 CORE_SOURCE_ROOT = ROOT / "Sources" / "PublishingWorkbenchCore"
+PUBLISHING_CORE_SOURCE_ROOTS = tuple(
+    sorted(
+        source_root
+        for source_root in (ROOT / "Sources").glob("Publishing*")
+        if source_root.is_dir()
+        and (
+            source_root.name.endswith("Core")
+            or source_root.name == "PublishingCoreSupport"
+        )
+    )
+)
 SCREENSHOT_SUPPORT_SOURCE_ROOT = CORE_SOURCE_ROOT / "DebugSupport"
 UI_SOURCE_ROOTS = (SOURCE_ROOT, SCREENSHOT_SUPPORT_SOURCE_ROOT)
-CORE_RESOURCE_ROOT = CORE_SOURCE_ROOT / "Resources"
+CORE_RESOURCE_ROOT = ROOT / "Sources" / "PublishingCoreSupport" / "Resources"
 WORKSPACE_MODELS_PATH = ROOT / "Sources" / "PublishingWorkbenchCore" / "Models" / "WorkspaceModels.swift"
 CATALOG_PATH = SOURCE_ROOT / "Resources" / "Localizable.xcstrings"
 TRANSLATION_PATHS = tuple(sorted((ROOT / "script").glob("ui_*translations*.json")))
@@ -267,17 +278,18 @@ def extract_display_name_semantic_keys() -> dict[str, str]:
 
 def extract_core_localization_keys() -> dict[str, str]:
     extracted: dict[str, str] = {}
-    for source_path in sorted(CORE_SOURCE_ROOT.rglob("*.swift")):
-        source = source_path.read_text(encoding="utf-8")
-        for raw_value in CORE_LOCALIZATION_CALL_PATTERN.findall(source):
-            value = (
-                raw_value
-                .replace(r'\"', '"')
-                .replace(r"\n", "\n")
-                .replace(r"\t", "\t")
-                .replace(r"\\", "\\")
-            )
-            extracted[value] = value
+    for source_root in PUBLISHING_CORE_SOURCE_ROOTS:
+        for source_path in sorted(source_root.rglob("*.swift")):
+            source = source_path.read_text(encoding="utf-8")
+            for raw_value in CORE_LOCALIZATION_CALL_PATTERN.findall(source):
+                value = (
+                    raw_value
+                    .replace(r'\"', '"')
+                    .replace(r"\n", "\n")
+                    .replace(r"\t", "\t")
+                    .replace(r"\\", "\\")
+                )
+                extracted[value] = value
     return extracted
 
 

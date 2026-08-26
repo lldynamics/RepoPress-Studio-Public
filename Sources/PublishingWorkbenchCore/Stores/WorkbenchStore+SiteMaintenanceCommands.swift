@@ -17,6 +17,11 @@ extension WorkbenchStore {
     siteMaintenanceRefreshScheduleTask?.cancel()
     siteMaintenanceRefreshScheduleTask = nil
 
+    // A startup word-count migration changes the maintenance input only after
+    // its async calculation completes. Establish that derived-state baseline
+    // before capturing the report signature.
+    await waitForPendingDraftWordCountRefreshes()
+
     let input = publishingStore.siteMaintenanceReportInput(store: self)
     let signature = input.signature
     if !force, siteMaintenanceStore.hasCurrentSnapshot(for: signature) {

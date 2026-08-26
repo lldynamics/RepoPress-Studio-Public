@@ -1745,22 +1745,6 @@
         }
       }
     },
-    "%lld 个站点样式": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld Site Styles"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld 个站点样式"
-          }
-        }
-      }
-    },
     "%lld 个自动备份校验失败": {
       "localizations": {
         "en": {
@@ -4001,18 +3985,18 @@
         }
       }
     },
-    "Chrome 优先生成自包含 MHTML；Safari 和 Firefox 在大小上限内生成离线 HTML。应用未打开时，扩展会把待导入内容保留在浏览器本地队列，应用恢复后再重试。": {
+    "Chrome 优先生成自包含 MHTML；Firefox 在大小上限内生成离线 HTML。应用未打开时，扩展会把待导入内容保留在浏览器本地队列，应用恢复后再重试。": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Chrome prefers self-contained MHTML, while Safari and Firefox create offline HTML within the size limit. If the app is closed, the extension keeps pending imports in the browser-local queue and retries when the app is available."
+            "value": "Chrome prefers self-contained MHTML, while Firefox creates offline HTML within the size limit. If the app is closed, the extension keeps pending imports in the browser-local queue and retries when the app is available."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "Chrome 优先生成自包含 MHTML；Safari 和 Firefox 在大小上限内生成离线 HTML。应用未打开时，扩展会把待导入内容保留在浏览器本地队列，应用恢复后再重试。"
+            "value": "Chrome 优先生成自包含 MHTML；Firefox 在大小上限内生成离线 HTML。应用未打开时，扩展会把待导入内容保留在浏览器本地队列，应用恢复后再重试。"
           }
         }
       }
@@ -5857,34 +5841,18 @@
         }
       }
     },
-    "Safari": {
+    "Chrome 和 Firefox 扩展独立安装和更新，均通过本机回环接口连接。": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Safari"
+            "value": "Chrome and Firefox extensions are installed and updated separately; both connect through the local loopback interface."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "Safari"
-          }
-        }
-      }
-    },
-    "Safari 扩展随应用安装；Chrome 和 Firefox 扩展独立更新，均通过本机回环接口连接。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "The Safari extension is installed with the app. Chrome and Firefox extensions update separately and both connect through the local loopback interface."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Safari 扩展随应用安装；Chrome 和 Firefox 扩展独立更新，均通过本机回环接口连接。"
+            "value": "Chrome 和 Firefox 扩展独立安装和更新，均通过本机回环接口连接。"
           }
         }
       }
@@ -10753,54 +10721,6 @@
         }
       }
     },
-    "display.editor-display-mode.edit": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Edit"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "编辑"
-          }
-        }
-      }
-    },
-    "display.editor-display-mode.preview": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Preview"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "预览"
-          }
-        }
-      }
-    },
-    "display.editor-display-mode.split": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Split View"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "分屏"
-          }
-        }
-      }
-    },
     "display.front-matter-style.toml": {
       "localizations": {
         "en": {
@@ -12241,6 +12161,22 @@
         }
       }
     },
+    "display.remote-repository-publish-mode.preview-branch": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Draft Preview Branch"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "草稿预览分支"
+          }
+        }
+      }
+    },
     "display.remote-repository-publish-mode.review-request": {
       "localizations": {
         "en": {
@@ -13005,6 +12941,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "Jekyll"
+          }
+        }
+      }
+    },
+    "display.site-kind.vitepress": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "VitePress"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "VitePress"
           }
         }
       }
@@ -14109,6 +14061,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "“未登记”只表示已载入文章的附件列表中没有该图片；主题、CSS 或其他文件仍可能引用它。"
+          }
+        }
+      }
+    },
+    "•": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "•"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "•"
           }
         }
       }
@@ -15841,18 +15809,18 @@
         }
       }
     },
-    "从 Safari、Chrome 或 Firefox 保存网页": {
+    "从 Chrome 或 Firefox 保存网页": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Save webpages from Safari, Chrome, or Firefox"
+            "value": "Save webpages from Chrome or Firefox"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "从 Safari、Chrome 或 Firefox 保存网页"
+            "value": "从 Chrome 或 Firefox 保存网页"
           }
         }
       }
@@ -19569,6 +19537,22 @@
         }
       }
     },
+    "关闭后仍可在打开诊断或大纲时手动分析。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "When off, you can still analyze manually by opening diagnostics or the outline."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "关闭后仍可在打开诊断或大纲时手动分析。"
+          }
+        }
+      }
+    },
     "关闭后会停止自动刷新计时器和失败订阅重试计时器；手动刷新仍可使用。": {
       "localizations": {
         "en": {
@@ -19581,22 +19565,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "关闭后会停止自动刷新计时器和失败订阅重试计时器；手动刷新仍可使用。"
-          }
-        }
-      }
-    },
-    "关闭后可使用预览中的刷新按钮，或打开诊断/大纲时手动分析。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "When off, use the refresh button in the preview or open Diagnostics or Outline to analyze manually."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "关闭后可使用预览中的刷新按钮，或打开诊断/大纲时手动分析。"
           }
         }
       }
@@ -19709,22 +19677,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "关闭源码文件"
-          }
-        }
-      }
-    },
-    "关闭编辑与预览同步滚动": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Turn Off Synchronized Editor and Preview Scrolling"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "关闭编辑与预览同步滚动"
           }
         }
       }
@@ -19885,6 +19837,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "其他文章"
+          }
+        }
+      }
+    },
+    "其他站点": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Other Site"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "其他站点"
           }
         }
       }
@@ -20269,22 +20237,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "内置 %lld 个模板，支持新建站点或导入已有仓库。"
-          }
-        }
-      }
-    },
-    "内置运行组件可用": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Bundled runtime available"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "内置运行组件可用"
           }
         }
       }
@@ -20861,22 +20813,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "切换到 %@"
-          }
-        }
-      }
-    },
-    "切换到%@模式": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Switch to %@ mode"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "切换到%@模式"
           }
         }
       }
@@ -25345,22 +25281,6 @@
         }
       }
     },
-    "同步滚动": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Sync Scrolling"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "同步滚动"
-          }
-        }
-      }
-    },
     "同步警告": {
       "localizations": {
         "en": {
@@ -25709,22 +25629,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "唤起命令面板与全局搜索 (⌘P)"
-          }
-        }
-      }
-    },
-    "唯一官方起点": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "The Maintained Starter"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "唯一官方起点"
           }
         }
       }
@@ -28941,22 +28845,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "对比目标"
-          }
-        }
-      }
-    },
-    "对话": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Conversation"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "对话"
           }
         }
       }
@@ -33377,22 +33265,6 @@
         }
       }
     },
-    "开启编辑与预览同步滚动": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Enable Synchronized Editor and Preview Scrolling"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "开启编辑与预览同步滚动"
-          }
-        }
-      }
-    },
     "开始一段新的 AI 对话": {
       "localizations": {
         "en": {
@@ -34785,18 +34657,18 @@
         }
       }
     },
-    "当前版本支持 Safari、Chrome 和 Firefox。Safari Web Extension 随应用内置；Chrome 和 Firefox 扩展独立安装和更新。": {
+    "当前版本支持 Chrome 和 Firefox。两者独立安装和更新，并通过本机回环接口连接。": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "This release supports Safari, Chrome, and Firefox. The Safari Web Extension is bundled with the app; Chrome and Firefox extensions are installed and updated separately."
+            "value": "This release supports Chrome and Firefox. Install and update both extensions separately; they connect through the local loopback interface."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "当前版本支持 Safari、Chrome 和 Firefox。Safari Web Extension 随应用内置；Chrome 和 Firefox 扩展独立安装和更新。"
+            "value": "当前版本支持 Chrome 和 Firefox。两者独立安装和更新，并通过本机回环接口连接。"
           }
         }
       }
@@ -36913,22 +36785,6 @@
         }
       }
     },
-    "手动刷新文章预览": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Refresh Article Preview Manually"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "手动刷新文章预览"
-          }
-        }
-      }
-    },
     "手动复用部署状态、站点/文章页检查、内容健康与链接审计。": {
       "localizations": {
         "en": {
@@ -36993,38 +36849,6 @@
         }
       }
     },
-    "打字反馈": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Typing Feedback"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "打字反馈"
-          }
-        }
-      }
-    },
-    "打字反馈预设": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Typing Feedback Preset"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "打字反馈预设"
-          }
-        }
-      }
-    },
     "打字机模式（光标保持居中）": {
       "localizations": {
         "en": {
@@ -37037,22 +36861,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "打字机模式（光标保持居中）"
-          }
-        }
-      }
-    },
-    "打字音效与微触觉": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Typewriter Sound & Haptics"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "打字音效与微触觉"
           }
         }
       }
@@ -37517,22 +37325,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "打开所选结果"
-          }
-        }
-      }
-    },
-    "打开扩展设置": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Open Extension Settings"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "打开扩展设置"
           }
         }
       }
@@ -38301,22 +38093,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "扫描站点"
-          }
-        }
-      }
-    },
-    "批处理": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Batch Actions"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "批处理"
           }
         }
       }
@@ -41121,6 +40897,22 @@
         }
       }
     },
+    "数学公式": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Math Formula"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "数学公式"
+          }
+        }
+      }
+    },
     "数据与备份": {
       "localizations": {
         "en": {
@@ -41229,22 +41021,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "数据文件夹尚未准备完成"
-          }
-        }
-      }
-    },
-    "数据文件夹已创建，但无法保存持续访问权限。请点击“恢复已有数据文件夹…”并选择刚创建的“RepoPress Data”文件夹。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "The data folder was created, but persistent access could not be saved. Choose Restore Existing Data Folder and select the newly created RepoPress Data folder."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "数据文件夹已创建，但无法保存持续访问权限。请点击“恢复已有数据文件夹…”并选择刚创建的“RepoPress Data”文件夹。"
           }
         }
       }
@@ -42353,22 +42129,6 @@
         }
       }
     },
-    "文章预览：%@": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Article preview: %@"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "文章预览：%@"
-          }
-        }
-      }
-    },
     "斜体": {
       "localizations": {
         "en": {
@@ -42657,6 +42417,22 @@
         }
       }
     },
+    "新建窗口": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "New Window"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "新建窗口"
+          }
+        }
+      }
+    },
     "新建文章后即可开始写作。": {
       "localizations": {
         "en": {
@@ -42737,34 +42513,34 @@
         }
       }
     },
-    "新建站点使用 Zola 写作起点；导入已有站点时选择其类型，并填写站点名称、描述、作者和 URL。": {
+    "新建站点可选 Astro、Hugo、Zola 或 VitePress 起点；导入已有站点时选择其类型。": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "New sites use the Zola writing starter; when importing an existing site, choose its type and enter the site name, description, author, and URL."
+            "value": "Choose an Astro, Hugo, Zola, or VitePress starter for a new site; choose the matching site type when importing an existing site."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "新建站点使用 Zola 写作起点；导入已有站点时选择其类型，并填写站点名称、描述、作者和 URL。"
+            "value": "新建站点可选 Astro、Hugo、Zola 或 VitePress 起点；导入已有站点时选择其类型。"
           }
         }
       }
     },
-    "新建站点固定使用 Zola 写作起点；导入模式按已有站点类型读取内容目录和 Front Matter。": {
+    "新建站点提供四套现代 SSG 起点；导入模式仍会按已有站点类型读取内容目录和 Front Matter。": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "New sites always use the Zola writing starter; import mode reads the content directory and Front Matter according to the existing site type."
+            "value": "New sites offer four modern SSG starters; import mode still reads content directories and Front Matter using the existing site's type."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "新建站点固定使用 Zola 写作起点；导入模式按已有站点类型读取内容目录和 Front Matter。"
+            "value": "新建站点提供四套现代 SSG 起点；导入模式仍会按已有站点类型读取内容目录和 Front Matter。"
           }
         }
       }
@@ -43101,22 +42877,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "无法生成检查快照"
-          }
-        }
-      }
-    },
-    "无法获得数据文件夹的持续访问权限：%@": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Could not retain access to the data folder: %@"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "无法获得数据文件夹的持续访问权限：%@"
           }
         }
       }
@@ -45409,22 +45169,6 @@
         }
       }
     },
-    "未找到站点 CSS": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Site CSS Not Found"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "未找到站点 CSS"
-          }
-        }
-      }
-    },
     "未推送": {
       "localizations": {
         "en": {
@@ -45517,6 +45261,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "未检测到可用分支。"
+          }
+        }
+      }
+    },
+    "未激活": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Inactive"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未激活"
           }
         }
       }
@@ -45649,18 +45409,18 @@
         }
       }
     },
-    "未能保存仓库权限，请重新选择或检查文件夹访问权限。": {
+    "未能保存仓库路径，请重新选择或检查文件夹是否存在。": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Repository permission could not be saved. Select the folder again or check folder access."
+            "value": "The repository path could not be saved. Select it again or check that the folder exists."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "未能保存仓库权限，请重新选择或检查文件夹访问权限。"
+            "value": "未能保存仓库路径，请重新选择或检查文件夹是否存在。"
           }
         }
       }
@@ -46657,22 +46417,6 @@
         }
       }
     },
-    "机械键盘": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Mechanical Keyboard"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "机械键盘"
-          }
-        }
-      }
-    },
     "权限": {
       "localizations": {
         "en": {
@@ -46957,22 +46701,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "松手立即导入素材"
-          }
-        }
-      }
-    },
-    "柔和点击": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Soft Click"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "柔和点击"
           }
         }
       }
@@ -49825,22 +49553,6 @@
         }
       }
     },
-    "正在更新文章预览": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Updating Article Preview"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "正在更新文章预览"
-          }
-        }
-      }
-    },
     "正在更新资料库推荐": {
       "localizations": {
         "en": {
@@ -50161,22 +49873,6 @@
         }
       }
     },
-    "正在生成文章预览": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Generating Article Preview"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "正在生成文章预览"
-          }
-        }
-      }
-    },
     "正在生成站点…": {
       "localizations": {
         "en": {
@@ -50189,22 +49885,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "正在生成站点…"
-          }
-        }
-      }
-    },
-    "正在生成预览…": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Generating Preview…"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "正在生成预览…"
           }
         }
       }
@@ -50237,22 +49917,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "正在结合语义、作者、标签和来源计算关联…"
-          }
-        }
-      }
-    },
-    "正在统计站点图片…": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Summarizing site images…"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "正在统计站点图片…"
           }
         }
       }
@@ -50545,22 +50209,6 @@
         }
       }
     },
-    "正文、附件或预览主题变化后自动更新文章预览。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Automatically update the article preview after the body, attachments, or preview theme changes."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "正文、附件或预览主题变化后自动更新文章预览。"
-          }
-        }
-      }
-    },
     "正文不会立即修改。预览会记录每篇文章的内容快照，执行前再次检查冲突。": {
       "localizations": {
         "en": {
@@ -50605,22 +50253,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "正文内容一致；仍会升级解析器版本并重新生成索引。"
-          }
-        }
-      }
-    },
-    "正文发生变化后会自动重新生成，也可以手动重试。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "The preview regenerates automatically after the body changes. You can also retry manually."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "正文发生变化后会自动重新生成，也可以手动重试。"
           }
         }
       }
@@ -52977,22 +52609,6 @@
         }
       }
     },
-    "滚动正文时同步定位到预览对应位置。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Keep the preview aligned with the editor while scrolling."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "滚动正文时同步定位到预览对应位置。"
-          }
-        }
-      }
-    },
     "满足任一规则": {
       "localizations": {
         "en": {
@@ -54193,22 +53809,6 @@
         }
       }
     },
-    "真实站点 CSS": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Live Site CSS"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "真实站点 CSS"
-          }
-        }
-      }
-    },
     "知识建议": {
       "localizations": {
         "en": {
@@ -55249,6 +54849,38 @@
         }
       }
     },
+    "窗口文章属于“%@”，当前站点发布记录未套用。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The window article belongs to \"%@\", so the active site's release history is not shown."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "窗口文章属于“%@”，当前站点发布记录未套用。"
+          }
+        }
+      }
+    },
+    "窗口文章属于“%@”，当前站点状态未套用。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The window article belongs to \"%@\", so the active site's repository status is not shown."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "窗口文章属于“%@”，当前站点状态未套用。"
+          }
+        }
+      }
+    },
     "窗口较窄，已临时隐藏；点击后会收起左侧栏并显示": {
       "localizations": {
         "en": {
@@ -55569,22 +55201,6 @@
         }
       }
     },
-    "站点图片": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Site Images"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "站点图片"
-          }
-        }
-      }
-    },
     "站点指标": {
       "localizations": {
         "en": {
@@ -55773,22 +55389,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "站点维护页面"
-          }
-        }
-      }
-    },
-    "站点缺 alt": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Site Missing alt"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "站点缺 alt"
           }
         }
       }
@@ -56125,22 +55725,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "简体中文"
-          }
-        }
-      }
-    },
-    "简洁白": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Simple Light"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "简洁白"
           }
         }
       }
@@ -56513,22 +56097,6 @@
         }
       }
     },
-    "系统未授予数据文件夹的持续访问权限，请重新选择该文件夹。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "The system did not grant persistent access to the data folder. Select the folder again."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "系统未授予数据文件夹的持续访问权限，请重新选择该文件夹。"
-          }
-        }
-      }
-    },
     "系统运行组件可用": {
       "localizations": {
         "en": {
@@ -56829,22 +56397,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "组合集合会随作者、标签、来源和时间变化自动更新。"
-          }
-        }
-      }
-    },
-    "经典打字机": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Classic Typewriter"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "经典打字机"
           }
         }
       }
@@ -57249,22 +56801,6 @@
         }
       }
     },
-    "编辑与预览同步滚动": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Synchronize Editor and Preview Scrolling"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "编辑与预览同步滚动"
-          }
-        }
-      }
-    },
     "编辑元数据": {
       "localizations": {
         "en": {
@@ -57325,22 +56861,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "编辑器"
-          }
-        }
-      }
-    },
-    "编辑器模式：%@": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Editor mode: %@"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "编辑器模式：%@"
           }
         }
       }
@@ -58029,22 +57549,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "自动刷新只检查已到刷新时间的订阅；关闭后台自动刷新不会影响手动刷新。"
-          }
-        }
-      }
-    },
-    "自动刷新已关闭，可以手动生成或刷新预览。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Automatic refresh is off. Generate or refresh the preview manually."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "自动刷新已关闭，可以手动生成或刷新预览。"
           }
         }
       }
@@ -62017,22 +61521,6 @@
         }
       }
     },
-    "输入时自动刷新预览": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Automatically Refresh Preview While Typing"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "输入时自动刷新预览"
-          }
-        }
-      }
-    },
     "输入时让当前行保持在编辑区域中央。": {
       "localizations": {
         "en": {
@@ -64257,18 +63745,18 @@
         }
       }
     },
-    "选择已有的本地站点仓库，应用会读取配置并导入文章。": {
+    "选择已有的本地站点仓库，应用会按你选择的绝对路径读取配置并导入文章。": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Select an existing local site repository. The app will read its configuration and import its articles."
+            "value": "Select an existing local site repository. The app will read its configuration and import its articles from the absolute path you selected."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "选择已有的本地站点仓库，应用会读取配置并导入文章。"
+            "value": "选择已有的本地站点仓库，应用会按你选择的绝对路径读取配置并导入文章。"
           }
         }
       }
@@ -64593,6 +64081,22 @@
         }
       }
     },
+    "起步模板": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Starter Template"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "起步模板"
+          }
+        }
+      }
+    },
     "选择模板": {
       "localizations": {
         "en": {
@@ -64909,22 +64413,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "选择阅读资料"
-          }
-        }
-      }
-    },
-    "选择音效后，按键会提供轻微的音效与触觉反馈。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "After you choose a sound, keystrokes provide subtle audio and haptic feedback."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "选择音效后，按键会提供轻微的音效与触觉反馈。"
           }
         }
       }
@@ -65853,22 +65341,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "重新检查"
-          }
-        }
-      }
-    },
-    "重新检查 Safari 扩展状态": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Check Safari Extension Status Again"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "重新检查 Safari 扩展状态"
           }
         }
       }
@@ -66817,18 +66289,18 @@
         }
       }
     },
-    "集中管理文章编辑、预览和打字反馈偏好。": {
+    "集中管理文章编辑、正文分析与写作体验偏好。": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Manage article editing, preview, and typing-feedback preferences in one place."
+            "value": "Manage article editing, body analysis, and writing experience preferences in one place."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "集中管理文章编辑、预览和打字反馈偏好。"
+            "value": "集中管理文章编辑、正文分析与写作体验偏好。"
           }
         }
       }
@@ -67185,38 +66657,6 @@
         }
       }
     },
-    "预览主题": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Preview Theme"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "预览主题"
-          }
-        }
-      }
-    },
-    "预览主题只影响编辑器内的文章预览，不会修改站点 CSS。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "The preview theme affects only the article preview in the editor and does not change the site's CSS."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "预览主题只影响编辑器内的文章预览，不会修改站点 CSS。"
-          }
-        }
-      }
-    },
     "预览会转换文章头信息（Front Matter）、Slug、图片目标路径和重定向候选，但不会复制文件或访问网络。": {
       "localizations": {
         "en": {
@@ -67245,22 +66685,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "预览修改"
-          }
-        }
-      }
-    },
-    "预览尚未生成": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Preview Not Generated Yet"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "预览尚未生成"
           }
         }
       }
@@ -67373,22 +66797,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "预览正在运行"
-          }
-        }
-      }
-    },
-    "预览生成失败": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Preview Generation Failed"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "预览生成失败"
           }
         }
       }

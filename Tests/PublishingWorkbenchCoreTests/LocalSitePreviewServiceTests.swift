@@ -31,6 +31,19 @@ final class LocalSitePreviewServiceTests: XCTestCase {
     XCTAssertEqual(plan.previewURL.absoluteString, "http://127.0.0.1:4321")
   }
 
+  func testVitePressPreviewPlanUsesNpmDev() throws {
+    var profile = SiteProfile.defaultProfile
+    profile.siteKind = .vitePress
+    profile.localRepositoryRootPath = "/tmp/vitepress-site"
+
+    let plan = try XCTUnwrap(LocalSitePreviewService().plan(profile: profile))
+
+    XCTAssertEqual(plan.command, "cd '/tmp/vitepress-site' && 'npm' 'run' 'dev'")
+    XCTAssertEqual(URL(fileURLWithPath: plan.executablePath).lastPathComponent, "npm")
+    XCTAssertEqual(plan.arguments, ["run", "dev"])
+    XCTAssertEqual(plan.previewURL.absoluteString, "http://127.0.0.1:5173")
+  }
+
   func testHugoPreviewPlanUsesDraftServerCommand() throws {
     var profile = SiteProfile.defaultProfile
     profile.siteKind = .hugo
@@ -390,18 +403,92 @@ final class LocalSitePreviewServiceTests: XCTestCase {
   func testPreviewProcessEnvironmentUsesTrustedPathsAndDropsSecrets() {
     let environment = LocalSitePreviewProcessService.launchEnvironment(from: [
       "HOME": "/tmp/home",
-      "PATH": "/tmp/untrusted:/usr/bin",
+      "PATH": "/tmp/home/.cargo/bin:/usr/bin:/tmp/untrusted:/tmp/home/.bun/bin",
       "OPENAI_API_KEY": "secret",
       "PRIVATE_TOKEN": "secret",
     ])
     let paths = environment["PATH"]?.split(separator: ":").map(String.init) ?? []
 
-    XCTAssertEqual(paths.first, "/opt/homebrew/bin")
+    XCTAssertEqual(paths.first, "/tmp/home/.cargo/bin")
+    XCTAssertEqual(paths.dropFirst().first, "/usr/bin")
+    XCTAssertTrue(paths.contains("/tmp/home/.local/bin"))
+    XCTAssertTrue(paths.contains("/tmp/home/.bun/bin"))
+    XCTAssertTrue(paths.contains("/tmp/home/.fnm/current/bin"))
+    XCTAssertTrue(paths.contains("/tmp/home/.asdf/shims"))
+    XCTAssertTrue(paths.contains("/tmp/home/.local/share/mise/shims"))
     XCTAssertTrue(paths.contains("/usr/local/bin"))
     XCTAssertEqual(paths.filter { $0 == "/usr/bin" }.count, 1)
+    XCTAssertFalse(paths.contains("/tmp/untrusted"))
     XCTAssertEqual(environment["HOME"], "/tmp/home")
     XCTAssertNil(environment["OPENAI_API_KEY"])
     XCTAssertNil(environment["PRIVATE_TOKEN"])
+  }
+
+  func testTrustedToolDirectoriesDiscoverNVMVersionsNewestFirst() throws {
+    let homeURL = try temporaryDirectory(named: "local-preview-nvm-home")
+    defer { try? FileManager.default.removeItem(at: homeURL) }
+    let versionsURL = homeURL.appendingPathComponent(".nvm/versions/node", isDirectory: true)
+    for version in ["v18.20.4", "v22.14.0", "v20.19.1"] {
+      try FileManager.default.createDirectory(
+        at: versionsURL.appendingPathComponent(version).appendingPathComponent("bin"),
+        withIntermediateDirectories: true
+      )
+    }
+
+    let directories = LocalSitePreviewProcessService.trustedToolDirectories(
+      homeDirectoryPath: homeURL.path,
+      fileManager: .default
+    )
+    let nvmDirectories = directories.filter { $0.contains("/.nvm/versions/node/") }
+
+    XCTAssertEqual(
+      nvmDirectories.map { URL(fileURLWithPath: $0).deletingLastPathComponent().lastPathComponent },
+      [
+        "v22.14.0",
+        "v20.19.1",
+        "v18.20.4",
+      ])
+  }
+
+  func testTrustedUserExecutableRejectsSymlinkOutsideManagedRoots() throws {
+    let homeURL = try temporaryDirectory(named: "local-preview-tool-home")
+    defer { try? FileManager.default.removeItem(at: homeURL) }
+    let cargoBinURL = homeURL.appendingPathComponent(".cargo/bin", isDirectory: true)
+    let downloadsURL = homeURL.appendingPathComponent("Downloads", isDirectory: true)
+    try FileManager.default.createDirectory(at: cargoBinURL, withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(at: downloadsURL, withIntermediateDirectories: true)
+
+    let trustedToolURL = cargoBinURL.appendingPathComponent("zola")
+    try Data("#!/bin/sh\n".utf8).write(to: trustedToolURL)
+    try FileManager.default.setAttributes(
+      [.posixPermissions: 0o755],
+      ofItemAtPath: trustedToolURL.path
+    )
+    XCTAssertTrue(
+      LocalSitePreviewProcessService.isTrustedExecutable(
+        atPath: trustedToolURL.path,
+        homeDirectoryPath: homeURL.path,
+        inheritedPATH: nil
+      ))
+
+    let untrustedTargetURL = downloadsURL.appendingPathComponent("tool")
+    try Data("#!/bin/sh\n".utf8).write(to: untrustedTargetURL)
+    try FileManager.default.setAttributes(
+      [.posixPermissions: 0o755],
+      ofItemAtPath: untrustedTargetURL.path
+    )
+    let escapingLinkURL = cargoBinURL.appendingPathComponent("unsafe-tool")
+    try FileManager.default.createSymbolicLink(
+      at: escapingLinkURL,
+      withDestinationURL: untrustedTargetURL
+    )
+
+    XCTAssertFalse(
+      LocalSitePreviewProcessService.isTrustedExecutable(
+        atPath: escapingLinkURL.path,
+        homeDirectoryPath: homeURL.path,
+        inheritedPATH: nil
+      ))
   }
 
   func testPreviewPlanUsesResolvedAbsoluteExecutable() throws {

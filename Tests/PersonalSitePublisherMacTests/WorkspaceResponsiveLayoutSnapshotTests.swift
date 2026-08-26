@@ -6,34 +6,21 @@ import XCTest
 final class WorkspaceResponsiveLayoutSnapshotTests: XCTestCase {
   func testEqualWithinSameSemanticLayoutBand() {
     XCTAssertEqual(
-      WorkspaceResponsiveLayoutSnapshot(width: 1_300, editorDisplayMode: .edit),
-      WorkspaceResponsiveLayoutSnapshot(width: 1_470, editorDisplayMode: .edit)
+      WorkspaceResponsiveLayoutSnapshot(width: 1_300),
+      WorkspaceResponsiveLayoutSnapshot(width: 1_470)
     )
   }
 
   func testChangesAtEveryLayoutDecisionBoundary() {
-    assertBoundaryChanges(
-      at: WorkbenchLayoutMode.minimumCompactInspectorWorkspaceWidth,
-      mode: .edit
-    )
-    assertBoundaryChanges(at: WorkbenchLayoutMode.minimumSplitSidebarWorkspaceWidth, mode: .split)
-    assertBoundaryChanges(at: WorkbenchLayoutMode.minimumInspectorWorkspaceWidth, mode: .split)
-    assertBoundaryChanges(
-      at: WorkbenchLayoutMode.minimumHTMLSourceInspectorWorkspaceWidth, mode: .split)
-    assertBoundaryChanges(at: WorkbenchLayoutMode.minimumSplitInspectorWorkspaceWidth, mode: .split)
+    assertBoundaryChanges(at: WorkbenchLayoutMode.minimumCompactInspectorWorkspaceWidth)
+    assertBoundaryChanges(at: WorkbenchLayoutMode.minimumInspectorWorkspaceWidth)
+    assertBoundaryChanges(at: WorkbenchLayoutMode.minimumHTMLSourceInspectorWorkspaceWidth)
   }
 
-  func testEditorDisplayModeRemainsPartOfLayoutIdentity() {
+  private func assertBoundaryChanges(at width: CGFloat) {
     XCTAssertNotEqual(
-      WorkspaceResponsiveLayoutSnapshot(width: 1_300, editorDisplayMode: .edit),
-      WorkspaceResponsiveLayoutSnapshot(width: 1_300, editorDisplayMode: .split)
-    )
-  }
-
-  private func assertBoundaryChanges(at width: CGFloat, mode: EditorDisplayMode) {
-    XCTAssertNotEqual(
-      WorkspaceResponsiveLayoutSnapshot(width: width - 1, editorDisplayMode: mode),
-      WorkspaceResponsiveLayoutSnapshot(width: width, editorDisplayMode: mode)
+      WorkspaceResponsiveLayoutSnapshot(width: width - 1),
+      WorkspaceResponsiveLayoutSnapshot(width: width)
     )
   }
 }

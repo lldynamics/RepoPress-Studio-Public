@@ -69,6 +69,55 @@ final class DraftSelectionPerformanceRegressionTests: XCTestCase {
     XCTAssertGreaterThan(firstBuffer.buffer.revision, 0)
   }
 
+  func testWindowContextActivationAlignsScopeWithoutFlushingTargetBuffer() throws {
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL())
+    )
+    let siteDraft = try XCTUnwrap(store.drafts.first)
+    let generalDraft = ArticleDraft.emptyGeneralDraft(editingProfile: store.activeProfile)
+    store.setDrafts([siteDraft, generalDraft])
+    store.selectDraft(siteDraft.id)
+
+    _ = try XCTUnwrap(
+      store.stageDraftBody(
+        "站点草稿离开窗口前提交",
+        for: siteDraft.id,
+        baseRevision: store.draftBodyEditorBuffer(for: siteDraft.id).revision
+      )
+    )
+    _ = try XCTUnwrap(
+      store.stageDraftBody(
+        "通用草稿仍由另一个窗口暂存",
+        for: generalDraft.id,
+        baseRevision: store.draftBodyEditorBuffer(for: generalDraft.id).revision
+      )
+    )
+
+    let activatedDraftID = store.activateDraftSelectionContext(generalDraft.id)
+
+    XCTAssertEqual(activatedDraftID, generalDraft.id)
+    XCTAssertEqual(store.selectedDraftID, generalDraft.id)
+    XCTAssertEqual(store.draftListContentScope, .general)
+    XCTAssertFalse(store.draftBodyEditorBuffer(for: siteDraft.id).isDirty)
+    XCTAssertTrue(store.draftBodyEditorBuffer(for: generalDraft.id).isDirty)
+    XCTAssertEqual(
+      store.draftBodyEditorBuffer(for: generalDraft.id).bodyMarkdown,
+      "通用草稿仍由另一个窗口暂存"
+    )
+  }
+
+  func testWindowContextActivationFallsBackWhenRememberedDraftWasDeleted() throws {
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL())
+    )
+    let retainedDraft = try XCTUnwrap(store.drafts.first)
+
+    let activatedDraftID = store.activateDraftSelectionContext(UUID())
+
+    XCTAssertEqual(activatedDraftID, retainedDraft.id)
+    XCTAssertEqual(store.selectedDraftID, retainedDraft.id)
+  }
+
   func testPerDraftImageRefreshDoesNotInvalidateEveryTaskQueueState() async throws {
     let store = WorkbenchStore(
       persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL())

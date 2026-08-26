@@ -39,12 +39,186 @@ import XCTest
       XCTAssertTrue(snapshot.deploymentPollingSettings.isEnabled)
       XCTAssertTrue(snapshot.privacySettings.masksPrivateContent)
 
+      let article = try XCTUnwrap(
+        snapshot.drafts.first(where: { $0.title == "RepoPress Studio 发布流程" })
+      )
+      let attachment = try XCTUnwrap(article.attachments.first)
+      let sourcePath = try XCTUnwrap(attachment.sourceFilePath)
+      let sourceURL = URL(fileURLWithPath: sourcePath)
+        .standardizedFileURL
+        .resolvingSymlinksInPath()
+      let temporaryRoot = FileManager.default.temporaryDirectory
+        .standardizedFileURL
+        .resolvingSymlinksInPath()
+        .path
+      XCTAssertTrue(sourceURL.path.hasPrefix(temporaryRoot + "/"))
+      XCTAssertTrue(FileManager.default.isReadableFile(atPath: sourceURL.path))
+      XCTAssertEqual(
+        try FileManager.default.attributesOfItem(atPath: sourceURL.path)[.type]
+          as? FileAttributeType,
+        .typeRegular
+      )
+      XCTAssertGreaterThan(try Data(contentsOf: sourceURL).count, 32)
+      XCTAssertTrue(
+        article.bodyMarkdown.contains(
+          "![\(attachment.altText)](\(attachment.relativePublishPath))"
+        )
+      )
+      XCTAssertTrue(article.bodyMarkdown.contains("$$"))
+      XCTAssertTrue(article.bodyMarkdown.contains("E = mc^2"))
+
       let encoded = String(data: try JSONEncoder.workbench.encode(snapshot), encoding: .utf8) ?? ""
       XCTAssertFalse(encoded.contains("/Users/"))
       XCTAssertFalse(encoded.localizedCaseInsensitiveContains("bearer "))
       XCTAssertFalse(encoded.localizedCaseInsensitiveContains("authorization"))
       XCTAssertFalse(encoded.contains("sk-"))
       XCTAssertFalse(encoded.contains("aiChatSessionsByDraftID"))
+    }
+
+    func testScreenshotDemoSnapshotKeepsDefaultWritingFixtureCompact() throws {
+      unsetenv(ScreenshotDemoDataService.performanceFixtureEnvironmentKey)
+
+      let snapshot = ScreenshotDemoDataService().makeSnapshot()
+      let writingDraft = try XCTUnwrap(
+        snapshot.drafts.first(where: { $0.title == "RepoPress Studio 发布流程" })
+      )
+
+      XCTAssertLessThan(
+        writingDraft.bodyMarkdown.utf16.count,
+        10_000,
+        "普通截图夹具不应被性能夹具放大"
+      )
+      XCTAssertTrue(
+        snapshot.drafts
+          .filter { $0.id != writingDraft.id }
+          .allSatisfy { $0.bodyMarkdown.utf16.count < 10_000 }
+      )
+    }
+
+    func testScreenshotDemoSnapshotProvidesIsolatedLargeMarkdownFixture() throws {
+      unsetenv(ScreenshotDemoDataService.performanceFixtureLengthEnvironmentKey)
+      setenv(
+        ScreenshotDemoDataService.performanceFixtureEnvironmentKey,
+        "markdown-scroll",
+        1
+      )
+      defer {
+        unsetenv(ScreenshotDemoDataService.performanceFixtureEnvironmentKey)
+        unsetenv(ScreenshotDemoDataService.performanceFixtureLengthEnvironmentKey)
+      }
+
+      let snapshot = ScreenshotDemoDataService().makeSnapshot()
+      let writingDraft = try XCTUnwrap(
+        snapshot.drafts.first(where: { $0.slug == "markdown-scroll-performance-fixture" })
+      )
+
+      XCTAssertGreaterThanOrEqual(writingDraft.bodyMarkdown.utf16.count, 100_000)
+      XCTAssertTrue(writingDraft.bodyMarkdown.contains("# Markdown viewport performance fixture"))
+      XCTAssertTrue(writingDraft.bodyMarkdown.contains("https://example.invalid/performance"))
+      XCTAssertTrue(writingDraft.bodyMarkdown.contains("offscreen attribute writes bounded"))
+      XCTAssertTrue(
+        snapshot.drafts
+          .filter { $0.id != writingDraft.id }
+          .allSatisfy { $0.bodyMarkdown.utf16.count < 10_000 },
+        "性能夹具只能放大目标写作草稿"
+      )
+
+      let encoded = String(
+        data: try JSONEncoder.workbench.encode(snapshot),
+        encoding: .utf8
+      ) ?? ""
+      XCTAssertFalse(encoded.contains("/Users/"))
+      XCTAssertFalse(encoded.localizedCaseInsensitiveContains("bearer "))
+      XCTAssertFalse(encoded.localizedCaseInsensitiveContains("authorization"))
+      XCTAssertFalse(encoded.contains("sk-"))
+    }
+
+    func testScreenshotDemoSnapshotProvidesIsolatedRichAttachmentFixture() throws {
+      unsetenv(ScreenshotDemoDataService.performanceFixtureLengthEnvironmentKey)
+      setenv(
+        ScreenshotDemoDataService.performanceFixtureEnvironmentKey,
+        "markdown-rich-scroll",
+        1
+      )
+      defer {
+        unsetenv(ScreenshotDemoDataService.performanceFixtureEnvironmentKey)
+        unsetenv(ScreenshotDemoDataService.performanceFixtureLengthEnvironmentKey)
+      }
+
+      let snapshot = ScreenshotDemoDataService().makeSnapshot()
+      let richDraft = try XCTUnwrap(
+        snapshot.drafts.first(where: { $0.slug == "markdown-rich-scroll-performance-fixture" })
+      )
+      let attachment = try XCTUnwrap(richDraft.attachments.first)
+      let sourcePath = try XCTUnwrap(attachment.sourceFilePath)
+      let sourceURL = URL(fileURLWithPath: sourcePath)
+        .standardizedFileURL
+        .resolvingSymlinksInPath()
+      let temporaryRoot = FileManager.default.temporaryDirectory
+        .standardizedFileURL
+        .resolvingSymlinksInPath()
+        .path
+
+      XCTAssertGreaterThanOrEqual(richDraft.bodyMarkdown.utf16.count, 100_000)
+      XCTAssertEqual(richDraft.attachments.count, 1)
+      XCTAssertTrue(sourceURL.path.hasPrefix(temporaryRoot + "/"))
+      XCTAssertTrue(FileManager.default.isReadableFile(atPath: sourceURL.path))
+      XCTAssertEqual(
+        try FileManager.default.attributesOfItem(atPath: sourceURL.path)[.type]
+          as? FileAttributeType,
+        .typeRegular
+      )
+      XCTAssertGreaterThan(try Data(contentsOf: sourceURL).count, 32)
+
+      let imageMarkdown = "![Repeated safe demo attachment](\(attachment.relativePublishPath))"
+      XCTAssertGreaterThanOrEqual(
+        richDraft.bodyMarkdown.components(separatedBy: imageMarkdown).count - 1,
+        4
+      )
+      XCTAssertTrue(richDraft.bodyMarkdown.contains("$x_i + y_i = z_i$"))
+      XCTAssertTrue(richDraft.bodyMarkdown.contains("$\\alpha + \\beta = \\gamma$"))
+      XCTAssertGreaterThanOrEqual(richDraft.bodyMarkdown.components(separatedBy: "$$").count - 1, 4)
+
+      XCTAssertTrue(
+        snapshot.drafts
+          .filter { $0.id != richDraft.id }
+          .allSatisfy { $0.bodyMarkdown.utf16.count < 10_000 },
+        "富附件性能夹具只能放大目标写作草稿"
+      )
+
+      let encoded = String(
+        data: try JSONEncoder.workbench.encode(snapshot),
+        encoding: .utf8
+      ) ?? ""
+      XCTAssertFalse(encoded.contains("/Users/"))
+      XCTAssertFalse(encoded.localizedCaseInsensitiveContains("bearer "))
+      XCTAssertFalse(encoded.localizedCaseInsensitiveContains("authorization"))
+      XCTAssertFalse(encoded.contains("sk-"))
+    }
+
+    func testScreenshotDemoSnapshotSupportsOneThousandCharacterComparisonFixture() throws {
+      setenv(
+        ScreenshotDemoDataService.performanceFixtureEnvironmentKey,
+        "markdown-scroll",
+        1
+      )
+      setenv(
+        ScreenshotDemoDataService.performanceFixtureLengthEnvironmentKey,
+        "1000",
+        1
+      )
+      defer {
+        unsetenv(ScreenshotDemoDataService.performanceFixtureEnvironmentKey)
+        unsetenv(ScreenshotDemoDataService.performanceFixtureLengthEnvironmentKey)
+      }
+
+      let snapshot = ScreenshotDemoDataService().makeSnapshot()
+      let writingDraft = try XCTUnwrap(
+        snapshot.drafts.first(where: { $0.slug == "markdown-scroll-performance-fixture" })
+      )
+
+      XCTAssertGreaterThanOrEqual(writingDraft.bodyMarkdown.utf16.count, 1_000)
+      XCTAssertLessThan(writingDraft.bodyMarkdown.utf16.count, 10_000)
     }
 
     func testScreenshotDemoSurfaceMapsRequiredScreenshotIDs() {
@@ -79,6 +253,18 @@ import XCTest
 
       XCTAssertTrue(ScreenshotDemoDataService.isEnabledFromEnvironment)
       XCTAssertEqual(ScreenshotDemoDataService.requestedSurfaceFromEnvironment, .deploymentStatus)
+    }
+
+    func testPerformanceFixtureDoesNotRequireScreenshotDemoEnvironment() {
+      unsetenv(ScreenshotDemoDataService.environmentKey)
+      unsetenv(ScreenshotDemoDataService.surfaceEnvironmentKey)
+      setenv(ScreenshotDemoDataService.performanceFixtureEnvironmentKey, "markdown-scroll", 1)
+      defer {
+        unsetenv(ScreenshotDemoDataService.performanceFixtureEnvironmentKey)
+      }
+
+      XCTAssertTrue(ScreenshotDemoDataService.isEnabledFromEnvironment)
+      XCTAssertNil(ScreenshotDemoDataService.requestedSurfaceFromEnvironment)
     }
 
     @MainActor

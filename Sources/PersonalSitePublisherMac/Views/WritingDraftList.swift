@@ -169,7 +169,7 @@ extension WritingDraftColumn {
         requestDeleteSelectedDraft()
       }
       .onAppear {
-        synchronizeDraftSelectionFromStore()
+        synchronizeDraftSelectionFromWindow()
         applyDraftFilterDebounce()
         refreshDraftListLoadingState()
         refreshDraftCountsWithoutFiltering()
@@ -215,9 +215,9 @@ extension WritingDraftColumn {
       .onChange(of: displayModeRawValue) { _, _ in
         synchronizeFolderExpansionState()
       }
-      .onChange(of: draftListState.selectedDraftID) { _, _ in
+      .onChange(of: selectedDraftID) { _, _ in
         revealSelectedDraftIfNeeded()
-        synchronizeDraftSelectionFromStore()
+        synchronizeDraftSelectionFromWindow()
       }
       .onChange(of: filteredDrafts.count) { _, newCount in
         handleFilteredDraftCountChange(newCount)
@@ -299,14 +299,14 @@ extension WritingDraftColumn {
   @ViewBuilder
   private func draftContextMenu(for draft: ArticleDraft) -> some View {
     Button {
-      _ = store.focusDraft(draft.id, section: .writing)
+      onFocusDraft(draft.id, .writing)
     } label: {
       Label("编辑文章", systemImage: "square.and.pencil")
     }
 
     if !draft.isGeneralDraft {
       Button {
-        _ = store.focusDraft(draft.id, section: .contentHealth)
+        onFocusDraft(draft.id, .contentHealth)
       } label: {
         Label("查看发布检查", systemImage: "checklist")
       }
@@ -323,7 +323,7 @@ extension WritingDraftColumn {
     draftOwnershipActions(for: draft)
 
     Button {
-      _ = store.focusDraft(draft.id, section: .images)
+      onFocusDraft(draft.id, .images)
     } label: {
       Label("在图片工作台检查此文", systemImage: "photo.on.rectangle")
     }

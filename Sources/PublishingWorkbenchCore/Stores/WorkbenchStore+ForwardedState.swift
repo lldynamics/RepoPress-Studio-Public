@@ -1,6 +1,22 @@
 import Foundation
+import PublishingGitCore
 
 extension WorkbenchStore {
+  public var repositoryMergeConflictSession: RepositoryMergeConflictSession? {
+    repositoryStore.repositoryMergeConflictSession(for: activeProfile, store: self)
+  }
+
+  public func resolveRepositoryMergeConflict(
+    repositoryPath: String,
+    finalContent: String
+  ) async throws {
+    try await repositoryStore.resolveRepositoryMergeConflict(
+      repositoryPath: repositoryPath,
+      finalContent: finalContent,
+      store: self
+    )
+  }
+
   public var releaseRecords: [ReleaseRecord] { publishingStore.releaseRecords }
   public var selectedSection: WorkspaceSection { publishingStore.selectedSection }
   public var selectedDraftID: UUID? { publishingStore.selectedDraftID }
@@ -25,7 +41,6 @@ extension WorkbenchStore {
   public var isSiteStarterOperationRunning: Bool { publishingStore.isSiteStarterOperationRunning }
   public var preflightIssues: [PreflightIssue] { publishingStore.preflightIssues }
   public var isInspectorPresented: Bool { publishingStore.isInspectorPresented }
-  public var editorDisplayMode: EditorDisplayMode { publishingStore.editorDisplayMode }
   public var editorFocusRequest: EditorFocusRequest? { publishingStore.editorFocusRequest }
   public var imageInspectorFocusRequest: ImageInspectorFocusRequest? {
     publishingStore.imageInspectorFocusRequest
@@ -62,6 +77,15 @@ extension WorkbenchStore {
   }
   public var localRepositoryRecentCommits: [RepositoryCommitInfo] {
     repositoryReport == nil ? [] : repositoryStore.localRepositoryRecentCommits
+  }
+  public var localRepositoryReleaseHistory: RepositoryReleaseHistorySnapshot {
+    guard repositoryReport != nil else {
+      return RepositoryReleaseHistorySnapshot(
+        historyAvailability: .unavailable,
+        notesAvailability: .unavailable
+      )
+    }
+    return repositoryStore.localRepositoryReleaseHistory
   }
   public var repositoryTokenAvailability: KeychainTokenAvailability { repositoryStore.repositoryTokenAvailability }
   public var remoteRepositoryAccessCheck: RemoteRepositoryAccessCheck? { repositoryStore.remoteRepositoryAccessCheck }

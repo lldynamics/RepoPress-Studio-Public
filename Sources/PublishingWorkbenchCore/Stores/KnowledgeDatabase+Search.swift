@@ -1,6 +1,106 @@
 import Foundation
 import SQLite3
 
+private struct KnowledgeSemanticTopKCandidate {
+  let row: Int
+  let score: Double
+}
+
+/// A bounded min-heap whose root is the worst retained candidate.  This keeps
+/// memory and ranking work proportional to the requested limit instead of the
+/// number of stored embeddings.
+private struct KnowledgeSemanticTopKHeap {
+  private var values: [KnowledgeSemanticTopKCandidate] = []
+  private let capacity: Int
+  private let index: KnowledgeSemanticVectorFlatIndex
+
+  init(capacity: Int, index: KnowledgeSemanticVectorFlatIndex) {
+    self.capacity = max(0, capacity)
+    self.index = index
+    values.reserveCapacity(max(0, capacity))
+  }
+
+  mutating func insert(_ candidate: KnowledgeSemanticTopKCandidate) {
+    guard capacity > 0 else { return }
+    if values.count < capacity {
+      values.append(candidate)
+      siftUp(from: values.count - 1)
+      return
+    }
+
+    guard isWorse(values[0], than: candidate) else { return }
+    values[0] = candidate
+    siftDown(from: 0)
+  }
+
+  func sortedCandidates() -> [KnowledgeSemanticTopKCandidate] {
+    values.sorted { isBetter($0, than: $1) }
+  }
+
+  private mutating func siftUp(from start: Int) {
+    var child = start
+    while child > 0 {
+      let parent = (child - 1) / 2
+      guard isWorse(values[child], than: values[parent]) else { break }
+      values.swapAt(child, parent)
+      child = parent
+    }
+  }
+
+  private mutating func siftDown(from start: Int) {
+    var parent = start
+    while true {
+      let left = parent * 2 + 1
+      guard left < values.count else { return }
+      var worst = left
+      let right = left + 1
+      if right < values.count && isWorse(values[right], than: values[left]) {
+        worst = right
+      }
+      guard isWorse(values[worst], than: values[parent]) else { return }
+      values.swapAt(parent, worst)
+      parent = worst
+    }
+  }
+
+  private func isBetter(
+    _ lhs: KnowledgeSemanticTopKCandidate,
+    than rhs: KnowledgeSemanticTopKCandidate
+  ) -> Bool {
+    isWorse(rhs, than: lhs)
+  }
+
+  private func isWorse(
+    _ lhs: KnowledgeSemanticTopKCandidate,
+    than rhs: KnowledgeSemanticTopKCandidate
+  ) -> Bool {
+    if lhs.score != rhs.score {
+      return lhs.score < rhs.score
+    }
+    let lhsEntry = index.entries[lhs.row]
+    let rhsEntry = index.entries[rhs.row]
+    if lhsEntry.updatedAt != rhsEntry.updatedAt {
+      return lhsEntry.updatedAt < rhsEntry.updatedAt
+    }
+    if lhsEntry.ordinal != rhsEntry.ordinal {
+      return lhsEntry.ordinal > rhsEntry.ordinal
+    }
+    let lhsDocumentID = lhsEntry.documentID.uuidString
+    let rhsDocumentID = rhsEntry.documentID.uuidString
+    if lhsDocumentID != rhsDocumentID {
+      return lhsDocumentID > rhsDocumentID
+    }
+    let lhsChunkID = lhsEntry.chunkID.uuidString
+    let rhsChunkID = rhsEntry.chunkID.uuidString
+    if lhsChunkID != rhsChunkID {
+      return lhsChunkID > rhsChunkID
+    }
+    // A row can only be duplicated by corrupt data. Keep the result
+    // deterministic even in that case.
+    return lhs.row > rhs.row
+  }
+}
+
 extension KnowledgeDatabase {
   private func decodeRevision(
     _ statement: OpaquePointer?,
@@ -35,7 +135,7 @@ extension KnowledgeDatabase {
       () throws -> (document: KnowledgeDocument, revision: KnowledgeDocumentRevision)? in
       try withCancellationProgressHandler {
         () throws -> (document: KnowledgeDocument, revision: KnowledgeDocumentRevision)? in
-        let statement = try prepare(
+        return try withCachedStatementUnlocked(
           """
           SELECT d.id, d.kind, d.title, d.authors_json, d.language, d.summary,
                  d.tags_json, d.source_url, d.source_name, d.folder_id,
@@ -49,16 +149,17 @@ extension KnowledgeDatabase {
           JOIN knowledge_revisions r ON r.id = d.current_revision_id
           WHERE d.id = ?
           LIMIT 1;
-          """)
-        defer { sqlite3_finalize(statement) }
-        bind(documentID.uuidString, at: 1, to: statement)
-        let result = sqlite3_step(statement)
-        guard result == SQLITE_ROW || result == SQLITE_DONE else { throw databaseError() }
-        guard result == SQLITE_ROW else { return nil }
-        return (
-          document: try decodeDocument(statement, offset: 0),
-          revision: try decodeRevision(statement, offset: 17)
-        )
+          """
+        ) { statement in
+          bind(documentID.uuidString, at: 1, to: statement)
+          let result = sqlite3_step(statement)
+          guard result == SQLITE_ROW || result == SQLITE_DONE else { throw databaseError() }
+          guard result == SQLITE_ROW else { return nil }
+          return (
+            document: try decodeDocument(statement, offset: 0),
+            revision: try decodeRevision(statement, offset: 17)
+          )
+        }
       }
     }
   }
@@ -73,22 +174,23 @@ extension KnowledgeDatabase {
   ) throws -> KnowledgeChunk? {
     try withCancellableLock {
       try withCancellationProgressHandler {
-        let statement = try prepare(
+        return try withCachedStatementUnlocked(
           """
           SELECT id, document_id, revision_id, ordinal, heading_path, locator,
                  content, token_estimate, content_hash
           FROM knowledge_chunks
           WHERE id = ? AND document_id = ? AND revision_id = ?
           LIMIT 1;
-          """)
-        defer { sqlite3_finalize(statement) }
-        bind(id.uuidString, at: 1, to: statement)
-        bind(documentID.uuidString, at: 2, to: statement)
-        bind(revisionID.uuidString, at: 3, to: statement)
-        let result = sqlite3_step(statement)
-        guard result == SQLITE_ROW || result == SQLITE_DONE else { throw databaseError() }
-        guard result == SQLITE_ROW else { return nil }
-        return try decodeChunk(statement, offset: 0)
+          """
+        ) { statement in
+          bind(id.uuidString, at: 1, to: statement)
+          bind(documentID.uuidString, at: 2, to: statement)
+          bind(revisionID.uuidString, at: 3, to: statement)
+          let result = sqlite3_step(statement)
+          guard result == SQLITE_ROW || result == SQLITE_DONE else { throw databaseError() }
+          guard result == SQLITE_ROW else { return nil }
+          return try decodeChunk(statement, offset: 0)
+        }
       }
     }
   }
@@ -143,20 +245,20 @@ extension KnowledgeDatabase {
             AND d.allows_local_semantic_index = 1
           ORDER BY d.updated_at DESC, c.ordinal ASC;
           """
-        let statement = try prepare(sql)
-        defer { sqlite3_finalize(statement) }
-        var output: [KnowledgeSemanticIndexRecord] = []
-        while sqlite3_step(statement) == SQLITE_ROW {
+        return try withCachedStatementUnlocked(sql) { statement in
+          var output: [KnowledgeSemanticIndexRecord] = []
+          while sqlite3_step(statement) == SQLITE_ROW {
+            try Task.checkCancellation()
+            output.append(
+              KnowledgeSemanticIndexRecord(
+                document: try decodeDocument(statement, offset: 0),
+                chunk: try decodeChunk(statement, offset: 17)
+              ))
+          }
           try Task.checkCancellation()
-          output.append(
-            KnowledgeSemanticIndexRecord(
-              document: try decodeDocument(statement, offset: 0),
-              chunk: try decodeChunk(statement, offset: 17)
-            ))
+          try checkStatementCompletion(statement)
+          return output
         }
-        try Task.checkCancellation()
-        try checkStatementCompletion(statement)
-        return output
       }
     }
   }
@@ -186,36 +288,36 @@ extension KnowledgeDatabase {
             AND d.allows_local_semantic_index = 1
           ORDER BY d.updated_at DESC, c.ordinal ASC;
           """
-        let statement = try prepare(sql)
-        defer { sqlite3_finalize(statement) }
-        bind(modelIdentifier, at: 1, to: statement)
-        var output: [KnowledgeSemanticIndexRecord] = []
-        while sqlite3_step(statement) == SQLITE_ROW {
+        return try withCachedStatementUnlocked(sql) { statement in
+          bind(modelIdentifier, at: 1, to: statement)
+          var output: [KnowledgeSemanticIndexRecord] = []
+          while sqlite3_step(statement) == SQLITE_ROW {
+            try Task.checkCancellation()
+            let chunk = try decodeChunk(statement, offset: 17)
+            let storedRevisionID = try optionalUUID(
+              statement,
+              26,
+              field: "knowledge_chunk_embeddings.revision_id"
+            )
+            let storedDimension = Int(sqlite3_column_int64(statement, 27))
+            let storedVector = KnowledgeSemanticVectorStorage.decodeVector(
+              statement, index: 28, dimension: expectedDimension)
+            let needsRepair =
+              storedRevisionID != chunk.revisionID
+              || storedDimension != expectedDimension
+              || !KnowledgeSemanticVectorStorage.isValidStoredSemanticVector(
+                storedVector, expectedDimension: expectedDimension)
+            guard needsRepair else { continue }
+            output.append(
+              KnowledgeSemanticIndexRecord(
+                document: try decodeDocument(statement, offset: 0),
+                chunk: chunk
+              ))
+          }
           try Task.checkCancellation()
-          let chunk = try decodeChunk(statement, offset: 17)
-          let storedRevisionID = try optionalUUID(
-            statement,
-            26,
-            field: "knowledge_chunk_embeddings.revision_id"
-          )
-          let storedDimension = Int(sqlite3_column_int64(statement, 27))
-          let storedVector = KnowledgeSemanticVectorStorage.decodeVector(
-            statement, index: 28, dimension: expectedDimension)
-          let needsRepair =
-            storedRevisionID != chunk.revisionID
-            || storedDimension != expectedDimension
-            || !KnowledgeSemanticVectorStorage.isValidStoredSemanticVector(
-              storedVector, expectedDimension: expectedDimension)
-          guard needsRepair else { continue }
-          output.append(
-            KnowledgeSemanticIndexRecord(
-              document: try decodeDocument(statement, offset: 0),
-              chunk: chunk
-            ))
+          try checkStatementCompletion(statement)
+          return output
         }
-        try Task.checkCancellation()
-        try checkStatementCompletion(statement)
-        return output
       }
     }
   }
@@ -223,31 +325,32 @@ extension KnowledgeDatabase {
   func semanticEmbeddingChunkIDsByModelIdentifier() throws -> [String: Set<UUID>] {
     try withCancellableLock {
       try withCancellationProgressHandler {
-        let statement = try prepare(
+        return try withCachedStatementUnlocked(
           """
           SELECT model_id, chunk_id
           FROM knowledge_chunk_embeddings
           ORDER BY model_id, chunk_id;
-          """)
-        defer { sqlite3_finalize(statement) }
-        var output: [String: Set<UUID>] = [:]
-        while sqlite3_step(statement) == SQLITE_ROW {
-          try Task.checkCancellation()
-          guard let modelIdentifier = text(statement, 0)?.nilIfEmpty else {
-            throw KnowledgeLibraryError.databaseIntegrity(
-              "knowledge_chunk_embeddings.model_id 为空。"
+          """
+        ) { statement in
+          var output: [String: Set<UUID>] = [:]
+          while sqlite3_step(statement) == SQLITE_ROW {
+            try Task.checkCancellation()
+            guard let modelIdentifier = text(statement, 0)?.nilIfEmpty else {
+              throw KnowledgeLibraryError.databaseIntegrity(
+                "knowledge_chunk_embeddings.model_id 为空。"
+              )
+            }
+            let chunkID = try requiredUUID(
+              statement,
+              1,
+              field: "knowledge_chunk_embeddings.chunk_id"
             )
+            output[modelIdentifier, default: []].insert(chunkID)
           }
-          let chunkID = try requiredUUID(
-            statement,
-            1,
-            field: "knowledge_chunk_embeddings.chunk_id"
-          )
-          output[modelIdentifier, default: []].insert(chunkID)
+          try Task.checkCancellation()
+          try checkStatementCompletion(statement)
+          return output
         }
-        try Task.checkCancellation()
-        try checkStatementCompletion(statement)
-        return output
       }
     }
   }
@@ -292,7 +395,7 @@ extension KnowledgeDatabase {
       try executeUnlocked("BEGIN IMMEDIATE TRANSACTION;")
       do {
         try executeUnlocked("DELETE FROM knowledge_chunk_embeddings;")
-        semanticVectorCache.removeAll()
+        invalidateSemanticFlatVectorIndexesUnlocked()
         try Task.checkCancellation()
         try upsertSemanticEmbeddingsUnlocked(embeddings)
         try Task.checkCancellation()
@@ -313,102 +416,210 @@ extension KnowledgeDatabase {
     try Task.checkCancellation()
     return try withCancellableLock {
       try withCancellationProgressHandler {
-        let idClause = documentIDClause(documentIDs)
-        let sql = """
-          SELECT d.id, d.kind, d.title, d.authors_json, d.language, d.summary,
-                 d.tags_json, d.source_url, d.source_name, d.folder_id,
-                 d.source_byte_count, d.allows_ai_use, d.allows_local_semantic_index,
-                 d.is_archived,
-                 d.imported_at, d.updated_at, d.current_revision_id,
-                 c.id, c.document_id, c.revision_id, c.ordinal, c.heading_path,
-                 c.locator, c.content, c.token_estimate, c.content_hash,
-                 e.vector
-          FROM knowledge_chunk_embeddings e
-          JOIN knowledge_chunks c ON c.id = e.chunk_id
-          JOIN knowledge_documents d ON d.id = c.document_id
-          WHERE e.model_id = ?
-            AND e.dimension = ?
-            AND e.revision_id = c.revision_id
-            AND c.revision_id = d.current_revision_id
-            AND d.is_archived = 0
-            AND d.allows_local_semantic_index = 1
-            AND (? = 0 OR d.allows_ai_use = 1)
-            \(idClause.sql)
-          """
-        let statement = try prepare(sql)
-        defer { sqlite3_finalize(statement) }
-        var index: Int32 = 1
-        bind(queryVector.modelIdentifier, at: index, to: statement)
-        index += 1
-        sqlite3_bind_int64(statement, index, sqlite3_int64(queryVector.values.count))
-        index += 1
-        sqlite3_bind_int(statement, index, onlyRemoteAIAllowed ? 1 : 0)
-        index += 1
-        for id in idClause.ids {
-          bind(id.uuidString, at: index, to: statement)
-          index += 1
+        let index = try semanticFlatVectorIndex(
+          modelIdentifier: queryVector.modelIdentifier,
+          dimension: queryVector.values.count
+        )
+        var heap = KnowledgeSemanticTopKHeap(capacity: limit, index: index)
+        let hasDocumentFilter = documentIDs.map { !$0.isEmpty } ?? false
+
+        for row in index.entries.indices {
+          try Task.checkCancellation()
+          let entry = index.entries[row]
+          guard !entry.isArchived,
+                entry.allowsLocalSemanticIndex,
+                !onlyRemoteAIAllowed || entry.allowsRemoteAIUse,
+                !hasDocumentFilter || documentIDs?.contains(entry.documentID) == true
+          else { continue }
+
+          let similarity = index.similarity(to: queryVector.values, row: row)
+          guard similarity.isFinite, similarity >= queryVector.minimumSimilarity else {
+            continue
+          }
+          heap.insert(KnowledgeSemanticTopKCandidate(row: row, score: similarity))
         }
 
-        var output: [KnowledgeSearchResult] = []
-        while sqlite3_step(statement) == SQLITE_ROW {
-          try Task.checkCancellation()
-          let chunkID = try requiredUUID(
-            statement,
-            17,
-            field: "knowledge_chunks.id"
-          )
-          let revisionID = try requiredUUID(
-            statement,
-            19,
-            field: "knowledge_chunks.revision_id"
-          )
-          let cacheKey = KnowledgeSemanticVectorCacheKey(
-            modelIdentifier: queryVector.modelIdentifier,
+        try Task.checkCancellation()
+        let winners = heap.sortedCandidates()
+        guard !winners.isEmpty else { return [] }
+        return try fetchSemanticSearchResults(
+          winners: winners,
+          index: index,
+          onlyRemoteAIAllowed: onlyRemoteAIAllowed,
+          documentIDs: documentIDs
+        )
+      }
+    }
+  }
+
+  /// Builds one immutable flat vector snapshot on demand.  Only compact
+  /// metadata is read here; complete documents/chunks are fetched after Top-K
+  /// selection in `fetchSemanticSearchResults`.
+  func invalidateSemanticFlatVectorIndexesUnlocked() {
+    semanticFlatVectorIndexes.removeAll()
+    semanticFlatVectorIndexChangeToken = Int64(sqlite3_total_changes(handle))
+  }
+
+  private func semanticFlatVectorIndex(
+    modelIdentifier: String,
+    dimension: Int
+  ) throws -> KnowledgeSemanticVectorFlatIndex {
+    let key = KnowledgeSemanticVectorIndexKey(
+      modelIdentifier: modelIdentifier,
+      dimension: dimension
+    )
+    let currentChangeToken = Int64(sqlite3_total_changes(handle))
+    if currentChangeToken != semanticFlatVectorIndexChangeToken {
+      semanticFlatVectorIndexes.removeAll()
+      semanticFlatVectorIndexChangeToken = currentChangeToken
+    }
+    if let cached = semanticFlatVectorIndexes.value(for: key) {
+      return cached
+    }
+
+    return try withCachedStatementUnlocked(
+      """
+      SELECT e.chunk_id, e.revision_id, c.document_id, d.updated_at, c.ordinal,
+             d.allows_ai_use, d.allows_local_semantic_index, d.is_archived,
+             e.vector
+      FROM knowledge_chunk_embeddings e
+      JOIN knowledge_chunks c ON c.id = e.chunk_id
+      JOIN knowledge_documents d ON d.id = c.document_id
+      WHERE e.model_id = ?
+        AND e.dimension = ?
+        AND e.revision_id = c.revision_id
+        AND c.revision_id = d.current_revision_id
+      ORDER BY d.updated_at DESC, c.ordinal ASC, c.id ASC;
+      """
+    ) { statement in
+      bind(modelIdentifier, at: 1, to: statement)
+      sqlite3_bind_int64(statement, 2, sqlite3_int64(dimension))
+
+      var entries: [KnowledgeSemanticVectorIndexEntry] = []
+      var vectors: [Float] = []
+      while sqlite3_step(statement) == SQLITE_ROW {
+        try Task.checkCancellation()
+        let vector = KnowledgeSemanticVectorStorage.decodeVector(
+          statement,
+          index: 8,
+          dimension: dimension
+        )
+        guard KnowledgeSemanticVectorStorage.isValidStoredSemanticVector(
+          vector,
+          expectedDimension: dimension
+        ) else {
+          continue
+        }
+
+        let chunkID = try requiredUUID(statement, 0, field: "knowledge_chunk_embeddings.chunk_id")
+        let revisionID = try requiredUUID(
+          statement,
+          1,
+          field: "knowledge_chunk_embeddings.revision_id"
+        )
+        let documentID = try requiredUUID(statement, 2, field: "knowledge_documents.id")
+        entries.append(
+          KnowledgeSemanticVectorIndexEntry(
             chunkID: chunkID,
             revisionID: revisionID,
-            dimension: queryVector.values.count
-          )
-          let storedVector: [Float]
-          if let cachedVector = semanticVectorCache.value(for: cacheKey) {
-            storedVector = cachedVector
-          } else {
-            let decodedVector = KnowledgeSemanticVectorStorage.decodeVector(
-              statement,
-              index: 26,
-              dimension: queryVector.values.count
-            )
-            guard
-              KnowledgeSemanticVectorStorage.isValidStoredSemanticVector(
-                decodedVector,
-                expectedDimension: queryVector.values.count
-              )
-            else { continue }
-            semanticVectorCache.insert(decodedVector, for: cacheKey)
-            storedVector = decodedVector
-          }
-          let similarity = KnowledgeSemanticVectorStorage.cosineSimilarity(
-            queryVector.values, storedVector)
-          guard similarity >= queryVector.minimumSimilarity else { continue }
-          output.append(
-            KnowledgeSearchResult(
-              document: try decodeDocument(statement, offset: 0),
-              chunk: try decodeChunk(statement, offset: 17),
-              score: similarity,
-              signals: [.semantic]
-            ))
-        }
-        try Task.checkCancellation()
-        try checkStatementCompletion(statement)
-        output.sort {
-          if $0.score != $1.score { return $0.score > $1.score }
-          if $0.document.updatedAt != $1.document.updatedAt {
-            return $0.document.updatedAt > $1.document.updatedAt
-          }
-          return $0.chunk.ordinal < $1.chunk.ordinal
-        }
-        try Task.checkCancellation()
-        return Array(output.prefix(limit))
+            documentID: documentID,
+            updatedAt: sqlite3_column_double(statement, 3),
+            ordinal: Int(sqlite3_column_int64(statement, 4)),
+            allowsRemoteAIUse: sqlite3_column_int(statement, 5) != 0,
+            allowsLocalSemanticIndex: sqlite3_column_int(statement, 6) != 0,
+            isArchived: sqlite3_column_int(statement, 7) != 0
+          ))
+        vectors.append(contentsOf: vector)
       }
+      try Task.checkCancellation()
+      try checkStatementCompletion(statement)
+
+      let index = KnowledgeSemanticVectorFlatIndex(
+        key: key,
+        vectors: vectors,
+        entries: entries
+      )
+      semanticFlatVectorIndexes.insert(index)
+      semanticFlatVectorIndexChangeToken = Int64(sqlite3_total_changes(handle))
+      return index
+    }
+  }
+
+  private func fetchSemanticSearchResults(
+    winners: [KnowledgeSemanticTopKCandidate],
+    index: KnowledgeSemanticVectorFlatIndex,
+    onlyRemoteAIAllowed: Bool,
+    documentIDs: Set<UUID>?
+  ) throws -> [KnowledgeSearchResult] {
+    let winnerIDs = winners.map { index.entries[$0.row].chunkID }
+    let placeholders = Array(repeating: "?", count: winnerIDs.count).joined(separator: ", ")
+    let idClause = documentIDClause(documentIDs)
+    let sql = """
+      SELECT d.id, d.kind, d.title, d.authors_json, d.language, d.summary,
+             d.tags_json, d.source_url, d.source_name, d.folder_id,
+             d.source_byte_count, d.allows_ai_use, d.allows_local_semantic_index,
+             d.is_archived,
+             d.imported_at, d.updated_at, d.current_revision_id,
+             c.id, c.document_id, c.revision_id, c.ordinal, c.heading_path,
+             c.locator, c.content, c.token_estimate, c.content_hash
+      FROM knowledge_chunks c
+      JOIN knowledge_documents d ON d.id = c.document_id
+      WHERE c.id IN (\(placeholders))
+        AND c.revision_id = d.current_revision_id
+        AND d.is_archived = 0
+        AND d.allows_local_semantic_index = 1
+        AND (? = 0 OR d.allows_ai_use = 1)
+        \(idClause.sql)
+      """
+    return try withCachedStatementUnlocked(sql) { statement in
+      var parameter: Int32 = 1
+      for id in winnerIDs {
+        bind(id.uuidString, at: parameter, to: statement)
+        parameter += 1
+      }
+      sqlite3_bind_int(statement, parameter, onlyRemoteAIAllowed ? 1 : 0)
+      parameter += 1
+      for id in idClause.ids {
+        bind(id.uuidString, at: parameter, to: statement)
+        parameter += 1
+      }
+
+      var resultByChunkID: [UUID: KnowledgeSearchResult] = [:]
+      while sqlite3_step(statement) == SQLITE_ROW {
+        try Task.checkCancellation()
+        let chunkID = try requiredUUID(statement, 17, field: "knowledge_chunks.id")
+        guard let winner = winners.first(where: {
+          index.entries[$0.row].chunkID == chunkID
+        }) else {
+          continue
+        }
+        let entry = index.entries[winner.row]
+        let revisionID = try requiredUUID(
+          statement,
+          19,
+          field: "knowledge_chunks.revision_id"
+        )
+        guard revisionID == entry.revisionID else { continue }
+        resultByChunkID[chunkID] = KnowledgeSearchResult(
+          document: try decodeDocument(statement, offset: 0),
+          chunk: try decodeChunk(statement, offset: 17),
+          score: winner.score,
+          signals: [.semantic]
+        )
+      }
+      try Task.checkCancellation()
+      try checkStatementCompletion(statement)
+
+      var output: [KnowledgeSearchResult] = []
+      output.reserveCapacity(resultByChunkID.count)
+      for winner in winners {
+        try Task.checkCancellation()
+        let chunkID = index.entries[winner.row].chunkID
+        if let result = resultByChunkID[chunkID] {
+          output.append(result)
+        }
+      }
+      return output
     }
   }
 
@@ -424,36 +635,28 @@ extension KnowledgeDatabase {
         chunk_id, document_id, title, authors, heading, content
       ) VALUES (?, ?, ?, ?, ?, ?);
       """
-    let chunkStatement = try prepare(chunkSQL)
-    let ftsStatement = try prepare(ftsSQL)
-    defer {
-      sqlite3_finalize(chunkStatement)
-      sqlite3_finalize(ftsStatement)
-    }
-
     for chunk in chunks {
-      sqlite3_reset(chunkStatement)
-      sqlite3_clear_bindings(chunkStatement)
-      bind(chunk.id.uuidString, at: 1, to: chunkStatement)
-      bind(chunk.documentID.uuidString, at: 2, to: chunkStatement)
-      bind(chunk.revisionID.uuidString, at: 3, to: chunkStatement)
-      sqlite3_bind_int64(chunkStatement, 4, sqlite3_int64(chunk.ordinal))
-      bindOptional(chunk.headingPath, at: 5, to: chunkStatement)
-      bindOptional(chunk.locator, at: 6, to: chunkStatement)
-      bind(chunk.content, at: 7, to: chunkStatement)
-      sqlite3_bind_int64(chunkStatement, 8, sqlite3_int64(chunk.tokenEstimate))
-      bind(chunk.contentHash, at: 9, to: chunkStatement)
-      guard sqlite3_step(chunkStatement) == SQLITE_DONE else { throw databaseError() }
-
-      sqlite3_reset(ftsStatement)
-      sqlite3_clear_bindings(ftsStatement)
-      bind(chunk.id.uuidString, at: 1, to: ftsStatement)
-      bind(chunk.documentID.uuidString, at: 2, to: ftsStatement)
-      bind(document.title, at: 3, to: ftsStatement)
-      bind(document.authors.joined(separator: " "), at: 4, to: ftsStatement)
-      bind(chunk.headingPath ?? "", at: 5, to: ftsStatement)
-      bind(chunk.content, at: 6, to: ftsStatement)
-      guard sqlite3_step(ftsStatement) == SQLITE_DONE else { throw databaseError() }
+      try withCachedStatementUnlocked(chunkSQL) { chunkStatement in
+        bind(chunk.id.uuidString, at: 1, to: chunkStatement)
+        bind(chunk.documentID.uuidString, at: 2, to: chunkStatement)
+        bind(chunk.revisionID.uuidString, at: 3, to: chunkStatement)
+        sqlite3_bind_int64(chunkStatement, 4, sqlite3_int64(chunk.ordinal))
+        bindOptional(chunk.headingPath, at: 5, to: chunkStatement)
+        bindOptional(chunk.locator, at: 6, to: chunkStatement)
+        bind(chunk.content, at: 7, to: chunkStatement)
+        sqlite3_bind_int64(chunkStatement, 8, sqlite3_int64(chunk.tokenEstimate))
+        bind(chunk.contentHash, at: 9, to: chunkStatement)
+        guard sqlite3_step(chunkStatement) == SQLITE_DONE else { throw databaseError() }
+      }
+      try withCachedStatementUnlocked(ftsSQL) { ftsStatement in
+        bind(chunk.id.uuidString, at: 1, to: ftsStatement)
+        bind(chunk.documentID.uuidString, at: 2, to: ftsStatement)
+        bind(document.title, at: 3, to: ftsStatement)
+        bind(document.authors.joined(separator: " "), at: 4, to: ftsStatement)
+        bind(chunk.headingPath ?? "", at: 5, to: ftsStatement)
+        bind(chunk.content, at: 6, to: ftsStatement)
+        guard sqlite3_step(ftsStatement) == SQLITE_DONE else { throw databaseError() }
+      }
     }
   }
 
@@ -461,7 +664,7 @@ extension KnowledgeDatabase {
     revisionID: UUID,
     document: KnowledgeDocument
   ) throws {
-    let statement = try prepare(
+    try withCachedStatementUnlocked(
       """
       INSERT INTO knowledge_chunks_fts (
         chunk_id, document_id, title, authors, heading, content
@@ -470,38 +673,40 @@ extension KnowledgeDatabase {
       FROM knowledge_chunks
       WHERE document_id = ? AND revision_id = ?
       ORDER BY ordinal ASC;
-      """)
-    defer { sqlite3_finalize(statement) }
-    bind(document.title, at: 1, to: statement)
-    bind(document.authors.joined(separator: " "), at: 2, to: statement)
-    bind(document.id.uuidString, at: 3, to: statement)
-    bind(revisionID.uuidString, at: 4, to: statement)
-    guard sqlite3_step(statement) == SQLITE_DONE else { throw databaseError() }
+      """
+    ) { statement in
+      bind(document.title, at: 1, to: statement)
+      bind(document.authors.joined(separator: " "), at: 2, to: statement)
+      bind(document.id.uuidString, at: 3, to: statement)
+      bind(revisionID.uuidString, at: 4, to: statement)
+      guard sqlite3_step(statement) == SQLITE_DONE else { throw databaseError() }
+    }
   }
 
   func deleteSemanticEmbeddingsUnlocked(documentIDs: Set<UUID>) throws {
+    invalidateSemanticFlatVectorIndexesUnlocked()
     guard !documentIDs.isEmpty else { return }
     let sortedIDs = documentIDs.sorted { $0.uuidString < $1.uuidString }
     let placeholders = Array(repeating: "?", count: sortedIDs.count).joined(separator: ", ")
-    let statement = try prepare(
+    try withCachedStatementUnlocked(
       """
       DELETE FROM knowledge_chunk_embeddings
       WHERE chunk_id IN (
         SELECT id FROM knowledge_chunks WHERE document_id IN (\(placeholders))
       );
-      """)
-    defer { sqlite3_finalize(statement) }
-    for (offset, id) in sortedIDs.enumerated() {
-      bind(id.uuidString, at: Int32(offset + 1), to: statement)
+      """
+    ) { statement in
+      for (offset, id) in sortedIDs.enumerated() {
+        bind(id.uuidString, at: Int32(offset + 1), to: statement)
+      }
+      guard sqlite3_step(statement) == SQLITE_DONE else { throw databaseError() }
     }
-    guard sqlite3_step(statement) == SQLITE_DONE else { throw databaseError() }
-    semanticVectorCache.removeAll()
   }
 
   func upsertSemanticEmbeddingsUnlocked(_ embeddings: [KnowledgeChunkEmbedding]) throws {
+    invalidateSemanticFlatVectorIndexesUnlocked()
     guard !embeddings.isEmpty else { return }
-    semanticVectorCache.removeAll()
-    let statement = try prepare(
+    try withCachedStatementUnlocked(
       """
       INSERT INTO knowledge_chunk_embeddings (
         chunk_id, revision_id, model_id, dimension, vector, created_at
@@ -511,28 +716,31 @@ extension KnowledgeDatabase {
         dimension = excluded.dimension,
         vector = excluded.vector,
         created_at = excluded.created_at;
-      """)
-    defer { sqlite3_finalize(statement) }
-    let now = Date().timeIntervalSince1970
-    for embedding in embeddings where !embedding.vector.isEmpty {
-      try Task.checkCancellation()
-      sqlite3_reset(statement)
-      sqlite3_clear_bindings(statement)
-      bind(embedding.chunkID.uuidString, at: 1, to: statement)
-      bind(embedding.revisionID.uuidString, at: 2, to: statement)
-      bind(embedding.vector.modelIdentifier, at: 3, to: statement)
-      sqlite3_bind_int64(statement, 4, sqlite3_int64(embedding.vector.values.count))
-      bind(KnowledgeSemanticVectorStorage.vectorData(embedding.vector.values), at: 5, to: statement)
-      sqlite3_bind_double(statement, 6, now)
-      guard sqlite3_step(statement) == SQLITE_DONE else { throw databaseError() }
+      """
+    ) { statement in
+      let now = Date().timeIntervalSince1970
+      for embedding in embeddings where !embedding.vector.isEmpty {
+        try Task.checkCancellation()
+        sqlite3_reset(statement)
+        sqlite3_clear_bindings(statement)
+        bind(embedding.chunkID.uuidString, at: 1, to: statement)
+        bind(embedding.revisionID.uuidString, at: 2, to: statement)
+        bind(embedding.vector.modelIdentifier, at: 3, to: statement)
+        sqlite3_bind_int64(statement, 4, sqlite3_int64(embedding.vector.values.count))
+        bind(KnowledgeSemanticVectorStorage.vectorData(embedding.vector.values), at: 5, to: statement)
+        sqlite3_bind_double(statement, 6, now)
+        guard sqlite3_step(statement) == SQLITE_DONE else { throw databaseError() }
+      }
     }
   }
 
   func deleteSearchRows(documentID: UUID) throws {
-    let statement = try prepare("DELETE FROM knowledge_chunks_fts WHERE document_id = ?;")
-    defer { sqlite3_finalize(statement) }
-    bind(documentID.uuidString, at: 1, to: statement)
-    guard sqlite3_step(statement) == SQLITE_DONE else { throw databaseError() }
+    try withCachedStatementUnlocked(
+      "DELETE FROM knowledge_chunks_fts WHERE document_id = ?;"
+    ) { statement in
+      bind(documentID.uuidString, at: 1, to: statement)
+      guard sqlite3_step(statement) == SQLITE_DONE else { throw databaseError() }
+    }
   }
 
   func searchFTS(
@@ -562,19 +770,19 @@ extension KnowledgeDatabase {
       ORDER BY bm25(knowledge_chunks_fts, 0.0, 0.0, 5.0, 3.0, 2.0, 1.0) ASC
       LIMIT ?;
       """
-    let statement = try prepare(sql)
-    defer { sqlite3_finalize(statement) }
-    var index: Int32 = 1
-    bind(ftsQuery(query), at: index, to: statement)
-    index += 1
-    sqlite3_bind_int(statement, index, onlyRemoteAIAllowed ? 1 : 0)
-    index += 1
-    for id in idClause.ids {
-      bind(id.uuidString, at: index, to: statement)
+    return try withCachedStatementUnlocked(sql) { statement in
+      var index: Int32 = 1
+      bind(ftsQuery(query), at: index, to: statement)
       index += 1
+      sqlite3_bind_int(statement, index, onlyRemoteAIAllowed ? 1 : 0)
+      index += 1
+      for id in idClause.ids {
+        bind(id.uuidString, at: index, to: statement)
+        index += 1
+      }
+      sqlite3_bind_int64(statement, index, sqlite3_int64(limit))
+      return try collectSearchResults(statement)
     }
-    sqlite3_bind_int64(statement, index, sqlite3_int64(limit))
-    return try collectSearchResults(statement)
   }
 
   func searchLike(
@@ -609,28 +817,28 @@ extension KnowledgeDatabase {
       ORDER BY 27 ASC, d.updated_at DESC, c.ordinal ASC
       LIMIT ?;
       """
-    let statement = try prepare(sql)
-    defer { sqlite3_finalize(statement) }
-    let like = "%\(escapedLike(query))%"
-    var index: Int32 = 1
-    bind(like, at: index, to: statement)
-    index += 1
-    bind(like, at: index, to: statement)
-    index += 1
-    sqlite3_bind_int(statement, index, onlyRemoteAIAllowed ? 1 : 0)
-    index += 1
-    bind(like, at: index, to: statement)
-    index += 1
-    bind(like, at: index, to: statement)
-    index += 1
-    bind(like, at: index, to: statement)
-    index += 1
-    for id in idClause.ids {
-      bind(id.uuidString, at: index, to: statement)
+    return try withCachedStatementUnlocked(sql) { statement in
+      let like = "%\(escapedLike(query))%"
+      var index: Int32 = 1
+      bind(like, at: index, to: statement)
       index += 1
+      bind(like, at: index, to: statement)
+      index += 1
+      sqlite3_bind_int(statement, index, onlyRemoteAIAllowed ? 1 : 0)
+      index += 1
+      bind(like, at: index, to: statement)
+      index += 1
+      bind(like, at: index, to: statement)
+      index += 1
+      bind(like, at: index, to: statement)
+      index += 1
+      for id in idClause.ids {
+        bind(id.uuidString, at: index, to: statement)
+        index += 1
+      }
+      sqlite3_bind_int64(statement, index, sqlite3_int64(limit))
+      return try collectSearchResults(statement)
     }
-    sqlite3_bind_int64(statement, index, sqlite3_int64(limit))
-    return try collectSearchResults(statement)
   }
 
   func collectSearchResults(_ statement: OpaquePointer?) throws -> [KnowledgeSearchResult] {

@@ -4,10 +4,9 @@ set -euo pipefail
 ROOT_DIR="${DIRECT_DISTRIBUTION_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 APP_NAME="PersonalSitePublisherMac"
 APP_DISPLAY_NAME="RepoPress Studio"
+APP_BUNDLE_NAME="${PERSONAL_SITE_PUBLISHER_BUNDLE_NAME:-$APP_DISPLAY_NAME}"
 BUNDLE_ID="${PERSONAL_SITE_PUBLISHER_BUNDLE_ID:-com.jinfang.PersonalSitePublisherMac}"
-SAFARI_EXTENSION_BUNDLE_ID="${SAFARI_WEB_EXTENSION_BUNDLE_ID:-$BUNDLE_ID.SafariExtension}"
 DIRECT_ENTITLEMENTS="$ROOT_DIR/Packaging/DirectDistribution.entitlements"
-SAFARI_ENTITLEMENTS="$ROOT_DIR/Packaging/SafariWebExtension.entitlements"
 OUTPUT_DIR="${DIRECT_DISTRIBUTION_OUTPUT_DIR:-$ROOT_DIR/dist/direct}"
 APPLICATION_IDENTITY="${DIRECT_DISTRIBUTION_APPLICATION_IDENTITY:-}"
 NOTARY_PROFILE="${DIRECT_DISTRIBUTION_NOTARY_PROFILE:-}"
@@ -128,9 +127,6 @@ validate_bundle_structure() {
   local require_update_configuration="${2:-0}"
   local info_plist="$app_bundle/Contents/Info.plist"
   local app_binary="$app_bundle/Contents/MacOS/$APP_NAME"
-  local safari_extension="$app_bundle/Contents/PlugIns/RepoPressSafariExtension.appex"
-  local safari_info="$safari_extension/Contents/Info.plist"
-  local safari_executable=""
   local sparkle_framework="$app_bundle/Contents/Frameworks/Sparkle.framework"
   local sparkle_license="$app_bundle/Contents/Resources/ThirdPartyNotices/Sparkle-LICENSE.txt"
   local update_feed_url=""
@@ -148,10 +144,7 @@ validate_bundle_structure() {
     || fail "Sparkle third-party notice is incomplete"
   grep -Fq 'EXTERNAL LICENSES' "$sparkle_license" \
     || fail "Sparkle external-license notices are incomplete"
-  [[ -d "$safari_extension" ]] || fail "Safari Web Extension is missing: $safari_extension"
-  [[ -f "$safari_info" ]] || fail "Safari Web Extension Info.plist is missing"
   "$PLUTIL_TOOL" -lint "$info_plist" >/dev/null || fail "app Info.plist is invalid"
-  "$PLUTIL_TOOL" -lint "$safari_info" >/dev/null || fail "Safari Web Extension Info.plist is invalid"
 
   [[ "$(plist_value "$info_plist" CFBundleIdentifier)" == "$BUNDLE_ID" ]] \
     || fail "app bundle identifier is not $BUNDLE_ID"
@@ -185,12 +178,6 @@ if parsed.path.rsplit("/", 1)[-1] != expected_name:
     raise SystemExit(f"direct release: signed app SUFeedURL must end in {expected_name}")
 PY
   fi
-  [[ "$(plist_value "$safari_info" CFBundleIdentifier)" == "$SAFARI_EXTENSION_BUNDLE_ID" ]] \
-    || fail "Safari Web Extension bundle identifier is not $SAFARI_EXTENSION_BUNDLE_ID"
-  safari_executable="$(plist_value "$safari_info" CFBundleExecutable)"
-  [[ -n "$safari_executable" ]] || fail "Safari Web Extension executable name is missing"
-  [[ -x "$safari_extension/Contents/MacOS/$safari_executable" ]] \
-    || fail "Safari Web Extension executable is missing"
 }
 
 signature_report() {
@@ -209,42 +196,26 @@ validate_signed_app() {
   local require_notary_ticket="$2"
   local validation_dir=""
   local app_report=""
-  local safari_report=""
   local actual_entitlements=""
-  local actual_safari_entitlements=""
   local app_team=""
-  local safari_team=""
-  local safari_extension="$app_bundle/Contents/PlugIns/RepoPressSafariExtension.appex"
 
   validate_bundle_structure "$app_bundle" 1
   validation_dir="$(mktemp -d "$TMP_DIR/signature.XXXXXX")"
   app_report="$validation_dir/app-signature.txt"
-  safari_report="$validation_dir/safari-signature.txt"
   actual_entitlements="$validation_dir/app-entitlements.plist"
-  actual_safari_entitlements="$validation_dir/safari-entitlements.plist"
 
-  "$CODESIGN_TOOL" --verify --strict --verbose=2 "$safari_extension" \
-    || fail "Safari Web Extension signature verification failed"
   "$CODESIGN_TOOL" --verify --deep --strict --verbose=2 "$app_bundle" \
     || fail "app signature verification failed"
   signature_report "$app_bundle" "$app_report"
-  signature_report "$safari_extension" "$safari_report"
 
   grep -Eq '^Authority=Developer ID Application:' "$app_report" \
     || fail "app is not signed with Developer ID Application"
-  grep -Eq '^Authority=Developer ID Application:' "$safari_report" \
-    || fail "Safari Web Extension is not signed with Developer ID Application"
   grep -Eq '^CodeDirectory .*flags=.*runtime' "$app_report" \
     || fail "app signature does not prove hardened runtime"
-  grep -Eq '^CodeDirectory .*flags=.*runtime' "$safari_report" \
-    || fail "Safari Web Extension signature does not prove hardened runtime"
 
   app_team="$(signature_team "$app_report")"
-  safari_team="$(signature_team "$safari_report")"
   [[ -n "$app_team" && "$app_team" != "not set" ]] \
     || fail "app signature does not expose a TeamIdentifier"
-  [[ "$safari_team" == "$app_team" ]] \
-    || fail "app and Safari Web Extension signatures use different teams"
   bash "$ROOT_DIR/script/sign_sparkle_framework.sh" \
     --framework "$app_bundle/Contents/Frameworks/Sparkle.framework" \
     --validate-only \
@@ -253,19 +224,12 @@ validate_signed_app() {
 
   "$CODESIGN_TOOL" -d --entitlements :- "$app_bundle" >"$actual_entitlements" 2>/dev/null \
     || fail "could not extract app entitlements"
-  "$CODESIGN_TOOL" -d --entitlements :- "$safari_extension" \
-    >"$actual_safari_entitlements" 2>/dev/null \
-    || fail "could not extract Safari Web Extension entitlements"
   "$PLUTIL_TOOL" -lint "$actual_entitlements" >/dev/null \
     || fail "signed app entitlements are invalid"
-  "$PLUTIL_TOOL" -lint "$actual_safari_entitlements" >/dev/null \
-    || fail "signed Safari Web Extension entitlements are invalid"
   if [[ "$(plist_value "$actual_entitlements" com.apple.security.app-sandbox)" == "true" ]]; then
     fail "signed app unexpectedly enables App Sandbox"
   fi
-  "$PYTHON_TOOL" - \
-    "$DIRECT_ENTITLEMENTS" "$actual_entitlements" \
-    "$SAFARI_ENTITLEMENTS" "$actual_safari_entitlements" <<'PY'
+  "$PYTHON_TOOL" - "$DIRECT_ENTITLEMENTS" "$actual_entitlements" <<'PY'
 import plistlib
 from pathlib import Path
 import sys
@@ -274,19 +238,15 @@ def load(path: str) -> dict:
     with Path(path).open("rb") as handle:
         return plistlib.load(handle)
 
-for expected_path, actual_path, label in (
-    (sys.argv[1], sys.argv[2], "app"),
-    (sys.argv[3], sys.argv[4], "Safari Web Extension"),
-):
-    expected = load(expected_path)
-    actual = load(actual_path)
-    for key, value in expected.items():
-        if actual.get(key) != value:
-            raise SystemExit(f"direct release: signed {label} entitlement mismatch: {key}")
-    if label == "app" and actual.get("com.apple.security.app-sandbox") is True:
-        raise SystemExit("direct release: signed app unexpectedly enables App Sandbox")
-    if actual.get("com.apple.security.get-task-allow") is True:
-        raise SystemExit(f"direct release: signed {label} unexpectedly allows debugging")
+expected = load(sys.argv[1])
+actual = load(sys.argv[2])
+for key, value in expected.items():
+    if actual.get(key) != value:
+        raise SystemExit(f"direct release: signed app entitlement mismatch: {key}")
+if actual.get("com.apple.security.app-sandbox") is True:
+    raise SystemExit("direct release: signed app unexpectedly enables App Sandbox")
+if actual.get("com.apple.security.get-task-allow") is True:
+    raise SystemExit("direct release: signed app unexpectedly allows debugging")
 PY
 
   if [[ "$require_notary_ticket" == "1" ]]; then
@@ -324,7 +284,7 @@ validate_signed_disk_image() {
 build_direct_app() {
   local destination="$1"
   local require_update_configuration="${2:-0}"
-  local built_app="$ROOT_DIR/dist/$APP_NAME.app"
+  local built_app="$ROOT_DIR/dist/$APP_BUNDLE_NAME.app"
 
   CODE_SIGN_IDENTITY="-" \
     PERSONAL_SITE_PUBLISHER_DIST_DIR="$ROOT_DIR/dist" \
@@ -773,7 +733,6 @@ done
 ROOT_DIR="$(canonical_path "$ROOT_DIR")"
 OUTPUT_DIR="$(canonical_path "$OUTPUT_DIR")"
 DIRECT_ENTITLEMENTS="$ROOT_DIR/Packaging/DirectDistribution.entitlements"
-SAFARI_ENTITLEMENTS="$ROOT_DIR/Packaging/SafariWebExtension.entitlements"
 case "$OUTPUT_DIR" in
   /|"${HOME:-}"|"$ROOT_DIR"|"$ROOT_DIR/dist")
     fail "refusing unsafe output directory: $OUTPUT_DIR"
@@ -791,11 +750,8 @@ esac
 [[ -f "$ROOT_DIR/Packaging/ThirdPartyNotices/Sparkle-LICENSE.txt" ]] \
   || fail "missing Packaging/ThirdPartyNotices/Sparkle-LICENSE.txt"
 [[ -f "$DIRECT_ENTITLEMENTS" ]] || fail "missing Packaging/DirectDistribution.entitlements"
-[[ -f "$SAFARI_ENTITLEMENTS" ]] || fail "missing Packaging/SafariWebExtension.entitlements"
 "$PLUTIL_TOOL" -lint "$DIRECT_ENTITLEMENTS" >/dev/null \
   || fail "DirectDistribution.entitlements is invalid"
-"$PLUTIL_TOOL" -lint "$SAFARI_ENTITLEMENTS" >/dev/null \
-  || fail "SafariWebExtension.entitlements is invalid"
 "$XCRUN_TOOL" -f notarytool >/dev/null \
   || fail "Xcode does not provide notarytool"
 "$XCRUN_TOOL" -f stapler >/dev/null \
@@ -924,14 +880,10 @@ done
 mkdir -p "$release_root"
 build_direct_app "$signed_app" 1
 
-safari_extension="$signed_app/Contents/PlugIns/RepoPressSafariExtension.appex"
 bash "$ROOT_DIR/script/sign_sparkle_framework.sh" \
   --framework "$signed_app/Contents/Frameworks/Sparkle.framework" \
   --identity "$APPLICATION_IDENTITY" \
   --timestamp >/dev/null
-"$CODESIGN_TOOL" --force --options runtime --timestamp \
-  --entitlements "$SAFARI_ENTITLEMENTS" \
-  --sign "$APPLICATION_IDENTITY" "$safari_extension"
 "$CODESIGN_TOOL" --force --options runtime --timestamp \
   --entitlements "$DIRECT_ENTITLEMENTS" \
   --sign "$APPLICATION_IDENTITY" "$signed_app"

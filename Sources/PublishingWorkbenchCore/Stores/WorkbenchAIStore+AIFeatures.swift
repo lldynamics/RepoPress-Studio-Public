@@ -103,8 +103,7 @@ extension WorkbenchAIStore {
 
     updated.updatedAt = Date()
     store.updateDraft(updated)
-    aiMetadataSuggestionDraftID = updated.id
-    aiMetadataSuggestion = nil
+    removeAIMetadataSuggestion(for: updated.id)
     aiMetadataApplicationRecords.insert(
       AIPublishingMetadataApplicationRecord(
         siteProfileID: updated.siteProfileID,
@@ -242,12 +241,27 @@ extension WorkbenchAIStore {
     }
     let effectiveKind = convergence?.canonicalActionKind ?? kind
     let actionName = convergence?.displayName ?? effectiveKind.displayName
-    let profile = store.profile(for: draft)
+    guard let baseline = await prepareDraftOperationBaseline(for: draft.id) else {
+      aiActionMessage = "找不到要执行 AI 操作的文章。"
+      return nil
+    }
+    let profile = store.profile(for: baseline.draft)
     do {
       let token = try aiChatAvailableAPIKey(for: profile)
-      isAIActionRunning = true
-      defer { isAIActionRunning = false }
-      let artifacts = await store.aiPublishingRequestArtifacts(for: draft)
+      let actionOperationID = beginAIActionOperation()
+      defer { finishAIActionOperation(actionOperationID) }
+      let metadataGeneration = effectiveKind.producesMetadataSuggestion
+        ? beginAIMetadataSuggestionOperation(for: draft.id)
+        : nil
+      defer {
+        if let metadataGeneration {
+          finishAIMetadataSuggestionOperation(
+            for: draft.id,
+            generation: metadataGeneration
+          )
+        }
+      }
+      let artifacts = await store.aiPublishingRequestArtifacts(for: baseline.draft)
       let knowledgeContext = await store.knowledge.context(
         query: knowledgeQuery(
           draft: artifacts.draft,
@@ -268,15 +282,58 @@ extension WorkbenchAIStore {
         workflowContext: artifacts.workflowContext,
         knowledgeContext: knowledgeContext
       )
-      let result = try await aiPublishingAssistantService.perform(
-        request,
-        config: store.aiProviderConfig(for: profile),
-        apiKey: token
-      )
+      let assistant = aiPublishingAssistantService
+      let requestConfig = store.aiProviderConfig(for: profile)
+      let requestTask = Task {
+        try await assistant.perform(
+          request,
+          config: requestConfig,
+          apiKey: token
+        )
+      }
+      if let metadataGeneration {
+        registerAIMetadataSuggestionCancellationHandler(
+          for: draft.id,
+          generation: metadataGeneration
+        ) {
+          requestTask.cancel()
+        }
+      }
+      let requestResult = await withTaskCancellationHandler {
+        await requestTask.result
+      } onCancel: {
+        requestTask.cancel()
+      }
+      let result: AIPublishingActionResult
+      switch requestResult {
+      case .success(let value):
+        result = value
+      case .failure(let error):
+        if error is CancellationError
+          || Task.isCancelled
+          || (metadataGeneration != nil
+            && aiMetadataSuggestionGenerationsByDraftID[draft.id] != metadataGeneration)
+        {
+          return nil
+        }
+        throw error
+      }
       aiActionResult = result
-      if let suggestion = AIPublishingMetadataActionSuggestionFactory.suggestion(from: result) {
-        aiMetadataSuggestionDraftID = draft.id
-        aiMetadataSuggestion = suggestion
+      if let suggestion = AIPublishingMetadataActionSuggestionFactory.suggestion(from: result),
+        let metadataGeneration
+      {
+        guard draftOperationStillMatches(baseline, profile: profile) else {
+          aiActionMessage = "文章在 AI 建议生成期间发生变化，元数据建议未安装。"
+          return result
+        }
+        guard installAIMetadataSuggestion(
+          suggestion,
+          for: draft.id,
+          generation: metadataGeneration
+        ) else {
+          aiActionMessage = "文章的较新 AI 建议已生成，当前结果已丢弃。"
+          return result
+        }
       }
       aiActionMessage = "\(actionName)完成。"
       return result
@@ -330,12 +387,18 @@ extension WorkbenchAIStore {
       aiActionMessage = store.quickHideOperationMessage
       return nil
     }
-    let profile = store.profile(for: draft)
+    guard let baseline = await prepareDraftOperationBaseline(for: draft.id) else {
+      aiActionMessage = "找不到要生成 AI 建议的文章。"
+      return nil
+    }
+    let profile = store.profile(for: baseline.draft)
     do {
       let token = try aiChatAvailableAPIKey(for: profile)
-      isAIMetadataSuggestionRunning = true
-      defer { isAIMetadataSuggestionRunning = false }
-      let artifacts = await store.aiPublishingRequestArtifacts(for: draft)
+      let generation = beginAIMetadataSuggestionOperation(for: draft.id)
+      defer {
+        finishAIMetadataSuggestionOperation(for: draft.id, generation: generation)
+      }
+      let artifacts = await store.aiPublishingRequestArtifacts(for: baseline.draft)
       let knowledgeContext = await store.knowledge.context(
         query: knowledgeQuery(draft: artifacts.draft, instruction: "标题 摘要 标签 元数据"),
         policy: aiChatKnowledgePolicy
@@ -350,13 +413,47 @@ extension WorkbenchAIStore {
         workflowContext: artifacts.workflowContext,
         knowledgeContext: knowledgeContext
       )
-      let suggestion = try await aiPublishingAssistantService.suggestMetadata(
-        for: request,
-        config: store.aiProviderConfig(for: profile),
-        apiKey: token
-      )
-      aiMetadataSuggestionDraftID = draft.id
-      aiMetadataSuggestion = suggestion
+      let assistant = aiPublishingAssistantService
+      let requestConfig = store.aiProviderConfig(for: profile)
+      let requestTask = Task {
+        try await assistant.suggestMetadata(
+          for: request,
+          config: requestConfig,
+          apiKey: token
+        )
+      }
+      registerAIMetadataSuggestionCancellationHandler(
+        for: draft.id,
+        generation: generation
+      ) {
+        requestTask.cancel()
+      }
+      let requestResult = await withTaskCancellationHandler {
+        await requestTask.result
+      } onCancel: {
+        requestTask.cancel()
+      }
+      let suggestion: AIPublishingMetadataSuggestion
+      switch requestResult {
+      case .success(let value):
+        suggestion = value
+      case .failure(let error):
+        if error is CancellationError
+          || Task.isCancelled
+          || aiMetadataSuggestionGenerationsByDraftID[draft.id] != generation
+        {
+          return nil
+        }
+        throw error
+      }
+      guard draftOperationStillMatches(baseline, profile: profile) else {
+        aiActionMessage = "文章在 AI 建议生成期间发生变化，结果已丢弃。"
+        return nil
+      }
+      guard installAIMetadataSuggestion(suggestion, for: draft.id, generation: generation) else {
+        aiActionMessage = "文章的较新 AI 建议已生成，当前结果已丢弃。"
+        return nil
+      }
       aiActionMessage = "AI 元数据建议已生成。"
       return suggestion
     } catch {
@@ -366,10 +463,10 @@ extension WorkbenchAIStore {
   }
 
   public func prepareAIImageTextSuggestions(for draft: ArticleDraft) {
-    if aiImageTextSuggestionDraftID != draft.id {
-      aiImageTextSuggestionDraftID = draft.id
-      aiImageTextSuggestions = []
-    }
+    // A background caller may prepare a non-selected draft, but the legacy
+    // workspace fields are strictly the current-selection projection.
+    guard store.selectedDraftID == draft.id else { return }
+    restoreDraftSuggestionProjectionForCurrentSelection()
   }
 
   @discardableResult
@@ -381,10 +478,16 @@ extension WorkbenchAIStore {
       store.setImageActionMessage(store.quickHideOperationMessage)
       return []
     }
-    let profile = store.profile(for: draft)
-    let report = store.imageWorkbenchReport(for: draft)
+    guard let baseline = await prepareDraftOperationBaseline(for: draft.id) else {
+      aiActionMessage = "找不到要生成图片文案的文章。"
+      store.setImageActionMessage(aiActionMessage)
+      return []
+    }
+    let requestDraft = baseline.draft
+    let profile = store.profile(for: requestDraft)
+    let report = store.imageWorkbenchReport(for: requestDraft)
     let targets = imageWorkbenchService.imageTextTargets(
-      draft: draft, profile: profile, report: report)
+      draft: requestDraft, profile: profile, report: report)
     guard !targets.isEmpty else {
       aiActionMessage = "当前文章没有需要补全 alt/caption 的图片。"
       store.setImageActionMessage(aiActionMessage)
@@ -392,14 +495,16 @@ extension WorkbenchAIStore {
     }
     do {
       let token = try aiChatAvailableAPIKey(for: profile)
-      isAIImageTextRunning = true
-      defer { isAIImageTextRunning = false }
+      let generation = beginAIImageTextSuggestionOperation(for: draft.id)
+      defer {
+        finishAIImageTextSuggestionOperation(for: draft.id, generation: generation)
+      }
       let visionCandidates = Array(
         targets
           .prefix(AIPublishingChatImageAttachmentPresentation.maxSelectedImageCount)
           .compactMap { target -> (String, DraftAttachment)? in
             guard
-              let attachment = draft.attachments.first(where: {
+              let attachment = requestDraft.attachments.first(where: {
                 $0.id == target.attachmentID && $0.mediaKind == .image
               })
             else {
@@ -425,15 +530,55 @@ extension WorkbenchAIStore {
       } else {
         visionInputs = []
       }
-      let suggestions = try await aiPublishingAssistantService.suggestImageText(
-        for: targets,
-        visionInputs: visionInputs,
-        profile: profile,
-        config: store.aiProviderConfig(for: profile),
-        apiKey: token
-      )
-      aiImageTextSuggestionDraftID = draft.id
-      aiImageTextSuggestions = suggestions
+      let assistant = aiPublishingAssistantService
+      let requestConfig = store.aiProviderConfig(for: profile)
+      let requestTask = Task {
+        try await assistant.suggestImageText(
+          for: targets,
+          visionInputs: visionInputs,
+          profile: profile,
+          config: requestConfig,
+          apiKey: token
+        )
+      }
+      registerAIImageTextSuggestionCancellationHandler(
+        for: draft.id,
+        generation: generation
+      ) {
+        requestTask.cancel()
+      }
+      let requestResult = await withTaskCancellationHandler {
+        await requestTask.result
+      } onCancel: {
+        requestTask.cancel()
+      }
+      let suggestions: [AIPublishingImageTextSuggestion]
+      switch requestResult {
+      case .success(let value):
+        suggestions = value
+      case .failure(let error):
+        if error is CancellationError
+          || Task.isCancelled
+          || aiImageTextSuggestionGenerationsByDraftID[draft.id] != generation
+        {
+          return []
+        }
+        throw error
+      }
+      guard draftOperationStillMatches(baseline, profile: profile) else {
+        aiActionMessage = "文章在图片文案生成期间发生变化，结果已丢弃。"
+        store.setImageActionMessage(aiActionMessage)
+        return []
+      }
+      guard installAIImageTextSuggestions(
+        suggestions,
+        for: draft.id,
+        generation: generation
+      ) else {
+        aiActionMessage = "文章的较新图片文案已生成，当前结果已丢弃。"
+        store.setImageActionMessage(aiActionMessage)
+        return []
+      }
       aiActionMessage =
         visionInputs.isEmpty
         ? "已根据文章上下文生成 \(suggestions.count) 条图片文案建议。"
@@ -453,6 +598,8 @@ extension WorkbenchAIStore {
 
   public func applyAIImageTextSuggestions(_ suggestions: [AIPublishingImageTextSuggestion]) {
     guard let draftID = suggestions.first?.draftID,
+      !suggestions.isEmpty,
+      suggestions.allSatisfy({ $0.draftID == draftID }),
       let draft = store.drafts.first(where: { $0.id == draftID })
     else {
       aiActionMessage = "找不到要应用图片文案的文章。"
@@ -460,16 +607,22 @@ extension WorkbenchAIStore {
     }
     let result = imageWorkbenchService.applyImageTextSuggestions(suggestions, to: draft)
     store.updateDraft(result.draft)
-    aiImageTextSuggestions.removeAll { suggestion in
-      suggestions.contains { $0.id == suggestion.id }
-    }
+    removeAIImageTextSuggestions(
+      withIDs: Set(suggestions.map(\.id)),
+      for: draftID
+    )
     aiActionMessage =
       "已应用图片文案：alt \(result.appliedAltTextCount) 条，caption \(result.appliedCaptionCount) 条。"
   }
 
   public func clearAIImageTextSuggestions() {
-    aiImageTextSuggestionDraftID = nil
-    aiImageTextSuggestions = []
+    if let draftID = store.selectedDraftID ?? aiImageTextSuggestionDraftID {
+      removeAllAIImageTextSuggestions(for: draftID)
+    } else {
+      workspace.aiImageTextSuggestionDraftID = nil
+      workspace.aiImageTextSuggestions = []
+      bumpAIDraftSuggestionStateRevision()
+    }
     aiActionMessage = "已清空图片文案建议。"
   }
 

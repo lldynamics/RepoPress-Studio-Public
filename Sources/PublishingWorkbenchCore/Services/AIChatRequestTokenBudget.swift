@@ -1,4 +1,6 @@
 import Foundation
+import PublishingAICore
+import PublishingCoreSupport
 
 /// A bounded, local request-context planner.  It deliberately owns no
 /// provider state: model context windows are a conservative local table and

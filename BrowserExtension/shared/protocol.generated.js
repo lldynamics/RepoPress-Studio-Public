@@ -2,7 +2,6 @@
 (() => {
   const protocol = {
     "activeExtensions": [
-      "safari",
       "chrome",
       "firefox"
     ],

@@ -23,66 +23,45 @@ final class WorkspaceBackupSchedulerTests: XCTestCase {
     XCTAssertEqual(scheduler.destinationFolderURL, harness.injectedBackupURL)
   }
 
-  func testInvalidBookmarkDoesNotFallBackToStoredPathAheadOfInjectedDataRoot() throws {
+  func testStoredDestinationPathTakesPriorityOverInjectedDataRootBackupDirectory() throws {
     let harness = try makeHarness()
     defer { harness.cleanup() }
-    let obsoletePath = harness.rootURL.appendingPathComponent("ObsoleteBackups")
+    let selectedURL = harness.rootURL.appendingPathComponent("SelectedBackups")
     try persist(
-      WorkspaceBackupScheduleSettings(
-        destinationPath: obsoletePath.path,
-        destinationBookmarkData: Data("invalid-bookmark".utf8)
-      ),
+      WorkspaceBackupScheduleSettings(destinationPath: selectedURL.path),
       in: harness.defaults
-    )
-    let codec = WorkbenchDataRootBookmarkCodec(
-      create: { _ in Data("unused".utf8) },
-      resolve: { _ in throw CocoaError(.fileReadCorruptFile) }
     )
 
     let scheduler = WorkspaceBackupScheduler(
       store: harness.store,
       defaults: harness.defaults,
-      defaultDestinationFolderURL: harness.injectedBackupURL,
-      bookmarkCodec: codec
+      defaultDestinationFolderURL: harness.injectedBackupURL
     )
 
-    XCTAssertEqual(scheduler.destinationFolderURL, harness.injectedBackupURL)
+    XCTAssertEqual(scheduler.destinationFolderURL, selectedURL.standardizedFileURL)
   }
 
-  func testStaleBookmarkIsRefreshedAndKeepsExplicitDestination() throws {
+  func testSetDestinationFolderStoresStandardizedPathAndPersists() async throws {
     let harness = try makeHarness()
     defer { harness.cleanup() }
-    let customURL = harness.rootURL.appendingPathComponent("CustomBackups")
-      .standardizedFileURL
-    let staleData = Data("stale-bookmark".utf8)
-    let refreshedData = Data("refreshed-bookmark".utf8)
-    try persist(
-      WorkspaceBackupScheduleSettings(
-        destinationPath: harness.rootURL.appendingPathComponent("OldPath").path,
-        destinationBookmarkData: staleData
-      ),
-      in: harness.defaults
-    )
-    let codec = WorkbenchDataRootBookmarkCodec(
-      create: { _ in refreshedData },
-      resolve: { _ in
-        WorkbenchDataRootDecodedBookmark(url: customURL, isStale: true)
-      }
-    )
+    let customURL = harness.rootURL
+      .appendingPathComponent("Nested", isDirectory: true)
+      .appendingPathComponent("..", isDirectory: true)
+      .appendingPathComponent("CustomBackups", isDirectory: true)
+    let standardizedURL = customURL.standardizedFileURL
 
     let scheduler = WorkspaceBackupScheduler(
       store: harness.store,
       defaults: harness.defaults,
-      defaultDestinationFolderURL: harness.injectedBackupURL,
-      bookmarkCodec: codec
+      defaultDestinationFolderURL: harness.injectedBackupURL
     )
+    try scheduler.setDestinationFolder(customURL)
+    await scheduler.refreshRecentBackups()
 
-    XCTAssertEqual(scheduler.destinationFolderURL, customURL)
-    XCTAssertEqual(scheduler.settings.destinationBookmarkData, refreshedData)
-    XCTAssertEqual(scheduler.settings.destinationPath, customURL.path)
+    XCTAssertEqual(scheduler.destinationFolderURL.path, standardizedURL.path)
+    XCTAssertEqual(scheduler.settings.destinationPath, standardizedURL.path)
     let persisted = try loadSettings(from: harness.defaults)
-    XCTAssertEqual(persisted.destinationBookmarkData, refreshedData)
-    XCTAssertEqual(persisted.destinationPath, customURL.path)
+    XCTAssertEqual(persisted.destinationPath, standardizedURL.path)
   }
 
   func testAutomaticBackupRefreshBoundsOwnedPackagesWithoutRemovingManualPackages() async throws {

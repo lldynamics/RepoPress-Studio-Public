@@ -76,9 +76,6 @@ final class KnowledgeLibraryBackupService: @unchecked Sendable {
     applicationVersion: String
   ) throws -> KnowledgeLibraryBackupPreview {
     let destinationURL = normalizedPackageURL(destinationURL)
-    let didAccess = destinationURL.startAccessingSecurityScopedResource()
-    defer { if didAccess { destinationURL.stopAccessingSecurityScopedResource() } }
-
     let parentURL = destinationURL.deletingLastPathComponent()
     try fileManager.createDirectory(at: parentURL, withIntermediateDirectories: true)
     let temporaryURL = parentURL.appendingPathComponent(
@@ -136,15 +133,11 @@ final class KnowledgeLibraryBackupService: @unchecked Sendable {
 
   func inspectBackup(at backupURL: URL) throws -> KnowledgeLibraryBackupPreview {
     let packageURL = normalizedPackageURL(backupURL)
-    let didAccess = packageURL.startAccessingSecurityScopedResource()
-    defer { if didAccess { packageURL.stopAccessingSecurityScopedResource() } }
     return try validatedBackup(at: packageURL).preview
   }
 
   func stageRestore(from backupURL: URL) throws -> KnowledgeLibraryBackupPreview {
     let sourceURL = normalizedPackageURL(backupURL)
-    let didAccess = sourceURL.startAccessingSecurityScopedResource()
-    defer { if didAccess { sourceURL.stopAccessingSecurityScopedResource() } }
     let validated = try validatedBackup(at: sourceURL)
 
     let pendingURL = Self.pendingRestoreURL(for: rootURL)

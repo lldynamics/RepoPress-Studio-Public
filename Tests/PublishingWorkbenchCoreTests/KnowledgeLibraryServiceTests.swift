@@ -57,16 +57,6 @@ final class KnowledgeLibraryServiceTests: XCTestCase {
     XCTAssertTrue(importedCandidate.normalizedText.contains("snapshot-only-unique"))
   }
 
-  func testSemanticVectorsDoNotSynchronouslyLoadUnpreparedContextualModel() {
-    let vectors = KnowledgeSemanticEmbeddingService().vectors(
-      for: "本地资料库通过混合检索找到相关章节"
-    )
-
-    XCTAssertTrue(vectors.contains { $0.modelIdentifier == "local-semantic-hash-v2" })
-    XCTAssertFalse(vectors.contains { $0.modelIdentifier.hasPrefix("apple-contextual-") })
-    XCTAssertFalse(vectors.contains { $0.modelIdentifier.hasPrefix("apple-sentence-zh") })
-  }
-
   func testSearchAsyncPropagatesCancellationIntoDetachedSearchWork() async throws {
     let rootURL = temporaryDirectory(named: "knowledge-search-cancellation")
     defer { try? FileManager.default.removeItem(at: rootURL) }

@@ -59,13 +59,29 @@ extension PublishingStore {
     guard let selectedDraft = store.selectedDraft, !selectedDraft.isGeneralDraft else {
       return nil
     }
-    if publishPackage?.draftID != selectedDraft.id {
-      refreshPublishPreview(for: selectedDraft, store: store)
+    store.flushDraftBodyEditorBuffer(for: selectedDraft.id)
+    let currentDraft = store.draft(for: selectedDraft.id) ?? selectedDraft
+    let currentBaseline = makeDraftPublishPreviewInputBaseline(
+      for: currentDraft,
+      store: store
+    )
+    let cachedSnapshot = draftPublishPreviewSnapshot(for: selectedDraft.id)
+    let cacheIsCurrent = cachedSnapshot?.context == currentBaseline.context
+      && cachedSnapshot?.publishPackage.draftID == selectedDraft.id
+      && rememberedDraftPublishPreviewInputBaseline(for: selectedDraft.id)
+        == currentBaseline
+    if !cacheIsCurrent {
+      refreshPublishPreview(for: currentDraft, store: store)
     }
-    guard let publishPackage, publishPackage.draftID == selectedDraft.id else {
+    guard let snapshot = draftPublishPreviewSnapshot(for: selectedDraft.id),
+          snapshot.context == currentBaseline.context,
+          rememberedDraftPublishPreviewInputBaseline(for: selectedDraft.id)
+            == currentBaseline,
+          snapshot.publishPackage.draftID == selectedDraft.id
+    else {
       return nil
     }
-    return publishPackage
+    return snapshot.publishPackage
   }
 
   /// Records the exact Markdown payload that was written by a local publish
@@ -98,6 +114,7 @@ extension PublishingStore {
     )
     updatedDraft.touch()
     drafts[index] = updatedDraft
+    removeDraftPublishPreviewSnapshot(for: updatedDraft.id)
     if updatedDraft.renderedRepositoryContentDigest(profile: profile) == renderedContentDigest {
       store.siteDraftFileSaveStates[updatedDraft.id] = .saved(
         repositoryPath: markdownFile.repositoryPath.normalizedRelativePath(),
@@ -369,39 +386,65 @@ extension PublishingStore {
   }
 
   public func refreshPublishPreview(for draft: ArticleDraft? = nil, store: WorkbenchStore) {
-    cancelPublishPreviewRefresh()
-    let selectedDraft = draft ?? store.selectedDraft
-    let profile = selectedDraft.map { store.profile(for: $0) } ?? store.activeProfile
-    refreshLocalSitePreviewPlan(for: profile)
+    let targetDraftID = draft?.id ?? store.selectedDraftID
+    guard let targetDraftID else {
+      cancelPublishPreviewRefresh()
+      projectSelectedDraftPublishPreview()
+      refreshLocalSitePreviewPlan(for: store.activeProfile)
+      return
+    }
 
-    guard let selectedDraft else {
-      publishPackage = nil
-      localPublishPreview = nil
-      localPublishReadiness = nil
-      remotePublishPreviewSnapshot = nil
+    store.flushDraftBodyEditorBuffer(for: targetDraftID)
+    guard let targetDraft = store.draft(for: targetDraftID) else {
+      cancelPublishPreviewRefresh(for: targetDraftID)
+      removeDraftPublishPreviewSnapshot(for: targetDraftID)
+      forgetDraftPublishPreviewInputBaseline(for: targetDraftID)
       return
     }
-    guard !selectedDraft.isGeneralDraft else {
-      publishPackage = nil
-      localPublishPreview = nil
-      localPublishReadiness = nil
-      remotePublishPreviewSnapshot = nil
-      remoteReviewDraft = nil
+
+    cancelPublishPreviewRefresh(for: targetDraftID)
+    guard !targetDraft.isGeneralDraft else {
+      removeDraftPublishPreviewSnapshot(for: targetDraftID)
+      forgetDraftPublishPreviewInputBaseline(for: targetDraftID)
+      projectSelectedDraftPublishPreview()
       return
     }
-    let package = publishingPackage(for: selectedDraft, store: store)
+
+    let profile = store.profile(for: targetDraft)
+    if store.selectedDraftID == targetDraftID && store.activeProfileID == profile.id {
+      refreshLocalSitePreviewPlan(for: profile)
+    }
+    let baseline = makeDraftPublishPreviewInputBaseline(
+      for: targetDraft,
+      store: store,
+      bodyRevision: store.draftBodyEditorBuffer(for: targetDraftID).revision
+    )
+    let allDrafts = store.drafts
+      .filter { $0.belongs(toSiteProfileID: profile.id) }
+      .sorted { $0.id.uuidString < $1.id.uuidString }
+    let duplicateIndex = PreflightDuplicateIndex(drafts: allDrafts, profile: profile)
+    let draftIssuesWithoutRepository = preflightService.run(
+      draft: baseline.draft,
+      allDrafts: allDrafts,
+      profile: profile,
+      repositoryReport: baseline.repositoryReport,
+      includeRepositoryReadiness: false,
+      duplicateIndex: duplicateIndex
+    )
+    let draftIssuesWithRepository = preflightService.run(
+      draft: baseline.draft,
+      allDrafts: allDrafts,
+      profile: profile,
+      repositoryReport: baseline.repositoryReport,
+      includeRepositoryReadiness: true,
+      duplicateIndex: duplicateIndex
+    )
+    let package = publishPackageBuilder.build(
+      draft: baseline.draft,
+      profile: profile
+    )
     let preview = localPublishPreviewService.preview(package: package, profile: profile)
-    let draftIssuesWithoutRepository = store.preflightIssues(
-      for: selectedDraft,
-      includeRepositoryReadiness: false
-    )
-    let draftIssuesWithRepository = store.preflightIssues(
-      for: selectedDraft,
-      includeRepositoryReadiness: true
-    )
-    publishPackage = package
-    localPublishPreview = preview
-    localPublishReadiness = makeLocalPublishReadiness(
+    let readiness = makeLocalPublishReadiness(
       package: package,
       profile: profile,
       preview: preview,
@@ -409,15 +452,40 @@ extension PublishingStore {
       draftIssuesWithRepository: draftIssuesWithRepository,
       store: store
     )
-    remotePublishPreviewSnapshot = remoteRepositoryPublishPreview(
+    let remotePreview = remoteRepositoryPublishPreview(
       package: package,
       profile: profile,
       mode: preferredRemoteRepositoryPublishMode(for: profile),
       localPreview: preview,
       draftIssuesWithRepository: draftIssuesWithRepository,
+      repositoryReport: baseline.repositoryReport,
+      tokenAvailability: baseline.tokenAvailability,
+      accessCheck: baseline.remoteRepositoryAccessCheck,
       store: store
     )
-    remoteReviewDraft = remoteReviewDraftBuilder.build(package: package, profile: profile)
+    let snapshot = DraftPublishPreviewSnapshot(
+      context: baseline.context,
+      publishPackage: package,
+      localPublishPreview: preview,
+      localPublishReadiness: readiness,
+      remotePublishPreview: remotePreview,
+      remoteReviewDraft: remoteReviewDraftBuilder.build(
+        package: package,
+        profile: profile
+      )
+    )
+    rememberDraftPublishPreviewInputBaseline(baseline, for: targetDraftID)
+    _ = installDraftPublishPreviewSnapshot(snapshot, for: targetDraftID)
+  }
+
+  public func refreshPublishPreview(for draftID: UUID, store: WorkbenchStore) {
+    guard let draft = store.draft(for: draftID) else {
+      cancelPublishPreviewRefresh(for: draftID)
+      removeDraftPublishPreviewSnapshot(for: draftID)
+      forgetDraftPublishPreviewInputBaseline(for: draftID)
+      return
+    }
+    refreshPublishPreview(for: draft, store: store)
   }
 
   public func refreshBatchPublishPlan(store: WorkbenchStore) {
@@ -789,6 +857,9 @@ extension PublishingStore {
     extraWarningIssues: [PreflightIssue] = [],
     localPreview: LocalPublishPreview? = nil,
     forcedChangedPaths: Set<String> = [],
+    repositoryReport: RepositoryScanReport? = nil,
+    tokenAvailability: KeychainTokenAvailability? = nil,
+    accessCheck: RemoteRepositoryAccessCheck? = nil,
     store: WorkbenchStore
   ) -> RemoteRepositoryPublishPreview {
     let preview = localPreview ?? localPublishPreviewService.preview(package: package, profile: profile)
@@ -805,6 +876,9 @@ extension PublishingStore {
       localPreview: preview,
       draftIssuesWithRepository: draftIssuesWithRepository,
       forcedChangedPaths: forcedChangedPaths,
+      repositoryReport: repositoryReport,
+      tokenAvailability: tokenAvailability,
+      accessCheck: accessCheck,
       store: store
     )
   }
@@ -817,6 +891,9 @@ extension PublishingStore {
     localPreview: LocalPublishPreview,
     draftIssuesWithRepository: [PreflightIssue],
     forcedChangedPaths: Set<String> = [],
+    repositoryReport: RepositoryScanReport? = nil,
+    tokenAvailability: KeychainTokenAvailability? = nil,
+    accessCheck: RemoteRepositoryAccessCheck? = nil,
     store: WorkbenchStore
   ) -> RemoteRepositoryPublishPreview {
     let repositoryName = profile.repositoryDisplayName
@@ -826,7 +903,7 @@ extension PublishingStore {
     )
     let remoteRiskAssessment = remotePublishRiskService.assessment(
       package: package,
-      repositoryReport: store.repositoryReport(for: profile)
+      repositoryReport: repositoryReport ?? store.repositoryReport(for: profile)
     )
     let remoteWarnings = remotePublishRiskService.issues(
       for: remoteRiskAssessment,
@@ -836,8 +913,11 @@ extension PublishingStore {
       ? remoteWarnings
       : []
     let visibleRemoteWarnings = directConflictBlockingIssues.isEmpty ? remoteWarnings : []
-    let accessCheck = store.activeRemoteRepositoryAccessCheck
-    let tokenAccessBlockingIssues: [PreflightIssue] = store.repositoryTokenAvailability
+    let resolvedAccessCheck = accessCheck
+      ?? freshRemoteRepositoryAccessCheckForPreview(profile: profile, store: store)
+    let resolvedTokenAvailability = tokenAvailability
+      ?? repositoryTokenAvailabilityForPreview(profile: profile, store: store)
+    let tokenAccessBlockingIssues: [PreflightIssue] = resolvedTokenAvailability
       .accessFailureMessage
       .map { failureMessage in
         [PreflightIssue(
@@ -850,7 +930,7 @@ extension PublishingStore {
           field: "repositoryToken"
         )]
       } ?? []
-    let permissionWarnings: [PreflightIssue] = store.repositoryTokenAvailability.hasToken && accessCheck == nil
+    let permissionWarnings: [PreflightIssue] = resolvedTokenAvailability.hasToken && resolvedAccessCheck == nil
       ? [PreflightIssue(
         severity: .warning,
         title: CoreL10n.text("Token 权限未检查"),
@@ -865,18 +945,27 @@ extension PublishingStore {
     let changedPaths = localChangedPaths + forcedChangedPaths
       .subtracting(Set(localChangedPaths.map { $0.normalizedRelativePath() }))
       .sorted()
+    let branchName: String
+    switch mode {
+    case .directCommit:
+      branchName = profile.branch
+    case .reviewRequest:
+      branchName = package.reviewBranchName
+    case .previewBranch:
+      branchName = package.draftPreviewBranchName
+    }
     return RemoteRepositoryPublishPreview(
       provider: profile.repositoryProvider,
       repositoryName: repositoryName,
       mode: mode,
-      branchName: mode == .reviewRequest ? package.reviewBranchName : profile.branch,
+      branchName: branchName,
       targetBranch: profile.branch,
       changedPaths: changedPaths,
       remoteConflictPaths: remoteRiskAssessment.conflictPaths,
       remoteRiskState: remoteRiskAssessment.state,
-      hasToken: store.repositoryTokenAvailability.hasToken,
-      tokenAccessFailureMessage: store.repositoryTokenAvailability.accessFailureMessage,
-      accessCheck: accessCheck,
+      hasToken: resolvedTokenAvailability.hasToken,
+      tokenAccessFailureMessage: resolvedTokenAvailability.accessFailureMessage,
+      accessCheck: resolvedAccessCheck,
       blockingIssues: blockingIssues + tokenAccessBlockingIssues + directConflictBlockingIssues,
       warningIssues: visibleRemoteWarnings + permissionWarnings + extraWarningIssues
     )
@@ -915,6 +1004,9 @@ extension PublishingStore {
       updatedDraft.updatedAt = now
       return updatedDraft
     }
+    for draftID in draftIDs {
+      removeDraftPublishPreviewSnapshot(for: draftID)
+    }
   }
 
   func markDraftsRepositorySyncState(
@@ -931,6 +1023,9 @@ extension PublishingStore {
       updatedDraft.touch()
       return updatedDraft
     }
+    for draftID in draftIDs {
+      removeDraftPublishPreviewSnapshot(for: draftID)
+    }
   }
 
   func markRemotePublishReviewSuccess(packages: [PublishPackage]) {
@@ -943,6 +1038,9 @@ extension PublishingStore {
       updatedDraft.markRepositoryAwaitingReview(profile: profile(for: updatedDraft))
       updatedDraft.touch()
       return updatedDraft
+    }
+    for draftID in draftIDs {
+      removeDraftPublishPreviewSnapshot(for: draftID)
     }
   }
 
@@ -992,6 +1090,7 @@ extension PublishingStore {
     )
     drafts[index].repositoryImportFingerprint = drafts[index].repositoryContentFingerprint
     drafts[index].touch()
+    removeDraftPublishPreviewSnapshot(for: package.draftID)
   }
 
   func confirmDirectRemotePublishLifecycle(
@@ -1037,6 +1136,9 @@ extension PublishingStore {
       }
       updated.updatedAt = now
       return updated
+    }
+    for draftID in packagesByDraftID.keys {
+      removeDraftPublishPreviewSnapshot(for: draftID)
     }
   }
 

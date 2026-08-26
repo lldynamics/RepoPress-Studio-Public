@@ -2,6 +2,20 @@ import Foundation
 import SQLite3
 
 extension RSSReaderDatabase {
+  private func feedURLUnlocked(id: UUID) throws -> String? {
+    let statement = try prepareUnlocked("SELECT url FROM rss_feeds WHERE id = ? LIMIT 1;")
+    defer { sqlite3_finalize(statement) }
+    bind(id.uuidString, at: 1, to: statement)
+    switch sqlite3_step(statement) {
+    case SQLITE_ROW:
+      return text(statement, 0)
+    case SQLITE_DONE:
+      return nil
+    default:
+      throw databaseErrorUnlocked()
+    }
+  }
+
   func upsertFeed(_ feed: RSSFeed) throws {
     try withLock { try upsertFeedUnlocked(feed) }
   }
@@ -105,6 +119,48 @@ extension RSSReaderDatabase {
     }
   }
 
+  /// Persists one refresh only when the feed still points at the URL that was
+  /// fetched.  Refresh workers run concurrently with UI mutations, so a
+  /// response for a removed or retargeted feed must be rejected atomically
+  /// before it can recreate that feed in SQLite.
+  @discardableResult
+  func upsertFeedAndArticlesIfURLMatches(
+    _ feed: RSSFeed,
+    articles: [RSSArticle],
+    expectedURL: URL
+  ) throws -> [RSSArticle]? {
+    try withLock {
+      guard try feedURLUnlocked(id: feed.id) == expectedURL.absoluteString else { return nil }
+      let persistedArticles = try articles.map { try articleWithCurrentLocalStateUnlocked($0) }
+      try transactionUnlocked {
+        try upsertFeedUnlocked(feed)
+        for article in persistedArticles { try upsertArticleUnlocked(article) }
+      }
+      return persistedArticles
+    }
+  }
+
+  private func articleWithCurrentLocalStateUnlocked(_ incoming: RSSArticle) throws -> RSSArticle {
+    let statement = try prepareUnlocked(
+      "SELECT read_at, is_starred, tags_json FROM rss_articles WHERE id = ? LIMIT 1;"
+    )
+    defer { sqlite3_finalize(statement) }
+    bind(incoming.id, at: 1, to: statement)
+    switch sqlite3_step(statement) {
+    case SQLITE_DONE:
+      return incoming
+    case SQLITE_ROW:
+      break
+    default:
+      throw databaseErrorUnlocked()
+    }
+    var article = incoming
+    article.readAt = optionalDate(statement, 0)
+    article.isStarred = sqlite3_column_int(statement, 1) != 0
+    article.tags = decodeStringArray(text(statement, 2))
+    return article
+  }
+
   func updateReadStates(_ states: [(articleID: String, readAt: Date?)]) throws {
     guard !states.isEmpty else { return }
     try withLock {
@@ -199,30 +255,41 @@ extension RSSReaderDatabase {
   }
 
   func updateFeedHealth(_ feed: RSSFeed) throws {
+    try withLock { try updateFeedHealthUnlocked(feed) }
+  }
+
+  @discardableResult
+  func updateFeedHealthIfURLMatches(_ feed: RSSFeed, expectedURL: URL) throws -> Bool {
     try withLock {
-      let statement = try prepareUnlocked(
-        """
-        UPDATE rss_feeds SET last_updated_at = ?, last_error = ?,
-          last_refresh_attempt_at = ?, refresh_failure_count = ?, next_retry_at = ?,
-          last_refresh_duration = ?, etag = ?, last_modified = ?, title = ?,
-          site_url = ?, icon_url = ?, last_issue_json = ? WHERE id = ?;
-        """)
-      defer { sqlite3_finalize(statement) }
-      bindOptional(feed.lastUpdatedAt?.timeIntervalSince1970, at: 1, to: statement)
-      bindOptional(feed.lastError, at: 2, to: statement)
-      bindOptional(feed.lastRefreshAttemptAt?.timeIntervalSince1970, at: 3, to: statement)
-      sqlite3_bind_int(statement, 4, Int32(feed.refreshFailureCount))
-      bindOptional(feed.nextRetryAt?.timeIntervalSince1970, at: 5, to: statement)
-      bindOptional(feed.lastRefreshDuration, at: 6, to: statement)
-      bindOptional(feed.etag, at: 7, to: statement)
-      bindOptional(feed.lastModified, at: 8, to: statement)
-      bind(feed.title, at: 9, to: statement)
-      bindOptional(feed.siteURL?.absoluteString, at: 10, to: statement)
-      bindOptional(feed.iconURL?.absoluteString, at: 11, to: statement)
-      bindOptional(try encodeIssue(feed.lastIssue), at: 12, to: statement)
-      bind(feed.id.uuidString, at: 13, to: statement)
-      guard sqlite3_step(statement) == SQLITE_DONE else { throw databaseErrorUnlocked() }
+      guard try feedURLUnlocked(id: feed.id) == expectedURL.absoluteString else { return false }
+      try updateFeedHealthUnlocked(feed)
+      return true
     }
+  }
+
+  private func updateFeedHealthUnlocked(_ feed: RSSFeed) throws {
+    let statement = try prepareUnlocked(
+      """
+      UPDATE rss_feeds SET last_updated_at = ?, last_error = ?,
+        last_refresh_attempt_at = ?, refresh_failure_count = ?, next_retry_at = ?,
+        last_refresh_duration = ?, etag = ?, last_modified = ?, title = ?,
+        site_url = ?, icon_url = ?, last_issue_json = ? WHERE id = ?;
+      """)
+    defer { sqlite3_finalize(statement) }
+    bindOptional(feed.lastUpdatedAt?.timeIntervalSince1970, at: 1, to: statement)
+    bindOptional(feed.lastError, at: 2, to: statement)
+    bindOptional(feed.lastRefreshAttemptAt?.timeIntervalSince1970, at: 3, to: statement)
+    sqlite3_bind_int(statement, 4, Int32(feed.refreshFailureCount))
+    bindOptional(feed.nextRetryAt?.timeIntervalSince1970, at: 5, to: statement)
+    bindOptional(feed.lastRefreshDuration, at: 6, to: statement)
+    bindOptional(feed.etag, at: 7, to: statement)
+    bindOptional(feed.lastModified, at: 8, to: statement)
+    bind(feed.title, at: 9, to: statement)
+    bindOptional(feed.siteURL?.absoluteString, at: 10, to: statement)
+    bindOptional(feed.iconURL?.absoluteString, at: 11, to: statement)
+    bindOptional(try encodeIssue(feed.lastIssue), at: 12, to: statement)
+    bind(feed.id.uuidString, at: 13, to: statement)
+    guard sqlite3_step(statement) == SQLITE_DONE else { throw databaseErrorUnlocked() }
   }
 
   func saveHighlight(_ highlight: RSSArticleHighlight) throws {

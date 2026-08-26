@@ -115,11 +115,6 @@ extension KnowledgeLibraryService {
         destinationDirectory: destinationDirectory
       )
     }
-    let didAccess = destinationDirectory.startAccessingSecurityScopedResource()
-    defer {
-      if didAccess { destinationDirectory.stopAccessingSecurityScopedResource() }
-    }
-
     storageMutationLock.lock()
     defer { storageMutationLock.unlock() }
     do {

@@ -256,36 +256,6 @@ public enum WorkspaceNavigationPresentation {
   public static let commandPaletteSections = WorkspaceVisibilityPolicy.commandPaletteSections
 }
 
-public enum EditorDisplayMode: String, Codable, CaseIterable, Identifiable, Sendable {
-  case edit
-  case preview
-  case split
-
-  public var id: String { rawValue }
-
-  public var displayName: String {
-    switch self {
-    case .edit:
-      return "编辑"
-    case .preview:
-      return "预览"
-    case .split:
-      return "分屏"
-    }
-  }
-
-  public var systemImage: String {
-    switch self {
-    case .edit:
-      return "square.and.pencil"
-    case .preview:
-      return "doc.richtext"
-    case .split:
-      return "rectangle.split.2x1"
-    }
-  }
-}
-
 public struct EditorFocusRequest: Identifiable, Equatable, Sendable {
   public var id: UUID
   public var draftID: UUID
@@ -609,7 +579,7 @@ public struct ReleaseRecord: Identifiable, Codable, Hashable, Sendable {
     writtenPaths: [String],
     createdAt: Date = Date()
   ) -> ReleaseRecord {
-    ReleaseRecord(
+    return ReleaseRecord(
       kind: .batchLocalWrite,
       title: "批量写入本地仓库：\(profile.name)",
       summary: "已写入 \(items.count) 篇文章、\(writtenPaths.count) 个文件到工作树。",
@@ -664,10 +634,11 @@ public struct ReleaseRecord: Identifiable, Codable, Hashable, Sendable {
     result: RemoteRepositoryPublishResult,
     createdAt: Date = Date()
   ) -> ReleaseRecord {
-    let kind: ReleaseRecordKind = result.mode == .reviewRequest ? .remoteReviewRequest : .remoteDirectCommit
+    let kind: ReleaseRecordKind = result.mode.createsReview ? .remoteReviewRequest : .remoteDirectCommit
+    let recordDisplayName = result.mode == .previewBranch ? result.mode.displayName : kind.displayName
     return ReleaseRecord(
       kind: kind,
-      title: "\(kind.displayName)：\(package.title)",
+      title: "\(recordDisplayName)：\(package.title)",
       summary: "\(result.provider.displayName) · \(result.branchName) · \(result.changedPaths.count) 个文件"
         + (result.commitSHA.map { " · \(String($0.prefix(8)))" } ?? ""),
       siteProfileID: profile.id,
@@ -698,7 +669,8 @@ public struct ReleaseRecord: Identifiable, Codable, Hashable, Sendable {
     result: RemoteRepositoryPublishResult,
     createdAt: Date = Date()
   ) -> ReleaseRecord {
-    let kind: ReleaseRecordKind = result.mode == .reviewRequest ? .remoteReviewRequest : .remoteDirectCommit
+    let kind: ReleaseRecordKind = result.mode.createsReview ? .remoteReviewRequest : .remoteDirectCommit
+    let recordDisplayName = result.mode == .previewBranch ? result.mode.displayName : kind.displayName
     let operationSummary: String
     if cleanupCount == 0 {
       operationSummary = "\(items.count) 篇文章"
@@ -709,7 +681,7 @@ public struct ReleaseRecord: Identifiable, Codable, Hashable, Sendable {
     }
     return ReleaseRecord(
       kind: kind,
-      title: "批量\(kind.displayName)：\(profile.name)",
+      title: "批量\(recordDisplayName)：\(profile.name)",
       summary: "\(result.provider.displayName) · \(operationSummary) · \(result.changedPaths.count) 个文件"
         + (result.commitSHA.map { " · \(String($0.prefix(8)))" } ?? ""),
       siteProfileID: profile.id,
@@ -738,7 +710,15 @@ public struct ReleaseRecord: Identifiable, Codable, Hashable, Sendable {
     commitSHA: String? = nil,
     createdAt: Date = Date()
   ) -> ReleaseRecord {
-    ReleaseRecord(
+    let branchName: String = switch mode {
+    case .directCommit:
+      profile.branch.nilIfEmpty ?? "main"
+    case .reviewRequest:
+      package.reviewBranchName
+    case .previewBranch:
+      package.draftPreviewBranchName
+    }
+    return ReleaseRecord(
       kind: .remotePublishFailure,
       title: "\(mode.displayName)失败：\(package.title)",
       summary: errorMessage,
@@ -754,7 +734,7 @@ public struct ReleaseRecord: Identifiable, Codable, Hashable, Sendable {
       repositoryBaseURL: profile.repositoryBaseURL,
       repoOwner: profile.repoOwner,
       repoName: profile.repoName,
-      branchName: mode == .reviewRequest ? package.reviewBranchName : (profile.branch.nilIfEmpty ?? "main"),
+      branchName: branchName,
       targetBranch: profile.branch.nilIfEmpty ?? "main",
       commitSHA: commitSHA,
       createdAt: createdAt
@@ -772,6 +752,14 @@ public struct ReleaseRecord: Identifiable, Codable, Hashable, Sendable {
     commitSHA: String? = nil,
     createdAt: Date = Date()
   ) -> ReleaseRecord {
+    let branchName: String = switch mode {
+    case .directCommit:
+      profile.branch.nilIfEmpty ?? "main"
+    case .reviewRequest:
+      package.reviewBranchName
+    case .previewBranch:
+      package.draftPreviewBranchName
+    }
     let operationSummary: String
     if cleanupCount == 0 {
       operationSummary = "\(items.count) 篇文章未完成线上发布"
@@ -791,7 +779,7 @@ public struct ReleaseRecord: Identifiable, Codable, Hashable, Sendable {
       repositoryBaseURL: profile.repositoryBaseURL,
       repoOwner: profile.repoOwner,
       repoName: profile.repoName,
-      branchName: mode == .reviewRequest ? package.reviewBranchName : (profile.branch.nilIfEmpty ?? "main"),
+      branchName: branchName,
       targetBranch: profile.branch.nilIfEmpty ?? "main",
       commitSHA: commitSHA,
       batchItems: items.map {

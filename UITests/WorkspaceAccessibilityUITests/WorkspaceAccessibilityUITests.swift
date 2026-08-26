@@ -1456,7 +1456,7 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
         .deletingLastPathComponent()
         .deletingLastPathComponent()
         .deletingLastPathComponent()
-        .appendingPathComponent("dist/PersonalSitePublisherMac.app", isDirectory: true)
+        .appendingPathComponent("dist/RepoPress Studio.app", isDirectory: true)
         .standardizedFileURL
     }
     guard FileManager.default.fileExists(atPath: appURL.path) else {

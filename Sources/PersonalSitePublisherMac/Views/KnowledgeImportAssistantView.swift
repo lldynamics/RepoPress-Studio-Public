@@ -432,14 +432,6 @@ struct KnowledgeImportAssistantView: View {
       return
     }
     analyze {
-      let accessedURLs = fileURLs.map { url in
-        (url, url.startAccessingSecurityScopedResource())
-      }
-      defer {
-        for (url, didStartAccessing) in accessedURLs where didStartAccessing {
-          url.stopAccessingSecurityScopedResource()
-        }
-      }
       return try await knowledge.makeImportPreview(
         sourceURLs: fileURLs,
         options: KnowledgeImportOptions(

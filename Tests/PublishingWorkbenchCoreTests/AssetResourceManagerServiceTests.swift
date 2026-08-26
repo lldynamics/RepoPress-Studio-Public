@@ -116,7 +116,6 @@ final class AssetResourceManagerServiceTests: XCTestCase {
   private func profile(rootURL: URL) -> SiteProfile {
     var profile = SiteProfile.defaultProfile
     profile.localRepositoryRootPath = rootURL.path
-    profile.localRepositoryBookmarkData = nil
     profile.assetRoot = "static"
     return profile
   }

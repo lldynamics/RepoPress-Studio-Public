@@ -78,6 +78,7 @@ public struct SiteStarterService: Sendable {
     let files = starterFiles(
       profile: profile,
       draft: draft,
+      template: template,
       siteName: siteName,
       description: description,
       author: author,
@@ -292,12 +293,6 @@ public struct SiteStarterService: Sendable {
     guard let rootURL = profile.localRepositoryRootURL else {
       throw SiteStarterError.missingRepositoryRoot
     }
-    let didStartAccessing = rootURL.startAccessingSecurityScopedResource()
-    defer {
-      if didStartAccessing {
-        rootURL.stopAccessingSecurityScopedResource()
-      }
-    }
     guard fileManager.fileExists(atPath: rootURL.appendingPathComponent(".git", isDirectory: true).path) else {
       throw SiteStarterError.notGitRepository(rootURL.path)
     }
@@ -424,21 +419,53 @@ public struct SiteStarterService: Sendable {
   private func starterFiles(
     profile: SiteProfile,
     draft: ArticleDraft,
+    template: SiteStarterTemplate,
     siteName: String,
     description: String,
     author: String,
     baseURL: String,
     deploymentTarget: SiteStarterDeploymentTarget
   ) -> [StarterFile] {
-    zolaFiles(
-      profile: profile,
-      draft: draft,
-      siteName: siteName,
-      description: description,
-      author: author,
-      baseURL: baseURL,
-      deploymentTarget: deploymentTarget
-    )
+    switch template.id {
+    case .zolaPersonalBlog:
+      return zolaFiles(
+        profile: profile,
+        draft: draft,
+        siteName: siteName,
+        description: description,
+        author: author,
+        baseURL: baseURL,
+        deploymentTarget: deploymentTarget
+      )
+    case .astroPersonalBlog:
+      return astroFiles(
+        profile: profile,
+        draft: draft,
+        siteName: siteName,
+        description: description,
+        baseURL: baseURL,
+        deploymentTarget: deploymentTarget
+      )
+    case .hugoPersonalBlog:
+      return hugoFiles(
+        profile: profile,
+        draft: draft,
+        siteName: siteName,
+        description: description,
+        author: author,
+        baseURL: baseURL,
+        deploymentTarget: deploymentTarget
+      )
+    case .vitePressDocumentation:
+      return vitePressFiles(
+        profile: profile,
+        draft: draft,
+        siteName: siteName,
+        description: description,
+        baseURL: baseURL,
+        deploymentTarget: deploymentTarget
+      )
+    }
   }
 
   private func zolaFiles(
@@ -485,7 +512,148 @@ public struct SiteStarterService: Sendable {
     if deploymentTarget == .githubPages {
       files.append(StarterFile(path: ".github/workflows/pages.yml", contents: zolaGitHubPagesWorkflow(branch: profile.branch)))
     }
-    files.append(contentsOf: deploymentConfigFiles(target: deploymentTarget, siteName: siteName))
+    files.append(contentsOf: deploymentConfigFiles(target: deploymentTarget, siteKind: .zola, siteName: siteName))
+    return files
+  }
+
+  private func astroFiles(
+    profile: SiteProfile,
+    draft: ArticleDraft,
+    siteName: String,
+    description: String,
+    baseURL: String,
+    deploymentTarget: SiteStarterDeploymentTarget
+  ) -> [StarterFile] {
+    var files = [
+      StarterFile(
+        path: "package.json",
+        contents: nodePackageJSON(
+          siteName: siteName,
+          scripts: ["dev": "astro dev", "build": "astro build", "preview": "astro preview"],
+          dependencies: ["@astrojs/mdx": "latest", "astro": "latest"]
+        )
+      ),
+      StarterFile(path: "astro.config.mjs", contents: astroConfig(baseURL: baseURL)),
+      StarterFile(path: "src/pages/index.astro", contents: astroIndex(siteName: siteName, description: description)),
+      StarterFile(
+        path: draft.repositoryPath?.nilIfEmpty ?? "src/content/blog/welcome.mdx",
+        contents: FrontMatterRenderer().renderDocument(draft: draft, profile: profile)
+      ),
+      StarterFile(path: "src/styles/site.css", contents: starterCSS()),
+      StarterFile(path: ".gitignore", contents: "dist/\nnode_modules/\n.DS_Store\n"),
+      StarterFile(path: "README.md", contents: readme(siteName: siteName, kind: "Astro", buildCommand: buildCommand(for: .astro))),
+      StarterFile(
+        path: "DEPLOYMENT.md",
+        contents: deploymentGuide(siteName: siteName, kind: "Astro", branch: profile.branch, target: deploymentTarget)
+      ),
+    ]
+    if deploymentTarget == .githubPages {
+      files.append(
+        StarterFile(
+          path: ".github/workflows/pages.yml",
+          contents: genericGitHubPagesWorkflow(branch: profile.branch, siteKind: .astro)
+        )
+      )
+    }
+    files.append(contentsOf: deploymentConfigFiles(target: deploymentTarget, siteKind: .astro, siteName: siteName))
+    return files
+  }
+
+  private func hugoFiles(
+    profile: SiteProfile,
+    draft: ArticleDraft,
+    siteName: String,
+    description: String,
+    author: String,
+    baseURL: String,
+    deploymentTarget: SiteStarterDeploymentTarget
+  ) -> [StarterFile] {
+    var files = [
+      StarterFile(
+        path: "hugo.toml",
+        contents: hugoConfig(
+          siteName: siteName,
+          description: description,
+          author: author,
+          baseURL: baseURL
+        )
+      ),
+      StarterFile(path: "layouts/_default/baseof.html", contents: hugoBaseLayout(siteName: siteName)),
+      StarterFile(path: "layouts/index.html", contents: hugoIndexLayout()),
+      StarterFile(path: "layouts/_default/single.html", contents: hugoSingleLayout()),
+      StarterFile(
+        path: draft.repositoryPath?.nilIfEmpty ?? "content/posts/welcome.md",
+        contents: FrontMatterRenderer().renderDocument(draft: draft, profile: profile)
+      ),
+      StarterFile(path: "static/css/site.css", contents: starterCSS()),
+      StarterFile(path: ".gitignore", contents: "public/\nresources/_gen/\n.DS_Store\n"),
+      StarterFile(path: "README.md", contents: readme(siteName: siteName, kind: "Hugo", buildCommand: buildCommand(for: .hugo))),
+      StarterFile(
+        path: "DEPLOYMENT.md",
+        contents: deploymentGuide(siteName: siteName, kind: "Hugo", branch: profile.branch, target: deploymentTarget)
+      ),
+    ]
+    if deploymentTarget == .githubPages {
+      files.append(
+        StarterFile(
+          path: ".github/workflows/pages.yml",
+          contents: genericGitHubPagesWorkflow(branch: profile.branch, siteKind: .hugo)
+        )
+      )
+    }
+    files.append(contentsOf: deploymentConfigFiles(target: deploymentTarget, siteKind: .hugo, siteName: siteName))
+    return files
+  }
+
+  private func vitePressFiles(
+    profile: SiteProfile,
+    draft: ArticleDraft,
+    siteName: String,
+    description: String,
+    baseURL: String,
+    deploymentTarget: SiteStarterDeploymentTarget
+  ) -> [StarterFile] {
+    var files = [
+      StarterFile(
+        path: "package.json",
+        contents: nodePackageJSON(
+          siteName: siteName,
+          scripts: [
+            "dev": "vitepress dev docs",
+            "build": "vitepress build docs",
+            "preview": "vitepress preview docs",
+          ],
+          dependencies: ["vitepress": "latest"]
+        )
+      ),
+      StarterFile(
+        path: "docs/.vitepress/config.mts",
+        contents: vitePressConfig(siteName: siteName, description: description, baseURL: baseURL)
+      ),
+      StarterFile(path: "docs/index.md", contents: vitePressHome(siteName: siteName, description: description)),
+      StarterFile(
+        path: draft.repositoryPath?.nilIfEmpty ?? "docs/posts/welcome.md",
+        contents: FrontMatterRenderer().renderDocument(draft: draft, profile: profile)
+      ),
+      StarterFile(path: ".gitignore", contents: "docs/.vitepress/cache/\ndocs/.vitepress/dist/\nnode_modules/\n.DS_Store\n"),
+      StarterFile(
+        path: "README.md",
+        contents: readme(siteName: siteName, kind: "VitePress", buildCommand: buildCommand(for: .vitePress))
+      ),
+      StarterFile(
+        path: "DEPLOYMENT.md",
+        contents: deploymentGuide(siteName: siteName, kind: "VitePress", branch: profile.branch, target: deploymentTarget)
+      ),
+    ]
+    if deploymentTarget == .githubPages {
+      files.append(
+        StarterFile(
+          path: ".github/workflows/pages.yml",
+          contents: genericGitHubPagesWorkflow(branch: profile.branch, siteKind: .vitePress)
+        )
+      )
+    }
+    files.append(contentsOf: deploymentConfigFiles(target: deploymentTarget, siteKind: .vitePress, siteName: siteName))
     return files
   }
 
@@ -819,6 +987,231 @@ private func zolaPageTemplate() -> String {
   """
 }
 
+private func nodePackageJSON(
+  siteName: String,
+  scripts: [String: String],
+  dependencies: [String: String]
+) -> String {
+  let scriptsText = scripts.keys.sorted().map { key in
+    "    \"\(key)\": \"\(scripts[key] ?? "")\""
+  }.joined(separator: ",\n")
+  let dependenciesText = dependencies.keys.sorted().map { key in
+    "    \"\(key)\": \"\(dependencies[key] ?? "")\""
+  }.joined(separator: ",\n")
+  return """
+  {
+    "name": "\(SlugService.slug(from: siteName).nilIfEmpty ?? "starter-site")",
+    "version": "0.1.0",
+    "private": true,
+    "scripts": {
+  \(scriptsText)
+    },
+    "dependencies": {
+  \(dependenciesText)
+    }
+  }
+  """
+}
+
+private func astroConfig(baseURL: String) -> String {
+  """
+  import { defineConfig } from 'astro/config';
+  import mdx from '@astrojs/mdx';
+
+  export default defineConfig({
+    site: \(jsonStringLiteral(baseURL)),
+    integrations: [mdx()]
+  });
+  """
+}
+
+private func astroIndex(siteName: String, description: String) -> String {
+  let escapedSiteName = escapedHTMLText(siteName)
+  let escapedDescription = escapedHTMLText(description)
+  return """
+  ---
+  import '../styles/site.css';
+  ---
+  <html lang="zh-Hans">
+    <head>
+      <meta charset="utf-8" />
+      <meta name="viewport" content="width=device-width" />
+      <title>\(escapedSiteName)</title>
+    </head>
+    <body>
+      <header class="site-header">
+        <a class="brand" href="/">\(escapedSiteName)</a>
+      </header>
+      <main class="site-main">
+        <h1>\(escapedSiteName)</h1>
+        <p>\(escapedDescription)</p>
+        <section class="post-list">
+          <article>
+            <a href="/blog/welcome/">欢迎文章</a>
+            <p>从第一篇内容开始扩展你的 Astro 网站。</p>
+          </article>
+        </section>
+      </main>
+    </body>
+  </html>
+  """
+}
+
+private func hugoConfig(
+  siteName: String,
+  description: String,
+  author: String,
+  baseURL: String
+) -> String {
+  """
+  baseURL = "\(escapedTOMLStringContent(baseURL))"
+  languageCode = "zh-Hans"
+  title = "\(escapedTOMLStringContent(siteName))"
+
+  [params]
+  description = "\(escapedTOMLStringContent(description))"
+  author = "\(escapedTOMLStringContent(author))"
+  """
+}
+
+private func hugoBaseLayout(siteName: String) -> String {
+  let escapedSiteName = escapedHTMLText(siteName)
+  return """
+  <!doctype html>
+  <html lang="zh-Hans">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{ block "title" . }}\(escapedSiteName){{ end }}</title>
+    <link rel="stylesheet" href="/css/site.css">
+  </head>
+  <body>
+    <header class="site-header"><a class="brand" href="/">\(escapedSiteName)</a></header>
+    <main class="site-main">{{ block "main" . }}{{ end }}</main>
+  </body>
+  </html>
+  """
+}
+
+private func hugoIndexLayout() -> String {
+  """
+  {{ define "main" }}
+  <section class="intro">
+    <h1>{{ .Site.Title }}</h1>
+    <p>{{ .Site.Params.description }}</p>
+  </section>
+  <section class="post-list">
+    {{ range first 10 .Site.RegularPages }}
+    <article>
+      <a href="{{ .RelPermalink }}">{{ .Title }}</a>
+      <p>{{ .Summary }}</p>
+    </article>
+    {{ end }}
+  </section>
+  {{ end }}
+  """
+}
+
+private func hugoSingleLayout() -> String {
+  """
+  {{ define "title" }}{{ .Title }} · {{ .Site.Title }}{{ end }}
+  {{ define "main" }}
+  <article class="post">
+    <h1>{{ .Title }}</h1>
+    <p class="meta">{{ .Date.Format "2006-01-02" }}</p>
+    {{ .Content }}
+  </article>
+  {{ end }}
+  """
+}
+
+private func vitePressConfig(siteName: String, description: String, baseURL: String) -> String {
+  let basePath = normalizedVitePressBasePath(baseURL)
+  return """
+  import { defineConfig } from 'vitepress'
+
+  export default defineConfig({
+    lang: 'zh-Hans',
+    title: \(jsonStringLiteral(siteName)),
+    description: \(jsonStringLiteral(description)),
+    base: \(jsonStringLiteral(basePath)),
+    themeConfig: {
+      nav: [
+        { text: '首页', link: '/' },
+        { text: '文章', link: '/posts/welcome' }
+      ],
+      sidebar: [
+        {
+          text: '开始使用',
+          items: [{ text: '欢迎文章', link: '/posts/welcome' }]
+        }
+      ],
+      search: { provider: 'local' }
+    }
+  })
+  """
+}
+
+private func normalizedVitePressBasePath(_ baseURL: String) -> String {
+  guard let components = URLComponents(string: baseURL), !components.path.isEmpty else {
+    return "/"
+  }
+  let path = components.path.hasPrefix("/") ? components.path : "/\(components.path)"
+  return path.hasSuffix("/") ? path : "\(path)/"
+}
+
+private func vitePressHome(siteName: String, description: String) -> String {
+  """
+  ---
+  layout: home
+
+  hero:
+    name: \(jsonStringLiteral(siteName))
+    text: \(jsonStringLiteral(description))
+    tagline: 从第一篇 Markdown 文档开始。
+    actions:
+      - theme: brand
+        text: 开始阅读
+        link: /posts/welcome
+
+  features:
+    - title: Markdown 优先
+      details: 使用普通 Markdown 维护内容。
+    - title: 本地搜索
+      details: 无需额外服务即可搜索文档。
+    - title: GitHub Pages
+      details: 内置可直接部署的 Actions 工作流。
+  ---
+  """
+}
+
+private func jsonStringLiteral(_ value: String) -> String {
+  let encoder = JSONEncoder()
+  encoder.outputFormatting = .withoutEscapingSlashes
+  guard let data = try? encoder.encode(value),
+        let literal = String(data: data, encoding: .utf8) else {
+    return "\"\""
+  }
+  return literal
+}
+
+private func escapedTOMLStringContent(_ value: String) -> String {
+  value
+    .replacingOccurrences(of: "\\", with: "\\\\")
+    .replacingOccurrences(of: "\"", with: "\\\"")
+    .replacingOccurrences(of: "\n", with: "\\n")
+    .replacingOccurrences(of: "\r", with: "\\r")
+}
+
+private func escapedHTMLText(_ value: String) -> String {
+  value
+    .replacingOccurrences(of: "&", with: "&amp;")
+    .replacingOccurrences(of: "<", with: "&lt;")
+    .replacingOccurrences(of: ">", with: "&gt;")
+    .replacingOccurrences(of: "\"", with: "&quot;")
+    .replacingOccurrences(of: "'", with: "&#39;")
+}
+
 private func starterCSS() -> String {
   """
   :root {
@@ -872,7 +1265,7 @@ private func readme(siteName: String, kind: String, buildCommand: String) -> Str
 
   ## 使用现成主题
 
-  Site Starter 只维护这一套 Zola 写作起点；如果你想使用其他视觉主题，建议直接克隆主题仓库，再导入已有站点：
+  Site Starter 维护 Astro、Hugo、Zola 和 VitePress 四套现代起点；如果你想使用现成视觉主题，建议直接克隆主题仓库，再导入已有站点：
 
   ```bash
   git clone <主题仓库地址> <本地站点目录>
@@ -922,6 +1315,7 @@ private func deploymentGuide(
 
 private func deploymentConfigFiles(
   target: SiteStarterDeploymentTarget,
+  siteKind: SiteKind,
   siteName: String
 ) -> [StarterFile] {
   switch target {
@@ -931,8 +1325,8 @@ private func deploymentConfigFiles(
         path: "netlify.toml",
         contents: """
         [build]
-        command = "zola build"
-        publish = "public"
+        command = "\(buildCommand(for: siteKind))"
+        publish = "\(publishDirectory(for: siteKind))"
         """
       ),
     ]
@@ -943,8 +1337,8 @@ private func deploymentConfigFiles(
         contents: """
         {
           "name": "\(SlugService.slug(from: siteName).nilIfEmpty ?? "starter-site")",
-          "buildCommand": "zola build",
-          "outputDirectory": "public"
+          "buildCommand": "\(buildCommand(for: siteKind))",
+          "outputDirectory": "\(publishDirectory(for: siteKind))"
         }
         """
       ),
@@ -955,7 +1349,7 @@ private func deploymentConfigFiles(
         path: "wrangler.toml",
         contents: """
         name = "\(SlugService.slug(from: siteName).nilIfEmpty ?? "starter-site")"
-        pages_build_output_dir = "public"
+        pages_build_output_dir = "\(publishDirectory(for: siteKind))"
         compatibility_date = "2026-07-08"
         """
       ),
@@ -963,6 +1357,101 @@ private func deploymentConfigFiles(
   case .githubPages, .none:
     return []
   }
+}
+
+private func buildCommand(for siteKind: SiteKind) -> String {
+  switch siteKind {
+  case .zola:
+    return "zola build"
+  case .astro, .vitePress, .hexo:
+    return "npm run build"
+  case .hugo:
+    return "hugo --minify"
+  case .jekyll:
+    return "bundle exec jekyll build"
+  }
+}
+
+private func publishDirectory(for siteKind: SiteKind) -> String {
+  switch siteKind {
+  case .astro:
+    return "dist"
+  case .vitePress:
+    return "docs/.vitepress/dist"
+  case .jekyll:
+    return "_site"
+  case .zola, .hugo, .hexo:
+    return "public"
+  }
+}
+
+private func genericGitHubPagesWorkflow(branch: String, siteKind: SiteKind) -> String {
+  let setupStep: String
+  switch siteKind {
+  case .astro, .vitePress, .hexo:
+    setupStep = """
+        - uses: actions/setup-node@v4
+          with:
+            node-version: 22
+        - run: npm install
+    """
+  case .hugo:
+    setupStep = """
+        - uses: peaceiris/actions-hugo@v3
+          with:
+            hugo-version: latest
+    """
+  case .zola:
+    setupStep = """
+        - uses: taiki-e/install-action@v2
+          with:
+            tool: zola
+    """
+  case .jekyll:
+    setupStep = """
+        - uses: ruby/setup-ruby@v1
+          with:
+            bundler-cache: true
+    """
+  }
+  return """
+  name: Deploy static site to GitHub Pages
+
+  on:
+    push:
+      branches: [\(branch)]
+    workflow_dispatch:
+
+  permissions:
+    contents: read
+    pages: write
+    id-token: write
+
+  concurrency:
+    group: pages
+    cancel-in-progress: false
+
+  jobs:
+    build:
+      runs-on: ubuntu-latest
+      steps:
+        - uses: actions/checkout@v4
+  \(setupStep)
+        - run: \(buildCommand(for: siteKind))
+        - uses: actions/upload-pages-artifact@v3
+          with:
+            path: \(publishDirectory(for: siteKind))
+
+    deploy:
+      environment:
+        name: github-pages
+        url: ${{ steps.deployment.outputs.page_url }}
+      runs-on: ubuntu-latest
+      needs: build
+      steps:
+        - id: deployment
+          uses: actions/deploy-pages@v4
+  """
 }
 
 private func zolaGitHubPagesWorkflow(branch: String) -> String {

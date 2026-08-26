@@ -75,7 +75,6 @@ extension SiteAnalyticsProvider: WorkbenchDisplayNameLocalizable {
   var fallbackDisplayName: String { displayName }
 }
 
-extension EditorDisplayMode: WorkbenchDisplayNameLocalizable {}
 extension DraftStatus: WorkbenchDisplayNameLocalizable {}
 extension ArticleVisibility: WorkbenchDisplayNameLocalizable {}
 extension DraftRepositorySyncState: WorkbenchDisplayNameLocalizable {}

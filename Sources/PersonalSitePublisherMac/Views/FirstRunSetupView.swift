@@ -22,7 +22,7 @@ enum FirstRunSetupPath: String, CaseIterable, Identifiable {
   var detail: String {
     switch self {
     case .connectExistingRepository:
-      return String(localized: "选择已有的本地站点仓库，应用会读取配置并导入文章。")
+      return String(localized: "选择已有的本地站点仓库，应用会按你选择的绝对路径读取配置并导入文章。")
     case .createNewSite:
       return String(localized: "从模板开始创建站点，目录、Git 和部署可以在建站向导中逐步完成。")
     case .localDrafts:
@@ -254,7 +254,7 @@ struct FirstRunSetupView: View {
 
   private var repositoryStep: some View {
     VStack(alignment: .leading, spacing: 18) {
-      stepTitle("连接本地仓库", detail: "只会访问你主动选择的文件夹，并使用 macOS 安全作用域权限。")
+      stepTitle("连接本地仓库", detail: "只会访问你主动选择的文件夹，并直接使用该仓库的绝对路径；主应用不启用 App Sandbox。")
 
       setupSummary(
         systemImage: hasRepository ? "externaldrive.fill.badge.checkmark" : "externaldrive.badge.questionmark",
@@ -453,7 +453,7 @@ struct FirstRunSetupView: View {
       if hasRepository {
         step = .publishing
       } else {
-        repositoryMessage = String(localized: "未能保存仓库权限，请重新选择或检查文件夹访问权限。")
+        repositoryMessage = String(localized: "未能保存仓库路径，请重新选择或检查文件夹是否存在。")
       }
     }
   }

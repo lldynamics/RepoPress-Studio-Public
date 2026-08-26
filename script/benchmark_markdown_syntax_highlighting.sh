@@ -59,6 +59,11 @@ case "$OUTPUT_PATH" in
   /*) ;;
   *) OUTPUT_PATH="$ROOT_DIR/$OUTPUT_PATH" ;;
 esac
+VIEWPORT_OUTPUT_PATH="${MARKDOWN_VIEWPORT_BENCHMARK_OUTPUT:-${OUTPUT_PATH%.json}-viewport.json}"
+case "$VIEWPORT_OUTPUT_PATH" in
+  /*) ;;
+  *) VIEWPORT_OUTPUT_PATH="$ROOT_DIR/$VIEWPORT_OUTPUT_PATH" ;;
+esac
 
 SWIFT_HOME="${SWIFT_BUILD_HOME:-/private/tmp/personal-site-publisher-swift-home}"
 PERFORMANCE_COMMIT="${PERFORMANCE_BENCHMARK_COMMIT:-$(git rev-parse HEAD)}"
@@ -71,7 +76,8 @@ mkdir -p \
   "$SWIFT_HOME/.cache" \
   "$SWIFT_HOME/.swift-clang-cache" \
   "$SWIFT_HOME/.swift-module-cache" \
-  "$(dirname "$OUTPUT_PATH")"
+  "$(dirname "$OUTPUT_PATH")" \
+  "$(dirname "$VIEWPORT_OUTPUT_PATH")"
 
 cd "$ROOT_DIR"
 env \
@@ -93,4 +99,18 @@ env \
     --disable-sandbox \
     --filter MarkdownSyntaxHighlightBenchmarkTests/testGeneratedDocumentBaseline
 
+env \
+  XDG_CACHE_HOME="$SWIFT_HOME/.cache" \
+  CLANG_MODULE_CACHE_PATH="$SWIFT_HOME/.swift-clang-cache" \
+  SWIFT_MODULE_CACHE_PATH="$SWIFT_HOME/.swift-module-cache" \
+  RUN_MARKDOWN_VIEWPORT_BENCHMARK=1 \
+  MARKDOWN_VIEWPORT_BENCHMARK_ITERATIONS="$ITERATIONS" \
+  MARKDOWN_VIEWPORT_BENCHMARK_OUTPUT="$VIEWPORT_OUTPUT_PATH" \
+  MARKDOWN_SYNTAX_BENCHMARK_CONFIGURATION="$BUILD_CONFIGURATION" \
+  swift test \
+    --configuration "$BUILD_CONFIGURATION" \
+    --disable-sandbox \
+    --filter MarkdownViewportHighlightBenchmarkTests/testIncrementalViewportPipelineDocumentSizeIndependence
+
 echo "markdown syntax benchmark report: $OUTPUT_PATH"
+echo "markdown viewport benchmark report: $VIEWPORT_OUTPUT_PATH"

@@ -138,24 +138,22 @@ with tempfile.TemporaryDirectory(prefix="chromium-store-release-test-") as direc
 
     definition_path = extension / "browser-extension-protocol.json"
     definition = json.loads(definition_path.read_text(encoding="utf-8"))
-    definition["extensions"]["safariBundleID"] = "com.example.invalid"
+    definition["extensions"]["unexpectedID"] = "com.example.invalid"
     definition_path.write_text(
         json.dumps(definition, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
-    invalid_safari_identity = run(fixture, "check", succeeds=False)
-    assert "Safari Web Extension bundle ID" in invalid_safari_identity.stdout
-    definition["extensions"]["safariBundleID"] = (
-        "com.jinfang.PersonalSitePublisherMac.SafariExtension"
-    )
-    definition["activeExtensions"] = ["safari", "chrome", "edge"]
+    invalid_identity = run(fixture, "check", succeeds=False)
+    assert "identity fields do not match" in invalid_identity.stdout
+    definition["extensions"].pop("unexpectedID")
+    definition["activeExtensions"] = ["chrome", "edge"]
     definition_path.write_text(
         json.dumps(definition, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
     unsupported_channel = run(fixture, "check", succeeds=False)
-    assert "exactly Safari, Chrome, and Firefox" in unsupported_channel.stdout
-    definition["activeExtensions"] = ["safari", "chrome", "firefox"]
+    assert "exactly Chrome and Firefox" in unsupported_channel.stdout
+    definition["activeExtensions"] = ["chrome", "firefox"]
     definition["extensions"]["chromeProductionID"] = None
     definition_path.write_text(
         json.dumps(definition, ensure_ascii=False, indent=2) + "\n",

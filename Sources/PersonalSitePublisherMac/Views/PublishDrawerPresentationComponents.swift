@@ -107,6 +107,31 @@ struct PublishDrawerSingleArticleActionPresentation: Equatable {
   }
 }
 
+struct PublishDrawerPreviewBranchActionPresentation: Equatable {
+  let title: String
+  let detail: String
+  let actionTitle: String
+  let accessibilityLabel: String
+  let accessibilityHint: String
+
+  static func make(branchName: String, targetBranch: String) -> Self {
+    Self(
+      title: String(localized: "推送草稿预览分支"),
+      detail: String(
+        format: String(localized: "创建或复用 %@，只写入该分支；不会更新 %@、创建 PR/MR 或改变正式发布状态。"),
+        branchName,
+        targetBranch
+      ),
+      actionTitle: String(localized: "推送预览分支"),
+      accessibilityLabel: String(localized: "推送草稿预览分支"),
+      accessibilityHint: String(
+        format: String(localized: "将当前单篇草稿推送到 %@"),
+        branchName
+      )
+    )
+  }
+}
+
 struct PublishDrawerBatchActionPresentation {
   struct State: Equatable {
     var repositoryConfigured: Bool

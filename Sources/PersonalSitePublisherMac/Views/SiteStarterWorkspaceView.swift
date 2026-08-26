@@ -6,6 +6,7 @@ struct SiteStarterWorkspaceView: View {
   @ObservedObject var store: WorkbenchStore
   @SceneStorage("siteStarterSelectedStep") private var selectedStepRaw = SiteStarterWizardStep.template.rawValue
   @SceneStorage("siteStarterMode") private var modeRaw = SiteStarterMode.create.rawValue
+  @SceneStorage("siteStarterTemplateID") private var selectedTemplateIDRaw = SiteStarterTemplateID.zolaPersonalBlog.rawValue
   @State private var importedSiteKind: SiteKind = .zola
   @State private var rootPath = ""
   @State private var siteName = ""
@@ -32,6 +33,11 @@ struct SiteStarterWorkspaceView: View {
   private var selectedStep: SiteStarterWizardStep {
     get { SiteStarterWizardStep(rawValue: selectedStepRaw) ?? .template }
     nonmutating set { selectedStepRaw = newValue.rawValue }
+  }
+
+  private var selectedTemplateID: SiteStarterTemplateID {
+    get { SiteStarterTemplateID(rawValue: selectedTemplateIDRaw) ?? .zolaPersonalBlog }
+    nonmutating set { selectedTemplateIDRaw = newValue.rawValue }
   }
 
   var body: some View {
@@ -150,6 +156,10 @@ struct SiteStarterWorkspaceView: View {
           get: { mode },
           set: { mode = $0 }
         ),
+        selectedTemplateID: Binding(
+          get: { selectedTemplateID },
+          set: { selectedTemplateID = $0 }
+        ),
         selectedTemplate: selectedTemplate,
         importedSiteKind: $importedSiteKind,
         siteName: $siteName,
@@ -263,7 +273,7 @@ struct SiteStarterWorkspaceView: View {
   }
 
   private var selectedTemplate: SiteStarterTemplate? {
-    SiteStarterTemplate.builtIn.first
+    SiteStarterTemplate.builtIn.first { $0.id == selectedTemplateID }
   }
 
   private var workflowSteps: [SiteStarterWizardStep] {
@@ -456,7 +466,7 @@ struct SiteStarterWorkspaceView: View {
 
   private func createStarterSite() {
     let request = SiteStarterRequest(
-      templateID: .zolaPersonalBlog,
+      templateID: selectedTemplate?.id ?? .zolaPersonalBlog,
       rootPath: rootPath,
       siteName: siteName,
       siteDescription: siteDescription,

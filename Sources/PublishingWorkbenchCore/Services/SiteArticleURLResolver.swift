@@ -31,8 +31,8 @@ public struct SiteArticleURLResolver: Sendable {
       if let datedPath = datedPostWebPath(from: path) {
         return datedPath
       }
-    case .zola, .astro:
-      for prefix in ["content/posts/", "content/", "src/content/blog/", "source/_posts/", "_posts/"] where path.hasPrefix(prefix) {
+    case .zola, .astro, .vitePress:
+      for prefix in ["content/posts/", "content/", "src/content/blog/", "docs/posts/", "source/_posts/", "_posts/"] where path.hasPrefix(prefix) {
         path = String(path.dropFirst(prefix.count))
         break
       }

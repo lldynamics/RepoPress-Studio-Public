@@ -75,7 +75,7 @@ public struct RepositoryScanReport: Codable, Hashable, Sendable {
     contentRoot: String,
     assetRoot: String
   ) -> RepositoryChangedFileRole {
-    Self.role(for: changedFile.path, contentRoot: contentRoot, assetRoot: assetRoot)
+    Self.role(for: changedFile.destinationPath, contentRoot: contentRoot, assetRoot: assetRoot)
   }
 
   public func changedFiles(
@@ -117,14 +117,14 @@ public struct RepositoryScanReport: Codable, Hashable, Sendable {
     assetRoot: String
   ) -> [RepositoryChangedFile] {
     remoteChangedFiles.filter {
-      Self.role(for: $0.path, contentRoot: contentRoot, assetRoot: assetRoot) == role
+      Self.role(for: $0.destinationPath, contentRoot: contentRoot, assetRoot: assetRoot) == role
     }
   }
 
   public func remoteChangeSummary(contentRoot: String, assetRoot: String) -> RepositoryChangeSummary {
     var counts: [RepositoryChangedFileRole: Int] = [:]
     for changedFile in remoteChangedFiles {
-      let role = Self.role(for: changedFile.path, contentRoot: contentRoot, assetRoot: assetRoot)
+      let role = Self.role(for: changedFile.destinationPath, contentRoot: contentRoot, assetRoot: assetRoot)
       counts[role, default: 0] += 1
     }
 
@@ -149,7 +149,7 @@ public struct RepositoryScanReport: Codable, Hashable, Sendable {
     contentRoot: String,
     assetRoot: String
   ) -> RepositoryChangedFileRole {
-    let normalizedPath = effectiveChangedPath(path).normalizedRelativePath()
+    let normalizedPath = path.trimmedForPublishing.normalizedRelativePath()
     let contentRoot = contentRoot.normalizedRelativePath()
     let privateContentRoot = SiteProfile.privateContentRoot.normalizedRelativePath()
     let assetRoot = assetRoot.normalizedRelativePath()
@@ -169,10 +169,6 @@ public struct RepositoryScanReport: Codable, Hashable, Sendable {
     }
 
     return .other
-  }
-
-  private static func effectiveChangedPath(_ path: String) -> String {
-    path.components(separatedBy: " -> ").last?.trimmedForPublishing ?? path.trimmedForPublishing
   }
 
   private static func isWithin(_ path: String, root: String) -> Bool {

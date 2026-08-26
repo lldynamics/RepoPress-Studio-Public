@@ -1,15 +1,8 @@
 import Foundation
+import PublishingGitCore
 
-
-public enum RepositoryChangeKind: String, Codable, Sendable {
-  case added
-  case modified
-  case deleted
-  case renamed
-  case untracked
-  case other
-
-  public var displayName: String {
+public extension RepositoryChangeKind {
+  var displayName: String {
     switch self {
     case .added:
       return "新增"
@@ -24,73 +17,6 @@ public enum RepositoryChangeKind: String, Codable, Sendable {
     case .other:
       return "其他"
     }
-  }
-}
-public struct RepositoryChangedFile: Identifiable, Codable, Hashable, Sendable {
-  public var id: String { status + path }
-  public var status: String
-  public var path: String
-  public var kind: RepositoryChangeKind
-  public var lineDiff: String?
-
-  public init(
-    status: String,
-    path: String,
-    kind: RepositoryChangeKind,
-    lineDiff: String? = nil
-  ) {
-    self.status = status
-    self.path = path
-    self.kind = kind
-    self.lineDiff = lineDiff
-  }
-
-  public var displayPath: String {
-    path.components(separatedBy: " -> ").last?.trimmedForPublishing ?? path.trimmedForPublishing
-  }
-}
-
-public struct RepositoryFileSnapshot: Codable, Hashable, Sendable {
-  public var refName: String
-  public var repositoryPath: String
-  public var repositorySHA: String?
-  public var content: String
-
-  public init(
-    refName: String,
-    repositoryPath: String,
-    content: String,
-    repositorySHA: String? = nil
-  ) {
-    self.refName = refName
-    self.repositoryPath = repositoryPath
-    self.content = content
-    self.repositorySHA = repositorySHA
-  }
-}
-
-public enum RepositoryFetchStatus: String, Codable, Hashable, Sendable {
-  case succeeded
-  case skipped
-  case failed
-}
-
-public struct RepositoryFetchResult: Codable, Hashable, Sendable {
-  public var status: RepositoryFetchStatus
-  public var remoteName: String?
-  public var upstreamName: String?
-  public var message: String
-
-  public init(
-    status: RepositoryFetchStatus,
-    remoteName: String?,
-    upstreamName: String?,
-    message: String
-  ) {
-    self.status = status
-    self.remoteName = remoteName
-    self.upstreamName = upstreamName
-    self.message = message
   }
 }
 
@@ -212,35 +138,15 @@ public struct RepositoryChangeSummary: Codable, Hashable, Sendable {
   }
 }
 
-public struct RepositoryBranchStatus: Codable, Hashable, Sendable {
-  public var branchName: String?
-  public var upstreamName: String?
-  public var aheadCount: Int
-  public var behindCount: Int
-  public var isDetached: Bool
-
-  public init(
-    branchName: String?,
-    upstreamName: String?,
-    aheadCount: Int = 0,
-    behindCount: Int = 0,
-    isDetached: Bool = false
-  ) {
-    self.branchName = branchName
-    self.upstreamName = upstreamName
-    self.aheadCount = aheadCount
-    self.behindCount = behindCount
-    self.isDetached = isDetached
-  }
-
-  public var displayName: String {
+public extension RepositoryBranchStatus {
+  var displayName: String {
     if isDetached {
       return "Detached HEAD"
     }
     return branchName ?? "未识别分支"
   }
 
-  public var syncStatusTitle: String {
+  var syncStatusTitle: String {
     if upstreamName == nil {
       return "未设置上游分支"
     }
@@ -254,36 +160,6 @@ public struct RepositoryBranchStatus: Codable, Hashable, Sendable {
       return "本地领先 \(aheadCount)"
     }
     return "落后远端 \(behindCount)"
-  }
-}
-
-public struct RepositoryBranch: Identifiable, Codable, Hashable, Sendable {
-  public var id: String { name }
-  public var name: String
-  public var isCurrent: Bool
-  public var upstreamName: String?
-
-  public init(name: String, isCurrent: Bool = false, upstreamName: String? = nil) {
-    self.name = name
-    self.isCurrent = isCurrent
-    self.upstreamName = upstreamName
-  }
-}
-
-public struct RepositoryCommitInfo: Identifiable, Codable, Hashable, Sendable {
-  public var id: String { sha }
-  public var sha: String
-  public var shortSHA: String
-  public var author: String
-  public var date: Date
-  public var message: String
-
-  public init(sha: String, shortSHA: String, author: String, date: Date, message: String) {
-    self.sha = sha
-    self.shortSHA = shortSHA
-    self.author = author
-    self.date = date
-    self.message = message
   }
 }
 
@@ -305,31 +181,5 @@ public enum LocalRepositoryServiceError: Error, LocalizedError, Sendable {
       let normalizedOutput = output.isEmpty ? "请检查分支与权限设置。" : output
       return "Git 命令执行失败（退出码：\(terminated)）：\(normalizedOutput)"
     }
-  }
-}
-
-public struct RepositoryRemote: Codable, Hashable, Sendable {
-  public var remoteURL: String
-  public var provider: RepositoryProvider
-  public var repositoryBaseURL: String
-  public var owner: String
-  public var name: String
-
-  public init(
-    remoteURL: String,
-    provider: RepositoryProvider,
-    repositoryBaseURL: String,
-    owner: String,
-    name: String
-  ) {
-    self.remoteURL = remoteURL
-    self.provider = provider
-    self.repositoryBaseURL = repositoryBaseURL
-    self.owner = owner
-    self.name = name
-  }
-
-  public var displayName: String {
-    "\(provider.displayName) \(owner)/\(name)"
   }
 }

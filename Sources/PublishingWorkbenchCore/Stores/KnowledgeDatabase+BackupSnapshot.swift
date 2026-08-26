@@ -5,11 +5,10 @@ extension KnowledgeDatabase {
   /// Validates the database through its existing read-write connection.
   ///
   /// A WAL database opened read-only may still need to create or update its
-  /// shared-memory file. That initialization can fail on a sandboxed exFAT
-  /// security-scoped path even though the selected directory is writable.
-  /// Initialization therefore validates the staged database through the same
-  /// connection that created it. Offline backup files continue to use the
-  /// strictly read-only `inspectBackup(at:)` path below.
+  /// shared-memory file. Initialization therefore validates the staged
+  /// database through the same connection that created it. Offline backup
+  /// files continue to use the strictly read-only `inspectBackup(at:)` path
+  /// below.
   func inspectOpenDatabase() throws -> KnowledgeDatabaseBackupInspection {
     try withLock {
       let userVersion = try scalarIntUnlocked("PRAGMA user_version;")

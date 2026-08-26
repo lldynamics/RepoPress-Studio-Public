@@ -5,7 +5,6 @@ import QuartzCore
 
 enum MarkdownScrollSyncSource: Equatable, Hashable {
   case editor
-  case preview
 }
 
 struct MarkdownScrollSyncUpdate: Equatable, Identifiable {
@@ -98,6 +97,7 @@ final class MarkdownScrollViewSyncBridge: NSObject {
   private weak var scrollView: NSScrollView?
   private var sourceLineProvider: ((NSScrollView) -> Int?)?
   private var sourceLineApplier: ((Int, NSScrollView) -> Bool)?
+  private var onViewportChanged: (() -> Void)?
   private var lastAppliedSynchronizationUpdateID: UUID?
   private var lastAppliedRestorationUpdateID: UUID?
   private var progressCoalescer = MarkdownScrollProgressCoalescer()
@@ -132,13 +132,15 @@ final class MarkdownScrollViewSyncBridge: NSObject {
   func observe(
     _ scrollView: NSScrollView,
     sourceLineProvider: ((NSScrollView) -> Int?)? = nil,
-    sourceLineApplier: ((Int, NSScrollView) -> Bool)? = nil
+    sourceLineApplier: ((Int, NSScrollView) -> Bool)? = nil,
+    onViewportChanged: (() -> Void)? = nil
   ) {
     NotificationCenter.default.removeObserver(self)
     displayLink?.invalidate()
     self.scrollView = scrollView
     self.sourceLineProvider = sourceLineProvider
     self.sourceLineApplier = sourceLineApplier
+    self.onViewportChanged = onViewportChanged
     lastAppliedSynchronizationUpdateID = nil
     lastAppliedRestorationUpdateID = nil
     progressCoalescer.reset()
@@ -287,6 +289,7 @@ final class MarkdownScrollViewSyncBridge: NSObject {
     }
     hasPendingDisplayLinkDelivery = false
     displayLink.isPaused = true
+    onViewportChanged?()
     guard let progress = progressCoalescer.deliverLatest(), let scrollView else { return }
     onPositionChanged(
       MarkdownScrollSyncPosition(

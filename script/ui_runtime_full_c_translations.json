@@ -159,10 +159,6 @@
     "en": "%lld built-in templates let you create a new site or import an existing repository.",
     "zh-Hans": "内置 %lld 个模板，支持新建站点或导入已有仓库。"
   },
-  "切换到%@模式": {
-    "en": "Switch to %@ mode",
-    "zh-Hans": "切换到%@模式"
-  },
   "删除%@ API Key？": {
     "en": "Delete the %@ API key?",
     "zh-Hans": "删除 %@ API Key？"
@@ -334,10 +330,6 @@
   "应用站点类型": {
     "en": "Apply Site Type",
     "zh-Hans": "应用站点类型"
-  },
-  "开启编辑与预览同步滚动": {
-    "en": "Enable Synchronized Editor and Preview Scrolling",
-    "zh-Hans": "开启编辑与预览同步滚动"
   },
   "引用文章": {
     "en": "Reference Article",

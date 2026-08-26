@@ -3,6 +3,7 @@ import Foundation
 public enum RemoteRepositoryPublishMode: String, Codable, Sendable {
   case directCommit
   case reviewRequest
+  case previewBranch
 
   public var displayName: String {
     switch self {
@@ -10,7 +11,20 @@ public enum RemoteRepositoryPublishMode: String, Codable, Sendable {
       return CoreL10n.text("线上直接提交")
     case .reviewRequest:
       return CoreL10n.text("线上 PR/MR")
+    case .previewBranch:
+      return CoreL10n.text("草稿预览分支")
     }
+  }
+
+  /// Whether this operation must write to a branch dedicated to the current
+  /// package. Dedicated modes never mutate the configured target branch.
+  public var usesDedicatedBranch: Bool {
+    self == .reviewRequest || self == .previewBranch
+  }
+
+  /// Whether the operation creates or reuses a PR/MR after uploading files.
+  public var createsReview: Bool {
+    self == .reviewRequest
   }
 }
 
@@ -604,7 +618,7 @@ public extension RemoteRepositoryPublishResult {
   }
 
   var branchSummary: String {
-    mode == .reviewRequest
+    mode.usesDedicatedBranch
       ? "\(branchName) -> \(targetBranch)"
       : targetBranch
   }
@@ -688,7 +702,7 @@ public extension RemoteRepositoryPublishResult {
       return []
     }
 
-    let ref = mode == .reviewRequest ? branchName : targetBranch
+    let ref = mode.usesDedicatedBranch ? branchName : targetBranch
     switch provider {
     case .github:
       guard let base = secureVerificationAPIBaseURL(

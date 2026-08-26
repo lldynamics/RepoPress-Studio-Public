@@ -10,6 +10,7 @@ extension RepositoryWorkspaceView {
       repositoryOverviewLayout
     case .changes:
       repositoryScanProgress
+      repositoryMergeConflictSection
       remoteChangedFiles
       changedFiles
     case .source:
@@ -169,6 +170,7 @@ extension RepositoryWorkspaceView {
     VStack(alignment: .leading, spacing: 16) {
       repositoryScanProgress
       repositorySummary
+      repositoryMergeConflictSection
       repositoryProblemsSection
       onlinePublishCenterSection
       repositoryAutoSyncSection
@@ -257,6 +259,18 @@ extension RepositoryWorkspaceView {
         tint: .secondary,
         actionTitle: "取消扫描",
         action: store.repository.cancelScan
+      )
+    } else if let session = store.repositoryMergeConflictSession,
+              !session.conflicts.isEmpty {
+      workflowBanner(
+        title: LocalizedStringKey(
+          "Git 有 " + String(session.conflicts.count) + " 个未解决冲突"
+        ),
+        detail: "请先在三栏合并视图中明确编辑最终版本并暂存，避免覆盖本地或远程内容。",
+        systemImage: "arrow.left.arrow.right.square",
+        tint: WorkbenchTheme.risk,
+        actionTitle: "查看冲突",
+        action: { stage = .changes }
       )
     } else if let report = store.repositoryReport,
               let issue = report.preflightIssues.first(where: { $0.severity == .error }) {
@@ -566,6 +580,20 @@ extension RepositoryWorkspaceView {
         density: .inline
       )
       .padding(.vertical, 8)
+    }
+  }
+
+  @ViewBuilder
+  var repositoryMergeConflictSection: some View {
+    if let session = store.repositoryMergeConflictSession,
+       !session.conflicts.isEmpty {
+      RepositoryMergeConflictView(session: session) { path, finalContent in
+        try await store.resolveRepositoryMergeConflict(
+          repositoryPath: path,
+          finalContent: finalContent
+        )
+      }
+      .id(session.scannedAt)
     }
   }
 

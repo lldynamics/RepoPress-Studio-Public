@@ -4,7 +4,6 @@ import SwiftUI
 enum MarkdownToolbarItemID: String, CaseIterable, Codable, Hashable, Identifiable {
   // Header Items
   case saveStatus
-  case editorDisplayMode
   case writingToolDensity
   case findReplace
   case outline
@@ -43,7 +42,6 @@ enum MarkdownToolbarItemID: String, CaseIterable, Codable, Hashable, Identifiabl
   var title: String {
     switch self {
     case .saveStatus: return "保存状态"
-    case .editorDisplayMode: return "视图模式"
     case .writingToolDensity: return "工具密度"
     case .findReplace: return "查找与替换"
     case .outline: return "文章大纲"
@@ -81,7 +79,6 @@ enum MarkdownToolbarItemID: String, CaseIterable, Codable, Hashable, Identifiabl
   var systemImage: String {
     switch self {
     case .saveStatus: return "checkmark.circle"
-    case .editorDisplayMode: return "chevron.left.forwardslash.chevron.right"
     case .writingToolDensity: return "slider.horizontal.3"
     case .findReplace: return "magnifyingglass"
     case .outline: return "list.bullet.indent"
@@ -142,7 +139,6 @@ enum MarkdownToolbarItemID: String, CaseIterable, Codable, Hashable, Identifiabl
     switch self {
     case .saveStatus: return 0  // 常驻，不参与折叠
     case .preparePublish: return 0  // 常驻，不参与折叠
-    case .editorDisplayMode: return 1  // 视图模式，最高优先
     case .aiChat: return 2  // AI 对话，核心入口
     case .autoInlineAI: return 3
     case .findReplace: return 4
@@ -160,7 +156,7 @@ enum MarkdownToolbarItemID: String, CaseIterable, Codable, Hashable, Identifiabl
 
   var defaultCategory: MarkdownToolbarCategory {
     switch self {
-    case .saveStatus, .editorDisplayMode, .writingToolDensity, .findReplace, .outline,
+    case .saveStatus, .writingToolDensity, .findReplace, .outline,
       .contextPanelMenu, .shortcutHelp, .exportMenu, .aiActions, .autoInlineAI,
       .aiChat, .localPreview, .preparePublish, .copyRichText:
       return .header
@@ -192,7 +188,6 @@ struct MarkdownToolbarConfiguration: Codable, Equatable {
       schemaVersion: currentSchemaVersion,
       headerItemIDs: [
         .saveStatus,
-        .editorDisplayMode,
         .writingToolDensity,
         .findReplace,
         .contextPanelMenu,
@@ -237,6 +232,13 @@ struct MarkdownToolbarConfiguration: Codable, Equatable {
     case formattingItemIDs
   }
 
+  /// Raw identifiers retired by the native editor migration. They are
+  /// filtered explicitly so an old persisted toolbar remains decodable even
+  /// though the corresponding enum case no longer exists.
+  private static let removedLegacyItemRawValues: Set<String> = [
+    "editorDisplayMode"
+  ]
+
   init(from decoder: Decoder) throws {
     let container = try decoder.container(keyedBy: CodingKeys.self)
     let version = try container.decodeIfPresent(Int.self, forKey: .schemaVersion) ?? 0
@@ -252,8 +254,12 @@ struct MarkdownToolbarConfiguration: Codable, Equatable {
       try container.decodeIfPresent([String].self, forKey: .formattingItemIDs)
       ?? defaultConfiguration.formattingItemIDs.map(\.rawValue)
 
-    let headerItems = headerRawValues.compactMap(MarkdownToolbarItemID.init(rawValue:))
-    let formattingItems = formattingRawValues.compactMap(MarkdownToolbarItemID.init(rawValue:))
+    let headerItems = headerRawValues
+      .filter { !Self.removedLegacyItemRawValues.contains($0) }
+      .compactMap(MarkdownToolbarItemID.init(rawValue:))
+    let formattingItems = formattingRawValues
+      .filter { !Self.removedLegacyItemRawValues.contains($0) }
+      .compactMap(MarkdownToolbarItemID.init(rawValue:))
 
     self =
       MarkdownToolbarConfiguration(

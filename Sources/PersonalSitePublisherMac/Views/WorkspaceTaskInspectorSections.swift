@@ -905,6 +905,7 @@ struct WorkspaceTaskSEOSection: View {
 struct WorkspaceTaskChecksState {
   let issues: [PreflightIssue]
   let publicRisk: PublicRiskSummary
+  let deploymentStatus: DeploymentStatusSnapshot?
 
   var errorCount: Int {
     issues.filter { $0.severity == .error }.count
@@ -944,6 +945,13 @@ struct WorkspaceTaskChecksSection: View {
 
       InspectorSection("公开风险") {
         publicRiskSummaryBlock(state.publicRisk)
+      }
+
+      if let deploymentStatus = state.deploymentStatus,
+         deploymentStatus.level == .failed
+           || deploymentStatus.level == .running
+           || deploymentStatus.signals.contains(where: { !$0.logExcerpt.isEmpty }) {
+        WorkspaceDeploymentLogInspectorSection(snapshot: deploymentStatus)
       }
 
       InspectorSection("问题队列") {
@@ -1035,7 +1043,6 @@ private struct IssueCompactRow: View {
 
 struct WorkspaceTaskImageState {
   let report: ImageWorkbenchReport?
-  let siteSummary: ImageWorkbenchSiteSummary?
   let actionMessage: String?
   let focusedAttachmentID: UUID?
 }
@@ -1054,7 +1061,6 @@ struct WorkspaceTaskImageSection: View {
 
   var body: some View {
     let report = state.report
-    let siteSummary = state.siteSummary
 
     return VStack(alignment: .leading, spacing: 14) {
       InspectorSection("当前文章") {
@@ -1102,23 +1108,7 @@ struct WorkspaceTaskImageSection: View {
         }
       }
 
-      InspectorSection("批处理") {
-        if let siteSummary {
-          InspectorStatRow(
-            title: "站点图片", value: "\(siteSummary.imageCount)", systemImage: "photo.stack")
-          InspectorStatRow(
-            title: "站点缺 alt", value: "\(siteSummary.missingAltTextCount)", systemImage: "text.quote"
-          )
-          InspectorStatRow(
-            title: "可压缩 JPEG", value: "\(siteSummary.optimizableJPEGCount)",
-            systemImage: "arrow.down.forward")
-        } else {
-          ProgressView {
-            Text("正在统计站点图片…")
-          }
-          .controlSize(.small)
-        }
-
+      InspectorSection("图片工作台") {
         Button {
           actions.openImageWorkbench()
         } label: {

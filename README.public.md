@@ -21,7 +21,7 @@ and release lifecycle.
   Keychain credentials.
 - Optional bring-your-own-key AI workflows for article-aware chat, editing,
   metadata suggestions, reviews, and release copy.
-- Safari, Chrome, and Firefox companion extensions that communicate with the
+- Chrome and Firefox companion extensions that communicate with the
   app through a token-protected `127.0.0.1` loopback interface.
 
 ## Product and privacy boundary
@@ -40,16 +40,20 @@ released iOS app.
 ## Requirements
 
 - macOS 14 or later
-- Full Xcode 16 or later for app-bundle and Safari extension workflows
+- Full Xcode 16 or later for macOS app-bundle workflows
 - A Swift 6-compatible toolchain for SwiftPM-only builds and tests
 - Python 3 and the macOS development tools for quality scripts
-- Node.js and npm only for browser-extension tests and packaging
+- Git, Hugo, Zola, Codex CLI, and Node.js/npm as required by the selected local
+  publishing, preview, or ChatGPT workflow. RepoPress resolves these from the
+  system, Homebrew, or `PATH` and does not embed them in the app bundle.
+- Browser-extension tests and packaging also require Node.js and npm
 
-The package manifest uses Swift tools 6.0, and all five SwiftPM targets use
-Swift 6 language mode. The strict build gate inherits those manifest-declared
-modes while enforcing complete concurrency checking and warnings-as-errors; a
-separate migration diagnostic explicitly exercises Swift 6 mode as a regression
-check.
+The package manifest uses Swift tools 6.0. Every declared SwiftPM target must
+use Swift 6 language mode, and the module-boundary gate inventories the manifest
+dynamically instead of relying on a stale target count. The strict build gate
+inherits those manifest-declared modes while enforcing complete concurrency
+checking and warnings-as-errors; a separate migration diagnostic explicitly
+exercises Swift 6 mode as a regression check.
 
 ## Build and test
 
@@ -67,8 +71,9 @@ Package the complete macOS app without launching it, or build and launch it:
 ./script/build_and_run.sh
 ```
 
-The app-bundle script also builds and embeds the Safari Web Extension; a plain
-`swift build` does not produce that complete distributable bundle.
+The macOS app contains no embedded browser extension; install and update the
+Chrome and Firefox extensions separately. A plain `swift build` does not
+produce the complete distributable app bundle.
 
 Run the fast development gate or all strict release profiles:
 
@@ -76,6 +81,25 @@ Run the fast development gate or all strict release profiles:
 ./script/check_release_gate.sh --quick
 ./script/check_release_gate.sh --profile all
 ```
+
+Inspect the per-module build plan, or collect opt-in cold, warm, and isolated
+incremental build evidence:
+
+```bash
+python3 script/benchmark_swift_module_builds.py --plan
+python3 script/benchmark_swift_module_builds.py \
+  --configuration release \
+  --repetitions 3 \
+  --scenario cold \
+  --scenario warm \
+  --scenario incremental
+```
+
+Dependency resolution runs outside the measured samples and shares one isolated
+download cache for the run. Each cold sample gets fresh compiler caches, while
+its warm sample reuses only the matching cold state. The incremental probe edits
+only a temporary source snapshot, never the working tree. Host wall-clock values
+are trend evidence rather than a release threshold.
 
 Browser-extension tests use pinned npm dependencies and install a local
 Chromium runtime. The complete Firefox path also requires Firefox on the Mac.
@@ -91,22 +115,25 @@ are separate release evidence; a successful unit-test run does not prove them.
 
 ## Project layout
 
-- `Sources/PublishingWorkbenchCore/`: models, services, stores, and local data
-  capabilities.
+- `Sources/PublishingMarkdownCore/`, `Sources/PublishingGitCore/`,
+  `Sources/PublishingAICore/`, and `Sources/PublishingKnowledgeCore/`: focused
+  Markdown, repository, AI, and knowledge library boundaries.
+- `Sources/PublishingCoreSupport/` and `Sources/PublishingDomainContracts/`:
+  shared infrastructure and small cross-domain value contracts.
+- `Sources/PublishingWorkbenchCore/`: cross-domain orchestration, stores,
+  compatibility adapters, and the temporary umbrella export surface.
 - `Sources/PersonalSitePublisherMac/`: the macOS app, SwiftUI views, and narrow
   AppKit adapters.
 - `Sources/BrowserExtensionProtocolSupport/`: the generated app/extension
   protocol contract.
-- `BrowserExtension/`: Safari, Chrome, and Firefox extension sources and channel
+- `BrowserExtension/`: Chrome and Firefox extension sources and channel
   configuration.
 - `Tests/` and `UITests/`: unit, integration, UI, and accessibility coverage.
 - `Packaging/` and `script/`: versioning, entitlements, quality gates, and
   release tooling.
 
 See [`BrowserExtension/README.md`](BrowserExtension/README.md) for extension
-installation and permission boundaries, and
-[`docs/privacy-support-copy.md`](docs/privacy-support-copy.md) for the detailed
-privacy and network model.
+installation and permission boundaries.
 
 ## Contributing and security
 

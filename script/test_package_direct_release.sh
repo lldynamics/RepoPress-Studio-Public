@@ -21,7 +21,6 @@ mkdir -p \
   "$FIXTURE_ROOT/script" \
   "$BIN_DIR"
 cp "$ROOT_DIR/Packaging/DirectDistribution.entitlements" "$FIXTURE_ROOT/Packaging/"
-cp "$ROOT_DIR/Packaging/SafariWebExtension.entitlements" "$FIXTURE_ROOT/Packaging/"
 cp "$ROOT_DIR/Packaging/ThirdPartyNotices/Sparkle-LICENSE.txt" \
   "$FIXTURE_ROOT/Packaging/ThirdPartyNotices/"
 cp "$ROOT_DIR/script/sign_sparkle_framework.sh" "$FIXTURE_ROOT/script/"
@@ -58,23 +57,18 @@ cat >"$FIXTURE_ROOT/script/build_and_run.sh" <<'STUB'
 set -euo pipefail
 [[ " $* " == *" --package-only "* ]] || exit 2
 [[ " $* " == *" --direct "* ]] || exit 2
-app="${PERSONAL_SITE_PUBLISHER_DIST_DIR:?}/PersonalSitePublisherMac.app"
+app="${PERSONAL_SITE_PUBLISHER_DIST_DIR:?}/RepoPress Studio.app"
 rm -rf "$app"
-safari="$app/Contents/PlugIns/RepoPressSafariExtension.appex"
 sparkle="$app/Contents/Frameworks/Sparkle.framework"
 sparkle_version="$sparkle/Versions/B"
 mkdir -p \
   "$app/Contents/MacOS" \
   "$app/Contents/Resources/ThirdPartyNotices" \
-  "$safari/Contents/MacOS" \
   "$sparkle_version/XPCServices/Installer.xpc" \
   "$sparkle_version/XPCServices/Downloader.xpc" \
   "$sparkle_version/Updater.app"
 printf '#!/usr/bin/env bash\nexit 0\n' >"$app/Contents/MacOS/PersonalSitePublisherMac"
-printf '#!/usr/bin/env bash\nexit 0\n' >"$safari/Contents/MacOS/RepoPressSafariExtension"
-chmod +x \
-  "$app/Contents/MacOS/PersonalSitePublisherMac" \
-  "$safari/Contents/MacOS/RepoPressSafariExtension"
+chmod +x "$app/Contents/MacOS/PersonalSitePublisherMac"
 cp "${DIRECT_TEST_ROOT:?}/Packaging/ThirdPartyNotices/Sparkle-LICENSE.txt" \
   "$app/Contents/Resources/ThirdPartyNotices/"
 for executable in \
@@ -105,14 +99,6 @@ cat >"$app/Contents/Info.plist" <<PLIST
   <key>RepoPressUpdateChannel</key><string>${REPOPRESS_UPDATE_CHANNEL:-stable}</string>
 </dict></plist>
 PLIST
-cat >"$safari/Contents/Info.plist" <<'PLIST'
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0"><dict>
-  <key>CFBundleIdentifier</key><string>com.jinfang.PersonalSitePublisherMac.SafariExtension</string>
-  <key>CFBundleExecutable</key><string>RepoPressSafariExtension</string>
-</dict></plist>
-PLIST
 STUB
 
 cat >"$BIN_DIR/codesign" <<'STUB'
@@ -129,8 +115,6 @@ fi
 if [[ "$arguments" == *" -d "* && "$arguments" == *" --entitlements "* ]]; then
   if [[ "$target" == *Downloader.xpc ]]; then
     cat "${DIRECT_TEST_ROOT:?}/Packaging/Downloader.entitlements"
-  elif [[ "$target" == *.appex ]]; then
-    cat "${DIRECT_TEST_ROOT:?}/Packaging/SafariWebExtension.entitlements"
   else
     if [[ "${FIXTURE_MAIN_APP_SANDBOX:-}" == "true" ]]; then
       python3 - "${DIRECT_TEST_ROOT:?}/Packaging/DirectDistribution.entitlements" <<'PY'

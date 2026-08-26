@@ -1,7 +1,6 @@
 import PublishingWorkbenchCore
 
 struct MarkdownEditorToolbarActions {
-  let onSetEditorDisplayMode: (EditorDisplayMode) -> Void
   let onSetWritingToolDensity: (MarkdownWritingToolDensity) -> Void
   let onShowFindReplace: () -> Void
   let onShowOutline: () -> Void

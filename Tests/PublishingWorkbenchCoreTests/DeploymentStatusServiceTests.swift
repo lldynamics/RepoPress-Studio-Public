@@ -830,6 +830,9 @@ final class DeploymentStatusServiceTests: XCTestCase {
       deploymentResponse(
         json: #"{"deployments":[{"name":"personal-site","url":"personal-site-git-main.vercel.app","readyState":"BUILDING","target":"production","inspectorUrl":"https://vercel.com/team/personal-site/abc","meta":{"githubCommitRef":"main","githubCommitSha":"abc123"}}]}"#
       ),
+      deploymentResponse(
+        json: #"[{"type":"stdout","payload":{"text":"building site"}}]"#
+      ),
     ])
     let service = DeploymentStatusService(transport: transport)
     var profile = SiteProfile.defaultProfile
@@ -860,7 +863,7 @@ final class DeploymentStatusServiceTests: XCTestCase {
     XCTAssertEqual(snapshot.signals.first?.urlText, "https://vercel.com/team/personal-site/abc")
 
     let requests = await transport.capturedRequests()
-    XCTAssertEqual(requests.count, 1)
+    XCTAssertEqual(requests.count, 2)
     XCTAssertEqual(requests[0].url?.scheme, "https")
     XCTAssertEqual(requests[0].url?.host, "api.vercel.com")
     XCTAssertEqual(requests[0].url?.path, "/v7/deployments")
@@ -872,6 +875,9 @@ final class DeploymentStatusServiceTests: XCTestCase {
     XCTAssertTrue(queryItems.contains(URLQueryItem(name: "target", value: "production")))
     XCTAssertTrue(queryItems.contains(URLQueryItem(name: "branch", value: "main")))
     XCTAssertTrue(queryItems.contains(URLQueryItem(name: "sha", value: "abc123")))
+    XCTAssertEqual(requests[1].url?.path, "/v3/deployments/personal-site-git-main.vercel.app/events")
+    XCTAssertEqual(requests[1].value(forHTTPHeaderField: "Authorization"), "Bearer vercel-token")
+    XCTAssertEqual(snapshot.signals.first?.logExcerpt.first?.message, "building site")
   }
 
   func testCloudflarePagesAPIBuildsSuccessfulSnapshotWithAccountAndProject() async throws {

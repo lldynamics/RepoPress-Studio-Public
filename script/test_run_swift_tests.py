@@ -19,6 +19,18 @@ RUNNER = ROOT / "script" / "run_swift_tests.sh"
 HELPER = ROOT / "script" / "run_swift_test_process.py"
 
 
+FIXTURE_TEST_TARGETS = (
+    "PublishingMarkdownCoreTests",
+    "PublishingGitCoreTests",
+    "PublishingDomainContractsTests",
+    "PublishingAICoreTests",
+    "PublishingCoreSupportTests",
+    "PublishingKnowledgeCoreTests",
+    "PublishingWorkbenchCoreTests",
+    "PersonalSitePublisherMacTests",
+)
+
+
 PACKAGE_TEMPLATE = """\
 // swift-tools-version: 6.0
 import PackageDescription
@@ -26,12 +38,14 @@ let package = Package(
   name: "Fixture",
   targets: [
     .target(name: "App"),
-    .testTarget(name: "PublishingWorkbenchCoreTests", dependencies: ["App"]),
-    .testTarget(name: "PersonalSitePublisherMacTests", dependencies: ["App"]),
-{extra_target}  ]
+{test_targets}{extra_target}  ]
 )
 """
 
+
+FIXTURE_TEST_TARGET_TEMPLATE = """\
+    .testTarget(name: "{target}", dependencies: ["App"]),
+"""
 
 FAKE_SWIFT = r'''#!/usr/bin/env python3
 import json
@@ -213,13 +227,13 @@ if "-file" in sys.argv:
 
 def fixture_inventory() -> list[str]:
     rows = [
-        "PersonalSitePublisherMacTests.WorkbenchImageTwoTierCacheTests/testCacheA",
-        "PersonalSitePublisherMacTests.WorkbenchImageTwoTierCacheTests/testCacheB",
+        "PersonalSitePublisherMacTests.SettingsSearchAndSavePresentationTests/testSetting1",
+        "PersonalSitePublisherMacTests.SettingsSearchAndSavePresentationTests/testSetting2",
+        "PersonalSitePublisherMacTests.SettingsSearchAndSavePresentationTests/testSetting3",
+        "PersonalSitePublisherMacTests.SettingsSearchAndSavePresentationTests/testSetting4",
+        "PersonalSitePublisherMacTests.SettingsSearchAndSavePresentationTests/testSetting5",
+        "PersonalSitePublisherMacTests.SettingsSearchAndSavePresentationTests/testSetting6",
     ]
-    rows.extend(
-        f"PersonalSitePublisherMacTests.SettingsSearchAndSavePresentationTests/testSetting{index}"
-        for index in range(1, 7)
-    )
     rows.extend(
         (
             "PersonalSitePublisherMacTests.WebContentNetworkSecurityTests/testContentRule",
@@ -256,6 +270,18 @@ def fixture_inventory() -> list[str]:
         for index in range(1, 152)
     )
     rows.append("PublishingWorkbenchCoreTests.SwiftTestingSuite/valueContract()")
+    rows.extend(
+        (
+            "PublishingMarkdownCoreTests.MarkdownSuite/testParser",
+            "PublishingMarkdownCoreTests.MarkdownSuite/testRenderer",
+            "PublishingGitCoreTests.GitSuite/testRunner",
+            "PublishingGitCoreTests.GitSuite/testRemote",
+            "PublishingDomainContractsTests.DomainSuite/testContract",
+            "PublishingAICoreTests.AISuite/testProvider",
+            "PublishingCoreSupportTests.SupportSuite/testReader",
+            "PublishingKnowledgeCoreTests.KnowledgeSuite/testSearch",
+        )
+    )
     return sorted(rows)
 
 
@@ -265,6 +291,9 @@ def make_fixture(
     duplicate_inventory: bool = False,
     raise_baseline: bool = False,
     missing_suite: str | None = None,
+    unknown_inventory: bool = False,
+    missing_baseline_target: str | None = None,
+    extra_baseline_target: str | None = None,
 ) -> tuple[tempfile.TemporaryDirectory[str], Path, dict[str, str]]:
     temporary = tempfile.TemporaryDirectory(prefix="swift-test-processes.")
     root = Path(temporary.name)
@@ -278,6 +307,10 @@ def make_fixture(
     (script_dir / HELPER.name).chmod(0o755)
     (root / "Package.swift").write_text(
         PACKAGE_TEMPLATE.format(
+            test_targets="".join(
+                FIXTURE_TEST_TARGET_TEMPLATE.format(target=target)
+                for target in FIXTURE_TEST_TARGETS
+            ),
             extra_target=(
                 '    .testTarget(name: "FutureTests", dependencies: ["App"]),\n'
                 if extra_target
@@ -294,20 +327,31 @@ def make_fixture(
             for row in inventory
             if f".{missing_suite}/" not in row
         ]
+    if extra_target:
+        inventory.append("FutureTests.FutureSuite/testFuture")
+    if unknown_inventory:
+        inventory.append("UnknownInventoryTests.UnknownSuite/testUnknown")
     if duplicate_inventory:
         inventory.append(inventory[0])
     inventory_path = root / "inventory-source.txt"
     inventory_path.write_text("\n".join(inventory) + "\n", encoding="utf-8")
-    mac_count = sum(row.startswith("PersonalSitePublisherMacTests.") for row in inventory)
-    core_count = sum(row.startswith("PublishingWorkbenchCoreTests.") for row in inventory)
+    counts = {
+        target: sum(row.startswith(f"{target}.") for row in inventory)
+        for target in FIXTURE_TEST_TARGETS
+    }
+    if extra_target:
+        counts["FutureTests"] = 1
+    baseline_targets = dict(counts)
+    baseline_targets["PersonalSitePublisherMacTests"] += int(raise_baseline)
+    if missing_baseline_target is not None:
+        baseline_targets.pop(missing_baseline_target, None)
+    if extra_baseline_target is not None:
+        baseline_targets[extra_baseline_target] = 1
     (script_dir / "quality_baselines.json").write_text(
         json.dumps(
             {
                 "schemaVersion": 1,
-                "swiftTestMinimumCountsByTarget": {
-                    "PersonalSitePublisherMacTests": mac_count + (1 if raise_baseline else 0),
-                    "PublishingWorkbenchCoreTests": core_count,
-                },
+                "swiftTestMinimumCountsByTarget": baseline_targets,
             }
         ),
         encoding="utf-8",
@@ -448,6 +492,8 @@ def test_successful_partition_and_exact_argv() -> None:
             "test",
             "--disable-sandbox",
             "-Xswiftc",
+            "-strict-concurrency=complete",
+            "-Xswiftc",
             "-warnings-as-errors",
             "list",
         ]
@@ -467,9 +513,7 @@ def test_successful_partition_and_exact_argv() -> None:
         assert len(settings) == 6
         assert all(len(shard["tests"]) == 1 for shard in settings)
         cache = [shard for shard in shards if shard["slug"] == "cache"]
-        assert len(cache) == 1
-        assert len(cache[0]["tests"]) == 2
-        assert cache[0]["filter"] == r"^PersonalSitePublisherMacTests\.(WorkbenchImageTwoTierCacheTests)/"
+        assert not cache
         web_content_security = [
             shard for shard in shards if shard["slug"] == "web-content-security"
         ]
@@ -521,6 +565,25 @@ def test_successful_partition_and_exact_argv() -> None:
         ]
         assert len(core) == 3
         assert all(not shard["filter"].endswith("$") for shard in core)
+        leaf_targets = set(FIXTURE_TEST_TARGETS) - {
+            "PersonalSitePublisherMacTests",
+            "PublishingWorkbenchCoreTests",
+        }
+        inventory = payload["inventory"]
+        assert set(inventory["targets"]) == set(FIXTURE_TEST_TARGETS)
+        assert set(inventory["countsByTarget"]) == set(FIXTURE_TEST_TARGETS)
+        assert set(inventory["shardsByTarget"]) == set(FIXTURE_TEST_TARGETS)
+        assert all(inventory["shardsByTarget"][target] for target in FIXTURE_TEST_TARGETS)
+        assert all(
+            inventory["shardsByTarget"][target][0].startswith("leaf-")
+            for target in leaf_targets
+        )
+        assert {
+            test.split(".", 1)[0]
+            for shard in shards
+            if shard["slug"].startswith("leaf-")
+            for test in shard["tests"]
+        } == leaf_targets
         for shard in shards:
             if shard in core:
                 suites = {test.split("/", 1)[0] for test in shard["tests"]}
@@ -534,7 +597,12 @@ def test_successful_partition_and_exact_argv() -> None:
             assert shard["executedSwiftTestingCount"] == shard["expectedSwiftTestingCount"]
             assert "timeoutSeconds: 120.0" in Path(shard["logPath"]).read_text(encoding="utf-8")
             assert "terminationGraceSeconds: 2.0" in Path(shard["logPath"]).read_text(encoding="utf-8")
-        assert payload["swiftTestBuildArguments"] == ["-Xswiftc", "-warnings-as-errors"]
+        assert payload["swiftTestBuildArguments"] == [
+            "-Xswiftc",
+            "-strict-concurrency=complete",
+            "-Xswiftc",
+            "-warnings-as-errors",
+        ]
 
 
 def test_swift_cache_environment_is_local_and_explicit_values_are_preserved() -> None:
@@ -604,9 +672,18 @@ def test_warnings_as_errors_can_be_explicitly_disabled() -> None:
         result = run_fixture(root, paths, SWIFT_TEST_WARNINGS_AS_ERRORS="0")
         assert result.returncode == 0, result.stderr
         calls = read_calls(paths)
-        assert calls[0] == ["test", "--disable-sandbox", "list"]
+        assert calls[0] == [
+            "test",
+            "--disable-sandbox",
+            "-Xswiftc",
+            "-strict-concurrency=complete",
+            "list",
+        ]
         payload = read_result(root)
-        assert payload["swiftTestBuildArguments"] == []
+        assert payload["swiftTestBuildArguments"] == [
+            "-Xswiftc",
+            "-strict-concurrency=complete",
+        ]
 
 
 def test_invalid_warnings_as_errors_configuration_fails_closed() -> None:
@@ -619,20 +696,28 @@ def test_invalid_warnings_as_errors_configuration_fails_closed() -> None:
         assert read_result(root)["status"] == "failed"
 
 
-def test_manifest_inventory_and_baseline_fail_closed() -> None:
+def test_manifest_inventory_and_baseline_contracts() -> None:
+    temporary, root, paths = make_fixture(extra_target=True)
+    with temporary:
+        result = run_fixture(root, paths)
+        assert result.returncode == 0, result.stderr
+        payload = read_result(root)
+        assert payload["inventory"]["countsByTarget"]["FutureTests"] == 1
+        assert payload["inventory"]["shardsByTarget"]["FutureTests"]
+
     for options, expected_message, expected_calls in (
-        ({"extra_target": True}, "unexpected Swift test target set", 0),
+        ({"unknown_inventory": True}, "unknown Swift test target", 1),
         ({"duplicate_inventory": True}, "duplicate test specifications", 1),
         ({"raise_baseline": True}, "fell below", 1),
         (
-            {"missing_suite": "WorkbenchImageTwoTierCacheTests"},
-            "required isolated suite is missing",
-            1,
+            {"missing_baseline_target": "PublishingMarkdownCoreTests"},
+            "quality baselines must define every manifest Swift test target",
+            0,
         ),
         (
-            {"missing_suite": "WebContentNetworkSecurityTests"},
-            "required isolated suite is missing",
-            1,
+            {"extra_baseline_target": "GhostTests"},
+            "quality baselines must define every manifest Swift test target",
+            0,
         ),
     ):
         temporary, root, paths = make_fixture(**options)
@@ -642,6 +727,16 @@ def test_manifest_inventory_and_baseline_fail_closed() -> None:
             assert expected_message in result.stderr
             assert len(read_calls(paths)) == expected_calls
             assert read_result(root)["status"] == "failed"
+
+    for missing_suite in (
+        "WorkbenchImageTwoTierCacheTests",
+        "WebContentNetworkSecurityTests",
+        "SettingsSearchAndSavePresentationTests",
+    ):
+        temporary, root, paths = make_fixture(missing_suite=missing_suite)
+        with temporary:
+            result = run_fixture(root, paths)
+            assert result.returncode == 0, result.stderr
 
 
 def test_shard_retry_configuration_is_bounded() -> None:
@@ -800,7 +895,9 @@ def test_leader_exit_cleans_detached_child_and_fails_missing_counts() -> None:
         assert not process_exists(child_pid), child_pid
         payload = read_result(root)
         assert payload["status"] == "failed"
-        failed = next(shard for shard in payload["shards"] if shard["slug"] == "cache")
+        failed = next(
+            shard for shard in payload["shards"] if shard["slug"] == "web-content-security"
+        )
         assert failed["status"] == "failed"
         assert "completed test counts" in failed["error"]
 
@@ -845,7 +942,7 @@ def main() -> int:
     test_swift_cache_environment_is_local_and_explicit_values_are_preserved()
     test_warnings_as_errors_can_be_explicitly_disabled()
     test_invalid_warnings_as_errors_configuration_fails_closed()
-    test_manifest_inventory_and_baseline_fail_closed()
+    test_manifest_inventory_and_baseline_contracts()
     test_shard_retry_configuration_is_bounded()
     test_nonzero_shard_fails_fast_with_incremental_result()
     test_timeout_retries_once_then_passes_with_distinct_evidence()

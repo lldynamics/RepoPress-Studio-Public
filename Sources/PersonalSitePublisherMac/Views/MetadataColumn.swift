@@ -3,7 +3,8 @@ import SwiftUI
 
 struct MetadataColumn: View {
   private let store: WorkbenchStore
-  @ObservedObject private var navigation: WorkbenchEditorNavigationFeatureFacade
+  let selectedSection: WorkspaceSection
+  let selectedDraftID: UUID?
   @ObservedObject private var contentPresentation: WorkbenchContentPresentationFeatureFacade
   let rssStore: RSSReaderStore
   let repositoryContextStage: RepositoryContextStage
@@ -14,6 +15,8 @@ struct MetadataColumn: View {
 
   init(
     store: WorkbenchStore,
+    selectedSection: WorkspaceSection,
+    selectedDraftID: UUID?,
     rssStore: RSSReaderStore,
     repositoryContextStage: RepositoryContextStage,
     repositorySourceSession: RepositoryHTMLSourceSession,
@@ -22,9 +25,8 @@ struct MetadataColumn: View {
     prioritizesChecks: Bool = false
   ) {
     self.store = store
-    _navigation = ObservedObject(
-      wrappedValue: WorkbenchEditorNavigationFeatureFacade(store: store)
-    )
+    self.selectedSection = selectedSection
+    self.selectedDraftID = selectedDraftID
     _contentPresentation = ObservedObject(wrappedValue: store.contentPresentation)
     self.rssStore = rssStore
     self.repositoryContextStage = repositoryContextStage
@@ -37,7 +39,7 @@ struct MetadataColumn: View {
   var body: some View {
     ZStack(alignment: .topLeading) {
       switch WorkspaceInspectorPresentation.route(
-        for: navigation.selectedSection,
+        for: selectedSection,
         isAIAssistantPresented: contentPresentation.isAssistantPresented
       ) {
       case .aiAssistant:
@@ -92,13 +94,13 @@ struct MetadataColumn: View {
 
   @ViewBuilder
   private var articleInspector: some View {
-    if let fallbackDraft = navigation.selectedDraft {
+    if let selectedDraftID, let fallbackDraft = store.draft(for: selectedDraftID) {
       let draft = Binding<ArticleDraft>(
-        get: { navigation.selectedDraft ?? fallbackDraft },
+        get: { store.draft(for: selectedDraftID) ?? fallbackDraft },
         set: { store.updateDraftFromEditor($0) }
       )
       WorkspaceTaskInspector(
-        section: navigation.selectedSection,
+        section: selectedSection,
         draft: draft,
         store: store,
         rssStore: rssStore,

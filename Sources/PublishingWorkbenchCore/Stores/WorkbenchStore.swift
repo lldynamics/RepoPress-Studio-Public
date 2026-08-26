@@ -93,6 +93,8 @@ public final class WorkbenchStore: ObservableObject {
   var preflightRefreshGeneration: UInt64 = 0
   var draftBodyCommitTasks: [UUID: Task<Void, Never>] = [:]
   var draftBodyCommitFirstStagedAt: [UUID: Date] = [:]
+  var draftWordCountRefreshTasks: [UUID: Task<Void, Never>] = [:]
+  var draftWordCountBackfillTask: Task<Void, Never>?
   var siteDraftFileAutosaveTasks: [UUID: Task<Void, Never>] = [:]
   var siteDraftFileReconciliationTask: Task<Void, Never>?
   var siteDraftFileReconciliationGeneration: UInt64 = 0
@@ -337,6 +339,7 @@ public final class WorkbenchStore: ObservableObject {
     } else {
       initialDrafts = [ArticleDraft.empty(profile: activeProfile)]
     }
+    let draftsBeforeSoftwareGuideSeed = initialDrafts
     var initialSoftwareGuideSeedVersion = snapshot?.softwareGuideSeedVersion ?? 0
     var didInstallDefaultSoftwareGuides = false
     if shouldInstallDefaultSoftwareGuides {
@@ -348,6 +351,24 @@ public final class WorkbenchStore: ObservableObject {
       initialDrafts = synchronization.drafts
       initialSoftwareGuideSeedVersion = ArticleDraft.currentSoftwareGuideSeedVersion
       didInstallDefaultSoftwareGuides = true
+    }
+    // A missing persisted word count is a migration marker, but recalculating
+    // every loaded draft during startup changes the snapshot while site-file
+    // reconciliation and other startup services are still taking their
+    // baselines. Backfill the drafts created by this startup (and managed
+    // guides whose body was refreshed), while leaving unchanged loaded drafts
+    // for the normal body-edit path.
+    let startupWordCountBackfillDrafts = initialDrafts.filter { draft in
+      guard draft.wordCountNeedsRefresh else { return false }
+      if snapshotDrafts.isEmpty {
+        return true
+      }
+      guard let previousDraft = draftsBeforeSoftwareGuideSeed.first(where: {
+        $0.id == draft.id
+      }) else {
+        return true
+      }
+      return previousDraft.bodyMarkdown != draft.bodyMarkdown
     }
     let unresolvedDraftRecoveryRecords = loadedDraftRecoveryRecords.filter { record in
       guard let draft = initialDrafts.first(where: { $0.id == record.draftID }) else {
@@ -482,6 +503,32 @@ public final class WorkbenchStore: ObservableObject {
         self.knownArticleTitlesCacheRevision = nil
       }
       .store(in: &childStoreCancellables)
+    publishingStore.$drafts
+      .dropFirst()
+      .receive(on: RunLoop.main)
+      .sink { [weak self] drafts in
+        guard let self else { return }
+        let validDraftIDs = Set(drafts.map(\.id))
+        self.aiStore.reconcileAIDraftSuggestionState(validDraftIDs: validDraftIDs)
+        self.imageStore.reconcileDraftReportState(validDraftIDs: validDraftIDs)
+        // A surviving draft may have changed enough to invalidate a cached
+        // suggestion or image report even when its identifier remains valid.
+        self.aiStore.restoreDraftSuggestionProjectionForCurrentSelection()
+        self.imageStore.restoreImageWorkbenchReportProjectionForCurrentSelection()
+      }
+      .store(in: &childStoreCancellables)
+    publishingStore.$selectedDraftID
+      .removeDuplicates()
+      .dropFirst()
+      // @Published emits from willSet. Deliver on the next main-run-loop turn
+      // so every direct selection mutation has committed before projections
+      // query `selectedDraftID`.
+      .receive(on: RunLoop.main)
+      .sink { [weak self] selectedDraftID in
+        guard let self, self.selectedDraftID == selectedDraftID else { return }
+        self.restoreSEOSocialPreviewSnapshotForCurrentSelection()
+      }
+      .store(in: &childStoreCancellables)
     publishingStore.$activeProfileID
       .removeDuplicates()
       .dropFirst()
@@ -550,6 +597,7 @@ public final class WorkbenchStore: ObservableObject {
     if isSafeMode {
       setLastSaveStatus(CoreL10n.text("安全模式：已暂停自动工作区服务"))
     } else {
+      scheduleDirtyDraftWordCountRefreshes(for: startupWordCountBackfillDrafts)
       runPreflight()
       refreshPublishPreviewInBackground(for: selectedDraft)
       aiStore.restoreSEOSocialPreviewSnapshotForCurrentSelection()
@@ -583,7 +631,15 @@ public final class WorkbenchStore: ObservableObject {
   }
 
   func waitForPendingSave() async {
-    await persistenceStore.waitForPendingSave()
+    while true {
+      await persistenceStore.waitForPendingSave()
+      await waitForPendingDraftWordCountRefreshes()
+      await Task.yield()
+      await persistenceStore.waitForPendingSave()
+      if draftWordCountRefreshTasks.isEmpty && draftWordCountBackfillTask == nil {
+        return
+      }
+    }
   }
 
   /// Saves immediately and reports whether it is safe to let the process exit.
@@ -618,10 +674,14 @@ public final class WorkbenchStore: ObservableObject {
     let generation = draftRecoveryWriteGeneration
     let journal = draftRecoveryJournal
     let coordinator = draftRecoveryWriteCoordinator
-    let records = draftRecoveryRecords.values.sorted { $0.capturedAt > $1.capturedAt }
     draftRecoveryWriteTask = Task { [weak self] in
       do {
         try await Task.sleep(nanoseconds: 250_000_000)
+        try Task.checkCancellation()
+        guard self?.draftRecoveryWriteGeneration == generation else { return }
+        guard let records = self?.draftRecoveryRecords.values.sorted(
+          by: { $0.capturedAt > $1.capturedAt }
+        ) else { return }
         try Task.checkCancellation()
         _ = try await Task.detached(priority: .utility) {
           try coordinator.save(records, to: journal, generation: generation)
@@ -700,6 +760,7 @@ public final class WorkbenchStore: ObservableObject {
   }
 
   func invalidateDraftDerivedCaches() {
+    publishingStore.removeAllDraftPublishPreviewSnapshots()
     invalidateContentHealthSnapshot()
     invalidateSiteMaintenanceSnapshot()
     invalidateDraftTaskQueueStateCache()
@@ -714,6 +775,10 @@ public final class WorkbenchStore: ObservableObject {
     // Body typing does not alter images, release history, or maintenance
     // metadata. Keep those expensive summaries warm until a debounced
     // preflight refresh runs.
+    publishingStore.removeDraftPublishPreviewSnapshot(
+      for: draftID,
+      preservingSelectedProjection: true
+    )
     invalidateContentHealthSnapshot()
     draftTaskQueueStateCache.removeValue(forKey: draftID)
     draftTaskQueueStateVersion += 1

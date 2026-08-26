@@ -108,6 +108,41 @@ final class LocalRepositoryServiceTests: XCTestCase {
     XCTAssertEqual(report.imageFileCount, 3)
   }
 
+  func testDetectsVitePressRepositoryShape() throws {
+    let rootURL = FileManager.default.temporaryDirectory
+      .appendingPathComponent("VitePressRepositoryTests-\(UUID().uuidString)", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+
+    try FileManager.default.createDirectory(
+      at: rootURL.appendingPathComponent("docs/.vitepress", isDirectory: true),
+      withIntermediateDirectories: true
+    )
+    try FileManager.default.createDirectory(
+      at: rootURL.appendingPathComponent("docs/posts", isDirectory: true),
+      withIntermediateDirectories: true
+    )
+    try "export default {}".write(
+      to: rootURL.appendingPathComponent("docs/.vitepress/config.mts"),
+      atomically: true,
+      encoding: .utf8
+    )
+    try "# Hello".write(
+      to: rootURL.appendingPathComponent("docs/posts/hello.md"),
+      atomically: true,
+      encoding: .utf8
+    )
+
+    var profile = SiteProfile.defaultProfile
+    profile.applyPublishingDefaults(for: .vitePress)
+    profile.rememberLocalRepositoryRoot(rootURL)
+
+    let report = LocalRepositoryService().scan(profile: profile)
+
+    XCTAssertEqual(report.detectedKind, .vitePress)
+    XCTAssertTrue(report.contentRootExists)
+    XCTAssertEqual(report.markdownFileCount, 1)
+  }
+
   func testScanStopsFileEnumerationWhenCancellationIsRequested() throws {
     let rootURL = FileManager.default.temporaryDirectory
       .appendingPathComponent(
@@ -188,6 +223,7 @@ final class LocalRepositoryServiceTests: XCTestCase {
     try git(["commit", "-m", "Local"], rootURL: rootURL)
     try git(["remote", "add", "origin", "https://example.invalid/site.git"], rootURL: rootURL)
     try git(["update-ref", "refs/remotes/origin/main", remoteCommit], rootURL: rootURL)
+    try git(["update-ref", "refs/heads/origin/main", baseCommit], rootURL: rootURL)
     try git(["config", "branch.main.remote", "origin"], rootURL: rootURL)
     try git(["config", "branch.main.merge", "refs/heads/main"], rootURL: rootURL)
     XCTAssertEqual(try git(["merge-base", "main", "origin/main"], rootURL: rootURL), baseCommit)
@@ -200,7 +236,7 @@ final class LocalRepositoryServiceTests: XCTestCase {
     let report = LocalRepositoryService().scan(profile: profile)
 
     XCTAssertEqual(report.branchStatus?.branchName, "main")
-    XCTAssertEqual(report.branchStatus?.upstreamName, "origin/main")
+    XCTAssertEqual(report.branchStatus?.upstreamName, "remotes/origin/main")
     XCTAssertEqual(report.branchStatus?.aheadCount, 1)
     XCTAssertEqual(report.branchStatus?.behindCount, 1)
     XCTAssertEqual(report.syncStatusTitle, "本地领先 1，落后 1")
@@ -225,7 +261,7 @@ final class LocalRepositoryServiceTests: XCTestCase {
     let contentURL = rootURL.appendingPathComponent("content/posts", isDirectory: true)
     try FileManager.default.createDirectory(at: contentURL, withIntermediateDirectories: true)
     let modifiedPath = "content/posts/修改 中文 文件.md"
-    let untrackedPath = "content/posts/未跟踪 空格.md"
+    let untrackedPath = "content/posts/*?[]: 未跟踪 \"稿\".md"
     let oldRenamePath = "content/posts/旧 中文.md"
     let newRenamePath = "content/posts/新 \" 标题.md"
 
@@ -249,6 +285,12 @@ final class LocalRepositoryServiceTests: XCTestCase {
       encoding: .utf8
     )
     try git(["mv", oldRenamePath, newRenamePath], rootURL: rootURL)
+    try git(["add", newRenamePath], rootURL: rootURL)
+    try "original\nstaged rename\nunstaged destination\n".write(
+      to: rootURL.appendingPathComponent(newRenamePath),
+      atomically: true,
+      encoding: .utf8
+    )
     try "untracked\n".write(
       to: rootURL.appendingPathComponent(untrackedPath),
       atomically: true,
@@ -265,14 +307,32 @@ final class LocalRepositoryServiceTests: XCTestCase {
     XCTAssertEqual(untracked.kind, .untracked)
 
     let renamed = try XCTUnwrap(
-      changedFiles.first { $0.path == "\(oldRenamePath) -> \(newRenamePath)" }
+      changedFiles.first {
+        $0.sourcePath == oldRenamePath && $0.destinationPath == newRenamePath
+      }
     )
-    XCTAssertEqual(renamed.kind, .renamed)
+    XCTAssertTrue(renamed.status.contains("R"))
+    XCTAssertTrue(renamed.lineDiff?.contains("similarity index") == true)
+    XCTAssertTrue(renamed.lineDiff?.contains("rename from") == true)
+    XCTAssertTrue(renamed.lineDiff?.contains("rename to") == true)
+    XCTAssertTrue(renamed.lineDiff?.contains("+unstaged destination") == true)
+    if let lineDiff = renamed.lineDiff,
+       let renameIndex = lineDiff.range(of: "similarity index"),
+       let unstagedIndex = lineDiff.range(of: "+unstaged destination") {
+      XCTAssertLessThan(renameIndex.lowerBound, unstagedIndex.lowerBound)
+    } else {
+      XCTFail("Expected staged rename metadata and destination unstaged content")
+    }
     XCTAssertEqual(renamed.displayPath, newRenamePath)
+    XCTAssertTrue(renamed.path.contains(" -> "))
+
+    let magicUntracked = try XCTUnwrap(changedFiles.first { $0.path == untrackedPath })
+    XCTAssertEqual(magicUntracked.kind, .untracked)
+    XCTAssertTrue(magicUntracked.lineDiff?.contains("+untracked") == true)
     XCTAssertFalse(changedFiles.contains { $0.path.contains("\\344") })
   }
 
-  func testRemoteNameStatusPreservesUnicodeRenameAndCopyPaths() throws {
+  func testRemoteNameStatusPreservesUnicodeRenamePaths() throws {
     let rootURL = FileManager.default.temporaryDirectory
       .appendingPathComponent("PersonalSitePublisherMacNULRemoteTests-\(UUID().uuidString)", isDirectory: true)
     defer {
@@ -283,7 +343,8 @@ final class LocalRepositoryServiceTests: XCTestCase {
     try FileManager.default.createDirectory(at: contentURL, withIntermediateDirectories: true)
     let oldPath = "content/posts/旧 中文.md"
     let newPath = "content/posts/新 \" 标题.md"
-    try "remote\n".write(
+    let literalPath = "content/posts/*?[]: literal.md"
+    try "remote\nbody\nbody\nbody\n".write(
       to: rootURL.appendingPathComponent(oldPath),
       atomically: true,
       encoding: .utf8
@@ -296,29 +357,40 @@ final class LocalRepositoryServiceTests: XCTestCase {
     try git(["commit", "-m", "Initial"], rootURL: rootURL)
     try git(["switch", "-c", "remote-work"], rootURL: rootURL)
     try git(["mv", oldPath, newPath], rootURL: rootURL)
-    try git(["commit", "-am", "Rename remote article"], rootURL: rootURL)
+    try "remote\nbody\nbody\nbody\nremote updated\n".write(
+      to: rootURL.appendingPathComponent(newPath),
+      atomically: true,
+      encoding: .utf8
+    )
+    try "literal magic\n".write(
+      to: rootURL.appendingPathComponent(literalPath),
+      atomically: true,
+      encoding: .utf8
+    )
+    try git(["add", "."], rootURL: rootURL)
+    try git(["commit", "-m", "Rename remote article"], rootURL: rootURL)
     let remoteCommit = try git(["rev-parse", "HEAD"], rootURL: rootURL)
     try git(["switch", "main"], rootURL: rootURL)
     try git(["update-ref", "refs/remotes/origin/main", remoteCommit], rootURL: rootURL)
 
     let service = LocalRepositoryService()
     let changedFiles = service.remoteChangedFiles(rootURL: rootURL, upstreamName: "origin/main")
-    let renamed = try XCTUnwrap(changedFiles.first)
-    XCTAssertEqual(renamed.status, "R100")
+    let renamed = try XCTUnwrap(changedFiles.first { $0.kind == .renamed })
+    XCTAssertTrue(renamed.status.hasPrefix("R"))
     XCTAssertEqual(renamed.path, "\(oldPath) -> \(newPath)")
+    XCTAssertEqual(renamed.sourcePath, oldPath)
+    XCTAssertEqual(renamed.destinationPath, newPath)
     XCTAssertEqual(renamed.kind, .renamed)
     XCTAssertEqual(renamed.displayPath, newPath)
+    XCTAssertTrue(renamed.lineDiff?.contains("+remote updated") == true)
+    XCTAssertTrue(renamed.lineDiff?.contains("similarity index") == true)
+    XCTAssertTrue(renamed.lineDiff?.contains("rename from") == true)
+    XCTAssertTrue(renamed.lineDiff?.contains("rename to") == true)
 
-    let copied = try XCTUnwrap(
-      service.parseNameStatus(
-        ["C100", oldPath, newPath].joined(separator: "\0") + "\0"
-      ).first
-    )
-    XCTAssertEqual(copied.status, "C100")
-    XCTAssertEqual(copied.path, "\(oldPath) -> \(newPath)")
-    // RepositoryChangeKind has no separate copy case; preserve the existing
-    // classifier's `.other` mapping while still retaining both real paths.
-    XCTAssertEqual(copied.kind, .other)
+    let literal = try XCTUnwrap(changedFiles.first { $0.displayPath == literalPath })
+    XCTAssertEqual(literal.kind, .added)
+    XCTAssertTrue(literal.lineDiff?.contains("+literal magic") == true)
+    XCTAssertEqual(changedFiles.map(\.displayPath), [literalPath, newPath])
   }
 
   func testFetchUpstreamRefreshesRemoteTrackingBranchBeforeScan() throws {
@@ -423,6 +495,15 @@ final class LocalRepositoryServiceTests: XCTestCase {
     try git(["switch", "main"], rootURL: rootURL)
     try git(["remote", "add", "origin", "https://example.invalid/site.git"], rootURL: rootURL)
     try git(["update-ref", "refs/remotes/origin/main", remoteCommit], rootURL: rootURL)
+    try "local shadow\n".write(
+      to: rootURL.appendingPathComponent("README-local-shadow.md"),
+      atomically: true,
+      encoding: .utf8
+    )
+    try git(["add", "README-local-shadow.md"], rootURL: rootURL)
+    try git(["commit", "-m", "Local origin main shadow"], rootURL: rootURL)
+    let localOriginMainCommit = try git(["rev-parse", "HEAD"], rootURL: rootURL)
+    try git(["update-ref", "refs/heads/origin/main", localOriginMainCommit], rootURL: rootURL)
     try git(["config", "branch.main.remote", "origin"], rootURL: rootURL)
     try git(["config", "branch.main.merge", "refs/heads/main"], rootURL: rootURL)
 
@@ -439,6 +520,107 @@ final class LocalRepositoryServiceTests: XCTestCase {
     XCTAssertEqual(snapshot.repositorySHA, remoteBlobSHA)
     XCTAssertTrue(snapshot.content.contains("title: \"Remote Article\""))
     XCTAssertNil(LocalRepositoryService().remoteFileSnapshot(profile: profile, repositoryPath: "../secret.md"))
+  }
+
+  func testReadsRemoteArticleSnapshotsInInputOrderAndSkipsInvalidMissingAndDuplicatePaths() throws {
+    let rootURL = FileManager.default.temporaryDirectory
+      .appendingPathComponent("PersonalSitePublisherMacRemoteBatchSnapshotTests-\(UUID().uuidString)", isDirectory: true)
+    defer {
+      try? FileManager.default.removeItem(at: rootURL)
+    }
+
+    try FileManager.default.createDirectory(
+      at: rootURL.appendingPathComponent("content/posts", isDirectory: true),
+      withIntermediateDirectories: true
+    )
+    try git(["init", "-b", "main"], rootURL: rootURL)
+    try git(["config", "user.email", "tests@example.com"], rootURL: rootURL)
+    try git(["config", "user.name", "Tests"], rootURL: rootURL)
+    try "initial\n".write(
+      to: rootURL.appendingPathComponent("README.md"),
+      atomically: true,
+      encoding: .utf8
+    )
+    try git(["add", "README.md"], rootURL: rootURL)
+    try git(["commit", "-m", "Initial"], rootURL: rootURL)
+
+    try git(["switch", "-c", "remote-work"], rootURL: rootURL)
+    let firstPath = "content/posts/first.md"
+    let secondPath = "content/posts/second.md"
+    try "first remote body\n".write(
+      to: rootURL.appendingPathComponent(firstPath),
+      atomically: true,
+      encoding: .utf8
+    )
+    try "second remote body\n".write(
+      to: rootURL.appendingPathComponent(secondPath),
+      atomically: true,
+      encoding: .utf8
+    )
+    try git(["add", firstPath, secondPath], rootURL: rootURL)
+    try git(["commit", "-m", "Remote articles"], rootURL: rootURL)
+    let remoteCommit = try git(["rev-parse", "HEAD"], rootURL: rootURL)
+    let firstBlobSHA = try git(["rev-parse", "\(remoteCommit):\(firstPath)"], rootURL: rootURL)
+    let secondBlobSHA = try git(["rev-parse", "\(remoteCommit):\(secondPath)"], rootURL: rootURL)
+
+    try git(["switch", "main"], rootURL: rootURL)
+    try git(["remote", "add", "origin", "https://example.invalid/site.git"], rootURL: rootURL)
+    try git(["update-ref", "refs/remotes/origin/main", remoteCommit], rootURL: rootURL)
+    try git(["config", "branch.main.remote", "origin"], rootURL: rootURL)
+    try git(["config", "branch.main.merge", "refs/heads/main"], rootURL: rootURL)
+
+    var profile = SiteProfile.defaultProfile
+    profile.repositoryProvider = .github
+    profile.rememberLocalRepositoryRoot(rootURL)
+    profile.contentRoot = "content"
+
+    let commandLogURL = rootURL.appendingPathComponent("git-invocations.log")
+    let wrapperURL = rootURL.appendingPathComponent("git-wrapper.sh")
+    let shellQuotedLogPath = commandLogURL.path.replacingOccurrences(of: "'", with: "'\\''")
+    try """
+    #!/bin/sh
+    args=" $* "
+    case "$args" in
+      *" status "*) printf '%s\\n' status >> '\(shellQuotedLogPath)' ;;
+      *"rev-parse --abbrev-ref --symbolic-full-name @{upstream}"*) printf '%s\\n' upstream >> '\(shellQuotedLogPath)' ;;
+    esac
+    exec /usr/bin/git "$@"
+    """.write(to: wrapperURL, atomically: true, encoding: .utf8)
+    try FileManager.default.setAttributes(
+      [.posixPermissions: 0o755],
+      ofItemAtPath: wrapperURL.path
+    )
+
+    let service = LocalRepositoryService(
+      gitCommandRunner: GitCommandRunner(executableURL: wrapperURL)
+    )
+    let snapshots = service.remoteFileSnapshots(
+      profile: profile,
+      repositoryPaths: [
+        secondPath,
+        "../secret.md",
+        "./\(firstPath)",
+        secondPath,
+        "content/posts/missing.md",
+      ]
+    )
+
+    XCTAssertEqual(snapshots.map(\.repositoryPath), [secondPath, firstPath])
+    XCTAssertEqual(snapshots.map(\.refName), ["origin/main", "origin/main"])
+    XCTAssertEqual(snapshots.map(\.repositorySHA), [secondBlobSHA, firstBlobSHA])
+    XCTAssertEqual(snapshots.map(\.content), ["second remote body", "first remote body"])
+    let commandLog = try String(contentsOf: commandLogURL, encoding: .utf8)
+    XCTAssertEqual(commandLog.split(whereSeparator: \.isNewline).filter { $0 == "status" }.count, 0)
+    XCTAssertEqual(commandLog.split(whereSeparator: \.isNewline).filter { $0 == "upstream" }.count, 1)
+
+    let cancellationProbe = LocalRepositoryCancellationProbe(cancelAfterCheck: 5)
+    let cancelledSnapshots = service.remoteFileSnapshots(
+      rootURL: rootURL,
+      repositoryPaths: [secondPath, firstPath],
+      repositoryProvider: .github,
+      cancellationCheck: cancellationProbe.shouldCancel
+    )
+    XCTAssertEqual(cancelledSnapshots.map(\.repositoryPath), [secondPath])
   }
 
   func testReadsGitLabRemoteArticleSnapshotWithLastCommitID() throws {
@@ -480,11 +662,19 @@ final class LocalRepositoryServiceTests: XCTestCase {
     )
     try git(["add", "content/posts/gitlab-remote.md"], rootURL: rootURL)
     try git(["commit", "-m", "GitLab remote article"], rootURL: rootURL)
-    let remoteCommit = try git(["rev-parse", "HEAD"], rootURL: rootURL)
+    let articleCommit = try git(["rev-parse", "HEAD"], rootURL: rootURL)
+    try "unrelated remote change\n".write(
+      to: rootURL.appendingPathComponent("README-unrelated.md"),
+      atomically: true,
+      encoding: .utf8
+    )
+    try git(["add", "README-unrelated.md"], rootURL: rootURL)
+    try git(["commit", "-m", "GitLab unrelated remote change"], rootURL: rootURL)
+    let remoteTip = try git(["rev-parse", "HEAD"], rootURL: rootURL)
 
     try git(["switch", "main"], rootURL: rootURL)
     try git(["remote", "add", "origin", "https://example.invalid/site.git"], rootURL: rootURL)
-    try git(["update-ref", "refs/remotes/origin/main", remoteCommit], rootURL: rootURL)
+    try git(["update-ref", "refs/remotes/origin/main", remoteTip], rootURL: rootURL)
     try git(["config", "branch.main.remote", "origin"], rootURL: rootURL)
     try git(["config", "branch.main.merge", "refs/heads/main"], rootURL: rootURL)
 
@@ -499,7 +689,8 @@ final class LocalRepositoryServiceTests: XCTestCase {
 
     XCTAssertEqual(snapshot.refName, "origin/main")
     XCTAssertEqual(snapshot.repositoryPath, "content/posts/gitlab-remote.md")
-    XCTAssertEqual(snapshot.repositorySHA, remoteCommit)
+    XCTAssertEqual(snapshot.repositorySHA, articleCommit)
+    XCTAssertNotEqual(articleCommit, remoteTip)
     XCTAssertTrue(snapshot.content.contains("title: \"GitLab Remote Article\""))
   }
 
@@ -775,5 +966,22 @@ final class LocalRepositoryServiceTests: XCTestCase {
     var profile = SiteProfile.defaultProfile
     profile.rememberLocalRepositoryRoot(rootURL)
     return (rootURL, profile)
+  }
+}
+
+private final class LocalRepositoryCancellationProbe: @unchecked Sendable {
+  private let lock = NSLock()
+  private let cancelAfterCheck: Int
+  private var checkCount = 0
+
+  init(cancelAfterCheck: Int) {
+    self.cancelAfterCheck = cancelAfterCheck
+  }
+
+  func shouldCancel() -> Bool {
+    lock.lock()
+    defer { lock.unlock() }
+    checkCount += 1
+    return checkCount >= cancelAfterCheck
   }
 }

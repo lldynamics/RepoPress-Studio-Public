@@ -80,4 +80,69 @@ final class MarkdownToolbarCustomizationModelTests: XCTestCase {
 
     XCTAssertEqual(decoded, .defaultConfiguration)
   }
+
+  func testLegacyToolbarIdentifierIsDroppedDuringNormalization() {
+    let legacyJSON = """
+      {
+        "headerItemIDs": ["saveStatus", "editorDisplayMode", "aiChat", "preparePublish"],
+        "formattingItemIDs": ["editorDisplayMode", "italic"]
+      }
+      """
+
+    let decoded = MarkdownToolbarConfiguration.decodeFromJSON(legacyJSON)
+
+    XCTAssertEqual(
+      decoded.headerItemIDs,
+      [.saveStatus, .aiChat, .preparePublish]
+    )
+    XCTAssertEqual(decoded.formattingItemIDs, [.italic])
+    XCTAssertFalse(
+      MarkdownToolbarConfiguration.defaultConfiguration.headerItemIDs.contains(
+        where: { $0.rawValue == "editorDisplayMode" }
+      )
+    )
+  }
+
+  func testAdaptiveHeaderLayoutBuildsOnlyTheVariantThatFits() {
+    let configuration = MarkdownToolbarConfiguration.defaultConfiguration
+    let full = configuration.headerItemIDs
+    let medium = full.filter { $0.collapseOrder <= 6 }
+    let compact = full.filter { $0.collapseOrder <= 3 }
+    let fullWidth = MarkdownEditorToolbarLayoutPlanner.requiredWidth(
+      for: full,
+      showsOverflow: false
+    )
+    let mediumWidth = MarkdownEditorToolbarLayoutPlanner.requiredWidth(
+      for: medium,
+      showsOverflow: true
+    )
+
+    XCTAssertEqual(
+      MarkdownEditorToolbarLayoutPlanner.variant(
+        availableWidth: fullWidth,
+        fullItemIDs: full,
+        mediumItemIDs: medium,
+        compactItemIDs: compact
+      ),
+      .full
+    )
+    XCTAssertEqual(
+      MarkdownEditorToolbarLayoutPlanner.variant(
+        availableWidth: fullWidth - 1,
+        fullItemIDs: full,
+        mediumItemIDs: medium,
+        compactItemIDs: compact
+      ),
+      .medium
+    )
+    XCTAssertEqual(
+      MarkdownEditorToolbarLayoutPlanner.variant(
+        availableWidth: mediumWidth - 1,
+        fullItemIDs: full,
+        mediumItemIDs: medium,
+        compactItemIDs: compact
+      ),
+      .compact
+    )
+  }
 }

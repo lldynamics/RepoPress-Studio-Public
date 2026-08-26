@@ -31,6 +31,7 @@ extension SiteKind {
     case .zola: "display.site-kind.zola"
     case .astro: "display.site-kind.astro"
     case .hugo: "display.site-kind.hugo"
+    case .vitePress: "display.site-kind.vitepress"
     case .hexo: "display.site-kind.hexo"
     case .jekyll: "display.site-kind.jekyll"
     }
@@ -41,6 +42,7 @@ extension SiteKind {
     case .zola: "Zola"
     case .astro: "Astro"
     case .hugo: "Hugo"
+    case .vitePress: "VitePress"
     case .hexo: "Hexo"
     case .jekyll: "Jekyll"
     }

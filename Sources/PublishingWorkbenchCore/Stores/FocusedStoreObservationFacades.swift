@@ -1,6 +1,122 @@
 import Combine
 import Foundation
 
+/// A draft-scoped live projection for the Markdown editor and its Inspector
+/// consumers. It observes only the tracked draft's buffer and selection;
+/// unrelated drafts and broad PublishingStore mutations stay outside the
+/// observation boundary.
+@MainActor
+public final class WorkbenchMarkdownEditorLiveContextFeatureFacade: ObservableObject {
+  private struct Projection: Equatable {
+    let bodyMarkdown: String
+    let bodyRevision: UInt64
+    let activeEditorSelection: ActiveEditorSelection?
+    let validatedSelectionRange: NSRange?
+  }
+
+  private unowned let store: WorkbenchStore
+  private var trackedDraftID: UUID
+  private var lastProjection: Projection
+  private var cancellables = Set<AnyCancellable>()
+
+  public init(store: WorkbenchStore, draftID: UUID) {
+    self.store = store
+    trackedDraftID = draftID
+    lastProjection = Self.projection(for: draftID, in: store)
+
+    store.publishingStore.draftBodyEditorBufferDidChange
+      .sink { [weak self] changedDraftID in
+        guard let self, self.trackedDraftID == changedDraftID else { return }
+        self.publishProjectionIfChanged()
+      }
+      .store(in: &cancellables)
+
+    store.publishingStore.activeEditorSelectionDidChange
+      .sink { [weak self] changedDraftID in
+        guard let self, self.trackedDraftID == changedDraftID else { return }
+        self.publishProjectionIfChanged()
+      }
+      .store(in: &cancellables)
+  }
+
+  public var bodyMarkdown: String {
+    currentProjection.bodyMarkdown
+  }
+
+  public var bodyRevision: UInt64 {
+    currentProjection.bodyRevision
+  }
+
+  /// The raw active selection for the tracked draft. Consumers that need a
+  /// text range should use `validatedSelectionRange` instead.
+  public var activeEditorSelection: ActiveEditorSelection? {
+    currentProjection.activeEditorSelection
+  }
+
+  /// A range is exposed only when its UTF-16 count and selected text still
+  /// match the live editor buffer. A zero-length caret remains valid.
+  public var validatedSelectionRange: NSRange? {
+    currentProjection.validatedSelectionRange
+  }
+
+  public func trackDraft(_ draftID: UUID) {
+    guard trackedDraftID != draftID else { return }
+    trackedDraftID = draftID
+    lastProjection = Self.projection(for: draftID, in: store)
+    objectWillChange.send()
+  }
+
+  private var currentProjection: Projection {
+    Self.projection(for: trackedDraftID, in: store)
+  }
+
+  private func publishProjectionIfChanged() {
+    let projection = currentProjection
+    guard projection != lastProjection else { return }
+    lastProjection = projection
+    objectWillChange.send()
+  }
+
+  private static func projection(for draftID: UUID, in store: WorkbenchStore) -> Projection {
+    let buffer = store.draftBodyEditorBuffer(for: draftID)
+    let selection = store.activeEditorSelection?.draftID == draftID
+      ? store.activeEditorSelection
+      : nil
+    let validatedRange: NSRange?
+    if let selection {
+      validatedRange = Self.validatedRange(for: selection, in: buffer.bodyMarkdown)
+    } else {
+      validatedRange = nil
+    }
+    return Projection(
+      bodyMarkdown: buffer.bodyMarkdown,
+      bodyRevision: buffer.revision,
+      activeEditorSelection: selection,
+      validatedSelectionRange: validatedRange
+    )
+  }
+
+  private static func validatedRange(
+    for selection: ActiveEditorSelection,
+    in bodyMarkdown: String
+  ) -> NSRange? {
+    let source = bodyMarkdown as NSString
+    let range = selection.range
+    guard selection.bodyUTF16Count == source.length,
+      range.location >= 0,
+      range.length >= 0,
+      range.location <= source.length,
+      range.length <= source.length - range.location
+    else {
+      return nil
+    }
+    guard range.length == 0 || source.substring(with: range) == selection.selectedText else {
+      return nil
+    }
+    return range
+  }
+}
+
 /// Observation boundary for related-content recommendations. Import progress,
 /// search updates and unrelated document details do not invalidate this section.
 @MainActor

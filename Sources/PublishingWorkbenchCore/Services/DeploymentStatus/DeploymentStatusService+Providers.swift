@@ -183,11 +183,17 @@ extension DeploymentStatusService {
           message: CoreL10n.text("没有找到最近的 Actions 运行记录。")
         )
       }
+      let logExcerpt = await githubActionLogExcerpt(
+        profile: profile,
+        token: token,
+        run: run
+      )
       return DeploymentStatusSignal(
         level: githubActionLevel(status: run.status, conclusion: run.conclusion),
         title: run.name?.nilIfEmpty ?? "GitHub Actions",
         message: [run.status, run.conclusion].compactMap { $0?.nilIfEmpty }.joined(separator: " / "),
-        urlText: run.htmlURL
+        urlText: run.htmlURL,
+        logExcerpt: logExcerpt
       )
     } catch {
       return DeploymentStatusSignal(
@@ -196,6 +202,137 @@ extension DeploymentStatusService {
         message: CoreL10n.format("读取 Actions 状态失败：%@", error.localizedDescription)
       )
     }
+  }
+
+  /// Fetches the structured job/annotation details for a matching workflow
+  /// run. Every log request is best-effort so a provider log outage cannot
+  /// replace the already-known Actions status.
+  func githubActionLogExcerpt(
+    profile: SiteProfile,
+    token: String,
+    run: GitHubActionRunStatusResponse
+  ) async -> [DeploymentLogEntry] {
+    guard let runID = run.id else {
+      return []
+    }
+
+    let jobs: GitHubActionsJobsResponse
+    do {
+      jobs = try await send(
+        githubRequest(
+          profile: profile,
+          path: "/repos/\(encodedPathComponent(profile.repoOwner))/\(encodedPathComponent(profile.repoName))/actions/runs/\(runID)/jobs",
+          token: token,
+          queryItems: [URLQueryItem(name: "per_page", value: "100")]
+        )
+      )
+    } catch {
+      return []
+    }
+
+    var entries: [DeploymentLogEntry] = []
+    for job in jobs.jobs {
+      let jobName = job.name?.nilIfEmpty ?? "GitHub Actions Job"
+      if let steps = job.steps {
+        for step in steps {
+          let conclusion = step.conclusion?.nilIfEmpty ?? step.status?.nilIfEmpty
+          guard let conclusion,
+                conclusion.lowercased() != "success",
+                conclusion.lowercased() != "completed" else {
+            continue
+          }
+          let stepName = step.name?.nilIfEmpty ?? "未知步骤"
+          if let entry = DeploymentLogExcerptPolicy.entry(
+            level: githubLogLevel(conclusion: conclusion),
+            source: "GitHub Actions · \(jobName)",
+            message: "步骤 \(stepName)：\(conclusion)",
+            stepName: stepName
+          ) {
+            entries.append(entry)
+          }
+        }
+      }
+
+      guard githubJobNeedsAnnotations(job),
+            let checkRunID = githubCheckRunID(from: job.checkRunURL) else {
+        continue
+      }
+      do {
+        let annotations: [GitHubCheckRunAnnotationResponse] = try await send(
+          githubRequest(
+            profile: profile,
+            path: "/repos/\(encodedPathComponent(profile.repoOwner))/\(encodedPathComponent(profile.repoName))/check-runs/\(checkRunID)/annotations",
+            token: token,
+            queryItems: [URLQueryItem(name: "per_page", value: "50")]
+          )
+        )
+        entries.append(contentsOf: annotations.compactMap(githubLogEntry))
+      } catch {
+        // Keep job-step evidence even when the optional annotations endpoint
+        // is unavailable or is not enabled for this token.
+      }
+    }
+    return DeploymentLogExcerptPolicy.boundedEntries(entries)
+  }
+
+  func githubJobNeedsAnnotations(_ job: GitHubActionJobStatusResponse) -> Bool {
+    switch job.conclusion?.lowercased() {
+    case "failure", "failed", "timed_out", "cancelled":
+      return true
+    default:
+      return false
+    }
+  }
+
+  func githubCheckRunID(from urlText: String?) -> String? {
+    guard let urlText = urlText?.trimmedForPublishing.nilIfEmpty,
+          let url = URL(string: urlText) else {
+      return nil
+    }
+    let components = url.pathComponents
+    guard let index = components.lastIndex(of: "check-runs"),
+          components.indices.contains(index + 1) else {
+      return nil
+    }
+    let value = components[index + 1]
+    guard value.allSatisfy(\.isNumber) else {
+      return nil
+    }
+    return value
+  }
+
+  func githubLogLevel(conclusion: String) -> DeploymentLogLevel {
+    switch conclusion.lowercased() {
+    case "cancelled", "skipped", "neutral":
+      return .warning
+    default:
+      return .error
+    }
+  }
+
+  func githubLogEntry(_ annotation: GitHubCheckRunAnnotationResponse) -> DeploymentLogEntry? {
+    let message = annotation.message?.nilIfEmpty ?? annotation.rawDetails?.nilIfEmpty ?? annotation.title
+    guard let message else {
+      return nil
+    }
+    let level: DeploymentLogLevel
+    switch annotation.annotationLevel?.lowercased() {
+    case "warning":
+      level = .warning
+    case "notice":
+      level = .info
+    default:
+      level = .error
+    }
+    return DeploymentLogExcerptPolicy.entry(
+      level: level,
+      source: "GitHub Actions · Check annotation",
+      message: message,
+      filePath: annotation.path,
+      line: annotation.startLine ?? annotation.endLine,
+      column: annotation.startColumn ?? annotation.endColumn,
+      stepName: annotation.title
+    )
   }
 
   func gitLabPipelineSignal(
@@ -306,10 +443,17 @@ extension DeploymentStatusService {
     token: String
   ) async -> DeploymentStatusSignal {
     do {
+      let targetEnvironment = releaseRecord.map { record in
+        let releaseBranch = record.branchName?.nilIfEmpty
+        let targetBranch = record.targetBranch?.nilIfEmpty ?? profile.branch.nilIfEmpty
+        return releaseBranch != nil && releaseBranch != targetBranch
+          ? "preview"
+          : "production"
+      } ?? "production"
       var queryItems = [
         URLQueryItem(name: "projectId", value: projectID),
         URLQueryItem(name: "limit", value: "1"),
-        URLQueryItem(name: "target", value: "production"),
+        URLQueryItem(name: "target", value: targetEnvironment),
       ]
       if let teamID = profile.deploymentAccountID?.trimmedForPublishing.nilIfEmpty {
         queryItems.append(URLQueryItem(name: "teamId", value: teamID))
@@ -355,13 +499,26 @@ extension DeploymentStatusService {
           urlText: urlText
         )
       }
+      let level = vercelDeploymentLevel(status)
+      let logExcerpt: [DeploymentLogEntry]
+      if level == .failed || level == .running,
+         let deploymentID = deployment.deploymentIdentifier {
+        logExcerpt = await vercelDeploymentLogExcerpt(
+          deploymentID: deploymentID,
+          profile: profile,
+          token: token
+        )
+      } else {
+        logExcerpt = []
+      }
       return DeploymentStatusSignal(
-        level: vercelDeploymentLevel(status),
+        level: level,
         title: deployment.name?.nilIfEmpty ?? "Vercel Deployment",
         message: messageParts.isEmpty
           ? CoreL10n.text("已读取最近一次 Vercel 部署。")
           : messageParts.joined(separator: " · "),
-        urlText: urlText
+        urlText: urlText,
+        logExcerpt: logExcerpt
       )
     } catch {
       return DeploymentStatusSignal(
@@ -369,6 +526,32 @@ extension DeploymentStatusService {
         title: "Vercel Deployment",
         message: CoreL10n.format("读取 Vercel 部署状态失败：%@", error.localizedDescription)
       )
+    }
+  }
+
+  func vercelDeploymentLogExcerpt(
+    deploymentID: String,
+    profile: SiteProfile,
+    token: String
+  ) async -> [DeploymentLogEntry] {
+    do {
+      var queryItems = [
+        URLQueryItem(name: "direction", value: "backward"),
+        URLQueryItem(name: "follow", value: "0"),
+        URLQueryItem(name: "limit", value: "100"),
+      ]
+      if let teamID = profile.deploymentAccountID?.trimmedForPublishing.nilIfEmpty {
+        queryItems.append(URLQueryItem(name: "teamId", value: teamID))
+      }
+      let request = try vercelRequest(
+        path: "/v3/deployments/\(encodedPathComponent(deploymentID))/events",
+        token: token,
+        queryItems: queryItems
+      )
+      let data = try await sendData(request)
+      return VercelDeploymentLogParser.parse(data: data)
+    } catch {
+      return []
     }
   }
 

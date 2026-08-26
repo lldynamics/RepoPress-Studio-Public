@@ -182,7 +182,9 @@ public final class DeploymentStore: ObservableObject {
     let activeRecords = activeProfileReleaseRecords(store: store)
     return releaseLedgerService.ledger(
       releaseRecords: activeRecords,
-      deploymentStatusSnapshots: activeProfileDeploymentStatusSnapshots(for: activeRecords)
+      deploymentStatusSnapshots: activeProfileDeploymentStatusSnapshots(for: activeRecords),
+      repositoryHistory: store.localRepositoryReleaseHistory,
+      repositoryProfile: store.activeProfile
     )
   }
 

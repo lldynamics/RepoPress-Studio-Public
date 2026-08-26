@@ -2,12 +2,7 @@ import PublishingWorkbenchCore
 import SwiftUI
 
 struct MacMarkdownFormattingToolbar: View {
-  let characterCount: Int
-  let hanCharacterCount: Int
-  let wordCount: Int
-  let writingUnitCount: Int
-  let lineCount: Int
-  let readingMinutes: Int
+  @ObservedObject var statisticsState: MarkdownComposerStatisticsState
   let cursorPosition: MarkdownCursorPosition?
   let fenceMatch: MarkdownFenceMatch?
   let completion: MarkdownCompletionContext?
@@ -36,6 +31,13 @@ struct MacMarkdownFormattingToolbar: View {
   @AppStorage("workspace.editorTargetWordCount") private var targetWordCount: Int = 0
   @State private var isStatsPopoverPresented = false
   @EnvironmentObject private var zenModeController: ZenModeController
+
+  private var characterCount: Int { statisticsState.value.characterCount }
+  private var hanCharacterCount: Int { statisticsState.value.hanCharacterCount }
+  private var wordCount: Int { statisticsState.value.wordCount }
+  private var writingUnitCount: Int { statisticsState.value.writingUnitCount }
+  private var lineCount: Int { statisticsState.value.lineCount }
+  private var readingMinutes: Int { statisticsState.value.readingMinutes }
 
   private var toolbarConfiguration: MarkdownToolbarConfiguration {
     MarkdownToolbarConfiguration.decodeFromJSON(customToolbarConfigRawValue)

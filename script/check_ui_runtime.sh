@@ -3,11 +3,14 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 APP_NAME="PersonalSitePublisherMac"
-APP_BUNDLE="$ROOT_DIR/dist/$APP_NAME.app"
+APP_BUNDLE_NAME="RepoPress Studio"
+APP_BUNDLE="$ROOT_DIR/dist/$APP_BUNDLE_NAME.app"
 INFO_PLIST="$APP_BUNDLE/Contents/Info.plist"
 APP_BINARY="$APP_BUNDLE/Contents/MacOS/$APP_NAME"
 APP_RESOURCES="$APP_BUNDLE/Contents/Resources"
-CORE_RESOURCE_BUNDLE="$APP_RESOURCES/${APP_NAME}_PublishingWorkbenchCore.bundle"
+CORE_RESOURCE_BUNDLE="$APP_RESOURCES/${APP_NAME}_PublishingCoreSupport.bundle"
+TREE_SITTER_MARKDOWN_BUNDLE="$APP_RESOURCES/TreeSitterMarkdown_TreeSitterMarkdown.bundle"
+TREE_SITTER_MARKDOWN_INLINE_BUNDLE="$APP_RESOURCES/TreeSitterMarkdown_TreeSitterMarkdownInline.bundle"
 MODE="package"
 
 fail() {
@@ -36,6 +39,10 @@ bash "$ROOT_DIR/script/build_and_run.sh" "${build_arguments[@]}" >/dev/null
 [[ -f "$APP_RESOURCES/en.lproj/Localizable.strings" ]] || fail "app English localization is missing"
 [[ -f "$APP_RESOURCES/zh-Hans.lproj/Localizable.strings" ]] || fail "app Simplified Chinese localization is missing"
 [[ -d "$CORE_RESOURCE_BUNDLE" ]] || fail "core SwiftPM resource bundle is missing"
+[[ -f "$TREE_SITTER_MARKDOWN_BUNDLE/queries/highlights.scm" ]] \
+  || fail "Tree-sitter Markdown highlight queries are missing"
+[[ -f "$TREE_SITTER_MARKDOWN_INLINE_BUNDLE/queries/highlights.scm" ]] \
+  || fail "Tree-sitter Markdown inline highlight queries are missing"
 plutil -lint "$INFO_PLIST" >/dev/null || fail "Info.plist is invalid"
 
 bundle_id="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$INFO_PLIST")"

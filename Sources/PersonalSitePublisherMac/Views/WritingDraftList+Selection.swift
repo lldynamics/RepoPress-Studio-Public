@@ -29,7 +29,7 @@ extension WritingDraftColumn {
   }
 
   var selectedDraftForDeletion: ArticleDraft? {
-    guard let selectedDraftID = store.selectedDraftID else {
+    guard let selectedDraftID else {
       return nil
     }
     return visibleDraftSnapshot.first { $0.id == selectedDraftID }
@@ -136,15 +136,15 @@ extension WritingDraftColumn {
     let newlySelectedID = newSelection.subtracting(previousSelection).first
     let primaryID =
       newlySelectedID
-      ?? store.selectedDraftID.flatMap { newSelection.contains($0) ? $0 : nil }
+      ?? selectedDraftID.flatMap { newSelection.contains($0) ? $0 : nil }
       ?? newSelection.first
-    if store.selectedDraftID != primaryID {
-      store.selectDraft(primaryID)
+    if selectedDraftID != primaryID {
+      onSelectDraft(primaryID)
     }
   }
 
-  func synchronizeDraftSelectionFromStore() {
-    guard let selectedDraftID = store.selectedDraftID else {
+  func synchronizeDraftSelectionFromWindow() {
+    guard let selectedDraftID else {
       selectedDraftIDs = []
       return
     }
@@ -156,7 +156,7 @@ extension WritingDraftColumn {
   func synchronizeDraftSelection(with drafts: [ArticleDraft]) {
     let availableIDs = Set(drafts.map(\.id))
     selectedDraftIDs.formIntersection(availableIDs)
-    synchronizeDraftSelectionFromStore()
+    synchronizeDraftSelectionFromWindow()
   }
 
   func transferDraftIDs(for draft: ArticleDraft) -> [UUID] {
@@ -238,25 +238,25 @@ extension WritingDraftColumn {
       return
     }
 
-    guard let selectedDraftID = store.selectedDraftID,
+    guard let selectedDraftID,
       let currentIndex = filteredDrafts.firstIndex(where: { $0.id == selectedDraftID })
     else {
       let targetIndex = offset >= 0 ? 0 : (filteredDrafts.count - 1)
-      store.selectDraft(filteredDrafts[targetIndex].id)
+      onSelectDraft(filteredDrafts[targetIndex].id)
       return
     }
 
     let targetIndex = currentIndex + offset
     if targetIndex < 0 {
       if let lastDraft = filteredDrafts.last {
-        store.selectDraft(lastDraft.id)
+        onSelectDraft(lastDraft.id)
       }
     } else if targetIndex >= filteredDrafts.count {
       if let firstDraft = filteredDrafts.first {
-        store.selectDraft(firstDraft.id)
+        onSelectDraft(firstDraft.id)
       }
     } else {
-      store.selectDraft(filteredDrafts[targetIndex].id)
+      onSelectDraft(filteredDrafts[targetIndex].id)
     }
   }
 }

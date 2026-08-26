@@ -1,25 +1,10 @@
 import Foundation
+import PublishingAICore
 import XCTest
 
 @testable import PublishingWorkbenchCore
 
 final class AIChatStreamRecoveryTests: XCTestCase {
-  func testReconcilerOnlyRemovesProvenSuffixOverlap() {
-    var reconciler = AIChatStreamContinuationReconciler(
-      alreadyYieldedText: "A base",
-      overlapProbeCharacterCount: 8_192
-    )
-    XCTAssertEqual(reconciler.reconcile("A "), "")
-    XCTAssertEqual(reconciler.reconcile("base + new"), " + new")
-
-    var commonWord = AIChatStreamContinuationReconciler(
-      alreadyYieldedText: "prefix word appears earlier, but ends here",
-      overlapProbeCharacterCount: 8_192
-    )
-    XCTAssertEqual(commonWord.reconcile("word"), "")
-    XCTAssertEqual(commonWord.finish(), "word")
-  }
-
   func testPlainTextInterruptionRecoversWithTwoPOSTsWithoutDuplicateText() async throws {
     let transport = RecoveryStreamingTransport(attempts: [
       .init(

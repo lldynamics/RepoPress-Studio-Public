@@ -477,43 +477,6 @@ final class AIChatCompletionClientTests: XCTestCase {
     XCTAssertEqual(result.tokenUsage?.totalTokens, 28)
   }
 
-  func testDecodesStringArrayContent() async throws {
-    let transport = RecordingAIChatTransport(
-      data: responseData(content: #"{"role":"assistant","content":["A","B"]}"#),
-      statusCode: 200
-    )
-    let client = AIChatCompletionClient(transport: transport)
-
-    let result = try await client.complete(
-      request: AIChatCompletionRequest(model: "model", messages: []),
-      config: AIProviderConfig(
-        preset: .local, baseURL: "http://127.0.0.1:11434/v1", model: "model", requiresAPIKey: false),
-      apiKey: nil
-    )
-
-    XCTAssertEqual(result.content, "A\nB")
-  }
-
-  func testDecodesTextPartContent() async throws {
-    let transport = RecordingAIChatTransport(
-      data: responseData(
-        content:
-          #"{"role":"assistant","content":[{"type":"text","text":"First"},{"type":"text","text":"Second"}]}"#
-      ),
-      statusCode: 200
-    )
-    let client = AIChatCompletionClient(transport: transport)
-
-    let result = try await client.complete(
-      request: AIChatCompletionRequest(model: "model", messages: []),
-      config: AIProviderConfig(
-        preset: .local, baseURL: "http://127.0.0.1:11434/v1", model: "model", requiresAPIKey: false),
-      apiKey: nil
-    )
-
-    XCTAssertEqual(result.content, "First\nSecond")
-  }
-
   func testDecodesModelAndTokenUsage() async throws {
     let transport = RecordingAIChatTransport(
       data: responseData(

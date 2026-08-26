@@ -204,6 +204,12 @@ struct DraftListImageSummaryRefreshInput: Hashable {
 struct WritingDraftColumn: View {
   let store: WorkbenchStore
   let isCompact: Bool
+  /// The draft selected by this window. This is deliberately not derived from
+  /// `WorkbenchStore.selectedDraftID`: the same store can back more than one
+  /// workspace window.
+  let selectedDraftID: UUID?
+  let onSelectDraft: (UUID?) -> Void
+  let onFocusDraft: (UUID, WorkspaceSection) -> Void
   @StateObject var draftListState: WorkbenchDraftListFeatureFacade
   @Environment(\.openSettings) var openSettings
   @AppStorage("settingsRequestedTabID") var requestedSettingsTabID = ""
@@ -240,9 +246,18 @@ struct WritingDraftColumn: View {
   @EnvironmentObject private var sceneCommandRouter: WorkspaceSceneCommandRouter
   @State private var sceneCommandOwnerID = UUID()
 
-  init(store: WorkbenchStore, isCompact: Bool) {
+  init(
+    store: WorkbenchStore,
+    isCompact: Bool,
+    selectedDraftID: UUID?,
+    onSelectDraft: @escaping (UUID?) -> Void,
+    onFocusDraft: @escaping (UUID, WorkspaceSection) -> Void
+  ) {
     self.store = store
     self.isCompact = isCompact
+    self.selectedDraftID = selectedDraftID
+    self.onSelectDraft = onSelectDraft
+    self.onFocusDraft = onFocusDraft
     _draftListState = StateObject(
       wrappedValue: WorkbenchDraftListFeatureFacade(store: store)
     )

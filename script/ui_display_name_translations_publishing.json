@@ -67,18 +67,6 @@
     "en": "Manual Snapshot",
     "zh-Hans": "手动快照"
   },
-  "display.editor-display-mode.edit": {
-    "en": "Edit",
-    "zh-Hans": "编辑"
-  },
-  "display.editor-display-mode.preview": {
-    "en": "Preview",
-    "zh-Hans": "预览"
-  },
-  "display.editor-display-mode.split": {
-    "en": "Split View",
-    "zh-Hans": "分屏"
-  },
   "display.local-publish-action-readiness.blocked": {
     "en": "Blocked",
     "zh-Hans": "已阻塞"
@@ -262,6 +250,10 @@
   "display.remote-repository-publish-mode.direct-commit": {
     "en": "Remote Direct Commit",
     "zh-Hans": "线上直接提交"
+  },
+  "display.remote-repository-publish-mode.preview-branch": {
+    "en": "Draft Preview Branch",
+    "zh-Hans": "草稿预览分支"
   },
   "display.remote-repository-publish-mode.review-request": {
     "en": "Remote PR/MR",

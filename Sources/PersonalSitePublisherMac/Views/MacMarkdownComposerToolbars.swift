@@ -1,13 +1,52 @@
 import PublishingWorkbenchCore
 import SwiftUI
 
+enum MarkdownEditorToolbarLayoutVariant: Equatable {
+  case full
+  case medium
+  case compact
+}
+
+enum MarkdownEditorToolbarLayoutPlanner {
+  private static let controlWidth: CGFloat = 30
+  private static let itemSpacing: CGFloat = 5
+  private static let groupDividerWidth: CGFloat = 11
+
+  static func variant(
+    availableWidth: CGFloat,
+    fullItemIDs: [MarkdownToolbarItemID],
+    mediumItemIDs: [MarkdownToolbarItemID],
+    compactItemIDs: [MarkdownToolbarItemID]
+  ) -> MarkdownEditorToolbarLayoutVariant {
+    if availableWidth >= requiredWidth(for: fullItemIDs, showsOverflow: false) {
+      return .full
+    }
+    if availableWidth >= requiredWidth(for: mediumItemIDs, showsOverflow: true) {
+      return .medium
+    }
+    return .compact
+  }
+
+  static func requiredWidth(
+    for itemIDs: [MarkdownToolbarItemID],
+    showsOverflow: Bool
+  ) -> CGFloat {
+    let itemCount = itemIDs.count + (showsOverflow ? 1 : 0)
+    guard itemCount > 0 else { return 0 }
+    let containsGroupDivider = itemIDs.contains(where: \.isAIGroupItem)
+    let dividerCount = containsGroupDivider ? 1 : 0
+    let childCount = itemCount + dividerCount
+    return CGFloat(itemCount) * controlWidth
+      + CGFloat(max(0, childCount - 1)) * itemSpacing
+      + CGFloat(dividerCount) * groupDividerWidth
+  }
+}
+
 struct MacMarkdownEditorToolbar: View {
   @Binding var title: String
   let store: WorkbenchStore
+  let draftID: UUID
   let markdownPath: String
-  let lastSaveStatus: String
-  let hasUnsavedChanges: Bool
-  let editorDisplayMode: EditorDisplayMode
   let isSelectionAIActionRunning: Bool
   let canOpenAIChat: Bool
   let aiChatUnavailableReason: String?
@@ -21,11 +60,9 @@ struct MacMarkdownEditorToolbar: View {
   @State private var selectedPublishAssets = AIPublishingAssetKind.defaultSelection
   @AppStorage("workspace.customToolbarConfig") private var customToolbarConfigRawValue = ""
   @State private var isCustomizationSheetPresented = false
-  @Namespace private var editorModeNamespace
 
   // Keep the chat symbol in one place. The previous multi-bubble sparkle
-  // symbol is not available in the macOS 14 SF Symbols set, and ViewThatFits
-  // measures each toolbar candidate before selecting the one that fits.
+  // symbol is not available in the macOS 14 SF Symbols set.
   private static let aiChatSystemImage = "bubble.left"
 
   private var currentToolbarConfig: MarkdownToolbarConfiguration {
@@ -46,10 +83,8 @@ struct MacMarkdownEditorToolbar: View {
   init(
     title: Binding<String>,
     store: WorkbenchStore,
+    draftID: UUID,
     markdownPath: String,
-    lastSaveStatus: String,
-    hasUnsavedChanges: Bool,
-    editorDisplayMode: EditorDisplayMode,
     isSelectionAIActionRunning: Bool,
     canOpenAIChat: Bool,
     aiChatUnavailableReason: String?,
@@ -60,10 +95,8 @@ struct MacMarkdownEditorToolbar: View {
   ) {
     _title = title
     self.store = store
+    self.draftID = draftID
     self.markdownPath = markdownPath
-    self.lastSaveStatus = lastSaveStatus
-    self.hasUnsavedChanges = hasUnsavedChanges
-    self.editorDisplayMode = editorDisplayMode
     self.isSelectionAIActionRunning = isSelectionAIActionRunning
     self.canOpenAIChat = canOpenAIChat
     self.aiChatUnavailableReason = aiChatUnavailableReason
@@ -125,28 +158,12 @@ struct MacMarkdownEditorToolbar: View {
   }
 
   private var titleArea: some View {
-    VStack(alignment: .leading, spacing: 2) {
-      TextField(
-        text: $title,
-        prompt: Text("未命名文章").italic().foregroundColor(.secondary)
-      ) {
-        EmptyView()
-      }
-      .textFieldStyle(.plain)
-      .font(.headline)
-      .foregroundStyle(hasUnsavedChanges ? WorkbenchTheme.warning : Color.primary)
-      .animation(.easeInOut(duration: 0.2), value: hasUnsavedChanges)
-      .lineLimit(1)
-      .help(title.nilIfEmpty ?? String(localized: "未命名文章"))
-      .accessibilityLabel("文章标题")
-      .accessibilityValue(title.nilIfEmpty ?? String(localized: "未命名文章"))
-
-      InteractiveBreadcrumbView(
-        markdownPath: markdownPath,
-        fileURL: nil
-      )
-    }
-    .frame(minWidth: 220, idealWidth: 320, maxWidth: 460, alignment: .leading)
+    MacMarkdownEditorTitleArea(
+      title: $title,
+      store: store,
+      draftID: draftID,
+      markdownPath: markdownPath
+    )
   }
 
   private var enabledHeaderItemIDs: [MarkdownToolbarItemID] {
@@ -164,20 +181,39 @@ struct MacMarkdownEditorToolbar: View {
   }
 
   private var configuredIconToolbarControls: some View {
-    ViewThatFits(in: .horizontal) {
-      // 1. 完整展开模式
-      toolbarItemRow(ids: enabledHeaderItemIDs, showsOverflow: false)
-
-      // 2. 中度折叠模式
-      toolbarItemRow(
-        ids: mediumHeaderItemIDs, showsOverflow: true, reservedIDs: mediumHeaderItemIDs)
-
-      // 3. 紧凑折叠模式
-      toolbarItemRow(
-        ids: compactHeaderItemIDs, showsOverflow: true, reservedIDs: compactHeaderItemIDs)
+    GeometryReader { geometry in
+      let variant = MarkdownEditorToolbarLayoutPlanner.variant(
+        availableWidth: geometry.size.width,
+        fullItemIDs: enabledHeaderItemIDs,
+        mediumItemIDs: mediumHeaderItemIDs,
+        compactItemIDs: compactHeaderItemIDs
+      )
+      Group {
+        switch variant {
+        case .full:
+          toolbarItemRow(ids: enabledHeaderItemIDs, showsOverflow: false)
+        case .medium:
+          toolbarItemRow(
+            ids: mediumHeaderItemIDs,
+            showsOverflow: true,
+            reservedIDs: mediumHeaderItemIDs
+          )
+        case .compact:
+          toolbarItemRow(
+            ids: compactHeaderItemIDs,
+            showsOverflow: true,
+            reservedIDs: compactHeaderItemIDs
+          )
+        }
+      }
+      .frame(
+        maxWidth: .infinity,
+        maxHeight: .infinity,
+        alignment: .trailing
+      )
     }
     .frame(maxWidth: .infinity, alignment: .trailing)
-    .frame(minHeight: 34)
+    .frame(minHeight: 34, idealHeight: 34, maxHeight: 34)
     .accessibilityElement(children: .contain)
     .accessibilityLabel("写作工具栏")
     .accessibilityIdentifier("markdown-editor-toolbar")
@@ -208,9 +244,7 @@ struct MacMarkdownEditorToolbar: View {
   private func headerItem(_ item: MarkdownToolbarItemID, showsTitle: Bool) -> some View {
     switch item {
     case .saveStatus:
-      iconSaveStatus
-    case .editorDisplayMode:
-      editorDisplayModeControl(showsTitle: showsTitle)
+      MacMarkdownEditorSaveStatusIcon(store: store, draftID: draftID)
     case .writingToolDensity:
       writingToolDensityControl(showsTitle: showsTitle)
     case .findReplace:
@@ -324,26 +358,6 @@ struct MacMarkdownEditorToolbar: View {
     .help("AI 常用操作")
     .accessibilityLabel("AI 常用操作")
     .accessibilityValue(isSelectionAIActionRunning ? "AI 处理中" : "")
-  }
-
-  private var iconSaveStatus: some View {
-    Group {
-      if hasUnsavedChanges {
-        Circle()
-          .fill(WorkbenchTheme.warning)
-          .frame(width: 7, height: 7)
-          .shadow(color: WorkbenchTheme.warning.opacity(0.6), radius: 3)
-      } else {
-        Image(systemName: "checkmark.circle.fill")
-          .font(.caption)
-          .foregroundStyle(WorkbenchTheme.success)
-      }
-    }
-    .frame(minWidth: 18, minHeight: 30)
-    .animation(.spring(response: 0.35, dampingFraction: 0.7), value: hasUnsavedChanges)
-    .help(lastSaveStatus)
-    .accessibilityLabel("保存状态")
-    .accessibilityValue(lastSaveStatus)
   }
 
   private func automaticInlineAICompletionButton(showsTitle: Bool) -> some View {
@@ -677,54 +691,6 @@ struct MacMarkdownEditorToolbar: View {
     )
   }
 
-  private func editorDisplayModeControl(showsTitle: Bool) -> some View {
-    HStack(spacing: 2) {
-      ForEach(EditorDisplayMode.allCases) { mode in
-        Button {
-          withAnimation(.spring(response: 0.25, dampingFraction: 0.75)) {
-            actions.onSetEditorDisplayMode(mode)
-          }
-        } label: {
-          editorActionLabel(
-            mode.localizedDisplayName,
-            systemName: mode.systemImage,
-            showsTitle: showsTitle
-          )
-        }
-        .buttonStyle(.plain)
-        .padding(.horizontal, showsTitle ? 8 : 6)
-        .frame(minWidth: showsTitle ? nil : 30, minHeight: 28)
-        .foregroundStyle(
-          editorDisplayMode == mode ? Color.primary : Color.secondary
-        )
-        .background {
-          if editorDisplayMode == mode {
-            RoundedRectangle(cornerRadius: 6, style: .continuous)
-              .fill(Color(nsColor: .controlBackgroundColor))
-              .overlay {
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                  .strokeBorder(Color.black.opacity(0.06), lineWidth: 0.5)
-              }
-              .matchedGeometryEffect(id: "activeModeSegment", in: editorModeNamespace)
-              .shadow(color: Color.black.opacity(0.10), radius: 1.5, x: 0, y: 0.5)
-          }
-        }
-        .accessibilityLabel(String(localized: "编辑器模式：\(mode.localizedDisplayName)"))
-        .accessibilityValue(
-          editorDisplayMode == mode ? String(localized: "已选择") : String(localized: "未选择")
-        )
-        .accessibilityAddTraits(editorDisplayMode == mode ? .isSelected : [])
-        .help(String(localized: "切换到\(mode.localizedDisplayName)模式"))
-      }
-    }
-    .padding(2)
-    .background(
-      Color.primary.opacity(0.06),
-      in: RoundedRectangle(cornerRadius: 8)
-    )
-    .accessibilityElement(children: .contain)
-  }
-
   @ViewBuilder
   private func editorActionLabel(
     _ title: String,
@@ -783,6 +749,101 @@ struct MacMarkdownEditorToolbar: View {
     }
   }
 }
+
+/// Keeps persistence-state invalidation inside the title area instead of
+/// rebuilding and remeasuring the complete adaptive toolbar.
+private struct MacMarkdownEditorTitleArea: View {
+  @Binding var title: String
+  let draftID: UUID
+  let markdownPath: String
+  @StateObject private var saveStatus: WorkbenchMarkdownEditorSaveStatusFeatureFacade
+
+  init(
+    title: Binding<String>,
+    store: WorkbenchStore,
+    draftID: UUID,
+    markdownPath: String
+  ) {
+    _title = title
+    self.draftID = draftID
+    self.markdownPath = markdownPath
+    _saveStatus = StateObject(
+      wrappedValue: WorkbenchMarkdownEditorSaveStatusFeatureFacade(
+        store: store,
+        draftID: draftID
+      )
+    )
+  }
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 2) {
+      TextField(
+        text: $title,
+        prompt: Text("未命名文章").italic().foregroundColor(.secondary)
+      ) {
+        EmptyView()
+      }
+      .textFieldStyle(.plain)
+      .font(.headline)
+      .foregroundStyle(saveStatus.hasUnsavedChanges ? WorkbenchTheme.warning : Color.primary)
+      .animation(.easeInOut(duration: 0.2), value: saveStatus.hasUnsavedChanges)
+      .lineLimit(1)
+      .help(title.nilIfEmpty ?? String(localized: "未命名文章"))
+      .accessibilityLabel("文章标题")
+      .accessibilityValue(title.nilIfEmpty ?? String(localized: "未命名文章"))
+
+      InteractiveBreadcrumbView(
+        markdownPath: markdownPath,
+        fileURL: nil
+      )
+    }
+    .frame(minWidth: 220, idealWidth: 320, maxWidth: 460, alignment: .leading)
+    .onChange(of: draftID) { _, updatedDraftID in
+      saveStatus.trackDraft(updatedDraftID)
+    }
+  }
+}
+
+/// The status symbol has a fixed footprint, so save transitions repaint only
+/// this leaf and cannot invalidate `ViewThatFits` toolbar measurement.
+private struct MacMarkdownEditorSaveStatusIcon: View {
+  let draftID: UUID
+  @StateObject private var saveStatus: WorkbenchMarkdownEditorSaveStatusFeatureFacade
+
+  init(store: WorkbenchStore, draftID: UUID) {
+    self.draftID = draftID
+    _saveStatus = StateObject(
+      wrappedValue: WorkbenchMarkdownEditorSaveStatusFeatureFacade(
+        store: store,
+        draftID: draftID
+      )
+    )
+  }
+
+  var body: some View {
+    Group {
+      if saveStatus.hasUnsavedChanges {
+        Circle()
+          .fill(WorkbenchTheme.warning)
+          .frame(width: 7, height: 7)
+          .shadow(color: WorkbenchTheme.warning.opacity(0.6), radius: 3)
+      } else {
+        Image(systemName: "checkmark.circle.fill")
+          .font(.caption)
+          .foregroundStyle(WorkbenchTheme.success)
+      }
+    }
+    .frame(width: 18, height: 30)
+    .animation(.spring(response: 0.35, dampingFraction: 0.7), value: saveStatus.hasUnsavedChanges)
+    .help(saveStatus.lastSaveStatus)
+    .accessibilityLabel("保存状态")
+    .accessibilityValue(saveStatus.lastSaveStatus)
+    .onChange(of: draftID) { _, updatedDraftID in
+      saveStatus.trackDraft(updatedDraftID)
+    }
+  }
+}
+
 private struct MarkdownEditorToolbarButtonStyle: ButtonStyle {
   let showsTitle: Bool
   var isSelected = false

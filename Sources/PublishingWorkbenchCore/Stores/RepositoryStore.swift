@@ -1,10 +1,13 @@
 import Combine
 import Foundation
+import PublishingGitCore
 
 private struct RepositoryScanSnapshot: Sendable {
   var report: RepositoryScanReport
   var branches: [RepositoryBranch]
   var recentCommits: [RepositoryCommitInfo]
+  var releaseHistory: RepositoryReleaseHistorySnapshot
+  var mergeConflictSession: RepositoryMergeConflictSession
 }
 
 @MainActor
@@ -15,10 +18,13 @@ public final class RepositoryStore: ObservableObject {
   private let repositorySyncCommandBuilder: RepositorySyncCommandBuilder
 
   @Published public internal(set) var repositoryReport: RepositoryScanReport?
+  @Published public internal(set) var repositoryMergeConflictSession: RepositoryMergeConflictSession?
   @Published public internal(set) var repositoryScanState: RepositoryScanState
   @Published public internal(set) var localGitPublishResult: LocalGitPublishResult?
   @Published public internal(set) var localRepositoryBranches: [RepositoryBranch]
   @Published public internal(set) var localRepositoryRecentCommits: [RepositoryCommitInfo]
+  @Published public internal(set) var localRepositoryReleaseHistory:
+    RepositoryReleaseHistorySnapshot
   @Published public internal(set) var repositoryTokenAvailability: KeychainTokenAvailability
   @Published public internal(set) var remoteRepositoryAccessCheck: RemoteRepositoryAccessCheck?
   @Published public internal(set) var remoteRepositoryAccessCheckByProfileID:
@@ -48,6 +54,7 @@ public final class RepositoryStore: ObservableObject {
   @Published public internal(set) var repositoryAutoSyncStateByProfileID:
     [UUID: RepositoryAutoSyncState]
   private var repositoryReportProfileID: UUID?
+  private var repositoryMergeConflictProfileID: UUID?
   private var repositoryScanProfileID: UUID?
   private var repositoryScanTask: Task<Void, Never>?
   private var repositoryScanWorkTask: Task<RepositoryScanSnapshot?, Never>?
@@ -61,14 +68,19 @@ public final class RepositoryStore: ObservableObject {
 #if DEBUG
   // Test-only barrier for exercising stale-result invalidation without a real Git race.
   var backgroundRepositoryAutoSyncTestHook: (() async -> Void)?
+  // Test-only barrier for proving that remote article imports validate the
+  // active profile after detached snapshot work has completed.
+  var remoteFileSnapshotTestHook: (@Sendable () async -> Void)?
 #endif
 
   init(
     repositoryReport: RepositoryScanReport? = nil,
+    repositoryMergeConflictSession: RepositoryMergeConflictSession? = nil,
     repositoryScanState: RepositoryScanState = .idle,
     localGitPublishResult: LocalGitPublishResult? = nil,
     localRepositoryBranches: [RepositoryBranch] = [],
     localRepositoryRecentCommits: [RepositoryCommitInfo] = [],
+    localRepositoryReleaseHistory: RepositoryReleaseHistorySnapshot = .init(),
     repositoryTokenAvailability: KeychainTokenAvailability = KeychainTokenAvailability(hasToken: false),
     remoteRepositoryAccessCheck: RemoteRepositoryAccessCheck? = nil,
     remoteRepositoryAccessCheckByProfileID: [UUID: RemoteRepositoryAccessCheck] = [:],
@@ -95,10 +107,12 @@ public final class RepositoryStore: ObservableObject {
     self.remoteRepositoryPublishService = remoteRepositoryPublishService
     self.repositorySyncCommandBuilder = repositorySyncCommandBuilder
     self.repositoryReport = repositoryReport
+    self.repositoryMergeConflictSession = repositoryMergeConflictSession
     self.repositoryScanState = repositoryScanState
     self.localGitPublishResult = localGitPublishResult
     self.localRepositoryBranches = localRepositoryBranches
     self.localRepositoryRecentCommits = localRepositoryRecentCommits
+    self.localRepositoryReleaseHistory = localRepositoryReleaseHistory
     self.repositoryTokenAvailability = repositoryTokenAvailability
     self.remoteRepositoryAccessCheckByProfileID = remoteRepositoryAccessCheckByProfileID
     self.remoteRepositoryAccessCheck = activeProfileID.flatMap {
@@ -122,6 +136,7 @@ public final class RepositoryStore: ObservableObject {
     } ?? repositoryAutoSyncState
     self.boundAutomationProfileID = activeProfileID
     repositoryReportProfileID = nil
+    repositoryMergeConflictProfileID = repositoryMergeConflictSession == nil ? nil : activeProfileID
     repositoryScanProfileID = nil
   }
 
@@ -135,6 +150,24 @@ public final class RepositoryStore: ObservableObject {
     }
     return LocalRepositoryIdentity(rootPath: repositoryReport.rootPath) == configuredIdentity
       ? repositoryReport
+      : nil
+  }
+
+  public func repositoryMergeConflictSession(
+    for profile: SiteProfile,
+    store: WorkbenchStore
+  ) -> RepositoryMergeConflictSession? {
+    guard let repositoryMergeConflictSession,
+          let repositoryMergeConflictProfileID,
+          repositoryMergeConflictProfileID == profile.id else {
+      return nil
+    }
+    guard let configuredIdentity = LocalRepositoryIdentity(profile: profile) else {
+      return nil
+    }
+    return LocalRepositoryIdentity(rootPath: repositoryMergeConflictSession.rootPath)
+      == configuredIdentity
+      ? repositoryMergeConflictSession
       : nil
   }
 
@@ -173,14 +206,18 @@ public final class RepositoryStore: ObservableObject {
         }
       )
       guard !Task.isCancelled else { return nil }
+      let mergeConflictSession = repositoryService.mergeConflictSession(profile: profile)
+      guard !Task.isCancelled else { return nil }
       let branches = repositoryService.localBranches(profile: profile)
       guard !Task.isCancelled else { return nil }
-      let recentCommits = repositoryService.recentCommits(profile: profile)
+      let releaseHistory = repositoryService.releaseHistory(profile: profile)
       guard !Task.isCancelled else { return nil }
       return RepositoryScanSnapshot(
         report: report,
         branches: branches,
-        recentCommits: recentCommits
+        recentCommits: releaseHistory.commits,
+        releaseHistory: releaseHistory,
+        mergeConflictSession: mergeConflictSession
       )
     }
     repositoryScanWorkTask = scanWork
@@ -200,9 +237,15 @@ public final class RepositoryStore: ObservableObject {
       }
       repositoryReport = snapshot.report
       repositoryReportProfileID = operation.profileID
+      repositoryMergeConflictSession = snapshot.mergeConflictSession
+      repositoryMergeConflictProfileID = operation.profileID
       localRepositoryBranches = snapshot.branches
       localRepositoryRecentCommits = snapshot.recentCommits
+      localRepositoryReleaseHistory = snapshot.releaseHistory
       repositoryScanState = .finished(report: snapshot.report)
+      store.publishingStore.removeDraftPublishPreviewSnapshots(
+        forProfileID: operation.profileID
+      )
       store.publishingStore.refreshLocalSitePreviewPlan(
         for: store.activeProfile,
         repositoryReport: snapshot.report
@@ -257,6 +300,10 @@ public final class RepositoryStore: ObservableObject {
 
   func replaceRepositoryReport(_ report: RepositoryScanReport?, profileID: UUID?) {
     repositoryReportProfileID = report == nil ? nil : profileID
+    if report == nil {
+      repositoryMergeConflictSession = nil
+      repositoryMergeConflictProfileID = nil
+    }
     repositoryReport = report
   }
 
@@ -654,6 +701,103 @@ public final class RepositoryStore: ObservableObject {
     repositoryService.remoteFileSnapshot(profile: profile, repositoryPath: repositoryPath)
   }
 
+  public func resolveRepositoryMergeConflict(
+    repositoryPath: String,
+    finalContent: String,
+    store: WorkbenchStore
+  ) async throws {
+    let profile = store.activeProfile
+    let operation = LocalRepositoryOperationContext(profile: profile)
+    let repositoryService = repositoryService
+    let outcome = await Task.detached(priority: .userInitiated) {
+      do {
+        try repositoryService.resolveMergeConflict(
+          profile: profile,
+          repositoryPath: repositoryPath,
+          finalContent: finalContent
+        )
+        return Result<Void, RepositoryMergeConflictError>.success(())
+      } catch let error as RepositoryMergeConflictError {
+        return Result<Void, RepositoryMergeConflictError>.failure(error)
+      } catch {
+        return Result<Void, RepositoryMergeConflictError>.failure(
+          .writeFailed(error.localizedDescription)
+        )
+      }
+    }.value
+
+    if case let .failure(error) = outcome {
+      throw error
+    }
+    guard operation.stillMatches(store.activeProfile) else {
+      throw RepositoryMergeConflictError.repositoryChanged
+    }
+    await scanRepositoryAsync(store: store)
+  }
+
+  /// Reads one upstream article snapshot away from the main actor. The
+  /// profile and repository service are value/sendable captures; only the
+  /// result is returned to the actor for parsing and draft mutation.
+  func remoteFileSnapshotAsync(
+    profile: SiteProfile,
+    repositoryPath: String
+  ) async -> RepositoryFileSnapshot? {
+    let repositoryService = repositoryService
+#if DEBUG
+    let testHook = remoteFileSnapshotTestHook
+#endif
+    let work: Task<RepositoryFileSnapshot?, Never> = Task.detached(priority: .utility) {
+#if DEBUG
+      guard !Task.isCancelled else { return nil }
+      if let testHook {
+        await testHook()
+      }
+#endif
+      guard !Task.isCancelled else { return nil }
+      return repositoryService.remoteFileSnapshot(
+        profile: profile,
+        repositoryPath: repositoryPath
+      )
+    }
+    return await withTaskCancellationHandler(operation: {
+      await work.value
+    }, onCancel: {
+      work.cancel()
+    })
+  }
+
+  /// Reads a frozen, already-normalized set of upstream article snapshots
+  /// away from the main actor. The caller owns path filtering and ordering so
+  /// the returned snapshots can be merged against the exact operation input.
+  func remoteFileSnapshotsAsync(
+    profile: SiteProfile,
+    repositoryPaths: [String]
+  ) async -> [RepositoryFileSnapshot] {
+    let repositoryService = repositoryService
+#if DEBUG
+    let testHook = remoteFileSnapshotTestHook
+#endif
+    let work: Task<[RepositoryFileSnapshot], Never> = Task.detached(priority: .utility) {
+#if DEBUG
+      guard !Task.isCancelled else { return [] }
+      if let testHook {
+        await testHook()
+      }
+#endif
+      guard !Task.isCancelled else { return [] }
+      return repositoryService.remoteFileSnapshots(
+        profile: profile,
+        repositoryPaths: repositoryPaths,
+        cancellationCheck: { Task.isCancelled }
+      )
+    }
+    return await withTaskCancellationHandler(operation: {
+      await work.value
+    }, onCancel: {
+      work.cancel()
+    })
+  }
+
   @discardableResult
   public func tickRepositoryAutoSync(store: WorkbenchStore, now: Date = Date()) async -> Bool {
     await tickRepositoryAutoSync(for: store.activeProfileID, store: store, now: now)
@@ -962,12 +1106,10 @@ public final class RepositoryStore: ObservableObject {
         .map { $0.displayPath.normalizedRelativePath() }
         .filter { !locallyChangedPaths.contains($0) }
       let profile = store.activeProfile
-      let repositoryService = repositoryService
-      let snapshots = await Task.detached(priority: .utility) {
-        candidatePaths.compactMap {
-          repositoryService.remoteFileSnapshot(profile: profile, repositoryPath: $0)
-        }
-      }.value
+      let snapshots = await remoteFileSnapshotsAsync(
+        profile: profile,
+        repositoryPaths: candidatePaths
+      )
       guard isCurrentRepositoryAutoSync(generation: generation, operation: operation, store: store) else {
         return false
       }
@@ -1033,6 +1175,9 @@ public final class RepositoryStore: ObservableObject {
       )
       setRemoteRepositoryAccessCheck(nil, for: store.activeProfileID)
       repositoryTokenAvailability = try repositoryTokenAvailability(for: store.activeProfile)
+      store.publishingStore.removeDraftPublishPreviewSnapshots(
+        forProfileID: store.activeProfileID
+      )
       store.setPublishActionMessage(
         CoreL10n.text("仓库访问 Token 已保存到 Keychain。"),
         status: .success
@@ -1054,6 +1199,9 @@ public final class RepositoryStore: ObservableObject {
     } catch {
       repositoryTokenAvailability = KeychainTokenAvailability(accessFailure: error)
     }
+    store.publishingStore.removeDraftPublishPreviewSnapshots(
+      forProfileID: store.activeProfileID
+    )
   }
 
   public func refreshRepositoryTokenAvailability(updatesMessage: Bool, store: WorkbenchStore) {
@@ -1121,6 +1269,7 @@ public final class RepositoryStore: ObservableObject {
       guard remoteRepositoryCheckIsCurrent(operation, store: store) else { return nil }
       setRemoteRepositoryAccessCheck(check, for: profile.id)
       repositoryTokenAvailability = try repositoryTokenAvailability(for: profile)
+      store.publishingStore.removeDraftPublishPreviewSnapshots(forProfileID: profile.id)
       store.setPublishActionMessage(
         check.message,
         status: check.canWrite ? .success : .warning

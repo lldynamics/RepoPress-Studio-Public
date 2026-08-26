@@ -221,8 +221,10 @@ final class AIPublishAuthorizationTests: XCTestCase {
     XCTAssertEqual(result.plan.steps.first?.status, .awaitingConfirmation)
     XCTAssertNil(result.plan.steps.first?.publishAuthorization)
     XCTAssertTrue(result.plan.steps.first?.resultMessage?.contains("重新审阅") == true)
+    XCTAssertEqual(result.record.steps.first?.status, .awaitingConfirmation)
     let requestCount = await fixture.transport.requestCount()
     XCTAssertEqual(requestCount, 0)
+    XCTAssertFalse(fixture.store.isRemoteRepositoryPublishing)
   }
 
   private func assertDraftDriftFailsClosed(

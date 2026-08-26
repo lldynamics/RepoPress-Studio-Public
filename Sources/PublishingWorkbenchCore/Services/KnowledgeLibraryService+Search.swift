@@ -1,4 +1,6 @@
 import Foundation
+import PublishingCoreSupport
+import PublishingKnowledgeCore
 
 private enum KnowledgeSearchTokenSupport {
   static let tokenizer = LocalBPETokenizer(encoding: .o200kBase)

@@ -3,6 +3,17 @@ import PublishingWorkbenchCore
 import SwiftUI
 
 extension MacMarkdownComposerView {
+  var markdownComposerAIAvailabilitySnapshot: MarkdownComposerAIAvailabilitySnapshot {
+    MarkdownComposerAIAvailabilitySnapshot(
+      draft: draft,
+      bodyMarkdown: editorBody,
+      selectedText: selectedText(in: editorBody),
+      isAIEnabled: isAIEnabledForDraft,
+      activeAction: activeSelectionAIAction,
+      isAIActionRunning: editorState.isAIActionRunning
+    )
+  }
+
   var canShowSelectionActions: Bool {
     SelectionActionBarPresentation.shouldShow(
       hasSelectedText: hasSelectedText,

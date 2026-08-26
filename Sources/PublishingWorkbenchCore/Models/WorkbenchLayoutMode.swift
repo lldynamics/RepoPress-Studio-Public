@@ -13,8 +13,6 @@ public enum WorkbenchLayoutMode {
   public static let minimumRSSReaderSplitWidth: CGFloat = 900
   public static let minimumInspectorWorkspaceWidth: CGFloat = 1180
   public static let minimumHTMLSourceInspectorWorkspaceWidth: CGFloat = 1240
-  public static let minimumSplitInspectorWorkspaceWidth: CGFloat = 1580
-  public static let minimumSplitSidebarWorkspaceWidth: CGFloat = 1100
 
   public static func isCompact(width: CGFloat) -> Bool {
     width < expandedWorkspaceWidth
@@ -24,37 +22,17 @@ public enum WorkbenchLayoutMode {
     width < minimumRSSReaderSplitWidth
   }
 
-  public static func allowsInspector(
-    width: CGFloat,
-    editorDisplayMode: EditorDisplayMode? = nil
-  ) -> Bool {
-    let minimumWidth = editorDisplayMode == .split
-      ? minimumSplitInspectorWorkspaceWidth
-      : minimumInspectorWorkspaceWidth
-    return width >= minimumWidth
+  public static func allowsInspector(width: CGFloat) -> Bool {
+    width >= minimumInspectorWorkspaceWidth
   }
 
   /// A compact writing window can still reveal the Inspector on demand by
-  /// temporarily yielding the primary sidebar. Split editing needs the wider
-  /// expanded-workspace floor so both editor panes remain usable.
-  public static func canManuallyRevealInspector(
-    width: CGFloat,
-    editorDisplayMode: EditorDisplayMode
-  ) -> Bool {
-    guard !allowsInspector(width: width, editorDisplayMode: editorDisplayMode) else {
+  /// temporarily yielding the primary sidebar.
+  public static func canManuallyRevealInspector(width: CGFloat) -> Bool {
+    guard !allowsInspector(width: width) else {
       return false
     }
-    let minimumWidth = editorDisplayMode == .split
-      ? minimumInspectorWorkspaceWidth
-      : minimumCompactInspectorWorkspaceWidth
-    return width >= minimumWidth
-  }
-
-  public static func prefersFocusedWriting(
-    width: CGFloat,
-    editorDisplayMode: EditorDisplayMode
-  ) -> Bool {
-    editorDisplayMode == .split && width < minimumSplitSidebarWorkspaceWidth
+    return width >= minimumCompactInspectorWorkspaceWidth
   }
 
   public static func sidebarWidth(

@@ -383,13 +383,13 @@ extension KnowledgeDatabase {
 
   func columnExists(_ column: String, in table: String) throws -> Bool {
     try withLock {
-      let statement = try prepare("PRAGMA table_info(\(table));")
-      defer { sqlite3_finalize(statement) }
-      while sqlite3_step(statement) == SQLITE_ROW {
-        if text(statement, 1) == column { return true }
+      try withCachedStatementUnlocked("PRAGMA table_info(\(table));") { statement in
+        while sqlite3_step(statement) == SQLITE_ROW {
+          if text(statement, 1) == column { return true }
+        }
+        try checkStatementCompletion(statement)
+        return false
       }
-      try checkStatementCompletion(statement)
-      return false
     }
   }
 
@@ -425,15 +425,6 @@ extension KnowledgeDatabase {
     try withLock {
       try withCachedStatementUnlocked(sql, body)
     }
-  }
-
-  func prepare(_ sql: String) throws -> OpaquePointer? {
-    guard let handle else { throw KnowledgeLibraryError.database("数据库尚未打开") }
-    var statement: OpaquePointer?
-    guard sqlite3_prepare_v2(handle, sql, -1, &statement, nil) == SQLITE_OK else {
-      throw databaseError()
-    }
-    return statement
   }
 
   func bind(_ value: String, at index: Int32, to statement: OpaquePointer?) {

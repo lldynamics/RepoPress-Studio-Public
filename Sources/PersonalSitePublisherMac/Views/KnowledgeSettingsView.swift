@@ -84,7 +84,7 @@ struct KnowledgeSettingsView: View {
           } label: {
             advancedGroupLabel(
               title: String(localized: "浏览器连接"),
-              detail: String(localized: "从 Safari、Chrome 或 Firefox 保存网页"),
+              detail: String(localized: "从 Chrome 或 Firefox 保存网页"),
               systemImage: "puzzlepiece.extension"
             )
           }

@@ -609,9 +609,7 @@ struct ContentMigrationAssistantView: View {
     isAnalyzing = true
     notice = .analyzing
     Task {
-      let accessed = url.startAccessingSecurityScopedResource()
       defer {
-        if accessed { url.stopAccessingSecurityScopedResource() }
         isAnalyzing = false
       }
       do {

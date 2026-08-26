@@ -1,4 +1,5 @@
 import Foundation
+import PublishingAICore
 
 private struct AIChatSendableError: Sendable {
   let value: AIChatCompletionClientError

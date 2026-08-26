@@ -53,6 +53,32 @@ final class DraftFullTextSearchServiceTests: XCTestCase {
     }
   }
 
+  func testMultiTermBodySearchKeepsGlobalEarliestRangesAfterOverlaps() {
+    let body = "aaaa x a y aaaa z a"
+    let draft = makeDraft(title: "多词搜索", body: body)
+
+    let hits = service.search(query: "a aaaa", drafts: [draft]).filter { $0.field == .body }
+
+    XCTAssertEqual(hits.count, 3)
+    XCTAssertEqual(hits.map(\.sourceRange.location), [0, 7, 11])
+    XCTAssertEqual(hits.map(\.matchedText), ["aaaa", "a", "aaaa"])
+  }
+
+  func testLongNeedleSkipsContainedHighFrequencyShortNeedleMatches() {
+    let longNeedle = String(repeating: "a", count: 24)
+    let body = "\(longNeedle) x a y \(longNeedle) z a"
+    let draft = makeDraft(title: "长短词重叠", body: body)
+
+    let hits = service.search(
+      query: "\(longNeedle) a",
+      drafts: [draft]
+    ).filter { $0.field == .body }
+
+    XCTAssertEqual(hits.count, 3)
+    XCTAssertEqual(hits.map(\.sourceRange.location), [0, 27, 31])
+    XCTAssertEqual(hits.map(\.matchedText), [longNeedle, "a", longNeedle])
+  }
+
   func testSearchIsCaseDiacriticAndWidthInsensitive() throws {
     let draft = makeDraft(
       title: "Café 写作",
@@ -84,6 +110,21 @@ final class DraftFullTextSearchServiceTests: XCTestCase {
 
   func testEmptyQueryReturnsNoResults() {
     XCTAssertTrue(service.search(query: "  \n", drafts: [makeDraft(title: "文章")]).isEmpty)
+  }
+
+  func testCancelledSearchReturnsNoPartialResults() async {
+    let draft = makeDraft(
+      title: "取消搜索",
+      body: String(repeating: "target ", count: 100_000)
+    )
+    let service = self.service
+    let task = Task.detached(priority: .userInitiated) {
+      withUnsafeCurrentTask { $0?.cancel() }
+      return service.search(query: "target", drafts: [draft])
+    }
+    let results = await task.value
+
+    XCTAssertTrue(results.isEmpty)
   }
 
   func testParsesQuotedStructuredFilters() {

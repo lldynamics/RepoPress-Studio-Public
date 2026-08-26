@@ -1,4 +1,5 @@
 import Foundation
+import PublishingKnowledgeCore
 
 extension KnowledgeLibraryService {
   public func libraryHealth() async throws -> KnowledgeLibraryHealthSnapshot {

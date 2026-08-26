@@ -142,6 +142,11 @@ extension LocalRepositoryService {
   }
 
   func detectSiteKind(rootURL: URL) -> SiteKind? {
+    if directoryExists(rootURL.appendingPathComponent("docs/.vitepress", isDirectory: true))
+      || directoryExists(rootURL.appendingPathComponent(".vitepress", isDirectory: true)) {
+      return .vitePress
+    }
+
     if fileExists(rootURL.appendingPathComponent("astro.config.mjs"))
       || fileExists(rootURL.appendingPathComponent("astro.config.ts"))
       || directoryExists(rootURL.appendingPathComponent("src/content", isDirectory: true)) {

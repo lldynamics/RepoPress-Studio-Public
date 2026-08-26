@@ -182,7 +182,16 @@ extension RemoteRepositoryPublishService {
     }
 
     let targetBranch = repository.branch
-    let branchName = mode == .reviewRequest ? package.reviewBranchName : targetBranch
+    let usesDedicatedBranch = mode.usesDedicatedBranch
+    let createsReview = mode.createsReview
+    let branchName: String = switch mode {
+    case .directCommit:
+      targetBranch
+    case .reviewRequest:
+      package.reviewBranchName
+    case .previewBranch:
+      package.draftPreviewBranchName
+    }
     let reviewDraft = RemoteReviewDraftBuilder().build(package: package, profile: repository.profile)
     var didCreateReviewBranch = false
 
@@ -195,12 +204,14 @@ extension RemoteRepositoryPublishService {
       )
     )
 
-    if mode == .reviewRequest {
+    if usesDedicatedBranch {
       onProgress?(
         .init(
           stage: .creatingBranch,
           progress: 0.18,
-          message: CoreL10n.text("处理 PR/MR 分支"),
+          message: mode == .previewBranch
+            ? CoreL10n.text("处理草稿预览分支")
+            : CoreL10n.text("处理 PR/MR 分支"),
           detail: branchName
         )
       )
@@ -247,7 +258,7 @@ extension RemoteRepositoryPublishService {
           branch: branchName,
           token: token
         )
-        let validationSHA = if mode == .reviewRequest && file.operation == .delete {
+        let validationSHA = if createsReview && file.operation == .delete {
           try await githubContentSHA(
             repository: repository,
             path: file.repositoryPath,
@@ -264,7 +275,7 @@ extension RemoteRepositoryPublishService {
         let isVerifiedLegacyDelete = file.operation == .delete
           && githubLegacyDeleteContentMatches(file: file, remoteSHA: validationSHA)
         let validatesExpectedVersion = mode == .directCommit
-          || (mode == .reviewRequest && file.operation == .delete)
+          || (createsReview && file.operation == .delete)
         if validatesExpectedVersion {
           let isIdempotentMissingDelete = file.operation == .delete && validationSHA == nil
           if !isAlreadyPublished && !isVerifiedLegacyDelete && !isIdempotentMissingDelete {
@@ -277,7 +288,7 @@ extension RemoteRepositoryPublishService {
         }
 
         if file.operation == .delete {
-          if mode == .reviewRequest, validationSHA != nil {
+          if createsReview, validationSHA != nil {
             reviewPendingPaths.append(file.repositoryPath)
           }
           if let existingSHA {
@@ -346,7 +357,7 @@ extension RemoteRepositoryPublishService {
         )
       }
 
-      if mode == .reviewRequest && changedPaths.isEmpty {
+      if createsReview && changedPaths.isEmpty {
         if didCreateReviewBranch {
           try await githubDeleteBranch(repository: repository, branch: branchName, token: token)
         } else {
@@ -373,7 +384,7 @@ extension RemoteRepositoryPublishService {
         )
       }
 
-      if mode == .reviewRequest {
+      if createsReview {
         onProgress?(
           .init(
             stage: .creatingReview,
@@ -481,9 +492,9 @@ extension RemoteRepositoryPublishService {
       changedPaths: changedPaths,
       commitSHA: lastCommitSHA,
       remoteVersionsByPath: remoteVersionsByPath.isEmpty ? nil : remoteVersionsByPath,
-      reviewPendingPaths: mode == .reviewRequest ? reviewPendingPaths : nil,
+      reviewPendingPaths: createsReview ? reviewPendingPaths : nil,
       reviewURL: reviewURL,
-      reviewTitle: mode == .reviewRequest ? reviewDraft.title : nil
+      reviewTitle: createsReview ? reviewDraft.title : nil
     )
   }
 
@@ -505,7 +516,16 @@ extension RemoteRepositoryPublishService {
     onProgress: (@Sendable (RemoteRepositoryPublishProgress) -> Void)?
   ) async throws -> RemoteRepositoryPublishResult {
     let targetBranch = repository.branch
-    let branchName = mode == .reviewRequest ? package.reviewBranchName : targetBranch
+    let usesDedicatedBranch = mode.usesDedicatedBranch
+    let createsReview = mode.createsReview
+    let branchName: String = switch mode {
+    case .directCommit:
+      targetBranch
+    case .reviewRequest:
+      package.reviewBranchName
+    case .previewBranch:
+      package.draftPreviewBranchName
+    }
     let reviewDraft = RemoteReviewDraftBuilder().build(package: package, profile: repository.profile)
     var didCreateReviewBranch = false
     var didUpdateReference = false
@@ -526,12 +546,14 @@ extension RemoteRepositoryPublishService {
     )
 
     let baseCommitSHA: String
-    if mode == .reviewRequest {
+    if usesDedicatedBranch {
       onProgress?(
         .init(
           stage: .creatingBranch,
           progress: 0.18,
-          message: CoreL10n.text("处理 PR/MR 分支"),
+          message: mode == .previewBranch
+            ? CoreL10n.text("处理草稿预览分支")
+            : CoreL10n.text("处理 PR/MR 分支"),
           detail: branchName
         )
       )
@@ -584,7 +606,7 @@ extension RemoteRepositoryPublishService {
           branch: branchName,
           token: token
         )
-        let validationSHA = if mode == .reviewRequest && file.operation == .delete {
+        let validationSHA = if createsReview && file.operation == .delete {
           try await githubContentSHA(
             repository: repository,
             path: file.repositoryPath,
@@ -600,7 +622,7 @@ extension RemoteRepositoryPublishService {
         let isVerifiedLegacyDelete = file.operation == .delete
           && githubLegacyDeleteContentMatches(file: file, remoteSHA: validationSHA)
         let validatesExpectedVersion = mode == .directCommit
-          || (mode == .reviewRequest && file.operation == .delete)
+          || (createsReview && file.operation == .delete)
         if validatesExpectedVersion {
           let isIdempotentMissingDelete = file.operation == .delete && validationSHA == nil
           if !isAlreadyPublished && !isVerifiedLegacyDelete && !isIdempotentMissingDelete {
@@ -613,7 +635,7 @@ extension RemoteRepositoryPublishService {
         }
 
         if file.operation == .delete {
-          if mode == .reviewRequest, validationSHA != nil {
+          if createsReview, validationSHA != nil {
             reviewPendingPaths.append(file.repositoryPath)
           }
           if existingSHA != nil {
@@ -672,7 +694,7 @@ extension RemoteRepositoryPublishService {
         if didCreateReviewBranch {
           try await githubDeleteBranch(repository: repository, branch: branchName, token: token)
           existingReviewURL = nil
-        } else if mode == .reviewRequest {
+        } else if createsReview {
           existingReviewURL = try await githubExistingPullRequestURL(
             repository: repository,
             sourceBranch: branchName,
@@ -692,9 +714,9 @@ extension RemoteRepositoryPublishService {
           changedPaths: [],
           commitSHA: nil,
           remoteVersionsByPath: remoteVersionsByPath.isEmpty ? nil : remoteVersionsByPath,
-          reviewPendingPaths: mode == .reviewRequest ? reviewPendingPaths : nil,
+          reviewPendingPaths: createsReview ? reviewPendingPaths : nil,
           reviewURL: existingReviewURL,
-          reviewTitle: mode == .reviewRequest ? reviewDraft.title : nil
+          reviewTitle: createsReview ? reviewDraft.title : nil
         )
       }
 
@@ -742,7 +764,7 @@ extension RemoteRepositoryPublishService {
       didUpdateReference = true
       commitSHA = commit.sha
 
-      if mode == .reviewRequest {
+      if createsReview {
         onProgress?(
           .init(
             stage: .creatingReview,
@@ -823,9 +845,9 @@ extension RemoteRepositoryPublishService {
       changedPaths: changedPaths,
       commitSHA: commitSHA,
       remoteVersionsByPath: remoteVersionsByPath.isEmpty ? nil : remoteVersionsByPath,
-      reviewPendingPaths: mode == .reviewRequest ? reviewPendingPaths : nil,
+      reviewPendingPaths: createsReview ? reviewPendingPaths : nil,
       reviewURL: reviewURL,
-      reviewTitle: mode == .reviewRequest ? reviewDraft.title : nil
+      reviewTitle: createsReview ? reviewDraft.title : nil
     )
   }
 
@@ -837,7 +859,16 @@ extension RemoteRepositoryPublishService {
     onProgress: (@Sendable (RemoteRepositoryPublishProgress) -> Void)? = nil
   ) async throws -> RemoteRepositoryPublishResult {
     let targetBranch = repository.branch
-    let branchName = mode == .reviewRequest ? package.reviewBranchName : targetBranch
+    let usesDedicatedBranch = mode.usesDedicatedBranch
+    let createsReview = mode.createsReview
+    let branchName: String = switch mode {
+    case .directCommit:
+      targetBranch
+    case .reviewRequest:
+      package.reviewBranchName
+    case .previewBranch:
+      package.draftPreviewBranchName
+    }
     let reviewDraft = RemoteReviewDraftBuilder().build(package: package, profile: repository.profile)
     onProgress?(
       .init(
@@ -847,20 +878,22 @@ extension RemoteRepositoryPublishService {
         detail: targetBranch
       )
     )
-    let reviewBranchExists = mode == .reviewRequest
+    let reviewBranchExists = usesDedicatedBranch
       ? try await {
         onProgress?(
           .init(
             stage: .creatingBranch,
             progress: 0.18,
-            message: CoreL10n.text("处理 PR/MR 分支"),
+            message: mode == .previewBranch
+              ? CoreL10n.text("处理草稿预览分支")
+              : CoreL10n.text("处理 PR/MR 分支"),
             detail: branchName
           )
         )
         return try await gitLabBranchExists(repository: repository, branch: branchName, token: token)
       }()
       : false
-    let existenceRef = mode == .reviewRequest && reviewBranchExists ? branchName : targetBranch
+    let existenceRef = usesDedicatedBranch && reviewBranchExists ? branchName : targetBranch
 
     var actions: [GitLabCommitAction] = []
     var changedPaths: [String] = []
@@ -894,7 +927,7 @@ extension RemoteRepositoryPublishService {
         ref: existenceRef,
         token: token
       )
-      let validationState = if mode == .reviewRequest
+      let validationState = if createsReview
         && file.operation == .delete
         && existenceRef != targetBranch
       {
@@ -915,7 +948,7 @@ extension RemoteRepositoryPublishService {
         && gitLabLegacyDeleteContentMatches(file: file, remoteContent: validationState.content)
       let isIdempotentMissingDelete = file.operation == .delete && !validationState.exists
       let validatesExpectedVersion = mode == .directCommit
-        || (mode == .reviewRequest && file.operation == .delete)
+        || (createsReview && file.operation == .delete)
       if validatesExpectedVersion
         && !isAlreadyPublished
         && !isVerifiedLegacyDelete
@@ -929,7 +962,7 @@ extension RemoteRepositoryPublishService {
       }
 
       if file.operation == .delete {
-        if mode == .reviewRequest, validationState.exists {
+        if createsReview, validationState.exists {
           reviewPendingPaths.append(file.repositoryPath)
         }
         if remoteState.exists {
@@ -984,7 +1017,7 @@ extension RemoteRepositoryPublishService {
     }
 
     guard !actions.isEmpty else {
-      let existingReviewURL = mode == .reviewRequest && reviewBranchExists
+      let existingReviewURL = createsReview && reviewBranchExists
         ? try await gitLabExistingMergeRequestURL(
           repository: repository,
           sourceBranch: branchName,
@@ -1002,9 +1035,9 @@ extension RemoteRepositoryPublishService {
         changedPaths: [],
         commitSHA: nil,
         remoteVersionsByPath: remoteVersionsByPath.isEmpty ? nil : remoteVersionsByPath,
-        reviewPendingPaths: mode == .reviewRequest ? reviewPendingPaths : nil,
+        reviewPendingPaths: createsReview ? reviewPendingPaths : nil,
         reviewURL: existingReviewURL,
-        reviewTitle: mode == .reviewRequest ? reviewDraft.title : nil
+        reviewTitle: createsReview ? reviewDraft.title : nil
       )
     }
 
@@ -1022,7 +1055,7 @@ extension RemoteRepositoryPublishService {
     let commitBody = GitLabCreateCommitBody(
       branch: branchName,
       commitMessage: package.commitMessage,
-      startBranch: mode == .reviewRequest && !reviewBranchExists ? targetBranch : nil,
+      startBranch: usesDedicatedBranch && !reviewBranchExists ? targetBranch : nil,
       actions: actions
     )
     let commit: GitLabCommitResponse = try await send(
@@ -1039,7 +1072,7 @@ extension RemoteRepositoryPublishService {
       remoteVersionsByPath[file.repositoryPath.normalizedRelativePath()] = commit.id
     }
     var reviewURL: String?
-    if mode == .reviewRequest {
+    if createsReview {
       onProgress?(
         .init(
           stage: .creatingReview,
@@ -1136,9 +1169,9 @@ extension RemoteRepositoryPublishService {
       changedPaths: changedPaths,
       commitSHA: commit.id,
       remoteVersionsByPath: remoteVersionsByPath.isEmpty ? nil : remoteVersionsByPath,
-      reviewPendingPaths: mode == .reviewRequest ? reviewPendingPaths : nil,
+      reviewPendingPaths: createsReview ? reviewPendingPaths : nil,
       reviewURL: reviewURL,
-      reviewTitle: mode == .reviewRequest ? reviewDraft.title : nil
+      reviewTitle: createsReview ? reviewDraft.title : nil
     )
   }
 

@@ -34,6 +34,7 @@ extension WorkbenchStore {
 
   func setRepositoryTokenAvailability(_ availability: KeychainTokenAvailability) {
     repositoryStore.repositoryTokenAvailability = availability
+    publishingStore.removeDraftPublishPreviewSnapshots(forProfileID: activeProfileID)
   }
 
   func setLocalGitPublishResult(_ result: LocalGitPublishResult?) {
@@ -42,5 +43,6 @@ extension WorkbenchStore {
 
   func setRemoteRepositoryAccessCheck(_ check: RemoteRepositoryAccessCheck?) {
     repositoryStore.setRemoteRepositoryAccessCheck(check, for: activeProfileID)
+    publishingStore.removeDraftPublishPreviewSnapshots(forProfileID: activeProfileID)
   }
 }

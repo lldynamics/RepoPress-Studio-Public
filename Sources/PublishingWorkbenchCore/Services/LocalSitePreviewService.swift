@@ -145,16 +145,108 @@ public final class LocalSitePreviewProcessService: @unchecked Sendable {
     self.trustStore = trustStore
   }
 
-  static let trustedToolDirectories = [
-      "/opt/homebrew/bin",
-      "/usr/local/bin",
-      "/usr/bin",
-      "/bin",
-      "/usr/sbin",
-      "/sbin"
+  private static let systemTrustedToolDirectories = [
+    "/opt/homebrew/bin",
+    "/usr/local/bin",
+    "/usr/bin",
+    "/bin",
+    "/usr/sbin",
+    "/sbin",
   ]
 
-  static func launchEnvironment(from baseEnvironment: [String: String] = ProcessInfo.processInfo.environment) -> [String: String] {
+  private static let userTrustedToolDirectoryComponents = [
+    [".fnm", "current", "bin"],
+    [".local", "share", "fnm", "aliases", "default", "bin"],
+    ["Library", "Application Support", "fnm", "aliases", "default", "bin"],
+    [".asdf", "shims"],
+    [".local", "share", "mise", "shims"],
+    [".bun", "bin"],
+    [".local", "share", "pnpm"],
+    ["Library", "pnpm"],
+    [".cargo", "bin"],
+    [".volta", "bin"],
+    [".rbenv", "shims"],
+    ["go", "bin"],
+    [".local", "bin"],
+  ]
+
+  static var trustedToolDirectories: [String] {
+    let environment = ProcessInfo.processInfo.environment
+    return trustedToolDirectories(
+      homeDirectoryPath: environment["HOME"]
+        ?? FileManager.default.homeDirectoryForCurrentUser.path,
+      inheritedPATH: environment["PATH"]
+    )
+  }
+
+  static func trustedToolDirectories(
+    homeDirectoryPath: String,
+    inheritedPATH: String? = nil,
+    fileManager: FileManager = .default
+  ) -> [String] {
+    let homeURL = URL(fileURLWithPath: homeDirectoryPath, isDirectory: true)
+      .standardizedFileURL
+    let userDirectories = userTrustedToolDirectoryComponents.map { components in
+      components.reduce(homeURL) { url, component in
+        url.appendingPathComponent(component, isDirectory: true)
+      }.path
+    }
+    let nvmDirectories = nvmToolDirectories(in: homeURL, fileManager: fileManager)
+    let allowedDirectories = userDirectories + nvmDirectories + systemTrustedToolDirectories
+    let allowedDirectorySet = Set(allowedDirectories)
+    let inheritedDirectories =
+      inheritedPATH?
+      .split(separator: ":")
+      .map(String.init)
+      .filter { allowedDirectorySet.contains($0) } ?? []
+
+    return (inheritedDirectories + allowedDirectories).reduce(into: []) { result, directory in
+      guard !result.contains(directory) else { return }
+      result.append(directory)
+    }
+  }
+
+  private static func nvmToolDirectories(
+    in homeURL: URL,
+    fileManager: FileManager
+  ) -> [String] {
+    let versionsURL =
+      homeURL
+      .appendingPathComponent(".nvm", isDirectory: true)
+      .appendingPathComponent("versions", isDirectory: true)
+      .appendingPathComponent("node", isDirectory: true)
+    let versionURLs =
+      (try? fileManager.contentsOfDirectory(
+        at: versionsURL,
+        includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey],
+        options: [.skipsHiddenFiles]
+      )) ?? []
+
+    return versionURLs.compactMap { versionURL -> URL? in
+      let values = try? versionURL.resourceValues(forKeys: [
+        .isDirectoryKey,
+        .isSymbolicLinkKey,
+      ])
+      guard values?.isDirectory == true, values?.isSymbolicLink != true else { return nil }
+      let binURL = versionURL.appendingPathComponent("bin", isDirectory: true)
+      var isDirectory: ObjCBool = false
+      guard fileManager.fileExists(atPath: binURL.path, isDirectory: &isDirectory),
+        isDirectory.boolValue
+      else { return nil }
+      return binURL
+    }
+    .sorted {
+      $0.deletingLastPathComponent().lastPathComponent.compare(
+        $1.deletingLastPathComponent().lastPathComponent,
+        options: [.caseInsensitive, .numeric]
+      ) == .orderedDescending
+    }
+    .map(\.path)
+  }
+
+  static func launchEnvironment(
+    from baseEnvironment: [String: String] = ProcessInfo.processInfo.environment
+  ) -> [String: String] {
     let allowedKeys = [
       "HOME",
       "LANG",
@@ -166,7 +258,13 @@ public final class LocalSitePreviewProcessService: @unchecked Sendable {
       "USER",
     ]
     var environment = baseEnvironment.filter { allowedKeys.contains($0.key) }
-    environment["PATH"] = trustedToolDirectories.joined(separator: ":")
+    let homeDirectoryPath =
+      baseEnvironment["HOME"]
+      ?? FileManager.default.homeDirectoryForCurrentUser.path
+    environment["PATH"] = trustedToolDirectories(
+      homeDirectoryPath: homeDirectoryPath,
+      inheritedPATH: baseEnvironment["PATH"]
+    ).joined(separator: ":")
     environment["NO_COLOR"] = "1"
     return environment
   }
@@ -360,21 +458,55 @@ public final class LocalSitePreviewProcessService: @unchecked Sendable {
     return currentIdentity
   }
 
-  private static func isTrustedExecutable(atPath path: String) -> Bool {
+  static func isTrustedExecutable(
+    atPath path: String,
+    homeDirectoryPath: String = ProcessInfo.processInfo.environment["HOME"]
+      ?? FileManager.default.homeDirectoryForCurrentUser.path,
+    inheritedPATH: String? = ProcessInfo.processInfo.environment["PATH"],
+    fileManager: FileManager = .default
+  ) -> Bool {
     let standardizedURL = URL(fileURLWithPath: path).standardizedFileURL
     let parentPath = standardizedURL.deletingLastPathComponent().path
-    guard trustedToolDirectories.contains(parentPath) else { return false }
+    let trustedDirectories = trustedToolDirectories(
+      homeDirectoryPath: homeDirectoryPath,
+      inheritedPATH: inheritedPATH,
+      fileManager: fileManager
+    )
+    guard trustedDirectories.contains(parentPath) else { return false }
     let resolvedURL = standardizedURL.resolvingSymlinksInPath().standardizedFileURL
-    let trustedResolvedRoots = [
-      "/opt/homebrew",
-      "/usr/local",
-      "/usr",
-      "/bin",
-      "/sbin",
-    ]
-    guard trustedResolvedRoots.contains(where: { rootPath in
-      resolvedURL.path == rootPath || resolvedURL.path.hasPrefix(rootPath + "/")
-    }), FileManager.default.isExecutableFile(atPath: resolvedURL.path) else {
+    let homeURL = URL(fileURLWithPath: homeDirectoryPath, isDirectory: true)
+      .standardizedFileURL
+      .resolvingSymlinksInPath()
+    let trustedUserRoots = [
+      [".local"],
+      [".cargo"],
+      [".bun"],
+      [".fnm"],
+      [".asdf"],
+      [".nvm"],
+      [".volta"],
+      [".rbenv"],
+      ["go"],
+      ["Library", "Application Support", "fnm"],
+      ["Library", "pnpm"],
+    ].map { components in
+      components.reduce(homeURL) { url, component in
+        url.appendingPathComponent(component, isDirectory: true)
+      }.path
+    }
+    let trustedResolvedRoots =
+      trustedUserRoots + [
+        "/opt/homebrew",
+        "/usr/local",
+        "/usr",
+        "/bin",
+        "/sbin",
+      ]
+    guard
+      trustedResolvedRoots.contains(where: { rootPath in
+        resolvedURL.path == rootPath || resolvedURL.path.hasPrefix(rootPath + "/")
+      }), fileManager.isExecutableFile(atPath: resolvedURL.path)
+    else {
       return false
     }
 #if canImport(Darwin)
@@ -591,6 +723,12 @@ public struct LocalSitePreviewService {
       scriptName = "dev"
       baseArguments = ["run", "dev"]
       notes = ["Astro 默认 dev server 端口为 4321。", "需要项目已安装 npm 依赖。", "本地预览会执行仓库脚本，请只启动可信仓库。"]
+    case .vitePress:
+      packageManager = Self.packageManagerName(in: rootPath)
+      executableName = packageManager ?? "npm"
+      scriptName = "dev"
+      baseArguments = ["run", "dev"]
+      notes = ["VitePress 默认 dev server 端口为 5173。", "需要项目已安装 npm 依赖。", "本地预览会执行仓库脚本，请只启动可信仓库。"]
     case .hexo:
       packageManager = Self.packageManagerName(in: rootPath)
       executableName = packageManager ?? "npm"
@@ -755,6 +893,24 @@ public struct LocalSitePreviewService {
       }
     case .astro, .hexo:
       break
+    case .vitePress:
+      let rootURL = URL(fileURLWithPath: rootPath, isDirectory: true)
+      let hasConfig = [
+        "docs/.vitepress/config.mts",
+        "docs/.vitepress/config.ts",
+        ".vitepress/config.mts",
+        ".vitepress/config.ts",
+      ].contains { fileManager.fileExists(atPath: rootURL.appendingPathComponent($0).path) }
+      if !hasConfig {
+        issues.append(
+          LocalSitePreviewIssue(
+            id: "vitepress-config",
+            title: "未发现 VitePress 配置",
+            message: "仓库中没有常见的 .vitepress/config 配置文件。",
+            severity: .warning
+          )
+        )
+      }
     case .jekyll:
       if !fileManager.fileExists(atPath: URL(fileURLWithPath: rootPath).appendingPathComponent("Gemfile").path) {
         issues.append(
@@ -867,6 +1023,11 @@ public struct LocalSitePreviewService {
         return baseArguments + ["--host", "127.0.0.1", "--port", "\(port)"]
       }
       return baseArguments + ["--", "--host", "127.0.0.1", "--port", "\(port)"]
+    case .vitePress:
+      if packageManager == "yarn" {
+        return baseArguments + ["--host", "127.0.0.1", "--port", "\(port)"]
+      }
+      return baseArguments + ["--", "--host", "127.0.0.1", "--port", "\(port)"]
     case .hexo:
       return baseArguments + ["--", "--ip", "127.0.0.1", "--port", "\(port)"]
     case .jekyll:
@@ -882,6 +1043,8 @@ public struct LocalSitePreviewService {
       return 1313
     case .astro:
       return 4321
+    case .vitePress:
+      return 5173
     case .hexo, .jekyll:
       return 4000
     }

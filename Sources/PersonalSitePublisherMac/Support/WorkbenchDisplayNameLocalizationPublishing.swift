@@ -1,20 +1,5 @@
 import PublishingWorkbenchCore
 
-extension EditorDisplayMode {
-  var workbenchDisplayNameSemanticKey: String {
-    switch self {
-    case .edit:
-      return "display.editor-display-mode.edit"
-    case .preview:
-      return "display.editor-display-mode.preview"
-    case .split:
-      return "display.editor-display-mode.split"
-    }
-  }
-
-  var fallbackDisplayName: String { displayName }
-}
-
 extension DraftStatus {
   var workbenchDisplayNameSemanticKey: String {
     switch self {
@@ -205,6 +190,8 @@ extension RemoteRepositoryPublishMode {
       return "display.remote-repository-publish-mode.direct-commit"
     case .reviewRequest:
       return "display.remote-repository-publish-mode.review-request"
+    case .previewBranch:
+      return "display.remote-repository-publish-mode.preview-branch"
     }
   }
 

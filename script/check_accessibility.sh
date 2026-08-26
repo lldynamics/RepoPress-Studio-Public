@@ -560,21 +560,6 @@ require_literal_any_file \
   "Sources/PersonalSitePublisherMac/Views/MacMarkdownFormattingToolbar.swift"
 
 require_literal \
-  "Sources/PersonalSitePublisherMac/Views/MacMarkdownComposerPreview.swift" \
-  "title: draft.title.trimmedForPublishing.nilIfEmpty" \
-  "writing preview must include the current article title in its render input"
-
-require_literal \
-  "Sources/PersonalSitePublisherMac/Views/MacMarkdownComposerPreview.swift" \
-  "<header class=\"article-header\"><h1 class=\"article-title\">" \
-  "writing preview must render the article title as a semantic heading"
-
-require_literal \
-  "Sources/PersonalSitePublisherMac/Views/MacMarkdownComposerPreview.swift" \
-  "<title>\\(escapedTitle)</title>" \
-  "writing preview HTML must expose the article title as its document title"
-
-require_literal \
   "Sources/PersonalSitePublisherMac/Views/MacMarkdownTextView+DocumentSupport.swift" \
   "textView.setAccessibilityLabel(String(localized: \"Markdown 文档编辑器\"))" \
   "native markdown text editor must expose a descriptive accessibility name"
@@ -1300,11 +1285,6 @@ require_literal \
   "editor display accessibility control must expose text when space permits"
 
 require_literal \
-  "Sources/PersonalSitePublisherMac/Views/MacMarkdownComposerToolbars.swift" \
-  ".accessibilityAddTraits(editorDisplayMode == mode ? .isSelected : [])" \
-  "editor display modes must expose selected accessibility traits"
-
-require_literal \
   "Sources/PersonalSitePublisherMac/Views/MarkdownSlashCommandMenu.swift" \
   ".accessibilityIdentifier(\"markdown-slash-command-menu\")" \
   "slash command menu must expose a stable accessibility identifier"
@@ -1405,7 +1385,7 @@ require_literal \
   "command-f must route to knowledge search while the library is active"
 
 textfield_gaps="$(
-  perl -0ne 'while(/TextField\([^\n]*(?:\n[^\n]*){0,14}/g){$m=$&; if($m !~ /accessibilityLabel/){$prefix=substr($_,0,pos($_)); $line=1+($prefix=~tr/\n//); print "$ARGV:$line\n"}}' \
+  perl -0ne 'while(/(?<!NS)TextField\([^\n]*(?:\n[^\n]*){0,14}/g){$m=$&; if($m !~ /accessibilityLabel/){$prefix=substr($_,0,pos($_)); $line=1+($prefix=~tr/\n//); print "$ARGV:$line\n"}}' \
     "$ROOT_DIR"/Sources/PersonalSitePublisherMac/Views/*.swift
 )"
 [[ -z "$textfield_gaps" ]] || fail "text fields missing accessibility labels: $textfield_gaps"

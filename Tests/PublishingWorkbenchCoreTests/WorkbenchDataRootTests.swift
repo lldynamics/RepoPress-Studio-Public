@@ -101,358 +101,143 @@ struct WorkbenchDataRootTests {
   }
 
   @Test
-  func staleBookmarkIsRefreshedAndSessionRetainsSecurityScopeLease() throws {
-    let rootURL = try makeTemporaryDirectory(prefix: "data-root-bookmark")
-    defer { try? FileManager.default.removeItem(at: rootURL) }
-    let suiteName = "WorkbenchDataRootTests.\(UUID().uuidString)"
-    let defaults = try #require(UserDefaults(suiteName: suiteName))
-    defer { defaults.removePersistentDomain(forName: suiteName) }
-    let storageKey = "selected-root"
-    let oldBookmark = Data("old-bookmark".utf8)
-    let refreshedBookmark = Data("refreshed-bookmark".utf8)
-    let originalRecord = WorkbenchDataRootBookmarkRecord(
-      bookmarkData: oldBookmark, displayPath: "/old/path", updatedAt: Date(timeIntervalSince1970: 10)
-    )
-    defaults.set(try JSONEncoder().encode(originalRecord), forKey: storageKey)
-
-    let codec = WorkbenchDataRootBookmarkCodec(
-      create: { _ in refreshedBookmark },
-      resolve: { data in
-        WorkbenchDataRootDecodedBookmark(url: rootURL, isStale: data == oldBookmark)
-      }
-    )
-    let recorder = SecurityScopeRecorder()
-    let securityScope = WorkbenchDataRootSecurityScope(
-      start: { url in
-        recorder.recordStartedPath(url.path)
-        return true
-      },
-      stop: { url in recorder.recordStoppedPath(url.path) }
-    )
-    let store = WorkbenchDataRootBookmarkStore(
-      defaults: defaults,
-      storageKey: storageKey,
-      codec: codec,
-      securityScope: securityScope
-    )
-
-    let resolvedRoot = try store.resolveStoredRoot(
-      refreshedAt: Date(timeIntervalSince1970: 20)
-    )
-    let resolution = try #require(resolvedRoot)
-    #expect(resolution.didRefreshStaleBookmark)
-    #expect(resolution.accessURL == rootURL)
-    #expect(resolution.record.bookmarkData == refreshedBookmark)
-    #expect(resolution.record.displayPath == rootURL.path)
-    #expect(try store.storedRecord()?.bookmarkData == refreshedBookmark)
-
-    var session = try store.openStoredRoot()
-    #expect(session != nil)
-    #expect(session?.layout.rootURL == rootURL)
-    #expect(session?.probeResult == .new)
-    #expect(session?.didStartSecurityScopedAccess == true)
-    #expect(recorder.startedPaths == [rootURL.path, rootURL.path])
-    #expect(recorder.stoppedPaths == [rootURL.path])
-
-    session = nil
-    #expect(recorder.stoppedPaths == [rootURL.path, rootURL.path])
-  }
-
-  @Test
-  func childDataRootRetainsTheUserSelectedParentSecurityScope() throws {
-    let parentURL = try makeTemporaryDirectory(prefix: "data-root-parent-bookmark")
+  func pathStorePersistsNormalizedAbsolutePathAcrossStoreRecreation() throws {
+    let parentURL = try makeTemporaryDirectory(prefix: "data-root-path-store")
     defer { try? FileManager.default.removeItem(at: parentURL) }
-    let rootURL = parentURL.appendingPathComponent("RepoPress Data", isDirectory: true)
-    let manifest = try makeExistingRoot(at: rootURL, dataID: UUID())
-    let suiteName = "WorkbenchDataRootParentBookmarkTests.\(UUID().uuidString)"
-    let defaults = try #require(UserDefaults(suiteName: suiteName))
-    defer { defaults.removePersistentDomain(forName: suiteName) }
-    let recorder = SecurityScopeRecorder()
-    let store = WorkbenchDataRootBookmarkStore(
-      defaults: defaults,
-      storageKey: "selected-root",
-      codec: WorkbenchDataRootBookmarkCodec(
-        create: { url in
-          recorder.setBookmarkedPath(url.path)
-          return Data("parent-bookmark".utf8)
-        },
-        resolve: { _ in
-          WorkbenchDataRootDecodedBookmark(url: parentURL, isStale: false)
-        }
-      ),
-      securityScope: WorkbenchDataRootSecurityScope(
-        start: { url in
-          recorder.recordStartedPath(url.path)
-          return true
-        },
-        stop: { url in recorder.recordStoppedPath(url.path) }
-      )
-    )
-
-    let record = try store.rememberSelectedRoot(
-      rootURL,
-      accessURL: parentURL,
-      dataID: manifest.dataID
-    )
-    #expect(recorder.bookmarkedPath == parentURL.path)
-    #expect(record.displayPath == rootURL.path)
-    #expect(record.relativeRootPath == "RepoPress Data")
-
-    let resolvedRoot = try store.resolveStoredRoot()
-    let resolution = try #require(resolvedRoot)
-    #expect(resolution.accessURL == parentURL)
-    #expect(resolution.url == rootURL)
-
-    var session = try store.openStoredRoot()
-    #expect(session?.layout.rootURL == rootURL)
-    #expect(session?.probeResult == .existing(manifest))
-    #expect(recorder.startedPaths == [parentURL.path])
-    session = nil
-    #expect(recorder.stoppedPaths == [parentURL.path])
-  }
-
-  @Test
-  func staleParentBookmarkRefreshesWhileSecurityScopeIsActive() throws {
-    let remountedParentURL = try makeTemporaryDirectory(prefix: "data-root-remounted-parent")
-    defer { try? FileManager.default.removeItem(at: remountedParentURL) }
-    let rootURL = remountedParentURL.appendingPathComponent("RepoPress Data", isDirectory: true)
-    let manifest = try makeExistingRoot(at: rootURL, dataID: UUID())
-    let suiteName = "WorkbenchDataRootStaleParentTests.\(UUID().uuidString)"
-    let defaults = try #require(UserDefaults(suiteName: suiteName))
-    defer { defaults.removePersistentDomain(forName: suiteName) }
-    let storageKey = "selected-root"
-    let oldBookmark = Data("old-parent-bookmark".utf8)
-    let refreshedBookmark = Data("refreshed-parent-bookmark".utf8)
-    let originalRecord = WorkbenchDataRootBookmarkRecord(
-      bookmarkData: oldBookmark,
-      displayPath: "/Volumes/Old Disk/RepoPress Data",
-      relativeRootPath: "RepoPress Data",
-      dataID: manifest.dataID
-    )
-    defaults.set(try JSONEncoder().encode(originalRecord), forKey: storageKey)
-    let recorder = SecurityScopeRecorder()
-    let store = WorkbenchDataRootBookmarkStore(
-      defaults: defaults,
-      storageKey: storageKey,
-      codec: WorkbenchDataRootBookmarkCodec(
-        create: { _ in
-          guard recorder.hasActiveAccess else {
-            throw CocoaError(.fileReadNoPermission)
-          }
-          recorder.incrementBookmarkCreateCount()
-          return refreshedBookmark
-        },
-        resolve: { _ in
-          WorkbenchDataRootDecodedBookmark(url: remountedParentURL, isStale: true)
-        }
-      ),
-      securityScope: WorkbenchDataRootSecurityScope(
-        start: { _ in
-          recorder.incrementActiveAccessCount()
-          return true
-        },
-        stop: { _ in recorder.decrementActiveAccessCount() }
-      )
-    )
-
-    var session = try store.openStoredRoot()
-
-    #expect(session?.layout.rootURL == rootURL)
-    #expect(session?.probeResult == .existing(manifest))
-    #expect(session?.bookmarkRecord.bookmarkData == refreshedBookmark)
-    #expect(session?.bookmarkRecord.displayPath == rootURL.path)
-    #expect(recorder.bookmarkCreateCount == 1)
-    #expect(recorder.activeAccessCount == 1)
-    session = nil
-    #expect(recorder.activeAccessCount == 0)
-  }
-
-  @Test
-  func staleIdentityMismatchDoesNotPersistRefreshedBookmark() throws {
-    let remountedParentURL = try makeTemporaryDirectory(prefix: "data-root-wrong-remount")
-    defer { try? FileManager.default.removeItem(at: remountedParentURL) }
-    let rootURL = remountedParentURL.appendingPathComponent("RepoPress Data", isDirectory: true)
-    let actualManifest = try makeExistingRoot(at: rootURL, dataID: UUID())
-    let expectedDataID = UUID()
-    let suiteName = "WorkbenchDataRootStaleMismatchTests.\(UUID().uuidString)"
-    let defaults = try #require(UserDefaults(suiteName: suiteName))
-    defer { defaults.removePersistentDomain(forName: suiteName) }
-    let storageKey = "selected-root"
-    let oldBookmark = Data("old-parent-bookmark".utf8)
-    let originalRecord = WorkbenchDataRootBookmarkRecord(
-      bookmarkData: oldBookmark,
-      displayPath: "/Volumes/Old Disk/RepoPress Data",
-      relativeRootPath: "RepoPress Data",
-      dataID: expectedDataID
-    )
-    defaults.set(try JSONEncoder().encode(originalRecord), forKey: storageKey)
-    let recorder = SecurityScopeRecorder()
-    let store = WorkbenchDataRootBookmarkStore(
-      defaults: defaults,
-      storageKey: storageKey,
-      codec: WorkbenchDataRootBookmarkCodec(
-        create: { _ in
-          recorder.incrementBookmarkCreateCount()
-          return Data("unexpected-refresh".utf8)
-        },
-        resolve: { _ in
-          WorkbenchDataRootDecodedBookmark(url: remountedParentURL, isStale: true)
-        }
-      ),
-      securityScope: WorkbenchDataRootSecurityScope(
-        start: { _ in
-          recorder.incrementActiveAccessCount()
-          return true
-        },
-        stop: { _ in recorder.decrementActiveAccessCount() }
-      )
-    )
-
-    #expect(
-      throws: WorkbenchDataRootBookmarkError.dataIdentityMismatch(
-        expected: expectedDataID,
-        found: actualManifest.dataID
-      )
-    ) {
-      try store.openStoredRoot()
-    }
-    #expect(try store.storedRecord() == originalRecord)
-    #expect(recorder.bookmarkCreateCount == 0)
-    #expect(recorder.activeAccessCount == 0)
-  }
-
-  @Test
-  func staleBookmarkToMissingBoundRootIsNotRefreshed() throws {
-    let remountedParentURL = try makeTemporaryDirectory(prefix: "data-root-missing-remount")
-    defer { try? FileManager.default.removeItem(at: remountedParentURL) }
-    let expectedRootURL = remountedParentURL.appendingPathComponent(
-      "RepoPress Data",
+    let rootURL = parentURL.appendingPathComponent("nested", isDirectory: true)
+    try FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: false)
+    let unnormalizedURL = parentURL.appendingPathComponent(
+      "nested/../nested/./",
       isDirectory: true
     )
-    let suiteName = "WorkbenchDataRootStaleMissingTests.\(UUID().uuidString)"
+    let suiteName = "WorkbenchDataRootPathTests.\(UUID().uuidString)"
     let defaults = try #require(UserDefaults(suiteName: suiteName))
     defer { defaults.removePersistentDomain(forName: suiteName) }
     let storageKey = "selected-root"
-    let oldBookmark = Data("old-parent-bookmark".utf8)
-    let originalRecord = WorkbenchDataRootBookmarkRecord(
-      bookmarkData: oldBookmark,
-      displayPath: "/Volumes/Old Disk/RepoPress Data",
-      relativeRootPath: "RepoPress Data",
-      dataID: UUID()
-    )
-    defaults.set(try JSONEncoder().encode(originalRecord), forKey: storageKey)
-    let recorder = SecurityScopeRecorder()
-    let store = WorkbenchDataRootBookmarkStore(
+    let dataID = UUID()
+    let updatedAt = Date(timeIntervalSince1970: 10)
+
+    let store = WorkbenchDataRootPathStore(
       defaults: defaults,
-      storageKey: storageKey,
-      codec: WorkbenchDataRootBookmarkCodec(
-        create: { _ in
-          recorder.incrementBookmarkCreateCount()
-          return Data("unexpected-refresh".utf8)
-        },
-        resolve: { _ in
-          WorkbenchDataRootDecodedBookmark(url: remountedParentURL, isStale: true)
-        }
-      ),
-      securityScope: WorkbenchDataRootSecurityScope(
-        start: { _ in
-          recorder.incrementActiveAccessCount()
-          return true
-        },
-        stop: { _ in recorder.decrementActiveAccessCount() }
-      )
+      storageKey: storageKey
     )
+    let record = try store.rememberRoot(
+      unnormalizedURL,
+      dataID: dataID,
+      updatedAt: updatedAt
+    )
+    #expect(record.path == rootURL.standardizedFileURL.path)
+    #expect(record.dataID == dataID)
+    #expect(record.updatedAt == updatedAt)
 
-    let resolution = try #require(try store.resolveStoredRoot())
-    #expect(resolution.url == expectedRootURL)
-    #expect(resolution.didRefreshStaleBookmark == false)
-    #expect(try store.storedRecord() == originalRecord)
-    #expect(recorder.bookmarkCreateCount == 0)
-    #expect(recorder.activeAccessCount == 0)
-
-    var session = try store.openStoredRoot()
-    #expect(session?.layout.rootURL == expectedRootURL)
-    #expect(session?.probeResult == .new)
-    #expect(session?.bookmarkRecord == originalRecord)
-    #expect(recorder.bookmarkCreateCount == 0)
-    #expect(recorder.activeAccessCount == 1)
-    session = nil
-    #expect(recorder.activeAccessCount == 0)
+    let restartedStore = WorkbenchDataRootPathStore(
+      defaults: defaults,
+      storageKey: storageKey
+    )
+    let reopenedRecord = try #require(try restartedStore.storedRecord())
+    #expect(reopenedRecord == record)
+    let session = try #require(try restartedStore.openStoredRoot())
+    #expect(session.layout.rootURL == rootURL.standardizedFileURL)
+    #expect(session.pathRecord == record)
+    #expect(session.probeResult == .new)
   }
 
   @Test
-  func openingRootFailsWhenTheSecurityScopeCannotStart() throws {
-    let parentURL = try makeTemporaryDirectory(prefix: "data-root-denied-scope")
-    defer { try? FileManager.default.removeItem(at: parentURL) }
-    let rootURL = parentURL.appendingPathComponent("RepoPress Data", isDirectory: true)
-    let manifest = try makeExistingRoot(at: rootURL, dataID: UUID())
-    let suiteName = "WorkbenchDataRootDeniedScopeTests.\(UUID().uuidString)"
+  func pathStoreRejectsRelativeAndNonFileRoots() throws {
+    let suiteName = "WorkbenchDataRootInvalidPathTests.\(UUID().uuidString)"
     let defaults = try #require(UserDefaults(suiteName: suiteName))
     defer { defaults.removePersistentDomain(forName: suiteName) }
-    let store = WorkbenchDataRootBookmarkStore(
-      defaults: defaults,
-      storageKey: "selected-root",
-      codec: WorkbenchDataRootBookmarkCodec(
-        create: { _ in Data("bookmark".utf8) },
-        resolve: { _ in
-          WorkbenchDataRootDecodedBookmark(url: parentURL, isStale: false)
-        }
-      ),
-      securityScope: WorkbenchDataRootSecurityScope(
-        start: { _ in false },
-        stop: { _ in }
-      )
-    )
-    try store.rememberSelectedRoot(
-      rootURL,
-      accessURL: parentURL,
-      dataID: manifest.dataID
-    )
+    let store = WorkbenchDataRootPathStore(defaults: defaults, storageKey: "selected-root")
 
-    #expect(throws: WorkbenchDataRootBookmarkError.securityScopedAccessDenied) {
-      try store.openStoredRoot()
+    #expect(throws: WorkbenchDataRootPathError.invalidRootPath) {
+      try store.rememberRoot(URL(string: "relative")!)
+    }
+    #expect(throws: WorkbenchDataRootPathError.invalidRootPath) {
+      try store.rememberRoot(URL(string: "https://example.com")!)
+    }
+
+    defaults.set(
+      try JSONEncoder().encode(
+        WorkbenchDataRootPathRecord(path: "relative", updatedAt: Date())
+      ),
+      forKey: "selected-root"
+    )
+    #expect(throws: WorkbenchDataRootPathError.invalidStoredRecord) {
+      try store.storedRecord()
     }
   }
 
   @Test
-  func bookmarkIdentityMismatchStopsNewlyAcquiredLease() throws {
-    let parentURL = try makeTemporaryDirectory(prefix: "data-root-bookmark-identity")
+  func pathStoreFailsClosedWhenExistingManifestIdentityDiffers() throws {
+    let parentURL = try makeTemporaryDirectory(prefix: "data-root-path-mismatch")
     defer { try? FileManager.default.removeItem(at: parentURL) }
-    let rootURL = parentURL.appendingPathComponent("selected-root", isDirectory: true)
+    let rootURL = parentURL.appendingPathComponent("root", isDirectory: true)
     let actualManifest = try makeExistingRoot(at: rootURL, dataID: UUID())
     let expectedDataID = UUID()
-    let suiteName = "WorkbenchDataRootIdentityTests.\(UUID().uuidString)"
+    let suiteName = "WorkbenchDataRootPathMismatchTests.\(UUID().uuidString)"
     let defaults = try #require(UserDefaults(suiteName: suiteName))
     defer { defaults.removePersistentDomain(forName: suiteName) }
-    let codec = WorkbenchDataRootBookmarkCodec(
-      create: { _ in Data("bookmark".utf8) },
-      resolve: { _ in WorkbenchDataRootDecodedBookmark(url: rootURL, isStale: false) }
-    )
-    let recorder = SecurityScopeRecorder()
-    let store = WorkbenchDataRootBookmarkStore(
-      defaults: defaults,
-      storageKey: "selected-root",
-      codec: codec,
-      securityScope: WorkbenchDataRootSecurityScope(
-        start: { _ in
-          recorder.incrementStartCount()
-          return true
-        },
-        stop: { _ in recorder.incrementStopCount() }
-      )
-    )
-    try store.rememberSelectedRoot(rootURL, dataID: expectedDataID)
+    let store = WorkbenchDataRootPathStore(defaults: defaults, storageKey: "selected-root")
+    let originalRecord = try store.rememberRoot(rootURL, dataID: expectedDataID)
 
     #expect(
-      throws: WorkbenchDataRootBookmarkError.dataIdentityMismatch(
+      throws: WorkbenchDataRootPathError.dataIdentityMismatch(
         expected: expectedDataID,
         found: actualManifest.dataID
       )
     ) {
       try store.openStoredRoot()
     }
-    #expect(recorder.startCount == 1)
-    #expect(recorder.stopCount == 1)
+    #expect(try store.storedRecord() == originalRecord)
+  }
+
+  @Test
+  func pathStoreDistinguishesMissingAndCorruptRecords() throws {
+    let suiteName = "WorkbenchDataRootPathMissingTests.\(UUID().uuidString)"
+    let defaults = try #require(UserDefaults(suiteName: suiteName))
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+    let storageKey = "selected-root"
+    let store = WorkbenchDataRootPathStore(defaults: defaults, storageKey: storageKey)
+
+    #expect(try store.storedRecord() == nil)
+    #expect(try store.openStoredRoot() == nil)
+
+    defaults.set(Data("not-json".utf8), forKey: storageKey)
+    #expect(throws: WorkbenchDataRootPathError.invalidStoredRecord) {
+      try store.storedRecord()
+    }
+    #expect(throws: WorkbenchDataRootPathError.invalidStoredRecord) {
+      try store.openStoredRoot()
+    }
+  }
+
+  @Test
+  func pathStoreMigratesOnlyLegacyPathMetadataWithoutResolvingOpaquePayload() throws {
+    let rootURL = URL(fileURLWithPath: "/tmp/legacy-repopress-data", isDirectory: true)
+    let dataID = UUID()
+    let updatedAt = Date(timeIntervalSince1970: 20)
+    let suiteName = "WorkbenchDataRootPathMigrationTests.\(UUID().uuidString)"
+    let defaults = try #require(UserDefaults(suiteName: suiteName))
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+    let storageKey = "selected-root"
+    let legacyPayload = LegacyPathPreferencePayload(
+      displayPath: rootURL.path,
+      dataID: dataID,
+      updatedAt: updatedAt
+    )
+    defaults.set(
+      try JSONEncoder().encode(legacyPayload),
+      forKey: WorkbenchDataRootPathStore.legacyStorageKey
+    )
+
+    let store = WorkbenchDataRootPathStore(defaults: defaults, storageKey: storageKey)
+    let migrated = try #require(try store.storedRecord())
+    #expect(migrated.path == rootURL.path)
+    #expect(migrated.dataID == dataID)
+    #expect(migrated.updatedAt == updatedAt)
+    #expect(defaults.data(forKey: storageKey) != nil)
+    // The legacy preference remains untouched so migration is recoverable.
+    #expect(defaults.data(forKey: WorkbenchDataRootPathStore.legacyStorageKey) != nil)
   }
 
   private func makeExistingRoot(
@@ -480,60 +265,9 @@ struct WorkbenchDataRootTests {
   }
 }
 
-private final class SecurityScopeRecorder: @unchecked Sendable {
-  private let lock = NSLock()
-  private var storedBookmarkedPath: String?
-  private var storedStartedPaths: [String] = []
-  private var storedStoppedPaths: [String] = []
-  private var storedStartCount = 0
-  private var storedStopCount = 0
-  private var storedActiveAccessCount = 0
-  private var storedBookmarkCreateCount = 0
-
-  var bookmarkedPath: String? { withLock { storedBookmarkedPath } }
-  var startedPaths: [String] { withLock { storedStartedPaths } }
-  var stoppedPaths: [String] { withLock { storedStoppedPaths } }
-  var startCount: Int { withLock { storedStartCount } }
-  var stopCount: Int { withLock { storedStopCount } }
-  var activeAccessCount: Int { withLock { storedActiveAccessCount } }
-  var bookmarkCreateCount: Int { withLock { storedBookmarkCreateCount } }
-  var hasActiveAccess: Bool { withLock { storedActiveAccessCount > 0 } }
-
-  func setBookmarkedPath(_ path: String) {
-    withLock { storedBookmarkedPath = path }
-  }
-
-  func recordStartedPath(_ path: String) {
-    withLock { storedStartedPaths.append(path) }
-  }
-
-  func recordStoppedPath(_ path: String) {
-    withLock { storedStoppedPaths.append(path) }
-  }
-
-  func incrementStartCount() {
-    withLock { storedStartCount += 1 }
-  }
-
-  func incrementStopCount() {
-    withLock { storedStopCount += 1 }
-  }
-
-  func incrementActiveAccessCount() {
-    withLock { storedActiveAccessCount += 1 }
-  }
-
-  func decrementActiveAccessCount() {
-    withLock { storedActiveAccessCount -= 1 }
-  }
-
-  func incrementBookmarkCreateCount() {
-    withLock { storedBookmarkCreateCount += 1 }
-  }
-
-  private func withLock<T>(_ body: () -> T) -> T {
-    lock.lock()
-    defer { lock.unlock() }
-    return body()
-  }
+private struct LegacyPathPreferencePayload: Encodable {
+  let displayPath: String
+  let dataID: UUID
+  let updatedAt: Date
+  let opaquePayload = "ignored"
 }

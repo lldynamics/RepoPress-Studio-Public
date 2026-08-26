@@ -44,7 +44,14 @@ public final class KnowledgeLibraryService: @unchecked Sendable {
   let searchDiversificationService = KnowledgeSearchDiversificationService()
   let revisionDifferenceService = KnowledgeRevisionDifferenceService()
   let webContentSanitizer = KnowledgeWebContentSanitizer()
-  let contentExtractionService = KnowledgeContentExtractionService()
+  let contentExtractionService = KnowledgeContentExtractionService(
+    htmlExtractor: { data, sourceName in
+      try KnowledgeContentExtractionHTMLAdapter.extract(
+        data: data,
+        sourceName: sourceName
+      )
+    }
+  )
   let fileManager: FileManager
   let searchCancellationCheck: @Sendable () throws -> Void
 

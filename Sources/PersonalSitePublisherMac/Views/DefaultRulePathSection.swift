@@ -91,7 +91,7 @@ struct DefaultRulePathSection: View {
   private func pathPreviewRow(label: String, path: String, icon: String) -> some View {
     HStack(spacing: 6) {
       Image(systemName: icon)
-        .font(.caption2)
+        .font(.workbenchMetadata)
         .foregroundStyle(WorkbenchTheme.brand)
 
       Text("\(label)：")
@@ -150,10 +150,10 @@ struct DefaultRulePathSection: View {
   private func placeholderBadge(_ placeholder: String, desc: String) -> some View {
     HStack(spacing: 2) {
       Text(placeholder)
-        .font(.caption2.monospaced().weight(.semibold))
+        .font(.workbenchMetadata.monospaced().weight(.semibold))
         .foregroundStyle(WorkbenchTheme.brand)
       Text("(\(desc))")
-        .font(.caption2)
+        .font(.workbenchMetadata)
         .foregroundStyle(.secondary)
     }
     .padding(.horizontal, 6)

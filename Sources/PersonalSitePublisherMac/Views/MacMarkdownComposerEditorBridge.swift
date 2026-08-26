@@ -8,6 +8,12 @@ extension MacMarkdownComposerView {
   }
 
   func stageEditorBody(replacingBaseBody baseBodyMarkdown: String) {
+    if editorSessionState.liveBodyMarkdown == editorBody {
+      if editorBodyRevision != editorSessionState.liveBodyRevision {
+        editorBodyRevision = editorSessionState.liveBodyRevision
+      }
+      return
+    }
     guard
       let result = store.stageDraftBody(
         editorBody,
@@ -21,10 +27,44 @@ extension MacMarkdownComposerView {
     }
 
     editorBodyRevision = result.buffer.revision
+    editorSessionState.liveBodyMarkdown = result.buffer.bodyMarkdown
+    editorSessionState.liveBodyRevision = result.buffer.revision
     guard !result.wasAccepted else { return }
 
+    editorSessionState.markdownCursorContextService.invalidateCache()
     editorBody = result.buffer.bodyMarkdown
     selectionActionMessage = "另一窗口已更新正文，刚才的陈旧修改未写入；已同步到最新版本。"
+  }
+
+  /// Stages the NSTextView's body immediately while leaving the published
+  /// editor Binding untouched until its coalesced flush. The live revision is
+  /// the optimistic base for the next keystroke, so a true multi-window
+  /// conflict cannot be silently rebased over another writer.
+  func handleLiveEditorBodyChange(from previousBody: String, to updatedBody: String) {
+    guard
+      let result = store.stageDraftBody(
+        updatedBody,
+        for: draft.id,
+        baseRevision: editorSessionState.liveBodyRevision,
+        replacingBaseBody: previousBody,
+        notifyEditorObservers: false
+      )
+    else {
+      return
+    }
+
+    editorSessionState.liveBodyRevision = result.buffer.revision
+    guard result.wasAccepted else {
+      editorSessionState.liveBodyMarkdown = result.buffer.bodyMarkdown
+      editorSessionState.markdownCursorContextService.invalidateCache()
+      editorBody = result.buffer.bodyMarkdown
+      editorBodyRevision = result.buffer.revision
+      synchronizeDocumentBodyFromBuffer(previousBody: previousBody)
+      selectionActionMessage = "另一窗口已更新正文，刚才的陈旧修改未写入；已同步到最新版本。"
+      return
+    }
+
+    editorSessionState.liveBodyMarkdown = updatedBody
   }
 
   func handleEditorBodyChange(
@@ -51,8 +91,11 @@ extension MacMarkdownComposerView {
   func syncEditorBodyFromStore(force: Bool = false) {
     let buffer = editorState.draftBodyEditorBuffer(for: draft.id)
     guard force || buffer.revision != editorBodyRevision else { return }
+    editorSessionState.markdownCursorContextService.invalidateCache()
     editorBody = buffer.bodyMarkdown
     editorBodyRevision = buffer.revision
+    editorSessionState.liveBodyMarkdown = buffer.bodyMarkdown
+    editorSessionState.liveBodyRevision = buffer.revision
     refreshFindMatchSnapshot()
     refreshMarkdownCursorContextSnapshot()
   }
@@ -214,6 +257,8 @@ extension MacMarkdownComposerView {
     else { return false }
     editorBody = result.buffer.bodyMarkdown
     editorBodyRevision = result.buffer.revision
+    editorSessionState.liveBodyMarkdown = result.buffer.bodyMarkdown
+    editorSessionState.liveBodyRevision = result.buffer.revision
     refreshMarkdownCursorContextSnapshot()
     guard result.wasAccepted else {
       selectionActionMessage = "另一窗口已更新正文，刚才的编辑命令未应用；已同步到最新版本。"
@@ -239,9 +284,6 @@ extension MacMarkdownComposerView {
       )
     else {
       return updated.bodyMarkdown == editorBody
-    }
-    if editorState.editorDisplayMode == .preview {
-      store.setEditorDisplayMode(.edit)
     }
     editorEditRequest = MarkdownTextEditRequest(
       expectedText: editorBody,

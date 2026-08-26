@@ -108,10 +108,30 @@ grep -Fq 'SPARKLE_FRAMEWORK_BUNDLE="$APP_FRAMEWORKS/Sparkle.framework"' \
   || fail "build_and_run.sh does not stage Sparkle.framework"
 grep -Fq 'SUEnableInstallerLauncherService' "$ROOT_DIR/script/build_and_run.sh" \
   || fail "Direct Release Info.plist omits Sparkle installer launcher support"
+if [[ -e "$ROOT_DIR/Packaging/CodexRuntime" ]]; then
+  fail "obsolete bundled Codex runtime packaging directory still exists"
+fi
+for path in \
+  "$ROOT_DIR/script/build_and_run.sh" \
+  "$ROOT_DIR/Sources/PublishingWorkbenchCore/Services/CodexAppServerClient.swift"; do
+  if grep -Eq 'CodexRuntime|REPOPRESS_CODEX_RUNTIME_PATH|REPOPRESS_CODEX_LICENSE_PATH' "$path"; then
+    fail "${path#$ROOT_DIR/} still exposes bundled Codex runtime packaging"
+  fi
+done
 grep -Fq 'build_arguments=(--package-only --release)' "$ROOT_DIR/script/check_ui_runtime.sh" \
   || fail "packaged UI artifact gate does not build a Release app bundle"
 grep -Fq 'packaged app must use the Release configuration' "$ROOT_DIR/script/check_ui_runtime.sh" \
   || fail "packaged UI artifact gate does not verify its embedded build configuration"
+
+# Release performance and XCUI tooling may opt into capture-only compilation,
+# while ordinary run/package builds must keep that code path disabled.
+grep -Fq 'if [[ "${PERSONAL_SITE_PUBLISHER_CAPTURE_BUILD:-0}" == "1" ]]; then' \
+  "$ROOT_DIR/script/build_and_run.sh" \
+  || fail "ordinary run/package builds do not retain the capture-build default-off path"
+if grep -Eq -- '--screenshot-demo|--screenshot-surface|--list-screenshot-surfaces' \
+  "$ROOT_DIR/script/build_and_run.sh"; then
+  fail "build_and_run.sh still exposes the removed App Store screenshot demo mode"
+fi
 
 chrome_checks="$(bash "$ROOT_DIR/script/check_release_gate.sh" --profile chrome --list)"
 grep -q $'^chrome-extension-store-readiness\tstrict\t' <<<"$chrome_checks" \

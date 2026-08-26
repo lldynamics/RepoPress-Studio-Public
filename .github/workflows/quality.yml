@@ -22,6 +22,11 @@ on:
           - quick
           - pr
           - release
+      compile_benchmark:
+        description: Run the opt-in per-module cold, warm, and incremental build benchmark
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -63,6 +68,7 @@ jobs:
           path: |
             .build/main-push-quick-result.json
             .build/main-push-quick-summary.md
+            .build/swift-module-boundaries.json
             .build/swift-test-shards/
 
   quality-quick:
@@ -104,6 +110,7 @@ jobs:
           path: |
             .build/quality-gate-result.json
             .build/quality-gate-summary.md
+            .build/swift-module-boundaries.json
             .build/swift-test-shards/
 
   quality-coverage:
@@ -166,7 +173,6 @@ jobs:
       - name: Exercise distribution build and package path
         run: |
           xcodebuild -version
-          xcrun -f safari-web-extension-packager
           ./script/check_release_gate.sh \
             --check ui-runtime \
             --check swift-release-build \
@@ -207,7 +213,6 @@ jobs:
       - name: Exercise release distribution build and package path
         run: |
           xcodebuild -version
-          xcrun -f safari-web-extension-packager
           ./script/check_release_gate.sh \
             --check ui-runtime \
             --check swift-release-build \
@@ -229,7 +234,7 @@ jobs:
           exec > >(tee .build/ui-smoke.log) 2>&1
           bash script/check_ui_runtime.sh --launch
           env -u RELEASE_GATE_PROFILE bash script/check_accessibility_runtime.sh
-          WORKBENCH_XCUI_APP_PATH="$PWD/dist/PersonalSitePublisherMac.app" \
+          WORKBENCH_XCUI_APP_PATH="$PWD/dist/RepoPress Studio.app" \
             bash script/check_accessibility_runtime.sh --non-screenshot-regression
           cat > .build/ui-smoke-summary.md <<'EOF'
           # UI Smoke Summary
@@ -328,6 +333,38 @@ jobs:
             .build/release-performance/
             .build/release-performance-gate-result.json
             .build/release-performance-gate-summary.md
+          if-no-files-found: warn
+
+  module-build-performance:
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      github.event.inputs.compile_benchmark == 'true'
+    runs-on: macos-15
+    timeout-minutes: 120
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - name: Show module benchmark toolchain
+        run: |
+          swift --version
+          uname -a
+      - name: Run opt-in module build benchmark
+        run: |
+          ./script/check_release_gate.sh \
+            --check swift-module-build-benchmark \
+            --result-json .build/module-build-benchmark-gate-result.json \
+            --summary-markdown .build/module-build-benchmark-gate-summary.md
+          cat .build/module-build-benchmark-gate-summary.md >>"$GITHUB_STEP_SUMMARY"
+      - name: Upload module build evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: swift-module-build-benchmark
+          path: |
+            .build/benchmarks/swift-module-builds.json
+            .build/benchmarks/swift-module-builds-logs/
+            .build/module-build-benchmark-gate-result.json
+            .build/module-build-benchmark-gate-summary.md
           if-no-files-found: warn
 
   swift6-migration:

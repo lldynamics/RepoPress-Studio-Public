@@ -61,7 +61,11 @@ final class KnowledgeDatabase: @unchecked Sendable {
   static let currentSchemaVersion = 8
 
   let lock = NSLock()
-  let semanticVectorCache = KnowledgeSemanticVectorLRUCache()
+  /// Immutable flat vector snapshots keyed by model and dimension.  All
+  /// access occurs while `lock` is held by the database methods; the snapshot
+  /// itself is Sendable and never mutated after insertion.
+  let semanticFlatVectorIndexes = KnowledgeSemanticVectorFlatIndexCache()
+  var semanticFlatVectorIndexChangeToken: Int64 = 0
   let statementCache = SQLitePreparedStatementCache()
   var handle: OpaquePointer?
 

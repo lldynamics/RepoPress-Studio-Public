@@ -180,7 +180,7 @@ extension WritingDraftColumn {
   }
 
   func revealSelectedDraftIfNeeded(refreshFilter: Bool = true) {
-    guard let selectedDraftID = draftListState.selectedDraftID,
+    guard let selectedDraftID,
       store.writingDrafts.contains(where: { $0.id == selectedDraftID })
     else {
       return

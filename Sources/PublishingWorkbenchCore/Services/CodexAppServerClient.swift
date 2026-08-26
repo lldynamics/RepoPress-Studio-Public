@@ -68,47 +68,40 @@ public final class CodexAppServerProcessTransport: CodexAppServerTransport, @unc
     )
   }
 
-  private static func discoverRuntimeLocation()
+  static func discoverRuntimeLocation(
+    environment: [String: String] = ProcessInfo.processInfo.environment,
+    fallbackCandidates: [(path: String, source: CodexAppServerRuntimeSource)] = [
+      ("/opt/homebrew/bin/codex", .homebrew),
+      ("/usr/local/bin/codex", .homebrew),
+      ("/usr/bin/codex", .path),
+      ("/bin/codex", .path),
+    ],
+    fileManager: FileManager = .default
+  )
     -> (url: URL, source: CodexAppServerRuntimeSource)?
   {
-    let fileManager = FileManager.default
-    let bundledCandidates = [
-      Bundle.main.url(forAuxiliaryExecutable: "codex"),
-      Bundle.main.sharedSupportURL?
-        .appendingPathComponent("CodexRuntime", isDirectory: true)
-        .appendingPathComponent("codex", isDirectory: false),
-      Bundle.main.resourceURL?
-        .appendingPathComponent("CodexRuntime", isDirectory: true)
-        .appendingPathComponent("codex", isDirectory: false),
-    ].compactMap { $0 }
-    for candidate in bundledCandidates where fileManager.isExecutableFile(atPath: candidate.path) {
-      return (candidate, .bundled)
+    let pathCandidates =
+      environment["PATH"]?
+      .split(separator: ":", omittingEmptySubsequences: true)
+      .compactMap { entry -> (path: String, source: CodexAppServerRuntimeSource)? in
+        let directory = String(entry)
+        guard directory.hasPrefix("/") else { return nil }
+        let path = URL(fileURLWithPath: directory, isDirectory: true)
+          .appendingPathComponent("codex", isDirectory: false)
+          .standardizedFileURL.path
+        let source: CodexAppServerRuntimeSource =
+          path == "/opt/homebrew/bin/codex" || path == "/usr/local/bin/codex"
+          ? .homebrew : .path
+        return (path, source)
+      } ?? []
+    var visitedPaths = Set<String>()
+    for candidate in pathCandidates + fallbackCandidates {
+      let standardizedPath = URL(fileURLWithPath: candidate.path).standardizedFileURL.path
+      guard visitedPaths.insert(standardizedPath).inserted,
+        fileManager.isExecutableFile(atPath: standardizedPath)
+      else { continue }
+      return (URL(fileURLWithPath: standardizedPath), candidate.source)
     }
-
-    let preferredPaths = [
-      "/opt/homebrew/bin/codex",
-      "/usr/local/bin/codex",
-    ]
-    for path in preferredPaths where fileManager.isExecutableFile(atPath: path) {
-      return (URL(fileURLWithPath: path), .homebrew)
-    }
-
-    #if DEBUG
-      // PATH is intentionally a development-only convenience. A release build
-      // must never silently execute an arbitrary `codex` found in a user-
-      // controlled directory. Production discovery is limited to the bundled
-      // runtime and the explicit, conventional Homebrew locations above.
-      let pathEntries =
-        ProcessInfo.processInfo.environment["PATH"]?
-        .split(separator: ":", omittingEmptySubsequences: true)
-        .map(String.init) ?? []
-      for entry in pathEntries {
-        let candidate = URL(fileURLWithPath: entry).appendingPathComponent("codex")
-        if fileManager.isExecutableFile(atPath: candidate.path) {
-          return (candidate, .path)
-        }
-      }
-    #endif
     return nil
   }
 

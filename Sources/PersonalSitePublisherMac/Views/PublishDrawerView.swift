@@ -145,6 +145,7 @@ struct PublishDrawerView: View {
     let blockingCount = issues.filter { $0.severity == .error }.count
     let localReadiness = store.localPublishReadiness
     let singleArticlePreview = store.cachedRemotePublishPreview(for: draft)
+    let previewBranchPreview = store.remoteRepositoryDraftPreview(for: draft)
     let remotePreview = store.batchRemotePublishPreviewSnapshot
     let batchPlan = store.batchPublishPlan
     let batchActionState = batchActionState(plan: batchPlan, preview: remotePreview)
@@ -155,8 +156,15 @@ struct PublishDrawerView: View {
     let canPublishCurrentArticle = singleArticlePreview?.canPublish == true
       && !store.isRemoteRepositoryChecking
       && !store.isRemoteRepositoryPublishing
+    let canPushPreviewBranch = previewBranchPreview.canPublish
+      && !store.isRemoteRepositoryChecking
+      && !store.isRemoteRepositoryPublishing
     let singleArticleAction = PublishDrawerSingleArticleActionPresentation.make(
       isWebsiteDraft: draft.draft
+    )
+    let previewBranchAction = PublishDrawerPreviewBranchActionPresentation.make(
+      branchName: previewBranchPreview.branchName,
+      targetBranch: previewBranchPreview.targetBranch
     )
 
     return PublishDrawerCard(title: "选择操作", systemImage: "cursorarrow.click.2") {
@@ -196,6 +204,21 @@ struct PublishDrawerView: View {
         ) {
           prepareAllChangesOnlinePublish()
         }
+
+        PublishDrawerActionChoice(
+          title: previewBranchAction.title,
+          detail: previewBranchAction.detail,
+          status: previewBranchActionStatus(preview: previewBranchPreview),
+          systemImage: "arrow.triangle.branch",
+          tint: WorkbenchTheme.navigationSelection,
+          isEnabled: canPushPreviewBranch,
+          isPrimary: false,
+          actionTitle: previewBranchAction.actionTitle,
+          actionSystemImage: "arrow.up.forward.app",
+          actionIdentifier: "publish-drawer-action-preview-branch"
+        ) {
+          publishSingleArticlePreviewBranch(draft)
+        }
       }
 
       Button {
@@ -212,7 +235,39 @@ struct PublishDrawerView: View {
           ? singleArticleAction.enabledHint
           : singleArticleAction.disabledHint
       )
+      Text(
+        String(
+          format: String(localized: "预览分支：%@"),
+          previewBranchPreview.branchName
+        )
+      )
+      .font(.caption)
+      .foregroundStyle(.secondary)
+      .textSelection(.enabled)
+      .accessibilityLabel("草稿预览分支")
+      .accessibilityValue(previewBranchPreview.branchName)
     }
+  }
+
+  private func previewBranchActionStatus(
+    preview: RemoteRepositoryPublishPreview
+  ) -> String {
+    if store.isRemoteRepositoryPublishing {
+      return String(localized: "正在推送草稿预览分支")
+    }
+    if let issue = preview.blockingIssues.first {
+      return issue.title
+    }
+    if preview.tokenAccessFailureMessage != nil {
+      return String(localized: "仓库 Token 状态读取失败")
+    }
+    if !preview.hasToken {
+      return String(localized: "请先保存仓库 Token")
+    }
+    if preview.accessCheck?.canWrite != true {
+      return String(localized: "请先确认仓库写入权限")
+    }
+    return String(localized: "可推送，不改变正式发布状态")
   }
 
   private func localActionStatus(
@@ -458,6 +513,17 @@ struct PublishDrawerView: View {
     _ = publishingFacade.focusDraft(draft.id)
     Task {
       await store.publishSelectedDraftOnlineUsingPreferredStrategy()
+      publishingFacade.selectSection(currentSection)
+      publishingFacade.refreshPublishPreviewInBackground(for: draft)
+      store.refreshBatchPublishPlanInBackground()
+    }
+  }
+
+  private func publishSingleArticlePreviewBranch(_ draft: ArticleDraft) {
+    let currentSection = publishingFacade.selectedSection
+    _ = publishingFacade.focusDraft(draft.id)
+    Task {
+      await store.publishSelectedDraftToPreviewBranch()
       publishingFacade.selectSection(currentSection)
       publishingFacade.refreshPublishPreviewInBackground(for: draft)
       store.refreshBatchPublishPlanInBackground()

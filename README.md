@@ -14,7 +14,7 @@ RepoPress Studio 是 RepoPress 的桌面版本：用 Markdown 管理内容，以
 - **图片与站点维护**：管理封面和素材，批量补充 alt / caption，检查源图状态并压缩 JPEG；站点维护区集中处理仓库、内容和部署问题。
 - **本地知识与阅读**：内置资料库、网页与 PDF 导入、语义检索、RSS 订阅和阅读进度；工作区备份不会包含 Keychain 凭据。
 - **可选 AI 工作流**：在 Inspector 中基于当前文章连续对话，执行元数据建议、审稿和发布文案等任务；API Key 由用户配置并存入 Keychain。
-- **浏览器采集**：Safari、Chrome 和 Firefox 扩展通过带随机令牌的 `127.0.0.1` 回环接口连接本机应用，不把网页内容发送到开发者中转服务。
+- **浏览器采集**：Chrome 和 Firefox 扩展通过带随机令牌的 `127.0.0.1` 回环接口连接本机应用，不把网页内容发送到开发者中转服务。
 
 ## 多平台关系
 
@@ -28,11 +28,12 @@ RepoPress Studio 是 RepoPress 的桌面版本：用 Markdown 管理内容，以
 ## 环境要求
 
 - 运行：macOS 14 或更高版本。
-- 开发：完整 Xcode 及兼容 Swift 6 的工具链。完整应用打包还会使用 Xcode 提供的 Safari Web Extension 工具，只有 Command Line Tools 不足以覆盖全部流程。
+- 开发：完整 Xcode 及兼容 Swift 6 的工具链；Command Line Tools 不足以覆盖完整 macOS 应用包流程。
 - 质量脚本：Python 3 和系统开发工具。
+- 本地发布、预览与 ChatGPT 登录：按需安装 Git、Hugo、Zola、Codex CLI、Node.js/npm 等工具；应用从系统、Homebrew 或 `PATH` 解析，不把这些第三方 CLI 打进 `.app`。
 - 浏览器扩展测试：Node.js 与 npm；日常 Swift 开发不依赖 Node。
 
-`PublishingWorkbenchCore`、Mac App 和测试 target 均已使用 Swift 6 语言模式。
+所有 SwiftPM target 都必须显式使用 Swift 6 语言模式；模块边界门禁会从清单动态盘点 target、产品与依赖，不依赖容易过期的固定数量。
 
 ## 快速开始
 
@@ -49,7 +50,7 @@ swift test
 ./script/build_and_run.sh --package-only
 ```
 
-构建完整应用包、嵌入 Safari 扩展并启动：
+构建完整 macOS 应用包并启动：
 
 ```bash
 ./script/build_and_run.sh
@@ -57,11 +58,13 @@ swift test
 
 ## 项目结构
 
-- `Sources/PublishingWorkbenchCore/`：模型、服务、Store 与本地数据能力。
+- `Sources/PublishingMarkdownCore/`、`Sources/PublishingGitCore/`、`Sources/PublishingAICore/`、`Sources/PublishingKnowledgeCore/`：Markdown、仓库发布、AI 与知识库的细粒度边界。
+- `Sources/PublishingCoreSupport/`、`Sources/PublishingDomainContracts/`：共享基础设施与小型跨域值契约。
+- `Sources/PublishingWorkbenchCore/`：跨域编排、Store、兼容适配和暂时保留的 umbrella 导出层。
 - `Sources/PersonalSitePublisherMac/`：macOS App、SwiftUI 界面和 AppKit 适配层。
 - `Sources/BrowserExtensionProtocolSupport/`：应用与浏览器扩展共享的协议常量。
 - `Shared/RepoPressCoreContracts/`：跨 Swift / .NET 的版本化契约、固定样例和 Foundation-only 共享 Core。
-- `BrowserExtension/`：Safari、Chrome 和 Firefox 扩展源码与渠道配置。
+- `BrowserExtension/`：Chrome 和 Firefox 扩展源码与渠道配置。
 - `Tests/`、`UITests/`：单元、集成、运行态 UI 和无障碍测试。
 - `Packaging/`：版本、entitlements、第三方声明与发行配置。
 - `script/`：构建、质量门禁、扩展和发行脚本。
@@ -86,6 +89,20 @@ swift test
   --check swift-tests
 ```
 
+模块编译耗时使用独立工具记录。先查看计划，再按需采集 Release 冷构建、暖构建和增量构建样本：
+
+```bash
+python3 script/benchmark_swift_module_builds.py --plan
+python3 script/benchmark_swift_module_builds.py \
+  --configuration release \
+  --repetitions 3 \
+  --scenario cold \
+  --scenario warm \
+  --scenario incremental
+```
+
+工具先在计时外解析依赖，并在整次运行中复用隔离的依赖下载缓存；每组冷构建使用独立编译器缓存，暖构建只复用对应冷样本。增量探针只修改临时源码副本，不触碰工作树。宿主机墙钟时间只用于趋势比较，不作为发行硬阈值。
+
 代码、真实窗口和无障碍证据分层验证：
 
 ```bash
@@ -102,7 +119,7 @@ GitHub Actions 在 `main` push 运行快速门禁；pull request 和手动触发
 
 ## 浏览器扩展
 
-Safari 扩展随应用包构建；仓库同时提供 Chrome Web Store 与 Firefox 的源码、打包和身份校验流程。具体安装、权限与数据边界见 [`BrowserExtension/README.md`](BrowserExtension/README.md)。
+macOS 应用不内嵌浏览器扩展；Chrome 和 Firefox 扩展需要单独安装和更新。仓库提供 Chrome Web Store 与 Firefox 的源码、打包和身份校验流程。具体安装、权限与数据边界见 [`BrowserExtension/README.md`](BrowserExtension/README.md)。
 
 真实浏览器 E2E 使用锁定的 npm 依赖，并会下载本地 Chromium 运行时；完整 Firefox 场景还需要本机安装 Firefox：
 
@@ -145,7 +162,7 @@ macOS 版当前代码不包含应用内购买或付费权益维护面；这不�
 
 RepoPress Studio 是本地优先应用，而不是完全离线应用。文件默认保留在用户设备；只有在用户明确执行仓库同步、发布、部署检查、AI 请求、网页采集或更新检查时，应用才会联系相应服务。凭据存入 Keychain，不进入工作区备份。
 
-“快速隐藏”只提供界面遮挡，不是身份验证或磁盘加密。详细网络、备份和卸载边界见 [`docs/privacy-support-copy.md`](docs/privacy-support-copy.md)。
+“快速隐藏”只提供界面遮挡，不是身份验证或磁盘加密。
 
 不要把真实凭据、私人仓库内容、本机路径或未脱敏截图提交到仓库。安全问题请按 [`SECURITY.md`](SECURITY.md) 私下报告，不要创建公开 Issue。
 

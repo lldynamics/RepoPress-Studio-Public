@@ -7,9 +7,70 @@ public struct ScreenshotDemoDataService {
   public static let knowledgeRootEnvironmentKey = "PERSONAL_SITE_PUBLISHER_SCREENSHOT_KNOWLEDGE_ROOT"
   public static let uiTestEnvironmentKey = "PERSONAL_SITE_PUBLISHER_SCREENSHOT_UI_TEST"
   public static let uiTestRepositoryRootEnvironmentKey = "PERSONAL_SITE_PUBLISHER_SCREENSHOT_UI_TEST_REPOSITORY_ROOT"
+  public static let persistenceRootEnvironmentKey =
+    "PERSONAL_SITE_PUBLISHER_SCREENSHOT_PERSISTENCE_ROOT"
+  public static let performancePersistenceRootEnvironmentKey =
+    "PERSONAL_SITE_PUBLISHER_PERFORMANCE_PERSISTENCE_ROOT"
+  public static let performanceFixtureEnvironmentKey =
+    "PERSONAL_SITE_PUBLISHER_PERFORMANCE_FIXTURE"
+  public static let performanceFixtureLengthEnvironmentKey =
+    "PERSONAL_SITE_PUBLISHER_PERFORMANCE_FIXTURE_UTF16_LENGTH"
   public static let persistenceFilename = "screenshot-demo-workbench.json"
 
+  private static let demoAttachmentDirectoryName = "screenshot-demo-attachments"
+  private static let demoAttachmentFilename = "social-preview.png"
+  private static let demoAttachmentPNGBase64 = """
+    iVBORw0KGgoAAAANSUhEUgAAAGAAAAAwCAYAAADuFn/PAAAAAXNSR0IArs4c6QAAAERlWElmTU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAA6ABAAMAAAABAAEAAKACAAQAAAABAAAAYKADAAQAAAABAAAAMAAAAACRIJCFAAAA6klEQVR4Ae3XwQkCURTF0FHsQ+3MzrQztRIFC3iz+gTkuH1ChsQLzuFyf302n8zAMSMD/wwIEP8QBBAgNhDjLUCA2ECMtwABYgMx3gIEiA3EeAsQIDYQ4y1AgNhAjLcAAWIDMd4CBIgNxHgLECA2EOMtQIDYQIy3AAFiAzHeAgSIDcR4CxAgNhDjLUCA2ECMt4A4wGmP/7yd977iPhi4Pt7DddssYNSz/ijAescjQYBRz/qjAOsdjwQBRj3rjwKsdzwSBBj1rD/uvgfs/Y9d/4j/TbCAuK8AAsQGYrwFCBAbiPEWIEBsIMZ/ATxuB6TxZQ2xAAAAAElFTkSuQmCC
+    """
+
   public init() {}
+
+  private static var demoAttachmentURL: URL {
+    FileManager.default.temporaryDirectory
+      .appendingPathComponent("PersonalSitePublisherMac", isDirectory: true)
+      .appendingPathComponent(demoAttachmentDirectoryName, isDirectory: true)
+      .appendingPathComponent(demoAttachmentFilename)
+  }
+
+  /// Creates the screenshot-only image in the system temporary directory.
+  ///
+  /// `makeSnapshot()` is intentionally non-throwing, so a failed fixture
+  /// write returns `nil` and leaves the attachment unresolved instead of
+  /// falling back to a user path or a checked-in resource.
+  private static func ensureDemoAttachmentURL() -> URL? {
+    let fileManager = FileManager.default
+    let url = demoAttachmentURL
+    guard
+      let data = Data(
+        base64Encoded: demoAttachmentPNGBase64,
+        options: [.ignoreUnknownCharacters]
+      ), !data.isEmpty
+    else {
+      return nil
+    }
+    do {
+      try fileManager.createDirectory(
+        at: url.deletingLastPathComponent(),
+        withIntermediateDirectories: true
+      )
+      let existingData: Data?
+      do {
+        existingData = try Data(contentsOf: url)
+      } catch {
+        // A missing or unreadable fixture is treated as stale and rewritten.
+        existingData = nil
+      }
+      if existingData != data {
+        try data.write(to: url, options: .atomic)
+      }
+      guard fileManager.isReadableFile(atPath: url.path) else { return nil }
+      let attributes = try fileManager.attributesOfItem(atPath: url.path)
+      guard attributes[.type] as? FileAttributeType == .typeRegular else { return nil }
+      return url.standardizedFileURL
+    } catch {
+      return nil
+    }
+  }
 
   private static func demoUUID(_ value: String) -> UUID {
     UUID(uuidString: value) ?? UUID(uuid: (
@@ -66,9 +127,10 @@ public struct ScreenshotDemoDataService {
       repositoryPath: "static/images/2026/social-preview.png",
       altText: "桌面发布控制台的 SEO 社交卡片预览",
       caption: "安全演示图，不包含真实路径或账号。",
-      byteSize: 248_000
+      byteSize: 248_000,
+      sourceFilePath: Self.ensureDemoAttachmentURL()?.path
     )
-    let article = ArticleDraft(
+    var article = ArticleDraft(
       id: articleID,
       siteProfileID: profileID,
       title: "RepoPress Studio 发布流程",
@@ -84,6 +146,26 @@ public struct ScreenshotDemoDataService {
       # RepoPress Studio 发布流程
 
       这是一篇用于发行演示截图的文章，所有账号、URL 和路径都是安全示例。
+
+      ## TextKit 2 混合渲染预览
+
+      原生编辑器会呈现 **语义强调**、`inline code` 与 [安全示例链接](https://demo.example.com/docs)。
+
+      > 引用块使用原生竖线呈现，进入编辑时恢复 Markdown 标记。
+
+      - [ ] 审阅原生任务复选框
+        - [x] 嵌套任务保持缩进层级
+      10. 两位数序号进入编辑时恢复源码
+
+      ```swift
+      let renderer = TextKitRenderer()
+      ```
+
+      ![桌面发布控制台的 SEO 社交卡片预览](/images/2026/social-preview.png)
+
+      $$
+      E = mc^2 \\quad \\frac{a}{b} + \\sqrt{x_i} \\quad \\text{安全演示}
+      $$
 
       ## 发布前检查
 
@@ -102,6 +184,26 @@ public struct ScreenshotDemoDataService {
       repositoryPath: "content/posts/2026/repopress-studio-publishing-flow.md",
       repositorySHA: "demo-local-sha"
     )
+    if Self.isMarkdownRichScrollPerformanceFixtureEnabledFromEnvironment {
+      let minimumUTF16Length = Self.markdownScrollPerformanceFixtureMinimumUTF16Length
+      article.title = "Markdown 富附件滚动性能夹具"
+      article.slug = "markdown-rich-scroll-performance-fixture"
+      article.summary = "仅用于隔离含图片与数学公式的 TextKit 2 富附件滚动录制。"
+      article.bodyMarkdown = Self.markdownRichScrollPerformanceBody(
+        minimumUTF16Length: minimumUTF16Length,
+        imagePath: cover.relativePublishPath
+      )
+      article.updatedAt = now
+    } else if Self.isMarkdownScrollPerformanceFixtureEnabledFromEnvironment {
+      let minimumUTF16Length = Self.markdownScrollPerformanceFixtureMinimumUTF16Length
+      article.title = "Markdown 滚动性能夹具"
+      article.slug = "markdown-scroll-performance-fixture"
+      article.summary = "仅用于隔离 Release Instruments 录制的合成大文档。"
+      article.bodyMarkdown = Self.markdownScrollPerformanceBody(
+        minimumUTF16Length: minimumUTF16Length
+      )
+      article.updatedAt = now
+    }
     let privateArticle = ArticleDraft(
       id: privateArticleID,
       siteProfileID: profileID,
@@ -325,6 +427,7 @@ public struct ScreenshotDemoDataService {
   public static var isEnabledFromEnvironment: Bool {
     let value = ProcessInfo.processInfo.environment[environmentKey]?.lowercased()
     return value == "1" || value == "true" || value == "yes"
+      || isPerformanceFixtureEnabledFromEnvironment
   }
 
   public static var requestedSurfaceFromEnvironment: ScreenshotDemoSurface? {
@@ -332,9 +435,121 @@ public struct ScreenshotDemoDataService {
     return rawValue.flatMap(ScreenshotDemoSurface.init(rawValue:))
   }
 
+  public static var isMarkdownScrollPerformanceFixtureEnabledFromEnvironment: Bool {
+    (ProcessInfo.processInfo.environment[performanceFixtureEnvironmentKey] ?? "")
+      .trimmingCharacters(in: .whitespacesAndNewlines)
+      .lowercased() == "markdown-scroll"
+  }
+
+  public static var isMarkdownRichScrollPerformanceFixtureEnabledFromEnvironment: Bool {
+    (ProcessInfo.processInfo.environment[performanceFixtureEnvironmentKey] ?? "")
+      .trimmingCharacters(in: .whitespacesAndNewlines)
+      .lowercased() == "markdown-rich-scroll"
+  }
+
+  public static var isPerformanceFixtureEnabledFromEnvironment: Bool {
+    isMarkdownScrollPerformanceFixtureEnabledFromEnvironment
+      || isMarkdownRichScrollPerformanceFixtureEnabledFromEnvironment
+  }
+
+  public static var markdownScrollPerformanceFixtureMinimumUTF16Length: Int {
+    let configured = ProcessInfo.processInfo.environment[performanceFixtureLengthEnvironmentKey]
+      .flatMap(Int.init)
+    return min(max(configured ?? 100_000, 1_000), 1_000_000)
+  }
+
+  private static func markdownScrollPerformanceBody(
+    minimumUTF16Length: Int
+  ) -> String {
+    let header = """
+      # Markdown viewport performance fixture
+
+      This synthetic document is generated only for isolated Instruments runs.
+
+      """
+    let block = """
+      ## Incremental viewport section
+
+      Paragraph text contains **strong emphasis**, *emphasis*, `inline-code`, and a [safe link](https://example.invalid/performance).
+
+      - [ ] Verify the visible viewport
+      - [x] Retain overlapping rendering attributes
+      - Keep offscreen attribute writes bounded
+
+      > The scroll driver changes only the clip-view origin and never edits this document.
+
+      ```swift
+      let viewport = visibleRange.expandedByOneScreen()
+      renderer.apply(snapshot, inside: viewport)
+      ```
+
+      """
+    let requiredBlockCount = max(
+      1,
+      (minimumUTF16Length - (header as NSString).length + (block as NSString).length - 1)
+        / (block as NSString).length
+    )
+    return header + String(repeating: block, count: requiredBlockCount)
+  }
+
+  private static func markdownRichScrollPerformanceBody(
+    minimumUTF16Length: Int,
+    imagePath: String
+  ) -> String {
+    let header = """
+      # Markdown rich attachment scroll fixture
+
+      This synthetic document is generated only for isolated TextKit 2 attachment and formula scroll runs.
+
+      ![Repeated safe demo attachment](\(imagePath))
+
+      Inline math remains in the source as $x_i + y_i = z_i$ while the native renderer lays out this viewport.
+
+      $$
+      E = mc^2 \\quad \\frac{a}{b} + \\sqrt{x_i}
+      $$
+
+      """
+    let block = """
+      ## Rich attachment viewport section
+
+      The same local image is referenced repeatedly so overlay placement and decoded-image cache reuse are exercised.
+
+      ![Repeated safe demo attachment](\(imagePath))
+      ![Repeated safe demo attachment](\(imagePath))
+      ![Repeated safe demo attachment](\(imagePath))
+
+      Paragraph text includes **strong emphasis**, `inline-code`, and inline math $\\alpha + \\beta = \\gamma$.
+
+      - [ ] Verify visible attachment bounds
+      - [x] Keep offscreen image work bounded
+
+      $$
+      \\sum_{i=1}^{n} i = \\frac{n(n+1)}{2} \\quad \\int_0^1 x^2 dx = \\frac{1}{3}
+      $$
+
+      > Scrolling changes only the clip-view origin and never edits this document.
+
+      """
+    let requiredBlockCount = max(
+      1,
+      (minimumUTF16Length - (header as NSString).length + (block as NSString).length - 1)
+        / (block as NSString).length
+    )
+    return header + String(repeating: block, count: requiredBlockCount)
+  }
+
   public static var defaultPersistenceURL: URL {
-    FileManager.default.temporaryDirectory
-      .appendingPathComponent("PersonalSitePublisherMac", isDirectory: true)
+    let configuredRoot = (
+      ProcessInfo.processInfo.environment[performancePersistenceRootEnvironmentKey]
+        ?? ProcessInfo.processInfo.environment[persistenceRootEnvironmentKey]
+    )
+      .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+      .flatMap { path in
+        path.isEmpty ? nil : URL(fileURLWithPath: path, isDirectory: true)
+      }
+    return (configuredRoot ?? FileManager.default.temporaryDirectory
+      .appendingPathComponent("PersonalSitePublisherMac", isDirectory: true))
       .appendingPathComponent(persistenceFilename)
   }
 
@@ -498,7 +713,6 @@ public struct ScreenshotDemoDataService {
 
     var profile = store.activeProfile
     profile.localRepositoryRootPath = rootURL.standardizedFileURL.path
-    profile.localRepositoryBookmarkData = nil
     store.updateActiveProfile(profile)
   }
 
@@ -546,7 +760,8 @@ public struct ScreenshotDemoDataService {
     )
     store.setRemoteRepositoryAccessCheck(accessCheck)
     store.refreshPublishPreview(for: draft)
-    store.publishingStore.localPublishReadiness = LocalPublishReadiness(
+    let cachedSnapshot = store.cachedPublishPreview(for: draft.id)
+    let demoReadiness = LocalPublishReadiness(
       writeReadiness: .ready,
       commitReadiness: .ready,
       changedFileCount: 1,
@@ -556,7 +771,7 @@ public struct ScreenshotDemoDataService {
       warningIssues: [conflictWarning]
     )
 
-    var preview = store.remotePublishPreviewSnapshot ?? RemoteRepositoryPublishPreview(
+    var preview = cachedSnapshot?.remotePublishPreview ?? RemoteRepositoryPublishPreview(
       provider: profile.repositoryProvider,
       repositoryName: profile.repositoryDisplayName,
       mode: .reviewRequest,
@@ -582,7 +797,18 @@ public struct ScreenshotDemoDataService {
     preview.accessCheck = accessCheck
     preview.blockingIssues = []
     preview.warningIssues = [conflictWarning]
-    store.publishingStore.remotePublishPreviewSnapshot = preview
+    if let cachedSnapshot {
+      _ = store.publishingStore.installDraftPublishPreviewSnapshot(
+        DraftPublishPreviewSnapshot(
+          context: cachedSnapshot.context,
+          publishPackage: cachedSnapshot.publishPackage,
+          localPublishPreview: cachedSnapshot.localPublishPreview,
+          localPublishReadiness: demoReadiness,
+          remotePublishPreview: preview,
+          remoteReviewDraft: cachedSnapshot.remoteReviewDraft
+        )
+      )
+    }
     store.selectSection(.sync)
   }
 
@@ -649,7 +875,6 @@ public enum ScreenshotDemoSurface: String, CaseIterable, Identifiable, Sendable 
     switch self {
     case .writing:
       store.selectSection(.writing)
-      store.setEditorDisplayMode(.split)
       store.setPublishActionMessage(String(localized: "截图模式：写作工作区已载入演示文章。"), status: .information)
     case .aiChat:
       _ = store.openAIChatWorkspace(for: preferredDraft(in: store)?.id)

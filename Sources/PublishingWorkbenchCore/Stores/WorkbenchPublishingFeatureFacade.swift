@@ -5,11 +5,9 @@ import Foundation
 public final class WorkbenchPublishingFeatureFacade: ObservableObject {
   private unowned let store: WorkbenchStore
   private var cancellables = Set<AnyCancellable>()
-  public let editorDisplayModePublisher: AnyPublisher<EditorDisplayMode, Never>
 
   init(store: WorkbenchStore) {
     self.store = store
-    editorDisplayModePublisher = store.publishingStore.$editorDisplayMode.eraseToAnyPublisher()
 
     // Observe only values read by this facade.  In particular, do not bridge
     // PublishingStore.objectWillChange: that would make editor, settings and
@@ -20,7 +18,6 @@ public final class WorkbenchPublishingFeatureFacade: ObservableObject {
     observe(store.publishingStore.$selectedSection)
     observe(store.publishingStore.$selectedDraftID)
     observe(store.publishingStore.$draftListContentScope)
-    observe(store.publishingStore.$editorDisplayMode)
     observe(store.publishingStore.$editorFocusRequest)
     observe(store.publishingStore.$isPublishPreviewRefreshing)
     observe(store.publishingStore.$preflightIssues)
@@ -57,10 +54,6 @@ public final class WorkbenchPublishingFeatureFacade: ObservableObject {
 
   public var selectedDraft: ArticleDraft? {
     store.selectedDraft
-  }
-
-  public var editorDisplayMode: EditorDisplayMode {
-    store.editorDisplayMode
   }
 
   public var editorFocusRequest: EditorFocusRequest? {

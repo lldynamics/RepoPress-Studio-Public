@@ -94,14 +94,6 @@ if os.environ.get("FAIL_STAGE") == "chromium-store-release":
     raise SystemExit(1)
 PY
 
-cat >"$FIXTURE_ROOT/script/sync_safari_browser_extension.sh" <<'STUB'
-#!/usr/bin/env bash
-set -euo pipefail
-echo "safari-sync:$*" >>"$COMMAND_LOG"
-[[ "${FAIL_STAGE:-}" != "safari-sync" ]]
-STUB
-chmod +x "$FIXTURE_ROOT/script/sync_safari_browser_extension.sh"
-
 cat >"$FIXTURE_ROOT/script/sync_firefox_browser_extension.sh" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -109,14 +101,6 @@ echo "firefox-sync:$*" >>"$COMMAND_LOG"
 [[ "${FAIL_STAGE:-}" != "firefox-sync" ]]
 STUB
 chmod +x "$FIXTURE_ROOT/script/sync_firefox_browser_extension.sh"
-
-cat >"$FIXTURE_ROOT/script/build_safari_web_extension.sh" <<'STUB'
-#!/usr/bin/env bash
-set -euo pipefail
-echo "safari-build:$*" >>"$COMMAND_LOG"
-[[ "${FAIL_STAGE:-}" != "safari-build" ]]
-STUB
-chmod +x "$FIXTURE_ROOT/script/build_safari_web_extension.sh"
 
 for script_name in \
   test_browser_extension_compatibility.mjs \
@@ -167,10 +151,6 @@ grep -Fq "source-layout-tests" "$LOG_PATH" \
   || fail "shared-source layout behavior tests were omitted"
 grep -Fq "firefox-sync:--check" "$LOG_PATH" \
   || fail "Firefox shared-resource synchronization check was omitted"
-grep -Fq "safari-sync:--check" "$LOG_PATH" \
-  || fail "Safari shared-resource synchronization check was omitted"
-grep -Fq "safari-build:--check" "$LOG_PATH" \
-  || fail "Safari source contract check was omitted"
 grep -Fq "release-ledger:check" "$LOG_PATH" \
   || fail "immutable browser extension release ledger check was omitted"
 grep -Fq "release-ledger-tests" "$LOG_PATH" \

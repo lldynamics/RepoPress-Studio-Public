@@ -24,8 +24,7 @@ extension MacMarkdownComposerView {
       return
     }
 
-    let contextService = MarkdownCursorContextService()
-    let snapshot = contextService.snapshot(
+    let snapshot = editorSessionState.markdownCursorContextService.snapshot(
       in: editorBody,
       selectedRange: selectedRange,
       revision: editorBodyRevision
@@ -120,9 +119,6 @@ extension MacMarkdownComposerView {
       selectionActionMessage = "补全上下文已经变化，请重新输入触发词。"
       return
     }
-    if editorState.editorDisplayMode == .preview {
-      store.setEditorDisplayMode(.edit)
-    }
     editorEditRequest = MarkdownTextEditRequest(
       expectedText: editorBody,
       edit: edit
@@ -148,9 +144,6 @@ extension MacMarkdownComposerView {
         length: 0
       )
     )
-    if editorState.editorDisplayMode == .preview {
-      store.setEditorDisplayMode(.edit)
-    }
     editorEditRequest = MarkdownTextEditRequest(
       expectedText: editorBody,
       edit: edit
@@ -180,9 +173,6 @@ extension MacMarkdownComposerView {
   }
 
   private func focusBodyRange(_ range: NSRange, message: String) {
-    if editorState.editorDisplayMode == .preview {
-      store.setEditorDisplayMode(.edit)
-    }
     selectedRange = range
     markdownTextFocusRequest = MarkdownTextFocusRequest(
       id: UUID(),

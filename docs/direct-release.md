@@ -11,6 +11,8 @@
 - 已准备 Sparkle EdDSA 密钥、HTTPS appcast 地址和下载地址前缀。
 - `Packaging/BuildVersion.xcconfig` 中的版本与构建号已经更新并通过检查。
 
+RepoPress 不在应用包中携带 Git、Hugo、Zola、Codex 或 Node.js。相关功能运行时直接解析用户在系统、Homebrew 或 `PATH` 中安装的命令；正式发行包也不得复制或重签这些第三方 CLI。Sparkle 仍作为应用内更新框架随包分发，并按下述流程单独签名和验证。
+
 发布前先运行 Developer ID 渠道门禁：
 
 ```bash

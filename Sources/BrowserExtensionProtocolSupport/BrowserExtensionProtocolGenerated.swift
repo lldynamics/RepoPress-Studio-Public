@@ -2,12 +2,9 @@
 
 extension BrowserExtensionProtocol {
   public static let activeBrowserExtensions = [
-    "safari",
     "chrome",
     "firefox",
   ]
-  public static let safariWebExtensionBundleID =
-    "com.jinfang.PersonalSitePublisherMac.SafariExtension"
   public static let chromiumDevelopmentExtensionID =
     "lnibkmfhfikfbkeehcjbiaalhkiankam"
   public static let chromeProductionExtensionID: String? =

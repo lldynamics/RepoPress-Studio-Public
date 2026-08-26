@@ -95,10 +95,28 @@ extension PreflightIssue {
 struct ArticleInspectorTabs: View {
   @Binding var selectedTab: ArticleInspectorTab
   @Binding var draft: ArticleDraft
-  @ObservedObject var store: WorkbenchStore
+  let store: WorkbenchStore
   @ObservedObject var rssStore: RSSReaderStore
+  @ObservedObject private var imageWorkbench: WorkbenchImageWorkbenchFeatureFacade
   let section: WorkspaceSection
   let availableTabs: [ArticleInspectorTab]
+
+  init(
+    selectedTab: Binding<ArticleInspectorTab>,
+    draft: Binding<ArticleDraft>,
+    store: WorkbenchStore,
+    rssStore: RSSReaderStore,
+    section: WorkspaceSection,
+    availableTabs: [ArticleInspectorTab]
+  ) {
+    _selectedTab = selectedTab
+    _draft = draft
+    self.store = store
+    _rssStore = ObservedObject(wrappedValue: rssStore)
+    _imageWorkbench = ObservedObject(wrappedValue: store.imageWorkbench)
+    self.section = section
+    self.availableTabs = availableTabs
+  }
 
   var body: some View {
     VStack(spacing: 0) {
@@ -120,7 +138,7 @@ struct ArticleInspectorTabs: View {
         .onAppear {
           scrollToFocusedImage(using: proxy)
         }
-        .onChange(of: store.imageInspectorFocusRequest?.id) { _, _ in
+        .onChange(of: imageWorkbench.imageInspectorFocusRequest?.id) { _, _ in
           scrollToFocusedImage(using: proxy)
         }
       }
@@ -220,7 +238,7 @@ struct ArticleInspectorTabs: View {
 
   private func scrollToFocusedImage(using proxy: ScrollViewProxy) {
     guard selectedTab == .images,
-          let request = store.imageInspectorFocusRequest,
+          let request = imageWorkbench.imageInspectorFocusRequest,
           request.draftID == draft.id else {
       return
     }
@@ -299,9 +317,8 @@ struct ArticleInspectorTabs: View {
       draft: $draft,
       state: WorkspaceTaskImageState(
         report: store.cachedImageWorkbenchReport(for: draft),
-        siteSummary: store.cachedImageWorkbenchSiteSummary,
         actionMessage: store.imageActionMessage,
-        focusedAttachmentID: store.imageInspectorFocusRequest.flatMap { request in
+        focusedAttachmentID: imageWorkbench.imageInspectorFocusRequest.flatMap { request in
           request.draftID == draft.id ? request.attachmentID : nil
         }
       ),
@@ -335,10 +352,14 @@ struct ArticleInspectorTabs: View {
       }
       return $0.severity.sortRank < $1.severity.sortRank
     }
+    let deploymentStatus = store.activeProfileReleaseRecords
+      .first(where: { $0.draftID == draft.id })
+      .flatMap { store.deploymentStatusSnapshot(for: $0) }
     return WorkspaceTaskChecksSection(
       state: WorkspaceTaskChecksState(
         issues: issues,
-        publicRisk: PublicRiskSummary(issues: issues)
+        publicRisk: PublicRiskSummary(issues: issues),
+        deploymentStatus: deploymentStatus
       ),
       actions: WorkspaceTaskChecksActions(
         rerunPreflight: {

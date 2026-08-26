@@ -1,30 +1,5 @@
 import Foundation
 
-public struct RemoteReviewDraft: Codable, Hashable, Sendable {
-  public var provider: RepositoryProvider
-  public var branchName: String
-  public var targetBranch: String
-  public var title: String
-  public var body: String
-  public var webURL: URL?
-
-  public init(
-    provider: RepositoryProvider,
-    branchName: String,
-    targetBranch: String,
-    title: String,
-    body: String,
-    webURL: URL?
-  ) {
-    self.provider = provider
-    self.branchName = branchName
-    self.targetBranch = targetBranch
-    self.title = title
-    self.body = body
-    self.webURL = webURL
-  }
-}
-
 public struct RemoteReviewDraftBuilder {
   public init() {}
 
@@ -80,21 +55,14 @@ public struct RemoteReviewDraftBuilder {
       return []
     }
 
-    let root = posixShellQuote(rootPath)
-    let branch = posixShellQuote(package.reviewBranchName)
-    let commitMessage = posixShellQuote(package.commitMessage)
-    let paths = package.files
-      .map(\.repositoryPath)
-      .map(posixShellQuote)
-      .joined(separator: " ")
-
-    return [
-      "cd \(root)",
-      "git switch -c \(branch)",
-      "git add \(paths)",
-      "git commit -m \(commitMessage)",
-      "git push -u origin \(branch)",
-    ]
+    return RemoteReviewBranchCommandBuilder().buildCommands(
+      for: RemoteReviewBranchCommandInput(
+        rootPath: rootPath,
+        branchName: package.reviewBranchName,
+        commitMessage: package.commitMessage,
+        repositoryPaths: package.files.map(\.repositoryPath)
+      )
+    )
   }
 
   private func reviewBody(package: PublishPackage, profile: SiteProfile) -> String {
@@ -215,90 +183,17 @@ public struct RemoteReviewDraftBuilder {
     profile: SiteProfile,
     body: String
   ) -> URL? {
-    let owner = profile.repoOwner.trimmedForPublishing
-    let repo = profile.repoName.trimmedForPublishing
-    guard !owner.isEmpty, !repo.isEmpty else {
-      return nil
-    }
-
-    switch profile.repositoryProvider {
-    case .github:
-      return githubPullRequestURL(
-        owner: owner,
-        repo: repo,
-        branchName: branchName,
+    return RepositoryReviewURLBuilder().buildURL(
+      for: RepositoryReviewURLInput(
+        provider: profile.repositoryProvider,
+        repositoryBaseURL: profile.repositoryBaseURL,
+        owner: profile.repoOwner,
+        repositoryName: profile.repoName,
+        sourceBranch: branchName,
         targetBranch: targetBranch,
         title: title,
-        profile: profile,
         body: body
       )
-    case .gitlab:
-      return gitlabMergeRequestURL(
-        owner: owner,
-        repo: repo,
-        branchName: branchName,
-        targetBranch: targetBranch,
-        title: title,
-        profile: profile,
-        body: body
-      )
-    }
-  }
-
-  private func githubPullRequestURL(
-    owner: String,
-    repo: String,
-    branchName: String,
-    targetBranch: String,
-    title: String,
-    profile: SiteProfile,
-    body: String
-  ) -> URL? {
-    var components = URLComponents()
-    components.scheme = "https"
-    components.host = githubWebHost(from: profile.repositoryBaseURL)
-    components.path = "/\(owner)/\(repo)/compare/\(targetBranch)...\(branchName)"
-    components.queryItems = [
-      URLQueryItem(name: "quick_pull", value: "1"),
-      URLQueryItem(name: "title", value: title),
-      URLQueryItem(name: "body", value: body),
-    ]
-    return components.url
-  }
-
-  private func gitlabMergeRequestURL(
-    owner: String,
-    repo: String,
-    branchName: String,
-    targetBranch: String,
-    title: String,
-    profile: SiteProfile,
-    body: String
-  ) -> URL? {
-    var components = URLComponents()
-    components.scheme = "https"
-    components.host = gitlabWebHost(from: profile.repositoryBaseURL)
-    components.path = "/\(owner)/\(repo)/-/merge_requests/new"
-    components.queryItems = [
-      URLQueryItem(name: "merge_request[source_branch]", value: branchName),
-      URLQueryItem(name: "merge_request[target_branch]", value: targetBranch),
-      URLQueryItem(name: "merge_request[title]", value: title),
-      URLQueryItem(name: "merge_request[description]", value: body),
-    ]
-    return components.url
-  }
-
-  private func githubWebHost(from baseURL: String) -> String {
-    guard let host = URL(string: baseURL)?.host, !host.isEmpty else {
-      return "github.com"
-    }
-    return host == "api.github.com" ? "github.com" : host
-  }
-
-  private func gitlabWebHost(from baseURL: String) -> String {
-    guard let host = URL(string: baseURL)?.host, !host.isEmpty else {
-      return "gitlab.com"
-    }
-    return host
+    )
   }
 }

@@ -21,11 +21,9 @@ import SwiftUI
 
 struct WorkspaceResponsiveLayoutSnapshot: Equatable {
   let width: CGFloat
-  let editorDisplayMode: EditorDisplayMode
 
   static let initial = WorkspaceResponsiveLayoutSnapshot(
-    width: WorkbenchLayoutMode.expandedWorkspaceWidth,
-    editorDisplayMode: .edit
+    width: WorkbenchLayoutMode.expandedWorkspaceWidth
   )
 
   static func == (
@@ -37,34 +35,19 @@ struct WorkspaceResponsiveLayoutSnapshot: Equatable {
 
   private var layoutIdentity: LayoutIdentity {
     LayoutIdentity(
-      editorDisplayMode: editorDisplayMode,
       isCompact: WorkbenchLayoutMode.isCompact(width: width),
       allowsStandardInspector: WorkbenchLayoutMode.allowsInspector(width: width),
-      allowsEditorInspector: WorkbenchLayoutMode.allowsInspector(
-        width: width,
-        editorDisplayMode: editorDisplayMode
-      ),
       allowsHTMLSourceInspector:
         width >= WorkbenchLayoutMode.minimumHTMLSourceInspectorWorkspaceWidth,
-      canOverrideInspector: WorkbenchLayoutMode.canManuallyRevealInspector(
-        width: width,
-        editorDisplayMode: editorDisplayMode
-      ),
-      prefersFocusedWriting: WorkbenchLayoutMode.prefersFocusedWriting(
-        width: width,
-        editorDisplayMode: editorDisplayMode
-      )
+      canOverrideInspector: WorkbenchLayoutMode.canManuallyRevealInspector(width: width)
     )
   }
 
   private struct LayoutIdentity: Equatable {
-    let editorDisplayMode: EditorDisplayMode
     let isCompact: Bool
     let allowsStandardInspector: Bool
-    let allowsEditorInspector: Bool
     let allowsHTMLSourceInspector: Bool
     let canOverrideInspector: Bool
-    let prefersFocusedWriting: Bool
   }
 }
 
@@ -74,6 +57,7 @@ struct ContentView: View {
   @ObservedObject private var shellState: WorkbenchShellFeatureFacade
   @ObservedObject private var presentationState: WorkbenchContentPresentationFeatureFacade
   @Environment(\.scenePhase) private var scenePhase
+  @Environment(\.controlActiveState) private var controlActiveState
   @AppStorage("autoRunPreflight") private var autoRunPreflight = true
   @AppStorage("scanRepositoryOnLaunch") private var scanRepositoryOnLaunch = false
   @AppStorage(RSSReaderUserPreferences.backgroundRefreshEnabledKey)
@@ -84,10 +68,11 @@ struct ContentView: View {
     RSSReaderUserPreferences.defaultBackgroundRefreshIntervalMinutes
   @AppStorage("didCompleteFirstRunSetup") private var didCompleteFirstRunSetup = false
   @SceneStorage("workspace.focusMode") private var isFocusMode = false
-  @SceneStorage("workspace.revealSidebarInNarrowSplit") private var revealsSidebarInNarrowSplit =
-    false
-  @SceneStorage("workspace.revealInspectorInNarrowSplit") private
-    var revealsInspectorInNarrowSplit = false
+  @SceneStorage("workspace.revealInspectorInCompactWriting") private
+    var revealsInspectorInCompactWriting = false
+  @SceneStorage("workspace.windowID") private var windowIDRawValue = ""
+  @SceneStorage("workspace.selectedSection") private var selectedSectionRawValue = ""
+  @SceneStorage("workspace.selectedDraftID") private var selectedDraftIDRawValue = ""
   @State private var didApplyInitialWorkbenchPreferences = false
   #if DEBUG || SCREENSHOT_CAPTURE_BUILD
     @State private var didApplyScreenshotDemoSurface = false
@@ -106,6 +91,7 @@ struct ContentView: View {
   @StateObject private var rssPresentation: RSSReaderPresentationState
   @StateObject private var localSitePreviewState: WorkbenchLocalSitePreviewFeatureFacade
   @StateObject private var sceneCommandRouter = WorkspaceSceneCommandRouter()
+  @StateObject private var windowSession: WorkspaceWindowSession
 
   private var repositoryAutoSyncTaskID: RepositoryAutoSyncTaskID {
     RepositoryAutoSyncTaskID(
@@ -129,6 +115,12 @@ struct ContentView: View {
     _localSitePreviewState = StateObject(
       wrappedValue: WorkbenchLocalSitePreviewFeatureFacade(store: store)
     )
+    _windowSession = StateObject(
+      wrappedValue: WorkspaceWindowSession(
+        selectedSection: store.selectedSection,
+        selectedDraftID: store.selectedDraftID
+      )
+    )
   }
 
   var body: some View {
@@ -142,8 +134,7 @@ struct ContentView: View {
     return GeometryReader { geometry in
       let compactLayout = WorkbenchLayoutMode.isCompact(width: geometry.size.width)
       let responsiveLayoutSnapshot = WorkspaceResponsiveLayoutSnapshot(
-        width: geometry.size.width,
-        editorDisplayMode: presentationState.editorDisplayMode
+        width: geometry.size.width
       )
       let isInspectorVisible = inspectorPresentation.wrappedValue
       let inspectorColumnWidths = WorkspaceInspectorColumnWidthPolicy.widths(
@@ -153,6 +144,8 @@ struct ContentView: View {
       let workspace = ZStack {
         WorkspaceShellSplitLayout(
           store: store,
+          selectedSection: windowSession.selectedSection,
+          selectedDraftID: windowSession.selectedDraftID,
           isCompact: compactLayout,
           isFocusMode: hidesWorkspaceSidebar,
           workspaceWidth: geometry.size.width,
@@ -163,12 +156,16 @@ struct ContentView: View {
           repositorySourceSession: repositorySourceSession,
           rssStore: rssStore,
           rssPresentation: rssPresentation,
-          onSelectSection: selectWorkspaceSection
+          onSelectSection: selectWorkspaceSection,
+          onSelectDraft: selectWindowDraft,
+          onFocusDraft: focusWindowDraft
         )
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .inspector(isPresented: inspectorPresentation) {
           MetadataColumn(
             store: store,
+            selectedSection: windowSession.selectedSection,
+            selectedDraftID: windowSession.selectedDraftID,
             rssStore: rssStore,
             repositoryContextStage: repositoryContextStage,
             repositorySourceSession: repositorySourceSession,
@@ -254,8 +251,8 @@ struct ContentView: View {
         WorkspaceToolbarNavigationContent(
           store: store,
           canUseProtectedWorkbench: shellState.canUseProtectedWorkbench,
-          selectedDraftID: shellState.selectedDraftID,
-          selectedSection: shellState.selectedSection,
+          selectedDraftID: windowSession.selectedDraftID,
+          selectedSection: windowSession.selectedSection,
           isCompact: isCompactLayout,
           isQuickHideActive: shellState.isQuickHideActive,
           openPublishFlow: { openPublishDrawer(message: nil) },
@@ -318,6 +315,10 @@ struct ContentView: View {
         profileProvider: { store.activeProfile }
       )
     )
+    .onAppear {
+      restoreWindowSessionStorageIfNeeded()
+      synchronizeWindowSessionActivity()
+    }
     .onChange(of: sceneCommandRouterRootUpdateKey, initial: true) { _, _ in
       updateSceneCommandRouterRootActions()
     }
@@ -352,11 +353,24 @@ struct ContentView: View {
       refreshExternallyCreatedDrafts()
       refreshStaleRSSIfNeeded()
     }
+    .onChange(of: controlActiveState) { _, _ in
+      synchronizeWindowSessionActivity()
+    }
     .onChange(of: shellState.selectedSection) { _, section in
+      windowSession.receiveSharedSection(section)
+    }
+    .onChange(of: shellState.selectedDraftID) { _, draftID in
+      windowSession.receiveSharedDraft(draftID)
+    }
+    .onChange(of: windowSession.selectedSection) { _, section in
+      selectedSectionRawValue = section.rawValue
       normalizeWorkspacePresentation(for: section)
       if section == .rss {
         refreshStaleRSSIfNeeded()
       }
+    }
+    .onChange(of: windowSession.selectedDraftID) { _, draftID in
+      selectedDraftIDRawValue = draftID?.uuidString ?? ""
     }
     .onChange(of: repositoryContextStage) { _, stage in
       if stage == .history {
@@ -390,12 +404,40 @@ struct ContentView: View {
     refreshStaleRSSIfNeeded()
   }
 
+  private func restoreWindowSessionStorageIfNeeded() {
+    let values = windowSession.restoreStorageIfNeeded(
+      windowIDRawValue: windowIDRawValue,
+      selectedSectionRawValue: selectedSectionRawValue,
+      fallbackSection: shellState.selectedSection,
+      selectedDraftIDRawValue: selectedDraftIDRawValue,
+      fallbackDraftID: shellState.selectedDraftID
+    )
+    windowIDRawValue = values.windowIDRawValue
+    selectedSectionRawValue = values.selectedSectionRawValue
+    selectedDraftIDRawValue = values.selectedDraftIDRawValue
+    normalizeWorkspacePresentation(for: windowSession.selectedSection)
+  }
+
+  private func synchronizeWindowSessionActivity() {
+    windowSession.reconcileDraftSelection(
+      validDraftIDs: Set(store.drafts.map(\.id)),
+      fallbackDraftID: shellState.selectedDraftID
+    )
+    windowSession.setKeyWindow(controlActiveState == .key) { section, draftID in
+      if store.selectedSection != section {
+        store.selectSection(section)
+      }
+      let activatedDraftID = store.activateDraftSelectionContext(draftID)
+      windowSession.receiveSharedDraft(activatedDraftID)
+    }
+  }
+
   private var sceneCommandRouterRootUpdateKey: WorkspaceSceneCommandRouter.RootUpdateKey {
     WorkspaceSceneCommandRouter.RootUpdateKey(
-      selectedSection: shellState.selectedSection,
+      selectedSection: windowSession.selectedSection,
       isFocusModeActive: effectiveFocusMode,
       canToggleFocusMode: shellState.canUseProtectedWorkbench
-        && shellState.selectedSection == .writing,
+        && windowSession.selectedSection == .writing,
       repositorySourceHasUnsavedChanges: repositorySourceSession.hasUnsavedChanges
     )
   }
@@ -426,7 +468,7 @@ struct ContentView: View {
       workspaceFocusModeCommandAction: WorkspaceFocusModeCommandAction(
         isActive: effectiveFocusMode,
         canToggle: shellState.canUseProtectedWorkbench
-          && shellState.selectedSection == .writing,
+          && windowSession.selectedSection == .writing,
         toggle: toggleFocusMode
       ),
       repositorySourceSessionCommandActions: RepositorySourceSessionCommandActions(
@@ -445,7 +487,7 @@ struct ContentView: View {
         isSceneActive: scenePhase == .active,
         isSafeMode: store.isSafeMode,
         isEnabled: isRSSBackgroundRefreshEnabled,
-        isRSSSectionSelected: shellState.selectedSection == .rss
+        isRSSSectionSelected: windowSession.selectedSection == .rss
       )
     else { return }
     let staleInterval = RSSReaderUserPreferences.backgroundRefreshIntervalSeconds(
@@ -584,13 +626,15 @@ struct ContentView: View {
 
   private func openDraftFullTextSearch() {
     guard shellState.canUseProtectedWorkbench else { return }
+    guard activateCurrentWindowSharedContext() else { return }
     store.flushDraftBodyEditorBuffers()
     modalPresentation.present(.draftFullTextSearch)
   }
 
   private func openLocalSitePreview() {
     guard shellState.canUseProtectedWorkbench else { return }
-    store.selectSection(.sync)
+    guard activateCurrentWindowSharedContext() else { return }
+    selectWorkspaceSection(.sync)
     if !store.localSitePreviewRuntimeStatus.isRunning {
       store.startLocalSitePreview()
     }
@@ -617,7 +661,7 @@ struct ContentView: View {
     store.setAutomaticallyRefreshPreflightOnEdit(
       store.isSafeMode ? false : autoRunPreflight
     )
-    normalizeWorkspacePresentation(for: shellState.selectedSection)
+    normalizeWorkspacePresentation(for: windowSession.selectedSection)
     if !store.isSafeMode {
       presentFirstRunSetupIfNeeded()
     }
@@ -672,12 +716,12 @@ struct ContentView: View {
 
     switch path {
     case .connectExistingRepository:
-      store.selectSection(.sync)
+      selectWorkspaceSection(.sync)
       Task {
         await store.repository.scanAsync()
       }
     case .createNewSite:
-      store.selectSection(.siteStarter)
+      selectWorkspaceSection(.siteStarter)
     case .localDrafts:
       store.prepareLocalDraftWorkspace()
     }
@@ -693,7 +737,7 @@ struct ContentView: View {
 
   private var supportsInspector: Bool {
     WorkspaceInspectorPresentation.supportsInspector(
-      for: shellState.selectedSection,
+      for: windowSession.selectedSection,
       isAIAssistantPresented: presentationState.isAssistantPresented,
       isRepositoryHistoryPresented: repositoryContextStage == .history,
       isMaintenancePresented: contentHealthFilter == .maintenance
@@ -731,7 +775,7 @@ struct ContentView: View {
       return
     }
 
-    _ = openAIAssistantWorkspace(for: shellState.selectedDraftID)
+    _ = openAIAssistantWorkspace(for: windowSession.selectedDraftID)
   }
 
   @discardableResult
@@ -742,9 +786,9 @@ struct ContentView: View {
     guard shellState.canUseProtectedWorkbench,
       prepareInspectorForUserRequest()
     else { return false }
+    guard activateCurrentWindowSharedContext() else { return false }
     if effectiveFocusMode {
       isFocusMode = false
-      revealsSidebarInNarrowSplit = true
     }
     return store.ai.openChatWorkspace(for: draftID, quickPrompt: quickPrompt)
   }
@@ -802,9 +846,9 @@ struct ContentView: View {
   private func normalizeWorkspacePresentation(for section: WorkspaceSection) {
     if section != .writing {
       isFocusMode = false
-      revealsSidebarInNarrowSplit = false
-      revealsInspectorInNarrowSplit = false
+      revealsInspectorInCompactWriting = false
     }
+    guard windowSession.isKeyWindow else { return }
     if section != .writing && presentationState.isAssistantPresented {
       presentationState.hideAssistant()
     }
@@ -845,15 +889,45 @@ struct ContentView: View {
   #endif
 
   private func selectWorkspaceSection(_ section: WorkspaceSection) {
-    guard shellState.selectedSection != section else { return }
+    guard windowSession.selectedSection != section else { return }
 
     var transaction = Transaction(animation: nil)
     transaction.disablesAnimations = true
     withTransaction(transaction) {
       if section != .writing {
-        hideInspectorIfNeeded()
+        if windowSession.isKeyWindow {
+          hideInspectorIfNeeded()
+        }
       }
-      store.selectSection(section)
+      windowSession.selectSection(section) { selectedSection in
+        guard store.selectedSection != selectedSection else { return }
+        store.selectSection(selectedSection)
+      }
+    }
+  }
+
+  private func selectWindowDraft(_ draftID: UUID?) {
+    windowSession.selectDraft(draftID) { selectedDraftID in
+      activateSharedContext(
+        section: windowSession.selectedSection,
+        draftID: selectedDraftID
+      )
+    }
+  }
+
+  private func focusWindowDraft(_ draftID: UUID, section: WorkspaceSection) {
+    var transaction = Transaction(animation: nil)
+    transaction.disablesAnimations = true
+    withTransaction(transaction) {
+      windowSession.selectContext(
+        section: section,
+        draftID: draftID
+      ) { selectedSection, selectedDraftID in
+        activateSharedContext(
+          section: selectedSection,
+          draftID: selectedDraftID
+        )
+      }
     }
   }
 
@@ -862,7 +936,6 @@ struct ContentView: View {
     guard prepareInspectorForUserRequest() else { return }
     if effectiveFocusMode {
       isFocusMode = false
-      revealsSidebarInNarrowSplit = true
       if presentationState.isAssistantPresented {
         presentationState.hideAssistant()
       }
@@ -897,13 +970,40 @@ struct ContentView: View {
   }
 
   private func openPublishDrawer(message: String?) {
+    guard activateCurrentWindowSharedContext() else { return }
     store.ensureEditableDraftSelected()
+    windowSession.receiveSharedDraft(store.selectedDraftID)
     store.runPreflight()
     modalPresentation.present(.publishDrawer)
     store.setPublishActionMessage(
       message ?? String(localized: "发布流程已打开，请选择保存到本地或发布上线。"),
       status: .information
     )
+  }
+
+  @discardableResult
+  private func activateCurrentWindowSharedContext() -> Bool {
+    guard controlActiveState == .key else { return false }
+    let activate: (WorkspaceSection, UUID?) -> Void = { section, draftID in
+      activateSharedContext(section: section, draftID: draftID)
+    }
+    let wasKeyWindow = windowSession.isKeyWindow
+    windowSession.setKeyWindow(true, activateSharedContext: activate)
+    if wasKeyWindow {
+      windowSession.activateSharedContext(activate)
+    }
+    return true
+  }
+
+  private func activateSharedContext(
+    section: WorkspaceSection,
+    draftID: UUID?
+  ) {
+    if store.selectedSection != section {
+      store.selectSection(section)
+    }
+    let activatedDraftID = store.activateDraftSelectionContext(draftID)
+    windowSession.receiveSharedDraft(activatedDraftID)
   }
 
   private var isCompactLayout: Bool {
@@ -916,30 +1016,22 @@ struct ContentView: View {
     transaction.disablesAnimations = true
     withTransaction(transaction) {
       responsiveLayout = snapshot
-      if !automaticallyHidesSidebarForSplit(snapshot) {
-        revealsSidebarInNarrowSplit = false
-      }
       if !canOverrideInspector(snapshot) {
-        revealsInspectorInNarrowSplit = false
+        revealsInspectorInCompactWriting = false
       }
     }
   }
 
   private var allowsInspectorInCurrentLayout: Bool {
     allowsInspectorByWidth
-      || (canOverrideInspectorInCurrentLayout && revealsInspectorInNarrowSplit)
+      || (canOverrideInspectorInCurrentLayout && revealsInspectorInCompactWriting)
   }
 
   private var allowsInspectorByWidth: Bool {
-    if shellState.selectedSection == .sync, repositoryContextStage == .source {
+    if windowSession.selectedSection == .sync, repositoryContextStage == .source {
       return responsiveLayout.width >= WorkbenchLayoutMode.minimumHTMLSourceInspectorWorkspaceWidth
     }
-    return WorkbenchLayoutMode.allowsInspector(
-      width: responsiveLayout.width,
-      editorDisplayMode: shellState.selectedSection == .writing
-        ? responsiveLayout.editorDisplayMode
-        : nil
-    )
+    return WorkbenchLayoutMode.allowsInspector(width: responsiveLayout.width)
   }
 
   private var canOverrideInspectorInCurrentLayout: Bool {
@@ -947,38 +1039,21 @@ struct ContentView: View {
   }
 
   private func canOverrideInspector(_ snapshot: WorkspaceResponsiveLayoutSnapshot) -> Bool {
-    shellState.selectedSection == .writing
-      && WorkbenchLayoutMode.canManuallyRevealInspector(
-        width: snapshot.width,
-        editorDisplayMode: snapshot.editorDisplayMode
-      )
+    windowSession.selectedSection == .writing
+      && WorkbenchLayoutMode.canManuallyRevealInspector(width: snapshot.width)
   }
 
   private var canRequestInspectorInCurrentLayout: Bool {
     allowsInspectorInCurrentLayout || canOverrideInspectorInCurrentLayout
   }
 
-  private var automaticallyHidesSidebarForSplit: Bool {
-    automaticallyHidesSidebarForSplit(responsiveLayout)
-  }
-
-  private func automaticallyHidesSidebarForSplit(_ snapshot: WorkspaceResponsiveLayoutSnapshot)
-    -> Bool
-  {
-    shellState.selectedSection == .writing
-      && WorkbenchLayoutMode.prefersFocusedWriting(
-        width: snapshot.width,
-        editorDisplayMode: snapshot.editorDisplayMode
-      )
-  }
-
   private var effectiveFocusMode: Bool {
-    isFocusMode || (automaticallyHidesSidebarForSplit && !revealsSidebarInNarrowSplit)
+    isFocusMode
   }
 
   private var hidesWorkspaceSidebar: Bool {
     effectiveFocusMode
-      || (revealsInspectorInNarrowSplit
+      || (revealsInspectorInCompactWriting
         && canOverrideInspectorInCurrentLayout
         && shellState.isInspectorPresented
         && supportsInspector)
@@ -992,16 +1067,14 @@ struct ContentView: View {
     guard canOverrideInspectorInCurrentLayout else {
       return false
     }
-    revealsInspectorInNarrowSplit = true
+    revealsInspectorInCompactWriting = true
     return true
   }
 
   private func toggleFocusMode() {
-    guard shellState.selectedSection == .writing else { return }
+    guard windowSession.selectedSection == .writing else { return }
     if isFocusMode {
       isFocusMode = false
-    } else if automaticallyHidesSidebarForSplit && !revealsSidebarInNarrowSplit {
-      revealsSidebarInNarrowSplit = true
     } else {
       isFocusMode = true
     }

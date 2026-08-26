@@ -52,7 +52,6 @@ final class RepositoryImageInventoryServiceTests: XCTestCase {
     )
     var profile = SiteProfile.defaultProfile
     profile.localRepositoryRootPath = rootURL.path
-    profile.localRepositoryBookmarkData = nil
     profile.assetRoot = "static"
 
     let inventory = try RepositoryImageInventoryService().inventory(
@@ -93,7 +92,6 @@ final class RepositoryImageInventoryServiceTests: XCTestCase {
 
     var profile = SiteProfile.defaultProfile
     profile.localRepositoryRootPath = rootURL.path
-    profile.localRepositoryBookmarkData = nil
     profile.assetRoot = "static"
     let service = RepositoryImageInventoryService()
 
@@ -127,7 +125,6 @@ final class RepositoryImageInventoryServiceTests: XCTestCase {
   func testInventoryReportsMissingRepositoryAndAssetDirectory() throws {
     var profile = SiteProfile.defaultProfile
     profile.localRepositoryRootPath = ""
-    profile.localRepositoryBookmarkData = nil
     let service = RepositoryImageInventoryService()
 
     assertInventoryError(.repositoryUnavailable) {
@@ -160,7 +157,6 @@ final class RepositoryImageInventoryServiceTests: XCTestCase {
     )
     var profile = SiteProfile.defaultProfile
     profile.localRepositoryRootPath = rootURL.path
-    profile.localRepositoryBookmarkData = nil
     profile.assetRoot = "static"
 
     let task = Task {

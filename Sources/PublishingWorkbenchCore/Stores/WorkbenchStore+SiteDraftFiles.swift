@@ -123,6 +123,16 @@ extension WorkbenchStore {
 
     let generation = siteDraftFileReconciliationGeneration
     siteDraftFileReconciliationTask = Task { [weak self] in
+      guard let self else { return }
+      defer {
+        self.finishSiteDraftFileReconciliation(generation: generation)
+      }
+      await self.waitForPendingDraftWordCountRefreshes()
+      guard !Task.isCancelled,
+        self.siteDraftFileReconciliationGeneration == generation
+      else {
+        return
+      }
       let digestTask = Self.siteDraftFileReconciliationDigestTask(candidates: candidates)
       let staleCandidates = await withTaskCancellationHandler(operation: {
         await digestTask.value
@@ -130,10 +140,6 @@ extension WorkbenchStore {
         digestTask.cancel()
       })
 
-      guard let self else { return }
-      defer {
-        self.finishSiteDraftFileReconciliation(generation: generation)
-      }
       guard !Task.isCancelled,
         self.siteDraftFileReconciliationGeneration == generation
       else {

@@ -47,7 +47,7 @@ struct AIChatConversationIdentity: Equatable, Sendable {
 @MainActor
 public final class WorkbenchAIStore: ObservableObject {
   unowned let store: WorkbenchStore
-  private let workspace: AIWorkspaceStore
+  let workspace: AIWorkspaceStore
   let aiPublishingAssistantService: AIPublishingAssistantService
   let aiCredentialStore: AICredentialStore
   private let aiConnectionTestService: AIConnectionTestService
@@ -64,6 +64,33 @@ public final class WorkbenchAIStore: ObservableObject {
   @Published public internal(set) var aiChatManualRetryState: AIChatManualRetryState? = nil
   @Published public internal(set) var aiGeneralChatManualRetryState:
     AIGeneralChatManualRetryState? = nil
+
+  /// Draft-scoped transient suggestions are kept in the workbench store so
+  /// an in-flight request for one article cannot replace the suggestion panel
+  /// for another article. The workspace fields below remain the compatibility
+  /// projection for the currently selected article.
+  @Published public internal(set) var aiMetadataSuggestionRunningDraftIDs: Set<UUID> = []
+  @Published public internal(set) var aiImageTextSuggestionRunningDraftIDs: Set<UUID> = []
+  @Published public internal(set) var aiDraftSuggestionStateRevision: UInt64 = 0
+
+  var aiMetadataSuggestionsByDraftID: [UUID: AIPublishingMetadataSuggestion] = [:]
+  var aiImageTextSuggestionsByDraftID: [UUID: [AIPublishingImageTextSuggestion]] = [:]
+  var aiMetadataSuggestionBaselinesByDraftID: [UUID: DraftOperationBaseline] = [:]
+  var aiMetadataSuggestionProfilesByDraftID: [UUID: SiteProfile] = [:]
+  var aiImageTextSuggestionBaselinesByDraftID: [UUID: DraftOperationBaseline] = [:]
+  var aiImageTextSuggestionProfilesByDraftID: [UUID: SiteProfile] = [:]
+  var aiImageTextSuggestionSignaturesByDraftID:
+    [UUID: ImageWorkbenchReportInputSignature] = [:]
+  var aiMetadataSuggestionGenerationsByDraftID: [UUID: UInt64] = [:]
+  var aiImageTextSuggestionGenerationsByDraftID: [UUID: UInt64] = [:]
+  /// Type-erased cancellation hooks keep the three suggestion request
+  /// shapes (publishing action, metadata helper, and image-text helper) on
+  /// one draft-scoped lane without storing incompatible Task result types.
+  /// The hooks are installed only while the matching generation is awaiting
+  /// the network child task.
+  var aiMetadataSuggestionCancellationHandlersByDraftID: [UUID: () -> Void] = [:]
+  var aiImageTextSuggestionCancellationHandlersByDraftID: [UUID: () -> Void] = [:]
+  var aiActionOperationIDs: Set<UUID> = []
 
   init(
     store: WorkbenchStore,
@@ -96,6 +123,28 @@ public final class WorkbenchAIStore: ObservableObject {
     self.imageWorkbenchService = imageWorkbenchService
     self.seoAuditService = seoAuditService
     self.seoSocialPreviewService = seoSocialPreviewService
+
+    // Older persisted workspaces may contain one compatibility projection.
+    // Seed it into the keyed transient cache so the first selection restore
+    // does not discard a still-useful suggestion.
+    if let draftID = workspace.aiMetadataSuggestionDraftID,
+      let suggestion = workspace.aiMetadataSuggestion,
+      let baseline = store.draftOperationBaseline(for: draftID)
+    {
+      aiMetadataSuggestionsByDraftID[draftID] = suggestion
+      aiMetadataSuggestionBaselinesByDraftID[draftID] = baseline
+      aiMetadataSuggestionProfilesByDraftID[draftID] = store.profile(for: baseline.draft)
+    }
+    if let draftID = workspace.aiImageTextSuggestionDraftID,
+      let baseline = store.draftOperationBaseline(for: draftID)
+    {
+      let profile = store.profile(for: baseline.draft)
+      aiImageTextSuggestionsByDraftID[draftID] = workspace.aiImageTextSuggestions
+      aiImageTextSuggestionBaselinesByDraftID[draftID] = baseline
+      aiImageTextSuggestionProfilesByDraftID[draftID] = profile
+      aiImageTextSuggestionSignaturesByDraftID[draftID] =
+        ImageWorkbenchReportInputSignature(draft: baseline.draft, profile: profile)
+    }
   }
 
   public var aiTokenAvailability: KeychainTokenAvailability {
@@ -114,7 +163,7 @@ public final class WorkbenchAIStore: ObservableObject {
   }
 
   public var isAIActionRunning: Bool {
-    get { workspace.isAIActionRunning }
+    get { !aiActionOperationIDs.isEmpty || workspace.isAIActionRunning }
     set { workspace.isAIActionRunning = newValue }
   }
 
@@ -134,7 +183,7 @@ public final class WorkbenchAIStore: ObservableObject {
   }
 
   public var isAIMetadataSuggestionRunning: Bool {
-    get { workspace.isAIMetadataSuggestionRunning }
+    get { !aiMetadataSuggestionRunningDraftIDs.isEmpty || workspace.isAIMetadataSuggestionRunning }
     set { workspace.isAIMetadataSuggestionRunning = newValue }
   }
 
@@ -254,7 +303,7 @@ public final class WorkbenchAIStore: ObservableObject {
   }
 
   public var isAIImageTextRunning: Bool {
-    get { workspace.isAIImageTextRunning }
+    get { !aiImageTextSuggestionRunningDraftIDs.isEmpty || workspace.isAIImageTextRunning }
     set { workspace.isAIImageTextRunning = newValue }
   }
 
@@ -284,6 +333,7 @@ public final class WorkbenchAIStore: ObservableObject {
 
   public func restoreSEOSocialPreviewSnapshotForCurrentSelection() {
     seoSocialPreviewSnapshot = store.selectedDraft.flatMap { seoSocialPreviewSnapshots[$0.id] }
+    restoreDraftSuggestionProjectionForCurrentSelection()
   }
 
   public func prepareSEOSocialPreview(for draft: ArticleDraft) {
@@ -474,8 +524,8 @@ public final class WorkbenchAIStore: ObservableObject {
   public func testAIConnection(
     probeCapabilities: Set<AIProviderCapabilityProbeKind> = []
   ) async -> AIConnectionTestReport? {
-    isAIActionRunning = true
-    defer { isAIActionRunning = false }
+    let actionOperationID = beginAIActionOperation()
+    defer { finishAIActionOperation(actionOperationID) }
     let connection = store.activeAIConnectionProfile
     let config = connection.config
     let configKey = AIProviderCapabilityCacheKey(config: config)

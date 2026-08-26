@@ -4,15 +4,12 @@ import XCTest
 import BrowserExtensionProtocolSupport
 
 final class BrowserExtensionOriginPolicyTests: XCTestCase {
-  func testAllowsSafariPerInstallUUIDOrigin() {
-    XCTAssertTrue(
+  func testRejectsSafariWebExtensionOrigins() {
+    XCTAssertFalse(
       BrowserExtensionOriginPolicy.allows(
         "safari-web-extension://E522689D-94A6-4561-90F3-BF22C7848965"
       )
     )
-  }
-
-  func testRejectsSafariOriginWithoutUUIDHost() {
     XCTAssertFalse(
       BrowserExtensionOriginPolicy.allows(
         "safari-web-extension://com.jinfang.PersonalSitePublisherMac.SafariExtension"
@@ -21,10 +18,10 @@ final class BrowserExtensionOriginPolicyTests: XCTestCase {
     XCTAssertFalse(BrowserExtensionOriginPolicy.allows("safari-web-extension://"))
   }
 
-  func testAllowsCurrentSafariChromeAndFirefoxReleaseOrigins() {
+  func testAllowsCurrentChromeAndFirefoxReleaseOrigins() {
     XCTAssertEqual(
       BrowserExtensionProtocol.activeBrowserExtensions,
-      ["safari", "chrome", "firefox"]
+      ["chrome", "firefox"]
     )
     XCTAssertTrue(BrowserExtensionOriginPolicy.allows(nil))
     XCTAssertTrue(

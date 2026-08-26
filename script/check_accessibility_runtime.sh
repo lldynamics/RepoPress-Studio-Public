@@ -42,7 +42,7 @@ fi
 
 cleanup() {
   if [[ -n "$TEST_DIST_DIR" ]]; then
-    test_app="$TEST_DIST_DIR/PersonalSitePublisherMac.app"
+    test_app="$TEST_DIST_DIR/RepoPress Studio.app"
     test_binary="$test_app/Contents/MacOS/PersonalSitePublisherMac"
     while IFS= read -r pid; do
       [[ -z "$pid" ]] || kill "$pid" >/dev/null 2>&1 || true
@@ -70,7 +70,7 @@ if [[ -z "$APP_PATH" ]]; then
     PERSONAL_SITE_PUBLISHER_CAPTURE_BUILD=1 \
     PERSONAL_SITE_PUBLISHER_BUNDLE_ID="$TEST_BUNDLE_ID" \
     "$ROOT_DIR/script/build_and_run.sh" "${build_arguments[@]}"
-  APP_PATH="$TEST_DIST_DIR/PersonalSitePublisherMac.app"
+  APP_PATH="$TEST_DIST_DIR/RepoPress Studio.app"
 fi
 
 if [[ ! -d "$APP_PATH" ]]; then

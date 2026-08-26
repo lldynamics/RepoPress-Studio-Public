@@ -1,6 +1,5 @@
 import AppKit
 import BrowserExtensionProtocolSupport
-import SafariServices
 import SwiftUI
 
 struct BrowserExtensionConnectionView: View {
@@ -9,8 +8,6 @@ struct BrowserExtensionConnectionView: View {
   @State private var isTokenVisible = false
   @State private var isRotationConfirmationPresented = false
   @State private var isLedgerRebuildConfirmationPresented = false
-  @State private var safariExtensionIsEnabled: Bool?
-  @State private var safariExtensionStatusMessage = "正在检查 Safari 扩展状态…"
 
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
@@ -121,31 +118,8 @@ struct BrowserExtensionConnectionView: View {
         }
 
         Section("安装浏览器扩展") {
-          Text("当前版本支持 Safari、Chrome 和 Firefox。Safari Web Extension 随应用内置；Chrome 和 Firefox 扩展独立安装和更新。")
+          Text("当前版本支持 Chrome 和 Firefox。两者独立安装和更新，并通过本机回环接口连接。")
             .font(.callout)
-
-          LabeledContent("Safari") {
-            HStack(spacing: 10) {
-              Label(
-                safariExtensionStatusMessage,
-                systemImage: safariExtensionIsEnabled == true
-                  ? "checkmark.circle.fill"
-                  : "safari"
-              )
-              .foregroundStyle(
-                safariExtensionIsEnabled == true ? WorkbenchTheme.success : Color.secondary
-              )
-              Button("打开扩展设置") {
-                openSafariExtensionSettings()
-              }
-              Button {
-                refreshSafariExtensionState()
-              } label: {
-                Image(systemName: "arrow.clockwise")
-              }
-              .help("重新检查 Safari 扩展状态")
-            }
-          }
 
           LabeledContent("Chrome") {
             Button {
@@ -169,13 +143,13 @@ struct BrowserExtensionConnectionView: View {
             }
           }
 
-          Text("Safari 扩展随应用安装；Chrome 和 Firefox 扩展独立更新，均通过本机回环接口连接。")
+          Text("Chrome 和 Firefox 扩展独立安装和更新，均通过本机回环接口连接。")
             .font(.caption)
             .foregroundStyle(.secondary)
         }
 
         Section("保存内容") {
-          Text("Chrome 优先生成自包含 MHTML；Safari 和 Firefox 在大小上限内生成离线 HTML。应用未打开时，扩展会把待导入内容保留在浏览器本地队列，应用恢复后再重试。")
+          Text("Chrome 优先生成自包含 MHTML；Firefox 在大小上限内生成离线 HTML。应用未打开时，扩展会把待导入内容保留在浏览器本地队列，应用恢复后再重试。")
             .font(.callout)
         }
       }
@@ -184,7 +158,6 @@ struct BrowserExtensionConnectionView: View {
     .frame(minWidth: 660, idealWidth: 760, minHeight: 600, idealHeight: 680)
     .onAppear {
       bridge.refreshExpiredConnectionToken()
-      refreshSafariExtensionState()
     }
     .onChange(of: bridge.lastOpenedDocumentID) { _, documentID in
       if documentID != nil { dismiss() }
@@ -238,40 +211,5 @@ struct BrowserExtensionConnectionView: View {
       return
     }
     NSWorkspace.shared.open(url)
-  }
-
-  private func refreshSafariExtensionState() {
-    safariExtensionStatusMessage = "正在检查 Safari 扩展状态…"
-    SFSafariExtensionManager.getStateOfSafariExtension(
-      withIdentifier: BrowserExtensionProtocol.safariWebExtensionBundleID
-    ) { state, error in
-      DispatchQueue.main.async {
-        if let error {
-          safariExtensionIsEnabled = nil
-          safariExtensionStatusMessage = "暂时无法读取状态：\(error.localizedDescription)"
-        } else if state?.isEnabled == true {
-          safariExtensionIsEnabled = true
-          safariExtensionStatusMessage = "已启用"
-        } else {
-          safariExtensionIsEnabled = false
-          safariExtensionStatusMessage = "已安装，尚未启用"
-        }
-      }
-    }
-  }
-
-  private func openSafariExtensionSettings() {
-    SFSafariApplication.showPreferencesForExtension(
-      withIdentifier: BrowserExtensionProtocol.safariWebExtensionBundleID
-    ) { error in
-      DispatchQueue.main.async {
-        if let error {
-          safariExtensionIsEnabled = nil
-          safariExtensionStatusMessage = "无法打开 Safari 设置：\(error.localizedDescription)"
-        } else {
-          refreshSafariExtensionState()
-        }
-      }
-    }
   }
 }

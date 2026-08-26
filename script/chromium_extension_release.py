@@ -29,7 +29,6 @@ DEFAULT_ROOT = Path(__file__).resolve().parent.parent
 EXTENSION_ROOT_NAME = Path("BrowserExtension")
 SHARED_ROOT_NAME = Path("shared")
 CHROME_ROOT_NAME = Path("Chrome")
-SAFARI_EXTENSION_BUNDLE_ID = "com.jinfang.PersonalSitePublisherMac.SafariExtension"
 CHANNELS = ("chrome",)
 CHANNEL_LABELS = {
     "chrome": "Chrome Web Store",
@@ -235,8 +234,8 @@ def validated_release(
     extension_root = root / "BrowserExtension"
     manifest = load_json(source_path(root, "manifest.json"))
     definition = load_json(extension_root / "browser-extension-protocol.json")
-    if definition.get("activeExtensions") != ["safari", "chrome", "firefox"]:
-        raise ReleaseError("This release must enable exactly Safari, Chrome, and Firefox")
+    if definition.get("activeExtensions") != ["chrome", "firefox"]:
+        raise ReleaseError("This release must enable exactly Chrome and Firefox")
     extensions = definition.get("extensions")
     if not isinstance(extensions, dict):
         raise ReleaseError("browser-extension-protocol.json extensions must be an object")
@@ -245,12 +244,9 @@ def validated_release(
         "firefoxID",
         "chromeProductionID",
         "edgeProductionID",
-        "safariBundleID",
     }
     if set(extensions) != expected_identity_fields:
         raise ReleaseError("Browser extension identity fields do not match the store contract")
-    if extensions["safariBundleID"] != SAFARI_EXTENSION_BUNDLE_ID:
-        raise ReleaseError("Safari Web Extension bundle ID does not match the app extension contract")
     development_id = extensions["chromiumDevelopmentID"]
     if not isinstance(development_id, str) or not CHROMIUM_ID_PATTERN.fullmatch(development_id):
         raise ReleaseError("Chromium development extension ID is invalid")

@@ -53,21 +53,18 @@ grep -Fq 'contents: read' "$WORKFLOW" || fail "workflow token permissions must b
 grep -Fq 'contents: read' "$TOOLING_WORKFLOW" \
   || fail "release-tooling workflow token permissions must be read-only"
 grep -Fq 'DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer' "$TOOLING_WORKFLOW" \
-  || fail "release-tooling workflow must select the Xcode 26.3 Safari extension toolchain"
+  || fail "release-tooling workflow must select the Xcode 26.3 toolchain"
 for quality_lane in quality-build quality-runtime; do
   grep -Fq 'DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer' \
     < <(sed -n "/^  $quality_lane:/,/^  [a-z]/p" "$WORKFLOW") \
-    || fail "$quality_lane must select the Xcode 26.3 Safari extension toolchain"
+    || fail "$quality_lane must select the Xcode 26.3 toolchain"
 done
 grep -Fq 'echo "PLAYWRIGHT_BROWSERS_PATH=$RUNNER_TEMP/ms-playwright" >> "$GITHUB_ENV"' "$TOOLING_WORKFLOW" \
   || fail "release-tooling workflow must share one Playwright browser path across install and gates"
-grep -Fq 'xcrun -f safari-web-extension-packager' "$TOOLING_WORKFLOW" \
-  || fail "release-tooling workflow must verify the Safari extension packager before running gates"
-for quality_lane in quality-build quality-runtime; do
-  grep -Fq 'xcrun -f safari-web-extension-packager' \
-    < <(sed -n "/^  $quality_lane:/,/^  [a-z]/p" "$WORKFLOW") \
-    || fail "$quality_lane must verify the Safari extension packager before running"
-done
+if grep -Fq 'safari-web-extension-packager' "$WORKFLOW" \
+  || grep -Fq 'safari-web-extension-packager' "$TOOLING_WORKFLOW"; then
+  fail "CI still requires the removed Safari extension packager"
+fi
 for workflow_path in "$WORKFLOW" "$TOOLING_WORKFLOW"; do
   grep -Fq "uses: $CHECKOUT_ACTION" "$workflow_path" \
     || fail "$(basename "$workflow_path") must pin actions/checkout to the approved commit"
@@ -187,7 +184,7 @@ pr_build_body="$(sed -n '/^  quality-build:/,/^  quality-runtime:/p' "$WORKFLOW"
 release_runtime_body="$(sed -n '/^  quality-runtime:/,/^  quality:/p' "$WORKFLOW")"
 for runtime_contract in \
   'bash script/check_ui_runtime.sh --launch' \
-  'WORKBENCH_XCUI_APP_PATH="$PWD/dist/PersonalSitePublisherMac.app"' \
+  'WORKBENCH_XCUI_APP_PATH="$PWD/dist/RepoPress Studio.app"' \
   'bash script/check_accessibility_runtime.sh --non-screenshot-regression' \
   'env -u RELEASE_GATE_PROFILE bash script/check_accessibility_runtime.sh' \
   'WORKBENCH_XCUI_RETRY_FAILURES: 1'; do

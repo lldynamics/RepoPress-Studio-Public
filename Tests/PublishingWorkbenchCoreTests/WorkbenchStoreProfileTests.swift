@@ -650,10 +650,16 @@ final class WorkbenchStoreProfileTests: XCTestCase {
     store.selectProfile(originalProfileID)
     store.refreshPublishPreview(for: draft)
 
-    XCTAssertEqual(store.localPublishReadiness?.writeReadiness, .needsReview)
-    XCTAssertEqual(store.localPublishReadiness?.canWrite, true)
-    XCTAssertEqual(store.localPublishReadiness?.commitReadiness, .blocked)
-    XCTAssertTrue(store.localPublishReadiness?.commitBlockingIssues.contains { $0.title == "未发现 .git" } == true)
+    let backgroundSnapshot = try XCTUnwrap(store.cachedPublishPreview(for: draft.id))
+    XCTAssertEqual(backgroundSnapshot.localPublishReadiness.writeReadiness, .needsReview)
+    XCTAssertEqual(backgroundSnapshot.localPublishReadiness.canWrite, true)
+    XCTAssertEqual(backgroundSnapshot.localPublishReadiness.commitReadiness, .blocked)
+    XCTAssertTrue(
+      backgroundSnapshot.localPublishReadiness.commitBlockingIssues.contains {
+        $0.title == "未发现 .git"
+      }
+    )
+    XCTAssertNotEqual(store.selectedDraftID, draft.id)
 
     await store.writeSelectedDraftToLocalRepository()
 

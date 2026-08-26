@@ -1,13 +1,10 @@
 import PublishingWorkbenchCore
 import SwiftUI
 
-private struct EditableDraftSelectionTaskInput: Equatable {
-  let activeProfileID: UUID
-  let selectedSection: WorkspaceSection
-}
-
 struct EditorCenterColumn: View {
   let store: WorkbenchStore
+  let selectedSection: WorkspaceSection
+  let selectedDraftID: UUID?
   @Binding var contentHealthFilter: ContentHealthContextFilter
   @Binding var imageWorkbenchContextStage: ImageWorkbenchContextStage
   @Binding var repositoryContextStage: RepositoryContextStage
@@ -15,11 +12,12 @@ struct EditorCenterColumn: View {
   let repositorySourceSession: RepositoryHTMLSourceSession
   let rssStore: RSSReaderStore
   let rssPresentation: RSSReaderPresentationState
-  @StateObject private var editorState: WorkbenchEditorNavigationFeatureFacade
   @ObservedObject private var knowledge: KnowledgeStore
 
   init(
     store: WorkbenchStore,
+    selectedSection: WorkspaceSection,
+    selectedDraftID: UUID?,
     contentHealthFilter: Binding<ContentHealthContextFilter>,
     imageWorkbenchContextStage: Binding<ImageWorkbenchContextStage>,
     repositoryContextStage: Binding<RepositoryContextStage>,
@@ -29,6 +27,8 @@ struct EditorCenterColumn: View {
     rssPresentation: RSSReaderPresentationState
   ) {
     self.store = store
+    self.selectedSection = selectedSection
+    self.selectedDraftID = selectedDraftID
     _contentHealthFilter = contentHealthFilter
     _imageWorkbenchContextStage = imageWorkbenchContextStage
     _repositoryContextStage = repositoryContextStage
@@ -36,9 +36,6 @@ struct EditorCenterColumn: View {
     self.repositorySourceSession = repositorySourceSession
     self.rssStore = rssStore
     self.rssPresentation = rssPresentation
-    _editorState = StateObject(
-      wrappedValue: WorkbenchEditorNavigationFeatureFacade(store: store)
-    )
     _knowledge = ObservedObject(wrappedValue: store.knowledge)
   }
 
@@ -46,32 +43,14 @@ struct EditorCenterColumn: View {
     centerSurfaceView(activeSurface)
       .id(activeSurface)
       .frame(maxWidth: .infinity, maxHeight: .infinity)
-      .task(
-        id: EditableDraftSelectionTaskInput(
-          activeProfileID: editorState.activeProfileID,
-          selectedSection: editorState.selectedSection
-        )
-      ) {
-        // Selecting a fallback draft publishes preflight and selection state.
-        // Let the current SwiftUI update finish before starting that work.
-        await MainRunLoopUpdateDeferral.waitForNextDefaultModeCycle()
-        guard !Task.isCancelled else { return }
-        ensureDraftIfNeeded()
-      }
       .onChange(of: knowledge.statusMessage) { _, message in
         guard activeSurface == .knowledgeLibrary, let message else { return }
         EditorAccessibilityAnnouncementCenter.announce(message)
       }
   }
 
-  private func ensureDraftIfNeeded() {
-    if editorState.selectedSection.requiresEditableDraftForCenterSurface {
-      store.ensureEditableDraftSelected()
-    }
-  }
-
   private var activeSurface: WorkspaceCenterSurface {
-    editorState.selectedSection.centerSurface
+    selectedSection.centerSurface
   }
 
   @ViewBuilder
@@ -108,9 +87,9 @@ struct EditorCenterColumn: View {
 
   @ViewBuilder
   private var writingEditorDetail: some View {
-    if let fallbackDraft = editorState.selectedDraft {
+    if let selectedDraftID, let fallbackDraft = store.draft(for: selectedDraftID) {
       let draft = Binding<ArticleDraft>(
-        get: { editorState.selectedDraft ?? fallbackDraft },
+        get: { store.draft(for: selectedDraftID) ?? fallbackDraft },
         set: { store.updateDraftFromEditor($0) }
       )
 

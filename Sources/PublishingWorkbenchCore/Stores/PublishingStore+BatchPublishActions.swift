@@ -23,15 +23,12 @@ extension PublishingStore {
 
     let profile = store.profile(for: package)
     let preview = localPublishPreviewService.preview(package: package, profile: profile)
-    localPublishPreview = preview
     let blockingIssues = blockingLocalPublishIssues(
       package: package,
       preview: preview,
       includeRepositoryReadiness: false,
       store: store
     )
-    localPublishReadiness = makeLocalPublishReadiness(
-      package: package, profile: profile, preview: preview, store: store)
     guard blockingIssues.isEmpty else {
       setPublishActionMessage(
         blockedLocalPublishMessage(action: "写入", issues: blockingIssues),

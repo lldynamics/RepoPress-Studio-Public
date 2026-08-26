@@ -5,9 +5,6 @@ import PublishingWorkbenchCore
 /// RSS 文章列表的骨架屏占位：模拟文章行，列表在后台准备时显示，
 /// 避免空白或转圈带来的跳动感。
 struct RSSArticleListSkeleton: View {
-  @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
-  @State private var isPulsing = false
-
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
       ForEach(0..<8, id: \.self) { _ in
@@ -15,12 +12,6 @@ struct RSSArticleListSkeleton: View {
       }
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-    .opacity(accessibilityReduceMotion ? 1 : (isPulsing ? 0.55 : 1))
-    .animation(accessibilityReduceMotion ? nil : WorkbenchMotion.ambientPulse, value: isPulsing)
-    .onAppear { isPulsing = !accessibilityReduceMotion }
-    .onChange(of: accessibilityReduceMotion) { _, shouldReduceMotion in
-      isPulsing = !shouldReduceMotion
-    }
     .accessibilityElement(children: .ignore)
     .accessibilityLabel("正在准备文章列表")
   }
@@ -55,45 +46,16 @@ struct RSSArticleListSkeleton: View {
 
 /// 刷新期间只保留轻量的顶部进度线，避免把正文列表推下去。
 struct RSSArticleRefreshProgressLine: View {
-  @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
-  @State private var isAnimating = false
-
   var body: some View {
-    GeometryReader { geometry in
-      let segmentWidth = max(48, geometry.size.width * 0.24)
-      ZStack(alignment: .leading) {
-        Rectangle()
-          .fill(Color.accentColor.opacity(0.14))
-        Rectangle()
-          .fill(Color.accentColor.opacity(0.9))
-          .frame(width: segmentWidth)
-          .offset(
-            x: accessibilityReduceMotion
-              ? 0
-              : (isAnimating ? geometry.size.width : -segmentWidth)
-          )
-      }
-    }
-    .frame(height: 2)
-    .clipped()
-    .accessibilityElement(children: .ignore)
-    .accessibilityLabel("正在刷新文章列表")
-    .accessibilityIdentifier("rss-article-refresh-progress")
-    .onAppear {
-      isAnimating = !accessibilityReduceMotion
-    }
-    .onDisappear {
-      isAnimating = false
-    }
-    .animation(
-      accessibilityReduceMotion
-        ? nil
-        : .linear(duration: 1.15).repeatForever(autoreverses: false),
-      value: isAnimating
-    )
-    .onChange(of: accessibilityReduceMotion) { _, shouldReduceMotion in
-      isAnimating = !shouldReduceMotion
-    }
+    // A stable accent line communicates the refresh state without a custom
+    // indefinitely-running animation or another state update on every frame.
+    Rectangle()
+      .fill(Color.accentColor.opacity(0.9))
+      .frame(maxWidth: .infinity)
+      .frame(height: 2)
+      .accessibilityElement(children: .ignore)
+      .accessibilityLabel("正在刷新文章列表")
+      .accessibilityIdentifier("rss-article-refresh-progress")
   }
 }
 

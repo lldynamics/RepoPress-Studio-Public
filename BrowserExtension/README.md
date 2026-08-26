@@ -1,17 +1,15 @@
 # 保存到资料库浏览器扩展
 
 这是“RepoPress Studio”的本机网页采集扩展。它会提取当前网页的正文、标题、作者、
-摘要、标签和语言，并可同时保存一份离线页面归档。当前版本支持 Safari、Chrome 和 Firefox，三者都通过
+摘要、标签和语言，并可同时保存一份离线页面归档。当前版本支持 Chrome 和 Firefox，二者都通过
 带随机令牌的 `127.0.0.1:17843` 本机回环接口写入资料库，不安装 Native Messaging 宿主，
-也不经过云端服务。
+也不经过云端服务。macOS 应用不内嵌浏览器扩展；Chrome 和 Firefox 扩展需要单独安装和更新。
 
 ## 开发版安装
 
 1. 打开“RepoPress Studio”，进入资料库，点击工具栏中的拼图按钮，复制连接令牌。
 2. 确认应用显示本机回环连接已经就绪。
 3. 按浏览器选择安装方式：
-   - Safari：运行 `./script/build_and_run.sh` 后，在 Safari 设置的“扩展”中启用
-     “RepoPress Studio · 资料采集”；正式版 Safari 扩展随 Developer ID 签名并经过公证的官网版应用内置。
    - Chrome：运行 `python3 script/build_browser_extension_source.py --browser chrome
      --output-dir .build/browser-extension/chrome`，然后在扩展管理页启用“开发者模式”，
      点击“加载已解压的扩展”。
@@ -107,57 +105,37 @@
 
 ## 数据边界
 
-- Safari、Chrome 和 Firefox 扩展都只访问固定的 `http://127.0.0.1:17843/*`。应用的沙盒监听器只绑定 IPv4 回环地址，
+- Chrome 和 Firefox 扩展都只访问固定的 `http://127.0.0.1:17843/*`。应用的沙盒监听器只绑定 IPv4 回环地址，
   不接受局域网或互联网连接。
 - 每个请求必须携带协议专用请求头和随机配对令牌。应用会拒绝普通网页 Origin；Chrome 会校验已登记的
-  开发或商店扩展 ID，Safari 会校验浏览器分配的 UUID 扩展来源。
+  开发或商店扩展 ID，Firefox 会校验浏览器分配的扩展来源。
 - 浏览器跨域预检只允许 `GET`、`POST` 和固定鉴权请求头。普通网页无法在预检未通过时构造有效请求。
 - 单次输入限制为 50 MB，输出限制为 1 MB。应用在发送成功响应前持久化 operation ID、请求指纹和回执，
   重试时直接重放原回执，不再次创建资料或版本。幂等账本最多保留 256 项、30 天，且不保存网页正文和归档。
 - 连接令牌有效 30 天；旧版长期令牌会平滑获得首次有效期。过期或在应用中手动更换后，旧令牌立即失效，
   插件会清除浏览器端副本并要求重新配对。
 - 插件提供“断开并清除令牌”和“重新配对”；这些操作只删除令牌，不删除离线待保存队列和分类偏好。
-- 鉴权接口拒绝普通 `http/https` 网页 Origin，只接受 Chrome `chrome-extension://`、Safari
-  `safari-web-extension://` 或 Firefox `moz-extension://<UUID>` 扩展来源；本机状态探测接口不返回令牌或资料内容。
+- 鉴权接口拒绝普通 `http/https` 网页 Origin，只接受 Chrome `chrome-extension://` 或 Firefox
+  `moz-extension://<UUID>` 扩展来源；本机状态探测接口不返回令牌或资料内容。
 - `alarms` 只用于本机待保存队列的定时重试；`unlimitedStorage` 用于保留可能较大的离线页面归档，
   插件自身仍强制 10 项/96 MB 上限。
 - Chrome 默认保存 MHTML；超过 24 MB 时自动退回到清理后的 HTML。
-- Safari 不提供 MHTML 页面归档接口，也不申请 Chromium/Firefox 使用的 `dns`、`webRequest`
-  权限。完整网页模式会尝试在 24 MB 上限内生成自包含 HTML；无法经过同等网络地址校验的跨域资源会
-  失败关闭并记入缺失数量，因此 Safari 归档可能只保留基础 HTML，而不保证得到资源完整的离线副本。
 - 登录态页面的归档可能包含页面当前可见的私人内容，请按资料库本地文件一样保护。
 - `chrome://`、扩展商店页面等浏览器受保护页面无法采集。
 
-RepoPress 的 macOS 正式版本是从官方网站直接分发的 Developer ID 签名并经过公证的应用。Safari Web Extension
-以签名 `.appex` 内置于该应用，由用户在 Safari 设置中启用；Chrome 版本从 Chrome Web Store 安装，Firefox 版本从
+RepoPress 的 macOS 正式版本是从官方网站直接分发的 Developer ID 签名并经过公证的应用，不内嵌浏览器扩展。Chrome
+版本从 Chrome Web Store 安装，Firefox 版本从
 `.build/browser-extension/firefox/manifest.json` 临时加载。Mac 应用不把扩展文件写入
 浏览器目录，也不安装额外宿主。Chrome 清单中的公开开发密钥只用于让开发者模式下的未打包扩展
 保持固定 ID；商店正式 ID 写入协议身份源，以便应用校验扩展 Origin。
 
-Safari、Chrome 与 Firefox 使用各自最小化的 Manifest V3 清单；采集与弹窗代码、图标和语言包只维护一份，
-位于 `BrowserExtension/shared/`，由构建脚本按平台生成临时完整扩展目录。Safari 清单不申请不受支持的
-`pageCapture`，完整网页使用自包含 HTML 回退。
-
-## Safari Web Extension
-
-`BrowserExtension/Safari/manifest.json` 是 Safari 专用清单。它与 Chromium/Firefox
-共享业务脚本、弹窗、图标和语言包，但不包含 `pageCapture`、`nativeMessaging` 或 Chromium
-开发密钥。同步和构建命令：
-
-```bash
-./script/sync_safari_browser_extension.sh --check
-./script/build_safari_web_extension.sh
-```
-
-构建脚本使用 Apple 的 Safari Web Extension 转换器生成临时 Xcode 工程，只构建扩展 target，
-并输出 `RepoPressSafariExtension.appex`。`script/build_and_run.sh` 将该扩展嵌入
-`Contents/PlugIns`，先签名子扩展再签名外层应用。Developer ID 官网包会把它作为嵌套代码与外层应用
-一起签名和验证；它仍属于同一个 RepoPress 应用，不产生独立浏览器商店版本。
+Chrome 与 Firefox 使用各自最小化的 Manifest V3 清单；采集与弹窗代码、图标和语言包只维护一份，
+位于 `BrowserExtension/shared/`，由构建脚本按平台生成临时完整扩展目录。
 
 ## 协议身份与生成物
 
 `browser-extension-protocol.json` 是本版本启用渠道、回环地址、协议请求头、路由、大小上限、
-Safari bundle ID、Chrome 开发与生产扩展 ID 及 Firefox add-on ID 的唯一来源。Edge 身份字段仅为以后恢复
+Chrome 开发与生产扩展 ID 及 Firefox add-on ID 的唯一来源。Edge 身份字段仅为以后恢复
 渠道保留，不在当前版本启用。保留的
 共享协议只生成回环接口的地址、请求头、路由和大小限制。
 当前扩展不会申请或调用 Native Messaging。`chromeProductionID` 与
@@ -248,6 +226,5 @@ Firefox 是独立于 macOS 应用的浏览器扩展路径。开发和本机验�
 Edge 仍不属于当前发布范围，不在应用界面、支持页或发布 profile 中承诺支持，也不会生成新的
 Edge ZIP 或执行对应商店发布门禁。仓库保留旧版 Edge 适配源码和不可变记录，方便以后重新评估；这些文件不表示当前支持 Edge。
 
-当前发行候选边界包含随 Developer ID 官网版应用签名、公证并内置的 Safari Web Extension，以及供 Chrome Web Store
-人工提交的 Chrome ZIP。候选产物不等于商店已经上线；Firefox 扩展仅用于开发和本机验收，不嵌入 macOS 应用，
-Edge ZIP、未打包扩展和 Native Messaging 宿主也不随应用分发。
+当前发行候选边界包含供 Chrome Web Store 人工提交的 Chrome ZIP；候选产物不等于商店已经上线。Firefox 扩展
+仅用于开发和本机验收，不嵌入 macOS 应用，Edge ZIP、未打包扩展和 Native Messaging 宿主也不随应用分发。

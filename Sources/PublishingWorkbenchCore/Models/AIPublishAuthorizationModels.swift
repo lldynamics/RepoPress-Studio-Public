@@ -127,6 +127,12 @@ public enum AIPublishAuthorizationError: Error, Equatable, LocalizedError, Senda
   case changed(String)
 
   public static let reconfirmationMessagePrefix = CoreL10n.text("发布授权已失效")
+  /// The batch publisher reports this scope drift before it has a typed
+  /// authorization error. Keep the canonical message here so automation can
+  /// classify it as a review boundary instead of an execution failure.
+  public static let scopeDriftMessage = CoreL10n.text(
+    "待发布文件已变化，请重新打开确认页审阅完整清单。"
+  )
 
   public var requiresReconfirmation: Bool {
     switch self {
@@ -151,6 +157,8 @@ public enum AIPublishAuthorizationError: Error, Equatable, LocalizedError, Senda
   }
 
   public static func isReconfirmationMessage(_ message: String?) -> Bool {
-    message?.hasPrefix(reconfirmationMessagePrefix) == true
+    guard let message else { return false }
+    return message.hasPrefix(reconfirmationMessagePrefix)
+      || message == scopeDriftMessage
   }
 }

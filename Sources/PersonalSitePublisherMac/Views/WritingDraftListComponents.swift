@@ -96,12 +96,12 @@ enum WritingDraftSortOrder: String, CaseIterable, Identifiable {
 
 /// Lightweight identity for the fields rendered by a draft-list row.
 ///
-/// The body is intentionally absent. Draft body edits already advance
-/// `updatedAt` through the normal update path, which lets the list notice a
-/// changed writing-unit count without hashing or scanning the body for every
-/// row when an unrelated draft changes.
+/// The body is intentionally absent. The persisted count changes only after a
+/// background refresh, so rows can notice it without hashing or scanning the
+/// body when an unrelated draft changes.
 struct WritingDraftRowPresentationCacheKey: Hashable {
   let updatedAt: Date
+  let wordCount: Int
   let title: String
   let status: DraftStatus
   let isGeneralDraft: Bool
@@ -112,6 +112,7 @@ struct WritingDraftRowPresentationCacheKey: Hashable {
 
   init(draft: ArticleDraft, profile: SiteProfile, display: PrivateContentDisplay) {
     updatedAt = draft.updatedAt
+    wordCount = draft.wordCount
     title = display.title
     status = draft.status
     isGeneralDraft = draft.isGeneralDraft
@@ -144,13 +145,9 @@ struct WritingDraftRowPresentation {
   init(draft: ArticleDraft, profile: SiteProfile, display: PrivateContentDisplay) {
     self.draft = draft
     title = display.title.nilIfEmpty ?? String(localized: "未命名文章")
-    let writingUnitCount =
-      MarkdownWritingStatisticsService
-      .statistics(in: draft.bodyMarkdown)
-      .writingUnitCount
     var metadataParts = [
       draft.updatedAt.workbenchShortText,
-      "\(writingUnitCount) \(String(localized: "字/词"))",
+      "\(draft.wordCount) \(String(localized: "字/词"))",
       draft.status.localizedDisplayName,
     ]
     if draft.isGeneralDraft {
@@ -196,9 +193,6 @@ struct WritingDraftRow: View {
 }
 
 struct WritingDraftSkeletonRow: View {
-  @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
-  @State private var isPulsing = false
-
   var body: some View {
     HStack(spacing: 8) {
       RoundedRectangle(cornerRadius: 4, style: .continuous)
@@ -217,19 +211,6 @@ struct WritingDraftSkeletonRow: View {
     }
     .padding(.horizontal, 4)
     .padding(.vertical, 5)
-    .opacity(accessibilityReduceMotion ? 1 : (isPulsing ? 0.45 : 1.0))
-    .animation(
-      accessibilityReduceMotion
-        ? nil
-        : .easeInOut(duration: 0.9).repeatForever(autoreverses: true),
-      value: isPulsing
-    )
-    .onAppear {
-      isPulsing = !accessibilityReduceMotion
-    }
-    .onChange(of: accessibilityReduceMotion) { _, shouldReduceMotion in
-      isPulsing = !shouldReduceMotion
-    }
     .accessibilityHidden(true)
   }
 }

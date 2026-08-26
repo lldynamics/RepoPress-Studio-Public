@@ -270,6 +270,7 @@ final class RepositoryAutoSyncTests: XCTestCase {
     XCTAssertEqual(store.drafts.filter { $0.siteProfileID == firstID }.count, 1)
   }
 
+#if DEBUG
   func testBackgroundAutoSyncDropsStaleResultWhenSettingsChangeDuringRun() async throws {
     let store = WorkbenchStore(
       persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL())
@@ -325,6 +326,7 @@ final class RepositoryAutoSyncTests: XCTestCase {
     XCTAssertEqual(store.repositoryAutoSyncState(for: secondID).message, "自动检查远端未启用。")
     XCTAssertEqual(store.repositoryAutoSyncState(for: firstID), .idle)
   }
+#endif
 
   func testStorePersistsAutoSyncRunState() async throws {
     let url = try temporaryPersistenceURL()
@@ -563,7 +565,6 @@ final class RepositoryAutoSyncTests: XCTestCase {
       )
       store.updateActiveProfile { profile in
         profile.localRepositoryRootPath = persistenceURL.deletingLastPathComponent().path
-        profile.localRepositoryBookmarkData = nil
       }
       let draft = ArticleDraft(
         siteProfileID: store.activeProfileID,

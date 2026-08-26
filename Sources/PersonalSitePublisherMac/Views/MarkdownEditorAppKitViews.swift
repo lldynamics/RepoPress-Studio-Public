@@ -1,10 +1,66 @@
 import AppKit
+import OSLog
 import PublishingWorkbenchCore
 
 final class MarkdownEditorScrollView: NSScrollView {
   private var cachedLayoutWidth: CGFloat = 0
   private var cachedTextHeight: CGFloat?
   private var heightInvalidationWorkItem: DispatchWorkItem?
+#if DEBUG || SCREENSHOT_CAPTURE_BUILD
+  private enum PerformanceAutoScrollPattern: String {
+    case forward
+    case pingPong = "ping-pong"
+    case loop
+  }
+
+  private struct PerformanceAutoTypingEdit {
+    let range: NSRange
+    let replacement: String
+    let operation: String
+    let unicodeClass: String
+  }
+
+  private static let performanceAutoScrollEnvironmentKey =
+    "PERSONAL_SITE_PUBLISHER_PERFORMANCE_AUTO_SCROLL"
+  private static let performanceAutoScrollDurationEnvironmentKey =
+    "PERSONAL_SITE_PUBLISHER_PERFORMANCE_AUTO_SCROLL_DURATION_SECONDS"
+  private static let performanceAutoScrollStartDelayEnvironmentKey =
+    "PERSONAL_SITE_PUBLISHER_PERFORMANCE_AUTO_SCROLL_START_DELAY_SECONDS"
+  private static let performanceAutoScrollPatternEnvironmentKey =
+    "PERSONAL_SITE_PUBLISHER_PERFORMANCE_AUTO_SCROLL_PATTERN"
+  private static let performanceAutoScrollCyclesEnvironmentKey =
+    "PERSONAL_SITE_PUBLISHER_PERFORMANCE_AUTO_SCROLL_CYCLES"
+  private static let performanceAutoTypingEnvironmentKey =
+    "PERSONAL_SITE_PUBLISHER_PERFORMANCE_AUTO_TYPING"
+  private static let performanceAutoTypingStartDelayEnvironmentKey =
+    "PERSONAL_SITE_PUBLISHER_PERFORMANCE_AUTO_TYPING_START_DELAY_SECONDS"
+  private static let performanceAutoTypingIntervalEnvironmentKey =
+    "PERSONAL_SITE_PUBLISHER_PERFORMANCE_AUTO_TYPING_INTERVAL_MILLISECONDS"
+  private static let performanceAutoTypingEditsEnvironmentKey =
+    "PERSONAL_SITE_PUBLISHER_PERFORMANCE_AUTO_TYPING_EDITS"
+  private static let performanceAutoTypingSettleDelayEnvironmentKey =
+    "PERSONAL_SITE_PUBLISHER_PERFORMANCE_AUTO_TYPING_SETTLE_DELAY_SECONDS"
+  private static let performanceSignposter = OSSignposter(
+    subsystem: "com.jinfang.PersonalSitePublisherMac",
+    category: "MarkdownPerformanceHarness"
+  )
+  private var performanceScrollStartWorkItem: DispatchWorkItem?
+  private var performanceScrollTimer: Timer?
+  private var performanceScrollIntervalState: OSSignpostIntervalState?
+  private var performanceScrollStartTime: TimeInterval?
+  private var performanceScrollStepCount = 0
+  private var performanceScrollTargetLocation = 0
+  private var performanceScrollPattern = PerformanceAutoScrollPattern.pingPong
+  private var performanceScrollCycleCount = 1
+  private var performanceScrollCompletedCycleCount = 0
+  private var performanceTypingStartWorkItem: DispatchWorkItem?
+  private var performanceTypingTimer: Timer?
+  private var performanceTypingIntervalState: OSSignpostIntervalState?
+  private var performanceTypingStopWorkItem: DispatchWorkItem?
+  private var performanceTypingEditCount = 0
+  private var performanceTypingRequestedEditCount = 0
+  private var performanceTypingHasStarted = false
+#endif
   var preferredBodyWidth = CGFloat(MarkdownEditorComfortConfiguration.defaultBodyWidth) {
     didSet {
       guard abs(oldValue - preferredBodyWidth) > 0.5 else { return }
@@ -14,6 +70,18 @@ final class MarkdownEditorScrollView: NSScrollView {
   }
 
   override var acceptsFirstResponder: Bool { false }
+
+  override func viewDidMoveToWindow() {
+    super.viewDidMoveToWindow()
+#if DEBUG || SCREENSHOT_CAPTURE_BUILD
+    if window == nil {
+      stopPerformanceAutoScroll()
+      stopPerformanceAutoTyping()
+    } else {
+      schedulePerformanceInteractionIfNeeded()
+    }
+#endif
+  }
 
   func invalidateDocumentHeight(immediately: Bool = false) {
     heightInvalidationWorkItem?.cancel()
@@ -54,17 +122,17 @@ final class MarkdownEditorScrollView: NSScrollView {
     if textView.textContainerInset != textContainerInset {
       textView.textContainerInset = textContainerInset
     }
-    let textHeight = textView.layoutManager.map { layoutManager in
-      guard let textContainer = textView.textContainer else { return contentHeight }
-      if let cachedTextHeight {
-        return cachedTextHeight
-      }
-      layoutManager.ensureLayout(for: textContainer)
-      let measuredHeight = layoutManager.usedRect(for: textContainer).height
-        + textView.textContainerInset.height * 2
-      cachedTextHeight = measuredHeight
-      return measuredHeight
-    } ?? contentHeight
+    let textHeight =
+      textView.textLayoutManager.map { textLayoutManager in
+        if let cachedTextHeight {
+          return cachedTextHeight
+        }
+        let measuredHeight =
+          textLayoutManager.usageBoundsForTextContainer.height
+          + textView.textContainerInset.height * 2
+        cachedTextHeight = measuredHeight
+        return measuredHeight
+      } ?? contentHeight
 
     let documentSize = NSSize(
       width: contentWidth,
@@ -73,9 +141,459 @@ final class MarkdownEditorScrollView: NSScrollView {
     if textView.frame.size != documentSize {
       textView.setFrameSize(documentSize)
     }
+#if DEBUG || SCREENSHOT_CAPTURE_BUILD
+    schedulePerformanceInteractionIfNeeded()
+#endif
   }
+
+#if DEBUG || SCREENSHOT_CAPTURE_BUILD
+  private static var isPerformanceAutoScrollEnabled: Bool {
+    let value = (ProcessInfo.processInfo.environment[performanceAutoScrollEnvironmentKey] ?? "")
+      .trimmingCharacters(in: .whitespacesAndNewlines)
+      .lowercased()
+    return value == "1" || value == "true" || value == "yes"
+  }
+
+  private static var isPerformanceAutoTypingEnabled: Bool {
+    let value = (ProcessInfo.processInfo.environment[performanceAutoTypingEnvironmentKey] ?? "")
+      .trimmingCharacters(in: .whitespacesAndNewlines)
+      .lowercased()
+    return value == "1" || value == "true" || value == "yes"
+  }
+
+  private static var performanceAutoScrollDuration: TimeInterval {
+    let configured = ProcessInfo.processInfo.environment[
+      performanceAutoScrollDurationEnvironmentKey
+    ].flatMap(Double.init)
+    return min(max(configured ?? 12, 1), 120)
+  }
+
+  private static var performanceAutoScrollStartDelay: TimeInterval {
+    let configured = ProcessInfo.processInfo.environment[
+      performanceAutoScrollStartDelayEnvironmentKey
+    ].flatMap(Double.init)
+    return min(max(configured ?? 4, 0.5), 15)
+  }
+
+  private static var performanceAutoScrollPattern: PerformanceAutoScrollPattern {
+    let configured = ProcessInfo.processInfo.environment[
+      performanceAutoScrollPatternEnvironmentKey
+    ]?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    return PerformanceAutoScrollPattern(rawValue: configured ?? "") ?? .pingPong
+  }
+
+  private static var performanceAutoScrollCycles: Int {
+    let configured = ProcessInfo.processInfo.environment[
+      performanceAutoScrollCyclesEnvironmentKey
+    ].flatMap(Int.init)
+    return min(max(configured ?? 4, 1), 32)
+  }
+
+  private static var performanceAutoTypingStartDelay: TimeInterval {
+    let configured = ProcessInfo.processInfo.environment[
+      performanceAutoTypingStartDelayEnvironmentKey
+    ].flatMap(Double.init)
+    return min(max(configured ?? 4, 0.5), 15)
+  }
+
+  private static var performanceAutoTypingInterval: TimeInterval {
+    let configured = ProcessInfo.processInfo.environment[
+      performanceAutoTypingIntervalEnvironmentKey
+    ].flatMap(Double.init)
+    return min(max((configured ?? 120) / 1_000, 0.016), 2)
+  }
+
+  private static var performanceAutoTypingEdits: Int {
+    let configured = ProcessInfo.processInfo.environment[
+      performanceAutoTypingEditsEnvironmentKey
+    ].flatMap(Int.init)
+    return min(max(configured ?? 24, 6), 240)
+  }
+
+  private static var performanceAutoTypingSettleDelay: TimeInterval {
+    let configured = ProcessInfo.processInfo.environment[
+      performanceAutoTypingSettleDelayEnvironmentKey
+    ].flatMap(Double.init)
+    return min(max(configured ?? 0.5, 0.1), 2)
+  }
+
+  private func schedulePerformanceInteractionIfNeeded() {
+    guard !(Self.isPerformanceAutoScrollEnabled && Self.isPerformanceAutoTypingEnabled) else {
+      return
+    }
+    if Self.isPerformanceAutoTypingEnabled {
+      schedulePerformanceAutoTypingIfNeeded()
+    } else {
+      schedulePerformanceAutoScrollIfNeeded()
+    }
+  }
+
+  private func schedulePerformanceAutoScrollIfNeeded() {
+    guard Self.isPerformanceAutoScrollEnabled,
+      window != nil,
+      performanceScrollTimer == nil,
+      performanceScrollStartWorkItem == nil,
+      performanceScrollableDocumentLength > 1
+    else {
+      return
+    }
+
+    let workItem = DispatchWorkItem { [weak self] in
+      self?.startPerformanceAutoScroll()
+    }
+    performanceScrollStartWorkItem = workItem
+    DispatchQueue.main.asyncAfter(
+      deadline: .now() + Self.performanceAutoScrollStartDelay,
+      execute: workItem
+    )
+  }
+
+  private func schedulePerformanceAutoTypingIfNeeded() {
+    guard Self.isPerformanceAutoTypingEnabled,
+      window != nil,
+      performanceTypingTimer == nil,
+      performanceTypingStartWorkItem == nil,
+      !performanceTypingHasStarted,
+      performanceScrollableDocumentLength > 1
+    else {
+      return
+    }
+
+    let workItem = DispatchWorkItem { [weak self] in
+      self?.startPerformanceAutoTyping()
+    }
+    performanceTypingStartWorkItem = workItem
+    DispatchQueue.main.asyncAfter(
+      deadline: .now() + Self.performanceAutoTypingStartDelay,
+      execute: workItem
+    )
+  }
+
+  private func startPerformanceAutoScroll() {
+    performanceScrollStartWorkItem = nil
+    guard Self.isPerformanceAutoScrollEnabled,
+      window != nil,
+      performanceScrollTimer == nil,
+      performanceScrollableDocumentLength > 1
+    else {
+      return
+    }
+
+    let signpostID = Self.performanceSignposter.makeSignpostID()
+    performanceScrollPattern = Self.performanceAutoScrollPattern
+    performanceScrollCycleCount = performanceScrollPattern == .forward
+      ? 1
+      : Self.performanceAutoScrollCycles
+    performanceScrollCompletedCycleCount = 0
+    performanceScrollIntervalState = Self.performanceSignposter.beginInterval(
+      "AutoScroll",
+      id: signpostID,
+      "documentLength: \(self.performanceScrollableDocumentLength, privacy: .public), viewportHeight: \(self.contentView.bounds.height, privacy: .public), pattern: \(self.performanceScrollPattern.rawValue, privacy: .public), cycles: \(self.performanceScrollCycleCount, privacy: .public)"
+    )
+    performanceScrollStepCount = 0
+    performanceScrollTargetLocation = 0
+    performanceScrollStartTime = ProcessInfo.processInfo.systemUptime
+    if MarkdownTextKit2ReadOnlyPresentationPolicy.isEnabled,
+      let textView = documentView as? NSTextView
+    {
+      // Cycle the derived document after Instruments has attached so the
+      // native presentation install is observable inside the AutoScroll
+      // interval. The ordinary app never enters this capture-only branch.
+      _ = window?.makeFirstResponder(textView)
+      _ = window?.makeFirstResponder(nil)
+    }
+    let interval: TimeInterval = 1.0 / 30.0
+    let timer = Timer(
+      timeInterval: interval,
+      target: self,
+      selector: #selector(performPerformanceAutoScrollStep),
+      userInfo: nil,
+      repeats: true
+    )
+    performanceScrollTimer = timer
+    RunLoop.main.add(timer, forMode: .common)
+  }
+
+  @objc private func performPerformanceAutoScrollStep() {
+    guard window != nil,
+      let textView = documentView as? NSTextView
+    else {
+      stopPerformanceAutoScroll()
+      return
+    }
+    let documentLength = (textView.string as NSString).length
+    guard documentLength > 1,
+      let startTime = performanceScrollStartTime
+    else {
+      stopPerformanceAutoScroll()
+      return
+    }
+    let elapsed = max(0, ProcessInfo.processInfo.systemUptime - startTime)
+    let progress = min(elapsed / Self.performanceAutoScrollDuration, 1)
+    let cycleProgress = min(
+      progress * Double(performanceScrollCycleCount),
+      Double(performanceScrollCycleCount)
+    )
+    performanceScrollCompletedCycleCount = min(
+      performanceScrollCycleCount,
+      Int(cycleProgress.rounded(.down))
+    )
+    let cycleIndex = min(
+      max(Int(cycleProgress.rounded(.down)), 0),
+      performanceScrollCycleCount - 1
+    )
+    let fraction = cycleProgress >= Double(performanceScrollCycleCount)
+      ? 1
+      : cycleProgress - Double(cycleIndex)
+    let movesForward: Bool
+    switch performanceScrollPattern {
+    case .forward, .loop:
+      movesForward = true
+    case .pingPong:
+      movesForward = cycleIndex.isMultiple(of: 2)
+    }
+    let normalizedProgress = movesForward ? fraction : 1 - fraction
+    performanceScrollTargetLocation = min(
+      documentLength - 1,
+      max(0, Int(Double(documentLength - 1) * normalizedProgress))
+    )
+    // Trackpad, wheel, and scrollbar interactions move the clip view in
+    // document coordinates. Resolving a far-away character range on every
+    // 30 Hz harness tick instead asks TextKit to synchronously bridge all
+    // intervening layout fragments, which measures an artificial seek path
+    // rather than viewport scrolling.
+    let maximumOffset = max(0, textView.frame.height - contentView.bounds.height)
+    let recordsMeasuredStep = (performanceScrollStepCount + 1).isMultiple(of: 15)
+    let measuredStepInterval = recordsMeasuredStep
+      ? Self.performanceSignposter.beginInterval(
+        "AutoScrollStep",
+        id: Self.performanceSignposter.makeSignpostID()
+      )
+      : nil
+    contentView.scroll(
+      to: NSPoint(
+        x: contentView.bounds.minX,
+        y: maximumOffset * normalizedProgress
+      )
+    )
+    reflectScrolledClipView(contentView)
+    performanceScrollStepCount += 1
+    if let measuredStepInterval {
+      Self.performanceSignposter.endInterval(
+        "AutoScrollStep",
+        measuredStepInterval,
+        "stepIndex: \(self.performanceScrollStepCount, privacy: .public)"
+      )
+    }
+    if progress >= 1 {
+      stopPerformanceAutoScroll()
+    }
+  }
+
+  private func startPerformanceAutoTyping() {
+    performanceTypingStartWorkItem = nil
+    guard Self.isPerformanceAutoTypingEnabled,
+      window != nil,
+      performanceTypingTimer == nil,
+      !performanceTypingHasStarted,
+      performanceScrollableDocumentLength > 1
+    else {
+      return
+    }
+
+    performanceTypingHasStarted = true
+    performanceTypingEditCount = 0
+    performanceTypingRequestedEditCount = Self.performanceAutoTypingEdits
+    if let textView = documentView as? NSTextView {
+      _ = window?.makeFirstResponder(textView)
+    }
+    let signpostID = Self.performanceSignposter.makeSignpostID()
+    performanceTypingIntervalState = Self.performanceSignposter.beginInterval(
+      "AutoTyping",
+      id: signpostID,
+      "documentLength: \(self.performanceScrollableDocumentLength, privacy: .public), requestedEdits: \(self.performanceTypingRequestedEditCount, privacy: .public), mode: programmatic, imeComposition: false"
+    )
+    let timer = Timer(
+      timeInterval: Self.performanceAutoTypingInterval,
+      target: self,
+      selector: #selector(performPerformanceAutoTypingStep),
+      userInfo: nil,
+      repeats: true
+    )
+    performanceTypingTimer = timer
+    RunLoop.main.add(timer, forMode: .common)
+  }
+
+  @objc private func performPerformanceAutoTypingStep() {
+    guard window != nil,
+      let textView = documentView as? NSTextView,
+      performanceTypingEditCount < performanceTypingRequestedEditCount
+    else {
+      stopPerformanceAutoTyping()
+      return
+    }
+    guard let edit = performanceAutoTypingEdit(
+      at: performanceTypingEditCount,
+      in: textView.string
+    ),
+      NSMaxRange(edit.range) <= (textView.string as NSString).length
+    else {
+      stopPerformanceAutoTyping()
+      return
+    }
+
+    let editIndex = performanceTypingEditCount + 1
+    let stepIntervalState = Self.performanceSignposter.beginInterval(
+      "AutoTypingStep",
+      id: Self.performanceSignposter.makeSignpostID(),
+      "editIndex: \(editIndex, privacy: .public), operation: \(edit.operation, privacy: .public), replacedUTF16Length: \(edit.range.length, privacy: .public), replacementUTF16Length: \((edit.replacement as NSString).length, privacy: .public), unicode: \(edit.unicodeClass, privacy: .public)"
+    )
+    textView.insertText(edit.replacement, replacementRange: edit.range)
+    Self.performanceSignposter.endInterval(
+      "AutoTypingStep",
+      stepIntervalState,
+      "editIndex: \(editIndex, privacy: .public), completed: true"
+    )
+    let selectedLocation = min(
+      edit.range.location + (edit.replacement as NSString).length,
+      (textView.string as NSString).length
+    )
+    textView.setSelectedRange(NSRange(location: selectedLocation, length: 0))
+    performanceTypingEditCount += 1
+    if performanceTypingEditCount >= performanceTypingRequestedEditCount {
+      schedulePerformanceAutoTypingStop()
+    }
+  }
+
+  private func schedulePerformanceAutoTypingStop() {
+    performanceTypingTimer?.invalidate()
+    performanceTypingTimer = nil
+    performanceTypingStopWorkItem?.cancel()
+    let workItem = DispatchWorkItem { [weak self] in
+      self?.stopPerformanceAutoTyping()
+    }
+    performanceTypingStopWorkItem = workItem
+    DispatchQueue.main.asyncAfter(
+      deadline: .now() + Self.performanceAutoTypingSettleDelay,
+      execute: workItem
+    )
+  }
+
+  private func performanceAutoTypingEdit(
+    at index: Int,
+    in text: String
+  ) -> PerformanceAutoTypingEdit? {
+    let source = text as NSString
+    let marker = source.range(of: "offscreen attribute writes bounded")
+    guard marker.location != NSNotFound else { return nil }
+    let insertionLocation = NSMaxRange(marker)
+    let searchRange = NSRange(
+      location: insertionLocation,
+      length: max(0, source.length - insertionLocation)
+    )
+    switch index % 6 {
+    case 0:
+      return PerformanceAutoTypingEdit(
+        range: NSRange(location: insertionLocation, length: 0),
+        replacement: "增量",
+        operation: "insert-chinese",
+        unicodeClass: "chinese"
+      )
+    case 1:
+      return PerformanceAutoTypingEdit(
+        range: NSRange(location: insertionLocation, length: 0),
+        replacement: "🚀",
+        operation: "insert-emoji",
+        unicodeClass: "emoji"
+      )
+    case 2:
+      let range = source.range(of: "增量", options: [], range: searchRange)
+      guard range.location != NSNotFound else { return nil }
+      return PerformanceAutoTypingEdit(
+        range: range,
+        replacement: "局部",
+        operation: "replace-chinese",
+        unicodeClass: "chinese"
+      )
+    case 3:
+      let range = source.range(of: "🚀", options: [], range: searchRange)
+      guard range.location != NSNotFound else { return nil }
+      return PerformanceAutoTypingEdit(
+        range: range,
+        replacement: "",
+        operation: "delete-emoji",
+        unicodeClass: "emoji"
+      )
+    case 4:
+      let range = source.range(of: "局部", options: [], range: searchRange)
+      guard range.location != NSNotFound else { return nil }
+      return PerformanceAutoTypingEdit(
+        range: range,
+        replacement: "增量",
+        operation: "replace-chinese",
+        unicodeClass: "chinese"
+      )
+    default:
+      let range = source.range(of: "增量", options: [], range: searchRange)
+      guard range.location != NSNotFound else { return nil }
+      return PerformanceAutoTypingEdit(
+        range: range,
+        replacement: "",
+        operation: "delete-chinese",
+        unicodeClass: "chinese"
+      )
+    }
+  }
+
+  private func stopPerformanceAutoScroll() {
+    performanceScrollStartWorkItem?.cancel()
+    performanceScrollStartWorkItem = nil
+    performanceScrollTimer?.invalidate()
+    performanceScrollTimer = nil
+    performanceScrollStartTime = nil
+    guard let intervalState = performanceScrollIntervalState else { return }
+    Self.performanceSignposter.endInterval(
+      "AutoScroll",
+      intervalState,
+      "stepCount: \(self.performanceScrollStepCount, privacy: .public), completedCycles: \(self.performanceScrollCompletedCycleCount, privacy: .public), finalOffset: \(self.contentView.bounds.minY, privacy: .public)"
+    )
+    performanceScrollIntervalState = nil
+  }
+
+  private func stopPerformanceAutoTyping() {
+    performanceTypingStartWorkItem?.cancel()
+    performanceTypingStartWorkItem = nil
+    performanceTypingStopWorkItem?.cancel()
+    performanceTypingStopWorkItem = nil
+    performanceTypingTimer?.invalidate()
+    performanceTypingTimer = nil
+    guard let intervalState = performanceTypingIntervalState else { return }
+    Self.performanceSignposter.endInterval(
+      "AutoTyping",
+      intervalState,
+      "completedEdits: \(self.performanceTypingEditCount, privacy: .public), requestedEdits: \(self.performanceTypingRequestedEditCount, privacy: .public), mode: programmatic, imeComposition: false"
+    )
+    performanceTypingIntervalState = nil
+  }
+
+  private var performanceScrollableDocumentLength: Int {
+    guard let textView = documentView as? NSTextView else { return 0 }
+    return (textView.string as NSString).length
+  }
+#endif
 }
 final class DroppableMarkdownTextView: NSTextView {
+  static func makeTextKit2(
+    frame: NSRect = .zero,
+    containerSize: NSSize
+  ) -> DroppableMarkdownTextView {
+    let textView = DroppableMarkdownTextView(usingTextLayoutManager: true)
+    textView.frame = frame
+    textView.textContainer?.containerSize = containerSize
+    textView.registerMarkdownDraggedTypes()
+    return textView
+  }
+
   var fileDropTargetChangedHandler: ((Bool) -> Void)?
   var fileDropHandler: (([URL], NSRange) -> Void)?
   var knowledgeMarkdownDropHandler: ((String, NSRange, KnowledgeCitation?) -> Void)?
@@ -85,9 +603,11 @@ final class DroppableMarkdownTextView: NSTextView {
     MarkdownPasteboardReader.imageFileURLs(from: $0)
   }
   var knowledgeMarkdownProvider: (NSPasteboard) -> String? = { pasteboard in
-    guard let data = pasteboard.data(
-      forType: KnowledgeArticleInsertionService.knowledgeMarkdownPasteboardType
-    ) else {
+    guard
+      let data = pasteboard.data(
+        forType: KnowledgeArticleInsertionService.knowledgeMarkdownPasteboardType
+      )
+    else {
       return nil
     }
     return String(data: data, encoding: .utf8)?.trimmingCharacters(
@@ -102,26 +622,35 @@ final class DroppableMarkdownTextView: NSTextView {
   var markdownTableContextProvider: ((NSTextView) -> MarkdownTableEditingContext?)?
   var markdownTableEditingHandler: ((NSTextView, MarkdownTableEditingCommand) -> Bool)?
   var slashCommandKeyHandler: ((MarkdownSlashCommandKey) -> Bool)?
-  var typingFeedbackHandler: (() -> Void)?
   var ghostTextAcceptHandler: (() -> Bool)?
   var ghostTextDismissHandler: (() -> Bool)?
+  /// Called once when AppKit begins a new first-responder cycle for this view.
+  ///
+  /// The editor coordinator uses this narrow bridge to restore the editable
+  /// Markdown projection before focus returns to the text view.  It is not
+  /// called when the text view is already the window's first responder.
+  var willBecomeFirstResponderHandler: (() -> Void)?
+  /// Called once after this view successfully resigns first responder.
+  ///
+  /// The editor coordinator uses this to install its read-only presentation
+  /// projection only after AppKit has completed the focus transition.
+  var didResignFirstResponderHandler: (() -> Void)?
   private var isFileDropTargeted = false
+  private var isPreparingFirstResponder = false
+  private var isResigningFirstResponder = false
+  private var hasPreparedCurrentFocusCycle = false
+  private var hasAnnouncedResignationForCurrentFocus = false
 
-  override init(frame frameRect: NSRect, textContainer container: NSTextContainer?) {
-    super.init(frame: frameRect, textContainer: container)
-    registerForDraggedTypes([
-      .fileURL,
-      KnowledgeArticleInsertionService.knowledgeMarkdownPasteboardType,
-      KnowledgeArticleInsertionService.knowledgeCitationPasteboardType
-    ])
+  override func viewDidMoveToWindow() {
+    super.viewDidMoveToWindow()
+    registerMarkdownDraggedTypes()
   }
 
-  required init?(coder: NSCoder) {
-    super.init(coder: coder)
+  private func registerMarkdownDraggedTypes() {
     registerForDraggedTypes([
       .fileURL,
       KnowledgeArticleInsertionService.knowledgeMarkdownPasteboardType,
-      KnowledgeArticleInsertionService.knowledgeCitationPasteboardType
+      KnowledgeArticleInsertionService.knowledgeCitationPasteboardType,
     ])
   }
 
@@ -131,6 +660,60 @@ final class DroppableMarkdownTextView: NSTextView {
 
   override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
     true
+  }
+
+  override func becomeFirstResponder() -> Bool {
+    guard !isPreparingFirstResponder else {
+      return true
+    }
+
+    isPreparingFirstResponder = true
+    defer { isPreparingFirstResponder = false }
+    if !hasPreparedCurrentFocusCycle {
+      // NSWindow may already expose this view as `firstResponder` by the time
+      // AppKit enters this override. Track the focus cycle locally instead of
+      // consulting window state, otherwise the source-restoration hook is
+      // skipped on every ordinary `makeFirstResponder` transition.
+      hasPreparedCurrentFocusCycle = true
+      willBecomeFirstResponderHandler?()
+    }
+
+    let didBecomeFirstResponder = super.becomeFirstResponder()
+    if didBecomeFirstResponder {
+      hasAnnouncedResignationForCurrentFocus = false
+    } else {
+      hasPreparedCurrentFocusCycle = false
+    }
+    return didBecomeFirstResponder
+  }
+
+  override func resignFirstResponder() -> Bool {
+    guard !isResigningFirstResponder else {
+      return true
+    }
+
+    let wasFirstResponder = window?.firstResponder === self
+    // AppKit's NSTextView implementation expects `super` to be called only
+    // from the active responder transition. Treat duplicate/manual resigns
+    // after that transition as an idempotent no-op.
+    guard wasFirstResponder else { return true }
+    isResigningFirstResponder = true
+    defer { isResigningFirstResponder = false }
+    let didResignFirstResponder = super.resignFirstResponder()
+    guard
+      didResignFirstResponder,
+      wasFirstResponder,
+      !hasAnnouncedResignationForCurrentFocus
+    else {
+      return didResignFirstResponder
+    }
+
+    // Mark before invoking user code so a handler that synchronously asks
+    // AppKit to resign again cannot produce a duplicate notification.
+    hasPreparedCurrentFocusCycle = false
+    hasAnnouncedResignationForCurrentFocus = true
+    didResignFirstResponderHandler?()
+    return didResignFirstResponder
   }
 
   override func mouseDown(with event: NSEvent) {
@@ -150,29 +733,29 @@ final class DroppableMarkdownTextView: NSTextView {
     }
 
     // Keyboard line operations: Move, Duplicate, Delete, Comment
-    if event.keyCode == 126 { // Up arrow
+    if event.keyCode == 126 {  // Up arrow
       if modifiers == .option {
         if markdownLineEditingHandler?(self, .moveUp) == true { return }
       } else if modifiers == [.shift, .option] {
         if markdownLineEditingHandler?(self, .duplicateAbove) == true { return }
       }
-    } else if event.keyCode == 125 { // Down arrow
+    } else if event.keyCode == 125 {  // Down arrow
       if modifiers == .option {
         if markdownLineEditingHandler?(self, .moveDown) == true { return }
       } else if modifiers == [.shift, .option] {
         if markdownLineEditingHandler?(self, .duplicateBelow) == true { return }
       }
-    } else if event.keyCode == 40 { // 'K' key
+    } else if event.keyCode == 40 {  // 'K' key
       if modifiers == [.command, .shift] {
         if markdownLineEditingHandler?(self, .deleteLine) == true { return }
       }
-    } else if event.keyCode == 44 || event.characters == "/" { // '/' key
+    } else if event.keyCode == 44 || event.characters == "/" {  // '/' key
       if modifiers == .command {
         if markdownLineEditingHandler?(self, .toggleComment) == true { return }
       }
     }
 
-    if event.keyCode == 48 { // Tab key
+    if event.keyCode == 48 {  // Tab key
       if modifiers.isEmpty, ghostTextAcceptHandler?() == true {
         return
       }
@@ -184,20 +767,12 @@ final class DroppableMarkdownTextView: NSTextView {
         }
         return
       }
-    } else if event.keyCode == 53 { // Esc key
+    } else if event.keyCode == 53 {  // Esc key
       if modifiers.isEmpty, ghostTextDismissHandler?() == true {
         return
       }
     }
 
-    let typingEvent = MarkdownTypingFeedbackPolicy.event(
-      keyCode: event.keyCode,
-      characters: event.characters,
-      modifiers: event.modifierFlags
-    )
-    if typingEvent == .insertedText {
-      typingFeedbackHandler?()
-    }
     super.keyDown(with: event)
   }
 
@@ -220,38 +795,45 @@ final class DroppableMarkdownTextView: NSTextView {
 
     let tableMenu = NSMenu(title: String(localized: "Markdown 表格"))
     tableMenu.autoenablesItems = false
-    tableMenu.addItem(tableMenuItem(
-      title: String(localized: "格式化表格"),
-      action: #selector(formatMarkdownTable(_:))
-    ))
+    tableMenu.addItem(
+      tableMenuItem(
+        title: String(localized: "格式化表格"),
+        action: #selector(formatMarkdownTable(_:))
+      ))
     tableMenu.addItem(.separator())
-    tableMenu.addItem(tableMenuItem(
-      title: String(localized: "在上方插入行"),
-      action: #selector(insertMarkdownTableRowAbove(_:))
-    ))
-    tableMenu.addItem(tableMenuItem(
-      title: String(localized: "在下方插入行"),
-      action: #selector(insertMarkdownTableRowBelow(_:))
-    ))
-    tableMenu.addItem(tableMenuItem(
-      title: String(localized: "删除当前行"),
-      action: #selector(deleteMarkdownTableRow(_:)),
-      isEnabled: context.canDeleteRow
-    ))
+    tableMenu.addItem(
+      tableMenuItem(
+        title: String(localized: "在上方插入行"),
+        action: #selector(insertMarkdownTableRowAbove(_:))
+      ))
+    tableMenu.addItem(
+      tableMenuItem(
+        title: String(localized: "在下方插入行"),
+        action: #selector(insertMarkdownTableRowBelow(_:))
+      ))
+    tableMenu.addItem(
+      tableMenuItem(
+        title: String(localized: "删除当前行"),
+        action: #selector(deleteMarkdownTableRow(_:)),
+        isEnabled: context.canDeleteRow
+      ))
     tableMenu.addItem(.separator())
-    tableMenu.addItem(tableMenuItem(
-      title: String(localized: "在左侧插入列"),
-      action: #selector(insertMarkdownTableColumnBefore(_:))
-    ))
-    tableMenu.addItem(tableMenuItem(
-      title: String(localized: "在右侧插入列"),
-      action: #selector(insertMarkdownTableColumnAfter(_:))
-    ))
-    tableMenu.addItem(tableMenuItem(
-      title: String(localized: "删除当前列"),
-      action: #selector(deleteMarkdownTableColumn(_:)),
-      isEnabled: context.canDeleteColumn
-    ))
+    tableMenu.addItem(
+      tableMenuItem(
+        title: String(localized: "在左侧插入列"),
+        action: #selector(insertMarkdownTableColumnBefore(_:))
+      ))
+    tableMenu.addItem(
+      tableMenuItem(
+        title: String(localized: "在右侧插入列"),
+        action: #selector(insertMarkdownTableColumnAfter(_:))
+      ))
+    tableMenu.addItem(
+      tableMenuItem(
+        title: String(localized: "删除当前列"),
+        action: #selector(deleteMarkdownTableColumn(_:)),
+        isEnabled: context.canDeleteColumn
+      ))
 
     let tableMenuItem = NSMenuItem(
       title: String(localized: "Markdown 表格"),
@@ -429,7 +1011,7 @@ enum MarkdownFormattingResponderBridge {
     case .link:
       selectorName = "applyMarkdownLink:"
     case .heading(let level):
-      guard (1 ... 3).contains(level) else { return false }
+      guard (1...3).contains(level) else { return false }
       selectorName = "applyMarkdownHeading\(level):"
     }
     return NSApp.sendAction(NSSelectorFromString(selectorName), to: nil, from: nil)

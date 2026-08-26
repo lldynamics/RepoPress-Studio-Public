@@ -11,14 +11,14 @@ public final class ImageWorkbenchStore: ObservableObject {
   private var imageBatchCancellationToken: ImageProcessingCancellationToken?
   private var imageBatchOperationID: UUID?
   private var imageBatchDraftBaselines: [UUID: DraftOperationBaseline] = [:]
-  private var imageReportTask: Task<ImageWorkbenchReport, Error>?
-  private var imageReportGeneration: UInt64 = 0
-  private var imageReportBaseline: ImageWorkbenchReportInputSignature?
-  private var imageReportBaselineRevision: UInt64?
+  private var imageReportTasks: [UUID: Task<ImageWorkbenchReport, Error>] = [:]
+  private var imageReportGenerations: [UUID: UInt64] = [:]
+  private var imageReportBaselines: [UUID: ImageWorkbenchReportInputSignature] = [:]
+  private var backgroundImageReports: [UUID: ImageWorkbenchReport] = [:]
+  private var imageReportLoadingDraftIDs = Set<UUID>()
   private var siteSummaryTask: Task<ImageWorkbenchSiteSummary, Error>?
   private var siteSummaryGeneration: UInt64 = 0
   private var siteSummaryBaseline: ImageWorkbenchSiteSummaryInputSignature?
-  private var siteSummaryBaselineRevision: UInt64?
   private var lastBatchRetryAction: (@MainActor () -> Void)?
 
   @Published public private(set) var imageBatchProgress: ImageBatchProgress?
@@ -261,26 +261,113 @@ public final class ImageWorkbenchStore: ObservableObject {
     lastBatchRetryAction()
   }
 
-  public func refreshImageWorkbenchReport() {
-    guard let selectedDraft else {
+  private func currentImageReportSignature(for draftID: UUID) -> ImageWorkbenchReportInputSignature? {
+    guard let currentDraft = store.drafts.first(where: { $0.id == draftID }) else {
+      return nil
+    }
+    return ImageWorkbenchReportInputSignature(
+      draft: currentDraft,
+      profile: profile(for: currentDraft)
+    )
+  }
+
+  private func cachedImageWorkbenchReport(for draftID: UUID) -> ImageWorkbenchReport? {
+    guard let baseline = imageReportBaselines[draftID],
+          let report = backgroundImageReports[draftID],
+          report.draftID == draftID,
+          let currentSignature = currentImageReportSignature(for: draftID),
+          baseline == currentSignature else {
+      return nil
+    }
+    return report
+  }
+
+  /// Keeps the legacy fields as a projection of the selected draft only.
+  /// Per-draft reports, baselines, and loading state remain available to the
+  /// explicit draft-scoped APIs without changing the existing facade surface.
+  private func projectSelectedImageReport() {
+    guard let selectedDraftID = store.selectedDraftID else {
       imageWorkbenchReport = nil
       backgroundImageReport = nil
-      imageReportBaseline = nil
+      imageReportLoadingDraftID = nil
       return
     }
 
+    backgroundImageReport = cachedImageWorkbenchReport(for: selectedDraftID)
+    imageWorkbenchReport = backgroundImageReport
+    imageReportLoadingDraftID = imageReportLoadingDraftIDs.contains(selectedDraftID)
+      ? selectedDraftID
+      : nil
+  }
+
+  /// Reprojects the compatibility fields after the active editor changes.
+  /// The keyed report cache remains the source of truth.
+  func restoreImageWorkbenchReportProjectionForCurrentSelection() {
+    projectSelectedImageReport()
+  }
+
+  /// Drops report state for drafts that are no longer part of the workspace.
+  ///
+  /// Draft-scoped refreshes can outlive the mutation that removes their draft.
+  /// Cancelling the task is useful for the file-backed work itself, while
+  /// removing its generation makes a late completion unable to install a
+  /// result if the underlying operation does not observe cancellation.
+  func reconcileDraftReportState(validDraftIDs: Set<UUID>) {
+    let trackedDraftIDs = Set(imageReportTasks.keys)
+      .union(imageReportGenerations.keys)
+      .union(imageReportBaselines.keys)
+      .union(backgroundImageReports.keys)
+      .union(imageReportLoadingDraftIDs)
+    let removedDraftIDs = trackedDraftIDs.subtracting(validDraftIDs)
+    guard !removedDraftIDs.isEmpty else { return }
+
+    for draftID in removedDraftIDs {
+      imageReportTasks[draftID]?.cancel()
+      imageReportTasks[draftID] = nil
+      imageReportGenerations[draftID] = nil
+      imageReportBaselines[draftID] = nil
+      backgroundImageReports[draftID] = nil
+      imageReportLoadingDraftIDs.remove(draftID)
+    }
+
+    projectSelectedImageReport()
+    store.imageWorkbenchBackgroundStateDidChange()
+  }
+
+  private func finishImageReportGeneration(
+    for draftID: UUID,
+    generation: UInt64
+  ) -> Bool {
+    guard imageReportGenerations[draftID] == generation else { return false }
+    imageReportTasks[draftID] = nil
+    imageReportLoadingDraftIDs.remove(draftID)
+    projectSelectedImageReport()
+    store.imageWorkbenchBackgroundStateDidChange()
+    return true
+  }
+
+  public func refreshImageWorkbenchReport() {
+    guard let selectedDraft else {
+      projectSelectedImageReport()
+      return
+    }
+
+    let draftID = selectedDraft.id
+    imageReportTasks[draftID]?.cancel()
+    imageReportTasks[draftID] = nil
+    imageReportGenerations[draftID, default: 0] &+= 1
+    imageReportLoadingDraftIDs.remove(draftID)
     let profile = profile(for: selectedDraft)
     let report = imageWorkbenchService.report(
       draft: selectedDraft,
       profile: profile
     )
-    imageWorkbenchReport = report
-    backgroundImageReport = report
-    imageReportBaseline = ImageWorkbenchReportInputSignature(
+    backgroundImageReports[draftID] = report
+    imageReportBaselines[draftID] = ImageWorkbenchReportInputSignature(
       draft: selectedDraft,
       profile: profile
     )
-    imageReportBaselineRevision = store.imageWorkbenchInputRevision
+    projectSelectedImageReport()
   }
 
   public func imageWorkbenchReport(for draft: ArticleDraft) -> ImageWorkbenchReport {
@@ -288,16 +375,11 @@ public final class ImageWorkbenchStore: ObservableObject {
   }
 
   public func cachedImageWorkbenchReport(for draft: ArticleDraft) -> ImageWorkbenchReport? {
-    guard imageReportBaseline != nil,
-          imageReportBaselineRevision == store.imageWorkbenchInputRevision,
-          backgroundImageReport?.draftID == draft.id else {
-      return nil
-    }
-    return backgroundImageReport
+    cachedImageWorkbenchReport(for: draft.id)
   }
 
   public func isImageWorkbenchReportLoading(for draft: ArticleDraft) -> Bool {
-    imageReportLoadingDraftID == draft.id
+    imageReportLoadingDraftIDs.contains(draft.id)
   }
 
   public func refreshImageWorkbenchReportInBackground(
@@ -308,31 +390,27 @@ public final class ImageWorkbenchStore: ObservableObject {
     // alive for the same lifetime as well; otherwise the unowned back-reference
     // can become dangling while the file-backed report is suspended.
     let owningStore = store
+    let draftID = draft.id
     let profile = owningStore.profile(for: draft)
-    imageReportTask?.cancel()
-    imageReportGeneration &+= 1
-    let generation = imageReportGeneration
-    let inputRevision = owningStore.imageWorkbenchInputRevision
-    imageReportLoadingDraftID = draft.id
+    imageReportTasks[draftID]?.cancel()
+    let generation = (imageReportGenerations[draftID] ?? 0) &+ 1
+    imageReportGenerations[draftID] = generation
+    imageReportLoadingDraftIDs.insert(draftID)
+    projectSelectedImageReport()
     owningStore.imageWorkbenchBackgroundStateDidChange()
 
     let signature = await Task.detached(priority: .utility) {
       ImageWorkbenchReportInputSignature(draft: draft, profile: profile)
     }.value
     guard !Task.isCancelled else {
-      if generation == imageReportGeneration {
-        imageReportLoadingDraftID = nil
-        owningStore.imageWorkbenchBackgroundStateDidChange()
-      }
+      _ = finishImageReportGeneration(for: draftID, generation: generation)
       return
     }
-    guard generation == imageReportGeneration else { return }
+    guard imageReportGenerations[draftID] == generation else { return }
     if !force,
-       imageReportBaseline == signature,
-       backgroundImageReport?.draftID == draft.id {
-      imageReportBaselineRevision = inputRevision
-      imageReportLoadingDraftID = nil
-      owningStore.imageWorkbenchBackgroundStateDidChange()
+       imageReportBaselines[draftID] == signature,
+       cachedImageWorkbenchReport(for: draftID) != nil {
+      _ = finishImageReportGeneration(for: draftID, generation: generation)
       return
     }
 
@@ -340,39 +418,45 @@ public final class ImageWorkbenchStore: ObservableObject {
     let task = Task {
       try await service.reportAsync(draft: draft, profile: profile)
     }
-    imageReportTask = task
+    imageReportTasks[draftID] = task
     let result = await withTaskCancellationHandler {
       await task.result
     } onCancel: {
       task.cancel()
     }
 
-    guard generation == imageReportGeneration else { return }
-    imageReportTask = nil
-    imageReportLoadingDraftID = nil
+    guard imageReportGenerations[draftID] == generation else { return }
+    imageReportTasks[draftID] = nil
+    imageReportLoadingDraftIDs.remove(draftID)
 
-    guard owningStore.imageWorkbenchInputRevision == inputRevision,
-          owningStore.drafts.contains(where: { $0.id == draft.id }),
-          case .success(let report) = result else {
+    guard let currentDraft = owningStore.drafts.first(where: { $0.id == draft.id }),
+          ImageWorkbenchReportInputSignature(
+            draft: currentDraft,
+            profile: owningStore.profile(for: currentDraft)
+          ) == signature,
+          case .success(let report) = result,
+          report.draftID == draftID else {
+      projectSelectedImageReport()
       owningStore.imageWorkbenchBackgroundStateDidChange()
       return
     }
 
-    imageReportBaseline = signature
-    imageReportBaselineRevision = inputRevision
-    backgroundImageReport = report
-    if owningStore.selectedDraft?.id == draft.id {
-      imageWorkbenchReport = report
-    }
+    imageReportBaselines[draftID] = signature
+    backgroundImageReports[draftID] = report
+    projectSelectedImageReport()
     owningStore.imageWorkbenchBackgroundStateDidChange()
   }
 
   public func cachedImageWorkbenchSiteSummary() -> ImageWorkbenchSiteSummary? {
-    guard siteSummaryBaseline != nil,
-          siteSummaryBaselineRevision == store.imageWorkbenchInputRevision else {
+    guard let baseline = siteSummaryBaseline,
+          let summary = backgroundSiteSummary,
+          baseline == ImageWorkbenchSiteSummaryInputSignature(
+            drafts: visibleDrafts,
+            profile: store.activeProfile
+          ) else {
       return nil
     }
-    return backgroundSiteSummary
+    return summary
   }
 
   public func refreshImageWorkbenchSiteSummaryInBackground(force: Bool = false) async {
@@ -384,7 +468,6 @@ public final class ImageWorkbenchStore: ObservableObject {
     siteSummaryTask?.cancel()
     siteSummaryGeneration &+= 1
     let generation = siteSummaryGeneration
-    let inputRevision = owningStore.imageWorkbenchInputRevision
     isSiteSummaryLoading = true
     siteSummaryErrorMessage = nil
     owningStore.imageWorkbenchBackgroundStateDidChange()
@@ -403,7 +486,6 @@ public final class ImageWorkbenchStore: ObservableObject {
     if !force,
        siteSummaryBaseline == signature,
        backgroundSiteSummary != nil {
-      siteSummaryBaselineRevision = inputRevision
       isSiteSummaryLoading = false
       owningStore.imageWorkbenchBackgroundStateDidChange()
       return
@@ -424,7 +506,10 @@ public final class ImageWorkbenchStore: ObservableObject {
     siteSummaryTask = nil
     isSiteSummaryLoading = false
 
-    guard owningStore.imageWorkbenchInputRevision == inputRevision else {
+    guard ImageWorkbenchSiteSummaryInputSignature(
+      drafts: owningStore.visibleDrafts,
+      profile: owningStore.activeProfile
+    ) == signature else {
       owningStore.imageWorkbenchBackgroundStateDidChange()
       return
     }
@@ -432,7 +517,6 @@ public final class ImageWorkbenchStore: ObservableObject {
     switch result {
     case .success(let summary):
       siteSummaryBaseline = signature
-      siteSummaryBaselineRevision = inputRevision
       backgroundSiteSummary = summary
       siteSummaryErrorMessage = nil
     case .failure(let error):

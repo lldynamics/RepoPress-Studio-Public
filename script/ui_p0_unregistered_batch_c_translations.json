@@ -175,10 +175,6 @@
     "en": "The current connection profile has no Base URL. Select a profile below to switch quickly to a configured service.",
     "zh-Hans": "当前连接档案没有 Base URL，点击下方档案即可快速切换到已配置服务。"
   },
-  "打字音效与微触觉": {
-    "en": "Typewriter Sound & Haptics",
-    "zh-Hans": "打字音效与微触觉"
-  },
   "打开资源目录": {
     "en": "Open Resource Folder",
     "zh-Hans": "打开资源目录"

@@ -857,15 +857,15 @@ public struct LocalContentImportService: Sendable {
   }
 
   private func safeMarkdownRepositoryPath(_ repositoryPath: String, profile: SiteProfile) -> String? {
-    let displayPath = repositoryPath.components(separatedBy: " -> ").last?.trimmedForPublishing ?? repositoryPath.trimmedForPublishing
-    guard !displayPath.isEmpty,
-          !displayPath.hasPrefix("/"),
-          !displayPath.contains("\\"),
-          !displayPath.contains("://") else {
+    let literalPath = repositoryPath.trimmedForPublishing
+    guard !literalPath.isEmpty,
+          !literalPath.hasPrefix("/"),
+          !literalPath.contains("\\"),
+          !literalPath.contains("://") else {
       return nil
     }
 
-    let normalizedPath = displayPath.normalizedRelativePath()
+    let normalizedPath = literalPath.normalizedRelativePath()
     let pathComponents = normalizedPath.split(separator: "/")
     let pathExtension = (normalizedPath as NSString).pathExtension.lowercased()
     guard !normalizedPath.isEmpty,

@@ -4,7 +4,6 @@ public struct MarkdownEditorSessionState: Codable, Equatable, Sendable {
   public var selectionLocation: Int
   public var selectionLength: Int
   public var editorScrollProgress: Double
-  public var previewScrollProgress: Double
   public var isFindReplacePresented: Bool
   public var findQuery: String
   public var replacementText: String
@@ -15,7 +14,6 @@ public struct MarkdownEditorSessionState: Codable, Equatable, Sendable {
   public init(
     selectedRange: NSRange = NSRange(location: 0, length: 0),
     editorScrollProgress: Double = 0,
-    previewScrollProgress: Double = 0,
     isFindReplacePresented: Bool = false,
     findQuery: String = "",
     replacementText: String = "",
@@ -26,7 +24,6 @@ public struct MarkdownEditorSessionState: Codable, Equatable, Sendable {
     selectionLocation = max(0, selectedRange.location)
     selectionLength = max(0, selectedRange.length)
     self.editorScrollProgress = Self.normalizedProgress(editorScrollProgress)
-    self.previewScrollProgress = Self.normalizedProgress(previewScrollProgress)
     self.isFindReplacePresented = isFindReplacePresented
     self.findQuery = findQuery
     self.replacementText = replacementText
@@ -44,7 +41,6 @@ public struct MarkdownEditorSessionState: Codable, Equatable, Sendable {
     return MarkdownEditorSessionState(
       selectedRange: NSRange(location: location, length: length),
       editorScrollProgress: editorScrollProgress,
-      previewScrollProgress: previewScrollProgress,
       isFindReplacePresented: isFindReplacePresented,
       findQuery: findQuery,
       replacementText: replacementText,

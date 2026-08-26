@@ -101,7 +101,6 @@ rsync -a \
   "$ROOT_DIR/script/" "$OUTPUT_DIR/script/"
 
 mkdir -p "$OUTPUT_DIR/docs"
-copy_file docs/privacy-support-copy.md
 copy_file docs/release-versioning.md
 
 copy_file .github/CODEOWNERS

@@ -564,7 +564,6 @@ final class LocalContentImportServiceTests: XCTestCase {
     let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()))
     var profile = store.activeProfile
     profile.localRepositoryRootPath = missingRootURL.path
-    profile.localRepositoryBookmarkData = nil
     store.updateActiveProfile(profile)
 
     let insertedCount = await store.importMissingDraftsFromLocalRepository()
@@ -1250,7 +1249,6 @@ final class LocalContentImportServiceTests: XCTestCase {
     let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()))
     var profile = store.activeProfile
     profile.localRepositoryRootPath = missingRootURL.path
-    profile.localRepositoryBookmarkData = nil
     store.updateActiveProfile(profile)
 
     let summary = store.importDraftsFromLocalRepository()

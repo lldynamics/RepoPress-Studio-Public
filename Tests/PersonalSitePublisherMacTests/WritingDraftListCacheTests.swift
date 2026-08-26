@@ -4,7 +4,7 @@ import XCTest
 @testable import PublishingWorkbenchCore
 
 final class WritingDraftListCacheTests: XCTestCase {
-  func testRowPresentationKeyIgnoresBodyText() {
+  func testRowPresentationKeyIgnoresBodyTextUntilPersistedCountChanges() {
     let profile = SiteProfile.defaultProfile
     var draft = ArticleDraft(
       siteProfileID: profile.id,
@@ -31,6 +31,14 @@ final class WritingDraftListCacheTests: XCTestCase {
     )
 
     XCTAssertEqual(before, after)
+
+    XCTAssertTrue(draft.storeWordCount(10_000, for: draft.bodyMarkdown))
+    let refreshed = WritingDraftRowPresentationCacheKey(
+      draft: draft,
+      profile: profile,
+      display: display
+    )
+    XCTAssertNotEqual(after, refreshed)
   }
 
   func testRowPresentationKeyTracksRenderedFieldChanges() {

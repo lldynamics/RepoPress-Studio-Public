@@ -1,5 +1,6 @@
 import CryptoKit
 import Foundation
+import PublishingAICore
 
 extension AIChatCompletionClient {
   public func complete(

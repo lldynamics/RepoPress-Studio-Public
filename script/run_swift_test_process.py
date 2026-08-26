@@ -14,16 +14,12 @@ import subprocess
 import sys
 import threading
 import time
+from collections.abc import Collection
 from pathlib import Path
 
 
-ALLOWED_TARGETS = (
-    "PersonalSitePublisherMacTests",
-    "PublishingWorkbenchCoreTests",
-)
 MAC_TARGET = "PersonalSitePublisherMacTests"
 CORE_TARGET = "PublishingWorkbenchCoreTests"
-CACHE_SUITE = "WorkbenchImageTwoTierCacheTests"
 SETTINGS_SUITE = "SettingsSearchAndSavePresentationTests"
 WEB_CONTENT_SECURITY_SUITE = "WebContentNetworkSecurityTests"
 # These tests either launch a real child process with a streaming reader or
@@ -38,6 +34,8 @@ MAC_BATCH_MAX_SUITES = 4
 MAC_BATCH_MAX_TESTS = 60
 CORE_BATCH_MAX_SUITES = 12
 CORE_BATCH_MAX_TESTS = 150
+LEAF_BATCH_MAX_SUITES = 16
+LEAF_BATCH_MAX_TESTS = 200
 SWIFT_CACHE_ENVIRONMENT_KEYS = (
     "HOME",
     "XDG_CACHE_HOME",
@@ -45,7 +43,7 @@ SWIFT_CACHE_ENVIRONMENT_KEYS = (
     "SWIFT_MODULE_CACHE_PATH",
 )
 INVENTORY_PATTERN = re.compile(
-    r"^(PersonalSitePublisherMacTests|PublishingWorkbenchCoreTests)\."
+    r"^([^\.\s/]+)\."
     r"([A-Za-z_][A-Za-z0-9_]*)/([A-Za-z_][A-Za-z0-9_]*)(\(\))?$"
 )
 XCTEST_COUNT_PATTERN = re.compile(r"Executed\s+(\d+)\s+tests?")
@@ -695,20 +693,18 @@ def manifest_test_targets(package_path: Path) -> list[str]:
         fail("Package.swift declares no test targets in the supported form")
     if len(targets) != len(set(targets)):
         fail("Package.swift contains duplicate test target declarations")
-    if set(targets) != set(ALLOWED_TARGETS):
-        fail(
-            "unexpected Swift test target set: expected "
-            f"{list(ALLOWED_TARGETS)}, found {targets}"
-        )
     return targets
 
 
-def parse_inventory(output: str) -> list[TestSpec]:
+def parse_inventory(output: str, allowed_targets: Collection[str]) -> list[TestSpec]:
     rows = [line.strip() for line in output.splitlines() if line.strip()]
     if not rows:
         fail("swift test list returned an empty inventory")
     if len(rows) != len(set(rows)):
         fail("swift test list returned duplicate test specifications")
+    allowed_target_set = set(allowed_targets)
+    if not allowed_target_set:
+        fail("Package.swift declares no test targets in the supported form")
 
     tests: list[TestSpec] = []
     for row in rows:
@@ -716,6 +712,11 @@ def parse_inventory(output: str) -> list[TestSpec]:
         if match is None:
             fail(f"unsupported or unknown Swift test inventory row: {row}")
         target, suite, method, parentheses = match.groups()
+        if target not in allowed_target_set:
+            fail(
+                "unknown Swift test target in inventory: "
+                f"{target} (not declared in Package.swift)"
+            )
         tests.append(
             TestSpec(
                 raw=row,
@@ -728,22 +729,38 @@ def parse_inventory(output: str) -> list[TestSpec]:
     return sorted(tests, key=lambda test: test.raw)
 
 
-def load_minimum_counts(path: Path) -> dict[str, int]:
+def load_minimum_counts(
+    path: Path, expected_targets: Collection[str]
+) -> dict[str, int]:
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as error:
         fail(f"cannot read Swift test count baselines: {error}")
     minimums = payload.get("swiftTestMinimumCountsByTarget")
-    if not isinstance(minimums, dict) or set(minimums) != set(ALLOWED_TARGETS):
-        fail("quality baselines must define every allowed Swift test target and no others")
+    expected_target_set = set(expected_targets)
+    if not isinstance(minimums, dict) or set(minimums) != expected_target_set:
+        found_targets = sorted(minimums) if isinstance(minimums, dict) else []
+        fail(
+            "quality baselines must define every manifest Swift test target and no "
+            f"others: expected {sorted(expected_target_set)}, found {found_targets}"
+        )
     if not all(isinstance(value, int) and not isinstance(value, bool) and value > 0 for value in minimums.values()):
         fail("Swift test target minimum counts must be positive integers")
     return {str(target): int(count) for target, count in minimums.items()}
 
 
-def validate_minimum_counts(tests: list[TestSpec], minimums: dict[str, int]) -> dict[str, int]:
-    counts = {target: 0 for target in ALLOWED_TARGETS}
+def validate_minimum_counts(
+    tests: list[TestSpec],
+    minimums: dict[str, int],
+    expected_targets: Collection[str],
+) -> dict[str, int]:
+    counts = {target: 0 for target in expected_targets}
     for test in tests:
+        if test.target not in counts:
+            fail(
+                "Swift test inventory contains target not present in manifest: "
+                f"{test.target}"
+            )
         counts[test.target] += 1
     for target, minimum in minimums.items():
         if counts[target] < minimum:
@@ -793,16 +810,19 @@ def swift_test_build_arguments(environment: dict[str, str]) -> list[str]:
     """Return flags for the one real SwiftPM build/inventory invocation.
 
     SwiftPM shards all use ``--skip-build`` after inventory discovery, so this
-    is the single place where compiler diagnostics can be made strict.  Keep a
-    narrow opt-out for callers that need to investigate an older toolchain;
-    the default remains warnings-as-errors.
+    is the single place where compiler diagnostics can be made strict. Keep a
+    narrow opt-out for callers that need to investigate an older toolchain's
+    warnings; complete concurrency checking is always required so the test
+    artifact reuses the strict-build compiler settings.
     """
 
+    arguments = ["-Xswiftc", "-strict-concurrency=complete"]
     raw_value = environment.get("SWIFT_TEST_WARNINGS_AS_ERRORS", "1").strip().lower()
     if raw_value in {"1", "true", "yes", "on"}:
-        return ["-Xswiftc", "-warnings-as-errors"]
+        arguments.extend(("-Xswiftc", "-warnings-as-errors"))
+        return arguments
     if raw_value in {"0", "false", "no", "off"}:
-        return []
+        return arguments
     fail(
         "SWIFT_TEST_WARNINGS_AS_ERRORS must be a boolean value (1/0, true/false, "
         "yes/no, or on/off)"
@@ -846,10 +866,25 @@ def swift_child_environment(root: Path, output_directory: Path) -> dict[str, str
     return environment
 
 
-def build_shards(tests: list[TestSpec]) -> list[Shard]:
-    cache_tests = tuple(
-        test for test in tests if test.target == MAC_TARGET and test.suite == CACHE_SUITE
-    )
+def target_slug(target: str) -> str:
+    slug = re.sub(r"[^A-Za-z0-9]+", "-", target).strip("-").lower()
+    return slug or "target"
+
+
+def build_shards(
+    tests: list[TestSpec], target_order: Collection[str] | None = None
+) -> list[Shard]:
+    targets = list(dict.fromkeys(target_order or sorted({test.target for test in tests})))
+    if not targets:
+        fail("Swift test inventory declared no targets")
+    target_set = set(targets)
+    unknown_targets = sorted({test.target for test in tests} - target_set)
+    if unknown_targets:
+        fail(
+            "Swift test inventory contains target not present in manifest: "
+            f"{unknown_targets}"
+        )
+
     settings_tests = tuple(
         test for test in tests if test.target == MAC_TARGET and test.suite == SETTINGS_SUITE
     )
@@ -858,30 +893,21 @@ def build_shards(tests: list[TestSpec]) -> list[Shard]:
         for test in tests
         if test.target == MAC_TARGET and test.suite == WEB_CONTENT_SECURITY_SUITE
     )
-    if not cache_tests:
-        fail(f"required isolated suite is missing: {MAC_TARGET}.{CACHE_SUITE}")
-    if not settings_tests:
-        fail(f"required isolated suite is missing: {MAC_TARGET}.{SETTINGS_SUITE}")
-    if not web_content_security_tests:
-        fail(
-            "required isolated suite is missing: "
-            f"{MAC_TARGET}.{WEB_CONTENT_SECURITY_SUITE}"
+    shards: list[Shard] = []
+    # These two App test suites have process-global state and retain their
+    # historical isolated-process behavior when present.  They are optional:
+    # a deleted or renamed suite must not make the entire inventory invalid.
+    if web_content_security_tests:
+        shards.append(
+            Shard(
+                label=f"{MAC_TARGET}.{WEB_CONTENT_SECURITY_SUITE}",
+                slug="web-content-security",
+                filter_pattern=make_suite_filter(
+                    MAC_TARGET, [WEB_CONTENT_SECURITY_SUITE]
+                ),
+                tests=web_content_security_tests,
+            )
         )
-
-    shards: list[Shard] = [
-        Shard(
-            label=f"{MAC_TARGET}.{CACHE_SUITE}",
-            slug="cache",
-            filter_pattern=make_suite_filter(MAC_TARGET, [CACHE_SUITE]),
-            tests=cache_tests,
-        ),
-        Shard(
-            label=f"{MAC_TARGET}.{WEB_CONTENT_SECURITY_SUITE}",
-            slug="web-content-security",
-            filter_pattern=make_suite_filter(MAC_TARGET, [WEB_CONTENT_SECURITY_SUITE]),
-            tests=web_content_security_tests,
-        ),
-    ]
     for index, test in enumerate(sorted(settings_tests, key=lambda item: item.raw), start=1):
         shards.append(
             Shard(
@@ -895,7 +921,7 @@ def build_shards(tests: list[TestSpec]) -> list[Shard]:
     mac_batches = batch_suites(
         tests,
         target=MAC_TARGET,
-        excluded_suites={CACHE_SUITE, SETTINGS_SUITE, WEB_CONTENT_SECURITY_SUITE},
+        excluded_suites={SETTINGS_SUITE, WEB_CONTENT_SECURITY_SUITE},
         maximum_suites=MAC_BATCH_MAX_SUITES,
         maximum_tests=MAC_BATCH_MAX_TESTS,
     )
@@ -909,43 +935,70 @@ def build_shards(tests: list[TestSpec]) -> list[Shard]:
             )
         )
 
-    core_case_tests = tuple(
-        sorted(
-            (
-                test
-                for test in tests
-                if test.target == CORE_TARGET
-                and test.suite in CORE_CASE_ISOLATED_SUITES
-            ),
-            key=lambda item: item.raw,
-        )
-    )
-    for index, test in enumerate(core_case_tests, start=1):
-        shards.append(
-            Shard(
-                label=test.raw,
-                slug=f"core-case-{index:02d}",
-                filter_pattern=f"^{re.escape(test.raw)}$",
-                tests=(test,),
+    if CORE_TARGET in target_set:
+        core_case_tests = tuple(
+            sorted(
+                (
+                    test
+                    for test in tests
+                    if test.target == CORE_TARGET
+                    and test.suite in CORE_CASE_ISOLATED_SUITES
+                ),
+                key=lambda item: item.raw,
             )
         )
+        for index, test in enumerate(core_case_tests, start=1):
+            shards.append(
+                Shard(
+                    label=test.raw,
+                    slug=f"core-case-{index:02d}",
+                    filter_pattern=f"^{re.escape(test.raw)}$",
+                    tests=(test,),
+                )
+            )
 
-    core_batches = batch_suites(
-        tests,
-        target=CORE_TARGET,
-        excluded_suites=set(CORE_CASE_ISOLATED_SUITES),
-        maximum_suites=CORE_BATCH_MAX_SUITES,
-        maximum_tests=CORE_BATCH_MAX_TESTS,
-    )
-    for index, (suites, batch_tests) in enumerate(core_batches, start=1):
-        shards.append(
-            Shard(
-                label=f"{CORE_TARGET} batch {index}",
-                slug=f"core-{index:02d}",
-                filter_pattern=make_suite_filter(CORE_TARGET, suites),
-                tests=tuple(batch_tests),
-            )
+        core_batches = batch_suites(
+            tests,
+            target=CORE_TARGET,
+            excluded_suites=set(CORE_CASE_ISOLATED_SUITES),
+            maximum_suites=CORE_BATCH_MAX_SUITES,
+            maximum_tests=CORE_BATCH_MAX_TESTS,
         )
+        for index, (suites, batch_tests) in enumerate(core_batches, start=1):
+            shards.append(
+                Shard(
+                    label=f"{CORE_TARGET} batch {index}",
+                    slug=f"core-{index:02d}",
+                    filter_pattern=make_suite_filter(CORE_TARGET, suites),
+                    tests=tuple(batch_tests),
+                )
+            )
+
+    # Leaf targets are deliberately generic.  Their test ownership and suite
+    # names can evolve independently of the App/Workbench special cases while
+    # still receiving bounded, auditable processes.
+    for target_index, target in enumerate(targets, start=1):
+        if target in {MAC_TARGET, CORE_TARGET}:
+            continue
+        leaf_batches = batch_suites(
+            tests,
+            target=target,
+            excluded_suites=set(),
+            maximum_suites=LEAF_BATCH_MAX_SUITES,
+            maximum_tests=LEAF_BATCH_MAX_TESTS,
+        )
+        for index, (suites, batch_tests) in enumerate(leaf_batches, start=1):
+            shards.append(
+                Shard(
+                    label=f"{target} batch {index}",
+                    slug=(
+                        f"leaf-{target_index:02d}-{target_slug(target)}-"
+                        f"{index:02d}"
+                    ),
+                    filter_pattern=make_suite_filter(target, suites),
+                    tests=tuple(batch_tests),
+                )
+            )
 
     assignments: dict[str, int] = {test.raw: 0 for test in tests}
     for shard in shards:
@@ -1017,8 +1070,10 @@ def run_all(root: Path) -> int:
         atomic_write_json(result_path, result)
         shard_retries = configured_shard_retries(os.environ)
         result["shardRetries"] = shard_retries
-        manifest_test_targets(root / "Package.swift")
-        minimums = load_minimum_counts(root / "script" / "quality_baselines.json")
+        manifest_targets = manifest_test_targets(root / "Package.swift")
+        minimums = load_minimum_counts(
+            root / "script" / "quality_baselines.json", manifest_targets
+        )
     except ValueError as error:
         result.update({"status": "failed", "error": str(error)})
         atomic_write_json(result_path, result)
@@ -1056,9 +1111,11 @@ def run_all(root: Path) -> int:
         return list_process.return_code
 
     try:
-        tests = parse_inventory(list_process.stdout)
-        counts_by_target = validate_minimum_counts(tests, minimums)
-        shards = build_shards(tests)
+        tests = parse_inventory(list_process.stdout, manifest_targets)
+        counts_by_target = validate_minimum_counts(
+            tests, minimums, manifest_targets
+        )
+        shards = build_shards(tests, manifest_targets)
     except ValueError as error:
         result.update({"status": "failed", "returnCode": 2, "error": str(error)})
         atomic_write_json(result_path, result)
@@ -1069,10 +1126,19 @@ def run_all(root: Path) -> int:
     result["inventory"] = {
         "path": str(inventory_path),
         "totalCount": len(tests),
+        "targets": manifest_targets,
         "countsByTarget": counts_by_target,
         "xctestCount": sum(not test.is_swift_testing for test in tests),
         "swiftTestingCount": sum(test.is_swift_testing for test in tests),
         "minimumCountsByTarget": minimums,
+        "shardsByTarget": {
+            target: [
+                shard.slug
+                for shard in shards
+                if any(test.target == target for test in shard.tests)
+            ]
+            for target in manifest_targets
+        },
     }
     result["shards"] = [shard_payload(shard, output_directory) for shard in shards]
     atomic_write_json(result_path, result)

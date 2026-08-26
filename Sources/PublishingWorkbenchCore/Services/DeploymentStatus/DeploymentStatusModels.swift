@@ -119,25 +119,177 @@ public enum DeploymentStatusLevel: String, Codable, CaseIterable, Identifiable, 
   }
 }
 
+public enum DeploymentLogLevel: String, Codable, CaseIterable, Identifiable, Sendable {
+  case info
+  case warning
+  case error
+
+  public var id: String { rawValue }
+
+  public var displayName: String {
+    switch self {
+    case .info:
+      return CoreL10n.text("信息")
+    case .warning:
+      return CoreL10n.text("警告")
+    case .error:
+      return CoreL10n.text("错误")
+    }
+  }
+
+  public var systemImage: String {
+    switch self {
+    case .info:
+      return "info.circle"
+    case .warning:
+      return "exclamationmark.triangle"
+    case .error:
+      return "xmark.octagon"
+    }
+  }
+}
+
+/// A bounded, structured excerpt from a provider build log.
+///
+/// Provider responses are treated as untrusted input. The deployment service
+/// bounds and redacts every entry before it reaches a snapshot or the UI.
+public struct DeploymentLogEntry: Identifiable, Codable, Hashable, Sendable {
+  public var id: UUID
+  public var level: DeploymentLogLevel
+  public var source: String
+  public var message: String
+  public var filePath: String?
+  public var line: Int?
+  public var column: Int?
+  public var stepName: String?
+
+  private enum CodingKeys: String, CodingKey {
+    case id
+    case level
+    case source
+    case message
+    case filePath
+    case line
+    case column
+    case stepName
+  }
+
+  public init(
+    id: UUID = UUID(),
+    level: DeploymentLogLevel,
+    source: String,
+    message: String,
+    filePath: String? = nil,
+    line: Int? = nil,
+    column: Int? = nil,
+    stepName: String? = nil
+  ) {
+    self.id = id
+    self.level = level
+    self.source = DeploymentLogExcerptPolicy.boundedSource(source)
+    self.message = DeploymentLogExcerptPolicy.redactedAndBoundedMessage(message)
+    self.filePath = filePath.map(DeploymentLogExcerptPolicy.boundedPath)
+    self.line = line.map { max(0, $0) }
+    self.column = column.map { max(0, $0) }
+    self.stepName = stepName.map(DeploymentLogExcerptPolicy.boundedSource)
+  }
+
+  public init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    self.init(
+      id: try container.decode(UUID.self, forKey: .id),
+      level: try container.decode(DeploymentLogLevel.self, forKey: .level),
+      source: try container.decode(String.self, forKey: .source),
+      message: try container.decode(String.self, forKey: .message),
+      filePath: try container.decodeIfPresent(String.self, forKey: .filePath),
+      line: try container.decodeIfPresent(Int.self, forKey: .line),
+      column: try container.decodeIfPresent(Int.self, forKey: .column),
+      stepName: try container.decodeIfPresent(String.self, forKey: .stepName)
+    )
+  }
+
+  public func encode(to encoder: Encoder) throws {
+    var container = encoder.container(keyedBy: CodingKeys.self)
+    try container.encode(id, forKey: .id)
+    try container.encode(level, forKey: .level)
+    try container.encode(source, forKey: .source)
+    try container.encode(message, forKey: .message)
+    try container.encodeIfPresent(filePath, forKey: .filePath)
+    try container.encodeIfPresent(line, forKey: .line)
+    try container.encodeIfPresent(column, forKey: .column)
+    try container.encodeIfPresent(stepName, forKey: .stepName)
+  }
+
+  public var locationText: String? {
+    guard let filePath = filePath?.nilIfEmpty else {
+      return nil
+    }
+    var suffix = ""
+    if let line {
+      suffix = ":\(line)"
+      if let column {
+        suffix += ":\(column)"
+      }
+    }
+    return filePath + suffix
+  }
+}
+
 public struct DeploymentStatusSignal: Identifiable, Codable, Hashable, Sendable {
   public var id: UUID
   public var level: DeploymentStatusLevel
   public var title: String
   public var message: String
   public var urlText: String?
+  public var logExcerpt: [DeploymentLogEntry]
+
+  private enum CodingKeys: String, CodingKey {
+    case id
+    case level
+    case title
+    case message
+    case urlText
+    case logExcerpt
+  }
 
   public init(
     id: UUID = UUID(),
     level: DeploymentStatusLevel,
     title: String,
     message: String,
-    urlText: String? = nil
+    urlText: String? = nil,
+    logExcerpt: [DeploymentLogEntry] = []
   ) {
     self.id = id
     self.level = level
     self.title = title
-    self.message = message
+    self.message = DeploymentLogExcerptPolicy.redactedAndBoundedMessage(message)
     self.urlText = urlText
+    self.logExcerpt = DeploymentLogExcerptPolicy.boundedEntries(logExcerpt)
+  }
+
+  public init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    id = try container.decode(UUID.self, forKey: .id)
+    level = try container.decode(DeploymentStatusLevel.self, forKey: .level)
+    title = try container.decode(String.self, forKey: .title)
+    message = DeploymentLogExcerptPolicy.redactedAndBoundedMessage(
+      try container.decode(String.self, forKey: .message)
+    )
+    urlText = try container.decodeIfPresent(String.self, forKey: .urlText)
+    logExcerpt = DeploymentLogExcerptPolicy.boundedEntries(
+      try container.decodeIfPresent([DeploymentLogEntry].self, forKey: .logExcerpt) ?? []
+    )
+  }
+
+  public func encode(to encoder: Encoder) throws {
+    var container = encoder.container(keyedBy: CodingKeys.self)
+    try container.encode(id, forKey: .id)
+    try container.encode(level, forKey: .level)
+    try container.encode(title, forKey: .title)
+    try container.encode(message, forKey: .message)
+    try container.encodeIfPresent(urlText, forKey: .urlText)
+    try container.encode(logExcerpt, forKey: .logExcerpt)
   }
 }
 
@@ -331,6 +483,15 @@ public extension DeploymentStatusSnapshot {
         if let urlText = signal.urlText?.nilIfEmpty {
           lines.append("  \(urlText)")
         }
+        if !signal.logExcerpt.isEmpty {
+          lines.append(CoreL10n.text("  日志摘录："))
+          for entry in signal.logExcerpt {
+            let location = entry.locationText.map { " [\($0)]" } ?? ""
+            lines.append(
+              "  - [\(entry.level.displayName)] \(entry.source)\(location)：\(entry.message)"
+            )
+          }
+        }
       }
     }
     return lines.joined(separator: "\n")
@@ -484,16 +645,77 @@ struct GitHubActionsRunsResponse: Decodable {
 }
 
 struct GitHubActionRunStatusResponse: Decodable {
+  var id: Int64?
   var name: String?
   var status: String?
   var conclusion: String?
   var htmlURL: String?
 
   private enum CodingKeys: String, CodingKey {
+    case id
     case name
     case status
     case conclusion
     case htmlURL = "html_url"
+  }
+}
+
+struct GitHubActionsJobsResponse: Decodable {
+  var jobs: [GitHubActionJobStatusResponse]
+
+  private enum CodingKeys: String, CodingKey {
+    case jobs
+  }
+}
+
+struct GitHubActionJobStatusResponse: Decodable {
+  var id: Int64?
+  var name: String?
+  var status: String?
+  var conclusion: String?
+  var htmlURL: String?
+  var checkRunURL: String?
+  var steps: [GitHubActionStepStatusResponse]?
+
+  private enum CodingKeys: String, CodingKey {
+    case id
+    case name
+    case status
+    case conclusion
+    case htmlURL = "html_url"
+    case checkRunURL = "check_run_url"
+    case steps
+  }
+}
+
+struct GitHubActionStepStatusResponse: Decodable {
+  var number: Int?
+  var name: String?
+  var status: String?
+  var conclusion: String?
+}
+
+struct GitHubCheckRunAnnotationResponse: Decodable {
+  var path: String?
+  var startLine: Int?
+  var endLine: Int?
+  var startColumn: Int?
+  var endColumn: Int?
+  var annotationLevel: String?
+  var message: String?
+  var title: String?
+  var rawDetails: String?
+
+  private enum CodingKeys: String, CodingKey {
+    case path
+    case startLine = "start_line"
+    case endLine = "end_line"
+    case startColumn = "start_column"
+    case endColumn = "end_column"
+    case annotationLevel = "annotation_level"
+    case message
+    case title
+    case rawDetails = "raw_details"
   }
 }
 
@@ -538,6 +760,7 @@ struct VercelDeploymentsResponse: Decodable {
 }
 
 struct VercelDeploymentStatusResponse: Decodable {
+  var id: String?
   var uid: String?
   var name: String?
   var url: String?
@@ -549,6 +772,7 @@ struct VercelDeploymentStatusResponse: Decodable {
   var meta: VercelDeploymentMeta?
 
   private enum CodingKeys: String, CodingKey {
+    case id
     case uid
     case name
     case url
@@ -558,6 +782,10 @@ struct VercelDeploymentStatusResponse: Decodable {
     case inspectorURL = "inspectorUrl"
     case errorMessage
     case meta
+  }
+
+  var deploymentIdentifier: String? {
+    uid?.nilIfEmpty ?? id?.nilIfEmpty ?? url?.nilIfEmpty
   }
 }
 

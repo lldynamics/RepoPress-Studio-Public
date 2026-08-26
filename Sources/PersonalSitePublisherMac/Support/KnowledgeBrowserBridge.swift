@@ -1439,10 +1439,6 @@ enum BrowserExtensionOriginPolicy {
       // Firefox assigns each installed extension a per-profile UUID origin;
       // the manifest add-on ID cannot be used as the URL host.
       return UUID(uuidString: host) != nil
-    case "safari-web-extension":
-      // Safari assigns each installed web extension a per-install UUID origin,
-      // so the signed bundle identifier cannot be used as the URL host.
-      return UUID(uuidString: host) != nil
     case "chrome-extension":
       let allowedIDs = Set(
         [

@@ -110,8 +110,8 @@ extension WorkbenchStore {
   }
 
   @discardableResult
-  public func importRemoteChangedArticleDraftsFromRepository() -> LocalContentImportMergeSummary {
-    let summary = publishingStore.importRemoteChangedArticleDraftsFromRepository(store: self)
+  public func importRemoteChangedArticleDraftsFromRepository() async -> LocalContentImportMergeSummary {
+    let summary = await publishingStore.importRemoteChangedArticleDraftsFromRepository(store: self)
     invalidateDraftDerivedCaches()
     return summary
   }
@@ -119,8 +119,8 @@ extension WorkbenchStore {
   @discardableResult
   public func importRemoteArticleDraftsFromRepository(
     repositoryPaths: [String]
-  ) -> LocalContentImportMergeSummary {
-    let summary = publishingStore.importRemoteArticleDraftsFromRepository(
+  ) async -> LocalContentImportMergeSummary {
+    let summary = await publishingStore.importRemoteArticleDraftsFromRepository(
       repositoryPaths: repositoryPaths,
       store: self
     )
@@ -129,8 +129,11 @@ extension WorkbenchStore {
   }
 
   @discardableResult
-  public func importRemoteDraftFromRepository(repositoryPath: String) -> LocalContentImportMergeSummary {
-    let summary = publishingStore.importRemoteDraftFromRepository(repositoryPath: repositoryPath, store: self)
+  public func importRemoteDraftFromRepository(repositoryPath: String) async -> LocalContentImportMergeSummary {
+    let summary = await publishingStore.importRemoteDraftFromRepository(
+      repositoryPath: repositoryPath,
+      store: self
+    )
     invalidateDraftDerivedCaches()
     return summary
   }

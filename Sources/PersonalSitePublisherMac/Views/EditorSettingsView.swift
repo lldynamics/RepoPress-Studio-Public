@@ -3,9 +3,9 @@ import SwiftUI
 /// Application-wide editor preferences.
 ///
 /// These controls intentionally bind to the same `@AppStorage` keys used by
-/// the composer and its preview. The settings page is only another
-/// presentation of those persisted values; it does not introduce a second
-/// editor configuration source.
+/// the composer. The settings page is only another presentation of those
+/// persisted values; it does not introduce a second editor configuration
+/// source.
 struct EditorSettingsView: View {
   @AppStorage(MarkdownEditorComfortPreferences.fontSizeKey)
   private var fontSize = MarkdownEditorComfortConfiguration.defaultFontSize
@@ -25,19 +25,9 @@ struct EditorSettingsView: View {
   private var isAutomaticPairingEnabled = MarkdownEditorComfortConfiguration.defaultAutomaticPairingEnabled
   @AppStorage(MarkdownEditorComfortPreferences.paragraphSpotlightEnabledKey)
   private var isParagraphSpotlightEnabled = MarkdownEditorComfortConfiguration.defaultParagraphSpotlightEnabled
-  @AppStorage(MarkdownEditorComfortPreferences.automaticPreviewRefreshEnabledKey)
-  private var isAutomaticPreviewRefreshEnabled = MarkdownEditorComfortConfiguration
-    .defaultAutomaticPreviewRefreshEnabled
   @AppStorage(MarkdownEditorComfortPreferences.realtimeAnalysisEnabledKey)
   private var isRealtimeAnalysisEnabled = MarkdownEditorComfortConfiguration
     .defaultRealtimeAnalysisEnabled
-  @AppStorage(MarkdownEditorComfortPreferences.typewriterSoundPresetKey)
-  private var typewriterSoundPresetRawValue = MarkdownEditorComfortConfiguration
-    .defaultTypewriterSoundPreset.rawValue
-  @AppStorage("markdownEditorSynchronizedScrolling")
-  private var isSynchronizedScrollingEnabled = true
-  @AppStorage("markdownEditorPreviewTheme")
-  private var previewThemeRawValue = MarkdownPreviewTheme.system.rawValue
 
   var body: some View {
     Form {
@@ -126,12 +116,6 @@ struct EditorSettingsView: View {
 
       Section {
         preferenceToggle(
-          title: LocalizedStringKey("输入时自动刷新预览"),
-          detail: String(localized: "正文、附件或预览主题变化后自动更新文章预览。"),
-          isOn: $isAutomaticPreviewRefreshEnabled,
-          accessibilityIdentifier: "editor-automatic-preview-refresh"
-        )
-        preferenceToggle(
           title: LocalizedStringKey("实时分析正文诊断与大纲"),
           detail: String(localized: "输入正文时自动更新诊断和文章大纲；关闭后仍可手动打开并分析。"),
           isOn: $isRealtimeAnalysisEnabled,
@@ -140,46 +124,7 @@ struct EditorSettingsView: View {
       } header: {
         Text("自动化")
       } footer: {
-        Text("关闭后可使用预览中的刷新按钮，或打开诊断/大纲时手动分析。")
-      }
-
-      Section {
-        Picker("打字反馈预设", selection: $typewriterSoundPresetRawValue) {
-          ForEach(TypewriterSoundPreset.allCases) { preset in
-            Text(preset.title).tag(preset.rawValue)
-          }
-        }
-        .accessibilityIdentifier("editor-typewriter-feedback-preset")
-
-        Text("选择音效后，按键会提供轻微的音效与触觉反馈。")
-          .font(.workbenchSupporting)
-          .foregroundStyle(.secondary)
-          .fixedSize(horizontal: false, vertical: true)
-      } header: {
-        Text("打字反馈")
-      }
-
-      Section {
-        preferenceToggle(
-          title: "编辑与预览同步滚动",
-          detail: String(localized: "滚动正文时同步定位到预览对应位置。"),
-          isOn: $isSynchronizedScrollingEnabled,
-          accessibilityIdentifier: "editor-synchronized-scrolling"
-        )
-
-        Picker("预览主题", selection: $previewThemeRawValue) {
-          ForEach(MarkdownPreviewTheme.allCases) { theme in
-            Text(theme.title).tag(theme.rawValue)
-          }
-        }
-        .accessibilityIdentifier("editor-preview-theme")
-
-        Text("预览主题只影响编辑器内的文章预览，不会修改站点 CSS。")
-          .font(.workbenchSupporting)
-          .foregroundStyle(.secondary)
-          .fixedSize(horizontal: false, vertical: true)
-      } header: {
-        Text("预览")
+        Text("关闭后仍可在打开诊断或大纲时手动分析。")
       }
 
       Section {
@@ -216,7 +161,7 @@ struct EditorSettingsView: View {
             value.wrappedValue = defaultValue
           } label: {
             Image(systemName: "arrow.counterclockwise")
-              .font(.caption2)
+              .font(.workbenchMetadata)
               .foregroundStyle(.secondary)
           }
           .buttonStyle(.plain)
@@ -249,7 +194,7 @@ struct EditorSettingsView: View {
     VStack(alignment: .leading, spacing: CGFloat(lineSpacing) + 4) {
       HStack(alignment: .firstTextBaseline) {
         Text("晨光中的写作与思考")
-          .font(.system(size: max(14, CGFloat(fontSize) + 2), weight: .bold))
+          .font(previewTitleFont)
           .foregroundStyle(.primary)
 
         Spacer()
@@ -264,16 +209,12 @@ struct EditorSettingsView: View {
           if isTypewriterModeEnabled {
             previewTag(title: "打字机居中", icon: "text.aligncenter")
           }
-          previewTag(
-            title: MarkdownPreviewTheme(rawValue: previewThemeRawValue)?.title ?? "默认主题",
-            icon: "paintpalette"
-          )
         }
       }
       .padding(.bottom, 2)
 
       Text("清晰的排版如同清晨微风，使阅读与创作自然流淌。当字号与行距恰到好处时，文字便拥有了呼吸的节奏。")
-        .font(.system(size: CGFloat(fontSize)))
+        .font(previewBodyFont)
         .lineSpacing(CGFloat(lineSpacing))
         .foregroundStyle(.primary)
         .opacity(isParagraphSpotlightEnabled ? 0.45 : 1.0)
@@ -287,7 +228,7 @@ struct EditorSettingsView: View {
         }
 
         Text("段落聚光灯与当前段落高亮能够帮助创作者排除视觉杂音，将心流完全凝聚在当下的字里行间。")
-          .font(.system(size: CGFloat(fontSize)))
+          .font(previewBodyFont)
           .lineSpacing(CGFloat(lineSpacing))
           .foregroundStyle(.primary)
       }
@@ -314,9 +255,40 @@ struct EditorSettingsView: View {
     .accessibilityLabel("排版效果实时预览")
   }
 
+  private var boundedPreviewFontSize: Double {
+    let range = MarkdownEditorComfortConfiguration.fontSizeRange
+    return min(max(fontSize, range.lowerBound), range.upperBound)
+  }
+
+  private var previewTitleFont: Font {
+    switch boundedPreviewFontSize {
+    case ..<14:
+      return .body.weight(.bold)
+    case ..<18:
+      return .title3.weight(.bold)
+    case ..<22:
+      return .title2.weight(.bold)
+    default:
+      return .title.weight(.bold)
+    }
+  }
+
+  private var previewBodyFont: Font {
+    switch boundedPreviewFontSize {
+    case ..<14:
+      return .callout
+    case ..<18:
+      return .body
+    case ..<22:
+      return .title3
+    default:
+      return .title2
+    }
+  }
+
   private func previewTag(title: String, icon: String) -> some View {
     Label(title, systemImage: icon)
-      .font(.caption2.weight(.medium))
+      .font(.workbenchMetadata.weight(.medium))
       .foregroundStyle(.secondary)
       .padding(.horizontal, 6)
       .padding(.vertical, 2)
@@ -352,12 +324,7 @@ struct EditorSettingsView: View {
     isWarmPaperBackgroundEnabled = MarkdownEditorComfortConfiguration.defaultWarmPaperBackgroundEnabled
     isAutomaticPairingEnabled = MarkdownEditorComfortConfiguration.defaultAutomaticPairingEnabled
     isParagraphSpotlightEnabled = MarkdownEditorComfortConfiguration.defaultParagraphSpotlightEnabled
-    isAutomaticPreviewRefreshEnabled = MarkdownEditorComfortConfiguration
-      .defaultAutomaticPreviewRefreshEnabled
     isRealtimeAnalysisEnabled = MarkdownEditorComfortConfiguration
       .defaultRealtimeAnalysisEnabled
-    typewriterSoundPresetRawValue = MarkdownEditorComfortConfiguration.defaultTypewriterSoundPreset.rawValue
-    isSynchronizedScrollingEnabled = true
-    previewThemeRawValue = MarkdownPreviewTheme.system.rawValue
   }
 }

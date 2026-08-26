@@ -983,6 +983,8 @@ public struct HTMLSourceEditingService: Sendable {
         return .liquid
       case .astro:
         return .astro
+      case .vitePress:
+        return .html
       }
     }
     return .html

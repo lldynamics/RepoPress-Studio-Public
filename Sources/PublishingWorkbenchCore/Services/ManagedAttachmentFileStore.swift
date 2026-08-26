@@ -57,13 +57,6 @@ public struct ManagedAttachmentFileStore: Sendable {
   ) throws -> URL {
     let fileManager = FileManager.default
     let standardizedSourceURL = sourceURL.standardizedFileURL
-    let didStartAccessing = standardizedSourceURL.startAccessingSecurityScopedResource()
-    defer {
-      if didStartAccessing {
-        standardizedSourceURL.stopAccessingSecurityScopedResource()
-      }
-    }
-
     guard fileManager.isReadableFile(atPath: standardizedSourceURL.path),
       let sourceValues = try? standardizedSourceURL.resourceValues(
         forKeys: [.isRegularFileKey, .isSymbolicLinkKey]

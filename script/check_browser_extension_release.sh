@@ -20,8 +20,6 @@ python3 script/generate_browser_extension_protocol.py --check
 python3 script/build_browser_extension_source.py --browser chrome --check
 python3 script/test_browser_extension_source_layout.py
 bash script/sync_firefox_browser_extension.sh --check
-bash script/sync_safari_browser_extension.sh --check
-bash script/build_safari_web_extension.sh --check
 python3 script/browser_extension_release_ledger.py check
 python3 script/test_browser_extension_release_ledger.py
 python3 script/chromium_extension_release.py check
@@ -33,4 +31,4 @@ swift build --disable-sandbox --product PersonalSitePublisherMac
 swift test --disable-sandbox --filter KnowledgeBrowserImportOperationLedgerTests
 swift test --disable-sandbox --filter KnowledgeLibraryServiceTests.testBrowserDuplicateResolutionSupportsVersionMoveCopyAndCancelWithoutSilentMutation
 
-echo "Safari Web Extension, Chrome, Firefox, and authenticated loopback release gate: passed"
+echo "Chrome, Firefox, and authenticated loopback release gate: passed"

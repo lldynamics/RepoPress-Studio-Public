@@ -150,7 +150,7 @@ public struct LocalRepositoryService: @unchecked Sendable {
   public func ignoredRepositoryPaths(profile: SiteProfile, paths: [String]) -> [String] {
     let safeInputPaths = Set(
       paths
-        .map { $0.components(separatedBy: " -> ").last?.trimmedForPublishing ?? $0.trimmedForPublishing }
+        .map { $0.trimmedForPublishing }
         .map { $0.normalizedRelativePath() }
         .filter { !$0.isEmpty }
     )
@@ -170,17 +170,41 @@ public struct LocalRepositoryService: @unchecked Sendable {
   }
 
   public func remoteFileSnapshot(profile: SiteProfile, repositoryPath: String) -> RepositoryFileSnapshot? {
-    profile.withLocalRepositoryRootAccess { rootURL -> [RepositoryFileSnapshot] in
-      guard let snapshot = remoteFileSnapshot(
-        rootURL: rootURL,
-        repositoryPath: repositoryPath,
-        repositoryProvider: profile.repositoryProvider
-      ) else {
-        return []
-      }
-      return [snapshot]
+    remoteFileSnapshots(profile: profile, repositoryPaths: [repositoryPath]).first
+  }
+
+  /// Reads a stable, ordered set of files from the current branch's upstream.
+  /// Paths are normalized by the snapshot command policy; invalid and missing
+  /// paths are skipped. Duplicate normalized paths are returned once, in the
+  /// order of their first occurrence, so a batch never repeats Git work.
+  public func remoteFileSnapshots(
+    profile: SiteProfile,
+    repositoryPaths: [String]
+  ) -> [RepositoryFileSnapshot] {
+    remoteFileSnapshots(
+      profile: profile,
+      repositoryPaths: repositoryPaths,
+      cancellationCheck: { false }
+    )
+  }
+
+  func remoteFileSnapshots(
+    profile: SiteProfile,
+    repositoryPaths: [String],
+    cancellationCheck: @escaping @Sendable () -> Bool
+  ) -> [RepositoryFileSnapshot] {
+    guard !repositoryPaths.isEmpty else {
+      return []
     }
-    .flatMap(\.first)
+
+    return profile.withLocalRepositoryRootAccess { rootURL in
+      remoteFileSnapshots(
+        rootURL: rootURL,
+        repositoryPaths: repositoryPaths,
+        repositoryProvider: profile.repositoryProvider,
+        cancellationCheck: cancellationCheck
+      )
+    } ?? []
   }
 
   public func fetchUpstream(profile: SiteProfile) -> RepositoryFetchResult {

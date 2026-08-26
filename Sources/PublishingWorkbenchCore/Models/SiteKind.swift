@@ -1,15 +1,8 @@
-import Foundation
+import PublishingCoreSupport
+import PublishingDomainContracts
 
-public enum SiteKind: String, Codable, CaseIterable, Identifiable, Sendable {
-  case zola
-  case astro
-  case hugo
-  case hexo
-  case jekyll
-
-  public var id: String { rawValue }
-
-  public var displayName: String {
+public extension SiteKind {
+  var displayName: String {
     switch self {
     case .zola:
       return "Zola"
@@ -17,6 +10,8 @@ public enum SiteKind: String, Codable, CaseIterable, Identifiable, Sendable {
       return "Astro"
     case .hugo:
       return "Hugo"
+    case .vitePress:
+      return "VitePress"
     case .hexo:
       return "Hexo"
     case .jekyll:
@@ -24,36 +19,31 @@ public enum SiteKind: String, Codable, CaseIterable, Identifiable, Sendable {
     }
   }
 
-  public var coverFrontMatterFieldName: String {
+  var coverFrontMatterFieldName: String {
     switch self {
     case .zola:
       return "og_preview_img"
     case .jekyll:
       return "image"
-    case .astro, .hugo, .hexo:
+    case .astro, .hugo, .vitePress, .hexo:
       return "cover"
     }
   }
 
-  public var coverFrontMatterDisplayPath: String {
+  var coverFrontMatterDisplayPath: String {
     switch self {
     case .zola:
       return "extra.og_preview_img"
     case .jekyll:
       return "image"
-    case .astro, .hugo, .hexo:
+    case .astro, .hugo, .vitePress, .hexo:
       return "cover"
     }
   }
 }
 
-public enum FrontMatterStyle: String, Codable, CaseIterable, Identifiable, Sendable {
-  case yaml
-  case toml
-
-  public var id: String { rawValue }
-
-  public var displayName: String {
+public extension FrontMatterStyle {
+  var displayName: String {
     switch self {
     case .yaml:
       return "YAML"
@@ -63,14 +53,8 @@ public enum FrontMatterStyle: String, Codable, CaseIterable, Identifiable, Senda
   }
 }
 
-public enum SiteSlugValidationRule: String, Codable, CaseIterable, Identifiable, Sendable {
-  case lowercaseKebab
-  case relaxed
-  case disabled
-
-  public var id: String { rawValue }
-
-  public var displayName: String {
+public extension SiteSlugValidationRule {
+  var displayName: String {
     switch self {
     case .lowercaseKebab:
       return "小写/CJK 连字符"
@@ -81,7 +65,7 @@ public enum SiteSlugValidationRule: String, Codable, CaseIterable, Identifiable,
     }
   }
 
-  public var detail: String {
+  var detail: String {
     switch self {
     case .lowercaseKebab:
       return CoreL10n.text("允许小写字母、数字、CJK 字符和连字符。")

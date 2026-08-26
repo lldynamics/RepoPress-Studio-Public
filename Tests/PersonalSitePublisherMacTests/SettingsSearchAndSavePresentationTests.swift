@@ -7,7 +7,7 @@ final class SettingsSearchAndSavePresentationTests: XCTestCase {
     XCTAssertTrue(SettingsTab.token.matchesSearch("GitHub"))
     XCTAssertTrue(SettingsTab.ai.matchesSearch("授权"))
     XCTAssertTrue(SettingsTab.editor.matchesSearch("拼写"))
-    XCTAssertTrue(SettingsTab.editor.matchesSearch("同步滚动"))
+    XCTAssertTrue(SettingsTab.editor.matchesSearch("正文分析"))
     XCTAssertTrue(SettingsTab.rss.matchesSearch("OPML"))
     XCTAssertTrue(SettingsTab.rss.matchesSearch("远程图片"))
     XCTAssertTrue(SettingsTab.rss.matchesSearch("自动翻译"))

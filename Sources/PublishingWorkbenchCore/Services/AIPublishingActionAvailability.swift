@@ -19,6 +19,8 @@ public struct AIPublishingActionAvailabilityPresentation: Equatable, Sendable {
 }
 
 public enum AIPublishingActionAvailabilityService {
+  private static let publishingWhitespace = CharacterSet.whitespacesAndNewlines
+
   public static func canRun(
     _ action: AIPublishingActionKind,
     selectedText: String? = nil,
@@ -59,17 +61,28 @@ public enum AIPublishingActionAvailabilityService {
   }
 
   private static func hasSelectedText(_ selectedText: String?) -> Bool {
-    !(selectedText ?? "").trimmedForPublishing.isEmpty
+    guard let selectedText else { return false }
+    return hasPublishingText(selectedText)
   }
 
   private static func hasBodyText(_ draft: ArticleDraft) -> Bool {
-    !draft.bodyMarkdown.trimmedForPublishing.isEmpty
+    hasPublishingText(draft.bodyMarkdown)
   }
 
   private static func hasArticleSeedText(_ draft: ArticleDraft) -> Bool {
     hasBodyText(draft)
-      || !draft.title.trimmedForPublishing.isEmpty
-      || !draft.summary.trimmedForPublishing.isEmpty
+      || hasPublishingText(draft.title)
+      || hasPublishingText(draft.summary)
+  }
+
+  /// Checks the same whitespace set used by `trimmedForPublishing` without
+  /// allocating a trimmed copy. The scan stops at the first meaningful scalar,
+  /// so normal non-empty drafts are constant-time while whitespace-only input
+  /// still has the unavoidable linear cost of proving that it is empty.
+  private static func hasPublishingText(_ value: String) -> Bool {
+    value.unicodeScalars.contains { scalar in
+      !publishingWhitespace.contains(scalar)
+    }
   }
 
   private static func unavailableReason(

@@ -258,8 +258,6 @@ struct CodexAppServerRuntimeStatusContent: View {
     guard runtimeStatus.isAvailable else { return String(localized: "未找到 Codex 运行组件") }
     let version = runtimeStatus.version?.nilIfEmpty.map { " · \($0)" } ?? ""
     switch runtimeStatus.source {
-    case .bundled:
-      return String(localized: "内置运行组件可用") + version
     case .homebrew:
       return String(localized: "Homebrew 运行组件可用") + version
     case .path:
