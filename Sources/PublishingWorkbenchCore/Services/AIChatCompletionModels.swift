@@ -320,6 +320,34 @@ public enum AIChatAutomaticReplayPolicy: String, Codable, Equatable, Sendable {
   case beforeContent
 }
 
+/// Bounds automatic recovery after a stream has already exposed plain text.
+///
+/// A continuation is a new request, but it is still bound to the original
+/// prepared request's authorization deadline. Keeping this policy separate
+/// from the pre-content replay policy makes the extra request explicit and
+/// lets callers turn it off without changing the older transport retry rules.
+public struct AIChatPartialTextRecoveryPolicy: Equatable, Sendable {
+  /// Maximum number of continuation requests for one original stream.
+  public var maximumRecoveryCount: Int
+  /// Maximum number of characters copied into the continuation checkpoint.
+  public var checkpointCharacterCount: Int
+  /// Maximum prefix held while resolving an overlap at the continuation edge.
+  public var overlapProbeCharacterCount: Int
+
+  public init(
+    maximumRecoveryCount: Int = 1,
+    checkpointCharacterCount: Int = 8_192,
+    overlapProbeCharacterCount: Int = 8_192
+  ) {
+    self.maximumRecoveryCount = max(0, maximumRecoveryCount)
+    self.checkpointCharacterCount = max(256, checkpointCharacterCount)
+    self.overlapProbeCharacterCount = max(256, overlapProbeCharacterCount)
+  }
+
+  public static let `default` = AIChatPartialTextRecoveryPolicy()
+  public static let disabled = AIChatPartialTextRecoveryPolicy(maximumRecoveryCount: 0)
+}
+
 public struct AIChatNetworkRecoveryPolicy: Equatable, Sendable {
   public var firstByteTimeout: TimeInterval
   public var resourceTimeout: TimeInterval
@@ -332,6 +360,10 @@ public struct AIChatNetworkRecoveryPolicy: Equatable, Sendable {
   /// Connection tests and capability probes have their own non-interactive
   /// policy so changing interactive authorization semantics is not global.
   public var nonInteractiveAutomaticReplay: AIChatAutomaticReplayPolicy
+  /// Explicit, bounded recovery for a stream that already yielded plain text.
+  /// This is independent from pre-content transport replay and is still bound
+  /// by the prepared request's authorization deadline.
+  public var partialTextRecovery: AIChatPartialTextRecoveryPolicy
 
   public init(
     firstByteTimeout: TimeInterval = 45,
@@ -340,7 +372,8 @@ public struct AIChatNetworkRecoveryPolicy: Equatable, Sendable {
     automaticRetryBaseDelay: TimeInterval = 0.5,
     maximumAutomaticRetryAfterDelay: TimeInterval = 5,
     automaticReplay: AIChatAutomaticReplayPolicy = .never,
-    nonInteractiveAutomaticReplay: AIChatAutomaticReplayPolicy = .beforeContent
+    nonInteractiveAutomaticReplay: AIChatAutomaticReplayPolicy = .beforeContent,
+    partialTextRecovery: AIChatPartialTextRecoveryPolicy = .default
   ) {
     self.firstByteTimeout = max(0.001, firstByteTimeout)
     self.resourceTimeout = max(self.firstByteTimeout, resourceTimeout)
@@ -349,6 +382,7 @@ public struct AIChatNetworkRecoveryPolicy: Equatable, Sendable {
     self.maximumAutomaticRetryAfterDelay = max(0, maximumAutomaticRetryAfterDelay)
     self.automaticReplay = automaticReplay
     self.nonInteractiveAutomaticReplay = nonInteractiveAutomaticReplay
+    self.partialTextRecovery = partialTextRecovery
   }
 
   public static let `default` = AIChatNetworkRecoveryPolicy()

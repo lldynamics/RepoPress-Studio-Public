@@ -13,6 +13,15 @@ private enum AIChatLineEvent: Sendable {
   case resourceTimedOut
 }
 
+private enum AIChatPartialRecoveryStartResult {
+  case started
+  case unavailable
+  case cancelled
+  case failed(AIChatCompletionClientError)
+}
+
+private let maximumAIChatPartialRecoveryRequestByteCount = 2 * 1_024 * 1_024
+
 extension AIChatCompletionClient {
   public func stream(
     request completionRequest: AIChatCompletionRequest,
@@ -127,14 +136,23 @@ extension AIChatCompletionClient {
       let task = Task(priority: .userInitiated) {
         var completedRetryCount = 0
         var compatibilityFallbackCount = 0
+        var partialRecoveryCount = 0
+        var activePrepared = prepared
+        var isContinuationAttempt = false
+        var generatedContent = ""
+        var sawToolCall = false
+        var continuationReconciler: AIChatStreamContinuationReconciler?
+        var originalPartialError: AIChatCompletionClientError?
+        let partialRecoveryPolicy = networkRecoveryPolicy.partialTextRecovery
 
         while !Task.isCancelled {
           var responseStarted = false
           var receivedHTTP2xx = false
           do {
-            try validatePrepared(prepared, against: config, apiKey: apiKey)
+            let attemptPrepared = activePrepared
+            try validatePrepared(attemptPrepared, against: config, apiKey: apiKey)
             let request = try makeURLRequest(
-              from: prepared,
+              from: attemptPrepared,
               config: config,
               apiKey: apiKey
             )
@@ -144,7 +162,7 @@ extension AIChatCompletionClient {
               timeoutError: .firstByteTimedOut(networkRecoveryPolicy.firstByteTimeout)
             ) {
               try await performPreparedLinesTransport(
-                prepared: prepared,
+                prepared: attemptPrepared,
                 config: config,
                 apiKey: apiKey,
                 request: request,
@@ -187,7 +205,39 @@ extension AIChatCompletionClient {
               // no-replay boundary even for role/reasoning-only metadata;
               // heartbeat/comment/blank lines never become updates.
               responseStarted = true
-              continuation.yield(update)
+              if !update.toolCallDeltas.isEmpty || !update.toolCalls.isEmpty {
+                sawToolCall = true
+              }
+
+              var visibleUpdate = update
+              if var reconciler = continuationReconciler {
+                visibleUpdate.contentDelta = reconciler.reconcile(update.contentDelta)
+                continuationReconciler = reconciler
+              }
+              if !visibleUpdate.contentDelta.isEmpty {
+                generatedContent.append(visibleUpdate.contentDelta)
+              }
+              // Do not manufacture a visible empty update for a swallowed
+              // overlap, but preserve finish/usage/tool metadata for callers.
+              if !visibleUpdate.contentDelta.isEmpty
+                || !visibleUpdate.toolCallDeltas.isEmpty
+                || !visibleUpdate.toolCalls.isEmpty
+                || visibleUpdate.tokenUsage != nil
+                || visibleUpdate.isFinished
+              {
+                continuation.yield(visibleUpdate)
+              }
+            }
+
+            // The parser has observed a terminal marker. Flush a short
+            // non-overlapping prefix that did not contain a paragraph boundary.
+            if var reconciler = continuationReconciler {
+              let trailing = reconciler.finish()
+              continuationReconciler = reconciler
+              if !trailing.isEmpty {
+                generatedContent.append(trailing)
+                continuation.yield(AIChatStreamUpdate(contentDelta: trailing))
+              }
             }
             continuation.finish()
             return
@@ -203,32 +253,93 @@ extension AIChatCompletionClient {
               error,
               policy: networkRecoveryPolicy
             )
+            if case .responseTooLarge = normalizedError {
+              continuation.finish(throwing: normalizedError)
+              return
+            }
+
+            if originalPartialError == nil,
+              responseStarted || !generatedContent.isEmpty
+            {
+              originalPartialError = .streamInterruptedAfterPartialContent(
+                normalizedError.localizedDescription
+              )
+            }
+
+            if isPartialTextRecoveryEligible(normalizedError),
+              !generatedContent.isEmpty,
+              !sawToolCall
+            {
+              switch startPartialTextRecovery(
+                from: prepared,
+                config: config,
+                apiKey: apiKey,
+                generatedContent: generatedContent,
+                policy: partialRecoveryPolicy,
+                partialRecoveryCount: &partialRecoveryCount,
+                reconciler: &continuationReconciler,
+                activePrepared: &activePrepared,
+                isContinuationAttempt: &isContinuationAttempt
+              ) {
+              case .started:
+                continue
+              case .failed(let failure):
+                switch failure {
+                case .requestContextWindowExceeded, .partialTextRecoveryContextTooLarge:
+                  continuation.finish(
+                    throwing: AIChatCompletionClientError.streamInterruptedAfterPartialContent(
+                      failure.localizedDescription
+                    )
+                  )
+                default:
+                  continuation.finish(throwing: failure)
+                }
+                return
+              case .cancelled:
+                continuation.finish(throwing: CancellationError())
+                return
+              case .unavailable:
+                break
+              }
+            }
+
+            if let originalPartialError {
+              // Tool calls, incompatible HTTP responses, and authorization
+              // failures are terminal for a continuation. Preserve the
+              // already-visible content boundary for ordinary interruptions
+              // once the bounded recovery policy is exhausted.
+              if isContinuationAttempt,
+                case .httpStatus = normalizedError
+              {
+                continuation.finish(throwing: normalizedError)
+              } else if case .preparedRequestAuthorizationExpired = normalizedError {
+                continuation.finish(throwing: normalizedError)
+              } else {
+                continuation.finish(throwing: originalPartialError)
+              }
+              return
+            }
+
             if case .incompleteStream = normalizedError {
               if responseStarted {
-                continuation.finish(
-                  throwing: AIChatCompletionClientError.streamInterruptedAfterPartialContent(
-                    normalizedError.localizedDescription
-                  )
-                )
+                let partialError = AIChatCompletionClientError
+                  .streamInterruptedAfterPartialContent(normalizedError.localizedDescription)
+                originalPartialError = partialError
+                continuation.finish(throwing: partialError)
               } else {
                 continuation.finish(throwing: normalizedError)
               }
               return
             }
             if responseStarted {
-              continuation.finish(
-                throwing: AIChatCompletionClientError.streamInterruptedAfterPartialContent(
-                  normalizedError.localizedDescription
-                )
-              )
+              let partialError = AIChatCompletionClientError
+                .streamInterruptedAfterPartialContent(normalizedError.localizedDescription)
+              originalPartialError = partialError
+              continuation.finish(throwing: partialError)
               return
             }
 
             if receivedHTTP2xx {
-              if case .responseTooLarge = normalizedError {
-                continuation.finish(throwing: normalizedError)
-                return
-              }
               continuation.finish(
                 throwing: AIChatCompletionClientError.streamInterruptedAfterPartialContent(
                   normalizedError.localizedDescription
@@ -237,7 +348,7 @@ extension AIChatCompletionClient {
               return
             }
 
-            if !allowsAutomaticReplay(for: prepared.purpose) {
+            if isContinuationAttempt || !allowsAutomaticReplay(for: prepared.purpose) {
               // An interactive authorization allows one POST attempt. A
               // transport-level retry would be a second remote attempt that
               // bypasses the request safety gate, even before any SSE content is
@@ -315,6 +426,98 @@ extension AIChatCompletionClient {
       continuation.onTermination = { _ in
         task.cancel()
       }
+    }
+  }
+
+  private func isPartialTextRecoveryEligible(
+    _ error: AIChatCompletionClientError
+  ) -> Bool {
+    switch error {
+    case .firstByteTimedOut, .resourceTimedOut, .networkFailure, .incompleteStream:
+      return true
+    default:
+      return false
+    }
+  }
+
+  private func startPartialTextRecovery(
+    from prepared: AIPreparedAIChatCompletionRequest,
+    config: AIProviderConfig,
+    apiKey: String?,
+    generatedContent: String,
+    policy: AIChatPartialTextRecoveryPolicy,
+    partialRecoveryCount: inout Int,
+    reconciler: inout AIChatStreamContinuationReconciler?,
+    activePrepared: inout AIPreparedAIChatCompletionRequest,
+    isContinuationAttempt: inout Bool
+  ) -> AIChatPartialRecoveryStartResult {
+    guard partialRecoveryCount < policy.maximumRecoveryCount,
+      !generatedContent.isEmpty,
+      supportsPlainTextPartialRecovery(prepared)
+    else {
+      return .unavailable
+    }
+
+    do {
+      try Task.checkCancellation()
+      // Revalidate the original authorization/configuration before constructing
+      // a second POST. The newly prepared continuation receives the same
+      // deadline and is validated again immediately before consume/transport.
+      try validatePrepared(activePrepared, against: config, apiKey: apiKey)
+      let checkpoint = AIChatStreamContinuationReconciler.checkpointText(
+        from: generatedContent,
+        maximumCharacterCount: policy.checkpointCharacterCount
+      )
+      let nextPrepared = try makePartialTextContinuationPrepared(
+        from: prepared,
+        checkpoint: checkpoint,
+        config: config
+      )
+      guard nextPrepared.encodedBody.count <= maximumAIChatPartialRecoveryRequestByteCount else {
+        return .failed(
+          .partialTextRecoveryContextTooLarge(
+            maximumBytes: maximumAIChatPartialRecoveryRequestByteCount
+          )
+        )
+      }
+      try validatePrepared(nextPrepared, against: config, apiKey: apiKey)
+      try nextPrepared.consume()
+      partialRecoveryCount += 1
+      activePrepared = nextPrepared
+      isContinuationAttempt = true
+      reconciler = AIChatStreamContinuationReconciler(
+        alreadyYieldedText: checkpoint,
+        overlapProbeCharacterCount: policy.overlapProbeCharacterCount
+      )
+      return .started
+    } catch is CancellationError {
+      return .cancelled
+    } catch let error as AIChatCompletionClientError {
+      return .failed(error)
+    } catch {
+      return .failed(
+        Self.normalizedTransportError(error, policy: networkRecoveryPolicy)
+      )
+    }
+  }
+
+  private func supportsPlainTextPartialRecovery(
+    _ prepared: AIPreparedAIChatCompletionRequest
+  ) -> Bool {
+    guard prepared.purpose == .interactiveChat || prepared.purpose == .utilityTask else {
+      return false
+    }
+    let request = prepared.normalizedRequest
+    guard request.tools == nil,
+      request.toolChoice == nil,
+      request.responseFormat == nil
+    else {
+      return false
+    }
+    return !request.messages.contains { message in
+      message.role.lowercased() == "tool"
+        || message.toolCalls != nil
+        || message.toolCallID?.nilIfEmpty != nil
     }
   }
 

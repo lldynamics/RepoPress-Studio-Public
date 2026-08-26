@@ -1838,7 +1838,8 @@ final class AIChatCompletionClientTests: XCTestCase {
         firstByteTimeout: 1,
         resourceTimeout: 2,
         maximumAutomaticRetryCount: 3,
-        automaticRetryBaseDelay: 0
+        automaticRetryBaseDelay: 0,
+        partialTextRecovery: .disabled
       )
     )
     let stream = try await client.stream(

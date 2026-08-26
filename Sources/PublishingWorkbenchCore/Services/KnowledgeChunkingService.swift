@@ -2,6 +2,8 @@ import CryptoKit
 import Foundation
 
 public struct KnowledgeChunkingService: Sendable {
+  private static let tokenizer = LocalBPETokenizer(encoding: .o200kBase)
+
   public var maximumChunkCharacters: Int
   public var overlapCharacters: Int
 
@@ -169,7 +171,7 @@ public struct KnowledgeChunkingService: Sendable {
       headingPath: section.headingPath?.nilIfEmpty,
       locator: section.locator?.nilIfEmpty,
       content: text,
-      tokenEstimate: max(1, Int(ceil(Double(text.count) / 3.0))),
+      tokenEstimate: max(1, Self.tokenizer.tokenCount(text)),
       contentHash: Self.contentHash(for: text)
     )
   }
