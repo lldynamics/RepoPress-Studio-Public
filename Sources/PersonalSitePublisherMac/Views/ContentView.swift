@@ -20,42 +20,93 @@ import SwiftUI
 #endif
 
 struct WorkspaceResponsiveLayoutSnapshot: Equatable {
-  let width: CGFloat
+  enum Band: Equatable {
+    case constrained
+    case compactInspector
+    case standardInspector
+    case htmlSourceInspector
+  }
+
+  let band: Band
 
   static let initial = WorkspaceResponsiveLayoutSnapshot(
     width: WorkbenchLayoutMode.expandedWorkspaceWidth
   )
 
-  static func == (
-    lhs: WorkspaceResponsiveLayoutSnapshot,
-    rhs: WorkspaceResponsiveLayoutSnapshot
-  ) -> Bool {
-    lhs.layoutIdentity == rhs.layoutIdentity
+  init(width: CGFloat) {
+    if width >= WorkbenchLayoutMode.minimumHTMLSourceInspectorWorkspaceWidth {
+      band = .htmlSourceInspector
+    } else if WorkbenchLayoutMode.allowsInspector(width: width) {
+      band = .standardInspector
+    } else if WorkbenchLayoutMode.canManuallyRevealInspector(width: width) {
+      band = .compactInspector
+    } else {
+      band = .constrained
+    }
   }
 
-  private var layoutIdentity: LayoutIdentity {
-    LayoutIdentity(
-      isCompact: WorkbenchLayoutMode.isCompact(width: width),
-      allowsStandardInspector: WorkbenchLayoutMode.allowsInspector(width: width),
-      allowsHTMLSourceInspector:
-        width >= WorkbenchLayoutMode.minimumHTMLSourceInspectorWorkspaceWidth,
-      canOverrideInspector: WorkbenchLayoutMode.canManuallyRevealInspector(width: width)
-    )
+  var isCompact: Bool {
+    band == .constrained || band == .compactInspector
   }
 
-  private struct LayoutIdentity: Equatable {
-    let isCompact: Bool
-    let allowsStandardInspector: Bool
-    let allowsHTMLSourceInspector: Bool
-    let canOverrideInspector: Bool
+  var allowsStandardInspector: Bool {
+    band == .standardInspector || band == .htmlSourceInspector
+  }
+
+  var allowsHTMLSourceInspector: Bool { band == .htmlSourceInspector }
+  var canManuallyRevealInspector: Bool { band == .compactInspector }
+}
+
+private struct WorkspaceResponsiveLayoutPreferenceKey: PreferenceKey {
+  static let defaultValue = WorkspaceResponsiveLayoutSnapshot.initial
+
+  static func reduce(
+    value: inout WorkspaceResponsiveLayoutSnapshot,
+    nextValue: () -> WorkspaceResponsiveLayoutSnapshot
+  ) {
+    value = nextValue()
+  }
+}
+
+/// Keeps continuous window measurements in a leaf view. The preference value
+/// compares by semantic layout band, so `ContentView` updates only at the
+/// 960/1180/1240 point decisions instead of for every resize pixel.
+private struct WorkspaceResponsiveLayoutReader: View {
+  var body: some View {
+    GeometryReader { geometry in
+      Color.clear.preference(
+        key: WorkspaceResponsiveLayoutPreferenceKey.self,
+        value: WorkspaceResponsiveLayoutSnapshot(width: geometry.size.width)
+      )
+    }
+    .allowsHitTesting(false)
+    .accessibilityHidden(true)
+  }
+}
+
+private struct WorkspaceResponsiveLayoutHost<Content: View>: View {
+  let content: Content
+  let onChange: (WorkspaceResponsiveLayoutSnapshot) -> Void
+
+  init(
+    onChange: @escaping (WorkspaceResponsiveLayoutSnapshot) -> Void,
+    @ViewBuilder content: () -> Content
+  ) {
+    self.content = content()
+    self.onChange = onChange
+  }
+
+  var body: some View {
+    content
+      .background(WorkspaceResponsiveLayoutReader())
+      .onPreferenceChange(WorkspaceResponsiveLayoutPreferenceKey.self, perform: onChange)
   }
 }
 
 struct ContentView: View {
   let store: WorkbenchStore
   let rssStore: RSSReaderStore
-  @ObservedObject private var shellState: WorkbenchShellFeatureFacade
-  @ObservedObject private var presentationState: WorkbenchContentPresentationFeatureFacade
+  @ObservedObject private var rootPresentation: WorkbenchRootPresentationFeatureFacade
   @Environment(\.scenePhase) private var scenePhase
   @Environment(\.controlActiveState) private var controlActiveState
   @AppStorage("autoRunPreflight") private var autoRunPreflight = true
@@ -83,14 +134,15 @@ struct ContentView: View {
   @State private var commandPaletteEditorCommands: MarkdownEditorCommandActions?
   @State private var responsiveLayout = WorkspaceResponsiveLayoutSnapshot.initial
   @State private var aiChatInspectorSurfaceState = AIChatSurfaceState(surface: .inspector)
-  @StateObject private var aiChatInspectorOperationSession = AIChatSurfaceOperationSession()
+  // These reference models need stable window lifetime, but ContentView does
+  // not read their published values. Feature leaves observe them directly.
+  @State private var aiChatInspectorOperationSession = AIChatSurfaceOperationSession()
   @State private var contentHealthFilter: ContentHealthContextFilter = .overview
   @State private var imageWorkbenchContextStage: ImageWorkbenchContextStage = .overview
   @State private var repositoryContextStage: RepositoryContextStage = .overview
   @StateObject private var repositorySourceSession: RepositoryHTMLSourceSession
-  @StateObject private var rssPresentation: RSSReaderPresentationState
-  @StateObject private var localSitePreviewState: WorkbenchLocalSitePreviewFeatureFacade
-  @StateObject private var sceneCommandRouter = WorkspaceSceneCommandRouter()
+  @State private var localSitePreviewState: WorkbenchLocalSitePreviewFeatureFacade
+  @State private var sceneCommandRouter = WorkspaceSceneCommandRouter()
   @StateObject private var windowSession: WorkspaceWindowSession
 
   private var repositoryAutoSyncTaskID: RepositoryAutoSyncTaskID {
@@ -105,15 +157,16 @@ struct ContentView: View {
     let isSafeMode: Bool
   }
 
+  private var shellState: WorkbenchRootPresentationFeatureFacade { rootPresentation }
+  private var presentationState: WorkbenchRootPresentationFeatureFacade { rootPresentation }
+
   init(store: WorkbenchStore, rssStore: RSSReaderStore) {
     self.store = store
     self.rssStore = rssStore
-    _shellState = ObservedObject(wrappedValue: store.shell)
-    _presentationState = ObservedObject(wrappedValue: store.contentPresentation)
+    _rootPresentation = ObservedObject(wrappedValue: store.rootPresentation)
     _repositorySourceSession = StateObject(wrappedValue: RepositoryHTMLSourceSession())
-    _rssPresentation = StateObject(wrappedValue: RSSReaderPresentationState())
-    _localSitePreviewState = StateObject(
-      wrappedValue: WorkbenchLocalSitePreviewFeatureFacade(store: store)
+    _localSitePreviewState = State(
+      initialValue: WorkbenchLocalSitePreviewFeatureFacade(store: store)
     )
     _windowSession = StateObject(
       wrappedValue: WorkspaceWindowSession(
@@ -131,31 +184,26 @@ struct ContentView: View {
     #if DEBUG || SCREENSHOT_CAPTURE_BUILD
       let _ = ContentViewBodyPerformanceProbe.record()
     #endif
-    return GeometryReader { geometry in
-      let compactLayout = WorkbenchLayoutMode.isCompact(width: geometry.size.width)
-      let responsiveLayoutSnapshot = WorkspaceResponsiveLayoutSnapshot(
-        width: geometry.size.width
-      )
+    return WorkspaceResponsiveLayoutHost(onChange: applyResponsiveLayout) {
+      let compactLayout = isCompactLayout
       let isInspectorVisible = inspectorPresentation.wrappedValue
       let inspectorColumnWidths = WorkspaceInspectorColumnWidthPolicy.widths(
         isAIAssistantPresented: presentationState.isAssistantPresented
       )
 
-      let workspace = ZStack {
+      ZStack {
         WorkspaceShellSplitLayout(
           store: store,
           selectedSection: windowSession.selectedSection,
           selectedDraftID: windowSession.selectedDraftID,
           isCompact: compactLayout,
           isFocusMode: hidesWorkspaceSidebar,
-          workspaceWidth: geometry.size.width,
           isInspectorPresented: isInspectorVisible,
           contentHealthFilter: $contentHealthFilter,
           imageWorkbenchContextStage: $imageWorkbenchContextStage,
           repositoryContextStage: $repositoryContextStage,
           repositorySourceSession: repositorySourceSession,
           rssStore: rssStore,
-          rssPresentation: rssPresentation,
           onSelectSection: selectWorkspaceSection,
           onSelectDraft: selectWindowDraft,
           onFocusDraft: focusWindowDraft
@@ -185,8 +233,7 @@ struct ContentView: View {
         #if DEBUG || SCREENSHOT_CAPTURE_BUILD
           if usesInlineAIScreenshotInspector {
             ScreenshotInlineAIInspector(
-              store: store,
-              width: min(max(geometry.size.width * 0.38, 460), 520)
+              store: store
             )
             .zIndex(1)
           }
@@ -198,18 +245,6 @@ struct ContentView: View {
             .zIndex(2)
         }
       }
-      // Geometry callbacks can run while AppKit is in the middle of a layout
-      // pass. Defer the state publication so responsive layout changes cannot
-      // feed back into the same pass.
-      workspace
-        .task(id: responsiveLayoutSnapshot) {
-          do {
-            try await Task.sleep(for: .milliseconds(50))
-          } catch {
-            return
-          }
-          applyResponsiveLayout(responsiveLayoutSnapshot)
-        }
     }
     .background(WorkbenchAccessibilityStatusAnnouncer(store: store))
     .safeAreaInset(edge: .top, spacing: 0) {
@@ -1007,7 +1042,7 @@ struct ContentView: View {
   }
 
   private var isCompactLayout: Bool {
-    WorkbenchLayoutMode.isCompact(width: responsiveLayout.width)
+    responsiveLayout.isCompact
   }
 
   private func applyResponsiveLayout(_ snapshot: WorkspaceResponsiveLayoutSnapshot) {
@@ -1029,9 +1064,9 @@ struct ContentView: View {
 
   private var allowsInspectorByWidth: Bool {
     if windowSession.selectedSection == .sync, repositoryContextStage == .source {
-      return responsiveLayout.width >= WorkbenchLayoutMode.minimumHTMLSourceInspectorWorkspaceWidth
+      return responsiveLayout.allowsHTMLSourceInspector
     }
-    return WorkbenchLayoutMode.allowsInspector(width: responsiveLayout.width)
+    return responsiveLayout.allowsStandardInspector
   }
 
   private var canOverrideInspectorInCurrentLayout: Bool {
@@ -1040,7 +1075,7 @@ struct ContentView: View {
 
   private func canOverrideInspector(_ snapshot: WorkspaceResponsiveLayoutSnapshot) -> Bool {
     windowSession.selectedSection == .writing
-      && WorkbenchLayoutMode.canManuallyRevealInspector(width: snapshot.width)
+      && snapshot.canManuallyRevealInspector
   }
 
   private var canRequestInspectorInCurrentLayout: Bool {
@@ -1084,22 +1119,23 @@ struct ContentView: View {
 #if DEBUG || SCREENSHOT_CAPTURE_BUILD
   private struct ScreenshotInlineAIInspector: View {
     let store: WorkbenchStore
-    let width: CGFloat
     @State private var surfaceState = AIChatSurfaceState(surface: .inspector)
     @StateObject private var operationSession = AIChatSurfaceOperationSession()
 
     var body: some View {
-      HStack(spacing: 0) {
-        Spacer(minLength: 0)
-        Divider()
-        AIChatContextInspectorView(
-          store: store,
-          surfaceState: $surfaceState,
-          operationSession: operationSession
-        )
-        .frame(width: width)
-        .frame(maxHeight: .infinity)
-        .background(Color(nsColor: .windowBackgroundColor))
+      GeometryReader { geometry in
+        HStack(spacing: 0) {
+          Spacer(minLength: 0)
+          Divider()
+          AIChatContextInspectorView(
+            store: store,
+            surfaceState: $surfaceState,
+            operationSession: operationSession
+          )
+          .frame(width: min(max(geometry.size.width * 0.38, 460), 520))
+          .frame(maxHeight: .infinity)
+          .background(Color(nsColor: .windowBackgroundColor))
+        }
       }
     }
   }

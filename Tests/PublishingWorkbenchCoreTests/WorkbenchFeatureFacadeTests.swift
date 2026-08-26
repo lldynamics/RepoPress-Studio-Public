@@ -17,6 +17,7 @@ final class WorkbenchFeatureFacadeTests: XCTestCase {
     XCTAssertTrue(store.repository === store.repository)
     XCTAssertTrue(store.publishing === store.publishing)
     XCTAssertTrue(store.contentPresentation === store.contentPresentation)
+    XCTAssertTrue(store.rootPresentation === store.rootPresentation)
     XCTAssertTrue(store.commandPresentation === store.commandPresentation)
     XCTAssertTrue(store.activityStatus === store.activityStatus)
     XCTAssertTrue(store.workspaceLayout === store.workspaceLayout)
@@ -129,6 +130,38 @@ final class WorkbenchFeatureFacadeTests: XCTestCase {
     store.selectSection(nextSection)
     XCTAssertEqual(layoutChanges, 1)
     XCTAssertEqual(layout.selectedSection, nextSection)
+    withExtendedLifetime(cancellable) {}
+  }
+
+  func testRootPresentationFacadeIgnoresFeatureProgressAndPublishesLayoutState() async {
+    let store = makeIsolatedStore()
+    let presentation = store.rootPresentation
+    var changes = 0
+    var pendingExpectation: XCTestExpectation?
+    var observedInspectorPresentation = presentation.isInspectorPresented
+    let cancellable = presentation.objectWillChange.sink {
+      changes += 1
+      observedInspectorPresentation = presentation.isInspectorPresented
+      pendingExpectation?.fulfill()
+    }
+
+    store.setPublishActionMessage("后台发布进度", status: .information)
+    store.setAIChatMessages([
+      AIPublishingChatMessage(role: .assistant, content: "流式内容")
+    ])
+    store.setAIChatMessage("流式状态")
+    store.repositoryStore.repositoryScanState = .scanning()
+
+    try? await Task.sleep(for: .milliseconds(50))
+    XCTAssertEqual(changes, 0)
+
+    let changed = expectation(description: "root presentation changed")
+    pendingExpectation = changed
+    store.setInspectorPresented(!presentation.isInspectorPresented)
+
+    await fulfillment(of: [changed], timeout: 1)
+    XCTAssertEqual(changes, 1)
+    XCTAssertEqual(observedInspectorPresentation, store.isInspectorPresented)
     withExtendedLifetime(cancellable) {}
   }
 

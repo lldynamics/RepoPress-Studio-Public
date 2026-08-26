@@ -7,14 +7,12 @@ struct WorkspaceShellSplitLayout: View {
   let selectedDraftID: UUID?
   let isCompact: Bool
   let isFocusMode: Bool
-  let workspaceWidth: CGFloat
   let isInspectorPresented: Bool
   @Binding var contentHealthFilter: ContentHealthContextFilter
   @Binding var imageWorkbenchContextStage: ImageWorkbenchContextStage
   @Binding var repositoryContextStage: RepositoryContextStage
   let repositorySourceSession: RepositoryHTMLSourceSession
   let rssStore: RSSReaderStore
-  let rssPresentation: RSSReaderPresentationState
   let onSelectSection: (WorkspaceSection) -> Void
   let onSelectDraft: (UUID?) -> Void
   let onFocusDraft: (UUID, WorkspaceSection) -> Void
@@ -22,6 +20,7 @@ struct WorkspaceShellSplitLayout: View {
   private var storedSidebarWidth = Double(WorkbenchLayoutMode.defaultSidebarWidth)
   @State private var sidebarResizeStartWidth: CGFloat?
   @StateObject private var contentHealthSidebarProjection = ContentHealthSidebarProjection()
+  @StateObject private var rssPresentation = RSSReaderPresentationState()
 
   init(
     store: WorkbenchStore,
@@ -29,14 +28,12 @@ struct WorkspaceShellSplitLayout: View {
     selectedDraftID: UUID?,
     isCompact: Bool,
     isFocusMode: Bool,
-    workspaceWidth: CGFloat,
     isInspectorPresented: Bool,
     contentHealthFilter: Binding<ContentHealthContextFilter>,
     imageWorkbenchContextStage: Binding<ImageWorkbenchContextStage>,
     repositoryContextStage: Binding<RepositoryContextStage>,
     repositorySourceSession: RepositoryHTMLSourceSession,
     rssStore: RSSReaderStore,
-    rssPresentation: RSSReaderPresentationState,
     onSelectSection: @escaping (WorkspaceSection) -> Void,
     onSelectDraft: @escaping (UUID?) -> Void,
     onFocusDraft: @escaping (UUID, WorkspaceSection) -> Void
@@ -46,20 +43,24 @@ struct WorkspaceShellSplitLayout: View {
     self.selectedDraftID = selectedDraftID
     self.isCompact = isCompact
     self.isFocusMode = isFocusMode
-    self.workspaceWidth = workspaceWidth
     self.isInspectorPresented = isInspectorPresented
     _contentHealthFilter = contentHealthFilter
     _imageWorkbenchContextStage = imageWorkbenchContextStage
     _repositoryContextStage = repositoryContextStage
     self.repositorySourceSession = repositorySourceSession
     self.rssStore = rssStore
-    self.rssPresentation = rssPresentation
     self.onSelectSection = onSelectSection
     self.onSelectDraft = onSelectDraft
     self.onFocusDraft = onFocusDraft
   }
 
   var body: some View {
+    GeometryReader { geometry in
+      workspace(workspaceWidth: geometry.size.width)
+    }
+  }
+
+  private func workspace(workspaceWidth: CGFloat) -> some View {
     HStack(spacing: 0) {
       if !isFocusMode {
         WorkspacePrimarySidebar(
@@ -76,10 +77,10 @@ struct WorkspaceShellSplitLayout: View {
           onSelectDraft: onSelectDraft,
           onFocusDraft: onFocusDraft
         )
-        .frame(width: sidebarWidth)
+        .frame(width: sidebarWidth(workspaceWidth: workspaceWidth))
         .frame(maxHeight: .infinity)
 
-        workspaceSidebarResizeHandle
+        workspaceSidebarResizeHandle(workspaceWidth: workspaceWidth)
       }
 
       EditorCenterColumn(
@@ -106,7 +107,7 @@ struct WorkspaceShellSplitLayout: View {
     )
   }
 
-  private var sidebarWidth: CGFloat {
+  private func sidebarWidth(workspaceWidth: CGFloat) -> CGFloat {
     let width = WorkbenchLayoutMode.sidebarWidth(
       storedWidth: CGFloat(storedSidebarWidth),
       workspaceWidth: workspaceWidth,
@@ -124,7 +125,7 @@ struct WorkspaceShellSplitLayout: View {
     return isCompact ? 460 : 560
   }
 
-  private var sidebarMaximumWidth: CGFloat {
+  private func sidebarMaximumWidth(workspaceWidth: CGFloat) -> CGFloat {
     let width = WorkbenchLayoutMode.sidebarWidth(
       storedWidth: 380,
       workspaceWidth: workspaceWidth,
@@ -135,8 +136,10 @@ struct WorkspaceShellSplitLayout: View {
     return min(max(width, 260), 300)
   }
 
-  private var workspaceSidebarResizeHandle: some View {
-    Divider()
+  private func workspaceSidebarResizeHandle(workspaceWidth: CGFloat) -> some View {
+    let sidebarWidth = sidebarWidth(workspaceWidth: workspaceWidth)
+    let sidebarMaximumWidth = sidebarMaximumWidth(workspaceWidth: workspaceWidth)
+    return Divider()
       .overlay {
         Color.clear
           .frame(width: 10)

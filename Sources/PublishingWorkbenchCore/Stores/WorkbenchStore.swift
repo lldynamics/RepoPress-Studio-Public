@@ -59,6 +59,8 @@ public final class WorkbenchStore: ObservableObject {
     WorkbenchSiteMaintenanceFeatureFacade(store: self)
   public lazy var contentPresentation: WorkbenchContentPresentationFeatureFacade =
     WorkbenchContentPresentationFeatureFacade(store: self)
+  public lazy var rootPresentation: WorkbenchRootPresentationFeatureFacade =
+    WorkbenchRootPresentationFeatureFacade(store: self)
   public lazy var commandPresentation: WorkbenchCommandPresentationFeatureFacade =
     WorkbenchCommandPresentationFeatureFacade(store: self)
   public lazy var activityStatus: WorkbenchActivityStatusFacade = WorkbenchActivityStatusFacade(
