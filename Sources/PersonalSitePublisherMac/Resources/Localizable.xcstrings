@@ -3777,6 +3777,118 @@
         }
       }
     },
+    "Apple 本机翻译": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apple On-Device Translation"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apple 本机翻译"
+          }
+        }
+      }
+    },
+    "Apple 本机翻译不支持当前语言组合，请选择其他系统语言或切换到当前 AI 服务。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apple On-Device Translation does not support the current language pair. Choose another system language or switch to the current AI service."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apple 本机翻译不支持当前语言组合，请选择其他系统语言或切换到当前 AI 服务。"
+          }
+        }
+      }
+    },
+    "Apple 本机翻译不支持自定义目标语言，请选择系统预设语言或切换到当前 AI 服务。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apple On-Device Translation does not support custom target languages. Choose a system preset or switch to the current AI service."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apple 本机翻译不支持自定义目标语言，请选择系统预设语言或切换到当前 AI 服务。"
+          }
+        }
+      }
+    },
+    "Apple 本机翻译只会在目标语言包已安装时自动翻译；未安装时不会自动下载或弹出提示，标题和正文在本机设备端处理。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apple On-Device Translation runs automatically only when the target language pack is installed. It does not download or prompt for a download when the pack is missing; the article title and body are processed on this Mac."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apple 本机翻译只会在目标语言包已安装时自动翻译；未安装时不会自动下载或弹出提示，标题和正文在本机设备端处理。"
+          }
+        }
+      }
+    },
+    "Apple 本机翻译在 macOS 14 不可用，请选择当前 AI 服务。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apple On-Device Translation is unavailable on macOS 14. Choose the current AI service instead."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apple 本机翻译在 macOS 14 不可用，请选择当前 AI 服务。"
+          }
+        }
+      }
+    },
+    "Apple 本机翻译的目标语言包尚未安装；手动翻译可请求系统下载，自动翻译不会弹出下载提示。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The target language pack for Apple On-Device Translation is not installed. A manual translation can request the system download; automatic translation does not show a download prompt."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apple 本机翻译的目标语言包尚未安装；手动翻译可请求系统下载，自动翻译不会弹出下载提示。"
+          }
+        }
+      }
+    },
+    "Apple 本机翻译需要 macOS 15 或更高版本；当前请求不会自动改发给 AI。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apple On-Device Translation requires macOS 15 or later. The current request will not be rerouted to AI automatically."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apple 本机翻译需要 macOS 15 或更高版本；当前请求不会自动改发给 AI。"
+          }
+        }
+      }
+    },
     "Apply": {
       "localizations": {
         "en": {
@@ -5869,6 +5981,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "RSS 稍后阅读与高亮"
+          }
+        }
+      }
+    },
+    "RSS 翻译引擎": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "RSS Translation Engine"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "RSS 翻译引擎"
           }
         }
       }
@@ -35201,6 +35329,22 @@
         }
       }
     },
+    "当前 AI 服务": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Current AI Service"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "当前 AI 服务"
+          }
+        }
+      }
+    },
     "当前 AI 服务不支持图片输入": {
       "localizations": {
         "en": {
@@ -35213,6 +35357,38 @@
           "stringUnit": {
             "state": "translated",
             "value": "当前 AI 服务不支持图片输入"
+          }
+        }
+      }
+    },
+    "当前 AI 服务会发送文章标题和正文，并受 AI 远程总闸与目的地授权约束。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The current AI service sends the article title and body, subject to the AI remote gate and destination authorization."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "当前 AI 服务会发送文章标题和正文，并受 AI 远程总闸与目的地授权约束。"
+          }
+        }
+      }
+    },
+    "当前 AI 服务会发送文章标题和正文，并受发送权限约束。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The current AI service sends the article title and body, subject to sending permissions."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "当前 AI 服务会发送文章标题和正文，并受发送权限约束。"
           }
         }
       }
@@ -40481,6 +40657,22 @@
         }
       }
     },
+    "按当前翻译引擎处理标题和正文": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Process the title and body with the current translation engine."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "按当前翻译引擎处理标题和正文"
+          }
+        }
+      }
+    },
     "按文件": {
       "localizations": {
         "en": {
@@ -45297,6 +45489,22 @@
         }
       }
     },
+    "显示原文": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Show Original"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "显示原文"
+          }
+        }
+      }
+    },
     "显示更多": {
       "localizations": {
         "en": {
@@ -45357,6 +45565,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "显示检查器"
+          }
+        }
+      }
+    },
+    "显示译文": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Show Translation"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "显示译文"
           }
         }
       }
@@ -45629,6 +45853,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "暂无消息"
+          }
+        }
+      }
+    },
+    "暂时无法确认 Apple 本机翻译的语言支持状态，请稍后重试。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The language support status for Apple On-Device Translation could not be confirmed. Try again later."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "暂时无法确认 Apple 本机翻译的语言支持状态，请稍后重试。"
           }
         }
       }
@@ -49949,6 +50189,54 @@
           "stringUnit": {
             "state": "translated",
             "value": "标题命中"
+          }
+        }
+      }
+    },
+    "标题和正文仅在本机处理，不需要 AI 发送授权。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The article title and body are processed only on this Mac; AI sending permission is not required."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "标题和正文仅在本机处理，不需要 AI 发送授权。"
+          }
+        }
+      }
+    },
+    "标题和正文会按当前 AI 发送权限发送给 AI 服务。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The title and body are sent to the AI service according to the current AI sending permission."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "标题和正文会按当前 AI 发送权限发送给 AI 服务。"
+          }
+        }
+      }
+    },
+    "标题和正文在设备端处理，不会发送给 AI；首次使用某种语言时，Apple 可能要求下载语言包。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The article title and body are processed on this device and are not sent to AI. Apple may ask to download a language pack the first time you use a language."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "标题和正文在设备端处理，不会发送给 AI；首次使用某种语言时，Apple 可能要求下载语言包。"
           }
         }
       }
@@ -60001,6 +60289,38 @@
         }
       }
     },
+    "翻译引擎": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Translation Engine"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "翻译引擎"
+          }
+        }
+      }
+    },
+    "翻译标题和正文": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Translate Title and Body"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "翻译标题和正文"
+          }
+        }
+      }
+    },
     "聊天自定义系统指令": {
       "localizations": {
         "en": {
@@ -60369,18 +60689,18 @@
         }
       }
     },
-    "自动翻译会将当前文章标题和正文发送给当前 AI 服务。": {
+    "自动翻译会将当前文章标题和正文发送给当前 AI 服务，并受发送权限约束。": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Automatic translation sends the current article title and body to the current AI service."
+            "value": "Automatic translation sends the current article title and body to the current AI service, subject to sending permissions."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "自动翻译会将当前文章标题和正文发送给当前 AI 服务。"
+            "value": "自动翻译会将当前文章标题和正文发送给当前 AI 服务，并受发送权限约束。"
           }
         }
       }
@@ -60685,6 +61005,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "自定义语言…"
+          }
+        }
+      }
+    },
+    "自定义语言仅适用于当前 AI 服务；Apple 本机翻译请从预设语言中选择。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Custom languages are available only with the current AI service. Choose a preset language for Apple On-Device Translation."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自定义语言仅适用于当前 AI 服务；Apple 本机翻译请从预设语言中选择。"
           }
         }
       }
@@ -67201,38 +67537,6 @@
         }
       }
     },
-    "选择目标语言、翻译标题和正文，或管理 AI 发送权限": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Choose a target language, translate the title and body, or manage AI sending permissions"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "选择目标语言、翻译标题和正文，或管理 AI 发送权限"
-          }
-        }
-      }
-    },
-    "选择目标语言，并手动或自动翻译当前 RSS 文章": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Choose a target language and translate the current RSS article manually or automatically"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "选择目标语言，并手动或自动翻译当前 RSS 文章"
-          }
-        }
-      }
-    },
     "选择空文件夹": {
       "localizations": {
         "en": {
@@ -67293,6 +67597,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "选择站点文件夹"
+          }
+        }
+      }
+    },
+    "选择翻译引擎和目标语言，并手动或自动翻译当前 RSS 文章": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Choose a translation engine and target language, then translate the current RSS article manually or automatically."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "选择翻译引擎和目标语言，并手动或自动翻译当前 RSS 文章"
           }
         }
       }
@@ -68701,6 +69021,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "重新生成可能重复计费"
+          }
+        }
+      }
+    },
+    "重新翻译标题和正文": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Translate Title and Body Again"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "重新翻译标题和正文"
           }
         }
       }

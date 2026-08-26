@@ -22,6 +22,9 @@ struct RSSMaintenanceSettingsView: View {
   private var defaultRemoteImagesEnabled = RSSReaderUserPreferences.defaultRemoteImagesEnabled
   @AppStorage(RSSReaderUserPreferences.automaticTranslationEnabledKey)
   private var automaticTranslationEnabled = RSSReaderUserPreferences.defaultAutomaticTranslationEnabled
+  @AppStorage(RSSReaderUserPreferences.translationBackendKey)
+  private var translationBackendRawValue =
+    RSSReaderUserPreferences.defaultTranslationBackend.rawValue
   @AppStorage(RSSReaderUserPreferences.offlineCacheFullTextOnRefreshEnabledKey)
   private var offlineCacheFullTextOnRefreshEnabled =
     RSSReaderUserPreferences.defaultOfflineCacheFullTextOnRefreshEnabled
@@ -157,9 +160,29 @@ struct RSSMaintenanceSettingsView: View {
           accessibilityIdentifier: "rss-default-remote-images"
         )
 
+        Picker(
+          String(localized: "翻译引擎"),
+          selection: translationBackendBinding
+        ) {
+          Text(String(localized: "Apple 本机翻译"))
+            .tag(RSSArticleTranslationBackend.apple)
+            .disabled(!isAppleTranslationAvailable)
+          Text(String(localized: "当前 AI 服务"))
+            .tag(RSSArticleTranslationBackend.ai)
+        }
+        .accessibilityLabel(String(localized: "RSS 翻译引擎"))
+        .accessibilityValue(translationBackendName)
+        .accessibilityHint(translationBackendHint)
+        .accessibilityIdentifier("rss-translation-backend")
+
+        Text(translationBackendDescription)
+          .font(.workbenchSupporting)
+          .foregroundStyle(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
+
         settingsToggle(
           title: String(localized: "打开文章时自动翻译"),
-          detail: String(localized: "会把当前文章标题和正文发送给当前 AI 服务，并受 AI 远程总闸与目的地授权约束；文章内仍可手动关闭或重新翻译。"),
+          detail: automaticTranslationDescription,
           isOn: $automaticTranslationEnabled,
           accessibilityIdentifier: "rss-automatic-translation"
         )
@@ -269,6 +292,7 @@ struct RSSMaintenanceSettingsView: View {
     .padding(WorkbenchSpacing.content)
     .onAppear {
       normalizeBackgroundRefreshInterval()
+      normalizeTranslationBackend()
       synchronizeBackgroundRefresh()
       store.isOfflineCacheFullTextEnabled = offlineCacheFullTextOnRefreshEnabled
     }
@@ -363,6 +387,68 @@ struct RSSMaintenanceSettingsView: View {
     )
     guard normalized != backgroundRefreshIntervalMinutes else { return }
     backgroundRefreshIntervalMinutes = normalized
+  }
+
+  private var isAppleTranslationAvailable: Bool {
+    RSSReaderUserPreferences.isAppleTranslationAvailable
+  }
+
+  private var selectedTranslationBackend: RSSArticleTranslationBackend {
+    RSSReaderUserPreferences.translationBackend(defaults: .standard)
+  }
+
+  private var translationBackendBinding: Binding<RSSArticleTranslationBackend> {
+    Binding(
+      get: { selectedTranslationBackend },
+      set: { backend in
+        guard backend != .apple || isAppleTranslationAvailable else { return }
+        translationBackendRawValue = backend.rawValue
+      }
+    )
+  }
+
+  private var translationBackendName: String {
+    switch selectedTranslationBackend {
+    case .apple:
+      return String(localized: "Apple 本机翻译")
+    case .ai:
+      return String(localized: "当前 AI 服务")
+    }
+  }
+
+  private var translationBackendDescription: String {
+    switch selectedTranslationBackend {
+    case .apple where isAppleTranslationAvailable:
+      return String(localized: "标题和正文在设备端处理，不会发送给 AI；首次使用某种语言时，Apple 可能要求下载语言包。")
+    case .apple:
+      return String(localized: "Apple 本机翻译在 macOS 14 不可用，请选择当前 AI 服务。")
+    case .ai:
+      return String(localized: "当前 AI 服务会发送文章标题和正文，并受 AI 远程总闸与目的地授权约束。")
+    }
+  }
+
+  private var automaticTranslationDescription: String {
+    switch selectedTranslationBackend {
+    case .apple:
+      return String(localized: "Apple 本机翻译只会在目标语言包已安装时自动翻译；未安装时不会自动下载或弹出提示，标题和正文在本机设备端处理。")
+    case .ai:
+      return String(localized: "会把当前文章标题和正文发送给当前 AI 服务，并受 AI 远程总闸与目的地授权约束；文章内仍可手动关闭或重新翻译。")
+    }
+  }
+
+  private var translationBackendHint: String {
+    switch selectedTranslationBackend {
+    case .apple:
+      return String(localized: "标题和正文仅在本机处理，不需要 AI 发送授权。")
+    case .ai:
+      return String(localized: "标题和正文会按当前 AI 发送权限发送给 AI 服务。")
+    }
+  }
+
+  private func normalizeTranslationBackend() {
+    let normalized = RSSReaderUserPreferences.translationBackend(defaults: .standard)
+    guard translationBackendRawValue != normalized.rawValue else { return }
+    translationBackendRawValue = normalized.rawValue
   }
 
   private func synchronizeBackgroundRefresh() {

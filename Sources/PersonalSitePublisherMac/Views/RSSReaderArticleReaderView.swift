@@ -34,13 +34,15 @@ struct RSSArticleReader: View {
   let onInsertReference: (RSSArticle) -> Void
   let onCreateInspirationDraft: (RSSArticle) -> Void
   let translation: RSSArticleTranslationResult?
+  @Binding var translationBackend: RSSArticleTranslationBackend
   @Binding var translationTargetCode: String
   @Binding var translationCustomLanguage: String
   @Binding var automaticTranslation: Bool
+  let isAppleTranslationAvailable: Bool
   let translationIsRunning: Bool
   let translationError: String?
   let dataSharingConsent: AIDataSharingConsentPresentation
-  let onTranslate: () -> Void
+  let onTranslate: (RSSArticleTranslationBackend) -> Void
   let onClearTranslation: () -> Void
   let onOpenAISettings: () -> Void
   let workflowIsBusy: Bool
@@ -196,7 +198,7 @@ struct RSSArticleReader: View {
                 )
               },
               onTranslate: { _ in
-                onTranslate()
+                onTranslate(translationBackend)
               },
               onHighlight: { _ in
                 onBeginHighlight()
@@ -770,9 +772,11 @@ struct RSSArticleReader: View {
   private var translationControls: some View {
     RSSArticleTranslationControls(
       translation: translation,
+      translationBackend: $translationBackend,
       targetCode: $translationTargetCode,
       customLanguage: $translationCustomLanguage,
       automaticTranslation: $automaticTranslation,
+      isAppleTranslationAvailable: isAppleTranslationAvailable,
       isTranslating: translationIsRunning,
       isShowingTranslation: showsTranslatedArticle,
       onTranslate: onTranslate,
@@ -1186,9 +1190,11 @@ struct RSSArticleReader: View {
           onInsertReference: { _ in },
           onCreateInspirationDraft: { _ in },
           translation: nil,
+          translationBackend: .constant(.apple),
           translationTargetCode: .constant("zh-Hans"),
           translationCustomLanguage: .constant(""),
           automaticTranslation: .constant(false),
+          isAppleTranslationAvailable: true,
           translationIsRunning: false,
           translationError: nil,
           dataSharingConsent: AIDataSharingConsentPresentation(
@@ -1197,7 +1203,7 @@ struct RSSArticleReader: View {
             destinationState: .local,
             isGranted: true
           ),
-          onTranslate: {},
+          onTranslate: { _ in },
           onClearTranslation: {},
           onOpenAISettings: {},
           workflowIsBusy: false,

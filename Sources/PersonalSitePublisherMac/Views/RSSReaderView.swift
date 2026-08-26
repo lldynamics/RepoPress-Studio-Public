@@ -25,6 +25,8 @@ struct RSSReaderView: View {
   @State var translationIsRunning = false
   @State var translationError: String?
   @State var translationRequestID = UUID()
+  @State var appleTranslationRequest: RSSAppleTranslationSessionRequest?
+  @State var translationRouteTask: Task<Void, Never>?
   @State private var readingProgressByArticle = RSSReadingProgressStore.load()
   @State private var readingProgressOrder = RSSReadingProgressStore.loadOrder()
   @State private var readingProgressSaveTask: Task<Void, Never>?
@@ -36,6 +38,8 @@ struct RSSReaderView: View {
   @AppStorage("rssReaderTranslationTargetCode") var translationTargetCode =
     RSSArticleTranslationTarget.simplifiedChinese.languageCode
   @AppStorage("rssReaderTranslationCustomLanguage") var translationCustomLanguage = ""
+  @AppStorage(RSSReaderUserPreferences.translationBackendKey)
+  var translationBackendRawValue = RSSReaderUserPreferences.defaultTranslationBackend.rawValue
   @AppStorage(RSSReaderUserPreferences.automaticTranslationEnabledKey)
   var automaticTranslationEnabled = RSSReaderUserPreferences.defaultAutomaticTranslationEnabled
   @AppStorage(RSSReaderUserPreferences.automaticMarkReadAtEndEnabledKey)
@@ -51,6 +55,23 @@ struct RSSReaderView: View {
     RSSReaderUserPreferences.defaultAutomaticFullTextExtractionEnabled
   @AppStorage("settingsRequestedTabID") var requestedSettingsTabID = ""
 
+  var translationBackend: RSSArticleTranslationBackend {
+    guard let backend = RSSArticleTranslationBackend(rawValue: translationBackendRawValue) else {
+      return RSSReaderUserPreferences.defaultTranslationBackend
+    }
+    if backend == .apple, !RSSReaderUserPreferences.isAppleTranslationAvailable {
+      return .ai
+    }
+    return backend
+  }
+
+  var translationBackendBinding: Binding<RSSArticleTranslationBackend> {
+    Binding(
+      get: { translationBackend },
+      set: { translationBackendRawValue = $0.rawValue }
+    )
+  }
+
   var body: some View {
     let loadRequest = selectedArticleLoadRequest
     ZStack(alignment: .bottomLeading) {
@@ -63,6 +84,13 @@ struct RSSReaderView: View {
     }
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("rss-reader-workspace")
+    .background {
+      RSSAppleTranslationSessionHost(
+        request: appleTranslationRequest,
+        onCompletion: applyAppleTranslationResult,
+        onFailure: handleAppleTranslationFailure
+      )
+    }
     .onChange(of: readerCommandActions?.sceneCommandPresentation, initial: true) { _, _ in
       sceneCommandRouter.registerRSSReader(
         readerCommandActions,
@@ -77,6 +105,7 @@ struct RSSReaderView: View {
     .onDisappear {
       sceneCommandRouter.unregisterRSSReader(owner: sceneCommandOwnerID)
       persistReadingProgressAfterDisappear()
+      invalidateTranslationRequest()
     }
     .onChange(of: offlineCacheFullTextOnRefreshEnabled) { _, isEnabled in
       store.isOfflineCacheFullTextEnabled = isEnabled
@@ -102,21 +131,27 @@ struct RSSReaderView: View {
       }
       selectedArticleLoadError = nil
       selectedArticleIsLoading = newArticleID != nil
-      translationRequestID = UUID()
-      translationIsRunning = false
-      translationError = nil
+      invalidateTranslationRequest()
     }
     .onChange(of: translationTargetCode) { _, _ in
-      translationRequestID = UUID()
-      translationIsRunning = false
-      translationError = nil
+      invalidateTranslationRequest()
       if automaticTranslationEnabled, let article = selectedArticle {
-        requestTranslation(for: article, force: false)
+        requestTranslation(for: article, backend: translationBackend, force: false)
+      }
+    }
+    .onChange(of: translationBackendRawValue) { _, _ in
+      invalidateTranslationRequest()
+      if automaticTranslationEnabled, let article = selectedArticle {
+        requestTranslation(for: article, backend: translationBackend, force: false)
       }
     }
     .onChange(of: automaticTranslationEnabled) { _, isEnabled in
-      guard isEnabled, let article = selectedArticle else { return }
-      requestTranslation(for: article, force: false)
+      guard isEnabled else {
+        invalidateTranslationRequest()
+        return
+      }
+      guard let article = selectedArticle else { return }
+      requestTranslation(for: article, backend: translationBackend, force: false)
     }
     .task(id: loadRequest) {
       await loadSelectedArticle(loadRequest)
@@ -460,15 +495,17 @@ struct RSSReaderView: View {
       onInsertReference: insertReference,
       onCreateInspirationDraft: createInspirationDraft,
       translation: selectedTranslation,
+      translationBackend: translationBackendBinding,
       translationTargetCode: $translationTargetCode,
       translationCustomLanguage: $translationCustomLanguage,
       automaticTranslation: $automaticTranslationEnabled,
+      isAppleTranslationAvailable: RSSReaderUserPreferences.isAppleTranslationAvailable,
       translationIsRunning: translationIsRunning,
       translationError: translationError,
       dataSharingConsent: workbenchStore.ai.dataSharingConsent,
-      onTranslate: {
+      onTranslate: { backend in
         guard let actionArticle else { return }
-        requestTranslation(for: actionArticle, force: true)
+        requestTranslation(for: actionArticle, backend: backend, force: true)
       },
       onClearTranslation: clearSelectedTranslation,
       onOpenAISettings: openAISettings,

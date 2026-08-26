@@ -31,7 +31,13 @@ extension RSSReaderView {
 
   var selectedTranslation: RSSArticleTranslationResult? {
     guard let article = selectedArticle else { return nil }
-    return translationCache[translationCacheKey(for: article, target: selectedTranslationTarget)]
+    return translationCache[
+      translationCacheKey(
+        for: article,
+        target: selectedTranslationTarget,
+        backend: translationBackend
+      )
+    ]
   }
 
   var selectedArticleLoadRequest: RSSArticleLoadRequest {
@@ -45,9 +51,7 @@ extension RSSReaderView {
   func loadSelectedArticle(_ request: RSSArticleLoadRequest) async {
     guard !Task.isCancelled, request == selectedArticleLoadRequest else { return }
     selectedArticleLoadError = nil
-    translationRequestID = UUID()
-    translationIsRunning = false
-    translationError = nil
+    invalidateTranslationRequest()
     guard let articleID = request.articleID else {
       selectedArticlePayload = nil
       selectedArticleIsLoading = false
@@ -85,7 +89,7 @@ extension RSSReaderView {
         }
       }
       if automaticTranslationEnabled {
-        requestTranslation(for: article, force: false)
+        requestTranslation(for: article, backend: translationBackend, force: false)
       }
     } catch is CancellationError {
       return
@@ -98,20 +102,38 @@ extension RSSReaderView {
 
   func translationCacheKey(
     for article: RSSArticle,
-    target: RSSArticleTranslationTarget
+    target: RSSArticleTranslationTarget,
+    backend: RSSArticleTranslationBackend
   ) -> RSSArticleTranslationCacheKey {
     RSSArticleTranslationCacheKey(
       articleID: article.id,
       fetchedAt: article.fetchedAt,
-      targetCode: target.languageCode
+      targetCode: target.languageCode,
+      backend: backend
     )
   }
 
-  func requestTranslation(for article: RSSArticle, force: Bool) {
+  func invalidateTranslationRequest() {
+    translationRequestID = UUID()
+    translationRouteTask?.cancel()
+    translationRouteTask = nil
+    appleTranslationRequest = nil
+    translationIsRunning = false
+    translationError = nil
+  }
+
+  func requestTranslation(
+    for article: RSSArticle,
+    backend: RSSArticleTranslationBackend,
+    force: Bool
+  ) {
     let target = selectedTranslationTarget
-    let cacheKey = translationCacheKey(for: article, target: target)
+    let cacheKey = translationCacheKey(for: article, target: target, backend: backend)
     let requestID = UUID()
     translationRequestID = requestID
+    translationRouteTask?.cancel()
+    translationRouteTask = nil
+    appleTranslationRequest = nil
     translationError = nil
 
     if !force, translationCache[cacheKey] != nil {
@@ -120,39 +142,208 @@ extension RSSReaderView {
     }
 
     translationIsRunning = true
-    Task { @MainActor in
-      do {
-        let result = try await workbenchStore.ai.translateRSSArticle(article, target: target)
-        guard requestID == translationRequestID,
-          selectedArticle?.id == article.id
-        else { return }
-        var updatedCache = translationCache
-        updatedCache[cacheKey] = result
-        if updatedCache.count > 32, let oldestKey = updatedCache.keys.first {
-          updatedCache.removeValue(forKey: oldestKey)
+    switch backend {
+    case .ai:
+      translationRouteTask = Task { @MainActor in
+        do {
+          let result = try await workbenchStore.ai.translateRSSArticle(article, target: target)
+          guard isCurrentTranslationRequest(
+            requestID: requestID,
+            article: article,
+            backend: backend
+          )
+          else { return }
+          storeTranslationResult(result, forKey: cacheKey)
+          translationRouteTask = nil
+        } catch is CancellationError {
+          return
+        } catch {
+          guard isCurrentTranslationRequest(
+            requestID: requestID,
+            article: article,
+            backend: backend
+          )
+          else { return }
+          translationError = error.localizedDescription
         }
-        translationCache = updatedCache
-        translationError = nil
-      } catch is CancellationError {
-        return
-      } catch {
-        guard requestID == translationRequestID,
-          selectedArticle?.id == article.id
-        else { return }
-        translationError = error.localizedDescription
+        guard requestID == translationRequestID else { return }
+        translationRouteTask = nil
+        translationIsRunning = false
       }
-      guard requestID == translationRequestID else { return }
+    case .apple:
+      requestAppleTranslation(
+        for: article,
+        target: target,
+        cacheKey: cacheKey,
+        requestID: requestID,
+        force: force
+      )
+    }
+  }
+
+  private func requestAppleTranslation(
+    for article: RSSArticle,
+    target: RSSArticleTranslationTarget,
+    cacheKey: RSSArticleTranslationCacheKey,
+    requestID: UUID,
+    force: Bool
+  ) {
+    guard RSSReaderUserPreferences.isAppleTranslationAvailable else {
+      translationError = RSSArticleTranslationRoutingIssue.requiresMacOS15.message
+      translationIsRunning = false
+      return
+    }
+    guard !target.languageCode.hasPrefix("custom:") else {
+      translationError = RSSArticleTranslationRoutingIssue.customTarget.message
+      translationIsRunning = false
+      return
+    }
+
+    do {
+      let plan = try RSSArticleSystemTranslationPlanningService.makePlan(
+        article: article,
+        target: target
+      )
+      let rawSourceSample = plan.requests
+        .map(\.sourceText)
+        .joined(separator: "\n")
+      guard !rawSourceSample.isEmpty else {
+        throw RSSArticleTranslationError.emptyArticle
+      }
+      let sourceSample: String
+      if rawSourceSample.count >= 20 {
+        sourceSample = String(rawSourceSample.prefix(4_000))
+      } else {
+        // LanguageAvailability's text-based check is a detector and very
+        // short title/body samples can otherwise throw before routing. Repeat
+        // only the existing source sample to reach the detector's useful
+        // minimum; the actual TranslationSession still receives the plan's
+        // original requests unchanged.
+        let repetitions = (20 + rawSourceSample.count - 1) / rawSourceSample.count
+        sourceSample = String(
+          String(repeating: rawSourceSample, count: repetitions).prefix(20)
+        )
+      }
+
+      translationRouteTask = Task { @MainActor in
+        do {
+          let availability = try await RSSAppleTranslationAvailability.status(
+            for: sourceSample,
+            target: target
+          )
+          guard isCurrentTranslationRequest(
+            requestID: requestID,
+            article: article,
+            backend: .apple
+          )
+          else { return }
+          switch RSSArticleTranslationRoutingPolicy.decision(
+            backend: .apple,
+            force: force,
+            target: target,
+            isAppleTranslationAvailable: true,
+            availability: availability
+          ) {
+          case .ai:
+            // The policy intentionally never falls back from Apple to AI.
+            translationError = RSSArticleTranslationRoutingIssue.availabilityUnknown.message
+            translationRouteTask = nil
+            translationIsRunning = false
+          case .blocked(let issue):
+            translationError = issue.message
+            translationRouteTask = nil
+            translationIsRunning = false
+          case .apple:
+            appleTranslationRequest = RSSAppleTranslationSessionRequest(
+              id: requestID,
+              articleID: article.id,
+              target: target,
+              plan: plan
+            )
+            translationRouteTask = nil
+          }
+        } catch is CancellationError {
+          return
+        } catch {
+          guard isCurrentTranslationRequest(
+            requestID: requestID,
+            article: article,
+            backend: .apple
+          )
+          else { return }
+          translationError = error.localizedDescription
+          translationRouteTask = nil
+          translationIsRunning = false
+        }
+      }
+    } catch {
+      translationError = error.localizedDescription
       translationIsRunning = false
     }
   }
 
+  func applyAppleTranslationResult(
+    requestID: UUID,
+    result: RSSArticleTranslationResult
+  ) {
+    guard let article = selectedArticle,
+      requestID == translationRequestID,
+      article.id == result.articleID,
+      translationBackend == .apple
+    else { return }
+    let cacheKey = translationCacheKey(
+      for: article,
+      target: result.target,
+      backend: .apple
+    )
+    storeTranslationResult(result, forKey: cacheKey)
+    appleTranslationRequest = nil
+    translationRouteTask = nil
+    translationIsRunning = false
+  }
+
+  func handleAppleTranslationFailure(requestID: UUID, message: String) {
+    guard requestID == translationRequestID else { return }
+    appleTranslationRequest = nil
+    translationRouteTask = nil
+    translationIsRunning = false
+    translationError = message
+  }
+
+  private func isCurrentTranslationRequest(
+    requestID: UUID,
+    article: RSSArticle,
+    backend: RSSArticleTranslationBackend
+  ) -> Bool {
+    requestID == translationRequestID
+      && selectedArticle?.id == article.id
+      && selectedArticle?.fetchedAt == article.fetchedAt
+      && translationBackend == backend
+  }
+
+  private func storeTranslationResult(
+    _ result: RSSArticleTranslationResult,
+    forKey cacheKey: RSSArticleTranslationCacheKey
+  ) {
+    var updatedCache = translationCache
+    updatedCache[cacheKey] = result
+    if updatedCache.count > 32, let oldestKey = updatedCache.keys.first {
+      updatedCache.removeValue(forKey: oldestKey)
+    }
+    translationCache = updatedCache
+    translationError = nil
+    translationIsRunning = false
+  }
+
   func clearSelectedTranslation() {
     guard let article = selectedArticle else { return }
-    translationRequestID = UUID()
-    translationIsRunning = false
-    translationError = nil
+    invalidateTranslationRequest()
     translationCache.removeValue(
-      forKey: translationCacheKey(for: article, target: selectedTranslationTarget)
+      forKey: translationCacheKey(
+        for: article,
+        target: selectedTranslationTarget,
+        backend: translationBackend
+      )
     )
   }
 

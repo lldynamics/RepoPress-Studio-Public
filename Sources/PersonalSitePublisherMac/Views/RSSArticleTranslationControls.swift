@@ -3,12 +3,14 @@ import SwiftUI
 
 struct RSSArticleTranslationControls: View {
   let translation: RSSArticleTranslationResult?
+  @Binding var translationBackend: RSSArticleTranslationBackend
   @Binding var targetCode: String
   @Binding var customLanguage: String
   @Binding var automaticTranslation: Bool
+  let isAppleTranslationAvailable: Bool
   let isTranslating: Bool
   let isShowingTranslation: Bool
-  let onTranslate: () -> Void
+  let onTranslate: (RSSArticleTranslationBackend) -> Void
   let onToggleDisplay: () -> Void
   let onClear: () -> Void
   let dataSharingConsent: AIDataSharingConsentPresentation
@@ -18,6 +20,26 @@ struct RSSArticleTranslationControls: View {
 
   var body: some View {
     Menu {
+      Section("翻译引擎") {
+        Picker("翻译引擎", selection: translationBackendSelection) {
+          Text("Apple 本机翻译")
+            .tag(RSSArticleTranslationBackend.apple)
+            .disabled(!isAppleTranslationAvailable)
+          Text("当前 AI 服务")
+            .tag(RSSArticleTranslationBackend.ai)
+        }
+        .accessibilityLabel("翻译引擎")
+        .accessibilityValue(translationBackendName)
+        .accessibilityHint(translationBackendHint)
+
+        Text(translationBackendDescription)
+          .font(.caption)
+          .foregroundStyle(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
+      }
+
+      Divider()
+
       Section("目标语言") {
         ForEach(RSSArticleTranslationTarget.presets) { target in
           Button {
@@ -30,63 +52,81 @@ struct RSSArticleTranslationControls: View {
             )
           }
         }
-        if targetCode.hasPrefix("custom:"), !customLanguage.isEmpty {
-          Button {
-            isCustomLanguagePresented = true
-          } label: {
-            Label(customLanguage, systemImage: "checkmark")
+        if translationBackend == .ai {
+          if targetCode.hasPrefix("custom:"), !customLanguage.isEmpty {
+            Button {
+              isCustomLanguagePresented = true
+            } label: {
+              Label(customLanguage, systemImage: "checkmark")
+            }
           }
-        }
-        Button("自定义语言…", systemImage: "pencil") {
-          isCustomLanguagePresented = true
+          Button("自定义语言…", systemImage: "pencil") {
+            isCustomLanguagePresented = true
+          }
+        } else {
+          Text("自定义语言仅适用于当前 AI 服务；Apple 本机翻译请从预设语言中选择。")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
         }
       }
 
       Divider()
 
       Toggle("打开文章时自动翻译", isOn: $automaticTranslation)
-      Text("自动翻译会将当前文章标题和正文发送给当前 AI 服务。")
+        .accessibilityValue(automaticTranslation ? "开启" : "关闭")
+        .accessibilityHint(automaticTranslationDescription)
+      Text(automaticTranslationDescription)
         .font(.caption)
         .foregroundStyle(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
 
       Divider()
 
       Button {
-        onTranslate()
+        onTranslate(translationBackend)
       } label: {
         Label(
-          isTranslating
-            ? "正在翻译…"
-            : (translation == nil ? "翻译标题和正文" : "重新翻译标题和正文"),
+          translationActionTitle,
           systemImage: isTranslating ? "hourglass" : "character.book.closed"
         )
       }
       .disabled(isTranslating)
       .keyboardShortcut("t", modifiers: [.command, .option])
+      .accessibilityValue(translationBackendName)
+      .accessibilityHint("按当前翻译引擎处理标题和正文")
 
       if translation != nil {
         Button(
-          isShowingTranslation ? "显示原文" : "显示译文",
+          displayActionTitle,
           systemImage: isShowingTranslation ? "doc.plaintext" : "character.book.closed",
           action: onToggleDisplay
         )
         Button("清除译文", systemImage: "xmark.circle", action: onClear)
       }
 
-      Divider()
-      Section("发送权限") {
-        Text(consentSummary)
-          .font(.caption)
-          .foregroundStyle(.secondary)
-        Button("管理 AI 发送权限", systemImage: "gearshape", action: onOpenAISettings)
+      if translationBackend == .ai {
+        Divider()
+        Section("发送权限") {
+          Text(consentSummary)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+          Button("管理 AI 发送权限", systemImage: "gearshape", action: onOpenAISettings)
+        }
       }
     } label: {
       Label("翻译", systemImage: "character.book.closed")
     }
     .menuStyle(.button)
-    .help("选择目标语言，并手动或自动翻译当前 RSS 文章")
+    .help("选择翻译引擎和目标语言，并手动或自动翻译当前 RSS 文章")
     .accessibilityLabel("翻译 RSS 文章")
-    .accessibilityHint("选择目标语言、翻译标题和正文，或管理 AI 发送权限")
+    .accessibilityValue(translationBackendName)
+    .accessibilityHint(translationBackendHint)
+    .onAppear(perform: normalizeAppleTargetIfNeeded)
+    .onChange(of: translationBackend) { _, _ in
+      normalizeAppleTargetIfNeeded()
+    }
     .sheet(isPresented: $isCustomLanguagePresented) {
       RSSArticleTranslationLanguageSheet(
         initialLanguage: customLanguage,
@@ -99,6 +139,79 @@ struct RSSArticleTranslationControls: View {
         }
       )
     }
+  }
+
+  private var translationBackendSelection: Binding<RSSArticleTranslationBackend> {
+    Binding(
+      get: { translationBackend },
+      set: { backend in
+        guard backend != .apple || isAppleTranslationAvailable else { return }
+        translationBackend = backend
+        if backend == .apple, targetCode.hasPrefix("custom:") {
+          targetCode = RSSArticleTranslationTarget.simplifiedChinese.languageCode
+          customLanguage = ""
+        }
+      }
+    )
+  }
+
+  private func normalizeAppleTargetIfNeeded() {
+    guard translationBackend == .apple, targetCode.hasPrefix("custom:") else { return }
+    targetCode = RSSArticleTranslationTarget.simplifiedChinese.languageCode
+    customLanguage = ""
+  }
+
+  private var translationBackendName: String {
+    switch translationBackend {
+    case .apple:
+      return String(localized: "Apple 本机翻译")
+    case .ai:
+      return String(localized: "当前 AI 服务")
+    }
+  }
+
+  private var translationBackendDescription: String {
+    switch translationBackend {
+    case .apple where isAppleTranslationAvailable:
+      return String(localized: "标题和正文在设备端处理，不会发送给 AI；首次使用某种语言时，Apple 可能要求下载语言包。")
+    case .apple:
+      return String(localized: "Apple 本机翻译在 macOS 14 不可用，请选择当前 AI 服务。")
+    case .ai:
+      return String(localized: "当前 AI 服务会发送文章标题和正文，并受发送权限约束。")
+    }
+  }
+
+  private var automaticTranslationDescription: String {
+    switch translationBackend {
+    case .apple:
+      return String(localized: "Apple 本机翻译只会在目标语言包已安装时自动翻译；未安装时不会自动下载或弹出提示，标题和正文在本机设备端处理。")
+    case .ai:
+      return String(localized: "自动翻译会将当前文章标题和正文发送给当前 AI 服务，并受发送权限约束。")
+    }
+  }
+
+  private var translationBackendHint: String {
+    switch translationBackend {
+    case .apple:
+      return String(localized: "标题和正文仅在本机处理，不需要 AI 发送授权。")
+    case .ai:
+      return String(localized: "标题和正文会按当前 AI 发送权限发送给 AI 服务。")
+    }
+  }
+
+  private var translationActionTitle: String {
+    if isTranslating {
+      return String(localized: "正在翻译…")
+    }
+    return translation == nil
+      ? String(localized: "翻译标题和正文")
+      : String(localized: "重新翻译标题和正文")
+  }
+
+  private var displayActionTitle: String {
+    isShowingTranslation
+      ? String(localized: "显示原文")
+      : String(localized: "显示译文")
   }
 
   private var consentSummary: String {

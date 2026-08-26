@@ -35,6 +35,7 @@ struct RSSArticleTranslationCacheKey: Hashable {
   let articleID: String
   let fetchedAt: Date
   let targetCode: String
+  let backend: RSSArticleTranslationBackend
 }
 
 struct RSSReaderFilterChangeToken: Equatable {

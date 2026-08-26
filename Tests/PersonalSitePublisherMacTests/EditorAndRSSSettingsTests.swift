@@ -1,4 +1,5 @@
 import XCTest
+import PublishingWorkbenchCore
 
 @testable import PersonalSitePublisherMac
 
@@ -33,5 +34,33 @@ final class EditorAndRSSSettingsTests: XCTestCase {
     )
     XCTAssertFalse(RSSReaderUserPreferences.defaultAutomaticTranslationEnabled)
     XCTAssertFalse(RSSReaderUserPreferences.defaultRemoteImagesEnabled)
+  }
+
+  func testRSSReaderTranslationBackendPreferenceUsesStableRawValues() {
+    XCTAssertEqual(
+      RSSReaderUserPreferences.translationBackendKey,
+      "rssReaderTranslationBackend"
+    )
+    XCTAssertEqual(RSSArticleTranslationBackend.apple.rawValue, "apple")
+    XCTAssertEqual(RSSArticleTranslationBackend.ai.rawValue, "ai")
+
+    let expectedDefault: RSSArticleTranslationBackend =
+      if #available(macOS 15.0, *) { .apple } else { .ai }
+    XCTAssertEqual(RSSReaderUserPreferences.defaultTranslationBackend, expectedDefault)
+
+    let suiteName = "RSSReaderUserPreferencesTests-\(UUID().uuidString)"
+    let defaults = UserDefaults(suiteName: suiteName)!
+    defaults.removePersistentDomain(forName: suiteName)
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+
+    XCTAssertEqual(
+      RSSReaderUserPreferences.translationBackend(defaults: defaults),
+      expectedDefault
+    )
+    defaults.set(RSSArticleTranslationBackend.ai.rawValue, forKey: RSSReaderUserPreferences.translationBackendKey)
+    XCTAssertEqual(
+      RSSReaderUserPreferences.translationBackend(defaults: defaults),
+      .ai
+    )
   }
 }
