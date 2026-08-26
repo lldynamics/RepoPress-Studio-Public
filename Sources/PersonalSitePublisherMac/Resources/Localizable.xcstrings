@@ -67664,6 +67664,486 @@
           }
         }
       }
+    },
+    "Codex 运行组件已兼容": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Codex runtime compatible"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Codex 运行组件已兼容"
+          }
+        }
+      }
+    },
+    "Codex 运行组件已兼容。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The Codex runtime is compatible."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Codex 运行组件已兼容。"
+          }
+        }
+      }
+    },
+    "Codex 运行组件未返回版本号，请更新后重新检测。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The Codex runtime did not return a version. Update Codex and check again."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Codex 运行组件未返回版本号，请更新后重新检测。"
+          }
+        }
+      }
+    },
+    "Codex 运行组件未返回版本号。请更新 Codex 后点“重新检测”。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The Codex runtime did not return a version. Update Codex, then select Check Again."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Codex 运行组件未返回版本号。请更新 Codex 后点“重新检测”。"
+          }
+        }
+      }
+    },
+    "Codex 运行组件版本过低，需要 0.142.0 或更高。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The Codex runtime version is too old. Version 0.142.0 or later is required."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Codex 运行组件版本过低，需要 0.142.0 或更高。"
+          }
+        }
+      }
+    },
+    "内容发送授权": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Content sharing authorization"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "内容发送授权"
+          }
+        }
+      }
+    },
+    "内容发送已授权": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Content sharing is authorized"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "内容发送已授权"
+          }
+        }
+      }
+    },
+    "请先完成账户登录和内容授权": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sign in and authorize content sharing first"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请先完成账户登录和内容授权"
+          }
+        }
+      }
+    },
+    "请先完成运行组件检查": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Complete the runtime check first"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请先完成运行组件检查"
+          }
+        }
+      }
+    },
+    "请先登录 ChatGPT": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sign in to ChatGPT first"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请先登录 ChatGPT"
+          }
+        }
+      }
+    },
+    "运行组件兼容": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Runtime compatible"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "运行组件兼容"
+          }
+        }
+      }
+    },
+    "运行组件兼容性": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Runtime compatibility"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "运行组件兼容性"
+          }
+        }
+      }
+    },
+    "运行组件未返回版本号": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The runtime did not return a version"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "运行组件未返回版本号"
+          }
+        }
+      }
+    },
+    "运行组件版本过低": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Runtime version is too old"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "运行组件版本过低"
+          }
+        }
+      }
+    },
+    "无法解析 Codex 运行组件版本，请更新后重新检测。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The Codex runtime version could not be parsed. Update Codex and check again."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法解析 Codex 运行组件版本，请更新后重新检测。"
+          }
+        }
+      }
+    },
+    "无法解析运行组件版本": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The runtime version could not be parsed"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法解析运行组件版本"
+          }
+        }
+      }
+    },
+    "无法确认 Codex 运行组件版本。请更新 Codex 后点“重新检测”。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The Codex runtime version could not be confirmed. Update Codex, then select Check Again."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法确认 Codex 运行组件版本。请更新 Codex 后点“重新检测”。"
+          }
+        }
+      }
+    },
+    "正在检测 Codex 运行组件兼容性…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Checking Codex runtime compatibility…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在检测 Codex 运行组件兼容性…"
+          }
+        }
+      }
+    },
+    "正在读取 ChatGPT 账户…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reading the ChatGPT account…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在读取 ChatGPT 账户…"
+          }
+        }
+      }
+    },
+    "正在测试 ChatGPT 连接…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Testing the ChatGPT connection…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在测试 ChatGPT 连接…"
+          }
+        }
+      }
+    },
+    "连接测试": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connection test"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "连接测试"
+          }
+        }
+      }
+    },
+    "连接测试尚未运行": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connection test has not run"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "连接测试尚未运行"
+          }
+        }
+      }
+    },
+    "连接测试失败，请重试": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connection test failed; try again"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "连接测试失败，请重试"
+          }
+        }
+      }
+    },
+    "连接测试通过": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connection test passed"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "连接测试通过"
+          }
+        }
+      }
+    },
+    "登录后同意内容发送": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Allow content sharing after signing in"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "登录后同意内容发送"
+          }
+        }
+      }
+    },
+    "通过本机 Codex 运行组件启动 ChatGPT 登录。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Start ChatGPT sign-in through the Codex runtime on this Mac."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "通过本机 Codex 运行组件启动 ChatGPT 登录。"
+          }
+        }
+      }
+    },
+    "通过本机 Codex 运行组件启动 ChatGPT 登录；令牌由 Codex 运行组件管理。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Start ChatGPT sign-in through the Codex runtime on this Mac; tokens are managed by the Codex runtime."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "通过本机 Codex 运行组件启动 ChatGPT 登录；令牌由 Codex 运行组件管理。"
+          }
+        }
+      }
+    },
+    "AI 连接未更改，请检查凭据和地址后重试。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The AI connection was not changed. Check the credentials and endpoint, then try again."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "AI 连接未更改，请检查凭据和地址后重试。"
+          }
+        }
+      }
+    },
+    "请在“模型与连接”中确认 ChatGPT 账户、内容授权和连接测试。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Confirm the ChatGPT account, content authorization, and connection test under Model and Connection."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请在“模型与连接”中确认 ChatGPT 账户、内容授权和连接测试。"
+          }
+        }
+      }
+    },
+    "当前 Codex 运行组件版本过低；请更新到 0.142.0 或更高版本后重新检测。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The current Codex runtime is too old. Update to version 0.142.0 or later, then check again."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "当前 Codex 运行组件版本过低；请更新到 0.142.0 或更高版本后重新检测。"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

@@ -7,25 +7,27 @@ struct AIAdvancedSettingsSection: View {
   let usesCodexAppServer: Bool
 
   var body: some View {
-    Section("网络代理 (Network Proxy)") {
-      Toggle("配置 AI 独立网络代理", isOn: proxyEnabledBinding)
-        .accessibilityIdentifier("settings-ai-proxy-toggle")
+    if !usesCodexAppServer {
+      Section("网络代理 (Network Proxy)") {
+        Toggle("配置 AI 独立网络代理", isOn: proxyEnabledBinding)
+          .accessibilityIdentifier("settings-ai-proxy-toggle")
 
-      if settings.proxyURL != nil {
-        VStack(alignment: .leading, spacing: 4) {
-          TextField(
-            "代理地址 (如 http://127.0.0.1:7890 或 socks5://127.0.0.1:7890)",
-            text: proxyURLBinding
-          )
-          .font(.body.monospaced())
-          .accessibilityLabel(
-            String(localized: "代理地址 (如 http://127.0.0.1:7890 或 socks5://127.0.0.1:7890)")
-          )
-          .accessibilityIdentifier("settings-ai-proxy-url-input")
+        if settings.proxyURL != nil {
+          VStack(alignment: .leading, spacing: 4) {
+            TextField(
+              "代理地址 (如 http://127.0.0.1:7890 或 socks5://127.0.0.1:7890)",
+              text: proxyURLBinding
+            )
+            .font(.body.monospaced())
+            .accessibilityLabel(
+              String(localized: "代理地址 (如 http://127.0.0.1:7890 或 socks5://127.0.0.1:7890)")
+            )
+            .accessibilityIdentifier("settings-ai-proxy-url-input")
 
-          Text("仅对当前 AI 网络请求生效，用于解决海外模型服务网络连通问题。")
-            .font(.caption)
-            .foregroundStyle(.secondary)
+            Text("仅对当前 AI 网络请求生效，用于解决海外模型服务网络连通问题。")
+              .font(.caption)
+              .foregroundStyle(.secondary)
+          }
         }
       }
     }
@@ -90,40 +92,43 @@ struct AIAdvancedSettingsSection: View {
         .accessibilityHint(reasoningAccessibilityHint)
       }
 
-      Toggle("自定义 Temperature (温度)", isOn: temperatureEnabledBinding)
-      if settings.temperature != nil {
-        VStack(alignment: .leading, spacing: 4) {
-          LabeledContent("Temperature") {
-            HStack(spacing: 10) {
-              Slider(value: temperatureBinding, in: 0...2, step: 0.1)
-                .frame(minWidth: 180)
-              Text(
-                settings.normalizedTemperature ?? 0, format: .number.precision(.fractionLength(1))
-              )
-              .font(.callout.monospacedDigit())
-              .frame(width: 30, alignment: .trailing)
+      if !usesCodexAppServer {
+        Toggle("自定义 Temperature (温度)", isOn: temperatureEnabledBinding)
+        if settings.temperature != nil {
+          VStack(alignment: .leading, spacing: 4) {
+            LabeledContent("Temperature") {
+              HStack(spacing: 10) {
+                Slider(value: temperatureBinding, in: 0...2, step: 0.1)
+                  .frame(minWidth: 180)
+                Text(
+                  settings.normalizedTemperature ?? 0,
+                  format: .number.precision(.fractionLength(1))
+                )
+                .font(.callout.monospacedDigit())
+                .frame(width: 30, alignment: .trailing)
+              }
+            }
+            HStack {
+              Text("0.0 精确严谨").font(.workbenchMetadata).foregroundStyle(.secondary)
+              Spacer()
+              Text("0.7 平衡默认").font(.workbenchMetadata).foregroundStyle(.secondary)
+              Spacer()
+              Text("2.0 创意发散").font(.workbenchMetadata).foregroundStyle(.secondary)
             }
           }
-          HStack {
-            Text("0.0 精确严谨").font(.workbenchMetadata).foregroundStyle(.secondary)
-            Spacer()
-            Text("0.7 平衡默认").font(.workbenchMetadata).foregroundStyle(.secondary)
-            Spacer()
-            Text("2.0 创意发散").font(.workbenchMetadata).foregroundStyle(.secondary)
-          }
         }
-      }
 
-      Toggle("限制最大输出 Tokens", isOn: maximumTokensEnabledBinding)
-      if settings.maximumOutputTokens != nil {
-        LabeledContent("最大输出 Tokens") {
-          Stepper(
-            value: maximumTokensBinding,
-            in: 256...AIProviderAdvancedSettings.maximumOutputTokenLimit,
-            step: 256
-          ) {
-            Text(settings.normalizedMaximumOutputTokens ?? 0, format: .number)
-              .font(.callout.monospacedDigit())
+        Toggle("限制最大输出 Tokens", isOn: maximumTokensEnabledBinding)
+        if settings.maximumOutputTokens != nil {
+          LabeledContent("最大输出 Tokens") {
+            Stepper(
+              value: maximumTokensBinding,
+              in: 256...AIProviderAdvancedSettings.maximumOutputTokenLimit,
+              step: 256
+            ) {
+              Text(settings.normalizedMaximumOutputTokens ?? 0, format: .number)
+                .font(.callout.monospacedDigit())
+            }
           }
         }
       }
@@ -213,8 +218,8 @@ struct AIAdvancedSettingsSection: View {
 
   private var hasConversationParameterOverrides: Bool {
     !settings.normalizedSystemPrompt.isEmpty
-      || settings.normalizedTemperature != nil
-      || settings.normalizedMaximumOutputTokens != nil
+      || (!usesCodexAppServer && settings.normalizedTemperature != nil)
+      || (!usesCodexAppServer && settings.normalizedMaximumOutputTokens != nil)
       || (!usesCodexAppServer && settings.reasoningPreference != .automatic)
   }
 

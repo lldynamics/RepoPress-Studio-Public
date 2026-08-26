@@ -159,6 +159,21 @@ public final class WorkbenchStore: ObservableObject {
   }
   public var imageWorkbenchReport: ImageWorkbenchReport? { publishingStore.imageWorkbenchReport }
 
+  private static func normalizedLegacyCodexConfig(
+    _ config: AIProviderConfig
+  ) -> AIProviderConfig? {
+    guard
+      config.preset == .custom,
+      config.baseURL == AIProviderPreset.codexAppServer.defaultBaseURL,
+      !config.requiresAPIKey
+    else {
+      return nil
+    }
+    var normalized = config
+    normalized.preset = .codexAppServer
+    return normalized
+  }
+
   public init(
     persistence: WorkbenchPersistence = WorkbenchPersistence(),
     initialSnapshotSource: WorkbenchInitialSnapshotSource = .persistence,
@@ -287,6 +302,49 @@ public final class WorkbenchStore: ObservableObject {
       : restoredProfiles + [SiteProfile.defaultProfile]
     var initialAIConnectionProfiles = snapshot?.aiConnectionProfiles ?? []
     var didMigrateAIConnectionProfiles = false
+    var normalizedConnectionProfileIDs = Set<UUID>()
+    for index in initialAIConnectionProfiles.indices {
+      guard
+        let normalizedConfig = Self.normalizedLegacyCodexConfig(
+          initialAIConnectionProfiles[index].config
+        )
+      else {
+        continue
+      }
+      initialAIConnectionProfiles[index].config = normalizedConfig
+      normalizedConnectionProfileIDs.insert(initialAIConnectionProfiles[index].id)
+      didMigrateAIConnectionProfiles = true
+    }
+    var normalizedInlineProfileIDs = Set<UUID>()
+    for index in initialProfiles.indices {
+      guard
+        let normalizedConfig = Self.normalizedLegacyCodexConfig(
+          initialProfiles[index].aiProviderConfig
+        )
+      else {
+        continue
+      }
+      initialProfiles[index].aiProviderConfig = normalizedConfig
+      normalizedInlineProfileIDs.insert(initialProfiles[index].id)
+      didMigrateAIConnectionProfiles = true
+    }
+    // A selected reusable connection is the source of truth. Keep its legacy
+    // inline compatibility field in lockstep when either side was repaired so
+    // older exports cannot reintroduce the malformed Codex shape.
+    for index in initialProfiles.indices {
+      guard
+        let selectedID = initialProfiles[index].aiConnectionProfileID,
+        let connection = initialAIConnectionProfiles.first(where: { $0.id == selectedID }),
+        normalizedConnectionProfileIDs.contains(selectedID)
+          || normalizedInlineProfileIDs.contains(initialProfiles[index].id)
+      else {
+        continue
+      }
+      if initialProfiles[index].aiProviderConfig != connection.config {
+        initialProfiles[index].aiProviderConfig = connection.config
+        didMigrateAIConnectionProfiles = true
+      }
+    }
     for index in initialProfiles.indices {
       let siteProfile = initialProfiles[index]
       if let selectedID = siteProfile.aiConnectionProfileID,

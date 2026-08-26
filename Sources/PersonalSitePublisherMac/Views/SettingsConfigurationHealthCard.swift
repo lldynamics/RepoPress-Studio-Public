@@ -207,6 +207,17 @@ struct SettingsConfigurationHealthCard: View {
   }
 
   private var aiKeyItem: SettingsConfigurationHealthItem {
+    if aiProviderConfig.usesCodexAppServer {
+      return SettingsConfigurationHealthItem(
+        title: "ChatGPT 账户",
+        detail: Text("请在“模型与连接”中确认 ChatGPT 账户、内容授权和连接测试。"),
+        systemImage: "person.crop.circle.badge.checkmark",
+        state: .info,
+        destination: .aiKey,
+        actionTitle: String(localized: "前往 ChatGPT 账户设置")
+      )
+    }
+
     let requiresKey = aiProviderConfig.requiresAPIKey
     let isReady = !requiresKey || aiTokenAvailability.hasToken
     let hasAccessFailure = requiresKey && aiTokenAvailability.accessState == .accessFailed
