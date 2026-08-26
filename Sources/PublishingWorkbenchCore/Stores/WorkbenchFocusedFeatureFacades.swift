@@ -1,38 +1,29 @@
 import Combine
 import Foundation
 
-/// Observation boundary for the Writing sidebar. It forwards only changes that
-/// can alter draft rows, selection, task badges or repository status.
+/// Compatibility facade for older sidebar call sites. The actual list
+/// observation boundary is the stable `WorkbenchStore.draftList` child store;
+/// this adapter forwards that child only. The image refresh token remains a
+/// read-only compatibility getter; image workbench updates are observed by
+/// their own leaf facade instead of invalidating the list adapter.
 @MainActor
 public final class WorkbenchDraftListFeatureFacade: ObservableObject {
-  private unowned let store: WorkbenchStore
+  private let listStore: DraftListStore
   private var cancellables = Set<AnyCancellable>()
 
   public init(store: WorkbenchStore) {
-    self.store = store
-    observe(store.$draftListPresentationRevision)
-    observe(store.$draftTaskQueueStateVersion)
-    observe(store.$imageWorkbenchInputRevision)
-    observe(store.publishingStore.$selectedDraftID)
-    observe(store.publishingStore.$draftListContentScope)
-    observe(store.repositoryStore.$repositoryReport)
-  }
-
-  public var presentationRevision: UInt64 { store.draftListPresentationRevision }
-  public var taskQueueStateVersion: Int { store.draftTaskQueueStateVersion }
-  public var imageInputRevision: UInt64 { store.imageWorkbenchInputRevision }
-  public var selectedDraftID: UUID? { store.selectedDraftID }
-  public var contentScope: DraftListContentScope { store.draftListContentScope }
-  public var repositoryReport: RepositoryScanReport? { store.repositoryReport }
-
-  private func observe<P: Publisher>(_ publisher: P)
-  where P.Failure == Never, P.Output: Equatable {
-    publisher
-      .removeDuplicates()
-      .dropFirst()
+    listStore = store.draftList
+    listStore.objectWillChange
       .sink { [weak self] _ in self?.objectWillChange.send() }
       .store(in: &cancellables)
   }
+
+  public var presentationRevision: UInt64 { listStore.presentationRevision }
+  public var taskQueueStateVersion: Int { listStore.taskQueueStateVersion }
+  public var imageInputRevision: UInt64 { listStore.imageInputRevision }
+  public var selectedDraftID: UUID? { listStore.selectedDraftID }
+  public var contentScope: DraftListContentScope { listStore.contentScope }
+  public var repositoryReport: RepositoryScanReport? { listStore.repositoryReport }
 }
 
 /// Observation boundary for the content-health page. Publishing progress,

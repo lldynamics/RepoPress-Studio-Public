@@ -91,9 +91,9 @@ public struct DraftListProjection: Sendable {
     drafts.sorted { lhs, rhs in
       switch order {
       case .updatedNewest:
-        return ordered(lhs, rhs, date: \.updatedAt, newestFirst: true)
+        return ordered(lhs, rhs, date: \.metadataUpdatedAt, newestFirst: true)
       case .updatedOldest:
-        return ordered(lhs, rhs, date: \.updatedAt, newestFirst: false)
+        return ordered(lhs, rhs, date: \.metadataUpdatedAt, newestFirst: false)
       case .articleDateNewest:
         return ordered(lhs, rhs, date: \.date, newestFirst: true)
       case .articleDateOldest:
@@ -127,8 +127,8 @@ public struct DraftListProjection: Sendable {
   ) -> Bool {
     let comparison = lhs.title.localizedStandardCompare(rhs.title)
     guard comparison != .orderedSame else {
-      if lhs.updatedAt != rhs.updatedAt {
-        return lhs.updatedAt > rhs.updatedAt
+      if lhs.metadataUpdatedAt != rhs.metadataUpdatedAt {
+        return lhs.metadataUpdatedAt > rhs.metadataUpdatedAt
       }
       return lhs.id.uuidString < rhs.id.uuidString
     }

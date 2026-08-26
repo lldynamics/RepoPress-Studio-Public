@@ -2,12 +2,12 @@ import PublishingWorkbenchCore
 import SwiftUI
 
 extension WritingDraftColumn {
-  private var paginatedDrafts: ArraySlice<ArticleDraft> {
-    filteredDrafts.prefix(draftListLimit)
+  private var paginatedDrafts: [ArticleDraft] {
+    paginatedDraftSnapshot
   }
 
   private var draftListAccessibilityValue: String {
-    String(localized: "已显示 \(paginatedDrafts.count) 篇，共 \(filteredDrafts.count) 篇")
+    String(localized: "已显示 \(paginatedDrafts.count) 篇，共 \(filteredDraftCount) 篇")
   }
 
   private var draftListBase: some View {
@@ -21,7 +21,7 @@ extension WritingDraftColumn {
             .allowsHitTesting(false)
         }
       } else {
-        if filteredDrafts.isEmpty {
+        if filteredDraftCount == 0 {
           draftListEmptyState
         } else if isFolderDisplayMode {
           folderDraftListContent
@@ -36,7 +36,7 @@ extension WritingDraftColumn {
               }
           }
 
-          if paginatedDrafts.count < filteredDrafts.count {
+          if paginatedDrafts.count < filteredDraftCount {
             loadMoreDraftsButton
           }
         }
@@ -50,23 +50,20 @@ extension WritingDraftColumn {
   @ViewBuilder
   private var folderDraftListContent: some View {
     ForEach(draftListCache.folderEntries) { entry in
-      folderDraftListEntry(entry, draftsByID: draftListCache.folderDraftsByID)
+      folderDraftListEntry(entry)
     }
 
-    if paginatedDrafts.count < filteredDrafts.count {
+    if paginatedDrafts.count < filteredDraftCount {
       loadMoreDraftsButton
     }
   }
 
   @ViewBuilder
-  private func folderDraftListEntry(
-    _ entry: WritingDraftFolderListEntry,
-    draftsByID: [UUID: ArticleDraft]
-  ) -> some View {
+  private func folderDraftListEntry(_ entry: WritingDraftFolderListEntry) -> some View {
     if let folder = entry.folder {
       folderHeaderRow(folder, depth: entry.depth)
     } else if let draftID = entry.draftID,
-      let draft = draftsByID[draftID]
+      let draft = draftListCache.renderedDraft(for: draftID)
     {
       draftRow(draft)
         .padding(.leading, CGFloat(entry.depth) * 14)
@@ -165,6 +162,9 @@ extension WritingDraftColumn {
 
   private var draftListWithInputEvents: some View {
     draftListBase
+      .background {
+        WritingDraftImageSummaryRefreshHost(store: store)
+      }
       .onDeleteCommand {
         requestDeleteSelectedDraft()
       }
@@ -173,13 +173,6 @@ extension WritingDraftColumn {
         applyDraftFilterDebounce()
         refreshDraftListLoadingState()
         refreshDraftCountsWithoutFiltering()
-      }
-      .task(
-        id: DraftListImageSummaryRefreshInput(
-          revision: draftListState.imageInputRevision
-        )
-      ) {
-        await store.refreshImageWorkbenchSiteSummaryInBackground()
       }
       .onChange(of: searchText) { _, _ in
         scheduleDraftFilterDebounce()
@@ -219,7 +212,7 @@ extension WritingDraftColumn {
         revealSelectedDraftIfNeeded()
         synchronizeDraftSelectionFromWindow()
       }
-      .onChange(of: filteredDrafts.count) { _, newCount in
+      .onChange(of: filteredDraftCount) { _, newCount in
         handleFilteredDraftCountChange(newCount)
       }
   }
@@ -241,7 +234,7 @@ extension WritingDraftColumn {
           .frame(width: 16)
         Text("显示更多文章")
         Spacer(minLength: 8)
-        Text("\(paginatedDrafts.count) / \(filteredDrafts.count)")
+        Text("\(paginatedDrafts.count) / \(filteredDraftCount)")
           .font(.caption.monospacedDigit())
           .foregroundStyle(.secondary)
       }
@@ -255,7 +248,7 @@ extension WritingDraftColumn {
     .listRowBackground(Color.clear)
     .accessibilityLabel("显示更多文章")
     .accessibilityValue(
-      String(localized: "当前显示 \(paginatedDrafts.count) 篇，共 \(filteredDrafts.count) 篇")
+      String(localized: "当前显示 \(paginatedDrafts.count) 篇，共 \(filteredDraftCount) 篇")
     )
     .accessibilityHint(String(localized: "每次再显示最多 \(draftPageStep) 篇文章"))
   }
@@ -264,7 +257,7 @@ extension WritingDraftColumn {
     currentIndex: Int,
     visibleCount: Int
   ) {
-    guard visibleCount < filteredDrafts.count else {
+    guard visibleCount < filteredDraftCount else {
       return
     }
     let triggerIndex = max(0, visibleCount - draftLoadMorePrefetchThreshold)
@@ -298,13 +291,15 @@ extension WritingDraftColumn {
 
   @ViewBuilder
   private func draftContextMenu(for draft: ArticleDraft) -> some View {
+    let actionDraft = liveDraft(for: draft) ?? draft
+
     Button {
       onFocusDraft(draft.id, .writing)
     } label: {
       Label("编辑文章", systemImage: "square.and.pencil")
     }
 
-    if !draft.isGeneralDraft {
+    if !actionDraft.isGeneralDraft {
       Button {
         onFocusDraft(draft.id, .contentHealth)
       } label: {
@@ -312,7 +307,7 @@ extension WritingDraftColumn {
       }
     } else {
       Button {
-        exportGeneralDraft(draft)
+        exportGeneralDraft(actionDraft)
       } label: {
         Label("导出 Markdown…", systemImage: "square.and.arrow.up")
       }
@@ -320,7 +315,7 @@ extension WritingDraftColumn {
 
     Divider()
 
-    draftOwnershipActions(for: draft)
+    draftOwnershipActions(for: actionDraft)
 
     Button {
       onFocusDraft(draft.id, .images)
@@ -330,25 +325,49 @@ extension WritingDraftColumn {
 
     Divider()
 
-    if !draft.isGeneralDraft,
-       draft.repositoryPath?.trimmedForPublishing.nilIfEmpty != nil {
+    if !actionDraft.isGeneralDraft,
+       actionDraft.repositoryPath?.trimmedForPublishing.nilIfEmpty != nil {
       Button(role: .destructive) {
-        requestUnpublish(draft)
+        guard let currentDraft = liveDraft(for: actionDraft) else { return }
+        requestUnpublish(currentDraft)
       } label: {
         Label("从网站下线…", systemImage: "globe.badge.chevron.backward")
       }
 
       Button {
-        requestDelete(draft)
+        guard let currentDraft = liveDraft(for: actionDraft) else { return }
+        requestDelete(currentDraft)
       } label: {
         Label("仅移到回收站…", systemImage: "trash")
       }
     } else {
       Button(role: .destructive) {
-        requestDelete(draft)
+        guard let currentDraft = liveDraft(for: actionDraft) else { return }
+        requestDelete(currentDraft)
       } label: {
         Label("删除文章", systemImage: "trash")
       }
     }
+  }
+}
+
+/// Keeps image-summary refreshes attached to a tiny leaf view. The writing
+/// list itself does not observe image input revisions, so image-bearing body
+/// edits cannot invalidate the sidebar tree.
+private struct WritingDraftImageSummaryRefreshHost: View {
+  let store: WorkbenchStore
+  @ObservedObject private var imageWorkbench: WorkbenchImageWorkbenchFeatureFacade
+
+  init(store: WorkbenchStore) {
+    self.store = store
+    _imageWorkbench = ObservedObject(wrappedValue: store.imageWorkbench)
+  }
+
+  var body: some View {
+    Color.clear
+      .frame(width: 0, height: 0)
+      .task(id: store.imageWorkbenchInputRevision) {
+        await store.refreshImageWorkbenchSiteSummaryInBackground()
+      }
   }
 }

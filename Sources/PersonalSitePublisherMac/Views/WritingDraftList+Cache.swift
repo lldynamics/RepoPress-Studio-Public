@@ -2,6 +2,14 @@ import PublishingWorkbenchCore
 import SwiftUI
 
 extension WritingDraftColumn {
+  /// Folder and row projections intentionally keep IDs instead of full
+  /// `ArticleDraft` values. Resolve the current value immediately before an
+  /// action so a body autosave cannot leave an export or destructive command
+  /// holding stale text.
+  func liveDraft(for renderedDraft: ArticleDraft) -> ArticleDraft? {
+    store.draft(for: renderedDraft.id)
+  }
+
   func synchronizeFolderExpansionState() {
     guard store.draftListContentScope == .currentSite else {
       folderExpansionState.clearTransientReveal()
@@ -33,20 +41,21 @@ extension WritingDraftColumn {
       return
     }
 
+    let universeDrafts = visibleDraftSnapshot
+    let currentFilteredDrafts = filteredDrafts
     let maskedDraftIDs = Set(
-      store.visibleDrafts.compactMap { draft in
+      universeDrafts.compactMap { draft in
         store.privateContentDisplay(for: draft).isMasked ? draft.id : nil
       }
     )
     let projectionOrder = DraftListSortOrder(rawValue: sortOrder.rawValue) ?? .updatedNewest
     draftListCache.updateFolderProjectionCache(
-      presentationRevision: draftListState.presentationRevision,
       profile: store.activeProfile,
-      universeDrafts: store.visibleDrafts,
-      filteredDrafts: filteredDrafts,
-      query: debouncedSearchText,
+      universeDrafts: universeDrafts,
+      filteredDrafts: currentFilteredDrafts,
       sortOrder: projectionOrder,
-      maskedDraftIDs: maskedDraftIDs
+      maskedDraftIDs: maskedDraftIDs,
+      universeSourceRevision: draftListCache.sourceMetadataRevision
     )
   }
 
@@ -57,7 +66,7 @@ extension WritingDraftColumn {
     }
 
     let loadedDraftIDs = Set(
-      draftListCache.filteredDrafts.prefix(draftListLimit).map(\.id)
+      draftListCache.filteredDraftIDs.prefix(draftListLimit)
     )
     draftListCache.updateFolderEntriesCache(
       expandedFolderIDs: folderExpansionState.expandedFolderIDs,
@@ -77,8 +86,8 @@ extension WritingDraftColumn {
       folderExpansionState.clearTransientReveal()
       return
     }
-    let matchingAncestorIDs = filteredDrafts.flatMap {
-      filteredProjection.ancestorFolderIDs(for: $0.id)
+    let matchingAncestorIDs = draftListCache.filteredDraftIDs.flatMap {
+      filteredProjection.ancestorFolderIDs(for: $0)
     }
     folderExpansionState.clearTransientReveal()
     folderExpansionState.revealSearchResultAncestors(matchingAncestorIDs)
@@ -86,7 +95,7 @@ extension WritingDraftColumn {
 
   func loadMoreDrafts() {
     let nextLimit = draftListLimit + draftPageStep
-    let totalCount = filteredDrafts.count
+    let totalCount = cachedFilteredDraftCount
     guard nextLimit <= totalCount else {
       draftListLimit = totalCount
       refreshVisibleRowPresentations()
@@ -158,9 +167,8 @@ extension WritingDraftColumn {
   func handleDraftListPresentationRevisionChange() {
     refreshFilteredDraftsCache()
     revealSelectedDraftIfNeeded(refreshFilter: false)
-    let newDrafts = visibleDraftSnapshot
-    synchronizeDraftSelection(with: newDrafts)
-    if isDraftListLoading && !newDrafts.isEmpty {
+    synchronizeDraftSelection(withDraftIDs: draftListCache.sourceDraftIDs)
+    if isDraftListLoading && !draftListCache.sourceDraftIDs.isEmpty {
       isDraftListLoading = false
       draftListLoadingTask?.cancel()
     }
@@ -188,7 +196,7 @@ extension WritingDraftColumn {
     if refreshFilter {
       refreshFilteredDraftsCache()
     }
-    if !filteredDrafts.contains(where: { $0.id == selectedDraftID }) {
+    if !draftListCache.filteredDraftIDs.contains(selectedDraftID) {
       draftFilterDebounceTask?.cancel()
       searchText = ""
       filter = .all
@@ -196,7 +204,7 @@ extension WritingDraftColumn {
     }
 
     guard store.draftListContentScope == .currentSite,
-      let selectedIndex = filteredDrafts.firstIndex(where: { $0.id == selectedDraftID })
+      let selectedIndex = draftListCache.filteredDraftIDs.firstIndex(of: selectedDraftID)
     else {
       return
     }
@@ -209,7 +217,7 @@ extension WritingDraftColumn {
     )
     let requiredLimit = selectedIndex + 1
     if requiredLimit > draftListLimit {
-      draftListLimit = min(filteredDrafts.count, requiredLimit)
+      draftListLimit = min(cachedFilteredDraftCount, requiredLimit)
       refreshVisibleRowPresentations()
     }
     updateFolderEntriesCache()
@@ -219,8 +227,8 @@ extension WritingDraftColumn {
     if refreshFilter {
       refreshFilteredDraftsCache()
     }
-    let nextFilteredCount = filteredDrafts.count
-    let nextVisibleCount = visibleDraftSnapshot.count
+    let nextFilteredCount = cachedFilteredDraftCount
+    let nextVisibleCount = draftListCache.sourceDraftIDs.count
     let delta = nextVisibleCount - visibleDraftCount
 
     visibleDraftCount = nextVisibleCount
@@ -260,13 +268,13 @@ extension WritingDraftColumn {
     if refreshFilter {
       refreshFilteredDraftsCache()
     }
-    guard !filteredDrafts.isEmpty else {
+    guard cachedFilteredDraftCount > 0 else {
       draftListLimit = 0
       draftListCache.resetPaginationTrigger()
       updateFolderEntriesCache()
       return
     }
-    draftListLimit = min(filteredDrafts.count, draftPageStep)
+    draftListLimit = min(cachedFilteredDraftCount, draftPageStep)
     refreshVisibleRowPresentations()
     draftListCache.resetPaginationTrigger()
   }
@@ -280,7 +288,7 @@ extension WritingDraftColumn {
     draftListLoadingNonce += 1
     let nonce = draftListLoadingNonce
 
-    guard visibleDraftSnapshot.isEmpty else {
+    guard draftListCache.sourceDraftIDs.isEmpty else {
       isDraftListLoading = false
       return
     }
@@ -300,11 +308,21 @@ extension WritingDraftColumn {
   }
 
   var filteredDrafts: [ArticleDraft] {
-    draftListCache.filteredDrafts
+    draftListCache.renderedDrafts(for: draftListCache.filteredDraftIDs)
+  }
+
+  var cachedFilteredDraftCount: Int {
+    draftListCache.filteredDraftIDs.count
+  }
+
+  var paginatedDraftSnapshot: [ArticleDraft] {
+    draftListCache.renderedDrafts(
+      for: draftListCache.filteredDraftIDs.prefix(draftListLimit)
+    )
   }
 
   var visibleDraftSnapshot: [ArticleDraft] {
-    draftListCache.sourceDrafts
+    draftListCache.renderedDrafts(for: draftListCache.sourceDraftIDs)
   }
 
   var sortOrder: WritingDraftSortOrder {
@@ -314,17 +332,17 @@ extension WritingDraftColumn {
   func refreshFilteredDraftsCache() {
     let presentationRevision = draftListState.presentationRevision
     let didRefreshPresentation =
-      draftListCache.presentationRevision != presentationRevision
+      draftListCache.sourceMetadataRevision != presentationRevision
       || draftListCache.sourceProfileID != store.activeProfileID
       || draftListCache.sourceContentScope != store.draftListContentScope
     if didRefreshPresentation {
       let sourceDrafts = store.writingDrafts
-      draftListCache.presentationRevision = presentationRevision
+      draftListCache.sourceMetadataRevision = presentationRevision
       draftListCache.sourceProfileID = store.activeProfileID
       draftListCache.sourceContentScope = store.draftListContentScope
-      draftListCache.sourceDrafts = sourceDrafts
+      draftListCache.replaceRenderedSourceDrafts(sourceDrafts)
     }
-    let visibleDrafts = draftListCache.sourceDrafts
+    let visibleDrafts = visibleDraftSnapshot
     let query = debouncedSearchText
     let draftTaskQueueStateVersion = draftListState.taskQueueStateVersion
 
@@ -359,16 +377,16 @@ extension WritingDraftColumn {
             profile: store.activeProfile
           )
       }
-    draftListCache.filteredDrafts = sortOrder.sorted(matchedDrafts)
+    draftListCache.filteredDraftIDs = sortOrder.sorted(matchedDrafts).map(\.id)
     synchronizeFolderExpansionState()
     refreshVisibleRowPresentations()
   }
 
   func refreshVisibleRowPresentations() {
-    let visibleLimit = min(draftListLimit, draftListCache.filteredDrafts.count)
+    let visibleDrafts = paginatedDraftSnapshot
     draftListCache.updateRowPresentations(
-      sourceDrafts: draftListCache.sourceDrafts,
-      visibleDrafts: draftListCache.filteredDrafts.prefix(visibleLimit),
+      sourceDraftIDs: Set(draftListCache.sourceDraftIDs),
+      visibleDrafts: visibleDrafts[...],
       profileFor: { store.profile(for: $0) },
       displayFor: { store.privateContentDisplay(for: $0) }
     )

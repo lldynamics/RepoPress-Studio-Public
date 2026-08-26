@@ -54,7 +54,10 @@ enum WritingDraftFolderListProjection {
     loadedDraftIDs: Set<UUID>
   ) -> [WritingDraftFolderListEntry] {
     var entries: [WritingDraftFolderListEntry] = []
-    entries.reserveCapacity(loadedDraftIDs.count + root.allFolderIDs.count)
+    // Do not walk every descendant just to estimate capacity. Expansion is a
+    // local operation: the real append pass below should be the only tree
+    // traversal, and it stops at collapsed branches.
+    entries.reserveCapacity(loadedDraftIDs.count + root.children.count)
 
     appendLoadedDrafts(
       root.draftIDs,

@@ -32,7 +32,7 @@ extension WritingDraftColumn {
     guard let selectedDraftID else {
       return nil
     }
-    return visibleDraftSnapshot.first { $0.id == selectedDraftID }
+    return draftListCache.renderedDraft(for: selectedDraftID)
   }
 
   var writingDraftCommandActions: WritingDraftCommandActions {
@@ -59,7 +59,8 @@ extension WritingDraftColumn {
   var draftListEmptyState: some View {
     VStack(spacing: 10) {
       Image(
-        systemName: visibleDraftSnapshot.isEmpty ? "doc.badge.plus" : "doc.text.magnifyingglass"
+        systemName: draftListCache.sourceDraftIDs.isEmpty
+          ? "doc.badge.plus" : "doc.text.magnifyingglass"
       )
       .font(.system(size: 28))
       .foregroundStyle(.secondary)
@@ -72,7 +73,7 @@ extension WritingDraftColumn {
         .foregroundStyle(.secondary)
         .multilineTextAlignment(.center)
 
-      if visibleDraftSnapshot.isEmpty {
+      if draftListCache.sourceDraftIDs.isEmpty {
         Button(emptyStateActionTitle) {
           if store.draftListContentScope == .general {
             store.createGeneralDraft()
@@ -97,12 +98,12 @@ extension WritingDraftColumn {
   }
 
   private var draftListEmptyTitle: LocalizedStringKey {
-    guard visibleDraftSnapshot.isEmpty else { return "没有匹配的文章" }
+    guard draftListCache.sourceDraftIDs.isEmpty else { return "没有匹配的文章" }
     return store.draftListContentScope == .general ? "还没有通用草稿" : "还没有文章"
   }
 
   private var draftListEmptyMessage: LocalizedStringKey {
-    guard visibleDraftSnapshot.isEmpty else {
+    guard draftListCache.sourceDraftIDs.isEmpty else {
       return "尝试清除搜索词或切换筛选条件。"
     }
     return store.draftListContentScope == .general
@@ -154,7 +155,11 @@ extension WritingDraftColumn {
   }
 
   func synchronizeDraftSelection(with drafts: [ArticleDraft]) {
-    let availableIDs = Set(drafts.map(\.id))
+    synchronizeDraftSelection(withDraftIDs: drafts.map(\.id))
+  }
+
+  func synchronizeDraftSelection(withDraftIDs draftIDs: [UUID]) {
+    let availableIDs = Set(draftIDs)
     selectedDraftIDs.formIntersection(availableIDs)
     synchronizeDraftSelectionFromWindow()
   }
@@ -234,29 +239,30 @@ extension WritingDraftColumn {
   }
 
   private func selectDraft(byOffset offset: Int) {
-    guard !filteredDrafts.isEmpty else {
+    let filteredDraftIDs = draftListCache.filteredDraftIDs
+    guard !filteredDraftIDs.isEmpty else {
       return
     }
 
     guard let selectedDraftID,
-      let currentIndex = filteredDrafts.firstIndex(where: { $0.id == selectedDraftID })
+      let currentIndex = filteredDraftIDs.firstIndex(of: selectedDraftID)
     else {
-      let targetIndex = offset >= 0 ? 0 : (filteredDrafts.count - 1)
-      onSelectDraft(filteredDrafts[targetIndex].id)
+      let targetIndex = offset >= 0 ? 0 : (filteredDraftIDs.count - 1)
+      onSelectDraft(filteredDraftIDs[targetIndex])
       return
     }
 
     let targetIndex = currentIndex + offset
     if targetIndex < 0 {
-      if let lastDraft = filteredDrafts.last {
-        onSelectDraft(lastDraft.id)
+      if let lastDraftID = filteredDraftIDs.last {
+        onSelectDraft(lastDraftID)
       }
-    } else if targetIndex >= filteredDrafts.count {
-      if let firstDraft = filteredDrafts.first {
-        onSelectDraft(firstDraft.id)
+    } else if targetIndex >= filteredDraftIDs.count {
+      if let firstDraftID = filteredDraftIDs.first {
+        onSelectDraft(firstDraftID)
       }
     } else {
-      onSelectDraft(filteredDrafts[targetIndex].id)
+      onSelectDraft(filteredDraftIDs[targetIndex])
     }
   }
 }

@@ -38,7 +38,6 @@ struct AISettingsView: View {
   @State private var selectedSection: AISettingsSection = .connection
   @State private var hasAttemptedConnectionTest = false
   @State private var selectedCapabilityProbes: Set<AIProviderCapabilityProbeKind> = []
-  @State private var connectionUpdateFailed = false
 
   var body: some View {
     VStack(spacing: 0) {
@@ -53,7 +52,7 @@ struct AISettingsView: View {
             profiles: connectionProfiles,
             selectedProfileID: selectedConnectionProfileID,
             updateProfile: { profile in
-              _ = commitConnectionUpdate(profile)
+              _ = updateConnectionProfile(profile)
             },
             createProfile: createConnectionProfile,
             deleteProfile: deleteConnectionProfile,
@@ -75,15 +74,6 @@ struct AISettingsView: View {
             discoverModels: discoverModels
           )
 
-          if connectionUpdateFailed {
-            AccessibleStatusMessage(
-              message: connectionUpdateFailureMessage,
-              severity: .error
-            )
-            .textSelection(.enabled)
-            .accessibilityIdentifier("settings-ai-connection-update-error")
-          }
-
           if activeConnection.config.usesCodexAppServer {
             codexAccountSection
           } else {
@@ -101,20 +91,17 @@ struct AISettingsView: View {
                 tokenAvailability: tokenAvailability,
                 actionMessage: actionMessage,
                 onSaveAPIKey: {
-                  connectionUpdateFailed = false
                   guard saveAPIKey(aiAPIKeyInput) else { return }
                   aiAPIKeyInput = ""
                   invalidateConnectionReport()
                 },
                 onDeleteAPIKey: {
-                  connectionUpdateFailed = false
                   deleteAPIKey()
                   aiAPIKeyInput = ""
                   invalidateConnectionReport()
                 },
                 onRefreshState: refreshKeyAvailability,
                 onChangeStorageMode: { mode in
-                  connectionUpdateFailed = false
                   setCredentialStorageMode(mode)
                   aiAPIKeyInput = ""
                   invalidateConnectionReport()
@@ -191,7 +178,7 @@ struct AISettingsView: View {
     }
     .task(id: healthNavigationRequestID) {
       guard shouldFocusAPIKey else { return }
-      selectedSection = .connection
+      selectedSection = .credentials
     }
     .task(id: navigationRequestID) {
       applyNavigationDestination()
@@ -208,7 +195,6 @@ struct AISettingsView: View {
     }
     .onChange(of: selectedConnectionProfileID.wrappedValue) { _, _ in
       aiAPIKeyInput = ""
-      connectionUpdateFailed = false
       selectedCapabilityProbes = []
       invalidateConnectionReport()
     }
@@ -285,7 +271,7 @@ struct AISettingsView: View {
         var connection = activeConnection
         connection.config.preset = preset
         connection.config.applyPresetDefaults()
-        _ = commitConnectionUpdate(connection)
+        _ = updateConnectionProfile(connection)
       }
     )
   }
@@ -329,7 +315,7 @@ struct AISettingsView: View {
         invalidateConnectionReport()
         var connection = activeConnection
         connection.config[keyPath: keyPath] = value
-        _ = commitConnectionUpdate(connection)
+        _ = updateConnectionProfile(connection)
       }
     )
   }
@@ -343,7 +329,7 @@ struct AISettingsView: View {
         invalidateConnectionReport()
         var connection = activeConnection
         connection.config[keyPath: keyPath] = value
-        _ = commitConnectionUpdate(connection)
+        _ = updateConnectionProfile(connection)
       }
     )
   }
@@ -355,7 +341,7 @@ struct AISettingsView: View {
         invalidateConnectionReport()
         var connection = activeConnection
         connection.config.advancedSettings = settings.isDefault ? nil : settings
-        _ = commitConnectionUpdate(connection)
+        _ = updateConnectionProfile(connection)
       }
     )
   }
@@ -378,32 +364,7 @@ struct AISettingsView: View {
     connection.config.baseURL = baseURL
     connection.config.model = model
     connection.config.requiresAPIKey = false
-    return commitConnectionUpdate(connection)
-  }
-
-  @discardableResult
-  private func commitConnectionUpdate(_ connection: AIConnectionProfile) -> Bool {
-    let didUpdate = updateConnectionProfile(connection)
-    connectionUpdateFailed = !didUpdate
-    return didUpdate
-  }
-
-  private var connectionUpdateFailureMessage: String {
-    guard let actionMessage = actionMessage?.trimmedForPublishing.nilIfEmpty,
-      Self.isActionableConnectionFailureMessage(actionMessage)
-    else {
-      return String(localized: "AI 连接未更改，请检查凭据和地址后重试。")
-    }
-    return actionMessage
-  }
-
-  private static func isActionableConnectionFailureMessage(_ message: String) -> Bool {
-    let lowercasedMessage = message.lowercased()
-    return message.contains("失败")
-      || message.contains("未更改")
-      || message.contains("未切换")
-      || lowercasedMessage.contains("failed")
-      || lowercasedMessage.contains("error")
+    return updateConnectionProfile(connection)
   }
 
   private func invalidateConnectionReport() {
@@ -457,10 +418,7 @@ struct AISettingsView: View {
 
   private func applyNavigationDestination() {
     guard case .ai(let destination) = navigationDestination else { return }
-    selectedSection = AISettingsSection(
-      destination: destination,
-      shouldFocusAPIKey: shouldFocusAPIKey
-    )
+    selectedSection = AISettingsSection(destination: destination)
   }
 
   private var aiCompactSummary: some View {
@@ -557,14 +515,6 @@ enum AISettingsSection: String, CaseIterable, Identifiable {
       self = .credentials
     case .writingStyle:
       self = .writingStyle
-    }
-  }
-
-  init(destination: SettingsAIDestination, shouldFocusAPIKey: Bool) {
-    if shouldFocusAPIKey {
-      self = .connection
-    } else {
-      self.init(destination: destination)
     }
   }
 

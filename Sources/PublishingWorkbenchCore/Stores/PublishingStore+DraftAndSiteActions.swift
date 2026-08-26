@@ -179,7 +179,20 @@ extension PublishingStore {
     {
       updated.softwareGuideTemplateVersion = 0
     }
-    updated.touch()
+    // Repository CAS state, attachments and other persistence details are
+    // intentionally outside the list projection. They may still require
+    // content/preflight invalidation, but only a list-visible metadata change
+    // advances the list ordering timestamp and its observation boundary.
+    let isListMetadataChange = existingIndex.map {
+      !drafts[$0].hasSameListMetadata(as: updated)
+    } ?? true
+    if hasUnsavedDraftChange {
+      if let existingIndex {
+        updated.markUpdated(replacing: drafts[existingIndex])
+      } else {
+        updated.markMetadataUpdated()
+      }
+    }
     if let index = existingIndex {
       if hasUnsavedDraftChange {
         // DraftLifecycleService applies the time/size threshold before doing
@@ -195,7 +208,10 @@ extension PublishingStore {
       store.restoreSEOSocialPreviewSnapshotForCurrentSelection()
     }
     if automaticallyRefreshPreflightOnEdit {
-      store.schedulePreflightRefresh(for: updated.id)
+      store.schedulePreflightRefresh(
+        for: updated.id,
+        notifyingDraftList: isListMetadataChange
+      )
     }
     if hasUnsavedDraftChange {
       store.scheduleAutosave()
@@ -483,7 +499,11 @@ extension PublishingStore {
     activeProfileID = profiles[0].id
     for index in drafts.indices
     where drafts[index].isGeneralDraft && drafts[index].siteProfileID == removed {
-      drafts[index].assignToGeneralDraft(editingProfileID: activeProfileID)
+      let previous = drafts[index]
+      var rebound = previous
+      rebound.assignToGeneralDraft(editingProfileID: activeProfileID)
+      rebound.markUpdated(replacing: previous)
+      drafts[index] = rebound
     }
     for index in recycledDrafts.indices
     where recycledDrafts[index].draft.isGeneralDraft

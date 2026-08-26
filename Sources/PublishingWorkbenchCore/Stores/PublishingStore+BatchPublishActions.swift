@@ -469,10 +469,13 @@ extension PublishingStore {
         result: result
       )
       prependReleaseRecord(releaseRecord)
-      markDraftsAsPublishedIfDirectRemoteCommit(
+      let didPublishDraftListMetadata = markDraftsAsPublishedIfDirectRemoteCommit(
         mode: mode,
         draftIDs: publishableItems.map(\.draftID)
       )
+      if didPublishDraftListMetadata {
+        store.invalidateDraftDerivedCaches()
+      }
       confirmDirectRemotePublishLifecycle(
         packages: publishableItems.map(\.package),
         result: result
@@ -615,6 +618,9 @@ extension PublishingStore {
           renderedContentDigest: ArticleDraft.repositoryDocumentDigest(publishedContent)
         )
         changedDraftIDs.insert(draft.id)
+      }
+      if updated != draft {
+        updated.markUpdated(at: draft.updatedAt, replacing: draft)
       }
       return updated
     }

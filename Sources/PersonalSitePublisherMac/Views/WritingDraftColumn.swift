@@ -2,19 +2,71 @@ import PublishingWorkbenchCore
 import SwiftUI
 
 private struct WritingDraftFolderProjectionCacheKey: Equatable {
-  let presentationRevision: UInt64
   let profileID: UUID
   let contentRoot: String
   let markdownPathPattern: String
   let sortOrderRawValue: String
-  let draftIDs: [UUID]
-  let maskedDraftIDs: Set<UUID>
+  let draftSignatures: [WritingDraftFolderProjectionDraftSignature]
+}
+
+private struct WritingDraftFolderProjectionDraftSignature: Equatable {
+  let id: UUID
+  let folderAssignment: DraftFolderAssignmentCacheKey
+  let ordering: WritingDraftFolderProjectionOrderingSignature
+
+  init(
+    draft: ArticleDraft,
+    profile: SiteProfile,
+    isMasked: Bool,
+    sortOrder: DraftListSortOrder
+  ) {
+    id = draft.id
+    folderAssignment = DraftFolderProjection.assignmentCacheKey(
+      for: draft,
+      profile: profile,
+      isMasked: isMasked
+    )
+    ordering = WritingDraftFolderProjectionOrderingSignature(
+      draft: draft,
+      sortOrder: sortOrder
+    )
+  }
+}
+
+private struct WritingDraftFolderProjectionOrderingSignature: Equatable {
+  let sortOrder: DraftListSortOrder
+  let metadataUpdatedAt: Date?
+  let articleDate: Date?
+  let title: String?
+
+  init(draft: ArticleDraft, sortOrder: DraftListSortOrder) {
+    self.sortOrder = sortOrder
+    switch sortOrder {
+    case .updatedNewest, .updatedOldest:
+      metadataUpdatedAt = draft.metadataUpdatedAt
+      articleDate = nil
+      // Updated sorting also falls back to the stable localized title order
+      // when two metadata edits share the same timestamp.
+      title = draft.title
+    case .articleDateNewest, .articleDateOldest:
+      metadataUpdatedAt = nil
+      articleDate = draft.date
+      // Date sorting falls back to the stable localized title order.
+      title = draft.title
+    case .titleAscending, .titleDescending:
+      metadataUpdatedAt = draft.metadataUpdatedAt
+      articleDate = nil
+      title = draft.title
+    }
+  }
 }
 
 private struct WritingDraftFilteredFolderProjectionCacheKey: Equatable {
-  let universe: WritingDraftFolderProjectionCacheKey
-  let query: String
-  let filteredDraftIDs: [UUID]
+  let profileID: UUID
+  let contentRoot: String
+  let markdownPathPattern: String
+  let sortOrderRawValue: String
+  let draftSignatures: [WritingDraftFolderProjectionDraftSignature]
 }
 
 private struct WritingDraftFolderEntriesCacheKey: Equatable {
@@ -24,23 +76,23 @@ private struct WritingDraftFolderEntriesCacheKey: Equatable {
 }
 
 struct WritingDraftListCache {
-  var presentationRevision: UInt64?
+  var sourceMetadataRevision: UInt64?
   var sourceProfileID: UUID?
   var sourceContentScope: DraftListContentScope?
-  var sourceDrafts: [ArticleDraft] = []
-  var filteredDrafts: [ArticleDraft] = []
+  var sourceDraftIDs: [UUID] = []
+  var renderedDraftsByID: [UUID: ArticleDraft] = [:]
+  var filteredDraftIDs: [UUID] = []
   var rowPresentations: [UUID: WritingDraftRowPresentation] = [:]
   var rowPresentationKeys: [UUID: WritingDraftRowPresentationCacheKey] = [:]
   private(set) var rowPresentationBuildCount = 0
   var universeFolderProjection: DraftFolderProjection?
   var filteredFolderProjection: DraftFolderProjection?
-  var folderDraftsByID: [UUID: ArticleDraft] = [:]
   var folderEntries: [WritingDraftFolderListEntry] = []
   private(set) var folderProjectionBuildCount = 0
   private(set) var folderEntriesBuildCount = 0
   private var universeFolderProjectionKey: WritingDraftFolderProjectionCacheKey?
+  private var universeFolderProjectionSourceRevision: UInt64?
   private var filteredFolderProjectionKey: WritingDraftFilteredFolderProjectionCacheKey?
-  private var folderDraftsByIDKey: WritingDraftFilteredFolderProjectionCacheKey?
   private var folderEntriesKey: WritingDraftFolderEntriesCacheKey?
   var searchText = ""
   var filter: DraftListFilter = .all
@@ -48,47 +100,83 @@ struct WritingDraftListCache {
   var draftTaskQueueStateVersion = 0
   var lastLoadMoreTriggerCount = -1
 
+  mutating func replaceRenderedSourceDrafts(_ drafts: [ArticleDraft]) {
+    sourceDraftIDs = drafts.map(\.id)
+    renderedDraftsByID = Dictionary(
+      drafts.map { ($0.id, $0) },
+      uniquingKeysWith: { _, latest in latest }
+    )
+  }
+
+  func renderedDraft(for draftID: UUID) -> ArticleDraft? {
+    renderedDraftsByID[draftID]
+  }
+
+  func renderedDrafts<S: Sequence>(for draftIDs: S) -> [ArticleDraft]
+  where S.Element == UUID {
+    draftIDs.compactMap { renderedDraftsByID[$0] }
+  }
+
   mutating func resetPaginationTrigger() {
     lastLoadMoreTriggerCount = -1
   }
 
-  /// Updates the folder projections and draft lookup only when their explicit
-  /// source, site, query, sort, or privacy keys change. The presentation
-  /// revision is intentionally part of the key so a row-affecting store event
-  /// cannot leave a stale folder assignment in the sidebar.
+  /// Updates the folder projections only when fields that can affect folder
+  /// membership or ordering change. Body text, derived word counts, summaries,
+  /// and automatic persistence timestamps are deliberately absent from these
+  /// signatures so autosave cannot rebuild the tree.
   mutating func updateFolderProjectionCache(
-    presentationRevision: UInt64,
     profile: SiteProfile,
     universeDrafts: [ArticleDraft],
     filteredDrafts: [ArticleDraft],
-    query: String,
     sortOrder: DraftListSortOrder,
-    maskedDraftIDs: Set<UUID>
+    maskedDraftIDs: Set<UUID>,
+    universeSourceRevision: UInt64? = nil
   ) {
-    let universeKey = WritingDraftFolderProjectionCacheKey(
-      presentationRevision: presentationRevision,
+    let shouldEvaluateUniverse = universeSourceRevision == nil
+      || universeFolderProjection == nil
+      || universeFolderProjectionSourceRevision != universeSourceRevision
+      || universeFolderProjectionKey?.profileID != profile.id
+      || universeFolderProjectionKey?.contentRoot != profile.contentRoot
+      || universeFolderProjectionKey?.markdownPathPattern != profile.markdownPathPattern
+      || universeFolderProjectionKey?.sortOrderRawValue != sortOrder.rawValue
+    if shouldEvaluateUniverse {
+      let universeKey = WritingDraftFolderProjectionCacheKey(
+        profileID: profile.id,
+        contentRoot: profile.contentRoot,
+        markdownPathPattern: profile.markdownPathPattern,
+        sortOrderRawValue: sortOrder.rawValue,
+        draftSignatures: Self.folderProjectionSignatures(
+          for: universeDrafts,
+          profile: profile,
+          sortOrder: sortOrder,
+          maskedDraftIDs: maskedDraftIDs
+        )
+      )
+      if universeFolderProjectionKey != universeKey {
+        universeFolderProjection = DraftFolderProjection(
+          profile: profile,
+          drafts: universeDrafts,
+          sortOrder: sortOrder,
+          maskedDraftIDs: maskedDraftIDs
+        )
+        universeFolderProjectionKey = universeKey
+        folderProjectionBuildCount += 1
+      }
+      universeFolderProjectionSourceRevision = universeSourceRevision
+    }
+
+    let filteredKey = WritingDraftFilteredFolderProjectionCacheKey(
       profileID: profile.id,
       contentRoot: profile.contentRoot,
       markdownPathPattern: profile.markdownPathPattern,
       sortOrderRawValue: sortOrder.rawValue,
-      draftIDs: universeDrafts.map(\.id),
-      maskedDraftIDs: maskedDraftIDs
-    )
-    if universeFolderProjectionKey != universeKey {
-      universeFolderProjection = DraftFolderProjection(
+      draftSignatures: Self.folderProjectionSignatures(
+        for: filteredDrafts,
         profile: profile,
-        drafts: universeDrafts,
         sortOrder: sortOrder,
         maskedDraftIDs: maskedDraftIDs
       )
-      universeFolderProjectionKey = universeKey
-      folderProjectionBuildCount += 1
-    }
-
-    let filteredKey = WritingDraftFilteredFolderProjectionCacheKey(
-      universe: universeKey,
-      query: query,
-      filteredDraftIDs: filteredDrafts.map(\.id)
     )
     if filteredFolderProjectionKey != filteredKey {
       filteredFolderProjection = DraftFolderProjection(
@@ -99,14 +187,6 @@ struct WritingDraftListCache {
       )
       filteredFolderProjectionKey = filteredKey
       folderProjectionBuildCount += 1
-    }
-
-    if folderDraftsByIDKey != filteredKey {
-      folderDraftsByID = Dictionary(
-        filteredDrafts.map { ($0.id, $0) },
-        uniquingKeysWith: { _, latest in latest }
-      )
-      folderDraftsByIDKey = filteredKey
     }
 
     if folderEntriesKey?.filtered != filteredKey {
@@ -151,11 +231,10 @@ struct WritingDraftListCache {
   mutating func clearFolderProjectionCache() {
     universeFolderProjection = nil
     filteredFolderProjection = nil
-    folderDraftsByID.removeAll(keepingCapacity: true)
     folderEntries.removeAll(keepingCapacity: true)
     universeFolderProjectionKey = nil
+    universeFolderProjectionSourceRevision = nil
     filteredFolderProjectionKey = nil
-    folderDraftsByIDKey = nil
     folderEntriesKey = nil
   }
 
@@ -168,7 +247,21 @@ struct WritingDraftListCache {
     profileFor: (ArticleDraft) -> SiteProfile,
     displayFor: (ArticleDraft) -> PrivateContentDisplay
   ) {
-    let sourceIDs = Set(sourceDrafts.map(\.id))
+    updateRowPresentations(
+      sourceDraftIDs: Set(sourceDrafts.map(\.id)),
+      visibleDrafts: visibleDrafts,
+      profileFor: profileFor,
+      displayFor: displayFor
+    )
+  }
+
+  mutating func updateRowPresentations(
+    sourceDraftIDs: Set<UUID>,
+    visibleDrafts: ArraySlice<ArticleDraft>,
+    profileFor: (ArticleDraft) -> SiteProfile,
+    displayFor: (ArticleDraft) -> PrivateContentDisplay
+  ) {
+    let sourceIDs = sourceDraftIDs
     rowPresentations = rowPresentations.filter { sourceIDs.contains($0.key) }
     rowPresentationKeys = rowPresentationKeys.filter { sourceIDs.contains($0.key) }
 
@@ -195,10 +288,26 @@ struct WritingDraftListCache {
       rowPresentationBuildCount += 1
     }
   }
-}
 
-struct DraftListImageSummaryRefreshInput: Hashable {
-  let revision: UInt64
+  private static func folderProjectionSignatures(
+    for drafts: [ArticleDraft],
+    profile: SiteProfile,
+    sortOrder: DraftListSortOrder,
+    maskedDraftIDs: Set<UUID>
+  ) -> [WritingDraftFolderProjectionDraftSignature] {
+    drafts
+      .map { draft in
+        WritingDraftFolderProjectionDraftSignature(
+          draft: draft,
+          profile: profile,
+          isMasked: maskedDraftIDs.contains(draft.id),
+          sortOrder: sortOrder
+        )
+      }
+      .sorted { lhs, rhs in
+        lhs.id.uuidString < rhs.id.uuidString
+      }
+  }
 }
 
 struct WritingDraftColumn: View {
@@ -210,7 +319,7 @@ struct WritingDraftColumn: View {
   let selectedDraftID: UUID?
   let onSelectDraft: (UUID?) -> Void
   let onFocusDraft: (UUID, WorkspaceSection) -> Void
-  @StateObject var draftListState: WorkbenchDraftListFeatureFacade
+  @ObservedObject var draftListState: DraftListStore
   @Environment(\.openSettings) var openSettings
   @AppStorage("settingsRequestedTabID") var requestedSettingsTabID = ""
   @AppStorage("dataManagementRequestedSection") var dataManagementRequestedSection =
@@ -258,9 +367,7 @@ struct WritingDraftColumn: View {
     self.selectedDraftID = selectedDraftID
     self.onSelectDraft = onSelectDraft
     self.onFocusDraft = onFocusDraft
-    _draftListState = StateObject(
-      wrappedValue: WorkbenchDraftListFeatureFacade(store: store)
-    )
+    _draftListState = ObservedObject(wrappedValue: store.draftList)
   }
 
   var draftSelection: Binding<Set<UUID>> {

@@ -55,7 +55,9 @@ public struct LocalContentImportMergeService: Sendable {
         guard existing != updated else { continue }
 
         replacedDrafts.append(existing)
-        updated.touch()
+        // A repository import can replace list-visible front matter as well
+        // as the body, so it is a real metadata update for ordering/locking.
+        updated.markUpdated(replacing: existing)
         drafts[index] = updated
         updatedCount += 1
       } else {

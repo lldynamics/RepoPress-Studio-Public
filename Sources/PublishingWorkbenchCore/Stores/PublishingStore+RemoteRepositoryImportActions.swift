@@ -236,6 +236,7 @@ extension PublishingStore {
         } else {
           confirmed.repositoryImportFingerprint = remoteFingerprint
         }
+        confirmed.markUpdated(at: existing.updatedAt, replacing: existing)
         drafts[existingIndex] = confirmed
         summary.unchangedCount += 1
         summary.resolvedPaths.append(path)
@@ -249,6 +250,7 @@ extension PublishingStore {
       guard localStillMatchesBaseline else {
         var diverged = existing
         diverged.markRepositorySyncState(.diverged)
+        diverged.markUpdated(at: existing.updatedAt, replacing: existing)
         drafts[existingIndex] = diverged
         didMutateDrafts = didMutateDrafts || diverged != existing
         summary.conflictPaths.append(path)
@@ -258,7 +260,9 @@ extension PublishingStore {
       remoteDraft.id = existing.id
       remoteDraft.createdAt = existing.createdAt
       recordAutomaticVersionIfNeeded(for: existing)
-      remoteDraft.touch()
+      // Remote imports replace front matter and body together. Advance the
+      // list/editor metadata clocks rather than only the content timestamp.
+      remoteDraft.markUpdated(replacing: existing)
       drafts[existingIndex] = remoteDraft
       store.synchronizeDraftBodyEditorBuffer(with: remoteDraft)
       summary.updatedCount += 1

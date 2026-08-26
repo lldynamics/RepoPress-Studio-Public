@@ -485,7 +485,8 @@ extension WorkbenchStore {
     guard publishingStore.drafts[index].belongs(toSiteProfileID: profile.id) else {
       return
     }
-    var updatedDraft = publishingStore.drafts[index]
+    let previousDraft = publishingStore.drafts[index]
+    var updatedDraft = previousDraft
     updatedDraft.recordProjectFile(
       profile: profile,
       repositoryPath: repositoryPath,
@@ -495,6 +496,7 @@ extension WorkbenchStore {
     // Editor writes preserve the current repository state separately, so
     // changing `updatedAt` here would only invalidate the digest we just wrote
     // and force another full rewrite on the next launch.
+    updatedDraft.markUpdated(at: previousDraft.updatedAt, replacing: previousDraft)
     publishingStore.drafts[index] = updatedDraft
     scheduleAutosave()
   }

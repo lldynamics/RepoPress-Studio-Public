@@ -636,7 +636,11 @@ public final class ImageWorkbenchStore: ObservableObject {
     }
 
     _ = store.recordVersionsBeforeBatchProcessing(draftIDs: Set(updatedDraftsByID.keys))
-    drafts = drafts.map { updatedDraftsByID[$0.id] ?? $0 }
+    drafts = drafts.map { current in
+      guard var updated = updatedDraftsByID[current.id] else { return current }
+      updated.markUpdated(replacing: current)
+      return updated
+    }
     runPreflight()
     scheduleImageWorkbenchCachesRefresh()
     save()

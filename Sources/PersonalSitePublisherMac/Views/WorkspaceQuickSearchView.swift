@@ -49,10 +49,10 @@ enum WorkspaceQuickSearchPresentation {
       orderedDrafts = preferredDraftIDs.compactMap { draftByID[$0] }
     } else {
       orderedDrafts = drafts.sorted { lhs, rhs in
-        if lhs.updatedAt == rhs.updatedAt {
+        if lhs.metadataUpdatedAt == rhs.metadataUpdatedAt {
           return lhs.id.uuidString < rhs.id.uuidString
         }
-        return lhs.updatedAt > rhs.updatedAt
+        return lhs.metadataUpdatedAt > rhs.metadataUpdatedAt
       }
     }
     guard !normalizedQuery.isEmpty else { return orderedDrafts }
@@ -80,7 +80,7 @@ struct WorkspaceQuickSearchView: View {
   private let contentHealthFilter: Binding<ContentHealthContextFilter>?
   private let imageWorkbenchContextStage: Binding<ImageWorkbenchContextStage>?
   private let repositoryContextStage: Binding<RepositoryContextStage>?
-  @StateObject private var draftListState: WorkbenchDraftListFeatureFacade
+  @ObservedObject private var draftListState: DraftListStore
   @State private var query = ""
   @FocusState private var isSearchFocused: Bool
 
@@ -100,9 +100,7 @@ struct WorkspaceQuickSearchView: View {
     self.contentHealthFilter = contentHealthFilter
     self.imageWorkbenchContextStage = imageWorkbenchContextStage
     self.repositoryContextStage = repositoryContextStage
-    _draftListState = StateObject(
-      wrappedValue: WorkbenchDraftListFeatureFacade(store: store)
-    )
+    _draftListState = ObservedObject(wrappedValue: store.draftList)
   }
 
   var body: some View {

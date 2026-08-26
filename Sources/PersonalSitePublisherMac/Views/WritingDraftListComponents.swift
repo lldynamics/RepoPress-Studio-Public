@@ -100,7 +100,7 @@ enum WritingDraftSortOrder: String, CaseIterable, Identifiable {
 /// background refresh, so rows can notice it without hashing or scanning the
 /// body when an unrelated draft changes.
 struct WritingDraftRowPresentationCacheKey: Hashable {
-  let updatedAt: Date
+  let metadataUpdatedAt: Date
   let wordCount: Int
   let title: String
   let status: DraftStatus
@@ -111,7 +111,7 @@ struct WritingDraftRowPresentationCacheKey: Hashable {
   let help: String
 
   init(draft: ArticleDraft, profile: SiteProfile, display: PrivateContentDisplay) {
-    updatedAt = draft.updatedAt
+    metadataUpdatedAt = draft.metadataUpdatedAt
     wordCount = draft.wordCount
     title = display.title
     status = draft.status
@@ -136,17 +136,15 @@ private func writingDraftRowHelp(
 }
 
 struct WritingDraftRowPresentation {
-  let draft: ArticleDraft
   let title: String
   let metadata: String
   let leadingSystemImage: String
   let help: String
 
   init(draft: ArticleDraft, profile: SiteProfile, display: PrivateContentDisplay) {
-    self.draft = draft
     title = display.title.nilIfEmpty ?? String(localized: "未命名文章")
     var metadataParts = [
-      draft.updatedAt.workbenchShortText,
+      draft.metadataUpdatedAt.workbenchShortText,
       "\(draft.wordCount) \(String(localized: "字/词"))",
       draft.status.localizedDisplayName,
     ]

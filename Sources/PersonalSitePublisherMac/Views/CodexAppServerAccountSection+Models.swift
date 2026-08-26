@@ -225,13 +225,13 @@ struct CodexAppServerRuntimeStatusContent: View {
     HStack(alignment: .firstTextBaseline, spacing: 8) {
       Label(
         runtimeTitle,
-        systemImage: runtimeStatus?.isCompatible == true ? "cpu.fill" : "shippingbox"
+        systemImage: runtimeStatus?.isAvailable == true ? "cpu.fill" : "shippingbox"
       )
       .foregroundStyle(
-        runtimeStatus?.isCompatible == true ? WorkbenchTheme.success : WorkbenchTheme.warning
+        runtimeStatus?.isAvailable == true ? WorkbenchTheme.success : WorkbenchTheme.warning
       )
       Spacer()
-      if runtimeStatus?.compatibility == .missingExecutable {
+      if runtimeStatus?.isAvailable == false {
         Button("打开安装说明", action: openInstallationGuide)
           .buttonStyle(.borderless)
         Button("复制安装命令", action: copyInstallationCommand)
@@ -246,10 +246,8 @@ struct CodexAppServerRuntimeStatusContent: View {
         .font(.workbenchMetadata.monospaced())
         .foregroundStyle(.secondary)
         .textSelection(.enabled)
-    }
-
-    if let runtimeStatus, !runtimeStatus.isCompatible {
-      Text(runtimeRecoveryHint(for: runtimeStatus))
+    } else if runtimeStatus != nil {
+      Text("ChatGPT 登录需要本机 Codex 运行组件。安装后点“重新检测”；RepoPress 不会静默安装或修改系统。")
         .font(.workbenchMetadata)
         .foregroundStyle(.secondary)
     }
@@ -257,214 +255,16 @@ struct CodexAppServerRuntimeStatusContent: View {
 
   private var runtimeTitle: String {
     guard let runtimeStatus else { return String(localized: "正在检测运行组件…") }
-    switch runtimeStatus.compatibility {
-    case .missingExecutable:
-      return String(localized: "未找到 Codex 运行组件")
-    case .missingVersion:
-      return String(localized: "运行组件未返回版本号")
-    case .unparseableVersion:
-      return String(localized: "无法解析运行组件版本")
-    case .unsupportedVersion:
-      let version = runtimeStatus.parsedVersion?.description ?? ""
-      return version.isEmpty
-        ? String(localized: "运行组件版本过低")
-        : String(localized: "运行组件版本过低") + " · " + version
-    case .compatible:
-      let version = runtimeStatus.parsedVersion.map { " · \($0)" } ?? ""
-      switch runtimeStatus.source {
-      case .homebrew:
-        return String(localized: "Homebrew 运行组件可用") + version
-      case .path:
-        return String(localized: "系统运行组件可用") + version
-      case nil:
-        return String(localized: "运行组件可用") + version
-      }
+    guard runtimeStatus.isAvailable else { return String(localized: "未找到 Codex 运行组件") }
+    let version = runtimeStatus.version?.nilIfEmpty.map { " · \($0)" } ?? ""
+    switch runtimeStatus.source {
+    case .homebrew:
+      return String(localized: "Homebrew 运行组件可用") + version
+    case .path:
+      return String(localized: "系统运行组件可用") + version
+    case nil:
+      return String(localized: "运行组件可用") + version
     }
-  }
-
-  private func runtimeRecoveryHint(for status: CodexAppServerRuntimeStatus) -> String {
-    switch status.compatibility {
-    case .missingExecutable:
-      return String(localized: "ChatGPT 登录需要本机 Codex 运行组件。安装后点“重新检测”；RepoPress 不会静默安装或修改系统。")
-    case .missingVersion:
-      return String(localized: "Codex 运行组件未返回版本号。请更新 Codex 后点“重新检测”。")
-    case .unparseableVersion:
-      return String(localized: "无法确认 Codex 运行组件版本。请更新 Codex 后点“重新检测”。")
-    case .unsupportedVersion:
-      return String(localized: "当前 Codex 运行组件版本过低；请更新到 0.142.0 或更高版本后重新检测。")
-    case .compatible:
-      return ""
-    }
-  }
-}
-
-enum CodexAppServerConnectionTestState: Equatable {
-  case idle
-  case testing
-  case passed
-  case failed
-}
-
-private enum CodexAppServerSetupStepState {
-  case blocked
-  case current
-  case complete
-
-  var symbolName: String {
-    switch self {
-    case .blocked: return "exclamationmark.circle"
-    case .current: return "arrow.right.circle"
-    case .complete: return "checkmark.circle.fill"
-    }
-  }
-
-  var color: Color {
-    switch self {
-    case .blocked: return WorkbenchTheme.warning
-    case .current: return .secondary
-    case .complete: return WorkbenchTheme.success
-    }
-  }
-}
-
-/// A compact, linear account setup summary. The buttons in the account section
-/// remain the actions; this view makes their gating state visible first.
-struct CodexAppServerAccountSetupSteps: View {
-  let runtimeStatus: CodexAppServerRuntimeStatus?
-  let accountStatus: CodexAppServerAccountStatus?
-  let consentGranted: Bool
-  let connectionTestState: CodexAppServerConnectionTestState
-
-  var body: some View {
-    VStack(alignment: .leading, spacing: 6) {
-      setupStep(
-        number: 1,
-        title: String(localized: "运行组件兼容性"),
-        state: runtimeStep.state,
-        detail: runtimeStep.detail
-      )
-      setupStep(
-        number: 2,
-        title: String(localized: "ChatGPT 账户"),
-        state: accountStep.state,
-        detail: accountStep.detail
-      )
-      setupStep(
-        number: 3,
-        title: String(localized: "内容发送授权"),
-        state: consentStep.state,
-        detail: consentStep.detail
-      )
-      setupStep(
-        number: 4,
-        title: String(localized: "连接测试"),
-        state: connectionStep.state,
-        detail: connectionStep.detail
-      )
-    }
-    .padding(.vertical, 2)
-    .accessibilityElement(children: .contain)
-    .accessibilityIdentifier("settings-ai-codex-setup-steps")
-  }
-
-  private var runtimeStep: (state: CodexAppServerSetupStepState, detail: String) {
-    guard let runtimeStatus else {
-      return (
-        .current,
-        String(localized: "正在检测 Codex 运行组件兼容性…")
-      )
-    }
-
-    switch runtimeStatus.compatibility {
-    case .missingExecutable:
-      return (.blocked, String(localized: "未找到 Codex 运行组件。"))
-    case .missingVersion:
-      return (.blocked, String(localized: "运行组件未返回版本号"))
-    case .unparseableVersion:
-      return (.blocked, String(localized: "无法解析运行组件版本"))
-    case .unsupportedVersion:
-      let version = runtimeStatus.parsedVersion?.description ?? ""
-      let detail =
-        version.isEmpty
-        ? String(localized: "运行组件版本过低")
-        : "\(String(localized: "运行组件版本过低")) · \(version)"
-      return (.blocked, detail)
-    case .compatible:
-      let version = runtimeStatus.parsedVersion?.description
-      let detail =
-        version.map {
-          "\(String(localized: "Codex 运行组件已兼容")) · \($0)"
-        } ?? String(localized: "Codex 运行组件已兼容")
-      return (.complete, detail)
-    }
-  }
-
-  private var accountStep: (state: CodexAppServerSetupStepState, detail: String) {
-    guard runtimeStatus?.isCompatible == true else {
-      return (.blocked, String(localized: "请先完成运行组件检查"))
-    }
-    guard let accountStatus else {
-      return (.current, String(localized: "正在读取 ChatGPT 账户…"))
-    }
-    return accountStatus.isAuthenticated
-      ? (.complete, String(localized: "已通过 ChatGPT 登录"))
-      : (.current, String(localized: "尚未登录 ChatGPT"))
-  }
-
-  private var consentStep: (state: CodexAppServerSetupStepState, detail: String) {
-    guard runtimeStatus?.isCompatible == true, accountStatus?.isAuthenticated == true else {
-      return (.blocked, String(localized: "请先登录 ChatGPT"))
-    }
-    return consentGranted
-      ? (.complete, String(localized: "内容发送已授权"))
-      : (.current, String(localized: "登录后同意内容发送"))
-  }
-
-  private var connectionStep: (state: CodexAppServerSetupStepState, detail: String) {
-    guard runtimeStatus?.isCompatible == true,
-      accountStatus?.isAuthenticated == true,
-      consentGranted
-    else {
-      return (.blocked, String(localized: "请先完成账户登录和内容授权"))
-    }
-
-    switch connectionTestState {
-    case .idle:
-      return (.current, String(localized: "连接测试尚未运行"))
-    case .testing:
-      return (.current, String(localized: "正在测试 ChatGPT 连接…"))
-    case .passed:
-      return (.complete, String(localized: "连接测试通过"))
-    case .failed:
-      return (.current, String(localized: "连接测试失败，请重试"))
-    }
-  }
-
-  @ViewBuilder
-  private func setupStep(
-    number: Int,
-    title: String,
-    state: CodexAppServerSetupStepState,
-    detail: String
-  ) -> some View {
-    HStack(alignment: .firstTextBaseline, spacing: 8) {
-      Image(systemName: state.symbolName)
-        .foregroundStyle(state.color)
-        .frame(width: 16)
-        .accessibilityHidden(true)
-
-      VStack(alignment: .leading, spacing: 1) {
-        Text(title)
-          .font(.subheadline.weight(.medium))
-        Text(detail)
-          .font(.caption)
-          .foregroundStyle(.secondary)
-          .fixedSize(horizontal: false, vertical: true)
-      }
-    }
-    .accessibilityElement(children: .combine)
-    .accessibilityLabel("\(number). \(title)：\(detail)")
-    .accessibilityIdentifier("settings-ai-codex-setup-step-\(number)")
   }
 }
 

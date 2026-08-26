@@ -155,11 +155,44 @@ public final class WorkbenchMarkdownEditorFeatureFacade: ObservableObject {
     self.store = store
     trackedDraftID = draftID
 
-    observeValue(store.publishingStore.$profiles)
-    observeValue(store.publishingStore.$activeProfileID)
-    observeValue(store.publishingStore.$drafts)
+    // Observe only the tracked draft's metadata projection.  The source array
+    // may be shared by the publishing store, but an unrelated draft changing
+    // cannot produce an editor facade event after this projection is compared.
+    observeValue(
+      store.publishingStore.$drafts
+        .map { [weak self] drafts in
+          self?.trackedDraftMetadataProjection(in: drafts)
+        }
+    )
+    // A profile update matters only when it is the profile used by this
+    // editor.  General drafts follow the active profile as their editing
+    // context; site drafts retain their owning profile.
+    observeValue(
+      store.publishingStore.$profiles
+        .map { [weak self] profiles in
+          self?.trackedProfileProjection(in: profiles)
+        }
+    )
+    observeValue(
+      store.publishingStore.$activeProfileID
+        .map { [weak self] activeProfileID in
+          guard let self,
+            let draft = self.store.drafts.first(where: { $0.id == self.trackedDraftID }),
+            draft.isGeneralDraft
+          else {
+            return UUID?.none
+          }
+          return activeProfileID
+        }
+    )
     observeValue(store.publishingStore.$customMarkdownSnippets)
-    observeValue(store.publishingStore.$editorFocusRequest)
+    observeValue(
+      store.publishingStore.$editorFocusRequest
+        .map { [weak self] request -> EditorFocusRequest? in
+          guard let self, request?.draftID == self.trackedDraftID else { return nil }
+          return request
+        }
+    )
     observeValue(store.aiWorkspaceStore.$aiTokenAvailability)
     observeValue(store.aiWorkspaceStore.$isAIActionRunning)
 
@@ -235,7 +268,9 @@ public final class WorkbenchMarkdownEditorFeatureFacade: ObservableObject {
   }
 
   public func trackDraft(_ draftID: UUID) {
+    guard trackedDraftID != draftID else { return }
     trackedDraftID = draftID
+    objectWillChange.send()
   }
 
   public func profile(for draft: ArticleDraft) -> SiteProfile {
@@ -253,6 +288,20 @@ public final class WorkbenchMarkdownEditorFeatureFacade: ObservableObject {
 
   public func preflightIssues(for draft: ArticleDraft) -> [PreflightIssue] {
     store.preflightIssues(for: draft)
+  }
+
+  private func trackedDraftMetadataProjection(in drafts: [ArticleDraft])
+    -> ArticleDraftEditorObservationProjection?
+  {
+    drafts.first(where: { $0.id == trackedDraftID })?.editorObservationProjection
+  }
+
+  private func trackedProfileProjection(in profiles: [SiteProfile]) -> SiteProfile? {
+    let trackedDraft = store.drafts.first(where: { $0.id == trackedDraftID })
+    let profileID = trackedDraft?.isGeneralDraft == true
+      ? store.activeProfileID
+      : trackedDraft?.siteProfileID ?? store.activeProfileID
+    return profiles.first(where: { $0.id == profileID })
   }
 
   private func observeValue<P: Publisher>(_ publisher: P)

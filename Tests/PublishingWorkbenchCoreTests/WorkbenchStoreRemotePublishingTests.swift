@@ -24,6 +24,7 @@ extension WorkbenchStoreProfileTests {
       renderedContentDigest: draft.renderedRepositoryContentDigest(profile: profile)
     )
     let package = PublishPackageBuilder().build(draft: draft, profile: profile)
+    let contentUpdatedAt = draft.updatedAt
     store.setDrafts([draft])
 
     store.markDraftsAsPublishedIfDirectRemoteCommit(
@@ -47,6 +48,7 @@ extension WorkbenchStoreProfileTests {
     XCTAssertTrue(synchronized.draft)
     XCTAssertEqual(synchronized.status, .ready)
     XCTAssertEqual(synchronized.repositorySyncState(for: profile), .synced)
+    XCTAssertEqual(synchronized.updatedAt, contentUpdatedAt)
   }
 
   func testDirectRemotePublishNoOpPreservesKnownMarkdownVersionWhenLegacyResultIsSparse() throws {
@@ -68,6 +70,7 @@ extension WorkbenchStoreProfileTests {
       renderedContentDigest: draft.renderedRepositoryContentDigest(profile: profile)
     )
     let package = PublishPackageBuilder().build(draft: draft, profile: profile)
+    let contentUpdatedAt = draft.updatedAt
     store.setDrafts([draft])
 
     store.publishingStore.confirmDirectRemotePublishLifecycle(
@@ -85,6 +88,7 @@ extension WorkbenchStoreProfileTests {
 
     let confirmed = try XCTUnwrap(store.drafts.first)
     XCTAssertEqual(confirmed.repositorySHA, "known-markdown-sha")
+    XCTAssertEqual(confirmed.updatedAt, contentUpdatedAt)
     XCTAssertEqual(confirmed.repositoryBinding?.remoteRevision, "known-markdown-sha")
     XCTAssertEqual(
       PublishPackageBuilder().build(draft: confirmed, profile: profile).markdownFile?.expectedRemoteSHA,
@@ -111,6 +115,7 @@ extension WorkbenchStoreProfileTests {
       attachments: [attachment]
     )
     let package = PublishPackageBuilder().build(draft: draft, profile: profile)
+    let contentUpdatedAt = draft.updatedAt
     store.setDrafts([draft])
 
     store.publishingStore.confirmDirectRemotePublishLifecycle(
@@ -132,6 +137,7 @@ extension WorkbenchStoreProfileTests {
     let confirmedDraft = try XCTUnwrap(store.drafts.first)
     XCTAssertEqual(confirmedDraft.repositorySHA, "markdown-sha")
     XCTAssertEqual(confirmedDraft.attachments.first?.repositorySHA, "image-sha")
+    XCTAssertEqual(confirmedDraft.updatedAt, contentUpdatedAt)
     let nextPackage = PublishPackageBuilder().build(draft: confirmedDraft, profile: profile)
     XCTAssertEqual(nextPackage.files.first { $0.kind == .image }?.expectedRemoteSHA, "image-sha")
   }

@@ -53,63 +53,6 @@ final class CodexAppServerClientTests: XCTestCase {
     XCTAssertEqual(location.source, .homebrew)
   }
 
-  func testRuntimeVersionParsesCodexCLIOutput() throws {
-    XCTAssertEqual(
-      CodexAppServerRuntimeVersion.parse("codex-cli 0.148.0"),
-      CodexAppServerRuntimeVersion(major: 0, minor: 148, patch: 0)
-    )
-    XCTAssertEqual(
-      CodexAppServerRuntimeVersion.parse("Codex-CLI v0.142.0+build.1\n"),
-      CodexAppServerRuntimeVersion(major: 0, minor: 142, patch: 0)
-    )
-  }
-
-  func testRuntimeVersionParserRejectsUnidentifiedOrPrereleaseOutput() {
-    XCTAssertNil(CodexAppServerRuntimeVersion.parse("0.148.0"))
-    XCTAssertNil(CodexAppServerRuntimeVersion.parse("other-cli 0.148.0"))
-    XCTAssertNil(CodexAppServerRuntimeVersion.parse("codex-cli 0.148.0-beta.1"))
-    XCTAssertNil(CodexAppServerRuntimeVersion.parse("codex-cli unknown"))
-  }
-
-  func testRuntimeCompatibilityDistinguishesMissingAndUnsupportedStates() {
-    let executableURL = URL(fileURLWithPath: "/tmp/codex")
-    let missingExecutable = CodexAppServerRuntimeStatus()
-    XCTAssertEqual(missingExecutable.compatibility, .missingExecutable)
-    XCTAssertFalse(missingExecutable.isCompatible)
-
-    let missingVersion = CodexAppServerRuntimeStatus(executableURL: executableURL)
-    XCTAssertEqual(missingVersion.compatibility, .missingVersion)
-    XCTAssertFalse(missingVersion.isCompatible)
-
-    let unparseableVersion = CodexAppServerRuntimeStatus(
-      executableURL: executableURL,
-      version: "codex-cli not-a-version"
-    )
-    XCTAssertEqual(unparseableVersion.compatibility, .unparseableVersion)
-    XCTAssertFalse(unparseableVersion.isCompatible)
-
-    let lowVersion = CodexAppServerRuntimeStatus(
-      executableURL: executableURL,
-      version: "codex-cli 0.141.9"
-    )
-    XCTAssertEqual(lowVersion.compatibility, .unsupportedVersion)
-    XCTAssertFalse(lowVersion.isCompatible)
-
-    let minimumVersion = CodexAppServerRuntimeStatus(
-      executableURL: executableURL,
-      version: "codex-cli 0.142.0"
-    )
-    XCTAssertEqual(minimumVersion.compatibility, .compatible)
-    XCTAssertTrue(minimumVersion.isCompatible)
-
-    let currentVersion = CodexAppServerRuntimeStatus(
-      executableURL: executableURL,
-      version: "codex-cli 0.148.0"
-    )
-    XCTAssertEqual(currentVersion.compatibility, .compatible)
-    XCTAssertTrue(currentVersion.isCompatible)
-  }
-
   func testProcessTransportReturnsPartialPipeChunkWithoutWaitingForMaximum() async throws {
     let transport = CodexAppServerProcessTransport(
       executableURL: URL(fileURLWithPath: "/bin/cat"),

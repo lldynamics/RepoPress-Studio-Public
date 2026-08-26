@@ -4,10 +4,33 @@ import XCTest
 
 @MainActor
 final class WorkbenchFeatureFacadeTests: XCTestCase {
-  private func makeIsolatedStore() -> WorkbenchStore {
+  func testTaskQueueFilterResolvesLiveBodyFromListSnapshotIDs() {
+    let store = makeIsolatedStore(safeMode: true)
+    var initial = ArticleDraft(
+      siteProfileID: store.activeProfileID,
+      title: "实时检查",
+      slug: "live-check",
+      bodyMarkdown: String(repeating: "安全正文 ", count: 20)
+    )
+    store.updateDraft(initial)
+    let staleListSnapshot = initial
+
+    initial.bodyMarkdown =
+      "This body changed after the list snapshot. api_key = \"sk-12345678901234567890abcd\""
+    store.updateDraft(initial)
+
+    let states = store.draftTaskQueueStates(for: [staleListSnapshot])
+
+    XCTAssertEqual(states[initial.id]?.hasPreflightErrors, true)
+  }
+
+  private func makeIsolatedStore(safeMode: Bool = false) -> WorkbenchStore {
     let fileURL = FileManager.default.temporaryDirectory
       .appendingPathComponent("workbench-facade-\(UUID().uuidString).json")
-    return WorkbenchStore(persistence: WorkbenchPersistence(fileURL: fileURL))
+    return WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: fileURL),
+      safeMode: safeMode
+    )
   }
 
   func testFeatureFacadesExposeStableEntrypoints() {
@@ -23,7 +46,131 @@ final class WorkbenchFeatureFacadeTests: XCTestCase {
     XCTAssertTrue(store.workspaceLayout === store.workspaceLayout)
     XCTAssertTrue(store.settings === store.settings)
     XCTAssertTrue(store.publishStatus === store.publishStatus)
+    XCTAssertTrue(store.draftList === store.draftList)
     XCTAssertTrue(store.siteMaintenance === store.siteMaintenance)
+  }
+
+  func testDraftListStoreIgnoresBodyAutosaveAndDelayedPreflight() async throws {
+    // Keep startup refreshes out of the notification baseline; this test
+    // exercises the explicitly scheduled post-autosave preflight below.
+    let store = makeIsolatedStore(safeMode: true)
+    let draft = try XCTUnwrap(store.selectedDraft)
+    let draftList = store.draftList
+    let initialPresentationRevision = draftList.presentationRevision
+    let initialTaskQueueStateVersion = draftList.taskQueueStateVersion
+    let initialEditorMetadataRevision = draft.editorMetadataRevision
+    var listChanges = 0
+    let cancellable = draftList.objectWillChange.sink { listChanges += 1 }
+
+    let body = "正文 autosave 不应触碰草稿列表缓存。"
+    _ = store.stageDraftBody(body, for: draft.id, baseRevision: 0)
+    store.flushDraftBodyEditorBuffer(for: draft.id)
+
+    XCTAssertEqual(store.drafts.first(where: { $0.id == draft.id })?.bodyMarkdown, body)
+    XCTAssertEqual(
+      store.drafts.first(where: { $0.id == draft.id })?.editorMetadataRevision,
+      initialEditorMetadataRevision
+    )
+    XCTAssertEqual(draftList.presentationRevision, initialPresentationRevision)
+    XCTAssertEqual(draftList.taskQueueStateVersion, initialTaskQueueStateVersion)
+
+    // The normal automatic preflight is delayed by 600ms. Give it enough time
+    // to run and prove that its derived-cache invalidation does not flow back
+    // into the list boundary either.
+    try await Task.sleep(for: .milliseconds(900))
+    XCTAssertEqual(draftList.presentationRevision, initialPresentationRevision)
+    XCTAssertEqual(draftList.taskQueueStateVersion, initialTaskQueueStateVersion)
+    XCTAssertEqual(listChanges, 0)
+    withExtendedLifetime(cancellable) {}
+  }
+
+  func testDraftListPreflightNotificationKeepsMetadataRequestWhenBodyRequestFollows()
+    async throws
+  {
+    let store = makeIsolatedStore(safeMode: true)
+    let draft = try XCTUnwrap(store.selectedDraft)
+    let draftList = store.draftList
+    let initialTaskQueueStateVersion = draftList.taskQueueStateVersion
+
+    store.schedulePreflightRefresh(for: draft.id, notifyingDraftList: true)
+    // A body-only refresh can replace the delayed task, but must not weaken a
+    // metadata request that was already queued for the same draft.
+    store.schedulePreflightRefresh(for: draft.id, notifyingDraftList: false)
+    if let preflightRefreshTask = store.preflightRefreshTask {
+      await preflightRefreshTask.value
+    }
+
+    XCTAssertGreaterThan(draftList.taskQueueStateVersion, initialTaskQueueStateVersion)
+  }
+
+  func testDraftListPrivacyMaskSettingsInvalidateItsOwnBoundary() {
+    let store = makeIsolatedStore(safeMode: true)
+    let draftList = store.draftList
+    let initialPresentationRevision = draftList.presentationRevision
+    var listChanges = 0
+    let cancellable = draftList.objectWillChange.sink { listChanges += 1 }
+
+    store.updatePrivacySettings(
+      PrivacyProtectionSettings(
+        masksPrivateContent: !store.privacySettings.masksPrivateContent
+      )
+    )
+
+    XCTAssertGreaterThan(draftList.presentationRevision, initialPresentationRevision)
+    XCTAssertGreaterThan(listChanges, 0)
+    withExtendedLifetime(cancellable) {}
+  }
+
+  func testDraftListIgnoresRepositoryMaterializationAndCASOnlyChanges() throws {
+    let store = makeIsolatedStore(safeMode: true)
+    let draft = try XCTUnwrap(store.selectedDraft)
+    let draftList = store.draftList
+    let initialPresentationRevision = draftList.presentationRevision
+    let initialTaskQueueStateVersion = draftList.taskQueueStateVersion
+    var listChanges = 0
+    let cancellable = draftList.objectWillChange.sink { listChanges += 1 }
+
+    var repositoryOnly = draft
+    repositoryOnly.repositoryPath = store.activeProfile.markdownPath(for: draft)
+    repositoryOnly.repositorySHA = "remote-sha-only"
+    repositoryOnly.repositoryImportFingerprint = "remote-fingerprint-only"
+    store.updateDraft(repositoryOnly)
+
+    XCTAssertEqual(draftList.presentationRevision, initialPresentationRevision)
+    XCTAssertEqual(draftList.taskQueueStateVersion, initialTaskQueueStateVersion)
+    XCTAssertEqual(listChanges, 0)
+    withExtendedLifetime(cancellable) {}
+  }
+
+  func testDraftListAndEditorObserveOnlyTheirRelevantDraftMetadata() throws {
+    let store = makeIsolatedStore()
+    let trackedDraft = try XCTUnwrap(store.selectedDraft)
+    var otherDraft = ArticleDraft.empty(profile: store.activeProfile)
+    otherDraft.title = "另一篇文章"
+    store.setDrafts([trackedDraft, otherDraft])
+
+    let draftList = store.draftList
+    let editor = WorkbenchMarkdownEditorFeatureFacade(
+      store: store,
+      draftID: trackedDraft.id
+    )
+    let initialPresentationRevision = draftList.presentationRevision
+    var editorChanges = 0
+    let editorCancellable = editor.objectWillChange.sink { editorChanges += 1 }
+
+    otherDraft.title = "另一篇文章的新标题"
+    otherDraft.categories = ["另一个分类"]
+    otherDraft.date = otherDraft.date.addingTimeInterval(60)
+    store.updateDraft(otherDraft)
+
+    XCTAssertGreaterThan(draftList.presentationRevision, initialPresentationRevision)
+    XCTAssertEqual(editorChanges, 0)
+
+    var currentDraft = try XCTUnwrap(store.draft(for: trackedDraft.id))
+    currentDraft.categories = ["当前文章分类"]
+    store.updateDraft(currentDraft)
+    XCTAssertGreaterThan(editorChanges, 0)
+    withExtendedLifetime(editorCancellable) {}
   }
 
   func testCommandPresentationFacadeIgnoresPublishMessagesAndAIStreaming() async {

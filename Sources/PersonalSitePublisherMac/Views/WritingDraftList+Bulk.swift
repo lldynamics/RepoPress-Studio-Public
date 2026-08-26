@@ -41,10 +41,18 @@ extension WritingDraftColumn {
 
   @MainActor
   func exportGeneralDraft(_ draft: ArticleDraft) {
+    store.flushDraftBodyEditorBuffer(for: draft.id)
+    guard let currentDraft = store.draft(for: draft.id) else {
+      store.setPublishActionMessage(
+        String(localized: "通用草稿已不存在，未执行导出。"),
+        status: .warning
+      )
+      return
+    }
     do {
       let document = try GeneralDraftExportService().document(
-        for: draft,
-        profile: store.profile(for: draft)
+        for: currentDraft,
+        profile: store.profile(for: currentDraft)
       )
       guard let destinationURL = try GeneralDraftExportPanel.export(document) else {
         return
@@ -69,27 +77,35 @@ extension WritingDraftColumn {
 
   @ViewBuilder
   func draftOwnershipActions(for draft: ArticleDraft) -> some View {
-    let draftIDs = transferDraftIDs(for: draft)
+    let renderedDraft = liveDraft(for: draft) ?? draft
+    let availableProfiles = availableTransferProfiles(
+      for: renderedDraft,
+      includeCurrentSite: false
+    )
 
-    if !draft.isGeneralDraft {
+    if !renderedDraft.isGeneralDraft {
       Button {
+        guard let currentDraft = liveDraft(for: renderedDraft) else { return }
         presentDraftOwnershipTransfer(
-          draftIDs: draftIDs,
+          draftIDs: transferDraftIDs(for: currentDraft),
           operation: .moveToGeneral
         )
       } label: {
         Label(
-          draftIDs.count > 1 ? String(localized: "批量转为通用草稿") : String(localized: "转为通用草稿"),
+          transferDraftIDs(for: renderedDraft).count > 1
+            ? String(localized: "批量转为通用草稿")
+            : String(localized: "转为通用草稿"),
           systemImage: "tray.and.arrow.down"
         )
       }
     }
 
     Menu {
-      ForEach(availableTransferProfiles(for: draft, includeCurrentSite: false)) { profile in
+      ForEach(availableProfiles) { profile in
         Button(profile.name) {
+          guard let currentDraft = liveDraft(for: renderedDraft) else { return }
           presentDraftOwnershipTransfer(
-            draftIDs: draftIDs,
+            draftIDs: transferDraftIDs(for: currentDraft),
             operation: .moveToSite,
             targetProfileID: profile.id
           )
@@ -97,17 +113,20 @@ extension WritingDraftColumn {
       }
     } label: {
       Label(
-        draftIDs.count > 1 ? String(localized: "批量移动到站点") : String(localized: "移动到站点"),
+        transferDraftIDs(for: renderedDraft).count > 1
+          ? String(localized: "批量移动到站点")
+          : String(localized: "移动到站点"),
         systemImage: "arrow.right.doc.on.clipboard"
       )
     }
-    .disabled(availableTransferProfiles(for: draft, includeCurrentSite: false).isEmpty)
+    .disabled(availableProfiles.isEmpty)
 
     Menu {
-      ForEach(availableTransferProfiles(for: draft, includeCurrentSite: false)) { profile in
+      ForEach(availableProfiles) { profile in
         Button(profile.name) {
+          guard let currentDraft = liveDraft(for: renderedDraft) else { return }
           presentDraftOwnershipTransfer(
-            draftIDs: draftIDs,
+            draftIDs: transferDraftIDs(for: currentDraft),
             operation: .copyToSite,
             targetProfileID: profile.id
           )
@@ -115,11 +134,13 @@ extension WritingDraftColumn {
       }
     } label: {
       Label(
-        draftIDs.count > 1 ? String(localized: "批量复制到站点") : String(localized: "复制到站点"),
+        transferDraftIDs(for: renderedDraft).count > 1
+          ? String(localized: "批量复制到站点")
+          : String(localized: "复制到站点"),
         systemImage: "doc.on.doc"
       )
     }
-    .disabled(availableTransferProfiles(for: draft, includeCurrentSite: false).isEmpty)
+    .disabled(availableProfiles.isEmpty)
 
     if store.canUndoLatestDraftOwnershipTransfer {
       Divider()
@@ -133,7 +154,7 @@ extension WritingDraftColumn {
 
   @ViewBuilder
   private var bulkDraftOwnershipActions: some View {
-    let selectedDrafts = visibleDraftSnapshot.filter { selectedDraftIDs.contains($0.id) }
+    let selectedDrafts = draftListCache.renderedDrafts(for: selectedDraftIDs)
 
     if selectedDrafts.allSatisfy({ !$0.isGeneralDraft }) {
       Button {

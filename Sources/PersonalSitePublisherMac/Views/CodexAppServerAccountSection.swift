@@ -20,7 +20,6 @@ struct CodexAppServerAccountSection: View {
   @State private var isLoginFlowActive = false
   @State private var actionMessage: String?
   @State private var isError = false
-  @State private var connectionTestState: CodexAppServerConnectionTestState = .idle
   @State private var operationTask: Task<Void, Never>?
   @State private var isLogoutConfirmationPresented = false
   @State private var isPostLoginTestConfirmationPresented = false
@@ -32,15 +31,6 @@ struct CodexAppServerAccountSection: View {
           runtimeStatus: runtimeStatus,
           openInstallationGuide: openRuntimeInstallationGuide,
           copyInstallationCommand: copyRuntimeInstallationCommand
-        )
-
-        CodexAppServerAccountSetupSteps(
-          runtimeStatus: runtimeStatus,
-          accountStatus: accountStatus,
-          consentGranted: accountStatus.map {
-            isCodexDataSharingConsentGranted($0)
-          } ?? false,
-          connectionTestState: connectionTestState
         )
 
         HStack(spacing: 8) {
@@ -78,13 +68,12 @@ struct CodexAppServerAccountSection: View {
         }
 
         HStack(spacing: 10) {
-          if runtimeStatus != nil, accountStatus?.isAuthenticated != true {
+          if runtimeStatus?.isAvailable == true, accountStatus?.isAuthenticated != true {
             Button(loginButtonTitle) {
               startBrowserLogin()
             }
             .workbenchProminentActionStyle()
-            .disabled(isWorking || !isRuntimeCompatible)
-            .accessibilityHint(runtimeActionHint)
+            .disabled(isWorking)
             .accessibilityIdentifier("settings-ai-codex-account-login")
           }
 
@@ -131,12 +120,12 @@ struct CodexAppServerAccountSection: View {
           }
         }
 
-        if runtimeStatus != nil, accountStatus?.isAuthenticated != true {
+        if runtimeStatus?.isAvailable == true, accountStatus?.isAuthenticated != true {
           Button("改用设备码登录") {
             startDeviceCodeLogin()
           }
           .buttonStyle(.link)
-          .disabled(isWorking || !isRuntimeCompatible)
+          .disabled(isWorking)
           .accessibilityHint("浏览器回跳不可用时使用")
           .accessibilityIdentifier("settings-ai-codex-device-login")
         }
@@ -158,7 +147,6 @@ struct CodexAppServerAccountSection: View {
 
         VStack(alignment: .leading, spacing: 4) {
           Text("使用 ChatGPT 套餐登录，不需要在 RepoPress 中填写 API Key。")
-          Text("通过本机 Codex 运行组件启动 ChatGPT 登录；令牌由 Codex 运行组件管理。")
           Text("RepoPress 不读取或保存登录令牌。AI 内容仍会发送到 OpenAI，并在首次发送前征求你的确认。")
         }
         .font(.workbenchMetadata)
@@ -213,19 +201,13 @@ struct CodexAppServerAccountSection: View {
   }
 
   private var statusTitle: String {
-    guard let runtimeStatus else {
-      return isWorking
-        ? String(localized: "正在检查 ChatGPT 账户…")
-        : String(localized: "ChatGPT 状态不可用")
-    }
-    guard runtimeStatus.isCompatible else {
-      return runtimeStatusTitle(runtimeStatus)
-    }
     if isWorking, accountStatus == nil {
       return String(localized: "正在检查 ChatGPT 账户…")
     }
     guard let accountStatus else {
-      return String(localized: "ChatGPT 状态不可用")
+      return runtimeStatus?.isAvailable == false
+        ? String(localized: "需要安装运行组件")
+        : String(localized: "ChatGPT 状态不可用")
     }
     if accountStatus.isAuthenticated {
       return accountStatus.accountType == "chatgpt"
@@ -242,62 +224,14 @@ struct CodexAppServerAccountSection: View {
   }
 
   private var statusSystemImage: String {
-    guard runtimeStatus?.isCompatible == true, let accountStatus else {
-      return "exclamationmark.triangle"
-    }
+    guard let accountStatus else { return "exclamationmark.triangle" }
     return accountStatus.isAuthenticated
       ? "checkmark.seal.fill" : "person.crop.circle.badge.questionmark"
   }
 
   private var statusColor: Color {
-    guard runtimeStatus?.isCompatible == true else {
-      return isWorking ? .secondary : WorkbenchTheme.warning
-    }
     guard let accountStatus else { return isWorking ? .secondary : WorkbenchTheme.warning }
     return accountStatus.isAuthenticated ? WorkbenchTheme.success : .secondary
-  }
-
-  private var isRuntimeCompatible: Bool {
-    runtimeStatus?.isCompatible == true
-  }
-
-  private var runtimeActionHint: String {
-    isRuntimeCompatible
-      ? String(localized: "通过本机 Codex 运行组件启动 ChatGPT 登录。")
-      : runtimeRecoveryMessage
-  }
-
-  private func runtimeStatusTitle(_ status: CodexAppServerRuntimeStatus) -> String {
-    switch status.compatibility {
-    case .missingExecutable:
-      return String(localized: "需要安装运行组件")
-    case .missingVersion:
-      return String(localized: "运行组件未返回版本号")
-    case .unparseableVersion:
-      return String(localized: "无法解析运行组件版本")
-    case .unsupportedVersion:
-      return String(localized: "运行组件版本过低")
-    case .compatible:
-      return String(localized: "运行组件兼容")
-    }
-  }
-
-  private var runtimeRecoveryMessage: String {
-    guard let status = runtimeStatus else {
-      return String(localized: "正在检测 Codex 运行组件兼容性…")
-    }
-    switch status.compatibility {
-    case .missingExecutable:
-      return String(localized: "未找到 Codex 运行组件。")
-    case .missingVersion:
-      return String(localized: "Codex 运行组件未返回版本号，请更新后重新检测。")
-    case .unparseableVersion:
-      return String(localized: "无法解析 Codex 运行组件版本，请更新后重新检测。")
-    case .unsupportedVersion:
-      return String(localized: "Codex 运行组件版本过低，需要 0.142.0 或更高。")
-    case .compatible:
-      return String(localized: "Codex 运行组件已兼容。")
-    }
   }
 
   private func loginMethodTitle(_ status: CodexAppServerAccountStatus) -> String {
@@ -335,16 +269,15 @@ struct CodexAppServerAccountSection: View {
   @MainActor
   private func refreshAll(showSuccess: Bool) async {
     isWorking = true
-    connectionTestState = .idle
     runtimeStatus = await CodexAppServerProcessTransport.inspectRuntime()
-    guard runtimeStatus?.isCompatible == true else {
+    guard runtimeStatus?.isAvailable == true else {
       accountStatus = nil
       rateLimits = nil
       availableModels = []
       isLoadingModels = false
       modelsError = nil
       isError = true
-      actionMessage = showSuccess ? runtimeRecoveryMessage : nil
+      actionMessage = showSuccess ? String(localized: "未找到 Codex 运行组件。") : nil
       isWorking = false
       return
     }
@@ -421,11 +354,6 @@ struct CodexAppServerAccountSection: View {
   }
 
   private func startBrowserLogin() {
-    guard isRuntimeCompatible else {
-      isError = true
-      actionMessage = runtimeRecoveryMessage
-      return
-    }
     operationTask?.cancel()
     isLoginFlowActive = true
     operationTask = Task { @MainActor in
@@ -460,11 +388,6 @@ struct CodexAppServerAccountSection: View {
   }
 
   private func startDeviceCodeLogin() {
-    guard isRuntimeCompatible else {
-      isError = true
-      actionMessage = runtimeRecoveryMessage
-      return
-    }
     operationTask?.cancel()
     isLoginFlowActive = true
     operationTask = Task { @MainActor in
@@ -546,15 +469,12 @@ struct CodexAppServerAccountSection: View {
   private func runPostLoginConnectionTest() async {
     isWorking = true
     isError = false
-    connectionTestState = .testing
     actionMessage = String(localized: "登录成功，正在自动测试连接…")
     let report = await testConnection()
     isWorking = false
     if let report {
-      connectionTestState = .passed
       actionMessage = report.headline
     } else {
-      connectionTestState = .failed
       isError = true
       actionMessage = String(localized: "登录成功，但自动连接测试失败；你可以稍后重试。")
     }
@@ -573,7 +493,6 @@ struct CodexAppServerAccountSection: View {
         accountStatus = CodexAppServerAccountStatus(isAuthenticated: false)
         rateLimits = nil
         availableModels = []
-        connectionTestState = .idle
         isLoadingModels = false
         modelsError = nil
         isError = false

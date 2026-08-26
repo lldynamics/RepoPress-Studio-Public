@@ -105,15 +105,18 @@ extension PublishingStore {
     }
 
     let renderedContentDigest = ArticleDraft.repositoryDocumentDigest(content)
-    var updatedDraft = drafts[index]
+    let previousDraft = drafts[index]
+    var updatedDraft = previousDraft
     guard updatedDraft.belongs(toSiteProfileID: profile.id) else { return false }
     updatedDraft.recordProjectFile(
       profile: profile,
       repositoryPath: markdownFile.repositoryPath,
       renderedContentDigest: renderedContentDigest
     )
-    updatedDraft.touch()
-    drafts[index] = updatedDraft
+    if updatedDraft != previousDraft {
+      updatedDraft.markUpdated(at: previousDraft.updatedAt, replacing: previousDraft)
+      drafts[index] = updatedDraft
+    }
     removeDraftPublishPreviewSnapshot(for: updatedDraft.id)
     if updatedDraft.renderedRepositoryContentDigest(profile: profile) == renderedContentDigest {
       store.siteDraftFileSaveStates[updatedDraft.id] = .saved(
@@ -1001,22 +1004,28 @@ extension PublishingStore {
     profile.repositoryPublishStrategy == .direct ? .directCommit : .reviewRequest
   }
 
+  @discardableResult
   public func markDraftsAsPublishedIfDirectRemoteCommit(
     mode: RemoteRepositoryPublishMode,
     draftIDs: [UUID]
-  ) {
-    guard mode == .directCommit else { return }
+  ) -> Bool {
+    guard mode == .directCommit else { return false }
     let now = Date()
-    drafts = drafts.map { draft in
+    let updatedDrafts = drafts.map { draft in
       guard draftIDs.contains(draft.id), !draft.draft else { return draft }
       var updatedDraft = draft
       updatedDraft.status = .published
-      updatedDraft.updatedAt = now
+      updatedDraft.markUpdated(at: now, replacing: draft)
       return updatedDraft
+    }
+    let didChange = updatedDrafts != drafts
+    if didChange {
+      drafts = updatedDrafts
     }
     for draftID in draftIDs {
       removeDraftPublishPreviewSnapshot(for: draftID)
     }
+    return didChange
   }
 
   func markDraftsRepositorySyncState(
@@ -1024,14 +1033,18 @@ extension PublishingStore {
     draftIDs: Set<UUID>
   ) {
     guard !draftIDs.isEmpty else { return }
-    drafts = drafts.map { draft in
+    let updatedDrafts = drafts.map { draft in
       guard draftIDs.contains(draft.id), draft.repositoryPath?.nilIfEmpty != nil else {
         return draft
       }
       var updatedDraft = draft
       updatedDraft.markRepositorySyncState(state)
-      updatedDraft.touch()
+      guard updatedDraft != draft else { return draft }
+      updatedDraft.markUpdated(at: draft.updatedAt, replacing: draft)
       return updatedDraft
+    }
+    if updatedDrafts != drafts {
+      drafts = updatedDrafts
     }
     for draftID in draftIDs {
       removeDraftPublishPreviewSnapshot(for: draftID)
@@ -1040,14 +1053,18 @@ extension PublishingStore {
 
   func markRemotePublishReviewSuccess(packages: [PublishPackage]) {
     let draftIDs = Set(packages.map(\.draftID))
-    drafts = drafts.map { draft in
+    let updatedDrafts = drafts.map { draft in
       guard draftIDs.contains(draft.id), draft.repositoryPath?.nilIfEmpty != nil else {
         return draft
       }
       var updatedDraft = draft
       updatedDraft.markRepositoryAwaitingReview(profile: profile(for: updatedDraft))
-      updatedDraft.touch()
+      guard updatedDraft != draft else { return draft }
+      updatedDraft.markUpdated(at: draft.updatedAt, replacing: draft)
       return updatedDraft
+    }
+    if updatedDrafts != drafts {
+      drafts = updatedDrafts
     }
     for draftID in draftIDs {
       removeDraftPublishPreviewSnapshot(for: draftID)
@@ -1088,18 +1105,23 @@ extension PublishingStore {
           let index = drafts.firstIndex(where: { $0.id == package.draftID }) else {
       return
     }
-    let profile = profile(for: drafts[index])
+    let previousDraft = drafts[index]
+    let profile = profile(for: previousDraft)
     let confirmedPath = package.markdownPath.normalizedRelativePath()
     let renderedDigest = package.markdownFile?.content
       .map(ArticleDraft.repositoryDocumentDigest)
-      ?? drafts[index].renderedRepositoryContentDigest(profile: profile)
-    drafts[index].recordProjectFile(
+      ?? previousDraft.renderedRepositoryContentDigest(profile: profile)
+    var updatedDraft = previousDraft
+    updatedDraft.recordProjectFile(
       profile: profile,
       repositoryPath: confirmedPath,
       renderedContentDigest: renderedDigest
     )
-    drafts[index].repositoryImportFingerprint = drafts[index].repositoryContentFingerprint
-    drafts[index].touch()
+    updatedDraft.repositoryImportFingerprint = updatedDraft.repositoryContentFingerprint
+    if updatedDraft != previousDraft {
+      updatedDraft.markUpdated(at: previousDraft.updatedAt, replacing: previousDraft)
+      drafts[index] = updatedDraft
+    }
     removeDraftPublishPreviewSnapshot(for: package.draftID)
   }
 
@@ -1110,7 +1132,7 @@ extension PublishingStore {
     guard result.mode == .directCommit else { return }
     let packagesByDraftID = Dictionary(uniqueKeysWithValues: packages.map { ($0.draftID, $0) })
     let now = Date()
-    drafts = drafts.map { draft in
+    let updatedDrafts = drafts.map { draft in
       guard let package = packagesByDraftID[draft.id] else { return draft }
       var updated = draft
       updated.attachments = updated.attachments.map { attachment in
@@ -1144,8 +1166,12 @@ extension PublishingStore {
         )
         updated.repositoryImportFingerprint = updated.repositoryContentFingerprint
       }
-      updated.updatedAt = now
+      guard updated != draft else { return draft }
+      updated.markUpdated(at: draft.updatedAt, replacing: draft)
       return updated
+    }
+    if updatedDrafts != drafts {
+      drafts = updatedDrafts
     }
     for draftID in packagesByDraftID.keys {
       removeDraftPublishPreviewSnapshot(for: draftID)

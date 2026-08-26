@@ -95,7 +95,9 @@ public enum AIPublishingChatDraftApplicationService {
       updatedDraft.bodyMarkdown = appending(replacement, to: updatedDraft.bodyMarkdown)
       action = .appendedToBody
     }
-    updatedDraft.touch()
+    // Chat application changes the document body only. Keep the editor's
+    // metadata lock and the sidebar's ordering timestamp stable.
+    updatedDraft.markBodyUpdated()
 
     return AIPublishingChatDraftApplicationResult(
       draft: updatedDraft,

@@ -14,6 +14,15 @@ public enum DraftFolderNodeKind: String, Hashable, Sendable {
   case unfiled
 }
 
+/// Exact cache identity of a draft's projected folder assignment. Raw source
+/// paths are intentionally hidden: two path states that resolve to the same
+/// safe folder share this key, while unsafe/private transitions remain visible.
+public enum DraftFolderAssignmentCacheKey: Hashable, Sendable {
+  case protectedContent
+  case unfiled
+  case folder(canonicalDirectory: String, visibleDirectory: String)
+}
+
 public struct DraftFolderNode: Identifiable, Hashable, Sendable {
   public typealias Kind = DraftFolderNodeKind
 
@@ -235,6 +244,30 @@ public struct DraftFolderProjection: Sendable {
       sortOrder: sortOrder,
       maskedDraftIDs: maskedDraftIDs
     ).root
+  }
+
+  public static func assignmentCacheKey(
+    for draft: ArticleDraft,
+    profile: SiteProfile,
+    isMasked: Bool
+  ) -> DraftFolderAssignmentCacheKey {
+    let contentRootComponents = safeComponents(profile.contentRoot) ?? []
+    switch assignment(
+      for: draft,
+      profile: profile,
+      contentRootComponents: contentRootComponents,
+      isMasked: isMasked
+    ) {
+    case .protected:
+      return .protectedContent
+    case .unfiled:
+      return .unfiled
+    case .folder(let canonicalComponents, let visibleComponents):
+      return .folder(
+        canonicalDirectory: canonicalComponents.joined(separator: "/"),
+        visibleDirectory: visibleComponents.joined(separator: "/")
+      )
+    }
   }
 
   private enum Assignment {

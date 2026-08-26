@@ -78,6 +78,7 @@ extension PublishingStore {
        !profiles.contains(where: { $0.id == restored.siteProfileID }) {
       restored.assignToGeneralDraft(editingProfileID: activeProfileID)
     }
+    restored.markUpdated(replacing: currentDraft)
     drafts[currentIndex] = restored
     selectedDraftID = restored.id
     if restored.isGeneralDraft {
@@ -143,7 +144,7 @@ extension PublishingStore {
     if restored.isGeneralDraft {
       restored.assignToGeneralDraft(editingProfileID: activeProfileID)
     }
-    restored.updatedAt = Date()
+    restored.markMetadataUpdated()
     drafts.insert(restored, at: 0)
     if restored.isGeneralDraft {
       draftListContentScope = .general

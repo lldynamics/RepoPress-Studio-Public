@@ -21,10 +21,119 @@ final class DraftBodyEditorBufferTests: XCTestCase {
     )
     legacyObject.removeValue(forKey: "wordCountStorage")
     legacyObject.removeValue(forKey: "wordCountNeedsRefreshStorage")
+    legacyObject.removeValue(forKey: "metadataUpdatedAtStorage")
+    legacyObject.removeValue(forKey: "editorMetadataRevisionStorage")
     let legacyData = try JSONSerialization.data(withJSONObject: legacyObject)
     let legacy = try JSONDecoder().decode(ArticleDraft.self, from: legacyData)
     XCTAssertEqual(legacy.wordCount, 0)
     XCTAssertTrue(legacy.wordCountNeedsRefresh)
+    XCTAssertEqual(legacy.metadataUpdatedAt, legacy.updatedAt)
+    XCTAssertEqual(legacy.editorMetadataRevision, 0)
+  }
+
+  func testBodyOnlyUpdateMovesContentTimestampButFreezesMetadataTimestamp() throws {
+    let store = try TestWorkbenchFactory.makeStore()
+    let original = try XCTUnwrap(store.selectedDraft)
+    let originalMetadataUpdatedAt = original.metadataUpdatedAt
+    let initialDraftListRevision = store.draftList.presentationRevision
+    let originalEditorMetadataRevision = original.editorMetadataRevision
+
+    var bodyEdit = original
+    bodyEdit.bodyMarkdown = "只改变正文"
+    // Some body-producing services historically advanced `updatedAt` before
+    // handing the value to the store. That must not be misclassified as list
+    // metadata when decoding a legacy draft without a stored metadata clock.
+    bodyEdit.updatedAt = original.updatedAt.addingTimeInterval(60)
+    store.updateDraft(bodyEdit)
+
+    let bodyUpdated = try XCTUnwrap(store.draft(for: original.id))
+    XCTAssertNotEqual(bodyUpdated.updatedAt, original.updatedAt)
+    XCTAssertEqual(bodyUpdated.metadataUpdatedAt, originalMetadataUpdatedAt)
+    XCTAssertEqual(bodyUpdated.editorMetadataRevision, originalEditorMetadataRevision)
+    XCTAssertEqual(store.draftList.presentationRevision, initialDraftListRevision)
+
+    var metadataEdit = bodyUpdated
+    metadataEdit.title = "真正的元数据编辑"
+    store.updateDraft(metadataEdit)
+    let metadataUpdated = try XCTUnwrap(store.draft(for: original.id))
+    XCTAssertGreaterThan(metadataUpdated.metadataUpdatedAt, originalMetadataUpdatedAt)
+    XCTAssertGreaterThan(metadataUpdated.editorMetadataRevision, originalEditorMetadataRevision)
+  }
+
+  func testAttachmentMetadataRevisionRejectsStaleEditorWindow() throws {
+    let store = try TestWorkbenchFactory.makeStore()
+    let original = try XCTUnwrap(store.selectedDraft)
+    let originalMetadataUpdatedAt = original.metadataUpdatedAt
+    let initialDraftListRevision = store.draftList.presentationRevision
+    var firstWindow = original
+    var staleWindow = original
+    let attachment = DraftAttachment(
+      originalFilename: "hero.png",
+      relativePublishPath: "images/hero.png",
+      repositoryPath: "static/images/hero.png"
+    )
+    firstWindow.attachments = [attachment]
+
+    XCTAssertTrue(store.updateDraftFromEditor(firstWindow))
+    XCTAssertEqual(
+      store.draft(for: original.id)?.editorMetadataRevision,
+      original.editorMetadataRevision + 1
+    )
+    XCTAssertEqual(
+      store.draft(for: original.id)?.metadataUpdatedAt,
+      originalMetadataUpdatedAt
+    )
+    XCTAssertEqual(store.draftList.presentationRevision, initialDraftListRevision)
+
+    staleWindow.title = "陈旧窗口标题"
+    XCTAssertFalse(store.updateDraftFromEditor(staleWindow))
+    XCTAssertEqual(store.draft(for: original.id)?.attachments, [attachment])
+    XCTAssertNotEqual(store.draft(for: original.id)?.title, staleWindow.title)
+  }
+
+  func testDraftListUpdatedSortUsesMetadataTimestampInsteadOfBodyTimestamp() {
+    let profileID = SiteProfile.defaultProfile.id
+    let metadataBaseline = Date(timeIntervalSince1970: 100)
+    let bodyNewest = ArticleDraft(
+      siteProfileID: profileID,
+      title: "正文更新较新",
+      updatedAt: Date(timeIntervalSince1970: 300),
+      metadataUpdatedAt: metadataBaseline
+    )
+    let metadataNewest = ArticleDraft(
+      siteProfileID: profileID,
+      title: "元数据更新较新",
+      updatedAt: Date(timeIntervalSince1970: 200),
+      metadataUpdatedAt: Date(timeIntervalSince1970: 200)
+    )
+
+    let sorted = DraftListProjection.sorted(
+      [bodyNewest, metadataNewest],
+      by: .updatedNewest
+    )
+    XCTAssertEqual(sorted.map(\.id), [metadataNewest.id, bodyNewest.id])
+  }
+
+  func testDraftListTitleTieBreakUsesMetadataTimestamp() {
+    let profileID = SiteProfile.defaultProfile.id
+    let older = ArticleDraft(
+      siteProfileID: profileID,
+      title: "相同标题",
+      updatedAt: Date(timeIntervalSince1970: 300),
+      metadataUpdatedAt: Date(timeIntervalSince1970: 100)
+    )
+    let newer = ArticleDraft(
+      siteProfileID: profileID,
+      title: "相同标题",
+      updatedAt: Date(timeIntervalSince1970: 100),
+      metadataUpdatedAt: Date(timeIntervalSince1970: 200)
+    )
+
+    let sorted = DraftListProjection.sorted(
+      [older, newer],
+      by: .titleAscending
+    )
+    XCTAssertEqual(sorted.map(\.id), [newer.id, older.id])
   }
 
   func testFlushedBodyRefreshesPersistedWordCountAsynchronously() async throws {
@@ -110,6 +219,37 @@ final class DraftBodyEditorBufferTests: XCTestCase {
     let current = try XCTUnwrap(store.drafts.first(where: { $0.id == original.id }))
     XCTAssertEqual(current.title, "另一窗口的新标题")
     XCTAssertEqual(current.summary, "同步后的摘要")
+  }
+
+  func testDeletedDraftRejectsStaleEditorWriteInsteadOfResurrectingIt() throws {
+    let store = try TestWorkbenchFactory.makeStore()
+    let staleEditorDraft = try XCTUnwrap(store.selectedDraft)
+
+    store.deleteDraft(id: staleEditorDraft.id)
+    XCTAssertNil(store.draft(for: staleEditorDraft.id))
+
+    var staleWrite = staleEditorDraft
+    staleWrite.title = "旧窗口不应复活文章"
+    XCTAssertFalse(store.updateDraftFromEditor(staleWrite))
+    XCTAssertNil(store.draft(for: staleEditorDraft.id))
+    XCTAssertTrue(store.publishActionMessage?.contains("已被删除或下线") == true)
+  }
+
+  func testDeletingDraftFlushesDirtyBodyIntoRecycleBin() throws {
+    let store = try TestWorkbenchFactory.makeStore()
+    let draft = try XCTUnwrap(store.selectedDraft)
+    let stagedBody = "删除前还没到延迟落盘时间的正文"
+    let buffer = store.draftBodyEditorBuffer(for: draft.id)
+
+    let result = try XCTUnwrap(
+      store.stageDraftBody(stagedBody, for: draft.id, baseRevision: buffer.revision)
+    )
+    XCTAssertTrue(result.wasAccepted)
+    store.deleteDraft(id: draft.id)
+
+    XCTAssertNil(store.draft(for: draft.id))
+    XCTAssertTrue(store.restoreRecycledDraft(draft.id))
+    XCTAssertEqual(store.draft(for: draft.id)?.bodyMarkdown, stagedBody)
   }
 
   func testImmediateSaveFlushesStagedBody() async throws {

@@ -264,44 +264,12 @@ public final class AICredentialStore: @unchecked Sendable {
     legacyProfiles: [SiteProfile] = []
   ) throws {
     try synchronized {
-      if resolvedStorageMode() == .keychain {
-        // A Codex connection uses a loopback sentinel as an internal
-        // transport identity. It never had an origin-bound legacy Keychain
-        // item, so asking the Keychain store to construct that account is
-        // expected to fail with `invalidCredentialOrigin`. Treat only this
-        // exact, known-impossible legacy shape as absent; all other errors
-        // remain fail-closed and prevent the shared credential from being
-        // removed behind the caller's back.
-        for profile in legacyProfiles {
-          do {
-            try keychainTokenStore.deleteLegacyAIToken(for: profile)
-          } catch {
-            guard
-              let keychainError = error as? KeychainTokenStoreError,
-              case .invalidCredentialOrigin = keychainError,
-              Self.isLegacyCodexSentinel(profile)
-            else {
-              throw error
-            }
-          }
-        }
-        try keychainTokenStore.deleteAIToken(forConnectionProfileID: id)
-      } else {
-        try deleteToken(
-          forConnectionProfileID: id,
-          legacyProfiles: legacyProfiles
-        )
-      }
+      try deleteToken(
+        forConnectionProfileID: id,
+        legacyProfiles: legacyProfiles
+      )
       setCredentialGeneration(credentialGeneration(for: id) + 1, for: id)
     }
-  }
-
-  private static func isLegacyCodexSentinel(_ profile: SiteProfile) -> Bool {
-    let config = profile.aiProviderConfig
-    return
-      (config.preset == .custom || config.preset == .codexAppServer)
-      && config.baseURL == AIProviderPreset.codexAppServer.defaultBaseURL
-      && !config.requiresAPIKey
   }
 
   private func synchronized<T>(_ operation: () throws -> T) rethrows -> T {
