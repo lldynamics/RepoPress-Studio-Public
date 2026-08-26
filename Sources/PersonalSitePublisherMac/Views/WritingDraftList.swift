@@ -2,7 +2,7 @@ import PublishingWorkbenchCore
 import SwiftUI
 
 extension WritingDraftColumn {
-  private var paginatedDrafts: [ArticleDraft] {
+  var paginatedDrafts: [ArticleDraft] {
     paginatedDraftSnapshot
   }
 

@@ -1,4 +1,5 @@
 import Foundation
+import Network
 import PublishingWorkbenchCore
 import XCTest
 
@@ -6,6 +7,68 @@ import XCTest
 
 @MainActor
 final class KnowledgeBrowserBridgeActivationTests: XCTestCase {
+  func testBridgeAllocatesNetworkResourcesOnlyAfterEnableAndReleasesThemOnDisable() async throws {
+    let rootURL = FileManager.default.temporaryDirectory.appendingPathComponent(
+      "knowledge-browser-lazy-network-\(UUID().uuidString)",
+      isDirectory: true
+    )
+    let suiteName = "KnowledgeBrowserBridgeActivationTests.\(UUID().uuidString)"
+    let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+    defaults.removePersistentDomain(forName: suiteName)
+    try FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)
+    defer {
+      defaults.removePersistentDomain(forName: suiteName)
+      try? FileManager.default.removeItem(at: rootURL)
+    }
+
+    let bridge = KnowledgeBrowserBridge(
+      knowledge: KnowledgeStore(
+        service: KnowledgeLibraryService(
+          rootURL: rootURL.appendingPathComponent("KnowledgeLibrary", isDirectory: true)
+        )
+      ),
+      defaults: defaults,
+      connectionTokenKeychainStore: KeychainTokenStore(
+        service: KeychainCredentialServices.browserBridge,
+        accountPrefix: "browser-lazy-network-test-\(UUID().uuidString)",
+        inMemory: true,
+        allowsAuthenticationInteraction: false
+      ),
+      importOperationLedgerURL: rootURL.appendingPathComponent("import-ledger.plist"),
+      makeListener: { _ in
+        try NWListener(using: .tcp, on: .any)
+      }
+    )
+
+    bridge.start()
+
+    XCTAssertFalse(bridge.isEnabled)
+    XCTAssertFalse(bridge.hasAllocatedNetworkResources)
+    XCTAssertEqual(bridge.activeNetworkConnectionCount, 0)
+
+    bridge.setEnabled(true)
+    try await waitUntil {
+      bridge.state == .ready && bridge.activeListenerPort != nil
+    }
+    XCTAssertTrue(bridge.hasAllocatedNetworkResources)
+
+    let activePort = try XCTUnwrap(bridge.activeListenerPort)
+    let port = try XCTUnwrap(NWEndpoint.Port(rawValue: activePort))
+    let client = NWConnection(host: "127.0.0.1", port: port, using: .tcp)
+    client.start(queue: DispatchQueue(label: "KnowledgeBrowserBridgeActivationTests.client"))
+    defer { client.cancel() }
+    try await waitUntil {
+      bridge.activeNetworkConnectionCount == 1
+    }
+
+    bridge.setEnabled(false)
+
+    XCTAssertFalse(bridge.isEnabled)
+    XCTAssertEqual(bridge.state, .stopped)
+    XCTAssertFalse(bridge.hasAllocatedNetworkResources)
+    XCTAssertEqual(bridge.activeNetworkConnectionCount, 0)
+  }
+
   func testDisabledBridgeDefersExistingKeychainTokenUntilUserEnablesIt() throws {
     let rootURL = FileManager.default.temporaryDirectory.appendingPathComponent(
       "knowledge-browser-activation-\(UUID().uuidString)",
@@ -123,5 +186,16 @@ final class KnowledgeBrowserBridgeActivationTests: XCTestCase {
     restartedBridge.setEnabled(true)
 
     XCTAssertEqual(restartedBridge.connectionToken, rotatedToken)
+  }
+
+  private func waitUntil(
+    attempts: Int = 300,
+    condition: @MainActor () -> Bool
+  ) async throws {
+    for _ in 0..<attempts {
+      if condition() { return }
+      try await Task.sleep(for: .milliseconds(10))
+    }
+    XCTFail("Timed out waiting for browser bridge lifecycle state")
   }
 }

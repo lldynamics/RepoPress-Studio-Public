@@ -1340,6 +1340,104 @@ final class MarkdownEditorAppKitInteractionTests: XCTestCase {
     )
   }
 
+  func testInlineAIRequestShortcutInvokesHandlerAndConsumesOptionBackslash() throws {
+    let textView = makeTextView()
+    textView.string = "原文"
+    var requestCount = 0
+    textView.inlineAIRequestHandler = {
+      requestCount += 1
+    }
+
+    let event = try XCTUnwrap(
+      makeKeyEvent(
+        keyCode: 0x2A,
+        modifiers: [.option],
+        characters: "«",
+        charactersIgnoringModifiers: "\\"
+      )
+    )
+    textView.keyDown(with: event)
+
+    XCTAssertEqual(requestCount, 1)
+    XCTAssertEqual(textView.string, "原文")
+  }
+
+  func testRepeatedInlineAIRequestShortcutIsConsumedWithoutRequestingAgain() throws {
+    let textView = makeTextView()
+    textView.string = "原文"
+    var requestCount = 0
+    textView.inlineAIRequestHandler = {
+      requestCount += 1
+    }
+
+    let event = try XCTUnwrap(
+      makeKeyEvent(
+        keyCode: 0x2A,
+        modifiers: [.option],
+        characters: "«",
+        charactersIgnoringModifiers: "\\",
+        isARepeat: true
+      )
+    )
+    textView.keyDown(with: event)
+
+    XCTAssertEqual(requestCount, 0)
+    XCTAssertEqual(textView.string, "原文")
+  }
+
+  func testPlainAndExtraModifiedBackslashDoNotRequestInlineAI() throws {
+    let textView = makeTextView()
+    var requestCount = 0
+    textView.inlineAIRequestHandler = {
+      requestCount += 1
+    }
+
+    let plainEvent = try XCTUnwrap(
+      makeKeyEvent(
+        keyCode: 0x2A,
+        characters: "\\",
+        charactersIgnoringModifiers: "\\"
+      )
+    )
+    let shiftedOptionEvent = try XCTUnwrap(
+      makeKeyEvent(
+        keyCode: 0x2A,
+        modifiers: [.shift, .option],
+        characters: "»",
+        charactersIgnoringModifiers: "\\"
+      )
+    )
+    textView.keyDown(with: plainEvent)
+    textView.keyDown(with: shiftedOptionEvent)
+
+    XCTAssertEqual(requestCount, 0)
+  }
+
+  func testTabWithGhostTextKeepsAcceptanceRouteSeparateFromInlineAIRequest() throws {
+    let textView = makeTextView()
+    var acceptedCount = 0
+    var requestCount = 0
+    textView.ghostTextAcceptHandler = {
+      acceptedCount += 1
+      return true
+    }
+    textView.inlineAIRequestHandler = {
+      requestCount += 1
+    }
+
+    let tabEvent = try XCTUnwrap(
+      makeKeyEvent(
+        keyCode: 48,
+        characters: "\t",
+        charactersIgnoringModifiers: "\t"
+      )
+    )
+    textView.keyDown(with: tabEvent)
+
+    XCTAssertEqual(acceptedCount, 1)
+    XCTAssertEqual(requestCount, 0)
+  }
+
   func testComfortDefaultsIncludeParagraphSpotlightReset() {
     XCTAssertFalse(MarkdownEditorComfortConfiguration.defaultParagraphSpotlightEnabled)
   }
@@ -2414,7 +2512,10 @@ final class MarkdownEditorAppKitInteractionTests: XCTestCase {
 
   private func makeKeyEvent(
     keyCode: UInt16,
-    modifiers: NSEvent.ModifierFlags = []
+    modifiers: NSEvent.ModifierFlags = [],
+    characters: String = "",
+    charactersIgnoringModifiers: String = "",
+    isARepeat: Bool = false
   ) -> NSEvent? {
     NSEvent.keyEvent(
       with: .keyDown,
@@ -2423,9 +2524,9 @@ final class MarkdownEditorAppKitInteractionTests: XCTestCase {
       timestamp: 0,
       windowNumber: 0,
       context: nil,
-      characters: "",
-      charactersIgnoringModifiers: "",
-      isARepeat: false,
+      characters: characters,
+      charactersIgnoringModifiers: charactersIgnoringModifiers,
+      isARepeat: isARepeat,
       keyCode: keyCode
     )
   }

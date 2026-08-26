@@ -156,11 +156,29 @@ struct KnowledgeLibraryHealthView: View {
           .foregroundStyle(.secondary)
       }
       if preview.difference.hasChanges {
-        Text("预计新增 \(preview.difference.addedLineCount) 行、移除 \(preview.difference.removedLineCount) 行。")
-          .font(.caption)
-          .foregroundStyle(.secondary)
+        HStack(spacing: 6) {
+          if preview.difference.addedLineCount > 0 {
+            Text("+\(preview.difference.addedLineCount)")
+              .font(.workbenchMetadata.monospacedDigit().weight(.semibold))
+              .foregroundStyle(WorkbenchTheme.success)
+              .padding(.horizontal, 6)
+              .padding(.vertical, 2)
+              .background(WorkbenchTheme.success.opacity(0.12), in: Capsule())
+          }
+          if preview.difference.removedLineCount > 0 {
+            Text("−\(preview.difference.removedLineCount)")
+              .font(.workbenchMetadata.monospacedDigit().weight(.semibold))
+              .foregroundStyle(WorkbenchTheme.risk)
+              .padding(.horizontal, 6)
+              .padding(.vertical, 2)
+              .background(WorkbenchTheme.risk.opacity(0.12), in: Capsule())
+          }
+          Text(String(localized: "行变化"))
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        }
       } else {
-        Text("正文内容一致；仍会升级解析器版本并重新生成索引。")
+        Text(String(localized: "正文内容一致；仍会升级解析器版本并重新生成索引。"))
           .font(.caption)
           .foregroundStyle(.secondary)
       }
@@ -186,13 +204,25 @@ struct KnowledgeLibraryHealthView: View {
         }
         .disabled(!state.hasDocuments || state.isBusy)
       }
-      Text(
-        health.semanticRepairChunkCount == 0
-          ? "当前片段均有可用的本地语义向量。"
-          : "有 \(health.semanticRepairChunkCount) 个片段的向量缺失、维度不匹配或指向旧版本。"
-      )
-      .font(.callout)
-      .foregroundStyle(.secondary)
+
+      if state.isBusy {
+        HStack(spacing: 8) {
+          ProgressView()
+            .controlSize(.small)
+          Text(String(localized: "正在构建本地向量并更新语义索引…"))
+            .font(.callout)
+            .foregroundStyle(.secondary)
+        }
+        .padding(.vertical, 2)
+      } else {
+        Text(
+          health.semanticRepairChunkCount == 0
+            ? "当前片段均有可用的本地语义向量。"
+            : "有 \(health.semanticRepairChunkCount) 个片段的向量缺失、维度不匹配或指向旧版本。"
+        )
+        .font(.callout)
+        .foregroundStyle(.secondary)
+      }
     }
   }
 

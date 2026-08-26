@@ -624,6 +624,7 @@ final class DroppableMarkdownTextView: NSTextView {
   var slashCommandKeyHandler: ((MarkdownSlashCommandKey) -> Bool)?
   var ghostTextAcceptHandler: (() -> Bool)?
   var ghostTextDismissHandler: (() -> Bool)?
+  var inlineAIRequestHandler: (() -> Void)?
   /// Visible block markers are painted by the text view itself. Keeping this
   /// as value state avoids one AppKit child view (and one Core Animation
   /// commit) for every list/quote/task marker in the viewport.
@@ -922,6 +923,9 @@ final class DroppableMarkdownTextView: NSTextView {
 
   override func keyDown(with event: NSEvent) {
     let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+    let shortcutModifiers = event.modifierFlags.intersection([
+      .command, .control, .option, .shift,
+    ])
     if let slashCommandKey = MarkdownSlashCommandKey.from(
       keyCode: event.keyCode,
       modifiers: event.modifierFlags
@@ -950,6 +954,18 @@ final class DroppableMarkdownTextView: NSTextView {
       if modifiers == .command {
         if markdownLineEditingHandler?(self, .toggleComment) == true { return }
       }
+    }
+
+    // kVK_ANSI_Backslash (0x2A): Option + backslash explicitly requests
+    // inline AI. Consume repeats without issuing another network request.
+    if event.keyCode == 0x2A,
+      shortcutModifiers == .option,
+      let inlineAIRequestHandler
+    {
+      if !event.isARepeat {
+        inlineAIRequestHandler()
+      }
+      return
     }
 
     if event.keyCode == 48 {  // Tab key

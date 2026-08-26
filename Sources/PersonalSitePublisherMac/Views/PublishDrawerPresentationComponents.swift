@@ -285,6 +285,12 @@ struct PublishDrawerBatchActionPresentation {
   }
 }
 
+enum PublishDrawerActionStyle: Equatable {
+  case localSave
+  case formalRelease
+  case isolatedPreview
+}
+
 struct PublishDrawerActionChoice: View {
   let title: String
   let detail: String
@@ -292,7 +298,10 @@ struct PublishDrawerActionChoice: View {
   let systemImage: String
   let tint: Color
   let isEnabled: Bool
-  let isPrimary: Bool
+  var isPrimary: Bool = false
+  var actionStyle: PublishDrawerActionStyle = .localSave
+  var targetBadge: String? = nil
+  var targetBadgeTint: Color? = nil
   let actionTitle: String
   let actionSystemImage: String
   let actionIdentifier: String
@@ -300,10 +309,28 @@ struct PublishDrawerActionChoice: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: 10) {
-      Image(systemName: systemImage)
-        .font(.title2)
-        .foregroundStyle(tint)
-        .accessibilityHidden(true)
+      HStack(alignment: .top) {
+        Image(systemName: systemImage)
+          .font(.title2)
+          .foregroundStyle(tint)
+          .accessibilityHidden(true)
+
+        Spacer()
+
+        if let targetBadge {
+          Text(targetBadge)
+            .font(.workbenchMetadata.weight(.medium))
+            .foregroundStyle(targetBadgeTint ?? tint)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(
+              (targetBadgeTint ?? tint).opacity(0.12),
+              in: Capsule()
+            )
+            .lineLimit(1)
+        }
+      }
+
       Text(title)
         .font(.headline)
       Text(detail)
@@ -316,7 +343,7 @@ struct PublishDrawerActionChoice: View {
 
       Spacer(minLength: 0)
 
-      if isPrimary {
+      if actionStyle == .formalRelease || isPrimary {
         Button(action: action) {
           Label(actionTitle, systemImage: actionSystemImage)
         }
@@ -350,16 +377,30 @@ struct PublishDrawerActionChoice: View {
     .padding(14)
     .frame(maxWidth: .infinity, minHeight: 190, alignment: .topLeading)
     .background(
-      WorkbenchBackgroundStyle.card,
+      cardBackground,
       in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
     )
     .overlay {
       RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
-        .stroke(tint.opacity(isEnabled ? 0.35 : 0.15), lineWidth: 1)
+        .stroke(cardBorderStroke, lineWidth: actionStyle == .formalRelease ? 1.5 : 1)
     }
     .accessibilityElement(children: .contain)
     .accessibilityLabel(title)
     .accessibilityValue(status)
+  }
+
+  private var cardBackground: AnyShapeStyle {
+    if actionStyle == .formalRelease {
+      return AnyShapeStyle(WorkbenchTheme.success.opacity(isEnabled ? 0.05 : 0.02))
+    }
+    return WorkbenchBackgroundStyle.card
+  }
+
+  private var cardBorderStroke: Color {
+    if actionStyle == .formalRelease {
+      return WorkbenchTheme.success.opacity(isEnabled ? 0.5 : 0.2)
+    }
+    return tint.opacity(isEnabled ? 0.35 : 0.15)
   }
 }
 

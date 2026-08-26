@@ -2,6 +2,41 @@ import AppKit
 import PublishingWorkbenchCore
 import SwiftUI
 
+enum RepositoryImageSortOrder: String, CaseIterable, Identifiable {
+  case nameAsc
+  case nameDesc
+  case dateNewest
+  case dateOldest
+  case sizeLargest
+  case sizeSmallest
+  case unregisteredFirst
+  case registeredFirst
+
+  var id: String { rawValue }
+
+  var title: String {
+    switch self {
+    case .nameAsc: String(localized: "名称 (A → Z)")
+    case .nameDesc: String(localized: "名称 (Z → A)")
+    case .dateNewest: String(localized: "修改日期 (最新优先)")
+    case .dateOldest: String(localized: "修改日期 (最早优先)")
+    case .sizeLargest: String(localized: "文件大小 (从大到小)")
+    case .sizeSmallest: String(localized: "文件大小 (从小到大)")
+    case .unregisteredFirst: String(localized: "引用状态 (未登记优先)")
+    case .registeredFirst: String(localized: "引用状态 (已登记优先)")
+    }
+  }
+
+  var shortTitle: String {
+    switch self {
+    case .nameAsc, .nameDesc: String(localized: "按名称")
+    case .dateNewest, .dateOldest: String(localized: "按修改时间")
+    case .sizeLargest, .sizeSmallest: String(localized: "按文件大小")
+    case .unregisteredFirst, .registeredFirst: String(localized: "按引用状态")
+    }
+  }
+}
+
 enum RepositoryImageFilter: String, CaseIterable, Identifiable {
   case all
   case registered
@@ -39,6 +74,7 @@ struct RepositoryImageBrowserView: View {
 
   @State private var query = ""
   @State private var filter: RepositoryImageFilter = .all
+  @State private var sortOrder: RepositoryImageSortOrder = .nameAsc
 
   var body: some View {
     VStack(alignment: .leading, spacing: 14) {
@@ -105,13 +141,17 @@ struct RepositoryImageBrowserView: View {
       targetArticleControls
 
       ViewThatFits(in: .horizontal) {
-        HStack(spacing: 10) {
+        HStack(spacing: 8) {
           searchField
           filterPicker
+          sortMenu
         }
         VStack(alignment: .leading, spacing: 8) {
           searchField
-          filterPicker
+          HStack(spacing: 8) {
+            filterPicker
+            sortMenu
+          }
         }
       }
 
@@ -135,6 +175,7 @@ struct RepositoryImageBrowserView: View {
     .onAppear { normalizeSelection(in: inventory) }
     .onChange(of: query) { _, _ in normalizeSelection(in: inventory) }
     .onChange(of: filter) { _, _ in normalizeSelection(in: inventory) }
+    .onChange(of: sortOrder) { _, _ in normalizeSelection(in: inventory) }
     .onChange(of: inventory.revisionID) { _, _ in normalizeSelection(in: inventory) }
   }
 
@@ -370,11 +411,46 @@ struct RepositoryImageBrowserView: View {
 
   private func filteredAssets(_ inventory: RepositoryImageInventory) -> [RepositoryImageAsset] {
     let normalizedQuery = query.trimmedForPublishing
-    return inventory.assets.filter { asset in
+    let base = inventory.assets.filter { asset in
       filter.includes(asset)
         && (normalizedQuery.isEmpty
           || asset.filename.localizedStandardContains(normalizedQuery)
           || asset.repositoryPath.localizedStandardContains(normalizedQuery))
+    }
+
+    return base.sorted { lhs, rhs in
+      switch sortOrder {
+      case .nameAsc:
+        return lhs.filename.localizedStandardCompare(rhs.filename) == .orderedAscending
+      case .nameDesc:
+        return lhs.filename.localizedStandardCompare(rhs.filename) == .orderedDescending
+      case .dateNewest:
+        let lDate = lhs.modifiedAt ?? .distantPast
+        let rDate = rhs.modifiedAt ?? .distantPast
+        if lDate != rDate { return lDate > rDate }
+        return lhs.filename.localizedStandardCompare(rhs.filename) == .orderedAscending
+      case .dateOldest:
+        let lDate = lhs.modifiedAt ?? .distantPast
+        let rDate = rhs.modifiedAt ?? .distantPast
+        if lDate != rDate { return lDate < rDate }
+        return lhs.filename.localizedStandardCompare(rhs.filename) == .orderedAscending
+      case .sizeLargest:
+        if lhs.byteSize != rhs.byteSize { return lhs.byteSize > rhs.byteSize }
+        return lhs.filename.localizedStandardCompare(rhs.filename) == .orderedAscending
+      case .sizeSmallest:
+        if lhs.byteSize != rhs.byteSize { return lhs.byteSize < rhs.byteSize }
+        return lhs.filename.localizedStandardCompare(rhs.filename) == .orderedAscending
+      case .unregisteredFirst:
+        if lhs.isRegisteredToArticle != rhs.isRegisteredToArticle {
+          return !lhs.isRegisteredToArticle && rhs.isRegisteredToArticle
+        }
+        return lhs.filename.localizedStandardCompare(rhs.filename) == .orderedAscending
+      case .registeredFirst:
+        if lhs.isRegisteredToArticle != rhs.isRegisteredToArticle {
+          return lhs.isRegisteredToArticle && !rhs.isRegisteredToArticle
+        }
+        return lhs.filename.localizedStandardCompare(rhs.filename) == .orderedAscending
+      }
     }
   }
 
@@ -392,8 +468,24 @@ struct RepositoryImageBrowserView: View {
       }
     }
     .pickerStyle(.segmented)
-    .frame(maxWidth: 260)
+    .frame(maxWidth: 240)
     .accessibilityIdentifier("repository-image-filter")
+  }
+
+  private var sortMenu: some View {
+    Menu {
+      Picker("排序方式", selection: $sortOrder) {
+        ForEach(RepositoryImageSortOrder.allCases) { option in
+          Text(option.title).tag(option)
+        }
+      }
+    } label: {
+      Label(sortOrder.shortTitle, systemImage: "arrow.up.arrow.down")
+    }
+    .menuStyle(.borderedButton)
+    .fixedSize()
+    .accessibilityLabel("图片排序")
+    .accessibilityIdentifier("repository-image-sort-menu")
   }
 
   private func selectedAsset(in assets: [RepositoryImageAsset]) -> RepositoryImageAsset? {

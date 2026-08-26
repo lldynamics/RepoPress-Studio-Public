@@ -149,6 +149,9 @@ struct MarkdownShortcutHelpPanel: View {
       (
         String(localized: "AI 与工具"),
         [
+          (String(localized: "请求 AI 续写"), "⌥\\"),
+          (String(localized: "采纳 AI 续写"), "Tab"),
+          (String(localized: "丢弃 AI 续写"), "Esc"),
           (String(localized: "改写选中文本"), "⌥⌘R"),
           (String(localized: "打开 AI 对话"), String(localized: "AI > 打开 AI 对话")),
           (String(localized: "复制上下文 Prompt"), String(localized: "AI > 复制上下文 Prompt")),

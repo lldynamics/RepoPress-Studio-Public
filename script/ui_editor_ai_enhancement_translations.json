@@ -75,6 +75,10 @@
     "en": "⏱️ ~%@ min",
     "zh-Hans": "⏱️ 约 %@ 分钟"
   },
+  "丢弃 AI 续写": {
+    "en": "Dismiss AI Continuation",
+    "zh-Hans": "丢弃 AI 续写"
+  },
   "为当前选区添加或移除斜体": {
     "en": "Add or remove italic formatting for the current selection",
     "zh-Hans": "为当前选区添加或移除斜体"
@@ -130,6 +134,10 @@
   "在当前文章中查找或替换文本": {
     "en": "Find or replace text in the current article",
     "zh-Hans": "在当前文章中查找或替换文本"
+  },
+  "在编辑器正文中按 Option + 反斜杠主动请求续写；生成后按 Tab 采纳，按 Esc 丢弃。停顿、输入和移动光标都不会自动发送请求。": {
+    "en": "Press Option + Backslash in the editor body to request a continuation. Press Tab to accept it or Esc to dismiss it. Pausing, typing, and moving the cursor never send requests automatically.",
+    "zh-Hans": "在编辑器正文中按 Option + 反斜杠主动请求续写；生成后按 Tab 采纳，按 Esc 丢弃。停顿、输入和移动光标都不会自动发送请求。"
   },
   "复制公众号": {
     "en": "Copy for WeChat",
@@ -222,6 +230,10 @@
   "把本地图片导入当前文章": {
     "en": "Import local images into the current article",
     "zh-Hans": "把本地图片导入当前文章"
+  },
+  "按需触发": {
+    "en": "On Demand",
+    "zh-Hans": "按需触发"
   },
   "排版优化": {
     "en": "Optimize Typography",
@@ -327,9 +339,21 @@
     "en": "Offline Cache Full Text for All Articles Now",
     "zh-Hans": "立即离线缓存所有文章全文"
   },
+  "行内 AI 续写": {
+    "en": "Inline AI Continuation",
+    "zh-Hans": "行内 AI 续写"
+  },
   "表格、代码、图片、脚注补全": {
     "en": "Table, Code, Image, and Footnote Completion",
     "zh-Hans": "表格、代码、图片、脚注补全"
+  },
+  "请求 AI 续写": {
+    "en": "Request AI Continuation",
+    "zh-Hans": "请求 AI 续写"
+  },
+  "请求 AI 续写（Option + 反斜杠）": {
+    "en": "Request AI Continuation (Option + Backslash)",
+    "zh-Hans": "请求 AI 续写（Option + 反斜杠）"
   },
   "跨文章批量查找替换": {
     "en": "Batch Find and Replace Across Articles",
@@ -362,6 +386,10 @@
   "遇到仅含摘要的订阅源时，自动从原网站安全下载并净化展开完整正文；文章内仍可手动恢复原始摘要。": {
     "en": "When encountering snippet-only feeds, automatically download and expand full text from original sites; you can still switch back to original summaries.",
     "zh-Hans": "遇到仅含摘要的订阅源时，自动从原网站安全下载并净化展开完整正文；文章内仍可手动恢复原始摘要。"
+  },
+  "采纳 AI 续写": {
+    "en": "Accept AI Continuation",
+    "zh-Hans": "采纳 AI 续写"
   },
   "🎉 已达成目标字数！（超出 %@ 字）": {
     "en": "🎉 Word count target reached! (%@ characters over)",

@@ -100,6 +100,20 @@ final class AIChatRequestTokenBudgetTests: XCTestCase {
     XCTAssertEqual(LocalBPETokenizer.encoding(forModel: "gpt-5.1"), .o200kBase)
   }
 
+  func testFormattedContextWindowAndTokenCount() {
+    XCTAssertEqual(AIChatRequestTokenBudget.formattedContextWindow(forModel: "claude-3-5-sonnet"), "200k")
+    XCTAssertEqual(AIChatRequestTokenBudget.formattedContextWindow(forModel: "gemini-1.5-pro"), "1M")
+    XCTAssertEqual(AIChatRequestTokenBudget.formattedContextWindow(forModel: "gpt-4o"), "128k")
+    XCTAssertEqual(AIChatRequestTokenBudget.formattedContextWindow(forModel: "deepseek-chat"), "64k")
+    XCTAssertEqual(AIChatRequestTokenBudget.formattedContextWindow(forModel: "moonshot-v1-32k"), "32k")
+    XCTAssertEqual(AIChatRequestTokenBudget.formattedContextWindow(forModel: "gpt-4-0613"), "16k")
+    XCTAssertEqual(AIChatRequestTokenBudget.formattedContextWindow(forModel: "llama-3-8b"), "8k")
+    XCTAssertEqual(AIChatRequestTokenBudget.formattedContextWindow(forModel: "custom-model-128k"), "128k")
+    XCTAssertEqual(AIChatRequestTokenBudget.formatTokenCount(1_000_000), "1M")
+    XCTAssertEqual(AIChatRequestTokenBudget.formatTokenCount(128_000), "128k")
+    XCTAssertEqual(AIChatRequestTokenBudget.formatTokenCount(8_192), "8k")
+  }
+
   func testNormalizationFailsClosedWhenAtomicSchemaCannotFit() throws {
     let config = AIProviderConfig(
       preset: .local,

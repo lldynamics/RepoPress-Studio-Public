@@ -27,6 +27,14 @@ private enum AssetResourceManagerPendingAction: String, Identifiable {
   var id: String { rawValue }
 }
 
+private struct ImageCompressionAchievement: Identifiable {
+  let id = UUID()
+  let optimizedCount: Int
+  let savedBytes: Int64
+  let savedPercentage: Double
+  let totalProcessed: Int
+}
+
 struct AssetResourceManagerView: View {
   let store: WorkbenchStore
 
@@ -38,11 +46,21 @@ struct AssetResourceManagerView: View {
   @State private var selectedOrphanPaths = Set<String>()
   @State private var selectedCompressionPaths = Set<String>()
   @State private var pendingAction: AssetResourceManagerPendingAction?
+  @State private var isCleanupSheetPresented = false
+  @State private var compressionAchievement: ImageCompressionAchievement?
   @State private var activeScanID: UUID?
 
   var body: some View {
     VStack(alignment: .leading, spacing: 16) {
       header
+
+      if let achievement = compressionAchievement {
+        ImageCompressionAchievementCard(
+          achievement: achievement,
+          onDismiss: { compressionAchievement = nil }
+        )
+      }
+
       if let statusMessage {
         Label(statusMessage, systemImage: "checkmark.circle")
           .font(.workbenchSupporting)
@@ -73,30 +91,33 @@ struct AssetResourceManagerView: View {
       selectedOrphanPaths.removeAll()
       selectedCompressionPaths.removeAll()
       statusMessage = nil
+      compressionAchievement = nil
+    }
+    .sheet(isPresented: $isCleanupSheetPresented) {
+      if let report {
+        let paths = selectedOrphanPaths
+        let items = report.orphanedAssets.filter { paths.contains($0.repositoryPath) }
+        AssetCleanupConfirmationSheet(
+          items: items,
+          onConfirm: {
+            isCleanupSheetPresented = false
+            runCleanup()
+          },
+          onCancel: {
+            isCleanupSheetPresented = false
+          }
+        )
+      }
     }
     .confirmationDialog(
-      pendingAction == .cleanup ? "确认清理孤立资源？" : "确认开始图片瘦身？",
+      "确认开始图片瘦身？",
       isPresented: pendingActionBinding,
       titleVisibility: .visible
     ) {
-      switch pendingAction {
-      case .cleanup:
-        Button("移入废纸篓", role: .destructive, action: runCleanup)
-      case .compress:
-        Button("开始瘦身", action: runCompression)
-      case nil:
-        EmptyView()
-      }
+      Button("开始瘦身", action: runCompression)
       Button("取消", role: .cancel) { pendingAction = nil }
     } message: {
-      switch pendingAction {
-      case .cleanup:
-        Text("将把 \(selectedOrphanPaths.count) 个未被 Markdown 引用的资源移入废纸篓。文件不会被永久删除；失效引用和扫描期间发生变化的文件会保留并标记为需复核。")
-      case .compress:
-        Text("将尝试压缩 \(selectedCompressionPaths.count) 张图片。只有生成结果更小、且原文件自扫描后未变化时才会原位替换。")
-      case nil:
-        Text("")
-      }
+      Text("将尝试压缩 \(selectedCompressionPaths.count) 张图片。只有生成结果更小、且原文件自扫描后未变化时才会原位替换。")
     }
   }
 
@@ -244,7 +265,7 @@ struct AssetResourceManagerView: View {
   private func actionButtons(_ report: AssetResourceScanReport) -> some View {
     HStack(spacing: 8) {
       Button {
-        pendingAction = .cleanup
+        isCleanupSheetPresented = true
       } label: {
         Label("清理孤立资源（\(selectedOrphanPaths.count)）", systemImage: "trash")
       }
@@ -611,6 +632,14 @@ struct AssetResourceManagerView: View {
         }.value
         var parts: [String] = []
         if !result.optimizedPaths.isEmpty {
+          let origBytes = items.filter { result.optimizedPaths.contains($0.repositoryPath) }.reduce(0) { $0 + $1.byteSize }
+          let pct = origBytes > 0 ? (Double(result.savedBytes) / Double(origBytes) * 100.0) : 0.0
+          compressionAchievement = ImageCompressionAchievement(
+            optimizedCount: result.optimizedPaths.count,
+            savedBytes: result.savedBytes,
+            savedPercentage: pct,
+            totalProcessed: items.count
+          )
           parts.append("已瘦身 \(result.optimizedPaths.count) 张图片，减少 \(ByteCountFormatter.string(fromByteCount: result.savedBytes, countStyle: .file))")
         } else {
           parts.append("没有图片在优化后变得更小")
@@ -644,6 +673,174 @@ struct AssetResourceManagerView: View {
     let url = URL(fileURLWithPath: report.repositoryRootPath, isDirectory: true)
       .appendingPathComponent(report.assetRootPath, isDirectory: true)
     NSWorkspace.shared.open(url)
+  }
+}
+
+private struct ImageCompressionAchievementCard: View {
+  let achievement: ImageCompressionAchievement
+  let onDismiss: () -> Void
+
+  var body: some View {
+    HStack(alignment: .center, spacing: 14) {
+      ZStack {
+        Circle()
+          .fill(WorkbenchTheme.success.opacity(0.18))
+          .frame(width: 42, height: 42)
+        Image(systemName: "sparkles")
+          .font(.title3)
+          .foregroundStyle(WorkbenchTheme.success)
+      }
+
+      VStack(alignment: .leading, spacing: 3) {
+        Text("成功为 \(achievement.optimizedCount) 张图片瘦身，节省了 \(ByteCountFormatter.string(fromByteCount: achievement.savedBytes, countStyle: .file)) (\(Int(round(achievement.savedPercentage)))%) 存储空间")
+          .font(.callout.weight(.semibold))
+          .foregroundStyle(WorkbenchTheme.success)
+
+        Text("已自动将更优体积的原位替换，优化后未发生体积下降的图片已原样保留。")
+          .font(.caption)
+          .foregroundStyle(.secondary)
+      }
+
+      Spacer(minLength: 8)
+
+      Button {
+        onDismiss()
+      } label: {
+        Image(systemName: "xmark")
+          .font(.caption.weight(.semibold))
+          .foregroundStyle(.secondary)
+          .padding(6)
+      }
+      .buttonStyle(.plain)
+      .accessibilityLabel("关闭瘦身成就卡片")
+    }
+    .padding(12)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .background(
+      WorkbenchTheme.success.opacity(0.08),
+      in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
+    )
+    .overlay {
+      RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
+        .stroke(WorkbenchTheme.success.opacity(0.3), lineWidth: 1)
+    }
+    .accessibilityElement(children: .contain)
+    .accessibilityLabel("图片瘦身成就")
+  }
+}
+
+private struct AssetCleanupConfirmationSheet: View {
+  @Environment(\.dismiss) private var dismiss
+  let items: [AssetResourceItem]
+  let onConfirm: () -> Void
+  let onCancel: () -> Void
+
+  private var representativeItems: [AssetResourceItem] {
+    Array(items.prefix(5))
+  }
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 16) {
+      HStack {
+        Label("确认清理孤立资源？", systemImage: "trash")
+          .font(.headline)
+        Spacer()
+        Button("取消") {
+          onCancel()
+          dismiss()
+        }
+        .keyboardShortcut(.cancelAction)
+      }
+
+      VStack(alignment: .leading, spacing: 6) {
+        HStack(spacing: 6) {
+          Image(systemName: "arrow.uturn.backward.circle.fill")
+            .foregroundStyle(WorkbenchTheme.success)
+          Text("可随时在 macOS 废纸篓恢复")
+            .font(.subheadline.weight(.medium))
+            .foregroundStyle(WorkbenchTheme.success)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(
+          WorkbenchTheme.success.opacity(0.12),
+          in: Capsule()
+        )
+
+        Text("以下选中的 \(items.count) 个资源未在任何 Markdown 文章中找到引用。执行后将移入系统废纸篓，不会被永久删除。")
+          .font(.caption)
+          .foregroundStyle(.secondary)
+      }
+
+      VStack(alignment: .leading, spacing: 6) {
+        Text("待清理代表性文件预览（前 \(representativeItems.count) 项）：")
+          .font(.caption.weight(.semibold))
+
+        VStack(alignment: .leading, spacing: 6) {
+          ForEach(representativeItems) { item in
+            HStack(spacing: 8) {
+              Image(systemName: item.kind.systemImage)
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .frame(width: 20)
+
+              VStack(alignment: .leading, spacing: 1) {
+                Text(item.filename)
+                  .font(.caption.weight(.medium))
+                  .lineLimit(1)
+                Text(item.repositoryPath)
+                  .font(.caption.monospaced())
+                  .foregroundStyle(.secondary)
+                  .lineLimit(1)
+              }
+
+              Spacer(minLength: 8)
+
+              Text(ByteCountFormatter.string(fromByteCount: item.byteSize, countStyle: .file))
+                .font(.workbenchMetadata.monospacedDigit())
+                .foregroundStyle(.secondary)
+            }
+            .padding(6)
+            .background(
+              WorkbenchBackgroundStyle.control,
+              in: RoundedRectangle(cornerRadius: 6)
+            )
+          }
+
+          if items.count > representativeItems.count {
+            Text(
+              String(
+                format: String(localized: "…以及另外 %lld 个未列出的资源文件。"),
+                Int64(items.count - representativeItems.count)
+              )
+            )
+              .font(.workbenchMetadata)
+              .foregroundStyle(.tertiary)
+              .padding(.leading, 4)
+          }
+        }
+      }
+
+      Spacer(minLength: 0)
+
+      HStack {
+        Button("取消", role: .cancel) {
+          onCancel()
+          dismiss()
+        }
+        Spacer()
+        Button(role: .destructive) {
+          onConfirm()
+          dismiss()
+        } label: {
+          Label("移入废纸篓（\(items.count) 个）", systemImage: "trash")
+        }
+        .workbenchProminentActionStyle()
+      }
+    }
+    .padding(18)
+    .frame(minWidth: 480, idealWidth: 540, minHeight: 380, idealHeight: 460)
+    .accessibilityLabel("孤立资源清理确认")
   }
 }
 

@@ -95,10 +95,6 @@
     "en": "Move Up",
     "zh-Hans": "上移"
   },
-  "可再次自动检查：%@": {
-    "en": "Eligible for another automatic check: %@",
-    "zh-Hans": "可再次自动检查：%@"
-  },
   "仓库凭据": {
     "en": "Repository Credentials",
     "zh-Hans": "仓库凭据"
@@ -210,6 +206,10 @@
   "另有 %lld 项": {
     "en": "%lld more items",
     "zh-Hans": "另有 %lld 项"
+  },
+  "可再次自动检查：%@": {
+    "en": "Eligible for another automatic check: %@",
+    "zh-Hans": "可再次自动检查：%@"
   },
   "台账指标": {
     "en": "Ledger Metrics",
@@ -455,6 +455,10 @@
     "en": "Change the connection token?",
     "zh-Hans": "更换连接令牌？"
   },
+  "最短检查间隔": {
+    "en": "Minimum Check Interval",
+    "zh-Hans": "最短检查间隔"
+  },
   "最终发布确认": {
     "en": "Final Publishing Confirmation",
     "zh-Hans": "最终发布确认"
@@ -662,10 +666,6 @@
   "跳转": {
     "en": "Jump",
     "zh-Hans": "跳转"
-  },
-  "最短检查间隔": {
-    "en": "Minimum Check Interval",
-    "zh-Hans": "最短检查间隔"
   },
   "输入文章标题": {
     "en": "Enter Article Title",

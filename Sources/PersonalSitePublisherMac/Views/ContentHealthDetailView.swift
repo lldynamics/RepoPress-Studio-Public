@@ -59,7 +59,9 @@ struct ContentHealthDetailView: View {
       isHealthSnapshotRefreshing = false
     }
     .sheet(item: $aiFixResultPreview) { preview in
-      ContentHealthAIFixResultPreviewSheet(preview: preview)
+      ContentHealthAIFixResultPreviewSheet(preview: preview) { selectedFields in
+        applySelectedAIFixFields(selectedFields, for: preview)
+      }
     }
     .accessibilityElement(children: .contain)
     .accessibilityLabel("内容健康")
@@ -128,13 +130,7 @@ struct ContentHealthDetailView: View {
         usesCompactHeader: usesCompactHeader
       )
     } else {
-      EmptyStateView(
-        title: "正在准备检查快照",
-        message: "内容健康页会先生成一次快照，再渲染公开风险、AI 修复队列和文章级问题。",
-        systemImage: "checklist"
-      )
-      .frame(maxWidth: .infinity, minHeight: 360)
-      .padding(20)
+      ContentHealthSkeletonLoadingView(filter: filter)
     }
   }
 
@@ -666,13 +662,28 @@ struct ContentHealthDetailView: View {
       .accessibilityIdentifier("content-health-add-slug-aliases")
 
       if !impact.conflictingAliasRoutes.isEmpty {
-        AccessibleStatusMessage(
-          message: "旧地址与其他文章冲突，不能写入 aliases：\(impact.conflictingAliasRoutes.joined(separator: "、"))",
-          severity: .error
-        )
+        VStack(alignment: .leading, spacing: 6) {
+          AccessibleStatusMessage(
+            message: "旧地址与其他文章冲突，不能写入 aliases：\(impact.conflictingAliasRoutes.joined(separator: "、"))",
+            severity: .error
+          )
+
+          let conflicts = conflictingDrafts(for: impact.conflictingAliasRoutes, targetDraftID: impact.targetDraftID)
+          ForEach(conflicts) { draft in
+            Button {
+              _ = store.focusDraft(draft.id, section: .writing)
+            } label: {
+              Label("查看冲突文章：《\(draft.title.nilIfEmpty ?? draft.slug)》", systemImage: "arrow.right.circle")
+            }
+            .buttonStyle(.link)
+            .font(.caption)
+            .foregroundStyle(WorkbenchTheme.risk)
+            .accessibilityIdentifier("content-health-view-conflicting-draft-\(draft.id.uuidString)")
+          }
+        }
       } else {
-        Text("aliases 会写入 Front Matter；是否生成 HTTP 跳转取决于当前框架或重定向插件。")
-          .font(.caption2)
+        Text(String(localized: "aliases 会写入 Front Matter；是否生成 HTTP 跳转取决于当前框架或重定向插件。"))
+          .font(.workbenchMetadata)
           .foregroundStyle(.secondary)
       }
     }
@@ -965,5 +976,171 @@ struct ContentHealthDetailView: View {
     }
   }
 
+  private func conflictingDrafts(for routes: [String], targetDraftID: UUID) -> [ArticleDraft] {
+    let normalized = Set(routes.map { $0.trimmingCharacters(in: CharacterSet(charactersIn: "/")) })
+    return store.publishing.visibleDrafts.filter { draft in
+      guard draft.id != targetDraftID, !draft.isGeneralDraft else { return false }
+      let slug = draft.slug.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+      let aliases = Set(draft.aliases.map { $0.trimmingCharacters(in: CharacterSet(charactersIn: "/")) })
+      return normalized.contains(slug) || !aliases.isDisjoint(with: normalized)
+    }
+  }
 
+  private func applySelectedAIFixFields(
+    _ fields: [FrontMatterFixFieldItem],
+    for preview: ContentHealthAIFixResultPreview
+  ) {
+    guard let draftID = preview.draftID,
+          var draft = store.publishing.visibleDrafts.first(where: { $0.id == draftID }) else {
+      return
+    }
+
+    for item in fields where item.isSelected {
+      switch item.fieldKey.lowercased() {
+      case "title":
+        draft.title = item.proposedValue
+      case "slug":
+        draft.slug = item.proposedValue
+      case "summary", "description":
+        draft.summary = item.proposedValue
+      case "tags":
+        draft.tags = item.proposedValue
+          .components(separatedBy: CharacterSet(charactersIn: ",，\n"))
+          .map { $0.trimmingCharacters(in: .whitespaces) }
+          .filter { !$0.isEmpty }
+      default:
+        break
+      }
+    }
+
+    store.updateDraft(draft)
+    refreshContentHealthSnapshot()
+  }
+}
+
+private struct ContentHealthSkeletonLoadingView: View {
+  let filter: ContentHealthContextFilter
+  @State private var phase: Double = 0
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 16) {
+      VStack(alignment: .leading, spacing: 10) {
+        HStack {
+          VStack(alignment: .leading, spacing: 4) {
+            skeletonBar(width: 140, height: 22)
+            skeletonBar(width: 260, height: 14)
+          }
+          Spacer()
+          skeletonBar(width: 110, height: 16)
+        }
+
+        VStack(alignment: .leading, spacing: 6) {
+          Label("正在进行健康快照分析…", systemImage: "sparkles")
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(WorkbenchTheme.documentForeground)
+
+          ViewThatFits(in: .horizontal) {
+            HStack(spacing: 8) {
+              stepBadge(title: "1. 扫描 Front Matter", isDone: true)
+              Image(systemName: "arrow.right")
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+              stepBadge(title: "2. 检查死链与引用", isDone: false, isActive: true)
+              Image(systemName: "arrow.right")
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+              stepBadge(title: "3. 计算 SEO 与风险得分", isDone: false)
+            }
+            VStack(alignment: .leading, spacing: 4) {
+              stepBadge(title: "1. 扫描 Front Matter", isDone: true)
+              stepBadge(title: "2. 检查死链与引用", isDone: false, isActive: true)
+              stepBadge(title: "3. 计算 SEO 与风险得分", isDone: false)
+            }
+          }
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+          WorkbenchBackgroundStyle.card,
+          in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
+        )
+      }
+
+      LazyVGrid(columns: [GridItem(.adaptive(minimum: 140), spacing: 10)], spacing: 10) {
+        ForEach(0..<4) { _ in
+          VStack(alignment: .leading, spacing: 8) {
+            skeletonBar(width: 60, height: 12)
+            skeletonBar(width: 40, height: 20)
+          }
+          .padding(12)
+          .frame(maxWidth: .infinity, alignment: .leading)
+          .background(
+            WorkbenchBackgroundStyle.card,
+            in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
+          )
+        }
+      }
+
+      VStack(alignment: .leading, spacing: 8) {
+        ForEach(0..<3) { _ in
+          HStack(spacing: 12) {
+            Circle()
+              .fill(Color.primary.opacity(0.08))
+              .frame(width: 16, height: 16)
+            VStack(alignment: .leading, spacing: 4) {
+              skeletonBar(width: 220, height: 14)
+              skeletonBar(width: 140, height: 10)
+            }
+            Spacer()
+            skeletonBar(width: 50, height: 14)
+          }
+          .padding(12)
+          .background(
+            WorkbenchBackgroundStyle.card,
+            in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
+          )
+        }
+      }
+    }
+    .padding(WorkbenchSpacing.card)
+    .frame(maxWidth: .infinity, minHeight: 360, alignment: .leading)
+    .opacity(phase == 0 ? 0.6 : 1.0)
+    .onAppear {
+      withAnimation(Animation.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) {
+        phase = 1.0
+      }
+    }
+    .accessibilityLabel("正在生成内容健康快照")
+  }
+
+  private func skeletonBar(width: CGFloat, height: CGFloat) -> some View {
+    RoundedRectangle(cornerRadius: 4)
+      .fill(Color.primary.opacity(0.08))
+      .frame(width: width, height: height)
+  }
+
+  private func stepBadge(title: String, isDone: Bool, isActive: Bool = false) -> some View {
+    HStack(spacing: 4) {
+      if isDone {
+        Image(systemName: "checkmark.circle.fill")
+          .foregroundStyle(WorkbenchTheme.success)
+      } else if isActive {
+        ProgressView()
+          .controlSize(.small)
+      } else {
+        Circle()
+          .fill(Color.secondary.opacity(0.3))
+          .frame(width: 6, height: 6)
+      }
+      Text(title)
+        .font(.workbenchMetadata.weight(isActive ? .semibold : .regular))
+        .foregroundStyle(isActive ? Color.primary : .secondary)
+    }
+    .padding(.horizontal, 6)
+    .padding(.vertical, 3)
+    .background(
+      isActive ? WorkbenchTheme.documentForeground.opacity(0.1) : Color.clear,
+      in: Capsule()
+    )
+  }
 }

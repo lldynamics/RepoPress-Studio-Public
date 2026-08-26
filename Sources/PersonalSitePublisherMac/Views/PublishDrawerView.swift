@@ -183,6 +183,9 @@ struct PublishDrawerView: View {
           tint: WorkbenchTheme.navigationSelection,
           isEnabled: canSaveLocally,
           isPrimary: false,
+          actionStyle: .localSave,
+          targetBadge: String(localized: "本地文件"),
+          targetBadgeTint: .secondary,
           actionTitle: String(localized: "保存到本地"),
           actionSystemImage: "square.and.arrow.down",
           actionIdentifier: "publish-drawer-action-save-local"
@@ -198,6 +201,12 @@ struct PublishDrawerView: View {
           tint: WorkbenchTheme.success,
           isEnabled: canPublishOnline,
           isPrimary: true,
+          actionStyle: .formalRelease,
+          targetBadge: String(
+            format: String(localized: "正式发布 · %@"),
+            store.activeProfile.branch.nilIfEmpty ?? "main"
+          ),
+          targetBadgeTint: WorkbenchTheme.success,
           actionTitle: PublishDrawerBatchActionPresentation.actionTitle,
           actionSystemImage: "paperplane.fill",
           actionIdentifier: "publish-drawer-action-publish-all"
@@ -210,9 +219,15 @@ struct PublishDrawerView: View {
           detail: previewBranchAction.detail,
           status: previewBranchActionStatus(preview: previewBranchPreview),
           systemImage: "arrow.triangle.branch",
-          tint: WorkbenchTheme.navigationSelection,
+          tint: WorkbenchTheme.info,
           isEnabled: canPushPreviewBranch,
           isPrimary: false,
+          actionStyle: .isolatedPreview,
+          targetBadge: String(
+            format: String(localized: "隔离预览 · %@"),
+            previewBranchPreview.branchName
+          ),
+          targetBadgeTint: WorkbenchTheme.info,
           actionTitle: previewBranchAction.actionTitle,
           actionSystemImage: "arrow.up.forward.app",
           actionIdentifier: "publish-drawer-action-preview-branch"

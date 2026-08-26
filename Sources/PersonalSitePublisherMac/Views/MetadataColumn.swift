@@ -12,6 +12,7 @@ struct MetadataColumn: View {
   @Binding private var aiChatSurfaceState: AIChatSurfaceState
   private let aiChatOperationSession: AIChatSurfaceOperationSession
   let prioritizesChecks: Bool
+  let onResetWidth: (() -> Void)?
 
   init(
     store: WorkbenchStore,
@@ -22,7 +23,8 @@ struct MetadataColumn: View {
     repositorySourceSession: RepositoryHTMLSourceSession,
     aiChatSurfaceState: Binding<AIChatSurfaceState>,
     aiChatOperationSession: AIChatSurfaceOperationSession,
-    prioritizesChecks: Bool = false
+    prioritizesChecks: Bool = false,
+    onResetWidth: (() -> Void)? = nil
   ) {
     self.store = store
     self.selectedSection = selectedSection
@@ -34,6 +36,7 @@ struct MetadataColumn: View {
     _aiChatSurfaceState = aiChatSurfaceState
     self.aiChatOperationSession = aiChatOperationSession
     self.prioritizesChecks = prioritizesChecks
+    self.onResetWidth = onResetWidth
   }
 
   var body: some View {
@@ -77,18 +80,10 @@ struct MetadataColumn: View {
     .accessibilityIdentifier("workspace-inspector")
     .accessibilityLabel("工作区 Inspector")
     .overlay(alignment: .leading) {
-      if contentPresentation.isAssistantPresented {
-        Image(systemName: "arrow.left.and.right")
-          .font(.workbenchMetadata.weight(.semibold))
-          .foregroundStyle(.secondary)
-          .padding(.horizontal, 5)
-          .padding(.vertical, 4)
-          .background(.regularMaterial, in: Capsule())
-          .overlay(Capsule().stroke(Color.primary.opacity(0.10), lineWidth: 1))
-          .offset(x: -11)
-          .allowsHitTesting(false)
-          .accessibilityHidden(true)
-      }
+      InspectorSplitResizeHandle(
+        isAIAssistantPresented: contentPresentation.isAssistantPresented,
+        onResetWidth: onResetWidth
+      )
     }
   }
 
@@ -121,5 +116,65 @@ struct MetadataColumn: View {
       )
       .background(.bar)
     }
+  }
+}
+
+private struct InspectorSplitResizeHandle: View {
+  let isAIAssistantPresented: Bool
+  let onResetWidth: (() -> Void)?
+  @State private var isHovered = false
+
+  var body: some View {
+    ZStack(alignment: .center) {
+      // Hover highlight hairline along divider
+      Rectangle()
+        .fill(isHovered ? WorkbenchTheme.primary.opacity(0.45) : Color.clear)
+        .frame(width: 2)
+        .frame(maxHeight: .infinity)
+        .allowsHitTesting(false)
+
+      // Capsule indicator
+      HStack(spacing: 3) {
+        Image(systemName: "arrow.left.and.right")
+          .font(.system(size: 9, weight: .bold))
+          .foregroundStyle(isHovered ? WorkbenchTheme.primary : .secondary)
+      }
+      .padding(.horizontal, 5)
+      .padding(.vertical, 4)
+      .background(.regularMaterial, in: Capsule())
+      .overlay(
+        Capsule()
+          .stroke(
+            isHovered
+              ? WorkbenchTheme.primary.opacity(0.35)
+              : Color.primary.opacity(0.12),
+            lineWidth: 1
+          )
+      )
+      .shadow(color: .black.opacity(isHovered ? 0.12 : 0.04), radius: 3, x: 0, y: 1)
+      .scaleEffect(isHovered ? 1.08 : 1.0)
+      .opacity(isHovered ? 1.0 : (isAIAssistantPresented ? 0.65 : 0.28))
+    }
+    .frame(width: 16)
+    .frame(maxHeight: .infinity)
+    .contentShape(Rectangle())
+    .offset(x: -8)
+    .onHover { hovering in
+      withAnimation(WorkbenchMotion.hoverSpring) {
+        isHovered = hovering
+      }
+      if hovering {
+        NSCursor.resizeLeftRight.push()
+      } else {
+        NSCursor.pop()
+      }
+    }
+    .onTapGesture(count: 2) {
+      onResetWidth?()
+    }
+    .help("拖拽调整检查器宽度，双击恢复默认宽度（320pt）")
+    .accessibilityElement(children: .ignore)
+    .accessibilityLabel("检查器分栏拖拽手柄")
+    .accessibilityHint("双击恢复默认宽度")
   }
 }

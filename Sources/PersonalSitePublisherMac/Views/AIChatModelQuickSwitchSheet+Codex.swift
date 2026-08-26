@@ -59,8 +59,12 @@ extension AIChatModelQuickSwitchSheet {
           .font(.caption)
           .foregroundStyle(.secondary)
           .accessibilityLabel(String(localized: "暂未返回可用模型，仍可使用账户默认模型"))
+      } else if filteredCodexModels.isEmpty {
+        Text(String(localized: "未找到匹配的 Codex 模型。"))
+          .font(.caption)
+          .foregroundStyle(.secondary)
       } else {
-        ForEach(codexModels, id: \.id) { model in
+        ForEach(filteredCodexModels, id: \.id) { model in
           Button {
             selectCodexModel(model)
           } label: {
@@ -73,8 +77,16 @@ extension AIChatModelQuickSwitchSheet {
                 isCodexModelSelected(model) ? WorkbenchTheme.primary : Color.secondary
               )
               VStack(alignment: .leading, spacing: 2) {
-                Text(model.localizedDisplayName)
-                  .font(.callout.weight(.medium))
+                HStack(spacing: 6) {
+                  Text(model.localizedDisplayName)
+                    .font(.callout.weight(.medium))
+                  Text(AIChatRequestTokenBudget.formattedContextWindow(forModel: model.model))
+                    .font(.workbenchMetadata.weight(.medium).monospaced())
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 1.5)
+                    .background(Color.secondary.opacity(0.12), in: Capsule())
+                }
                 Text(model.model)
                   .font(.caption.monospaced())
                   .foregroundStyle(.secondary)

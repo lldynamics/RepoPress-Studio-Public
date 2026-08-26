@@ -45,6 +45,7 @@ struct MarkdownFloatingBubbleToolbar: View {
   let onApplyAdvancedFormatting: (MarkdownAdvancedFormattingCommand) -> Void
   let onPerformSelectionAIAction: (AIPublishingActionKind) -> Void
   let onPerformConvergedSelectionAIAction: (AIPublishingActionConvergence) -> Void
+  @Environment(\.colorSchemeContrast) private var colorSchemeContrast
 
   var body: some View {
     HStack(spacing: 4) {
@@ -61,8 +62,8 @@ struct MarkdownFloatingBubbleToolbar: View {
             .font(.system(size: 7, weight: .bold))
             .foregroundStyle(.secondary)
         }
-        .frame(height: 24)
-        .padding(.horizontal, 4)
+        .frame(minHeight: 24)
+        .padding(.horizontal, 5)
       }
       .menuIndicator(.hidden)
       .buttonStyle(.plain)
@@ -98,8 +99,8 @@ struct MarkdownFloatingBubbleToolbar: View {
             .font(.system(size: 7, weight: .bold))
             .foregroundStyle(.secondary)
         }
-        .frame(height: 24)
-        .padding(.horizontal, 3)
+        .frame(minHeight: 24)
+        .padding(.horizontal, 4)
       }
       .menuIndicator(.hidden)
       .buttonStyle(.plain)
@@ -162,14 +163,21 @@ struct MarkdownFloatingBubbleToolbar: View {
     .padding(.horizontal, 8)
     .padding(.vertical, 4)
     .background(
-      .thinMaterial,
+      bubbleBackground,
       in: Capsule()
     )
     .overlay(
       Capsule()
-        .stroke(Color.primary.opacity(0.12), lineWidth: 1)
+        .stroke(
+          Color.primary.opacity(colorSchemeContrast == .increased ? 0.6 : 0.15),
+          lineWidth: colorSchemeContrast == .increased ? 1.5 : 1
+        )
     )
     .shadow(color: Color.black.opacity(0.15), radius: 6, x: 0, y: 3)
+  }
+
+  private var bubbleBackground: Material {
+    colorSchemeContrast == .increased ? .thickMaterial : .thinMaterial
   }
 
   private var divider: some View {
@@ -183,9 +191,10 @@ struct MarkdownFloatingBubbleToolbar: View {
     Button(action: action) {
       Image(systemName: systemName)
         .font(.system(size: 12, weight: .medium))
-        .frame(width: 24, height: 24)
+        .frame(minWidth: 24, minHeight: 24)
+        .contentShape(Rectangle())
     }
-    .buttonStyle(.plain)
+    .buttonStyle(WorkbenchFocusRingButtonStyle())
     .foregroundStyle(.primary)
     .help(title)
     .accessibilityLabel(title)

@@ -32,10 +32,9 @@ extension MacMarkdownComposerView {
     )
   }
 
-  func scheduleInlineGhostText() {
+  func requestInlineGhostText() {
     cancelInlineGhostText()
-    guard isAutomaticInlineAICompletionEnabled,
-          !isFrontMatterSelection,
+    guard !isFrontMatterSelection,
           selectedRange.length == 0,
           !isSelectionAIActionRunning,
           isAIEnabledForDraft else {
@@ -60,11 +59,6 @@ extension MacMarkdownComposerView {
           inlineGhostTask = nil
           inlineGhostRequestID = nil
         }
-      }
-      do {
-        try await Task.sleep(for: .milliseconds(850))
-      } catch {
-        return
       }
       guard !Task.isCancelled,
             inlineGhostRequestID == requestID,
@@ -95,6 +89,9 @@ extension MacMarkdownComposerView {
   }
 
   func cancelInlineGhostText() {
+    guard inlineGhostTask != nil || inlineGhostRequestID != nil || !inlineGhostText.isEmpty else {
+      return
+    }
     inlineGhostTask?.cancel()
     inlineGhostTask = nil
     inlineGhostRequestID = nil

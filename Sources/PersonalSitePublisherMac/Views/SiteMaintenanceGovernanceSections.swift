@@ -262,14 +262,19 @@ struct SiteMaintenanceLinkAuditSection: View {
                   .lineLimit(2)
                 if let statusCode = item.statusCode {
                   Text("HTTP \(statusCode)")
-                    .font(.caption2.monospaced())
+                    .font(.caption.monospaced())
                     .foregroundStyle(.secondary)
                 }
                 if let finalTarget = item.finalTarget,
                   finalTarget != item.target
                 {
-                  Text("最终地址：\(finalTarget)")
-                    .font(.caption2.monospaced())
+                  Text(
+                    String(
+                      format: String(localized: "最终地址：%@"),
+                      finalTarget
+                    )
+                  )
+                    .font(.caption.monospaced())
                     .foregroundStyle(.secondary)
                     .workbenchTruncatedIdentity(finalTarget)
                 }

@@ -63,6 +63,10 @@
     "en": "Chrome prefers self-contained MHTML, while Firefox creates offline HTML within the size limit. If the app is closed, the extension keeps pending imports in the browser-local queue and retries when the app is available.",
     "zh-Hans": "Chrome 优先生成自包含 MHTML；Firefox 在大小上限内生成离线 HTML。应用未打开时，扩展会把待导入内容保留在浏览器本地队列，应用恢复后再重试。"
   },
+  "Chrome 和 Firefox 扩展独立安装和更新，均通过本机回环接口连接。": {
+    "en": "Chrome and Firefox extensions are installed and updated separately; both connect through the local loopback interface.",
+    "zh-Hans": "Chrome 和 Firefox 扩展独立安装和更新，均通过本机回环接口连接。"
+  },
   "Firefox": {
     "en": "Firefox",
     "zh-Hans": "Firefox"
@@ -74,10 +78,6 @@
   "Markdown…": {
     "en": "Markdown…",
     "zh-Hans": "Markdown…"
-  },
-  "Chrome 和 Firefox 扩展独立安装和更新，均通过本机回环接口连接。": {
-    "en": "Chrome and Firefox extensions are installed and updated separately; both connect through the local loopback interface.",
-    "zh-Hans": "Chrome 和 Firefox 扩展独立安装和更新，均通过本机回环接口连接。"
   },
   "上一步": {
     "en": "Previous",

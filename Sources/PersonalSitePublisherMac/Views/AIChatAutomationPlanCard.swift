@@ -325,15 +325,9 @@ struct AIChatAutomationPlanCard: View {
   @ViewBuilder
   private func automationStepRow(index: Int, step: WorkbenchAutomationStep) -> some View {
     let descriptor = WorkbenchAutomationRegistry.descriptor(for: step.command)
+    let isRunning = step.status == .running
     HStack(alignment: .top, spacing: 9) {
-      ZStack {
-        Circle()
-          .fill(stepStatusColor(step.status).opacity(0.14))
-        Image(systemName: stepStatusSystemImage(step.status))
-          .font(.caption.weight(.semibold))
-          .foregroundStyle(stepStatusColor(step.status))
-      }
-      .frame(width: 25, height: 25)
+      AutomationStepStatusIndicator(status: step.status)
 
       VStack(alignment: .leading, spacing: 3) {
         HStack(alignment: .firstTextBaseline, spacing: 6) {
@@ -373,6 +367,19 @@ struct AIChatAutomationPlanCard: View {
     }
     .padding(.horizontal, 9)
     .padding(.vertical, 8)
+    .background(
+      isRunning
+        ? WorkbenchTheme.primary.opacity(0.06)
+        : Color.clear,
+      in: RoundedRectangle(cornerRadius: 6)
+    )
+    .overlay(
+      RoundedRectangle(cornerRadius: 6)
+        .stroke(
+          isRunning ? WorkbenchTheme.primary.opacity(0.24) : Color.clear,
+          lineWidth: 1
+        )
+    )
   }
 
   private func handleConfirmation(
@@ -611,4 +618,68 @@ private struct AutomationDraftPreviewItem: Identifiable {
   let stepID: UUID
   let preview: WorkbenchAutomationDraftPreview
   let isAgentReview: Bool
+}
+
+private struct AutomationStepStatusIndicator: View {
+  let status: WorkbenchAutomationStepStatus
+  @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
+  @State private var isBreathing = false
+
+  var body: some View {
+    ZStack {
+      if status == .running {
+        Circle()
+          .fill(WorkbenchTheme.primary.opacity(isBreathing ? 0.32 : 0.08))
+          .scaleEffect(isBreathing ? 1.35 : 0.95)
+        Circle()
+          .stroke(WorkbenchTheme.primary.opacity(isBreathing ? 0.55 : 0.15), lineWidth: 1.5)
+          .scaleEffect(isBreathing ? 1.22 : 1.0)
+      }
+
+      Circle()
+        .fill(stepStatusColor.opacity(status == .running ? 0.22 : 0.14))
+
+      Image(systemName: stepStatusSystemImage)
+        .font(.caption.weight(.semibold))
+        .foregroundStyle(stepStatusColor)
+        .symbolEffect(.pulse, isActive: status == .running && !accessibilityReduceMotion)
+    }
+    .frame(width: 25, height: 25)
+    .onAppear {
+      guard status == .running, !accessibilityReduceMotion else { return }
+      withAnimation(WorkbenchMotion.ambientPulse) {
+        isBreathing = true
+      }
+    }
+    .onChange(of: status) { _, newStatus in
+      if newStatus == .running && !accessibilityReduceMotion {
+        withAnimation(WorkbenchMotion.ambientPulse) {
+          isBreathing = true
+        }
+      } else {
+        isBreathing = false
+      }
+    }
+  }
+
+  private var stepStatusSystemImage: String {
+    switch status {
+    case .proposed: "circle"
+    case .running: "hourglass"
+    case .awaitingConfirmation: "hand.raised.fill"
+    case .succeeded: "checkmark"
+    case .failed: "xmark"
+    case .cancelled: "slash"
+    }
+  }
+
+  private var stepStatusColor: Color {
+    switch status {
+    case .succeeded: WorkbenchTheme.success
+    case .failed: WorkbenchTheme.risk
+    case .awaitingConfirmation: WorkbenchTheme.warning
+    case .running, .proposed: WorkbenchTheme.primary
+    case .cancelled: .secondary
+    }
+  }
 }

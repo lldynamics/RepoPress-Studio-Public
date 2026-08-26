@@ -219,10 +219,6 @@ final class AISettingsFlowPresentationTests: XCTestCase {
     XCTAssertNil(AIKeychainActionFeedback(message: "AI 连接测试失败：网络不可用"))
   }
 
-  func testAutomaticInlineAICompletionDefaultsOff() {
-    XCTAssertFalse(AIWritingPreferences.defaultAutomaticInlineCompletionEnabled)
-  }
-
   func testAgentPermissionScopesExposeAccessibleTitlesAndDescriptions() {
     XCTAssertEqual(AIAgentPermissionScope.allCases.count, 6)
     for scope in AIAgentPermissionScope.allCases {

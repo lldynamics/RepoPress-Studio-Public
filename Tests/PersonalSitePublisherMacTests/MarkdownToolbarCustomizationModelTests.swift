@@ -34,6 +34,13 @@ final class MarkdownToolbarCustomizationModelTests: XCTestCase {
     XCTAssertFalse(decoded.formattingItemIDs.contains(.heading1))
   }
 
+  func testLegacyAutomaticInlineAIIdentifierNowPresentsOnDemandAction() {
+    let item = MarkdownToolbarItemID(rawValue: "autoInlineAI")
+
+    XCTAssertEqual(item, .autoInlineAI)
+    XCTAssertEqual(item?.title, "AI 续写")
+  }
+
   func testNormalizationRemovesDuplicatesAndCrossCategoryItems() {
     let configuration = MarkdownToolbarConfiguration(
       headerItemIDs: [.aiChat, .bold, .aiChat, .preparePublish],

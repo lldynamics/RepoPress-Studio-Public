@@ -45,6 +45,7 @@ struct AIChatDraftDiffPreviewSheet: View {
   let onApply: () -> Void
   let onReject: (() -> Void)?
   let isAgentReview: Bool
+  @State private var wrapLines = true
 
   init(
     preview: AIChatDraftDiffPreview,
@@ -109,6 +110,21 @@ struct AIChatDraftDiffPreviewSheet: View {
           Label("行级差异", systemImage: "list.number")
             .font(.callout.weight(.semibold))
           Spacer()
+          Button {
+            withAnimation(WorkbenchMotion.quick) {
+              wrapLines.toggle()
+            }
+          } label: {
+            Label(
+              wrapLines ? "已开启自动换行" : "单行横向微滚动",
+              systemImage: wrapLines ? "text.word.spacing" : "arrow.left.and.right"
+            )
+            .font(.caption)
+          }
+          .buttonStyle(.borderless)
+          .foregroundStyle(.secondary)
+          .help(wrapLines ? "点击切换为单行横向微滚动模式" : "点击切换为长行自动换行模式")
+
           Text("−\(comparison.removedLineCount) 行 · +\(comparison.addedLineCount) 行")
             .font(.caption.monospacedDigit())
             .foregroundStyle(.secondary)
@@ -117,13 +133,13 @@ struct AIChatDraftDiffPreviewSheet: View {
         if comparison.bodyLineDiffs.isEmpty {
           ContentUnavailableView("正文没有变化", systemImage: "equal.circle")
         } else {
-          ScrollView([.vertical, .horizontal]) {
+          ScrollView([.vertical, wrapLines ? [] : .horizontal]) {
             LazyVStack(alignment: .leading, spacing: 0) {
               ForEach(comparison.bodyLineDiffs) { line in
-                AIChatLineDiffRow(line: line)
+                AIChatLineDiffRow(line: line, wrapLines: wrapLines)
               }
             }
-            .frame(minWidth: 780, alignment: .leading)
+            .frame(minWidth: wrapLines ? nil : 780, maxWidth: .infinity, alignment: .leading)
             .textSelection(.enabled)
           }
           .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
@@ -248,6 +264,7 @@ private struct AIChatMetadataDiffItem: Identifiable {
 
 private struct AIChatLineDiffRow: View {
   let line: DraftVersionLineDiff
+  let wrapLines: Bool
 
   var body: some View {
     if line.kind == .skipped {
@@ -258,7 +275,7 @@ private struct AIChatLineDiffRow: View {
         .padding(.vertical, 5)
         .background(.quaternary.opacity(0.35))
     } else {
-      HStack(alignment: .firstTextBaseline, spacing: 0) {
+      HStack(alignment: .top, spacing: 0) {
         lineNumber(line.previousLineNumber)
         lineNumber(line.currentLineNumber)
         Text(verbatim: prefix)
@@ -267,6 +284,9 @@ private struct AIChatLineDiffRow: View {
         Text(verbatim: line.text.isEmpty ? " " : line.text)
           .font(.callout.monospaced())
           .foregroundStyle(foregroundColor)
+          .lineLimit(wrapLines ? nil : 1)
+          .fixedSize(horizontal: !wrapLines, vertical: wrapLines)
+          .frame(maxWidth: .infinity, alignment: .leading)
           .padding(.trailing, 12)
       }
       .frame(maxWidth: .infinity, alignment: .leading)

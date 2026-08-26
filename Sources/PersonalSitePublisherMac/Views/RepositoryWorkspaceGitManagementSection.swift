@@ -6,6 +6,8 @@ struct RepositoryWorkspaceGitManagementSection: View {
   @State private var isExpanded = false
   @State private var newBranchName = ""
   @State private var showAllCommits = false
+  @State private var showAllBranches = false
+  @State private var branchSearchQuery = ""
 
   var body: some View {
     DisclosureGroup(isExpanded: $isExpanded) {
@@ -67,33 +69,94 @@ struct RepositoryWorkspaceGitManagementSection: View {
         .foregroundStyle(.secondary)
     } else {
       VStack(alignment: .leading, spacing: 5) {
-        Text("本地工作分支")
-          .font(.caption)
-          .foregroundStyle(.secondary)
-
-        ForEach(Array(store.localRepositoryBranches.prefix(6))) { branch in
-          HStack {
-            Text(branch.name)
-              .font(.caption.monospaced())
-              .workbenchTruncatedIdentity(branch.name)
-            Spacer()
-            if branch.isCurrent {
-              Label("当前", systemImage: "checkmark.circle.fill")
-                .font(.caption)
-                .foregroundStyle(WorkbenchTheme.success)
-            } else {
-              Button("切换") {
-                Task {
-                  await switchBranch(to: branch.name)
-                }
-              }
-              .controlSize(.small)
-              .disabled(!canRunBranchOperation)
-              .help(branchActionUnavailableReason ?? switchBranchLabel(branch.name))
-              .accessibilityLabel(switchBranchLabel(branch.name))
-            }
+        HStack {
+          Text("本地工作分支")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+          Spacer()
+          if store.localRepositoryBranches.count > 6 {
+            Text("共 \(store.localRepositoryBranches.count) 个")
+              .font(.caption)
+              .foregroundStyle(.secondary)
           }
         }
+
+        if showAllBranches {
+          TextField("搜索分支...", text: $branchSearchQuery)
+            .textFieldStyle(.roundedBorder)
+            .controlSize(.small)
+            .accessibilityLabel("搜索本地分支")
+
+          let query = branchSearchQuery.trimmedForPublishing
+          let filtered = store.localRepositoryBranches.filter { branch in
+            query.isEmpty || branch.name.localizedCaseInsensitiveContains(query)
+          }
+
+          if filtered.isEmpty {
+            Text("未找到匹配的分支。")
+              .font(.caption)
+              .foregroundStyle(.secondary)
+              .padding(.vertical, 4)
+          } else {
+            ScrollView {
+              VStack(alignment: .leading, spacing: 5) {
+                ForEach(filtered) { branch in
+                  branchRow(for: branch)
+                }
+              }
+              .padding(.vertical, 2)
+            }
+            .frame(maxHeight: 180)
+          }
+
+          Button("收起完整分支列表") {
+            showAllBranches = false
+            branchSearchQuery = ""
+          }
+          .buttonStyle(.borderless)
+          .font(.caption)
+          .foregroundStyle(WorkbenchTheme.documentForeground)
+          .padding(.top, 2)
+        } else {
+          ForEach(Array(store.localRepositoryBranches.prefix(6))) { branch in
+            branchRow(for: branch)
+          }
+
+          if store.localRepositoryBranches.count > 6 {
+            Button("展开更多分支并搜索（共 \(store.localRepositoryBranches.count) 个）") {
+              showAllBranches = true
+            }
+            .buttonStyle(.borderless)
+            .font(.caption)
+            .foregroundStyle(WorkbenchTheme.documentForeground)
+            .padding(.top, 2)
+            .accessibilityIdentifier("repository-git-management-expand-branches")
+          }
+        }
+      }
+    }
+  }
+
+  private func branchRow(for branch: RepositoryBranch) -> some View {
+    HStack {
+      Text(branch.name)
+        .font(.caption.monospaced())
+        .workbenchTruncatedIdentity(branch.name)
+      Spacer()
+      if branch.isCurrent {
+        Label("当前", systemImage: "checkmark.circle.fill")
+          .font(.caption)
+          .foregroundStyle(WorkbenchTheme.success)
+      } else {
+        Button("切换") {
+          Task {
+            await switchBranch(to: branch.name)
+          }
+        }
+        .controlSize(.small)
+        .disabled(!canRunBranchOperation)
+        .help(branchActionUnavailableReason ?? switchBranchLabel(branch.name))
+        .accessibilityLabel(switchBranchLabel(branch.name))
       }
     }
   }

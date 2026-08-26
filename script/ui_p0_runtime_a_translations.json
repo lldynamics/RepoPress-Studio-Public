@@ -171,10 +171,6 @@
     "en": "Select %@ to view issue details",
     "zh-Hans": "选择 %@ 查看问题详情"
   },
-  "选择已有的本地站点仓库，应用会读取配置并导入文章。": {
-    "en": "Select an existing local site repository. The app will read its configuration and import its articles.",
-    "zh-Hans": "选择已有的本地站点仓库，应用会读取配置并导入文章。"
-  },
   "选择诊断包导出位置": {
     "en": "Choose Diagnostics Export Location",
     "zh-Hans": "选择诊断包导出位置"

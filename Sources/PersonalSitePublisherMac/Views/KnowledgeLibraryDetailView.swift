@@ -14,6 +14,7 @@ struct KnowledgeLibraryDetailView: View {
   @State private var contentPresentation: KnowledgeContentPresentation = .cleaned
   @State private var readerBlocks: [KnowledgeDocumentBlock] = []
   @State private var isParsingReaderBlocks = false
+  @State private var isCompactInspectorPopoverPresented = false
   @AppStorage("knowledgeLibraryInspectorVisibleV1") private var isInspectorPresented = true
 
   var body: some View {
@@ -131,9 +132,34 @@ struct KnowledgeLibraryDetailView: View {
               )
               if displayedContentText.count > 100_000,
                  activeSearchResult == nil {
-                Text(contentLimitMessage)
-                  .font(.workbenchSupporting)
-                  .foregroundStyle(.secondary)
+                HStack(alignment: .center, spacing: 12) {
+                  Image(systemName: "doc.text.magnifyingglass")
+                    .font(.title3)
+                    .foregroundStyle(WorkbenchTheme.info)
+                  VStack(alignment: .leading, spacing: 3) {
+                    Text(String(localized: "超长文档阅读保护"))
+                      .font(.callout.weight(.semibold))
+                    Text(contentLimitMessage)
+                      .font(.workbenchSupporting)
+                      .foregroundStyle(.secondary)
+                  }
+                  Spacer()
+                  if let sourceURL = document.sourceURL {
+                    Button {
+                      NSWorkspace.shared.open(sourceURL)
+                    } label: {
+                      Label(String(localized: "在系统默认应用中打开完整源文件"), systemImage: "arrow.up.forward.app")
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                  }
+                }
+                .padding(12)
+                .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: 8))
+                .overlay {
+                  RoundedRectangle(cornerRadius: 8)
+                    .stroke(WorkbenchTheme.info.opacity(0.2), lineWidth: 1)
+                }
               }
             }
             .padding(24)
@@ -205,25 +231,62 @@ struct KnowledgeLibraryDetailView: View {
       }
       Spacer()
 
-      Button {
-        guard isInspectorAvailable else { return }
-        isInspectorPresented.toggle()
-      } label: {
-        Label(
-          isInspectorAvailable
-            ? (showsInspector ? "隐藏检查器" : "显示检查器")
-            : "检查器已自动收起",
-          systemImage: "sidebar.trailing"
-        )
+      if isInspectorAvailable {
+        Button {
+          isInspectorPresented.toggle()
+        } label: {
+          Label(
+            showsInspector ? String(localized: "隐藏检查器") : String(localized: "显示检查器"),
+            systemImage: "sidebar.trailing"
+          )
+        }
+        .help(showsInspector ? String(localized: "隐藏资料检查器") : String(localized: "显示资料检查器"))
+        .keyboardShortcut("i", modifiers: [.command, .option])
+        .accessibilityIdentifier("knowledge-library-inspector-toggle")
+      } else {
+        Button {
+          isCompactInspectorPopoverPresented = true
+        } label: {
+          Label(String(localized: "资料检查器"), systemImage: "sidebar.trailing")
+        }
+        .help(String(localized: "查看资料批注与元数据"))
+        .accessibilityIdentifier("knowledge-library-inspector-toggle")
+        .popover(isPresented: $isCompactInspectorPopoverPresented, arrowEdge: .bottom) {
+          KnowledgeLibraryInspectorPanel(
+            knowledge: knowledge,
+            document: document,
+            activeSearchResult: activeSearchResult,
+            onEditMetadata: {
+              isCompactInspectorPopoverPresented = false
+              isMetadataEditorPresented = true
+            },
+            onAddAnnotation: {
+              isCompactInspectorPopoverPresented = false
+              beginAddingAnnotation(to: document)
+            },
+            onAnnotateSearchHit: {
+              isCompactInspectorPopoverPresented = false
+              beginAnnotatingSearchResult(document: document)
+            },
+            onEditAnnotation: {
+              isCompactInspectorPopoverPresented = false
+              annotationDraft = $0
+            },
+            onDeleteAnnotation: { knowledge.deleteAnnotation($0) },
+            onOpenSourceHistory: {
+              isCompactInspectorPopoverPresented = false
+              preparesLocalRepairOnHistoryOpen = false
+              isSourceHistoryPresented = true
+            },
+            onReportContentIssue: {
+              isCompactInspectorPopoverPresented = false
+              preparesLocalRepairOnHistoryOpen = true
+              isSourceHistoryPresented = true
+            }
+          )
+          .frame(width: 320, height: 460)
+        }
       }
-      .disabled(!isInspectorAvailable)
-      .help(
-        isInspectorAvailable
-          ? (showsInspector ? "隐藏资料检查器" : "显示资料检查器")
-          : "放大资料阅读区域后可显示检查器"
-      )
-      .keyboardShortcut("i", modifiers: [.command, .option])
-      .accessibilityIdentifier("knowledge-library-inspector-toggle")
 
       Button {
         knowledge.setPinned(!knowledge.isPinned(document.id), documentID: document.id)

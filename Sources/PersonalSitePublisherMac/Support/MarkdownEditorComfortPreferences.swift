@@ -15,11 +15,6 @@ enum MarkdownEditorComfortPreferences {
   static let defaultRealtimeAnalysisEnabled = true
 }
 
-enum AIWritingPreferences {
-  static let automaticInlineCompletionEnabledKey = "ai.automaticInlineCompletionEnabled"
-  static let defaultAutomaticInlineCompletionEnabled = false
-}
-
 /// Shared gate for work that may be triggered by editor input.
 ///
 /// Manual commands are always allowed; persisted switches only control work

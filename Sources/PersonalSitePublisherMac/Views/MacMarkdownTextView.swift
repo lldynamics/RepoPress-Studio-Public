@@ -77,6 +77,7 @@ struct MacMarkdownTextView: NSViewRepresentable {
   var onEditRequestHandled: (UUID) -> Void
   var onGhostTextAccepted: (String) -> Void
   var onGhostTextDismissed: () -> Void
+  var onInlineAICompletionRequested: () -> Void
   var onSSGSnippetShortcut: (MarkdownCompletionCandidate) -> Void
   var onSlashCommandKey: (MarkdownSlashCommandKey) -> Bool = { _ in false }
   var onLiveBodyChange: (String, String) -> Void = { _, _ in }
@@ -158,6 +159,7 @@ struct MacMarkdownTextView: NSViewRepresentable {
       context.coordinator.handleTableEditing(command, in: textView)
     }
     textView.slashCommandKeyHandler = onSlashCommandKey
+    textView.inlineAIRequestHandler = onInlineAICompletionRequested
     textView.string = text
     let initialSelection =
       isFrontMatterSelection
@@ -281,6 +283,7 @@ struct MacMarkdownTextView: NSViewRepresentable {
         context.coordinator.handleTableEditing(command, in: textView)
       }
       droppableTextView.slashCommandKeyHandler = onSlashCommandKey
+      droppableTextView.inlineAIRequestHandler = onInlineAICompletionRequested
       droppableTextView.ghostTextAcceptHandler = {
         guard !context.coordinator.ghostText.isEmpty else { return false }
         context.coordinator.onGhostTextAccepted(context.coordinator.ghostText)
@@ -385,6 +388,7 @@ struct MacMarkdownTextView: NSViewRepresentable {
     if let textView = nsView.documentView as? DroppableMarkdownTextView {
       textView.willBecomeFirstResponderHandler = nil
       textView.didResignFirstResponderHandler = nil
+      textView.inlineAIRequestHandler = nil
       textView.delegate = nil
     } else {
       (nsView.documentView as? NSTextView)?.delegate = nil

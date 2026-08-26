@@ -50,7 +50,6 @@ struct MacMarkdownEditorToolbar: View {
   let isSelectionAIActionRunning: Bool
   let canOpenAIChat: Bool
   let aiChatUnavailableReason: String?
-  @Binding var isAutomaticInlineAICompletionEnabled: Bool
   let writingToolDensity: MarkdownWritingToolDensity
   let availableWritingContextPanels: [MarkdownWritingContextPanel]
   let actions: MarkdownEditorToolbarActions
@@ -88,7 +87,6 @@ struct MacMarkdownEditorToolbar: View {
     isSelectionAIActionRunning: Bool,
     canOpenAIChat: Bool,
     aiChatUnavailableReason: String?,
-    isAutomaticInlineAICompletionEnabled: Binding<Bool>,
     writingToolDensity: MarkdownWritingToolDensity,
     availableWritingContextPanels: [MarkdownWritingContextPanel],
     actions: MarkdownEditorToolbarActions
@@ -100,7 +98,6 @@ struct MacMarkdownEditorToolbar: View {
     self.isSelectionAIActionRunning = isSelectionAIActionRunning
     self.canOpenAIChat = canOpenAIChat
     self.aiChatUnavailableReason = aiChatUnavailableReason
-    _isAutomaticInlineAICompletionEnabled = isAutomaticInlineAICompletionEnabled
     self.writingToolDensity = writingToolDensity
     self.availableWritingContextPanels = availableWritingContextPanels
     self.actions = actions
@@ -260,7 +257,7 @@ struct MacMarkdownEditorToolbar: View {
     case .aiActions:
       aiActionsMenuButton(showsTitle: showsTitle)
     case .autoInlineAI:
-      automaticInlineAICompletionButton(showsTitle: showsTitle)
+      inlineAICompletionButton(showsTitle: showsTitle)
     case .aiChat:
       aiChatButton(showsTitle: showsTitle)
     case .localPreview:
@@ -360,34 +357,23 @@ struct MacMarkdownEditorToolbar: View {
     .accessibilityValue(isSelectionAIActionRunning ? "AI 处理中" : "")
   }
 
-  private func automaticInlineAICompletionButton(showsTitle: Bool) -> some View {
+  private func inlineAICompletionButton(showsTitle: Bool) -> some View {
     Button {
-      isAutomaticInlineAICompletionEnabled.toggle()
+      actions.onRequestInlineAICompletion()
     } label: {
-      editorActionLabel("自动 AI 续写", systemName: "wand.and.stars", showsTitle: showsTitle)
+      editorActionLabel("AI 续写", systemName: "wand.and.stars", showsTitle: showsTitle)
     }
     .buttonStyle(
       MarkdownEditorToolbarButtonStyle(
         showsTitle: showsTitle,
-        isSelected: isAutomaticInlineAICompletionEnabled
+        isSelected: false
       )
     )
-    .foregroundStyle(
-      isAutomaticInlineAICompletionEnabled
-        ? Color.accentColor
-        : Color.secondary
-    )
-    .help(String(localized: "自动 AI 续写"))
-    .accessibilityLabel(String(localized: "自动 AI 续写"))
-    .accessibilityValue(
-      isAutomaticInlineAICompletionEnabled
-        ? String(localized: "开启")
-        : String(localized: "关闭")
-    )
-    .accessibilityAddTraits(
-      isAutomaticInlineAICompletionEnabled ? .isSelected : []
-    )
-    .accessibilityIdentifier("markdown-automatic-inline-ai-completion")
+    .foregroundStyle(Color.secondary)
+    .help(String(localized: "请求 AI 续写（Option + 反斜杠）"))
+    .accessibilityLabel(String(localized: "AI 续写"))
+    .accessibilityValue(String(localized: "按需触发"))
+    .accessibilityIdentifier("markdown-inline-ai-completion")
   }
 
   private func aiChatButton(showsTitle: Bool) -> some View {

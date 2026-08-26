@@ -53,15 +53,18 @@ struct SettingsView: View {
         settingsPageContent
           .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
 
-        Divider()
+        if shouldShowSaveStatusBar {
+          Divider()
 
-        SettingsSaveStatusBar(
-          hasUnsavedChanges: persistenceStatus.hasUnsavedChanges,
-          lastSaveError: persistenceStatus.lastSaveError,
-          isRecoveryWriteProtected: persistenceStatus.isRecoveryWriteProtected,
-          recoveryMessage: persistenceStatus.recoveryMessage,
-          retry: store.save
-        )
+          SettingsSaveStatusBar(
+            hasUnsavedChanges: persistenceStatus.hasUnsavedChanges,
+            lastSaveError: persistenceStatus.lastSaveError,
+            isRecoveryWriteProtected: persistenceStatus.isRecoveryWriteProtected,
+            recoveryMessage: persistenceStatus.recoveryMessage,
+            retry: store.save
+          )
+          .transition(.move(edge: .bottom).combined(with: .opacity))
+        }
       }
       .background(Color(nsColor: .windowBackgroundColor))
       .accessibilityElement(children: .contain)
@@ -99,16 +102,84 @@ struct SettingsView: View {
     }
   }
 
+  private var matchingSearchItems: [SettingsSearchItem] {
+    SettingsSearchIndex.search(query: searchText)
+  }
+
+  private var shouldShowSaveStatusBar: Bool {
+    persistenceStatus.hasUnsavedChanges
+      || persistenceStatus.lastSaveError != nil
+      || persistenceStatus.isRecoveryWriteProtected
+  }
+
   private var settingsSidebar: some View {
+    let searchHits = matchingSearchItems
+    let isSearching = !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     let visibleSiteSettings = filteredSettingsTabs(SettingsTab.siteSettings)
     let visibleApplicationSettings = filteredSettingsTabs(SettingsTab.applicationSettings)
 
     return VStack(alignment: .leading, spacing: 0) {
       List(selection: settingsSidebarSelection) {
-        if visibleSiteSettings.isEmpty && visibleApplicationSettings.isEmpty {
-          Text("没有匹配的设置")
-            .font(.callout)
-            .foregroundStyle(.secondary)
+        if isSearching {
+          if searchHits.isEmpty && visibleSiteSettings.isEmpty && visibleApplicationSettings.isEmpty {
+            Text("没有匹配的设置")
+              .font(.callout)
+              .foregroundStyle(.secondary)
+          } else {
+            if !searchHits.isEmpty {
+              Section("具体设置项") {
+                ForEach(searchHits) { item in
+                  Button {
+                    selectSettingsSearchItem(item)
+                  } label: {
+                    VStack(alignment: .leading, spacing: 2) {
+                      HStack(spacing: 6) {
+                        Image(systemName: item.systemImage)
+                          .font(.caption)
+                          .foregroundStyle(item.tab == selectedSettingsTab ? Color.accentColor : Color.secondary)
+                        Text(item.sectionTitle)
+                          .font(.callout.weight(.medium))
+                          .foregroundStyle(Color.primary)
+                          .lineLimit(1)
+                      }
+                      HStack(spacing: 4) {
+                        Text(item.tab.title)
+                          .font(.workbenchMetadata)
+                          .foregroundStyle(.secondary)
+                        Text("·")
+                          .font(.workbenchMetadata)
+                          .foregroundStyle(.tertiary)
+                        Text(item.detail)
+                          .font(.workbenchMetadata)
+                          .foregroundStyle(.secondary)
+                          .lineLimit(1)
+                      }
+                    }
+                    .padding(.vertical, 3)
+                  }
+                  .buttonStyle(.plain)
+                  .accessibilityElement(children: .combine)
+                  .accessibilityLabel("\(item.sectionTitle)，属于 \(item.tab.title)")
+                }
+              }
+            }
+
+            if !visibleSiteSettings.isEmpty {
+              Section("匹配的站点分类") {
+                ForEach(visibleSiteSettings) { tab in
+                  settingsSidebarRow(tab)
+                }
+              }
+            }
+
+            if !visibleApplicationSettings.isEmpty {
+              Section("匹配的应用分类") {
+                ForEach(visibleApplicationSettings) { tab in
+                  settingsSidebarRow(tab)
+                }
+              }
+            }
+          }
         } else {
           if !visibleSiteSettings.isEmpty {
             Section("站点") {
@@ -130,11 +201,19 @@ struct SettingsView: View {
       .listStyle(.sidebar)
       .scrollContentBackground(.hidden)
       .padding(.top, WorkbenchSpacing.control)
-      .searchable(text: $searchText, placement: .sidebar, prompt: Text("搜索设置"))
+      .searchable(text: $searchText, placement: .sidebar, prompt: Text("搜索设置（如 WebP、Ollama、Front Matter）"))
     }
     .frame(width: SettingsSidebarPresentation.clampedWidth(scaledSidebarWidth))
     .workbenchGlassContainer(material: .thinMaterial, drawsBorder: false)
     .accessibilityIdentifier("settings-sidebar")
+  }
+
+  private func selectSettingsSearchItem(_ item: SettingsSearchItem) {
+    if let destination = item.destination {
+      selectSettingsDestination(destination, healthDestination: nil)
+    } else {
+      selectTopLevelSettingsTab(item.tab)
+    }
   }
 
   private func settingsSidebarRow(_ tab: SettingsTab) -> some View {
@@ -218,14 +297,32 @@ struct SettingsView: View {
 
             Spacer(minLength: WorkbenchSpacing.content)
 
-            profileBar
+            HStack(spacing: WorkbenchSpacing.card) {
+              profileBar
+
+              SettingsCompactSaveIndicator(
+                hasUnsavedChanges: persistenceStatus.hasUnsavedChanges,
+                lastSaveError: persistenceStatus.lastSaveError,
+                isRecoveryWriteProtected: persistenceStatus.isRecoveryWriteProtected,
+                recoveryMessage: persistenceStatus.recoveryMessage
+              )
+            }
           }
 
           VStack(alignment: .leading, spacing: WorkbenchSpacing.card) {
             settingsPageIdentity
 
-            profileBar
-              .frame(maxWidth: .infinity, alignment: .trailing)
+            HStack(spacing: WorkbenchSpacing.card) {
+              profileBar
+
+              SettingsCompactSaveIndicator(
+                hasUnsavedChanges: persistenceStatus.hasUnsavedChanges,
+                lastSaveError: persistenceStatus.lastSaveError,
+                isRecoveryWriteProtected: persistenceStatus.isRecoveryWriteProtected,
+                recoveryMessage: persistenceStatus.recoveryMessage
+              )
+            }
+            .frame(maxWidth: .infinity, alignment: .trailing)
           }
         }
       } else {
@@ -236,14 +333,32 @@ struct SettingsView: View {
 
             Spacer(minLength: WorkbenchSpacing.content)
 
-            globalScopeBadge
+            HStack(spacing: WorkbenchSpacing.card) {
+              globalScopeBadge
+
+              SettingsCompactSaveIndicator(
+                hasUnsavedChanges: persistenceStatus.hasUnsavedChanges,
+                lastSaveError: persistenceStatus.lastSaveError,
+                isRecoveryWriteProtected: persistenceStatus.isRecoveryWriteProtected,
+                recoveryMessage: persistenceStatus.recoveryMessage
+              )
+            }
           }
 
           VStack(alignment: .leading, spacing: WorkbenchSpacing.card) {
             settingsPageIdentity
 
-            globalScopeBadge
-              .frame(maxWidth: .infinity, alignment: .trailing)
+            HStack(spacing: WorkbenchSpacing.card) {
+              globalScopeBadge
+
+              SettingsCompactSaveIndicator(
+                hasUnsavedChanges: persistenceStatus.hasUnsavedChanges,
+                lastSaveError: persistenceStatus.lastSaveError,
+                isRecoveryWriteProtected: persistenceStatus.isRecoveryWriteProtected,
+                recoveryMessage: persistenceStatus.recoveryMessage
+              )
+            }
+            .frame(maxWidth: .infinity, alignment: .trailing)
           }
         }
       }

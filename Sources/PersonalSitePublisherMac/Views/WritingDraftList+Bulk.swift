@@ -22,6 +22,13 @@ extension WritingDraftColumn {
       .controlSize(.small)
       .help(String(localized: "批量移动、复制或转为通用草稿"))
 
+      Button(String(localized: "全选")) {
+        selectedDraftIDs = Set(paginatedDrafts.map(\.id))
+      }
+      .buttonStyle(.borderless)
+      .controlSize(.small)
+      .keyboardShortcut("a", modifiers: [.command])
+
       Button(String(localized: "取消选择")) {
         if let selectedDraftID {
           selectedDraftIDs = [selectedDraftID]

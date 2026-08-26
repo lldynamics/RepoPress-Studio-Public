@@ -263,9 +263,7 @@ extension RepositoryWorkspaceView {
     } else if let session = store.repositoryMergeConflictSession,
               !session.conflicts.isEmpty {
       workflowBanner(
-        title: LocalizedStringKey(
-          "Git 有 " + String(session.conflicts.count) + " 个未解决冲突"
-        ),
+        title: "Git 有 \(session.conflicts.count) 个未解决冲突",
         detail: "请先在三栏合并视图中明确编辑最终版本并暂存，避免覆盖本地或远程内容。",
         systemImage: "arrow.left.arrow.right.square",
         tint: WorkbenchTheme.risk,

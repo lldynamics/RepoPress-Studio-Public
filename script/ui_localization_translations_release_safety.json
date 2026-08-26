@@ -108,7 +108,6 @@
   "替换当前": "Replace Current",
   "未保存仓库访问令牌": "Repository Access Token Not Saved",
   "未保存部署访问令牌": "Deployment Access Token Not Saved",
-  "未能保存仓库权限，请重新选择或检查文件夹访问权限。": "Repository permission could not be saved. Select the folder again or check folder access.",
   "未能保存工作台修改": "Could Not Save Workspace Changes",
   "本地仓库已连接": "Local Repository Connected",
   "查找": "Find",

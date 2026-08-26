@@ -120,6 +120,7 @@ struct AIChatModelQuickSwitchSheet: View {
   let draft: ArticleDraft?
 
   @Environment(\.dismiss) private var dismiss
+  @State private var searchText = ""
   @State private var customModelInput = ""
   @State private var connectionReport: AIConnectionTestReport?
   @State private var isTestingConnection = false
@@ -146,11 +147,21 @@ struct AIChatModelQuickSwitchSheet: View {
 
       Divider()
 
+      searchBar
+
       ScrollView {
         VStack(alignment: .leading, spacing: 16) {
-          connectionStatusCard
-          connectionProfilesSection
-          modelSection
+          if searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            connectionStatusCard
+          }
+          if !hasSearchResults {
+            noSearchResultsView
+          } else {
+            if !filteredProfiles.isEmpty {
+              connectionProfilesSection
+            }
+            modelSection
+          }
         }
         .padding(18)
       }
@@ -316,6 +327,92 @@ struct AIChatModelQuickSwitchSheet: View {
     return String(localized: "Endpoint：") + currentConfig.normalizedBaseURL
   }
 
+  private var searchBar: some View {
+    HStack(spacing: 8) {
+      Image(systemName: "magnifyingglass")
+        .font(.subheadline)
+        .foregroundStyle(.secondary)
+      TextField(String(localized: "搜索模型名称或配置档案…"), text: $searchText)
+        .textFieldStyle(.plain)
+        .font(.callout)
+      if !searchText.isEmpty {
+        Button {
+          searchText = ""
+        } label: {
+          Image(systemName: "xmark.circle.fill")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(String(localized: "清空搜索"))
+      }
+    }
+    .padding(.horizontal, 10)
+    .padding(.vertical, 7)
+    .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+    .overlay(
+      RoundedRectangle(cornerRadius: 8)
+        .stroke(Color.secondary.opacity(0.18), lineWidth: 1)
+    )
+    .padding(.horizontal, 18)
+    .padding(.top, 12)
+    .padding(.bottom, 2)
+  }
+
+  private var noSearchResultsView: some View {
+    VStack(spacing: 8) {
+      Image(systemName: "magnifyingglass")
+        .font(.title2)
+        .foregroundStyle(.secondary)
+      Text(String(localized: "未找到匹配的模型或连接配置"))
+        .font(.callout.weight(.medium))
+        .foregroundStyle(.secondary)
+      Button(String(localized: "清空搜索")) {
+        searchText = ""
+      }
+      .buttonStyle(.borderless)
+      .controlSize(.small)
+      .padding(.top, 4)
+    }
+    .frame(maxWidth: .infinity)
+    .padding(.vertical, 24)
+  }
+
+  var filteredProfiles: [AIConnectionProfile] {
+    let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    guard !query.isEmpty else { return chatState.chatConnectionProfiles }
+    return chatState.chatConnectionProfiles.filter {
+      $0.name.lowercased().contains(query) || $0.summary.lowercased().contains(query)
+    }
+  }
+
+  var filteredModelCandidates: [AIChatInspectorModelGradeCandidate] {
+    let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    guard !query.isEmpty else { return modelCandidates }
+    return modelCandidates.filter {
+      $0.title.lowercased().contains(query) || $0.model.lowercased().contains(query)
+    }
+  }
+
+  var filteredCodexModels: [CodexAppServerModel] {
+    let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    guard !query.isEmpty else { return codexModels }
+    return codexModels.filter {
+      $0.localizedDisplayName.lowercased().contains(query)
+        || $0.model.lowercased().contains(query)
+        || ($0.description?.lowercased().contains(query) ?? false)
+    }
+  }
+
+  private var hasSearchResults: Bool {
+    let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !query.isEmpty else { return true }
+    if currentConfig.usesCodexAppServer {
+      return !filteredProfiles.isEmpty || !filteredCodexModels.isEmpty
+    }
+    return !filteredProfiles.isEmpty || !filteredModelCandidates.isEmpty
+  }
+
   private var activeConnectionProfileID: UUID {
     if isGeneralMode {
       return displayedGeneralConversation?.connectionProfileID
@@ -330,12 +427,12 @@ struct AIChatModelQuickSwitchSheet: View {
         .font(.caption.weight(.semibold))
         .foregroundStyle(.secondary)
 
-      if chatState.chatConnectionProfiles.isEmpty {
+      if filteredProfiles.isEmpty {
         Text(String(localized: "还没有可复用的连接档案。"))
           .font(.caption)
           .foregroundStyle(.secondary)
       } else {
-        ForEach(chatState.chatConnectionProfiles) { profile in
+        ForEach(filteredProfiles) { profile in
           Button {
             if isGeneralMode {
               ai.setGeneralChatConnectionProfile(profile.id)
@@ -411,7 +508,7 @@ struct AIChatModelQuickSwitchSheet: View {
 
   private var standardModelSection: some View {
     Group {
-      ForEach(modelCandidates) { candidate in
+      ForEach(filteredModelCandidates) { candidate in
         Button {
           if isGeneralMode {
             ai.setGeneralChatModelGrade(candidate.grade)
@@ -429,8 +526,18 @@ struct AIChatModelQuickSwitchSheet: View {
                 ? WorkbenchTheme.primary : Color.secondary
             )
             VStack(alignment: .leading, spacing: 2) {
-              Text(candidate.title)
-                .font(.callout.weight(.medium))
+              HStack(spacing: 6) {
+                Text(candidate.title)
+                  .font(.callout.weight(.medium))
+                if !candidate.model.isEmpty {
+                  Text(AIChatRequestTokenBudget.formattedContextWindow(forModel: candidate.model))
+                    .font(.workbenchMetadata.weight(.medium).monospaced())
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 1.5)
+                    .background(Color.secondary.opacity(0.12), in: Capsule())
+                }
+              }
               Text(candidate.model)
                 .font(.caption.monospaced())
                 .foregroundStyle(.secondary)
@@ -444,29 +551,31 @@ struct AIChatModelQuickSwitchSheet: View {
         .buttonStyle(.plain)
       }
 
-      Button {
-        synchronizeCustomModelInput()
-        if isGeneralMode {
-          ai.setGeneralChatModelGrade(.custom)
+      if searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || "自定义模型".contains(searchText.lowercased()) {
+        Button {
+          synchronizeCustomModelInput()
+          if isGeneralMode {
+            ai.setGeneralChatModelGrade(.custom)
+          }
+          ai.setChatModelGrade(.custom)
+        } label: {
+          HStack(spacing: 9) {
+            Image(
+              systemName: currentGrade == .custom
+                ? "checkmark.circle.fill" : "circle"
+            )
+            .foregroundStyle(
+              currentGrade == .custom
+                ? WorkbenchTheme.primary : Color.secondary
+            )
+            Text(String(localized: "自定义模型"))
+              .font(.callout.weight(.medium))
+            Spacer(minLength: 8)
+          }
+          .contentShape(Rectangle())
         }
-        ai.setChatModelGrade(.custom)
-      } label: {
-        HStack(spacing: 9) {
-          Image(
-            systemName: currentGrade == .custom
-              ? "checkmark.circle.fill" : "circle"
-          )
-          .foregroundStyle(
-            currentGrade == .custom
-              ? WorkbenchTheme.primary : Color.secondary
-          )
-          Text(String(localized: "自定义模型"))
-            .font(.callout.weight(.medium))
-          Spacer(minLength: 8)
-        }
-        .contentShape(Rectangle())
+        .buttonStyle(.plain)
       }
-      .buttonStyle(.plain)
 
       if AIChatInspectorHeaderPresentation.showsCustomModelInput(selection: currentSelection) {
         HStack(spacing: 8) {
@@ -474,6 +583,14 @@ struct AIChatModelQuickSwitchSheet: View {
             .textFieldStyle(.roundedBorder)
             .accessibilityLabel(String(localized: "自定义模型名称"))
             .onSubmit(applyCustomModel)
+          if !customModelInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            Text(AIChatRequestTokenBudget.formattedContextWindow(forModel: customModelInput))
+              .font(.workbenchMetadata.weight(.medium).monospaced())
+              .foregroundStyle(.secondary)
+              .padding(.horizontal, 5)
+              .padding(.vertical, 2)
+              .background(Color.secondary.opacity(0.12), in: Capsule())
+          }
           Button(String(localized: "应用"), action: applyCustomModel)
             .disabled(customModelInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         }

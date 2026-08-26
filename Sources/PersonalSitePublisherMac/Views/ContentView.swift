@@ -145,6 +145,7 @@ struct ContentView: View {
   @StateObject private var repositoryContentChangeMonitor: RepositoryContentChangeMonitorCoordinator
   @State private var sceneCommandRouter = WorkspaceSceneCommandRouter()
   @StateObject private var windowSession: WorkspaceWindowSession
+  @State private var inspectorWidth: CGFloat = WorkspaceInspectorColumnWidthPolicy.article.minimum
 
   private var shellState: WorkbenchRootPresentationFeatureFacade { rootPresentation }
   private var presentationState: WorkbenchRootPresentationFeatureFacade { rootPresentation }
@@ -184,43 +185,11 @@ struct ContentView: View {
       )
 
       ZStack {
-        WorkspaceShellSplitLayout(
-          store: store,
-          selectedSection: windowSession.selectedSection,
-          selectedDraftID: windowSession.selectedDraftID,
-          isCompact: compactLayout,
-          isFocusMode: hidesWorkspaceSidebar,
-          isInspectorPresented: isInspectorVisible,
-          contentHealthFilter: $contentHealthFilter,
-          imageWorkbenchContextStage: $imageWorkbenchContextStage,
-          repositoryContextStage: $repositoryContextStage,
-          repositorySourceSession: repositorySourceSession,
-          rssStore: rssStore,
-          onSelectSection: selectWorkspaceSection,
-          onSelectDraft: selectWindowDraft,
-          onFocusDraft: focusWindowDraft
+        workspaceCenterLayout(
+          compactLayout: compactLayout,
+          isInspectorVisible: isInspectorVisible,
+          inspectorColumnWidths: inspectorColumnWidths
         )
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .inspector(isPresented: inspectorPresentation) {
-          MetadataColumn(
-            store: store,
-            selectedSection: windowSession.selectedSection,
-            selectedDraftID: windowSession.selectedDraftID,
-            rssStore: rssStore,
-            repositoryContextStage: repositoryContextStage,
-            repositorySourceSession: repositorySourceSession,
-            aiChatSurfaceState: $aiChatInspectorSurfaceState,
-            aiChatOperationSession: aiChatInspectorOperationSession,
-            prioritizesChecks: compactLayout
-          )
-          .inspectorColumnWidth(
-            min: inspectorColumnWidths.minimum,
-            ideal: inspectorColumnWidths.ideal,
-            max: inspectorColumnWidths.maximum
-          )
-        }
-        .disabled(shellState.isQuickHideActive)
-        .accessibilityHidden(shellState.isQuickHideActive)
 
         #if DEBUG || SCREENSHOT_CAPTURE_BUILD
           if usesInlineAIScreenshotInspector {
@@ -376,15 +345,7 @@ struct ContentView: View {
       }
     }
     .onChange(of: scenePhase) { oldPhase, newPhase in
-      guard newPhase == .active else {
-        repositoryContentChangeMonitor.stop(clientID: repositoryContentMonitorClientID)
-        return
-      }
-      guard oldPhase != .active, !store.isSafeMode else { return }
-      configureRepositoryContentChangeMonitor()
-      refreshExternallyCreatedDrafts()
-      scheduleDueOperationalRefresh()
-      refreshStaleRSSIfNeeded()
+      handleScenePhaseChange(oldPhase: oldPhase, newPhase: newPhase)
     }
     .onChange(of: controlActiveState) { _, _ in
       synchronizeWindowSessionActivity()
@@ -396,24 +357,19 @@ struct ContentView: View {
       windowSession.receiveSharedDraft(draftID)
     }
     .onChange(of: windowSession.selectedSection) { _, section in
-      selectedSectionRawValue = section.rawValue
-      normalizeWorkspacePresentation(for: section)
-      if section == .rss {
-        refreshStaleRSSIfNeeded()
-      }
+      handleSelectedSectionChange(section: section)
     }
     .onChange(of: windowSession.selectedDraftID) { _, draftID in
-      selectedDraftIDRawValue = draftID?.uuidString ?? ""
+      handleSelectedDraftIDChange(draftID: draftID)
     }
     .onChange(of: repositoryContextStage) { _, stage in
-      if stage == .history {
-        hideInspectorIfNeeded()
-      }
+      handleRepositoryContextStageChange(stage: stage)
     }
     .onChange(of: contentHealthFilter) { _, filter in
-      if filter == .maintenance {
-        hideInspectorIfNeeded()
-      }
+      handleContentHealthFilterChange(filter: filter)
+    }
+    .onChange(of: presentationState.isAssistantPresented) { _, isAssistant in
+      handleAssistantPresentationChange(isAssistant: isAssistant)
     }
     .alert(
       String(localized: "工作台数据恢复"),
@@ -423,6 +379,104 @@ struct ContentView: View {
     )
     .sheet(isPresented: $isDraftRecoveryPresented, content: draftRecoveryPanel)
     .sheet(item: modalPresentationBinding, content: modalContent)
+  }
+
+  private func handleScenePhaseChange(oldPhase: ScenePhase, newPhase: ScenePhase) {
+    guard newPhase == .active else {
+      repositoryContentChangeMonitor.stop(clientID: repositoryContentMonitorClientID)
+      return
+    }
+    guard oldPhase != .active, !store.isSafeMode else { return }
+    configureRepositoryContentChangeMonitor()
+    refreshExternallyCreatedDrafts()
+    scheduleDueOperationalRefresh()
+    refreshStaleRSSIfNeeded()
+  }
+
+  private func handleSelectedSectionChange(section: WorkspaceSection) {
+    selectedSectionRawValue = section.rawValue
+    normalizeWorkspacePresentation(for: section)
+    if section == .rss {
+      refreshStaleRSSIfNeeded()
+    }
+  }
+
+  private func handleSelectedDraftIDChange(draftID: UUID?) {
+    selectedDraftIDRawValue = draftID?.uuidString ?? ""
+  }
+
+  private func handleRepositoryContextStageChange(stage: RepositoryContextStage) {
+    if stage == .history {
+      hideInspectorIfNeeded()
+    }
+  }
+
+  private func handleContentHealthFilterChange(filter: ContentHealthContextFilter) {
+    if filter == .maintenance {
+      hideInspectorIfNeeded()
+    }
+  }
+
+  private func handleAssistantPresentationChange(isAssistant: Bool) {
+    withAnimation(WorkbenchMotion.deliberate) {
+      inspectorWidth = isAssistant
+        ? WorkspaceInspectorColumnWidthPolicy.aiCollaboration.ideal
+        : WorkspaceInspectorColumnWidthPolicy.article.minimum
+    }
+  }
+
+  @ViewBuilder
+  private func workspaceCenterLayout(
+    compactLayout: Bool,
+    isInspectorVisible: Bool,
+    inspectorColumnWidths: WorkspaceInspectorColumnWidths
+  ) -> some View {
+    WorkspaceShellSplitLayout(
+      store: store,
+      selectedSection: windowSession.selectedSection,
+      selectedDraftID: windowSession.selectedDraftID,
+      isCompact: compactLayout,
+      isFocusMode: hidesWorkspaceSidebar,
+      isInspectorPresented: isInspectorVisible,
+      contentHealthFilter: $contentHealthFilter,
+      imageWorkbenchContextStage: $imageWorkbenchContextStage,
+      repositoryContextStage: $repositoryContextStage,
+      repositorySourceSession: repositorySourceSession,
+      rssStore: rssStore,
+      onSelectSection: selectWorkspaceSection,
+      onSelectDraft: selectWindowDraft,
+      onFocusDraft: focusWindowDraft
+    )
+    .frame(maxWidth: .infinity, maxHeight: .infinity)
+    .inspector(isPresented: inspectorPresentation) {
+      MetadataColumn(
+        store: store,
+        selectedSection: windowSession.selectedSection,
+        selectedDraftID: windowSession.selectedDraftID,
+        rssStore: rssStore,
+        repositoryContextStage: repositoryContextStage,
+        repositorySourceSession: repositorySourceSession,
+        aiChatSurfaceState: $aiChatInspectorSurfaceState,
+        aiChatOperationSession: aiChatInspectorOperationSession,
+        prioritizesChecks: compactLayout,
+        onResetWidth: resetInspectorWidth
+      )
+      .inspectorColumnWidth(
+        min: inspectorColumnWidths.minimum,
+        ideal: inspectorWidth,
+        max: inspectorColumnWidths.maximum
+      )
+    }
+    .disabled(shellState.isQuickHideActive)
+    .accessibilityHidden(shellState.isQuickHideActive)
+  }
+
+  private func resetInspectorWidth() {
+    withAnimation(WorkbenchMotion.deliberate) {
+      inspectorWidth = presentationState.isAssistantPresented
+        ? WorkspaceInspectorColumnWidthPolicy.aiCollaboration.ideal
+        : WorkspaceInspectorColumnWidthPolicy.article.minimum
+    }
   }
 
   private func handleContentViewAppear() {

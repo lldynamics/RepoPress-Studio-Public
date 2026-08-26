@@ -9,18 +9,12 @@ struct AIWritingStyleSection: View {
   let summaryGuidanceText: Binding<String>
   let tagGuidanceText: Binding<String>
   let seoGuidanceText: Binding<String>
-  @AppStorage(AIWritingPreferences.automaticInlineCompletionEnabledKey)
-  private var isAutomaticInlineCompletionEnabled =
-    AIWritingPreferences.defaultAutomaticInlineCompletionEnabled
   @State private var showsCustomRules = false
 
   var body: some View {
     Group {
-      Section("自动 AI 续写") {
-        Toggle("停顿时自动生成行内续写", isOn: $isAutomaticInlineCompletionEnabled)
-          .accessibilityHint("关闭时，点击文章、移动光标和输入文字都不会自动读取 API Key 或发送 AI 请求")
-
-        Text("默认关闭。开启后，光标停顿约 0.85 秒会自动发送当前写作上下文；手动 AI 写作、对话和选区操作不受此开关影响。")
+      Section("行内 AI 续写") {
+        Text("在编辑器正文中按 Option + 反斜杠主动请求续写；生成后按 Tab 采纳，按 Esc 丢弃。停顿、输入和移动光标都不会自动发送请求。")
           .font(.callout)
           .foregroundStyle(.secondary)
       }

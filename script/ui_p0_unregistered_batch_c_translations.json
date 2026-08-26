@@ -151,10 +151,6 @@
     "en": "This will try to compress %@ images. An original is replaced only if the result is smaller and the file has not changed since the scan.",
     "zh-Hans": "将尝试压缩 %@ 张图片。只有生成结果更小、且原文件自扫描后未变化时才会原位替换。"
   },
-  "将把 %lld 个未被 Markdown 引用的资源移入废纸篓。文件不会被永久删除；失效引用和扫描期间发生变化的文件会保留并标记为需复核。": {
-    "en": "This will move %lld resources not referenced by Markdown to the Trash. Files will not be permanently deleted; broken references and files changed during the scan will be kept and marked for review.",
-    "zh-Hans": "将把 %lld 个未被 Markdown 引用的资源移入废纸篓。文件不会被永久删除；失效引用和扫描期间发生变化的文件会保留并标记为需复核。"
-  },
   "工具栏与卡片": {
     "en": "Toolbars and Cards",
     "zh-Hans": "工具栏与卡片"
@@ -238,10 +234,6 @@
   "清除筛选": {
     "en": "Clear Filters",
     "zh-Hans": "清除筛选"
-  },
-  "移入废纸篓": {
-    "en": "Move to Trash",
-    "zh-Hans": "移入废纸篓"
   },
   "组件缩略预览": {
     "en": "Component Thumbnail Preview",

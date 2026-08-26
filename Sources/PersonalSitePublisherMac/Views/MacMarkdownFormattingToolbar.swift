@@ -73,7 +73,20 @@ struct MacMarkdownFormattingToolbar: View {
         }
       }
       .fixedSize(horizontal: true, vertical: false)
+      .padding(.horizontal, 4)
     }
+    .mask(
+      LinearGradient(
+        stops: [
+          .init(color: .clear, location: 0),
+          .init(color: .black, location: 0.012),
+          .init(color: .black, location: 0.988),
+          .init(color: .clear, location: 1.0)
+        ],
+        startPoint: .leading,
+        endPoint: .trailing
+      )
+    )
     .frame(maxWidth: .infinity, alignment: .leading)
     .frame(minHeight: 34)
     .buttonStyle(WorkbenchFocusRingButtonStyle())

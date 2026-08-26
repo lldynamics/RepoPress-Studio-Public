@@ -50,6 +50,7 @@ struct RSSArticleReader: View {
   let fullTextError: String?
   let automaticFullTextExtraction: Binding<Bool>?
   let onToggleFullText: () -> Void
+  @Environment(\.aiChatWorkspaceCommandAction) private var aiChatWorkspaceCommandAction
   @State private var showsTranslatedArticle = false
   @State private var showsAnnotationSummary = false
   @StateObject private var speechController = RSSArticleSpeechController()
@@ -184,7 +185,15 @@ struct RSSArticleReader: View {
             ReaderContextualSelectionBar(
               selectedText: selectedText,
               onExplain: { text in
-                EditorAccessibilityAnnouncementCenter.announce("AI 正在解释：\(text.prefix(20))")
+                if let aiChatWorkspaceCommandAction {
+                  aiChatWorkspaceCommandAction.open(nil, nil)
+                }
+                EditorAccessibilityAnnouncementCenter.announce(
+                  String(
+                    format: String(localized: "AI 正在解释：%@"),
+                    String(text.prefix(20))
+                  )
+                )
               },
               onTranslate: { _ in
                 onTranslate()
@@ -283,14 +292,19 @@ struct RSSArticleReader: View {
   private var readingProgressBar: some View {
     GeometryReader { geometry in
       ZStack(alignment: .leading) {
-        Rectangle()
-          .fill(Color.primary.opacity(0.10))
-        Rectangle()
-          .fill(Color.accentColor.opacity(0.85))
-          .frame(width: geometry.size.width * normalizedReadingProgress)
+        Capsule()
+          .fill(Color.primary.opacity(0.12))
+        LinearGradient(
+          colors: [Color.accentColor.opacity(0.85), Color.accentColor],
+          startPoint: .leading,
+          endPoint: .trailing
+        )
+        .clipShape(Capsule())
+        .frame(width: geometry.size.width * normalizedReadingProgress)
+        .shadow(color: Color.accentColor.opacity(0.4), radius: 2, x: 0, y: 1)
       }
     }
-    .frame(height: 2)
+    .frame(height: 3)
     .allowsHitTesting(false)
     .accessibilityElement(children: .ignore)
     .accessibilityLabel("阅读进度")
@@ -334,21 +348,40 @@ struct RSSArticleReader: View {
       .padding(.vertical, 4)
       .frame(maxWidth: .infinity, alignment: .leading)
     } else if let error = fullTextError {
-      HStack(spacing: 6) {
-        Image(systemName: "exclamationmark.circle")
-          .foregroundStyle(WorkbenchTheme.risk)
-        Text(String(localized: "提取全文失败：\(error)"))
-          .font(.caption)
-          .foregroundStyle(WorkbenchTheme.risk)
-          .lineLimit(1)
-        Spacer()
-        Button(String(localized: "重试"), action: onToggleFullText)
-          .buttonStyle(.borderless)
-          .font(.caption.weight(.medium))
+      VStack(alignment: .leading, spacing: 6) {
+        HStack(spacing: 6) {
+          Image(systemName: "exclamationmark.circle")
+            .foregroundStyle(WorkbenchTheme.risk)
+          Text(
+            String(
+              format: String(localized: "提取全文失败：%@"),
+              error
+            )
+          )
+            .font(.caption.weight(.medium))
+            .foregroundStyle(WorkbenchTheme.risk)
+            .lineLimit(2)
+          Spacer()
+          Button(String(localized: "重试"), action: onToggleFullText)
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+          if article.link != nil {
+            Button(String(localized: "在浏览器中打开原文"), action: onOpenOriginal)
+              .buttonStyle(.bordered)
+              .controlSize(.small)
+          }
+        }
+        Text(String(localized: "部分网站可能启用了反爬虫拦截或动态渲染；若重试仍失败，建议直接在浏览器中打开。"))
+          .font(.workbenchMetadata)
+          .foregroundStyle(.secondary)
       }
-      .padding(.horizontal, 8)
-      .padding(.vertical, 4)
-      .background(WorkbenchTheme.risk.opacity(0.1), in: RoundedRectangle(cornerRadius: 6))
+      .padding(.horizontal, 10)
+      .padding(.vertical, 6)
+      .background(WorkbenchTheme.risk.opacity(0.08), in: RoundedRectangle(cornerRadius: 7))
+      .overlay {
+        RoundedRectangle(cornerRadius: 7)
+          .stroke(WorkbenchTheme.risk.opacity(0.2), lineWidth: 1)
+      }
       .frame(maxWidth: .infinity, alignment: .leading)
     } else if isTruncatedCandidate && !isShowingFullText {
       HStack(spacing: 8) {

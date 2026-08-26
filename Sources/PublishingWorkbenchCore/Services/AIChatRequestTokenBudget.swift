@@ -37,25 +37,26 @@ public struct AIChatRequestTokenBudget: Sendable {
     let value = model.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
     guard !value.isEmpty else { return unknownModelContextWindow }
 
-    if value.contains("claude") {
-      return 200_000
-    }
-    if value.contains("gemini") {
+    if value.contains("1000k") || value.contains("1m") || value.contains("gemini") {
       return 1_000_000
     }
-    if value.contains("deepseek") {
-      return 64_000
+    if value.contains("200k") || value.contains("claude") {
+      return 200_000
     }
-    if value.contains("moonshot") || value.contains("kimi") {
-      return 32_000
-    }
-    if value.contains("gpt-4o") || value.contains("gpt-4.1") || value.contains("gpt-5")
+    if value.contains("128k")
+      || value.contains("gpt-4o") || value.contains("gpt-4.1") || value.contains("gpt-5")
       || value.hasPrefix("o1") || value.hasPrefix("o3") || value.hasPrefix("o4")
       || value.contains("codex")
     {
       return 128_000
     }
-    if value.contains("gpt-4") || value.contains("gpt-3.5") {
+    if value.contains("64k") || value.contains("deepseek") {
+      return 64_000
+    }
+    if value.contains("32k") || value.contains("moonshot") || value.contains("kimi") {
+      return 32_000
+    }
+    if value.contains("16k") || value.contains("gpt-4") || value.contains("gpt-3.5") {
       return 16_384
     }
     if value.contains("llama") || value.contains("mistral") || value.contains("qwen") {
@@ -66,6 +67,22 @@ public struct AIChatRequestTokenBudget: Sendable {
 
   public static func contextWindow(for model: String) -> Int {
     contextWindow(forModel: model)
+  }
+
+  public static func formatTokenCount(_ tokens: Int) -> String {
+    if tokens >= 1_000_000 {
+      let millions = Double(tokens) / 1_000_000.0
+      return millions.truncatingRemainder(dividingBy: 1) == 0 ? "\(Int(millions))M" : String(format: "%.1fM", millions)
+    } else if tokens >= 1_000 {
+      let thousands = Double(tokens) / 1_000.0
+      return thousands.truncatingRemainder(dividingBy: 1) == 0 ? "\(Int(thousands))k" : String(format: "%.0fk", thousands)
+    } else {
+      return "\(tokens)"
+    }
+  }
+
+  public static func formattedContextWindow(forModel model: String) -> String {
+    formatTokenCount(contextWindow(forModel: model))
   }
 
   public struct Result: Sendable {

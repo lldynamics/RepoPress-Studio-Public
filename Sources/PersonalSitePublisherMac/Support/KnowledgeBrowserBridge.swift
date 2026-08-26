@@ -194,6 +194,22 @@ private final class BrowserBridgeConnectionContext: @unchecked Sendable {
     lease.release()
   }
 
+  func cancel() {
+    lock.lock()
+    let shouldReleaseLease = !finished
+    finished = true
+    let workItem = timeoutWorkItem
+    timeoutWorkItem = nil
+    timeoutToken = nil
+    let connection = connection
+    lock.unlock()
+    workItem?.cancel()
+    if shouldReleaseLease {
+      lease.release()
+    }
+    connection?.cancel()
+  }
+
   private func timeoutElapsed(token: UUID) {
     lock.lock()
     guard !finished, timeoutToken == token else {
@@ -207,6 +223,87 @@ private final class BrowserBridgeConnectionContext: @unchecked Sendable {
     lock.unlock()
     lease.release()
     connection?.cancel()
+  }
+}
+
+/// Owns every resource associated with one enabled lifetime of the loopback
+/// bridge. Dropping the session after `cancelAll()` releases the private queue,
+/// connection budget, pending read timeouts, and accepted connections together.
+private final class BrowserBridgeNetworkSession: @unchecked Sendable {
+  let queue = DispatchQueue(label: "com.jinfang.PersonalSitePublisherMac.browser-bridge")
+  let connectionBudget = BrowserBridgeConnectionBudget()
+
+  private struct ConnectionEntry {
+    let connection: NWConnection
+    let context: BrowserBridgeConnectionContext?
+  }
+
+  private let lock = NSLock()
+  private var connections: [ObjectIdentifier: ConnectionEntry] = [:]
+  private var isCancelled = false
+
+  deinit {
+    cancelAll()
+  }
+
+  func context(for connection: NWConnection) -> BrowserBridgeConnectionContext? {
+    guard let lease = connectionBudget.acquire() else { return nil }
+    let context = BrowserBridgeConnectionContext(lease: lease, queue: queue)
+    context.attach(to: connection)
+    guard register(connection, context: context) else {
+      context.cancel()
+      return nil
+    }
+    return context
+  }
+
+  func registerUnbudgeted(_ connection: NWConnection) -> Bool {
+    register(connection, context: nil)
+  }
+
+  func finish(_ connectionID: ObjectIdentifier) {
+    lock.lock()
+    let entry = connections.removeValue(forKey: connectionID)
+    lock.unlock()
+    entry?.context?.finish()
+  }
+
+  func cancelAll() {
+    lock.lock()
+    isCancelled = true
+    let entries = Array(connections.values)
+    connections.removeAll(keepingCapacity: false)
+    lock.unlock()
+    for entry in entries {
+      if let context = entry.context {
+        context.cancel()
+      } else {
+        entry.connection.cancel()
+      }
+    }
+  }
+
+  var activeConnectionCount: Int {
+    lock.lock()
+    defer { lock.unlock() }
+    return connections.count
+  }
+
+  private func register(
+    _ connection: NWConnection,
+    context: BrowserBridgeConnectionContext?
+  ) -> Bool {
+    lock.lock()
+    guard !isCancelled else {
+      lock.unlock()
+      return false
+    }
+    connections[ObjectIdentifier(connection)] = ConnectionEntry(
+      connection: connection,
+      context: context
+    )
+    lock.unlock()
+    return true
   }
 }
 
@@ -228,6 +325,7 @@ final class KnowledgeBrowserBridge: ObservableObject {
   private let connectionTokenStore: KnowledgeBrowserConnectionTokenStore
   private let onOpenDocument: (UUID) -> Void
   private let now: () -> Date
+  private let makeListener: (NWParameters) throws -> NWListener
   private var invalidatedExpiredToken: String?
   private var importOperationLedger: KnowledgeBrowserImportOperationLedger
   @Published private(set) var importOperationLedgerPersistenceIssue: String?
@@ -235,10 +333,9 @@ final class KnowledgeBrowserBridge: ObservableObject {
   private var importOperationLedgerIssueKind: KnowledgeBrowserImportLedgerIssueKind?
   private let importOperationLedgerStore: KnowledgeBrowserImportLedgerStore
   private var activeImportOperations: [UUID: String] = [:]
-  private let queue = DispatchQueue(label: "com.jinfang.PersonalSitePublisherMac.browser-bridge")
-  private let connectionBudget = BrowserBridgeConnectionBudget()
   private var importOperationLedgerLoadTask: Task<Void, Never>?
   private var listener: NWListener?
+  private var networkSession: BrowserBridgeNetworkSession?
   private var listenerGeneration: UUID?
 
   init(
@@ -247,6 +344,9 @@ final class KnowledgeBrowserBridge: ObservableObject {
     connectionTokenKeychainStore: KeychainTokenStore? = nil,
     importOperationLedgerURL: URL? = nil,
     now: @escaping () -> Date = Date.init,
+    makeListener: @escaping (NWParameters) throws -> NWListener = {
+      try NWListener(using: $0)
+    },
     onOpenDocument: @escaping (UUID) -> Void = { _ in }
   ) {
     self.knowledge = knowledge
@@ -269,6 +369,7 @@ final class KnowledgeBrowserBridge: ObservableObject {
       legacyDefaultsKey: Self.importOperationLedgerDefaultsKey
     )
     self.now = now
+    self.makeListener = makeListener
     self.onOpenDocument = onOpenDocument
     importOperationLedger = KnowledgeBrowserImportOperationLedger()
   }
@@ -276,6 +377,19 @@ final class KnowledgeBrowserBridge: ObservableObject {
   deinit {
     importOperationLedgerLoadTask?.cancel()
     listener?.cancel()
+    networkSession?.cancelAll()
+  }
+
+  var hasAllocatedNetworkResources: Bool {
+    listener != nil || networkSession != nil
+  }
+
+  var activeNetworkConnectionCount: Int {
+    networkSession?.activeConnectionCount ?? 0
+  }
+
+  var activeListenerPort: UInt16? {
+    listener?.port?.rawValue
   }
 
   var localizedStatusDisplayName: String {
@@ -421,7 +535,10 @@ final class KnowledgeBrowserBridge: ObservableObject {
   }
 
   private func startListener(generation: UUID) {
-    guard listenerGeneration == generation, listener == nil else { return }
+    guard listenerGeneration == generation,
+      listener == nil,
+      networkSession == nil
+    else { return }
     do {
       let parameters = NWParameters.tcp
       parameters.allowLocalEndpointReuse = true
@@ -436,9 +553,14 @@ final class KnowledgeBrowserBridge: ObservableObject {
         host: NWEndpoint.Host(BrowserExtensionProtocol.loopbackHost),
         port: port
       )
-      let listener = try NWListener(using: parameters)
-      listener.newConnectionHandler = { [weak self] connection in
-        self?.receiveRequest(on: connection)
+      let listener = try makeListener(parameters)
+      let networkSession = BrowserBridgeNetworkSession()
+      listener.newConnectionHandler = { [weak self, weak networkSession] connection in
+        guard let self, let networkSession else {
+          connection.cancel()
+          return
+        }
+        self.receiveRequest(on: connection, session: networkSession)
       }
       listener.stateUpdateHandler = { [weak self] state in
         Task { @MainActor in
@@ -457,18 +579,23 @@ final class KnowledgeBrowserBridge: ObservableObject {
             guard self.listenerGeneration == generation else { return }
             self.listenerGeneration = nil
             self.listener = nil
+            self.networkSession?.cancelAll()
+            self.networkSession = nil
             self.state = .stopped
           default:
             break
           }
         }
       }
+      self.networkSession = networkSession
       self.listener = listener
-      listener.start(queue: queue)
+      listener.start(queue: networkSession.queue)
     } catch {
       listenerGeneration = nil
       listener?.cancel()
       listener = nil
+      networkSession?.cancelAll()
+      networkSession = nil
       let detail = error.localizedDescription
       state = .failed(detail)
       lastMessage = "浏览器桥接启动失败：\(detail)"
@@ -481,7 +608,10 @@ final class KnowledgeBrowserBridge: ObservableObject {
     importOperationLedgerLoadTask = nil
     let listener = listener
     self.listener = nil
+    let networkSession = networkSession
+    self.networkSession = nil
     listener?.cancel()
+    networkSession?.cancelAll()
     state = .stopped
   }
 
@@ -490,7 +620,10 @@ final class KnowledgeBrowserBridge: ObservableObject {
     listenerGeneration = nil
     let listener = listener
     self.listener = nil
+    let networkSession = networkSession
+    self.networkSession = nil
     listener?.cancel()
+    networkSession?.cancelAll()
     state = .failed(detail)
     lastMessage = "浏览器桥接启动失败：\(detail)"
   }
@@ -594,26 +727,40 @@ final class KnowledgeBrowserBridge: ObservableObject {
     }
   }
 
-  nonisolated private func receiveRequest(on connection: NWConnection) {
-    guard let lease = connectionBudget.acquire() else {
-      connection.start(queue: queue)
+  nonisolated private func receiveRequest(
+    on connection: NWConnection,
+    session: BrowserBridgeNetworkSession
+  ) {
+    let connectionID = ObjectIdentifier(connection)
+    guard let context = session.context(for: connection) else {
+      guard session.registerUnbudgeted(connection) else {
+        connection.cancel()
+        return
+      }
+      connection.stateUpdateHandler = { [weak session] state in
+        switch state {
+        case .cancelled, .failed:
+          session?.finish(connectionID)
+        default:
+          break
+        }
+      }
+      connection.start(queue: session.queue)
       sendResponse(
         .error(status: 429, message: "浏览器桥接当前连接数已达上限，请稍后重试。"),
         on: connection
       )
       return
     }
-    let context = BrowserBridgeConnectionContext(lease: lease, queue: queue)
-    context.attach(to: connection)
-    connection.stateUpdateHandler = { [weak context] state in
+    connection.stateUpdateHandler = { [weak session] state in
       switch state {
       case .cancelled, .failed:
-        context?.finish()
+        session?.finish(connectionID)
       default:
         break
       }
     }
-    connection.start(queue: queue)
+    connection.start(queue: session.queue)
     receiveHeader(on: connection, accumulated: Data(), context: context)
   }
 
@@ -1255,7 +1402,10 @@ final class KnowledgeBrowserBridge: ObservableObject {
     importOperationLedgerLoadTask = nil
     let listener = self.listener
     self.listener = nil
+    let networkSession = self.networkSession
+    self.networkSession = nil
     listener?.cancel()
+    networkSession?.cancelAll()
     state = .failed(message)
     lastMessage = message
   }

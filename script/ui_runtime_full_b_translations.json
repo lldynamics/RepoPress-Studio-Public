@@ -150,6 +150,5 @@
   "附带 %lld 条资料引用": "%lld knowledge references included",
   "预览并安全替换多篇文章的正文": "Preview and Safely Replace Content in Multiple Articles",
   "预览远端文章导入": "Preview Remote Article Import",
-  "预计新增 %lld 行、移除 %lld 行。": "About %lld lines will be added and %lld lines removed.",
   "预设": "Preset"
 }

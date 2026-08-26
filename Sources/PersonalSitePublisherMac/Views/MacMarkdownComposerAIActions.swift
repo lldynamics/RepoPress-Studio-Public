@@ -151,6 +151,7 @@ extension MacMarkdownComposerView {
       return
     }
 
+    cancelInlineGhostText()
     cancelSelectionAIAction()
     let requestedDraft = previewDraft
     let requestID = UUID()
@@ -233,6 +234,7 @@ extension MacMarkdownComposerView {
       return
     }
 
+    cancelInlineGhostText()
     cancelSelectionAIAction()
     let requestedDraft = previewDraft
     let requestID = UUID()

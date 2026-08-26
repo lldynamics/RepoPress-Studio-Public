@@ -190,7 +190,7 @@ enum SettingsTab: Hashable, CaseIterable, Identifiable {
     }
   }
 
-  func matchesSearch(_ query: String) -> Bool {
+  func matchesSearchDirectly(_ query: String) -> Bool {
     let normalizedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !normalizedQuery.isEmpty else { return true }
     let searchableText = ([title, subtitle] + searchKeywords).joined(separator: " ")
@@ -198,6 +198,15 @@ enum SettingsTab: Hashable, CaseIterable, Identifiable {
       of: normalizedQuery,
       options: [.caseInsensitive, .diacriticInsensitive]
     ) != nil
+  }
+
+  func matchesSearch(_ query: String) -> Bool {
+    let normalizedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !normalizedQuery.isEmpty else { return true }
+    if matchesSearchDirectly(normalizedQuery) {
+      return true
+    }
+    return SettingsSearchIndex.search(query: normalizedQuery).contains(where: { $0.tab == self })
   }
 
   static func tab(forRequestedID id: String) -> SettingsTab? {

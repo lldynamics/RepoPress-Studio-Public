@@ -214,10 +214,19 @@ struct DraftVersionComparisonView: View {
   }
 
   private func comparisonValue(_ value: String, color: Color) -> some View {
-    Text(value)
+    let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+    let isEmpty = trimmed.isEmpty
+    return Text(isEmpty ? String(localized: "（空）") : value)
       .font(.callout)
-      .foregroundStyle(color)
+      .foregroundStyle(isEmpty ? Color.secondary.opacity(0.6) : color)
+      .italic(isEmpty)
       .textSelection(.enabled)
+      .padding(.horizontal, 6)
+      .padding(.vertical, 3)
+      .background(
+        isEmpty ? Color.clear : color.opacity(0.08),
+        in: RoundedRectangle(cornerRadius: 5)
+      )
       .frame(maxWidth: .infinity, alignment: .leading)
   }
 

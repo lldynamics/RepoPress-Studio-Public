@@ -558,7 +558,9 @@ final class WorkbenchLaunchCoordinator: ObservableObject {
     guard !isSafeMode else { return }
     store.workspaceBackupScheduler.start()
     startBackgroundRefreshIfNeeded(for: rssStore)
-    browserBridge?.start()
+    if browserBridge?.isEnabled == true {
+      browserBridge?.start()
+    }
   }
 
   nonisolated static func availableDataRootURL(
@@ -813,7 +815,9 @@ struct WorkbenchLaunchRootView: View {
           if !coordinator.isSafeMode {
             store.workspaceBackupScheduler.start()
             coordinator.startBackgroundRefreshIfNeeded(for: rssStore)
-            browserBridge.start()
+            if browserBridge.isEnabled {
+              browserBridge.start()
+            }
           }
         }
     } else {

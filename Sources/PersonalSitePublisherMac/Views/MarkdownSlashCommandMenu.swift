@@ -37,10 +37,20 @@ struct MarkdownSlashCommandMenu: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 4) {
       if filteredItems.isEmpty {
-        Text("未找到匹配命令")
-          .font(.caption)
-          .foregroundStyle(.secondary)
-          .padding(10)
+        VStack(spacing: 6) {
+          Image(systemName: "magnifyingglass")
+            .font(.title3)
+            .foregroundStyle(.tertiary)
+          Text(String(localized: "未找到匹配命令"))
+            .font(.callout.weight(.medium))
+            .foregroundStyle(.secondary)
+          Text(String(localized: "按 Esc 退出或继续输入正文"))
+            .font(.workbenchMetadata)
+            .foregroundStyle(.tertiary)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 14)
+        .padding(.horizontal, 10)
       } else {
         ScrollViewReader { proxy in
           ScrollView {

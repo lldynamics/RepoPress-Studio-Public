@@ -79,10 +79,6 @@
     "en": "Go to %@",
     "zh-Hans": "定位到%@"
   },
-  "将把 %@ 个未被 Markdown 引用的资源移入废纸篓。文件不会被永久删除；失效引用和扫描期间发生变化的文件会保留并标记为需复核。": {
-    "en": "Move %@ resources that are not referenced by Markdown to the Trash. Files will not be permanently deleted; broken references and files changed during the scan will be kept and flagged for review.",
-    "zh-Hans": "将把 %@ 个未被 Markdown 引用的资源移入废纸篓。文件不会被永久删除；失效引用和扫描期间发生变化的文件会保留并标记为需复核。"
-  },
   "已复制完整 Markdown 代码块。": {
     "en": "Copied the complete Markdown code block.",
     "zh-Hans": "已复制完整 Markdown 代码块。"

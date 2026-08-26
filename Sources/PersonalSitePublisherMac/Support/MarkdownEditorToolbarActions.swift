@@ -9,6 +9,7 @@ struct MarkdownEditorToolbarActions {
   let onPreparePublish: () -> Void
   let onOpenAIContextInspector: () -> Void
   let onOpenAITemplateLibrary: () -> Void
+  let onRequestInlineAICompletion: () -> Void
   let onExportDocument: (MarkdownDocumentExportFormat) -> Void
   let selectionAIActionAvailability:
     (AIPublishingActionKind) -> AIPublishingActionAvailabilityPresentation

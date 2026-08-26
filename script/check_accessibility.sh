@@ -848,17 +848,17 @@ require_literal \
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/WorkspaceContextSidebarView.swift" \
-  "repositoryContextStage: shell.selectedSection == .sync" \
+  "repositoryContextStage: selectedSection == .sync" \
   "repository navigation must be injected below search only for the sync workspace"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/WorkspaceContextSidebarView.swift" \
-  "imageWorkbenchContextStage: shell.selectedSection == .images" \
+  "imageWorkbenchContextStage: selectedSection == .images" \
   "image-workbench navigation must be injected below search only for the image workspace"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/WorkspaceContextSidebarView.swift" \
-  "contentHealthFilter: shell.selectedSection == .contentHealth" \
+  "contentHealthFilter: selectedSection == .contentHealth" \
   "content-health navigation must be injected below search only for the health workspace"
 
 require_literal \
@@ -964,8 +964,7 @@ for unfolded_repository_file in \
   Sources/PersonalSitePublisherMac/Views/RepositoryWorkspacePublishingSections.swift \
   Sources/PersonalSitePublisherMac/Views/RepositoryWorkspaceLocalPreviewSection.swift \
   Sources/PersonalSitePublisherMac/Views/ReleaseHistoryDetailView.swift \
-  Sources/PersonalSitePublisherMac/Views/ReleaseHistoryComponents.swift \
-  Sources/PersonalSitePublisherMac/Views/ReleaseHistoryRecordCardSection.swift; do
+  Sources/PersonalSitePublisherMac/Views/ReleaseHistoryComponents.swift; do
   require_absent_literal \
     "$unfolded_repository_file" \
     "DisclosureGroup" \
@@ -1206,7 +1205,7 @@ require_literal \
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/MacMarkdownComposerToolbars.swift" \
-  "ViewThatFits(in: .horizontal)" \
+  "MarkdownEditorToolbarLayoutPlanner.variant(" \
   "fixed icon toolbar must remain usable in narrow writing windows"
 
 require_literal \
@@ -1221,7 +1220,7 @@ require_literal \
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/MacMarkdownComposerToolbars.swift" \
-  "ViewThatFits(in: .horizontal)" \
+  "MarkdownEditorToolbarLayoutPlanner.variant(" \
   "writing-page toolbar must preserve enabled actions in responsive layouts"
 
 require_absent_literal \
@@ -1241,7 +1240,7 @@ require_absent_literal \
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/MacMarkdownComposerToolbars.swift" \
-  ".help(String(localized: \"自动 AI 续写\"))" \
+  ".help(String(localized: \"请求 AI 续写（Option + 反斜杠）\"))" \
   "icon toolbar actions must expose their names on pointer hover"
 
 require_literal \

@@ -123,6 +123,45 @@ extension WritingDraftColumn {
         WorkbenchBackgroundStyle.control,
         in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
 
+      if filter != .all || !searchText.isEmpty {
+        HStack(spacing: 6) {
+          Image(systemName: "line.3.horizontal.decrease.circle.fill")
+            .font(.caption)
+            .foregroundStyle(Color.accentColor)
+          Text(
+            filter != .all
+              ? String(format: String(localized: "已筛选：%@"), filter.localizedDisplayName)
+              : String(format: String(localized: "搜索：“%@”"), searchText)
+          )
+          .font(.workbenchMetadata)
+          .foregroundStyle(.secondary)
+          .lineLimit(1)
+
+          Spacer(minLength: 0)
+
+          Button {
+            filter = .all
+            searchText = ""
+          } label: {
+            HStack(spacing: 2) {
+              Text(String(localized: "清除筛选"))
+              Image(systemName: "xmark")
+                .font(.system(size: 8, weight: .bold))
+            }
+            .font(.workbenchMetadata)
+            .foregroundStyle(Color.accentColor)
+          }
+          .buttonStyle(.plain)
+          .help(String(localized: "重置所有筛选与搜索条件"))
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(
+          Color.accentColor.opacity(0.08),
+          in: RoundedRectangle(cornerRadius: 6)
+        )
+      }
+
       HStack(spacing: 6) {
         if isCompact {
           draftFilterMenu

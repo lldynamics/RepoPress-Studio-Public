@@ -59,9 +59,6 @@ struct MacMarkdownComposerView: View {
   @State private var slashCommandQuery: String? = nil
   @State private var isSlashMenuPresented: Bool = false
   @State private var slashCommandSelectedIndex = 0
-  @AppStorage(AIWritingPreferences.automaticInlineCompletionEnabledKey)
-  var isAutomaticInlineAICompletionEnabled =
-    AIWritingPreferences.defaultAutomaticInlineCompletionEnabled
   let findReplaceService = MarkdownFindReplaceService()
   let outlineService = MarkdownOutlineService()
   let markdownAnalysisService = MarkdownEditorAnalysisService()
@@ -122,6 +119,7 @@ struct MacMarkdownComposerView: View {
       onOpenAITemplateLibrary: {
         isAITemplateLibraryPresented = true
       },
+      onRequestInlineAICompletion: requestInlineGhostText,
       onExportDocument: performMarkdownDocumentExport,
       // Menu state is render-local; action handlers below still read live state.
       selectionAIActionAvailability: { kind in
@@ -231,7 +229,6 @@ struct MacMarkdownComposerView: View {
         isSelectionAIActionRunning: isSelectionAIActionRunning,
         canOpenAIChat: aiChatWorkspaceCommandAction?.isAvailable ?? true,
         aiChatUnavailableReason: aiChatWorkspaceCommandAction?.unavailableReason,
-        isAutomaticInlineAICompletionEnabled: $isAutomaticInlineAICompletionEnabled,
         writingToolDensity: writingToolDensity,
         availableWritingContextPanels: availableWritingContextPanels,
         actions: markdownEditorToolbarActions
@@ -282,7 +279,6 @@ struct MacMarkdownComposerView: View {
       refreshMarkdownCursorContextSnapshot()
       applyEditorFocusRequest()
       scheduleMarkdownAnalysis(isAutomatic: true)
-      scheduleInlineGhostText()
     }
     .task(id: markdownSelectionBubbleTaskID) {
       let selection = selectedRange
@@ -323,19 +319,12 @@ struct MacMarkdownComposerView: View {
       syncActiveEditorSelection()
       refreshMarkdownCursorContextSnapshot()
       saveCurrentEditorSession()
-      scheduleInlineGhostText()
+      cancelInlineGhostText()
     }
     .onChange(of: editorBody) { _, _ in
-      scheduleInlineGhostText()
+      cancelInlineGhostText()
       zenModeController.handleTypingActivity()
       checkSlashCommandTrigger()
-    }
-    .onChange(of: isAutomaticInlineAICompletionEnabled) { _, isEnabled in
-      if isEnabled {
-        scheduleInlineGhostText()
-      } else {
-        cancelInlineGhostText()
-      }
     }
     .onChange(of: isRealtimeAnalysisEnabled) { _, isEnabled in
       if isEnabled {
@@ -627,6 +616,9 @@ struct MacMarkdownComposerView: View {
           },
           onGhostTextDismissed: {
             dismissInlineGhostText()
+          },
+          onInlineAICompletionRequested: {
+            requestInlineGhostText()
           },
           onSSGSnippetShortcut: { candidate in
             handleAutomaticSSGSnippetShortcut(candidate)
