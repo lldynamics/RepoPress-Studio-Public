@@ -19,7 +19,7 @@ def main() -> int:
     with tempfile.TemporaryDirectory(prefix="release-runner-contract.") as temporary:
         fixture = Path(temporary)
         script = fixture / "script"
-        app = fixture / "dist" / "PersonalSitePublisherMac.app"
+        app = fixture / "dist" / "RepoPress Studio.app"
         executable = app / "Contents" / "MacOS" / "PersonalSitePublisherMac"
         resource = app / "Contents" / "Resources" / "fixture.txt"
         script.mkdir(parents=True)
@@ -37,6 +37,10 @@ def main() -> int:
         (app / "Contents" / "Info.plist").write_bytes(
             plistlib.dumps(
                 {
+                    "CFBundleName": "RepoPress Studio",
+                    "CFBundleDisplayName": "RepoPress Studio",
+                    "CFBundleExecutable": "PersonalSitePublisherMac",
+                    "CFBundleIdentifier": "com.jinfang.PersonalSitePublisherMac",
                     "CFBundleShortVersionString": "2.4",
                     "CFBundleVersion": "91",
                 }
@@ -209,6 +213,78 @@ def main() -> int:
         assert "Contents/Info.plist" in paths, artifact
         assert "Contents/Resources/fixture.txt" in paths, artifact
         assert len(artifact["content"]["treeSha256"]) == 64, artifact
+
+        # Regression: the historical executable-named bundle must not be
+        # accepted as release evidence after build_and_run produces the
+        # user-facing RepoPress Studio.app bundle.
+        legacy_app = fixture / "dist" / "PersonalSitePublisherMac.app"
+        app.rename(legacy_app)
+        legacy_result_path = fixture / ".build" / "legacy-name-result.json"
+        legacy_process = subprocess.run(
+            [
+                "python3",
+                str(script / "release_gate_runner.py"),
+                "--quick",
+                "--result-json",
+                str(legacy_result_path),
+            ],
+            cwd=fixture,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        assert legacy_process.returncode == 1, legacy_process.stderr
+        legacy_payload = json.loads(legacy_result_path.read_text(encoding="utf-8"))
+        assert legacy_payload["artifacts"]["packagedApp"]["status"] == "identity_mismatch", legacy_payload
+        assert any("identity mismatch" in blocker for blocker in legacy_payload["blockers"]), legacy_payload
+        legacy_app.rename(app)
+
+        # Regression: a passing package check cannot hide a missing artifact.
+        shutil.rmtree(app)
+        missing_result_path = fixture / ".build" / "missing-artifact-result.json"
+        missing_process = subprocess.run(
+            [
+                "python3",
+                str(script / "release_gate_runner.py"),
+                "--quick",
+                "--result-json",
+                str(missing_result_path),
+            ],
+            cwd=fixture,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        assert missing_process.returncode == 1, missing_process.stderr
+        missing_payload = json.loads(missing_result_path.read_text(encoding="utf-8"))
+        assert missing_payload["artifacts"]["packagedApp"]["status"] == "missing", missing_payload
+        assert any("artifact is missing" in blocker for blocker in missing_payload["blockers"]), missing_payload
+
+        # Regression: malformed bundle contents must be a blocker, never a
+        # successful result with an absent content hash.
+        app.mkdir(parents=True)
+        (app / "Contents" / "MacOS").mkdir(parents=True)
+        (app / "Contents" / "MacOS" / "PersonalSitePublisherMac").write_bytes(b"fixture executable")
+        (app / "Contents" / "MacOS" / "PersonalSitePublisherMac").chmod(0o755)
+        (app / "Contents" / "Info.plist").write_bytes(b"not-a-plist")
+        unhashable_result_path = fixture / ".build" / "unhashable-artifact-result.json"
+        unhashable_process = subprocess.run(
+            [
+                "python3",
+                str(script / "release_gate_runner.py"),
+                "--quick",
+                "--result-json",
+                str(unhashable_result_path),
+            ],
+            cwd=fixture,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        assert unhashable_process.returncode == 1, unhashable_process.stderr
+        unhashable_payload = json.loads(unhashable_result_path.read_text(encoding="utf-8"))
+        assert unhashable_payload["artifacts"]["packagedApp"]["status"] == "unhashable", unhashable_payload
+        assert any("not hashable" in blocker for blocker in unhashable_payload["blockers"]), unhashable_payload
 
     print("release gate runner contract test: passed")
     return 0

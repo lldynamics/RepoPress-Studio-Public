@@ -13,9 +13,10 @@ extension RemoteRepositoryPublishService {
     profile: SiteProfile,
     token: String?
   ) async throws -> RemoteRepositoryPublishPreflightResult {
+    let package = try normalizedPublishPackage(package)
     let token = try requiredToken(token)
     let repository = try remoteRepository(from: profile)
-    let files = uniquePreflightFiles(package.files)
+    let files = package.files.map { (path: $0.repositoryPath, file: $0) }
 
     try Task.checkCancellation()
     switch profile.repositoryProvider {
@@ -157,23 +158,6 @@ extension RemoteRepositoryPublishService {
       conflicts: conflicts,
       remoteVersionsByPath: remoteVersionsByPath
     )
-  }
-
-  private func uniquePreflightFiles(
-    _ files: [PublishPackageFile]
-  ) -> [(path: String, file: PublishPackageFile)] {
-    var seenPaths = Set<String>()
-    var uniqueFiles: [(path: String, file: PublishPackageFile)] = []
-    uniqueFiles.reserveCapacity(files.count)
-
-    for file in files {
-      let path = file.repositoryPath.normalizedRelativePath()
-      guard !path.isEmpty, seenPaths.insert(path).inserted else {
-        continue
-      }
-      uniqueFiles.append((path: path, file: file))
-    }
-    return uniqueFiles
   }
 
   private func preflightVersionConflict(

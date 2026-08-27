@@ -1,4 +1,5 @@
 import Foundation
+import Network
 import XCTest
 @testable import PublishingKnowledgeCore
 
@@ -208,4 +209,75 @@ final class KnowledgeWebDownloadClientTests: XCTestCase {
     }
   }
 
+  func testCancelledBeforePinnedOperationStartDoesNotSendRequest() async throws {
+    let listenerQueue = DispatchQueue(label: "KnowledgeWebDownloadClientTests.listener")
+    let listener = try NWListener(using: .tcp)
+    defer { listener.cancel() }
+    let (readyStream, readyContinuation) = AsyncStream<Void>.makeStream()
+    let (requestStream, requestContinuation) = AsyncStream<Void>.makeStream()
+    listener.stateUpdateHandler = { state in
+      if case .ready = state {
+        readyContinuation.yield(())
+        readyContinuation.finish()
+      }
+    }
+    listener.newConnectionHandler = { connection in
+      requestContinuation.yield(())
+      connection.cancel()
+    }
+    listener.start(queue: listenerQueue)
+    for await _ in readyStream {
+      break
+    }
+    let port = try XCTUnwrap(listener.port?.rawValue)
+    let address = try XCTUnwrap(
+      KnowledgeResolvedAddress(presentation: "127.0.0.1")
+    )
+    let request = URLRequest(
+      url: try XCTUnwrap(URL(string: "http://reader.example:\(port)/article"))
+    )
+    let operationEntered = DispatchSemaphore(value: 0)
+    let releaseOperation = DispatchSemaphore(value: 0)
+    let task = Task {
+      try await KnowledgePinnedHTTPSClient.fetch(
+        request: request,
+        addresses: [address],
+        maximumByteCount: 1_024,
+        testingBeforeOperationStart: {
+          operationEntered.signal()
+          releaseOperation.wait()
+        }
+      )
+    }
+
+    await waitForSemaphore(operationEntered)
+    task.cancel()
+    releaseOperation.signal()
+
+    do {
+      _ = try await task.value
+      XCTFail("已取消的传输不应返回响应")
+    } catch is CancellationError {
+      // Expected cancellation path.
+    } catch {
+      XCTFail("应报告取消，实际为：\(error)")
+    }
+    listenerQueue.sync {}
+    requestContinuation.finish()
+    var requestWasAccepted = false
+    for await _ in requestStream {
+      requestWasAccepted = true
+    }
+    XCTAssertFalse(requestWasAccepted)
+  }
+
+}
+
+private func waitForSemaphore(_ semaphore: DispatchSemaphore) async {
+  await withCheckedContinuation { continuation in
+    DispatchQueue.global().async {
+      semaphore.wait()
+      continuation.resume()
+    }
+  }
 }

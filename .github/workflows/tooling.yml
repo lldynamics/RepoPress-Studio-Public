@@ -17,7 +17,7 @@ on:
       - "Sources/PersonalSitePublisherMac/Support/KnowledgeBrowserBridge.swift"
       - "Sources/PersonalSitePublisherMac/Support/KnowledgeBrowserImportLedgerStore.swift"
       - "Sources/PersonalSitePublisherMac/App/WorkbenchLaunchCoordinator.swift"
-      - "Sources/PersonalSitePublisherMac/Views/BrowserExtensionConnectionView.swift"
+      - "Sources/PersonalSitePublisherMac/Views/Knowledge/BrowserExtensionConnectionView.swift"
       - "Sources/PublishingWorkbenchCore/Models/**"
       - "Sources/PublishingWorkbenchCore/Services/KeychainTokenStore.swift"
       - "Sources/PublishingWorkbenchCore/Stores/KnowledgeStore.swift"

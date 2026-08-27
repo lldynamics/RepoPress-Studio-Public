@@ -27,7 +27,7 @@ public enum RSSReaderDatabaseWALCheckpointMode: Sendable {
 /// the main-actor store and a detached read-only search task without moving
 /// the store itself off the main actor.
 final class RSSReaderDatabase: @unchecked Sendable {
-  static let currentSchemaVersion = 5
+  static let currentSchemaVersion = 6
 
   let fileURL: URL
   var handle: OpaquePointer?
@@ -53,11 +53,10 @@ final class RSSReaderDatabase: @unchecked Sendable {
       throw RSSReaderError.persistence(message)
     }
     handle = database
+    _ = sqlite3_busy_timeout(database, 5_000)
 
     do {
       try execute("PRAGMA foreign_keys = ON;")
-      try execute("PRAGMA journal_mode = WAL;")
-      try execute("PRAGMA synchronous = NORMAL;")
       let version = try scalarInt("PRAGMA user_version;")
       guard version <= Self.currentSchemaVersion else {
         throw RSSReaderError.persistence(
@@ -65,6 +64,40 @@ final class RSSReaderDatabase: @unchecked Sendable {
         )
       }
       try migrate(from: version)
+      try execute("PRAGMA journal_mode = WAL;")
+      try execute("PRAGMA synchronous = NORMAL;")
+    } catch {
+      statementCache.finalizeAll()
+      sqlite3_close(database)
+      handle = nil
+      throw error
+    }
+  }
+
+  init(readOnlyFileURL fileURL: URL) throws {
+    self.fileURL = fileURL
+    var database: OpaquePointer?
+    let flags = SQLITE_OPEN_READONLY | SQLITE_OPEN_FULLMUTEX
+    guard sqlite3_open_v2(fileURL.path, &database, flags, nil) == SQLITE_OK,
+      let database
+    else {
+      let message =
+        database.flatMap { sqlite3_errmsg($0) }.map(String.init(cString:))
+        ?? "无法只读打开 RSS SQLite 数据库"
+      if let database { sqlite3_close(database) }
+      throw RSSReaderError.persistence(message)
+    }
+    handle = database
+    _ = sqlite3_busy_timeout(database, 5_000)
+
+    do {
+      let version = try scalarInt("PRAGMA user_version;")
+      guard version == Self.currentSchemaVersion else {
+        throw RSSReaderError.persistence(
+          "RSS 只读数据库版本 \(version) 与当前版本 \(Self.currentSchemaVersion) 不一致"
+        )
+      }
+      try withLock { try validateSchemaContractUnlocked() }
     } catch {
       statementCache.finalizeAll()
       sqlite3_close(database)

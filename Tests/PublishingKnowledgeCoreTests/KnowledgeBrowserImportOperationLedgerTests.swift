@@ -1,6 +1,7 @@
 import Foundation
 import XCTest
-@testable import PublishingWorkbenchCore
+
+@testable import PublishingKnowledgeCore
 
 final class KnowledgeBrowserImportOperationLedgerTests: XCTestCase {
   func testCompletedOperationReplaysSameReceiptAfterPersistenceRoundTrip() throws {
@@ -22,12 +23,14 @@ final class KnowledgeBrowserImportOperationLedgerTests: XCTestCase {
     )
     var restored = KnowledgeBrowserImportOperationLedger(records: restoredRecords)
 
-    guard case .replay(let replayed) = restored.lookup(
-      operationID: operationID,
-      requestFingerprint: "capture-a",
-      now: now.addingTimeInterval(30),
-      documentExists: { $0 == documentID }
-    ) else {
+    guard
+      case .replay(let replayed) = restored.lookup(
+        operationID: operationID,
+        requestFingerprint: "capture-a",
+        now: now.addingTimeInterval(30),
+        documentExists: { $0 == documentID }
+      )
+    else {
       return XCTFail("Expected a persisted completed operation to replay")
     }
     XCTAssertEqual(replayed.documentID, documentID)
@@ -73,7 +76,7 @@ final class KnowledgeBrowserImportOperationLedgerTests: XCTestCase {
     let ids = [
       UUID(uuidString: "55555555-5555-4555-8555-555555555555")!,
       UUID(uuidString: "66666666-6666-4666-8666-666666666666")!,
-      UUID(uuidString: "77777777-7777-4777-8777-777777777777")!
+      UUID(uuidString: "77777777-7777-4777-8777-777777777777")!,
     ]
     var ledger = KnowledgeBrowserImportOperationLedger(
       maximumRecordCount: 2,

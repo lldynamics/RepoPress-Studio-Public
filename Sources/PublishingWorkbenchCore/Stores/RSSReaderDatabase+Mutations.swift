@@ -195,7 +195,8 @@ extension RSSReaderDatabase {
     _ feed: RSSFeed,
     articles: [RSSArticle],
     highlights: [RSSArticleHighlight],
-    mediaAssets: [RSSMediaAsset] = []
+    mediaAssets: [RSSMediaAsset] = [],
+    fullTextRecords: [RSSArticleFullTextRecord] = []
   ) throws {
     try withLock {
       try transactionUnlocked {
@@ -203,6 +204,7 @@ extension RSSReaderDatabase {
         for article in articles { try upsertArticleUnlocked(article) }
         for highlight in highlights { try saveHighlightUnlocked(highlight) }
         for asset in mediaAssets { try upsertMediaAssetUnlocked(asset) }
+        for record in fullTextRecords { try upsertFullTextRecordUnlocked(record) }
       }
     }
   }

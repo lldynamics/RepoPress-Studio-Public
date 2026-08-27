@@ -202,6 +202,12 @@ struct StorageManagementView: View {
 
   @ViewBuilder
   private func storageBreakdown(snapshot: WorkbenchStorageUsageSnapshot) -> some View {
+    VStack(alignment: .leading, spacing: 8) {
+      storageVisualCapacityBar(snapshot: snapshot)
+      storageLegend(snapshot: snapshot)
+    }
+    .padding(.vertical, 4)
+
     LabeledContent(
       String(localized: "资料库"),
       value: formattedByteCount(snapshot.knowledgeLibraryByteCount)
@@ -222,6 +228,70 @@ struct StorageManagementView: View {
       String(localized: "其他工作台数据"),
       value: formattedByteCount(snapshot.otherByteCount)
     )
+  }
+
+  private func storageVisualCapacityBar(snapshot: WorkbenchStorageUsageSnapshot) -> some View {
+    let total = max(1, Double(snapshot.totalByteCount))
+    let knowledgeFrac = Double(snapshot.knowledgeLibraryByteCount) / total
+    let rssFrac = Double(snapshot.rssReaderByteCount) / total
+    let attachFrac = Double(snapshot.managedAttachmentsByteCount) / total
+    let backupFrac = Double(snapshot.automaticBackupsByteCount) / total
+    let otherFrac = Double(snapshot.otherByteCount) / total
+
+    return GeometryReader { geo in
+      HStack(spacing: 2) {
+        if knowledgeFrac > 0.005 {
+          RoundedRectangle(cornerRadius: 3)
+            .fill(Color.blue)
+            .frame(width: max(4, geo.size.width * CGFloat(knowledgeFrac)))
+        }
+        if rssFrac > 0.005 {
+          RoundedRectangle(cornerRadius: 3)
+            .fill(Color.orange)
+            .frame(width: max(4, geo.size.width * CGFloat(rssFrac)))
+        }
+        if attachFrac > 0.005 {
+          RoundedRectangle(cornerRadius: 3)
+            .fill(Color.purple)
+            .frame(width: max(4, geo.size.width * CGFloat(attachFrac)))
+        }
+        if backupFrac > 0.005 {
+          RoundedRectangle(cornerRadius: 3)
+            .fill(Color.green)
+            .frame(width: max(4, geo.size.width * CGFloat(backupFrac)))
+        }
+        if otherFrac > 0.005 {
+          RoundedRectangle(cornerRadius: 3)
+            .fill(Color.secondary.opacity(0.5))
+            .frame(width: max(4, geo.size.width * CGFloat(otherFrac)))
+        }
+      }
+    }
+    .frame(height: 10)
+    .background(Color.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 4))
+    .accessibilityElement(children: .ignore)
+    .accessibilityLabel(String(localized: "存储空间占用比例图"))
+  }
+
+  private func storageLegend(snapshot: WorkbenchStorageUsageSnapshot) -> some View {
+    HStack(spacing: 12) {
+      legendItem(title: String(localized: "资料库"), color: .blue)
+      legendItem(title: String(localized: "RSS"), color: .orange)
+      legendItem(title: String(localized: "附件"), color: .purple)
+      legendItem(title: String(localized: "备份"), color: .green)
+      legendItem(title: String(localized: "其他"), color: .secondary)
+    }
+    .font(.caption)
+    .foregroundStyle(.secondary)
+  }
+
+  private func legendItem(title: String, color: Color) -> some View {
+    HStack(spacing: 4) {
+      Circle()
+        .fill(color)
+        .frame(width: 6, height: 6)
+      Text(title)
+    }
   }
 
   private var knowledgeSection: some View {

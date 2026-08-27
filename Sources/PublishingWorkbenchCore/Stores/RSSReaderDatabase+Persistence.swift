@@ -87,21 +87,7 @@ extension RSSReaderDatabase {
     bind(json(article.tags), at: 14, to: statement)
     guard sqlite3_step(statement) == SQLITE_DONE else { throw databaseErrorUnlocked() }
 
-    let deleteFTS = try prepareUnlocked("DELETE FROM rss_articles_fts WHERE article_id = ?;")
-    bind(article.id, at: 1, to: deleteFTS)
-    guard sqlite3_step(deleteFTS) == SQLITE_DONE else {
-      sqlite3_finalize(deleteFTS)
-      throw databaseErrorUnlocked()
-    }
-    sqlite3_finalize(deleteFTS)
-    let insertFTS = try prepareUnlocked(
-      "INSERT INTO rss_articles_fts(article_id, title, summary, content) VALUES (?, ?, ?, ?);")
-    defer { sqlite3_finalize(insertFTS) }
-    bind(article.id, at: 1, to: insertFTS)
-    bind(article.title, at: 2, to: insertFTS)
-    bind(article.summaryHTML, at: 3, to: insertFTS)
-    bind(article.contentHTML, at: 4, to: insertFTS)
-    guard sqlite3_step(insertFTS) == SQLITE_DONE else { throw databaseErrorUnlocked() }
+    try reindexArticleFullTextUnlocked(articleID: article.id)
   }
 
   func upsertMediaAssetUnlocked(_ asset: RSSMediaAsset) throws {

@@ -37,6 +37,14 @@ DIRECT_DISTRIBUTION_ENTITLEMENTS="$ROOT_DIR/Packaging/DirectDistribution.entitle
 SPARKLE_FRAMEWORK_BUNDLE="$APP_FRAMEWORKS/Sparkle.framework"
 SPARKLE_LICENSE_SOURCE="$ROOT_DIR/Packaging/ThirdPartyNotices/Sparkle-LICENSE.txt"
 SPARKLE_LICENSE_BUNDLE="$APP_RESOURCES/ThirdPartyNotices/Sparkle-LICENSE.txt"
+THIRD_PARTY_NOTICES_SOURCE_DIR="$ROOT_DIR/Packaging/ThirdPartyNotices"
+THIRD_PARTY_NOTICES_BUNDLE_DIR="$APP_RESOURCES/ThirdPartyNotices"
+THIRD_PARTY_NOTICE_FILES=(
+  "NOTICE-MANIFEST.txt"
+  "Sparkle-LICENSE.txt"
+  "TreeSitter-LICENSE.txt"
+  "Tiktoken-Encoding-Data.txt"
+)
 CODESIGN_TOOL="${CODESIGN_TOOL:-/usr/bin/codesign}"
 INSTALL_NAME_TOOL="${INSTALL_NAME_TOOL:-/usr/bin/install_name_tool}"
 OTOOL_TOOL="${OTOOL_TOOL:-/usr/bin/otool}"
@@ -337,7 +345,19 @@ chmod +x "$APP_BINARY"
   echo "Sparkle third-party notice is missing: $SPARKLE_LICENSE_SOURCE" >&2
   exit 1
 }
-cp "$SPARKLE_LICENSE_SOURCE" "$SPARKLE_LICENSE_BUNDLE"
+for notice_file in "${THIRD_PARTY_NOTICE_FILES[@]}"; do
+  notice_source="$THIRD_PARTY_NOTICES_SOURCE_DIR/$notice_file"
+  notice_bundle="$THIRD_PARTY_NOTICES_BUNDLE_DIR/$notice_file"
+  [[ -s "$notice_source" ]] || {
+    echo "third-party notice is missing or empty: $notice_source" >&2
+    exit 1
+  }
+  cp "$notice_source" "$notice_bundle"
+  cmp -s "$notice_source" "$notice_bundle" || {
+    echo "packaged third-party notice differs from source: $notice_file" >&2
+    exit 1
+  }
+done
 grep -Fq 'Copyright (c) 2006-2013 Andy Matuschak.' "$SPARKLE_LICENSE_BUNDLE" || {
   echo "packaged Sparkle notice is incomplete" >&2
   exit 1
@@ -346,6 +366,35 @@ grep -Fq 'EXTERNAL LICENSES' "$SPARKLE_LICENSE_BUNDLE" || {
   echo "packaged Sparkle external-license notices are incomplete" >&2
   exit 1
 }
+tree_sitter_license_bundle="$THIRD_PARTY_NOTICES_BUNDLE_DIR/TreeSitter-LICENSE.txt"
+grep -Fq 'SwiftTreeSitter 0.25.0' "$tree_sitter_license_bundle" || {
+  echo "packaged SwiftTreeSitter notice is incomplete" >&2
+  exit 1
+}
+grep -Fq 'tree-sitter 0.25.10' "$tree_sitter_license_bundle" || {
+  echo "packaged tree-sitter notice is incomplete" >&2
+  exit 1
+}
+grep -Fq 'tree-sitter-markdown 0.5.3' "$tree_sitter_license_bundle" || {
+  echo "packaged tree-sitter-markdown notice is incomplete" >&2
+  exit 1
+}
+tiktoken_notice_bundle="$THIRD_PARTY_NOTICES_BUNDLE_DIR/Tiktoken-Encoding-Data.txt"
+grep -Fq 'cl100k_base.tiktoken' "$tiktoken_notice_bundle" || {
+  echo "packaged cl100k tiktoken notice is incomplete" >&2
+  exit 1
+}
+grep -Fq 'o200k_base.tiktoken' "$tiktoken_notice_bundle" || {
+  echo "packaged o200k tiktoken notice is incomplete" >&2
+  exit 1
+}
+notice_manifest_bundle="$THIRD_PARTY_NOTICES_BUNDLE_DIR/NOTICE-MANIFEST.txt"
+for notice_file in "${THIRD_PARTY_NOTICE_FILES[@]}"; do
+  grep -Fq "$notice_file" "$notice_manifest_bundle" || {
+    echo "third-party notice manifest omits $notice_file" >&2
+    exit 1
+  }
+done
 SPARKLE_FRAMEWORK_BUILD_PRODUCT="$BUILD_BIN_DIR/Sparkle.framework"
 [[ -d "$SPARKLE_FRAMEWORK_BUILD_PRODUCT" ]] || {
   echo "SwiftPM Sparkle.framework is missing: $SPARKLE_FRAMEWORK_BUILD_PRODUCT" >&2

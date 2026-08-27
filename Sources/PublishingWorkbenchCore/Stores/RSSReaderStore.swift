@@ -121,7 +121,7 @@ actor RSSArticlePayloadLoader {
 
   func article(id: String) throws -> RSSArticle? {
     if database == nil {
-      database = try RSSReaderDatabase(fileURL: databaseURL)
+      database = try RSSReaderDatabase(readOnlyFileURL: databaseURL)
     }
     return try database?.article(id: id)
   }
@@ -306,6 +306,7 @@ public final class RSSReaderStore: ObservableObject {
     var articles: [RSSArticle]
     var highlights: [RSSArticleHighlight]
     var mediaAssets: [RSSMediaAsset]
+    var fullTextRecords: [RSSArticleFullTextRecord]
   }
 
   static let maximumDeletionUndoSnapshots = 8
@@ -718,7 +719,7 @@ public final class RSSReaderStore: ObservableObject {
       loaded = try await task.value
     } catch {
       articleLoadTasks[id] = nil
-      // A second SQLite connection can briefly observe a busy or just-closed
+      // A second read-only SQLite connection can briefly observe a just-closed
       // WAL while a refresh is committing. The store's already-open handle is
       // the authoritative fallback and avoids turning a valid header into a
       // blank reader pane.

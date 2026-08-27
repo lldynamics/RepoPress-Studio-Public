@@ -344,7 +344,9 @@ public struct CodexAppServerRuntimeVersion: Codable, Comparable, Equatable, Hash
     guard !value.isEmpty else { return nil }
 
     let fullRange = NSRange(value.startIndex..<value.endIndex, in: value)
-    guard let identityMatch = identityRegex.firstMatch(in: value, range: fullRange) else {
+    guard let identityRegex,
+      let identityMatch = identityRegex.firstMatch(in: value, range: fullRange)
+    else {
       return nil
     }
 
@@ -354,7 +356,9 @@ public struct CodexAppServerRuntimeVersion: Codable, Comparable, Equatable, Hash
       location: versionStart,
       length: fullRange.length - versionStart
     )
-    guard let versionMatch = versionRegex.firstMatch(in: value, range: versionRange) else {
+    guard let versionRegex,
+      let versionMatch = versionRegex.firstMatch(in: value, range: versionRange)
+    else {
       return nil
     }
 
@@ -388,14 +392,24 @@ public struct CodexAppServerRuntimeVersion: Codable, Comparable, Equatable, Hash
     return lhs.patch < rhs.patch
   }
 
-  private static let identityRegex = try! NSRegularExpression(
+  private static let identityRegex = makeRegularExpression(
     pattern: #"(?i)(?:^|[^A-Za-z0-9_-])codex-cli(?:[^A-Za-z0-9_-]|$)"#
   )
-  private static let versionRegex = try! NSRegularExpression(
+  private static let versionRegex = makeRegularExpression(
     pattern:
       #"(?<![A-Za-z0-9_.-])v?([0-9]+)\.([0-9]+)\.([0-9]+)"#
       + #"(?:[+-][0-9A-Za-z.-]+)?(?![A-Za-z0-9_.-])"#
   )
+
+  private static func makeRegularExpression(
+    pattern: String
+  ) -> NSRegularExpression? {
+    do {
+      return try NSRegularExpression(pattern: pattern)
+    } catch {
+      return nil
+    }
+  }
 }
 
 /// Why a discovered executable is or is not eligible for the ChatGPT flow.

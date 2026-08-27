@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import importlib.util
+import json
 from pathlib import Path
 import tempfile
 from typing import Optional
@@ -173,6 +174,84 @@ class SwiftLocalizationExtractionTests(unittest.TestCase):
             )
             with self.assertRaisesRegex(RuntimeError, "duplicate JSON key"):
                 SYNC.load_reviewed_translation_file(path)
+
+    def test_translation_fragment_merge_archives_sources(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            master = root / "ui_localization_translations.json"
+            fragment_a = root / "ui_feature_a_translations.json"
+            fragment_b = root / "ui_feature_b_translations.json"
+            archive = root / "archive"
+            master.write_text('{"保留": "Keep"}', encoding="utf-8")
+            fragment_a.write_text('{"新增 A": "New A"}', encoding="utf-8")
+            fragment_b.write_text(
+                '{"display.example": {"en": "Example", "zh-Hans": "示例"}}',
+                encoding="utf-8",
+            )
+
+            fragment_count, entry_count = SYNC.merge_reviewed_translation_fragments(
+                master_path=master,
+                fragment_paths=(fragment_a, fragment_b),
+                archive_directory=archive,
+            )
+
+            self.assertEqual((fragment_count, entry_count), (2, 3))
+            self.assertEqual(
+                json.loads(master.read_text(encoding="utf-8")),
+                {
+                    "保留": "Keep",
+                    "新增 A": "New A",
+                    "display.example": {"en": "Example", "zh-Hans": "示例"},
+                },
+            )
+            self.assertFalse(fragment_a.exists())
+            self.assertFalse(fragment_b.exists())
+            self.assertTrue((archive / fragment_a.name).exists())
+            self.assertTrue((archive / fragment_b.name).exists())
+
+    def test_translation_fragment_merge_rejects_conflicts_before_writing(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            master = root / "ui_localization_translations.json"
+            fragment = root / "ui_conflict_translations.json"
+            archive = root / "archive"
+            master.write_text('{"相同键": "First"}', encoding="utf-8")
+            fragment.write_text('{"相同键": "Second"}', encoding="utf-8")
+
+            with self.assertRaisesRegex(RuntimeError, "duplicate reviewed translation key"):
+                SYNC.merge_reviewed_translation_fragments(
+                    master_path=master,
+                    fragment_paths=(fragment,),
+                    archive_directory=archive,
+                )
+
+            self.assertEqual(
+                json.loads(master.read_text(encoding="utf-8")),
+                {"相同键": "First"},
+            )
+            self.assertTrue(fragment.exists())
+            self.assertFalse(archive.exists())
+
+    def test_translation_merge_retry_keeps_new_entries_after_identical_duplicates(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            master = root / "master.json"
+            fragment = root / "fragment.json"
+            master.write_text('{"已归并": "Merged"}', encoding="utf-8")
+            fragment.write_text(
+                '{"已归并": "Merged", "尚未归并": "Pending"}',
+                encoding="utf-8",
+            )
+
+            merged = SYNC.merge_reviewed_translation_entries(
+                (master, fragment),
+                allow_identical_duplicates=True,
+            )
+
+            self.assertEqual(
+                merged,
+                {"已归并": "Merged", "尚未归并": "Pending"},
+            )
 
     def test_dynamic_allowlist_rejects_duplicate_key_across_groups(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

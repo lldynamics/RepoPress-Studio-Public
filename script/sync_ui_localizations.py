@@ -35,7 +35,18 @@ UI_SOURCE_ROOTS = (SOURCE_ROOT, SCREENSHOT_SUPPORT_SOURCE_ROOT)
 CORE_RESOURCE_ROOT = ROOT / "Sources" / "PublishingCoreSupport" / "Resources"
 WORKSPACE_MODELS_PATH = ROOT / "Sources" / "PublishingWorkbenchCore" / "Models" / "WorkspaceModels.swift"
 CATALOG_PATH = SOURCE_ROOT / "Resources" / "Localizable.xcstrings"
-TRANSLATION_PATHS = tuple(sorted((ROOT / "script").glob("ui_*translations*.json")))
+TRANSLATION_PATH = ROOT / "script" / "ui_localization_translations.json"
+TRANSLATION_PATHS = (
+    TRANSLATION_PATH,
+    *tuple(
+        sorted(
+            path
+            for path in (ROOT / "script").glob("ui_*translations*.json")
+            if path != TRANSLATION_PATH
+        )
+    ),
+)
+TRANSLATION_ARCHIVE_PATH = ROOT / "script" / "archive" / "ui-translations"
 DYNAMIC_KEYS_PATH = ROOT / "script" / "ui_localization_dynamic_keys.json"
 DYNAMIC_KEY_GROUPS = ("runtime", "sourceLiterals")
 FORMAT_PATTERN = re.compile(
@@ -420,19 +431,116 @@ def unregistered_cjk_ui_keys(catalog: dict, extracted: dict[str, str]) -> list[s
     )
 
 
-def load_reviewed_translations() -> dict:
+def merge_reviewed_translation_entries(
+    paths: tuple[Path, ...],
+    *,
+    allow_identical_duplicates: bool = False,
+) -> dict:
     translations: dict = {}
-    for translations_path in TRANSLATION_PATHS:
+    for translations_path in paths:
         if not translations_path.exists():
             continue
         entries = load_reviewed_translation_file(translations_path)
         duplicates = sorted(set(translations).intersection(entries))
         if duplicates:
-            raise RuntimeError(
-                f"duplicate reviewed translation key in {translations_path.name}: {duplicates[0]}"
-            )
+            conflicting_duplicates = [
+                key
+                for key in duplicates
+                if translations[key] != entries[key]
+            ]
+            if not (allow_identical_duplicates and not conflicting_duplicates):
+                duplicate = (
+                    conflicting_duplicates[0]
+                    if conflicting_duplicates
+                    else duplicates[0]
+                )
+                raise RuntimeError(
+                    f"duplicate reviewed translation key in {translations_path.name}: {duplicate}"
+                )
         translations.update(entries)
     return translations
+
+
+def load_reviewed_translations() -> dict:
+    return merge_reviewed_translation_entries(TRANSLATION_PATHS)
+
+
+def write_json_atomically(path: Path, value: dict) -> None:
+    """Replace one JSON dictionary without exposing a partially written file."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            dir=path.parent,
+            prefix=f".{path.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as temporary_file:
+            temporary_file.write(
+                json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
+            )
+            temporary_path = Path(temporary_file.name)
+        temporary_path.chmod(
+            path.stat().st_mode & 0o777 if path.exists() else 0o644
+        )
+        temporary_path.replace(path)
+        temporary_path = None
+    finally:
+        if temporary_path is not None:
+            temporary_path.unlink(missing_ok=True)
+
+
+def merge_reviewed_translation_fragments(
+    *,
+    master_path: Path = TRANSLATION_PATH,
+    fragment_paths: tuple[Path, ...] | None = None,
+    archive_directory: Path = TRANSLATION_ARCHIVE_PATH,
+) -> tuple[int, int]:
+    """Merge root-level increments into the master and archive their source files."""
+    fragments = tuple(
+        path
+        for path in (
+            fragment_paths
+            if fragment_paths is not None
+            else TRANSLATION_PATHS
+        )
+        if path != master_path and path.exists()
+    )
+    if not fragments:
+        entries = load_reviewed_translation_file(master_path)
+        return 0, len(entries)
+
+    duplicate_names = sorted(
+        name
+        for name in {path.name for path in fragments}
+        if sum(path.name == name for path in fragments) > 1
+    )
+    if duplicate_names:
+        raise RuntimeError(f"duplicate translation fragment filename: {duplicate_names[0]}")
+
+    archive_targets = {
+        path: archive_directory / path.name
+        for path in fragments
+    }
+    collisions = sorted(
+        target.name
+        for target in archive_targets.values()
+        if target.exists()
+    )
+    if collisions:
+        raise RuntimeError(f"translation archive already contains: {collisions[0]}")
+
+    merged_entries = merge_reviewed_translation_entries(
+        (master_path, *fragments),
+        allow_identical_duplicates=True,
+    )
+    archive_directory.mkdir(parents=True, exist_ok=True)
+    write_json_atomically(master_path, merged_entries)
+    for source, target in archive_targets.items():
+        source.replace(target)
+    return len(fragments), len(merged_entries)
 
 
 def load_reviewed_translation_file(path: Path) -> dict:
@@ -600,7 +708,19 @@ def main() -> int:
         action="store_true",
         help="Synchronize managed keys and remove unreferenced catalog/translation entries.",
     )
+    mode.add_argument(
+        "--merge-reviewed-translations",
+        action="store_true",
+        help="Merge root-level reviewed translation fragments into the master dictionary and archive them.",
+    )
     arguments = parser.parse_args()
+    if arguments.merge_reviewed_translations:
+        fragment_count, entry_count = merge_reviewed_translation_fragments()
+        print(
+            f"reviewed translations: merged and archived {fragment_count} fragment(s); "
+            f"master dictionary contains {entry_count} entries"
+        )
+        return 0
     display_name_gaps = direct_display_name_localization_gaps()
     if display_name_gaps:
         print(

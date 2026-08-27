@@ -1,4 +1,5 @@
 import Foundation
+import PublishingCoreSupport
 
 public enum SelectionActionBarPresentation {
   public static func shouldShow(

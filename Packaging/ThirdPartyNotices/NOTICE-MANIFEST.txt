@@ -1,0 +1,22 @@
+RepoPress Studio bundled third-party notices
+==============================================
+
+This inventory describes the third-party material copied into
+Contents/Resources/ThirdPartyNotices by script/build_and_run.sh. Versions and
+revisions are pinned by Package.resolved in this source release.
+
+- This bundled notice inventory:
+  NOTICE-MANIFEST.txt
+- Sparkle 2.9.5 (79bc9e872948e47877e76f194cb0c8e0412b0b90), MIT License:
+  Sparkle-LICENSE.txt
+- SwiftTreeSitter 0.25.0 (08ef81eb8620617b55b08868126707ad72bf754f), BSD
+  3-Clause License; tree-sitter 0.25.10 (da6fe9beb4f7f67beb75914ca8e0d48ae48d6406),
+  MIT License; and tree-sitter-markdown 0.5.3
+  (f969cd3ae3f9fbd4e43205431d0ae286014c05b5), MIT License:
+  TreeSitter-LICENSE.txt
+- OpenAI tiktoken encoding data used by the local prompt-size calculator:
+  Tiktoken-Encoding-Data.txt
+
+The complete license text for each bundled component is retained in the
+referenced notice file. The two tiktoken vocabulary files and their SHA-256
+digests are listed in Tiktoken-Encoding-Data.txt.

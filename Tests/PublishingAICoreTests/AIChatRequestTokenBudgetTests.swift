@@ -1,5 +1,7 @@
+import PublishingCoreSupport
 import XCTest
-@testable import PublishingWorkbenchCore
+
+@testable import PublishingAICore
 
 final class AIChatRequestTokenBudgetTests: XCTestCase {
   func testSlidingWindowKeepsFirstSystemAndLatestUser() {
@@ -17,8 +19,12 @@ final class AIChatRequestTokenBudgetTests: XCTestCase {
       )
     )
     for index in 0..<18 {
-      messages.append(AIChatMessage(role: "user", content: "旧消息 \(index)：" + String(repeating: "历史内容。", count: 30)))
-      messages.append(AIChatMessage(role: "assistant", content: "旧回复 \(index)：" + String(repeating: "回答内容。", count: 30)))
+      messages.append(
+        AIChatMessage(
+          role: "user", content: "旧消息 \(index)：" + String(repeating: "历史内容。", count: 30)))
+      messages.append(
+        AIChatMessage(
+          role: "assistant", content: "旧回复 \(index)：" + String(repeating: "回答内容。", count: 30)))
     }
     messages.append(AIChatMessage(role: "user", content: "最新用户问题：请保留这一句。"))
 
@@ -41,13 +47,14 @@ final class AIChatRequestTokenBudgetTests: XCTestCase {
       safetyMargin: 8,
       tokenizer: LocalBPETokenizer(model: "unknown-private-model")
     )
-    let context = "资料标题与来源\n\n" + String(repeating: "中间正文。", count: 500)
+    let context =
+      "资料标题与来源\n\n" + String(repeating: "中间正文。", count: 500)
       + "\n\n资料末尾引用编号 [K9]。"
     let result = budget.fit(
       messages: [
         AIChatMessage(role: "system", content: "系统规则"),
         AIChatMessage(role: "system", content: context),
-        AIChatMessage(role: "user", content: "最新问题")
+        AIChatMessage(role: "user", content: "最新问题"),
       ],
       requestedOutputTokens: 64
     )
@@ -82,7 +89,7 @@ final class AIChatRequestTokenBudgetTests: XCTestCase {
     let result = budget.fit(
       messages: [
         AIChatMessage(role: "system", content: "规则"),
-        AIChatMessage(role: "user", content: "请回答")
+        AIChatMessage(role: "user", content: "请回答"),
       ],
       requestedOutputTokens: 2_000,
       additionalPromptTokens: schemaTokens
@@ -101,51 +108,22 @@ final class AIChatRequestTokenBudgetTests: XCTestCase {
   }
 
   func testFormattedContextWindowAndTokenCount() {
-    XCTAssertEqual(AIChatRequestTokenBudget.formattedContextWindow(forModel: "claude-3-5-sonnet"), "200k")
-    XCTAssertEqual(AIChatRequestTokenBudget.formattedContextWindow(forModel: "gemini-1.5-pro"), "1M")
+    XCTAssertEqual(
+      AIChatRequestTokenBudget.formattedContextWindow(forModel: "claude-3-5-sonnet"), "200k")
+    XCTAssertEqual(
+      AIChatRequestTokenBudget.formattedContextWindow(forModel: "gemini-1.5-pro"), "1M")
     XCTAssertEqual(AIChatRequestTokenBudget.formattedContextWindow(forModel: "gpt-4o"), "128k")
-    XCTAssertEqual(AIChatRequestTokenBudget.formattedContextWindow(forModel: "deepseek-chat"), "64k")
-    XCTAssertEqual(AIChatRequestTokenBudget.formattedContextWindow(forModel: "moonshot-v1-32k"), "32k")
+    XCTAssertEqual(
+      AIChatRequestTokenBudget.formattedContextWindow(forModel: "deepseek-chat"), "64k")
+    XCTAssertEqual(
+      AIChatRequestTokenBudget.formattedContextWindow(forModel: "moonshot-v1-32k"), "32k")
     XCTAssertEqual(AIChatRequestTokenBudget.formattedContextWindow(forModel: "gpt-4-0613"), "16k")
     XCTAssertEqual(AIChatRequestTokenBudget.formattedContextWindow(forModel: "llama-3-8b"), "8k")
-    XCTAssertEqual(AIChatRequestTokenBudget.formattedContextWindow(forModel: "custom-model-128k"), "128k")
+    XCTAssertEqual(
+      AIChatRequestTokenBudget.formattedContextWindow(forModel: "custom-model-128k"), "128k")
     XCTAssertEqual(AIChatRequestTokenBudget.formatTokenCount(1_000_000), "1M")
     XCTAssertEqual(AIChatRequestTokenBudget.formatTokenCount(128_000), "128k")
     XCTAssertEqual(AIChatRequestTokenBudget.formatTokenCount(8_192), "8k")
-  }
-
-  func testNormalizationFailsClosedWhenAtomicSchemaCannotFit() throws {
-    let config = AIProviderConfig(
-      preset: .local,
-      baseURL: "http://127.0.0.1:11434/v1",
-      model: "private-small-model",
-      requiresAPIKey: false
-    )
-    let oversizedTool = AIToolDefinition(
-      function: AIToolFunctionDefinition(
-        name: "oversized",
-        description: String(repeating: "不可删除的工具协议定义。", count: 2_000),
-        parameters: .object(["value": .string("string")])
-      )
-    )
-
-    XCTAssertThrowsError(
-      try AIChatCompletionClient().prepareRequest(
-        AIChatCompletionRequest(
-          model: config.model,
-          messages: [AIChatMessage(role: "user", content: "执行工具")],
-          tools: [oversizedTool]
-        ),
-        config: config,
-        purpose: .capabilityProbe,
-        mode: .nonStreaming
-      )
-    ) { error in
-      XCTAssertEqual(
-        error as? AIChatCompletionClientError,
-        .requestContextWindowExceeded(contextWindow: 8_192)
-      )
-    }
   }
 
   func testToolCallAndToolResultAreRetainedOrDroppedAsAGroup() {
@@ -157,7 +135,7 @@ final class AIChatRequestTokenBudgetTests: XCTestCase {
       AIChatMessage(role: "system", content: "规则"),
       AIChatMessage(role: "assistant", content: nil, toolCalls: [call]),
       AIChatMessage(role: "tool", content: "搜索结果", toolCallID: "call-1"),
-      AIChatMessage(role: "user", content: "请总结")
+      AIChatMessage(role: "user", content: "请总结"),
     ]
     let result = AIChatRequestTokenBudget(
       model: "gpt-4o",
@@ -187,7 +165,7 @@ final class AIChatRequestTokenBudgetTests: XCTestCase {
     let image = AIChatMessageContentPart.imageURL("https://example.com/image.png")
     let messages = [
       AIChatMessage(role: "system", content: "规则"),
-      AIChatMessage(role: "user", content: .parts([image]))
+      AIChatMessage(role: "user", content: .parts([image])),
     ]
     let result = AIChatRequestTokenBudget(
       model: "gpt-4o",
@@ -203,8 +181,8 @@ final class AIChatRequestTokenBudgetTests: XCTestCase {
   }
 }
 
-private extension AIChatMessage {
-  var contentText: String {
+extension AIChatMessage {
+  fileprivate var contentText: String {
     switch content {
     case .none:
       return ""

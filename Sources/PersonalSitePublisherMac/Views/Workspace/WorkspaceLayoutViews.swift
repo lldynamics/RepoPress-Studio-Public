@@ -108,14 +108,12 @@ struct WorkspaceShellSplitLayout: View {
   }
 
   private func sidebarWidth(workspaceWidth: CGFloat) -> CGFloat {
-    let width = WorkbenchLayoutMode.sidebarWidth(
+    WorkbenchLayoutMode.sidebarWidth(
       storedWidth: CGFloat(storedSidebarWidth),
       workspaceWidth: workspaceWidth,
       centerMinimumWidth: centerMinimumWidth,
       inspectorPresented: isInspectorPresented
     )
-    guard selectedSection == .rss, !isCompact else { return width }
-    return min(max(width, 260), 300)
   }
 
   private var centerMinimumWidth: CGFloat {
@@ -126,14 +124,12 @@ struct WorkspaceShellSplitLayout: View {
   }
 
   private func sidebarMaximumWidth(workspaceWidth: CGFloat) -> CGFloat {
-    let width = WorkbenchLayoutMode.sidebarWidth(
+    WorkbenchLayoutMode.sidebarWidth(
       storedWidth: 380,
       workspaceWidth: workspaceWidth,
       centerMinimumWidth: centerMinimumWidth,
       inspectorPresented: isInspectorPresented
     )
-    guard selectedSection == .rss, !isCompact else { return width }
-    return min(max(width, 260), 300)
   }
 
   private func workspaceSidebarResizeHandle(workspaceWidth: CGFloat) -> some View {

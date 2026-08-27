@@ -69,11 +69,13 @@ final class RSSReaderPresentationState: ObservableObject {
   @Published private(set) var articleDisplayLimit = 120
   @Published private(set) var searchFocusRequestID = UUID()
   @Published var fullTextArticles: [String: RSSArticle] = [:]
+  @Published private(set) var fullTextRecords: [String: RSSArticleFullTextRecord] = [:]
   @Published var showingFullTextIDs: Set<String> = []
   @Published var fetchingFullTextIDs: Set<String> = []
   @Published var fullTextErrorByArticleID: [String: String] = [:]
   let searchDraft = RSSArticleSearchDraft()
   let fullTextService = RSSArticleFullTextService()
+  let fullTextRequestBroker = RSSArticleFullTextRequestBroker.shared
 
   private var subscriptionDiscoveryRequestID = UUID()
 
@@ -97,6 +99,8 @@ final class RSSReaderPresentationState: ObservableObject {
   private var articleFacetsCache: (key: ArticleScopeCacheKey, facets: ArticleFacets)?
   private var readerMetricsCache: [String: ReaderMetricsCacheEntry] = [:]
   private var readerMetricsLRU: [String] = []
+  private var fullTextArticleLRU: [String] = []
+  private var fullTextErrorLRU: [String] = []
   private var sidebarCountsCache: (revision: UInt64, counts: RSSFeedSidebarCounts)?
 
   func matchingArticles(in store: RSSReaderStore) -> [RSSArticleHeader] {
@@ -443,26 +447,165 @@ final class RSSReaderPresentationState: ObservableObject {
     return article
   }
 
-  public func fetchFullText(for article: RSSArticle, store: RSSReaderStore? = nil) async {
+  /// Restores a successful independent cache record when an article is opened.
+  /// A record already present in this presentation session keeps the user's
+  /// current summary/full-text toggle instead of forcing it on again.
+  @discardableResult
+  public func restoreCachedFullText(
+    for article: RSSArticle,
+    store: RSSReaderStore
+  ) -> Bool {
+    let persistedRecord = try? store.fullTextRecord(articleID: article.id)
+    if fullTextArticles[article.id] != nil {
+      if let record = fullTextRecords[article.id] {
+        if !Self.record(record, matches: article) {
+          clearFullTextCache(articleID: article.id)
+        } else {
+          // Another reader window may have refreshed the shared SQLite cache.
+          // Adopt only a newer successful record, without changing this
+          // window's current summary/full-text toggle.
+          if let persistedRecord,
+             persistedRecord.status == .ready,
+             Self.record(persistedRecord, matches: article),
+             persistedRecord.attemptedAt > record.attemptedAt {
+            cacheFullText(persistedRecord, for: article)
+          }
+          touchFullTextArticle(article.id)
+          return true
+        }
+      } else {
+        touchFullTextArticle(article.id)
+        return true
+      }
+    }
+    guard let persistedRecord,
+          persistedRecord.status == .ready,
+          Self.record(persistedRecord, matches: article) else {
+      return false
+    }
+    cacheFullText(persistedRecord, for: article)
+    showingFullTextIDs.insert(article.id)
+    return true
+  }
+
+  public func cachedFullTextNeedsRevalidation(
+    for article: RSSArticle,
+    now: Date = Date()
+  ) -> Bool {
+    guard let record = fullTextRecords[article.id],
+          record.status == .ready,
+          Self.record(record, matches: article) else {
+      return false
+    }
+    if let retryAfter = record.retryAfter, retryAfter > now { return false }
+    if !Self.usesCurrentExtractor(record) { return true }
+    if record.retryAfter != nil || record.failureMessage != nil { return true }
+    return article.fetchedAt > record.attemptedAt
+  }
+
+  public func fetchFullText(
+    for article: RSSArticle,
+    store: RSSReaderStore? = nil,
+    respectsRetryAfter: Bool = false,
+    forceRefresh: Bool = false
+  ) async {
     let articleID = article.id
     guard !fetchingFullTextIDs.contains(articleID) else { return }
+
+    var cachedRecord: RSSArticleFullTextRecord?
+    if let memoryRecord = fullTextRecords[articleID] {
+      if Self.record(memoryRecord, matches: article) {
+        cachedRecord = memoryRecord
+      } else {
+        clearFullTextCache(articleID: articleID)
+      }
+    }
+    if let store {
+      do {
+        if let persistedRecord = try store.fullTextRecord(articleID: articleID),
+           Self.record(persistedRecord, matches: article) {
+          if cachedRecord.map({ persistedRecord.attemptedAt > $0.attemptedAt }) ?? true {
+            cachedRecord = persistedRecord
+          }
+        }
+      } catch {
+        // An in-memory ready record remains usable when the cache read fails.
+      }
+    }
+    if respectsRetryAfter,
+       let retryAfter = cachedRecord?.retryAfter,
+       retryAfter > Date() {
+      return
+    }
+
     fetchingFullTextIDs.insert(articleID)
     fullTextErrorByArticleID.removeValue(forKey: articleID)
+    fullTextErrorLRU.removeAll { $0 == articleID }
     defer { fetchingFullTextIDs.remove(articleID) }
 
     do {
-      let fullTextArticle = try await fullTextService.fetchFullText(for: article)
-      fullTextArticles[articleID] = fullTextArticle
-      showingFullTextIDs.insert(articleID)
-      if let store {
-        do {
-          try store.updateArticlePayload(fullTextArticle)
-        } catch {
-          // In-memory reading proceeds even if local cache persistence encounters an error
-        }
+      let record = try await fullTextRequestBroker.fetch(
+        article: article,
+        cachedRecord: cachedRecord,
+        allowsPrivateNetworkAccess: store?.privateNetworkAccessEnabled ?? false,
+        forceRefresh: forceRefresh,
+        service: fullTextService
+      )
+      if record.status == .ready {
+        let fullTextArticle = fullTextService.articleByApplying(record, to: article)
+        let bodyMetrics = await Task.detached(priority: .userInitiated) {
+          RSSArticleHTMLRenderer.bodyMetrics(article: fullTextArticle)
+        }.value
+        cacheFullText(record, for: article)
+        cacheReaderMetrics(
+          for: fullTextArticle,
+          hasRenderableBody: bodyMetrics.hasRenderableBody,
+          readingUnits: bodyMetrics.readingUnits
+        )
+        showingFullTextIDs.insert(articleID)
+        // Reading proceeds immediately; SQLite/FTS persistence stays off the
+        // main actor and may finish just after the reader updates.
+        if let store { try? await store.saveFullTextRecordAsync(record) }
+        return
+      }
+
+      // A rejected re-extraction never replaces the last known-good ready
+      // body. Retry metadata is merged into that ready record so automatic
+      // opening still honors backoff instead of hammering the origin.
+      if let cachedRecord, cachedRecord.status == .ready {
+        let preservedRecord = Self.readyRecord(
+          preserving: cachedRecord,
+          afterFailedAttempt: record
+        )
+        cacheFullText(preservedRecord, for: article)
+        showingFullTextIDs.insert(articleID)
+        if let store { try? await store.saveFullTextRecordAsync(preservedRecord) }
+      }
+      recordFullTextError(
+        record.failureMessage ?? String(localized: "提取结果未通过正文质量校验。"),
+        articleID: articleID
+      )
+      if let store, cachedRecord?.status != .ready {
+        try? await store.saveFullTextRecordAsync(record)
       }
     } catch {
-      fullTextErrorByArticleID[articleID] = error.localizedDescription
+      let failedRecord = fullTextService.failureRecord(
+        for: article,
+        cachedRecord: cachedRecord,
+        error: error
+      )
+      if let cachedRecord, cachedRecord.status == .ready {
+        let preservedRecord = Self.readyRecord(
+          preserving: cachedRecord,
+          afterFailedAttempt: failedRecord
+        )
+        cacheFullText(preservedRecord, for: article)
+        showingFullTextIDs.insert(articleID)
+        if let store { try? await store.saveFullTextRecordAsync(preservedRecord) }
+      } else if let store {
+        try? await store.saveFullTextRecordAsync(failedRecord)
+      }
+      recordFullTextError(error.localizedDescription, articleID: articleID)
     }
   }
 
@@ -472,6 +615,9 @@ final class RSSReaderPresentationState: ObservableObject {
       showingFullTextIDs.remove(articleID)
     } else {
       if fullTextArticles[articleID] != nil {
+        touchFullTextArticle(articleID)
+        showingFullTextIDs.insert(articleID)
+      } else if let store, restoreCachedFullText(for: article, store: store) {
         showingFullTextIDs.insert(articleID)
       } else {
         Task {
@@ -479,6 +625,85 @@ final class RSSReaderPresentationState: ObservableObject {
         }
       }
     }
+  }
+
+  private func cacheFullText(
+    _ record: RSSArticleFullTextRecord,
+    for article: RSSArticle
+  ) {
+    fullTextRecords[article.id] = record
+    fullTextArticles[article.id] = fullTextService.articleByApplying(record, to: article)
+    readerMetricsCache.removeValue(forKey: article.id)
+    readerMetricsLRU.removeAll { $0 == article.id }
+    touchFullTextArticle(article.id)
+    while fullTextArticleLRU.count > 16, let evictedID = fullTextArticleLRU.first {
+      fullTextArticleLRU.removeFirst()
+      fullTextArticles.removeValue(forKey: evictedID)
+      fullTextRecords.removeValue(forKey: evictedID)
+      showingFullTextIDs.remove(evictedID)
+      fullTextErrorByArticleID.removeValue(forKey: evictedID)
+      fullTextErrorLRU.removeAll { $0 == evictedID }
+    }
+  }
+
+  private func touchFullTextArticle(_ articleID: String) {
+    fullTextArticleLRU.removeAll { $0 == articleID }
+    fullTextArticleLRU.append(articleID)
+  }
+
+  private func clearFullTextCache(articleID: String) {
+    fullTextArticles.removeValue(forKey: articleID)
+    fullTextRecords.removeValue(forKey: articleID)
+    showingFullTextIDs.remove(articleID)
+    fullTextArticleLRU.removeAll { $0 == articleID }
+  }
+
+  private func recordFullTextError(_ message: String, articleID: String) {
+    fullTextErrorByArticleID[articleID] = message
+    fullTextErrorLRU.removeAll { $0 == articleID }
+    fullTextErrorLRU.append(articleID)
+    while fullTextErrorLRU.count > 32, let evictedID = fullTextErrorLRU.first {
+      fullTextErrorLRU.removeFirst()
+      fullTextErrorByArticleID.removeValue(forKey: evictedID)
+    }
+  }
+
+  private static func record(
+    _ record: RSSArticleFullTextRecord,
+    matches article: RSSArticle
+  ) -> Bool {
+    guard record.articleID == article.id,
+          let sourceURL = record.sourceURL,
+          let articleURL = article.link else { return false }
+    return sourceURL.absoluteString == articleURL.absoluteString
+  }
+
+  private static func usesCurrentExtractor(_ record: RSSArticleFullTextRecord) -> Bool {
+    record.extractorIdentifier == RSSArticleDOMExtractionService.extractorIdentifier
+      && record.extractorVersion == RSSArticleDOMExtractionService.extractorVersion
+  }
+
+  private static func readyRecord(
+    preserving cachedRecord: RSSArticleFullTextRecord,
+    afterFailedAttempt attempt: RSSArticleFullTextRecord
+  ) -> RSSArticleFullTextRecord {
+    RSSArticleFullTextRecord(
+      articleID: cachedRecord.articleID,
+      status: .ready,
+      contentHTML: cachedRecord.contentHTML,
+      plainText: cachedRecord.plainText,
+      sourceURL: cachedRecord.sourceURL,
+      resolvedURL: cachedRecord.resolvedURL,
+      extractorIdentifier: cachedRecord.extractorIdentifier,
+      extractorVersion: cachedRecord.extractorVersion,
+      sourceETag: cachedRecord.sourceETag,
+      sourceLastModified: cachedRecord.sourceLastModified,
+      sourceContentHash: cachedRecord.sourceContentHash,
+      confidence: cachedRecord.confidence,
+      attemptedAt: attempt.attemptedAt,
+      retryAfter: attempt.retryAfter,
+      failureMessage: attempt.failureMessage
+    )
   }
 }
 

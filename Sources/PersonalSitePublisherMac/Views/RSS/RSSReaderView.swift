@@ -117,6 +117,14 @@ struct RSSReaderView: View {
         await presentation.fetchFullText(for: article, store: store)
       }
     }
+    .onChange(of: store.mutationRevision) { _, _ in
+      // RSSReaderStore is shared across windows while presentation caches are
+      // window-local. Reconcile an already-open article when another window
+      // finishes persisting a newer full-text extraction; the presentation
+      // method preserves this window's summary/full-text toggle.
+      guard let article = selectedArticle else { return }
+      _ = presentation.restoreCachedFullText(for: article, store: store)
+    }
     .onChange(of: presentation.selectedArticleID) { _, newArticleID in
       selectedReaderText = ""
       // The article-level switch is intentionally transient. A new article
@@ -518,6 +526,16 @@ struct RSSReaderView: View {
       onToggleFullText: {
         guard let actionArticle else { return }
         presentation.toggleFullText(for: actionArticle, store: store)
+      },
+      onRefreshFullText: {
+        guard let actionArticle else { return }
+        Task {
+          await presentation.fetchFullText(
+            for: actionArticle,
+            store: store,
+            forceRefresh: true
+          )
+        }
       }
     )
   }

@@ -91,8 +91,10 @@ extension PublishingStore {
     guard let checkedAPIBaseURL = check.apiBaseURL?.nilIfEmpty else {
       return check
     }
-    guard let profileAPIBaseURL = try? remoteRepositoryPublishService.apiBaseURL(for: profile)
-    else {
+    let profileAPIBaseURL: URL
+    do {
+      profileAPIBaseURL = try remoteRepositoryPublishService.apiBaseURL(for: profile)
+    } catch {
       return nil
     }
     let normalizedChecked = checkedAPIBaseURL

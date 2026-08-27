@@ -1,6 +1,9 @@
 "媒体源文件缺失：%@" = "The media source file is missing: %@";
 "媒体文件超过远端内联发布上限（%@ MB）：%@" = "The media file exceeds the remote inline publishing limit (%@ MB): %@";
 "媒体源文件无法安全读取：%@。%@" = "The media source file could not be read safely: %@. %@";
+"仓库发布路径无效：%@。%@" = "Invalid repository publish path: %@. %@";
+"路径规范化后为空；已在任何远端请求前阻止发布。" = "The path is empty after normalization. Publishing was blocked before any remote request.";
+"发布包包含重复路径；已在任何远端请求前阻止发布。" = "The publish package contains duplicate paths. Publishing was blocked before any remote request.";
 "本地修改已撤销，但撤销记录保存失败。" = "The local changes were reverted, but the rollback record could not be saved.";
 "恢复后的工作台状态未能保存。" = "The restored workbench state could not be saved.";
 "已撤销 %lld 项，但仍有问题：%@" = "Reverted %lld item(s), but issues remain: %@";

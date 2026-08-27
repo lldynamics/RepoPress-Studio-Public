@@ -917,13 +917,6 @@ final class RemoteRepositoryPublishServiceTests: XCTestCase {
           content: "local version content",
           expectedRemoteSHA: "expected-version"
         ),
-        // This path normalizes to the untracked path and must not trigger a
-        // second remote GET or duplicate conflict.
-        PublishPackageFile(
-          kind: .markdown,
-          repositoryPath: "/\(untrackedPath)",
-          content: "duplicate content"
-        ),
         PublishPackageFile(
           kind: .markdown,
           operation: .delete,
@@ -971,6 +964,57 @@ final class RemoteRepositoryPublishServiceTests: XCTestCase {
         "/repos/owner/site/contents/content/posts/preflight-missing.md",
       ]
     )
+  }
+
+  func testPreflightRejectsNormalizedDuplicatePathsBeforeRemoteRead() async throws {
+    let transport = SequencedRemoteRepositoryTransport(responses: [
+      response(statusCode: 500, json: #"{"message":"must not be requested"}"#)
+    ])
+    let service = RemoteRepositoryPublishService(transport: transport)
+    let package = duplicateNormalizedPathPackage()
+
+    do {
+      _ = try await service.preflight(
+        package: package,
+        profile: githubProfileForDeletion(),
+        token: "secret-token"
+      )
+      XCTFail("Expected duplicate normalized path rejection")
+    } catch let error as RemoteRepositoryPublishError {
+      guard case .invalidRepositoryPath(let path, _) = error else {
+        return XCTFail("Unexpected error: \(error)")
+      }
+      XCTAssertEqual(path, "content/posts/duplicate.md")
+    }
+
+    let requests = await transport.capturedRequests()
+    XCTAssertTrue(requests.isEmpty)
+  }
+
+  func testPublishRejectsNormalizedDuplicatePathsBeforeRemoteMutation() async throws {
+    let transport = SequencedRemoteRepositoryTransport(responses: [
+      response(statusCode: 500, json: #"{"message":"must not be requested"}"#)
+    ])
+    let service = RemoteRepositoryPublishService(transport: transport)
+    let package = duplicateNormalizedPathPackage()
+
+    do {
+      _ = try await service.publish(
+        package: package,
+        profile: githubProfileForDeletion(),
+        mode: .directCommit,
+        token: "secret-token"
+      )
+      XCTFail("Expected duplicate normalized path rejection")
+    } catch let error as RemoteRepositoryPublishError {
+      guard case .invalidRepositoryPath(let path, _) = error else {
+        return XCTFail("Unexpected error: \(error)")
+      }
+      XCTAssertEqual(path, "content/posts/duplicate.md")
+    }
+
+    let requests = await transport.capturedRequests()
+    XCTAssertTrue(requests.isEmpty)
   }
 
   func testGitHubAtomicPublishLeavesBranchUntouchedWhenTreeCreationFails() async throws {
@@ -1781,13 +1825,6 @@ final class RemoteRepositoryPublishServiceTests: XCTestCase {
           content: "local version content",
           expectedRemoteSHA: "expected-version"
         ),
-        // This path normalizes to the untracked path and must not trigger a
-        // second remote GET or duplicate conflict.
-        PublishPackageFile(
-          kind: .markdown,
-          repositoryPath: "/\(untrackedPath)",
-          content: "duplicate content"
-        ),
         PublishPackageFile(
           kind: .markdown,
           operation: .delete,
@@ -2579,6 +2616,31 @@ final class RemoteRepositoryPublishServiceTests: XCTestCase {
       commitMessage: "Delete article",
       reviewBranchName: "cleanup/article",
       reviewTitle: "Delete article",
+      reviewChecklist: []
+    )
+  }
+
+  private func duplicateNormalizedPathPackage() -> PublishPackage {
+    let path = "content/posts/duplicate.md"
+    return PublishPackage(
+      draftID: UUID(),
+      title: "Duplicate path",
+      markdownPath: path,
+      files: [
+        PublishPackageFile(
+          kind: .markdown,
+          repositoryPath: path,
+          content: "first"
+        ),
+        PublishPackageFile(
+          kind: .markdown,
+          repositoryPath: "/./\(path)",
+          content: "second"
+        ),
+      ],
+      commitMessage: "Duplicate path",
+      reviewBranchName: "publish/duplicate-path",
+      reviewTitle: "Duplicate path",
       reviewChecklist: []
     )
   }

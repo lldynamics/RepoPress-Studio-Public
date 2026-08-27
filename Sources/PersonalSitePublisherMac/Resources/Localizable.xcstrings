@@ -6481,6 +6481,22 @@
         }
       }
     },
+    "URL:": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "URL:"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "URL:"
+          }
+        }
+      }
+    },
     "UTF-16 BE": {
       "localizations": {
         "en": {
@@ -29793,6 +29809,22 @@
         }
       }
     },
+    "存储空间占用比例图": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Storage Capacity Proportion Chart"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "存储空间占用比例图"
+          }
+        }
+      }
+    },
     "存储管理与图片瘦身 (WebP / JPEG)": {
       "localizations": {
         "en": {
@@ -41361,6 +41393,22 @@
         }
       }
     },
+    "提取结果未通过正文质量校验。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The extracted content did not pass the article quality check."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "提取结果未通过正文质量校验。"
+          }
+        }
+      }
+    },
     "提示": {
       "localizations": {
         "en": {
@@ -43309,6 +43357,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "文件"
+          }
+        }
+      }
+    },
+    "文件:": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "File:"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "文件:"
           }
         }
       }
@@ -51117,6 +51181,38 @@
           "stringUnit": {
             "state": "translated",
             "value": "模式"
+          }
+        }
+      }
+    },
+    "模拟发布路径与 URL": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Simulated Publishing Path & URL"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "模拟发布路径与 URL"
+          }
+        }
+      }
+    },
+    "模拟文章头信息": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Simulated Front Matter Header"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "模拟文章头信息"
           }
         }
       }
@@ -68925,6 +69021,38 @@
           "stringUnit": {
             "state": "translated",
             "value": "重新扫描资源和 Markdown 引用"
+          }
+        }
+      }
+    },
+    "重新提取": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Extract Again"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "重新提取"
+          }
+        }
+      }
+    },
+    "重新提取原站全文": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Re-extract Full Text from Original Site"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "重新提取原站全文"
           }
         }
       }

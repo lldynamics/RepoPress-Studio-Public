@@ -99,13 +99,15 @@ extension RSSReaderStore {
     guard requireCompleteArticleIndex() else { return }
     guard let feed = feeds.first(where: { $0.id == id }) else { return }
     let deletedArticles: [RSSArticle]
+    let deletedFullTextRecords: [RSSArticleFullTextRecord]
     do {
-      deletedArticles =
-        if let database {
-          try database.articles(feedID: id)
-        } else {
-          legacyArticles.filter { $0.feedID == id }
-        }
+      if let database {
+        deletedArticles = try database.articles(feedID: id)
+        deletedFullTextRecords = try database.fullTextRecords(feedID: id)
+      } else {
+        deletedArticles = legacyArticles.filter { $0.feedID == id }
+        deletedFullTextRecords = []
+      }
     } catch {
       lastError = error.localizedDescription
       return
@@ -142,7 +144,8 @@ extension RSSReaderStore {
         feed: feed,
         articles: deletedArticles,
         highlights: deletedHighlights,
-        mediaAssets: deletedMediaAssets
+        mediaAssets: deletedMediaAssets,
+        fullTextRecords: deletedFullTextRecords
       )
       deletedFeedSnapshots.append(snapshot)
       if deletedFeedSnapshots.count > Self.maximumDeletionUndoSnapshots {
@@ -174,7 +177,8 @@ extension RSSReaderStore {
         snapshot.feed,
         articles: snapshot.articles,
         highlights: snapshot.highlights,
-        mediaAssets: snapshot.mediaAssets
+        mediaAssets: snapshot.mediaAssets,
+        fullTextRecords: snapshot.fullTextRecords
       )
       mediaAssets.append(contentsOf: snapshot.mediaAssets)
       try persistLegacyIfNeeded()
@@ -443,21 +447,110 @@ extension RSSReaderStore {
     bumpMutationRevision()
   }
 
+  /// Returns the original-page extraction without mutating the feed payload.
+  public func fullTextRecord(articleID: String) throws -> RSSArticleFullTextRecord? {
+    try database?.fullTextRecord(articleID: articleID)
+  }
+
+  public func saveFullTextRecord(_ record: RSSArticleFullTextRecord) throws {
+    guard let database else {
+      throw RSSReaderError.persistence("全文缓存需要可用的 SQLite 数据库。")
+    }
+    try database.upsertFullTextRecord(record)
+    bumpMutationRevision()
+  }
+
+  /// Persists and reindexes a potentially large extracted page away from the
+  /// main actor, then publishes the lightweight store revision update.
+  public func saveFullTextRecordAsync(_ record: RSSArticleFullTextRecord) async throws {
+    guard let database else {
+      throw RSSReaderError.persistence("全文缓存需要可用的 SQLite 数据库。")
+    }
+    let task = Task.detached(priority: .utility) {
+      try database.upsertFullTextRecord(record)
+    }
+    try await task.value
+    bumpMutationRevision()
+  }
+
+  public func deleteFullTextRecord(articleID: String) throws {
+    try database?.deleteFullTextRecord(articleID: articleID)
+    bumpMutationRevision()
+  }
+
   @discardableResult
   public func prefetchFullTextForOfflineCache(articleIDs: [String]) async -> Int {
     let service = RSSArticleFullTextService()
-    var successfulCount = 0
+    let broker = RSSArticleFullTextRequestBroker.shared
+    let now = Date()
+    var candidates: [(RSSArticle, RSSArticleFullTextRecord?)] = []
     for articleID in articleIDs {
       do {
         guard let article = try await loadArticle(id: articleID) else { continue }
         guard service.isTruncatedCandidate(article) else { continue }
-        let fullTextArticle = try await service.fetchFullText(for: article)
-        try updateArticlePayload(fullTextArticle)
-        successfulCount += 1
+        let storedRecord = try fullTextRecord(articleID: articleID)
+        let cachedRecord: RSSArticleFullTextRecord? = storedRecord.flatMap { record in
+          guard record.articleID == article.id,
+                record.sourceURL?.absoluteString == article.link?.absoluteString else {
+            return nil
+          }
+          return record
+        }
+        if cachedRecord?.status == .ready { continue }
+        if let retryAfter = cachedRecord?.retryAfter, retryAfter > now { continue }
+        candidates.append((article, cachedRecord))
       } catch {
         continue
       }
     }
-    return successfulCount
+
+    let allowsPrivateNetworkAccess = privateNetworkAccessEnabled
+    let extractionOperation: @Sendable (
+      RSSArticle,
+      RSSArticleFullTextRecord?
+    ) async -> RSSArticleFullTextRecord = { article, cachedRecord in
+      do {
+        return try await broker.fetch(
+          article: article,
+          cachedRecord: cachedRecord,
+          allowsPrivateNetworkAccess: allowsPrivateNetworkAccess,
+          service: service
+        )
+      } catch {
+        return service.failureRecord(
+          for: article,
+          cachedRecord: cachedRecord,
+          error: error
+        )
+      }
+    }
+    return await withTaskGroup(of: RSSArticleFullTextRecord.self) { group in
+      var nextCandidateIndex = 0
+      for _ in 0..<min(2, candidates.count) {
+        let (article, cachedRecord) = candidates[nextCandidateIndex]
+        nextCandidateIndex += 1
+        group.addTask {
+          await extractionOperation(article, cachedRecord)
+        }
+      }
+
+      var successfulCount = 0
+      while let record = await group.next() {
+        do {
+          try await saveFullTextRecordAsync(record)
+          if record.status == .ready { successfulCount += 1 }
+        } catch {
+          // Keep draining the bounded queue even if one persistence fails.
+        }
+        if nextCandidateIndex < candidates.count {
+          let (article, cachedRecord) = candidates[nextCandidateIndex]
+          nextCandidateIndex += 1
+          group.addTask {
+            await extractionOperation(article, cachedRecord)
+          }
+        }
+      }
+      return successfulCount
+    }
   }
 }

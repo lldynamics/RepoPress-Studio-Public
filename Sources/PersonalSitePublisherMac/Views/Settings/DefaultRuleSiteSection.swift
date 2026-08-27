@@ -110,11 +110,49 @@ struct DefaultRuleSiteSection: View {
       .accessibilityIdentifier("default-rule-advanced-front-matter")
 
       DisclosureGroup(isExpanded: $expansionState.frontMatterPreview) {
-        VStack(alignment: .leading, spacing: 4) {
-          Text(generatedFrontMatterPreview)
-            .font(.caption.monospaced())
-            .foregroundStyle(.primary)
-            .padding(10)
+        VStack(alignment: .leading, spacing: 8) {
+          VStack(alignment: .leading, spacing: 4) {
+            Text("模拟文章头信息")
+              .font(.caption.weight(.medium))
+              .foregroundStyle(.secondary)
+
+            Text(generatedFrontMatterPreview)
+              .font(.caption.monospaced())
+              .foregroundStyle(.primary)
+              .padding(10)
+              .frame(maxWidth: .infinity, alignment: .leading)
+              .background(Color(nsColor: .textBackgroundColor))
+              .cornerRadius(6)
+              .overlay(
+                RoundedRectangle(cornerRadius: 6)
+                  .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
+              )
+          }
+
+          VStack(alignment: .leading, spacing: 4) {
+            Text("模拟发布路径与 URL")
+              .font(.caption.weight(.medium))
+              .foregroundStyle(.secondary)
+
+            VStack(alignment: .leading, spacing: 3) {
+              HStack(spacing: 6) {
+                Text("文件:")
+                  .font(.caption.monospaced())
+                  .foregroundStyle(.secondary)
+                Text(simulatedFilePath)
+                  .font(.caption.monospaced())
+                  .foregroundStyle(.primary)
+              }
+              HStack(spacing: 6) {
+                Text("URL:")
+                  .font(.caption.monospaced())
+                  .foregroundStyle(.secondary)
+                Text(simulatedURLPath)
+                  .font(.caption.monospaced())
+                  .foregroundStyle(.blue)
+              }
+            }
+            .padding(8)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(Color(nsColor: .textBackgroundColor))
             .cornerRadius(6)
@@ -122,6 +160,7 @@ struct DefaultRuleSiteSection: View {
               RoundedRectangle(cornerRadius: 6)
                 .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
             )
+          }
         }
         .padding(.top, 6)
       } label: {
@@ -133,6 +172,23 @@ struct DefaultRuleSiteSection: View {
       }
       .accessibilityIdentifier("default-rule-front-matter-preview")
     }
+  }
+
+  private var simulatedFilePath: String {
+    let slug = "example-article"
+    let pattern = activeProfile.markdownPathPattern.isEmpty ? "content/posts/{slug}.md" : activeProfile.markdownPathPattern
+    return pattern
+      .replacingOccurrences(of: "{slug}", with: slug)
+      .replacingOccurrences(of: "{year}", with: "2026")
+      .replacingOccurrences(of: "{month}", with: "08")
+      .replacingOccurrences(of: "{day}", with: "06")
+  }
+
+  private var simulatedURLPath: String {
+    let siteURL = activeProfile.deploymentSiteURL?.trimmedForPublishing
+    let base = (siteURL?.isEmpty ?? true) ? "https://example.com" : siteURL!
+    let trimmed = base.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+    return "\(trimmed)/posts/2026/08/example-article/"
   }
 
   private var generatedFrontMatterPreview: String {

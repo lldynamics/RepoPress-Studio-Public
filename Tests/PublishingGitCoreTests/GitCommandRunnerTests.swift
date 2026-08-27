@@ -166,17 +166,66 @@ final class GitCommandRunnerTests: XCTestCase {
   }
 
   func testAsyncRunnerCancelsChildProcess() async throws {
+    let launchEntered = DispatchSemaphore(value: 0)
+    let releaseLaunch = DispatchSemaphore(value: 0)
     let scriptURL = try makeFakeGitExecutable()
     defer { try? FileManager.default.removeItem(at: scriptURL.deletingLastPathComponent()) }
 
-    let runner = GitCommandRunner(executableURL: scriptURL, timeout: 5)
-    let task = Task { await runner.runAsync(["sleep"], rootURL: FileManager.default.temporaryDirectory) }
-    try await Task.sleep(nanoseconds: 50_000_000)
+    let runner = GitCommandRunner(
+      executableURL: scriptURL,
+      timeout: 5,
+      testingBeforeProcessRun: {
+        launchEntered.signal()
+        releaseLaunch.wait()
+      }
+    )
+    let task = Task {
+      await runner.runAsync(
+        ["startup-barrier"],
+        rootURL: FileManager.default.temporaryDirectory
+      )
+    }
+    await waitForSemaphore(launchEntered)
     task.cancel()
+    releaseLaunch.signal()
     let result = await task.value
 
     XCTAssertEqual(result.terminationStatus, 130)
     XCTAssertFalse(result.didTimeOut)
+  }
+
+  func testAsyncRunnerCancelledBeforeStartupDoesNotLaunchChild() async throws {
+    let (gateStream, gateContinuation) = AsyncStream<Void>.makeStream()
+    let (readyStream, readyContinuation) = AsyncStream<Void>.makeStream()
+    let startupMarkerURL = FileManager.default.temporaryDirectory
+      .appendingPathComponent("GitCommandRunnerTests-pre-cancel-\(UUID().uuidString)")
+    defer { try? FileManager.default.removeItem(at: startupMarkerURL) }
+
+    let scriptURL = try makeFakeGitExecutable()
+    defer { try? FileManager.default.removeItem(at: scriptURL.deletingLastPathComponent()) }
+
+    let runner = GitCommandRunner(executableURL: scriptURL, timeout: 5)
+    let task = Task {
+      readyContinuation.yield(())
+      for await _ in gateStream {
+        break
+      }
+      return await runner.runAsync(
+        ["pre-cancel", startupMarkerURL.path],
+        rootURL: FileManager.default.temporaryDirectory
+      )
+    }
+    for await _ in readyStream {
+      break
+    }
+    task.cancel()
+    gateContinuation.yield(())
+    gateContinuation.finish()
+    let result = await task.value
+
+    XCTAssertEqual(result.terminationStatus, 130)
+    XCTAssertFalse(result.didTimeOut)
+    XCTAssertFalse(FileManager.default.fileExists(atPath: startupMarkerURL.path))
   }
 
   private func makeFakeGitExecutable() throws -> URL {
@@ -189,6 +238,14 @@ final class GitCommandRunnerTests: XCTestCase {
     shift 2
     if [ "$1" = "sleep" ]; then
       sleep 2
+      exit 0
+    fi
+    if [ "$1" = "startup-barrier" ]; then
+      trap 'exit 130' TERM INT
+      while :; do :; done
+    fi
+    if [ "$1" = "pre-cancel" ]; then
+      printf 'started' > "$2"
       exit 0
     fi
     if [ "$1" = "stderr-warning" ]; then
@@ -214,5 +271,14 @@ final class GitCommandRunnerTests: XCTestCase {
     try script.write(to: scriptURL, atomically: true, encoding: .utf8)
     try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: scriptURL.path)
     return scriptURL
+  }
+}
+
+private func waitForSemaphore(_ semaphore: DispatchSemaphore) async {
+  await withCheckedContinuation { continuation in
+    DispatchQueue.global().async {
+      semaphore.wait()
+      continuation.resume()
+    }
   }
 }

@@ -52,6 +52,7 @@ struct RSSArticleReader: View {
   let fullTextError: String?
   let automaticFullTextExtraction: Binding<Bool>?
   let onToggleFullText: () -> Void
+  let onRefreshFullText: () -> Void
   @Environment(\.aiChatWorkspaceCommandAction) private var aiChatWorkspaceCommandAction
   @State private var showsTranslatedArticle = false
   @State private var showsAnnotationSummary = false
@@ -412,6 +413,9 @@ struct RSSArticleReader: View {
           .font(.caption)
           .foregroundStyle(.secondary)
         Spacer()
+        Button(String(localized: "重新提取"), action: onRefreshFullText)
+          .buttonStyle(.borderless)
+          .font(.caption)
         Button(String(localized: "恢复原始摘要"), action: onToggleFullText)
           .buttonStyle(.borderless)
           .font(.caption)
@@ -917,6 +921,14 @@ struct RSSArticleReader: View {
           action: onToggleFullText
         )
         .disabled(isFetchingFullText)
+        if isShowingFullText {
+          Button(
+            String(localized: "重新提取原站全文"),
+            systemImage: "arrow.clockwise",
+            action: onRefreshFullText
+          )
+          .disabled(isFetchingFullText)
+        }
         if let automaticFullTextExtraction {
           Toggle(String(localized: "打开截断文章时自动提取全文"), isOn: automaticFullTextExtraction)
         }
@@ -1212,7 +1224,8 @@ struct RSSArticleReader: View {
           isFetchingFullText: false,
           fullTextError: nil,
           automaticFullTextExtraction: nil,
-          onToggleFullText: {}
+          onToggleFullText: {},
+          onRefreshFullText: {}
         )
         .readerToolbar(for: article, speechArticle: article)
       }

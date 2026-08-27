@@ -68,24 +68,33 @@ extension RSSReaderView {
       }
       guard !Task.isCancelled, request == selectedArticleLoadRequest else { return }
 
+      let restoredFullText = presentation.restoreCachedFullText(for: article, store: store)
+      let displayedArticle = presentation.effectiveArticle(for: article)
+
       // Sanitization is CPU-heavy and is also needed by the reader metrics.
       // Compute it once off the main actor and publish the cache before the
       // payload becomes visible to the reader view.
       let bodyMetrics = await Task.detached(priority: .userInitiated) {
-        RSSArticleHTMLRenderer.bodyMetrics(article: article)
+        RSSArticleHTMLRenderer.bodyMetrics(article: displayedArticle)
       }.value
       guard !Task.isCancelled, request == selectedArticleLoadRequest else { return }
       presentation.cacheReaderMetrics(
-        for: article,
+        for: displayedArticle,
         hasRenderableBody: bodyMetrics.hasRenderableBody,
         readingUnits: bodyMetrics.readingUnits
       )
 
       selectedArticlePayload = article
       selectedArticleIsLoading = false
-      if automaticFullTextExtractionEnabled && presentation.isTruncatedCandidate(article) {
+      if automaticFullTextExtractionEnabled
+        && presentation.isTruncatedCandidate(article)
+        && (!restoredFullText || presentation.cachedFullTextNeedsRevalidation(for: article)) {
         Task {
-          await presentation.fetchFullText(for: article, store: store)
+          await presentation.fetchFullText(
+            for: article,
+            store: store,
+            respectsRetryAfter: true
+          )
         }
       }
       if automaticTranslationEnabled {

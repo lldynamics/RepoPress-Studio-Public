@@ -59,20 +59,23 @@ final class KnowledgeLibraryBackupService: @unchecked Sendable {
   private let rootURL: URL
   private let fileManager: FileManager
   private let limits: Limits
+  private let lifecycle: any KnowledgePersistenceLifecycle
 
   init(
     rootURL: URL,
     fileManager: FileManager = .default,
-    limits: Limits = Limits()
+    limits: Limits = Limits(),
+    lifecycle: any KnowledgePersistenceLifecycle = SQLiteKnowledgePersistenceLifecycle()
   ) {
     self.rootURL = rootURL
     self.fileManager = fileManager
     self.limits = limits
+    self.lifecycle = lifecycle
   }
 
   func createBackup(
     at destinationURL: URL,
-    database: KnowledgeDatabase,
+    database: any KnowledgeBackupSnapshotSource,
     applicationVersion: String
   ) throws -> KnowledgeLibraryBackupPreview {
     let destinationURL = normalizedPackageURL(destinationURL)
@@ -228,7 +231,7 @@ final class KnowledgeLibraryBackupService: @unchecked Sendable {
         throw KnowledgeLibraryBackupError.checksumMismatch(record.relativePath)
       }
     }
-    _ = try KnowledgeDatabase.inspectBackup(
+    _ = try lifecycle.inspectBackup(
       at: stagingURL.appendingPathComponent(Self.databaseFileName)
     )
 
@@ -432,10 +435,10 @@ final class KnowledgeLibraryBackupService: @unchecked Sendable {
     guard manifest.formatVersion == KnowledgeLibraryBackupManifest.currentFormatVersion else {
       throw KnowledgeLibraryBackupError.unsupportedFormat(manifest.formatVersion)
     }
-    guard manifest.databaseUserVersion <= KnowledgeDatabase.currentSchemaVersion else {
+    guard manifest.databaseUserVersion <= lifecycle.supportedSchemaVersion else {
       throw KnowledgeLibraryBackupError.unsupportedDatabaseVersion(
         found: manifest.databaseUserVersion,
-        supported: KnowledgeDatabase.currentSchemaVersion
+        supported: lifecycle.supportedSchemaVersion
       )
     }
     let declaredTotalByteCount = try validateFileLimits(manifest.files)
@@ -463,7 +466,7 @@ final class KnowledgeLibraryBackupService: @unchecked Sendable {
     guard seenPaths.contains(Self.databaseFileName) else {
       throw KnowledgeLibraryBackupError.missingFile(Self.databaseFileName)
     }
-    let databaseInspection = try KnowledgeDatabase.inspectBackup(
+    let databaseInspection = try lifecycle.inspectBackup(
       at: packageURL.appendingPathComponent(Self.databaseFileName)
     )
     let expectedPaths = databaseInspection.storageReferences.union([Self.databaseFileName])

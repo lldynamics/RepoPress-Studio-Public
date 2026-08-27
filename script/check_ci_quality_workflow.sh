@@ -92,7 +92,7 @@ grep -Fq 'timeout-minutes: 75' \
 grep -Fq 'timeout-minutes: 45' \
   < <(sed -n '/^  release-performance:/,$p' "$WORKFLOW") \
   || fail "release performance lane must tolerate hosted-runner variance"
-for required_lane in quality-quick quality-coverage quality-build swift6-migration; do
+for required_lane in quality-quick quality-coverage quality-build public-snapshot-boundary; do
   grep -Fq -- "- $required_lane" \
     < <(sed -n '/^  quality:/,/^  release-performance:/p' "$WORKFLOW") \
     || fail "final quality check must depend on $required_lane"
@@ -102,7 +102,7 @@ grep -Fq 'runs-on: ubuntu-24.04' \
   || fail "final quality aggregation must use the lightweight Linux runner"
 grep -Fq 'name: Require every PR quality lane' "$WORKFLOW" \
   || fail "final quality check must fail closed when any independent lane fails"
-for required_lane in quality-quick quality-coverage quality-runtime release-performance swift6-migration; do
+for required_lane in quality-quick quality-coverage quality-runtime release-performance; do
   grep -Fq -- "- $required_lane" \
     < <(sed -n '/^  release-quality:/,$p' "$WORKFLOW") \
     || fail "final release check must depend on $required_lane"
@@ -111,23 +111,31 @@ grep -Fq 'name: Require every release quality lane' "$WORKFLOW" \
   || fail "final release check must fail closed when any release lane fails"
 grep -Fq './script/check_release_gate.sh' "$WORKFLOW" \
   || fail "workflow must invoke the shared release gate"
-grep -Fq '"id":"ci-quality","title":"GitHub Actions quality workflow","groups":["quick"]' \
-  "$RELEASE_CHECKS" \
-  || fail "the PR quick gate must execute the CI workflow contract"
+ci_quality_manifest_line="$(grep -F '"id":"ci-quality","title":"GitHub Actions quality workflow"' "$RELEASE_CHECKS" || true)"
+[[ -n "$ci_quality_manifest_line" ]] \
+  || fail "the release manifest must retain the CI workflow contract"
+if grep -Fq '"groups":["quick"]' <<<"$ci_quality_manifest_line"; then
+  fail "the path-triggered CI workflow contract must not rerun inside every quick gate"
+fi
 grep -Fq 'bash script/check_ci_quality_workflow.sh' "$TOOLING_WORKFLOW" \
   || fail "release-tooling CI must execute the workflow contract directly"
 grep -Fq "if: github.event_name == 'push' && startsWith(github.ref, 'refs/heads/')" "$WORKFLOW" \
   || fail "main pushes must use a dedicated quick-only job"
-grep -Fq "github.event.inputs.risk_level == 'pr'" \
-  < <(sed -n '/^  quality-build:/,/^  quality-runtime:/p' "$WORKFLOW") \
+pr_build_lane_body="$(sed -n '/^  quality-build:/,/^  quality-runtime:/p' "$WORKFLOW")"
+grep -Fq "github.event_name == 'pull_request'" <<<"$pr_build_lane_body" \
+  || fail "PR distribution build lane must run for pull requests"
+grep -Fq "github.event.inputs.risk_level == 'pr'" <<<"$pr_build_lane_body" \
   || fail "PR distribution builds must be available only in the PR risk layer"
+if grep -Fq "github.event_name == 'schedule'" <<<"$pr_build_lane_body"; then
+  fail "PR distribution build lane must not duplicate nightly release execution"
+fi
 tag_push_condition="github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')"
-for tag_lane in quality-quick quality-coverage quality-runtime release-performance swift6-migration release-quality; do
+for tag_lane in quality-quick quality-coverage quality-runtime release-performance release-quality; do
   tag_lane_body="$(sed -n "/^  $tag_lane:/,/^  [a-z]/p" "$WORKFLOW")"
   grep -Fq "$tag_push_condition" <<<"$tag_lane_body" \
     || fail "$tag_lane must run for version-tag pushes without treating tag dispatches as releases"
 done
-for nightly_lane in quality-quick quality-coverage quality-build quality-runtime release-performance swift6-migration; do
+for nightly_lane in quality-quick quality-coverage quality-runtime release-performance; do
   nightly_lane_body="$(sed -n "/^  $nightly_lane:/,/^  [a-z]/p" "$WORKFLOW")"
   grep -Fq "github.event_name == 'schedule'" <<<"$nightly_lane_body" \
     || fail "$nightly_lane must run for the fixed nightly release schedule"
@@ -135,10 +143,13 @@ done
 nightly_release_body="$(sed -n '/^  nightly-release-quality:/,$p' "$WORKFLOW")"
 grep -Fq "always() && github.event_name == 'schedule'" <<<"$nightly_release_body" \
   || fail "nightly release aggregation must run even when a lane fails"
-for required_lane in quality-quick quality-coverage quality-build quality-runtime release-performance swift6-migration; do
+for required_lane in quality-quick quality-coverage quality-runtime release-performance; do
   grep -Fq -- "- $required_lane" <<<"$nightly_release_body" \
     || fail "nightly release check must depend on $required_lane"
 done
+if grep -Fq 'quality-build' <<<"$nightly_release_body"; then
+  fail "nightly release aggregation must not require the PR distribution build lane"
+fi
 grep -Fq 'name: Require every nightly release quality lane' "$WORKFLOW" \
   || fail "nightly release check must fail closed when any lane fails"
 for release_lane in quality-runtime release-performance; do
@@ -158,11 +169,36 @@ grep -Fq -- '--quick' "$WORKFLOW" \
   || fail "workflow must run the shared quick gate"
 grep -Fq -- '--check swift-coverage' "$WORKFLOW" \
   || fail "pull requests must enforce the measured Swift coverage baseline"
-grep -Fq 'bash script/check_swift6_migration.sh' "$WORKFLOW" \
-  || fail "workflow must run a real Swift 6 language-mode migration diagnostic"
-if grep -Fq 'continue-on-error: true' "$WORKFLOW"; then
-  fail "the Swift 6 migration diagnostic must be blocking"
+if grep -Fq 'swift6-migration' "$WORKFLOW"; then
+  fail "workflow must not retain a duplicate standalone Swift 6 migration lane"
 fi
+grep -Fq 'Swift 6 strict test inventory compilation and module boundaries' "$WORKFLOW" \
+  || fail "quick workflow must identify the authoritative Swift 6 test inventory build"
+[[ "$(grep -Fc 'SWIFT_TEST_WARNINGS_AS_ERRORS: "1"' "$WORKFLOW" || true)" -eq 2 ]] \
+  || fail "main-push and pull-request quick lanes must force warnings-as-errors for Swift test inventory builds"
+swift_tests_manifest_line="$(grep -F '"id":"swift-tests"' "$RELEASE_CHECKS" || true)"
+[[ -n "$swift_tests_manifest_line" ]] \
+  || fail "the release manifest must retain Swift test evidence"
+for swift_tests_evidence in \
+  '"groups":["quick"]' \
+  'one authoritative swift test list inventory build compiles every manifest production and test target in Package.swift Swift 6 language modes with complete concurrency checking and warnings as errors'; do
+  grep -Fq "$swift_tests_evidence" <<<"$swift_tests_manifest_line" \
+    || fail "Swift tests must retain authoritative Swift 6 evidence: $swift_tests_evidence"
+done
+swift_strict_manifest_line="$(grep -F '"id":"swift-strict-build"' "$RELEASE_CHECKS" || true)"
+[[ -n "$swift_strict_manifest_line" ]] \
+  || fail "the release manifest must retain the targeted strict-build command"
+if grep -Fq '"groups":["quick"]' <<<"$swift_strict_manifest_line"; then
+  fail "quick mode must use the Swift test inventory build instead of a duplicate strict build"
+fi
+grep -Fq '"swift-strict-build"' < <(sed -n '/"direct": \[/,/\],/p' "$RELEASE_CHECKS") \
+  || fail "targeted strict build must remain available to the direct release profile"
+for swift6_evidence in \
+  '.build/swift-module-boundaries.json' \
+  '.build/swift-test-shards/'; do
+  grep -Fq "$swift6_evidence" "$WORKFLOW" \
+    || fail "workflow must retain Swift 6 evidence: $swift6_evidence"
+done
 grep -Fq -- '--summary-markdown .build/quality-gate-summary.md' "$WORKFLOW" \
   || fail "quality workflow must produce a readable quick-gate summary"
 grep -Fq -- '--summary-markdown .build/distribution-gate-summary.md' "$WORKFLOW" \
@@ -235,4 +271,4 @@ if grep -Eq '(github_pat_|ghp_[A-Za-z0-9_]{20,}|glpat-[A-Za-z0-9_-]{20,}|Authori
   fail "workflow contains token-like content"
 fi
 
-echo "CI quality workflow gate: main-push quick layer, parallel PR quick/coverage/Swift 6/Release-build layer, nightly or version-tag/manual-release runtime/performance/UI layer, fail-closed aggregators, pinned actions, read-only permissions, summaries, and evidence verified"
+echo "CI quality workflow gate: main-push quick layer, parallel PR quick/coverage/strict-test-inventory/module-boundary/Release-build layer, nightly or version-tag/manual-release runtime/performance/UI layer, fail-closed aggregators, pinned actions, read-only permissions, summaries, and evidence verified"

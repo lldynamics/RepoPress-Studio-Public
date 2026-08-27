@@ -160,7 +160,10 @@ struct ContentHealthReportCacheKey: Hashable, Sendable {
       futureDateWarningActive: draft.date > Date().addingTimeInterval(60),
       resourceMetadata: resourceMetadata
     )
-    guard let data = try? ContentHealthReportFingerprintSnapshot.encode(snapshot) else {
+    let data: Data
+    do {
+      data = try ContentHealthReportFingerprintSnapshot.encode(snapshot)
+    } catch {
       return nil
     }
 

@@ -1,5 +1,7 @@
+import Foundation
 import XCTest
-@testable import PublishingWorkbenchCore
+
+@testable import PublishingKnowledgeCore
 
 final class KnowledgeBrowserTokenLeaseTests: XCTestCase {
   func testLegacyTokenReceivesThirtyDayLeaseWithoutUnexpectedRotation() {
@@ -40,5 +42,4 @@ final class KnowledgeBrowserTokenLeaseTests: XCTestCase {
     XCTAssertFalse(lease.isExpired(at: now))
     XCTAssertTrue(lease.isExpired(at: lease.expiresAt))
   }
-
 }

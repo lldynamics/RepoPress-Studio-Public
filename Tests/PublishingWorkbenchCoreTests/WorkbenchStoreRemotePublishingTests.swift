@@ -1,5 +1,6 @@
 import Foundation
 import XCTest
+
 @testable import PublishingWorkbenchCore
 
 extension WorkbenchStoreProfileTests {
@@ -91,7 +92,8 @@ extension WorkbenchStoreProfileTests {
     XCTAssertEqual(confirmed.updatedAt, contentUpdatedAt)
     XCTAssertEqual(confirmed.repositoryBinding?.remoteRevision, "known-markdown-sha")
     XCTAssertEqual(
-      PublishPackageBuilder().build(draft: confirmed, profile: profile).markdownFile?.expectedRemoteSHA,
+      PublishPackageBuilder().build(draft: confirmed, profile: profile).markdownFile?
+        .expectedRemoteSHA,
       "known-markdown-sha"
     )
   }
@@ -159,7 +161,8 @@ extension WorkbenchStoreProfileTests {
     try Data([1, 2, 3]).write(to: imageURL)
 
     let transport = SequencedWorkbenchRemoteRepositoryTransport(responses: [
-      workbenchRemoteResponse(json: #"{"full_name":"owner/site","default_branch":"main","permissions":{"push":true}}"#),
+      workbenchRemoteResponse(
+        json: #"{"full_name":"owner/site","default_branch":"main","permissions":{"push":true}}"#),
       workbenchRemoteResponse(json: #"{"sha":"known-sha"}"#),
       workbenchRemoteResponse(json: #"{"content":null,"commit":{"sha":"delete-commit"}}"#),
     ])
@@ -209,7 +212,10 @@ extension WorkbenchStoreProfileTests {
 
   func testUnpublishRequestUsesItsOwnProfileWhenAnotherSiteIsActive() async throws {
     let transport = SequencedWorkbenchRemoteRepositoryTransport(responses: [
-      workbenchRemoteResponse(json: #"{"full_name":"owner/secondary-site","default_branch":"main","permissions":{"push":true}}"#),
+      workbenchRemoteResponse(
+        json:
+          #"{"full_name":"owner/secondary-site","default_branch":"main","permissions":{"push":true}}"#
+      ),
       workbenchRemoteResponse(json: #"{"sha":"known-sha"}"#),
       workbenchRemoteResponse(json: #"{"content":null,"commit":{"sha":"delete-commit"}}"#),
     ])
@@ -250,9 +256,10 @@ extension WorkbenchStoreProfileTests {
     XCTAssertEqual(store.draftRepositoryCleanupRequests.first?.remoteStatus, .completed)
     let requests = await transport.capturedRequests()
     XCTAssertEqual(requests.map(\.httpMethod), ["GET", "GET", "DELETE"])
-    XCTAssertTrue(requests.allSatisfy { request in
-      request.url?.path.contains("/repos/owner/secondary-site") == true
-    })
+    XCTAssertTrue(
+      requests.allSatisfy { request in
+        request.url?.path.contains("/repos/owner/secondary-site") == true
+      })
   }
 
   func testOnlineDirectPublishBlocksRemoteSamePathConflictBeforeCallingAPI() async throws {
@@ -278,26 +285,29 @@ extension WorkbenchStoreProfileTests {
       title: "Online Direct Conflict",
       slug: "online-direct-conflict",
       draft: false,
-      bodyMarkdown: "This body is intentionally long enough so online API publish conflict handling is driven by upstream changes.",
+      bodyMarkdown:
+        "This body is intentionally long enough so online API publish conflict handling is driven by upstream changes.",
       repositoryPath: "content/posts/online-direct-conflict.md"
     )
     store.setDrafts([draft])
     store.setSelectedDraftID(draft.id)
-    store.setRepositoryReport(RepositoryScanReport(
-      rootPath: "/tmp/site",
-      detectedKind: profile.siteKind,
-      expectedKind: profile.siteKind,
-      hasGitDirectory: true,
-      contentRootExists: true,
-      assetRootExists: true,
-      markdownFileCount: 0,
-      imageFileCount: 0,
-      changedFiles: [],
-      remoteChangedFiles: [
-        RepositoryChangedFile(status: "M", path: "content/posts/online-direct-conflict.md", kind: .modified)
-      ],
-      preflightIssues: []
-    ))
+    store.setRepositoryReport(
+      RepositoryScanReport(
+        rootPath: "/tmp/site",
+        detectedKind: profile.siteKind,
+        expectedKind: profile.siteKind,
+        hasGitDirectory: true,
+        contentRootExists: true,
+        assetRootExists: true,
+        markdownFileCount: 0,
+        imageFileCount: 0,
+        changedFiles: [],
+        remoteChangedFiles: [
+          RepositoryChangedFile(
+            status: "M", path: "content/posts/online-direct-conflict.md", kind: .modified)
+        ],
+        preflightIssues: []
+      ))
     store.setPublishPackage(store.publishingPackage(for: draft))
 
     let result = await store.publishSelectedDraftOnlineUsingPreferredStrategy()
@@ -314,7 +324,8 @@ extension WorkbenchStoreProfileTests {
     XCTAssertTrue(preview.checklistMarkdown.contains(CoreL10n.text("## 远端冲突预览")))
     XCTAssertTrue(store.publishActionMessage?.contains("已停止线上发布") == true)
     XCTAssertTrue(store.publishActionMessage?.contains("远端同路径变更") == true)
-    XCTAssertTrue(store.publishActionMessage?.contains("content/posts/online-direct-conflict.md") == true)
+    XCTAssertTrue(
+      store.publishActionMessage?.contains("content/posts/online-direct-conflict.md") == true)
 
     let cachedPreview = try XCTUnwrap(store.remotePublishPreviewSnapshot)
     XCTAssertEqual(cachedPreview.changedPaths, preview.changedPaths)
@@ -338,21 +349,23 @@ extension WorkbenchStoreProfileTests {
     profile.localRepositoryRootPath = ""
     store.updateActiveProfile(profile)
     store.setRepositoryTokenAvailability(KeychainTokenAvailability(hasToken: true))
-    store.setRemoteRepositoryAccessCheck(RemoteRepositoryAccessCheck(
-      provider: .github,
-      repositoryName: "owner/site",
-      apiBaseURL: RepositoryProvider.github.defaultBaseURL,
-      defaultBranch: "main",
-      canRead: true,
-      canWrite: true,
-      message: "GitHub Token 具备仓库写入权限。"
-    ))
+    store.setRemoteRepositoryAccessCheck(
+      RemoteRepositoryAccessCheck(
+        provider: .github,
+        repositoryName: "owner/site",
+        apiBaseURL: RepositoryProvider.github.defaultBaseURL,
+        defaultBranch: "main",
+        canRead: true,
+        canWrite: true,
+        message: "GitHub Token 具备仓库写入权限。"
+      ))
     let draft = ArticleDraft(
       siteProfileID: profile.id,
       title: "Local checkout required",
       slug: "local-checkout-required",
       draft: false,
-      bodyMarkdown: "This body is intentionally long enough so only project materialization blocks the remote call."
+      bodyMarkdown:
+        "This body is intentionally long enough so only project materialization blocks the remote call."
     )
     store.setDrafts([draft])
     store.setSelectedDraftID(draft.id)
@@ -382,7 +395,8 @@ extension WorkbenchStoreProfileTests {
       responses: [
         workbenchRemoteResponse(statusCode: 404, json: #"{"message":"not found"}"#),
         workbenchRemoteResponse(
-          json: #"{"content":{"path":"content/posts/refresh-stale-project.md","sha":"fresh-remote-sha"},"commit":{"sha":"fresh-commit-sha"}}"#
+          json:
+            #"{"content":{"path":"content/posts/refresh-stale-project.md","sha":"fresh-remote-sha"},"commit":{"sha":"fresh-commit-sha"}}"#
         ),
       ],
       inspectedLocalFileURL: markdownURL
@@ -407,22 +421,24 @@ extension WorkbenchStoreProfileTests {
     defer { try? tokenStore.deleteToken(for: profile) }
     try tokenStore.saveRepositoryToken("github-token", for: profile)
     store.refreshRepositoryTokenAvailability()
-    store.setRemoteRepositoryAccessCheck(RemoteRepositoryAccessCheck(
-      provider: .github,
-      repositoryName: "owner/site",
-      apiBaseURL: RepositoryProvider.github.defaultBaseURL,
-      defaultBranch: "main",
-      canRead: true,
-      canWrite: true,
-      message: "GitHub Token 具备仓库写入权限。"
-    ))
+    store.setRemoteRepositoryAccessCheck(
+      RemoteRepositoryAccessCheck(
+        provider: .github,
+        repositoryName: "owner/site",
+        apiBaseURL: RepositoryProvider.github.defaultBaseURL,
+        defaultBranch: "main",
+        canRead: true,
+        canWrite: true,
+        message: "GitHub Token 具备仓库写入权限。"
+      ))
 
     var draft = ArticleDraft(
       siteProfileID: profile.id,
       title: "Refresh stale project file",
       slug: "refresh-stale-project",
       draft: false,
-      bodyMarkdown: "This current payload must replace stale project bytes before any remote request begins.",
+      bodyMarkdown:
+        "This current payload must replace stale project bytes before any remote request begins.",
       status: .ready,
       repositoryPath: repositoryPath
     )
@@ -439,7 +455,8 @@ extension WorkbenchStoreProfileTests {
     let localContentsAtFirstRequest = await transport.inspectedLocalFileContentsAtFirstRequest()
 
     XCTAssertEqual(result?.commitSHA, "fresh-commit-sha")
-    XCTAssertTrue(localContentsAtFirstRequest?.contains("This current payload must replace") == true)
+    XCTAssertTrue(
+      localContentsAtFirstRequest?.contains("This current payload must replace") == true)
     XCTAssertFalse(localContentsAtFirstRequest?.contains("STALE_DISK_SENTINEL") == true)
     XCTAssertEqual(
       ArticleDraft.repositoryDocumentDigest(try String(contentsOf: markdownURL, encoding: .utf8)),
@@ -521,10 +538,13 @@ extension WorkbenchStoreProfileTests {
     defer { try? FileManager.default.removeItem(at: rootURL) }
     let publishTransport = SequencedWorkbenchRemoteRepositoryTransport(responses: [
       workbenchRemoteResponse(statusCode: 404, json: #"{"message":"not found"}"#),
-      workbenchRemoteResponse(json: #"{"content":{"path":"content/posts/online-direct-success.md","sha":"online-direct-content-sha"},"commit":{"sha":"online-direct-commit"}}"#),
+      workbenchRemoteResponse(
+        json:
+          #"{"content":{"path":"content/posts/online-direct-success.md","sha":"online-direct-content-sha"},"commit":{"sha":"online-direct-commit"}}"#
+      ),
     ])
     let deploymentTransport = SequencedWorkbenchRemoteRepositoryTransport(responses: [
-      workbenchRemoteResponse(statusCode: 200, json: #"{"status":"ok","message":"Site is live"}"#),
+      workbenchRemoteResponse(statusCode: 200, json: #"{"status":"ok","message":"Site is live"}"#)
     ])
     let tokenStore = repositoryTokenStoreForTest()
     let store = WorkbenchStore(
@@ -551,15 +571,16 @@ extension WorkbenchStoreProfileTests {
     }
     try tokenStore.saveRepositoryToken("github-token", for: profile)
     store.refreshRepositoryTokenAvailability()
-    store.setRemoteRepositoryAccessCheck(RemoteRepositoryAccessCheck(
-      provider: .github,
-      repositoryName: "owner/site",
-      apiBaseURL: RepositoryProvider.github.defaultBaseURL,
-      defaultBranch: "main",
-      canRead: true,
-      canWrite: true,
-      message: "GitHub Token 具备仓库写入权限。"
-    ))
+    store.setRemoteRepositoryAccessCheck(
+      RemoteRepositoryAccessCheck(
+        provider: .github,
+        repositoryName: "owner/site",
+        apiBaseURL: RepositoryProvider.github.defaultBaseURL,
+        defaultBranch: "main",
+        canRead: true,
+        canWrite: true,
+        message: "GitHub Token 具备仓库写入权限。"
+      ))
     let draft = ArticleDraft(
       siteProfileID: profile.id,
       title: "Online Direct Success",
@@ -594,23 +615,28 @@ extension WorkbenchStoreProfileTests {
     XCTAssertFalse(store.drafts.first?.draft ?? true)
     XCTAssertEqual(store.drafts.first?.repositoryPath, "content/posts/online-direct-success.md")
     XCTAssertEqual(store.drafts.first?.repositorySHA, "online-direct-content-sha")
-    XCTAssertTrue(FileManager.default.fileExists(
-      atPath: rootURL.appendingPathComponent("content/posts/online-direct-success.md").path
-    ))
+    XCTAssertTrue(
+      FileManager.default.fileExists(
+        atPath: rootURL.appendingPathComponent("content/posts/online-direct-success.md").path
+      ))
     XCTAssertEqual(store.drafts.first?.repositorySyncState(for: profile), .synced)
     let record = try XCTUnwrap(store.releaseRecords.first)
     XCTAssertEqual(record.kind, .remoteDirectCommit)
     XCTAssertEqual(store.deploymentStatusSnapshot(for: record)?.level, .success)
     XCTAssertEqual(store.releaseLedger.entries.first?.status, .succeeded)
-    XCTAssertEqual(store.repositoryAutoSyncState.remoteChangedPaths, ["content/posts/remote-only.md"])
+    XCTAssertEqual(
+      store.repositoryAutoSyncState.remoteChangedPaths, ["content/posts/remote-only.md"])
     XCTAssertEqual(store.repositoryAutoSyncState.remoteChangedFileCount, 1)
     XCTAssertEqual(store.repositoryAutoSyncState.importableRemoteArticleCount, 1)
     XCTAssertEqual(store.repositoryAutoSyncState.lastRemotePublishProvider, .github)
     XCTAssertEqual(store.repositoryAutoSyncState.lastRemotePublishMode, .directCommit)
-    XCTAssertEqual(store.repositoryAutoSyncState.lastRemotePublishPaths, ["content/posts/online-direct-success.md"])
+    XCTAssertEqual(
+      store.repositoryAutoSyncState.lastRemotePublishPaths,
+      ["content/posts/online-direct-success.md"])
     XCTAssertTrue(store.repositoryAutoSyncState.message.contains("已从远端同步队列移除 1 个同路径项"))
     XCTAssertTrue(store.repositoryAutoSyncReviewMarkdown.contains("## 最近线上写入"))
-    XCTAssertTrue(store.repositoryAutoSyncReviewMarkdown.contains("- content/posts/online-direct-success.md"))
+    XCTAssertTrue(
+      store.repositoryAutoSyncReviewMarkdown.contains("- content/posts/online-direct-success.md"))
 
     let publishRequests = await publishTransport.capturedRequests()
     XCTAssertEqual(publishRequests.map(\.httpMethod), ["GET", "PUT"])
@@ -624,13 +650,18 @@ extension WorkbenchStoreProfileTests {
     defer { try? FileManager.default.removeItem(at: rootURL) }
     let publishTransport = SequencedWorkbenchRemoteRepositoryTransport(responses: [
       workbenchRemoteResponse(json: #"{"object":{"sha":"base-sha"}}"#),
-      workbenchRemoteResponse(json: #"{"ref":"refs/heads/publish/online-review-20260829","object":{"sha":"base-sha"}}"#),
+      workbenchRemoteResponse(
+        json: #"{"ref":"refs/heads/publish/online-review-20260829","object":{"sha":"base-sha"}}"#),
       workbenchRemoteResponse(statusCode: 404, json: #"{"message":"not found"}"#),
-      workbenchRemoteResponse(json: #"{"content":{"path":"content/posts/online-review.md"},"commit":{"sha":"review-commit-sha"}}"#),
+      workbenchRemoteResponse(
+        json:
+          #"{"content":{"path":"content/posts/online-review.md"},"commit":{"sha":"review-commit-sha"}}"#
+      ),
       workbenchRemoteResponse(json: #"{"html_url":"https://github.com/owner/site/pull/12"}"#),
     ])
     let deploymentTransport = SequencedWorkbenchRemoteRepositoryTransport(responses: [
-      workbenchRemoteResponse(statusCode: 200, json: #"{"status":"ok","message":"Main site is still live"}"#),
+      workbenchRemoteResponse(
+        statusCode: 200, json: #"{"status":"ok","message":"Main site is still live"}"#)
     ])
     let tokenStore = repositoryTokenStoreForTest()
     let store = WorkbenchStore(
@@ -657,15 +688,16 @@ extension WorkbenchStoreProfileTests {
     }
     try tokenStore.saveRepositoryToken("github-token", for: profile)
     store.refreshRepositoryTokenAvailability()
-    store.setRemoteRepositoryAccessCheck(RemoteRepositoryAccessCheck(
-      provider: .github,
-      repositoryName: "owner/site",
-      apiBaseURL: RepositoryProvider.github.defaultBaseURL,
-      defaultBranch: "main",
-      canRead: true,
-      canWrite: true,
-      message: "GitHub Token 具备仓库写入权限。"
-    ))
+    store.setRemoteRepositoryAccessCheck(
+      RemoteRepositoryAccessCheck(
+        provider: .github,
+        repositoryName: "owner/site",
+        apiBaseURL: RepositoryProvider.github.defaultBaseURL,
+        defaultBranch: "main",
+        canRead: true,
+        canWrite: true,
+        message: "GitHub Token 具备仓库写入权限。"
+      ))
 
     let draft = ArticleDraft(
       siteProfileID: profile.id,
@@ -673,7 +705,8 @@ extension WorkbenchStoreProfileTests {
       date: fixedDate(),
       slug: "online-review",
       draft: false,
-      bodyMarkdown: "This body is intentionally long enough for online review publishing to create a PR without deployment verification."
+      bodyMarkdown:
+        "This body is intentionally long enough for online review publishing to create a PR without deployment verification."
     )
     store.setDrafts([draft])
     store.setSelectedDraftID(draft.id)
@@ -690,9 +723,10 @@ extension WorkbenchStoreProfileTests {
     XCTAssertEqual(store.activeProfileReleaseLedger.entries.first?.status, .pendingReview)
     XCTAssertEqual(store.activeProfileReleaseLedger.summary.reviewPendingCount, 1)
     XCTAssertEqual(store.activeProfileReleaseLedger.deploymentOverview.checkedRecordCount, 0)
-    XCTAssertTrue(FileManager.default.fileExists(
-      atPath: rootURL.appendingPathComponent("content/posts/online-review.md").path
-    ))
+    XCTAssertTrue(
+      FileManager.default.fileExists(
+        atPath: rootURL.appendingPathComponent("content/posts/online-review.md").path
+      ))
     XCTAssertEqual(store.drafts.first?.repositorySyncState(for: profile), .awaitingReview)
 
     let publishRequests = await publishTransport.capturedRequests()
@@ -703,14 +737,24 @@ extension WorkbenchStoreProfileTests {
 
   func testRemoteRollbackCreatesRollbackRecordFromReleaseHistory() async throws {
     let transport = SequencedWorkbenchRemoteRepositoryTransport(responses: [
-      workbenchRemoteResponse(json: #"{"sha":"published-sha","tree":{"sha":"published-tree"},"parents":[{"sha":"parent-sha"}]}"#),
-      workbenchRemoteResponse(json: #"{"sha":"parent-sha","tree":{"sha":"parent-tree"},"parents":[{"sha":"grandparent-sha"}]}"#),
+      workbenchRemoteResponse(
+        json:
+          #"{"sha":"published-sha","tree":{"sha":"published-tree"},"parents":[{"sha":"parent-sha"}]}"#
+      ),
+      workbenchRemoteResponse(
+        json:
+          #"{"sha":"parent-sha","tree":{"sha":"parent-tree"},"parents":[{"sha":"grandparent-sha"}]}"#
+      ),
       workbenchRemoteResponse(json: #"{"object":{"sha":"published-sha"}}"#),
-      workbenchRemoteResponse(json: #"{"sha":"rollback-sha","tree":{"sha":"parent-tree"},"parents":[{"sha":"published-sha"}]}"#),
+      workbenchRemoteResponse(
+        json:
+          #"{"sha":"rollback-sha","tree":{"sha":"parent-tree"},"parents":[{"sha":"published-sha"}]}"#
+      ),
       workbenchRemoteResponse(json: #"{"object":{"sha":"rollback-sha"}}"#),
     ])
     let deploymentTransport = SequencedWorkbenchRemoteRepositoryTransport(responses: [
-      workbenchRemoteResponse(statusCode: 200, json: #"{"status":"ok","message":"Rollback commit is live"}"#),
+      workbenchRemoteResponse(
+        statusCode: 200, json: #"{"status":"ok","message":"Rollback commit is live"}"#)
     ])
     let tokenStore = repositoryTokenStoreForTest()
     let store = WorkbenchStore(
@@ -775,12 +819,14 @@ extension WorkbenchStoreProfileTests {
     XCTAssertEqual(requests.map(\.httpMethod), ["GET", "GET", "GET", "POST", "PATCH"])
     let deploymentRequests = await deploymentTransport.capturedRequests()
     XCTAssertEqual(deploymentRequests.count, 1)
-    XCTAssertEqual(deploymentRequests.first?.url?.absoluteString, "https://status.example.com/rollback")
+    XCTAssertEqual(
+      deploymentRequests.first?.url?.absoluteString, "https://status.example.com/rollback")
   }
 
   func testRemoteReviewWithdrawalCreatesReleaseRecordFromReleaseHistory() async throws {
     let transport = SequencedWorkbenchRemoteRepositoryTransport(responses: [
-      workbenchRemoteResponse(json: #"{"state":"closed","html_url":"https://github.com/owner/site/pull/9"}"#),
+      workbenchRemoteResponse(
+        json: #"{"state":"closed","html_url":"https://github.com/owner/site/pull/9"}"#)
     ])
     let tokenStore = repositoryTokenStoreForTest()
     let store = WorkbenchStore(
@@ -826,7 +872,9 @@ extension WorkbenchStoreProfileTests {
 
     XCTAssertEqual(result?.reviewNumber, 9)
     XCTAssertEqual(result?.state, "closed")
-    XCTAssertEqual(store.remoteRepositoryReviewWithdrawalResult?.reviewURL, "https://github.com/owner/site/pull/9")
+    XCTAssertEqual(
+      store.remoteRepositoryReviewWithdrawalResult?.reviewURL,
+      "https://github.com/owner/site/pull/9")
     XCTAssertEqual(store.publishActionMessage, CoreL10n.format("线上 Review 已撤回：#%@", "9"))
     let withdrawalRecord = try XCTUnwrap(store.releaseRecords.first)
     XCTAssertEqual(withdrawalRecord.kind, .remoteReviewWithdrawal)
@@ -908,7 +956,8 @@ extension WorkbenchStoreProfileTests {
       workbenchRemoteResponse(json: #"[]"#),
       workbenchRemoteResponse(
         statusCode: 403,
-        json: #"{"message":"Resource not accessible by personal access token","documentation_url":"https://docs.github.com/rest/pulls/pulls#create-a-pull-request"}"#
+        json:
+          #"{"message":"Resource not accessible by personal access token","documentation_url":"https://docs.github.com/rest/pulls/pulls#create-a-pull-request"}"#
       ),
     ])
     let tokenStore = repositoryTokenStoreForTest()
@@ -953,7 +1002,8 @@ extension WorkbenchStoreProfileTests {
     XCTAssertEqual(store.releaseRecords.count, 1)
     XCTAssertEqual(store.releaseRecords.first?.id, original.id)
     XCTAssertEqual(store.releaseRecords.first?.kind, .remotePublishFailure)
-    XCTAssertTrue(store.releaseRecords.first?.summary.contains("Pull requests: Read and write") == true)
+    XCTAssertTrue(
+      store.releaseRecords.first?.summary.contains("Pull requests: Read and write") == true)
     XCTAssertTrue(store.publishActionMessage?.contains("Pull requests: Read and write") == true)
     XCTAssertEqual(store.activeProfileReleaseLedger.entries.first?.status, .pendingRemoteRecovery)
 
@@ -1023,15 +1073,16 @@ extension WorkbenchStoreProfileTests {
     profile.markdownPathPattern = "content/posts/{slug}.md"
     store.updateActiveProfile(profile)
     store.setRepositoryTokenAvailability(KeychainTokenAvailability(hasToken: true))
-    store.setRemoteRepositoryAccessCheck(RemoteRepositoryAccessCheck(
-      provider: .gitlab,
-      repositoryName: "group/site",
-      apiBaseURL: "https://gitlab.com/api/v4",
-      defaultBranch: "main",
-      canRead: true,
-      canWrite: true,
-      message: "GitLab Token 具备项目写入权限。"
-    ))
+    store.setRemoteRepositoryAccessCheck(
+      RemoteRepositoryAccessCheck(
+        provider: .gitlab,
+        repositoryName: "group/site",
+        apiBaseURL: "https://gitlab.com/api/v4",
+        defaultBranch: "main",
+        canRead: true,
+        canWrite: true,
+        message: "GitLab Token 具备项目写入权限。"
+      ))
 
     let draft = ArticleDraft(
       siteProfileID: profile.id,
@@ -1042,21 +1093,23 @@ extension WorkbenchStoreProfileTests {
     )
     store.setDrafts([draft])
     store.setSelectedDraftID(draft.id)
-    store.setRepositoryReport(RepositoryScanReport(
-      rootPath: "/tmp/site",
-      detectedKind: profile.siteKind,
-      expectedKind: profile.siteKind,
-      hasGitDirectory: true,
-      contentRootExists: true,
-      assetRootExists: true,
-      markdownFileCount: 0,
-      imageFileCount: 0,
-      changedFiles: [],
-      remoteChangedFiles: [
-        RepositoryChangedFile(status: "M", path: "content/posts/online-review-preview.md", kind: .modified)
-      ],
-      preflightIssues: []
-    ))
+    store.setRepositoryReport(
+      RepositoryScanReport(
+        rootPath: "/tmp/site",
+        detectedKind: profile.siteKind,
+        expectedKind: profile.siteKind,
+        hasGitDirectory: true,
+        contentRootExists: true,
+        assetRootExists: true,
+        markdownFileCount: 0,
+        imageFileCount: 0,
+        changedFiles: [],
+        remoteChangedFiles: [
+          RepositoryChangedFile(
+            status: "M", path: "content/posts/online-review-preview.md", kind: .modified)
+        ],
+        preflightIssues: []
+      ))
 
     let preview = store.remoteRepositoryPublishPreview(for: draft)
 
@@ -1096,38 +1149,41 @@ extension WorkbenchStoreProfileTests {
     profile.markdownPathPattern = "content/posts/{slug}.md"
     store.updateActiveProfile(profile)
     store.setRepositoryTokenAvailability(KeychainTokenAvailability(hasToken: true))
-    store.setRemoteRepositoryAccessCheck(RemoteRepositoryAccessCheck(
-      provider: .github,
-      repositoryName: "owner/site",
-      apiBaseURL: "https://api.github.com",
-      defaultBranch: "main",
-      canRead: true,
-      canWrite: true,
-      message: "GitHub Token 具备仓库写入权限。"
-    ))
+    store.setRemoteRepositoryAccessCheck(
+      RemoteRepositoryAccessCheck(
+        provider: .github,
+        repositoryName: "owner/site",
+        apiBaseURL: "https://api.github.com",
+        defaultBranch: "main",
+        canRead: true,
+        canWrite: true,
+        message: "GitHub Token 具备仓库写入权限。"
+      ))
 
     let draft = ArticleDraft(
       siteProfileID: profile.id,
       title: "Existing Article",
       slug: "Existing Article",
       draft: false,
-      bodyMarkdown: "This body is intentionally long enough to verify publishing with an invalid slug warning."
+      bodyMarkdown:
+        "This body is intentionally long enough to verify publishing with an invalid slug warning."
     )
     store.setDrafts([draft])
     store.setSelectedDraftID(draft.id)
-    store.setRepositoryReport(RepositoryScanReport(
-      rootPath: "/tmp/site",
-      detectedKind: profile.siteKind,
-      expectedKind: profile.siteKind,
-      hasGitDirectory: true,
-      contentRootExists: true,
-      assetRootExists: true,
-      markdownFileCount: 0,
-      imageFileCount: 0,
-      changedFiles: [],
-      remoteChangedFiles: [],
-      preflightIssues: []
-    ))
+    store.setRepositoryReport(
+      RepositoryScanReport(
+        rootPath: "/tmp/site",
+        detectedKind: profile.siteKind,
+        expectedKind: profile.siteKind,
+        hasGitDirectory: true,
+        contentRootExists: true,
+        assetRootExists: true,
+        markdownFileCount: 0,
+        imageFileCount: 0,
+        changedFiles: [],
+        remoteChangedFiles: [],
+        preflightIssues: []
+      ))
 
     let preview = store.remoteRepositoryPublishPreview(for: draft)
 
@@ -1154,7 +1210,8 @@ extension WorkbenchStoreProfileTests {
       title: "Token Required",
       slug: "token-required",
       draft: false,
-      bodyMarkdown: "This body is intentionally long enough for online publish preview token coverage."
+      bodyMarkdown:
+        "This body is intentionally long enough for online publish preview token coverage."
     )
     store.setDrafts([draft])
     store.setSelectedDraftID(draft.id)
@@ -1172,7 +1229,9 @@ extension WorkbenchStoreProfileTests {
     XCTAssertTrue(preview.checklistMarkdown.contains("- [ ] 已确认 Token 对 owner/site 具备内容写入权限"))
   }
 
-  func testRemoteRepositoryPublishPreviewBlocksTokenAccessFailureWithoutReportingMissingToken() throws {
+  func testRemoteRepositoryPublishPreviewBlocksTokenAccessFailureWithoutReportingMissingToken()
+    throws
+  {
     let store = try TestWorkbenchFactory.makeStore()
 
     var profile = store.activeProfile
@@ -1196,7 +1255,8 @@ extension WorkbenchStoreProfileTests {
       title: "Keychain Failure",
       slug: "keychain-failure",
       draft: false,
-      bodyMarkdown: "This body is intentionally long enough for online publish preview Keychain failure coverage."
+      bodyMarkdown:
+        "This body is intentionally long enough for online publish preview Keychain failure coverage."
     )
     store.setDrafts([draft])
     store.setSelectedDraftID(draft.id)
@@ -1209,14 +1269,17 @@ extension WorkbenchStoreProfileTests {
       preview.tokenAccessFailureMessage,
       "Keychain interaction is not allowed"
     )
-    XCTAssertTrue(preview.blockingIssues.contains { issue in
-      issue.field == "repositoryToken"
-        && issue.title == CoreL10n.text("Token 状态读取失败")
-    })
+    XCTAssertTrue(
+      preview.blockingIssues.contains { issue in
+        issue.field == "repositoryToken"
+          && issue.title == CoreL10n.text("Token 状态读取失败")
+      })
     XCTAssertFalse(preview.accessSummary.contains(CoreL10n.text("未保存 Token")))
   }
 
-  func testBatchRemoteRepositoryPublishPreviewBlocksTokenAccessFailureWithoutReportingMissingToken() throws {
+  func testBatchRemoteRepositoryPublishPreviewBlocksTokenAccessFailureWithoutReportingMissingToken()
+    throws
+  {
     let rootURL = try preparedGitRepositoryRoot()
     defer {
       try? FileManager.default.removeItem(at: rootURL)
@@ -1234,29 +1297,32 @@ extension WorkbenchStoreProfileTests {
     profile.rememberLocalRepositoryRoot(rootURL)
     store.updateActiveProfile(profile)
     store.setRepositoryTokenAvailability(KeychainTokenAvailability(hasToken: true))
-    store.setRemoteRepositoryAccessCheck(RemoteRepositoryAccessCheck(
-      provider: .github,
-      repositoryName: "owner/site",
-      apiBaseURL: RepositoryProvider.github.defaultBaseURL,
-      defaultBranch: "main",
-      canRead: true,
-      canWrite: true,
-      message: "GitHub Token 具备仓库写入权限。"
-    ))
+    store.setRemoteRepositoryAccessCheck(
+      RemoteRepositoryAccessCheck(
+        provider: .github,
+        repositoryName: "owner/site",
+        apiBaseURL: RepositoryProvider.github.defaultBaseURL,
+        defaultBranch: "main",
+        canRead: true,
+        canWrite: true,
+        message: "GitHub Token 具备仓库写入权限。"
+      ))
 
     let draft = ArticleDraft(
       siteProfileID: profile.id,
       title: "Batch Keychain Failure",
       slug: "batch-keychain-failure",
       draft: false,
-      bodyMarkdown: "This body is intentionally long enough for batch online publish preview Keychain failure coverage."
+      bodyMarkdown:
+        "This body is intentionally long enough for batch online publish preview Keychain failure coverage."
     )
     let secondDraft = ArticleDraft(
       siteProfileID: profile.id,
       title: "Batch Keychain Failure Two",
       slug: "batch-keychain-failure-two",
       draft: false,
-      bodyMarkdown: "This second body is intentionally long enough to make the Keychain failure preview a real batch publish plan."
+      bodyMarkdown:
+        "This second body is intentionally long enough to make the Keychain failure preview a real batch publish plan."
     )
     store.setDrafts([draft, secondDraft])
     store.setSelectedDraftID(draft.id)
@@ -1281,10 +1347,11 @@ extension WorkbenchStoreProfileTests {
       preview.tokenAccessFailureMessage,
       "Keychain interaction is not allowed"
     )
-    XCTAssertTrue(preview.blockingIssues.contains { issue in
-      issue.field == "repositoryToken"
-        && issue.title == CoreL10n.text("Token 状态读取失败")
-    })
+    XCTAssertTrue(
+      preview.blockingIssues.contains { issue in
+        issue.field == "repositoryToken"
+          && issue.title == CoreL10n.text("Token 状态读取失败")
+      })
     XCTAssertFalse(preview.accessSummary.contains(CoreL10n.text("未保存 Token")))
     XCTAssertFalse(preview.checklistMarkdown.contains("- Token：\(CoreL10n.text("未保存"))"))
   }
@@ -1308,7 +1375,8 @@ extension WorkbenchStoreProfileTests {
       title: "Permission Check Required",
       slug: "permission-check-required",
       draft: false,
-      bodyMarkdown: "This body is intentionally long enough for online publish preview permission check coverage."
+      bodyMarkdown:
+        "This body is intentionally long enough for online publish preview permission check coverage."
     )
     store.setDrafts([draft])
     store.setSelectedDraftID(draft.id)
@@ -1342,15 +1410,16 @@ extension WorkbenchStoreProfileTests {
       try? tokenStore.deleteToken(for: profile)
     }
 
-    store.setRemoteRepositoryAccessCheck(RemoteRepositoryAccessCheck(
-      provider: .github,
-      repositoryName: "owner/site",
-      apiBaseURL: RepositoryProvider.github.defaultBaseURL,
-      defaultBranch: "main",
-      canRead: true,
-      canWrite: true,
-      message: "GitHub Token 具备仓库写入权限。"
-    ))
+    store.setRemoteRepositoryAccessCheck(
+      RemoteRepositoryAccessCheck(
+        provider: .github,
+        repositoryName: "owner/site",
+        apiBaseURL: RepositoryProvider.github.defaultBaseURL,
+        defaultBranch: "main",
+        canRead: true,
+        canWrite: true,
+        message: "GitHub Token 具备仓库写入权限。"
+      ))
 
     store.saveRepositoryAccessToken("new-github-token")
 
@@ -1370,7 +1439,8 @@ extension WorkbenchStoreProfileTests {
       title: "Token Recheck Required",
       slug: "token-recheck-required",
       draft: false,
-      bodyMarkdown: "This body is intentionally long enough for repository token permission cache invalidation coverage."
+      bodyMarkdown:
+        "This body is intentionally long enough for repository token permission cache invalidation coverage."
     )
     store.setDrafts([draft])
     store.setSelectedDraftID(draft.id)
@@ -1387,8 +1457,9 @@ extension WorkbenchStoreProfileTests {
   func testRepositoryPermissionCheckPersistsAcrossRelaunch() async throws {
     let transport = SequencedWorkbenchRemoteRepositoryTransport(responses: [
       workbenchRemoteResponse(
-        json: #"{"full_name":"owner/site","default_branch":"main","permissions":{"push":true,"maintain":false,"admin":false}}"#
-      ),
+        json:
+          #"{"full_name":"owner/site","default_branch":"main","permissions":{"push":true,"maintain":false,"admin":false}}"#
+      )
     ])
     let tokenStore = repositoryTokenStoreForTest()
     let persistenceURL = try temporaryPersistenceURL()
@@ -1417,7 +1488,8 @@ extension WorkbenchStoreProfileTests {
       title: "Persisted Permission",
       slug: "persisted-permission",
       draft: false,
-      bodyMarkdown: "This body is intentionally long enough for persisted repository permission check coverage."
+      bodyMarkdown:
+        "This body is intentionally long enough for persisted repository permission check coverage."
     )
     store.setDrafts([draft])
     store.setSelectedDraftID(draft.id)
@@ -1450,7 +1522,7 @@ extension WorkbenchStoreProfileTests {
     let transport = SequencedWorkbenchRemoteRepositoryTransport(responses: [
       workbenchRemoteResponse(
         json: #"{"full_name":"owner/site","default_branch":"main","permissions":{"push":true}}"#
-      ),
+      )
     ])
     let tokenStore = repositoryTokenStoreForTest()
     let persistenceURL = try temporaryPersistenceURL(prefix: "DetectedOriginPermission")
@@ -1469,26 +1541,28 @@ extension WorkbenchStoreProfileTests {
     defer { _ = try? tokenStore.deleteRepositoryToken(for: storeProfileForCleanup) }
     try tokenStore.saveRepositoryToken("github-token", for: profile)
     store.refreshRepositoryTokenAvailability()
-    store.setRepositoryReport(RepositoryScanReport(
-      rootPath: rootURL.path,
-      detectedKind: .zola,
-      expectedKind: .zola,
-      hasGitDirectory: true,
-      contentRootExists: true,
-      assetRootExists: true,
-      markdownFileCount: 1,
-      imageFileCount: 0,
-      branchStatus: RepositoryBranchStatus(branchName: "production", upstreamName: "origin/production"),
-      originRemote: RepositoryRemote(
-        remoteURL: "https://github.com/owner/site.git",
-        provider: .github,
-        repositoryBaseURL: RepositoryProvider.github.defaultBaseURL,
-        owner: "owner",
-        name: "site"
-      ),
-      changedFiles: [],
-      preflightIssues: []
-    ))
+    store.setRepositoryReport(
+      RepositoryScanReport(
+        rootPath: rootURL.path,
+        detectedKind: .zola,
+        expectedKind: .zola,
+        hasGitDirectory: true,
+        contentRootExists: true,
+        assetRootExists: true,
+        markdownFileCount: 1,
+        imageFileCount: 0,
+        branchStatus: RepositoryBranchStatus(
+          branchName: "production", upstreamName: "origin/production"),
+        originRemote: RepositoryRemote(
+          remoteURL: "https://github.com/owner/site.git",
+          provider: .github,
+          repositoryBaseURL: RepositoryProvider.github.defaultBaseURL,
+          owner: "owner",
+          name: "site"
+        ),
+        changedFiles: [],
+        preflightIssues: []
+      ))
     let draft = ArticleDraft(
       siteProfileID: profile.id,
       title: "Detected Origin",
@@ -1519,11 +1593,13 @@ extension WorkbenchStoreProfileTests {
     XCTAssertTrue(reloaded.activeRemoteRepositoryAccessCheck?.canWrite == true)
   }
 
-  func testPermissionCheckDoesNotReplaceCompleteRepositoryConfigurationWithDetectedOrigin() async throws {
+  func testPermissionCheckDoesNotReplaceCompleteRepositoryConfigurationWithDetectedOrigin()
+    async throws
+  {
     let transport = SequencedWorkbenchRemoteRepositoryTransport(responses: [
       workbenchRemoteResponse(
         json: #"{"full_name":"detected/site","default_branch":"main","permissions":{"push":true}}"#
-      ),
+      )
     ])
     let tokenStore = repositoryTokenStoreForTest()
     let rootURL = try preparedGitRepositoryRoot()
@@ -1545,25 +1621,26 @@ extension WorkbenchStoreProfileTests {
     defer { _ = try? tokenStore.deleteRepositoryToken(for: profile) }
     try tokenStore.saveRepositoryToken("github-token", for: profile)
     store.refreshRepositoryTokenAvailability()
-    store.setRepositoryReport(RepositoryScanReport(
-      rootPath: rootURL.path,
-      detectedKind: .zola,
-      expectedKind: .zola,
-      hasGitDirectory: true,
-      contentRootExists: true,
-      assetRootExists: true,
-      markdownFileCount: 1,
-      imageFileCount: 0,
-      originRemote: RepositoryRemote(
-        remoteURL: "https://github.com/detected/site.git",
-        provider: .github,
-        repositoryBaseURL: RepositoryProvider.github.defaultBaseURL,
-        owner: "detected",
-        name: "site"
-      ),
-      changedFiles: [],
-      preflightIssues: []
-    ))
+    store.setRepositoryReport(
+      RepositoryScanReport(
+        rootPath: rootURL.path,
+        detectedKind: .zola,
+        expectedKind: .zola,
+        hasGitDirectory: true,
+        contentRootExists: true,
+        assetRootExists: true,
+        markdownFileCount: 1,
+        imageFileCount: 0,
+        originRemote: RepositoryRemote(
+          remoteURL: "https://github.com/detected/site.git",
+          provider: .github,
+          repositoryBaseURL: RepositoryProvider.github.defaultBaseURL,
+          owner: "detected",
+          name: "site"
+        ),
+        changedFiles: [],
+        preflightIssues: []
+      ))
 
     let check = await store.checkRepositoryTokenAccess()
 
@@ -1596,25 +1673,26 @@ extension WorkbenchStoreProfileTests {
     defer { _ = try? tokenStore.deleteRepositoryToken(for: profile) }
     try tokenStore.saveRepositoryToken("github-token", for: profile)
     store.refreshRepositoryTokenAvailability()
-    store.setRepositoryReport(RepositoryScanReport(
-      rootPath: rootURL.path,
-      detectedKind: .zola,
-      expectedKind: .zola,
-      hasGitDirectory: true,
-      contentRootExists: true,
-      assetRootExists: true,
-      markdownFileCount: 1,
-      imageFileCount: 0,
-      originRemote: RepositoryRemote(
-        remoteURL: "https://gitlab.com/detected/site.git",
-        provider: .gitlab,
-        repositoryBaseURL: "https://gitlab.com",
-        owner: "detected",
-        name: "site"
-      ),
-      changedFiles: [],
-      preflightIssues: []
-    ))
+    store.setRepositoryReport(
+      RepositoryScanReport(
+        rootPath: rootURL.path,
+        detectedKind: .zola,
+        expectedKind: .zola,
+        hasGitDirectory: true,
+        contentRootExists: true,
+        assetRootExists: true,
+        markdownFileCount: 1,
+        imageFileCount: 0,
+        originRemote: RepositoryRemote(
+          remoteURL: "https://gitlab.com/detected/site.git",
+          provider: .gitlab,
+          repositoryBaseURL: "https://gitlab.com",
+          owner: "detected",
+          name: "site"
+        ),
+        changedFiles: [],
+        preflightIssues: []
+      ))
 
     let check = await store.checkRepositoryTokenAccess()
 
@@ -1659,7 +1737,8 @@ extension WorkbenchStoreProfileTests {
     )
   }
 
-  func testRepositoryPermissionCheckDiscardsResultAfterRepositoryConfigurationChanges() async throws {
+  func testRepositoryPermissionCheckDiscardsResultAfterRepositoryConfigurationChanges() async throws
+  {
     let transport = SuspendedWorkbenchRemoteRepositoryTransport(
       response: workbenchRemoteResponse(
         json: #"{"full_name":"owner/site","default_branch":"main","permissions":{"push":true}}"#
@@ -1707,22 +1786,24 @@ extension WorkbenchStoreProfileTests {
     profile.markdownPathPattern = "content/posts/{slug}.md"
     store.updateActiveProfile(profile)
     store.setRepositoryTokenAvailability(KeychainTokenAvailability(hasToken: true))
-    store.setRemoteRepositoryAccessCheck(RemoteRepositoryAccessCheck(
-      provider: .github,
-      repositoryName: "old-owner/site",
-      apiBaseURL: RepositoryProvider.github.defaultBaseURL,
-      defaultBranch: "main",
-      canRead: true,
-      canWrite: true,
-      message: "GitHub Token 具备仓库写入权限。"
-    ))
+    store.setRemoteRepositoryAccessCheck(
+      RemoteRepositoryAccessCheck(
+        provider: .github,
+        repositoryName: "old-owner/site",
+        apiBaseURL: RepositoryProvider.github.defaultBaseURL,
+        defaultBranch: "main",
+        canRead: true,
+        canWrite: true,
+        message: "GitHub Token 具备仓库写入权限。"
+      ))
 
     let draft = ArticleDraft(
       siteProfileID: profile.id,
       title: "Owner Switched",
       slug: "owner-switched",
       draft: false,
-      bodyMarkdown: "This body is intentionally long enough for stale repository owner access-check coverage."
+      bodyMarkdown:
+        "This body is intentionally long enough for stale repository owner access-check coverage."
     )
     store.setDrafts([draft])
     store.setSelectedDraftID(draft.id)
@@ -1751,22 +1832,24 @@ extension WorkbenchStoreProfileTests {
     profile.markdownPathPattern = "content/posts/{slug}.md"
     store.updateActiveProfile(profile)
     store.setRepositoryTokenAvailability(KeychainTokenAvailability(hasToken: true))
-    store.setRemoteRepositoryAccessCheck(RemoteRepositoryAccessCheck(
-      provider: .github,
-      repositoryName: "owner/site",
-      apiBaseURL: RepositoryProvider.github.defaultBaseURL,
-      defaultBranch: "main",
-      canRead: true,
-      canWrite: true,
-      message: "GitHub Token 具备仓库写入权限。"
-    ))
+    store.setRemoteRepositoryAccessCheck(
+      RemoteRepositoryAccessCheck(
+        provider: .github,
+        repositoryName: "owner/site",
+        apiBaseURL: RepositoryProvider.github.defaultBaseURL,
+        defaultBranch: "main",
+        canRead: true,
+        canWrite: true,
+        message: "GitHub Token 具备仓库写入权限。"
+      ))
 
     let draft = ArticleDraft(
       siteProfileID: profile.id,
       title: "Endpoint Switched",
       slug: "endpoint-switched",
       draft: false,
-      bodyMarkdown: "This body is intentionally long enough for stale repository API endpoint access-check coverage."
+      bodyMarkdown:
+        "This body is intentionally long enough for stale repository API endpoint access-check coverage."
     )
     store.setDrafts([draft])
     store.setSelectedDraftID(draft.id)
@@ -1811,7 +1894,8 @@ extension WorkbenchStoreProfileTests {
       title: "Blocked Permission Check",
       slug: "blocked-permission-check",
       draft: false,
-      bodyMarkdown: "This body is intentionally long enough so permission checks block before online API publishing.",
+      bodyMarkdown:
+        "This body is intentionally long enough so permission checks block before online API publishing.",
       repositoryPath: "content/posts/blocked-permission-check.md"
     )
     store.setDrafts([draft])
@@ -1850,40 +1934,44 @@ extension WorkbenchStoreProfileTests {
     profile.rememberLocalRepositoryRoot(rootURL)
     store.updateActiveProfile(profile)
     store.setRepositoryTokenAvailability(KeychainTokenAvailability(hasToken: true))
-    store.setRemoteRepositoryAccessCheck(RemoteRepositoryAccessCheck(
-      provider: .github,
-      repositoryName: "owner/site",
-      apiBaseURL: RepositoryProvider.github.defaultBaseURL,
-      defaultBranch: "main",
-      canRead: true,
-      canWrite: true,
-      message: "GitHub Token 具备仓库写入权限。"
-    ))
+    store.setRemoteRepositoryAccessCheck(
+      RemoteRepositoryAccessCheck(
+        provider: .github,
+        repositoryName: "owner/site",
+        apiBaseURL: RepositoryProvider.github.defaultBaseURL,
+        defaultBranch: "main",
+        canRead: true,
+        canWrite: true,
+        message: "GitHub Token 具备仓库写入权限。"
+      ))
 
     let draft = ArticleDraft(
       siteProfileID: profile.id,
       title: "Batch Review Conflict",
       slug: "batch-review-conflict",
       draft: false,
-      bodyMarkdown: "This article body is intentionally longer than the preflight minimum so batch review preview can focus on remote conflict warnings."
+      bodyMarkdown:
+        "This article body is intentionally longer than the preflight minimum so batch review preview can focus on remote conflict warnings."
     )
     store.setDrafts([draft])
     store.setSelectedDraftID(draft.id)
-    store.setRepositoryReport(RepositoryScanReport(
-      rootPath: rootURL.path,
-      detectedKind: profile.siteKind,
-      expectedKind: profile.siteKind,
-      hasGitDirectory: true,
-      contentRootExists: true,
-      assetRootExists: true,
-      markdownFileCount: 0,
-      imageFileCount: 0,
-      changedFiles: [],
-      remoteChangedFiles: [
-        RepositoryChangedFile(status: "M", path: "content/posts/batch-review-conflict.md", kind: .modified)
-      ],
-      preflightIssues: []
-    ))
+    store.setRepositoryReport(
+      RepositoryScanReport(
+        rootPath: rootURL.path,
+        detectedKind: profile.siteKind,
+        expectedKind: profile.siteKind,
+        hasGitDirectory: true,
+        contentRootExists: true,
+        assetRootExists: true,
+        markdownFileCount: 0,
+        imageFileCount: 0,
+        changedFiles: [],
+        remoteChangedFiles: [
+          RepositoryChangedFile(
+            status: "M", path: "content/posts/batch-review-conflict.md", kind: .modified)
+        ],
+        preflightIssues: []
+      ))
     store.refreshBatchPublishPlan()
 
     let plan = try XCTUnwrap(store.batchPublishPlan)
@@ -1928,22 +2016,24 @@ extension WorkbenchStoreProfileTests {
     profile.rememberLocalRepositoryRoot(rootURL)
     store.updateActiveProfile(profile)
     store.setRepositoryTokenAvailability(KeychainTokenAvailability(hasToken: true))
-    store.setRemoteRepositoryAccessCheck(RemoteRepositoryAccessCheck(
-      provider: .github,
-      repositoryName: "owner/site",
-      apiBaseURL: RepositoryProvider.github.defaultBaseURL,
-      defaultBranch: "main",
-      canRead: true,
-      canWrite: true,
-      message: "GitHub Token 具备仓库写入权限。"
-    ))
+    store.setRemoteRepositoryAccessCheck(
+      RemoteRepositoryAccessCheck(
+        provider: .github,
+        repositoryName: "owner/site",
+        apiBaseURL: RepositoryProvider.github.defaultBaseURL,
+        defaultBranch: "main",
+        canRead: true,
+        canWrite: true,
+        message: "GitHub Token 具备仓库写入权限。"
+      ))
 
     let readyDraft = ArticleDraft(
       siteProfileID: profile.id,
       title: "Batch Ready Draft",
       slug: "batch-ready-draft",
       draft: false,
-      bodyMarkdown: "This article body is intentionally longer than the preflight minimum so the batch preview has one clean article."
+      bodyMarkdown:
+        "This article body is intentionally longer than the preflight minimum so the batch preview has one clean article."
     )
     let needsReviewDraft = ArticleDraft(
       siteProfileID: profile.id,
@@ -1957,7 +2047,8 @@ extension WorkbenchStoreProfileTests {
     store.refreshBatchPublishPlan()
 
     let plan = try XCTUnwrap(store.batchPublishPlan)
-    XCTAssertEqual(plan.remotePublishableItems.map(\.draftID), [readyDraft.id, needsReviewDraft.id])
+    XCTAssertEqual(
+      plan.remotePublishableItems.map(\.draftID), [readyDraft.id, needsReviewDraft.id])
 
     let preview = try XCTUnwrap(store.remoteRepositoryPublishPreview(for: plan))
 
@@ -1970,10 +2061,11 @@ extension WorkbenchStoreProfileTests {
         "content/posts/batch-needs-review-draft.md",
       ]
     )
-    XCTAssertTrue(preview.warningIssues.contains { issue in
-      issue.title == "Batch Needs Review Draft：\(CoreL10n.text("正文偏短"))"
-        && issue.message == "正文少于 80 个字符，发布前建议确认内容完整。"
-    })
+    XCTAssertTrue(
+      preview.warningIssues.contains { issue in
+        issue.title == "Batch Needs Review Draft：\(CoreL10n.text("正文偏短"))"
+          && issue.message == "正文少于 80 个字符，发布前建议确认内容完整。"
+      })
     XCTAssertTrue(preview.blockingIssues.isEmpty)
   }
 
@@ -1994,15 +2086,16 @@ extension WorkbenchStoreProfileTests {
     profile.markdownPathPattern = "content/posts/{slug}.md"
     store.updateActiveProfile(profile)
     store.setRepositoryTokenAvailability(KeychainTokenAvailability(hasToken: true))
-    store.setRemoteRepositoryAccessCheck(RemoteRepositoryAccessCheck(
-      provider: .github,
-      repositoryName: "owner/site",
-      apiBaseURL: RepositoryProvider.github.defaultBaseURL,
-      defaultBranch: "main",
-      canRead: true,
-      canWrite: false,
-      message: "GitHub Token 可读取仓库，但未确认写入权限。"
-    ))
+    store.setRemoteRepositoryAccessCheck(
+      RemoteRepositoryAccessCheck(
+        provider: .github,
+        repositoryName: "owner/site",
+        apiBaseURL: RepositoryProvider.github.defaultBaseURL,
+        defaultBranch: "main",
+        canRead: true,
+        canWrite: false,
+        message: "GitHub Token 可读取仓库，但未确认写入权限。"
+      ))
 
     let draft = ArticleDraft(
       siteProfileID: profile.id,
@@ -2029,7 +2122,10 @@ extension WorkbenchStoreProfileTests {
   func testCreateGitHubRepositoryForActiveProfileDefaultsToPrivateAndUpdatesProfile() async throws {
     let transport = SequencedWorkbenchRemoteRepositoryTransport(responses: [
       workbenchRemoteResponse(json: #"{"login":"owner"}"#),
-      workbenchRemoteResponse(json: #"{"full_name":"owner/site","default_branch":"main","ssh_url":"git@github.com:owner/site.git","clone_url":"https://github.com/owner/site.git","html_url":"https://github.com/owner/site","private":true}"#),
+      workbenchRemoteResponse(
+        json:
+          #"{"full_name":"owner/site","default_branch":"main","ssh_url":"git@github.com:owner/site.git","clone_url":"https://github.com/owner/site.git","html_url":"https://github.com/owner/site","private":true}"#
+      ),
     ])
     let tokenStore = repositoryTokenStoreForTest()
     let store = WorkbenchStore(
@@ -2076,7 +2172,10 @@ extension WorkbenchStoreProfileTests {
   func testCreateRemoteRepositoryForActiveProfilePreservesCustomGitLabBaseURL() async throws {
     let transport = SequencedWorkbenchRemoteRepositoryTransport(responses: [
       workbenchRemoteResponse(json: #"{"id":42,"full_path":"group/subgroup"}"#),
-      workbenchRemoteResponse(json: #"{"path_with_namespace":"group/subgroup/site","default_branch":"main","ssh_url_to_repo":"git@gitlab.internal.example:group/subgroup/site.git","http_url_to_repo":"https://gitlab.internal.example/group/subgroup/site.git","web_url":"https://gitlab.internal.example/group/subgroup/site","visibility":"private"}"#),
+      workbenchRemoteResponse(
+        json:
+          #"{"path_with_namespace":"group/subgroup/site","default_branch":"main","ssh_url_to_repo":"git@gitlab.internal.example:group/subgroup/site.git","http_url_to_repo":"https://gitlab.internal.example/group/subgroup/site.git","web_url":"https://gitlab.internal.example/group/subgroup/site","visibility":"private"}"#
+      ),
     ])
     let tokenStore = repositoryTokenStoreForTest()
     let store = WorkbenchStore(
@@ -2101,7 +2200,9 @@ extension WorkbenchStoreProfileTests {
     let result = await store.createRemoteRepositoryForActiveProfile(privateRepository: true)
 
     XCTAssertEqual(result?.repositoryName, "group/subgroup/site")
-    XCTAssertEqual(store.remoteRepositoryCreationResult?.htmlURL, "https://gitlab.internal.example/group/subgroup/site")
+    XCTAssertEqual(
+      store.remoteRepositoryCreationResult?.htmlURL,
+      "https://gitlab.internal.example/group/subgroup/site")
     XCTAssertEqual(store.activeProfile.repositoryProvider, .gitlab)
     XCTAssertEqual(store.activeProfile.repositoryBaseURL, "https://gitlab.internal.example")
     XCTAssertEqual(store.activeProfile.repoOwner, "group/subgroup")
@@ -2111,8 +2212,11 @@ extension WorkbenchStoreProfileTests {
 
     let requests = await transport.capturedRequests()
     XCTAssertEqual(requests.map(\.httpMethod), ["GET", "POST"])
-    XCTAssertEqual(requests[0].url?.absoluteString, "https://gitlab.internal.example/api/v4/groups/group%2Fsubgroup")
-    XCTAssertEqual(requests[1].url?.absoluteString, "https://gitlab.internal.example/api/v4/projects")
+    XCTAssertEqual(
+      requests[0].url?.absoluteString,
+      "https://gitlab.internal.example/api/v4/groups/group%2Fsubgroup")
+    XCTAssertEqual(
+      requests[1].url?.absoluteString, "https://gitlab.internal.example/api/v4/projects")
     XCTAssertEqual(requests[1].value(forHTTPHeaderField: "PRIVATE-TOKEN"), "gitlab-token")
   }
 
@@ -2126,7 +2230,8 @@ extension WorkbenchStoreProfileTests {
 
     let transport = SequencedWorkbenchRemoteRepositoryTransport(responses: [
       workbenchRemoteResponse(json: #"{"object":{"sha":"base-commit-sha"}}"#),
-      workbenchRemoteResponse(json: #"{"sha":"base-commit-sha","tree":{"sha":"base-tree-sha"},"parents":[]}"#),
+      workbenchRemoteResponse(
+        json: #"{"sha":"base-commit-sha","tree":{"sha":"base-tree-sha"},"parents":[]}"#),
       workbenchRemoteResponse(statusCode: 404, json: #"{"message":"not found"}"#),
       workbenchRemoteResponse(json: #"{"sha":"markdown-blob-sha"}"#),
       workbenchRemoteResponse(statusCode: 404, json: #"{"message":"not found"}"#),
@@ -2134,7 +2239,9 @@ extension WorkbenchStoreProfileTests {
       workbenchRemoteResponse(statusCode: 500, json: #"{"message":"tree creation failed"}"#),
     ])
     let deploymentTransport = SequencedWorkbenchRemoteRepositoryTransport(responses: [
-      workbenchRemoteResponse(statusCode: 200, json: #"{"status":"building","message":"Partial publish deployment is still running"}"#),
+      workbenchRemoteResponse(
+        statusCode: 200,
+        json: #"{"status":"building","message":"Partial publish deployment is still running"}"#)
     ])
     let tokenStore = repositoryTokenStoreForTest()
     let store = WorkbenchStore(
@@ -2161,15 +2268,16 @@ extension WorkbenchStoreProfileTests {
     }
     try tokenStore.saveRepositoryToken("github-token", for: profile)
     store.refreshRepositoryTokenAvailability()
-    store.setRemoteRepositoryAccessCheck(RemoteRepositoryAccessCheck(
-      provider: .github,
-      repositoryName: "owner/site",
-      apiBaseURL: RepositoryProvider.github.defaultBaseURL,
-      defaultBranch: "main",
-      canRead: true,
-      canWrite: true,
-      message: "GitHub Token 具备仓库写入权限。"
-    ))
+    store.setRemoteRepositoryAccessCheck(
+      RemoteRepositoryAccessCheck(
+        provider: .github,
+        repositoryName: "owner/site",
+        apiBaseURL: RepositoryProvider.github.defaultBaseURL,
+        defaultBranch: "main",
+        canRead: true,
+        canWrite: true,
+        message: "GitHub Token 具备仓库写入权限。"
+      ))
     let attachment = DraftAttachment(
       originalFilename: "partial-cover.png",
       relativePublishPath: "/images/partial-cover.png",
@@ -2181,7 +2289,8 @@ extension WorkbenchStoreProfileTests {
       title: "Partial Failure",
       slug: "partial-failure",
       draft: false,
-      bodyMarkdown: "This body is intentionally long enough for partial online publishing failure coverage.",
+      bodyMarkdown:
+        "This body is intentionally long enough for partial online publishing failure coverage.",
       attachments: [attachment],
       repositoryPath: "content/posts/partial-failure.md"
     )
@@ -2197,7 +2306,8 @@ extension WorkbenchStoreProfileTests {
     XCTAssertFalse(store.publishActionMessage?.contains("部分完成后失败") == true)
     let record = try XCTUnwrap(store.releaseRecords.first)
     XCTAssertEqual(record.kind, .remotePublishFailure)
-    XCTAssertEqual(record.changedPaths, ["content/posts/partial-failure.md", "static/images/partial-cover.png"])
+    XCTAssertEqual(
+      record.changedPaths, ["content/posts/partial-failure.md", "static/images/partial-cover.png"])
     XCTAssertNil(record.commitSHA)
     XCTAssertEqual(store.releaseLedger.entries.first?.status, .failed)
     XCTAssertEqual(store.releaseLedger.summary.remoteRecoveryPendingCount, 0)
@@ -2232,15 +2342,16 @@ extension WorkbenchStoreProfileTests {
     defer { try? tokenStore.deleteToken(for: profile) }
     try tokenStore.saveRepositoryToken("github-token", for: profile)
     store.refreshRepositoryTokenAvailability()
-    store.setRemoteRepositoryAccessCheck(RemoteRepositoryAccessCheck(
-      provider: .github,
-      repositoryName: "owner/site",
-      apiBaseURL: RepositoryProvider.github.defaultBaseURL,
-      defaultBranch: "main",
-      canRead: true,
-      canWrite: true,
-      message: "GitHub Token 具备仓库写入权限。"
-    ))
+    store.setRemoteRepositoryAccessCheck(
+      RemoteRepositoryAccessCheck(
+        provider: .github,
+        repositoryName: "owner/site",
+        apiBaseURL: RepositoryProvider.github.defaultBaseURL,
+        defaultBranch: "main",
+        canRead: true,
+        canWrite: true,
+        message: "GitHub Token 具备仓库写入权限。"
+      ))
 
     let draft = ArticleDraft(
       siteProfileID: profile.id,
@@ -2270,13 +2381,17 @@ extension WorkbenchStoreProfileTests {
       workbenchRemoteResponse(statusCode: 404, json: #"{"message":"not found"}"#),
       workbenchRemoteResponse(statusCode: 404, json: #"{"message":"not found"}"#),
       workbenchRemoteResponse(json: #"{"object":{"sha":"base-commit-sha"}}"#),
-      workbenchRemoteResponse(json: #"{"sha":"base-commit-sha","tree":{"sha":"base-tree-sha"},"parents":[]}"#),
+      workbenchRemoteResponse(
+        json: #"{"sha":"base-commit-sha","tree":{"sha":"base-tree-sha"},"parents":[]}"#),
       workbenchRemoteResponse(statusCode: 404, json: #"{"message":"not found"}"#),
       workbenchRemoteResponse(json: #"{"sha":"batch-one-blob-sha"}"#),
       workbenchRemoteResponse(statusCode: 404, json: #"{"message":"not found"}"#),
       workbenchRemoteResponse(json: #"{"sha":"batch-two-blob-sha"}"#),
       workbenchRemoteResponse(json: #"{"sha":"batch-tree-sha"}"#),
-      workbenchRemoteResponse(json: #"{"sha":"batch-commit-sha","tree":{"sha":"batch-tree-sha"},"parents":[{"sha":"base-commit-sha"}]}"#),
+      workbenchRemoteResponse(
+        json:
+          #"{"sha":"batch-commit-sha","tree":{"sha":"batch-tree-sha"},"parents":[{"sha":"base-commit-sha"}]}"#
+      ),
       workbenchRemoteResponse(json: #"{"object":{"sha":"batch-commit-sha"}}"#),
     ])
     let tokenStore = repositoryTokenStoreForTest()
@@ -2301,28 +2416,31 @@ extension WorkbenchStoreProfileTests {
     }
     try tokenStore.saveRepositoryToken("github-token", for: profile)
     store.refreshRepositoryTokenAvailability()
-    store.setRemoteRepositoryAccessCheck(RemoteRepositoryAccessCheck(
-      provider: .github,
-      repositoryName: "owner/site",
-      apiBaseURL: RepositoryProvider.github.defaultBaseURL,
-      defaultBranch: "main",
-      canRead: true,
-      canWrite: true,
-      message: "GitHub Token 具备仓库写入权限。"
-    ))
+    store.setRemoteRepositoryAccessCheck(
+      RemoteRepositoryAccessCheck(
+        provider: .github,
+        repositoryName: "owner/site",
+        apiBaseURL: RepositoryProvider.github.defaultBaseURL,
+        defaultBranch: "main",
+        canRead: true,
+        canWrite: true,
+        message: "GitHub Token 具备仓库写入权限。"
+      ))
     let firstDraft = ArticleDraft(
       siteProfileID: profile.id,
       title: "Batch One",
       slug: "batch-one",
       draft: false,
-      bodyMarkdown: "This article body is intentionally longer than the preflight minimum so batch online publishing can focus on GitHub API behavior for the first item."
+      bodyMarkdown:
+        "This article body is intentionally longer than the preflight minimum so batch online publishing can focus on GitHub API behavior for the first item."
     )
     let secondDraft = ArticleDraft(
       siteProfileID: profile.id,
       title: "Batch Two",
       slug: "batch-two",
       draft: false,
-      bodyMarkdown: "This article body is intentionally longer than the preflight minimum so batch online publishing can focus on GitHub API behavior for the second item."
+      bodyMarkdown:
+        "This article body is intentionally longer than the preflight minimum so batch online publishing can focus on GitHub API behavior for the second item."
     )
     store.setDrafts([firstDraft, secondDraft])
     store.setSelectedDraftID(firstDraft.id)
@@ -2348,30 +2466,38 @@ extension WorkbenchStoreProfileTests {
     XCTAssertEqual(result.mode, .directCommit)
     XCTAssertEqual(result.branchName, "main")
     XCTAssertEqual(result.targetBranch, "main")
-    XCTAssertEqual(result.changedPaths, [
-      "content/posts/batch-one.md",
-      "content/posts/batch-two.md",
-    ])
+    XCTAssertEqual(
+      result.changedPaths,
+      [
+        "content/posts/batch-one.md",
+        "content/posts/batch-two.md",
+      ])
     XCTAssertEqual(result.commitSHA, "batch-commit-sha")
     XCTAssertEqual(store.remoteRepositoryPublishResult, result)
     XCTAssertEqual(store.releaseRecords.first?.kind, .remoteDirectCommit)
     XCTAssertNil(store.releaseRecords.first?.draftID)
-    XCTAssertEqual(store.releaseRecords.first?.batchItems.map(\.draftID), [firstDraft.id, secondDraft.id])
-    XCTAssertEqual(store.releaseRecords.first?.batchItems.map(\.draftTitle), ["Batch One", "Batch Two"])
-    XCTAssertEqual(store.releaseRecords.first?.batchItems.first?.changedPaths, ["content/posts/batch-one.md"])
-    XCTAssertEqual(store.releaseRecords.first?.batchItems.last?.changedPaths, ["content/posts/batch-two.md"])
+    XCTAssertEqual(
+      store.releaseRecords.first?.batchItems.map(\.draftID), [firstDraft.id, secondDraft.id])
+    XCTAssertEqual(
+      store.releaseRecords.first?.batchItems.map(\.draftTitle), ["Batch One", "Batch Two"])
+    XCTAssertEqual(
+      store.releaseRecords.first?.batchItems.first?.changedPaths, ["content/posts/batch-one.md"])
+    XCTAssertEqual(
+      store.releaseRecords.first?.batchItems.last?.changedPaths, ["content/posts/batch-two.md"])
     XCTAssertTrue(store.releaseRecords.first?.title.contains("批量线上提交") == true)
     XCTAssertTrue(store.releaseRecords.first?.summary.contains("2 篇文章") == true)
     XCTAssertTrue(store.publishActionMessage?.contains("批量线上直接提交完成") == true)
     XCTAssertEqual(store.publishActionFeedback?.status, .success)
     XCTAssertEqual(store.drafts.map(\.status), [.published, .published])
     XCTAssertTrue(store.drafts.allSatisfy { !$0.draft })
-    XCTAssertTrue(FileManager.default.fileExists(
-      atPath: rootURL.appendingPathComponent("content/posts/batch-one.md").path
-    ))
-    XCTAssertTrue(FileManager.default.fileExists(
-      atPath: rootURL.appendingPathComponent("content/posts/batch-two.md").path
-    ))
+    XCTAssertTrue(
+      FileManager.default.fileExists(
+        atPath: rootURL.appendingPathComponent("content/posts/batch-one.md").path
+      ))
+    XCTAssertTrue(
+      FileManager.default.fileExists(
+        atPath: rootURL.appendingPathComponent("content/posts/batch-two.md").path
+      ))
     XCTAssertEqual(
       Set(store.drafts.compactMap { $0.repositoryPath }),
       Set(["content/posts/batch-one.md", "content/posts/batch-two.md"])
@@ -2382,13 +2508,17 @@ extension WorkbenchStoreProfileTests {
     XCTAssertEqual(store.repositoryAutoSyncState.nonArticleRemoteChangedFileCount, 1)
     XCTAssertEqual(store.repositoryAutoSyncState.lastRemotePublishProvider, .github)
     XCTAssertEqual(store.repositoryAutoSyncState.lastRemotePublishMode, .directCommit)
-    XCTAssertEqual(store.repositoryAutoSyncState.lastRemotePublishPaths, [
-      "content/posts/batch-one.md",
-      "content/posts/batch-two.md",
-    ])
+    XCTAssertEqual(
+      store.repositoryAutoSyncState.lastRemotePublishPaths,
+      [
+        "content/posts/batch-one.md",
+        "content/posts/batch-two.md",
+      ])
 
     let requests = await transport.capturedRequests()
-    XCTAssertEqual(requests.map(\.httpMethod), ["GET", "GET", "GET", "GET", "GET", "POST", "GET", "POST", "POST", "POST", "PATCH"])
+    XCTAssertEqual(
+      requests.map(\.httpMethod),
+      ["GET", "GET", "GET", "GET", "GET", "POST", "GET", "POST", "POST", "POST", "PATCH"])
     XCTAssertEqual(requests[0].url?.path, "/repos/owner/site/contents/content/posts/batch-one.md")
     XCTAssertEqual(requests[1].url?.path, "/repos/owner/site/contents/content/posts/batch-two.md")
     XCTAssertEqual(requests[2].url?.path, "/repos/owner/site/git/ref/heads/main")
@@ -2397,12 +2527,15 @@ extension WorkbenchStoreProfileTests {
     XCTAssertEqual(requests[10].url?.path, "/repos/owner/site/git/refs/heads/main")
     XCTAssertEqual(requests[5].value(forHTTPHeaderField: "Authorization"), "Bearer github-token")
 
-    let commitBody = try XCTUnwrap(JSONSerialization.jsonObject(with: try XCTUnwrap(requests[9].httpBody)) as? [String: Any])
+    let commitBody = try XCTUnwrap(
+      JSONSerialization.jsonObject(with: try XCTUnwrap(requests[9].httpBody)) as? [String: Any])
     XCTAssertEqual(commitBody["message"] as? String, "Publish: 2 articles")
     XCTAssertEqual(commitBody["parents"] as? [String], ["base-commit-sha"])
   }
 
-  func testBatchOnlineDirectPreflightAdoptsIdenticalDraftAndBlocksAllRemoteWritesForConflict() async throws {
+  func testBatchOnlineDirectPreflightAdoptsIdenticalDraftAndBlocksAllRemoteWritesForConflict()
+    async throws
+  {
     let rootURL = try preparedGitRepositoryRoot()
     defer {
       try? FileManager.default.removeItem(at: rootURL)
@@ -2430,29 +2563,32 @@ extension WorkbenchStoreProfileTests {
     }
     try tokenStore.saveRepositoryToken("github-token", for: profile)
     store.refreshRepositoryTokenAvailability()
-    store.setRemoteRepositoryAccessCheck(RemoteRepositoryAccessCheck(
-      provider: .github,
-      repositoryName: "owner/site",
-      apiBaseURL: RepositoryProvider.github.defaultBaseURL,
-      defaultBranch: "main",
-      canRead: true,
-      canWrite: true,
-      message: "GitHub Token 具备仓库写入权限。"
-    ))
+    store.setRemoteRepositoryAccessCheck(
+      RemoteRepositoryAccessCheck(
+        provider: .github,
+        repositoryName: "owner/site",
+        apiBaseURL: RepositoryProvider.github.defaultBaseURL,
+        defaultBranch: "main",
+        canRead: true,
+        canWrite: true,
+        message: "GitHub Token 具备仓库写入权限。"
+      ))
 
     let identicalDraft = ArticleDraft(
       siteProfileID: profile.id,
       title: "Batch Identical",
       slug: "batch-identical",
       draft: false,
-      bodyMarkdown: "This article body is intentionally longer than the preflight minimum and exactly matches the already published remote Markdown."
+      bodyMarkdown:
+        "This article body is intentionally longer than the preflight minimum and exactly matches the already published remote Markdown."
     )
     let conflictedDraft = ArticleDraft(
       siteProfileID: profile.id,
       title: "Batch Conflict",
       slug: "batch-conflict",
       draft: false,
-      bodyMarkdown: "This article body is intentionally longer than the preflight minimum and differs from the existing remote Markdown."
+      bodyMarkdown:
+        "This article body is intentionally longer than the preflight minimum and differs from the existing remote Markdown."
     )
     store.setDrafts([identicalDraft, conflictedDraft])
     store.setSelectedDraftID(identicalDraft.id)
@@ -2486,9 +2622,11 @@ extension WorkbenchStoreProfileTests {
       identicalRemoteSHA
     )
     XCTAssertEqual(
-      store.publishingPackage(for: try XCTUnwrap(
-        store.drafts.first(where: { $0.id == identicalDraft.id })
-      )).markdownFile?.expectedRemoteSHA,
+      store.publishingPackage(
+        for: try XCTUnwrap(
+          store.drafts.first(where: { $0.id == identicalDraft.id })
+        )
+      ).markdownFile?.expectedRemoteSHA,
       identicalRemoteSHA
     )
     XCTAssertEqual(
@@ -2502,9 +2640,10 @@ extension WorkbenchStoreProfileTests {
 
     let requests = await transport.capturedRequests()
     XCTAssertEqual(requests.map(\.httpMethod), ["GET", "GET"])
-    XCTAssertTrue(requests.allSatisfy { request in
-      !["POST", "PUT", "PATCH", "DELETE"].contains(request.httpMethod ?? "")
-    })
+    XCTAssertTrue(
+      requests.allSatisfy { request in
+        !["POST", "PUT", "PATCH", "DELETE"].contains(request.httpMethod ?? "")
+      })
   }
 
   func testBatchOnlineAtomicFailureRequiresNoPartialRecovery() async throws {
@@ -2516,7 +2655,8 @@ extension WorkbenchStoreProfileTests {
       workbenchRemoteResponse(statusCode: 404, json: #"{"message":"not found"}"#),
       workbenchRemoteResponse(statusCode: 404, json: #"{"message":"not found"}"#),
       workbenchRemoteResponse(json: #"{"object":{"sha":"base-commit-sha"}}"#),
-      workbenchRemoteResponse(json: #"{"sha":"base-commit-sha","tree":{"sha":"base-tree-sha"},"parents":[]}"#),
+      workbenchRemoteResponse(
+        json: #"{"sha":"base-commit-sha","tree":{"sha":"base-tree-sha"},"parents":[]}"#),
       workbenchRemoteResponse(statusCode: 404, json: #"{"message":"not found"}"#),
       workbenchRemoteResponse(json: #"{"sha":"first-blob-sha"}"#),
       workbenchRemoteResponse(statusCode: 404, json: #"{"message":"not found"}"#),
@@ -2524,7 +2664,10 @@ extension WorkbenchStoreProfileTests {
       workbenchRemoteResponse(statusCode: 500, json: #"{"message":"tree creation failed"}"#),
     ])
     let deploymentTransport = SequencedWorkbenchRemoteRepositoryTransport(responses: [
-      workbenchRemoteResponse(statusCode: 200, json: #"{"status":"building","message":"Batch partial publish deployment is still running"}"#),
+      workbenchRemoteResponse(
+        statusCode: 200,
+        json:
+          #"{"status":"building","message":"Batch partial publish deployment is still running"}"#)
     ])
     let tokenStore = repositoryTokenStoreForTest()
     let store = WorkbenchStore(
@@ -2551,28 +2694,31 @@ extension WorkbenchStoreProfileTests {
     }
     try tokenStore.saveRepositoryToken("github-token", for: profile)
     store.refreshRepositoryTokenAvailability()
-    store.setRemoteRepositoryAccessCheck(RemoteRepositoryAccessCheck(
-      provider: .github,
-      repositoryName: "owner/site",
-      apiBaseURL: RepositoryProvider.github.defaultBaseURL,
-      defaultBranch: "main",
-      canRead: true,
-      canWrite: true,
-      message: "GitHub Token 具备仓库写入权限。"
-    ))
+    store.setRemoteRepositoryAccessCheck(
+      RemoteRepositoryAccessCheck(
+        provider: .github,
+        repositoryName: "owner/site",
+        apiBaseURL: RepositoryProvider.github.defaultBaseURL,
+        defaultBranch: "main",
+        canRead: true,
+        canWrite: true,
+        message: "GitHub Token 具备仓库写入权限。"
+      ))
     let firstDraft = ArticleDraft(
       siteProfileID: profile.id,
       title: "Batch Partial One",
       slug: "batch-partial-one",
       draft: false,
-      bodyMarkdown: "This article body is intentionally longer than the preflight minimum so batch partial online publishing records only completed files."
+      bodyMarkdown:
+        "This article body is intentionally longer than the preflight minimum so batch partial online publishing records only completed files."
     )
     let secondDraft = ArticleDraft(
       siteProfileID: profile.id,
       title: "Batch Partial Two",
       slug: "batch-partial-two",
       draft: false,
-      bodyMarkdown: "This article body is intentionally longer than the preflight minimum so the second remote write can fail after the first commit."
+      bodyMarkdown:
+        "This article body is intentionally longer than the preflight minimum so the second remote write can fail after the first commit."
     )
     store.setDrafts([firstDraft, secondDraft])
     store.setSelectedDraftID(firstDraft.id)
@@ -2592,7 +2738,9 @@ extension WorkbenchStoreProfileTests {
     XCTAssertEqual(record.batchItems.map(\.draftTitle), ["Batch Partial One", "Batch Partial Two"])
     XCTAssertEqual(record.batchItems.first?.changedPaths, ["content/posts/batch-partial-one.md"])
     XCTAssertEqual(record.batchItems.last?.changedPaths, ["content/posts/batch-partial-two.md"])
-    XCTAssertEqual(record.changedPaths, ["content/posts/batch-partial-one.md", "content/posts/batch-partial-two.md"])
+    XCTAssertEqual(
+      record.changedPaths,
+      ["content/posts/batch-partial-one.md", "content/posts/batch-partial-two.md"])
     XCTAssertNil(record.commitSHA)
     XCTAssertTrue(record.summary.contains("2 篇文章未完成线上发布"))
     XCTAssertTrue(record.summary.contains("tree creation failed"))
@@ -2642,14 +2790,16 @@ extension WorkbenchStoreProfileTests {
       title: "Batch Permission One",
       slug: "batch-permission-one",
       draft: false,
-      bodyMarkdown: "This article body is intentionally longer than the preflight minimum so batch permission checks block before publishing."
+      bodyMarkdown:
+        "This article body is intentionally longer than the preflight minimum so batch permission checks block before publishing."
     )
     let secondDraft = ArticleDraft(
       siteProfileID: profile.id,
       title: "Batch Permission Two",
       slug: "batch-permission-two",
       draft: false,
-      bodyMarkdown: "This article body is intentionally longer than the preflight minimum so batch permission checks block every API call."
+      bodyMarkdown:
+        "This article body is intentionally longer than the preflight minimum so batch permission checks block every API call."
     )
     store.setDrafts([firstDraft, secondDraft])
     store.setSelectedDraftID(firstDraft.id)
@@ -2681,7 +2831,8 @@ extension WorkbenchStoreProfileTests {
     try git(["init", "-b", "main"], rootURL: rootURL)
     try git(["config", "user.email", "tests@example.com"], rootURL: rootURL)
     try git(["config", "user.name", "Tests"], rootURL: rootURL)
-    try "initial\n".write(to: rootURL.appendingPathComponent("README.md"), atomically: true, encoding: .utf8)
+    try "initial\n".write(
+      to: rootURL.appendingPathComponent("README.md"), atomically: true, encoding: .utf8)
     try git(["add", "README.md"], rootURL: rootURL)
     try git(["commit", "-m", "Initial"], rootURL: rootURL)
 
@@ -2702,7 +2853,8 @@ extension WorkbenchStoreProfileTests {
     try git(["add", "content/posts/remote.md"], rootURL: rootURL)
     try git(["commit", "-m", "Remote draft"], rootURL: rootURL)
     let remoteCommit = try git(["rev-parse", "HEAD"], rootURL: rootURL)
-    let remoteBlobSHA = try git(["rev-parse", "\(remoteCommit):content/posts/remote.md"], rootURL: rootURL)
+    let remoteBlobSHA = try git(
+      ["rev-parse", "\(remoteCommit):content/posts/remote.md"], rootURL: rootURL)
 
     try git(["switch", "main"], rootURL: rootURL)
     try git(["remote", "add", "origin", "https://example.invalid/site.git"], rootURL: rootURL)
@@ -2718,11 +2870,13 @@ extension WorkbenchStoreProfileTests {
     store.updateActiveProfile(profile)
     await store.scanRepositoryAsync()
 
-    let summary = await store.importRemoteDraftFromRepository(repositoryPath: "content/posts/remote.md")
+    let summary = await store.importRemoteDraftFromRepository(
+      repositoryPath: "content/posts/remote.md")
 
     XCTAssertEqual(summary.insertedCount, 1)
     XCTAssertEqual(summary.updatedCount, 0)
-    let imported = try XCTUnwrap(store.drafts.first { $0.repositoryPath == "content/posts/remote.md" })
+    let imported = try XCTUnwrap(
+      store.drafts.first { $0.repositoryPath == "content/posts/remote.md" })
     XCTAssertEqual(imported.title, "Remote Draft")
     XCTAssertEqual(imported.summary, "Imported from upstream.")
     XCTAssertEqual(imported.bodyMarkdown, "Remote body for review.")
@@ -2745,12 +2899,14 @@ extension WorkbenchStoreProfileTests {
     try git(["init", "-b", "main"], rootURL: rootURL)
     try git(["config", "user.email", "tests@example.com"], rootURL: rootURL)
     try git(["config", "user.name", "Tests"], rootURL: rootURL)
-    try "initial\n".write(to: rootURL.appendingPathComponent("README.md"), atomically: true, encoding: .utf8)
+    try "initial\n".write(
+      to: rootURL.appendingPathComponent("README.md"), atomically: true, encoding: .utf8)
     try git(["add", "README.md"], rootURL: rootURL)
     try git(["commit", "-m", "Initial"], rootURL: rootURL)
 
     try git(["switch", "-c", "remote-work"], rootURL: rootURL)
-    try "remote readme\n".write(to: rootURL.appendingPathComponent("README.md"), atomically: true, encoding: .utf8)
+    try "remote readme\n".write(
+      to: rootURL.appendingPathComponent("README.md"), atomically: true, encoding: .utf8)
     try remoteArticle(title: "Remote One", slug: "remote-one", body: "Remote one body.")
       .write(
         to: rootURL.appendingPathComponent("content/posts/remote-one.md"),
@@ -2763,7 +2919,9 @@ extension WorkbenchStoreProfileTests {
         atomically: true,
         encoding: .utf8
       )
-    try git(["add", "README.md", "content/posts/remote-one.md", "content/posts/remote-two.md"], rootURL: rootURL)
+    try git(
+      ["add", "README.md", "content/posts/remote-one.md", "content/posts/remote-two.md"],
+      rootURL: rootURL)
     try git(["commit", "-m", "Remote drafts"], rootURL: rootURL)
     let remoteCommit = try git(["rev-parse", "HEAD"], rootURL: rootURL)
 
@@ -2793,69 +2951,75 @@ extension WorkbenchStoreProfileTests {
 
     XCTAssertEqual(summary.insertedCount, 2)
     XCTAssertEqual(summary.updatedCount, 0)
-    XCTAssertTrue(store.drafts.contains { $0.repositoryPath == "content/posts/remote-one.md" && $0.title == "Remote One" })
-    XCTAssertTrue(store.drafts.contains { $0.repositoryPath == "content/posts/remote-two.md" && $0.title == "Remote Two" })
+    XCTAssertTrue(
+      store.drafts.contains {
+        $0.repositoryPath == "content/posts/remote-one.md" && $0.title == "Remote One"
+      })
+    XCTAssertTrue(
+      store.drafts.contains {
+        $0.repositoryPath == "content/posts/remote-two.md" && $0.title == "Remote Two"
+      })
     XCTAssertEqual(store.selectedSection, .writing)
     XCTAssertEqual(store.publishActionMessage, "已从远端文章变更导入 2 篇、更新 0 篇。")
   }
 
-#if DEBUG
-  func testRemoteArticleImportDropsResultWhenActiveProfileChangesDuringSnapshot() async throws {
-    let rootURL = try preparedGitRepositoryRoot()
-    defer { try? FileManager.default.removeItem(at: rootURL) }
+  #if DEBUG
+    func testRemoteArticleImportDropsResultWhenActiveProfileChangesDuringSnapshot() async throws {
+      let rootURL = try preparedGitRepositoryRoot()
+      defer { try? FileManager.default.removeItem(at: rootURL) }
 
-    try git(["switch", "-c", "remote-work"], rootURL: rootURL)
-    try remoteArticle(title: "Remote Draft", slug: "remote-draft", body: "Remote body.")
-      .write(
-        to: rootURL.appendingPathComponent("content/posts/remote-draft.md"),
-        atomically: true,
-        encoding: .utf8
-      )
-    try git(["add", "content/posts/remote-draft.md"], rootURL: rootURL)
-    try git(["commit", "-m", "Remote draft"], rootURL: rootURL)
-    let remoteCommit = try git(["rev-parse", "HEAD"], rootURL: rootURL)
-    try git(["switch", "main"], rootURL: rootURL)
-    try git(["remote", "add", "origin", "https://example.invalid/site.git"], rootURL: rootURL)
-    try git(["update-ref", "refs/remotes/origin/main", remoteCommit], rootURL: rootURL)
-    try git(["config", "branch.main.remote", "origin"], rootURL: rootURL)
-    try git(["config", "branch.main.merge", "refs/heads/main"], rootURL: rootURL)
+      try git(["switch", "-c", "remote-work"], rootURL: rootURL)
+      try remoteArticle(title: "Remote Draft", slug: "remote-draft", body: "Remote body.")
+        .write(
+          to: rootURL.appendingPathComponent("content/posts/remote-draft.md"),
+          atomically: true,
+          encoding: .utf8
+        )
+      try git(["add", "content/posts/remote-draft.md"], rootURL: rootURL)
+      try git(["commit", "-m", "Remote draft"], rootURL: rootURL)
+      let remoteCommit = try git(["rev-parse", "HEAD"], rootURL: rootURL)
+      try git(["switch", "main"], rootURL: rootURL)
+      try git(["remote", "add", "origin", "https://example.invalid/site.git"], rootURL: rootURL)
+      try git(["update-ref", "refs/remotes/origin/main", remoteCommit], rootURL: rootURL)
+      try git(["config", "branch.main.remote", "origin"], rootURL: rootURL)
+      try git(["config", "branch.main.merge", "refs/heads/main"], rootURL: rootURL)
 
-    let store = try TestWorkbenchFactory.makeStore()
-    var profile = store.activeProfile
-    profile.rememberLocalRepositoryRoot(rootURL)
-    profile.contentRoot = "content"
-    store.updateActiveProfile(profile)
-    let originalProfileID = profile.id
-    let secondaryProfile = store.createProfile(named: "Secondary")
-    store.selectProfile(originalProfileID)
+      let store = try TestWorkbenchFactory.makeStore()
+      var profile = store.activeProfile
+      profile.rememberLocalRepositoryRoot(rootURL)
+      profile.contentRoot = "content"
+      store.updateActiveProfile(profile)
+      let originalProfileID = profile.id
+      let secondaryProfile = store.createProfile(named: "Secondary")
+      store.selectProfile(originalProfileID)
 
-    let gate = RemoteImportTestGate()
-    store.repositoryStore.remoteFileSnapshotTestHook = {
-      await gate.waitUntilEntered()
+      let gate = RemoteImportTestGate()
+      store.repositoryStore.remoteFileSnapshotTestHook = {
+        await gate.waitUntilEntered()
+      }
+      let importTask = Task { @MainActor in
+        await store.importRemoteDraftFromRepository(
+          repositoryPath: "content/posts/remote-draft.md"
+        )
+      }
+      for _ in 0..<20 {
+        if await gate.hasEntered() { break }
+        try await Task.sleep(nanoseconds: 10_000_000)
+      }
+      let didEnterSnapshotWork = await gate.hasEntered()
+      XCTAssertTrue(didEnterSnapshotWork)
+
+      store.selectProfile(secondaryProfile.id)
+      await gate.release()
+      let summary = await importTask.value
+      store.repositoryStore.remoteFileSnapshotTestHook = nil
+
+      XCTAssertEqual(summary.changedCount, 0)
+      XCTAssertFalse(store.drafts.contains { $0.repositoryPath == "content/posts/remote-draft.md" })
+      XCTAssertEqual(store.activeProfileID, secondaryProfile.id)
+      XCTAssertEqual(store.publishActionMessage, "当前站点已变化，未导入原站点远端文章。")
     }
-    let importTask = Task { @MainActor in
-      await store.importRemoteDraftFromRepository(
-        repositoryPath: "content/posts/remote-draft.md"
-      )
-    }
-    for _ in 0..<20 {
-      if await gate.hasEntered() { break }
-      try await Task.sleep(nanoseconds: 10_000_000)
-    }
-    let didEnterSnapshotWork = await gate.hasEntered()
-    XCTAssertTrue(didEnterSnapshotWork)
-
-    store.selectProfile(secondaryProfile.id)
-    await gate.release()
-    let summary = await importTask.value
-    store.repositoryStore.remoteFileSnapshotTestHook = nil
-
-    XCTAssertEqual(summary.changedCount, 0)
-    XCTAssertFalse(store.drafts.contains { $0.repositoryPath == "content/posts/remote-draft.md" })
-    XCTAssertEqual(store.activeProfileID, secondaryProfile.id)
-    XCTAssertEqual(store.publishActionMessage, "当前站点已变化，未导入原站点远端文章。")
-  }
-#endif
+  #endif
 }
 
 private actor CountingRemoteRepositoryTransport: RemoteRepositoryHTTPTransport {
@@ -2909,7 +3073,8 @@ private actor SequencedWorkbenchRemoteRepositoryTransport: RemoteRepositoryHTTPT
     let response = responses.removeFirst()
     return (
       response.data,
-      HTTPURLResponse(url: request.url!, statusCode: response.statusCode, httpVersion: nil, headerFields: nil)!
+      HTTPURLResponse(
+        url: request.url!, statusCode: response.statusCode, httpVersion: nil, headerFields: nil)!
     )
   }
 
@@ -2938,14 +3103,17 @@ private actor SuspendedWorkbenchRemoteRepositoryTransport: RemoteRepositoryHTTPT
 
   func data(for request: URLRequest) async throws -> (Data, URLResponse) {
     requestArrived = true
-    requestWaiters.forEach { $0.resume() }
+    for waiter in requestWaiters {
+      waiter.resume()
+    }
     requestWaiters.removeAll()
     await withCheckedContinuation { continuation in
       responseContinuation = continuation
     }
     return (
       response.data,
-      HTTPURLResponse(url: request.url!, statusCode: response.statusCode, httpVersion: nil, headerFields: nil)!
+      HTTPURLResponse(
+        url: request.url!, statusCode: response.statusCode, httpVersion: nil, headerFields: nil)!
     )
   }
 
@@ -2975,22 +3143,22 @@ private func workbenchRemoteResponse(
 }
 
 #if DEBUG
-private actor RemoteImportTestGate {
-  private var entered = false
-  private var continuation: CheckedContinuation<Void, Never>?
+  private actor RemoteImportTestGate {
+    private var entered = false
+    private var continuation: CheckedContinuation<Void, Never>?
 
-  func waitUntilEntered() async {
-    entered = true
-    await withCheckedContinuation { continuation = $0 }
-  }
+    func waitUntilEntered() async {
+      entered = true
+      await withCheckedContinuation { continuation = $0 }
+    }
 
-  func hasEntered() -> Bool {
-    entered
-  }
+    func hasEntered() -> Bool {
+      entered
+    }
 
-  func release() {
-    continuation?.resume()
-    continuation = nil
+    func release() {
+      continuation?.resume()
+      continuation = nil
+    }
   }
-}
 #endif

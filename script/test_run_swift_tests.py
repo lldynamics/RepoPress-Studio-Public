@@ -162,8 +162,9 @@ try:
 except (ValueError, IndexError):
     raise SystemExit(91)
 matched = [spec for spec in inventory if re.search(filter_value, spec)]
-xctest = sum(not spec.endswith("()") for spec in matched)
-swift_testing = sum(spec.endswith("()") for spec in matched)
+is_swift_testing = lambda spec: re.search(r"\([^\r\n]*\)$", spec) is not None
+xctest = sum(not is_swift_testing(spec) for spec in matched)
+swift_testing = sum(is_swift_testing(spec) for spec in matched)
 print(f"Executed {xctest} tests, with 0 failures (0 unexpected)")
 print(f"✔ Test run with {swift_testing} tests in 1 suite passed")
 '''
@@ -269,7 +270,10 @@ def fixture_inventory() -> list[str]:
         f"PublishingWorkbenchCoreTests.CoreLarge/testValue{index}"
         for index in range(1, 152)
     )
-    rows.append("PublishingWorkbenchCoreTests.SwiftTestingSuite/valueContract()")
+    rows.append(
+        "PublishingWorkbenchCoreTests.SwiftTestingSuite/"
+        "valueContract(value: Int, expected: String)"
+    )
     rows.extend(
         (
             "PublishingMarkdownCoreTests.MarkdownSuite/testParser",

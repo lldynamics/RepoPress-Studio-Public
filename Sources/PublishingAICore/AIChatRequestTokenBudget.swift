@@ -1,5 +1,4 @@
 import Foundation
-import PublishingAICore
 import PublishingCoreSupport
 
 /// A bounded, local request-context planner.  It deliberately owns no
@@ -72,10 +71,12 @@ public struct AIChatRequestTokenBudget: Sendable {
   public static func formatTokenCount(_ tokens: Int) -> String {
     if tokens >= 1_000_000 {
       let millions = Double(tokens) / 1_000_000.0
-      return millions.truncatingRemainder(dividingBy: 1) == 0 ? "\(Int(millions))M" : String(format: "%.1fM", millions)
+      return millions.truncatingRemainder(dividingBy: 1) == 0
+        ? "\(Int(millions))M" : String(format: "%.1fM", millions)
     } else if tokens >= 1_000 {
       let thousands = Double(tokens) / 1_000.0
-      return thousands.truncatingRemainder(dividingBy: 1) == 0 ? "\(Int(thousands))k" : String(format: "%.0fk", thousands)
+      return thousands.truncatingRemainder(dividingBy: 1) == 0
+        ? "\(Int(thousands))k" : String(format: "%.0fk", thousands)
     } else {
       return "\(tokens)"
     }
@@ -142,7 +143,8 @@ public struct AIChatRequestTokenBudget: Sendable {
       let fullCost = messageTokenCount(first)
       let reserveForLatest = latestUserIndex == nil ? 0 : minimumMessageTokens
       let allowance = max(minimumMessageTokens, promptLimit - reserveForLatest)
-      let fitted = fullCost <= allowance
+      let fitted =
+        fullCost <= allowance
         ? first
         : clippedMessage(first, maximumTokens: allowance)
       selected[firstSystemIndex] = fitted
@@ -155,7 +157,8 @@ public struct AIChatRequestTokenBudget: Sendable {
         minimumMessageTokens,
         promptLimit - used
       )
-      let fitted = messageTokenCount(latest) <= allowance
+      let fitted =
+        messageTokenCount(latest) <= allowance
         ? latest
         : clippedMessage(latest, maximumTokens: allowance)
       selected[latestUserIndex] = fitted
@@ -175,7 +178,8 @@ public struct AIChatRequestTokenBudget: Sendable {
       guard remaining >= minimumMessageTokens else { break }
       let message = messages[index]
       let cost = messageTokenCount(message)
-      let fitted = cost <= remaining
+      let fitted =
+        cost <= remaining
         ? message
         : clippedMessage(message, maximumTokens: remaining)
       guard messageTokenCount(fitted) > messageOverhead else { continue }
@@ -207,10 +211,12 @@ public struct AIChatRequestTokenBudget: Sendable {
       if let mandatorySystem {
         remaining -= messageTokenCount(mandatorySystem)
       }
-      let fitted = clippedMessage(messages[latestUserIndex], maximumTokens: max(
-        minimumMessageTokens,
-        remaining
-      ))
+      let fitted = clippedMessage(
+        messages[latestUserIndex],
+        maximumTokens: max(
+          minimumMessageTokens,
+          remaining
+        ))
       for index in selected.keys.sorted() where index != firstSystemIndex {
         selected.removeValue(forKey: index)
       }
@@ -218,12 +224,14 @@ public struct AIChatRequestTokenBudget: Sendable {
     }
 
     let boundedMessages = selected.keys.sorted().compactMap { selected[$0] }
-    let promptTokenCount = boundedMessages.reduce(0) { $0 + messageTokenCount($1) }
+    let promptTokenCount =
+      boundedMessages.reduce(0) { $0 + messageTokenCount($1) }
       + max(0, additionalPromptTokens)
     let didModifyMessage = selected.contains { index, message in
       message != messages[index]
     }
-    let didTrim = boundedMessages.count != messages.count
+    let didTrim =
+      boundedMessages.count != messages.count
       || didModifyMessage
       || promptTokenCount + outputBudget + safetyMargin > contextWindow
 
@@ -239,7 +247,8 @@ public struct AIChatRequestTokenBudget: Sendable {
         maximumTokens: promptLimit
       )
     }
-    let finalPromptTokenCount = finalMessages.reduce(0) { $0 + messageTokenCount($1) }
+    let finalPromptTokenCount =
+      finalMessages.reduce(0) { $0 + messageTokenCount($1) }
       + max(0, additionalPromptTokens)
     let finalOutputBudget = max(
       1,
@@ -395,7 +404,8 @@ public struct AIChatRequestTokenBudget: Sendable {
     let imageAllowance = message.contentParts.reduce(0) { partial, part in
       partial + (part.type == .imageURL ? 1_536 : 0)
     }
-    let toolAllowance = (message.toolCalls?.count ?? 0) * 128
+    let toolAllowance =
+      (message.toolCalls?.count ?? 0) * 128
       + (message.toolCallID.map { tokenizer.tokenCount($0) } ?? 0)
     let contentLimit = max(
       1,
@@ -449,9 +459,12 @@ public struct AIChatRequestTokenBudget: Sendable {
         index = (group.last ?? index) + 1
         continue
       }
-      let isMandatory = index == 0 || message.role.lowercased() == "user"
-        && index == messages.lastIndex(where: { $0.role.lowercased() == "user" })
-      let candidate = isMandatory || messageTokenCount(message) > remaining
+      let isMandatory =
+        index == 0
+        || message.role.lowercased() == "user"
+          && index == messages.lastIndex(where: { $0.role.lowercased() == "user" })
+      let candidate =
+        isMandatory || messageTokenCount(message) > remaining
         ? clippedMessage(message, maximumTokens: remaining)
         : message
       let cost = messageTokenCount(candidate)
@@ -470,7 +483,8 @@ public struct AIChatRequestTokenBudget: Sendable {
     guard !text.isEmpty, maximumTokens > 0 else { return "" }
     guard tokenizer.tokenCount(text) > maximumTokens else { return text }
 
-    let paragraphs = text
+    let paragraphs =
+      text
       .components(separatedBy: "\n\n")
       .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
       .filter { !$0.isEmpty }
@@ -515,8 +529,8 @@ public struct AIChatRequestTokenBudget: Sendable {
   }
 }
 
-private extension AIChatMessage {
-  var contentParts: [AIChatMessageContentPart] {
+extension AIChatMessage {
+  fileprivate var contentParts: [AIChatMessageContentPart] {
     guard case .parts(let parts)? = content else { return [] }
     return parts
   }

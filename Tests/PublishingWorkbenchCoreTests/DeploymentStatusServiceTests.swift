@@ -11,21 +11,19 @@ final class DeploymentStatusServiceTests: XCTestCase {
       deploymentResponse(statusCode: 200, json: #"{"ok":true}"#),
     ])
     let service = DeploymentStatusService(transport: transport)
-    var profile = SiteProfile.defaultProfile
-    profile.repositoryProvider = .github
-    profile.repositoryBaseURL = "https://api.github.com"
-    profile.repoOwner = "owner"
-    profile.repoName = "site"
-    profile.branch = "main"
-    profile.deploymentProvider = .githubPages
-    profile.deploymentSiteURL = "https://owner.github.io/site/"
-    let record = ReleaseRecord(
+    let profile = deploymentProfile {
+      $0.repositoryProvider = .github
+      $0.repositoryBaseURL = "https://api.github.com"
+      $0.repoOwner = "owner"
+      $0.repoName = "site"
+      $0.branch = "main"
+      $0.deploymentProvider = .githubPages
+      $0.deploymentSiteURL = "https://owner.github.io/site/"
+    }
+    let record = releaseRecord(
+      title: "线上提交：Hello", summary: "GitHub · main", siteProfileID: profile.id,
       kind: .remoteDirectCommit,
-      title: "线上提交：Hello",
-      summary: "GitHub · main",
-      siteProfileID: profile.id,
-      branchName: "main",
-      commitSHA: "abc123"
+      branchName: "main", commitSHA: "abc123"
     )
 
     let snapshot = await service.check(profile: profile, releaseRecord: record, token: "github-token")
@@ -56,21 +54,19 @@ final class DeploymentStatusServiceTests: XCTestCase {
       deploymentResponse(statusCode: 200, json: #"<html><body>GitLab Pages is live</body></html>"#),
     ])
     let service = DeploymentStatusService(transport: transport)
-    var profile = SiteProfile.defaultProfile
-    profile.repositoryProvider = .gitlab
-    profile.repositoryBaseURL = "https://gitlab.com"
-    profile.repoOwner = "group"
-    profile.repoName = "site"
-    profile.branch = "main"
-    profile.deploymentProvider = .gitlabPages
-    profile.deploymentSiteURL = "https://group.gitlab.io/site/"
-    let record = ReleaseRecord(
+    let profile = deploymentProfile {
+      $0.repositoryProvider = .gitlab
+      $0.repositoryBaseURL = "https://gitlab.com"
+      $0.repoOwner = "group"
+      $0.repoName = "site"
+      $0.branch = "main"
+      $0.deploymentProvider = .gitlabPages
+      $0.deploymentSiteURL = "https://group.gitlab.io/site/"
+    }
+    let record = releaseRecord(
+      title: "线上提交：GitLab", summary: "GitLab · main", siteProfileID: profile.id,
       kind: .remoteDirectCommit,
-      title: "线上提交：GitLab",
-      summary: "GitLab · main",
-      siteProfileID: profile.id,
-      branchName: "publish/gitlab-status",
-      commitSHA: "def456"
+      branchName: "publish/gitlab-status", commitSHA: "def456"
     )
 
     let snapshot = await service.check(profile: profile, releaseRecord: record, token: "gitlab-token")
@@ -100,9 +96,10 @@ final class DeploymentStatusServiceTests: XCTestCase {
       deploymentResponse(statusCode: 503, json: #"{"status":"maintenance"}"#),
     ])
     let service = DeploymentStatusService(transport: transport)
-    var profile = SiteProfile.defaultProfile
-    profile.deploymentProvider = .vercel
-    profile.deploymentStatusEndpointURL = "https://example.com/api/status"
+    let profile = deploymentProfile {
+      $0.deploymentProvider = .vercel
+      $0.deploymentStatusEndpointURL = "https://example.com/api/status"
+    }
 
     let snapshot = await service.check(profile: profile)
 
@@ -127,9 +124,10 @@ final class DeploymentStatusServiceTests: XCTestCase {
       ),
     ])
     let service = DeploymentStatusService(transport: transport)
-    var profile = SiteProfile.defaultProfile
-    profile.deploymentProvider = .vercel
-    profile.deploymentStatusEndpointURL = "https://status.example.com/vercel"
+    let profile = deploymentProfile {
+      $0.deploymentProvider = .vercel
+      $0.deploymentStatusEndpointURL = "https://status.example.com/vercel"
+    }
 
     let snapshot = await service.check(profile: profile)
 
@@ -164,10 +162,11 @@ final class DeploymentStatusServiceTests: XCTestCase {
     let authorizedTransport = SequencedDeploymentTransport(responses: [
       deploymentResponse(statusCode: 200, json: #"{"ok":true,"message":"Authenticated status is live"}"#),
     ])
-    var authorizedProfile = SiteProfile.defaultProfile
-    authorizedProfile.deploymentProvider = .custom
-    authorizedProfile.deploymentStatusEndpointURL = "https://status.example.com/private"
-    authorizedProfile.deploymentStatusEndpointUsesToken = true
+    let authorizedProfile = deploymentProfile {
+      $0.deploymentProvider = .custom
+      $0.deploymentStatusEndpointURL = "https://status.example.com/private"
+      $0.deploymentStatusEndpointUsesToken = true
+    }
 
     let authorizedSnapshot = await DeploymentStatusService(transport: authorizedTransport)
       .check(profile: authorizedProfile, token: "deploy-token")
@@ -191,10 +190,11 @@ final class DeploymentStatusServiceTests: XCTestCase {
 
   func testDeploymentEndpointRejectsHTTPBeforeSendingBearerToken() async throws {
     let transport = SequencedDeploymentTransport(responses: [])
-    var profile = SiteProfile.defaultProfile
-    profile.deploymentProvider = .custom
-    profile.deploymentStatusEndpointURL = "http://status.example.com/private"
-    profile.deploymentStatusEndpointUsesToken = true
+    let profile = deploymentProfile {
+      $0.deploymentProvider = .custom
+      $0.deploymentStatusEndpointURL = "http://status.example.com/private"
+      $0.deploymentStatusEndpointUsesToken = true
+    }
 
     let snapshot = await DeploymentStatusService(transport: transport)
       .check(profile: profile, token: "deploy-token")
@@ -228,10 +228,11 @@ final class DeploymentStatusServiceTests: XCTestCase {
 
   func testProtectedHTTPSEndpointDoesNotFallBackToAnonymousRequestWhenTokenIsMissing() async {
     let transport = SequencedDeploymentTransport(responses: [])
-    var profile = SiteProfile.defaultProfile
-    profile.deploymentProvider = .custom
-    profile.deploymentStatusEndpointURL = "https://status.example.com/private"
-    profile.deploymentStatusEndpointUsesToken = true
+    let profile = deploymentProfile {
+      $0.deploymentProvider = .custom
+      $0.deploymentStatusEndpointURL = "https://status.example.com/private"
+      $0.deploymentStatusEndpointUsesToken = true
+    }
 
     let snapshot = await DeploymentStatusService(transport: transport)
       .check(profile: profile, token: nil)
@@ -249,10 +250,11 @@ final class DeploymentStatusServiceTests: XCTestCase {
     let transport = SequencedDeploymentTransport(responses: [
       deploymentResponse(statusCode: 200, json: #"{"ok":true}"#),
     ])
-    var profile = SiteProfile.defaultProfile
-    profile.deploymentProvider = .custom
-    profile.deploymentStatusEndpointURL = "http://status.example.com/public"
-    profile.deploymentStatusEndpointUsesToken = false
+    let profile = deploymentProfile {
+      $0.deploymentProvider = .custom
+      $0.deploymentStatusEndpointURL = "http://status.example.com/public"
+      $0.deploymentStatusEndpointUsesToken = false
+    }
 
     let snapshot = await DeploymentStatusService(transport: transport)
       .check(profile: profile, token: "must-not-be-sent")
@@ -335,16 +337,13 @@ final class DeploymentStatusServiceTests: XCTestCase {
       deploymentResponse(statusCode: 200, json: #"<html><head><title>Published Article</title><link rel="canonical" href="https://example.com/blog/published-article"><meta property="og:url" content="https://example.com/blog/published-article/"></head><body>Published Article</body></html>"#),
     ])
     let service = DeploymentStatusService(transport: transport)
-    var profile = SiteProfile.defaultProfile
-    profile.deploymentProvider = .custom
-    profile.deploymentSiteURL = "https://example.com/blog/"
-    let record = ReleaseRecord(
-      kind: .remoteDirectCommit,
-      title: "线上提交：Published Article",
-      summary: "custom",
-      siteProfileID: profile.id,
-      draftTitle: "Published Article",
-      markdownPath: "content/posts/published-article.md"
+    let profile = deploymentProfile {
+      $0.deploymentProvider = .custom
+      $0.deploymentSiteURL = "https://example.com/blog/"
+    }
+    let record = releaseRecord(
+      title: "线上提交：Published Article", summary: "custom", siteProfileID: profile.id,
+      draftTitle: "Published Article", markdownPath: "content/posts/published-article.md"
     )
 
     let snapshot = await service.check(profile: profile, releaseRecord: record)
@@ -402,16 +401,13 @@ final class DeploymentStatusServiceTests: XCTestCase {
       deploymentResponse(statusCode: 200, json: #"<html><body>Old article content</body></html>"#),
     ])
     let service = DeploymentStatusService(transport: transport)
-    var profile = SiteProfile.defaultProfile
-    profile.deploymentProvider = .custom
-    profile.deploymentSiteURL = "https://example.com"
-    let record = ReleaseRecord(
-      kind: .remoteDirectCommit,
-      title: "线上提交：New Article",
-      summary: "custom",
-      siteProfileID: profile.id,
-      draftTitle: "New Article",
-      markdownPath: "content/posts/new-article.md"
+    let profile = deploymentProfile {
+      $0.deploymentProvider = .custom
+      $0.deploymentSiteURL = "https://example.com"
+    }
+    let record = releaseRecord(
+      title: "线上提交：New Article", summary: "custom", siteProfileID: profile.id,
+      draftTitle: "New Article", markdownPath: "content/posts/new-article.md"
     )
 
     let snapshot = await service.check(profile: profile, releaseRecord: record)
@@ -444,16 +440,13 @@ final class DeploymentStatusServiceTests: XCTestCase {
       deploymentResponse(statusCode: 200, json: #"<html><head><link rel="canonical" href="https://example.com/posts/old-article"><meta property="og:url" content="https://example.com/posts/new-article"></head><body>New Article</body></html>"#),
     ])
     let service = DeploymentStatusService(transport: transport)
-    var profile = SiteProfile.defaultProfile
-    profile.deploymentProvider = .custom
-    profile.deploymentSiteURL = "https://example.com"
-    let record = ReleaseRecord(
-      kind: .remoteDirectCommit,
-      title: "线上提交：New Article",
-      summary: "custom",
-      siteProfileID: profile.id,
-      draftTitle: "New Article",
-      markdownPath: "content/posts/new-article.md"
+    let profile = deploymentProfile {
+      $0.deploymentProvider = .custom
+      $0.deploymentSiteURL = "https://example.com"
+    }
+    let record = releaseRecord(
+      title: "线上提交：New Article", summary: "custom", siteProfileID: profile.id,
+      draftTitle: "New Article", markdownPath: "content/posts/new-article.md"
     )
 
     let snapshot = await service.check(profile: profile, releaseRecord: record)
@@ -506,15 +499,10 @@ final class DeploymentStatusServiceTests: XCTestCase {
     var profile = SiteProfile.defaultProfile
     profile.deploymentProvider = .custom
     profile.deploymentSiteURL = "https://example.com"
-    let record = ReleaseRecord(
-      kind: .remoteDirectCommit,
-      title: "线上提交：Social Article",
-      summary: "custom",
-      siteProfileID: profile.id,
-      draftTitle: "Social Article",
-      draftSummary: summary,
-      draftCoverAltText: "Social article cover",
-      markdownPath: "content/posts/social-article.md"
+    let record = releaseRecord(
+      title: "线上提交：Social Article", summary: "custom", siteProfileID: profile.id,
+      kind: .remoteDirectCommit, draftTitle: "Social Article", draftSummary: summary,
+      draftCoverAltText: "Social article cover", markdownPath: "content/posts/social-article.md"
     )
 
     let snapshot = await service.check(profile: profile, releaseRecord: record)
@@ -571,15 +559,10 @@ final class DeploymentStatusServiceTests: XCTestCase {
     var profile = SiteProfile.defaultProfile
     profile.deploymentProvider = .custom
     profile.deploymentSiteURL = "https://example.com"
-    let record = ReleaseRecord(
-      kind: .remoteDirectCommit,
-      title: "线上提交：Social Image Missing",
-      summary: "custom",
-      siteProfileID: profile.id,
-      draftTitle: "Social Image Missing",
-      draftSummary: summary,
-      draftCoverAltText: "Expected cover alt",
-      markdownPath: "content/posts/social-image-missing.md"
+    let record = releaseRecord(
+      title: "线上提交：Social Image Missing", summary: "custom", siteProfileID: profile.id,
+      kind: .remoteDirectCommit, draftTitle: "Social Image Missing", draftSummary: summary,
+      draftCoverAltText: "Expected cover alt", markdownPath: "content/posts/social-image-missing.md"
     )
 
     let snapshot = await service.check(profile: profile, releaseRecord: record)
@@ -625,15 +608,10 @@ final class DeploymentStatusServiceTests: XCTestCase {
     var profile = SiteProfile.defaultProfile
     profile.deploymentProvider = .custom
     profile.deploymentSiteURL = "https://example.com"
-    let record = ReleaseRecord(
-      kind: .remoteDirectCommit,
-      title: "线上提交：Social Alt Missing",
-      summary: "custom",
-      siteProfileID: profile.id,
-      draftTitle: "Social Alt Missing",
-      draftSummary: summary,
-      draftCoverAltText: "Expected cover alt",
-      markdownPath: "content/posts/social-alt-missing.md"
+    let record = releaseRecord(
+      title: "线上提交：Social Alt Missing", summary: "custom", siteProfileID: profile.id,
+      kind: .remoteDirectCommit, draftTitle: "Social Alt Missing", draftSummary: summary,
+      draftCoverAltText: "Expected cover alt", markdownPath: "content/posts/social-alt-missing.md"
     )
 
     let snapshot = await service.check(profile: profile, releaseRecord: record)
@@ -676,13 +654,9 @@ final class DeploymentStatusServiceTests: XCTestCase {
     var profile = SiteProfile.defaultProfile
     profile.deploymentProvider = .custom
     profile.deploymentSiteURL = "https://example.com"
-    let record = ReleaseRecord(
-      kind: .remoteDirectCommit,
-      title: "线上提交：Social Missing Title",
-      summary: "custom",
-      siteProfileID: profile.id,
-      draftTitle: "Social Missing Title",
-      draftSummary: summary,
+    let record = releaseRecord(
+      title: "线上提交：Social Missing Title", summary: "custom", siteProfileID: profile.id,
+      kind: .remoteDirectCommit, draftTitle: "Social Missing Title", draftSummary: summary,
       markdownPath: "content/posts/social-missing-title.md"
     )
 
@@ -714,12 +688,9 @@ final class DeploymentStatusServiceTests: XCTestCase {
     profile.applyPublishingDefaults(for: .jekyll)
     profile.deploymentProvider = .custom
     profile.deploymentSiteURL = "https://example.com/blog/"
-    let record = ReleaseRecord(
-      kind: .remoteDirectCommit,
-      title: "线上提交：Jekyll Article",
-      summary: "custom",
-      siteProfileID: profile.id,
-      draftTitle: "Jekyll Article",
+    let record = releaseRecord(
+      title: "线上提交：Jekyll Article", summary: "custom", siteProfileID: profile.id,
+      kind: .remoteDirectCommit, draftTitle: "Jekyll Article",
       markdownPath: "_posts/2026-07-07-jekyll-article.md"
     )
 
@@ -745,12 +716,9 @@ final class DeploymentStatusServiceTests: XCTestCase {
     profile.applyPublishingDefaults(for: .hugo)
     profile.deploymentProvider = .custom
     profile.deploymentSiteURL = "https://example.com"
-    let record = ReleaseRecord(
-      kind: .remoteDirectCommit,
-      title: "线上提交：Hugo Article",
-      summary: "custom",
-      siteProfileID: profile.id,
-      draftTitle: "Hugo Article",
+    let record = releaseRecord(
+      title: "线上提交：Hugo Article", summary: "custom", siteProfileID: profile.id,
+      kind: .remoteDirectCommit, draftTitle: "Hugo Article",
       markdownPath: "content/posts/hugo-article.md"
     )
 
@@ -1174,10 +1142,8 @@ final class DeploymentStatusServiceTests: XCTestCase {
       profile.deploymentProvider = .custom
       profile.deploymentStatusEndpointURL = "https://status.example.com/site"
     }
-    let record = ReleaseRecord(
-      title: "线上发布：Test",
-      summary: "custom",
-      siteProfileID: store.activeProfileID
+    let record = releaseRecord(
+      title: "线上发布：Test", summary: "custom", siteProfileID: store.activeProfileID
     )
     store.setReleaseRecords([record])
 
@@ -1219,13 +1185,9 @@ final class DeploymentStatusServiceTests: XCTestCase {
       profile.deploymentProvider = .githubPages
       profile.deploymentSiteURL = "https://owner.github.io/site/"
     }
-    let record = ReleaseRecord(
-      kind: .remoteDirectCommit,
-      title: "线上发布：Fallback",
-      summary: "github-pages",
-      siteProfileID: store.activeProfileID,
-      branchName: "main",
-      commitSHA: "abc123"
+    let record = releaseRecord(
+      title: "线上发布：Fallback", summary: "github-pages", siteProfileID: store.activeProfileID,
+      kind: .remoteDirectCommit, branchName: "main", commitSHA: "abc123"
     )
     store.setReleaseRecords([record])
 
@@ -1247,18 +1209,13 @@ final class DeploymentStatusServiceTests: XCTestCase {
       deploymentResponse(statusCode: 200, json: #"{"status":"ok","message":"Deploy recovered"}"#),
     ])
     let persistenceURL = try temporaryPersistenceURL()
-    let store = WorkbenchStore(
-      persistence: WorkbenchPersistence(fileURL: persistenceURL),
-      deploymentStatusService: DeploymentStatusService(transport: transport)
-    )
+    let store = try deploymentStore(transport: transport, persistenceURL: persistenceURL)
     store.updateActiveProfile { profile in
       profile.deploymentProvider = .custom
       profile.deploymentStatusEndpointURL = "https://status.example.com/site"
     }
-    let record = ReleaseRecord(
-      title: "线上发布：History",
-      summary: "custom",
-      siteProfileID: store.activeProfileID
+    let record = releaseRecord(
+      title: "线上发布：History", summary: "custom", siteProfileID: store.activeProfileID
     )
     store.setReleaseRecords([record])
 
@@ -1304,10 +1261,8 @@ final class DeploymentStatusServiceTests: XCTestCase {
       profile.deploymentProvider = .custom
       profile.deploymentStatusEndpointURL = "https://status.example.com/site"
     }
-    let record = ReleaseRecord(
-      title: "线上发布：Concurrent",
-      summary: "custom",
-      siteProfileID: store.activeProfileID
+    let record = releaseRecord(
+      title: "线上发布：Concurrent", summary: "custom", siteProfileID: store.activeProfileID
     )
     store.setReleaseRecords([record])
 
@@ -1349,10 +1304,8 @@ final class DeploymentStatusServiceTests: XCTestCase {
       profile.repoOwner = ""
       profile.repoName = ""
     }
-    let record = ReleaseRecord(
-      title: "线上发布：No Config",
-      summary: "custom",
-      siteProfileID: store.activeProfileID
+    let record = releaseRecord(
+      title: "线上发布：No Config", summary: "custom", siteProfileID: store.activeProfileID
     )
 
     XCTAssertFalse(store.canCheckDeploymentStatus(for: record))
@@ -1376,10 +1329,8 @@ final class DeploymentStatusServiceTests: XCTestCase {
       profile.repoOwner = ""
       profile.repoName = ""
     }
-    let record = ReleaseRecord(
-      title: "线上发布：Vercel",
-      summary: "vercel",
-      siteProfileID: store.activeProfileID
+    let record = releaseRecord(
+      title: "线上发布：Vercel", summary: "vercel", siteProfileID: store.activeProfileID
     )
 
     XCTAssertTrue(store.canCheckDeploymentStatus(for: record))
@@ -1416,10 +1367,7 @@ final class DeploymentStatusServiceTests: XCTestCase {
       deploymentResponse(statusCode: 200, json: #"{"status":"ok"}"#),
       deploymentResponse(statusCode: 200, json: #"{"status":"ok"}"#),
     ])
-    let store = WorkbenchStore(
-      persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()),
-      deploymentStatusService: DeploymentStatusService(transport: transport)
-    )
+    let store = try deploymentStore(transport: transport)
     let firstID = store.activeProfileID
     let secondID = store.createProfile(named: "Secondary").id
     store.selectProfile(firstID)
@@ -1479,10 +1427,7 @@ final class DeploymentStatusServiceTests: XCTestCase {
     let transport = SequencedDeploymentTransport(responses: [
       deploymentResponse(statusCode: 200, json: #"{"status":"ok"}"#),
     ])
-    let store = WorkbenchStore(
-      persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()),
-      deploymentStatusService: DeploymentStatusService(transport: transport)
-    )
+    let store = try deploymentStore(transport: transport)
     let firstID = store.activeProfileID
     let secondID = store.createProfile(named: "Secondary").id
     store.selectProfile(firstID)
@@ -1553,10 +1498,7 @@ final class DeploymentStatusServiceTests: XCTestCase {
         delayNanoseconds: 300_000_000
       ),
     ])
-    let store = WorkbenchStore(
-      persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()),
-      deploymentStatusService: DeploymentStatusService(transport: transport)
-    )
+    let store = try deploymentStore(transport: transport)
     store.updateActiveProfile { profile in
       profile.deploymentProvider = .custom
       profile.deploymentStatusEndpointURL = "https://status.example.com/stale"
@@ -1593,10 +1535,7 @@ final class DeploymentStatusServiceTests: XCTestCase {
   func testDeploymentPollingPersistsSettingsAndSkipsWhenNoEligibleRecords() async throws {
     let transport = SequencedDeploymentTransport(responses: [])
     let url = try temporaryPersistenceURL()
-    let store = WorkbenchStore(
-      persistence: WorkbenchPersistence(fileURL: url),
-      deploymentStatusService: DeploymentStatusService(transport: transport)
-    )
+    let store = try deploymentStore(transport: transport, persistenceURL: url)
 
     store.updateDeploymentPollingSettings(DeploymentPollingSettings(isEnabled: true, intervalMinutes: 15))
     let didRun = await store.runDeploymentPolling(now: Date(timeIntervalSince1970: 1_900_000_000))
@@ -1636,10 +1575,7 @@ final class DeploymentStatusServiceTests: XCTestCase {
       deploymentResponse(statusCode: 200, json: #"{"status":"ok"}"#),
     ])
     let persistenceURL = try temporaryPersistenceURL()
-    let store = WorkbenchStore(
-      persistence: WorkbenchPersistence(fileURL: persistenceURL),
-      deploymentStatusService: DeploymentStatusService(transport: transport)
-    )
+    let store = try deploymentStore(transport: transport, persistenceURL: persistenceURL)
     store.updateActiveProfile { profile in
       profile.deploymentProvider = .custom
       profile.deploymentStatusEndpointURL = "https://status.example.com/site"
@@ -1685,10 +1621,7 @@ final class DeploymentStatusServiceTests: XCTestCase {
       deploymentResponse(statusCode: 200, json: #"{"status":"ok","message":"Published"}"#),
     ])
     let persistenceURL = try temporaryPersistenceURL()
-    let store = WorkbenchStore(
-      persistence: WorkbenchPersistence(fileURL: persistenceURL),
-      deploymentStatusService: DeploymentStatusService(transport: transport)
-    )
+    let store = try deploymentStore(transport: transport, persistenceURL: persistenceURL)
     store.updateActiveProfile { profile in
       profile.deploymentProvider = .custom
       profile.deploymentStatusEndpointURL = "https://status.example.com/partial"
@@ -1748,10 +1681,7 @@ final class DeploymentStatusServiceTests: XCTestCase {
       deploymentResponse(statusCode: 200, json: #"{"status":"error","message":"Deploy failed"}"#),
       deploymentResponse(statusCode: 200, json: #"{"message":"Deployment is reachable"}"#),
     ])
-    let store = WorkbenchStore(
-      persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()),
-      deploymentStatusService: DeploymentStatusService(transport: transport)
-    )
+    let store = try deploymentStore(transport: transport)
     store.updateActiveProfile { profile in
       profile.deploymentProvider = .custom
       profile.deploymentStatusEndpointURL = "https://status.example.com/site"
@@ -1810,6 +1740,59 @@ final class DeploymentStatusServiceTests: XCTestCase {
     XCTAssertEqual(
       DeploymentProvider.custom.integrationDepth.detail,
       CoreL10n.text("读取自定义 JSON/HTTP 状态端点，或使用站点 URL 做可达性与发布后页面校验。")
+    )
+  }
+
+  private func deploymentProfile(
+    _ configure: (inout SiteProfile) -> Void = { _ in }
+  ) -> SiteProfile {
+    var profile = SiteProfile.defaultProfile
+    configure(&profile)
+    return profile
+  }
+
+  private func releaseRecord(
+    title: String,
+    summary: String,
+    siteProfileID: UUID?,
+    kind: ReleaseRecordKind = .remoteDirectCommit,
+    branchName: String? = nil,
+    commitSHA: String? = nil,
+    draftTitle: String? = nil,
+    draftSummary: String? = nil,
+    draftCoverAltText: String? = nil,
+    markdownPath: String? = nil
+  ) -> ReleaseRecord {
+    ReleaseRecord(
+      kind: kind,
+      title: title,
+      summary: summary,
+      siteProfileID: siteProfileID,
+      draftTitle: draftTitle,
+      draftSummary: draftSummary,
+      draftCoverAltText: draftCoverAltText,
+      markdownPath: markdownPath,
+      branchName: branchName,
+      commitSHA: commitSHA
+    )
+  }
+
+  private func deploymentStore(
+    transport: RemoteRepositoryHTTPTransport,
+    persistenceURL: URL? = nil,
+    deploymentTokenStore: KeychainTokenStore? = nil
+  ) throws -> WorkbenchStore {
+    let url = try persistenceURL ?? temporaryPersistenceURL()
+    let tokenStore =
+      deploymentTokenStore
+      ?? KeychainTokenStore(
+        service: KeychainCredentialServices.deployment,
+        accountPrefix: "deployment-provider"
+      )
+    return WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: url),
+      deploymentStatusService: DeploymentStatusService(transport: transport),
+      deploymentTokenStore: tokenStore
     )
   }
 

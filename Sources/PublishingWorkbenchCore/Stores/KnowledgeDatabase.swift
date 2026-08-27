@@ -10,16 +10,6 @@ func knowledgeSQLiteCancellationProgressHandler(
   return Task.isCancelled ? 1 : 0
 }
 
-struct KnowledgeDatabaseBackupInspection: Hashable, Sendable {
-  var userVersion: Int
-  var documentCount: Int
-  var folderCount: Int
-  var revisionCount: Int
-  var chunkCount: Int
-  var storageReferences: Set<String>
-  var sampleTitles: [String]
-}
-
 struct KnowledgeDatabaseDeletionOutcome: Hashable, Sendable {
   var unreferencedStorageReferences: Set<String>
 }
@@ -57,7 +47,7 @@ public enum KnowledgeDatabaseWALCheckpointMode: Sendable {
   }
 }
 
-final class KnowledgeDatabase: @unchecked Sendable {
+final class KnowledgeDatabase: @unchecked Sendable, KnowledgeBackupSnapshotSource {
   static let currentSchemaVersion = 8
 
   let lock = NSLock()
@@ -84,6 +74,7 @@ final class KnowledgeDatabase: @unchecked Sendable {
       throw KnowledgeLibraryError.database(message)
     }
     handle = database
+    _ = sqlite3_busy_timeout(database, 5_000)
 
     do {
       try execute("PRAGMA foreign_keys = ON;")
@@ -125,6 +116,7 @@ final class KnowledgeDatabase: @unchecked Sendable {
       throw KnowledgeLibraryBackupError.databaseIntegrity(message)
     }
     handle = database
+    _ = sqlite3_busy_timeout(database, 5_000)
   }
 
 }

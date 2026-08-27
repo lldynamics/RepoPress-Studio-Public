@@ -52,6 +52,7 @@ extension RemoteRepositoryPublishService {
     token: String?,
     onProgress: (@Sendable (RemoteRepositoryPublishProgress) -> Void)? = nil
   ) async throws -> RemoteRepositoryPublishResult {
+    let package = try normalizedPublishPackage(package)
     let token = try requiredToken(token)
     let repository = try remoteRepository(from: profile)
 

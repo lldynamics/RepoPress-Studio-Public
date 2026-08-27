@@ -30,7 +30,7 @@ def main() -> int:
         [
             "ModuleTests.FirstSuite/testOne",
             "ModuleTests.FirstSuite/testTwo",
-            "ModuleTests.SecondSuite/testThree()",
+            "ModuleTests.SecondSuite/testThree(value: 1, type: Int)",
             "OtherTests.OnlySuite/testFour",
         ]
     )

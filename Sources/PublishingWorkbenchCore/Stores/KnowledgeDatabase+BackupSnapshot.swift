@@ -9,7 +9,7 @@ extension KnowledgeDatabase {
   /// database through the same connection that created it. Offline backup
   /// files continue to use the strictly read-only `inspectBackup(at:)` path
   /// below.
-  func inspectOpenDatabase() throws -> KnowledgeDatabaseBackupInspection {
+  func inspectOpenDatabase() throws -> KnowledgePersistenceInspection {
     try withLock {
       let userVersion = try scalarIntUnlocked("PRAGMA user_version;")
       guard userVersion <= Self.currentSchemaVersion else {
@@ -22,7 +22,7 @@ extension KnowledgeDatabase {
     }
   }
 
-  func createBackupSnapshot(at destinationURL: URL) throws -> KnowledgeDatabaseBackupInspection {
+  func createBackupSnapshot(at destinationURL: URL) throws -> KnowledgePersistenceInspection {
     try withLock {
       guard let handle else {
         throw KnowledgeLibraryBackupError.databaseIntegrity("资料库数据库尚未打开")
@@ -84,7 +84,7 @@ extension KnowledgeDatabase {
     }
   }
 
-  static func inspectBackup(at fileURL: URL) throws -> KnowledgeDatabaseBackupInspection {
+  static func inspectBackup(at fileURL: URL) throws -> KnowledgePersistenceInspection {
     do {
       let database = try KnowledgeDatabase(readOnlyBackupURL: fileURL)
       return try database.withLock {

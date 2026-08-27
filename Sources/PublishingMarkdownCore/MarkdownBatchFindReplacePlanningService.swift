@@ -180,6 +180,7 @@ public struct MarkdownBatchRollbackPlan: Equatable, Sendable {
   }
 }
 
+/// Builds conflict-aware batch replacement and rollback plans without mutating documents.
 public struct MarkdownBatchFindReplacePlanningService: Sendable {
   private let findReplaceService: MarkdownFindReplaceService
 

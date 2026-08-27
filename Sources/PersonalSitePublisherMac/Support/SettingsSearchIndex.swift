@@ -46,7 +46,7 @@ enum SettingsSearchIndex {
       tab: .defaultRules,
       sectionTitle: String(localized: "Front Matter 默认元数据"),
       destination: .rules(.paths),
-      keywords: ["Front Matter", "YAML", "TOML", "自定义元数据", "作者", "分类", "标签", "Header", "头信息", "frontmatter"],
+      keywords: ["Front Matter", "YAML", "TOML", "自定义元数据", "作者", "分类", "标签", "Header", "头信息", "frontmatter", "模拟", "Front Matter 预览"],
       detail: String(localized: "配置新建文章时的默认作者、预设标签、预设分类和自定义键值对。"),
       systemImage: "doc.text"
     ),
@@ -55,7 +55,7 @@ enum SettingsSearchIndex {
       tab: .defaultRules,
       sectionTitle: String(localized: "文章与图片路径规则"),
       destination: .rules(.paths),
-      keywords: ["路径模板", "文件名", "Slug", "图片路径", "公开图片", "日期格式", "DateFormat", "assets", "static", "pattern"],
+      keywords: ["路径模板", "文件名", "Slug", "图片路径", "公开图片", "日期格式", "DateFormat", "assets", "static", "pattern", "URL 路径", "模拟发布路径", "路由模拟"],
       detail: String(localized: "设置 Markdown 文件存储路径、图片资源路径与日期占位符规则。"),
       systemImage: "slider.horizontal.3"
     ),

@@ -25,11 +25,18 @@ public struct MarkdownInlineAIContextService: Sendable {
       return nil
     }
 
-    let start = max(0, cursorUTF16Location - maximumUTF16Length)
+    let safeCursorLocation = composedCharacterBoundary(
+      atOrBefore: cursorUTF16Location,
+      in: source
+    )
+    let start = composedCharacterBoundary(
+      atOrAfter: max(0, safeCursorLocation - maximumUTF16Length),
+      in: source
+    )
     let candidate = source.substring(
       with: NSRange(
         location: start,
-        length: cursorUTF16Location - start
+        length: safeCursorLocation - start
       )
     )
     guard !candidate.trimmedForPublishing.isEmpty else { return nil }
@@ -48,8 +55,39 @@ public struct MarkdownInlineAIContextService: Sendable {
     guard !normalized.trimmedForPublishing.isEmpty else { return nil }
 
     let source = normalized as NSString
-    let length = min(source.length, maximumUTF16Length)
+    let length = composedCharacterBoundary(
+      atOrBefore: min(source.length, maximumUTF16Length),
+      in: source
+    )
     guard length > 0 else { return nil }
     return source.substring(to: length)
+  }
+
+  private func composedCharacterBoundary(
+    atOrBefore proposedLocation: Int,
+    in source: NSString
+  ) -> Int {
+    guard proposedLocation > 0, proposedLocation < source.length else {
+      return min(max(0, proposedLocation), source.length)
+    }
+
+    let precedingSequence = source.rangeOfComposedCharacterSequence(at: proposedLocation - 1)
+    return NSMaxRange(precedingSequence) > proposedLocation
+      ? precedingSequence.location
+      : proposedLocation
+  }
+
+  private func composedCharacterBoundary(
+    atOrAfter proposedLocation: Int,
+    in source: NSString
+  ) -> Int {
+    guard proposedLocation > 0, proposedLocation < source.length else {
+      return min(max(0, proposedLocation), source.length)
+    }
+
+    let sequence = source.rangeOfComposedCharacterSequence(at: proposedLocation)
+    return sequence.location < proposedLocation
+      ? NSMaxRange(sequence)
+      : proposedLocation
   }
 }

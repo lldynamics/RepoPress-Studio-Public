@@ -1,3 +1,4 @@
+import PublishingMarkdownCore
 import PublishingWorkbenchCore
 import SwiftUI
 

@@ -34,7 +34,10 @@ final class KnowledgeBrowserBridgeActivationTests: XCTestCase {
         inMemory: true,
         allowsAuthenticationInteraction: false
       ),
-      importOperationLedgerURL: rootURL.appendingPathComponent("import-ledger.plist"),
+      // This test only observes the network lifetime. Keep the ledger in the
+      // injected defaults rather than adding a second filesystem operation to
+      // a shard that may be running alongside other integration tests.
+      importOperationLedgerURL: nil,
       makeListener: { _ in
         try NWListener(using: .tcp, on: .any)
       }
@@ -47,8 +50,17 @@ final class KnowledgeBrowserBridgeActivationTests: XCTestCase {
     XCTAssertEqual(bridge.activeNetworkConnectionCount, 0)
 
     bridge.setEnabled(true)
-    try await waitUntil {
-      bridge.state == .ready && bridge.activeListenerPort != nil
+    guard
+      try await waitUntil(condition: {
+        bridge.state == .ready && bridge.activeListenerPort != nil
+      })
+    else {
+      XCTFail(
+        "Browser bridge did not become ready (state: \(bridge.state), "
+          + "resources: \(bridge.hasAllocatedNetworkResources), "
+          + "port: \(String(describing: bridge.activeListenerPort)))"
+      )
+      return
     }
     XCTAssertTrue(bridge.hasAllocatedNetworkResources)
 
@@ -57,8 +69,17 @@ final class KnowledgeBrowserBridgeActivationTests: XCTestCase {
     let client = NWConnection(host: "127.0.0.1", port: port, using: .tcp)
     client.start(queue: DispatchQueue(label: "KnowledgeBrowserBridgeActivationTests.client"))
     defer { client.cancel() }
-    try await waitUntil {
-      bridge.activeNetworkConnectionCount == 1
+    guard
+      try await waitUntil(condition: {
+        bridge.activeNetworkConnectionCount == 1
+      })
+    else {
+      XCTFail(
+        "Browser bridge did not observe the client connection (state: \(bridge.state), "
+          + "resources: \(bridge.hasAllocatedNetworkResources), "
+          + "connections: \(bridge.activeNetworkConnectionCount))"
+      )
+      return
     }
 
     bridge.setEnabled(false)
@@ -191,11 +212,11 @@ final class KnowledgeBrowserBridgeActivationTests: XCTestCase {
   private func waitUntil(
     attempts: Int = 300,
     condition: @MainActor () -> Bool
-  ) async throws {
+  ) async throws -> Bool {
     for _ in 0..<attempts {
-      if condition() { return }
+      if condition() { return true }
       try await Task.sleep(for: .milliseconds(10))
     }
-    XCTFail("Timed out waiting for browser bridge lifecycle state")
+    return false
   }
 }

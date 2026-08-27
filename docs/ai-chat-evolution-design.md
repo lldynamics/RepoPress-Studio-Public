@@ -150,7 +150,7 @@ AI 主要呈现在主工作台的 Inspector/上下文面板中，通用和草稿
 - `Sources/PublishingWorkbenchCore/Stores/WorkbenchAIStore+AgentLoop.swift`
 - `Sources/PublishingWorkbenchCore/Stores/WorkbenchAIStore+AgentContinuation.swift`
 - `Sources/PersonalSitePublisherMac/App/PersonalSitePublisherMacApp.swift`
-- `Sources/PersonalSitePublisherMac/Views/AIChatWorkspaceInspectorComponents.swift`
+- `Sources/PersonalSitePublisherMac/Views/AIChat/AIChatWorkspaceInspectorComponents.swift`
 
 回归覆盖：
 

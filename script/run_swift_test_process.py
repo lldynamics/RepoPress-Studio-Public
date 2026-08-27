@@ -44,7 +44,8 @@ SWIFT_CACHE_ENVIRONMENT_KEYS = (
 )
 INVENTORY_PATTERN = re.compile(
     r"^([^\.\s/]+)\."
-    r"([A-Za-z_][A-Za-z0-9_]*)/([A-Za-z_][A-Za-z0-9_]*)(\(\))?$"
+    r"([A-Za-z0-9_:]+)/"
+    r"([A-Za-z0-9_:]+)(\([^\r\n]*\))?$"
 )
 XCTEST_COUNT_PATTERN = re.compile(r"Executed\s+(\d+)\s+tests?")
 SWIFT_TESTING_COUNT_PATTERN = re.compile(r"Test run with\s+(\d+)\s+tests?")

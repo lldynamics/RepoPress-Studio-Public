@@ -14,7 +14,15 @@ private let workbenchDataRootLogger = Logger(
 /// rolls back only entries created by this initialization attempt; pre-existing
 /// user data is never removed.
 public struct WorkbenchDataRootInitializer: Sendable {
-  public init() {}
+  private let knowledgePersistenceLifecycle: any KnowledgePersistenceLifecycle
+
+  public init() {
+    self.init(knowledgePersistenceLifecycle: SQLiteKnowledgePersistenceLifecycle())
+  }
+
+  init(knowledgePersistenceLifecycle: any KnowledgePersistenceLifecycle) {
+    self.knowledgePersistenceLifecycle = knowledgePersistenceLifecycle
+  }
 
   public func initializeNewRoot(
     at rootURL: URL,
@@ -159,8 +167,7 @@ public struct WorkbenchDataRootInitializer: Sendable {
   }
 
   private func createKnowledgeDatabase(at fileURL: URL) throws {
-    let database = try KnowledgeDatabase(fileURL: fileURL)
-    _ = try database.inspectOpenDatabase()
+    _ = try knowledgePersistenceLifecycle.createOrOpenAndValidate(at: fileURL)
   }
 
   private func createRSSDatabase(
@@ -222,8 +229,7 @@ public struct WorkbenchDataRootInitializer: Sendable {
         "workbench.json did not contain a snapshot"
       )
     }
-    let knowledgeDatabase = try KnowledgeDatabase(fileURL: layout.knowledgeDatabaseURL)
-    _ = try knowledgeDatabase.inspectOpenDatabase()
+    _ = try knowledgePersistenceLifecycle.createOrOpenAndValidate(at: layout.knowledgeDatabaseURL)
     let rssDatabase = try RSSReaderDatabase(fileURL: layout.rssReaderDatabaseURL)
     _ = try rssDatabase.statistics()
 
