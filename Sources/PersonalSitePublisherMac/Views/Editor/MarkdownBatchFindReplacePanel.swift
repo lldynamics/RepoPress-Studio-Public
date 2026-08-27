@@ -19,6 +19,12 @@ struct MarkdownBatchFindReplacePanel: View {
   @State private var appliedPlan: MarkdownBatchReplacePlan?
   @State private var message = ""
   @State private var isFailure = false
+  @State private var planningTask: Task<Void, Never>?
+  @State private var planningRequestID = UUID()
+  @State private var isPlanning = false
+  @State private var isApplyingWrites = false
+  @State private var appliedWriteCount = 0
+  @State private var totalWriteCount = 0
   @FocusState private var isQueryFocused: Bool
 
   private let planningService = MarkdownBatchFindReplacePlanningService()
@@ -44,6 +50,9 @@ struct MarkdownBatchFindReplacePanel: View {
     .onAppear {
       isQueryFocused = true
     }
+    .onDisappear {
+      cancelPlanning(showsMessage: false)
+    }
     .onChange(of: query) { _, _ in markPreviewStale() }
     .onChange(of: replacement) { _, _ in markPreviewStale() }
     .onChange(of: isCaseSensitive) { _, _ in markPreviewStale() }
@@ -63,6 +72,7 @@ struct MarkdownBatchFindReplacePanel: View {
           .focused($isQueryFocused)
           .accessibilityLabel("查找正文")
           .accessibilityIdentifier("markdown-batch-find-query")
+          .disabled(isBusy)
         Image(systemName: "arrow.right")
           .foregroundStyle(.secondary)
           .accessibilityHidden(true)
@@ -70,16 +80,25 @@ struct MarkdownBatchFindReplacePanel: View {
           .textFieldStyle(.roundedBorder)
           .accessibilityLabel("替换正文")
           .accessibilityIdentifier("markdown-batch-replacement")
-        Button("生成预览", action: generatePreview)
-          .keyboardShortcut(.return, modifiers: [.command])
-          .disabled(query.isEmpty)
-          .accessibilityIdentifier("markdown-batch-preview-button")
+          .disabled(isBusy)
+        if isPlanning {
+          Button("取消计算") {
+            cancelPlanning(showsMessage: true)
+          }
+          .accessibilityIdentifier("markdown-batch-cancel-planning-button")
+        } else {
+          Button("生成预览", action: generatePreview)
+            .keyboardShortcut(.return, modifiers: [.command])
+            .disabled(query.isEmpty || isApplyingWrites)
+            .accessibilityIdentifier("markdown-batch-preview-button")
+        }
       }
 
       HStack(spacing: 14) {
         Toggle("区分大小写", isOn: $isCaseSensitive)
         Toggle("全词匹配", isOn: $isWholeWord)
         Toggle("正则表达式", isOn: $usesRegularExpression)
+          .disabled(isBusy)
 
         Spacer()
 
@@ -91,15 +110,33 @@ struct MarkdownBatchFindReplacePanel: View {
       }
       .toggleStyle(.checkbox)
       .font(.caption)
+      .disabled(isBusy)
 
       if !message.isEmpty {
-        Label(
-          message,
-          systemImage: isFailure ? "exclamationmark.triangle.fill" : "checkmark.circle.fill"
-        )
-        .font(.caption)
-        .foregroundStyle(isFailure ? WorkbenchTheme.warning : WorkbenchTheme.success)
-        .accessibilityIdentifier("markdown-batch-status")
+        if isBusy {
+          Label(message, systemImage: "hourglass")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .accessibilityIdentifier("markdown-batch-status")
+        } else {
+          Label(
+            message,
+            systemImage: isFailure ? "exclamationmark.triangle.fill" : "checkmark.circle.fill"
+          )
+          .font(.caption)
+          .foregroundStyle(isFailure ? WorkbenchTheme.warning : WorkbenchTheme.success)
+          .accessibilityIdentifier("markdown-batch-status")
+        }
+      }
+      if isApplyingWrites {
+        ProgressView(
+          value: Double(appliedWriteCount),
+          total: Double(max(totalWriteCount, 1))
+        ) {
+          Text("正在写入 \(appliedWriteCount) / \(totalWriteCount) 篇")
+            .font(.caption)
+        }
+        .accessibilityIdentifier("markdown-batch-write-progress")
       }
     }
     .padding(16)
@@ -223,6 +260,7 @@ struct MarkdownBatchFindReplacePanel: View {
       }
       .workbenchProminentActionStyle()
       .disabled(selectedDocumentIDs.isEmpty || plan == nil)
+      .disabled(isBusy)
       .accessibilityIdentifier("markdown-batch-apply-button")
     }
     .padding(.horizontal, 16)
@@ -260,8 +298,16 @@ struct MarkdownBatchFindReplacePanel: View {
     return applicable.allSatisfy { selectedDocumentIDs.contains($0.documentID) }
   }
 
+  private var isBusy: Bool {
+    isPlanning || isApplyingWrites
+  }
+
   private func markPreviewStale() {
-    guard plan != nil else { return }
+    let hadPreview = plan != nil
+    if isPlanning {
+      cancelPlanning(showsMessage: false)
+    }
+    guard hadPreview else { return }
     plan = nil
     selectedDocumentIDs = []
     message = "查找条件已变化，请重新生成预览。"
@@ -269,25 +315,60 @@ struct MarkdownBatchFindReplacePanel: View {
   }
 
   private func generatePreview() {
-    do {
-      let generated = try planningService.plan(
-        documents: currentDocuments,
-        query: query,
-        replacement: replacement,
-        options: options
-      )
-      plan = generated
-      selectedDocumentIDs = Set(generated.applicablePreviews.map(\.documentID))
-      message =
-        generated.applicablePreviews.isEmpty
-        ? "没有找到可替换的正文内容。"
-        : "预览已生成；应用时会再次校验文章快照。"
+    let documents = currentDocuments
+    let requestedQuery = query
+    let requestedReplacement = replacement
+    let requestedOptions = options
+    let requestID = UUID()
+    planningRequestID = requestID
+    isPlanning = true
+    message = String(localized: "正在后台计算替换预览…")
+    isFailure = false
+    planningTask = Task { @MainActor in
+      do {
+        let generated = try await Self.planInBackground(
+          documents: documents,
+          query: requestedQuery,
+          replacement: requestedReplacement,
+          options: requestedOptions
+        )
+        guard !Task.isCancelled, planningRequestID == requestID else { return }
+        planningTask = nil
+        isPlanning = false
+        plan = generated
+        selectedDocumentIDs = Set(generated.applicablePreviews.map(\.documentID))
+        message =
+          generated.applicablePreviews.isEmpty
+          ? String(localized: "没有找到可替换的正文内容。")
+          : String(localized: "预览已生成；应用时会再次校验文章快照。")
+        isFailure = false
+      } catch is CancellationError {
+        guard planningRequestID == requestID else { return }
+        planningTask = nil
+        isPlanning = false
+        message = String(localized: "预览计算已取消。")
+        isFailure = false
+      } catch {
+        guard planningRequestID == requestID else { return }
+        planningTask = nil
+        isPlanning = false
+        plan = nil
+        selectedDocumentIDs = []
+        message = String(localized: "无法生成预览：\(error.localizedDescription)")
+        isFailure = true
+      }
+    }
+  }
+
+  private func cancelPlanning(showsMessage: Bool) {
+    guard isPlanning else { return }
+    planningRequestID = UUID()
+    planningTask?.cancel()
+    planningTask = nil
+    isPlanning = false
+    if showsMessage {
+      message = String(localized: "预览或复验计算已取消。")
       isFailure = false
-    } catch {
-      plan = nil
-      selectedDocumentIDs = []
-      message = "无法生成预览：\(error.localizedDescription)"
-      isFailure = true
     }
   }
 
@@ -300,7 +381,6 @@ struct MarkdownBatchFindReplacePanel: View {
     }
   }
 
-  @MainActor
   private func applySelected() {
     guard let previewPlan = plan else { return }
     let selectedPreviews = previewPlan.applicablePreviews.filter {
@@ -310,45 +390,81 @@ struct MarkdownBatchFindReplacePanel: View {
 
     let selectedIDs = Set(selectedPreviews.map(\.documentID))
     let selectedDocuments = currentDocuments.filter { selectedIDs.contains($0.id) }
-    do {
-      let revalidated = try planningService.plan(
-        documents: selectedDocuments,
-        query: previewPlan.query,
-        replacement: previewPlan.replacement,
-        options: previewPlan.options,
-        expectedOriginals: selectedPreviews.map(\.originalSnapshot)
-      )
-      guard
-        revalidated.previews.count == selectedPreviews.count,
-        !revalidated.hasConflicts,
-        revalidated.applicablePreviews.count == selectedPreviews.count
-      else {
-        plan = revalidated
-        selectedDocumentIDs = Set(revalidated.applicablePreviews.map(\.documentID))
-        message = "文章在预览后发生变化，整批替换已停止；请检查冲突并重新预览。"
-        isFailure = true
-        return
-      }
+    let requestID = UUID()
+    planningRequestID = requestID
+    isPlanning = true
+    message = String(localized: "正在后台复验所选文章…")
+    isFailure = false
+    planningTask = Task { @MainActor in
+      do {
+        let revalidated = try await Self.planInBackground(
+          documents: selectedDocuments,
+          query: previewPlan.query,
+          replacement: previewPlan.replacement,
+          options: previewPlan.options,
+          expectedOriginals: selectedPreviews.map(\.originalSnapshot)
+        )
+        guard !Task.isCancelled, planningRequestID == requestID else { return }
+        planningTask = nil
+        isPlanning = false
+        guard
+          revalidated.previews.count == selectedPreviews.count,
+          !revalidated.hasConflicts,
+          revalidated.applicablePreviews.count == selectedPreviews.count
+        else {
+          plan = revalidated
+          selectedDocumentIDs = Set(revalidated.applicablePreviews.map(\.documentID))
+          message = String(
+            localized: "文章在预览后发生变化，整批替换已停止；请检查冲突并重新预览。"
+          )
+          isFailure = true
+          return
+        }
 
-      for preview in revalidated.applicablePreviews {
-        _ = store.createManualVersion(for: preview.documentID)
-      }
-      guard apply(previews: revalidated.applicablePreviews, restoringOriginalsOnFailure: true)
-      else {
-        message = "写入期间检测到版本变化，已撤销本次已写入的内容。"
-        isFailure = true
-        return
-      }
+        isApplyingWrites = true
+        message = String(localized: "复验通过，正在分批写入所选文章…")
+        appliedWriteCount = 0
+        totalWriteCount = revalidated.applicablePreviews.count
+        for (index, preview) in revalidated.applicablePreviews.enumerated() {
+          _ = store.createManualVersion(for: preview.documentID)
+          if index.isMultiple(of: 8) {
+            await Task.yield()
+          }
+        }
+        guard
+          await apply(
+            previews: revalidated.applicablePreviews,
+            restoringOriginalsOnFailure: true
+          )
+        else {
+          isApplyingWrites = false
+          message = String(localized: "写入期间检测到版本变化，已撤销本次已写入的内容。")
+          isFailure = true
+          return
+        }
 
-      appliedPlan = revalidated
-      selectedDocumentIDs = []
-      message =
-        "已替换 \(revalidated.applicablePreviews.count) 篇文章、"
-        + "\(revalidated.totalMatchCount) 处；可用“回滚上次替换”恢复。"
-      isFailure = false
-    } catch {
-      message = "替换失败：\(error.localizedDescription)"
-      isFailure = true
+        isApplyingWrites = false
+        appliedPlan = revalidated
+        selectedDocumentIDs = []
+        message = String(
+          localized:
+            "已替换 \(revalidated.applicablePreviews.count) 篇文章、\(revalidated.totalMatchCount) 处；可用“回滚上次替换”恢复。"
+        )
+        isFailure = false
+      } catch is CancellationError {
+        guard planningRequestID == requestID else { return }
+        planningTask = nil
+        isPlanning = false
+        message = String(localized: "替换复验已取消，正文没有修改。")
+        isFailure = false
+      } catch {
+        guard planningRequestID == requestID else { return }
+        planningTask = nil
+        isPlanning = false
+        isApplyingWrites = false
+        message = String(localized: "替换失败：\(error.localizedDescription)")
+        isFailure = true
+      }
     }
   }
 
@@ -356,8 +472,11 @@ struct MarkdownBatchFindReplacePanel: View {
   private func apply(
     previews: [MarkdownBatchReplacePreview],
     restoringOriginalsOnFailure: Bool
-  ) -> Bool {
+  ) async -> Bool {
     var applied: [MarkdownBatchReplacePreview] = []
+    // Do not suspend between the first accepted mutation and either complete
+    // success or rollback. Yielding here would let another window edit an
+    // already-replaced draft, making an otherwise atomic rollback partial.
     for preview in previews {
       let current = store.draftBodyEditorBuffer(for: preview.documentID)
       guard preview.originalSnapshot.matches(current.bodyMarkdown),
@@ -374,11 +493,38 @@ struct MarkdownBatchFindReplacePanel: View {
         return false
       }
       applied.append(preview)
+      appliedWriteCount = applied.count
     }
-    for preview in applied {
+    for (index, preview) in applied.enumerated() {
       store.flushDraftBodyEditorBuffer(for: preview.documentID)
+      if index.isMultiple(of: 8) {
+        await Task.yield()
+      }
     }
     return true
+  }
+
+  private static func planInBackground(
+    documents: [MarkdownBatchReplaceDocument],
+    query: String,
+    replacement: String,
+    options: MarkdownFindOptions,
+    expectedOriginals: [MarkdownBatchReplaceOriginalSnapshot] = []
+  ) async throws -> MarkdownBatchReplacePlan {
+    let worker = Task.detached(priority: .userInitiated) {
+      try MarkdownBatchFindReplacePlanningService().plan(
+        documents: documents,
+        query: query,
+        replacement: replacement,
+        options: options,
+        expectedOriginals: expectedOriginals
+      )
+    }
+    return try await withTaskCancellationHandler {
+      try await worker.value
+    } onCancel: {
+      worker.cancel()
+    }
   }
 
   @MainActor

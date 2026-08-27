@@ -3,7 +3,8 @@ import PublishingWorkbenchCore
 import SwiftUI
 
 struct SiteStarterWorkspaceView: View {
-  @ObservedObject var store: WorkbenchStore
+  let store: WorkbenchStore
+  @ObservedObject private var starterObservation: WorkbenchSiteStarterObservationFacade
   @SceneStorage("siteStarterSelectedStep") private var selectedStepRaw = SiteStarterWizardStep.template.rawValue
   @SceneStorage("siteStarterMode") private var modeRaw = SiteStarterMode.create.rawValue
   @SceneStorage("siteStarterTemplateID") private var selectedTemplateIDRaw = SiteStarterTemplateID.zolaPersonalBlog.rawValue
@@ -16,7 +17,7 @@ struct SiteStarterWorkspaceView: View {
   @State private var branch = "main"
   @State private var githubOwner = ""
   @State private var githubRepo = ""
-  @State private var deploymentTarget: SiteStarterDeploymentTarget = .githubPages
+  @SceneStorage("siteStarterDeploymentTarget") private var deploymentTargetRaw = SiteStarterDeploymentTarget.githubPages.rawValue
   @State private var deploymentProjectID = ""
   @State private var deploymentAccountID = ""
   @State private var initializesGit = true
@@ -24,6 +25,14 @@ struct SiteStarterWorkspaceView: View {
   @State private var createsPrivateRepository = true
   @State private var isRepositoryCreationConfirmationPresented = false
   @State private var repositoryCreationFailureMessage: String?
+  @State private var starterPushConfirmation: SiteStarterPushConfirmation?
+  @State private var isStarterPushConfirmationPresented = false
+  @State private var starterPushFailureMessage: String?
+
+  init(store: WorkbenchStore) {
+    self.store = store
+    _starterObservation = ObservedObject(wrappedValue: store.siteStarterObservation)
+  }
 
   private var mode: SiteStarterMode {
     get { SiteStarterMode(rawValue: modeRaw) ?? .create }
@@ -38,6 +47,11 @@ struct SiteStarterWorkspaceView: View {
   private var selectedTemplateID: SiteStarterTemplateID {
     get { SiteStarterTemplateID(rawValue: selectedTemplateIDRaw) ?? .zolaPersonalBlog }
     nonmutating set { selectedTemplateIDRaw = newValue.rawValue }
+  }
+
+  private var deploymentTarget: SiteStarterDeploymentTarget {
+    get { SiteStarterDeploymentTarget(rawValue: deploymentTargetRaw) ?? .githubPages }
+    nonmutating set { deploymentTargetRaw = newValue.rawValue }
   }
 
   var body: some View {
@@ -83,6 +97,20 @@ struct SiteStarterWorkspaceView: View {
         },
         createAction: createGitHubRepositoryAfterConfirmation
       )
+    }
+    .sheet(isPresented: $isStarterPushConfirmationPresented) {
+      if let starterPushConfirmation {
+        SiteStarterFirstPushConfirmationView(
+          confirmation: starterPushConfirmation,
+          isPushing: store.isLocalRepositoryMutationRunning,
+          failureMessage: starterPushFailureMessage,
+          cancelAction: {
+            isStarterPushConfirmationPresented = false
+            self.starterPushConfirmation = nil
+          },
+          confirmAction: commitStarterPushAfterConfirmation
+        )
+      }
     }
   }
 
@@ -186,7 +214,10 @@ struct SiteStarterWorkspaceView: View {
         githubOwner: $githubOwner,
         githubRepo: $githubRepo,
         branch: $branch,
-        deploymentTarget: $deploymentTarget,
+        deploymentTarget: Binding(
+          get: { deploymentTarget },
+          set: { deploymentTarget = $0 }
+        ),
         deploymentProjectID: $deploymentProjectID,
         deploymentAccountID: $deploymentAccountID,
         createsPrivateRepository: $createsPrivateRepository,
@@ -221,13 +252,7 @@ struct SiteStarterWorkspaceView: View {
     case .firstPush:
       SiteStarterFirstPushStep(
         canPushStarterSite: canPushStarterSite,
-        pushAction: {
-          Task {
-            if await store.commitAndPushStarterSite() != nil {
-              selectedStep = .deployment
-            }
-          }
-        },
+        reviewAction: presentStarterPushConfirmation,
         pushBranch: store.siteStarterPushResult?.branch,
         pushSHA: store.siteStarterPushResult?.commitSHA,
         committedPathCount: store.siteStarterPushResult?.committedPaths.count,
@@ -277,10 +302,7 @@ struct SiteStarterWorkspaceView: View {
   }
 
   private var workflowSteps: [SiteStarterWizardStep] {
-    if mode == .importExisting || deploymentTarget == .none {
-      return [.template, .localDirectory, .generate, .deployment]
-    }
-    return SiteStarterWizardStep.allCases
+    SiteStarterWorkflowProjection.steps(mode: mode, deploymentTarget: deploymentTarget)
   }
 
   private var previousVisibleStep: SiteStarterWizardStep? {
@@ -547,6 +569,31 @@ struct SiteStarterWorkspaceView: View {
       }
       guard await store.configureStarterSiteOrigin() else { return }
       selectedStep = .firstPush
+    }
+  }
+
+  private func presentStarterPushConfirmation() {
+    starterPushFailureMessage = nil
+    Task { @MainActor in
+      guard let confirmation = await store.prepareStarterSitePushConfirmation() else {
+        return
+      }
+      starterPushConfirmation = confirmation
+      isStarterPushConfirmationPresented = true
+    }
+  }
+
+  private func commitStarterPushAfterConfirmation() {
+    guard let confirmation = starterPushConfirmation else { return }
+    starterPushFailureMessage = nil
+    Task { @MainActor in
+      if await store.commitAndPushStarterSite(confirmation: confirmation) != nil {
+        isStarterPushConfirmationPresented = false
+        starterPushConfirmation = nil
+        selectedStep = .deployment
+      } else {
+        starterPushFailureMessage = store.publishActionMessage
+      }
     }
   }
 

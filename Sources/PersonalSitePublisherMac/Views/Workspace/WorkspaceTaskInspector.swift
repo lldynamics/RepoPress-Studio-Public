@@ -46,7 +46,7 @@ struct WorkspaceTaskInspector: View {
         selectedTab = initialTab(for: newSection)
       }
     case .siteStarter:
-      SiteStarterInspectorView(state: SiteStarterInspectorState(store: store))
+      SiteStarterInspectorView(store: store)
     }
   }
 
@@ -71,9 +71,14 @@ struct WorkspaceTaskInspector: View {
 
 struct RepositoryContextInspectorView: View {
   @ObservedObject private var statusState: WorkbenchPublishStatusFeatureFacade
+  @Binding private var changedFileSelection: RepositoryChangedFileSelection?
 
-  init(store: WorkbenchStore) {
+  init(
+    store: WorkbenchStore,
+    changedFileSelection: Binding<RepositoryChangedFileSelection?> = .constant(nil)
+  ) {
     _statusState = ObservedObject(wrappedValue: store.publishStatus)
+    _changedFileSelection = changedFileSelection
   }
 
   var body: some View {
@@ -97,7 +102,7 @@ struct RepositoryContextInspectorView: View {
       ScrollView {
         VStack(alignment: .leading, spacing: 14) {
           blockerSection
-          changedFilesSection
+          selectedFileSection
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -137,36 +142,85 @@ struct RepositoryContextInspectorView: View {
   }
 
   @ViewBuilder
-  private var changedFilesSection: some View {
-    let files = statusState.repositoryReport?.changedFiles ?? []
-    inspectorCard(title: "文件变更", systemImage: "doc.text.magnifyingglass") {
-      if files.isEmpty {
-        Text("当前工作树没有变更。")
+  private var selectedFileSection: some View {
+    let report = statusState.repositoryReport
+    let localFiles = report?.changedFiles ?? []
+    let remoteFiles = report?.remoteChangedFiles ?? []
+    let selection = RepositoryChangedFileSelectionPresentation.reconciledSelection(
+      changedFileSelection,
+      localFiles: localFiles,
+      remoteFiles: remoteFiles
+    )
+    let file = RepositoryChangedFileSelectionPresentation.selectedFile(
+      for: selection,
+      localFiles: localFiles,
+      remoteFiles: remoteFiles
+    )
+
+    inspectorCard(title: "当前文件", systemImage: "doc.text.magnifyingglass") {
+      if let selection, let file {
+        selectedFileDetails(file, source: selection.source)
+          .onAppear { reconcileSelection(selection) }
+      } else {
+        Text("在主区域选择本地或远端文件后，这里会显示完整状态和可选差异。")
           .font(.caption)
           .foregroundStyle(.secondary)
-      } else {
-        ForEach(files.prefix(8)) { file in
-          VStack(alignment: .leading, spacing: 3) {
-            HStack {
-              WorkbenchPathIdentity(path: file.path)
-              Spacer()
-              Text(file.status)
-                .font(.caption.monospaced())
-                .foregroundStyle(.secondary)
-            }
-            if let lineDiff = file.lineDiff {
-              Text(lineDiff)
-                .font(.caption.monospaced())
-                .foregroundStyle(.secondary)
-                .lineLimit(5)
-            }
-          }
-          if file.id != files.prefix(8).last?.id {
-            Divider()
-          }
-        }
+          .onAppear { reconcileSelection(nil) }
       }
     }
+    .onChange(of: report) { _, newReport in
+      reconcileSelection(
+        RepositoryChangedFileSelectionPresentation.reconciledSelection(
+          changedFileSelection,
+          localFiles: newReport?.changedFiles ?? [],
+          remoteFiles: newReport?.remoteChangedFiles ?? []
+        )
+      )
+    }
+  }
+
+  private func selectedFileDetails(
+    _ file: RepositoryChangedFile,
+    source: RepositoryChangedFileSource
+  ) -> some View {
+    VStack(alignment: .leading, spacing: 8) {
+      Label(source.localizedDisplayName, systemImage: source == .local ? "desktopcomputer" : "arrow.down.doc")
+        .font(.caption.weight(.semibold))
+        .foregroundStyle(.secondary)
+      WorkbenchPathIdentity(path: file.displayPath)
+      LabeledContent("状态", value: file.status)
+        .font(.caption.monospaced())
+      LabeledContent("变更", value: file.kind.localizedDisplayName)
+        .font(.caption)
+
+      if let lineDiff = file.lineDiff {
+        DisclosureGroup("完整差异") {
+          ScrollView([.horizontal, .vertical]) {
+            Text(lineDiff)
+              .font(.caption.monospaced())
+              .textSelection(.enabled)
+              .frame(maxWidth: .infinity, alignment: .leading)
+          }
+          .frame(maxHeight: 260)
+          .padding(.top, 6)
+        }
+        .font(.caption.weight(.medium))
+        .accessibilityIdentifier("repository-inspector-selected-file-diff")
+      } else {
+        Text("扫描结果未提供可显示的文本差异。")
+          .font(.caption)
+          .foregroundStyle(.secondary)
+      }
+    }
+    .accessibilityElement(children: .contain)
+    .accessibilityLabel("当前选择的\(source.localizedDisplayName)文件")
+    .accessibilityValue("\(file.displayPath)，\(file.status)，\(file.kind.localizedDisplayName)")
+    .accessibilityIdentifier("repository-inspector-selected-file")
+  }
+
+  private func reconcileSelection(_ selection: RepositoryChangedFileSelection?) {
+    guard changedFileSelection != selection else { return }
+    changedFileSelection = selection
   }
 
   private func inspectorCard<Content: View>(

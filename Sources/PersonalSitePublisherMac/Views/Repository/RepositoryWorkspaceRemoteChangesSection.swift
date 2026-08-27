@@ -61,33 +61,21 @@ extension RepositoryWorkspaceView {
                   .foregroundStyle(.secondary)
 
                 ForEach(files, id: \.id) { (file: RepositoryChangedFile) in
-                  VStack(alignment: .leading, spacing: 8) {
-                    ViewThatFits(in: .horizontal) {
-                      HStack(spacing: 10) {
-                        remoteChangedFileIdentity(file)
-                        Spacer(minLength: 12)
-                        remoteChangedFileActions(file, role: role)
-                      }
-
-                      VStack(alignment: .leading, spacing: 8) {
-                        remoteChangedFileIdentity(file)
-                        remoteChangedFileActions(file, role: role)
-                      }
-                    }
-
+                  RepositoryChangedFileDisclosureRow(
+                    file: file,
+                    source: .remote,
+                    selection: $changedFileSelection
+                  ) {
+                    remoteChangedFileIdentity(file)
+                  } actions: {
+                    remoteChangedFileActions(file, role: role)
+                  } diffActions: {
                     if let lineDiff = file.lineDiff {
-                      Text(lineDiff)
-                        .font(.caption.monospaced())
-                        .textSelection(.enabled)
-                        .lineLimit(16)
-                        .padding(10)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(WorkbenchBackgroundStyle.control, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
-                        .accessibilityLabel("远端 diff 预览")
-                        .accessibilityValue(file.displayPath)
-                        .accessibilityIdentifier("repository-remote-file-\(file.accessibilityIdentifierToken)-diff")
-
                       Button {
+                        changedFileSelection = RepositoryChangedFileSelection(
+                          source: .remote,
+                          file: file
+                        )
                         copy(lineDiff, message: "已复制远端 diff。")
                       } label: {
                         Label("复制远端 diff", systemImage: "doc.text.magnifyingglass")
@@ -95,11 +83,11 @@ extension RepositoryWorkspaceView {
                       .buttonStyle(.link)
                       .accessibilityLabel("复制远端 diff")
                       .accessibilityValue(file.displayPath)
-                      .accessibilityIdentifier("repository-remote-file-\(file.accessibilityIdentifierToken)-copy-diff")
+                      .accessibilityIdentifier(
+                        "repository-remote-file-\(file.accessibilityIdentifierToken)-copy-diff"
+                      )
                     }
                   }
-                  .accessibilityElement(children: .contain)
-                  .accessibilityIdentifier("repository-remote-file-\(file.accessibilityIdentifierToken)")
                   Divider()
                 }
               }
@@ -193,6 +181,7 @@ extension RepositoryWorkspaceView {
     HStack(spacing: 8) {
       if role == .article, file.kind != .deleted {
         Button {
+          changedFileSelection = RepositoryChangedFileSelection(source: .remote, file: file)
           presentRemoteArticleImportPreview([file])
         } label: {
           Label("导入", systemImage: "tray.and.arrow.down")
@@ -205,6 +194,7 @@ extension RepositoryWorkspaceView {
       }
 
       Button {
+        changedFileSelection = RepositoryChangedFileSelection(source: .remote, file: file)
         copy(file.displayPath, message: "已复制远端路径。")
       } label: {
         Label("复制路径", systemImage: "doc.on.doc")

@@ -1,5 +1,89 @@
+import Foundation
 import PublishingWorkbenchCore
 import SwiftUI
+
+struct ReleaseHistoryFailureGroup: Identifiable {
+  let cause: String
+  let entries: [ReleaseLedgerEntry]
+
+  var id: String { cause }
+  var latestDate: Date { entries.map(\.record.createdAt).max() ?? .distantPast }
+
+  var affectedObjectSummary: String {
+    let objects = entries.compactMap { entry in
+      entry.record.markdownPath?.nilIfEmpty
+        ?? entry.record.draftTitle?.nilIfEmpty
+        ?? entry.record.siteName?.nilIfEmpty
+    }
+    let uniqueObjects = Array(NSOrderedSet(array: objects)).compactMap { $0 as? String }
+    guard !uniqueObjects.isEmpty else { return "涉及发布记录" }
+    if uniqueObjects.count == 1 { return uniqueObjects[0] }
+    return "\(uniqueObjects[0]) 等 \(uniqueObjects.count) 项"
+  }
+}
+
+enum ReleaseHistoryRecordPresentation: Identifiable {
+  case failureGroup(ReleaseHistoryFailureGroup)
+  case entry(ReleaseLedgerEntry)
+
+  var id: String {
+    switch self {
+    case let .failureGroup(group):
+      return "failure-group:\(group.id)"
+    case let .entry(entry):
+      return "entry:\(entry.id.uuidString)"
+    }
+  }
+}
+
+enum ReleaseHistoryPresentation {
+  static func records(for entries: [ReleaseLedgerEntry]) -> [ReleaseHistoryRecordPresentation] {
+    let groupedFailures = Dictionary(grouping: entries.filter(isFailure), by: failureCause)
+    let retainedGroups = groupedFailures.filter { $0.value.count > 1 }
+    var emittedCauses = Set<String>()
+
+    return entries.compactMap { entry in
+      let cause = failureCause(entry)
+      if isFailure(entry), let groupEntries = retainedGroups[cause] {
+        guard emittedCauses.insert(cause).inserted else { return nil }
+        return .failureGroup(ReleaseHistoryFailureGroup(cause: cause, entries: groupEntries))
+      }
+      return .entry(entry)
+    }
+  }
+
+  static func failureCause(_ entry: ReleaseLedgerEntry) -> String {
+    if let signal = entry.deploymentStatus?.signals.first(where: { $0.level == .failed }) {
+      if let log = signal.logExcerpt.first(where: { $0.level == .error })?.message.nilIfEmpty {
+        return stableSummary(log)
+      }
+      if let message = signal.message.nilIfEmpty {
+        return stableSummary(message)
+      }
+      if let title = signal.title.nilIfEmpty {
+        return stableSummary(title)
+      }
+    }
+    if let deploymentMessage = entry.deploymentStatus?.message.nilIfEmpty {
+      return stableSummary(deploymentMessage)
+    }
+    if let message = entry.statusMessage.nilIfEmpty {
+      return stableSummary(message)
+    }
+    return stableSummary(entry.record.summary.nilIfEmpty ?? entry.record.title)
+  }
+
+  private static func isFailure(_ entry: ReleaseLedgerEntry) -> Bool {
+    entry.status == .failed || entry.deploymentStatus?.level == .failed
+  }
+
+  private static func stableSummary(_ value: String) -> String {
+    let normalized = value
+      .split(whereSeparator: \.isWhitespace)
+      .joined(separator: " ")
+    return String(normalized.prefix(140))
+  }
+}
 
 struct DeploymentStatusTrendChart: View {
   var history: [DeploymentStatusSnapshot]

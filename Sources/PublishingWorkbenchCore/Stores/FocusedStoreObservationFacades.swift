@@ -294,3 +294,135 @@ public final class WorkbenchLocalSitePreviewFeatureFacade: ObservableObject {
       .store(in: &cancellables)
   }
 }
+
+/// Observation boundary for the repository workspace. Repository operations
+/// are intentionally observed as one cohesive feature store, while publishing
+/// updates are limited to the active profile, selected draft metadata and the
+/// preview/release state rendered by this workspace. AI streams, editor body
+/// buffers, knowledge imports and maintenance progress remain outside it.
+@MainActor
+public final class WorkbenchRepositoryWorkspaceObservationFacade: ObservableObject {
+  private var cancellables = Set<AnyCancellable>()
+
+  init(store: WorkbenchStore) {
+    store.repositoryStore.objectWillChange
+      .sink { [weak self] _ in self?.objectWillChange.send() }
+      .store(in: &cancellables)
+
+    observe(
+      Publishers.CombineLatest(
+        store.publishingStore.$profiles,
+        store.publishingStore.$activeProfileID
+      )
+      .compactMap { profiles, activeProfileID in
+        profiles.first(where: { $0.id == activeProfileID })
+      }
+      .removeDuplicates()
+    )
+    observe(
+      Publishers.CombineLatest(
+        store.publishingStore.$drafts,
+        store.publishingStore.$selectedDraftID
+      )
+      .map { drafts, selectedDraftID in
+        selectedDraftID.flatMap { selectedDraftID in
+          drafts.first(where: { $0.id == selectedDraftID })?.metadataProjection
+        }
+      }
+      .removeDuplicates()
+    )
+    observe(store.publishingStore.$localPublishReadiness)
+    observe(store.publishingStore.$remotePublishPreviewSnapshot)
+    observe(store.publishingStore.$localSitePreviewPlan)
+    observe(store.publishingStore.$localSitePreviewRuntimeStatus)
+    observe(store.publishingStore.$publishActionFeedback)
+    observe(store.publishingStore.$releaseRecords)
+    observe(store.deploymentStore.$deploymentStatusSnapshots)
+  }
+
+  private func observe<P: Publisher>(_ publisher: P) where P.Failure == Never {
+    publisher
+      .dropFirst()
+      .sink { [weak self] _ in self?.objectWillChange.send() }
+      .store(in: &cancellables)
+  }
+}
+
+/// Observation boundary for release history. It follows only the release
+/// ledger, remote-publish busy state and deployment status/polling inputs used
+/// by that page, avoiding redraws from unrelated workbench features.
+@MainActor
+public final class WorkbenchReleaseHistoryObservationFacade: ObservableObject {
+  private var cancellables = Set<AnyCancellable>()
+
+  init(store: WorkbenchStore) {
+    observe(
+      Publishers.CombineLatest(
+        store.publishingStore.$profiles,
+        store.publishingStore.$activeProfileID
+      )
+      .compactMap { profiles, activeProfileID in
+        profiles.first(where: { $0.id == activeProfileID })
+      }
+      .removeDuplicates()
+    )
+    observe(store.publishingStore.$releaseRecords)
+    observe(store.publishingStore.$publishActionFeedback)
+    observe(store.repositoryStore.$isRemoteRepositoryPublishing)
+    observe(store.repositoryStore.$localRepositoryReleaseHistory)
+    observe(store.deploymentStore.$deploymentStatusSnapshots)
+    observe(store.deploymentStore.$deploymentStatusHistory)
+    observe(store.deploymentStore.$isDeploymentStatusChecking)
+    observe(store.deploymentStore.$deploymentStatusMessage)
+    observe(store.deploymentStore.$deploymentPollingSettings)
+    observe(store.deploymentStore.$deploymentPollingState)
+    observe(store.deploymentStore.$deploymentTokenAvailability)
+  }
+
+  private func observe<P: Publisher>(_ publisher: P) where P.Failure == Never {
+    publisher
+      .dropFirst()
+      .sink { [weak self] _ in self?.objectWillChange.send() }
+      .store(in: &cancellables)
+  }
+}
+
+/// Observation boundary for the Site Starter wizard. It follows only the
+/// active site, Starter results and the repository/deployment state rendered
+/// by the wizard; editor, AI, knowledge and maintenance updates stay outside.
+@MainActor
+public final class WorkbenchSiteStarterObservationFacade: ObservableObject {
+  private var cancellables = Set<AnyCancellable>()
+
+  init(store: WorkbenchStore) {
+    observe(
+      Publishers.CombineLatest(
+        store.publishingStore.$profiles,
+        store.publishingStore.$activeProfileID
+      )
+      .compactMap { profiles, activeProfileID in
+        profiles.first(where: { $0.id == activeProfileID })
+      }
+      .removeDuplicates()
+    )
+    observe(store.publishingStore.$siteStarterResult)
+    observe(store.publishingStore.$siteStarterImportResult)
+    observe(store.publishingStore.$siteStarterPushResult)
+    observe(store.publishingStore.$isSiteStarterOperationRunning)
+    observe(store.publishingStore.$isLocalRepositoryMutationRunning)
+    observe(store.publishingStore.$publishActionFeedback)
+    observe(store.repositoryStore.$isRemoteRepositoryChecking)
+    observe(store.repositoryStore.$remoteRepositoryCreationResult)
+    observe(store.repositoryStore.$remoteRepositoryAccessCheck)
+    observe(store.repositoryStore.$remoteRepositoryAccessCheckByProfileID)
+    observe(store.repositoryStore.$repositoryTokenAvailability)
+    observe(store.deploymentStore.$deploymentStatusMessage)
+  }
+
+  private func observe<P: Publisher>(_ publisher: P) where P.Failure == Never {
+    publisher
+      .dropFirst()
+      .sink { [weak self] _ in self?.objectWillChange.send() }
+      .store(in: &cancellables)
+  }
+}

@@ -46,18 +46,41 @@ struct SiteStarterInspectorState {
 }
 
 struct SiteStarterInspectorView: View {
-  let state: SiteStarterInspectorState
+  let store: WorkbenchStore
+  @ObservedObject private var starterObservation: WorkbenchSiteStarterObservationFacade
   @SceneStorage("siteStarterSelectedStep") private var selectedStepRaw = SiteStarterWizardStep.template.rawValue
+  @SceneStorage("siteStarterMode") private var modeRaw = SiteStarterMode.create.rawValue
+  @SceneStorage("siteStarterDeploymentTarget") private var deploymentTargetRaw = SiteStarterDeploymentTarget.githubPages.rawValue
+
+  init(store: WorkbenchStore) {
+    self.store = store
+    _starterObservation = ObservedObject(wrappedValue: store.siteStarterObservation)
+  }
+
+  private var state: SiteStarterInspectorState {
+    SiteStarterInspectorState(store: store)
+  }
 
   private var selectedStep: SiteStarterWizardStep {
     SiteStarterWizardStep(rawValue: selectedStepRaw) ?? .template
   }
 
+  private var workflowSteps: [SiteStarterWizardStep] {
+    SiteStarterWorkflowProjection.steps(
+      mode: SiteStarterMode(rawValue: modeRaw) ?? .create,
+      deploymentTarget: SiteStarterDeploymentTarget(rawValue: deploymentTargetRaw) ?? .githubPages
+    )
+  }
+
+  private var visibleSelectedStep: SiteStarterWizardStep {
+    workflowSteps.contains(selectedStep) ? selectedStep : (workflowSteps.last ?? .deployment)
+  }
+
   var body: some View {
     InspectorScaffold(
       title: "建站风险",
-      subtitle: selectedStep.title,
-      systemImage: selectedStep.systemImage
+      subtitle: visibleSelectedStep.title,
+      systemImage: visibleSelectedStep.systemImage
     ) {
       progressSection
       currentStepSection
@@ -69,7 +92,7 @@ struct SiteStarterInspectorView: View {
 
   private var progressSection: some View {
     InspectorSection("进度") {
-      ForEach(SiteStarterWizardStep.allCases) { step in
+      ForEach(workflowSteps) { step in
         InspectorStatRow(
           title: step.title,
           value: statusTitle(for: step),
@@ -81,7 +104,7 @@ struct SiteStarterInspectorView: View {
 
   private var currentStepSection: some View {
     InspectorSection("当前步骤") {
-      Text(selectedStep.summary)
+      Text(visibleSelectedStep.summary)
         .font(.caption)
         .foregroundStyle(.secondary)
         .lineLimit(4)
@@ -160,7 +183,7 @@ struct SiteStarterInspectorView: View {
   }
 
   private var currentStepFacts: [String] {
-    switch selectedStep {
+    switch visibleSelectedStep {
     case .template:
       return [String(localized: "新建站点提供四套现代 SSG 起点；导入模式仍会按已有站点类型读取内容目录和 Front Matter。")]
     case .localDirectory:
@@ -177,7 +200,7 @@ struct SiteStarterInspectorView: View {
   }
 
   private var currentStepRisks: [String] {
-    switch selectedStep {
+    switch visibleSelectedStep {
     case .template:
       return []
     case .localDirectory:

@@ -336,6 +336,40 @@ public struct SiteStarterPushResult: Codable, Hashable, Sendable {
   }
 }
 
+/// An immutable, user-reviewable description of the exact first-push operation.
+/// The service recreates this immediately before writing so confirmation cannot
+/// silently apply to a changed remote, branch, staged state, or file set.
+public struct SiteStarterPushConfirmation: Codable, Hashable, Sendable {
+  public var rootPath: String
+  public var branch: String
+  public var remoteURL: String
+  public var commitMessage: String
+  public var committedPaths: [String]
+  public var fileObjectIDs: [String: String]
+  public var headCommitSHA: String?
+  public var remoteBranchCommitSHA: String?
+
+  public init(
+    rootPath: String,
+    branch: String,
+    remoteURL: String,
+    commitMessage: String,
+    committedPaths: [String],
+    fileObjectIDs: [String: String],
+    headCommitSHA: String?,
+    remoteBranchCommitSHA: String?
+  ) {
+    self.rootPath = rootPath
+    self.branch = branch
+    self.remoteURL = remoteURL
+    self.commitMessage = commitMessage
+    self.committedPaths = committedPaths
+    self.fileObjectIDs = fileObjectIDs
+    self.headCommitSHA = headCommitSHA
+    self.remoteBranchCommitSHA = remoteBranchCommitSHA
+  }
+}
+
 public struct SiteStarterImportResult: Codable, Hashable, Sendable {
   public var profile: SiteProfile
   public var importedDraftCount: Int

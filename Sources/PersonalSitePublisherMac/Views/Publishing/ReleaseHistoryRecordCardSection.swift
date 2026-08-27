@@ -5,6 +5,44 @@ import SwiftUI
 extension ReleaseHistoryDetailView {
   func releaseRecordCard(_ entry: ReleaseLedgerEntry) -> some View {
     let record = entry.record
+
+    return DisclosureGroup {
+      releaseRecordCardDetails(entry)
+        .padding(.top, 10)
+    } label: {
+      ViewThatFits(in: .horizontal) {
+        HStack(alignment: .firstTextBaseline, spacing: 10) {
+          releaseRecordStatusBadges(entry)
+          Text(record.title)
+            .font(.callout.weight(.medium))
+            .lineLimit(1)
+          Spacer(minLength: 10)
+          releaseRecordTimestamp(record)
+        }
+
+        VStack(alignment: .leading, spacing: 5) {
+          releaseRecordStatusBadges(entry)
+          Text(record.title)
+            .font(.callout.weight(.medium))
+            .lineLimit(2)
+          Text(entry.statusMessage)
+            .font(.caption)
+            .foregroundStyle(ledgerStatusForeground(entry.status))
+            .lineLimit(2)
+          releaseRecordTimestamp(record)
+        }
+      }
+    }
+    .padding(14)
+    .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
+    .accessibilityElement(children: .contain)
+    .accessibilityLabel("发布记录：\(record.title)")
+    .accessibilityValue("\(entry.status.localizedDisplayName)，\(record.createdAt.workbenchShortText)")
+    .accessibilityIdentifier("release-record-\(record.id)")
+  }
+
+  private func releaseRecordCardDetails(_ entry: ReleaseLedgerEntry) -> some View {
+    let record = entry.record
     let deploymentStatus = entry.deploymentStatus
     let deploymentHistory = store.deploymentStatusHistory(for: record)
     let recoveryPackage = entry.recoveryPackage
@@ -224,10 +262,6 @@ extension ReleaseHistoryDetailView {
 
       releaseRecordActions(entry)
     }
-    .padding(14)
-    .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
-    .accessibilityElement(children: .contain)
-    .accessibilityIdentifier("release-record-\(record.id)")
   }
 
   private func deploymentLogExcerpt(_ entries: [DeploymentLogEntry]) -> some View {

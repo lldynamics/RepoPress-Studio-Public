@@ -27,6 +27,10 @@ struct SiteMaintenanceDetailView: View {
   @ViewBuilder
   private var bodyContent: some View {
     if let snapshot = maintenanceState.snapshot {
+      let scheduleChanges = SiteMaintenanceScheduleChange.proposedChanges(
+        report: snapshot.report,
+        drafts: store.drafts
+      )
       VStack(alignment: .leading, spacing: 12) {
         if let errorMessage = maintenanceState.errorMessage {
           maintenanceRefreshFailure(errorMessage)
@@ -43,14 +47,20 @@ struct SiteMaintenanceDetailView: View {
           copyItem: copyItem,
           recordItem: recordItem,
           sendToAI: sendToAI,
-          applySuggestedSchedule: {
+          scheduleChanges: scheduleChanges,
+          applySuggestedSchedule: { approvedSuggestedDates, expectedOriginalDates in
             Task {
-              await store.applySuggestedMaintenanceSchedule()
+              await store.applySuggestedMaintenanceSchedule(
+                approvedSuggestedDates: approvedSuggestedDates,
+                expectedOriginalDates: expectedOriginalDates
+              )
             }
           },
           latestRelease: maintenanceState.latestRelease,
-          deploymentSnapshot: maintenanceState.latestRelease.flatMap(maintenanceState.deploymentStatusSnapshot),
-          canCheckDeployment: maintenanceState.latestRelease.map(maintenanceState.canCheckDeploymentStatus) ?? false,
+          deploymentSnapshot: maintenanceState.latestRelease.flatMap(
+            maintenanceState.deploymentStatusSnapshot),
+          canCheckDeployment: maintenanceState.latestRelease.map(
+            maintenanceState.canCheckDeploymentStatus) ?? false,
           isDeploymentChecking: maintenanceState.isDeploymentStatusChecking,
           onlineInspectionMessage: onlineInspectionMessage,
           runOnlineInspection: runOnlineInspection
@@ -89,7 +99,9 @@ struct SiteMaintenanceDetailView: View {
         .disabled(maintenanceState.isRefreshing)
     }
     .padding(10)
-    .background(WorkbenchTheme.risk.opacity(WorkbenchOpacity.warningBackground), in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
+    .background(
+      WorkbenchTheme.risk.opacity(WorkbenchOpacity.warningBackground),
+      in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
   }
 
   private func copySprintPlan(_ report: SiteMaintenanceReport) {
@@ -132,7 +144,8 @@ struct SiteMaintenanceDetailView: View {
     Task {
       await store.refreshSiteMaintenanceSnapshot(force: true)
       if let snapshot = await store.refreshDeploymentStatus(for: release) {
-        onlineInspectionMessage = "巡检完成：\(snapshot.provider.localizedDisplayName) \(snapshot.level.localizedDisplayName)。"
+        onlineInspectionMessage =
+          "巡检完成：\(snapshot.provider.localizedDisplayName) \(snapshot.level.localizedDisplayName)。"
       } else {
         onlineInspectionMessage = maintenanceState.deploymentStatusMessage ?? "线上巡检未获得结果。"
       }

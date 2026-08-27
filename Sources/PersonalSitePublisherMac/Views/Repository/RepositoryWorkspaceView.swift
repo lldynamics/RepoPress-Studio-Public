@@ -3,8 +3,11 @@ import PublishingWorkbenchCore
 import SwiftUI
 
 struct RepositoryWorkspaceView: View {
-  @ObservedObject var store: WorkbenchStore
+  let store: WorkbenchStore
+  @ObservedObject private var workspaceObservation:
+    WorkbenchRepositoryWorkspaceObservationFacade
   @Binding var stage: RepositoryContextStage
+  @Binding var changedFileSelection: RepositoryChangedFileSelection?
   @ObservedObject var sourceSession: RepositoryHTMLSourceSession
   @Environment(\.openSettings) var openSettings
   @Environment(\.publishDrawerCommandAction) var publishDrawerCommandAction
@@ -15,6 +18,21 @@ struct RepositoryWorkspaceView: View {
   @State var createsPrivateRepository = true
   @State var repositoryCreationFailureMessage: String?
   @State var pendingRemoteArticleImportFiles: [RepositoryChangedFile] = []
+
+  init(
+    store: WorkbenchStore,
+    stage: Binding<RepositoryContextStage>,
+    changedFileSelection: Binding<RepositoryChangedFileSelection?>,
+    sourceSession: RepositoryHTMLSourceSession
+  ) {
+    self.store = store
+    _workspaceObservation = ObservedObject(
+      wrappedValue: store.repositoryWorkspaceObservation
+    )
+    _stage = stage
+    _changedFileSelection = changedFileSelection
+    _sourceSession = ObservedObject(wrappedValue: sourceSession)
+  }
 
   var body: some View {
     VStack(spacing: 0) {
@@ -64,11 +82,21 @@ struct RepositoryWorkspaceView: View {
         }
       )
     }
+    .onChange(of: store.repositoryReport) { _, report in
+      let reconciled = RepositoryChangedFileSelectionPresentation.reconciledSelection(
+        changedFileSelection,
+        localFiles: report?.changedFiles ?? [],
+        remoteFiles: report?.remoteChangedFiles ?? []
+      )
+      if changedFileSelection != reconciled {
+        changedFileSelection = reconciled
+      }
+    }
   }
 
   private var repositoryContent: some View {
     ScrollView {
-      VStack(alignment: .leading, spacing: 20) {
+      LazyVStack(alignment: .leading, spacing: 20) {
         VStack(alignment: .leading, spacing: 5) {
           Text(repositoryPageTitle)
             .font(.workbenchPageTitle)

@@ -83,6 +83,7 @@ struct MarkdownEditorComfortConfiguration: Equatable {
   let currentParagraphHighlightEnabled: Bool
   let warmPaperBackgroundEnabled: Bool
   let automaticPairingEnabled: Bool
+  let accessibilityReduceMotionEnabled: Bool
 
   init(
     fontSize: Double = defaultFontSize,
@@ -92,7 +93,8 @@ struct MarkdownEditorComfortConfiguration: Equatable {
     typewriterModeEnabled: Bool = defaultTypewriterModeEnabled,
     currentParagraphHighlightEnabled: Bool = defaultCurrentParagraphHighlightEnabled,
     warmPaperBackgroundEnabled: Bool = defaultWarmPaperBackgroundEnabled,
-    automaticPairingEnabled: Bool = defaultAutomaticPairingEnabled
+    automaticPairingEnabled: Bool = defaultAutomaticPairingEnabled,
+    accessibilityReduceMotionEnabled: Bool = false
   ) {
     self.fontSize = fontSize.clamped(to: Self.fontSizeRange)
     self.lineSpacing = lineSpacing.clamped(to: Self.lineSpacingRange)
@@ -102,6 +104,7 @@ struct MarkdownEditorComfortConfiguration: Equatable {
     self.currentParagraphHighlightEnabled = currentParagraphHighlightEnabled
     self.warmPaperBackgroundEnabled = warmPaperBackgroundEnabled
     self.automaticPairingEnabled = automaticPairingEnabled
+    self.accessibilityReduceMotionEnabled = accessibilityReduceMotionEnabled
   }
 }
 

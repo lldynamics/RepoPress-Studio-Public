@@ -10,7 +10,7 @@ struct AIKeychainSection: View {
   let storageMode: AICredentialStorageMode
   let tokenAvailability: KeychainTokenAvailability
   let actionMessage: String?
-  let onSaveAPIKey: () -> Void
+  let onSaveAPIKey: () -> Bool
   let onDeleteAPIKey: () -> Void
   let onRefreshState: () -> Void
   let onChangeStorageMode: @MainActor @Sendable (AICredentialStorageMode) -> Void
@@ -18,6 +18,7 @@ struct AIKeychainSection: View {
   @State private var isDeleteConfirmationPresented = false
   @State private var isKeyRevealed = false
   @State private var isJustSaved = false
+  @State private var saveFailureMessage: String?
 
   var body: some View {
     Section(String(localized: "API Key 凭据")) {
@@ -74,7 +75,15 @@ struct AIKeychainSection: View {
       HStack(alignment: .center, spacing: 10) {
         Button(saveButtonTitle) {
           aiAPIKeyInput.wrappedValue = Self.sanitizeAPIKey(aiAPIKeyInput.wrappedValue)
-          onSaveAPIKey()
+          isJustSaved = false
+          saveFailureMessage = nil
+          guard onSaveAPIKey() else {
+            saveFailureMessage = String(
+              localized:
+                "保存失败：无法写入\(storageModeTitle(storageMode))。请检查存储权限后重试；输入内容仍保留。"
+            )
+            return
+          }
           withAnimation {
             isJustSaved = true
           }
@@ -92,14 +101,21 @@ struct AIKeychainSection: View {
         .accessibilityLabel("保存 AI API Key")
 
         if isJustSaved {
-          Label("已保存", systemImage: "checkmark.circle.fill")
-            .font(.caption.weight(.medium))
-            .foregroundStyle(WorkbenchTheme.success)
-            .transition(.opacity)
+          AccessibleStatusMessage(
+            message: String(localized: "已保存"), severity: .success,
+            announcesNonUrgentStatus: true
+          )
+          .transition(.opacity)
         } else if !aiAPIKeyInput.wrappedValue.trimmedForPublishing.isEmpty {
           Text("待保存修改")
             .font(.caption.weight(.medium))
             .foregroundStyle(WorkbenchTheme.warning)
+        }
+      }
+      .onChange(of: aiAPIKeyInput.wrappedValue) { _, newValue in
+        if !newValue.trimmedForPublishing.isEmpty {
+          isJustSaved = false
+          saveFailureMessage = nil
         }
       }
 
@@ -139,6 +155,10 @@ struct AIKeychainSection: View {
           announcesNonUrgentStatus: true
         )
         .textSelection(.enabled)
+      }
+      if let saveFailureMessage {
+        AccessibleStatusMessage(message: saveFailureMessage, severity: .error)
+          .textSelection(.enabled)
       }
 
       HStack(spacing: 6) {

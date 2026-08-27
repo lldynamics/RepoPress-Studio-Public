@@ -129,14 +129,6 @@ extension RepositoryWorkspaceView {
         .disabled(store.isRemoteRepositoryChecking || store.isRemoteRepositoryPublishing)
         .accessibilityIdentifier("repository-action-create-remote")
 
-        Button {
-          stage = .history
-        } label: {
-          Label("查看发布记录", systemImage: "clock.arrow.circlepath")
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .buttonStyle(.bordered)
-        .accessibilityIdentifier("repository-action-view-release-history")
       }
       .controlSize(.regular)
 

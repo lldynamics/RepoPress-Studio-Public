@@ -51,15 +51,17 @@ extension KnowledgeSourceListColumn {
       .help("资料库设置、回收站、备份与恢复")
       .accessibilityLabel("资料库管理")
       .disabled(knowledge.isBusy)
-      Button {
-        isImportPresented = true
-      } label: {
-        Label("导入", systemImage: "plus")
+      if !knowledge.documents.isEmpty {
+        Button {
+          isImportPresented = true
+        } label: {
+          Label("导入", systemImage: "plus")
+        }
+        .workbenchProminentActionStyle()
+        .controlSize(.regular)
+        .help("导入资料")
+        .accessibilityLabel("导入资料")
       }
-      .workbenchProminentActionStyle()
-      .controlSize(.regular)
-      .help("导入资料")
-      .accessibilityLabel("导入资料")
     }
   }
 

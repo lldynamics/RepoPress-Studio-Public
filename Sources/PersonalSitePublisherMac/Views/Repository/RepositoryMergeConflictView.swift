@@ -28,6 +28,7 @@ struct RepositoryMergeConflictView: View {
   @State private var finalTexts: [String: String]
   @State private var resolvingPath: String?
   @State private var feedbackMessage: String?
+  @State private var feedbackSeverity: AccessibleStatusSeverity = .info
   @State private var layoutMode: ConflictViewLayoutMode = .threeWay
   @State private var dualColumnSource: DualColumnSource = .ours
   @State private var isBaseSheetPresented = false
@@ -75,9 +76,12 @@ struct RepositoryMergeConflictView: View {
       }
 
       if let feedbackMessage {
-        Label(feedbackMessage, systemImage: "checkmark.circle")
+        AccessibleStatusMessage(
+          message: feedbackMessage,
+          severity: feedbackSeverity,
+          announcesNonUrgentStatus: true
+        )
           .font(.caption)
-          .foregroundStyle(WorkbenchTheme.success)
           .textSelection(.enabled)
       }
     }
@@ -404,11 +408,13 @@ struct RepositoryMergeConflictView: View {
         await MainActor.run {
           resolvingPath = nil
           feedbackMessage = "已暂存 " + path + "，正在刷新冲突列表。"
+          feedbackSeverity = .success
         }
       } catch {
         await MainActor.run {
           resolvingPath = nil
           feedbackMessage = "处理失败：\(error.localizedDescription)"
+          feedbackSeverity = .error
         }
       }
     }

@@ -20,7 +20,7 @@ private enum ContentMigrationNotice {
   var isError: Bool {
     switch self {
     case .unsupportedSource, .unreadableSource, .invalidExport, .profileChanged,
-         .fileTooLarge, .tooManyMarkdownFiles, .copyFailed, .exportFailed, .failure:
+      .fileTooLarge, .tooManyMarkdownFiles, .copyFailed, .exportFailed, .failure:
       true
     default:
       false
@@ -41,6 +41,7 @@ struct ContentMigrationAssistantView: View {
   @State private var isAnalyzing = false
   @State private var isApplying = false
   @State private var selectedDraftIDs = Set<UUID>()
+  @State private var applyTask: Task<Void, Never>?
 
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
@@ -75,6 +76,10 @@ struct ContentMigrationAssistantView: View {
     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("data-management-migration-task")
+    .onDisappear {
+      applyTask?.cancel()
+      applyTask = nil
+    }
   }
 
   private var header: some View {
@@ -110,8 +115,8 @@ struct ContentMigrationAssistantView: View {
           message: migrationNoticeMessage(notice),
           severity: notice.isError ? .error : .info
         )
-          .font(.caption)
-          .padding(.top, 6)
+        .font(.caption)
+        .padding(.top, 6)
       }
     }
   }
@@ -160,7 +165,8 @@ struct ContentMigrationAssistantView: View {
       ViewThatFits(in: .horizontal) {
         HStack(spacing: 12) {
           migrationMetric("新增", value: "\(insertCount)", image: "doc.badge.plus")
-          migrationMetric("更新", value: "\(updateCount)", image: "arrow.triangle.2.circlepath.doc.on.clipboard")
+          migrationMetric(
+            "更新", value: "\(updateCount)", image: "arrow.triangle.2.circlepath.doc.on.clipboard")
           migrationMetric("无需变更", value: "\(unchangedCount)", image: "equal.circle")
           migrationMetric("冲突", value: "\(conflictCount)", image: "exclamationmark.triangle")
         }
@@ -177,16 +183,19 @@ struct ContentMigrationAssistantView: View {
           spacing: WorkbenchSpacing.card
         ) {
           migrationMetric("新增", value: "\(insertCount)", image: "doc.badge.plus")
-          migrationMetric("更新", value: "\(updateCount)", image: "arrow.triangle.2.circlepath.doc.on.clipboard")
+          migrationMetric(
+            "更新", value: "\(updateCount)", image: "arrow.triangle.2.circlepath.doc.on.clipboard")
           migrationMetric("无需变更", value: "\(unchangedCount)", image: "equal.circle")
           migrationMetric("冲突", value: "\(conflictCount)", image: "exclamationmark.triangle")
         }
       }
       .frame(maxWidth: .infinity, alignment: .leading)
-      Text("来源：\(plan.sourceName)（\(plan.sourceKind.localizedDisplayName)） · 将导入到「\(store.activeProfile.name)」 · \(plan.imageMappings.count) 条图片路径 · \(plan.redirects.count) 条重定向")
-        .font(.caption)
-        .foregroundStyle(.secondary)
-        .fixedSize(horizontal: false, vertical: true)
+      Text(
+        "来源：\(plan.sourceName)（\(plan.sourceKind.localizedDisplayName)） · 将导入到「\(store.activeProfile.name)」 · \(plan.imageMappings.count) 条图片路径 · \(plan.redirects.count) 条重定向"
+      )
+      .font(.caption)
+      .foregroundStyle(.secondary)
+      .fixedSize(horizontal: false, vertical: true)
     }
   }
 
@@ -207,7 +216,8 @@ struct ContentMigrationAssistantView: View {
     }
     .padding(10)
     .frame(maxWidth: .infinity, alignment: .leading)
-    .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
+    .background(
+      WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
   }
 
   private func draftPreview(_ plan: ContentMigrationPlan) -> some View {
@@ -304,7 +314,9 @@ struct ContentMigrationAssistantView: View {
       }
     }
     .padding(10)
-    .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
+    .background(
+      WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
+    )
     .accessibilityElement(children: .contain)
   }
 
@@ -327,10 +339,13 @@ struct ContentMigrationAssistantView: View {
       .labelsHidden()
       .toggleStyle(.checkbox)
     } else {
-      Image(systemName: item.disposition == .conflict ? "exclamationmark.triangle.fill" : "equal.circle.fill")
-        .foregroundStyle(migrationDispositionColor(item.disposition))
-        .frame(width: 16, height: 18)
-        .accessibilityHidden(true)
+      Image(
+        systemName: item.disposition == .conflict
+          ? "exclamationmark.triangle.fill" : "equal.circle.fill"
+      )
+      .foregroundStyle(migrationDispositionColor(item.disposition))
+      .frame(width: 16, height: 18)
+      .accessibilityHidden(true)
     }
   }
 
@@ -351,7 +366,9 @@ struct ContentMigrationAssistantView: View {
       .fixedSize(horizontal: false, vertical: true)
   }
 
-  private func migrationDispositionBadge(_ disposition: ContentMigrationDraftDisposition) -> some View {
+  private func migrationDispositionBadge(_ disposition: ContentMigrationDraftDisposition)
+    -> some View
+  {
     Text(migrationDispositionTitle(disposition))
       .font(.caption.weight(.semibold))
       .foregroundStyle(migrationDispositionColor(disposition))
@@ -627,20 +644,40 @@ struct ContentMigrationAssistantView: View {
 
   private func apply(_ plan: ContentMigrationPlan) {
     isApplying = true
-    defer { isApplying = false }
-    do {
-      let summary = try store.applyContentMigration(plan, selectedDraftIDs: selectedDraftIDs)
-      notice = .completed(inserted: summary.insertedCount, updated: summary.updatedCount)
-      self.plan = nil
-      selectedDraftIDs.removeAll()
-    } catch {
-      if let migrationError = error as? ContentMigrationError,
-         case .draftsChanged = migrationError {
-        let refreshedPlan = store.refreshContentMigrationPlanReview(plan)
-        self.plan = refreshedPlan
-        selectedDraftIDs.formIntersection(selectableDraftIDs(in: refreshedPlan))
+    let frozenSelection = selectedDraftIDs
+    applyTask = Task {
+      defer {
+        isApplying = false
+        applyTask = nil
       }
-      notice = migrationErrorNotice(error)
+      do {
+        let summary = try await store.applyContentMigrationAsync(
+          plan,
+          selectedDraftIDs: frozenSelection
+        )
+        notice = .completed(inserted: summary.insertedCount, updated: summary.updatedCount)
+        self.plan = nil
+        selectedDraftIDs.removeAll()
+      } catch is CancellationError {
+        notice = .ready
+      } catch {
+        if let migrationError = error as? ContentMigrationError,
+          case .draftsChanged = migrationError
+        {
+          do {
+            let refreshedPlan = try await store.refreshContentMigrationPlanReviewAsync(plan)
+            self.plan = refreshedPlan
+            selectedDraftIDs.formIntersection(selectableDraftIDs(in: refreshedPlan))
+          } catch is CancellationError {
+            notice = .ready
+            return
+          } catch {
+            notice = .failure(error.localizedDescription)
+            return
+          }
+        }
+        notice = migrationErrorNotice(error)
+      }
     }
   }
 
@@ -651,9 +688,9 @@ struct ContentMigrationAssistantView: View {
     switch migrationError {
     case .unsupportedSource:
       return .unsupportedSource
-    case let .unreadableSource(path):
+    case .unreadableSource(let path):
       return .unreadableSource(path)
-    case let .invalidExport(details):
+    case .invalidExport(let details):
       return .invalidExport(details)
     case .profileChanged:
       return .profileChanged
@@ -661,7 +698,7 @@ struct ContentMigrationAssistantView: View {
       return .failure(migrationError.localizedDescription)
     case .sourceOutsideSelectedDirectory:
       return .failure(migrationError.localizedDescription)
-    case let .sourceLimitExceeded(details):
+    case .sourceLimitExceeded(let details):
       if details == "导出文件超过 100 MB，请拆分后分批导入。" {
         return .fileTooLarge
       }
@@ -678,13 +715,13 @@ struct ContentMigrationAssistantView: View {
       return String(localized: "正在分析导出内容…")
     case .ready:
       return String(localized: "已生成转换预览，可检查文章、图片路径和重定向后再导入。")
-    case let .completed(inserted, updated):
+    case .completed(let inserted, let updated):
       return String(localized: "导入完成：新增 \(inserted) 篇，更新 \(updated) 篇。")
     case .unsupportedSource:
       return String(localized: "请选择 WordPress WXR、RSS/Atom、JSON 导出文件或 Markdown 文件夹。")
-    case let .unreadableSource(path):
+    case .unreadableSource(let path):
       return String(localized: "无法读取导入来源：\(path)")
-    case let .invalidExport(details):
+    case .invalidExport(let details):
       return String(localized: "无法识别导出内容：\(details)")
     case .profileChanged:
       return String(localized: "迁移计划属于另一个站点配置，请重新生成预览后再导入。")
@@ -694,13 +731,13 @@ struct ContentMigrationAssistantView: View {
       return String(localized: "Markdown 文件超过 10,000 个，请拆分文件夹后分批导入。")
     case .copiedRedirectCSV:
       return String(localized: "已复制重定向 CSV。")
-    case let .exportedRedirectCSV(filename):
+    case .exportedRedirectCSV(let filename):
       return String(localized: "已导出重定向 CSV：\(filename)")
     case .copyFailed:
       return String(localized: "复制失败，请重试。")
-    case let .exportFailed(details):
+    case .exportFailed(let details):
       return String(localized: "无法导出重定向 CSV：\(details)")
-    case let .failure(details):
+    case .failure(let details):
       return String(localized: "操作失败：\(details)")
     }
   }
@@ -725,7 +762,8 @@ struct ContentMigrationAssistantView: View {
     }
   }
 
-  private func migrationDispositionTitle(_ disposition: ContentMigrationDraftDisposition) -> String {
+  private func migrationDispositionTitle(_ disposition: ContentMigrationDraftDisposition) -> String
+  {
     switch disposition {
     case .insert: "新增"
     case .update: "更新"

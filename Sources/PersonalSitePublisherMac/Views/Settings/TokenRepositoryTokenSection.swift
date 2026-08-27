@@ -7,7 +7,7 @@ struct TokenRepositoryTokenSection: View {
   let shouldFocusInput: Bool
   let navigationRequestID: UUID
   let tokenAvailability: KeychainTokenAvailability
-  let onSaveToken: () -> Void
+  let onSaveToken: () -> Bool
   let onDeleteToken: () -> Void
   let onRefreshTokenState: () -> Void
   @FocusState private var isRepositoryTokenFocused: Bool
@@ -15,6 +15,7 @@ struct TokenRepositoryTokenSection: View {
   @State private var isTokenRevealed = false
   @State private var showsPATGuide = false
   @State private var isJustSaved = false
+  @State private var saveFailureMessage: String?
 
   var body: some View {
     Section("仓库凭据") {
@@ -26,7 +27,11 @@ struct TokenRepositoryTokenSection: View {
               .foregroundStyle(.secondary)
 
             Button {
-              NSWorkspace.shared.open(URL(string: "https://github.com/settings/tokens/new?scopes=repo,workflow&description=RepoPressMac")!)
+              NSWorkspace.shared.open(
+                URL(
+                  string:
+                    "https://github.com/settings/tokens/new?scopes=repo,workflow&description=RepoPressMac"
+                )!)
             } label: {
               Label("前往 GitHub 打开 Token 创建页", systemImage: "arrow.up.right.square")
                 .font(.caption.weight(.medium))
@@ -68,7 +73,14 @@ struct TokenRepositoryTokenSection: View {
 
       HStack(alignment: .center, spacing: 10) {
         Button(String(localized: "保存令牌")) {
-          onSaveToken()
+          isJustSaved = false
+          saveFailureMessage = nil
+          guard onSaveToken() else {
+            saveFailureMessage = String(
+              localized: "保存失败：无法写入系统钥匙串。请检查钥匙串权限后重试；输入内容仍保留。"
+            )
+            return
+          }
           withAnimation {
             isJustSaved = true
           }
@@ -86,14 +98,21 @@ struct TokenRepositoryTokenSection: View {
         .accessibilityLabel("保存仓库访问令牌")
 
         if isJustSaved {
-          Label("已保存", systemImage: "checkmark.circle.fill")
-            .font(.caption.weight(.medium))
-            .foregroundStyle(WorkbenchTheme.success)
-            .transition(.opacity)
+          AccessibleStatusMessage(
+            message: String(localized: "已保存"), severity: .success,
+            announcesNonUrgentStatus: true
+          )
+          .transition(.opacity)
         } else if !repositoryTokenInput.wrappedValue.trimmedForPublishing.isEmpty {
           Text("待保存修改")
             .font(.caption.weight(.medium))
             .foregroundStyle(WorkbenchTheme.warning)
+        }
+      }
+      .onChange(of: repositoryTokenInput.wrappedValue) { _, newValue in
+        if !newValue.trimmedForPublishing.isEmpty {
+          isJustSaved = false
+          saveFailureMessage = nil
         }
       }
 
@@ -121,6 +140,10 @@ struct TokenRepositoryTokenSection: View {
         Text("操作失败：\(accessFailureMessage)")
           .font(.caption)
           .foregroundStyle(WorkbenchTheme.warning)
+          .textSelection(.enabled)
+      }
+      if let saveFailureMessage {
+        AccessibleStatusMessage(message: saveFailureMessage, severity: .error)
           .textSelection(.enabled)
       }
     }

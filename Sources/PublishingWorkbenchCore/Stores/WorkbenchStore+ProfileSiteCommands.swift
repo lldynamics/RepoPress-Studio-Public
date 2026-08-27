@@ -53,8 +53,15 @@ extension WorkbenchStore {
   }
 
   @discardableResult
-  public func commitAndPushStarterSite() async -> SiteStarterPushResult? {
-    await publishingStore.commitAndPushStarterSite(store: self)
+  public func prepareStarterSitePushConfirmation() async -> SiteStarterPushConfirmation? {
+    await publishingStore.prepareStarterSitePushConfirmation(store: self)
+  }
+
+  @discardableResult
+  public func commitAndPushStarterSite(
+    confirmation: SiteStarterPushConfirmation
+  ) async -> SiteStarterPushResult? {
+    await publishingStore.commitAndPushStarterSite(confirmation: confirmation, store: self)
   }
 
   @discardableResult

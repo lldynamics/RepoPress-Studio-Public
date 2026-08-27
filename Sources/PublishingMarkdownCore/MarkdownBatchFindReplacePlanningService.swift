@@ -193,8 +193,10 @@ public struct MarkdownBatchFindReplacePlanningService: Sendable {
     query: String,
     replacement: String,
     options: MarkdownFindOptions = MarkdownFindOptions(),
-    expectedOriginals: [MarkdownBatchReplaceOriginalSnapshot] = []
+    expectedOriginals: [MarkdownBatchReplaceOriginalSnapshot] = [],
+    cancellationCheck: () throws -> Void = { try Task.checkCancellation() }
   ) throws -> MarkdownBatchReplacePlan {
+    try cancellationCheck()
     let documentCounts = occurrenceCounts(documents.map(\.id))
     let expectedCounts = occurrenceCounts(expectedOriginals.map(\.documentID))
     let expectedByID: [UUID: MarkdownBatchReplaceOriginalSnapshot] =
@@ -205,6 +207,7 @@ public struct MarkdownBatchFindReplacePlanningService: Sendable {
       }
 
     let previews = try documents.map { document in
+      try cancellationCheck()
       let snapshot = MarkdownBatchReplaceOriginalSnapshot(
         documentID: document.id,
         title: document.title,
@@ -240,6 +243,7 @@ public struct MarkdownBatchFindReplacePlanningService: Sendable {
         query: query,
         options: options
       )
+      try cancellationCheck()
       guard !matches.isEmpty else {
         return MarkdownBatchReplacePreview(
           documentID: document.id,
@@ -258,6 +262,7 @@ public struct MarkdownBatchFindReplacePlanningService: Sendable {
         replacement: replacement,
         options: options
       )
+      try cancellationCheck()
       guard mutation.text != document.markdown else {
         return MarkdownBatchReplacePreview(
           documentID: document.id,

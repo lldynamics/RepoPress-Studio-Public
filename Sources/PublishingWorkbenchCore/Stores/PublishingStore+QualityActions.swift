@@ -1,7 +1,9 @@
 import Foundation
 
 extension PublishingStore {
-  func siteMaintenanceReportInput(store: WorkbenchStore, now: Date = Date()) -> SiteMaintenanceReportInput {
+  func siteMaintenanceReportInput(store: WorkbenchStore, now: Date = Date())
+    -> SiteMaintenanceReportInput
+  {
     SiteMaintenanceReportInput(
       drafts: store.visibleDrafts,
       profile: store.activeProfile,
@@ -34,15 +36,45 @@ extension PublishingStore {
   @discardableResult
   public func applySuggestedMaintenanceSchedule(
     report: SiteMaintenanceReport,
-    store: WorkbenchStore
+    store: WorkbenchStore,
+    selectedDraftIDs: Set<UUID>? = nil,
+    expectedOriginalDates: [UUID: Date]? = nil
   ) -> Int {
-    let suggestedDates = Dictionary(
+    let proposedDates = Dictionary(
       uniqueKeysWithValues: report.calendarScheduleItems.map { ($0.draftID, $0.scheduledDate) }
     )
+    let approvedSuggestedDates = proposedDates.filter { draftID, _ in
+      selectedDraftIDs?.contains(draftID) != false
+    }
+    return applySuggestedMaintenanceSchedule(
+      approvedSuggestedDates: approvedSuggestedDates,
+      store: store,
+      expectedOriginalDates: expectedOriginalDates
+    )
+  }
+
+  @discardableResult
+  public func applySuggestedMaintenanceSchedule(
+    approvedSuggestedDates: [UUID: Date],
+    store: WorkbenchStore,
+    expectedOriginalDates: [UUID: Date]? = nil
+  ) -> Int {
     var appliedCount = 0
+    var conflictCount = 0
     for index in drafts.indices {
-      guard let suggestedDate = suggestedDates[drafts[index].id],
-            drafts[index].date != suggestedDate else {
+      let draftID = drafts[index].id
+      guard let suggestedDate = approvedSuggestedDates[draftID],
+        !Calendar.autoupdatingCurrent.isDate(
+          drafts[index].date,
+          inSameDayAs: suggestedDate
+        )
+      else {
+        continue
+      }
+      if let expectedOriginalDate = expectedOriginalDates?[draftID],
+        drafts[index].date != expectedOriginalDate
+      {
+        conflictCount += 1
         continue
       }
       let previous = drafts[index]
@@ -52,12 +84,23 @@ extension PublishingStore {
       drafts[index] = updated
       appliedCount += 1
     }
-    setPublishActionMessage(
-      appliedCount == 0
-        ? "没有需要应用的维护排期。"
-        : "已应用 \(appliedCount) 篇待发布文章的建议排期。",
-      status: appliedCount == 0 ? .warning : .success
-    )
+    let message: String
+    let status: PublishActionMessageStatus
+    if conflictCount > 0 {
+      message =
+        appliedCount == 0
+        ? CoreL10n.format("未应用排期：%d 篇文章的日期已变化，请重新生成预览。", conflictCount)
+        : CoreL10n.format(
+          "已应用 %d 篇排期；另有 %d 篇日期已变化，未覆盖。", appliedCount, conflictCount)
+      status = .warning
+    } else if appliedCount == 0 {
+      message = CoreL10n.text("没有需要应用的维护排期。")
+      status = .warning
+    } else {
+      message = CoreL10n.format("已应用 %d 篇待发布文章的建议排期。", appliedCount)
+      status = .success
+    }
+    setPublishActionMessage(message, status: status)
     if appliedCount > 0 {
       store.save()
     }
@@ -95,7 +138,8 @@ extension PublishingStore {
     guard let batchPublishPlan else {
       return nil
     }
-    return batchPublishCommandBuilder.directCommitCommand(plan: batchPublishPlan, profile: store.activeProfile)
+    return batchPublishCommandBuilder.directCommitCommand(
+      plan: batchPublishPlan, profile: store.activeProfile)
   }
 
   public func batchReviewBranchCommandsForWritableDrafts(store: WorkbenchStore) -> [String] {

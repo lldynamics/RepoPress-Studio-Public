@@ -125,7 +125,11 @@ struct AppearanceSettingsView: View {
       case .primaryAction:
         Text(element.title)
           .font(.workbenchButtonLabel)
-          .foregroundStyle(Color(nsColor: .alternateSelectedControlTextColor))
+          .foregroundStyle(
+            Color(nsColor: AppearancePreviewContrast.foregroundColor(
+              for: NSColor(selectedPalette.color)
+            ))
+          )
           .padding(.horizontal, 12)
           .padding(.vertical, 5)
           .background(
@@ -155,6 +159,31 @@ struct AppearanceSettingsView: View {
           .background(selectedPalette.color.opacity(0.12), in: Capsule())
       }
     }
+  }
+}
+
+enum AppearancePreviewContrast {
+  static func foregroundColor(for background: NSColor) -> NSColor {
+    guard let color = background.usingColorSpace(.sRGB) else {
+      return .white
+    }
+    let luminance = relativeLuminance(
+      red: color.redComponent,
+      green: color.greenComponent,
+      blue: color.blueComponent
+    )
+    let whiteContrast = (1.0 + 0.05) / (luminance + 0.05)
+    let blackContrast = (luminance + 0.05) / 0.05
+    return whiteContrast >= blackContrast ? .white : .black
+  }
+
+  private static func relativeLuminance(red: CGFloat, green: CGFloat, blue: CGFloat) -> CGFloat {
+    func linearize(_ component: CGFloat) -> CGFloat {
+      component <= 0.04045
+        ? component / 12.92
+        : pow((component + 0.055) / 1.055, 2.4)
+    }
+    return 0.2126 * linearize(red) + 0.7152 * linearize(green) + 0.0722 * linearize(blue)
   }
 }
 

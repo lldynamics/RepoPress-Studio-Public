@@ -102,9 +102,10 @@ struct AISettingsView: View {
                 actionMessage: actionMessage,
                 onSaveAPIKey: {
                   connectionUpdateFailed = false
-                  guard saveAPIKey(aiAPIKeyInput) else { return }
+                  guard saveAPIKey(aiAPIKeyInput) else { return false }
                   aiAPIKeyInput = ""
                   invalidateConnectionReport()
+                  return true
                 },
                 onDeleteAPIKey: {
                   connectionUpdateFailed = false

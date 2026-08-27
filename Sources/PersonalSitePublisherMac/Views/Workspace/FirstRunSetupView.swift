@@ -42,6 +42,112 @@ enum FirstRunSetupPath: String, CaseIterable, Identifiable {
   }
 
   var accessibilityTitle: String { title }
+
+  var destination: FirstRunSetupDestination {
+    switch self {
+    case .connectExistingRepository:
+      return .repositoryWizard
+    case .createNewSite:
+      return .siteStarter
+    case .localDrafts:
+      return .localDrafts
+    }
+  }
+}
+
+enum FirstRunSetupDestination: Equatable {
+  case repositoryWizard
+  case siteStarter
+  case localDrafts
+}
+
+struct FirstRunSetupCompletion {
+  let path: FirstRunSetupPath
+  let stagedProfile: SiteProfile?
+}
+
+enum FirstRunSetupCommitResult: Equatable {
+  case completed
+  case failed(message: String, requiresSamePathRetry: Bool = false)
+}
+
+@MainActor
+enum FirstRunSetupPersistenceCommit {
+  static func apply(
+    _ completion: FirstRunSetupCompletion,
+    to store: WorkbenchStore
+  ) -> FirstRunSetupCommitResult {
+    switch completion.path.destination {
+    case .repositoryWizard:
+      guard let stagedProfile = completion.stagedProfile else {
+        return .failed(
+          message: String(localized: "首次设置数据不完整，请返回重新选择仓库。")
+        )
+      }
+      guard store.commitActiveProfileSynchronously(stagedProfile) else {
+        return .failed(message: persistenceFailureMessage(from: store))
+      }
+      return .completed
+    case .siteStarter:
+      return .completed
+    case .localDrafts:
+      store.prepareLocalDraftWorkspace()
+    }
+
+    let didFlush = store.saveCurrentStateSynchronously()
+    guard
+      didFlush,
+      !store.isPersistenceRecoveryWriteProtected,
+      !store.hasUnsavedChanges
+    else {
+      return .failed(
+        message: persistenceFailureMessage(from: store),
+        requiresSamePathRetry: true
+      )
+    }
+    return .completed
+  }
+
+  private static func persistenceFailureMessage(from store: WorkbenchStore) -> String {
+    let detail = store.lastSaveError?
+      .trimmingCharacters(in: .whitespacesAndNewlines)
+    if let detail, !detail.isEmpty {
+      return String(
+        format: String(
+          localized: "首次设置未能保存：%@。设置尚未标记为完成，请检查数据文件夹后重试。"
+        ),
+        detail
+      )
+    }
+    return String(localized: "首次设置未能保存。设置尚未标记为完成，请检查数据文件夹后重试。")
+  }
+}
+
+struct FirstRunSetupProfileStaging {
+  private(set) var profile: SiteProfile
+
+  init(profile: SiteProfile) {
+    self.profile = profile
+  }
+
+  mutating func selectSiteKind(_ siteKind: SiteKind) {
+    // Keep the same defaulting semantics as the Settings change preview, but
+    // apply them to this value-only draft until the final confirmation.
+    profile.applyPublishingDefaults(for: siteKind)
+  }
+
+  mutating func selectRepositoryProvider(_ provider: RepositoryProvider) {
+    profile.repositoryProvider = provider
+    profile.repositoryBaseURL = provider.defaultBaseURL
+  }
+
+  mutating func selectPublishStrategy(_ strategy: RepositoryPublishStrategy) {
+    profile.repositoryPublishStrategy = strategy
+  }
+
+  mutating func selectRepositoryRoot(_ url: URL) {
+    _ = profile.rememberLocalRepositoryRoot(url)
+  }
 }
 
 private struct FirstRunSetupPathCard: View {
@@ -99,13 +205,18 @@ private struct FirstRunSetupPathCard: View {
 
 struct FirstRunSetupView: View {
   let store: WorkbenchStore
-  let finish: (FirstRunSetupPath) -> Void
+  let finish: (FirstRunSetupCompletion) -> FirstRunSetupCommitResult
   let skip: () -> Void
 
   @State private var selectedPath: FirstRunSetupPath?
+  @State private var isRepositorySetupActive = false
   @State private var step: Step = .siteType
+  @State private var stagedProfile: FirstRunSetupProfileStaging?
   @State private var isPreparingRepository = false
   @State private var repositoryMessage: String?
+  @State private var completionMessage: String?
+  @State private var requiresSamePathRetry = false
+  @State private var isCommitConfirmationPresented = false
 
   var body: some View {
     VStack(spacing: 0) {
@@ -114,7 +225,7 @@ struct FirstRunSetupView: View {
       Divider()
 
       Group {
-        if selectedPath == nil {
+        if !isRepositorySetupActive {
           pathSelectionStep
         } else {
           switch step {
@@ -130,6 +241,12 @@ struct FirstRunSetupView: View {
       .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
       .padding(WorkbenchSpacing.spacious)
 
+      if let completionMessage {
+        AccessibleStatusMessage(message: completionMessage, severity: .error)
+          .padding(.horizontal, WorkbenchSpacing.spacious)
+          .padding(.bottom, WorkbenchSpacing.section)
+      }
+
       Divider()
 
       footer
@@ -137,6 +254,18 @@ struct FirstRunSetupView: View {
     .frame(width: 720, height: 600)
     .accessibilityElement(children: .contain)
     .accessibilityLabel("首次设置")
+    .confirmationDialog(
+      String(localized: "应用设置并连接仓库？"),
+      isPresented: $isCommitConfirmationPresented,
+      titleVisibility: .visible
+    ) {
+      Button(String(localized: "应用并检查仓库")) {
+        finishRepositorySetup()
+      }
+      Button(String(localized: "返回修改"), role: .cancel) {}
+    } message: {
+      Text("这会应用上方预览的站点与发布规则，并保存你选择的本地仓库。返回或取消不会保存这些改动。")
+    }
   }
 
   private var header: some View {
@@ -148,13 +277,13 @@ struct FirstRunSetupView: View {
 
         VStack(alignment: .leading, spacing: 2) {
           Text(
-            selectedPath == nil
+            !isRepositorySetupActive
               ? String(localized: "开始使用")
               : String(localized: "设置个人网站发布流程")
           )
             .font(.title3.weight(.semibold))
           Text(
-            selectedPath == nil
+            !isRepositorySetupActive
               ? String(localized: "先选择你现在要做的事，站点配置可以稍后补充。")
               : String(localized: "只配置当前路径需要的信息，之后可以随时在设置中修改。")
           )
@@ -163,7 +292,7 @@ struct FirstRunSetupView: View {
         }
       }
 
-      if selectedPath != nil {
+      if isRepositorySetupActive {
         HStack(spacing: 8) {
           ForEach(Step.allCases) { candidate in
             HStack(spacing: 6) {
@@ -210,12 +339,14 @@ struct FirstRunSetupView: View {
             FirstRunSetupPathCard(path: path, isSelected: selectedPath == path)
           }
           .buttonStyle(.plain)
+          .disabled(requiresSamePathRetry)
           .accessibilityLabel(path.accessibilityTitle)
           .accessibilityValue(
             selectedPath == path
               ? String(localized: "已选择")
               : String(localized: "未选择")
           )
+          .accessibilityHint(String(localized: "按空格或 Return 选择，再按 Return 继续"))
         }
       }
 
@@ -243,12 +374,15 @@ struct FirstRunSetupView: View {
 
       setupSummary(
         systemImage: "doc.text",
-        title: store.activeProfile.siteKind.localizedDisplayName,
+        title: setupProfile.siteKind.localizedDisplayName,
         detail: String(
           format: String(localized: "内容目录：%@"),
-          store.activeProfile.contentRoot
+          setupProfile.contentRoot
         )
       )
+      Text("这里只预览发布规则；点击最后的“完成并检查仓库”并再次确认后才会保存。")
+        .font(.caption)
+        .foregroundStyle(.secondary)
     }
   }
 
@@ -260,9 +394,15 @@ struct FirstRunSetupView: View {
         systemImage: hasRepository ? "externaldrive.fill.badge.checkmark" : "externaldrive.badge.questionmark",
         title: hasRepository ? String(localized: "本地仓库已连接") : String(localized: "尚未选择本地仓库"),
         detail: hasRepository
-          ? store.activeProfile.localRepositoryRootPath
+          ? setupProfile.localRepositoryRootPath
           : String(localized: "选择包含站点配置和内容目录的仓库根目录。")
       )
+
+      if hasRepository {
+        Text("仓库路径已暂存，将在最后确认后保存并扫描。")
+          .font(.caption)
+          .foregroundStyle(.secondary)
+      }
 
       Button {
         chooseRepository()
@@ -322,9 +462,10 @@ struct FirstRunSetupView: View {
         .buttonStyle(.plain)
         .keyboardShortcut(.cancelAction)
         .foregroundStyle(.secondary)
+        .disabled(requiresSamePathRetry)
 
         Text(
-          selectedPath == nil
+          !isRepositorySetupActive
             ? String(localized: "下次启动仍可从这三个入口开始。")
             : String(localized: "当前路径的设置会保留，可稍后在设置中继续修改。")
         )
@@ -336,7 +477,7 @@ struct FirstRunSetupView: View {
 
       Spacer()
 
-      if selectedPath == nil {
+      if !isRepositorySetupActive {
         Button("继续") {
           continueFromPathSelection()
         }
@@ -346,7 +487,9 @@ struct FirstRunSetupView: View {
       } else {
         if step == .siteType {
           Button("返回") {
-            selectedPath = nil
+            isRepositorySetupActive = false
+            stagedProfile = nil
+            repositoryMessage = nil
           }
         } else {
           Button("上一步") {
@@ -360,7 +503,7 @@ struct FirstRunSetupView: View {
             : String(localized: "下一步")
         ) {
           if step == .publishing {
-            finish(.connectExistingRepository)
+            isCommitConfirmationPresented = true
           } else {
             step = Step(rawValue: step.rawValue + 1) ?? .publishing
           }
@@ -375,11 +518,13 @@ struct FirstRunSetupView: View {
 
   private func continueFromPathSelection() {
     guard let selectedPath else { return }
-    switch selectedPath {
-    case .connectExistingRepository:
+    switch selectedPath.destination {
+    case .repositoryWizard:
+      stagedProfile = FirstRunSetupProfileStaging(profile: store.activeProfile)
+      isRepositorySetupActive = true
       step = .siteType
-    case .createNewSite, .localDrafts:
-      finish(selectedPath)
+    case .siteStarter, .localDrafts:
+      complete(FirstRunSetupCompletion(path: selectedPath, stagedProfile: nil))
     }
   }
 
@@ -414,31 +559,42 @@ struct FirstRunSetupView: View {
   }
 
   private var hasRepository: Bool {
-    !store.activeProfile.localRepositoryRootPath.trimmedForPublishing.isEmpty
+    !setupProfile.localRepositoryRootPath.trimmedForPublishing.isEmpty
+  }
+
+  private var setupProfile: SiteProfile {
+    stagedProfile?.profile ?? store.activeProfile
   }
 
   private var siteKindBinding: Binding<SiteKind> {
     Binding(
-      get: { store.activeProfile.siteKind },
-      set: { store.applySiteKindDefaults($0) }
+      get: { setupProfile.siteKind },
+      set: { siteKind in
+        var staging = stagedProfile ?? FirstRunSetupProfileStaging(profile: store.activeProfile)
+        staging.selectSiteKind(siteKind)
+        stagedProfile = staging
+      }
     )
   }
 
   private var repositoryProviderBinding: Binding<RepositoryProvider> {
     Binding(
-      get: { store.activeProfile.repositoryProvider },
-      set: { store.setRepositoryProvider($0) }
+      get: { setupProfile.repositoryProvider },
+      set: { provider in
+        var staging = stagedProfile ?? FirstRunSetupProfileStaging(profile: store.activeProfile)
+        staging.selectRepositoryProvider(provider)
+        stagedProfile = staging
+      }
     )
   }
 
   private var publishStrategyBinding: Binding<RepositoryPublishStrategy> {
     Binding(
-      get: { store.activeProfile.repositoryPublishStrategy },
+      get: { setupProfile.repositoryPublishStrategy },
       set: { strategy in
-        var profile = store.activeProfile
-        profile.repositoryPublishStrategy = strategy
-        store.updateActiveProfile(profile)
-        store.save()
+        var staging = stagedProfile ?? FirstRunSetupProfileStaging(profile: store.activeProfile)
+        staging.selectPublishStrategy(strategy)
+        stagedProfile = staging
       }
     )
   }
@@ -447,14 +603,35 @@ struct FirstRunSetupView: View {
     guard let url = RepositorySelectionPanel.chooseDirectory() else { return }
     isPreparingRepository = true
     repositoryMessage = nil
-    Task {
-      await store.repository.rememberRootAsync(url)
-      isPreparingRepository = false
-      if hasRepository {
-        step = .publishing
-      } else {
-        repositoryMessage = String(localized: "未能保存仓库路径，请重新选择或检查文件夹是否存在。")
-      }
+    var staging = stagedProfile ?? FirstRunSetupProfileStaging(profile: store.activeProfile)
+    staging.selectRepositoryRoot(url)
+    stagedProfile = staging
+    isPreparingRepository = false
+    if hasRepository {
+      step = .publishing
+    } else {
+      repositoryMessage = String(localized: "未能暂存仓库路径，请重新选择或检查文件夹是否存在。")
+    }
+  }
+
+  private func finishRepositorySetup() {
+    guard let stagedProfile else { return }
+    complete(
+      FirstRunSetupCompletion(
+        path: .connectExistingRepository,
+        stagedProfile: stagedProfile.profile
+      )
+    )
+  }
+
+  private func complete(_ completion: FirstRunSetupCompletion) {
+    switch finish(completion) {
+    case .completed:
+      completionMessage = nil
+      requiresSamePathRetry = false
+    case .failed(let message, let requiresSamePathRetry):
+      completionMessage = message
+      self.requiresSamePathRetry = requiresSamePathRetry
     }
   }
 

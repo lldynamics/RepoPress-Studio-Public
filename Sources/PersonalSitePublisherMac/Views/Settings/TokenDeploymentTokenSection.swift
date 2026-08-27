@@ -5,11 +5,12 @@ struct TokenDeploymentTokenSection: View {
   let deploymentProvider: DeploymentProvider
   let deploymentTokenInput: Binding<String>
   let tokenAvailability: KeychainTokenAvailability
-  let onSaveToken: () -> Void
+  let onSaveToken: () -> Bool
   let onDeleteToken: () -> Void
   let onRefreshTokenState: () -> Void
   @State private var isDeleteConfirmationPresented = false
   @State private var isJustSaved = false
+  @State private var saveFailureMessage: String?
 
   var body: some View {
     Section("部署凭据") {
@@ -19,7 +20,14 @@ struct TokenDeploymentTokenSection: View {
 
       HStack(alignment: .center, spacing: 10) {
         Button(String(localized: "保存部署访问令牌")) {
-          onSaveToken()
+          isJustSaved = false
+          saveFailureMessage = nil
+          guard onSaveToken() else {
+            saveFailureMessage = String(
+              localized: "保存失败：无法写入系统钥匙串。请检查钥匙串权限后重试；输入内容仍保留。"
+            )
+            return
+          }
           withAnimation {
             isJustSaved = true
           }
@@ -36,14 +44,21 @@ struct TokenDeploymentTokenSection: View {
         .disabled(deploymentTokenInput.wrappedValue.trimmedForPublishing.isEmpty)
 
         if isJustSaved {
-          Label("已保存", systemImage: "checkmark.circle.fill")
-            .font(.caption.weight(.medium))
-            .foregroundStyle(WorkbenchTheme.success)
-            .transition(.opacity)
+          AccessibleStatusMessage(
+            message: String(localized: "已保存"), severity: .success,
+            announcesNonUrgentStatus: true
+          )
+          .transition(.opacity)
         } else if !deploymentTokenInput.wrappedValue.trimmedForPublishing.isEmpty {
           Text("待保存修改")
             .font(.caption.weight(.medium))
             .foregroundStyle(WorkbenchTheme.warning)
+        }
+      }
+      .onChange(of: deploymentTokenInput.wrappedValue) { _, newValue in
+        if !newValue.trimmedForPublishing.isEmpty {
+          isJustSaved = false
+          saveFailureMessage = nil
         }
       }
 
@@ -67,6 +82,10 @@ struct TokenDeploymentTokenSection: View {
         Text("操作失败：\(accessFailureMessage)")
           .font(.caption)
           .foregroundStyle(WorkbenchTheme.warning)
+          .textSelection(.enabled)
+      }
+      if let saveFailureMessage {
+        AccessibleStatusMessage(message: saveFailureMessage, severity: .error)
           .textSelection(.enabled)
       }
 

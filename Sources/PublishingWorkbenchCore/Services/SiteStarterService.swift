@@ -198,6 +198,130 @@ public struct SiteStarterService: Sendable {
     }.value
   }
 
+  /// Prepares a frozen first-push review. This performs no repository write.
+  public func prepareStarterPushConfirmation(
+    profile: SiteProfile,
+    createdFilePaths: [String],
+    commitMessage: String = "Initial site"
+  ) throws -> SiteStarterPushConfirmation {
+    guard let rootURL = profile.localRepositoryRootURL else {
+      throw SiteStarterError.missingRepositoryRoot
+    }
+    guard fileManager.fileExists(atPath: rootURL.appendingPathComponent(".git", isDirectory: true).path) else {
+      throw SiteStarterError.notGitRepository(rootURL.path)
+    }
+
+    let branch = profile.branch.trimmedForPublishing.nilIfEmpty ?? "main"
+    let remoteURL = GitCommandRunner.redactedDiagnosticText(
+      try runGitOutput(["remote", "get-url", "origin"], at: rootURL)
+    ).trimmedForPublishing
+    guard !remoteURL.isEmpty else {
+      throw SiteStarterError.missingOriginRemote
+    }
+
+    let starterPaths = try validatedStarterPaths(createdFilePaths)
+    try rejectUnrelatedStagedChanges(starterPaths: starterPaths, at: rootURL)
+    let committedPaths = try starterPathsWithChanges(starterPaths, at: rootURL)
+    guard !committedPaths.isEmpty else {
+      throw SiteStarterError.noStarterChanges
+    }
+
+    let fileObjectIDs = try Dictionary(uniqueKeysWithValues: committedPaths.map { path in
+      let fileURL = rootURL.appendingPathComponent(path)
+      let objectID = fileManager.fileExists(atPath: fileURL.path)
+        ? try runGitOutput(["hash-object", "--", path], at: rootURL).trimmedForPublishing
+        : "<deleted>"
+      return (path, objectID)
+    })
+    let remoteBranchCommitSHA = try remoteBranchCommitSHA(branch: branch, at: rootURL)
+
+    return SiteStarterPushConfirmation(
+      rootPath: rootURL.path,
+      branch: branch,
+      remoteURL: remoteURL,
+      commitMessage: commitMessage,
+      committedPaths: committedPaths,
+      fileObjectIDs: fileObjectIDs,
+      headCommitSHA: optionalGitOutput(["rev-parse", "--verify", "HEAD"], at: rootURL),
+      remoteBranchCommitSHA: remoteBranchCommitSHA
+    )
+  }
+
+  /// Runs a user-approved first push only if the frozen review is still exact.
+  /// A mismatch fails before committing or pushing and requires a fresh review.
+  public func commitAndPushStarterSiteAsync(
+    profile: SiteProfile,
+    createdFilePaths: [String],
+    confirmation: SiteStarterPushConfirmation
+  ) async throws -> SiteStarterPushResult {
+    let current = try await prepareStarterPushConfirmationAsync(
+      profile: profile,
+      createdFilePaths: createdFilePaths,
+      commitMessage: confirmation.commitMessage
+    )
+    guard current == confirmation else {
+      throw SiteStarterError.starterPushConfirmationChanged
+    }
+
+    guard let rootURL = profile.localRepositoryRootURL else {
+      throw SiteStarterError.missingRepositoryRoot
+    }
+    _ = try await runGitOutputAsync(["add", "--"] + confirmation.committedPaths, at: rootURL)
+    let stagedPaths = try await runGitOutputAsync(["diff", "--cached", "--name-only"], at: rootURL)
+      .split(separator: "\n")
+      .map { String($0).trimmedForPublishing }
+      .filter { !$0.isEmpty }
+      .sorted()
+    guard stagedPaths == confirmation.committedPaths else {
+      throw SiteStarterError.starterPushConfirmationChanged
+    }
+
+    let stagedObjectIDs = try await stagedFileObjectIDs(
+      paths: confirmation.committedPaths,
+      at: rootURL
+    )
+    guard stagedObjectIDs == confirmation.fileObjectIDs else {
+      throw SiteStarterError.starterPushConfirmationChanged
+    }
+
+    let commitOutput = try await runGitOutputAsync(
+      ["commit", "-m", confirmation.commitMessage],
+      at: rootURL
+    )
+    let commitSHA = try await runGitOutputAsync(["rev-parse", "HEAD"], at: rootURL)
+    let pushOutput = try await runGitOutputAsync(
+      ["push", "-u", "origin", confirmation.branch],
+      at: rootURL
+    )
+    return SiteStarterPushResult(
+      rootPath: rootURL.path,
+      branch: confirmation.branch,
+      remoteURL: confirmation.remoteURL,
+      commitSHA: commitSHA.trimmedForPublishing,
+      committedPaths: confirmation.committedPaths,
+      output: [commitOutput, pushOutput]
+        .map(GitCommandRunner.redactedDiagnosticText)
+        .map(\.trimmedForPublishing)
+        .filter { !$0.isEmpty }
+        .joined(separator: "\n")
+    )
+  }
+
+  public func prepareStarterPushConfirmationAsync(
+    profile: SiteProfile,
+    createdFilePaths: [String],
+    commitMessage: String = "Initial site"
+  ) async throws -> SiteStarterPushConfirmation {
+    let service = self
+    return try await Task.detached(priority: .userInitiated) {
+      try service.prepareStarterPushConfirmation(
+        profile: profile,
+        createdFilePaths: createdFilePaths,
+        commitMessage: commitMessage
+      )
+    }.value
+  }
+
   private func prepareRootDirectory(_ rootURL: URL) throws {
     var isDirectory: ObjCBool = false
     if fileManager.fileExists(atPath: rootURL.path, isDirectory: &isDirectory) {
@@ -298,6 +422,33 @@ public struct SiteStarterService: Sendable {
   private func slug(from text: String) -> String {
     SlugService.slug(from: text).nilIfEmpty ?? "my-site"
   }
+
+  private func starterPathsWithChanges(_ starterPaths: [String], at rootURL: URL) throws -> [String] {
+    let unstaged = try runGitOutput(["diff", "--name-only", "--"] + starterPaths, at: rootURL)
+    let staged = try runGitOutput(["diff", "--cached", "--name-only", "--"] + starterPaths, at: rootURL)
+    let untracked = try runGitOutput(
+      ["ls-files", "--others", "--exclude-standard", "--"] + starterPaths,
+      at: rootURL
+    )
+    return Set(
+      [unstaged, staged, untracked]
+        .flatMap { $0.split(separator: "\n").map { String($0).trimmedForPublishing } }
+        .filter { !$0.isEmpty }
+    )
+    .sorted()
+  }
+
+  private func remoteBranchCommitSHA(branch: String, at rootURL: URL) throws -> String? {
+    let output = try runGitOutput(["ls-remote", "--heads", "origin", "refs/heads/\(branch)"], at: rootURL)
+    return output
+      .split(separator: "\n")
+      .first?
+      .split(whereSeparator: { $0 == "\t" || $0 == " " })
+      .first
+      .map(String.init)?
+      .trimmedForPublishing
+      .nilIfEmpty
+  }
 }
 
 public enum SiteStarterError: LocalizedError, Equatable {
@@ -311,6 +462,7 @@ public enum SiteStarterError: LocalizedError, Equatable {
   case missingStarterFileManifest
   case unrelatedStagedChanges([String])
   case noStarterChanges
+  case starterPushConfirmationChanged
   case gitFailed(String)
 
   public var errorDescription: String? {
@@ -338,6 +490,8 @@ public enum SiteStarterError: LocalizedError, Equatable {
       )
     case .noStarterChanges:
       return CoreL10n.text("没有可提交和推送的 Starter 文件变化。")
+    case .starterPushConfirmationChanged:
+      return CoreL10n.text("首次推送复核内容已变化，未提交或推送；请重新检查后确认。")
     case let .gitFailed(message):
       return CoreL10n.format("Git 操作失败：%@", message)
     }

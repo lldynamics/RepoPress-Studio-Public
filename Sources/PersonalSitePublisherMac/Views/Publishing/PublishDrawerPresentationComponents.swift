@@ -291,6 +291,38 @@ enum PublishDrawerActionStyle: Equatable {
   case isolatedPreview
 }
 
+extension PublishActionMessageStatus {
+  var publishDrawerSystemImage: String {
+    switch self {
+    case .information: return "info.circle.fill"
+    case .inProgress: return "arrow.trianglehead.2.clockwise.rotate.90"
+    case .success: return "checkmark.circle.fill"
+    case .warning: return "exclamationmark.triangle.fill"
+    case .failure: return "xmark.octagon.fill"
+    }
+  }
+
+  var publishDrawerColor: Color {
+    switch self {
+    case .information: return WorkbenchTheme.info
+    case .inProgress: return WorkbenchTheme.progress
+    case .success: return WorkbenchTheme.success
+    case .warning: return WorkbenchTheme.warning
+    case .failure: return WorkbenchTheme.risk
+    }
+  }
+
+  var publishDrawerTitle: String {
+    switch self {
+    case .information: return String(localized: "信息")
+    case .inProgress: return String(localized: "进行中")
+    case .success: return String(localized: "成功")
+    case .warning: return String(localized: "警告")
+    case .failure: return String(localized: "失败")
+    }
+  }
+}
+
 struct PublishDrawerActionChoice: View {
   let title: String
   let detail: String

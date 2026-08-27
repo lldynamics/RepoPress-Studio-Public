@@ -2,12 +2,21 @@ import PublishingWorkbenchCore
 import SwiftUI
 
 struct RepositoryWorkspaceGitManagementSection: View {
-  @ObservedObject var store: WorkbenchStore
+  let store: WorkbenchStore
+  @ObservedObject private var workspaceObservation:
+    WorkbenchRepositoryWorkspaceObservationFacade
   @State private var isExpanded = false
   @State private var newBranchName = ""
   @State private var showAllCommits = false
   @State private var showAllBranches = false
   @State private var branchSearchQuery = ""
+
+  init(store: WorkbenchStore) {
+    self.store = store
+    _workspaceObservation = ObservedObject(
+      wrappedValue: store.repositoryWorkspaceObservation
+    )
+  }
 
   var body: some View {
     DisclosureGroup(isExpanded: $isExpanded) {

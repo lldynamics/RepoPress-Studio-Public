@@ -1095,6 +1095,7 @@
 "%@源文件不安全" = "%@ source file is unsafe";
 "%@源文件缺失" = "%@ source file is missing";
 "Starter 已提交并推送：%@。" = "Starter committed and pushed: %@.";
+"Starter 首次推送复核失败：%@" = "Failed to prepare the starter's first-push review: %@";
 "Starter 提交推送失败：%@" = "Failed to commit and push the starter: %@";
 "Starter 文件已生成，但工作台内容在操作期间发生变化，未覆盖当前状态。" = "Starter files were generated, but the workspace changed during the operation, so the current state was not overwritten.";
 "Token 权限未检查" = "Token permissions not checked";
@@ -1135,6 +1136,8 @@
 "当前是 Detached HEAD，先切回可发布分支再写入或提交文章。" = "The repository is currently in a detached HEAD state. Switch back to a publishing branch before writing or committing articles.";
 "当前目录不是 Git 工作树，diff 和提交入口暂不可用。" = "This directory is not a Git working tree, so diff and commit actions are unavailable.";
 "当前目录没有 .git；文章发布命令需要在真实站点 Git 仓库里执行。" = "The current directory has no .git repository. Article publishing commands must run in the actual site Git repository.";
+"当前站点或仓库目录已变化，未提交或推送；请重新生成或导入站点。" = "The current site or repository directory changed. Nothing was committed or pushed; generate or import the site again.";
+"当前站点或仓库目录已变化，请重新生成或导入站点后再复核。" = "The current site or repository directory changed. Generate or import the site again before preparing another review.";
 "扫描完成：%@ 个本地变更，%@ 个远端变更。" = "Scan complete: %@ local changes, %@ remote changes.";
 "批量目标路径冲突" = "Batch destination path conflict";
 "无法识别当前分支；发布前先在终端确认工作树和远端状态。" = "The current branch could not be identified. Verify the working tree and remote status in Terminal before publishing.";
@@ -1157,11 +1160,14 @@
 "欢迎文章" = "Welcome Post";
 "正在后台创建 Starter 站点…" = "Creating the starter site in the background…";
 "正在后台读取并导入已有站点…" = "Reading and importing the existing site in the background…";
+"正在冻结首次推送复核内容…" = "Preparing the first-push review snapshot…";
+"正在重新校验并推送 Starter…" = "Revalidating and pushing the starter…";
 "正在扫描仓库..." = "Scanning Repository...";
 "正在提交并推送 Starter…" = "Committing and pushing the starter…";
 "正在配置 Starter 的 origin remote…" = "Configuring the starter's origin remote…";
 "没有发现常见配置文件；仍可继续使用自定义路径规则。" = "No common configuration file was found. You can continue using custom path rules.";
 "没有可提交的 Starter 生成结果，请先创建站点。" = "No generated starter site is available to commit. Create a site first.";
+"没有可复核的 Starter 生成结果，请先创建站点。" = "No generated starter site is available to review. Create a site first.";
 "没有可配置远端的 Starter 生成结果，请先创建站点。" = "No generated starter site is available for remote configuration. Create a site first.";
 "清爽首页、文章列表、独立文章页，适合长期写作。" = "A clean home page, post list, and individual post pages for long-term writing.";
 "确认 Git 状态" = "Verify Git Status";
@@ -1172,6 +1178,7 @@
 "设置上游分支" = "Set Upstream Branch";
 "请先刷新仓库状态，再执行提交或推送。" = "Refresh the repository status before committing or pushing.";
 "请切回可发布分支后再写入、提交或创建 PR/MR。" = "Switch to a publishable branch before writing, committing, or creating a PR/MR.";
+"请复核冻结的远端、分支、提交说明和文件清单后再确认推送。" = "Review the frozen remote, branch, commit message, and file manifest before confirming the push.";
 "请选择 Zola/Hugo/Astro/Jekyll/Hexo 仓库根目录。" = "Select the root directory of a Zola, Hugo, Astro, Jekyll, or Hexo repository.";
 "请选择已有站点仓库根目录，或先在终端初始化并配置远端。" = "Choose the root of an existing site repository, or initialize it and configure a remote in Terminal first.";
 "还没有仓库扫描结果，先刷新本地仓库状态。" = "No repository scan results are available. Refresh the local repository status first.";
@@ -1253,6 +1260,7 @@
 "已确认文章仍在回收站或已永久删除" = "Article confirmed to still be in the Trash or permanently deleted";
 "当前 Starter 仓库没有 origin remote。" = "The current starter repository has no origin remote.";
 "当前 Starter 没有本地仓库路径。" = "This starter has no local repository path.";
+"首次推送复核内容已变化，未提交或推送；请重新检查后确认。" = "The first-push review changed. Nothing was committed or pushed; inspect it again before confirming.";
 "批量发布清单已确认" = "Batch publishing list reviewed";
 "暂存区包含 Starter 清单外的文件，已停止提交：%@" = "The staging area contains files outside the starter manifest. The commit was stopped: %@";
 "未知站点模板：%@" = "Unknown site template: %@";
@@ -1589,3 +1597,9 @@
 "文章在检查期间发生变化或已不存在，未完成发布检查。" = "The article changed or no longer exists during inspection; preflight checks not completed.";
 "文章在刷新期间发生变化或已不存在，未完成发布预览。" = "The article changed or no longer exists during refresh; publish preview not completed.";
 "这篇文章已被删除或下线，旧编辑器的更改未写入。" = "This article was deleted or unlisted; edits from previous editor were not written.";
+"当前工作台不处于恢复保护状态，未执行重置。" = "The workbench is not in recovery-protected mode, so it was not reset.";
+"空白工作台未能保存，请检查存储位置后重试。" = "The blank workbench could not be saved. Check the storage location and try again.";
+"未应用排期：%d 篇文章的日期已变化，请重新生成预览。" = "Schedule not applied: dates changed for %d articles. Generate a new preview.";
+"已应用 %d 篇排期；另有 %d 篇日期已变化，未覆盖。" = "Applied schedules to %d articles; dates changed for %d others, so they were not overwritten.";
+"没有需要应用的维护排期。" = "There are no maintenance schedule changes to apply.";
+"已应用 %d 篇待发布文章的建议排期。" = "Applied the suggested schedule to %d articles awaiting publication.";

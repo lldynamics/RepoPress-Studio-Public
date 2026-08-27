@@ -2372,6 +2372,157 @@ final class MarkdownEditorAppKitInteractionTests: XCTestCase {
     coordinator.invalidateHighlightedTextCache()
   }
 
+  func testInvalidFrontMatterSuppressesLiveBodyChangesUntilDocumentIsValidated() {
+    let source = "---\ntitle: Old\n---\n\n正文"
+    let sourceText = source as NSString
+    let originalBodyRange = sourceText.range(of: "正文")
+    var boundText = source
+    var selectedRange = NSRange(location: originalBodyRange.location, length: 0)
+    var isFrontMatterSelection = false
+    var liveBodyChanges: [(String, String)] = []
+    let coordinator = MacMarkdownTextView.Coordinator(
+      text: Binding(
+        get: { boundText },
+        set: { boundText = $0 }
+      ),
+      bodyMarkdown: "正文",
+      bodyUTF16Offset: originalBodyRange.location,
+      selectedRange: Binding(
+        get: { selectedRange },
+        set: { selectedRange = $0 }
+      ),
+      isFrontMatterSelection: Binding(
+        get: { isFrontMatterSelection },
+        set: { isFrontMatterSelection = $0 }
+      ),
+      comfortConfiguration: MarkdownEditorComfortConfiguration(),
+      diagnostics: [],
+      onStatisticsChanged: { _ in },
+      onPasteMessage: { _ in },
+      onLiveBodyChange: { previous, updated in
+        liveBodyChanges.append((previous, updated))
+      },
+      onScrollPositionChanged: { _ in },
+      onDroppedFiles: { _ in }
+    )
+    let textView = NSTextView()
+    textView.string = source
+    textView.delegate = coordinator
+
+    let closingDelimiterRange = sourceText.range(of: "---", options: .backwards)
+    XCTAssertTrue(
+      coordinator.textView(
+        textView,
+        shouldChangeTextIn: closingDelimiterRange,
+        replacementString: "--x"
+      )
+    )
+    let invalidDocument = sourceText.replacingCharacters(
+      in: closingDelimiterRange,
+      with: "--x"
+    )
+    textView.string = invalidDocument
+    coordinator.textDidChange(
+      Notification(name: NSText.didChangeNotification, object: textView)
+    )
+
+    XCTAssertFalse(coordinator.hasValidDocumentBodyMapping)
+    XCTAssertTrue(coordinator.isAwaitingDocumentValidation)
+    XCTAssertEqual(coordinator.bodyMarkdown, "正文")
+    XCTAssertTrue(liveBodyChanges.isEmpty)
+
+    coordinator.flushPendingBindingWrites()
+    coordinator.updateDocumentContext(
+      bodyMarkdown: "正文",
+      bodyUTF16Offset: originalBodyRange.location,
+      allowsLiveBodyChanges: false,
+      attachments: [],
+      in: textView
+    )
+
+    let invalidSource = invalidDocument as NSString
+    let invalidBodyRange = invalidSource.range(of: "正文")
+    XCTAssertTrue(
+      coordinator.textView(
+        textView,
+        shouldChangeTextIn: invalidBodyRange,
+        replacementString: "新正文"
+      )
+    )
+    let invalidDocumentWithEditedBody = invalidSource.replacingCharacters(
+      in: invalidBodyRange,
+      with: "新正文"
+    )
+    textView.string = invalidDocumentWithEditedBody
+    coordinator.textDidChange(
+      Notification(name: NSText.didChangeNotification, object: textView)
+    )
+
+    XCTAssertEqual(coordinator.bodyMarkdown, "正文")
+    XCTAssertTrue(liveBodyChanges.isEmpty)
+
+    coordinator.flushPendingBindingWrites()
+    coordinator.updateDocumentContext(
+      bodyMarkdown: "正文",
+      bodyUTF16Offset: originalBodyRange.location,
+      allowsLiveBodyChanges: false,
+      attachments: [],
+      in: textView
+    )
+
+    let recoverableSource = invalidDocumentWithEditedBody as NSString
+    let brokenDelimiterRange = recoverableSource.range(of: "--x", options: .backwards)
+    XCTAssertTrue(
+      coordinator.textView(
+        textView,
+        shouldChangeTextIn: brokenDelimiterRange,
+        replacementString: "---"
+      )
+    )
+    let recoveredDocument = recoverableSource.replacingCharacters(
+      in: brokenDelimiterRange,
+      with: "---"
+    )
+    textView.string = recoveredDocument
+    coordinator.textDidChange(
+      Notification(name: NSText.didChangeNotification, object: textView)
+    )
+
+    XCTAssertTrue(coordinator.hasValidDocumentBodyMapping)
+    XCTAssertEqual(coordinator.bodyMarkdown, "新正文")
+    XCTAssertTrue(liveBodyChanges.isEmpty)
+
+    coordinator.flushPendingBindingWrites()
+    let recoveredBodyRange = (recoveredDocument as NSString).range(of: "新正文")
+    coordinator.updateDocumentContext(
+      bodyMarkdown: "新正文",
+      bodyUTF16Offset: recoveredBodyRange.location,
+      allowsLiveBodyChanges: true,
+      attachments: [],
+      in: textView
+    )
+
+    XCTAssertTrue(
+      coordinator.textView(
+        textView,
+        shouldChangeTextIn: recoveredBodyRange,
+        replacementString: "已恢复正文"
+      )
+    )
+    textView.string = (recoveredDocument as NSString).replacingCharacters(
+      in: recoveredBodyRange,
+      with: "已恢复正文"
+    )
+    coordinator.textDidChange(
+      Notification(name: NSText.didChangeNotification, object: textView)
+    )
+
+    XCTAssertEqual(liveBodyChanges.count, 1)
+    XCTAssertEqual(liveBodyChanges.first?.0, "新正文")
+    XCTAssertEqual(liveBodyChanges.first?.1, "已恢复正文")
+    coordinator.invalidateHighlightedTextCache()
+  }
+
   func testDragAcceptsSupportedImagesAndDeliversOnlyFilteredFileURLs() throws {
     let fixture = try makeFixture()
     defer { try? FileManager.default.removeItem(at: fixture.root) }

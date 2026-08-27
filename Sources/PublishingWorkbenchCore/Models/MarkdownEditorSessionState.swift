@@ -10,6 +10,9 @@ public struct MarkdownEditorSessionState: Codable, Equatable, Sendable {
   public var isFindCaseSensitive: Bool
   public var isFindWholeWord: Bool
   public var isFindRegularExpression: Bool
+  public var invalidFrontMatterDocument: String?
+  public var invalidFrontMatterBaseBodyMarkdown: String?
+  public var invalidFrontMatterBaseBodyRevision: UInt64?
 
   public init(
     selectedRange: NSRange = NSRange(location: 0, length: 0),
@@ -19,7 +22,10 @@ public struct MarkdownEditorSessionState: Codable, Equatable, Sendable {
     replacementText: String = "",
     isFindCaseSensitive: Bool = false,
     isFindWholeWord: Bool = false,
-    isFindRegularExpression: Bool = false
+    isFindRegularExpression: Bool = false,
+    invalidFrontMatterDocument: String? = nil,
+    invalidFrontMatterBaseBodyMarkdown: String? = nil,
+    invalidFrontMatterBaseBodyRevision: UInt64? = nil
   ) {
     selectionLocation = max(0, selectedRange.location)
     selectionLength = max(0, selectedRange.length)
@@ -30,6 +36,9 @@ public struct MarkdownEditorSessionState: Codable, Equatable, Sendable {
     self.isFindCaseSensitive = isFindCaseSensitive
     self.isFindWholeWord = isFindWholeWord
     self.isFindRegularExpression = isFindRegularExpression
+    self.invalidFrontMatterDocument = invalidFrontMatterDocument
+    self.invalidFrontMatterBaseBodyMarkdown = invalidFrontMatterBaseBodyMarkdown
+    self.invalidFrontMatterBaseBodyRevision = invalidFrontMatterBaseBodyRevision
   }
 
   public static let empty = MarkdownEditorSessionState()
@@ -46,7 +55,10 @@ public struct MarkdownEditorSessionState: Codable, Equatable, Sendable {
       replacementText: replacementText,
       isFindCaseSensitive: isFindCaseSensitive,
       isFindWholeWord: isFindWholeWord,
-      isFindRegularExpression: isFindRegularExpression
+      isFindRegularExpression: isFindRegularExpression,
+      invalidFrontMatterDocument: invalidFrontMatterDocument,
+      invalidFrontMatterBaseBodyMarkdown: invalidFrontMatterBaseBodyMarkdown,
+      invalidFrontMatterBaseBodyRevision: invalidFrontMatterBaseBodyRevision
     )
   }
 

@@ -215,7 +215,10 @@ final class ContentMigrationServiceTests: XCTestCase {
     XCTAssertEqual(dispositions[insertSlug], .insert)
     let insertItem = try XCTUnwrap(plan.reviewItems.first { $0.importedDraft.slug == insertSlug })
 
-    let summary = try store.applyContentMigration(plan, selectedDraftIDs: [insertItem.id])
+    let summary = try await store.applyContentMigrationAsync(
+      plan,
+      selectedDraftIDs: [insertItem.id]
+    )
 
     XCTAssertEqual(summary.insertedCount, 1)
     XCTAssertEqual(summary.updatedCount, 0)

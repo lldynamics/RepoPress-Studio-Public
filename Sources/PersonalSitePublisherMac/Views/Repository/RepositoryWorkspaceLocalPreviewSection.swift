@@ -89,6 +89,8 @@ extension RepositoryWorkspaceView {
               .frame(maxWidth: .infinity, alignment: .leading)
           }
           .buttonStyle(.bordered)
+          .disabled(!store.localSitePreviewRuntimeStatus.isReachable)
+          .help(String(localized: "仅在本地预览端口可达时打开站点"))
           .accessibilityIdentifier("repository-preview-open-site")
         }
         .accessibilityElement(children: .contain)

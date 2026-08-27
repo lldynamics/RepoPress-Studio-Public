@@ -27,9 +27,9 @@ struct KnowledgeLibraryDetailView: View {
           message: LocalizedStringKey("导入你读过的 EPUB 书籍、文章、网页或 PDF，写作和对话时 AI 可以按需引用。"),
           systemImage: "books.vertical",
           density: .fullPage,
-          actionTitle: "导入资料",
+          actionTitle: knowledge.documents.isEmpty ? "导入资料" : nil,
           actionSystemImage: "tray.and.arrow.down",
-          action: { isImportPresented = true }
+          action: knowledge.documents.isEmpty ? { isImportPresented = true } : nil
         )
       }
     }

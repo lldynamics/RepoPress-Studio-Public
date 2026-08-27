@@ -21,13 +21,16 @@ struct WorkbenchDataRootSetupView: View {
       }
 
       if let message = coordinator.dataRootMessage {
-        Label(message, systemImage: "info.circle.fill")
-          .font(.callout)
-          .foregroundStyle(.secondary)
-          .padding(.horizontal, 14)
-          .padding(.vertical, 10)
-          .background(.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
-          .frame(maxWidth: 560)
+        AccessibleStatusMessage(
+          message: message,
+          severity: coordinator.dataRootMessageSeverity,
+          announcesNonUrgentStatus: true
+        )
+        .font(.callout)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
+        .frame(maxWidth: 560)
       }
 
       VStack(spacing: 10) {

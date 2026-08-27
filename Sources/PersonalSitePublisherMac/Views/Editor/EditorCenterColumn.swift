@@ -8,6 +8,7 @@ struct EditorCenterColumn: View {
   @Binding var contentHealthFilter: ContentHealthContextFilter
   @Binding var imageWorkbenchContextStage: ImageWorkbenchContextStage
   @Binding var repositoryContextStage: RepositoryContextStage
+  @Binding var repositoryChangedFileSelection: RepositoryChangedFileSelection?
   let contentHealthSidebarProjection: ContentHealthSidebarProjection
   let repositorySourceSession: RepositoryHTMLSourceSession
   let rssStore: RSSReaderStore
@@ -21,6 +22,7 @@ struct EditorCenterColumn: View {
     contentHealthFilter: Binding<ContentHealthContextFilter>,
     imageWorkbenchContextStage: Binding<ImageWorkbenchContextStage>,
     repositoryContextStage: Binding<RepositoryContextStage>,
+    repositoryChangedFileSelection: Binding<RepositoryChangedFileSelection?>,
     contentHealthSidebarProjection: ContentHealthSidebarProjection,
     repositorySourceSession: RepositoryHTMLSourceSession,
     rssStore: RSSReaderStore,
@@ -32,6 +34,7 @@ struct EditorCenterColumn: View {
     _contentHealthFilter = contentHealthFilter
     _imageWorkbenchContextStage = imageWorkbenchContextStage
     _repositoryContextStage = repositoryContextStage
+    _repositoryChangedFileSelection = repositoryChangedFileSelection
     self.contentHealthSidebarProjection = contentHealthSidebarProjection
     self.repositorySourceSession = repositorySourceSession
     self.rssStore = rssStore
@@ -68,6 +71,7 @@ struct EditorCenterColumn: View {
       RepositoryWorkspaceView(
         store: store,
         stage: $repositoryContextStage,
+        changedFileSelection: $repositoryChangedFileSelection,
         sourceSession: repositorySourceSession
       )
     case .images:

@@ -96,6 +96,12 @@ extension WorkbenchStore {
     publishingStore.refreshContentMigrationPlanReview(plan, store: self)
   }
 
+  public func refreshContentMigrationPlanReviewAsync(
+    _ plan: ContentMigrationPlan
+  ) async throws -> ContentMigrationPlan {
+    try await publishingStore.refreshContentMigrationPlanReviewAsync(plan, store: self)
+  }
+
   @discardableResult
   public func applyContentMigration(_ plan: ContentMigrationPlan) throws -> LocalContentImportMergeSummary {
     let summary = try publishingStore.applyContentMigration(plan, store: self)
@@ -109,6 +115,20 @@ extension WorkbenchStore {
     selectedDraftIDs: Set<UUID>
   ) throws -> LocalContentImportMergeSummary {
     let summary = try publishingStore.applyContentMigration(
+      plan,
+      selectedDraftIDs: selectedDraftIDs,
+      store: self
+    )
+    invalidateDraftDerivedCaches()
+    return summary
+  }
+
+  @discardableResult
+  public func applyContentMigrationAsync(
+    _ plan: ContentMigrationPlan,
+    selectedDraftIDs: Set<UUID>
+  ) async throws -> LocalContentImportMergeSummary {
+    let summary = try await publishingStore.applyContentMigrationAsync(
       plan,
       selectedDraftIDs: selectedDraftIDs,
       store: self

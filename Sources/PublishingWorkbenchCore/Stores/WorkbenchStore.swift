@@ -71,6 +71,13 @@ public final class WorkbenchStore: ObservableObject {
     store: self)
   public lazy var workspaceLayout: WorkbenchWorkspaceLayoutFeatureFacade =
     WorkbenchWorkspaceLayoutFeatureFacade(store: self)
+  public lazy var repositoryWorkspaceObservation:
+    WorkbenchRepositoryWorkspaceObservationFacade =
+      WorkbenchRepositoryWorkspaceObservationFacade(store: self)
+  public lazy var releaseHistoryObservation: WorkbenchReleaseHistoryObservationFacade =
+    WorkbenchReleaseHistoryObservationFacade(store: self)
+  public lazy var siteStarterObservation: WorkbenchSiteStarterObservationFacade =
+    WorkbenchSiteStarterObservationFacade(store: self)
   public lazy var workspaceBackupScheduler: WorkspaceBackupScheduler =
     WorkspaceBackupScheduler(
       store: self,
@@ -726,6 +733,15 @@ public final class WorkbenchStore: ObservableObject {
       pruningResolvedRecords: primarySaveSucceeded
     )
     return siteDraftFilesSucceeded && persistenceSucceeded && draftRecoverySucceeded
+  }
+
+  /// Marks the current in-memory snapshot dirty and commits it synchronously.
+  /// Use this for confirmation flows whose success UI must not appear before
+  /// the exact accepted state has reached durable storage.
+  @discardableResult
+  public func saveCurrentStateSynchronously() -> Bool {
+    persistenceStore.markUnsavedChanges()
+    return flushPendingChanges()
   }
 
   func scheduleAutosave() {

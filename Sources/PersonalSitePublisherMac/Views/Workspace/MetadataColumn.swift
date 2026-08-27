@@ -8,6 +8,7 @@ struct MetadataColumn: View {
   @ObservedObject private var contentPresentation: WorkbenchContentPresentationFeatureFacade
   let rssStore: RSSReaderStore
   let repositoryContextStage: RepositoryContextStage
+  @Binding private var repositoryChangedFileSelection: RepositoryChangedFileSelection?
   @ObservedObject var repositorySourceSession: RepositoryHTMLSourceSession
   @Binding private var aiChatSurfaceState: AIChatSurfaceState
   private let aiChatOperationSession: AIChatSurfaceOperationSession
@@ -20,6 +21,7 @@ struct MetadataColumn: View {
     selectedDraftID: UUID?,
     rssStore: RSSReaderStore,
     repositoryContextStage: RepositoryContextStage,
+    repositoryChangedFileSelection: Binding<RepositoryChangedFileSelection?>,
     repositorySourceSession: RepositoryHTMLSourceSession,
     aiChatSurfaceState: Binding<AIChatSurfaceState>,
     aiChatOperationSession: AIChatSurfaceOperationSession,
@@ -32,6 +34,7 @@ struct MetadataColumn: View {
     _contentPresentation = ObservedObject(wrappedValue: store.contentPresentation)
     self.rssStore = rssStore
     self.repositoryContextStage = repositoryContextStage
+    _repositoryChangedFileSelection = repositoryChangedFileSelection
     _repositorySourceSession = ObservedObject(wrappedValue: repositorySourceSession)
     _aiChatSurfaceState = aiChatSurfaceState
     self.aiChatOperationSession = aiChatOperationSession
@@ -52,7 +55,7 @@ struct MetadataColumn: View {
           operationSession: aiChatOperationSession
         )
       case .siteStarter:
-        SiteStarterInspectorView(state: SiteStarterInspectorState(store: store))
+        SiteStarterInspectorView(store: store)
       case .repository:
         if repositoryContextStage == .source,
           repositorySourceSession.activeDocument != nil
@@ -62,7 +65,10 @@ struct MetadataColumn: View {
             session: repositorySourceSession
           )
         } else {
-          RepositoryContextInspectorView(store: store)
+          RepositoryContextInspectorView(
+            store: store,
+            changedFileSelection: $repositoryChangedFileSelection
+          )
         }
       case .articleMetadata, .articleChecks, .articleImages:
         articleInspector

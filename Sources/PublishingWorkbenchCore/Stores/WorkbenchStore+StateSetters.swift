@@ -18,6 +18,32 @@ extension WorkbenchStore {
     invalidateDraftDerivedCaches()
   }
 
+  /// Applies an active-profile edit and reports success only after that exact
+  /// profile and any repository-binding normalization have reached the primary
+  /// persistence snapshot. A failed primary write restores every in-memory
+  /// value touched by `updateActiveProfile`, so a later autosave cannot commit
+  /// a half-finished confirmation flow.
+  @discardableResult
+  public func commitActiveProfileSynchronously(_ profile: SiteProfile) -> Bool {
+    let previousProfiles = publishingStore.profiles
+    let previousDrafts = publishingStore.drafts
+    let previousAIConnectionProfiles = aiConnectionProfiles
+
+    updateActiveProfile(profile)
+    _ = saveCurrentStateSynchronously()
+    guard
+      !persistenceStore.isRecoveryWriteProtected,
+      !persistenceStore.hasUnsavedChanges
+    else {
+      publishingStore.profiles = previousProfiles
+      publishingStore.drafts = previousDrafts
+      aiConnectionProfiles = previousAIConnectionProfiles
+      invalidateDraftDerivedCaches()
+      return false
+    }
+    return true
+  }
+
   /// Keeps callers that still edit the legacy site-owned AI config compatible
   /// with reusable connection profiles. A shared connection remains the source
   /// of truth, so an inline edit updates every site currently selecting it.

@@ -145,8 +145,9 @@ struct TokenSettingsView<RepositoryPermissionContent: View>: View {
       navigationRequestID: repositoryTokenFocusRequestID,
       tokenAvailability: repositoryTokenAvailability,
       onSaveToken: {
-        guard saveRepositoryAccessToken(credentialDrafts.repository) else { return }
+        guard saveRepositoryAccessToken(credentialDrafts.repository) else { return false }
         credentialDrafts.repository = ""
+        return true
       },
       onDeleteToken: {
         deleteRepositoryAccessToken()
@@ -209,8 +210,9 @@ struct TokenSettingsView<RepositoryPermissionContent: View>: View {
       deploymentTokenInput: $credentialDrafts.deployment,
       tokenAvailability: deploymentTokenAvailability,
       onSaveToken: {
-        guard saveDeploymentAccessToken(credentialDrafts.deployment) else { return }
+        guard saveDeploymentAccessToken(credentialDrafts.deployment) else { return false }
         credentialDrafts.deployment = ""
+        return true
       },
       onDeleteToken: {
         deleteDeploymentAccessToken()

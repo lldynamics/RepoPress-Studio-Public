@@ -110,6 +110,121 @@ final class MarkdownEditorSessionStateTests: XCTestCase {
 
     XCTAssertEqual(decoded.editorScrollProgress, 0.25)
     XCTAssertEqual(decoded.selectedRange(bodyUTF16Count: 10), NSRange(location: 2, length: 1))
+    XCTAssertNil(decoded.invalidFrontMatterDocument)
+  }
+
+  func testInvalidFrontMatterRecoveryDocumentRoundTrips() throws {
+    let recoveredDocument = "---\ntitle broken\n---\n正文"
+    let baseBody = "原正文"
+    let state = MarkdownEditorSessionState(
+      selectedRange: NSRange(location: 1, length: 0),
+      invalidFrontMatterDocument: recoveredDocument,
+      invalidFrontMatterBaseBodyMarkdown: baseBody,
+      invalidFrontMatterBaseBodyRevision: 42
+    )
+
+    let decoded = try JSONDecoder().decode(
+      MarkdownEditorSessionState.self,
+      from: JSONEncoder().encode(state)
+    )
+
+    XCTAssertEqual(decoded.invalidFrontMatterDocument, recoveredDocument)
+    XCTAssertEqual(decoded.invalidFrontMatterBaseBodyMarkdown, baseBody)
+    XCTAssertEqual(decoded.invalidFrontMatterBaseBodyRevision, 42)
+    XCTAssertEqual(
+      decoded.normalized(bodyUTF16Count: 2).invalidFrontMatterDocument,
+      recoveredDocument
+    )
+    XCTAssertEqual(
+      decoded.normalized(bodyUTF16Count: 2).invalidFrontMatterBaseBodyMarkdown,
+      baseBody
+    )
+  }
+
+  func testInvalidFrontMatterRecoveryRebasesAfterEditorBufferRevisionResetsOnReload() throws {
+    let persistenceURL = try temporaryPersistenceURL(prefix: "FrontMatterRecoveryRestart")
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: persistenceURL)
+    )
+    let draft = ArticleDraft(
+      siteProfileID: store.activeProfileID,
+      title: "Recovery restart",
+      slug: "recovery-restart",
+      bodyMarkdown: "初始正文"
+    )
+    store.setDrafts([draft])
+    store.setSelectedDraftID(draft.id)
+
+    let staged = try XCTUnwrap(
+      store.stageDraftBody("恢复基线正文", for: draft.id, baseRevision: 0)
+    )
+    XCTAssertTrue(staged.wasAccepted)
+    XCTAssertGreaterThan(staged.buffer.revision, 0)
+    store.flushDraftBodyEditorBuffer(for: draft.id)
+    let recoveryState = MarkdownEditorSessionState(
+      invalidFrontMatterDocument: "---\ntitle broken\n---\n恢复后的正文",
+      invalidFrontMatterBaseBodyMarkdown: staged.buffer.bodyMarkdown,
+      invalidFrontMatterBaseBodyRevision: staged.buffer.revision
+    )
+    store.updateMarkdownEditorSessionState(
+      recoveryState,
+      for: draft.id,
+      bodyUTF16Count: (staged.buffer.bodyMarkdown as NSString).length
+    )
+    XCTAssertTrue(store.flushPendingChanges())
+
+    let reloaded = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: persistenceURL)
+    )
+    let reloadedState = reloaded.markdownEditorSessionState(for: draft.id)
+    let reloadedBuffer = reloaded.draftBodyEditorBuffer(for: draft.id)
+    XCTAssertEqual(reloadedBuffer.revision, 0)
+    XCTAssertEqual(
+      reloadedBuffer.bodyMarkdown,
+      reloadedState.invalidFrontMatterBaseBodyMarkdown
+    )
+
+    let recovered = try XCTUnwrap(
+      reloaded.stageRecoveredDraftBody(
+        "恢复后的正文",
+        for: draft.id,
+        matchingBaseBody: try XCTUnwrap(
+          reloadedState.invalidFrontMatterBaseBodyMarkdown
+        )
+      )
+    )
+    XCTAssertTrue(recovered.wasAccepted)
+    XCTAssertEqual(recovered.buffer.bodyMarkdown, "恢复后的正文")
+    XCTAssertEqual(recovered.buffer.revision, 1)
+  }
+
+  func testInvalidFrontMatterRecoveryRejectsAConcurrentBodyChange() throws {
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(
+        fileURL: try temporaryPersistenceURL(prefix: "FrontMatterRecoveryConflict")
+      )
+    )
+    let draft = ArticleDraft(
+      siteProfileID: store.activeProfileID,
+      title: "Recovery conflict",
+      slug: "recovery-conflict",
+      bodyMarkdown: "恢复基线正文"
+    )
+    store.setDrafts([draft])
+    let concurrent = try XCTUnwrap(
+      store.stageDraftBody("另一窗口正文", for: draft.id, baseRevision: 0)
+    )
+    XCTAssertTrue(concurrent.wasAccepted)
+
+    let recovered = try XCTUnwrap(
+      store.stageRecoveredDraftBody(
+        "恢复原文正文",
+        for: draft.id,
+        matchingBaseBody: "恢复基线正文"
+      )
+    )
+    XCTAssertFalse(recovered.wasAccepted)
+    XCTAssertEqual(recovered.buffer.bodyMarkdown, "另一窗口正文")
   }
 
   func testStorePersistsWritingSessionPerArticleAndRemovesItAfterPermanentDeletion() throws {

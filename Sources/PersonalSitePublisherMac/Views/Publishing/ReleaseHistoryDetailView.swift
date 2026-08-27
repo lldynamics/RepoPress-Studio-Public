@@ -3,8 +3,18 @@ import PublishingWorkbenchCore
 import SwiftUI
 
 struct ReleaseHistoryDetailView: View {
-  @ObservedObject var store: WorkbenchStore
+  let store: WorkbenchStore
+  @ObservedObject private var historyObservation: WorkbenchReleaseHistoryObservationFacade
   @State var pendingDangerousReleaseAction: DangerousReleaseAction?
+
+  init(
+    store: WorkbenchStore,
+    pendingDangerousReleaseAction: DangerousReleaseAction? = nil
+  ) {
+    self.store = store
+    _historyObservation = ObservedObject(wrappedValue: store.releaseHistoryObservation)
+    _pendingDangerousReleaseAction = State(wrappedValue: pendingDangerousReleaseAction)
+  }
 
   var body: some View {
     let ledger = store.activeProfileReleaseLedger
@@ -183,13 +193,57 @@ struct ReleaseHistoryDetailView: View {
         .frame(height: 260)
         .accessibilityIdentifier("release-history-empty-records")
       } else {
-        ForEach(ledger.entries) { entry in
-          releaseRecordCard(entry)
+        ForEach(ReleaseHistoryPresentation.records(for: ledger.entries)) { presentation in
+          switch presentation {
+          case let .failureGroup(group):
+            releaseFailureGroupCard(group)
+          case let .entry(entry):
+            releaseRecordCard(entry)
+          }
         }
       }
     }
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("release-history-records")
+  }
+
+  private func releaseFailureGroupCard(_ group: ReleaseHistoryFailureGroup) -> some View {
+    DisclosureGroup {
+      LazyVStack(alignment: .leading, spacing: 10) {
+        ForEach(group.entries) { entry in
+          releaseRecordCard(entry)
+        }
+      }
+      .padding(.top, 10)
+    } label: {
+      VStack(alignment: .leading, spacing: 6) {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+          Label("重复失败", systemImage: "exclamationmark.triangle")
+            .font(.callout.weight(.semibold))
+            .foregroundStyle(WorkbenchTheme.risk)
+          Text("\(group.entries.count) 条")
+            .font(.caption.monospacedDigit())
+            .foregroundStyle(.secondary)
+          Spacer(minLength: 8)
+          Text("最近：\(group.latestDate.workbenchShortText)")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        }
+        Text(group.cause)
+          .font(.callout.weight(.medium))
+          .lineLimit(2)
+        Text("受影响：\(group.affectedObjectSummary)")
+          .font(.caption)
+          .foregroundStyle(.secondary)
+          .lineLimit(1)
+      }
+    }
+    .padding(14)
+    .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
+    .accessibilityElement(children: .contain)
+    .accessibilityLabel("重复失败分组")
+    .accessibilityValue("\(group.cause)，\(group.entries.count) 条，最近 \(group.latestDate.workbenchShortText)")
+    .accessibilityIdentifier("release-history-failure-group-\(RepositoryAccessibilityIdentifier.token(for: group.id))")
   }
 
   private var pendingDangerousReleaseActionPresented: Binding<Bool> {

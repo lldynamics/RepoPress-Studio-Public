@@ -11,6 +11,7 @@ struct PublishDrawerView: View {
   @State private var reviewedAllChangesPaths: Set<String> = []
   @State private var pendingSingleOnlinePublishDraft: ArticleDraft?
   @State private var isAdvancedFlowExpanded = false
+  @State private var isFeedbackExpanded = false
 
   var body: some View {
     drawerContent
@@ -434,11 +435,22 @@ struct PublishDrawerView: View {
             .foregroundStyle(.secondary)
             .lineLimit(2)
         }
-      } else if let message = store.publishActionMessage {
-        Text(message)
-          .font(.caption)
-          .foregroundStyle(.secondary)
-          .lineLimit(2)
+      } else if let feedback = store.publishActionFeedback {
+        DisclosureGroup(isExpanded: $isFeedbackExpanded) {
+          Text(feedback.message)
+            .font(.caption)
+            .textSelection(.enabled)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.top, 2)
+        } label: {
+          Label(feedback.status.publishDrawerTitle, systemImage: feedback.status.publishDrawerSystemImage)
+            .font(.caption.weight(.medium))
+            .foregroundStyle(feedback.status.publishDrawerColor)
+        }
+        .frame(maxWidth: 360, alignment: .leading)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("发布反馈，\(feedback.status.publishDrawerTitle)")
+        .accessibilityValue(feedback.message)
       }
 
       Spacer()

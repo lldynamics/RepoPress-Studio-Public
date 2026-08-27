@@ -40,6 +40,7 @@ extension KnowledgeSourceListColumn {
 
   @ViewBuilder
   var emptyFolderState: some View {
+    let showsImportAction = !knowledge.documents.isEmpty
     switch knowledge.folderScope {
     case .all:
       EmptyStateView(
@@ -47,9 +48,9 @@ extension KnowledgeSourceListColumn {
         message: "导入资料，或从其他文件夹移动到这里。",
         systemImage: "books.vertical",
         density: .inline,
-        actionTitle: "导入资料",
+        actionTitle: showsImportAction ? "导入资料" : nil,
         actionSystemImage: "plus",
-        action: { isImportPresented = true }
+        action: showsImportAction ? { isImportPresented = true } : nil
       )
     case .unfiled:
       EmptyStateView(
@@ -57,9 +58,9 @@ extension KnowledgeSourceListColumn {
         message: "导入资料，或从其他文件夹移动到这里。",
         systemImage: "tray",
         density: .inline,
-        actionTitle: "导入资料",
+        actionTitle: showsImportAction ? "导入资料" : nil,
         actionSystemImage: "plus",
-        action: { isImportPresented = true }
+        action: showsImportAction ? { isImportPresented = true } : nil
       )
     case .folder:
       EmptyStateView(
@@ -67,9 +68,9 @@ extension KnowledgeSourceListColumn {
         message: "导入资料，或从其他文件夹移动到这里。",
         systemImage: "folder",
         density: .inline,
-        actionTitle: "导入资料",
+        actionTitle: showsImportAction ? "导入资料" : nil,
         actionSystemImage: "plus",
-        action: { isImportPresented = true }
+        action: showsImportAction ? { isImportPresented = true } : nil
       )
     case .smartCollection, .savedCollection:
       EmptyStateView(

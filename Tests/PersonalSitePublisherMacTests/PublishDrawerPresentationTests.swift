@@ -3,6 +3,20 @@ import XCTest
 @testable import PublishingWorkbenchCore
 
 final class PublishDrawerPresentationTests: XCTestCase {
+  func testPublishFeedbackPreservesSeverityAndProvidesAccessiblePresentation() {
+    let expectations: [(PublishActionMessageStatus, String, String)] = [
+      (.information, "信息", "info.circle.fill"),
+      (.success, "成功", "checkmark.circle.fill"),
+      (.warning, "警告", "exclamationmark.triangle.fill"),
+      (.failure, "失败", "xmark.octagon.fill"),
+    ]
+
+    for (status, title, systemImage) in expectations {
+      XCTAssertEqual(status.publishDrawerTitle, title)
+      XCTAssertEqual(status.publishDrawerSystemImage, systemImage)
+    }
+  }
+
   func testBatchActionExplainsMissingRepositoryConfiguration() {
     let state = PublishDrawerBatchActionPresentation.State(
       repositoryConfigured: false,

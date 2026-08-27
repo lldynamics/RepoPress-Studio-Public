@@ -29,124 +29,6 @@ extension SiteStarterService {
     return remoteURL
   }
 
-  public func commitAndPushStarterSite(
-    profile: SiteProfile,
-    createdFilePaths: [String],
-    commitMessage: String = "Initial site"
-  ) throws -> SiteStarterPushResult {
-    guard let rootURL = profile.localRepositoryRootURL else {
-      throw SiteStarterError.missingRepositoryRoot
-    }
-    guard fileManager.fileExists(atPath: rootURL.appendingPathComponent(".git", isDirectory: true).path) else {
-      throw SiteStarterError.notGitRepository(rootURL.path)
-    }
-
-    let branch = profile.branch.trimmedForPublishing.nilIfEmpty ?? "main"
-    let remoteURL = GitCommandRunner.redactedDiagnosticText(
-      try runGitOutput(["remote", "get-url", "origin"], at: rootURL)
-    ).trimmedForPublishing
-    guard !remoteURL.isEmpty else {
-      throw SiteStarterError.missingOriginRemote
-    }
-
-    let starterPaths = try validatedStarterPaths(createdFilePaths)
-    try rejectUnrelatedStagedChanges(starterPaths: starterPaths, at: rootURL)
-
-    var outputChunks: [String] = []
-    outputChunks.append(
-      GitCommandRunner.redactedDiagnosticText(
-        try runGitOutput(["add", "--"] + starterPaths, at: rootURL)
-      )
-    )
-    let committedPaths = try runGitOutput(["diff", "--cached", "--name-only"], at: rootURL)
-      .split(separator: "\n")
-      .map { String($0).trimmedForPublishing }
-      .filter { !$0.isEmpty }
-    guard !committedPaths.isEmpty else {
-      throw SiteStarterError.noStarterChanges
-    }
-
-    outputChunks.append(
-      GitCommandRunner.redactedDiagnosticText(
-        try runGitOutput(["commit", "-m", commitMessage], at: rootURL)
-      )
-    )
-    let commitSHA = try runGitOutput(["rev-parse", "HEAD"], at: rootURL).trimmedForPublishing
-    outputChunks.append(
-      GitCommandRunner.redactedDiagnosticText(
-        try runGitOutput(["push", "-u", "origin", branch], at: rootURL)
-      )
-    )
-
-    return SiteStarterPushResult(
-      rootPath: rootURL.path,
-      branch: branch,
-      remoteURL: remoteURL,
-      commitSHA: commitSHA,
-      committedPaths: committedPaths,
-      output: outputChunks.map { $0.trimmedForPublishing }.filter { !$0.isEmpty }.joined(separator: "\n")
-    )
-  }
-
-  public func commitAndPushStarterSiteAsync(
-    profile: SiteProfile,
-    createdFilePaths: [String],
-    commitMessage: String = "Initial site"
-  ) async throws -> SiteStarterPushResult {
-    guard let rootURL = profile.localRepositoryRootURL else {
-      throw SiteStarterError.missingRepositoryRoot
-    }
-    guard fileManager.fileExists(atPath: rootURL.appendingPathComponent(".git", isDirectory: true).path) else {
-      throw SiteStarterError.notGitRepository(rootURL.path)
-    }
-
-    let branch = profile.branch.trimmedForPublishing.nilIfEmpty ?? "main"
-    let remoteURL = GitCommandRunner.redactedDiagnosticText(
-      try await runGitOutputAsync(["remote", "get-url", "origin"], at: rootURL)
-    ).trimmedForPublishing
-    guard !remoteURL.isEmpty else {
-      throw SiteStarterError.missingOriginRemote
-    }
-
-    let starterPaths = try validatedStarterPaths(createdFilePaths)
-    try await rejectUnrelatedStagedChangesAsync(starterPaths: starterPaths, at: rootURL)
-
-    var outputChunks: [String] = []
-    outputChunks.append(
-      GitCommandRunner.redactedDiagnosticText(
-        try await runGitOutputAsync(["add", "--"] + starterPaths, at: rootURL)
-      )
-    )
-    let committedPaths = try await runGitOutputAsync(["diff", "--cached", "--name-only"], at: rootURL)
-      .split(separator: "\n")
-      .map { String($0).trimmedForPublishing }
-      .filter { !$0.isEmpty }
-    guard !committedPaths.isEmpty else {
-      throw SiteStarterError.noStarterChanges
-    }
-
-    outputChunks.append(
-      GitCommandRunner.redactedDiagnosticText(
-        try await runGitOutputAsync(["commit", "-m", commitMessage], at: rootURL)
-      )
-    )
-    let commitSHA = try (await runGitOutputAsync(["rev-parse", "HEAD"], at: rootURL)).trimmedForPublishing
-    outputChunks.append(
-      GitCommandRunner.redactedDiagnosticText(
-        try await runGitOutputAsync(["push", "-u", "origin", branch], at: rootURL)
-      )
-    )
-
-    return SiteStarterPushResult(
-      rootPath: rootURL.path,
-      branch: branch,
-      remoteURL: remoteURL,
-      commitSHA: commitSHA,
-      committedPaths: committedPaths,
-      output: outputChunks.map { $0.trimmedForPublishing }.filter { !$0.isEmpty }.joined(separator: "\n")
-    )
-  }
-
   func initializeGitRepository(at rootURL: URL, branch: String) throws {
     do {
       try runGit(["init", "-b", branch], at: rootURL)
@@ -217,6 +99,40 @@ extension SiteStarterService {
     guard unrelatedPaths.isEmpty else {
       throw SiteStarterError.unrelatedStagedChanges(unrelatedPaths.sorted())
     }
+  }
+
+  func stagedFileObjectIDs(
+    paths: [String],
+    at rootURL: URL
+  ) async throws -> [String: String] {
+    var objectIDs: [String: String] = [:]
+    objectIDs.reserveCapacity(paths.count)
+
+    for path in paths {
+      let output = try await runGitOutputAsync(
+        ["ls-files", "--stage", "--", path],
+        at: rootURL
+      )
+      let entries = output.split(separator: "\n", omittingEmptySubsequences: true)
+      guard entries.count <= 1 else {
+        throw SiteStarterError.starterPushConfirmationChanged
+      }
+      guard let entry = entries.first else {
+        objectIDs[path] = "<deleted>"
+        continue
+      }
+      let fields = entry.split(
+        maxSplits: 3,
+        omittingEmptySubsequences: true,
+        whereSeparator: { $0 == " " || $0 == "\t" }
+      )
+      guard fields.count == 4, fields[2] == "0", !fields[1].isEmpty else {
+        throw SiteStarterError.starterPushConfirmationChanged
+      }
+      objectIDs[path] = String(fields[1])
+    }
+
+    return objectIDs
   }
 
   func optionalGitOutput(_ arguments: [String], at rootURL: URL) -> String? {

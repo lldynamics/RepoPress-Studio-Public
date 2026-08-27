@@ -2,6 +2,7 @@ import Foundation
 
 public enum MarkdownFrontMatterEditingIssue: Error, Equatable, Sendable {
   case invalidDelimiter
+  case concurrentBodyChange
   case malformedLine(Int)
   case missingDate
   case invalidDate

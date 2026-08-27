@@ -22,12 +22,14 @@ extension WritingDraftColumn {
       .controlSize(.small)
       .help(String(localized: "批量移动、复制或转为通用草稿"))
 
-      Button(String(localized: "全选")) {
-        selectedDraftIDs = Set(paginatedDrafts.map(\.id))
+      Button(String(localized: "全选筛选结果")) {
+        selectedDraftIDs = Set(draftListCache.filteredDraftIDs)
       }
       .buttonStyle(.borderless)
       .controlSize(.small)
-      .keyboardShortcut("a", modifiers: [.command])
+      .help(String(localized: "选择当前筛选结果中的全部文章；⌘A 保留给文本编辑器"))
+      .accessibilityLabel(String(localized: "全选筛选结果"))
+      .accessibilityHint(String(localized: "选择当前筛选结果中的全部文章，不会影响文本编辑器的 ⌘A"))
 
       Button(String(localized: "取消选择")) {
         if let selectedDraftID {

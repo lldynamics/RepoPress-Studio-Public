@@ -11,6 +11,7 @@ struct WorkspaceShellSplitLayout: View {
   @Binding var contentHealthFilter: ContentHealthContextFilter
   @Binding var imageWorkbenchContextStage: ImageWorkbenchContextStage
   @Binding var repositoryContextStage: RepositoryContextStage
+  @Binding var repositoryChangedFileSelection: RepositoryChangedFileSelection?
   let repositorySourceSession: RepositoryHTMLSourceSession
   let rssStore: RSSReaderStore
   let onSelectSection: (WorkspaceSection) -> Void
@@ -32,6 +33,7 @@ struct WorkspaceShellSplitLayout: View {
     contentHealthFilter: Binding<ContentHealthContextFilter>,
     imageWorkbenchContextStage: Binding<ImageWorkbenchContextStage>,
     repositoryContextStage: Binding<RepositoryContextStage>,
+    repositoryChangedFileSelection: Binding<RepositoryChangedFileSelection?>,
     repositorySourceSession: RepositoryHTMLSourceSession,
     rssStore: RSSReaderStore,
     onSelectSection: @escaping (WorkspaceSection) -> Void,
@@ -47,6 +49,7 @@ struct WorkspaceShellSplitLayout: View {
     _contentHealthFilter = contentHealthFilter
     _imageWorkbenchContextStage = imageWorkbenchContextStage
     _repositoryContextStage = repositoryContextStage
+    _repositoryChangedFileSelection = repositoryChangedFileSelection
     self.repositorySourceSession = repositorySourceSession
     self.rssStore = rssStore
     self.onSelectSection = onSelectSection
@@ -90,6 +93,7 @@ struct WorkspaceShellSplitLayout: View {
         contentHealthFilter: $contentHealthFilter,
         imageWorkbenchContextStage: $imageWorkbenchContextStage,
         repositoryContextStage: $repositoryContextStage,
+        repositoryChangedFileSelection: $repositoryChangedFileSelection,
         contentHealthSidebarProjection: contentHealthSidebarProjection,
         repositorySourceSession: repositorySourceSession,
         rssStore: rssStore,

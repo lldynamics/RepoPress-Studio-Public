@@ -57,6 +57,29 @@ struct WorkspaceResponsiveLayoutSnapshot: Equatable {
   var canManuallyRevealInspector: Bool { band == .compactInspector }
 }
 
+struct PersistenceRecoveryResetFeedback: Identifiable {
+  let id = UUID()
+  let title: String
+  let message: String
+
+  static func success(archiveURL: URL) -> Self {
+    Self(
+      title: String(localized: "已重置为空白工作台"),
+      message: String(
+        format: String(localized: "故障数据已归档到：%@"),
+        archiveURL.path
+      )
+    )
+  }
+
+  static func failure(message: String) -> Self {
+    Self(
+      title: String(localized: "未能重置工作台"),
+      message: message
+    )
+  }
+}
+
 private struct WorkspaceResponsiveLayoutPreferenceKey: PreferenceKey {
   static let defaultValue = WorkspaceResponsiveLayoutSnapshot.initial
 
@@ -129,6 +152,8 @@ struct ContentView: View {
     @State private var didApplyScreenshotDemoSurface = false
   #endif
   @State private var isDraftRecoveryPresented = false
+  @State private var isPersistenceResetConfirmationPresented = false
+  @State private var persistenceResetFeedback: PersistenceRecoveryResetFeedback?
   @State private var modalPresentation = WorkspaceModalPresentationState()
   @State private var commandPaletteEditorCommands: MarkdownEditorCommandActions?
   @State private var responsiveLayout = WorkspaceResponsiveLayoutSnapshot.initial
@@ -140,6 +165,7 @@ struct ContentView: View {
   @State private var contentHealthFilter: ContentHealthContextFilter = .overview
   @State private var imageWorkbenchContextStage: ImageWorkbenchContextStage = .overview
   @State private var repositoryContextStage: RepositoryContextStage = .overview
+  @State private var repositoryChangedFileSelection: RepositoryChangedFileSelection?
   @StateObject private var repositorySourceSession: RepositoryHTMLSourceSession
   @State private var localSitePreviewState: WorkbenchLocalSitePreviewFeatureFacade
   @StateObject private var repositoryContentChangeMonitor: RepositoryContentChangeMonitorCoordinator
@@ -377,6 +403,25 @@ struct ContentView: View {
       actions: persistenceRecoveryAlertActions,
       message: persistenceRecoveryAlertMessage
     )
+    .confirmationDialog(
+      String(localized: "重置为空白工作台？"),
+      isPresented: $isPersistenceResetConfirmationPresented,
+      titleVisibility: .visible
+    ) {
+      Button(String(localized: "归档后重置"), role: .destructive) {
+        resetPersistenceAfterConfirmation()
+      }
+      Button(String(localized: "取消"), role: .cancel) {}
+    } message: {
+      Text("这会归档当前无法读取的数据文件，然后保存一个空白工作台。请先导出故障文件或恢复其他备份；此操作不能自动还原旧工作台。")
+    }
+    .alert(item: $persistenceResetFeedback) { feedback in
+      Alert(
+        title: Text(feedback.title),
+        message: Text(feedback.message),
+        dismissButton: .default(Text("好"))
+      )
+    }
     .sheet(isPresented: $isDraftRecoveryPresented, content: draftRecoveryPanel)
     .sheet(item: modalPresentationBinding, content: modalContent)
   }
@@ -441,6 +486,7 @@ struct ContentView: View {
       contentHealthFilter: $contentHealthFilter,
       imageWorkbenchContextStage: $imageWorkbenchContextStage,
       repositoryContextStage: $repositoryContextStage,
+      repositoryChangedFileSelection: $repositoryChangedFileSelection,
       repositorySourceSession: repositorySourceSession,
       rssStore: rssStore,
       onSelectSection: selectWorkspaceSection,
@@ -455,6 +501,7 @@ struct ContentView: View {
         selectedDraftID: windowSession.selectedDraftID,
         rssStore: rssStore,
         repositoryContextStage: repositoryContextStage,
+        repositoryChangedFileSelection: $repositoryChangedFileSelection,
         repositorySourceSession: repositorySourceSession,
         aiChatSurfaceState: $aiChatInspectorSurfaceState,
         aiChatOperationSession: aiChatInspectorOperationSession,
@@ -621,7 +668,7 @@ struct ContentView: View {
         _ = store.exportPersistenceRecoveryFiles(to: directoryURL)
       }
       Button(String(localized: "重置为空白工作台"), role: .destructive) {
-        _ = store.resetPersistenceAfterUnrecoverableSnapshot()
+        isPersistenceResetConfirmationPresented = true
       }
     } else {
       Button(String(localized: "继续")) {
@@ -769,7 +816,10 @@ struct ContentView: View {
     #else
       let isScreenshotDemo = false
     #endif
-    if !store.activeProfile.localRepositoryRootPath.trimmedForPublishing.isEmpty {
+    if !store.activeProfile.localRepositoryRootPath.trimmedForPublishing.isEmpty,
+      !store.hasUnsavedChanges,
+      !store.isPersistenceRecoveryWriteProtected
+    {
       didCompleteFirstRunSetup = true
     }
     guard
@@ -782,25 +832,45 @@ struct ContentView: View {
     modalPresentation.present(.firstRunSetup)
   }
 
-  private func finishFirstRunSetup(_ path: FirstRunSetupPath) {
+  private func finishFirstRunSetup(
+    _ completion: FirstRunSetupCompletion
+  ) -> FirstRunSetupCommitResult {
+    let commitResult = FirstRunSetupPersistenceCommit.apply(completion, to: store)
+    guard commitResult == .completed else { return commitResult }
+
     didCompleteFirstRunSetup = true
     modalPresentation.dismiss(.firstRunSetup)
-
-    switch path {
-    case .connectExistingRepository:
+    switch completion.path.destination {
+    case .repositoryWizard:
+      store.runPreflight()
       selectWorkspaceSection(.sync)
       Task {
         await store.repository.scanAsync()
       }
-    case .createNewSite:
+    case .siteStarter:
       selectWorkspaceSection(.siteStarter)
     case .localDrafts:
-      store.prepareLocalDraftWorkspace()
+      break
     }
+    return .completed
   }
 
   private func skipFirstRunSetup() {
     modalPresentation.dismiss(.firstRunSetup)
+  }
+
+  private func resetPersistenceAfterConfirmation() {
+    switch store.resetPersistenceAfterUnrecoverableSnapshotResult() {
+    case .reset(let archiveURL):
+      persistenceResetFeedback = .success(archiveURL: archiveURL)
+    case .failed(let archiveURL, let message):
+      let archiveDetail = archiveURL.map {
+        String(format: String(localized: "故障数据已归档到：%@\n\n"), $0.path)
+      } ?? ""
+      persistenceResetFeedback = .failure(
+        message: archiveDetail + message
+      )
+    }
   }
 
   private var persistenceRecoveryMessage: String {
@@ -1045,7 +1115,6 @@ struct ContentView: View {
     guard activateCurrentWindowSharedContext() else { return }
     store.ensureEditableDraftSelected()
     windowSession.receiveSharedDraft(store.selectedDraftID)
-    store.runPreflight()
     modalPresentation.present(.publishDrawer)
     store.setPublishActionMessage(
       message ?? String(localized: "发布流程已打开，请选择保存到本地或发布上线。"),
