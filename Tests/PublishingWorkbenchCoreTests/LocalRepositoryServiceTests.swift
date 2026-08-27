@@ -108,6 +108,251 @@ final class LocalRepositoryServiceTests: XCTestCase {
     XCTAssertEqual(report.imageFileCount, 3)
   }
 
+  func testAutoConfigurationRecognizesSupportedFrameworkFixtures() throws {
+    let fixtures = [
+      AutoConfigurationFixture(
+        name: "Hugo",
+        directories: ["content/blog", "static"],
+        files: [
+          "config.toml": """
+          # base_url in a comment must not make this look like Zola.
+          baseURL = "https://example.com"
+          contentDir = "content/blog"
+          description = "mentions compile_sass only as text"
+          [taxonomies]
+          tag = "tags"
+          """,
+          "content/blog/hello.md": "+++\ntitle = \"Hello\"\n+++",
+        ],
+        expectedKind: .hugo,
+        expectedContentRoot: "content/blog",
+        expectedAssetRoot: "static",
+        expectedFrontMatterStyle: .toml,
+        expectedMarkdownPathPattern: "content/blog/{slug}.md"
+      ),
+      AutoConfigurationFixture(
+        name: "Zola",
+        directories: ["content/posts"],
+        files: [
+          "config.toml": "base_url = \"https://example.com\"\nbuild_search_index = true",
+          "content/posts/hello.md": "---\ntitle: Hello\n---",
+        ],
+        expectedKind: .zola,
+        expectedContentRoot: "content/posts",
+        expectedAssetRoot: "static",
+        expectedFrontMatterStyle: .yaml,
+        expectedMarkdownPathPattern: "content/posts/{year}/{slug}.md"
+      ),
+      AutoConfigurationFixture(
+        name: "Astro",
+        directories: ["src/content/blog", "public"],
+        files: [
+          "astro.config.mjs": "export default {}",
+          "src/content/blog/hello.mdx": "---\ntitle: Hello\n---",
+        ],
+        expectedKind: .astro,
+        expectedContentRoot: "src/content/blog",
+        expectedAssetRoot: "public",
+        expectedFrontMatterStyle: .yaml,
+        expectedMarkdownPathPattern: "src/content/blog/{slug}.mdx"
+      ),
+      AutoConfigurationFixture(
+        name: "Jekyll",
+        directories: ["_posts"],
+        files: [
+          "_config.yml": "title: Test",
+          "package.json": #"{"devDependencies":{"sass":"^1.0.0"}}"#,
+        ],
+        expectedKind: .jekyll,
+        expectedContentRoot: "_posts",
+        expectedAssetRoot: "assets",
+        expectedFrontMatterStyle: .yaml,
+        expectedMarkdownPathPattern: "_posts/{year}-{month}-{day}-{slug}.md"
+      ),
+      AutoConfigurationFixture(
+        name: "Hexo",
+        directories: ["source/_posts"],
+        files: [
+          "_config.yml": "title: Test",
+          "package.json": #"{"dependencies":{"hexo":"^7.0.0"}}"#,
+        ],
+        expectedKind: .hexo,
+        expectedContentRoot: "source/_posts",
+        expectedAssetRoot: "source",
+        expectedFrontMatterStyle: .yaml,
+        expectedMarkdownPathPattern: "source/_posts/{slug}.md"
+      ),
+    ]
+
+    let service = LocalRepositoryService()
+    for fixture in fixtures {
+      let rootURL = try makeAutoConfigurationRepository(named: fixture.name)
+      defer { try? FileManager.default.removeItem(at: rootURL) }
+      for directory in fixture.directories {
+        try FileManager.default.createDirectory(
+          at: rootURL.appendingPathComponent(directory, isDirectory: true),
+          withIntermediateDirectories: true
+        )
+      }
+      for (path, contents) in fixture.files {
+        let fileURL = rootURL.appendingPathComponent(path)
+        try FileManager.default.createDirectory(
+          at: fileURL.deletingLastPathComponent(),
+          withIntermediateDirectories: true
+        )
+        try contents.write(to: fileURL, atomically: true, encoding: .utf8)
+      }
+
+      let proposal = service.autoConfigurationProposal(
+        for: rootURL,
+        fallbackProfile: .defaultProfile
+      )
+
+      XCTAssertEqual(proposal.detectedKind, fixture.expectedKind, fixture.name)
+      XCTAssertTrue(proposal.isGitRepository, fixture.name)
+      XCTAssertEqual(proposal.contentRoot, fixture.expectedContentRoot, fixture.name)
+      XCTAssertEqual(proposal.assetRoot, fixture.expectedAssetRoot, fixture.name)
+      XCTAssertEqual(proposal.frontMatterStyle, fixture.expectedFrontMatterStyle, fixture.name)
+      XCTAssertEqual(
+        proposal.markdownPathPattern,
+        fixture.expectedMarkdownPathPattern,
+        fixture.name
+      )
+      XCTAssertEqual(service.detectSiteKind(rootURL: rootURL), fixture.expectedKind, fixture.name)
+      XCTAssertEqual(
+        proposal.applying(to: .defaultProfile, repositoryURL: rootURL).siteKind,
+        fixture.expectedKind,
+        fixture.name
+      )
+    }
+  }
+
+  func testRepositoryPublishingRuleValidationCoversSafeAndUnsafeScenarios() {
+    let validRules: [(contentRoot: String, pattern: String)] = [
+      ("content", "content/posts/{year}/{slug}.md"),
+      ("src/content/blog", "src/content/blog/{slug}.mdx"),
+      (".", "notes/{slug}.md"),
+    ]
+    for rule in validRules {
+      XCTAssertTrue(
+        RepositoryPublishingRuleValidation.isValid(
+          contentRoot: rule.contentRoot,
+          markdownPathPattern: rule.pattern
+        ),
+        "Expected valid rule: \(rule)"
+      )
+    }
+
+    let invalidRules: [(contentRoot: String, pattern: String)] = [
+      ("content", "posts/{slug}.md"),
+      ("content", "content/posts/article.md"),
+      ("../content", "content/{slug}.md"),
+      ("content", "content/../private/{slug}.md"),
+      ("content", #"content\posts\{slug}.md"#),
+      ("content", "https://example.com/{slug}.md"),
+      ("content", "file:/tmp/{slug}.md"),
+      ("~/content", "~/content/{slug}.md"),
+    ]
+    for rule in invalidRules {
+      XCTAssertFalse(
+        RepositoryPublishingRuleValidation.isValid(
+          contentRoot: rule.contentRoot,
+          markdownPathPattern: rule.pattern
+        ),
+        "Expected invalid rule: \(rule)"
+      )
+    }
+  }
+
+  func testMarkdownInferenceUsesDeterministicPathOrder() throws {
+    let rootURL = try makeAutoConfigurationRepository(named: "DeterministicMarkdown")
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    for directory in ["b", "a"] {
+      let directoryURL = rootURL.appendingPathComponent(directory, isDirectory: true)
+      try FileManager.default.createDirectory(
+        at: directoryURL,
+        withIntermediateDirectories: true
+      )
+      try "---\ntitle: Test\n---".write(
+        to: directoryURL.appendingPathComponent("article.md"),
+        atomically: true,
+        encoding: .utf8
+      )
+    }
+
+    let files = LocalRepositoryService().markdownFiles(
+      in: rootURL,
+      maximumFiles: 1,
+      maximumEntries: 8
+    )
+
+    XCTAssertEqual(files.map(\.path), [rootURL.appendingPathComponent("a/article.md").path])
+  }
+
+  func testAutoConfigurationUsesFallbackForUnknownRepository() throws {
+    let rootURL = try makeAutoConfigurationRepository(named: "Unknown")
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    try FileManager.default.createDirectory(
+      at: rootURL.appendingPathComponent("content", isDirectory: true),
+      withIntermediateDirectories: true
+    )
+    try "title = \"Ambiguous\"".write(
+      to: rootURL.appendingPathComponent("config.toml"),
+      atomically: true,
+      encoding: .utf8
+    )
+    var fallback = SiteProfile.defaultProfile
+    fallback.applyPublishingDefaults(for: .vitePress)
+
+    let proposal = LocalRepositoryService().autoConfigurationProposal(
+      for: rootURL,
+      fallbackProfile: fallback
+    )
+    let applied = proposal.applying(to: fallback, repositoryURL: rootURL)
+
+    XCTAssertNil(proposal.detectedKind)
+    XCTAssertEqual(proposal.contentRoot, fallback.contentRoot)
+    XCTAssertEqual(proposal.frontMatterStyle, fallback.frontMatterStyle)
+    XCTAssertEqual(proposal.markdownPathPattern, fallback.markdownPathPattern)
+    XCTAssertEqual(applied.siteKind, .vitePress)
+    XCTAssertEqual(applied.localRepositoryRootURL, rootURL.standardizedFileURL)
+  }
+
+  func testAutoConfigurationRecognizesLinkedWorktreeGitFile() throws {
+    let rootURL = FileManager.default.temporaryDirectory
+      .appendingPathComponent(
+        "RepositoryAutoConfigurationTests-Worktree-\(UUID().uuidString)",
+        isDirectory: true
+      )
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    try FileManager.default.createDirectory(
+      at: rootURL.appendingPathComponent("src/content/blog", isDirectory: true),
+      withIntermediateDirectories: true
+    )
+    try "gitdir: /tmp/example.git/worktrees/site\n".write(
+      to: rootURL.appendingPathComponent(".git"),
+      atomically: true,
+      encoding: .utf8
+    )
+    try "export default {}".write(
+      to: rootURL.appendingPathComponent("astro.config.mjs"),
+      atomically: true,
+      encoding: .utf8
+    )
+
+    let service = LocalRepositoryService()
+    let proposal = service.autoConfigurationProposal(
+      for: rootURL,
+      fallbackProfile: .defaultProfile
+    )
+    var profile = proposal.applying(to: .defaultProfile, repositoryURL: rootURL)
+    profile.assetRoot = "src/content/blog"
+    let report = service.scan(profile: profile)
+
+    XCTAssertTrue(proposal.isGitRepository)
+    XCTAssertTrue(report.hasGitDirectory)
+  }
+
   func testDetectsVitePressRepositoryShape() throws {
     let rootURL = FileManager.default.temporaryDirectory
       .appendingPathComponent("VitePressRepositoryTests-\(UUID().uuidString)", isDirectory: true)
@@ -966,6 +1211,31 @@ final class LocalRepositoryServiceTests: XCTestCase {
     var profile = SiteProfile.defaultProfile
     profile.rememberLocalRepositoryRoot(rootURL)
     return (rootURL, profile)
+  }
+
+  private func makeAutoConfigurationRepository(named name: String) throws -> URL {
+    let rootURL = FileManager.default.temporaryDirectory
+      .appendingPathComponent(
+        "RepositoryAutoConfigurationTests-\(name)-\(UUID().uuidString)",
+        isDirectory: true
+      )
+    try FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(
+      at: rootURL.appendingPathComponent(".git", isDirectory: true),
+      withIntermediateDirectories: true
+    )
+    return rootURL
+  }
+
+  private struct AutoConfigurationFixture {
+    let name: String
+    let directories: [String]
+    let files: [String: String]
+    let expectedKind: SiteKind
+    let expectedContentRoot: String
+    let expectedAssetRoot: String
+    let expectedFrontMatterStyle: FrontMatterStyle
+    let expectedMarkdownPathPattern: String
   }
 }
 

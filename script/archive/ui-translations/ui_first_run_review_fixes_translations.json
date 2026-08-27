@@ -1,0 +1,4 @@
+{
+  "内容目录和文章路径必须是仓库内的相对路径，且文章路径必须位于内容目录内并包含 {slug}。": "The content directory and article path must be repository-relative, and the article path must stay inside the content directory and include {slug}.",
+  "正在读取仓库配置…": "Reading repository settings…"
+}

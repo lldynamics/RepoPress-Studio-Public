@@ -1,4 +1,5 @@
 import XCTest
+
 @testable import PersonalSitePublisherMac
 @testable import PublishingWorkbenchCore
 
@@ -44,6 +45,93 @@ final class FirstRunSetupPresentationTests: XCTestCase {
     )
     XCTAssertNil(starterCompletion.stagedProfile)
     XCTAssertNil(localDraftCompletion.stagedProfile)
+  }
+
+  @MainActor
+  func testAutoConfigurationProposalOnlyChangesTheStagedProfile() throws {
+    let fileURL = FileManager.default.temporaryDirectory
+      .appendingPathComponent("FirstRunAutoConfiguration-\(UUID().uuidString)", isDirectory: false)
+    defer { try? FileManager.default.removeItem(at: fileURL) }
+    let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: fileURL))
+    let originalProfile = store.activeProfile
+    let repositoryURL = URL(fileURLWithPath: "/tmp/detected-astro-site", isDirectory: true)
+    let proposal = RepositoryAutoConfigurationProposal(
+      detectedKind: .astro,
+      evidence: ["astro.config.mjs"],
+      isGitRepository: true,
+      contentRoot: "src/content/articles",
+      assetRoot: "public",
+      frontMatterStyle: .yaml,
+      markdownPathPattern: "src/content/articles/{slug}.mdx"
+    )
+    var staging = FirstRunSetupProfileStaging(profile: originalProfile)
+
+    staging.applyAutoConfigurationProposal(proposal, repositoryURL: repositoryURL)
+
+    XCTAssertEqual(store.activeProfile, originalProfile)
+    XCTAssertEqual(staging.profile.siteKind, .astro)
+    XCTAssertEqual(staging.profile.localRepositoryRootPath, repositoryURL.path)
+    XCTAssertEqual(staging.profile.contentRoot, "src/content/articles")
+    XCTAssertEqual(staging.profile.assetRoot, "public")
+    XCTAssertEqual(staging.profile.frontMatterStyle, .yaml)
+    XCTAssertEqual(staging.profile.markdownPathPattern, "src/content/articles/{slug}.mdx")
+  }
+
+  func testManualRuleOverridesRemainInTheStagedProfile() {
+    var staging = FirstRunSetupProfileStaging(profile: .defaultProfile)
+
+    staging.selectSiteKind(.hugo)
+    staging.selectFrontMatterStyle(.toml)
+    staging.setContentRoot("content/articles")
+    staging.setMarkdownPathPattern("content/articles/{year}/{slug}.md")
+
+    XCTAssertEqual(staging.profile.siteKind, .hugo)
+    XCTAssertEqual(staging.profile.frontMatterStyle, .toml)
+    XCTAssertEqual(staging.profile.contentRoot, "content/articles")
+    XCTAssertEqual(staging.profile.markdownPathPattern, "content/articles/{year}/{slug}.md")
+  }
+
+  @MainActor
+  func testSelectingExistingAIConnectionOnlyStagesItsIDAndConfiguration() throws {
+    let fileURL = FileManager.default.temporaryDirectory
+      .appendingPathComponent("FirstRunAIConnection-\(UUID().uuidString)", isDirectory: false)
+    defer { try? FileManager.default.removeItem(at: fileURL) }
+    let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: fileURL))
+    let originalProfile = store.activeProfile
+    let connection = AIConnectionProfile.template(
+      named: "现有连接",
+      preset: .local
+    )
+    var staging = FirstRunSetupProfileStaging(profile: originalProfile)
+
+    staging.selectAIConnection(connection)
+
+    XCTAssertEqual(store.activeProfile, originalProfile)
+    XCTAssertEqual(staging.profile.aiConnectionProfileID, connection.id)
+    XCTAssertEqual(staging.profile.aiProviderConfig, connection.config)
+
+    XCTAssertEqual(store.activeProfile, originalProfile)
+  }
+
+  func testSkippingAPreviouslySelectedAIConnectionRestoresPersistedSelection() {
+    let persistedConnection = AIConnectionProfile.template(
+      named: "已有连接",
+      preset: .openAICompatible
+    )
+    let temporaryConnection = AIConnectionProfile.template(
+      named: "临时连接",
+      preset: .local
+    )
+    var persistedProfile = SiteProfile.defaultProfile
+    persistedProfile.aiConnectionProfileID = persistedConnection.id
+    persistedProfile.aiProviderConfig = persistedConnection.config
+    var staging = FirstRunSetupProfileStaging(profile: persistedProfile)
+
+    staging.selectAIConnection(temporaryConnection)
+    staging.restoreAIConnection(from: persistedProfile)
+
+    XCTAssertEqual(staging.profile.aiConnectionProfileID, persistedConnection.id)
+    XCTAssertEqual(staging.profile.aiProviderConfig, persistedConnection.config)
   }
 
   @MainActor
