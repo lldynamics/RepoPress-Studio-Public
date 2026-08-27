@@ -444,10 +444,6 @@ final class WorkbenchLaunchCoordinator: ObservableObject {
   private func prepareRuntime(using paths: WorkbenchRuntimePaths) async {
     phase = .preparing(String(localized: "正在准备工作台…"))
     let safeMode = isSafeMode
-    async let preparedRSSBootstrap = RSSReaderStore.prepareBootstrap(
-      fileURL: paths.rssReaderFileURL,
-      pageSize: RSSReaderBootstrap.defaultPageSize
-    )
     let preparation = await Task.detached(priority: .utility) {
       let workspaceRestoreOutcome: WorkspaceBackupRestoreStartupOutcome
       let restoreOutcome: KnowledgeLibraryRestoreStartupOutcome
@@ -493,7 +489,13 @@ final class WorkbenchLaunchCoordinator: ObservableObject {
       didStart = false
       return
     }
-    let rssBootstrap = await preparedRSSBootstrap
+    // Pending restores may atomically replace the RSSReader directory. Open
+    // SQLite only after that filesystem transaction has reached a terminal
+    // state so the live handle cannot remain attached to the recovery inode.
+    let rssBootstrap = await RSSReaderStore.prepareBootstrap(
+      fileURL: paths.rssReaderFileURL,
+      pageSize: RSSReaderBootstrap.defaultPageSize
+    )
     let rssStore = RSSReaderStore(
       fileURL: paths.rssReaderFileURL,
       bootstrap: rssBootstrap
@@ -558,7 +560,9 @@ final class WorkbenchLaunchCoordinator: ObservableObject {
     guard !isSafeMode else { return }
     store.workspaceBackupScheduler.start()
     startBackgroundRefreshIfNeeded(for: rssStore)
-    browserBridge?.start()
+    if browserBridge?.isEnabled == true {
+      browserBridge?.start()
+    }
   }
 
   nonisolated static func availableDataRootURL(
@@ -813,7 +817,9 @@ struct WorkbenchLaunchRootView: View {
           if !coordinator.isSafeMode {
             store.workspaceBackupScheduler.start()
             coordinator.startBackgroundRefreshIfNeeded(for: rssStore)
-            browserBridge.start()
+            if browserBridge.isEnabled {
+              browserBridge.start()
+            }
           }
         }
     } else {

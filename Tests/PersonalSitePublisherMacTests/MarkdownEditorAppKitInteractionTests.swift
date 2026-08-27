@@ -178,6 +178,36 @@ final class MarkdownEditorAppKitInteractionTests: XCTestCase {
     XCTAssertEqual(coordinator.statisticsFullScanCount, 3)
   }
 
+  func testStatisticsFullScanDelayPolicyDefersOnlyEditedLongDocuments() {
+    let shortDocument = String(repeating: "a", count: 5_000)
+    let longDocument = String(repeating: "a", count: 5_001)
+
+    XCTAssertEqual(
+      MarkdownEditorStatisticsDelayPolicy.fullScanDelay(
+        for: shortDocument,
+        isInitialLoad: false
+      ),
+      0.5,
+      accuracy: 0.001
+    )
+    XCTAssertEqual(
+      MarkdownEditorStatisticsDelayPolicy.fullScanDelay(
+        for: longDocument,
+        isInitialLoad: true
+      ),
+      0.5,
+      accuracy: 0.001
+    )
+    XCTAssertEqual(
+      MarkdownEditorStatisticsDelayPolicy.fullScanDelay(
+        for: longDocument,
+        isInitialLoad: false
+      ),
+      2.5,
+      accuracy: 0.001
+    )
+  }
+
   func testFenceEditSynchronizesTreeOnStrictHighlightPath() async throws {
     let initial = "before\n```swift\nlet value = 1\n```\nafter\n"
     let coordinator = makeCoordinator(
@@ -256,6 +286,103 @@ final class MarkdownEditorAppKitInteractionTests: XCTestCase {
 
     XCTAssertEqual(textView.string, "- [x] first\n  - [x] nested")
     XCTAssertEqual(textView.selectedRange(), selection)
+  }
+
+  func testTaskMarkerClickUsesSingleTextViewHitProxyAndPreservesSelection() {
+    let source = "- [ ] first\n"
+    let coordinator = makeCoordinator(
+      source: source,
+      bodyMarkdown: source,
+      bodyUTF16Offset: 0
+    )
+    let textView = DroppableMarkdownTextView.makeTextKit2(
+      frame: NSRect(x: 0, y: 0, width: 320, height: 180),
+      containerSize: NSSize(width: 320, height: 180)
+    )
+    let initialSubviewCount = textView.subviews.count
+    textView.string = source
+    let markerRange = (source as NSString).range(of: "- [ ] ")
+    let selection = NSRange(location: source.utf16.count, length: 0)
+    textView.setSelectedRange(selection)
+    textView.markdownBlockMarkerDrawings = [
+      MarkdownBlockMarkerDrawing(
+        marker: MarkdownSyntaxMarker(
+          range: markerRange,
+          presentation: .taskList(isChecked: false)
+        ),
+        frame: NSRect(x: 8, y: 8, width: 18, height: 18),
+        taskHitFrame: NSRect(x: 8, y: 8, width: 18, height: 18)
+      )
+    ]
+    textView.markdownBlockMarkerTaskToggleHandler = { range, checked in
+      coordinator.setTaskMarker(range, checked: checked, in: textView)
+    }
+
+    XCTAssertTrue(
+      textView.handleMarkdownBlockMarkerClick(at: NSPoint(x: 14, y: 14))
+    )
+
+    XCTAssertEqual(textView.string, "- [x] first\n")
+    XCTAssertEqual(textView.selectedRange(), selection)
+    XCTAssertEqual(
+      textView.markdownBlockMarkerDrawings.first?.marker.presentation,
+      .taskList(isChecked: true)
+    )
+    XCTAssertEqual(textView.subviews.count, initialSubviewCount)
+  }
+
+  func testPaintedTaskMarkerVendsAccessibilityCheckboxWithoutChildView() throws {
+    let source = "- [ ] first\n"
+    let coordinator = makeCoordinator(
+      source: source,
+      bodyMarkdown: source,
+      bodyUTF16Offset: 0
+    )
+    let textView = DroppableMarkdownTextView.makeTextKit2(
+      frame: NSRect(x: 0, y: 0, width: 320, height: 180),
+      containerSize: NSSize(width: 320, height: 180)
+    )
+    let initialSubviewCount = textView.subviews.count
+    textView.string = source
+    let markerRange = (source as NSString).range(of: "- [ ] ")
+    let markerFrame = NSRect(x: 8, y: 8, width: 18, height: 18)
+    textView.markdownBlockMarkerDrawings = [
+      MarkdownBlockMarkerDrawing(
+        marker: MarkdownSyntaxMarker(
+          range: markerRange,
+          presentation: .taskList(isChecked: false)
+        ),
+        frame: markerFrame,
+        taskHitFrame: markerFrame
+      )
+    ]
+    textView.markdownBlockMarkerTaskToggleHandler = { range, checked in
+      coordinator.setTaskMarker(range, checked: checked, in: textView)
+    }
+
+    let checkbox = try XCTUnwrap(
+      textView.markdownTaskCheckboxAccessibilityElements.first
+    )
+    XCTAssertEqual(checkbox.accessibilityRole(), .checkBox)
+    XCTAssertEqual(checkbox.accessibilityLabel(), "标记任务为已完成")
+    XCTAssertEqual(checkbox.accessibilityValue() as? NSNumber, NSNumber(value: false))
+    XCTAssertEqual(checkbox.accessibilityFrameInParentSpace(), markerFrame)
+    XCTAssertEqual(textView.subviews.count, initialSubviewCount)
+    XCTAssertTrue(
+      textView.accessibilityChildren()?.contains {
+        ($0 as AnyObject) === checkbox
+      } == true
+    )
+
+    let selection = NSRange(location: source.utf16.count, length: 0)
+    textView.setSelectedRange(selection)
+    XCTAssertTrue(checkbox.performAccessibilityPress())
+    XCTAssertEqual(textView.string, "- [x] first\n")
+    XCTAssertEqual(textView.selectedRange(), selection)
+    let updatedCheckbox = try XCTUnwrap(
+      textView.markdownTaskCheckboxAccessibilityElements.first
+    )
+    XCTAssertEqual(updatedCheckbox.accessibilityValue() as? NSNumber, NSNumber(value: true))
   }
 
   func testTextKit2RangeAdapterRoundTripsUTF16Ranges() throws {
@@ -350,13 +477,13 @@ final class MarkdownEditorAppKitInteractionTests: XCTestCase {
     textView.string = liveBody
     textView.setSelectedRange(NSRange(location: 0, length: 0))
 
-    coordinator.applyInlineAttachmentOverlays(
+    coordinator.applyInlineAttachmentDrawings(
       in: textView,
       applicationRange: NSRange(location: 0, length: (liveBody as NSString).length)
     )
 
     XCTAssertEqual(coordinator.inlineAttachmentPaintedRanges.count, 1)
-    XCTAssertEqual(coordinator.inlineAttachmentOverlayViews.count, 1)
+    XCTAssertEqual(coordinator.inlineAttachmentDrawingDescriptors.count, 1)
     XCTAssertGreaterThan(
       (textView.textStorage?.attribute(
         .paragraphStyle,
@@ -367,14 +494,14 @@ final class MarkdownEditorAppKitInteractionTests: XCTestCase {
     )
     XCTAssertEqual(textView.string, liveBody)
     XCTAssertEqual(coordinator.bodyMarkdown, staleBody)
-    coordinator.clearInlineAttachmentOverlays(in: textView)
+    coordinator.clearInlineAttachmentDrawings(in: textView)
     textView.setSelectedRange(NSRange(location: 10, length: 0))
-    coordinator.applyInlineAttachmentOverlays(
+    coordinator.applyInlineAttachmentDrawings(
       in: textView,
       applicationRange: NSRange(location: 0, length: (liveBody as NSString).length)
     )
 
-    XCTAssertTrue(coordinator.inlineAttachmentOverlayViews.isEmpty)
+    XCTAssertTrue(coordinator.inlineAttachmentDrawingDescriptors.isEmpty)
     XCTAssertTrue(coordinator.inlineAttachmentPaintedRanges.isEmpty)
     XCTAssertEqual(
       (textView.textStorage?.attribute(
@@ -406,7 +533,7 @@ final class MarkdownEditorAppKitInteractionTests: XCTestCase {
     )
     textView.string = previous
     textView.setSelectedRange(NSRange(location: (previous as NSString).length, length: 0))
-    coordinator.applyInlineAttachmentOverlays(
+    coordinator.applyInlineAttachmentDrawings(
       in: textView,
       applicationRange: NSRange(location: 0, length: (previous as NSString).length)
     )
@@ -434,7 +561,7 @@ final class MarkdownEditorAppKitInteractionTests: XCTestCase {
     )
   }
 
-  func testBlockMarkerViewportSyncReusesVisibleOverlayAndDiffsEnteringMarkers() throws {
+  func testBlockMarkerViewportSyncUsesPaintOnlyDrawings() throws {
     let source = "- [ ] first\n- [x] second\n"
     let coordinator = makeCoordinator(
       source: source,
@@ -445,6 +572,7 @@ final class MarkdownEditorAppKitInteractionTests: XCTestCase {
       containerSize: NSSize(width: 640, height: 480)
     )
     textView.string = source
+    let initialSubviewCount = textView.subviews.count
 
     let firstRange = (source as NSString).range(of: "- [ ] ")
     let secondRange = (source as NSString).range(of: "- [x] ")
@@ -457,29 +585,28 @@ final class MarkdownEditorAppKitInteractionTests: XCTestCase {
       presentation: .taskList(isChecked: true)
     )
 
-    coordinator.applyBlockMarkerOverlays([firstMarker], in: textView)
-    let firstOverlay = try XCTUnwrap(
-      coordinator.blockMarkerOverlayViews[firstRange.location]
-    )
+    coordinator.applyBlockMarkerDrawings([firstMarker], in: textView)
+    let firstDrawing = try XCTUnwrap(textView.markdownBlockMarkerDrawings.first)
+    XCTAssertEqual(textView.subviews.count, initialSubviewCount)
 
-    coordinator.applyBlockMarkerOverlays(
+    coordinator.applyBlockMarkerDrawings(
       [firstMarker, secondMarker],
       in: textView
     )
-    let reusedFirstOverlay = try XCTUnwrap(
-      coordinator.blockMarkerOverlayViews[firstRange.location]
+    XCTAssertEqual(textView.markdownBlockMarkerDrawings.count, 2)
+    XCTAssertEqual(
+      textView.markdownBlockMarkerDrawings.first?.marker,
+      firstDrawing.marker
     )
-    let enteredSecondOverlay = try XCTUnwrap(
-      coordinator.blockMarkerOverlayViews[secondRange.location]
-    )
-    XCTAssertTrue(firstOverlay === reusedFirstOverlay)
-    XCTAssertFalse(firstOverlay === enteredSecondOverlay)
+    XCTAssertEqual(textView.subviews.count, initialSubviewCount)
 
-    coordinator.applyBlockMarkerOverlays([secondMarker], in: textView)
-    XCTAssertNil(coordinator.blockMarkerOverlayViews[firstRange.location])
-    XCTAssertTrue(
-      coordinator.blockMarkerOverlayViews[secondRange.location] === enteredSecondOverlay
+    coordinator.applyBlockMarkerDrawings([secondMarker], in: textView)
+    XCTAssertEqual(textView.markdownBlockMarkerDrawings.count, 1)
+    XCTAssertEqual(
+      textView.markdownBlockMarkerDrawings.first?.marker,
+      secondMarker
     )
+    XCTAssertEqual(textView.subviews.count, initialSubviewCount)
   }
 
   func testInlineAttachmentViewportSyncReusesFormulaAndImageTask() async throws {
@@ -523,8 +650,9 @@ final class MarkdownEditorAppKitInteractionTests: XCTestCase {
     textView.string = source
     textView.setSelectedRange(NSRange(location: source.utf16.count, length: 0))
     let applicationRange = NSRange(location: 0, length: source.utf16.count)
+    let initialSubviewCount = textView.subviews.count
 
-    coordinator.applyInlineAttachmentOverlays(
+    coordinator.applyInlineAttachmentDrawings(
       in: textView,
       applicationRange: applicationRange
     )
@@ -534,11 +662,18 @@ final class MarkdownEditorAppKitInteractionTests: XCTestCase {
     let imageRange = (source as NSString).range(of: "![cover](cover.png)")
     let formulaKey = "attachment:\(formulaRange.location)"
     let imageKey = "attachment:\(imageRange.location)"
-    let formulaOverlay = try XCTUnwrap(
-      coordinator.inlineAttachmentOverlayViews[formulaKey]
+    let formulaDrawing = try XCTUnwrap(
+      coordinator.inlineAttachmentDrawingDescriptors[formulaKey]
     )
-    let imageOverlay = try XCTUnwrap(
-      coordinator.inlineAttachmentOverlayViews[imageKey]
+    let imageDrawing = try XCTUnwrap(
+      coordinator.inlineAttachmentDrawingDescriptors[imageKey]
+    )
+    XCTAssertEqual(textView.subviews.count, initialSubviewCount)
+    XCTAssertEqual(textView.markdownInlineAttachmentDrawings.count, 2)
+    XCTAssertEqual(textView.markdownInlineAttachmentAccessibilityElements.count, 2)
+    XCTAssertEqual(
+      textView.markdownInlineAttachmentAccessibilityElements.map { $0.accessibilityRole() },
+      [.staticText, .image]
     )
     XCTAssertNotNil(coordinator.inlineAttachmentImageTasks[imageKey])
 
@@ -555,18 +690,19 @@ final class MarkdownEditorAppKitInteractionTests: XCTestCase {
     for _ in 0..<8 { await Task.yield() }
     XCTAssertTrue(probe.started)
 
-    coordinator.applyInlineAttachmentOverlays(
+    coordinator.applyInlineAttachmentDrawings(
       in: textView,
       applicationRange: applicationRange,
       preservingExisting: true
     )
 
     XCTAssertTrue(
-      coordinator.inlineAttachmentOverlayViews[formulaKey] === formulaOverlay
+      coordinator.inlineAttachmentDrawingDescriptors[formulaKey] == formulaDrawing
     )
     XCTAssertTrue(
-      coordinator.inlineAttachmentOverlayViews[imageKey] === imageOverlay
+      coordinator.inlineAttachmentDrawingDescriptors[imageKey] == imageDrawing
     )
+    XCTAssertEqual(textView.subviews.count, initialSubviewCount)
     XCTAssertTrue(coordinator.inlineAttachmentImageTasks[imageKey] != nil)
     XCTAssertEqual(
       coordinator.inlineAttachmentPlanComputationCount,
@@ -575,10 +711,32 @@ final class MarkdownEditorAppKitInteractionTests: XCTestCase {
     for _ in 0..<4 { await Task.yield() }
     XCTAssertFalse(probe.cancelled)
 
+    textView.setSelectedRange(NSRange(location: formulaRange.location + 1, length: 0))
+    coordinator.applyInlineAttachmentDrawings(
+      in: textView,
+      applicationRange: applicationRange,
+      preservingExisting: true
+    )
+    XCTAssertNil(coordinator.inlineAttachmentDrawingDescriptors[formulaKey])
+    XCTAssertEqual(
+      coordinator.inlineAttachmentDrawingDescriptors[imageKey],
+      imageDrawing
+    )
+    XCTAssertNotNil(coordinator.inlineAttachmentImageTasks[imageKey])
+    XCTAssertFalse(probe.cancelled)
+    XCTAssertNotEqual(
+      textView.textStorage?.attribute(
+        .foregroundColor,
+        at: formulaRange.location,
+        effectiveRange: nil
+      ) as? NSColor,
+      NSColor.clear
+    )
+
     sentinel.cancel()
     for _ in 0..<8 { await Task.yield() }
     XCTAssertTrue(probe.cancelled)
-    coordinator.clearInlineAttachmentOverlays(in: textView)
+    coordinator.clearInlineAttachmentDrawings(in: textView)
   }
 
   func testInlineAttachmentViewportLeavingCancelsImageTaskAndReenters() async throws {
@@ -631,15 +789,15 @@ final class MarkdownEditorAppKitInteractionTests: XCTestCase {
     let applicationRange = NSRange(location: 0, length: source.utf16.count)
     let imageKey = "attachment:\(imageRange.location)"
 
-    coordinator.applyInlineAttachmentOverlays(
+    coordinator.applyInlineAttachmentDrawings(
       in: textView,
       applicationRange: applicationRange
     )
-    let firstImageOverlay = try XCTUnwrap(
-      coordinator.inlineAttachmentOverlayViews[imageKey]
+    let firstImageDrawing = try XCTUnwrap(
+      coordinator.inlineAttachmentDrawingDescriptors[imageKey]
     )
-    let firstFormulaOverlay = try XCTUnwrap(
-      coordinator.inlineAttachmentOverlayViews["attachment:\(formulaRange.location)"]
+    let firstFormulaDrawing = try XCTUnwrap(
+      coordinator.inlineAttachmentDrawingDescriptors["attachment:\(formulaRange.location)"]
     )
     coordinator.inlineAttachmentImageTasks[imageKey]?.cancel()
 
@@ -655,34 +813,37 @@ final class MarkdownEditorAppKitInteractionTests: XCTestCase {
     for _ in 0..<8 { await Task.yield() }
     XCTAssertTrue(probe.started)
 
-    coordinator.applyInlineAttachmentOverlays(
+    coordinator.applyInlineAttachmentDrawings(
       in: textView,
       applicationRange: formulaOnlyRange
     )
     XCTAssertNotNil(
-      coordinator.inlineAttachmentOverlayViews["attachment:\(formulaRange.location)"]
+      coordinator.inlineAttachmentDrawingDescriptors["attachment:\(formulaRange.location)"]
     )
-    XCTAssertNil(coordinator.inlineAttachmentOverlayViews[imageKey])
+    XCTAssertNil(coordinator.inlineAttachmentDrawingDescriptors[imageKey])
     XCTAssertNil(coordinator.inlineAttachmentImageTasks[imageKey])
     for _ in 0..<8 { await Task.yield() }
     XCTAssertTrue(probe.cancelled)
 
-    coordinator.applyInlineAttachmentOverlays(
+    coordinator.applyInlineAttachmentDrawings(
       in: textView,
       applicationRange: applicationRange
     )
-    let reenteredImageOverlay = try XCTUnwrap(
-      coordinator.inlineAttachmentOverlayViews[imageKey]
+    let reenteredImageDrawing = try XCTUnwrap(
+      coordinator.inlineAttachmentDrawingDescriptors[imageKey]
     )
-    XCTAssertTrue(
-      reenteredImageOverlay === firstImageOverlay
-        || reenteredImageOverlay === firstFormulaOverlay
+    XCTAssertEqual(reenteredImageDrawing.content, firstImageDrawing.content)
+    XCTAssertEqual(
+      coordinator.inlineAttachmentDrawingDescriptors[
+        "attachment:\(formulaRange.location)"
+      ]?.content,
+      firstFormulaDrawing.content
     )
     XCTAssertNotNil(coordinator.inlineAttachmentImageTasks[imageKey])
-    coordinator.clearInlineAttachmentOverlays(in: textView)
+    coordinator.clearInlineAttachmentDrawings(in: textView)
   }
 
-  func testParagraphHighlightSkipsUnchangedViewportAndRefreshesOnlyInvalidatedIntersection() {
+  func testParagraphHighlightSkipsUnchangedViewportAndRefreshesOnlyInvalidatedIntersection() throws {
     let source = "first paragraph\nsecond paragraph\n"
     let coordinator = makeCoordinator(
       source: source,
@@ -698,6 +859,35 @@ final class MarkdownEditorAppKitInteractionTests: XCTestCase {
     XCTAssertTrue(
       coordinator.updateCurrentParagraphHighlight(in: textView, force: true)
     )
+    XCTAssertNil(
+      textView.textStorage?.attribute(.backgroundColor, at: 2, effectiveRange: nil)
+    )
+    let paragraphRange = (source as NSString).paragraphRange(
+      for: NSRange(location: 2, length: 0)
+    )
+    let paragraphTextRange = try XCTUnwrap(
+      MarkdownTextKit2RangeAdapter.textRange(for: paragraphRange, in: textView)
+    )
+    var hasBackgroundRenderingAttribute = false
+    textView.textLayoutManager?.enumerateRenderingAttributes(
+      from: paragraphTextRange.location,
+      reverse: false
+    ) { _, attributes, renderingRange in
+      guard let fullRenderingRange = MarkdownTextKit2RangeAdapter.range(
+        for: renderingRange,
+        in: textView
+      ) else {
+        return true
+      }
+      let intersection = NSIntersectionRange(fullRenderingRange, paragraphRange)
+      if intersection.length > 0, attributes[.backgroundColor] != nil {
+        hasBackgroundRenderingAttribute = true
+        return false
+      }
+      return NSMaxRange(fullRenderingRange) < NSMaxRange(paragraphRange)
+    }
+    XCTAssertFalse(hasBackgroundRenderingAttribute)
+    XCTAssertNotNil(textView.markdownParagraphHighlightRect)
     XCTAssertFalse(
       coordinator.updateCurrentParagraphHighlight(in: textView)
     )
@@ -1150,6 +1340,104 @@ final class MarkdownEditorAppKitInteractionTests: XCTestCase {
     )
   }
 
+  func testInlineAIRequestShortcutInvokesHandlerAndConsumesOptionBackslash() throws {
+    let textView = makeTextView()
+    textView.string = "原文"
+    var requestCount = 0
+    textView.inlineAIRequestHandler = {
+      requestCount += 1
+    }
+
+    let event = try XCTUnwrap(
+      makeKeyEvent(
+        keyCode: 0x2A,
+        modifiers: [.option],
+        characters: "«",
+        charactersIgnoringModifiers: "\\"
+      )
+    )
+    textView.keyDown(with: event)
+
+    XCTAssertEqual(requestCount, 1)
+    XCTAssertEqual(textView.string, "原文")
+  }
+
+  func testRepeatedInlineAIRequestShortcutIsConsumedWithoutRequestingAgain() throws {
+    let textView = makeTextView()
+    textView.string = "原文"
+    var requestCount = 0
+    textView.inlineAIRequestHandler = {
+      requestCount += 1
+    }
+
+    let event = try XCTUnwrap(
+      makeKeyEvent(
+        keyCode: 0x2A,
+        modifiers: [.option],
+        characters: "«",
+        charactersIgnoringModifiers: "\\",
+        isARepeat: true
+      )
+    )
+    textView.keyDown(with: event)
+
+    XCTAssertEqual(requestCount, 0)
+    XCTAssertEqual(textView.string, "原文")
+  }
+
+  func testPlainAndExtraModifiedBackslashDoNotRequestInlineAI() throws {
+    let textView = makeTextView()
+    var requestCount = 0
+    textView.inlineAIRequestHandler = {
+      requestCount += 1
+    }
+
+    let plainEvent = try XCTUnwrap(
+      makeKeyEvent(
+        keyCode: 0x2A,
+        characters: "\\",
+        charactersIgnoringModifiers: "\\"
+      )
+    )
+    let shiftedOptionEvent = try XCTUnwrap(
+      makeKeyEvent(
+        keyCode: 0x2A,
+        modifiers: [.shift, .option],
+        characters: "»",
+        charactersIgnoringModifiers: "\\"
+      )
+    )
+    textView.keyDown(with: plainEvent)
+    textView.keyDown(with: shiftedOptionEvent)
+
+    XCTAssertEqual(requestCount, 0)
+  }
+
+  func testTabWithGhostTextKeepsAcceptanceRouteSeparateFromInlineAIRequest() throws {
+    let textView = makeTextView()
+    var acceptedCount = 0
+    var requestCount = 0
+    textView.ghostTextAcceptHandler = {
+      acceptedCount += 1
+      return true
+    }
+    textView.inlineAIRequestHandler = {
+      requestCount += 1
+    }
+
+    let tabEvent = try XCTUnwrap(
+      makeKeyEvent(
+        keyCode: 48,
+        characters: "\t",
+        charactersIgnoringModifiers: "\t"
+      )
+    )
+    textView.keyDown(with: tabEvent)
+
+    XCTAssertEqual(acceptedCount, 1)
+    XCTAssertEqual(requestCount, 0)
+  }
+
   func testComfortDefaultsIncludeParagraphSpotlightReset() {
     XCTAssertFalse(MarkdownEditorComfortConfiguration.defaultParagraphSpotlightEnabled)
   }
@@ -1193,7 +1481,7 @@ final class MarkdownEditorAppKitInteractionTests: XCTestCase {
     XCTAssertEqual(textView.string, source)
   }
 
-  func testStartingEditPreservesUnchangedBlockMarkerOverlayUntilViewportDiff() throws {
+  func testStartingEditPreservesPaintOnlyBlockMarkerUntilViewportDiff() throws {
     let source = "- [ ] first\nparagraph\n"
     let coordinator = makeCoordinator(
       source: source,
@@ -1204,15 +1492,14 @@ final class MarkdownEditorAppKitInteractionTests: XCTestCase {
       containerSize: NSSize(width: 640, height: 480)
     )
     textView.string = source
+    let initialSubviewCount = textView.subviews.count
     let markerRange = (source as NSString).range(of: "- [ ] ")
     let marker = MarkdownSyntaxMarker(
       range: markerRange,
       presentation: .taskList(isChecked: false)
     )
-    coordinator.applyBlockMarkerOverlays([marker], in: textView)
-    let originalOverlay = try XCTUnwrap(
-      coordinator.blockMarkerOverlayViews[markerRange.location]
-    )
+    coordinator.applyBlockMarkerDrawings([marker], in: textView)
+    let originalDrawing = try XCTUnwrap(textView.markdownBlockMarkerDrawings.first)
     coordinator.syntaxPaintedDocumentRevision = coordinator.syntaxDocumentRevision
     coordinator.paintedSyntaxViewportRange = NSRange(
       location: 0,
@@ -1227,10 +1514,8 @@ final class MarkdownEditorAppKitInteractionTests: XCTestCase {
       )
     )
 
-    XCTAssertTrue(
-      coordinator.blockMarkerOverlayViews[markerRange.location] === originalOverlay
-    )
-    XCTAssertTrue(originalOverlay.superview === textView)
+    XCTAssertEqual(textView.markdownBlockMarkerDrawings, [originalDrawing])
+    XCTAssertEqual(textView.subviews.count, initialSubviewCount)
   }
 
   func testFullRepaintCleanupRestoresHiddenMarkerAttributes() throws {
@@ -2227,7 +2512,10 @@ final class MarkdownEditorAppKitInteractionTests: XCTestCase {
 
   private func makeKeyEvent(
     keyCode: UInt16,
-    modifiers: NSEvent.ModifierFlags = []
+    modifiers: NSEvent.ModifierFlags = [],
+    characters: String = "",
+    charactersIgnoringModifiers: String = "",
+    isARepeat: Bool = false
   ) -> NSEvent? {
     NSEvent.keyEvent(
       with: .keyDown,
@@ -2236,9 +2524,9 @@ final class MarkdownEditorAppKitInteractionTests: XCTestCase {
       timestamp: 0,
       windowNumber: 0,
       context: nil,
-      characters: "",
-      charactersIgnoringModifiers: "",
-      isARepeat: false,
+      characters: characters,
+      charactersIgnoringModifiers: charactersIgnoringModifiers,
+      isARepeat: isARepeat,
       keyCode: keyCode
     )
   }

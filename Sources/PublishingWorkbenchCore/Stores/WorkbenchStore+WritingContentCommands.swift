@@ -37,7 +37,8 @@ extension WorkbenchStore {
     schedulePreflightCalculation(
       for: requestedDraftID,
       flushEditorBuffer: true,
-      invalidateDerivedCaches: true
+      invalidateDerivedCaches: true,
+      notifyingDraftList: true
     )
   }
 
@@ -46,18 +47,21 @@ extension WorkbenchStore {
   /// flush editor buffers belonging to other windows or invalidate the list,
   /// task-queue, and image-workbench caches for every draft.
   func refreshPreflightForSelection() {
+    pendingPreflightDraftListNotifications.removeAll()
     let requestedDraftID = selectedDraftID
     schedulePreflightCalculation(
       for: requestedDraftID,
       flushEditorBuffer: false,
-      invalidateDerivedCaches: false
+      invalidateDerivedCaches: false,
+      notifyingDraftList: false
     )
   }
 
   private func schedulePreflightCalculation(
     for draftID: UUID?,
     flushEditorBuffer: Bool,
-    invalidateDerivedCaches: Bool
+    invalidateDerivedCaches: Bool,
+    notifyingDraftList: Bool
   ) {
     if flushEditorBuffer, let draftID {
       flushDraftBodyEditorBuffer(for: draftID)
@@ -65,8 +69,18 @@ extension WorkbenchStore {
     preflightRefreshTask?.cancel()
     preflightRefreshGeneration &+= 1
     let generation = preflightRefreshGeneration
+    let mergedDraftListNotification: Bool
+    if let draftID {
+      // A metadata-triggered delayed refresh may have been replaced by a
+      // body-only refresh before it starts. Preserve the stronger request.
+      mergedDraftListNotification = notifyingDraftList
+        || pendingPreflightDraftListNotifications.remove(draftID) != nil
+    } else {
+      pendingPreflightDraftListNotifications.removeAll()
+      mergedDraftListNotification = notifyingDraftList
+    }
     if invalidateDerivedCaches {
-      invalidateDraftDerivedCaches()
+      invalidateDraftDerivedCaches(notifyingDraftList: mergedDraftListNotification)
     }
 
     guard let draftID else {
@@ -105,7 +119,7 @@ extension WorkbenchStore {
           drafts: sameSiteDraftsSnapshot,
           profile: profileSnapshot
         )
-        return preflightService.run(
+        let baseIssues = preflightService.run(
           draft: selectedDraftSnapshot,
           allDrafts: sameSiteDraftsSnapshot,
           profile: profileSnapshot,
@@ -113,6 +127,10 @@ extension WorkbenchStore {
           includeRepositoryReadiness: true,
           duplicateIndex: duplicateIndex
         )
+        return SiteLinkAuditService().report(
+          drafts: sameSiteDraftsSnapshot,
+          profile: profileSnapshot
+        ).mergingPreflightIssues(baseIssues, for: selectedDraftSnapshot)
       }
       let issues: [PreflightIssue]? = await withTaskCancellationHandler(
         operation: {
@@ -167,16 +185,24 @@ extension WorkbenchStore {
       schedulePreflightCalculation(
         for: nil,
         flushEditorBuffer: false,
-        invalidateDerivedCaches: true
+        invalidateDerivedCaches: true,
+        notifyingDraftList: true
       )
       return
     }
     schedulePreflightRefresh(for: requestedDraftID)
   }
 
-  func schedulePreflightRefresh(for draftID: UUID) {
+  func schedulePreflightRefresh(
+    for draftID: UUID,
+    notifyingDraftList: Bool = true
+  ) {
     guard selectedDraftID == draftID else { return }
+    if notifyingDraftList {
+      pendingPreflightDraftListNotifications.insert(draftID)
+    }
     preflightRefreshTask?.cancel()
+    let requestedDraftListNotification = notifyingDraftList
     preflightRefreshTask = Task { [weak self] in
       do {
         try await Task.sleep(nanoseconds: 600_000_000)
@@ -193,7 +219,8 @@ extension WorkbenchStore {
       self.schedulePreflightCalculation(
         for: draftID,
         flushEditorBuffer: true,
-        invalidateDerivedCaches: true
+        invalidateDerivedCaches: true,
+        notifyingDraftList: requestedDraftListNotification
       )
     }
   }
@@ -563,11 +590,15 @@ extension WorkbenchStore {
     }
 
     let previousDraft = drafts.first { $0.id == bufferedDraft.id }
-    var previousWithoutBody = previousDraft
-    previousWithoutBody?.bodyMarkdown = ""
-    var updatedWithoutBody = bufferedDraft
-    updatedWithoutBody.bodyMarkdown = ""
-    let isBodyOnlyEdit = previousDraft != nil && previousWithoutBody == updatedWithoutBody
+    // The list projection is the invalidation boundary. Body, word-count,
+    // repository and attachment-only changes can refresh their own derived
+    // caches without rebuilding the sidebar projection.
+    let isListMetadataEdit = previousDraft.map {
+      !$0.hasSameListMetadata(as: bufferedDraft)
+    } ?? true
+    let isNonListEditorMetadataEdit = previousDraft.map {
+      !$0.hasSameEditorMetadata(as: bufferedDraft)
+    } ?? true
     publishingStore.updateDraft(bufferedDraft, store: self)
     if bufferedDraft.wordCountNeedsRefresh {
       scheduleDraftWordCountRefresh(
@@ -578,7 +609,15 @@ extension WorkbenchStore {
     if !buffer.isDirty, previousDraft?.bodyMarkdown != bufferedDraft.bodyMarkdown {
       synchronizeDraftBodyEditorBuffer(with: bufferedDraft)
     }
-    if isBodyOnlyEdit {
+    if isListMetadataEdit {
+      invalidateDraftDerivedCaches()
+    } else if isNonListEditorMetadataEdit {
+      // Attachments, aliases, authors and other editor metadata can affect
+      // publish/maintenance projections without belonging to the sidebar.
+      // Clear those projections while keeping the list observation boundary
+      // silent.
+      invalidateDraftDerivedCaches(notifyingDraftList: false)
+    } else {
       let imageInputsDidChange =
         previousDraft.map {
           ImageWorkbenchMarkdownReferenceSignature(markdown: $0.bodyMarkdown)
@@ -588,24 +627,27 @@ extension WorkbenchStore {
         for: bufferedDraft.id,
         imageInputsDidChange: imageInputsDidChange
       )
-    } else {
-      invalidateDraftDerivedCaches()
     }
   }
 
   /// Applies a draft value originating from a live editor binding.
   ///
   /// Independent windows can retain an older value while another window edits
-  /// the same article. The timestamp is the editor's optimistic-lock token: a
+  /// the same article. The editor metadata revision is the optimistic-lock
+  /// token: a
   /// stale metadata write is rejected instead of replacing newer fields. Body
   /// text has its own revisioned buffer and remains protected there.
   @discardableResult
   public func updateDraftFromEditor(_ draft: ArticleDraft) -> Bool {
     guard let current = drafts.first(where: { $0.id == draft.id }) else {
-      updateDraft(draft)
-      return true
+      setPublishActionMessage(
+        CoreL10n.text("这篇文章已被删除或下线，旧编辑器的更改未写入。"),
+        status: .warning
+      )
+      persistenceStore.markStatus("编辑冲突：已拒绝写入不存在的文章")
+      return false
     }
-    guard draft.updatedAt == current.updatedAt else {
+    guard draft.editorMetadataRevision == current.editorMetadataRevision else {
       setPublishActionMessage(
         CoreL10n.text("另一窗口已更新这篇文章，刚才的陈旧元数据未写入；编辑器已同步到最新版本。"),
         status: .warning
@@ -620,12 +662,15 @@ extension WorkbenchStore {
   }
 
   public func deleteSelectedDraft() {
+    if let selectedDraftID {
+      flushDraftBodyEditorBuffer(for: selectedDraftID)
+    }
     publishingStore.deleteSelectedDraft(store: self)
     invalidateDraftDerivedCaches()
   }
 
   public func deleteDraft(id draftID: UUID) {
-    discardDraftBodyEditorBuffer(for: draftID)
+    flushDraftBodyEditorBuffer(for: draftID)
     cancelSiteDraftFileAutosave(for: draftID)
     publishingStore.deleteDraft(id: draftID, store: self)
     invalidateDraftDerivedCaches()
@@ -633,7 +678,7 @@ extension WorkbenchStore {
 
   @discardableResult
   public func unpublishDraft(id draftID: UUID) async -> RemoteRepositoryPublishResult? {
-    discardDraftBodyEditorBuffer(for: draftID)
+    flushDraftBodyEditorBuffer(for: draftID)
     cancelSiteDraftFileAutosave(for: draftID)
     let result = await publishingStore.unpublishDraft(id: draftID, store: self)
     invalidateDraftDerivedCaches()

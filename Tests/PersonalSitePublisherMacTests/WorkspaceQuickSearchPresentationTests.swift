@@ -202,6 +202,32 @@ final class WorkspaceQuickSearchPresentationTests: XCTestCase {
     XCTAssertEqual(visible.count, WorkspaceQuickSearchPresentation.recentResultLimit)
   }
 
+  func testRecentOrderIgnoresBodyOnlyContentTimestamp() {
+    let profileID = UUID()
+    let metadataOlder = ArticleDraft(
+      siteProfileID: profileID,
+      title: "Metadata Older",
+      updatedAt: Date(timeIntervalSince1970: 1_000),
+      metadataUpdatedAt: Date(timeIntervalSince1970: 100)
+    )
+    let metadataNewer = ArticleDraft(
+      siteProfileID: profileID,
+      title: "Metadata Newer",
+      updatedAt: Date(timeIntervalSince1970: 200),
+      metadataUpdatedAt: Date(timeIntervalSince1970: 200)
+    )
+
+    let matches = WorkspaceQuickSearchPresentation.matchingDrafts(
+      drafts: [metadataOlder, metadataNewer],
+      query: ""
+    ) { _, _ in
+      XCTFail("An empty query must not invoke the matcher.")
+      return false
+    }
+
+    XCTAssertEqual(matches.map(\.id), [metadataNewer.id, metadataOlder.id])
+  }
+
   func testSearchTrimsQueryFiltersAndPreservesRecentOrder() {
     let profileID = UUID()
     let older = ArticleDraft(

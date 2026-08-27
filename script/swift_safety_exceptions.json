@@ -24,7 +24,7 @@
     {
       "file": "Sources/PublishingGitCore/GitCommandRunner.swift",
       "declaration": "GitCommandAsyncOperation",
-      "rationale": "Process lifecycle state is protected by an internal lock and single completion path."
+      "rationale": "Process startup, cancellation, timeout, termination, and continuation completion are serialized on one private lifecycle queue; the single finish path consumes the continuation once."
     },
     {
       "file": "Sources/PublishingGitCore/GitCommandRunner.swift",
@@ -72,7 +72,7 @@
       "rationale": "NWConnection operation state is confined to its serial queue and single completion path."
     },
     {
-      "file": "Sources/PersonalSitePublisherMac/Views/RSSArticleHTMLRenderer.swift",
+      "file": "Sources/PersonalSitePublisherMac/Views/RSS/RSSArticleHTMLRenderer.swift",
       "declaration": "RSSArticleRenderCache",
       "rationale": "The synchronous HTML LRU is shared by WebView renders; its cache and recency mutations are protected by one NSLock."
     },
@@ -282,7 +282,7 @@
       "rationale": "QLThumbnailGenerator.Request is initialized once and exposes no mutable state here; the same instance is intentionally shared only between generation and cancellation, matching Quick Look's request identity contract."
     },
     {
-      "file": "Sources/PersonalSitePublisherMac/Views/MarkdownInlineAttachmentOverlayView.swift",
+      "file": "Sources/PersonalSitePublisherMac/Views/Editor/MarkdownInlineAttachmentOverlayView.swift",
       "declaration": "Payload",
       "rationale": "Payload contains only an immutable CGImage value and an Int64; it carries no cache, actor, or mutable reference state when returned across the cache actor boundary."
     },
@@ -310,6 +310,56 @@
       "file": "Tests/PublishingWorkbenchCoreTests/RepositoryImportBackgroundTests.swift",
       "declaration": "ImportThreadProbe",
       "rationale": "total and main are mutated and observed only while holding the same NSLock; record reads Thread.isMainThread inside that critical section before publishing counters across import callbacks."
+    },
+    {
+      "file": "Sources/PersonalSitePublisherMac/Support/KnowledgeBrowserBridge.swift",
+      "declaration": "BrowserBridgeNetworkSession",
+      "rationale": "The session's connection registry and cancellation flag are protected by one NSLock; its immutable dispatch queue is the execution boundary for Network callbacks, while cancellation is safe to issue after the locked snapshot."
+    },
+    {
+      "file": "Sources/PersonalSitePublisherMac/Support/WorkbenchThumbnailView.swift",
+      "declaration": "WorkbenchDecodedImage",
+      "rationale": "ImageIO creates the CGImage before the detached task returns it; this wrapper exposes only the immutable image value and no mutable Core Graphics state crosses the task boundary."
+    },
+    {
+      "file": "Sources/PublishingCoreSupport/LocalBPETokenizer.swift",
+      "declaration": "Vocabulary",
+      "rationale": "Vocabulary ranks and the compiled regular expression are assigned once during initialization and only read during encoding; no mutable reference state is exposed after construction."
+    },
+    {
+      "file": "Sources/PublishingCoreSupport/LocalBPETokenizer.swift",
+      "declaration": "VocabularyCache",
+      "rationale": "The shared cache dictionary is accessed only while holding its NSLock; cached Vocabulary instances are immutable after parsing and resource loads publish through the same lock."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/Services/ContentHealthReportCache.swift",
+      "declaration": "ContentHealthReportCache",
+      "rationale": "All entries, counters, access clocks, and eviction mutations are protected by one NSLock; cache keys and summaries are Sendable value snapshots returned without mutable references."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/Services/RepositoryContentChangeMonitor.swift",
+      "declaration": "RepositoryContentChangeMonitor",
+      "rationale": "Configuration and generation state are protected by stateLock, while stream, debounce, and pending-event state are confined to the monitor's serial queue; the FSEvents callback enters only through this synchronization boundary."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/Services/RepositoryContentChangeMonitor.swift",
+      "declaration": "EventSink",
+      "rationale": "The sink stores only a weak coordinator reference assigned before publication; notify immediately hops to MainActor and performs no off-actor mutable access."
+    },
+    {
+      "file": "Tests/PublishingWorkbenchCoreTests/RepositoryEventDrivenRefreshTests.swift",
+      "declaration": "LockedRepositoryEventState",
+      "rationale": "The test callback may run on the monitor queue, so callback count, paths, and full-scan state are all mutated and observed through one NSLock."
+    },
+    {
+      "file": "Tests/PublishingWorkbenchCoreTests/KnowledgePersistenceBoundaryTests.swift",
+      "declaration": "RecordingKnowledgePersistenceLifecycle",
+      "rationale": "The injected test lifecycle protects its recorded URL array with one NSLock while initialization work and assertions may cross concurrency boundaries."
+    },
+    {
+      "file": "Tests/PublishingWorkbenchCoreTests/RSSArticlePageClientTests.swift",
+      "declaration": "Probe",
+      "rationale": "The async download test probe protects every captured request field with one NSLock before observations cross task boundaries."
     }
   ],
   "forcedOperations": [
@@ -424,7 +474,7 @@
       "rationale": "The screenshot harness writes a secondary diagnostic file and does not affect product data."
     },
     {
-      "file": "Sources/PersonalSitePublisherMac/Views/RSSReaderPresentationState.swift",
+      "file": "Sources/PersonalSitePublisherMac/Views/RSS/RSSReaderPresentationState.swift",
       "category": "networkDiscovery",
       "contains": "try? await RSSFeedDiscoveryService(",
       "rationale": "Optional feed discovery is a non-mutating enhancement; the UI keeps the current feed state when discovery fails."
@@ -508,7 +558,7 @@
       "rationale": "SEO preview metadata is auxiliary output; invalid optional metadata is omitted rather than blocking the article."
     },
     {
-      "file": "Sources/PublishingWorkbenchCore/Services/SiteStarterService.swift",
+      "file": "Sources/PublishingWorkbenchCore/Services/SiteStarterRepositoryOperations.swift",
       "category": "probeFallback",
       "contains": "try? runGitOutput(",
       "rationale": "Starter setup probes optional Git metadata and continues with an empty value when the repository is not yet initialized."
@@ -602,6 +652,18 @@
       "category": "protocolFallback",
       "contains": "try? aiPublishingAssistantService.resolvedChatTaskConfig(",
       "rationale": "If agent-task capability resolution fails, the caller deliberately continues on the ordinary text-chat protocol without declaring tools or executing a plan."
+    },
+    {
+      "file": "Sources/PersonalSitePublisherMac/Views/RSS/RSSReaderPresentationState.swift",
+      "category": "probeFallback",
+      "contains": "try? store.fullTextRecord(articleID:",
+      "rationale": "Opening an article treats the persisted full-text cache as an optional read-through probe; an unreadable record falls back to the in-memory summary and the explicit fetch path."
+    },
+    {
+      "file": "Sources/PersonalSitePublisherMac/Views/RSS/RSSReaderPresentationState.swift",
+      "category": "cacheBestEffort",
+      "contains": "try? await store.saveFullTextRecordAsync(",
+      "rationale": "Full-text records are an auxiliary SQLite cache: ready or preserved content is already held in memory, while failed records carry only retry diagnostics; if persistence fails, the UI retains the current article or error and a later request can safely re-fetch or revalidate it."
     }
   ],
   "optionalOperationRules": [

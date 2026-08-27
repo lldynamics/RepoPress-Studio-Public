@@ -106,6 +106,25 @@ grep -Fq 'APP_FRAMEWORKS="$APP_CONTENTS/Frameworks"' "$ROOT_DIR/script/build_and
 grep -Fq 'SPARKLE_FRAMEWORK_BUNDLE="$APP_FRAMEWORKS/Sparkle.framework"' \
   "$ROOT_DIR/script/build_and_run.sh" \
   || fail "build_and_run.sh does not stage Sparkle.framework"
+for notice_file in \
+  NOTICE-MANIFEST.txt \
+  Sparkle-LICENSE.txt \
+  TreeSitter-LICENSE.txt \
+  Tiktoken-Encoding-Data.txt; do
+  [[ -s "$ROOT_DIR/Packaging/ThirdPartyNotices/$notice_file" ]] \
+    || fail "bundled third-party notice is missing: $notice_file"
+  grep -Fq "\"$notice_file\"" "$ROOT_DIR/script/build_and_run.sh" \
+    || fail "build_and_run.sh does not copy $notice_file"
+done
+grep -Fq 'cmp -s "$notice_source" "$notice_bundle"' \
+  "$ROOT_DIR/script/build_and_run.sh" \
+  || fail "build_and_run.sh does not verify copied third-party notices"
+grep -Fq 'APP_BUNDLE_NAME="${PERSONAL_SITE_PUBLISHER_BUNDLE_NAME:-$APP_DISPLAY_NAME}"' \
+  "$ROOT_DIR/script/build_and_run.sh" \
+  || fail "build_and_run.sh does not derive the bundle path from the display name"
+if grep -Fq 'PersonalSitePublisherMac.app' "$ROOT_DIR/script/build_and_run.sh"; then
+  fail "build_and_run.sh still uses the legacy executable-named app bundle"
+fi
 grep -Fq 'SUEnableInstallerLauncherService' "$ROOT_DIR/script/build_and_run.sh" \
   || fail "Direct Release Info.plist omits Sparkle installer launcher support"
 if [[ -e "$ROOT_DIR/Packaging/CodexRuntime" ]]; then

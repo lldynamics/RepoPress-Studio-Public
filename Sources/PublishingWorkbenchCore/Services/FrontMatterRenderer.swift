@@ -20,7 +20,7 @@ public struct FrontMatterRenderer: Sendable {
   private func renderYAML(draft: ArticleDraft, profile: SiteProfile) -> String {
     var lines: [String] = ["---"]
     lines.append("title: \(yamlString(draft.title))")
-    lines.append("date: \(yamlString(formattedDate(draft.date, profile: profile)))")
+    lines.append("\(dateFieldName(for: profile.siteKind)): \(yamlString(formattedDate(draft.date, profile: profile)))")
     lines.append("slug: \(yamlString(draft.slug))")
 
     if !draft.summary.trimmedForPublishing.isEmpty {
@@ -40,8 +40,20 @@ public struct FrontMatterRenderer: Sendable {
       lines.append("categories: \(yamlArray(draft.categories))")
     }
 
+    if !draft.aliases.isEmpty {
+      lines.append("aliases: \(yamlArray(draft.aliases))")
+    }
+
+    if let permalink = draft.permalink?.nilIfEmpty {
+      lines.append("permalink: \(yamlString(permalink))")
+    }
+
     if profile.includeDraftFlagInFrontMatter {
-      lines.append("draft: \(draft.draft ? "true" : "false")")
+      if profile.siteKind == .foam {
+        lines.append("status: \(yamlString(draft.draft ? "draft" : "published"))")
+      } else {
+        lines.append("draft: \(draft.draft ? "true" : "false")")
+      }
     }
 
     if let coverPath = frontMatterCoverPath(draft: draft, profile: profile) {
@@ -49,7 +61,7 @@ public struct FrontMatterRenderer: Sendable {
       case .zola:
         lines.append("extra:")
         lines.append("  \(profile.siteKind.coverFrontMatterFieldName): \(yamlString(coverPath))")
-      case .astro, .hugo, .vitePress, .hexo:
+      case .astro, .hugo, .vitePress, .nextJS, .quartz, .foam, .hexo:
         lines.append("\(profile.siteKind.coverFrontMatterFieldName): \(yamlString(coverPath))")
       case .jekyll:
         lines.append("\(profile.siteKind.coverFrontMatterFieldName): \(yamlString(coverPath))")
@@ -63,7 +75,7 @@ public struct FrontMatterRenderer: Sendable {
   private func renderTOML(draft: ArticleDraft, profile: SiteProfile) -> String {
     var lines: [String] = ["+++"]
     lines.append("title = \(tomlString(draft.title))")
-    lines.append("date = \(tomlString(formattedDate(draft.date, profile: profile)))")
+    lines.append("\(dateFieldName(for: profile.siteKind)) = \(tomlString(formattedDate(draft.date, profile: profile)))")
     lines.append("slug = \(tomlString(draft.slug))")
 
     if !draft.summary.trimmedForPublishing.isEmpty {
@@ -83,8 +95,20 @@ public struct FrontMatterRenderer: Sendable {
       lines.append("categories = \(tomlArray(draft.categories))")
     }
 
+    if !draft.aliases.isEmpty {
+      lines.append("aliases = \(tomlArray(draft.aliases))")
+    }
+
+    if let permalink = draft.permalink?.nilIfEmpty {
+      lines.append("permalink = \(tomlString(permalink))")
+    }
+
     if profile.includeDraftFlagInFrontMatter {
-      lines.append("draft = \(draft.draft ? "true" : "false")")
+      if profile.siteKind == .foam {
+        lines.append("status = \(tomlString(draft.draft ? "draft" : "published"))")
+      } else {
+        lines.append("draft = \(draft.draft ? "true" : "false")")
+      }
     }
 
     if let coverPath = frontMatterCoverPath(draft: draft, profile: profile) {
@@ -93,7 +117,7 @@ public struct FrontMatterRenderer: Sendable {
         lines.append("")
         lines.append("[extra]")
         lines.append("\(profile.siteKind.coverFrontMatterFieldName) = \(tomlString(coverPath))")
-      case .astro, .hugo, .vitePress, .hexo:
+      case .astro, .hugo, .vitePress, .nextJS, .quartz, .foam, .hexo:
         lines.append("\(profile.siteKind.coverFrontMatterFieldName) = \(tomlString(coverPath))")
       case .jekyll:
         lines.append("\(profile.siteKind.coverFrontMatterFieldName) = \(tomlString(coverPath))")
@@ -130,6 +154,10 @@ public struct FrontMatterRenderer: Sendable {
     formatter.locale = Locale(identifier: "en_US_POSIX")
     formatter.dateFormat = profile.dateFormat.nilIfEmpty ?? "yyyy-MM-dd"
     return formatter.string(from: date)
+  }
+
+  private func dateFieldName(for siteKind: SiteKind) -> String {
+    siteKind == .foam ? "created" : "date"
   }
 
   private func yamlArray(_ values: [String]) -> String {

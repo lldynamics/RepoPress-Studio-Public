@@ -120,6 +120,7 @@ def valid_payload() -> dict[str, Any]:
                 [
                     dependency("BrowserExtensionProtocolSupport"),
                     dependency("PublishingGitCore"),
+                    dependency("PublishingMarkdownCore"),
                     dependency("PublishingWorkbenchCore"),
                     product("Sparkle", "Sparkle"),
                 ],
@@ -142,7 +143,7 @@ def valid_payload() -> dict[str, Any]:
             target(
                 "PublishingAICoreTests",
                 "test",
-                [dependency("PublishingAICore")],
+                [dependency("PublishingAICore"), dependency("PublishingCoreSupport")],
             ),
             target(
                 "PublishingCoreSupportTests",

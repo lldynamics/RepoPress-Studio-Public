@@ -14,7 +14,7 @@ public struct SEOSocialPreviewService {
     let description = socialDescription(for: draft)
     let markdownPath = profile.markdownPath(for: draft)
     let canonicalURLText = canonicalURL(
-      markdownPath: markdownPath,
+      draft: draft,
       profile: profile,
       localPreviewURL: localPreviewURL
     )
@@ -113,7 +113,7 @@ public struct SEOSocialPreviewService {
     let entries = eligibleDrafts.map { draft in
       SEOSitemapEntry(
         loc: canonicalURL(
-          markdownPath: profile.markdownPath(for: draft),
+          draft: draft,
           profile: profile,
           localPreviewURL: localPreviewURL
         ),
@@ -214,19 +214,29 @@ public struct SEOSocialPreviewService {
   }
 
   private func canonicalURL(
-    markdownPath: String,
+    draft: ArticleDraft,
     profile: SiteProfile,
     localPreviewURL: URL?
   ) -> String {
     let resolver = SiteArticleURLResolver()
-    let relativeURLPath = resolver.relativeWebPath(from: markdownPath, siteKind: profile.siteKind)
+    let markdownPath = profile.markdownPath(for: draft)
+    let relativeURLPath = resolver.relativeWebPath(
+      from: markdownPath,
+      profile: profile,
+      permalink: draft.permalink
+    )
     let profileDeploymentURL = profile.deploymentSiteURL
       .flatMap { URL(string: $0.trimmedForPublishing) }
       .flatMap { url in
         url.scheme != nil && url.host != nil ? url : nil
       }
     if let baseURL = localPreviewURL ?? profileDeploymentURL {
-      return resolver.url(baseURL: baseURL, markdownPath: markdownPath, siteKind: profile.siteKind)?.absoluteString ?? relativeURLPath
+      return resolver.url(
+        baseURL: baseURL,
+        markdownPath: markdownPath,
+        profile: profile,
+        permalink: draft.permalink
+      )?.absoluteString ?? relativeURLPath
     }
 
     return relativeURLPath

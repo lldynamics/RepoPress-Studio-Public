@@ -18,8 +18,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_BASELINES = ROOT / "script" / "quality_baselines.json"
 INVENTORY_PATTERN = re.compile(
-    r"^([A-Za-z_][A-Za-z0-9_]*)\.([A-Za-z_][A-Za-z0-9_]*)/"
-    r"([A-Za-z_][A-Za-z0-9_]*)(\(\))?$"
+    r"^([^\.\s/]+)\."
+    r"([A-Za-z0-9_:]+)/"
+    r"([A-Za-z0-9_:]+)(\([^\r\n]*\))?$"
 )
 MAX_SUITES_PER_COVERAGE_BATCH = 8
 MAX_TESTS_PER_COVERAGE_BATCH = 160

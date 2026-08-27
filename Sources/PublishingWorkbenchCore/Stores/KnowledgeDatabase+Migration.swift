@@ -1,12 +1,42 @@
 import Foundation
+import SQLite3
 
 extension KnowledgeDatabase {
+  private static let requiredSchemaTableNames = [
+    "knowledge_folders",
+    "knowledge_documents",
+    "knowledge_revisions",
+    "knowledge_chunks",
+    "knowledge_chunks_fts",
+    "knowledge_chunk_embeddings",
+    "knowledge_pinned_documents",
+    "knowledge_recycle_bin",
+    "knowledge_annotations",
+    "knowledge_backlinks",
+  ]
+
+  private static let requiredSchemaIndexNames = [
+    "knowledge_documents_source_url_idx",
+    "knowledge_documents_folder_idx",
+    "knowledge_revisions_document_idx",
+    "knowledge_revisions_hash_idx",
+    "knowledge_chunks_document_idx",
+    "knowledge_chunk_embeddings_model_idx",
+    "knowledge_recycle_bin_deleted_idx",
+    "knowledge_annotations_document_idx",
+    "knowledge_backlinks_document_idx",
+  ]
+
   func migrate(from existingUserVersion: Int) throws {
     guard existingUserVersion <= Self.currentSchemaVersion else {
       throw KnowledgeLibraryError.unsupportedDatabaseVersion(
         found: existingUserVersion,
         supported: Self.currentSchemaVersion
       )
+    }
+    guard existingUserVersion < Self.currentSchemaVersion else {
+      try validateSchemaContract()
+      return
     }
 
     try execute("BEGIN IMMEDIATE TRANSACTION;")
@@ -180,11 +210,70 @@ extension KnowledgeDatabase {
         ON knowledge_documents(folder_id, imported_at DESC);
       INSERT OR IGNORE INTO knowledge_recycle_bin (document_id, deleted_at)
         SELECT id, updated_at FROM knowledge_documents WHERE is_archived = 1;
-      PRAGMA user_version = \(Self.currentSchemaVersion);
       """)
+      try validateSchemaContract()
+      try validateMigrationIntegrity()
+      try execute("PRAGMA user_version = \(Self.currentSchemaVersion);")
       try execute("COMMIT;")
     } catch {
       try rethrowAfterRollback(error)
+    }
+  }
+
+  func validateSchemaContract() throws {
+    let requiredTables = Self.requiredSchemaTableNames
+    let tableList = requiredTables.map { "'\($0)'" }.joined(separator: ", ")
+    let tableCount = try withLock {
+      try scalarIntUnlocked(
+        "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name IN (\(tableList));"
+      )
+    }
+    guard tableCount == requiredTables.count else {
+      throw KnowledgeLibraryError.databaseIntegrity("资料库数据库结构不完整：缺少必需数据表。")
+    }
+
+    let requiredIndexes = Self.requiredSchemaIndexNames
+    let indexList = requiredIndexes.map { "'\($0)'" }.joined(separator: ", ")
+    let indexCount = try withLock {
+      try scalarIntUnlocked(
+        "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name IN (\(indexList));"
+      )
+    }
+    guard indexCount == requiredIndexes.count else {
+      throw KnowledgeLibraryError.databaseIntegrity("资料库数据库结构不完整：缺少必需索引。")
+    }
+
+    let requiredColumns = [
+      ("knowledge_documents", "folder_id"),
+      ("knowledge_documents", "source_byte_count"),
+      ("knowledge_documents", "allows_ai_use"),
+      ("knowledge_documents", "allows_local_semantic_index"),
+      ("knowledge_revisions", "captured_text_storage_ref"),
+    ]
+    for (table, column) in requiredColumns where try !columnExists(column, in: table) {
+      throw KnowledgeLibraryError.databaseIntegrity(
+        "资料库数据库结构不完整：\(table) 缺少 \(column) 列。"
+      )
+    }
+  }
+
+  private func validateMigrationIntegrity() throws {
+    try withLock {
+      try withCachedStatementUnlocked("PRAGMA quick_check;") { statement in
+        guard sqlite3_step(statement) == SQLITE_ROW,
+          text(statement, 0)?.lowercased() == "ok",
+          sqlite3_step(statement) == SQLITE_DONE
+        else {
+          throw KnowledgeLibraryError.databaseIntegrity(
+            text(statement, 0) ?? "资料库迁移后的 quick_check 未通过。"
+          )
+        }
+      }
+      try withCachedStatementUnlocked("PRAGMA foreign_key_check;") { statement in
+        guard sqlite3_step(statement) == SQLITE_DONE else {
+          throw KnowledgeLibraryError.databaseIntegrity("资料库迁移后存在外键约束错误。")
+        }
+      }
     }
   }
 }

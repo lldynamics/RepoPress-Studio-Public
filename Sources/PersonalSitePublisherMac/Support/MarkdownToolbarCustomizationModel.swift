@@ -49,7 +49,8 @@ enum MarkdownToolbarItemID: String, CaseIterable, Codable, Hashable, Identifiabl
     case .shortcutHelp: return "快捷键说明"
     case .exportMenu: return "导出文章"
     case .aiActions: return "AI 常用操作"
-    case .autoInlineAI: return "自动 AI 续写"
+    // Keep the legacy raw value so saved toolbar layouts continue to decode.
+    case .autoInlineAI: return "AI 续写"
     case .aiChat: return "AI 对话"
     case .localPreview: return "本地站点预览"
     case .preparePublish: return "准备发布"

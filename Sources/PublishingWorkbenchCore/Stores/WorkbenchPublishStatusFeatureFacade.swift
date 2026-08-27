@@ -21,20 +21,20 @@ public final class WorkbenchPublishStatusFeatureFacade: ObservableObject {
     observe(store.publishingStore.$releaseRecords)
     observe(store.repositoryStore.$repositoryReport)
     observe(store.deploymentStore.$deploymentStatusSnapshots)
-    // Body edits do not change the toolbar label. The presentation revision is
-    // the explicit draft-derived boundary, so a metadata/title change is
-    // visible even when an in-place array mutation does not emit `$drafts`.
+    // Use the new array supplied by the publisher rather than reading the
+    // store during @Published's willSet phase. Only the selected draft's list
+    // metadata can invalidate this toolbar; another row changing must not.
     observe(
-      store.$draftListPresentationRevision
-        .map { _ in
-          DraftListProjection.selectedDraft(
-            store.publishingStore.drafts,
-            selectedDraftID: store.publishingStore.selectedDraftID,
-            activeProfileID: store.publishingStore.activeProfileID,
-            scope: store.publishingStore.draftListContentScope
-          )?.title ?? ""
+      Publishers.CombineLatest(
+        store.publishingStore.$drafts,
+        store.publishingStore.$selectedDraftID
+      )
+      .map { drafts, selectedDraftID in
+        selectedDraftID.flatMap { selectedDraftID in
+          drafts.first(where: { $0.id == selectedDraftID })?.listMetadataProjection
         }
-        .removeDuplicates()
+      }
+      .removeDuplicates()
     )
   }
 

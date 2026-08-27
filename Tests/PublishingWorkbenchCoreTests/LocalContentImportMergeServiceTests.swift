@@ -11,11 +11,15 @@ struct LocalContentImportMergeServiceTests {
       repositoryPath: "content/existing.md"
     )
     existing.createdAt = Date(timeIntervalSince1970: 100)
+    existing.markMetadataUpdated(at: Date(timeIntervalSince1970: 101))
+    existing.markMetadataUpdated(at: Date(timeIntervalSince1970: 102))
     let original = [existing]
 
-    var updated = existing
-    updated.id = UUID()
-    updated.title = "Imported update"
+    var updated = ArticleDraft.fixture(
+      title: "Imported update",
+      siteProfileID: profileID,
+      repositoryPath: "content/existing.md"
+    )
     updated.createdAt = Date(timeIntervalSince1970: 999)
     let inserted = ArticleDraft.fixture(
       title: "Inserted",
@@ -47,6 +51,7 @@ struct LocalContentImportMergeServiceTests {
     #expect(plan.drafts[0].id == existing.id)
     #expect(plan.drafts[0].createdAt == existing.createdAt)
     #expect(plan.drafts[0].title == "Imported update")
+    #expect(plan.drafts[0].editorMetadataRevision == existing.editorMetadataRevision + 1)
   }
 }
 

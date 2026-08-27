@@ -7,6 +7,8 @@ public enum DraftVersionEditableField: String, CaseIterable, Sendable {
   case tags
   case categories
   case authors
+  case aliases
+  case permalink
   case draftState
   case visibility
   case summary
@@ -124,6 +126,9 @@ public struct DraftVersionComparisonService: Sendable {
     restored.tags = snapshot.tags
     restored.categories = snapshot.categories
     restored.authors = snapshot.authors
+    restored.aliases = snapshot.aliases
+    restored.pendingSlugRedirectPaths = snapshot.pendingSlugRedirectPaths
+    restored.permalink = snapshot.permalink
     restored.draft = snapshot.draft
     restored.visibility = snapshot.visibility
     restored.summary = snapshot.summary
@@ -154,6 +159,13 @@ public struct DraftVersionComparisonService: Sendable {
     appendChange(.tags, listValue(previous.tags), listValue(current.tags), to: &changes)
     appendChange(.categories, listValue(previous.categories), listValue(current.categories), to: &changes)
     appendChange(.authors, listValue(previous.authors), listValue(current.authors), to: &changes)
+    appendChange(.aliases, listValue(previous.aliases), listValue(current.aliases), to: &changes)
+    appendChange(
+      .permalink,
+      previous.permalink ?? "",
+      current.permalink ?? "",
+      to: &changes
+    )
     appendChange(
       .draftState,
       previous.draft ? CoreL10n.text("草稿") : CoreL10n.text("正式文章"),

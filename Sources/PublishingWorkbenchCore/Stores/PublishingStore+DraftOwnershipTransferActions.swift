@@ -86,6 +86,7 @@ extension PublishingStore {
         )
         copied.id = UUID()
         copied.createdAt = now
+        copied.markMetadataUpdated(at: now)
         createdDrafts.append(copied)
         affectedDraftIDs.append(copied.id)
         continue
@@ -111,6 +112,7 @@ extension PublishingStore {
       case .copyToSite:
         break
       }
+      moved.markUpdated(at: now, replacing: source)
       drafts[sourceIndex] = moved
       affectedDraftIDs.append(moved.id)
     }
@@ -217,9 +219,16 @@ extension PublishingStore {
     drafts.removeAll { createdIDs.contains($0.id) }
     for original in undoState.originals.sorted(by: { $0.index < $1.index }) {
       if let currentIndex = drafts.firstIndex(where: { $0.id == original.draft.id }) {
-        drafts[currentIndex] = original.draft
+        let current = drafts[currentIndex]
+        if current != original.draft {
+          var restored = original.draft
+          restored.markUpdated(replacing: current)
+          drafts[currentIndex] = restored
+        }
       } else {
-        drafts.insert(original.draft, at: min(original.index, drafts.count))
+        var restored = original.draft
+        restored.markMetadataUpdated()
+        drafts.insert(restored, at: min(original.index, drafts.count))
       }
     }
 

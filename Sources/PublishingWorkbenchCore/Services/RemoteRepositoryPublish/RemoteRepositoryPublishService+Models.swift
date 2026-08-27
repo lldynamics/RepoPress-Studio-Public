@@ -429,6 +429,7 @@ public enum RemoteRepositoryPublishError: LocalizedError, Equatable {
   case missingSourceFile(String)
   case sourceFileTooLarge(path: String, maximumByteCount: Int)
   case invalidSourceFile(path: String, reason: String)
+  case invalidRepositoryPath(path: String, reason: String)
   case untrackedRemoteFile(path: String, actualSHA: String)
   case remoteVersionConflict(path: String, expectedSHA: String, actualSHA: String?)
   case reviewBranchCleanupFailed(
@@ -494,6 +495,8 @@ public enum RemoteRepositoryPublishError: LocalizedError, Equatable {
       )
     case .invalidSourceFile(let path, let reason):
       return CoreL10n.format("媒体源文件无法安全读取：%@。%@", path, reason)
+    case .invalidRepositoryPath(let path, let reason):
+      return CoreL10n.format("仓库发布路径无效：%@。%@", path, reason)
     case .untrackedRemoteFile(let path, let actualSHA):
       return CoreL10n.format("远端同路径文件已存在：%@ 的当前版本是 %@，但本地草稿没有记录远端版本。请先同步远端变更或改用 PR/MR。", path, actualSHA)
     case .remoteVersionConflict(let path, let expectedSHA, let actualSHA):

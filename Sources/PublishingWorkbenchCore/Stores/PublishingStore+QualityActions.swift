@@ -45,7 +45,11 @@ extension PublishingStore {
             drafts[index].date != suggestedDate else {
         continue
       }
-      drafts[index].date = suggestedDate
+      let previous = drafts[index]
+      var updated = previous
+      updated.date = suggestedDate
+      updated.markUpdated(replacing: previous)
+      drafts[index] = updated
       appliedCount += 1
     }
     setPublishActionMessage(

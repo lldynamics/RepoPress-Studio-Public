@@ -7,7 +7,7 @@ struct AIChatWorkspaceCommandAction: Sendable {
   let unavailableReason: String?
   let open:
     @MainActor @Sendable (
-      _ draftID: UUID,
+      _ draftID: UUID?,
       _ quickPrompt: AIPublishingQuickPrompt?
     ) -> Void
 }

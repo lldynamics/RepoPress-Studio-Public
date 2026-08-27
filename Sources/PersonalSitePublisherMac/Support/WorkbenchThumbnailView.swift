@@ -1,4 +1,6 @@
 import AppKit
+import CoreGraphics
+import ImageIO
 import QuickLookThumbnailing
 import SwiftUI
 
@@ -10,8 +12,8 @@ private final class WorkbenchQuickLookRequest: @unchecked Sendable {
   }
 }
 
-struct WorkbenchThumbnailRequest: Hashable {
-  private static let maximumPixelSize = 4_096
+struct WorkbenchThumbnailRequest: Hashable, Sendable {
+  static let maximumPixelSize = 4_096
 
   let fileURL: URL
   let maxPixelSize: Int
@@ -32,6 +34,54 @@ struct WorkbenchThumbnailRequest: Hashable {
       representationTypes: .thumbnail
     )
   }
+}
+
+enum WorkbenchImageIOThumbnailDecoder {
+  static func downsampledImage(
+    at fileURL: URL,
+    maxPixelSize: Int
+  ) -> CGImage? {
+    let boundedPixelSize = min(
+      max(maxPixelSize, 1),
+      WorkbenchThumbnailRequest.maximumPixelSize
+    )
+    let sourceOptions = [
+      kCGImageSourceShouldCache: false
+    ] as CFDictionary
+    guard
+      let source = CGImageSourceCreateWithURL(fileURL as CFURL, sourceOptions),
+      CGImageSourceGetCount(source) > 0
+    else {
+      return nil
+    }
+
+    let thumbnailOptions = [
+      kCGImageSourceCreateThumbnailFromImageAlways: true,
+      kCGImageSourceCreateThumbnailWithTransform: true,
+      kCGImageSourceShouldCacheImmediately: true,
+      kCGImageSourceThumbnailMaxPixelSize: boundedPixelSize,
+    ] as CFDictionary
+    guard
+      let image = CGImageSourceCreateThumbnailAtIndex(
+        source,
+        0,
+        thumbnailOptions
+      ),
+      image.width <= boundedPixelSize,
+      image.height <= boundedPixelSize
+    else {
+      return nil
+    }
+    return image
+  }
+}
+
+private struct WorkbenchDecodedImage: @unchecked Sendable {
+  let value: CGImage
+}
+
+enum WorkbenchThumbnailSizing {
+  static let listMaxPixelSize = 120
 }
 
 struct WorkbenchThumbnailView: View {
@@ -79,9 +129,25 @@ struct WorkbenchThumbnailView: View {
     }
   }
 
+  @MainActor
   private func loadThumbnail(for request: WorkbenchThumbnailRequest) async {
     thumbnailImage = nil
     isLoading = true
+
+    if let decodedImage = await imageIOThumbnail(for: request) {
+      guard !Task.isCancelled else { return }
+      thumbnailImage = NSImage(
+        cgImage: decodedImage.value,
+        size: NSSize(
+          width: decodedImage.value.width,
+          height: decodedImage.value.height
+        )
+      )
+      isLoading = false
+      return
+    }
+
+    guard !Task.isCancelled else { return }
 
     // QLThumbnailGenerator documents that cancellation uses the same request
     // instance, but the Objective-C request type has no Sendable annotation.
@@ -102,5 +168,30 @@ struct WorkbenchThumbnailView: View {
     guard !Task.isCancelled else { return }
     thumbnailImage = image
     isLoading = false
+  }
+
+  private func imageIOThumbnail(
+    for request: WorkbenchThumbnailRequest
+  ) async -> WorkbenchDecodedImage? {
+    let decodingTask: Task<WorkbenchDecodedImage?, Never> = Task.detached(
+      priority: .utility
+    ) {
+      guard !Task.isCancelled,
+        let image = WorkbenchImageIOThumbnailDecoder.downsampledImage(
+          at: request.fileURL,
+          maxPixelSize: request.maxPixelSize
+        ),
+        !Task.isCancelled
+      else {
+        return nil
+      }
+      return WorkbenchDecodedImage(value: image)
+    }
+
+    return await withTaskCancellationHandler {
+      await decodingTask.value
+    } onCancel: {
+      decodingTask.cancel()
+    }
   }
 }

@@ -26,6 +26,16 @@ RELEASE_PROFILES = ("direct", "chrome")
 PROFILE_GROUPS = ("common", *RELEASE_PROFILES)
 RESULT_SCHEMA = ROOT / "script" / "release_gate_result.schema.json"
 
+# The user-facing bundle name is the packaging contract. Keep the executable
+# name and bundle identifier independently configurable for fixture builds,
+# while making artifact discovery reject the historical executable-named
+# bundle path instead of silently recording the wrong artifact.
+APP_BUNDLE_NAME = os.environ.get("PERSONAL_SITE_PUBLISHER_BUNDLE_NAME", "RepoPress Studio")
+APP_EXECUTABLE_NAME = os.environ.get("PERSONAL_SITE_PUBLISHER_APP_NAME", "PersonalSitePublisherMac")
+APP_BUNDLE_IDENTIFIER = os.environ.get(
+    "PERSONAL_SITE_PUBLISHER_BUNDLE_ID", "com.jinfang.PersonalSitePublisherMac"
+)
+
 
 def repository_metadata() -> dict[str, object]:
     try:
@@ -211,6 +221,65 @@ def bundle_entries(app_bundle: Path) -> tuple[list[dict[str, object]], str, int]
     return entries, hashlib.sha256(canonical).hexdigest(), total_size
 
 
+def packaged_app_candidates(strict_profile: str | None) -> tuple[Path, list[Path]]:
+    """Return the expected app path and all app bundles in the output scope.
+
+    The build script is the producer of the user-facing ``RepoPress Studio``
+    bundle. Artifact evidence must not fall back to the old executable-named
+    path: if that path is all that exists, it is reported as an identity
+    mismatch instead of being silently accepted.
+    """
+    if strict_profile == "direct":
+        output_root = ROOT / "dist" / "direct"
+        expected = output_root / f"{APP_BUNDLE_NAME}.app"
+        candidates = sorted(
+            (
+                path
+                for path in output_root.rglob(f"{APP_BUNDLE_NAME}.app")
+                if path.is_dir()
+            ),
+            key=lambda value: value.as_posix(),
+        ) if output_root.is_dir() else []
+        if expected.is_dir() and expected not in candidates:
+            candidates.insert(0, expected)
+        if not candidates and output_root.is_dir():
+            candidates = sorted(
+                (path for path in output_root.rglob("*.app") if path.is_dir()),
+                key=lambda value: value.as_posix(),
+            )
+        return expected, candidates
+
+    output_root = ROOT / "dist"
+    expected = output_root / f"{APP_BUNDLE_NAME}.app"
+    candidates = sorted(
+        (path for path in output_root.glob("*.app") if path.is_dir()),
+        key=lambda value: value.as_posix(),
+    ) if output_root.is_dir() else []
+    return expected, candidates
+
+
+def artifact_failure(
+    app_bundle: Path,
+    status: str,
+    *,
+    expected_bundle: Path | None = None,
+    provenance: str = "local-package",
+    error: str | None = None,
+) -> dict[str, object]:
+    result: dict[str, object] = {
+        "status": status,
+        "appBundle": str(app_bundle) if app_bundle else None,
+        "expectedAppBundle": str(expected_bundle) if expected_bundle else None,
+        "provenance": provenance,
+        "identity": None,
+        "codeSignature": None,
+        "content": None,
+    }
+    if error:
+        result["error"] = error
+    return result
+
+
 def packaged_artifact_metadata(
     results: list[dict[str, object]],
     strict_profile: str | None,
@@ -232,56 +301,128 @@ def packaged_artifact_metadata(
             "codeSignature": None,
             "content": None,
         }
-    app_bundle = ROOT / "dist" / "PersonalSitePublisherMac.app"
+    expected_bundle, candidates = packaged_app_candidates(strict_profile)
+    app_bundle = expected_bundle
     provenance = "local-package"
     if strict_profile == "direct":
         explicit_app = os.environ.get("DIRECT_DISTRIBUTION_APP_BUNDLE_PATH", "").strip()
         if explicit_app:
             app_bundle = Path(explicit_app).expanduser().resolve()
             provenance = "explicit-developer-id-app"
+    elif len(candidates) == 1:
+        app_bundle = candidates[0]
+    elif len(candidates) > 1:
+        return artifact_failure(
+            expected_bundle,
+            "ambiguous",
+            expected_bundle=expected_bundle,
+            provenance=provenance,
+            error="multiple app bundles were found in the packaging output",
+        )
+
+    if strict_profile == "direct" and not os.environ.get("DIRECT_DISTRIBUTION_APP_BUNDLE_PATH", "").strip():
+        if len(candidates) > 1:
+            return artifact_failure(
+                expected_bundle,
+                "ambiguous",
+                expected_bundle=expected_bundle,
+                provenance=provenance,
+                error="multiple direct-release app bundles were found in the packaging output",
+            )
+        if len(candidates) == 1:
+            app_bundle = candidates[0]
+
     files = {
-        "executable": app_bundle / "Contents" / "MacOS" / "PersonalSitePublisherMac",
+        "executable": app_bundle / "Contents" / "MacOS" / APP_EXECUTABLE_NAME,
         "infoPlist": app_bundle / "Contents" / "Info.plist",
     }
-    if not app_bundle.is_dir() or not all(path.is_file() for path in files.values()):
-        return {
-            "status": "missing",
-            "appBundle": str(app_bundle),
-            "identity": None,
-            "codeSignature": None,
-            "content": None,
-        }
+    if not app_bundle.is_dir():
+        status = "missing" if not candidates else "identity_mismatch"
+        return artifact_failure(
+            app_bundle,
+            status,
+            expected_bundle=expected_bundle,
+            provenance=provenance,
+            error="expected app bundle is missing" if status == "missing" else "app bundle path does not match the packaging contract",
+        )
+    if not all(path.is_file() for path in files.values()):
+        return artifact_failure(
+            app_bundle,
+            "unhashable",
+            expected_bundle=expected_bundle,
+            provenance=provenance,
+            error="app bundle is missing a required Info.plist or executable",
+        )
     try:
         info = plistlib.loads(files["infoPlist"].read_bytes())
     except (OSError, plistlib.InvalidFileException, ValueError) as error:
-        return {
-            "status": "invalid_info_plist",
-            "appBundle": str(app_bundle),
-            "identity": None,
-            "codeSignature": codesign_metadata(app_bundle),
-            "content": None,
-            "error": str(error),
-        }
+        return artifact_failure(
+            app_bundle,
+            "unhashable",
+            expected_bundle=expected_bundle,
+            provenance=provenance,
+            error=f"Info.plist could not be read: {error}",
+        )
     configured = configured_build_identity()
     packaged_version = str(info.get("CFBundleShortVersionString", "")).strip() or None
     packaged_build = str(info.get("CFBundleVersion", "")).strip() or None
-    entries, tree_sha256, total_size = bundle_entries(app_bundle)
+    identity = {
+        "bundleName": str(info.get("CFBundleName", "")).strip() or None,
+        "displayName": str(info.get("CFBundleDisplayName", "")).strip() or None,
+        "executableName": str(info.get("CFBundleExecutable", "")).strip() or None,
+        "bundleIdentifier": str(info.get("CFBundleIdentifier", "")).strip() or None,
+        "expectedBundleName": APP_BUNDLE_NAME,
+        "expectedExecutableName": APP_EXECUTABLE_NAME,
+        "expectedBundleIdentifier": APP_BUNDLE_IDENTIFIER,
+        "marketingVersion": packaged_version,
+        "buildNumber": packaged_build,
+        "configuredMarketingVersion": configured["marketingVersion"],
+        "configuredBuildNumber": configured["buildNumber"],
+        "versionMatchesConfiguration": packaged_version == configured["marketingVersion"],
+        "buildMatchesConfiguration": packaged_build == configured["buildNumber"],
+        "sourceCommit": repository.get("commit"),
+        "sourceDirty": repository.get("isDirty"),
+    }
+    identity_matches = (
+        app_bundle.name == f"{APP_BUNDLE_NAME}.app"
+        and identity["bundleName"] == APP_BUNDLE_NAME
+        and identity["displayName"] == APP_BUNDLE_NAME
+        and identity["executableName"] == APP_EXECUTABLE_NAME
+        and identity["bundleIdentifier"] == APP_BUNDLE_IDENTIFIER
+        and identity["versionMatchesConfiguration"] is True
+        and identity["buildMatchesConfiguration"] is True
+    )
+    if not identity_matches:
+        return {
+            "status": "identity_mismatch",
+            "appBundle": str(app_bundle),
+            "expectedAppBundle": str(expected_bundle),
+            "provenance": provenance,
+            "verificationCheck": verification_check,
+            "observedAt": observed_at,
+            "identity": identity,
+            "codeSignature": codesign_metadata(app_bundle),
+            "content": None,
+            "error": "app bundle identity does not match the configured release identity",
+        }
+    try:
+        entries, tree_sha256, total_size = bundle_entries(app_bundle)
+    except (OSError, PermissionError, ValueError) as error:
+        return artifact_failure(
+            app_bundle,
+            "unhashable",
+            expected_bundle=expected_bundle,
+            provenance=provenance,
+            error=f"app bundle contents could not be hashed: {error}",
+        )
     return {
         "status": "hashed",
         "appBundle": str(app_bundle),
+        "expectedAppBundle": str(expected_bundle),
         "provenance": provenance,
         "verificationCheck": verification_check,
         "observedAt": observed_at,
-        "identity": {
-            "marketingVersion": packaged_version,
-            "buildNumber": packaged_build,
-            "configuredMarketingVersion": configured["marketingVersion"],
-            "configuredBuildNumber": configured["buildNumber"],
-            "versionMatchesConfiguration": packaged_version == configured["marketingVersion"],
-            "buildMatchesConfiguration": packaged_build == configured["buildNumber"],
-            "sourceCommit": repository.get("commit"),
-            "sourceDirty": repository.get("isDirty"),
-        },
+        "identity": identity,
         "codeSignature": codesign_metadata(app_bundle),
         "content": {
             "algorithm": "sha256",
@@ -440,6 +581,51 @@ def verification_status(results: list[dict[str, object]], check_id: str) -> str:
     return str(result["status"]) if result else "not_run"
 
 
+def packaged_artifact_blockers(artifact: dict[str, object]) -> list[str]:
+    """Turn artifact evidence gaps into final-gate blockers.
+
+    ``not_verified`` means the package-producing check did not run or already
+    failed, so its check result remains the primary diagnostic. Once that
+    check passes, every missing, ambiguous, mismatched, or unhashed artifact
+    must block the run rather than being recorded as advisory metadata.
+    """
+    status = str(artifact.get("status", "unknown"))
+    if status == "not_verified":
+        return []
+    if status == "missing":
+        return [
+            "Packaged app artifact is missing: "
+            + str(artifact.get("expectedAppBundle") or artifact.get("appBundle") or "unknown path")
+        ]
+    if status == "ambiguous":
+        return [
+            "Packaged app artifact is ambiguous: "
+            + str(artifact.get("error") or "multiple app bundles matched the packaging scope")
+        ]
+    if status == "identity_mismatch":
+        return [
+            "Packaged app identity mismatch: "
+            + str(artifact.get("error") or "bundle identity does not match the release contract")
+        ]
+    if status == "unhashable":
+        return [
+            "Packaged app artifact is not hashable: "
+            + str(artifact.get("error") or "bundle contents could not be read")
+        ]
+    if status != "hashed":
+        return [f"Packaged app artifact has unsupported evidence status: {status}"]
+
+    identity = artifact.get("identity")
+    if not isinstance(identity, dict):
+        return ["Packaged app artifact is missing identity evidence"]
+    if not identity.get("versionMatchesConfiguration") or not identity.get("buildMatchesConfiguration"):
+        return ["Packaged app version/build identity does not match Packaging/BuildVersion.xcconfig"]
+    content = artifact.get("content")
+    if not isinstance(content, dict) or not content.get("treeSha256"):
+        return ["Packaged app artifact is missing a content SHA-256"]
+    return []
+
+
 def write_result_json(
     path: Path,
     mode: str,
@@ -459,6 +645,20 @@ def write_result_json(
     observed_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
     configured = configured_build_identity()
     complete = run_state == "complete"
+    packaged_app = (
+        packaged_artifact_metadata(results, strict_profile, repository, observed_at)
+        if complete
+        else {
+            "status": "pending",
+            "appBundle": None,
+            "identity": None,
+            "codeSignature": None,
+            "content": None,
+        }
+    )
+    all_blockers = list(dict.fromkeys(
+        [*blockers, *packaged_artifact_blockers(packaged_app)]
+    ))
     payload = {
         "$schema": "script/release_gate_result.schema.json",
         "schemaVersion": 2,
@@ -481,7 +681,7 @@ def write_result_json(
                 "running"
                 if not complete
                 else "failed"
-                if failures or blockers
+                if failures or all_blockers
                 else "passed"
             ),
             "expectedCheckCount": expected_check_count,
@@ -490,26 +690,16 @@ def write_result_json(
             "passedCount": len(results) - len(failures),
             "failedCount": len(failures),
             "uncheckedChecklistCount": unchecked,
-            "blockerCount": len(blockers),
+            "blockerCount": len(all_blockers),
         },
-        "blockers": blockers,
+        "blockers": all_blockers,
         "activeCheck": active_check,
         "verification": {
             "packagedArtifact": verification_status(results, "ui-runtime"),
             "realAppLaunch": verification_status(results, "ui-launch-verification"),
         },
         "artifacts": {
-            "packagedApp": (
-                packaged_artifact_metadata(results, strict_profile, repository, observed_at)
-                if complete
-                else {
-                    "status": "pending",
-                    "appBundle": None,
-                    "identity": None,
-                    "codeSignature": None,
-                    "content": None,
-                }
-            ),
+            "packagedApp": packaged_app,
         },
         "checks": results,
     }
@@ -815,21 +1005,22 @@ def main() -> int:
     if args.summary_markdown:
         write_result_markdown(args.summary_markdown.resolve(), payload)
 
+    final_blockers = list(payload["blockers"])
     if args.quick or args.tooling or args.check:
-        if failures:
-            print(f"release gate: {mode} mode has {len(failures)} failure(s):", file=sys.stderr)
-            for failure in failures:
-                print(f"  - {failure}", file=sys.stderr)
+        if final_blockers:
+            print(f"release gate: {mode} mode has {len(final_blockers)} blocker(s):", file=sys.stderr)
+            for blocker in final_blockers:
+                print(f"  - {blocker}", file=sys.stderr)
             return 1
         print(f"release gate: {mode} checks passed ({len(checks)} checks)")
         return 0
 
-    if failures:
+    if final_blockers:
         display_mode = "strict mode" if args.strict else f"{strict_profile} profile" if strict_profile else "standard mode"
-        label = "blocker(s)" if strict_profile else "failure(s)"
-        print(f"release gate: {display_mode} has {len(failures)} {label}:", file=sys.stderr)
-        for failure in failures:
-            print(f"  - {failure}", file=sys.stderr)
+        label = "blocker(s)"
+        print(f"release gate: {display_mode} has {len(final_blockers)} {label}:", file=sys.stderr)
+        for blocker in final_blockers:
+            print(f"  - {blocker}", file=sys.stderr)
         return 1
     if strict_profile:
         print(f"release gate: {strict_profile} profile passed ({len(results)} checks)")

@@ -32,6 +32,9 @@ extension SiteKind {
     case .astro: "display.site-kind.astro"
     case .hugo: "display.site-kind.hugo"
     case .vitePress: "display.site-kind.vitepress"
+    case .nextJS: "display.site-kind.nextjs"
+    case .quartz: "display.site-kind.quartz"
+    case .foam: "display.site-kind.foam"
     case .hexo: "display.site-kind.hexo"
     case .jekyll: "display.site-kind.jekyll"
     }
@@ -43,6 +46,9 @@ extension SiteKind {
     case .astro: "Astro"
     case .hugo: "Hugo"
     case .vitePress: "VitePress"
+    case .nextJS: "Next.js (Contentlayer / Velite)"
+    case .quartz: "Quartz"
+    case .foam: "Foam"
     case .hexo: "Hexo"
     case .jekyll: "Jekyll"
     }

@@ -84,7 +84,8 @@ public enum MarkdownInternalLinkService {
     let markdownPath = repositoryPath ?? profile.markdownPath(for: draft)
     return SiteArticleURLResolver().relativeWebPath(
       from: markdownPath,
-      siteKind: profile.siteKind
+      profile: profile,
+      permalink: draft.permalink
     )
   }
 

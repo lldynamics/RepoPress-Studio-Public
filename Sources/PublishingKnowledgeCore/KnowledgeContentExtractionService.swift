@@ -147,9 +147,12 @@ package struct KnowledgeContentExtractionService {
 
       ocrAttemptCount += 1
       do {
+        // Release Vision/PDF intermediates after every page; batching five pages
+        // would retain several large rendered images and recognition results.
         let recognizedText = try autoreleasepool {
           try pdfOCRService.recognizeText(in: page).trimmedForPublishing
         }
+        try Task.checkCancellation()
         if recognizedText.isEmpty {
           emptyPageCount += 1
         } else {
@@ -159,6 +162,8 @@ package struct KnowledgeContentExtractionService {
             text: recognizedText
           ))
         }
+      } catch is CancellationError {
+        throw CancellationError()
       } catch {
         emptyPageCount += 1
         ocrFailureCount += 1

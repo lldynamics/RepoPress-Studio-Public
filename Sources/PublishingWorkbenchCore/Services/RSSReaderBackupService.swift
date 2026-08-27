@@ -55,9 +55,15 @@ public enum RSSReaderBackupError: LocalizedError, Hashable, Sendable {
 public final class RSSReaderBackupService: Sendable {
   public static let databaseFileName = "reader.sqlite"
 
+  // Version 5 predates the independent original-page extraction cache. It is
+  // still a valid restore input because RSSReaderDatabase migrates it to v6
+  // when the installed database is opened.
+  private static let legacyDatabaseSchemaVersion = 5
+  private static let fullTextTableName = "rss_article_full_text"
   private static let requiredTableNames = [
     "rss_feeds",
     "rss_articles",
+    fullTextTableName,
     "rss_article_highlights",
     "rss_articles_fts"
   ]
@@ -210,20 +216,26 @@ public final class RSSReaderBackupService: Sendable {
     try validateForeignKeys(on: handle)
 
     let databaseSchemaVersion = try scalarInt("PRAGMA user_version;", on: handle)
-    guard databaseSchemaVersion == RSSReaderDatabase.currentSchemaVersion else {
+    let requiredTableNames: [String]
+    switch databaseSchemaVersion {
+    case RSSReaderDatabase.currentSchemaVersion:
+      requiredTableNames = Self.requiredTableNames
+    case Self.legacyDatabaseSchemaVersion:
+      requiredTableNames = Self.requiredTableNames.filter { $0 != Self.fullTextTableName }
+    default:
       throw RSSReaderBackupError.unsupportedDatabaseVersion(
         found: databaseSchemaVersion,
         supported: RSSReaderDatabase.currentSchemaVersion
       )
     }
-    let requiredTableList = Self.requiredTableNames
+    let requiredTableList = requiredTableNames
       .map { "'\($0)'" }
       .joined(separator: ", ")
     let requiredTableCount = try scalarInt(
       "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name IN (\(requiredTableList));",
       on: handle
     )
-    guard requiredTableCount == Self.requiredTableNames.count else {
+    guard requiredTableCount == requiredTableNames.count else {
       throw RSSReaderBackupError.databaseIntegrity(
         CoreL10n.text("备份缺少 RSS 必需数据表")
       )

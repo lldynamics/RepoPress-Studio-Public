@@ -218,6 +218,48 @@ public struct SiteProfile: Codable, Hashable, Identifiable, Sendable {
         includeCoverInFrontMatter: true,
         slugValidationRule: .lowercaseKebab
       )
+    case .nextJS:
+      return SitePublishingDefaults(
+        siteKind: .nextJS,
+        frontMatterStyle: .yaml,
+        contentRoot: "content/posts",
+        assetRoot: "public",
+        markdownPathPattern: "content/posts/{slug}.mdx",
+        imagePathPattern: "public/images/{year}/{filename}",
+        publicImagePathPattern: "/images/{year}/{filename}",
+        dateFormat: "yyyy-MM-dd",
+        includeDraftFlagInFrontMatter: true,
+        includeCoverInFrontMatter: true,
+        slugValidationRule: .lowercaseKebab
+      )
+    case .quartz:
+      return SitePublishingDefaults(
+        siteKind: .quartz,
+        frontMatterStyle: .yaml,
+        contentRoot: "content",
+        assetRoot: "content",
+        markdownPathPattern: "content/{slug}.md",
+        imagePathPattern: "content/attachments/{filename}",
+        publicImagePathPattern: "/attachments/{filename}",
+        dateFormat: "yyyy-MM-dd",
+        includeDraftFlagInFrontMatter: true,
+        includeCoverInFrontMatter: true,
+        slugValidationRule: .relaxed
+      )
+    case .foam:
+      return SitePublishingDefaults(
+        siteKind: .foam,
+        frontMatterStyle: .yaml,
+        contentRoot: ".",
+        assetRoot: "attachments",
+        markdownPathPattern: "{slug}.md",
+        imagePathPattern: "attachments/{filename}",
+        publicImagePathPattern: "/attachments/{filename}",
+        dateFormat: "yyyy-MM-dd",
+        includeDraftFlagInFrontMatter: true,
+        includeCoverInFrontMatter: true,
+        slugValidationRule: .relaxed
+      )
     case .hexo:
       return SitePublishingDefaults(
         siteKind: .hexo,

@@ -1,0 +1,236 @@
+import Foundation
+import PublishingWorkbenchCore
+import SwiftUI
+
+struct SelectionEditPreviewPanel: View {
+  let preview: AIPublishingSelectionEditPreview
+  let onApply: (AIPublishingSelectionEditPreview) -> Void
+  let onDiscard: () -> Void
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 8) {
+      HStack {
+        Label("\(preview.kind.localizedDisplayName)预览", systemImage: "doc.text.magnifyingglass")
+          .font(.caption.weight(.semibold))
+          .foregroundStyle(.secondary)
+        Text(preview.application.localizedDisplayName)
+          .font(.caption.weight(.medium))
+          .foregroundStyle(.secondary)
+          .padding(.horizontal, 6)
+          .padding(.vertical, 2)
+          .background(WorkbenchBackgroundStyle.control, in: Capsule())
+        if let modelSummary = preview.modelSummary {
+          Text(modelSummary)
+            .font(.caption.weight(.medium))
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+            .truncationMode(.middle)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(WorkbenchBackgroundStyle.control, in: Capsule())
+        }
+        Spacer()
+        Button {
+          onDiscard()
+        } label: {
+          Image(systemName: "xmark")
+        }
+        .buttonStyle(.borderless)
+        .help("丢弃预览")
+        .accessibilityLabel("丢弃 AI 预览")
+      }
+
+      HStack(alignment: .top, spacing: 10) {
+        selectionPreviewColumn(
+          title: preview.application == .replaceRange ? "原文" : "插入位置",
+          text: preview.originalText.nilIfEmpty ?? "将在当前光标位置插入。"
+        )
+        selectionPreviewColumn(title: "AI 建议", text: preview.trimmedReplacementText)
+      }
+
+      HStack {
+        Button {
+          onApply(preview)
+        } label: {
+          Label("应用到选区", systemImage: "checkmark.circle")
+        }
+        .keyboardShortcut(.return, modifiers: [.command])
+
+        Button {
+          onDiscard()
+        } label: {
+          Label("丢弃", systemImage: "xmark.circle")
+        }
+
+        Spacer()
+      }
+    }
+    .padding(10)
+    .frame(maxWidth: 720)
+    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
+    .overlay {
+      RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
+        .strokeBorder(Color(nsColor: .separatorColor).opacity(0.55))
+    }
+  }
+
+  private func selectionPreviewColumn(title: String, text: String) -> some View {
+    VStack(alignment: .leading, spacing: 5) {
+      Text(title)
+        .font(.caption.weight(.semibold))
+        .foregroundStyle(.secondary)
+      ScrollView {
+        Text(text)
+          .font(.caption)
+          .textSelection(.enabled)
+          .frame(maxWidth: .infinity, alignment: .leading)
+      }
+      .frame(maxHeight: 150)
+      .padding(8)
+      .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
+    }
+    .frame(maxWidth: .infinity, alignment: .leading)
+  }
+}
+
+struct MarkdownShortcutHelpPanel: View {
+  @Environment(\.dismiss) private var dismiss
+  @State private var searchText = ""
+
+  private var shortcutGroups: [(String, [(String, String)])] {
+    var groups: [(String, [(String, String)])] = [
+    (
+      String(localized: "焦点导航"),
+      [
+        (String(localized: "移到下一个控件"), "Control-Tab"),
+        (String(localized: "移到上一个控件"), "Control-Shift-Tab")
+      ]
+    ),
+    (
+      String(localized: "编辑"),
+      [
+        (String(localized: "查找"), "⌘F"),
+        (String(localized: "查找下一个"), "⌘G"),
+        (String(localized: "查找上一个"), "⇧⌘G"),
+        (String(localized: "查找栏下一个 / 上一个"), "Return / Shift-Return"),
+        (String(localized: "关闭查找栏"), "Esc"),
+        (String(localized: "替换当前"), String(localized: "查找栏“替换”")),
+        (String(localized: "全部替换"), "⌥⌘E"),
+        (String(localized: "插入图片"), "⇧⌘I"),
+        (String(localized: "模板与片段"), "⌥⌘S"),
+        (String(localized: "文章大纲"), "⌥⌘O"),
+        (String(localized: "跳转到行"), "⌘L"),
+        (String(localized: "文章后退"), "⌘["),
+        (String(localized: "文章前进"), "⌘]"),
+        (String(localized: "粘贴 URL 为链接"), String(localized: "选中文字后按 ⌘V")),
+        (String(localized: "粘贴截图"), "⌘V")
+      ]
+    ),
+    (
+      String(localized: "Markdown 智能编辑"),
+      [
+        (String(localized: "加粗"), "⌘B"),
+        (String(localized: "斜体"), "⌘I"),
+        (String(localized: "插入链接"), "⌘K"),
+        (String(localized: "一级标题"), "⌥⌘1"),
+        (String(localized: "二级标题"), "⌥⌘2"),
+        (String(localized: "三级标题"), "⌥⌘3"),
+        (String(localized: "续写列表或引用"), "Return"),
+        (String(localized: "退出空列表项"), String(localized: "空项再按 Return")),
+        (String(localized: "增加列表层级"), "Tab"),
+        (String(localized: "减少列表层级"), "Shift-Tab"),
+        (String(localized: "表格、代码、图片、脚注补全"), "/表格、/代码、/图片、/脚注"),
+        (String(localized: "文章链接补全"), "[[文章]]"),
+        (String(localized: "代码语言补全"), "```swift")
+      ]
+    ),
+  ]
+    groups.append(
+      (
+        String(localized: "AI 与工具"),
+        [
+          (String(localized: "请求 AI 续写"), "⌥\\"),
+          (String(localized: "采纳 AI 续写"), "Tab"),
+          (String(localized: "丢弃 AI 续写"), "Esc"),
+          (String(localized: "改写选中文本"), "⌥⌘R"),
+          (String(localized: "打开 AI 对话"), String(localized: "AI > 打开 AI 对话")),
+          (String(localized: "复制上下文 Prompt"), String(localized: "AI > 复制上下文 Prompt")),
+        ]
+      )
+    )
+    return groups
+  }
+
+  var body: some View {
+    NavigationStack {
+      VStack(spacing: 0) {
+        HStack(spacing: 8) {
+          Image(systemName: "magnifyingglass")
+            .foregroundStyle(.secondary)
+          TextField("搜索命令或按键", text: $searchText)
+            .textFieldStyle(.plain)
+            .accessibilityLabel("搜索命令或按键")
+          if !searchText.isEmpty {
+            Button {
+              searchText = ""
+            } label: {
+              Image(systemName: "xmark.circle.fill")
+            }
+            .buttonStyle(.borderless)
+            .foregroundStyle(.secondary)
+            .accessibilityLabel("清除快捷键搜索")
+          }
+        }
+        .padding(10)
+
+        Divider()
+
+        if filteredShortcutGroups.isEmpty {
+          ContentUnavailableView.search(text: searchText)
+        } else {
+          Form {
+            ForEach(filteredShortcutGroups.indices, id: \.self) { groupIndex in
+              let group = filteredShortcutGroups[groupIndex]
+              Section(group.0) {
+                ForEach(group.1.indices, id: \.self) { row in
+                  let shortcut = group.1[row]
+                  HStack {
+                    Text(shortcut.0)
+                      .font(.body)
+                    Spacer()
+                    Text(shortcut.1)
+                      .font(.body.monospacedDigit())
+                      .foregroundStyle(.secondary)
+                  }
+                }
+              }
+            }
+          }
+          .formStyle(.grouped)
+        }
+      }
+      .navigationTitle("快捷键说明")
+      .toolbar {
+        ToolbarItem(placement: .cancellationAction) {
+          Button("关闭") {
+            dismiss()
+          }
+        }
+      }
+    }
+    .frame(width: 430, height: 360)
+  }
+
+  private var filteredShortcutGroups: [(String, [(String, String)])] {
+    let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !query.isEmpty else { return shortcutGroups }
+    return shortcutGroups.compactMap { group in
+      let rows = group.1.filter {
+        group.0.localizedCaseInsensitiveContains(query)
+          || $0.0.localizedCaseInsensitiveContains(query)
+          || $0.1.localizedCaseInsensitiveContains(query)
+      }
+      return rows.isEmpty ? nil : (group.0, rows)
+    }
+  }
+}

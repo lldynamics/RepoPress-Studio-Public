@@ -147,6 +147,29 @@ extension LocalRepositoryService {
       return .vitePress
     }
 
+    if fileExists(rootURL.appendingPathComponent("quartz.config.ts"))
+      || fileExists(rootURL.appendingPathComponent("quartz.layout.ts")) {
+      return .quartz
+    }
+
+    if directoryExists(rootURL.appendingPathComponent(".foam", isDirectory: true)) {
+      return .foam
+    }
+
+    if [
+      "contentlayer.config.ts",
+      "contentlayer.config.js",
+      "contentlayer.config.mjs",
+      "contentlayer.config.cjs",
+      "velite.config.ts",
+      "velite.config.mts",
+      "velite.config.js",
+      "velite.config.mjs",
+      "velite.config.cjs",
+    ].contains(where: { fileExists(rootURL.appendingPathComponent($0)) }) {
+      return .nextJS
+    }
+
     if fileExists(rootURL.appendingPathComponent("astro.config.mjs"))
       || fileExists(rootURL.appendingPathComponent("astro.config.ts"))
       || directoryExists(rootURL.appendingPathComponent("src/content", isDirectory: true)) {
@@ -178,7 +201,7 @@ extension LocalRepositoryService {
   ) -> Int {
     guard let enumerator = fileManager.enumerator(
       at: rootURL,
-      includingPropertiesForKeys: [.isRegularFileKey],
+      includingPropertiesForKeys: [.isRegularFileKey, .isDirectoryKey],
       options: [.skipsHiddenFiles, .skipsPackageDescendants]
     ) else {
       return 0
@@ -187,6 +210,11 @@ extension LocalRepositoryService {
     var count = 0
     for case let fileURL as URL in enumerator {
       if cancellationCheck() { break }
+      if fileURL.lastPathComponent == "node_modules",
+         (try? fileURL.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true {
+        enumerator.skipDescendants()
+        continue
+      }
       guard allowedExtensions.contains(fileURL.pathExtension.lowercased()) else { continue }
       count += 1
     }

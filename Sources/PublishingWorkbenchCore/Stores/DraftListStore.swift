@@ -1,0 +1,117 @@
+import Combine
+import Foundation
+
+/// A narrow observation boundary for the Writing list.
+///
+/// Draft body text, derived word counts and content-write timestamps are
+/// intentionally absent from the draft projection.  A body autosave therefore
+/// updates the publishing store without rebuilding the sidebar's projection
+/// tree.  List-visible metadata still invalidates this store, while task
+/// badges and repository/privacy context have explicit, independent inputs.
+@MainActor
+public final class DraftListStore: ObservableObject {
+  private unowned let store: WorkbenchStore
+  private var cancellables = Set<AnyCancellable>()
+
+  public private(set) var presentationRevision: UInt64 = 0
+  public private(set) var taskQueueStateVersion = 0
+
+  public init(store: WorkbenchStore) {
+    self.store = store
+    // Structural changes are an O(1) fallback. Ordinary metadata mutations
+    // enter through WorkbenchStore's explicit invalidation boundary, so a
+    // body flush never walks the draft collection merely to suppress a UI
+    // notification afterward.
+    store.publishingStore.$drafts
+      .map(\.count)
+      .removeDuplicates()
+      .dropFirst()
+      .sink { [weak self] _ in
+        self?.invalidatePresentation()
+      }
+      .store(in: &cancellables)
+
+    observe(
+      Publishers.CombineLatest(
+        store.publishingStore.$profiles,
+        store.publishingStore.$activeProfileID
+      )
+      .map { profiles, activeProfileID in
+        profiles.first(where: { $0.id == activeProfileID }).map(ProfileProjection.init)
+      }
+    )
+    observe(store.publishingStore.$draftListContentScope)
+    observeTaskQueueValue(store.repositoryStore.$repositoryReport)
+    observe(store.privacyProtectionStore.$privacySettings)
+  }
+
+  public var selectedDraftID: UUID? {
+    store.publishingStore.selectedDraftID
+  }
+
+  public var contentScope: DraftListContentScope {
+    store.publishingStore.draftListContentScope
+  }
+
+  public var repositoryReport: RepositoryScanReport? {
+    store.repositoryReport
+  }
+
+  /// Kept as a read-only compatibility projection for list views that still
+  /// use the image workbench's independent refresh token.  It is deliberately
+  /// not observed by this store because image refresh is not list topology.
+  public var imageInputRevision: UInt64 {
+    store.imageWorkbenchInputRevision
+  }
+
+  /// Invalidates task badges without changing the folder/search projection.
+  func invalidateTaskQueueState() {
+    objectWillChange.send()
+    taskQueueStateVersion += 1
+  }
+
+  func invalidatePresentation() {
+    objectWillChange.send()
+    presentationRevision &+= 1
+  }
+
+  func invalidatePresentationAndTaskQueueState() {
+    objectWillChange.send()
+    presentationRevision &+= 1
+    taskQueueStateVersion += 1
+  }
+
+  private func observe<P: Publisher>(_ publisher: P)
+  where P.Failure == Never, P.Output: Equatable {
+    publisher
+      .removeDuplicates()
+      .dropFirst()
+      .sink { [weak self] _ in
+        self?.invalidatePresentation()
+      }
+      .store(in: &cancellables)
+  }
+
+  private func observeTaskQueueValue<P: Publisher>(_ publisher: P)
+  where P.Failure == Never, P.Output: Equatable {
+    publisher
+      .removeDuplicates()
+      .dropFirst()
+      .sink { [weak self] _ in
+        self?.invalidateTaskQueueState()
+      }
+      .store(in: &cancellables)
+  }
+
+  private struct ProfileProjection: Equatable {
+    let id: UUID
+    let contentRoot: String
+    let markdownPathPattern: String
+
+    init(_ profile: SiteProfile) {
+      id = profile.id
+      contentRoot = profile.contentRoot
+      markdownPathPattern = profile.markdownPathPattern
+    }
+  }
+}

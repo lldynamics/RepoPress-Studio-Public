@@ -418,6 +418,100 @@ public struct RemoteRepositoryPublishResult: Codable, Hashable, Sendable {
   }
 }
 
+/// A conflict found by the read-only direct-publish preflight.
+public enum RemoteRepositoryPublishPreflightConflictKind: String, Codable, Hashable, Sendable {
+  case untrackedRemoteFile
+  case remoteVersionConflict
+}
+
+/// One per-path remote version conflict discovered before a direct publish.
+public struct RemoteRepositoryPublishPreflightConflict: Identifiable, Codable, Hashable, Sendable {
+  public var id: String {
+    "\(kind.rawValue):\(path)"
+  }
+
+  public var kind: RemoteRepositoryPublishPreflightConflictKind
+  public var path: String
+  public var expectedSHA: String?
+  public var actualSHA: String?
+
+  public init(
+    kind: RemoteRepositoryPublishPreflightConflictKind,
+    path: String,
+    expectedSHA: String? = nil,
+    actualSHA: String? = nil
+  ) {
+    self.kind = kind
+    self.path = path.normalizedRelativePath()
+    self.expectedSHA = expectedSHA?.trimmedForPublishing.nilIfEmpty
+    self.actualSHA = actualSHA?.trimmedForPublishing.nilIfEmpty
+  }
+
+  public var isUntrackedRemoteFile: Bool {
+    kind == .untrackedRemoteFile
+  }
+
+  public var isRemoteVersionConflict: Bool {
+    kind == .remoteVersionConflict
+  }
+
+  /// Alias used by publish stores that treat all path-bearing work items
+  /// uniformly.
+  public var repositoryPath: String {
+    path
+  }
+
+  /// The equivalent existing publish error, preserving the established
+  /// localized messaging and conflict semantics.
+  public var error: RemoteRepositoryPublishError {
+    switch kind {
+    case .untrackedRemoteFile:
+      return .untrackedRemoteFile(path: path, actualSHA: actualSHA ?? "")
+    case .remoteVersionConflict:
+      return .remoteVersionConflict(
+        path: path,
+        expectedSHA: expectedSHA ?? "",
+        actualSHA: actualSHA
+      )
+    }
+  }
+}
+
+/// The complete result of a no-write direct-publish remote preflight.
+public struct RemoteRepositoryPublishPreflightResult: Codable, Hashable, Sendable {
+  public var conflicts: [RemoteRepositoryPublishPreflightConflict]
+  /// Versions for upsert files whose exact local content is already present
+  /// remotely. These values can repair a missing or stale local baseline.
+  public var remoteVersionsByPath: [String: String]
+
+  public init(
+    conflicts: [RemoteRepositoryPublishPreflightConflict] = [],
+    remoteVersionsByPath: [String: String] = [:]
+  ) {
+    self.conflicts = conflicts
+    self.remoteVersionsByPath = remoteVersionsByPath.reduce(into: [String: String]()) { result, entry in
+      let path = entry.key.normalizedRelativePath()
+      guard !path.isEmpty,
+            let version = entry.value.trimmedForPublishing.nilIfEmpty else {
+        return
+      }
+      result[path] = version
+    }
+  }
+
+  public var isSafe: Bool {
+    conflicts.isEmpty
+  }
+
+  public var automaticallyAdoptedPaths: [String] {
+    remoteVersionsByPath.keys.sorted()
+  }
+
+  public func remoteVersion(for repositoryPath: String) -> String? {
+    remoteVersionsByPath[repositoryPath.normalizedRelativePath()]
+  }
+}
+
 public struct RemoteRepositoryReviewRecoveryDraft: Codable, Hashable, Sendable {
   public var recordID: UUID
   public var branchName: String

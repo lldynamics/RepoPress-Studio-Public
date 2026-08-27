@@ -7,7 +7,7 @@ final class SitePublishingContractsTests: XCTestCase {
   func testSiteValueTypesKeepStableRawValuesAndIDs() {
     XCTAssertEqual(
       SiteKind.allCases.map(\.rawValue),
-      ["zola", "astro", "hugo", "vitePress", "hexo", "jekyll"]
+      ["zola", "astro", "hugo", "vitePress", "nextJS", "quartz", "foam", "hexo", "jekyll"]
     )
     XCTAssertEqual(SiteKind.allCases.map(\.id), SiteKind.allCases.map(\.rawValue))
 
@@ -104,6 +104,45 @@ final class SitePublishingContractsTests: XCTestCase {
         includeDraftFlagInFrontMatter: true,
         includeCoverInFrontMatter: true,
         slugValidationRule: .lowercaseKebab
+      ),
+      SitePublishingDefaults(
+        siteKind: .nextJS,
+        frontMatterStyle: .yaml,
+        contentRoot: "content/posts",
+        assetRoot: "public",
+        markdownPathPattern: "content/posts/{slug}.mdx",
+        imagePathPattern: "public/images/{year}/{filename}",
+        publicImagePathPattern: "/images/{year}/{filename}",
+        dateFormat: "yyyy-MM-dd",
+        includeDraftFlagInFrontMatter: true,
+        includeCoverInFrontMatter: true,
+        slugValidationRule: .lowercaseKebab
+      ),
+      SitePublishingDefaults(
+        siteKind: .quartz,
+        frontMatterStyle: .yaml,
+        contentRoot: "content",
+        assetRoot: "content",
+        markdownPathPattern: "content/{slug}.md",
+        imagePathPattern: "content/attachments/{filename}",
+        publicImagePathPattern: "/attachments/{filename}",
+        dateFormat: "yyyy-MM-dd",
+        includeDraftFlagInFrontMatter: true,
+        includeCoverInFrontMatter: true,
+        slugValidationRule: .relaxed
+      ),
+      SitePublishingDefaults(
+        siteKind: .foam,
+        frontMatterStyle: .yaml,
+        contentRoot: ".",
+        assetRoot: "attachments",
+        markdownPathPattern: "{slug}.md",
+        imagePathPattern: "attachments/{filename}",
+        publicImagePathPattern: "/attachments/{filename}",
+        dateFormat: "yyyy-MM-dd",
+        includeDraftFlagInFrontMatter: true,
+        includeCoverInFrontMatter: true,
+        slugValidationRule: .relaxed
       ),
       SitePublishingDefaults(
         siteKind: .hexo,

@@ -500,6 +500,7 @@ public final class RepositoryStore: ObservableObject {
     case .success:
       if alignPublishTarget(profileID: profile.id, branchName: branchName, store: store) {
         await scanRepositoryAsync(store: store)
+        _ = await store.tickRepositoryAndDeploymentPolling(now: Date())
         store.setPublishActionMessage(
           CoreL10n.format("已切换本地工作分支并将发布目标设为 %@。", branchName),
           status: .success
@@ -551,6 +552,7 @@ public final class RepositoryStore: ObservableObject {
     case .success:
       if alignPublishTarget(profileID: profile.id, branchName: branchName, store: store) {
         await scanRepositoryAsync(store: store)
+        _ = await store.tickRepositoryAndDeploymentPolling(now: Date())
         store.setPublishActionMessage(
           CoreL10n.format("已创建并切换本地工作分支：%@。", branchName),
           status: .success

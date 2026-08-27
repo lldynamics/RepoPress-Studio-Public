@@ -257,14 +257,18 @@ public struct LocalContentImportService: Sendable {
     let contentIndex = contentIndexStore?.snapshot(profile: profile, rootURL: rootURL)
     var refreshedIndexEntries: [String: LocalContentImportIndexEntry] = [:]
 
+    let normalizedContentRoot = profile.contentRoot.normalizedRelativePath()
     var seenRoots = Set<String>()
-    let importRoots = [profile.contentRoot, SiteProfile.privateContentRoot]
-      .map { $0.normalizedRelativePath() }
-      .filter { !$0.isEmpty && seenRoots.insert($0).inserted }
+    let importRoots = (normalizedContentRoot.isEmpty
+      ? [""]
+      : [normalizedContentRoot, SiteProfile.privateContentRoot])
+      .filter { seenRoots.insert($0).inserted }
 
     for importRoot in importRoots {
       try cancellationCheck()
-      let importRootURL = rootURL.appendingPathComponent(importRoot, isDirectory: true)
+      let importRootURL = importRoot.isEmpty
+        ? rootURL
+        : rootURL.appendingPathComponent(importRoot, isDirectory: true)
       guard let enumerator = fileManager.enumerator(
         at: importRootURL,
         includingPropertiesForKeys: [.isRegularFileKey, .contentModificationDateKey],
@@ -275,6 +279,12 @@ public struct LocalContentImportService: Sendable {
 
       for case let fileURL as URL in enumerator {
         try cancellationCheck()
+        if importRoot.isEmpty,
+           fileURL.lastPathComponent == "node_modules",
+           (try? fileURL.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true {
+          enumerator.skipDescendants()
+          continue
+        }
         guard ["md", "markdown", "mdx"].contains(fileURL.pathExtension.lowercased()) else {
           continue
         }
@@ -553,14 +563,19 @@ public struct LocalContentImportService: Sendable {
   ) -> ArticleDraft {
     let values = parsedDocument.values
     let fileModificationDate = (try? fileURL.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? Date()
-    let date = parsedDate(values["date"]?.first, profile: profile) ?? dateFromPath(repositoryPath) ?? fileModificationDate
+    let dateValue = values["date"]?.first
+      ?? values["published"]?.first
+      ?? values["publishdate"]?.first
+      ?? values["created"]?.first
+    let date = parsedDate(dateValue, profile: profile) ?? dateFromPath(repositoryPath) ?? fileModificationDate
     let title = values["title"]?.first?.nilIfEmpty ?? humanizedTitle(from: repositoryPath)
     let slug = values["slug"]?.first?.nilIfEmpty ?? slugFromPath(repositoryPath) ?? SlugService.slug(from: title)
     let summary = values["description"]?.first?.nilIfEmpty
       ?? values["summary"]?.first?.nilIfEmpty
       ?? values["excerpt"]?.first?.nilIfEmpty
+      ?? values["socialdescription"]?.first?.nilIfEmpty
       ?? ""
-    let draftFlag = parsedBool(values["draft"]?.first) ?? false
+    let draftFlag = importedDraftFlag(values: values, siteKind: profile.siteKind)
     let visibility = importedVisibility(values: values, repositoryPath: repositoryPath, profile: profile)
     let authors = values["authors"] ?? values["author"] ?? profile.defaultAuthor.nilIfEmpty.map { [$0] } ?? []
     let attachments = importedAttachments(
@@ -576,9 +591,11 @@ public struct LocalContentImportService: Sendable {
       title: title,
       date: date,
       slug: slug,
-      tags: values["tags"] ?? [],
-      categories: values["categories"] ?? [],
+      tags: values["tags"] ?? values["tag"] ?? [],
+      categories: values["categories"] ?? values["category"] ?? [],
       authors: authors,
+      aliases: values["aliases"] ?? values["alias"] ?? [],
+      permalink: values["permalink"]?.first?.nilIfEmpty,
       draft: draftFlag,
       visibility: visibility,
       summary: summary,
@@ -809,6 +826,22 @@ public struct LocalContentImportService: Sendable {
     }
   }
 
+  private func importedDraftFlag(
+    values: [String: [String]],
+    siteKind: SiteKind
+  ) -> Bool {
+    if let draft = parsedBool(values["draft"]?.first) {
+      return draft
+    }
+    if siteKind == .quartz, let publish = parsedBool(values["publish"]?.first) {
+      return !publish
+    }
+    if siteKind == .foam {
+      return values["status"]?.first?.trimmedForPublishing.lowercased() == "draft"
+    }
+    return false
+  }
+
   private func importedVisibility(
     values: [String: [String]],
     repositoryPath: String,
@@ -954,6 +987,7 @@ public struct LocalContentImportService: Sendable {
   private func importedCoverPath(_ values: [String: [String]]) -> String? {
     values["cover"]?.first?.nilIfEmpty
       ?? values["image"]?.first?.nilIfEmpty
+      ?? values["socialimage"]?.first?.nilIfEmpty
       ?? values["og_preview_img"]?.first?.nilIfEmpty
   }
 

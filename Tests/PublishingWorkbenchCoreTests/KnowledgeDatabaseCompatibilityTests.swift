@@ -47,6 +47,52 @@ final class KnowledgeDatabaseCompatibilityTests: XCTestCase {
     ), 1)
   }
 
+  func testFailedVersion7MigrationRollsBackDDLDataAndUserVersion() throws {
+    let rootURL = temporaryDirectory(named: "knowledge-v7-rollback")
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let databaseURL = rootURL.appendingPathComponent("library.sqlite")
+    do {
+      let database = try KnowledgeDatabase(fileURL: databaseURL)
+      try insertDocumentRow(
+        database: database,
+        id: UUID().uuidString,
+        authorsJSON: "[]",
+        tagsJSON: "[]"
+      )
+    }
+
+    try executeSQLite(
+      """
+      DROP INDEX knowledge_documents_source_url_idx;
+      CREATE INDEX knowledge_documents_source_url_idx ON knowledge_documents(title);
+      PRAGMA user_version = 7;
+      CREATE TRIGGER block_knowledge_v8_migration
+      BEFORE UPDATE OF allows_ai_use ON knowledge_documents
+      BEGIN
+        SELECT RAISE(ABORT, 'blocked migration');
+      END;
+      """,
+      at: databaseURL
+    )
+
+    XCTAssertThrowsError(try KnowledgeDatabase(fileURL: databaseURL))
+    XCTAssertEqual(try querySQLiteInt("PRAGMA user_version;", at: databaseURL), 7)
+    XCTAssertEqual(
+      try querySQLiteInt(
+        "SELECT allows_ai_use FROM knowledge_documents LIMIT 1;",
+        at: databaseURL
+      ),
+      1
+    )
+    XCTAssertTrue(
+      try querySQLiteText(
+        "SELECT sql FROM sqlite_master "
+          + "WHERE type = 'index' AND name = 'knowledge_documents_source_url_idx';",
+        at: databaseURL
+      ).contains("knowledge_documents(title)")
+    )
+  }
+
   func testFutureDatabaseVersionIsRejectedWithoutRewritingDatabase() throws {
     let rootURL = temporaryDirectory(named: "knowledge-future-schema")
     defer { try? FileManager.default.removeItem(at: rootURL) }

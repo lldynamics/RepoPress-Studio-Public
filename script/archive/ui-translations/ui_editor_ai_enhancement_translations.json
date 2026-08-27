@@ -1,0 +1,402 @@
+{
+  "# 大标题": {
+    "en": "# Heading 1",
+    "zh-Hans": "# 大标题"
+  },
+  "## 中标题": {
+    "en": "## Heading 2",
+    "zh-Hans": "## 中标题"
+  },
+  "### 小标题": {
+    "en": "### Heading 3",
+    "zh-Hans": "### 小标题"
+  },
+  "%@ 篇可替换，共 %@ 处": {
+    "en": "%1$@ articles can be changed, with %2$@ matches in total",
+    "zh-Hans": "%1$@ 篇可替换，共 %2$@ 处"
+  },
+  "%@ 级标题 (H%@)": {
+    "en": "%1$@ Heading (H%2$@)",
+    "zh-Hans": "%1$@ 级标题 (H%2$@)"
+  },
+  "%@/%@ (%@%)": {
+    "en": "%1$@/%2$@ (%3$@%%)",
+    "zh-Hans": "%1$@/%2$@ (%3$@%%)"
+  },
+  "%@（约 %lld 字）": {
+    "en": "%@ (about %lld characters)",
+    "zh-Hans": "%@（约 %lld 字）"
+  },
+  "%lld/%lld (%@%)": {
+    "en": "%1$lld/%2$lld (%3$@%%)",
+    "zh-Hans": "%1$lld/%2$lld (%3$@%%)"
+  },
+  "- [ ] 待办事项": {
+    "en": "- [ ] Todo Item",
+    "zh-Hans": "- [ ] 待办事项"
+  },
+  "--- 分隔线": {
+    "en": "--- Horizontal Rule",
+    "zh-Hans": "--- 分隔线"
+  },
+  "> 引用文本": {
+    "en": "> Blockquote",
+    "zh-Hans": "> 引用文本"
+  },
+  "AI 功能": {
+    "en": "AI Features",
+    "zh-Hans": "AI 功能"
+  },
+  "AI 改写当前选区": {
+    "en": "Rewrite Current Selection with AI",
+    "zh-Hans": "AI 改写当前选区"
+  },
+  "AI 续写": {
+    "en": "Continue with AI",
+    "zh-Hans": "AI 续写"
+  },
+  "H": {
+    "en": "H",
+    "zh-Hans": "H"
+  },
+  "Markdown 智能补全": {
+    "en": "Markdown Smart Completion",
+    "zh-Hans": "Markdown 智能补全"
+  },
+  "``` 代码语法高亮": {
+    "en": "``` Code Syntax Highlighting",
+    "zh-Hans": "``` 代码语法高亮"
+  },
+  "| 表头 |": {
+    "en": "| Table Header |",
+    "zh-Hans": "| 表头 |"
+  },
+  "⏱️ 约 %@ 分钟": {
+    "en": "⏱️ ~%@ min",
+    "zh-Hans": "⏱️ 约 %@ 分钟"
+  },
+  "丢弃 AI 续写": {
+    "en": "Dismiss AI Continuation",
+    "zh-Hans": "丢弃 AI 续写"
+  },
+  "为当前选区添加或移除斜体": {
+    "en": "Add or remove italic formatting for the current selection",
+    "zh-Hans": "为当前选区添加或移除斜体"
+  },
+  "为当前选区添加或移除粗体": {
+    "en": "Add or remove bold formatting for the current selection",
+    "zh-Hans": "为当前选区添加或移除粗体"
+  },
+  "从原网站提取完整正文": {
+    "en": "Fetch Full Article from Original Site",
+    "zh-Hans": "从原网站提取完整正文"
+  },
+  "代码语言补全": {
+    "en": "Code Language Completion",
+    "zh-Hans": "代码语言补全"
+  },
+  "使用 AI 自动生成段落": {
+    "en": "Automatically generate paragraphs with AI",
+    "zh-Hans": "使用 AI 自动生成段落"
+  },
+  "光标位置": {
+    "en": "Cursor Position",
+    "zh-Hans": "光标位置"
+  },
+  "分享文章": {
+    "en": "Share Article",
+    "zh-Hans": "分享文章"
+  },
+  "切换当前选区的 Markdown 链接": {
+    "en": "Toggle a Markdown link for the current selection",
+    "zh-Hans": "切换当前选区的 Markdown 链接"
+  },
+  "切换斜体": {
+    "en": "Toggle Italic",
+    "zh-Hans": "切换斜体"
+  },
+  "切换粗体": {
+    "en": "Toggle Bold",
+    "zh-Hans": "切换粗体"
+  },
+  "列表": {
+    "en": "Lists",
+    "zh-Hans": "列表"
+  },
+  "刷新时自动离线缓存全文": {
+    "en": "Auto Offline Cache Full Text on Refresh",
+    "zh-Hans": "刷新时自动离线缓存全文"
+  },
+  "刷新订阅源时，自动在后台从原网站抓取截断文章的完整正文并持久化存储，无需网络即可离线阅读。": {
+    "en": "When refreshing feeds, automatically fetch and persist full text for truncated articles in background for offline reading.",
+    "zh-Hans": "刷新订阅源时，自动在后台从原网站抓取截断文章的完整正文并持久化存储，无需网络即可离线阅读。"
+  },
+  "在当前文章中查找或替换文本": {
+    "en": "Find or replace text in the current article",
+    "zh-Hans": "在当前文章中查找或替换文本"
+  },
+  "在编辑器正文中按 Option + 反斜杠主动请求续写；生成后按 Tab 采纳，按 Esc 丢弃。停顿、输入和移动光标都不会自动发送请求。": {
+    "en": "Press Option + Backslash in the editor body to request a continuation. Press Tab to accept it or Esc to dismiss it. Pausing, typing, and moving the cursor never send requests automatically.",
+    "zh-Hans": "在编辑器正文中按 Option + 反斜杠主动请求续写；生成后按 Tab 采纳，按 Esc 丢弃。停顿、输入和移动光标都不会自动发送请求。"
+  },
+  "复制公众号": {
+    "en": "Copy for WeChat",
+    "zh-Hans": "复制公众号"
+  },
+  "复制到公众号/知乎": {
+    "en": "Copy for WeChat / Zhihu",
+    "zh-Hans": "复制到公众号/知乎"
+  },
+  "复制到公众号/知乎富文本": {
+    "en": "Copy Rich Text for WeChat / Zhihu",
+    "zh-Hans": "复制到公众号/知乎富文本"
+  },
+  "导出 HTML": {
+    "en": "Export HTML",
+    "zh-Hans": "导出 HTML"
+  },
+  "导出 Markdown": {
+    "en": "Export Markdown",
+    "zh-Hans": "导出 Markdown"
+  },
+  "导出 PDF": {
+    "en": "Export PDF",
+    "zh-Hans": "导出 PDF"
+  },
+  "导出文章": {
+    "en": "Export Article",
+    "zh-Hans": "导出文章"
+  },
+  "将发送 %lld 项上下文，共约 %lld 字：%@": {
+    "en": "%lld context items will be sent, about %lld characters total: %@",
+    "zh-Hans": "将发送 %lld 项上下文，共约 %lld 字：%@"
+  },
+  "将当前文章以精美内联样式复制为富文本（适配微信公众号、知乎后台）": {
+    "en": "Copy current article as rich text with inline styles (optimized for WeChat and Zhihu)",
+    "zh-Hans": "将当前文章以精美内联样式复制为富文本（适配微信公众号、知乎后台）"
+  },
+  "已加载原站全文": {
+    "en": "Full Article Loaded from Original Site",
+    "zh-Hans": "已加载原站全文"
+  },
+  "已完成离线缓存，共提取并持久化 %@ 篇截断文章全文。": {
+    "en": "Offline caching completed. Extracted and persisted full text for %@ truncated articles.",
+    "zh-Hans": "已完成离线缓存，共提取并持久化 %@ 篇截断文章全文。"
+  },
+  "已接受所选 AI 修改。": {
+    "en": "The selected AI changes were applied.",
+    "zh-Hans": "已接受所选 AI 修改。"
+  },
+  "当前为截断摘要，可提取原站全文阅读": {
+    "en": "This is a preview summary. You can fetch the full article to read.",
+    "zh-Hans": "当前为截断摘要，可提取原站全文阅读"
+  },
+  "当前文章没有可发送的图片": {
+    "en": "The current article has no images available to send",
+    "zh-Hans": "当前文章没有可发送的图片"
+  },
+  "当前范围内没有站点文章。": {
+    "en": "There are no site articles in the current scope.",
+    "zh-Hans": "当前范围内没有站点文章。"
+  },
+  "待发送图片": {
+    "en": "Images to Send",
+    "zh-Hans": "待发送图片"
+  },
+  "恢复 RSS 原始摘要": {
+    "en": "Restore Original RSS Summary",
+    "zh-Hans": "恢复 RSS 原始摘要"
+  },
+  "恢复原始摘要": {
+    "en": "Show Original Summary",
+    "zh-Hans": "恢复原始摘要"
+  },
+  "恢复摘要": {
+    "en": "Show Summary",
+    "zh-Hans": "恢复摘要"
+  },
+  "打印文章": {
+    "en": "Print Article",
+    "zh-Hans": "打印文章"
+  },
+  "打开截断文章时自动提取全文": {
+    "en": "Auto Fetch Full Text for Truncated Articles",
+    "zh-Hans": "打开截断文章时自动提取全文"
+  },
+  "打开片段库": {
+    "en": "Open Snippet Library",
+    "zh-Hans": "打开片段库"
+  },
+  "把本地图片导入当前文章": {
+    "en": "Import local images into the current article",
+    "zh-Hans": "把本地图片导入当前文章"
+  },
+  "按需触发": {
+    "en": "On Demand",
+    "zh-Hans": "按需触发"
+  },
+  "排版优化": {
+    "en": "Optimize Typography",
+    "zh-Hans": "排版优化"
+  },
+  "提取全文": {
+    "en": "Fetch Full Text",
+    "zh-Hans": "提取全文"
+  },
+  "提取全文失败：%@": {
+    "en": "Failed to fetch full article: %@",
+    "zh-Hans": "提取全文失败：%@"
+  },
+  "提取原站全文": {
+    "en": "Fetch Full Article",
+    "zh-Hans": "提取原站全文"
+  },
+  "插入或切换列表（无序、有序、任务列表）": {
+    "en": "Insert or switch lists (bulleted, numbered, task list)",
+    "zh-Hans": "插入或切换列表（无序、有序、任务列表）"
+  },
+  "插入或切换标题 (H1-H6)": {
+    "en": "Insert or switch heading (H1-H6)",
+    "zh-Hans": "插入或切换标题 (H1-H6)"
+  },
+  "插入或移除链接": {
+    "en": "Insert or Remove Link",
+    "zh-Hans": "插入或移除链接"
+  },
+  "插入正文片段或文章模板": {
+    "en": "Insert a body snippet or article template",
+    "zh-Hans": "插入正文片段或文章模板"
+  },
+  "搜索文章、AI 功能、工作区或命令…": {
+    "en": "Search articles, AI features, workspaces, or commands…",
+    "zh-Hans": "搜索文章、AI 功能、工作区或命令…"
+  },
+  "文章统计与目标": {
+    "en": "Article Statistics & Target",
+    "zh-Hans": "文章统计与目标"
+  },
+  "文章链接补全": {
+    "en": "Article Link Completion",
+    "zh-Hans": "文章链接补全"
+  },
+  "本次 AI 上下文": {
+    "en": "AI Context for This Request",
+    "zh-Hans": "本次 AI 上下文"
+  },
+  "本次不发送额外上下文。": {
+    "en": "No additional context will be sent with this request.",
+    "zh-Hans": "本次不发送额外上下文。"
+  },
+  "标题层级": {
+    "en": "Heading Levels",
+    "zh-Hans": "标题层级"
+  },
+  "检查元数据、链接、图片与公开风险": {
+    "en": "Check metadata, links, images, and public exposure risks",
+    "zh-Hans": "检查元数据、链接、图片与公开风险"
+  },
+  "正在从原站提取全文…": {
+    "en": "Fetching full article from original site…",
+    "zh-Hans": "正在从原站提取全文…"
+  },
+  "正在后台分析并离线缓存文章全文…": {
+    "en": "Analyzing and caching article full text in the background…",
+    "zh-Hans": "正在后台分析并离线缓存文章全文…"
+  },
+  "正在离线缓存全文…": {
+    "en": "Caching Full Text Offline…",
+    "zh-Hans": "正在离线缓存全文…"
+  },
+  "正文不会立即修改。预览会记录每篇文章的内容快照，执行前再次检查冲突。": {
+    "en": "The article body is not changed immediately. The preview records a content snapshot for each article and checks for conflicts again before applying.",
+    "zh-Hans": "正文不会立即修改。预览会记录每篇文章的内容快照，执行前再次检查冲突。"
+  },
+  "添加图片": {
+    "en": "Add Images",
+    "zh-Hans": "添加图片"
+  },
+  "清除快捷键搜索": {
+    "en": "Clear Shortcut Search",
+    "zh-Hans": "清除快捷键搜索"
+  },
+  "点击查看详细统计与设定目标字数": {
+    "en": "Click to view detailed statistics and set target word count",
+    "zh-Hans": "点击查看详细统计与设定目标字数"
+  },
+  "生成可预览、可拒绝的选区改写": {
+    "en": "Generate a selection rewrite that can be previewed or rejected",
+    "zh-Hans": "生成可预览、可拒绝的选区改写"
+  },
+  "目标字数": {
+    "en": "Target Word Count",
+    "zh-Hans": "目标字数"
+  },
+  "目标语言：%@ · 新草稿默认保持未发布": {
+    "en": "Target language: %@ · The new draft remains unpublished by default",
+    "zh-Hans": "目标语言：%@ · 新草稿默认保持未发布"
+  },
+  "立即离线缓存所有文章全文": {
+    "en": "Offline Cache Full Text for All Articles Now",
+    "zh-Hans": "立即离线缓存所有文章全文"
+  },
+  "行内 AI 续写": {
+    "en": "Inline AI Continuation",
+    "zh-Hans": "行内 AI 续写"
+  },
+  "表格、代码、图片、脚注补全": {
+    "en": "Table, Code, Image, and Footnote Completion",
+    "zh-Hans": "表格、代码、图片、脚注补全"
+  },
+  "请求 AI 续写": {
+    "en": "Request AI Continuation",
+    "zh-Hans": "请求 AI 续写"
+  },
+  "请求 AI 续写（Option + 反斜杠）": {
+    "en": "Request AI Continuation (Option + Backslash)",
+    "zh-Hans": "请求 AI 续写（Option + 反斜杠）"
+  },
+  "跨文章批量查找替换": {
+    "en": "Batch Find and Replace Across Articles",
+    "zh-Hans": "跨文章批量查找替换"
+  },
+  "跳转到行": {
+    "en": "Go to Line",
+    "zh-Hans": "跳转到行"
+  },
+  "转换为列表（无序、有序、任务列表）": {
+    "en": "Convert to list (bulleted, numbered, task list)",
+    "zh-Hans": "转换为列表（无序、有序、任务列表）"
+  },
+  "运行当前文章发布检查": {
+    "en": "Run publishing checks for the current article",
+    "zh-Hans": "运行当前文章发布检查"
+  },
+  "还需 %@ 字达成目标": {
+    "en": "%@ more characters to reach the target",
+    "zh-Hans": "还需 %@ 字达成目标"
+  },
+  "还需 %lld 字达成目标": {
+    "en": "%lld more characters to reach the target",
+    "zh-Hans": "还需 %lld 字达成目标"
+  },
+  "选择导出文件的保存位置。": {
+    "en": "Choose where to save the exported file.",
+    "zh-Hans": "选择导出文件的保存位置。"
+  },
+  "遇到仅含摘要的订阅源时，自动从原网站安全下载并净化展开完整正文；文章内仍可手动恢复原始摘要。": {
+    "en": "When encountering snippet-only feeds, automatically download and expand full text from original sites; you can still switch back to original summaries.",
+    "zh-Hans": "遇到仅含摘要的订阅源时，自动从原网站安全下载并净化展开完整正文；文章内仍可手动恢复原始摘要。"
+  },
+  "采纳 AI 续写": {
+    "en": "Accept AI Continuation",
+    "zh-Hans": "采纳 AI 续写"
+  },
+  "🎉 已达成目标字数！（超出 %@ 字）": {
+    "en": "🎉 Word count target reached! (%@ characters over)",
+    "zh-Hans": "🎉 已达成目标字数！（超出 %@ 字）"
+  },
+  "🎉 已达成目标字数！（超出 %lld 字）": {
+    "en": "🎉 Word count target reached! (%lld characters over)",
+    "zh-Hans": "🎉 已达成目标字数！（超出 %lld 字）"
+  }
+}

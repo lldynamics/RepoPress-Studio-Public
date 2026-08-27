@@ -2,7 +2,7 @@ import XCTest
 @testable import PublishingKnowledgeCore
 
 final class KnowledgeChunkingTokenTests: XCTestCase {
-  func testChunkTokenEstimateUsesLocalTokenizerInsteadOfCharacterRatio() {
+  func testChunkTokenEstimateUsesLocalTokenizerInsteadOfCharacterRatio() throws {
     let section = KnowledgeExtractedSection(
       headingPath: "第一章",
       text: "hello world"
@@ -12,7 +12,7 @@ final class KnowledgeChunkingTokenTests: XCTestCase {
       revisionID: UUID(),
       sections: [section]
     )
-    let chunk = try! XCTUnwrap(chunks.first)
+    let chunk = try XCTUnwrap(chunks.first)
     XCTAssertEqual(chunk.tokenEstimate, 2)
     XCTAssertNotEqual(
       chunk.tokenEstimate,

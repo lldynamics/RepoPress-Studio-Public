@@ -668,7 +668,8 @@ public struct LocalSitePreviewService {
     return SiteArticleURLResolver().url(
       baseURL: plan.previewURL,
       markdownPath: profile.markdownPath(for: draft),
-      siteKind: plan.siteKind
+      profile: profile,
+      permalink: draft.permalink
     )
   }
 
@@ -729,6 +730,18 @@ public struct LocalSitePreviewService {
       scriptName = "dev"
       baseArguments = ["run", "dev"]
       notes = ["VitePress 默认 dev server 端口为 5173。", "需要项目已安装 npm 依赖。", "本地预览会执行仓库脚本，请只启动可信仓库。"]
+    case .nextJS:
+      packageManager = Self.packageManagerName(in: rootPath)
+      executableName = packageManager ?? "npm"
+      scriptName = "dev"
+      baseArguments = ["run", "dev"]
+      notes = ["Next.js 默认 dev server 端口为 3000。", "兼容 Contentlayer / Velite 内容仓库。", "本地预览会执行仓库脚本，请只启动可信仓库。"]
+    case .quartz:
+      executableName = "npx"
+      baseArguments = ["quartz", "build", "--serve"]
+      notes = ["Quartz 默认预览端口为 8080。", "使用 npx quartz build --serve 启动数字花园。", "本地预览会执行仓库脚本，请只启动可信仓库。"]
+    case .foam:
+      return nil
     case .hexo:
       packageManager = Self.packageManagerName(in: rootPath)
       executableName = packageManager ?? "npm"
@@ -891,8 +904,47 @@ public struct LocalSitePreviewService {
           )
         )
       }
-    case .astro, .hexo:
+    case .astro, .hexo, .foam:
       break
+    case .nextJS:
+      let rootURL = URL(fileURLWithPath: rootPath, isDirectory: true)
+      let hasConfig = [
+        "contentlayer.config.ts",
+        "contentlayer.config.js",
+        "contentlayer.config.mjs",
+        "contentlayer.config.cjs",
+        "velite.config.ts",
+        "velite.config.mts",
+        "velite.config.js",
+        "velite.config.mjs",
+        "velite.config.cjs",
+        "next.config.ts",
+        "next.config.mjs",
+        "next.config.js",
+      ].contains { fileManager.fileExists(atPath: rootURL.appendingPathComponent($0).path) }
+      if !hasConfig {
+        issues.append(
+          LocalSitePreviewIssue(
+            id: "nextjs-config",
+            title: "未发现 Next.js 内容配置",
+            message: "仓库中没有常见的 Next.js、Contentlayer 或 Velite 配置文件。",
+            severity: .warning
+          )
+        )
+      }
+    case .quartz:
+      if !fileManager.fileExists(
+        atPath: URL(fileURLWithPath: rootPath).appendingPathComponent("quartz.config.ts").path
+      ) {
+        issues.append(
+          LocalSitePreviewIssue(
+            id: "quartz-config",
+            title: "未发现 Quartz 配置",
+            message: "仓库根目录没有 quartz.config.ts。",
+            severity: .warning
+          )
+        )
+      }
     case .vitePress:
       let rootURL = URL(fileURLWithPath: rootPath, isDirectory: true)
       let hasConfig = [
@@ -1018,7 +1070,7 @@ public struct LocalSitePreviewService {
       return baseArguments + ["--interface", "127.0.0.1", "--port", "\(port)"]
     case .hugo:
       return baseArguments + ["--bind", "127.0.0.1", "--port", "\(port)"]
-    case .astro:
+    case .astro, .nextJS:
       if packageManager == "yarn" {
         return baseArguments + ["--host", "127.0.0.1", "--port", "\(port)"]
       }
@@ -1032,6 +1084,10 @@ public struct LocalSitePreviewService {
       return baseArguments + ["--", "--ip", "127.0.0.1", "--port", "\(port)"]
     case .jekyll:
       return baseArguments + ["--host", "127.0.0.1", "--port", "\(port)"]
+    case .quartz:
+      return baseArguments + ["--port", "\(port)"]
+    case .foam:
+      return baseArguments
     }
   }
 
@@ -1045,6 +1101,10 @@ public struct LocalSitePreviewService {
       return 4321
     case .vitePress:
       return 5173
+    case .nextJS, .foam:
+      return 3000
+    case .quartz:
+      return 8080
     case .hexo, .jekyll:
       return 4000
     }

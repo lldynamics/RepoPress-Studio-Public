@@ -40,11 +40,11 @@ enum LocalSitePreviewExecutionFingerprint {
 
   static func manifestRelativePaths(for siteKind: SiteKind) -> [String] {
     switch siteKind {
-    case .astro, .vitePress, .hexo:
+    case .astro, .vitePress, .nextJS, .quartz, .hexo:
       return ["package.json"]
     case .jekyll:
       return ["Gemfile", "Gemfile.lock"]
-    case .zola, .hugo:
+    case .zola, .hugo, .foam:
       return []
     }
   }

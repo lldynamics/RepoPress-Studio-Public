@@ -148,6 +148,8 @@ public struct MarkdownFrontMatterEditingService: Sendable {
       ?? values["excerpt"]?.first
       ?? ""
     updated.authors = values["authors"] ?? values["author"] ?? []
+    updated.aliases = values["aliases"] ?? values["alias"] ?? []
+    updated.permalink = values["permalink"]?.first?.trimmedForPublishing.nilIfEmpty
     updated.tags = values["tags"] ?? []
     updated.categories = values["categories"] ?? []
     updated.visibility = visibility
@@ -231,35 +233,53 @@ public struct MarkdownFrontMatterEditingService: Sendable {
   }
 
   private func renderYAML(draft: ArticleDraft, profile: SiteProfile) -> String {
-    [
+    var lines = [
       "---",
       "title: \(quotedString(draft.title))",
       "date: \(quotedString(formattedDate(draft.date, profile: profile)))",
       "slug: \(quotedString(draft.slug))",
       "description: \(quotedString(draft.summary))",
       "authors: \(array(draft.authors))",
+    ]
+    if !draft.aliases.isEmpty {
+      lines.append("aliases: \(array(draft.aliases))")
+    }
+    if let permalink = draft.permalink?.trimmedForPublishing.nilIfEmpty {
+      lines.append("permalink: \(quotedString(permalink))")
+    }
+    lines.append(contentsOf: [
       "tags: \(array(draft.tags))",
       "categories: \(array(draft.categories))",
       "draft: \(draft.draft ? "true" : "false")",
       "visibility: \(quotedString(draft.visibility.rawValue))",
       "---",
-    ].joined(separator: "\n")
+    ])
+    return lines.joined(separator: "\n")
   }
 
   private func renderTOML(draft: ArticleDraft, profile: SiteProfile) -> String {
-    [
+    var lines = [
       "+++",
       "title = \(quotedString(draft.title))",
       "date = \(quotedString(formattedDate(draft.date, profile: profile)))",
       "slug = \(quotedString(draft.slug))",
       "description = \(quotedString(draft.summary))",
       "authors = \(array(draft.authors))",
+    ]
+    if !draft.aliases.isEmpty {
+      lines.append("aliases = \(array(draft.aliases))")
+    }
+    if let permalink = draft.permalink?.trimmedForPublishing.nilIfEmpty {
+      lines.append("permalink = \(quotedString(permalink))")
+    }
+    lines.append(contentsOf: [
       "tags = \(array(draft.tags))",
       "categories = \(array(draft.categories))",
       "draft = \(draft.draft ? "true" : "false")",
       "visibility = \(quotedString(draft.visibility.rawValue))",
       "+++",
-    ].joined(separator: "\n")
+    ])
+    return lines.joined(separator: "\n")
   }
 
   private func formattedDate(_ date: Date, profile _: SiteProfile) -> String {

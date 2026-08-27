@@ -444,7 +444,12 @@ extension PublishingStore {
       store.setRepositoryTokenAvailability(KeychainTokenAvailability(hasToken: true))
       let releaseRecord = ReleaseRecord.remotePublish(package: package, profile: profile, result: result)
       prependReleaseRecord(releaseRecord)
-      markDraftsAsPublishedIfDirectRemoteCommit(mode: mode, draftIDs: [package.draftID])
+      if markDraftsAsPublishedIfDirectRemoteCommit(
+        mode: mode,
+        draftIDs: [package.draftID]
+      ) {
+        store.invalidateDraftDerivedCaches()
+      }
       confirmDirectRemotePublishLifecycle(packages: [package], result: result)
       if mode.createsReview {
         markRemotePublishReviewSuccess(packages: [package])

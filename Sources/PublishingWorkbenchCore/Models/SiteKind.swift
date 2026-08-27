@@ -12,6 +12,12 @@ public extension SiteKind {
       return "Hugo"
     case .vitePress:
       return "VitePress"
+    case .nextJS:
+      return "Next.js (Contentlayer / Velite)"
+    case .quartz:
+      return "Quartz"
+    case .foam:
+      return "Foam"
     case .hexo:
       return "Hexo"
     case .jekyll:
@@ -25,7 +31,11 @@ public extension SiteKind {
       return "og_preview_img"
     case .jekyll:
       return "image"
-    case .astro, .hugo, .vitePress, .hexo:
+    case .quartz:
+      return "socialImage"
+    case .foam:
+      return "image"
+    case .astro, .hugo, .vitePress, .nextJS, .hexo:
       return "cover"
     }
   }
@@ -36,7 +46,11 @@ public extension SiteKind {
       return "extra.og_preview_img"
     case .jekyll:
       return "image"
-    case .astro, .hugo, .vitePress, .hexo:
+    case .quartz:
+      return "socialImage"
+    case .foam:
+      return "image"
+    case .astro, .hugo, .vitePress, .nextJS, .hexo:
       return "cover"
     }
   }

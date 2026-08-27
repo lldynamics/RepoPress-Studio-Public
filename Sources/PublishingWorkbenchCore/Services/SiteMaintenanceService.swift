@@ -11,13 +11,16 @@ public struct SiteMaintenanceService: Sendable {
 
   private let calendar: Calendar
   private let asyncReportOperation: AsyncReportOperation?
+  private let linkAuditService: SiteLinkAuditService
 
   public init(
     calendar: Calendar = Calendar(identifier: .gregorian),
-    asyncReportOperation: AsyncReportOperation? = nil
+    asyncReportOperation: AsyncReportOperation? = nil,
+    linkAuditService: SiteLinkAuditService = SiteLinkAuditService()
   ) {
     self.calendar = calendar
     self.asyncReportOperation = asyncReportOperation
+    self.linkAuditService = linkAuditService
   }
 
   public func report(
@@ -33,6 +36,7 @@ public struct SiteMaintenanceService: Sendable {
       releaseRecords: releaseRecords,
       maintenanceOperationRecords: maintenanceOperationRecords,
       now: now,
+      linkAuditItemsOverride: linkAuditService.report(drafts: drafts, profile: profile).items,
       cancellationCheck: {}
     )
   }
@@ -57,6 +61,10 @@ public struct SiteMaintenanceService: Sendable {
       )
     }
 
+    let linkAuditItems = try await linkAuditService.reportAsync(
+      drafts: drafts,
+      profile: profile
+    ).items
     let task = Task.detached(priority: .utility) {
       try makeReport(
         drafts: drafts,
@@ -64,6 +72,7 @@ public struct SiteMaintenanceService: Sendable {
         releaseRecords: releaseRecords,
         maintenanceOperationRecords: maintenanceOperationRecords,
         now: now,
+        linkAuditItemsOverride: linkAuditItems,
         cancellationCheck: { try Task.checkCancellation() }
       )
     }
@@ -80,6 +89,7 @@ public struct SiteMaintenanceService: Sendable {
     releaseRecords: [ReleaseRecord],
     maintenanceOperationRecords: [MaintenanceOperationRecord],
     now: Date,
+    linkAuditItemsOverride: [SiteLinkAuditItem]? = nil,
     cancellationCheck: () throws -> Void
   ) rethrows -> SiteMaintenanceReport {
     try cancellationCheck()
@@ -101,7 +111,7 @@ public struct SiteMaintenanceService: Sendable {
       cancellationCheck: cancellationCheck
     )
     try cancellationCheck()
-    let linkAuditItems = try linkAuditItems(
+    let linkAuditItems = try linkAuditItemsOverride ?? linkAuditItems(
       drafts: drafts,
       profile: profile,
       cancellationCheck: cancellationCheck

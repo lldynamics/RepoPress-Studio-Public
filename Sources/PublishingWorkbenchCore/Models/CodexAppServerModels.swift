@@ -310,6 +310,119 @@ public enum CodexAppServerRuntimeSource: String, Codable, Equatable, Sendable {
   case path
 }
 
+/// The minimum `codex app-server` protocol version understood by RepoPress.
+///
+/// The app-server client opts into experimental capabilities documented as
+/// available from Codex 0.142 onward. Version checks are intentionally based
+/// on the CLI's own `--version` output rather than on the executable filename.
+public struct CodexAppServerRuntimeVersion: Codable, Comparable, Equatable, Hashable, Sendable,
+  CustomStringConvertible
+{
+  public static let minimumSupported = Self(major: 0, minor: 142, patch: 0)
+
+  public let major: Int
+  public let minor: Int
+  public let patch: Int
+
+  public init(major: Int, minor: Int, patch: Int) {
+    self.major = max(0, major)
+    self.minor = max(0, minor)
+    self.patch = max(0, patch)
+  }
+
+  /// Parses the stable version emitted by `codex --version`, for example
+  /// `codex-cli 0.148.0`. The product marker is required so an unrelated
+  /// executable named `codex` cannot be treated as a compatible runtime merely
+  /// because it prints a semver-looking number.
+  public init?(output: String) {
+    guard let parsed = Self.parse(output) else { return nil }
+    self = parsed
+  }
+
+  public static func parse(_ output: String) -> Self? {
+    let value = output.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !value.isEmpty else { return nil }
+
+    let fullRange = NSRange(value.startIndex..<value.endIndex, in: value)
+    guard let identityRegex,
+      let identityMatch = identityRegex.firstMatch(in: value, range: fullRange)
+    else {
+      return nil
+    }
+
+    let versionStart = identityMatch.range.location + identityMatch.range.length
+    guard versionStart < fullRange.length else { return nil }
+    let versionRange = NSRange(
+      location: versionStart,
+      length: fullRange.length - versionStart
+    )
+    guard let versionRegex,
+      let versionMatch = versionRegex.firstMatch(in: value, range: versionRange)
+    else {
+      return nil
+    }
+
+    let nsValue = value as NSString
+    guard let major = Int(nsValue.substring(with: versionMatch.range(at: 1))),
+      let minor = Int(nsValue.substring(with: versionMatch.range(at: 2))),
+      let patch = Int(nsValue.substring(with: versionMatch.range(at: 3)))
+    else {
+      return nil
+    }
+
+    // Pre-release builds have not been declared compatible with the
+    // experimental app-server surface; fail closed until a stable version is
+    // reported. Build metadata (`+...`) is harmless and remains accepted.
+    let matchedVersion = nsValue.substring(with: versionMatch.range)
+    guard !matchedVersion.contains("-") else { return nil }
+    return Self(major: major, minor: minor, patch: patch)
+  }
+
+  public var isSupported: Bool {
+    self >= Self.minimumSupported
+  }
+
+  public var description: String {
+    "\(major).\(minor).\(patch)"
+  }
+
+  public static func < (lhs: Self, rhs: Self) -> Bool {
+    if lhs.major != rhs.major { return lhs.major < rhs.major }
+    if lhs.minor != rhs.minor { return lhs.minor < rhs.minor }
+    return lhs.patch < rhs.patch
+  }
+
+  private static let identityRegex = makeRegularExpression(
+    pattern: #"(?i)(?:^|[^A-Za-z0-9_-])codex-cli(?:[^A-Za-z0-9_-]|$)"#
+  )
+  private static let versionRegex = makeRegularExpression(
+    pattern:
+      #"(?<![A-Za-z0-9_.-])v?([0-9]+)\.([0-9]+)\.([0-9]+)"#
+      + #"(?:[+-][0-9A-Za-z.-]+)?(?![A-Za-z0-9_.-])"#
+  )
+
+  private static func makeRegularExpression(
+    pattern: String
+  ) -> NSRegularExpression? {
+    do {
+      return try NSRegularExpression(pattern: pattern)
+    } catch {
+      return nil
+    }
+  }
+}
+
+/// Why a discovered executable is or is not eligible for the ChatGPT flow.
+/// Keeping these states separate lets the settings page provide a recovery
+/// action instead of presenting every failure as a missing installation.
+public enum CodexAppServerRuntimeCompatibility: String, Codable, Equatable, Sendable {
+  case missingExecutable
+  case missingVersion
+  case unparseableVersion
+  case unsupportedVersion
+  case compatible
+}
+
 public struct CodexAppServerRuntimeStatus: Codable, Equatable, Sendable {
   public let executableURL: URL?
   public let source: CodexAppServerRuntimeSource?
@@ -327,6 +440,24 @@ public struct CodexAppServerRuntimeStatus: Codable, Equatable, Sendable {
 
   public var isAvailable: Bool {
     executableURL != nil
+  }
+
+  public var parsedVersion: CodexAppServerRuntimeVersion? {
+    guard let version else { return nil }
+    return CodexAppServerRuntimeVersion.parse(version)
+  }
+
+  public var compatibility: CodexAppServerRuntimeCompatibility {
+    guard executableURL != nil else { return .missingExecutable }
+    guard let version, !version.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+      return .missingVersion
+    }
+    guard let parsedVersion else { return .unparseableVersion }
+    return parsedVersion.isSupported ? .compatible : .unsupportedVersion
+  }
+
+  public var isCompatible: Bool {
+    compatibility == .compatible
   }
 }
 

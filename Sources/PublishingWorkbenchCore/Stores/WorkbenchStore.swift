@@ -55,10 +55,16 @@ public final class WorkbenchStore: ObservableObject {
     store: self)
   public lazy var publishStatus: WorkbenchPublishStatusFeatureFacade =
     WorkbenchPublishStatusFeatureFacade(store: self)
+  /// Stable, narrow observation boundary for the Writing sidebar.  The child
+  /// owns list revisions so body autosaves do not invalidate the workbench
+  /// root or the editor's presentation tree.
+  public lazy var draftList: DraftListStore = DraftListStore(store: self)
   public lazy var siteMaintenance: WorkbenchSiteMaintenanceFeatureFacade =
     WorkbenchSiteMaintenanceFeatureFacade(store: self)
   public lazy var contentPresentation: WorkbenchContentPresentationFeatureFacade =
     WorkbenchContentPresentationFeatureFacade(store: self)
+  public lazy var rootPresentation: WorkbenchRootPresentationFeatureFacade =
+    WorkbenchRootPresentationFeatureFacade(store: self)
   public lazy var commandPresentation: WorkbenchCommandPresentationFeatureFacade =
     WorkbenchCommandPresentationFeatureFacade(store: self)
   public lazy var activityStatus: WorkbenchActivityStatusFacade = WorkbenchActivityStatusFacade(
@@ -71,8 +77,6 @@ public final class WorkbenchStore: ObservableObject {
       defaultDestinationFolderURL: workspaceBackupDirectoryURL
     )
   @Published public private(set) var contentHealthSnapshotVersion = 0
-  @Published public private(set) var draftTaskQueueStateVersion = 0
-  @Published public private(set) var draftListPresentationRevision: UInt64 = 0
   @Published public private(set) var draftMutationRevision: UInt64 = 0
   @Published public private(set) var imageWorkbenchInputRevision: UInt64 = 0
   @Published public internal(set) var aiConnectionProfiles: [AIConnectionProfile]
@@ -86,6 +90,11 @@ public final class WorkbenchStore: ObservableObject {
   @Published public internal(set) var siteAnalyticsTokenAvailability = KeychainTokenAvailability(
     hasToken: false)
   private var draftTaskQueueStateCache: [UUID: DraftTaskQueueState] = [:]
+  /// Coalesces preflight refresh requests by draft. A metadata request keeps
+  /// the pending list notification bit set even when a later body-only request
+  /// cancels and replaces its delayed task; the eventual calculation therefore
+  /// cannot downgrade a metadata invalidation to a body-only one.
+  var pendingPreflightDraftListNotifications = Set<UUID>()
   private var knownArticleTitlesCacheRevision: UInt64?
   private var knownArticleTitlesCache = Set<String>()
   private var childStoreCancellables = Set<AnyCancellable>()
@@ -130,6 +139,10 @@ public final class WorkbenchStore: ObservableObject {
   }
   public var activeProfileID: UUID { publishingStore.activeProfileID }
   public var drafts: [ArticleDraft] { publishingStore.drafts }
+  /// Compatibility accessors for callers that still read the old root
+  /// revision names.  Storage and observation now live in `draftList`.
+  public var draftTaskQueueStateVersion: Int { draftList.taskQueueStateVersion }
+  public var draftListPresentationRevision: UInt64 { draftList.presentationRevision }
   /// Titles used by markdown diagnostics. The set is rebuilt only after the
   /// draft collection mutates; body text staged in the editor does not touch it.
   public var knownArticleTitlesForMarkdownDiagnostics: Set<String> {
@@ -156,6 +169,21 @@ public final class WorkbenchStore: ObservableObject {
     repositoryStore.repositoryReport(for: activeProfile, store: self)
   }
   public var imageWorkbenchReport: ImageWorkbenchReport? { publishingStore.imageWorkbenchReport }
+
+  private static func normalizedLegacyCodexConfig(
+    _ config: AIProviderConfig
+  ) -> AIProviderConfig? {
+    guard
+      config.preset == .custom,
+      config.baseURL == AIProviderPreset.codexAppServer.defaultBaseURL,
+      !config.requiresAPIKey
+    else {
+      return nil
+    }
+    var normalized = config
+    normalized.preset = .codexAppServer
+    return normalized
+  }
 
   public init(
     persistence: WorkbenchPersistence = WorkbenchPersistence(),
@@ -285,6 +313,49 @@ public final class WorkbenchStore: ObservableObject {
       : restoredProfiles + [SiteProfile.defaultProfile]
     var initialAIConnectionProfiles = snapshot?.aiConnectionProfiles ?? []
     var didMigrateAIConnectionProfiles = false
+    var normalizedConnectionProfileIDs = Set<UUID>()
+    for index in initialAIConnectionProfiles.indices {
+      guard
+        let normalizedConfig = Self.normalizedLegacyCodexConfig(
+          initialAIConnectionProfiles[index].config
+        )
+      else {
+        continue
+      }
+      initialAIConnectionProfiles[index].config = normalizedConfig
+      normalizedConnectionProfileIDs.insert(initialAIConnectionProfiles[index].id)
+      didMigrateAIConnectionProfiles = true
+    }
+    var normalizedInlineProfileIDs = Set<UUID>()
+    for index in initialProfiles.indices {
+      guard
+        let normalizedConfig = Self.normalizedLegacyCodexConfig(
+          initialProfiles[index].aiProviderConfig
+        )
+      else {
+        continue
+      }
+      initialProfiles[index].aiProviderConfig = normalizedConfig
+      normalizedInlineProfileIDs.insert(initialProfiles[index].id)
+      didMigrateAIConnectionProfiles = true
+    }
+    // A selected reusable connection is the source of truth. Keep its legacy
+    // inline compatibility field in lockstep when either side was repaired so
+    // older exports cannot reintroduce the malformed Codex shape.
+    for index in initialProfiles.indices {
+      guard
+        let selectedID = initialProfiles[index].aiConnectionProfileID,
+        let connection = initialAIConnectionProfiles.first(where: { $0.id == selectedID }),
+        normalizedConnectionProfileIDs.contains(selectedID)
+          || normalizedInlineProfileIDs.contains(initialProfiles[index].id)
+      else {
+        continue
+      }
+      if initialProfiles[index].aiProviderConfig != connection.config {
+        initialProfiles[index].aiProviderConfig = connection.config
+        didMigrateAIConnectionProfiles = true
+      }
+    }
     for index in initialProfiles.indices {
       let siteProfile = initialProfiles[index]
       if let selectedID = siteProfile.aiConnectionProfileID,
@@ -484,6 +555,9 @@ public final class WorkbenchStore: ObservableObject {
       siteMaintenanceService: siteMaintenanceService,
       imageWorkbenchService: imageWorkbenchService
     )
+    // Install the stable child observation boundary before any startup
+    // services can mutate drafts or repository/privacy projections.
+    _ = draftList
     repositoryStore.setActiveProfile(
       initialActiveProfileID,
       validProfileIDs: Set(initialProfiles.map(\.id))
@@ -555,13 +629,6 @@ public final class WorkbenchStore: ObservableObject {
       .store(in: &childStoreCancellables)
     privacyProtectionStore.objectWillChange
       .sink { [weak self] _ in self?.objectWillChange.send() }
-      .store(in: &childStoreCancellables)
-    privacyProtectionStore.$isQuickHideActive
-      .removeDuplicates()
-      .dropFirst()
-      .sink { [weak self] _ in
-        self?.draftListPresentationRevision &+= 1
-      }
       .store(in: &childStoreCancellables)
     persistenceStore.objectWillChange
       .sink { [weak self] _ in self?.objectWillChange.send() }
@@ -759,12 +826,14 @@ public final class WorkbenchStore: ObservableObject {
     }
   }
 
-  func invalidateDraftDerivedCaches() {
+  func invalidateDraftDerivedCaches(notifyingDraftList: Bool = true) {
     publishingStore.removeAllDraftPublishPreviewSnapshots()
     invalidateContentHealthSnapshot()
     invalidateSiteMaintenanceSnapshot()
-    invalidateDraftTaskQueueStateCache()
-    draftListPresentationRevision &+= 1
+    draftTaskQueueStateCache.removeAll()
+    if notifyingDraftList {
+      draftList.invalidatePresentationAndTaskQueueState()
+    }
     imageWorkbenchInputRevision &+= 1
   }
 
@@ -781,8 +850,6 @@ public final class WorkbenchStore: ObservableObject {
     )
     invalidateContentHealthSnapshot()
     draftTaskQueueStateCache.removeValue(forKey: draftID)
-    draftTaskQueueStateVersion += 1
-    draftListPresentationRevision &+= 1
     if imageInputsDidChange {
       imageWorkbenchInputRevision &+= 1
     }
@@ -794,7 +861,7 @@ public final class WorkbenchStore: ObservableObject {
 
   func invalidateDraftTaskQueueStateCache() {
     draftTaskQueueStateCache.removeAll()
-    draftTaskQueueStateVersion += 1
+    draftList.invalidateTaskQueueState()
   }
 
   func imageWorkbenchBackgroundStateDidChange() {
@@ -822,7 +889,12 @@ public final class WorkbenchStore: ObservableObject {
       "\(repositoryReport?.changedFiles.count ?? 0)",
       "\(repositoryReport?.remoteChangedFiles.count ?? 0)",
     ].joined(separator: "|")
+    // Callers may deliberately retain list-rendered snapshots while body
+    // autosave keeps the list boundary silent. Treat the argument as an
+    // identity selection and always evaluate current store values so a later
+    // user-triggered "check failed" filter cannot inspect stale Markdown.
     let draftIDs = Set(drafts.map(\.id))
+    let currentDrafts = self.drafts.filter { draftIDs.contains($0.id) }
     let preflightDrafts = self.drafts.filter { $0.belongs(toSiteProfileID: activeProfileID) }
     let preflightDuplicateIndex = PreflightDuplicateIndex(
       drafts: preflightDrafts,
@@ -831,7 +903,7 @@ public final class WorkbenchStore: ObservableObject {
     draftTaskQueueStateCache = draftTaskQueueStateCache.filter { draftIDs.contains($0.key) }
 
     return Dictionary(
-      uniqueKeysWithValues: drafts.map { draft in
+      uniqueKeysWithValues: currentDrafts.map { draft in
         let imageIssueCount = imageIssueCounts[draft.id] ?? 0
         let signature = DraftTaskQueueState.Signature(
           draft: draft,

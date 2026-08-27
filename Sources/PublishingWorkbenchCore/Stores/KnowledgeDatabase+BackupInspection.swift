@@ -4,7 +4,7 @@ import SQLite3
 extension KnowledgeDatabase {
   func backupInspectionUnlocked(
     validateIntegrity: Bool
-  ) throws -> KnowledgeDatabaseBackupInspection {
+  ) throws -> KnowledgePersistenceInspection {
     if validateIntegrity {
       try withCachedStatementUnlocked("PRAGMA quick_check;") { quickCheck in
         guard sqlite3_step(quickCheck) == SQLITE_ROW,
@@ -58,7 +58,7 @@ extension KnowledgeDatabase {
       try checkStatementCompletion(titleStatement)
     }
 
-    return KnowledgeDatabaseBackupInspection(
+    return KnowledgePersistenceInspection(
       userVersion: try scalarIntUnlocked("PRAGMA user_version;"),
       documentCount: try scalarIntUnlocked("SELECT COUNT(*) FROM knowledge_documents;"),
       folderCount: try scalarIntUnlocked("SELECT COUNT(*) FROM knowledge_folders;"),

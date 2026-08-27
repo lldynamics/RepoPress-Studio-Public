@@ -1,155 +1,304 @@
+import CryptoKit
 import Foundation
 
+/// Coordinates page download, DOM extraction, quality validation, and the
+/// durable full-text record written by `RSSReaderStore`.
 public struct RSSArticleFullTextService: Sendable {
-  private let downloadClient: KnowledgeWebDownloadClient
-  private let sanitizer: KnowledgeWebContentSanitizer
+  public static let retryDelay: TimeInterval = 30 * 60
+  public static let maximumRetryDelay: TimeInterval = 24 * 60 * 60
+
+  private let pageClient: RSSArticlePageClient
+  private let extractor: RSSArticleDOMExtractionService
 
   public init() {
-    self.downloadClient = KnowledgeWebDownloadClient()
-    self.sanitizer = KnowledgeWebContentSanitizer()
+    self.pageClient = RSSArticlePageClient()
+    self.extractor = RSSArticleDOMExtractionService()
   }
 
-  init(
-    downloadClient: KnowledgeWebDownloadClient,
-    sanitizer: KnowledgeWebContentSanitizer
+  public init(
+    pageClient: RSSArticlePageClient,
+    extractor: RSSArticleDOMExtractionService = RSSArticleDOMExtractionService()
   ) {
-    self.downloadClient = downloadClient
-    self.sanitizer = sanitizer
+    self.pageClient = pageClient
+    self.extractor = extractor
   }
 
-  /// Determines whether the article appears to be a truncated snippet or summary
-  /// that would benefit from full-text extraction from the original website.
+  /// Detects the signals feeds commonly use when their payload is only a
+  /// teaser. A short article is not automatically considered incomplete.
   public func isTruncatedCandidate(_ article: RSSArticle) -> Bool {
     guard let link = article.link,
           let scheme = link.scheme?.lowercased(),
           scheme == "http" || scheme == "https" else {
       return false
     }
+
+    let contentHTML = article.contentHTML.trimmingCharacters(in: .whitespacesAndNewlines)
+    let summaryHTML = article.summaryHTML.trimmingCharacters(in: .whitespacesAndNewlines)
     let readable = article.readableText.trimmingCharacters(in: .whitespacesAndNewlines)
-    // If the text is very short (under 500 characters), or content is empty and only summary exists
-    if readable.count < 500 {
+
+    if contentHTML.isEmpty {
       return true
     }
-    let content = article.contentHTML.trimmingCharacters(in: .whitespacesAndNewlines)
-    let summary = article.summaryHTML.trimmingCharacters(in: .whitespacesAndNewlines)
-    if content.isEmpty && !summary.isEmpty {
+    if contentHTML == summaryHTML, !summaryHTML.isEmpty, readable.count < 1_200 {
       return true
     }
-    // If content is just a copy of summary and relatively brief
-    if content == summary && readable.count < 900 {
+    if Self.hasTruncationMarker(in: readable) {
       return true
     }
     return false
   }
 
-  /// Downloads the original webpage for the given article and sanitizes its content
-  /// into clean, structured HTML suitable for reading inside the application.
-  public func fetchFullText(for article: RSSArticle) async throws -> RSSArticle {
+  /// Fetches and validates an independent cache record. A quality rejection is
+  /// returned as data so it can be persisted and does not trigger a fetch loop.
+  public func fetchFullTextRecord(
+    for article: RSSArticle,
+    cachedRecord: RSSArticleFullTextRecord? = nil,
+    allowsPrivateNetworkAccess: Bool = false,
+    attemptedAt: Date = Date(),
+    forceRefresh: Bool = false
+  ) async throws -> RSSArticleFullTextRecord {
     guard let url = article.link,
           let scheme = url.scheme?.lowercased(),
           scheme == "http" || scheme == "https" else {
       throw RSSReaderError.persistence("该文章没有有效的原文网页链接。")
     }
 
-    let request = URLRequest(url: url)
-    let download = try await downloadClient.download(
-      request: request,
-      maximumByteCount: 4 * 1024 * 1024
+    // Validators and cached bodies are reusable only for the exact source URL
+    // and the current extraction algorithm. This prevents a changed article
+    // link from receiving another origin's ETag and lets extractor upgrades
+    // re-process an otherwise unchanged page.
+    let reusableCachedRecord: RSSArticleFullTextRecord? = {
+      guard !forceRefresh,
+            let cachedRecord,
+            cachedRecord.articleID == article.id,
+            cachedRecord.sourceURL?.absoluteString == url.absoluteString,
+            cachedRecord.extractorIdentifier == RSSArticleDOMExtractionService.extractorIdentifier,
+            cachedRecord.extractorVersion == RSSArticleDOMExtractionService.extractorVersion else {
+        return nil
+      }
+      return cachedRecord
+    }()
+
+    let download = try await pageClient.download(
+      url: url,
+      allowsPrivateNetworkAccess: allowsPrivateNetworkAccess,
+      etag: reusableCachedRecord?.sourceETag,
+      lastModified: reusableCachedRecord?.sourceLastModified
     )
 
-    let sanitized = try sanitizer.sanitize(
+    if download.notModified {
+      guard let cachedRecord = reusableCachedRecord else {
+        throw RSSReaderError.persistence("原文未变更，但本地没有可用的全文缓存。")
+      }
+      switch cachedRecord.status {
+      case .ready:
+        guard !cachedRecord.contentHTML.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+          throw RSSReaderError.persistence("原文未变更，但本地全文缓存为空。")
+        }
+        return .ready(
+          articleID: article.id,
+          contentHTML: cachedRecord.contentHTML,
+          plainText: cachedRecord.plainText,
+          sourceURL: download.sourceURL,
+          resolvedURL: download.resolvedURL,
+          extractorIdentifier: cachedRecord.extractorIdentifier,
+          extractorVersion: cachedRecord.extractorVersion,
+          sourceETag: download.etag,
+          sourceLastModified: download.lastModified,
+          sourceContentHash: cachedRecord.sourceContentHash,
+          confidence: cachedRecord.confidence,
+          attemptedAt: attemptedAt
+        )
+      case .rejected:
+        return .rejected(
+          articleID: article.id,
+          sourceURL: download.sourceURL,
+          resolvedURL: download.resolvedURL,
+          extractorIdentifier: cachedRecord.extractorIdentifier,
+          extractorVersion: cachedRecord.extractorVersion,
+          sourceETag: download.etag,
+          sourceLastModified: download.lastModified,
+          sourceContentHash: cachedRecord.sourceContentHash,
+          confidence: cachedRecord.confidence,
+          attemptedAt: attemptedAt,
+          retryAfter: attemptedAt.addingTimeInterval(Self.retryDelay(after: cachedRecord)),
+          failureMessage: cachedRecord.failureMessage,
+          contentHTML: cachedRecord.contentHTML,
+          plainText: cachedRecord.plainText
+        )
+      case .failed:
+        return .failed(
+          articleID: article.id,
+          sourceURL: download.sourceURL,
+          resolvedURL: download.resolvedURL,
+          extractorIdentifier: cachedRecord.extractorIdentifier,
+          extractorVersion: cachedRecord.extractorVersion,
+          sourceETag: download.etag,
+          sourceLastModified: download.lastModified,
+          sourceContentHash: cachedRecord.sourceContentHash,
+          confidence: cachedRecord.confidence,
+          attemptedAt: attemptedAt,
+          retryAfter: attemptedAt.addingTimeInterval(Self.retryDelay(after: cachedRecord)),
+          failureMessage: cachedRecord.failureMessage
+        )
+      }
+    }
+
+    let extraction = try extractor.extract(
       data: download.data,
-      sourceName: article.title
+      sourceURL: download.resolvedURL,
+      expectedTitle: article.title,
+      textEncodingName: download.textEncodingName
     )
+    let rejectionReason = qualityRejectionReason(extraction, comparedWith: article)
+    let hash = Self.sha256(download.data)
 
-    guard !sanitized.sections.isEmpty else {
-      throw RSSReaderError.persistence("未能从原文网页中提取到可读的正文内容。")
+    if let rejectionReason {
+      return .rejected(
+        articleID: article.id,
+        sourceURL: download.sourceURL,
+        resolvedURL: download.resolvedURL,
+        extractorIdentifier: extraction.extractorIdentifier,
+        extractorVersion: extraction.extractorVersion,
+        sourceETag: download.etag,
+        sourceLastModified: download.lastModified,
+        sourceContentHash: hash,
+        confidence: extraction.confidence,
+        attemptedAt: attemptedAt,
+        retryAfter: attemptedAt.addingTimeInterval(Self.retryDelay(after: reusableCachedRecord)),
+        failureMessage: rejectionReason,
+        contentHTML: extraction.contentHTML,
+        plainText: extraction.plainText
+      )
     }
 
-    let fullTextHTML = renderSectionsToHTML(sanitized.sections)
-    guard !fullTextHTML.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-      throw RSSReaderError.persistence("提取的正文内容为空。")
-    }
+    return .ready(
+      articleID: article.id,
+      contentHTML: extraction.contentHTML,
+      plainText: extraction.plainText,
+      sourceURL: download.sourceURL,
+      resolvedURL: download.resolvedURL,
+      extractorIdentifier: extraction.extractorIdentifier,
+      extractorVersion: extraction.extractorVersion,
+      sourceETag: download.etag,
+      sourceLastModified: download.lastModified,
+      sourceContentHash: hash,
+      confidence: extraction.confidence,
+      attemptedAt: attemptedAt
+    )
+  }
 
+  /// Compatibility entry point for callers that need a renderable article.
+  /// Persistence should use `fetchFullTextRecord` so the feed payload remains
+  /// independent from the extracted page.
+  public func fetchFullText(
+    for article: RSSArticle,
+    allowsPrivateNetworkAccess: Bool = false
+  ) async throws -> RSSArticle {
+    let record = try await fetchFullTextRecord(
+      for: article,
+      allowsPrivateNetworkAccess: allowsPrivateNetworkAccess
+    )
+    guard record.status == .ready else {
+      throw RSSReaderError.persistence(
+        record.failureMessage ?? "提取结果未通过正文质量校验。"
+      )
+    }
+    return articleByApplying(record, to: article)
+  }
+
+  public func articleByApplying(
+    _ record: RSSArticleFullTextRecord,
+    to article: RSSArticle
+  ) -> RSSArticle {
+    guard record.status == .ready else { return article }
     var updated = article
-    // Preserve original brief summary if not already set
-    if updated.summaryHTML.isEmpty && !updated.contentHTML.isEmpty {
-      updated.summaryHTML = updated.contentHTML
-    }
-    updated.contentHTML = fullTextHTML
-    updated.webPageSnapshotHTML = fullTextHTML
-    if let title = sanitized.title?.nilIfEmpty, updated.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-      updated.title = title
-    }
+    updated.contentHTML = record.contentHTML
     return updated
   }
 
-  private func renderSectionsToHTML(_ sections: [KnowledgeExtractedSection]) -> String {
-    var htmlBlocks: [String] = []
-    for section in sections {
-      if let heading = section.headingPath?.components(separatedBy: " › ").last?.trimmedForPublishing.nilIfEmpty {
-        let tag = (section.headingPath?.contains(" › ") == true) ? "h3" : "h2"
-        htmlBlocks.append("<\(tag)>\(escapeHTML(heading))</\(tag)>")
+  public func failureRecord(
+    for article: RSSArticle,
+    cachedRecord: RSSArticleFullTextRecord? = nil,
+    error: Error,
+    attemptedAt: Date = Date()
+  ) -> RSSArticleFullTextRecord {
+    let reusableCachedRecord: RSSArticleFullTextRecord? = {
+      guard let cachedRecord,
+            cachedRecord.articleID == article.id,
+            cachedRecord.sourceURL?.absoluteString == article.link?.absoluteString else {
+        return nil
       }
-      let paragraphs = section.text.components(separatedBy: "\n\n")
-      for paragraph in paragraphs {
-        let trimmed = paragraph.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { continue }
-        if trimmed.hasPrefix("```") {
-          let lines = trimmed.components(separatedBy: "\n")
-          let firstLine = lines.first ?? ""
-          let lang = firstLine.replacingOccurrences(of: "```", with: "").trimmingCharacters(in: .whitespacesAndNewlines)
-          let codeLines = (lines.count > 1) ? lines.dropFirst().dropLast(trimmed.hasSuffix("```") && lines.count > 2 ? 1 : 0) : []
-          let codeContent = codeLines.joined(separator: "\n")
-          let langClass = lang.isEmpty ? "" : " class=\"language-\(escapeHTML(lang))\""
-          htmlBlocks.append("<pre><code\(langClass)>\(escapeHTML(codeContent))</code></pre>")
-        } else if trimmed.hasPrefix("> ") {
-          let quoteContent = trimmed.components(separatedBy: "\n").map { line in
-            line.hasPrefix("> ") ? String(line.dropFirst(2)) : line
-          }.joined(separator: "<br>")
-          htmlBlocks.append("<blockquote><p>\(escapeHTML(quoteContent))</p></blockquote>")
-        } else if trimmed.hasPrefix("- ") || trimmed.hasPrefix("* ") {
-          let items = trimmed.components(separatedBy: "\n").compactMap { line -> String? in
-            let lineTrimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard lineTrimmed.hasPrefix("- ") || lineTrimmed.hasPrefix("* ") else { return nil }
-            let text = String(lineTrimmed.dropFirst(2))
-            return "<li>\(escapeHTML(text))</li>"
-          }.joined()
-          if !items.isEmpty {
-            htmlBlocks.append("<ul>\(items)</ul>")
-          }
-        } else if trimmed.hasPrefix("![") && trimmed.contains("](") {
-          if let (alt, src) = parseMarkdownImage(trimmed) {
-            htmlBlocks.append("<figure><img src=\"\(escapeHTML(src))\" alt=\"\(escapeHTML(alt))\"></figure>")
-          } else {
-            htmlBlocks.append("<p>\(escapeHTML(trimmed))</p>")
-          }
-        } else {
-          htmlBlocks.append("<p>\(escapeHTML(trimmed))</p>")
-        }
-      }
-    }
-    return htmlBlocks.joined(separator: "\n")
+      return cachedRecord
+    }()
+    return .failed(
+      articleID: article.id,
+      sourceURL: article.link,
+      resolvedURL: reusableCachedRecord?.resolvedURL,
+      extractorIdentifier: reusableCachedRecord?.extractorIdentifier
+        ?? RSSArticleDOMExtractionService.extractorIdentifier,
+      extractorVersion: reusableCachedRecord?.extractorVersion
+        ?? RSSArticleDOMExtractionService.extractorVersion,
+      sourceETag: reusableCachedRecord?.sourceETag,
+      sourceLastModified: reusableCachedRecord?.sourceLastModified,
+      sourceContentHash: reusableCachedRecord?.sourceContentHash,
+      confidence: reusableCachedRecord?.confidence ?? 0,
+      attemptedAt: attemptedAt,
+      retryAfter: attemptedAt.addingTimeInterval(Self.retryDelay(after: reusableCachedRecord)),
+      failureMessage: error.localizedDescription
+    )
   }
 
-  private func parseMarkdownImage(_ text: String) -> (alt: String, src: String)? {
-    guard text.hasPrefix("!["),
-          let closeBracket = text.firstIndex(of: "]"),
-          let openParen = text[closeBracket...].firstIndex(of: "("),
-          let closeParen = text[openParen...].firstIndex(of: ")") else {
-      return nil
+  private func qualityRejectionReason(
+    _ extraction: RSSArticleDOMExtractionResult,
+    comparedWith article: RSSArticle
+  ) -> String? {
+    let extracted = extraction.plainText.trimmingCharacters(in: .whitespacesAndNewlines)
+    let feedText = article.readableText.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !extracted.isEmpty else { return "原文网页没有可读正文。" }
+
+    // Confidence incorporates semantic containers, prose structure, link
+    // density, shell hints, and title similarity. A semantic short post can
+    // therefore pass without an arbitrary minimum article length.
+    if extraction.confidence < 0.28 {
+      return "页面结构置信度过低，已保留 Feed 原文。"
     }
-    let alt = String(text[text.index(text.startIndex, offsetBy: 2)..<closeBracket])
-    let src = String(text[text.index(after: openParen)..<closeParen])
-    return (alt, src)
+
+    if !feedText.isEmpty {
+      let minimumUsefulCount = max(12, Int(Double(feedText.count) * 0.85))
+      if extracted.count < minimumUsefulCount {
+        return "提取结果比 Feed 已有内容明显更短，已拒绝替换。"
+      }
+    }
+    return nil
   }
 
-  private func escapeHTML(_ text: String) -> String {
-    text
-      .replacingOccurrences(of: "&", with: "&amp;")
-      .replacingOccurrences(of: "<", with: "&lt;")
-      .replacingOccurrences(of: ">", with: "&gt;")
-      .replacingOccurrences(of: "\"", with: "&quot;")
-      .replacingOccurrences(of: "'", with: "&#39;")
+  private static func hasTruncationMarker(in text: String) -> Bool {
+    let normalized = text
+      .trimmingCharacters(in: .whitespacesAndNewlines)
+      .lowercased()
+    guard !normalized.isEmpty else { return false }
+    let suffix = String(normalized.suffix(160))
+    let phrases = [
+      "阅读全文", "继续阅读", "查看全文", "点击阅读", "read more",
+      "continue reading", "view full post",
+    ]
+    return phrases.contains { suffix.contains($0) }
+      || suffix.hasSuffix("…")
+      || suffix.hasSuffix("...")
+  }
+
+  private static func sha256(_ data: Data) -> String {
+    SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+  }
+
+  private static func retryDelay(after cachedRecord: RSSArticleFullTextRecord?) -> TimeInterval {
+    guard let cachedRecord,
+          let previousRetryAfter = cachedRecord.retryAfter else {
+      return retryDelay
+    }
+    let previousDelay = previousRetryAfter.timeIntervalSince(cachedRecord.attemptedAt)
+    guard previousDelay > 0 else { return retryDelay }
+    return min(maximumRetryDelay, max(retryDelay, previousDelay * 2))
   }
 }

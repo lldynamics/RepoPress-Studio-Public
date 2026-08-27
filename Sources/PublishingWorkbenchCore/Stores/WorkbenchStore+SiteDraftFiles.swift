@@ -271,6 +271,7 @@ extension WorkbenchStore {
           repositoryPath: result.repositoryPath,
           savedAt: Date()
         )
+        scheduleDueOperationalRefresh()
       } catch {
         if case LocalPublishPreviewError.missingRepositoryRoot = error {
           // The app-level recovery copy remains available until the user
@@ -364,6 +365,7 @@ extension WorkbenchStore {
       )
       setPublishActionMessage(CoreL10n.text("已将草稿加入项目并写入文件。"), status: .success)
       save()
+      scheduleDueOperationalRefresh()
       return true
     } catch {
       siteDraftFileWritesInProgress.remove(draftID)
@@ -445,6 +447,7 @@ extension WorkbenchStore {
       savedAt: Date()
     )
     scheduleAutosave()
+    scheduleDueOperationalRefresh()
   }
 
   private func failSiteDraftFileWrite(
@@ -482,7 +485,8 @@ extension WorkbenchStore {
     guard publishingStore.drafts[index].belongs(toSiteProfileID: profile.id) else {
       return
     }
-    var updatedDraft = publishingStore.drafts[index]
+    let previousDraft = publishingStore.drafts[index]
+    var updatedDraft = previousDraft
     updatedDraft.recordProjectFile(
       profile: profile,
       repositoryPath: repositoryPath,
@@ -492,6 +496,7 @@ extension WorkbenchStore {
     // Editor writes preserve the current repository state separately, so
     // changing `updatedAt` here would only invalidate the digest we just wrote
     // and force another full rewrite on the next launch.
+    updatedDraft.markUpdated(at: previousDraft.updatedAt, replacing: previousDraft)
     publishingStore.drafts[index] = updatedDraft
     scheduleAutosave()
   }

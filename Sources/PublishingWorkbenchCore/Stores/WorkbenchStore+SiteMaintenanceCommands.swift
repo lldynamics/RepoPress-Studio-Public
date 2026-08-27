@@ -101,7 +101,11 @@ extension WorkbenchStore {
       report: report,
       store: self
     )
-    invalidateSiteMaintenanceSnapshot()
+    if appliedCount > 0 {
+      invalidateDraftDerivedCaches()
+    } else {
+      invalidateSiteMaintenanceSnapshot()
+    }
     return appliedCount
   }
 

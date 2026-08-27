@@ -134,6 +134,7 @@ let package = Package(
       dependencies: [
         "BrowserExtensionProtocolSupport",
         "PublishingGitCore",
+        "PublishingMarkdownCore",
         "PublishingWorkbenchCore",
         .product(name: "Sparkle", package: "Sparkle"),
       ],
@@ -183,6 +184,7 @@ let package = Package(
       name: "PublishingAICoreTests",
       dependencies: [
         "PublishingAICore",
+        "PublishingCoreSupport",
       ],
       swiftSettings: [
         .swiftLanguageMode(.v6)

@@ -94,6 +94,7 @@ public struct GitCommandRunner: Sendable {
   /// Total stdout + stderr retained for diagnostics. Streams are still drained
   /// after this cap so a noisy child process cannot block on full pipes.
   public var maximumOutputBytes: Int
+  private let testingBeforeProcessRun: (@Sendable () -> Void)?
 
   public init(
     executableURL: URL = URL(fileURLWithPath: "/usr/bin/git"),
@@ -103,6 +104,19 @@ public struct GitCommandRunner: Sendable {
     self.executableURL = executableURL
     self.timeout = timeout
     self.maximumOutputBytes = max(0, maximumOutputBytes)
+    testingBeforeProcessRun = nil
+  }
+
+  init(
+    executableURL: URL,
+    timeout: TimeInterval = 15,
+    maximumOutputBytes: Int = 1_048_576,
+    testingBeforeProcessRun: @escaping @Sendable () -> Void
+  ) {
+    self.executableURL = executableURL
+    self.timeout = timeout
+    self.maximumOutputBytes = max(0, maximumOutputBytes)
+    self.testingBeforeProcessRun = testingBeforeProcessRun
   }
 
   /// Returns a copyable Git command description with URLs, user info, token
@@ -261,6 +275,7 @@ public struct GitCommandRunner: Sendable {
       maximumOutputBytes: maximumOutputBytes,
       arguments: arguments,
       rootURL: rootURL,
+      beforeProcessRun: testingBeforeProcessRun,
       inputData: standardInputData(
         lines: inputLines,
         delimiter: inputDelimiter
@@ -639,7 +654,10 @@ private final class GitCommandAsyncOperation: @unchecked Sendable {
   private let arguments: [String]
   private let rootURL: URL
   private let inputData: Data?
-  private let lock = NSLock()
+  private let lifecycleQueue = DispatchQueue(
+    label: "com.jinfang.publishing-git-core.command-operation"
+  )
+  private let beforeProcessRun: (@Sendable () -> Void)?
   private let outputCollector: BoundedOutputCollector
   private let drainCoordinator = GitPipeDrainCoordinator()
   private var process: Process?
@@ -657,6 +675,7 @@ private final class GitCommandAsyncOperation: @unchecked Sendable {
     maximumOutputBytes: Int,
     arguments: [String],
     rootURL: URL,
+    beforeProcessRun: (@Sendable () -> Void)?,
     inputData: Data?
   ) {
     self.executableURL = executableURL
@@ -664,30 +683,32 @@ private final class GitCommandAsyncOperation: @unchecked Sendable {
     self.maximumOutputBytes = maximumOutputBytes
     self.arguments = arguments
     self.rootURL = rootURL
+    self.beforeProcessRun = beforeProcessRun
     self.inputData = inputData
     outputCollector = BoundedOutputCollector(limit: maximumOutputBytes)
   }
 
   func run() async -> GitCommandResult {
     await withCheckedContinuation { continuation in
-      start(continuation)
+      lifecycleQueue.async { [self] in
+        start(continuation)
+      }
     }
   }
 
   func cancel() {
-    lock.lock()
-    wasCancelled = true
-    let process = self.process
-    lock.unlock()
-    terminate(process)
+    lifecycleQueue.async { [self] in
+      guard !didFinish else { return }
+      wasCancelled = true
+      if let process {
+        terminate(process)
+      }
+    }
   }
 
   private func start(_ continuation: CheckedContinuation<GitCommandResult, Never>) {
-    lock.lock()
     self.continuation = continuation
-    let shouldCancel = wasCancelled
-    lock.unlock()
-    if shouldCancel {
+    if wasCancelled {
       finish(terminationStatus: 130)
       return
     }
@@ -709,17 +730,20 @@ private final class GitCommandAsyncOperation: @unchecked Sendable {
       process.standardInput = inputPipe
     }
     process.terminationHandler = { [weak self] process in
-      self?.finish(terminationStatus: process.terminationStatus)
+      self?.lifecycleQueue.async { [weak self] in
+        self?.finish(terminationStatus: process.terminationStatus)
+      }
     }
 
-    lock.lock()
     self.process = process
     self.outputPipe = outputPipe
     self.errorPipe = errorPipe
-    let cancelAfterSetup = wasCancelled
-    lock.unlock()
 
     do {
+      // This hook is only used by tests to hold the operation immediately
+      // before launch. The lifecycle queue remains occupied, so cancellation
+      // is ordered after process.run() and cannot reopen the startup gap.
+      beforeProcessRun?()
       try process.run()
       outputPipe.fileHandleForWriting.closeFile()
       errorPipe.fileHandleForWriting.closeFile()
@@ -732,40 +756,31 @@ private final class GitCommandAsyncOperation: @unchecked Sendable {
       return
     }
 
-    if cancelAfterSetup {
+    if wasCancelled {
       terminate(process)
-      return
     }
 
     let timeoutTask = Task.detached { [weak self] in
       let nanoseconds = UInt64(max(0, self?.timeout ?? 0) * 1_000_000_000)
       try? await Task.sleep(nanoseconds: nanoseconds)
+      guard !Task.isCancelled else { return }
       self?.timeOut()
     }
-    lock.lock()
-    if didFinish {
-      lock.unlock()
-      timeoutTask.cancel()
-    } else {
-      self.timeoutTask = timeoutTask
-      lock.unlock()
-    }
+    self.timeoutTask = timeoutTask
   }
 
   private func timeOut() {
-    lock.lock()
-    guard !didFinish else {
-      lock.unlock()
-      return
+    lifecycleQueue.async { [self] in
+      guard !didFinish else { return }
+      didTimeOut = true
+      if let process {
+        terminate(process)
+      }
     }
-    didTimeOut = true
-    let process = self.process
-    lock.unlock()
-    terminate(process)
   }
 
-  private func terminate(_ process: Process?) {
-    guard let process, process.isRunning else { return }
+  private func terminate(_ process: Process) {
+    guard process.isRunning else { return }
     process.terminate()
     Task.detached {
       try? await Task.sleep(nanoseconds: 1_000_000_000)
@@ -777,9 +792,7 @@ private final class GitCommandAsyncOperation: @unchecked Sendable {
   }
 
   private func finish(terminationStatus: Int32, launchError: String? = nil) {
-    lock.lock()
     guard !didFinish else {
-      lock.unlock()
       return
     }
     didFinish = true
@@ -787,14 +800,16 @@ private final class GitCommandAsyncOperation: @unchecked Sendable {
     timeoutTask = nil
     let continuation = self.continuation
     self.continuation = nil
+    let process = self.process
+    self.process = nil
     let outputPipe = self.outputPipe
     let errorPipe = self.errorPipe
     self.outputPipe = nil
     self.errorPipe = nil
     let timedOut = didTimeOut
     let cancelled = wasCancelled
-    lock.unlock()
 
+    process?.terminationHandler = nil
     outputPipe?.fileHandleForReading.readabilityHandler = nil
     errorPipe?.fileHandleForReading.readabilityHandler = nil
     drainCoordinator.stopAndWait()

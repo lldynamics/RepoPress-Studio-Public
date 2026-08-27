@@ -124,6 +124,48 @@ final class ContentHealthSummaryTests: XCTestCase {
     XCTAssertEqual(report.publicRiskSummary, PublicRiskSummary(issues: report.draftSummaries.flatMap(\.issues)))
   }
 
+  func testContentHealthAsyncProjectsInternalExternalAndSlugLinkIssues() async throws {
+    var profile = SiteProfile.defaultProfile
+    profile.markdownPathPattern = "content/posts/{slug}.md"
+    let target = ArticleDraft(
+      siteProfileID: profile.id,
+      title: "Renamed target",
+      slug: "new-target",
+      pendingSlugRedirectPaths: ["/old-target/"]
+    )
+    let source = ArticleDraft(
+      siteProfileID: profile.id,
+      title: "Link source",
+      slug: "link-source",
+      bodyMarkdown: "[old](/old-target/) [missing](/missing/) [gone](https://example.com/gone)"
+    )
+    let service = ContentHealthReportService(
+      linkAuditService: SiteLinkAuditService(
+        externalProbe: SiteExternalLinkProbe { url in
+          SiteExternalLinkProbeResult(url: url, statusCode: 404, finalURL: url)
+        }
+      )
+    )
+
+    let report = try await service.reportAsync(
+      drafts: [source, target],
+      profile: profile,
+      sitePreflightIssues: [],
+      presentations: [:]
+    )
+    let sourceIssues = try XCTUnwrap(
+      report.draftSummaries.first { $0.draftID == source.id }
+    ).issues
+    let targetIssues = try XCTUnwrap(
+      report.draftSummaries.first { $0.draftID == target.id }
+    ).issues
+
+    XCTAssertTrue(sourceIssues.contains { $0.category == .brokenInternalLink })
+    XCTAssertTrue(sourceIssues.contains { $0.category == .unreachableExternalLink })
+    XCTAssertTrue(sourceIssues.contains { $0.category == .slugRedirectCandidate })
+    XCTAssertTrue(targetIssues.contains { $0.category == .slugRedirectCandidate })
+  }
+
   func testContentHealthReportAsyncPropagatesCancellation() async {
     let profile = SiteProfile.defaultProfile
     let drafts = (0..<256).map { index in

@@ -57,6 +57,21 @@ extension WorkbenchStore {
     return insertedCount
   }
 
+  /// Imports only external Markdown paths reported by the repository content
+  /// monitor. Known draft paths are filtered in the publishing store before
+  /// parsing, preserving the full-scan method for explicit/manual discovery.
+  @discardableResult
+  public func importMissingDraftsFromLocalRepository(repositoryPaths: [String]) async -> Int {
+    let insertedCount = await publishingStore.importMissingDraftsFromLocalRepository(
+      repositoryPaths: repositoryPaths,
+      store: self
+    )
+    if insertedCount > 0 {
+      invalidateDraftDerivedCaches()
+    }
+    return insertedCount
+  }
+
   @discardableResult
   public func importMissingPrivateDraftsFromLocalRepository() async -> Int {
     let insertedCount = await publishingStore.importMissingPrivateDraftsFromLocalRepository(store: self)

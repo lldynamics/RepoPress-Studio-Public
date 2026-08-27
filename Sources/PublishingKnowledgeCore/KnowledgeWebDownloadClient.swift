@@ -439,9 +439,12 @@ private final class KnowledgePinnedHTTPSOperation: @unchecked Sendable {
   private let maximumBodyByteCount: Int
   private let maximumWireByteCount: Int
   private let timeout: TimeInterval
+  private let testingBeforeStart: (@Sendable () -> Void)?
   private var wireData = Data()
   private var continuation: CheckedContinuation<KnowledgePinnedHTTPResponse, Error>?
   private var didSendRequest = false
+  private var didFinish = false
+  private var cancellationRequested = false
 
   init(
     url: URL,
@@ -449,7 +452,8 @@ private final class KnowledgePinnedHTTPSOperation: @unchecked Sendable {
     requestData: Data,
     maximumBodyByteCount: Int,
     timeout: TimeInterval,
-    usesTLS: Bool
+    usesTLS: Bool,
+    testingBeforeStart: (@Sendable () -> Void)? = nil
   ) throws {
     let resolvedPort = url.port ?? (usesTLS ? 443 : 80)
     guard let host = url.host,
@@ -493,24 +497,51 @@ private final class KnowledgePinnedHTTPSOperation: @unchecked Sendable {
     }
     self.maximumWireByteCount = wireLimit.partialValue
     self.timeout = min(30, max(1, timeout))
+    self.testingBeforeStart = testingBeforeStart
   }
 
   func execute() async throws -> KnowledgePinnedHTTPResponse {
     try await withTaskCancellationHandler {
-      try await withCheckedThrowingContinuation { continuation in
-        self.continuation = continuation
-        connection.stateUpdateHandler = { [weak self] state in
-          self?.handle(state)
-        }
-        connection.start(queue: queue)
-        queue.asyncAfter(deadline: .now() + timeout) { [weak self] in
-          self?.finish(.failure(URLError(.timedOut)))
+      try Task.checkCancellation()
+      testingBeforeStart?()
+      try Task.checkCancellation()
+      return try await withCheckedThrowingContinuation { continuation in
+        queue.async { [self] in
+          start(continuation)
         }
       }
     } onCancel: {
-      queue.async { [weak self] in
-        self?.finish(.failure(CancellationError()))
+      queue.async { [self] in
+        guard !didFinish else { return }
+        cancellationRequested = true
+        guard continuation != nil else { return }
+        finish(.failure(CancellationError()))
       }
+    }
+  }
+
+  private func start(
+    _ continuation: CheckedContinuation<KnowledgePinnedHTTPResponse, Error>
+  ) {
+    guard !didFinish else {
+      continuation.resume(throwing: CancellationError())
+      return
+    }
+    guard !cancellationRequested else {
+      didFinish = true
+      continuation.resume(throwing: CancellationError())
+      return
+    }
+
+    self.continuation = continuation
+    connection.stateUpdateHandler = { [weak self] state in
+      self?.queue.async { [weak self] in
+        self?.handle(state)
+      }
+    }
+    connection.start(queue: queue)
+    queue.asyncAfter(deadline: .now() + timeout) { [weak self] in
+      self?.finish(.failure(URLError(.timedOut)))
     }
   }
 
@@ -519,15 +550,18 @@ private final class KnowledgePinnedHTTPSOperation: @unchecked Sendable {
     case .ready where !didSendRequest:
       didSendRequest = true
       connection.send(content: requestData, completion: .contentProcessed { [weak self] error in
-        if let error {
-          self?.finish(.failure(error))
-        } else {
-          self?.receive()
+        self?.queue.async { [weak self] in
+          guard let self else { return }
+          if let error {
+            finish(.failure(error))
+          } else {
+            receive()
+          }
         }
       })
     case .failed(let error):
       finish(.failure(error))
-    case .cancelled where continuation != nil:
+    case .cancelled where !didFinish:
       finish(.failure(URLError(.cancelled)))
     default:
       break
@@ -537,40 +571,44 @@ private final class KnowledgePinnedHTTPSOperation: @unchecked Sendable {
   private func receive() {
     connection.receive(minimumIncompleteLength: 1, maximumLength: 64 * 1_024) {
       [weak self] data, _, isComplete, error in
-      guard let self else { return }
-      if let error {
-        finish(.failure(error))
-        return
-      }
-      if let data { wireData.append(data) }
-      guard wireData.count <= maximumWireByteCount else {
-        finish(.failure(KnowledgeWebDownloadError.byteLimitExceeded(maximumBodyByteCount)))
-        return
-      }
-      do {
-        if let response = try KnowledgeHTTP1ResponseParser.response(
-          from: wireData,
-          maximumBodyByteCount: maximumBodyByteCount,
-          connectionIsComplete: isComplete
-        ) {
-          finish(.success(response))
-        } else if isComplete {
-          finish(.failure(KnowledgeWebDownloadError.invalidResponse))
-        } else {
-          receive()
+      self?.queue.async { [weak self] in
+        guard let self else { return }
+        if let error {
+          finish(.failure(error))
+          return
         }
-      } catch {
-        finish(.failure(error))
+        if let data { wireData.append(data) }
+        guard wireData.count <= maximumWireByteCount else {
+          finish(.failure(KnowledgeWebDownloadError.byteLimitExceeded(maximumBodyByteCount)))
+          return
+        }
+        do {
+          if let response = try KnowledgeHTTP1ResponseParser.response(
+            from: wireData,
+            maximumBodyByteCount: maximumBodyByteCount,
+            connectionIsComplete: isComplete
+          ) {
+            finish(.success(response))
+          } else if isComplete {
+            finish(.failure(KnowledgeWebDownloadError.invalidResponse))
+          } else {
+            receive()
+          }
+        } catch {
+          finish(.failure(error))
+        }
       }
     }
   }
 
   private func finish(_ result: Result<KnowledgePinnedHTTPResponse, Error>) {
-    guard let continuation else { return }
+    guard !didFinish else { return }
+    didFinish = true
+    let continuation = self.continuation
     self.continuation = nil
     connection.stateUpdateHandler = nil
     connection.cancel()
-    continuation.resume(with: result)
+    continuation?.resume(with: result)
   }
 }
 
@@ -578,7 +616,8 @@ package enum KnowledgePinnedHTTPSClient {
   package static func fetch(
     request: URLRequest,
     addresses: [KnowledgeResolvedAddress],
-    maximumByteCount: Int
+    maximumByteCount: Int,
+    testingBeforeOperationStart: (@Sendable () -> Void)? = nil
   ) async throws -> KnowledgePinnedHTTPResponse {
     guard let url = request.url,
           let scheme = url.scheme?.lowercased(),
@@ -601,7 +640,8 @@ package enum KnowledgePinnedHTTPSClient {
           requestData: requestData,
           maximumBodyByteCount: maximumByteCount,
           timeout: request.timeoutInterval,
-          usesTLS: scheme == "https"
+          usesTLS: scheme == "https",
+          testingBeforeStart: testingBeforeOperationStart
         ).execute()
       } catch is CancellationError {
         throw CancellationError()

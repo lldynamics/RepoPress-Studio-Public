@@ -188,6 +188,109 @@ public struct GeneralDraftReuseSourceSnapshot: Codable, Hashable, Sendable {
   }
 }
 
+/// The draft fields used by editor metadata projections.  Deliberately
+/// excludes the body, derived word count and the content-write timestamp so an
+/// autosave cannot invalidate those projections.
+public struct ArticleDraftMetadataProjection: Equatable, Hashable, Sendable {
+  public let id: UUID
+  public let siteProfileID: UUID
+  public let scope: ArticleDraftScope
+  public let title: String
+  public let date: Date
+  public let slug: String
+  public let tags: [String]
+  public let categories: [String]
+  public let authors: [String]
+  public let aliases: [String]
+  public let pendingSlugRedirectPaths: [String]
+  public let permalink: String?
+  public let draft: Bool
+  public let visibility: ArticleVisibility
+  public let summary: String
+  public let coverAttachmentID: UUID?
+  public let attachments: [DraftAttachment]
+  public let status: DraftStatus
+  public let createdAt: Date
+  public let repositoryPath: String?
+  public let softwareGuideID: String?
+  public let softwareGuideTemplateVersion: Int?
+
+  fileprivate init(draft: ArticleDraft) {
+    id = draft.id
+    siteProfileID = draft.siteProfileID
+    scope = draft.scope
+    title = draft.title
+    date = draft.date
+    slug = draft.slug
+    tags = draft.tags
+    categories = draft.categories
+    authors = draft.authors
+    aliases = draft.aliases
+    pendingSlugRedirectPaths = draft.pendingSlugRedirectPaths
+    permalink = draft.permalink
+    self.draft = draft.draft
+    visibility = draft.visibility
+    summary = draft.summary
+    coverAttachmentID = draft.coverAttachmentID
+    attachments = draft.attachments
+    status = draft.status
+    createdAt = draft.createdAt
+    repositoryPath = draft.repositoryPath
+    softwareGuideID = draft.softwareGuideID
+    softwareGuideTemplateVersion = draft.softwareGuideTemplateVersion
+  }
+}
+
+/// The editor's observable metadata plus its optimistic-lock token. Keeping
+/// the token in this projection makes a repository/import replacement visible
+/// to an open editor even when the resulting front matter is textually equal.
+public struct ArticleDraftEditorObservationProjection: Equatable, Hashable, Sendable {
+  public let metadata: ArticleDraftMetadataProjection
+  public let revision: UInt64
+
+  fileprivate init(draft: ArticleDraft) {
+    metadata = draft.metadataProjection
+    revision = draft.editorMetadataRevision
+  }
+}
+
+/// The narrow draft projection consumed by the Writing list.
+///
+/// This is intentionally stricter than `ArticleDraftMetadataProjection`:
+/// repository CAS state, attachments, software-guide bookkeeping and other
+/// editor/persistence details must not rebuild folder/search topology.  The
+/// metadata timestamp is list-visible because it is the stable tie-breaker for
+/// the "updated" ordering; body writes preserve it.
+public struct ArticleDraftListMetadataProjection: Equatable, Hashable, Sendable {
+  public let id: UUID
+  public let siteProfileID: UUID
+  public let scope: ArticleDraftScope
+  public let title: String
+  public let date: Date
+  public let slug: String
+  public let tags: [String]
+  public let categories: [String]
+  public let summary: String
+  public let visibility: ArticleVisibility
+  public let status: DraftStatus
+  public let metadataUpdatedAt: Date
+
+  fileprivate init(draft: ArticleDraft) {
+    id = draft.id
+    siteProfileID = draft.siteProfileID
+    scope = draft.scope
+    title = draft.title
+    date = draft.date
+    slug = draft.slug
+    tags = draft.tags
+    categories = draft.categories
+    summary = draft.summary
+    visibility = draft.visibility
+    status = draft.status
+    metadataUpdatedAt = draft.metadataUpdatedAt
+  }
+}
+
 public struct ArticleDraft: Identifiable, Codable, Hashable, Sendable {
   public var id: UUID
   /// The site used for site-owned drafts and as an editing context for general drafts.
@@ -202,6 +305,16 @@ public struct ArticleDraft: Identifiable, Codable, Hashable, Sendable {
   public var tags: [String]
   public var categories: [String]
   public var authors: [String]
+  /// Optional storage keeps workbench snapshots written before digital-garden
+  /// aliases backward compatible.
+  private var aliasesStorage: [String]?
+  /// Routes replaced by an editor-committed Slug change. They stay separate
+  /// from `aliases` until the user chooses whether to rewrite references or
+  /// keep the old route as a redirect. Optional storage keeps older snapshots
+  /// backward compatible.
+  private var pendingSlugRedirectPathsStorage: [String]?
+  /// A framework-provided route override such as Quartz `permalink`.
+  public var permalink: String?
   public var draft: Bool
   public var visibility: ArticleVisibility
   public var summary: String
@@ -222,6 +335,14 @@ public struct ArticleDraft: Identifiable, Codable, Hashable, Sendable {
   public var status: DraftStatus
   public var createdAt: Date
   public var updatedAt: Date
+  /// Metadata-only timestamp used by list ordering and row presentation. The
+  /// optional backing storage keeps old snapshots compatible and falls back
+  /// to the historical `updatedAt` value until the first edit.
+  private var metadataUpdatedAtStorage: Date?
+  /// Monotonic optimistic-lock token for editor metadata. The optional
+  /// backing storage keeps older snapshots compatible; legacy drafts resolve
+  /// to revision zero until their first metadata edit.
+  private var editorMetadataRevisionStorage: UInt64?
   public var repositoryPath: String?
   public var repositorySHA: String?
   /// Fingerprint of the repository content at the last successful import or
@@ -251,6 +372,9 @@ public struct ArticleDraft: Identifiable, Codable, Hashable, Sendable {
     tags: [String] = [],
     categories: [String] = [],
     authors: [String] = [],
+    aliases: [String] = [],
+    pendingSlugRedirectPaths: [String] = [],
+    permalink: String? = nil,
     draft: Bool = true,
     visibility: ArticleVisibility = .public,
     summary: String = "",
@@ -261,6 +385,8 @@ public struct ArticleDraft: Identifiable, Codable, Hashable, Sendable {
     status: DraftStatus = .draft,
     createdAt: Date = Date(),
     updatedAt: Date = Date(),
+    metadataUpdatedAt: Date? = nil,
+    editorMetadataRevision: UInt64? = nil,
     repositoryPath: String? = nil,
     repositorySHA: String? = nil,
     repositoryImportFingerprint: String? = nil,
@@ -279,6 +405,11 @@ public struct ArticleDraft: Identifiable, Codable, Hashable, Sendable {
     self.tags = tags
     self.categories = categories
     self.authors = authors
+    self.aliasesStorage = aliases.isEmpty ? nil : aliases
+    self.pendingSlugRedirectPathsStorage = pendingSlugRedirectPaths.isEmpty
+      ? nil
+      : pendingSlugRedirectPaths
+    self.permalink = permalink?.trimmedForPublishing.nilIfEmpty
     self.draft = draft
     self.visibility = visibility
     self.summary = summary
@@ -290,6 +421,8 @@ public struct ArticleDraft: Identifiable, Codable, Hashable, Sendable {
     self.status = status
     self.createdAt = createdAt
     self.updatedAt = updatedAt
+    self.metadataUpdatedAtStorage = metadataUpdatedAt
+    self.editorMetadataRevisionStorage = editorMetadataRevision
     self.repositoryPath = repositoryPath
     self.repositorySHA = repositorySHA
     self.repositoryImportFingerprint = repositoryImportFingerprint
@@ -310,6 +443,124 @@ public struct ArticleDraft: Identifiable, Codable, Hashable, Sendable {
     wordCountNeedsRefreshStorage ?? true
   }
 
+  /// Stable metadata timestamp for list ordering. Legacy drafts retain their
+  /// old ordering until an edit explicitly creates the new storage value.
+  public var metadataUpdatedAt: Date {
+    metadataUpdatedAtStorage ?? updatedAt
+  }
+
+  public var editorMetadataRevision: UInt64 {
+    editorMetadataRevisionStorage ?? 0
+  }
+
+  public var metadataProjection: ArticleDraftMetadataProjection {
+    ArticleDraftMetadataProjection(draft: self)
+  }
+
+  public var editorObservationProjection: ArticleDraftEditorObservationProjection {
+    ArticleDraftEditorObservationProjection(draft: self)
+  }
+
+  public var listMetadataProjection: ArticleDraftListMetadataProjection {
+    ArticleDraftListMetadataProjection(draft: self)
+  }
+
+  public func hasSameListMetadata(as other: ArticleDraft) -> Bool {
+    id == other.id
+      && siteProfileID == other.siteProfileID
+      && scope == other.scope
+      && title == other.title
+      && date == other.date
+      && slug == other.slug
+      && tags == other.tags
+      && categories == other.categories
+      && summary == other.summary
+      && visibility == other.visibility
+      && status == other.status
+  }
+
+  /// Whether editor-owned metadata (including attachments) is unchanged.
+  /// Repository CAS state remains outside this projection and therefore does
+  /// not invalidate an editor's optimistic metadata revision.
+  public func hasSameEditorMetadata(as other: ArticleDraft) -> Bool {
+    metadataProjection == other.metadataProjection
+  }
+
+  /// Whether two values differ only in body/derived-count/content timestamp.
+  /// This is the change-kind discriminator used by the editor autosave path.
+  public func hasSameMetadata(as other: ArticleDraft) -> Bool {
+    metadataProjection == other.metadataProjection
+      && repositorySHA == other.repositorySHA
+      && repositoryImportFingerprint == other.repositoryImportFingerprint
+      && repositoryBinding == other.repositoryBinding
+      && reusedFromSourceSnapshot == other.reusedFromSourceSnapshot
+  }
+
+  /// Records a metadata mutation.  `updatedAt` remains the content-write
+  /// timestamp while `metadataUpdatedAt` advances only for list-visible
+  /// metadata changes.
+  public mutating func markMetadataUpdated(
+    at date: Date = Date(),
+    replacing previous: ArticleDraft? = nil
+  ) {
+    updatedAt = date
+    metadataUpdatedAtStorage = date
+    if let previous {
+      editorMetadataRevisionStorage = previous.editorMetadataRevision
+    }
+    bumpEditorMetadataRevision()
+  }
+
+  /// Records a non-list editor metadata mutation, such as an attachment
+  /// change. It advances the editor optimistic-lock token without reshuffling
+  /// the list's metadata ordering.
+  public mutating func markEditorMetadataUpdated(at date: Date = Date()) {
+    if metadataUpdatedAtStorage == nil {
+      metadataUpdatedAtStorage = updatedAt
+    }
+    updatedAt = date
+    bumpEditorMetadataRevision()
+  }
+
+  /// Records a body/derived-content mutation without moving the metadata
+  /// ordering/optimistic-lock timestamp.
+  public mutating func markBodyUpdated(
+    at date: Date = Date(),
+    preservingMetadataUpdatedAt metadataDate: Date? = nil
+  ) {
+    if let metadataDate {
+      metadataUpdatedAtStorage = metadataDate
+    } else if metadataUpdatedAtStorage == nil {
+      metadataUpdatedAtStorage = updatedAt
+    }
+    updatedAt = date
+  }
+
+  /// Finalizes a replacement value against the live draft it supersedes.
+  /// This keeps the list clock, editor lock and general content clock aligned
+  /// even when the replacement was decoded/imported with an unrelated token.
+  public mutating func markUpdated(
+    at date: Date = Date(),
+    replacing previous: ArticleDraft
+  ) {
+    if !previous.hasSameListMetadata(as: self) {
+      markMetadataUpdated(at: date, replacing: previous)
+    } else if !previous.hasSameEditorMetadata(as: self) {
+      editorMetadataRevisionStorage = previous.editorMetadataRevision
+      markEditorMetadataUpdated(at: date)
+    } else {
+      editorMetadataRevisionStorage = previous.editorMetadataRevision
+      markBodyUpdated(
+        at: date,
+        preservingMetadataUpdatedAt: previous.metadataUpdatedAt
+      )
+    }
+  }
+
+  private mutating func bumpEditorMetadataRevision() {
+    editorMetadataRevisionStorage = editorMetadataRevision &+ 1
+  }
+
   /// Applies an asynchronously derived count only when it still describes the current body.
   @discardableResult
   public mutating func storeWordCount(_ count: Int, for bodyMarkdown: String) -> Bool {
@@ -321,6 +572,40 @@ public struct ArticleDraft: Identifiable, Codable, Hashable, Sendable {
 
   public var isPrivate: Bool {
     visibility == .private
+  }
+
+  public var aliases: [String] {
+    get { aliasesStorage ?? [] }
+    set { aliasesStorage = newValue.isEmpty ? nil : newValue }
+  }
+
+  public var pendingSlugRedirectPaths: [String] {
+    get { pendingSlugRedirectPathsStorage ?? [] }
+    set { pendingSlugRedirectPathsStorage = newValue.isEmpty ? nil : newValue }
+  }
+
+  public mutating func recordPendingSlugRedirectPath(_ path: String) {
+    let normalized = Self.normalizedRedirectPath(path)
+    guard normalized != "/", !pendingSlugRedirectPaths.contains(normalized) else { return }
+    pendingSlugRedirectPaths.append(normalized)
+  }
+
+  public mutating func clearPendingSlugRedirectPaths() {
+    pendingSlugRedirectPathsStorage = nil
+  }
+
+  private static func normalizedRedirectPath(_ value: String) -> String {
+    var path = value.trimmedForPublishing
+    path = String(path.split(separator: "#", maxSplits: 1).first ?? "")
+    path = String(path.split(separator: "?", maxSplits: 1).first ?? "")
+    guard !path.isEmpty,
+      !path.contains("://"),
+      !path.hasPrefix("//"),
+      !path.contains("\\")
+    else { return "/" }
+    let components = path.split(separator: "/").map(String.init)
+    guard !components.contains("..") else { return "/" }
+    return "/" + components.joined(separator: "/") + "/"
   }
 
   public var scope: ArticleDraftScope {
@@ -593,6 +878,8 @@ public struct ArticleDraft: Identifiable, Codable, Hashable, Sendable {
       tags: tags,
       categories: categories,
       authors: authors,
+      aliases: aliases,
+      permalink: permalink,
       draft: draft,
       visibility: visibility,
       summary: summary,
@@ -618,8 +905,11 @@ public struct ArticleDraft: Identifiable, Codable, Hashable, Sendable {
     return SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
   }
 
+  /// Advances only the general content timestamp. Prefer
+  /// `markMetadataUpdated` or `markBodyUpdated` when the mutation kind is
+  /// known so list ordering and editor concurrency remain explicit.
   public mutating func touch() {
-    updatedAt = Date()
+    markBodyUpdated()
   }
 
   public static func empty(profile: SiteProfile) -> ArticleDraft {
@@ -842,6 +1132,7 @@ public struct ArticleDraft: Identifiable, Codable, Hashable, Sendable {
     refreshed.bodyMarkdown = template.bodyMarkdown
     refreshed.assignToGeneralDraft(editingProfileID: template.siteProfileID)
     refreshed.softwareGuideTemplateVersion = currentSoftwareGuideSeedVersion
+    refreshed.markUpdated(replacing: existing)
     return refreshed
   }
 
@@ -1376,6 +1667,8 @@ private struct RepositoryContentFingerprintSnapshot: Encodable {
   var tags: [String]
   var categories: [String]
   var authors: [String]
+  var aliases: [String]
+  var permalink: String?
   var draft: Bool
   var visibility: ArticleVisibility
   var summary: String

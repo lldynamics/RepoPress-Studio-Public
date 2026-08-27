@@ -219,10 +219,6 @@ final class AISettingsFlowPresentationTests: XCTestCase {
     XCTAssertNil(AIKeychainActionFeedback(message: "AI 连接测试失败：网络不可用"))
   }
 
-  func testAutomaticInlineAICompletionDefaultsOff() {
-    XCTAssertFalse(AIWritingPreferences.defaultAutomaticInlineCompletionEnabled)
-  }
-
   func testAgentPermissionScopesExposeAccessibleTitlesAndDescriptions() {
     XCTAssertEqual(AIAgentPermissionScope.allCases.count, 6)
     for scope in AIAgentPermissionScope.allCases {
@@ -240,5 +236,45 @@ final class AISettingsFlowPresentationTests: XCTestCase {
 
     XCTAssertTrue(settings.resolvedAgentPermissionPolicy.isFullyEnabled)
     XCTAssertTrue(settings.effectiveAgentPermissionPolicy.isDisabled)
+  }
+
+  @MainActor
+  func testAPIKeyConfigurationNavigationTargetsConnectionSection() {
+    XCTAssertEqual(
+      SettingsView.settingsDestination(for: .aiKey),
+      .ai(.connection)
+    )
+    XCTAssertEqual(
+      AISettingsSection(destination: .credentials, shouldFocusAPIKey: true),
+      .connection
+    )
+    XCTAssertEqual(
+      AISettingsSection(destination: .credentials, shouldFocusAPIKey: false),
+      .credentials
+    )
+  }
+
+  @MainActor
+  func testOnlyAPIKeyConnectionsNeedCredentialNavigation() {
+    let codexConfig = AIProviderConfig(preset: .codexAppServer)
+    let apiConfig = AIProviderConfig(
+      preset: .custom,
+      baseURL: "https://api.example.com/v1",
+      model: "example-model",
+      requiresAPIKey: true
+    )
+
+    XCTAssertFalse(
+      SettingsView.shouldOpenAIKeyConnection(
+        for: codexConfig,
+        tokenAvailability: KeychainTokenAvailability(hasToken: false)
+      )
+    )
+    XCTAssertTrue(
+      SettingsView.shouldOpenAIKeyConnection(
+        for: apiConfig,
+        tokenAvailability: KeychainTokenAvailability(hasToken: false)
+      )
+    )
   }
 }

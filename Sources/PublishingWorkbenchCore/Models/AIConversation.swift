@@ -89,7 +89,7 @@ public enum AIConversationAgentMode: String, Codable, Hashable, Sendable {
 /// user-selected credential storage mode when a request is sent.
 public struct AIConversation: Codable, Hashable, Identifiable, Sendable {
   public static let maximumMessages = 80
-  public static let maximumImageBytes: Int64 = 8_000_000
+  public static let maximumImageBytes = AIChatImageAttachmentBudget.maximumConversationBytes
   public static let maximumTextCharacters = 250_000
 
   public var id: UUID

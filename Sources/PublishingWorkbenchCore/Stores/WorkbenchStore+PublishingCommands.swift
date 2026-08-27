@@ -213,7 +213,12 @@ extension WorkbenchStore {
     mode: RemoteRepositoryPublishMode,
     draftIDs: [UUID]
   ) {
-    publishingStore.markDraftsAsPublishedIfDirectRemoteCommit(mode: mode, draftIDs: draftIDs)
+    if publishingStore.markDraftsAsPublishedIfDirectRemoteCommit(
+      mode: mode,
+      draftIDs: draftIDs
+    ) {
+      invalidateDraftDerivedCaches()
+    }
   }
 
   public func recordRemoteRepositoryPublishInAutoSync(

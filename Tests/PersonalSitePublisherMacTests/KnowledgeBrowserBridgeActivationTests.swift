@@ -1,4 +1,5 @@
 import Foundation
+import Network
 import PublishingWorkbenchCore
 import XCTest
 
@@ -6,6 +7,89 @@ import XCTest
 
 @MainActor
 final class KnowledgeBrowserBridgeActivationTests: XCTestCase {
+  func testBridgeAllocatesNetworkResourcesOnlyAfterEnableAndReleasesThemOnDisable() async throws {
+    let rootURL = FileManager.default.temporaryDirectory.appendingPathComponent(
+      "knowledge-browser-lazy-network-\(UUID().uuidString)",
+      isDirectory: true
+    )
+    let suiteName = "KnowledgeBrowserBridgeActivationTests.\(UUID().uuidString)"
+    let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+    defaults.removePersistentDomain(forName: suiteName)
+    try FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)
+    defer {
+      defaults.removePersistentDomain(forName: suiteName)
+      try? FileManager.default.removeItem(at: rootURL)
+    }
+
+    let bridge = KnowledgeBrowserBridge(
+      knowledge: KnowledgeStore(
+        service: KnowledgeLibraryService(
+          rootURL: rootURL.appendingPathComponent("KnowledgeLibrary", isDirectory: true)
+        )
+      ),
+      defaults: defaults,
+      connectionTokenKeychainStore: KeychainTokenStore(
+        service: KeychainCredentialServices.browserBridge,
+        accountPrefix: "browser-lazy-network-test-\(UUID().uuidString)",
+        inMemory: true,
+        allowsAuthenticationInteraction: false
+      ),
+      // This test only observes the network lifetime. Keep the ledger in the
+      // injected defaults rather than adding a second filesystem operation to
+      // a shard that may be running alongside other integration tests.
+      importOperationLedgerURL: nil,
+      makeListener: { _ in
+        try NWListener(using: .tcp, on: .any)
+      }
+    )
+
+    bridge.start()
+
+    XCTAssertFalse(bridge.isEnabled)
+    XCTAssertFalse(bridge.hasAllocatedNetworkResources)
+    XCTAssertEqual(bridge.activeNetworkConnectionCount, 0)
+
+    bridge.setEnabled(true)
+    guard
+      try await waitUntil(condition: {
+        bridge.state == .ready && bridge.activeListenerPort != nil
+      })
+    else {
+      XCTFail(
+        "Browser bridge did not become ready (state: \(bridge.state), "
+          + "resources: \(bridge.hasAllocatedNetworkResources), "
+          + "port: \(String(describing: bridge.activeListenerPort)))"
+      )
+      return
+    }
+    XCTAssertTrue(bridge.hasAllocatedNetworkResources)
+
+    let activePort = try XCTUnwrap(bridge.activeListenerPort)
+    let port = try XCTUnwrap(NWEndpoint.Port(rawValue: activePort))
+    let client = NWConnection(host: "127.0.0.1", port: port, using: .tcp)
+    client.start(queue: DispatchQueue(label: "KnowledgeBrowserBridgeActivationTests.client"))
+    defer { client.cancel() }
+    guard
+      try await waitUntil(condition: {
+        bridge.activeNetworkConnectionCount == 1
+      })
+    else {
+      XCTFail(
+        "Browser bridge did not observe the client connection (state: \(bridge.state), "
+          + "resources: \(bridge.hasAllocatedNetworkResources), "
+          + "connections: \(bridge.activeNetworkConnectionCount))"
+      )
+      return
+    }
+
+    bridge.setEnabled(false)
+
+    XCTAssertFalse(bridge.isEnabled)
+    XCTAssertEqual(bridge.state, .stopped)
+    XCTAssertFalse(bridge.hasAllocatedNetworkResources)
+    XCTAssertEqual(bridge.activeNetworkConnectionCount, 0)
+  }
+
   func testDisabledBridgeDefersExistingKeychainTokenUntilUserEnablesIt() throws {
     let rootURL = FileManager.default.temporaryDirectory.appendingPathComponent(
       "knowledge-browser-activation-\(UUID().uuidString)",
@@ -123,5 +207,16 @@ final class KnowledgeBrowserBridgeActivationTests: XCTestCase {
     restartedBridge.setEnabled(true)
 
     XCTAssertEqual(restartedBridge.connectionToken, rotatedToken)
+  }
+
+  private func waitUntil(
+    attempts: Int = 300,
+    condition: @MainActor () -> Bool
+  ) async throws -> Bool {
+    for _ in 0..<attempts {
+      if condition() { return true }
+      try await Task.sleep(for: .milliseconds(10))
+    }
+    return false
   }
 }

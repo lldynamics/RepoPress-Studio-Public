@@ -428,6 +428,9 @@ public struct SiteLinkAuditItem: Identifiable, Hashable, Sendable {
   public var anchorText: String
   public var severity: SiteLinkAuditSeverity
   public var message: String
+  public var kind: SiteLinkAuditKind
+  public var statusCode: Int?
+  public var finalTarget: String?
 
   public init(
     id: UUID = UUID(),
@@ -436,7 +439,10 @@ public struct SiteLinkAuditItem: Identifiable, Hashable, Sendable {
     target: String,
     anchorText: String,
     severity: SiteLinkAuditSeverity,
-    message: String
+    message: String,
+    kind: SiteLinkAuditKind = .advisory,
+    statusCode: Int? = nil,
+    finalTarget: String? = nil
   ) {
     self.id = id
     self.draftID = draftID
@@ -445,7 +451,19 @@ public struct SiteLinkAuditItem: Identifiable, Hashable, Sendable {
     self.anchorText = anchorText
     self.severity = severity
     self.message = message
+    self.kind = kind
+    self.statusCode = statusCode
+    self.finalTarget = finalTarget
   }
+}
+
+public enum SiteLinkAuditKind: String, Hashable, Sendable {
+  case brokenInternal
+  case slugRedirectReference
+  case externalDead
+  case externalUnverified
+  case anchorText
+  case advisory
 }
 
 public struct MaintenanceOperationLogEntry: Identifiable, Hashable, Sendable {

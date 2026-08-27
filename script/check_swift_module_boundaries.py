@@ -44,6 +44,7 @@ GOVERNED_DEPENDENCIES: dict[str, set[str]] = {
     "PersonalSitePublisherMac": {
         "BrowserExtensionProtocolSupport",
         "PublishingGitCore",
+        "PublishingMarkdownCore",
         "PublishingWorkbenchCore",
     },
 }
@@ -62,7 +63,7 @@ TEST_TARGET_DEPENDENCIES: dict[str, set[str]] = {
     "PublishingMarkdownCoreTests": {"PublishingCoreSupport", "PublishingMarkdownCore"},
     "PublishingGitCoreTests": {"PublishingDomainContracts", "PublishingGitCore"},
     "PublishingDomainContractsTests": {"PublishingDomainContracts"},
-    "PublishingAICoreTests": {"PublishingAICore"},
+    "PublishingAICoreTests": {"PublishingAICore", "PublishingCoreSupport"},
     "PublishingCoreSupportTests": {"PublishingCoreSupport"},
     "PublishingKnowledgeCoreTests": {"PublishingKnowledgeCore"},
     "PublishingWorkbenchCoreTests": {
