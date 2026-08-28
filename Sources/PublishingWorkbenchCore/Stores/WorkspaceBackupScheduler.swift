@@ -49,10 +49,13 @@ public final class WorkspaceBackupScheduler: ObservableObject {
 
   private weak var store: WorkbenchStore?
   private let defaults: UserDefaults
-  private let fileManager: FileManager
+  private let fileManagerDependency: SendableFileManager
+  private var fileManager: FileManager { fileManagerDependency.value }
   private let defaultDestinationFolderURL: URL?
   private var hasStarted = false
   private var backgroundActivity: WorkspaceBackupActivityLease?
+  private var inventoryGeneration: UInt64 = 0
+  private var inventoryTask: Task<WorkspaceBackupInventoryResult, Never>?
 
   public init(
     store: WorkbenchStore,
@@ -62,7 +65,7 @@ public final class WorkspaceBackupScheduler: ObservableObject {
   ) {
     self.store = store
     self.defaults = defaults
-    self.fileManager = fileManager
+    self.fileManagerDependency = SendableFileManager(fileManager)
     self.defaultDestinationFolderURL = defaultDestinationFolderURL?.standardizedFileURL
     self.settings = Self.loadSettings(from: defaults)
   }
@@ -79,17 +82,34 @@ public final class WorkspaceBackupScheduler: ObservableObject {
     guard !hasStarted else { return }
     hasStarted = true
     scheduleBackgroundActivity()
+    // Disabled automation must be inert at launch. The storage-management
+    // screen and its explicit refresh action still call refreshRecentBackups.
+    guard settings.frequency != .off else { return }
     Task { @MainActor [weak self] in
       guard let self else { return }
+      guard self.hasStarted, self.settings.frequency != .off else { return }
       await self.refreshRecentBackups()
+      guard self.hasStarted, self.settings.frequency != .off else { return }
       await self.runIfDue()
     }
   }
 
   public func stop() {
     hasStarted = false
+    inventoryGeneration &+= 1
+    inventoryTask?.cancel()
+    inventoryTask = nil
     backgroundActivity?.invalidate()
     backgroundActivity = nil
+  }
+
+  /// Stops future scheduling and waits until the cancelled inventory worker
+  /// has left every synchronous FileManager operation. Data-root relocation
+  /// uses this stronger boundary before it starts copying the managed root.
+  public func stopAndWaitForBackgroundWork() async {
+    let pendingInventory = inventoryTask
+    stop()
+    _ = await pendingInventory?.value
   }
 
   public func setFrequency(_ frequency: WorkspaceBackupFrequency) {
@@ -97,7 +117,12 @@ public final class WorkspaceBackupScheduler: ObservableObject {
     settings.frequency = frequency
     persistSettings()
     scheduleBackgroundActivity()
-    guard frequency != .off else { return }
+    guard frequency != .off else {
+      inventoryGeneration &+= 1
+      inventoryTask?.cancel()
+      inventoryTask = nil
+      return
+    }
     Task { @MainActor [weak self] in
       await self?.runIfDue()
     }
@@ -128,46 +153,38 @@ public final class WorkspaceBackupScheduler: ObservableObject {
 
   public func refreshRecentBackups() async {
     let folderURL = resolvedDestinationFolderURL()
-    do {
-      guard fileManager.fileExists(atPath: folderURL.path) else {
-        recentBackups = []
-        invalidRecentBackupCount = 0
-        statusMessage = nil
-        statusLevel = nil
-        return
-      }
-      _ = pruneAutomaticBackups(in: folderURL, keeping: nil, now: Date())
-      let urls = try fileManager.contentsOfDirectory(
-        at: folderURL,
-        includingPropertiesForKeys: [.isDirectoryKey, .contentModificationDateKey],
-        options: [.skipsHiddenFiles]
-      ).filter { url in
-        url.pathExtension.lowercased() == "psworkspacebackup"
-          && url.lastPathComponent.hasPrefix(WorkspaceBackupService.automaticBackupFilePrefix)
-      }
-      let appVersion = self.currentApplicationVersion
-      let scanResult = await Task.detached(priority: .utility) {
-        var validPreviews: [WorkspaceBackupPreview] = []
-        var invalidCount = 0
-        for url in urls {
-          do {
-            validPreviews.append(
-              try WorkspaceBackupService().inspectBackup(
-                at: url,
-                currentApplicationVersion: appVersion
-              )
-            )
-          } catch {
-            invalidCount += 1
-          }
-        }
-        return (validPreviews, invalidCount)
-      }.value
-      recentBackups = scanResult.0.sorted { $0.createdAt > $1.createdAt }
-      invalidRecentBackupCount = scanResult.1
+    inventoryGeneration &+= 1
+    let generation = inventoryGeneration
+    inventoryTask?.cancel()
+    let appVersion = currentApplicationVersion
+    let inventoryFileManager = fileManagerDependency
+    let task = Task.detached(priority: .utility) {
+      WorkspaceBackupInventoryWorker.refresh(
+        folderURL: folderURL,
+        applicationVersion: appVersion,
+        now: Date(),
+        fileManager: inventoryFileManager.value
+      )
+    }
+    inventoryTask = task
+    let result = await task.value
+    guard inventoryGeneration == generation, !Task.isCancelled else { return }
+    inventoryTask = nil
+
+    switch result {
+    case .cancelled:
+      return
+    case .missingFolder:
+      recentBackups = []
+      invalidRecentBackupCount = 0
+      statusMessage = nil
+      statusLevel = nil
+    case .success(let previews, let invalidCount):
+      recentBackups = previews
+      invalidRecentBackupCount = invalidCount
       settings.lastValidationAt = Date()
       guard persistSettings() else { return }
-      if scanResult.1 == 0 {
+      if invalidCount == 0 {
         setStatus(
           CoreL10n.format("已校验 %d 个自动备份", recentBackups.count),
           level: .success
@@ -177,18 +194,18 @@ public final class WorkspaceBackupScheduler: ObservableObject {
           CoreL10n.format(
             "已校验 %d 个自动备份；%d 个校验失败",
             recentBackups.count,
-            scanResult.1
+            invalidCount
           ),
           level: .warning
         )
       }
-    } catch {
+    case .failure(let message):
       recentBackups = []
       invalidRecentBackupCount = 0
       setStatus(
         CoreL10n.format(
           "自动备份目录校验失败：%@",
-          error.localizedDescription
+          message
         ),
         level: .error
       )
@@ -196,9 +213,11 @@ public final class WorkspaceBackupScheduler: ObservableObject {
   }
 
   private func runIfDue() async {
-    guard settings.frequency != .off,
-          !isRunning,
-          shouldRunNow else {
+    guard hasStarted,
+      settings.frequency != .off,
+      !isRunning,
+      shouldRunNow
+    else {
       return
     }
     await performBackup(isAutomatic: true)
@@ -207,7 +226,8 @@ public final class WorkspaceBackupScheduler: ObservableObject {
   private var shouldRunNow: Bool {
     guard let interval = settings.frequency.interval else { return false }
     if let lastBackupPath = settings.lastBackupPath,
-       !fileManager.fileExists(atPath: lastBackupPath) {
+      !fileManager.fileExists(atPath: lastBackupPath)
+    {
       return true
     }
     guard let lastBackupAt = settings.lastBackupAt else { return true }
@@ -234,28 +254,34 @@ public final class WorkspaceBackupScheduler: ObservableObject {
       let schedulerBackupLimits = WorkspaceBackupService.Limits(
         maximumTotalByteCount: Self.automaticRetentionTotalByteCount
       )
-      guard let createdPreview = await store.createWorkspaceBackup(
-        at: backupURL,
-        applicationVersion: currentApplicationVersion,
-        limits: schedulerBackupLimits
-      ) else {
+      guard
+        let createdPreview = await store.createWorkspaceBackup(
+          at: backupURL,
+          applicationVersion: currentApplicationVersion,
+          limits: schedulerBackupLimits
+        )
+      else {
         throw WorkspaceBackupError.sourceUnavailable(
           CoreL10n.text("工作台未能保存，自动备份未创建")
         )
       }
       let appVersion = currentApplicationVersion
+      let inventoryFileManager = fileManagerDependency
       let verifiedPreview = try await Task.detached(priority: .utility) {
-        try WorkspaceBackupService().inspectBackup(
+        try WorkspaceBackupService(fileManager: inventoryFileManager.value).inspectBackup(
           at: createdPreview.backupURL,
           currentApplicationVersion: appVersion
         )
       }.value
 
-      let removedURLs = pruneAutomaticBackups(
-        in: folderURL,
-        keeping: verifiedPreview.backupURL,
-        now: Date()
-      )
+      let removedURLs = await Task.detached(priority: .utility) {
+        WorkspaceBackupInventoryWorker.pruneAutomaticBackups(
+          in: folderURL,
+          keeping: verifiedPreview.backupURL,
+          now: Date(),
+          fileManager: inventoryFileManager.value
+        )
+      }.value
 
       let removedPaths = Set(removedURLs.map { $0.standardizedFileURL.path })
       var cachedBackups = recentBackups.filter { preview in
@@ -302,7 +328,8 @@ public final class WorkspaceBackupScheduler: ObservableObject {
     backgroundActivity?.invalidate()
     backgroundActivity = nil
     guard hasStarted,
-          let interval = settings.frequency.interval else {
+      let interval = settings.frequency.interval
+    else {
       return
     }
 
@@ -332,48 +359,114 @@ public final class WorkspaceBackupScheduler: ObservableObject {
     formatter.dateFormat = "yyyyMMdd-HHmmss"
     let suffix = UUID().uuidString.prefix(8).lowercased()
     let timestamp = formatter.string(from: Date())
-    return "\(WorkspaceBackupService.automaticBackupFilePrefix)\(timestamp)-\(suffix).psworkspacebackup"
+    return
+      "\(WorkspaceBackupService.automaticBackupFilePrefix)\(timestamp)-\(suffix).psworkspacebackup"
   }
 
-  private func pruneAutomaticBackups(
+}
+
+private enum WorkspaceBackupInventoryResult: Sendable {
+  case cancelled
+  case missingFolder
+  case success([WorkspaceBackupPreview], invalidCount: Int)
+  case failure(String)
+}
+
+/// All directory enumeration, package inspection, recursive sizing, and
+/// retention cleanup happen off the scheduler's MainActor. Results are value
+/// types and are published only after the caller's generation check.
+private enum WorkspaceBackupInventoryWorker {
+  private static let automaticRetentionCount = 12
+  private static let automaticRetentionAge: TimeInterval = 90 * 24 * 60 * 60
+  private static let automaticRetentionTotalByteCount: Int64 = 4 * 1_024 * 1_024 * 1_024
+
+  static func refresh(
+    folderURL: URL,
+    applicationVersion: String,
+    now: Date,
+    fileManager: FileManager
+  ) -> WorkspaceBackupInventoryResult {
+    guard !Task.isCancelled else { return .cancelled }
+    guard fileManager.fileExists(atPath: folderURL.path) else { return .missingFolder }
+    _ = pruneAutomaticBackups(in: folderURL, keeping: nil, now: now, fileManager: fileManager)
+    guard !Task.isCancelled else { return .cancelled }
+    do {
+      let urls = try fileManager.contentsOfDirectory(
+        at: folderURL,
+        includingPropertiesForKeys: [.isDirectoryKey, .contentModificationDateKey],
+        options: [.skipsHiddenFiles]
+      ).filter { url in
+        url.pathExtension.lowercased() == "psworkspacebackup"
+          && url.lastPathComponent.hasPrefix(WorkspaceBackupService.automaticBackupFilePrefix)
+      }
+      var previews: [WorkspaceBackupPreview] = []
+      var invalidCount = 0
+      for url in urls {
+        guard !Task.isCancelled else { return .cancelled }
+        do {
+          previews.append(
+            try WorkspaceBackupService(fileManager: fileManager).inspectBackup(
+              at: url,
+              currentApplicationVersion: applicationVersion
+            ))
+        } catch {
+          invalidCount += 1
+        }
+      }
+      return .success(previews.sorted { $0.createdAt > $1.createdAt }, invalidCount: invalidCount)
+    } catch {
+      return .failure(error.localizedDescription)
+    }
+  }
+
+  static func pruneAutomaticBackups(
     in folderURL: URL,
     keeping currentURL: URL?,
-    now: Date
+    now: Date,
+    fileManager: FileManager = .default
   ) -> [URL] {
-    guard let urls = try? fileManager.contentsOfDirectory(
-      at: folderURL,
-      includingPropertiesForKeys: [.isDirectoryKey, .contentModificationDateKey],
-      options: [.skipsHiddenFiles]
-    ) else { return [] }
+    guard
+      let urls = try? fileManager.contentsOfDirectory(
+        at: folderURL,
+        includingPropertiesForKeys: [.isDirectoryKey, .contentModificationDateKey],
+        options: [.skipsHiddenFiles]
+      )
+    else { return [] }
 
     let candidates = urls.filter { url in
       url.pathExtension.lowercased() == "psworkspacebackup"
         && url.lastPathComponent.hasPrefix(WorkspaceBackupService.automaticBackupFilePrefix)
         && url.deletingLastPathComponent().standardizedFileURL == folderURL.standardizedFileURL
     }.sorted { lhs, rhs in
-      let leftDate = (try? lhs.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate)
+      let leftDate =
+        (try? lhs.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate)
         ?? .distantPast
-      let rightDate = (try? rhs.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate)
+      let rightDate =
+        (try? rhs.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate)
         ?? .distantPast
       return leftDate > rightDate
     }
 
-    let cutoff = now.addingTimeInterval(-Self.automaticRetentionAge)
+    let cutoff = now.addingTimeInterval(-automaticRetentionAge)
     let currentPath = currentURL?.standardizedFileURL.path
     var keptCount = 0
     var keptByteCount: Int64 = 0
     var removedURLs: [URL] = []
     for url in candidates {
       let isCurrent = url.standardizedFileURL.path == currentPath
-      let modifiedAt = (try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate)
+      let modifiedAt =
+        (try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate)
         ?? .distantPast
-      let byteCount = directoryByteCount(url)
-      let exceedsCount = keptCount >= Self.automaticRetentionCount
+      guard !Task.isCancelled else { return removedURLs }
+      let byteCount = directoryByteCount(url, fileManager: fileManager)
+      let exceedsCount = keptCount >= automaticRetentionCount
       let exceedsAge = modifiedAt < cutoff
       let totalAddition = keptByteCount.addingReportingOverflow(byteCount)
-      let exceedsTotal = keptByteCount > 0
-        && (totalAddition.overflow || totalAddition.partialValue > Self.automaticRetentionTotalByteCount)
+      let exceedsTotal =
+        keptByteCount > 0
+        && (totalAddition.overflow || totalAddition.partialValue > automaticRetentionTotalByteCount)
       if !isCurrent && (exceedsCount || exceedsAge || exceedsTotal) {
+        guard !Task.isCancelled else { return removedURLs }
         // The scheduler owns only its explicit automatic-backup prefix. Keep
         // manual/user-named packages outside this bounded cleanup scope.
         do {
@@ -391,16 +484,20 @@ public final class WorkspaceBackupScheduler: ObservableObject {
     return removedURLs
   }
 
-  private func directoryByteCount(_ url: URL) -> Int64 {
-    guard let enumerator = fileManager.enumerator(
-      at: url,
-      includingPropertiesForKeys: [.isRegularFileKey, .fileSizeKey],
-      options: []
-    ) else { return 0 }
+  private static func directoryByteCount(_ url: URL, fileManager: FileManager) -> Int64 {
+    guard
+      let enumerator = fileManager.enumerator(
+        at: url,
+        includingPropertiesForKeys: [.isRegularFileKey, .fileSizeKey],
+        options: []
+      )
+    else { return 0 }
     var total: Int64 = 0
     for case let fileURL as URL in enumerator {
+      guard !Task.isCancelled else { return total }
       guard let values = try? fileURL.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey]),
-            values.isRegularFile == true else { continue }
+        values.isRegularFile == true
+      else { continue }
       let size = Int64(values.fileSize ?? 0)
       let addition = total.addingReportingOverflow(size)
       total = addition.overflow ? Int64.max : addition.partialValue
@@ -408,6 +505,9 @@ public final class WorkspaceBackupScheduler: ObservableObject {
     return total
   }
 
+}
+
+extension WorkspaceBackupScheduler {
   private var currentApplicationVersion: String {
     Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
       ?? "development"
@@ -424,7 +524,8 @@ public final class WorkspaceBackupScheduler: ObservableObject {
 
   private func injectedDestinationReplacingLegacyDefault(_ candidateURL: URL) -> URL? {
     guard let defaultDestinationFolderURL else { return nil }
-    let legacyDefaultURL = WorkspaceBackupService
+    let legacyDefaultURL =
+      WorkspaceBackupService
       .defaultAutomaticBackupDirectoryURL(fileManager: fileManager)
       .standardizedFileURL
     guard candidateURL.standardizedFileURL.path == legacyDefaultURL.path else { return nil }
@@ -456,7 +557,8 @@ public final class WorkspaceBackupScheduler: ObservableObject {
 
   private static func loadSettings(from defaults: UserDefaults) -> WorkspaceBackupScheduleSettings {
     guard let data = defaults.data(forKey: settingsKey),
-          let settings = try? JSONDecoder().decode(WorkspaceBackupScheduleSettings.self, from: data) else {
+      let settings = try? JSONDecoder().decode(WorkspaceBackupScheduleSettings.self, from: data)
+    else {
       return WorkspaceBackupScheduleSettings()
     }
     return settings

@@ -440,9 +440,23 @@ struct WorkspaceTaskMetadataSection: View {
   }
 }
 
+private struct WorkspaceTaskSEOPresentationKey: Hashable {
+  let draftID: UUID
+  let editorMetadataRevision: UInt64
+  let updatedAt: Date
+  let profile: SiteProfile
+  let cachedSnapshotSignature: String?
+  let cachedSnapshotDate: Date?
+  let maintenanceSnapshotDate: Date?
+  let actionMessage: String?
+}
+
 struct WorkspaceTaskSEOSection: View {
   let draft: ArticleDraft
-  @ObservedObject var store: WorkbenchStore
+  let store: WorkbenchStore
+  @StateObject private var seoObservation: WorkbenchSEOInspectorFeatureFacade
+  @State private var presentation: WorkbenchSEOInspectorPresentation?
+  @State private var presentationErrorMessage: String?
   @State private var showsAllFindings = false
   @State private var showsSocialPreview = false
   @State private var showsSocialCards = false
@@ -455,6 +469,9 @@ struct WorkspaceTaskSEOSection: View {
   init(draft: ArticleDraft, store: WorkbenchStore) {
     self.draft = draft
     self.store = store
+    _seoObservation = StateObject(
+      wrappedValue: WorkbenchSEOInspectorFeatureFacade(store: store)
+    )
     #if DEBUG || SCREENSHOT_CAPTURE_BUILD
       let expandsScreenshotPreview =
         ScreenshotDemoDataService.isEnabledFromEnvironment
@@ -466,9 +483,30 @@ struct WorkspaceTaskSEOSection: View {
   }
 
   var body: some View {
-    let report = store.seoReport(for: draft)
-    let snapshot = store.seoSocialPreviewSnapshot(for: draft)
-    let cachePresentation = store.seoSocialPreviewCachePresentation(for: draft)
+    Group {
+      if let presentation, presentation.draftID == draft.id {
+        content(presentation)
+      } else if let presentationErrorMessage {
+        AccessibleStatusMessage(message: presentationErrorMessage, severity: .warning)
+      } else {
+        HStack(spacing: 8) {
+          ProgressView()
+            .controlSize(.small)
+          Text("正在准备 SEO 检查…")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        }
+      }
+    }
+    .task(id: presentationKey) {
+      await refreshPresentation()
+    }
+  }
+
+  private func content(_ presentation: WorkbenchSEOInspectorPresentation) -> some View {
+    let report = presentation.report
+    let snapshot = presentation.socialPreviewSnapshot
+    let cachePresentation = presentation.cachePresentation
 
     return VStack(alignment: .leading, spacing: 14) {
       InspectorSection("SEO 摘要") {
@@ -605,9 +643,45 @@ struct WorkspaceTaskSEOSection: View {
             in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
       }
 
-      if let message = store.seoSocialPreviewMessage {
+      if let message = presentation.actionMessage {
         actionMessage(message)
       }
+    }
+  }
+
+  private var presentationKey: WorkspaceTaskSEOPresentationKey {
+    let cachedSnapshot = seoObservation.socialPreviewSnapshot(for: draft)
+    return WorkspaceTaskSEOPresentationKey(
+      draftID: draft.id,
+      editorMetadataRevision: draft.editorMetadataRevision,
+      updatedAt: draft.updatedAt,
+      profile: store.profile(for: draft),
+      cachedSnapshotSignature: cachedSnapshot?.signature,
+      cachedSnapshotDate: cachedSnapshot?.generatedAt,
+      maintenanceSnapshotDate: seoObservation.maintenanceSnapshotDate,
+      actionMessage: seoObservation.actionMessage
+    )
+  }
+
+  @MainActor
+  private func refreshPresentation() async {
+    let expectedKey = presentationKey
+    presentationErrorMessage = nil
+    do {
+      try await Task.sleep(for: .milliseconds(180))
+      try Task.checkCancellation()
+      let candidate = try await store.seoInspectorPresentation(for: draft)
+      guard !Task.isCancelled,
+        presentationKey == expectedKey,
+        candidate.draftID == draft.id
+      else { return }
+      presentation = candidate
+    } catch is CancellationError {
+      return
+    } catch {
+      guard !Task.isCancelled, presentationKey == expectedKey else { return }
+      presentation = nil
+      presentationErrorMessage = error.localizedDescription
     }
   }
 
@@ -622,7 +696,7 @@ struct WorkspaceTaskSEOSection: View {
 
   @ViewBuilder
   private var relatedArticleSuggestionSection: some View {
-    let suggestions = store.relatedArticleSuggestions(for: draft, limit: 3)
+    let suggestions = presentation?.relatedArticleSuggestions ?? []
     if !suggestions.isEmpty {
       InspectorDisclosureSection(
         "关联文章",

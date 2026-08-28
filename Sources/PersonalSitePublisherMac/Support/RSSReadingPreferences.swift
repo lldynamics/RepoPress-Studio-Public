@@ -1,5 +1,6 @@
 import Foundation
 import OSLog
+import SwiftUI
 
 private let rssReadingProgressLogger = Logger(
   subsystem: "PersonalSitePublisherMac",
@@ -77,12 +78,129 @@ enum RSSReadingTheme: String, CaseIterable, Identifiable {
   }
 }
 
-enum RSSReadingComfortConfiguration {
-  static let fontSizeRange = 13.0 ... 24.0
-  static let lineSpacingRange = 1.35 ... 2.10
+enum ReaderFontFamily: String, CaseIterable, Identifiable {
+  case system
+  case newYork
+  case songti
+
+  var id: String { rawValue }
+
+  var title: String {
+    switch self {
+    case .system: String(localized: "系统无衬线")
+    case .newYork: String(localized: "New York 衬线")
+    case .songti: String(localized: "宋体")
+    }
+  }
+
+  var cssFontFamily: String {
+    switch self {
+    case .system:
+      "-apple-system, BlinkMacSystemFont, \"Helvetica Neue\", \"PingFang SC\", sans-serif"
+    case .newYork:
+      "\"New York\", \"Songti SC\", \"STSong\", ui-serif, serif"
+    case .songti:
+      "\"Songti SC\", \"STSong\", \"New York\", ui-serif, serif"
+    }
+  }
+
+  func swiftUIFont(size: Double, weight: Font.Weight = .regular) -> Font {
+    switch self {
+    case .system:
+      .system(size: size, weight: weight)
+    case .newYork:
+      .custom("New York", size: size).weight(weight)
+    case .songti:
+      .custom("Songti SC", size: size).weight(weight)
+    }
+  }
+}
+
+enum ReaderTextAlignment: String, CaseIterable, Identifiable {
+  case natural
+  case justified
+
+  var id: String { rawValue }
+
+  var title: String {
+    switch self {
+    case .natural: String(localized: "自然对齐")
+    case .justified: String(localized: "两端对齐")
+    }
+  }
+
+  var help: String {
+    switch self {
+    case .natural: String(localized: "保留正文的自然字距")
+    case .justified: String(localized: "两端对齐，并优化中文标点避头尾；RSS 正文同时启用悬挂标点")
+    }
+  }
+
+  var cssTextAlign: String {
+    switch self {
+    case .natural: "start"
+    case .justified: "justify"
+    }
+  }
+}
+
+enum ReaderCodeHighlightTheme: String, CaseIterable, Identifiable {
+  case adaptive
+  case xcode
+  case solarized
+
+  var id: String { rawValue }
+
+  var title: String {
+    switch self {
+    case .adaptive: String(localized: "自适应")
+    case .xcode: String(localized: "Xcode")
+    case .solarized: String(localized: "Solarized")
+    }
+  }
+}
+
+enum ReaderTypographyConfiguration {
+  static let fontSizeKey = "rssReaderFontSize"
+  static let lineSpacingKey = "rssReaderLineSpacing"
+  static let themeKey = "rssReaderTheme"
+  static let fontFamilyKey = "readerTypographyFontFamilyV1"
+  static let paragraphSpacingKey = "readerTypographyParagraphSpacingV1"
+  static let textAlignmentKey = "readerTypographyTextAlignmentV1"
+  static let codeHighlightThemeKey = "readerTypographyCodeHighlightThemeV1"
+
+  static let fontSizeRange = 13.0...24.0
+  static let lineSpacingRange = 1.35...2.10
+  static let paragraphSpacingRange = 0.45...1.40
   static let defaultFontSize = 17.0
   static let defaultLineSpacing = 1.65
+  static let defaultParagraphSpacing = 0.82
+  static let defaultFontFamily = ReaderFontFamily.system
+  static let defaultTextAlignment = ReaderTextAlignment.natural
+  static let defaultCodeHighlightTheme = ReaderCodeHighlightTheme.adaptive
+
+  static func normalizedFontSize(_ value: Double) -> Double {
+    normalized(value, range: fontSizeRange, fallback: defaultFontSize)
+  }
+
+  static func normalizedLineSpacing(_ value: Double) -> Double {
+    normalized(value, range: lineSpacingRange, fallback: defaultLineSpacing)
+  }
+
+  static func normalizedParagraphSpacing(_ value: Double) -> Double {
+    normalized(value, range: paragraphSpacingRange, fallback: defaultParagraphSpacing)
+  }
+
+  private static func normalized(
+    _ value: Double,
+    range: ClosedRange<Double>,
+    fallback: Double
+  ) -> Double {
+    min(max(value.isFinite ? value : fallback, range.lowerBound), range.upperBound)
+  }
 }
+
+typealias RSSReadingComfortConfiguration = ReaderTypographyConfiguration
 
 enum RSSReadingProgressStore {
   private static let key = "rssReadingProgressByArticle"
@@ -91,7 +209,7 @@ enum RSSReadingProgressStore {
 
   static func load(defaults: UserDefaults = .standard) -> [String: Double] {
     guard let data = defaults.data(forKey: key),
-          let values = try? JSONDecoder().decode([String: Double].self, from: data)
+      let values = try? JSONDecoder().decode([String: Double].self, from: data)
     else {
       return [:]
     }
@@ -100,7 +218,7 @@ enum RSSReadingProgressStore {
 
   static func loadOrder(defaults: UserDefaults = .standard) -> [String] {
     guard let data = defaults.data(forKey: orderKey),
-          let values = try? JSONDecoder().decode([String].self, from: data)
+      let values = try? JSONDecoder().decode([String].self, from: data)
     else {
       return []
     }

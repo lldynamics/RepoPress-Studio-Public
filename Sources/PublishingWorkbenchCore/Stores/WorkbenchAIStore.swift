@@ -377,6 +377,40 @@ public final class WorkbenchAIStore: ObservableObject {
     seoAuditService.report(draft: draft, profile: store.profile(for: draft))
   }
 
+  public func seoInspectorPresentation(
+    for draft: ArticleDraft
+  ) async throws -> WorkbenchSEOInspectorPresentation {
+    let profile = store.profile(for: draft)
+    let cachedSnapshot = seoSocialPreviewSnapshots[draft.id]
+    let relatedSuggestions = store.relatedArticleSuggestions(for: draft, limit: 3)
+    let actionMessage = seoSocialPreviewMessage
+    let auditService = seoAuditService
+    let previewService = seoSocialPreviewService
+    let task = Task.detached(priority: .utility) {
+      try Task.checkCancellation()
+      let report = auditService.report(draft: draft, profile: profile)
+      try Task.checkCancellation()
+      let currentSnapshot = previewService.snapshot(draft: draft, profile: profile)
+      try Task.checkCancellation()
+      return WorkbenchSEOInspectorPresentation(
+        draftID: draft.id,
+        report: report,
+        socialPreviewSnapshot: cachedSnapshot,
+        cachePresentation: SEOSocialPreviewCachePresentation(
+          snapshot: cachedSnapshot,
+          isStale: cachedSnapshot?.signature != currentSnapshot.signature
+        ),
+        relatedArticleSuggestions: relatedSuggestions,
+        actionMessage: actionMessage
+      )
+    }
+    return try await withTaskCancellationHandler {
+      try await task.value
+    } onCancel: {
+      task.cancel()
+    }
+  }
+
   public func seoSitemapPreview(for draft: ArticleDraft) -> SEOSitemapPreview {
     seoSocialPreviewService.sitemapPreview(
       drafts: store.drafts,

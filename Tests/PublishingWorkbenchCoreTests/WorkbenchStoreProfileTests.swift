@@ -713,7 +713,7 @@ final class WorkbenchStoreProfileTests: XCTestCase {
     XCTAssertEqual(store.publishPackage?.markdownPath, "_posts/2026-08-29-jekyll-article.md")
   }
 
-  func testWritingIgnoresStalePackageThenUsesSelectedDraftRepositoryRoot() async throws {
+  func testWritingRejectsStaleSelectionAndNonGitRepositoryRoot() async throws {
     let store = try TestWorkbenchFactory.makeStore()
     let originalProfileID = store.activeProfileID
     let astroRoot = try temporaryDirectoryURL()
@@ -742,8 +742,8 @@ final class WorkbenchStoreProfileTests: XCTestCase {
     store.refreshPublishPreview(for: draft)
 
     let backgroundSnapshot = try XCTUnwrap(store.cachedPublishPreview(for: draft.id))
-    XCTAssertEqual(backgroundSnapshot.localPublishReadiness.writeReadiness, .needsReview)
-    XCTAssertEqual(backgroundSnapshot.localPublishReadiness.canWrite, true)
+    XCTAssertEqual(backgroundSnapshot.localPublishReadiness.writeReadiness, .blocked)
+    XCTAssertEqual(backgroundSnapshot.localPublishReadiness.canWrite, false)
     XCTAssertEqual(backgroundSnapshot.localPublishReadiness.commitReadiness, .blocked)
     XCTAssertTrue(
       backgroundSnapshot.localPublishReadiness.commitBlockingIssues.contains {
@@ -764,8 +764,13 @@ final class WorkbenchStoreProfileTests: XCTestCase {
 
     XCTAssertEqual(store.activeProfileID, astroProfile.id)
     XCTAssertEqual(store.selectedDraftID, draft.id)
-    XCTAssertTrue(FileManager.default.fileExists(atPath: writtenURL.path))
-    XCTAssertTrue(store.releaseRecords.first?.changedPaths.contains("src/content/blog/astro-write.mdx") == true)
+    XCTAssertFalse(FileManager.default.fileExists(atPath: writtenURL.path))
+    XCTAssertTrue(store.publishActionMessage?.contains("不是 Git 仓库根目录") == true)
+    XCTAssertFalse(
+      store.releaseRecords.contains {
+        $0.changedPaths.contains("src/content/blog/astro-write.mdx")
+      }
+    )
   }
 
   func testSingleDraftPublishCommandsRequireCommitReadiness() async throws {

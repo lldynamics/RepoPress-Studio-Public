@@ -193,14 +193,15 @@ extension WorkbenchStore {
     }
     if binding.message.agentContinuation != nil {
       guard let toolCallID,
+        let pending = binding.message.agentContinuation?.checkpoint.pendingCalls.first(where: {
+          $0.toolCallID == toolCallID && $0.automationStepID == stepID
+        }),
         await aiStore.recordAgentContinuationResolution(
           conversationID: conversationID,
           messageID: messageID,
           planID: binding.plan.id,
           resolution: WorkbenchAIAgentToolResolution(
-            toolCallID: toolCallID,
-            automationStepID: stepID,
-            command: step.command,
+            resolving: pending,
             status: .rejected,
             content: "The user rejected this proposed action; it was not executed.",
             targetDraftID: step.arguments.draftID
@@ -303,16 +304,18 @@ extension WorkbenchStore {
           $0.command == reviewedStep.command
             && $0.targetDraftID == reviewedStep.arguments.draftID
         }),
-        let toolCallID = reviewDecision.toolCallID
+        let toolCallID = reviewDecision.toolCallID,
+        let pending = binding.message.agentContinuation?.checkpoint.pendingCalls.first(where: {
+          $0.toolCallID == toolCallID
+            && $0.automationStepID == reviewDecision.stepID
+        })
       {
         didRecordContinuationResolution = await aiStore.recordAgentContinuationResolution(
           conversationID: binding.identity.conversationID,
           messageID: messageID,
           planID: binding.plan.id,
           resolution: WorkbenchAIAgentToolResolution(
-            toolCallID: toolCallID,
-            automationStepID: reviewDecision.stepID,
-            command: stepRecord.command,
+            resolving: pending,
             status: continuationResolutionStatus(for: stepRecord.status),
             content: String(
               stepRecord.message.prefix(WorkbenchAIAgentToolResolution.maximumContentByteCount)
@@ -481,7 +484,8 @@ extension WorkbenchStore {
         let toolRunIndex = message.toolRuns.indices.first(where: { index in
           let run = message.toolRuns[index]
           guard !consumedToolCallIDs.contains(run.toolCallID),
-            run.command == stepRecord.command,
+            run.toolID
+              == WorkbenchAutomationAgentToolRegistry.toolID(for: stepRecord.command),
             let automationStepID = run.automationStepID,
             plan.steps.contains(where: {
               $0.id == automationStepID && $0.command == stepRecord.command

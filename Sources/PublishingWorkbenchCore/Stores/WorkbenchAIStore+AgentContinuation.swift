@@ -232,8 +232,11 @@ extension WorkbenchAIStore {
       let pending = binding.continuation.checkpoint.pendingCalls.first(where: {
         $0.toolCallID == resolution.toolCallID
       }),
+      pending.correlationID == resolution.correlationID,
+      pending.toolID == resolution.toolID,
+      pending.modelToolName == resolution.modelToolName,
+      pending.catalogRevision == resolution.catalogRevision,
       pending.automationStepID == resolution.automationStepID,
-      pending.command == resolution.command,
       !binding.continuation.resolutions.contains(where: {
         $0.toolCallID == resolution.toolCallID
       }),
@@ -336,10 +339,8 @@ extension WorkbenchAIStore {
     let unresolvedHumanCalls = initialBinding.continuation.checkpoint.pendingCalls.filter {
       pending in
       !resolvedIDs.contains(pending.toolCallID)
-        && (pending.step.status == .awaitingConfirmation
-          || WorkbenchAutomationRegistry.descriptor(
-            for: pending.command
-          )?.allowsAgentAutomaticExecution != true)
+        && (pending.automationStep?.status == .awaitingConfirmation
+          || pending.executionPolicy != .automatic)
     }
     guard unresolvedHumanCalls.isEmpty else { return }
 
@@ -378,16 +379,28 @@ extension WorkbenchAIStore {
         validatedBinding.plan.steps.indices.allSatisfy({ index in
           let step = validatedBinding.plan.steps[index]
           let pending = validatedBinding.continuation.checkpoint.pendingCalls[index]
+          guard let pendingStep = pending.automationStep else { return false }
           return step.id == pending.automationStepID
-            && step.command == pending.command
-            && step.arguments == pending.step.arguments
+            && step.command == pendingStep.command
+            && step.arguments == pendingStep.arguments
+            && pending.toolID
+              == WorkbenchAutomationAgentToolRegistry.toolID(for: step.command)
         })
       else {
         throw AIOutboundPayloadConfirmationError.drifted
       }
       let checkpointValidator = WorkbenchAIAgentLoopService(
         modelTransport: { _ in throw CancellationError() },
-        allowedCommands: initialRuntime.allowedCommands,
+        toolRegistry: WorkbenchAutomationAgentToolRegistry(
+          allowedToolIDs: Set(
+            initialRuntime.allowedCommands.map(
+              WorkbenchAutomationAgentToolRegistry.toolID(for:)
+            )
+          )
+        ),
+        grantedScopes: Set(
+          initialRuntime.allowedCommands.map(WorkbenchAutomationRegistry.requiredPermission(for:))
+        ),
         automaticExecutor: { _ in throw CancellationError() }
       )
       guard
@@ -534,6 +547,11 @@ extension WorkbenchAIStore {
       }
 
       let privacyService = AIOutboundPayloadPrivacyService()
+      let toolRegistry = WorkbenchAutomationAgentToolRegistry(
+        allowedToolIDs: Set(
+          runtime.allowedCommands.map(WorkbenchAutomationAgentToolRegistry.toolID(for:))
+        )
+      )
       let loop = WorkbenchAIAgentLoopService(
         modelTransport: { [weak self] roundRequest in
           guard let self else { throw CancellationError() }
@@ -553,7 +571,10 @@ extension WorkbenchAIStore {
             knowledgeAuthorizationState: knowledgeAuthorizationState
           )
         },
-        allowedCommands: runtime.allowedCommands,
+        toolRegistry: toolRegistry,
+        grantedScopes: Set(
+          runtime.allowedCommands.map(WorkbenchAutomationRegistry.requiredPermission(for:))
+        ),
         automaticExecutor: { [weak self] invocation in
           guard let self else { throw CancellationError() }
           let currentRuntime: AgentContinuationRuntimeContext
@@ -572,7 +593,11 @@ extension WorkbenchAIStore {
           {
             throw CancellationError()
           }
-          guard currentRuntime.allowedCommands.contains(invocation.step.command),
+          guard
+            let command = WorkbenchAutomationAgentToolRegistry.command(
+              for: invocation.toolID
+            ),
+            currentRuntime.allowedCommands.contains(command),
             currentRuntime.conversationRevision == runtime.conversationRevision,
             currentRuntime.draftFingerprint == runtime.draftFingerprint,
             currentRuntime.draftUpdatedAt == runtime.draftUpdatedAt
@@ -721,10 +746,8 @@ extension WorkbenchAIStore {
     let resolvedIDs = Set(binding.continuation.resolutions.map(\.toolCallID))
     let pendingAutomaticCalls = binding.continuation.checkpoint.pendingCalls.filter {
       !resolvedIDs.contains($0.toolCallID)
-        && $0.step.status == .proposed
-        && WorkbenchAutomationRegistry.descriptor(
-          for: $0.command
-        )?.allowsAgentAutomaticExecution == true
+        && $0.automationStep?.status == .proposed
+        && $0.executionPolicy == .automatic
     }
     var didExecuteAutomaticTool = false
 
@@ -745,8 +768,10 @@ extension WorkbenchAIStore {
           planID: planID
         ),
         currentBinding.continuation.id == continuationID,
-        currentBinding.continuation.checkpoint.allowedCommands.contains(pending.command),
-        runtime.allowedCommands.contains(pending.command)
+        currentBinding.continuation.checkpoint.allowedToolIDs.contains(pending.toolID),
+        let command = WorkbenchAutomationAgentToolRegistry.command(for: pending.toolID),
+        runtime.allowedCommands.contains(command),
+        pending.automationStep?.command == command
       else {
         throw AIOutboundPayloadConfirmationError.drifted
       }
@@ -815,17 +840,12 @@ extension WorkbenchAIStore {
           failureState: knowledgeAuthorizationState
         )
         let result = try await executeAgentAutomaticInvocation(
-          WorkbenchAIAgentToolInvocation(
-            toolCallID: pending.toolCallID,
-            step: pending.step
-          ),
+          pending.invocation,
           operationID: operationID,
           conversationID: conversationID
         )
         resolution = WorkbenchAIAgentToolResolution(
-          toolCallID: pending.toolCallID,
-          automationStepID: pending.automationStepID,
-          command: pending.command,
+          resolving: pending,
           status: result.isError ? .failed : .succeeded,
           content: String(
             result.content.prefix(
@@ -838,9 +858,7 @@ extension WorkbenchAIStore {
         throw CancellationError()
       } catch {
         resolution = WorkbenchAIAgentToolResolution(
-          toolCallID: pending.toolCallID,
-          automationStepID: pending.automationStepID,
-          command: pending.command,
+          resolving: pending,
           status: .failed,
           content: "The application tool failed.",
           targetDraftID: pending.targetDraftID

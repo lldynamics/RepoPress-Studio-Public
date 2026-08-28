@@ -4,6 +4,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WORKFLOW="$ROOT_DIR/.github/workflows/quality.yml"
 TOOLING_WORKFLOW="$ROOT_DIR/.github/workflows/tooling.yml"
+SHARED_SWIFT_WORKFLOW="$ROOT_DIR/.github/workflows/shared-swift-core.yml"
 ACCESSIBILITY_RUNTIME_GATE="$ROOT_DIR/script/check_accessibility_runtime.sh"
 RELEASE_CHECKS="$ROOT_DIR/script/release_checks.json"
 CHECKOUT_ACTION="actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803"
@@ -16,6 +17,7 @@ fail() {
 
 [[ -f "$WORKFLOW" ]] || fail "missing .github/workflows/quality.yml"
 [[ -f "$TOOLING_WORKFLOW" ]] || fail "missing .github/workflows/tooling.yml"
+[[ -f "$SHARED_SWIFT_WORKFLOW" ]] || fail "missing .github/workflows/shared-swift-core.yml"
 [[ -f "$ACCESSIBILITY_RUNTIME_GATE" ]] || fail "missing script/check_accessibility_runtime.sh"
 [[ -f "$RELEASE_CHECKS" ]] || fail "missing script/release_checks.json"
 grep -Eq '^[[:space:]]*push:' "$WORKFLOW" || fail "quality workflow must run on pushes"
@@ -54,11 +56,24 @@ grep -Fq 'contents: read' "$TOOLING_WORKFLOW" \
   || fail "release-tooling workflow token permissions must be read-only"
 grep -Fq 'DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer' "$TOOLING_WORKFLOW" \
   || fail "release-tooling workflow must select the Xcode 26.3 toolchain"
-for quality_lane in quality-build quality-runtime; do
+for quality_lane in main-push-quick quality-quick quality-coverage quality-build quality-runtime release-performance module-build-performance; do
   grep -Fq 'DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer' \
     < <(sed -n "/^  $quality_lane:/,/^  [a-z]/p" "$WORKFLOW") \
     || fail "$quality_lane must select the Xcode 26.3 toolchain"
 done
+developer_dir_count="$(grep -Fc 'DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer' "$WORKFLOW" || true)"
+[[ "$developer_dir_count" -eq 7 ]] \
+  || fail "every macOS Swift lane must select the one approved Xcode 26.3 toolchain"
+if grep -F 'DEVELOPER_DIR:' "$WORKFLOW" | grep -Fv 'DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer' >/dev/null; then
+  fail "quality workflow contains a Swift lane with a different DEVELOPER_DIR"
+fi
+[[ "$(grep -Fc 'DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer' "$SHARED_SWIFT_WORKFLOW" || true)" -eq 1 ]] \
+  || fail "shared Swift Core workflow must select the one approved Xcode 26.3 toolchain"
+if grep -F 'DEVELOPER_DIR:' "$SHARED_SWIFT_WORKFLOW" | grep -Fv 'DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer' >/dev/null; then
+  fail "shared Swift Core workflow contains a different DEVELOPER_DIR"
+fi
+grep -Fq "uses: $CHECKOUT_ACTION" "$SHARED_SWIFT_WORKFLOW" \
+  || fail "shared Swift Core workflow must pin actions/checkout to the approved commit"
 grep -Fq 'echo "PLAYWRIGHT_BROWSERS_PATH=$RUNNER_TEMP/ms-playwright" >> "$GITHUB_ENV"' "$TOOLING_WORKFLOW" \
   || fail "release-tooling workflow must share one Playwright browser path across install and gates"
 if grep -Fq 'safari-web-extension-packager' "$WORKFLOW" \
@@ -216,6 +231,16 @@ grep -Fq 'GITHUB_STEP_SUMMARY' "$WORKFLOW" \
 swift_test_artifact_count="$(grep -Fc '.build/swift-test-shards/' "$WORKFLOW" || true)"
 [[ "$swift_test_artifact_count" -eq 2 ]] \
   || fail "main-push and pull-request quality artifacts must both retain Swift test shard diagnostics"
+[[ "$(grep -Fc '.build/swift-format-result.json' "$WORKFLOW" || true)" -eq 2 ]] \
+  || fail "main-push and pull-request quick artifacts must retain Swift format JSON"
+[[ "$(grep -Fc '.build/swift-format-lint.log' "$WORKFLOW" || true)" -eq 2 ]] \
+  || fail "main-push and pull-request quick artifacts must retain Swift format logs"
+[[ "$(grep -Fc '.build/swift-coverage-result.json' "$WORKFLOW" || true)" -eq 1 ]] \
+  || fail "coverage artifacts must retain the measured Swift coverage result"
+[[ "$(grep -Fc '.build/*.diagnostics/' "$WORKFLOW" || true)" -eq 7 ]] \
+  || fail "every quality release-gate artifact must retain bounded failure diagnostics"
+grep -Fq '.build/*.diagnostics/' "$TOOLING_WORKFLOW" \
+  || fail "release-tooling artifacts must retain bounded failure diagnostics"
 pr_build_body="$(sed -n '/^  quality-build:/,/^  quality-runtime:/p' "$WORKFLOW")"
 release_runtime_body="$(sed -n '/^  quality-runtime:/,/^  quality:/p' "$WORKFLOW")"
 for runtime_contract in \
@@ -239,12 +264,21 @@ for retry_argument in \
 done
 grep -Fq 'name: release-ui-smoke-result' "$WORKFLOW" \
   || fail "release workflow must retain UI smoke logs and test evidence"
-for release_check in ui-runtime swift-release-build; do
+for release_check in ui-runtime ui-product-contract swift-release-build; do
   grep -Fq -- "--check $release_check" <<<"$pr_build_body" \
     || fail "PR build lane must exercise distribution check: $release_check"
   grep -Fq -- "--check $release_check" <<<"$release_runtime_body" \
     || fail "release runtime lane must exercise distribution check: $release_check"
 done
+grep -Fq 'ui runtime artifact gate' "$ROOT_DIR/script/check_ui_runtime.sh" \
+  || fail "UI runtime gate must identify the packaged-artifact responsibility"
+grep -Fq 'ui product-contract gate' "$ROOT_DIR/script/check_ui_product_contract.sh" \
+  || fail "UI product-contract gate must identify the static source-contract responsibility"
+grep -Fq 'release_artifact_manifest.py' "$ROOT_DIR/script/check_swift_release_build.sh" \
+  || fail "Swift Release gate must consume the shared artifact manifest"
+if grep -Fq 'swift build' "$ROOT_DIR/script/check_ui_runtime.sh"; then
+  fail "UI runtime artifact gate must delegate build/package work to build_and_run"
+fi
 python3 "$ROOT_DIR/script/check_tooling_workflow_source_paths.py" \
   --manifest "$RELEASE_CHECKS" \
   --workflow "$TOOLING_WORKFLOW" \

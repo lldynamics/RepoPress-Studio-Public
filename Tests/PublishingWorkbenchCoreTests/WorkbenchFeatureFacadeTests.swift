@@ -59,6 +59,8 @@ final class WorkbenchFeatureFacadeTests: XCTestCase {
     let initialPresentationRevision = draftList.presentationRevision
     let initialTaskQueueStateVersion = draftList.taskQueueStateVersion
     let initialEditorMetadataRevision = draft.editorMetadataRevision
+    _ = draftList.searchIndex(for: .activeSite)
+    XCTAssertEqual(draftList.searchIndexBuildCount, 1)
     var listChanges = 0
     let cancellable = draftList.objectWillChange.sink { listChanges += 1 }
 
@@ -73,6 +75,8 @@ final class WorkbenchFeatureFacadeTests: XCTestCase {
     )
     XCTAssertEqual(draftList.presentationRevision, initialPresentationRevision)
     XCTAssertEqual(draftList.taskQueueStateVersion, initialTaskQueueStateVersion)
+    _ = draftList.searchIndex(for: .activeSite)
+    XCTAssertEqual(draftList.searchIndexBuildCount, 1)
 
     // The normal automatic preflight is delayed by 600ms. Give it enough time
     // to run and prove that its derived-cache invalidation does not flow back
@@ -82,6 +86,74 @@ final class WorkbenchFeatureFacadeTests: XCTestCase {
     XCTAssertEqual(draftList.taskQueueStateVersion, initialTaskQueueStateVersion)
     XCTAssertEqual(listChanges, 0)
     withExtendedLifetime(cancellable) {}
+  }
+
+  func testDraftSearchIndexCachesCorporaAndInvalidatesForMetadataAndPrivacy() throws {
+    let store = makeIsolatedStore(safeMode: true)
+    store.updatePrivacySettings(PrivacyProtectionSettings(masksPrivateContent: false))
+    let draftList = store.draftList
+    let privateDraft = ArticleDraft(
+      siteProfileID: store.activeProfileID,
+      title: "Private title",
+      slug: "secret-slug",
+      visibility: .private,
+      summary: "hidden summary",
+      bodyMarkdown: "Body"
+    )
+    store.setDrafts([privateDraft])
+
+    let activeIndex = draftList.searchIndex(for: .activeSite)
+    _ = draftList.searchIndex(for: .activeSite)
+    let allIndex = draftList.searchIndex(for: .allDrafts)
+    _ = draftList.searchIndex(for: .allDrafts)
+    XCTAssertEqual(draftList.searchIndexBuildCount, 2)
+    XCTAssertEqual(activeIndex.sourceRevision, allIndex.sourceRevision)
+
+    var changed = privateDraft
+    changed.title = "Renamed private title"
+    store.updateDraft(changed)
+    XCTAssertEqual(
+      draftList.searchIndex(for: .activeSite).matching(query: "Renamed").map(\.id),
+      [privateDraft.id]
+    )
+    XCTAssertEqual(draftList.searchIndexBuildCount, 3)
+
+    store.updatePrivacySettings(PrivacyProtectionSettings(masksPrivateContent: true))
+    let maskedIndex = draftList.searchIndex(for: .activeSite)
+    XCTAssertTrue(maskedIndex.matching(query: "secret-slug").isEmpty)
+    XCTAssertEqual(maskedIndex.matching(query: "Private").map(\.id), [privateDraft.id])
+    XCTAssertEqual(draftList.searchIndexBuildCount, 4)
+  }
+
+  func testAllDraftSearchIndexInvalidatesWhenInactiveProfilePathChanges() {
+    let store = makeIsolatedStore(safeMode: true)
+    var inactiveProfile = store.activeProfile
+    inactiveProfile.id = UUID()
+    inactiveProfile.name = "Inactive site"
+    inactiveProfile.markdownPathPattern = "content/archive/{slug}.md"
+    store.setProfiles([store.activeProfile, inactiveProfile])
+    let draft = ArticleDraft(
+      siteProfileID: inactiveProfile.id,
+      title: "Inactive profile draft",
+      slug: "cached-path"
+    )
+    store.setDrafts([draft])
+
+    let draftList = store.draftList
+    XCTAssertEqual(
+      draftList.searchIndex(for: .allDrafts).matching(query: "content/archive").map(\.id),
+      [draft.id]
+    )
+    let initialBuildCount = draftList.searchIndexBuildCount
+
+    inactiveProfile.markdownPathPattern = "notes/{slug}.md"
+    store.setProfiles([store.activeProfile, inactiveProfile])
+
+    XCTAssertEqual(
+      draftList.searchIndex(for: .allDrafts).matching(query: "notes/cached-path").map(\.id),
+      [draft.id]
+    )
+    XCTAssertEqual(draftList.searchIndexBuildCount, initialBuildCount + 1)
   }
 
   func testDraftListPreflightNotificationKeepsMetadataRequestWhenBodyRequestFollows()

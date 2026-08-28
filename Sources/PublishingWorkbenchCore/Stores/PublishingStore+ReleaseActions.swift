@@ -158,7 +158,7 @@ extension PublishingStore {
     }
     setPublishActionMessage(
       CoreL10n.format(
-        "正在通过 %@ 撤回 Review #%@...",
+        "正在通过 %@ 撤回 Review #%@…",
         profile.repositoryProvider.displayName,
         String(draft.reviewNumber)
       ),
@@ -247,7 +247,9 @@ extension PublishingStore {
         mode: mode,
         preview: preview
       )
-      guard localRepositoryMutationContext == operation, operation.stillMatches(store.profile(for: package)) else {
+      guard localRepositoryMutationContext == operation,
+        operation.stillMatches(store.profile(for: package))
+      else {
         return
       }
       let reviewDraft = remoteReviewDraftBuilder.build(package: package, profile: profile)
@@ -268,7 +270,9 @@ extension PublishingStore {
       store.requestRepositoryScan()
       store.save()
     } catch {
-      guard localRepositoryMutationContext == operation, operation.stillMatches(store.profile(for: package)) else {
+      guard localRepositoryMutationContext == operation,
+        operation.stillMatches(store.profile(for: package))
+      else {
         return
       }
       setPublishActionMessage(
@@ -285,7 +289,8 @@ extension PublishingStore {
     store: WorkbenchStore
   ) -> LocalPublishReadiness {
     let preview = localPublishPreviewService.preview(package: package, profile: profile)
-    let readiness = makeLocalPublishReadiness(package: package, profile: profile, preview: preview, store: store)
+    let readiness = makeLocalPublishReadiness(
+      package: package, profile: profile, preview: preview, store: store)
     return readiness
   }
 
@@ -342,12 +347,17 @@ extension PublishingStore {
 
   private func publishSelectedDraftOnline(
     package: PublishPackage,
-    profile: SiteProfile,
+    profile requestedProfile: SiteProfile,
     mode: RemoteRepositoryPublishMode,
     store: WorkbenchStore
   ) async -> RemoteRepositoryPublishResult? {
-    let preview = remoteRepositoryPublishPreview(package: package, profile: profile, mode: mode, store: store)
-    if let tokenAccessFailureMessage = preview.tokenAccessFailureMessage {
+    let initialPreview = remoteRepositoryPublishPreview(
+      package: package,
+      profile: requestedProfile,
+      mode: mode,
+      store: store
+    )
+    if let tokenAccessFailureMessage = initialPreview.tokenAccessFailureMessage {
       setPublishActionMessage(
         CoreL10n.format(
           "仓库 Token 状态读取失败：%@",
@@ -357,33 +367,33 @@ extension PublishingStore {
       )
       return nil
     }
-    guard preview.hasToken else {
+    guard initialPreview.hasToken else {
       setPublishActionMessage(
         CoreL10n.text("仓库访问 Token 未保存，无法线上发布。"),
         status: .warning
       )
       return nil
     }
-    guard preview.blockingIssues.isEmpty else {
+    guard initialPreview.blockingIssues.isEmpty else {
       setPublishActionMessage(
         blockedLocalPublishMessage(
           action: CoreL10n.text("线上发布"),
-          issues: preview.blockingIssues
+          issues: initialPreview.blockingIssues
         ),
         status: .warning
       )
       return nil
     }
-    guard preview.accessCheck != nil else {
-      setPublishActionMessage(
-        CoreL10n.format(
-          "请先检查 %@ Token 权限，确认具备写入权限后再线上发布。",
-          profile.repositoryProvider.displayName
-        ),
-        status: .warning
-      )
+
+    guard await store.ensureRemoteRepositoryWriteAccess(for: requestedProfile) else {
       return nil
     }
+
+    // A detected repository origin may complete missing configuration while
+    // checking access, so recompute both profile and preview before writing.
+    let profile = store.profile(for: package)
+    let preview = remoteRepositoryPublishPreview(
+      package: package, profile: profile, mode: mode, store: store)
     guard preview.canPublish else {
       setPublishActionMessage(
         CoreL10n.text("Token 无写入权限，无法线上发布。"),
@@ -392,11 +402,13 @@ extension PublishingStore {
       return nil
     }
 
-    guard await ensureDraftMaterializedForRemotePublish(
-      package: package,
-      profile: profile,
-      store: store
-    ) else {
+    guard
+      await ensureDraftMaterializedForRemotePublish(
+        package: package,
+        profile: profile,
+        store: store
+      )
+    else {
       return nil
     }
 
@@ -417,18 +429,22 @@ extension PublishingStore {
     store.setRemoteRepositoryPublishProgress(nil)
     setPublishActionMessage(
       mode == .directCommit
-        ? CoreL10n.format("正在通过 %@ 核对远端版本并执行%@...", profile.repositoryProvider.displayName, mode.displayName)
-        : CoreL10n.format("正在通过 %@ 执行%@...", profile.repositoryProvider.displayName, mode.displayName),
+        ? CoreL10n.format(
+          "正在通过 %@ 核对远端版本并执行 %@…", profile.repositoryProvider.displayName, mode.displayName)
+        : CoreL10n.format(
+          "正在通过 %@ 执行 %@…", profile.repositoryProvider.displayName, mode.displayName),
       status: .inProgress
     )
     defer { finishRemoteRepositoryMutation(operation, store: store) }
 
     do {
       let token = try repositoryAccessToken(for: profile)
-      let progressHandler: @Sendable (RemoteRepositoryPublishProgress) -> Void = { [weak self, weak store] progress in
+      let progressHandler: @Sendable (RemoteRepositoryPublishProgress) -> Void = {
+        [weak self, weak store] progress in
         Task { @MainActor in
           guard let self, let store,
-                self.remoteRepositoryMutationIsCurrent(operation, store: store) else { return }
+            self.remoteRepositoryMutationIsCurrent(operation, store: store)
+          else { return }
           store.setRemoteRepositoryPublishProgress(progress)
         }
       }
@@ -442,14 +458,9 @@ extension PublishingStore {
       guard remoteRepositoryMutationIsCurrent(operation, store: store) else { return nil }
       store.setRemoteRepositoryPublishResult(result)
       store.setRepositoryTokenAvailability(KeychainTokenAvailability(hasToken: true))
-      let releaseRecord = ReleaseRecord.remotePublish(package: package, profile: profile, result: result)
+      let releaseRecord = ReleaseRecord.remotePublish(
+        package: package, profile: profile, result: result)
       prependReleaseRecord(releaseRecord)
-      if markDraftsAsPublishedIfDirectRemoteCommit(
-        mode: mode,
-        draftIDs: [package.draftID]
-      ) {
-        store.invalidateDraftDerivedCaches()
-      }
       confirmDirectRemotePublishLifecycle(packages: [package], result: result)
       if mode.createsReview {
         markRemotePublishReviewSuccess(packages: [package])
@@ -458,40 +469,79 @@ extension PublishingStore {
         store.recordRemoteRepositoryPublishInAutoSync(result, profileID: profile.id)
       }
       let commitSummary = result.commitSHA.map { String($0.prefix(8)) } ?? CoreL10n.text("无 commit")
-      let adoptedSummary = result.automaticallyAdoptedPaths.isEmpty
+      let adoptedSummary =
+        result.automaticallyAdoptedPaths.isEmpty
         ? ""
         : "；自动认领 \(result.automaticallyAdoptedPaths.count) 个已存在且内容一致的文件"
-      let branchSummary = mode == .previewBranch
+      let branchSummary =
+        mode == .previewBranch
         ? CoreL10n.format("；分支 %@", result.branchName)
         : ""
-      setPublishActionMessage(
-        CoreL10n.format("%@完成：%@%@%@", mode.displayName, commitSummary, branchSummary, adoptedSummary),
-        status: .success
-      )
+      let operationSummary = CoreL10n.format(
+        "%@完成：%@%@%@", mode.displayName, commitSummary, branchSummary, adoptedSummary)
+      var deploymentStatus: DeploymentStatusSnapshot?
       if store.shouldRefreshDeploymentStatusAfterRemoteOperation(releaseRecord) {
-        await store.refreshDeploymentStatus(for: releaseRecord, updatesMessage: false)
+        deploymentStatus = await store.refreshDeploymentStatus(
+          for: releaseRecord,
+          updatesMessage: false
+        )
         guard remoteRepositoryMutationIsCurrent(operation, store: store) else { return nil }
       }
+      if mode == .directCommit,
+        result.commitSHA?.trimmedForPublishing.nilIfEmpty != nil,
+        deploymentStatus?.level == .success,
+        deploymentStatus?.attributionVerified == true,
+        markDraftsAsPublishedIfDirectRemoteCommit(
+          mode: mode,
+          draftIDs: [package.draftID]
+        )
+      {
+        store.invalidateDraftDerivedCaches()
+      }
+      let completionFeedback = remotePublishCompletionFeedback(
+        mode: mode,
+        operationSummary: operationSummary,
+        deploymentStatus: deploymentStatus
+      )
+      setPublishActionMessage(
+        completionFeedback.message,
+        status: completionFeedback.status
+      )
       store.save()
-      if store.remoteRepositoryPublishProgress?.stage != .completed {
-        store.setRemoteRepositoryPublishProgress(.init(
+      store.setRemoteRepositoryPublishProgress(
+        .init(
           stage: .completed,
           progress: 1,
-          message: CoreL10n.text("线上发布完成"),
-          detail: CoreL10n.text("发布流程已结束")
+          message: remotePublishCompletedProgressMessage(
+            mode: mode,
+            deploymentStatus: deploymentStatus
+          ),
+          detail: completionFeedback.message
         ))
-      }
       return result
     } catch {
       guard remoteRepositoryMutationIsCurrent(operation, store: store) else { return nil }
-      let message = CoreL10n.format("%@失败：%@", mode.displayName, error.localizedDescription)
       let partialFailure = partialRemoteRepositoryPublishFailure(from: error)
-      store.setRemoteRepositoryPublishProgress(.init(
-        stage: .failed,
-        progress: nil,
-        message: CoreL10n.text("发布失败"),
-        detail: error.localizedDescription
-      ))
+      if partialFailure == nil, remoteRepositoryOperationWasCancelled(error) {
+        let message = CoreL10n.text("发布流程已中断；如果远端请求已经发出，请刷新仓库状态确认结果。")
+        store.setRemoteRepositoryPublishProgress(
+          .init(
+            stage: .failed,
+            progress: nil,
+            message: CoreL10n.text("发布已中断"),
+            detail: message
+          ))
+        setPublishActionMessage(message, status: .warning)
+        return nil
+      }
+      let message = CoreL10n.format("%@失败：%@", mode.displayName, error.localizedDescription)
+      store.setRemoteRepositoryPublishProgress(
+        .init(
+          stage: .failed,
+          progress: nil,
+          message: CoreL10n.text("发布失败"),
+          detail: error.localizedDescription
+        ))
       let releaseRecord = ReleaseRecord.remotePublishFailure(
         package: package,
         profile: profile,
@@ -568,7 +618,7 @@ extension PublishingStore {
     }
     setPublishActionMessage(
       CoreL10n.format(
-        "正在通过 %@ 回滚 %@...",
+        "正在通过 %@ 回滚 %@…",
         profile.repositoryProvider.displayName,
         String(draft.commitSHA.prefix(8))
       ),
@@ -585,7 +635,8 @@ extension PublishingStore {
       guard remoteRepositoryMutationIsCurrent(operation, store: store) else { return nil }
       store.setRemoteRepositoryRollbackResult(result)
       store.setRepositoryTokenAvailability(KeychainTokenAvailability(hasToken: true))
-      let rollbackRecord = ReleaseRecord.remoteRollback(original: record, profile: profile, result: result)
+      let rollbackRecord = ReleaseRecord.remoteRollback(
+        original: record, profile: profile, result: result)
       prependReleaseRecord(rollbackRecord)
       setPublishActionMessage(
         CoreL10n.format("线上回滚完成：%@", result.shortRollbackCommitSHA),

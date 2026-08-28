@@ -140,7 +140,8 @@ public struct LocalPublishPreviewService: Sendable {
   public func write(package: PublishPackage, profile: SiteProfile) throws -> [String] {
     guard
       let writtenPaths = try profile.withLocalRepositoryRootAccess({ rootURL in
-        try write(package: package, rootURL: rootURL)
+        try requireRepositoryRootForProfileWrite(profile: profile, rootURL: rootURL)
+        return try write(package: package, rootURL: rootURL)
       })
     else {
       throw LocalPublishPreviewError.missingRepositoryRoot
@@ -152,7 +153,8 @@ public struct LocalPublishPreviewService: Sendable {
   public func write(preview: LocalPublishPreview, profile: SiteProfile) throws -> [String] {
     guard
       let writtenPaths = try profile.withLocalRepositoryRootAccess({ rootURL in
-        try write(preview: preview, rootURL: rootURL)
+        try requireRepositoryRootForProfileWrite(profile: profile, rootURL: rootURL)
+        return try write(preview: preview, rootURL: rootURL)
       })
     else {
       throw LocalPublishPreviewError.missingRepositoryRoot
@@ -166,7 +168,8 @@ public struct LocalPublishPreviewService: Sendable {
       throw LocalPublishPreviewError.missingRepositoryRoot
     }
     return try await Task.detached(priority: .userInitiated) {
-      try write(package: package, rootURL: rootURL)
+      try requireRepositoryRootForProfileWrite(profile: profile, rootURL: rootURL)
+      return try write(package: package, rootURL: rootURL)
     }.value
   }
 
@@ -177,8 +180,26 @@ public struct LocalPublishPreviewService: Sendable {
       throw LocalPublishPreviewError.missingRepositoryRoot
     }
     return try await Task.detached(priority: .userInitiated) {
-      try write(preview: preview, rootURL: rootURL)
+      try requireRepositoryRootForProfileWrite(profile: profile, rootURL: rootURL)
+      return try write(preview: preview, rootURL: rootURL)
     }.value
+  }
+
+  /// Profile-backed writes materialize content inside a repository selected by
+  /// the user. Publishing and repository-backup profiles must point at the
+  /// repository root itself; otherwise autosave could silently write into an
+  /// unrelated look-alike directory and never enter the Git publish flow.
+  func requireRepositoryRootForProfileWrite(
+    profile: SiteProfile,
+    rootURL: URL
+  ) throws {
+    guard profile.purpose.requiresRepositoryReadiness else { return }
+    let gitMarkerURL = rootURL.standardizedFileURL.appendingPathComponent(".git")
+    guard fileManager.fileExists(atPath: gitMarkerURL.path),
+      !isSymbolicLink(gitMarkerURL)
+    else {
+      throw LocalPublishPreviewError.notGitRepositoryRoot(rootURL.path)
+    }
   }
 
   func write(package: PublishPackage, rootURL: URL) throws -> [String] {
@@ -212,6 +233,7 @@ public struct LocalPublishPreviewService: Sendable {
 
 public enum LocalPublishPreviewError: LocalizedError {
   case missingRepositoryRoot
+  case notGitRepositoryRoot(String)
   case unsafePath(String)
   case missingSource(String)
   case unsafeSource(String)
@@ -226,6 +248,8 @@ public enum LocalPublishPreviewError: LocalizedError {
     switch self {
     case .missingRepositoryRoot:
       return CoreL10n.text("未选择本地仓库。")
+    case .notGitRepositoryRoot(let path):
+      return CoreL10n.format("所选目录不是 Git 仓库根目录，已停止写入：%@", path)
     case .unsafePath(let path):
       return CoreL10n.format("发布路径不安全：%@", path)
     case .missingSource(let path):
@@ -264,6 +288,11 @@ struct LocalPublishRollbackEntry {
   let backupURL: URL?
   var appliedState: LocalPublishFileState?
   var didMutateDestination: Bool
+}
+
+struct PreparedLocalPublishRecovery {
+  let destinationURL: URL
+  let backupURL: URL?
 }
 
 enum LocalPublishTransactionPhase: String, Codable {

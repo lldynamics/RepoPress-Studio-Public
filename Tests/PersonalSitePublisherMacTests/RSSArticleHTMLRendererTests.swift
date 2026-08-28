@@ -17,6 +17,8 @@ final class RSSArticleHTMLRendererTests: XCTestCase {
 
     XCTAssertTrue(rendered.contains("max-width: 780px"))
     XCTAssertTrue(rendered.contains("margin: 0 auto"))
+    XCTAssertTrue(rendered.contains("padding: 32px 24px 48px"))
+    XCTAssertFalse(rendered.contains("padding: 72px 24px 48px"))
     XCTAssertTrue(rendered.contains("line-height: var(--rss-line-spacing)"))
     XCTAssertTrue(rendered.contains("--rss-line-spacing: 1.65"))
   }
@@ -107,7 +109,7 @@ final class RSSArticleHTMLRendererTests: XCTestCase {
 
     XCTAssertTrue(RSSArticleHTMLRenderer.hasRenderableBody(article: article))
     XCTAssertTrue(rendered.contains("这是一段安全的中文摘要"))
-    XCTAssertTrue(rendered.contains("<html lang=\"zh-CN\">"))
+    XCTAssertTrue(rendered.contains("<html lang=\"zh-CN\""))
     XCTAssertFalse(rendered.contains("alert('truncated')"))
   }
 
@@ -350,11 +352,44 @@ final class RSSArticleHTMLRendererTests: XCTestCase {
 
     XCTAssertTrue(
       RSSArticleHTMLRenderer.render(article: english, allowRemoteImages: false)
-        .contains("<html lang=\"en\">")
+        .contains("<html lang=\"en\"")
     )
     XCTAssertTrue(
       RSSArticleHTMLRenderer.render(article: chinese, allowRemoteImages: false)
-        .contains("<html lang=\"zh-CN\">")
+        .contains("<html lang=\"zh-CN\"")
     )
+  }
+
+  func testReaderTypographyAndAdaptiveCodeThemeAreRenderedWithoutSourceStyles() {
+    let rendered = RSSArticleHTMLRenderer.render(
+      source: """
+        <p style="text-align: center">中文标点，应该遵循阅读器排版。</p>
+        <pre><code class="source-danger language-swift">let value = 42 // comment</code></pre>
+        """,
+      baseURL: nil,
+      allowRemoteImages: false,
+      languageTag: "zh-CN",
+      fontSize: 19,
+      lineSpacing: 1.8,
+      paragraphSpacing: 1.1,
+      fontFamily: .songti,
+      textAlignment: .justified,
+      codeHighlightTheme: .solarized,
+      theme: .dark
+    )
+
+    XCTAssertTrue(rendered.contains("data-reading-theme=\"dark\""))
+    XCTAssertTrue(rendered.contains("data-code-theme=\"solarized\""))
+    XCTAssertTrue(rendered.contains("--rss-font-size: 19.0px"))
+    XCTAssertTrue(rendered.contains("--rss-line-spacing: 1.8"))
+    XCTAssertTrue(rendered.contains("--rss-paragraph-spacing: 1.1em"))
+    XCTAssertTrue(rendered.contains("--rss-font-family: \"Songti SC\""))
+    XCTAssertTrue(rendered.contains("--rss-text-align: justify"))
+    XCTAssertTrue(rendered.contains("text-justify: inter-character"))
+    XCTAssertTrue(rendered.contains("hanging-punctuation: first allow-end last"))
+    XCTAssertTrue(rendered.contains("<code data-language=\"swift\">"))
+    XCTAssertTrue(rendered.contains("--rss-code-comment: #93a1a1"))
+    XCTAssertFalse(rendered.contains("source-danger"))
+    XCTAssertFalse(rendered.contains("text-align: center"))
   }
 }

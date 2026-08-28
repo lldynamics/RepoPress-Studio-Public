@@ -11,6 +11,7 @@ enum ImageWorkbenchBatchAction: Identifiable {
     .file(.convertWebP),
     .file(.optimizeSVG),
     .file(.resizeLargeImages),
+    .file(.removePrivacyMetadata),
   ]
 
   var id: String {
@@ -20,6 +21,7 @@ enum ImageWorkbenchBatchAction: Identifiable {
     case .file(.convertWebP): "convert-webp"
     case .file(.optimizeSVG): "optimize-svg"
     case .file(.resizeLargeImages): "resize-large-images"
+    case .file(.removePrivacyMetadata): "remove-privacy-metadata"
     case .file(.cropCover16By9): "crop-cover-16-9"
     }
   }
@@ -39,11 +41,18 @@ enum ImageWorkbenchBatchAction: Identifiable {
     case .file(.optimizeSVG): String(localized: "精简 SVG 中的冗余内容")
     case .file(.resizeLargeImages): String(localized: "缩小超过建议尺寸的图片")
     case .file(.cropCover16By9): String(localized: "生成适合社交分享的封面副本")
+    case .file(.removePrivacyMetadata):
+      String(localized: "只生成脱敏副本，并清除定位、设备、作者等嵌入元数据")
     }
   }
 
   var isMetadataFill: Bool {
     if case .fillMetadata = self { return true }
+    return false
+  }
+
+  var isPrivacyMetadataRemoval: Bool {
+    if case .file(.removePrivacyMetadata) = self { return true }
     return false
   }
 
@@ -55,6 +64,7 @@ enum ImageWorkbenchBatchAction: Identifiable {
     case .file(.optimizeSVG): "wand.and.stars"
     case .file(.resizeLargeImages): "arrow.down.right.and.arrow.up.left"
     case .file(.cropCover16By9): "crop"
+    case .file(.removePrivacyMetadata): "hand.raised"
     }
   }
 
@@ -76,6 +86,8 @@ enum ImageWorkbenchBatchAction: Identifiable {
       return String(localized: "按原格式生成缩小尺寸的图片副本。")
     case .file(.cropCover16By9):
       return String(localized: "生成 16:9 的封面副本。")
+    case .file(.removePrivacyMetadata):
+      return String(localized: "只生成脱敏副本，并清除定位、设备、作者等嵌入元数据；不会覆盖原图。")
     }
   }
 
@@ -87,6 +99,7 @@ enum ImageWorkbenchBatchAction: Identifiable {
     case .file(.optimizeSVG): 0.12
     case .file(.resizeLargeImages): 0.35
     case .file(.cropCover16By9): 0.20
+    case .file(.removePrivacyMetadata): 0
     }
   }
 
@@ -101,6 +114,7 @@ enum ImageWorkbenchBatchAction: Identifiable {
     case .file(.optimizeSVG): summary.optimizableSVGCount
     case .file(.resizeLargeImages): summary.resizableImageCount
     case .file(.cropCover16By9): 0
+    case .file(.removePrivacyMetadata): summary.sensitiveMetadataCount
     }
   }
 
@@ -118,6 +132,8 @@ enum ImageWorkbenchBatchAction: Identifiable {
       return item.canResizeImage
     case .file(.cropCover16By9):
       return item.isCover
+    case .file(.removePrivacyMetadata):
+      return item.hasSensitiveMetadata
     }
   }
 }
@@ -190,11 +206,17 @@ struct ImageBatchOperationPreviewView: View {
         MetricTile(title: "影响文章", value: "\(selectedDraftCount)", systemImage: "doc.text")
         MetricTile(title: "影响图片", value: "\(selectedItems.count)", systemImage: "photo.on.rectangle")
         MetricTile(
-          title: preview.action.isMetadataFill ? "待补字段" : "预计节省",
+          title: preview.action.isMetadataFill
+            ? "待补字段"
+            : preview.action.isPrivacyMetadataRemoval ? "隐私字段" : "预计节省",
           value: preview.action.isMetadataFill
             ? "\(selectedMetadataFieldCount)"
-            : ByteCountFormatter.string(fromByteCount: estimatedSavedBytes, countStyle: .file),
-          systemImage: preview.action.isMetadataFill ? "textformat" : "arrow.down.circle"
+            : preview.action.isPrivacyMetadataRemoval
+              ? "\(selectedSensitiveMetadataCount)"
+              : ByteCountFormatter.string(fromByteCount: estimatedSavedBytes, countStyle: .file),
+          systemImage: preview.action.isMetadataFill
+            ? "textformat"
+            : preview.action.isPrivacyMetadataRemoval ? "hand.raised" : "arrow.down.circle"
         )
       }
 
@@ -283,6 +305,10 @@ struct ImageBatchOperationPreviewView: View {
     selectedItems.reduce(0) { count, affected in
       count + (affected.item.missingAltText ? 1 : 0) + (affected.item.missingCaption ? 1 : 0)
     }
+  }
+
+  private var selectedSensitiveMetadataCount: Int {
+    selectedItems.filter(\.item.hasSensitiveMetadata).count
   }
 
   private var estimatedSavedBytes: Int64 {

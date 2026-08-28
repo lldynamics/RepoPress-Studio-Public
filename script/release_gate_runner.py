@@ -14,6 +14,7 @@ import signal
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -25,6 +26,13 @@ DEFAULT_RESULT_JSON = ROOT / ".build" / "release-gate-result.json"
 RELEASE_PROFILES = ("direct", "chrome")
 PROFILE_GROUPS = ("common", *RELEASE_PROFILES)
 RESULT_SCHEMA = ROOT / "script" / "release_gate_result.schema.json"
+MAX_FAILURE_LOG_BYTES = 64 * 1024
+FAILURE_LOG_TAIL_CHARACTERS = 4 * 1024
+SENSITIVE_ENVIRONMENT_KEY = re.compile(
+    r"(?:^|_)(?:TOKEN|SECRET|PASSWORD|PASSWD|API_?KEY|PRIVATE_?KEY|AUTH|"
+    r"CREDENTIALS?|COOKIE|SESSION|JWT|DSN|CONNECTION_STRING)(?:_|$)",
+    re.IGNORECASE,
+)
 
 # The user-facing bundle name is the packaging contract. Keep the executable
 # name and bundle identifier independently configurable for fixture builds,
@@ -104,6 +112,91 @@ def sha256(path: Path) -> str:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def evidence_path(path: Path) -> str:
+    """Return a stable evidence path without exposing local absolute paths."""
+    try:
+        return path.relative_to(ROOT).as_posix()
+    except ValueError:
+        return f"<external-result-dir>/{path.name}"
+
+
+def redact_diagnostic_text(value: str, environment: dict[str, str]) -> str:
+    """Remove ambient secrets and machine paths before output becomes evidence."""
+    redacted = value
+    for secret in sorted(
+        {
+            item
+            for key, item in environment.items()
+            if len(item) >= 4 and SENSITIVE_ENVIRONMENT_KEY.search(key)
+        },
+        key=len,
+        reverse=True,
+    ):
+        redacted = redacted.replace(secret, "<redacted-env>")
+    redacted = re.sub(
+        r"(?i)\b(bearer\s+|token\s*[=:]\s*|api[_-]?key\s*[=:]\s*|"
+        r"secret\s*[=:]\s*|password\s*[=:]\s*)([^\s,;]+)",
+        r"\1<redacted>",
+        redacted,
+    )
+    redacted = re.sub(
+        r"\b(?:ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|"
+        r"sk-[A-Za-z0-9_-]{16,}|xox[baprs]-[A-Za-z0-9-]{10,}|"
+        r"AKIA[0-9A-Z]{16})\b",
+        "<redacted-token>",
+        redacted,
+    )
+    redacted = re.sub(r"(?<!\w)/(?:Users|home)/[^/\s]+", "<redacted-home>", redacted)
+    redacted = re.sub(
+        r"(?<!\w)/(?:private/)?tmp(?:/[^/\s]+)*|"
+        r"(?<!\w)/var/folders/[^/\s]+(?:/[^/\s]+)*",
+        "<redacted-temp>",
+        redacted,
+    )
+    return redacted
+
+
+class RedactedOutputCapture:
+    """Streams safe command output while retaining bounded failure evidence."""
+
+    def __init__(self, environment: dict[str, str]) -> None:
+        self.environment = environment
+        self.parts: list[str] = []
+        self.tail = ""
+        self.captured_bytes = 0
+        self.truncated = False
+
+    def consume(self, value: str) -> None:
+        safe_value = redact_diagnostic_text(value, self.environment)
+        sys.stdout.write(safe_value)
+        sys.stdout.flush()
+        encoded = safe_value.encode("utf-8", errors="replace")
+        remaining = MAX_FAILURE_LOG_BYTES - self.captured_bytes
+        if remaining > 0:
+            retained = encoded[:remaining].decode("utf-8", errors="ignore")
+            self.parts.append(retained)
+            self.captured_bytes += len(retained.encode("utf-8"))
+        if len(encoded) > max(remaining, 0):
+            self.truncated = True
+        self.tail = (self.tail + safe_value)[-FAILURE_LOG_TAIL_CHARACTERS:]
+
+    def persist(self, diagnostics_directory: Path, check_id: str) -> dict[str, object]:
+        diagnostics_directory.mkdir(parents=True, exist_ok=True)
+        safe_id = re.sub(r"[^A-Za-z0-9._-]+", "-", check_id).strip("-") or "check"
+        log_path = diagnostics_directory / f"{safe_id}.log"
+        content = "".join(self.parts)
+        if self.truncated:
+            content += "\n[release gate output truncated]\n"
+        atomic_write_text(log_path, content)
+        return {
+            "logPath": evidence_path(log_path),
+            "sha256": hashlib.sha256(content.encode("utf-8")).hexdigest(),
+            "truncated": self.truncated,
+            "capturedBytes": self.captured_bytes,
+            "tail": self.tail,
+        }
 
 
 def configured_build_identity() -> dict[str, str | None]:
@@ -488,6 +581,10 @@ def validate_check(check: dict[str, object], default_timeout: int) -> None:
     missing = [key for key in required if not check.get(key)]
     if missing:
         raise SystemExit(f"release gate: manifest check is missing {', '.join(missing)}: {check}")
+    if not isinstance(check["id"], str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}", check["id"]):
+        raise SystemExit("release gate: manifest check ID must be a bounded identifier")
+    if not isinstance(check["title"], str):
+        raise SystemExit(f"release gate: title for {check['id']} must be a string")
     if check["strictness"] not in {"always", "standard", "strict"}:
         raise SystemExit(f"release gate: invalid strictness for {check['id']}")
     if not isinstance(check["command"], list) or not all(isinstance(value, str) for value in check["command"]):
@@ -519,7 +616,11 @@ def argv_for(check: dict[str, object]) -> list[str]:
     return [str(ROOT / value) if value.startswith("script/") else value for value in check["command"]]
 
 
-def run(check: dict[str, object], default_timeout: int) -> dict[str, object]:
+def run(
+    check: dict[str, object],
+    default_timeout: int,
+    diagnostics_directory: Path,
+) -> dict[str, object]:
     check_id = str(check["id"])
     print(f"release gate [{check_id}]: {check['title']}")
     print(f"  source: {', '.join(check['source'])}")
@@ -531,13 +632,30 @@ def run(check: dict[str, object], default_timeout: int) -> dict[str, object]:
     timeout_seconds = int(check.get("timeoutSeconds", default_timeout))
     execution_error: str | None = None
     status = "failed"
+    output = RedactedOutputCapture(environment)
+    process: subprocess.Popen[str] | None = None
+    reader: threading.Thread | None = None
+
+    def stream_output() -> None:
+        assert process is not None and process.stdout is not None
+        for line in process.stdout:
+            output.consume(line)
+
     try:
         process = subprocess.Popen(
             command,
             cwd=ROOT,
             env=environment,
             start_new_session=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            bufsize=1,
         )
+        reader = threading.Thread(target=stream_output, name=f"release-gate-{check_id}", daemon=True)
+        reader.start()
         try:
             return_code = process.wait(timeout=timeout_seconds)
             status = "passed" if return_code == 0 else "failed"
@@ -556,7 +674,19 @@ def run(check: dict[str, object], default_timeout: int) -> dict[str, object]:
                 process.wait()
     except OSError as error:
         return_code = 127
-        execution_error = str(error)
+        execution_error = redact_diagnostic_text(str(error), environment)
+    finally:
+        if reader:
+            reader.join(timeout=5)
+        if process and process.stdout:
+            process.stdout.close()
+    if execution_error:
+        output.consume(f"release gate: {execution_error}\n")
+    diagnostics = (
+        None
+        if status == "passed"
+        else output.persist(diagnostics_directory, check_id)
+    )
     return {
         "id": check_id,
         "title": str(check["title"]),
@@ -567,8 +697,9 @@ def run(check: dict[str, object], default_timeout: int) -> dict[str, object]:
         "source": list(check["source"]),
         "evidence": list(check["evidence"]),
         "verificationKind": str(check.get("verificationKind", "automated")),
-        "command": command,
+        "command": [redact_diagnostic_text(value, environment) for value in command],
         "executionError": execution_error,
+        "diagnostics": diagnostics,
     }
 
 
@@ -624,6 +755,376 @@ def packaged_artifact_blockers(artifact: dict[str, object]) -> list[str]:
     if not isinstance(content, dict) or not content.get("treeSha256"):
         return ["Packaged app artifact is missing a content SHA-256"]
     return []
+
+
+def require_exact_keys(value: object, keys: set[str], label: str) -> dict[str, object]:
+    if not isinstance(value, dict) or set(value) != keys:
+        raise ValueError(f"{label} must contain exactly: {', '.join(sorted(keys))}")
+    return value
+
+
+def require_string(value: object, label: str, *, nullable: bool = False) -> str | None:
+    if value is None and nullable:
+        return None
+    if not isinstance(value, str):
+        raise ValueError(f"{label} must be {'a string or null' if nullable else 'a string'}")
+    return value
+
+
+def require_integer(value: object, label: str, *, minimum: int | None = None) -> int:
+    if not isinstance(value, int) or isinstance(value, bool):
+        raise ValueError(f"{label} must be an integer")
+    if minimum is not None and value < minimum:
+        raise ValueError(f"{label} must be at least {minimum}")
+    return value
+
+
+def require_datetime(value: object, label: str) -> datetime:
+    text = require_string(value, label)
+    assert text is not None
+    try:
+        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError as error:
+        raise ValueError(f"{label} must be an RFC 3339 date-time") from error
+    if parsed.tzinfo is None:
+        raise ValueError(f"{label} must include a timezone")
+    return parsed
+
+
+def require_string_list(value: object, label: str) -> list[str]:
+    if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
+        raise ValueError(f"{label} must be a string array")
+    return value
+
+
+def validate_diagnostics(value: object) -> None:
+    if value is None:
+        return
+    diagnostic = require_exact_keys(
+        value,
+        {"logPath", "sha256", "truncated", "capturedBytes", "tail"},
+        "check diagnostics",
+    )
+    log_path = require_string(diagnostic["logPath"], "check diagnostics.logPath")
+    assert log_path is not None
+    if log_path.startswith("/") or ".." in Path(log_path).parts:
+        raise ValueError("check diagnostics.logPath must be a relative safe evidence path")
+    digest = require_string(diagnostic["sha256"], "check diagnostics.sha256")
+    if not re.fullmatch(r"[0-9a-f]{64}", digest or ""):
+        raise ValueError("check diagnostics.sha256 must be a SHA-256 digest")
+    if not isinstance(diagnostic["truncated"], bool):
+        raise ValueError("check diagnostics.truncated must be a boolean")
+    require_integer(diagnostic["capturedBytes"], "check diagnostics.capturedBytes", minimum=0)
+    require_string(diagnostic["tail"], "check diagnostics.tail")
+
+
+def validate_code_signature(value: object) -> None:
+    if not isinstance(value, dict):
+        raise ValueError("packaged app.codeSignature must be an object")
+    if value.get("status") == "tool_unavailable":
+        keys = {"status", "codeDirectory", "cdHash", "teamIdentifier", "authorities", "verified"}
+    elif "error" in value:
+        keys = {
+            "status", "codeDirectory", "cdHash", "teamIdentifier",
+            "authorities", "verified", "error",
+        }
+    else:
+        keys = {
+            "status", "codeDirectory", "cdHash", "teamIdentifier",
+            "authorities", "verified", "inspectionReturnCode", "verificationReturnCode",
+        }
+    signature = require_exact_keys(value, keys, "packaged app.codeSignature")
+    if signature["status"] not in {"tool_unavailable", "inspected", "inspection_failed"}:
+        raise ValueError("packaged app.codeSignature has an unsupported status")
+    for key in ("codeDirectory", "cdHash", "teamIdentifier"):
+        require_string(signature[key], f"packaged app.codeSignature.{key}", nullable=True)
+    require_string_list(signature["authorities"], "packaged app.codeSignature.authorities")
+    if signature["verified"] is not None and not isinstance(signature["verified"], bool):
+        raise ValueError("packaged app.codeSignature.verified must be a boolean or null")
+    if "inspectionReturnCode" in signature:
+        require_integer(signature["inspectionReturnCode"], "packaged app.codeSignature.inspectionReturnCode")
+        require_integer(signature["verificationReturnCode"], "packaged app.codeSignature.verificationReturnCode")
+    if "error" in signature:
+        require_string(signature["error"], "packaged app.codeSignature.error")
+
+
+def validate_check_result(value: object) -> None:
+    check = require_exact_keys(
+        value,
+        {
+            "id", "title", "status", "returnCode", "timeoutSeconds",
+            "durationSeconds", "source", "evidence", "verificationKind",
+            "command", "executionError", "diagnostics",
+        },
+        "check result",
+    )
+    check_id = require_string(check["id"], "check result.id")
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}", check_id or ""):
+        raise ValueError("check result.id must be a bounded identifier")
+    require_string(check["title"], "check result.title")
+    status = require_string(check["status"], "check result.status")
+    if status not in {"passed", "failed", "timed_out"}:
+        raise ValueError("check result.status is unsupported")
+    return_code = require_integer(check["returnCode"], "check result.returnCode")
+    require_integer(check["timeoutSeconds"], "check result.timeoutSeconds", minimum=1)
+    if not isinstance(check["durationSeconds"], (int, float)) or isinstance(check["durationSeconds"], bool):
+        raise ValueError("check result.durationSeconds must be numeric")
+    if check["durationSeconds"] < 0:
+        raise ValueError("check result.durationSeconds must not be negative")
+    require_string_list(check["source"], "check result.source")
+    require_string_list(check["evidence"], "check result.evidence")
+    require_string(check["verificationKind"], "check result.verificationKind")
+    require_string_list(check["command"], "check result.command")
+    require_string(check["executionError"], "check result.executionError", nullable=True)
+    validate_diagnostics(check["diagnostics"])
+    if status == "passed":
+        if return_code != 0 or check["executionError"] is not None or check["diagnostics"] is not None:
+            raise ValueError("a passed check cannot carry failure evidence")
+    elif status == "timed_out":
+        if return_code != 124 or not isinstance(check["executionError"], str) or check["diagnostics"] is None:
+            raise ValueError("a timed out check requires code 124 and failure diagnostics")
+    elif return_code == 0 or check["diagnostics"] is None:
+        raise ValueError("a failed check requires a nonzero return code and diagnostics")
+
+
+def validate_packaged_artifact(value: object, run_state: str) -> None:
+    artifact = require_exact_keys(value, {"packagedApp"}, "artifacts")
+    packaged = artifact["packagedApp"]
+    if not isinstance(packaged, dict):
+        raise ValueError("artifacts.packagedApp must be an object")
+    status = packaged.get("status")
+    pending_keys = {"status", "appBundle", "identity", "codeSignature", "content"}
+    if status in {"pending", "not_verified"}:
+        require_exact_keys(packaged, pending_keys, "pending packaged app")
+        if run_state == "complete" and status == "pending":
+            raise ValueError("a complete result cannot contain a pending packaged app")
+        if any(packaged[key] is not None for key in pending_keys - {"status"}):
+            raise ValueError("a pending packaged app cannot contain artifact evidence")
+        return
+    failure_keys = {
+        "status", "appBundle", "expectedAppBundle", "provenance",
+        "identity", "codeSignature", "content", "error",
+    }
+    if status in {"missing", "ambiguous", "unhashable"}:
+        require_exact_keys(packaged, failure_keys, "failed packaged app")
+        require_string(packaged["appBundle"], "failed packaged app.appBundle", nullable=True)
+        require_string(packaged["expectedAppBundle"], "failed packaged app.expectedAppBundle", nullable=True)
+        require_string(packaged["provenance"], "failed packaged app.provenance")
+        require_string(packaged["error"], "failed packaged app.error")
+        if any(packaged[key] is not None for key in ("identity", "codeSignature", "content")):
+            raise ValueError("failed packaged app cannot contain partial artifact evidence")
+        return
+    detailed_keys = {
+        "status", "appBundle", "expectedAppBundle", "provenance",
+        "verificationCheck", "observedAt", "identity", "codeSignature",
+        "content",
+    }
+    if status == "identity_mismatch":
+        require_exact_keys(packaged, detailed_keys | {"error"}, "mismatched packaged app")
+        require_string(packaged["error"], "mismatched packaged app.error")
+    elif status == "hashed":
+        require_exact_keys(packaged, detailed_keys, "hashed packaged app")
+    else:
+        raise ValueError("artifacts.packagedApp has an unsupported status")
+    require_string(packaged["appBundle"], "packaged app.appBundle")
+    require_string(packaged["expectedAppBundle"], "packaged app.expectedAppBundle")
+    require_string(packaged["provenance"], "packaged app.provenance")
+    require_string(packaged["verificationCheck"], "packaged app.verificationCheck")
+    require_datetime(packaged["observedAt"], "packaged app.observedAt")
+    identity = require_exact_keys(
+        packaged["identity"],
+        {
+            "bundleName", "displayName", "executableName", "bundleIdentifier",
+            "expectedBundleName", "expectedExecutableName", "expectedBundleIdentifier",
+            "marketingVersion", "buildNumber", "configuredMarketingVersion",
+            "configuredBuildNumber", "versionMatchesConfiguration",
+            "buildMatchesConfiguration", "sourceCommit", "sourceDirty",
+        },
+        "packaged app.identity",
+    )
+    for key in (
+        "bundleName", "displayName", "executableName", "bundleIdentifier",
+        "marketingVersion", "buildNumber", "configuredMarketingVersion",
+        "configuredBuildNumber", "sourceCommit",
+    ):
+        require_string(identity[key], f"packaged app.identity.{key}", nullable=True)
+    for key in ("expectedBundleName", "expectedExecutableName", "expectedBundleIdentifier"):
+        require_string(identity[key], f"packaged app.identity.{key}")
+    for key in ("versionMatchesConfiguration", "buildMatchesConfiguration"):
+        if not isinstance(identity[key], bool):
+            raise ValueError(f"packaged app.identity.{key} must be a boolean")
+    if identity["sourceDirty"] is not None and not isinstance(identity["sourceDirty"], bool):
+        raise ValueError("packaged app.identity.sourceDirty must be a boolean or null")
+    validate_code_signature(packaged["codeSignature"])
+    if status == "hashed":
+        content = require_exact_keys(
+            packaged["content"],
+            {"algorithm", "treeSha256", "entryCount", "totalSizeBytes", "entries"},
+            "packaged app.content",
+        )
+        if content["algorithm"] != "sha256" or not re.fullmatch(r"[0-9a-f]{64}", str(content["treeSha256"])):
+            raise ValueError("packaged app.content must carry a SHA-256 tree digest")
+        require_integer(content["entryCount"], "packaged app.content.entryCount", minimum=0)
+        require_integer(content["totalSizeBytes"], "packaged app.content.totalSizeBytes", minimum=0)
+        if not isinstance(content["entries"], list):
+            raise ValueError("packaged app.content.entries must be an array")
+        if content["entryCount"] != len(content["entries"]):
+            raise ValueError("packaged app.content.entryCount must match entries")
+        for entry in content["entries"]:
+            if not isinstance(entry, dict) or entry.get("kind") not in {"file", "symlink"}:
+                raise ValueError("packaged app.content.entries contain an unsupported entry")
+            required = {"path", "kind", "sha256", "sizeBytes"}
+            if entry["kind"] == "symlink":
+                required.add("target")
+            require_exact_keys(entry, required, "packaged app.content entry")
+            require_string(entry["path"], "packaged app.content entry.path")
+            if entry["kind"] == "symlink":
+                require_string(entry["target"], "packaged app.content entry.target")
+            if not re.fullmatch(r"[0-9a-f]{64}", str(entry["sha256"])):
+                raise ValueError("packaged app.content entry.sha256 must be a SHA-256 digest")
+            require_integer(entry["sizeBytes"], "packaged app.content entry.sizeBytes", minimum=0)
+
+
+def validate_result_payload(payload: object) -> None:
+    """Authoritatively validate every persisted partial or complete result."""
+    result = require_exact_keys(
+        payload,
+        {
+            "$schema", "schemaVersion", "runState", "startedAt", "generatedAt",
+            "mode", "profile", "repository", "releaseIdentity", "execution",
+            "summary", "blockers", "activeCheck", "verification", "artifacts", "checks",
+        },
+        "release gate result",
+    )
+    if result["$schema"] != "script/release_gate_result.schema.json" or result["schemaVersion"] != 2:
+        raise ValueError("release gate result has an unsupported schema identity")
+    run_state = require_string(result["runState"], "runState")
+    if run_state not in {"partial", "complete"}:
+        raise ValueError("runState must be partial or complete")
+    started_at = require_datetime(result["startedAt"], "startedAt")
+    generated_at = require_datetime(result["generatedAt"], "generatedAt")
+    if generated_at < started_at:
+        raise ValueError("generatedAt must not precede startedAt")
+    if result["mode"] not in {"standard", "quick", "tooling", "selected", "strict"}:
+        raise ValueError("mode is unsupported")
+    if result["profile"] is not None and result["profile"] not in {"direct", "chrome", "all"}:
+        raise ValueError("profile is unsupported")
+    repository = require_exact_keys(result["repository"], {"available", "commit", "branch", "isDirty"}, "repository")
+    if not isinstance(repository["available"], bool):
+        raise ValueError("repository.available must be a boolean")
+    for key in ("commit", "branch"):
+        require_string(repository[key], f"repository.{key}", nullable=True)
+    if repository["isDirty"] is not None and not isinstance(repository["isDirty"], bool):
+        raise ValueError("repository.isDirty must be a boolean or null")
+    release_identity = require_exact_keys(
+        result["releaseIdentity"],
+        {"marketingVersion", "buildNumber", "sourceCommit", "sourceDirty", "observedAt"},
+        "releaseIdentity",
+    )
+    for key in ("marketingVersion", "buildNumber", "sourceCommit"):
+        require_string(release_identity[key], f"releaseIdentity.{key}", nullable=True)
+    if release_identity["sourceDirty"] is not None and not isinstance(release_identity["sourceDirty"], bool):
+        raise ValueError("releaseIdentity.sourceDirty must be a boolean or null")
+    require_datetime(release_identity["observedAt"], "releaseIdentity.observedAt")
+    execution = require_exact_keys(result["execution"], {"toolchain", "ci"}, "execution")
+    toolchain = require_exact_keys(
+        execution["toolchain"],
+        {"pythonVersion", "swiftVersion", "operatingSystem", "operatingSystemVersion", "architecture"},
+        "execution.toolchain",
+    )
+    for key in toolchain:
+        require_string(toolchain[key], f"execution.toolchain.{key}", nullable=True)
+    ci = execution["ci"]
+    if not isinstance(ci, dict) or ci.get("provider") not in {None, "github-actions"}:
+        raise ValueError("execution.ci provider is unsupported")
+    expected_ci_keys = {"provider"} if ci["provider"] is None else {
+        "provider", "repository", "workflow", "job", "runID", "runAttempt", "ref", "sha",
+    }
+    require_exact_keys(ci, expected_ci_keys, "execution.ci")
+    for key, value in ci.items():
+        if key != "provider":
+            require_string(value, f"execution.ci.{key}", nullable=True)
+    summary = require_exact_keys(
+        result["summary"],
+        {
+            "status", "expectedCheckCount", "completedCheckCount", "checkCount",
+            "passedCount", "failedCount", "uncheckedChecklistCount", "blockerCount",
+        },
+        "summary",
+    )
+    for key in (
+        "expectedCheckCount", "completedCheckCount", "checkCount", "passedCount",
+        "failedCount", "uncheckedChecklistCount", "blockerCount",
+    ):
+        require_integer(summary[key], f"summary.{key}", minimum=0)
+    checks = result["checks"]
+    if not isinstance(checks, list):
+        raise ValueError("checks must be an array")
+    for check in checks:
+        validate_check_result(check)
+    if len({str(check["id"]) for check in checks}) != len(checks):
+        raise ValueError("checks must not contain duplicate IDs")
+    failures = [check for check in checks if check["status"] != "passed"]
+    if (
+        summary["completedCheckCount"] != len(checks)
+        or summary["checkCount"] != len(checks)
+        or summary["passedCount"] != len(checks) - len(failures)
+        or summary["failedCount"] != len(failures)
+        or summary["completedCheckCount"] > summary["expectedCheckCount"]
+    ):
+        raise ValueError("summary counts do not match checks")
+    blockers = require_string_list(result["blockers"], "blockers")
+    if len(set(blockers)) != len(blockers) or summary["blockerCount"] != len(blockers):
+        raise ValueError("blockers must be unique and match summary.blockerCount")
+    active = result["activeCheck"]
+    if active is not None:
+        active_check = require_exact_keys(active, {"id", "title", "timeoutSeconds"}, "activeCheck")
+        require_string(active_check["id"], "activeCheck.id")
+        require_string(active_check["title"], "activeCheck.title")
+        require_integer(active_check["timeoutSeconds"], "activeCheck.timeoutSeconds", minimum=1)
+    verification = require_exact_keys(result["verification"], {"packagedArtifact", "realAppLaunch"}, "verification")
+    for key in verification:
+        if verification[key] not in {"not_run", "passed", "failed", "timed_out"}:
+            raise ValueError(f"verification.{key} is unsupported")
+    validate_packaged_artifact(result["artifacts"], run_state)
+    if run_state == "partial":
+        if summary["status"] != "running" or summary["completedCheckCount"] >= summary["expectedCheckCount"] and active is not None:
+            raise ValueError("a partial result must have a running summary and valid active check state")
+    else:
+        if summary["status"] not in {"passed", "failed"} or active is not None:
+            raise ValueError("a complete result must be final and have no active check")
+        if summary["completedCheckCount"] != summary["expectedCheckCount"]:
+            raise ValueError("a complete result must include every expected check")
+
+
+def atomic_write_text(path: Path, content: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            dir=path.parent,
+            prefix=f".{path.name}.",
+            suffix=".partial",
+            delete=False,
+        ) as handle:
+            temporary_path = Path(handle.name)
+            handle.write(content)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary_path, path)
+        try:
+            directory_descriptor = os.open(path.parent, os.O_RDONLY)
+        except OSError:
+            return
+        try:
+            os.fsync(directory_descriptor)
+        finally:
+            os.close(directory_descriptor)
+    finally:
+        if temporary_path and temporary_path.exists():
+            temporary_path.unlink()
 
 
 def write_result_json(
@@ -703,20 +1204,8 @@ def write_result_json(
         },
         "checks": results,
     }
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.NamedTemporaryFile(
-        mode="w",
-        encoding="utf-8",
-        dir=path.parent,
-        prefix=f".{path.name}.",
-        suffix=".partial",
-        delete=False,
-    ) as handle:
-        temporary_path = Path(handle.name)
-        handle.write(json.dumps(payload, ensure_ascii=False, indent=2) + "\n")
-        handle.flush()
-        os.fsync(handle.fileno())
-    temporary_path.replace(path)
+    validate_result_payload(payload)
+    atomic_write_text(path, json.dumps(payload, ensure_ascii=False, indent=2) + "\n")
     label = "partial result JSON" if not complete else "result JSON"
     print(f"release gate: {label} {path.relative_to(ROOT) if path.is_relative_to(ROOT) else path}")
     return payload
@@ -930,6 +1419,7 @@ def main() -> int:
         result_json = ROOT / ".build" / f"release-gate-{args.profile}-result.json"
     else:
         result_json = DEFAULT_RESULT_JSON
+    diagnostics_directory = result_json.with_name(f"{result_json.stem}.diagnostics")
     run_started_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
     repository = repository_metadata()
     execution = execution_metadata()
@@ -968,7 +1458,7 @@ def main() -> int:
                 "timeoutSeconds": int(check.get("timeoutSeconds", default_timeout)),
             },
         )
-        result = run(check, default_timeout)
+        result = run(check, default_timeout, diagnostics_directory)
         results.append(result)
         if result["status"] == "passed":
             pass

@@ -2,7 +2,6 @@ import PublishingWorkbenchCore
 import SwiftUI
 
 struct TokenSettingsView<RepositoryPermissionContent: View>: View {
-  @ObservedObject var store: WorkbenchStore
   let activeProfileBinding: Binding<SiteProfile>
   let readiness: DeploymentStatusProviderReadiness
   let repositoryTokenAvailability: KeychainTokenAvailability
@@ -29,41 +28,87 @@ struct TokenSettingsView<RepositoryPermissionContent: View>: View {
   let refreshSiteAnalyticsTokenAvailability: () -> Void
   let repositoryPermissionContent: (Binding<Bool>) -> RepositoryPermissionContent
 
+  @StateObject private var automationSettings: WorkbenchAutomationSettingsFeatureFacade
   @State private var credentialDrafts = TokenCredentialDrafts()
   @State private var isRepositoryPermissionPresented = false
-  @State private var selectedScope: TokenSettingsScope = .repository
+  @Environment(\.settingsSubsection) private var settingsSubsection
+
+  init(
+    store: WorkbenchStore,
+    activeProfileBinding: Binding<SiteProfile>,
+    readiness: DeploymentStatusProviderReadiness,
+    repositoryTokenAvailability: KeychainTokenAvailability,
+    deploymentTokenAvailability: KeychainTokenAvailability,
+    siteAnalyticsTokenAvailability: KeychainTokenAvailability,
+    publishActionMessage: String?,
+    deploymentStatusMessage: String?,
+    siteAnalyticsMessage: String?,
+    navigationDestination: SettingsDestination?,
+    navigationRequestID: UUID,
+    shouldFocusRepositoryToken: Bool,
+    repositoryTokenFocusRequestID: UUID,
+    localRepositoryPath: String,
+    chooseLocalRepository: @escaping () -> Void,
+    setRepositoryProvider: @escaping (RepositoryProvider) -> Void,
+    saveRepositoryAccessToken: @escaping (String) -> Bool,
+    deleteRepositoryAccessToken: @escaping () -> Void,
+    refreshRepositoryTokenAvailability: @escaping () -> Void,
+    saveDeploymentAccessToken: @escaping (String) -> Bool,
+    deleteDeploymentAccessToken: @escaping () -> Void,
+    refreshDeploymentTokenAvailability: @escaping () -> Void,
+    saveSiteAnalyticsAccessToken: @escaping (String) -> Bool,
+    deleteSiteAnalyticsAccessToken: @escaping () -> Void,
+    refreshSiteAnalyticsTokenAvailability: @escaping () -> Void,
+    @ViewBuilder repositoryPermissionContent:
+      @escaping (Binding<Bool>) -> RepositoryPermissionContent
+  ) {
+    _automationSettings = StateObject(
+      wrappedValue: WorkbenchAutomationSettingsFeatureFacade(store: store)
+    )
+    self.activeProfileBinding = activeProfileBinding
+    self.readiness = readiness
+    self.repositoryTokenAvailability = repositoryTokenAvailability
+    self.deploymentTokenAvailability = deploymentTokenAvailability
+    self.siteAnalyticsTokenAvailability = siteAnalyticsTokenAvailability
+    self.publishActionMessage = publishActionMessage
+    self.deploymentStatusMessage = deploymentStatusMessage
+    self.siteAnalyticsMessage = siteAnalyticsMessage
+    self.navigationDestination = navigationDestination
+    self.navigationRequestID = navigationRequestID
+    self.shouldFocusRepositoryToken = shouldFocusRepositoryToken
+    self.repositoryTokenFocusRequestID = repositoryTokenFocusRequestID
+    self.localRepositoryPath = localRepositoryPath
+    self.chooseLocalRepository = chooseLocalRepository
+    self.setRepositoryProvider = setRepositoryProvider
+    self.saveRepositoryAccessToken = saveRepositoryAccessToken
+    self.deleteRepositoryAccessToken = deleteRepositoryAccessToken
+    self.refreshRepositoryTokenAvailability = refreshRepositoryTokenAvailability
+    self.saveDeploymentAccessToken = saveDeploymentAccessToken
+    self.deleteDeploymentAccessToken = deleteDeploymentAccessToken
+    self.refreshDeploymentTokenAvailability = refreshDeploymentTokenAvailability
+    self.saveSiteAnalyticsAccessToken = saveSiteAnalyticsAccessToken
+    self.deleteSiteAnalyticsAccessToken = deleteSiteAnalyticsAccessToken
+    self.refreshSiteAnalyticsTokenAvailability = refreshSiteAnalyticsTokenAvailability
+    self.repositoryPermissionContent = repositoryPermissionContent
+  }
 
   var body: some View {
-    VStack(spacing: 0) {
-      connectionSettingsHeader
-
-      Divider()
-
-      Form {
-        switch selectedScope {
-        case .repository:
-          repositorySections
-        case .deployment:
-          deploymentSections
-        case .analytics:
-          analyticsSections
-        }
+    Form {
+      switch selectedScope {
+      case .repository:
+        repositorySections
+      case .deployment:
+        deploymentSections
+      case .analytics:
+        analyticsSections
       }
-      .formStyle(.grouped)
-      .scrollIndicators(.automatic)
-      .padding(WorkbenchSpacing.content)
-      .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
+    .formStyle(.grouped)
+    .scrollIndicators(.automatic)
+    .padding(WorkbenchSpacing.content)
+    .frame(maxWidth: .infinity, maxHeight: .infinity)
     .sheet(isPresented: $isRepositoryPermissionPresented) {
       repositoryPermissionContent($isRepositoryPermissionPresented)
-    }
-    .task(id: navigationRequestID) {
-      guard case .token(let destination) = navigationDestination else { return }
-      selectedScope = TokenSettingsScope(destination: destination)
-    }
-    .task(id: repositoryTokenFocusRequestID) {
-      guard shouldFocusRepositoryToken else { return }
-      selectedScope = .repository
     }
     .onChange(of: activeProfile.id) { _, _ in
       credentialDrafts.clearAll()
@@ -84,28 +129,23 @@ struct TokenSettingsView<RepositoryPermissionContent: View>: View {
     .accessibilityIdentifier("token-settings")
   }
 
-  private var connectionSettingsHeader: some View {
-    HStack {
-      Spacer(minLength: 0)
-      connectionSettingsPicker
-        .frame(maxWidth: 420)
-      Spacer(minLength: 0)
-    }
-    .padding(.horizontal, WorkbenchSpacing.content)
-    .padding(.vertical, WorkbenchSpacing.control)
-    .background(Color(nsColor: .windowBackgroundColor))
+  private var activeSubsection: SettingsSubsection {
+    settingsSubsection.tab == .token
+      ? settingsSubsection
+      : .tokenRepository
   }
 
-  private var connectionSettingsPicker: some View {
-    Picker("仓库与部署设置分类", selection: $selectedScope) {
-      ForEach(TokenSettingsScope.allCases) { scope in
-        Text(scope.title).tag(scope)
-      }
+  private var selectedScope: TokenSettingsScope {
+    switch activeSubsection {
+    case .tokenRepository:
+      return .repository
+    case .tokenDeployment:
+      return .deployment
+    case .tokenAnalytics:
+      return .analytics
+    default:
+      return .repository
     }
-    .pickerStyle(.segmented)
-    .labelsHidden()
-    .accessibilityLabel("仓库与部署设置分类")
-    .accessibilityIdentifier("settings-connection-scope-picker")
   }
 
   @ViewBuilder
@@ -136,7 +176,7 @@ struct TokenSettingsView<RepositoryPermissionContent: View>: View {
       publishStrategyDetail: activeProfile.repositoryPublishStrategy.detail
     )
 
-    TokenRepositoryAutomationSection(store: store)
+    TokenRepositoryAutomationSection(automationSettings: automationSettings)
 
     TokenRepositoryTokenSection(
       repositoryProvider: activeProfile.repositoryProvider,
@@ -157,15 +197,15 @@ struct TokenSettingsView<RepositoryPermissionContent: View>: View {
     )
     .id(activeProfile.id)
 
-    Section("验证与最近结果") {
+    Section("连接诊断与最近结果") {
       Button {
         isRepositoryPermissionPresented = true
       } label: {
-        Label("检查仓库权限", systemImage: "lock.shield")
+        Label("连接诊断", systemImage: "lock.shield")
       }
-      .accessibilityLabel("打开仓库权限检查")
+      .accessibilityLabel("打开仓库连接诊断")
 
-      Text("权限检查只会在你点击后运行，并使用当前仓库目标与已保存的仓库令牌。")
+      Text("连接诊断只会在你点击后运行；正常发布会在需要时自动验证当前仓库连接。")
         .font(.caption)
         .foregroundStyle(.secondary)
 
@@ -203,7 +243,7 @@ struct TokenSettingsView<RepositoryPermissionContent: View>: View {
       deploymentAccountIDDisplayValue: activeProfile.deploymentAccountID?.nilIfEmpty ?? "未填写"
     )
 
-    TokenDeploymentAutomationSection(store: store)
+    TokenDeploymentAutomationSection(automationSettings: automationSettings)
 
     TokenDeploymentTokenSection(
       deploymentProvider: activeDeploymentProvider,

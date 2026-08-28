@@ -151,7 +151,7 @@ enum RSSArticleHTMLRenderer {
     }
   }
 
-  private static let renderCacheKeyVersion = 1
+  private static let renderCacheKeyVersion = 2
 
   static func render(
     article: RSSArticle,
@@ -162,6 +162,11 @@ enum RSSArticleHTMLRenderer {
     mediaCacheDirectoryURL: URL? = nil,
     fontSize: Double = RSSReadingComfortConfiguration.defaultFontSize,
     lineSpacing: Double = RSSReadingComfortConfiguration.defaultLineSpacing,
+    paragraphSpacing: Double = ReaderTypographyConfiguration.defaultParagraphSpacing,
+    fontFamily: ReaderFontFamily = ReaderTypographyConfiguration.defaultFontFamily,
+    textAlignment: ReaderTextAlignment = ReaderTypographyConfiguration.defaultTextAlignment,
+    codeHighlightTheme: ReaderCodeHighlightTheme = ReaderTypographyConfiguration
+      .defaultCodeHighlightTheme,
     theme: RSSReadingTheme = .system,
     initialReadingProgress: Double = 0
   ) -> String {
@@ -174,6 +179,10 @@ enum RSSArticleHTMLRenderer {
       mediaCacheDirectoryURL: mediaCacheDirectoryURL,
       fontSize: fontSize,
       lineSpacing: lineSpacing,
+      paragraphSpacing: paragraphSpacing,
+      fontFamily: fontFamily,
+      textAlignment: textAlignment,
+      codeHighlightTheme: codeHighlightTheme,
       theme: theme,
       initialReadingProgress: initialReadingProgress
     )
@@ -199,6 +208,10 @@ enum RSSArticleHTMLRenderer {
       ),
       fontSize: fontSize,
       lineSpacing: lineSpacing,
+      paragraphSpacing: paragraphSpacing,
+      fontFamily: fontFamily,
+      textAlignment: textAlignment,
+      codeHighlightTheme: codeHighlightTheme,
       theme: theme,
       initialReadingProgress: initialReadingProgress
     )
@@ -215,6 +228,10 @@ enum RSSArticleHTMLRenderer {
     mediaCacheDirectoryURL: URL?,
     fontSize: Double,
     lineSpacing: Double,
+    paragraphSpacing: Double,
+    fontFamily: ReaderFontFamily,
+    textAlignment: ReaderTextAlignment,
+    codeHighlightTheme: ReaderCodeHighlightTheme,
     theme: RSSReadingTheme,
     initialReadingProgress: Double
   ) -> String {
@@ -235,8 +252,12 @@ enum RSSArticleHTMLRenderer {
       "feedTitle=\(stableStringToken(feedTitle))",
       "readingMinutes=\(readingMinutes.map(String.init) ?? "nil")",
       "allowRemoteImages=\(allowRemoteImages ? "true" : "false")",
-      "fontSize=\(fontSize.bitPattern)",
-      "lineSpacing=\(lineSpacing.bitPattern)",
+      "fontSize=\(ReaderTypographyConfiguration.normalizedFontSize(fontSize).bitPattern)",
+      "lineSpacing=\(ReaderTypographyConfiguration.normalizedLineSpacing(lineSpacing).bitPattern)",
+      "paragraphSpacing=\(ReaderTypographyConfiguration.normalizedParagraphSpacing(paragraphSpacing).bitPattern)",
+      "fontFamily=\(fontFamily.rawValue)",
+      "textAlignment=\(textAlignment.rawValue)",
+      "codeHighlightTheme=\(codeHighlightTheme.rawValue)",
       "theme=\(theme.rawValue)",
       "initialReadingProgress=\(initialReadingProgress.bitPattern)",
       "mediaCacheDirectoryURL=\(stableStringToken(mediaCacheDirectoryURL?.absoluteString))",
@@ -289,6 +310,11 @@ enum RSSArticleHTMLRenderer {
     languageTag: String = "und",
     fontSize: Double = RSSReadingComfortConfiguration.defaultFontSize,
     lineSpacing: Double = RSSReadingComfortConfiguration.defaultLineSpacing,
+    paragraphSpacing: Double = ReaderTypographyConfiguration.defaultParagraphSpacing,
+    fontFamily: ReaderFontFamily = ReaderTypographyConfiguration.defaultFontFamily,
+    textAlignment: ReaderTextAlignment = ReaderTypographyConfiguration.defaultTextAlignment,
+    codeHighlightTheme: ReaderCodeHighlightTheme = ReaderTypographyConfiguration
+      .defaultCodeHighlightTheme,
     theme: RSSReadingTheme = .system,
     initialReadingProgress: Double = 0
   ) -> String {
@@ -304,6 +330,10 @@ enum RSSArticleHTMLRenderer {
       languageTag: languageTag,
       fontSize: fontSize,
       lineSpacing: lineSpacing,
+      paragraphSpacing: paragraphSpacing,
+      fontFamily: fontFamily,
+      textAlignment: textAlignment,
+      codeHighlightTheme: codeHighlightTheme,
       theme: theme,
       initialReadingProgress: initialReadingProgress
     )
@@ -319,20 +349,17 @@ enum RSSArticleHTMLRenderer {
     languageTag: String,
     fontSize: Double,
     lineSpacing: Double,
+    paragraphSpacing: Double,
+    fontFamily: ReaderFontFamily,
+    textAlignment: ReaderTextAlignment,
+    codeHighlightTheme: ReaderCodeHighlightTheme,
     theme: RSSReadingTheme,
     initialReadingProgress: Double
   ) -> String {
-    let normalizedFontSize = min(
-      max(
-        fontSize.isFinite ? fontSize : RSSReadingComfortConfiguration.defaultFontSize,
-        RSSReadingComfortConfiguration.fontSizeRange.lowerBound),
-      RSSReadingComfortConfiguration.fontSizeRange.upperBound
-    )
-    let normalizedLineSpacing = min(
-      max(
-        lineSpacing.isFinite ? lineSpacing : RSSReadingComfortConfiguration.defaultLineSpacing,
-        RSSReadingComfortConfiguration.lineSpacingRange.lowerBound),
-      RSSReadingComfortConfiguration.lineSpacingRange.upperBound
+    let normalizedFontSize = ReaderTypographyConfiguration.normalizedFontSize(fontSize)
+    let normalizedLineSpacing = ReaderTypographyConfiguration.normalizedLineSpacing(lineSpacing)
+    let normalizedParagraphSpacing = ReaderTypographyConfiguration.normalizedParagraphSpacing(
+      paragraphSpacing
     )
     let normalizedProgress = min(
       max(initialReadingProgress.isFinite ? initialReadingProgress : 0, 0), 1)
@@ -381,15 +408,25 @@ enum RSSArticleHTMLRenderer {
 
     return """
       <!doctype html>
-      <html lang="\(escapeAttribute(languageTag))">
+      <html lang="\(escapeAttribute(languageTag))" data-reading-theme="\(theme.rawValue)" data-code-theme="\(codeHighlightTheme.rawValue)">
       <head>
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'none'; style-src 'unsafe-inline'; img-src data: file:; connect-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none';">
         <style>
-          :root { color-scheme: \(theme.cssColorScheme); --rss-font-size: \(normalizedFontSize)px; --rss-line-spacing: \(normalizedLineSpacing); --rss-background: \(theme.cssBackground); --rss-foreground: \(theme.cssForeground); --rss-secondary-foreground: \(theme.cssSecondaryForeground); --rss-link: \(theme.cssLink); }
+          :root { color-scheme: \(theme.cssColorScheme); --rss-font-size: \(normalizedFontSize)px; --rss-line-spacing: \(normalizedLineSpacing); --rss-paragraph-spacing: \(normalizedParagraphSpacing)em; --rss-font-family: \(fontFamily.cssFontFamily); --rss-text-align: \(textAlignment.cssTextAlign); --rss-background: \(theme.cssBackground); --rss-foreground: \(theme.cssForeground); --rss-secondary-foreground: \(theme.cssSecondaryForeground); --rss-link: \(theme.cssLink); --rss-code-foreground: #1f2328; --rss-code-background: #f6f8fa; --rss-code-border: rgba(31, 35, 40, 0.12); --rss-code-keyword: #8a1bb1; --rss-code-type: #087ea4; --rss-code-string: #c3271c; --rss-code-number: #5938b0; --rss-code-comment: #337d3c; }
+          :root[data-code-theme="xcode"] { --rss-code-foreground: #1a1c21; --rss-code-background: #f5f6f9; --rss-code-border: rgba(26, 28, 33, 0.13); --rss-code-keyword: #ad1689; --rss-code-type: #006594; --rss-code-string: #c51f1c; --rss-code-number: #4c2db3; --rss-code-comment: #2e7838; }
+          :root[data-code-theme="solarized"] { --rss-code-foreground: #405052; --rss-code-background: #fdf6e3; --rss-code-border: rgba(93, 106, 108, 0.4); --rss-code-keyword: #d33682; --rss-code-type: #2aa198; --rss-code-string: #b58900; --rss-code-number: #6c71c4; --rss-code-comment: #586e75; }
+          :root[data-reading-theme="dark"] { --rss-code-foreground: #dee2eb; --rss-code-background: #17191f; --rss-code-border: rgba(255, 255, 255, 0.14); --rss-code-keyword: #c78ffa; --rss-code-type: #5cc7e0; --rss-code-string: #faa38a; --rss-code-number: #c2adfa; --rss-code-comment: #75aa7d; }
+          :root[data-reading-theme="dark"][data-code-theme="xcode"] { --rss-code-foreground: #e0e0e6; --rss-code-background: #1c1e23; --rss-code-keyword: #fc6eb7; --rss-code-type: #66c7eb; --rss-code-string: #f9a672; --rss-code-number: #c6a3fa; --rss-code-comment: #73ad75; }
+          :root[data-reading-theme="dark"][data-code-theme="solarized"] { --rss-code-foreground: #b7c8c9; --rss-code-background: #002b36; --rss-code-border: rgba(122, 143, 148, 0.65); --rss-code-keyword: #ff70b7; --rss-code-type: #5fdad0; --rss-code-string: #f3c969; --rss-code-number: #bbb6ff; --rss-code-comment: #93a1a1; }
+          @media (prefers-color-scheme: dark) {
+            :root[data-reading-theme="system"] { --rss-code-foreground: #dee2eb; --rss-code-background: #17191f; --rss-code-border: rgba(255, 255, 255, 0.14); --rss-code-keyword: #c78ffa; --rss-code-type: #5cc7e0; --rss-code-string: #faa38a; --rss-code-number: #c2adfa; --rss-code-comment: #75aa7d; }
+            :root[data-reading-theme="system"][data-code-theme="xcode"] { --rss-code-foreground: #e0e0e6; --rss-code-background: #1c1e23; --rss-code-keyword: #fc6eb7; --rss-code-type: #66c7eb; --rss-code-string: #f9a672; --rss-code-number: #c6a3fa; --rss-code-comment: #73ad75; }
+            :root[data-reading-theme="system"][data-code-theme="solarized"] { --rss-code-foreground: #b7c8c9; --rss-code-background: #002b36; --rss-code-border: rgba(122, 143, 148, 0.65); --rss-code-keyword: #ff70b7; --rss-code-type: #5fdad0; --rss-code-string: #f3c969; --rss-code-number: #bbb6ff; --rss-code-comment: #93a1a1; }
+          }
           html, body { width: 100%; max-width: 100%; min-height: 100%; overflow-x: hidden; }
-          body { display: block; visibility: visible; opacity: 1; margin: 0; min-height: 100vh; padding: 4px 2px 28px; box-sizing: border-box; color: var(--rss-foreground) !important; background: var(--rss-background) !important; font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif; font-size: var(--rss-font-size); line-height: var(--rss-line-spacing); overflow-wrap: anywhere; -webkit-text-fill-color: var(--rss-foreground); }
-          #rss-article-container { display: block; width: 100%; max-width: 780px; min-width: 0; margin: 0 auto; padding: 72px 24px 48px; box-sizing: border-box; overflow-x: hidden; visibility: visible; opacity: 1; color: var(--rss-foreground) !important; }
+          body { display: block; visibility: visible; opacity: 1; margin: 0; min-height: 100vh; padding: 4px 2px 28px; box-sizing: border-box; color: var(--rss-foreground) !important; background: var(--rss-background) !important; font-family: var(--rss-font-family); font-size: var(--rss-font-size); line-height: var(--rss-line-spacing); overflow-wrap: break-word; -webkit-text-fill-color: var(--rss-foreground); }
+          #rss-article-container { display: block; width: 100%; max-width: 780px; min-width: 0; margin: 0 auto; padding: 32px 24px 48px; box-sizing: border-box; overflow-x: hidden; visibility: visible; opacity: 1; color: var(--rss-foreground) !important; }
           #rss-article-body { display: block; width: 100%; min-width: 0; overflow-x: hidden; visibility: visible; opacity: 1; color: var(--rss-foreground) !important; }
           .rss-article-header { margin: 0 0 1.2em 0; }
           .rss-article-title { font-size: 1.85em; font-weight: 700; line-height: 1.3; margin: 0 0 0.4em 0; color: var(--rss-foreground); overflow-wrap: break-word; -webkit-text-fill-color: var(--rss-foreground); }
@@ -397,7 +434,8 @@ enum RSSArticleHTMLRenderer {
           .rss-meta-item { display: inline-flex; align-items: center; gap: 4px; }
           .rss-header-divider { border: 0; border-top: 1px solid rgba(127, 127, 127, 0.28); margin: 1em 0 1.5em 0; }
           h1, h2, h3, h4, h5, h6 { line-height: 1.25; margin: 1.1em 0 0.55em; }
-          p, div, article, section, blockquote, pre, ul, ol, table, figure, details { margin: 0.75em 0; }
+          p, div, article, section, blockquote, pre, ul, ol, table, figure, details { margin: var(--rss-paragraph-spacing) 0; }
+          p, blockquote, li { text-align: var(--rss-text-align); text-justify: inter-character; hanging-punctuation: first allow-end last; line-break: strict; word-break: normal; overflow-wrap: break-word; }
           ul, ol { padding-left: 1.6em; }
           blockquote { margin-left: 0; padding: 0.1em 1em; border-left: 3px solid var(--rss-secondary-foreground); color: var(--rss-secondary-foreground); }
           figure { margin-left: 0; margin-right: 0; }
@@ -405,8 +443,14 @@ enum RSSArticleHTMLRenderer {
           figcaption { margin-top: 0.4em; font-size: 0.9em; }
           hr { border: 0; border-top: 1px solid rgba(127, 127, 127, 0.35); margin: 1.25em 0; }
           summary { cursor: pointer; font-weight: 600; }
-          pre { max-width: 100%; padding: 0.85em 1em; border-radius: 8px; background: rgba(127, 127, 127, 0.14); overflow-x: auto; overflow-wrap: anywhere; white-space: pre-wrap; }
-          code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.92em; }
+          pre { max-width: 100%; padding: 0.95em 1.05em; border: 1px solid var(--rss-code-border); border-radius: 9px; color: var(--rss-code-foreground); background: var(--rss-code-background); overflow-x: auto; overflow-wrap: normal; white-space: pre; -webkit-text-fill-color: currentColor; }
+          code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.92em; font-variant-ligatures: none; tab-size: 2; }
+          :not(pre) > code { padding: 0.14em 0.34em; border: 1px solid var(--rss-code-border); border-radius: 5px; color: var(--rss-code-foreground); background: var(--rss-code-background); -webkit-text-fill-color: currentColor; }
+          .rss-code-keyword { color: var(--rss-code-keyword); -webkit-text-fill-color: var(--rss-code-keyword); font-weight: 600; }
+          .rss-code-type { color: var(--rss-code-type); -webkit-text-fill-color: var(--rss-code-type); }
+          .rss-code-string { color: var(--rss-code-string); -webkit-text-fill-color: var(--rss-code-string); }
+          .rss-code-number { color: var(--rss-code-number); -webkit-text-fill-color: var(--rss-code-number); }
+          .rss-code-comment { color: var(--rss-code-comment); -webkit-text-fill-color: var(--rss-code-comment); font-style: italic; }
           table { border-collapse: collapse; width: 100%; max-width: 100%; table-layout: fixed; }
           th, td { border: 1px solid rgba(127, 127, 127, 0.35); padding: 0.35em 0.55em; text-align: left; vertical-align: top; overflow-wrap: anywhere; word-break: break-word; }
           a { color: var(--rss-link); }
@@ -625,6 +669,12 @@ enum RSSArticleHTMLRenderer {
         hasRenderableContent: false
       )
     }
+    if name == "code", let language = normalizedCodeLanguage(from: attributes) {
+      return SanitizedTag(
+        html: "<code data-language=\"\(escapeAttribute(language))\">",
+        hasRenderableContent: false
+      )
+    }
     return SanitizedTag(
       html: "<\(outputTagName(for: name))>",
       hasRenderableContent: false
@@ -633,6 +683,36 @@ enum RSSArticleHTMLRenderer {
 
   private static func outputTagName(for sourceName: String) -> String {
     sourceName == "main" ? "div" : sourceName
+  }
+
+  private static func normalizedCodeLanguage(
+    from attributes: [String: String]
+  ) -> String? {
+    for directValue in [attributes["data-language"], attributes["lang"]].compactMap({ $0 }) {
+      if let language = normalizedCodeLanguageIdentifier(directValue) {
+        return language
+      }
+    }
+
+    for rawClass in attributes["class"]?.split(whereSeparator: \.isWhitespace) ?? [] {
+      let candidate = rawClass.lowercased()
+      for prefix in ["language-", "lang-", "highlight-source-"] where candidate.hasPrefix(prefix) {
+        if let language = normalizedCodeLanguageIdentifier(
+          String(candidate.dropFirst(prefix.count)))
+        {
+          return language
+        }
+      }
+    }
+    return nil
+  }
+
+  private static func normalizedCodeLanguageIdentifier(_ source: String) -> String? {
+    let candidate = source.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    guard !candidate.isEmpty, candidate.count <= 32,
+      candidate.allSatisfy({ $0.isLetter || $0.isNumber || "+#_-".contains($0) })
+    else { return nil }
+    return candidate
   }
 
   private static func parseAttributes(_ source: String) -> [String: String] {

@@ -41,11 +41,15 @@ jobs:
     runs-on: macos-15
     timeout-minutes: 25
     env:
+      DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
       SWIFT_BUILD_HOME: /private/tmp/personal-site-publisher-ci-swift-home
       SWIFT_TEST_WARNINGS_AS_ERRORS: "1"
+      QUALITY_DIFF_BASE: ${{ github.event.before }}
     steps:
       - name: Check out repository
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          fetch-depth: 0
       - name: Configure deterministic test language
         run: |
           defaults write NSGlobalDomain AppleLanguages -array "zh-Hans"
@@ -69,6 +73,9 @@ jobs:
           path: |
             .build/main-push-quick-result.json
             .build/main-push-quick-summary.md
+            .build/*.diagnostics/
+            .build/swift-format-result.json
+            .build/swift-format-lint.log
             .build/swift-module-boundaries.json
             .build/swift-test-shards/
 
@@ -95,11 +102,15 @@ jobs:
     runs-on: macos-15
     timeout-minutes: 25
     env:
+      DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
       SWIFT_BUILD_HOME: /private/tmp/personal-site-publisher-ci-quick-home
       SWIFT_TEST_WARNINGS_AS_ERRORS: "1"
+      QUALITY_DIFF_BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || (github.event_name == 'push' && github.event.before) || '' }}
     steps:
       - name: Check out repository
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          fetch-depth: 0
       - name: Configure deterministic test language
         run: |
           defaults write NSGlobalDomain AppleLanguages -array "zh-Hans"
@@ -126,6 +137,9 @@ jobs:
           path: |
             .build/quality-gate-result.json
             .build/quality-gate-summary.md
+            .build/*.diagnostics/
+            .build/swift-format-result.json
+            .build/swift-format-lint.log
             .build/swift-module-boundaries.json
             .build/swift-test-shards/
 
@@ -138,10 +152,14 @@ jobs:
     runs-on: macos-15
     timeout-minutes: 45
     env:
+      DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
       SWIFT_BUILD_HOME: /private/tmp/personal-site-publisher-ci-coverage-home
+      QUALITY_DIFF_BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || (github.event_name == 'push' && github.event.before) || '' }}
     steps:
       - name: Check out repository
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          fetch-depth: 0
       - name: Configure deterministic test language
         run: |
           defaults write NSGlobalDomain AppleLanguages -array "zh-Hans"
@@ -168,6 +186,8 @@ jobs:
           path: |
             .build/coverage-gate-result.json
             .build/coverage-gate-summary.md
+            .build/*.diagnostics/
+            .build/swift-coverage-result.json
 
   quality-build:
     if: >-
@@ -190,6 +210,7 @@ jobs:
           xcodebuild -version
           ./script/check_release_gate.sh \
             --check ui-runtime \
+            --check ui-product-contract \
             --check swift-release-build \
             --result-json .build/distribution-gate-result.json \
             --summary-markdown .build/distribution-gate-summary.md
@@ -207,6 +228,7 @@ jobs:
           path: |
             .build/distribution-gate-result.json
             .build/distribution-gate-summary.md
+            .build/*.diagnostics/
 
   quality-runtime:
     if: >-
@@ -230,6 +252,7 @@ jobs:
           xcodebuild -version
           ./script/check_release_gate.sh \
             --check ui-runtime \
+            --check ui-product-contract \
             --check swift-release-build \
             --result-json .build/distribution-gate-result.json \
             --summary-markdown .build/distribution-gate-summary.md
@@ -278,6 +301,7 @@ jobs:
           path: |
             .build/distribution-gate-result.json
             .build/distribution-gate-summary.md
+            .build/*.diagnostics/
 
   quality:
     if: >-
@@ -315,6 +339,7 @@ jobs:
     runs-on: macos-15
     timeout-minutes: 45
     env:
+      DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
       SWIFT_BUILD_HOME: /private/tmp/personal-site-publisher-performance-swift-home
       PERFORMANCE_BENCHMARK_REQUIRED: "1"
       PERFORMANCE_BENCHMARK_CONFIGURATION: release
@@ -349,6 +374,7 @@ jobs:
             .build/release-performance/
             .build/release-performance-gate-result.json
             .build/release-performance-gate-summary.md
+            .build/*.diagnostics/
           if-no-files-found: warn
 
   module-build-performance:
@@ -357,6 +383,8 @@ jobs:
       github.event.inputs.compile_benchmark == 'true'
     runs-on: macos-15
     timeout-minutes: 120
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
     steps:
       - name: Check out repository
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
@@ -381,6 +409,7 @@ jobs:
             .build/benchmarks/swift-module-builds-logs/
             .build/module-build-benchmark-gate-result.json
             .build/module-build-benchmark-gate-summary.md
+            .build/*.diagnostics/
           if-no-files-found: warn
 
   release-quality:

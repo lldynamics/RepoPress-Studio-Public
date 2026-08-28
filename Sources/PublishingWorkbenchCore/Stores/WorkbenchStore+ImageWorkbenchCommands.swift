@@ -107,6 +107,25 @@ extension WorkbenchStore {
     invalidateDraftDerivedCaches()
   }
 
+  public func sanitizeSelectedDraftImagePrivacy() {
+    imageStore.sanitizeSelectedDraftImagePrivacy()
+    invalidateDraftDerivedCaches()
+  }
+
+  public func sanitizeVisibleDraftImagePrivacy() {
+    imageStore.sanitizeVisibleDraftImagePrivacy()
+    invalidateDraftDerivedCaches()
+  }
+
+  public func sanitizeVisibleDraftImagePrivacy(
+    includedAttachmentIDsByDraftID: [UUID: Set<UUID>]
+  ) {
+    imageStore.sanitizeVisibleDraftImagePrivacy(
+      includedAttachmentIDsByDraftID: includedAttachmentIDsByDraftID
+    )
+    invalidateDraftDerivedCaches()
+  }
+
   public func optimizeVisibleDraftJPEGImages() {
     imageStore.optimizeVisibleDraftJPEGImages()
     invalidateDraftDerivedCaches()

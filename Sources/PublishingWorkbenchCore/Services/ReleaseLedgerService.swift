@@ -31,7 +31,8 @@ public struct ReleaseLedgerService {
         id: record.id,
         record: record,
         status: status,
-        statusMessage: statusMessage(for: record, status: status, deploymentStatus: deploymentStatus),
+        statusMessage: statusMessage(
+          for: record, status: status, deploymentStatus: deploymentStatus),
         deploymentStatus: deploymentStatus,
         rollbackDraft: rollbackDraft(for: record)
       )
@@ -52,19 +53,36 @@ public struct ReleaseLedgerService {
   ) -> DeploymentStatusSnapshot? {
     guard let deploymentStatus else { return nil }
     switch record.kind {
-    case .localWrite, .batchLocalWrite, .directCommit, .remoteDirectCommit, .remoteRollback:
+    case .remoteDirectCommit, .remoteRollback:
+      if deploymentStatus.level == .success {
+        guard record.commitSHA?.trimmedForPublishing.nilIfEmpty != nil,
+          deploymentStatus.attributionVerified == true
+        else {
+          return nil
+        }
+      }
       return deploymentStatus
+    case .localWrite,
+      .batchLocalWrite,
+      .directCommit,
+      .reviewBranch,
+      .remotePreviewBranch,
+      .remoteReviewRequest,
+      .remoteReviewWithdrawal:
+      return nil
     case .remotePublishFailure:
       guard record.commitSHA?.trimmedForPublishing.nilIfEmpty != nil else {
         return nil
       }
       let branch = record.branchName?.trimmedForPublishing.nilIfEmpty
       let targetBranch = record.targetBranch?.trimmedForPublishing.nilIfEmpty
-      return targetBranch == nil || branch == nil || branch == targetBranch ? deploymentStatus : nil
-    case .reviewBranch,
-         .remoteReviewRequest,
-         .remoteReviewWithdrawal:
-      return nil
+      guard targetBranch == nil || branch == nil || branch == targetBranch else { return nil }
+      if deploymentStatus.level == .success,
+        deploymentStatus.attributionVerified != true
+      {
+        return nil
+      }
+      return deploymentStatus
     }
   }
 
@@ -78,7 +96,7 @@ public struct ReleaseLedgerService {
       return reviewRollbackDraft(for: record)
     case .remotePublishFailure:
       return failedRemotePublishRollbackDraft(for: record)
-    case .remoteRollback, .remoteReviewWithdrawal:
+    case .remotePreviewBranch, .remoteRollback, .remoteReviewWithdrawal:
       return nil
     }
   }
@@ -88,7 +106,8 @@ public struct ReleaseLedgerService {
     deploymentStatus: DeploymentStatusSnapshot?
   ) -> ReleaseLedgerStatus {
     if record.kind == .remotePublishFailure,
-       record.commitSHA?.trimmedForPublishing.nilIfEmpty != nil {
+      record.commitSHA?.trimmedForPublishing.nilIfEmpty != nil
+    {
       return .pendingRemoteRecovery
     }
 
@@ -110,19 +129,27 @@ public struct ReleaseLedgerService {
 
   private func fallbackStatus(for record: ReleaseRecord) -> ReleaseLedgerStatus {
     switch record.kind {
-    case .localWrite, .batchLocalWrite:
+    case .localWrite, .batchLocalWrite, .directCommit:
       return .localOnly
+    case .remotePreviewBranch:
+      return .previewOnly
     case .reviewBranch, .remoteReviewRequest:
       return .pendingReview
-    case .directCommit, .remoteDirectCommit:
-      return .pendingDeployment
+    case .remoteDirectCommit:
+      return record.commitSHA?.trimmedForPublishing.nilIfEmpty == nil
+        ? .unknown
+        : .pendingDeployment
     case .remotePublishFailure:
       if record.commitSHA?.trimmedForPublishing.nilIfEmpty != nil {
         return .pendingRemoteRecovery
       }
       return .failed
-    case .remoteRollback, .remoteReviewWithdrawal:
-      return .succeeded
+    case .remoteRollback:
+      return record.commitSHA?.trimmedForPublishing.nilIfEmpty == nil
+        ? .unknown
+        : .pendingDeployment
+    case .remoteReviewWithdrawal:
+      return .reviewWithdrawn
     }
   }
 
@@ -130,7 +157,8 @@ public struct ReleaseLedgerService {
     switch fallbackStatus(for: record) {
     case .pendingDeployment, .deploying, .unknown:
       return .pendingRetry
-    case .localOnly, .pendingReview, .pendingRemoteRecovery, .succeeded, .failed, .pendingRetry:
+    case .localOnly, .previewOnly, .pendingReview, .reviewWithdrawn, .pendingRemoteRecovery,
+      .succeeded, .failed, .pendingRetry:
       return fallbackStatus(for: record)
     }
   }
@@ -146,11 +174,18 @@ public struct ReleaseLedgerService {
 
     switch status {
     case .localOnly:
+      if record.kind == .directCommit {
+        return CoreL10n.text("内容已在本地提交，尚未推送到远端，也未触发部署。")
+      }
       return CoreL10n.text("内容已经写入工作树，还没有形成可追踪的线上发布。")
+    case .previewOnly:
+      return CoreL10n.text("预览分支已推送，未合并到正式分支，也未触发正式部署。")
     case .pendingReview:
       return record.reviewURL == nil
         ? CoreL10n.text("发布分支已经准备好，等待创建或合并 Review。")
         : CoreL10n.text("PR/MR 已准备，等待合并后进入部署。")
+    case .reviewWithdrawn:
+      return CoreL10n.text("PR/MR 已撤回，未合并到目标分支，也未触发部署。")
     case .pendingDeployment:
       return CoreL10n.text("提交已完成，尚未记录部署检查结果。")
     case .pendingRemoteRecovery:
@@ -164,17 +199,26 @@ public struct ReleaseLedgerService {
     case .failed:
       return CoreL10n.text("发布或部署检查失败，需要处理后重试。")
     case .unknown:
+      if record.kind == .remoteDirectCommit,
+        record.commitSHA?.trimmedForPublishing.nilIfEmpty == nil
+      {
+        return CoreL10n.text("目标分支内容已核对，但缺少可绑定的 commit，不能确认部署版本。")
+      }
       return CoreL10n.text("缺少足够信息判断发布状态。")
     }
   }
 
-  private func summary(for entries: [ReleaseLedgerEntry], actionItemCount: Int) -> ReleaseLedgerSummary {
+  private func summary(for entries: [ReleaseLedgerEntry], actionItemCount: Int)
+    -> ReleaseLedgerSummary
+  {
     ReleaseLedgerSummary(
       totalCount: entries.count,
       actionItemCount: actionItemCount,
       localPendingCount: entries.filter { $0.status == .localOnly }.count,
       reviewPendingCount: entries.filter { $0.status == .pendingReview }.count,
-      deploymentPendingCount: entries.filter { $0.status == .pendingDeployment || $0.status == .deploying || $0.status == .pendingRetry }.count,
+      deploymentPendingCount: entries.filter {
+        $0.status == .pendingDeployment || $0.status == .deploying || $0.status == .pendingRetry
+      }.count,
       remoteRecoveryPendingCount: entries.filter { $0.status == .pendingRemoteRecovery }.count,
       succeededCount: entries.filter { $0.status == .succeeded }.count,
       failedCount: entries.filter { $0.status == .failed }.count,
@@ -237,6 +281,10 @@ public struct ReleaseLedgerService {
           remoteURL: entry.record.reviewURL ?? entry.rollbackDraft?.remoteURL,
           commandLines: entry.rollbackDraft?.commandLines ?? []
         )
+      case .reviewWithdrawn:
+        return nil
+      case .previewOnly:
+        return nil
       case .localOnly:
         return actionItem(
           entry: entry,
@@ -291,11 +339,13 @@ public struct ReleaseLedgerService {
     )
   }
 
-  private func partialRemoteRecoveryAction(for entry: ReleaseLedgerEntry) -> ReleaseLedgerActionItem {
+  private func partialRemoteRecoveryAction(for entry: ReleaseLedgerEntry) -> ReleaseLedgerActionItem
+  {
     let rollbackCommands = entry.rollbackDraft?.commandLines ?? []
-    let commitDetail = entry.record.shortCommitSHA.map {
-      CoreL10n.format("远端 commit %@ 已记录，先确认远端状态再决定重试或回滚。", $0)
-    } ?? CoreL10n.text("远端发布部分完成，先确认远端分支和变更路径。")
+    let commitDetail =
+      entry.record.shortCommitSHA.map {
+        CoreL10n.format("远端 commit %@ 已记录，先确认远端状态再决定重试或回滚。", $0)
+      } ?? CoreL10n.text("远端发布部分完成，先确认远端分支和变更路径。")
     return actionItem(
       entry: entry,
       kind: .recoverPartialRemotePublish,
@@ -354,7 +404,8 @@ public struct ReleaseLedgerService {
     }.count
     let pendingRemoteRecoveryCount = entries.filter { $0.status == .pendingRemoteRecovery }.count
     let lastCheckedAt = deploymentSnapshots.map(\.checkedAt).max()
-    let highlightedSignals = deploymentSnapshots
+    let highlightedSignals =
+      deploymentSnapshots
       .flatMap(\.signals)
       .filter { $0.level == .failed || $0.level == .running || $0.level == .unknown }
       .prefix(5)
@@ -363,7 +414,8 @@ public struct ReleaseLedgerService {
       return ReleaseDeploymentOverview(
         level: .unknown,
         title: CoreL10n.text("有远端恢复待确认"),
-        message: CoreL10n.format("%@ 条远端发布部分完成后中断，需要确认 commit、Review 或回滚方案。", String(pendingRemoteRecoveryCount)),
+        message: CoreL10n.format(
+          "%@ 条远端发布部分完成后中断，需要确认 commit、Review 或回滚方案。", String(pendingRemoteRecoveryCount)),
         checkedRecordCount: deploymentSnapshots.count,
         uncheckedDeploymentCount: uncheckedDeploymentCount,
         failedDeploymentCount: failedSnapshots.count,
@@ -465,7 +517,8 @@ public struct ReleaseLedgerService {
       summary: CoreL10n.text("跟踪文件恢复到 HEAD 并同步取消暂存；本次新增且未跟踪的文件会按记录路径删除。执行前先确认没有其他手动编辑混在这些路径里。"),
       commandLines: paths.map { path in
         let quotedPath = quotedShellPath(path)
-        return "if git cat-file -e HEAD:\(quotedPath) >/dev/null 2>&1; then git restore --source=HEAD --staged --worktree -- \(quotedPath); else git restore --staged -- \(quotedPath) >/dev/null 2>&1 || true; git clean -fd -- \(quotedPath); fi"
+        return
+          "if git cat-file -e HEAD:\(quotedPath) >/dev/null 2>&1; then git restore --source=HEAD --staged --worktree -- \(quotedPath); else git restore --staged -- \(quotedPath) >/dev/null 2>&1 || true; git clean -fd -- \(quotedPath); fi"
       },
       changedPaths: paths
     )
@@ -475,32 +528,37 @@ public struct ReleaseLedgerService {
     guard let commitSHA = record.commitSHA?.trimmedForPublishing, !commitSHA.isEmpty else {
       return nil
     }
-    let branchName = record.branchName?.trimmedForPublishing.nilIfEmpty ?? record.targetBranch?.trimmedForPublishing.nilIfEmpty ?? "main"
+    let branchName =
+      record.branchName?.trimmedForPublishing.nilIfEmpty ?? record.targetBranch?
+      .trimmedForPublishing.nilIfEmpty ?? "main"
     let shortSHA = String(commitSHA.prefix(8))
     let rollbackBranchName = "rollback/\(shortSHA)"
     let reviewTitle = CoreL10n.format("回滚：%@", record.draftTitle ?? record.title)
     let reviewBody = rollbackReviewBody(for: record, commitSHA: commitSHA, branchName: branchName)
     return ReleaseRollbackDraft(
       title: CoreL10n.format("回滚提交：%@", record.draftTitle ?? record.title),
-      summary: CoreL10n.format("基于 %@ 创建 %@，生成 revert 提交来撤销 %@，再用下方回滚草稿发起 PR/MR。", branchName, rollbackBranchName, shortSHA),
+      summary: CoreL10n.format(
+        "基于 %@ 创建 %@，生成 revert 提交来撤销 %@，再用下方回滚草稿发起 PR/MR。", branchName, rollbackBranchName, shortSHA
+      ),
       commandLines: [
         "git checkout \(quotedShellPath(branchName))",
         "git pull --ff-only",
         "git checkout -b \(quotedShellPath(rollbackBranchName))",
         "git revert --no-edit \(quotedShellPath(commitSHA))",
-        "git push origin \(quotedShellPath(rollbackBranchName))"
+        "git push origin \(quotedShellPath(rollbackBranchName))",
       ],
       changedPaths: record.changedPaths,
       reviewBranchName: rollbackBranchName,
       reviewTitle: reviewTitle,
       reviewBody: reviewBody,
-      reviewURL: record.reviewURL ?? remoteRollbackReviewURL(
-        for: record,
-        sourceBranch: rollbackBranchName,
-        targetBranch: branchName,
-        title: reviewTitle,
-        body: reviewBody
-      ),
+      reviewURL: record.reviewURL
+        ?? remoteRollbackReviewURL(
+          for: record,
+          sourceBranch: rollbackBranchName,
+          targetBranch: branchName,
+          title: reviewTitle,
+          body: reviewBody
+        ),
       remoteURL: remoteCommitURL(for: record, commitSHA: commitSHA)
     )
   }
@@ -539,7 +597,8 @@ public struct ReleaseLedgerService {
     )
   }
 
-  private func failedRemotePublishRollbackDraft(for record: ReleaseRecord) -> ReleaseRollbackDraft? {
+  private func failedRemotePublishRollbackDraft(for record: ReleaseRecord) -> ReleaseRollbackDraft?
+  {
     let branchName = record.branchName?.trimmedForPublishing.nilIfEmpty
     let targetBranch = record.targetBranch?.trimmedForPublishing.nilIfEmpty
     if let branchName, branchName != targetBranch {
@@ -553,7 +612,8 @@ public struct ReleaseLedgerService {
     commitSHA: String,
     branchName: String
   ) -> String {
-    let paths = record.changedPaths.isEmpty
+    let paths =
+      record.changedPaths.isEmpty
       ? CoreL10n.text("- 未记录变更路径")
       : record.changedPaths.map { "- \($0)" }.joined(separator: "\n")
     return [
@@ -568,12 +628,13 @@ public struct ReleaseLedgerService {
       "",
       CoreL10n.text("检查清单："),
       CoreL10n.text("- [ ] 确认此回滚不会删除无关的手动编辑。"),
-      CoreL10n.text("- [ ] 合并后验证站点构建和部署。")
+      CoreL10n.text("- [ ] 合并后验证站点构建和部署。"),
     ].joined(separator: "\n")
   }
 
   private func closeReviewBody(for record: ReleaseRecord) -> String {
-    let paths = record.changedPaths.isEmpty
+    let paths =
+      record.changedPaths.isEmpty
       ? CoreL10n.text("- 未记录变更路径")
       : record.changedPaths.map { "- \($0)" }.joined(separator: "\n")
     return [
@@ -588,14 +649,15 @@ public struct ReleaseLedgerService {
       "",
       CoreL10n.text("检查清单："),
       CoreL10n.text("- [ ] 确认 Review 分支尚未合并。"),
-      CoreL10n.text("- [ ] 如果已合并，改为针对目标分支创建 revert 提交。")
+      CoreL10n.text("- [ ] 如果已合并，改为针对目标分支创建 revert 提交。"),
     ].joined(separator: "\n")
   }
 
   private func remoteCommitURL(for record: ReleaseRecord, commitSHA: String) -> String? {
     guard let provider = record.repositoryProvider,
-          let owner = record.repoOwner?.trimmedForPublishing, !owner.isEmpty,
-          let repo = record.repoName?.trimmedForPublishing, !repo.isEmpty else {
+      let owner = record.repoOwner?.trimmedForPublishing, !owner.isEmpty,
+      let repo = record.repoName?.trimmedForPublishing, !repo.isEmpty
+    else {
       return nil
     }
 
@@ -613,8 +675,9 @@ public struct ReleaseLedgerService {
 
   private func remoteBranchURL(for record: ReleaseRecord, branchName: String) -> String? {
     guard let provider = record.repositoryProvider,
-          let owner = record.repoOwner?.trimmedForPublishing, !owner.isEmpty,
-          let repo = record.repoName?.trimmedForPublishing, !repo.isEmpty else {
+      let owner = record.repoOwner?.trimmedForPublishing, !owner.isEmpty,
+      let repo = record.repoName?.trimmedForPublishing, !repo.isEmpty
+    else {
       return nil
     }
 
@@ -638,8 +701,9 @@ public struct ReleaseLedgerService {
     body: String
   ) -> String? {
     guard let provider = record.repositoryProvider,
-          let owner = record.repoOwner?.trimmedForPublishing, !owner.isEmpty,
-          let repo = record.repoName?.trimmedForPublishing, !repo.isEmpty else {
+      let owner = record.repoOwner?.trimmedForPublishing, !owner.isEmpty,
+      let repo = record.repoName?.trimmedForPublishing, !repo.isEmpty
+    else {
       return nil
     }
 

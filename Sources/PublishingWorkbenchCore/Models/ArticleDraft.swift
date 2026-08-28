@@ -761,6 +761,38 @@ public struct ArticleDraft: Identifiable, Codable, Hashable, Sendable {
     )
   }
 
+  /// Records an explicitly reviewed remote baseline while preserving a local
+  /// document that may still need publication. This is the atomic state used
+  /// after visual conflict resolution; it never pretends a merged/local
+  /// document is already present on the target branch.
+  public mutating func adoptReviewedRemoteBaseline(
+    profile: SiteProfile,
+    repositoryPath: String,
+    remoteRevision: String,
+    remoteDocument: String,
+    localDocument: String,
+    verifiedAt: Date = Date()
+  ) {
+    let normalizedPath = repositoryPath.normalizedRelativePath()
+    let normalizedRevision = remoteRevision.trimmedForPublishing
+    let remoteDigest = Self.repositoryDocumentDigest(remoteDocument)
+    let localDigest = Self.repositoryDocumentDigest(localDocument)
+    let isSynced = remoteDigest == localDigest
+    self.repositoryPath = normalizedPath
+    repositorySHA = normalizedRevision
+    repositoryBinding = DraftRepositoryBinding(
+      identity: DraftRepositoryIdentity(profile: profile),
+      repositoryPath: normalizedPath,
+      remoteRevision: normalizedRevision,
+      renderedContentDigest: remoteDigest,
+      projectFileContentDigest: nil,
+      verification: .verified,
+      syncState: isSynced ? .synced : .localChanged,
+      verifiedAt: verifiedAt
+    )
+    repositoryImportFingerprint = isSynced ? repositoryContentFingerprint : nil
+  }
+
   public mutating func markRepositorySyncState(_ state: DraftRepositorySyncState) {
     guard var binding = repositoryBinding else { return }
     binding.syncState = state

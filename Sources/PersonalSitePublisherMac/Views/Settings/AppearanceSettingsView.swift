@@ -3,35 +3,84 @@ import SwiftUI
 struct AppearanceSettingsView: View {
   let autoRunPreflightBinding: Binding<Bool>
   @Binding var scanRepositoryOnLaunch: Bool
+  @Environment(\.settingsSubsection) private var settingsSubsection
 
   @AppStorage(WorkbenchAccentPalette.storageKey)
   private var accentPaletteRawValue = WorkbenchAccentPalette.system.rawValue
+  @AppStorage(WorkbenchAppearanceMode.storageKey)
+  private var appearanceModeRawValue = WorkbenchAppearanceMode.system.rawValue
+  @AppStorage(WorkbenchInterfaceDensity.storageKey)
+  private var interfaceDensityRawValue = WorkbenchInterfaceDensity.comfortable.rawValue
   @State private var showsGlobalFrontMatterPreset = false
 
   private var selectedPalette: WorkbenchAccentPalette {
     WorkbenchAccentPalette.resolved(rawValue: accentPaletteRawValue)
   }
 
+  private var selectedAppearanceMode: WorkbenchAppearanceMode {
+    WorkbenchAppearanceMode.resolved(rawValue: appearanceModeRawValue)
+  }
+
+  private var selectedInterfaceDensity: WorkbenchInterfaceDensity {
+    WorkbenchInterfaceDensity.resolved(rawValue: interfaceDensityRawValue)
+  }
+
   var body: some View {
-    Form {
-      DefaultRuleGeneralSection(
-        autoRunPreflightBinding: autoRunPreflightBinding,
-        scanRepositoryOnLaunch: $scanRepositoryOnLaunch
-      )
-      globalFrontMatterSection
-      appearanceSection
-      AppLanguageSettingsView(isEmbedded: true)
+    Group {
+      switch displayedSubsection {
+      case .appearanceBehavior:
+        settingsForm {
+          DefaultRuleGeneralSection(
+            autoRunPreflightBinding: autoRunPreflightBinding,
+            scanRepositoryOnLaunch: $scanRepositoryOnLaunch
+          )
+        }
+      case .appearanceTheme:
+        ScrollView {
+          appearanceSection
+            .padding(.horizontal, WorkbenchSpacing.spacious)
+            .padding(.vertical, WorkbenchSpacing.page)
+        }
+      case .appearanceLanguage:
+        settingsForm {
+          AppLanguageSettingsView(isEmbedded: true)
+        }
+      case .appearanceDefaults:
+        settingsForm {
+          globalFrontMatterSection
+        }
+      default:
+        EmptyView()
+      }
     }
-    .formStyle(.grouped)
-    .padding(WorkbenchSpacing.content)
     .tint(selectedPalette.color)
     .onAppear {
       if accentPaletteRawValue != selectedPalette.rawValue {
         accentPaletteRawValue = selectedPalette.rawValue
       }
+      if appearanceModeRawValue != selectedAppearanceMode.rawValue {
+        appearanceModeRawValue = selectedAppearanceMode.rawValue
+      }
+      if interfaceDensityRawValue != selectedInterfaceDensity.rawValue {
+        interfaceDensityRawValue = selectedInterfaceDensity.rawValue
+      }
     }
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("appearance-settings")
+  }
+
+  private var displayedSubsection: SettingsSubsection {
+    settingsSubsection.tab == .appearance ? settingsSubsection : .appearanceBehavior
+  }
+
+  private func settingsForm<Content: View>(
+    @ViewBuilder content: () -> Content
+  ) -> some View {
+    Form {
+      content()
+    }
+    .formStyle(.grouped)
+    .padding(WorkbenchSpacing.content)
   }
 
   private var globalFrontMatterSection: some View {
@@ -54,111 +103,122 @@ struct AppearanceSettingsView: View {
   }
 
   private var appearanceSection: some View {
-    Section("主题强调色") {
-      Text("默认跟随 macOS，也可以选择一个专属颜色。")
-        .font(.callout)
-        .foregroundStyle(.secondary)
-
-      Picker("主题强调色", selection: $accentPaletteRawValue) {
-        ForEach(WorkbenchAccentPalette.allCases) { palette in
-          HStack(spacing: WorkbenchSpacing.control) {
-            Circle()
-              .fill(palette.color)
-              .frame(width: 14, height: 14)
-              .overlay {
-                Circle()
-                  .strokeBorder(Color.primary.opacity(0.16), lineWidth: 1)
-              }
-              .accessibilityHidden(true)
-
-            Text(palette.title)
-          }
-          .tag(palette.rawValue)
-        }
-      }
-      .pickerStyle(.radioGroup)
-      .labelsHidden()
-      .frame(maxWidth: .infinity, alignment: .leading)
-      .accessibilityIdentifier("settings-accent-color-picker")
-
-      Label {
-        Text("此颜色会立即应用到所有工作台窗口，并在下次启动时保留。")
-      } icon: {
-        Image(systemName: "paintpalette.fill")
-          .foregroundStyle(selectedPalette.color)
-      }
-      .font(.callout)
-
-      VStack(alignment: .leading, spacing: 8) {
-        Text("界面效果预览")
-          .font(.subheadline.weight(.semibold))
-
-        ViewThatFits(in: .horizontal) {
-          HStack(spacing: WorkbenchSpacing.card) {
-            appearancePreviewElements
-          }
-
-          VStack(alignment: .leading, spacing: WorkbenchSpacing.control) {
-            appearancePreviewElements
+    VStack(spacing: 0) {
+      appearancePreferenceRow(
+        title: "外观模式",
+        subtitle: "选择应用的主题模式。"
+      ) {
+        Picker("外观模式", selection: $appearanceModeRawValue) {
+          ForEach(WorkbenchAppearanceMode.allCases) { mode in
+            Text(mode.title).tag(mode.rawValue)
           }
         }
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(nsColor: .controlBackgroundColor))
-        .cornerRadius(8)
-        .overlay(
-          RoundedRectangle(cornerRadius: 8)
-            .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
-        )
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("主题强调色预览")
-        .accessibilityValue("主要操作、次要操作和选中状态的颜色示例")
+        .pickerStyle(.segmented)
+        .labelsHidden()
+        .controlSize(.regular)
+        .frame(width: 300)
+        .accessibilityIdentifier("settings-appearance-mode-picker")
       }
-      .padding(.top, 4)
+
+      Divider()
+
+      appearancePreferenceRow(
+        title: "强调色",
+        subtitle: "选择应用中按钮、链接等高亮元素的颜色。"
+      ) {
+        HStack(spacing: WorkbenchSpacing.card) {
+          ForEach(WorkbenchAccentPalette.allCases) { palette in
+            accentPaletteButton(palette)
+          }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("强调色")
+        .accessibilityIdentifier("settings-accent-color-picker")
+      }
+
+      Divider()
+
+      appearancePreferenceRow(
+        title: "界面密度",
+        subtitle: "调整界面控件的紧凑程度。"
+      ) {
+        Picker("界面密度", selection: $interfaceDensityRawValue) {
+          ForEach(WorkbenchInterfaceDensity.allCases) { density in
+            Text(density.title).tag(density.rawValue)
+          }
+        }
+        .pickerStyle(.segmented)
+        .labelsHidden()
+        .controlSize(.regular)
+        .frame(width: 240)
+        .accessibilityIdentifier("settings-interface-density-picker")
+      }
     }
   }
 
   @ViewBuilder
-  private var appearancePreviewElements: some View {
-    ForEach(AppearancePreviewElement.allCases) { element in
-      switch element {
-      case .primaryAction:
-        Text(element.title)
-          .font(.workbenchButtonLabel)
-          .foregroundStyle(
-            Color(nsColor: AppearancePreviewContrast.foregroundColor(
-              for: NSColor(selectedPalette.color)
-            ))
-          )
-          .padding(.horizontal, 12)
-          .padding(.vertical, 5)
-          .background(
-            selectedPalette.color,
-            in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
-          )
-      case .secondaryAction:
-        Text(element.title)
-          .font(.workbenchButtonLabel)
-          .foregroundStyle(selectedPalette.color)
-          .padding(.horizontal, 12)
-          .padding(.vertical, 5)
-          .background(
-            Color(nsColor: .controlBackgroundColor),
-            in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
-          )
-          .overlay {
-            RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
-              .strokeBorder(selectedPalette.color.opacity(0.6), lineWidth: 1)
-          }
-      case .selection:
-        Label(element.title, systemImage: "checkmark.circle.fill")
-          .font(.caption.weight(.medium))
-          .foregroundStyle(selectedPalette.color)
-          .padding(.horizontal, 8)
-          .padding(.vertical, 4)
-          .background(selectedPalette.color.opacity(0.12), in: Capsule())
+  private func appearancePreferenceRow<Content: View>(
+    title: LocalizedStringKey,
+    subtitle: LocalizedStringKey,
+    @ViewBuilder content: () -> Content
+  ) -> some View {
+    ViewThatFits(in: .horizontal) {
+      HStack(alignment: .center, spacing: WorkbenchSpacing.page) {
+        preferenceLabel(title: title, subtitle: subtitle)
+          .frame(width: 220, alignment: .leading)
+        Spacer(minLength: WorkbenchSpacing.card)
+        content()
+      }
+
+      VStack(alignment: .leading, spacing: WorkbenchSpacing.section) {
+        preferenceLabel(title: title, subtitle: subtitle)
+        content()
+          .frame(maxWidth: .infinity, alignment: .leading)
       }
     }
+    .padding(.vertical, 18)
+  }
+
+  private func preferenceLabel(
+    title: LocalizedStringKey,
+    subtitle: LocalizedStringKey
+  ) -> some View {
+    VStack(alignment: .leading, spacing: 4) {
+      Text(title)
+        .font(.body.weight(.semibold))
+      Text(subtitle)
+        .font(.callout)
+        .foregroundStyle(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
+    }
+  }
+
+  private func accentPaletteButton(_ palette: WorkbenchAccentPalette) -> some View {
+    let isSelected = palette == selectedPalette
+    return Button {
+      accentPaletteRawValue = palette.rawValue
+    } label: {
+      Circle()
+        .fill(palette.color)
+        .frame(width: 26, height: 26)
+        .overlay {
+          Circle()
+            .strokeBorder(Color.primary.opacity(0.12), lineWidth: 1)
+        }
+        .overlay {
+          if isSelected {
+            Circle()
+              .strokeBorder(palette.color, lineWidth: 2)
+              .padding(-4)
+          }
+        }
+        .frame(width: 34, height: 34)
+        .contentShape(Circle())
+    }
+    .buttonStyle(.plain)
+    .help(palette.title)
+    .accessibilityLabel(palette.title)
+    .accessibilityAddTraits(isSelected ? .isSelected : [])
   }
 }
 
@@ -185,24 +245,4 @@ enum AppearancePreviewContrast {
     }
     return 0.2126 * linearize(red) + 0.7152 * linearize(green) + 0.0722 * linearize(blue)
   }
-}
-
-enum AppearancePreviewElement: String, CaseIterable, Identifiable {
-  case primaryAction
-  case secondaryAction
-  case selection
-
-  var id: String { rawValue }
-
-  var title: LocalizedStringKey {
-    switch self {
-    case .primaryAction:
-      "主要按钮"
-    case .secondaryAction:
-      "次要操作"
-    case .selection:
-      "选中状态"
-    }
-  }
-
 }

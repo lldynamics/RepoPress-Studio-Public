@@ -302,7 +302,7 @@ final class WorkbenchLaunchCoordinator: ObservableObject {
     phase = .preparing(String(localized: "正在复制并校验当前数据…"))
     dataRootMessage = nil
     rssStore.stopBackgroundRefresh()
-    store.workspaceBackupScheduler.stop()
+    await store.workspaceBackupScheduler.stopAndWaitForBackgroundWork()
     browserBridge?.stop()
 
     let destinationRootURL = Self.availableDataRootURL(

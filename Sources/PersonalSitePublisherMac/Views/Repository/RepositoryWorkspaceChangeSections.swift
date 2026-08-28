@@ -230,20 +230,37 @@ struct RepositoryChangedFileDisclosureRow<Identity: View, Actions: View, DiffAct
 
       if isDiffExpanded, let lineDiff = file.lineDiff {
         VStack(alignment: .leading, spacing: 8) {
-          Text(lineDiff)
-            .font(.caption.monospaced())
-            .textSelection(.enabled)
-            .lineLimit(16)
-            .padding(10)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(
-              WorkbenchBackgroundStyle.control,
-              in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
-            )
-            .accessibilityLabel("\(source.localizedDisplayName) diff 预览")
-            .accessibilityValue(file.path)
-            .accessibilityIdentifier(
-              "repository-\(source.rawValue)-file-\(file.accessibilityIdentifierToken)-diff")
+          if source == .remote {
+            Text(lineDiff)
+              .font(.caption.monospaced())
+              .textSelection(.enabled)
+              .lineLimit(16)
+              .padding(10)
+              .frame(maxWidth: .infinity, alignment: .leading)
+              .background(
+                WorkbenchBackgroundStyle.control,
+                in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
+              )
+              .accessibilityLabel("远端 diff 预览")
+              .accessibilityValue(file.path)
+              .accessibilityIdentifier(
+                "repository-remote-file-\(file.accessibilityIdentifierToken)-diff")
+          } else {
+            Text(lineDiff)
+              .font(.caption.monospaced())
+              .textSelection(.enabled)
+              .lineLimit(16)
+              .padding(10)
+              .frame(maxWidth: .infinity, alignment: .leading)
+              .background(
+                WorkbenchBackgroundStyle.control,
+                in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
+              )
+              .accessibilityLabel("本地 diff 预览")
+              .accessibilityValue(file.path)
+              .accessibilityIdentifier(
+                "repository-local-file-\(file.accessibilityIdentifierToken)-diff")
+          }
           diffActions()
         }
       }

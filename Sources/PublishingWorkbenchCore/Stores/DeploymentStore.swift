@@ -45,9 +45,11 @@ public final class DeploymentStore: ObservableObject {
     deploymentPollingSettingsByProfileID: [UUID: DeploymentPollingSettings] = [:],
     deploymentPollingStateByProfileID: [UUID: DeploymentPollingState] = [:],
     activeProfileID: UUID? = nil,
-    deploymentTokenAvailability: KeychainTokenAvailability = KeychainTokenAvailability(hasToken: false),
+    deploymentTokenAvailability: KeychainTokenAvailability = KeychainTokenAvailability(
+      hasToken: false),
     deploymentStatusService: DeploymentStatusService = DeploymentStatusService(),
-    deploymentTokenStore: KeychainTokenStore = KeychainTokenStore(service: KeychainCredentialServices.deployment, accountPrefix: "deployment-provider"),
+    deploymentTokenStore: KeychainTokenStore = KeychainTokenStore(
+      service: KeychainCredentialServices.deployment, accountPrefix: "deployment-provider"),
     releaseLedgerService: ReleaseLedgerService = ReleaseLedgerService()
   ) {
     self.deploymentStatusService = deploymentStatusService
@@ -59,12 +61,14 @@ public final class DeploymentStore: ObservableObject {
     self.deploymentStatusMessage = deploymentStatusMessage
     self.deploymentPollingSettingsByProfileID = deploymentPollingSettingsByProfileID
     self.deploymentPollingStateByProfileID = deploymentPollingStateByProfileID
-    self.deploymentPollingSettings = activeProfileID.flatMap {
-      deploymentPollingSettingsByProfileID[$0]
-    } ?? deploymentPollingSettings
-    self.deploymentPollingState = activeProfileID.flatMap {
-      deploymentPollingStateByProfileID[$0]
-    } ?? deploymentPollingState
+    self.deploymentPollingSettings =
+      activeProfileID.flatMap {
+        deploymentPollingSettingsByProfileID[$0]
+      } ?? deploymentPollingSettings
+    self.deploymentPollingState =
+      activeProfileID.flatMap {
+        deploymentPollingStateByProfileID[$0]
+      } ?? deploymentPollingState
     self.deploymentTokenAvailability = deploymentTokenAvailability
     self.boundAutomationProfileID = activeProfileID
   }
@@ -126,7 +130,9 @@ public final class DeploymentStore: ObservableObject {
     )
   }
 
-  public func activeDeploymentStatusReadiness(store: WorkbenchStore) -> DeploymentStatusProviderReadiness {
+  public func activeDeploymentStatusReadiness(store: WorkbenchStore)
+    -> DeploymentStatusProviderReadiness
+  {
     deploymentStatusReadiness(
       for: store.activeProfile,
       tokenAvailability: deploymentTokenAvailability
@@ -137,10 +143,7 @@ public final class DeploymentStore: ObservableObject {
     _ record: ReleaseRecord,
     store: WorkbenchStore
   ) -> Bool {
-    guard record.kind != .remoteReviewRequest else { return false }
-    if record.kind == .remotePublishFailure {
-      guard record.commitSHA?.trimmedForPublishing.nilIfEmpty != nil else { return false }
-    }
+    guard releaseCanHaveDeployment(record) else { return false }
     return deploymentStatusReadiness(for: record, store: store).canCheckAnyStatus
   }
 
@@ -148,7 +151,9 @@ public final class DeploymentStore: ObservableObject {
     deploymentStatusSnapshots[record.id]
   }
 
-  public func deploymentStatusHistory(for record: ReleaseRecord, limit: Int = 6) -> [DeploymentStatusSnapshot] {
+  public func deploymentStatusHistory(for record: ReleaseRecord, limit: Int = 6)
+    -> [DeploymentStatusSnapshot]
+  {
     Array((deploymentStatusHistory[record.id] ?? []).prefix(max(limit, 0)))
   }
 
@@ -156,7 +161,9 @@ public final class DeploymentStore: ObservableObject {
     try? RemoteRepositoryRollbackDraft.make(record: record)
   }
 
-  public func remoteReviewWithdrawalDraft(for record: ReleaseRecord) -> RemoteRepositoryReviewWithdrawalDraft? {
+  public func remoteReviewWithdrawalDraft(for record: ReleaseRecord)
+    -> RemoteRepositoryReviewWithdrawalDraft?
+  {
     try? RemoteRepositoryReviewWithdrawalDraft.make(record: record)
   }
 
@@ -173,7 +180,9 @@ public final class DeploymentStore: ObservableObject {
       .sorted { $0.createdAt > $1.createdAt }
   }
 
-  public func activeProfileDeploymentStatusSnapshots(store: WorkbenchStore) -> [UUID: DeploymentStatusSnapshot] {
+  public func activeProfileDeploymentStatusSnapshots(store: WorkbenchStore) -> [UUID:
+    DeploymentStatusSnapshot]
+  {
     let activeRecords = activeProfileReleaseRecords(store: store)
     return activeProfileDeploymentStatusSnapshots(for: activeRecords)
   }
@@ -199,14 +208,15 @@ public final class DeploymentStore: ObservableObject {
     releaseLedgerService.ledger(
       releaseRecords: [record],
       deploymentStatusSnapshots: deploymentStatusSnapshots
-    ).entries.first ?? ReleaseLedgerEntry(
-      id: record.id,
-      record: record,
-      status: .unknown,
-      statusMessage: CoreL10n.text("未找到发布账本记录。"),
-      deploymentStatus: deploymentStatusSnapshots[record.id],
-      rollbackDraft: nil
-    )
+    ).entries.first
+      ?? ReleaseLedgerEntry(
+        id: record.id,
+        record: record,
+        status: .unknown,
+        statusMessage: CoreL10n.text("未找到发布账本记录。"),
+        deploymentStatus: deploymentStatusSnapshots[record.id],
+        rollbackDraft: nil
+      )
   }
 
   public func releaseRecoveryVerificationDraftMarkdown(store: WorkbenchStore) -> String {
@@ -214,7 +224,8 @@ public final class DeploymentStore: ObservableObject {
   }
 
   public func deploymentPollingEligibleRecords(store: WorkbenchStore) -> [ReleaseRecord] {
-    deploymentPollingEligibleRecords(for: store.activeProfileID, store: store, includeLegacyRecords: true)
+    deploymentPollingEligibleRecords(
+      for: store.activeProfileID, store: store, includeLegacyRecords: true)
   }
 
   /// Returns records explicitly bound to one site. Legacy records without a
@@ -236,8 +247,9 @@ public final class DeploymentStore: ObservableObject {
     let entriesByID = Dictionary(uniqueKeysWithValues: ledger.entries.map { ($0.id, $0) })
     return records.compactMap { record in
       guard let entry = entriesByID[record.id],
-            canPollDeploymentStatus(for: entry.status),
-            canCheckDeploymentStatus(for: record, store: store) else {
+        canPollDeploymentStatus(for: entry.status),
+        canCheckDeploymentStatus(for: record, store: store)
+      else {
         return nil
       }
       return record
@@ -403,14 +415,18 @@ public final class DeploymentStore: ObservableObject {
     var checkedCount = 0
     var checkedRecords: [DeploymentPollingRecordSummary] = []
     for record in records {
-      if let snapshot = await refreshDeploymentStatus(for: record, store: store, updatesMessage: false) {
-        guard isCurrentDeploymentPollingRun(
-          profileID: profileID,
-          generation: runGeneration,
-          settings: settings,
-          frozenProfile: frozenProfile,
-          store: store
-        ) else {
+      if let snapshot = await refreshDeploymentStatus(
+        for: record, store: store, updatesMessage: false)
+      {
+        guard
+          isCurrentDeploymentPollingRun(
+            profileID: profileID,
+            generation: runGeneration,
+            settings: settings,
+            frozenProfile: frozenProfile,
+            store: store
+          )
+        else {
           return false
         }
         let releaseStatus = releaseLedgerService.ledger(
@@ -432,13 +448,15 @@ public final class DeploymentStore: ObservableObject {
       }
     }
 
-    guard isCurrentDeploymentPollingRun(
-      profileID: profileID,
-      generation: runGeneration,
-      settings: settings,
-      frozenProfile: frozenProfile,
-      store: store
-    ) else {
+    guard
+      isCurrentDeploymentPollingRun(
+        profileID: profileID,
+        generation: runGeneration,
+        settings: settings,
+        frozenProfile: frozenProfile,
+        store: store
+      )
+    else {
       return false
     }
 
@@ -486,7 +504,28 @@ public final class DeploymentStore: ObservableObject {
     for record: ReleaseRecord,
     store: WorkbenchStore
   ) -> Bool {
-    deploymentStatusReadiness(for: record, store: store).canCheckAnyStatus
+    guard releaseCanHaveDeployment(record) else { return false }
+    return deploymentStatusReadiness(for: record, store: store).canCheckAnyStatus
+  }
+
+  private func releaseCanHaveDeployment(_ record: ReleaseRecord) -> Bool {
+    switch record.kind {
+    case .remoteDirectCommit, .remoteRollback:
+      return true
+    case .remotePublishFailure:
+      guard record.commitSHA?.trimmedForPublishing.nilIfEmpty != nil else { return false }
+      let branch = record.branchName?.trimmedForPublishing.nilIfEmpty
+      let targetBranch = record.targetBranch?.trimmedForPublishing.nilIfEmpty
+      return targetBranch == nil || branch == nil || branch == targetBranch
+    case .localWrite,
+      .batchLocalWrite,
+      .directCommit,
+      .reviewBranch,
+      .remotePreviewBranch,
+      .remoteReviewRequest,
+      .remoteReviewWithdrawal:
+      return false
+    }
   }
 
   @discardableResult
@@ -574,7 +613,9 @@ public final class DeploymentStore: ObservableObject {
     return snapshot
   }
 
-  public func recordDeploymentStatusSnapshot(_ snapshot: DeploymentStatusSnapshot, for record: ReleaseRecord) {
+  public func recordDeploymentStatusSnapshot(
+    _ snapshot: DeploymentStatusSnapshot, for record: ReleaseRecord
+  ) {
     deploymentStatusSnapshots[record.id] = snapshot
     deploymentStatusHistory[record.id] = Array(
       ([snapshot] + (deploymentStatusHistory[record.id] ?? []))
@@ -719,7 +760,7 @@ public final class DeploymentStore: ObservableObject {
     switch status {
     case .pendingDeployment, .pendingRemoteRecovery, .pendingRetry, .deploying, .unknown:
       return true
-    case .localOnly, .pendingReview, .succeeded, .failed:
+    case .localOnly, .previewOnly, .pendingReview, .reviewWithdrawn, .succeeded, .failed:
       return false
     }
   }

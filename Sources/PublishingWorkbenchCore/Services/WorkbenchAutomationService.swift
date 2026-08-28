@@ -282,10 +282,55 @@ public enum WorkbenchAutomationRegistry {
       })
   }
 
+  /// Legacy model/persistence adapters use the same exact built-in mapping as
+  /// `WorkbenchAutomationAgentToolRegistry`; no external or wildcard identity
+  /// is accepted here.
+  static func agentToolID(
+    for command: WorkbenchAutomationCommandID
+  ) -> AIAgentToolID {
+    AIAgentToolID("workbench/\(command.rawValue)")
+  }
+
+  static func agentCommand(
+    for toolID: AIAgentToolID
+  ) -> WorkbenchAutomationCommandID? {
+    let prefix = "workbench/"
+    guard toolID.rawValue.hasPrefix(prefix) else { return nil }
+    let rawValue = String(toolID.rawValue.dropFirst(prefix.count))
+    guard let command = WorkbenchAutomationCommandID(rawValue: rawValue),
+      agentToolID(for: command) == toolID
+    else {
+      return nil
+    }
+    return command
+  }
+
   static func agentInvocation(
     for toolCall: AIToolCall,
     draftVersions: [UUID: Date]
   ) throws -> WorkbenchAIAgentToolInvocation {
+    let step = try agentStep(for: toolCall, draftVersions: draftVersions)
+    return WorkbenchAIAgentToolInvocation(
+      toolCallID: toolCall.id,
+      toolID: agentToolID(for: step.command),
+      modelToolName: step.command.rawValue,
+      executionPolicy: descriptor(for: step.command)?.allowsAgentAutomaticExecution == true
+        ? .automatic : .requiresConfirmation,
+      catalogRevision: WorkbenchAutomationAgentToolRegistry.builtInCatalogRevision,
+      correlationID: step.id,
+      targetDraftID: step.arguments.draftID,
+      targetDraftVersion: step.arguments.expectedDraftUpdatedAt,
+      automationStep: step
+    )
+  }
+
+  /// The shared built-in parser and validator used by both the legacy Agent
+  /// loop entry point and the source-qualified tool registry. Keeping this
+  /// here prevents the registry from duplicating JSON or argument rules.
+  static func agentStep(
+    for toolCall: AIToolCall,
+    draftVersions: [UUID: Date]
+  ) throws -> WorkbenchAutomationStep {
     guard let command = WorkbenchAutomationCommandID(rawValue: toolCall.function.name),
       let entry = byID[command], entry.isAgentExposed
     else {
@@ -313,7 +358,7 @@ public enum WorkbenchAutomationRegistry {
       )
       let step = WorkbenchAutomationStep(command: command, arguments: arguments)
       try specification.validate(arguments)
-      return WorkbenchAIAgentToolInvocation(toolCallID: toolCall.id, step: step)
+      return step
     } catch {
       throw WorkbenchAutomationAgentToolError.argumentMismatch
     }
@@ -361,7 +406,7 @@ public enum WorkbenchAutomationRegistry {
     )
   }
 
-  private static func requiredPermission(
+  static func requiredPermission(
     for command: WorkbenchAutomationCommandID
   ) -> AIAgentPermissionScope {
     switch command {

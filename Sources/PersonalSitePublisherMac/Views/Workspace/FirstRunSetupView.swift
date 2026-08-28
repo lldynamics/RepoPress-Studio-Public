@@ -481,7 +481,7 @@ struct FirstRunSetupView: View {
               Text(kind.localizedDisplayName).tag(kind)
             }
           }
-          .accessibilityHint("修改后会重新应用该生成器的默认发布规则")
+          .accessibilityHint("选择当前网站使用的静态站点生成器")
 
           Picker("Front Matter", selection: frontMatterStyleBinding) {
             ForEach(FrontMatterStyle.allCases) { style in
@@ -490,7 +490,9 @@ struct FirstRunSetupView: View {
           }
 
           TextField("内容目录", text: contentRootBinding)
+            .accessibilityLabel("内容目录")
           TextField("文章路径", text: markdownPathPatternBinding)
+            .accessibilityLabel("文章路径")
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.top, 4)

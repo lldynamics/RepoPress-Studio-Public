@@ -2,7 +2,7 @@ import CoreGraphics
 import Foundation
 import ImageIO
 
-public struct SEOSocialPreviewService {
+public struct SEOSocialPreviewService: Sendable {
   public init() {}
 
   public func snapshot(

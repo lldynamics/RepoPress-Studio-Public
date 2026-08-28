@@ -251,6 +251,10 @@ final class DraftLifecycleServiceTests: XCTestCase {
   func testLocalRepositoryCleanupUsesSafeDeleteAndPersistsResolution() async throws {
     let rootURL = try temporaryDirectoryURL(prefix: "DraftRepositoryCleanup")
     defer { try? FileManager.default.removeItem(at: rootURL) }
+    try FileManager.default.createDirectory(
+      at: rootURL.appendingPathComponent(".git", isDirectory: true),
+      withIntermediateDirectories: true
+    )
     let articleURL = rootURL.appendingPathComponent("content/posts/article.md")
     try FileManager.default.createDirectory(
       at: articleURL.deletingLastPathComponent(),
@@ -715,6 +719,10 @@ final class DraftLifecycleServiceTests: XCTestCase {
   func testLocalRepositoryCleanupPreservesFileChangedAfterConfirmationPreview() throws {
     let rootURL = try temporaryDirectoryURL(prefix: "DraftRepositoryCleanupConflict")
     defer { try? FileManager.default.removeItem(at: rootURL) }
+    try FileManager.default.createDirectory(
+      at: rootURL.appendingPathComponent(".git", isDirectory: true),
+      withIntermediateDirectories: true
+    )
     let articleURL = rootURL.appendingPathComponent("content/posts/article.md")
     try FileManager.default.createDirectory(
       at: articleURL.deletingLastPathComponent(),

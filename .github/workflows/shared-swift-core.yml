@@ -35,6 +35,8 @@ jobs:
     name: Swift Core boundaries and consumers
     runs-on: macos-15
     timeout-minutes: 20
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
     defaults:
       run:
         working-directory: Shared/RepoPressCoreContracts

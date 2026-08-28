@@ -3,7 +3,11 @@ import PublishingWorkbenchCore
 import SwiftUI
 
 extension MacMarkdownComposerView {
-  func insertImageReferences(_ urls: [URL]) {
+  func insertImageReferences(
+    _ urls: [URL],
+    automaticallyConvertToWebP: Bool = false,
+    reduceMotionEnabled: Bool = false
+  ) {
     guard requireBodyEditingContext() else { return }
     let imageURLs = ImageFileSupport.supportedImageURLs(in: urls)
     guard !imageURLs.isEmpty else {
@@ -24,6 +28,7 @@ extension MacMarkdownComposerView {
     attachmentImportRequestID = requestID
     attachmentImportTask = Task { @MainActor in
       var importedAttachments: [DraftAttachment] = []
+      var automaticImportResults: [WorkbenchStore.AutomaticWebPAttachmentImportResult] = []
       var failureMessages: [String] = []
       defer {
         if attachmentImportRequestID == requestID {
@@ -34,11 +39,22 @@ extension MacMarkdownComposerView {
 
       for url in imageURLs {
         do {
-          var attachment = try await store.makeAttachment(
-            from: url,
-            draft: sourceDraft,
-            fileStore: fileStore
-          )
+          var attachment: DraftAttachment
+          if automaticallyConvertToWebP {
+            let result = try await store.makeAutomaticWebPAttachment(
+              from: url,
+              draft: sourceDraft,
+              fileStore: fileStore
+            )
+            automaticImportResults.append(result)
+            attachment = result.attachment
+          } else {
+            attachment = try await store.makeAttachment(
+              from: url,
+              draft: sourceDraft,
+              fileStore: fileStore
+            )
+          }
           if !selectedAlt.isEmpty {
             attachment.altText = selectedAlt
           }
@@ -52,14 +68,16 @@ extension MacMarkdownComposerView {
       }
 
       guard !Task.isCancelled,
-            attachmentImportRequestID == requestID,
-            draft.id == expectedDraftID,
-            requireBodyEditingContext() else {
+        attachmentImportRequestID == requestID,
+        draft.id == expectedDraftID,
+        requireBodyEditingContext()
+      else {
         discardManagedAttachments(importedAttachments, fileStore: fileStore)
         return
       }
       guard !importedAttachments.isEmpty else {
-        let message = failureMessages.first
+        let message =
+          failureMessages.first
           ?? String(localized: "没有可插入的图片文件。")
         selectionActionMessage = message
         EditorAccessibilityAnnouncementCenter.announce(message, priority: .high)
@@ -92,12 +110,27 @@ extension MacMarkdownComposerView {
 
       insertedImageMetadataDrafts = insertedMetadata
       activeInsertedImageMetadataID = insertedMetadata.first?.id
-      showWritingContextPanel(.imageInfo)
+      if automaticallyConvertToWebP {
+        showAutomaticImageImportToast(
+          for: automaticImportResults,
+          reduceMotionEnabled: reduceMotionEnabled
+        )
+      } else {
+        showWritingContextPanel(.imageInfo)
+      }
       store.scheduleImageWorkbenchCachesRefresh(for: insertedDraft)
-      let successMessage = String(
-        format: String(localized: "已插入 %@ 张图片，请完善图片信息。"),
-        "\(importedAttachments.count)"
-      )
+      let successMessage: String
+      if automaticallyConvertToWebP {
+        successMessage = String(
+          format: String(localized: "已在光标位置插入 %@ 张图片。"),
+          "\(importedAttachments.count)"
+        )
+      } else {
+        successMessage = String(
+          format: String(localized: "已插入 %@ 张图片，请完善图片信息。"),
+          "\(importedAttachments.count)"
+        )
+      }
       selectionActionMessage = ([successMessage] + failureMessages)
         .joined(separator: "\n")
       EditorAccessibilityAnnouncementCenter.announceImageInsertion(
@@ -155,9 +188,10 @@ extension MacMarkdownComposerView {
       }
 
       guard !Task.isCancelled,
-            attachmentImportRequestID == requestID,
-            draft.id == expectedDraftID,
-            requireBodyEditingContext() else {
+        attachmentImportRequestID == requestID,
+        draft.id == expectedDraftID,
+        requireBodyEditingContext()
+      else {
         discardManagedAttachments(
           importedAttachments.map { $0.attachment },
           fileStore: fileStore
@@ -165,7 +199,8 @@ extension MacMarkdownComposerView {
         return
       }
       guard !importedAttachments.isEmpty else {
-        let message = failureMessages.first
+        let message =
+          failureMessages.first
           ?? String(localized: "没有可插入的视频文件。")
         selectionActionMessage = message
         EditorAccessibilityAnnouncementCenter.announce(message, priority: .high)
@@ -175,7 +210,8 @@ extension MacMarkdownComposerView {
       var updated = previewDraft
       updated.attachments.append(contentsOf: importedAttachments.map { $0.attachment })
       let htmlBlocks = importedAttachments.map { item in
-        let accessibleTitle = importedAttachments.count == 1 && !selectedTitle.isEmpty
+        let accessibleTitle =
+          importedAttachments.count == 1 && !selectedTitle.isEmpty
           ? selectedTitle
           : VideoFileSupport.accessibleTitle(for: item.sourceURL)
         return VideoFileSupport.htmlEmbed(
@@ -210,6 +246,54 @@ extension MacMarkdownComposerView {
     attachmentImportRequestID = nil
     attachmentImportTask?.cancel()
     attachmentImportTask = nil
+    automaticImageImportToastTask?.cancel()
+    automaticImageImportToastTask = nil
+    automaticImageImportToast = nil
+  }
+
+  private func showAutomaticImageImportToast(
+    for results: [WorkbenchStore.AutomaticWebPAttachmentImportResult],
+    reduceMotionEnabled: Bool
+  ) {
+    let convertedResults = results.filter(\.wasConvertedToWebP)
+    let message: String
+    if !convertedResults.isEmpty {
+      let originalBytes = convertedResults.reduce(Int64(0)) {
+        $0 + $1.originalByteSize
+      }
+      let savedBytes = convertedResults.reduce(Int64(0)) { $0 + $1.savedBytes }
+      let savedPercentage =
+        originalBytes > 0
+        ? Int((Double(savedBytes) / Double(originalBytes) * 100).rounded())
+        : 0
+      message = String(
+        format: String(localized: "已自动转为 WebP，体积减少 %d%%"),
+        savedPercentage
+      )
+    } else if results.allSatisfy({ $0.attachment.originalFilename.lowercased().hasSuffix(".webp") })
+    {
+      message = String(localized: "图片已是 WebP，无需转换")
+    } else {
+      message = String(localized: "已插入图片，当前格式保留原文件")
+    }
+
+    automaticImageImportToastTask?.cancel()
+    let toast = MarkdownAutomaticImageImportToast(message: message)
+    withAnimation(reduceMotionEnabled ? nil : .easeOut(duration: 0.18)) {
+      automaticImageImportToast = toast
+    }
+    automaticImageImportToastTask = Task { @MainActor in
+      do {
+        try await Task.sleep(for: .seconds(3))
+      } catch {
+        return
+      }
+      guard automaticImageImportToast?.id == toast.id else { return }
+      withAnimation(reduceMotionEnabled ? nil : .easeIn(duration: 0.16)) {
+        automaticImageImportToast = nil
+      }
+      automaticImageImportToastTask = nil
+    }
   }
 
   private func discardManagedAttachments(
@@ -239,7 +323,8 @@ extension MacMarkdownComposerView {
 
   var activeInsertedImageMetadataBinding: Binding<InsertedImageMetadataDraft>? {
     guard let activeInsertedImageMetadataID,
-          let index = activeInsertedImageMetadataIndex else {
+      let index = activeInsertedImageMetadataIndex
+    else {
       return nil
     }
     let fallback = insertedImageMetadataDrafts[index]
@@ -248,9 +333,11 @@ extension MacMarkdownComposerView {
         insertedImageMetadataDrafts.first { $0.id == activeInsertedImageMetadataID } ?? fallback
       },
       set: { metadata in
-        guard let currentIndex = insertedImageMetadataDrafts.firstIndex(where: {
-          $0.id == activeInsertedImageMetadataID
-        }) else { return }
+        guard
+          let currentIndex = insertedImageMetadataDrafts.firstIndex(where: {
+            $0.id == activeInsertedImageMetadataID
+          })
+        else { return }
         insertedImageMetadataDrafts[currentIndex] = metadata
       }
     )
@@ -280,17 +367,21 @@ extension MacMarkdownComposerView {
       return
     }
 
-    guard applyInsertedImageMetadata(
-      attachmentIDs: Set(insertedImageMetadataDrafts.map(\.id))
-    ) else { return }
+    guard
+      applyInsertedImageMetadata(
+        attachmentIDs: Set(insertedImageMetadataDrafts.map(\.id))
+      )
+    else { return }
     dismissInsertedImageMetadata()
   }
 
   func openInsertedImageInspector() {
     guard let attachmentID = activeInsertedImageMetadataID else { return }
-    guard applyInsertedImageMetadata(
-      attachmentIDs: Set(insertedImageMetadataDrafts.map(\.id))
-    ) else { return }
+    guard
+      applyInsertedImageMetadata(
+        attachmentIDs: Set(insertedImageMetadataDrafts.map(\.id))
+      )
+    else { return }
     guard store.focusImageInspector(draftID: draft.id, attachmentID: attachmentID) else {
       selectionActionMessage = "找不到刚插入的图片，请刷新图片 Inspector 后重试。"
       return
@@ -301,13 +392,15 @@ extension MacMarkdownComposerView {
   func applyInsertedImageMetadata(attachmentIDs: Set<UUID>) -> Bool {
     var updated = previewDraft
     for metadata in insertedImageMetadataDrafts where attachmentIDs.contains(metadata.id) {
-      guard let result = imageMetadataEditingService.updating(
-        draft: updated,
-        attachmentID: metadata.id,
-        altText: metadata.altText,
-        caption: metadata.caption,
-        isCover: metadata.isCover
-      ) else {
+      guard
+        let result = imageMetadataEditingService.updating(
+          draft: updated,
+          attachmentID: metadata.id,
+          altText: metadata.altText,
+          caption: metadata.caption,
+          isCover: metadata.isCover
+        )
+      else {
         selectionActionMessage = "图片附件已变化，请重新插入或前往图片 Inspector 处理。"
         return false
       }

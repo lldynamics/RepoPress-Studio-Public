@@ -5,6 +5,8 @@ extension DeploymentStatusService {
   func endpointSignal(
     urlText: String,
     provider: DeploymentProvider,
+    profile: SiteProfile,
+    releaseRecord: ReleaseRecord?,
     token: String?,
     usesToken: Bool
   ) async -> DeploymentStatusSignal {
@@ -56,14 +58,55 @@ extension DeploymentStatusService {
       if let endpoint = decodedEndpointStatus(data: data) {
         let httpSucceeded = (200..<400).contains(httpResponse.statusCode)
         let level = endpoint.level == .unknown && !httpSucceeded ? .failed : endpoint.level
-        let fallbackMessage = level == .failed && endpoint.level == .unknown
+        let fallbackMessage =
+          level == .failed && endpoint.level == .unknown
           ? "HTTP \(httpResponse.statusCode)"
           : "HTTP \(httpResponse.statusCode) · \(endpoint.rawStatus)"
+        if let mismatch = releaseAttributionMismatchMessage(
+          provider: provider,
+          deploymentBranch: endpoint.branch,
+          deploymentCommit: endpoint.commitSHA,
+          releaseRecord: releaseRecord,
+          profile: profile
+        ) {
+          return deploymentAttributionSignal(
+            provider: provider,
+            message: mismatch,
+            urlText: endpoint.urlText?.nilIfEmpty ?? urlText,
+            deploymentBranch: endpoint.branch,
+            deploymentCommit: endpoint.commitSHA,
+            releaseRecord: releaseRecord,
+            profile: profile,
+            verified: false
+          )
+        }
         return DeploymentStatusSignal(
           level: level,
           title: endpoint.title?.nilIfEmpty ?? CoreL10n.format("%@ 状态", provider.displayName),
           message: endpoint.message?.nilIfEmpty ?? fallbackMessage,
-          urlText: endpoint.urlText?.nilIfEmpty ?? urlText
+          urlText: endpoint.urlText?.nilIfEmpty ?? urlText,
+          expectedBranch: expectedDeploymentBranch(releaseRecord: releaseRecord, profile: profile),
+          expectedCommitSHA: releaseRecord?.commitSHA?.trimmedForPublishing.nilIfEmpty,
+          observedBranch: endpoint.branch?.trimmedForPublishing.nilIfEmpty,
+          observedCommitSHA: endpoint.commitSHA?.trimmedForPublishing.nilIfEmpty,
+          attributionVerified: releaseRecord?.commitSHA?.trimmedForPublishing.nilIfEmpty == nil
+            ? nil
+            : true
+        )
+      }
+      if let expectedCommit = releaseRecord?.commitSHA?.trimmedForPublishing.nilIfEmpty {
+        return deploymentAttributionSignal(
+          provider: provider,
+          message: CoreL10n.format(
+            "状态端点未返回当前发布提交 %@，不能证明该版本已经部署。",
+            shortCommit(expectedCommit)
+          ),
+          urlText: urlText,
+          deploymentBranch: nil,
+          deploymentCommit: nil,
+          releaseRecord: releaseRecord,
+          profile: profile,
+          verified: false
         )
       }
       return DeploymentStatusSignal(
@@ -88,15 +131,18 @@ extension DeploymentStatusService {
     releaseRecord: ReleaseRecord?
   ) async -> [DeploymentStatusSignal] {
     guard let releaseRecord,
-          let markdownPath = releaseRecord.markdownPath?.trimmedForPublishing.nilIfEmpty,
-          let articleURLText = articleURL(siteURLText: siteURLText, markdownPath: markdownPath, siteKind: profile.siteKind),
-          let articleURL = URL(string: articleURLText) else {
+      let markdownPath = releaseRecord.markdownPath?.trimmedForPublishing.nilIfEmpty,
+      let articleURLText = articleURL(
+        siteURLText: siteURLText, markdownPath: markdownPath, siteKind: profile.siteKind),
+      let articleURL = URL(string: articleURLText)
+    else {
       return []
     }
 
     var request = URLRequest(url: articleURL)
     request.httpMethod = "GET"
-    request.setValue("PersonalSitePublisherMac/DeploymentArticleCheck", forHTTPHeaderField: "User-Agent")
+    request.setValue(
+      "PersonalSitePublisherMac/DeploymentArticleCheck", forHTTPHeaderField: "User-Agent")
 
     do {
       let (data, response) = try await transport.data(for: request)
@@ -106,23 +152,28 @@ extension DeploymentStatusService {
         maximumByteCount: URLSessionRemoteRepositoryHTTPTransport.maximumResponseByteCount
       )
       guard let httpResponse = response as? HTTPURLResponse else {
-        return [DeploymentStatusSignal(
-          level: .unknown,
-          title: CoreL10n.text("发布页面内容"),
-          message: CoreL10n.text("文章页面没有返回 HTTP 状态。"),
-          urlText: articleURLText
-        )]
+        return [
+          DeploymentStatusSignal(
+            level: .unknown,
+            title: CoreL10n.text("发布页面内容"),
+            message: CoreL10n.text("文章页面没有返回 HTTP 状态。"),
+            urlText: articleURLText
+          )
+        ]
       }
       guard (200..<400).contains(httpResponse.statusCode) else {
-        return [DeploymentStatusSignal(
-          level: .failed,
-          title: CoreL10n.text("发布页面内容"),
-          message: CoreL10n.format("文章页面 HTTP %@。", String(httpResponse.statusCode)),
-          urlText: articleURLText
-        )]
+        return [
+          DeploymentStatusSignal(
+            level: .failed,
+            title: CoreL10n.text("发布页面内容"),
+            message: CoreL10n.format("文章页面 HTTP %@。", String(httpResponse.statusCode)),
+            urlText: articleURLText
+          )
+        ]
       }
 
-      let body = String(data: data, encoding: .utf8) ?? String(data: data, encoding: .isoLatin1) ?? ""
+      let body =
+        String(data: data, encoding: .utf8) ?? String(data: data, encoding: .isoLatin1) ?? ""
       let seoSignal = articlePageSEOSignal(body: body, expectedURLText: articleURLText)
       let socialSignal = articlePageSocialSignal(
         body: body,
@@ -164,12 +215,14 @@ extension DeploymentStatusService {
         seoSignal,
       ] + [socialSignal].compactMap { $0 }
     } catch {
-      return [DeploymentStatusSignal(
-        level: .failed,
-        title: CoreL10n.text("发布页面内容"),
-        message: CoreL10n.format("读取文章页面失败：%@", error.localizedDescription),
-        urlText: articleURLText
-      )]
+      return [
+        DeploymentStatusSignal(
+          level: .failed,
+          title: CoreL10n.text("发布页面内容"),
+          message: CoreL10n.format("读取文章页面失败：%@", error.localizedDescription),
+          urlText: articleURLText
+        )
+      ]
     }
   }
 
@@ -230,12 +283,14 @@ extension DeploymentStatusService {
         return DeploymentStatusSignal(
           level: .failed,
           title: CoreL10n.text("发布页面社交元数据"),
-          message: CoreL10n.text("缺少 meta description、og:description 或 twitter:description，无法确认社交分享摘要。"),
+          message: CoreL10n.text(
+            "缺少 meta description、og:description 或 twitter:description，无法确认社交分享摘要。"),
           urlText: expectedURLText
         )
       }
 
-      guard descriptionCandidates.contains(where: { socialText($0.1, matches: expectedSummary) }) else {
+      guard descriptionCandidates.contains(where: { socialText($0.1, matches: expectedSummary) })
+      else {
         let first = descriptionCandidates[0]
         return DeploymentStatusSignal(
           level: .failed,
@@ -296,7 +351,8 @@ extension DeploymentStatusService {
         )
       }
 
-      guard altCandidates.contains(where: { socialText($0.1, matches: expectedImageAltText) }) else {
+      guard altCandidates.contains(where: { socialText($0.1, matches: expectedImageAltText) })
+      else {
         let first = altCandidates[0]
         return DeploymentStatusSignal(
           level: .failed,
@@ -340,9 +396,10 @@ extension DeploymentStatusService {
       return url.absoluteString
     }
     guard let baseURL = URL(string: baseURLText),
-          let resolvedURL = URL(string: trimmed, relativeTo: baseURL)?.absoluteURL,
-          resolvedURL.scheme != nil,
-          resolvedURL.host != nil else {
+      let resolvedURL = URL(string: trimmed, relativeTo: baseURL)?.absoluteURL,
+      resolvedURL.scheme != nil,
+      resolvedURL.host != nil
+    else {
       return nil
     }
     return resolvedURL.absoluteString
@@ -414,13 +471,13 @@ extension DeploymentStatusService {
       requiredAttributeValue: nameOrProperty,
       outputAttributeName: "content"
     )
-    ?? firstHTMLAttributeValue(
-      in: html,
-      element: "meta",
-      requiredAttributeName: "name",
-      requiredAttributeValue: nameOrProperty,
-      outputAttributeName: "content"
-    )
+      ?? firstHTMLAttributeValue(
+        in: html,
+        element: "meta",
+        requiredAttributeName: "name",
+        requiredAttributeValue: nameOrProperty,
+        outputAttributeName: "content"
+      )
   }
 
   func firstHTMLAttributeValue(
@@ -431,7 +488,8 @@ extension DeploymentStatusService {
     outputAttributeName: String
   ) -> String? {
     let elementPattern = "<\\s*\(element)\\b[^>]*>"
-    guard let regex = try? NSRegularExpression(pattern: elementPattern, options: [.caseInsensitive]) else {
+    guard let regex = try? NSRegularExpression(pattern: elementPattern, options: [.caseInsensitive])
+    else {
       return nil
     }
     let source = html as NSString
@@ -439,7 +497,8 @@ extension DeploymentStatusService {
     for match in matches {
       let tag = source.substring(with: match.range)
       guard let requiredValue = htmlAttributeValue(named: requiredAttributeName, in: tag),
-            requiredValue.caseInsensitiveCompare(requiredAttributeValue) == .orderedSame else {
+        requiredValue.caseInsensitiveCompare(requiredAttributeValue) == .orderedSame
+      else {
         continue
       }
       if let outputValue = htmlAttributeValue(named: outputAttributeName, in: tag) {
@@ -457,7 +516,8 @@ extension DeploymentStatusService {
     }
     let source = tag as NSString
     guard let match = regex.firstMatch(in: tag, range: NSRange(location: 0, length: source.length)),
-          match.numberOfRanges >= 3 else {
+      match.numberOfRanges >= 3
+    else {
       return nil
     }
     return source.substring(with: match.range(at: 2))
@@ -503,7 +563,8 @@ extension DeploymentStatusService {
 
   func decodedEndpointStatus(data: Data) -> EndpointStatusPayload? {
     guard !data.isEmpty,
-          let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+      let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+    else {
       return nil
     }
     guard let rawStatus = endpointStatusText(from: object) else {
@@ -513,8 +574,15 @@ extension DeploymentStatusService {
       rawStatus: rawStatus,
       level: endpointLevel(from: rawStatus),
       title: endpointStringValue(for: ["title", "name", "deployment", "service"], in: object),
-      message: endpointStringValue(for: ["message", "summary", "description", "detail"], in: object),
-      urlText: endpointStringValue(for: ["url", "html_url", "deploy_url", "deployment_url"], in: object)
+      message: endpointStringValue(
+        for: ["message", "summary", "description", "detail"], in: object),
+      urlText: endpointStringValue(
+        for: ["url", "html_url", "deploy_url", "deployment_url"], in: object),
+      branch: endpointStringValue(for: ["branch", "ref", "git_branch", "commit_ref"], in: object),
+      commitSHA: endpointStringValue(
+        for: ["commit_sha", "commit", "sha", "head_sha", "git_commit"],
+        in: object
+      )
     )
   }
 
@@ -542,16 +610,18 @@ extension DeploymentStatusService {
 
   func endpointLevel(from status: String) -> DeploymentStatusLevel {
     switch status.lowercased() {
-    case "ok", "success", "succeeded", "ready", "live", "active", "passed", "healthy", "built", "completed":
+    case "ok", "success", "succeeded", "ready", "live", "active", "passed", "healthy", "built",
+      "completed":
       return .success
-    case "running", "building", "queued", "pending", "processing", "deploying", "in_progress", "waiting":
+    case "running", "building", "queued", "pending", "processing", "deploying", "in_progress",
+      "waiting":
       return .running
-    case "fail", "failed", "failure", "error", "errored", "canceled", "cancelled", "unhealthy", "down":
+    case "fail", "failed", "failure", "error", "errored", "canceled", "cancelled", "unhealthy",
+      "down":
       return .failed
     default:
       return .unknown
     }
   }
-
 
 }

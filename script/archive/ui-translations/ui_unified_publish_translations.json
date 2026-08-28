@@ -1,0 +1,23 @@
+{
+  "%d 张图片变更（%d 张新增，已纳入发布包）": "%d image changes (%d new, included in the publish package)",
+  "%d 篇变更文章（含 %d 篇新建）": "%d changed articles (%d new)",
+  "%d 篇文章将下线": "%d articles will be taken offline",
+  "一键创建 PR/MR": "Create PR/MR",
+  "一键发布上线": "Publish Online",
+  "全部通过（已检查项未发现公开风险）": "All checks passed (enabled checks found no public exposure risk)",
+  "内容检查通过，远端将在发布时预检": "Content checks passed; remote preflight will run when publishing",
+  "冲突快捷选择": "Conflict Quick Choices",
+  "只准备最终内容，不会写入或暂存。": "Only prepares the final content; it does not write or stage changes.",
+  "打开本次发布清单和一键发布流程": "Open the publish checklist and one-click publishing flow",
+  "未包含图片变更": "No image changes",
+  "本次发布清单": "Publish Checklist",
+  "已准备无 Git 标记的合并草稿；请审阅后再应用。": "A merge draft without Git markers is ready; review it before applying.",
+  "已将所选版本装入最终编辑区；尚未写入或暂存。": "The selected version is in the final editor; it has not been written or staged.",
+  "正在汇总发布检查": "Preparing publish checks",
+  "生成发布包 → 内容检查 → 远端预检 → 创建 PR/MR": "Build package → content checks → remote preflight → create PR/MR",
+  "生成发布包 → 内容检查 → 远端预检 → 提交 → 部署检查": "Build package → content checks → remote preflight → commit → deployment check",
+  "目标分支：%@": "Target branch: %@",
+  "该版本不是可安全编辑的文本；不会将删除语义改成空文件。": "This version is not safely editable text; deletion will not be converted into an empty file.",
+  "该选择不能安全转换为文本文件，已保留当前最终版。": "This choice cannot be safely converted to a text file; the current final version was preserved.",
+  "远端版本冲突，未执行写入": "Remote version conflict; no write was performed"
+}

@@ -58,7 +58,8 @@ public struct SlugChangeRedirectService: Sendable {
   public func impact(
     target: ArticleDraft,
     drafts: [ArticleDraft],
-    profile: SiteProfile
+    profile: SiteProfile,
+    linkAuditReport: SiteLinkAuditReport? = nil
   ) -> SlugChangeImpact? {
     let oldRoutes = target.pendingSlugRedirectPaths
       .map(normalizedRoute)
@@ -72,7 +73,9 @@ public struct SlugChangeRedirectService: Sendable {
         permalink: target.permalink
       )
     )
-    let report = SiteLinkAuditService().report(drafts: drafts, profile: profile)
+    let report =
+      linkAuditReport
+      ?? SiteLinkAuditService().report(drafts: drafts, profile: profile)
     let references = report.references(
       to: target.id,
       resolution: .pendingSlugRedirect
@@ -127,7 +130,8 @@ public struct SlugChangeRedirectService: Sendable {
         else { return nil }
         let replacement: String
         if reference.syntax == .wiki {
-          replacement = target.slug.trimmedForPublishing.nilIfEmpty
+          replacement =
+            target.slug.trimmedForPublishing.nilIfEmpty
             ?? impact.newRoute.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
         } else {
           replacement = impact.newRoute

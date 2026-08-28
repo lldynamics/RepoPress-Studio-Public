@@ -58,7 +58,9 @@ extension PublishingStore {
   func beginRemoteRepositoryMutation(profile: SiteProfile, store: WorkbenchStore)
     -> RemoteRepositoryOperationContext?
   {
-    guard remoteRepositoryMutationContext == nil else { return nil }
+    guard remoteRepositoryMutationContext == nil,
+      !store.isRemoteRepositoryChecking
+    else { return nil }
     let context = RemoteRepositoryOperationContext(profile: profile)
     remoteRepositoryMutationContext = context
     store.setRemoteRepositoryPublishing(true)
@@ -80,6 +82,17 @@ extension PublishingStore {
     remoteRepositoryMutationContext = nil
     store.setRemoteRepositoryPublishing(false)
   }
+
+  func remoteRepositoryOperationWasCancelled(_ error: Error) -> Bool {
+    if Task.isCancelled || error is CancellationError {
+      return true
+    }
+    if let urlError = error as? URLError, urlError.code == .cancelled {
+      return true
+    }
+    let cocoaError = error as NSError
+    return cocoaError.domain == NSURLErrorDomain && cocoaError.code == URLError.cancelled.rawValue
+  }
 }
 
 @MainActor
@@ -96,7 +109,6 @@ public final class PublishingStore: ObservableObject {
   let remotePublishRiskService: RemotePublishRiskService
   let localContentImportService: LocalContentImportService
   let contentMigrationService: ContentMigrationService
-  let siteStarterService: SiteStarterService
   let generalDraftLibraryService: GeneralDraftLibraryService
   let localSitePreviewService: LocalSitePreviewService
   let localSitePreviewProcessService: LocalSitePreviewProcessService
@@ -104,26 +116,9 @@ public final class PublishingStore: ObservableObject {
   let draftLifecycleService: DraftLifecycleService
   let contentHealthReportService: ContentHealthReportService
   let aiFixQueueService: AIPublishingFixQueueService
-  var localRepositoryMutationContext: LocalRepositoryOperationContext?
-  var remoteRepositoryMutationContext: RemoteRepositoryOperationContext?
-  var localImportOperationContext: LocalRepositoryOperationContext?
-  var localSitePreviewStopTask: Task<Void, Never>?
-  var localSitePreviewStopOperationID: UUID?
-  var localSitePreviewGeneration: UInt64 = 0
-  var localSitePreviewFileWatcher: LocalSitePreviewFileWatcher?
-  var localSitePreviewRefreshTask: Task<Void, Never>?
-  /// Draft-scoped publish previews are the source of truth for background
-  /// work. The single-value properties below remain a compatibility
-  /// projection for existing consumers until they migrate to this cache.
-  var draftPublishPreviewSnapshots: [UUID: DraftPublishPreviewSnapshot] = [:]
-  var draftPublishPreviewInputBaselines: [UUID: DraftPublishPreviewInputBaseline] = [:]
-  var draftPublishPreviewRefreshTasks: [UUID: Task<Void, Never>] = [:]
-  var draftPublishPreviewRefreshGenerations: [UUID: UInt64] = [:]
-  var publishPreviewRefreshTask: Task<Void, Never>?
-  var publishPreviewRefreshGeneration: UInt64 = 0
-  var batchPublishPlanRefreshTask: Task<Void, Never>?
-  var batchPublishPlanRefreshGeneration: UInt64 = 0
-  var siteStarterOperationGeneration: UInt64 = 0
+  public let publishSession: PublishSessionStore
+  public let siteStarter: SiteStarterStore
+  private var childStateCancellables = Set<AnyCancellable>()
 
   @Published public internal(set) var profiles: [SiteProfile]
   @Published public internal(set) var activeProfileID: UUID {
@@ -138,7 +133,6 @@ public final class PublishingStore: ObservableObject {
   @Published public internal(set) var recycledDrafts: [RecycledDraft]
   @Published public internal(set) var draftRepositoryCleanupRequests:
     [DraftRepositoryCleanupRequest]
-  @Published public internal(set) var releaseRecords: [ReleaseRecord]
   @Published public internal(set) var selectedSection: WorkspaceSection
   @Published public internal(set) var selectedDraftID: UUID? {
     didSet {
@@ -148,29 +142,7 @@ public final class PublishingStore: ObservableObject {
   }
   @Published public internal(set) var draftListContentScope: DraftListContentScope
   @Published public internal(set) var draftNavigationHistory: DraftNavigationHistory
-  @Published public internal(set) var publishPackage: PublishPackage?
-  @Published public internal(set) var localPublishPreview: LocalPublishPreview?
-  @Published public internal(set) var localPublishReadiness: LocalPublishReadiness?
-  @Published public internal(set) var isPublishPreviewRefreshing = false
-  /// The last explicitly refreshed remote preview for the selected article.
-  /// Views render this snapshot instead of rebuilding a package and diff from `body`.
-  @Published public internal(set) var remotePublishPreviewSnapshot: RemoteRepositoryPublishPreview?
-  @Published public internal(set) var batchPublishPlan: BatchPublishPlan?
-  @Published public internal(set) var isBatchPublishPlanRefreshing = false
-  /// The last explicitly refreshed remote preview for the batch publish plan.
-  @Published public internal(set) var batchRemotePublishPreviewSnapshot:
-    RemoteRepositoryPublishPreview?
-  @Published public internal(set) var localSitePreviewPlan: LocalSitePreviewPlan?
-  @Published public internal(set) var localSitePreviewRuntimeStatus: LocalSitePreviewRuntimeStatus
-  @Published public internal(set) var localSitePreviewRefreshToken: UInt64 = 0
-  @Published public internal(set) var remoteReviewDraft: RemoteReviewDraft?
-  @Published public internal(set) var batchRemoteReviewDraft: RemoteReviewDraft?
-  @Published public internal(set) var siteStarterResult: SiteStarterResult?
-  @Published public internal(set) var siteStarterImportResult: SiteStarterImportResult?
-  @Published public internal(set) var siteStarterPushResult: SiteStarterPushResult?
-  @Published public internal(set) var isSiteStarterOperationRunning = false
   @Published public internal(set) var imageWorkbenchReport: ImageWorkbenchReport?
-  @Published public internal(set) var preflightIssues: [PreflightIssue]
   @Published public internal(set) var isInspectorPresented: Bool
   @Published public internal(set) var editorFocusRequest: EditorFocusRequest?
   @Published public internal(set) var imageInspectorFocusRequest: ImageInspectorFocusRequest?
@@ -189,7 +161,6 @@ public final class PublishingStore: ObservableObject {
   let draftBodyEditorBufferDidChange = PassthroughSubject<UUID, Never>()
   @Published public internal(set) var automaticallyRefreshPreflightOnEdit: Bool
   @Published public internal(set) var lastSaveStatus: String
-  @Published public internal(set) var publishActionFeedback: PublishActionFeedback?
   public internal(set) var publishActionMessage: String? {
     get { publishActionFeedback?.message }
     set {
@@ -198,7 +169,6 @@ public final class PublishingStore: ObservableObject {
       }
     }
   }
-  @Published public internal(set) var isLocalRepositoryMutationRunning = false
   @Published public internal(set) var imageActionMessage: String?
   @Published public internal(set) var maintenanceOperationRecords: [MaintenanceOperationRecord]
   @Published public internal(set) var latestGeneralDraftReusePlan: GeneralDraftReusePlan?
@@ -300,7 +270,6 @@ public final class PublishingStore: ObservableObject {
     self.remotePublishRiskService = remotePublishRiskService
     self.localContentImportService = localContentImportService
     self.contentMigrationService = contentMigrationService
-    self.siteStarterService = siteStarterService
     self.generalDraftLibraryService = generalDraftLibraryService
     self.localSitePreviewService = localSitePreviewService
     self.localSitePreviewProcessService = localSitePreviewProcessService
@@ -311,6 +280,29 @@ public final class PublishingStore: ObservableObject {
       imageWorkbenchService: imageWorkbenchService
     )
     self.aiFixQueueService = AIPublishingFixQueueService()
+    self.publishSession = PublishSessionStore(
+      releaseRecords: releaseRecords,
+      publishPackage: publishPackage,
+      localPublishPreview: localPublishPreview,
+      localPublishReadiness: localPublishReadiness,
+      remotePublishPreviewSnapshot: remotePublishPreviewSnapshot,
+      batchPublishPlan: batchPublishPlan,
+      batchRemotePublishPreviewSnapshot: batchRemotePublishPreviewSnapshot,
+      localSitePreviewPlan: localSitePreviewPlan,
+      localSitePreviewRuntimeStatus: localSitePreviewRuntimeStatus,
+      remoteReviewDraft: remoteReviewDraft,
+      batchRemoteReviewDraft: batchRemoteReviewDraft,
+      preflightIssues: preflightIssues,
+      publishActionFeedback: publishActionMessage.map {
+        PublishActionFeedback(message: $0, status: .information)
+      }
+    )
+    self.siteStarter = SiteStarterStore(
+      service: siteStarterService,
+      result: siteStarterResult,
+      importResult: siteStarterImportResult,
+      pushResult: siteStarterPushResult
+    )
     self.profiles = profiles
     self.activeProfileID = activeProfileID
     let profilesByID = Dictionary(uniqueKeysWithValues: profiles.map { ($0.id, $0) })
@@ -327,28 +319,13 @@ public final class PublishingStore: ObservableObject {
     self.draftVersions = draftVersions
     self.recycledDrafts = recycledDrafts
     self.draftRepositoryCleanupRequests = draftRepositoryCleanupRequests
-    self.releaseRecords = ReleaseRecord.limitedHistory(releaseRecords)
     self.selectedSection = selectedSection
     self.selectedDraftID = selectedDraftID
     self.draftListContentScope = draftListContentScope
     self.draftNavigationHistory =
       draftNavigationHistory
       ?? DraftNavigationHistory(currentDraftID: selectedDraftID)
-    self.publishPackage = publishPackage
-    self.localPublishPreview = localPublishPreview
-    self.localPublishReadiness = localPublishReadiness
-    self.remotePublishPreviewSnapshot = remotePublishPreviewSnapshot
-    self.batchPublishPlan = batchPublishPlan
-    self.batchRemotePublishPreviewSnapshot = batchRemotePublishPreviewSnapshot
-    self.localSitePreviewPlan = localSitePreviewPlan
-    self.localSitePreviewRuntimeStatus = localSitePreviewRuntimeStatus
-    self.remoteReviewDraft = remoteReviewDraft
-    self.batchRemoteReviewDraft = batchRemoteReviewDraft
-    self.siteStarterResult = siteStarterResult
-    self.siteStarterImportResult = siteStarterImportResult
-    self.siteStarterPushResult = siteStarterPushResult
     self.imageWorkbenchReport = imageWorkbenchReport
-    self.preflightIssues = preflightIssues
     self.isInspectorPresented = isInspectorPresented
     self.editorFocusRequest = editorFocusRequest
     self.imageInspectorFocusRequest = imageInspectorFocusRequest
@@ -356,13 +333,16 @@ public final class PublishingStore: ObservableObject {
     self.activeEditorSelection = activeEditorSelection
     self.automaticallyRefreshPreflightOnEdit = automaticallyRefreshPreflightOnEdit
     self.lastSaveStatus = lastSaveStatus
-    self.publishActionFeedback = publishActionMessage.map {
-      PublishActionFeedback(message: $0, status: .information)
-    }
     self.imageActionMessage = imageActionMessage
     self.maintenanceOperationRecords = maintenanceOperationRecords
     self.latestGeneralDraftReusePlan = latestGeneralDraftReusePlan
     self.recentlyDeletedProfile = recentlyDeletedProfile
+    publishSession.objectWillChange
+      .sink { [weak self] _ in self?.objectWillChange.send() }
+      .store(in: &childStateCancellables)
+    siteStarter.objectWillChange
+      .sink { [weak self] _ in self?.objectWillChange.send() }
+      .store(in: &childStateCancellables)
     if let selectedDraftID,
       drafts.contains(where: { $0.id == selectedDraftID }),
       let profile = profiles.first(where: { $0.id == activeProfileID }),

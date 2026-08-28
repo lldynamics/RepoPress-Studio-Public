@@ -3,87 +3,296 @@
   "$id": "script/release_gate_result.schema.json",
   "title": "RepoPress Release Gate Evidence",
   "type": "object",
+  "additionalProperties": false,
   "required": [
-    "schemaVersion",
-    "runState",
-    "startedAt",
-    "generatedAt",
-    "mode",
-    "repository",
-    "releaseIdentity",
-    "summary",
-    "artifacts",
-    "checks"
+    "$schema", "schemaVersion", "runState", "startedAt", "generatedAt",
+    "mode", "profile", "repository", "releaseIdentity", "execution",
+    "summary", "blockers", "activeCheck", "verification", "artifacts", "checks"
   ],
   "properties": {
-    "schemaVersion": {
-      "const": 2
-    },
-    "runState": {
-      "enum": [
-        "partial",
-        "complete"
+    "$schema": { "const": "script/release_gate_result.schema.json" },
+    "schemaVersion": { "const": 2 },
+    "runState": { "enum": ["partial", "complete"] },
+    "startedAt": { "type": "string", "format": "date-time" },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "mode": { "enum": ["standard", "quick", "tooling", "selected", "strict"] },
+    "profile": { "type": ["string", "null"], "enum": ["direct", "chrome", "all", null] },
+    "repository": { "$ref": "#/$defs/repository" },
+    "releaseIdentity": { "$ref": "#/$defs/releaseIdentity" },
+    "execution": { "$ref": "#/$defs/execution" },
+    "summary": { "$ref": "#/$defs/summary" },
+    "blockers": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+    "activeCheck": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id", "title", "timeoutSeconds"],
+          "properties": {
+            "id": { "$ref": "#/$defs/checkID" },
+            "title": { "type": "string", "minLength": 1 },
+            "timeoutSeconds": { "type": "integer", "minimum": 1 }
+          }
+        }
       ]
     },
-    "startedAt": {
-      "type": "string",
-      "format": "date-time"
-    },
-    "generatedAt": {
-      "type": "string",
-      "format": "date-time"
-    },
-    "releaseIdentity": {
+    "verification": {
       "type": "object",
-      "required": [
-        "marketingVersion",
-        "buildNumber",
-        "sourceCommit",
-        "sourceDirty",
-        "observedAt"
-      ]
-    },
-    "summary": {
-      "type": "object",
-      "required": [
-        "status",
-        "expectedCheckCount",
-        "completedCheckCount",
-        "passedCount",
-        "failedCount"
-      ]
+      "additionalProperties": false,
+      "required": ["packagedArtifact", "realAppLaunch"],
+      "properties": {
+        "packagedArtifact": { "$ref": "#/$defs/verificationStatus" },
+        "realAppLaunch": { "$ref": "#/$defs/verificationStatus" }
+      }
     },
     "artifacts": {
       "type": "object",
-      "required": [
-        "packagedApp"
-      ],
+      "additionalProperties": false,
+      "required": ["packagedApp"],
       "properties": {
         "packagedApp": {
           "type": "object",
-          "required": [
-            "status",
-            "appBundle",
-            "identity",
-            "codeSignature",
-            "content"
+          "additionalProperties": false,
+          "required": ["status"],
+          "properties": {
+            "status": {
+              "enum": ["pending", "not_verified", "missing", "ambiguous", "unhashable", "identity_mismatch", "hashed"]
+            },
+            "appBundle": { "$ref": "#/$defs/nullableString" },
+            "expectedAppBundle": { "$ref": "#/$defs/nullableString" },
+            "provenance": { "$ref": "#/$defs/nullableString" },
+            "verificationCheck": { "$ref": "#/$defs/nullableString" },
+            "observedAt": { "$ref": "#/$defs/nullableString" },
+            "identity": {
+              "oneOf": [
+                { "type": "null" },
+                { "$ref": "#/$defs/artifactIdentity" }
+              ]
+            },
+            "codeSignature": {
+              "oneOf": [
+                { "type": "null" },
+                { "$ref": "#/$defs/codeSignature" }
+              ]
+            },
+            "content": {
+              "oneOf": [
+                { "type": "null" },
+                { "$ref": "#/$defs/artifactContent" }
+              ]
+            },
+            "error": { "$ref": "#/$defs/nullableString" }
+          }
+        }
+      }
+    },
+    "checks": { "type": "array", "items": { "$ref": "#/$defs/check" } }
+  },
+  "$defs": {
+    "nullableString": { "type": ["string", "null"] },
+    "checkID": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$" },
+    "repository": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["available", "commit", "branch", "isDirty"],
+      "properties": {
+        "available": { "type": "boolean" },
+        "commit": { "$ref": "#/$defs/nullableString" },
+        "branch": { "$ref": "#/$defs/nullableString" },
+        "isDirty": { "type": ["boolean", "null"] }
+      }
+    },
+    "releaseIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["marketingVersion", "buildNumber", "sourceCommit", "sourceDirty", "observedAt"],
+      "properties": {
+        "marketingVersion": { "$ref": "#/$defs/nullableString" },
+        "buildNumber": { "$ref": "#/$defs/nullableString" },
+        "sourceCommit": { "$ref": "#/$defs/nullableString" },
+        "sourceDirty": { "type": ["boolean", "null"] },
+        "observedAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "execution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["toolchain", "ci"],
+      "properties": {
+        "toolchain": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["pythonVersion", "swiftVersion", "operatingSystem", "operatingSystemVersion", "architecture"],
+          "properties": {
+            "pythonVersion": { "$ref": "#/$defs/nullableString" },
+            "swiftVersion": { "$ref": "#/$defs/nullableString" },
+            "operatingSystem": { "$ref": "#/$defs/nullableString" },
+            "operatingSystemVersion": { "$ref": "#/$defs/nullableString" },
+            "architecture": { "$ref": "#/$defs/nullableString" }
+          }
+        },
+        "ci": {
+          "oneOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["provider"],
+              "properties": { "provider": { "type": "null" } }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["provider", "repository", "workflow", "job", "runID", "runAttempt", "ref", "sha"],
+              "properties": {
+                "provider": { "const": "github-actions" },
+                "repository": { "$ref": "#/$defs/nullableString" },
+                "workflow": { "$ref": "#/$defs/nullableString" },
+                "job": { "$ref": "#/$defs/nullableString" },
+                "runID": { "$ref": "#/$defs/nullableString" },
+                "runAttempt": { "$ref": "#/$defs/nullableString" },
+                "ref": { "$ref": "#/$defs/nullableString" },
+                "sha": { "$ref": "#/$defs/nullableString" }
+              }
+            }
           ]
         }
       }
     },
-    "checks": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "required": [
-          "id",
-          "status",
-          "returnCode",
-          "timeoutSeconds",
-          "durationSeconds"
-        ]
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "expectedCheckCount", "completedCheckCount", "checkCount", "passedCount", "failedCount", "uncheckedChecklistCount", "blockerCount"],
+      "properties": {
+        "status": { "enum": ["running", "passed", "failed"] },
+        "expectedCheckCount": { "type": "integer", "minimum": 0 },
+        "completedCheckCount": { "type": "integer", "minimum": 0 },
+        "checkCount": { "type": "integer", "minimum": 0 },
+        "passedCount": { "type": "integer", "minimum": 0 },
+        "failedCount": { "type": "integer", "minimum": 0 },
+        "uncheckedChecklistCount": { "type": "integer", "minimum": 0 },
+        "blockerCount": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "verificationStatus": { "enum": ["not_run", "passed", "failed", "timed_out"] },
+    "diagnostics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["logPath", "sha256", "truncated", "capturedBytes", "tail"],
+      "properties": {
+        "logPath": { "type": "string", "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+$" },
+        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "truncated": { "type": "boolean" },
+        "capturedBytes": { "type": "integer", "minimum": 0, "maximum": 65536 },
+        "tail": { "type": "string", "maxLength": 4096 }
+      }
+    },
+    "artifactIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "bundleName", "displayName", "executableName", "bundleIdentifier",
+        "expectedBundleName", "expectedExecutableName", "expectedBundleIdentifier",
+        "marketingVersion", "buildNumber", "configuredMarketingVersion",
+        "configuredBuildNumber", "versionMatchesConfiguration",
+        "buildMatchesConfiguration", "sourceCommit", "sourceDirty"
+      ],
+      "properties": {
+        "bundleName": { "$ref": "#/$defs/nullableString" },
+        "displayName": { "$ref": "#/$defs/nullableString" },
+        "executableName": { "$ref": "#/$defs/nullableString" },
+        "bundleIdentifier": { "$ref": "#/$defs/nullableString" },
+        "expectedBundleName": { "type": "string" },
+        "expectedExecutableName": { "type": "string" },
+        "expectedBundleIdentifier": { "type": "string" },
+        "marketingVersion": { "$ref": "#/$defs/nullableString" },
+        "buildNumber": { "$ref": "#/$defs/nullableString" },
+        "configuredMarketingVersion": { "$ref": "#/$defs/nullableString" },
+        "configuredBuildNumber": { "$ref": "#/$defs/nullableString" },
+        "versionMatchesConfiguration": { "type": "boolean" },
+        "buildMatchesConfiguration": { "type": "boolean" },
+        "sourceCommit": { "$ref": "#/$defs/nullableString" },
+        "sourceDirty": { "type": ["boolean", "null"] }
+      }
+    },
+    "codeSignature": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "codeDirectory", "cdHash", "teamIdentifier", "authorities", "verified"],
+      "properties": {
+        "status": { "enum": ["tool_unavailable", "inspected", "inspection_failed"] },
+        "codeDirectory": { "$ref": "#/$defs/nullableString" },
+        "cdHash": { "$ref": "#/$defs/nullableString" },
+        "teamIdentifier": { "$ref": "#/$defs/nullableString" },
+        "authorities": { "type": "array", "items": { "type": "string" } },
+        "verified": { "type": ["boolean", "null"] },
+        "inspectionReturnCode": { "type": "integer" },
+        "verificationReturnCode": { "type": "integer" },
+        "error": { "type": "string" }
+      }
+    },
+    "artifactEntry": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["path", "kind", "sha256", "sizeBytes"],
+          "properties": {
+            "path": { "type": "string" },
+            "kind": { "const": "file" },
+            "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+            "sizeBytes": { "type": "integer", "minimum": 0 }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["path", "kind", "target", "sha256", "sizeBytes"],
+          "properties": {
+            "path": { "type": "string" },
+            "kind": { "const": "symlink" },
+            "target": { "type": "string" },
+            "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+            "sizeBytes": { "type": "integer", "minimum": 0 }
+          }
+        }
+      ]
+    },
+    "artifactContent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["algorithm", "treeSha256", "entryCount", "totalSizeBytes", "entries"],
+      "properties": {
+        "algorithm": { "const": "sha256" },
+        "treeSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "entryCount": { "type": "integer", "minimum": 0 },
+        "totalSizeBytes": { "type": "integer", "minimum": 0 },
+        "entries": { "type": "array", "items": { "$ref": "#/$defs/artifactEntry" } }
+      }
+    },
+    "check": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "title", "status", "returnCode", "timeoutSeconds", "durationSeconds", "source", "evidence", "verificationKind", "command", "executionError", "diagnostics"],
+      "properties": {
+        "id": { "$ref": "#/$defs/checkID" },
+        "title": { "type": "string", "minLength": 1 },
+        "status": { "enum": ["passed", "failed", "timed_out"] },
+        "returnCode": { "type": "integer" },
+        "timeoutSeconds": { "type": "integer", "minimum": 1 },
+        "durationSeconds": { "type": "number", "minimum": 0 },
+        "source": { "type": "array", "items": { "type": "string" } },
+        "evidence": { "type": "array", "items": { "type": "string" } },
+        "verificationKind": { "type": "string" },
+        "command": { "type": "array", "items": { "type": "string" } },
+        "executionError": { "$ref": "#/$defs/nullableString" },
+        "diagnostics": {
+          "oneOf": [
+            { "type": "null" },
+            { "$ref": "#/$defs/diagnostics" }
+          ]
+        }
       }
     }
-  },
-  "additionalProperties": true
+  }
 }

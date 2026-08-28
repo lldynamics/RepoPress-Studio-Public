@@ -62,77 +62,6 @@ struct SettingsSaveStatusPresentation: Equatable {
   }
 }
 
-struct SettingsCompactSaveIndicator: View {
-  let hasUnsavedChanges: Bool
-  let lastSaveError: String?
-  let isRecoveryWriteProtected: Bool
-  let recoveryMessage: String?
-
-  private var presentation: SettingsSaveStatusPresentation {
-    SettingsSaveStatusPresentation(
-      hasUnsavedChanges: hasUnsavedChanges,
-      lastSaveError: lastSaveError,
-      isRecoveryWriteProtected: isRecoveryWriteProtected,
-      recoveryMessage: recoveryMessage
-    )
-  }
-
-  var body: some View {
-    HStack(spacing: 4) {
-      switch presentation.kind {
-      case .idle:
-        Image(systemName: "checkmark.circle.fill")
-          .font(.workbenchMetadata)
-          .foregroundStyle(WorkbenchTheme.success)
-        Text("已自动保存")
-          .font(.workbenchMetadata)
-          .foregroundStyle(.secondary)
-      case .saving:
-        ProgressView()
-          .controlSize(.small)
-        Text("正在保存…")
-          .font(.workbenchMetadata)
-          .foregroundStyle(.secondary)
-      case .warning:
-        Image(systemName: "exclamationmark.triangle.fill")
-          .font(.workbenchMetadata)
-          .foregroundStyle(WorkbenchTheme.warning)
-        Text("备份异常")
-          .font(.workbenchMetadata)
-          .foregroundStyle(WorkbenchTheme.warning)
-      case .error:
-        Image(systemName: "xmark.circle.fill")
-          .font(.workbenchMetadata)
-          .foregroundStyle(WorkbenchTheme.risk)
-        Text("保存失败")
-          .font(.workbenchMetadata)
-          .foregroundStyle(WorkbenchTheme.risk)
-      }
-    }
-    .padding(.horizontal, 7)
-    .padding(.vertical, 3)
-    .background(
-      backgroundColor,
-      in: Capsule()
-    )
-    .accessibilityElement(children: .combine)
-    .accessibilityLabel(presentation.title)
-  }
-
-  private var backgroundColor: Color {
-    switch presentation.kind {
-    case .idle:
-      return Color.primary.opacity(0.04)
-    case .saving:
-      return Color.primary.opacity(0.06)
-    case .warning:
-      return WorkbenchTheme.warning.opacity(0.12)
-    case .error:
-      return WorkbenchTheme.risk.opacity(0.12)
-    }
-  }
-}
-
 struct SettingsSaveStatusBar: View {
   let hasUnsavedChanges: Bool
   let lastSaveError: String?
@@ -164,7 +93,7 @@ struct SettingsSaveStatusBar: View {
           .controlSize(.small)
           .accessibilityHidden(true)
         Text(presentation.title)
-          .font(.workbenchMetadata)
+          .font(.callout)
           .foregroundStyle(statusColor)
           .lineLimit(2)
       } else {
@@ -172,7 +101,7 @@ struct SettingsSaveStatusBar: View {
           .foregroundStyle(statusColor)
           .accessibilityHidden(true)
         Text(presentation.title)
-          .font(.workbenchMetadata)
+          .font(.callout)
           .foregroundStyle(statusColor)
           .lineLimit(2)
       }
@@ -180,7 +109,7 @@ struct SettingsSaveStatusBar: View {
       Spacer(minLength: WorkbenchSpacing.control)
 
       Text("普通设置自动保存；API Key 与访问令牌需点击保存。")
-        .font(.workbenchMetadata)
+        .font(.callout)
         .foregroundStyle(.secondary)
         .lineLimit(2)
         .multilineTextAlignment(.trailing)
@@ -194,7 +123,7 @@ struct SettingsSaveStatusBar: View {
       }
     }
     .padding(.horizontal, WorkbenchSpacing.content)
-    .padding(.vertical, 7)
+    .padding(.vertical, 11)
     .background(WorkbenchBackgroundStyle.card)
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("settings-save-status")

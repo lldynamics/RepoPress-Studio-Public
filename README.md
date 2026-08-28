@@ -30,7 +30,7 @@ RepoPress Studio 是 RepoPress 的桌面版本：用 Markdown 管理内容，以
 - 运行：macOS 14 或更高版本。
 - 开发：完整 Xcode 及兼容 Swift 6 的工具链；Command Line Tools 不足以覆盖完整 macOS 应用包流程。
 - 质量脚本：Python 3 和系统开发工具。
-- 本地发布、预览与 ChatGPT 登录：按需安装 Git、Hugo、Zola、Codex CLI、Node.js/npm 等工具；应用从系统、Homebrew 或 `PATH` 解析，不把这些第三方 CLI 打进 `.app`。
+- 本地发布、预览与 ChatGPT 登录：按需安装 Git、Hugo、Zola、Codex CLI、Node.js/npm 等工具；应用优先从系统路径、Homebrew 或 `PATH` 中动态解析，不会将这些第三方 CLI 捆绑进 `.app`。
 - 浏览器扩展测试：Node.js 与 npm；日常 Swift 开发不依赖 Node。
 
 所有 SwiftPM target 都必须显式使用 Swift 6 语言模式；模块边界门禁会从清单动态盘点 target、产品与依赖，不依赖容易过期的固定数量。
@@ -115,7 +115,7 @@ bash script/check_accessibility_runtime.sh
 
 启动性能基线由 `script/check_launch_performance.sh` 检查，默认要求从打开应用包到主窗口可见不超过 5 秒；本机基线可通过 `LAUNCH_BASELINE_MAX_SECONDS` 调整。
 
-GitHub Actions 在 `main` push 运行快速门禁；pull request 和手动触发会增加覆盖率、分发构建、真实 UI / 无障碍检查，以及独立且阻塞的 Swift 6 语言模式迁移门禁。共享契约子树另有跨平台契约、Swift Core 与 .NET Core 门禁，使用说明见 [`Shared/RepoPressCoreContracts/README.md`](Shared/RepoPressCoreContracts/README.md)。
+GitHub Actions 的证据层级按触发方式区分：`main` 分支 push 只运行快速静态门禁（Swift 6 严格测试清单编译、模块边界等）；Pull Request 运行快速门禁、覆盖率、分发构建和公共快照边界，但不运行真实窗口或无障碍 XCUITest。版本 tag push、固定夜间任务，以及 `workflow_dispatch` 选择 `release` 风险层，才运行发行构建后的真实启动、可见窗口与无障碍运行态检查，并附加 Release 性能证据；手动选择 `quick` 或 `pr` 时仅运行对应较低层级。Swift 6 证据由共享快速门禁提供，不存在独立的 Swift 6 migration lane。共享契约子树另有跨平台契约、Swift Core 与 .NET Core 门禁，使用说明见 [`Shared/RepoPressCoreContracts/README.md`](Shared/RepoPressCoreContracts/README.md)。
 
 ## 浏览器扩展
 

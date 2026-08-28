@@ -21,8 +21,15 @@ mkdir -p \
   "$FIXTURE_ROOT/script" \
   "$BIN_DIR"
 cp "$ROOT_DIR/Packaging/DirectDistribution.entitlements" "$FIXTURE_ROOT/Packaging/"
-cp "$ROOT_DIR/Packaging/ThirdPartyNotices/Sparkle-LICENSE.txt" \
-  "$FIXTURE_ROOT/Packaging/ThirdPartyNotices/"
+cp "$ROOT_DIR/Package.resolved" "$FIXTURE_ROOT/"
+for notice_file in \
+  NOTICE-MANIFEST.txt \
+  Sparkle-LICENSE.txt \
+  TreeSitter-LICENSE.txt \
+  Tiktoken-Encoding-Data.txt; do
+  cp "$ROOT_DIR/Packaging/ThirdPartyNotices/$notice_file" \
+    "$FIXTURE_ROOT/Packaging/ThirdPartyNotices/$notice_file"
+done
 cp "$ROOT_DIR/script/sign_sparkle_framework.sh" "$FIXTURE_ROOT/script/"
 cp "$ROOT_DIR/script/generate_direct_appcast.sh" "$FIXTURE_ROOT/script/"
 cat >"$FIXTURE_ROOT/Packaging/Downloader.entitlements" <<'PLIST'
@@ -69,8 +76,14 @@ mkdir -p \
   "$sparkle_version/Updater.app"
 printf '#!/usr/bin/env bash\nexit 0\n' >"$app/Contents/MacOS/PersonalSitePublisherMac"
 chmod +x "$app/Contents/MacOS/PersonalSitePublisherMac"
-cp "${DIRECT_TEST_ROOT:?}/Packaging/ThirdPartyNotices/Sparkle-LICENSE.txt" \
-  "$app/Contents/Resources/ThirdPartyNotices/"
+for notice_file in \
+  NOTICE-MANIFEST.txt \
+  Sparkle-LICENSE.txt \
+  TreeSitter-LICENSE.txt \
+  Tiktoken-Encoding-Data.txt; do
+  cp "${DIRECT_TEST_ROOT:?}/Packaging/ThirdPartyNotices/$notice_file" \
+    "$app/Contents/Resources/ThirdPartyNotices/$notice_file"
+done
 for executable in \
   "$sparkle_version/XPCServices/Installer.xpc/fixture" \
   "$sparkle_version/XPCServices/Downloader.xpc/fixture" \
@@ -300,8 +313,15 @@ prepared_app="$FIXTURE_ROOT/artifacts/prepare/prepared-RepoPress-Studio-1.2/Repo
 [[ "$(/usr/libexec/PlistBuddy -c 'Print :PersonalSitePublisherDistributionChannel' \
   "$prepared_app/Contents/Info.plist")" == "Direct" ]] \
   || fail "prepare mode did not preserve the Direct channel marker"
-[[ -s "$prepared_app/Contents/Resources/ThirdPartyNotices/Sparkle-LICENSE.txt" ]] \
-  || fail "prepare mode omitted the Sparkle third-party notice"
+for notice_file in \
+  NOTICE-MANIFEST.txt \
+  Sparkle-LICENSE.txt \
+  TreeSitter-LICENSE.txt \
+  Tiktoken-Encoding-Data.txt; do
+  cmp -s "$FIXTURE_ROOT/Packaging/ThirdPartyNotices/$notice_file" \
+    "$prepared_app/Contents/Resources/ThirdPartyNotices/$notice_file" \
+    || fail "prepare mode omitted or altered the $notice_file third-party notice"
+done
 
 release_output="$FIXTURE_ROOT/artifacts/release"
 if mismatch_output="$(env "${common_environment[@]}" \
@@ -336,8 +356,15 @@ appcast_path="$release_output/stable-appcast.xml"
 for artifact in "$signed_app" "$zip_path" "$dmg_path" "$manifest_path" "$checksum_path" "$appcast_path"; do
   [[ -e "$artifact" ]] || fail "release mode omitted $artifact"
 done
-sparkle_notice="$signed_app/Contents/Resources/ThirdPartyNotices/Sparkle-LICENSE.txt"
-[[ -s "$sparkle_notice" ]] || fail "release mode omitted the Sparkle third-party notice"
+for notice_file in \
+  NOTICE-MANIFEST.txt \
+  Sparkle-LICENSE.txt \
+  TreeSitter-LICENSE.txt \
+  Tiktoken-Encoding-Data.txt; do
+  cmp -s "$FIXTURE_ROOT/Packaging/ThirdPartyNotices/$notice_file" \
+    "$signed_app/Contents/Resources/ThirdPartyNotices/$notice_file" \
+    || fail "release mode omitted or altered the $notice_file third-party notice"
+done
 
 sandbox_rejected_output="$FIXTURE_ROOT/artifacts/rejected-sandbox"
 if sandbox_output="$(env "${common_environment[@]}" \
@@ -409,21 +436,45 @@ env "${common_environment[@]}" \
   bash "$ROOT_DIR/script/package_direct_release.sh" \
     --validate --output-dir "$release_output" >/dev/null
 
-mv "$sparkle_notice" "$sparkle_notice.missing"
-if missing_notice_output="$(env "${common_environment[@]}" \
-  DIRECT_DISTRIBUTION_APP_BUNDLE_PATH="$signed_app" \
-  DIRECT_DISTRIBUTION_DMG_PATH="$dmg_path" \
-  DIRECT_DISTRIBUTION_ZIP_PATH="$zip_path" \
-  DIRECT_DISTRIBUTION_MANIFEST_PATH="$manifest_path" \
-  DIRECT_DISTRIBUTION_CHECKSUM_PATH="$checksum_path" \
-  DIRECT_DISTRIBUTION_APPCAST_PATH="$appcast_path" \
-  bash "$ROOT_DIR/script/package_direct_release.sh" \
-    --validate --output-dir "$release_output" 2>&1)"; then
-  fail "validate mode accepted an app without the Sparkle third-party notice"
-fi
-grep -Fq "Sparkle third-party notice is missing" <<<"$missing_notice_output" \
-  || fail "missing Sparkle notice failed without an explicit diagnostic"
-mv "$sparkle_notice.missing" "$sparkle_notice"
+for notice_file in \
+  NOTICE-MANIFEST.txt \
+  Sparkle-LICENSE.txt \
+  TreeSitter-LICENSE.txt \
+  Tiktoken-Encoding-Data.txt; do
+  bundled_notice="$signed_app/Contents/Resources/ThirdPartyNotices/$notice_file"
+  mv "$bundled_notice" "$bundled_notice.missing"
+  if missing_notice_output="$(env "${common_environment[@]}" \
+    DIRECT_DISTRIBUTION_APP_BUNDLE_PATH="$signed_app" \
+    DIRECT_DISTRIBUTION_DMG_PATH="$dmg_path" \
+    DIRECT_DISTRIBUTION_ZIP_PATH="$zip_path" \
+    DIRECT_DISTRIBUTION_MANIFEST_PATH="$manifest_path" \
+    DIRECT_DISTRIBUTION_CHECKSUM_PATH="$checksum_path" \
+    DIRECT_DISTRIBUTION_APPCAST_PATH="$appcast_path" \
+    bash "$ROOT_DIR/script/package_direct_release.sh" \
+      --validate --output-dir "$release_output" 2>&1)"; then
+    fail "validate mode accepted an app without $notice_file"
+  fi
+  grep -Fq "bundled third-party notice is missing: $notice_file" <<<"$missing_notice_output" \
+    || fail "missing $notice_file failed without an explicit diagnostic"
+  mv "$bundled_notice.missing" "$bundled_notice"
+
+  printf '\nfixture notice tampering\n' >>"$bundled_notice"
+  if tampered_notice_output="$(env "${common_environment[@]}" \
+    DIRECT_DISTRIBUTION_APP_BUNDLE_PATH="$signed_app" \
+    DIRECT_DISTRIBUTION_DMG_PATH="$dmg_path" \
+    DIRECT_DISTRIBUTION_ZIP_PATH="$zip_path" \
+    DIRECT_DISTRIBUTION_MANIFEST_PATH="$manifest_path" \
+    DIRECT_DISTRIBUTION_CHECKSUM_PATH="$checksum_path" \
+    DIRECT_DISTRIBUTION_APPCAST_PATH="$appcast_path" \
+    bash "$ROOT_DIR/script/package_direct_release.sh" \
+      --validate --output-dir "$release_output" 2>&1)"; then
+    fail "validate mode accepted an app with altered $notice_file"
+  fi
+  grep -Fq "bundled third-party notice differs from Packaging/ThirdPartyNotices/$notice_file" \
+    <<<"$tampered_notice_output" \
+    || fail "altered $notice_file failed without an explicit diagnostic"
+  cp "$FIXTURE_ROOT/Packaging/ThirdPartyNotices/$notice_file" "$bundled_notice"
+done
 
 if dmg_team_output="$(env "${common_environment[@]}" \
   DMG_TEAM_IDENTIFIER="OTHERTEAM1" \
@@ -473,5 +524,35 @@ if env "${common_environment[@]}" \
     --validate --output-dir "$release_output" >/dev/null 2>&1; then
   fail "validate mode accepted an omitted artifact set"
 fi
+
+python3 - "$FIXTURE_ROOT/Package.resolved" <<'PY'
+import json
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+payload = json.loads(path.read_text(encoding="utf-8"))
+for pin in payload["pins"]:
+    if pin["identity"] == "sparkle":
+        pin["state"]["version"] = "9.9.9"
+        break
+else:
+    raise SystemExit("fixture Package.resolved has no sparkle pin")
+path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+PY
+if package_pin_output="$(env "${common_environment[@]}" \
+  DIRECT_DISTRIBUTION_APP_BUNDLE_PATH="$signed_app" \
+  DIRECT_DISTRIBUTION_DMG_PATH="$dmg_path" \
+  DIRECT_DISTRIBUTION_ZIP_PATH="$zip_path" \
+  DIRECT_DISTRIBUTION_MANIFEST_PATH="$manifest_path" \
+  DIRECT_DISTRIBUTION_CHECKSUM_PATH="$checksum_path" \
+  DIRECT_DISTRIBUTION_APPCAST_PATH="$appcast_path" \
+  bash "$ROOT_DIR/script/package_direct_release.sh" \
+    --validate --output-dir "$release_output" 2>&1)"; then
+  fail "validate mode accepted a NOTICE-MANIFEST pin that differs from Package.resolved"
+fi
+grep -Fq "NOTICE-MANIFEST dependency declaration does not match Package.resolved for sparkle" \
+  <<<"$package_pin_output" \
+  || fail "Package.resolved pin mismatch failed without an explicit dependency diagnostic"
 
 echo "direct release package test: passed"

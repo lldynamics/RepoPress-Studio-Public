@@ -94,19 +94,68 @@ extension RemoteRepositoryPublishService {
     branch: String,
     token: String
   ) async throws -> String? {
+    try await githubFileState(
+      repository: repository,
+      path: path,
+      ref: branch,
+      token: token
+    ).sha
+  }
+
+  func githubFileState(
+    repository: RemoteRepository,
+    path: String,
+    ref: String,
+    token: String
+  ) async throws -> GitHubFileRemoteState {
     let request = githubRequest(
       repository: repository,
       method: "GET",
       path: "/repos/\(encodedPathComponent(repository.owner))/\(encodedPathComponent(repository.name))/contents/\(encodedRepositoryPath(path))",
       token: token,
-      queryItems: [URLQueryItem(name: "ref", value: branch)]
+      queryItems: [URLQueryItem(name: "ref", value: ref)]
+    )
+    let response = try await data(for: request)
+    if response.statusCode == 404 {
+      return GitHubFileRemoteState(exists: false, sha: nil, content: nil)
+    }
+    try validate(response)
+    let file = try decoder.decode(GitHubContentResponse.self, from: response.data)
+    return GitHubFileRemoteState(
+      exists: true,
+      sha: file.sha,
+      content: file.decodedContent
+    )
+  }
+
+  func githubBlobContent(
+    repository: RemoteRepository,
+    sha: String,
+    token: String
+  ) async throws -> Data? {
+    let owner = encodedPathComponent(repository.owner)
+    let name = encodedPathComponent(repository.name)
+    let blobSHA = encodedPathComponent(sha)
+    let request = githubRequest(
+      repository: repository,
+      method: "GET",
+      path: "/repos/\(owner)/\(name)/git/blobs/\(blobSHA)",
+      token: token
     )
     let response = try await data(for: request)
     if response.statusCode == 404 {
       return nil
     }
     try validate(response)
-    return try decoder.decode(GitHubContentResponse.self, from: response.data).sha
+    let blob = try decoder.decode(GitHubBlobContentResponse.self, from: response.data)
+    guard blob.sha?.trimmedForPublishing.nilIfEmpty == sha.trimmedForPublishing.nilIfEmpty else {
+      throw RemoteRepositoryPublishError.remoteVersionConflict(
+        path: "git/blobs/\(sha)",
+        expectedSHA: sha,
+        actualSHA: blob.sha
+      )
+    }
+    return blob.decodedContent
   }
 
   func githubExistingPullRequestURL(

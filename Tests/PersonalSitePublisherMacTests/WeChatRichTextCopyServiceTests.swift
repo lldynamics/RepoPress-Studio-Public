@@ -1,14 +1,14 @@
 import XCTest
 
-@testable import PublishingWorkbenchCore
+@testable import PersonalSitePublisherMac
 
 final class WeChatRichTextCopyServiceTests: XCTestCase {
   func testRenderHTMLEmbedsInlineStylesForHeadingsAndParagraphs() {
     let markdown = """
-    ## 二级标题
+      ## 二级标题
 
-    这是一段测试文本，带有 **加粗** 和 `行内代码`。
-    """
+      这是一段测试文本，带有 **加粗** 和 `行内代码`。
+      """
     let html = WeChatRichTextCopyService.renderHTML(markdown: markdown, title: "文章总标题")
 
     XCTAssertTrue(html.contains("font-family: -apple-system"))
@@ -21,12 +21,12 @@ final class WeChatRichTextCopyServiceTests: XCTestCase {
 
   func testRenderHTMLEmbedsStylesForQuotesAndCodeBlocks() {
     let markdown = """
-    > 这是一句精选引文。
+      > 这是一句精选引文。
 
-    ```swift
-    print("Hello WeChat")
-    ```
-    """
+      ```swift
+      print("Hello WeChat")
+      ```
+      """
     let html = WeChatRichTextCopyService.renderHTML(markdown: markdown)
 
     XCTAssertTrue(html.contains("<blockquote style=\"margin: 18px 0;"))
@@ -36,11 +36,11 @@ final class WeChatRichTextCopyServiceTests: XCTestCase {
 
   func testRenderHTMLEmbedsStylesForTables() {
     let markdown = """
-    | 平台 | 支持状态 |
-    | --- | --- |
-    | 微信公众号 | 完美支持 |
-    | 知乎专栏 | 完美支持 |
-    """
+      | 平台 | 支持状态 |
+      | --- | --- |
+      | 微信公众号 | 完美支持 |
+      | 知乎专栏 | 完美支持 |
+      """
     let html = WeChatRichTextCopyService.renderHTML(markdown: markdown)
 
     XCTAssertTrue(html.contains("<table style=\"border-collapse: collapse;"))

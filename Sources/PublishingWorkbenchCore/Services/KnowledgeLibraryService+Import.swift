@@ -6,7 +6,10 @@ enum KnowledgeImportPreviewExecutionPolicy {
     sourceTreeContainsPDF: Bool = false
   ) -> TaskPriority {
     if sourceTreeContainsPDF
-      || sourceURLs.contains(where: { $0.pathExtension.lowercased() == "pdf" })
+      || sourceURLs.contains(where: {
+        ["pdf", "jpg", "jpeg", "png", "heic", "heif", "webp"].contains(
+          $0.pathExtension.lowercased())
+      })
     {
       return .background
     }
@@ -99,7 +102,9 @@ extension KnowledgeLibraryService {
   private func containsPDFSource(in sourceURLs: [URL]) throws -> Bool {
     for sourceURL in sourceURLs {
       try Task.checkCancellation()
-      if sourceURL.pathExtension.lowercased() == "pdf" {
+      if ["pdf", "jpg", "jpeg", "png", "heic", "heif", "webp"].contains(
+        sourceURL.pathExtension.lowercased())
+      {
         return true
       }
 
@@ -116,7 +121,10 @@ extension KnowledgeLibraryService {
 
       for case let fileURL as URL in enumerator {
         try Task.checkCancellation()
-        guard fileURL.pathExtension.lowercased() == "pdf" else { continue }
+        guard
+          ["pdf", "jpg", "jpeg", "png", "heic", "heif", "webp"].contains(
+            fileURL.pathExtension.lowercased())
+        else { continue }
         let values = try? fileURL.resourceValues(forKeys: [.isRegularFileKey])
         if values?.isRegularFile == true {
           return true
@@ -330,7 +338,10 @@ extension KnowledgeLibraryService {
     var candidates: [KnowledgeImportCandidate] = []
     var warnings: [String] = []
     var totalBytes = 0
-    let supportedExtensions = Set(["md", "markdown", "mdx", "txt", "text", "html", "htm", "pdf", "epub"])
+    let supportedExtensions = Set([
+      "md", "markdown", "mdx", "txt", "text", "html", "htm", "pdf", "epub", "jpg", "jpeg", "png",
+      "heic", "heif", "webp",
+    ])
 
     for case let fileURL as URL in enumerator {
       try Task.checkCancellation()
@@ -377,20 +388,59 @@ extension KnowledgeLibraryService {
     guard fileSize <= 50 * 1_024 * 1_024 else {
       throw KnowledgeLibraryError.sourceLimitExceeded("文件超过 50 MB：\(sourceURL.lastPathComponent)")
     }
-    guard let data = try? BoundedFileReader.data(
-      at: sourceURL,
-      maximumByteCount: 50 * 1_024 * 1_024
-    ) else {
-      throw KnowledgeLibraryError.unreadableSource(sourceURL.path)
+    let lowerExtension = sourceURL.pathExtension.lowercased()
+    let imageExtensions: Set<String> = ["jpg", "jpeg", "png", "heic", "heif", "webp"]
+    let isImage = imageExtensions.contains(lowerExtension)
+    if isImage, fileSize > 25 * 1_024 * 1_024 {
+      throw KnowledgeLibraryError.sourceLimitExceeded("图片超过 25 MB：\(sourceURL.lastPathComponent)")
+    }
+    let data: Data
+    let candidateSourceURL: URL?
+    let wasPrivacySanitized: Bool
+    if isImage {
+      let temporaryDirectory = rootURL.appendingPathComponent(
+        ".image-import-\(UUID().uuidString)", isDirectory: true
+      )
+      let destinationURL = temporaryDirectory.appendingPathComponent("sanitized.\(lowerExtension)")
+      defer { try? fileManager.removeItem(at: temporaryDirectory) }
+      do {
+        // Validate ImageIO's actual type, frame count and decompression budget
+        // before asking the privacy service to decode or re-encode anything.
+        let sourceData = try BoundedFileReader.data(
+          at: sourceURL,
+          maximumByteCount: 25 * 1_024 * 1_024
+        )
+        _ = try imageOCRService.extract(data: sourceData, performsOCR: false)
+        try fileManager.createDirectory(at: temporaryDirectory, withIntermediateDirectories: true)
+        _ = try ImagePrivacySanitizingService().sanitize(at: sourceURL, to: destinationURL)
+        data = try BoundedFileReader.data(at: destinationURL, maximumByteCount: 25 * 1_024 * 1_024)
+      } catch {
+        throw KnowledgeLibraryError.unreadableSource("图片脱敏失败：\(sourceURL.lastPathComponent)")
+      }
+      candidateSourceURL = nil
+      wasPrivacySanitized = true
+    } else {
+      guard
+        let readData = try? BoundedFileReader.data(
+          at: sourceURL,
+          maximumByteCount: 50 * 1_024 * 1_024
+        )
+      else {
+        throw KnowledgeLibraryError.unreadableSource(sourceURL.path)
+      }
+      data = readData
+      candidateSourceURL = sourceURL.standardizedFileURL
+      wasPrivacySanitized = false
     }
     return try candidate(
       data: data,
       sourceName: sourceURL.lastPathComponent,
-      sourceURL: sourceURL.standardizedFileURL,
-      fileExtension: sourceURL.pathExtension,
+      sourceURL: candidateSourceURL,
+      fileExtension: lowerExtension,
       preferredKind: nil,
       sourceModifiedAt: values.contentModificationDate,
-      options: options
+      options: options,
+      wasPrivacySanitized: wasPrivacySanitized
     )
   }
 
@@ -401,7 +451,8 @@ extension KnowledgeLibraryService {
     fileExtension: String,
     preferredKind: KnowledgeDocumentKind?,
     sourceModifiedAt: Date?,
-    options: KnowledgeImportOptions = KnowledgeImportOptions()
+    options: KnowledgeImportOptions = KnowledgeImportOptions(),
+    wasPrivacySanitized: Bool = false
   ) throws -> KnowledgeImportCandidate {
     let lowerExtension = fileExtension.lowercased()
     let extraction = try contentExtractionService.extract(
@@ -411,6 +462,18 @@ extension KnowledgeLibraryService {
       preferredKind: preferredKind,
       options: options
     )
+    let normalizedImageExtension: String?
+    if extraction.kind == .image {
+      guard let metadata = extraction.imageMetadata,
+        imageExtension(lowerExtension, matches: metadata.imageTypeIdentifier)
+      else {
+        throw KnowledgeLibraryError.unsupportedSource("图片扩展名与实际类型不一致：\(sourceName)")
+      }
+      normalizedImageExtension =
+        metadata.imageTypeIdentifier == "public.jpeg" ? "jpg" : lowerExtension
+    } else {
+      normalizedImageExtension = lowerExtension.nilIfEmpty
+    }
 
     let normalizedText = normalizedText(from: extraction.sections)
     guard !normalizedText.isEmpty else {
@@ -420,10 +483,11 @@ extension KnowledgeLibraryService {
     let originalHash = KnowledgeChunkingService.contentHash(for: data)
     let normalizedHash = KnowledgeChunkingService.contentHash(for: normalizedText)
     let existing = try database().existingDocument(
-      sourceURL: sourceURL,
+      sourceURL: extraction.kind == .image ? nil : sourceURL,
       originalHash: originalHash,
       normalizedHash: normalizedHash,
-      parserVersion: Self.parserVersion
+      parserVersion: Self.parserVersion,
+      kind: extraction.kind
     )
     let disposition: KnowledgeImportDisposition
     if let existing {
@@ -441,17 +505,35 @@ extension KnowledgeLibraryService {
       language: extraction.language,
       summary: extraction.summary,
       tags: extraction.tags,
-      sourceURL: sourceURL,
+      sourceURL: extraction.kind == .image ? nil : sourceURL,
       sourceName: sourceName,
       sourceModifiedAt: sourceModifiedAt,
-      originalFilenameExtension: lowerExtension.nilIfEmpty,
+      allowsLocalSemanticIndex: extraction.kind == .image ? false : nil,
+      originalFilenameExtension: normalizedImageExtension,
+      imageMetadata: extraction.imageMetadata.map { metadata in
+        var metadata = metadata
+        metadata.wasPrivacySanitized = wasPrivacySanitized
+        return metadata
+      },
       originalData: data,
+      capturedText: extraction.capturedText,
       originalContentHash: originalHash,
       normalizedText: normalizedText,
       normalizedContentHash: normalizedHash,
       sections: extraction.sections,
       warnings: extraction.warnings
     )
+  }
+
+  private func imageExtension(_ fileExtension: String, matches typeIdentifier: String) -> Bool {
+    switch typeIdentifier {
+    case "public.jpeg": return ["jpg", "jpeg"].contains(fileExtension)
+    case "public.png": return fileExtension == "png"
+    case "public.heic": return fileExtension == "heic"
+    case "public.heif": return fileExtension == "heif"
+    case "org.webmproject.webp": return fileExtension == "webp"
+    default: return false
+    }
   }
 
   func normalizedText(from sections: [KnowledgeExtractedSection]) -> String {

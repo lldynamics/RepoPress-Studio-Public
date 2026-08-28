@@ -32,7 +32,8 @@ extension WorkbenchStore {
 
     guard let draftSnapshot = draft(for: draftID) else { return nil }
     let profileSnapshot = profile(for: draftSnapshot)
-    let sameSiteDrafts = drafts
+    let sameSiteDrafts =
+      drafts
       .filter { $0.belongs(toSiteProfileID: draftSnapshot.siteProfileID) }
       .sorted { $0.id.uuidString < $1.id.uuidString }
     let repositoryReportSnapshot = repositoryReport(for: profileSnapshot)
@@ -50,13 +51,18 @@ extension WorkbenchStore {
     )
     let preflightService = publishingStore.preflightService
     let generalDraftPublishingIssue = publishingStore.generalDraftPublishingIssue
+    let linkAuditKey = siteLinkAuditKey(
+      drafts: snapshot.sameSiteDrafts,
+      profile: snapshot.profile
+    )
+    let cachedLinkAuditReport = siteLinkAuditSnapshotStore.report(for: linkAuditKey)
 
-    let calculationTask: Task<[PreflightIssue]?, Never> = Task.detached(
+    let calculationTask: Task<([PreflightIssue], SiteLinkAuditReport?)?, Never> = Task.detached(
       priority: .userInitiated
     ) {
       guard !Task.isCancelled else { return nil }
       if snapshot.draft.isGeneralDraft {
-        return [generalDraftPublishingIssue]
+        return ([generalDraftPublishingIssue], nil)
       }
 
       let duplicateIndex = PreflightDuplicateIndex(
@@ -71,12 +77,18 @@ extension WorkbenchStore {
         includeRepositoryReadiness: true,
         duplicateIndex: duplicateIndex
       )
-      return SiteLinkAuditService().report(
-        drafts: snapshot.sameSiteDrafts,
-        profile: snapshot.profile
-      ).mergingPreflightIssues(baseIssues, for: snapshot.draft)
+      let linkAuditReport =
+        cachedLinkAuditReport
+        ?? SiteLinkAuditService().report(
+          drafts: snapshot.sameSiteDrafts,
+          profile: snapshot.profile
+        )
+      return (
+        linkAuditReport.mergingPreflightIssues(baseIssues, for: snapshot.draft),
+        linkAuditReport
+      )
     }
-    let issues = await withTaskCancellationHandler(
+    let calculation = await withTaskCancellationHandler(
       operation: {
         await calculationTask.value
       },
@@ -87,7 +99,8 @@ extension WorkbenchStore {
 
     guard let currentDraft = draft(for: draftID) else { return nil }
     let currentBodyBuffer = draftBodyEditorBuffer(for: draftID)
-    let currentSameSiteDrafts = drafts
+    let currentSameSiteDrafts =
+      drafts
       .filter { $0.belongs(toSiteProfileID: currentDraft.siteProfileID) }
       .sorted { $0.id.uuidString < $1.id.uuidString }
     let currentProfile = profile(for: currentDraft)
@@ -95,7 +108,7 @@ extension WorkbenchStore {
 
     guard
       !Task.isCancelled,
-      let issues,
+      let calculation,
       currentDraft.hasSamePreflightInput(as: snapshot.draft),
       currentBodyBuffer.revision == snapshot.context.bodyRevision,
       !currentBodyBuffer.isDirty,
@@ -106,6 +119,14 @@ extension WorkbenchStore {
       return nil
     }
 
-    return DraftPreflightResult(context: snapshot.context, issues: issues)
+    if let linkAuditReport = calculation.1 {
+      replaceSiteLinkAuditSnapshotIfCurrent(
+        linkAuditReport,
+        key: linkAuditKey,
+        drafts: snapshot.sameSiteDrafts,
+        profile: snapshot.profile
+      )
+    }
+    return DraftPreflightResult(context: snapshot.context, issues: calculation.0)
   }
 }

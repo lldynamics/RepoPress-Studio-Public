@@ -3,8 +3,8 @@ import PublishingWorkbenchCore
 import SwiftUI
 
 struct WorkspaceBackupRestorePreviewView: View {
-  @ObservedObject var store: WorkbenchStore
   let preview: WorkspaceBackupPreview
+  let stageWorkspaceBackupRestore: @MainActor (URL) async -> Bool
 
   @Environment(\.dismiss) private var dismiss
   @State private var isRestoring = false
@@ -215,7 +215,7 @@ struct WorkspaceBackupRestorePreviewView: View {
   private func stageRestoreAndRestart() {
     isRestoring = true
     Task {
-      let succeeded = await store.stageWorkspaceBackupRestore(from: preview.backupURL)
+      let succeeded = await stageWorkspaceBackupRestore(preview.backupURL)
       isRestoring = false
       guard succeeded else { return }
       NSApp.terminate(nil)

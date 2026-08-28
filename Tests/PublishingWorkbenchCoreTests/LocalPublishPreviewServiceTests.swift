@@ -1,4 +1,5 @@
 import XCTest
+
 @testable import PublishingWorkbenchCore
 
 final class LocalPublishPreviewServiceTests: XCTestCase {
@@ -65,13 +66,15 @@ final class LocalPublishPreviewServiceTests: XCTestCase {
     XCTAssertEqual(diff.status, .modified)
     XCTAssertNil(diff.lineDiff)
     XCTAssertNil(diff.baselineState)
-    XCTAssertTrue(preview.issues.contains {
-      $0.severity == .error
-        && $0.title == "无法读取现有 Markdown 文件"
-        && $0.field == "repositoryPath"
-    })
+    XCTAssertTrue(
+      preview.issues.contains {
+        $0.severity == .error
+          && $0.title == "无法读取现有 Markdown 文件"
+          && $0.field == "repositoryPath"
+      })
     XCTAssertThrowsError(try service.write(preview: preview, rootURL: rootURL)) { error in
-      guard case .invalidPreview("content/posts/existing.md")? = error as? LocalPublishPreviewError else {
+      guard case .invalidPreview("content/posts/existing.md")? = error as? LocalPublishPreviewError
+      else {
         return XCTFail("Expected invalidPreview, got \(error)")
       }
     }
@@ -110,7 +113,8 @@ final class LocalPublishPreviewServiceTests: XCTestCase {
     let oldLines = (0..<200).map { "line-\($0)" }
     var newLines = oldLines
     newLines[100] = "changed-line"
-    try oldLines.joined(separator: "\n").write(to: destinationURL, atomically: true, encoding: .utf8)
+    try oldLines.joined(separator: "\n").write(
+      to: destinationURL, atomically: true, encoding: .utf8)
     let package = publishPackage(
       files: [
         .init(
@@ -245,12 +249,55 @@ final class LocalPublishPreviewServiceTests: XCTestCase {
     )
     let package = PublishPackageBuilder().build(draft: draft, profile: profile)
 
-    let written = try await LocalPublishPreviewService().writeAsync(package: package, profile: profile)
+    let written = try await LocalPublishPreviewService().writeAsync(
+      package: package, profile: profile)
     let targetURL = rootURL.appendingPathComponent("content/posts/async-draft.md")
     let content = try String(contentsOf: targetURL, encoding: .utf8)
 
     XCTAssertEqual(written, ["content/posts/async-draft.md"])
     XCTAssertTrue(content.contains("title = \"Async Draft\""))
+  }
+
+  func testProfileWriteRejectsDirectoryWithoutGitBeforeCreatingContentOrTransaction() throws {
+    let rootURL = FileManager.default.temporaryDirectory
+      .appendingPathComponent(
+        "PersonalSitePublisherMacNonGitWrite-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    var profile = SiteProfile.defaultProfile
+    profile.rememberLocalRepositoryRoot(rootURL)
+    let package = publishPackage(
+      files: [
+        .init(
+          kind: .markdown,
+          repositoryPath: "content/posts/rejected.md",
+          content: "must not be written"
+        )
+      ]
+    )
+    let service = LocalPublishPreviewService()
+
+    XCTAssertThrowsError(try service.write(package: package, profile: profile)) { error in
+      guard case .notGitRepositoryRoot(let path)? = error as? LocalPublishPreviewError,
+        path == rootURL.path
+      else {
+        return XCTFail("Expected notGitRepositoryRoot, got \(error)")
+      }
+    }
+    XCTAssertFalse(
+      FileManager.default.fileExists(
+        atPath: rootURL.appendingPathComponent("content/posts/rejected.md").path
+      )
+    )
+    XCTAssertFalse(
+      FileManager.default.fileExists(
+        atPath: service.localPublishTransactionURL(for: rootURL).path
+      )
+    )
+    XCTAssertFalse(
+      (try FileManager.default.contentsOfDirectory(atPath: rootURL.path))
+        .contains { $0.hasPrefix(".repopress-local-publish-rollback-") }
+    )
   }
 
   func testPathMigrationPreviewAndWriteCreateNewFileAndDeleteOldFile() throws {
@@ -280,8 +327,12 @@ final class LocalPublishPreviewServiceTests: XCTestCase {
     let changedPaths = try service.write(package: package, profile: profile)
 
     XCTAssertEqual(changedPaths, ["content/posts/moved-draft.md", "content/posts/existing.md"])
-    XCTAssertTrue(FileManager.default.fileExists(atPath: rootURL.appendingPathComponent("content/posts/moved-draft.md").path))
-    XCTAssertFalse(FileManager.default.fileExists(atPath: rootURL.appendingPathComponent("content/posts/existing.md").path))
+    XCTAssertTrue(
+      FileManager.default.fileExists(
+        atPath: rootURL.appendingPathComponent("content/posts/moved-draft.md").path))
+    XCTAssertFalse(
+      FileManager.default.fileExists(
+        atPath: rootURL.appendingPathComponent("content/posts/existing.md").path))
   }
 
   func testProtectedWriteRejectsExternalModificationAfterPreview() throws {
@@ -305,7 +356,8 @@ final class LocalPublishPreviewServiceTests: XCTestCase {
     try "external editor content".write(to: destinationURL, atomically: true, encoding: .utf8)
 
     XCTAssertThrowsError(try service.write(preview: preview, rootURL: rootURL)) { error in
-      guard case .previewOutdated("content/posts/existing.md")? = error as? LocalPublishPreviewError else {
+      guard case .previewOutdated("content/posts/existing.md")? = error as? LocalPublishPreviewError
+      else {
         return XCTFail("Expected previewOutdated, got \(error)")
       }
     }
@@ -334,7 +386,10 @@ final class LocalPublishPreviewServiceTests: XCTestCase {
     try "external new file".write(to: destinationURL, atomically: true, encoding: .utf8)
 
     XCTAssertThrowsError(try service.write(preview: preview, rootURL: rootURL)) { error in
-      guard case .previewOutdated("content/posts/new-after-preview.md")? = error as? LocalPublishPreviewError else {
+      guard
+        case .previewOutdated("content/posts/new-after-preview.md")? = error
+          as? LocalPublishPreviewError
+      else {
         return XCTFail("Expected previewOutdated, got \(error)")
       }
     }
@@ -421,7 +476,8 @@ final class LocalPublishPreviewServiceTests: XCTestCase {
     let imageDiff = try XCTUnwrap(preview.fileDiffs.first(where: { $0.kind == .image }))
 
     XCTAssertEqual(imageDiff.status, .unsafePath)
-    XCTAssertTrue(preview.issues.contains { $0.title == "发布路径不安全" && $0.message == "/tmp/cover.jpg" })
+    XCTAssertTrue(
+      preview.issues.contains { $0.title == "发布路径不安全" && $0.message == "/tmp/cover.jpg" })
   }
 
   func testPreviewMarksIdenticalExistingImageAsUnchanged() throws {
@@ -430,7 +486,8 @@ final class LocalPublishPreviewServiceTests: XCTestCase {
     let sourceURL = rootURL.appendingPathComponent("source-cover.jpg")
     let destinationDirectory = rootURL.appendingPathComponent("images", isDirectory: true)
     let destinationURL = destinationDirectory.appendingPathComponent("cover.jpg")
-    try FileManager.default.createDirectory(at: destinationDirectory, withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(
+      at: destinationDirectory, withIntermediateDirectories: true)
     let imageData = Data("identical image bytes".utf8)
     try imageData.write(to: sourceURL)
     try imageData.write(to: destinationURL)
@@ -487,11 +544,14 @@ final class LocalPublishPreviewServiceTests: XCTestCase {
     try Data("other image bytes".utf8).write(to: sourceURL)
 
     XCTAssertThrowsError(try service.write(preview: preview, rootURL: rootURL)) { error in
-      guard case .sourcePreviewOutdated("images/cover.jpg")? = error as? LocalPublishPreviewError else {
+      guard case .sourcePreviewOutdated("images/cover.jpg")? = error as? LocalPublishPreviewError
+      else {
         return XCTFail("Expected sourcePreviewOutdated, got \(error)")
       }
     }
-    XCTAssertFalse(FileManager.default.fileExists(atPath: rootURL.appendingPathComponent("images/cover.jpg").path))
+    XCTAssertFalse(
+      FileManager.default.fileExists(
+        atPath: rootURL.appendingPathComponent("images/cover.jpg").path))
   }
 
   func testProtectedMediaWriteRejectsSameBytesFromDifferentFileIdentity() throws {
@@ -513,7 +573,8 @@ final class LocalPublishPreviewServiceTests: XCTestCase {
     try FileManager.default.moveItem(at: replacementURL, to: sourceURL)
 
     XCTAssertThrowsError(try service.write(preview: preview, rootURL: rootURL)) { error in
-      guard case .sourcePreviewOutdated("images/cover.jpg")? = error as? LocalPublishPreviewError else {
+      guard case .sourcePreviewOutdated("images/cover.jpg")? = error as? LocalPublishPreviewError
+      else {
         return XCTFail("Expected sourcePreviewOutdated, got \(error)")
       }
     }
@@ -545,7 +606,9 @@ final class LocalPublishPreviewServiceTests: XCTestCase {
         return XCTFail("Expected unsafeSource, got \(error)")
       }
     }
-    XCTAssertFalse(FileManager.default.fileExists(atPath: rootURL.appendingPathComponent("images/cover.jpg").path))
+    XCTAssertFalse(
+      FileManager.default.fileExists(
+        atPath: rootURL.appendingPathComponent("images/cover.jpg").path))
   }
 
   func testDirectMediaWriteRejectsSymlinkSource() throws {
@@ -565,7 +628,8 @@ final class LocalPublishPreviewServiceTests: XCTestCase {
       ]
     )
 
-    XCTAssertThrowsError(try LocalPublishPreviewService().write(package: package, rootURL: rootURL)) { error in
+    XCTAssertThrowsError(try LocalPublishPreviewService().write(package: package, rootURL: rootURL))
+    { error in
       guard case .unsafeSource("images/cover.jpg")? = error as? LocalPublishPreviewError else {
         return XCTFail("Expected unsafeSource, got \(error)")
       }
@@ -575,7 +639,8 @@ final class LocalPublishPreviewServiceTests: XCTestCase {
   func testWriteRejectsRepositorySymlinkBeforeWritingOutsideRoot() throws {
     let rootURL = try makeRepositoryFixture()
     let outsideURL = FileManager.default.temporaryDirectory
-      .appendingPathComponent("PersonalSitePublisherMacOutside-\(UUID().uuidString)", isDirectory: true)
+      .appendingPathComponent(
+        "PersonalSitePublisherMacOutside-\(UUID().uuidString)", isDirectory: true)
     defer {
       try? FileManager.default.removeItem(at: rootURL)
       try? FileManager.default.removeItem(at: outsideURL)
@@ -588,20 +653,26 @@ final class LocalPublishPreviewServiceTests: XCTestCase {
     )
 
     let package = publishPackage(
-      files: [.init(kind: .markdown, repositoryPath: "content/posts/escape.md", content: "must not escape")]
+      files: [
+        .init(
+          kind: .markdown, repositoryPath: "content/posts/escape.md", content: "must not escape")
+      ]
     )
     let service = LocalPublishPreviewService()
 
     let preview = service.preview(package: package, rootURL: rootURL)
     XCTAssertEqual(preview.fileDiffs.first?.status, .unsafePath)
     XCTAssertThrowsError(try service.write(package: package, rootURL: rootURL))
-    XCTAssertFalse(FileManager.default.fileExists(atPath: outsideURL.appendingPathComponent("posts/escape.md").path))
+    XCTAssertFalse(
+      FileManager.default.fileExists(
+        atPath: outsideURL.appendingPathComponent("posts/escape.md").path))
   }
 
   func testWriteRejectsSymlinkBeforeDeletingImageOutsideRoot() throws {
     let rootURL = try makeRepositoryFixture()
     let outsideURL = FileManager.default.temporaryDirectory
-      .appendingPathComponent("PersonalSitePublisherMacOutside-\(UUID().uuidString)", isDirectory: true)
+      .appendingPathComponent(
+        "PersonalSitePublisherMacOutside-\(UUID().uuidString)", isDirectory: true)
     defer {
       try? FileManager.default.removeItem(at: rootURL)
       try? FileManager.default.removeItem(at: outsideURL)
@@ -611,14 +682,17 @@ final class LocalPublishPreviewServiceTests: XCTestCase {
     try "replacement image".write(to: sourceURL, atomically: true, encoding: .utf8)
     let outsideImageURL = outsideURL.appendingPathComponent("cover.jpg")
     try "outside original".write(to: outsideImageURL, atomically: true, encoding: .utf8)
-    try FileManager.default.createDirectory(at: rootURL.appendingPathComponent("images"), withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(
+      at: rootURL.appendingPathComponent("images"), withIntermediateDirectories: true)
     try FileManager.default.createSymbolicLink(
       at: rootURL.appendingPathComponent("images/cover.jpg"),
       withDestinationURL: outsideImageURL
     )
 
     let package = publishPackage(
-      files: [.init(kind: .image, repositoryPath: "images/cover.jpg", sourceFilePath: sourceURL.path)]
+      files: [
+        .init(kind: .image, repositoryPath: "images/cover.jpg", sourceFilePath: sourceURL.path)
+      ]
     )
 
     XCTAssertThrowsError(try LocalPublishPreviewService().write(package: package, rootURL: rootURL))
@@ -655,7 +729,8 @@ final class LocalPublishPreviewServiceTests: XCTestCase {
       ".repopress-local-publish-rollback-fixture",
       isDirectory: true
     )
-    try FileManager.default.createDirectory(at: rollbackDirectory, withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(
+      at: rollbackDirectory, withIntermediateDirectories: true)
     try Data("old content\n".utf8).write(
       to: rollbackDirectory.appendingPathComponent("0-backup")
     )
@@ -664,14 +739,17 @@ final class LocalPublishPreviewServiceTests: XCTestCase {
       atomically: true,
       encoding: .utf8
     )
-    let transaction = [
-      "phase": "applying",
-      "rollbackDirectoryPath": rollbackDirectory.path,
-      "entries": [[
-        "repositoryPath": "content/posts/existing.md",
-        "backupFileName": "0-backup"
-      ]]
-    ] as [String: Any]
+    let transaction =
+      [
+        "phase": "applying",
+        "rollbackDirectoryPath": rollbackDirectory.path,
+        "entries": [
+          [
+            "repositoryPath": "content/posts/existing.md",
+            "backupFileName": "0-backup",
+          ]
+        ],
+      ] as [String: Any]
     let transactionURL = rootURL.appendingPathComponent(
       ".repopress-local-publish-transaction.json"
     )
@@ -685,7 +763,13 @@ final class LocalPublishPreviewServiceTests: XCTestCase {
         content: "final published content"
       )
     ])
-    _ = try LocalPublishPreviewService().write(package: package, rootURL: rootURL)
+    let service = LocalPublishPreviewService()
+    let preview = service.preview(package: package, rootURL: rootURL)
+    XCTAssertTrue(
+      preview.issues.contains {
+        $0.severity == .warning && $0.title == "发现未完成的本地发布事务"
+      })
+    _ = try service.write(package: package, rootURL: rootURL)
 
     XCTAssertEqual(
       try String(contentsOf: destinationURL, encoding: .utf8),
@@ -693,6 +777,49 @@ final class LocalPublishPreviewServiceTests: XCTestCase {
     )
     XCTAssertFalse(FileManager.default.fileExists(atPath: transactionURL.path))
     XCTAssertFalse(FileManager.default.fileExists(atPath: rollbackDirectory.path))
+  }
+
+  func testRecoveryPrevalidatesEveryBackupBeforeChangingAnyDestination() throws {
+    let rootURL = try makeRepositoryFixture()
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let firstURL = rootURL.appendingPathComponent("content/posts/existing.md")
+    let secondURL = rootURL.appendingPathComponent("content/posts/second.md")
+    try "first current".write(to: firstURL, atomically: true, encoding: .utf8)
+    try "second current".write(to: secondURL, atomically: true, encoding: .utf8)
+    let rollbackDirectory = rootURL.appendingPathComponent(
+      ".repopress-local-publish-rollback-missing-backup",
+      isDirectory: true
+    )
+    try FileManager.default.createDirectory(
+      at: rollbackDirectory, withIntermediateDirectories: true)
+    try "first original".write(
+      to: rollbackDirectory.appendingPathComponent("0-backup"),
+      atomically: true,
+      encoding: .utf8
+    )
+    let service = LocalPublishPreviewService()
+    let transaction = LocalPublishTransaction(
+      phase: .applying,
+      rollbackDirectoryPath: rollbackDirectory.path,
+      entries: [
+        LocalPublishTransactionEntry(
+          repositoryPath: "content/posts/existing.md",
+          backupFileName: "0-backup"
+        ),
+        LocalPublishTransactionEntry(
+          repositoryPath: "content/posts/second.md",
+          backupFileName: "1-backup"
+        ),
+      ]
+    )
+    try JSONEncoder().encode(transaction).write(
+      to: service.localPublishTransactionURL(for: rootURL),
+      options: .atomic
+    )
+
+    XCTAssertThrowsError(try service.recoverInterruptedTransaction(at: rootURL))
+    XCTAssertEqual(try String(contentsOf: firstURL, encoding: .utf8), "first current")
+    XCTAssertEqual(try String(contentsOf: secondURL, encoding: .utf8), "second current")
   }
 
   func testWriteAtomicallyReplacesExistingImage() throws {
@@ -705,7 +832,9 @@ final class LocalPublishPreviewServiceTests: XCTestCase {
     try Data("old image".utf8).write(to: destinationURL)
     try Data("new image".utf8).write(to: sourceURL)
     let package = publishPackage(
-      files: [.init(kind: .image, repositoryPath: "images/cover.jpg", sourceFilePath: sourceURL.path)]
+      files: [
+        .init(kind: .image, repositoryPath: "images/cover.jpg", sourceFilePath: sourceURL.path)
+      ]
     )
 
     let written = try LocalPublishPreviewService().write(package: package, rootURL: rootURL)
@@ -780,9 +909,14 @@ final class LocalPublishPreviewServiceTests: XCTestCase {
 
   private func makeRepositoryFixture() throws -> URL {
     let rootURL = FileManager.default.temporaryDirectory
-      .appendingPathComponent("PersonalSitePublisherMacPublishTests-\(UUID().uuidString)", isDirectory: true)
+      .appendingPathComponent(
+        "PersonalSitePublisherMacPublishTests-\(UUID().uuidString)", isDirectory: true)
     try FileManager.default.createDirectory(
       at: rootURL.appendingPathComponent("content/posts", isDirectory: true),
+      withIntermediateDirectories: true
+    )
+    try FileManager.default.createDirectory(
+      at: rootURL.appendingPathComponent(".git", isDirectory: true),
       withIntermediateDirectories: true
     )
     try "old content\n".write(

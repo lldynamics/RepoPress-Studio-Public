@@ -311,8 +311,26 @@ extension KnowledgeDatabase {
       locator: text(statement, offset + 5),
       content: text(statement, offset + 6) ?? "",
       tokenEstimate: Int(sqlite3_column_int64(statement, offset + 7)),
-      contentHash: text(statement, offset + 8) ?? ""
+      contentHash: text(statement, offset + 8) ?? "",
+      visualAnchor: try decodeVisualAnchorJSON(text(statement, offset + 9))
     )
+  }
+
+  func visualAnchorJSON(_ value: KnowledgeVisualAnchor?) -> String? {
+    guard let value, let data = try? JSONEncoder().encode(value) else { return nil }
+    return String(decoding: data, as: UTF8.self)
+  }
+
+  func decodeVisualAnchorJSON(_ value: String?) throws -> KnowledgeVisualAnchor? {
+    guard let value = value?.nilIfEmpty else { return nil }
+    guard
+      let decoded = try? JSONDecoder().decode(
+        KnowledgeVisualAnchor.self, from: Data(value.utf8)
+      )
+    else {
+      throw KnowledgeLibraryError.databaseIntegrity("knowledge_chunks.visual_anchor_json 无法解码。")
+    }
+    return decoded
   }
 
   func ftsQuery(_ query: String) -> String {

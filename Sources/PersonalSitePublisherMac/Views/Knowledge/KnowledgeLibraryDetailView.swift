@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import PublishingWorkbenchCore
 import SwiftUI
@@ -16,6 +17,20 @@ struct KnowledgeLibraryDetailView: View {
   @State private var isParsingReaderBlocks = false
   @State private var isCompactInspectorPopoverPresented = false
   @AppStorage("knowledgeLibraryInspectorVisibleV1") private var isInspectorPresented = true
+  @AppStorage(ReaderTypographyConfiguration.fontSizeKey)
+  private var readingFontSize = ReaderTypographyConfiguration.defaultFontSize
+  @AppStorage(ReaderTypographyConfiguration.lineSpacingKey)
+  private var readingLineSpacing = ReaderTypographyConfiguration.defaultLineSpacing
+  @AppStorage(ReaderTypographyConfiguration.paragraphSpacingKey)
+  private var readingParagraphSpacing = ReaderTypographyConfiguration.defaultParagraphSpacing
+  @AppStorage(ReaderTypographyConfiguration.fontFamilyKey)
+  private var readingFontFamilyRawValue = ReaderTypographyConfiguration.defaultFontFamily.rawValue
+  @AppStorage(ReaderTypographyConfiguration.textAlignmentKey)
+  private var readingTextAlignmentRawValue = ReaderTypographyConfiguration.defaultTextAlignment
+    .rawValue
+  @AppStorage(ReaderTypographyConfiguration.codeHighlightThemeKey)
+  private var readingCodeHighlightThemeRawValue = ReaderTypographyConfiguration
+    .defaultCodeHighlightTheme.rawValue
 
   var body: some View {
     Group {
@@ -24,7 +39,7 @@ struct KnowledgeLibraryDetailView: View {
       } else {
         EmptyStateView(
           title: "资料库",
-          message: LocalizedStringKey("导入你读过的 EPUB 书籍、文章、网页或 PDF，写作和对话时 AI 可以按需引用。"),
+          message: LocalizedStringKey("导入图片、EPUB 书籍、文章、网页或 PDF，写作和对话时可以按需检索与引用。"),
           systemImage: "books.vertical",
           density: .fullPage,
           actionTitle: knowledge.documents.isEmpty ? "导入资料" : nil,
@@ -120,18 +135,36 @@ struct KnowledgeLibraryDetailView: View {
               if let activeSearchHit {
                 searchLocationBanner(activeSearchHit)
               }
-              KnowledgeDocumentReader(
-                blocks: readerBlocks,
-                isLoading: isDisplayedContentLoading || isParsingReaderBlocks,
-                errorMessage: displayedContentError,
-                highlightedBlockID: readerScrollTarget?.blockID,
-                highlightTerms: activeSearchHit?.highlightTerms ?? [],
-                retry: { knowledge.selectDocument(document.id) },
-                onAnnotateBlock: { beginAnnotatingBlock($0, document: document) },
-                onCopyBlockCitation: { copyBlockCitation($0, document: document) }
-              )
-              if displayedContentText.count > 100_000,
-                 activeSearchResult == nil {
+              if document.kind == .image {
+                KnowledgeImageDocumentView(
+                  imageURL: knowledge.originalFileURL(documentID: document.id),
+                  title: document.title,
+                  ocrText: knowledge.selectedDocumentCapturedText
+                    ?? knowledge.selectedDocumentText,
+                  highlightedAnchor: activeSearchResult?.chunk.visualAnchor
+                )
+              } else {
+                KnowledgeDocumentReader(
+                  blocks: readerBlocks,
+                  isLoading: isDisplayedContentLoading || isParsingReaderBlocks,
+                  errorMessage: displayedContentError,
+                  highlightedBlockID: readerScrollTarget?.blockID,
+                  highlightTerms: activeSearchHit?.highlightTerms ?? [],
+                  fontSize: readingFontSize,
+                  lineSpacing: readingLineSpacing,
+                  paragraphSpacing: readingParagraphSpacing,
+                  fontFamily: selectedReadingFontFamily,
+                  textAlignment: selectedReadingTextAlignment,
+                  codeHighlightTheme: selectedReadingCodeHighlightTheme,
+                  retry: { knowledge.selectDocument(document.id) },
+                  onAnnotateBlock: { beginAnnotatingBlock($0, document: document) },
+                  onCopyBlockCitation: { copyBlockCitation($0, document: document) }
+                )
+              }
+              if document.kind != .image,
+                displayedContentText.count > 100_000,
+                activeSearchResult == nil
+              {
                 HStack(alignment: .center, spacing: 12) {
                   Image(systemName: "doc.text.magnifyingglass")
                     .font(.title3)
@@ -230,6 +263,20 @@ struct KnowledgeLibraryDetailView: View {
           .foregroundStyle(.secondary)
       }
       Spacer()
+
+      if document.kind != .image {
+        ReaderTypographyMenu(
+          fontSize: $readingFontSize,
+          lineSpacing: $readingLineSpacing,
+          paragraphSpacing: $readingParagraphSpacing,
+          fontFamily: selectedReadingFontFamilyBinding,
+          textAlignment: selectedReadingTextAlignmentBinding,
+          codeHighlightTheme: selectedReadingCodeHighlightThemeBinding,
+          readingTheme: nil,
+          accessibilityIdentifier: "knowledge-reader-typography"
+        )
+        .labelStyle(.iconOnly)
+      }
 
       if isInspectorAvailable {
         Button {
@@ -333,7 +380,9 @@ struct KnowledgeLibraryDetailView: View {
           )
         )
         Toggle(
-          String(localized: "允许发送给远程 AI"),
+          document.kind == .image
+            ? String(localized: "允许发送识别文字给远程 AI")
+            : String(localized: "允许发送给远程 AI"),
           isOn: Binding(
             get: { document.allowsRemoteAIUse },
             set: { knowledge.setAllowsRemoteAIUse($0, documentID: document.id) }
@@ -494,9 +543,13 @@ struct KnowledgeLibraryDetailView: View {
       )
       .foregroundStyle(document.allowsLocalSemanticIndex ? Color.primary : Color.secondary)
       Label(
-        document.allowsRemoteAIUse
-          ? String(localized: "允许发送给远程 AI")
-          : String(localized: "禁止发送给远程 AI"),
+        document.kind == .image
+          ? document.allowsRemoteAIUse
+            ? String(localized: "允许发送识别文字给远程 AI")
+            : String(localized: "禁止发送识别文字给远程 AI")
+          : document.allowsRemoteAIUse
+            ? String(localized: "允许发送给远程 AI")
+            : String(localized: "禁止发送给远程 AI"),
         systemImage: document.allowsRemoteAIUse ? "arrow.up.shield" : "hand.raised"
       )
       .foregroundStyle(document.allowsRemoteAIUse ? Color.primary : Color.secondary)
@@ -591,6 +644,11 @@ struct KnowledgeLibraryDetailView: View {
   private func rebuildReaderBlocks(
     for request: KnowledgeReaderBlockRequest
   ) async {
+    guard knowledge.selectedDocument?.kind != .image else {
+      readerBlocks = []
+      isParsingReaderBlocks = false
+      return
+    }
     let limitsPreview = activeSearchResult == nil
     let source = limitsPreview ? displayedContentText : knowledge.selectedDocumentText
     guard !source.isEmpty, !request.isLoading else {
@@ -723,6 +781,42 @@ struct KnowledgeLibraryDetailView: View {
       : String(localized: "正文较长，当前详情只显示前 100,000 个字符；全文已完整保存并可检索。")
   }
 
+  private var selectedReadingFontFamily: ReaderFontFamily {
+    ReaderFontFamily(rawValue: readingFontFamilyRawValue)
+      ?? ReaderTypographyConfiguration.defaultFontFamily
+  }
+
+  private var selectedReadingFontFamilyBinding: Binding<ReaderFontFamily> {
+    Binding(
+      get: { selectedReadingFontFamily },
+      set: { readingFontFamilyRawValue = $0.rawValue }
+    )
+  }
+
+  private var selectedReadingTextAlignment: ReaderTextAlignment {
+    ReaderTextAlignment(rawValue: readingTextAlignmentRawValue)
+      ?? ReaderTypographyConfiguration.defaultTextAlignment
+  }
+
+  private var selectedReadingTextAlignmentBinding: Binding<ReaderTextAlignment> {
+    Binding(
+      get: { selectedReadingTextAlignment },
+      set: { readingTextAlignmentRawValue = $0.rawValue }
+    )
+  }
+
+  private var selectedReadingCodeHighlightTheme: ReaderCodeHighlightTheme {
+    ReaderCodeHighlightTheme(rawValue: readingCodeHighlightThemeRawValue)
+      ?? ReaderTypographyConfiguration.defaultCodeHighlightTheme
+  }
+
+  private var selectedReadingCodeHighlightThemeBinding: Binding<ReaderCodeHighlightTheme> {
+    Binding(
+      get: { selectedReadingCodeHighlightTheme },
+      set: { readingCodeHighlightThemeRawValue = $0.rawValue }
+    )
+  }
+
 }
 
 private enum KnowledgeContentPresentation: Hashable {
@@ -749,9 +843,16 @@ private struct KnowledgeDocumentReader: View {
   let errorMessage: String?
   let highlightedBlockID: Int?
   let highlightTerms: [String]
+  let fontSize: Double
+  let lineSpacing: Double
+  let paragraphSpacing: Double
+  let fontFamily: ReaderFontFamily
+  let textAlignment: ReaderTextAlignment
+  let codeHighlightTheme: ReaderCodeHighlightTheme
   let retry: () -> Void
   let onAnnotateBlock: (KnowledgeDocumentBlock) -> Void
   let onCopyBlockCitation: (KnowledgeDocumentBlock) -> Void
+  @Environment(\.colorScheme) private var colorScheme
 
   var body: some View {
     if isLoading {
@@ -776,7 +877,10 @@ private struct KnowledgeDocumentReader: View {
         density: .inline
       )
     } else {
-      LazyVStack(alignment: .leading, spacing: 12) {
+      LazyVStack(
+        alignment: .leading,
+        spacing: max(8, normalizedParagraphSpacing * normalizedFontSize)
+      ) {
         ForEach(blocks) { block in
           blockView(block)
             .padding(.horizontal, block.id == highlightedBlockID ? 10 : 0)
@@ -825,30 +929,37 @@ private struct KnowledgeDocumentReader: View {
         .accessibilityHeading(accessibilityHeadingLevel(level))
 
     case .paragraph:
-      inlineText(block.text, isHighlighted: block.id == highlightedBlockID)
-        .font(.body)
-        .lineSpacing(3)
+      readerBodyText(
+        block.text,
+        isHighlighted: block.id == highlightedBlockID,
+        foregroundColor: .labelColor
+      )
 
     case .quote:
-      inlineText(block.text, isHighlighted: block.id == highlightedBlockID)
-        .font(.body)
-        .foregroundStyle(.secondary)
-        .padding(.leading, 12)
-        .overlay(alignment: .leading) {
-          Rectangle()
-            .fill(Color.accentColor.opacity(0.45))
-            .frame(width: 2)
-            .accessibilityHidden(true)
-        }
-        .accessibilityLabel("引用：\(block.text)")
+      readerBodyText(
+        block.text,
+        isHighlighted: block.id == highlightedBlockID,
+        foregroundColor: .secondaryLabelColor
+      )
+      .padding(.leading, 12)
+      .overlay(alignment: .leading) {
+        Rectangle()
+          .fill(Color.accentColor.opacity(0.45))
+          .frame(width: 2)
+          .accessibilityHidden(true)
+      }
+      .accessibilityLabel("引用：\(block.text)")
 
     case .unorderedListItem:
       HStack(alignment: .firstTextBaseline, spacing: 8) {
         Image(systemName: "circle.fill")
           .font(.system(size: 5))
           .accessibilityHidden(true)
-        inlineText(block.text, isHighlighted: block.id == highlightedBlockID)
-          .font(.body)
+        readerBodyText(
+          block.text,
+          isHighlighted: block.id == highlightedBlockID,
+          foregroundColor: .labelColor
+        )
       }
       .accessibilityElement(children: .combine)
       .accessibilityLabel("列表项：\(block.text)")
@@ -859,31 +970,36 @@ private struct KnowledgeDocumentReader: View {
           .foregroundStyle(.secondary)
           .frame(minWidth: 20, alignment: .trailing)
           .accessibilityHidden(true)
-        inlineText(block.text, isHighlighted: block.id == highlightedBlockID)
-          .font(.body)
+        readerBodyText(
+          block.text,
+          isHighlighted: block.id == highlightedBlockID,
+          foregroundColor: .labelColor
+        )
       }
       .accessibilityElement(children: .combine)
       .accessibilityLabel("列表项：\(block.text)")
 
     case .code(let language):
+      let palette = ReaderCodePalette.resolve(
+        theme: codeHighlightTheme,
+        colorScheme: colorScheme
+      )
       VStack(alignment: .leading, spacing: 6) {
         if let language {
           Text(language.uppercased())
             .font(.caption.weight(.semibold))
-            .foregroundStyle(.secondary)
+            .foregroundStyle(palette.comment)
         }
-        KnowledgeHighlightedText.highlightedText(
-          block.text,
-          terms: block.id == highlightedBlockID ? highlightTerms : []
-        )
-          .font(.system(.body, design: .monospaced))
+        codeText(block, language: language)
+          .font(.body.monospaced())
           .frame(maxWidth: .infinity, alignment: .leading)
       }
       .padding(12)
-      .background(
-        WorkbenchBackgroundStyle.card,
-        in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
-      )
+      .background(palette.background, in: RoundedRectangle(cornerRadius: 8))
+      .overlay {
+        RoundedRectangle(cornerRadius: 8)
+          .stroke(palette.border, lineWidth: 1)
+      }
       .accessibilityElement(children: .combine)
       .accessibilityLabel("代码块：\(block.text)")
 
@@ -915,13 +1031,71 @@ private struct KnowledgeDocumentReader: View {
     )
   }
 
+  @ViewBuilder
+  private func readerBodyText(
+    _ text: String,
+    isHighlighted: Bool,
+    foregroundColor: NSColor
+  ) -> some View {
+    if textAlignment == .justified {
+      ReaderJustifiedText(
+        markdown: text,
+        fontFamily: fontFamily,
+        fontSize: normalizedFontSize,
+        fontWeight: .regular,
+        lineHeightMultiple: normalizedLineSpacing,
+        foregroundColor: foregroundColor,
+        highlightTerms: isHighlighted ? highlightTerms : []
+      )
+      .frame(maxWidth: .infinity, alignment: .leading)
+    } else {
+      inlineText(text, isHighlighted: isHighlighted)
+        .font(fontFamily.swiftUIFont(size: normalizedFontSize))
+        .lineSpacing(max(0, normalizedFontSize * (normalizedLineSpacing - 1)))
+        .foregroundStyle(Color(nsColor: foregroundColor))
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+  }
+
+  private func codeText(
+    _ block: KnowledgeDocumentBlock,
+    language: String?
+  ) -> Text {
+    if block.id == highlightedBlockID, !highlightTerms.isEmpty {
+      return KnowledgeHighlightedText.highlightedText(block.text, terms: highlightTerms)
+    }
+    return Text(
+      ReaderCodeSyntaxHighlighter.attributedString(
+        block.text,
+        language: language,
+        theme: codeHighlightTheme,
+        colorScheme: colorScheme
+      )
+    )
+  }
+
   private func headingFont(_ level: Int) -> Font {
     switch level {
-    case 1: .title2.weight(.semibold)
-    case 2: .title3.weight(.semibold)
-    case 3: .headline
-    default: .subheadline.weight(.semibold)
+    case 1:
+      fontFamily.swiftUIFont(size: max(24, normalizedFontSize * 1.55), weight: .semibold)
+    case 2:
+      fontFamily.swiftUIFont(size: max(21, normalizedFontSize * 1.32), weight: .semibold)
+    case 3:
+      fontFamily.swiftUIFont(size: max(18, normalizedFontSize * 1.12), weight: .semibold)
+    default: fontFamily.swiftUIFont(size: normalizedFontSize, weight: .semibold)
     }
+  }
+
+  private var normalizedFontSize: Double {
+    ReaderTypographyConfiguration.normalizedFontSize(fontSize)
+  }
+
+  private var normalizedLineSpacing: Double {
+    ReaderTypographyConfiguration.normalizedLineSpacing(lineSpacing)
+  }
+
+  private var normalizedParagraphSpacing: Double {
+    ReaderTypographyConfiguration.normalizedParagraphSpacing(paragraphSpacing)
   }
 
   private func accessibilityHeadingLevel(_ level: Int) -> AccessibilityHeadingLevel {

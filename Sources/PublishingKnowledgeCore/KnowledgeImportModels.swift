@@ -22,6 +22,7 @@ public struct KnowledgeImportCandidate: Identifiable, Hashable, Sendable {
     set { allowsRemoteAIUse = newValue }
   }
   public var originalFilenameExtension: String?
+  public var imageMetadata: KnowledgeImageMetadata?
   public var originalData: Data?
   public var capturedText: String?
   public var originalContentHash: String
@@ -47,6 +48,7 @@ public struct KnowledgeImportCandidate: Identifiable, Hashable, Sendable {
     allowsRemoteAIUse: Bool? = nil,
     allowsAIUse: Bool? = nil,
     originalFilenameExtension: String? = nil,
+    imageMetadata: KnowledgeImageMetadata? = nil,
     originalData: Data? = nil,
     capturedText: String? = nil,
     originalContentHash: String,
@@ -70,6 +72,7 @@ public struct KnowledgeImportCandidate: Identifiable, Hashable, Sendable {
     self.allowsLocalSemanticIndex = allowsLocalSemanticIndex
     self.allowsRemoteAIUse = allowsRemoteAIUse ?? allowsAIUse
     self.originalFilenameExtension = originalFilenameExtension
+    self.imageMetadata = imageMetadata
     self.originalData = originalData
     self.capturedText = capturedText
     self.originalContentHash = originalContentHash

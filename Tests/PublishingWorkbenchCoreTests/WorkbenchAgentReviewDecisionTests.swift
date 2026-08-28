@@ -315,9 +315,13 @@ final class WorkbenchAgentReviewDecisionTests: XCTestCase {
       toolRuns: [
         WorkbenchAIAgentToolRunRecord(
           toolCallID: "tool-\(step.id.uuidString)",
-          command: .replaceBody,
+          toolID: AIAgentToolID.replaceBody,
+          modelToolName: WorkbenchAutomationCommandID.replaceBody.rawValue,
+          executionPolicy: .requiresConfirmation,
+          catalogRevision: WorkbenchAIAgentToolInvocation.legacyCatalogRevision,
           status: .awaitingConfirmation,
           summary: "等待用户确认",
+          correlationID: step.id,
           automationStepID: step.id,
           targetDraftID: draft.id,
           startedAt: Date()

@@ -154,7 +154,10 @@ struct ContentHealthDetailView: View {
       } context: {
         contentHealthOperationalContextPanel(
           presentation,
-          selectedRow: selectedRow
+          selectedRow: selectedRow,
+          slugChangeImpact: selectedRow.flatMap {
+            snapshot.slugChangeImpacts[$0.draftID]
+          }
         )
       }
     }
@@ -286,7 +289,6 @@ struct ContentHealthDetailView: View {
     } else {
       articleHealthFlow(
         presentation.rows,
-        actionQueue: presentation.actionQueue,
         selectedDraftID: selectedDraftID,
         profileName: profileName,
         duplicateMarkdownPaths: presentation.duplicateMarkdownPaths,
@@ -459,7 +461,19 @@ struct ContentHealthDetailView: View {
     _ snapshot: ContentHealthSnapshot,
     usesCompactLayout: Bool
   ) -> some View {
-    LazyVGrid(
+    let readiness = UnifiedPublishReadinessPresentation.make(
+      plan: store.batchPublishPlan,
+      preview: store.batchRemotePublishPreviewSnapshot,
+      profile: store.activeProfile,
+      pendingDeletionCount: store.pendingRemoteRepositoryCleanupRequests.count,
+      contentHealth: .init(
+        errorCount: snapshot.errorCount,
+        warningCount: snapshot.warningCount,
+        aiFixCount: snapshot.aiFixQueueItems.count,
+        passingDraftCount: snapshot.passingDraftCount
+      )
+    )
+    return LazyVGrid(
       columns: Array(
         repeating: GridItem(.flexible(minimum: 108), spacing: 8),
         count: usesCompactLayout ? 2 : 4
@@ -469,25 +483,25 @@ struct ContentHealthDetailView: View {
     ) {
       healthSummaryBadge(
         title: "错误",
-        value: snapshot.errorCount,
+        value: readiness.contentHealth.errorCount,
         systemImage: "xmark.octagon",
         color: WorkbenchTheme.risk
       )
       healthSummaryBadge(
         title: "警告",
-        value: snapshot.warningCount,
+        value: readiness.contentHealth.warningCount,
         systemImage: "exclamationmark.triangle",
         color: WorkbenchTheme.warning
       )
       healthSummaryBadge(
         title: "AI",
-        value: snapshot.aiFixQueueItems.count,
+        value: readiness.contentHealth.aiFixCount,
         systemImage: "sparkles",
         color: WorkbenchTheme.inventoryForeground
       )
       healthSummaryBadge(
         title: "通过",
-        value: snapshot.passingDraftCount,
+        value: readiness.contentHealth.passingDraftCount,
         systemImage: "checkmark.circle",
         color: WorkbenchTheme.success
       )
@@ -495,7 +509,7 @@ struct ContentHealthDetailView: View {
     .frame(maxWidth: usesCompactLayout ? 300 : 552, alignment: .leading)
     .accessibilityElement(children: .ignore)
     .accessibilityLabel("内容健康摘要")
-    .accessibilityValue(contentHealthSummaryAccessibilityValue(snapshot))
+    .accessibilityValue(contentHealthReadinessAccessibilityValue(readiness))
   }
 
   private func healthSummaryBadge(
@@ -523,6 +537,18 @@ struct ContentHealthDetailView: View {
         : WorkbenchBackgroundStyle.control,
       in: Capsule()
     )
+  }
+
+  private func contentHealthReadinessAccessibilityValue(
+    _ readiness: UnifiedPublishReadinessPresentation
+  ) -> String {
+    let health = readiness.contentHealth
+    return [
+      "\(health.errorCount) 个错误",
+      "\(health.warningCount) 个警告",
+      "\(health.aiFixCount) 项可用 AI 修复",
+      "\(health.passingDraftCount) 篇文章通过",
+    ].joined(separator: "，")
   }
 
   @ViewBuilder
@@ -566,7 +592,8 @@ struct ContentHealthDetailView: View {
 
   private func contentHealthOperationalContextPanel(
     _ presentation: ContentHealthArticlePresentation,
-    selectedRow: ContentHealthArticleRowModel?
+    selectedRow: ContentHealthArticleRowModel?,
+    slugChangeImpact: SlugChangeImpact?
   ) -> some View {
     return VStack(alignment: .leading, spacing: 12) {
       Label("问题详情", systemImage: "sidebar.right")
@@ -615,7 +642,7 @@ struct ContentHealthDetailView: View {
           }
         }
 
-        if let impact = store.slugChangeImpact(for: selectedRow.draftID) {
+        if let impact = slugChangeImpact {
           slugChangeResolutionCard(impact)
         }
 
@@ -781,19 +808,19 @@ struct ContentHealthDetailView: View {
 
   private func articleHealthFlow(
     _ rows: [ContentHealthArticleRowModel],
-    actionQueue: ContentHealthActionQueue,
     selectedDraftID: UUID?,
     profileName: String,
     duplicateMarkdownPaths: Set<String>,
     siteIssues: [PreflightIssue]
   ) -> some View {
-    let groups = articleGrouping == .actionQueue
-      ? actionQueue.groups
+    let groups =
+      articleGrouping == .actionQueue
+      ? ContentHealthRootCausePresentation.groups(rows: rows)
       : articleGrouping.groups(
-          rows: rows,
-          profileName: profileName,
-          duplicateMarkdownPaths: duplicateMarkdownPaths
-        )
+        rows: rows,
+        profileName: profileName,
+        duplicateMarkdownPaths: duplicateMarkdownPaths
+      )
     let hasActionableSiteIssue = siteIssues.contains {
       $0.severity == .error || $0.severity == .warning
     }
@@ -801,10 +828,10 @@ struct ContentHealthDetailView: View {
       HStack {
         Text(
           articleGrouping == .actionQueue
-            ? String(localized: "行动队列")
+            ? String(localized: "按共同问题归类")
             : String(localized: "文章分组")
         )
-          .font(.headline)
+        .font(.headline)
         Spacer()
         Text("\(rows.count) 篇")
           .font(.caption)

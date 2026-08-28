@@ -744,13 +744,21 @@ extension AIChatContextInspectorView {
   }
 
   func openAISettings() {
-    requestedSettingsTabID = SettingsDestination.ai(.connection).id
-    openSettings()
+    SettingsNavigation.present(
+      destination: .ai(.connection),
+      workspaceAction: settingsWorkspaceCommandAction
+    ) {
+      openSettings()
+    }
   }
 
   func openAICredentialsSettings() {
-    requestedSettingsTabID = SettingsDestination.ai(.credentials).id
-    openSettings()
+    SettingsNavigation.present(
+      destination: .ai(.credentials),
+      workspaceAction: settingsWorkspaceCommandAction
+    ) {
+      openSettings()
+    }
   }
 
   var contextModeBinding: Binding<AIPublishingChatContextMode> {

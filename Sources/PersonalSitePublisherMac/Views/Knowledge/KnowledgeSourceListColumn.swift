@@ -8,7 +8,7 @@ struct KnowledgeSourceListColumn: View {
   @ObservedObject var knowledge: KnowledgeStore
   @EnvironmentObject private var browserBridge: KnowledgeBrowserBridge
   @Environment(\.openSettings) var openSettings
-  @AppStorage("settingsRequestedTabID") var requestedSettingsTabID = ""
+  @Environment(\.settingsWorkspaceCommandAction) var settingsWorkspaceCommandAction
   @AppStorage("dataManagementRequestedSection") var dataManagementRequestedSection = DataManagementSection.backup.rawValue
   @State var searchText = ""
   @State var isImportPresented = false
@@ -28,6 +28,7 @@ struct KnowledgeSourceListColumn: View {
   @State var isBatchTagEditorPresented = false
   @State var batchTags = ""
   @State var hoveredDocumentID: UUID?
+  @State var isInsertingKnowledgeImage = false
   @State var listPresentation: KnowledgeSourceListPresentationSnapshot
   @FocusState var isSearchFocused: Bool
 
@@ -80,7 +81,6 @@ struct KnowledgeSourceListColumn: View {
     }
     .sheet(isPresented: $isSettingsPresented) {
       KnowledgeSettingsView(
-        store: store,
         knowledge: knowledge,
         browserBridge: browserBridge,
         onOpenLibrary: {

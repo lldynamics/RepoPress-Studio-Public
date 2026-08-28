@@ -242,6 +242,11 @@ public struct DeploymentStatusSignal: Identifiable, Codable, Hashable, Sendable 
   public var message: String
   public var urlText: String?
   public var logExcerpt: [DeploymentLogEntry]
+  public var expectedBranch: String?
+  public var expectedCommitSHA: String?
+  public var observedBranch: String?
+  public var observedCommitSHA: String?
+  public var attributionVerified: Bool?
 
   private enum CodingKeys: String, CodingKey {
     case id
@@ -250,6 +255,11 @@ public struct DeploymentStatusSignal: Identifiable, Codable, Hashable, Sendable 
     case message
     case urlText
     case logExcerpt
+    case expectedBranch
+    case expectedCommitSHA
+    case observedBranch
+    case observedCommitSHA
+    case attributionVerified
   }
 
   public init(
@@ -258,7 +268,12 @@ public struct DeploymentStatusSignal: Identifiable, Codable, Hashable, Sendable 
     title: String,
     message: String,
     urlText: String? = nil,
-    logExcerpt: [DeploymentLogEntry] = []
+    logExcerpt: [DeploymentLogEntry] = [],
+    expectedBranch: String? = nil,
+    expectedCommitSHA: String? = nil,
+    observedBranch: String? = nil,
+    observedCommitSHA: String? = nil,
+    attributionVerified: Bool? = nil
   ) {
     self.id = id
     self.level = level
@@ -266,6 +281,11 @@ public struct DeploymentStatusSignal: Identifiable, Codable, Hashable, Sendable 
     self.message = DeploymentLogExcerptPolicy.redactedAndBoundedMessage(message)
     self.urlText = urlText
     self.logExcerpt = DeploymentLogExcerptPolicy.boundedEntries(logExcerpt)
+    self.expectedBranch = expectedBranch
+    self.expectedCommitSHA = expectedCommitSHA
+    self.observedBranch = observedBranch
+    self.observedCommitSHA = observedCommitSHA
+    self.attributionVerified = attributionVerified
   }
 
   public init(from decoder: Decoder) throws {
@@ -280,6 +300,11 @@ public struct DeploymentStatusSignal: Identifiable, Codable, Hashable, Sendable 
     logExcerpt = DeploymentLogExcerptPolicy.boundedEntries(
       try container.decodeIfPresent([DeploymentLogEntry].self, forKey: .logExcerpt) ?? []
     )
+    expectedBranch = try container.decodeIfPresent(String.self, forKey: .expectedBranch)
+    expectedCommitSHA = try container.decodeIfPresent(String.self, forKey: .expectedCommitSHA)
+    observedBranch = try container.decodeIfPresent(String.self, forKey: .observedBranch)
+    observedCommitSHA = try container.decodeIfPresent(String.self, forKey: .observedCommitSHA)
+    attributionVerified = try container.decodeIfPresent(Bool.self, forKey: .attributionVerified)
   }
 
   public func encode(to encoder: Encoder) throws {
@@ -290,6 +315,11 @@ public struct DeploymentStatusSignal: Identifiable, Codable, Hashable, Sendable 
     try container.encode(message, forKey: .message)
     try container.encodeIfPresent(urlText, forKey: .urlText)
     try container.encode(logExcerpt, forKey: .logExcerpt)
+    try container.encodeIfPresent(expectedBranch, forKey: .expectedBranch)
+    try container.encodeIfPresent(expectedCommitSHA, forKey: .expectedCommitSHA)
+    try container.encodeIfPresent(observedBranch, forKey: .observedBranch)
+    try container.encodeIfPresent(observedCommitSHA, forKey: .observedCommitSHA)
+    try container.encodeIfPresent(attributionVerified, forKey: .attributionVerified)
   }
 }
 
@@ -304,6 +334,11 @@ public struct DeploymentStatusSnapshot: Identifiable, Codable, Hashable, Sendabl
   public var siteURLText: String?
   public var checkedAt: Date
   public var signals: [DeploymentStatusSignal]
+  public var expectedBranch: String?
+  public var expectedCommitSHA: String?
+  public var observedBranch: String?
+  public var observedCommitSHA: String?
+  public var attributionVerified: Bool?
 
   public init(
     id: UUID = UUID(),
@@ -315,7 +350,12 @@ public struct DeploymentStatusSnapshot: Identifiable, Codable, Hashable, Sendabl
     message: String,
     siteURLText: String?,
     checkedAt: Date = Date(),
-    signals: [DeploymentStatusSignal]
+    signals: [DeploymentStatusSignal],
+    expectedBranch: String? = nil,
+    expectedCommitSHA: String? = nil,
+    observedBranch: String? = nil,
+    observedCommitSHA: String? = nil,
+    attributionVerified: Bool? = nil
   ) {
     self.id = id
     self.profileID = profileID
@@ -327,6 +367,11 @@ public struct DeploymentStatusSnapshot: Identifiable, Codable, Hashable, Sendabl
     self.siteURLText = siteURLText
     self.checkedAt = checkedAt
     self.signals = signals
+    self.expectedBranch = expectedBranch
+    self.expectedCommitSHA = expectedCommitSHA
+    self.observedBranch = observedBranch
+    self.observedCommitSHA = observedCommitSHA
+    self.attributionVerified = attributionVerified
   }
 }
 
@@ -650,6 +695,8 @@ struct GitHubActionRunStatusResponse: Decodable {
   var status: String?
   var conclusion: String?
   var htmlURL: String?
+  var headBranch: String?
+  var headSHA: String?
 
   private enum CodingKeys: String, CodingKey {
     case id
@@ -657,6 +704,8 @@ struct GitHubActionRunStatusResponse: Decodable {
     case status
     case conclusion
     case htmlURL = "html_url"
+    case headBranch = "head_branch"
+    case headSHA = "head_sha"
   }
 }
 
@@ -722,10 +771,14 @@ struct GitHubCheckRunAnnotationResponse: Decodable {
 struct GitLabPipelineStatusResponse: Decodable {
   var status: String?
   var webURL: String?
+  var ref: String?
+  var sha: String?
 
   private enum CodingKeys: String, CodingKey {
     case status
     case webURL = "web_url"
+    case ref
+    case sha
   }
 }
 
@@ -855,4 +908,6 @@ struct EndpointStatusPayload {
   var title: String?
   var message: String?
   var urlText: String?
+  var branch: String?
+  var commitSHA: String?
 }

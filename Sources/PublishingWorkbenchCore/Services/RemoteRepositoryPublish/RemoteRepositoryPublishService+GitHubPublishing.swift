@@ -96,37 +96,30 @@ extension RemoteRepositoryPublishService {
           branch: branchName,
           token: token
         )
-        let validationSHA = if createsReview && file.operation == .delete {
-          try await githubContentSHA(
-            repository: repository,
-            path: file.repositoryPath,
-            branch: targetBranch,
-            token: token
-          )
-        } else {
-          existingSHA
-        }
         let content = file.operation == .upsert ? try contentData(for: file) : nil
-        let isAlreadyPublished = mode == .directCommit
+        let isAlreadyPublished =
+          mode == .directCommit
           && file.operation == .upsert
-          && content.flatMap { githubRemoteContentMatches(data: $0, remoteSHA: existingSHA) } == true
-        let isVerifiedLegacyDelete = file.operation == .delete
-          && githubLegacyDeleteContentMatches(file: file, remoteSHA: validationSHA)
+          && content.flatMap {
+            githubRemoteContentMatches(data: $0, remoteSHA: existingSHA)
+          } == true
+        let isVerifiedLegacyDelete =
+          file.operation == .delete
+          && githubLegacyDeleteContentMatches(file: file, remoteSHA: existingSHA)
         let validatesExpectedVersion = mode == .directCommit
-          || (createsReview && file.operation == .delete)
         if validatesExpectedVersion {
-          let isIdempotentMissingDelete = file.operation == .delete && validationSHA == nil
+          let isIdempotentMissingDelete = file.operation == .delete && existingSHA == nil
           if !isAlreadyPublished && !isVerifiedLegacyDelete && !isIdempotentMissingDelete {
             try validateExpectedRemoteVersion(
               path: file.repositoryPath,
               expected: file.expectedRemoteSHA,
-              actual: validationSHA
+              actual: existingSHA
             )
           }
         }
 
         if file.operation == .delete {
-          if createsReview, validationSHA != nil {
+          if createsReview, existingSHA != nil {
             reviewPendingPaths.append(file.repositoryPath)
           }
           if let existingSHA {
@@ -313,7 +306,7 @@ extension RemoteRepositoryPublishService {
       .init(
         stage: .completed,
         progress: 1,
-        message: CoreL10n.text("发布完成"),
+        message: mode.completedProgressMessage,
         detail: CoreL10n.format("共提交 %@ 个文件", String(changedPaths.count)),
         completedByteCount: totalSourceByteCount,
         totalByteCount: totalSourceByteCount
@@ -434,36 +427,29 @@ extension RemoteRepositoryPublishService {
           branch: branchName,
           token: token
         )
-        let validationSHA = if createsReview && file.operation == .delete {
-          try await githubContentSHA(
-            repository: repository,
-            path: file.repositoryPath,
-            branch: targetBranch,
-            token: token
-          )
-        } else {
-          existingSHA
-        }
         let content = file.operation == .upsert ? try contentData(for: file) : nil
-        let isAlreadyPublished = file.operation == .upsert
-          && content.flatMap { githubRemoteContentMatches(data: $0, remoteSHA: existingSHA) } == true
-        let isVerifiedLegacyDelete = file.operation == .delete
-          && githubLegacyDeleteContentMatches(file: file, remoteSHA: validationSHA)
+        let isAlreadyPublished =
+          file.operation == .upsert
+          && content.flatMap {
+            githubRemoteContentMatches(data: $0, remoteSHA: existingSHA)
+          } == true
+        let isVerifiedLegacyDelete =
+          file.operation == .delete
+          && githubLegacyDeleteContentMatches(file: file, remoteSHA: existingSHA)
         let validatesExpectedVersion = mode == .directCommit
-          || (createsReview && file.operation == .delete)
         if validatesExpectedVersion {
-          let isIdempotentMissingDelete = file.operation == .delete && validationSHA == nil
+          let isIdempotentMissingDelete = file.operation == .delete && existingSHA == nil
           if !isAlreadyPublished && !isVerifiedLegacyDelete && !isIdempotentMissingDelete {
             try validateExpectedRemoteVersion(
               path: file.repositoryPath,
               expected: file.expectedRemoteSHA,
-              actual: validationSHA
+              actual: existingSHA
             )
           }
         }
 
         if file.operation == .delete {
-          if createsReview, validationSHA != nil {
+          if createsReview, existingSHA != nil {
             reviewPendingPaths.append(file.repositoryPath)
           }
           if existingSHA != nil {
@@ -657,7 +643,7 @@ extension RemoteRepositoryPublishService {
       .init(
         stage: .completed,
         progress: 1,
-        message: CoreL10n.text("发布完成"),
+        message: mode.completedProgressMessage,
         detail: CoreL10n.format("一次提交 %@ 个文件", String(changedPaths.count)),
         completedByteCount: totalSourceByteCount,
         totalByteCount: totalSourceByteCount

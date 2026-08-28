@@ -9,6 +9,7 @@ struct KnowledgeImportAssistantView: View {
   @State private var webURLText = ""
   @State private var preview: KnowledgeImportPreview?
   @State private var performsPDFOCR = true
+  @State private var performsImageOCR = true
   @State private var isAnalyzing = false
   @State private var isCommitting = false
   @State private var statusMessage: StatusMessage?
@@ -74,7 +75,7 @@ struct KnowledgeImportAssistantView: View {
       VStack(alignment: .leading, spacing: 3) {
         Text("导入资料")
           .font(.title2.weight(.semibold))
-        Text("把 EPUB 书籍、文章、网页或 PDF 保存到本机资料库并建立检索索引。")
+        Text("把图片、EPUB 书籍、文章、网页或 PDF 保存到本机资料库并建立检索索引。")
           .font(.callout)
           .foregroundStyle(.secondary)
       }
@@ -133,7 +134,7 @@ struct KnowledgeImportAssistantView: View {
           VStack(alignment: .leading, spacing: 3) {
             Text("本地文件或文件夹")
               .font(.callout.weight(.medium))
-            Text("支持 EPUB、Markdown、TXT、HTML、PDF；文件夹会批量分析。")
+            Text("支持 JPEG、PNG、HEIC、EPUB、Markdown、TXT、HTML、PDF；文件夹会批量分析。")
               .font(.caption)
               .foregroundStyle(.secondary)
           }
@@ -153,6 +154,17 @@ struct KnowledgeImportAssistantView: View {
             Text("识别扫描版 PDF")
               .font(.callout.weight(.medium))
             Text("仅对没有文字层的页面使用本机 Vision OCR；一次最多处理 200 页。")
+              .font(.caption)
+              .foregroundStyle(.secondary)
+          }
+        }
+        .disabled(isAnalyzing || isCommitting)
+
+        Toggle(isOn: $performsImageOCR) {
+          VStack(alignment: .leading, spacing: 3) {
+            Text("识别图片中的文字")
+              .font(.callout.weight(.medium))
+            Text("只在本机使用 Vision OCR；不会上传原图。")
               .font(.caption)
               .foregroundStyle(.secondary)
           }
@@ -205,6 +217,29 @@ struct KnowledgeImportAssistantView: View {
         metric(String(localized: "新增"), value: "\(preview.newCount)", image: "plus.circle")
         metric(String(localized: "更新"), value: "\(preview.updateCount)", image: "arrow.triangle.2.circlepath")
         metric(String(localized: "重复"), value: "\(preview.duplicateCount)", image: "doc.on.doc")
+      }
+      let selectedCandidates = preview.candidates.filter {
+        selectedCandidateIDs.contains($0.id)
+      }
+      let selectedImageCount = selectedCandidates.filter { $0.kind == .image }.count
+      let selectedByteCount = selectedCandidates.reduce(into: Int64(0)) { total, candidate in
+        total += Int64(candidate.originalData?.count ?? 0)
+      }
+      if selectedImageCount > 0 {
+        let selectedByteText = ByteCountFormatter.string(
+          fromByteCount: selectedByteCount,
+          countStyle: .file
+        )
+        Label(
+          String(
+            format: String(localized: "已选 %lld 张图片 · %@"),
+            Int64(selectedImageCount),
+            selectedByteText
+          ),
+          systemImage: "photo.stack"
+        )
+        .font(.caption.weight(.medium))
+        .foregroundStyle(.secondary)
       }
       Text("来源：\(preview.sourceName) · 只会保存到本机资料库，不会生成发布草稿。")
         .font(.caption)
@@ -289,9 +324,15 @@ struct KnowledgeImportAssistantView: View {
   private func candidateRow(_ candidate: KnowledgeImportCandidate) -> some View {
     Toggle(isOn: candidateSelectionBinding(candidate.id)) {
       HStack(alignment: .top, spacing: 12) {
-        Image(systemName: candidate.kind.systemImage)
-          .frame(width: 18)
-          .foregroundStyle(.secondary)
+        if candidate.kind == .image, let data = candidate.originalData {
+          KnowledgeImageDataThumbnailView(data: data, requestID: candidate.id)
+            .frame(width: 44, height: 44)
+            .accessibilityHidden(true)
+        } else {
+          Image(systemName: candidate.kind.systemImage)
+            .frame(width: 18)
+            .foregroundStyle(.secondary)
+        }
         VStack(alignment: .leading, spacing: 3) {
           Text(candidate.title)
             .font(.callout.weight(.medium))
@@ -445,6 +486,7 @@ struct KnowledgeImportAssistantView: View {
         sourceURLs: fileURLs,
         options: KnowledgeImportOptions(
           performsPDFOCR: performsPDFOCR,
+          performsImageOCR: performsImageOCR,
           maximumPDFOCRPageCount: 200
         )
       )
@@ -544,6 +586,12 @@ struct KnowledgeImportAssistantView: View {
 
   private func candidateDetail(_ candidate: KnowledgeImportCandidate) -> String {
     var parts = [candidate.kind.localizedDisplayName]
+    if let image = candidate.imageMetadata {
+      parts.append("\(image.pixelWidth) × \(image.pixelHeight)")
+      parts.append("识别 \(image.recognizedRegionCount) 个区域")
+      parts.append(image.wasPrivacySanitized ? "已通过隐私清理" : "未执行隐私清理")
+      return parts.joined(separator: " · ")
+    }
     if !candidate.authors.isEmpty {
       parts.append(candidate.authors.joined(separator: "、"))
     }

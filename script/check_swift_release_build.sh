@@ -29,6 +29,13 @@ mkdir -p \
   "$HOME/Library/Caches/org.swift.swiftpm"
 
 cd "$ROOT_DIR"
+RELEASE_ARTIFACT_MANIFEST="${RELEASE_ARTIFACT_MANIFEST:-$ROOT_DIR/.build/release-artifact-manifest.json}"
+if [[ -f "$RELEASE_ARTIFACT_MANIFEST" ]]; then
+  python3 "$ROOT_DIR/script/release_artifact_manifest.py" validate \
+    --root "$ROOT_DIR" --manifest "$RELEASE_ARTIFACT_MANIFEST"
+  echo "swift release build gate: reused validated Release artifact manifest"
+  exit 0
+fi
 swift build \
   -c release \
   --disable-sandbox \

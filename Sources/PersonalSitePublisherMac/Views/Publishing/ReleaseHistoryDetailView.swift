@@ -208,14 +208,7 @@ struct ReleaseHistoryDetailView: View {
   }
 
   private func releaseFailureGroupCard(_ group: ReleaseHistoryFailureGroup) -> some View {
-    DisclosureGroup {
-      LazyVStack(alignment: .leading, spacing: 10) {
-        ForEach(group.entries) { entry in
-          releaseRecordCard(entry)
-        }
-      }
-      .padding(.top, 10)
-    } label: {
+    VStack(alignment: .leading, spacing: 10) {
       VStack(alignment: .leading, spacing: 6) {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
           Label("重复失败", systemImage: "exclamationmark.triangle")
@@ -237,6 +230,13 @@ struct ReleaseHistoryDetailView: View {
           .foregroundStyle(.secondary)
           .lineLimit(1)
       }
+
+      LazyVStack(alignment: .leading, spacing: 10) {
+        ForEach(group.entries) { entry in
+          releaseRecordCard(entry)
+        }
+      }
+      .padding(.top, 10)
     }
     .padding(14)
     .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
@@ -823,7 +823,7 @@ struct ReleaseHistoryDetailView: View {
         HStack(spacing: 8) {
           ProgressView()
             .controlSize(.small)
-          Text("正在检查部署状态...")
+          Text("正在检查部署状态…")
             .font(.callout)
             .foregroundStyle(.secondary)
         }
@@ -900,7 +900,7 @@ struct ReleaseHistoryDetailView: View {
       return AnyShapeStyle(WorkbenchTheme.warning)
     case .failed:
       return AnyShapeStyle(WorkbenchTheme.risk)
-    case .localOnly, .unknown:
+    case .localOnly, .previewOnly, .reviewWithdrawn, .unknown:
       return AnyShapeStyle(.secondary)
     }
   }

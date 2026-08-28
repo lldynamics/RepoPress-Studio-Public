@@ -154,6 +154,18 @@ struct MarkdownComposerAttachmentState {
   var activeInsertedImageMetadataID: UUID?
   var importTask: Task<Void, Never>?
   var importRequestID: UUID?
+  var automaticImageImportToast: MarkdownAutomaticImageImportToast?
+  var automaticImageImportToastTask: Task<Void, Never>?
+}
+
+struct MarkdownAutomaticImageImportToast: Equatable, Identifiable {
+  let id: UUID
+  let message: String
+
+  init(id: UUID = UUID(), message: String) {
+    self.id = id
+    self.message = message
+  }
 }
 
 struct MarkdownComposerSelectionActionState {
@@ -457,6 +469,16 @@ extension MacMarkdownComposerView {
   var attachmentImportRequestID: UUID? {
     get { attachmentState.importRequestID }
     nonmutating set { attachmentState.importRequestID = newValue }
+  }
+
+  var automaticImageImportToast: MarkdownAutomaticImageImportToast? {
+    get { attachmentState.automaticImageImportToast }
+    nonmutating set { attachmentState.automaticImageImportToast = newValue }
+  }
+
+  var automaticImageImportToastTask: Task<Void, Never>? {
+    get { attachmentState.automaticImageImportToastTask }
+    nonmutating set { attachmentState.automaticImageImportToastTask = newValue }
   }
 
   var activeSelectionAIAction: AIPublishingActionKind? {

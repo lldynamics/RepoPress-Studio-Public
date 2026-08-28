@@ -13,12 +13,23 @@ final class KnowledgeSettingsPresentationTests: XCTestCase {
     XCTAssertFalse(state.browserConnection)
   }
 
-  func testApplicationSettingsExcludeTheLibraryManagedSettingsSheet() {
+  func testSettingsTabsAreCompleteAcrossSiteAndApplicationGroups() {
+    XCTAssertEqual(
+      SettingsTab.siteSettings,
+      [.configurationStatus, .defaultRules, .token, .ai]
+    )
     XCTAssertEqual(
       SettingsTab.applicationSettings,
       [.dataManagement, .appearance, .editor, .rss, .privacy]
     )
+    let groupedTabs = SettingsTab.siteSettings + SettingsTab.applicationSettings
     XCTAssertEqual(SettingsTab.allCases.count, 9)
+    XCTAssertEqual(groupedTabs.count, SettingsTab.allCases.count)
+    XCTAssertEqual(Set(groupedTabs), Set(SettingsTab.allCases))
+    XCTAssertEqual(Set(groupedTabs.map(\.id)).count, groupedTabs.count)
+    XCTAssertTrue(SettingsTab.siteSettings.allSatisfy(\.isSiteScoped))
+    XCTAssertTrue(SettingsTab.applicationSettings.allSatisfy { !$0.isSiteScoped })
+
     XCTAssertEqual(SettingsTab.configurationStatus.title, "站点概览")
     XCTAssertEqual(SettingsTab.defaultRules.title, "内容与路径")
     XCTAssertEqual(SettingsTab.token.title, "发布连接")
@@ -33,6 +44,25 @@ final class KnowledgeSettingsPresentationTests: XCTestCase {
     XCTAssertEqual(SettingsTab.privacy.title, "隐私与安全")
     XCTAssertEqual(SettingsTab.dataManagement.title, "数据与备份")
     XCTAssertFalse(SettingsTab.rss.isSiteScoped)
+  }
+
+  func testSettingsTabIDsRemainStableAndScopeAccurate() {
+    let expectedIDs: [SettingsTab: String] = [
+      .configurationStatus: "configurationStatus",
+      .defaultRules: "defaultRules",
+      .token: "token",
+      .ai: "ai",
+      .appearance: "appearance",
+      .editor: "editor",
+      .rss: "rss",
+      .privacy: "privacy",
+      .dataManagement: "dataManagement",
+    ]
+
+    for tab in SettingsTab.allCases {
+      XCTAssertEqual(tab.id, expectedIDs[tab])
+      XCTAssertEqual(tab.isSiteScoped, SettingsTab.siteSettings.contains(tab))
+    }
   }
 
   func testMergedSettingsKeepLegacyRequestedTabIDsUsable() {

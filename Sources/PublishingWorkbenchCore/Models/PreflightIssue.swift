@@ -216,19 +216,22 @@ public struct ContentHealthReport: Sendable {
   public var publicRiskSummary: PublicRiskSummary
   public var publicRiskDraftSummaries: [DraftPreflightSummary]
   public var aiFixQueueItems: [AIPublishingFixQueueItem]
+  public var slugChangeImpacts: [UUID: SlugChangeImpact]
 
   public init(
     sitePreflightIssues: [PreflightIssue],
     draftSummaries: [DraftPreflightSummary],
     publicRiskSummary: PublicRiskSummary,
     publicRiskDraftSummaries: [DraftPreflightSummary],
-    aiFixQueueItems: [AIPublishingFixQueueItem]
+    aiFixQueueItems: [AIPublishingFixQueueItem],
+    slugChangeImpacts: [UUID: SlugChangeImpact] = [:]
   ) {
     self.sitePreflightIssues = sitePreflightIssues
     self.draftSummaries = draftSummaries
     self.publicRiskSummary = publicRiskSummary
     self.publicRiskDraftSummaries = publicRiskDraftSummaries
     self.aiFixQueueItems = aiFixQueueItems
+    self.slugChangeImpacts = slugChangeImpacts
   }
 }
 

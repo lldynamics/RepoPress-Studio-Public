@@ -103,6 +103,13 @@ class TestSpec:
 
 
 @dataclasses.dataclass(frozen=True)
+class TestBatch:
+    suites: tuple[str, ...]
+    tests: tuple[TestSpec, ...]
+    filter_pattern: str
+
+
+@dataclasses.dataclass(frozen=True)
 class Shard:
     label: str
     slug: str
@@ -774,6 +781,11 @@ def make_suite_filter(target: str, suites: list[str]) -> str:
     return rf"^{re.escape(target)}\.({alternatives})/"
 
 
+def make_test_filter(tests: Collection[TestSpec]) -> str:
+    alternatives = "|".join(re.escape(test.raw) for test in tests)
+    return rf"^(?:{alternatives})$"
+
+
 def batch_suites(
     tests: list[TestSpec],
     *,
@@ -781,29 +793,57 @@ def batch_suites(
     excluded_suites: set[str],
     maximum_suites: int,
     maximum_tests: int,
-) -> list[tuple[list[str], list[TestSpec]]]:
+) -> list[TestBatch]:
+    if maximum_suites <= 0 or maximum_tests <= 0:
+        fail("Swift test shard limits must be positive")
+
     by_suite: dict[str, list[TestSpec]] = {}
     for test in tests:
         if test.target == target and test.suite not in excluded_suites:
             by_suite.setdefault(test.suite, []).append(test)
 
-    batches: list[tuple[list[str], list[TestSpec]]] = []
+    batches: list[TestBatch] = []
     current_suites: list[str] = []
     current_tests: list[TestSpec] = []
+
+    def flush_current() -> None:
+        if not current_suites:
+            return
+        batches.append(
+            TestBatch(
+                suites=tuple(current_suites),
+                tests=tuple(current_tests),
+                filter_pattern=make_suite_filter(target, current_suites),
+            )
+        )
+        current_suites.clear()
+        current_tests.clear()
+
     for suite in sorted(by_suite):
         suite_tests = sorted(by_suite[suite], key=lambda test: test.raw)
+        if len(suite_tests) > maximum_tests:
+            flush_current()
+            for start in range(0, len(suite_tests), maximum_tests):
+                chunk = tuple(suite_tests[start : start + maximum_tests])
+                batches.append(
+                    TestBatch(
+                        suites=(suite,),
+                        tests=chunk,
+                        filter_pattern=make_test_filter(chunk),
+                    )
+                )
+            continue
         would_exceed = current_suites and (
             len(current_suites) >= maximum_suites
             or len(current_tests) + len(suite_tests) > maximum_tests
         )
         if would_exceed:
-            batches.append((current_suites, current_tests))
-            current_suites = []
-            current_tests = []
+            flush_current()
         current_suites.append(suite)
         current_tests.extend(suite_tests)
-    if current_suites:
-        batches.append((current_suites, current_tests))
+    flush_current()
+    if any(len(batch.tests) > maximum_tests for batch in batches):
+        fail(f"generated an oversized Swift test shard for {target}")
     return batches
 
 
@@ -898,15 +938,29 @@ def build_shards(
     # These two App test suites have process-global state and retain their
     # historical isolated-process behavior when present.  They are optional:
     # a deleted or renamed suite must not make the entire inventory invalid.
-    if web_content_security_tests:
+    web_content_batches = batch_suites(
+        list(web_content_security_tests),
+        target=MAC_TARGET,
+        excluded_suites=set(),
+        maximum_suites=1,
+        maximum_tests=MAC_BATCH_MAX_TESTS,
+    )
+    for index, batch in enumerate(web_content_batches, start=1):
+        is_only_batch = len(web_content_batches) == 1
         shards.append(
             Shard(
-                label=f"{MAC_TARGET}.{WEB_CONTENT_SECURITY_SUITE}",
-                slug="web-content-security",
-                filter_pattern=make_suite_filter(
-                    MAC_TARGET, [WEB_CONTENT_SECURITY_SUITE]
+                label=(
+                    f"{MAC_TARGET}.{WEB_CONTENT_SECURITY_SUITE}"
+                    if is_only_batch
+                    else f"{MAC_TARGET}.{WEB_CONTENT_SECURITY_SUITE} batch {index}"
                 ),
-                tests=web_content_security_tests,
+                slug=(
+                    "web-content-security"
+                    if is_only_batch
+                    else f"web-content-security-{index:02d}"
+                ),
+                filter_pattern=batch.filter_pattern,
+                tests=batch.tests,
             )
         )
     for index, test in enumerate(sorted(settings_tests, key=lambda item: item.raw), start=1):
@@ -926,13 +980,13 @@ def build_shards(
         maximum_suites=MAC_BATCH_MAX_SUITES,
         maximum_tests=MAC_BATCH_MAX_TESTS,
     )
-    for index, (suites, batch_tests) in enumerate(mac_batches, start=1):
+    for index, batch in enumerate(mac_batches, start=1):
         shards.append(
             Shard(
                 label=f"{MAC_TARGET} batch {index}",
                 slug=f"mac-batch-{index:02d}",
-                filter_pattern=make_suite_filter(MAC_TARGET, suites),
-                tests=tuple(batch_tests),
+                filter_pattern=batch.filter_pattern,
+                tests=batch.tests,
             )
         )
 
@@ -965,13 +1019,13 @@ def build_shards(
             maximum_suites=CORE_BATCH_MAX_SUITES,
             maximum_tests=CORE_BATCH_MAX_TESTS,
         )
-        for index, (suites, batch_tests) in enumerate(core_batches, start=1):
+        for index, batch in enumerate(core_batches, start=1):
             shards.append(
                 Shard(
                     label=f"{CORE_TARGET} batch {index}",
                     slug=f"core-{index:02d}",
-                    filter_pattern=make_suite_filter(CORE_TARGET, suites),
-                    tests=tuple(batch_tests),
+                    filter_pattern=batch.filter_pattern,
+                    tests=batch.tests,
                 )
             )
 
@@ -988,7 +1042,7 @@ def build_shards(
             maximum_suites=LEAF_BATCH_MAX_SUITES,
             maximum_tests=LEAF_BATCH_MAX_TESTS,
         )
-        for index, (suites, batch_tests) in enumerate(leaf_batches, start=1):
+        for index, batch in enumerate(leaf_batches, start=1):
             shards.append(
                 Shard(
                     label=f"{target} batch {index}",
@@ -996,19 +1050,35 @@ def build_shards(
                         f"leaf-{target_index:02d}-{target_slug(target)}-"
                         f"{index:02d}"
                     ),
-                    filter_pattern=make_suite_filter(target, suites),
-                    tests=tuple(batch_tests),
+                    filter_pattern=batch.filter_pattern,
+                    tests=batch.tests,
                 )
             )
 
     assignments: dict[str, int] = {test.raw: 0 for test in tests}
     for shard in shards:
+        if not shard.tests:
+            fail(f"generated an empty Swift test shard: {shard.label}")
+        shard_targets = {test.target for test in shard.tests}
+        if len(shard_targets) != 1:
+            fail(f"generated a mixed-target Swift test shard: {shard.label}")
+        shard_target = next(iter(shard_targets))
+        maximum_tests = (
+            MAC_BATCH_MAX_TESTS
+            if shard_target == MAC_TARGET
+            else CORE_BATCH_MAX_TESTS
+            if shard_target == CORE_TARGET
+            else LEAF_BATCH_MAX_TESTS
+        )
+        if len(shard.tests) > maximum_tests:
+            fail(
+                f"generated an oversized Swift test shard for {shard_target}: "
+                f"{len(shard.tests)} > {maximum_tests}"
+            )
         matcher = re.compile(shard.filter_pattern)
         for test in tests:
             if matcher.search(test.raw):
                 assignments[test.raw] += 1
-        if not shard.tests:
-            fail(f"generated an empty Swift test shard: {shard.label}")
     invalid = [raw for raw, count in assignments.items() if count != 1]
     if invalid:
         fail(f"Swift test partition has missing or duplicate assignments: {invalid[:5]}")

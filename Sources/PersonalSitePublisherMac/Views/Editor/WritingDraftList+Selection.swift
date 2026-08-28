@@ -199,8 +199,12 @@ extension WritingDraftColumn {
 
   func openDataManagement(_ section: DataManagementSection) {
     dataManagementRequestedSection = section.rawValue
-    requestedSettingsTabID = SettingsTab.dataManagement.id
-    openSettings()
+    SettingsNavigation.present(
+      destination: .data(SettingsDataDestination(rawValue: section.rawValue) ?? .drafts),
+      workspaceAction: settingsWorkspaceCommandAction
+    ) {
+      openSettings()
+    }
   }
 
   func applyDraftOwnershipTransfer(_ plan: DraftOwnershipTransferPlan) -> Bool {

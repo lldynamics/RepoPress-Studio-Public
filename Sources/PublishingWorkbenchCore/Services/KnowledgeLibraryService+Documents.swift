@@ -46,6 +46,17 @@ extension KnowledgeLibraryService {
     try database().document(id: id)
   }
 
+  /// Returns only the current revision's managed original after validating that
+  /// its storage reference remains inside the library root.
+  public func originalFileURL(documentID: UUID) throws -> URL? {
+    guard let revision = try database().currentRevision(documentID: documentID),
+      let reference = revision.originalStorageReference?.nilIfEmpty,
+      let url = safeStorageFileURL(for: reference),
+      fileManager.fileExists(atPath: url.path)
+    else { return nil }
+    return url
+  }
+
   public func folders() throws -> [KnowledgeFolder] {
     try database().folders()
   }

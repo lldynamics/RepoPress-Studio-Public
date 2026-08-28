@@ -6,39 +6,18 @@ extension ReleaseHistoryDetailView {
   func releaseRecordCard(_ entry: ReleaseLedgerEntry) -> some View {
     let record = entry.record
 
-    return DisclosureGroup {
-      releaseRecordCardDetails(entry)
-        .padding(.top, 10)
-    } label: {
-      ViewThatFits(in: .horizontal) {
-        HStack(alignment: .firstTextBaseline, spacing: 10) {
-          releaseRecordStatusBadges(entry)
-          Text(record.title)
-            .font(.callout.weight(.medium))
-            .lineLimit(1)
-          Spacer(minLength: 10)
-          releaseRecordTimestamp(record)
-        }
-
-        VStack(alignment: .leading, spacing: 5) {
-          releaseRecordStatusBadges(entry)
-          Text(record.title)
-            .font(.callout.weight(.medium))
-            .lineLimit(2)
-          Text(entry.statusMessage)
-            .font(.caption)
-            .foregroundStyle(ledgerStatusForeground(entry.status))
-            .lineLimit(2)
-          releaseRecordTimestamp(record)
-        }
-      }
-    }
-    .padding(14)
-    .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
-    .accessibilityElement(children: .contain)
-    .accessibilityLabel("发布记录：\(record.title)")
-    .accessibilityValue("\(entry.status.localizedDisplayName)，\(record.createdAt.workbenchShortText)")
-    .accessibilityIdentifier("release-record-\(record.id)")
+    return releaseRecordCardDetails(entry)
+      .padding(14)
+      .background(
+        WorkbenchBackgroundStyle.card,
+        in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
+      )
+      .accessibilityElement(children: .contain)
+      .accessibilityLabel("发布记录：\(record.title)")
+      .accessibilityValue(
+        "\(entry.status.localizedDisplayName)，\(record.createdAt.workbenchShortText)"
+      )
+      .accessibilityIdentifier("release-record-\(record.id)")
   }
 
   private func releaseRecordCardDetails(_ entry: ReleaseLedgerEntry) -> some View {
@@ -146,9 +125,12 @@ extension ReleaseHistoryDetailView {
           Text(deploymentStatus.message)
             .font(.callout)
             .foregroundStyle(.secondary)
-          Label("\(deploymentStatus.nextActionTitle)：\(deploymentStatus.nextActionMessage)", systemImage: "checklist")
-            .font(.callout)
-            .foregroundStyle(statusForeground(deploymentStatus.level))
+          Label(
+            "\(deploymentStatus.nextActionTitle)：\(deploymentStatus.nextActionMessage)",
+            systemImage: "checklist"
+          )
+          .font(.callout)
+          .foregroundStyle(statusForeground(deploymentStatus.level))
 
           if deploymentHistory.count > 1 {
             DeploymentStatusTrendChart(history: deploymentHistory)
@@ -171,7 +153,8 @@ extension ReleaseHistoryDetailView {
                   .fixedSize(horizontal: false, vertical: true)
                 Spacer()
                 if let urlText = signal.urlText,
-                   let url = URL(string: urlText) {
+                  let url = URL(string: urlText)
+                {
                   Button {
                     ExternalURLOpener.open(url)
                   } label: {
@@ -192,7 +175,9 @@ extension ReleaseHistoryDetailView {
           }
         }
         .padding(10)
-        .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
+        .background(
+          WorkbenchBackgroundStyle.card,
+          in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
       }
 
       if !recoveryPackage.nextActions.isEmpty {
@@ -214,7 +199,9 @@ extension ReleaseHistoryDetailView {
           }
         }
         .padding(10)
-        .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
+        .background(
+          WorkbenchBackgroundStyle.card,
+          in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
       }
 
       if let rollbackDraft = entry.rollbackDraft {
@@ -253,11 +240,15 @@ extension ReleaseHistoryDetailView {
               }
             }
             .padding(8)
-            .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
+            .background(
+              WorkbenchBackgroundStyle.card,
+              in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
           }
         }
         .padding(10)
-        .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
+        .background(
+          WorkbenchBackgroundStyle.card,
+          in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
       }
 
       releaseRecordActions(entry)
@@ -270,43 +261,7 @@ extension ReleaseHistoryDetailView {
     }
     let primaryFailure = orderedEntries.first(where: { $0.level == .error })
 
-    return DisclosureGroup {
-      VStack(alignment: .leading, spacing: 7) {
-        ForEach(orderedEntries) { entry in
-          HStack(alignment: .top, spacing: 7) {
-            Image(systemName: entry.level.systemImage)
-              .foregroundStyle(deploymentLogForeground(entry.level))
-              .frame(width: 15)
-            VStack(alignment: .leading, spacing: 2) {
-              HStack(spacing: 6) {
-                Text(entry.source)
-                  .font(.caption.weight(.medium))
-                  .foregroundStyle(.secondary)
-                if let stepName = entry.stepName?.nilIfEmpty {
-                  Text(stepName)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .workbenchTruncatedIdentity(stepName)
-                }
-                if let locationText = entry.locationText {
-                  Text(locationText)
-                    .font(.caption.monospaced())
-                    .foregroundStyle(.secondary)
-                    .workbenchTruncatedIdentity(locationText)
-                }
-              }
-              Text(entry.message)
-                .font(.caption.monospaced())
-                .textSelection(.enabled)
-                .fixedSize(horizontal: false, vertical: true)
-                .lineLimit(12)
-            }
-            Spacer(minLength: 0)
-          }
-        }
-      }
-      .padding(.top, 6)
-    } label: {
+    return VStack(alignment: .leading, spacing: 7) {
       HStack(alignment: .firstTextBaseline, spacing: 7) {
         Label("构建日志摘录", systemImage: "doc.text.magnifyingglass")
           .font(.caption.weight(.semibold))
@@ -321,6 +276,39 @@ extension ReleaseHistoryDetailView {
             .textSelection(.enabled)
         }
         Spacer(minLength: 0)
+      }
+
+      ForEach(orderedEntries) { entry in
+        HStack(alignment: .top, spacing: 7) {
+          Image(systemName: entry.level.systemImage)
+            .foregroundStyle(deploymentLogForeground(entry.level))
+            .frame(width: 15)
+          VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 6) {
+              Text(entry.source)
+                .font(.caption.weight(.medium))
+                .foregroundStyle(.secondary)
+              if let stepName = entry.stepName?.nilIfEmpty {
+                Text(stepName)
+                  .font(.caption)
+                  .foregroundStyle(.secondary)
+                  .workbenchTruncatedIdentity(stepName)
+              }
+              if let locationText = entry.locationText {
+                Text(locationText)
+                  .font(.caption.monospaced())
+                  .foregroundStyle(.secondary)
+                  .workbenchTruncatedIdentity(locationText)
+              }
+            }
+            Text(entry.message)
+              .font(.caption.monospaced())
+              .textSelection(.enabled)
+              .fixedSize(horizontal: false, vertical: true)
+              .lineLimit(12)
+          }
+          Spacer(minLength: 0)
+        }
       }
     }
     .accessibilityIdentifier("release-deployment-log-excerpt")
@@ -385,7 +373,8 @@ extension ReleaseHistoryDetailView {
       .accessibilityIdentifier("release-record-\(record.id)-copy-diagnostics")
 
       if let siteURLText = deploymentStatus.siteURLText,
-         let siteURL = URL(string: siteURLText) {
+        let siteURL = URL(string: siteURLText)
+      {
         Button {
           ExternalURLOpener.open(siteURL)
         } label: {
@@ -519,7 +508,8 @@ extension ReleaseHistoryDetailView {
           Button(role: .destructive) {
             pendingDangerousReleaseAction = .withdrawReview(record)
           } label: {
-            releaseRecordActionLabel("撤回线上 Review", systemImage: "arrow.down.forward.and.arrow.up.backward.circle")
+            releaseRecordActionLabel(
+              "撤回线上 Review", systemImage: "arrow.down.forward.and.arrow.up.backward.circle")
           }
           .disabled(store.isRemoteRepositoryPublishing)
           .tint(WorkbenchTheme.risk)
@@ -554,21 +544,22 @@ extension ReleaseHistoryDetailView {
 
   func performDangerousReleaseAction(_ action: DangerousReleaseAction) async {
     switch action {
-    case let .resumeReview(record):
+    case .resumeReview(let record):
       await store.resumeRemoteReview(record)
-    case let .withdrawReview(record):
+    case .withdrawReview(let record):
       await store.withdrawRemoteReview(record)
-    case let .rollbackRemote(record):
+    case .rollbackRemote(let record):
       await store.rollbackRemoteRelease(record)
     }
   }
 
   func canResumeRemoteReview(_ record: ReleaseRecord) -> Bool {
     guard record.kind == .remotePublishFailure,
-          record.reviewURL?.trimmedForPublishing.nilIfEmpty == nil,
-          record.commitSHA?.trimmedForPublishing.nilIfEmpty != nil,
-          let branchName = record.branchName?.trimmedForPublishing.nilIfEmpty,
-          let targetBranch = record.targetBranch?.trimmedForPublishing.nilIfEmpty else {
+      record.reviewURL?.trimmedForPublishing.nilIfEmpty == nil,
+      record.commitSHA?.trimmedForPublishing.nilIfEmpty != nil,
+      let branchName = record.branchName?.trimmedForPublishing.nilIfEmpty,
+      let targetBranch = record.targetBranch?.trimmedForPublishing.nilIfEmpty
+    else {
       return false
     }
     return branchName != targetBranch
@@ -578,7 +569,8 @@ extension ReleaseHistoryDetailView {
     switch record.kind {
     case .remoteDirectCommit, .remotePublishFailure:
       return record.commitSHA?.trimmedForPublishing.nilIfEmpty != nil
-    case .localWrite, .batchLocalWrite, .directCommit, .reviewBranch, .remoteReviewRequest, .remoteRollback, .remoteReviewWithdrawal:
+    case .localWrite, .batchLocalWrite, .directCommit, .reviewBranch, .remotePreviewBranch,
+      .remoteReviewRequest, .remoteRollback, .remoteReviewWithdrawal:
       return false
     }
   }
@@ -587,7 +579,8 @@ extension ReleaseHistoryDetailView {
     switch record.kind {
     case .remoteReviewRequest:
       return record.reviewURL?.trimmedForPublishing.nilIfEmpty != nil
-    case .localWrite, .batchLocalWrite, .directCommit, .reviewBranch, .remoteDirectCommit, .remotePublishFailure, .remoteRollback, .remoteReviewWithdrawal:
+    case .localWrite, .batchLocalWrite, .directCommit, .reviewBranch, .remoteDirectCommit,
+      .remotePreviewBranch, .remotePublishFailure, .remoteRollback, .remoteReviewWithdrawal:
       return false
     }
   }

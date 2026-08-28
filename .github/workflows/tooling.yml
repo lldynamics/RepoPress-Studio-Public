@@ -109,6 +109,7 @@ jobs:
           path: |
             .build/*gate-result.json
             .build/*gate-summary.md
+            .build/*.diagnostics/
       - name: Publish release-tooling summary
         if: always()
         run: |

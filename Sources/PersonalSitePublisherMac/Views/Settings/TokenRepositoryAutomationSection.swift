@@ -2,7 +2,7 @@ import PublishingWorkbenchCore
 import SwiftUI
 
 struct TokenRepositoryAutomationSection: View {
-  @ObservedObject var store: WorkbenchStore
+  @ObservedObject var automationSettings: WorkbenchAutomationSettingsFeatureFacade
 
   var body: some View {
     Section("当前工作区自动化") {
@@ -10,7 +10,7 @@ struct TokenRepositoryAutomationSection: View {
         .toggleStyle(.switch)
         .accessibilityLabel("启用当前工作区自动检查远端")
         .accessibilityValue(
-          store.repositoryAutoSyncSettings.isEnabled ? "开启" : "关闭"
+          automationSettings.repositoryAutoSyncSettings.isEnabled ? "开启" : "关闭"
         )
         .accessibilityIdentifier("token-repository-auto-sync-enabled")
 
@@ -20,26 +20,28 @@ struct TokenRepositoryAutomationSection: View {
         }
       }
       .pickerStyle(.menu)
-      .disabled(!store.repositoryAutoSyncSettings.isEnabled)
+      .disabled(!automationSettings.repositoryAutoSyncSettings.isEnabled)
       .accessibilityLabel("当前工作区远端自动检查最短间隔")
-      .accessibilityValue("\(store.repositoryAutoSyncSettings.normalizedIntervalMinutes) 分钟")
+      .accessibilityValue(
+        "\(automationSettings.repositoryAutoSyncSettings.normalizedIntervalMinutes) 分钟"
+      )
       .accessibilityIdentifier("token-repository-auto-sync-interval")
 
       Toggle("检查前 fetch upstream", isOn: repositoryAutoSyncFetchBeforeScanBinding)
         .toggleStyle(.checkbox)
-        .disabled(!store.repositoryAutoSyncSettings.isEnabled)
+        .disabled(!automationSettings.repositoryAutoSyncSettings.isEnabled)
         .accessibilityLabel("当前工作区检查前 fetch upstream")
         .accessibilityValue(
-          store.repositoryAutoSyncSettings.fetchBeforeScan ? "开启" : "关闭"
+          automationSettings.repositoryAutoSyncSettings.fetchBeforeScan ? "开启" : "关闭"
         )
         .accessibilityIdentifier("token-repository-auto-sync-fetch-upstream")
 
       Toggle("自动导入远端文章", isOn: repositoryAutoImportRemoteArticlesBinding)
         .toggleStyle(.checkbox)
-        .disabled(!store.repositoryAutoSyncSettings.isEnabled)
+        .disabled(!automationSettings.repositoryAutoSyncSettings.isEnabled)
         .accessibilityLabel("当前工作区自动导入远端文章")
         .accessibilityValue(
-          store.repositoryAutoSyncSettings.autoImportRemoteArticles ? "开启" : "关闭"
+          automationSettings.repositoryAutoSyncSettings.autoImportRemoteArticles ? "开启" : "关闭"
         )
         .accessibilityIdentifier("token-repository-auto-sync-auto-import")
 
@@ -53,11 +55,11 @@ struct TokenRepositoryAutomationSection: View {
 
   private var repositoryAutoSyncEnabledBinding: Binding<Bool> {
     Binding(
-      get: { store.repositoryAutoSyncSettings.isEnabled },
+      get: { automationSettings.repositoryAutoSyncSettings.isEnabled },
       set: { isEnabled in
-        store.updateRepositoryAutoSyncSettings(
+        automationSettings.updateRepositoryAutoSyncSettings(
           TokenRepositoryAutomationSettingsSupport.updated(
-            store.repositoryAutoSyncSettings,
+            automationSettings.repositoryAutoSyncSettings,
             isEnabled: isEnabled
           )
         )
@@ -67,11 +69,11 @@ struct TokenRepositoryAutomationSection: View {
 
   private var repositoryAutoSyncIntervalBinding: Binding<Int> {
     Binding(
-      get: { store.repositoryAutoSyncSettings.normalizedIntervalMinutes },
+      get: { automationSettings.repositoryAutoSyncSettings.normalizedIntervalMinutes },
       set: { intervalMinutes in
-        store.updateRepositoryAutoSyncSettings(
+        automationSettings.updateRepositoryAutoSyncSettings(
           TokenRepositoryAutomationSettingsSupport.updated(
-            store.repositoryAutoSyncSettings,
+            automationSettings.repositoryAutoSyncSettings,
             intervalMinutes: intervalMinutes
           )
         )
@@ -81,11 +83,11 @@ struct TokenRepositoryAutomationSection: View {
 
   private var repositoryAutoSyncFetchBeforeScanBinding: Binding<Bool> {
     Binding(
-      get: { store.repositoryAutoSyncSettings.fetchBeforeScan },
+      get: { automationSettings.repositoryAutoSyncSettings.fetchBeforeScan },
       set: { fetchBeforeScan in
-        store.updateRepositoryAutoSyncSettings(
+        automationSettings.updateRepositoryAutoSyncSettings(
           TokenRepositoryAutomationSettingsSupport.updated(
-            store.repositoryAutoSyncSettings,
+            automationSettings.repositoryAutoSyncSettings,
             fetchBeforeScan: fetchBeforeScan
           )
         )
@@ -95,11 +97,11 @@ struct TokenRepositoryAutomationSection: View {
 
   private var repositoryAutoImportRemoteArticlesBinding: Binding<Bool> {
     Binding(
-      get: { store.repositoryAutoSyncSettings.autoImportRemoteArticles },
+      get: { automationSettings.repositoryAutoSyncSettings.autoImportRemoteArticles },
       set: { autoImportRemoteArticles in
-        store.updateRepositoryAutoSyncSettings(
+        automationSettings.updateRepositoryAutoSyncSettings(
           TokenRepositoryAutomationSettingsSupport.updated(
-            store.repositoryAutoSyncSettings,
+            automationSettings.repositoryAutoSyncSettings,
             autoImportRemoteArticles: autoImportRemoteArticles
           )
         )

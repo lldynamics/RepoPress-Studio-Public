@@ -321,7 +321,7 @@ struct WritingDraftColumn: View {
   let onFocusDraft: (UUID, WorkspaceSection) -> Void
   @ObservedObject var draftListState: DraftListStore
   @Environment(\.openSettings) var openSettings
-  @AppStorage("settingsRequestedTabID") var requestedSettingsTabID = ""
+  @Environment(\.settingsWorkspaceCommandAction) var settingsWorkspaceCommandAction
   @AppStorage("dataManagementRequestedSection") var dataManagementRequestedSection =
     DataManagementSection.drafts.rawValue
   @AppStorage("writingDraftListDisplayModeV1") var displayModeRawValue =

@@ -226,6 +226,8 @@ public final class ImageWorkbenchStore: ObservableObject {
     } else {
       let saved = ByteCountFormatter.string(fromByteCount: result.savedBytes, countStyle: .file)
       switch operation {
+      case .removePrivacyMetadata:
+        message = CoreL10n.format("已为 %d 张图片生成隐私清理副本。", result.optimizedCount)
       case .optimizeJPEG:
         message = CoreL10n.format("已批量生成 %d 个 JPEG 优化副本，预计减少 %@。", result.optimizedCount, saved)
       case .convertWebP:
@@ -658,6 +660,28 @@ public final class ImageWorkbenchStore: ObservableObject {
       return
     }
     startImageBatch(.optimizeJPEG, drafts: [selectedDraft])
+  }
+
+  public func sanitizeSelectedDraftImagePrivacy() {
+    guard let selectedDraft else {
+      imageActionMessage = CoreL10n.text("请先选择一篇文章。")
+      return
+    }
+    startImageBatch(.removePrivacyMetadata, drafts: [selectedDraft])
+  }
+
+  public func sanitizeVisibleDraftImagePrivacy() {
+    startImageBatch(.removePrivacyMetadata, drafts: visibleDrafts)
+  }
+
+  public func sanitizeVisibleDraftImagePrivacy(
+    includedAttachmentIDsByDraftID: [UUID: Set<UUID>]
+  ) {
+    startImageBatch(
+      .removePrivacyMetadata,
+      drafts: visibleDrafts.filter { includedAttachmentIDsByDraftID[$0.id]?.isEmpty == false },
+      includedAttachmentIDsByDraftID: includedAttachmentIDsByDraftID
+    )
   }
 
   public func optimizeVisibleDraftJPEGImages() {

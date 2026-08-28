@@ -2,7 +2,7 @@ import PublishingWorkbenchCore
 import SwiftUI
 
 struct TokenDeploymentAutomationSection: View {
-  @ObservedObject var store: WorkbenchStore
+  @ObservedObject var automationSettings: WorkbenchAutomationSettingsFeatureFacade
 
   var body: some View {
     Section("当前工作区部署自动化") {
@@ -10,7 +10,7 @@ struct TokenDeploymentAutomationSection: View {
         .toggleStyle(.switch)
         .accessibilityLabel("启用当前工作区部署状态自动检查")
         .accessibilityValue(
-          store.deploymentPollingSettings.isEnabled ? "开启" : "关闭"
+          automationSettings.deploymentPollingSettings.isEnabled ? "开启" : "关闭"
         )
         .accessibilityIdentifier("token-deployment-polling-enabled")
 
@@ -20,9 +20,11 @@ struct TokenDeploymentAutomationSection: View {
         }
       }
       .pickerStyle(.menu)
-      .disabled(!store.deploymentPollingSettings.isEnabled)
+      .disabled(!automationSettings.deploymentPollingSettings.isEnabled)
       .accessibilityLabel("当前工作区部署状态自动检查最短间隔")
-      .accessibilityValue("\(store.deploymentPollingSettings.normalizedIntervalMinutes) 分钟")
+      .accessibilityValue(
+        "\(automationSettings.deploymentPollingSettings.normalizedIntervalMinutes) 分钟"
+      )
       .accessibilityIdentifier("token-deployment-polling-interval")
 
       Text("这些选项只作用于当前工作区；发布或回到前台时会按需检查，所选分钟数用于限制最短重检间隔。")
@@ -35,11 +37,11 @@ struct TokenDeploymentAutomationSection: View {
 
   private var deploymentPollingEnabledBinding: Binding<Bool> {
     Binding(
-      get: { store.deploymentPollingSettings.isEnabled },
+      get: { automationSettings.deploymentPollingSettings.isEnabled },
       set: { isEnabled in
-        store.updateDeploymentPollingSettings(
+        automationSettings.updateDeploymentPollingSettings(
           TokenDeploymentAutomationSettingsSupport.updated(
-            store.deploymentPollingSettings,
+            automationSettings.deploymentPollingSettings,
             isEnabled: isEnabled
           )
         )
@@ -49,11 +51,11 @@ struct TokenDeploymentAutomationSection: View {
 
   private var deploymentPollingIntervalBinding: Binding<Int> {
     Binding(
-      get: { store.deploymentPollingSettings.normalizedIntervalMinutes },
+      get: { automationSettings.deploymentPollingSettings.normalizedIntervalMinutes },
       set: { intervalMinutes in
-        store.updateDeploymentPollingSettings(
+        automationSettings.updateDeploymentPollingSettings(
           TokenDeploymentAutomationSettingsSupport.updated(
-            store.deploymentPollingSettings,
+            automationSettings.deploymentPollingSettings,
             intervalMinutes: intervalMinutes
           )
         )

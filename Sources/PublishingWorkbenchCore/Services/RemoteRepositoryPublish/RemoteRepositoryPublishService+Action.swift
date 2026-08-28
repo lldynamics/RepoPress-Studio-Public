@@ -8,12 +8,16 @@ extension RemoteRepositoryPublishService {
     let token = try requiredToken(token)
     let repository = try remoteRepository(from: profile)
 
+    var check: RemoteRepositoryAccessCheck
     switch profile.repositoryProvider {
     case .github:
-      return try await checkGitHubAccess(repository: repository, token: token)
+      check = try await checkGitHubAccess(repository: repository, token: token)
     case .gitlab:
-      return try await checkGitLabAccess(repository: repository, token: token)
+      check = try await checkGitLabAccess(repository: repository, token: token)
     }
+    check.targetBranch = repository.branch
+    check.publishStrategy = profile.repositoryPublishStrategy
+    return check
   }
 
   public func createRepository(
@@ -65,9 +69,10 @@ extension RemoteRepositoryPublishService {
       )
     )
 
+    let result: RemoteRepositoryPublishResult
     switch profile.repositoryProvider {
     case .github:
-      return try await publishToGitHub(
+      result = try await publishToGitHub(
         package: package,
         repository: repository,
         mode: mode,
@@ -75,7 +80,7 @@ extension RemoteRepositoryPublishService {
         onProgress: onProgress
       )
     case .gitlab:
-      return try await publishToGitLab(
+      result = try await publishToGitLab(
         package: package,
         repository: repository,
         mode: mode,
@@ -83,6 +88,7 @@ extension RemoteRepositoryPublishService {
         onProgress: onProgress
       )
     }
+    return try result.validatedForSuccess()
   }
 
   public func rollback(

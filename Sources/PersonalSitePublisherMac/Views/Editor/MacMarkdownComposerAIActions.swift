@@ -159,7 +159,7 @@ extension MacMarkdownComposerView {
     selectionAIActionRequestID = requestID
     isInlineSelectionAIAction = presentsInlineResult
     let actionName = convergence?.localizedDisplayName ?? kind.localizedDisplayName
-    selectionActionMessage = "\(actionName)处理中..."
+    selectionActionMessage = "\(actionName)处理中…"
     if !presentsInlineResult {
       showWritingContextPanel(.selectionTools)
     }
@@ -241,7 +241,7 @@ extension MacMarkdownComposerView {
     activeSelectionAIAction = kind
     selectionAIActionRequestID = requestID
     let actionName = convergence?.localizedDisplayName ?? kind.localizedDisplayName
-    selectionActionMessage = "\(actionName)处理中..."
+    selectionActionMessage = "\(actionName)处理中…"
     let previewRange = articleInsertionRange(for: kind)
     selectionEditPreview = nil
     selectionAIActionTask = Task { @MainActor in

@@ -39,26 +39,27 @@
           <small id="save-options-summary" class="hint"></small>
         </summary>
         <div class="organization-settings">
-        <fieldset class="capture-mode-fieldset">
+        <fieldset class="capture-mode-fieldset" aria-describedby="capture-mode-description">
           <legend data-i18n="captureModeLegend">采集模式</legend>
           <div class="capture-mode-grid">
             <label class="mode-card">
               <input type="radio" name="capture-mode" value="cleaned-article" checked>
-              <span><strong data-i18n="cleanedArticleTitle">净化正文</strong><small data-i18n="cleanedArticleDescription">去掉导航、广告和交互噪声</small></span>
+              <span class="mode-label" data-i18n="cleanedArticleTitle">净化正文</span>
             </label>
             <label class="mode-card">
               <input type="radio" name="capture-mode" value="full-page">
-              <span><strong data-i18n="fullPageTitle">完整网页</strong><small data-i18n="fullPageDescription">正文与离线页面归档一起保存</small></span>
+              <span class="mode-label" data-i18n="fullPageTitle">完整网页</span>
             </label>
             <label class="mode-card">
               <input type="radio" name="capture-mode" value="selection">
-              <span><strong data-i18n="selectionTitle">选中文字</strong><small data-i18n="selectionDescription">只保存当前页面中的选择内容</small></span>
+              <span class="mode-label" data-i18n="selectionTitle">选中文字</span>
             </label>
             <label class="mode-card">
               <input type="radio" name="capture-mode" value="link-only">
-              <span><strong data-i18n="linkOnlyTitle">仅链接</strong><small data-i18n="linkOnlyDescription">保存标题、来源和可检索链接</small></span>
+              <span class="mode-label" data-i18n="linkOnlyTitle">仅链接</span>
             </label>
           </div>
+          <p id="capture-mode-description" class="hint capture-mode-description" data-i18n="cleanedArticleDescription">去掉导航、广告和交互噪声</p>
         </fieldset>
 
         <div class="organization-heading">
@@ -118,21 +119,24 @@
         <div class="receipt-heading">
           <span class="receipt-check" aria-hidden="true">✓</span>
           <div>
-            <h2 id="receipt-heading-title" data-i18n="receiptTitle">已保存到长期参考</h2>
+            <h2 id="receipt-heading-title" data-i18n="receiptTitle">已保存到资料库</h2>
             <p id="receipt-title" class="hint"></p>
           </div>
         </div>
-        <dl class="receipt-details">
-          <div><dt data-i18n="sourcePageLabel">来源网页</dt><dd id="receipt-source"></dd></div>
-          <div><dt data-i18n="savedAtLabel">保存时间</dt><dd id="receipt-saved-at"></dd></div>
-          <div><dt data-i18n="folderLabel">分类</dt><dd id="receipt-folder"></dd></div>
-          <div><dt data-i18n="fileSizeLabel">文件大小</dt><dd id="receipt-size"></dd></div>
-          <div><dt data-i18n="archiveTypeLabel">归档类型</dt><dd id="receipt-archive"></dd></div>
-          <div><dt data-i18n="indexStatusLabel">索引状态</dt><dd id="receipt-index"></dd></div>
-          <div><dt data-i18n="localSemanticIndexLabel">本地语义索引</dt><dd id="receipt-local-index"></dd></div>
-          <div><dt data-i18n="remoteAIPermissionLabel">远程 AI 权限</dt><dd id="receipt-remote-ai"></dd></div>
-        </dl>
-        <button id="open-document" class="secondary" data-i18n="openDocumentButton">在资料库中打开</button>
+        <details class="receipt-more">
+          <summary data-i18n="receiptDetailsSummary">查看保存详情</summary>
+          <dl class="receipt-details">
+            <div><dt data-i18n="sourcePageLabel">来源网页</dt><dd id="receipt-source"></dd></div>
+            <div><dt data-i18n="savedAtLabel">保存时间</dt><dd id="receipt-saved-at"></dd></div>
+            <div><dt data-i18n="folderLabel">分类</dt><dd id="receipt-folder"></dd></div>
+            <div><dt data-i18n="fileSizeLabel">文件大小</dt><dd id="receipt-size"></dd></div>
+            <div><dt data-i18n="archiveTypeLabel">归档类型</dt><dd id="receipt-archive"></dd></div>
+            <div><dt data-i18n="indexStatusLabel">索引状态</dt><dd id="receipt-index"></dd></div>
+            <div><dt data-i18n="localSemanticIndexLabel">本地语义索引</dt><dd id="receipt-local-index"></dd></div>
+            <div><dt data-i18n="remoteAIPermissionLabel">远程 AI 权限</dt><dd id="receipt-remote-ai"></dd></div>
+          </dl>
+        </details>
+        <button id="open-document" class="secondary" type="button" data-i18n="openDocumentButton">在 RepoPress 中查看</button>
       </section>
 
       <section id="duplicate-panel" class="duplicate-panel" hidden aria-labelledby="duplicate-title">
@@ -205,6 +209,11 @@
           <button id="re-pair" class="text-button" type="button" data-i18n="repairButton">重新配对</button>
         </div>
       </section>
+
+      <div id="save-toast" class="save-toast" hidden aria-hidden="true">
+        <span class="save-toast-check" aria-hidden="true">✓</span>
+        <span id="save-toast-message" data-i18n="indexedToast">已索引入库</span>
+      </div>
 
       <div class="announcement-regions">
         <p id="status" role="status" aria-live="polite" aria-atomic="true"></p>

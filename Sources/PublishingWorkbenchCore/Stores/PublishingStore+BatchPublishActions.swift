@@ -52,11 +52,13 @@ extension PublishingStore {
         preview: preview,
         profile: profile
       )
-      guard recordLocalRepositoryWriteBinding(
-        package: package,
-        profile: profile,
-        store: store
-      ) else {
+      guard
+        recordLocalRepositoryWriteBinding(
+          package: package,
+          profile: profile,
+          store: store
+        )
+      else {
         let message = "文件已写入本地仓库，但无法记录文章的项目绑定。"
         setPublishActionMessage(message, status: .failure)
         return .writtenButRecordSaveFailed(
@@ -156,11 +158,13 @@ extension PublishingStore {
           preview: item.preview,
           profile: profile
         )
-        guard recordLocalRepositoryWriteBinding(
-          package: item.package,
-          profile: profile,
-          store: store
-        ) else {
+        guard
+          recordLocalRepositoryWriteBinding(
+            package: item.package,
+            profile: profile,
+            store: store
+          )
+        else {
           failedTitles.append("\(item.draftTitle)：无法记录文章的项目绑定")
           continue
         }
@@ -216,7 +220,9 @@ extension PublishingStore {
   public func publishBatchReadyDraftsOnlineUsingPreferredStrategy(
     store: WorkbenchStore,
     expectedChangedPaths: Set<String>? = nil,
-    authorization: AIPublishAuthorizationSnapshot? = nil
+    expectedTarget: RemoteRepositoryPublishTargetSnapshot? = nil,
+    authorization: AIPublishAuthorizationSnapshot? = nil,
+    modeOverride: RemoteRepositoryPublishMode? = nil
   ) async -> RemoteRepositoryPublishResult? {
     guard store.canUseProtectedWorkbench else {
       setPublishActionMessage(store.quickHideOperationMessage, status: .warning)
@@ -237,16 +243,15 @@ extension PublishingStore {
 
     await store.refreshBatchPublishPlanAsync()
 
-    guard let batchPlan = batchPublishPlan else {
+    guard var batchPlan = batchPublishPlan else {
       setPublishActionMessage("没有可线上发布的批量队列。", status: .warning)
       return nil
     }
 
     // Keep the reviewed candidate set as the authority for what may enter the
     // online queue. Site drafts remain excluded by remotePublishableItems.
-    let initialPublishableItems = batchPlan.remotePublishableItems
-    let publishableItems = initialPublishableItems
-    let cleanupRequests = pendingRemoteRepositoryCleanupRequests(
+    var publishableItems = batchPlan.remotePublishableItems
+    var cleanupRequests = pendingRemoteRepositoryCleanupRequests(
       profileID: batchPlan.profileID
     )
     guard !publishableItems.isEmpty || !cleanupRequests.isEmpty else {
@@ -257,16 +262,128 @@ extension PublishingStore {
       return nil
     }
 
-    let profile = store.activeProfile
-    let mode = preferredRemoteRepositoryPublishMode(for: profile)
-    guard let package = remotePublishPackage(
-      for: batchPlan,
-      cleanupRequests: cleanupRequests
-    ) else {
+    var profile = store.activeProfile
+    var mode = modeOverride ?? preferredRemoteRepositoryPublishMode(for: profile)
+    guard
+      var package = remotePublishPackage(
+        for: batchPlan,
+        cleanupRequests: cleanupRequests
+      )
+    else {
       setPublishActionMessage("批量队列没有可上传的文件。", status: .warning)
       return nil
     }
+    let reviewedFiles = expectedChangedPaths == nil ? nil : package.files
 
+    let initialPreview = remoteRepositoryPublishPreview(
+      package: package,
+      profile: profile,
+      mode: mode,
+      extraWarningIssues: batchRemoteRepositoryPublishWarningIssues(for: batchPlan),
+      forcedChangedPaths: Set(cleanupRequests.map { $0.repositoryPath.normalizedRelativePath() }),
+      store: store
+    )
+    if let expectedTarget,
+      expectedTarget
+        != RemoteRepositoryPublishTargetSnapshot(
+          profile: profile,
+          preview: initialPreview
+        )
+    {
+      setPublishActionMessage(
+        CoreL10n.text("发布目标已变化，请重新打开确认页核对仓库、分支和发布方式。"),
+        status: .warning
+      )
+      return nil
+    }
+    if let authorization {
+      do {
+        try AIPublishAuthorizationService.validate(
+          authorization,
+          package: package,
+          preview: initialPreview,
+          profile: profile,
+          repositoryReport: store.repositoryReport(for: profile)
+        )
+      } catch {
+        setPublishActionMessage(error.localizedDescription, status: .warning)
+        return nil
+      }
+    }
+    if let expectedChangedPaths,
+      Set(initialPreview.changedPaths) != expectedChangedPaths
+    {
+      setPublishActionMessage(
+        CoreL10n.text("待发布文件已变化，请重新打开确认页审阅完整清单。"),
+        status: .warning
+      )
+      return nil
+    }
+    if let tokenAccessFailureMessage = initialPreview.tokenAccessFailureMessage {
+      setPublishActionMessage(
+        CoreL10n.format(
+          "仓库 Token 状态读取失败：%@",
+          tokenAccessFailureMessage
+        ),
+        status: .failure
+      )
+      return nil
+    }
+    guard initialPreview.hasToken else {
+      setPublishActionMessage(
+        "仓库访问 Token 未保存，无法批量线上发布。",
+        status: .warning
+      )
+      return nil
+    }
+    guard initialPreview.blockingIssues.isEmpty else {
+      setPublishActionMessage(
+        blockedLocalPublishMessage(action: "批量线上发布", issues: initialPreview.blockingIssues),
+        status: .warning
+      )
+      return nil
+    }
+
+    guard await store.ensureRemoteRepositoryWriteAccess(for: profile) else {
+      return nil
+    }
+
+    // The read-only check can fill a repository detected from origin and its
+    // awaited refresh can observe edits made while the request was in flight.
+    // Rebuild the reviewed package from the latest batch state before writing.
+    guard let refreshedBatchPlan = self.batchPublishPlan,
+      refreshedBatchPlan.profileID == store.activeProfileID
+    else {
+      setPublishActionMessage("没有可线上发布的批量队列。", status: .warning)
+      return nil
+    }
+    batchPlan = refreshedBatchPlan
+    publishableItems = batchPlan.remotePublishableItems
+    cleanupRequests = pendingRemoteRepositoryCleanupRequests(profileID: batchPlan.profileID)
+    guard !publishableItems.isEmpty || !cleanupRequests.isEmpty,
+      let refreshedPackage = remotePublishPackage(
+        for: batchPlan,
+        cleanupRequests: cleanupRequests
+      )
+    else {
+      setPublishActionMessage(
+        "当前没有可批量处理的文章发布或下线请求。",
+        status: .warning
+      )
+      return nil
+    }
+    if let reviewedFiles,
+      refreshedPackage.files != reviewedFiles
+    {
+      setPublishActionMessage(
+        CoreL10n.text("待发布文件已变化，请重新打开确认页审阅完整清单。"),
+        status: .warning
+      )
+      return nil
+    }
+    package = refreshedPackage
+    profile = store.activeProfile
+    mode = modeOverride ?? preferredRemoteRepositoryPublishMode(for: profile)
     let preview = remoteRepositoryPublishPreview(
       package: package,
       profile: profile,
@@ -275,6 +392,28 @@ extension PublishingStore {
       forcedChangedPaths: Set(cleanupRequests.map { $0.repositoryPath.normalizedRelativePath() }),
       store: store
     )
+    if let expectedTarget,
+      expectedTarget
+        != RemoteRepositoryPublishTargetSnapshot(
+          profile: profile,
+          preview: preview
+        )
+    {
+      setPublishActionMessage(
+        CoreL10n.text("发布目标已变化，请重新打开确认页核对仓库、分支和发布方式。"),
+        status: .warning
+      )
+      return nil
+    }
+    if let expectedChangedPaths,
+      Set(preview.changedPaths) != expectedChangedPaths
+    {
+      setPublishActionMessage(
+        CoreL10n.text("待发布文件已变化，请重新打开确认页审阅完整清单。"),
+        status: .warning
+      )
+      return nil
+    }
     if let authorization {
       do {
         try AIPublishAuthorizationService.validate(
@@ -289,42 +428,9 @@ extension PublishingStore {
         return nil
       }
     }
-    if let expectedChangedPaths,
-      Set(preview.changedPaths) != expectedChangedPaths
-    {
-      setPublishActionMessage(
-        CoreL10n.text("待发布文件已变化，请重新打开确认页审阅完整清单。"),
-        status: .warning
-      )
-      return nil
-    }
-    if let tokenAccessFailureMessage = preview.tokenAccessFailureMessage {
-      setPublishActionMessage(
-        CoreL10n.format(
-          "仓库 Token 状态读取失败：%@",
-          tokenAccessFailureMessage
-        ),
-        status: .failure
-      )
-      return nil
-    }
-    guard preview.hasToken else {
-      setPublishActionMessage(
-        "仓库访问 Token 未保存，无法批量线上发布。",
-        status: .warning
-      )
-      return nil
-    }
     guard preview.blockingIssues.isEmpty else {
       setPublishActionMessage(
         blockedLocalPublishMessage(action: "批量线上发布", issues: preview.blockingIssues),
-        status: .warning
-      )
-      return nil
-    }
-    guard preview.accessCheck != nil else {
-      setPublishActionMessage(
-        "请先检查 \(profile.repositoryProvider.displayName) Token 权限，确认具备写入权限后再批量线上发布。",
         status: .warning
       )
       return nil
@@ -338,11 +444,13 @@ extension PublishingStore {
     }
 
     for item in publishableItems {
-      guard await ensureDraftMaterializedForRemotePublish(
-        package: item.package,
-        profile: profile,
-        store: store
-      ) else {
+      guard
+        await ensureDraftMaterializedForRemotePublish(
+          package: item.package,
+          profile: profile,
+          store: store
+        )
+      else {
         // No remote transport begins until every reviewed formal candidate has
         // a current binding and a real Markdown file in the checkout.
         return nil
@@ -368,9 +476,9 @@ extension PublishingStore {
     setPublishActionMessage(
       mode == .directCommit
         ? CoreL10n.format(
-          "正在通过 %@ 批量核对远端版本并执行%@...", profile.repositoryProvider.displayName, mode.displayName)
+          "正在通过 %@ 批量核对远端版本并执行 %@…", profile.repositoryProvider.displayName, mode.displayName)
         : CoreL10n.format(
-          "正在通过 %@ 批量执行%@...", profile.repositoryProvider.displayName, mode.displayName),
+          "正在通过 %@ 批量执行 %@…", profile.repositoryProvider.displayName, mode.displayName),
       status: .inProgress
     )
     defer { finishRemoteRepositoryMutation(operation, store: store) }
@@ -388,6 +496,7 @@ extension PublishingStore {
       }
       var reconciledPackage = package
       if mode == .directCommit {
+        remoteRepositoryConflictSession = nil
         store.setRemoteRepositoryPublishProgress(
           .init(
             stage: .validatingTarget,
@@ -396,11 +505,12 @@ extension PublishingStore {
             detail: CoreL10n.text("完成所有路径检查前不会写入远端")
           )
         )
-        let preflight = try await remoteRepositoryPublishService.preflight(
+        let inspection = try await remoteRepositoryPublishService.preflightInspection(
           package: package,
           profile: profile,
           token: token
         )
+        let preflight = inspection.result
         guard remoteRepositoryMutationIsCurrent(operation, store: store) else { return nil }
 
         let adoptedCount = confirmDirectRemotePublishPreflightAdoptions(
@@ -415,6 +525,12 @@ extension PublishingStore {
         )
 
         guard preflight.conflicts.isEmpty else {
+          remoteRepositoryConflictSession =
+            try await remoteRepositoryPublishService.conflictResolutionSession(
+              inspection: inspection,
+              profile: profile,
+              token: token
+            )
           let conflictPaths = preflight.conflicts.map(\.repositoryPath)
           markBatchRemotePublishPreflightConflicts(
             paths: conflictPaths,
@@ -423,7 +539,8 @@ extension PublishingStore {
           let conflictDetails = preflight.conflicts
             .map { $0.error.localizedDescription }
             .joined(separator: "；")
-          let adoptionSummary = adoptedCount > 0
+          let adoptionSummary =
+            adoptedCount > 0
             ? CoreL10n.format("；已安全补认 %lld 个内容一致的远端文件", adoptedCount)
             : ""
           let message = CoreL10n.format(
@@ -460,6 +577,7 @@ extension PublishingStore {
         onProgress: progressHandler
       )
       guard remoteRepositoryMutationIsCurrent(operation, store: store) else { return nil }
+      remoteRepositoryConflictSession = nil
       store.setRemoteRepositoryPublishResult(result)
       store.setRepositoryTokenAvailability(KeychainTokenAvailability(hasToken: true))
       let releaseRecord = ReleaseRecord.batchRemotePublish(
@@ -469,13 +587,6 @@ extension PublishingStore {
         result: result
       )
       prependReleaseRecord(releaseRecord)
-      let didPublishDraftListMetadata = markDraftsAsPublishedIfDirectRemoteCommit(
-        mode: mode,
-        draftIDs: publishableItems.map(\.draftID)
-      )
-      if didPublishDraftListMetadata {
-        store.invalidateDraftDerivedCaches()
-      }
       confirmDirectRemotePublishLifecycle(
         packages: publishableItems.map(\.package),
         result: result
@@ -483,48 +594,92 @@ extension PublishingStore {
       if mode == .reviewRequest {
         markRemotePublishReviewSuccess(packages: publishableItems.map(\.package))
       }
-      let cleanupRequestIDs = Set(cleanupRequests.map(\.id))
-      _ = recordRemoteRepositoryCleanupResult(
-        requestIDs: cleanupRequestIDs,
-        result: result
-      )
-      let locallyCleanedCount = cleanupRequests.reduce(into: 0) { count, request in
-        if draftRepositoryCleanupRequests.first(where: { $0.id == request.id })?.needsLocalCleanup == true,
-           performLocalRepositoryCleanup(request.id, store: store) {
-          count += 1
+      var locallyCleanedCount = 0
+      if mode != .previewBranch {
+        let cleanupRequestIDs = Set(cleanupRequests.map(\.id))
+        _ = recordRemoteRepositoryCleanupResult(
+          requestIDs: cleanupRequestIDs,
+          result: result
+        )
+        locallyCleanedCount = cleanupRequests.reduce(into: 0) { count, request in
+          if draftRepositoryCleanupRequests.first(where: { $0.id == request.id })?
+            .needsLocalCleanup == true,
+            performLocalRepositoryCleanup(request.id, store: store)
+          {
+            count += 1
+          }
         }
       }
-      store.recordRemoteRepositoryPublishInAutoSync(result, profileID: profile.id)
+      if mode != .previewBranch {
+        store.recordRemoteRepositoryPublishInAutoSync(result, profileID: profile.id)
+      }
       let adoptedCount = result.automaticallyAdoptedPaths.count
-      let adoptedSummary = adoptedCount > 0
+      let adoptedSummary =
+        adoptedCount > 0
         ? "；自动认领 \(adoptedCount) 个已存在且内容一致的文件"
         : ""
-      let cleanupSummary = cleanupRequests.isEmpty
+      let cleanupSummary =
+        cleanupRequests.isEmpty
         ? ""
         : "；处理下线 \(cleanupRequests.count) 篇，本地清理 \(locallyCleanedCount) 篇"
-      setPublishActionMessage(
-        "批量\(mode.displayName)完成：发布 \(publishableItems.count) 篇、\(result.changedPaths.count) 个文件\(cleanupSummary)\(adoptedSummary)。",
-        status: .success
-      )
+      let operationSummary =
+        "批量\(mode.displayName)完成：发布 \(publishableItems.count) 篇、\(result.changedPaths.count) 个文件\(cleanupSummary)\(adoptedSummary)。"
+      var deploymentStatus: DeploymentStatusSnapshot?
       if store.shouldRefreshDeploymentStatusAfterRemoteOperation(releaseRecord) {
-        await store.refreshDeploymentStatus(for: releaseRecord, updatesMessage: false)
+        deploymentStatus = await store.refreshDeploymentStatus(
+          for: releaseRecord,
+          updatesMessage: false
+        )
         guard remoteRepositoryMutationIsCurrent(operation, store: store) else { return nil }
       }
-      store.save()
-      if store.remoteRepositoryPublishProgress?.stage != .completed {
-        store.setRemoteRepositoryPublishProgress(
-          .init(
-            stage: .completed,
-            progress: 1,
-            message: "批量发布完成",
-            detail: "发布流程已结束"
-          ))
+      if mode == .directCommit,
+        result.commitSHA?.trimmedForPublishing.nilIfEmpty != nil,
+        deploymentStatus?.level == .success,
+        deploymentStatus?.attributionVerified == true,
+        markDraftsAsPublishedIfDirectRemoteCommit(
+          mode: mode,
+          draftIDs: publishableItems.map(\.draftID)
+        )
+      {
+        store.invalidateDraftDerivedCaches()
       }
+      let completionFeedback = remotePublishCompletionFeedback(
+        mode: mode,
+        operationSummary: operationSummary,
+        deploymentStatus: deploymentStatus
+      )
+      setPublishActionMessage(
+        completionFeedback.message,
+        status: completionFeedback.status
+      )
+      store.save()
+      store.setRemoteRepositoryPublishProgress(
+        .init(
+          stage: .completed,
+          progress: 1,
+          message: remotePublishCompletedProgressMessage(
+            mode: mode,
+            deploymentStatus: deploymentStatus
+          ),
+          detail: completionFeedback.message
+        ))
       return result
     } catch {
       guard remoteRepositoryMutationIsCurrent(operation, store: store) else { return nil }
-      let message = "批量\(mode.displayName)失败：\(error.localizedDescription)"
       let partialFailure = partialRemoteRepositoryPublishFailure(from: error)
+      if partialFailure == nil, remoteRepositoryOperationWasCancelled(error) {
+        let message = CoreL10n.text("批量发布流程已中断；如果远端请求已经发出，请刷新仓库状态确认结果。")
+        store.setRemoteRepositoryPublishProgress(
+          .init(
+            stage: .failed,
+            progress: nil,
+            message: CoreL10n.text("批量发布已中断"),
+            detail: message
+          ))
+        setPublishActionMessage(message, status: .warning)
+        return nil
+      }
+      let message = "批量\(mode.displayName)失败：\(error.localizedDescription)"
       _ = recordRemoteRepositoryCleanupFailure(
         requestIDs: Set(cleanupRequests.map(\.id)),
         message: error.localizedDescription
@@ -606,9 +761,11 @@ extension PublishingStore {
 
       let markdownPath = package.markdownPath.normalizedRelativePath()
       if adoptedPaths.contains(markdownPath),
-        let remoteVersion = preflight.remoteVersionsByPath[markdownPath]?.trimmedForPublishing.nilIfEmpty,
+        let remoteVersion = preflight.remoteVersionsByPath[markdownPath]?.trimmedForPublishing
+          .nilIfEmpty,
         let publishedContent = package.markdownFile?.content,
-        let currentContent = publishPackageBuilder.build(draft: draft, profile: profile).markdownFile?.content,
+        let currentContent = publishPackageBuilder.build(draft: draft, profile: profile)
+          .markdownFile?.content,
         currentContent == publishedContent
       {
         updated.confirmRepositoryBinding(
@@ -636,11 +793,12 @@ extension PublishingStore {
     packages: [PublishPackage]
   ) {
     let normalizedPaths = Set(paths.map { $0.normalizedRelativePath() })
-    let conflictedIDs = Set(packages.compactMap { package -> UUID? in
-      package.files.contains {
-        normalizedPaths.contains($0.repositoryPath.normalizedRelativePath())
-      } ? package.draftID : nil
-    })
+    let conflictedIDs = Set(
+      packages.compactMap { package -> UUID? in
+        package.files.contains {
+          normalizedPaths.contains($0.repositoryPath.normalizedRelativePath())
+        } ? package.draftID : nil
+      })
     markDraftsRepositorySyncState(.diverged, draftIDs: conflictedIDs)
   }
 

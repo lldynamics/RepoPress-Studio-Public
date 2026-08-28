@@ -65,7 +65,8 @@ public struct DraftListProjection: Sendable {
       scope: scope
     )
     if let selectedDraftID,
-       let selected = visibleDrafts.first(where: { $0.id == selectedDraftID }) {
+      let selected = visibleDrafts.first(where: { $0.id == selectedDraftID })
+    {
       return selected
     }
     return visibleDrafts.first
@@ -222,7 +223,7 @@ public struct PublishingReadinessProjection: Sendable {
     repositoryBlockingIssues: [PreflightIssue] = [],
     remoteWarningIssues: [PreflightIssue] = []
   ) -> LocalPublishReadiness {
-    let writeBlockingIssues = blockingIssues(
+    var writeBlockingIssues = blockingIssues(
       preview: preview,
       draftIssues: draftIssuesWithoutRepository
     )
@@ -231,8 +232,12 @@ public struct PublishingReadinessProjection: Sendable {
       draftIssues: draftIssuesWithRepository
     )
     for repositoryIssue in repositoryBlockingIssues
-      where !commitBlockingIssues.contains(where: { $0.title == repositoryIssue.title }) {
+    where !commitBlockingIssues.contains(where: { $0.title == repositoryIssue.title }) {
       commitBlockingIssues.append(repositoryIssue)
+    }
+    for repositoryIssue in repositoryBlockingIssues
+    where !writeBlockingIssues.contains(where: { $0.title == repositoryIssue.title }) {
+      writeBlockingIssues.append(repositoryIssue)
     }
 
     let warningIssues = (preview.issues + draftIssuesWithRepository + remoteWarningIssues)

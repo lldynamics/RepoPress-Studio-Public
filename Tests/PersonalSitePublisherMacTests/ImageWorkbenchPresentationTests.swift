@@ -3,7 +3,7 @@ import XCTest
 @testable import PublishingWorkbenchCore
 
 final class ImageWorkbenchPresentationTests: XCTestCase {
-  func testBatchActionsExposeFiveStableUniqueIdentifiers() {
+  func testBatchActionsExposeSixStableUniqueIdentifiers() {
     let actions = ImageWorkbenchBatchAction.allActions
 
     XCTAssertEqual(
@@ -14,6 +14,7 @@ final class ImageWorkbenchPresentationTests: XCTestCase {
         "convert-webp",
         "optimize-svg",
         "resize-large-images",
+        "remove-privacy-metadata",
       ]
     )
     XCTAssertEqual(Set(actions.map(\.id)).count, actions.count)
@@ -25,9 +26,15 @@ final class ImageWorkbenchPresentationTests: XCTestCase {
         "image-action-convert-webp",
         "image-action-optimize-svg",
         "image-action-resize-large-images",
+        "image-action-remove-privacy-metadata",
       ]
     )
     XCTAssertEqual(Set(actions.map(\.accessibilityIdentifier)).count, actions.count)
+
+    let privacyAction = ImageWorkbenchBatchAction.file(.removePrivacyMetadata)
+    XCTAssertEqual(privacyAction.title, "清除隐私信息")
+    XCTAssertEqual(privacyAction.id, "remove-privacy-metadata")
+    XCTAssertTrue(privacyAction.shortDescription.contains("脱敏副本"))
   }
 
   func testBatchActionTargetCountsMatchVisibleEligibleImages() {
@@ -42,18 +49,20 @@ final class ImageWorkbenchPresentationTests: XCTestCase {
     let metadataAndSVG = makeItem(
       filename: "diagram.svg",
       missingCaption: true,
-      canOptimizeSVG: true
+      canOptimizeSVG: true,
+      hasSensitiveMetadata: true
     )
+    let sensitiveOnly = makeItem(filename: "private.jpg", hasSensitiveMetadata: true)
     let unaffected = makeItem(filename: "ready.png")
     let draftSummary = makeDraftSummary(
       issueCount: 2,
       errorCount: 0,
       warningCount: 2,
-      items: [metadataAndJPEG, metadataAndSVG, unaffected]
+      items: [metadataAndJPEG, metadataAndSVG, sensitiveOnly, unaffected]
     )
     let summary = ImageWorkbenchSiteSummary(
       draftCount: 1,
-      imageCount: 3,
+      imageCount: 4,
       totalByteSize: 3_000,
       issueCount: 2,
       errorCount: 0,
@@ -78,6 +87,15 @@ final class ImageWorkbenchPresentationTests: XCTestCase {
     XCTAssertEqual(counts["convert-webp"], 1)
     XCTAssertEqual(counts["optimize-svg"], 1)
     XCTAssertEqual(counts["resize-large-images"], 1)
+    XCTAssertEqual(counts["remove-privacy-metadata"], 2)
+  }
+
+  func testPrivacyMetadataActionFiltersOnlySensitiveImages() {
+    let sensitive = makeItem(filename: "with-location.jpg", hasSensitiveMetadata: true)
+    let clean = makeItem(filename: "clean.jpg")
+
+    XCTAssertTrue(ImageWorkbenchBatchAction.file(.removePrivacyMetadata).includes(sensitive))
+    XCTAssertFalse(ImageWorkbenchBatchAction.file(.removePrivacyMetadata).includes(clean))
   }
 
   func testRepositoryImageFiltersSeparateRegisteredAndUnregisteredAssets() {
@@ -144,7 +162,8 @@ final class ImageWorkbenchPresentationTests: XCTestCase {
     canOptimizeJPEG: Bool = false,
     canConvertToWebP: Bool = false,
     canOptimizeSVG: Bool = false,
-    canResizeImage: Bool = false
+    canResizeImage: Bool = false,
+    hasSensitiveMetadata: Bool = false
   ) -> ImageWorkbenchItem {
     ImageWorkbenchItem(
       attachmentID: UUID(),
@@ -162,7 +181,8 @@ final class ImageWorkbenchPresentationTests: XCTestCase {
       canOptimizeJPEG: canOptimizeJPEG,
       canConvertToWebP: canConvertToWebP,
       canOptimizeSVG: canOptimizeSVG,
-      canResizeImage: canResizeImage
+      canResizeImage: canResizeImage,
+      privacyStatus: hasSensitiveMetadata ? .sensitive : .clean
     )
   }
 

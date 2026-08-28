@@ -26,6 +26,20 @@ public enum RemoteRepositoryPublishMode: String, Codable, Sendable {
   public var createsReview: Bool {
     self == .reviewRequest
   }
+
+  /// The completion boundary shown after the remote write has returned. A
+  /// successful remote write is not the same thing as a merged or deployed
+  /// release, so each mode states its remaining lifecycle explicitly.
+  public var completedProgressMessage: String {
+    switch self {
+    case .directCommit:
+      return CoreL10n.text("目标分支提交完成、部署待验证")
+    case .reviewRequest:
+      return CoreL10n.text("PR/MR 已创建、等待合并、尚未部署")
+    case .previewBranch:
+      return CoreL10n.text("预览分支已推送、不影响正式分支")
+    }
+  }
 }
 
 public enum RemoteRepositoryPublishProgressStage: String, Codable, Sendable {
@@ -166,6 +180,8 @@ public struct RemoteRepositoryAccessCheck: Codable, Hashable, Sendable {
   public var repositoryName: String
   public var apiBaseURL: String?
   public var defaultBranch: String?
+  public var targetBranch: String?
+  public var publishStrategy: RepositoryPublishStrategy?
   public var canRead: Bool
   public var canWrite: Bool
   public var permissionSummary: String
@@ -179,6 +195,8 @@ public struct RemoteRepositoryAccessCheck: Codable, Hashable, Sendable {
     repositoryName: String,
     apiBaseURL: String? = nil,
     defaultBranch: String?,
+    targetBranch: String? = nil,
+    publishStrategy: RepositoryPublishStrategy? = nil,
     canRead: Bool,
     canWrite: Bool,
     permissionSummary: String? = nil,
@@ -191,6 +209,8 @@ public struct RemoteRepositoryAccessCheck: Codable, Hashable, Sendable {
     self.repositoryName = repositoryName
     self.apiBaseURL = apiBaseURL
     self.defaultBranch = defaultBranch
+    self.targetBranch = targetBranch
+    self.publishStrategy = publishStrategy
     self.canRead = canRead
     self.canWrite = canWrite
     self.permissionSummary = permissionSummary ?? CoreL10n.text(canWrite ? "已确认写入权限。" : "未确认写入权限。")
@@ -214,6 +234,8 @@ public struct RemoteRepositoryAccessCheck: Codable, Hashable, Sendable {
     case repositoryName
     case apiBaseURL
     case defaultBranch
+    case targetBranch
+    case publishStrategy
     case canRead
     case canWrite
     case permissionSummary
@@ -229,6 +251,11 @@ public struct RemoteRepositoryAccessCheck: Codable, Hashable, Sendable {
     repositoryName = try container.decode(String.self, forKey: .repositoryName)
     apiBaseURL = try container.decodeIfPresent(String.self, forKey: .apiBaseURL)
     defaultBranch = try container.decodeIfPresent(String.self, forKey: .defaultBranch)
+    targetBranch = try container.decodeIfPresent(String.self, forKey: .targetBranch)
+    publishStrategy = try container.decodeIfPresent(
+      RepositoryPublishStrategy.self,
+      forKey: .publishStrategy
+    )
     canRead = try container.decodeIfPresent(Bool.self, forKey: .canRead) ?? false
     canWrite = try container.decodeIfPresent(Bool.self, forKey: .canWrite) ?? false
     permissionSummary = try container.decodeIfPresent(String.self, forKey: .permissionSummary)
@@ -415,6 +442,42 @@ public struct RemoteRepositoryPublishResult: Codable, Hashable, Sendable {
     return adopted
       .filter { !changed.contains($0) }
       .sorted()
+  }
+
+  /// Enforces the success contract at the boundary shared by both providers.
+  /// Review mode must always retain a usable PR/MR URL; otherwise callers
+  /// cannot recover or distinguish a completed review request from a plain
+  /// branch write.
+  public func validatedForSuccess() throws -> Self {
+    guard mode == .reviewRequest else { return self }
+    let reviewURLIsUsable: Bool = {
+      guard let value = reviewURL?.trimmedForPublishing.nilIfEmpty,
+        let url = URL(string: value),
+        let scheme = url.scheme?.lowercased(),
+        scheme == "https" || scheme == "http",
+        url.host?.trimmedForPublishing.nilIfEmpty != nil
+      else {
+        return false
+      }
+      return true
+    }()
+    guard reviewURLIsUsable else {
+      if !changedPaths.isEmpty || commitSHA?.trimmedForPublishing.nilIfEmpty != nil {
+        throw RemoteRepositoryPublishError.partialPublish(
+          provider: provider,
+          mode: mode,
+          branchName: branchName,
+          targetBranch: targetBranch,
+          changedPaths: changedPaths,
+          commitSHA: commitSHA,
+          underlyingMessage: CoreL10n.text("PR/MR 链接缺失，无法确认评审已创建。")
+        )
+      }
+      throw RemoteRepositoryPublishError.reviewRecoveryUnavailable(
+        CoreL10n.text("没有可恢复的发布变更或 PR/MR 链接。")
+      )
+    }
+    return self
   }
 }
 

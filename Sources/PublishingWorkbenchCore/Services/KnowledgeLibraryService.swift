@@ -6,7 +6,7 @@ enum KnowledgeImportInstalledArtifact {
 }
 
 public final class KnowledgeLibraryService: @unchecked Sendable {
-  public static let parserVersion = 6
+  public static let parserVersion = 7
 
   public static func defaultRootURL(fileManager: FileManager = .default) -> URL {
     let supportURL = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
@@ -52,6 +52,7 @@ public final class KnowledgeLibraryService: @unchecked Sendable {
       )
     }
   )
+  let imageOCRService = KnowledgeImageOCRService()
   let fileManager: FileManager
   let searchCancellationCheck: @Sendable () throws -> Void
 

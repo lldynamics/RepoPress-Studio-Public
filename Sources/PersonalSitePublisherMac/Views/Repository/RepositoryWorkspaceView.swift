@@ -12,7 +12,7 @@ struct RepositoryWorkspaceView: View {
   @Environment(\.openSettings) var openSettings
   @Environment(\.publishDrawerCommandAction) var publishDrawerCommandAction
   @Environment(\.localSitePreviewCommandAction) var localSitePreviewCommandAction
-  @AppStorage("settingsRequestedTabID") var requestedSettingsTabID = ""
+  @Environment(\.settingsWorkspaceCommandAction) var settingsWorkspaceCommandAction
   @AppStorage("dataManagementRequestedSection") var dataManagementRequestedSection = DataManagementSection.migration.rawValue
   @State var isRepositoryCreationConfirmationPresented = false
   @State var createsPrivateRepository = true
@@ -178,7 +178,11 @@ struct RepositoryWorkspaceView: View {
 
   func openDataManagement(_ section: DataManagementSection = .migration) {
     dataManagementRequestedSection = section.rawValue
-    requestedSettingsTabID = SettingsTab.dataManagement.id
-    openSettings()
+    SettingsNavigation.present(
+      destination: .data(SettingsDataDestination(rawValue: section.rawValue) ?? .migration),
+      workspaceAction: settingsWorkspaceCommandAction
+    ) {
+      openSettings()
+    }
   }
 }

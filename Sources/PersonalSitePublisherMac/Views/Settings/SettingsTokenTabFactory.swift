@@ -63,6 +63,7 @@ struct SettingsTokenTabFactory {
             repoName: context.store.activeProfile.repoName,
             branch: context.store.activeProfile.branch,
             isChecking: context.store.isRemoteRepositoryChecking,
+            isPublishing: context.store.isRemoteRepositoryPublishing,
             activeAccessCheck: context.store.activeRemoteRepositoryAccessCheck,
             hasStaleAccessCheck: context.store.hasStaleRemoteRepositoryAccessCheckForActiveProfile,
             publishActionMessage: context.store.publishActionMessage

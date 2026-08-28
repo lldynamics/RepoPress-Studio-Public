@@ -232,9 +232,9 @@ public final class WorkbenchLocalSitePreviewFeatureFacade: ObservableObject {
   public init(store: WorkbenchStore) {
     self.store = store
     observe(store.publishingStore.$activeProfileID)
-    observe(store.publishingStore.$localSitePreviewPlan)
-    observe(store.publishingStore.$localSitePreviewRuntimeStatus)
-    observe(store.publishingStore.$localSitePreviewRefreshToken)
+    observe(store.publishingStore.publishSession.$localSitePreviewPlan)
+    observe(store.publishingStore.publishSession.$localSitePreviewRuntimeStatus)
+    observe(store.publishingStore.publishSession.$localSitePreviewRefreshToken)
   }
 
   public var activeProfileID: UUID {
@@ -331,12 +331,12 @@ public final class WorkbenchRepositoryWorkspaceObservationFacade: ObservableObje
       }
       .removeDuplicates()
     )
-    observe(store.publishingStore.$localPublishReadiness)
-    observe(store.publishingStore.$remotePublishPreviewSnapshot)
-    observe(store.publishingStore.$localSitePreviewPlan)
-    observe(store.publishingStore.$localSitePreviewRuntimeStatus)
-    observe(store.publishingStore.$publishActionFeedback)
-    observe(store.publishingStore.$releaseRecords)
+    observe(store.publishingStore.publishSession.$localPublishReadiness)
+    observe(store.publishingStore.publishSession.$remotePublishPreviewSnapshot)
+    observe(store.publishingStore.publishSession.$localSitePreviewPlan)
+    observe(store.publishingStore.publishSession.$localSitePreviewRuntimeStatus)
+    observe(store.publishingStore.publishSession.$publishActionFeedback)
+    observe(store.publishingStore.publishSession.$releaseRecords)
     observe(store.deploymentStore.$deploymentStatusSnapshots)
   }
 
@@ -366,8 +366,8 @@ public final class WorkbenchReleaseHistoryObservationFacade: ObservableObject {
       }
       .removeDuplicates()
     )
-    observe(store.publishingStore.$releaseRecords)
-    observe(store.publishingStore.$publishActionFeedback)
+    observe(store.publishingStore.publishSession.$releaseRecords)
+    observe(store.publishingStore.publishSession.$publishActionFeedback)
     observe(store.repositoryStore.$isRemoteRepositoryPublishing)
     observe(store.repositoryStore.$localRepositoryReleaseHistory)
     observe(store.deploymentStore.$deploymentStatusSnapshots)
@@ -377,6 +377,45 @@ public final class WorkbenchReleaseHistoryObservationFacade: ObservableObject {
     observe(store.deploymentStore.$deploymentPollingSettings)
     observe(store.deploymentStore.$deploymentPollingState)
     observe(store.deploymentStore.$deploymentTokenAvailability)
+  }
+
+  private func observe<P: Publisher>(_ publisher: P) where P.Failure == Never {
+    publisher
+      .dropFirst()
+      .sink { [weak self] _ in self?.objectWillChange.send() }
+      .store(in: &cancellables)
+  }
+}
+
+/// Observation boundary for the one-click publishing inspector. It follows
+/// only the plan, remote transport, checks and feedback rendered by that
+/// inspector, so editor typing and unrelated workspaces remain isolated.
+@MainActor
+public final class WorkbenchPublishDrawerObservationFacade: ObservableObject {
+  private var cancellables = Set<AnyCancellable>()
+
+  init(store: WorkbenchStore) {
+    observe(store.publishingStore.publishSession.$batchPublishPlan)
+    observe(store.publishingStore.publishSession.$batchRemotePublishPreviewSnapshot)
+    observe(store.publishingStore.publishSession.$remoteRepositoryConflictSession)
+    observe(store.publishingStore.publishSession.$isBatchPublishPlanRefreshing)
+    observe(store.publishingStore.publishSession.$localPublishReadiness)
+    observe(store.publishingStore.$imageWorkbenchReport)
+    observe(store.publishingStore.publishSession.$isLocalRepositoryMutationRunning)
+    observe(store.publishingStore.publishSession.$publishActionFeedback)
+    observe(store.repositoryStore.$repositoryTokenAvailability)
+    observe(store.repositoryStore.$isRemoteRepositoryChecking)
+    observe(store.repositoryStore.$isRemoteRepositoryPublishing)
+    observe(store.repositoryStore.$remoteRepositoryPublishProgress)
+    observe(store.aiWorkspaceStore.$seoSocialPreviewSnapshots)
+    observe(store.$siteAnalyticsSummaries)
+    observe(store.$siteAnalyticsLoadingDraftID)
+    observe(store.$siteAnalyticsMessage)
+    observe(store.$siteAnalyticsTokenAvailability)
+
+    store.imageStore.objectWillChange
+      .sink { [weak self] _ in self?.objectWillChange.send() }
+      .store(in: &cancellables)
   }
 
   private func observe<P: Publisher>(_ publisher: P) where P.Failure == Never {
@@ -405,12 +444,12 @@ public final class WorkbenchSiteStarterObservationFacade: ObservableObject {
       }
       .removeDuplicates()
     )
-    observe(store.publishingStore.$siteStarterResult)
-    observe(store.publishingStore.$siteStarterImportResult)
-    observe(store.publishingStore.$siteStarterPushResult)
-    observe(store.publishingStore.$isSiteStarterOperationRunning)
-    observe(store.publishingStore.$isLocalRepositoryMutationRunning)
-    observe(store.publishingStore.$publishActionFeedback)
+    observe(store.publishingStore.siteStarter.$result)
+    observe(store.publishingStore.siteStarter.$importResult)
+    observe(store.publishingStore.siteStarter.$pushResult)
+    observe(store.publishingStore.siteStarter.$isOperationRunning)
+    observe(store.publishingStore.publishSession.$isLocalRepositoryMutationRunning)
+    observe(store.publishingStore.publishSession.$publishActionFeedback)
     observe(store.repositoryStore.$isRemoteRepositoryChecking)
     observe(store.repositoryStore.$remoteRepositoryCreationResult)
     observe(store.repositoryStore.$remoteRepositoryAccessCheck)

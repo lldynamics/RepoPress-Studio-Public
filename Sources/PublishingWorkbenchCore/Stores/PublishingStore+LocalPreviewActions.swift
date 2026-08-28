@@ -299,17 +299,23 @@ extension PublishingStore {
     generation: UInt64
   ) {
     stopLocalSitePreviewFileWatcher()
-    let watcher = LocalSitePreviewFileWatcher(rootPath: plan.rootPath, siteKind: plan.siteKind) { [weak self] in
+    let watcher = LocalSitePreviewFileWatcher(
+      rootPath: plan.rootPath,
+      siteKind: plan.siteKind,
+      expectedExecutionManifestDigest: plan.executionIdentity?.manifestDigest
+    ) { [weak self] change in
       Task { @MainActor [weak self] in
         guard let self, self.localSitePreviewGeneration == generation else { return }
-        guard self.localSitePreviewProcessService.isExecutionCurrent(for: plan) else {
-          self.localSitePreviewProcessService.invalidateAuthorization(for: plan)
-          self.requestLocalSitePreviewStop(
-            message: CoreL10n.text("预览启动命令或项目清单已变更，已停止旧预览；下次启动需重新确认。")
-          )
-          return
+        if change.executionConfigurationChanged {
+          guard self.localSitePreviewProcessService.isExecutionCurrent(for: plan) else {
+            self.localSitePreviewProcessService.invalidateAuthorization(for: plan)
+            self.requestLocalSitePreviewStop(
+              message: CoreL10n.text("预览启动命令或项目清单已变更，已停止旧预览；下次启动需重新确认。")
+            )
+            return
+          }
         }
-        self.scheduleLocalSitePreviewRefresh(generation: generation)
+        self.refreshLocalSitePreview(generation: generation)
       }
     }
     watcher.start()
@@ -317,32 +323,20 @@ extension PublishingStore {
   }
 
   private func stopLocalSitePreviewFileWatcher() {
-    localSitePreviewRefreshTask?.cancel()
-    localSitePreviewRefreshTask = nil
     localSitePreviewFileWatcher?.stop()
     localSitePreviewFileWatcher = nil
   }
 
-  private func scheduleLocalSitePreviewRefresh(generation: UInt64) {
-    guard localSitePreviewRuntimeStatus.isRunning else { return }
-    localSitePreviewRefreshTask?.cancel()
-    localSitePreviewRefreshTask = Task { [weak self] in
-      do {
-        try await Task.sleep(for: .milliseconds(350))
-      } catch {
-        return
-      }
-      guard let self,
-            self.localSitePreviewGeneration == generation,
-            self.localSitePreviewRuntimeStatus.isRunning else { return }
-      self.localSitePreviewRefreshToken &+= 1
-      self.localSitePreviewRuntimeStatus.message = "检测到仓库文件变更，预览已刷新。"
-      self.setPublishActionMessage(
-        self.localSitePreviewRuntimeStatus.message,
-        status: .success
-      )
-      self.localSitePreviewRefreshTask = nil
-    }
+  private func refreshLocalSitePreview(generation: UInt64) {
+    guard localSitePreviewGeneration == generation,
+      localSitePreviewRuntimeStatus.isRunning
+    else { return }
+    localSitePreviewRefreshToken &+= 1
+    localSitePreviewRuntimeStatus.message = "检测到仓库文件变更，预览已刷新。"
+    setPublishActionMessage(
+      localSitePreviewRuntimeStatus.message,
+      status: .success
+    )
   }
 
   private func requestLocalSitePreviewStop(message: String) {

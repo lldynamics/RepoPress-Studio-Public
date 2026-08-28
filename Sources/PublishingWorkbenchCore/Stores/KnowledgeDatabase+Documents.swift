@@ -392,10 +392,12 @@ extension KnowledgeDatabase {
     sourceURL: URL?,
     originalHash: String,
     normalizedHash: String,
-    parserVersion: Int
+    parserVersion: Int,
+    kind: KnowledgeDocumentKind? = nil
   ) throws -> (document: KnowledgeDocument, identical: Bool)? {
     try withLock {
       let source = sourceURL?.absoluteString.nilIfEmpty
+      let isImage = kind == .image
       let sql = """
         SELECT d.id, d.kind, d.title, d.authors_json, d.language, d.summary,
                d.tags_json, d.source_url, d.source_name, d.folder_id,
@@ -405,20 +407,23 @@ extension KnowledgeDatabase {
                r.original_hash, r.normalized_hash, r.parser_version
         FROM knowledge_documents d
         JOIN knowledge_revisions r ON r.id = d.current_revision_id
-        WHERE (? IS NOT NULL AND d.source_url = ?)
-           OR r.original_hash = ?
-           OR r.normalized_hash = ?
+        WHERE r.original_hash = ?
+           OR (? = 0 AND (
+             (? IS NOT NULL AND d.source_url = ?)
+             OR r.normalized_hash = ?
+           ))
         ORDER BY CASE WHEN (? IS NOT NULL AND d.source_url = ?) THEN 0 ELSE 1 END,
                  d.updated_at DESC
         LIMIT 1;
         """
       return try withCachedStatementUnlocked(sql) { statement in
-        bindOptional(source, at: 1, to: statement)
-        bindOptional(source, at: 2, to: statement)
-        bind(originalHash, at: 3, to: statement)
-        bind(normalizedHash, at: 4, to: statement)
-        bindOptional(source, at: 5, to: statement)
+        bind(originalHash, at: 1, to: statement)
+        sqlite3_bind_int(statement, 2, isImage ? 1 : 0)
+        bindOptional(source, at: 3, to: statement)
+        bindOptional(source, at: 4, to: statement)
+        bind(normalizedHash, at: 5, to: statement)
         bindOptional(source, at: 6, to: statement)
+        bindOptional(source, at: 7, to: statement)
         let result = sqlite3_step(statement)
         if result == SQLITE_ROW {
           let document = try decodeDocument(statement, offset: 0)
@@ -428,7 +433,8 @@ extension KnowledgeDatabase {
           return (
             document,
             storedParserVersion == parserVersion
-              && (storedOriginalHash == originalHash || storedNormalizedHash == normalizedHash)
+              && (storedOriginalHash == originalHash
+                || (!isImage && storedNormalizedHash == normalizedHash))
           )
         }
         guard result == SQLITE_DONE else { throw databaseError() }

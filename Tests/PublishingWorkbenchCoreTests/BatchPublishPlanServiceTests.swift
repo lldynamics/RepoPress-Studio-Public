@@ -1,4 +1,6 @@
+import CoreGraphics
 import Foundation
+import ImageIO
 import XCTest
 @testable import PublishingWorkbenchCore
 
@@ -188,16 +190,22 @@ final class BatchPublishPlanServiceTests: XCTestCase {
     defer { try? FileManager.default.removeItem(at: rootURL) }
     let firstImageURL = rootURL.appendingPathComponent("first-source.png")
     let secondImageURL = rootURL.appendingPathComponent("second-source.png")
-    try Data([1, 2, 3, 4]).write(to: firstImageURL)
-    try Data([4, 3, 2, 1]).write(to: secondImageURL)
+    let firstImageData = try makePNG(red: 0.1, green: 0.4, blue: 0.8)
+    let secondImageData = try makePNG(red: 0.8, green: 0.2, blue: 0.1)
+    try firstImageData.write(to: firstImageURL, options: .atomic)
+    try secondImageData.write(to: secondImageURL, options: .atomic)
 
     var profile = SiteProfile.defaultProfile
     profile.rememberLocalRepositoryRoot(rootURL)
     profile.markdownPathPattern = "content/posts/{slug}.md"
     var firstDraft = longDraft(profile: profile, title: "First Image", slug: "first-image")
-    firstDraft.attachments = [sharedAttachment(sourceURL: firstImageURL)]
+    firstDraft.attachments = [
+      sharedAttachment(sourceURL: firstImageURL, byteSize: Int64(firstImageData.count))
+    ]
     var secondDraft = longDraft(profile: profile, title: "Second Image", slug: "second-image")
-    secondDraft.attachments = [sharedAttachment(sourceURL: secondImageURL)]
+    secondDraft.attachments = [
+      sharedAttachment(sourceURL: secondImageURL, byteSize: Int64(secondImageData.count))
+    ]
 
     let plan = BatchPublishPlanService().plan(
       drafts: [firstDraft, secondDraft],
@@ -220,17 +228,24 @@ final class BatchPublishPlanServiceTests: XCTestCase {
     defer { try? FileManager.default.removeItem(at: rootURL) }
     let firstImageURL = rootURL.appendingPathComponent("first-source.png")
     let secondImageURL = rootURL.appendingPathComponent("second-source.png")
-    let sharedData = Data([1, 2, 3, 4])
-    try sharedData.write(to: firstImageURL)
-    try sharedData.write(to: secondImageURL)
+    let sharedData = try makePNG(red: 0.1, green: 0.4, blue: 0.8)
+    try sharedData.write(to: firstImageURL, options: .atomic)
+    try sharedData.write(to: secondImageURL, options: .atomic)
 
     var profile = SiteProfile.defaultProfile
     profile.rememberLocalRepositoryRoot(rootURL)
     profile.markdownPathPattern = "content/posts/{slug}.md"
     var firstDraft = longDraft(profile: profile, title: "First Image", slug: "first-image")
-    firstDraft.attachments = [sharedAttachment(sourceURL: firstImageURL)]
+    firstDraft.attachments = [
+      sharedAttachment(sourceURL: firstImageURL, byteSize: Int64(sharedData.count))
+    ]
     var secondDraft = longDraft(profile: profile, title: "Second Image", slug: "second-image")
-    secondDraft.attachments = [sharedAttachment(sourceURL: secondImageURL, repositorySHA: "image-sha")]
+    secondDraft.attachments = [
+      sharedAttachment(
+        sourceURL: secondImageURL,
+        byteSize: Int64(sharedData.count),
+        repositorySHA: "image-sha")
+    ]
 
     let plan = BatchPublishPlanService().plan(
       drafts: [firstDraft, secondDraft],
@@ -266,16 +281,42 @@ final class BatchPublishPlanServiceTests: XCTestCase {
     )
   }
 
-  private func sharedAttachment(sourceURL: URL, repositorySHA: String? = nil) -> DraftAttachment {
+  private func sharedAttachment(
+    sourceURL: URL,
+    byteSize: Int64,
+    repositorySHA: String? = nil
+  ) -> DraftAttachment {
     DraftAttachment(
       originalFilename: "shared.png",
       relativePublishPath: "/images/shared.png",
       repositoryPath: "static/images/shared.png",
       altText: "Shared image",
-      byteSize: 4,
+      byteSize: byteSize,
       sourceFilePath: sourceURL.path,
       repositorySHA: repositorySHA
     )
+  }
+
+  private func makePNG(red: CGFloat, green: CGFloat, blue: CGFloat) throws -> Data {
+    let colorSpace = CGColorSpaceCreateDeviceRGB()
+    guard
+      let context = CGContext(
+        data: nil, width: 2, height: 2, bitsPerComponent: 8, bytesPerRow: 0,
+        space: colorSpace, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+      )
+    else { throw CocoaError(.fileWriteUnknown) }
+    context.setFillColor(red: red, green: green, blue: blue, alpha: 1)
+    context.fill(CGRect(x: 0, y: 0, width: 2, height: 2))
+    guard let image = context.makeImage() else { throw CocoaError(.fileWriteUnknown) }
+    let data = NSMutableData()
+    guard
+      let destination = CGImageDestinationCreateWithData(
+        data, "public.png" as CFString, 1, nil
+      )
+    else { throw CocoaError(.fileWriteUnknown) }
+    CGImageDestinationAddImage(destination, image, nil)
+    guard CGImageDestinationFinalize(destination) else { throw CocoaError(.fileWriteUnknown) }
+    return data as Data
   }
 }
 
@@ -484,6 +525,10 @@ final class WorkbenchStoreBatchPublishTests: XCTestCase {
       .appendingPathComponent("PersonalSitePublisherMacBatchStoreRepo-\(UUID().uuidString)", isDirectory: true)
     try FileManager.default.createDirectory(
       at: rootURL.appendingPathComponent("content/posts", isDirectory: true),
+      withIntermediateDirectories: true
+    )
+    try FileManager.default.createDirectory(
+      at: rootURL.appendingPathComponent(".git", isDirectory: true),
       withIntermediateDirectories: true
     )
     return rootURL

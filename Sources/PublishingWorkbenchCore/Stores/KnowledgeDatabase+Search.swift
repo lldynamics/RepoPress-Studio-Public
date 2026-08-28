@@ -177,7 +177,7 @@ extension KnowledgeDatabase {
         return try withCachedStatementUnlocked(
           """
           SELECT id, document_id, revision_id, ordinal, heading_path, locator,
-                 content, token_estimate, content_hash
+                 content, token_estimate, content_hash, visual_anchor_json
           FROM knowledge_chunks
           WHERE id = ? AND document_id = ? AND revision_id = ?
           LIMIT 1;
@@ -237,7 +237,7 @@ extension KnowledgeDatabase {
                  d.is_archived,
                  d.imported_at, d.updated_at, d.current_revision_id,
                  c.id, c.document_id, c.revision_id, c.ordinal, c.heading_path,
-                 c.locator, c.content, c.token_estimate, c.content_hash
+                 c.locator, c.content, c.token_estimate, c.content_hash, c.visual_anchor_json
           FROM knowledge_chunks c
           JOIN knowledge_documents d ON d.id = c.document_id
           WHERE c.revision_id = d.current_revision_id
@@ -277,7 +277,7 @@ extension KnowledgeDatabase {
                  d.is_archived,
                  d.imported_at, d.updated_at, d.current_revision_id,
                  c.id, c.document_id, c.revision_id, c.ordinal, c.heading_path,
-                 c.locator, c.content, c.token_estimate, c.content_hash,
+                 c.locator, c.content, c.token_estimate, c.content_hash, c.visual_anchor_json,
                  e.revision_id, e.dimension, e.vector
           FROM knowledge_chunks c
           JOIN knowledge_documents d ON d.id = c.document_id
@@ -296,12 +296,12 @@ extension KnowledgeDatabase {
             let chunk = try decodeChunk(statement, offset: 17)
             let storedRevisionID = try optionalUUID(
               statement,
-              26,
+              27,
               field: "knowledge_chunk_embeddings.revision_id"
             )
-            let storedDimension = Int(sqlite3_column_int64(statement, 27))
+            let storedDimension = Int(sqlite3_column_int64(statement, 28))
             let storedVector = KnowledgeSemanticVectorStorage.decodeVector(
-              statement, index: 28, dimension: expectedDimension)
+              statement, index: 29, dimension: expectedDimension)
             let needsRepair =
               storedRevisionID != chunk.revisionID
               || storedDimension != expectedDimension
@@ -561,7 +561,7 @@ extension KnowledgeDatabase {
              d.is_archived,
              d.imported_at, d.updated_at, d.current_revision_id,
              c.id, c.document_id, c.revision_id, c.ordinal, c.heading_path,
-             c.locator, c.content, c.token_estimate, c.content_hash
+             c.locator, c.content, c.token_estimate, c.content_hash, c.visual_anchor_json
       FROM knowledge_chunks c
       JOIN knowledge_documents d ON d.id = c.document_id
       WHERE c.id IN (\(placeholders))
@@ -627,8 +627,8 @@ extension KnowledgeDatabase {
     let chunkSQL = """
       INSERT INTO knowledge_chunks (
         id, document_id, revision_id, ordinal, heading_path, locator,
-        content, token_estimate, content_hash
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+        content, token_estimate, content_hash, visual_anchor_json
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
       """
     let ftsSQL = """
       INSERT INTO knowledge_chunks_fts (
@@ -646,6 +646,7 @@ extension KnowledgeDatabase {
         bind(chunk.content, at: 7, to: chunkStatement)
         sqlite3_bind_int64(chunkStatement, 8, sqlite3_int64(chunk.tokenEstimate))
         bind(chunk.contentHash, at: 9, to: chunkStatement)
+        bindOptional(visualAnchorJSON(chunk.visualAnchor), at: 10, to: chunkStatement)
         guard sqlite3_step(chunkStatement) == SQLITE_DONE else { throw databaseError() }
       }
       try withCachedStatementUnlocked(ftsSQL) { ftsStatement in
@@ -757,7 +758,7 @@ extension KnowledgeDatabase {
              d.is_archived,
              d.imported_at, d.updated_at, d.current_revision_id,
              c.id, c.document_id, c.revision_id, c.ordinal, c.heading_path,
-             c.locator, c.content, c.token_estimate, c.content_hash,
+             c.locator, c.content, c.token_estimate, c.content_hash, c.visual_anchor_json,
              bm25(knowledge_chunks_fts, 0.0, 0.0, 5.0, 3.0, 2.0, 1.0)
       FROM knowledge_chunks_fts
       JOIN knowledge_chunks c ON c.id = knowledge_chunks_fts.chunk_id
@@ -799,7 +800,7 @@ extension KnowledgeDatabase {
              d.is_archived,
              d.imported_at, d.updated_at, d.current_revision_id,
              c.id, c.document_id, c.revision_id, c.ordinal, c.heading_path,
-             c.locator, c.content, c.token_estimate, c.content_hash,
+             c.locator, c.content, c.token_estimate, c.content_hash, c.visual_anchor_json,
              CASE
                WHEN d.title LIKE ? ESCAPE '\\' THEN -3.0
                WHEN c.heading_path LIKE ? ESCAPE '\\' THEN -2.0
@@ -814,7 +815,7 @@ extension KnowledgeDatabase {
           OR c.heading_path LIKE ? ESCAPE '\\'
           OR c.content LIKE ? ESCAPE '\\')
         \(idClause.sql)
-      ORDER BY 27 ASC, d.updated_at DESC, c.ordinal ASC
+      ORDER BY 28 ASC, d.updated_at DESC, c.ordinal ASC
       LIMIT ?;
       """
     return try withCachedStatementUnlocked(sql) { statement in
@@ -851,7 +852,7 @@ extension KnowledgeDatabase {
         KnowledgeSearchResult(
           document: document,
           chunk: chunk,
-          score: sqlite3_column_double(statement, 26),
+          score: sqlite3_column_double(statement, 27),
           signals: [.fullText]
         ))
     }

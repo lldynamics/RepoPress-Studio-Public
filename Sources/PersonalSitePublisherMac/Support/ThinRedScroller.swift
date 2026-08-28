@@ -142,22 +142,27 @@ public final class ThinRedScroller: NSScroller {
 @MainActor
 enum SettingsScrollViewStyling {
   static func install(on scrollView: NSScrollView) {
-    if scrollView.hasVerticalScroller,
-       !(scrollView.verticalScroller is ThinRedScroller) {
+    let needsVerticalReplacement =
+      scrollView.hasVerticalScroller && !(scrollView.verticalScroller is ThinRedScroller)
+    let needsOverlayStyle =
+      scrollView.scrollerStyle != .overlay
+      || scrollView.verticalScroller?.scrollerStyle != .overlay
+    let needsHorizontalFix =
+      scrollView.hasHorizontalScroller || scrollView.horizontalScrollElasticity != .none
+
+    if needsVerticalReplacement {
       let scroller = ThinRedScroller()
       scrollView.verticalScroller = scroller
     }
 
-    // NSScrollView can apply its own legacy style after a custom scroller is
-    // assigned, especially for SwiftUI's delayed Form/HostingScrollView
-    // construction. Reassert the page-local overlay style after replacement
-    // and refresh the native knob geometry from the current clip view.
-    scrollView.scrollerStyle = .overlay
-    scrollView.verticalScroller?.scrollerStyle = .overlay
-    scrollView.reflectScrolledClipView(scrollView.contentView)
-    (scrollView.verticalScroller as? ThinRedScroller)?.enableSettingsKnobLayer()
+    if needsVerticalReplacement || needsOverlayStyle {
+      scrollView.scrollerStyle = .overlay
+      scrollView.verticalScroller?.scrollerStyle = .overlay
+      scrollView.reflectScrolledClipView(scrollView.contentView)
+      (scrollView.verticalScroller as? ThinRedScroller)?.enableSettingsKnobLayer()
+    }
 
-    if scrollView.hasHorizontalScroller {
+    if needsHorizontalFix {
       scrollView.hasHorizontalScroller = false
       scrollView.horizontalScrollElasticity = .none
     }
@@ -281,7 +286,13 @@ private final class SettingsThinRedScrollerConfiguratorView: NSView {
 
   override func layout() {
     super.layout()
-    scheduleConfiguration()
+    if let scrollView = nearestScrollView {
+      if !(scrollView.verticalScroller is ThinRedScroller) {
+        scheduleConfiguration()
+      }
+    } else {
+      scheduleConfiguration()
+    }
   }
 
   func scheduleConfiguration() {

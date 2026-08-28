@@ -27,9 +27,17 @@ public enum ManagedAttachmentFileStoreError: LocalizedError, Equatable, Sendable
 /// absolute path, so snapshots created by older builds remain decodable.
 public struct ManagedAttachmentFileStore: Sendable {
   public let rootDirectoryURL: URL
+  private let imagePrivacySanitizer: ImagePrivacySanitizingService
+  private let sanitizesSensitiveImageMetadata: Bool
 
-  public init(rootDirectoryURL: URL? = nil) {
+  public init(
+    rootDirectoryURL: URL? = nil,
+    imagePrivacySanitizer: ImagePrivacySanitizingService = ImagePrivacySanitizingService(),
+    sanitizesSensitiveImageMetadata: Bool = true
+  ) {
     self.rootDirectoryURL = rootDirectoryURL ?? Self.defaultRootDirectoryURL()
+    self.imagePrivacySanitizer = imagePrivacySanitizer
+    self.sanitizesSensitiveImageMetadata = sanitizesSensitiveImageMetadata
   }
 
   public static func defaultRootDirectoryURL(
@@ -91,7 +99,28 @@ public struct ManagedAttachmentFileStore: Sendable {
         isDirectory: false
       )
       defer { try? fileManager.removeItem(at: stagingURL) }
-      try fileManager.copyItem(at: standardizedSourceURL, to: stagingURL)
+      if sanitizesSensitiveImageMetadata {
+        do {
+          let inspection = try imagePrivacySanitizer.inspect(at: standardizedSourceURL)
+          if inspection.requiresSanitization {
+            _ = try imagePrivacySanitizer.sanitize(
+              at: standardizedSourceURL,
+              to: stagingURL
+            )
+          } else {
+            try fileManager.copyItem(at: standardizedSourceURL, to: stagingURL)
+          }
+        } catch ImagePrivacySanitizingError.unsupportedImage(_),
+          ImagePrivacySanitizingError.invalidImage(_)
+        {
+          // Non-raster attachments and legacy files with image-like extensions
+          // retain the existing byte-for-byte import behavior. A valid image
+          // that was inspected as sensitive must sanitize successfully.
+          try fileManager.copyItem(at: standardizedSourceURL, to: stagingURL)
+        }
+      } else {
+        try fileManager.copyItem(at: standardizedSourceURL, to: stagingURL)
+      }
       try fileManager.moveItem(at: stagingURL, to: destinationURL)
       return destinationURL
     } catch {

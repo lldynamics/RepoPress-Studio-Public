@@ -71,7 +71,12 @@ struct StorageManagementView: View {
       await backupScheduler.refreshRecentBackups()
     }
     .sheet(item: $workspaceBackupPreview) { preview in
-      WorkspaceBackupRestorePreviewView(store: store, preview: preview)
+      WorkspaceBackupRestorePreviewView(
+        preview: preview,
+        stageWorkspaceBackupRestore: { backupURL in
+          await store.stageWorkspaceBackupRestore(from: backupURL)
+        }
+      )
     }
     .sheet(item: $knowledgeBackupPreview) { preview in
       KnowledgeLibraryRestorePreviewView(knowledge: store.knowledge, preview: preview)

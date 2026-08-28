@@ -196,6 +196,36 @@ final class ReleaseRecordTests: XCTestCase {
     XCTAssertTrue(record.summary.contains("GitLab"))
   }
 
+  func testPreviewPublishRecordUsesDedicatedNonProductionKind() {
+    var profile = SiteProfile.defaultProfile
+    profile.name = "预览站点"
+    profile.repositoryProvider = .github
+    profile.branch = "main"
+    profile.markdownPathPattern = "content/posts/{slug}.md"
+    let draft = ArticleDraft(
+      siteProfileID: profile.id,
+      title: "Preview Record",
+      slug: "preview-record",
+      bodyMarkdown: "Body"
+    )
+    let package = PublishPackageBuilder().build(draft: draft, profile: profile)
+    let result = RemoteRepositoryPublishResult(
+      provider: .github,
+      mode: .previewBranch,
+      branchName: "draft/preview-record",
+      targetBranch: "main",
+      changedPaths: [package.markdownPath],
+      commitSHA: "preview1234567890"
+    )
+
+    let record = ReleaseRecord.remotePublish(package: package, profile: profile, result: result)
+
+    XCTAssertEqual(record.kind, .remotePreviewBranch)
+    XCTAssertEqual(record.branchName, "draft/preview-record")
+    XCTAssertEqual(record.targetBranch, "main")
+    XCTAssertEqual(record.reviewURL, nil)
+  }
+
   func testBatchRemotePublishRecordCapturesTraceableDraftItems() {
     var profile = SiteProfile.defaultProfile
     profile.name = "批量线上站点"
@@ -350,6 +380,10 @@ final class ReleaseRecordTests: XCTestCase {
     let rootURL = FileManager.default.temporaryDirectory
       .appendingPathComponent("PersonalSitePublisherMacReleaseRecordTests-\(UUID().uuidString)", isDirectory: true)
     try FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(
+      at: rootURL.appendingPathComponent(".git", isDirectory: true),
+      withIntermediateDirectories: false
+    )
     defer {
       try? FileManager.default.removeItem(at: rootURL)
     }

@@ -2,10 +2,17 @@ import PublishingWorkbenchCore
 import SwiftUI
 
 extension KnowledgeSourceListColumn {
-  func documentFolderMenu(_ document: KnowledgeDocument) -> some View {
+  func documentFolderMenu(
+    _ document: KnowledgeDocument,
+    usesDocumentListSelection: Bool = true
+  ) -> some View {
     Menu(String(localized: "移动到文件夹")) {
       Button {
-        knowledge.moveDocument(document.id, to: nil)
+        moveContextDocuments(
+          contextDocumentID: document.id,
+          to: nil,
+          usesDocumentListSelection: usesDocumentListSelection
+        )
       } label: {
         Label(
           String(localized: "未分类"), systemImage: document.folderID == nil ? "checkmark" : "tray")
@@ -14,13 +21,31 @@ extension KnowledgeSourceListColumn {
         Divider()
         ForEach(knowledge.folders) { folder in
           Button {
-            knowledge.moveDocument(document.id, to: folder.id)
+            moveContextDocuments(
+              contextDocumentID: document.id,
+              to: folder.id,
+              usesDocumentListSelection: usesDocumentListSelection
+            )
           } label: {
             Label(folder.name, systemImage: document.folderID == folder.id ? "checkmark" : "folder")
           }
         }
       }
     }
+  }
+
+  private func moveContextDocuments(
+    contextDocumentID: UUID,
+    to folderID: UUID?,
+    usesDocumentListSelection: Bool
+  ) {
+    let documentIDs = KnowledgeSourceListContextActionSelection.documentIDs(
+      contextDocumentID: contextDocumentID,
+      selectedDocumentIDs: selectedDocumentIDs,
+      isDocumentListSelectionActive: usesDocumentListSelection
+    )
+    knowledge.moveDocuments(documentIDs, to: folderID)
+    retainVisibleBatchSelection()
   }
 
   var selectedFolderTitle: String {
@@ -162,8 +187,12 @@ extension KnowledgeSourceListColumn {
 
   func openDataManagement() {
     dataManagementRequestedSection = DataManagementSection.backup.rawValue
-    requestedSettingsTabID = SettingsTab.dataManagement.id
-    openSettings()
+    SettingsNavigation.present(
+      destination: .data(.backup),
+      workspaceAction: settingsWorkspaceCommandAction
+    ) {
+      openSettings()
+    }
   }
 
   var commandActions: KnowledgeLibraryCommandActions {

@@ -17,7 +17,7 @@ final class ContentHealthActionQueueTests: XCTestCase {
           title: "公开风险",
           message: "需要确认",
           category: .publicRisk
-        ),
+        )
       ],
       aiPriority: .medium
     )
@@ -164,6 +164,38 @@ final class ContentHealthActionQueueTests: XCTestCase {
     XCTAssertEqual(snapshot.passingDraftCount, 1)
     XCTAssertEqual(presentation.rows.map(\.draftID), [draftID])
     XCTAssertEqual(presentation.rows.first?.issues, [error])
+  }
+
+  func testRootCauseGroupsMergeArticlesAndKeepStableSeverityOrder() {
+    let publicRisk = makeRow(
+      title: "Z public risk",
+      issues: [
+        .init(
+          severity: .warning,
+          title: "公开风险",
+          message: "需要确认",
+          category: .publicRisk
+        )
+      ]
+    )
+    let missingSummary = makeRow(
+      title: "A missing summary",
+      issues: [.init(severity: .error, title: "摘要为空", message: "需要补全", field: "summary")]
+    )
+    let anotherMissingSummary = makeRow(
+      title: "B missing summary",
+      issues: [.init(severity: .error, title: "摘要为空", message: "需要补全", field: "summary")]
+    )
+
+    let groups = ContentHealthRootCausePresentation.groups(
+      rows: [publicRisk, anotherMissingSummary, missingSummary]
+    )
+
+    XCTAssertEqual(
+      groups.map(\.id), ["root-cause:field.summary", "root-cause:category.public-risk"])
+    XCTAssertEqual(
+      groups.first?.rows.map(\.draftTitle), ["A missing summary", "B missing summary"])
+    XCTAssertEqual(groups.first?.title, "文章元数据不完整")
   }
 
   private func makeRow(

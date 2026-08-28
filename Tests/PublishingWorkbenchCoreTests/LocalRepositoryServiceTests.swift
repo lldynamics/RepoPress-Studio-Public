@@ -286,7 +286,8 @@ final class LocalRepositoryServiceTests: XCTestCase {
       maximumEntries: 8
     )
 
-    XCTAssertEqual(files.map(\.path), [rootURL.appendingPathComponent("a/article.md").path])
+    let expectedURL = rootURL.appendingPathComponent("a/article.md").resolvingSymlinksInPath()
+    XCTAssertEqual(files.map { $0.resolvingSymlinksInPath().path }, [expectedURL.path])
   }
 
   func testAutoConfigurationUsesFallbackForUnknownRepository() throws {
@@ -1224,7 +1225,7 @@ final class LocalRepositoryServiceTests: XCTestCase {
       at: rootURL.appendingPathComponent(".git", isDirectory: true),
       withIntermediateDirectories: true
     )
-    return rootURL
+    return rootURL.resolvingSymlinksInPath()
   }
 
   private struct AutoConfigurationFixture {

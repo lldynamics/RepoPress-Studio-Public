@@ -42,6 +42,12 @@ extension WorkbenchStore {
     aiStore.seoReport(for: draft)
   }
 
+  public func seoInspectorPresentation(
+    for draft: ArticleDraft
+  ) async throws -> WorkbenchSEOInspectorPresentation {
+    try await aiStore.seoInspectorPresentation(for: draft)
+  }
+
   @discardableResult
   public func saveAIAPIKey(_ token: String) -> Bool {
     aiStore.saveAIAPIKey(token)

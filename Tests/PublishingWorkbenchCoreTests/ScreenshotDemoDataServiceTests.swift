@@ -123,10 +123,11 @@ import XCTest
         "性能夹具只能放大目标写作草稿"
       )
 
-      let encoded = String(
-        data: try JSONEncoder.workbench.encode(snapshot),
-        encoding: .utf8
-      ) ?? ""
+      let encoded =
+        String(
+          data: try JSONEncoder.workbench.encode(snapshot),
+          encoding: .utf8
+        ) ?? ""
       XCTAssertFalse(encoded.contains("/Users/"))
       XCTAssertFalse(encoded.localizedCaseInsensitiveContains("bearer "))
       XCTAssertFalse(encoded.localizedCaseInsensitiveContains("authorization"))
@@ -186,10 +187,11 @@ import XCTest
         "富附件性能夹具只能放大目标写作草稿"
       )
 
-      let encoded = String(
-        data: try JSONEncoder.workbench.encode(snapshot),
-        encoding: .utf8
-      ) ?? ""
+      let encoded =
+        String(
+          data: try JSONEncoder.workbench.encode(snapshot),
+          encoding: .utf8
+        ) ?? ""
       XCTAssertFalse(encoded.contains("/Users/"))
       XCTAssertFalse(encoded.localizedCaseInsensitiveContains("bearer "))
       XCTAssertFalse(encoded.localizedCaseInsensitiveContains("authorization"))
@@ -229,6 +231,7 @@ import XCTest
         "seo-social-preview",
         "deployment-status",
         "maintenance",
+        "settings",
         "general-drafts",
         "knowledge-library",
         "privacy-lock",

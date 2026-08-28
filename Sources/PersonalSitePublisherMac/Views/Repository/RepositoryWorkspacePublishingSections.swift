@@ -16,8 +16,8 @@ struct RepositoryPermissionActionPresentation: Equatable {
     let repository = configuredRepository.trimmedForPublishing
     if !owner.isEmpty && !repository.isEmpty {
       return Self(
-        title: String(localized: "检查权限"),
-        help: String(localized: "检查当前配置仓库的写入权限"),
+        title: String(localized: "连接诊断"),
+        help: String(localized: "诊断当前配置仓库的连接并重新验证写入能力"),
         isEnabled: true
       )
     }
@@ -30,7 +30,7 @@ struct RepositoryPermissionActionPresentation: Equatable {
       let repositoryMatches = repository.isEmpty || repository == detectedRepository
       guard ownerMatches && repositoryMatches else {
         return Self(
-          title: String(localized: "检查权限"),
+          title: String(localized: "连接诊断"),
           help: String(
             localized: "当前仓库配置与扫描到的 origin 不一致，请完成或修正 Owner/Namespace 和 Repo/Project。"
           ),
@@ -39,16 +39,16 @@ struct RepositoryPermissionActionPresentation: Equatable {
       }
       let originName = "\(detectedOwner)/\(detectedRepository)"
       return Self(
-        title: String(format: String(localized: "使用 %@ 并检查权限"), originName),
+        title: String(format: String(localized: "使用 %@ 并诊断连接"), originName),
         help: String(
-          format: String(localized: "使用扫描到的 origin %@ 写入当前站点配置，然后检查仓库写入权限。"),
+          format: String(localized: "使用扫描到的 origin %@ 写入当前站点配置，然后诊断仓库连接。"),
           originName
         ),
         isEnabled: true
       )
     }
     return Self(
-      title: String(localized: "检查权限"),
+      title: String(localized: "连接诊断"),
       help: String(localized: "请先配置仓库 Owner/Namespace 和 Repo/Project，或扫描包含 origin 的站点仓库。"),
       isEnabled: false
     )

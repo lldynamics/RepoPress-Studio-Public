@@ -2,30 +2,70 @@ import Foundation
 
 public struct WorkbenchAIAgentLoopService: Sendable {
   public let limits: WorkbenchAIAgentLoopLimits
-  public let allowedCommands: Set<WorkbenchAutomationCommandID>
+  public let allowedToolIDs: Set<AIAgentToolID>
+  public let grantedScopes: Set<AIAgentPermissionScope>
 
+  private let toolRegistry: any WorkbenchAIAgentToolRegistry
   private let modelTransport: WorkbenchAIAgentModelTransport
   private let automaticExecutor: WorkbenchAIAgentAutomaticExecutor
   private let dateProvider: WorkbenchAIAgentDateProvider
 
+  /// `grantedScopes` is an independent host-side capability gate. Its empty
+  /// default is intentional: registries may describe capabilities, but they
+  /// cannot grant those capabilities to themselves.
   public init(
     limits: WorkbenchAIAgentLoopLimits = .default,
     modelTransport: @escaping WorkbenchAIAgentModelTransport,
-    allowedCommands: Set<WorkbenchAutomationCommandID> = Set(
-      WorkbenchAutomationCommandID.allCases
-    ),
+    toolRegistry: any WorkbenchAIAgentToolRegistry = WorkbenchAutomationAgentToolRegistry(),
+    grantedScopes: Set<AIAgentPermissionScope> = [],
     automaticExecutor: @escaping WorkbenchAIAgentAutomaticExecutor,
     dateProvider: @escaping WorkbenchAIAgentDateProvider = { Date() }
   ) {
     self.limits = limits
-    self.allowedCommands = allowedCommands
+    self.toolRegistry = toolRegistry
+    self.grantedScopes = grantedScopes
+    self.allowedToolIDs = Set(
+      toolRegistry.catalog.descriptors.compactMap { descriptor in
+        descriptor.requiredScopes.isSubset(of: grantedScopes) ? descriptor.id : nil
+      }
+    )
     self.modelTransport = modelTransport
     self.automaticExecutor = automaticExecutor
     self.dateProvider = dateProvider
   }
 
   @available(
-    *, deprecated, renamed: "init(limits:modelTransport:allowedCommands:automaticExecutor:)"
+    *, deprecated,
+    message:
+      "Use init(limits:modelTransport:toolRegistry:grantedScopes:automaticExecutor:dateProvider:)."
+  )
+  public init(
+    limits: WorkbenchAIAgentLoopLimits = .default,
+    modelTransport: @escaping WorkbenchAIAgentModelTransport,
+    allowedCommands: Set<WorkbenchAutomationCommandID>,
+    automaticExecutor: @escaping WorkbenchAIAgentAutomaticExecutor,
+    dateProvider: @escaping WorkbenchAIAgentDateProvider = { Date() }
+  ) {
+    self.init(
+      limits: limits,
+      modelTransport: modelTransport,
+      toolRegistry: WorkbenchAutomationAgentToolRegistry(
+        allowedToolIDs: Set(
+          allowedCommands.map(WorkbenchAutomationAgentToolRegistry.toolID(for:))
+        )
+      ),
+      grantedScopes: Set(
+        allowedCommands.map(WorkbenchAutomationRegistry.requiredPermission(for:))
+      ),
+      automaticExecutor: automaticExecutor,
+      dateProvider: dateProvider
+    )
+  }
+
+  @available(
+    *, deprecated,
+    message:
+      "Use init(limits:modelTransport:toolRegistry:grantedScopes:automaticExecutor:) instead."
   )
   public init(
     limits: WorkbenchAIAgentLoopLimits = .default,
@@ -35,6 +75,7 @@ public struct WorkbenchAIAgentLoopService: Sendable {
     self.init(
       limits: limits,
       modelTransport: modelTransport,
+      grantedScopes: Set(AIAgentPermissionScope.allCases),
       automaticExecutor: readOnlyExecutor
     )
   }
@@ -48,7 +89,8 @@ public struct WorkbenchAIAgentLoopService: Sendable {
     var state = LoopState(
       transcript: request.messages,
       limits: limits,
-      allowedCommands: allowedCommands
+      catalogRevision: toolRegistry.catalog.revision,
+      allowedToolIDs: allowedToolIDs
     )
 
     guard toolCallingSupport == .supported else {
@@ -88,7 +130,7 @@ public struct WorkbenchAIAgentLoopService: Sendable {
       toolCallingSupport: toolCallingSupport,
       state: state,
       limits: limits,
-      allowedCommands: allowedCommands
+      allowedToolIDs: allowedToolIDs
     )
   }
 
@@ -107,14 +149,15 @@ public struct WorkbenchAIAgentLoopService: Sendable {
     let fallbackState = LoopState(
       transcript: checkpoint.transcript,
       limits: limits,
-      allowedCommands: allowedCommands
+      catalogRevision: toolRegistry.catalog.revision,
+      allowedToolIDs: allowedToolIDs
     )
     guard toolCallingSupport == .supported else {
       return fallbackState.result(termination: .capabilityUnavailable(toolCallingSupport))
     }
 
     let effectiveLimits = limits.minimum(with: checkpoint.limits)
-    let effectiveAllowedCommands = allowedCommands.intersection(checkpoint.allowedCommands)
+    let effectiveAllowedToolIDs = allowedToolIDs.intersection(checkpoint.allowedToolIDs)
 
     do {
       var state = try makeResumeState(
@@ -122,7 +165,7 @@ public struct WorkbenchAIAgentLoopService: Sendable {
         resolutions: resolutions,
         context: context,
         effectiveLimits: effectiveLimits,
-        effectiveAllowedCommands: effectiveAllowedCommands
+        effectiveAllowedToolIDs: effectiveAllowedToolIDs
       )
       try state.applyResolutions(
         resolutions,
@@ -142,7 +185,7 @@ public struct WorkbenchAIAgentLoopService: Sendable {
         toolCallingSupport: toolCallingSupport,
         state: state,
         limits: effectiveLimits,
-        allowedCommands: effectiveAllowedCommands
+        allowedToolIDs: effectiveAllowedToolIDs
       )
     } catch ResumePreparationError.limit(let state, let limit) {
       return state.result(termination: .limitReached(limit))
@@ -169,14 +212,14 @@ public struct WorkbenchAIAgentLoopService: Sendable {
   ) -> Bool {
     guard toolCallingSupport == .supported else { return false }
     let effectiveLimits = limits.minimum(with: checkpoint.limits)
-    let effectiveAllowedCommands = allowedCommands.intersection(checkpoint.allowedCommands)
+    let effectiveAllowedToolIDs = allowedToolIDs.intersection(checkpoint.allowedToolIDs)
     do {
       _ = try makeResumeState(
         checkpoint: checkpoint,
         resolutions: [],
         context: context,
         effectiveLimits: effectiveLimits,
-        effectiveAllowedCommands: effectiveAllowedCommands
+        effectiveAllowedToolIDs: effectiveAllowedToolIDs
       )
       return true
     } catch {
@@ -191,7 +234,7 @@ public struct WorkbenchAIAgentLoopService: Sendable {
     toolCallingSupport: AIProviderCapabilitySupport,
     state initialState: LoopState,
     limits: WorkbenchAIAgentLoopLimits,
-    allowedCommands: Set<WorkbenchAutomationCommandID>
+    allowedToolIDs: Set<AIAgentToolID>
   ) async -> WorkbenchAIAgentLoopResult {
     var state = initialState
 
@@ -208,9 +251,9 @@ public struct WorkbenchAIAgentLoopService: Sendable {
       roundRequest.messages = state.transcript
       roundRequest.stream = false
       roundRequest.streamOptions = nil
-      roundRequest.tools = WorkbenchAutomationRegistry.agentToolDefinitions(
-        allowing: allowedCommands
-      )
+      roundRequest.tools = toolRegistry.catalog.descriptors.compactMap { descriptor in
+        allowedToolIDs.contains(descriptor.id) ? descriptor.definition : nil
+      }
       roundRequest.toolChoice = .auto
       roundRequest.responseFormat = nil
 
@@ -352,24 +395,25 @@ public struct WorkbenchAIAgentLoopService: Sendable {
       var invocations: [WorkbenchAIAgentToolInvocation] = []
       invocations.reserveCapacity(completion.toolCalls.count)
       for toolCall in completion.toolCalls {
-        guard let command = WorkbenchAutomationCommandID(rawValue: toolCall.function.name) else {
-          return state.result(termination: .rejected(.unknownTool(toolCall.function.name)))
-        }
-        guard allowedCommands.contains(command) else {
-          return state.result(termination: .rejected(.toolNotAllowed(toolCall.function.name)))
-        }
         do {
-          invocations.append(
-            try WorkbenchAutomationRegistry.agentInvocation(
-              for: toolCall,
-              draftVersions: context.draftVersions
-            )
-          )
-        } catch WorkbenchAutomationAgentToolError.unknownTool(let name) {
+          let invocation = try toolRegistry.prepare(call: toolCall, context: context)
+          guard allowedToolIDs.contains(invocation.toolID) else {
+            return state.result(termination: .rejected(.toolNotAllowed(toolCall.function.name)))
+          }
+          invocations.append(invocation)
+        } catch WorkbenchAIAgentToolRegistryError.unknownTool(let name) {
           return state.result(termination: .rejected(.unknownTool(name)))
-        } catch WorkbenchAutomationAgentToolError.invalidJSON {
+        } catch WorkbenchAIAgentToolRegistryError.toolNotAllowed {
+          return state.result(termination: .rejected(.toolNotAllowed(toolCall.function.name)))
+        } catch WorkbenchAIAgentToolRegistryError.invalidJSON {
           return state.result(
             termination: .rejected(.invalidJSON(toolCallID: toolCall.id))
+          )
+        } catch WorkbenchAIAgentToolRegistryError.argumentMismatch(_, let name) {
+          return state.result(
+            termination: .rejected(
+              .argumentMismatch(toolCallID: toolCall.id, toolName: name)
+            )
           )
         } catch {
           return state.result(
@@ -384,49 +428,53 @@ public struct WorkbenchAIAgentLoopService: Sendable {
       }
 
       let hasConfirmationStep = invocations.contains { invocation in
-        WorkbenchAutomationRegistry.descriptor(
-          for: invocation.step.command
-        )?.allowsAgentAutomaticExecution != true
+        invocation.executionPolicy == .requiresConfirmation
       }
       if hasConfirmationStep {
-        var steps = invocations.map(\.step)
-        for index in steps.indices {
-          guard
-            WorkbenchAutomationRegistry.descriptor(
-              for: steps[index].command
-            )?.allowsAgentAutomaticExecution != true
+        for index in invocations.indices {
+          guard invocations[index].executionPolicy == .requiresConfirmation,
+            var step = invocations[index].automationStep
           else {
             continue
           }
-          steps[index].status = .awaitingConfirmation
-          steps[index].resultMessage = CoreL10n.text("等待你确认后执行。")
+          step.status = .awaitingConfirmation
+          step.resultMessage = CoreL10n.text("等待你确认后执行。")
+          invocations[index].automationStep = step
         }
-        let plan = WorkbenchAutomationPlan(
-          goal: context.goal.isEmpty ? CoreL10n.text("审阅 AI 建议的工作台操作") : context.goal,
-          steps: steps,
-          source: .agentLoop
-        )
-        do {
-          try WorkbenchAutomationPlanValidator.validateStructure(plan)
-        } catch WorkbenchAutomationValidationError.tooManySteps(let received) {
-          return state.result(
-            termination: .limitReached(
-              .toolCallsPerRound(
-                maximum: WorkbenchAutomationPlan.maximumStepCount,
-                received: received
+        let workbenchSteps = invocations.compactMap(\.automationStep)
+        let plan: WorkbenchAutomationPlan?
+        if workbenchSteps.count == invocations.count {
+          let candidate = WorkbenchAutomationPlan(
+            goal: context.goal.isEmpty
+              ? CoreL10n.text("审阅 AI 建议的工作台操作") : context.goal,
+            steps: workbenchSteps,
+            source: .agentLoop
+          )
+          do {
+            try WorkbenchAutomationPlanValidator.validateStructure(candidate)
+            plan = candidate
+          } catch WorkbenchAutomationValidationError.tooManySteps(let received) {
+            return state.result(
+              termination: .limitReached(
+                .toolCallsPerRound(
+                  maximum: WorkbenchAutomationPlan.maximumStepCount,
+                  received: received
+                )
               )
             )
-          )
-        } catch {
-          let first = completion.toolCalls[0]
-          return state.result(
-            termination: .rejected(
-              .argumentMismatch(
-                toolCallID: first.id,
-                toolName: first.function.name
+          } catch {
+            let first = completion.toolCalls[0]
+            return state.result(
+              termination: .rejected(
+                .argumentMismatch(
+                  toolCallID: first.id,
+                  toolName: first.function.name
+                )
               )
             )
-          )
+          }
+        } else {
+          plan = nil
         }
         state.commit(
           assistantMessage: pendingAssistantMessage,
@@ -435,57 +483,68 @@ public struct WorkbenchAIAgentLoopService: Sendable {
           transcriptBytes: proposedAssistantTranscriptBytes
         )
         state.commitValidatedCalls(
-          IDs: roundCallIDs,
+          ids: roundCallIDs,
           totalToolCalls: proposedTotalToolCalls,
           totalArgumentBytes: proposedTotalArgumentBytes
         )
         let startedAt = dateProvider()
         for invocation in invocations {
           state.appendToolRun(
-            toolCallID: invocation.toolCallID,
-            command: invocation.step.command,
+            invocation: invocation,
             status: .awaitingConfirmation,
-            summary: invocation.step.resultMessage
+            summary: invocation.automationStep?.resultMessage
               ?? Self.awaitingConfirmationSummary,
-            automationStepID: invocation.step.id,
-            targetDraftID: invocation.step.arguments.draftID,
             startedAt: startedAt
           )
         }
-        return state.result(termination: .awaitingReview, pendingPlan: plan)
+        return state.result(
+          termination: .awaitingReview,
+          pendingPlan: plan,
+          pendingInvocations: invocations
+        )
       }
 
       var pendingToolMessages: [AIChatMessage] = []
       var pendingToolResultBytes = state.totalToolResultByteCount
       var pendingTranscriptBytes = proposedAssistantTranscriptBytes
-      for invocation in invocations {
+      for (invocation, originalCall) in zip(invocations, completion.toolCalls) {
         let startedAt = dateProvider()
         guard !Task.isCancelled else {
           state.appendToolRun(
-            toolCallID: invocation.toolCallID,
-            command: invocation.step.command,
+            invocation: invocation,
             status: .cancelled,
             summary: Self.cancelledSummary,
-            automationStepID: invocation.step.id,
-            targetDraftID: invocation.step.arguments.draftID,
             startedAt: startedAt,
             completedAt: startedAt
           )
           return state.result(termination: .cancelled)
         }
 
+        let executableInvocation: WorkbenchAIAgentToolInvocation
+        do {
+          executableInvocation = try toolRegistry.revalidate(
+            invocation: invocation,
+            matching: originalCall,
+            context: context
+          )
+          guard executableInvocation == invocation,
+            allowedToolIDs.contains(executableInvocation.toolID)
+          else {
+            return state.result(termination: .rejected(.invalidContinuation))
+          }
+        } catch {
+          return state.result(termination: .rejected(.invalidContinuation))
+        }
+
         let toolResult: WorkbenchAIAgentToolResult
         do {
-          toolResult = try await automaticExecutor(invocation)
+          toolResult = try await automaticExecutor(executableInvocation)
         } catch is CancellationError {
           let completedAt = dateProvider()
           state.appendToolRun(
-            toolCallID: invocation.toolCallID,
-            command: invocation.step.command,
+            invocation: invocation,
             status: .cancelled,
             summary: Self.cancelledSummary,
-            automationStepID: invocation.step.id,
-            targetDraftID: invocation.step.arguments.draftID,
             startedAt: startedAt,
             completedAt: completedAt
           )
@@ -494,12 +553,9 @@ public struct WorkbenchAIAgentLoopService: Sendable {
           if Task.isCancelled {
             let completedAt = dateProvider()
             state.appendToolRun(
-              toolCallID: invocation.toolCallID,
-              command: invocation.step.command,
+              invocation: invocation,
               status: .cancelled,
               summary: Self.cancelledSummary,
-              automationStepID: invocation.step.id,
-              targetDraftID: invocation.step.arguments.draftID,
               startedAt: startedAt,
               completedAt: completedAt
             )
@@ -519,12 +575,10 @@ public struct WorkbenchAIAgentLoopService: Sendable {
             in: .whitespacesAndNewlines
           ).nilIfEmpty ?? (toolResult.isError ? Self.failedSummary : Self.succeededSummary)
         state.appendToolRun(
-          toolCallID: invocation.toolCallID,
-          command: invocation.step.command,
+          invocation: invocation,
           status: status,
           summary: summary,
-          automationStepID: invocation.step.id,
-          targetDraftID: toolResult.targetDraftID ?? invocation.step.arguments.draftID,
+          targetDraftID: toolResult.targetDraftID,
           startedAt: startedAt,
           completedAt: completedAt
         )
@@ -589,7 +643,7 @@ public struct WorkbenchAIAgentLoopService: Sendable {
       state.transcript.append(contentsOf: pendingToolMessages)
       state.totalToolResultByteCount = pendingToolResultBytes
       state.commitValidatedCalls(
-        IDs: roundCallIDs,
+        ids: roundCallIDs,
         totalToolCalls: proposedTotalToolCalls,
         totalArgumentBytes: proposedTotalArgumentBytes
       )
@@ -620,12 +674,15 @@ public struct WorkbenchAIAgentLoopService: Sendable {
 
   private func makeResumeState(
     checkpoint: WorkbenchAIAgentLoopCheckpoint,
-    resolutions: [WorkbenchAIAgentToolResolution],
+    resolutions _: [WorkbenchAIAgentToolResolution],
     context: WorkbenchAIAgentContext,
     effectiveLimits: WorkbenchAIAgentLoopLimits,
-    effectiveAllowedCommands: Set<WorkbenchAutomationCommandID>
+    effectiveAllowedToolIDs: Set<AIAgentToolID>
   ) throws -> LoopState {
-    guard checkpoint.schemaVersion == WorkbenchAIAgentLoopCheckpoint.currentSchemaVersion,
+    let isLegacyCheckpoint = checkpoint.schemaVersion == 1
+    guard
+      isLegacyCheckpoint
+        || checkpoint.schemaVersion == WorkbenchAIAgentLoopCheckpoint.currentSchemaVersion,
       checkpoint.limits.isValid,
       !checkpoint.transcript.isEmpty,
       checkpoint.trustedBoundaryIndex >= 0,
@@ -635,6 +692,13 @@ public struct WorkbenchAIAgentLoopService: Sendable {
     else {
       throw ResumePreparationError.invalidContinuation
     }
+    let currentCatalog = toolRegistry.catalog
+    guard isLegacyCheckpoint || checkpoint.catalogRevision == currentCatalog.revision else {
+      throw ResumePreparationError.invalidContinuation
+    }
+    let descriptorsByID = Dictionary(
+      uniqueKeysWithValues: currentCatalog.descriptors.map { ($0.id, $0) }
+    )
 
     let boundaryMessages = checkpoint.transcript.enumerated().filter { _, message in
       message.role == "system"
@@ -718,25 +782,43 @@ public struct WorkbenchAIAgentLoopService: Sendable {
     }
 
     var pendingIDs = Set<String>()
+    var pendingCorrelationIDs = Set<UUID>()
     var pendingStepIDs = Set<UUID>()
+    var normalizedPendingByID: [String: WorkbenchAIAgentToolInvocation] = [:]
     for (pending, call) in zip(checkpoint.pendingCalls, finalCalls) {
       guard pending.toolCallID == call.id,
         pendingIDs.insert(pending.toolCallID).inserted,
-        pendingStepIDs.insert(pending.automationStepID).inserted,
-        pending.automationStepID == pending.step.id,
-        pending.command == pending.step.command,
-        pending.targetDraftID == pending.step.arguments.draftID,
-        pending.step.status == WorkbenchAutomationStepStatus.proposed
-          || pending.step.status == WorkbenchAutomationStepStatus.awaitingConfirmation,
-        pending.command.rawValue == call.function.name,
-        checkpoint.allowedCommands.contains(pending.command),
-        effectiveAllowedCommands.contains(pending.command)
+        pendingCorrelationIDs.insert(pending.correlationID).inserted,
+        pending.modelToolName == call.function.name,
+        checkpoint.allowedToolIDs.contains(pending.toolID),
+        effectiveAllowedToolIDs.contains(pending.toolID),
+        let descriptor = descriptorsByID[pending.toolID],
+        descriptor.definition.function.name == pending.modelToolName,
+        isLegacyCheckpoint || descriptor.executionPolicy == pending.executionPolicy,
+        isLegacyCheckpoint
+          ? pending.catalogRevision == WorkbenchAIAgentToolInvocation.legacyCatalogRevision
+          : pending.catalogRevision == currentCatalog.revision
       else {
         throw ResumePreparationError.invalidContinuation
       }
+
+      if let step = pending.automationStep {
+        guard pending.automationStepID == step.id,
+          pending.correlationID == step.id,
+          pendingStepIDs.insert(step.id).inserted,
+          pending.targetDraftID == step.arguments.draftID,
+          pending.targetDraftVersion == step.arguments.expectedDraftUpdatedAt,
+          step.status == .proposed || step.status == .awaitingConfirmation
+        else {
+          throw ResumePreparationError.invalidContinuation
+        }
+      } else if pending.automationStepID != nil {
+        throw ResumePreparationError.invalidContinuation
+      }
+
       var validationDraftVersions = context.draftVersions
       if let draftID = pending.targetDraftID,
-        let expectedUpdatedAt = pending.step.arguments.expectedDraftUpdatedAt
+        let expectedUpdatedAt = pending.targetDraftVersion
       {
         // A confirmed mutation legitimately changes the current draft version
         // before the model is resumed. Re-parse the persisted model call
@@ -747,16 +829,47 @@ public struct WorkbenchAIAgentLoopService: Sendable {
         }
         validationDraftVersions[draftID] = expectedUpdatedAt
       }
-      guard
-        let invocation = try? WorkbenchAutomationRegistry.agentInvocation(
-          for: call,
-          draftVersions: validationDraftVersions
-        ),
-        invocation.step.command == pending.command,
-        invocation.step.arguments == pending.step.arguments
+      let validationContext = WorkbenchAIAgentContext(
+        goal: context.goal,
+        draftVersions: validationDraftVersions
+      )
+      let fresh: WorkbenchAIAgentToolInvocation
+      do {
+        fresh = try toolRegistry.prepare(call: call, context: validationContext)
+      } catch {
+        throw ResumePreparationError.invalidContinuation
+      }
+      guard fresh.toolID == pending.toolID,
+        fresh.modelToolName == pending.modelToolName,
+        fresh.executionPolicy == descriptor.executionPolicy,
+        fresh.catalogRevision == currentCatalog.revision,
+        fresh.targetDraftID == pending.targetDraftID,
+        fresh.targetDraftVersion == pending.targetDraftVersion,
+        fresh.externalToolBinding == pending.externalToolBinding,
+        fresh.automationStep?.command == pending.automationStep?.command,
+        fresh.automationStep?.arguments == pending.automationStep?.arguments
       else {
         throw ResumePreparationError.invalidContinuation
       }
+
+      var reviewedInvocation = pending.invocation
+      if isLegacyCheckpoint {
+        reviewedInvocation.catalogRevision = currentCatalog.revision
+        reviewedInvocation.executionPolicy = descriptor.executionPolicy
+      }
+      do {
+        let revalidated = try toolRegistry.revalidate(
+          invocation: reviewedInvocation,
+          matching: call,
+          context: validationContext
+        )
+        guard revalidated == reviewedInvocation else {
+          throw ResumePreparationError.invalidContinuation
+        }
+      } catch {
+        throw ResumePreparationError.invalidContinuation
+      }
+      normalizedPendingByID[pending.toolCallID] = reviewedInvocation
     }
 
     guard assistantCallIDs.isSuperset(of: pendingIDs),
@@ -766,23 +879,51 @@ public struct WorkbenchAIAgentLoopService: Sendable {
     }
 
     var runIDs = Set<String>()
+    var normalizedRuns: [WorkbenchAIAgentToolRunRecord] = []
+    normalizedRuns.reserveCapacity(checkpoint.toolRuns.count)
     guard checkpoint.toolRuns.count == assistantCallIDs.count else {
       throw ResumePreparationError.invalidContinuation
     }
-    for run in checkpoint.toolRuns {
+    for persistedRun in checkpoint.toolRuns {
+      var run = persistedRun
       guard runIDs.insert(run.toolCallID).inserted,
         assistantCallIDs.contains(run.toolCallID),
         let call = callsByID[run.toolCallID],
-        run.command.rawValue == call.function.name
+        run.modelToolName == call.function.name,
+        checkpoint.allowedToolIDs.contains(run.toolID),
+        effectiveAllowedToolIDs.contains(run.toolID),
+        let descriptor = descriptorsByID[run.toolID],
+        descriptor.definition.function.name == run.modelToolName,
+        isLegacyCheckpoint
+          ? run.catalogRevision == WorkbenchAIAgentToolInvocation.legacyCatalogRevision
+          : run.catalogRevision == currentCatalog.revision
       else {
+        throw ResumePreparationError.invalidContinuation
+      }
+      if isLegacyCheckpoint {
+        run.catalogRevision = currentCatalog.revision
+        run.executionPolicy = descriptor.executionPolicy
+      } else if run.executionPolicy != descriptor.executionPolicy {
         throw ResumePreparationError.invalidContinuation
       }
       if let pending = checkpoint.pendingCalls.first(where: {
         $0.toolCallID == run.toolCallID
       }) {
+        guard let normalizedPending = normalizedPendingByID[pending.toolCallID] else {
+          throw ResumePreparationError.invalidContinuation
+        }
+        if isLegacyCheckpoint, run.targetDraftVersion == nil {
+          run.targetDraftVersion = normalizedPending.targetDraftVersion
+        }
         guard run.status == .awaitingConfirmation,
+          run.toolID == normalizedPending.toolID,
+          run.modelToolName == normalizedPending.modelToolName,
+          run.executionPolicy == normalizedPending.executionPolicy,
+          run.catalogRevision == normalizedPending.catalogRevision,
+          run.correlationID == normalizedPending.correlationID,
           run.automationStepID == pending.automationStepID,
-          run.targetDraftID == pending.targetDraftID
+          run.targetDraftID == pending.targetDraftID,
+          run.targetDraftVersion == normalizedPending.targetDraftVersion
         else {
           throw ResumePreparationError.invalidContinuation
         }
@@ -791,6 +932,7 @@ public struct WorkbenchAIAgentLoopService: Sendable {
           throw ResumePreparationError.invalidContinuation
         }
       }
+      normalizedRuns.append(run)
     }
     guard runIDs == assistantCallIDs else {
       throw ResumePreparationError.invalidContinuation
@@ -804,8 +946,9 @@ public struct WorkbenchAIAgentLoopService: Sendable {
     else {
       let state = LoopState(
         transcript: checkpoint.transcript,
-        limits: checkpoint.limits,
-        allowedCommands: checkpoint.allowedCommands
+        limits: effectiveLimits,
+        catalogRevision: currentCatalog.revision,
+        allowedToolIDs: effectiveAllowedToolIDs
       )
       throw ResumePreparationError.limit(
         state,
@@ -818,12 +961,13 @@ public struct WorkbenchAIAgentLoopService: Sendable {
 
     var state = LoopState(
       transcript: checkpoint.transcript,
-      limits: checkpoint.limits,
-      allowedCommands: checkpoint.allowedCommands
+      limits: effectiveLimits,
+      catalogRevision: currentCatalog.revision,
+      allowedToolIDs: effectiveAllowedToolIDs
     )
     state.trustedBoundaryIndex = checkpoint.trustedBoundaryIndex
     state.agentTranscriptStartIndex = checkpoint.agentTranscriptStartIndex
-    state.toolRuns = checkpoint.toolRuns
+    state.toolRuns = normalizedRuns
     state.seenToolCallIDs = assistantCallIDs
     state.modelRoundCount = checkpoint.modelRoundCount
     state.toolCallCount = checkpoint.toolCallCount
@@ -922,7 +1066,8 @@ private struct ToolMessagePayload: Encodable {
 private struct LoopState {
   var transcript: [AIChatMessage]
   var checkpointLimits: WorkbenchAIAgentLoopLimits
-  var checkpointAllowedCommands: Set<WorkbenchAutomationCommandID>
+  var checkpointCatalogRevision: String
+  var checkpointAllowedToolIDs: Set<AIAgentToolID>
   var trustedBoundaryIndex = -1
   var agentTranscriptStartIndex = 0
   var assistantText: [String] = []
@@ -938,13 +1083,13 @@ private struct LoopState {
   init(
     transcript: [AIChatMessage],
     limits: WorkbenchAIAgentLoopLimits = .default,
-    allowedCommands: Set<WorkbenchAutomationCommandID> = Set(
-      WorkbenchAutomationCommandID.allCases
-    )
+    catalogRevision: String,
+    allowedToolIDs: Set<AIAgentToolID>
   ) {
     self.transcript = transcript
     self.checkpointLimits = limits
-    self.checkpointAllowedCommands = allowedCommands
+    self.checkpointCatalogRevision = catalogRevision
+    self.checkpointAllowedToolIDs = allowedToolIDs
   }
 
   var systemMessageInsertionIndex: Int {
@@ -966,33 +1111,36 @@ private struct LoopState {
   }
 
   mutating func commitValidatedCalls(
-    IDs: Set<String>,
+    ids: Set<String>,
     totalToolCalls: Int,
     totalArgumentBytes: Int
   ) {
-    seenToolCallIDs.formUnion(IDs)
+    seenToolCallIDs.formUnion(ids)
     toolCallCount = totalToolCalls
     totalArgumentByteCount = totalArgumentBytes
   }
 
   mutating func appendToolRun(
-    toolCallID: String,
-    command: WorkbenchAutomationCommandID,
+    invocation: WorkbenchAIAgentToolInvocation,
     status: WorkbenchAIAgentToolRunStatus,
     summary: String,
-    automationStepID: UUID?,
-    targetDraftID: UUID?,
+    targetDraftID: UUID? = nil,
     startedAt: Date,
     completedAt: Date? = nil
   ) {
     toolRuns.append(
       WorkbenchAIAgentToolRunRecord(
-        toolCallID: toolCallID,
-        command: command,
+        toolCallID: invocation.toolCallID,
+        toolID: invocation.toolID,
+        modelToolName: invocation.modelToolName,
+        executionPolicy: invocation.executionPolicy,
+        catalogRevision: invocation.catalogRevision,
         status: status,
         summary: summary,
-        automationStepID: automationStepID,
-        targetDraftID: targetDraftID,
+        correlationID: invocation.correlationID,
+        automationStepID: invocation.automationStep?.id,
+        targetDraftID: targetDraftID ?? invocation.targetDraftID,
+        targetDraftVersion: invocation.targetDraftVersion,
         startedAt: startedAt,
         completedAt: completedAt
       )
@@ -1032,8 +1180,11 @@ private struct LoopState {
 
     for pending in pendingCalls {
       guard let resolution = resolutionByID[pending.toolCallID],
+        resolution.correlationID == pending.correlationID,
+        resolution.toolID == pending.toolID,
+        resolution.modelToolName == pending.modelToolName,
+        resolution.catalogRevision == pending.catalogRevision,
         resolution.automationStepID == pending.automationStepID,
-        resolution.command == pending.command,
         pending.targetDraftID == nil || resolution.targetDraftID == pending.targetDraftID
       else {
         throw WorkbenchAIAgentLoopService.ResumePreparationError.invalidContinuation
@@ -1106,11 +1257,16 @@ private struct LoopState {
       }
       toolRuns[index] = WorkbenchAIAgentToolRunRecord(
         toolCallID: current.toolCallID,
-        command: current.command,
+        toolID: current.toolID,
+        modelToolName: current.modelToolName,
+        executionPolicy: current.executionPolicy,
+        catalogRevision: current.catalogRevision,
         status: status,
         summary: resolution.content,
+        correlationID: current.correlationID,
         automationStepID: current.automationStepID,
         targetDraftID: resolution.targetDraftID ?? current.targetDraftID,
+        targetDraftVersion: resolution.targetDraftVersion ?? current.targetDraftVersion,
         startedAt: current.startedAt,
         completedAt: resolution.resolvedAt
       )
@@ -1123,15 +1279,17 @@ private struct LoopState {
 
   func result(
     termination: WorkbenchAIAgentLoopTermination,
-    pendingPlan: WorkbenchAutomationPlan? = nil
+    pendingPlan: WorkbenchAutomationPlan? = nil,
+    pendingInvocations: [WorkbenchAIAgentToolInvocation] = []
   ) -> WorkbenchAIAgentLoopResult {
     let checkpoint: WorkbenchAIAgentLoopCheckpoint? =
-      termination == .awaitingReview ? makeCheckpoint(for: pendingPlan) : nil
+      termination == .awaitingReview ? makeCheckpoint(for: pendingInvocations) : nil
     return WorkbenchAIAgentLoopResult(
       termination: termination,
       transcript: transcript,
       assistantText: assistantText,
       pendingPlan: pendingPlan,
+      pendingInvocations: pendingInvocations,
       checkpoint: checkpoint,
       toolRuns: toolRuns,
       modelRoundCount: modelRoundCount,
@@ -1144,36 +1302,53 @@ private struct LoopState {
   }
 
   private func makeCheckpoint(
-    for pendingPlan: WorkbenchAutomationPlan?
+    for pendingInvocations: [WorkbenchAIAgentToolInvocation]
   ) -> WorkbenchAIAgentLoopCheckpoint? {
-    guard let pendingPlan,
-      trustedBoundaryIndex >= 0,
+    guard trustedBoundaryIndex >= 0,
+      !pendingInvocations.isEmpty,
       let assistantMessage = transcript.last(where: {
         $0.role == "assistant" && !($0.toolCalls ?? []).isEmpty
       }),
       let calls = assistantMessage.toolCalls,
-      calls.count == pendingPlan.steps.count
+      calls.count == pendingInvocations.count
     else {
       return nil
     }
 
     var pendingCalls: [WorkbenchAIAgentLoopPendingCall] = []
     pendingCalls.reserveCapacity(calls.count)
-    for (call, step) in zip(calls, pendingPlan.steps) {
-      guard let run = toolRuns.first(where: { $0.toolCallID == call.id }) else {
+    for (call, invocation) in zip(calls, pendingInvocations) {
+      guard call.id == invocation.toolCallID,
+        call.function.name == invocation.modelToolName,
+        invocation.catalogRevision == checkpointCatalogRevision,
+        checkpointAllowedToolIDs.contains(invocation.toolID),
+        let run = toolRuns.first(where: { $0.toolCallID == call.id })
+      else {
         return nil
       }
       pendingCalls.append(
         WorkbenchAIAgentLoopPendingCall(
-          toolCallID: call.id,
-          automationStepID: step.id,
-          command: step.command,
-          targetDraftID: step.arguments.draftID,
-          step: step
+          toolCallID: invocation.toolCallID,
+          correlationID: invocation.correlationID,
+          toolID: invocation.toolID,
+          modelToolName: invocation.modelToolName,
+          executionPolicy: invocation.executionPolicy,
+          catalogRevision: invocation.catalogRevision,
+          automationStepID: invocation.automationStep?.id,
+          targetDraftID: invocation.targetDraftID,
+          targetDraftVersion: invocation.targetDraftVersion,
+          externalToolBinding: invocation.externalToolBinding,
+          automationStep: invocation.automationStep
         )
       )
-      guard run.automationStepID == step.id,
-        run.command == step.command,
+      guard run.toolID == invocation.toolID,
+        run.modelToolName == invocation.modelToolName,
+        run.executionPolicy == invocation.executionPolicy,
+        run.catalogRevision == invocation.catalogRevision,
+        run.correlationID == invocation.correlationID,
+        run.automationStepID == invocation.automationStep?.id,
+        run.targetDraftID == invocation.targetDraftID,
+        run.targetDraftVersion == invocation.targetDraftVersion,
         run.status == .awaitingConfirmation
       else {
         return nil
@@ -1185,7 +1360,8 @@ private struct LoopState {
       trustedBoundaryIndex: trustedBoundaryIndex,
       agentTranscriptStartIndex: agentTranscriptStartIndex,
       limits: checkpointLimits,
-      allowedCommands: checkpointAllowedCommands,
+      catalogRevision: checkpointCatalogRevision,
+      allowedToolIDs: checkpointAllowedToolIDs,
       pendingCalls: pendingCalls,
       toolRuns: toolRuns,
       modelRoundCount: modelRoundCount,

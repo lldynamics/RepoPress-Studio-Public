@@ -81,10 +81,21 @@ extension PublishingStore {
     now: Date = Date()
   ) -> RemoteRepositoryAccessCheck? {
     guard let check = store.repositoryStore.remoteRepositoryAccessCheckByProfileID[profile.id],
-          check.isFresh(at: now),
-          check.provider == profile.repositoryProvider,
-          check.repositoryName == profile.repositoryDisplayName
+      check.isFresh(at: now),
+      check.provider == profile.repositoryProvider,
+      check.repositoryName == profile.repositoryDisplayName
     else {
+      return nil
+    }
+
+    if let targetBranch = check.targetBranch?.nilIfEmpty,
+      targetBranch != (profile.branch.nilIfEmpty ?? "main")
+    {
+      return nil
+    }
+    if let publishStrategy = check.publishStrategy,
+      publishStrategy != profile.repositoryPublishStrategy
+    {
       return nil
     }
 
@@ -97,10 +108,13 @@ extension PublishingStore {
     } catch {
       return nil
     }
-    let normalizedChecked = checkedAPIBaseURL
+    let normalizedChecked =
+      checkedAPIBaseURL
       .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-    guard normalizedChecked == remoteRepositoryPublishService
-      .normalizedAPIBaseURLString(profileAPIBaseURL)
+    guard
+      normalizedChecked
+        == remoteRepositoryPublishService
+        .normalizedAPIBaseURLString(profileAPIBaseURL)
     else {
       return nil
     }
@@ -126,7 +140,8 @@ extension PublishingStore {
       .sorted { lhs, rhs in
         lhs.draftID.uuidString < rhs.draftID.uuidString
       }
-    let resolvedBodyRevision = bodyRevision
+    let resolvedBodyRevision =
+      bodyRevision
       ?? store.draftBodyEditorBuffer(for: draft.id).revision
     return DraftPublishPreviewInputBaseline(
       context: DraftExecutionContext(
@@ -163,10 +178,10 @@ extension PublishingStore {
     store: WorkbenchStore
   ) -> Bool {
     guard draftID == baseline.context.draftID,
-          let current = currentDraftPublishPreviewInputBaseline(
-            for: draftID,
-            store: store
-          )
+      let current = currentDraftPublishPreviewInputBaseline(
+        for: draftID,
+        store: store
+      )
     else {
       return false
     }

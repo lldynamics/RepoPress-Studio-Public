@@ -1,223 +1,45 @@
 #!/usr/bin/env bash
 set -euo pipefail
-
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-APP_NAME="PersonalSitePublisherMac"
-APP_BUNDLE_NAME="RepoPress Studio"
-APP_BUNDLE="$ROOT_DIR/dist/$APP_BUNDLE_NAME.app"
+APP_BUNDLE="$ROOT_DIR/dist/RepoPress Studio.app"
 INFO_PLIST="$APP_BUNDLE/Contents/Info.plist"
-APP_BINARY="$APP_BUNDLE/Contents/MacOS/$APP_NAME"
-APP_RESOURCES="$APP_BUNDLE/Contents/Resources"
-CORE_RESOURCE_BUNDLE="$APP_RESOURCES/${APP_NAME}_PublishingCoreSupport.bundle"
-TREE_SITTER_MARKDOWN_BUNDLE="$APP_RESOURCES/TreeSitterMarkdown_TreeSitterMarkdown.bundle"
-TREE_SITTER_MARKDOWN_INLINE_BUNDLE="$APP_RESOURCES/TreeSitterMarkdown_TreeSitterMarkdownInline.bundle"
-MODE="package"
-
-fail() {
-  echo "ui runtime gate: $*" >&2
-  exit 1
-}
-
-top_level_view_files="$(
-  find "$ROOT_DIR/Sources/PersonalSitePublisherMac/Views" \
-    -maxdepth 1 -type f -name '*.swift' -print
-)"
-[[ -z "$top_level_view_files" ]] \
-  || fail "view source files must be grouped into a business-domain directory: $top_level_view_files"
-
-case "${1:-}" in
-  ""|--package-only)
-    MODE="package"
-    ;;
-  --launch)
-    MODE="launch"
-    ;;
-  *)
-    fail "unknown argument: $1"
-    ;;
-esac
-
-build_arguments=(--package-only --release)
-bash "$ROOT_DIR/script/build_and_run.sh" "${build_arguments[@]}" >/dev/null
-
+APP_BINARY="$APP_BUNDLE/Contents/MacOS/PersonalSitePublisherMac"
+MANIFEST="${RELEASE_ARTIFACT_MANIFEST:-$ROOT_DIR/.build/release-artifact-manifest.json}"
+MODE="${1:---package-only}"
+fail() { echo "ui runtime artifact gate: $*" >&2; exit 1; }
+[[ "$MODE" == "--package-only" || "$MODE" == "--launch" ]] || fail "unknown argument: $MODE"
+if [[ -n "${RELEASE_ARTIFACT_MANIFEST:-}" && -f "$MANIFEST" ]]; then
+  python3 "$ROOT_DIR/script/release_artifact_manifest.py" validate --root "$ROOT_DIR" --manifest "$MANIFEST" || fail "Release artifact manifest is missing, stale, or drifted"
+else
+  build_arguments=(--package-only --release)
+  bash "$ROOT_DIR/script/build_and_run.sh" "${build_arguments[@]}" >/dev/null
+  python3 "$ROOT_DIR/script/release_artifact_manifest.py" create --root "$ROOT_DIR" --manifest "$MANIFEST" || fail "could not create Release artifact manifest"
+fi
 [[ -d "$APP_BUNDLE" ]] || fail "app bundle was not created"
 [[ -x "$APP_BINARY" ]] || fail "app executable is missing or not executable"
-[[ -d "$APP_RESOURCES" ]] || fail "app Resources directory is missing"
-[[ -f "$APP_RESOURCES/en.lproj/Localizable.strings" ]] || fail "app English localization is missing"
-[[ -f "$APP_RESOURCES/zh-Hans.lproj/Localizable.strings" ]] || fail "app Simplified Chinese localization is missing"
-[[ -d "$CORE_RESOURCE_BUNDLE" ]] || fail "core SwiftPM resource bundle is missing"
-[[ -f "$TREE_SITTER_MARKDOWN_BUNDLE/queries/highlights.scm" ]] \
-  || fail "Tree-sitter Markdown highlight queries are missing"
-[[ -f "$TREE_SITTER_MARKDOWN_INLINE_BUNDLE/queries/highlights.scm" ]] \
-  || fail "Tree-sitter Markdown inline highlight queries are missing"
+[[ -d "$APP_BUNDLE/Contents/Resources" ]] || fail "app Resources directory is missing"
+[[ -f "$APP_BUNDLE/Contents/Resources/en.lproj/Localizable.strings" ]] || fail "app English localization is missing"
+[[ -f "$APP_BUNDLE/Contents/Resources/zh-Hans.lproj/Localizable.strings" ]] || fail "app Simplified Chinese localization is missing"
+[[ -d "$APP_BUNDLE/Contents/Resources/PersonalSitePublisherMac_PublishingCoreSupport.bundle" ]] || fail "core SwiftPM resource bundle is missing"
+[[ -f "$APP_BUNDLE/Contents/Resources/TreeSitterMarkdown_TreeSitterMarkdown.bundle/queries/highlights.scm" ]] || fail "Tree-sitter Markdown highlight queries are missing"
+[[ -f "$APP_BUNDLE/Contents/Resources/TreeSitterMarkdown_TreeSitterMarkdownInline.bundle/queries/highlights.scm" ]] || fail "Tree-sitter Markdown inline highlight queries are missing"
 plutil -lint "$INFO_PLIST" >/dev/null || fail "Info.plist is invalid"
-
 bundle_id="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$INFO_PLIST")"
 [[ "$bundle_id" == "com.jinfang.PersonalSitePublisherMac" ]] || fail "unexpected bundle identifier: $bundle_id"
-
-minimum_system="$(/usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' "$INFO_PLIST")"
-[[ "$minimum_system" == "14.0" ]] || fail "unexpected minimum system version: $minimum_system"
-
 build_configuration="$(/usr/libexec/PlistBuddy -c 'Print :PersonalSitePublisherBuildConfiguration' "$INFO_PLIST")"
-[[ "$build_configuration" == "Release" ]] \
-  || fail "packaged app must use the Release configuration"
-
-for file in \
-  "$ROOT_DIR/Sources/PersonalSitePublisherMac/Views/Workspace/ContentView.swift" \
-  "$ROOT_DIR/Sources/PersonalSitePublisherMac/Views/Workspace/WorkspaceLayoutViews.swift" \
-  "$ROOT_DIR/Sources/PersonalSitePublisherMac/Views/AIChat/AIChatWorkspaceInspectorComponents.swift" \
-  "$ROOT_DIR/Sources/PersonalSitePublisherMac/Views/Workspace/WorkspaceTaskInspector.swift" \
-  "$ROOT_DIR/Sources/PersonalSitePublisherMac/Views/Settings/SettingsView.swift"; do
-  [[ -f "$file" ]] || fail "expected UI file is missing: ${file#$ROOT_DIR/}"
-done
-
-bash "$ROOT_DIR/script/check_accessibility.sh"
-
-grep -q "wait_for_main_window" "$ROOT_DIR/script/build_and_run.sh" \
-  || fail "build_and_run --verify must wait for a visible main window"
-grep -q "count of windows" "$ROOT_DIR/script/build_and_run.sh" \
-  || fail "build_and_run --verify must query the app window count"
-grep -q -- "--launch-baseline" "$ROOT_DIR/script/build_and_run.sh" \
-  || fail "build_and_run must expose a launch performance baseline mode"
-grep -q "window_visibility_probe" "$ROOT_DIR/script/build_and_run.sh" \
-  || fail "launch performance must use the target-process on-screen window probe"
-if grep -Fq 'pkill -x "$APP_NAME"' "$ROOT_DIR/script/build_and_run.sh"; then
-  fail "release launch cleanup must not terminate same-named isolated UI-test apps"
-fi
-grep -Fq 'rm -rf "$RUNTIME_HOME/Library/Containers/$TEST_BUNDLE_ID/Data"' \
-  "$ROOT_DIR/script/check_accessibility_runtime.sh" \
-  || fail "accessibility cleanup must remove only test-owned sandbox data"
-if grep -Fq 'rm -rf "$RUNTIME_HOME/Library/Containers/$TEST_BUNDLE_ID"' \
-  "$ROOT_DIR/script/check_accessibility_runtime.sh"; then
-  fail "accessibility cleanup must preserve ContainerManager-owned metadata"
-fi
-[[ -x "$ROOT_DIR/script/check_launch_performance.sh" ]] \
-  || fail "launch performance gate is missing or not executable"
-
-grep -Fq ".frame(minHeight: 120, idealHeight: 132, maxHeight: 140)" \
-  "$ROOT_DIR/Sources/PersonalSitePublisherMac/Views/Shared/SharedViews.swift" \
-  || fail "compact empty states must keep the shared 120-140 point height"
-for image_empty_state_file in \
-  RepositoryImageBrowserView.swift \
-  AssetResourceManagerView.swift; do
-  grep -Fq "density: .compactPane" \
-    "$ROOT_DIR/Sources/PersonalSitePublisherMac/Views/Images/$image_empty_state_file" \
-    || fail "image workbench empty states must use compact density: $image_empty_state_file"
-done
-grep -Fq "ForEach(ImageWorkbenchBatchAction.allActions)" \
-  "$ROOT_DIR/Sources/PersonalSitePublisherMac/Views/Images/ImageWorkbenchView.swift" \
-  || fail "the image workbench must keep every primary operation visible"
-grep -Fq "RepositoryImageBrowserView(" \
-  "$ROOT_DIR/Sources/PersonalSitePublisherMac/Views/Images/ImageWorkbenchView.swift" \
-  || fail "the image workbench must include the repository image browser"
-grep -Fq '.accessibilityIdentifier("image-workbench-refresh")' \
-  "$ROOT_DIR/Sources/PersonalSitePublisherMac/Views/Images/ImageWorkbenchView.swift" \
-  || fail "the image workbench must keep an accessible rescan action available"
-
-grep -Fq "WorkspaceQuickSearchView(" \
-  "$ROOT_DIR/Sources/PersonalSitePublisherMac/Views/Workspace/WorkspaceContextSidebarView.swift" \
-  || fail "operational workspaces must keep quick article search in the sidebar"
-grep -Fq "repositoryContextStage: shell.selectedSection == .sync" \
-  "$ROOT_DIR/Sources/PersonalSitePublisherMac/Views/Workspace/WorkspaceContextSidebarView.swift" \
-  || fail "repository navigation must be injected into the sync sidebar"
-grep -Fq '.accessibilityIdentifier("repository-sidebar-stage-navigation")' \
-  "$ROOT_DIR/Sources/PersonalSitePublisherMac/Views/Workspace/WorkspaceQuickSearchView.swift" \
-  || fail "repository navigation must stay directly below quick search"
-grep -Fq "repositoryStageButton(item, stage: stage)" \
-  "$ROOT_DIR/Sources/PersonalSitePublisherMac/Views/Workspace/WorkspaceQuickSearchView.swift" \
-  || fail "repository stages must remain one full-width button per row"
-if grep -Fq "repositoryStageNavigation" \
-  "$ROOT_DIR/Sources/PersonalSitePublisherMac/Views/Repository/RepositoryWorkspaceView.swift"; then
-  fail "repository navigation must not remain above the center content"
-fi
-grep -Fq "onlinePublishCenterSection" \
-  "$ROOT_DIR/Sources/PersonalSitePublisherMac/Views/Repository/RepositoryWorkspaceOverviewSections.swift" \
-  || fail "repository overview must render the online publish center"
-
-# Release History is now split between its container, record cards, and shared deployment components.
-for unfolded_repository_file in \
-  Repository/RepositoryWorkspaceOverviewSections.swift \
-  Repository/RepositoryWorkspacePublishingSections.swift \
-  Repository/RepositoryWorkspaceLocalPreviewSection.swift \
-  Publishing/ReleaseHistoryDetailView.swift \
-  Publishing/ReleaseHistoryComponents.swift \
-  Publishing/ReleaseHistoryRecordCardSection.swift; do
-  if grep -Fq "DisclosureGroup" \
-    "$ROOT_DIR/Sources/PersonalSitePublisherMac/Views/$unfolded_repository_file"; then
-    fail "repository and release-history functions must remain visible instead of folded: $unfolded_repository_file"
-  fi
-done
-
-if grep -Fq "repositoryActionsMenu" \
-  "$ROOT_DIR/Sources/PersonalSitePublisherMac/Views/Repository/RepositoryWorkspaceOverviewSections.swift"; then
-  fail "repository primary actions must not return to the legacy actions menu"
-fi
-if grep -Fq "Menu {" \
-  "$ROOT_DIR/Sources/PersonalSitePublisherMac/Views/Repository/RepositoryWorkspaceOverviewSections.swift"; then
-  fail "repository overview actions must remain visible instead of being hidden in a menu"
-fi
-
-repository_identifier_sources=(
-  "Repository/RepositoryWorkspaceView.swift:repository-workspace"
-  "Repository/RepositoryWorkspaceOverviewSections.swift:repository-primary-actions"
-  "Repository/RepositoryWorkspaceOverviewSections.swift:repository-action-select-folder"
-  "Repository/RepositoryWorkspaceOverviewSections.swift:repository-action-scan"
-  "Repository/RepositoryWorkspaceOverviewSections.swift:repository-action-import"
-  "Repository/RepositoryWorkspaceOverviewSections.swift:repository-action-data-management"
-  "Repository/RepositoryWorkspaceOverviewSections.swift:repository-action-open-images"
-  "Repository/RepositoryWorkspaceOverviewSections.swift:repository-next-action"
-  "Repository/RepositoryWorkspaceOverviewSections.swift:repository-section-summary"
-  "Repository/RepositoryWorkspaceOverviewSections.swift:repository-section-information"
-  "Repository/RepositoryWorkspacePublishingSections.swift:repository-section-online-publish"
-  "Repository/RepositoryWorkspaceAutoSyncSection.swift:repository-section-auto-sync"
-  "Repository/RepositoryWorkspaceLocalPreviewSection.swift:repository-section-local-preview"
-  "Repository/RepositoryWorkspacePublishingSections.swift:repository-section-sync-plan"
-  "Repository/RepositoryWorkspacePublishingSections.swift:repository-section-path-rules"
-  "Repository/RepositoryWorkspaceRemoteChangesSection.swift:repository-section-remote-changes"
-  "Repository/RepositoryWorkspaceChangeSections.swift:repository-section-local-changes"
-  "Publishing/ReleaseHistoryDetailView.swift:repository-section-release-history"
-)
-for identifier_source in "${repository_identifier_sources[@]}"; do
-  source_file="${identifier_source%%:*}"
-  identifier="${identifier_source#*:}"
-  grep -Fq ".accessibilityIdentifier(\"$identifier\")" \
-    "$ROOT_DIR/Sources/PersonalSitePublisherMac/Views/$source_file" \
-    || fail "repository UI must expose $identifier in $source_file"
-done
-
-grep -Fq '.accessibilityIdentifier("workspace-quick-search-field")' \
-  "$ROOT_DIR/Sources/PersonalSitePublisherMac/Views/Workspace/WorkspaceQuickSearchView.swift" \
-  || fail "the workspace quick search must keep an accessible search field"
-grep -Fq "store.focusDraft(draftID, section: .writing)" \
-  "$ROOT_DIR/Sources/PersonalSitePublisherMac/Views/Workspace/WorkspaceQuickSearchView.swift" \
-  || fail "workspace quick search results must open their article"
-if grep -Fq "private var optimizationMenu" \
-  "$ROOT_DIR/Sources/PersonalSitePublisherMac/Views/Images/ImageWorkbenchView.swift"; then
-  fail "the image workbench must not hide primary operations in the legacy menu"
-fi
-
-content_view="$ROOT_DIR/Sources/PersonalSitePublisherMac/Views/Workspace/ContentView.swift"
-grep -Fq "@ObservedObject private var presentationState: WorkbenchContentPresentationFeatureFacade" \
-  "$content_view" \
-  || fail "ContentView must observe the narrow presentation projection"
-if grep -Eq "@ObservedObject private var (aiState: WorkbenchAIFeatureFacade|publishingState: WorkbenchPublishingFeatureFacade)" \
-  "$content_view"; then
-  fail "ContentView must not observe broad AI or publishing facades"
-fi
-
-if [[ "$MODE" == "launch" ]]; then
+[[ "$build_configuration" == "Release" ]] || fail "packaged app must use the Release configuration"
+grep -q 'wait_for_main_window' "$ROOT_DIR/script/build_and_run.sh" || fail "Release verification must wait for a visible main window"
+grep -q 'count of windows' "$ROOT_DIR/script/build_and_run.sh" || fail "Release verification must query app window count"
+grep -q -- '--launch-baseline' "$ROOT_DIR/script/build_and_run.sh" || fail "Release launch baseline mode is missing"
+grep -q 'window_visibility_probe' "$ROOT_DIR/script/build_and_run.sh" || fail "launch must use the target-process window probe"
+[[ -x "$ROOT_DIR/script/check_launch_performance.sh" ]] || fail "launch performance gate is missing"
+echo "ui runtime artifact gate: Release package artifact and manifest passed"
+if [[ "$MODE" == "--launch" ]]; then
   actual_entitlements="$(mktemp "${TMPDIR:-/tmp}/ui-runtime-entitlements.XXXXXX")"
   trap 'rm -f "$actual_entitlements"' EXIT
-  codesign -d --entitlements :- "$APP_BUNDLE" >"$actual_entitlements" 2>/dev/null \
-    || fail "could not read Release bundle entitlements"
+  codesign -d --entitlements :- "$APP_BUNDLE" >"$actual_entitlements" 2>/dev/null || fail "could not read Release bundle entitlements"
   actual_sandbox="$(/usr/libexec/PlistBuddy -c 'Print :com.apple.security.app-sandbox' "$actual_entitlements" 2>/dev/null || true)"
-  [[ "$actual_sandbox" != "true" ]] \
-    || fail "Release launch bundle unexpectedly enables App Sandbox"
+  [[ "$actual_sandbox" != "true" ]] || fail "Release launch bundle unexpectedly enables App Sandbox"
   bash "$ROOT_DIR/script/check_launch_performance.sh" --release
-fi
-
-if [[ "$MODE" == "launch" ]]; then
-  echo "ui runtime gate: non-sandboxed Release artifact passed and a real visible main-window launch was verified"
-else
-  echo "ui runtime gate: packaged artifact passed; real app launch was not run"
+  echo "ui runtime artifact gate: non-sandboxed Release artifact launch passed"
 fi

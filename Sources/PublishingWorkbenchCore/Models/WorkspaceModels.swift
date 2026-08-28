@@ -175,8 +175,8 @@ public enum WorkspaceInspectorColumnWidthPolicy {
   }
 }
 
-public extension WorkspaceSection {
-  var centerSurface: WorkspaceCenterSurface {
+extension WorkspaceSection {
+  public var centerSurface: WorkspaceCenterSurface {
     switch self {
     case .writing: .editor
     case .library: .knowledgeLibrary
@@ -188,7 +188,7 @@ public extension WorkspaceSection {
     }
   }
 
-  var requiresEditableDraftForCenterSurface: Bool {
+  public var requiresEditableDraftForCenterSurface: Bool {
     self == .writing
   }
 }
@@ -228,11 +228,11 @@ public enum WorkspaceVisibilityPolicy {
   /// Feature workspaces reached from their owning primary workspace rather
   /// than presented as another top-level destination.
   public static let siteResourceSections: [WorkspaceSection] = [
-    .images,
+    .images
   ]
 
   public static let secondaryEntrySections: [WorkspaceSection] = [
-    .siteStarter,
+    .siteStarter
   ]
 
   /// Keep this independent from `allCases`; context-only subpages are routed
@@ -252,7 +252,8 @@ public enum WorkspaceNavigationPresentation {
   public static let commandMenuItems = WorkspaceVisibilityPolicy.commandMenuPrimarySections.map(
     WorkspaceNavigationItem.init(section:)
   )
-  public static let secondaryEntryItems = WorkspaceVisibilityPolicy.secondaryEntrySections.map(WorkspaceNavigationItem.init(section:))
+  public static let secondaryEntryItems = WorkspaceVisibilityPolicy.secondaryEntrySections.map(
+    WorkspaceNavigationItem.init(section:))
   public static let commandPaletteSections = WorkspaceVisibilityPolicy.commandPaletteSections
 }
 
@@ -318,9 +319,9 @@ public struct ActiveEditorSelection: Equatable, Sendable {
     }
     let source = draft.bodyMarkdown as NSString
     guard bodyUTF16Count == source.length,
-          range.location >= 0,
-          range.length > 0,
-          range.location + range.length <= source.length
+      range.location >= 0,
+      range.length > 0,
+      range.location + range.length <= source.length
     else {
       return nil
     }
@@ -370,6 +371,7 @@ public enum ReleaseRecordKind: String, CaseIterable, Codable, Identifiable, Send
   case directCommit
   case reviewBranch
   case remoteDirectCommit
+  case remotePreviewBranch
   case remoteReviewRequest
   case remotePublishFailure
   case remoteRollback
@@ -389,6 +391,8 @@ public enum ReleaseRecordKind: String, CaseIterable, Codable, Identifiable, Send
       return CoreL10n.text("发布分支")
     case .remoteDirectCommit:
       return CoreL10n.text("线上提交")
+    case .remotePreviewBranch:
+      return CoreL10n.text("远端预览分支")
     case .remoteReviewRequest:
       return CoreL10n.text("线上 PR/MR")
     case .remotePublishFailure:
@@ -412,6 +416,8 @@ public enum ReleaseRecordKind: String, CaseIterable, Codable, Identifiable, Send
       return "arrow.triangle.branch"
     case .remoteDirectCommit:
       return "network"
+    case .remotePreviewBranch:
+      return "eye.circle"
     case .remoteReviewRequest:
       return "arrow.up.forward.app"
     case .remotePublishFailure:
@@ -606,7 +612,8 @@ public struct ReleaseRecord: Identifiable, Codable, Hashable, Sendable {
     return ReleaseRecord(
       kind: kind,
       title: "\(kind.displayName)：\(package.title)",
-      summary: "\(result.branchName) · \(result.committedPaths.count) 个文件 · \(String(result.commitSHA.prefix(8)))",
+      summary:
+        "\(result.branchName) · \(result.committedPaths.count) 个文件 · \(String(result.commitSHA.prefix(8)))",
       siteProfileID: profile.id,
       siteName: profile.name,
       draftID: package.draftID,
@@ -634,12 +641,18 @@ public struct ReleaseRecord: Identifiable, Codable, Hashable, Sendable {
     result: RemoteRepositoryPublishResult,
     createdAt: Date = Date()
   ) -> ReleaseRecord {
-    let kind: ReleaseRecordKind = result.mode.createsReview ? .remoteReviewRequest : .remoteDirectCommit
-    let recordDisplayName = result.mode == .previewBranch ? result.mode.displayName : kind.displayName
+    let kind: ReleaseRecordKind =
+      switch result.mode {
+      case .directCommit: .remoteDirectCommit
+      case .reviewRequest: .remoteReviewRequest
+      case .previewBranch: .remotePreviewBranch
+      }
+    let recordDisplayName = kind.displayName
     return ReleaseRecord(
       kind: kind,
       title: "\(recordDisplayName)：\(package.title)",
-      summary: "\(result.provider.displayName) · \(result.branchName) · \(result.changedPaths.count) 个文件"
+      summary:
+        "\(result.provider.displayName) · \(result.branchName) · \(result.changedPaths.count) 个文件"
         + (result.commitSHA.map { " · \(String($0.prefix(8)))" } ?? ""),
       siteProfileID: profile.id,
       siteName: profile.name,
@@ -669,8 +682,13 @@ public struct ReleaseRecord: Identifiable, Codable, Hashable, Sendable {
     result: RemoteRepositoryPublishResult,
     createdAt: Date = Date()
   ) -> ReleaseRecord {
-    let kind: ReleaseRecordKind = result.mode.createsReview ? .remoteReviewRequest : .remoteDirectCommit
-    let recordDisplayName = result.mode == .previewBranch ? result.mode.displayName : kind.displayName
+    let kind: ReleaseRecordKind =
+      switch result.mode {
+      case .directCommit: .remoteDirectCommit
+      case .reviewRequest: .remoteReviewRequest
+      case .previewBranch: .remotePreviewBranch
+      }
+    let recordDisplayName = kind.displayName
     let operationSummary: String
     if cleanupCount == 0 {
       operationSummary = "\(items.count) 篇文章"
@@ -682,7 +700,8 @@ public struct ReleaseRecord: Identifiable, Codable, Hashable, Sendable {
     return ReleaseRecord(
       kind: kind,
       title: "批量\(recordDisplayName)：\(profile.name)",
-      summary: "\(result.provider.displayName) · \(operationSummary) · \(result.changedPaths.count) 个文件"
+      summary:
+        "\(result.provider.displayName) · \(operationSummary) · \(result.changedPaths.count) 个文件"
         + (result.commitSHA.map { " · \(String($0.prefix(8)))" } ?? ""),
       siteProfileID: profile.id,
       siteName: profile.name,
@@ -696,7 +715,9 @@ public struct ReleaseRecord: Identifiable, Codable, Hashable, Sendable {
       commitSHA: result.commitSHA,
       reviewURL: result.reviewURL,
       reviewTitle: result.reviewTitle,
-      batchItems: items.map { ReleaseRecordBatchItem(planItem: $0, changedPaths: result.changedPaths) },
+      batchItems: items.map {
+        ReleaseRecordBatchItem(planItem: $0, changedPaths: result.changedPaths)
+      },
       createdAt: createdAt
     )
   }
@@ -710,14 +731,15 @@ public struct ReleaseRecord: Identifiable, Codable, Hashable, Sendable {
     commitSHA: String? = nil,
     createdAt: Date = Date()
   ) -> ReleaseRecord {
-    let branchName: String = switch mode {
-    case .directCommit:
-      profile.branch.nilIfEmpty ?? "main"
-    case .reviewRequest:
-      package.reviewBranchName
-    case .previewBranch:
-      package.draftPreviewBranchName
-    }
+    let branchName: String =
+      switch mode {
+      case .directCommit:
+        profile.branch.nilIfEmpty ?? "main"
+      case .reviewRequest:
+        package.reviewBranchName
+      case .previewBranch:
+        package.draftPreviewBranchName
+      }
     return ReleaseRecord(
       kind: .remotePublishFailure,
       title: "\(mode.displayName)失败：\(package.title)",
@@ -752,14 +774,15 @@ public struct ReleaseRecord: Identifiable, Codable, Hashable, Sendable {
     commitSHA: String? = nil,
     createdAt: Date = Date()
   ) -> ReleaseRecord {
-    let branchName: String = switch mode {
-    case .directCommit:
-      profile.branch.nilIfEmpty ?? "main"
-    case .reviewRequest:
-      package.reviewBranchName
-    case .previewBranch:
-      package.draftPreviewBranchName
-    }
+    let branchName: String =
+      switch mode {
+      case .directCommit:
+        profile.branch.nilIfEmpty ?? "main"
+      case .reviewRequest:
+        package.reviewBranchName
+      case .previewBranch:
+        package.draftPreviewBranchName
+      }
     let operationSummary: String
     if cleanupCount == 0 {
       operationSummary = "\(items.count) 篇文章未完成线上发布"
@@ -783,7 +806,8 @@ public struct ReleaseRecord: Identifiable, Codable, Hashable, Sendable {
       targetBranch: profile.branch.nilIfEmpty ?? "main",
       commitSHA: commitSHA,
       batchItems: items.map {
-        ReleaseRecordBatchItem(planItem: $0, changedPaths: changedPaths ?? package.files.map(\.repositoryPath))
+        ReleaseRecordBatchItem(
+          planItem: $0, changedPaths: changedPaths ?? package.files.map(\.repositoryPath))
       },
       createdAt: createdAt
     )
@@ -819,7 +843,9 @@ public struct ReleaseRecord: Identifiable, Codable, Hashable, Sendable {
     ReleaseRecord(
       kind: .remoteRollback,
       title: CoreL10n.format("线上回滚：%@", original.draftTitle ?? original.title),
-      summary: CoreL10n.format("%@ · %@ · 回滚 %@ -> %@", result.provider.displayName, result.targetBranch, String(result.rolledBackCommitSHA.prefix(8)), String(result.rollbackCommitSHA.prefix(8))),
+      summary: CoreL10n.format(
+        "%@ · %@ · 回滚 %@ -> %@", result.provider.displayName, result.targetBranch,
+        String(result.rolledBackCommitSHA.prefix(8)), String(result.rollbackCommitSHA.prefix(8))),
       siteProfileID: profile.id,
       siteName: profile.name,
       draftID: original.draftID,
@@ -868,7 +894,8 @@ public struct ReleaseRecord: Identifiable, Codable, Hashable, Sendable {
       targetBranch: result.targetBranch,
       commitSHA: original.commitSHA,
       reviewURL: result.reviewURL,
-      reviewTitle: CoreL10n.format("已关闭 %@", original.reviewTitle ?? original.draftTitle ?? original.title),
+      reviewTitle: CoreL10n.format(
+        "已关闭 %@", original.reviewTitle ?? original.draftTitle ?? original.title),
       batchItems: original.batchItems,
       createdAt: createdAt
     )
@@ -914,7 +941,8 @@ public struct ReleaseRecord: Identifiable, Codable, Hashable, Sendable {
     draftCoverAltText = try container.decodeIfPresent(String.self, forKey: .draftCoverAltText)
     markdownPath = try container.decodeIfPresent(String.self, forKey: .markdownPath)
     changedPaths = try container.decodeIfPresent([String].self, forKey: .changedPaths) ?? []
-    repositoryProvider = try container.decodeIfPresent(RepositoryProvider.self, forKey: .repositoryProvider)
+    repositoryProvider = try container.decodeIfPresent(
+      RepositoryProvider.self, forKey: .repositoryProvider)
     repositoryBaseURL = try container.decodeIfPresent(String.self, forKey: .repositoryBaseURL)
     repoOwner = try container.decodeIfPresent(String.self, forKey: .repoOwner)
     repoName = try container.decodeIfPresent(String.self, forKey: .repoName)
@@ -923,7 +951,8 @@ public struct ReleaseRecord: Identifiable, Codable, Hashable, Sendable {
     commitSHA = try container.decodeIfPresent(String.self, forKey: .commitSHA)
     reviewURL = try container.decodeIfPresent(String.self, forKey: .reviewURL)
     reviewTitle = try container.decodeIfPresent(String.self, forKey: .reviewTitle)
-    batchItems = try container.decodeIfPresent([ReleaseRecordBatchItem].self, forKey: .batchItems) ?? []
+    batchItems =
+      try container.decodeIfPresent([ReleaseRecordBatchItem].self, forKey: .batchItems) ?? []
     createdAt = try container.decode(Date.self, forKey: .createdAt)
   }
 }

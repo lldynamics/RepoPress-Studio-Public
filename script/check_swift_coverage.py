@@ -12,7 +12,17 @@ import shutil
 import signal
 import subprocess
 import sys
+from decimal import Decimal
 from pathlib import Path
+
+from quality_gate_common import (
+    QualityGateError,
+    changed_lines,
+    load_quality_baseline,
+    resolve_diff_base,
+    target_directories,
+    validate_target_mapping,
+)
 
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -46,37 +56,154 @@ def fail(message: str) -> None:
     raise SystemExit(1)
 
 
-def source_line_coverage(payload: dict[str, object], root: Path) -> tuple[int, int, float]:
+def coverage_files(payload: dict[str, object], root: Path) -> list[dict[str, object]]:
     data = payload.get("data")
     if not isinstance(data, list) or not data or not isinstance(data[0], dict):
         fail("coverage JSON does not contain LLVM coverage data")
     files = data[0].get("files")
     if not isinstance(files, list):
         fail("coverage JSON does not contain a files list")
-    count = 0
-    covered = 0
     source_root = (root / "Sources").resolve()
+    result: list[dict[str, object]] = []
     for item in files:
         if not isinstance(item, dict) or not isinstance(item.get("filename"), str):
             continue
         try:
-            filename = Path(item["filename"]).resolve()
+            raw_filename = Path(item["filename"])
+            filename = (raw_filename if raw_filename.is_absolute() else root / raw_filename).resolve()
             filename.relative_to(source_root)
         except (OSError, ValueError):
             continue
-        summary = item.get("summary")
-        lines = summary.get("lines") if isinstance(summary, dict) else None
-        if not isinstance(lines, dict):
-            continue
-        file_count = lines.get("count")
-        file_covered = lines.get("covered")
-        if isinstance(file_count, int) and isinstance(file_covered, int):
-            count += file_count
-            covered += file_covered
-    if count == 0:
+        copy = dict(item)
+        copy["_resolvedFilename"] = filename
+        result.append(copy)
+    if not result:
         fail("coverage JSON contains no executable lines under Sources")
-    percent = round((covered / count) * 100, 2)
-    return covered, count, percent
+    return result
+
+
+def summary_line_counts(item: dict[str, object]) -> tuple[int, int]:
+    summary = item.get("summary")
+    lines = summary.get("lines") if isinstance(summary, dict) else None
+    count = lines.get("count") if isinstance(lines, dict) else None
+    covered = lines.get("covered") if isinstance(lines, dict) else None
+    if not isinstance(count, int) or isinstance(count, bool) or not isinstance(covered, int) or isinstance(covered, bool):
+        fail("coverage JSON file lacks integer summary.lines count and covered values")
+    return covered, count
+
+
+def executable_line_evidence(item: dict[str, object]) -> dict[int, bool]:
+    """Expand executable LLVM segment intervals into covered/uncovered source lines."""
+    segments = item.get("segments")
+    if not isinstance(segments, list):
+        fail("coverage JSON file lacks LLVM segments required for changed-line coverage")
+    parsed_segments: list[tuple[int, int, int, bool, bool, bool]] = []
+    previous_position: tuple[int, int] | None = None
+    for segment in segments:
+        if not isinstance(segment, list) or len(segment) < 6:
+            fail("coverage JSON contains an invalid LLVM segment")
+        line, column, executions, has_count, is_region_entry, is_gap = segment[:6]
+        if (
+            not isinstance(line, int)
+            or isinstance(line, bool)
+            or line < 1
+            or not isinstance(column, int)
+            or isinstance(column, bool)
+            or column < 1
+            or not isinstance(executions, int)
+            or isinstance(executions, bool)
+            or executions < 0
+            or not isinstance(has_count, bool)
+            or not isinstance(is_region_entry, bool)
+            or not isinstance(is_gap, bool)
+        ):
+            fail("coverage JSON contains an invalid LLVM segment value")
+        position = (line, column)
+        if previous_position is not None and position <= previous_position:
+            fail("coverage JSON LLVM segments must be in strictly increasing source order")
+        parsed_segments.append((line, column, executions, has_count, is_region_entry, is_gap))
+        previous_position = position
+
+    evidence: dict[int, bool] = {}
+    for index, (line, _column, executions, has_count, _region_entry, is_gap) in enumerate(parsed_segments):
+        if has_count and not is_gap:
+            if index + 1 == len(parsed_segments):
+                fail("coverage JSON active LLVM segment has no terminating boundary")
+            next_line, next_column, *_rest = parsed_segments[index + 1]
+            # A next boundary at column 1 begins a new line; otherwise its line
+            # still contains code governed by the current segment interval.
+            final_line = next_line - 1 if next_column == 1 else next_line
+            for executable_line in range(line, final_line + 1):
+                evidence[executable_line] = evidence.get(executable_line, False) or executions > 0
+    return evidence
+
+
+def percent(covered: int, count: int) -> float:
+    return round((covered / count) * 100, 2) if count else 100.0
+
+
+def meets_minimum(covered: int, count: int, minimum_percent: float) -> bool:
+    """Compare the exact ratio; rounded percentages are presentation-only."""
+    if count == 0:
+        return True
+    return (
+        Decimal(covered) * Decimal(100)
+        >= Decimal(count) * Decimal(str(minimum_percent))
+    )
+
+
+def source_coverage_by_target(
+    payload: dict[str, object], root: Path
+) -> tuple[dict[str, dict[str, object]], dict[Path, dict[int, bool]]]:
+    by_target: dict[str, dict[str, object]] = {}
+    evidence_by_path: dict[Path, dict[int, bool]] = {}
+    source_root = (root / "Sources").resolve()
+    for item in coverage_files(payload, root):
+        filename = item["_resolvedFilename"]
+        assert isinstance(filename, Path)
+        relative = filename.relative_to(source_root)
+        target = relative.parts[0]
+        covered, count = summary_line_counts(item)
+        bucket = by_target.setdefault(target, {"covered": 0, "count": 0})
+        bucket["covered"] = int(bucket["covered"]) + covered
+        bucket["count"] = int(bucket["count"]) + count
+        evidence_by_path[filename] = executable_line_evidence(item)
+    for bucket in by_target.values():
+        bucket["percent"] = percent(int(bucket["covered"]), int(bucket["count"]))
+    return by_target, evidence_by_path
+
+
+def changed_source_line_coverage(
+    root: Path, changed: dict[str, set[int]], evidence_by_path: dict[Path, dict[int, bool]]
+) -> tuple[int, int, list[dict[str, object]], list[str], list[str]]:
+    covered = 0
+    count = 0
+    files: list[dict[str, object]] = []
+    unmatched_files: list[str] = []
+    no_executable_line_files: list[str] = []
+    for relative, lines in sorted(changed.items()):
+        parts = Path(relative).parts
+        if (
+            len(parts) < 3
+            or parts[0] != "Sources"
+            or not relative.endswith(".swift")
+            or not lines
+        ):
+            continue
+        source_path = (root / relative).resolve()
+        evidence = evidence_by_path.get(source_path)
+        if evidence is None:
+            unmatched_files.append(relative)
+            continue
+        executable = sorted(line for line in lines if line in evidence)
+        file_covered = sum(1 for line in executable if evidence[line])
+        covered += file_covered
+        count += len(executable)
+        if executable:
+            files.append({"path": relative, "covered": file_covered, "count": len(executable), "lines": executable})
+        else:
+            no_executable_line_files.append(relative)
+    return covered, count, files, unmatched_files, no_executable_line_files
 
 
 def swift_test_arguments(scratch_path: Path, swift_build_root: Path) -> list[str]:
@@ -374,21 +501,27 @@ def main() -> int:
         type=Path,
         help="validate an existing SwiftPM coverage JSON instead of running tests",
     )
+    parser.add_argument(
+        "--diff-base",
+        help="offline git commit/ref used for changed-line checks (defaults to QUALITY_DIFF_BASE, GITHUB_BASE_REF, then HEAD)",
+    )
     parser.add_argument("--result-json", type=Path)
     args = parser.parse_args()
     root = args.root.resolve()
     try:
-        baseline_payload = json.loads(args.baseline.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as error:
-        fail(f"cannot load quality baseline: {error}")
-    minimum = baseline_payload.get("sourceLineCoveragePercentMinimum")
-    if (
-        baseline_payload.get("schemaVersion") != 1
-        or not isinstance(minimum, (int, float))
-        or isinstance(minimum, bool)
-        or not 0 <= float(minimum) <= 100
-    ):
-        fail("quality baseline must contain sourceLineCoveragePercentMinimum from 0 through 100")
+        baseline_payload = load_quality_baseline(args.baseline)
+        source_targets = target_directories(root, "Sources")
+        target_minimums = baseline_payload["sourceLineCoveragePercentMinimumByTarget"]
+        assert isinstance(target_minimums, dict)
+        validate_target_mapping(
+            target_minimums, source_targets, "sourceLineCoveragePercentMinimumByTarget"
+        )
+        diff_base = resolve_diff_base(root, args.diff_base)
+        changed = changed_lines(root, diff_base.resolved)
+    except QualityGateError as error:
+        fail(str(error))
+    minimum = float(baseline_payload["sourceLineCoveragePercentMinimum"])
+    changed_minimum = float(baseline_payload["changedExecutableSourceLineCoveragePercentMinimum"])
 
     coverage_path = (
         args.coverage_json.resolve()
@@ -407,25 +540,91 @@ def main() -> int:
         coverage_payload = json.loads(coverage_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as error:
         fail(f"cannot load coverage JSON {coverage_path}: {error}")
-    covered, count, percent = source_line_coverage(coverage_payload, root)
+    by_target, evidence_by_path = source_coverage_by_target(coverage_payload, root)
+    overall_covered = sum(int(bucket["covered"]) for bucket in by_target.values())
+    overall_count = sum(int(bucket["count"]) for bucket in by_target.values())
+    if overall_count == 0:
+        fail("coverage JSON contains no executable lines under Sources")
+    overall_percent = percent(overall_covered, overall_count)
+    overall_meets_minimum = meets_minimum(overall_covered, overall_count, minimum)
+    target_result: dict[str, dict[str, object]] = {}
+    failed_targets: list[str] = []
+    for target in sorted(source_targets):
+        bucket = by_target.get(target, {"covered": 0, "count": 0, "percent": 0.0})
+        target_covered = int(bucket["covered"])
+        target_count = int(bucket["count"])
+        target_percent = float(bucket["percent"])
+        target_minimum = float(target_minimums[target])
+        target_meets_minimum = target_count > 0 and meets_minimum(
+            target_covered, target_count, target_minimum
+        )
+        target_result[target] = {
+            "covered": target_covered,
+            "count": target_count,
+            "percent": target_percent,
+            "minimumPercent": target_minimum,
+            "meetsMinimum": target_meets_minimum,
+        }
+        if not target_meets_minimum:
+            failed_targets.append(target)
+    (
+        changed_covered,
+        changed_count,
+        changed_files,
+        unmatched_changed_files,
+        no_executable_changed_line_files,
+    ) = changed_source_line_coverage(root, changed, evidence_by_path)
+    changed_percent = percent(changed_covered, changed_count)
+    changed_meets_minimum = not unmatched_changed_files and meets_minimum(
+        changed_covered, changed_count, changed_minimum
+    )
     result = {
-        "schemaVersion": 1,
+        "schemaVersion": 2,
         "sourceLines": {
-            "covered": covered,
-            "count": count,
-            "percent": percent,
-            "minimumPercent": float(minimum),
+            "covered": overall_covered,
+            "count": overall_count,
+            "percent": overall_percent,
+            "minimumPercent": minimum,
+            "meetsMinimum": overall_meets_minimum,
         },
+        "targets": target_result,
+        "changedExecutableSourceLines": {
+            "covered": changed_covered,
+            "count": changed_count,
+            "percent": changed_percent,
+            "minimumPercent": changed_minimum,
+            "meetsMinimum": changed_meets_minimum,
+            "files": changed_files,
+            "unmatchedChangedSourceFiles": unmatched_changed_files,
+            "noExecutableChangedLineFiles": no_executable_changed_line_files,
+        },
+        "diffBase": diff_base.resolved,
+        "requestedDiffBase": diff_base.requested,
+        "usedAllZeroDiffBaseFallback": diff_base.used_all_zero_fallback,
         "coverageJSON": str(coverage_path),
     }
     if args.result_json:
         args.result_json.parent.mkdir(parents=True, exist_ok=True)
         args.result_json.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
-    if percent + 1e-9 < float(minimum):
-        fail(f"Sources line coverage {percent:.2f}% is below progressive baseline {float(minimum):.2f}%")
+    if not overall_meets_minimum:
+        fail(f"Sources line coverage {overall_percent:.2f}% is below progressive baseline {minimum:.2f}%")
+    if failed_targets:
+        fail(f"Sources target coverage is below its progressive baseline (or has no executable lines): {', '.join(failed_targets)}")
+    if unmatched_changed_files:
+        fail(
+            "coverage JSON contains no file entry for changed Sources Swift files: "
+            + ", ".join(unmatched_changed_files)
+        )
+    if not changed_meets_minimum:
+        fail(
+            f"changed executable Sources line coverage {changed_percent:.2f}% is below required {changed_minimum:.2f}% "
+            f"({changed_covered}/{changed_count} lines)"
+        )
     print(
-        f"swift coverage gate: passed ({covered}/{count} Sources lines, "
-        f"{percent:.2f}%; progressive minimum {float(minimum):.2f}%)"
+        f"swift coverage gate: passed ({overall_covered}/{overall_count} Sources lines, "
+        f"{overall_percent:.2f}%; overall minimum {minimum:.2f}%; "
+        f"changed executable lines {changed_covered}/{changed_count}, {changed_percent:.2f}% "
+        f"minimum {changed_minimum:.2f}%)"
     )
     return 0
 

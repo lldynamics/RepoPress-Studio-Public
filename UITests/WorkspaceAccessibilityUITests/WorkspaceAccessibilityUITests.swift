@@ -403,6 +403,7 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
       element(identifier: "repository-workspace").waitForExistence(timeout: 10),
       "The repository workspace did not appear for the publishing demo surface."
     )
+    assertUniqueIdentifier("workspace-prepare-publish")
 
     revealByScrolling("repository-next-action")
     element(identifier: "repository-next-action")
@@ -411,6 +412,7 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
 
     for identifier in [
       "publish-drawer-header",
+      "publish-drawer-unified-summary",
       "publish-drawer-readiness-checklist",
       "publish-drawer-action-save-local",
       "publish-drawer-action-publish-all",
@@ -420,12 +422,11 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
       assertUniqueIdentifier(identifier)
     }
 
-    let drawer = application.sheets.firstMatch
-    XCTAssertTrue(
-      drawer.waitForExistence(timeout: 10),
-      "The publish drawer sheet did not remain visible."
+    XCTAssertFalse(
+      application.sheets.firstMatch.exists,
+      "The publish drawer should use the trailing workspace inspector, not a modal sheet."
     )
-    let showAllChecks = drawer.buttons["publish-drawer-review-disclosure"]
+    let showAllChecks = element(identifier: "publish-drawer-review-disclosure")
     XCTAssertTrue(
       showAllChecks.waitForExistence(timeout: 10),
       "The publish drawer did not expose the checks-and-diff disclosure button."

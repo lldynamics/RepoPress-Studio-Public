@@ -33,7 +33,7 @@ final class WorkbenchAIAgentLoopServiceTests: XCTestCase {
     XCTAssertTrue(textContent(result.transcript[3])?.contains("inspector is visible") == true)
     XCTAssertEqual(result.toolRuns.count, 1)
     XCTAssertEqual(result.toolRuns[0].toolCallID, "call-1")
-    XCTAssertEqual(result.toolRuns[0].command, .showInspector)
+    XCTAssertEqual(result.toolRuns[0].toolID, .showInspector)
     XCTAssertEqual(result.toolRuns[0].status, .succeeded)
     XCTAssertEqual(result.toolRuns[0].summary, "inspector is visible")
     let executedStepIDs = await executor.stepIDs()
@@ -399,6 +399,7 @@ final class WorkbenchAIAgentLoopServiceTests: XCTestCase {
         try await Task.sleep(nanoseconds: 5_000_000_000)
         return AIChatCompletionResult(content: "should not complete")
       },
+      grantedScopes: Set(AIAgentPermissionScope.allCases),
       automaticExecutor: { invocation in
         await executor.execute(invocation)
       }
@@ -557,9 +558,7 @@ final class WorkbenchAIAgentLoopServiceTests: XCTestCase {
       checkpoint: decoded,
       resolutions: [
         WorkbenchAIAgentToolResolution(
-          toolCallID: pending.toolCallID,
-          automationStepID: pending.automationStepID,
-          command: pending.command,
+          resolving: pending,
           status: .succeeded,
           content: "摘要已应用。",
           targetDraftID: draftID,
@@ -634,9 +633,7 @@ final class WorkbenchAIAgentLoopServiceTests: XCTestCase {
       checkpoint: checkpoint,
       resolutions: [
         WorkbenchAIAgentToolResolution(
-          toolCallID: pending.toolCallID,
-          automationStepID: pending.automationStepID,
-          command: pending.command,
+          resolving: pending,
           status: .rejected,
           content: "The user rejected this proposed action; it was not executed.",
           targetDraftID: draftID
@@ -688,9 +685,7 @@ final class WorkbenchAIAgentLoopServiceTests: XCTestCase {
     }
     let reversedResolutions = checkpoint.pendingCalls.reversed().map { pending in
       WorkbenchAIAgentToolResolution(
-        toolCallID: pending.toolCallID,
-        automationStepID: pending.automationStepID,
-        command: pending.command,
+        resolving: pending,
         status: pending.toolCallID == "review-first" ? .rejected : .succeeded,
         content: pending.toolCallID == "review-first" ? "用户拒绝" : "已应用",
         targetDraftID: draftID
@@ -752,9 +747,7 @@ final class WorkbenchAIAgentLoopServiceTests: XCTestCase {
       return XCTFail("Expected a persisted review checkpoint")
     }
     let resolution = WorkbenchAIAgentToolResolution(
-      toolCallID: pending.toolCallID,
-      automationStepID: pending.automationStepID,
-      command: pending.command,
+      resolving: pending,
       status: .rejected,
       content: "拒绝"
     )
@@ -846,9 +839,7 @@ final class WorkbenchAIAgentLoopServiceTests: XCTestCase {
       checkpoint: checkpoint,
       resolutions: [
         WorkbenchAIAgentToolResolution(
-          toolCallID: pending.toolCallID,
-          automationStepID: pending.automationStepID,
-          command: pending.command,
+          resolving: pending,
           status: .rejected,
           content: "The user rejected this proposed action; it was not executed.",
           targetDraftID: draftID
@@ -935,6 +926,7 @@ final class WorkbenchAIAgentLoopServiceTests: XCTestCase {
       modelTransport: { request in
         try await transport.complete(request)
       },
+      grantedScopes: Set(AIAgentPermissionScope.allCases),
       automaticExecutor: { _ in
         throw AgentLoopTransportFixture.FixtureError.exhausted
       }
@@ -1110,6 +1102,7 @@ final class WorkbenchAIAgentLoopServiceTests: XCTestCase {
           ]
         )
       },
+      grantedScopes: Set(AIAgentPermissionScope.allCases),
       automaticExecutor: { _ in
         await probe.markStarted()
         try await Task.sleep(nanoseconds: 5_000_000_000)
@@ -1290,7 +1283,14 @@ final class WorkbenchAIAgentLoopServiceTests: XCTestCase {
       modelTransport: { request in
         try await transport.complete(request)
       },
-      allowedCommands: allowedCommands,
+      toolRegistry: WorkbenchAutomationAgentToolRegistry(
+        allowedToolIDs: Set(
+          allowedCommands.map(WorkbenchAutomationAgentToolRegistry.toolID(for:))
+        )
+      ),
+      grantedScopes: Set(
+        allowedCommands.map(WorkbenchAutomationRegistry.requiredPermission(for:))
+      ),
       automaticExecutor: { invocation in
         await executor.execute(invocation)
       },
@@ -1352,11 +1352,11 @@ private actor AgentLoopExecutorFixture {
   }
 
   func commands() -> [WorkbenchAutomationCommandID] {
-    invocations.map { $0.step.command }
+    invocations.compactMap { $0.automationStep?.command }
   }
 
   func stepIDs() -> [UUID] {
-    invocations.map { $0.step.id }
+    invocations.compactMap { $0.automationStep?.id }
   }
 }
 

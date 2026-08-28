@@ -207,7 +207,7 @@ async function runChromiumTests(fixture) {
     await probePage.goto(`chrome-extension://${extensionID}/popup.html`, { waitUntil: "domcontentloaded" });
     await probePage.locator("#queue-panel[aria-busy='false']").waitFor({ timeout: TEST_TIMEOUT_MS });
 
-    await test("Chromium 320px 宽度无横向裁切并切换为单列", async () => {
+    await test("Chromium 320px 宽度无横向裁切并保持 2x2 采集模式卡片", async () => {
       const layout = await probePage.evaluate(() => {
         const savePanel = document.querySelector("#save-panel");
         const organizationPanel = document.querySelector("#organization-panel");
@@ -251,7 +251,7 @@ async function runChromiumTests(fixture) {
       assert.equal(layout.viewportWidth, 320);
       assert.ok(layout.documentScrollWidth <= 320, JSON.stringify(layout));
       assert.ok(layout.bodyScrollWidth <= 320, JSON.stringify(layout));
-      assert.equal(layout.captureColumns, 1, JSON.stringify(layout));
+      assert.equal(layout.captureColumns, 2, JSON.stringify(layout));
       assert.deepEqual(layout.overflowing, []);
     });
 
@@ -277,6 +277,9 @@ async function runChromiumTests(fixture) {
           emptyText: document.querySelector("#folder-empty-state")?.textContent,
           statusRole: document.querySelector("#status")?.getAttribute("role"),
           alertRole: document.querySelector("#alert")?.getAttribute("role"),
+          captureModeDescription: Boolean(document.querySelector("#capture-mode-description")),
+          saveToast: Boolean(document.querySelector("#save-toast")),
+          saveToastMessage: Boolean(document.querySelector("#save-toast-message")),
           sessionAfterQueue: Boolean(
             document.querySelector("#queue-panel")?.compareDocumentPosition(
               document.querySelector("#session-panel")
@@ -298,7 +301,35 @@ async function runChromiumTests(fixture) {
       assert.equal(semantics.emptyText, "没有匹配的分类。", JSON.stringify(semantics));
       assert.equal(semantics.statusRole, "status", JSON.stringify(semantics));
       assert.equal(semantics.alertRole, "alert", JSON.stringify(semantics));
+      assert.equal(semantics.captureModeDescription, true, JSON.stringify(semantics));
+      assert.equal(semantics.saveToast, true, JSON.stringify(semantics));
+      assert.equal(semantics.saveToastMessage, true, JSON.stringify(semantics));
       assert.equal(semantics.sessionAfterQueue, true, JSON.stringify(semantics));
+    });
+
+    await test("Chromium 采集模式更新单一说明且成功 Toast 在 2 秒后消失", async () => {
+      const modeState = await probePage.evaluate(() => {
+        const organizationPanel = document.querySelector("#organization-panel");
+        const wasHidden = organizationPanel.hidden;
+        const wasOpen = organizationPanel.open;
+        organizationPanel.hidden = false;
+        organizationPanel.open = true;
+        document.querySelector('input[name="capture-mode"][value="full-page"]')?.click();
+        const description = document.querySelector("#capture-mode-description")?.textContent;
+        organizationPanel.hidden = wasHidden;
+        organizationPanel.open = wasOpen;
+        showSaveToast({ action: "inserted", insertedCount: 1, indexStatus: "ready" });
+        return {
+          description,
+          toastHidden: document.querySelector("#save-toast")?.hidden,
+          toastMessage: document.querySelector("#save-toast-message")?.textContent
+        };
+      });
+      assert.match(modeState.description, /离线页面归档/, JSON.stringify(modeState));
+      assert.equal(modeState.toastHidden, false, JSON.stringify(modeState));
+      assert.equal(modeState.toastMessage, "已索引入库", JSON.stringify(modeState));
+      await probePage.waitForTimeout(2_100);
+      assert.equal(await probePage.locator("#save-toast").evaluate((element) => element.hidden), true);
     });
 
     await test("Chromium 令牌输入框按 Enter 提交连接表单", async () => {
@@ -444,14 +475,32 @@ async function runChromiumEnglishLocalizationTest() {
     await page.goto(`chrome-extension://${extensionID}/popup.html`, { waitUntil: "domcontentloaded" });
     await page.locator("#queue-panel[aria-busy='false']").waitFor({ timeout: TEST_TIMEOUT_MS });
     await test("Chromium 英文浏览器加载完整英文弹窗正文", async () => {
-      const copy = await page.evaluate(() => ({
-        lang: document.documentElement.lang,
-        title: document.querySelector("h1")?.textContent,
-        connection: document.querySelector("#connection-title")?.textContent,
-        nativeHint: document.querySelector("#connection-form .hint")?.textContent,
-        searchLabel: document.querySelector('label[for="folder-search"]')?.textContent,
-        queueTitle: document.querySelector("#queue-title")?.textContent
-      }));
+      const copy = await page.evaluate(() => {
+        const organizationPanel = document.querySelector("#organization-panel");
+        const wasHidden = organizationPanel.hidden;
+        const wasOpen = organizationPanel.open;
+        organizationPanel.hidden = false;
+        organizationPanel.open = true;
+        const modeCards = Array.from(document.querySelectorAll(".mode-card"));
+        const firstTop = modeCards[0]?.getBoundingClientRect().top;
+        const captureColumns = modeCards.filter((card) =>
+          Math.abs(card.getBoundingClientRect().top - firstTop) < 1
+        ).length;
+        const result = {
+          lang: document.documentElement.lang,
+          title: document.querySelector("h1")?.textContent,
+          connection: document.querySelector("#connection-title")?.textContent,
+          nativeHint: document.querySelector("#connection-form .hint")?.textContent,
+          searchLabel: document.querySelector('label[for="folder-search"]')?.textContent,
+          queueTitle: document.querySelector("#queue-title")?.textContent,
+          captureColumns,
+          modeLabels: modeCards.map((card) => card.textContent.trim()),
+          openDocument: document.querySelector("#open-document")?.textContent
+        };
+        organizationPanel.hidden = wasHidden;
+        organizationPanel.open = wasOpen;
+        return result;
+      });
       assert.match(copy.lang, /^en/i, JSON.stringify(copy));
       assert.equal(copy.title, "Save to Knowledge Library", JSON.stringify(copy));
       assert.equal(copy.connection, "Connect to Library", JSON.stringify(copy));
@@ -459,6 +508,11 @@ async function runChromiumEnglishLocalizationTest() {
       assert.match(copy.nativeHint, /loopback interface/, JSON.stringify(copy));
       assert.equal(copy.searchLabel, "Search categories", JSON.stringify(copy));
       assert.equal(copy.queueTitle, "Pending queue", JSON.stringify(copy));
+      assert.equal(copy.captureColumns, 4, JSON.stringify(copy));
+      assert.deepEqual(copy.modeLabels, [
+        "Cleaned article", "Full page", "Selected text", "Link only"
+      ], JSON.stringify(copy));
+      assert.equal(copy.openDocument, "View in RepoPress", JSON.stringify(copy));
     });
   } finally {
     await context.close();
@@ -681,7 +735,7 @@ async function runFirefoxTests() {
       devicePixelRatio: 1
     });
 
-    await test("Firefox 320px 宽度无横向裁切并切换为单列", async () => {
+    await test("Firefox 320px 宽度无横向裁切并保持 2x2 采集模式卡片", async () => {
       const layout = await client.evaluateJSON(contextID, `(() => {
         const savePanel = document.querySelector("#save-panel");
         const organizationPanel = document.querySelector("#organization-panel");
@@ -727,7 +781,7 @@ async function runFirefoxTests() {
       assert.equal(layout.bodyWidth, 320, JSON.stringify(layout));
       assert.ok(layout.documentScrollWidth <= 320, JSON.stringify(layout));
       assert.ok(layout.bodyScrollWidth <= 320, JSON.stringify(layout));
-      assert.equal(layout.captureColumns, 1, JSON.stringify(layout));
+      assert.equal(layout.captureColumns, 2, JSON.stringify(layout));
       assert.deepEqual(layout.overflowing, []);
     });
 
@@ -740,6 +794,9 @@ async function runFirefoxTests() {
         searchLabel: document.querySelector('label[for="folder-search"]')?.textContent,
         statusRole: document.querySelector("#status")?.getAttribute("role"),
         alertRole: document.querySelector("#alert")?.getAttribute("role"),
+        captureModeDescription: Boolean(document.querySelector("#capture-mode-description")),
+        saveToast: Boolean(document.querySelector("#save-toast")),
+        saveToastMessage: Boolean(document.querySelector("#save-toast-message")),
         sessionAfterQueue: Boolean(
           document.querySelector("#queue-panel")?.compareDocumentPosition(
             document.querySelector("#session-panel")
@@ -753,6 +810,9 @@ async function runFirefoxTests() {
       assert.equal(semantics.searchLabel, "Search categories", JSON.stringify(semantics));
       assert.equal(semantics.statusRole, "status", JSON.stringify(semantics));
       assert.equal(semantics.alertRole, "alert", JSON.stringify(semantics));
+      assert.equal(semantics.captureModeDescription, true, JSON.stringify(semantics));
+      assert.equal(semantics.saveToast, true, JSON.stringify(semantics));
+      assert.equal(semantics.saveToastMessage, true, JSON.stringify(semantics));
       assert.equal(semantics.sessionAfterQueue, true, JSON.stringify(semantics));
     });
 

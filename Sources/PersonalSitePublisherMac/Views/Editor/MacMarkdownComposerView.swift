@@ -408,6 +408,28 @@ struct MacMarkdownComposerView: View {
     ZStack(alignment: .top) {
       editorSurface
       writingContextPanelOverlay
+      automaticImageImportToastOverlay
+    }
+  }
+
+  @ViewBuilder
+  private var automaticImageImportToastOverlay: some View {
+    if let toast = automaticImageImportToast {
+      VStack {
+        Spacer(minLength: 0)
+        Label(toast.message, systemImage: "photo.badge.checkmark")
+          .font(.callout.weight(.medium))
+          .padding(.horizontal, 14)
+          .padding(.vertical, 9)
+          .workbenchGlassSurface(material: .regularMaterial, in: Capsule())
+          .shadow(color: .black.opacity(0.16), radius: 8, x: 0, y: 3)
+          .accessibilityIdentifier("markdown-automatic-image-import-toast")
+      }
+      .padding(.bottom, 18)
+      .frame(maxWidth: .infinity, maxHeight: .infinity)
+      .allowsHitTesting(false)
+      .transition(.move(edge: .bottom).combined(with: .opacity))
+      .zIndex(5)
     }
   }
 
@@ -644,7 +666,11 @@ struct MacMarkdownComposerView: View {
             updateEditorScrollPosition(position)
           },
           onDroppedFiles: { urls in
-            insertImageReferences(urls)
+            insertImageReferences(
+              urls,
+              automaticallyConvertToWebP: true,
+              reduceMotionEnabled: accessibilityReduceMotion
+            )
           },
           onDroppedMarkdown: { markdown, range, citation in
             insertKnowledgeMarkdown(markdown, at: range, citation: citation)

@@ -8,8 +8,83 @@ enum WorkspaceQuickSearchScope: Equatable {
   case aiFixes
 }
 
+/// The command palette is the one search entry point.  These scopes only
+/// select local presentation data; they do not change draft indexing or send
+/// a query to an AI/provider.
+enum WorkspaceUnifiedSearchScope: String, CaseIterable, Identifiable, Sendable {
+  case all
+  case articles
+  case resources
+  case rss
+  case settings
+  case commands
+
+  var id: String { rawValue }
+
+  var title: String {
+    switch self {
+    case .all: String(localized: "全部")
+    case .articles: String(localized: "文章")
+    case .resources: String(localized: "资料")
+    case .rss: "RSS"
+    case .settings: String(localized: "设置")
+    case .commands: String(localized: "命令")
+    }
+  }
+
+  var includesCommands: Bool { self == .all || self == .commands }
+  var includesArticles: Bool { self == .all || self == .articles }
+  var includesResources: Bool { self == .all || self == .resources }
+  var includesRSS: Bool { self == .all || self == .rss }
+  var includesSettings: Bool { self == .all || self == .settings }
+}
+
+enum WorkspaceUnifiedSearchPresentation {
+  static let recentItemLimit = 6
+
+  static func matchingSettings(
+    query: String,
+    recentItemIDs: [String] = []
+  ) -> [SettingsSearchItem] {
+    let normalized = query.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !normalized.isEmpty else {
+      let byID = Dictionary(uniqueKeysWithValues: SettingsSearchIndex.allItems.map { ($0.id, $0) })
+      let recent = recentItemIDs.compactMap { byID[$0] }
+      let fallback = SettingsSearchIndex.allItems.filter { item in
+        !recentItemIDs.contains(item.id)
+      }
+      return Array((recent + fallback).prefix(recentItemLimit))
+    }
+    return SettingsSearchIndex.search(query: normalized)
+  }
+
+  static func matchingSections(
+    _ sections: [WorkspaceSection],
+    query: String,
+    scope: WorkspaceUnifiedSearchScope
+  ) -> [WorkspaceSection] {
+    let normalized = query.trimmingCharacters(in: .whitespacesAndNewlines)
+    return sections.filter { section in
+      let isInScope: Bool
+      switch section {
+      case .library, .images, .siteStarter:
+        isInScope = scope.includesResources
+      case .rss:
+        isInScope = scope.includesRSS
+      case .writing, .sync, .contentHealth:
+        isInScope = scope.includesCommands
+      }
+      guard isInScope else { return false }
+      return normalized.isEmpty
+        || workspaceNavigationLocalizedString(section.displayNameLocalizationKey)
+          .localizedStandardContains(normalized)
+        || section.rawValue.localizedStandardContains(normalized)
+    }
+  }
+}
+
 enum WorkspaceQuickSearchPresentation {
-  static let recentResultLimit = 12
+  static let recentResultLimit = 3
   static let searchResultLimit = 40
 
   static func resultSectionTitle(query: String, scope: WorkspaceQuickSearchScope) -> String {
@@ -564,20 +639,18 @@ struct WorkspaceQuickSearchView: View {
 
   private var searchSnapshot: WorkspaceQuickSearchSnapshot {
     _ = draftListState.presentationRevision
-    let scopedDrafts = WorkspaceQuickSearchPresentation.scopedDrafts(
-      store.visibleDrafts,
-      includedDraftIDs: includedDraftIDs
-    )
-    let matchingDrafts = WorkspaceQuickSearchPresentation.matchingDrafts(
-      drafts: scopedDrafts,
+    let index = draftListState.searchIndex(for: .activeSite)
+    let matchingDrafts = index.matching(
       query: normalizedQuery,
       preferredDraftIDs: preferredDraftIDs
-    ) { draft, query in
-      store.matchesPrivacyProtectedDraftSearch(
-        draft,
-        query: query,
-        profile: store.activeProfile
-      )
+    ).filter { draft in
+      (includedDraftIDs?.contains(draft.id) ?? true)
+        && (normalizedQuery.isEmpty
+          || store.matchesPrivacyProtectedDraftSearch(
+            draft,
+            query: normalizedQuery,
+            profile: store.activeProfile
+          ))
     }
     let visibleDrafts = WorkspaceQuickSearchPresentation.visibleDrafts(
       from: matchingDrafts,

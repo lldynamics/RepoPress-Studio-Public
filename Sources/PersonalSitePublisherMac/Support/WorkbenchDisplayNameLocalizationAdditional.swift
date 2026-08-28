@@ -329,6 +329,7 @@ extension KnowledgeDocumentKind {
     switch self {
     case .article: "display.knowledge-document-kind.article"
     case .book: "display.knowledge-document-kind.book"
+    case .image: "display.knowledge-document-kind.image"
     case .webpage: "display.knowledge-document-kind.webpage"
     case .pdf: "display.knowledge-document-kind.pdf"
     case .markdown: "display.knowledge-document-kind.markdown"

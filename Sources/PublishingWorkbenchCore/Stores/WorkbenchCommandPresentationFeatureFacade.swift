@@ -19,7 +19,7 @@ public final class WorkbenchCommandPresentationFeatureFacade: ObservableObject {
     observe(store.privacyProtectionStore.$isQuickHideActive)
     observe(store.publishingStore.$draftNavigationHistory)
     observe(store.publishingStore.$drafts.map { $0.map(\.id) })
-    observe(store.publishingStore.$localSitePreviewRuntimeStatus.map(\.isRunning))
+    observe(store.publishingStore.publishSession.$localSitePreviewRuntimeStatus.map(\.isRunning))
     observe(store.aiWorkspaceStore.$isAIPublishingAssistantPresented)
   }
 

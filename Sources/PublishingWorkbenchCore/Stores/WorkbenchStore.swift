@@ -37,6 +37,7 @@ public final class WorkbenchStore: ObservableObject {
   let deploymentStore: DeploymentStore
   let privacyProtectionStore: PrivacyProtectionStore
   let siteMaintenanceStore: SiteMaintenanceStore
+  let siteLinkAuditSnapshotStore = SiteLinkAuditSnapshotStore()
   public let knowledge: KnowledgeStore
   let persistenceStore: WorkbenchPersistenceStore
   let repositoryDeploymentCoordinator: RepositoryDeploymentCoordinator
@@ -76,6 +77,8 @@ public final class WorkbenchStore: ObservableObject {
       WorkbenchRepositoryWorkspaceObservationFacade(store: self)
   public lazy var releaseHistoryObservation: WorkbenchReleaseHistoryObservationFacade =
     WorkbenchReleaseHistoryObservationFacade(store: self)
+  public lazy var publishDrawerObservation: WorkbenchPublishDrawerObservationFacade =
+    WorkbenchPublishDrawerObservationFacade(store: self)
   public lazy var siteStarterObservation: WorkbenchSiteStarterObservationFacade =
     WorkbenchSiteStarterObservationFacade(store: self)
   public lazy var workspaceBackupScheduler: WorkspaceBackupScheduler =
@@ -119,6 +122,8 @@ public final class WorkbenchStore: ObservableObject {
   var siteMaintenanceRefreshTask: Task<SiteMaintenanceReport, Error>?
   var siteMaintenanceRefreshScheduleTask: Task<Void, Never>?
   var siteMaintenanceRefreshGeneration: UInt64 = 0
+  var siteLinkAuditRefreshTask: Task<SiteLinkAuditReport, Never>?
+  var siteLinkAuditRefreshKey: SiteLinkAuditSnapshotKey?
   var siteAnalyticsRefreshTask: Task<Void, Never>?
   var siteAnalyticsRefreshRequestID = UUID()
   var softwareGuideSeedVersion: Int
@@ -675,7 +680,6 @@ public final class WorkbenchStore: ObservableObject {
       runPreflight()
       refreshPublishPreviewInBackground(for: selectedDraft)
       aiStore.restoreSEOSocialPreviewSnapshotForCurrentSelection()
-      scheduleSiteMaintenanceSnapshotRefresh()
       scheduleMissingSiteDraftFileWrites()
     }
   }
@@ -744,7 +748,7 @@ public final class WorkbenchStore: ObservableObject {
     return flushPendingChanges()
   }
 
-  func scheduleAutosave() {
+  public func scheduleAutosave() {
     persistenceStore.scheduleAutosave(input: { [weak self] in
       guard let self else { return nil }
       return self.persistenceStore.persistence.snapshotInput(from: self)
@@ -846,6 +850,7 @@ public final class WorkbenchStore: ObservableObject {
     publishingStore.removeAllDraftPublishPreviewSnapshots()
     invalidateContentHealthSnapshot()
     invalidateSiteMaintenanceSnapshot()
+    invalidateSiteLinkAuditSnapshot()
     draftTaskQueueStateCache.removeAll()
     if notifyingDraftList {
       draftList.invalidatePresentationAndTaskQueueState()
@@ -865,6 +870,7 @@ public final class WorkbenchStore: ObservableObject {
       preservingSelectedProjection: true
     )
     invalidateContentHealthSnapshot()
+    invalidateSiteLinkAuditSnapshot()
     draftTaskQueueStateCache.removeValue(forKey: draftID)
     if imageInputsDidChange {
       imageWorkbenchInputRevision &+= 1
@@ -889,7 +895,6 @@ public final class WorkbenchStore: ObservableObject {
     siteMaintenanceRefreshTask?.cancel()
     siteMaintenanceRefreshTask = nil
     siteMaintenanceStore.invalidate()
-    scheduleSiteMaintenanceSnapshotRefresh()
   }
 
   public func draftTaskQueueStates(for drafts: [ArticleDraft]) -> [UUID: DraftTaskQueueState] {
@@ -916,6 +921,10 @@ public final class WorkbenchStore: ObservableObject {
       drafts: preflightDrafts,
       profile: activeProfile
     )
+    let linkAuditReport = localSiteLinkAuditReport(
+      drafts: preflightDrafts,
+      profile: activeProfile
+    )
     draftTaskQueueStateCache = draftTaskQueueStateCache.filter { draftIDs.contains($0.key) }
 
     return Dictionary(
@@ -939,6 +948,7 @@ public final class WorkbenchStore: ObservableObject {
             includeRepositoryReadiness: true,
             allDrafts: preflightDrafts,
             duplicateIndex: preflightDuplicateIndex,
+            linkAuditReport: linkAuditReport,
             store: self
           ).contains { $0.severity == .error },
           hasImageIssues: imageIssueCount > 0

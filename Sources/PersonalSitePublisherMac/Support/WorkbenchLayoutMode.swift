@@ -44,7 +44,8 @@ public enum WorkbenchLayoutMode {
     maximumWidth: CGFloat = 380,
     inspectorMinimumWidth: CGFloat = 320
   ) -> CGFloat {
-    let availableMaximum = inspectorPresented
+    let availableMaximum =
+      inspectorPresented
       ? workspaceWidth - centerMinimumWidth - inspectorMinimumWidth
       : maximumWidth
     let responsiveMaximum = max(minimumWidth, min(maximumWidth, availableMaximum))

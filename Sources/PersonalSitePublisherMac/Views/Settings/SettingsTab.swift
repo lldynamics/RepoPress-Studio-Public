@@ -26,7 +26,7 @@ enum SettingsScrollOwnership: String, Equatable {
   case nativeScrollView
 }
 
-enum SettingsTab: Hashable, CaseIterable, Identifiable {
+enum SettingsTab: Hashable, CaseIterable, Identifiable, Sendable {
   case configurationStatus
   case defaultRules
   case token

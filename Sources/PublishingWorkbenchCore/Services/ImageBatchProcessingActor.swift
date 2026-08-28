@@ -4,6 +4,7 @@ import os
 private let logger = Logger(subsystem: "com.repopress", category: "ImageBatchProcessingActor")
 
 public enum ImageBatchOperation: String, Sendable {
+  case removePrivacyMetadata
   case optimizeJPEG
   case convertWebP
   case optimizeSVG
@@ -12,6 +13,7 @@ public enum ImageBatchOperation: String, Sendable {
 
   public var progressTitle: String {
     switch self {
+    case .removePrivacyMetadata: CoreL10n.text("清除隐私信息")
     case .optimizeJPEG: CoreL10n.text("压缩 JPEG")
     case .convertWebP: CoreL10n.text("转换 WebP")
     case .optimizeSVG: CoreL10n.text("优化 SVG")
@@ -215,6 +217,13 @@ public actor ImageBatchProcessingActor {
     cancellationToken: ImageProcessingCancellationToken
   ) throws -> ImageOptimizationResult {
     switch operation {
+    case .removePrivacyMetadata:
+      return try service.sanitizeImagePrivacyAttachments(
+        draft: draft,
+        destinationDirectory: destinationDirectory,
+        cancellationToken: cancellationToken,
+        includedAttachmentIDs: includedAttachmentIDs
+      )
     case .optimizeJPEG:
       return try service.optimizeJPEGAttachments(
         draft: draft,

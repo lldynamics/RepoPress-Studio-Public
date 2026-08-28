@@ -19,9 +19,9 @@ public final class WorkbenchPublishingFeatureFacade: ObservableObject {
     observe(store.publishingStore.$selectedDraftID)
     observe(store.publishingStore.$draftListContentScope)
     observe(store.publishingStore.$editorFocusRequest)
-    observe(store.publishingStore.$isPublishPreviewRefreshing)
-    observe(store.publishingStore.$preflightIssues)
-    observe(store.publishingStore.$batchPublishPlan)
+    observe(store.publishingStore.publishSession.$isPublishPreviewRefreshing)
+    observe(store.publishingStore.publishSession.$preflightIssues)
+    observe(store.publishingStore.publishSession.$batchPublishPlan)
 
     store.publishingStore.draftBodyEditorBufferWillChange
       .sink { [weak self] _ in self?.objectWillChange.send() }

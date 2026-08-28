@@ -119,7 +119,8 @@ public struct SiteLinkAuditReport: Sendable {
       let legacyReferences = references(to: draft.id, resolution: .pendingSlugRedirect)
       let sourceCount = Set(legacyReferences.map(\.sourceDraftID)).count
       let routeList = draft.pendingSlugRedirectPaths.joined(separator: "、")
-      let message = legacyReferences.isEmpty
+      let message =
+        legacyReferences.isEmpty
         ? CoreL10n.format("Slug 已变更；可将旧地址 %@ 写入 aliases，保留外部来路。", routeList)
         : CoreL10n.format(
           "Slug 已变更，检测到 %d 篇文章中的 %d 处旧引用；可一键更新引用，或将 %@ 写入 aliases。",
@@ -127,14 +128,15 @@ public struct SiteLinkAuditReport: Sendable {
           legacyReferences.count,
           routeList
         )
-      projected.append(PreflightIssue(
-        severity: .warning,
-        title: CoreL10n.text("Slug 变更待处理"),
-        message: message,
-        field: PreflightIssueField.slug.rawValue,
-        category: .slugRedirectCandidate,
-        relatedValue: draft.pendingSlugRedirectPaths.first
-      ))
+      projected.append(
+        PreflightIssue(
+          severity: .warning,
+          title: CoreL10n.text("Slug 变更待处理"),
+          message: message,
+          field: PreflightIssueField.slug.rawValue,
+          category: .slugRedirectCandidate,
+          relatedValue: draft.pendingSlugRedirectPaths.first
+        ))
     }
     return projected
   }
@@ -230,6 +232,29 @@ public struct SiteLinkAuditService: Sendable {
 
   private let externalProbe: SiteExternalLinkProbe
 
+  private static let markdownLinkExpression = try? NSRegularExpression(
+    pattern:
+      #"(?<!!)\[([^\]\n]*)\]\(\s*<?([^\s)>]+)>?(?:\s+(?:\"[^\"]*\"|'[^']*'|\([^)]*\)))?\s*\)"#
+  )
+  private static let referenceDefinitionExpression = try? NSRegularExpression(
+    pattern: #"(?m)^[ \t]{0,3}\[([^\]\n]+)\]:[ \t]*<?([^\s>]+)>?"#
+  )
+  private static let wikiLinkExpression = try? NSRegularExpression(
+    pattern: #"(?<!!)\[\[([^\]\n]+)\]\]"#
+  )
+  private static let autolinkExpression = try? NSRegularExpression(
+    pattern: #"<(https?://[^<>\s]+)>"#
+  )
+  private static let htmlAnchorExpression = try? NSRegularExpression(
+    pattern: #"(?i)<a\b[^>]*\bhref\s*=\s*[\"']([^\"']+)[\"'][^>]*>"#
+  )
+  private static let bareURLExpression = try? NSRegularExpression(
+    pattern: #"https?://[^\s<>\[\]\(\)\"']+"#
+  )
+  private static let inlineCodeExpression = try? NSRegularExpression(
+    pattern: #"`+[^`\n]*`+"#
+  )
+
   public init(externalProbe: SiteExternalLinkProbe = .live) {
     self.externalProbe = externalProbe
   }
@@ -274,7 +299,15 @@ public struct SiteLinkAuditService: Sendable {
     drafts: [ArticleDraft],
     profile: SiteProfile
   ) async throws -> SiteLinkAuditReport {
-    var result = report(drafts: drafts, profile: profile)
+    let service = self
+    let localAuditTask = Task.detached(priority: .utility) {
+      service.report(drafts: drafts, profile: profile)
+    }
+    var result = await withTaskCancellationHandler {
+      await localAuditTask.value
+    } onCancel: {
+      localAuditTask.cancel()
+    }
     try Task.checkCancellation()
     let externalReferences = result.references.filter { $0.resolution == .external }
     let urls = Dictionary(
@@ -347,7 +380,8 @@ public struct SiteLinkAuditService: Sendable {
       let pending = TargetEntry(draftID: draft.id, isPendingSlugRoute: true)
       for oldRoute in draft.pendingSlugRedirectPaths {
         append(pending, key: "route:\(normalizedRoute(oldRoute))", to: &index)
-        let legacyWikiToken = oldRoute
+        let legacyWikiToken =
+          oldRoute
           .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
           .split(separator: "/")
           .last
@@ -475,7 +509,9 @@ public struct SiteLinkAuditService: Sendable {
       return reference(
         raw,
         source: source,
-        normalizedTarget: String(key.dropFirst(key.firstIndex(of: ":").map { key.distance(from: key.startIndex, to: $0) + 1 } ?? 0)),
+        normalizedTarget: String(
+          key.dropFirst(
+            key.firstIndex(of: ":").map { key.distance(from: key.startIndex, to: $0) + 1 } ?? 0)),
         resolution: .ambiguousInternal
       )
     }
@@ -485,7 +521,9 @@ public struct SiteLinkAuditService: Sendable {
     return reference(
       raw,
       source: source,
-      normalizedTarget: String(key.dropFirst(key.firstIndex(of: ":").map { key.distance(from: key.startIndex, to: $0) + 1 } ?? 0)),
+      normalizedTarget: String(
+        key.dropFirst(
+          key.firstIndex(of: ":").map { key.distance(from: key.startIndex, to: $0) + 1 } ?? 0)),
       resolvedDraftID: entry.draftID,
       resolution: entry.isPendingSlugRoute ? .pendingSlugRedirect : .validInternal
     )
@@ -549,8 +587,9 @@ public struct SiteLinkAuditService: Sendable {
         kind: .slugRedirectReference
       )
     case .external:
-      guard reference.anchorText.trimmedForPublishing.count <= 4
-        || reference.anchorText == reference.target
+      guard
+        reference.anchorText.trimmedForPublishing.count <= 4
+          || reference.anchorText == reference.target
       else { return nil }
       return SiteLinkAuditItem(
         draftID: draft.id,
@@ -610,13 +649,13 @@ public struct SiteLinkAuditService: Sendable {
     var occupied: [NSRange] = []
 
     func appendMatches(
-      pattern: String,
+      expression: NSRegularExpression?,
       syntax: SiteLinkSyntaxKind,
       anchorGroup: Int?,
       targetGroup: Int,
       transform: ((String, NSRange) -> (String, NSRange))? = nil
     ) {
-      guard let expression = try? NSRegularExpression(pattern: pattern) else { return }
+      guard let expression else { return }
       for match in expression.matches(
         in: markdown,
         range: NSRange(location: 0, length: source.length)
@@ -645,7 +684,7 @@ public struct SiteLinkAuditService: Sendable {
     }
 
     appendMatches(
-      pattern: #"(?<!!)\[([^\]\n]*)\]\(\s*<?([^\s)>]+)>?(?:\s+(?:\"[^\"]*\"|'[^']*'|\([^)]*\)))?\s*\)"#,
+      expression: Self.markdownLinkExpression,
       syntax: .markdown,
       anchorGroup: 1,
       targetGroup: 2
@@ -653,7 +692,7 @@ public struct SiteLinkAuditService: Sendable {
       (value, pathOnlyRange(for: value, in: range))
     }
     appendMatches(
-      pattern: #"(?m)^[ \t]{0,3}\[([^\]\n]+)\]:[ \t]*<?([^\s>]+)>?"#,
+      expression: Self.referenceDefinitionExpression,
       syntax: .referenceDefinition,
       anchorGroup: 1,
       targetGroup: 2
@@ -661,17 +700,19 @@ public struct SiteLinkAuditService: Sendable {
       (value, pathOnlyRange(for: value, in: range))
     }
     appendMatches(
-      pattern: #"(?<!!)\[\[([^\]\n]+)\]\]"#,
+      expression: Self.wikiLinkExpression,
       syntax: .wiki,
       anchorGroup: nil,
       targetGroup: 1
     ) { value, range in
       let path = String(value.split(separator: "|", maxSplits: 1).first ?? "")
       let pathWithoutFragment = String(path.split(separator: "#", maxSplits: 1).first ?? "")
-      return (path, NSRange(location: range.location, length: (pathWithoutFragment as NSString).length))
+      return (
+        path, NSRange(location: range.location, length: (pathWithoutFragment as NSString).length)
+      )
     }
     appendMatches(
-      pattern: #"<(https?://[^<>\s]+)>"#,
+      expression: Self.autolinkExpression,
       syntax: .autolink,
       anchorGroup: nil,
       targetGroup: 1
@@ -679,7 +720,7 @@ public struct SiteLinkAuditService: Sendable {
       (value, pathOnlyRange(for: value, in: range))
     }
     appendMatches(
-      pattern: #"(?i)<a\b[^>]*\bhref\s*=\s*[\"']([^\"']+)[\"'][^>]*>"#,
+      expression: Self.htmlAnchorExpression,
       syntax: .htmlAnchor,
       anchorGroup: nil,
       targetGroup: 1
@@ -687,7 +728,7 @@ public struct SiteLinkAuditService: Sendable {
       (value, pathOnlyRange(for: value, in: range))
     }
     appendMatches(
-      pattern: #"https?://[^\s<>\[\]\(\)\"']+"#,
+      expression: Self.bareURLExpression,
       syntax: .bareURL,
       anchorGroup: nil,
       targetGroup: 0
@@ -714,10 +755,11 @@ public struct SiteLinkAuditService: Sendable {
             currentFence.character == first,
             count >= currentFence.count
           {
-            ranges.append(NSRange(
-              location: currentFence.location,
-              length: NSMaxRange(lineRange) - currentFence.location
-            ))
+            ranges.append(
+              NSRange(
+                location: currentFence.location,
+                length: NSMaxRange(lineRange) - currentFence.location
+              ))
             openFence = nil
           } else if openFence == nil {
             openFence = (first, count, lineRange.location)
@@ -727,13 +769,15 @@ public struct SiteLinkAuditService: Sendable {
       cursor = NSMaxRange(lineRange)
     }
     if let openFence {
-      ranges.append(NSRange(location: openFence.location, length: source.length - openFence.location))
+      ranges.append(
+        NSRange(location: openFence.location, length: source.length - openFence.location))
     }
-    if let inline = try? NSRegularExpression(pattern: #"`+[^`\n]*`+"#) {
-      ranges.append(contentsOf: inline.matches(
-        in: markdown,
-        range: NSRange(location: 0, length: source.length)
-      ).map(\.range))
+    if let inline = Self.inlineCodeExpression {
+      ranges.append(
+        contentsOf: inline.matches(
+          in: markdown,
+          range: NSRange(location: 0, length: source.length)
+        ).map(\.range))
     }
     return ranges
   }
@@ -785,8 +829,11 @@ public struct SiteLinkAuditService: Sendable {
   }
 
   private func pathWithoutQueryOrFragment(_ value: String) -> String {
-    let beforeFragment = value.split(separator: "#", maxSplits: 1, omittingEmptySubsequences: false).first ?? ""
-    return String(beforeFragment.split(separator: "?", maxSplits: 1, omittingEmptySubsequences: false).first ?? "")
+    let beforeFragment =
+      value.split(separator: "#", maxSplits: 1, omittingEmptySubsequences: false).first ?? ""
+    return String(
+      beforeFragment.split(separator: "?", maxSplits: 1, omittingEmptySubsequences: false).first
+        ?? "")
   }
 
   private func pathOnlyRange(for value: String, in range: NSRange) -> NSRange {
@@ -819,7 +866,8 @@ public struct SiteLinkAuditService: Sendable {
       let leftHost = url.host?.lowercased(),
       let rightHost = siteURL.host?.lowercased()
     else { return false }
-    return leftHost == rightHost && (url.port ?? defaultPort(url)) == (siteURL.port ?? defaultPort(siteURL))
+    return leftHost == rightHost
+      && (url.port ?? defaultPort(url)) == (siteURL.port ?? defaultPort(siteURL))
   }
 
   private func defaultPort(_ url: URL) -> Int {
@@ -827,14 +875,15 @@ public struct SiteLinkAuditService: Sendable {
   }
 
   private func knownAssetPaths(drafts: [ArticleDraft]) -> Set<String> {
-    Set(drafts.flatMap { draft in
-      draft.attachments.flatMap { attachment in
-        [
-          attachment.relativePublishPath.trimmingCharacters(in: CharacterSet(charactersIn: "/")),
-          attachment.repositoryPath.normalizedRelativePath(),
-        ]
-      }
-    }.filter { !$0.isEmpty })
+    Set(
+      drafts.flatMap { draft in
+        draft.attachments.flatMap { attachment in
+          [
+            attachment.relativePublishPath.trimmingCharacters(in: CharacterSet(charactersIn: "/")),
+            attachment.repositoryPath.normalizedRelativePath(),
+          ]
+        }
+      }.filter { !$0.isEmpty })
   }
 
   private func referenceOrdering(_ lhs: SiteLinkReference, _ rhs: SiteLinkReference) -> Bool {

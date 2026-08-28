@@ -1,6 +1,8 @@
 import Foundation
 
 extension LocalPublishPreviewService {
+  static let maximumTransactionByteCount = 1_048_576
+
   func replaceBinaryFileAtomically(
     sourceURL: URL,
     expectedSourceState: LocalPublishSourceFileState?,
@@ -110,7 +112,10 @@ extension LocalPublishPreviewService {
       guard !isSymbolicLink(transactionURL) else {
         throw LocalPublishPreviewError.recoveryFailed("事务日志不能是符号链接")
       }
-      let data = try Data(contentsOf: transactionURL)
+      let data = try BoundedFileReader.data(
+        at: transactionURL,
+        maximumByteCount: Self.maximumTransactionByteCount
+      )
       let transaction = try JSONDecoder().decode(LocalPublishTransaction.self, from: data)
       let root = rootURL.standardizedFileURL
       let rollbackDirectory = URL(fileURLWithPath: transaction.rollbackDirectoryPath)
@@ -122,16 +127,49 @@ extension LocalPublishPreviewService {
         throw LocalPublishPreviewError.recoveryFailed("恢复目录不在本地仓库内")
       }
 
-      // Validate the complete journal before changing any destination. A
-      // forged entry later in the list must not allow an earlier content path
-      // to be restored before recovery fails closed on a Git path.
+      // Validate the complete journal and every referenced backup before
+      // changing any destination. A forged or incomplete entry later in the
+      // list must not allow an earlier content path to be removed first.
+      var preparedRecoveries: [PreparedLocalPublishRecovery] = []
       for entry in transaction.entries {
         guard !isGitControlPath(entry.repositoryPath) else {
           throw LocalPublishPreviewError.recoveryFailed("恢复路径属于 Git 管理目录：\(entry.repositoryPath)")
         }
-        _ = try validatedDestinationURLForWrite(
+        let destinationURL = try validatedDestinationURLForWrite(
           rootURL: root,
           repositoryPath: entry.repositoryPath
+        )
+        let backupURL: URL?
+        if let backupFileName = entry.backupFileName {
+          guard !backupFileName.contains("/"),
+            !backupFileName.contains("\\"),
+            !backupFileName.contains("..")
+          else {
+            throw LocalPublishPreviewError.recoveryFailed("恢复备份路径不安全")
+          }
+          let candidate = rollbackDirectory.appendingPathComponent(backupFileName)
+            .standardizedFileURL
+          guard candidate.deletingLastPathComponent() == rollbackDirectory,
+            fileManager.fileExists(atPath: candidate.path),
+            !isSymbolicLink(candidate)
+          else {
+            throw LocalPublishPreviewError.recoveryFailed("恢复备份文件缺失：\(entry.repositoryPath)")
+          }
+          var backupIsDirectory: ObjCBool = false
+          guard fileManager.fileExists(atPath: candidate.path, isDirectory: &backupIsDirectory),
+            !backupIsDirectory.boolValue
+          else {
+            throw LocalPublishPreviewError.recoveryFailed("恢复备份文件不是普通文件：\(entry.repositoryPath)")
+          }
+          backupURL = candidate
+        } else {
+          backupURL = nil
+        }
+        preparedRecoveries.append(
+          PreparedLocalPublishRecovery(
+            destinationURL: destinationURL,
+            backupURL: backupURL
+          )
         )
       }
 
@@ -143,46 +181,16 @@ extension LocalPublishPreviewService {
         return
       }
 
-      for entry in transaction.entries.reversed() {
-        guard !isGitControlPath(entry.repositoryPath) else {
-          throw LocalPublishPreviewError.recoveryFailed("恢复路径属于 Git 管理目录：\(entry.repositoryPath)")
+      for recovery in preparedRecoveries.reversed() {
+        if fileManager.fileExists(atPath: recovery.destinationURL.path) {
+          try fileManager.removeItem(at: recovery.destinationURL)
         }
-        let destinationURL = try validatedDestinationURLForWrite(
-          rootURL: root,
-          repositoryPath: entry.repositoryPath
-        )
-        if fileManager.fileExists(atPath: destinationURL.path) {
-          try fileManager.removeItem(at: destinationURL)
-        }
-        if let backupFileName = entry.backupFileName {
-          guard !backupFileName.contains("/"),
-            !backupFileName.contains("\\"),
-            !backupFileName.contains("..")
-          else {
-            throw LocalPublishPreviewError.recoveryFailed("恢复备份路径不安全")
-          }
-          let backupURL = rollbackDirectory.appendingPathComponent(backupFileName)
-            .standardizedFileURL
-          guard backupURL.deletingLastPathComponent() == rollbackDirectory,
-            fileManager.fileExists(atPath: backupURL.path),
-            !isSymbolicLink(backupURL)
-          else {
-            throw LocalPublishPreviewError.recoveryFailed("恢复备份文件缺失：\(entry.repositoryPath)")
-          }
-          var backupIsDirectory: ObjCBool = false
-          guard
-            !fileManager.fileExists(
-              atPath: backupURL.path,
-              isDirectory: &backupIsDirectory
-            ) || !backupIsDirectory.boolValue
-          else {
-            throw LocalPublishPreviewError.recoveryFailed("恢复备份文件不是普通文件：\(entry.repositoryPath)")
-          }
+        if let backupURL = recovery.backupURL {
           try fileManager.createDirectory(
-            at: destinationURL.deletingLastPathComponent(),
+            at: recovery.destinationURL.deletingLastPathComponent(),
             withIntermediateDirectories: true
           )
-          try fileManager.copyItem(at: backupURL, to: destinationURL)
+          try fileManager.copyItem(at: backupURL, to: recovery.destinationURL)
         }
       }
       try fileManager.removeItem(at: rollbackDirectory)
@@ -191,6 +199,44 @@ extension LocalPublishPreviewService {
       throw error
     } catch {
       throw LocalPublishPreviewError.recoveryFailed(error.localizedDescription)
+    }
+  }
+
+  /// Reports persisted recovery state without mutating the repository. The
+  /// next write remains responsible for performing the actual recovery.
+  func interruptedTransactionIssue(at rootURL: URL) -> PreflightIssue? {
+    let transactionURL = localPublishTransactionURL(for: rootURL)
+    guard fileManager.fileExists(atPath: transactionURL.path) else { return nil }
+
+    do {
+      guard !isSymbolicLink(transactionURL) else {
+        throw LocalPublishPreviewError.recoveryFailed("事务日志不能是符号链接")
+      }
+      let data = try BoundedFileReader.data(
+        at: transactionURL,
+        maximumByteCount: Self.maximumTransactionByteCount
+      )
+      let transaction = try JSONDecoder().decode(LocalPublishTransaction.self, from: data)
+      let message =
+        switch transaction.phase {
+        case .applying:
+          CoreL10n.text("检测到上一次写入中断；再次写入前会先自动恢复原文件。")
+        case .committed:
+          CoreL10n.text("上一次文件写入已完成，但事务清理尚未完成；再次写入前会先清理。")
+        }
+      return PreflightIssue(
+        severity: .warning,
+        title: CoreL10n.text("发现未完成的本地发布事务"),
+        message: message,
+        field: "repository"
+      )
+    } catch {
+      return PreflightIssue(
+        severity: .error,
+        title: CoreL10n.text("本地发布事务无法恢复"),
+        message: CoreL10n.format("事务日志读取失败，已阻止继续写入：%@", error.localizedDescription),
+        field: "repository"
+      )
     }
   }
 

@@ -32,9 +32,7 @@ struct MarkdownSyntaxHighlightComputation: Sendable {
   let revision: UInt64
   let plan: MarkdownSyntaxHighlightPlan
   let snapshot: MarkdownSyntaxHighlightSnapshot
-  let previousSnapshot: MarkdownSyntaxHighlightSnapshot?
-  let previousText: String?
-  let replacedRange: NSRange?
+  let runIndex: MarkdownSyntaxHighlightRunIndex
   let synchronizedTree: Bool
   let parserMetrics: MarkdownSyntaxHighlightParserMetrics
 }
@@ -46,7 +44,7 @@ enum MarkdownSyntaxViewportRepaintReason: Equatable, Sendable {
   case appearance
 
   var requiresFullRepaint: Bool {
-    self != .viewport
+    self == .appearance
   }
 
   var preservesInlineAttachmentDrawings: Bool {
@@ -434,6 +432,7 @@ struct MacMarkdownTextView: NSViewRepresentable {
     var syntaxParsedRunIndex: MarkdownSyntaxHighlightRunIndex?
     var syntaxPaintedDocumentRevision: UInt64?
     var paintedSyntaxViewportRange: NSRange?
+    var paintedSyntaxSelectionRange: NSRange?
     var collapsedSyntaxMarkerRanges: [NSRange] = []
     var pendingSyntaxHighlightPlan: MarkdownSyntaxHighlightPlan?
     var syntaxCodeBlockRanges: [NSRange]?
@@ -462,6 +461,7 @@ struct MacMarkdownTextView: NSViewRepresentable {
     var statisticsFullScanCount = 0
     var statisticsIncrementalUpdateCount = 0
     var pendingTextEdit: MarkdownTextEdit?
+    var pendingTextEditRequiresInference = false
     var isApplyingRepresentedText = false
     var lastCommittedText: String
     var lastCommittedSelectedRange: NSRange
@@ -1054,11 +1054,23 @@ struct MacMarkdownTextView: NSViewRepresentable {
         apply(pairingEdit, in: textView)
         return false
       }
-      removePaintedSyntaxAttributes(in: textView)
-      pendingTextEdit = MarkdownTextEdit(
-        previousText: textView.string,
-        replacedRange: affectedCharRange
-      )
+      if pendingTextEdit != nil || pendingTextEditRequiresInference {
+        // Some input methods issue several should-change callbacks before one
+        // did-change notification. Those ranges belong to different document
+        // revisions, so retain neither partial painted state nor the newest
+        // hint; infer one cumulative UTF-16 edit from representedText instead.
+        pendingTextEditRequiresInference = true
+        removePaintedSyntaxAttributes(in: textView)
+      } else {
+        preparePaintedSyntaxForEdit(
+          in: textView,
+          affectedRange: affectedCharRange
+        )
+        pendingTextEdit = MarkdownTextEdit(
+          previousText: textView.string,
+          replacedRange: affectedCharRange
+        )
+      }
       return true
     }
 
@@ -1490,8 +1502,10 @@ struct MacMarkdownTextView: NSViewRepresentable {
       let updatedText = textView.string
       let previousBodyMarkdown = bodyMarkdown
       let previousBodyUTF16Offset = bodyUTF16Offset
+      let requiresInferredTextEdit = pendingTextEditRequiresInference
+      pendingTextEditRequiresInference = false
       let syntaxHighlightEdit =
-        pendingTextEdit
+        (requiresInferredTextEdit ? nil : pendingTextEdit)
         ?? MarkdownTextEdit.inferred(
           previousText: representedText,
           currentText: updatedText
@@ -1530,6 +1544,13 @@ struct MacMarkdownTextView: NSViewRepresentable {
       } else {
         syntaxHighlightPlan = .fullDocument(for: updatedText)
       }
+      reconcilePaintedSyntaxState(
+        after: syntaxHighlightEdit,
+        plan: syntaxHighlightPlan,
+        previousRevision: previousSyntaxRevision,
+        currentText: updatedText,
+        in: textView
+      )
       pendingSyntaxHighlightPlan = syntaxHighlightPlan
       syntaxCodeBlockRanges = syntaxHighlightPlan.codeBlockRanges
       let updatedSource = updatedText as NSString

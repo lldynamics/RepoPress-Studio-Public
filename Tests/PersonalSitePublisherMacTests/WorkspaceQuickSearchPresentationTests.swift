@@ -282,6 +282,43 @@ final class WorkspaceQuickSearchPresentationTests: XCTestCase {
     XCTAssertEqual(visible.count, WorkspaceQuickSearchPresentation.searchResultLimit)
   }
 
+  func testUnifiedSearchScopesHaveStableInclusionRules() {
+    XCTAssertTrue(WorkspaceUnifiedSearchScope.all.includesArticles)
+    XCTAssertTrue(WorkspaceUnifiedSearchScope.all.includesResources)
+    XCTAssertTrue(WorkspaceUnifiedSearchScope.all.includesRSS)
+    XCTAssertTrue(WorkspaceUnifiedSearchScope.all.includesSettings)
+    XCTAssertTrue(WorkspaceUnifiedSearchScope.all.includesCommands)
+
+    XCTAssertTrue(WorkspaceUnifiedSearchScope.articles.includesArticles)
+    XCTAssertFalse(WorkspaceUnifiedSearchScope.articles.includesSettings)
+    XCTAssertTrue(WorkspaceUnifiedSearchScope.resources.includesResources)
+    XCTAssertFalse(WorkspaceUnifiedSearchScope.resources.includesRSS)
+    XCTAssertTrue(WorkspaceUnifiedSearchScope.rss.includesRSS)
+    XCTAssertTrue(WorkspaceUnifiedSearchScope.settings.includesSettings)
+    XCTAssertTrue(WorkspaceUnifiedSearchScope.commands.includesCommands)
+  }
+
+  func testUnifiedSearchSectionFilteringDoesNotCrossScopes() {
+    let sections: [WorkspaceSection] = [.writing, .library, .rss, .images]
+
+    XCTAssertEqual(
+      WorkspaceUnifiedSearchPresentation.matchingSections(
+        sections,
+        query: "",
+        scope: .resources
+      ),
+      [.library, .images]
+    )
+    XCTAssertEqual(
+      WorkspaceUnifiedSearchPresentation.matchingSections(
+        sections,
+        query: "",
+        scope: .rss
+      ),
+      [.rss]
+    )
+  }
+
   private static func fixItem(
     id: String,
     draftID: UUID,

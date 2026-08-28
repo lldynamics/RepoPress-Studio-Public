@@ -49,7 +49,9 @@ public struct SiteMaintenanceService: Sendable {
     profile: SiteProfile,
     releaseRecords: [ReleaseRecord],
     maintenanceOperationRecords: [MaintenanceOperationRecord] = [],
-    now: Date = Date()
+    now: Date = Date(),
+    linkAuditReport: SiteLinkAuditReport? = nil,
+    validatesExternalLinks: Bool = true
   ) async throws -> SiteMaintenanceReport {
     if let asyncReportOperation {
       return try await asyncReportOperation(
@@ -61,10 +63,20 @@ public struct SiteMaintenanceService: Sendable {
       )
     }
 
-    let linkAuditItems = try await linkAuditService.reportAsync(
-      drafts: drafts,
-      profile: profile
-    ).items
+    let linkAuditItems: [SiteLinkAuditItem]
+    if let linkAuditReport {
+      linkAuditItems = linkAuditReport.items
+    } else if validatesExternalLinks {
+      linkAuditItems = try await linkAuditService.reportAsync(
+        drafts: drafts,
+        profile: profile
+      ).items
+    } else {
+      let service = linkAuditService
+      linkAuditItems = await Task.detached(priority: .utility) {
+        service.report(drafts: drafts, profile: profile).items
+      }.value
+    }
     let task = Task.detached(priority: .utility) {
       try makeReport(
         drafts: drafts,

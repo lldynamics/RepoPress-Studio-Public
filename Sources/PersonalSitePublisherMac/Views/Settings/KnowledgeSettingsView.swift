@@ -15,13 +15,12 @@ struct KnowledgeAdvancedSettingsExpansionState: Equatable {
 struct KnowledgeSettingsView: View {
   @Environment(\.dismiss) private var dismiss
   @Environment(\.openSettings) private var openSettings
-  @ObservedObject var store: WorkbenchStore
+  @Environment(\.settingsWorkspaceCommandAction) private var settingsWorkspaceCommandAction
   @ObservedObject var knowledge: KnowledgeStore
   let browserBridge: KnowledgeBrowserBridge?
   let onOpenLibrary: () -> Void
 
   @AppStorage("knowledgeSavedCollectionsV1") private var savedCollectionsJSON = "[]"
-  @AppStorage("settingsRequestedTabID") private var requestedSettingsTabID = ""
   @AppStorage("dataManagementRequestedSection") private var dataManagementRequestedSection = DataManagementSection.backup.rawValue
   @State private var expansionState = KnowledgeAdvancedSettingsExpansionState()
   @State private var isBrowserConnectionPresented = false
@@ -263,7 +262,11 @@ struct KnowledgeSettingsView: View {
 
   private func openDataManagement() {
     dataManagementRequestedSection = DataManagementSection.backup.rawValue
-    requestedSettingsTabID = SettingsTab.dataManagement.id
-    openSettings()
+    SettingsNavigation.present(
+      destination: .data(.backup),
+      workspaceAction: settingsWorkspaceCommandAction
+    ) {
+      openSettings()
+    }
   }
 }

@@ -78,28 +78,16 @@ extension RemoteRepositoryPublishService {
         ref: existenceRef,
         token: token
       )
-      let validationState = if createsReview
-        && file.operation == .delete
-        && existenceRef != targetBranch
-      {
-        try await gitLabFileState(
-          repository: repository,
-          path: file.repositoryPath,
-          ref: targetBranch,
-          token: token
-        )
-      } else {
-        remoteState
-      }
       let content = file.operation == .upsert ? try contentData(for: file) : nil
-      let isAlreadyPublished = file.operation == .upsert
+      let isAlreadyPublished =
+        file.operation == .upsert
         && remoteState.exists
         && content == remoteState.content
-      let isVerifiedLegacyDelete = file.operation == .delete
-        && gitLabLegacyDeleteContentMatches(file: file, remoteContent: validationState.content)
-      let isIdempotentMissingDelete = file.operation == .delete && !validationState.exists
+      let isVerifiedLegacyDelete =
+        file.operation == .delete
+        && gitLabLegacyDeleteContentMatches(file: file, remoteContent: remoteState.content)
+      let isIdempotentMissingDelete = file.operation == .delete && !remoteState.exists
       let validatesExpectedVersion = mode == .directCommit
-        || (createsReview && file.operation == .delete)
       if validatesExpectedVersion
         && !isAlreadyPublished
         && !isVerifiedLegacyDelete
@@ -108,12 +96,12 @@ extension RemoteRepositoryPublishService {
         try validateExpectedRemoteVersion(
           path: file.repositoryPath,
           expected: file.expectedRemoteSHA,
-          actual: validationState.lastCommitID
+          actual: remoteState.lastCommitID
         )
       }
 
       if file.operation == .delete {
-        if createsReview, validationState.exists {
+        if createsReview, remoteState.exists {
           reviewPendingPaths.append(file.repositoryPath)
         }
         if remoteState.exists {
@@ -303,7 +291,7 @@ extension RemoteRepositoryPublishService {
       .init(
         stage: .completed,
         progress: 1,
-        message: CoreL10n.text("发布完成"),
+        message: mode.completedProgressMessage,
         detail: CoreL10n.format("共提交 %@ 个文件", String(changedPaths.count)),
         completedByteCount: totalSourceByteCount,
         totalByteCount: totalSourceByteCount

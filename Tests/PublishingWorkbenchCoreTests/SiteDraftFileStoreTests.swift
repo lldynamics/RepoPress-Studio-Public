@@ -8,6 +8,7 @@ struct SiteDraftFileStoreTests {
   func writesOnlySiteDraftMarkdownIntoProject() throws {
     let rootURL = try makeTemporaryDirectory()
     defer { try? FileManager.default.removeItem(at: rootURL) }
+    try makeGitMarker(at: rootURL)
     var profile = SiteProfile.defaultProfile
     profile.localRepositoryRootPath = rootURL.path
     var draft = ArticleDraft.empty(profile: profile)
@@ -28,6 +29,7 @@ struct SiteDraftFileStoreTests {
   func movingMarkdownPathRemovesPreviousFile() throws {
     let rootURL = try makeTemporaryDirectory()
     defer { try? FileManager.default.removeItem(at: rootURL) }
+    try makeGitMarker(at: rootURL)
     var profile = SiteProfile.defaultProfile
     profile.localRepositoryRootPath = rootURL.path
     var draft = ArticleDraft.empty(profile: profile)
@@ -65,10 +67,36 @@ struct SiteDraftFileStoreTests {
     #expect(contents.isEmpty)
   }
 
+  @Test
+  func refusesSiteDraftWriteOutsideGitRepository() throws {
+    let rootURL = try makeTemporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    var profile = SiteProfile.defaultProfile
+    profile.localRepositoryRootPath = rootURL.path
+    var draft = ArticleDraft.empty(profile: profile)
+    draft.slug = "must-not-write"
+
+    #expect(throws: LocalPublishPreviewError.self) {
+      try SiteDraftFileStore().write(draft: draft, profile: profile)
+    }
+    #expect(
+      !FileManager.default.fileExists(
+        atPath: rootURL.appendingPathComponent(profile.markdownPath(for: draft)).path
+      )
+    )
+  }
+
   private func makeTemporaryDirectory() throws -> URL {
     let url = FileManager.default.temporaryDirectory
       .appendingPathComponent("site-draft-file-store-\(UUID().uuidString)", isDirectory: true)
     try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
     return url
+  }
+
+  private func makeGitMarker(at rootURL: URL) throws {
+    try FileManager.default.createDirectory(
+      at: rootURL.appendingPathComponent(".git", isDirectory: true),
+      withIntermediateDirectories: true
+    )
   }
 }

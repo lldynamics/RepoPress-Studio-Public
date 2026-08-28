@@ -4,10 +4,16 @@ extension WorkbenchStore {
   public func slugChangeImpact(for draftID: UUID) -> SlugChangeImpact? {
     guard let target = draft(for: draftID), !target.isGeneralDraft else { return nil }
     let sameSiteDrafts = draftsForSlugRedirectImpact(target: target)
+    let overlaidDrafts = draftsOverlayingEditorBuffers(sameSiteDrafts)
+    let profile = profile(for: target)
     return SlugChangeRedirectService().impact(
       target: target,
-      drafts: draftsOverlayingEditorBuffers(sameSiteDrafts),
-      profile: profile(for: target)
+      drafts: overlaidDrafts,
+      profile: profile,
+      linkAuditReport: localSiteLinkAuditReport(
+        drafts: overlaidDrafts,
+        profile: profile
+      )
     )
   }
 
@@ -21,11 +27,18 @@ extension WorkbenchStore {
     let initialDrafts = draftsOverlayingEditorBuffers(
       draftsForSlugRedirectImpact(target: initialTarget)
     )
-    guard let initialImpact = SlugChangeRedirectService().impact(
-      target: initialTarget,
-      drafts: initialDrafts,
-      profile: profile(for: initialTarget)
-    ) else {
+    let initialProfile = profile(for: initialTarget)
+    guard
+      let initialImpact = SlugChangeRedirectService().impact(
+        target: initialTarget,
+        drafts: initialDrafts,
+        profile: initialProfile,
+        linkAuditReport: localSiteLinkAuditReport(
+          drafts: initialDrafts,
+          profile: initialProfile
+        )
+      )
+    else {
       return slugChangeFailure("没有待处理的 Slug 变更。")
     }
 
@@ -37,11 +50,17 @@ extension WorkbenchStore {
       return slugChangeFailure("目标文章在应用前已发生变化。")
     }
     let sameSiteDrafts = draftsForSlugRedirectImpact(target: target)
-    guard let impact = SlugChangeRedirectService().impact(
-      target: target,
-      drafts: sameSiteDrafts,
-      profile: profile(for: target)
-    ),
+    let targetProfile = profile(for: target)
+    guard
+      let impact = SlugChangeRedirectService().impact(
+        target: target,
+        drafts: sameSiteDrafts,
+        profile: targetProfile,
+        linkAuditReport: localSiteLinkAuditReport(
+          drafts: sameSiteDrafts,
+          profile: targetProfile
+        )
+      ),
       let replacementBodies = SlugChangeRedirectService().replacementBodies(
         for: impact,
         target: target,
@@ -51,9 +70,10 @@ extension WorkbenchStore {
       return slugChangeFailure("文章在预览后发生变化，未更新任何引用。")
     }
 
-    let baselines = Dictionary(uniqueKeysWithValues: replacementBodies.keys.compactMap { id in
-      draftOperationBaseline(for: id).map { (id, $0) }
-    })
+    let baselines = Dictionary(
+      uniqueKeysWithValues: replacementBodies.keys.compactMap { id in
+        draftOperationBaseline(for: id).map { (id, $0) }
+      })
     guard baselines.count == replacementBodies.count else {
       return slugChangeFailure("无法建立完整的文章版本基线，未更新任何引用。")
     }
@@ -91,7 +111,8 @@ extension WorkbenchStore {
     }
     updatedTarget.clearPendingSlugRedirectPaths()
     updateDraft(updatedTarget)
-    let message = impact.referenceCount == 0
+    let message =
+      impact.referenceCount == 0
       ? "已确认不需要更新站内引用。"
       : "已更新 \(impact.affectedDraftCount) 篇文章中的 \(impact.referenceCount) 处旧 Slug 引用。"
     setPublishActionMessage(message, status: .success)
@@ -107,11 +128,20 @@ extension WorkbenchStore {
   public func addAliasesForPendingSlugChange(
     draftID: UUID
   ) -> SlugChangeApplicationResult {
-    guard let target = draft(for: draftID), !target.isGeneralDraft,
+    guard let target = draft(for: draftID), !target.isGeneralDraft else {
+      return slugChangeFailure("没有待处理的 Slug 变更。")
+    }
+    let sameSiteDrafts = draftsForSlugRedirectImpact(target: target)
+    let targetProfile = profile(for: target)
+    guard
       let impact = SlugChangeRedirectService().impact(
         target: target,
-        drafts: draftsForSlugRedirectImpact(target: target),
-        profile: profile(for: target)
+        drafts: sameSiteDrafts,
+        profile: targetProfile,
+        linkAuditReport: localSiteLinkAuditReport(
+          drafts: sameSiteDrafts,
+          profile: targetProfile
+        )
       )
     else {
       return slugChangeFailure("没有待处理的 Slug 变更。")
@@ -129,12 +159,14 @@ extension WorkbenchStore {
     guard var refreshedTarget = draft(for: draftID) else {
       return slugChangeFailure("目标文章在提交时消失，未写入 aliases。")
     }
-    let existing = Set(refreshedTarget.aliases.map {
-      $0.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-    })
-    refreshedTarget.aliases.append(contentsOf: impact.oldRoutes.filter {
-      !existing.contains($0.trimmingCharacters(in: CharacterSet(charactersIn: "/")))
-    })
+    let existing = Set(
+      refreshedTarget.aliases.map {
+        $0.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+      })
+    refreshedTarget.aliases.append(
+      contentsOf: impact.oldRoutes.filter {
+        !existing.contains($0.trimmingCharacters(in: CharacterSet(charactersIn: "/")))
+      })
     refreshedTarget.clearPendingSlugRedirectPaths()
     updateDraft(refreshedTarget)
     let message = "已将旧地址写入 Front Matter 的 aliases；实际跳转由站点框架或重定向插件生成。"

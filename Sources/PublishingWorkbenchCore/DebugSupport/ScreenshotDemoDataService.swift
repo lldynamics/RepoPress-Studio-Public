@@ -880,6 +880,7 @@
     case seoSocialPreview = "seo-social-preview"
     case deploymentStatus = "deployment-status"
     case maintenance
+    case settings
     case generalDrafts = "general-drafts"
     case quickHide = "privacy-lock"
     case knowledgeLibrary = "knowledge-library"
@@ -931,6 +932,9 @@
       case .maintenance:
         store.selectSection(.contentHealth)
         store.setPublishActionMessage(String(localized: "截图模式：站点维护工作台已载入。"), status: .information)
+      case .settings:
+        store.selectSection(.writing)
+        store.setPublishActionMessage(String(localized: "截图模式：统一设置工作区已载入。"), status: .information)
       case .generalDrafts:
         store.selectSection(.writing)
         store.setDraftListContentScope(.general)

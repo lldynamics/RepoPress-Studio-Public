@@ -1,22 +1,22 @@
 import Foundation
 
-enum SettingsRulesDestination: String, Hashable {
+enum SettingsRulesDestination: String, Hashable, Sendable {
   case paths
 }
 
-enum SettingsTokenDestination: String, Hashable {
+enum SettingsTokenDestination: String, Hashable, Sendable {
   case repository
   case deployment
   case analytics
 }
 
-enum SettingsAIDestination: String, Hashable {
+enum SettingsAIDestination: String, Hashable, Sendable {
   case connection
   case credentials
   case writingStyle
 }
 
-enum SettingsDataDestination: String, Hashable {
+enum SettingsDataDestination: String, Hashable, Sendable {
   case drafts
   case backup
   case migration
@@ -27,7 +27,7 @@ enum SettingsDataDestination: String, Hashable {
 /// Top-level selection is persisted separately. Structured destinations are
 /// intentionally consumed and cleared so a stale subsection request cannot
 /// become the user's reopening preference.
-enum SettingsDestination: Hashable, Identifiable {
+enum SettingsDestination: Hashable, Identifiable, Sendable {
   case tab(SettingsTab)
   case rules(SettingsRulesDestination)
   case token(SettingsTokenDestination)
@@ -112,7 +112,24 @@ enum SettingsNavigation {
   }
 
   static func open(destination: SettingsDestination?, openSettings: () -> Void) {
-    UserDefaults.standard.set(destination?.id ?? "", forKey: requestedTabStorageKey)
+    request(destination: destination)
     openSettings()
+  }
+
+  @MainActor
+  static func present(
+    destination: SettingsDestination?,
+    workspaceAction: SettingsWorkspaceCommandAction?,
+    openSettings: () -> Void
+  ) {
+    if let workspaceAction {
+      workspaceAction.open(destination)
+    } else {
+      open(destination: destination, openSettings: openSettings)
+    }
+  }
+
+  static func request(destination: SettingsDestination?) {
+    UserDefaults.standard.set(destination?.id ?? "", forKey: requestedTabStorageKey)
   }
 }

@@ -77,6 +77,8 @@ public struct ImageBatchMemoryBudget: Equatable, Sendable {
       let fileExtension = URL(fileURLWithPath: path).pathExtension.lowercased()
       let matchesOperation: Bool
       switch operation {
+      case .removePrivacyMetadata:
+        matchesOperation = attachment.mediaKind == .image
       case .optimizeJPEG:
         matchesOperation = fileExtension == "jpg" || fileExtension == "jpeg"
       case .convertWebP, .resizeLargeImages:

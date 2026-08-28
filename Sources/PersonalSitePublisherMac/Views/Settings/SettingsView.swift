@@ -7,46 +7,129 @@ struct SettingsView: View {
   @ObservedObject private var persistenceStatus: WorkbenchPersistenceFeatureFacade
   let rssStore: RSSReaderStore?
   @ObservedObject var launchCoordinator: WorkbenchLaunchCoordinator
+  let closeWorkspace: (() -> Void)?
+  let workspaceDestination: SettingsDestination?
+  let workspaceSubsection: SettingsSubsection?
+  let workspaceNavigationRequestID: UUID?
   @AppStorage("autoRunPreflight") private var autoRunPreflight = true
   @AppStorage("scanRepositoryOnLaunch") private var scanRepositoryOnLaunch = false
+  @AppStorage(WorkbenchInterfaceDensity.storageKey)
+  private var interfaceDensityRawValue = WorkbenchInterfaceDensity.comfortable.rawValue
   // Compatibility bridge for callers that must request a destination before
   // the separate Settings scene exists. Every value is consumed and cleared.
   @AppStorage(SettingsNavigation.requestedTabStorageKey)
   private var requestedSettingsTabID = ""
   @AppStorage(SettingsNavigation.lastViewedTabStorageKey)
   private var lastViewedSettingsTabID = ""
-  @State private var selectedSettingsTab: SettingsTab
+  @State private var selectedRoute: SettingsRoute
   @State private var navigationDestination: SettingsDestination?
   @State private var navigationRequestID = UUID()
   @State private var healthDestination: SettingsConfigurationHealthDestination?
   @State private var healthNavigationRequestID = UUID()
   @State private var pendingSiteKind: SiteKind?
   @State private var searchText = ""
+  @State private var detailScrollArrivalRequest: SettingsDetailScrollArrivalRequest?
+  @State private var detailScrollHandoffGate = SettingsDetailScrollHandoffGate()
   @ScaledMetric(relativeTo: .body)
   private var scaledSidebarWidth = WorkbenchSettingsMetrics.sidebarWidth
 
   init(
     store: WorkbenchStore,
     rssStore: RSSReaderStore? = nil,
-    launchCoordinator: WorkbenchLaunchCoordinator
+    launchCoordinator: WorkbenchLaunchCoordinator,
+    closeWorkspace: (() -> Void)? = nil,
+    workspaceDestination: SettingsDestination? = nil,
+    workspaceSubsection: SettingsSubsection? = nil,
+    workspaceNavigationRequestID: UUID? = nil
   ) {
+    let initialRoute =
+      SettingsRoute.workspace(
+        destination: workspaceDestination,
+        subsection: workspaceSubsection
+      ) ?? Self.initialSettingsRoute()
     self.store = store
     _settingsState = ObservedObject(wrappedValue: store.settings)
     _persistenceStatus = ObservedObject(wrappedValue: store.persistenceStatus)
     self.rssStore = rssStore
     self.launchCoordinator = launchCoordinator
-    _selectedSettingsTab = State(initialValue: Self.initialSettingsTab())
-    _navigationDestination = State(initialValue: nil)
+    self.closeWorkspace = closeWorkspace
+    self.workspaceDestination = workspaceDestination
+    self.workspaceSubsection = workspaceSubsection
+    self.workspaceNavigationRequestID = workspaceNavigationRequestID
+    _selectedRoute = State(initialValue: initialRoute)
+    _navigationDestination = State(initialValue: workspaceDestination)
   }
 
   var body: some View {
     let _ = settingsState
+    GeometryReader { geometry in
+      let presentation = SettingsWorkspaceLayout.presentation(
+        width: geometry.size.width,
+        height: geometry.size.height,
+        scaledSidebarWidth: scaledSidebarWidth,
+        density: selectedInterfaceDensity
+      )
+
+      VStack(spacing: 0) {
+        settingsWorkspaceHeader(presentation: presentation)
+        Divider()
+
+        settingsColumns(presentation: presentation)
+          .frame(maxWidth: .infinity, maxHeight: .infinity)
+      }
+    }
+    .background(Color(nsColor: .windowBackgroundColor))
+    .navigationTitle("设置")
+    .onAppear {
+      if closeWorkspace != nil || workspaceDestination != nil || workspaceSubsection != nil {
+        applyWorkspaceNavigation()
+      } else {
+        applyRequestedSettingsTab(requestedSettingsTabID)
+      }
+      lastViewedSettingsTabID = selectedSettingsTab.id
+      store.setAutomaticallyRefreshPreflightOnEdit(autoRunPreflight)
+    }
+    .onChange(of: requestedSettingsTabID) { _, requestedTabID in
+      guard closeWorkspace == nil else { return }
+      applyRequestedSettingsTab(requestedTabID)
+    }
+    .onChange(of: workspaceNavigationRequestID) { _, _ in
+      applyWorkspaceNavigation()
+    }
+    .onChange(of: selectedRoute) { _, route in
+      lastViewedSettingsTabID = route.tab.id
+    }
+    .onChange(of: autoRunPreflight) { _, newValue in
+      store.setAutomaticallyRefreshPreflightOnEdit(newValue)
+    }
+    .sheet(item: $pendingSiteKind) { siteKind in
+      SiteKindChangeConfirmationView(
+        currentProfile: store.activeProfile,
+        targetKind: siteKind,
+        cancelAction: {
+          pendingSiteKind = nil
+        },
+        confirmAction: {
+          store.applySiteKindDefaults(siteKind)
+          pendingSiteKind = nil
+        }
+      )
+    }
+  }
+
+  private func settingsColumns(
+    presentation: SettingsWorkspaceLayout.Presentation
+  ) -> some View {
     HStack(spacing: 0) {
-      settingsSidebar
+      settingsSidebar(presentation: presentation)
       Divider()
 
       VStack(spacing: 0) {
-        settingsPageHeader
+        SettingsDetailHeader(
+          tab: selectedSettingsTab,
+          subsection: selectedSubsection,
+          minimumHeight: presentation.pageHeaderHeight
+        )
 
         Divider()
 
@@ -70,36 +153,6 @@ struct SettingsView: View {
       .accessibilityElement(children: .contain)
       .accessibilityIdentifier("settings-content")
     }
-    .workbenchSettingsWindowSize()
-    .background(Color(nsColor: .windowBackgroundColor))
-    .navigationTitle("设置")
-    .onAppear {
-      applyRequestedSettingsTab(requestedSettingsTabID)
-      lastViewedSettingsTabID = selectedSettingsTab.id
-      store.setAutomaticallyRefreshPreflightOnEdit(autoRunPreflight)
-    }
-    .onChange(of: requestedSettingsTabID) { _, requestedTabID in
-      applyRequestedSettingsTab(requestedTabID)
-    }
-    .onChange(of: selectedSettingsTab) { _, selectedTab in
-      lastViewedSettingsTabID = selectedTab.id
-    }
-    .onChange(of: autoRunPreflight) { _, newValue in
-      store.setAutomaticallyRefreshPreflightOnEdit(newValue)
-    }
-    .sheet(item: $pendingSiteKind) { siteKind in
-      SiteKindChangeConfirmationView(
-        currentProfile: store.activeProfile,
-        targetKind: siteKind,
-        cancelAction: {
-          pendingSiteKind = nil
-        },
-        confirmAction: {
-          store.applySiteKindDefaults(siteKind)
-          pendingSiteKind = nil
-        }
-      )
-    }
   }
 
   private var matchingSearchItems: [SettingsSearchItem] {
@@ -112,100 +165,100 @@ struct SettingsView: View {
       || persistenceStatus.isRecoveryWriteProtected
   }
 
-  private var settingsSidebar: some View {
-    let searchHits = matchingSearchItems
-    let isSearching = !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-    let visibleSiteSettings = filteredSettingsTabs(SettingsTab.siteSettings)
-    let visibleApplicationSettings = filteredSettingsTabs(SettingsTab.applicationSettings)
-
-    return VStack(alignment: .leading, spacing: 0) {
-      List(selection: settingsSidebarSelection) {
-        if isSearching {
-          if searchHits.isEmpty && visibleSiteSettings.isEmpty && visibleApplicationSettings.isEmpty {
-            Text("没有匹配的设置")
-              .font(.callout)
-              .foregroundStyle(.secondary)
-          } else {
-            if !searchHits.isEmpty {
-              Section("具体设置项") {
-                ForEach(searchHits) { item in
-                  Button {
-                    selectSettingsSearchItem(item)
-                  } label: {
-                    VStack(alignment: .leading, spacing: 2) {
-                      HStack(spacing: 6) {
-                        Image(systemName: item.systemImage)
-                          .font(.caption)
-                          .foregroundStyle(item.tab == selectedSettingsTab ? Color.accentColor : Color.secondary)
-                        Text(item.sectionTitle)
-                          .font(.callout.weight(.medium))
-                          .foregroundStyle(Color.primary)
-                          .lineLimit(1)
-                      }
-                      HStack(spacing: 4) {
-                        Text(item.tab.title)
-                          .font(.workbenchMetadata)
-                          .foregroundStyle(.secondary)
-                        Text("·")
-                          .font(.workbenchMetadata)
-                          .foregroundStyle(.tertiary)
-                        Text(item.detail)
-                          .font(.workbenchMetadata)
-                          .foregroundStyle(.secondary)
-                          .lineLimit(1)
-                      }
-                    }
-                    .padding(.vertical, 3)
-                  }
-                  .buttonStyle(.plain)
-                  .accessibilityElement(children: .combine)
-                  .accessibilityLabel("\(item.sectionTitle)，属于 \(item.tab.title)")
-                }
-              }
-            }
-
-            if !visibleSiteSettings.isEmpty {
-              Section("匹配的站点分类") {
-                ForEach(visibleSiteSettings) { tab in
-                  settingsSidebarRow(tab)
-                }
-              }
-            }
-
-            if !visibleApplicationSettings.isEmpty {
-              Section("匹配的应用分类") {
-                ForEach(visibleApplicationSettings) { tab in
-                  settingsSidebarRow(tab)
-                }
-              }
-            }
-          }
-        } else {
-          if !visibleSiteSettings.isEmpty {
-            Section("站点") {
-              ForEach(visibleSiteSettings) { tab in
-                settingsSidebarRow(tab)
-              }
-            }
-          }
-
-          if !visibleApplicationSettings.isEmpty {
-            Section("应用设置") {
-              ForEach(visibleApplicationSettings) { tab in
-                settingsSidebarRow(tab)
-              }
-            }
-          }
+  private func settingsWorkspaceHeader(
+    presentation: SettingsWorkspaceLayout.Presentation
+  ) -> some View {
+    HStack(spacing: WorkbenchSpacing.section) {
+      if let closeWorkspace {
+        Button(action: closeWorkspace) {
+          Label("返回工作台", systemImage: "chevron.left")
+            .font(.callout.weight(.medium))
         }
+        .buttonStyle(.bordered)
+        .controlSize(.regular)
+        .keyboardShortcut(.cancelAction)
+        .help("返回之前的工作区和文章")
+        .accessibilityIdentifier("settings-return-to-workbench")
+      } else {
+        Label("设置", systemImage: "gearshape")
+          .font(.headline)
       }
-      .listStyle(.sidebar)
-      .scrollContentBackground(.hidden)
-      .padding(.top, WorkbenchSpacing.control)
-      .searchable(text: $searchText, placement: .sidebar, prompt: Text("搜索设置（如 WebP、Ollama、Front Matter）"))
+
+      Spacer(minLength: WorkbenchSpacing.content)
     }
-    .frame(width: SettingsSidebarPresentation.clampedWidth(scaledSidebarWidth))
+    .padding(.horizontal, WorkbenchSpacing.content)
+    .padding(.vertical, WorkbenchSpacing.card)
+    .frame(minHeight: presentation.workspaceHeaderHeight)
+    .background(Color(nsColor: .windowBackgroundColor))
+    .accessibilityElement(children: .contain)
+    .accessibilityIdentifier("settings-workspace-header")
+  }
+
+  private func settingsSidebar(
+    presentation: SettingsWorkspaceLayout.Presentation
+  ) -> some View {
+    return VStack(alignment: .leading, spacing: 0) {
+      profileBar
+        .padding(.horizontal, WorkbenchSpacing.content)
+        .padding(.top, WorkbenchSpacing.content)
+        .padding(.bottom, WorkbenchSpacing.card)
+
+      settingsSidebarSearchField(minimumHeight: presentation.searchFieldHeight)
+        .padding(.horizontal, WorkbenchSpacing.content)
+        .padding(.bottom, WorkbenchSpacing.card)
+
+      Divider()
+        .padding(.horizontal, WorkbenchSpacing.content)
+
+      SettingsNavigationList(
+        searchText: searchText,
+        searchItems: matchingSearchItems,
+        selection: settingsRouteSelection,
+        tabsNeedingAttention: tabsNeedingAttention,
+        rowVerticalPadding: presentation.sidebarRowVerticalPadding,
+        subsectionVerticalPadding: presentation.subsectionRowVerticalPadding,
+        selectSearchItem: selectSettingsSearchItem
+      )
+    }
+    .frame(width: presentation.primarySidebarWidth)
     .workbenchGlassContainer(material: .thinMaterial, drawsBorder: false)
-    .accessibilityIdentifier("settings-sidebar")
+  }
+
+  private func settingsSidebarSearchField(minimumHeight: CGFloat) -> some View {
+    HStack(spacing: WorkbenchSpacing.control) {
+      Image(systemName: "magnifyingglass")
+        .font(.callout)
+        .foregroundStyle(.secondary)
+        .accessibilityHidden(true)
+
+      TextField("搜索所有设置", text: $searchText)
+        .font(.callout)
+        .textFieldStyle(.plain)
+        .accessibilityLabel("搜索所有设置")
+        .accessibilityIdentifier("settings-search-field")
+
+      if !searchText.isEmpty {
+        Button {
+          searchText = ""
+        } label: {
+          Image(systemName: "xmark.circle.fill")
+            .foregroundStyle(.secondary)
+        }
+        .buttonStyle(.plain)
+        .help("清除搜索")
+        .accessibilityLabel("清除设置搜索")
+      }
+    }
+    .padding(.horizontal, WorkbenchSpacing.card)
+    .frame(minHeight: minimumHeight)
+    .background(
+      Color.primary.opacity(0.055),
+      in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
+    )
+    .overlay {
+      RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
+        .stroke(Color.primary.opacity(0.10), lineWidth: 1)
+    }
   }
 
   private func selectSettingsSearchItem(_ item: SettingsSearchItem) {
@@ -214,43 +267,16 @@ struct SettingsView: View {
     } else {
       selectTopLevelSettingsTab(item.tab)
     }
+    if let subsection = SettingsSubsection.section(forSearchItemID: item.id),
+      subsection.tab == item.tab
+    {
+      selectedRoute = .subsection(subsection)
+    }
+    searchText = ""
   }
 
-  private func settingsSidebarRow(_ tab: SettingsTab) -> some View {
-    let needsAttention = tabNeedsAttention(tab)
-    return HStack(alignment: .center, spacing: WorkbenchSpacing.control) {
-      Label {
-        Text(tab.title)
-          .lineLimit(2)
-          .fixedSize(horizontal: false, vertical: true)
-      } icon: {
-        Image(systemName: tab.systemImage)
-      }
-      Spacer(minLength: 2)
-      if needsAttention {
-        Text(SettingsSidebarPresentation.attentionBadgeTitle)
-          .font(.workbenchMetadata.weight(.semibold))
-          .foregroundStyle(WorkbenchTheme.warning)
-          .padding(.horizontal, 6)
-          .padding(.vertical, 2)
-          .background(
-            WorkbenchTheme.warning.opacity(WorkbenchOpacity.noticeBackground),
-            in: Capsule()
-          )
-          .fixedSize()
-          .accessibilityHidden(true)
-      }
-    }
-    .frame(maxWidth: .infinity, alignment: .leading)
-    .contentShape(Rectangle())
-    .tag(tab)
-    .accessibilityElement(children: .ignore)
-    .accessibilityLabel(tab.title)
-    .accessibilityValue(
-      needsAttention ? SettingsSidebarPresentation.attentionAccessibilityValue : ""
-    )
-    .accessibilityAddTraits(selectedSettingsTab == tab ? .isSelected : [])
-    .accessibilityIdentifier("settings-sidebar-\(tab.id)")
+  private var tabsNeedingAttention: Set<SettingsTab> {
+    Set(SettingsTab.allCases.filter(tabNeedsAttention))
   }
 
   private func tabNeedsAttention(_ tab: SettingsTab) -> Bool {
@@ -284,125 +310,6 @@ struct SettingsView: View {
       return missingConnectionValue || missingAPIKey
     default:
       return false
-    }
-  }
-
-  private var settingsPageHeader: some View {
-    Group {
-      if selectedSettingsTab.isSiteScoped {
-        ViewThatFits(in: .horizontal) {
-          HStack(alignment: .center, spacing: WorkbenchSpacing.section) {
-            settingsPageIdentity
-              .frame(minWidth: 250, alignment: .leading)
-
-            Spacer(minLength: WorkbenchSpacing.content)
-
-            HStack(spacing: WorkbenchSpacing.card) {
-              profileBar
-
-              SettingsCompactSaveIndicator(
-                hasUnsavedChanges: persistenceStatus.hasUnsavedChanges,
-                lastSaveError: persistenceStatus.lastSaveError,
-                isRecoveryWriteProtected: persistenceStatus.isRecoveryWriteProtected,
-                recoveryMessage: persistenceStatus.recoveryMessage
-              )
-            }
-          }
-
-          VStack(alignment: .leading, spacing: WorkbenchSpacing.card) {
-            settingsPageIdentity
-
-            HStack(spacing: WorkbenchSpacing.card) {
-              profileBar
-
-              SettingsCompactSaveIndicator(
-                hasUnsavedChanges: persistenceStatus.hasUnsavedChanges,
-                lastSaveError: persistenceStatus.lastSaveError,
-                isRecoveryWriteProtected: persistenceStatus.isRecoveryWriteProtected,
-                recoveryMessage: persistenceStatus.recoveryMessage
-              )
-            }
-            .frame(maxWidth: .infinity, alignment: .trailing)
-          }
-        }
-      } else {
-        ViewThatFits(in: .horizontal) {
-          HStack(alignment: .center, spacing: WorkbenchSpacing.section) {
-            settingsPageIdentity
-              .frame(minWidth: 250, alignment: .leading)
-
-            Spacer(minLength: WorkbenchSpacing.content)
-
-            HStack(spacing: WorkbenchSpacing.card) {
-              globalScopeBadge
-
-              SettingsCompactSaveIndicator(
-                hasUnsavedChanges: persistenceStatus.hasUnsavedChanges,
-                lastSaveError: persistenceStatus.lastSaveError,
-                isRecoveryWriteProtected: persistenceStatus.isRecoveryWriteProtected,
-                recoveryMessage: persistenceStatus.recoveryMessage
-              )
-            }
-          }
-
-          VStack(alignment: .leading, spacing: WorkbenchSpacing.card) {
-            settingsPageIdentity
-
-            HStack(spacing: WorkbenchSpacing.card) {
-              globalScopeBadge
-
-              SettingsCompactSaveIndicator(
-                hasUnsavedChanges: persistenceStatus.hasUnsavedChanges,
-                lastSaveError: persistenceStatus.lastSaveError,
-                isRecoveryWriteProtected: persistenceStatus.isRecoveryWriteProtected,
-                recoveryMessage: persistenceStatus.recoveryMessage
-              )
-            }
-            .frame(maxWidth: .infinity, alignment: .trailing)
-          }
-        }
-      }
-    }
-    .padding(.horizontal, WorkbenchSpacing.page)
-    .padding(.vertical, WorkbenchSpacing.card)
-    .background(Color(nsColor: .windowBackgroundColor))
-  }
-
-  private var globalScopeBadge: some View {
-    Label("全局应用偏好", systemImage: "globe")
-      .font(.caption.weight(.medium))
-      .foregroundStyle(.secondary)
-      .padding(.horizontal, 8)
-      .padding(.vertical, 5)
-      .background(
-        Color.primary.opacity(0.06),
-        in: Capsule()
-      )
-      .accessibilityLabel("全局应用偏好，适用于所有站点")
-  }
-
-  private var settingsPageIdentity: some View {
-    HStack(alignment: .center, spacing: WorkbenchSpacing.section) {
-      Image(systemName: selectedSettingsTab.systemImage)
-        .font(.title3.weight(.semibold))
-        .foregroundStyle(WorkbenchTheme.brand)
-        .frame(width: 36, height: 36)
-        .background(
-          WorkbenchTheme.brand.opacity(WorkbenchOpacity.selectionBackground),
-          in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
-        )
-        .accessibilityHidden(true)
-
-      VStack(alignment: .leading, spacing: 3) {
-        Text(selectedSettingsTab.title)
-          .font(.workbenchPageTitle)
-          .accessibilityAddTraits(.isHeader)
-        Text(selectedSettingsTab.subtitle)
-          .font(.workbenchPageSubtitle)
-          .foregroundStyle(.secondary)
-          .lineLimit(2)
-          .fixedSize(horizontal: false, vertical: true)
-      }
     }
   }
 
@@ -446,6 +353,14 @@ struct SettingsView: View {
     )
   }
 
+  private var selectedSettingsTab: SettingsTab {
+    selectedRoute.tab
+  }
+
+  private var selectedSubsection: SettingsSubsection {
+    selectedRoute.subsection
+  }
+
   /// Each top-level page owns exactly one native vertical scroll container:
   /// Form-backed pages use their Form, while data management owns a ScrollView.
   @ViewBuilder
@@ -453,27 +368,82 @@ struct SettingsView: View {
     switch selectedSettingsTab.scrollOwnership {
     case .nativeForm, .nativeScrollView:
       selectedSettingsTab.makeContent(context: settingsContext)
-        .settingsThinRedScroller()
+        .environment(\.settingsSubsection, selectedSubsection)
+        .frame(maxWidth: selectedSettingsTab.contentMaxWidth, maxHeight: .infinity)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .overlay(alignment: .top) {
+          SettingsDetailScrollBridge(
+            arrivalRequest: detailScrollArrivalRequest,
+            handoffGate: detailScrollHandoffGate,
+            onBoundaryCrossing: handleDetailScrollBoundaryCrossing
+          )
+          .frame(width: 1, height: 1)
+          .allowsHitTesting(false)
+          .accessibilityHidden(true)
+        }
+        .id(selectedSubsection.id)
     }
   }
 
-  private var settingsSidebarSelection: Binding<SettingsTab> {
+  private var settingsRouteSelection: Binding<SettingsRoute> {
     Binding(
-      get: { selectedSettingsTab },
-      set: { selectTopLevelSettingsTab($0) }
+      get: { selectedRoute },
+      set: { route in
+        clearFocusedSettingsDestination()
+        detailScrollArrivalRequest = SettingsDetailScrollArrivalRequest(edge: .top)
+        selectedRoute = route
+      }
     )
   }
 
-  private func filteredSettingsTabs(_ tabs: [SettingsTab]) -> [SettingsTab] {
-    tabs.filter { $0.matchesSearch(searchText) }
-  }
-
-  private static func initialSettingsTab() -> SettingsTab {
-    SettingsNavigation.initialTab(
-      lastViewedTabID: UserDefaults.standard.string(
+  private static func initialSettingsRoute() -> SettingsRoute {
+    SettingsRoute.restored(
+      lastViewedID: UserDefaults.standard.string(
         forKey: SettingsNavigation.lastViewedTabStorageKey
       )
     )
+  }
+
+  private func applyWorkspaceNavigation() {
+    healthDestination = nil
+    healthNavigationRequestID = UUID()
+    navigationDestination = workspaceDestination
+    navigationRequestID = UUID()
+    if let route = SettingsRoute.workspace(
+      destination: workspaceDestination,
+      subsection: workspaceSubsection
+    ) {
+      detailScrollArrivalRequest = SettingsDetailScrollArrivalRequest(edge: .top)
+      selectedRoute = route
+    }
+  }
+
+  private func handleDetailScrollBoundaryCrossing(
+    _ direction: SettingsDetailScrollBoundaryDirection
+  ) {
+    let target: SettingsSubsection?
+    switch direction {
+    case .previous:
+      target = selectedSubsection.previous
+    case .next:
+      target = selectedSubsection.next
+    }
+    guard let target else { return }
+
+    clearFocusedSettingsDestination()
+    detailScrollArrivalRequest = SettingsDetailScrollArrivalRequest(edge: direction.arrival)
+    selectedRoute = .subsection(target)
+  }
+
+  private func clearFocusedSettingsDestination() {
+    healthDestination = nil
+    healthNavigationRequestID = UUID()
+    navigationDestination = nil
+    navigationRequestID = UUID()
+  }
+
+  private var selectedInterfaceDensity: WorkbenchInterfaceDensity {
+    WorkbenchInterfaceDensity.resolved(rawValue: interfaceDensityRawValue)
   }
 
   private var activeProfileBinding: Binding<SiteProfile> {
@@ -481,7 +451,7 @@ struct SettingsView: View {
       get: { store.activeProfile },
       set: { profile in
         store.updateActiveProfile(profile)
-        store.save()
+        store.scheduleAutosave()
       }
     )
   }
@@ -558,6 +528,11 @@ struct SettingsView: View {
       resolvedDestination,
       healthDestination: compatibilityHealthDestination
     )
+    if let requestedRoute = SettingsRoute.requestedID(requestedTabID),
+      requestedRoute.tab == resolvedDestination.tab
+    {
+      selectedRoute = requestedRoute
+    }
     requestedSettingsTabID = ""
   }
 
@@ -573,7 +548,8 @@ struct SettingsView: View {
     healthNavigationRequestID = UUID()
     navigationDestination = destination
     navigationRequestID = UUID()
-    selectedSettingsTab = destination.tab
+    detailScrollArrivalRequest = SettingsDetailScrollArrivalRequest(edge: .top)
+    selectedRoute = .destination(destination)
   }
 
   static func settingsDestination(
@@ -602,12 +578,54 @@ struct SettingsView: View {
 }
 
 enum SettingsSidebarPresentation {
-  static let minimumWidth = WorkbenchSettingsMetrics.sidebarWidth
-  static let maximumWidth: CGFloat = 244
+  static let minimumWidth: CGFloat = 232
+  static let maximumWidth: CGFloat = 272
   static var attentionBadgeTitle: String { String(localized: "需配置") }
   static var attentionAccessibilityValue: String { String(localized: "需要配置") }
 
   static func clampedWidth(_ scaledWidth: CGFloat) -> CGFloat {
     min(max(scaledWidth, minimumWidth), maximumWidth)
+  }
+}
+
+enum SettingsWorkspaceLayout {
+  struct Presentation {
+    let usesCompactVerticalMetrics: Bool
+    let primarySidebarWidth: CGFloat
+    let workspaceHeaderHeight: CGFloat
+    let searchFieldHeight: CGFloat
+    let pageHeaderHeight: CGFloat
+    let sidebarRowVerticalPadding: CGFloat
+    let subsectionRowVerticalPadding: CGFloat
+  }
+
+  static let compactHeightThreshold: CGFloat = 720
+
+  static func presentation(
+    width: CGFloat,
+    height: CGFloat = WorkbenchSettingsMetrics.idealHeight,
+    scaledSidebarWidth: CGFloat,
+    density: WorkbenchInterfaceDensity = .comfortable
+  ) -> Presentation {
+    let compactPrimaryWidth = SettingsSidebarPresentation.clampedWidth(scaledSidebarWidth)
+    let usesCompactVerticalMetrics =
+      density == .compact || height < compactHeightThreshold
+
+    return Presentation(
+      usesCompactVerticalMetrics: usesCompactVerticalMetrics,
+      primarySidebarWidth: compactPrimaryWidth,
+      workspaceHeaderHeight: usesCompactVerticalMetrics ? 48 : 52,
+      searchFieldHeight: usesCompactVerticalMetrics ? 32 : 36,
+      pageHeaderHeight: usesCompactVerticalMetrics ? 88 : 96,
+      sidebarRowVerticalPadding: usesCompactVerticalMetrics ? 4 : 6,
+      subsectionRowVerticalPadding: usesCompactVerticalMetrics ? 3 : 5
+    )
+  }
+
+  static func availableDetailWidth(
+    totalWidth: CGFloat,
+    presentation: Presentation
+  ) -> CGFloat {
+    totalWidth - presentation.primarySidebarWidth
   }
 }

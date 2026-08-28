@@ -867,6 +867,11 @@ extension WorkbenchAIStore {
       allowedBy: agentSettings.resolvedAgentPermissionPolicy,
       masterEnabled: conversationAllowsTools
     ).intersection(generalAgentScope)
+    let toolRegistry = WorkbenchAutomationAgentToolRegistry(
+      allowedToolIDs: Set(
+        allowedCommands.map(WorkbenchAutomationAgentToolRegistry.toolID(for:))
+      )
+    )
     let baseRequest = aiPublishingAssistantService.chatCompletionRequest(
       for: initialRequest,
       taskConfig: initialTaskConfig
@@ -894,7 +899,10 @@ extension WorkbenchAIStore {
           throw CancellationError()
         }
       },
-      allowedCommands: allowedCommands,
+      toolRegistry: toolRegistry,
+      grantedScopes: Set(
+        allowedCommands.map(WorkbenchAutomationRegistry.requiredPermission(for:))
+      ),
       automaticExecutor: { [weak self] invocation in
         guard let self else { throw CancellationError() }
         guard

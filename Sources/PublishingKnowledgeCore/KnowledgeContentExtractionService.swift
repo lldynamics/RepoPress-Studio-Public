@@ -11,6 +11,8 @@ package struct KnowledgeContentExtraction: Sendable {
   package var tags: [String]
   package var sections: [KnowledgeExtractedSection]
   package var warnings: [String]
+  package var imageMetadata: KnowledgeImageMetadata?
+  package var capturedText: String?
 
   package init(
     kind: KnowledgeDocumentKind,
@@ -20,7 +22,9 @@ package struct KnowledgeContentExtraction: Sendable {
     summary: String,
     tags: [String],
     sections: [KnowledgeExtractedSection],
-    warnings: [String]
+    warnings: [String],
+    imageMetadata: KnowledgeImageMetadata? = nil,
+    capturedText: String? = nil
   ) {
     self.kind = kind
     self.title = title
@@ -30,6 +34,8 @@ package struct KnowledgeContentExtraction: Sendable {
     self.tags = tags
     self.sections = sections
     self.warnings = warnings
+    self.imageMetadata = imageMetadata
+    self.capturedText = capturedText
   }
 }
 
@@ -37,6 +43,7 @@ package struct KnowledgeContentExtractionService {
   private let htmlExtractor: @Sendable (Data, String) throws -> KnowledgeContentExtraction
   private let epubParser = KnowledgeEPUBParser()
   private let pdfOCRService = KnowledgePDFOCRService()
+  private let imageOCRService = KnowledgeImageOCRService()
 
   package init(
     htmlExtractor: @escaping @Sendable (Data, String) throws -> KnowledgeContentExtraction
@@ -62,12 +69,43 @@ package struct KnowledgeContentExtractionService {
       return try extractPDF(data: data, sourceName: sourceName, options: options)
     case "epub":
       return try extractEPUB(data: data, sourceName: sourceName)
+    case "jpg", "jpeg", "png", "heic", "heif", "webp":
+      return try extractImage(data: data, sourceName: sourceName, options: options)
     default:
       if preferredKind == .webpage {
         return try htmlExtractor(data, sourceName)
       }
       throw KnowledgeLibraryError.unsupportedSource(sourceName)
     }
+  }
+
+  private func extractImage(
+    data: Data,
+    sourceName: String,
+    options: KnowledgeImportOptions
+  ) throws -> KnowledgeContentExtraction {
+    let result = try imageOCRService.extract(data: data, performsOCR: options.performsImageOCR)
+    let fallbackText = humanizedFilename(sourceName)
+    let sections =
+      result.sections.isEmpty
+      ? [KnowledgeExtractedSection(text: fallbackText)]
+      : result.sections
+    var warnings = result.warnings
+    if result.sections.isEmpty {
+      warnings.append("图片未识别到文字；已仅以文件名建立本机全文检索条目。")
+    }
+    return KnowledgeContentExtraction(
+      kind: .image,
+      title: fallbackText,
+      authors: [],
+      language: nil,
+      summary: "",
+      tags: [],
+      sections: sections,
+      warnings: warnings,
+      imageMetadata: result.metadata,
+      capturedText: result.capturedText.nilIfEmpty
+    )
   }
 
   private func extractMarkdown(data: Data, sourceName: String) throws -> KnowledgeContentExtraction {

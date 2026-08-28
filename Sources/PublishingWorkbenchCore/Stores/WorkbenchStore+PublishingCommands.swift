@@ -15,12 +15,30 @@ extension WorkbenchStore {
   @discardableResult
   public func publishBatchReadyDraftsOnlineUsingPreferredStrategy(
     expectedChangedPaths: Set<String>? = nil,
-    authorization: AIPublishAuthorizationSnapshot? = nil
+    expectedTarget: RemoteRepositoryPublishTargetSnapshot? = nil,
+    authorization: AIPublishAuthorizationSnapshot? = nil,
+    modeOverride: RemoteRepositoryPublishMode? = nil
   ) async -> RemoteRepositoryPublishResult? {
     return await publishingStore.publishBatchReadyDraftsOnlineUsingPreferredStrategy(
       store: self,
       expectedChangedPaths: expectedChangedPaths,
-      authorization: authorization
+      expectedTarget: expectedTarget,
+      authorization: authorization,
+      modeOverride: modeOverride
+    )
+  }
+
+  @discardableResult
+  public func resolveRemoteRepositoryConflict(
+    repositoryPath: String,
+    choice: RemoteRepositoryConflictResolutionChoice,
+    mergedDocument: String? = nil
+  ) async -> RemoteRepositoryConflictResolutionOutcome {
+    await publishingStore.resolveRemoteRepositoryConflict(
+      repositoryPath: repositoryPath,
+      choice: choice,
+      mergedDocument: mergedDocument,
+      store: self
     )
   }
 

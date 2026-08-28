@@ -187,16 +187,16 @@ struct PublishDrawerBatchActionPresentation {
 
   static func isEnabled(_ state: State) -> Bool {
     guard !state.isPlanRefreshing,
-          !state.isPermissionChecking,
-          !state.isPublishing,
-          state.repositoryConfigured,
-          state.hasToken,
-          state.tokenAccessFailureMessage == nil,
-          state.permission == .writable,
-          state.blockingIssueTitle == nil,
-          !state.hasRemoteConflict,
-          let articleCount = state.publishableArticleCount,
-          articleCount > 0 || state.pendingDeletionCount > 0
+      !state.isPermissionChecking,
+      !state.isPublishing,
+      state.repositoryConfigured,
+      state.hasToken,
+      state.tokenAccessFailureMessage == nil,
+      state.permission == .writable,
+      state.blockingIssueTitle == nil,
+      !state.hasRemoteConflict,
+      let articleCount = state.publishableArticleCount,
+      articleCount > 0 || state.pendingDeletionCount > 0
     else {
       return false
     }
@@ -249,7 +249,8 @@ struct PublishDrawerBatchActionPresentation {
       return String(localized: "没有待处理变更")
     }
     let fileCount = state.changedFileCount ?? 0
-    let draftSuffix = state.draftSyncArticleCount > 0
+    let draftSuffix =
+      state.draftSyncArticleCount > 0
       ? String(
         format: String(localized: " · 另有 %d 篇网站草稿未纳入发布"),
         state.draftSyncArticleCount
@@ -284,6 +285,115 @@ struct PublishDrawerBatchActionPresentation {
     return status
   }
 }
+
+/// A batch-scoped, immutable summary for every surface that explains whether
+/// the current site is ready to publish.  It deliberately describes only
+/// evidence the current plan can prove: image files are "included", and a
+/// clean scan means no risk was found by the enabled checks rather than
+/// promising that disclosure is impossible.
+///
+/// This is presentation-only.  It must not be used to authorize a publish,
+/// bypass preflight, or infer a remote write outcome.
+struct UnifiedPublishReadinessPresentation: Equatable {
+  struct ContentHealth: Equatable, Sendable {
+    let errorCount: Int
+    let warningCount: Int
+    let aiFixCount: Int
+    let passingDraftCount: Int
+
+    static let unavailable = Self(
+      errorCount: 0,
+      warningCount: 0,
+      aiFixCount: 0,
+      passingDraftCount: 0
+    )
+  }
+
+  let articleCount: Int
+  let newArticleCount: Int
+  let modifiedArticleCount: Int
+  let imageChangeCount: Int
+  let newImageCount: Int
+  let deletionCount: Int
+  let preflightTitle: String
+  let preflightSystemImage: String
+  let targetTitle: String
+  let pipelineTitle: String
+  let actionTitle: String
+  let contentHealth: ContentHealth
+
+  static func make(
+    plan: BatchPublishPlan?,
+    preview: RemoteRepositoryPublishPreview?,
+    profile: SiteProfile,
+    pendingDeletionCount: Int,
+    contentHealth: ContentHealth = .unavailable
+  ) -> Self {
+    let items = plan?.remotePublishableItems ?? []
+    let newArticleCount = items.count { item in
+      item.preview.fileDiffs.contains { diff in
+        diff.kind == .markdown
+          && diff.path == item.markdownPath
+          && diff.status == .added
+      }
+    }
+    let imageDiffs = items.flatMap(\.preview.fileDiffs).filter { diff in
+      diff.kind == .image && diff.status != .unchanged
+    }
+    let imagePaths = Set(imageDiffs.map(\.path))
+    let newImagePaths = Set(
+      imageDiffs.filter { $0.status == .added }.map(\.path)
+    )
+    let mode =
+      preview?.mode
+      ?? (profile.repositoryPublishStrategy == .reviewRequest ? .reviewRequest : .directCommit)
+    let provider = preview?.provider ?? profile.repositoryProvider
+    let targetBranch =
+      preview?.targetBranch.nilIfEmpty
+      ?? profile.branch.nilIfEmpty
+      ?? "main"
+
+    let planBlockingIssues =
+      items
+      .flatMap(\.allIssues)
+      .filter { $0.severity == .error }
+    let preflight: (String, String)
+    if plan == nil {
+      preflight = (String(localized: "正在汇总发布检查"), "clock.arrow.circlepath")
+    } else if mode == .directCommit && preview?.remoteRiskState == .conflict {
+      preflight = (String(localized: "远端版本冲突，未执行写入"), "xmark.octagon.fill")
+    } else if let issue = preview?.blockingIssues.first ?? planBlockingIssues.first {
+      preflight = (issue.title, "xmark.octagon.fill")
+    } else if preview == nil || (mode == .directCommit && preview?.remoteRiskState == .unknown) {
+      preflight = (String(localized: "内容检查通过，远端将在发布时预检"), "checkmark.shield")
+    } else {
+      preflight = (String(localized: "全部通过（已检查项未发现公开风险）"), "checkmark.shield.fill")
+    }
+
+    return Self(
+      articleCount: items.count,
+      newArticleCount: newArticleCount,
+      modifiedArticleCount: max(0, items.count - newArticleCount),
+      imageChangeCount: imagePaths.count,
+      newImageCount: newImagePaths.count,
+      deletionCount: pendingDeletionCount,
+      preflightTitle: preflight.0,
+      preflightSystemImage: preflight.1,
+      targetTitle: "\(targetBranch) · \(provider.localizedDisplayName)",
+      pipelineTitle: mode == .reviewRequest
+        ? String(localized: "生成发布包 → 内容检查 → 远端预检 → 创建 PR/MR")
+        : String(localized: "生成发布包 → 内容检查 → 远端预检 → 提交 → 部署检查"),
+      actionTitle: mode == .reviewRequest
+        ? String(localized: "一键创建 PR/MR")
+        : String(localized: "一键发布上线"),
+      contentHealth: contentHealth
+    )
+  }
+}
+
+/// Compatibility spelling retained while the publish drawer transitions to
+/// the shared readiness projection.
+typealias UnifiedPublishSummaryPresentation = UnifiedPublishReadinessPresentation
 
 enum PublishDrawerActionStyle: Equatable {
   case localSave

@@ -35,13 +35,32 @@ extension WorkbenchStore {
     siteMaintenanceStore.setRefreshErrorMessage(nil)
 
     let service = publishingStore.siteMaintenanceService
+    let localLinkAuditReport: SiteLinkAuditReport?
+    if force {
+      localLinkAuditReport = nil
+    } else {
+      do {
+        localLinkAuditReport = try await localSiteLinkAuditReportAsync(
+          drafts: input.drafts,
+          profile: input.profile
+        )
+      } catch {
+        siteMaintenanceRefreshTask = nil
+        siteMaintenanceStore.setRefreshing(false)
+        guard !(error is CancellationError) else { return }
+        siteMaintenanceStore.setRefreshErrorMessage(error.localizedDescription)
+        return
+      }
+    }
     let task = Task {
       try await service.reportAsync(
         drafts: input.drafts,
         profile: input.profile,
         releaseRecords: input.releaseRecords,
         maintenanceOperationRecords: input.maintenanceOperationRecords,
-        now: input.now
+        now: input.now,
+        linkAuditReport: localLinkAuditReport,
+        validatesExternalLinks: force
       )
     }
     siteMaintenanceRefreshTask = task

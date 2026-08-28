@@ -146,8 +146,9 @@ struct PublishingConsoleCommands: Commands {
       .disabled(!canUseProtectedWorkbench || workspaceFirstRunSetupCommandAction == nil)
 
       Button(String(localized: "设置…")) {
-        openSettings()
+        presentSettings(destination: nil)
       }
+      .disabled(!canUseProtectedWorkbench && settingsWorkspaceCommandAction != nil)
 
       Divider()
 
@@ -322,8 +323,22 @@ struct PublishingConsoleCommands: Commands {
     commandRouter?.workspaceFirstRunSetupCommandAction
   }
 
+  private var settingsWorkspaceCommandAction: SettingsWorkspaceCommandAction? {
+    commandRouter?.settingsWorkspaceCommandAction
+  }
+
   private var rssReaderCommands: RSSReaderCommandActions? {
     commandRouter?.rssReaderCommandActions
+  }
+
+  private func presentSettings(destination: SettingsDestination?) {
+    if let settingsWorkspaceCommandAction {
+      settingsWorkspaceCommandAction.open(destination)
+    } else {
+      SettingsNavigation.open(destination: destination) {
+        openSettings()
+      }
+    }
   }
 
   private var saveCommandTitle: String {
@@ -607,7 +622,8 @@ struct PublishingConsoleCommands: Commands {
     if let repositorySourceEditorCommands {
       repositorySourceEditorCommands.save()
     } else if let repositorySourceSessionCommands,
-              repositorySourceSessionCommands.hasUnsavedChanges {
+      repositorySourceSessionCommands.hasUnsavedChanges
+    {
       if repositorySourceSessionCommands.save() {
         Task { await store.repository.scanAsync() }
         EditorAccessibilityAnnouncementCenter.announce(
@@ -653,7 +669,8 @@ struct PublishingConsoleCommands: Commands {
 
   private func installSoftwareGuidesFromHelp() {
     let addedCount = store.installSoftwareGuides()
-    let message = addedCount == 0
+    let message =
+      addedCount == 0
       ? String(localized: "使用指南已经全部存在。")
       : String(localized: "已添加缺少的使用指南，工作台正在保存。")
     EditorAccessibilityAnnouncementCenter.announce(message, priority: .high)
@@ -672,7 +689,8 @@ struct PublishingConsoleCommands: Commands {
     do {
       let archiveURL = try store.exportRedactedDiagnostics(
         to: directoryURL,
-        appVersion: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
+        appVersion: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString")
+          as? String
           ?? "unknown",
         buildVersion: Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String
           ?? "unknown"
@@ -763,6 +781,26 @@ struct PublishingConsoleCommands: Commands {
   private func copyToPasteboard(_ value: String, successMessage: String) {
     ClipboardWriter.copy(value, successMessage: successMessage) { message, status in
       store.setPublishActionMessage(message, status: status)
+    }
+  }
+}
+
+struct PublishingConsoleSettingsCommands: Commands {
+  @FocusedObject private var commandRouter: WorkspaceSceneCommandRouter?
+  @Environment(\.openSettings) private var openSettings
+
+  var body: some Commands {
+    CommandGroup(replacing: .appSettings) {
+      Button(String(localized: "设置…")) {
+        if let action = commandRouter?.settingsWorkspaceCommandAction {
+          action.open(nil)
+        } else {
+          SettingsNavigation.open(destination: nil) {
+            openSettings()
+          }
+        }
+      }
+      .keyboardShortcut(",", modifiers: [.command])
     }
   }
 }
