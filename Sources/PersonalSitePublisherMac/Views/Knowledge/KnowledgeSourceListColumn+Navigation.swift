@@ -2,10 +2,17 @@ import PublishingWorkbenchCore
 import SwiftUI
 
 extension KnowledgeSourceListColumn {
-  func documentFolderMenu(_ document: KnowledgeDocument) -> some View {
+  func documentFolderMenu(
+    _ document: KnowledgeDocument,
+    usesDocumentListSelection: Bool = true
+  ) -> some View {
     Menu(String(localized: "移动到文件夹")) {
       Button {
-        knowledge.moveDocument(document.id, to: nil)
+        moveContextDocuments(
+          contextDocumentID: document.id,
+          to: nil,
+          usesDocumentListSelection: usesDocumentListSelection
+        )
       } label: {
         Label(
           String(localized: "未分类"), systemImage: document.folderID == nil ? "checkmark" : "tray")
@@ -14,13 +21,31 @@ extension KnowledgeSourceListColumn {
         Divider()
         ForEach(knowledge.folders) { folder in
           Button {
-            knowledge.moveDocument(document.id, to: folder.id)
+            moveContextDocuments(
+              contextDocumentID: document.id,
+              to: folder.id,
+              usesDocumentListSelection: usesDocumentListSelection
+            )
           } label: {
             Label(folder.name, systemImage: document.folderID == folder.id ? "checkmark" : "folder")
           }
         }
       }
     }
+  }
+
+  private func moveContextDocuments(
+    contextDocumentID: UUID,
+    to folderID: UUID?,
+    usesDocumentListSelection: Bool
+  ) {
+    let documentIDs = KnowledgeSourceListContextActionSelection.documentIDs(
+      contextDocumentID: contextDocumentID,
+      selectedDocumentIDs: selectedDocumentIDs,
+      isDocumentListSelectionActive: usesDocumentListSelection
+    )
+    knowledge.moveDocuments(documentIDs, to: folderID)
+    retainVisibleBatchSelection()
   }
 
   var selectedFolderTitle: String {
@@ -40,6 +65,7 @@ extension KnowledgeSourceListColumn {
 
   @ViewBuilder
   var emptyFolderState: some View {
+    let showsImportAction = !knowledge.documents.isEmpty
     switch knowledge.folderScope {
     case .all:
       EmptyStateView(
@@ -47,9 +73,9 @@ extension KnowledgeSourceListColumn {
         message: "导入资料，或从其他文件夹移动到这里。",
         systemImage: "books.vertical",
         density: .inline,
-        actionTitle: "导入资料",
+        actionTitle: showsImportAction ? "导入资料" : nil,
         actionSystemImage: "plus",
-        action: { isImportPresented = true }
+        action: showsImportAction ? { isImportPresented = true } : nil
       )
     case .unfiled:
       EmptyStateView(
@@ -57,9 +83,9 @@ extension KnowledgeSourceListColumn {
         message: "导入资料，或从其他文件夹移动到这里。",
         systemImage: "tray",
         density: .inline,
-        actionTitle: "导入资料",
+        actionTitle: showsImportAction ? "导入资料" : nil,
         actionSystemImage: "plus",
-        action: { isImportPresented = true }
+        action: showsImportAction ? { isImportPresented = true } : nil
       )
     case .folder:
       EmptyStateView(
@@ -67,9 +93,9 @@ extension KnowledgeSourceListColumn {
         message: "导入资料，或从其他文件夹移动到这里。",
         systemImage: "folder",
         density: .inline,
-        actionTitle: "导入资料",
+        actionTitle: showsImportAction ? "导入资料" : nil,
         actionSystemImage: "plus",
-        action: { isImportPresented = true }
+        action: showsImportAction ? { isImportPresented = true } : nil
       )
     case .smartCollection, .savedCollection:
       EmptyStateView(
@@ -161,8 +187,12 @@ extension KnowledgeSourceListColumn {
 
   func openDataManagement() {
     dataManagementRequestedSection = DataManagementSection.backup.rawValue
-    requestedSettingsTabID = SettingsTab.dataManagement.id
-    openSettings()
+    SettingsNavigation.present(
+      destination: .data(.backup),
+      workspaceAction: settingsWorkspaceCommandAction
+    ) {
+      openSettings()
+    }
   }
 
   var commandActions: KnowledgeLibraryCommandActions {

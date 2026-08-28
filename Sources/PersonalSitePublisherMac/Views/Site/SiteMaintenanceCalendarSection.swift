@@ -4,8 +4,11 @@ import SwiftUI
 
 struct SiteMaintenanceCalendarSection: View {
   let report: SiteMaintenanceReport
-  let applySuggestedSchedule: () -> Void
+  let scheduleChanges: [SiteMaintenanceScheduleChange]
+  let applySuggestedSchedule: ([UUID: Date], [UUID: Date]) -> Void
   let openDraft: (UUID) -> Void
+  @State private var isScheduleReviewPresented = false
+  @State private var reviewedScheduleChanges: [SiteMaintenanceScheduleChange] = []
 
   var body: some View {
     VStack(alignment: .leading, spacing: 10) {
@@ -14,11 +17,13 @@ struct SiteMaintenanceCalendarSection: View {
           .font(.headline)
         Spacer()
         Button {
-          applySuggestedSchedule()
+          reviewedScheduleChanges = scheduleChanges
+          isScheduleReviewPresented = true
         } label: {
-          Label("应用建议排期", systemImage: "calendar.badge.plus")
+          Label("预览建议排期", systemImage: "calendar.badge.plus")
         }
-        .disabled(report.calendarScheduleItems.isEmpty)
+        .disabled(scheduleChanges.isEmpty)
+        .accessibilityValue("\(scheduleChanges.count) 篇日期会变化")
         Text("\(report.calendarBuckets.count) 个月")
           .font(.caption)
           .foregroundStyle(.secondary)
@@ -50,12 +55,16 @@ struct SiteMaintenanceCalendarSection: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(10)
-            .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
+            .background(
+              WorkbenchBackgroundStyle.card,
+              in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
           }
         }
 
         MaintenanceCalendarBucketChart(buckets: Array(report.calendarBuckets.prefix(12)))
-        maintenanceCalendarGrid
+        TimelineView(.periodic(from: Date(), by: 60)) { context in
+          maintenanceCalendarGrid(now: context.date)
+        }
       }
 
       if !report.calendarInsights.isEmpty {
@@ -91,7 +100,9 @@ struct SiteMaintenanceCalendarSection: View {
             }
             .padding(10)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
+            .background(
+              WorkbenchBackgroundStyle.card,
+              in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
           }
         }
       }
@@ -135,26 +146,48 @@ struct SiteMaintenanceCalendarSection: View {
             .accessibilityLabel("打开维护计划文章")
             .accessibilityValue(item.title)
             .padding(10)
-            .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
+            .background(
+              WorkbenchBackgroundStyle.card,
+              in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
           }
         }
       }
     }
     .padding(14)
-    .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
+    .background(
+      WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
+    )
+    .sheet(isPresented: $isScheduleReviewPresented) {
+      SiteMaintenanceScheduleReviewSheet(
+        changes: reviewedScheduleChanges,
+        apply: { selectedDraftIDs in
+          let selectedChanges = reviewedScheduleChanges.filter {
+            selectedDraftIDs.contains($0.id)
+          }
+          let frozenSuggestedDates = Dictionary(
+            uniqueKeysWithValues: selectedChanges.map { ($0.id, $0.item.scheduledDate) }
+          )
+          let frozenOriginalDates = Dictionary(
+            uniqueKeysWithValues: selectedChanges.map { ($0.id, $0.originalDate) }
+          )
+          applySuggestedSchedule(frozenSuggestedDates, frozenOriginalDates)
+        }
+      )
+    }
   }
 
-  private var maintenanceCalendarGrid: some View {
+  private func maintenanceCalendarGrid(now: Date) -> some View {
     var calendar = Calendar(identifier: .gregorian)
     calendar.locale = .autoupdatingCurrent
     calendar.timeZone = .autoupdatingCurrent
     let anchorDate = report.calendarScheduleItems.first?.scheduledDate ?? report.generatedAt
     let startOfMonth = calendar.dateInterval(of: .month, for: anchorDate)?.start ?? anchorDate
     let monthTitle = maintenanceMonthTitle(startOfMonth)
-    let cells = maintenanceCalendarCells(month: startOfMonth, calendar: calendar)
+    let cells = maintenanceCalendarCells(month: startOfMonth, calendar: calendar, now: now)
     let weekdaySymbols = calendar.shortStandaloneWeekdaySymbols
     let firstWeekdayIndex = calendar.firstWeekday - 1
-    let orderedWeekdays = Array(weekdaySymbols[firstWeekdayIndex..<weekdaySymbols.count])
+    let orderedWeekdays =
+      Array(weekdaySymbols[firstWeekdayIndex..<weekdaySymbols.count])
       + Array(weekdaySymbols[0..<firstWeekdayIndex])
 
     return VStack(alignment: .leading, spacing: 10) {
@@ -167,7 +200,8 @@ struct SiteMaintenanceCalendarSection: View {
           .foregroundStyle(.secondary)
       }
 
-      LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 7), spacing: 6) {
+      LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 7), spacing: 6)
+      {
         ForEach(orderedWeekdays, id: \.self) { weekday in
           Text(weekday)
             .font(.caption.weight(.semibold))
@@ -181,7 +215,8 @@ struct SiteMaintenanceCalendarSection: View {
       }
     }
     .padding(10)
-    .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
+    .background(
+      WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
   }
 
   private func maintenanceCalendarDayCell(_ cell: MaintenanceCalendarCell) -> some View {
@@ -233,7 +268,8 @@ struct SiteMaintenanceCalendarSection: View {
     .overlay {
       RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
         .strokeBorder(
-          cell.isToday ? WorkbenchTheme.primary.opacity(WorkbenchOpacity.controlBackground) : .clear,
+          cell.isToday
+            ? WorkbenchTheme.primary.opacity(WorkbenchOpacity.controlBackground) : .clear,
           lineWidth: 1
         )
     }
@@ -249,17 +285,21 @@ struct SiteMaintenanceCalendarSection: View {
     return WorkbenchBackgroundStyle.card
   }
 
-  private func maintenanceCalendarCells(month: Date, calendar: Calendar) -> [MaintenanceCalendarCell] {
+  private func maintenanceCalendarCells(month: Date, calendar: Calendar, now: Date)
+    -> [MaintenanceCalendarCell]
+  {
     let startOfMonth = calendar.dateInterval(of: .month, for: month)?.start ?? month
     let weekday = calendar.component(.weekday, from: startOfMonth)
     let leadingEmptyDayCount = (weekday - calendar.firstWeekday + 7) % 7
-    let today = calendar.startOfDay(for: report.generatedAt)
     let groupedItems = Dictionary(grouping: report.calendarScheduleItems) {
       calendar.startOfDay(for: $0.scheduledDate)
     }
 
     return (0..<42).compactMap { index in
-      guard let date = calendar.date(byAdding: .day, value: index - leadingEmptyDayCount, to: startOfMonth) else {
+      guard
+        let date = calendar.date(
+          byAdding: .day, value: index - leadingEmptyDayCount, to: startOfMonth)
+      else {
         return nil
       }
       let day = calendar.component(.day, from: date)
@@ -267,7 +307,7 @@ struct SiteMaintenanceCalendarSection: View {
         date: date,
         dayText: "\(day)",
         isInDisplayedMonth: calendar.isDate(date, equalTo: startOfMonth, toGranularity: .month),
-        isToday: calendar.isDate(date, inSameDayAs: today),
+        isToday: MaintenanceCalendarDateProjection.isToday(date: date, now: now, calendar: calendar),
         scheduleItems: groupedItems[calendar.startOfDay(for: date), default: []]
       )
     }
@@ -291,6 +331,115 @@ struct SiteMaintenanceCalendarSection: View {
     case .low:
       return AnyShapeStyle(.secondary)
     }
+  }
+}
+
+enum MaintenanceCalendarDateProjection {
+  static func isToday(date: Date, now: Date, calendar: Calendar) -> Bool {
+    calendar.isDate(date, inSameDayAs: now)
+  }
+}
+
+struct SiteMaintenanceScheduleChange: Identifiable, Hashable {
+  var id: UUID { item.draftID }
+  let item: ContentCalendarScheduleItem
+  let originalDate: Date
+
+  static func proposedChanges(
+    report: SiteMaintenanceReport,
+    drafts: [ArticleDraft]
+  ) -> [SiteMaintenanceScheduleChange] {
+    let originalDates = Dictionary(uniqueKeysWithValues: drafts.map { ($0.id, $0.date) })
+    return report.calendarScheduleItems.compactMap { item in
+      guard let originalDate = originalDates[item.draftID],
+        !Calendar.autoupdatingCurrent.isDate(
+          originalDate,
+          inSameDayAs: item.scheduledDate
+        )
+      else { return nil }
+      return SiteMaintenanceScheduleChange(item: item, originalDate: originalDate)
+    }
+  }
+}
+
+private struct SiteMaintenanceScheduleReviewSheet: View {
+  @Environment(\.dismiss) private var dismiss
+  let changes: [SiteMaintenanceScheduleChange]
+  let apply: (Set<UUID>) -> Void
+  @State private var selectedDraftIDs: Set<UUID>
+
+  init(
+    changes: [SiteMaintenanceScheduleChange],
+    apply: @escaping (Set<UUID>) -> Void
+  ) {
+    self.changes = changes
+    self.apply = apply
+    _selectedDraftIDs = State(initialValue: Set(changes.map(\.id)))
+  }
+
+  var body: some View {
+    NavigationStack {
+      List {
+        Section {
+          ForEach(changes) { change in
+            Toggle(
+              isOn: Binding(
+                get: { selectedDraftIDs.contains(change.id) },
+                set: { isSelected in
+                  if isSelected {
+                    selectedDraftIDs.insert(change.id)
+                  } else {
+                    selectedDraftIDs.remove(change.id)
+                  }
+                }
+              )
+            ) {
+              VStack(alignment: .leading, spacing: 5) {
+                Text(change.item.title)
+                  .font(.callout.weight(.semibold))
+                  .workbenchTruncatedIdentity(change.item.title)
+                HStack(spacing: 6) {
+                  Text(change.originalDate.workbenchShortText)
+                  Image(systemName: "arrow.right")
+                    .accessibilityHidden(true)
+                  Text(change.item.scheduledDate.workbenchShortText)
+                    .foregroundStyle(WorkbenchTheme.primary)
+                }
+                .font(.caption.monospacedDigit())
+                Text(change.item.reason)
+                  .font(.caption)
+                  .foregroundStyle(.secondary)
+              }
+            }
+            .toggleStyle(.checkbox)
+            .accessibilityLabel("调整 \(change.item.title) 的发布日期")
+            .accessibilityValue(
+              "从 \(change.originalDate.workbenchShortText) 调整到 \(change.item.scheduledDate.workbenchShortText)"
+            )
+          }
+        } header: {
+          Text("将修改 \(selectedDraftIDs.count) / \(changes.count) 篇文章")
+        } footer: {
+          Text("应用前会再次核对原日期；预览后被编辑的文章不会被覆盖。")
+        }
+      }
+      .navigationTitle("确认建议排期")
+      .toolbar {
+        ToolbarItem(placement: .cancellationAction) {
+          Button("取消") { dismiss() }
+        }
+        ToolbarItem(placement: .confirmationAction) {
+          Button("应用 \(selectedDraftIDs.count) 篇排期") {
+            let selection = selectedDraftIDs
+            dismiss()
+            apply(selection)
+          }
+          .disabled(selectedDraftIDs.isEmpty)
+        }
+      }
+    }
+    .frame(minWidth: 620, minHeight: 460)
+    .accessibilityIdentifier("site-maintenance-schedule-review")
   }
 }
 
@@ -333,12 +482,18 @@ private struct MaintenanceCalendarBucketChart: View {
           GeometryReader { proxy in
             let width = proxy.size.width * CGFloat(bucket.articleCount) / CGFloat(maxArticleCount)
             RoundedRectangle(cornerRadius: WorkbenchCornerRadius.chartBar)
-              .fill(bucket.readyCount > 0 ? WorkbenchTheme.document.opacity(WorkbenchOpacity.badgeBackground) : Color.secondary.opacity(WorkbenchOpacity.chartSecondary))
+              .fill(
+                bucket.readyCount > 0
+                  ? WorkbenchTheme.document.opacity(WorkbenchOpacity.badgeBackground)
+                  : Color.secondary.opacity(WorkbenchOpacity.chartSecondary)
+              )
               .frame(width: max(width, bucket.articleCount == 0 ? 0 : 4))
               .frame(maxWidth: .infinity, alignment: .leading)
           }
           .frame(height: 9)
-          .background(WorkbenchBackgroundStyle.control, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.chartBar))
+          .background(
+            WorkbenchBackgroundStyle.control,
+            in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.chartBar))
 
           Text("\(bucket.articleCount)")
             .font(.caption.monospacedDigit())

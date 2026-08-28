@@ -17,7 +17,7 @@ public final class WorkbenchSiteMaintenanceFeatureFacade: ObservableObject {
     observe(store.siteMaintenanceStore.$refreshErrorMessage)
     observe(store.publishingStore.$profiles)
     observe(store.publishingStore.$activeProfileID)
-    observe(store.publishingStore.$releaseRecords)
+    observe(store.publishingStore.publishSession.$releaseRecords)
     observe(store.deploymentStore.$deploymentStatusSnapshots)
     observe(store.deploymentStore.$isDeploymentStatusChecking)
     observe(store.deploymentStore.$deploymentStatusMessage)

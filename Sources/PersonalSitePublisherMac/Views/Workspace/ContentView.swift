@@ -57,6 +57,29 @@ struct WorkspaceResponsiveLayoutSnapshot: Equatable {
   var canManuallyRevealInspector: Bool { band == .compactInspector }
 }
 
+struct PersistenceRecoveryResetFeedback: Identifiable {
+  let id = UUID()
+  let title: String
+  let message: String
+
+  static func success(archiveURL: URL) -> Self {
+    Self(
+      title: String(localized: "已重置为空白工作台"),
+      message: String(
+        format: String(localized: "故障数据已归档到：%@"),
+        archiveURL.path
+      )
+    )
+  }
+
+  static func failure(message: String) -> Self {
+    Self(
+      title: String(localized: "未能重置工作台"),
+      message: message
+    )
+  }
+}
+
 private struct WorkspaceResponsiveLayoutPreferenceKey: PreferenceKey {
   static let defaultValue = WorkspaceResponsiveLayoutSnapshot.initial
 
@@ -107,6 +130,7 @@ struct ContentView: View {
   let store: WorkbenchStore
   let rssStore: RSSReaderStore
   @ObservedObject private var rootPresentation: WorkbenchRootPresentationFeatureFacade
+  @EnvironmentObject private var launchCoordinator: WorkbenchLaunchCoordinator
   @Environment(\.scenePhase) private var scenePhase
   @Environment(\.controlActiveState) private var controlActiveState
   @AppStorage("autoRunPreflight") private var autoRunPreflight = true
@@ -129,7 +153,12 @@ struct ContentView: View {
     @State private var didApplyScreenshotDemoSurface = false
   #endif
   @State private var isDraftRecoveryPresented = false
+  @State private var isPersistenceResetConfirmationPresented = false
+  @State private var persistenceResetFeedback: PersistenceRecoveryResetFeedback?
   @State private var modalPresentation = WorkspaceModalPresentationState()
+  @State private var isSettingsWorkspacePresented = false
+  @State private var settingsWorkspaceDestination: SettingsDestination?
+  @State private var settingsWorkspaceNavigationRequestID = UUID()
   @State private var commandPaletteEditorCommands: MarkdownEditorCommandActions?
   @State private var responsiveLayout = WorkspaceResponsiveLayoutSnapshot.initial
   @State private var repositoryContentMonitorClientID = UUID()
@@ -140,6 +169,7 @@ struct ContentView: View {
   @State private var contentHealthFilter: ContentHealthContextFilter = .overview
   @State private var imageWorkbenchContextStage: ImageWorkbenchContextStage = .overview
   @State private var repositoryContextStage: RepositoryContextStage = .overview
+  @State private var repositoryChangedFileSelection: RepositoryChangedFileSelection?
   @StateObject private var repositorySourceSession: RepositoryHTMLSourceSession
   @State private var localSitePreviewState: WorkbenchLocalSitePreviewFeatureFacade
   @StateObject private var repositoryContentChangeMonitor: RepositoryContentChangeMonitorCoordinator
@@ -185,28 +215,57 @@ struct ContentView: View {
       )
 
       ZStack {
-        workspaceCenterLayout(
-          compactLayout: compactLayout,
-          isInspectorVisible: isInspectorVisible,
-          inspectorColumnWidths: inspectorColumnWidths
-        )
+        if isSettingsWorkspacePresented {
+          SettingsView(
+            store: store,
+            rssStore: rssStore,
+            launchCoordinator: launchCoordinator,
+            closeWorkspace: closeSettingsWorkspace,
+            workspaceDestination: settingsWorkspaceDestination,
+            workspaceNavigationRequestID: settingsWorkspaceNavigationRequestID
+          )
+          .disabled(shellState.isQuickHideActive)
+          .accessibilityHidden(shellState.isQuickHideActive)
+          .transition(.opacity)
+          .zIndex(1)
+        } else {
+          workspaceCenterLayout(
+            compactLayout: compactLayout,
+            isInspectorVisible: isInspectorVisible,
+            inspectorColumnWidths: inspectorColumnWidths
+          )
 
-        #if DEBUG || SCREENSHOT_CAPTURE_BUILD
-          if usesInlineAIScreenshotInspector {
-            ScreenshotInlineAIInspector(
-              store: store
+          if isPublishDrawerPresented {
+            WorkspacePublishDrawerOverlay(
+              publishingFacade: store.publishing,
+              store: store,
+              isPresented: modalIsPresentedBinding(.publishDrawer)
             )
-            .zIndex(1)
+            .transition(.move(edge: .trailing).combined(with: .opacity))
+            .zIndex(2)
           }
-        #endif
+
+          #if DEBUG || SCREENSHOT_CAPTURE_BUILD
+            if usesInlineAIScreenshotInspector {
+              ScreenshotInlineAIInspector(
+                store: store
+              )
+              .zIndex(1)
+            }
+          #endif
+        }
 
         if shellState.isQuickHideActive {
           QuickHideOverlay(store: store)
             .transition(.opacity.combined(with: .scale(scale: 0.97)))
-            .zIndex(2)
+            .zIndex(3)
         }
       }
     }
+    .environment(
+      \.settingsWorkspaceCommandAction,
+      settingsWorkspaceCommandAction
+    )
     .background(WorkbenchAccessibilityStatusAnnouncer(store: store))
     .safeAreaInset(edge: .top, spacing: 0) {
       if store.isSafeMode {
@@ -244,64 +303,101 @@ struct ContentView: View {
     .focusedSceneObject(sceneCommandRouter)
     .toolbar {
       ToolbarItem(placement: .navigation) {
-        WorkspaceToolbarNavigationContent(
-          store: store,
-          canUseProtectedWorkbench: shellState.canUseProtectedWorkbench,
-          selectedDraftID: windowSession.selectedDraftID,
-          selectedSection: windowSession.selectedSection,
-          isCompact: isCompactLayout,
-          isQuickHideActive: shellState.isQuickHideActive,
-          openPublishFlow: { openPublishDrawer(message: nil) },
-          openRepositoryOverview: {
-            repositoryContextStage = .overview
-            selectWorkspaceSection(.sync)
-          },
-          openContentHealthOverview: {
-            contentHealthFilter = .overview
-            selectWorkspaceSection(.contentHealth)
-          },
-          openReleaseHistory: {
-            repositoryContextStage = .history
-            selectWorkspaceSection(.sync)
-          }
-        )
-        .accessibilityHidden(shellState.isQuickHideActive)
+        if !isSettingsWorkspacePresented {
+          WorkspaceToolbarNavigationContent(
+            store: store,
+            canUseProtectedWorkbench: shellState.canUseProtectedWorkbench,
+            selectedDraftID: windowSession.selectedDraftID,
+            selectedSection: windowSession.selectedSection,
+            isCompact: isCompactLayout,
+            isQuickHideActive: shellState.isQuickHideActive,
+            openPublishFlow: { openPublishDrawer(message: nil) },
+            openRepositoryOverview: {
+              repositoryContextStage = .overview
+              selectWorkspaceSection(.sync)
+            },
+            openContentHealthOverview: {
+              contentHealthFilter = .overview
+              selectWorkspaceSection(.contentHealth)
+            },
+            openReleaseHistory: {
+              repositoryContextStage = .history
+              selectWorkspaceSection(.sync)
+            }
+          )
+          .accessibilityHidden(shellState.isQuickHideActive)
+        }
       }
 
       ToolbarItem(placement: .principal) {
-        OmniCommandSearchBar(isCompact: isCompactLayout) {
-          guard shellState.canUseProtectedWorkbench else { return }
-          commandPaletteEditorCommands = sceneCommandRouter.markdownEditorCommandActions
-          modalPresentation.present(.commandPalette)
+        if isSettingsWorkspacePresented {
+          Text("设置")
+            .font(.headline)
+            .accessibilityAddTraits(.isHeader)
+        } else {
+          OmniCommandSearchBar(isCompact: isCompactLayout) {
+            guard shellState.canUseProtectedWorkbench else { return }
+            commandPaletteEditorCommands = sceneCommandRouter.markdownEditorCommandActions
+            modalPresentation.present(.commandPalette)
+          }
         }
       }
 
-      ToolbarItemGroup(placement: .primaryAction) {
-        Button(action: toggleAIAssistantWorkspace) {
-          Label(String(localized: "AI 助手"), systemImage: "sparkles")
-        }
-        .buttonStyle(
-          WorkspaceToolbarIconButtonStyle(isActive: isAIAssistantWorkspaceVisible)
-        )
-        .help(
-          isAIAssistantWorkspaceVisible
-            ? String(localized: "关闭 AI 对话")
-            : String(localized: "在右侧继续当前文章的 AI 对话")
-        )
-        .accessibilityLabel(String(localized: "AI 助手"))
-        .accessibilityValue(
-          isAIAssistantWorkspaceVisible
-            ? String(localized: "AI 助手已显示")
-            : String(localized: "已隐藏")
-        )
-        .accessibilityIdentifier("ai-assistant-toolbar-button")
-        .disabled(
-          !shellState.canUseProtectedWorkbench
-            || (!isAIAssistantWorkspaceVisible && !canRequestInspectorInCurrentLayout)
-        )
+      ToolbarItem(placement: .primaryAction) {
+        if !isSettingsWorkspacePresented {
+          HStack(spacing: WorkbenchSpacing.icon) {
+            Button {
+              openPublishDrawer(message: nil)
+            } label: {
+              Label(String(localized: "准备发布"), systemImage: "paperplane.fill")
+            }
+            .buttonStyle(
+              WorkspaceToolbarIconButtonStyle(
+                isActive: false,
+                showsTitle: !isCompactLayout,
+                prominence: .primaryAction
+              )
+            )
+            .help(String(localized: "打开本次发布清单和一键发布流程"))
+            .accessibilityIdentifier("workspace-prepare-publish")
+            .disabled(
+              !shellState.canUseProtectedWorkbench
+                || windowSession.selectedDraftID == nil
+            )
 
-        if supportsInspector && (!isCompactLayout || canRequestInspectorInCurrentLayout) {
-          inspectorToolbarButton
+            Button(action: toggleAIAssistantWorkspace) {
+              Label(String(localized: "AI 助手"), systemImage: "sparkles")
+            }
+            .buttonStyle(
+              WorkspaceToolbarIconButtonStyle(isActive: isAIAssistantWorkspaceVisible)
+            )
+            .help(
+              isAIAssistantWorkspaceVisible
+                ? String(localized: "关闭 AI 对话")
+                : String(localized: "在右侧继续当前文章的 AI 对话")
+            )
+            .accessibilityLabel(String(localized: "AI 助手"))
+            .accessibilityValue(
+              isAIAssistantWorkspaceVisible
+                ? String(localized: "AI 助手已显示")
+                : String(localized: "已隐藏")
+            )
+            .accessibilityIdentifier("ai-assistant-toolbar-button")
+            .disabled(
+              !shellState.canUseProtectedWorkbench
+                || (!isAIAssistantWorkspaceVisible && !canRequestInspectorInCurrentLayout)
+            )
+
+            if supportsInspector && (!isCompactLayout || canRequestInspectorInCurrentLayout) {
+              inspectorToolbarButton
+            }
+
+            settingsToolbarButton
+          }
+          .fixedSize(horizontal: true, vertical: false)
+          .accessibilityElement(children: .contain)
+          .accessibilityLabel(String(localized: "工作区操作"))
+          .accessibilityIdentifier("workspace-primary-toolbar-actions")
         }
       }
     }
@@ -377,8 +473,27 @@ struct ContentView: View {
       actions: persistenceRecoveryAlertActions,
       message: persistenceRecoveryAlertMessage
     )
+    .confirmationDialog(
+      String(localized: "重置为空白工作台？"),
+      isPresented: $isPersistenceResetConfirmationPresented,
+      titleVisibility: .visible
+    ) {
+      Button(String(localized: "归档后重置"), role: .destructive) {
+        resetPersistenceAfterConfirmation()
+      }
+      Button(String(localized: "取消"), role: .cancel) {}
+    } message: {
+      Text("这会归档当前无法读取的数据文件，然后保存一个空白工作台。请先导出故障文件或恢复其他备份；此操作不能自动还原旧工作台。")
+    }
+    .alert(item: $persistenceResetFeedback) { feedback in
+      Alert(
+        title: Text(feedback.title),
+        message: Text(feedback.message),
+        dismissButton: .default(Text("好"))
+      )
+    }
     .sheet(isPresented: $isDraftRecoveryPresented, content: draftRecoveryPanel)
-    .sheet(item: modalPresentationBinding, content: modalContent)
+    .sheet(item: sheetModalPresentationBinding, content: modalContent)
   }
 
   private func handleScenePhaseChange(oldPhase: ScenePhase, newPhase: ScenePhase) {
@@ -419,7 +534,8 @@ struct ContentView: View {
 
   private func handleAssistantPresentationChange(isAssistant: Bool) {
     withAnimation(WorkbenchMotion.deliberate) {
-      inspectorWidth = isAssistant
+      inspectorWidth =
+        isAssistant
         ? WorkspaceInspectorColumnWidthPolicy.aiCollaboration.ideal
         : WorkspaceInspectorColumnWidthPolicy.article.minimum
     }
@@ -441,6 +557,7 @@ struct ContentView: View {
       contentHealthFilter: $contentHealthFilter,
       imageWorkbenchContextStage: $imageWorkbenchContextStage,
       repositoryContextStage: $repositoryContextStage,
+      repositoryChangedFileSelection: $repositoryChangedFileSelection,
       repositorySourceSession: repositorySourceSession,
       rssStore: rssStore,
       onSelectSection: selectWorkspaceSection,
@@ -455,6 +572,7 @@ struct ContentView: View {
         selectedDraftID: windowSession.selectedDraftID,
         rssStore: rssStore,
         repositoryContextStage: repositoryContextStage,
+        repositoryChangedFileSelection: $repositoryChangedFileSelection,
         repositorySourceSession: repositorySourceSession,
         aiChatSurfaceState: $aiChatInspectorSurfaceState,
         aiChatOperationSession: aiChatInspectorOperationSession,
@@ -473,7 +591,8 @@ struct ContentView: View {
 
   private func resetInspectorWidth() {
     withAnimation(WorkbenchMotion.deliberate) {
-      inspectorWidth = presentationState.isAssistantPresented
+      inspectorWidth =
+        presentationState.isAssistantPresented
         ? WorkspaceInspectorColumnWidthPolicy.aiCollaboration.ideal
         : WorkspaceInspectorColumnWidthPolicy.article.minimum
     }
@@ -523,7 +642,8 @@ struct ContentView: View {
       isFocusModeActive: effectiveFocusMode,
       canToggleFocusMode: shellState.canUseProtectedWorkbench
         && windowSession.selectedSection == .writing,
-      repositorySourceHasUnsavedChanges: repositorySourceSession.hasUnsavedChanges
+      repositorySourceHasUnsavedChanges: repositorySourceSession.hasUnsavedChanges,
+      isSettingsWorkspacePresented: isSettingsWorkspacePresented
     )
   }
 
@@ -549,6 +669,7 @@ struct ContentView: View {
         guard shellState.canUseProtectedWorkbench else { return }
         modalPresentation.present(.firstRunSetup)
       },
+      settingsWorkspaceCommandAction: settingsWorkspaceCommandAction,
       draftFullTextSearchAction: DraftFullTextSearchAction(open: openDraftFullTextSearch),
       workspaceFocusModeCommandAction: WorkspaceFocusModeCommandAction(
         isActive: effectiveFocusMode,
@@ -564,6 +685,36 @@ struct ContentView: View {
         lastErrorMessage: { repositorySourceSession.errorMessage }
       )
     )
+  }
+
+  private var settingsWorkspaceCommandAction: SettingsWorkspaceCommandAction {
+    SettingsWorkspaceCommandAction(
+      isPresented: isSettingsWorkspacePresented,
+      open: openSettingsWorkspace,
+      close: closeSettingsWorkspace
+    )
+  }
+
+  private func openSettingsWorkspace(destination: SettingsDestination?) {
+    guard shellState.canUseProtectedWorkbench else { return }
+    if isSettingsWorkspacePresented, destination == nil {
+      return
+    }
+
+    modalPresentation.dismiss()
+    hideInspectorIfNeeded()
+    settingsWorkspaceDestination = destination
+    settingsWorkspaceNavigationRequestID = UUID()
+    withAnimation(WorkbenchMotion.deliberate) {
+      isSettingsWorkspacePresented = true
+    }
+  }
+
+  private func closeSettingsWorkspace() {
+    withAnimation(WorkbenchMotion.deliberate) {
+      isSettingsWorkspacePresented = false
+    }
+    settingsWorkspaceDestination = nil
   }
 
   private func refreshStaleRSSIfNeeded() {
@@ -586,6 +737,19 @@ struct ContentView: View {
   private var modalPresentationBinding: Binding<WorkspaceModalPresentation?> {
     Binding(
       get: { modalPresentation.presented },
+      set: { modalPresentation.replace(with: $0) }
+    )
+  }
+
+  /// The publishing surface is a trailing workspace overlay rather than a
+  /// modal sheet. All other modal presentations keep using the shared sheet
+  /// router, and replacing the current presentation closes the overlay.
+  private var sheetModalPresentationBinding: Binding<WorkspaceModalPresentation?> {
+    Binding(
+      get: {
+        guard modalPresentation.presented != .publishDrawer else { return nil }
+        return modalPresentation.presented
+      },
       set: { modalPresentation.replace(with: $0) }
     )
   }
@@ -621,7 +785,7 @@ struct ContentView: View {
         _ = store.exportPersistenceRecoveryFiles(to: directoryURL)
       }
       Button(String(localized: "重置为空白工作台"), role: .destructive) {
-        _ = store.resetPersistenceAfterUnrecoverableSnapshot()
+        isPersistenceResetConfirmationPresented = true
       }
     } else {
       Button(String(localized: "继续")) {
@@ -769,7 +933,10 @@ struct ContentView: View {
     #else
       let isScreenshotDemo = false
     #endif
-    if !store.activeProfile.localRepositoryRootPath.trimmedForPublishing.isEmpty {
+    if !store.activeProfile.localRepositoryRootPath.trimmedForPublishing.isEmpty,
+      !store.hasUnsavedChanges,
+      !store.isPersistenceRecoveryWriteProtected
+    {
       didCompleteFirstRunSetup = true
     }
     guard
@@ -782,25 +949,46 @@ struct ContentView: View {
     modalPresentation.present(.firstRunSetup)
   }
 
-  private func finishFirstRunSetup(_ path: FirstRunSetupPath) {
+  private func finishFirstRunSetup(
+    _ completion: FirstRunSetupCompletion
+  ) -> FirstRunSetupCommitResult {
+    let commitResult = FirstRunSetupPersistenceCommit.apply(completion, to: store)
+    guard commitResult == .completed else { return commitResult }
+
     didCompleteFirstRunSetup = true
     modalPresentation.dismiss(.firstRunSetup)
-
-    switch path {
-    case .connectExistingRepository:
+    switch completion.path.destination {
+    case .repositoryWizard:
+      store.runPreflight()
       selectWorkspaceSection(.sync)
       Task {
         await store.repository.scanAsync()
       }
-    case .createNewSite:
+    case .siteStarter:
       selectWorkspaceSection(.siteStarter)
     case .localDrafts:
-      store.prepareLocalDraftWorkspace()
+      break
     }
+    return .completed
   }
 
   private func skipFirstRunSetup() {
     modalPresentation.dismiss(.firstRunSetup)
+  }
+
+  private func resetPersistenceAfterConfirmation() {
+    switch store.resetPersistenceAfterUnrecoverableSnapshotResult() {
+    case .reset(let archiveURL):
+      persistenceResetFeedback = .success(archiveURL: archiveURL)
+    case .failed(let archiveURL, let message):
+      let archiveDetail =
+        archiveURL.map {
+          String(format: String(localized: "故障数据已归档到：%@\n\n"), $0.path)
+        } ?? ""
+      persistenceResetFeedback = .failure(
+        message: archiveDetail + message
+      )
+    }
   }
 
   private var persistenceRecoveryMessage: String {
@@ -831,6 +1019,24 @@ struct ContentView: View {
     .accessibilityLabel(String(localized: "工作区 Inspector"))
     .accessibilityValue(inspectorAccessibilityValue)
     .accessibilityIdentifier("workspace-inspector-toggle")
+  }
+
+  private var settingsToolbarButton: some View {
+    Button {
+      openSettingsWorkspace(destination: nil)
+    } label: {
+      Label(String(localized: "设置"), systemImage: "gearshape")
+    }
+    .buttonStyle(
+      WorkspaceToolbarIconButtonStyle(
+        isActive: false,
+        showsTitle: !isCompactLayout
+      )
+    )
+    .disabled(!shellState.canUseProtectedWorkbench)
+    .help(String(localized: "设置…") + " (⌘,)")
+    .accessibilityLabel(String(localized: "设置"))
+    .accessibilityIdentifier("workspace-open-settings")
   }
 
   private var isAIAssistantWorkspaceVisible: Bool {
@@ -915,6 +1121,10 @@ struct ContentView: View {
     )
   }
 
+  private var isPublishDrawerPresented: Bool {
+    modalPresentation.presented == .publishDrawer
+  }
+
   private func normalizeWorkspacePresentation(for section: WorkspaceSection) {
     if section != .writing {
       isFocusMode = false
@@ -954,6 +1164,8 @@ struct ContentView: View {
         repositoryContextStage = .history
       case .some(.maintenance):
         contentHealthFilter = .maintenance
+      case .some(.settings):
+        openSettingsWorkspace(destination: .tab(.configurationStatus))
       default:
         break
       }
@@ -1045,7 +1257,7 @@ struct ContentView: View {
     guard activateCurrentWindowSharedContext() else { return }
     store.ensureEditableDraftSelected()
     windowSession.receiveSharedDraft(store.selectedDraftID)
-    store.runPreflight()
+    hideInspectorIfNeeded()
     modalPresentation.present(.publishDrawer)
     store.setPublishActionMessage(
       message ?? String(localized: "发布流程已打开，请选择保存到本地或发布上线。"),
@@ -1150,6 +1362,52 @@ struct ContentView: View {
     } else {
       isFocusMode = true
     }
+  }
+}
+
+struct WorkspacePublishDrawerLayoutPolicy {
+  static let minimumWidth: CGFloat = 380
+  static let idealWidth: CGFloat = 500
+  static let availableWidthRatio: CGFloat = 0.45
+
+  static func width(for availableWidth: CGFloat) -> CGFloat {
+    let nonnegativeWidth = max(0, availableWidth)
+    let proposedWidth = min(
+      idealWidth,
+      max(minimumWidth, nonnegativeWidth * availableWidthRatio)
+    )
+    return min(proposedWidth, nonnegativeWidth)
+  }
+}
+
+/// Publishing is presented above the workspace rather than as a native
+/// inspector column. A native inspector participates in split-view sizing and
+/// compresses the source list; this trailing overlay leaves the established
+/// sidebar and editor widths untouched while the user reviews the publish flow.
+private struct WorkspacePublishDrawerOverlay: View {
+  @ObservedObject var publishingFacade: WorkbenchPublishingFeatureFacade
+  let store: WorkbenchStore
+  @Binding var isPresented: Bool
+
+  var body: some View {
+    GeometryReader { geometry in
+      HStack(spacing: 0) {
+        Spacer(minLength: 0)
+
+        Divider()
+
+        PublishDrawerView(
+          publishingFacade: publishingFacade,
+          store: store,
+          isPresented: $isPresented
+        )
+        .frame(width: WorkspacePublishDrawerLayoutPolicy.width(for: geometry.size.width))
+        .frame(maxHeight: .infinity)
+        .background(.regularMaterial)
+        .shadow(color: .black.opacity(0.16), radius: 18, x: -6, y: 0)
+      }
+    }
+    .accessibilityIdentifier("workspace-publish-drawer-overlay")
   }
 }
 

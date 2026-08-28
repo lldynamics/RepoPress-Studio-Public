@@ -42,6 +42,9 @@ extension LocalPublishPreviewService {
   func preview(package: PublishPackage, rootURL: URL) -> LocalPublishPreview {
     var diffs: [PublishFileDiff] = []
     var issues: [PreflightIssue] = []
+    if let transactionIssue = interruptedTransactionIssue(at: rootURL) {
+      issues.append(transactionIssue)
+    }
 
     for file in package.files {
       guard let destinationURL = destinationURL(rootURL: rootURL, repositoryPath: file.repositoryPath) else {

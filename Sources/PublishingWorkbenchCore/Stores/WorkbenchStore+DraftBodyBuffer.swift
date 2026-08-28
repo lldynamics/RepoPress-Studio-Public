@@ -103,6 +103,31 @@ extension WorkbenchStore {
     return DraftBodyEditorBufferStageResult(buffer: staged, wasAccepted: true)
   }
 
+  /// Restores a body captured while the document's Front Matter was invalid.
+  /// Editor-buffer revisions are process-local and restart at zero, so the
+  /// persisted body is the durable conflict baseline. WorkbenchStore is
+  /// MainActor-isolated, making the comparison and stage one synchronous step.
+  @discardableResult
+  public func stageRecoveredDraftBody(
+    _ bodyMarkdown: String,
+    for draftID: UUID,
+    matchingBaseBody baseBodyMarkdown: String,
+    notifyEditorObservers: Bool = true
+  ) -> DraftBodyEditorBufferStageResult? {
+    guard drafts.contains(where: { $0.id == draftID }) else { return nil }
+    let current = draftBodyEditorBuffer(for: draftID)
+    guard current.bodyMarkdown == baseBodyMarkdown else {
+      return DraftBodyEditorBufferStageResult(buffer: current, wasAccepted: false)
+    }
+    return stageDraftBody(
+      bodyMarkdown,
+      for: draftID,
+      baseRevision: current.revision,
+      replacingBaseBody: current.bodyMarkdown,
+      notifyEditorObservers: notifyEditorObservers
+    )
+  }
+
   @discardableResult
   public func replaceDraftBody(
     _ bodyMarkdown: String,

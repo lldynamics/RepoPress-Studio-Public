@@ -9,70 +9,75 @@ struct PersonalSitePublisherMacApp: App {
   @StateObject private var appUpdateController = AppUpdateController()
   @AppStorage(WorkbenchAccentPalette.storageKey)
   private var accentPaletteRawValue = WorkbenchAccentPalette.system.rawValue
+  @AppStorage(WorkbenchAppearanceMode.storageKey)
+  private var appearanceModeRawValue = WorkbenchAppearanceMode.system.rawValue
+  @AppStorage(WorkbenchInterfaceDensity.storageKey)
+  private var interfaceDensityRawValue = WorkbenchInterfaceDensity.comfortable.rawValue
 
   init() {
     AppLanguagePreference.prepareForLaunch()
     // Earlier builds disabled AppKit restoration globally. Remove those sticky
     // overrides now that the main workspace is owned by a native SwiftUI scene.
-#if DEBUG || SCREENSHOT_CAPTURE_BUILD
-    // Deterministic screenshot and XCUI launches pass temporary restoration
-    // overrides on the command line. Keep those volatile values for the
-    // automated run so AppKit cannot reopen a stale workspace window while the
-    // requested demo surface is being installed.
-    if ProcessInfo.processInfo.environment["PERSONAL_SITE_PUBLISHER_SCREENSHOT_DEMO"] != "1" {
+    #if DEBUG || SCREENSHOT_CAPTURE_BUILD
+      // Deterministic screenshot and XCUI launches pass temporary restoration
+      // overrides on the command line. Keep those volatile values for the
+      // automated run so AppKit cannot reopen a stale workspace window while the
+      // requested demo surface is being installed.
+      if ProcessInfo.processInfo.environment["PERSONAL_SITE_PUBLISHER_SCREENSHOT_DEMO"] != "1" {
+        UserDefaults.standard.removeObject(forKey: "ApplePersistenceIgnoreState")
+        UserDefaults.standard.removeObject(forKey: "NSQuitAlwaysKeepsWindows")
+      }
+    #else
       UserDefaults.standard.removeObject(forKey: "ApplePersistenceIgnoreState")
       UserDefaults.standard.removeObject(forKey: "NSQuitAlwaysKeepsWindows")
-    }
-#else
-    UserDefaults.standard.removeObject(forKey: "ApplePersistenceIgnoreState")
-    UserDefaults.standard.removeObject(forKey: "NSQuitAlwaysKeepsWindows")
-#endif
-#if DEBUG || SCREENSHOT_CAPTURE_BUILD
-    if ScreenshotDemoDataService.isEnabledFromEnvironment {
-      let persistence = ScreenshotDemoDataService.preparePersistenceIfEnabled()
-      let demoRootURL = persistence.fileURL.deletingLastPathComponent()
-      let knowledgeLibraryService = KnowledgeLibraryService(
-        rootURL: demoRootURL.appendingPathComponent("KnowledgeLibrary", isDirectory: true)
-      )
-      _launchCoordinator = StateObject(
-        wrappedValue: WorkbenchLaunchCoordinator(
-          persistence: persistence,
-          knowledgeLibraryService: knowledgeLibraryService,
-          rssReaderFileURL: demoRootURL
-            .appendingPathComponent("RSSReader", isDirectory: true)
-            .appendingPathComponent("reader.sqlite", isDirectory: false),
-          managedAttachmentFileStore: ManagedAttachmentFileStore(
-            rootDirectoryURL: demoRootURL.appendingPathComponent(
-              "ManagedAttachments",
+    #endif
+    #if DEBUG || SCREENSHOT_CAPTURE_BUILD
+      if ScreenshotDemoDataService.isEnabledFromEnvironment {
+        let persistence = ScreenshotDemoDataService.preparePersistenceIfEnabled()
+        let demoRootURL = persistence.fileURL.deletingLastPathComponent()
+        let knowledgeLibraryService = KnowledgeLibraryService(
+          rootURL: demoRootURL.appendingPathComponent("KnowledgeLibrary", isDirectory: true)
+        )
+        _launchCoordinator = StateObject(
+          wrappedValue: WorkbenchLaunchCoordinator(
+            persistence: persistence,
+            knowledgeLibraryService: knowledgeLibraryService,
+            rssReaderFileURL:
+              demoRootURL
+              .appendingPathComponent("RSSReader", isDirectory: true)
+              .appendingPathComponent("reader.sqlite", isDirectory: false),
+            managedAttachmentFileStore: ManagedAttachmentFileStore(
+              rootDirectoryURL: demoRootURL.appendingPathComponent(
+                "ManagedAttachments",
+                isDirectory: true
+              )
+            ),
+            workspaceBackupDirectoryURL: demoRootURL.appendingPathComponent(
+              WorkspaceBackupService.automaticBackupDirectoryName,
               isDirectory: true
             )
-          ),
-          workspaceBackupDirectoryURL: demoRootURL.appendingPathComponent(
-            WorkspaceBackupService.automaticBackupDirectoryName,
-            isDirectory: true
           )
         )
-      )
-    } else {
+      } else {
+        _launchCoordinator = StateObject(wrappedValue: WorkbenchLaunchCoordinator())
+      }
+    #else
       _launchCoordinator = StateObject(wrappedValue: WorkbenchLaunchCoordinator())
-    }
-#else
-    _launchCoordinator = StateObject(wrappedValue: WorkbenchLaunchCoordinator())
-#endif
+    #endif
   }
 
   @ViewBuilder
   private var mainWorkbenchRoot: some View {
-#if DEBUG || SCREENSHOT_CAPTURE_BUILD
-    if let dynamicTypeSize = ScreenshotCaptureWindowBridge.dynamicTypeSizeOverride {
+    #if DEBUG || SCREENSHOT_CAPTURE_BUILD
+      if let dynamicTypeSize = ScreenshotCaptureWindowBridge.dynamicTypeSizeOverride {
+        workbenchLaunchRoot
+          .environment(\.dynamicTypeSize, dynamicTypeSize)
+      } else {
+        workbenchLaunchRoot
+      }
+    #else
       workbenchLaunchRoot
-        .environment(\.dynamicTypeSize, dynamicTypeSize)
-    } else {
-      workbenchLaunchRoot
-    }
-#else
-    workbenchLaunchRoot
-#endif
+    #endif
   }
 
   private var workbenchLaunchRoot: some View {
@@ -83,6 +88,7 @@ struct PersonalSitePublisherMacApp: App {
         appDelegate.browserBridge = browserBridge
       }
     )
+    .environmentObject(launchCoordinator)
   }
 
   var body: some Scene {
@@ -93,15 +99,17 @@ struct PersonalSitePublisherMacApp: App {
           minHeight: WorkbenchLayoutMode.minimumWindowHeight
         )
         .thinRedScrollbars()
-#if DEBUG || SCREENSHOT_CAPTURE_BUILD
-        .background(ScreenshotCaptureWindowBridge())
-#endif
+        #if DEBUG || SCREENSHOT_CAPTURE_BUILD
+          .background(ScreenshotCaptureWindowBridge())
+        #endif
         .background(
           MainWindowOpenActionRegistration { action in
             appDelegate.openMainWindowAction = action
           }
         )
         .tint(selectedAccentPalette.color)
+        .preferredColorScheme(selectedAppearanceMode.colorScheme)
+        .controlSize(selectedInterfaceDensity.controlSize)
     }
     .defaultSize(
       width: WorkbenchLayoutMode.defaultWindowWidth,
@@ -111,6 +119,7 @@ struct PersonalSitePublisherMacApp: App {
     .commands {
       AppUpdateCommands(controller: appUpdateController)
       if let store = launchCoordinator.store {
+        PublishingConsoleSettingsCommands()
         PublishingConsoleCommands(store: store)
       }
     }
@@ -134,12 +143,22 @@ struct PersonalSitePublisherMacApp: App {
           .workbenchSettingsWindowSize()
         }
       }
-        .tint(selectedAccentPalette.color)
+      .tint(selectedAccentPalette.color)
+      .preferredColorScheme(selectedAppearanceMode.colorScheme)
+      .controlSize(selectedInterfaceDensity.controlSize)
     }
   }
 
   private var selectedAccentPalette: WorkbenchAccentPalette {
     WorkbenchAccentPalette.resolved(rawValue: accentPaletteRawValue)
+  }
+
+  private var selectedAppearanceMode: WorkbenchAppearanceMode {
+    WorkbenchAppearanceMode.resolved(rawValue: appearanceModeRawValue)
+  }
+
+  private var selectedInterfaceDensity: WorkbenchInterfaceDensity {
+    WorkbenchInterfaceDensity.resolved(rawValue: interfaceDensityRawValue)
   }
 }
 
@@ -338,7 +357,8 @@ final class PersonalSitePublisherMacAppDelegate: NSObject, NSApplicationDelegate
 
   private func isMainWorkbenchWindow(_ window: NSWindow) -> Bool {
     if let identifier = window.identifier?.rawValue,
-       identifier.contains("main-workbench") {
+      identifier.contains("main-workbench")
+    {
       return true
     }
     return window.title == "RepoPress Studio" || window.title == "RepoPress"
@@ -442,9 +462,10 @@ final class PersonalSitePublisherMacAppDelegate: NSObject, NSApplicationDelegate
     return NSApp.mainMenu?.items.compactMap(\.submenu).first { menu in
       menu.items.contains {
         $0.action == #selector(NSWindow.performMiniaturize(_:))
-      } && menu.items.contains {
-        $0.action == #selector(NSWindow.performZoom(_:))
       }
+        && menu.items.contains {
+          $0.action == #selector(NSWindow.performZoom(_:))
+        }
     }
   }
 
@@ -472,7 +493,8 @@ final class PersonalSitePublisherMacAppDelegate: NSObject, NSApplicationDelegate
         guard RepositoryHTMLSourceSessionRegistry.shared.saveBeforeTermination() else {
           let failureAlert = NSAlert()
           failureAlert.messageText = String(localized: "未能保存 HTML 源文件")
-          failureAlert.informativeText = RepositoryHTMLSourceSessionRegistry.shared.lastErrorMessage
+          failureAlert.informativeText =
+            RepositoryHTMLSourceSessionRegistry.shared.lastErrorMessage
             ?? String(localized: "请返回编辑器检查文件权限或外部修改冲突。")
           failureAlert.alertStyle = .warning
           failureAlert.addButton(withTitle: String(localized: "继续编辑"))
@@ -494,7 +516,8 @@ final class PersonalSitePublisherMacAppDelegate: NSObject, NSApplicationDelegate
 
     let alert = NSAlert()
     alert.messageText = String(localized: "未能保存工作台修改")
-    alert.informativeText = workbenchStore.lastSaveError
+    alert.informativeText =
+      workbenchStore.lastSaveError
       ?? String(localized: "请修复保存位置或权限后重试。应用将保持打开，避免丢失未保存修改。")
     alert.alertStyle = .warning
     alert.addButton(withTitle: String(localized: "继续编辑"))
@@ -514,9 +537,21 @@ final class PersonalSitePublisherMacAppDelegate: NSObject, NSApplicationDelegate
 }
 
 private struct ProtectedSettingsView: View {
-  @ObservedObject var store: WorkbenchStore
+  let store: WorkbenchStore
+  @ObservedObject private var settingsState: WorkbenchSettingsFeatureFacade
   let rssStore: RSSReaderStore?
   @ObservedObject var launchCoordinator: WorkbenchLaunchCoordinator
+
+  init(
+    store: WorkbenchStore,
+    rssStore: RSSReaderStore?,
+    launchCoordinator: WorkbenchLaunchCoordinator
+  ) {
+    self.store = store
+    _settingsState = ObservedObject(wrappedValue: store.settings)
+    self.rssStore = rssStore
+    self.launchCoordinator = launchCoordinator
+  }
 
   var body: some View {
     ZStack {
@@ -527,15 +562,16 @@ private struct ProtectedSettingsView: View {
       )
       .disabled(!store.canUseProtectedWorkbench)
       .disabled(launchCoordinator.phase != .ready)
-      .accessibilityHidden(store.isQuickHideActive)
+      .accessibilityHidden(!store.canUseProtectedWorkbench)
 
-      if store.isQuickHideActive {
+      if settingsState.isQuickHideActive {
         QuickHideOverlay(store: store)
       }
     }
+    .workbenchSettingsWindowSize()
     .settingsThinRedScrollbars()
-#if DEBUG || SCREENSHOT_CAPTURE_BUILD
-    .background(ScreenshotCaptureWindowBridge(role: .settings))
-#endif
+    #if DEBUG || SCREENSHOT_CAPTURE_BUILD
+      .background(ScreenshotCaptureWindowBridge(role: .settings))
+    #endif
   }
 }

@@ -31,6 +31,9 @@ extension WorkbenchStore {
   public var batchPublishPlan: BatchPublishPlan? { publishingStore.batchPublishPlan }
   public var isBatchPublishPlanRefreshing: Bool { publishingStore.isBatchPublishPlanRefreshing }
   public var batchRemotePublishPreviewSnapshot: RemoteRepositoryPublishPreview? { publishingStore.batchRemotePublishPreviewSnapshot }
+  public var remoteRepositoryConflictSession: RemoteRepositoryConflictSession? {
+    publishingStore.remoteRepositoryConflictSession
+  }
   public var localSitePreviewPlan: LocalSitePreviewPlan? { publishingStore.localSitePreviewPlan }
   public var localSitePreviewRuntimeStatus: LocalSitePreviewRuntimeStatus { publishingStore.localSitePreviewRuntimeStatus }
   public var remoteReviewDraft: RemoteReviewDraft? { publishingStore.remoteReviewDraft }

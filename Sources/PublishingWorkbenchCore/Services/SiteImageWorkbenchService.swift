@@ -1,10 +1,11 @@
-import CryptoKit
 import CoreGraphics
+import CryptoKit
 import Foundation
 import ImageIO
 import UniformTypeIdentifiers
+
 #if canImport(Darwin)
-import Darwin
+  import Darwin
 #endif
 
 struct ValidatedImageSource {
@@ -16,13 +17,16 @@ public struct SiteImageWorkbenchService: Sendable {
   public static let maximumSafeInputPixelCount = 64_000_000
   public static let maximumCropWorkingPixelDimension = 4_096
 
-  public typealias AsyncReportOperation = @Sendable (ArticleDraft, SiteProfile) async throws -> ImageWorkbenchReport
-  public typealias AsyncSiteSummaryOperation = @Sendable ([ArticleDraft], SiteProfile) async throws -> ImageWorkbenchSiteSummary
+  public typealias AsyncReportOperation =
+    @Sendable (ArticleDraft, SiteProfile) async throws -> ImageWorkbenchReport
+  public typealias AsyncSiteSummaryOperation =
+    @Sendable ([ArticleDraft], SiteProfile) async throws -> ImageWorkbenchSiteSummary
 
   let fileSystem: SendableFileManager
   let cwebPExecutableOverride: URL?
   let cwebPTimeout: TimeInterval
   let prefersCWebP: Bool
+  let imagePrivacySanitizer: ImagePrivacySanitizingService
   private let asyncReportOperation: AsyncReportOperation?
   private let asyncSiteSummaryOperation: AsyncSiteSummaryOperation?
 
@@ -38,23 +42,24 @@ public struct SiteImageWorkbenchService: Sendable {
       return false
     }
     guard let data = CFDataCreateMutable(nil, 0),
-          let destination = CGImageDestinationCreateWithData(
-            data,
-            UTType.webP.identifier as CFString,
-            1,
-            nil
-          ),
-          let colorSpace = CGColorSpace(name: CGColorSpace.sRGB),
-          let context = CGContext(
-            data: nil,
-            width: 1,
-            height: 1,
-            bitsPerComponent: 8,
-            bytesPerRow: 4,
-            space: colorSpace,
-            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
-          ),
-          let image = context.makeImage() else {
+      let destination = CGImageDestinationCreateWithData(
+        data,
+        UTType.webP.identifier as CFString,
+        1,
+        nil
+      ),
+      let colorSpace = CGColorSpace(name: CGColorSpace.sRGB),
+      let context = CGContext(
+        data: nil,
+        width: 1,
+        height: 1,
+        bitsPerComponent: 8,
+        bytesPerRow: 4,
+        space: colorSpace,
+        bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+      ),
+      let image = context.makeImage()
+    else {
       return false
     }
 
@@ -68,8 +73,8 @@ public struct SiteImageWorkbenchService: Sendable {
       "/usr/local/bin/cwebp",
       "/usr/bin/cwebp",
     ]
-      .map { URL(fileURLWithPath: $0) }
-      .first { FileManager.default.isExecutableFile(atPath: $0.path) }
+    .map { URL(fileURLWithPath: $0) }
+    .first { FileManager.default.isExecutableFile(atPath: $0.path) }
   }
 
   public init(
@@ -77,6 +82,7 @@ public struct SiteImageWorkbenchService: Sendable {
     cwebPExecutableURL: URL? = nil,
     cwebPTimeout: TimeInterval = 30,
     prefersCWebP: Bool = false,
+    imagePrivacySanitizer: ImagePrivacySanitizingService = ImagePrivacySanitizingService(),
     asyncReportOperation: AsyncReportOperation? = nil,
     asyncSiteSummaryOperation: AsyncSiteSummaryOperation? = nil
   ) {
@@ -84,13 +90,16 @@ public struct SiteImageWorkbenchService: Sendable {
     self.cwebPExecutableOverride = cwebPExecutableURL
     self.cwebPTimeout = max(0.1, cwebPTimeout)
     self.prefersCWebP = prefersCWebP
+    self.imagePrivacySanitizer = imagePrivacySanitizer
     self.asyncReportOperation = asyncReportOperation
     self.asyncSiteSummaryOperation = asyncSiteSummaryOperation
   }
 
   /// Performs file-backed image inspection away from the caller's actor.
   /// The synchronous API remains available for explicit publishing and AI actions.
-  public func reportAsync(draft: ArticleDraft, profile: SiteProfile) async throws -> ImageWorkbenchReport {
+  public func reportAsync(draft: ArticleDraft, profile: SiteProfile) async throws
+    -> ImageWorkbenchReport
+  {
     if let asyncReportOperation {
       return try await asyncReportOperation(draft, profile)
     }
@@ -166,11 +175,31 @@ public struct SiteImageWorkbenchService: Sendable {
       let isCover = draft.coverAttachmentID == attachment.id
       let isJPEG = isJPEGFilename(sourceURL?.lastPathComponent ?? attachment.originalFilename)
       let canOptimizeJPEG = fileExists && isJPEG && actualByteSize > 0
-      let canConvertToWebP = fileExists && isWebPConvertibleFilename(sourceURL?.lastPathComponent ?? attachment.originalFilename)
-      let canOptimizeSVG = fileExists && isSVGFilename(sourceURL?.lastPathComponent ?? attachment.originalFilename) && actualByteSize > 0
-      let canResizeImage = fileExists
+      let canConvertToWebP =
+        fileExists
+        && isWebPConvertibleFilename(sourceURL?.lastPathComponent ?? attachment.originalFilename)
+      let canOptimizeSVG =
+        fileExists && isSVGFilename(sourceURL?.lastPathComponent ?? attachment.originalFilename)
+        && actualByteSize > 0
+      let canResizeImage =
+        fileExists
         && isResizableRasterFilename(sourceURL?.lastPathComponent ?? attachment.originalFilename)
         && (dimensions.map { max($0.width, $0.height) > 1_600 } ?? false)
+      let privacyStatus: ImagePrivacyStatus
+      if let sourceURL, fileExists {
+        do {
+          privacyStatus =
+            try imagePrivacySanitizer.inspect(at: sourceURL).requiresSanitization
+            ? .sensitive
+            : .clean
+        } catch ImagePrivacySanitizingError.unsupportedImage(_) {
+          privacyStatus = .unsupported
+        } catch {
+          privacyStatus = .unverified
+        }
+      } else {
+        privacyStatus = .unverified
+      }
       let normalizedPublishPath = normalizedPublishPath(attachment.relativePublishPath)
       let normalizedSourcePath = normalizedSourcePath(attachment.sourceFilePath)
       let duplicatePublishCount = normalizedPublishPath.map { publishPathCounts[$0] ?? 0 } ?? 0
@@ -200,6 +229,21 @@ public struct SiteImageWorkbenchService: Sendable {
             kind: .missingCaption,
             title: CoreL10n.text("缺少 caption"),
             message: CoreL10n.format("%@ 还没有图片说明。", attachment.originalFilename),
+            attachmentID: attachment.id
+          )
+        )
+      }
+
+      if privacyStatus == .sensitive {
+        issues.append(
+          ImageWorkbenchIssue(
+            severity: .warning,
+            kind: .sensitiveMetadata,
+            title: CoreL10n.text("图片包含隐私元数据"),
+            message: CoreL10n.format(
+              "%@ 包含定位、设备、作者或其他可识别元数据，发布前应清理。",
+              attachment.originalFilename
+            ),
             attachmentID: attachment.id
           )
         )
@@ -345,6 +389,7 @@ public struct SiteImageWorkbenchService: Sendable {
         canConvertToWebP: canConvertToWebP,
         canOptimizeSVG: canOptimizeSVG,
         canResizeImage: canResizeImage,
+        privacyStatus: privacyStatus,
         duplicateReferenceCount: duplicateReferenceCount
       )
     }
@@ -376,7 +421,8 @@ public struct SiteImageWorkbenchService: Sendable {
       )
     }
 
-    for (markdownPath, count) in markdownImagePathCounts where count > 1 && !registeredPublishPaths.contains(markdownPath) {
+    for (markdownPath, count) in markdownImagePathCounts
+    where count > 1 && !registeredPublishPaths.contains(markdownPath) {
       issues.append(
         ImageWorkbenchIssue(
           severity: .info,
@@ -418,13 +464,14 @@ public struct SiteImageWorkbenchService: Sendable {
     report: ImageWorkbenchReport? = nil
   ) -> [AIPublishingImageTextTarget] {
     let currentReport = report ?? self.report(draft: draft, profile: profile)
-    let itemsByID = Dictionary(uniqueKeysWithValues: currentReport.items.map { ($0.attachmentID, $0) })
+    let itemsByID = Dictionary(
+      uniqueKeysWithValues: currentReport.items.map { ($0.attachmentID, $0) })
     let markdownPath = profile.markdownPath(for: draft)
 
     return draft.attachments.compactMap { attachment in
       guard let item = itemsByID[attachment.id],
-            item.missingAltText || item.missingCaption,
-            !attachment.relativePublishPath.trimmedForPublishing.isEmpty
+        item.missingAltText || item.missingCaption,
+        !attachment.relativePublishPath.trimmedForPublishing.isEmpty
       else {
         return nil
       }
@@ -452,7 +499,8 @@ public struct SiteImageWorkbenchService: Sendable {
     _ suggestions: [AIPublishingImageTextSuggestion],
     to draft: ArticleDraft
   ) -> ImageTextSuggestionApplyResult {
-    let suggestionsByAttachmentID = Dictionary(uniqueKeysWithValues: suggestions.map { ($0.attachmentID, $0) })
+    let suggestionsByAttachmentID = Dictionary(
+      uniqueKeysWithValues: suggestions.map { ($0.attachmentID, $0) })
     var updatedDraft = draft
     var appliedAltTextCount = 0
     var appliedCaptionCount = 0
@@ -478,7 +526,8 @@ public struct SiteImageWorkbenchService: Sendable {
         appliedCaptionCount += 1
       }
 
-      let markdownAlt = updatedDraft.attachments[index].altText.trimmedForPublishing.nilIfEmpty ?? suggestedAlt
+      let markdownAlt =
+        updatedDraft.attachments[index].altText.trimmedForPublishing.nilIfEmpty ?? suggestedAlt
       if !markdownAlt.isEmpty {
         let replacement = replaceEmptyMarkdownAlt(
           in: updatedDraft.bodyMarkdown,
@@ -498,7 +547,8 @@ public struct SiteImageWorkbenchService: Sendable {
     )
   }
 
-  public func siteSummary(drafts: [ArticleDraft], profile: SiteProfile) -> ImageWorkbenchSiteSummary {
+  public func siteSummary(drafts: [ArticleDraft], profile: SiteProfile) -> ImageWorkbenchSiteSummary
+  {
     makeSiteSummary(drafts: drafts, profile: profile, cancellationCheck: {})
   }
 
@@ -580,7 +630,8 @@ public struct SiteImageWorkbenchService: Sendable {
     for index in updatedDraft.attachments.indices {
       guard updatedDraft.attachments[index].mediaKind == .image else { continue }
       if let includedAttachmentIDs,
-         !includedAttachmentIDs.contains(updatedDraft.attachments[index].id) {
+        !includedAttachmentIDs.contains(updatedDraft.attachments[index].id)
+      {
         continue
       }
       let originalAlt = updatedDraft.attachments[index].altText

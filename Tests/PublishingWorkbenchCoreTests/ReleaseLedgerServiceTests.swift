@@ -71,7 +71,12 @@ final class ReleaseLedgerServiceTests: XCTestCase {
         title: "GitHub Pages · 正常",
         message: "站点可访问。",
         siteURLText: "https://example.com",
-        signals: []
+        signals: [],
+        expectedBranch: "main",
+        expectedCommitSHA: "abcdef1234567890",
+        observedBranch: "main",
+        observedCommitSHA: "abcdef1234567890",
+        attributionVerified: true
       ),
       failedRecord.id: DeploymentStatusSnapshot(
         profileID: profileID,
@@ -119,6 +124,123 @@ final class ReleaseLedgerServiceTests: XCTestCase {
       ledger.deploymentOverview.message,
       CoreL10n.format("%@ 条部署检查失败，需要查看失败信号后重试。", "1")
     )
+  }
+
+  func testWithdrawnReviewIsNotCountedAsOnlineOrScheduledForDeployment() throws {
+    let profileID = UUID()
+    let withdrawnRecord = ReleaseRecord(
+      id: UUID(),
+      kind: .remoteReviewWithdrawal,
+      title: "线上 Review 撤回",
+      summary: "GitHub · #9 · closed",
+      siteProfileID: profileID,
+      draftTitle: "已撤回文章",
+      changedPaths: ["content/posts/withdrawn.md"],
+      branchName: "publish/withdrawn",
+      targetBranch: "main",
+      commitSHA: "abcdef1234567890",
+      reviewURL: "https://github.com/owner/site/pull/9"
+    )
+    let misleadingDeploymentSnapshot = DeploymentStatusSnapshot(
+      profileID: profileID,
+      releaseRecordID: withdrawnRecord.id,
+      provider: .githubPages,
+      level: .success,
+      title: "GitHub Pages · 正常",
+      message: "主站可访问。",
+      siteURLText: "https://example.com",
+      signals: []
+    )
+
+    let ledger = ReleaseLedgerService().ledger(
+      releaseRecords: [withdrawnRecord],
+      deploymentStatusSnapshots: [withdrawnRecord.id: misleadingDeploymentSnapshot]
+    )
+
+    let entry = try XCTUnwrap(ledger.entries.first)
+    XCTAssertEqual(entry.status, .reviewWithdrawn)
+    XCTAssertEqual(entry.statusMessage, "PR/MR 已撤回，未合并到目标分支，也未触发部署。")
+    XCTAssertNil(entry.deploymentStatus)
+    XCTAssertTrue(ledger.actionItems.isEmpty)
+    XCTAssertEqual(ledger.summary.succeededCount, 0)
+    XCTAssertEqual(ledger.summary.deploymentPendingCount, 0)
+  }
+
+  func testLocalGitCommitStaysLocalAndIgnoresDeploymentSnapshot() throws {
+    let profileID = UUID()
+    let localCommit = ReleaseRecord(
+      id: UUID(),
+      kind: .directCommit,
+      title: "本地提交",
+      summary: "main · 1 个文件",
+      siteProfileID: profileID,
+      draftTitle: "本地提交文章",
+      changedPaths: ["content/posts/local-commit.md"],
+      branchName: "main",
+      commitSHA: "1234567890abcdef"
+    )
+    let misleadingDeploymentSnapshot = DeploymentStatusSnapshot(
+      profileID: profileID,
+      releaseRecordID: localCommit.id,
+      provider: .githubPages,
+      level: .success,
+      title: "GitHub Pages · 正常",
+      message: "主站可访问。",
+      siteURLText: "https://example.com",
+      signals: []
+    )
+
+    let ledger = ReleaseLedgerService().ledger(
+      releaseRecords: [localCommit],
+      deploymentStatusSnapshots: [localCommit.id: misleadingDeploymentSnapshot]
+    )
+
+    let entry = try XCTUnwrap(ledger.entries.first)
+    XCTAssertEqual(entry.status, .localOnly)
+    XCTAssertEqual(entry.statusMessage, "内容已在本地提交，尚未推送到远端，也未触发部署。")
+    XCTAssertNil(entry.deploymentStatus)
+    XCTAssertEqual(ledger.summary.localPendingCount, 1)
+    XCTAssertEqual(ledger.summary.succeededCount, 0)
+    XCTAssertEqual(ledger.summary.deploymentPendingCount, 0)
+  }
+
+  func testRemotePreviewBranchIsNotCountedAsOnlineOrDeployed() throws {
+    let profileID = UUID()
+    let previewRecord = ReleaseRecord(
+      id: UUID(),
+      kind: .remotePreviewBranch,
+      title: "远端预览分支：预览文章",
+      summary: "GitHub · draft/preview · 1 个文件",
+      siteProfileID: profileID,
+      draftTitle: "预览文章",
+      changedPaths: ["content/posts/preview.md"],
+      branchName: "draft/preview",
+      targetBranch: "main",
+      commitSHA: "preview1234567890"
+    )
+    let misleadingDeploymentSnapshot = DeploymentStatusSnapshot(
+      profileID: profileID,
+      releaseRecordID: previewRecord.id,
+      provider: .githubPages,
+      level: .success,
+      title: "GitHub Pages · 正常",
+      message: "主站可访问。",
+      siteURLText: "https://example.com",
+      signals: []
+    )
+
+    let ledger = ReleaseLedgerService().ledger(
+      releaseRecords: [previewRecord],
+      deploymentStatusSnapshots: [previewRecord.id: misleadingDeploymentSnapshot]
+    )
+
+    let entry = try XCTUnwrap(ledger.entries.first)
+    XCTAssertEqual(entry.status, .previewOnly)
+    XCTAssertEqual(entry.statusMessage, "预览分支已推送，未合并到正式分支，也未触发正式部署。")
+    XCTAssertNil(entry.deploymentStatus)
+    XCTAssertTrue(ledger.actionItems.isEmpty)
+    XCTAssertEqual(ledger.summary.succeededCount, 0)
+    XCTAssertEqual(ledger.summary.deploymentPendingCount, 0)
   }
 
   func testReleaseLedgerOperationLogMarkdownExportsWholeLedgerForHandoff() throws {
@@ -311,7 +433,12 @@ final class ReleaseLedgerServiceTests: XCTestCase {
         title: "GitHub Pages · 正常",
         message: "站点可访问。",
         siteURLText: "https://example.com",
-        signals: []
+        signals: [],
+        expectedBranch: "main",
+        expectedCommitSHA: "1111111111111111",
+        observedBranch: "main",
+        observedCommitSHA: "1111111111111111",
+        attributionVerified: true
       ),
     ]
 
@@ -401,7 +528,12 @@ final class ReleaseLedgerServiceTests: XCTestCase {
         title: "GitHub Pages · 正常",
         message: "站点可访问。",
         siteURLText: "https://example.com",
-        signals: []
+        signals: [],
+        expectedBranch: "main",
+        expectedCommitSHA: record.commitSHA,
+        observedBranch: "main",
+        observedCommitSHA: record.commitSHA,
+        attributionVerified: true
       )
     }
 
@@ -592,7 +724,12 @@ final class ReleaseLedgerServiceTests: XCTestCase {
       title: "GitHub Pages · 正常",
       message: "站点可访问。",
       siteURLText: "https://owner.github.io/site/",
-      signals: []
+      signals: [],
+      expectedBranch: "main",
+      expectedCommitSHA: "abcdef1234567890",
+      observedBranch: "main",
+      observedCommitSHA: "abcdef1234567890",
+      attributionVerified: true
     )
 
     let ledger = ReleaseLedgerService().ledger(

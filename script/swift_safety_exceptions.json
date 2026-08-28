@@ -2,6 +2,11 @@
   "schemaVersion": 1,
   "uncheckedSendable": [
     {
+      "file": "Sources/PersonalSitePublisherMac/Views/Knowledge/KnowledgeImageDocumentView.swift",
+      "declaration": "KnowledgeDecodedImage",
+      "rationale": "The wrapper owns an immutable CGImage produced by ImageIO; the reference crosses one detached decode boundary and is only read by SwiftUI rendering."
+    },
+    {
       "file": "Sources/PersonalSitePublisherMac/Support/KnowledgeBrowserImportLedgerStore.swift",
       "declaration": "KnowledgeBrowserImportLedgerDefaults",
       "rationale": "Value wrapper delegates access to the thread-safe UserDefaults implementation and stores no mutable reference state."
@@ -195,6 +200,26 @@
       "file": "Tests/PublishingWorkbenchCoreTests/LocalSitePreviewServiceTests.swift",
       "declaration": "LockedWatcherTestState",
       "rationale": "Test watcher observations and fulfillment state are protected by the state lock."
+    },
+    {
+      "file": "Tests/PublishingWorkbenchCoreTests/LocalSitePreviewServiceTests.swift",
+      "declaration": "LockedPreviewWatcherClassificationState",
+      "rationale": "The watcher callback can cross task boundaries; its only mutable classification state is read and written under one NSLock."
+    },
+    {
+      "file": "Sources/PublishingMCPClient/PublishingMCPClient.swift",
+      "declaration": "PublishingMCPStderrDrainer",
+      "rationale": "The stderr handle, readability handler, stop flag, and discarded-byte counter are accessed only while holding one NSLock as the callback crosses task boundaries."
+    },
+    {
+      "file": "Sources/PublishingMCPClient/PublishingMCPClient.swift",
+      "declaration": "PublishingMCPProcessTerminator",
+      "rationale": "The immutable owned PID/PGID and termination flag cross into one blocking waitid observer and one delayed cleanup task; waitid uses WNOWAIT, while one NSLock serializes the single TERM/KILL sequence and the only waitpid reap."
+    },
+    {
+      "file": "Sources/PublishingMCPClient/PublishingMCPFrameRelay.swift",
+      "declaration": "PublishingMCPFrameRelay",
+      "rationale": "The input and output handles, readability handler, pending frame buffer, stop flag, and limit flag are accessed only while holding one NSLock as the callback crosses task boundaries."
     },
     {
       "file": "Tests/PersonalSitePublisherMacTests/WorkbenchLaunchCoordinatorTests.swift",
@@ -414,6 +439,30 @@
   ],
   "optionalOperations": [
     {
+      "file": "Sources/PublishingMCPClient/PublishingMCPClient.swift",
+      "category": "validationFallback",
+      "contains": "guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }",
+      "rationale": "An unreadable pinned launch artifact fails identity capture closed; configuration initialization rejects the missing identity and launches no process."
+    },
+    {
+      "file": "Sources/PublishingMCPClient/PublishingMCPClient.swift",
+      "category": "cancellation",
+      "contains": "if let connectionTask, let pendingSession = try? await connectionTask.value {",
+      "rationale": "Disconnect and deinit cancel the shared connection task; a successful late session is closed, while failure or cancellation already closes its provisional session and leaves no recoverable result."
+    },
+    {
+      "file": "Sources/PublishingMCPClient/PublishingMCPFrameRelay.swift",
+      "category": "ioBestEffort",
+      "contains": "try? input.close()",
+      "rationale": "Relay shutdown marks the lifecycle stopped and discards pending data before best-effort input closure; a close failure cannot recover a frame or replace the primary EOF, limit, transport, or timeout outcome."
+    },
+    {
+      "file": "Sources/PublishingMCPClient/PublishingMCPFrameRelay.swift",
+      "category": "ioBestEffort",
+      "contains": "try? output.close()",
+      "rationale": "Relay shutdown marks the lifecycle stopped and discards pending data before best-effort output closure; a close failure cannot recover a frame or replace the primary EOF, limit, transport, or timeout outcome."
+    },
+    {
       "file": "Sources/PublishingGitCore/GitCommandRunner.swift",
       "category": "validationFallback",
       "contains": "try? SafeFileReader.utf8String(",
@@ -442,12 +491,6 @@
       "category": "validationFallback",
       "contains": "try? validatedProxyConfiguration(trimmed)",
       "rationale": "The legacy permissive session factory treats an invalid optional proxy as absent; credentialed AI requests use the separate strict throwing factory."
-    },
-    {
-      "file": "Sources/PublishingWorkbenchCore/Services/WorkbenchAIAgentLoopService.swift",
-      "category": "validationFallback",
-      "contains": "try? WorkbenchAutomationRegistry.agentInvocation(",
-      "rationale": "Continuation replay reparses the frozen tool call and rejects the entire continuation as invalid when invocation validation fails before execution."
     },
     {
       "file": "Sources/PublishingWorkbenchCore/Stores/WorkbenchAIStore+GeneralChat.swift",

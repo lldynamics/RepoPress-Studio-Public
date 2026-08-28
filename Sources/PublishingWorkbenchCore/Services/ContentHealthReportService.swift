@@ -48,14 +48,16 @@ public struct ContentHealthReportService: Sendable {
     drafts: [ArticleDraft],
     profile: SiteProfile,
     sitePreflightIssues: [PreflightIssue],
-    presentations: [UUID: ContentHealthDraftPresentation]
+    presentations: [UUID: ContentHealthDraftPresentation],
+    linkAuditReport: SiteLinkAuditReport? = nil
   ) -> ContentHealthReport {
     makeReport(
       drafts: drafts,
       profile: profile,
       sitePreflightIssues: sitePreflightIssues,
       presentations: presentations,
-      linkAuditReport: linkAuditService.report(drafts: drafts, profile: profile),
+      linkAuditReport: linkAuditReport
+        ?? linkAuditService.report(drafts: drafts, profile: profile),
       cancellationCheck: {}
     )
   }
@@ -125,6 +127,20 @@ public struct ContentHealthReportService: Sendable {
     try cancellationCheck()
     let publicRiskSummary = ContentHealthProjection.publicRiskSummary(from: draftSummaries)
     let aiFixQueueItems = aiFixQueueService.items(drafts: drafts, profile: profile, summaries: draftSummaries)
+    let slugChangeService = SlugChangeRedirectService()
+    let slugChangeImpacts = Dictionary(
+      uniqueKeysWithValues: drafts.compactMap { draft -> (UUID, SlugChangeImpact)? in
+        guard !draft.pendingSlugRedirectPaths.isEmpty,
+          let impact = slugChangeService.impact(
+            target: draft,
+            drafts: drafts,
+            profile: profile,
+            linkAuditReport: linkAuditReport
+          )
+        else { return nil }
+        return (draft.id, impact)
+      }
+    )
     try cancellationCheck()
 
     return ContentHealthReport(
@@ -132,7 +148,8 @@ public struct ContentHealthReportService: Sendable {
       draftSummaries: draftSummaries,
       publicRiskSummary: publicRiskSummary,
       publicRiskDraftSummaries: ContentHealthProjection.publicRiskDraftSummaries(from: draftSummaries),
-      aiFixQueueItems: aiFixQueueItems
+      aiFixQueueItems: aiFixQueueItems,
+      slugChangeImpacts: slugChangeImpacts
     )
   }
 
@@ -140,19 +157,31 @@ public struct ContentHealthReportService: Sendable {
     drafts: [ArticleDraft],
     profile: SiteProfile,
     sitePreflightIssues: [PreflightIssue],
-    presentations: [UUID: ContentHealthDraftPresentation]
+    presentations: [UUID: ContentHealthDraftPresentation],
+    linkAuditReport: SiteLinkAuditReport? = nil,
+    validatesExternalLinks: Bool = true
   ) async throws -> ContentHealthReport {
-    let linkAuditReport = try await linkAuditService.reportAsync(
-      drafts: drafts,
-      profile: profile
-    )
+    let resolvedLinkAuditReport: SiteLinkAuditReport
+    if let linkAuditReport {
+      resolvedLinkAuditReport = linkAuditReport
+    } else if validatesExternalLinks {
+      resolvedLinkAuditReport = try await linkAuditService.reportAsync(
+        drafts: drafts,
+        profile: profile
+      )
+    } else {
+      let service = linkAuditService
+      resolvedLinkAuditReport = await Task.detached(priority: .utility) {
+        service.report(drafts: drafts, profile: profile)
+      }.value
+    }
     let task = Task.detached(priority: .utility) {
       try makeReport(
         drafts: drafts,
         profile: profile,
         sitePreflightIssues: sitePreflightIssues,
         presentations: presentations,
-        linkAuditReport: linkAuditReport,
+        linkAuditReport: resolvedLinkAuditReport,
         cancellationCheck: { try Task.checkCancellation() }
       )
     }

@@ -15,6 +15,10 @@ struct RSSArticleWebView: NSViewRepresentable {
   let mediaCacheDirectoryURL: URL?
   let fontSize: Double
   let lineSpacing: Double
+  let paragraphSpacing: Double
+  let fontFamily: ReaderFontFamily
+  let textAlignment: ReaderTextAlignment
+  let codeHighlightTheme: ReaderCodeHighlightTheme
   let theme: RSSReadingTheme
   let initialReadingProgress: Double
   let renderRevision: String
@@ -33,6 +37,11 @@ struct RSSArticleWebView: NSViewRepresentable {
     mediaCacheDirectoryURL: URL? = nil,
     fontSize: Double = RSSReadingComfortConfiguration.defaultFontSize,
     lineSpacing: Double = RSSReadingComfortConfiguration.defaultLineSpacing,
+    paragraphSpacing: Double = ReaderTypographyConfiguration.defaultParagraphSpacing,
+    fontFamily: ReaderFontFamily = ReaderTypographyConfiguration.defaultFontFamily,
+    textAlignment: ReaderTextAlignment = ReaderTypographyConfiguration.defaultTextAlignment,
+    codeHighlightTheme: ReaderCodeHighlightTheme = ReaderTypographyConfiguration
+      .defaultCodeHighlightTheme,
     theme: RSSReadingTheme = .system,
     initialReadingProgress: Double = 0,
     renderRevision: String,
@@ -50,6 +59,10 @@ struct RSSArticleWebView: NSViewRepresentable {
     self.mediaCacheDirectoryURL = mediaCacheDirectoryURL
     self.fontSize = fontSize
     self.lineSpacing = lineSpacing
+    self.paragraphSpacing = paragraphSpacing
+    self.fontFamily = fontFamily
+    self.textAlignment = textAlignment
+    self.codeHighlightTheme = codeHighlightTheme
     self.theme = theme
     self.initialReadingProgress = initialReadingProgress
     self.renderRevision = renderRevision
@@ -72,6 +85,10 @@ struct RSSArticleWebView: NSViewRepresentable {
     var pendingReadingProgress = 0.0
     var pendingFontSize = RSSReadingComfortConfiguration.defaultFontSize
     var pendingLineSpacing = RSSReadingComfortConfiguration.defaultLineSpacing
+    var pendingParagraphSpacing = ReaderTypographyConfiguration.defaultParagraphSpacing
+    var pendingFontFamily = ReaderTypographyConfiguration.defaultFontFamily
+    var pendingTextAlignment = ReaderTypographyConfiguration.defaultTextAlignment
+    var pendingCodeHighlightTheme = ReaderTypographyConfiguration.defaultCodeHighlightTheme
     var pendingTheme = RSSReadingTheme.system
     var onSelectionChanged: (String) -> Void
     var onReadingProgress: (Double) -> Void
@@ -107,6 +124,10 @@ struct RSSArticleWebView: NSViewRepresentable {
       mediaCacheDirectoryURL: URL?,
       fontSize: Double,
       lineSpacing: Double,
+      paragraphSpacing: Double,
+      fontFamily: ReaderFontFamily,
+      textAlignment: ReaderTextAlignment,
+      codeHighlightTheme: ReaderCodeHighlightTheme,
       theme: RSSReadingTheme,
       initialReadingProgress: Double,
       token: String,
@@ -128,6 +149,10 @@ struct RSSArticleWebView: NSViewRepresentable {
           mediaCacheDirectoryURL: mediaCacheDirectoryURL,
           fontSize: fontSize,
           lineSpacing: lineSpacing,
+          paragraphSpacing: paragraphSpacing,
+          fontFamily: fontFamily,
+          textAlignment: textAlignment,
+          codeHighlightTheme: codeHighlightTheme,
           theme: theme,
           initialReadingProgress: initialReadingProgress
         )
@@ -247,10 +272,20 @@ struct RSSArticleWebView: NSViewRepresentable {
     }
 
     func applyReadingPreferences(to webView: WKWebView) {
+      let fontSize = ReaderTypographyConfiguration.normalizedFontSize(pendingFontSize)
+      let lineSpacing = ReaderTypographyConfiguration.normalizedLineSpacing(pendingLineSpacing)
+      let paragraphSpacing = ReaderTypographyConfiguration.normalizedParagraphSpacing(
+        pendingParagraphSpacing
+      )
       let script = """
         window.rssApplyReadingPreferences && window.rssApplyReadingPreferences(
-          \(pendingFontSize),
-          \(pendingLineSpacing),
+          \(fontSize),
+          \(lineSpacing),
+          \(paragraphSpacing),
+          \(json(pendingFontFamily.cssFontFamily)),
+          \(json(pendingTextAlignment.cssTextAlign)),
+          \(json(pendingCodeHighlightTheme.rawValue)),
+          \(json(pendingTheme.rawValue)),
           \(json(pendingTheme.cssBackground)),
           \(json(pendingTheme.cssForeground)),
           \(json(pendingTheme.cssSecondaryForeground)),
@@ -483,6 +518,11 @@ struct RSSArticleWebView: NSViewRepresentable {
           window.rssApplyReadingPreferences = (
             fontSize,
             lineSpacing,
+            paragraphSpacing,
+            fontFamily,
+            textAlignment,
+            codeHighlightTheme,
+            readingTheme,
             background,
             foreground,
             secondaryForeground,
@@ -492,14 +532,122 @@ struct RSSArticleWebView: NSViewRepresentable {
             const root = document.documentElement;
             const normalizedFontSize = Math.min(24, Math.max(13, Number(fontSize) || 17));
             const normalizedLineSpacing = Math.min(2.10, Math.max(1.35, Number(lineSpacing) || 1.65));
+            const normalizedParagraphSpacing = Math.min(1.40, Math.max(0.45, Number(paragraphSpacing) || 0.82));
             root.style.setProperty('--rss-font-size', String(normalizedFontSize) + 'px');
             root.style.setProperty('--rss-line-spacing', String(normalizedLineSpacing));
+            root.style.setProperty('--rss-paragraph-spacing', String(normalizedParagraphSpacing) + 'em');
+            root.style.setProperty('--rss-font-family', String(fontFamily || '-apple-system, sans-serif'));
+            root.style.setProperty('--rss-text-align', textAlignment === 'justify' ? 'justify' : 'start');
             root.style.setProperty('--rss-background', String(background || 'transparent'));
             root.style.setProperty('--rss-foreground', String(foreground || '-apple-system-label'));
             root.style.setProperty('--rss-secondary-foreground', String(secondaryForeground || '-apple-system-secondary-label'));
             root.style.setProperty('--rss-link', String(link || '-apple-system-link'));
             root.style.colorScheme = String(colorScheme || 'light dark');
+            root.dataset.codeTheme = String(codeHighlightTheme || 'adaptive');
+            root.dataset.readingTheme = String(readingTheme || 'system');
           };
+        })();
+        """,
+      injectionTime: .atDocumentEnd,
+      forMainFrameOnly: true
+    )
+    let codeHighlightScript = WKUserScript(
+      source: """
+        (() => {
+          const escapeHTML = value => String(value)
+            .replaceAll('&', '&amp;')
+            .replaceAll('<', '&lt;')
+            .replaceAll('>', '&gt;');
+          const commonKeywords = new Set(`as async await break case catch class const continue default defer do else enum export extends false final for from func function guard if import in init interface internal let nil null override private protocol public repeat return self static struct super switch throws true try typealias var where while`.split(' '));
+          const languageKeywords = {
+            python: new Set(`and def del elif except finally global is lambda nonlocal not or pass raise with yield`.split(' ')),
+            ruby: new Set(`alias begin defined elsif end ensure module next redo rescue retry then undef unless until when`.split(' ')),
+            sql: new Set(`alter create delete distinct drop group having insert join limit order select table union update values`.split(' '))
+          };
+          const hashCommentLanguages = new Set(['python', 'py', 'ruby', 'rb', 'shell', 'sh', 'bash', 'yaml', 'yml']);
+          const dashCommentLanguages = new Set(['sql', 'lua', 'haskell', 'hs']);
+          const span = (kind, value) => `<span class="rss-code-${kind}">${escapeHTML(value)}</span>`;
+
+          const highlight = (source, rawLanguage) => {
+            const language = String(rawLanguage || '').toLowerCase();
+            const extraKeywords = languageKeywords[language] || new Set();
+            let output = '';
+            let index = 0;
+            while (index < source.length) {
+              const character = source[index];
+              const next = source[index + 1];
+              if (character === '/' && next === '/') {
+                const end = source.indexOf('\\n', index + 2);
+                const boundary = end < 0 ? source.length : end;
+                output += span('comment', source.slice(index, boundary));
+                index = boundary;
+                continue;
+              }
+              if (character === '/' && next === '*') {
+                const close = source.indexOf('*/', index + 2);
+                const boundary = close < 0 ? source.length : close + 2;
+                output += span('comment', source.slice(index, boundary));
+                index = boundary;
+                continue;
+              }
+              if ((hashCommentLanguages.has(language) && character === '#') ||
+                  (dashCommentLanguages.has(language) && character === '-' && next === '-')) {
+                const end = source.indexOf('\\n', index + 1);
+                const boundary = end < 0 ? source.length : end;
+                output += span('comment', source.slice(index, boundary));
+                index = boundary;
+                continue;
+              }
+              if (character === '"' || character === "'" || character === '`') {
+                const quote = character;
+                let boundary = index + 1;
+                let escaped = false;
+                while (boundary < source.length) {
+                  const current = source[boundary++];
+                  if (escaped) escaped = false;
+                  else if (current === '\\\\') escaped = true;
+                  else if (current === quote) break;
+                }
+                output += span('string', source.slice(index, boundary));
+                index = boundary;
+                continue;
+              }
+              if (/[0-9]/.test(character)) {
+                let boundary = index + 1;
+                while (boundary < source.length && /[0-9.xXabcdefABCDEF_]/.test(source[boundary])) boundary++;
+                output += span('number', source.slice(index, boundary));
+                index = boundary;
+                continue;
+              }
+              if (/[A-Za-z_$]/.test(character)) {
+                let boundary = index + 1;
+                while (boundary < source.length && /[A-Za-z0-9_$]/.test(source[boundary])) boundary++;
+                const value = source.slice(index, boundary);
+                const normalized = value.toLowerCase();
+                if (commonKeywords.has(normalized) || extraKeywords.has(normalized)) {
+                  output += span('keyword', value);
+                } else if (/^[A-Z]/.test(value)) {
+                  output += span('type', value);
+                } else {
+                  output += escapeHTML(value);
+                }
+                index = boundary;
+                continue;
+              }
+              output += escapeHTML(character);
+              index++;
+            }
+            return output;
+          };
+
+          let highlightedUnits = 0;
+          document.querySelectorAll('pre > code').forEach(code => {
+            const source = code.textContent || '';
+            if (!source || source.length > 200000 || highlightedUnits + source.length > 400000) return;
+            highlightedUnits += source.length;
+            code.innerHTML = highlight(source, code.dataset.language);
+            code.dataset.rssHighlighted = 'true';
+          });
         })();
         """,
       injectionTime: .atDocumentEnd,
@@ -531,6 +679,7 @@ struct RSSArticleWebView: NSViewRepresentable {
     configuration.userContentController.addUserScript(selectionScript)
     configuration.userContentController.addUserScript(speechHighlightScript)
     configuration.userContentController.addUserScript(readingPreferencesScript)
+    configuration.userContentController.addUserScript(codeHighlightScript)
     configuration.userContentController.addUserScript(progressScript)
     configuration.userContentController.add(context.coordinator, name: "rssSelection")
     configuration.userContentController.add(context.coordinator, name: "rssProgress")
@@ -558,6 +707,10 @@ struct RSSArticleWebView: NSViewRepresentable {
     context.coordinator.pendingReadingProgress = initialReadingProgress
     context.coordinator.pendingFontSize = fontSize
     context.coordinator.pendingLineSpacing = lineSpacing
+    context.coordinator.pendingParagraphSpacing = paragraphSpacing
+    context.coordinator.pendingFontFamily = fontFamily
+    context.coordinator.pendingTextAlignment = textAlignment
+    context.coordinator.pendingCodeHighlightTheme = codeHighlightTheme
     context.coordinator.pendingTheme = theme
     // Reading progress is applied by the page's scroll handler. Including it
     // in this identity would rebuild/sanitize the entire document for every
@@ -582,6 +735,10 @@ struct RSSArticleWebView: NSViewRepresentable {
       mediaCacheDirectoryURL: mediaCacheDirectoryURL,
       fontSize: fontSize,
       lineSpacing: lineSpacing,
+      paragraphSpacing: paragraphSpacing,
+      fontFamily: fontFamily,
+      textAlignment: textAlignment,
+      codeHighlightTheme: codeHighlightTheme,
       theme: theme,
       initialReadingProgress: initialReadingProgress,
       token: token,

@@ -69,6 +69,13 @@ enum LocalSitePreviewExecutionFingerprint {
     return ManifestSnapshot(entries: entries)
   }
 
+  static func manifestDigest(
+    rootPath: String,
+    siteKind: SiteKind
+  ) throws -> String {
+    try digest(snapshot: captureManifest(rootPath: rootPath, siteKind: siteKind))
+  }
+
   static func makeIdentity(
     profileID: UUID,
     rootPath: String,

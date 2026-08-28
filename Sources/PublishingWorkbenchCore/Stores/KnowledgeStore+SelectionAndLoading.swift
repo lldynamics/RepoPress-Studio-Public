@@ -235,7 +235,7 @@ extension KnowledgeStore {
         self?.lastError = error.localizedDescription
       }
     }
-    guard documentKind == .webpage else {
+    guard documentKind == .webpage || documentKind == .image else {
       isLoadingSelectedDocumentCapturedText = false
       return
     }

@@ -62,9 +62,14 @@ public struct PreflightCheckService: Sendable {
     pattern: #"!\[[^\]]*\]\(([^)]+)\)"#
   )
   private let publicRiskScanner: PublicRiskScanner
+  private let imagePrivacySanitizer: ImagePrivacySanitizingService
 
-  public init(publicRiskScanner: PublicRiskScanner = PublicRiskScanner()) {
+  public init(
+    publicRiskScanner: PublicRiskScanner = PublicRiskScanner(),
+    imagePrivacySanitizer: ImagePrivacySanitizingService = ImagePrivacySanitizingService()
+  ) {
     self.publicRiskScanner = publicRiskScanner
+    self.imagePrivacySanitizer = imagePrivacySanitizer
   }
 
   public func run(
@@ -259,6 +264,41 @@ public struct PreflightCheckService: Sendable {
         )
       )
       issues.append(contentsOf: publicPathIssues(path: attachment.relativePublishPath, filename: attachment.originalFilename))
+
+      if !isVideo, let sourceFilePath = attachment.sourceFilePath?.nilIfEmpty {
+        do {
+          let inspection = try imagePrivacySanitizer.inspect(
+            at: URL(fileURLWithPath: sourceFilePath)
+          )
+          if inspection.requiresSanitization {
+            issues.append(
+              .init(
+                severity: .error,
+                title: CoreL10n.text("图片包含隐私元数据"),
+                message: CoreL10n.format(
+                  "%@ 包含定位、设备、作者或其他可识别元数据；请在图片工作台清理后再发布。",
+                  attachment.originalFilename
+                ),
+                field: "attachments",
+                category: .publicRisk,
+                relatedValue: attachment.repositoryPath
+              ))
+          }
+        } catch {
+          issues.append(
+            .init(
+              severity: .error,
+              title: CoreL10n.text("无法验证图片隐私元数据"),
+              message: CoreL10n.format(
+                "%@ 无法完成隐私元数据检查；请重新导入或在图片工作台处理后再发布。",
+                attachment.originalFilename
+              ),
+              field: "attachments",
+              category: .publicRisk,
+              relatedValue: attachment.repositoryPath
+            ))
+        }
+      }
     }
 
     for missingImagePath in missingMarkdownImagePaths(in: draft) {

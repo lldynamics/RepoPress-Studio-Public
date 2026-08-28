@@ -21,6 +21,18 @@ require_literal() {
   grep -Fq "$literal" "$ROOT_DIR/$relative_path" || fail "$message"
 }
 
+require_literal_count() {
+  local relative_path="$1"
+  local literal="$2"
+  local expected_count="$3"
+  local message="$4"
+  local actual_count=""
+  require_file "$relative_path"
+  actual_count="$(grep -Fc "$literal" "$ROOT_DIR/$relative_path" || true)"
+  [[ "$actual_count" == "$expected_count" ]] \
+    || fail "$message (expected $expected_count, found $actual_count)"
+}
+
 require_absent_literal() {
   local relative_path="$1"
   local literal="$2"
@@ -331,10 +343,21 @@ require_literal \
   ".accessibilityIdentifier(\"ai-assistant-toolbar-button\")" \
   "main toolbar must expose the AI collaboration entry point"
 
+require_literal_count \
+  "Sources/PersonalSitePublisherMac/Views/Workspace/ContentView.swift" \
+  "ToolbarItem(placement: .primaryAction)" \
+  "1" \
+  "workspace actions must share one custom toolbar host"
+
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/Workspace/ContentView.swift" \
+  ".accessibilityIdentifier(\"workspace-primary-toolbar-actions\")" \
+  "the shared toolbar host must preserve an accessible action container"
+
+require_absent_literal \
+  "Sources/PersonalSitePublisherMac/Views/Workspace/ContentView.swift" \
   "ToolbarItemGroup(placement: .primaryAction)" \
-  "AI and workspace Inspector entries must remain separate toolbar controls"
+  "workspace actions must not regain separate native toolbar chrome"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/Editor/MacMarkdownComposerToolbars.swift" \
@@ -596,7 +619,8 @@ require_literal_any_file \
   ".accessibilityLabel(\"远端 diff 预览\")" \
   "remote diff preview must expose an accessibility label" \
   "Sources/PersonalSitePublisherMac/Views/Repository/RepositoryWorkspaceView.swift" \
-  "Sources/PersonalSitePublisherMac/Views/Repository/RepositoryWorkspaceRemoteChangesSection.swift"
+  "Sources/PersonalSitePublisherMac/Views/Repository/RepositoryWorkspaceRemoteChangesSection.swift" \
+  "Sources/PersonalSitePublisherMac/Views/Repository/RepositoryWorkspaceChangeSections.swift"
 
 require_literal_any_file \
   ".accessibilityLabel(\"复制远端 diff\")" \

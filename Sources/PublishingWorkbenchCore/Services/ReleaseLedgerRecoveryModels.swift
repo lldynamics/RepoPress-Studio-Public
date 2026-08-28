@@ -225,6 +225,12 @@ public extension ReleaseLedgerEntry {
         actions.append(CoreL10n.text("如果不再发布，使用恢复包里的撤回命令或关闭 Review 草稿。"))
       }
 
+    case .reviewWithdrawn:
+      actions.append(CoreL10n.text("该 PR/MR 已撤回，尚未合并到目标分支，也没有部署结果。"))
+
+    case .previewOnly:
+      actions.append(CoreL10n.text("该分支仅用于预览；需要正式发布时，请重新核对并选择直接提交或 PR/MR。"))
+
     case .localOnly:
       actions.append(CoreL10n.text("确认本地工作树只包含本次发布文件。"))
       actions.append(CoreL10n.text("继续提交本地变更，或使用恢复命令撤回本次写入。"))

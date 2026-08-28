@@ -248,7 +248,7 @@ def fixture_inventory() -> list[str]:
     )
     rows.extend(
         f"PersonalSitePublisherMacTests.MacLarge/testValue{index}"
-        for index in range(1, 42)
+        for index in range(1, 62)
     )
     rows.extend(
         f"PublishingWorkbenchCoreTests.CoreSuite{index}/testValue"
@@ -273,6 +273,10 @@ def fixture_inventory() -> list[str]:
     rows.append(
         "PublishingWorkbenchCoreTests.SwiftTestingSuite/"
         "valueContract(value: Int, expected: String)"
+    )
+    rows.extend(
+        f"PublishingMarkdownCoreTests.MarkdownLarge/testValue{index}"
+        for index in range(1, 202)
     )
     rows.extend(
         (
@@ -540,13 +544,22 @@ def test_successful_partition_and_exact_argv() -> None:
         mac_batches = [
             shard for shard in shards if shard["slug"].startswith("mac-batch-")
         ]
-        assert len(mac_batches) == 2
-        assert sum(len(shard["tests"]) for shard in mac_batches) == 48
-        assert all(not shard["filter"].endswith("$") for shard in mac_batches)
+        assert len(mac_batches) == 4
+        assert sum(len(shard["tests"]) for shard in mac_batches) == 68
         assert all(
             len({test.split("/", 1)[0] for test in shard["tests"]}) <= 4
             for shard in mac_batches
         )
+        mac_large = [
+            shard
+            for shard in mac_batches
+            if all(".MacLarge/" in test for test in shard["tests"])
+        ]
+        assert [len(shard["tests"]) for shard in mac_large] == [60, 1]
+        assert [shard["slug"] for shard in mac_large] == [
+            "mac-batch-01",
+            "mac-batch-02",
+        ]
         core_cases = [
             shard for shard in shards if shard["slug"].startswith("core-case-")
         ]
@@ -567,8 +580,14 @@ def test_successful_partition_and_exact_argv() -> None:
             if shard["slug"].startswith("core-")
             and not shard["slug"].startswith("core-case-")
         ]
-        assert len(core) == 3
-        assert all(not shard["filter"].endswith("$") for shard in core)
+        assert len(core) == 4
+        core_large = [
+            shard
+            for shard in core
+            if all(".CoreLarge/" in test for test in shard["tests"])
+        ]
+        assert [len(shard["tests"]) for shard in core_large] == [150, 1]
+        assert [shard["slug"] for shard in core_large] == ["core-01", "core-02"]
         leaf_targets = set(FIXTURE_TEST_TARGETS) - {
             "PersonalSitePublisherMacTests",
             "PublishingWorkbenchCoreTests",
@@ -588,15 +607,40 @@ def test_successful_partition_and_exact_argv() -> None:
             if shard["slug"].startswith("leaf-")
             for test in shard["tests"]
         } == leaf_targets
+        markdown_large = [
+            shard
+            for shard in shards
+            if all(".MarkdownLarge/" in test for test in shard["tests"])
+        ]
+        assert [len(shard["tests"]) for shard in markdown_large] == [200, 1]
+        assert [shard["slug"] for shard in markdown_large] == [
+            "leaf-01-publishingmarkdowncoretests-01",
+            "leaf-01-publishingmarkdowncoretests-02",
+        ]
+        oversized_suite_chunks = mac_large + core_large + markdown_large
+        for shard in oversized_suite_chunks:
+            assert shard["filter"].startswith("^(?:")
+            assert shard["filter"].endswith(")$")
+            matcher = re.compile(shard["filter"])
+            assert {
+                test for test in fixture_inventory() if matcher.search(test)
+            } == set(shard["tests"])
         for shard in shards:
+            target = shard["tests"][0].split(".", 1)[0]
+            maximum_tests = (
+                60
+                if target == "PersonalSitePublisherMacTests"
+                else 150
+                if target == "PublishingWorkbenchCoreTests"
+                else 200
+            )
+            assert len(shard["tests"]) <= maximum_tests
             if shard in core:
                 suites = {test.split("/", 1)[0] for test in shard["tests"]}
                 assert len(suites) <= 12
-                assert len(shard["tests"]) <= 150 or len(suites) == 1
             if shard["slug"].startswith("mac-batch-"):
                 suites = {test.split("/", 1)[0] for test in shard["tests"]}
                 assert len(suites) <= 4
-                assert len(shard["tests"]) <= 60 or len(suites) == 1
             assert shard["executedXCTestCount"] == shard["expectedXCTestCount"]
             assert shard["executedSwiftTestingCount"] == shard["expectedSwiftTestingCount"]
             assert "timeoutSeconds: 120.0" in Path(shard["logPath"]).read_text(encoding="utf-8")

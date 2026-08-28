@@ -7,6 +7,7 @@ struct RSSReaderView: View {
   let workbenchStore: WorkbenchStore
   @ObservedObject var presentation: RSSReaderPresentationState
   @Environment(\.openSettings) var openSettings
+  @Environment(\.settingsWorkspaceCommandAction) var settingsWorkspaceCommandAction
   @EnvironmentObject var sceneCommandRouter: WorkspaceSceneCommandRouter
   @State var sceneCommandOwnerID = UUID()
   @State var excerptNoteArticle: RSSArticle?
@@ -30,11 +31,22 @@ struct RSSReaderView: View {
   @State private var readingProgressByArticle = RSSReadingProgressStore.load()
   @State private var readingProgressOrder = RSSReadingProgressStore.loadOrder()
   @State private var readingProgressSaveTask: Task<Void, Never>?
-  @AppStorage("rssReaderFontSize") private var readingFontSize = RSSReadingComfortConfiguration
-    .defaultFontSize
-  @AppStorage("rssReaderLineSpacing") private var readingLineSpacing =
-    RSSReadingComfortConfiguration.defaultLineSpacing
-  @AppStorage("rssReaderTheme") private var readingThemeRawValue = RSSReadingTheme.system.rawValue
+  @AppStorage(ReaderTypographyConfiguration.fontSizeKey)
+  private var readingFontSize = ReaderTypographyConfiguration.defaultFontSize
+  @AppStorage(ReaderTypographyConfiguration.lineSpacingKey)
+  private var readingLineSpacing = ReaderTypographyConfiguration.defaultLineSpacing
+  @AppStorage(ReaderTypographyConfiguration.paragraphSpacingKey)
+  private var readingParagraphSpacing = ReaderTypographyConfiguration.defaultParagraphSpacing
+  @AppStorage(ReaderTypographyConfiguration.themeKey)
+  private var readingThemeRawValue = RSSReadingTheme.system.rawValue
+  @AppStorage(ReaderTypographyConfiguration.fontFamilyKey)
+  private var readingFontFamilyRawValue = ReaderTypographyConfiguration.defaultFontFamily.rawValue
+  @AppStorage(ReaderTypographyConfiguration.textAlignmentKey)
+  private var readingTextAlignmentRawValue = ReaderTypographyConfiguration.defaultTextAlignment
+    .rawValue
+  @AppStorage(ReaderTypographyConfiguration.codeHighlightThemeKey)
+  private var readingCodeHighlightThemeRawValue = ReaderTypographyConfiguration
+    .defaultCodeHighlightTheme.rawValue
   @AppStorage("rssReaderTranslationTargetCode") var translationTargetCode =
     RSSArticleTranslationTarget.simplifiedChinese.languageCode
   @AppStorage("rssReaderTranslationCustomLanguage") var translationCustomLanguage = ""
@@ -53,7 +65,6 @@ struct RSSReaderView: View {
   @AppStorage(RSSReaderUserPreferences.automaticFullTextExtractionEnabledKey)
   var automaticFullTextExtractionEnabled =
     RSSReaderUserPreferences.defaultAutomaticFullTextExtractionEnabled
-  @AppStorage("settingsRequestedTabID") var requestedSettingsTabID = ""
 
   var translationBackend: RSSArticleTranslationBackend {
     guard let backend = RSSArticleTranslationBackend(rawValue: translationBackendRawValue) else {
@@ -280,6 +291,36 @@ struct RSSReaderView: View {
     )
   }
 
+  private var selectedReadingFontFamilyBinding: Binding<ReaderFontFamily> {
+    Binding(
+      get: {
+        ReaderFontFamily(rawValue: readingFontFamilyRawValue)
+          ?? ReaderTypographyConfiguration.defaultFontFamily
+      },
+      set: { readingFontFamilyRawValue = $0.rawValue }
+    )
+  }
+
+  private var selectedReadingTextAlignmentBinding: Binding<ReaderTextAlignment> {
+    Binding(
+      get: {
+        ReaderTextAlignment(rawValue: readingTextAlignmentRawValue)
+          ?? ReaderTypographyConfiguration.defaultTextAlignment
+      },
+      set: { readingTextAlignmentRawValue = $0.rawValue }
+    )
+  }
+
+  private var selectedReadingCodeHighlightThemeBinding: Binding<ReaderCodeHighlightTheme> {
+    Binding(
+      get: {
+        ReaderCodeHighlightTheme(rawValue: readingCodeHighlightThemeRawValue)
+          ?? ReaderTypographyConfiguration.defaultCodeHighlightTheme
+      },
+      set: { readingCodeHighlightThemeRawValue = $0.rawValue }
+    )
+  }
+
   private var selectedReadingProgress: Double {
     guard let articleID = presentation.selectedArticleID else { return 0 }
     return readingProgressByArticle[articleID] ?? 0
@@ -476,6 +517,10 @@ struct RSSReaderView: View {
       selectedText: $selectedReaderText,
       readingFontSize: $readingFontSize,
       readingLineSpacing: $readingLineSpacing,
+      readingParagraphSpacing: $readingParagraphSpacing,
+      readingFontFamily: selectedReadingFontFamilyBinding,
+      readingTextAlignment: selectedReadingTextAlignmentBinding,
+      readingCodeHighlightTheme: selectedReadingCodeHighlightThemeBinding,
       readingTheme: selectedReadingThemeBinding,
       readingProgress: selectedReadingProgress,
       onReadingProgress: { progress in

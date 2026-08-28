@@ -228,17 +228,29 @@ extension PublishingStore {
   }
 
   @discardableResult
-  public func commitAndPushStarterSite(store: WorkbenchStore) async -> SiteStarterPushResult? {
+  public func prepareStarterSitePushConfirmation(
+    store: WorkbenchStore
+  ) async -> SiteStarterPushConfirmation? {
     guard let starterResult = siteStarterResult else {
       setPublishActionMessage(
         CoreL10n.text(
-          "没有可提交的 Starter 生成结果，请先创建站点。"
+          "没有可复核的 Starter 生成结果，请先创建站点。"
         ),
         status: .warning
       )
       return nil
     }
-    let profile = starterResult.profile
+    let profile = store.activeProfile
+    guard profile.id == starterResult.profile.id,
+      LocalRepositoryIdentity(profile: profile)
+        == LocalRepositoryIdentity(profile: starterResult.profile)
+    else {
+      setPublishActionMessage(
+        CoreL10n.text("当前站点或仓库目录已变化，请重新生成或导入站点后再复核。"),
+        status: .warning
+      )
+      return nil
+    }
     guard let operation = beginLocalRepositoryMutation(profile: profile) else {
       setPublishActionMessage(
         CoreL10n.text("已有本地仓库写入或提交任务正在运行，请等待完成。"),
@@ -248,11 +260,11 @@ extension PublishingStore {
     }
     defer { finishLocalRepositoryMutation(operation) }
     setPublishActionMessage(
-      CoreL10n.text("正在提交并推送 Starter…"),
+      CoreL10n.text("正在冻结首次推送复核内容…"),
       status: .inProgress
     )
     do {
-      let result = try await siteStarterService.commitAndPushStarterSiteAsync(
+      let confirmation = try await siteStarterService.prepareStarterPushConfirmationAsync(
         profile: profile,
         createdFilePaths: starterResult.createdFilePaths
       )
@@ -260,12 +272,72 @@ extension PublishingStore {
       else {
         return nil
       }
-      siteStarterPushResult = result
+      setPublishActionMessage(
+        CoreL10n.text("请复核冻结的远端、分支、提交说明和文件清单后再确认推送。"),
+        status: .warning
+      )
+      return confirmation
+    } catch {
+      guard localRepositoryMutationContext == operation, operation.stillMatches(store.activeProfile)
+      else {
+        return nil
+      }
       setPublishActionMessage(
         CoreL10n.format(
-          "Starter 已提交并推送：%@。",
-          String(result.commitSHA.prefix(8))
+          "Starter 首次推送复核失败：%@",
+          error.localizedDescription
         ),
+        status: .failure
+      )
+      return nil
+    }
+  }
+
+  @discardableResult
+  public func commitAndPushStarterSite(
+    confirmation: SiteStarterPushConfirmation,
+    store: WorkbenchStore
+  ) async -> SiteStarterPushResult? {
+    guard let starterResult = siteStarterResult else {
+      setPublishActionMessage(
+        CoreL10n.text("没有可提交的 Starter 生成结果，请先创建站点。"),
+        status: .warning
+      )
+      return nil
+    }
+    let profile = store.activeProfile
+    guard profile.id == starterResult.profile.id,
+      LocalRepositoryIdentity(profile: profile)
+        == LocalRepositoryIdentity(profile: starterResult.profile)
+    else {
+      setPublishActionMessage(
+        CoreL10n.text("当前站点或仓库目录已变化，未提交或推送；请重新生成或导入站点。"),
+        status: .warning
+      )
+      return nil
+    }
+    guard let operation = beginLocalRepositoryMutation(profile: profile) else {
+      setPublishActionMessage(
+        CoreL10n.text("已有本地仓库写入或提交任务正在运行，请等待完成。"),
+        status: .warning
+      )
+      return nil
+    }
+    defer { finishLocalRepositoryMutation(operation) }
+    setPublishActionMessage(CoreL10n.text("正在重新校验并推送 Starter…"), status: .inProgress)
+    do {
+      let result = try await siteStarterService.commitAndPushStarterSiteAsync(
+        profile: profile,
+        createdFilePaths: starterResult.createdFilePaths,
+        confirmation: confirmation
+      )
+      guard localRepositoryMutationContext == operation, operation.stillMatches(store.activeProfile)
+      else {
+        return nil
+      }
+      siteStarterPushResult = result
+      setPublishActionMessage(
+        CoreL10n.format("Starter 已提交并推送：%@。", String(result.commitSHA.prefix(8))),
         status: .success
       )
       store.save()
@@ -276,10 +348,7 @@ extension PublishingStore {
         return nil
       }
       setPublishActionMessage(
-        CoreL10n.format(
-          "Starter 提交推送失败：%@",
-          error.localizedDescription
-        ),
+        CoreL10n.format("Starter 提交推送失败：%@", error.localizedDescription),
         status: .failure
       )
       return nil

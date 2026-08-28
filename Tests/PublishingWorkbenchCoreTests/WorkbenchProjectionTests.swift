@@ -110,7 +110,7 @@ final class WorkbenchProjectionTests: XCTestCase {
     XCTAssertEqual(statistics.passingDraftCount, 0)
   }
 
-  func testPublishingReadinessProjectionKeepsRepositoryBoundaryOutsideProjection() {
+  func testPublishingReadinessProjectionBlocksWriteAndCommitAtRepositoryBoundary() {
     let package = PublishPackage(
       draftID: UUID(),
       title: "文章",
@@ -137,8 +137,9 @@ final class WorkbenchProjectionTests: XCTestCase {
       repositoryBlockingIssues: [notScanned]
     )
 
-    XCTAssertEqual(readiness.writeReadiness, .unchanged)
+    XCTAssertEqual(readiness.writeReadiness, .blocked)
     XCTAssertEqual(readiness.commitReadiness, .blocked)
+    XCTAssertEqual(readiness.writeBlockingIssues, [notScanned])
     XCTAssertEqual(readiness.commitBlockingIssues, [notScanned])
     XCTAssertEqual(readiness.changedFileCount, 0)
   }

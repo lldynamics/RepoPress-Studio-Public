@@ -90,6 +90,10 @@ final class RSSArticleSwitchPerformanceRegressionTests: XCTestCase {
         mediaCacheDirectoryURL: nil,
         fontSize: fontSize,
         lineSpacing: 1.65,
+        paragraphSpacing: ReaderTypographyConfiguration.defaultParagraphSpacing,
+        fontFamily: .system,
+        textAlignment: .natural,
+        codeHighlightTheme: .adaptive,
         theme: theme,
         initialReadingProgress: 0.25
       )
@@ -97,7 +101,7 @@ final class RSSArticleSwitchPerformanceRegressionTests: XCTestCase {
 
     let key = makeKey(article, false, 17, .system)
     XCTAssertEqual(key, makeKey(article, false, 17, .system))
-    XCTAssertTrue(key.hasPrefix("\(article.id)|v1|"))
+    XCTAssertTrue(key.hasPrefix("\(article.id)|v2|"))
     XCTAssertEqual(key.split(separator: "|").last?.count, 64)
     let keyCache = RSSArticleHTMLRenderer.RSSArticleRenderCache(costLimit: 64)
     keyCache.setHTML("cached", forKey: key)
@@ -122,5 +126,34 @@ final class RSSArticleSwitchPerformanceRegressionTests: XCTestCase {
     XCTAssertNotEqual(key, makeKey(article, true, 17, .system))
     XCTAssertNotEqual(key, makeKey(article, false, 18, .system))
     XCTAssertNotEqual(key, makeKey(article, false, 17, .dark))
+
+    let typographyKey:
+      (
+        Double,
+        ReaderFontFamily,
+        ReaderTextAlignment,
+        ReaderCodeHighlightTheme
+      ) -> String = { paragraphSpacing, fontFamily, textAlignment, codeTheme in
+        RSSArticleHTMLRenderer.renderCacheKey(
+          article: article,
+          feedTitle: "订阅源",
+          readingMinutes: 3,
+          allowRemoteImages: false,
+          mediaAssets: [],
+          mediaCacheDirectoryURL: nil,
+          fontSize: 17,
+          lineSpacing: 1.65,
+          paragraphSpacing: paragraphSpacing,
+          fontFamily: fontFamily,
+          textAlignment: textAlignment,
+          codeHighlightTheme: codeTheme,
+          theme: .system,
+          initialReadingProgress: 0.25
+        )
+      }
+    XCTAssertNotEqual(key, typographyKey(1.1, .system, .natural, .adaptive))
+    XCTAssertNotEqual(key, typographyKey(0.82, .newYork, .natural, .adaptive))
+    XCTAssertNotEqual(key, typographyKey(0.82, .system, .justified, .adaptive))
+    XCTAssertNotEqual(key, typographyKey(0.82, .system, .natural, .solarized))
   }
 }

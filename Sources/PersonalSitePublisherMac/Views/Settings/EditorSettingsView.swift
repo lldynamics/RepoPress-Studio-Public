@@ -7,6 +7,7 @@ import SwiftUI
 /// persisted values; it does not introduce a second editor configuration
 /// source.
 struct EditorSettingsView: View {
+  @Environment(\.settingsSubsection) private var settingsSubsection
   @AppStorage(MarkdownEditorComfortPreferences.fontSizeKey)
   private var fontSize = MarkdownEditorComfortConfiguration.defaultFontSize
   @AppStorage(MarkdownEditorComfortPreferences.lineSpacingKey)
@@ -16,104 +17,141 @@ struct EditorSettingsView: View {
   @AppStorage(MarkdownEditorComfortPreferences.spellCheckEnabledKey)
   private var isSpellCheckEnabled = MarkdownEditorComfortConfiguration.defaultSpellCheckEnabled
   @AppStorage(MarkdownEditorComfortPreferences.typewriterModeEnabledKey)
-  private var isTypewriterModeEnabled = MarkdownEditorComfortConfiguration.defaultTypewriterModeEnabled
+  private var isTypewriterModeEnabled = MarkdownEditorComfortConfiguration
+    .defaultTypewriterModeEnabled
   @AppStorage(MarkdownEditorComfortPreferences.currentParagraphHighlightEnabledKey)
-  private var isCurrentParagraphHighlightEnabled = MarkdownEditorComfortConfiguration.defaultCurrentParagraphHighlightEnabled
+  private var isCurrentParagraphHighlightEnabled = MarkdownEditorComfortConfiguration
+    .defaultCurrentParagraphHighlightEnabled
   @AppStorage(MarkdownEditorComfortPreferences.warmPaperBackgroundEnabledKey)
-  private var isWarmPaperBackgroundEnabled = MarkdownEditorComfortConfiguration.defaultWarmPaperBackgroundEnabled
+  private var isWarmPaperBackgroundEnabled = MarkdownEditorComfortConfiguration
+    .defaultWarmPaperBackgroundEnabled
   @AppStorage(MarkdownEditorComfortPreferences.automaticPairingEnabledKey)
-  private var isAutomaticPairingEnabled = MarkdownEditorComfortConfiguration.defaultAutomaticPairingEnabled
+  private var isAutomaticPairingEnabled = MarkdownEditorComfortConfiguration
+    .defaultAutomaticPairingEnabled
   @AppStorage(MarkdownEditorComfortPreferences.paragraphSpotlightEnabledKey)
-  private var isParagraphSpotlightEnabled = MarkdownEditorComfortConfiguration.defaultParagraphSpotlightEnabled
+  private var isParagraphSpotlightEnabled = MarkdownEditorComfortConfiguration
+    .defaultParagraphSpotlightEnabled
   @AppStorage(MarkdownEditorComfortPreferences.realtimeAnalysisEnabledKey)
   private var isRealtimeAnalysisEnabled = MarkdownEditorComfortConfiguration
     .defaultRealtimeAnalysisEnabled
 
   var body: some View {
     Form {
-      Section {
-        editorLivePreviewCard
-      } header: {
-        Text("排版效果实时预览")
-      } footer: {
-        Text("拖动下方滑块或切换开关，此处会即时呈现文章在编辑器内的排版与视觉氛围。")
+      switch displayedSubsection {
+      case .editorPreview:
+        previewSection
+      case .editorTypography:
+        typographySection
+      case .editorAssistance:
+        assistanceSection
+      case .editorAutomation:
+        automationSection
+      default:
+        EmptyView()
       }
+    }
+    .formStyle(.grouped)
+    .scrollIndicators(.automatic)
+    .padding(WorkbenchSpacing.content)
+    .accessibilityElement(children: .contain)
+    .accessibilityIdentifier("editor-settings")
+  }
 
-      Section {
-        preferenceSlider(
-          title: "字号",
-          value: $fontSize,
-          range: MarkdownEditorComfortConfiguration.fontSizeRange,
-          step: 1,
-          defaultValue: MarkdownEditorComfortConfiguration.defaultFontSize,
-          formattedValue: "\(Int(fontSize)) pt",
-          accessibilityIdentifier: "editor-font-size"
-        )
+  private var displayedSubsection: SettingsSubsection {
+    settingsSubsection.tab == .editor ? settingsSubsection : .editorPreview
+  }
 
-        preferenceSlider(
-          title: "行距",
-          value: $lineSpacing,
-          range: MarkdownEditorComfortConfiguration.lineSpacingRange,
-          step: 1,
-          defaultValue: MarkdownEditorComfortConfiguration.defaultLineSpacing,
-          formattedValue: "\(Int(lineSpacing)) pt",
-          accessibilityIdentifier: "editor-line-spacing"
-        )
+  private var previewSection: some View {
+    Section {
+      editorLivePreviewCard
+    } header: {
+      Text("排版效果实时预览")
+    } footer: {
+      Text("拖动下方滑块或切换开关，此处会即时呈现文章在编辑器内的排版与视觉氛围。")
+    }
+  }
 
-        preferenceSlider(
-          title: "正文宽度",
-          value: $bodyWidth,
-          range: MarkdownEditorComfortConfiguration.bodyWidthRange,
-          step: 20,
-          defaultValue: MarkdownEditorComfortConfiguration.defaultBodyWidth,
-          formattedValue: "\(Int(bodyWidth)) pt",
-          accessibilityIdentifier: "editor-body-width"
-        )
-      } header: {
-        Text("文字与版式")
-      } footer: {
-        Text("这些值会应用到所有文章的编辑器。")
-      }
+  private var typographySection: some View {
+    Section {
+      preferenceSlider(
+        title: "字号",
+        value: $fontSize,
+        range: MarkdownEditorComfortConfiguration.fontSizeRange,
+        step: 1,
+        defaultValue: MarkdownEditorComfortConfiguration.defaultFontSize,
+        formattedValue: "\(Int(fontSize)) pt",
+        accessibilityIdentifier: "editor-font-size"
+      )
 
-      Section("编辑辅助") {
-        preferenceToggle(
-          title: "拼写检查",
-          detail: String(localized: "在编辑器中使用 macOS 的连续拼写检查。"),
-          isOn: $isSpellCheckEnabled,
-          accessibilityIdentifier: "editor-spell-check"
-        )
-        preferenceToggle(
-          title: "打字机模式（光标保持居中）",
-          detail: String(localized: "输入时让当前行保持在编辑区域中央。"),
-          isOn: $isTypewriterModeEnabled,
-          accessibilityIdentifier: "editor-typewriter-mode"
-        )
-        preferenceToggle(
-          title: "高亮当前段落",
-          detail: String(localized: "让当前编辑段落更容易被定位。"),
-          isOn: $isCurrentParagraphHighlightEnabled,
-          accessibilityIdentifier: "editor-current-paragraph-highlight"
-        )
-        preferenceToggle(
-          title: "柔和纸张背景",
-          detail: String(localized: "为编辑器使用自适应的暖白或暖黑背景。"),
-          isOn: $isWarmPaperBackgroundEnabled,
-          accessibilityIdentifier: "editor-warm-paper-background"
-        )
-        preferenceToggle(
-          title: "自动补全括号、引号与代码标记",
-          detail: String(localized: "输入左侧符号时自动补全右侧符号；可随时撤销。"),
-          isOn: $isAutomaticPairingEnabled,
-          accessibilityIdentifier: "editor-automatic-pairing"
-        )
-        preferenceToggle(
-          title: "段落焦点聚光灯（非焦点段落柔和淡出）",
-          detail: String(localized: "降低非当前段落的视觉干扰。"),
-          isOn: $isParagraphSpotlightEnabled,
-          accessibilityIdentifier: "editor-paragraph-spotlight"
-        )
-      }
+      preferenceSlider(
+        title: "行距",
+        value: $lineSpacing,
+        range: MarkdownEditorComfortConfiguration.lineSpacingRange,
+        step: 1,
+        defaultValue: MarkdownEditorComfortConfiguration.defaultLineSpacing,
+        formattedValue: "\(Int(lineSpacing)) pt",
+        accessibilityIdentifier: "editor-line-spacing"
+      )
 
+      preferenceSlider(
+        title: "正文宽度",
+        value: $bodyWidth,
+        range: MarkdownEditorComfortConfiguration.bodyWidthRange,
+        step: 20,
+        defaultValue: MarkdownEditorComfortConfiguration.defaultBodyWidth,
+        formattedValue: "\(Int(bodyWidth)) pt",
+        accessibilityIdentifier: "editor-body-width"
+      )
+    } header: {
+      Text("文字与版式")
+    } footer: {
+      Text("这些值会应用到所有文章的编辑器。")
+    }
+  }
+
+  private var assistanceSection: some View {
+    Section("编辑辅助") {
+      preferenceToggle(
+        title: "拼写检查",
+        detail: String(localized: "在编辑器中使用 macOS 的连续拼写检查。"),
+        isOn: $isSpellCheckEnabled,
+        accessibilityIdentifier: "editor-spell-check"
+      )
+      preferenceToggle(
+        title: "打字机模式（光标保持居中）",
+        detail: String(localized: "输入时让当前行保持在编辑区域中央。"),
+        isOn: $isTypewriterModeEnabled,
+        accessibilityIdentifier: "editor-typewriter-mode"
+      )
+      preferenceToggle(
+        title: "高亮当前段落",
+        detail: String(localized: "让当前编辑段落更容易被定位。"),
+        isOn: $isCurrentParagraphHighlightEnabled,
+        accessibilityIdentifier: "editor-current-paragraph-highlight"
+      )
+      preferenceToggle(
+        title: "柔和纸张背景",
+        detail: String(localized: "为编辑器使用自适应的暖白或暖黑背景。"),
+        isOn: $isWarmPaperBackgroundEnabled,
+        accessibilityIdentifier: "editor-warm-paper-background"
+      )
+      preferenceToggle(
+        title: "自动补全括号、引号与代码标记",
+        detail: String(localized: "输入左侧符号时自动补全右侧符号；可随时撤销。"),
+        isOn: $isAutomaticPairingEnabled,
+        accessibilityIdentifier: "editor-automatic-pairing"
+      )
+      preferenceToggle(
+        title: "段落焦点聚光灯（非焦点段落柔和淡出）",
+        detail: String(localized: "降低非当前段落的视觉干扰。"),
+        isOn: $isParagraphSpotlightEnabled,
+        accessibilityIdentifier: "editor-paragraph-spotlight"
+      )
+    }
+  }
+
+  private var automationSection: some View {
+    Group {
       Section {
         preferenceToggle(
           title: LocalizedStringKey("实时分析正文诊断与大纲"),
@@ -136,11 +174,6 @@ struct EditorSettingsView: View {
         Text("设置会自动保存，并在下次打开文章时继续使用。")
       }
     }
-    .formStyle(.grouped)
-    .scrollIndicators(.automatic)
-    .padding(WorkbenchSpacing.content)
-    .accessibilityElement(children: .contain)
-    .accessibilityIdentifier("editor-settings")
   }
 
   private func preferenceSlider(
@@ -320,11 +353,15 @@ struct EditorSettingsView: View {
     bodyWidth = MarkdownEditorComfortConfiguration.defaultBodyWidth
     isSpellCheckEnabled = MarkdownEditorComfortConfiguration.defaultSpellCheckEnabled
     isTypewriterModeEnabled = MarkdownEditorComfortConfiguration.defaultTypewriterModeEnabled
-    isCurrentParagraphHighlightEnabled = MarkdownEditorComfortConfiguration.defaultCurrentParagraphHighlightEnabled
-    isWarmPaperBackgroundEnabled = MarkdownEditorComfortConfiguration.defaultWarmPaperBackgroundEnabled
+    isCurrentParagraphHighlightEnabled =
+      MarkdownEditorComfortConfiguration.defaultCurrentParagraphHighlightEnabled
+    isWarmPaperBackgroundEnabled =
+      MarkdownEditorComfortConfiguration.defaultWarmPaperBackgroundEnabled
     isAutomaticPairingEnabled = MarkdownEditorComfortConfiguration.defaultAutomaticPairingEnabled
-    isParagraphSpotlightEnabled = MarkdownEditorComfortConfiguration.defaultParagraphSpotlightEnabled
-    isRealtimeAnalysisEnabled = MarkdownEditorComfortConfiguration
+    isParagraphSpotlightEnabled =
+      MarkdownEditorComfortConfiguration.defaultParagraphSpotlightEnabled
+    isRealtimeAnalysisEnabled =
+      MarkdownEditorComfortConfiguration
       .defaultRealtimeAnalysisEnabled
   }
 }

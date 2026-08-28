@@ -131,6 +131,7 @@ struct ContentHealthSnapshot: Sendable {
   var aiFixQueueItems: [AIPublishingFixQueueItem]
   var sitePreflightIssues: [PreflightIssue]
   var contentHealthSummaries: [DraftPreflightSummary]
+  var slugChangeImpacts: [UUID: SlugChangeImpact]
   var errorCount: Int
   var warningCount: Int
   var passingDraftCount: Int
@@ -180,6 +181,7 @@ struct ContentHealthPresentationService: Sendable {
         aiFixQueueItems: report.aiFixQueueItems,
         sitePreflightIssues: report.sitePreflightIssues,
         contentHealthSummaries: report.draftSummaries,
+        slugChangeImpacts: report.slugChangeImpacts,
         errorCount: errorCount,
         warningCount: warningCount,
         passingDraftCount: passingDraftCount
@@ -209,6 +211,178 @@ struct ContentHealthPresentationService: Sendable {
       try await task.value
     } onCancel: {
       task.cancel()
+    }
+  }
+}
+
+/// Groups affected articles by the first actionable cause rather than by the
+/// article that happened to surface it.  An article appears once, under its
+/// most severe/stable cause, so the queue remains actionable and selection
+/// does not jump between duplicate rows.
+enum ContentHealthRootCausePresentation {
+  private struct Cause: Hashable {
+    let key: String
+    let title: String
+    let detail: String
+    let systemImage: String
+    let severity: PreflightSeverity
+  }
+
+  static func groups(
+    rows: [ContentHealthArticleRowModel]
+  ) -> [ContentHealthArticleGroup] {
+    let grouped = Dictionary(grouping: rows) { primaryCause(for: $0) }
+    return
+      grouped
+      .map { cause, members in
+        ContentHealthArticleGroup(
+          id: "root-cause:\(cause.key)",
+          title: cause.title,
+          systemImage: cause.systemImage,
+          rows: members.sorted(by: isHigherPriority),
+          detail: cause.detail
+        )
+      }
+      .sorted { lhs, rhs in
+        let lhsSeverity = severityRank(for: lhs.rows)
+        let rhsSeverity = severityRank(for: rhs.rows)
+        if lhsSeverity != rhsSeverity { return lhsSeverity < rhsSeverity }
+        if lhs.rows.count != rhs.rows.count { return lhs.rows.count > rhs.rows.count }
+        let titleOrder = lhs.title.localizedStandardCompare(rhs.title)
+        if titleOrder != .orderedSame { return titleOrder == .orderedAscending }
+        return lhs.id < rhs.id
+      }
+  }
+
+  private static func primaryCause(for row: ContentHealthArticleRowModel) -> Cause {
+    let issue = row.issues.sorted(by: isHigherPriority).first
+    guard let issue else {
+      return Cause(
+        key: "unknown",
+        title: String(localized: "待确认的问题"),
+        detail: String(localized: "缺少可归类的检查原因。"),
+        systemImage: "questionmark.circle",
+        severity: .info
+      )
+    }
+
+    if let category = issue.category {
+      switch category {
+      case .publicRisk:
+        return Cause(
+          key: "category.public-risk",
+          title: String(localized: "公开内容风险"),
+          detail: String(localized: "发布前确认敏感信息、内网地址或本机路径不会公开。"),
+          systemImage: "exclamationmark.shield",
+          severity: issue.severity
+        )
+      case .missingMediaAlt:
+        return Cause(
+          key: "category.missing-media-alt",
+          title: String(localized: "图片替代文本缺失"),
+          detail: String(localized: "为图片补充替代文本，改善无障碍与内容完整性。"),
+          systemImage: "text.below.photo",
+          severity: issue.severity
+        )
+      case .missingMediaPublishPath, .unsafeMediaRepositoryPath, .unregisteredBodyImage:
+        return Cause(
+          key: "category.media-path",
+          title: String(localized: "图片发布路径问题"),
+          detail: String(localized: "检查图片引用、资源路径与发布包收录情况。"),
+          systemImage: "photo.badge.exclamationmark",
+          severity: issue.severity
+        )
+      case .brokenInternalLink, .unreachableExternalLink:
+        return Cause(
+          key: "category.link",
+          title: String(localized: "链接需要修复"),
+          detail: String(localized: "检查站内链接目标或外部链接可达性。"),
+          systemImage: "link.badge.plus",
+          severity: issue.severity
+        )
+      case .slugRedirectCandidate:
+        return Cause(
+          key: "category.slug-redirect",
+          title: String(localized: "地址变更需要承接"),
+          detail: String(localized: "确认旧地址引用、aliases 或重定向策略。"),
+          systemImage: "arrow.triangle.branch",
+          severity: issue.severity
+        )
+      }
+    }
+
+    if let field = issue.structuredField {
+      return Cause(
+        key: "field.\(field.rawValue)",
+        title: fieldTitle(field),
+        detail: String(localized: "同一字段的问题已合并，可逐篇处理。"),
+        systemImage: fieldSystemImage(field),
+        severity: issue.severity
+      )
+    }
+
+    let normalizedTitle = issue.title
+      .trimmingCharacters(in: .whitespacesAndNewlines)
+      .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+    return Cause(
+      key: "title.\(normalizedTitle)",
+      title: issue.title,
+      detail: String(localized: "相同检查原因已合并，可逐篇处理。"),
+      systemImage: issue.severity == .error ? "xmark.octagon" : "exclamationmark.triangle",
+      severity: issue.severity
+    )
+  }
+
+  private static func isHigherPriority(
+    _ lhs: ContentHealthArticleRowModel,
+    _ rhs: ContentHealthArticleRowModel
+  ) -> Bool {
+    if lhs.errorCount != rhs.errorCount { return lhs.errorCount > rhs.errorCount }
+    if lhs.warningCount != rhs.warningCount { return lhs.warningCount > rhs.warningCount }
+    let titleOrder = lhs.draftTitle.localizedStandardCompare(rhs.draftTitle)
+    if titleOrder != .orderedSame { return titleOrder == .orderedAscending }
+    return lhs.draftID.uuidString < rhs.draftID.uuidString
+  }
+
+  private static func isHigherPriority(_ lhs: PreflightIssue, _ rhs: PreflightIssue) -> Bool {
+    if lhs.severity.sortRank != rhs.severity.sortRank {
+      return lhs.severity.sortRank < rhs.severity.sortRank
+    }
+    let titleOrder = lhs.title.localizedStandardCompare(rhs.title)
+    if titleOrder != .orderedSame { return titleOrder == .orderedAscending }
+    return lhs.id.uuidString < rhs.id.uuidString
+  }
+
+  private static func severityRank(for rows: [ContentHealthArticleRowModel]) -> Int {
+    rows.contains(where: { $0.errorCount > 0 }) ? 0 : 1
+  }
+
+  private static func fieldTitle(_ field: PreflightIssueField) -> String {
+    switch field {
+    case .slug, .repositoryPath, .markdownPathPattern:
+      return String(localized: "文章与发布路径")
+    case .summary, .tags, .title, .date, .draft:
+      return String(localized: "文章元数据不完整")
+    case .cover, .coverAlt, .attachments:
+      return String(localized: "图片与附件信息")
+    case .body:
+      return String(localized: "正文内容需要检查")
+    case .repository, .repositoryToken, .contentRoot, .assetRoot, .siteKind, .scope:
+      return String(localized: "站点发布配置")
+    case .jsonLD:
+      return String(localized: "结构化数据需要检查")
+    }
+  }
+
+  private static func fieldSystemImage(_ field: PreflightIssueField) -> String {
+    switch field {
+    case .slug, .repositoryPath, .markdownPathPattern: "arrow.triangle.branch"
+    case .cover, .coverAlt, .attachments: "photo.badge.exclamationmark"
+    case .repository, .repositoryToken, .contentRoot, .assetRoot, .siteKind, .scope:
+      "externaldrive.badge.exclamationmark"
+    case .body: "text.badge.xmark"
+    case .jsonLD: "curlybraces.square"
+    case .summary, .tags, .title, .date, .draft: "doc.badge.ellipsis"
     }
   }
 }

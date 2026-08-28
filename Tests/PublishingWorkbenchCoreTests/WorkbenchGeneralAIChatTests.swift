@@ -683,7 +683,10 @@ final class WorkbenchGeneralAIChatTests: XCTestCase {
     )
 
     XCTAssertEqual(reply?.content, "已在本地新建空白文章。")
-    XCTAssertEqual(reply?.toolRuns.map(\.command), [.createDraft])
+    XCTAssertEqual(
+      reply?.toolRuns.map(\.toolID),
+      [WorkbenchAutomationAgentToolRegistry.toolID(for: .createDraft)]
+    )
     XCTAssertEqual(reply?.toolRuns.map(\.status), [.succeeded])
     XCTAssertEqual(store.drafts.count, originalDraftCount + 1)
     let createdDraft = try XCTUnwrap(store.selectedDraft)
@@ -994,7 +997,10 @@ final class WorkbenchGeneralAIChatTests: XCTestCase {
     )
 
     XCTAssertEqual(reply?.content, "已根据允许使用的资料回答。")
-    XCTAssertEqual(reply?.toolRuns.map(\.command), [.knowledgeSearch])
+    XCTAssertEqual(
+      reply?.toolRuns.map(\.toolID),
+      [WorkbenchAutomationAgentToolRegistry.toolID(for: .knowledgeSearch)]
+    )
     XCTAssertEqual(reply?.toolRuns.map(\.status), [.succeeded])
     XCTAssertTrue(store.automationRunRecords.isEmpty)
     let bodies = await transport.capturedBodies()

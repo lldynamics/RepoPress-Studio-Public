@@ -123,7 +123,8 @@ struct ImageWorkbenchView: View {
   @ViewBuilder
   private var siteSummaryState: some View {
     if let errorMessage = imageWorkbench.siteSummaryErrorMessage,
-       !imageWorkbench.isSiteSummaryLoading {
+      !imageWorkbench.isSiteSummaryLoading
+    {
       failureCard(errorMessage)
     } else {
       loadingCard
@@ -145,13 +146,13 @@ struct ImageWorkbenchView: View {
   }
 
   private var headerIntroduction: some View {
-      VStack(alignment: .leading, spacing: 5) {
-        Text("图片工作台")
-          .font(.workbenchPageTitle)
-        Text(stageDescription)
-          .font(.workbenchPageSubtitle)
-          .foregroundStyle(.secondary)
-      }
+    VStack(alignment: .leading, spacing: 5) {
+      Text("图片工作台")
+        .font(.workbenchPageTitle)
+      Text(stageDescription)
+        .font(.workbenchPageSubtitle)
+        .foregroundStyle(.secondary)
+    }
   }
 
   private var stageDescription: LocalizedStringKey {
@@ -165,47 +166,47 @@ struct ImageWorkbenchView: View {
 
   private var headerActions: some View {
     HStack(spacing: 8) {
-        Button {
-          openRepositoryImageDirectory()
-        } label: {
-          Label("打开图片目录", systemImage: "folder")
-        }
-        .buttonStyle(.bordered)
-        .disabled(repositoryInventory == nil)
-        .accessibilityIdentifier("image-workbench-open-folder")
-
-        Button {
-          openWritingForImageInsertion()
-        } label: {
-          Label(
-            store.visibleDrafts.isEmpty
-              ? String(localized: "新建文章")
-              : String(localized: "前往写作"),
-            systemImage: store.visibleDrafts.isEmpty ? "plus" : "square.and.pencil"
-          )
-        }
-        .buttonStyle(.bordered)
-        .accessibilityIdentifier("image-workbench-open-writing")
-
-        Button {
-          stage = .resources
-          resourceMode = .manager
-        } label: {
-          Label("资源管理", systemImage: "archivebox")
-        }
-        .buttonStyle(.bordered)
-        .accessibilityLabel("打开资源管理大总管")
-        .accessibilityIdentifier("image-workbench-open-asset-manager")
-
-        Button(action: refreshAll) {
-          Label("重新扫描", systemImage: "arrow.clockwise")
-        }
-        .workbenchProminentActionStyle()
-        .disabled(imageWorkbench.isSiteSummaryLoading || isRepositoryInventoryLoading)
-        .accessibilityLabel("重新扫描文章图片和仓库图片")
-        .accessibilityIdentifier("image-workbench-refresh")
+      Button {
+        openRepositoryImageDirectory()
+      } label: {
+        Label("打开图片目录", systemImage: "folder")
       }
-      .controlSize(.regular)
+      .buttonStyle(.bordered)
+      .disabled(repositoryInventory == nil)
+      .accessibilityIdentifier("image-workbench-open-folder")
+
+      Button {
+        openWritingForImageInsertion()
+      } label: {
+        Label(
+          store.visibleDrafts.isEmpty
+            ? String(localized: "新建文章")
+            : String(localized: "前往写作"),
+          systemImage: store.visibleDrafts.isEmpty ? "plus" : "square.and.pencil"
+        )
+      }
+      .buttonStyle(.bordered)
+      .accessibilityIdentifier("image-workbench-open-writing")
+
+      Button {
+        stage = .resources
+        resourceMode = .manager
+      } label: {
+        Label("资源管理", systemImage: "archivebox")
+      }
+      .buttonStyle(.bordered)
+      .accessibilityLabel("打开资源管理大总管")
+      .accessibilityIdentifier("image-workbench-open-asset-manager")
+
+      Button(action: refreshAll) {
+        Label("重新扫描", systemImage: "arrow.clockwise")
+      }
+      .workbenchProminentActionStyle()
+      .disabled(imageWorkbench.isSiteSummaryLoading || isRepositoryInventoryLoading)
+      .accessibilityLabel("重新扫描文章图片和仓库图片")
+      .accessibilityIdentifier("image-workbench-refresh")
+    }
+    .controlSize(.regular)
   }
 
   @ViewBuilder
@@ -255,9 +256,24 @@ struct ImageWorkbenchView: View {
 
       LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 10)], spacing: 10) {
         MetricTile(title: "图片资源", value: "\(summary.imageCount)", systemImage: "photo.on.rectangle")
-        MetricTile(title: "可压缩 JPEG", value: "\(summary.optimizableJPEGCount)", systemImage: "arrow.down.forward")
-        MetricTile(title: "可转 WebP", value: "\(summary.webPConvertibleCount)", systemImage: "arrow.triangle.2.circlepath")
-        MetricTile(title: "可缩放图片", value: "\(summary.resizableImageCount)", systemImage: "arrow.up.left.and.arrow.down.right")
+        MetricTile(
+          title: "可压缩 JPEG", value: "\(summary.optimizableJPEGCount)",
+          systemImage: "arrow.down.forward")
+        MetricTile(
+          title: "可转 WebP", value: "\(summary.webPConvertibleCount)",
+          systemImage: "arrow.triangle.2.circlepath")
+        MetricTile(
+          title: "可缩放图片", value: "\(summary.resizableImageCount)",
+          systemImage: "arrow.up.left.and.arrow.down.right")
+        MetricTile(
+          title: "隐私风险", value: "\(summary.sensitiveMetadataCount)", systemImage: "hand.raised")
+        MetricTile(
+          title: "元数据干净", value: "\(summary.cleanMetadataCount)", systemImage: "checkmark.shield")
+        if summary.unverifiedMetadataCount > 0 {
+          MetricTile(
+            title: "无法验证", value: "\(summary.unverifiedMetadataCount)",
+            systemImage: "questionmark.diamond")
+        }
       }
 
       HStack(alignment: .top, spacing: 10) {
@@ -440,6 +456,10 @@ struct ImageWorkbenchView: View {
         )
       case .cropCover16By9:
         break
+      case .removePrivacyMetadata:
+        imageWorkbench.sanitizeVisibleDraftImagePrivacy(
+          includedAttachmentIDsByDraftID: selection
+        )
       }
     }
   }
@@ -477,7 +497,8 @@ struct ImageWorkbenchView: View {
       repositoryInventory = inventory
       repositoryInventoryErrorMessage = nil
       if let selectedRepositoryPath,
-         !inventory.assets.contains(where: { $0.repositoryPath == selectedRepositoryPath }) {
+        !inventory.assets.contains(where: { $0.repositoryPath == selectedRepositoryPath })
+      {
         self.selectedRepositoryPath = inventory.assets.first?.repositoryPath
       } else if selectedRepositoryPath == nil {
         selectedRepositoryPath = inventory.assets.first?.repositoryPath
@@ -493,10 +514,11 @@ struct ImageWorkbenchView: View {
 
   private func attachRepositoryImage(_ asset: RepositoryImageAsset) {
     guard let inventory = repositoryInventory,
-          inventory.profileID == store.activeProfile.id,
-          inventory.assets.contains(where: { $0.repositoryPath == asset.repositoryPath }),
-          let repositoryTargetDraftID,
-          store.visibleDrafts.contains(where: { $0.id == repositoryTargetDraftID }) else {
+      inventory.profileID == store.activeProfile.id,
+      inventory.assets.contains(where: { $0.repositoryPath == asset.repositoryPath }),
+      let repositoryTargetDraftID,
+      store.visibleDrafts.contains(where: { $0.id == repositoryTargetDraftID })
+    else {
       imageWorkbench.setActionMessage(String(localized: "请选择当前站点中的目标文章。"))
       return
     }
@@ -509,7 +531,8 @@ struct ImageWorkbenchView: View {
 
   private func openRepositoryImageDirectory() {
     guard let inventory = repositoryInventory,
-          inventory.profileID == store.activeProfile.id else { return }
+      inventory.profileID == store.activeProfile.id
+    else { return }
     let directoryURL = URL(fileURLWithPath: inventory.repositoryRootPath, isDirectory: true)
       .appendingPathComponent(inventory.assetRootPath, isDirectory: true)
     NSWorkspace.shared.open(directoryURL)
@@ -531,11 +554,13 @@ struct ImageWorkbenchView: View {
   private func normalizeRepositoryTargetDraft() {
     let drafts = store.visibleDrafts
     if let repositoryTargetDraftID,
-       drafts.contains(where: { $0.id == repositoryTargetDraftID }) {
+      drafts.contains(where: { $0.id == repositoryTargetDraftID })
+    {
       return
     }
     if let selectedDraftID = store.selectedDraftID,
-       drafts.contains(where: { $0.id == selectedDraftID }) {
+      drafts.contains(where: { $0.id == selectedDraftID })
+    {
       repositoryTargetDraftID = selectedDraftID
     } else {
       repositoryTargetDraftID = drafts.first?.id

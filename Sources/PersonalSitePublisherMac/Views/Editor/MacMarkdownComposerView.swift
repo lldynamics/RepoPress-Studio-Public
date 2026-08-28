@@ -59,6 +59,7 @@ struct MacMarkdownComposerView: View {
   @State private var slashCommandQuery: String? = nil
   @State private var isSlashMenuPresented: Bool = false
   @State private var slashCommandSelectedIndex = 0
+  @State private var isDiscardInvalidFrontMatterConfirmationPresented = false
   let findReplaceService = MarkdownFindReplaceService()
   let outlineService = MarkdownOutlineService()
   let markdownAnalysisService = MarkdownEditorAnalysisService()
@@ -92,7 +93,8 @@ struct MacMarkdownComposerView: View {
       typewriterModeEnabled: isTypewriterModeEnabled,
       currentParagraphHighlightEnabled: isCurrentParagraphHighlightEnabled,
       warmPaperBackgroundEnabled: isWarmPaperBackgroundEnabled,
-      automaticPairingEnabled: isAutomaticPairingEnabled
+      automaticPairingEnabled: isAutomaticPairingEnabled,
+      accessibilityReduceMotionEnabled: accessibilityReduceMotion
     )
   }
 
@@ -210,7 +212,9 @@ struct MacMarkdownComposerView: View {
         progress: editorSession.editorScrollProgress
       ),
       editorScrollProgress: editorSession.editorScrollProgress,
-      editorBodyRevision: buffer.revision
+      editorBodyRevision: buffer.revision,
+      invalidFrontMatterBaseBodyMarkdown: editorSession.invalidFrontMatterBaseBodyMarkdown,
+      invalidFrontMatterBaseBodyRevision: editorSession.invalidFrontMatterBaseBodyRevision
     )
     state.findReplaceMessage =
       editorSession.findQuery.isEmpty && editorSession.isFindReplacePresented
@@ -274,6 +278,12 @@ struct MacMarkdownComposerView: View {
       await MainRunLoopUpdateDeferral.waitForNextDefaultModeCycle()
       guard !Task.isCancelled else { return }
       syncEditorBodyFromStore()
+      let restoredSession = store.markdownEditorSessionState(for: draft.id)
+      restoreInvalidFrontMatterDocument(
+        restoredSession.invalidFrontMatterDocument,
+        baseBodyMarkdown: restoredSession.invalidFrontMatterBaseBodyMarkdown,
+        baseBodyRevision: restoredSession.invalidFrontMatterBaseBodyRevision
+      )
       refreshFindMatchSnapshot()
       syncActiveEditorSelection()
       refreshMarkdownCursorContextSnapshot()
@@ -398,6 +408,28 @@ struct MacMarkdownComposerView: View {
     ZStack(alignment: .top) {
       editorSurface
       writingContextPanelOverlay
+      automaticImageImportToastOverlay
+    }
+  }
+
+  @ViewBuilder
+  private var automaticImageImportToastOverlay: some View {
+    if let toast = automaticImageImportToast {
+      VStack {
+        Spacer(minLength: 0)
+        Label(toast.message, systemImage: "photo.badge.checkmark")
+          .font(.callout.weight(.medium))
+          .padding(.horizontal, 14)
+          .padding(.vertical, 9)
+          .workbenchGlassSurface(material: .regularMaterial, in: Capsule())
+          .shadow(color: .black.opacity(0.16), radius: 8, x: 0, y: 3)
+          .accessibilityIdentifier("markdown-automatic-image-import-toast")
+      }
+      .padding(.bottom, 18)
+      .frame(maxWidth: .infinity, maxHeight: .infinity)
+      .allowsHitTesting(false)
+      .transition(.move(edge: .bottom).combined(with: .opacity))
+      .zIndex(5)
     }
   }
 
@@ -520,7 +552,7 @@ struct MacMarkdownComposerView: View {
   var editorSurface: some View {
     markdownEditor
       .padding(14)
-    .frame(minWidth: 360, maxWidth: .infinity, maxHeight: .infinity)
+      .frame(minWidth: 360, maxWidth: .infinity, maxHeight: .infinity)
   }
 
   var previewDraft: ArticleDraft {
@@ -590,6 +622,7 @@ struct MacMarkdownComposerView: View {
           text: $editorSessionState.editorDocument,
           bodyMarkdown: editorBody,
           bodyUTF16Offset: editorDocumentBodyOffset,
+          allowsLiveBodyChanges: frontMatterIssue == nil,
           selectedRange: $editorSessionState.selectedRange,
           isFrontMatterSelection: $editorSessionState.isFrontMatterSelection,
           comfortConfiguration: editorComfortConfiguration,
@@ -633,7 +666,11 @@ struct MacMarkdownComposerView: View {
             updateEditorScrollPosition(position)
           },
           onDroppedFiles: { urls in
-            insertImageReferences(urls)
+            insertImageReferences(
+              urls,
+              automaticallyConvertToWebP: true,
+              reduceMotionEnabled: accessibilityReduceMotion
+            )
           },
           onDroppedMarkdown: { markdown, range, citation in
             insertKnowledgeMarkdown(markdown, at: range, citation: citation)
@@ -641,15 +678,55 @@ struct MacMarkdownComposerView: View {
         )
         .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-        if frontMatterIssue != nil {
-          Label("Front Matter 格式", systemImage: "exclamationmark.triangle.fill")
-            .font(.caption)
-            .foregroundStyle(WorkbenchTheme.warning)
-            .padding(8)
-            .background(.regularMaterial, in: Capsule())
-            .padding(10)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-            .allowsHitTesting(false)
+        if let frontMatterIssue {
+          VStack(alignment: .leading, spacing: 7) {
+            Label("Front Matter 尚未保存", systemImage: "exclamationmark.triangle.fill")
+              .font(.callout.weight(.semibold))
+              .foregroundStyle(WorkbenchTheme.warning)
+            Text(frontMatterIssue.workbenchMessage)
+              .font(.caption)
+            Text("无效原文已写入本地恢复副本；修正格式前不会覆盖结构化文章信息。")
+              .font(.caption)
+              .foregroundStyle(.secondary)
+            HStack {
+              Button("复制恢复原文") {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(editorDocument, forType: .string)
+                selectionActionMessage = String(localized: "已复制未保存的 Front Matter 文档。")
+                EditorAccessibilityAnnouncementCenter.announce(selectionActionMessage)
+              }
+              Button("放弃无效修改…", role: .destructive) {
+                isDiscardInvalidFrontMatterConfirmationPresented = true
+              }
+            }
+            .controlSize(.small)
+          }
+          .padding(10)
+          .frame(maxWidth: 390, alignment: .leading)
+          .background(
+            .regularMaterial, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
+          )
+          .padding(10)
+          .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+          .accessibilityElement(children: .contain)
+          .accessibilityIdentifier("markdown-front-matter-invalid-banner")
+          .confirmationDialog(
+            "放弃未保存的 Front Matter 修改？",
+            isPresented: $isDiscardInvalidFrontMatterConfirmationPresented,
+            titleVisibility: .visible
+          ) {
+            Button("放弃并还原已保存版本", role: .destructive) {
+              resetEditorDocumentFromDraft()
+              saveCurrentEditorSession()
+              selectionActionMessage = String(
+                localized: "已放弃无效 Front Matter 修改并还原已保存版本。"
+              )
+              EditorAccessibilityAnnouncementCenter.announce(selectionActionMessage)
+            }
+            Button("取消", role: .cancel) {}
+          } message: {
+            Text("此操作会删除本地恢复副本；正文草稿不受影响。")
+          }
         }
 
         if selectionBubblePresentationState.shouldRender(for: editorSessionState.selectedRange) {
@@ -872,4 +949,25 @@ struct MacMarkdownComposerView: View {
     slashCommandSelectedIndex = 0
   }
 
+}
+
+extension MarkdownFrontMatterEditingIssue {
+  fileprivate var workbenchMessage: String {
+    switch self {
+    case .invalidDelimiter:
+      return String(localized: "起止分隔符缺失或与当前站点的 Front Matter 格式不匹配。")
+    case .concurrentBodyChange:
+      return String(localized: "另一窗口已修改正文；恢复原文仍保留，未覆盖另一窗口的内容。")
+    case .malformedLine(let line):
+      return String(localized: "第 \(line) 行不是有效的键值格式。")
+    case .missingDate:
+      return String(localized: "缺少必需的 date 字段。")
+    case .invalidDate:
+      return String(localized: "date 字段不是有效日期。")
+    case .invalidDraftFlag:
+      return String(localized: "draft 字段必须使用有效的布尔值。")
+    case .invalidVisibility:
+      return String(localized: "visibility 字段不是受支持的可见性值。")
+    }
+  }
 }

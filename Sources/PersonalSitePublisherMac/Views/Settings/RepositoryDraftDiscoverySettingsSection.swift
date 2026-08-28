@@ -18,7 +18,7 @@ enum RepositoryDraftDiscoveryPolicy {
 
 @MainActor
 struct RepositoryDraftDiscoverySettingsSection: View {
-  @ObservedObject var store: WorkbenchStore
+  let store: WorkbenchStore
   let activeProfileBinding: Binding<SiteProfile>
   @State private var scanTask: Task<Void, Never>?
   @State private var statusMessage: String?

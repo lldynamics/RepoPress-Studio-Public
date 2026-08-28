@@ -110,7 +110,7 @@ extension AIChatContextInspectorView {
             .font(.workbenchMetadata)
             .foregroundStyle(Color.accentColor)
             .workbenchAIThinkingSymbolEffect(isActive: isSending)
-          Text("AI 思考中...")
+          Text("AI 思考中…")
             .font(.caption.weight(.medium))
             .foregroundStyle(Color.accentColor)
           Spacer()
@@ -508,9 +508,13 @@ extension AIChatContextInspectorView {
   }
 
   func openCodexAccountSettingsForConsent() {
-    requestedSettingsTabID = SettingsDestination.ai(.connection).id
     clearPendingDataSharingConsent()
-    openSettings()
+    SettingsNavigation.present(
+      destination: .ai(.connection),
+      workspaceAction: settingsWorkspaceCommandAction
+    ) {
+      openSettings()
+    }
   }
 
   func clearPendingDataSharingConsent() {

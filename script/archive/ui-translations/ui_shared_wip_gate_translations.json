@@ -1,0 +1,11 @@
+{
+  "保存访问令牌后，可在这里诊断当前仓库连接并重新验证写入能力。": "After saving an access token, diagnose the current repository connection and verify write access again here.",
+  "发布时自动验证仓库权限": "Automatically Verify Repository Access When Publishing",
+  "图片已是 WebP，无需转换": "The image is already WebP; no conversion is needed",
+  "已在光标位置插入 %@ 张图片。": "Inserted %@ images at the cursor.",
+  "已插入图片，当前格式保留原文件": "Image inserted; the original file was kept for this format",
+  "已自动转为 WebP，体积减少 %d%%": "Automatically converted to WebP, reducing size by %d%%",
+  "正在准备 SEO 检查…": "Preparing the SEO check…",
+  "连接诊断": "Connection Diagnostics",
+  "重新验证仓库连接": "Verify Repository Connection Again"
+}

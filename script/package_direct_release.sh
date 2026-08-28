@@ -38,6 +38,14 @@ MANIFEST_INPUT="${DIRECT_DISTRIBUTION_MANIFEST_PATH:-}"
 CHECKSUM_INPUT="${DIRECT_DISTRIBUTION_CHECKSUM_PATH:-}"
 APPCAST_INPUT="${DIRECT_DISTRIBUTION_APPCAST_PATH:-}"
 TMP_DIR=""
+THIRD_PARTY_NOTICES_SOURCE_DIR="$ROOT_DIR/Packaging/ThirdPartyNotices"
+PACKAGE_RESOLVED_PATH="$ROOT_DIR/Package.resolved"
+THIRD_PARTY_NOTICE_FILES=(
+  "NOTICE-MANIFEST.txt"
+  "Sparkle-LICENSE.txt"
+  "TreeSitter-LICENSE.txt"
+  "Tiktoken-Encoding-Data.txt"
+)
 
 usage() {
   cat <<'USAGE'
@@ -122,6 +130,88 @@ plist_value() {
   "$PLISTBUDDY_TOOL" -c "Print :$2" "$1" 2>/dev/null || true
 }
 
+validate_notice_manifest_dependency_pins() {
+  local notice_manifest="$1"
+
+  "$PYTHON_TOOL" - "$notice_manifest" "$PACKAGE_RESOLVED_PATH" <<'PY'
+import json
+from pathlib import Path
+import sys
+
+manifest_path = Path(sys.argv[1])
+resolved_path = Path(sys.argv[2])
+try:
+    manifest = manifest_path.read_text(encoding="utf-8")
+except OSError as error:
+    raise SystemExit(
+        f"direct release: could not read third-party notice manifest {manifest_path}: {error}"
+    )
+try:
+    resolved = json.loads(resolved_path.read_text(encoding="utf-8"))
+except (OSError, json.JSONDecodeError) as error:
+    raise SystemExit(f"direct release: could not read Package.resolved: {error}")
+
+pins = {pin.get("identity"): pin.get("state", {}) for pin in resolved.get("pins", [])}
+requirements = (
+    ("sparkle", "Sparkle"),
+    ("swift-tree-sitter", "SwiftTreeSitter"),
+    ("tree-sitter", "tree-sitter"),
+    ("tree-sitter-markdown", "tree-sitter-markdown"),
+)
+for identity, notice_name in requirements:
+    state = pins.get(identity)
+    if not state:
+        raise SystemExit(
+            f"direct release: Package.resolved is missing third-party notice dependency: {identity}"
+        )
+    version = state.get("version")
+    revision = state.get("revision")
+    if not version or not revision:
+        raise SystemExit(
+            f"direct release: Package.resolved lacks version or revision for third-party notice dependency: {identity}"
+        )
+    declaration = f"{notice_name} {version} ({revision})"
+    normalized_manifest = " ".join(manifest.split())
+    if declaration not in normalized_manifest:
+        raise SystemExit(
+            "direct release: NOTICE-MANIFEST dependency declaration does not match "
+            f"Package.resolved for {identity}: expected {declaration}"
+        )
+PY
+}
+
+validate_authoritative_third_party_notices() {
+  local notice_file=""
+  local notice_path=""
+
+  [[ -f "$PACKAGE_RESOLVED_PATH" ]] || fail "missing Package.resolved for third-party notice validation"
+  for notice_file in "${THIRD_PARTY_NOTICE_FILES[@]}"; do
+    notice_path="$THIRD_PARTY_NOTICES_SOURCE_DIR/$notice_file"
+    [[ -s "$notice_path" ]] \
+      || fail "authoritative third-party notice is missing or empty: $notice_file"
+  done
+  validate_notice_manifest_dependency_pins \
+    "$THIRD_PARTY_NOTICES_SOURCE_DIR/NOTICE-MANIFEST.txt"
+}
+
+validate_packaged_third_party_notices() {
+  local app_bundle="$1"
+  local bundled_notices="$app_bundle/Contents/Resources/ThirdPartyNotices"
+  local notice_file=""
+  local source_notice=""
+  local bundled_notice=""
+
+  for notice_file in "${THIRD_PARTY_NOTICE_FILES[@]}"; do
+    source_notice="$THIRD_PARTY_NOTICES_SOURCE_DIR/$notice_file"
+    bundled_notice="$bundled_notices/$notice_file"
+    [[ -f "$bundled_notice" ]] \
+      || fail "bundled third-party notice is missing: $notice_file"
+    cmp -s "$source_notice" "$bundled_notice" \
+      || fail "bundled third-party notice differs from Packaging/ThirdPartyNotices/$notice_file"
+  done
+  validate_notice_manifest_dependency_pins "$bundled_notices/NOTICE-MANIFEST.txt"
+}
+
 validate_bundle_structure() {
   local app_bundle="$1"
   local require_update_configuration="${2:-0}"
@@ -139,6 +229,8 @@ validate_bundle_structure() {
   [[ -d "$sparkle_framework" ]] || fail "Sparkle.framework is missing"
   [[ -L "$sparkle_framework/Versions/Current" && -L "$sparkle_framework/Sparkle" ]] \
     || fail "Sparkle.framework symlinks were not preserved"
+  validate_authoritative_third_party_notices
+  validate_packaged_third_party_notices "$app_bundle"
   [[ -s "$sparkle_license" ]] || fail "Sparkle third-party notice is missing"
   grep -Fq 'Copyright (c) 2006-2013 Andy Matuschak.' "$sparkle_license" \
     || fail "Sparkle third-party notice is incomplete"
@@ -747,8 +839,7 @@ esac
   || fail "missing script/sign_sparkle_framework.sh"
 [[ -f "$ROOT_DIR/script/generate_direct_appcast.sh" ]] \
   || fail "missing script/generate_direct_appcast.sh"
-[[ -f "$ROOT_DIR/Packaging/ThirdPartyNotices/Sparkle-LICENSE.txt" ]] \
-  || fail "missing Packaging/ThirdPartyNotices/Sparkle-LICENSE.txt"
+validate_authoritative_third_party_notices
 [[ -f "$DIRECT_ENTITLEMENTS" ]] || fail "missing Packaging/DirectDistribution.entitlements"
 "$PLUTIL_TOOL" -lint "$DIRECT_ENTITLEMENTS" >/dev/null \
   || fail "DirectDistribution.entitlements is invalid"

@@ -18,6 +18,158 @@ private enum DualColumnSource: String, CaseIterable, Identifiable {
   var id: String { rawValue }
 }
 
+enum RepositoryMergeConflictDraftChoice: Equatable {
+  case ours
+  case theirs
+  case manualMerge
+}
+
+/// Pure preparation policy for the visual resolver. A choice never performs
+/// I/O. Missing sides stay unavailable so a delete conflict cannot be silently
+/// converted into an empty file.
+struct RepositoryMergeConflictDraftPolicy {
+  static func preparedText(
+    for choice: RepositoryMergeConflictDraftChoice,
+    conflict: RepositoryMergeConflict
+  ) -> String? {
+    switch choice {
+    case .ours:
+      return conflict.ours.isText ? conflict.ours.text : nil
+    case .theirs:
+      return conflict.theirs.isText ? conflict.theirs.text : nil
+    case .manualMerge:
+      guard conflict.canResolve, let finalText = conflict.final.text else { return nil }
+      if let markerFreeDraft = markerFreeWorkingTreeDraft(finalText) {
+        return markerFreeDraft
+      }
+      if containsGitConflictMarker(finalText) {
+        return conflict.ours.text ?? conflict.theirs.text
+      }
+      return finalText
+    }
+  }
+
+  static func initialText(for conflict: RepositoryMergeConflict) -> String {
+    preparedText(for: .manualMerge, conflict: conflict)
+      ?? preparedText(for: .ours, conflict: conflict)
+      ?? preparedText(for: .theirs, conflict: conflict)
+      ?? ""
+  }
+
+  /// Keep the ours/theirs sections from Git's working-tree merge seed,
+  /// discard the optional base section, and remove every marker line.
+  static func markerFreeWorkingTreeDraft(_ text: String) -> String? {
+    enum Region: Equatable { case normal, ours, base, theirs }
+    var region = Region.normal
+    var sawStart = false
+    var sawEnd = false
+    var output: [String] = []
+
+    for line in text.components(separatedBy: "\n") {
+      if line.hasPrefix("<<<<<<<") {
+        sawStart = true
+        region = .ours
+        continue
+      }
+      if line.hasPrefix("|||||||") && region == .ours {
+        region = .base
+        continue
+      }
+      if line.hasPrefix("=======") && (region == .ours || region == .base) {
+        region = .theirs
+        continue
+      }
+      if line.hasPrefix(">>>>>>>") && region == .theirs {
+        sawEnd = true
+        region = .normal
+        continue
+      }
+      if region != .base {
+        output.append(line)
+      }
+    }
+
+    guard sawStart, sawEnd, region == .normal else { return nil }
+    return output.joined(separator: "\n")
+  }
+
+  private static func containsGitConflictMarker(_ text: String) -> Bool {
+    text.components(separatedBy: "\n").contains { line in
+      line.hasPrefix("<<<<<<<")
+        || line.hasPrefix("|||||||")
+        || line.hasPrefix("=======")
+        || line.hasPrefix(">>>>>>>")
+    }
+  }
+}
+
+private struct RepositoryMergeQuickChoiceBar: View {
+  let conflict: RepositoryMergeConflict
+  let choose: (RepositoryMergeConflictDraftChoice) -> Void
+
+  var body: some View {
+    ViewThatFits(in: .horizontal) {
+      HStack(spacing: 10) { buttons }
+      VStack(spacing: 8) { buttons }
+    }
+    .accessibilityElement(children: .contain)
+    .accessibilityLabel("冲突快捷选择")
+  }
+
+  @ViewBuilder
+  private var buttons: some View {
+    choiceButton(
+      title: "保留我的修改",
+      systemImage: "person.crop.circle.badge.checkmark",
+      choice: .ours
+    )
+    choiceButton(
+      title: "使用远端版本",
+      systemImage: "cloud.badge.checkmark",
+      choice: .theirs
+    )
+    choiceButton(
+      title: "合并双方内容",
+      systemImage: "arrow.triangle.merge",
+      choice: .manualMerge
+    )
+  }
+
+  private func choiceButton(
+    title: LocalizedStringKey,
+    systemImage: String,
+    choice: RepositoryMergeConflictDraftChoice
+  ) -> some View {
+    Button {
+      choose(choice)
+    } label: {
+      Label(title, systemImage: systemImage)
+        .frame(maxWidth: .infinity, minHeight: 28)
+    }
+    .buttonStyle(.bordered)
+    .controlSize(.large)
+    .disabled(
+      RepositoryMergeConflictDraftPolicy.preparedText(for: choice, conflict: conflict) == nil
+    )
+    .accessibilityIdentifier(accessibilityIdentifier(for: choice))
+    .help(
+      RepositoryMergeConflictDraftPolicy.preparedText(for: choice, conflict: conflict) == nil
+        ? String(localized: "该版本不是可安全编辑的文本；不会将删除语义改成空文件。")
+        : String(localized: "只准备最终内容，不会写入或暂存。")
+    )
+  }
+
+  private func accessibilityIdentifier(
+    for choice: RepositoryMergeConflictDraftChoice
+  ) -> String {
+    switch choice {
+    case .ours: return "repository-merge-choose-ours"
+    case .theirs: return "repository-merge-choose-theirs"
+    case .manualMerge: return "repository-merge-choose-both"
+    }
+  }
+}
+
 /// A bounded, explicit three-way merge surface for files that Git left in its
 /// unmerged index. Only the final column is editable; no side is auto-applied.
 struct RepositoryMergeConflictView: View {
@@ -28,10 +180,12 @@ struct RepositoryMergeConflictView: View {
   @State private var finalTexts: [String: String]
   @State private var resolvingPath: String?
   @State private var feedbackMessage: String?
+  @State private var feedbackSeverity: AccessibleStatusSeverity = .info
   @State private var layoutMode: ConflictViewLayoutMode = .threeWay
   @State private var dualColumnSource: DualColumnSource = .ours
   @State private var isBaseSheetPresented = false
   @State private var isMaximizeSheetPresented = false
+  @State private var hasAutomaticallyPresentedResolver = false
 
   init(
     session: RepositoryMergeConflictSession,
@@ -44,7 +198,7 @@ struct RepositoryMergeConflictView: View {
     _finalTexts = State(
       initialValue: Dictionary(
         uniqueKeysWithValues: session.conflicts.map { conflict in
-          (conflict.repositoryPath, conflict.final.text ?? "")
+          (conflict.repositoryPath, RepositoryMergeConflictDraftPolicy.initialText(for: conflict))
         }
       )
     )
@@ -75,10 +229,13 @@ struct RepositoryMergeConflictView: View {
       }
 
       if let feedbackMessage {
-        Label(feedbackMessage, systemImage: "checkmark.circle")
-          .font(.caption)
-          .foregroundStyle(WorkbenchTheme.success)
-          .textSelection(.enabled)
+        AccessibleStatusMessage(
+          message: feedbackMessage,
+          severity: feedbackSeverity,
+          announcesNonUrgentStatus: true
+        )
+        .font(.caption)
+        .textSelection(.enabled)
       }
     }
     .padding(14)
@@ -105,10 +262,16 @@ struct RepositoryMergeConflictView: View {
           dualColumnSource: $dualColumnSource,
           finalText: finalBinding(for: selectedConflict),
           resolvingPath: resolvingPath,
+          onChoose: { prepare($0, for: selectedConflict) },
           onResolve: { resolve(selectedConflict) },
           onOpenBaseSheet: { isBaseSheetPresented = true }
         )
       }
+    }
+    .onAppear {
+      guard !session.conflicts.isEmpty, !hasAutomaticallyPresentedResolver else { return }
+      hasAutomaticallyPresentedResolver = true
+      isMaximizeSheetPresented = true
     }
   }
 
@@ -239,6 +402,10 @@ struct RepositoryMergeConflictView: View {
             text: finalBinding(for: conflict)
           )
         }
+      }
+
+      RepositoryMergeQuickChoiceBar(conflict: conflict) { choice in
+        prepare(choice, for: conflict)
       }
 
       baselineSection(for: conflict)
@@ -393,6 +560,30 @@ struct RepositoryMergeConflictView: View {
     )
   }
 
+  private func prepare(
+    _ choice: RepositoryMergeConflictDraftChoice,
+    for conflict: RepositoryMergeConflict
+  ) {
+    guard
+      let text = RepositoryMergeConflictDraftPolicy.preparedText(
+        for: choice,
+        conflict: conflict
+      )
+    else {
+      feedbackMessage = String(
+        localized: "该选择不能安全转换为文本文件，已保留当前最终版。"
+      )
+      feedbackSeverity = .warning
+      return
+    }
+    finalTexts[conflict.repositoryPath] = text
+    feedbackMessage =
+      choice == .manualMerge
+      ? String(localized: "已准备无 Git 标记的合并草稿；请审阅后再应用。")
+      : String(localized: "已将所选版本装入最终编辑区；尚未写入或暂存。")
+    feedbackSeverity = .info
+  }
+
   private func resolve(_ conflict: RepositoryMergeConflict) {
     let path = conflict.repositoryPath
     let content = finalTexts[path] ?? conflict.final.text ?? ""
@@ -404,11 +595,13 @@ struct RepositoryMergeConflictView: View {
         await MainActor.run {
           resolvingPath = nil
           feedbackMessage = "已暂存 " + path + "，正在刷新冲突列表。"
+          feedbackSeverity = .success
         }
       } catch {
         await MainActor.run {
           resolvingPath = nil
           feedbackMessage = "处理失败：\(error.localizedDescription)"
+          feedbackSeverity = .error
         }
       }
     }
@@ -436,7 +629,10 @@ private struct RepositoryMergeBaseSheet: View {
             copyFeedback = false
           }
         } label: {
-          Label(copyFeedback ? "已复制" : "复制全文", systemImage: copyFeedback ? "checkmark" : "doc.on.doc")
+          Label(
+            copyFeedback ? "已复制" : "复制全文",
+            systemImage: copyFeedback ? "checkmark" : "doc.on.doc"
+          )
         }
         .buttonStyle(.bordered)
         .controlSize(.small)
@@ -469,6 +665,7 @@ private struct RepositoryMergeMaximizedSheet: View {
   @Binding var dualColumnSource: DualColumnSource
   @Binding var finalText: String
   let resolvingPath: String?
+  let onChoose: (RepositoryMergeConflictDraftChoice) -> Void
   let onResolve: () -> Void
   let onOpenBaseSheet: () -> Void
 
@@ -502,8 +699,16 @@ private struct RepositoryMergeMaximizedSheet: View {
       VStack(spacing: 12) {
         if layoutMode == .threeWay {
           HStack(alignment: .top, spacing: 12) {
-            columnBox(title: "本地版本 (Ours)", subtitle: "Git stage 2", content: conflict.ours.displayText)
-            columnBox(title: "远程版本 (Theirs)", subtitle: "Git stage 3", content: conflict.theirs.displayText)
+            columnBox(
+              title: "本地版本 (Ours)",
+              subtitle: "Git stage 2",
+              content: conflict.ours.displayText
+            )
+            columnBox(
+              title: "远程版本 (Theirs)",
+              subtitle: "Git stage 3",
+              content: conflict.theirs.displayText
+            )
             editorBox
           }
         } else {
@@ -531,6 +736,10 @@ private struct RepositoryMergeMaximizedSheet: View {
       }
       .padding(14)
       .frame(maxHeight: .infinity)
+
+      RepositoryMergeQuickChoiceBar(conflict: conflict, choose: onChoose)
+        .padding(.horizontal, 14)
+        .padding(.bottom, 12)
 
       Divider()
 

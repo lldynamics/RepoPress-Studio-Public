@@ -104,6 +104,22 @@ public final class WorkbenchImageWorkbenchFeatureFacade: ObservableObject {
     store.optimizeSelectedDraftJPEGImages()
   }
 
+  public func sanitizeSelectedDraftImagePrivacy() {
+    store.sanitizeSelectedDraftImagePrivacy()
+  }
+
+  public func sanitizeVisibleDraftImagePrivacy() {
+    store.sanitizeVisibleDraftImagePrivacy()
+  }
+
+  public func sanitizeVisibleDraftImagePrivacy(
+    includedAttachmentIDsByDraftID: [UUID: Set<UUID>]
+  ) {
+    store.sanitizeVisibleDraftImagePrivacy(
+      includedAttachmentIDsByDraftID: includedAttachmentIDsByDraftID
+    )
+  }
+
   public func optimizeVisibleDraftJPEGImages() {
     store.optimizeVisibleDraftJPEGImages()
   }

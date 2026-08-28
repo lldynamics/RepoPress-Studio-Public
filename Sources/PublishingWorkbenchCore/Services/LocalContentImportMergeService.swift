@@ -32,6 +32,13 @@ public struct LocalContentImportMergeService: Sendable {
     canInsert: (String) -> Bool = { _ in true }
   ) -> LocalContentImportMergePlan {
     var drafts = existingDrafts
+    var draftIndexByIdentity: [ImportedDraftRepositoryKey: Int] = [:]
+    for (index, draft) in drafts.enumerated() {
+      let identity = ImportedDraftRepositoryKey(draft: draft)
+      if draftIndexByIdentity[identity] == nil {
+        draftIndexByIdentity[identity] = index
+      }
+    }
     var replacedDrafts: [ArticleDraft] = []
     var insertedCount = 0
     var updatedCount = 0
@@ -39,10 +46,8 @@ public struct LocalContentImportMergeService: Sendable {
 
     for imported in result.importedDrafts {
       let repositoryPath = imported.repositoryPath?.normalizedRelativePath() ?? ""
-      if let index = drafts.firstIndex(where: {
-        $0.siteProfileID == imported.siteProfileID
-          && $0.repositoryPath == imported.repositoryPath
-      }) {
+      let identity = ImportedDraftRepositoryKey(draft: imported)
+      if let index = draftIndexByIdentity[identity] {
         let existing = drafts[index]
         guard canReplace(existing, repositoryPath) else {
           conflictCount += 1
@@ -66,6 +71,7 @@ public struct LocalContentImportMergeService: Sendable {
           continue
         }
         drafts.append(imported)
+        draftIndexByIdentity[identity] = drafts.count - 1
         insertedCount += 1
       }
     }
@@ -80,5 +86,15 @@ public struct LocalContentImportMergeService: Sendable {
       ),
       conflictCount: conflictCount
     )
+  }
+}
+
+private struct ImportedDraftRepositoryKey: Hashable {
+  let profileID: UUID?
+  let repositoryPath: String
+
+  init(draft: ArticleDraft) {
+    profileID = draft.siteProfileID
+    repositoryPath = draft.repositoryPath?.normalizedRelativePath() ?? ""
   }
 }

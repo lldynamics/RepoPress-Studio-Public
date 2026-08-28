@@ -45,8 +45,11 @@ enum SettingsSearchIndex {
       id: "rules.frontMatter",
       tab: .defaultRules,
       sectionTitle: String(localized: "Front Matter 默认元数据"),
-      destination: .rules(.paths),
-      keywords: ["Front Matter", "YAML", "TOML", "自定义元数据", "作者", "分类", "标签", "Header", "头信息", "frontmatter", "模拟", "Front Matter 预览"],
+      destination: .tab(.defaultRules),
+      keywords: [
+        "Front Matter", "YAML", "TOML", "自定义元数据", "作者", "分类", "标签", "Header", "头信息", "frontmatter",
+        "模拟", "Front Matter 预览",
+      ],
       detail: String(localized: "配置新建文章时的默认作者、预设标签、预设分类和自定义键值对。"),
       systemImage: "doc.text"
     ),
@@ -55,7 +58,10 @@ enum SettingsSearchIndex {
       tab: .defaultRules,
       sectionTitle: String(localized: "文章与图片路径规则"),
       destination: .rules(.paths),
-      keywords: ["路径模板", "文件名", "Slug", "图片路径", "公开图片", "日期格式", "DateFormat", "assets", "static", "pattern", "URL 路径", "模拟发布路径", "路由模拟"],
+      keywords: [
+        "路径模板", "文件名", "Slug", "图片路径", "公开图片", "日期格式", "DateFormat", "assets", "static", "pattern",
+        "URL 路径", "模拟发布路径", "路由模拟",
+      ],
       detail: String(localized: "设置 Markdown 文件存储路径、图片资源路径与日期占位符规则。"),
       systemImage: "slider.horizontal.3"
     ),
@@ -63,10 +69,22 @@ enum SettingsSearchIndex {
       id: "rules.site",
       tab: .defaultRules,
       sectionTitle: String(localized: "站点引擎与基本参数"),
-      destination: .rules(.paths),
-      keywords: ["站点名称", "基础 URL", "BaseURL", "默认分支", "发布引擎", "SSG", "Hugo", "Zola", "Astro", "Jekyll", "Hexo", "VitePress"],
+      destination: .tab(.defaultRules),
+      keywords: [
+        "站点名称", "基础 URL", "BaseURL", "默认分支", "发布引擎", "SSG", "Hugo", "Zola", "Astro", "Jekyll",
+        "Hexo", "VitePress",
+      ],
       detail: String(localized: "管理站点的静态生成引擎类型、网站主域名和目标 Git 分支。"),
       systemImage: "globe"
+    ),
+    SettingsSearchItem(
+      id: "rules.discovery",
+      tab: .defaultRules,
+      sectionTitle: SettingsSubsection.rulesDiscovery.title,
+      destination: .tab(.defaultRules),
+      keywords: ["仓库发现", "扫描内容目录", "识别结构", "Discovery"],
+      detail: SettingsSubsection.rulesDiscovery.subtitle,
+      systemImage: SettingsSubsection.rulesDiscovery.systemImage
     ),
 
     // 发布连接
@@ -75,7 +93,10 @@ enum SettingsSearchIndex {
       tab: .token,
       sectionTitle: String(localized: "代码仓库 Token 与访问凭据"),
       destination: .token(.repository),
-      keywords: ["GitHub", "GitLab", "PAT", "Personal Access Token", "仓库权限", "推送凭据", "钥匙串", "Keychain", "Remote", "远端"],
+      keywords: [
+        "GitHub", "GitLab", "PAT", "Personal Access Token", "仓库权限", "推送凭据", "钥匙串", "Keychain",
+        "Remote", "远端",
+      ],
       detail: String(localized: "管理 GitHub / GitLab 访问令牌、检查写入权限与在线连通性。"),
       systemImage: "key.horizontal"
     ),
@@ -84,7 +105,10 @@ enum SettingsSearchIndex {
       tab: .token,
       sectionTitle: String(localized: "部署平台自动化发布"),
       destination: .token(.deployment),
-      keywords: ["Cloudflare Pages", "Vercel", "Netlify", "GitHub Pages", "Deploy Hook", "自动化发布", "CI/CD", "WebHook", "Deploy"],
+      keywords: [
+        "Cloudflare Pages", "Vercel", "Netlify", "GitHub Pages", "Deploy Hook", "自动化发布", "CI/CD",
+        "WebHook", "Deploy",
+      ],
       detail: String(localized: "配置自动化构建触发钩子与各静态托管平台的部署令牌。"),
       systemImage: "arrow.up.icloud"
     ),
@@ -93,7 +117,9 @@ enum SettingsSearchIndex {
       tab: .token,
       sectionTitle: String(localized: "站点阅读统计与分析"),
       destination: .token(.analytics),
-      keywords: ["Umami", "Plausible", "Google Analytics", "阅读统计", "访问量", "PV", "UV", "Analytics", "统计 API"],
+      keywords: [
+        "Umami", "Plausible", "Google Analytics", "阅读统计", "访问量", "PV", "UV", "Analytics", "统计 API",
+      ],
       detail: String(localized: "连接私有或云端统计平台，在发布后查看文章访问与互动数据。"),
       systemImage: "chart.bar.xaxis"
     ),
@@ -130,6 +156,15 @@ enum SettingsSearchIndex {
       detail: String(localized: "自定义 AI 润色、审稿、起标题时的专属写作语调与排版习惯。"),
       systemImage: "wand.and.stars"
     ),
+    SettingsSearchItem(
+      id: "ai.advanced",
+      tab: .ai,
+      sectionTitle: SettingsSubsection.aiAdvanced.title,
+      destination: .tab(.ai),
+      keywords: ["温度", "超时", "代理", "网络", "能力检查", "参数"],
+      detail: SettingsSubsection.aiAdvanced.subtitle,
+      systemImage: SettingsSubsection.aiAdvanced.systemImage
+    ),
 
     // 通用与外观
     SettingsSearchItem(
@@ -137,7 +172,10 @@ enum SettingsSearchIndex {
       tab: .appearance,
       sectionTitle: String(localized: "主题外观与强调色"),
       destination: .tab(.appearance),
-      keywords: ["深色模式", "浅色模式", "Dark Mode", "Light Mode", "江南春", "主题色", "Accent Color", "外观", "高对比度", "theme"],
+      keywords: [
+        "深色模式", "浅色模式", "Dark Mode", "Light Mode", "江南春", "主题色", "Accent Color", "外观", "高对比度",
+        "theme",
+      ],
       detail: String(localized: "切换工作台深浅外观模式，选择江南春或系统强调色板。"),
       systemImage: "paintpalette"
     ),
@@ -164,9 +202,21 @@ enum SettingsSearchIndex {
       tab: .appearance,
       sectionTitle: String(localized: "浏览器采集扩展连接"),
       destination: .tab(.appearance),
-      keywords: ["Chrome", "Firefox", "浏览器插件", "采集扩展", "127.0.0.1", "回环接口", "Loopback", "Extension Token", "剪藏"],
+      keywords: [
+        "Chrome", "Firefox", "浏览器插件", "采集扩展", "127.0.0.1", "回环接口", "Loopback", "Extension Token",
+        "剪藏",
+      ],
       detail: String(localized: "管理 Chrome / Firefox 扩展连接令牌与本地安全接口状态。"),
       systemImage: "puzzlepiece.extension"
+    ),
+    SettingsSearchItem(
+      id: "appearance.defaults",
+      tab: .appearance,
+      sectionTitle: SettingsSubsection.appearanceDefaults.title,
+      destination: .tab(.appearance),
+      keywords: ["新文章", "默认值", "Front Matter", "全局预设"],
+      detail: SettingsSubsection.appearanceDefaults.subtitle,
+      systemImage: SettingsSubsection.appearanceDefaults.systemImage
     ),
 
     // 编辑器
@@ -175,7 +225,10 @@ enum SettingsSearchIndex {
       tab: .editor,
       sectionTitle: String(localized: "排版与字号行距"),
       destination: .tab(.editor),
-      keywords: ["字号", "行距", "行高", "正文最大宽度", "编辑器宽度", "字体", "等宽字体", "Font Size", "Line Spacing", "typography"],
+      keywords: [
+        "字号", "行距", "行高", "正文最大宽度", "编辑器宽度", "字体", "等宽字体", "Font Size", "Line Spacing",
+        "typography",
+      ],
       detail: String(localized: "调整 Markdown 编辑区正文字号、行距倍数与文本舒适阅读宽度。"),
       systemImage: "textformat.size"
     ),
@@ -196,6 +249,15 @@ enum SettingsSearchIndex {
       keywords: ["格式工具栏", "工具栏定制", "气泡工具栏", "自动配对", "中英文空格", "排版净化", "字数统计", "快捷键", "Toolbar"],
       detail: String(localized: "自定义顶部格式栏按钮、括号符号自动闭合与中英文排版规范。"),
       systemImage: "wrench.and.screwdriver"
+    ),
+    SettingsSearchItem(
+      id: "editor.preview",
+      tab: .editor,
+      sectionTitle: SettingsSubsection.editorPreview.title,
+      destination: .tab(.editor),
+      keywords: ["效果预览", "排版预览", "阅读效果", "Preview"],
+      detail: SettingsSubsection.editorPreview.subtitle,
+      systemImage: SettingsSubsection.editorPreview.systemImage
     ),
 
     // RSS 阅读
@@ -235,6 +297,15 @@ enum SettingsSearchIndex {
       detail: String(localized: "设置已读文章的自动清理周期与数据库空间压缩。"),
       systemImage: "trash"
     ),
+    SettingsSearchItem(
+      id: "rss.refresh",
+      tab: .rss,
+      sectionTitle: SettingsSubsection.rssRefresh.title,
+      destination: .tab(.rss),
+      keywords: ["刷新频率", "后台刷新", "缓存", "Refresh"],
+      detail: SettingsSubsection.rssRefresh.subtitle,
+      systemImage: SettingsSubsection.rssRefresh.systemImage
+    ),
 
     // 隐私与安全
     SettingsSearchItem(
@@ -246,14 +317,34 @@ enum SettingsSearchIndex {
       detail: String(localized: "配置快速隐藏工作区界面的全局快捷键与临时遮挡遮罩。"),
       systemImage: "eye.slash"
     ),
+    SettingsSearchItem(
+      id: "privacy.masking",
+      tab: .privacy,
+      sectionTitle: SettingsSubsection.privacyMasking.title,
+      destination: .tab(.privacy),
+      keywords: ["遮挡", "路径隐藏", "正文隐藏", "预览保护"],
+      detail: SettingsSubsection.privacyMasking.subtitle,
+      systemImage: SettingsSubsection.privacyMasking.systemImage
+    ),
+    SettingsSearchItem(
+      id: "privacy.status",
+      tab: .privacy,
+      sectionTitle: SettingsSubsection.privacyStatus.title,
+      destination: .tab(.privacy),
+      keywords: ["保护状态", "快捷键", "安全状态"],
+      detail: SettingsSubsection.privacyStatus.subtitle,
+      systemImage: SettingsSubsection.privacyStatus.systemImage
+    ),
 
     // 数据与备份
     SettingsSearchItem(
       id: "data.storage",
       tab: .dataManagement,
       sectionTitle: String(localized: "存储管理与图片瘦身 (WebP / JPEG)"),
-      destination: .data(.drafts),
-      keywords: ["存储占用", "WebP", "图片压缩", "瘦身", "JPEG 压缩", "清理缓存", "临时文件", "孤立资源", "Storage", "Compress"],
+      destination: .tab(.dataManagement),
+      keywords: [
+        "存储占用", "WebP", "图片压缩", "瘦身", "JPEG 压缩", "清理缓存", "临时文件", "孤立资源", "Storage", "Compress",
+      ],
       detail: String(localized: "查看工作台数据占用、执行全库图片无损/有损瘦身与孤立附件清理。"),
       systemImage: "photo.stack"
     ),
@@ -280,7 +371,10 @@ enum SettingsSearchIndex {
       tab: .dataManagement,
       sectionTitle: String(localized: "外部站点内容迁移助手"),
       destination: .data(.migration),
-      keywords: ["内容迁移", "WordPress 导入", "Ghost 导入", "Notion 导入", "Hexo 迁移", "Markdown 批量迁移", "Migration", "Import"],
+      keywords: [
+        "内容迁移", "WordPress 导入", "Ghost 导入", "Notion 导入", "Hexo 迁移", "Markdown 批量迁移", "Migration",
+        "Import",
+      ],
       detail: String(localized: "从 WordPress、Ghost、Notion 或其他 Markdown 目录批量导入文章与素材。"),
       systemImage: "arrow.triangle.2.circlepath.doc.on.clipboard"
     ),
@@ -296,7 +390,8 @@ enum SettingsSearchIndex {
     let normalized = query.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !normalized.isEmpty else { return Set(SettingsTab.allCases) }
     let matchedItemTabs = Set(search(query: normalized).map(\.tab))
-    let matchedDirectTabs = Set(SettingsTab.allCases.filter { $0.matchesSearchDirectly(normalized) })
+    let matchedDirectTabs = Set(
+      SettingsTab.allCases.filter { $0.matchesSearchDirectly(normalized) })
     return matchedItemTabs.union(matchedDirectTabs)
   }
 }

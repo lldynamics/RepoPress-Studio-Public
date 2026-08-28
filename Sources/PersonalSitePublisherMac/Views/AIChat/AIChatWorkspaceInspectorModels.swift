@@ -334,6 +334,77 @@ enum AIChatInspectorHeaderPresentation {
   }
 }
 
+/// Keeps the Inspector header's density decisions value-only so the default
+/// surface cannot accidentally grow a second source/action chip band again.
+/// The Composer remains responsible for showing the actual outbound payload.
+enum AIChatInspectorDensityPresentation {
+  enum SourcePresentation: Equatable {
+    case compactSummary
+    case fullChips
+  }
+
+  enum QuickActionPresentation: Equatable {
+    case hidden
+    case menu
+  }
+
+  struct Configuration: Equatable {
+    let sourcePresentation: SourcePresentation
+    let quickActionPresentation: QuickActionPresentation
+    let accessibilityState: String
+  }
+
+  static func configuration(isExpanded: Bool) -> Configuration {
+    isExpanded
+      ? Configuration(
+        sourcePresentation: .fullChips,
+        quickActionPresentation: .menu,
+        accessibilityState: "已展开"
+      )
+      : Configuration(
+        sourcePresentation: .compactSummary,
+        quickActionPresentation: .hidden,
+        accessibilityState: "已折叠"
+      )
+  }
+
+  static func compactContextSummary(
+    mode: AIPublishingChatContextMode,
+    draftTitle: String?,
+    explicitReferenceCount: Int,
+    knowledgeTitle: String,
+    agentTitle: String
+  ) -> String {
+    let boundary: String
+    switch mode {
+    case .site:
+      let articleTitle =
+        draftTitle?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+        ?? String(localized: "未选择文章")
+      boundary = "当前文章：\(articleTitle)"
+    case .general:
+      boundary = "通用聊天：不读取当前文章"
+    }
+
+    let references = explicitReferenceCount > 0 ? "\(explicitReferenceCount) 项手动引用" : nil
+    return ([boundary, references, "资料库：\(knowledgeTitle)", "Agent：\(agentTitle)"]
+      .compactMap { $0 })
+      .joined(separator: " · ")
+  }
+
+  static func disclosureAccessibilityValue(
+    configuration: Configuration,
+    compactSummary: String
+  ) -> String {
+    switch configuration.sourcePresentation {
+    case .compactSummary:
+      return "\(configuration.accessibilityState)。\(compactSummary)。展开可查看完整来源、设置和快捷提示。"
+    case .fullChips:
+      return "\(configuration.accessibilityState)。\(compactSummary)。正在显示完整来源、设置和快捷提示。"
+    }
+  }
+}
+
 /// Presentation policy for the human review surface used by Agent content
 /// changes. Keeping this as a value-only policy makes the keyboard and
 /// accessibility contract testable without constructing a SwiftUI sheet.

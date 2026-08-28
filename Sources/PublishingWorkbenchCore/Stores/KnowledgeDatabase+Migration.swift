@@ -202,6 +202,9 @@ extension KnowledgeDatabase {
       ADD COLUMN captured_text_storage_ref TEXT;
       """)
       }
+      if try !columnExists("visual_anchor_json", in: "knowledge_chunks") {
+        try execute("ALTER TABLE knowledge_chunks ADD COLUMN visual_anchor_json TEXT;")
+      }
       if existingUserVersion < 8 {
         try execute("UPDATE knowledge_documents SET allows_ai_use = 0;")
       }
@@ -249,6 +252,7 @@ extension KnowledgeDatabase {
       ("knowledge_documents", "allows_ai_use"),
       ("knowledge_documents", "allows_local_semantic_index"),
       ("knowledge_revisions", "captured_text_storage_ref"),
+      ("knowledge_chunks", "visual_anchor_json"),
     ]
     for (table, column) in requiredColumns where try !columnExists(column, in: table) {
       throw KnowledgeLibraryError.databaseIntegrity(

@@ -197,28 +197,45 @@ struct OmniCommandSearchBar: View {
   }
 }
 
+enum WorkspaceToolbarButtonProminence: Equatable {
+  case standard
+  case primaryAction
+}
+
 struct WorkspaceToolbarIconButtonStyle: ButtonStyle {
   let isActive: Bool
   let showsTitle: Bool
+  let prominence: WorkspaceToolbarButtonProminence
 
   @Environment(\.isFocused) private var isFocused
 
-  init(isActive: Bool, showsTitle: Bool = false) {
+  init(
+    isActive: Bool,
+    showsTitle: Bool = false,
+    prominence: WorkspaceToolbarButtonProminence = .standard
+  ) {
     self.isActive = isActive
     self.showsTitle = showsTitle
+    self.prominence = prominence
   }
 
   func makeBody(configuration: Configuration) -> some View {
     styledLabel(configuration.label)
       .font(.workbenchButtonLabel)
       .symbolVariant(isActive ? .fill : .none)
-      .foregroundStyle(isActive ? WorkbenchTheme.navigationSelection : Color.secondary)
+      .foregroundStyle(foregroundColor)
       .padding(.horizontal, showsTitle ? 8 : 4)
       .frame(minWidth: showsTitle ? nil : 28, minHeight: 28)
       .fixedSize(horizontal: showsTitle, vertical: false)
       .background {
-        RoundedRectangle(cornerRadius: 6, style: .continuous)
+        let shape = RoundedRectangle(cornerRadius: 6, style: .continuous)
+        shape
           .fill(backgroundColor(isPressed: configuration.isPressed))
+          .overlay {
+            if prominence == .primaryAction, configuration.isPressed {
+              shape.fill(Color.black.opacity(0.12))
+            }
+          }
       }
       .overlay {
         RoundedRectangle(cornerRadius: 6, style: .continuous)
@@ -239,7 +256,19 @@ struct WorkspaceToolbarIconButtonStyle: ButtonStyle {
     }
   }
 
+  private var foregroundColor: Color {
+    switch prominence {
+    case .standard:
+      return isActive ? WorkbenchTheme.navigationSelection : Color.secondary
+    case .primaryAction:
+      return WorkbenchTheme.primaryActionForeground
+    }
+  }
+
   private func backgroundColor(isPressed: Bool) -> Color {
+    if prominence == .primaryAction {
+      return WorkbenchTheme.primaryActionFill
+    }
     if isPressed {
       return Color.primary.opacity(0.08)
     }
@@ -757,11 +786,7 @@ struct PublishingStatusToolbarControl: View {
       HStack(spacing: 8) {
         Button {
           isPresented = false
-          if let blockingArea = publishBlockingItem?.area {
-            openStatusArea(blockingArea)
-          } else {
-            openPublishFlow()
-          }
+          openPublishFlow()
         } label: {
           Label("准备发布", systemImage: "paperplane")
         }
@@ -800,10 +825,6 @@ struct PublishingStatusToolbarControl: View {
       }
       .buttonStyle(.link)
     }
-  }
-
-  private var publishBlockingItem: PublishingStatusPopoverItem? {
-    [repositoryStatus, draftStatus].first { $0.severity == .error }
   }
 
   private func openStatusArea(_ area: PublishingStatusArea) {

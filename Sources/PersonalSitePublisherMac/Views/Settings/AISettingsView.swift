@@ -35,167 +35,154 @@ struct AISettingsView: View {
   @State private var isConnectionReportStale = false
   @State private var connectionTestTask: Task<Void, Never>?
   @State private var connectionTestRequestID = UUID()
-  @State private var selectedSection: AISettingsSection = .connection
   @State private var hasAttemptedConnectionTest = false
   @State private var selectedCapabilityProbes: Set<AIProviderCapabilityProbeKind> = []
   @State private var connectionUpdateFailed = false
+  @Environment(\.settingsSubsection) private var settingsSubsection
 
   var body: some View {
-    VStack(spacing: 0) {
-      aiSettingsHeader
+    Form {
+      switch selectedSection {
+      case .connection:
+        AIConnectionProfilesSection(
+          profiles: connectionProfiles,
+          selectedProfileID: selectedConnectionProfileID,
+          updateProfile: { profile in
+            _ = commitConnectionUpdate(profile)
+          },
+          createProfile: createConnectionProfile,
+          deleteProfile: deleteConnectionProfile,
+          deletableProfiles: deletableConnectionProfiles
+        )
 
-      Divider()
+        AIProviderSection(
+          presetBinding: aiPresetBinding,
+          presetDisplayName: activeConnection.config.preset.localizedDisplayName,
+          baseURL: aiProviderStringBinding(\.baseURL),
+          baseURLDisplayValue: activeConnection.config.baseURL,
+          model: aiProviderStringBinding(\.model),
+          modelDisplayValue: activeConnection.config.model,
+          requiresAPIKeyBinding: aiProviderBoolBinding(\.requiresAPIKey),
+          requiresAPIKeyDisplayValue: activeConnection.config.requiresAPIKey
+            ? String(localized: "开启")
+            : String(localized: "关闭"),
+          connectionProfileID: activeConnection.id,
+          discoverModels: discoverModels
+        )
 
-      Form {
-        switch selectedSection {
-        case .connection:
-          AIConnectionProfilesSection(
-            profiles: connectionProfiles,
-            selectedProfileID: selectedConnectionProfileID,
-            updateProfile: { profile in
-              _ = commitConnectionUpdate(profile)
-            },
-            createProfile: createConnectionProfile,
-            deleteProfile: deleteConnectionProfile,
-            deletableProfiles: deletableConnectionProfiles
+        if connectionUpdateFailed {
+          AccessibleStatusMessage(
+            message: connectionUpdateFailureMessage,
+            severity: .error
           )
+          .textSelection(.enabled)
+          .accessibilityIdentifier("settings-ai-connection-update-error")
+        }
 
-          AIProviderSection(
-            presetBinding: aiPresetBinding,
-            presetDisplayName: activeConnection.config.preset.localizedDisplayName,
-            baseURL: aiProviderStringBinding(\.baseURL),
-            baseURLDisplayValue: activeConnection.config.baseURL,
-            model: aiProviderStringBinding(\.model),
-            modelDisplayValue: activeConnection.config.model,
-            requiresAPIKeyBinding: aiProviderBoolBinding(\.requiresAPIKey),
-            requiresAPIKeyDisplayValue: activeConnection.config.requiresAPIKey
-              ? String(localized: "开启")
-              : String(localized: "关闭"),
-            connectionProfileID: activeConnection.id,
-            discoverModels: discoverModels
-          )
-
-          if connectionUpdateFailed {
-            AccessibleStatusMessage(
-              message: connectionUpdateFailureMessage,
-              severity: .error
-            )
-            .textSelection(.enabled)
-            .accessibilityIdentifier("settings-ai-connection-update-error")
-          }
-
-          if activeConnection.config.usesCodexAppServer {
-            codexAccountSection
-          } else {
-            if activeConnection.config.preset == .local {
-              LocalAIEngineDiscoverySection { baseURL, model in
-                applyLocalAIConfiguration(baseURL: baseURL, model: model)
-              }
-            } else {
-              AIKeychainSection(
-                aiAPIKeyInput: $aiAPIKeyInput,
-                shouldFocusInput: shouldFocusAPIKey,
-                navigationRequestID: healthNavigationRequestID,
-                config: activeConnection.config,
-                storageMode: credentialStorageMode,
-                tokenAvailability: tokenAvailability,
-                actionMessage: actionMessage,
-                onSaveAPIKey: {
-                  connectionUpdateFailed = false
-                  guard saveAPIKey(aiAPIKeyInput) else { return }
-                  aiAPIKeyInput = ""
-                  invalidateConnectionReport()
-                },
-                onDeleteAPIKey: {
-                  connectionUpdateFailed = false
-                  deleteAPIKey()
-                  aiAPIKeyInput = ""
-                  invalidateConnectionReport()
-                },
-                onRefreshState: refreshKeyAvailability,
-                onChangeStorageMode: { mode in
-                  connectionUpdateFailed = false
-                  setCredentialStorageMode(mode)
-                  aiAPIKeyInput = ""
-                  invalidateConnectionReport()
-                }
-              )
-            }
-
-            AIConnectionTestSection(
-              config: activeConnection.config,
-              tokenAvailability: tokenAvailability,
-              dataSharingConsent: dataSharingConsent,
-              report: isConnectionReportStale ? nil : aiConnectionReport,
-              isReportStale: isConnectionReportStale,
-              isAIActionRunning: isActionRunning,
-              isConnectionTestRunning: connectionTestTask != nil,
-              hasAttemptedConnectionTest: hasAttemptedConnectionTest,
-              actionMessage: actionMessage,
-              selectedProbeCapabilities: $selectedCapabilityProbes,
-              onTestConnection: startConnectionTest
-            )
-          }
-
-        case .credentials:
-          AIAdvancedSettingsSection(
-            settings: aiAdvancedSettingsBinding,
-            reasoningSupport: activeConnection.config.capabilitySupport(
-              for: .reasoningControl
-            ),
-            usesCodexAppServer: activeConnection.config.usesCodexAppServer
-          )
-
-          AIProviderCapabilitiesSection(config: activeConnection.config)
-
-          AIDataSharingConsentSection(
-            presentation: dataSharingConsent,
-            isCodexAppServer: activeConnection.config.usesCodexAppServer,
-            setRemoteAIEnabled: { enabled in
-              setRemoteAIEnabled(enabled)
-              invalidateConnectionReport()
-            },
-            grantConsent: {
-              grantDataSharingConsent()
-              invalidateConnectionReport()
-            },
-            revokeConsent: {
-              revokeDataSharingConsent()
-              invalidateConnectionReport()
-            }
-          )
-
-          if activeConnection.config.preset != .local && !activeConnection.config.usesCodexAppServer
-          {
+        if activeConnection.config.usesCodexAppServer {
+          codexAccountSection
+        } else {
+          if activeConnection.config.preset == .local {
             LocalAIEngineDiscoverySection { baseURL, model in
               applyLocalAIConfiguration(baseURL: baseURL, model: model)
             }
+          } else {
+            AIKeychainSection(
+              aiAPIKeyInput: $aiAPIKeyInput,
+              shouldFocusInput: shouldFocusAPIKey,
+              navigationRequestID: healthNavigationRequestID,
+              config: activeConnection.config,
+              storageMode: credentialStorageMode,
+              tokenAvailability: tokenAvailability,
+              actionMessage: actionMessage,
+              onSaveAPIKey: {
+                connectionUpdateFailed = false
+                guard saveAPIKey(aiAPIKeyInput) else { return false }
+                aiAPIKeyInput = ""
+                invalidateConnectionReport()
+                return true
+              },
+              onDeleteAPIKey: {
+                connectionUpdateFailed = false
+                deleteAPIKey()
+                aiAPIKeyInput = ""
+                invalidateConnectionReport()
+              },
+              onRefreshState: refreshKeyAvailability,
+              onChangeStorageMode: { mode in
+                connectionUpdateFailed = false
+                setCredentialStorageMode(mode)
+                aiAPIKeyInput = ""
+                invalidateConnectionReport()
+              }
+            )
           }
 
-        case .writingStyle:
-          AIWritingStyleSection(
-            presetBinding: aiWritingStylePresetBinding,
-            presetDisplayName: activeProfile.resolvedAIWritingStyle.preset.localizedDisplayName,
-            toneText: aiWritingStyleTextBinding(\.tone),
-            audienceText: aiWritingStyleTextBinding(\.audience),
-            summaryGuidanceText: aiWritingStyleTextBinding(\.summaryGuidance),
-            tagGuidanceText: aiWritingStyleTextBinding(\.tagGuidance),
-            seoGuidanceText: aiWritingStyleTextBinding(\.seoGuidance)
+          AIConnectionTestSection(
+            config: activeConnection.config,
+            tokenAvailability: tokenAvailability,
+            dataSharingConsent: dataSharingConsent,
+            report: isConnectionReportStale ? nil : aiConnectionReport,
+            isReportStale: isConnectionReportStale,
+            isAIActionRunning: isActionRunning,
+            isConnectionTestRunning: connectionTestTask != nil,
+            hasAttemptedConnectionTest: hasAttemptedConnectionTest,
+            actionMessage: actionMessage,
+            selectedProbeCapabilities: $selectedCapabilityProbes,
+            onTestConnection: startConnectionTest
           )
         }
+
+      case .credentials:
+        AIAdvancedSettingsSection(
+          settings: aiAdvancedSettingsBinding,
+          reasoningSupport: activeConnection.config.capabilitySupport(
+            for: .reasoningControl
+          ),
+          usesCodexAppServer: activeConnection.config.usesCodexAppServer
+        )
+
+        AIProviderCapabilitiesSection(config: activeConnection.config)
+
+        AIDataSharingConsentSection(
+          presentation: dataSharingConsent,
+          isCodexAppServer: activeConnection.config.usesCodexAppServer,
+          setRemoteAIEnabled: { enabled in
+            setRemoteAIEnabled(enabled)
+            invalidateConnectionReport()
+          },
+          grantConsent: {
+            grantDataSharingConsent()
+            invalidateConnectionReport()
+          },
+          revokeConsent: {
+            revokeDataSharingConsent()
+            invalidateConnectionReport()
+          }
+        )
+
+        if activeConnection.config.preset != .local && !activeConnection.config.usesCodexAppServer {
+          LocalAIEngineDiscoverySection { baseURL, model in
+            applyLocalAIConfiguration(baseURL: baseURL, model: model)
+          }
+        }
+
+      case .writingStyle:
+        AIWritingStyleSection(
+          presetBinding: aiWritingStylePresetBinding,
+          presetDisplayName: activeProfile.resolvedAIWritingStyle.preset.localizedDisplayName,
+          toneText: aiWritingStyleTextBinding(\.tone),
+          audienceText: aiWritingStyleTextBinding(\.audience),
+          summaryGuidanceText: aiWritingStyleTextBinding(\.summaryGuidance),
+          tagGuidanceText: aiWritingStyleTextBinding(\.tagGuidance),
+          seoGuidanceText: aiWritingStyleTextBinding(\.seoGuidance)
+        )
       }
-      .formStyle(.grouped)
-      .scrollIndicators(.automatic)
-      .padding(WorkbenchSpacing.content)
-      .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
-    .task(id: healthNavigationRequestID) {
-      guard shouldFocusAPIKey else { return }
-      selectedSection = .connection
-    }
-    .task(id: navigationRequestID) {
-      applyNavigationDestination()
-    }
+    .formStyle(.grouped)
+    .scrollIndicators(.automatic)
+    .padding(WorkbenchSpacing.content)
+    .frame(maxWidth: .infinity, maxHeight: .infinity)
     .onChange(of: aiAPIKeyInput) { _, _ in
       invalidateConnectionReport()
     }
@@ -223,14 +210,6 @@ struct AISettingsView: View {
     .accessibilityIdentifier("ai-settings")
   }
 
-  private var aiSettingsHeader: some View {
-    SettingsScopeHeader(minimumLeadingWidth: 220, scopeControlWidth: 400) {
-      aiCompactSummary
-    } scopeControl: {
-      aiSettingsPicker
-    }
-  }
-
   private var codexAccountSection: some View {
     CodexAppServerAccountSection(
       model: aiProviderStringBinding(\.model),
@@ -252,16 +231,24 @@ struct AISettingsView: View {
     )
   }
 
-  private var aiSettingsPicker: some View {
-    Picker("AI 设置分类", selection: $selectedSection) {
-      ForEach(AISettingsSection.allCases) { section in
-        Text(section.title).tag(section)
-      }
+  private var activeSubsection: SettingsSubsection {
+    settingsSubsection.tab == .ai ? settingsSubsection : .aiConnection
+  }
+
+  private var selectedSection: AISettingsSection {
+    if shouldFocusAPIKey {
+      return .connection
     }
-    .pickerStyle(.segmented)
-    .labelsHidden()
-    .accessibilityLabel("AI 设置分类")
-    .accessibilityIdentifier("settings-ai-section-picker")
+    switch activeSubsection {
+    case .aiConnection:
+      return .connection
+    case .aiAdvanced:
+      return .credentials
+    case .aiWritingStyle:
+      return .writingStyle
+    default:
+      return .connection
+    }
   }
 
   private var activeProfile: SiteProfile {
@@ -455,91 +442,6 @@ struct AISettingsView: View {
     return sanitized
   }
 
-  private func applyNavigationDestination() {
-    guard case .ai(let destination) = navigationDestination else { return }
-    selectedSection = AISettingsSection(
-      destination: destination,
-      shouldFocusAPIKey: shouldFocusAPIKey
-    )
-  }
-
-  private var aiCompactSummary: some View {
-    HStack(spacing: 6) {
-      Label(activeConnection.config.preset.localizedDisplayName, systemImage: "sparkles")
-        .font(.callout.weight(.semibold))
-
-      if activeConnection.config.usesCodexAppServer {
-        Text(codexModelSummary)
-          .font(.caption)
-          .monospaced()
-          .foregroundStyle(.secondary)
-          .lineLimit(1)
-      } else if !activeConnection.config.normalizedModel.isEmpty {
-        Text(verbatim: activeConnection.config.normalizedModel)
-          .font(.caption.monospaced())
-          .foregroundStyle(.secondary)
-          .lineLimit(1)
-      }
-
-      Spacer(minLength: WorkbenchSpacing.control)
-
-      Label(aiCredentialStatusTitle, systemImage: aiCredentialStatusSystemImage)
-        .font(.caption.weight(.medium))
-        .foregroundStyle(aiCredentialStatusColor)
-        .lineLimit(1)
-    }
-    .accessibilityElement(children: .combine)
-  }
-
-  private var codexModelSummary: String {
-    let model = activeConnection.config.normalizedModel
-    return model == AIProviderPreset.codexDefaultModel
-      ? String(localized: "账户默认模型")
-      : (model.nilIfEmpty ?? String(localized: "账户默认模型"))
-  }
-
-  private var aiCredentialStatusTitle: LocalizedStringKey {
-    if activeConnection.config.usesCodexAppServer {
-      return "Codex 账户"
-    }
-    guard activeConnection.config.requiresAPIKey else {
-      return "无需 API Key"
-    }
-    switch tokenAvailability.accessState {
-    case .available:
-      return "凭据就绪"
-    case .missing:
-      return "待配置 Key"
-    case .accessFailed:
-      return "凭据读取失败"
-    }
-  }
-
-  private var aiCredentialStatusColor: Color {
-    if activeConnection.config.usesCodexAppServer {
-      return .secondary
-    }
-    return !activeConnection.config.requiresAPIKey || tokenAvailability.accessState == .available
-      ? WorkbenchTheme.success
-      : WorkbenchTheme.warning
-  }
-
-  private var aiCredentialStatusSystemImage: String {
-    if activeConnection.config.usesCodexAppServer {
-      return "person.crop.circle"
-    }
-    guard activeConnection.config.requiresAPIKey else {
-      return "checkmark.circle"
-    }
-    switch tokenAvailability.accessState {
-    case .available:
-      return "checkmark.circle"
-    case .missing:
-      return "key"
-    case .accessFailed:
-      return "exclamationmark.triangle"
-    }
-  }
 }
 
 enum AISettingsSection: String, CaseIterable, Identifiable {

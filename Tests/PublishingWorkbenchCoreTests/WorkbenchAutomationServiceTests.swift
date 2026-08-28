@@ -107,9 +107,10 @@ final class WorkbenchAutomationServiceTests: XCTestCase {
         ),
         draftVersions: draftVersions
       )
+      let step = try XCTUnwrap(invocation.automationStep)
 
-      XCTAssertEqual(invocation.step.command, command)
-      XCTAssertNoThrow(try WorkbenchAutomationPlanValidator.validateArguments(invocation.step))
+      XCTAssertEqual(step.command, command)
+      XCTAssertNoThrow(try WorkbenchAutomationPlanValidator.validateArguments(step))
     }
   }
 
@@ -182,7 +183,8 @@ final class WorkbenchAutomationServiceTests: XCTestCase {
         ),
         draftVersions: draftVersions
       )
-      XCTAssertNoThrow(try WorkbenchAutomationPlanValidator.validateArguments(invocation.step))
+      let step = try XCTUnwrap(invocation.automationStep)
+      XCTAssertNoThrow(try WorkbenchAutomationPlanValidator.validateArguments(step))
     }
 
     assertAgentArgumentsRejected(

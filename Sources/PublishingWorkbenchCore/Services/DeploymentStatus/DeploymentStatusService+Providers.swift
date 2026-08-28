@@ -27,7 +27,8 @@ extension DeploymentStatusService {
     }
 
     let pages = await githubPagesSignal(profile: profile, token: token)
-    let actions = await githubActionsSignal(profile: profile, releaseRecord: releaseRecord, token: token)
+    let actions = await githubActionsSignal(
+      profile: profile, releaseRecord: releaseRecord, token: token)
     return [pages, actions]
   }
 
@@ -55,7 +56,9 @@ extension DeploymentStatusService {
       ]
     }
 
-    return [await gitLabPipelineSignal(profile: profile, releaseRecord: releaseRecord, token: token)]
+    return [
+      await gitLabPipelineSignal(profile: profile, releaseRecord: releaseRecord, token: token)
+    ]
   }
 
   func netlifySignals(
@@ -76,7 +79,10 @@ extension DeploymentStatusService {
       ]
     }
 
-    return [await netlifyDeploySignal(siteID: siteID, profile: profile, releaseRecord: releaseRecord, token: token)]
+    return [
+      await netlifyDeploySignal(
+        siteID: siteID, profile: profile, releaseRecord: releaseRecord, token: token)
+    ]
   }
 
   func vercelSignals(
@@ -97,7 +103,10 @@ extension DeploymentStatusService {
       ]
     }
 
-    return [await vercelDeploymentSignal(profile: profile, projectID: projectID, releaseRecord: releaseRecord, token: token)]
+    return [
+      await vercelDeploymentSignal(
+        profile: profile, projectID: projectID, releaseRecord: releaseRecord, token: token)
+    ]
   }
 
   func cloudflarePagesSignals(
@@ -106,7 +115,8 @@ extension DeploymentStatusService {
     token: String?
   ) async -> [DeploymentStatusSignal] {
     guard let accountID = profile.deploymentAccountID?.trimmedForPublishing.nilIfEmpty,
-          let projectName = profile.deploymentProjectID?.trimmedForPublishing.nilIfEmpty else {
+      let projectName = profile.deploymentProjectID?.trimmedForPublishing.nilIfEmpty
+    else {
       return []
     }
     guard let token = token?.trimmedForPublishing, !token.isEmpty else {
@@ -135,7 +145,8 @@ extension DeploymentStatusService {
       let response: GitHubPagesStatusResponse = try await send(
         githubRequest(
           profile: profile,
-          path: "/repos/\(encodedPathComponent(profile.repoOwner))/\(encodedPathComponent(profile.repoName))/pages",
+          path:
+            "/repos/\(encodedPathComponent(profile.repoOwner))/\(encodedPathComponent(profile.repoName))/pages",
           token: token
         )
       )
@@ -162,7 +173,8 @@ extension DeploymentStatusService {
   ) async -> DeploymentStatusSignal {
     do {
       var queryItems = [
-        URLQueryItem(name: "branch", value: releaseRecord?.branchName ?? profile.branch.nilIfEmpty ?? "main"),
+        URLQueryItem(
+          name: "branch", value: releaseRecord?.branchName ?? profile.branch.nilIfEmpty ?? "main"),
         URLQueryItem(name: "per_page", value: "1"),
       ]
       if let commitSHA = releaseRecord?.commitSHA?.nilIfEmpty {
@@ -171,7 +183,8 @@ extension DeploymentStatusService {
       let response: GitHubActionsRunsResponse = try await send(
         githubRequest(
           profile: profile,
-          path: "/repos/\(encodedPathComponent(profile.repoOwner))/\(encodedPathComponent(profile.repoName))/actions/runs",
+          path:
+            "/repos/\(encodedPathComponent(profile.repoOwner))/\(encodedPathComponent(profile.repoName))/actions/runs",
           token: token,
           queryItems: queryItems
         )
@@ -188,12 +201,38 @@ extension DeploymentStatusService {
         token: token,
         run: run
       )
+      if let mismatch = releaseAttributionMismatchMessage(
+        provider: .githubPages,
+        deploymentBranch: run.headBranch,
+        deploymentCommit: run.headSHA,
+        releaseRecord: releaseRecord,
+        profile: profile
+      ) {
+        return deploymentAttributionSignal(
+          provider: .githubPages,
+          message: mismatch,
+          urlText: run.htmlURL,
+          deploymentBranch: run.headBranch,
+          deploymentCommit: run.headSHA,
+          releaseRecord: releaseRecord,
+          profile: profile,
+          verified: false
+        )
+      }
       return DeploymentStatusSignal(
         level: githubActionLevel(status: run.status, conclusion: run.conclusion),
         title: run.name?.nilIfEmpty ?? "GitHub Actions",
-        message: [run.status, run.conclusion].compactMap { $0?.nilIfEmpty }.joined(separator: " / "),
+        message: [run.status, run.conclusion].compactMap { $0?.nilIfEmpty }.joined(
+          separator: " / "),
         urlText: run.htmlURL,
-        logExcerpt: logExcerpt
+        logExcerpt: logExcerpt,
+        expectedBranch: expectedDeploymentBranch(releaseRecord: releaseRecord, profile: profile),
+        expectedCommitSHA: releaseRecord?.commitSHA?.trimmedForPublishing.nilIfEmpty,
+        observedBranch: run.headBranch?.trimmedForPublishing.nilIfEmpty,
+        observedCommitSHA: run.headSHA?.trimmedForPublishing.nilIfEmpty,
+        attributionVerified: releaseRecord?.commitSHA?.trimmedForPublishing.nilIfEmpty == nil
+          ? nil
+          : true
       )
     } catch {
       return DeploymentStatusSignal(
@@ -221,7 +260,8 @@ extension DeploymentStatusService {
       jobs = try await send(
         githubRequest(
           profile: profile,
-          path: "/repos/\(encodedPathComponent(profile.repoOwner))/\(encodedPathComponent(profile.repoName))/actions/runs/\(runID)/jobs",
+          path:
+            "/repos/\(encodedPathComponent(profile.repoOwner))/\(encodedPathComponent(profile.repoName))/actions/runs/\(runID)/jobs",
           token: token,
           queryItems: [URLQueryItem(name: "per_page", value: "100")]
         )
@@ -237,8 +277,9 @@ extension DeploymentStatusService {
         for step in steps {
           let conclusion = step.conclusion?.nilIfEmpty ?? step.status?.nilIfEmpty
           guard let conclusion,
-                conclusion.lowercased() != "success",
-                conclusion.lowercased() != "completed" else {
+            conclusion.lowercased() != "success",
+            conclusion.lowercased() != "completed"
+          else {
             continue
           }
           let stepName = step.name?.nilIfEmpty ?? "未知步骤"
@@ -254,14 +295,16 @@ extension DeploymentStatusService {
       }
 
       guard githubJobNeedsAnnotations(job),
-            let checkRunID = githubCheckRunID(from: job.checkRunURL) else {
+        let checkRunID = githubCheckRunID(from: job.checkRunURL)
+      else {
         continue
       }
       do {
         let annotations: [GitHubCheckRunAnnotationResponse] = try await send(
           githubRequest(
             profile: profile,
-            path: "/repos/\(encodedPathComponent(profile.repoOwner))/\(encodedPathComponent(profile.repoName))/check-runs/\(checkRunID)/annotations",
+            path:
+              "/repos/\(encodedPathComponent(profile.repoOwner))/\(encodedPathComponent(profile.repoName))/check-runs/\(checkRunID)/annotations",
             token: token,
             queryItems: [URLQueryItem(name: "per_page", value: "50")]
           )
@@ -286,12 +329,14 @@ extension DeploymentStatusService {
 
   func githubCheckRunID(from urlText: String?) -> String? {
     guard let urlText = urlText?.trimmedForPublishing.nilIfEmpty,
-          let url = URL(string: urlText) else {
+      let url = URL(string: urlText)
+    else {
       return nil
     }
     let components = url.pathComponents
     guard let index = components.lastIndex(of: "check-runs"),
-          components.indices.contains(index + 1) else {
+      components.indices.contains(index + 1)
+    else {
       return nil
     }
     let value = components[index + 1]
@@ -311,7 +356,8 @@ extension DeploymentStatusService {
   }
 
   func githubLogEntry(_ annotation: GitHubCheckRunAnnotationResponse) -> DeploymentLogEntry? {
-    let message = annotation.message?.nilIfEmpty ?? annotation.rawDetails?.nilIfEmpty ?? annotation.title
+    let message =
+      annotation.message?.nilIfEmpty ?? annotation.rawDetails?.nilIfEmpty ?? annotation.title
     guard let message else {
       return nil
     }
@@ -344,10 +390,12 @@ extension DeploymentStatusService {
       let response: [GitLabPipelineStatusResponse] = try await send(
         gitLabRequest(
           profile: profile,
-          path: "/projects/\(encodedPathComponent(profile.repoOwner + "/" + profile.repoName))/pipelines",
+          path:
+            "/projects/\(encodedPathComponent(profile.repoOwner + "/" + profile.repoName))/pipelines",
           token: token,
           queryItems: [
-            URLQueryItem(name: "ref", value: releaseRecord?.branchName ?? profile.branch.nilIfEmpty ?? "main"),
+            URLQueryItem(
+              name: "ref", value: releaseRecord?.branchName ?? profile.branch.nilIfEmpty ?? "main"),
             URLQueryItem(name: "per_page", value: "1"),
           ]
         )
@@ -359,12 +407,37 @@ extension DeploymentStatusService {
           message: CoreL10n.text("没有找到最近的 Pipeline。")
         )
       }
+      if let mismatch = releaseAttributionMismatchMessage(
+        provider: .gitlabPages,
+        deploymentBranch: pipeline.ref,
+        deploymentCommit: pipeline.sha,
+        releaseRecord: releaseRecord,
+        profile: profile
+      ) {
+        return deploymentAttributionSignal(
+          provider: .gitlabPages,
+          message: mismatch,
+          urlText: pipeline.webURL,
+          deploymentBranch: pipeline.ref,
+          deploymentCommit: pipeline.sha,
+          releaseRecord: releaseRecord,
+          profile: profile,
+          verified: false
+        )
+      }
       return DeploymentStatusSignal(
         level: gitLabPipelineLevel(pipeline.status),
         title: "GitLab Pipeline",
         message: pipeline.status?.nilIfEmpty.map { CoreL10n.format("Pipeline 状态：%@", $0) }
           ?? CoreL10n.text("已读取 Pipeline 状态。"),
-        urlText: pipeline.webURL
+        urlText: pipeline.webURL,
+        expectedBranch: expectedDeploymentBranch(releaseRecord: releaseRecord, profile: profile),
+        expectedCommitSHA: releaseRecord?.commitSHA?.trimmedForPublishing.nilIfEmpty,
+        observedBranch: pipeline.ref?.trimmedForPublishing.nilIfEmpty,
+        observedCommitSHA: pipeline.sha?.trimmedForPublishing.nilIfEmpty,
+        attributionVerified: releaseRecord?.commitSHA?.trimmedForPublishing.nilIfEmpty == nil
+          ? nil
+          : true
       )
     } catch {
       return DeploymentStatusSignal(
@@ -402,9 +475,10 @@ extension DeploymentStatusService {
         deploy.state?.nilIfEmpty.map { CoreL10n.format("状态：%@", $0) },
         deploy.branch?.nilIfEmpty.map { CoreL10n.format("分支：%@", $0) },
         deploy.commitRef?.nilIfEmpty.map { CoreL10n.format("提交：%@", $0) },
-        deploy.errorMessage?.nilIfEmpty
+        deploy.errorMessage?.nilIfEmpty,
       ].compactMap { $0 }
-      let urlText = deploy.adminURL?.nilIfEmpty ?? deploy.deployURL?.nilIfEmpty ?? deploy.url?.nilIfEmpty
+      let urlText =
+        deploy.adminURL?.nilIfEmpty ?? deploy.deployURL?.nilIfEmpty ?? deploy.url?.nilIfEmpty
       if let mismatch = releaseAttributionMismatchMessage(
         provider: .netlify,
         deploymentBranch: deploy.branch,
@@ -412,11 +486,15 @@ extension DeploymentStatusService {
         releaseRecord: releaseRecord,
         profile: profile
       ) {
-        return DeploymentStatusSignal(
-          level: .unknown,
-          title: title,
+        return deploymentAttributionSignal(
+          provider: .netlify,
           message: mismatch,
-          urlText: urlText
+          urlText: urlText,
+          deploymentBranch: deploy.branch,
+          deploymentCommit: deploy.commitRef,
+          releaseRecord: releaseRecord,
+          profile: profile,
+          verified: false
         )
       }
       return DeploymentStatusSignal(
@@ -425,7 +503,14 @@ extension DeploymentStatusService {
         message: messageParts.isEmpty
           ? CoreL10n.text("已读取最近一次 Netlify 部署。")
           : messageParts.joined(separator: " · "),
-        urlText: urlText
+        urlText: urlText,
+        expectedBranch: expectedDeploymentBranch(releaseRecord: releaseRecord, profile: profile),
+        expectedCommitSHA: releaseRecord?.commitSHA?.trimmedForPublishing.nilIfEmpty,
+        observedBranch: deploy.branch?.trimmedForPublishing.nilIfEmpty,
+        observedCommitSHA: deploy.commitRef?.trimmedForPublishing.nilIfEmpty,
+        attributionVerified: releaseRecord?.commitSHA?.trimmedForPublishing.nilIfEmpty == nil
+          ? nil
+          : true
       )
     } catch {
       return DeploymentStatusSignal(
@@ -443,13 +528,14 @@ extension DeploymentStatusService {
     token: String
   ) async -> DeploymentStatusSignal {
     do {
-      let targetEnvironment = releaseRecord.map { record in
-        let releaseBranch = record.branchName?.nilIfEmpty
-        let targetBranch = record.targetBranch?.nilIfEmpty ?? profile.branch.nilIfEmpty
-        return releaseBranch != nil && releaseBranch != targetBranch
-          ? "preview"
-          : "production"
-      } ?? "production"
+      let targetEnvironment =
+        releaseRecord.map { record in
+          let releaseBranch = record.branchName?.nilIfEmpty
+          let targetBranch = record.targetBranch?.nilIfEmpty ?? profile.branch.nilIfEmpty
+          return releaseBranch != nil && releaseBranch != targetBranch
+            ? "preview"
+            : "production"
+        } ?? "production"
       var queryItems = [
         URLQueryItem(name: "projectId", value: projectID),
         URLQueryItem(name: "limit", value: "1"),
@@ -482,7 +568,7 @@ extension DeploymentStatusService {
         deployment.target?.nilIfEmpty.map { CoreL10n.format("目标：%@", $0) },
         deployment.meta?.branch?.nilIfEmpty.map { CoreL10n.format("分支：%@", $0) },
         deployment.meta?.commitSHA?.nilIfEmpty.map { CoreL10n.format("提交：%@", $0) },
-        deployment.errorMessage?.nilIfEmpty
+        deployment.errorMessage?.nilIfEmpty,
       ].compactMap { $0 }
       let urlText = deployment.inspectorURL?.nilIfEmpty ?? normalizedURLText(deployment.url)
       if let mismatch = releaseAttributionMismatchMessage(
@@ -492,17 +578,22 @@ extension DeploymentStatusService {
         releaseRecord: releaseRecord,
         profile: profile
       ) {
-        return DeploymentStatusSignal(
-          level: .unknown,
-          title: deployment.name?.nilIfEmpty ?? "Vercel Deployment",
+        return deploymentAttributionSignal(
+          provider: .vercel,
           message: mismatch,
-          urlText: urlText
+          urlText: urlText,
+          deploymentBranch: deployment.meta?.branch,
+          deploymentCommit: deployment.meta?.commitSHA,
+          releaseRecord: releaseRecord,
+          profile: profile,
+          verified: false
         )
       }
       let level = vercelDeploymentLevel(status)
       let logExcerpt: [DeploymentLogEntry]
       if level == .failed || level == .running,
-         let deploymentID = deployment.deploymentIdentifier {
+        let deploymentID = deployment.deploymentIdentifier
+      {
         logExcerpt = await vercelDeploymentLogExcerpt(
           deploymentID: deploymentID,
           profile: profile,
@@ -518,7 +609,14 @@ extension DeploymentStatusService {
           ? CoreL10n.text("已读取最近一次 Vercel 部署。")
           : messageParts.joined(separator: " · "),
         urlText: urlText,
-        logExcerpt: logExcerpt
+        logExcerpt: logExcerpt,
+        expectedBranch: expectedDeploymentBranch(releaseRecord: releaseRecord, profile: profile),
+        expectedCommitSHA: releaseRecord?.commitSHA?.trimmedForPublishing.nilIfEmpty,
+        observedBranch: deployment.meta?.branch?.trimmedForPublishing.nilIfEmpty,
+        observedCommitSHA: deployment.meta?.commitSHA?.trimmedForPublishing.nilIfEmpty,
+        attributionVerified: releaseRecord?.commitSHA?.trimmedForPublishing.nilIfEmpty == nil
+          ? nil
+          : true
       )
     } catch {
       return DeploymentStatusSignal(
@@ -565,7 +663,8 @@ extension DeploymentStatusService {
     do {
       let response: CloudflarePagesDeploymentsResponse = try await send(
         cloudflareRequest(
-          path: "/client/v4/accounts/\(encodedPathComponent(accountID))/pages/projects/\(encodedPathComponent(projectName))/deployments",
+          path:
+            "/client/v4/accounts/\(encodedPathComponent(accountID))/pages/projects/\(encodedPathComponent(projectName))/deployments",
           token: token,
           queryItems: [
             URLQueryItem(name: "env", value: "production"),
@@ -588,7 +687,7 @@ extension DeploymentStatusService {
         status.map { CoreL10n.format("状态：%@", $0) },
         trigger?.branch?.nilIfEmpty.map { CoreL10n.format("分支：%@", $0) },
         trigger?.commitHash?.nilIfEmpty.map { CoreL10n.format("提交：%@", $0) },
-        trigger?.commitMessage?.nilIfEmpty
+        trigger?.commitMessage?.nilIfEmpty,
       ].compactMap { $0 }
       let urlText = deployment.url?.nilIfEmpty ?? deployment.aliases.first?.nilIfEmpty
       if let mismatch = releaseAttributionMismatchMessage(
@@ -598,11 +697,15 @@ extension DeploymentStatusService {
         releaseRecord: releaseRecord,
         profile: profile
       ) {
-        return DeploymentStatusSignal(
-          level: .unknown,
-          title: deployment.latestStage?.name?.nilIfEmpty ?? "Cloudflare Pages",
+        return deploymentAttributionSignal(
+          provider: .cloudflarePages,
           message: mismatch,
-          urlText: urlText
+          urlText: urlText,
+          deploymentBranch: trigger?.branch,
+          deploymentCommit: trigger?.commitHash,
+          releaseRecord: releaseRecord,
+          profile: profile,
+          verified: false
         )
       }
       return DeploymentStatusSignal(
@@ -611,7 +714,14 @@ extension DeploymentStatusService {
         message: messageParts.isEmpty
           ? CoreL10n.text("已读取最近一次 Cloudflare Pages 部署。")
           : messageParts.joined(separator: " · "),
-        urlText: urlText
+        urlText: urlText,
+        expectedBranch: expectedDeploymentBranch(releaseRecord: releaseRecord, profile: profile),
+        expectedCommitSHA: releaseRecord?.commitSHA?.trimmedForPublishing.nilIfEmpty,
+        observedBranch: trigger?.branch?.trimmedForPublishing.nilIfEmpty,
+        observedCommitSHA: trigger?.commitHash?.trimmedForPublishing.nilIfEmpty,
+        attributionVerified: releaseRecord?.commitSHA?.trimmedForPublishing.nilIfEmpty == nil
+          ? nil
+          : true
       )
     } catch {
       return DeploymentStatusSignal(
@@ -631,20 +741,35 @@ extension DeploymentStatusService {
     guard let releaseRecord else {
       return nil
     }
-    let expectedBranch = releaseRecord.branchName?.trimmedForPublishing.nilIfEmpty
-      ?? profile.branch.trimmedForPublishing.nilIfEmpty
+    let expectedBranch = expectedDeploymentBranch(
+      releaseRecord: releaseRecord,
+      profile: profile
+    )
     let expectedCommit = releaseRecord.commitSHA?.trimmedForPublishing.nilIfEmpty
     let actualBranch = deploymentBranch?.trimmedForPublishing.nilIfEmpty
     let actualCommit = deploymentCommit?.trimmedForPublishing.nilIfEmpty
     var mismatches: [String] = []
 
-    if let expectedCommit, let actualCommit, !commitMatches(actualCommit, expectedCommit) {
-      mismatches.append(
-        CoreL10n.format("期望提交 %@，实际 %@", shortCommit(expectedCommit), shortCommit(actualCommit))
-      )
+    if let expectedCommit {
+      if let actualCommit {
+        if !commitMatches(actualCommit, expectedCommit) {
+          mismatches.append(
+            CoreL10n.format(
+              "期望提交 %@，实际 %@",
+              shortCommit(expectedCommit),
+              shortCommit(actualCommit)
+            )
+          )
+        }
+      } else {
+        mismatches.append(
+          CoreL10n.format("未返回期望提交 %@", shortCommit(expectedCommit))
+        )
+      }
     }
     if let expectedBranch, let actualBranch,
-       actualBranch.compare(expectedBranch, options: [.caseInsensitive]) != .orderedSame {
+      actualBranch.compare(expectedBranch, options: [.caseInsensitive]) != .orderedSame
+    {
       mismatches.append(CoreL10n.format("期望分支 %@，实际 %@", expectedBranch, actualBranch))
     }
 
@@ -655,6 +780,39 @@ extension DeploymentStatusService {
       "最近一次 %@ 部署不是当前发布：%@。请等待目标 commit 部署完成或检查部署队列。",
       provider.displayName,
       mismatches.joined(separator: CoreL10n.text("；"))
+    )
+  }
+
+  func expectedDeploymentBranch(
+    releaseRecord: ReleaseRecord?,
+    profile: SiteProfile
+  ) -> String? {
+    releaseRecord?.branchName?.trimmedForPublishing.nilIfEmpty
+      ?? profile.branch.trimmedForPublishing.nilIfEmpty
+  }
+
+  func deploymentAttributionSignal(
+    provider: DeploymentProvider,
+    message: String,
+    urlText: String?,
+    deploymentBranch: String?,
+    deploymentCommit: String?,
+    releaseRecord: ReleaseRecord?,
+    profile: SiteProfile,
+    verified: Bool
+  ) -> DeploymentStatusSignal {
+    DeploymentStatusSignal(
+      level: verified ? .success : .unknown,
+      title: CoreL10n.format("%@ 发布归属", provider.displayName),
+      message: message,
+      urlText: urlText,
+      expectedBranch: expectedDeploymentBranch(releaseRecord: releaseRecord, profile: profile),
+      expectedCommitSHA: releaseRecord?.commitSHA?.trimmedForPublishing.nilIfEmpty,
+      observedBranch: deploymentBranch?.trimmedForPublishing.nilIfEmpty,
+      observedCommitSHA: deploymentCommit?.trimmedForPublishing.nilIfEmpty,
+      attributionVerified: releaseRecord?.commitSHA?.trimmedForPublishing.nilIfEmpty == nil
+        ? nil
+        : verified
     )
   }
 

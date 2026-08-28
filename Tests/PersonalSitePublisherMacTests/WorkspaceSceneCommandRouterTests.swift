@@ -97,6 +97,11 @@ final class WorkspaceSceneCommandRouterTests: XCTestCase {
         openReleaseHistory: {}
       ),
       workspaceFirstRunSetupCommandAction: WorkspaceFirstRunSetupCommandAction(open: {}),
+      settingsWorkspaceCommandAction: SettingsWorkspaceCommandAction(
+        isPresented: false,
+        open: { _ in },
+        close: {}
+      ),
       draftFullTextSearchAction: DraftFullTextSearchAction(open: {}),
       workspaceFocusModeCommandAction: WorkspaceFocusModeCommandAction(
         isActive: false,
@@ -121,6 +126,7 @@ final class WorkspaceSceneCommandRouterTests: XCTestCase {
     XCTAssertNil(router.localSitePreviewCommandAction)
     XCTAssertNil(router.workspaceCommandPaletteAction)
     XCTAssertNil(router.workspaceFirstRunSetupCommandAction)
+    XCTAssertNil(router.settingsWorkspaceCommandAction)
     XCTAssertNil(router.draftFullTextSearchAction)
     XCTAssertNil(router.workspaceFocusModeCommandAction)
     XCTAssertNil(router.repositorySourceSessionCommandActions)

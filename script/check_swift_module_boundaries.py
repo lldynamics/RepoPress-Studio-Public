@@ -40,6 +40,10 @@ GOVERNED_DEPENDENCIES: dict[str, set[str]] = {
         "PublishingKnowledgeCore",
         "PublishingMarkdownCore",
     },
+    "PublishingMCPClient": {
+        "PublishingAICore",
+        "PublishingWorkbenchCore",
+    },
     "BrowserExtensionProtocolSupport": set(),
     "PersonalSitePublisherMac": {
         "BrowserExtensionProtocolSupport",
@@ -56,6 +60,7 @@ EXPECTED_PRODUCTION_TARGET_TYPES = {
     "PublishingAICore": "regular",
     "PublishingKnowledgeCore": "regular",
     "PublishingWorkbenchCore": "regular",
+    "PublishingMCPClient": "regular",
     "BrowserExtensionProtocolSupport": "regular",
     "PersonalSitePublisherMac": "executable",
 }
@@ -69,11 +74,18 @@ TEST_TARGET_DEPENDENCIES: dict[str, set[str]] = {
     "PublishingWorkbenchCoreTests": {
         "BrowserExtensionProtocolSupport",
         "PublishingAICore",
+        "PublishingGitCore",
+        "PublishingWorkbenchCore",
+    },
+    "PublishingMCPClientTests": {
+        "PublishingAICore",
+        "PublishingMCPClient",
         "PublishingWorkbenchCore",
     },
     "PersonalSitePublisherMacTests": {
         "BrowserExtensionProtocolSupport",
         "PersonalSitePublisherMac",
+        "PublishingGitCore",
         "PublishingMarkdownCore",
         "PublishingWorkbenchCore",
     },
@@ -84,6 +96,7 @@ EXPECTED_PRODUCTS = {
     "PublishingAICore": {"type": "library", "targets": {"PublishingAICore"}},
     "PublishingKnowledgeCore": {"type": "library", "targets": {"PublishingKnowledgeCore"}},
     "PublishingWorkbenchCore": {"type": "library", "targets": {"PublishingWorkbenchCore"}},
+    "PublishingMCPClient": {"type": "library", "targets": {"PublishingMCPClient"}},
     "PersonalSitePublisherMac": {"type": "executable", "targets": {"PersonalSitePublisherMac"}},
 }
 EXPECTED_EXTERNAL_PRODUCTS: dict[str, dict[str, str]] = {
@@ -98,6 +111,10 @@ EXPECTED_EXTERNAL_PRODUCTS: dict[str, dict[str, str]] = {
     "PublishingAICore": {},
     "PublishingKnowledgeCore": {},
     "PublishingWorkbenchCore": {},
+    "PublishingMCPClient": {
+        "MCP": "swift-sdk",
+        "SystemPackage": "swift-system",
+    },
     "BrowserExtensionProtocolSupport": {},
     "PersonalSitePublisherMac": {"Sparkle": "Sparkle"},
 }
@@ -126,6 +143,7 @@ CORE_SOURCE_TARGETS = (
     "PublishingAICore",
     "PublishingKnowledgeCore",
     "PublishingWorkbenchCore",
+    "PublishingMCPClient",
 )
 EXPECTED_EXPORTS = {
     "PublishingAICore",

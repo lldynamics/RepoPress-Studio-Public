@@ -41,9 +41,6 @@ final class MarkdownTextKit2PresentationDocument {
     }
   }
 
-  /// Alias for call sites that describe these values as attachment entries.
-  typealias AttachmentEntry = Entry
-
   /// Metadata for an attachment that was actually installed into the derived
   /// presentation string. Both ranges use UTF-16 offsets, matching AppKit.
   struct InstalledAttachment {

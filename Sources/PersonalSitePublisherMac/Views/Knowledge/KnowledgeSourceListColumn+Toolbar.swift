@@ -51,15 +51,17 @@ extension KnowledgeSourceListColumn {
       .help("资料库设置、回收站、备份与恢复")
       .accessibilityLabel("资料库管理")
       .disabled(knowledge.isBusy)
-      Button {
-        isImportPresented = true
-      } label: {
-        Label("导入", systemImage: "plus")
+      if !knowledge.documents.isEmpty {
+        Button {
+          isImportPresented = true
+        } label: {
+          Label("导入", systemImage: "plus")
+        }
+        .workbenchProminentActionStyle()
+        .controlSize(.regular)
+        .help("导入资料")
+        .accessibilityLabel("导入资料")
       }
-      .workbenchProminentActionStyle()
-      .controlSize(.regular)
-      .help("导入资料")
-      .accessibilityLabel("导入资料")
     }
   }
 
@@ -67,20 +69,45 @@ extension KnowledgeSourceListColumn {
   var knowledgeInsertionActions: some View {
     if let document = knowledge.selectedDocument {
       HStack(spacing: 8) {
-        Button {
-          _ = KnowledgeArticleInsertionService.insertCurrentArticle(
-            document: document,
-            text: knowledge.selectedDocumentText,
-            into: store
-          )
-        } label: {
-          Label("插入当前文章", systemImage: "text.insert")
+        if document.kind == .image {
+          Button {
+            isInsertingKnowledgeImage = true
+            Task { @MainActor in
+              defer { isInsertingKnowledgeImage = false }
+              _ = await KnowledgeArticleInsertionService.insertImage(
+                document: document,
+                selectedResult: knowledge.selectedSearchResult,
+                knowledge: knowledge,
+                into: store
+              )
+            }
+          } label: {
+            Label(
+              isInsertingKnowledgeImage ? String(localized: "正在插入图片") : String(localized: "插入图片"),
+              systemImage: isInsertingKnowledgeImage ? "hourglass" : "photo.badge.plus"
+            )
+          }
+          .workbenchProminentActionStyle()
+          .controlSize(.small)
+          .disabled(isInsertingKnowledgeImage || knowledge.isBusy)
+          .help("将资料库托管副本复制到当前文章附件后插入")
+          .accessibilityIdentifier("knowledge-insert-current-image")
+        } else {
+          Button {
+            _ = KnowledgeArticleInsertionService.insertCurrentArticle(
+              document: document,
+              text: knowledge.selectedDocumentText,
+              into: store
+            )
+          } label: {
+            Label("插入当前文章", systemImage: "text.insert")
+          }
+          .workbenchProminentActionStyle()
+          .controlSize(.small)
+          .disabled(knowledge.selectedDocumentText.trimmedForPublishing.isEmpty || knowledge.isBusy)
+          .help("将当前资料正文插入正在编辑的文章")
+          .accessibilityIdentifier("knowledge-insert-current-article")
         }
-        .workbenchProminentActionStyle()
-        .controlSize(.small)
-        .disabled(knowledge.selectedDocumentText.trimmedForPublishing.isEmpty || knowledge.isBusy)
-        .help("将当前资料正文插入正在编辑的文章")
-        .accessibilityIdentifier("knowledge-insert-current-article")
 
         Button {
           _ = KnowledgeArticleInsertionService.insertCitation(

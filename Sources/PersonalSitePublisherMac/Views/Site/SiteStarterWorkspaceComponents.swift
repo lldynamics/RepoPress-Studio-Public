@@ -98,6 +98,18 @@ enum SiteStarterWizardStep: String, CaseIterable, Identifiable {
   }
 }
 
+enum SiteStarterWorkflowProjection {
+  static func steps(
+    mode: SiteStarterMode,
+    deploymentTarget: SiteStarterDeploymentTarget
+  ) -> [SiteStarterWizardStep] {
+    if mode == .importExisting || deploymentTarget == .none {
+      return [.template, .localDirectory, .generate, .deployment]
+    }
+    return SiteStarterWizardStep.allCases
+  }
+}
+
 enum SiteStarterWizardStepStatus {
   case done
   case active
@@ -591,7 +603,7 @@ struct SiteStarterGenerateStep: View {
 
 struct SiteStarterFirstPushStep: View {
   let canPushStarterSite: Bool
-  let pushAction: () -> Void
+  let reviewAction: () -> Void
   let pushBranch: String?
   let pushSHA: String?
   let committedPathCount: Int?
@@ -599,14 +611,14 @@ struct SiteStarterFirstPushStep: View {
 
   var body: some View {
     SiteStarterWizardPanel(title: String(localized: "首次推送"), systemImage: "arrow.up.circle") {
-      Text("首次推送会提交生成的 Starter 文件，并推送到 origin 的目标分支。")
+      Text("先冻结并复核远端、分支、提交说明和精确文件清单；确认后会重新校验，再提交并推送。")
         .font(.callout)
         .foregroundStyle(.secondary)
 
       Button {
-        pushAction()
+        reviewAction()
       } label: {
-        Label("首次提交并推送", systemImage: "arrow.up.circle")
+        Label("复核首次提交", systemImage: "checklist")
       }
       .workbenchProminentActionStyle()
       .disabled(!canPushStarterSite)
@@ -625,6 +637,96 @@ struct SiteStarterFirstPushStep: View {
             .workbenchTruncatedIdentity(remoteURL, lineLimit: 2)
         }
       }
+    }
+  }
+}
+
+struct SiteStarterFirstPushConfirmationView: View {
+  let confirmation: SiteStarterPushConfirmation
+  let isPushing: Bool
+  let failureMessage: String?
+  let cancelAction: () -> Void
+  let confirmAction: () -> Void
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 16) {
+      Text("复核首次提交")
+        .font(.title2.weight(.semibold))
+      Text("以下是刚刚冻结的快照。确认后会再次校验；任一项变化都会停止，不会提交或推送。")
+        .foregroundStyle(.secondary)
+
+      GroupBox("目标") {
+        VStack(alignment: .leading, spacing: 8) {
+          confirmationRow("远端", confirmation.remoteURL)
+          confirmationRow("分支", confirmation.branch)
+          confirmationRow("提交说明", confirmation.commitMessage)
+          confirmationRow(
+            "远端基线",
+            confirmation.remoteBranchCommitSHA.map { String($0.prefix(12)) } ?? String(localized: "目标分支尚不存在")
+          )
+          confirmationRow(
+            "本地 HEAD",
+            confirmation.headCommitSHA.map { String($0.prefix(12)) } ?? String(localized: "尚无提交")
+          )
+        }
+      }
+
+      GroupBox("将提交 \(confirmation.committedPaths.count) 个文件") {
+        ScrollView {
+          VStack(alignment: .leading, spacing: 4) {
+            ForEach(confirmation.committedPaths, id: \.self) { path in
+              Text(path)
+                .font(.caption.monospaced())
+                .textSelection(.enabled)
+            }
+          }
+          .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .frame(maxHeight: 180)
+      }
+
+      Label("已检查暂存区没有 Starter 清单外的文件。", systemImage: "checkmark.shield")
+        .font(.caption)
+        .foregroundStyle(WorkbenchTheme.success)
+
+      if let failureMessage {
+        Label(failureMessage, systemImage: "exclamationmark.triangle")
+          .font(.caption)
+          .foregroundStyle(WorkbenchTheme.warning)
+      }
+
+      HStack {
+        Button("取消", action: cancelAction)
+          .keyboardShortcut(.cancelAction)
+        Spacer()
+        Button {
+          confirmAction()
+        } label: {
+          if isPushing {
+            ProgressView()
+              .controlSize(.small)
+          } else {
+            Label("确认提交并推送", systemImage: "arrow.up.circle")
+          }
+        }
+        .workbenchProminentActionStyle()
+        .disabled(isPushing)
+        .keyboardShortcut(.defaultAction)
+      }
+    }
+    .padding(24)
+    .frame(minWidth: 560)
+  }
+
+  private func confirmationRow(_ title: LocalizedStringKey, _ value: String) -> some View {
+    HStack(alignment: .firstTextBaseline, spacing: 10) {
+      Text(title)
+        .foregroundStyle(.secondary)
+        .frame(width: 72, alignment: .leading)
+      Text(value)
+        .font(.caption.monospaced())
+        .textSelection(.enabled)
+        .workbenchTruncatedIdentity(value, lineLimit: 2)
     }
   }
 }

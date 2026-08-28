@@ -171,22 +171,26 @@ assert.ok(
 assert.match(popupHTML, /class="mark" aria-hidden="true"/);
 assert.match(popupHTML, /id="status" role="status"[^>]*aria-atomic="true"/);
 assert.match(popupHTML, /id="alert" role="alert"[^>]*aria-atomic="true"/);
+assert.match(popupHTML, /id="capture-mode-description"/);
+assert.match(popupHTML, /id="save-toast"/);
+assert.match(popupHTML, /id="save-toast-message"/);
 assert.match(popupHTML, /127\.0\.0\.1/);
 assert.match(popupHTML, /本机回环接口/);
 assert.doesNotMatch(popupHTML, /Native Messaging|Unix Socket/);
 assert.match(popupCSS, /\[hidden\]\s*\{[^}]*display:\s*none\s*!important;/s);
 assert.doesNotMatch(popupCSS, /min-width:\s*420px/);
-assert.doesNotMatch(popupCSS, /100vw/);
-assert.match(popupCSS, /body\s*\{[^}]*width:\s*420px;/s);
+assert.match(popupCSS, /body\s*\{[^}]*width:\s*420px;[^}]*max-width:\s*100vw;/s);
 assert.match(popupCSS, /@media\s*\(max-width:\s*380px\)/);
-assert.match(
+assert.doesNotMatch(
   popupCSS,
   /@media\s*\(max-width:\s*380px\)[\s\S]*?body\s*\{[^}]*width:\s*320px;/
 );
 assert.match(
   popupCSS,
-  /\.capture-mode-grid,[\s\S]*?grid-template-columns:\s*minmax\(0,\s*1fr\)/
+  /\.capture-mode-grid[\s\S]*?grid-template-columns:\s*repeat\(4,\s*minmax\(0,\s*1fr\)\)/
 );
+assert.match(popupCSS, /--card-radius:\s*10px/);
+assert.match(popupCSS, /@media\s*\(prefers-reduced-motion:\s*reduce\)/);
 assert.match(popupCSS, /outline:\s*3px solid var\(--focus-ring\)/);
 assert.match(
   popupCSS,
@@ -256,13 +260,14 @@ for (const selector of [
   "#new-folder", "#save-now",
   "#batch-save", "#batch-hint",
   "#batch-review-panel", "#batch-settings-summary", "#batch-items", "#batch-retry-failed",
-  "#capture-local-index", "#capture-remote-ai", "#status", "#alert", "#page-title", "main",
+  "#capture-local-index", "#capture-remote-ai", "#capture-mode-description", "#status", "#alert", "#page-title", "main",
   "#queue-panel", "#queue-count", "#queue-state", "#queue-summary", "#queue-retention",
   "#queue-privacy-mode", "#queue-allow-private-sites",
   "#queue-items", "#retry-queue", "#export-queue", "#discard-queue",
   "#receipt-panel", "#receipt-title", "#receipt-source", "#receipt-saved-at",
   "#receipt-folder", "#receipt-size",
   "#receipt-archive", "#receipt-index", "#receipt-local-index", "#receipt-remote-ai", "#open-document",
+  "#save-toast", "#save-toast-message",
   "#duplicate-panel", "#duplicate-message", "#duplicate-document", "#duplicate-folder",
   "#duplicate-size", "#duplicate-updated", "#duplicate-target",
   "#duplicate-new-version", "#duplicate-move", "#duplicate-copy", "#duplicate-cancel"
@@ -281,6 +286,8 @@ const popupPermissionRemovals = [];
 const popupRuntimeMessages = [];
 const popupGrantedPermissions = new Set();
 const popupGrantedOrigins = new Set(["https://already.example/*"]);
+const popupTimers = new Map();
+let nextPopupTimerID = 1;
 let popupHighlightedTabFixtures = [];
 let popupPermissionRequestGranted = true;
 let popupBatchShouldFail = false;
@@ -429,6 +436,14 @@ const popupContext = vm.createContext({
   globalThis: null,
   URL,
   confirm: () => true,
+  setTimeout(callback, delay) {
+    const timerID = nextPopupTimerID++;
+    popupTimers.set(timerID, { callback, delay });
+    return timerID;
+  },
+  clearTimeout(timerID) {
+    popupTimers.delete(timerID);
+  },
   Option: class {
     constructor(label, value) {
       this.label = label;
@@ -464,6 +479,13 @@ assert.equal(popupElements.get("#organization-panel").hidden, true);
 assert.equal(popupElements.get("#save-now").disabled, true);
 assert.equal(popupElements.get("main").attributes.get("aria-busy"), "false");
 assert.equal(vm.runInContext("captureModeShortLabel('full-page')", popupContext), "完整网页");
+popupCaptureModes[0].checked = false;
+popupCaptureModes[1].checked = true;
+popupCaptureModes[1].listeners.get("change")();
+assert.match(popupElements.get("#capture-mode-description").textContent, /离线页面归档/);
+popupCaptureModes[1].checked = false;
+popupCaptureModes[0].checked = true;
+popupCaptureModes[0].listeners.get("change")();
 vm.runInContext(`populateFolderOptions([
   { id: "folder-a", name: "产品研究" },
   { id: "folder-b", name: "技术资料" },
@@ -525,6 +547,29 @@ assert.equal(directSaveMessage.folderID, "folder-a");
 assert.equal(directSaveMessage.allowsLocalSemanticIndex, true);
 assert.equal(directSaveMessage.allowsRemoteAIUse, false);
 assert.equal(popupElements.get("#receipt-panel").hidden, false);
+assert.equal(popupElements.get("#save-toast").hidden, false);
+assert.match(popupElements.get("#save-toast-message").textContent, /已索引入库/);
+assert.match(popupElements.get("#status").textContent, /已索引入库/);
+assert.equal(vm.runInContext(`saveToastText({
+  action: "updated",
+  updatedCount: 1,
+  indexStatus: "ready"
+})`, popupContext), "已更新并完成索引");
+assert.equal(vm.runInContext(`saveToastText({
+  action: "existing",
+  insertedCount: 0,
+  updatedCount: 0,
+  indexStatus: "ready"
+})`, popupContext), "资料已在库中，索引已就绪");
+assert.equal(vm.runInContext(`saveToastText({
+  action: "inserted",
+  insertedCount: 1,
+  indexStatus: "pending"
+})`, popupContext), "已保存，正在建立索引");
+const saveToastTimer = [...popupTimers.values()].at(-1);
+assert.equal(saveToastTimer.delay, 2_000);
+saveToastTimer.callback();
+assert.equal(popupElements.get("#save-toast").hidden, true);
 vm.runInContext("resetCaptureFlow()", popupContext);
 assert.equal(popupElements.get("#save-panel").hidden, false);
 assert.equal(

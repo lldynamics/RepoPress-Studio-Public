@@ -170,6 +170,7 @@ extension RepositoryWorkspaceView {
     VStack(alignment: .leading, spacing: 16) {
       repositoryScanProgress
       repositorySummary
+      repositoryPublishReadinessSummary
       repositoryMergeConflictSection
       repositoryProblemsSection
       onlinePublishCenterSection
@@ -581,6 +582,61 @@ extension RepositoryWorkspaceView {
     }
   }
 
+  /// Read-only counterpart to the publish drawer's summary.  This stays
+  /// descriptive: the drawer remains the only place where a user confirms a
+  /// publish action.
+  var repositoryPublishReadinessSummary: some View {
+    let summary = UnifiedPublishReadinessPresentation.make(
+      plan: store.batchPublishPlan,
+      preview: store.batchRemotePublishPreviewSnapshot,
+      profile: store.activeProfile,
+      pendingDeletionCount: store.pendingRemoteRepositoryCleanupRequests.count
+    )
+
+    return VStack(alignment: .leading, spacing: 10) {
+      HStack {
+        Label("发布就绪", systemImage: summary.preflightSystemImage)
+          .font(.workbenchSectionTitle)
+          .accessibilityAddTraits(.isHeader)
+        Spacer()
+        Text(summary.targetTitle)
+          .font(.caption.monospaced())
+          .foregroundStyle(.secondary)
+      }
+
+      Label(summary.preflightTitle, systemImage: summary.preflightSystemImage)
+        .font(.callout)
+        .foregroundStyle(
+          summary.preflightSystemImage.hasPrefix("xmark")
+            ? WorkbenchTheme.risk
+            : Color.secondary
+        )
+
+      HStack(spacing: 12) {
+        Label("\(summary.articleCount) 篇文章", systemImage: "doc.on.doc")
+        Label("\(summary.imageChangeCount) 张图片", systemImage: "photo")
+        if summary.deletionCount > 0 {
+          Label("\(summary.deletionCount) 篇下线", systemImage: "trash")
+        }
+      }
+      .font(.caption)
+      .foregroundStyle(.secondary)
+
+      Text(summary.pipelineTitle)
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
+    }
+    .padding(14)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .background(
+      WorkbenchBackgroundStyle.card,
+      in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
+    )
+    .accessibilityElement(children: .contain)
+    .accessibilityIdentifier("repository-section-publish-readiness")
+  }
+
   @ViewBuilder
   var repositoryMergeConflictSection: some View {
     if let session = store.repositoryMergeConflictSession,
@@ -733,8 +789,12 @@ extension RepositoryWorkspaceView {
   }
 
   func openPublishingRulesSettings() {
-    requestedSettingsTabID = SettingsDestination.rules(.paths).id
-    openSettings()
+    SettingsNavigation.present(
+      destination: .rules(.paths),
+      workspaceAction: settingsWorkspaceCommandAction
+    ) {
+      openSettings()
+    }
   }
 
 }

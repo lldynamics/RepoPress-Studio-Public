@@ -134,6 +134,7 @@ struct DataManagementView: View {
   @ObservedObject var launchCoordinator: WorkbenchLaunchCoordinator
   let navigationDestination: SettingsDestination?
   let navigationRequestID: UUID
+  @Environment(\.settingsSubsection) private var settingsSubsection
   @ObservedObject private var backupScheduler: WorkspaceBackupScheduler
   @AppStorage("dataManagementRequestedSection")
   private var legacyRequestedSectionRawValue = ""
@@ -157,8 +158,8 @@ struct DataManagementView: View {
   var body: some View {
     ScrollView {
       VStack(alignment: .leading, spacing: WorkbenchSpacing.section) {
-        overviewSection
-        taskSection
+        overviewSection(for: displayedTask)
+        taskSection(for: displayedTask)
       }
       .padding(WorkbenchSpacing.content)
       .frame(maxWidth: .infinity, alignment: .topLeading)
@@ -182,7 +183,26 @@ struct DataManagementView: View {
     .accessibilityIdentifier("data-management-settings")
   }
 
-  private var overviewSection: some View {
+  private var displayedSubsection: SettingsSubsection {
+    settingsSubsection.tab == .dataManagement ? settingsSubsection : .dataDrafts
+  }
+
+  private var displayedTask: DataManagementTask {
+    switch displayedSubsection {
+    case .dataDrafts:
+      return .drafts
+    case .dataStorage:
+      return .storage
+    case .dataBackup:
+      return .backup
+    case .dataMigration:
+      return .migration
+    default:
+      return .drafts
+    }
+  }
+
+  private func overviewSection(for task: DataManagementTask) -> some View {
     GroupBox {
       LazyVGrid(
         columns: [
@@ -195,38 +215,7 @@ struct DataManagementView: View {
         alignment: .leading,
         spacing: DataManagementLayout.gridSpacing
       ) {
-        overviewMetric(
-          title: String(localized: "草稿"),
-          value: store.drafts.count.formatted(),
-          detail: String(localized: "工作台中的草稿"),
-          systemImage: "doc.text"
-        )
-        overviewMetric(
-          title: String(localized: "待恢复与清理"),
-          value: pendingItemCount.formatted(),
-          detail: pendingItemDetail,
-          systemImage: pendingItemCount == 0 ? "checkmark.circle" : "exclamationmark.triangle"
-        )
-        overviewMetric(
-          title: String(localized: "最近备份"),
-          value: latestBackupValue,
-          detail: latestBackupDetail,
-          systemImage: backupScheduler.settings.lastBackupAt == nil
-            ? "externaldrive"
-            : "checkmark.shield"
-        )
-        overviewMetric(
-          title: String(localized: "数据文件夹"),
-          value: launchCoordinator.dataRootPath == nil
-            ? String(localized: "待准备")
-            : String(localized: "可用"),
-          detail: launchCoordinator.dataRootPath == nil
-            ? String(localized: "请先在主窗口完成设置")
-            : String(localized: "位置已配置，可管理占用与备份"),
-          systemImage: launchCoordinator.dataRootPath == nil
-            ? "folder.badge.questionmark"
-            : "folder.badge.checkmark"
-        )
+        overviewMetric(for: task)
       }
       .padding(.top, 4)
     } label: {
@@ -236,7 +225,7 @@ struct DataManagementView: View {
     .accessibilityIdentifier("data-management-overview")
   }
 
-  private var taskSection: some View {
+  private func taskSection(for task: DataManagementTask) -> some View {
     VStack(alignment: .leading, spacing: WorkbenchSpacing.card) {
       VStack(alignment: .leading, spacing: 3) {
         Text("数据任务")
@@ -257,12 +246,58 @@ struct DataManagementView: View {
         alignment: .leading,
         spacing: DataManagementLayout.gridSpacing
       ) {
-        ForEach(DataManagementTask.allCases) { task in
-          taskCard(task)
-        }
+        taskCard(task)
       }
     }
     .accessibilityIdentifier("data-management-tasks")
+  }
+
+  @ViewBuilder
+  private func overviewMetric(for task: DataManagementTask) -> some View {
+    switch task {
+    case .drafts:
+      overviewMetric(
+        title: String(localized: "草稿"),
+        value: store.drafts.count.formatted(),
+        detail: String(localized: "工作台中的草稿"),
+        systemImage: "doc.text"
+      )
+      overviewMetric(
+        title: String(localized: "待恢复与清理"),
+        value: pendingItemCount.formatted(),
+        detail: pendingItemDetail,
+        systemImage: pendingItemCount == 0 ? "checkmark.circle" : "exclamationmark.triangle"
+      )
+    case .storage:
+      overviewMetric(
+        title: String(localized: "数据文件夹"),
+        value: launchCoordinator.dataRootPath == nil
+          ? String(localized: "待准备")
+          : String(localized: "可用"),
+        detail: launchCoordinator.dataRootPath == nil
+          ? String(localized: "请先在主窗口完成设置")
+          : String(localized: "位置已配置，可管理占用与备份"),
+        systemImage: launchCoordinator.dataRootPath == nil
+          ? "folder.badge.questionmark"
+          : "folder.badge.checkmark"
+      )
+    case .backup:
+      overviewMetric(
+        title: String(localized: "最近备份"),
+        value: latestBackupValue,
+        detail: latestBackupDetail,
+        systemImage: backupScheduler.settings.lastBackupAt == nil
+          ? "externaldrive"
+          : "checkmark.shield"
+      )
+    case .migration:
+      overviewMetric(
+        title: DataManagementTask.migration.title,
+        value: String(localized: "准备就绪"),
+        detail: DataManagementTask.migration.subtitle,
+        systemImage: DataManagementTask.migration.systemImage
+      )
+    }
   }
 
   private func overviewMetric(

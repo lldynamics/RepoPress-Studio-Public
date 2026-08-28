@@ -8,7 +8,7 @@ struct DraftFullTextSearchPanel: View {
   let store: WorkbenchStore
   @State private var query = ""
   @State private var scope = DraftFullTextSearchScope.currentSite
-  @State private var results: [DraftFullTextSearchHit] = []
+  @State private var searchSnapshot = DraftFullTextSearchPresentationSnapshot.empty
   @State private var isSearching = false
   @State private var protectedPrivateDraftCount = 0
   @State private var searchTask: Task<Void, Never>?
@@ -50,7 +50,7 @@ struct DraftFullTextSearchPanel: View {
     .onChange(of: publishing.drafts) { _, _ in
       scheduleSearch(immediately: true)
     }
-    .onChange(of: results) { _, _ in
+    .onChange(of: searchSnapshot) { _, _ in
       synchronizeSelection()
     }
     .onDisappear {
@@ -159,10 +159,10 @@ struct DraftFullTextSearchPanel: View {
       }
 
       if !normalizedQuery.isEmpty {
-        Text("\(results.count) 个匹配")
+        Text("\(searchSnapshot.displayedHits.count) 个匹配")
           .font(.caption.monospacedDigit())
           .foregroundStyle(.secondary)
-          .accessibilityLabel("找到 \(results.count) 个匹配")
+          .accessibilityLabel("找到 \(searchSnapshot.displayedHits.count) 个匹配")
       }
     }
     .padding(.horizontal, 16)
@@ -178,14 +178,14 @@ struct DraftFullTextSearchPanel: View {
         Text("搜索标题、摘要、正文和元数据，或组合结构化条件；保存的查询可在搜索范围旁重新载入。")
       }
       .frame(maxWidth: .infinity, maxHeight: .infinity)
-    } else if isSearching && results.isEmpty {
+    } else if isSearching && searchSnapshot.displayedHits.isEmpty {
       VStack(spacing: 10) {
         ProgressView()
         Text("正在搜索…")
           .foregroundStyle(.secondary)
       }
       .frame(maxWidth: .infinity, maxHeight: .infinity)
-    } else if resultGroups.isEmpty {
+    } else if searchSnapshot.groups.isEmpty {
       ContentUnavailableView {
         Label("没有找到匹配结果", systemImage: "doc.text.magnifyingglass")
       } description: {
@@ -201,7 +201,7 @@ struct DraftFullTextSearchPanel: View {
     } else {
       ScrollViewReader { proxy in
         List {
-          ForEach(resultGroups) { group in
+          ForEach(searchSnapshot.groups) { group in
             Section {
               ForEach(group.hits) { hit in
                 Button {
@@ -321,27 +321,6 @@ struct DraftFullTextSearchPanel: View {
     .contentShape(Rectangle())
   }
 
-  private var resultGroups: [DraftFullTextSearchGroup] {
-    var groups: [DraftFullTextSearchGroup] = []
-    for hit in results {
-      if let index = groups.firstIndex(where: { $0.draftID == hit.draftID }) {
-        groups[index].hits.append(hit)
-      } else {
-        groups.append(DraftFullTextSearchGroup(
-          draftID: hit.draftID,
-          siteProfileID: hit.siteProfileID,
-          title: hit.draftTitle,
-          hits: [hit]
-        ))
-      }
-    }
-    return groups
-  }
-
-  private var displayedHits: [DraftFullTextSearchHit] {
-    resultGroups.flatMap(\.hits)
-  }
-
   private var normalizedQuery: String {
     query.trimmingCharacters(in: .whitespacesAndNewlines)
   }
@@ -352,7 +331,7 @@ struct DraftFullTextSearchPanel: View {
 
   private var selectedHit: DraftFullTextSearchHit? {
     guard let selectedHitID else { return nil }
-    return displayedHits.first { $0.id == selectedHitID }
+    return searchSnapshot.hit(withID: selectedHitID)
   }
 
   private var savedQueriesMenu: some View {
@@ -441,7 +420,7 @@ struct DraftFullTextSearchPanel: View {
     searchTask?.cancel()
     let requestedQuery = normalizedQuery
     guard !requestedQuery.isEmpty else {
-      results = []
+      searchSnapshot = .empty
       selectedHitID = nil
       protectedPrivateDraftCount = 0
       isSearching = false
@@ -456,10 +435,12 @@ struct DraftFullTextSearchPanel: View {
     protectedPrivateDraftCount = scopedDrafts.count {
       store.privateContentDisplay(for: $0).isMasked
     }
-    let searchableDrafts = scopedDrafts.map {
-      store.privacyProtectedSearchDraft(for: $0)
+    let searchableDrafts = scopedDrafts.map { draft in
+      var liveDraft = draft
+      liveDraft.bodyMarkdown = publishing.draftBodyEditorBuffer(for: draft.id).bodyMarkdown
+      return store.privacyProtectedSearchDraft(for: liveDraft)
     }
-    results = []
+    searchSnapshot = .empty
     selectedHitID = nil
     isSearching = true
     let requestedScope = scope
@@ -470,12 +451,13 @@ struct DraftFullTextSearchPanel: View {
       }
       guard !Task.isCancelled else { return }
       let searchWorker = Task.detached(priority: .userInitiated) {
-        DraftFullTextSearchService().search(
+        let matches = DraftFullTextSearchService().search(
           query: requestedQuery,
           drafts: searchableDrafts
         )
+        return DraftFullTextSearchPresentationSnapshot(hits: matches)
       }
-      let matches = await withTaskCancellationHandler(
+      let snapshot = await withTaskCancellationHandler(
         operation: { await searchWorker.value },
         onCancel: { searchWorker.cancel() }
       )
@@ -484,23 +466,23 @@ struct DraftFullTextSearchPanel: View {
             scope == requestedScope else {
         return
       }
-      results = matches
+      searchSnapshot = snapshot
       isSearching = false
     }
   }
 
   private func synchronizeSelection() {
-    if let selectedHitID, displayedHits.contains(where: { $0.id == selectedHitID }) {
+    if let selectedHitID, searchSnapshot.hit(withID: selectedHitID) != nil {
       return
     }
-    selectedHitID = displayedHits.first?.id
+    selectedHitID = searchSnapshot.displayedHits.first?.id
   }
 
   private func moveSelection(by offset: Int) {
-    let hits = displayedHits
+    let hits = searchSnapshot.displayedHits
     guard !hits.isEmpty else { return }
     guard let selectedHitID,
-          let currentIndex = hits.firstIndex(where: { $0.id == selectedHitID }) else {
+          let currentIndex = searchSnapshot.index(of: selectedHitID) else {
       self.selectedHitID = offset < 0 ? hits.last?.id : hits.first?.id
       return
     }
@@ -549,12 +531,65 @@ private enum DraftFullTextSearchScope: String, CaseIterable, Identifiable {
   }
 }
 
-private struct DraftFullTextSearchGroup: Identifiable {
+struct DraftFullTextSearchGroup: Identifiable, Equatable, Sendable {
   var id: UUID { draftID }
   let draftID: UUID
   let siteProfileID: UUID
   let title: String
   var hits: [DraftFullTextSearchHit]
+}
+
+/// A single linear projection of search hits into the grouped and keyboard-
+/// navigable forms consumed by the panel. Keeping it in state avoids rebuilding
+/// groups and repeatedly flattening them on every SwiftUI body evaluation.
+struct DraftFullTextSearchPresentationSnapshot: Equatable, Sendable {
+  static let empty = DraftFullTextSearchPresentationSnapshot(hits: [])
+
+  let groups: [DraftFullTextSearchGroup]
+  let displayedHits: [DraftFullTextSearchHit]
+  private let displayedIndexByID: [DraftFullTextSearchHitID: Int]
+
+  init(hits: [DraftFullTextSearchHit]) {
+    var groups: [DraftFullTextSearchGroup] = []
+    var groupIndexByDraftID: [UUID: Int] = [:]
+    groupIndexByDraftID.reserveCapacity(hits.count)
+
+    for hit in hits {
+      if let index = groupIndexByDraftID[hit.draftID] {
+        groups[index].hits.append(hit)
+      } else {
+        groupIndexByDraftID[hit.draftID] = groups.count
+        groups.append(
+          DraftFullTextSearchGroup(
+            draftID: hit.draftID,
+            siteProfileID: hit.siteProfileID,
+            title: hit.draftTitle,
+            hits: [hit]
+          )
+        )
+      }
+    }
+
+    let displayedHits = groups.flatMap(\.hits)
+    var displayedIndexByID: [DraftFullTextSearchHitID: Int] = [:]
+    displayedIndexByID.reserveCapacity(displayedHits.count)
+    for (index, hit) in displayedHits.enumerated() {
+      displayedIndexByID[hit.id] = index
+    }
+
+    self.groups = groups
+    self.displayedHits = displayedHits
+    self.displayedIndexByID = displayedIndexByID
+  }
+
+  func hit(withID id: DraftFullTextSearchHitID) -> DraftFullTextSearchHit? {
+    guard let index = displayedIndexByID[id] else { return nil }
+    return displayedHits[index]
+  }
+
+  func index(of id: DraftFullTextSearchHitID) -> Int? {
+    displayedIndexByID[id]
+  }
 }
 
 private extension DraftFullTextSearchField {

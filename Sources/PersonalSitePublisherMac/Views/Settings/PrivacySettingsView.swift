@@ -6,109 +6,24 @@ struct PrivacySettingsView: View {
   let status: PrivacyProtectionStatus
   let onQuickHide: () -> Void
   let updatePrivacySettings: (PrivacyProtectionSettings) -> Void
+  @Environment(\.settingsSubsection) private var settingsSubsection
 
   var body: some View {
     Form {
-      Section {
-        HStack(spacing: 10) {
-          ZStack {
-            Circle()
-              .fill(Color.accentColor.opacity(0.14))
-              .frame(width: 32, height: 32)
-            Image(systemName: "keyboard")
-              .font(.system(size: 16, weight: .semibold))
-              .foregroundStyle(Color.accentColor)
-          }
-          .accessibilityHidden(true)
-
-          VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 4) {
-              Text("快速隐藏 / 临时遮挡")
-                .font(.subheadline.weight(.semibold))
-              Spacer()
-              HStack(spacing: 2) {
-                Text("⌃").font(.caption.monospaced().weight(.semibold)).padding(.horizontal, 4)
-                  .padding(.vertical, 1).background(
-                    Color.primary.opacity(0.1), in: RoundedRectangle(cornerRadius: 3))
-                Text("⌘").font(.caption.monospaced().weight(.semibold)).padding(.horizontal, 4)
-                  .padding(.vertical, 1).background(
-                    Color.primary.opacity(0.1), in: RoundedRectangle(cornerRadius: 3))
-                Text("L").font(.caption.monospaced().weight(.semibold)).padding(.horizontal, 4)
-                  .padding(.vertical, 1).background(
-                    Color.primary.opacity(0.1), in: RoundedRectangle(cornerRadius: 3))
-              }
-              .accessibilityElement(children: .ignore)
-              .accessibilityLabel("快捷键 Control Command L")
-            }
-            Text("在软件任何界面按下全局快捷键即可快速遮挡或隐藏工作台。")
-              .font(.caption)
-              .foregroundStyle(.secondary)
-          }
-        }
-        .padding(.vertical, 4)
-      }
-
-      PrivacySettingsVisibilitySection(
-        masksPrivateContent: privacySettingBinding(keyPath: \.masksPrivateContent)
-      )
-
-      Section("遮挡效果预览") {
-        VStack(alignment: .leading, spacing: 6) {
-          Text("私密文章或离席遮罩效果")
-            .font(.caption)
-            .foregroundStyle(.secondary)
-
-          ViewThatFits(in: .horizontal) {
-            HStack(spacing: WorkbenchSpacing.card) {
-              privacyPreviewCard(
-                title: String(localized: "公开文本示例"),
-                content: String(localized: "这是一段正常的文章正文。"),
-                isMasked: false
-              )
-              privacyPreviewCard(
-                title: String(localized: "私密掩码示例"),
-                content: String(localized: "这是一段敏感私密内容。"),
-                isMasked: true
-              )
-            }
-
-            VStack(alignment: .leading, spacing: WorkbenchSpacing.control) {
-              privacyPreviewCard(
-                title: String(localized: "公开文本示例"),
-                content: String(localized: "这是一段正常的文章正文。"),
-                isMasked: false
-              )
-              privacyPreviewCard(
-                title: String(localized: "私密掩码示例"),
-                content: String(localized: "这是一段敏感私密内容。"),
-                isMasked: true
-              )
-            }
-          }
-        }
-      }
-
-      PrivacySettingsCurrentStatusSection(
-        status: status,
-        onQuickHide: {
-          onQuickHide()
-        }
-      )
-
-      Section("隐私与支持") {
-        if let privacyPolicyURL = Self.privacyPolicyURL {
-          Link(destination: privacyPolicyURL) {
-            Label("隐私政策", systemImage: "hand.raised")
-          }
-          .help("在浏览器中打开隐私政策")
-        }
-
-        if let supportURL = Self.supportURL {
-          Link(destination: supportURL) {
-            Label("技术支持", systemImage: "questionmark.circle")
-          }
-          .help("在浏览器中打开技术支持页面")
-        }
+      switch displayedSubsection {
+      case .privacyQuickHide:
+        quickHideSection
+        currentStatusSection
+      case .privacyMasking:
+        PrivacySettingsVisibilitySection(
+          masksPrivateContent: privacySettingBinding(keyPath: \.masksPrivateContent)
+        )
+        maskingPreviewSection
+      case .privacyStatus:
+        currentStatusSection
+        supportSection
+      default:
+        EmptyView()
       }
 
     }
@@ -116,6 +31,111 @@ struct PrivacySettingsView: View {
     .padding(WorkbenchSpacing.content)
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("privacy-settings")
+  }
+
+  private var displayedSubsection: SettingsSubsection {
+    settingsSubsection.tab == .privacy ? settingsSubsection : .privacyQuickHide
+  }
+
+  private var quickHideSection: some View {
+    Section {
+      HStack(spacing: 10) {
+        ZStack {
+          Circle()
+            .fill(Color.accentColor.opacity(0.14))
+            .frame(width: 32, height: 32)
+          Image(systemName: "keyboard")
+            .font(.system(size: 16, weight: .semibold))
+            .foregroundStyle(Color.accentColor)
+        }
+        .accessibilityHidden(true)
+
+        VStack(alignment: .leading, spacing: 4) {
+          HStack(spacing: 4) {
+            Text("快速隐藏 / 临时遮挡")
+              .font(.subheadline.weight(.semibold))
+            Spacer()
+            HStack(spacing: 2) {
+              Text("⌃").font(.caption.monospaced().weight(.semibold)).padding(.horizontal, 4)
+                .padding(.vertical, 1).background(
+                  Color.primary.opacity(0.1), in: RoundedRectangle(cornerRadius: 3))
+              Text("⌘").font(.caption.monospaced().weight(.semibold)).padding(.horizontal, 4)
+                .padding(.vertical, 1).background(
+                  Color.primary.opacity(0.1), in: RoundedRectangle(cornerRadius: 3))
+              Text("L").font(.caption.monospaced().weight(.semibold)).padding(.horizontal, 4)
+                .padding(.vertical, 1).background(
+                  Color.primary.opacity(0.1), in: RoundedRectangle(cornerRadius: 3))
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("快捷键 Control Command L")
+          }
+          Text("在软件任何界面按下全局快捷键即可快速遮挡或隐藏工作台。")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        }
+      }
+      .padding(.vertical, 4)
+    }
+  }
+
+  private var maskingPreviewSection: some View {
+    Section("遮挡效果预览") {
+      VStack(alignment: .leading, spacing: 6) {
+        Text("私密文章或离席遮罩效果")
+          .font(.caption)
+          .foregroundStyle(.secondary)
+
+        ViewThatFits(in: .horizontal) {
+          HStack(spacing: WorkbenchSpacing.card) {
+            privacyPreviewCard(
+              title: String(localized: "公开文本示例"),
+              content: String(localized: "这是一段正常的文章正文。"),
+              isMasked: false
+            )
+            privacyPreviewCard(
+              title: String(localized: "私密掩码示例"),
+              content: String(localized: "这是一段敏感私密内容。"),
+              isMasked: true
+            )
+          }
+
+          VStack(alignment: .leading, spacing: WorkbenchSpacing.control) {
+            privacyPreviewCard(
+              title: String(localized: "公开文本示例"),
+              content: String(localized: "这是一段正常的文章正文。"),
+              isMasked: false
+            )
+            privacyPreviewCard(
+              title: String(localized: "私密掩码示例"),
+              content: String(localized: "这是一段敏感私密内容。"),
+              isMasked: true
+            )
+          }
+        }
+      }
+    }
+  }
+
+  private var currentStatusSection: some View {
+    PrivacySettingsCurrentStatusSection(status: status, onQuickHide: onQuickHide)
+  }
+
+  private var supportSection: some View {
+    Section("隐私与支持") {
+      if let privacyPolicyURL = Self.privacyPolicyURL {
+        Link(destination: privacyPolicyURL) {
+          Label("隐私政策", systemImage: "hand.raised")
+        }
+        .help("在浏览器中打开隐私政策")
+      }
+
+      if let supportURL = Self.supportURL {
+        Link(destination: supportURL) {
+          Label("技术支持", systemImage: "questionmark.circle")
+        }
+        .help("在浏览器中打开技术支持页面")
+      }
+    }
   }
 
   private func privacyPreviewCard(

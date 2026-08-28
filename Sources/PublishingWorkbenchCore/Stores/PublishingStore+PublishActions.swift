@@ -66,7 +66,8 @@ extension PublishingStore {
       store: store
     )
     let cachedSnapshot = draftPublishPreviewSnapshot(for: selectedDraft.id)
-    let cacheIsCurrent = cachedSnapshot?.context == currentBaseline.context
+    let cacheIsCurrent =
+      cachedSnapshot?.context == currentBaseline.context
       && cachedSnapshot?.publishPackage.draftID == selectedDraft.id
       && rememberedDraftPublishPreviewInputBaseline(for: selectedDraft.id)
         == currentBaseline
@@ -74,10 +75,10 @@ extension PublishingStore {
       refreshPublishPreview(for: currentDraft, store: store)
     }
     guard let snapshot = draftPublishPreviewSnapshot(for: selectedDraft.id),
-          snapshot.context == currentBaseline.context,
-          rememberedDraftPublishPreviewInputBaseline(for: selectedDraft.id)
-            == currentBaseline,
-          snapshot.publishPackage.draftID == selectedDraft.id
+      snapshot.context == currentBaseline.context,
+      rememberedDraftPublishPreviewInputBaseline(for: selectedDraft.id)
+        == currentBaseline,
+      snapshot.publishPackage.draftID == selectedDraft.id
     else {
       return nil
     }
@@ -259,7 +260,9 @@ extension PublishingStore {
   }
 
   public func profile(for record: ReleaseRecord) -> SiteProfile {
-    if let profileID = record.siteProfileID, let profile = profiles.first(where: { $0.id == profileID }) {
+    if let profileID = record.siteProfileID,
+      let profile = profiles.first(where: { $0.id == profileID })
+    {
       return profile
     }
     return activeProfile
@@ -322,7 +325,9 @@ extension PublishingStore {
     var repositoryBlockingIssues: [PreflightIssue] = []
     if profile.purpose.requiresRepositoryReadiness {
       if let repositoryReport = store.repositoryReport(for: profile) {
-        if let missingGitIssue = repositoryReport.preflightIssues.first(where: { $0.title == CoreL10n.text("未发现 .git") }) {
+        if let missingGitIssue = repositoryReport.preflightIssues.first(where: {
+          $0.title == CoreL10n.text("未发现 .git")
+        }) {
           repositoryBlockingIssues.append(missingGitIssue)
         }
       } else {
@@ -356,7 +361,9 @@ extension PublishingStore {
     store: WorkbenchStore
   ) -> [PreflightIssue] {
     store.drafts.first(where: { $0.id == package.draftID })
-      .map { store.preflightIssues(for: $0, includeRepositoryReadiness: includeRepositoryReadiness) }
+      .map {
+        store.preflightIssues(for: $0, includeRepositoryReadiness: includeRepositoryReadiness)
+      }
       ?? []
   }
 
@@ -515,16 +522,22 @@ extension PublishingStore {
     publishPackageBuilder.build(draft: draft, profile: store.profile(for: draft))
   }
 
-  public func localPublishPreview(for draft: ArticleDraft, store: WorkbenchStore) -> LocalPublishPreview {
+  public func localPublishPreview(for draft: ArticleDraft, store: WorkbenchStore)
+    -> LocalPublishPreview
+  {
     let package = publishingPackage(for: draft, store: store)
     return localPublishPreviewService.preview(package: package, profile: store.profile(for: draft))
   }
 
-  public func remoteReviewDraft(for draft: ArticleDraft, store: WorkbenchStore) -> RemoteReviewDraft {
-    remoteReviewDraftBuilder.build(package: publishingPackage(for: draft, store: store), profile: store.profile(for: draft))
+  public func remoteReviewDraft(for draft: ArticleDraft, store: WorkbenchStore) -> RemoteReviewDraft
+  {
+    remoteReviewDraftBuilder.build(
+      package: publishingPackage(for: draft, store: store), profile: store.profile(for: draft))
   }
 
-  public func draftComparisonContent(for draft: ArticleDraft, store: WorkbenchStore) -> DraftComparisonContent {
+  public func draftComparisonContent(for draft: ArticleDraft, store: WorkbenchStore)
+    -> DraftComparisonContent
+  {
     let package = publishingPackage(for: draft, store: store)
     return DraftComparisonContent(
       repositoryPath: package.markdownPath,
@@ -535,10 +548,12 @@ extension PublishingStore {
   public func publishingAIPrompt(for draft: ArticleDraft, store: WorkbenchStore) -> String {
     let profile = store.profile(for: draft)
     let package = publishingPackage(for: draft, store: store)
-    let issues = preflightIssues(for: draft, store: store) + remotePublishRiskService.issues(
-      package: package,
-      repositoryReport: store.repositoryReport(for: profile)
-    )
+    let issues =
+      preflightIssues(for: draft, store: store)
+      + remotePublishRiskService.issues(
+        package: package,
+        repositoryReport: store.repositoryReport(for: profile)
+      )
     let localPreview = localPublishPreview(for: draft, store: store)
     let sitePreview = localSitePreviewPlan(for: draft, store: store)
     let imageReport = store.imageWorkbenchReport(for: draft)
@@ -559,10 +574,12 @@ extension PublishingStore {
     from artifacts: AIPublishingRequestArtifacts,
     store: WorkbenchStore
   ) -> String {
-    let issues = artifacts.preflightIssues + remotePublishRiskService.issues(
-      package: artifacts.publishPackage,
-      repositoryReport: store.repositoryReport(for: artifacts.profile)
-    )
+    let issues =
+      artifacts.preflightIssues
+      + remotePublishRiskService.issues(
+        package: artifacts.publishPackage,
+        repositoryReport: store.repositoryReport(for: artifacts.profile)
+      )
     return publishingAIPrompt(
       draft: artifacts.draft,
       profile: artifacts.profile,
@@ -600,7 +617,8 @@ extension PublishingStore {
     if issues.isEmpty {
       lines.append("- 无阻断项")
     } else {
-      lines.append(contentsOf: issues.map { "- [\($0.severity.displayName)] \($0.title)：\($0.message)" })
+      lines.append(
+        contentsOf: issues.map { "- [\($0.severity.displayName)] \($0.title)：\($0.message)" })
     }
     lines.append(contentsOf: [
       "",
@@ -637,7 +655,7 @@ extension PublishingStore {
       repositoryReport: store.repositoryReport(for: draft),
       includeRepositoryReadiness: includeRepositoryReadiness
     )
-    return SiteLinkAuditService().report(
+    return store.localSiteLinkAuditReport(
       drafts: allDrafts,
       profile: profile
     ).mergingPreflightIssues(baseIssues, for: draft)
@@ -648,6 +666,7 @@ extension PublishingStore {
     includeRepositoryReadiness: Bool,
     allDrafts: [ArticleDraft],
     duplicateIndex: PreflightDuplicateIndex,
+    linkAuditReport: SiteLinkAuditReport? = nil,
     store: WorkbenchStore
   ) -> [PreflightIssue] {
     if draft.isGeneralDraft {
@@ -662,22 +681,24 @@ extension PublishingStore {
       includeRepositoryReadiness: includeRepositoryReadiness,
       duplicateIndex: duplicateIndex
     )
-    return SiteLinkAuditService().report(
-      drafts: allDrafts,
-      profile: profile
-    ).mergingPreflightIssues(baseIssues, for: draft)
+    let resolvedLinkAuditReport =
+      linkAuditReport
+      ?? store.localSiteLinkAuditReport(drafts: allDrafts, profile: profile)
+    return resolvedLinkAuditReport.mergingPreflightIssues(baseIssues, for: draft)
   }
 
   public func sitePreflightIssues(store: WorkbenchStore) -> [PreflightIssue] {
     let profile = store.activeProfile
     guard profile.purpose.requiresRepositoryReadiness else { return [] }
     if profile.localRepositoryRootPath.trimmedForPublishing.isEmpty {
-      return [PreflightIssue(
-        severity: .warning,
-        title: CoreL10n.text("未选择本地仓库"),
-        message: profile.purpose.repositoryRootMissingMessage,
-        field: "repository"
-      )]
+      return [
+        PreflightIssue(
+          severity: .warning,
+          title: CoreL10n.text("未选择本地仓库"),
+          message: profile.purpose.repositoryRootMissingMessage,
+          field: "repository"
+        )
+      ]
     }
     return store.repositoryReport(for: profile)?.preflightIssues(
       requiringDeploymentReadiness: profile.purpose.requiresDeploymentReadiness
@@ -689,11 +710,17 @@ extension PublishingStore {
   }
 
   public func contentHealthReport(store: WorkbenchStore) -> ContentHealthReport {
-    contentHealthReportService.report(
-      drafts: store.visibleDrafts,
-      profile: store.activeProfile,
+    let drafts = store.visibleDrafts
+    let profile = store.activeProfile
+    return contentHealthReportService.report(
+      drafts: drafts,
+      profile: profile,
       sitePreflightIssues: sitePreflightIssues(store: store),
-      presentations: contentHealthPresentations(store: store)
+      presentations: contentHealthPresentations(store: store),
+      linkAuditReport: store.localSiteLinkAuditReport(
+        drafts: drafts,
+        profile: profile
+      )
     )
   }
 
@@ -702,22 +729,34 @@ extension PublishingStore {
     let profile = store.activeProfile
     let siteIssues = sitePreflightIssues(store: store)
     let presentations = contentHealthPresentations(store: store)
+    let linkAuditReport = try await store.localSiteLinkAuditReportAsync(
+      drafts: drafts,
+      profile: profile
+    )
     return try await contentHealthReportService.reportAsync(
       drafts: drafts,
       profile: profile,
       sitePreflightIssues: siteIssues,
-      presentations: presentations
+      presentations: presentations,
+      linkAuditReport: linkAuditReport,
+      validatesExternalLinks: false
     )
   }
 
-  private func contentHealthPresentations(store: WorkbenchStore) -> [UUID: ContentHealthDraftPresentation] {
-    Dictionary(uniqueKeysWithValues: store.visibleDrafts.map { draft in
-      let display = store.privateContentDisplay(for: draft)
-      let markdownPath = display.isMasked
-        ? "内容已遮挡，打开文章或关闭私密遮挡后查看。"
-        : store.profile(for: draft).markdownPath(for: draft)
-      return (draft.id, ContentHealthDraftPresentation(title: display.title, markdownPath: markdownPath))
-    })
+  private func contentHealthPresentations(store: WorkbenchStore) -> [UUID:
+    ContentHealthDraftPresentation]
+  {
+    Dictionary(
+      uniqueKeysWithValues: store.visibleDrafts.map { draft in
+        let display = store.privateContentDisplay(for: draft)
+        let markdownPath =
+          display.isMasked
+          ? "内容已遮挡，打开文章或关闭私密遮挡后查看。"
+          : store.profile(for: draft).markdownPath(for: draft)
+        return (
+          draft.id, ContentHealthDraftPresentation(title: display.title, markdownPath: markdownPath)
+        )
+      })
   }
 
   public func publicRiskSummary(store: WorkbenchStore) -> PublicRiskSummary {
@@ -725,6 +764,10 @@ extension PublishingStore {
     let profile = store.activeProfile
     let allDrafts = store.drafts.filter { $0.belongs(toSiteProfileID: profile.id) }
     let duplicateIndex = PreflightDuplicateIndex(drafts: allDrafts, profile: profile)
+    let linkAuditReport = store.localSiteLinkAuditReport(
+      drafts: allDrafts,
+      profile: profile
+    )
     let summaries = drafts.map {
       DraftPreflightSummary(
         draftID: $0.id,
@@ -735,6 +778,7 @@ extension PublishingStore {
           includeRepositoryReadiness: false,
           allDrafts: allDrafts,
           duplicateIndex: duplicateIndex,
+          linkAuditReport: linkAuditReport,
           store: store
         )
       )
@@ -742,7 +786,8 @@ extension PublishingStore {
     return ContentHealthProjection.publicRiskSummary(from: summaries)
   }
 
-  public func publicRiskSummary(for draft: ArticleDraft, store: WorkbenchStore) -> PublicRiskSummary {
+  public func publicRiskSummary(for draft: ArticleDraft, store: WorkbenchStore) -> PublicRiskSummary
+  {
     let summary = DraftPreflightSummary(
       draftID: draft.id,
       draftTitle: draft.title,
@@ -757,6 +802,10 @@ extension PublishingStore {
     let profile = store.activeProfile
     let allDrafts = store.drafts.filter { $0.belongs(toSiteProfileID: profile.id) }
     let duplicateIndex = PreflightDuplicateIndex(drafts: allDrafts, profile: profile)
+    let linkAuditReport = store.localSiteLinkAuditReport(
+      drafts: allDrafts,
+      profile: profile
+    )
     return drafts.map {
       DraftPreflightSummary(
         draftID: $0.id,
@@ -767,6 +816,7 @@ extension PublishingStore {
           includeRepositoryReadiness: false,
           allDrafts: allDrafts,
           duplicateIndex: duplicateIndex,
+          linkAuditReport: linkAuditReport,
           store: store
         )
       )
@@ -781,7 +831,9 @@ extension PublishingStore {
     )
   }
 
-  public func remoteRepositoryPublishPreview(for draft: ArticleDraft, store: WorkbenchStore) -> RemoteRepositoryPublishPreview {
+  public func remoteRepositoryPublishPreview(for draft: ArticleDraft, store: WorkbenchStore)
+    -> RemoteRepositoryPublishPreview
+  {
     remoteRepositoryPublishPreview(
       package: store.publishingPackage(for: draft),
       profile: store.profile(for: draft),
@@ -795,7 +847,8 @@ extension PublishingStore {
     cleanupRequests: [DraftRepositoryCleanupRequest]? = nil,
     store: WorkbenchStore
   ) -> RemoteRepositoryPublishPreview? {
-    let cleanupRequests = cleanupRequests
+    let cleanupRequests =
+      cleanupRequests
       ?? pendingRemoteRepositoryCleanupRequests(profileID: plan.profileID)
     let cleanupPaths = Set(cleanupRequests.map { $0.repositoryPath.normalizedRelativePath() })
     return remotePublishPackage(for: plan, cleanupRequests: cleanupRequests).map {
@@ -820,9 +873,10 @@ extension PublishingStore {
       publishableItems.flatMap(\.package.files) + (cleanupPackage?.files ?? [])
     )
     guard !files.isEmpty,
-          let draftID = publishableItems.first?.draftID ?? cleanupRequests.first?.draftID,
-          let markdownPath = publishableItems.first?.markdownPath
-            ?? cleanupRequests.first?.repositoryPath else {
+      let draftID = publishableItems.first?.draftID ?? cleanupRequests.first?.draftID,
+      let markdownPath = publishableItems.first?.markdownPath
+        ?? cleanupRequests.first?.repositoryPath
+    else {
       return nil
     }
     let publishCount = publishableItems.count
@@ -875,7 +929,8 @@ extension PublishingStore {
     accessCheck: RemoteRepositoryAccessCheck? = nil,
     store: WorkbenchStore
   ) -> RemoteRepositoryPublishPreview {
-    let preview = localPreview ?? localPublishPreviewService.preview(package: package, profile: profile)
+    let preview =
+      localPreview ?? localPublishPreviewService.preview(package: package, profile: profile)
     let draftIssuesWithRepository = draftPreflightIssues(
       package: package,
       includeRepositoryReadiness: true,
@@ -922,40 +977,51 @@ extension PublishingStore {
       for: remoteRiskAssessment,
       includeUnknownState: true
     )
-    let directConflictBlockingIssues = mode == .directCommit && remoteRiskAssessment.state == .conflict
+    let directConflictBlockingIssues =
+      mode == .directCommit && remoteRiskAssessment.state == .conflict
       ? remoteWarnings
       : []
     let visibleRemoteWarnings = directConflictBlockingIssues.isEmpty ? remoteWarnings : []
-    let resolvedAccessCheck = accessCheck
+    let resolvedAccessCheck =
+      accessCheck
       ?? freshRemoteRepositoryAccessCheckForPreview(profile: profile, store: store)
-    let resolvedTokenAvailability = tokenAvailability
+    let resolvedTokenAvailability =
+      tokenAvailability
       ?? repositoryTokenAvailabilityForPreview(profile: profile, store: store)
-    let tokenAccessBlockingIssues: [PreflightIssue] = resolvedTokenAvailability
+    let tokenAccessBlockingIssues: [PreflightIssue] =
+      resolvedTokenAvailability
       .accessFailureMessage
       .map { failureMessage in
-        [PreflightIssue(
-          severity: .error,
-          title: CoreL10n.text("Token 状态读取失败"),
+        [
+          PreflightIssue(
+            severity: .error,
+            title: CoreL10n.text("Token 状态读取失败"),
+            message: CoreL10n.format(
+              "仓库 Token 状态读取失败：%@",
+              failureMessage
+            ),
+            field: "repositoryToken"
+          )
+        ]
+      } ?? []
+    let permissionWarnings: [PreflightIssue] =
+      resolvedTokenAvailability.hasToken && resolvedAccessCheck == nil
+      ? [
+        PreflightIssue(
+          severity: .warning,
+          title: CoreL10n.text("Token 权限未检查"),
           message: CoreL10n.format(
-            "仓库 Token 状态读取失败：%@",
-            failureMessage
+            "当前 Token 尚未针对 %@ 完成写入权限检查，请先检查后再发布。",
+            repositoryName
           ),
           field: "repositoryToken"
-        )]
-      } ?? []
-    let permissionWarnings: [PreflightIssue] = resolvedTokenAvailability.hasToken && resolvedAccessCheck == nil
-      ? [PreflightIssue(
-        severity: .warning,
-        title: CoreL10n.text("Token 权限未检查"),
-        message: CoreL10n.format(
-          "当前 Token 尚未针对 %@ 完成写入权限检查，请先检查后再发布。",
-          repositoryName
-        ),
-        field: "repositoryToken"
-      )]
+        )
+      ]
       : []
     let localChangedPaths = localPreview.changedFileDiffs.map(\.path)
-    let changedPaths = localChangedPaths + forcedChangedPaths
+    let changedPaths =
+      localChangedPaths
+      + forcedChangedPaths
       .subtracting(Set(localChangedPaths.map { $0.normalizedRelativePath() }))
       .sorted()
     let branchName: String
@@ -984,7 +1050,9 @@ extension PublishingStore {
     )
   }
 
-  public func batchRemoteRepositoryPublishWarningIssues(for plan: BatchPublishPlan) -> [PreflightIssue] {
+  public func batchRemoteRepositoryPublishWarningIssues(for plan: BatchPublishPlan)
+    -> [PreflightIssue]
+  {
     plan.items.flatMap { item in
       item.allIssues
         .filter { $0.severity == .warning }
@@ -1000,8 +1068,85 @@ extension PublishingStore {
     profile.repositoryPublishStrategy == .direct ? .directCommit : .reviewBranch
   }
 
-  public func preferredRemoteRepositoryPublishMode(for profile: SiteProfile) -> RemoteRepositoryPublishMode {
+  public func preferredRemoteRepositoryPublishMode(for profile: SiteProfile)
+    -> RemoteRepositoryPublishMode
+  {
     profile.repositoryPublishStrategy == .direct ? .directCommit : .reviewRequest
+  }
+
+  func remotePublishCompletionFeedback(
+    mode: RemoteRepositoryPublishMode,
+    operationSummary: String,
+    deploymentStatus: DeploymentStatusSnapshot?
+  ) -> PublishActionFeedback {
+    switch mode {
+    case .reviewRequest:
+      return PublishActionFeedback(
+        message: CoreL10n.format("%@；PR/MR 已创建，等待合并，尚未部署。", operationSummary),
+        status: .information
+      )
+    case .previewBranch:
+      return PublishActionFeedback(
+        message: CoreL10n.format("%@；预览分支已推送，不影响正式分支。", operationSummary),
+        status: .information
+      )
+    case .directCommit:
+      switch deploymentStatus?.level {
+      case .success:
+        guard deploymentStatus?.attributionVerified == true else {
+          return PublishActionFeedback(
+            message: CoreL10n.format(
+              "%@；部署端点可达，但没有绑定当前 commit 的证据。",
+              operationSummary
+            ),
+            status: .warning
+          )
+        }
+        return PublishActionFeedback(
+          message: CoreL10n.format("%@；部署已验证。", operationSummary),
+          status: .success
+        )
+      case .running:
+        return PublishActionFeedback(
+          message: CoreL10n.format("%@；部署仍在进行。", operationSummary),
+          status: .inProgress
+        )
+      case .failed:
+        return PublishActionFeedback(
+          message: CoreL10n.format("%@；目标分支已提交，但部署检查失败。", operationSummary),
+          status: .failure
+        )
+      case .unknown:
+        return PublishActionFeedback(
+          message: CoreL10n.format("%@；目标分支已提交，但部署状态尚未确认。", operationSummary),
+          status: .warning
+        )
+      case nil:
+        return PublishActionFeedback(
+          message: CoreL10n.format("%@；目标分支已提交，部署尚未验证。", operationSummary),
+          status: .warning
+        )
+      }
+    }
+  }
+
+  func remotePublishCompletedProgressMessage(
+    mode: RemoteRepositoryPublishMode,
+    deploymentStatus: DeploymentStatusSnapshot?
+  ) -> String {
+    guard mode == .directCommit else { return mode.completedProgressMessage }
+    switch deploymentStatus?.level {
+    case .success:
+      return deploymentStatus?.attributionVerified == true
+        ? CoreL10n.text("目标分支提交完成、部署已验证")
+        : mode.completedProgressMessage
+    case .running:
+      return CoreL10n.text("目标分支提交完成、部署进行中")
+    case .failed:
+      return CoreL10n.text("目标分支提交完成、部署检查失败")
+    case .unknown, nil:
+      return mode.completedProgressMessage
+    }
   }
 
   @discardableResult
@@ -1082,11 +1227,12 @@ extension PublishingStore {
     }
 
     if let conflictPath {
-      let conflictedIDs = Set(packages.compactMap { package -> UUID? in
-        package.files.contains {
-          $0.repositoryPath.normalizedRelativePath() == conflictPath
-        } ? package.draftID : nil
-      })
+      let conflictedIDs = Set(
+        packages.compactMap { package -> UUID? in
+          package.files.contains {
+            $0.repositoryPath.normalizedRelativePath() == conflictPath
+          } ? package.draftID : nil
+        })
       markDraftsRepositorySyncState(.diverged, draftIDs: conflictedIDs)
       markDraftsRepositorySyncState(
         .failed,
@@ -1102,13 +1248,15 @@ extension PublishingStore {
     mode: LocalGitPublishMode
   ) {
     guard mode == .directCommit,
-          let index = drafts.firstIndex(where: { $0.id == package.draftID }) else {
+      let index = drafts.firstIndex(where: { $0.id == package.draftID })
+    else {
       return
     }
     let previousDraft = drafts[index]
     let profile = profile(for: previousDraft)
     let confirmedPath = package.markdownPath.normalizedRelativePath()
-    let renderedDigest = package.markdownFile?.content
+    let renderedDigest =
+      package.markdownFile?.content
       .map(ArticleDraft.repositoryDocumentDigest)
       ?? previousDraft.renderedRepositoryContentDigest(profile: profile)
     var updatedDraft = previousDraft
@@ -1145,7 +1293,8 @@ extension PublishingStore {
       }
       let profile = profile(for: updated)
       let confirmedPath = package.markdownPath.normalizedRelativePath()
-      let renderedDigest = package.markdownFile?.content
+      let renderedDigest =
+        package.markdownFile?.content
         .map(ArticleDraft.repositoryDocumentDigest)
         ?? updated.renderedRepositoryContentDigest(profile: profile)
       if let remoteVersion = result.remoteVersion(for: package.markdownPath) {
@@ -1178,8 +1327,20 @@ extension PublishingStore {
     }
   }
 
-  public func partialRemoteRepositoryPublishFailure(from error: Error) -> RemoteRepositoryPublishResult? {
-    guard case let RemoteRepositoryPublishError.partialPublish(provider, mode, branchName, targetBranch, changedPaths, commitSHA, _) = error else {
+  public func partialRemoteRepositoryPublishFailure(from error: Error)
+    -> RemoteRepositoryPublishResult?
+  {
+    guard
+      case RemoteRepositoryPublishError.partialPublish(
+        let provider,
+        let mode,
+        let branchName,
+        let targetBranch,
+        let changedPaths,
+        let commitSHA,
+        _
+      ) = error
+    else {
       return nil
     }
     return RemoteRepositoryPublishResult(

@@ -39,7 +39,8 @@ public final class WorkbenchSettingsFeatureFacade: ObservableObject {
     observe(store.repositoryStore.$repositoryTokenAvailability)
     observe(store.repositoryStore.$remoteRepositoryAccessCheck)
     observe(store.repositoryStore.$isRemoteRepositoryChecking)
-    observe(store.publishingStore.$publishActionFeedback)
+    observe(store.repositoryStore.$isRemoteRepositoryPublishing)
+    observe(store.publishingStore.publishSession.$publishActionFeedback)
 
     observe(store.deploymentStore.$deploymentTokenAvailability)
     observe(store.deploymentStore.$deploymentStatusMessage)
@@ -53,6 +54,14 @@ public final class WorkbenchSettingsFeatureFacade: ObservableObject {
 
     observe(store.privacyProtectionStore.$privacySettings)
     observe(store.privacyProtectionStore.$isQuickHideActive)
+  }
+
+  public var canUseProtectedWorkbench: Bool {
+    store.canUseProtectedWorkbench
+  }
+
+  public var isQuickHideActive: Bool {
+    store.isQuickHideActive
   }
 
   private func observe<P: Publisher>(_ publisher: P) where P.Failure == Never {

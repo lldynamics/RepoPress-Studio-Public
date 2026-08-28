@@ -436,7 +436,7 @@ final class SiteStarterServiceTests: XCTestCase {
     }
   }
 
-  func testCommitsAndPushesStarterSiteToConfiguredOrigin() throws {
+  func testCommitsAndPushesStarterSiteToConfiguredOrigin() async throws {
     let rootURL = try temporaryDirectoryURL()
     let remoteURL = try temporaryDirectoryURL()
     defer {
@@ -467,9 +467,20 @@ final class SiteStarterServiceTests: XCTestCase {
       encoding: .utf8
     )
 
-    let result = try service.commitAndPushStarterSite(
+    let confirmation = try service.prepareStarterPushConfirmation(
       profile: starter.profile,
       createdFilePaths: starter.createdFilePaths
+    )
+    XCTAssertEqual(confirmation.remoteURL, remoteURL.path)
+    XCTAssertEqual(confirmation.branch, "main")
+    XCTAssertEqual(confirmation.commitMessage, "Initial site")
+    XCTAssertTrue(confirmation.committedPaths.contains("config.toml"))
+    XCTAssertNil(confirmation.remoteBranchCommitSHA)
+
+    let result = try await service.commitAndPushStarterSiteAsync(
+      profile: starter.profile,
+      createdFilePaths: starter.createdFilePaths,
+      confirmation: confirmation
     )
 
     XCTAssertEqual(result.branch, "main")
@@ -481,6 +492,53 @@ final class SiteStarterServiceTests: XCTestCase {
     XCTAssertTrue(try git(["ls-tree", "--name-only", "main"], rootURL: remoteURL).contains("config.toml"))
     XCTAssertFalse(try git(["ls-tree", "--name-only", "main"], rootURL: remoteURL).contains(".env"))
     XCTAssertEqual(try git(["status", "--porcelain"], rootURL: rootURL), "?? .env")
+  }
+
+  func testFirstPushConfirmationRejectsStarterFileDriftBeforeCommitOrPush() async throws {
+    let rootURL = try temporaryDirectoryURL()
+    let remoteURL = try temporaryDirectoryURL()
+    defer {
+      try? FileManager.default.removeItem(at: rootURL)
+      try? FileManager.default.removeItem(at: remoteURL)
+    }
+
+    try git(["init", "--bare"], rootURL: remoteURL)
+    let service = SiteStarterService()
+    let starter = try service.createSite(
+      request: SiteStarterRequest(
+        rootPath: rootURL.path,
+        siteName: "Frozen Starter",
+        initializeGit: true,
+        configureOriginRemote: false,
+        now: fixedDate
+      )
+    )
+    try git(["config", "user.email", "tests@example.com"], rootURL: rootURL)
+    try git(["config", "user.name", "Tests"], rootURL: rootURL)
+    try git(["remote", "add", "origin", remoteURL.path], rootURL: rootURL)
+
+    let confirmation = try service.prepareStarterPushConfirmation(
+      profile: starter.profile,
+      createdFilePaths: starter.createdFilePaths
+    )
+    try "# Changed after review\n".write(
+      to: rootURL.appendingPathComponent("README.md"),
+      atomically: true,
+      encoding: .utf8
+    )
+
+    do {
+      _ = try await service.commitAndPushStarterSiteAsync(
+        profile: starter.profile,
+        createdFilePaths: starter.createdFilePaths,
+        confirmation: confirmation
+      )
+      XCTFail("Expected the frozen review to reject changed content")
+    } catch {
+      XCTAssertEqual(error as? SiteStarterError, .starterPushConfirmationChanged)
+    }
+    XCTAssertThrowsError(try git(["rev-parse", "main"], rootURL: remoteURL))
+    XCTAssertEqual(try git(["diff", "--cached", "--name-only"], rootURL: rootURL), "")
   }
 
   func testCommitAndPushRejectsUnrelatedPreStagedChanges() throws {
@@ -513,7 +571,7 @@ final class SiteStarterServiceTests: XCTestCase {
     try git(["add", "--", ".env"], rootURL: rootURL)
 
     XCTAssertThrowsError(
-      try service.commitAndPushStarterSite(
+      try service.prepareStarterPushConfirmation(
         profile: starter.profile,
         createdFilePaths: starter.createdFilePaths
       )
@@ -522,6 +580,36 @@ final class SiteStarterServiceTests: XCTestCase {
     }
     XCTAssertEqual(try git(["diff", "--cached", "--name-only"], rootURL: rootURL), ".env")
     XCTAssertThrowsError(try git(["rev-parse", "main"], rootURL: remoteURL))
+  }
+
+  func testStagedObjectIDsDistinguishDeletionFromRecreatedContent() async throws {
+    let rootURL = try temporaryDirectoryURL()
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+
+    try git(["init", "-b", "main"], rootURL: rootURL)
+    try git(["config", "user.email", "tests@example.com"], rootURL: rootURL)
+    try git(["config", "user.name", "Tests"], rootURL: rootURL)
+    let fileURL = rootURL.appendingPathComponent("README.md")
+    try "Reviewed\n".write(to: fileURL, atomically: true, encoding: .utf8)
+    try git(["add", "--", "README.md"], rootURL: rootURL)
+    try git(["commit", "-m", "Baseline"], rootURL: rootURL)
+
+    try FileManager.default.removeItem(at: fileURL)
+    try git(["add", "--", "README.md"], rootURL: rootURL)
+    let deleted = try await SiteStarterService().stagedFileObjectIDs(
+      paths: ["README.md"],
+      at: rootURL
+    )
+    XCTAssertEqual(deleted["README.md"], "<deleted>")
+
+    try "Recreated\n".write(to: fileURL, atomically: true, encoding: .utf8)
+    try git(["add", "--", "README.md"], rootURL: rootURL)
+    let recreated = try await SiteStarterService().stagedFileObjectIDs(
+      paths: ["README.md"],
+      at: rootURL
+    )
+    XCTAssertEqual(recreated["README.md"], try git(["hash-object", "README.md"], rootURL: rootURL))
+    XCTAssertNotEqual(recreated["README.md"], "<deleted>")
   }
 
   private var fixedDate: Date {

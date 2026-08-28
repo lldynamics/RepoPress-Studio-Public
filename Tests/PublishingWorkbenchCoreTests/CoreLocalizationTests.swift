@@ -133,11 +133,11 @@ final class CoreLocalizationTests: XCTestCase {
     )
     XCTAssertEqual(
       CoreL10n.format(
-        "正在通过 %@ 执行%@...",
+        "正在通过 %@ 执行 %@…",
         locale: english,
         arguments: ["GitHub", "Online Direct Commit"]
       ),
-      "Using GitHub to run Online Direct Commit..."
+      "Using GitHub to run Online Direct Commit…"
     )
     XCTAssertEqual(
       CoreL10n.format(

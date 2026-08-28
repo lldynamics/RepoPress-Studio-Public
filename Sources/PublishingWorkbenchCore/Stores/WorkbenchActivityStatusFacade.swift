@@ -42,11 +42,11 @@ public final class WorkbenchActivityStatusFacade: ObservableObject {
     observe(store.knowledge.$lastImportFailure)
     observe(store.knowledge.$statusMessage)
     observeGitOperation(
-      store.publishingStore.$isLocalRepositoryMutationRunning,
+      store.publishingStore.publishSession.$isLocalRepositoryMutationRunning,
       kind: .local
     )
-    observe(store.publishingStore.$publishActionFeedback)
-    observe(store.publishingStore.$releaseRecords)
+    observe(store.publishingStore.publishSession.$publishActionFeedback)
+    observe(store.publishingStore.publishSession.$releaseRecords)
     observe(store.publishingStore.$activeProfileID)
     observe(store.imageStore.$imageBatchProgress)
     observe(store.imageStore.$isImageBatchProcessing)

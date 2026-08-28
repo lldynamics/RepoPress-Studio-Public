@@ -84,6 +84,7 @@ public enum ImageWorkbenchIssueKind: String, Codable, Hashable, Sendable {
   case duplicateMarkdownReference
   case missingCoverAttachment
   case unregisteredMarkdownImage
+  case sensitiveMetadata
   case noImages
   case other
 
@@ -206,7 +207,13 @@ public struct ImageWorkbenchItem: Identifiable, Codable, Hashable, Sendable {
   public var canConvertToWebP: Bool
   public var canOptimizeSVG: Bool
   public var canResizeImage: Bool
+  /// Optional for backward-compatible decoding of reports cached by older builds.
+  public var privacyStatus: ImagePrivacyStatus?
   public var duplicateReferenceCount: Int
+
+  public var hasSensitiveMetadata: Bool {
+    privacyStatus == .sensitive
+  }
 
   public init(
     attachmentID: UUID,
@@ -225,6 +232,7 @@ public struct ImageWorkbenchItem: Identifiable, Codable, Hashable, Sendable {
     canConvertToWebP: Bool = false,
     canOptimizeSVG: Bool = false,
     canResizeImage: Bool = false,
+    privacyStatus: ImagePrivacyStatus? = nil,
     duplicateReferenceCount: Int = 0
   ) {
     self.attachmentID = attachmentID
@@ -243,8 +251,16 @@ public struct ImageWorkbenchItem: Identifiable, Codable, Hashable, Sendable {
     self.canConvertToWebP = canConvertToWebP
     self.canOptimizeSVG = canOptimizeSVG
     self.canResizeImage = canResizeImage
+    self.privacyStatus = privacyStatus
     self.duplicateReferenceCount = duplicateReferenceCount
   }
+}
+
+public enum ImagePrivacyStatus: String, Codable, Hashable, Sendable {
+  case clean
+  case sensitive
+  case unsupported
+  case unverified
 }
 
 public enum ImageCoverPublishState: String, Codable, Sendable {
@@ -367,6 +383,18 @@ public struct ImageWorkbenchReport: Codable, Hashable, Sendable {
   public var duplicateImageCount: Int {
     items.filter { $0.duplicateReferenceCount > 0 }.count
   }
+
+  public var sensitiveMetadataCount: Int {
+    items.filter(\.hasSensitiveMetadata).count
+  }
+
+  public var cleanMetadataCount: Int {
+    items.filter { $0.privacyStatus == .clean }.count
+  }
+
+  public var unverifiedMetadataCount: Int {
+    items.filter { $0.privacyStatus == .unverified }.count
+  }
 }
 
 public struct ImageWorkbenchDraftSummary: Identifiable, Codable, Hashable, Sendable {
@@ -388,6 +416,18 @@ public struct ImageWorkbenchDraftSummary: Identifiable, Codable, Hashable, Senda
   public var duplicateImageCount: Int
   public var items: [ImageWorkbenchItem]
   public var issues: [ImageWorkbenchIssue]
+
+  public var sensitiveMetadataCount: Int {
+    items.filter(\.hasSensitiveMetadata).count
+  }
+
+  public var cleanMetadataCount: Int {
+    items.filter { $0.privacyStatus == .clean }.count
+  }
+
+  public var unverifiedMetadataCount: Int {
+    items.filter { $0.privacyStatus == .unverified }.count
+  }
 
   public init(
     draftID: UUID,
@@ -442,6 +482,18 @@ public struct ImageWorkbenchSiteSummary: Codable, Hashable, Sendable {
   public var resizableImageCount: Int
   public var duplicateImageCount: Int
   public var draftSummaries: [ImageWorkbenchDraftSummary]
+
+  public var sensitiveMetadataCount: Int {
+    draftSummaries.reduce(0) { $0 + $1.sensitiveMetadataCount }
+  }
+
+  public var cleanMetadataCount: Int {
+    draftSummaries.reduce(0) { $0 + $1.cleanMetadataCount }
+  }
+
+  public var unverifiedMetadataCount: Int {
+    draftSummaries.reduce(0) { $0 + $1.unverifiedMetadataCount }
+  }
 
   public init(
     draftCount: Int,

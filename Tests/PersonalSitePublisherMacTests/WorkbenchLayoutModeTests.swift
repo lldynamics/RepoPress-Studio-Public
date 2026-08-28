@@ -1,5 +1,6 @@
 import XCTest
-@testable import PublishingWorkbenchCore
+
+@testable import PersonalSitePublisherMac
 
 final class WorkbenchLayoutModeTests: XCTestCase {
   func testDefaultWindowSizeStartsInExpandedInspectorLayout() {

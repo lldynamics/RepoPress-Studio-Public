@@ -164,6 +164,9 @@ final class ContentHealthSummaryTests: XCTestCase {
     XCTAssertTrue(sourceIssues.contains { $0.category == .unreachableExternalLink })
     XCTAssertTrue(sourceIssues.contains { $0.category == .slugRedirectCandidate })
     XCTAssertTrue(targetIssues.contains { $0.category == .slugRedirectCandidate })
+    let impact = try XCTUnwrap(report.slugChangeImpacts[target.id])
+    XCTAssertEqual(impact.affectedDraftCount, 1)
+    XCTAssertEqual(impact.referenceCount, 1)
   }
 
   func testContentHealthReportAsyncPropagatesCancellation() async {

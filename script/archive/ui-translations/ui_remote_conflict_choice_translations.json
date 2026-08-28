@@ -1,0 +1,38 @@
+{
+  "创建 PR/MR 继续下线": {
+    "en": "Create PR/MR to Continue Unpublishing",
+    "zh-Hans": "创建 PR/MR 继续下线"
+  },
+  "只有可安全解码的远端 Markdown 才能导入": {
+    "en": "Only safely decoded remote Markdown can be imported",
+    "zh-Hans": "只有可安全解码的远端 Markdown 才能导入"
+  },
+  "只有本地和远端都是可编辑 Markdown 时才能合并": {
+    "en": "Both local and remote versions must be editable Markdown to merge",
+    "zh-Hans": "只有本地和远端都是可编辑 Markdown 时才能合并"
+  },
+  "导入当前远端 Markdown，不写入远端": {
+    "en": "Import the current remote Markdown without writing to the remote repository",
+    "zh-Hans": "导入当前远端 Markdown，不写入远端"
+  },
+  "将在独立分支提交下线操作并创建 PR/MR，目标分支不会被直接修改。": {
+    "en": "The unpublish operation will be committed on a separate branch and submitted as a PR/MR; the target branch will not be modified directly.",
+    "zh-Hans": "将在独立分支提交下线操作并创建 PR/MR，目标分支不会被直接修改。"
+  },
+  "当前操作暂不可用": {
+    "en": "This action is currently unavailable",
+    "zh-Hans": "当前操作暂不可用"
+  },
+  "编辑最终合并版并通过 PR/MR 交付": {
+    "en": "Edit the final merged version and deliver it through a PR/MR",
+    "zh-Hans": "编辑最终合并版并通过 PR/MR 交付"
+  },
+  "通过 PR/MR 保留本地发布内容": {
+    "en": "Keep the local publishing content through a PR/MR",
+    "zh-Hans": "通过 PR/MR 保留本地发布内容"
+  },
+  "通过 PR/MR 继续本地下线操作": {
+    "en": "Continue the local unpublish operation through a PR/MR",
+    "zh-Hans": "通过 PR/MR 继续本地下线操作"
+  }
+}

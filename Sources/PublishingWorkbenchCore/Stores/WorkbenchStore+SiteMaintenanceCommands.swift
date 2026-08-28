@@ -35,13 +35,32 @@ extension WorkbenchStore {
     siteMaintenanceStore.setRefreshErrorMessage(nil)
 
     let service = publishingStore.siteMaintenanceService
+    let localLinkAuditReport: SiteLinkAuditReport?
+    if force {
+      localLinkAuditReport = nil
+    } else {
+      do {
+        localLinkAuditReport = try await localSiteLinkAuditReportAsync(
+          drafts: input.drafts,
+          profile: input.profile
+        )
+      } catch {
+        siteMaintenanceRefreshTask = nil
+        siteMaintenanceStore.setRefreshing(false)
+        guard !(error is CancellationError) else { return }
+        siteMaintenanceStore.setRefreshErrorMessage(error.localizedDescription)
+        return
+      }
+    }
     let task = Task {
       try await service.reportAsync(
         drafts: input.drafts,
         profile: input.profile,
         releaseRecords: input.releaseRecords,
         maintenanceOperationRecords: input.maintenanceOperationRecords,
-        now: input.now
+        now: input.now,
+        linkAuditReport: localLinkAuditReport,
+        validatesExternalLinks: force
       )
     }
     siteMaintenanceRefreshTask = task
@@ -100,6 +119,47 @@ extension WorkbenchStore {
     let appliedCount = publishingStore.applySuggestedMaintenanceSchedule(
       report: report,
       store: self
+    )
+    if appliedCount > 0 {
+      invalidateDraftDerivedCaches()
+    } else {
+      invalidateSiteMaintenanceSnapshot()
+    }
+    return appliedCount
+  }
+
+  @discardableResult
+  public func applySuggestedMaintenanceSchedule(
+    report: SiteMaintenanceReport,
+    selectedDraftIDs: Set<UUID>,
+    expectedOriginalDates: [UUID: Date]
+  ) async -> Int {
+    let appliedCount = publishingStore.applySuggestedMaintenanceSchedule(
+      report: report,
+      store: self,
+      selectedDraftIDs: selectedDraftIDs,
+      expectedOriginalDates: expectedOriginalDates
+    )
+    if appliedCount > 0 {
+      invalidateDraftDerivedCaches()
+    } else {
+      invalidateSiteMaintenanceSnapshot()
+    }
+    return appliedCount
+  }
+
+  /// Applies exactly the target dates that the user reviewed. Callers should
+  /// freeze this map together with `expectedOriginalDates` when opening a
+  /// confirmation surface so a later report refresh cannot change the action.
+  @discardableResult
+  public func applySuggestedMaintenanceSchedule(
+    approvedSuggestedDates: [UUID: Date],
+    expectedOriginalDates: [UUID: Date]
+  ) async -> Int {
+    let appliedCount = publishingStore.applySuggestedMaintenanceSchedule(
+      approvedSuggestedDates: approvedSuggestedDates,
+      store: self,
+      expectedOriginalDates: expectedOriginalDates
     )
     if appliedCount > 0 {
       invalidateDraftDerivedCaches()

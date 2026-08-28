@@ -17,6 +17,131 @@ enum KnowledgeArticleInsertionService {
   )
 
   @discardableResult
+  static func insertImage(
+    document: KnowledgeDocument,
+    selectedResult: KnowledgeSearchResult?,
+    knowledge: KnowledgeStore,
+    into store: WorkbenchStore
+  ) async -> Bool {
+    guard document.kind == .image,
+      let imageURL = knowledge.originalFileURL(documentID: document.id)
+    else {
+      store.setPublishActionMessage(
+        "资料库图片副本不可读，请先运行资料库健康检查。",
+        status: .warning
+      )
+      return false
+    }
+    guard let selectedDraft = store.selectedDraft ?? store.ensureEditableDraftSelected() else {
+      store.setPublishActionMessage("请先创建或选择一篇当前文章。", status: .warning)
+      return false
+    }
+
+    store.flushDraftBodyEditorBuffer(for: selectedDraft.id)
+    guard let baselineDraft = store.drafts.first(where: { $0.id == selectedDraft.id }) else {
+      store.setPublishActionMessage("当前文章已变化，请重新选择后再插入。", status: .warning)
+      return false
+    }
+
+    let fileStore = store.managedAttachmentFileStore
+    var attachment: DraftAttachment
+    do {
+      attachment = try await store.makeAttachment(
+        from: imageURL,
+        draft: baselineDraft,
+        fileStore: fileStore
+      )
+      attachment.altText = document.title
+    } catch is CancellationError {
+      store.setPublishActionMessage("已取消插入图片。", status: .warning)
+      return false
+    } catch {
+      store.setPublishActionMessage(
+        "无法把资料图片复制到当前文章：\(error.localizedDescription)",
+        status: .failure
+      )
+      return false
+    }
+
+    guard store.selectedDraftID == baselineDraft.id else {
+      discardManagedAttachment(attachment, fileStore: fileStore)
+      store.setPublishActionMessage(
+        "当前文章在图片复制期间已切换，未写入新文章。",
+        status: .warning
+      )
+      return false
+    }
+
+    store.flushDraftBodyEditorBuffer(for: baselineDraft.id)
+    guard var currentDraft = store.drafts.first(where: { $0.id == baselineDraft.id }) else {
+      discardManagedAttachment(attachment, fileStore: fileStore)
+      store.setPublishActionMessage("当前文章已不存在，图片未插入。", status: .warning)
+      return false
+    }
+
+    let markdown = ImageMetadataEditingService().markdownReference(
+      altText: document.title,
+      imagePath: attachment.relativePublishPath
+    )
+    let plan = insertionPlan(
+      fragment: markdown,
+      body: currentDraft.bodyMarkdown,
+      range: store.activeEditorSelectionRange(for: currentDraft)
+    )
+    let buffer = store.draftBodyEditorBuffer(for: currentDraft.id)
+    guard
+      let staged = store.replaceDraftBody(
+        plan.updatedBody,
+        for: currentDraft.id,
+        expectedRevision: buffer.revision
+      ), staged.wasAccepted
+    else {
+      discardManagedAttachment(attachment, fileStore: fileStore)
+      store.setPublishActionMessage(
+        "当前文章在插入前已被其他窗口修改，请重新尝试。",
+        status: .warning
+      )
+      return false
+    }
+
+    currentDraft.bodyMarkdown = plan.updatedBody
+    currentDraft.attachments.append(attachment)
+    store.updateDraft(currentDraft)
+    store.save()
+    store.selectSection(.writing)
+    store.requestEditorFocus(
+      draftID: currentDraft.id,
+      field: "body",
+      selectedRange: NSRange(location: plan.cursorLocation, length: 0)
+    )
+    store.scheduleImageWorkbenchCachesRefresh(for: currentDraft)
+    store.setPublishActionMessage(
+      "已将“\(document.title)”复制到当前文章附件并插入。",
+      status: .success
+    )
+
+    if let selectedResult,
+      selectedResult.document.id == document.id,
+      let citation = makeCitation(
+        document: document,
+        selectedResult: selectedResult,
+        fallbackText: knowledge.selectedDocumentText
+      )
+    {
+      knowledge.recordBacklinks(
+        citations: [citation],
+        target: KnowledgeBacklinkTarget(
+          kind: .articleDraft,
+          id: currentDraft.id.uuidString,
+          title: currentDraft.title.nilIfEmpty ?? "当前文章",
+          location: "正文图片"
+        )
+      )
+    }
+    return true
+  }
+
+  @discardableResult
   static func insertCurrentArticle(
     document: KnowledgeDocument,
     text: String,
@@ -328,21 +453,12 @@ enum KnowledgeArticleInsertionService {
       return false
     }
 
-    let body = draft.bodyMarkdown
-    let bodyNSString = body as NSString
-    let range = store.activeEditorSelectionRange(for: draft)
-      ?? NSRange(location: bodyNSString.length, length: 0)
-    let before = bodyNSString.substring(with: NSRange(location: 0, length: range.location))
-    let afterStart = range.location + range.length
-    let after = bodyNSString.substring(
-      with: NSRange(location: afterStart, length: bodyNSString.length - afterStart)
+    let plan = insertionPlan(
+      fragment: fragment,
+      body: draft.bodyMarkdown,
+      range: store.activeEditorSelectionRange(for: draft)
     )
-    let leadingSeparator = before.isEmpty || before.hasSuffix("\n") ? "" : "\n\n"
-    let trailingSeparator = after.isEmpty || after.hasPrefix("\n") ? "" : "\n\n"
-    let normalizedFragment = fragment.trimmingCharacters(in: .whitespacesAndNewlines)
-    let replacement = leadingSeparator + normalizedFragment + trailingSeparator
-    let insertedBody = bodyNSString.replacingCharacters(in: range, with: replacement)
-    let updatedBody = postProcess?(insertedBody) ?? insertedBody
+    let updatedBody = postProcess?(plan.updatedBody) ?? plan.updatedBody
     let buffer = store.draftBodyEditorBuffer(for: draft.id)
     guard let staged = store.replaceDraftBody(
       updatedBody,
@@ -358,16 +474,58 @@ enum KnowledgeArticleInsertionService {
 
     store.save()
     store.selectSection(.writing)
-    let insertedLocation = range.location + (leadingSeparator as NSString).length
     store.requestEditorFocus(
       draftID: draft.id,
       field: "body",
       selectedRange: NSRange(
-        location: insertedLocation + (normalizedFragment as NSString).length,
+        location: plan.cursorLocation,
         length: 0
       )
     )
     store.setPublishActionMessage(message, status: .success)
     return true
+  }
+
+  private static func insertionPlan(
+    fragment: String,
+    body: String,
+    range requestedRange: NSRange?
+  ) -> (updatedBody: String, cursorLocation: Int) {
+    let bodyNSString = body as NSString
+    let range: NSRange
+    if let requestedRange, requestedRange.location != NSNotFound {
+      let location = min(max(0, requestedRange.location), bodyNSString.length)
+      let length = min(max(0, requestedRange.length), bodyNSString.length - location)
+      range = NSRange(location: location, length: length)
+    } else {
+      range = NSRange(location: bodyNSString.length, length: 0)
+    }
+    let before = bodyNSString.substring(with: NSRange(location: 0, length: range.location))
+    let afterStart = range.location + range.length
+    let after = bodyNSString.substring(
+      with: NSRange(location: afterStart, length: bodyNSString.length - afterStart)
+    )
+    let leadingSeparator = before.isEmpty || before.hasSuffix("\n") ? "" : "\n\n"
+    let trailingSeparator = after.isEmpty || after.hasPrefix("\n") ? "" : "\n\n"
+    let normalizedFragment = fragment.trimmingCharacters(in: .whitespacesAndNewlines)
+    let replacement = leadingSeparator + normalizedFragment + trailingSeparator
+    return (
+      bodyNSString.replacingCharacters(in: range, with: replacement),
+      range.location
+        + (leadingSeparator as NSString).length
+        + (normalizedFragment as NSString).length
+    )
+  }
+
+  private static func discardManagedAttachment(
+    _ attachment: DraftAttachment,
+    fileStore: ManagedAttachmentFileStore
+  ) {
+    guard let sourcePath = attachment.sourceFilePath?.nilIfEmpty else { return }
+    do {
+      try fileStore.discardStoredFile(at: URL(fileURLWithPath: sourcePath))
+    } catch {
+      // Cleanup is best effort after the body mutation has already been rejected.
+    }
   }
 }

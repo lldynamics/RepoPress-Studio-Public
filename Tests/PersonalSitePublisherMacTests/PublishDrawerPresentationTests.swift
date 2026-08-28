@@ -3,6 +3,66 @@ import XCTest
 @testable import PublishingWorkbenchCore
 
 final class PublishDrawerPresentationTests: XCTestCase {
+  func testPublishDrawerOverlayUsesStableTrailingWidthWithoutGrowingPastItsIdeal() {
+    XCTAssertEqual(
+      WorkspacePublishDrawerLayoutPolicy.width(for: 1_200),
+      WorkspacePublishDrawerLayoutPolicy.idealWidth
+    )
+    XCTAssertEqual(
+      WorkspacePublishDrawerLayoutPolicy.width(for: 960),
+      432,
+      accuracy: 0.001
+    )
+    XCTAssertEqual(
+      WorkspacePublishDrawerLayoutPolicy.width(for: 320),
+      320,
+      accuracy: 0.001
+    )
+  }
+
+  @MainActor
+  func testPublishDrawerOperationControllerReleasesBusyStateWhenCancelled() async {
+    let controller = PublishDrawerOperationController()
+    let cancellationExpectation = expectation(description: "operation observes cancellation")
+    var operationStarted = false
+
+    controller.start {
+      operationStarted = true
+      do {
+        try await Task.sleep(for: .seconds(30))
+      } catch is CancellationError {
+        cancellationExpectation.fulfill()
+      } catch {
+        XCTFail("Unexpected cancellation error: \(error)")
+      }
+    }
+
+    for _ in 0..<10 where !operationStarted {
+      await Task.yield()
+    }
+    XCTAssertTrue(operationStarted)
+    XCTAssertTrue(controller.isRunning)
+
+    controller.cancel()
+    await fulfillment(of: [cancellationExpectation], timeout: 1)
+
+    XCTAssertFalse(controller.isRunning)
+  }
+
+  func testPublishFeedbackPreservesSeverityAndProvidesAccessiblePresentation() {
+    let expectations: [(PublishActionMessageStatus, String, String)] = [
+      (.information, "信息", "info.circle.fill"),
+      (.success, "成功", "checkmark.circle.fill"),
+      (.warning, "警告", "exclamationmark.triangle.fill"),
+      (.failure, "失败", "xmark.octagon.fill"),
+    ]
+
+    for (status, title, systemImage) in expectations {
+      XCTAssertEqual(status.publishDrawerTitle, title)
+      XCTAssertEqual(status.publishDrawerSystemImage, systemImage)
+    }
+  }
+
   func testBatchActionExplainsMissingRepositoryConfiguration() {
     let state = PublishDrawerBatchActionPresentation.State(
       repositoryConfigured: false,
@@ -49,6 +109,7 @@ final class PublishDrawerPresentationTests: XCTestCase {
       PublishDrawerBatchActionPresentation.status(unchecked),
       "请先检查仓库写入权限"
     )
+    XCTAssertFalse(PublishDrawerBatchActionPresentation.isEnabled(unchecked))
 
     let readOnly = PublishDrawerBatchActionPresentation.State(
       repositoryConfigured: true,
@@ -239,7 +300,7 @@ final class PublishDrawerPresentationTests: XCTestCase {
     )
 
     XCTAssertTrue(presentation.isEnabled)
-    XCTAssertEqual(presentation.title, "使用 lldynamics/site 并检查权限")
+    XCTAssertEqual(presentation.title, "使用 lldynamics/site 并诊断连接")
     XCTAssertTrue(presentation.help.contains("lldynamics/site"))
   }
 
@@ -291,7 +352,7 @@ final class PublishDrawerPresentationTests: XCTestCase {
     )
 
     XCTAssertFalse(presentation.isEnabled)
-    XCTAssertEqual(presentation.title, "检查权限")
+    XCTAssertEqual(presentation.title, "连接诊断")
     XCTAssertTrue(presentation.help.contains("先配置仓库"))
   }
 
@@ -303,7 +364,7 @@ final class PublishDrawerPresentationTests: XCTestCase {
     )
 
     XCTAssertTrue(presentation.isEnabled)
-    XCTAssertEqual(presentation.title, "检查权限")
+    XCTAssertEqual(presentation.title, "连接诊断")
   }
 
   func testReviewRequestRemoteConflictDoesNotBlockBatchActionPresentation() {

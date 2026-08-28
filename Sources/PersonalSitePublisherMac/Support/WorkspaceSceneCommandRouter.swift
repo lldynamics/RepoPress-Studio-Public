@@ -9,6 +9,7 @@ final class WorkspaceSceneCommandRouter: @preconcurrency ObservableObject {
     let isFocusModeActive: Bool
     let canToggleFocusMode: Bool
     let repositorySourceHasUnsavedChanges: Bool
+    let isSettingsWorkspacePresented: Bool
   }
 
   struct MarkdownPresentation: Equatable {
@@ -34,6 +35,7 @@ final class WorkspaceSceneCommandRouter: @preconcurrency ObservableObject {
   private(set) var localSitePreviewCommandAction: LocalSitePreviewCommandAction?
   private(set) var workspaceCommandPaletteAction: WorkspaceCommandPaletteAction?
   private(set) var workspaceFirstRunSetupCommandAction: WorkspaceFirstRunSetupCommandAction?
+  private(set) var settingsWorkspaceCommandAction: SettingsWorkspaceCommandAction?
   private(set) var draftFullTextSearchAction: DraftFullTextSearchAction?
   private(set) var workspaceFocusModeCommandAction: WorkspaceFocusModeCommandAction?
   private(set) var repositorySourceSessionCommandActions: RepositorySourceSessionCommandActions?
@@ -56,6 +58,7 @@ final class WorkspaceSceneCommandRouter: @preconcurrency ObservableObject {
     localSitePreviewCommandAction: LocalSitePreviewCommandAction,
     workspaceCommandPaletteAction: WorkspaceCommandPaletteAction,
     workspaceFirstRunSetupCommandAction: WorkspaceFirstRunSetupCommandAction,
+    settingsWorkspaceCommandAction: SettingsWorkspaceCommandAction,
     draftFullTextSearchAction: DraftFullTextSearchAction,
     workspaceFocusModeCommandAction: WorkspaceFocusModeCommandAction,
     repositorySourceSessionCommandActions: RepositorySourceSessionCommandActions
@@ -65,6 +68,7 @@ final class WorkspaceSceneCommandRouter: @preconcurrency ObservableObject {
       self.localSitePreviewCommandAction = localSitePreviewCommandAction
       self.workspaceCommandPaletteAction = workspaceCommandPaletteAction
       self.workspaceFirstRunSetupCommandAction = workspaceFirstRunSetupCommandAction
+      self.settingsWorkspaceCommandAction = settingsWorkspaceCommandAction
       self.draftFullTextSearchAction = draftFullTextSearchAction
       self.workspaceFocusModeCommandAction = workspaceFocusModeCommandAction
       self.repositorySourceSessionCommandActions = repositorySourceSessionCommandActions
@@ -77,6 +81,7 @@ final class WorkspaceSceneCommandRouter: @preconcurrency ObservableObject {
       localSitePreviewCommandAction = nil
       workspaceCommandPaletteAction = nil
       workspaceFirstRunSetupCommandAction = nil
+      settingsWorkspaceCommandAction = nil
       draftFullTextSearchAction = nil
       workspaceFocusModeCommandAction = nil
       repositorySourceSessionCommandActions = nil
@@ -182,6 +187,7 @@ final class WorkspaceSceneCommandRouter: @preconcurrency ObservableObject {
   private var presentationSnapshot: PresentationSnapshot {
     PresentationSnapshot(
       hasRootActions: publishDrawerCommandAction != nil,
+      isSettingsWorkspacePresented: settingsWorkspaceCommandAction?.isPresented,
       focusModeIsActive: workspaceFocusModeCommandAction?.isActive,
       focusModeCanToggle: workspaceFocusModeCommandAction?.canToggle,
       repositorySourceHasUnsavedChanges: repositorySourceSessionCommandActions?.hasUnsavedChanges,
@@ -224,6 +230,7 @@ final class WorkspaceSceneCommandRouter: @preconcurrency ObservableObject {
 
   private struct PresentationSnapshot: Equatable {
     let hasRootActions: Bool
+    let isSettingsWorkspacePresented: Bool?
     let focusModeIsActive: Bool?
     let focusModeCanToggle: Bool?
     let repositorySourceHasUnsavedChanges: Bool?

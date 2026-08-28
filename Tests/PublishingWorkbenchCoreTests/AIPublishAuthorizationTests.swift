@@ -1,4 +1,6 @@
+import CoreGraphics
 import Foundation
+import ImageIO
 import XCTest
 
 @testable import PublishingWorkbenchCore
@@ -103,7 +105,8 @@ final class AIPublishAuthorizationTests: XCTestCase {
     let fixture = try makeFixture(prefix: "AttachmentContent", addsAttachment: true)
     defer { fixture.cleanup() }
     let authorization = try await AIPublishAuthorizationService.prepare(in: fixture.store)
-    try Data("changed image bytes".utf8).write(to: try XCTUnwrap(fixture.attachmentURL))
+    try makePNG(red: 0.8, green: 0.2, blue: 0.1).write(
+      to: try XCTUnwrap(fixture.attachmentURL), options: .atomic)
 
     await assertRejectedBeforeTransport(fixture: fixture, authorization: authorization)
   }
@@ -336,7 +339,8 @@ final class AIPublishAuthorizationTests: XCTestCase {
     }
     if addsAttachment {
       let url = rootURL.appendingPathComponent("attachment.png")
-      try Data("initial image bytes".utf8).write(to: url)
+      let imageData = try makePNG(red: 0.1, green: 0.4, blue: 0.8)
+      try imageData.write(to: url, options: .atomic)
       attachmentURL = url
       drafts[0].attachments = [
         DraftAttachment(
@@ -344,7 +348,7 @@ final class AIPublishAuthorizationTests: XCTestCase {
           relativePublishPath: "/images/attachment.png",
           repositoryPath: "static/images/attachment.png",
           altText: "Attachment",
-          byteSize: Int64(try Data(contentsOf: url).count),
+          byteSize: Int64(imageData.count),
           sourceFilePath: url.path
         )
       ]
@@ -371,6 +375,28 @@ final class AIPublishAuthorizationTests: XCTestCase {
       )
     }
     return result.standardOutput
+  }
+
+  private func makePNG(red: CGFloat, green: CGFloat, blue: CGFloat) throws -> Data {
+    let colorSpace = CGColorSpaceCreateDeviceRGB()
+    guard
+      let context = CGContext(
+        data: nil, width: 2, height: 2, bitsPerComponent: 8, bytesPerRow: 0,
+        space: colorSpace, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+      )
+    else { throw CocoaError(.fileWriteUnknown) }
+    context.setFillColor(red: red, green: green, blue: blue, alpha: 1)
+    context.fill(CGRect(x: 0, y: 0, width: 2, height: 2))
+    guard let image = context.makeImage() else { throw CocoaError(.fileWriteUnknown) }
+    let data = NSMutableData()
+    guard
+      let destination = CGImageDestinationCreateWithData(
+        data, "public.png" as CFString, 1, nil
+      )
+    else { throw CocoaError(.fileWriteUnknown) }
+    CGImageDestinationAddImage(destination, image, nil)
+    guard CGImageDestinationFinalize(destination) else { throw CocoaError(.fileWriteUnknown) }
+    return data as Data
   }
 
   private struct Fixture {

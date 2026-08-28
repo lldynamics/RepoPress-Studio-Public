@@ -573,6 +573,90 @@ final class SiteMaintenanceServiceTests: XCTestCase {
     XCTAssertEqual(reloaded.drafts.first { $0.id == draftID }?.date, suggestedDate)
   }
 
+  @MainActor
+  func testConfirmedScheduleDoesNotOverwriteDateChangedAfterPreview() async throws {
+    let url = try temporaryPersistenceURL()
+    let profile = SiteProfile.defaultProfile
+    let draftID = UUID()
+    let originalDate = date(year: 2020, month: 1, day: 1)
+    let readyDraft = ArticleDraft(
+      id: draftID,
+      siteProfileID: profile.id,
+      title: "排期冲突文章",
+      date: originalDate,
+      slug: "schedule-conflict",
+      bodyMarkdown: "正文",
+      status: .ready,
+      updatedAt: originalDate
+    )
+    _ = try WorkbenchPersistence(fileURL: url).save(
+      WorkbenchSnapshot(
+        profiles: [profile],
+        activeProfileID: profile.id,
+        drafts: [readyDraft],
+        releaseRecords: []
+      )
+    )
+    let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: url))
+    await store.refreshSiteMaintenanceSnapshot(force: true)
+    let report = try XCTUnwrap(store.siteMaintenanceSnapshot?.report)
+    let suggestedDate = try XCTUnwrap(
+      report.calendarScheduleItems.first { $0.draftID == draftID }?.scheduledDate
+    )
+    let changedDate = date(year: 2026, month: 12, day: 31)
+    var editedDraft = try XCTUnwrap(store.drafts.first { $0.id == draftID })
+    editedDraft.date = changedDate
+    store.updateDraft(editedDraft)
+
+    let appliedCount = await store.applySuggestedMaintenanceSchedule(
+      approvedSuggestedDates: [draftID: suggestedDate],
+      expectedOriginalDates: [draftID: originalDate]
+    )
+
+    XCTAssertEqual(appliedCount, 0)
+    XCTAssertEqual(store.drafts.first { $0.id == draftID }?.date, changedDate)
+    XCTAssertEqual(
+      store.publishActionMessage,
+      "未应用排期：1 篇文章的日期已变化，请重新生成预览。"
+    )
+  }
+
+  @MainActor
+  func testConfirmedScheduleAppliesTheFrozenSuggestedDate() async throws {
+    let url = try temporaryPersistenceURL()
+    let profile = SiteProfile.defaultProfile
+    let draftID = UUID()
+    let originalDate = date(year: 2020, month: 1, day: 1)
+    let frozenSuggestedDate = date(year: 2026, month: 11, day: 18)
+    let readyDraft = ArticleDraft(
+      id: draftID,
+      siteProfileID: profile.id,
+      title: "冻结目标排期",
+      date: originalDate,
+      slug: "frozen-schedule-target",
+      bodyMarkdown: "正文",
+      status: .ready,
+      updatedAt: originalDate
+    )
+    _ = try WorkbenchPersistence(fileURL: url).save(
+      WorkbenchSnapshot(
+        profiles: [profile],
+        activeProfileID: profile.id,
+        drafts: [readyDraft],
+        releaseRecords: []
+      )
+    )
+    let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: url))
+
+    let appliedCount = await store.applySuggestedMaintenanceSchedule(
+      approvedSuggestedDates: [draftID: frozenSuggestedDate],
+      expectedOriginalDates: [draftID: originalDate]
+    )
+
+    XCTAssertEqual(appliedCount, 1)
+    XCTAssertEqual(store.drafts.first { $0.id == draftID }?.date, frozenSuggestedDate)
+  }
+
   func testOperationLogIsScopedToCurrentProfileAndKeepsLegacyRecords() {
     let profile = SiteProfile.defaultProfile
     let otherProfileID = UUID()

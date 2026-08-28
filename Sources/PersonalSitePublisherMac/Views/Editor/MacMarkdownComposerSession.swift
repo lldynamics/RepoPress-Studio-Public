@@ -61,6 +61,11 @@ extension MacMarkdownComposerView {
       source: .editor,
       progress: editorSession.editorScrollProgress
     )
+    restoreInvalidFrontMatterDocument(
+      editorSession.invalidFrontMatterDocument,
+      baseBodyMarkdown: editorSession.invalidFrontMatterBaseBodyMarkdown,
+      baseBodyRevision: editorSession.invalidFrontMatterBaseBodyRevision
+    )
     findReplaceMessage =
       findQuery.isEmpty && isFindReplacePresented
       ? "输入查找内容。"
@@ -78,8 +83,33 @@ extension MacMarkdownComposerView {
       replacementText: replacementText,
       isFindCaseSensitive: isFindCaseSensitive,
       isFindWholeWord: isFindWholeWord,
-      isFindRegularExpression: isFindRegularExpression
+      isFindRegularExpression: isFindRegularExpression,
+      invalidFrontMatterDocument: frontMatterIssue == nil ? nil : editorDocument,
+      invalidFrontMatterBaseBodyMarkdown: frontMatterIssue == nil
+        ? nil
+        : (editorSessionState.invalidFrontMatterBaseBodyMarkdown ?? editorBody),
+      invalidFrontMatterBaseBodyRevision: frontMatterIssue == nil
+        ? nil
+        : (editorSessionState.invalidFrontMatterBaseBodyRevision ?? editorBodyRevision)
     )
+  }
+
+  func restoreInvalidFrontMatterDocument(
+    _ recoveredDocument: String?,
+    baseBodyMarkdown: String? = nil,
+    baseBodyRevision: UInt64? = nil
+  ) {
+    guard let recoveredDocument, !recoveredDocument.isEmpty else { return }
+    editorSessionState.invalidFrontMatterBaseBodyMarkdown = baseBodyMarkdown ?? editorBody
+    editorSessionState.invalidFrontMatterBaseBodyRevision = baseBodyRevision ?? editorBodyRevision
+    guard recoveredDocument != editorDocument else { return }
+    let previousDocument = editorDocument
+    editorDocument = recoveredDocument
+    applyEditorDocument(from: previousDocument, to: recoveredDocument)
+    selectionActionMessage = String(
+      localized: "已恢复上次未保存的 Front Matter 原文，请修正后再切换文章。"
+    )
+    EditorAccessibilityAnnouncementCenter.announce(selectionActionMessage)
   }
 
   func saveCurrentEditorSession() {
@@ -115,8 +145,13 @@ extension MacMarkdownComposerView {
   }
 
   func persistEditorSession(for draftID: UUID) {
+    let state = currentEditorSessionState()
+    editorSessionState.invalidFrontMatterBaseBodyMarkdown =
+      state.invalidFrontMatterBaseBodyMarkdown
+    editorSessionState.invalidFrontMatterBaseBodyRevision =
+      state.invalidFrontMatterBaseBodyRevision
     store.updateMarkdownEditorSessionState(
-      currentEditorSessionState(),
+      state,
       for: draftID,
       bodyUTF16Count: (editorBody as NSString).length
     )

@@ -1,5 +1,5 @@
-import SwiftUI
 import PublishingWorkbenchCore
+import SwiftUI
 
 struct SettingsProfileBar: View {
   let profiles: [SiteProfile]
@@ -21,7 +21,7 @@ struct SettingsProfileBar: View {
       HStack(alignment: .center, spacing: WorkbenchSpacing.control) {
         profileLabel
         profilePicker
-          .frame(minWidth: 120, idealWidth: 170)
+          .frame(minWidth: 108, idealWidth: 120)
           .fixedSize(horizontal: true, vertical: false)
         profileManagementButton
       }
@@ -31,7 +31,7 @@ struct SettingsProfileBar: View {
         ViewThatFits(in: .horizontal) {
           HStack(alignment: .center, spacing: WorkbenchSpacing.control) {
             profilePicker
-              .frame(minWidth: 120, maxWidth: .infinity)
+              .frame(minWidth: 110, maxWidth: .infinity)
             profileManagementButton
           }
 
@@ -44,7 +44,6 @@ struct SettingsProfileBar: View {
         }
       }
     }
-    .controlSize(.small)
     .popover(isPresented: $isProfileManagementPresented, arrowEdge: .bottom) {
       profileManagementPopover
     }
@@ -54,7 +53,7 @@ struct SettingsProfileBar: View {
 
   private var profileLabel: some View {
     Text("当前站点")
-      .font(.caption.weight(.medium))
+      .font(.callout.weight(.medium))
       .foregroundStyle(.secondary)
       .fixedSize()
       .accessibilityHidden(true)
@@ -67,6 +66,7 @@ struct SettingsProfileBar: View {
       }
     }
     .labelsHidden()
+    .font(.callout)
     .accessibilityLabel("当前站点")
     .accessibilityValue(activeProfile.name)
     .accessibilityIdentifier("settings-current-site-picker")
@@ -77,8 +77,10 @@ struct SettingsProfileBar: View {
       isProfileManagementPresented.toggle()
     } label: {
       Label("管理", systemImage: "ellipsis.circle")
+        .labelStyle(.iconOnly)
     }
     .buttonStyle(.bordered)
+    .font(.callout)
     .help("管理站点")
     .accessibilityLabel("管理站点")
     .accessibilityIdentifier("settings-manage-sites")

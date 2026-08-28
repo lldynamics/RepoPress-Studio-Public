@@ -36,7 +36,10 @@ final class WorkbenchAIStoreAgentLoopIntegrationTests: XCTestCase {
     let reply = await fixture.store.sendAIChatMessage("打开检查器后告诉我结果。", draft: draft)
 
     XCTAssertEqual(reply?.content, "只读检查完成。")
-    XCTAssertEqual(reply?.toolRuns.map(\.command), [.showInspector])
+    XCTAssertEqual(
+      reply?.toolRuns.map(\.toolID),
+      [WorkbenchAutomationAgentToolRegistry.toolID(for: .showInspector)]
+    )
     XCTAssertEqual(reply?.toolRuns.map(\.status), [.succeeded])
     XCTAssertTrue(fixture.store.isInspectorPresented)
     let capturedRequestCount = await fixture.transport.capturedRequestCount()
@@ -69,7 +72,10 @@ final class WorkbenchAIStoreAgentLoopIntegrationTests: XCTestCase {
 
     XCTAssertEqual(reply?.content, "已新建草稿。")
     XCTAssertNil(reply?.automationPlan)
-    XCTAssertEqual(reply?.toolRuns.map(\.command), [.createDraft])
+    XCTAssertEqual(
+      reply?.toolRuns.map(\.toolID),
+      [WorkbenchAutomationAgentToolRegistry.toolID(for: .createDraft)]
+    )
     XCTAssertEqual(reply?.toolRuns.map(\.status), [.succeeded])
     XCTAssertEqual(fixture.store.drafts.count, originalDraftCount + 1)
     let createdDraft = try XCTUnwrap(fixture.store.selectedDraft)
@@ -444,12 +450,13 @@ final class WorkbenchAIStoreAgentLoopIntegrationTests: XCTestCase {
     XCTAssertEqual(originMessage.reviewDecisions.map(\.choice), [.rejected])
     XCTAssertTrue(
       originMessage.toolRuns.contains {
-        $0.command == .showInspector && $0.status == .succeeded
+        $0.toolID == WorkbenchAutomationAgentToolRegistry.toolID(for: .showInspector)
+          && $0.status == .succeeded
       }
     )
     XCTAssertEqual(
-      originMessage.agentContinuation?.checkpoint.toolRuns.map(\.command),
-      [.updateMetadata]
+      originMessage.agentContinuation?.checkpoint.toolRuns.map(\.toolID),
+      [WorkbenchAutomationAgentToolRegistry.toolID(for: .updateMetadata)]
     )
     XCTAssertFalse(
       origin.messages.contains {
@@ -469,8 +476,8 @@ final class WorkbenchAIStoreAgentLoopIntegrationTests: XCTestCase {
     XCTAssertEqual(persisted.agentContinuation?.phase, .deliveryUncertain)
     XCTAssertNil(persisted.agentContinuation?.activeStepID)
     XCTAssertEqual(
-      persisted.agentContinuation?.checkpoint.toolRuns.map(\.command),
-      [.updateMetadata]
+      persisted.agentContinuation?.checkpoint.toolRuns.map(\.toolID),
+      [WorkbenchAutomationAgentToolRegistry.toolID(for: .updateMetadata)]
     )
   }
 
@@ -608,8 +615,8 @@ final class WorkbenchAIStoreAgentLoopIntegrationTests: XCTestCase {
     )
     XCTAssertEqual(reviewedMessage.agentContinuation?.phase, .cancelled)
     XCTAssertFalse(
-      reviewedMessage.toolRuns.contains {
-        $0.command == .knowledgeSearch && $0.status == .succeeded
+      reviewedMessage.toolRuns.contains { (run: WorkbenchAIAgentToolRunRecord) in
+        run.toolID == .knowledgeSearch && run.status == .succeeded
       }
     )
     XCTAssertTrue(fixture.store.automationRunRecords.isEmpty)
@@ -672,7 +679,13 @@ final class WorkbenchAIStoreAgentLoopIntegrationTests: XCTestCase {
     XCTAssertNotEqual(nextReview.id, review.id)
     XCTAssertEqual(nextReview.automationPlan?.steps.first?.command, .replaceBody)
     XCTAssertNotNil(nextReview.agentContinuation)
-    XCTAssertEqual(nextReview.toolRuns.map(\.command), [.showInspector, .replaceBody])
+    XCTAssertEqual(
+      nextReview.toolRuns.map(\.toolID),
+      [
+        WorkbenchAutomationAgentToolRegistry.toolID(for: .showInspector),
+        WorkbenchAutomationAgentToolRegistry.toolID(for: .replaceBody),
+      ]
+    )
     XCTAssertEqual(nextReview.toolRuns.map(\.status), [.succeeded, .awaitingConfirmation])
   }
 
@@ -741,8 +754,8 @@ final class WorkbenchAIStoreAgentLoopIntegrationTests: XCTestCase {
     )
     XCTAssertEqual(reviewedMessage.agentContinuation?.phase, .deliveryUncertain)
     XCTAssertFalse(
-      reviewedMessage.toolRuns.contains {
-        $0.command == .knowledgeSearch && $0.status == .succeeded
+      reviewedMessage.toolRuns.contains { (run: WorkbenchAIAgentToolRunRecord) in
+        run.toolID == .knowledgeSearch && run.status == .succeeded
       }
     )
     XCTAssertTrue(fixture.store.automationRunRecords.isEmpty)

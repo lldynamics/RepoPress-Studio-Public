@@ -206,9 +206,13 @@ final class WorkbenchAgentDeliveryUncertainRecoveryTests: XCTestCase {
       toolRuns: [
         WorkbenchAIAgentToolRunRecord(
           toolCallID: "call-audit",
-          command: .updateMetadata,
+          toolID: AIAgentToolID.updateMetadata,
+          modelToolName: WorkbenchAutomationCommandID.updateMetadata.rawValue,
+          executionPolicy: .requiresConfirmation,
+          catalogRevision: WorkbenchAIAgentToolInvocation.legacyCatalogRevision,
           status: .awaitingConfirmation,
           summary: "待审阅",
+          correlationID: stepID,
           automationStepID: stepID,
           targetDraftID: draft.id,
           startedAt: now
@@ -291,22 +295,33 @@ final class WorkbenchAgentDeliveryUncertainRecoveryTests: XCTestCase {
       trustedBoundaryIndex: 0,
       agentTranscriptStartIndex: 0,
       limits: .default,
-      allowedCommands: [.updateMetadata],
+      catalogRevision: WorkbenchAIAgentToolInvocation.legacyCatalogRevision,
+      allowedToolIDs: [AIAgentToolID.updateMetadata],
       pendingCalls: [
         WorkbenchAIAgentLoopPendingCall(
           toolCallID: "call-audit",
+          correlationID: step.id,
+          toolID: AIAgentToolID.updateMetadata,
+          modelToolName: step.command.rawValue,
+          executionPolicy: .requiresConfirmation,
+          catalogRevision: WorkbenchAIAgentToolInvocation.legacyCatalogRevision,
           automationStepID: step.id,
-          command: step.command,
           targetDraftID: draftID,
-          step: step
+          targetDraftVersion: nil,
+          externalToolBinding: nil,
+          automationStep: step
         )
       ],
       toolRuns: [
         WorkbenchAIAgentToolRunRecord(
           toolCallID: "call-audit",
-          command: .updateMetadata,
+          toolID: AIAgentToolID.updateMetadata,
+          modelToolName: step.command.rawValue,
+          executionPolicy: .requiresConfirmation,
+          catalogRevision: WorkbenchAIAgentToolInvocation.legacyCatalogRevision,
           status: .awaitingConfirmation,
           summary: "待审阅",
+          correlationID: step.id,
           automationStepID: step.id,
           targetDraftID: draftID,
           startedAt: now

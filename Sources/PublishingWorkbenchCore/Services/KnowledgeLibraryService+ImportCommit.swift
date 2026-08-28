@@ -177,16 +177,18 @@ extension KnowledgeLibraryService {
         throw KnowledgeLibraryError.emptyContent(candidate.sourceName)
       }
 
-      let embeddings = chunks.flatMap { chunk in
-        let record = KnowledgeSemanticIndexRecord(document: document, chunk: chunk)
-        return semanticEmbeddingService.vectors(for: record.searchableText).map { vector in
-          KnowledgeChunkEmbedding(
-            chunkID: chunk.id,
-            revisionID: chunk.revisionID,
-            vector: vector
-          )
-        }
-      }
+      let embeddings =
+        document.allowsLocalSemanticIndex
+        ? chunks.flatMap { chunk in
+          let record = KnowledgeSemanticIndexRecord(document: document, chunk: chunk)
+          return semanticEmbeddingService.vectors(for: record.searchableText).map { vector in
+            KnowledgeChunkEmbedding(
+              chunkID: chunk.id,
+              revisionID: chunk.revisionID,
+              vector: vector
+            )
+          }
+        } : []
 
       records.append(
         KnowledgeDatabaseImportRecord(

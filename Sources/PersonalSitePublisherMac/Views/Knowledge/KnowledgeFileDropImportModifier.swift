@@ -1,14 +1,46 @@
 import PublishingWorkbenchCore
 import SwiftUI
 
+struct KnowledgeFileDropImportRequest: Identifiable, Hashable {
+  let id: UUID
+  let sourceURLs: [URL]
+  let importDestination: KnowledgeImportDestination
+
+  init(
+    id: UUID = UUID(),
+    sourceURLs: [URL],
+    importDestination: KnowledgeImportDestination
+  ) {
+    self.id = id
+    self.sourceURLs = sourceURLs
+    self.importDestination = importDestination
+  }
+
+  static func make(
+    from urls: [URL],
+    importDestination: KnowledgeImportDestination
+  ) -> Self? {
+    var seenPaths = Set<String>()
+    let sourceURLs = urls.compactMap { url -> URL? in
+      guard url.isFileURL else { return nil }
+      let standardizedURL = url.standardizedFileURL
+      return seenPaths.insert(standardizedURL.path).inserted ? standardizedURL : nil
+    }
+    guard !sourceURLs.isEmpty else { return nil }
+
+    return Self(
+      sourceURLs: sourceURLs,
+      importDestination: importDestination
+    )
+  }
+}
+
 struct KnowledgeFileDropImportModifier: ViewModifier {
   @ObservedObject var knowledge: KnowledgeStore
   let isEnabled: Bool
 
   @State private var isDropTargeted = false
-  @State private var droppedSourceURLs: [URL] = []
-  @State private var importDestination = KnowledgeImportDestination.preserveExisting
-  @State private var isImportPresented = false
+  @State private var pendingImport: KnowledgeFileDropImportRequest?
 
   func body(content: Content) -> some View {
     content
@@ -24,11 +56,11 @@ struct KnowledgeFileDropImportModifier: ViewModifier {
             .allowsHitTesting(false)
         }
       }
-      .sheet(isPresented: $isImportPresented) {
+      .sheet(item: $pendingImport) { request in
         KnowledgeImportAssistantView(
           knowledge: knowledge,
-          initialSourceURLs: droppedSourceURLs,
-          importDestination: importDestination
+          initialSourceURLs: request.sourceURLs,
+          importDestination: request.importDestination
         )
       }
       .onChange(of: isEnabled) { _, enabled in
@@ -55,7 +87,7 @@ struct KnowledgeFileDropImportModifier: ViewModifier {
         }
 
         VStack(spacing: 6) {
-          Text(String(localized: "松手立即导入素材"))
+          Text(String(localized: "释放以生成导入预览"))
             .font(.title2.weight(.bold))
             .foregroundStyle(.primary)
 
@@ -91,7 +123,7 @@ struct KnowledgeFileDropImportModifier: ViewModifier {
     }
     .ignoresSafeArea()
     .accessibilityElement(children: .combine)
-    .accessibilityLabel(Text("松手立即导入素材"))
+    .accessibilityLabel(Text("释放以生成导入预览"))
     .accessibilityValue(destinationMessage)
   }
 
@@ -110,18 +142,17 @@ struct KnowledgeFileDropImportModifier: ViewModifier {
   @discardableResult
   private func acceptDrop(_ urls: [URL]) -> Bool {
     guard isEnabled else { return false }
-    var seenPaths = Set<String>()
-    let fileURLs = urls.compactMap { url -> URL? in
-      guard url.isFileURL else { return nil }
-      let standardizedURL = url.standardizedFileURL
-      return seenPaths.insert(standardizedURL.path).inserted ? standardizedURL : nil
+    guard
+      let request = KnowledgeFileDropImportRequest.make(
+        from: urls,
+        importDestination: currentImportDestination
+      )
+    else {
+      return false
     }
-    guard !fileURLs.isEmpty else { return false }
 
-    droppedSourceURLs = fileURLs
-    importDestination = currentImportDestination
+    pendingImport = request
     isDropTargeted = false
-    isImportPresented = true
     return true
   }
 

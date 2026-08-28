@@ -1,5 +1,33 @@
 import Foundation
 
+/// Immutable target identity captured when a user reviews a batch publish.
+/// A matching file list is not sufficient if the site, repository, branch,
+/// endpoint, or publish mode changed while the confirmation sheet was open.
+/// The generated review-request source branch is intentionally excluded: batch
+/// packages derive it from the current time, so it is not a user-selected target.
+public struct RemoteRepositoryPublishTargetSnapshot: Hashable, Sendable {
+  public var profileID: UUID
+  public var siteName: String
+  public var provider: RepositoryProvider
+  public var repositoryName: String
+  public var apiBaseURL: String
+  public var targetBranch: String
+  public var mode: RemoteRepositoryPublishMode
+  public var publishStrategy: RepositoryPublishStrategy
+
+  public init(profile: SiteProfile, preview: RemoteRepositoryPublishPreview) {
+    profileID = profile.id
+    siteName = profile.name.trimmedForPublishing
+    provider = profile.repositoryProvider
+    repositoryName = profile.repositoryDisplayName
+    apiBaseURL = (profile.repositoryBaseURL.nilIfEmpty ?? profile.repositoryProvider.defaultBaseURL)
+      .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+    targetBranch = preview.targetBranch
+    mode = preview.mode
+    publishStrategy = profile.repositoryPublishStrategy
+  }
+}
+
 public enum RemoteRepositoryPublishReadiness: String, Codable, Sendable {
   case ready
   case needsToken

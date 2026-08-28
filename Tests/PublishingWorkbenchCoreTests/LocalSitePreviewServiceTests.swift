@@ -719,13 +719,111 @@ final class LocalSitePreviewServiceTests: XCTestCase {
     try await Task.sleep(for: .milliseconds(250))
     XCTAssertLessThanOrEqual(watcher.watchedDirectoryCount, 2)
 
-    try Data("# post".utf8).write(to: sourceURL.appendingPathComponent("post.md"))
+    for index in 0..<5 {
+      try Data("# post \(index)".utf8).write(
+        to: sourceURL.appendingPathComponent("post-\(index).md")
+      )
+    }
     await fulfillment(of: [changeExpectation], timeout: 2)
+    try await Task.sleep(for: .milliseconds(450))
     let sourceChangeCount = state.changeCount
+    XCTAssertEqual(sourceChangeCount, 1, "a file-event burst should be delivered once")
 
     try Data("dependency".utf8).write(to: nodeModulesURL.appendingPathComponent("package.js"))
     try await Task.sleep(for: .milliseconds(450))
     XCTAssertEqual(state.changeCount, sourceChangeCount)
+    watcher.stop()
+  }
+
+  func testPreviewFileWatcherClassifiesOnlyManifestChangesAsExecutionConfiguration() async throws {
+    let rootURL = FileManager.default.temporaryDirectory.appendingPathComponent(
+      "local-preview-watcher-config-\(UUID().uuidString)",
+      isDirectory: true
+    )
+    try FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)
+    try Data("{\"scripts\":{\"dev\":\"astro dev\"}}".utf8)
+      .write(to: rootURL.appendingPathComponent("package.json"))
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+
+    let contentChange = expectation(description: "content change")
+    let manifestChange = expectation(description: "manifest change")
+    let state = LockedPreviewWatcherClassificationState()
+    let watcher = LocalSitePreviewFileWatcher(rootPath: rootURL.path, siteKind: .astro) { change in
+      switch state.record(change) {
+      case .content:
+        contentChange.fulfill()
+      case .configuration:
+        manifestChange.fulfill()
+      case .none:
+        break
+      }
+    }
+    watcher.start()
+    try await Task.sleep(for: .milliseconds(250))
+
+    try Data("# ordinary content".utf8).write(to: rootURL.appendingPathComponent("post.md"))
+    await fulfillment(of: [contentChange], timeout: 2)
+    try Data("{\"scripts\":{\"dev\":\"astro dev --host\"}}".utf8)
+      .write(to: rootURL.appendingPathComponent("package.json"))
+    await fulfillment(of: [manifestChange], timeout: 2)
+    watcher.stop()
+  }
+
+  func testPreviewFileWatcherRejectsManifestChangedBeforeWatchingStarts() async throws {
+    let rootURL = FileManager.default.temporaryDirectory.appendingPathComponent(
+      "local-preview-watcher-start-race-\(UUID().uuidString)",
+      isDirectory: true
+    )
+    try FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)
+    let manifestURL = rootURL.appendingPathComponent("package.json")
+    try Data("{\"scripts\":{\"dev\":\"astro dev\"}}".utf8).write(to: manifestURL)
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let expectedDigest = try LocalSitePreviewExecutionFingerprint.manifestDigest(
+      rootPath: rootURL.path,
+      siteKind: .astro
+    )
+    try Data("{\"scripts\":{\"dev\":\"astro dev --host\"}}".utf8).write(to: manifestURL)
+
+    let changeExpectation = expectation(description: "stale execution manifest")
+    let watcher = LocalSitePreviewFileWatcher(
+      rootPath: rootURL.path,
+      siteKind: .astro,
+      expectedExecutionManifestDigest: expectedDigest
+    ) { change in
+      if change.executionConfigurationChanged {
+        changeExpectation.fulfill()
+      }
+    }
+
+    watcher.start()
+    await fulfillment(of: [changeExpectation], timeout: 2)
+    watcher.stop()
+  }
+
+  func testPreviewFileWatcherRestartDropsOldDelayedDelivery() async throws {
+    let rootURL = FileManager.default.temporaryDirectory.appendingPathComponent(
+      "local-preview-watcher-restart-\(UUID().uuidString)",
+      isDirectory: true
+    )
+    try FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let state = LockedWatcherTestState()
+    let watcher = LocalSitePreviewFileWatcher(rootPath: rootURL.path) {
+      _ = state.recordChange()
+    }
+    watcher.start()
+    try await Task.sleep(for: .milliseconds(250))
+
+    try Data("old generation".utf8).write(to: rootURL.appendingPathComponent("old.md"))
+    try await Task.sleep(for: .milliseconds(50))
+    watcher.stop()
+    watcher.start()
+    try await Task.sleep(for: .milliseconds(450))
+    XCTAssertEqual(state.changeCount, 0)
+
+    try Data("new generation".utf8).write(to: rootURL.appendingPathComponent("new.md"))
+    try await Task.sleep(for: .milliseconds(450))
+    XCTAssertEqual(state.changeCount, 1)
     watcher.stop()
   }
 }
@@ -741,6 +839,7 @@ private final class LockedWatcherTestState: @unchecked Sendable {
     return count
   }
 
+  @discardableResult
   func recordChange() -> Bool {
     lock.lock()
     count += 1
@@ -748,5 +847,25 @@ private final class LockedWatcherTestState: @unchecked Sendable {
     didFulfill = true
     lock.unlock()
     return shouldFulfill
+  }
+}
+
+private final class LockedPreviewWatcherClassificationState: @unchecked Sendable {
+  enum RecordedChange {
+    case none
+    case content
+    case configuration
+  }
+
+  private let lock = NSLock()
+  private var contentDelivered = false
+
+  func record(_ change: LocalSitePreviewFileChange) -> RecordedChange {
+    lock.lock()
+    defer { lock.unlock() }
+    if change.executionConfigurationChanged { return .configuration }
+    guard !contentDelivered else { return .none }
+    contentDelivered = true
+    return .content
   }
 }

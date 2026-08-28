@@ -16,9 +16,9 @@ public final class WorkbenchPublishStatusFeatureFacade: ObservableObject {
     observe(store.publishingStore.$activeProfileID)
     observe(store.publishingStore.$selectedDraftID)
     observe(store.publishingStore.$draftListContentScope)
-    observe(store.publishingStore.$preflightIssues)
-    observe(store.publishingStore.$localPublishReadiness)
-    observe(store.publishingStore.$releaseRecords)
+    observe(store.publishingStore.publishSession.$preflightIssues)
+    observe(store.publishingStore.publishSession.$localPublishReadiness)
+    observe(store.publishingStore.publishSession.$releaseRecords)
     observe(store.repositoryStore.$repositoryReport)
     observe(store.deploymentStore.$deploymentStatusSnapshots)
     // Use the new array supplied by the publisher rather than reading the

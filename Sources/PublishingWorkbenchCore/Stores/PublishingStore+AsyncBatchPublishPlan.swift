@@ -58,6 +58,15 @@ extension PublishingStore {
     isBatchPublishPlanRefreshing = false
   }
 
+  /// Removes remote-derived batch state while a repository access proof is
+  /// being replaced. The local batch plan remains available for the next
+  /// refresh, but the UI cannot retain a stale ready/conflict presentation.
+  func removeBatchRemotePublishPreviewSnapshot() {
+    cancelBatchPublishPlanRefresh()
+    batchRemotePublishPreviewSnapshot = nil
+    batchRemoteReviewDraft = nil
+  }
+
   func waitForBatchPublishPlanRefresh() async {
     let task = batchPublishPlanRefreshTask
     await task?.value

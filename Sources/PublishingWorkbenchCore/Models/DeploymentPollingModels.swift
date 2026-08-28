@@ -139,7 +139,7 @@ public struct DeploymentPollingState: Codable, Hashable, Sendable {
       CoreL10n.format("- 部署中：%@", String(runningCount)),
       CoreL10n.format("- 失败：%@", String(failedCount)),
       CoreL10n.format("- 未知：%@", String(unknownCount)),
-      CoreL10n.format("- 需处理：%@", String(attentionCount))
+      CoreL10n.format("- 需处理：%@", String(attentionCount)),
     ]
 
     if let lastRunAt {
@@ -200,7 +200,9 @@ public struct DeploymentPollingState: Codable, Hashable, Sendable {
     lastRunAt = try container.decodeIfPresent(Date.self, forKey: .lastRunAt)
     nextRunAt = try container.decodeIfPresent(Date.self, forKey: .nextRunAt)
     checkedRecordCount = try container.decodeIfPresent(Int.self, forKey: .checkedRecordCount) ?? 0
-    checkedRecords = try container.decodeIfPresent([DeploymentPollingRecordSummary].self, forKey: .checkedRecords) ?? []
+    checkedRecords =
+      try container.decodeIfPresent([DeploymentPollingRecordSummary].self, forKey: .checkedRecords)
+      ?? []
     message = try container.decodeIfPresent(String.self, forKey: .message) ?? Self.defaultMessage
   }
 }
@@ -238,9 +240,16 @@ public struct DeploymentPollingRecordSummary: Identifiable, Codable, Hashable, S
       return false
     }
     switch releaseStatus {
-    case .pendingRemoteRecovery, .pendingRetry, .failed, .unknown:
+    case .localOnly,
+      .previewOnly,
+      .pendingReview,
+      .reviewWithdrawn,
+      .pendingRemoteRecovery,
+      .pendingRetry,
+      .failed,
+      .unknown:
       return false
-    case .localOnly, .pendingReview, .pendingDeployment, .deploying, .succeeded, .none:
+    case .pendingDeployment, .deploying, .succeeded, .none:
       return true
     }
   }
@@ -249,7 +258,8 @@ public struct DeploymentPollingRecordSummary: Identifiable, Codable, Hashable, S
     switch releaseStatus {
     case .pendingRemoteRecovery, .pendingRetry, .failed, .unknown:
       return true
-    case .localOnly, .pendingReview, .pendingDeployment, .deploying, .succeeded, .none:
+    case .localOnly, .previewOnly, .pendingReview, .reviewWithdrawn, .pendingDeployment, .deploying,
+      .succeeded, .none:
       return level == .failed || level == .unknown
     }
   }
@@ -260,7 +270,8 @@ public struct DeploymentPollingRecordSummary: Identifiable, Codable, Hashable, S
 
   public var followUpChecklistLine: String {
     let marker = isResolvedSuccess ? "x" : " "
-    return CoreL10n.format("- [%@] %@：%@ - %@", marker, title, followUpActionTitle, followUpActionMessage)
+    return CoreL10n.format(
+      "- [%@] %@：%@ - %@", marker, title, followUpActionTitle, followUpActionMessage)
   }
 
   public var followUpActionTitle: String {
@@ -275,6 +286,10 @@ public struct DeploymentPollingRecordSummary: Identifiable, Codable, Hashable, S
       return CoreL10n.text("补充部署证据")
     case .localOnly, .pendingReview:
       return CoreL10n.text("完成发布前置步骤")
+    case .reviewWithdrawn:
+      return CoreL10n.text("保留撤回记录")
+    case .previewOnly:
+      return CoreL10n.text("保留预览记录")
     case .pendingDeployment, .deploying, .succeeded, .none:
       switch level {
       case .success:
@@ -303,6 +318,10 @@ public struct DeploymentPollingRecordSummary: Identifiable, Codable, Hashable, S
       return CoreL10n.text("先完成本地提交或线上发布，再进入部署校验。")
     case .pendingReview:
       return CoreL10n.text("先合并或撤回 PR/MR，再继续部署检查。")
+    case .reviewWithdrawn:
+      return CoreL10n.text("该 PR/MR 已撤回，未合并到目标分支，也没有部署结果。")
+    case .previewOnly:
+      return CoreL10n.text("该分支仅用于预览，不代表正式分支已发布或部署。")
     case .pendingDeployment, .deploying, .succeeded, .none:
       switch level {
       case .success:

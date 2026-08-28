@@ -132,10 +132,17 @@ final class DraftPreviewBranchPublishTests: XCTestCase {
       errorMessage: "failed"
     )
 
-    XCTAssertEqual(success.kind, .remoteDirectCommit)
+    XCTAssertEqual(success.kind, .remotePreviewBranch)
     XCTAssertEqual(success.branchName, "draft/preview-article")
     XCTAssertEqual(success.targetBranch, "main")
-    XCTAssertTrue(success.title.contains(RemoteRepositoryPublishMode.previewBranch.displayName))
+    XCTAssertTrue(success.title.contains(ReleaseRecordKind.remotePreviewBranch.displayName))
+    XCTAssertEqual(
+      ReleaseLedgerService().ledger(
+        releaseRecords: [success],
+        deploymentStatusSnapshots: [:]
+      ).entries.first?.status,
+      .previewOnly
+    )
     XCTAssertEqual(failure.branchName, "draft/preview-article")
     XCTAssertEqual(failure.targetBranch, "main")
   }

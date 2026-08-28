@@ -15,9 +15,9 @@ public final class ThinRedScroller: NSScroller {
     let isDark = appearanceName.contains("dark")
     let isHighContrast = appearanceName.contains("highcontrast")
 
-    // Keep the semantic color red in every appearance. High-contrast
-    // appearances use full opacity so the narrow track remains discoverable.
-    let baseColor = NSColor.systemRed
+    // Use a neutral semantic label color; high-contrast appearances use full
+    // opacity so the narrow track remains discoverable.
+    let baseColor = NSColor.secondaryLabelColor
     let alpha: CGFloat = isHighContrast ? 1.0 : (isDark ? 0.92 : 0.78)
     return baseColor.withAlphaComponent(alpha)
   }
@@ -137,27 +137,32 @@ public final class ThinRedScroller: NSScroller {
 
 /// Settings-only scroller policy. The Settings window keeps the native
 /// NSScroller hit area and interaction model, while drawing only a thin
-/// vertical red knob and suppressing horizontal indicators that would signal
+/// vertical neutral knob and suppressing horizontal indicators that would signal
 /// an accidental horizontal layout overflow.
 @MainActor
 enum SettingsScrollViewStyling {
   static func install(on scrollView: NSScrollView) {
-    if scrollView.hasVerticalScroller,
-       !(scrollView.verticalScroller is ThinRedScroller) {
+    let needsVerticalReplacement =
+      scrollView.hasVerticalScroller && !(scrollView.verticalScroller is ThinRedScroller)
+    let needsOverlayStyle =
+      scrollView.scrollerStyle != .overlay
+      || scrollView.verticalScroller?.scrollerStyle != .overlay
+    let needsHorizontalFix =
+      scrollView.hasHorizontalScroller || scrollView.horizontalScrollElasticity != .none
+
+    if needsVerticalReplacement {
       let scroller = ThinRedScroller()
       scrollView.verticalScroller = scroller
     }
 
-    // NSScrollView can apply its own legacy style after a custom scroller is
-    // assigned, especially for SwiftUI's delayed Form/HostingScrollView
-    // construction. Reassert the page-local overlay style after replacement
-    // and refresh the native knob geometry from the current clip view.
-    scrollView.scrollerStyle = .overlay
-    scrollView.verticalScroller?.scrollerStyle = .overlay
-    scrollView.reflectScrolledClipView(scrollView.contentView)
-    (scrollView.verticalScroller as? ThinRedScroller)?.enableSettingsKnobLayer()
+    if needsVerticalReplacement || needsOverlayStyle {
+      scrollView.scrollerStyle = .overlay
+      scrollView.verticalScroller?.scrollerStyle = .overlay
+      scrollView.reflectScrolledClipView(scrollView.contentView)
+      (scrollView.verticalScroller as? ThinRedScroller)?.enableSettingsKnobLayer()
+    }
 
-    if scrollView.hasHorizontalScroller {
+    if needsHorizontalFix {
       scrollView.hasHorizontalScroller = false
       scrollView.horizontalScrollElasticity = .none
     }
@@ -235,7 +240,7 @@ public extension View {
     modifier(ThinRedScrollbarsModifier())
   }
 
-  /// Applies the red scroller only to a Settings scene window and its sheets.
+  /// Applies the neutral scroller only to a Settings scene window and its sheets.
   func settingsThinRedScrollbars() -> some View {
     modifier(ThinRedScrollbarsModifier(scope: .settings))
   }
@@ -281,7 +286,13 @@ private final class SettingsThinRedScrollerConfiguratorView: NSView {
 
   override func layout() {
     super.layout()
-    scheduleConfiguration()
+    if let scrollView = nearestScrollView {
+      if !(scrollView.verticalScroller is ThinRedScroller) {
+        scheduleConfiguration()
+      }
+    } else {
+      scheduleConfiguration()
+    }
   }
 
   func scheduleConfiguration() {
@@ -543,7 +554,7 @@ private final class ThinRedScrollbarsConfiguratorView: NSView {
 }
 
 /// Web content scrollbar styling so WebKit-rendered pages match the AppKit
-/// `ThinRedScroller` treatment: a 2.5pt red knob with a transparent track.
+/// `ThinRedScroller` treatment: a 2.5pt neutral knob with a transparent track.
 /// Injected into app-generated HTML directly, or into remote/on-disk pages via
 /// `injectionSource` as a `WKUserScript`.
 enum ThinRedScrollbarWebStyle {
@@ -556,21 +567,21 @@ enum ThinRedScrollbarWebStyle {
       background: transparent;
     }
     *::-webkit-scrollbar-thumb {
-      background: rgba(255, 59, 48, 0.78);
+      background: rgba(127, 127, 127, 0.62);
       border-radius: 1.25px;
     }
     *::-webkit-scrollbar-thumb:hover {
-      background: rgba(255, 59, 48, 0.92);
+      background: rgba(127, 127, 127, 0.82);
     }
     *::-webkit-scrollbar-corner {
       background: transparent;
     }
     @media (prefers-color-scheme: dark) {
       *::-webkit-scrollbar-thumb {
-        background: rgba(255, 69, 58, 0.92);
+        background: rgba(220, 220, 220, 0.72);
       }
       *::-webkit-scrollbar-thumb:hover {
-        background: rgba(255, 69, 58, 1);
+        background: rgba(240, 240, 240, 0.9);
       }
     }
     """
@@ -579,9 +590,9 @@ enum ThinRedScrollbarWebStyle {
   /// pages whose HTML is not generated by the app (e.g. the local site preview).
   static let injectionSource = """
     (() => {
-      if (document.getElementById('thin-red-scrollbar-style')) { return; }
+      if (document.getElementById('thin-neutral-scrollbar-style')) { return; }
       const style = document.createElement('style');
-      style.id = 'thin-red-scrollbar-style';
+      style.id = 'thin-neutral-scrollbar-style';
       style.textContent = \(jsStringLiteral(css));
       (document.head || document.documentElement).appendChild(style);
     })();

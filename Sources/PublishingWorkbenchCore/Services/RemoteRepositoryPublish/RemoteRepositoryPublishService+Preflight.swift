@@ -1,5 +1,17 @@
 import Foundation
 
+struct RemoteRepositoryPreflightFileSnapshot: Sendable {
+  var version: String?
+  var content: Data?
+  var exists: Bool
+}
+
+struct RemoteRepositoryPreflightInspection: Sendable {
+  var package: PublishPackage
+  var result: RemoteRepositoryPublishPreflightResult
+  var snapshotsByPath: [String: RemoteRepositoryPreflightFileSnapshot]
+}
+
 extension RemoteRepositoryPublishService {
   /// Reads the configured target branch and validates every file in a direct
   /// publish package without making any remote mutation.
@@ -13,47 +25,72 @@ extension RemoteRepositoryPublishService {
     profile: SiteProfile,
     token: String?
   ) async throws -> RemoteRepositoryPublishPreflightResult {
+    try await preflightInspection(
+      package: package,
+      profile: profile,
+      token: token
+    ).result
+  }
+
+  func preflightInspection(
+    package: PublishPackage,
+    profile: SiteProfile,
+    token: String?
+  ) async throws -> RemoteRepositoryPreflightInspection {
     let package = try normalizedPublishPackage(package)
     let token = try requiredToken(token)
     let repository = try remoteRepository(from: profile)
     let files = package.files.map { (path: $0.repositoryPath, file: $0) }
 
     try Task.checkCancellation()
+    var inspection: RemoteRepositoryPreflightInspection
     switch profile.repositoryProvider {
     case .github:
-      return try await preflightGitHub(
+      inspection = try await preflightGitHub(
+        package: package,
         files: files,
         repository: repository,
         token: token
       )
     case .gitlab:
-      return try await preflightGitLab(
+      inspection = try await preflightGitLab(
+        package: package,
         files: files,
         repository: repository,
         token: token
       )
     }
+    inspection.package = package
+    return inspection
   }
 
   private func preflightGitHub(
+    package: PublishPackage,
     files: [(path: String, file: PublishPackageFile)],
     repository: RemoteRepository,
     token: String
-  ) async throws -> RemoteRepositoryPublishPreflightResult {
+  ) async throws -> RemoteRepositoryPreflightInspection {
     var conflicts: [RemoteRepositoryPublishPreflightConflict] = []
     var remoteVersionsByPath: [String: String] = [:]
+    var snapshotsByPath: [String: RemoteRepositoryPreflightFileSnapshot] = [:]
 
     for entry in files {
       try Task.checkCancellation()
       let path = entry.path
       let file = entry.file
-      let remoteSHA = try await githubContentSHA(
+      let remoteState = try await githubFileState(
         repository: repository,
         path: path,
-        branch: repository.branch,
+        ref: repository.branch,
         token: token
       )
       try Task.checkCancellation()
+      let remoteSHA = remoteState.sha
+      snapshotsByPath[path] = RemoteRepositoryPreflightFileSnapshot(
+        version: remoteSHA,
+        content: remoteState.content,
+        exists: remoteState.exists
+      )
 
       let content = file.operation == .upsert ? try contentData(for: file) : nil
       switch file.operation {
@@ -91,19 +128,26 @@ extension RemoteRepositoryPublishService {
       }
     }
 
-    return RemoteRepositoryPublishPreflightResult(
+    let result = RemoteRepositoryPublishPreflightResult(
       conflicts: conflicts,
       remoteVersionsByPath: remoteVersionsByPath
+    )
+    return RemoteRepositoryPreflightInspection(
+      package: package,
+      result: result,
+      snapshotsByPath: snapshotsByPath
     )
   }
 
   private func preflightGitLab(
+    package: PublishPackage,
     files: [(path: String, file: PublishPackageFile)],
     repository: RemoteRepository,
     token: String
-  ) async throws -> RemoteRepositoryPublishPreflightResult {
+  ) async throws -> RemoteRepositoryPreflightInspection {
     var conflicts: [RemoteRepositoryPublishPreflightConflict] = []
     var remoteVersionsByPath: [String: String] = [:]
+    var snapshotsByPath: [String: RemoteRepositoryPreflightFileSnapshot] = [:]
 
     for entry in files {
       try Task.checkCancellation()
@@ -116,6 +160,11 @@ extension RemoteRepositoryPublishService {
         token: token
       )
       try Task.checkCancellation()
+      snapshotsByPath[path] = RemoteRepositoryPreflightFileSnapshot(
+        version: remoteState.lastCommitID,
+        content: remoteState.content,
+        exists: remoteState.exists
+      )
 
       let content = file.operation == .upsert ? try contentData(for: file) : nil
       switch file.operation {
@@ -154,9 +203,14 @@ extension RemoteRepositoryPublishService {
       }
     }
 
-    return RemoteRepositoryPublishPreflightResult(
+    let result = RemoteRepositoryPublishPreflightResult(
       conflicts: conflicts,
       remoteVersionsByPath: remoteVersionsByPath
+    )
+    return RemoteRepositoryPreflightInspection(
+      package: package,
+      result: result,
+      snapshotsByPath: snapshotsByPath
     )
   }
 

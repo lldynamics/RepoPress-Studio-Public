@@ -173,7 +173,8 @@ public struct KnowledgeChunkingService: Sendable {
       locator: section.locator?.nilIfEmpty,
       content: text,
       tokenEstimate: max(1, Self.tokenizer.tokenCount(text)),
-      contentHash: Self.contentHash(for: text)
+      contentHash: Self.contentHash(for: text),
+      visualAnchor: section.visualAnchor
     )
   }
 

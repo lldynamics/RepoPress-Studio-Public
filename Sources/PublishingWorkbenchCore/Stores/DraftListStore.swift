@@ -15,6 +15,8 @@ public final class DraftListStore: ObservableObject {
 
   public private(set) var presentationRevision: UInt64 = 0
   public private(set) var taskQueueStateVersion = 0
+  private(set) var searchIndexBuildCount = 0
+  private var searchIndexCache: [SearchIndexCacheKey: DraftSearchIndex] = [:]
 
   public init(store: WorkbenchStore) {
     self.store = store
@@ -37,7 +39,12 @@ public final class DraftListStore: ObservableObject {
         store.publishingStore.$activeProfileID
       )
       .map { profiles, activeProfileID in
-        profiles.first(where: { $0.id == activeProfileID }).map(ProfileProjection.init)
+        SearchProfileProjection(
+          activeProfileID: activeProfileID,
+          profiles: profiles.map(ProfileProjection.init).sorted {
+            $0.id.uuidString < $1.id.uuidString
+          }
+        )
       }
     )
     observe(store.publishingStore.$draftListContentScope)
@@ -57,6 +64,40 @@ public final class DraftListStore: ObservableObject {
     store.repositoryReport
   }
 
+  /// Returns a long-lived index for the requested corpus.  Metadata, privacy,
+  /// profile and site-scope changes all advance presentationRevision, while
+  /// body-only autosaves intentionally leave this cache untouched.
+  public func searchIndex(for corpus: DraftSearchCorpus) -> DraftSearchIndex {
+    let key = SearchIndexCacheKey(
+      revision: presentationRevision,
+      corpus: corpus,
+      masksPrivateContent: store.privacyProtectionStore.privacySettings.masksPrivateContent
+    )
+    if let cached = searchIndexCache[key] {
+      return cached
+    }
+
+    let drafts: [ArticleDraft]
+    switch corpus {
+    case .activeSite:
+      drafts = store.visibleDrafts
+    case .allDrafts:
+      drafts = store.drafts
+    }
+    let index = DraftSearchIndex(
+      drafts: drafts,
+      profile: { [store] draft in store.profile(for: draft) },
+      masksPrivateContent: key.masksPrivateContent,
+      revision: presentationRevision
+    )
+    searchIndexBuildCount += 1
+    searchIndexCache[key] = index
+    if searchIndexCache.count > 4 {
+      searchIndexCache = searchIndexCache.filter { $0.key.revision == presentationRevision }
+    }
+    return index
+  }
+
   /// Kept as a read-only compatibility projection for list views that still
   /// use the image workbench's independent refresh token.  It is deliberately
   /// not observed by this store because image refresh is not list topology.
@@ -73,12 +114,20 @@ public final class DraftListStore: ObservableObject {
   func invalidatePresentation() {
     objectWillChange.send()
     presentationRevision &+= 1
+    searchIndexCache.removeAll(keepingCapacity: true)
   }
 
   func invalidatePresentationAndTaskQueueState() {
     objectWillChange.send()
     presentationRevision &+= 1
     taskQueueStateVersion += 1
+    searchIndexCache.removeAll(keepingCapacity: true)
+  }
+
+  private struct SearchIndexCacheKey: Hashable {
+    let revision: UInt64
+    let corpus: DraftSearchCorpus
+    let masksPrivateContent: Bool
   }
 
   private func observe<P: Publisher>(_ publisher: P)
@@ -113,5 +162,10 @@ public final class DraftListStore: ObservableObject {
       contentRoot = profile.contentRoot
       markdownPathPattern = profile.markdownPathPattern
     }
+  }
+
+  private struct SearchProfileProjection: Equatable {
+    let activeProfileID: UUID
+    let profiles: [ProfileProjection]
   }
 }

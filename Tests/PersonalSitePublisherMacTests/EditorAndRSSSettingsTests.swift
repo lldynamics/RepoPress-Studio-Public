@@ -1,5 +1,5 @@
-import XCTest
 import PublishingWorkbenchCore
+import XCTest
 
 @testable import PersonalSitePublisherMac
 
@@ -57,10 +57,46 @@ final class EditorAndRSSSettingsTests: XCTestCase {
       RSSReaderUserPreferences.translationBackend(defaults: defaults),
       expectedDefault
     )
-    defaults.set(RSSArticleTranslationBackend.ai.rawValue, forKey: RSSReaderUserPreferences.translationBackendKey)
+    defaults.set(
+      RSSArticleTranslationBackend.ai.rawValue,
+      forKey: RSSReaderUserPreferences.translationBackendKey)
     XCTAssertEqual(
       RSSReaderUserPreferences.translationBackend(defaults: defaults),
       .ai
+    )
+  }
+
+  func testSharedReaderTypographyDefaultsAndKeysAreStable() {
+    let keys = [
+      ReaderTypographyConfiguration.fontSizeKey,
+      ReaderTypographyConfiguration.lineSpacingKey,
+      ReaderTypographyConfiguration.themeKey,
+      ReaderTypographyConfiguration.fontFamilyKey,
+      ReaderTypographyConfiguration.paragraphSpacingKey,
+      ReaderTypographyConfiguration.textAlignmentKey,
+      ReaderTypographyConfiguration.codeHighlightThemeKey,
+    ]
+
+    XCTAssertEqual(Set(keys).count, keys.count)
+    XCTAssertEqual(ReaderTypographyConfiguration.fontSizeKey, "rssReaderFontSize")
+    XCTAssertEqual(ReaderTypographyConfiguration.lineSpacingKey, "rssReaderLineSpacing")
+    XCTAssertEqual(ReaderTypographyConfiguration.defaultFontFamily, .system)
+    XCTAssertEqual(ReaderTypographyConfiguration.defaultParagraphSpacing, 0.82)
+    XCTAssertEqual(ReaderTypographyConfiguration.defaultTextAlignment, .natural)
+    XCTAssertEqual(ReaderTypographyConfiguration.defaultCodeHighlightTheme, .adaptive)
+    XCTAssertEqual(ReaderFontFamily.newYork.rawValue, "newYork")
+    XCTAssertEqual(ReaderFontFamily.songti.rawValue, "songti")
+    XCTAssertEqual(
+      ReaderTypographyConfiguration.normalizedFontSize(.nan),
+      ReaderTypographyConfiguration.defaultFontSize
+    )
+    XCTAssertEqual(
+      ReaderTypographyConfiguration.normalizedLineSpacing(.infinity),
+      ReaderTypographyConfiguration.defaultLineSpacing
+    )
+    XCTAssertEqual(
+      ReaderTypographyConfiguration.normalizedParagraphSpacing(-10),
+      ReaderTypographyConfiguration.paragraphSpacingRange.lowerBound
     )
   }
 }

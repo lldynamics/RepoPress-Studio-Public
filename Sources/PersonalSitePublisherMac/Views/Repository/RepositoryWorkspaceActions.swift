@@ -17,7 +17,7 @@ extension RepositoryWorkspaceView {
       return AnyShapeStyle(WorkbenchTheme.warning)
     case .failed:
       return AnyShapeStyle(WorkbenchTheme.risk)
-    case .localOnly, .unknown:
+    case .localOnly, .previewOnly, .reviewWithdrawn, .unknown:
       return AnyShapeStyle(.secondary)
     }
   }

@@ -37,10 +37,14 @@ extension KnowledgeSourceListColumn {
     let document = row.document
     let isHovered = hoveredDocumentID == document.id
     return HStack(spacing: 9) {
-      Image(systemName: document.kind.systemImage)
-        .foregroundStyle(.secondary)
-        .frame(width: 16)
-        .accessibilityHidden(true)
+      if document.kind == .image {
+        KnowledgeDocumentThumbnailView(knowledge: knowledge, document: document)
+      } else {
+        Image(systemName: document.kind.systemImage)
+          .foregroundStyle(.secondary)
+          .frame(width: 16)
+          .accessibilityHidden(true)
+      }
       VStack(alignment: .leading, spacing: KnowledgeSidebarMetrics.rowTextSpacing) {
         Text(document.title)
           .font(.workbenchItemTitle)
@@ -51,7 +55,11 @@ extension KnowledgeSourceListColumn {
           .workbenchTruncatedIdentity(row.subtitle)
       }
       .accessibilityElement(children: .combine)
-      .accessibilityLabel("\(document.title)，\(row.subtitle)")
+      .accessibilityLabel(
+        document.kind == .image
+          ? "\(document.title)，图片，\(row.subtitle)"
+          : "\(document.title)，\(row.subtitle)"
+      )
 
       Spacer(minLength: 4)
 
@@ -136,8 +144,12 @@ extension KnowledgeSourceListColumn {
     }
     Button(
       document.allowsRemoteAIUse
-        ? String(localized: "禁止发送给远程 AI")
-        : String(localized: "允许发送给远程 AI")
+        ? document.kind == .image
+          ? String(localized: "禁止发送识别文字给远程 AI")
+          : String(localized: "禁止发送给远程 AI")
+        : document.kind == .image
+          ? String(localized: "允许发送识别文字给远程 AI")
+          : String(localized: "允许发送给远程 AI")
     ) {
       knowledge.setAllowsRemoteAIUse(!document.allowsRemoteAIUse, documentID: document.id)
     }
@@ -201,7 +213,10 @@ extension KnowledgeSourceListColumn {
               .listRowSeparator(.hidden)
               .tag(result.id)
               .contextMenu {
-                documentFolderMenu(result.document)
+                documentFolderMenu(
+                  result.document,
+                  usesDocumentListSelection: false
+                )
                 Divider()
                 Button(
                   knowledge.isPinned(result.document.id)

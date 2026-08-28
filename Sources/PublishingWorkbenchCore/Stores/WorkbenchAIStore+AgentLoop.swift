@@ -60,6 +60,11 @@ extension WorkbenchAIStore {
       if initialRequest.knowledgePolicy != .automatic {
         allowedCommands.subtract([.knowledgeSearch, .knowledgeRead])
       }
+      let toolRegistry = WorkbenchAutomationAgentToolRegistry(
+        allowedToolIDs: Set(
+          allowedCommands.map(WorkbenchAutomationAgentToolRegistry.toolID(for:))
+        )
+      )
       let knowledgeAuthorizationState = AgentKnowledgeAuthorizationState()
       let loop = WorkbenchAIAgentLoopService(
         modelTransport: { [weak self] roundRequest in
@@ -89,7 +94,10 @@ extension WorkbenchAIStore {
             knowledgeAuthorizationState: knowledgeAuthorizationState
           )
         },
-        allowedCommands: allowedCommands,
+        toolRegistry: toolRegistry,
+        grantedScopes: Set(
+          allowedCommands.map(WorkbenchAutomationRegistry.requiredPermission(for:))
+        ),
         automaticExecutor: { [weak self] invocation in
           guard let self else { throw CancellationError() }
           guard
@@ -433,9 +441,11 @@ extension WorkbenchAIStore {
         CoreL10n.text("当前对话已切换为仅问答模式，未执行工具。")
       )
     }
-    guard
+    guard let step = invocation.automationStep,
+      invocation.correlationID == step.id,
+      invocation.toolID == WorkbenchAutomationAgentToolRegistry.toolID(for: step.command),
       WorkbenchAutomationRegistry.descriptor(
-        for: invocation.step.command
+        for: step.command
       )?.allowsAgentAutomaticExecution == true
     else {
       throw WorkbenchAutomationExecutionError.operationDidNotComplete(
@@ -444,13 +454,13 @@ extension WorkbenchAIStore {
     }
     let plan = WorkbenchAutomationPlan(
       goal: CoreL10n.text("执行 AI 请求允许自动运行的工作台操作"),
-      steps: [invocation.step],
+      steps: [step],
       source: .agentLoop
     )
     let result = await WorkbenchAutomationExecutor.execute(
       plan: plan,
       in: store,
-      onlyStepID: invocation.step.id,
+      onlyStepID: step.id,
       shouldCancel: { [weak self] in
         guard let self else { return true }
         return self.aiChatCancellationRequested() || Task.isCancelled

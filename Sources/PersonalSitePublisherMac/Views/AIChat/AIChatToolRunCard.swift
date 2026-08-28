@@ -41,7 +41,7 @@ struct AIChatToolRunCard: View {
 
       VStack(alignment: .leading, spacing: 3) {
         HStack(alignment: .firstTextBaseline, spacing: 6) {
-          Text(commandTitle(run.command))
+          Text(toolTitle(run))
             .font(.callout.weight(.medium))
           Text(statusTitle(run.status))
             .font(.workbenchMetadata.weight(.semibold))
@@ -66,8 +66,12 @@ struct AIChatToolRunCard: View {
     .padding(.vertical, 7)
   }
 
-  private func commandTitle(_ command: WorkbenchAutomationCommandID) -> String {
-    WorkbenchAutomationRegistry.descriptor(for: command)?.title ?? command.rawValue
+  private func toolTitle(_ run: WorkbenchAIAgentToolRunRecord) -> String {
+    if let command = WorkbenchAutomationAgentToolRegistry.command(for: run.toolID) {
+      return WorkbenchAutomationRegistry.descriptor(for: command)?.title ?? command.rawValue
+    }
+    return run.modelToolName.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+      ?? run.toolID.rawValue
   }
 
   private func statusTitle(_ status: WorkbenchAIAgentToolRunStatus) -> LocalizedStringKey {

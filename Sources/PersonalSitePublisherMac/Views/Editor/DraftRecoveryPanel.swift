@@ -1,9 +1,20 @@
 import PublishingWorkbenchCore
 import SwiftUI
 
+enum DraftRecoveryAction: Equatable {
+  case restore
+  case deferHandling
+  case discard
+
+  var requiresConfirmation: Bool {
+    self == .discard
+  }
+}
+
 struct DraftRecoveryPanel: View {
   @ObservedObject var store: WorkbenchStore
   @Environment(\.dismiss) private var dismiss
+  @State private var discardCandidate: DraftRecoveryRecord?
 
   var body: some View {
     VStack(alignment: .leading, spacing: 16) {
@@ -34,10 +45,7 @@ struct DraftRecoveryPanel: View {
               }
             },
             discard: {
-              store.discardDraftRecovery(record)
-              if store.pendingDraftRecoveries.isEmpty {
-                dismiss()
-              }
+              discardCandidate = record
             }
           )
         }
@@ -56,6 +64,34 @@ struct DraftRecoveryPanel: View {
     .frame(minWidth: 560, idealWidth: 640, minHeight: 360, idealHeight: 460)
     .accessibilityElement(children: .contain)
     .accessibilityLabel("未保存草稿恢复")
+    .confirmationDialog(
+      String(localized: "永久丢弃恢复内容？"),
+      isPresented: discardConfirmationPresented,
+      titleVisibility: .visible,
+      presenting: discardCandidate
+    ) { record in
+      Button(String(localized: "丢弃恢复内容"), role: .destructive) {
+        discardCandidate = nil
+        store.discardDraftRecovery(record)
+        if store.pendingDraftRecoveries.isEmpty {
+          dismiss()
+        }
+      }
+      Button(String(localized: "保留并稍后处理"), role: .cancel) {}
+    } message: { record in
+      Text("“\(record.title)”的未保存恢复内容将从恢复记录中移除，之后无法从此面板找回。")
+    }
+  }
+
+  private var discardConfirmationPresented: Binding<Bool> {
+    Binding(
+      get: { discardCandidate != nil },
+      set: { isPresented in
+        if !isPresented {
+          discardCandidate = nil
+        }
+      }
+    )
   }
 }
 
@@ -95,11 +131,12 @@ private struct DraftRecoveryRow: View {
         .workbenchProminentActionStyle()
         .accessibilityLabel(String(localized: "恢复 \(record.title)"))
 
-        Button("忽略") {
+        Button("丢弃恢复内容") {
           discard()
         }
         .buttonStyle(.bordered)
-        .accessibilityLabel(String(localized: "忽略 \(record.title) 的恢复内容"))
+        .accessibilityLabel(String(localized: "丢弃 \(record.title) 的恢复内容"))
+        .accessibilityHint(String(localized: "需要再次确认；也可以选择稍后处理以保留内容"))
       }
     }
     .padding(.vertical, 6)

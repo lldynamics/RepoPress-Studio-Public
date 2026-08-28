@@ -11,10 +11,12 @@ struct SiteMaintenanceSnapshotPlaceholder: View {
     VStack(alignment: .leading, spacing: 12) {
       Label(
         isRefreshing ? "正在生成维护报告" : (errorMessage == nil ? "维护报告尚未生成" : "维护报告生成失败"),
-        systemImage: isRefreshing ? "arrow.clockwise" : (errorMessage == nil ? "wrench.and.screwdriver" : "exclamationmark.triangle")
+        systemImage: isRefreshing
+          ? "arrow.clockwise"
+          : (errorMessage == nil ? "wrench.and.screwdriver" : "exclamationmark.triangle")
       )
-        .font(.headline)
-        .foregroundStyle(errorMessage == nil ? Color.primary : WorkbenchTheme.risk)
+      .font(.headline)
+      .foregroundStyle(errorMessage == nil ? Color.primary : WorkbenchTheme.risk)
       if isRefreshing {
         ProgressView("正在扫描内容日历、标签、旧文和链接…")
           .controlSize(.small)
@@ -46,7 +48,8 @@ struct SiteMaintenanceDetailContent: View {
   let copyItem: (MaintenanceActionItem) -> Void
   let recordItem: (MaintenanceActionItem) -> Void
   let sendToAI: (MaintenanceActionItem) -> Void
-  let applySuggestedSchedule: () -> Void
+  let scheduleChanges: [SiteMaintenanceScheduleChange]
+  let applySuggestedSchedule: ([UUID: Date], [UUID: Date]) -> Void
   let latestRelease: ReleaseRecord?
   let deploymentSnapshot: DeploymentStatusSnapshot?
   let canCheckDeployment: Bool
@@ -131,13 +134,15 @@ struct SiteMaintenanceDetailContent: View {
     case .calendar:
       SiteMaintenanceCalendarSection(
         report: report,
+        scheduleChanges: scheduleChanges,
         applySuggestedSchedule: applySuggestedSchedule,
         openDraft: openDraft
       )
 
     case .governance:
       SiteMaintenanceTaxonomySection(title: "标签治理", summary: report.tagSummary, systemImage: "tag")
-      SiteMaintenanceTaxonomySection(title: "分类治理", summary: report.categorySummary, systemImage: "folder")
+      SiteMaintenanceTaxonomySection(
+        title: "分类治理", summary: report.categorySummary, systemImage: "folder")
       SiteMaintenanceStaleArticleSection(report: report, openDraft: openDraft)
 
     case .links:

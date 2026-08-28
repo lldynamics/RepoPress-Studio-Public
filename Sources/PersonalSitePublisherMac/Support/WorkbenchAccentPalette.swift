@@ -6,9 +6,11 @@ enum WorkbenchAccentPalette: String, CaseIterable, Identifiable {
 
   case system
   case emerald
+  case blue
   case violet
   case amber
   case rose
+  case graphite
 
   var id: String { rawValue }
 
@@ -18,12 +20,16 @@ enum WorkbenchAccentPalette: String, CaseIterable, Identifiable {
       return String(localized: "跟随 macOS")
     case .emerald:
       return String(localized: "薄荷绿 Emerald")
+    case .blue:
+      return String(localized: "海湾蓝 Blue")
     case .violet:
       return String(localized: "紫罗兰 Violet")
     case .amber:
       return String(localized: "琥珀黄 Amber")
     case .rose:
       return String(localized: "玫瑰红 Rose")
+    case .graphite:
+      return String(localized: "石墨灰 Graphite")
     }
   }
 
@@ -37,6 +43,13 @@ enum WorkbenchAccentPalette: String, CaseIterable, Identifiable {
         dark: (0.36, 0.82, 0.66),
         lightHighContrast: (0.00, 0.43, 0.31),
         darkHighContrast: (0.49, 0.93, 0.78)
+      )
+    case .blue:
+      return Self.adaptive(
+        light: (0.12, 0.47, 0.84),
+        dark: (0.38, 0.68, 0.96),
+        lightHighContrast: (0.02, 0.34, 0.68),
+        darkHighContrast: (0.54, 0.78, 1.00)
       )
     case .violet:
       return Self.adaptive(
@@ -58,6 +71,13 @@ enum WorkbenchAccentPalette: String, CaseIterable, Identifiable {
         dark: (0.94, 0.48, 0.61),
         lightHighContrast: (0.61, 0.10, 0.27),
         darkHighContrast: (1.00, 0.61, 0.72)
+      )
+    case .graphite:
+      return Self.adaptive(
+        light: (0.42, 0.44, 0.47),
+        dark: (0.72, 0.74, 0.77),
+        lightHighContrast: (0.28, 0.30, 0.33),
+        darkHighContrast: (0.84, 0.86, 0.89)
       )
     }
   }

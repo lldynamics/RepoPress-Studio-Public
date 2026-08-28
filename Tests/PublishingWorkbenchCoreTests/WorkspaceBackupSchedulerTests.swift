@@ -104,6 +104,103 @@ final class WorkspaceBackupSchedulerTests: XCTestCase {
     XCTAssertTrue(FileManager.default.fileExists(atPath: manualURL.path))
   }
 
+  func testOffStartDoesNotScanUntilExplicitRefresh() async throws {
+    let harness = try makeHarness()
+    defer { harness.cleanup() }
+    try FileManager.default.createDirectory(
+      at: harness.injectedBackupURL, withIntermediateDirectories: true)
+    for index in 0..<(WorkspaceBackupScheduler.automaticRetentionCount + 2) {
+      let url = harness.injectedBackupURL.appendingPathComponent(
+        "\(WorkspaceBackupService.automaticBackupFilePrefix)off-start-\(index).psworkspacebackup",
+        isDirectory: true
+      )
+      try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+      try Data("automatic-\(index)".utf8).write(to: url.appendingPathComponent("payload"))
+    }
+    let scheduler = WorkspaceBackupScheduler(
+      store: harness.store,
+      defaults: harness.defaults,
+      defaultDestinationFolderURL: harness.injectedBackupURL
+    )
+
+    scheduler.start()
+    try await Task.sleep(for: .milliseconds(450))
+    XCTAssertEqual(
+      try automaticBackupCount(in: harness.injectedBackupURL),
+      WorkspaceBackupScheduler.automaticRetentionCount + 2)
+    XCTAssertTrue(scheduler.recentBackups.isEmpty)
+
+    await scheduler.refreshRecentBackups()
+    XCTAssertEqual(
+      try automaticBackupCount(in: harness.injectedBackupURL),
+      WorkspaceBackupScheduler.automaticRetentionCount)
+  }
+
+  func testImmediateStopCancelsQueuedStartupInventory() async throws {
+    let harness = try makeHarness()
+    defer { harness.cleanup() }
+    try FileManager.default.createDirectory(
+      at: harness.injectedBackupURL,
+      withIntermediateDirectories: true
+    )
+    for index in 0..<(WorkspaceBackupScheduler.automaticRetentionCount + 2) {
+      let url = harness.injectedBackupURL.appendingPathComponent(
+        "\(WorkspaceBackupService.automaticBackupFilePrefix)stop-start-\(index).psworkspacebackup",
+        isDirectory: true
+      )
+      try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+      try Data("automatic-\(index)".utf8).write(to: url.appendingPathComponent("payload"))
+    }
+    let scheduler = WorkspaceBackupScheduler(
+      store: harness.store,
+      defaults: harness.defaults,
+      defaultDestinationFolderURL: harness.injectedBackupURL
+    )
+    scheduler.setFrequency(.daily)
+
+    scheduler.start()
+    scheduler.stop()
+    try await Task.sleep(for: .milliseconds(450))
+
+    XCTAssertEqual(
+      try automaticBackupCount(in: harness.injectedBackupURL),
+      WorkspaceBackupScheduler.automaticRetentionCount + 2
+    )
+    XCTAssertTrue(scheduler.recentBackups.isEmpty)
+  }
+
+  func testNewerRefreshWinsOverCancelledOlderRefresh() async throws {
+    let harness = try makeHarness()
+    defer { harness.cleanup() }
+    let oldFolder = harness.rootURL.appendingPathComponent("old", isDirectory: true)
+    let freshFolder = harness.rootURL.appendingPathComponent("fresh", isDirectory: true)
+    try FileManager.default.createDirectory(at: oldFolder, withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(at: freshFolder, withIntermediateDirectories: true)
+    for index in 0..<WorkspaceBackupScheduler.automaticRetentionCount {
+      let packageURL = oldFolder.appendingPathComponent(
+        "\(WorkspaceBackupService.automaticBackupFilePrefix)old-\(index).psworkspacebackup",
+        isDirectory: true
+      )
+      try FileManager.default.createDirectory(at: packageURL, withIntermediateDirectories: true)
+      try Data(repeating: 0, count: 1_024 * 1_024)
+        .write(to: packageURL.appendingPathComponent("manifest.json"))
+    }
+    let scheduler = WorkspaceBackupScheduler(
+      store: harness.store,
+      defaults: harness.defaults,
+      defaultDestinationFolderURL: oldFolder
+    )
+
+    let olderRefresh = Task { @MainActor in await scheduler.refreshRecentBackups() }
+    await Task.yield()
+    try scheduler.setDestinationFolder(freshFolder)
+    await olderRefresh.value
+    try await Task.sleep(for: .milliseconds(300))
+
+    XCTAssertEqual(scheduler.destinationFolderURL, freshFolder.standardizedFileURL)
+    XCTAssertEqual(scheduler.statusLevel, .success)
+  }
+
   func testRefreshPublishesStructuredSuccessStatus() async throws {
     let harness = try makeHarness()
     defer { harness.cleanup() }
@@ -193,6 +290,12 @@ final class WorkspaceBackupSchedulerTests: XCTestCase {
       defaults.data(forKey: WorkspaceBackupScheduler.settingsKey)
     )
     return try JSONDecoder().decode(WorkspaceBackupScheduleSettings.self, from: data)
+  }
+
+  private func automaticBackupCount(in folderURL: URL) throws -> Int {
+    try FileManager.default.contentsOfDirectory(at: folderURL, includingPropertiesForKeys: nil)
+      .filter { $0.lastPathComponent.hasPrefix(WorkspaceBackupService.automaticBackupFilePrefix) }
+      .count
   }
 }
 

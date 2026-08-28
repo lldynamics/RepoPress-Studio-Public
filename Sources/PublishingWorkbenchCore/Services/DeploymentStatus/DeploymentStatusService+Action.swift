@@ -1,33 +1,45 @@
 import Foundation
 
-public extension DeploymentStatusService {
+extension DeploymentStatusService {
 
-  func check(
+  public func check(
     profile: SiteProfile,
     releaseRecord: ReleaseRecord? = nil,
     token: String? = nil
   ) async -> DeploymentStatusSnapshot {
     let provider = profile.deploymentProvider ?? defaultProvider(for: profile)
-    let siteURLText = normalizedURLText(profile.deploymentSiteURL)
+    let siteURLText =
+      normalizedURLText(profile.deploymentSiteURL)
       ?? inferredSiteURL(profile: profile, provider: provider)
     let explicitEndpointURLText = normalizedURLText(profile.deploymentStatusEndpointURL)
     let endpointURLText = explicitEndpointURLText ?? siteURLText
-    let canUseEndpointToken = provider == .custom
+    let canUseEndpointToken =
+      provider == .custom
       && explicitEndpointURLText != nil
       && profile.deploymentStatusEndpointUsesToken == true
     var signals: [DeploymentStatusSignal] = []
 
     switch provider {
     case .githubPages:
-      signals.append(contentsOf: await githubSignals(profile: profile, releaseRecord: releaseRecord, token: token))
+      signals.append(
+        contentsOf: await githubSignals(
+          profile: profile, releaseRecord: releaseRecord, token: token))
     case .gitlabPages:
-      signals.append(contentsOf: await gitLabSignals(profile: profile, releaseRecord: releaseRecord, token: token))
+      signals.append(
+        contentsOf: await gitLabSignals(
+          profile: profile, releaseRecord: releaseRecord, token: token))
     case .netlify:
-      signals.append(contentsOf: await netlifySignals(profile: profile, releaseRecord: releaseRecord, token: token))
+      signals.append(
+        contentsOf: await netlifySignals(
+          profile: profile, releaseRecord: releaseRecord, token: token))
     case .vercel:
-      signals.append(contentsOf: await vercelSignals(profile: profile, releaseRecord: releaseRecord, token: token))
+      signals.append(
+        contentsOf: await vercelSignals(
+          profile: profile, releaseRecord: releaseRecord, token: token))
     case .cloudflarePages:
-      signals.append(contentsOf: await cloudflarePagesSignals(profile: profile, releaseRecord: releaseRecord, token: token))
+      signals.append(
+        contentsOf: await cloudflarePagesSignals(
+          profile: profile, releaseRecord: releaseRecord, token: token))
     case .custom:
       break
     }
@@ -37,6 +49,8 @@ public extension DeploymentStatusService {
         await endpointSignal(
           urlText: endpointURLText,
           provider: provider,
+          profile: profile,
+          releaseRecord: provider == .custom ? releaseRecord : nil,
           token: token,
           usesToken: canUseEndpointToken
         )
@@ -60,7 +74,31 @@ public extension DeploymentStatusService {
       )
     }
 
+    let expectedCommitSHA = releaseRecord?.commitSHA?.trimmedForPublishing.nilIfEmpty
+    if let expectedCommitSHA,
+      !signals.contains(where: { $0.attributionVerified != nil })
+    {
+      signals.append(
+        deploymentAttributionSignal(
+          provider: provider,
+          message: CoreL10n.format(
+            "部署检查没有返回当前发布提交 %@，不能确认该版本已经上线。",
+            shortCommit(expectedCommitSHA)
+          ),
+          urlText: nil,
+          deploymentBranch: nil,
+          deploymentCommit: nil,
+          releaseRecord: releaseRecord,
+          profile: profile,
+          verified: false
+        )
+      )
+    }
+
     let level = aggregateLevel(signals)
+    let attributionSignal =
+      signals.first(where: { $0.attributionVerified == true })
+      ?? signals.first(where: { $0.attributionVerified == false })
     return DeploymentStatusSnapshot(
       profileID: profile.id,
       releaseRecordID: releaseRecord?.id,
@@ -69,11 +107,18 @@ public extension DeploymentStatusService {
       title: CoreL10n.format("%@ · %@", provider.displayName, level.displayName),
       message: aggregateMessage(level: level, signals: signals),
       siteURLText: siteURLText,
-      signals: signals
+      signals: signals,
+      expectedBranch: expectedDeploymentBranch(releaseRecord: releaseRecord, profile: profile),
+      expectedCommitSHA: expectedCommitSHA,
+      observedBranch: attributionSignal?.observedBranch,
+      observedCommitSHA: attributionSignal?.observedCommitSHA,
+      attributionVerified: expectedCommitSHA == nil
+        ? nil
+        : attributionSignal?.attributionVerified == true
     )
   }
 
-  func readiness(
+  public func readiness(
     profile: SiteProfile,
     hasToken: Bool
   ) -> DeploymentStatusProviderReadiness {
@@ -81,19 +126,24 @@ public extension DeploymentStatusService {
     let hasRepository = hasRepositoryConfiguration(profile)
     let hasProjectID = profile.deploymentProjectID?.trimmedForPublishing.nilIfEmpty != nil
     let hasAccountID = profile.deploymentAccountID?.trimmedForPublishing.nilIfEmpty != nil
-    let hasSiteURL = normalizedURLText(profile.deploymentSiteURL) != nil
+    let hasSiteURL =
+      normalizedURLText(profile.deploymentSiteURL) != nil
       || inferredSiteURL(profile: profile, provider: provider) != nil
-    let statusEndpointURL = normalizedURLText(profile.deploymentStatusEndpointURL).flatMap(URL.init(string:))
+    let statusEndpointURL = normalizedURLText(profile.deploymentStatusEndpointURL).flatMap(
+      URL.init(string:))
     let hasStatusEndpoint = statusEndpointURL != nil
     let endpointTokenRequested = profile.deploymentStatusEndpointUsesToken == true
     let endpointUsesToken = endpointTokenRequested && provider == .custom
-    let hasSecureProtectedEndpoint = !endpointUsesToken
+    let hasSecureProtectedEndpoint =
+      !endpointUsesToken
       || statusEndpointURL.map(CredentialedEndpointPolicy.isSecureRequestURL) == true
     let hasUsableStatusEndpoint = hasStatusEndpoint && hasSecureProtectedEndpoint
     let hasReachabilityFallback = hasSiteURL || hasUsableStatusEndpoint
-    let repositoryAPIBaseURLText = profile.repositoryBaseURL.nilIfEmpty
+    let repositoryAPIBaseURLText =
+      profile.repositoryBaseURL.nilIfEmpty
       ?? profile.repositoryProvider.defaultBaseURL
-    let hasSecureRepositoryAPI = URL(string: repositoryAPIBaseURLText)
+    let hasSecureRepositoryAPI =
+      URL(string: repositoryAPIBaseURLText)
       .map(CredentialedEndpointPolicy.isSecureAPIBaseURL) == true
     var configured: [String] = []
     var missing: [String] = []
@@ -175,7 +225,8 @@ public extension DeploymentStatusService {
       if !hasReachabilityFallback {
         missing.append(CoreL10n.text("站点 URL 或状态端点 URL"))
       }
-      apiReady = hasReachabilityFallback
+      apiReady =
+        hasReachabilityFallback
         && (!endpointUsesToken || (hasSecureProtectedEndpoint && hasToken))
     }
 
@@ -193,7 +244,8 @@ public extension DeploymentStatusService {
 
     var fallbackMessage: String
     if hasStatusEndpoint && endpointTokenRequested && provider != .custom {
-      fallbackMessage = CoreL10n.text("只有自定义平台可向状态端点发送部署 Token；当前平台的端点将按无授权方式检查，避免将平台 Token 发送到第三方域名。")
+      fallbackMessage = CoreL10n.text(
+        "只有自定义平台可向状态端点发送部署 Token；当前平台的端点将按无授权方式检查，避免将平台 Token 发送到第三方域名。")
     } else if hasStatusEndpoint && endpointUsesToken && !hasSecureProtectedEndpoint {
       fallbackMessage = CoreL10n.text("受保护状态端点必须使用 HTTPS；当前端点已禁用，不会发送 Bearer Token。")
     } else if hasReachabilityFallback {
@@ -239,8 +291,9 @@ public extension DeploymentStatusService {
     }
   }
 
-  func hasRepositoryConfiguration(_ profile: SiteProfile) -> Bool {
-    !profile.repoOwner.trimmedForPublishing.isEmpty && !profile.repoName.trimmedForPublishing.isEmpty
+  public func hasRepositoryConfiguration(_ profile: SiteProfile) -> Bool {
+    !profile.repoOwner.trimmedForPublishing.isEmpty
+      && !profile.repoName.trimmedForPublishing.isEmpty
   }
 
   private func inferredSiteURL(profile: SiteProfile, provider: DeploymentProvider) -> String? {
@@ -264,7 +317,7 @@ public extension DeploymentStatusService {
     }
   }
 
-  func normalizedURLText(_ value: String?) -> String? {
+  public func normalizedURLText(_ value: String?) -> String? {
     let trimmed = value?.trimmedForPublishing ?? ""
     guard !trimmed.isEmpty else { return nil }
     if trimmed.hasPrefix("http://") || trimmed.hasPrefix("https://") {
@@ -273,7 +326,7 @@ public extension DeploymentStatusService {
     return "https://\(trimmed)"
   }
 
-  func articleURL(siteURLText: String, markdownPath: String, siteKind: SiteKind) -> String? {
+  public func articleURL(siteURLText: String, markdownPath: String, siteKind: SiteKind) -> String? {
     guard let siteURL = URL(string: siteURLText) else { return nil }
     return SiteArticleURLResolver()
       .url(baseURL: siteURL, markdownPath: markdownPath, siteKind: siteKind)?
@@ -293,7 +346,9 @@ public extension DeploymentStatusService {
     return .unknown
   }
 
-  private func aggregateMessage(level: DeploymentStatusLevel, signals: [DeploymentStatusSignal]) -> String {
+  private func aggregateMessage(level: DeploymentStatusLevel, signals: [DeploymentStatusSignal])
+    -> String
+  {
     switch level {
     case .success:
       return CoreL10n.text("部署 API 和站点端点检查通过。")

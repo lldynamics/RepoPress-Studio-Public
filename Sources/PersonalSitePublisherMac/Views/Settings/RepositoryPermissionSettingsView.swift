@@ -7,6 +7,7 @@ struct RepositoryPermissionSettingsState {
   let repoName: String
   let branch: String
   let isChecking: Bool
+  let isPublishing: Bool
   let activeAccessCheck: RemoteRepositoryAccessCheck?
   let hasStaleAccessCheck: Bool
   let publishActionMessage: String?
@@ -24,7 +25,7 @@ struct RepositoryPermissionSettingsView: View {
   var body: some View {
     VStack(spacing: 0) {
       HStack {
-        Label("仓库权限", systemImage: "lock.shield")
+        Label("仓库连接诊断", systemImage: "lock.shield")
           .font(.headline)
 
         Spacer()
@@ -35,8 +36,8 @@ struct RepositoryPermissionSettingsView: View {
           Image(systemName: "xmark")
         }
         .buttonStyle(.borderless)
-        .help("关闭仓库权限")
-        .accessibilityLabel("关闭仓库权限")
+        .help("关闭仓库连接诊断")
+        .accessibilityLabel("关闭仓库连接诊断")
       }
       .padding(.horizontal, 18)
       .padding(.vertical, 14)
@@ -47,29 +48,32 @@ struct RepositoryPermissionSettingsView: View {
         Section("当前仓库") {
           Label(state.repositoryProviderDisplayName, systemImage: "server.rack")
 
-          Text("\(state.repoOwner.nilIfEmpty ?? "未填写 owner") / \(state.repoName.nilIfEmpty ?? "未填写 repo")")
-            .font(.caption)
-            .foregroundStyle(.secondary)
+          Text(
+            "\(state.repoOwner.nilIfEmpty ?? "未填写 owner") / \(state.repoName.nilIfEmpty ?? "未填写 repo")"
+          )
+          .font(.caption)
+          .foregroundStyle(.secondary)
 
           Text("分支：\(state.branch.nilIfEmpty ?? "main")")
             .font(.caption)
             .foregroundStyle(.secondary)
         }
 
-        Section("权限检查") {
+        Section("连接诊断") {
           Button {
             Task {
               await actions.checkAccess()
             }
           } label: {
-            Label(state.isChecking ? "检查中" : "检查写入权限", systemImage: "checkmark.shield")
+            Label(state.isChecking ? "验证中" : "重新验证连接", systemImage: "checkmark.shield")
           }
-          .disabled(state.isChecking)
-          .accessibilityLabel("检查仓库写入权限")
+          .disabled(state.isChecking || state.isPublishing)
+          .accessibilityLabel("重新验证仓库连接")
 
           if let check = state.activeAccessCheck {
             Label(
-              check.canWrite ? "已确认内容写入：\(check.repositoryName)" : "未确认内容写入：\(check.repositoryName)",
+              check.canWrite
+                ? "检测到仓库写入角色：\(check.repositoryName)" : "未检测到仓库写入角色：\(check.repositoryName)",
               systemImage: check.canWrite ? "lock.open" : "lock"
             )
             .foregroundStyle(check.canWrite ? WorkbenchTheme.success : WorkbenchTheme.warning)
@@ -82,12 +86,12 @@ struct RepositoryPermissionSettingsView: View {
 
           } else if state.hasStaleAccessCheck {
             Label(
-              "权限检查来自其它仓库，请重新检查当前仓库",
+              "连接诊断已过期或仓库目标已变化，请重新验证",
               systemImage: "exclamationmark.triangle"
             )
             .foregroundStyle(WorkbenchTheme.warning)
           } else {
-            Text("保存访问令牌后，可在这里检查当前仓库是否具备写入权限。")
+            Text("保存访问令牌后，可在这里诊断当前仓库连接并重新验证写入能力。")
               .font(.caption)
               .foregroundStyle(.secondary)
           }

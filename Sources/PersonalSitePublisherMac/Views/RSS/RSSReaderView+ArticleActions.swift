@@ -361,8 +361,12 @@ extension RSSReaderView {
       workbenchStore.ai.dataSharingConsent.destinationState == .unconfigured
       ? .ai(.connection)
       : .ai(.credentials)
-    requestedSettingsTabID = destination.id
-    openSettings()
+    SettingsNavigation.present(
+      destination: destination,
+      workspaceAction: settingsWorkspaceCommandAction
+    ) {
+      openSettings()
+    }
   }
 
   var selectedArticleHeader: RSSArticleHeader? {

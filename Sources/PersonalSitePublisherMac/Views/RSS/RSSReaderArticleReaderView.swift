@@ -16,6 +16,10 @@ struct RSSArticleReader: View {
   @Binding var selectedText: String
   @Binding var readingFontSize: Double
   @Binding var readingLineSpacing: Double
+  @Binding var readingParagraphSpacing: Double
+  @Binding var readingFontFamily: ReaderFontFamily
+  @Binding var readingTextAlignment: ReaderTextAlignment
+  @Binding var readingCodeHighlightTheme: ReaderCodeHighlightTheme
   @Binding var readingTheme: RSSReadingTheme
   let readingProgress: Double
   let onReadingProgress: (Double) -> Void
@@ -139,7 +143,7 @@ struct RSSArticleReader: View {
 
   private func loadedArticleView(_ article: RSSArticle) -> some View {
     let displayedArticle = articleForDisplay(article)
-    return ZStack(alignment: .top) {
+    return ZStack {
       if !hasRenderableBody {
         VStack(alignment: .leading) {
           Text("这篇文章没有可显示的正文，建议打开原文阅读。")
@@ -152,90 +156,85 @@ struct RSSArticleReader: View {
         .frame(maxWidth: 900, maxHeight: .infinity, alignment: .topLeading)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
       } else {
-        RSSArticleWebView(
-          article: displayedArticle,
-          feedTitle: feedTitle,
-          readingMinutes: readingMinutes,
-          allowRemoteImages: allowRemoteImages,
-          highlights: highlights,
-          fontSize: readingFontSize,
-          lineSpacing: readingLineSpacing,
-          theme: readingTheme,
-          initialReadingProgress: readingProgress,
-          renderRevision: showsTranslatedArticle
-            ? translation?.id ?? "translated"
-            : "source-\(article.fetchedAt.timeIntervalSinceReferenceDate)",
-          speechHighlight: speechController.currentArticleID == displayedArticle.id
-            ? speechController.currentSpeechHighlight
-            : nil,
-          onSelectionChanged: { value in
-            guard articleHeader?.id == article.id else { return }
-            selectedText = value
-          },
-          onReadingProgress: onReadingProgress,
-          onNavigationError: { message in
-            guard articleHeader?.id == article.id else { return }
-            selectedText = ""
-            onNavigationError(message)
-          }
-        )
-        .frame(minHeight: 240, maxHeight: .infinity)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
-        .layoutPriority(1)
-        .accessibilityIdentifier("rss-reader-detail")
-        .overlay(alignment: .top) {
-          if hasSelectedText {
-            ReaderContextualSelectionBar(
-              selectedText: selectedText,
-              onExplain: { text in
-                if let aiChatWorkspaceCommandAction {
-                  aiChatWorkspaceCommandAction.open(nil, nil)
-                }
-                EditorAccessibilityAnnouncementCenter.announce(
-                  String(
-                    format: String(localized: "AI 正在解释：%@"),
-                    String(text.prefix(20))
-                  )
-                )
-              },
-              onTranslate: { _ in
-                onTranslate(translationBackend)
-              },
-              onHighlight: { _ in
-                onBeginHighlight()
-              },
-              onQuoteToDraft: { _ in
-                onCreateInspirationDraft(article)
-              },
-              onSpeak: { _ in
-                speechController.toggle(article: article)
-              }
-            )
-            .padding(.top, 60)
-            .transition(
-              .asymmetric(
-                insertion: .move(edge: .top).combined(with: .opacity),
-                removal: .opacity
-              )
-            )
-            .animation(.easeInOut(duration: 0.15), value: hasSelectedText)
-            .zIndex(3)
-          }
-        }
-        .accessibilityLabel("保留标题、列表、引用、代码块和链接的文章正文")
+        VStack(spacing: 0) {
+          readerTopChrome(for: article, speechArticle: displayedArticle)
 
-        VStack(spacing: 4) {
-          readingProgressBar
-          readerToolbar(for: article, speechArticle: displayedArticle)
-          fullTextStatusBanner(for: article)
-          translationStatusView
+          RSSArticleWebView(
+            article: displayedArticle,
+            feedTitle: feedTitle,
+            readingMinutes: readingMinutes,
+            allowRemoteImages: allowRemoteImages,
+            highlights: highlights,
+            fontSize: readingFontSize,
+            lineSpacing: readingLineSpacing,
+            paragraphSpacing: readingParagraphSpacing,
+            fontFamily: readingFontFamily,
+            textAlignment: readingTextAlignment,
+            codeHighlightTheme: readingCodeHighlightTheme,
+            theme: readingTheme,
+            initialReadingProgress: readingProgress,
+            renderRevision: showsTranslatedArticle
+              ? translation?.id ?? "translated"
+              : "source-\(article.fetchedAt.timeIntervalSinceReferenceDate)",
+            speechHighlight: speechController.currentArticleID == displayedArticle.id
+              ? speechController.currentSpeechHighlight
+              : nil,
+            onSelectionChanged: { value in
+              guard articleHeader?.id == article.id else { return }
+              selectedText = value
+            },
+            onReadingProgress: onReadingProgress,
+            onNavigationError: { message in
+              guard articleHeader?.id == article.id else { return }
+              selectedText = ""
+              onNavigationError(message)
+            }
+          )
+          .frame(minHeight: 240, maxHeight: .infinity)
+          .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+          .layoutPriority(1)
+          .accessibilityIdentifier("rss-reader-detail")
+          .overlay(alignment: .top) {
+            if hasSelectedText {
+              ReaderContextualSelectionBar(
+                selectedText: selectedText,
+                onExplain: { text in
+                  if let aiChatWorkspaceCommandAction {
+                    aiChatWorkspaceCommandAction.open(nil, nil)
+                  }
+                  EditorAccessibilityAnnouncementCenter.announce(
+                    String(
+                      format: String(localized: "AI 正在解释：%@"),
+                      String(text.prefix(20))
+                    )
+                  )
+                },
+                onTranslate: { _ in
+                  onTranslate(translationBackend)
+                },
+                onHighlight: { _ in
+                  onBeginHighlight()
+                },
+                onQuoteToDraft: { _ in
+                  onCreateInspirationDraft(article)
+                },
+                onSpeak: { _ in
+                  speechController.toggle(article: article)
+                }
+              )
+              .padding(.top, 12)
+              .transition(
+                .asymmetric(
+                  insertion: .move(edge: .top).combined(with: .opacity),
+                  removal: .opacity
+                )
+              )
+              .animation(.easeInOut(duration: 0.15), value: hasSelectedText)
+              .zIndex(3)
+            }
+          }
+          .accessibilityLabel("保留标题、列表、引用、代码块和链接的文章正文")
         }
-        .background(.thinMaterial)
-        .zIndex(1)
-        .frame(maxWidth: 900)
-        .frame(maxWidth: .infinity)
-        .padding(.horizontal, 8)
-        .padding(.top, 6)
       }
       if isStaleOrLoading(article) {
         readerLoadingOverlay(for: article)
@@ -245,6 +244,24 @@ struct RSSArticleReader: View {
     .frame(maxWidth: .infinity, maxHeight: .infinity)
     .accessibilityElement(children: .contain)
     .accessibilityLabel("RSS 文章阅读区域")
+  }
+
+  private func readerTopChrome(
+    for article: RSSArticle,
+    speechArticle: RSSArticle
+  ) -> some View {
+    VStack(spacing: 4) {
+      readingProgressBar
+      readerToolbar(for: article, speechArticle: speechArticle)
+      fullTextStatusBanner(for: article)
+      translationStatusView
+    }
+    .background(.thinMaterial)
+    .frame(maxWidth: 900)
+    .frame(maxWidth: .infinity)
+    .padding(.horizontal, 8)
+    .padding(.top, 6)
+    .accessibilityIdentifier("rss-reader-top-chrome")
   }
 
   private func isStaleOrLoading(_ article: RSSArticle) -> Bool {
@@ -361,9 +378,9 @@ struct RSSArticleReader: View {
               error
             )
           )
-            .font(.caption.weight(.medium))
-            .foregroundStyle(WorkbenchTheme.risk)
-            .lineLimit(2)
+          .font(.caption.weight(.medium))
+          .foregroundStyle(WorkbenchTheme.risk)
+          .lineLimit(2)
           Spacer()
           Button(String(localized: "重试"), action: onToggleFullText)
             .buttonStyle(.bordered)
@@ -818,59 +835,16 @@ struct RSSArticleReader: View {
   }
 
   private var readingComfortControls: some View {
-    Menu {
-      readingComfortMenuContent
-    } label: {
-      Label("阅读舒适度", systemImage: "textformat.size")
-    }
-    .menuStyle(.borderlessButton)
-    .help("调整 RSS 正文字号、行距和主题")
-    .accessibilityLabel("阅读舒适度设置")
-    .accessibilityIdentifier("rss-reader-comfort")
-  }
-
-  @ViewBuilder
-  private var readingComfortMenuContent: some View {
-    Section("正文字号") {
-      Slider(
-        value: $readingFontSize,
-        in: RSSReadingComfortConfiguration.fontSizeRange,
-        step: 1
-      ) {
-        Text("字号")
-      } minimumValueLabel: {
-        Text("小")
-      } maximumValueLabel: {
-        Text("大")
-      }
-      Text("当前 \(Int(readingFontSize)) pt")
-        .font(.caption)
-        .foregroundStyle(.secondary)
-    }
-
-    Section("行距") {
-      Slider(
-        value: $readingLineSpacing,
-        in: RSSReadingComfortConfiguration.lineSpacingRange,
-        step: 0.05
-      ) {
-        Text("行距")
-      } minimumValueLabel: {
-        Text("紧")
-      } maximumValueLabel: {
-        Text("松")
-      }
-      Text("当前 \(readingLineSpacing, specifier: "%.2f")")
-        .font(.caption)
-        .foregroundStyle(.secondary)
-    }
-
-    Picker("阅读主题", selection: $readingTheme) {
-      ForEach(RSSReadingTheme.allCases) { theme in
-        Label(theme.title, systemImage: theme.systemImage)
-          .tag(theme)
-      }
-    }
+    ReaderTypographyMenu(
+      fontSize: $readingFontSize,
+      lineSpacing: $readingLineSpacing,
+      paragraphSpacing: $readingParagraphSpacing,
+      fontFamily: $readingFontFamily,
+      textAlignment: $readingTextAlignment,
+      codeHighlightTheme: $readingCodeHighlightTheme,
+      readingTheme: $readingTheme,
+      accessibilityIdentifier: "rss-reader-comfort"
+    )
   }
 
   private func annotationSummaryButton(for article: RSSArticle) -> some View {
@@ -948,11 +922,7 @@ struct RSSArticleReader: View {
       .accessibilityIdentifier("rss-reader-annotation-summary")
 
       Divider()
-      Menu {
-        readingComfortMenuContent
-      } label: {
-        Label("阅读舒适度", systemImage: "textformat.size")
-      }
+      readingComfortControls
       Toggle("加载远程图片", isOn: $allowRemoteImages)
 
       Divider()
@@ -1184,6 +1154,14 @@ struct RSSArticleReader: View {
           selectedText: .constant(""),
           readingFontSize: .constant(RSSReadingComfortConfiguration.defaultFontSize),
           readingLineSpacing: .constant(RSSReadingComfortConfiguration.defaultLineSpacing),
+          readingParagraphSpacing: .constant(
+            ReaderTypographyConfiguration.defaultParagraphSpacing
+          ),
+          readingFontFamily: .constant(ReaderTypographyConfiguration.defaultFontFamily),
+          readingTextAlignment: .constant(ReaderTypographyConfiguration.defaultTextAlignment),
+          readingCodeHighlightTheme: .constant(
+            ReaderTypographyConfiguration.defaultCodeHighlightTheme
+          ),
           readingTheme: .constant(.system),
           readingProgress: 0.42,
           onReadingProgress: { _ in },

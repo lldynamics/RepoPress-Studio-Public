@@ -100,6 +100,8 @@ final class MarkdownComposerEditorSessionState: ObservableObject {
   /// Store before the coalesced editor Binding is committed.
   var liveBodyMarkdown: String
   var liveBodyRevision: UInt64
+  var invalidFrontMatterBaseBodyMarkdown: String?
+  var invalidFrontMatterBaseBodyRevision: UInt64?
   @Published var markdownCursorContextSnapshot: MarkdownCursorContextSnapshot?
   @Published var markdownCursorCompletionSnapshot: MarkdownCompletionContext?
 
@@ -119,6 +121,8 @@ final class MarkdownComposerEditorSessionState: ObservableObject {
     editorBodyRevision: UInt64,
     liveBodyMarkdown: String? = nil,
     liveBodyRevision: UInt64? = nil,
+    invalidFrontMatterBaseBodyMarkdown: String? = nil,
+    invalidFrontMatterBaseBodyRevision: UInt64? = nil,
     markdownCursorContextSnapshot: MarkdownCursorContextSnapshot? = nil,
     markdownCursorCompletionSnapshot: MarkdownCompletionContext? = nil
   ) {
@@ -137,6 +141,8 @@ final class MarkdownComposerEditorSessionState: ObservableObject {
     self.editorBodyRevision = editorBodyRevision
     self.liveBodyMarkdown = liveBodyMarkdown ?? editorBody
     self.liveBodyRevision = liveBodyRevision ?? editorBodyRevision
+    self.invalidFrontMatterBaseBodyMarkdown = invalidFrontMatterBaseBodyMarkdown
+    self.invalidFrontMatterBaseBodyRevision = invalidFrontMatterBaseBodyRevision
     self.markdownCursorContextSnapshot = markdownCursorContextSnapshot
     self.markdownCursorCompletionSnapshot = markdownCursorCompletionSnapshot
   }
@@ -148,6 +154,18 @@ struct MarkdownComposerAttachmentState {
   var activeInsertedImageMetadataID: UUID?
   var importTask: Task<Void, Never>?
   var importRequestID: UUID?
+  var automaticImageImportToast: MarkdownAutomaticImageImportToast?
+  var automaticImageImportToastTask: Task<Void, Never>?
+}
+
+struct MarkdownAutomaticImageImportToast: Equatable, Identifiable {
+  let id: UUID
+  let message: String
+
+  init(id: UUID = UUID(), message: String) {
+    self.id = id
+    self.message = message
+  }
 }
 
 struct MarkdownComposerSelectionActionState {
@@ -451,6 +469,16 @@ extension MacMarkdownComposerView {
   var attachmentImportRequestID: UUID? {
     get { attachmentState.importRequestID }
     nonmutating set { attachmentState.importRequestID = newValue }
+  }
+
+  var automaticImageImportToast: MarkdownAutomaticImageImportToast? {
+    get { attachmentState.automaticImageImportToast }
+    nonmutating set { attachmentState.automaticImageImportToast = newValue }
+  }
+
+  var automaticImageImportToastTask: Task<Void, Never>? {
+    get { attachmentState.automaticImageImportToastTask }
+    nonmutating set { attachmentState.automaticImageImportToastTask = newValue }
   }
 
   var activeSelectionAIAction: AIPublishingActionKind? {

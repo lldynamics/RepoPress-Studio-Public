@@ -71,7 +71,7 @@ public struct SEOAuditReport: Codable, Hashable, Sendable {
   }
 }
 
-public struct SEOAuditService {
+public struct SEOAuditService: Sendable {
   private let frontMatterRenderer: FrontMatterRenderer
 
   public init(frontMatterRenderer: FrontMatterRenderer = FrontMatterRenderer()) {

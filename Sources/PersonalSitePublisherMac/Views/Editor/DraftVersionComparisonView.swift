@@ -6,34 +6,172 @@ private enum DraftVersionComparisonTarget: Hashable {
   case version(UUID)
 }
 
+struct DraftVersionComparisonRequestKey: Hashable, Sendable {
+  enum Target: Hashable, Sendable {
+    case current(draftID: UUID, metadataRevision: UInt64, bodyRevision: UInt64)
+    case version(UUID)
+  }
+
+  let sourceVersionID: UUID
+  let target: Target
+}
+
+struct DraftVersionComparisonRequest: Sendable {
+  let key: DraftVersionComparisonRequestKey
+  let previous: ArticleDraft
+  let current: ArticleDraft
+
+  static func current(
+    sourceVersion: DraftVersionSnapshot,
+    targetDraft: ArticleDraft,
+    bodyMarkdown: String,
+    bodyRevision: UInt64
+  ) -> Self {
+    var frozenTarget = targetDraft
+    frozenTarget.bodyMarkdown = bodyMarkdown
+    return Self(
+      key: DraftVersionComparisonRequestKey(
+        sourceVersionID: sourceVersion.id,
+        target: .current(
+          draftID: targetDraft.id,
+          metadataRevision: targetDraft.editorMetadataRevision,
+          bodyRevision: bodyRevision
+        )
+      ),
+      previous: sourceVersion.draft,
+      current: frozenTarget
+    )
+  }
+
+  static func version(
+    sourceVersion: DraftVersionSnapshot,
+    targetVersion: DraftVersionSnapshot
+  ) -> Self {
+    Self(
+      key: DraftVersionComparisonRequestKey(
+        sourceVersionID: sourceVersion.id,
+        target: .version(targetVersion.id)
+      ),
+      previous: sourceVersion.draft,
+      current: targetVersion.draft
+    )
+  }
+}
+
+@MainActor
+final class DraftVersionComparisonLoader: ObservableObject {
+  typealias Comparator = @Sendable (ArticleDraft, ArticleDraft) async -> DraftVersionComparison
+
+  @Published private(set) var comparison: DraftVersionComparison?
+  @Published private(set) var isLoading = false
+
+  private let comparator: Comparator
+  private var cache: [DraftVersionComparisonRequestKey: DraftVersionComparison] = [:]
+  private var inFlight: [DraftVersionComparisonRequestKey: Task<DraftVersionComparison, Never>] = [:]
+  private var currentKey: DraftVersionComparisonRequestKey?
+  private var generation: UInt64 = 0
+
+  init(
+    comparator: @escaping Comparator = { previous, current in
+      await Task.detached(priority: .userInitiated) {
+        DraftVersionComparisonService().compare(previous: previous, current: current)
+      }.value
+    }
+  ) {
+    self.comparator = comparator
+  }
+
+  func load(_ request: DraftVersionComparisonRequest?) async {
+    generation &+= 1
+    let requestedGeneration = generation
+    currentKey = request?.key
+
+    guard let request else {
+      comparison = nil
+      isLoading = false
+      return
+    }
+    if let cached = cache[request.key] {
+      comparison = cached
+      isLoading = false
+      return
+    }
+
+    comparison = nil
+    isLoading = true
+    let workTask: Task<DraftVersionComparison, Never>
+    if let existing = inFlight[request.key] {
+      workTask = existing
+    } else {
+      let comparator = comparator
+      let previous = request.previous
+      let current = request.current
+      let created = Task {
+        await comparator(previous, current)
+      }
+      inFlight[request.key] = created
+      workTask = created
+    }
+    let result = await workTask.value
+    inFlight[request.key] = nil
+    cache[request.key] = result
+    guard !Task.isCancelled,
+      currentKey == request.key,
+      generation == requestedGeneration
+    else {
+      return
+    }
+    comparison = result
+    isLoading = false
+  }
+}
+
 struct DraftVersionComparisonView: View {
   let store: WorkbenchStore
   let sourceVersion: DraftVersionSnapshot
+  @ObservedObject private var publishing: WorkbenchPublishingFeatureFacade
+  @StateObject private var liveContext: WorkbenchMarkdownEditorLiveContextFeatureFacade
+  @StateObject private var comparisonLoader: DraftVersionComparisonLoader
   @Environment(\.dismiss) private var dismiss
   @State private var target = DraftVersionComparisonTarget.current
   @State private var isRestoreConfirmationPresented = false
-  private let comparisonService = DraftVersionComparisonService()
+
+  init(store: WorkbenchStore, sourceVersion: DraftVersionSnapshot) {
+    self.store = store
+    self.sourceVersion = sourceVersion
+    _publishing = ObservedObject(wrappedValue: store.publishing)
+    _liveContext = StateObject(
+      wrappedValue: WorkbenchMarkdownEditorLiveContextFeatureFacade(
+        store: store,
+        draftID: sourceVersion.draftID
+      )
+    )
+    _comparisonLoader = StateObject(wrappedValue: DraftVersionComparisonLoader())
+  }
 
   private var versions: [DraftVersionSnapshot] {
     store.versions(for: sourceVersion.draftID)
   }
 
   private var currentDraft: ArticleDraft? {
-    store.drafts.first { $0.id == sourceVersion.draftID }
+    publishing.drafts.first { $0.id == sourceVersion.draftID }
   }
 
-  private var targetDraft: ArticleDraft? {
+  private var comparisonRequest: DraftVersionComparisonRequest? {
     switch target {
     case .current:
-      return currentDraft
+      guard let currentDraft else { return nil }
+      return .current(
+        sourceVersion: sourceVersion,
+        targetDraft: currentDraft,
+        bodyMarkdown: liveContext.bodyMarkdown,
+        bodyRevision: liveContext.bodyRevision
+      )
     case .version(let versionID):
-      return versions.first { $0.id == versionID }?.draft
-    }
-  }
-
-  private var comparison: DraftVersionComparison? {
-    targetDraft.map {
-      comparisonService.compare(previous: sourceVersion.draft, current: $0)
+      guard let targetVersion = versions.first(where: { $0.id == versionID }) else {
+        return nil
+      }
+      return .version(sourceVersion: sourceVersion, targetVersion: targetVersion)
     }
   }
 
@@ -44,7 +182,16 @@ struct DraftVersionComparisonView: View {
 
       Divider()
 
-      if let comparison {
+      if comparisonLoader.isLoading {
+        VStack(spacing: 10) {
+          ProgressView()
+          Text("正在计算版本差异…")
+            .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("正在计算版本差异")
+      } else if let comparison = comparisonLoader.comparison {
         comparisonContent(comparison)
       } else {
         ContentUnavailableView(
@@ -92,6 +239,9 @@ struct DraftVersionComparisonView: View {
     } message: {
       Text("恢复前会自动保存当前内容，因此仍可从版本历史回到恢复前状态。")
     }
+    .task(id: comparisonRequest?.key) {
+      await comparisonLoader.load(comparisonRequest)
+    }
     .accessibilityIdentifier("draft-version-comparison")
   }
 
@@ -125,7 +275,7 @@ struct DraftVersionComparisonView: View {
 
       Spacer()
 
-      if let comparison {
+      if let comparison = comparisonLoader.comparison {
         HStack(spacing: 8) {
           comparisonBadge("元数据 \(comparison.fieldChanges.count)", color: WorkbenchTheme.primary)
           comparisonBadge("+\(comparison.addedLineCount)", color: WorkbenchTheme.success)
@@ -267,6 +417,7 @@ struct DraftVersionComparisonView: View {
   private func versionMenuTitle(_ version: DraftVersionSnapshot) -> String {
     "\(version.reason.localizedDisplayName) · \(version.capturedAt.formatted(date: .abbreviated, time: .shortened))"
   }
+
 }
 
 private struct DraftVersionLineDiffRow: View {

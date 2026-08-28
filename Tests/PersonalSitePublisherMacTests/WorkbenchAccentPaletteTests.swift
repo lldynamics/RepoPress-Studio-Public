@@ -1,11 +1,12 @@
 import XCTest
+
 @testable import PersonalSitePublisherMac
 
 final class WorkbenchAccentPaletteTests: XCTestCase {
   func testPaletteCasesAndStableStorageValues() {
     XCTAssertEqual(
       WorkbenchAccentPalette.allCases,
-      [.system, .emerald, .violet, .amber, .rose]
+      [.system, .emerald, .blue, .violet, .amber, .rose, .graphite]
     )
     XCTAssertEqual(WorkbenchAccentPalette.storageKey, "workbenchAccentPaletteV1")
     XCTAssertEqual(WorkbenchAccentPalette.emerald.rawValue, "emerald")

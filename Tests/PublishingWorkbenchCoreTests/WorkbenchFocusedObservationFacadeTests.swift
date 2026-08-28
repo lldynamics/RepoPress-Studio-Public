@@ -157,4 +157,61 @@ final class WorkbenchFocusedObservationFacadeTests: XCTestCase {
 
     withExtendedLifetime(cancellable) {}
   }
+
+  func testRepositoryWorkspaceObservationIgnoresUnrelatedFeatures() {
+    let store = makeStore()
+    let facade = WorkbenchRepositoryWorkspaceObservationFacade(store: store)
+    var changes = 0
+    let cancellable = facade.objectWillChange.sink { changes += 1 }
+
+    store.setAIChatMessage("流式状态")
+    store.siteMaintenanceStore.setRefreshing(true)
+    XCTAssertEqual(changes, 0)
+
+    store.repositoryStore.isRemoteRepositoryChecking = true
+    XCTAssertEqual(changes, 1)
+
+    withExtendedLifetime(cancellable) {}
+  }
+
+  func testReleaseHistoryObservationIgnoresEditorAndAIChanges() {
+    let store = makeStore()
+    let facade = WorkbenchReleaseHistoryObservationFacade(store: store)
+    var changes = 0
+    let cancellable = facade.objectWillChange.sink { changes += 1 }
+
+    store.setAIChatMessage("流式状态")
+    store.setImageActionMessage("图片状态")
+    XCTAssertEqual(changes, 0)
+
+    store.deploymentStore.isDeploymentStatusChecking = true
+    XCTAssertEqual(changes, 1)
+
+    store.repositoryStore.localRepositoryReleaseHistory = .init(
+      historyAvailability: .available
+    )
+    XCTAssertEqual(changes, 2)
+
+    withExtendedLifetime(cancellable) {}
+  }
+
+  func testSiteStarterObservationIgnoresUnrelatedFeatures() {
+    let store = makeStore()
+    let facade = WorkbenchSiteStarterObservationFacade(store: store)
+    var changes = 0
+    let cancellable = facade.objectWillChange.sink { changes += 1 }
+
+    store.setAIChatMessage("流式状态")
+    store.siteMaintenanceStore.setRefreshing(true)
+    XCTAssertEqual(changes, 0)
+
+    store.publishingStore.isSiteStarterOperationRunning = true
+    XCTAssertEqual(changes, 1)
+    store.repositoryStore.isRemoteRepositoryChecking = true
+    XCTAssertEqual(changes, 2)
+    store.setRepositoryTokenAvailability(KeychainTokenAvailability(hasToken: true))
+    XCTAssertEqual(changes, 3)
+
+    withExtendedLifetime(cancellable) {}
+  }
 }

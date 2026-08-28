@@ -2,13 +2,16 @@ import Foundation
 
 public struct KnowledgeImportOptions: Hashable, Sendable {
   public var performsPDFOCR: Bool
+  public var performsImageOCR: Bool
   public var maximumPDFOCRPageCount: Int
 
   public init(
     performsPDFOCR: Bool = true,
+    performsImageOCR: Bool = true,
     maximumPDFOCRPageCount: Int = 200
   ) {
     self.performsPDFOCR = performsPDFOCR
+    self.performsImageOCR = performsImageOCR
     self.maximumPDFOCRPageCount = min(max(maximumPDFOCRPageCount, 1), 500)
   }
 }

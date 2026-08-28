@@ -10,7 +10,7 @@ struct AIChatGeneralKeyAvailabilityRefreshKey: Equatable {
 
 struct AIChatContextInspectorView: View {
   @Environment(\.openSettings) var openSettings
-  @AppStorage("settingsRequestedTabID") var requestedSettingsTabID = ""
+  @Environment(\.settingsWorkspaceCommandAction) var settingsWorkspaceCommandAction
   let ai: WorkbenchAIFeatureFacade
   @StateObject var chatState: WorkbenchAIChatFeatureFacade
   @ObservedObject var operationSession: AIChatSurfaceOperationSession

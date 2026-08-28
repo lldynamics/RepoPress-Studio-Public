@@ -70,7 +70,7 @@ struct ReleaseLedgerGitProjection {
     switch record.kind {
     case .directCommit, .remoteDirectCommit, .remoteRollback:
       record.createdAt = commit.date
-    case .localWrite, .batchLocalWrite, .reviewBranch, .remoteReviewRequest,
+    case .localWrite, .batchLocalWrite, .reviewBranch, .remotePreviewBranch, .remoteReviewRequest,
          .remotePublishFailure, .remoteReviewWithdrawal:
       break
     }

@@ -297,8 +297,8 @@ enum WorkbenchSettingsMetrics {
   static let minimumHeight: CGFloat = 560
   static let idealHeight: CGFloat = 760
   static let sidebarWidth: CGFloat = 204
-  static let focusedContentWidth: CGFloat = 640
-  static let detailedContentWidth: CGFloat = 760
+  static let focusedContentWidth: CGFloat = 820
+  static let detailedContentWidth: CGFloat = 820
 }
 
 enum WorkbenchOpacity {

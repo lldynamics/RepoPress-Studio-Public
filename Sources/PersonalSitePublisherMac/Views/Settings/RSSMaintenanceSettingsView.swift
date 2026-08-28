@@ -5,6 +5,7 @@ import SwiftUI
 struct RSSMaintenanceSettingsView: View {
   @ObservedObject var store: RSSReaderStore
   let allowsBackgroundRefresh: Bool
+  @Environment(\.settingsSubsection) private var settingsSubsection
 
   @AppStorage(RSSReaderStore.automaticPruningDefaultsKey)
   private var automaticPruningEnabled = false
@@ -21,7 +22,8 @@ struct RSSMaintenanceSettingsView: View {
   @AppStorage(RSSReaderUserPreferences.remoteImagesEnabledKey)
   private var defaultRemoteImagesEnabled = RSSReaderUserPreferences.defaultRemoteImagesEnabled
   @AppStorage(RSSReaderUserPreferences.automaticTranslationEnabledKey)
-  private var automaticTranslationEnabled = RSSReaderUserPreferences.defaultAutomaticTranslationEnabled
+  private var automaticTranslationEnabled = RSSReaderUserPreferences
+    .defaultAutomaticTranslationEnabled
   @AppStorage(RSSReaderUserPreferences.translationBackendKey)
   private var translationBackendRawValue =
     RSSReaderUserPreferences.defaultTranslationBackend.rawValue
@@ -41,248 +43,262 @@ struct RSSMaintenanceSettingsView: View {
 
   var body: some View {
     Form {
-      Section(String(localized: "本地 RSS 缓存")) {
-        LabeledContent("订阅数量", value: store.feeds.count.formatted())
-        LabeledContent("本机文章", value: store.articleHeaders.count.formatted())
-        Text("RSS 默认保存 Feed 返回的摘要和正文。启用全文提取或离线缓存全文后，还会访问原网站并保存净化后的正文；关闭这些选项后不会新增原网页全文。历史网页快照和媒体缓存仍可读取。")
+      if displayedSubsection == .rssRefresh {
+        Section(String(localized: "本地 RSS 缓存")) {
+          LabeledContent("订阅数量", value: store.feeds.count.formatted())
+          LabeledContent("本机文章", value: store.articleHeaders.count.formatted())
+          Text(
+            "RSS 默认保存 Feed 返回的摘要和正文。启用全文提取或离线缓存全文后，还会访问原网站并保存净化后的正文；关闭这些选项后不会新增原网页全文。历史网页快照和媒体缓存仍可读取。"
+          )
           .font(.callout)
           .foregroundStyle(.secondary)
           .fixedSize(horizontal: false, vertical: true)
 
-        VStack(alignment: .leading, spacing: 8) {
-          Button {
-            startOfflineCachingAllArticles()
-          } label: {
-            Label(
-              isOfflineCachingAll
-                ? String(localized: "正在离线缓存全文…")
-                : String(localized: "立即离线缓存所有文章全文"),
-              systemImage: isOfflineCachingAll ? "arrow.triangle.2.circlepath" : "arrow.down.doc.fill"
-            )
-          }
-          .buttonStyle(.bordered)
-          .disabled(isOfflineCachingAll || store.articleHeaders.isEmpty)
+          VStack(alignment: .leading, spacing: 8) {
+            Button {
+              startOfflineCachingAllArticles()
+            } label: {
+              Label(
+                isOfflineCachingAll
+                  ? String(localized: "正在离线缓存全文…")
+                  : String(localized: "立即离线缓存所有文章全文"),
+                systemImage: isOfflineCachingAll
+                  ? "arrow.triangle.2.circlepath" : "arrow.down.doc.fill"
+              )
+            }
+            .buttonStyle(.bordered)
+            .disabled(isOfflineCachingAll || store.articleHeaders.isEmpty)
 
-          if let offlineCacheFeedback {
-            Text(offlineCacheFeedback)
-              .font(.caption)
+            if let offlineCacheFeedback {
+              Text(offlineCacheFeedback)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            }
+          }
+        }
+
+        Section(String(localized: "自动刷新与阅读")) {
+          Toggle(
+            String(localized: "后台自动刷新 RSS"),
+            isOn: backgroundRefreshEnabledBinding
+          )
+          .toggleStyle(.switch)
+          .accessibilityLabel(String(localized: "后台自动刷新 RSS"))
+          .accessibilityValue(
+            !allowsBackgroundRefresh
+              ? String(localized: "安全模式下暂停")
+              : backgroundRefreshEnabled
+                ? String(localized: "开启")
+                : String(localized: "关闭")
+          )
+          .accessibilityHint(
+            String(localized: "关闭后会停止自动刷新计时器和失败订阅重试计时器；手动刷新仍可使用。")
+          )
+          .accessibilityIdentifier("rss-background-refresh-enabled")
+          .disabled(!allowsBackgroundRefresh)
+
+          if !allowsBackgroundRefresh {
+            Text("安全模式下后台刷新保持暂停；退出安全模式后会按此设置恢复。")
+              .font(.workbenchSupporting)
               .foregroundStyle(.secondary)
+              .fixedSize(horizontal: false, vertical: true)
+          }
+
+          Picker(
+            String(localized: "自动刷新间隔"),
+            selection: backgroundRefreshIntervalBinding
+          ) {
+            ForEach(RSSReaderUserPreferences.backgroundRefreshIntervalOptions, id: \.self) {
+              minutes in
+              Text("\(minutes) 分钟").tag(minutes)
+            }
+          }
+          .pickerStyle(.menu)
+          .disabled(!allowsBackgroundRefresh || !backgroundRefreshEnabled)
+          .accessibilityLabel(String(localized: "RSS 自动刷新间隔"))
+          .accessibilityValue(
+            "\(RSSReaderUserPreferences.normalizedBackgroundRefreshIntervalMinutes(backgroundRefreshIntervalMinutes)) 分钟"
+          )
+          .accessibilityHint(String(localized: "修改后会立即替换正在运行的自动刷新计时器。"))
+          .accessibilityIdentifier("rss-background-refresh-interval")
+
+          Text("自动刷新只检查已到刷新时间的订阅；关闭后台自动刷新不会影响手动刷新。")
+            .font(.workbenchSupporting)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+
+          settingsToggle(
+            title: String(localized: "刷新时自动离线缓存全文"),
+            detail: String(localized: "刷新订阅源时，自动在后台从原网站抓取截断文章的完整正文并持久化存储，无需网络即可离线阅读。"),
+            isOn: Binding(
+              get: { offlineCacheFullTextOnRefreshEnabled },
+              set: { newValue in
+                offlineCacheFullTextOnRefreshEnabled = newValue
+                store.isOfflineCacheFullTextEnabled = newValue
+              }
+            ),
+            accessibilityIdentifier: "rss-offline-cache-on-refresh"
+          )
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("rss-automation-settings")
+      }
+
+      if displayedSubsection == .rssReading {
+        Section(String(localized: "阅读默认值")) {
+          Toggle(
+            String(localized: "读到文章末尾时自动标记为已读"),
+            isOn: $automaticMarkReadAtEndEnabled
+          )
+          .toggleStyle(.checkbox)
+          .accessibilityLabel(String(localized: "读到文章末尾时自动标记为已读"))
+          .accessibilityValue(
+            automaticMarkReadAtEndEnabled
+              ? String(localized: "开启")
+              : String(localized: "关闭")
+          )
+          .accessibilityHint(
+            String(localized: "关闭后仍会保存阅读进度，但读到正文末尾不会改变已读状态。")
+          )
+          .accessibilityIdentifier("rss-automatic-mark-read-at-end")
+
+          settingsToggle(
+            title: String(localized: "默认加载远程图片"),
+            detail: String(localized: "打开或切换文章时使用此默认值；会连接文章中的第三方图片地址。文章内的“加载远程图片”开关仍可临时覆盖。"),
+            isOn: $defaultRemoteImagesEnabled,
+            accessibilityIdentifier: "rss-default-remote-images"
+          )
+
+          Picker(
+            String(localized: "翻译引擎"),
+            selection: translationBackendBinding
+          ) {
+            Text(String(localized: "Apple 本机翻译"))
+              .tag(RSSArticleTranslationBackend.apple)
+              .disabled(!isAppleTranslationAvailable)
+            Text(String(localized: "当前 AI 服务"))
+              .tag(RSSArticleTranslationBackend.ai)
+          }
+          .accessibilityLabel(String(localized: "RSS 翻译引擎"))
+          .accessibilityValue(translationBackendName)
+          .accessibilityHint(translationBackendHint)
+          .accessibilityIdentifier("rss-translation-backend")
+
+          Text(translationBackendDescription)
+            .font(.workbenchSupporting)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+
+          settingsToggle(
+            title: String(localized: "打开文章时自动翻译"),
+            detail: automaticTranslationDescription,
+            isOn: $automaticTranslationEnabled,
+            accessibilityIdentifier: "rss-automatic-translation"
+          )
+
+          settingsToggle(
+            title: String(localized: "打开截断文章时自动提取全文"),
+            detail: String(localized: "遇到仅含摘要的订阅源时，自动从原网站安全下载并净化展开完整正文；文章内仍可手动恢复原始摘要。"),
+            isOn: $automaticFullTextExtractionEnabled,
+            accessibilityIdentifier: "rss-automatic-full-text-extraction"
+          )
+        }
+      }
+
+      if displayedSubsection == .rssMigration {
+        Section(String(localized: "订阅迁移")) {
+          Text("低频的 OPML 导入和导出放在这里；文件只包含订阅名称与地址，不包含文章缓存或阅读状态。")
+            .font(.callout)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+
+          HStack {
+            Button("导入 OPML", systemImage: "square.and.arrow.down") {
+              importOPML()
+            }
+
+            Button("导出 OPML", systemImage: "square.and.arrow.up") {
+              exportOPML()
+            }
+            .disabled(store.feeds.isEmpty)
+          }
+
+          if let opmlFeedback {
+            AccessibleStatusMessage(
+              message: opmlFeedback,
+              severity: opmlFeedbackIsError ? .error : .success,
+              announcesNonUrgentStatus: true
+            )
+            .textSelection(.enabled)
           }
         }
       }
 
-      Section(String(localized: "自动刷新与阅读")) {
-        Toggle(
-          String(localized: "后台自动刷新 RSS"),
-          isOn: backgroundRefreshEnabledBinding
-        )
-        .toggleStyle(.switch)
-        .accessibilityLabel(String(localized: "后台自动刷新 RSS"))
-        .accessibilityValue(
-          !allowsBackgroundRefresh
-            ? String(localized: "安全模式下暂停")
-            : backgroundRefreshEnabled
-            ? String(localized: "开启")
-            : String(localized: "关闭")
-        )
-        .accessibilityHint(
-          String(localized: "关闭后会停止自动刷新计时器和失败订阅重试计时器；手动刷新仍可使用。")
-        )
-        .accessibilityIdentifier("rss-background-refresh-enabled")
-        .disabled(!allowsBackgroundRefresh)
+      if displayedSubsection == .rssOfflineNetwork {
+        Section(String(localized: "离线保存范围")) {
+          settingsToggle(
+            title: String(localized: "Feed 正文"),
+            detail: String(localized: "只保存 RSS 或 Atom 实际返回的摘要和正文 HTML；不会抓取原网页缺失的全文。"),
+            isOn: Binding(
+              get: { store.feedBodyOfflineCacheEnabled },
+              set: { store.updateFeedBodyOfflineCacheSettings(enabled: $0) }
+            ),
+            accessibilityIdentifier: "rss-feed-body-offline-cache"
+          )
 
-        if !allowsBackgroundRefresh {
-          Text("安全模式下后台刷新保持暂停；退出安全模式后会按此设置恢复。")
+          Text("只有启用全文提取或离线缓存全文时，才会从原网站新增净化后的正文；媒体归档已停止新增，历史数据仅作兼容读取。")
             .font(.workbenchSupporting)
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
         }
 
-        Picker(
-          String(localized: "自动刷新间隔"),
-          selection: backgroundRefreshIntervalBinding
-        ) {
-          ForEach(RSSReaderUserPreferences.backgroundRefreshIntervalOptions, id: \.self) { minutes in
-            Text("\(minutes) 分钟").tag(minutes)
-          }
-        }
-        .pickerStyle(.menu)
-        .disabled(!allowsBackgroundRefresh || !backgroundRefreshEnabled)
-        .accessibilityLabel(String(localized: "RSS 自动刷新间隔"))
-        .accessibilityValue(
-          "\(RSSReaderUserPreferences.normalizedBackgroundRefreshIntervalMinutes(backgroundRefreshIntervalMinutes)) 分钟"
-        )
-        .accessibilityHint(String(localized: "修改后会立即替换正在运行的自动刷新计时器。"))
-        .accessibilityIdentifier("rss-background-refresh-interval")
-
-        Text("自动刷新只检查已到刷新时间的订阅；关闭后台自动刷新不会影响手动刷新。")
-          .font(.workbenchSupporting)
-          .foregroundStyle(.secondary)
-          .fixedSize(horizontal: false, vertical: true)
-
-        Toggle(
-          String(localized: "读到文章末尾时自动标记为已读"),
-          isOn: $automaticMarkReadAtEndEnabled
-        )
-        .toggleStyle(.checkbox)
-        .accessibilityLabel(String(localized: "读到文章末尾时自动标记为已读"))
-        .accessibilityValue(
-          automaticMarkReadAtEndEnabled
-            ? String(localized: "开启")
-            : String(localized: "关闭")
-        )
-        .accessibilityHint(
-          String(localized: "关闭后仍会保存阅读进度，但读到正文末尾不会改变已读状态。")
-        )
-        .accessibilityIdentifier("rss-automatic-mark-read-at-end")
-
-        settingsToggle(
-          title: String(localized: "刷新时自动离线缓存全文"),
-          detail: String(localized: "刷新订阅源时，自动在后台从原网站抓取截断文章的完整正文并持久化存储，无需网络即可离线阅读。"),
-          isOn: Binding(
-            get: { offlineCacheFullTextOnRefreshEnabled },
-            set: { newValue in
-              offlineCacheFullTextOnRefreshEnabled = newValue
-              store.isOfflineCacheFullTextEnabled = newValue
-            }
-          ),
-          accessibilityIdentifier: "rss-offline-cache-on-refresh"
-        )
-      }
-      .accessibilityElement(children: .contain)
-      .accessibilityIdentifier("rss-automation-settings")
-
-      Section(String(localized: "阅读默认值")) {
-        settingsToggle(
-          title: String(localized: "默认加载远程图片"),
-          detail: String(localized: "打开或切换文章时使用此默认值；会连接文章中的第三方图片地址。文章内的“加载远程图片”开关仍可临时覆盖。"),
-          isOn: $defaultRemoteImagesEnabled,
-          accessibilityIdentifier: "rss-default-remote-images"
-        )
-
-        Picker(
-          String(localized: "翻译引擎"),
-          selection: translationBackendBinding
-        ) {
-          Text(String(localized: "Apple 本机翻译"))
-            .tag(RSSArticleTranslationBackend.apple)
-            .disabled(!isAppleTranslationAvailable)
-          Text(String(localized: "当前 AI 服务"))
-            .tag(RSSArticleTranslationBackend.ai)
-        }
-        .accessibilityLabel(String(localized: "RSS 翻译引擎"))
-        .accessibilityValue(translationBackendName)
-        .accessibilityHint(translationBackendHint)
-        .accessibilityIdentifier("rss-translation-backend")
-
-        Text(translationBackendDescription)
-          .font(.workbenchSupporting)
-          .foregroundStyle(.secondary)
-          .fixedSize(horizontal: false, vertical: true)
-
-        settingsToggle(
-          title: String(localized: "打开文章时自动翻译"),
-          detail: automaticTranslationDescription,
-          isOn: $automaticTranslationEnabled,
-          accessibilityIdentifier: "rss-automatic-translation"
-        )
-
-        settingsToggle(
-          title: String(localized: "打开截断文章时自动提取全文"),
-          detail: String(localized: "遇到仅含摘要的订阅源时，自动从原网站安全下载并净化展开完整正文；文章内仍可手动恢复原始摘要。"),
-          isOn: $automaticFullTextExtractionEnabled,
-          accessibilityIdentifier: "rss-automatic-full-text-extraction"
-        )
-      }
-
-      Section(String(localized: "订阅迁移")) {
-        Text("低频的 OPML 导入和导出放在这里；文件只包含订阅名称与地址，不包含文章缓存或阅读状态。")
-          .font(.callout)
-          .foregroundStyle(.secondary)
-          .fixedSize(horizontal: false, vertical: true)
-
-        HStack {
-          Button("导入 OPML", systemImage: "square.and.arrow.down") {
-            importOPML()
-          }
-
-          Button("导出 OPML", systemImage: "square.and.arrow.up") {
-            exportOPML()
-          }
-          .disabled(store.feeds.isEmpty)
-        }
-
-        if let opmlFeedback {
-          AccessibleStatusMessage(
-            message: opmlFeedback,
-            severity: opmlFeedbackIsError ? .error : .success,
-            announcesNonUrgentStatus: true
+        Section(String(localized: "网络安全")) {
+          settingsToggle(
+            title: String(localized: "允许访问内网 RSS"),
+            detail: String(localized: "默认只允许访问公网地址，并会在每次重定向时重新检查 DNS/IP。只有订阅明确位于局域网或本机时才开启此选项。"),
+            isOn: Binding(
+              get: { store.privateNetworkAccessEnabled },
+              set: { store.updatePrivateNetworkAccessSettings(enabled: $0) }
+            ),
+            accessibilityIdentifier: "rss-private-network-access"
           )
-          .textSelection(.enabled)
         }
       }
 
-      Section(String(localized: "离线保存范围")) {
-        settingsToggle(
-          title: String(localized: "Feed 正文"),
-          detail: String(localized: "只保存 RSS 或 Atom 实际返回的摘要和正文 HTML；不会抓取原网页缺失的全文。"),
-          isOn: Binding(
-            get: { store.feedBodyOfflineCacheEnabled },
-            set: { store.updateFeedBodyOfflineCacheSettings(enabled: $0) }
-          ),
-          accessibilityIdentifier: "rss-feed-body-offline-cache"
-        )
+      if displayedSubsection == .rssCleanup {
+        Section(String(localized: "自动清理历史文章")) {
+          Toggle("启用自动清理", isOn: $automaticPruningEnabled)
+            .onChange(of: automaticPruningEnabled) { _, enabled in
+              store.updateRetentionSettings(enabled: enabled, days: retentionDays)
+            }
+            .accessibilityIdentifier("rss-automatic-pruning")
 
-        Text("只有启用全文提取或离线缓存全文时，才会从原网站新增净化后的正文；媒体归档已停止新增，历史数据仅作兼容读取。")
-          .font(.workbenchSupporting)
-          .foregroundStyle(.secondary)
-          .fixedSize(horizontal: false, vertical: true)
-      }
-
-      Section(String(localized: "网络安全")) {
-        settingsToggle(
-          title: String(localized: "允许访问内网 RSS"),
-          detail: String(localized: "默认只允许访问公网地址，并会在每次重定向时重新检查 DNS/IP。只有订阅明确位于局域网或本机时才开启此选项。"),
-          isOn: Binding(
-            get: { store.privateNetworkAccessEnabled },
-            set: { store.updatePrivateNetworkAccessSettings(enabled: $0) }
-          ),
-          accessibilityIdentifier: "rss-private-network-access"
-        )
-      }
-
-      Section(String(localized: "自动清理历史文章")) {
-        Toggle("启用自动清理", isOn: $automaticPruningEnabled)
-          .onChange(of: automaticPruningEnabled) { _, enabled in
-            store.updateRetentionSettings(enabled: enabled, days: retentionDays)
+          Picker("保留最近", selection: $retentionDays) {
+            ForEach([30, 60, 90, 180, 365, 730], id: \.self) { days in
+              Text("最近 \(days) 天").tag(days)
+            }
           }
-          .accessibilityIdentifier("rss-automatic-pruning")
-
-        Picker("保留最近", selection: $retentionDays) {
-          ForEach([30, 60, 90, 180, 365, 730], id: \.self) { days in
-            Text("最近 \(days) 天").tag(days)
+          .onChange(of: retentionDays) { _, days in
+            store.updateRetentionSettings(enabled: automaticPruningEnabled, days: days)
           }
-        }
-        .onChange(of: retentionDays) { _, days in
-          store.updateRetentionSettings(enabled: automaticPruningEnabled, days: days)
-        }
-        .disabled(!automaticPruningEnabled)
-        .accessibilityIdentifier("rss-retention-days")
+          .disabled(!automaticPruningEnabled)
+          .accessibilityIdentifier("rss-retention-days")
 
-        Text("只会清理超过保留期限、已读、未加入稍后阅读且没有高亮的文章；稍后阅读文章和批注不会被误删。")
-          .font(.callout)
-          .foregroundStyle(.secondary)
-          .fixedSize(horizontal: false, vertical: true)
+          Text("只会清理超过保留期限、已读、未加入稍后阅读且没有高亮的文章；稍后阅读文章和批注不会被误删。")
+            .font(.callout)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
 
-        ViewThatFits(in: .horizontal) {
-          HStack(spacing: WorkbenchSpacing.control) {
-            pruneButton
-            pruneStatus
-          }
+          ViewThatFits(in: .horizontal) {
+            HStack(spacing: WorkbenchSpacing.control) {
+              pruneButton
+              pruneStatus
+            }
 
-          VStack(alignment: .leading, spacing: WorkbenchSpacing.control) {
-            pruneButton
-            pruneStatus
+            VStack(alignment: .leading, spacing: WorkbenchSpacing.control) {
+              pruneButton
+              pruneStatus
+            }
           }
         }
       }
@@ -316,6 +332,10 @@ struct RSSMaintenanceSettingsView: View {
     }
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("rss-maintenance-settings")
+  }
+
+  private var displayedSubsection: SettingsSubsection {
+    settingsSubsection.tab == .rss ? settingsSubsection : .rssRefresh
   }
 
   private var pruneButton: some View {

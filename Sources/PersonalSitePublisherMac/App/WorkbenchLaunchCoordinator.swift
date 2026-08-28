@@ -15,6 +15,7 @@ final class WorkbenchLaunchCoordinator: ObservableObject {
   @Published private(set) var rssStore: RSSReaderStore?
   @Published private(set) var phase: WorkbenchLaunchPhase
   @Published private(set) var dataRootMessage: String?
+  @Published private(set) var dataRootMessageSeverity: AccessibleStatusSeverity = .info
   @Published private(set) var canMigrateLegacyData = false
   @Published private(set) var dataRootPath: String?
   @Published private(set) var isSafeMode = false
@@ -301,7 +302,7 @@ final class WorkbenchLaunchCoordinator: ObservableObject {
     phase = .preparing(String(localized: "正在复制并校验当前数据…"))
     dataRootMessage = nil
     rssStore.stopBackgroundRefresh()
-    store.workspaceBackupScheduler.stop()
+    await store.workspaceBackupScheduler.stopAndWaitForBackgroundWork()
     browserBridge?.stop()
 
     let destinationRootURL = Self.availableDataRootURL(
@@ -545,9 +546,13 @@ final class WorkbenchLaunchCoordinator: ObservableObject {
     }
   }
 
-  private func showDataRootSetup(message: String?) {
+  private func showDataRootSetup(
+    message: String?,
+    severity: AccessibleStatusSeverity = .warning
+  ) {
     dataRootSession = nil
     dataRootMessage = message
+    dataRootMessageSeverity = severity
     canMigrateLegacyData = Self.legacyDataIsAvailable
     phase = .needsDataRoot
   }

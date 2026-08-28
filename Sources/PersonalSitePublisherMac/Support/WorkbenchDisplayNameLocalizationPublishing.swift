@@ -228,6 +228,8 @@ extension ReleaseRecordKind {
       return "display.release-record-kind.review-branch"
     case .remoteDirectCommit:
       return "display.release-record-kind.remote-direct-commit"
+    case .remotePreviewBranch:
+      return "display.release-record-kind.remote-preview-branch"
     case .remoteReviewRequest:
       return "display.release-record-kind.remote-review-request"
     case .remotePublishFailure:
@@ -247,8 +249,12 @@ extension ReleaseLedgerStatus {
     switch self {
     case .localOnly:
       return "display.release-ledger-status.local-only"
+    case .previewOnly:
+      return "display.release-ledger-status.preview-only"
     case .pendingReview:
       return "display.release-ledger-status.pending-review"
+    case .reviewWithdrawn:
+      return "display.release-ledger-status.review-withdrawn"
     case .pendingDeployment:
       return "display.release-ledger-status.pending-deployment"
     case .pendingRemoteRecovery:

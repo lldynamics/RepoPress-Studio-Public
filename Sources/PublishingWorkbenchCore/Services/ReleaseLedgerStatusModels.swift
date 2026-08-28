@@ -3,7 +3,9 @@ import Foundation
 
 public enum ReleaseLedgerStatus: String, Codable, CaseIterable, Identifiable, Sendable {
   case localOnly
+  case previewOnly
   case pendingReview
+  case reviewWithdrawn
   case pendingDeployment
   case pendingRemoteRecovery
   case pendingRetry
@@ -18,8 +20,12 @@ public enum ReleaseLedgerStatus: String, Codable, CaseIterable, Identifiable, Se
     switch self {
     case .localOnly:
       return CoreL10n.text("本地待处理")
+    case .previewOnly:
+      return CoreL10n.text("仅预览分支")
     case .pendingReview:
       return CoreL10n.text("等待合并")
+    case .reviewWithdrawn:
+      return CoreL10n.text("审核已撤回")
     case .pendingDeployment:
       return CoreL10n.text("等待部署检查")
     case .pendingRemoteRecovery:
@@ -41,8 +47,12 @@ public enum ReleaseLedgerStatus: String, Codable, CaseIterable, Identifiable, Se
     switch self {
     case .localOnly:
       return "externaldrive.badge.clock"
+    case .previewOnly:
+      return "eye.circle"
     case .pendingReview:
       return "arrow.triangle.pull"
+    case .reviewWithdrawn:
+      return "arrow.uturn.backward.circle"
     case .pendingDeployment:
       return "clock.badge.questionmark"
     case .pendingRemoteRecovery:

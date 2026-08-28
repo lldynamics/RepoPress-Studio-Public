@@ -172,6 +172,38 @@ struct GitHubTreeResponse: Decodable {
 
 struct GitHubContentResponse: Decodable {
   var sha: String?
+  var content: String?
+  var encoding: String?
+  var size: Int?
+
+  var decodedContent: Data? {
+    guard let content else { return nil }
+    if encoding?.lowercased() == "base64" {
+      return Data(base64Encoded: content, options: .ignoreUnknownCharacters)
+    }
+    return Data(content.utf8)
+  }
+}
+
+struct GitHubFileRemoteState {
+  var exists: Bool
+  var sha: String?
+  var content: Data?
+}
+
+struct GitHubBlobContentResponse: Decodable {
+  var sha: String?
+  var content: String?
+  var encoding: String?
+  var size: Int?
+
+  var decodedContent: Data? {
+    guard let content else { return nil }
+    if encoding?.lowercased() == "base64" {
+      return Data(base64Encoded: content, options: .ignoreUnknownCharacters)
+    }
+    return Data(content.utf8)
+  }
 }
 
 struct GitHubPutContentsBody: Encodable {

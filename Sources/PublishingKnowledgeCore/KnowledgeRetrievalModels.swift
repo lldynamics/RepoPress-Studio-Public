@@ -1,6 +1,31 @@
 import Foundation
 import PublishingCoreSupport
 
+public struct KnowledgeVisualAnchor: Codable, Hashable, Sendable {
+  public var frameIndex: Int
+  public var x: Double
+  public var y: Double
+  public var width: Double
+  public var height: Double
+  public var confidence: Double
+
+  public init(
+    frameIndex: Int = 0,
+    x: Double,
+    y: Double,
+    width: Double,
+    height: Double,
+    confidence: Double
+  ) {
+    self.frameIndex = max(0, frameIndex)
+    self.x = min(max(0, x), 1)
+    self.y = min(max(0, y), 1)
+    self.width = min(max(0, width), 1 - self.x)
+    self.height = min(max(0, height), 1 - self.y)
+    self.confidence = min(max(0, confidence), 1)
+  }
+}
+
 public struct KnowledgeChunk: Identifiable, Codable, Hashable, Sendable {
   public var id: UUID
   public var documentID: UUID
@@ -11,6 +36,7 @@ public struct KnowledgeChunk: Identifiable, Codable, Hashable, Sendable {
   public var content: String
   public var tokenEstimate: Int
   public var contentHash: String
+  public var visualAnchor: KnowledgeVisualAnchor?
 
   public init(
     id: UUID = UUID(),
@@ -21,7 +47,8 @@ public struct KnowledgeChunk: Identifiable, Codable, Hashable, Sendable {
     locator: String? = nil,
     content: String,
     tokenEstimate: Int,
-    contentHash: String
+    contentHash: String,
+    visualAnchor: KnowledgeVisualAnchor? = nil
   ) {
     self.id = id
     self.documentID = documentID
@@ -32,6 +59,7 @@ public struct KnowledgeChunk: Identifiable, Codable, Hashable, Sendable {
     self.content = content
     self.tokenEstimate = tokenEstimate
     self.contentHash = contentHash
+    self.visualAnchor = visualAnchor
   }
 }
 public enum KnowledgeRetrievalSignal: String, Hashable, Sendable {
@@ -252,10 +280,17 @@ public struct KnowledgeExtractedSection: Hashable, Sendable {
   public var headingPath: String?
   public var locator: String?
   public var text: String
+  public var visualAnchor: KnowledgeVisualAnchor?
 
-  public init(headingPath: String? = nil, locator: String? = nil, text: String) {
+  public init(
+    headingPath: String? = nil,
+    locator: String? = nil,
+    text: String,
+    visualAnchor: KnowledgeVisualAnchor? = nil
+  ) {
     self.headingPath = headingPath
     self.locator = locator
     self.text = text
+    self.visualAnchor = visualAnchor
   }
 }

@@ -722,7 +722,8 @@ public struct AIPublishingChatAgentContinuation: Codable, Hashable, Identifiable
 
   public var isValidForPersistence: Bool {
     guard schemaVersion == Self.currentSchemaVersion,
-      checkpoint.schemaVersion == WorkbenchAIAgentLoopCheckpoint.currentSchemaVersion,
+      checkpoint.schemaVersion == 1
+        || checkpoint.schemaVersion == WorkbenchAIAgentLoopCheckpoint.currentSchemaVersion,
       ownerScope.draftID != nil,
       promptRevision != nil,
       reviewDraftFingerprint?.trimmedForPublishing.nilIfEmpty != nil,
@@ -738,7 +739,25 @@ public struct AIPublishingChatAgentContinuation: Codable, Hashable, Identifiable
     let pendingIDs = Set(checkpoint.pendingCalls.map(\.toolCallID))
     let resolutionIDs = resolutions.map(\.toolCallID)
     guard Set(resolutionIDs).count == resolutionIDs.count,
-      Set(resolutionIDs).isSubset(of: pendingIDs)
+      pendingIDs.count == checkpoint.pendingCalls.count,
+      Set(resolutionIDs).isSubset(of: pendingIDs),
+      checkpoint.pendingCalls.allSatisfy({ pending in
+        !pending.toolCallID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+          && checkpoint.allowedToolIDs.contains(pending.toolID)
+          && pending.catalogRevision == checkpoint.catalogRevision
+      }),
+      resolutions.allSatisfy({ resolution in
+        guard
+          let pending = checkpoint.pendingCalls.first(where: {
+            $0.toolCallID == resolution.toolCallID
+          })
+        else { return false }
+        return resolution.correlationID == pending.correlationID
+          && resolution.toolID == pending.toolID
+          && resolution.modelToolName == pending.modelToolName
+          && resolution.catalogRevision == pending.catalogRevision
+          && resolution.automationStepID == pending.automationStepID
+      })
     else {
       return false
     }

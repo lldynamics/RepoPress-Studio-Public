@@ -14,6 +14,7 @@ struct ContentHealthDetailView: View {
   @State private var articlePresentationTask: Task<Void, Never>?
   @State private var healthSnapshotErrorMessage: String?
   @State private var isHealthSnapshotRefreshing = false
+  @State private var wasHealthSnapshotCancelled = false
   @State private var healthSnapshotRequestID = UUID()
   @State private var articlePresentationRequestID = UUID()
   @State var aiFixResultPreview: ContentHealthAIFixResultPreview?
@@ -52,11 +53,7 @@ struct ContentHealthDetailView: View {
       rebuildArticlePresentation()
     }
     .onDisappear {
-      healthSnapshotTask?.cancel()
-      healthSnapshotTask = nil
-      articlePresentationTask?.cancel()
-      articlePresentationTask = nil
-      isHealthSnapshotRefreshing = false
+      cancelContentHealthWork(showsCancelledState: false)
     }
     .sheet(item: $aiFixResultPreview) { preview in
       ContentHealthAIFixResultPreviewSheet(preview: preview) { selectedFields in
@@ -116,6 +113,8 @@ struct ContentHealthDetailView: View {
     )
     if let healthSnapshotErrorMessage {
       snapshotFailureState(healthSnapshotErrorMessage)
+    } else if wasHealthSnapshotCancelled {
+      snapshotCancelledState
     } else if let snapshot = healthSnapshot,
               let presentation = articlePresentation,
               presentation.matches(
@@ -130,7 +129,7 @@ struct ContentHealthDetailView: View {
         usesCompactHeader: usesCompactHeader
       )
     } else {
-      ContentHealthSkeletonLoadingView(filter: filter)
+      ContentHealthSkeletonLoadingView(cancel: cancelContentHealthSnapshotRefresh)
     }
   }
 
@@ -155,7 +154,10 @@ struct ContentHealthDetailView: View {
       } context: {
         contentHealthOperationalContextPanel(
           presentation,
-          selectedRow: selectedRow
+          selectedRow: selectedRow,
+          slugChangeImpact: selectedRow.flatMap {
+            snapshot.slugChangeImpacts[$0.draftID]
+          }
         )
       }
     }
@@ -287,7 +289,6 @@ struct ContentHealthDetailView: View {
     } else {
       articleHealthFlow(
         presentation.rows,
-        actionQueue: presentation.actionQueue,
         selectedDraftID: selectedDraftID,
         profileName: profileName,
         duplicateMarkdownPaths: presentation.duplicateMarkdownPaths,
@@ -348,6 +349,7 @@ struct ContentHealthDetailView: View {
     let requestID = UUID()
     healthSnapshotRequestID = requestID
     isHealthSnapshotRefreshing = true
+    wasHealthSnapshotCancelled = false
     healthSnapshotErrorMessage = nil
     sidebarProjection.beginLoading(profileID: expectedProfileID)
     let service = ContentHealthPresentationService()
@@ -375,6 +377,9 @@ struct ContentHealthDetailView: View {
         healthSnapshotTask = nil
         rebuildArticlePresentation()
       } catch is CancellationError {
+        guard healthSnapshotRequestID == requestID else { return }
+        isHealthSnapshotRefreshing = false
+        healthSnapshotTask = nil
         return
       } catch {
         guard !Task.isCancelled,
@@ -391,6 +396,45 @@ struct ContentHealthDetailView: View {
         sidebarProjection.markFailed(profileID: expectedProfileID)
       }
     }
+  }
+
+  private func cancelContentHealthSnapshotRefresh() {
+    cancelContentHealthWork(showsCancelledState: true)
+  }
+
+  private func cancelContentHealthWork(showsCancelledState: Bool) {
+    healthSnapshotRequestID = UUID()
+    articlePresentationRequestID = UUID()
+    healthSnapshotTask?.cancel()
+    healthSnapshotTask = nil
+    articlePresentationTask?.cancel()
+    articlePresentationTask = nil
+    isHealthSnapshotRefreshing = false
+    if showsCancelledState {
+      wasHealthSnapshotCancelled = true
+    }
+  }
+
+  private var snapshotCancelledState: some View {
+    VStack(spacing: 12) {
+      Image(systemName: "pause.circle")
+        .font(.system(size: 38))
+        .foregroundStyle(.secondary)
+        .accessibilityHidden(true)
+      Text("内容健康检查已取消")
+        .font(.headline)
+      Text("尚未修改任何文章。需要时可以重新生成检查快照。")
+        .foregroundStyle(.secondary)
+        .multilineTextAlignment(.center)
+      Button(action: refreshContentHealthSnapshot) {
+        Label("重新开始", systemImage: "arrow.clockwise")
+      }
+      .workbenchProminentActionStyle()
+    }
+    .frame(maxWidth: .infinity, minHeight: 360)
+    .padding(20)
+    .accessibilityElement(children: .contain)
+    .accessibilityIdentifier("content-health-loading-cancelled")
   }
 
   private func snapshotFailureState(_ errorMessage: String) -> some View {
@@ -417,7 +461,19 @@ struct ContentHealthDetailView: View {
     _ snapshot: ContentHealthSnapshot,
     usesCompactLayout: Bool
   ) -> some View {
-    LazyVGrid(
+    let readiness = UnifiedPublishReadinessPresentation.make(
+      plan: store.batchPublishPlan,
+      preview: store.batchRemotePublishPreviewSnapshot,
+      profile: store.activeProfile,
+      pendingDeletionCount: store.pendingRemoteRepositoryCleanupRequests.count,
+      contentHealth: .init(
+        errorCount: snapshot.errorCount,
+        warningCount: snapshot.warningCount,
+        aiFixCount: snapshot.aiFixQueueItems.count,
+        passingDraftCount: snapshot.passingDraftCount
+      )
+    )
+    return LazyVGrid(
       columns: Array(
         repeating: GridItem(.flexible(minimum: 108), spacing: 8),
         count: usesCompactLayout ? 2 : 4
@@ -427,25 +483,25 @@ struct ContentHealthDetailView: View {
     ) {
       healthSummaryBadge(
         title: "错误",
-        value: snapshot.errorCount,
+        value: readiness.contentHealth.errorCount,
         systemImage: "xmark.octagon",
         color: WorkbenchTheme.risk
       )
       healthSummaryBadge(
         title: "警告",
-        value: snapshot.warningCount,
+        value: readiness.contentHealth.warningCount,
         systemImage: "exclamationmark.triangle",
         color: WorkbenchTheme.warning
       )
       healthSummaryBadge(
         title: "AI",
-        value: snapshot.aiFixQueueItems.count,
+        value: readiness.contentHealth.aiFixCount,
         systemImage: "sparkles",
         color: WorkbenchTheme.inventoryForeground
       )
       healthSummaryBadge(
         title: "通过",
-        value: snapshot.passingDraftCount,
+        value: readiness.contentHealth.passingDraftCount,
         systemImage: "checkmark.circle",
         color: WorkbenchTheme.success
       )
@@ -453,7 +509,7 @@ struct ContentHealthDetailView: View {
     .frame(maxWidth: usesCompactLayout ? 300 : 552, alignment: .leading)
     .accessibilityElement(children: .ignore)
     .accessibilityLabel("内容健康摘要")
-    .accessibilityValue(contentHealthSummaryAccessibilityValue(snapshot))
+    .accessibilityValue(contentHealthReadinessAccessibilityValue(readiness))
   }
 
   private func healthSummaryBadge(
@@ -481,6 +537,18 @@ struct ContentHealthDetailView: View {
         : WorkbenchBackgroundStyle.control,
       in: Capsule()
     )
+  }
+
+  private func contentHealthReadinessAccessibilityValue(
+    _ readiness: UnifiedPublishReadinessPresentation
+  ) -> String {
+    let health = readiness.contentHealth
+    return [
+      "\(health.errorCount) 个错误",
+      "\(health.warningCount) 个警告",
+      "\(health.aiFixCount) 项可用 AI 修复",
+      "\(health.passingDraftCount) 篇文章通过",
+    ].joined(separator: "，")
   }
 
   @ViewBuilder
@@ -524,7 +592,8 @@ struct ContentHealthDetailView: View {
 
   private func contentHealthOperationalContextPanel(
     _ presentation: ContentHealthArticlePresentation,
-    selectedRow: ContentHealthArticleRowModel?
+    selectedRow: ContentHealthArticleRowModel?,
+    slugChangeImpact: SlugChangeImpact?
   ) -> some View {
     return VStack(alignment: .leading, spacing: 12) {
       Label("问题详情", systemImage: "sidebar.right")
@@ -573,7 +642,7 @@ struct ContentHealthDetailView: View {
           }
         }
 
-        if let impact = store.slugChangeImpact(for: selectedRow.draftID) {
+        if let impact = slugChangeImpact {
           slugChangeResolutionCard(impact)
         }
 
@@ -739,19 +808,19 @@ struct ContentHealthDetailView: View {
 
   private func articleHealthFlow(
     _ rows: [ContentHealthArticleRowModel],
-    actionQueue: ContentHealthActionQueue,
     selectedDraftID: UUID?,
     profileName: String,
     duplicateMarkdownPaths: Set<String>,
     siteIssues: [PreflightIssue]
   ) -> some View {
-    let groups = articleGrouping == .actionQueue
-      ? actionQueue.groups
+    let groups =
+      articleGrouping == .actionQueue
+      ? ContentHealthRootCausePresentation.groups(rows: rows)
       : articleGrouping.groups(
-          rows: rows,
-          profileName: profileName,
-          duplicateMarkdownPaths: duplicateMarkdownPaths
-        )
+        rows: rows,
+        profileName: profileName,
+        duplicateMarkdownPaths: duplicateMarkdownPaths
+      )
     let hasActionableSiteIssue = siteIssues.contains {
       $0.severity == .error || $0.severity == .warning
     }
@@ -759,10 +828,10 @@ struct ContentHealthDetailView: View {
       HStack {
         Text(
           articleGrouping == .actionQueue
-            ? String(localized: "行动队列")
+            ? String(localized: "按共同问题归类")
             : String(localized: "文章分组")
         )
-          .font(.headline)
+        .font(.headline)
         Spacer()
         Text("\(rows.count) 篇")
           .font(.caption)
@@ -1019,7 +1088,8 @@ struct ContentHealthDetailView: View {
 }
 
 private struct ContentHealthSkeletonLoadingView: View {
-  let filter: ContentHealthContextFilter
+  @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
+  let cancel: () -> Void
   @State private var phase: Double = 0
 
   var body: some View {
@@ -1034,29 +1104,22 @@ private struct ContentHealthSkeletonLoadingView: View {
           skeletonBar(width: 110, height: 16)
         }
 
-        VStack(alignment: .leading, spacing: 6) {
-          Label("正在进行健康快照分析…", systemImage: "sparkles")
-            .font(.caption.weight(.semibold))
-            .foregroundStyle(WorkbenchTheme.documentForeground)
-
-          ViewThatFits(in: .horizontal) {
-            HStack(spacing: 8) {
-              stepBadge(title: "1. 扫描 Front Matter", isDone: true)
-              Image(systemName: "arrow.right")
-                .font(.caption)
-                .foregroundStyle(.tertiary)
-              stepBadge(title: "2. 检查死链与引用", isDone: false, isActive: true)
-              Image(systemName: "arrow.right")
-                .font(.caption)
-                .foregroundStyle(.tertiary)
-              stepBadge(title: "3. 计算 SEO 与风险得分", isDone: false)
-            }
-            VStack(alignment: .leading, spacing: 4) {
-              stepBadge(title: "1. 扫描 Front Matter", isDone: true)
-              stepBadge(title: "2. 检查死链与引用", isDone: false, isActive: true)
-              stepBadge(title: "3. 计算 SEO 与风险得分", isDone: false)
-            }
+        HStack(alignment: .top, spacing: 10) {
+          ProgressView()
+            .controlSize(.small)
+            .accessibilityHidden(true)
+          VStack(alignment: .leading, spacing: 4) {
+            Text("正在生成内容健康快照")
+              .font(.caption.weight(.semibold))
+            Text("正在检查 Front Matter、链接、SEO 与内容风险。当前分析未提供可显示的分阶段进度。")
+              .font(.caption)
+              .foregroundStyle(.secondary)
           }
+          Spacer(minLength: 8)
+          Button("取消", action: cancel)
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .accessibilityIdentifier("content-health-loading-cancel")
         }
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -1104,13 +1167,23 @@ private struct ContentHealthSkeletonLoadingView: View {
     }
     .padding(WorkbenchSpacing.card)
     .frame(maxWidth: .infinity, minHeight: 360, alignment: .leading)
-    .opacity(phase == 0 ? 0.6 : 1.0)
+    .opacity(accessibilityReduceMotion ? 1 : (phase == 0 ? 0.6 : 1.0))
     .onAppear {
+      guard !accessibilityReduceMotion else {
+        phase = 1
+        return
+      }
       withAnimation(Animation.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) {
         phase = 1.0
       }
     }
-    .accessibilityLabel("正在生成内容健康快照")
+    .onChange(of: accessibilityReduceMotion) { _, reduceMotion in
+      if reduceMotion {
+        phase = 1
+      }
+    }
+    .accessibilityElement(children: .contain)
+    .accessibilityLabel("正在生成内容健康快照，进度未知")
   }
 
   private func skeletonBar(width: CGFloat, height: CGFloat) -> some View {
@@ -1119,28 +1192,4 @@ private struct ContentHealthSkeletonLoadingView: View {
       .frame(width: width, height: height)
   }
 
-  private func stepBadge(title: String, isDone: Bool, isActive: Bool = false) -> some View {
-    HStack(spacing: 4) {
-      if isDone {
-        Image(systemName: "checkmark.circle.fill")
-          .foregroundStyle(WorkbenchTheme.success)
-      } else if isActive {
-        ProgressView()
-          .controlSize(.small)
-      } else {
-        Circle()
-          .fill(Color.secondary.opacity(0.3))
-          .frame(width: 6, height: 6)
-      }
-      Text(title)
-        .font(.workbenchMetadata.weight(isActive ? .semibold : .regular))
-        .foregroundStyle(isActive ? Color.primary : .secondary)
-    }
-    .padding(.horizontal, 6)
-    .padding(.vertical, 3)
-    .background(
-      isActive ? WorkbenchTheme.documentForeground.opacity(0.1) : Color.clear,
-      in: Capsule()
-    )
-  }
 }

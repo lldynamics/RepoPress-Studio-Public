@@ -73,7 +73,8 @@ extension WorkbenchStore {
     if let draftID {
       // A metadata-triggered delayed refresh may have been replaced by a
       // body-only refresh before it starts. Preserve the stronger request.
-      mergedDraftListNotification = notifyingDraftList
+      mergedDraftListNotification =
+        notifyingDraftList
         || pendingPreflightDraftListNotifications.remove(draftID) != nil
     } else {
       pendingPreflightDraftListNotifications.removeAll()
@@ -107,13 +108,19 @@ extension WorkbenchStore {
     let repositoryReportSnapshot = repositoryReport(for: selectedDraft)
     let preflightService = publishingStore.preflightService
     let generalDraftPublishingIssue = publishingStore.generalDraftPublishingIssue
+    let linkAuditKey = siteLinkAuditKey(
+      drafts: sameSiteDraftsSnapshot,
+      profile: profileSnapshot
+    )
+    let cachedLinkAuditReport = siteLinkAuditSnapshotStore.report(for: linkAuditKey)
 
     preflightRefreshTask = Task { [weak self] in
-      let calculationTask: Task<[PreflightIssue]?, Never> = Task.detached(priority: .userInitiated)
-      {
+      let calculationTask: Task<([PreflightIssue], SiteLinkAuditReport?)?, Never> = Task.detached(
+        priority: .userInitiated
+      ) {
         guard !Task.isCancelled else { return nil }
         if selectedDraftSnapshot.isGeneralDraft {
-          return [generalDraftPublishingIssue]
+          return ([generalDraftPublishingIssue], nil)
         }
         let duplicateIndex = PreflightDuplicateIndex(
           drafts: sameSiteDraftsSnapshot,
@@ -127,12 +134,18 @@ extension WorkbenchStore {
           includeRepositoryReadiness: true,
           duplicateIndex: duplicateIndex
         )
-        return SiteLinkAuditService().report(
-          drafts: sameSiteDraftsSnapshot,
-          profile: profileSnapshot
-        ).mergingPreflightIssues(baseIssues, for: selectedDraftSnapshot)
+        let linkAuditReport =
+          cachedLinkAuditReport
+          ?? SiteLinkAuditService().report(
+            drafts: sameSiteDraftsSnapshot,
+            profile: profileSnapshot
+          )
+        return (
+          linkAuditReport.mergingPreflightIssues(baseIssues, for: selectedDraftSnapshot),
+          linkAuditReport
+        )
       }
-      let issues: [PreflightIssue]? = await withTaskCancellationHandler(
+      let calculation = await withTaskCancellationHandler(
         operation: {
           await calculationTask.value
         },
@@ -141,7 +154,7 @@ extension WorkbenchStore {
         })
 
       guard !Task.isCancelled,
-        let issues,
+        let calculation,
         let self,
         self.preflightRefreshGeneration == generation,
         self.selectedDraftID == draftID,
@@ -167,7 +180,15 @@ extension WorkbenchStore {
         return
       }
 
-      self.publishingStore.preflightIssues = issues
+      if let linkAuditReport = calculation.1 {
+        self.replaceSiteLinkAuditSnapshotIfCurrent(
+          linkAuditReport,
+          key: linkAuditKey,
+          drafts: sameSiteDraftsSnapshot,
+          profile: profileSnapshot
+        )
+      }
+      self.publishingStore.preflightIssues = calculation.0
       self.preflightRefreshTask = nil
     }
   }
@@ -593,12 +614,14 @@ extension WorkbenchStore {
     // The list projection is the invalidation boundary. Body, word-count,
     // repository and attachment-only changes can refresh their own derived
     // caches without rebuilding the sidebar projection.
-    let isListMetadataEdit = previousDraft.map {
-      !$0.hasSameListMetadata(as: bufferedDraft)
-    } ?? true
-    let isNonListEditorMetadataEdit = previousDraft.map {
-      !$0.hasSameEditorMetadata(as: bufferedDraft)
-    } ?? true
+    let isListMetadataEdit =
+      previousDraft.map {
+        !$0.hasSameListMetadata(as: bufferedDraft)
+      } ?? true
+    let isNonListEditorMetadataEdit =
+      previousDraft.map {
+        !$0.hasSameEditorMetadata(as: bufferedDraft)
+      } ?? true
     publishingStore.updateDraft(bufferedDraft, store: self)
     if bufferedDraft.wordCountNeedsRefresh {
       scheduleDraftWordCountRefresh(

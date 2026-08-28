@@ -73,6 +73,7 @@ const rememberDomainInput = document.querySelector("#remember-domain");
 const rememberDomainLabel = document.querySelector("#remember-domain-label");
 const saveOptionsSummary = document.querySelector("#save-options-summary");
 const captureModeInputs = Array.from(document.querySelectorAll("input[name='capture-mode']"));
+const captureModeDescription = document.querySelector("#capture-mode-description");
 const directSaveButton = document.querySelector("#save-now");
 const batchSaveButton = document.querySelector("#batch-save");
 const batchHint = document.querySelector("#batch-hint");
@@ -108,6 +109,8 @@ const receiptIndex = document.querySelector("#receipt-index");
 const receiptLocalIndex = document.querySelector("#receipt-local-index");
 const receiptRemoteAI = document.querySelector("#receipt-remote-ai");
 const openDocumentButton = document.querySelector("#open-document");
+const saveToast = document.querySelector("#save-toast");
+const saveToastMessage = document.querySelector("#save-toast-message");
 const duplicatePanel = document.querySelector("#duplicate-panel");
 const duplicateMessage = document.querySelector("#duplicate-message");
 const duplicateDocument = document.querySelector("#duplicate-document");
@@ -140,7 +143,9 @@ let activeBatchOperationID = null;
 let lastQueueStatus = { queueState: "unknown" };
 const CAPTURE_FLOW_STATES = new Set(["capture", "duplicate", "completed"]);
 const RECEIPT_RESTORE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1_000;
+const SAVE_TOAST_DURATION_MS = 2_000;
 let captureFlowState = "capture";
+let saveToastTimer = null;
 
 document.addEventListener("DOMContentLoaded", async () => {
   await loadPopupLocaleMessages();
@@ -172,6 +177,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     const preferredMode = stored.preferredKnowledgeCaptureModeV1 || "cleaned-article";
     const preferredInput = captureModeInputs.find((input) => input.value === preferredMode);
     if (preferredInput) preferredInput.checked = true;
+    updateCaptureModeDescription();
     favoriteFolderIDs = new Set(stored.favoriteKnowledgeFolderIDsV1 || []);
     recentFolderIDs = Array.isArray(stored.recentKnowledgeFolderIDsV1)
       ? stored.recentKnowledgeFolderIDsV1
@@ -258,6 +264,7 @@ for (const input of captureModeInputs) {
   input.addEventListener("change", () => {
     if (!input.checked) return;
     extensionAPI.storage.local.set({ preferredKnowledgeCaptureModeV1: input.value }).catch(() => {});
+    updateCaptureModeDescription();
     updateSaveOptionsSummary();
     updateBatchReviewConfiguration();
   });
@@ -1168,14 +1175,15 @@ async function saveCurrentPage() {
       : result.updatedCount > 0
         ? localizedText("saveActionUpdated", "更新")
         : localizedText("saveActionExisting", "已存在");
-    await rememberReceipt(result, receiptSourceURL);
+    const didRememberReceipt = await rememberReceipt(result, receiptSourceURL);
+    const indexFeedback = didRememberReceipt ? showSaveToast(result) : "";
     const report = result.archiveReport;
     if (report?.format === "html" && report.missingResourceCount > 0) {
       const truncated = report.wasTruncated
         ? localizedText("archiveTruncatedSuffix", "，并已按 24 MB 上限精简")
         : "";
       showStatus(
-        localizedText(
+        [localizedText(
           "savedWithMissingResourcesStatus",
           "已保存到长期参考（{action}），已内联 {embedded} 项；{missing} 项外部资源未能离线保存{truncated}。",
           {
@@ -1184,20 +1192,23 @@ async function saveCurrentPage() {
             missing: report.missingResourceCount,
             truncated
           }
-        ),
+        ), indexFeedback].filter(Boolean).join(" "),
         "warning"
       );
     } else if (report?.format === "html") {
       showStatus(
-        localizedText(
+        [localizedText(
           "savedOfflineArchiveStatus",
           "已保存到长期参考（{action}），自包含归档已内联 {count} 项资源，可离线打开。",
           { action, count: report.embeddedResourceCount }
-        ),
+        ), indexFeedback].filter(Boolean).join(" "),
         "success"
       );
     } else {
-      showStatus(localizedText("savedStatus", "已保存到长期参考（{action}）。", { action }), "success");
+      showStatus([
+        localizedText("savedStatus", "已保存到长期参考（{action}）。", { action }),
+        indexFeedback
+      ].filter(Boolean).join(" "), "success");
     }
   } catch (error) {
     if (error?.code === "page-identity-changed") {
@@ -1222,6 +1233,35 @@ function captureModeShortLabel(value) {
   case "selection": return localizedText("selectionTitle", "选中文字");
   case "link-only": return localizedText("linkOnlyTitle", "仅链接");
   default: return localizedText("cleanedArticleTitle", "净化正文");
+  }
+}
+
+function updateCaptureModeDescription() {
+  if (!captureModeDescription) return;
+  switch (selectedCaptureMode()) {
+  case "full-page":
+    captureModeDescription.textContent = localizedText(
+      "fullPageDescription",
+      "正文与离线页面归档一起保存"
+    );
+    break;
+  case "selection":
+    captureModeDescription.textContent = localizedText(
+      "selectionDescription",
+      "只保存当前页面中的选择内容"
+    );
+    break;
+  case "link-only":
+    captureModeDescription.textContent = localizedText(
+      "linkOnlyDescription",
+      "保存标题、来源和可检索链接"
+    );
+    break;
+  default:
+    captureModeDescription.textContent = localizedText(
+      "cleanedArticleDescription",
+      "去掉导航、广告和交互噪声"
+    );
   }
 }
 
@@ -1309,14 +1349,17 @@ async function resolveDuplicateCapture(resolution) {
     });
     await rememberOrganizationChoice(result.receipt);
     activeDuplicateConflict = null;
-    await rememberReceipt(result.receipt);
+    const didRememberReceipt = await rememberReceipt(result.receipt);
+    const indexFeedback = didRememberReceipt && resolution !== "move-only"
+      ? showSaveToast(result.receipt)
+      : "";
     await refreshQueueStatus();
     const message = resolution === "save-new-version"
       ? localizedText("savedNewVersionStatus", "已将本次采集保存为新版本。")
       : resolution === "move-only"
         ? localizedText("movedFolderStatus", "已移动原资料的分类，未创建新版本。")
         : localizedText("keptCopyStatus", "已保留一份独立副本。");
-    showStatus(message, "success");
+    showStatus([message, indexFeedback].filter(Boolean).join(" "), "success");
   } catch (error) {
     showStatus(readableError(error), "error");
   } finally {
@@ -1380,7 +1423,7 @@ async function openSavedDocument() {
   } catch (error) {
     showStatus(readableError(error), "error");
   } finally {
-    setBusy(openDocumentButton, false, localizedText("openDocumentButton", "在资料库中打开"));
+    setBusy(openDocumentButton, false, localizedText("openDocumentButton", "在 RepoPress 中查看"));
   }
 }
 
@@ -1436,6 +1479,38 @@ async function rememberReceipt(receipt, fallbackSourceURL = null) {
   showReceipt(boundReceipt);
   await extensionAPI.storage.local.set({ lastKnowledgeSaveReceiptV1: boundReceipt }).catch(() => {});
   return true;
+}
+
+function saveToastText(receipt) {
+  const action = String(receipt?.action || "").toLocaleLowerCase("en-US");
+  const wasUpdated = Number(receipt?.updatedCount || 0) > 0 || action === "updated";
+  const wasExisting = action === "existing"
+    || (!action
+      && Number(receipt?.insertedCount || 0) === 0
+      && Number(receipt?.updatedCount || 0) === 0);
+  if (receipt?.indexStatus !== "ready") {
+    if (wasUpdated) return localizedText("updatedIndexingToast", "已更新，正在建立索引");
+    if (wasExisting) return localizedText("existingIndexingToast", "资料已在库中，等待建立索引");
+    return localizedText("indexingToast", "已保存，正在建立索引");
+  }
+  if (wasUpdated) return localizedText("updatedIndexedToast", "已更新并完成索引");
+  if (wasExisting) return localizedText("existingIndexedToast", "资料已在库中，索引已就绪");
+  return localizedText("indexedToast", "已索引入库");
+}
+
+function showSaveToast(receipt) {
+  const message = saveToastText(receipt);
+  if (!saveToast || !saveToastMessage) return message;
+  saveToastMessage.textContent = message;
+  if (saveToastTimer !== null) globalThis.clearTimeout?.(saveToastTimer);
+  saveToast.hidden = true;
+  void saveToast.offsetWidth;
+  saveToast.hidden = false;
+  saveToastTimer = globalThis.setTimeout?.(() => {
+    saveToast.hidden = true;
+    saveToastTimer = null;
+  }, SAVE_TOAST_DURATION_MS) ?? null;
+  return message;
 }
 
 function showReceipt(receipt) {

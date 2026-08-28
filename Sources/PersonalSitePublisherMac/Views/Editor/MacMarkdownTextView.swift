@@ -32,9 +32,7 @@ struct MarkdownSyntaxHighlightComputation: Sendable {
   let revision: UInt64
   let plan: MarkdownSyntaxHighlightPlan
   let snapshot: MarkdownSyntaxHighlightSnapshot
-  let previousSnapshot: MarkdownSyntaxHighlightSnapshot?
-  let previousText: String?
-  let replacedRange: NSRange?
+  let runIndex: MarkdownSyntaxHighlightRunIndex
   let synchronizedTree: Bool
   let parserMetrics: MarkdownSyntaxHighlightParserMetrics
 }
@@ -46,7 +44,7 @@ enum MarkdownSyntaxViewportRepaintReason: Equatable, Sendable {
   case appearance
 
   var requiresFullRepaint: Bool {
-    self != .viewport
+    self == .appearance
   }
 
   var preservesInlineAttachmentDrawings: Bool {
@@ -58,6 +56,7 @@ struct MacMarkdownTextView: NSViewRepresentable {
   @Binding var text: String
   var bodyMarkdown: String
   var bodyUTF16Offset: Int
+  var allowsLiveBodyChanges: Bool = true
   @Binding var selectedRange: NSRange
   @Binding var isFrontMatterSelection: Bool
   var comfortConfiguration: MarkdownEditorComfortConfiguration
@@ -90,6 +89,7 @@ struct MacMarkdownTextView: NSViewRepresentable {
       text: $text,
       bodyMarkdown: bodyMarkdown,
       bodyUTF16Offset: bodyUTF16Offset,
+      allowsLiveBodyChanges: allowsLiveBodyChanges,
       selectedRange: $selectedRange,
       isFrontMatterSelection: $isFrontMatterSelection,
       comfortConfiguration: comfortConfiguration,
@@ -229,12 +229,14 @@ struct MacMarkdownTextView: NSViewRepresentable {
       || context.coordinator.attachments != attachments
       || context.coordinator.comfortConfiguration != comfortConfiguration
     let didReceiveChangedText = context.coordinator.updateRepresentedText(text)
-    let hasPendingEditRequest = editRequest.map {
-      $0.id != context.coordinator.lastAppliedEditRequestID
-    } ?? false
-    let hasPendingFocusRequest = focusRequest.map {
-      $0.id != context.coordinator.lastAppliedFocusRequestID
-    } ?? false
+    let hasPendingEditRequest =
+      editRequest.map {
+        $0.id != context.coordinator.lastAppliedEditRequestID
+      } ?? false
+    let hasPendingFocusRequest =
+      focusRequest.map {
+        $0.id != context.coordinator.lastAppliedFocusRequestID
+      } ?? false
     context.coordinator.updateReadOnlyPresentationPolicy(
       isEnabled: readOnlyNativePresentationEnabled,
       in: textView
@@ -250,6 +252,7 @@ struct MacMarkdownTextView: NSViewRepresentable {
     context.coordinator.updateDocumentContext(
       bodyMarkdown: bodyMarkdown,
       bodyUTF16Offset: bodyUTF16Offset,
+      allowsLiveBodyChanges: allowsLiveBodyChanges,
       attachments: attachments,
       in: textView
     )
@@ -403,6 +406,10 @@ struct MacMarkdownTextView: NSViewRepresentable {
     @Binding var isFrontMatterSelection: Bool
     var bodyMarkdown: String
     var bodyUTF16Offset: Int
+    var requiresFrontMatterEnvelope: Bool
+    var hasValidDocumentBodyMapping: Bool
+    var allowsLiveBodyChanges: Bool
+    var isAwaitingDocumentValidation = false
     var bodyLineUTF16Offsets: [Int]
     var representedText: String
     let onStatisticsChanged: (MarkdownEditorStatistics) -> Void
@@ -425,6 +432,7 @@ struct MacMarkdownTextView: NSViewRepresentable {
     var syntaxParsedRunIndex: MarkdownSyntaxHighlightRunIndex?
     var syntaxPaintedDocumentRevision: UInt64?
     var paintedSyntaxViewportRange: NSRange?
+    var paintedSyntaxSelectionRange: NSRange?
     var collapsedSyntaxMarkerRanges: [NSRange] = []
     var pendingSyntaxHighlightPlan: MarkdownSyntaxHighlightPlan?
     var syntaxCodeBlockRanges: [NSRange]?
@@ -453,6 +461,7 @@ struct MacMarkdownTextView: NSViewRepresentable {
     var statisticsFullScanCount = 0
     var statisticsIncrementalUpdateCount = 0
     var pendingTextEdit: MarkdownTextEdit?
+    var pendingTextEditRequiresInference = false
     var isApplyingRepresentedText = false
     var lastCommittedText: String
     var lastCommittedSelectedRange: NSRange
@@ -476,8 +485,7 @@ struct MacMarkdownTextView: NSViewRepresentable {
     var readOnlyPresentationDocument: MarkdownTextKit2PresentationDocument?
     var readOnlyPresentationSourceSelection: NSRange?
     var readOnlyPresentationEditableAttributedSnapshot: NSAttributedString?
-    var readOnlyPresentationCachedOutput:
-      MarkdownTextKit2ReadOnlyPresentationFactory.Output?
+    var readOnlyPresentationCachedOutput: MarkdownTextKit2ReadOnlyPresentationFactory.Output?
     var readOnlyPresentationCachedBodyMarkdown: String?
     var readOnlyPresentationCachedBodyUTF16Offset: Int?
     var readOnlyPresentationCachedAttachments: [DraftAttachment] = []
@@ -524,6 +532,7 @@ struct MacMarkdownTextView: NSViewRepresentable {
       text: Binding<String>,
       bodyMarkdown: String,
       bodyUTF16Offset: Int,
+      allowsLiveBodyChanges: Bool = true,
       selectedRange: Binding<NSRange>,
       isFrontMatterSelection: Binding<Bool>,
       comfortConfiguration: MarkdownEditorComfortConfiguration,
@@ -545,6 +554,10 @@ struct MacMarkdownTextView: NSViewRepresentable {
       _text = text
       self.bodyMarkdown = bodyMarkdown
       self.bodyUTF16Offset = bodyUTF16Offset
+      let hasDelimitedFrontMatter = Self.documentParts(in: text.wrappedValue) != nil
+      requiresFrontMatterEnvelope = bodyUTF16Offset > 0 || hasDelimitedFrontMatter
+      hasValidDocumentBodyMapping = !requiresFrontMatterEnvelope || hasDelimitedFrontMatter
+      self.allowsLiveBodyChanges = allowsLiveBodyChanges
       bodyLineUTF16Offsets = Self.lineUTF16Offsets(in: bodyMarkdown)
       representedText = text.wrappedValue
       _selectedRange = selectedRange
@@ -615,6 +628,7 @@ struct MacMarkdownTextView: NSViewRepresentable {
     func updateDocumentContext(
       bodyMarkdown: String,
       bodyUTF16Offset: Int,
+      allowsLiveBodyChanges: Bool,
       attachments: [DraftAttachment],
       in textView: NSTextView
     ) {
@@ -625,6 +639,17 @@ struct MacMarkdownTextView: NSViewRepresentable {
       let bodyOffsetChanged = self.bodyUTF16Offset != bodyUTF16Offset
       self.bodyMarkdown = bodyMarkdown
       self.bodyUTF16Offset = bodyUTF16Offset
+      let hasDelimitedFrontMatter = Self.documentParts(in: representedText) != nil
+      requiresFrontMatterEnvelope =
+        requiresFrontMatterEnvelope || bodyUTF16Offset > 0 || hasDelimitedFrontMatter
+      hasValidDocumentBodyMapping =
+        !requiresFrontMatterEnvelope || hasDelimitedFrontMatter
+      self.allowsLiveBodyChanges = allowsLiveBodyChanges
+      if !allowsLiveBodyChanges {
+        isAwaitingDocumentValidation = true
+      } else if pendingTextBindingValue == nil {
+        isAwaitingDocumentValidation = false
+      }
       self.attachments = attachments
       if bodyOffsetChanged {
         cachedDiagnosticOverlayRevision = nil
@@ -695,9 +720,10 @@ struct MacMarkdownTextView: NSViewRepresentable {
       isFrontMatterSelection incomingFrontMatterSelection: Bool,
       in textView: NSTextView
     ) -> Bool {
-      guard pendingTextBindingValue != nil
-        || pendingSelectedRangeBindingValue != nil
-        || pendingFrontMatterBindingValue != nil
+      guard
+        pendingTextBindingValue != nil
+          || pendingSelectedRangeBindingValue != nil
+          || pendingFrontMatterBindingValue != nil
       else {
         return true
       }
@@ -773,9 +799,10 @@ struct MacMarkdownTextView: NSViewRepresentable {
     ) {
       let rangeChanged = !NSEqualRanges(selectedRange, range)
       let frontMatterChanged = self.isFrontMatterSelection != isFrontMatterSelection
-      guard rangeChanged || frontMatterChanged
-        || pendingSelectedRangeBindingValue != nil
-        || pendingFrontMatterBindingValue != nil
+      guard
+        rangeChanged || frontMatterChanged
+          || pendingSelectedRangeBindingValue != nil
+          || pendingFrontMatterBindingValue != nil
       else {
         return
       }
@@ -1027,11 +1054,23 @@ struct MacMarkdownTextView: NSViewRepresentable {
         apply(pairingEdit, in: textView)
         return false
       }
-      removePaintedSyntaxAttributes(in: textView)
-      pendingTextEdit = MarkdownTextEdit(
-        previousText: textView.string,
-        replacedRange: affectedCharRange
-      )
+      if pendingTextEdit != nil || pendingTextEditRequiresInference {
+        // Some input methods issue several should-change callbacks before one
+        // did-change notification. Those ranges belong to different document
+        // revisions, so retain neither partial painted state nor the newest
+        // hint; infer one cumulative UTF-16 edit from representedText instead.
+        pendingTextEditRequiresInference = true
+        removePaintedSyntaxAttributes(in: textView)
+      } else {
+        preparePaintedSyntaxForEdit(
+          in: textView,
+          affectedRange: affectedCharRange
+        )
+        pendingTextEdit = MarkdownTextEdit(
+          previousText: textView.string,
+          replacedRange: affectedCharRange
+        )
+      }
       return true
     }
 
@@ -1463,7 +1502,10 @@ struct MacMarkdownTextView: NSViewRepresentable {
       let updatedText = textView.string
       let previousBodyMarkdown = bodyMarkdown
       let previousBodyUTF16Offset = bodyUTF16Offset
-      let syntaxHighlightEdit = pendingTextEdit
+      let requiresInferredTextEdit = pendingTextEditRequiresInference
+      pendingTextEditRequiresInference = false
+      let syntaxHighlightEdit =
+        (requiresInferredTextEdit ? nil : pendingTextEdit)
         ?? MarkdownTextEdit.inferred(
           previousText: representedText,
           currentText: updatedText
@@ -1472,19 +1514,21 @@ struct MacMarkdownTextView: NSViewRepresentable {
       let previousSyntaxRevision = syntaxDocumentRevision
       syntaxDocumentRevision &+= 1
       if let syntaxHighlightEdit {
-        pendingSyntaxParserEdit = pendingSyntaxParserEdit?.accumulating(
-          previousText: syntaxHighlightEdit.previousText,
-          currentText: updatedText,
-          replacedRange: syntaxHighlightEdit.replacedRange,
-          previousRevision: previousSyntaxRevision,
-          currentRevision: syntaxDocumentRevision
-        ) ?? MarkdownSyntaxHighlightEditAccumulator(
-          previousText: syntaxHighlightEdit.previousText,
-          currentText: updatedText,
-          replacedRange: syntaxHighlightEdit.replacedRange,
-          previousRevision: previousSyntaxRevision,
-          currentRevision: syntaxDocumentRevision
-        )
+        pendingSyntaxParserEdit =
+          pendingSyntaxParserEdit?.accumulating(
+            previousText: syntaxHighlightEdit.previousText,
+            currentText: updatedText,
+            replacedRange: syntaxHighlightEdit.replacedRange,
+            previousRevision: previousSyntaxRevision,
+            currentRevision: syntaxDocumentRevision
+          )
+          ?? MarkdownSyntaxHighlightEditAccumulator(
+            previousText: syntaxHighlightEdit.previousText,
+            currentText: updatedText,
+            replacedRange: syntaxHighlightEdit.replacedRange,
+            previousRevision: previousSyntaxRevision,
+            currentRevision: syntaxDocumentRevision
+          )
       } else {
         pendingSyntaxParserEdit = nil
       }
@@ -1500,22 +1544,55 @@ struct MacMarkdownTextView: NSViewRepresentable {
       } else {
         syntaxHighlightPlan = .fullDocument(for: updatedText)
       }
+      reconcilePaintedSyntaxState(
+        after: syntaxHighlightEdit,
+        plan: syntaxHighlightPlan,
+        previousRevision: previousSyntaxRevision,
+        currentText: updatedText,
+        in: textView
+      )
       pendingSyntaxHighlightPlan = syntaxHighlightPlan
       syntaxCodeBlockRanges = syntaxHighlightPlan.codeBlockRanges
       let updatedSource = updatedText as NSString
-      if let syntaxHighlightEdit,
-        syntaxHighlightEdit.replacedRange.location >= bodyUTF16Offset,
-        bodyUTF16Offset <= updatedSource.length
+      let editIsBodyOnly =
+        !requiresFrontMatterEnvelope
+        || syntaxHighlightEdit.map {
+          $0.replacedRange.location >= previousBodyUTF16Offset
+        } == true
+      if !editIsBodyOnly {
+        isAwaitingDocumentValidation = true
+      }
+      let canPublishBodyChange: Bool
+      if hasValidDocumentBodyMapping,
+        let syntaxHighlightEdit,
+        let incrementallyUpdatedBody = Self.bodyMarkdown(
+          byApplying: syntaxHighlightEdit,
+          to: previousBodyMarkdown,
+          bodyUTF16Offset: previousBodyUTF16Offset,
+          updatedDocument: updatedSource
+        )
       {
-        bodyMarkdown = updatedSource.substring(from: bodyUTF16Offset)
+        bodyMarkdown = incrementallyUpdatedBody
+        canPublishBodyChange = true
       } else if let parts = Self.documentParts(in: updatedText) {
         bodyMarkdown = parts.bodyMarkdown
         bodyUTF16Offset = parts.bodyUTF16Offset
+        requiresFrontMatterEnvelope = true
+        hasValidDocumentBodyMapping = true
+        canPublishBodyChange = true
+      } else if requiresFrontMatterEnvelope {
+        // A broken or missing delimiter makes the body boundary ambiguous.
+        // Keep the last valid body/offset and publish only the complete
+        // document binding so the composer can persist its recovery copy.
+        hasValidDocumentBodyMapping = false
+        canPublishBodyChange = false
       } else {
         bodyMarkdown = updatedText
         bodyUTF16Offset = 0
+        hasValidDocumentBodyMapping = true
+        canPublishBodyChange = true
       }
-      if let syntaxHighlightEdit {
+      if canPublishBodyChange, editIsBodyOnly, let syntaxHighlightEdit {
         incrementallyUpdateInlineAttachmentPlan(
           previousBodyMarkdown: previousBodyMarkdown,
           currentBodyMarkdown: bodyMarkdown,
@@ -1543,13 +1620,66 @@ struct MacMarkdownTextView: NSViewRepresentable {
       // the now-cleared coordinator slot; otherwise every ordinary keystroke
       // falls back to the delayed full-document scanner.
       updateStatistics(afterEditing: bodyMarkdown, edit: syntaxHighlightEdit)
-      onLiveBodyChange(previousBodyMarkdown, bodyMarkdown)
+      if canPublishBodyChange,
+        editIsBodyOnly,
+        allowsLiveBodyChanges,
+        !isAwaitingDocumentValidation,
+        previousBodyMarkdown != bodyMarkdown
+      {
+        onLiveBodyChange(previousBodyMarkdown, bodyMarkdown)
+      }
       scheduleMarkdownSyntaxHighlighting(
         for: textView,
         text: updatedText,
         plan: syntaxHighlightPlan
       )
       updateCurrentParagraphHighlight(in: textView)
+    }
+
+    static func bodyMarkdown(
+      byApplying edit: MarkdownTextEdit,
+      to previousBodyMarkdown: String,
+      bodyUTF16Offset: Int,
+      updatedDocument: NSString
+    ) -> String? {
+      guard edit.replacedRange.location >= bodyUTF16Offset else { return nil }
+      let previousDocument = edit.previousText as NSString
+      let previousDocumentLength = previousDocument.length
+      let replacementLength =
+        updatedDocument.length - previousDocumentLength + edit.replacedRange.length
+      guard replacementLength >= 0 else { return nil }
+
+      let bodyRange = NSRange(
+        location: edit.replacedRange.location - bodyUTF16Offset,
+        length: edit.replacedRange.length
+      )
+      let currentReplacementRange = NSRange(
+        location: edit.replacedRange.location,
+        length: replacementLength
+      )
+      let previousBody = previousBodyMarkdown as NSString
+      guard
+        bodyUTF16Offset <= previousDocumentLength,
+        previousBody.length == previousDocumentLength - bodyUTF16Offset,
+        NSMaxRange(bodyRange) <= previousBody.length,
+        NSMaxRange(edit.replacedRange) <= previousDocumentLength,
+        NSMaxRange(currentReplacementRange) <= updatedDocument.length,
+        previousBody.substring(with: bodyRange)
+          == previousDocument.substring(with: edit.replacedRange)
+      else {
+        // IME composition can deliver more than one should-change callback before
+        // the matching did-change notification. In that case the newest pending
+        // range may no longer describe `bodyMarkdown`; fall back to parsing the
+        // current document instead of applying a stale delta.
+        return nil
+      }
+
+      let updatedBody = NSMutableString(string: previousBodyMarkdown)
+      updatedBody.replaceCharacters(
+        in: bodyRange,
+        with: updatedDocument.substring(with: currentReplacementRange)
+      )
+      return updatedBody as String
     }
 
     func textViewDidChangeSelection(_ notification: Notification) {
@@ -1582,6 +1712,12 @@ struct MacMarkdownTextView: NSViewRepresentable {
 
       let targetY = lineRect.midY - (clipView.bounds.height / 2.2)
       let clampedY = max(0, min(targetY, textView.bounds.height - clipView.bounds.height))
+
+      if comfortConfiguration.accessibilityReduceMotionEnabled {
+        clipView.setBoundsOrigin(NSPoint(x: 0, y: clampedY))
+        textView.enclosingScrollView?.reflectScrolledClipView(clipView)
+        return
+      }
 
       NSAnimationContext.runAnimationGroup { context in
         context.duration = 0.10

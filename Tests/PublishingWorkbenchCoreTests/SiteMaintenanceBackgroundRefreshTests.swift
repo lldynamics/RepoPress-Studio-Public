@@ -142,10 +142,77 @@ final class SiteMaintenanceBackgroundRefreshTests: XCTestCase {
     XCTAssertEqual(counts.completed, 1)
   }
 
+  @MainActor
+  func testAutomaticMaintenanceUsesLocalLinksAndExplicitRefreshRunsOnlineProbe() async throws {
+    let probeCounter = ExternalLinkProbeCounter()
+    let service = SiteMaintenanceService(
+      linkAuditService: SiteLinkAuditService(
+        externalProbe: SiteExternalLinkProbe { url in
+          await probeCounter.recordProbe()
+          return SiteExternalLinkProbeResult(url: url, statusCode: 404, finalURL: url)
+        }
+      )
+    )
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: temporaryPersistenceURL()),
+      safeMode: true,
+      siteMaintenanceService: service
+    )
+    let draft = ArticleDraft(
+      siteProfileID: store.activeProfileID,
+      title: "External link",
+      slug: "external-link",
+      bodyMarkdown: "[Gone](https://example.com/gone)"
+    )
+    store.setDrafts([draft])
+
+    await store.refreshSiteMaintenanceSnapshot()
+    let automaticProbeCount = await probeCounter.count()
+    XCTAssertEqual(automaticProbeCount, 0)
+    XCTAssertFalse(
+      store.siteMaintenanceSnapshot?.report.linkAuditItems.contains {
+        $0.kind == .externalDead
+      } ?? true
+    )
+
+    await store.refreshSiteMaintenanceSnapshot(force: true)
+    let explicitProbeCount = await probeCounter.count()
+    XCTAssertEqual(explicitProbeCount, 1)
+    XCTAssertTrue(
+      store.siteMaintenanceSnapshot?.report.linkAuditItems.contains {
+        $0.kind == .externalDead
+      } ?? false
+    )
+  }
+
+  @MainActor
+  func testStartupDoesNotGenerateMaintenanceSnapshotUntilRequested() async throws {
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: temporaryPersistenceURL())
+    )
+
+    try await Task.sleep(for: .milliseconds(400))
+
+    XCTAssertNil(store.siteMaintenanceSnapshot)
+    XCTAssertFalse(store.isSiteMaintenanceSnapshotRefreshing)
+  }
+
   private func temporaryPersistenceURL() -> URL {
     FileManager.default.temporaryDirectory
       .appendingPathComponent("site-maintenance-background-tests-\(UUID().uuidString)", isDirectory: true)
       .appendingPathComponent("workbench.json")
+  }
+}
+
+private actor ExternalLinkProbeCounter {
+  private var probeCount = 0
+
+  func recordProbe() {
+    probeCount += 1
+  }
+
+  func count() -> Int {
+    probeCount
   }
 }
 

@@ -39,6 +39,12 @@ extension WorkbenchStore {
     repositoryStore.hasStaleRemoteRepositoryAccessCheckForActiveProfile(store: self)
   }
 
+  /// Performs a read-only permission check only when the active profile has no
+  /// fresh proof, then requires confirmed write access before a remote publish.
+  public func ensureRemoteRepositoryWriteAccess(for profile: SiteProfile) async -> Bool {
+    await repositoryStore.ensureRemoteRepositoryWriteAccess(for: profile, store: self)
+  }
+
   @discardableResult
   public func createRemoteRepositoryForActiveProfile(
     privateRepository: Bool = true

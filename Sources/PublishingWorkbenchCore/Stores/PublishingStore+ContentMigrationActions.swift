@@ -1,5 +1,105 @@
 import Foundation
 
+private struct ContentMigrationCurrentDraftSnapshot: Sendable {
+  let draft: ArticleDraft
+  let bodyRevision: UInt64
+  let isBodyDirty: Bool
+
+  func matches(_ baseline: ContentMigrationDraftBaseline) -> Bool {
+    !isBodyDirty && draft == baseline.draft && bodyRevision == baseline.bodyRevision
+  }
+}
+
+private struct ContentMigrationPlanReviewService: Sendable {
+  func refresh(
+    _ plan: ContentMigrationPlan,
+    currentDrafts: [ContentMigrationCurrentDraftSnapshot]
+  ) -> ContentMigrationPlan {
+    do {
+      return try refresh(
+        plan,
+        currentDrafts: currentDrafts,
+        cancellationCheck: {}
+      )
+    } catch {
+      // The compatibility path supplies an empty cancellation check, so the
+      // throwing implementation has no reachable error source. Preserve the
+      // reviewed plan instead of turning a violated invariant into a crash.
+      assertionFailure("Unexpected content migration review failure: \(error)")
+      return plan
+    }
+  }
+
+  func refresh(
+    _ plan: ContentMigrationPlan,
+    currentDrafts: [ContentMigrationCurrentDraftSnapshot],
+    cancellationCheck: () throws -> Void
+  ) throws -> ContentMigrationPlan {
+    try cancellationCheck()
+    var refreshed = plan
+    let pathCounts = Dictionary(
+      grouping: plan.reviewItems,
+      by: { $0.repositoryPath }
+    ).mapValues(\.count)
+    let currentDraftByPath = currentDrafts.reduce(
+      into: [String: ContentMigrationCurrentDraftSnapshot]()
+    ) { result, snapshot in
+      guard snapshot.draft.belongs(toSiteProfileID: plan.profileID),
+        let path = snapshot.draft.repositoryPath?.normalizedRelativePath().nilIfEmpty,
+        result[path] == nil
+      else { return }
+      result[path] = snapshot
+    }
+
+    refreshed.reviewItems = try plan.reviewItems.map { item in
+      try cancellationCheck()
+      guard !item.repositoryPath.isEmpty,
+        pathCounts[item.repositoryPath] == 1
+      else {
+        return reviewItem(item, disposition: .conflict)
+      }
+
+      let current = currentDraftByPath[item.repositoryPath]
+      guard let baseline = item.baseline else {
+        return current == nil
+          ? reviewItem(item, disposition: .insert)
+          : reviewItem(item, disposition: .conflict)
+      }
+      guard let current,
+        current.draft.id == baseline.draft.id,
+        current.matches(baseline)
+      else {
+        return reviewItem(item, disposition: .conflict)
+      }
+
+      let comparison = DraftVersionComparisonService().compare(
+        previous: current.draft,
+        current: item.importedDraft
+      )
+      return ContentMigrationDraftReviewItem(
+        importedDraft: item.importedDraft,
+        baseline: baseline,
+        disposition: comparison.hasChanges ? .update : .unchanged,
+        comparison: comparison
+      )
+    }
+    refreshed.drafts = refreshed.reviewItems.map(\.importedDraft)
+    return refreshed
+  }
+
+  private func reviewItem(
+    _ item: ContentMigrationDraftReviewItem,
+    disposition: ContentMigrationDraftDisposition
+  ) -> ContentMigrationDraftReviewItem {
+    ContentMigrationDraftReviewItem(
+      importedDraft: item.importedDraft,
+      baseline: item.baseline,
+      disposition: disposition,
+      comparison: disposition == .update || disposition == .unchanged ? item.comparison : nil
+    )
+  }
+}
+
 extension PublishingStore {
   public func makeContentMigrationPlan(sourceURL: URL, store: WorkbenchStore) async throws
     -> ContentMigrationPlan
@@ -69,71 +169,47 @@ extension PublishingStore {
     return prepared
   }
 
-  private func contentMigrationReviewItem(
-    _ item: ContentMigrationDraftReviewItem,
-    disposition: ContentMigrationDraftDisposition
-  ) -> ContentMigrationDraftReviewItem {
-    ContentMigrationDraftReviewItem(
-      importedDraft: item.importedDraft,
-      baseline: item.baseline,
-      disposition: disposition,
-      comparison: disposition == .update || disposition == .unchanged ? item.comparison : nil
-    )
-  }
-
   public func refreshContentMigrationPlanReview(
     _ plan: ContentMigrationPlan,
     store: WorkbenchStore
   ) -> ContentMigrationPlan {
-    var refreshed = plan
-    let pathCounts = Dictionary(
-      grouping: plan.reviewItems,
-      by: { $0.repositoryPath }
-    ).mapValues(\.count)
+    ContentMigrationPlanReviewService().refresh(
+      plan,
+      currentDrafts: contentMigrationCurrentDraftSnapshots(store: store)
+    )
+  }
 
-    refreshed.reviewItems = plan.reviewItems.map { item in
-      guard !item.repositoryPath.isEmpty,
-        pathCounts[item.repositoryPath] == 1
-      else {
-        return contentMigrationReviewItem(item, disposition: .conflict)
-      }
-
-      let currentDraft = drafts.first {
-        $0.belongs(toSiteProfileID: plan.profileID)
-          && $0.repositoryPath?.normalizedRelativePath() == item.repositoryPath
-      }
-
-      guard let baseline = item.baseline else {
-        return currentDraft == nil
-          ? contentMigrationReviewItem(item, disposition: .insert)
-          : contentMigrationReviewItem(item, disposition: .conflict)
-      }
-
-      guard let currentDraft,
-        currentDraft.id == baseline.draft.id,
-        store.draftStillMatchesOperationBaseline(
-          DraftOperationBaseline(
-            draft: baseline.draft,
-            bodyRevision: baseline.bodyRevision
-          )
-        )
-      else {
-        return contentMigrationReviewItem(item, disposition: .conflict)
-      }
-
-      let comparison = DraftVersionComparisonService().compare(
-        previous: currentDraft,
-        current: item.importedDraft
-      )
-      return ContentMigrationDraftReviewItem(
-        importedDraft: item.importedDraft,
-        baseline: baseline,
-        disposition: comparison.hasChanges ? .update : .unchanged,
-        comparison: comparison
+  public func refreshContentMigrationPlanReviewAsync(
+    _ plan: ContentMigrationPlan,
+    store: WorkbenchStore
+  ) async throws -> ContentMigrationPlan {
+    store.flushDraftBodyEditorBuffers()
+    let currentDrafts = contentMigrationCurrentDraftSnapshots(store: store)
+    let worker = Task.detached(priority: .userInitiated) {
+      try ContentMigrationPlanReviewService().refresh(
+        plan,
+        currentDrafts: currentDrafts,
+        cancellationCheck: { try Task.checkCancellation() }
       )
     }
-    refreshed.drafts = refreshed.reviewItems.map(\.importedDraft)
-    return refreshed
+    return try await withTaskCancellationHandler {
+      try await worker.value
+    } onCancel: {
+      worker.cancel()
+    }
+  }
+
+  private func contentMigrationCurrentDraftSnapshots(
+    store: WorkbenchStore
+  ) -> [ContentMigrationCurrentDraftSnapshot] {
+    drafts.map { draft in
+      let buffer = store.draftBodyEditorBuffer(for: draft.id)
+      return ContentMigrationCurrentDraftSnapshot(
+        draft: draft,
+        bodyRevision: buffer.revision,
+        isBodyDirty: buffer.isDirty
+      )
+    }
   }
 
   @discardableResult
@@ -147,7 +223,7 @@ extension PublishingStore {
         .filter { $0.disposition.isSelectable }
         .map(\.id)
     )
-    return try applyContentMigration(
+    return try applyReviewedContentMigration(
       refreshed,
       selectedDraftIDs: selectedDraftIDs,
       store: store
@@ -168,11 +244,78 @@ extension PublishingStore {
     }
     store.flushDraftBodyEditorBuffers()
     let refreshed = refreshContentMigrationPlanReview(plan, store: store)
+    return try applyReviewedContentMigration(
+      refreshed,
+      selectedDraftIDs: selectedDraftIDs,
+      store: store
+    )
+  }
+
+  @discardableResult
+  public func applyContentMigrationAsync(
+    _ plan: ContentMigrationPlan,
+    selectedDraftIDs: Set<UUID>,
+    store: WorkbenchStore
+  ) async throws -> LocalContentImportMergeSummary {
+    guard plan.profileID == store.activeProfileID,
+      plan.profileConfiguration
+        == ContentMigrationProfileConfiguration(profile: store.activeProfile)
+    else {
+      throw ContentMigrationError.profileChanged
+    }
+    let refreshed = try await refreshContentMigrationPlanReviewAsync(plan, store: store)
+    // Cancellation is the user's promise that dismissing the assistant will
+    // not begin the final mutation after background review has finished.
+    try Task.checkCancellation()
+    return try applyReviewedContentMigration(
+      refreshed,
+      selectedDraftIDs: selectedDraftIDs,
+      store: store
+    )
+  }
+
+  private func applyReviewedContentMigration(
+    _ refreshed: ContentMigrationPlan,
+    selectedDraftIDs: Set<UUID>,
+    store: WorkbenchStore
+  ) throws -> LocalContentImportMergeSummary {
+    guard refreshed.profileID == store.activeProfileID,
+      refreshed.profileConfiguration
+        == ContentMigrationProfileConfiguration(profile: store.activeProfile)
+    else {
+      throw ContentMigrationError.profileChanged
+    }
+    store.flushDraftBodyEditorBuffers()
     let selectedItems = refreshed.reviewItems.filter { selectedDraftIDs.contains($0.id) }
-    let conflicts =
-      selectedItems
-      .filter { $0.disposition == .conflict }
-      .map { $0.repositoryPath.nilIfEmpty ?? $0.importedDraft.title }
+    let currentDraftByPath = drafts.reduce(into: [String: ArticleDraft]()) { result, draft in
+      guard draft.belongs(toSiteProfileID: refreshed.profileID),
+        let path = draft.repositoryPath?.normalizedRelativePath().nilIfEmpty,
+        result[path] == nil
+      else { return }
+      result[path] = draft
+    }
+    let conflicts = selectedItems.compactMap { item -> String? in
+      let identity = item.repositoryPath.nilIfEmpty ?? item.importedDraft.title
+      switch item.disposition {
+      case .conflict:
+        return identity
+      case .insert:
+        let nowExists = currentDraftByPath[item.repositoryPath] != nil
+        return nowExists ? identity : nil
+      case .update, .unchanged:
+        guard let baseline = item.baseline,
+          let currentDraft = currentDraftByPath[item.repositoryPath],
+          currentDraft.id == baseline.draft.id,
+          store.draftStillMatchesOperationBaseline(
+            DraftOperationBaseline(
+              draft: baseline.draft,
+              bodyRevision: baseline.bodyRevision
+            )
+          )
+        else { return identity }
+        return nil
+      }
+    }
     guard conflicts.isEmpty else {
       throw ContentMigrationError.draftsChanged(conflicts)
     }

@@ -39,6 +39,7 @@ chmod +x "$BIN_DIR/swift"
 RELEASE_BUILD_ARGS_FILE="$ARGS_FILE" \
 RELEASE_BUILD_ENV_FILE="$ENV_FILE" \
 RELEASE_BUILD_STUB_BIN_DIR="$TMP_DIR/.build/arm64-apple-macosx/release" \
+RELEASE_ARTIFACT_MANIFEST="$TMP_DIR/missing-release-artifact-manifest.json" \
 PATH="$BIN_DIR:$PATH" \
 SWIFT_BUILD_HOME="$TMP_DIR/swift-home" \
   bash "$ROOT_DIR/script/check_swift_release_build.sh" >/dev/null
@@ -59,6 +60,7 @@ if RELEASE_BUILD_ARGS_FILE="$ARGS_FILE" \
   RELEASE_BUILD_ENV_FILE="$ENV_FILE" \
   RELEASE_BUILD_STUB_BIN_DIR="$TMP_DIR/.build/arm64-apple-macosx/release" \
   RELEASE_BUILD_STUB_EXIT=19 \
+  RELEASE_ARTIFACT_MANIFEST="$TMP_DIR/missing-release-artifact-manifest.json" \
   PATH="$BIN_DIR:$PATH" \
   SWIFT_BUILD_HOME="$TMP_DIR/swift-home-failure" \
   bash "$ROOT_DIR/script/check_swift_release_build.sh" >/dev/null 2>&1; then

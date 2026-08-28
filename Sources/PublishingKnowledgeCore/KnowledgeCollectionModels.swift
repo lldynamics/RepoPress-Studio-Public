@@ -7,6 +7,7 @@ public enum KnowledgeDocumentKind: String, Codable, CaseIterable, Identifiable, 
   case book
   case webpage
   case pdf
+  case image
   case markdown
   case text
   case note
@@ -20,6 +21,7 @@ public enum KnowledgeDocumentKind: String, Codable, CaseIterable, Identifiable, 
     case .book: "书籍"
     case .webpage: "网页"
     case .pdf: "PDF"
+    case .image: "图片"
     case .markdown: "Markdown"
     case .text: "文本"
     case .note: "笔记"
@@ -33,6 +35,7 @@ public enum KnowledgeDocumentKind: String, Codable, CaseIterable, Identifiable, 
     case .book: "books.vertical"
     case .webpage: "globe"
     case .pdf: "doc.richtext"
+    case .image: "photo"
     case .markdown: "text.document"
     case .text: "doc.plaintext"
     case .note: "note.text"

@@ -41,6 +41,7 @@ extension MacMarkdownComposerView {
   /// the optimistic base for the next keystroke, so a true multi-window
   /// conflict cannot be silently rebased over another writer.
   func handleLiveEditorBodyChange(from previousBody: String, to updatedBody: String) {
+    guard frontMatterIssue == nil else { return }
     guard
       let result = store.stageDraftBody(
         updatedBody,
@@ -71,6 +72,7 @@ extension MacMarkdownComposerView {
     from previousBody: String,
     to _: String
   ) {
+    guard frontMatterIssue == nil else { return }
     syncActiveEditorSelection()
     stageEditorBody(replacingBaseBody: previousBody)
     refreshFindMatchSnapshot()
@@ -81,6 +83,7 @@ extension MacMarkdownComposerView {
   }
 
   func handleCanonicalFrontMatterChange(_ updatedFrontMatter: String) {
+    guard frontMatterIssue == nil else { return }
     if ignoredCanonicalFrontMatter == updatedFrontMatter {
       ignoredCanonicalFrontMatter = nil
     } else {
@@ -89,6 +92,7 @@ extension MacMarkdownComposerView {
   }
 
   func syncEditorBodyFromStore(force: Bool = false) {
+    guard force || frontMatterIssue == nil else { return }
     let buffer = editorState.draftBodyEditorBuffer(for: draft.id)
     guard force || buffer.revision != editorBodyRevision else { return }
     editorSessionState.markdownCursorContextService.invalidateCache()
@@ -104,10 +108,12 @@ extension MacMarkdownComposerView {
     // Keyboard edits normally change only the body. Reuse the previous
     // front-matter boundary instead of normalizing and splitting the entire
     // document once for the document binding and again for the body binding.
-    if let bodyOnlyEdit = bodyOnlyDocumentEdit(
-      from: previousDocument,
-      to: document
-    ) {
+    if frontMatterIssue == nil,
+      let bodyOnlyEdit = bodyOnlyDocumentEdit(
+        from: previousDocument,
+        to: document
+      )
+    {
       editorDocumentBodyOffsetCache = bodyOnlyEdit.bodyUTF16Offset
       if bodyOnlyEdit.bodyMarkdown != editorBody {
         editorBody = bodyOnlyEdit.bodyMarkdown
@@ -121,18 +127,44 @@ extension MacMarkdownComposerView {
         profile: activeProfile
       )
     else {
+      beginInvalidFrontMatterRecoveryIfNeeded()
       frontMatterIssue = .invalidDelimiter
+      // The body boundary is unknowable while the delimiter is invalid.
+      // Preserve the last valid offset/body and save only the complete raw
+      // document in the editor-session recovery record.
+      saveCurrentEditorSession()
       return
     }
-    editorDocumentBodyOffsetCache = parts.bodyUTF16Offset
-
     let metadataResult = frontMatterEditingService.applying(
       parts.frontMatter,
       to: draft,
       profile: activeProfile
     )
-    frontMatterIssue = metadataResult.issue
-    if metadataResult.isValid, metadataResult.draft != draft {
+    guard metadataResult.isValid else {
+      beginInvalidFrontMatterRecoveryIfNeeded()
+      frontMatterIssue = metadataResult.issue
+      saveCurrentEditorSession()
+      return
+    }
+
+    let wasRecoveringInvalidDocument =
+      frontMatterIssue != nil
+      || editorSessionState.invalidFrontMatterBaseBodyMarkdown != nil
+    if wasRecoveringInvalidDocument,
+      !stageRecoveredFrontMatterBody(parts.bodyMarkdown)
+    {
+      frontMatterIssue = .concurrentBodyChange
+      selectionActionMessage = String(
+        localized: "另一窗口已修改正文；恢复原文仍保留，请复制原文后决定如何合并。"
+      )
+      EditorAccessibilityAnnouncementCenter.announce(selectionActionMessage)
+      saveCurrentEditorSession()
+      return
+    }
+
+    frontMatterIssue = nil
+    editorDocumentBodyOffsetCache = parts.bodyUTF16Offset
+    if metadataResult.draft != draft {
       ignoredCanonicalFrontMatter = frontMatterEditingService.render(
         draft: metadataResult.draft,
         profile: activeProfile
@@ -142,6 +174,37 @@ extension MacMarkdownComposerView {
     if parts.bodyMarkdown != editorBody {
       editorBody = parts.bodyMarkdown
     }
+    editorSessionState.invalidFrontMatterBaseBodyMarkdown = nil
+    editorSessionState.invalidFrontMatterBaseBodyRevision = nil
+    saveCurrentEditorSession()
+  }
+
+  private func beginInvalidFrontMatterRecoveryIfNeeded() {
+    guard editorSessionState.invalidFrontMatterBaseBodyMarkdown == nil else { return }
+    editorSessionState.invalidFrontMatterBaseBodyMarkdown =
+      editorSessionState.liveBodyMarkdown
+    editorSessionState.invalidFrontMatterBaseBodyRevision =
+      editorSessionState.liveBodyRevision
+  }
+
+  private func stageRecoveredFrontMatterBody(_ recoveredBody: String) -> Bool {
+    let baseBody = editorSessionState.invalidFrontMatterBaseBodyMarkdown ?? editorBody
+    guard
+      let result = store.stageRecoveredDraftBody(
+        recoveredBody,
+        for: draft.id,
+        matchingBaseBody: baseBody,
+        notifyEditorObservers: false
+      ),
+      result.wasAccepted
+    else {
+      return false
+    }
+
+    editorBodyRevision = result.buffer.revision
+    editorSessionState.liveBodyMarkdown = result.buffer.bodyMarkdown
+    editorSessionState.liveBodyRevision = result.buffer.revision
+    return true
   }
 
   private func bodyOnlyDocumentEdit(
@@ -172,6 +235,7 @@ extension MacMarkdownComposerView {
   }
 
   func synchronizeDocumentBodyFromBuffer(previousBody: String? = nil) {
+    guard frontMatterIssue == nil else { return }
     // Keyboard edits arrive with the exact body that was previously rendered.
     // Replacing that suffix preserves front matter without reparsing the whole
     // document or rebuilding its front-matter model on every keystroke.
@@ -234,6 +298,8 @@ extension MacMarkdownComposerView {
   func resetEditorDocumentFromDraft() {
     ignoredCanonicalFrontMatter = nil
     frontMatterIssue = nil
+    editorSessionState.invalidFrontMatterBaseBodyMarkdown = nil
+    editorSessionState.invalidFrontMatterBaseBodyRevision = nil
     isFrontMatterSelection = false
     editorDocument = frontMatterEditingService.renderDocument(
       draft: draft,

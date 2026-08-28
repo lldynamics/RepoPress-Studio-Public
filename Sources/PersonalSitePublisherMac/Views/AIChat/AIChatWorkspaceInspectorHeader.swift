@@ -44,13 +44,13 @@ extension AIChatContextInspectorView {
   }
 
   var inspectorHeader: some View {
-    VStack(spacing: 8) {
+    VStack(spacing: 6) {
       contextModePicker
       conversationNavigationRow
       configurationRow
     }
     .padding(.horizontal, 12)
-    .padding(.vertical, 10)
+    .padding(.vertical, 8)
     .accessibilityElement(children: .contain)
     .accessibilityLabel("AI 助手")
     .accessibilityIdentifier("ai-assistant-inspector")
@@ -81,15 +81,6 @@ extension AIChatContextInspectorView {
             .foregroundStyle(.primary)
             .lineLimit(1)
 
-          if conversationCount > 1 {
-            Text("\(conversationCount)")
-              .font(.workbenchMetadata.weight(.bold).monospacedDigit())
-              .padding(.horizontal, 5)
-              .padding(.vertical, 1)
-              .background(Color.primary.opacity(0.08), in: Capsule())
-              .foregroundStyle(.secondary)
-          }
-
           Image(systemName: "chevron.down")
             .font(.workbenchMetadata.weight(.bold))
             .foregroundStyle(
@@ -108,7 +99,7 @@ extension AIChatContextInspectorView {
           isHeaderTitleHovered = isHovered
         }
       }
-      .frame(maxWidth: .infinity, alignment: .leading)
+      .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
       .disabled(ai.chatContextMode != .general && ai.selectedChatDraft == nil)
       .help(
         String(
@@ -117,7 +108,7 @@ extension AIChatContextInspectorView {
         )
       )
       .accessibilityLabel(String(localized: "当前对话"))
-      .accessibilityValue(conversationNavigationTitle)
+      .accessibilityValue("\(conversationNavigationTitle)，\(conversationCount) 条对话")
       .accessibilityIdentifier("ai-assistant-conversation-picker")
       .popover(isPresented: $isConversationPopoverPresented, arrowEdge: .top) {
         conversationPickerContent
@@ -130,6 +121,8 @@ extension AIChatContextInspectorView {
       ) {
         isModelQuickSwitchPresented = true
       }
+      .frame(maxWidth: 116)
+      .layoutPriority(1)
 
       Button {
         startNewInspectorConversation(draft: ai.selectedChatDraft)
@@ -147,6 +140,7 @@ extension AIChatContextInspectorView {
       .accessibilityLabel(String(localized: "新建 AI 对话"))
       .accessibilityHint(String(localized: "开始一段新的 AI 对话"))
       .accessibilityIdentifier("ai-assistant-new-conversation")
+      .layoutPriority(1)
 
       Button {
         ai.closeAssistantPanel()
@@ -161,6 +155,7 @@ extension AIChatContextInspectorView {
       .help(String(localized: "关闭 AI 助手"))
       .accessibilityLabel(String(localized: "关闭 AI 助手"))
       .accessibilityIdentifier("ai-assistant-close")
+      .layoutPriority(1)
     }
   }
 
@@ -346,7 +341,18 @@ extension AIChatContextInspectorView {
   }
 
   var configurationRow: some View {
-    VStack(alignment: .leading, spacing: 7) {
+    let densityConfiguration = AIChatInspectorDensityPresentation.configuration(
+      isExpanded: isAdvancedSettingsExpanded
+    )
+    let compactSummary = AIChatInspectorDensityPresentation.compactContextSummary(
+      mode: ai.chatContextMode,
+      draftTitle: ai.selectedChatDraft?.title,
+      explicitReferenceCount: selectedContextReferences.count,
+      knowledgeTitle: localizedKnowledgePolicyTitle(knowledgePolicyBinding.wrappedValue),
+      agentTitle: localizedAgentModeTitle(agentModeBinding.wrappedValue)
+    )
+
+    return VStack(alignment: .leading, spacing: 7) {
       Button {
         withAnimation(WorkbenchMotion.standard) {
           isAdvancedSettingsExpanded.toggle()
@@ -355,6 +361,12 @@ extension AIChatContextInspectorView {
         HStack(spacing: 6) {
           Label(String(localized: "上下文与来源"), systemImage: "scope")
             .font(.caption.weight(.semibold))
+          Text(compactSummary)
+            .font(.workbenchMetadata)
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+            .truncationMode(.tail)
+            .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
           Spacer(minLength: 8)
           Image(
             systemName: isAdvancedSettingsExpanded
@@ -367,28 +379,46 @@ extension AIChatContextInspectorView {
         .contentShape(Rectangle())
       }
       .buttonStyle(.plain)
-      .accessibilityValue(isAdvancedSettingsExpanded ? "已展开" : "已折叠")
+      .accessibilityLabel(String(localized: "上下文与来源"))
+      .accessibilityValue(
+        AIChatInspectorDensityPresentation.disclosureAccessibilityValue(
+          configuration: densityConfiguration,
+          compactSummary: compactSummary
+        )
+      )
+      .accessibilityHint("展开后可查看完整来源、设置和快捷提示。")
+      .accessibilityIdentifier("ai-assistant-context-disclosure")
 
-      ScrollView(.horizontal, showsIndicators: false) {
-        HStack(spacing: 6) {
-          ForEach(Array(inspectorContextSourceItems.enumerated()), id: \.offset) { _, item in
-            contextSourceChip(title: item.title, systemImage: item.systemImage)
-          }
-        }
-      }
-
-      if isAdvancedSettingsExpanded {
+      if densityConfiguration.sourcePresentation == .fullChips {
         Divider()
 
-        HStack(spacing: 6) {
-          Text(String(localized: "选择本次发送给 AI 的额外上下文"))
-            .font(.caption)
-            .foregroundStyle(.secondary)
-          Spacer(minLength: 8)
-          assistantOptionsMenu
+        ScrollView(.horizontal, showsIndicators: false) {
+          HStack(spacing: 6) {
+            ForEach(Array(inspectorContextSourceItems.enumerated()), id: \.offset) { _, item in
+              contextSourceChip(title: item.title, systemImage: item.systemImage)
+            }
+          }
         }
 
-        quickActionChips
+        if densityConfiguration.quickActionPresentation == .menu {
+          ViewThatFits(in: .horizontal) {
+            HStack(spacing: 8) {
+              Text(String(localized: "选择本次发送给 AI 的额外上下文"))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize()
+              Spacer(minLength: 0)
+              assistantOptionsMenu(compact: false)
+              quickActionsMenu(compact: false)
+            }
+
+            HStack(spacing: 6) {
+              Spacer(minLength: 0)
+              assistantOptionsMenu(compact: true)
+              quickActionsMenu(compact: true)
+            }
+          }
+        }
       }
     }
     .padding(.horizontal, 8)
@@ -453,7 +483,7 @@ extension AIChatContextInspectorView {
     .accessibilityLabel(title)
   }
 
-  var assistantOptionsMenu: some View {
+  func assistantOptionsMenu(compact: Bool = true) -> some View {
     Menu {
       if supportsSelectableReasoningLevel {
         Picker(String(localized: "思考级别"), selection: reasoningLevelBinding) {
@@ -534,9 +564,13 @@ extension AIChatContextInspectorView {
         Label("打开 AI 设置", systemImage: "gearshape")
       }
     } label: {
-      Image(systemName: "gearshape")
-        .frame(width: 28, height: 24)
-        .contentShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
+      if compact {
+        Image(systemName: "gearshape")
+          .frame(width: 28, height: 24)
+          .contentShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
+      } else {
+        Label(String(localized: "设置"), systemImage: "gearshape")
+      }
     }
     .menuStyle(.borderlessButton)
     .menuIndicator(.hidden)
@@ -545,34 +579,37 @@ extension AIChatContextInspectorView {
     .accessibilityLabel("AI 助手设置")
   }
 
-  var quickActionChips: some View {
-    HStack(spacing: 6) {
+  func quickActionsMenu(compact: Bool) -> some View {
+    Menu {
       ForEach(AIPublishingChatQuickAction.allCases) { action in
         Button {
           setInputText(action.localizedPrompt)
           isComposerFocused = true
         } label: {
           Label {
-            Text(action.localizedCompactDisplayNameKey)
+            Text(action.localizedDisplayName)
           } icon: {
             Image(systemName: action.systemImage)
           }
-          .font(.workbenchMetadata.weight(.medium))
-          .lineLimit(1)
-          .minimumScaleFactor(0.72)
-          .padding(.horizontal, 6)
-          .padding(.vertical, 4)
-          .frame(maxWidth: .infinity, alignment: .center)
-          .background(Color.primary.opacity(0.06), in: Capsule())
-          .overlay(Capsule().stroke(Color.primary.opacity(0.12), lineWidth: 1))
         }
-        .buttonStyle(.plain)
-        .frame(maxWidth: .infinity)
         .help(action.localizedDisplayName)
       }
+    } label: {
+      if compact {
+        Image(systemName: "text.badge.plus")
+          .frame(width: 28, height: 24)
+          .contentShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
+      } else {
+        Label(String(localized: "快捷提示"), systemImage: "text.badge.plus")
+      }
     }
-    .padding(.horizontal, 2)
-    .padding(.bottom, 4)
+    .menuStyle(.borderlessButton)
+    .menuIndicator(.hidden)
+    .controlSize(.small)
+    .help(String(localized: "快捷提示"))
+    .accessibilityLabel(String(localized: "快捷提示"))
+    .accessibilityHint("选择后会填入输入框，可修改后再发送。")
+    .accessibilityIdentifier("ai-assistant-quick-actions")
   }
 
   var reasoningLevelBinding: Binding<AIChatReasoningLevel> {
@@ -707,13 +744,21 @@ extension AIChatContextInspectorView {
   }
 
   func openAISettings() {
-    requestedSettingsTabID = SettingsDestination.ai(.connection).id
-    openSettings()
+    SettingsNavigation.present(
+      destination: .ai(.connection),
+      workspaceAction: settingsWorkspaceCommandAction
+    ) {
+      openSettings()
+    }
   }
 
   func openAICredentialsSettings() {
-    requestedSettingsTabID = SettingsDestination.ai(.credentials).id
-    openSettings()
+    SettingsNavigation.present(
+      destination: .ai(.credentials),
+      workspaceAction: settingsWorkspaceCommandAction
+    ) {
+      openSettings()
+    }
   }
 
   var contextModeBinding: Binding<AIPublishingChatContextMode> {
