@@ -25,16 +25,10 @@ extension RepositoryWorkspaceView {
   }
 
   var repositoryPrimaryActions: some View {
-    VStack(alignment: .leading, spacing: 12) {
-      VStack(alignment: .leading, spacing: 3) {
-        Text("常用操作")
-          .font(.workbenchSectionTitle)
-          .accessibilityAddTraits(.isHeader)
-        Text("仓库管理入口集中在这里；实际写入和线上发布在下一步卡片或统一发布流程中确认。")
-          .font(.callout)
-          .foregroundStyle(.secondary)
-      }
-
+    WorkbenchSectionGroup(
+      "常用操作",
+      detail: "仓库管理入口集中在这里；实际写入和线上发布在下一步或统一发布流程中确认。"
+    ) {
       LazyVGrid(
         columns: [GridItem(.adaptive(minimum: 150, maximum: 230), spacing: 10)],
         alignment: .leading,
@@ -135,11 +129,6 @@ extension RepositoryWorkspaceView {
       }
       .controlSize(.regular)
     }
-    .padding(14)
-    .background(
-      WorkbenchBackgroundStyle.card,
-      in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
-    )
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("repository-primary-actions")
   }
@@ -222,21 +211,9 @@ extension RepositoryWorkspaceView {
     systemImage: String,
     identifier: String
   ) -> some View {
-    VStack(alignment: .leading, spacing: 8) {
-      Label(title, systemImage: systemImage)
-        .font(.headline)
-        .accessibilityAddTraits(.isHeader)
-      Text(detail)
-        .font(.callout)
-        .foregroundStyle(.secondary)
-        .fixedSize(horizontal: false, vertical: true)
+    WorkbenchSectionGroup(title, detail: detail, systemImage: systemImage) {
+      EmptyView()
     }
-    .padding(14)
-    .frame(maxWidth: .infinity, alignment: .leading)
-    .background(
-      WorkbenchBackgroundStyle.card,
-      in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
-    )
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier(identifier)
   }
@@ -248,7 +225,7 @@ extension RepositoryWorkspaceView {
         title: "先选择站点文件夹",
         detail: "请选择保存网站文章和图片的文件夹。",
         systemImage: "externaldrive.badge.questionmark",
-        tint: WorkbenchTheme.warning,
+        tint: .secondary,
         actionTitle: "选择站点文件夹",
         action: chooseRepository
       )
@@ -268,6 +245,7 @@ extension RepositoryWorkspaceView {
         detail: "请先在三栏合并视图中明确编辑最终版本并暂存，避免覆盖本地或远程内容。",
         systemImage: "arrow.left.arrow.right.square",
         tint: WorkbenchTheme.risk,
+        isExceptional: true,
         actionTitle: "查看冲突",
         action: { stage = .changes }
       )
@@ -278,6 +256,7 @@ extension RepositoryWorkspaceView {
         detail: LocalizedStringKey(issue.message),
         systemImage: "xmark.octagon",
         tint: WorkbenchTheme.risk,
+        isExceptional: true,
         actionTitle: "打开发布规则",
         action: openPublishingRulesSettings
       )
@@ -287,6 +266,7 @@ extension RepositoryWorkspaceView {
         detail: "先查看这些更新，避免覆盖其他设备或网站上的新内容。",
         systemImage: "arrow.down.doc",
         tint: WorkbenchTheme.warning,
+        isExceptional: true,
         actionTitle: "查看文件变更",
         action: { stage = .changes }
       )
@@ -296,6 +276,7 @@ extension RepositoryWorkspaceView {
         detail: "可以先确认变化内容，再决定保存到本地或发布上线。",
         systemImage: "arrow.triangle.2.circlepath",
         tint: WorkbenchTheme.warning,
+        isExceptional: true,
         actionTitle: "查看文件变更",
         action: { stage = .changes }
       )
@@ -316,6 +297,7 @@ extension RepositoryWorkspaceView {
         detail: "先处理文章检查结果，再写入或线上发布。",
         systemImage: "checklist",
         tint: WorkbenchTheme.risk,
+        isExceptional: true,
         actionTitle: "查看检查",
         action: { _ = store.focusDraft(draft.id, section: .contentHealth) }
       )
@@ -324,7 +306,7 @@ extension RepositoryWorkspaceView {
         title: "可以继续保存或发布",
         detail: "打开发布流程后，只需选择“保存到本地”或“发布上线”。",
         systemImage: "paperplane",
-        tint: WorkbenchTheme.success,
+        tint: .secondary,
         actionTitle: "打开发布",
         action: openUnifiedPublishFlow
       )
@@ -341,32 +323,25 @@ extension RepositoryWorkspaceView {
   }
 
   var repositoryGettingStartedGuide: some View {
-    VStack(alignment: .leading, spacing: 14) {
-      Text("第一次使用，只需三步")
-        .font(.workbenchSectionTitle)
-
+    WorkbenchSectionGroup("第一次使用，只需三步", systemImage: "list.number") {
       repositoryOnboardingStep(
         number: 1,
         title: "选择站点文件夹",
         detail: "选择保存网站文章和图片的文件夹。"
       )
+      Divider()
       repositoryOnboardingStep(
         number: 2,
         title: "检查文件变化",
         detail: "软件会读取同步状态，不会自动修改文件。"
       )
+      Divider()
       repositoryOnboardingStep(
         number: 3,
         title: "保存或发布",
         detail: "选择文章后，可以只保存到本地，也可以直接发布上线。"
       )
     }
-    .padding(16)
-    .frame(maxWidth: .infinity, alignment: .leading)
-    .background(
-      WorkbenchBackgroundStyle.card,
-      in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
-    )
   }
 
   var repositoryScanRequiredState: some View {
@@ -409,12 +384,7 @@ extension RepositoryWorkspaceView {
         Task { await store.repository.scanAsync() }
       }
     )
-    .padding(16)
     .frame(maxWidth: .infinity, alignment: .leading)
-    .background(
-      WorkbenchBackgroundStyle.card,
-      in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
-    )
   }
 
   func openUnifiedPublishFlow() {
@@ -436,6 +406,7 @@ extension RepositoryWorkspaceView {
     detail: LocalizedStringKey,
     systemImage: String,
     tint: Color,
+    isExceptional: Bool = false,
     actionTitle: LocalizedStringKey,
     action: @escaping () -> Void
   ) -> some View {
@@ -476,8 +447,12 @@ extension RepositoryWorkspaceView {
         }
       }
     }
-    .padding(16)
-    .background(tint.opacity(WorkbenchOpacity.warningBackground), in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
+    .padding(.vertical, WorkbenchSpacing.control)
+    .padding(.horizontal, isExceptional ? WorkbenchSpacing.control : 0)
+    .background(
+      isExceptional ? tint.opacity(WorkbenchOpacity.warningBackground) : .clear,
+      in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
+    )
     .accessibilityElement(children: .contain)
     .accessibilityLabel("当前状态和下一步")
   }
@@ -536,8 +511,8 @@ extension RepositoryWorkspaceView {
         }
         .controlSize(.small)
       }
-      .padding(12)
-      .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
+      .padding(.vertical, WorkbenchSpacing.control)
+      .overlay(alignment: .bottom) { Divider() }
     } else if store.repository.scanState.finishedAt != nil {
       Label(store.repository.scanState.message, systemImage: "checkmark.circle")
         .font(.caption)
@@ -561,14 +536,14 @@ extension RepositoryWorkspaceView {
             .foregroundStyle(.secondary)
         }
 
+        Divider()
+
         LazyVGrid(columns: repositoryMetricGridColumns, spacing: 10) {
           MetricTile(title: "本地变化", value: "\(report.changedFiles.count)", systemImage: "desktopcomputer")
           MetricTile(title: "网站更新", value: "\(report.remoteChangedFiles.count)", systemImage: "arrow.down.doc")
           MetricTile(title: "需要处理", value: "\(blockingIssueCount)", systemImage: blockingIssueCount == 0 ? "checkmark.circle" : "exclamationmark.triangle")
         }
       }
-      .padding(14)
-      .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
       .accessibilityElement(children: .contain)
       .accessibilityIdentifier("repository-section-summary")
     } else {
@@ -604,6 +579,8 @@ extension RepositoryWorkspaceView {
           .foregroundStyle(.secondary)
       }
 
+      Divider()
+
       Label(summary.preflightTitle, systemImage: summary.preflightSystemImage)
         .font(.callout)
         .foregroundStyle(
@@ -627,12 +604,7 @@ extension RepositoryWorkspaceView {
         .foregroundStyle(.secondary)
         .fixedSize(horizontal: false, vertical: true)
     }
-    .padding(14)
     .frame(maxWidth: .infinity, alignment: .leading)
-    .background(
-      WorkbenchBackgroundStyle.card,
-      in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
-    )
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("repository-section-publish-readiness")
   }
@@ -658,6 +630,8 @@ extension RepositoryWorkspaceView {
         Label("仓库信息", systemImage: "externaldrive")
           .font(.workbenchSectionTitle)
           .accessibilityAddTraits(.isHeader)
+
+        Divider()
 
         let rootDisplayText = repositoryRootDisplayText(for: report)
         Text(rootDisplayText)
@@ -717,8 +691,6 @@ extension RepositoryWorkspaceView {
         }
       }
       .font(.callout)
-      .padding(14)
-      .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
       .accessibilityElement(children: .contain)
       .accessibilityIdentifier("repository-section-information")
     }
@@ -741,6 +713,8 @@ extension RepositoryWorkspaceView {
           .font(.workbenchSectionTitle)
           .accessibilityAddTraits(.isHeader)
 
+        Divider()
+
         ForEach(report.preflightIssues) { issue in
           HStack(alignment: .top, spacing: 8) {
             Image(systemName: issue.severity.publishDrawerSystemImage)
@@ -757,9 +731,7 @@ extension RepositoryWorkspaceView {
           }
         }
       }
-      .padding(14)
       .frame(maxWidth: .infinity, alignment: .leading)
-      .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
       .accessibilityElement(children: .contain)
       .accessibilityIdentifier("repository-section-problems")
     }
@@ -773,9 +745,9 @@ extension RepositoryWorkspaceView {
     HStack(alignment: .top, spacing: 12) {
       Text("\(number)")
         .font(.caption.weight(.bold))
-        .foregroundStyle(.white)
+        .foregroundStyle(.primary)
         .frame(width: 24, height: 24)
-        .background(WorkbenchTheme.navigationSelection, in: Circle())
+        .background(WorkbenchBackgroundStyle.control, in: Circle())
         .accessibilityLabel("第 \(number) 步")
       VStack(alignment: .leading, spacing: 2) {
         Text(title)

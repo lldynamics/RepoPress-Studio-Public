@@ -43,6 +43,7 @@ docs/release-evidence/snapshots/
 *.log
 *.dump
 *.har
+*.profraw
 *.xcarchive
 *.dSYM
 *.dmg

@@ -38,31 +38,31 @@ struct ContentHealthDetailView: View {
 
   var body: some View {
     detailContent
-    .task {
-      refreshContentHealthSnapshotIfNeeded()
-    }
-    .onChange(of: healthState.snapshotVersion) { _, _ in
-      refreshContentHealthSnapshot()
-    }
-    .onChange(of: filter) { _, newFilter in
-      applyPreferredGrouping(for: newFilter)
-      rebuildArticlePresentation()
-      refreshContentHealthSnapshotIfNeeded()
-    }
-    .onChange(of: severityFilter) { _, _ in
-      rebuildArticlePresentation()
-    }
-    .onDisappear {
-      cancelContentHealthWork(showsCancelledState: false)
-    }
-    .sheet(item: $aiFixResultPreview) { preview in
-      ContentHealthAIFixResultPreviewSheet(preview: preview) { selectedFields in
-        applySelectedAIFixFields(selectedFields, for: preview)
+      .task {
+        refreshContentHealthSnapshotIfNeeded()
       }
-    }
-    .accessibilityElement(children: .contain)
-    .accessibilityLabel("内容健康")
-    .accessibilityIdentifier("content-health-workspace")
+      .onChange(of: healthState.snapshotVersion) { _, _ in
+        refreshContentHealthSnapshot()
+      }
+      .onChange(of: filter) { _, newFilter in
+        applyPreferredGrouping(for: newFilter)
+        rebuildArticlePresentation()
+        refreshContentHealthSnapshotIfNeeded()
+      }
+      .onChange(of: severityFilter) { _, _ in
+        rebuildArticlePresentation()
+      }
+      .onDisappear {
+        cancelContentHealthWork(showsCancelledState: false)
+      }
+      .sheet(item: $aiFixResultPreview) { preview in
+        ContentHealthAIFixResultPreviewSheet(preview: preview) { selectedFields in
+          applySelectedAIFixFields(selectedFields, for: preview)
+        }
+      }
+      .accessibilityElement(children: .contain)
+      .accessibilityLabel("内容健康")
+      .accessibilityIdentifier("content-health-workspace")
   }
 
   private func applyPreferredGrouping(for newFilter: ContentHealthContextFilter) {
@@ -116,12 +116,13 @@ struct ContentHealthDetailView: View {
     } else if wasHealthSnapshotCancelled {
       snapshotCancelledState
     } else if let snapshot = healthSnapshot,
-              let presentation = articlePresentation,
-              presentation.matches(
-                snapshotID: snapshot.id,
-                filter: filter,
-                severityFilter: severityFilter
-              ) {
+      let presentation = articlePresentation,
+      presentation.matches(
+        snapshotID: snapshot.id,
+        filter: filter,
+        severityFilter: severityFilter
+      )
+    {
       content(
         snapshot,
         presentation: presentation,
@@ -324,17 +325,19 @@ struct ContentHealthDetailView: View {
           severityFilter: expectedSeverityFilter
         )
         guard !Task.isCancelled,
-              articlePresentationRequestID == requestID,
-              self.healthSnapshot?.id == expectedSnapshotID,
-              filter == expectedFilter,
-              severityFilter == expectedSeverityFilter else { return }
+          articlePresentationRequestID == requestID,
+          self.healthSnapshot?.id == expectedSnapshotID,
+          filter == expectedFilter,
+          severityFilter == expectedSeverityFilter
+        else { return }
         articlePresentation = presentation
         articlePresentationTask = nil
       } catch is CancellationError {
         return
       } catch {
         guard !Task.isCancelled,
-              articlePresentationRequestID == requestID else { return }
+          articlePresentationRequestID == requestID
+        else { return }
         articlePresentationTask = nil
         healthSnapshotErrorMessage = error.localizedDescription
       }
@@ -362,10 +365,11 @@ struct ContentHealthDetailView: View {
           report: report
         )
         guard !Task.isCancelled,
-              healthSnapshotRequestID == requestID,
-              healthState.snapshotVersion == expectedVersion,
-              snapshot.profileID == expectedProfileID,
-              store.activeProfile.id == expectedProfileID else { return }
+          healthSnapshotRequestID == requestID,
+          healthState.snapshotVersion == expectedVersion,
+          snapshot.profileID == expectedProfileID,
+          store.activeProfile.id == expectedProfileID
+        else { return }
         healthSnapshot = snapshot
         sidebarProjection.replace(
           profileID: snapshot.profileID,
@@ -383,9 +387,10 @@ struct ContentHealthDetailView: View {
         return
       } catch {
         guard !Task.isCancelled,
-              healthSnapshotRequestID == requestID,
-              healthState.snapshotVersion == expectedVersion,
-              store.activeProfile.id == expectedProfileID else { return }
+          healthSnapshotRequestID == requestID,
+          healthState.snapshotVersion == expectedVersion,
+          store.activeProfile.id == expectedProfileID
+        else { return }
         healthSnapshot = nil
         articlePresentationTask?.cancel()
         articlePresentationTask = nil
@@ -556,7 +561,8 @@ struct ContentHealthDetailView: View {
     _ presentation: ContentHealthArticlePresentation
   ) -> some View {
     if articleGrouping == .actionQueue,
-       let row = nextActionQueueRow(in: presentation.actionQueue) {
+      let row = nextActionQueueRow(in: presentation.actionQueue)
+    {
       let recommendationTitle = "推荐：处理 \(row.draftTitle)"
       Button {
         selectedHealthDraftID = row.draftID
@@ -733,16 +739,20 @@ struct ContentHealthDetailView: View {
       if !impact.conflictingAliasRoutes.isEmpty {
         VStack(alignment: .leading, spacing: 6) {
           AccessibleStatusMessage(
-            message: "旧地址与其他文章冲突，不能写入 aliases：\(impact.conflictingAliasRoutes.joined(separator: "、"))",
+            message:
+              "旧地址与其他文章冲突，不能写入 aliases：\(impact.conflictingAliasRoutes.joined(separator: "、"))",
             severity: .error
           )
 
-          let conflicts = conflictingDrafts(for: impact.conflictingAliasRoutes, targetDraftID: impact.targetDraftID)
+          let conflicts = conflictingDrafts(
+            for: impact.conflictingAliasRoutes, targetDraftID: impact.targetDraftID)
           ForEach(conflicts) { draft in
             Button {
               _ = store.focusDraft(draft.id, section: .writing)
             } label: {
-              Label("查看冲突文章：《\(draft.title.nilIfEmpty ?? draft.slug)》", systemImage: "arrow.right.circle")
+              Label(
+                "查看冲突文章：《\(draft.title.nilIfEmpty ?? draft.slug)》",
+                systemImage: "arrow.right.circle")
             }
             .buttonStyle(.link)
             .font(.caption)
@@ -767,11 +777,13 @@ struct ContentHealthDetailView: View {
     in presentation: ContentHealthArticlePresentation
   ) -> ContentHealthArticleRowModel? {
     if let selectedHealthDraftID,
-       let selected = presentation.rowByDraftID[selectedHealthDraftID] {
+      let selected = presentation.rowByDraftID[selectedHealthDraftID]
+    {
       return selected
     }
     if let selectedDraftID = store.selectedDraftID,
-       let selected = presentation.rowByDraftID[selectedDraftID] {
+      let selected = presentation.rowByDraftID[selectedDraftID]
+    {
       return selected
     }
     if articleGrouping == .actionQueue {
@@ -871,8 +883,9 @@ struct ContentHealthDetailView: View {
               }
 
               if group.kind == .automaticFix,
-                 group.rows.isEmpty,
-                 group.prioritizedCount > 0 {
+                group.rows.isEmpty,
+                group.prioritizedCount > 0
+              {
                 let prioritizedMessage = String.localizedStringWithFormat(
                   String(localized: "%@ 项已进入更高优先级队列，并标记为 AI 可修复。"),
                   "\(group.prioritizedCount)"
@@ -896,7 +909,8 @@ struct ContentHealthDetailView: View {
 
     }
     .padding(14)
-    .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
+    .background(
+      WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
   }
 
   @ViewBuilder
@@ -999,7 +1013,8 @@ struct ContentHealthDetailView: View {
     in group: ContentHealthArticleGroup
   ) -> [ContentHealthArticleRowModel] {
     guard group.kind.isActionQueue,
-          !expandedActionQueueGroupIDs.contains(group.id) else {
+      !expandedActionQueueGroupIDs.contains(group.id)
+    else {
       return group.rows
     }
     return Array(group.rows.prefix(ContentHealthActionQueue.highestRiskLimit))
@@ -1019,12 +1034,10 @@ struct ContentHealthDetailView: View {
             ? String(localized: "收起")
             : String(localized: "显示全部")
         ) {
-          withAnimation(WorkbenchMotion.standard) {
-            if expandedActionQueueGroupIDs.contains(group.id) {
-              expandedActionQueueGroupIDs.remove(group.id)
-            } else {
-              expandedActionQueueGroupIDs.insert(group.id)
-            }
+          if expandedActionQueueGroupIDs.contains(group.id) {
+            expandedActionQueueGroupIDs.remove(group.id)
+          } else {
+            expandedActionQueueGroupIDs.insert(group.id)
           }
         }
         .buttonStyle(.borderless)
@@ -1033,7 +1046,8 @@ struct ContentHealthDetailView: View {
     }
 
     if group.kind == .automaticFix,
-       group.totalCount > group.rows.count {
+      group.totalCount > group.rows.count
+    {
       Button {
         filter = .aiFixes
         articleGrouping = .automaticFix
@@ -1050,7 +1064,8 @@ struct ContentHealthDetailView: View {
     return store.publishing.visibleDrafts.filter { draft in
       guard draft.id != targetDraftID, !draft.isGeneralDraft else { return false }
       let slug = draft.slug.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-      let aliases = Set(draft.aliases.map { $0.trimmingCharacters(in: CharacterSet(charactersIn: "/")) })
+      let aliases = Set(
+        draft.aliases.map { $0.trimmingCharacters(in: CharacterSet(charactersIn: "/")) })
       return normalized.contains(slug) || !aliases.isDisjoint(with: normalized)
     }
   }
@@ -1060,7 +1075,8 @@ struct ContentHealthDetailView: View {
     for preview: ContentHealthAIFixResultPreview
   ) {
     guard let draftID = preview.draftID,
-          var draft = store.publishing.visibleDrafts.first(where: { $0.id == draftID }) else {
+      var draft = store.publishing.visibleDrafts.first(where: { $0.id == draftID })
+    else {
       return
     }
 
@@ -1088,9 +1104,7 @@ struct ContentHealthDetailView: View {
 }
 
 private struct ContentHealthSkeletonLoadingView: View {
-  @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
   let cancel: () -> Void
-  @State private var phase: Double = 0
 
   var body: some View {
     VStack(alignment: .leading, spacing: 16) {
@@ -1167,21 +1181,6 @@ private struct ContentHealthSkeletonLoadingView: View {
     }
     .padding(WorkbenchSpacing.card)
     .frame(maxWidth: .infinity, minHeight: 360, alignment: .leading)
-    .opacity(accessibilityReduceMotion ? 1 : (phase == 0 ? 0.6 : 1.0))
-    .onAppear {
-      guard !accessibilityReduceMotion else {
-        phase = 1
-        return
-      }
-      withAnimation(Animation.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) {
-        phase = 1.0
-      }
-    }
-    .onChange(of: accessibilityReduceMotion) { _, reduceMotion in
-      if reduceMotion {
-        phase = 1
-      }
-    }
     .accessibilityElement(children: .contain)
     .accessibilityLabel("正在生成内容健康快照，进度未知")
   }

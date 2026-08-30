@@ -23,12 +23,9 @@ extension LocalRepositoryService {
 
     let parsedStatus = GitRepositoryOutputParser().parsePorcelainV1Status(output)
     let branchStatus = parsedStatus.branchStatus
-    var changedFiles: [RepositoryChangedFile] = []
-    for file in parsedStatus.changedFiles {
-      var changedFile = file
-      changedFile.lineDiff = diffForChangedFile(changedFile, rootURL: rootURL)
-      changedFiles.append(changedFile)
-    }
+    // Status is a summary path.  Do not launch one diff process per file;
+    // callers that need a patch load it explicitly through the detail API.
+    let changedFiles = parsedStatus.changedFiles
 
     let remoteChangedFiles = branchStatus?.upstreamName.flatMap {
       self.remoteChangedFiles(rootURL: rootURL, upstreamName: $0)
@@ -50,13 +47,9 @@ extension LocalRepositoryService {
       return []
     }
 
-    return GitRepositoryOutputParser().parseNameStatus(output).map { file in
-      var changedFile = file
-      if let arguments = plan.fileDiffArguments(for: file) {
-        changedFile.lineDiff = runGitDiff(arguments, rootURL: rootURL)
-      }
-      return changedFile
-    }
+    // Keep remoteChangedFiles cheap as well.  The name/status batch is the
+    // summary; line-level diffs remain opt-in via the existing policy plan.
+    return GitRepositoryOutputParser().parseNameStatus(output)
   }
 
   func remoteFileSnapshot(

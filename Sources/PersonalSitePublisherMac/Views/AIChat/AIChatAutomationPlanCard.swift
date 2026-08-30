@@ -622,44 +622,17 @@ private struct AutomationDraftPreviewItem: Identifiable {
 
 private struct AutomationStepStatusIndicator: View {
   let status: WorkbenchAutomationStepStatus
-  @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
-  @State private var isBreathing = false
 
   var body: some View {
     ZStack {
-      if status == .running {
-        Circle()
-          .fill(WorkbenchTheme.primary.opacity(isBreathing ? 0.32 : 0.08))
-          .scaleEffect(isBreathing ? 1.35 : 0.95)
-        Circle()
-          .stroke(WorkbenchTheme.primary.opacity(isBreathing ? 0.55 : 0.15), lineWidth: 1.5)
-          .scaleEffect(isBreathing ? 1.22 : 1.0)
-      }
-
       Circle()
         .fill(stepStatusColor.opacity(status == .running ? 0.22 : 0.14))
 
       Image(systemName: stepStatusSystemImage)
         .font(.caption.weight(.semibold))
         .foregroundStyle(stepStatusColor)
-        .symbolEffect(.pulse, isActive: status == .running && !accessibilityReduceMotion)
     }
     .frame(width: 25, height: 25)
-    .onAppear {
-      guard status == .running, !accessibilityReduceMotion else { return }
-      withAnimation(WorkbenchMotion.ambientPulse) {
-        isBreathing = true
-      }
-    }
-    .onChange(of: status) { _, newStatus in
-      if newStatus == .running && !accessibilityReduceMotion {
-        withAnimation(WorkbenchMotion.ambientPulse) {
-          isBreathing = true
-        }
-      } else {
-        isBreathing = false
-      }
-    }
   }
 
   private var stepStatusSystemImage: String {

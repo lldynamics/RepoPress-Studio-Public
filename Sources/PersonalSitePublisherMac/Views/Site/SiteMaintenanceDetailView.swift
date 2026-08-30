@@ -83,21 +83,18 @@ struct SiteMaintenanceDetailView: View {
   }
 
   private func maintenanceRefreshFailure(_ message: String) -> some View {
-    HStack(alignment: .top, spacing: 10) {
-      Image(systemName: "exclamationmark.triangle")
-        .foregroundStyle(WorkbenchTheme.risk)
-      VStack(alignment: .leading, spacing: 3) {
-        Text("维护报告刷新失败")
-          .font(.callout.weight(.semibold))
-        Text(message)
-          .font(.caption)
-          .foregroundStyle(.secondary)
-          .textSelection(.enabled)
-      }
-      Spacer()
-      Button("重试", action: refreshMaintenanceSnapshot)
-        .disabled(maintenanceState.isRefreshing)
-    }
+    WorkbenchStateView(
+      presentation: WorkbenchStatePresentation(kind: .failure(reason: message)),
+      density: .inline,
+      actions: WorkbenchStateActions(
+        primary: WorkbenchStateAction(
+          title: "重试",
+          systemImage: "arrow.clockwise",
+          isEnabled: !maintenanceState.isRefreshing,
+          action: refreshMaintenanceSnapshot
+        )
+      )
+    )
     .padding(10)
     .background(
       WorkbenchTheme.risk.opacity(WorkbenchOpacity.warningBackground),

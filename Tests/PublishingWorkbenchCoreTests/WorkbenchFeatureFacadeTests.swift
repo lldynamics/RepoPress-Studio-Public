@@ -50,12 +50,17 @@ final class WorkbenchFeatureFacadeTests: XCTestCase {
     XCTAssertTrue(store.siteMaintenance === store.siteMaintenance)
   }
 
-  func testDraftListStoreIgnoresBodyAutosaveAndDelayedPreflight() async throws {
+  func testDraftListStoreIgnoresBodyAutosaveButPublishesDelayedPreflightTaskState() async throws {
     // Keep startup refreshes out of the notification baseline; this test
     // exercises the explicitly scheduled post-autosave preflight below.
     let store = makeIsolatedStore(safeMode: true)
     let draft = try XCTUnwrap(store.selectedDraft)
     let draftList = store.draftList
+    // Warm the unrelated site-link audit before observing body-only changes.
+    _ = store.draftTaskQueueStates(for: store.drafts)
+    if let siteLinkAuditRefreshTask = store.siteLinkAuditRefreshTask {
+      _ = await siteLinkAuditRefreshTask.value
+    }
     let initialPresentationRevision = draftList.presentationRevision
     let initialTaskQueueStateVersion = draftList.taskQueueStateVersion
     let initialEditorMetadataRevision = draft.editorMetadataRevision
@@ -78,13 +83,15 @@ final class WorkbenchFeatureFacadeTests: XCTestCase {
     _ = draftList.searchIndex(for: .activeSite)
     XCTAssertEqual(draftList.searchIndexBuildCount, 1)
 
-    // The normal automatic preflight is delayed by 600ms. Give it enough time
-    // to run and prove that its derived-cache invalidation does not flow back
-    // into the list boundary either.
+    // The normal automatic preflight is delayed by 600ms. It must refresh the
+    // list's task-state badges once, without rebuilding presentation/search
+    // projections that body autosave deliberately leaves untouched.
     try await Task.sleep(for: .milliseconds(900))
     XCTAssertEqual(draftList.presentationRevision, initialPresentationRevision)
-    XCTAssertEqual(draftList.taskQueueStateVersion, initialTaskQueueStateVersion)
-    XCTAssertEqual(listChanges, 0)
+    XCTAssertEqual(draftList.taskQueueStateVersion, initialTaskQueueStateVersion + 1)
+    _ = draftList.searchIndex(for: .activeSite)
+    XCTAssertEqual(draftList.searchIndexBuildCount, 1)
+    XCTAssertEqual(listChanges, 1)
     withExtendedLifetime(cancellable) {}
   }
 
@@ -173,6 +180,39 @@ final class WorkbenchFeatureFacadeTests: XCTestCase {
     }
 
     XCTAssertGreaterThan(draftList.taskQueueStateVersion, initialTaskQueueStateVersion)
+  }
+
+  func testDraftListMetadataEditPublishesAndRebuildsOnlyOnceAcrossDelayedPreflight()
+    async throws
+  {
+    let store = makeIsolatedStore(safeMode: true)
+    let draft = try XCTUnwrap(store.selectedDraft)
+    let draftList = store.draftList
+    // Seed the projection fingerprint outside the assertion window.
+    store.setDrafts(store.drafts)
+    _ = draftList.searchIndex(for: .activeSite)
+    let initialRevision = draftList.presentationRevision
+    let initialBuildCount = draftList.searchIndexBuildCount
+    var changes = 0
+    let cancellable = draftList.objectWillChange.sink { changes += 1 }
+
+    var renamed = draft
+    renamed.title = "一次元数据变更"
+    store.updateDraft(renamed)
+
+    XCTAssertEqual(draftList.presentationRevision, initialRevision + 1)
+    _ = draftList.searchIndex(for: .activeSite)
+    XCTAssertEqual(draftList.searchIndexBuildCount, initialBuildCount + 1)
+
+    if let preflightRefreshTask = store.preflightRefreshTask {
+      await preflightRefreshTask.value
+    }
+
+    XCTAssertEqual(draftList.presentationRevision, initialRevision + 1)
+    XCTAssertEqual(changes, 1)
+    _ = draftList.searchIndex(for: .activeSite)
+    XCTAssertEqual(draftList.searchIndexBuildCount, initialBuildCount + 1)
+    withExtendedLifetime(cancellable) {}
   }
 
   func testDraftListPrivacyMaskSettingsInvalidateItsOwnBoundary() {

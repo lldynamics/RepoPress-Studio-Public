@@ -259,7 +259,9 @@ public struct BatchPublishPlanService: Sendable {
         profile: profile,
         repositoryReport: repositoryReport
       )
-      issues.append(contentsOf: remotePublishRiskService.issues(package: package, repositoryReport: repositoryReport))
+      issues.append(
+        contentsOf: remotePublishRiskService.issues(
+          package: package, repositoryReport: repositoryReport))
 
       return BatchPublishPlanItem(
         draftID: draft.id,
@@ -301,13 +303,19 @@ public struct BatchPublishPlanService: Sendable {
     var conflictsByItemIndex: [Int: Set<String>] = [:]
     for (path, occurrences) in occurrencesByPath where occurrences.count > 1 {
       guard let first = occurrences.first else { continue }
+      let ownerCount = Set(occurrences.map(\.itemIndex)).count
+      let hasCrossDraftMarkdownOwnership =
+        ownerCount > 1
+        && occurrences.contains { $0.file.kind == .markdown }
       let payloadsMatch = occurrences.dropFirst().allSatisfy {
         publishFilesHaveEquivalentPayload(first.file, $0.file)
       }
       let expectedVersions = Set(
         occurrences.compactMap { $0.file.expectedRemoteSHA?.trimmedForPublishing.nilIfEmpty }
       )
-      guard !payloadsMatch || expectedVersions.count > 1 else { continue }
+      guard hasCrossDraftMarkdownOwnership || !payloadsMatch || expectedVersions.count > 1 else {
+        continue
+      }
       for occurrence in occurrences {
         conflictsByItemIndex[occurrence.itemIndex, default: []].insert(path)
       }
@@ -341,7 +349,8 @@ public struct BatchPublishPlanService: Sendable {
       return lhs.content == rhs.content
     case .image, .video:
       guard let lhsPath = lhs.sourceFilePath?.nilIfEmpty,
-            let rhsPath = rhs.sourceFilePath?.nilIfEmpty else {
+        let rhsPath = rhs.sourceFilePath?.nilIfEmpty
+      else {
         return false
       }
       let lhsURL = URL(fileURLWithPath: lhsPath).standardizedFileURL
@@ -389,20 +398,100 @@ public struct BatchPublishPlanService: Sendable {
   }
 }
 
-func deduplicatedBatchPublishFiles(_ files: [PublishPackageFile]) -> [PublishPackageFile] {
+/// Produces the exact file manifest used by one batch publish. Duplicate
+/// repository paths are accepted only when the operation, payload identity,
+/// and every available remote baseline agree. Any ambiguity fails closed so
+/// an upsert can never silently replace a delete (or vice versa).
+func validatedBatchPublishFiles(_ files: [PublishPackageFile]) -> [PublishPackageFile]? {
   var result: [PublishPackageFile] = []
   var indexByPath: [String: Int] = [:]
   for file in files {
     let path = file.repositoryPath.normalizedRelativePath()
+    guard !path.isEmpty else { return nil }
     guard let existingIndex = indexByPath[path] else {
       indexByPath[path] = result.count
-      result.append(file)
+      var normalizedFile = file
+      normalizedFile.repositoryPath = path
+      result.append(normalizedFile)
       continue
     }
-    if result[existingIndex].expectedRemoteSHA?.trimmedForPublishing.nilIfEmpty == nil,
-       let expectedRemoteSHA = file.expectedRemoteSHA?.trimmedForPublishing.nilIfEmpty {
-      result[existingIndex].expectedRemoteSHA = expectedRemoteSHA
+
+    let existing = result[existingIndex]
+    guard existing.kind == file.kind,
+      existing.operation == file.operation,
+      batchPublishFilesHaveCompatiblePayload(existing, file),
+      batchPublishEvidenceIsCompatible(existing.expectedRemoteSHA, file.expectedRemoteSHA),
+      batchPublishEvidenceIsCompatible(
+        existing.expectedContentSHA256,
+        file.expectedContentSHA256
+      ),
+      batchPublishEvidenceIsCompatible(existing.expectedGitBlobSHA, file.expectedGitBlobSHA)
+    else {
+      return nil
+    }
+
+    if existing.expectedRemoteSHA?.trimmedForPublishing.nilIfEmpty == nil {
+      result[existingIndex].expectedRemoteSHA =
+        file.expectedRemoteSHA?.trimmedForPublishing.nilIfEmpty
+    }
+    if existing.expectedContentSHA256?.trimmedForPublishing.nilIfEmpty == nil {
+      result[existingIndex].expectedContentSHA256 =
+        file.expectedContentSHA256?.trimmedForPublishing.nilIfEmpty
+    }
+    if existing.expectedGitBlobSHA?.trimmedForPublishing.nilIfEmpty == nil {
+      result[existingIndex].expectedGitBlobSHA =
+        file.expectedGitBlobSHA?.trimmedForPublishing.nilIfEmpty
     }
   }
   return result
+}
+
+func deduplicatedBatchPublishFiles(_ files: [PublishPackageFile]) -> [PublishPackageFile] {
+  validatedBatchPublishFiles(files) ?? []
+}
+
+private func batchPublishFilesHaveCompatiblePayload(
+  _ lhs: PublishPackageFile,
+  _ rhs: PublishPackageFile
+) -> Bool {
+  if lhs.operation == .delete { return true }
+  switch lhs.kind {
+  case .markdown:
+    return lhs.content == rhs.content
+  case .image, .video:
+    guard let lhsPath = lhs.sourceFilePath?.trimmedForPublishing.nilIfEmpty,
+      let rhsPath = rhs.sourceFilePath?.trimmedForPublishing.nilIfEmpty
+    else {
+      return false
+    }
+    let lhsURL = URL(fileURLWithPath: lhsPath).standardizedFileURL
+    let rhsURL = URL(fileURLWithPath: rhsPath).standardizedFileURL
+    if lhsURL == rhsURL { return true }
+    if lhs.byteSize > 0, rhs.byteSize > 0, lhs.byteSize != rhs.byteSize {
+      return false
+    }
+    do {
+      let lhsDigest = try BoundedFileReader.sha256(
+        at: lhsURL,
+        maximumByteCount: WorkbenchFileReadLimits.maximumRemoteMediaUploadByteCount
+      )
+      let rhsDigest = try BoundedFileReader.sha256(
+        at: rhsURL,
+        maximumByteCount: WorkbenchFileReadLimits.maximumRemoteMediaUploadByteCount
+      )
+      return lhsDigest == rhsDigest
+    } catch {
+      logger.warning("无法读取文件进行批量清单校验: \(error.localizedDescription, privacy: .public)")
+      return false
+    }
+  }
+}
+
+private func batchPublishEvidenceIsCompatible(_ lhs: String?, _ rhs: String?) -> Bool {
+  guard let lhs = lhs?.trimmedForPublishing.nilIfEmpty,
+    let rhs = rhs?.trimmedForPublishing.nilIfEmpty
+  else {
+    return true
+  }
+  return lhs == rhs
 }

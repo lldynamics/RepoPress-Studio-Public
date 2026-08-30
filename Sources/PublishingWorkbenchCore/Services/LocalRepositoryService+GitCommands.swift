@@ -163,13 +163,55 @@ extension LocalRepositoryService {
       return runGitDiff(arguments, rootURL: rootURL)
     }
 
-    let diffs = plan.argumentsInExecutionOrder.map { arguments in
+    let diffs = relevantLocalDiffArguments(for: file, plan: plan).map { arguments in
       runGitDiff(arguments, rootURL: rootURL)
     }
     let combined = diffs
       .compactMap { $0?.trimmedForPublishing.nilIfEmpty }
       .joined(separator: "\n")
     return limitedDiff(combined)
+  }
+
+  /// A porcelain status describes whether the index (X) and/or working tree
+  /// (Y) has a change. The command policy retains both commands so callers
+  /// with a mixed change can show both patches, but a one-sided change should
+  /// not spend a subprocess merely to obtain an empty diff.
+  private func relevantLocalDiffArguments(
+    for file: RepositoryChangedFile,
+    plan: RepositoryLocalDiffCommandPlan
+  ) -> [[String]] {
+    let commands = plan.argumentsInExecutionOrder
+    guard commands.count == 2 else { return commands }
+
+    let status = Array(file.status)
+    guard status.count >= 2 else { return commands }
+
+    var selected: [[String]] = []
+    if status[0] != " " {
+      selected.append(commands[0])
+    }
+    if status[1] != " " {
+      selected.append(commands[1])
+    }
+    return selected.isEmpty ? commands : selected
+  }
+
+  /// Computes the patch for one already-discovered upstream change.  The
+  /// status scan intentionally only runs the name/status batch; keeping this
+  /// separate makes the potentially expensive per-file process opt-in.
+  func diffForRemoteChangedFile(
+    _ file: RepositoryChangedFile,
+    upstreamName: String,
+    rootURL: URL
+  ) -> String? {
+    guard
+      let plan = RepositoryRemoteDiffCommandPolicy().plan(
+        for: RepositoryRemoteDiffCommandInput(upstreamName: upstreamName)
+      ), let arguments = plan.fileDiffArguments(for: file)
+    else {
+      return nil
+    }
+    return runGitDiff(arguments, rootURL: rootURL)
   }
 
   func runGitDiff(_ arguments: [String], rootURL: URL) -> String? {

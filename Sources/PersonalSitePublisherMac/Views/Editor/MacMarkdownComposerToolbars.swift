@@ -385,7 +385,6 @@ struct MacMarkdownEditorToolbar: View {
           Label("AI 对话", systemImage: "hourglass")
         } else {
           Image(systemName: "hourglass")
-            .symbolEffect(.pulse)
             .accessibilityHidden(true)
         }
       } else {
@@ -743,6 +742,7 @@ private struct MacMarkdownEditorTitleArea: View {
   let draftID: UUID
   let markdownPath: String
   @StateObject private var saveStatus: WorkbenchMarkdownEditorSaveStatusFeatureFacade
+  @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
 
   init(
     title: Binding<String>,
@@ -772,7 +772,13 @@ private struct MacMarkdownEditorTitleArea: View {
       .textFieldStyle(.plain)
       .font(.headline)
       .foregroundStyle(saveStatus.hasUnsavedChanges ? WorkbenchTheme.warning : Color.primary)
-      .animation(.easeInOut(duration: 0.2), value: saveStatus.hasUnsavedChanges)
+      .animation(
+        WorkbenchMotion.animation(
+          for: .statusChange,
+          reduceMotion: accessibilityReduceMotion
+        ),
+        value: saveStatus.hasUnsavedChanges
+      )
       .lineLimit(1)
       .help(title.nilIfEmpty ?? String(localized: "未命名文章"))
       .accessibilityLabel("文章标题")
@@ -795,6 +801,7 @@ private struct MacMarkdownEditorTitleArea: View {
 private struct MacMarkdownEditorSaveStatusIcon: View {
   let draftID: UUID
   @StateObject private var saveStatus: WorkbenchMarkdownEditorSaveStatusFeatureFacade
+  @State private var completionTrigger = 0
 
   init(store: WorkbenchStore, draftID: UUID) {
     self.draftID = draftID
@@ -820,12 +827,15 @@ private struct MacMarkdownEditorSaveStatusIcon: View {
       }
     }
     .frame(width: 18, height: 30)
-    .animation(.spring(response: 0.35, dampingFraction: 0.7), value: saveStatus.hasUnsavedChanges)
+    .workbenchTaskCompletionSymbolEffect(trigger: completionTrigger)
     .help(saveStatus.lastSaveStatus)
     .accessibilityLabel("保存状态")
     .accessibilityValue(saveStatus.lastSaveStatus)
     .onChange(of: draftID) { _, updatedDraftID in
       saveStatus.trackDraft(updatedDraftID)
+    }
+    .onChange(of: saveStatus.saveCompletionRevision) { _, _ in
+      completionTrigger &+= 1
     }
   }
 }

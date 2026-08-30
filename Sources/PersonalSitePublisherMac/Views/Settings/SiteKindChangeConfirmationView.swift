@@ -8,6 +8,8 @@ struct SiteKindChangeConfirmationView: View {
   let confirmAction: () -> Void
 
   var body: some View {
+    let ruleChanges = changes
+
     VStack(spacing: 0) {
       VStack(alignment: .leading, spacing: 6) {
         Label("预览站点类型变化", systemImage: "arrow.left.arrow.right")
@@ -22,7 +24,7 @@ struct SiteKindChangeConfirmationView: View {
 
       ScrollView {
         VStack(alignment: .leading, spacing: 10) {
-          if changes.isEmpty {
+          if ruleChanges.isEmpty {
             Label("当前规则已经与目标站点类型一致。", systemImage: "checkmark.circle")
               .foregroundStyle(.secondary)
           } else {
@@ -36,7 +38,7 @@ struct SiteKindChangeConfirmationView: View {
 
               Divider().gridCellColumns(3)
 
-              ForEach(changes) { change in
+              ForEach(Array(ruleChanges.enumerated()), id: \.element.id) { index, change in
                 GridRow(alignment: .firstTextBaseline) {
                   Text(change.title)
                     .font(.callout.weight(.medium))
@@ -46,16 +48,16 @@ struct SiteKindChangeConfirmationView: View {
                     .textSelection(.enabled)
                   Text(change.after)
                     .font(.caption.monospaced())
-                    .foregroundStyle(WorkbenchTheme.primary)
+                    .foregroundStyle(.primary)
                     .textSelection(.enabled)
+                }
+
+                if index < ruleChanges.count - 1 {
+                  Divider().gridCellColumns(3)
                 }
               }
             }
-            .padding(14)
-            .background(
-              WorkbenchBackgroundStyle.card,
-              in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
-            )
+            .padding(.vertical, WorkbenchSpacing.control)
           }
         }
         .padding(20)
@@ -67,7 +69,7 @@ struct SiteKindChangeConfirmationView: View {
         Button("取消", action: cancelAction)
           .keyboardShortcut(.cancelAction)
         Spacer()
-        Text("将更新 \(changes.count) 项发布规则")
+        Text("将更新 \(ruleChanges.count) 项发布规则")
           .font(.caption)
           .foregroundStyle(.secondary)
         Button {
@@ -77,7 +79,7 @@ struct SiteKindChangeConfirmationView: View {
         }
         .workbenchProminentActionStyle()
         .keyboardShortcut(.defaultAction)
-        .disabled(changes.isEmpty)
+        .disabled(ruleChanges.isEmpty)
       }
       .padding(16)
     }

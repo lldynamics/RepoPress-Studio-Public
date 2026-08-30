@@ -227,11 +227,15 @@ extension WorkbenchAIStore {
       // Re-check consent and read the current credential only after authorization.
       // The next call sends the exact automatically sanitized body; no fallback
       // or normalization is allowed to reuse this one-shot authorization.
-      let token = try aiChatAvailableAPIKey(for: profile)
       try await requireValidAIKnowledgeAuthorization(
         attempt.knowledgeAuthorizationBindings,
         policy: attempt.knowledgePolicy
       )
+      // Knowledge authorization is bound to the approved payload and must be
+      // checked before any later connection-state error can mask a revoked
+      // explicit reference. Both checks remain before authorization consume
+      // and before the transport boundary.
+      let token = try aiChatAvailableAPIKey(for: profile)
       try attempt.authorization.consume()
       switch attempt.transport.preparedRequest.mode {
       case .streaming:
@@ -300,7 +304,7 @@ extension WorkbenchAIStore {
         assistantMessage.tokenUsage = tokenUsage
         pendingTokenUsage = nil
       }
-      updateAIChatSession(for: conversationIdentity) { messages in
+      updateAIChatSession(for: conversationIdentity, streaming: true) { messages in
         if let index = messages.firstIndex(where: { $0.id == assistantMessage.id }) {
           messages[index] = assistantMessage
         }

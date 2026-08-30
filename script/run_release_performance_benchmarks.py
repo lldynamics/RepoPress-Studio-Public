@@ -12,6 +12,7 @@ reported for trend review because hosted runners are noisy.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
 import os
@@ -31,6 +32,13 @@ DEFAULT_OUTPUT_DIRECTORY = ROOT / ".build" / "release-performance"
 MARKDOWN_REPORT_NAME = "markdown-syntax.json"
 RELATION_REPORT_NAME = "site-maintenance-relations.json"
 COMBINED_REPORT_NAME = "performance.json"
+BENCHMARK_REPORT_METADATA_KEYS = (
+    "commit",
+    "toolchain",
+    "architecture",
+    "operatingSystem",
+    "machine",
+)
 SKIP_COUNT_PATTERN = re.compile(r"\b([1-9][0-9]*)\s+(?:tests?|cases?)\s+skipped\b", re.IGNORECASE)
 SKIP_CASE_PATTERN = re.compile(r"\bTest Case .*\bskipped\b", re.IGNORECASE)
 SKIP_SUMMARY_PATTERN = re.compile(
@@ -74,6 +82,54 @@ def run_capture(command: list[str]) -> str:
         return ""
 
 
+def run_capture_nul(command: list[str]) -> str:
+    """Capture a NUL-delimited filesystem list without trimming path bytes."""
+    try:
+        result = subprocess.run(
+            command,
+            cwd=ROOT,
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+        )
+        return os.fsdecode(result.stdout)
+    except (OSError, subprocess.CalledProcessError):
+        return ""
+
+
+def source_tree_fingerprint(paths: str, status: str, root: Path = ROOT) -> str:
+    """Hash every tracked/untracked source path without following symlinks."""
+    digest = hashlib.sha256()
+    for relative_path in sorted(path for path in paths.split("\0") if path):
+        path = root / relative_path
+        encoded_path = os.fsencode(relative_path)
+        digest.update(b"path\0")
+        digest.update(encoded_path)
+        digest.update(b"\0")
+        try:
+            stat = path.lstat()
+            if path.is_symlink():
+                digest.update(b"symlink\0")
+                digest.update(os.fsencode(os.readlink(path)))
+                digest.update(b"\0")
+            elif path.is_file():
+                digest.update(b"file\0")
+                digest.update(str(stat.st_size).encode())
+                digest.update(b"\0")
+                with path.open("rb") as handle:
+                    while chunk := handle.read(1024 * 1024):
+                        digest.update(chunk)
+            else:
+                digest.update(b"other\0")
+                digest.update(str(stat.st_mode).encode())
+                digest.update(b"\0")
+        except OSError:
+            digest.update(b"missing\0")
+    digest.update(b"status\0")
+    digest.update(status.encode("utf-8", errors="surrogateescape"))
+    return digest.hexdigest()
+
+
 def first_line(value: str) -> str:
     return next((line.strip() for line in value.splitlines() if line.strip()), "")
 
@@ -91,12 +147,20 @@ def metadata() -> dict[str, str]:
     os_version = platform.mac_ver()[0] if platform.system() == "Darwin" else ""
     if not os_version:
         os_version = platform.release()
+    status = run_capture(["git", "status", "--porcelain=v1", "--untracked-files=all"])
+    # Include tracked and non-ignored untracked contents. Path-only hashing would
+    # let an edited untracked source silently reuse an unrelated artifact.
+    paths = run_capture_nul(
+        ["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard"]
+    )
     return {
         "commit": run_capture(["git", "rev-parse", "HEAD"]) or "unknown",
         "toolchain": swift_version,
         "architecture": platform.machine() or "unknown",
         "operatingSystem": f"{platform.system()} {os_version}".strip(),
         "machine": host_machine(),
+        "dirtyWorktree": "true" if status else "false",
+        "sourceTreeFingerprint": source_tree_fingerprint(paths, status),
     }
 
 
@@ -251,7 +315,10 @@ def validate_report(
         raise BenchmarkFailure(f"{name} report did not run in Release configuration")
     if report.get("sampleCount") != expected_samples or report.get("iterations") != expected_samples:
         raise BenchmarkFailure(f"{name} report sample count does not match {expected_samples}")
-    for key, expected in metadata_values.items():
+    # The individual Swift benchmark schemas predate lane-only dirty-tree
+    # provenance. The combined report carries those additional fields.
+    for key in BENCHMARK_REPORT_METADATA_KEYS:
+        expected = metadata_values[key]
         actual = non_empty_string(report.get(key), f"{name}.{key}")
         if actual != expected:
             raise BenchmarkFailure(f"{name}.{key} disagrees with lane metadata")
@@ -494,15 +561,12 @@ def main(argv: list[str] | None = None) -> int:
     except BenchmarkFailure as error:
         output_directory = getattr(args, "output_directory", DEFAULT_OUTPUT_DIRECTORY).resolve()
         output_directory.mkdir(parents=True, exist_ok=True)
+        metadata_values = metadata()
         failure = {
             "schemaVersion": 1,
             "status": "failed",
             "configuration": getattr(args, "configuration", "release"),
-            "commit": metadata().get("commit", "unknown"),
-            "toolchain": metadata().get("toolchain", "unknown"),
-            "architecture": metadata().get("architecture", "unknown"),
-            "operatingSystem": metadata().get("operatingSystem", "unknown"),
-            "machine": metadata().get("machine", "unknown"),
+            **metadata_values,
             "sampleCount": getattr(args, "iterations", 0),
             "error": str(error),
         }

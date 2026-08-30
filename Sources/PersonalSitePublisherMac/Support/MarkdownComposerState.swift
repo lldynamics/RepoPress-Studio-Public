@@ -93,7 +93,11 @@ final class MarkdownComposerEditorSessionState: ObservableObject {
   @Published var editorEditRequest: MarkdownTextEditRequest?
   @Published var markdownTextFocusRequest: MarkdownTextFocusRequest?
   @Published var editorScrollRestorationUpdate: MarkdownScrollSyncUpdate?
-  @Published var editorScrollProgress: Double
+  /// Scroll persistence is consumed by AppKit and the debounced session save;
+  /// it does not affect the composer's SwiftUI layout. Keeping it outside the
+  /// published editor session avoids rebuilding the complete composer during
+  /// a scroll while preserving the latest value for restoration.
+  var editorScrollProgress: Double
   @Published var editorBodyRevision: UInt64
   /// The body and revision most recently staged from the live NSTextView.
   /// These stay out of SwiftUI publication so keyboard input can reach the

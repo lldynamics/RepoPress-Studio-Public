@@ -39,6 +39,26 @@ def v2() -> dict[str, object]:
             "changedLines": 0,
         },
         "swiftTestMinimumCountsByTarget": {"TargetATests": 5},
+        "swiftModuleBoundaryMaximums": {
+            "publishingWorkbenchCoreImportsByScope": {
+                "Sources": 4,
+                "Tests": 3,
+            }
+        },
+        "releasePerformance": {
+            "schemaVersion": 1,
+            "configuration": "release",
+            "minimumSampleCount": 7,
+            "siteMaintenanceRelation": {
+                "sizes": [512, 2048, 4096],
+                "labelGroupSize": 8,
+                "complexity": "fixed-label-density-linear",
+            },
+            "wallTime": {
+                "policy": "trend-only",
+                "blocking": False,
+            },
+        },
     }
 
 
@@ -138,6 +158,32 @@ def main() -> int:
         lower_tests = v2()
         lower_tests["swiftTestMinimumCountsByTarget"]["TargetATests"] = 4
         expect_failure(repo, lower_tests, "Swift test target TargetATests decreased")
+
+        higher_workbench_import_maximum = v2()
+        higher_workbench_import_maximum["swiftModuleBoundaryMaximums"][
+            "publishingWorkbenchCoreImportsByScope"
+        ]["Sources"] = 5
+        expect_failure(
+            repo,
+            higher_workbench_import_maximum,
+            "PublishingWorkbenchCore import maximum Sources increased",
+        )
+
+        fewer_performance_samples = v2()
+        fewer_performance_samples["releasePerformance"]["minimumSampleCount"] = 6
+        expect_failure(repo, fewer_performance_samples, "minimum sample count decreased")
+
+        smaller_performance_fixture = v2()
+        smaller_performance_fixture["releasePerformance"]["siteMaintenanceRelation"][
+            "sizes"
+        ] = [512, 2048]
+        expect_failure(repo, smaller_performance_fixture, "relation sizes were removed")
+
+        weaker_performance_complexity = v2()
+        weaker_performance_complexity["releasePerformance"]["siteMaintenanceRelation"][
+            "complexity"
+        ] = "trend-only"
+        expect_failure(repo, weaker_performance_complexity, "complexity policy changed")
 
         invalid_new_target = v2()
         invalid_new_target["swiftTestMinimumCountsByTarget"]["TargetBTests"] = 0

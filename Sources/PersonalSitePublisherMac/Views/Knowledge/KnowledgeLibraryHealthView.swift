@@ -35,13 +35,31 @@ struct KnowledgeLibraryHealthView: View {
             repairSection(health)
             semanticSection(health)
           } else if state.isLoading {
-            ProgressView("正在检查解析器、正文质量和本地语义索引…")
-              .frame(maxWidth: .infinity, minHeight: 180)
+            WorkbenchStateView(
+              presentation: WorkbenchStatePresentation(
+                kind: .loading(
+                  detail: String(localized: "正在检查解析器、正文质量和本地语义索引…")
+                )
+              ),
+              density: .compactPane
+            )
           } else {
-            ContentUnavailableView(
-              "无法读取健康状态",
-              systemImage: "exclamationmark.triangle",
-              description: Text(state.lastError ?? "请重新检查资料库。")
+            let hasFailureReason = state.lastError != nil
+            WorkbenchStateView(
+              presentation: WorkbenchStatePresentation(
+                kind: .failure(
+                  reason: state.lastError ?? ""
+                )
+              ),
+              density: .compactPane,
+              detail: hasFailureReason ? nil : "请重新检查资料库。",
+              actions: WorkbenchStateActions(
+                primary: WorkbenchStateAction(
+                  title: "重新检查",
+                  systemImage: "arrow.clockwise",
+                  action: { Task { await refresh() } }
+                )
+              )
             )
           }
         }
@@ -206,14 +224,14 @@ struct KnowledgeLibraryHealthView: View {
       }
 
       if state.isBusy {
-        HStack(spacing: 8) {
-          ProgressView()
-            .controlSize(.small)
-          Text(String(localized: "正在构建本地向量并更新语义索引…"))
-            .font(.callout)
-            .foregroundStyle(.secondary)
-        }
-        .padding(.vertical, 2)
+        WorkbenchStateView(
+          presentation: WorkbenchStatePresentation(
+            kind: .loading(
+              detail: String(localized: "正在构建本地向量并更新语义索引…")
+            )
+          ),
+          density: .inline
+        )
       } else {
         Text(
           health.semanticRepairChunkCount == 0

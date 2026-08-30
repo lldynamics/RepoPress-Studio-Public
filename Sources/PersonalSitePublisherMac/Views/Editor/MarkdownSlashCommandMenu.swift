@@ -98,9 +98,7 @@ struct MarkdownSlashCommandMenu: View {
           .frame(maxHeight: 240)
           .onChange(of: selectedIndex) { _, index in
             guard filteredItems.indices.contains(index) else { return }
-            withAnimation(.easeOut(duration: 0.12)) {
-              proxy.scrollTo(index, anchor: .center)
-            }
+            proxy.scrollTo(index, anchor: .center)
           }
         }
       }

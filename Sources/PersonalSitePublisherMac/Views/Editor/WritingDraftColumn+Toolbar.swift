@@ -18,9 +18,6 @@ extension WritingDraftColumn {
                 .opacity(WorkbenchOpacity.accentBackground),
               in: Capsule()
             )
-            .scaleEffect(isDraftCountPunching ? 1.06 : 1)
-            .animation(WorkbenchMotion.emphasisSpring, value: isDraftCountPunching)
-            .transition(.scale.combined(with: .opacity))
         }
       }
     } actions: {

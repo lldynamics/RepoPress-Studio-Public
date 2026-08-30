@@ -272,7 +272,11 @@ final class KnowledgeSemanticVectorTests: XCTestCase {
           modelIdentifier: "test-model",
           values: [1, 0],
           minimumSimilarity: 0
-        )
+        ),
+        inputHash: KnowledgeSemanticIndexRecord(
+          document: inserted.document,
+          chunk: inserted.chunk
+        ).searchableTextHash
       )
     ])
     XCTAssertEqual(try database.semanticSearch(
@@ -344,7 +348,11 @@ final class KnowledgeSemanticVectorTests: XCTestCase {
             modelIdentifier: "test-model",
             values: vector,
             minimumSimilarity: 0
-          )
+          ),
+          inputHash: KnowledgeSemanticIndexRecord(
+            document: document,
+            chunk: chunk
+          ).searchableTextHash
         )
       ]
     )

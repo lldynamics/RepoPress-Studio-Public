@@ -338,6 +338,25 @@ public struct AIConversation: Codable, Hashable, Identifiable, Sendable {
     focusedParagraphID = preparedState.focusedParagraphID?.nilIfEmpty
     self.updatedAt = max(updatedAt, createdAt)
   }
+
+  /// Applies a transient stream publication without re-running the retention
+  /// normalisation that is required at persistence and structural boundaries.
+  /// The caller is responsible for following this with a normal `apply` when
+  /// the stream reaches a durable boundary.
+  mutating func applyStreaming(
+    _ state: AIPublishingChatSessionState,
+    updatedAt: Date = Date()
+  ) {
+    title = state.conversationTitle
+    messages = state.messages
+    contextMode = state.contextMode
+    knowledgePolicy = state.knowledgePolicy
+    modelGrade = state.modelGrade
+    reasoningLevel = state.reasoningLevel
+    selectedModel = state.selectedModel.trimmedForPublishing
+    focusedParagraphID = state.focusedParagraphID?.nilIfEmpty
+    self.updatedAt = max(updatedAt, createdAt)
+  }
 }
 
 public enum AIConversationRetentionPolicy {

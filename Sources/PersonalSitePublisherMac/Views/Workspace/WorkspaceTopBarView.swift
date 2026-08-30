@@ -402,7 +402,6 @@ struct PublishingStatusToolbarControl: View {
   let openContentHealthOverview: () -> Void
   let openReleaseHistory: () -> Void
   @State private var isPresented = false
-  @State private var syncAnimationTrigger = 0
 
   init(
     store: WorkbenchStore,
@@ -806,12 +805,10 @@ struct PublishingStatusToolbarControl: View {
       HStack(spacing: 14) {
         Button {
           isPresented = false
-          syncAnimationTrigger &+= 1
           openRepositoryOverview()
         } label: {
           HStack(spacing: 5) {
             Image(systemName: "arrow.triangle.2.circlepath")
-              .workbenchSyncSymbolEffect(trigger: syncAnimationTrigger)
             Text(workspaceNavigationLocalizedKey("workspace.sync"))
           }
         }

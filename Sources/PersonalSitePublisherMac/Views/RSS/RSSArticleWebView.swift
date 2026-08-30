@@ -80,6 +80,7 @@ struct RSSArticleWebView: NSViewRepresentable {
     private var pendingNavigation: WKNavigation?
     private var callbacksEnabled = false
     var lastAppliedSpeechHighlight: RSSArticleSpeechHighlight?
+    var lastAppliedReadingPreferencesToken: String?
     var pendingHighlights: [RSSArticleHighlight] = []
     var pendingSpeechHighlight: RSSArticleSpeechHighlight?
     var pendingReadingProgress = 0.0
@@ -272,11 +273,18 @@ struct RSSArticleWebView: NSViewRepresentable {
     }
 
     func applyReadingPreferences(to webView: WKWebView) {
+      // During a replacement render, JavaScript would target the previous
+      // document (or about:blank). Do not cache that as applied: didFinish
+      // must apply the latest preferences to the newly loaded article.
+      guard callbacksEnabled else { return }
       let fontSize = ReaderTypographyConfiguration.normalizedFontSize(pendingFontSize)
       let lineSpacing = ReaderTypographyConfiguration.normalizedLineSpacing(pendingLineSpacing)
       let paragraphSpacing = ReaderTypographyConfiguration.normalizedParagraphSpacing(
         pendingParagraphSpacing
       )
+      let token =
+        "\(fontSize)|\(lineSpacing)|\(paragraphSpacing)|\(pendingFontFamily.rawValue)|\(pendingTextAlignment.rawValue)|\(pendingCodeHighlightTheme.rawValue)|\(pendingTheme.rawValue)"
+      guard lastAppliedReadingPreferencesToken != token else { return }
       let script = """
         window.rssApplyReadingPreferences && window.rssApplyReadingPreferences(
           \(fontSize),
@@ -294,6 +302,7 @@ struct RSSArticleWebView: NSViewRepresentable {
         );
         """
       webView.evaluateJavaScript(script)
+      lastAppliedReadingPreferencesToken = token
     }
 
     func applyHighlights(to webView: WKWebView) {
@@ -505,7 +514,11 @@ struct RSSArticleWebView: NSViewRepresentable {
             mark.className = 'rss-speech-highlight';
             mark.appendChild(range.extractContents());
             range.insertNode(mark);
-            mark.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
+            const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
+            const markRect = mark.getBoundingClientRect();
+            if (markRect.top < 0 || markRect.bottom > viewportHeight) {
+              mark.scrollIntoView({ behavior: 'auto', block: 'center', inline: 'nearest' });
+            }
           };
         })();
         """,
@@ -725,6 +738,7 @@ struct RSSArticleWebView: NSViewRepresentable {
       return
     }
     context.coordinator.lastRenderToken = token
+    context.coordinator.lastAppliedReadingPreferencesToken = nil
     context.coordinator.lastAppliedSpeechHighlight = nil
     context.coordinator.scheduleRender(
       article: article,

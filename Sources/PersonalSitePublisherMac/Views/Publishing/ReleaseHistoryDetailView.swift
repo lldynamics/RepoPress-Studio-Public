@@ -593,7 +593,7 @@ struct ReleaseHistoryDetailView: View {
   @ViewBuilder
   private var deploymentPollingSummary: some View {
     VStack(alignment: .leading, spacing: 10) {
-      Text("部署状态自动检查")
+      Text("远端发布状态自动检查")
         .font(.workbenchSectionTitle)
         .accessibilityAddTraits(.isHeader)
       Text(store.deploymentPollingState.message)
@@ -604,13 +604,16 @@ struct ReleaseHistoryDetailView: View {
         Button {
           copy(
             store.deploymentPollingState.followUpChecklistMarkdown,
-            message: "已复制部署检查后续清单。"
+            message: "已复制远端发布状态后续清单。"
           )
         } label: {
           releaseHistoryActionLabel("复制清单", systemImage: "checklist")
         }
-        .disabled(store.deploymentPollingState.checkedRecords.isEmpty)
-        .accessibilityLabel("复制部署检查清单")
+        .disabled(
+          store.deploymentPollingState.checkedRecordCount == 0
+            && store.deploymentPollingState.reviewFailureCount == 0
+        )
+        .accessibilityLabel("复制远端发布状态检查清单")
         .accessibilityIdentifier("release-history-polling-copy-checklist")
         Button {
           Task {
@@ -620,14 +623,14 @@ struct ReleaseHistoryDetailView: View {
           releaseHistoryActionLabel("立即检查", systemImage: "arrow.clockwise")
         }
         .disabled(!store.deploymentPollingSettings.isEnabled || store.isDeploymentStatusChecking)
-        .accessibilityLabel("立即检查部署状态")
+        .accessibilityLabel("立即检查 PR/MR 与部署状态")
         .accessibilityIdentifier("release-history-polling-run-now")
       }
 
       VStack(alignment: .leading, spacing: 8) {
-        Toggle("启用部署状态自动检查", isOn: deploymentPollingEnabledBinding)
+        Toggle("启用 PR/MR 与部署状态自动检查", isOn: deploymentPollingEnabledBinding)
           .toggleStyle(.switch)
-          .accessibilityLabel("启用部署状态自动检查")
+          .accessibilityLabel("启用 PR/MR 与部署状态自动检查")
           .accessibilityValue(store.deploymentPollingSettings.isEnabled ? "开启" : "关闭")
           .accessibilityIdentifier("release-history-polling-enabled")
 
@@ -640,7 +643,7 @@ struct ReleaseHistoryDetailView: View {
         .tint(WorkbenchTheme.navigationSelection)
         .frame(maxWidth: 320)
         .disabled(!store.deploymentPollingSettings.isEnabled || store.isDeploymentStatusChecking)
-        .accessibilityLabel("部署状态自动检查最短间隔")
+        .accessibilityLabel("远端发布状态自动检查最短间隔")
         .accessibilityValue("\(store.deploymentPollingSettings.normalizedIntervalMinutes) 分钟")
         .accessibilityIdentifier("release-history-polling-interval")
       }
@@ -652,7 +655,12 @@ struct ReleaseHistoryDetailView: View {
           systemImage: store.deploymentPollingState.status.systemImage
         )
         MetricTile(
-          title: "待检查",
+          title: "待合并",
+          value: "\(store.remoteReviewPollingEligibleRecordCount)",
+          systemImage: "arrow.triangle.pull"
+        )
+        MetricTile(
+          title: "待部署",
           value: "\(store.deploymentPollingEligibleRecords.count)",
           systemImage: "hourglass"
         )

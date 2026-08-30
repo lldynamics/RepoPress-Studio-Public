@@ -30,10 +30,11 @@ extension KnowledgeLibraryService {
     }
     let candidates = previews.flatMap(\.importPreview.candidates)
     guard candidates.count == previews.count,
-          zip(previews, candidates).allSatisfy({ preview, candidate in
-            candidate.existingDocumentID == preview.documentID
-              && candidate.disposition == .update
-          }) else {
+      zip(previews, candidates).allSatisfy({ preview, candidate in
+        candidate.existingDocumentID == preview.documentID
+          && candidate.disposition == .update
+      })
+    else {
       throw KnowledgeLibraryError.contentRepairUnavailable("修复预览与资料版本不匹配。")
     }
     return try await commit(
@@ -50,11 +51,13 @@ extension KnowledgeLibraryService {
     var repairableCount = 0
     for document in documents where document.kind == .webpage {
       guard let revision = try database.currentRevision(documentID: document.id),
-            revision.parserVersion < Self.parserVersion else { continue }
+        revision.parserVersion < Self.parserVersion
+      else { continue }
       outdatedCount += 1
       if let reference = revision.originalStorageReference?.nilIfEmpty,
-         let fileURL = safeStorageFileURL(for: reference),
-         fileManager.fileExists(atPath: fileURL.path) {
+        let fileURL = safeStorageFileURL(for: reference),
+        fileManager.fileExists(atPath: fileURL.path)
+      {
         repairableCount += 1
       }
     }
@@ -73,12 +76,18 @@ extension KnowledgeLibraryService {
     for (modelIdentifier, expectedDimension) in availableModelDimensions {
       let needingRepair = try database.semanticIndexRecordsNeedingRepair(
         modelIdentifier: modelIdentifier,
-        expectedDimension: expectedDimension
+        expectedDimension: expectedDimension,
+        expectedEncodingVersion: semanticEmbeddingService.encodingVersion(for: modelIdentifier)
+          ?? "legacy-v1"
       )
       semanticRepairChunkIDs.formUnion(needingRepair.map(\.chunk.id))
     }
     for (modelIdentifier, chunkIDs) in storedChunkIDsByModel
-      where availableModelDimensions[modelIdentifier] == nil {
+    where availableModelDimensions[modelIdentifier] == nil
+      && semanticEmbeddingService.availability(
+        forStoredModelIdentifier: modelIdentifier
+      ) == .retired
+    {
       semanticRepairChunkIDs.formUnion(chunkIDs)
     }
     return KnowledgeLibraryHealthSnapshot(
@@ -104,13 +113,15 @@ extension KnowledgeLibraryService {
     for document in documents where document.kind == .webpage {
       try Task.checkCancellation()
       guard let revision = try database.currentRevision(documentID: document.id),
-            includingCurrentParserVersion || revision.parserVersion < Self.parserVersion else { continue }
+        includingCurrentParserVersion || revision.parserVersion < Self.parserVersion
+      else { continue }
       guard let reference = revision.originalStorageReference?.nilIfEmpty,
-            let fileURL = safeStorageFileURL(for: reference),
-            let data = try? BoundedFileReader.data(
-              at: fileURL,
-              maximumByteCount: WorkbenchContentFileReadLimits.binaryDocumentByteCount
-            ) else {
+        let fileURL = safeStorageFileURL(for: reference),
+        let data = try? BoundedFileReader.data(
+          at: fileURL,
+          maximumByteCount: WorkbenchContentFileReadLimits.binaryDocumentByteCount
+        )
+      else {
         continue
       }
       let sourceExtension = fileURL.pathExtension.nilIfEmpty ?? "html"
@@ -123,8 +134,10 @@ extension KnowledgeLibraryService {
         sourceModifiedAt: revision.sourceModifiedAt
       )
       if ["txt", "text"].contains(sourceExtension.lowercased()),
-         let capturedText = String(data: data, encoding: .utf8) {
-        let sanitizedSections = webContentSanitizer.sanitizeExtractedText(capturedText).map { section in
+        let capturedText = String(data: data, encoding: .utf8)
+      {
+        let sanitizedSections = webContentSanitizer.sanitizeExtractedText(capturedText).map {
+          section in
           KnowledgeExtractedSection(
             headingPath: section.headingPath?.nilIfEmpty ?? document.title,
             locator: section.locator?.nilIfEmpty ?? document.sourceURL?.absoluteString,
@@ -147,19 +160,20 @@ extension KnowledgeLibraryService {
       candidate.tags = document.tags
       candidate.capturedText = try capturedText(documentID: document.id)
       let previousText = try normalizedText(revisionID: revision.id)
-      previews.append(KnowledgeSourceRefreshPreview(
-        documentID: document.id,
-        currentRevision: revision,
-        importPreview: KnowledgeImportPreview(
-          sourceName: document.sourceName,
-          candidates: [candidate],
-          warnings: ["将使用本机保存的原始网页归档重新净化，不会联网或覆盖旧版本。"]
-        ),
-        difference: revisionDifferenceService.difference(
-          previousText: previousText,
-          currentText: candidate.normalizedText
-        )
-      ))
+      previews.append(
+        KnowledgeSourceRefreshPreview(
+          documentID: document.id,
+          currentRevision: revision,
+          importPreview: KnowledgeImportPreview(
+            sourceName: document.sourceName,
+            candidates: [candidate],
+            warnings: ["将使用本机保存的原始网页归档重新净化，不会联网或覆盖旧版本。"]
+          ),
+          difference: revisionDifferenceService.difference(
+            previousText: previousText,
+            currentText: candidate.normalizedText
+          )
+        ))
     }
     return previews.sorted { lhs, rhs in
       lhs.currentRevision.importedAt < rhs.currentRevision.importedAt
@@ -173,14 +187,17 @@ extension KnowledgeLibraryService {
   ) -> [String] {
     var output: [String] = []
     for value in values {
-      let normalized = value
+      let normalized =
+        value
         .trimmingCharacters(in: .whitespacesAndNewlines)
         .replacingOccurrences(of: "[\\r\\n\\t]+", with: " ", options: .regularExpression)
       guard !normalized.isEmpty else { continue }
       let clipped = String(normalized.prefix(maximumLength))
-      guard !output.contains(where: {
-        $0.compare(clipped, options: [.caseInsensitive, .diacriticInsensitive]) == .orderedSame
-      }) else { continue }
+      guard
+        !output.contains(where: {
+          $0.compare(clipped, options: [.caseInsensitive, .diacriticInsensitive]) == .orderedSame
+        })
+      else { continue }
       output.append(clipped)
       if output.count == maximumCount { break }
     }
@@ -193,17 +210,21 @@ extension KnowledgeLibraryService {
       revision.capturedTextStorageReference,
       revision.normalizedStorageReference,
     ]
-      .compactMap { $0?.nilIfEmpty }
-      .lazy
-      .compactMap { reference -> Int64? in
-        guard let fileURL = self.safeStorageFileURL(for: reference),
-              let size = try? fileURL
-          .resourceValues(forKeys: [.fileSizeKey])
-          .fileSize,
-          size > 0 else { return nil }
+    .compactMap { $0?.nilIfEmpty }
+    .lazy
+    .compactMap { reference -> Int64? in
+      guard let fileURL = self.safeStorageFileURL(for: reference) else { return nil }
+      do {
+        guard
+          let size = try fileURL.resourceValues(forKeys: [.fileSizeKey]).fileSize,
+          size > 0
+        else { return nil }
         return Int64(size)
+      } catch {
+        return nil
       }
-      .first
+    }
+    .first
   }
 
   public func maintainDatabase() async throws {

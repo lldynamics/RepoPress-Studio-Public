@@ -204,9 +204,7 @@ struct KnowledgeLibraryDetailView: View {
           .task(id: readerScrollTarget) {
             guard let target = readerScrollTarget else { return }
             await Task.yield()
-            withAnimation(WorkbenchMotion.deliberate) {
-              proxy.scrollTo(target.blockID, anchor: .center)
-            }
+            proxy.scrollTo(target.blockID, anchor: .center)
           }
         }
       }

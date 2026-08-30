@@ -19,9 +19,7 @@ struct KnowledgeCollectionNavigationView: View {
     VStack(alignment: .leading, spacing: 6) {
       HStack(spacing: 8) {
         Button {
-          withAnimation(WorkbenchMotion.standard) {
-            isNavigationExpanded.toggle()
-          }
+          isNavigationExpanded.toggle()
         } label: {
           VStack(alignment: .leading, spacing: 2) {
             Label(
@@ -129,7 +127,6 @@ struct KnowledgeCollectionNavigationView: View {
           }
           .padding(.vertical, 4)
         }
-        .transition(.opacity.combined(with: .move(edge: .top)))
       }
     }
     .frame(
@@ -203,9 +200,7 @@ struct KnowledgeCollectionNavigationView: View {
     }
     .buttonStyle(.plain)
     .onHover { hovering in
-      withAnimation(WorkbenchMotion.hoverSpring) {
-        hoveredCollectionItemID = hovering ? item.id : nil
-      }
+      hoveredCollectionItemID = hovering ? item.id : nil
     }
     .contextMenu {
       Button(isFavorite(item.id) ? "取消收藏" : "加入收藏") {

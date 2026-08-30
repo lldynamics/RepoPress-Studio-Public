@@ -35,7 +35,6 @@ struct PublishDrawerView: View {
   // 部分属性尚未迁移到 Facade，保留 store 访问，但去除 @ObservedObject 以避免全局不相关事件触发重绘
   let store: WorkbenchStore
   @Binding var isPresented: Bool
-  @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
   @State private var reviewedAllChangesPaths: Set<String> = []
   @State private var reviewedAllChangesTarget: RemoteRepositoryPublishTargetSnapshot?
   @State private var pendingSingleOnlinePublishDraft: ArticleDraft?
@@ -480,13 +479,7 @@ struct PublishDrawerView: View {
 
     return VStack(alignment: .leading, spacing: 0) {
       Button {
-        if accessibilityReduceMotion {
-          isAdvancedFlowExpanded.toggle()
-        } else {
-          withAnimation(WorkbenchMotion.deliberate) {
-            isAdvancedFlowExpanded.toggle()
-          }
-        }
+        isAdvancedFlowExpanded.toggle()
       } label: {
         HStack(spacing: 12) {
           VStack(alignment: .leading, spacing: 2) {
@@ -517,7 +510,6 @@ struct PublishDrawerView: View {
           diffCard(draft: draft)
         }
         .padding(.top, 10)
-        .transition(.opacity.combined(with: .move(edge: .top)))
       }
     }
     .padding(WorkbenchSpacing.section)

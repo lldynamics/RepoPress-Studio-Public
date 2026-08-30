@@ -48,6 +48,22 @@ extension WorkbenchStore {
     deploymentStore.deploymentPollingEligibleRecords(store: self)
   }
 
+  public var remoteReviewPollingEligibleRecords: [ReleaseRecord] {
+    deploymentStore.reviewPollingEligibleRecords(
+      for: activeProfileID,
+      store: self,
+      includeLegacyRecords: true
+    )
+  }
+
+  public var remoteReviewPollingEligibleRecordCount: Int {
+    deploymentStore.reviewPollingEligibleRecordCount(
+      for: activeProfileID,
+      store: self,
+      includeLegacyRecords: true
+    )
+  }
+
   public func updateDeploymentPollingSettings(_ settings: DeploymentPollingSettings) {
     deploymentStore.updateDeploymentPollingSettings(settings, store: self)
   }
@@ -71,6 +87,31 @@ extension WorkbenchStore {
 
   public func canCheckDeploymentStatus(for record: ReleaseRecord) -> Bool {
     deploymentStore.canCheckDeploymentStatus(for: record, store: self)
+  }
+
+  @discardableResult
+  public func refreshRemoteReviewStatus(
+    for record: ReleaseRecord,
+    updatesMessage: Bool = true
+  ) async -> RemoteRepositoryReviewStatusSnapshot? {
+    do {
+      return try await deploymentStore.refreshRemoteReviewStatus(
+        for: record,
+        store: self,
+        updatesMessage: updatesMessage
+      )
+    } catch {
+      return nil
+    }
+  }
+
+  public func acceptObservedReviewHead(for record: ReleaseRecord) -> Bool {
+    do {
+      try deploymentStore.acceptObservedReviewHead(for: record, store: self)
+      return true
+    } catch {
+      return false
+    }
   }
 
   @discardableResult

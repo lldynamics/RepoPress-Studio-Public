@@ -6,6 +6,7 @@ struct MacMarkdownComposerView: View {
   @Binding var draft: ArticleDraft
   let store: WorkbenchStore
   let aiActions: WorkbenchAIFeatureFacade
+  @ObservedObject var inlineAIReviewState: AIInlineStructuredEditReviewState
   @Environment(\.publishDrawerCommandAction) var publishDrawerCommandAction
   @Environment(\.aiChatWorkspaceCommandAction) var aiChatWorkspaceCommandAction
   @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
@@ -27,6 +28,7 @@ struct MacMarkdownComposerView: View {
   @State var markdownSSGDerivedData = MarkdownComposerSSGDerivedData.empty
   @State var editorSessionSaveTask: Task<Void, Never>?
   @State var editorSessionSaveGeneration: UInt64 = 0
+  @State var pendingInlineStructuredEditApplyRequestID: UUID?
   @StateObject var findMatchRefreshCoordinator = MarkdownFindMatchRefreshCoordinator()
   @State var markdownAnalysisTaskIsAutomatic = false
   @State var sceneCommandOwnerID = UUID()
@@ -177,6 +179,9 @@ struct MacMarkdownComposerView: View {
     )
     self.store = store
     aiActions = store.ai
+    _inlineAIReviewState = ObservedObject(
+      wrappedValue: store.ai.inlineStructuredEditReviewState
+    )
     _editorState = StateObject(
       wrappedValue: WorkbenchMarkdownEditorFeatureFacade(store: store, draftID: draftID)
     )
@@ -332,6 +337,7 @@ struct MacMarkdownComposerView: View {
       cancelInlineGhostText()
     }
     .onChange(of: editorBody) { _, _ in
+      aiActions.invalidateInlineStructuredEditReviewIfStale(for: draft, body: editorBody)
       cancelInlineGhostText()
       zenModeController.handleTypingActivity()
       checkSlashCommandTrigger()
@@ -377,12 +383,20 @@ struct MacMarkdownComposerView: View {
       )
     )
     .onChange(of: draft.bodyMarkdown) { _, _ in
+      aiActions.invalidateInlineStructuredEditReviewIfStale(for: draft, body: editorBody)
       syncEditorBodyFromStore()
+    }
+    .onChange(of: draft.editorObservationProjection) { _, _ in
+      aiActions.invalidateInlineStructuredEditReviewIfStale(for: draft, body: editorBody)
     }
     .onChange(of: editorBufferRevision) { _, _ in
       syncEditorBodyFromStore()
     }
     .onChange(of: draft.id) { oldDraftID, _ in
+      pendingInlineStructuredEditApplyRequestID = nil
+      // Review state is application-scoped and draft-keyed. Switching one
+      // window must not destroy a review still visible in another window; the
+      // destination composer simply hides sessions for other draft IDs.
       selectionBubblePresentationState.reset()
       cancelFindMatchRefresh()
       editorState.trackDraft(draft.id)
@@ -414,8 +428,8 @@ struct MacMarkdownComposerView: View {
 
   @ViewBuilder
   private var automaticImageImportToastOverlay: some View {
-    if let toast = automaticImageImportToast {
-      VStack {
+    VStack {
+      if let toast = automaticImageImportToast {
         Spacer(minLength: 0)
         Label(toast.message, systemImage: "photo.badge.checkmark")
           .font(.callout.weight(.medium))
@@ -424,13 +438,22 @@ struct MacMarkdownComposerView: View {
           .workbenchGlassSurface(material: .regularMaterial, in: Capsule())
           .shadow(color: .black.opacity(0.16), radius: 8, x: 0, y: 3)
           .accessibilityIdentifier("markdown-automatic-image-import-toast")
+          .transition(
+            WorkbenchMotion.statusTransition(reduceMotion: accessibilityReduceMotion)
+          )
       }
-      .padding(.bottom, 18)
-      .frame(maxWidth: .infinity, maxHeight: .infinity)
-      .allowsHitTesting(false)
-      .transition(.move(edge: .bottom).combined(with: .opacity))
-      .zIndex(5)
     }
+    .padding(.bottom, 18)
+    .frame(maxWidth: .infinity, maxHeight: .infinity)
+    .allowsHitTesting(false)
+    .zIndex(5)
+    .animation(
+      WorkbenchMotion.animation(
+        for: .statusChange,
+        reduceMotion: accessibilityReduceMotion
+      ),
+      value: automaticImageImportToast?.id
+    )
   }
 
   @ViewBuilder
@@ -615,6 +638,7 @@ struct MacMarkdownComposerView: View {
         Divider()
       }
 
+      let reviewPresentation = inlineStructuredEditReviewPresentation
       ZStack {
         WorkbenchWritingSurface.color(usesWarmPaper: isWarmPaperBackgroundEnabled)
 
@@ -630,6 +654,7 @@ struct MacMarkdownComposerView: View {
           attachments: draft.attachments,
           editRequest: editorEditRequest,
           focusRequest: markdownTextFocusRequest,
+          inlineAIReviewPresentation: reviewPresentation?.textViewPresentation,
           ghostText: inlineGhostText,
           ssgSnippets: markdownSSGSnippets,
           scrollSyncUpdate: nil,
@@ -640,9 +665,18 @@ struct MacMarkdownComposerView: View {
             selectionActionMessage = message
             EditorAccessibilityAnnouncementCenter.announce(message)
           },
-          onEditRequestHandled: { requestID in
-            guard editorEditRequest?.id == requestID else { return }
+          onEditRequestHandled: { outcome in
+            guard editorEditRequest?.id == outcome.id else { return }
             editorEditRequest = nil
+            guard pendingInlineStructuredEditApplyRequestID == outcome.id else { return }
+            pendingInlineStructuredEditApplyRequestID = nil
+            if outcome.wasApplied {
+              aiActions.endInlineStructuredEditReview(for: draft.id)
+              selectionActionMessage = "已应用接受的 AI 修改；可用撤销恢复。"
+            } else {
+              selectionActionMessage = "文章已变化，AI 修改未应用；审阅内容仍保留。"
+            }
+            EditorAccessibilityAnnouncementCenter.announce(selectionActionMessage)
           },
           onGhostTextAccepted: { _ in
             acceptInlineGhostText()
@@ -668,8 +702,7 @@ struct MacMarkdownComposerView: View {
           onDroppedFiles: { urls in
             insertImageReferences(
               urls,
-              automaticallyConvertToWebP: true,
-              reduceMotionEnabled: accessibilityReduceMotion
+              automaticallyConvertToWebP: true
             )
           },
           onDroppedMarkdown: { markdown, range, citation in
@@ -677,6 +710,34 @@ struct MacMarkdownComposerView: View {
           }
         )
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+        if let reviewPresentation {
+          EditorAIReviewBar(
+            hunk: reviewPresentation.hunk,
+            position: reviewPresentation.position,
+            decision: reviewPresentation.decision,
+            onPrevious: { aiActions.moveInlineStructuredEditHunk(by: -1, draftID: draft.id) },
+            onNext: { aiActions.moveInlineStructuredEditHunk(by: 1, draftID: draft.id) },
+            onAccept: {
+              aiActions.setInlineStructuredEditDecision(
+                .accepted, for: reviewPresentation.hunk.id, draftID: draft.id)
+            },
+            onReject: {
+              aiActions.setInlineStructuredEditDecision(
+                .rejected, for: reviewPresentation.hunk.id, draftID: draft.id)
+            },
+            onAcceptAll: {
+              aiActions.setAllInlineStructuredEditDecisions(.accepted, draftID: draft.id)
+            },
+            onRejectAll: {
+              aiActions.setAllInlineStructuredEditDecisions(.rejected, draftID: draft.id)
+            },
+            onApply: applyInlineStructuredEditReview,
+            onExit: { aiActions.endInlineStructuredEditReview(for: draft.id) }
+          )
+          .padding(12)
+          .frame(maxWidth: 460, maxHeight: .infinity, alignment: .topTrailing)
+        }
 
         if let frontMatterIssue {
           VStack(alignment: .leading, spacing: 7) {
@@ -738,7 +799,6 @@ struct MacMarkdownComposerView: View {
               onPerformSelectionAIAction: performSelectionAIAction,
               onPerformConvergedSelectionAIAction: performConvergedSelectionAIAction
             )
-            .transition(.scale(scale: 0.9).combined(with: .opacity))
             Spacer()
           }
           .padding(.top, 16)
@@ -761,7 +821,6 @@ struct MacMarkdownComposerView: View {
           }
           .allowsHitTesting(false)
           .accessibilityHidden(true)
-          .transition(.opacity)
         }
 
         if isSlashMenuPresented {
@@ -779,7 +838,6 @@ struct MacMarkdownComposerView: View {
                   dismissSlashCommandMenu()
                 }
               )
-              .transition(.move(edge: .bottom).combined(with: .opacity))
               Spacer()
             }
           }

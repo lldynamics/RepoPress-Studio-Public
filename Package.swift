@@ -119,6 +119,7 @@ let package = Package(
         .linkedLibrary("z"),
         .linkedFramework("PDFKit"),
         .linkedFramework("Vision"),
+        .linkedFramework("CoreML"),
       ]
     ),
     .target(
@@ -238,6 +239,7 @@ let package = Package(
         "BrowserExtensionProtocolSupport",
         "PublishingAICore",
         "PublishingGitCore",
+        "PublishingKnowledgeCore",
         "PublishingWorkbenchCore",
       ],
       swiftSettings: [

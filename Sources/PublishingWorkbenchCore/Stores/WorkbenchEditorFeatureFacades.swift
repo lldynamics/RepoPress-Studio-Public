@@ -320,12 +320,27 @@ public final class WorkbenchMarkdownEditorFeatureFacade: ObservableObject {
 public final class WorkbenchMarkdownEditorSaveStatusFeatureFacade: ObservableObject {
   private unowned let store: WorkbenchStore
   private var trackedDraftID: UUID
+  private var lastTrackedSiteSaveState: SiteDraftFileSaveState?
+  private var lastPersistenceHasUnsavedChanges: Bool
   private var cancellables = Set<AnyCancellable>()
+  /// Advances only when a write that belongs to the currently tracked editor
+  /// completes successfully. Consumers can use it as an animation trigger
+  /// without inferring completion from an unrelated clean state.
+  public private(set) var saveCompletionRevision: UInt64 = 0
 
   public init(store: WorkbenchStore, draftID: UUID) {
     self.store = store
     trackedDraftID = draftID
-    observeValue(store.persistenceStore.$hasUnsavedChanges)
+    lastTrackedSiteSaveState = store.siteDraftFileSaveStates[draftID]
+    lastPersistenceHasUnsavedChanges = store.persistenceStore.hasUnsavedChanges
+
+    store.persistenceStore.$hasUnsavedChanges
+      .removeDuplicates()
+      .dropFirst()
+      .sink { [weak self] hasUnsavedChanges in
+        self?.handlePersistenceChange(hasUnsavedChanges)
+      }
+      .store(in: &cancellables)
     observeValue(store.persistenceStore.$status)
     observeValue(store.$draftRecoveryJournalErrorMessage)
 
@@ -335,7 +350,9 @@ public final class WorkbenchMarkdownEditorSaveStatusFeatureFacade: ObservableObj
       }
       .removeDuplicates()
       .dropFirst()
-      .sink { [weak self] _ in self?.objectWillChange.send() }
+      .sink { [weak self] state in
+        self?.handleTrackedSiteSaveStateChange(state)
+      }
       .store(in: &cancellables)
 
     store.publishingStore.$drafts
@@ -377,7 +394,40 @@ public final class WorkbenchMarkdownEditorSaveStatusFeatureFacade: ObservableObj
   public func trackDraft(_ draftID: UUID) {
     guard trackedDraftID != draftID else { return }
     trackedDraftID = draftID
+    // Navigation is not a save. Establish a fresh baseline so a draft that is
+    // already clean cannot be mistaken for the completion of the prior one.
+    lastTrackedSiteSaveState = store.siteDraftFileSaveStates[draftID]
+    lastPersistenceHasUnsavedChanges = store.persistenceStore.hasUnsavedChanges
     objectWillChange.send()
+  }
+
+  private func handleTrackedSiteSaveStateChange(_ state: SiteDraftFileSaveState?) {
+    let previousState = lastTrackedSiteSaveState
+    lastTrackedSiteSaveState = state
+    if case .pending = previousState, case .saved = state {
+      saveCompletionRevision &+= 1
+    }
+    objectWillChange.send()
+  }
+
+  private func handlePersistenceChange(_ hasUnsavedChanges: Bool) {
+    let previouslyHadUnsavedChanges = lastPersistenceHasUnsavedChanges
+    lastPersistenceHasUnsavedChanges = hasUnsavedChanges
+
+    // Site drafts have their own write lifecycle above. A global persistence
+    // success may have been caused by another draft or another feature, so it
+    // must never animate this editor as a completed project-file write.
+    if trackedDraftIsGeneral,
+      previouslyHadUnsavedChanges,
+      !hasUnsavedChanges
+    {
+      saveCompletionRevision &+= 1
+    }
+    objectWillChange.send()
+  }
+
+  private var trackedDraftIsGeneral: Bool {
+    store.drafts.first(where: { $0.id == trackedDraftID })?.isGeneralDraft == true
   }
 
   private func observeValue<P: Publisher>(_ publisher: P)

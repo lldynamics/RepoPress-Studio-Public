@@ -355,12 +355,11 @@ struct ImageWorkbenchView: View {
   }
 
   private var loadingCard: some View {
-    HStack(spacing: 10) {
-      ProgressView()
-        .controlSize(.small)
-      Text("正在扫描图片资源…")
-        .foregroundStyle(.secondary)
-    }
+    WorkbenchStateView(
+      presentation: WorkbenchStatePresentation(
+        kind: .loading(detail: String(localized: "正在扫描图片资源…"))
+      )
+    )
     .frame(maxWidth: .infinity, minHeight: 120, alignment: .center)
     .padding(WorkbenchSpacing.section)
     .background(
@@ -370,19 +369,16 @@ struct ImageWorkbenchView: View {
   }
 
   private func failureCard(_ message: String) -> some View {
-    VStack(alignment: .leading, spacing: 10) {
-      Label("图片资源扫描失败", systemImage: "exclamationmark.triangle")
-        .font(.headline)
-        .foregroundStyle(WorkbenchTheme.risk)
-      Text(message)
-        .font(.callout)
-        .foregroundStyle(.secondary)
-        .textSelection(.enabled)
-      Button(action: refreshAll) {
-        Label("重新扫描", systemImage: "arrow.clockwise")
-      }
-      .workbenchProminentActionStyle()
-    }
+    WorkbenchStateView(
+      presentation: WorkbenchStatePresentation(kind: .failure(reason: message)),
+      actions: WorkbenchStateActions(
+        primary: WorkbenchStateAction(
+          title: "重新扫描",
+          systemImage: "arrow.clockwise",
+          action: refreshAll
+        )
+      )
+    )
     .frame(maxWidth: .infinity, alignment: .leading)
     .padding(WorkbenchSpacing.section)
     .background(

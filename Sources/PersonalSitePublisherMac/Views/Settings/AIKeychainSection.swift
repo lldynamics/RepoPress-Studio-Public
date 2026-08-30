@@ -19,6 +19,7 @@ struct AIKeychainSection: View {
   @State private var isKeyRevealed = false
   @State private var isJustSaved = false
   @State private var saveFailureMessage: String?
+  @State private var saveFeedbackResetTask: Task<Void, Never>?
 
   var body: some View {
     Section(String(localized: "API Key 凭据")) {
@@ -84,16 +85,13 @@ struct AIKeychainSection: View {
             )
             return
           }
-          withAnimation {
-            isJustSaved = true
-          }
-          Task {
+          saveFeedbackResetTask?.cancel()
+          isJustSaved = true
+          saveFeedbackResetTask = Task { @MainActor in
             try? await Task.sleep(for: .seconds(2.5))
-            await MainActor.run {
-              withAnimation {
-                isJustSaved = false
-              }
-            }
+            guard !Task.isCancelled else { return }
+            isJustSaved = false
+            saveFeedbackResetTask = nil
           }
         }
         .workbenchProminentActionStyle()
@@ -105,7 +103,6 @@ struct AIKeychainSection: View {
             message: String(localized: "已保存"), severity: .success,
             announcesNonUrgentStatus: true
           )
-          .transition(.opacity)
         } else if !aiAPIKeyInput.wrappedValue.trimmedForPublishing.isEmpty {
           Text("待保存修改")
             .font(.caption.weight(.medium))
@@ -114,6 +111,8 @@ struct AIKeychainSection: View {
       }
       .onChange(of: aiAPIKeyInput.wrappedValue) { _, newValue in
         if !newValue.trimmedForPublishing.isEmpty {
+          saveFeedbackResetTask?.cancel()
+          saveFeedbackResetTask = nil
           isJustSaved = false
           saveFailureMessage = nil
         }

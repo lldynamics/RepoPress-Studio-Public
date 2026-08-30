@@ -119,6 +119,9 @@ actor SequencedRemoteRepositoryTransport: RemoteRepositoryHTTPTransport {
     }
 
     let response = responses.removeFirst()
+    if response.delayNanoseconds > 0 {
+      try await Task.sleep(nanoseconds: response.delayNanoseconds)
+    }
     return (
       response.data,
       HTTPURLResponse(
@@ -136,12 +139,17 @@ struct RemoteRepositoryTransportResponse {
   var statusCode: Int
   var data: Data
   var headers: [String: String]
+  var delayNanoseconds: UInt64 = 0
 }
 
 func response(
   statusCode: Int = 200,
   json: String,
-  headers: [String: String] = [:]
+  headers: [String: String] = [:],
+  delayNanoseconds: UInt64 = 0
 ) -> RemoteRepositoryTransportResponse {
-  RemoteRepositoryTransportResponse(statusCode: statusCode, data: Data(json.utf8), headers: headers)
+  RemoteRepositoryTransportResponse(
+    statusCode: statusCode, data: Data(json.utf8), headers: headers,
+    delayNanoseconds: delayNanoseconds
+  )
 }

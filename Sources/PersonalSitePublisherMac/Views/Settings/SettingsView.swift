@@ -136,18 +136,14 @@ struct SettingsView: View {
         settingsPageContent
           .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
 
-        if shouldShowSaveStatusBar {
-          Divider()
-
-          SettingsSaveStatusBar(
-            hasUnsavedChanges: persistenceStatus.hasUnsavedChanges,
-            lastSaveError: persistenceStatus.lastSaveError,
-            isRecoveryWriteProtected: persistenceStatus.isRecoveryWriteProtected,
-            recoveryMessage: persistenceStatus.recoveryMessage,
-            retry: store.save
-          )
-          .transition(.move(edge: .bottom).combined(with: .opacity))
-        }
+        SettingsSaveStatusBarOverlay(
+          isPresented: shouldShowSaveStatusBar,
+          hasUnsavedChanges: persistenceStatus.hasUnsavedChanges,
+          lastSaveError: persistenceStatus.lastSaveError,
+          isRecoveryWriteProtected: persistenceStatus.isRecoveryWriteProtected,
+          recoveryMessage: persistenceStatus.recoveryMessage,
+          retry: store.save
+        )
       }
       .background(Color(nsColor: .windowBackgroundColor))
       .accessibilityElement(children: .contain)
@@ -574,6 +570,30 @@ struct SettingsView: View {
     !config.usesCodexAppServer
       && config.requiresAPIKey
       && !tokenAvailability.hasToken
+  }
+}
+
+private struct SettingsSaveStatusBarOverlay: View {
+  let isPresented: Bool
+  let hasUnsavedChanges: Bool
+  let lastSaveError: String?
+  let isRecoveryWriteProtected: Bool
+  let recoveryMessage: String?
+  let retry: () -> Void
+
+  var body: some View {
+    if isPresented {
+      VStack(spacing: 0) {
+        Divider()
+        SettingsSaveStatusBar(
+          hasUnsavedChanges: hasUnsavedChanges,
+          lastSaveError: lastSaveError,
+          isRecoveryWriteProtected: isRecoveryWriteProtected,
+          recoveryMessage: recoveryMessage,
+          retry: retry
+        )
+      }
+    }
   }
 }
 

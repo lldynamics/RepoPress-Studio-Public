@@ -398,6 +398,43 @@ final class RemoteRepositoryPublishServiceGitHubDirectTests: RemoteRepositoryPub
     XCTAssertFalse(requests.contains { $0.httpMethod == "PATCH" })
   }
 
+  func testGitHubBatchNoOpExistingPullPersistsCurrentBranchHead() async throws {
+    let first = Data("first".utf8)
+    let second = Data("second".utf8)
+    let hashingService = RemoteRepositoryPublishService()
+    let transport = SequencedRemoteRepositoryTransport(responses: [
+      response(json: #"{"object":{"sha":"target-head"}}"#),
+      response(statusCode: 422, json: #"{"message":"Reference already exists"}"#),
+      response(json: #"{"object":{"sha":"current-review-head"}}"#),
+      response(json: #"{"sha":"current-review-head","tree":{"sha":"tree"},"parents":[]}"#),
+      response(json: "{\"sha\":\"\(hashingService.gitBlobSHA(for: first))\"}"),
+      response(json: "{\"sha\":\"\(hashingService.gitBlobSHA(for: second))\"}"),
+      response(json: #"[{"number":9,"html_url":"https://github.com/owner/site/pull/9"}]"#),
+    ])
+    let service = RemoteRepositoryPublishService(transport: transport)
+    var profile = SiteProfile.defaultProfile
+    profile.repositoryProvider = .github
+    profile.repositoryBaseURL = "https://api.github.com"
+    profile.repoOwner = "owner"
+    profile.repoName = "site"
+    profile.branch = "main"
+    let package = PublishPackage(
+      draftID: UUID(), title: "No-op", markdownPath: "content/posts/one.md",
+      files: [
+        PublishPackageFile(
+          kind: .markdown, repositoryPath: "content/posts/one.md", content: "first"),
+        PublishPackageFile(
+          kind: .markdown, repositoryPath: "content/posts/two.md", content: "second"),
+      ],
+      commitMessage: "No-op", reviewBranchName: "publish/no-op", reviewTitle: "No-op",
+      reviewChecklist: []
+    )
+    let result = try await service.publish(
+      package: package, profile: profile, mode: .reviewRequest, token: "token")
+    XCTAssertEqual(result.reviewNumber, 9)
+    XCTAssertEqual(result.commitSHA, "current-review-head")
+  }
+
   func testGitHubAtomicPublishAutoAdoptsExistingIdenticalContentWithoutLocalSHA() async throws {
     let hashingService = RemoteRepositoryPublishService()
     let firstContent = Data("first identical body".utf8)

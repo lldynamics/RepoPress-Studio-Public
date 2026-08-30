@@ -85,12 +85,10 @@ extension WorkbenchStore {
 
   public func fillMissingImageMetadataForSelectedDraft() {
     imageStore.fillMissingImageMetadataForSelectedDraft()
-    invalidateDraftDerivedCaches()
   }
 
   public func fillMissingImageMetadataForVisibleDrafts() {
     imageStore.fillMissingImageMetadataForVisibleDrafts()
-    invalidateDraftDerivedCaches()
   }
 
   public func fillMissingImageMetadataForVisibleDrafts(
@@ -99,22 +97,18 @@ extension WorkbenchStore {
     imageStore.fillMissingImageMetadataForVisibleDrafts(
       includedAttachmentIDsByDraftID: includedAttachmentIDsByDraftID
     )
-    invalidateDraftDerivedCaches()
   }
 
   public func optimizeSelectedDraftJPEGImages() {
     imageStore.optimizeSelectedDraftJPEGImages()
-    invalidateDraftDerivedCaches()
   }
 
   public func sanitizeSelectedDraftImagePrivacy() {
     imageStore.sanitizeSelectedDraftImagePrivacy()
-    invalidateDraftDerivedCaches()
   }
 
   public func sanitizeVisibleDraftImagePrivacy() {
     imageStore.sanitizeVisibleDraftImagePrivacy()
-    invalidateDraftDerivedCaches()
   }
 
   public func sanitizeVisibleDraftImagePrivacy(
@@ -123,12 +117,10 @@ extension WorkbenchStore {
     imageStore.sanitizeVisibleDraftImagePrivacy(
       includedAttachmentIDsByDraftID: includedAttachmentIDsByDraftID
     )
-    invalidateDraftDerivedCaches()
   }
 
   public func optimizeVisibleDraftJPEGImages() {
     imageStore.optimizeVisibleDraftJPEGImages()
-    invalidateDraftDerivedCaches()
   }
 
   public func optimizeVisibleDraftJPEGImages(
@@ -137,17 +129,14 @@ extension WorkbenchStore {
     imageStore.optimizeVisibleDraftJPEGImages(
       includedAttachmentIDsByDraftID: includedAttachmentIDsByDraftID
     )
-    invalidateDraftDerivedCaches()
   }
 
   public func convertSelectedDraftImagesToWebP() {
     imageStore.convertSelectedDraftImagesToWebP()
-    invalidateDraftDerivedCaches()
   }
 
   public func convertVisibleDraftImagesToWebP() {
     imageStore.convertVisibleDraftImagesToWebP()
-    invalidateDraftDerivedCaches()
   }
 
   public func convertVisibleDraftImagesToWebP(
@@ -156,17 +145,14 @@ extension WorkbenchStore {
     imageStore.convertVisibleDraftImagesToWebP(
       includedAttachmentIDsByDraftID: includedAttachmentIDsByDraftID
     )
-    invalidateDraftDerivedCaches()
   }
 
   public func optimizeSelectedDraftSVGImages() {
     imageStore.optimizeSelectedDraftSVGImages()
-    invalidateDraftDerivedCaches()
   }
 
   public func optimizeVisibleDraftSVGImages() {
     imageStore.optimizeVisibleDraftSVGImages()
-    invalidateDraftDerivedCaches()
   }
 
   public func optimizeVisibleDraftSVGImages(
@@ -175,17 +161,14 @@ extension WorkbenchStore {
     imageStore.optimizeVisibleDraftSVGImages(
       includedAttachmentIDsByDraftID: includedAttachmentIDsByDraftID
     )
-    invalidateDraftDerivedCaches()
   }
 
   public func resizeSelectedDraftLargeImages() {
     imageStore.resizeSelectedDraftLargeImages()
-    invalidateDraftDerivedCaches()
   }
 
   public func resizeVisibleDraftLargeImages() {
     imageStore.resizeVisibleDraftLargeImages()
-    invalidateDraftDerivedCaches()
   }
 
   public func resizeVisibleDraftLargeImages(
@@ -194,12 +177,10 @@ extension WorkbenchStore {
     imageStore.resizeVisibleDraftLargeImages(
       includedAttachmentIDsByDraftID: includedAttachmentIDsByDraftID
     )
-    invalidateDraftDerivedCaches()
   }
 
   public func cropSelectedDraftCoverImageForSocialPreview() {
     imageStore.cropSelectedDraftCoverImageForSocialPreview()
-    invalidateDraftDerivedCaches()
   }
 
   public func setSelectedDraftCoverAttachment(_ attachmentID: UUID?) {

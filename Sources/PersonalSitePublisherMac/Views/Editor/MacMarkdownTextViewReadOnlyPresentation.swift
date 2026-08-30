@@ -73,7 +73,8 @@ extension MacMarkdownTextView.Coordinator {
     readOnlyPresentationTask?.cancel()
     readOnlyPresentationTask = nil
     guard readOnlyNativePresentationEnabled,
-      !isShowingReadOnlyPresentation
+      !isShowingReadOnlyPresentation,
+      inlineAIReviewPresentation == nil
     else { return }
 
     readOnlyPresentationTask = Task { @MainActor [weak self, weak textView] in
@@ -97,6 +98,7 @@ extension MacMarkdownTextView.Coordinator {
   func showReadOnlyPresentation(in textView: NSTextView) -> Bool {
     guard readOnlyNativePresentationEnabled,
       !isShowingReadOnlyPresentation,
+      inlineAIReviewPresentation == nil,
       textView.textLayoutManager != nil,
       !textView.hasMarkedText(),
       textView.window?.firstResponder !== textView,

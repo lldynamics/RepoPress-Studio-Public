@@ -314,14 +314,7 @@ extension RSSReaderDatabase {
     guard !normalized.isEmpty else { return [] }
     return try withLock {
       var ids = Set<String>()
-      let ftsQuery =
-        normalized
-        .split(whereSeparator: { $0.isWhitespace })
-        .map {
-          let term = String($0).replacingOccurrences(of: "\"", with: "")
-          return "\"\(term)\"*"
-        }
-        .joined(separator: " OR ")
+      let ftsQuery = Self.ftsQuery(for: normalized)
       let ftsStatement = try prepareUnlocked(
         "SELECT article_id FROM rss_articles_fts WHERE rss_articles_fts MATCH ?;")
       defer { sqlite3_finalize(ftsStatement) }

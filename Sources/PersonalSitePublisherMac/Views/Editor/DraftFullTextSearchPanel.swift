@@ -172,32 +172,34 @@ struct DraftFullTextSearchPanel: View {
   @ViewBuilder
   private var searchContent: some View {
     if normalizedQuery.isEmpty {
-      ContentUnavailableView {
-        Label("输入关键词搜索文章", systemImage: "doc.text.magnifyingglass")
-      } description: {
-        Text("搜索标题、摘要、正文和元数据，或组合结构化条件；保存的查询可在搜索范围旁重新载入。")
-      }
-      .frame(maxWidth: .infinity, maxHeight: .infinity)
+      WorkbenchStateView(
+        presentation: WorkbenchStatePresentation(kind: .empty),
+        detail: "输入关键词搜索文章。搜索标题、摘要、正文和元数据，或组合结构化条件；保存的查询可在搜索范围旁重新载入。"
+      )
     } else if isSearching && searchSnapshot.displayedHits.isEmpty {
-      VStack(spacing: 10) {
-        ProgressView()
-        Text("正在搜索…")
-          .foregroundStyle(.secondary)
-      }
-      .frame(maxWidth: .infinity, maxHeight: .infinity)
+      WorkbenchStateView(
+        presentation: WorkbenchStatePresentation(
+          kind: .loading(detail: String(localized: "正在搜索…"))
+        )
+      )
     } else if searchSnapshot.groups.isEmpty {
-      ContentUnavailableView {
-        Label("没有找到匹配结果", systemImage: "doc.text.magnifyingglass")
-      } description: {
-        Text("请清除部分条件，或将搜索范围扩大到全部站点。")
-      } actions: {
-        HStack {
-          Button("清除条件", action: clearSearchConditions)
-          Button("搜索全部站点", action: searchAllSites)
-            .disabled(scope == .allSites)
-        }
-      }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+      WorkbenchStateView(
+        presentation: WorkbenchStatePresentation(kind: .empty),
+        detail: "请清除部分条件，或将搜索范围扩大到全部站点。",
+        actions: WorkbenchStateActions(
+          primary: WorkbenchStateAction(
+            title: "清除条件",
+            systemImage: "xmark.circle",
+            action: clearSearchConditions
+          ),
+          secondary: WorkbenchStateAction(
+            title: "搜索全部站点",
+            systemImage: "globe",
+            isEnabled: scope != .allSites,
+            action: searchAllSites
+          )
+        )
+      )
     } else {
       ScrollViewReader { proxy in
         List {
@@ -231,9 +233,7 @@ struct DraftFullTextSearchPanel: View {
         .listStyle(.inset)
         .onChange(of: selectedHitID) { _, hitID in
           guard let hitID else { return }
-          withAnimation(WorkbenchMotion.quick) {
-            proxy.scrollTo(hitID, anchor: .center)
-          }
+          proxy.scrollTo(hitID, anchor: .center)
         }
       }
     }

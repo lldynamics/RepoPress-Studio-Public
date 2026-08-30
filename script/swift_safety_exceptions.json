@@ -19,7 +19,12 @@
     {
       "file": "Sources/PublishingWorkbenchCore/Services/CodexAppServerClient.swift",
       "declaration": "CodexAppServerProcessTransport",
-      "rationale": "Process and pipe lifecycle state is protected by one NSLock; each async operation snapshots its dedicated file handle under that lock before use."
+      "rationale": "Process and pipe lifecycle state is protected by one NSLock, while a separate write lock serializes complete JSONL frames; termination never waits on a potentially blocked writer and closes the pipe to unblock it."
+    },
+    {
+      "file": "Sources/PublishingKnowledgeCore/KnowledgeCoreMLEmbeddingProvider.swift",
+      "declaration": "KnowledgeCoreMLEmbeddingProvider",
+      "rationale": "Core ML does not provide Sendable model types; immutable model configuration is set at initialization, prediction is serialized by inferenceLock, and availability state is protected by availabilityLock."
     },
     {
       "file": "Sources/PublishingGitCore/GitCommandRunner.swift",
@@ -152,6 +157,11 @@
       "rationale": "Revision counters are protected by the state lock."
     },
     {
+      "file": "Tests/PublishingWorkbenchCoreTests/CodexAppServerTransportConcurrencyTests.swift",
+      "declaration": "HandshakeReplacementTransportFactory",
+      "rationale": "The test factory's one-shot transport selection flag is read and mutated only while holding its NSLock; the two immutable transport references are actors."
+    },
+    {
       "file": "Tests/PublishingWorkbenchCoreTests/KnowledgeLibraryServiceTests.swift",
       "declaration": "KnowledgeSearchCancellationProbe",
       "rationale": "Test probe state is protected by its lock and is only used to assert cancellation."
@@ -207,12 +217,12 @@
       "rationale": "The watcher callback can cross task boundaries; its only mutable classification state is read and written under one NSLock."
     },
     {
-      "file": "Sources/PublishingMCPClient/PublishingMCPClient.swift",
+      "file": "Sources/PublishingMCPClient/PublishingMCPStdioSession.swift",
       "declaration": "PublishingMCPStderrDrainer",
       "rationale": "The stderr handle, readability handler, stop flag, and discarded-byte counter are accessed only while holding one NSLock as the callback crosses task boundaries."
     },
     {
-      "file": "Sources/PublishingMCPClient/PublishingMCPClient.swift",
+      "file": "Sources/PublishingMCPClient/PublishingMCPStdioSession.swift",
       "declaration": "PublishingMCPProcessTerminator",
       "rationale": "The immutable owned PID/PGID and termination flag cross into one blocking waitid observer and one delayed cleanup task; waitid uses WNOWAIT, while one NSLock serializes the single TERM/KILL sequence and the only waitpid reap."
     },
@@ -225,6 +235,11 @@
       "file": "Tests/PersonalSitePublisherMacTests/WorkbenchLaunchCoordinatorTests.swift",
       "declaration": "PathProbeRecorder",
       "rationale": "Off-main path-probe observations are protected by one NSLock while the injected callback crosses task boundaries."
+    },
+    {
+      "file": "Tests/PersonalSitePublisherMacTests/KnowledgeBrowserBridgeActivationTests.swift",
+      "declaration": "BrowserBridgeTestResponseReader",
+      "rationale": "The immutable NWConnection crosses its callback queue while response bytes, completion state, and failure details are protected by one NSLock; the guarded finish path fulfills the test expectation at most once."
     },
     {
       "file": "Sources/PublishingAICore/AIChatCompletionPreparedRequest.swift",
@@ -300,6 +315,11 @@
       "file": "Tests/PublishingWorkbenchCoreTests/CodexAppServerClientTests.swift",
       "declaration": "SequencedCodexTransportFactory",
       "rationale": "The factory generation counter is protected by its NSLock before transports are created across client tasks."
+    },
+    {
+      "file": "Tests/PublishingWorkbenchCoreTests/KnowledgeLibraryServiceTests.swift",
+      "declaration": "ControlledDenseProvider",
+      "rationale": "The test provider only shares its passage-enabled fixture flag; every read and write of that mutable flag is serialized by its NSLock."
     },
     {
       "file": "Sources/PersonalSitePublisherMac/Support/WorkbenchThumbnailView.swift",
@@ -439,7 +459,7 @@
   ],
   "optionalOperations": [
     {
-      "file": "Sources/PublishingMCPClient/PublishingMCPClient.swift",
+      "file": "Sources/PublishingMCPClient/PublishingMCPAuthority.swift",
       "category": "validationFallback",
       "contains": "guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }",
       "rationale": "An unreadable pinned launch artifact fails identity capture closed; configuration initialization rejects the missing identity and launches no process."
@@ -469,7 +489,7 @@
       "rationale": "Git configuration validation treats an unreadable or oversized file as unsafe; the caller converts nil into an explicit validation error naming the affected configuration file."
     },
     {
-      "file": "Sources/PublishingMarkdownCore/MarkdownSyntaxHighlightParser.swift",
+      "file": "Sources/PublishingMarkdownCore/MarkdownSyntaxHighlightParser+TreeSitter.swift",
       "category": "parsing",
       "contains": "try? Self.languageConfiguration(",
       "rationale": "The inline Tree-sitter grammar is optional nested-language enrichment; failure keeps the required base Markdown layer active instead of disabling syntax highlighting."
@@ -539,12 +559,6 @@
       "category": "temporaryCleanup",
       "contains": "try? output.close()",
       "rationale": "The output handle is closed during temporary backup cleanup after the package operation has completed."
-    },
-    {
-      "file": "Sources/PublishingWorkbenchCore/Services/KnowledgeLibraryService+Health.swift",
-      "category": "probeFallback",
-      "contains": "let size = try? fileURL",
-      "rationale": "Health reporting treats unavailable storage metadata as an unknown size and continues with the remaining references."
     },
     {
       "file": "Sources/PublishingKnowledgeCore/KnowledgePDFOCRService.swift",

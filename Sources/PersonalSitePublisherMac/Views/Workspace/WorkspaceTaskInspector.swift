@@ -70,6 +70,7 @@ struct WorkspaceTaskInspector: View {
 }
 
 struct RepositoryContextInspectorView: View {
+  let store: WorkbenchStore
   @ObservedObject private var statusState: WorkbenchPublishStatusFeatureFacade
   @Binding private var changedFileSelection: RepositoryChangedFileSelection?
 
@@ -77,6 +78,7 @@ struct RepositoryContextInspectorView: View {
     store: WorkbenchStore,
     changedFileSelection: Binding<RepositoryChangedFileSelection?> = .constant(nil)
   ) {
+    self.store = store
     _statusState = ObservedObject(wrappedValue: store.publishStatus)
     _changedFileSelection = changedFileSelection
   }
@@ -207,9 +209,15 @@ struct RepositoryContextInspectorView: View {
         .font(.caption.weight(.medium))
         .accessibilityIdentifier("repository-inspector-selected-file-diff")
       } else {
-        Text("扫描结果未提供可显示的文本差异。")
-          .font(.caption)
-          .foregroundStyle(.secondary)
+        Button {
+          Task {
+            _ = await store.repository.loadLineDiff(for: file, isRemote: source == .remote)
+          }
+        } label: {
+          Label("读取完整差异", systemImage: "doc.text.magnifyingglass")
+        }
+        .buttonStyle(.bordered)
+        .accessibilityIdentifier("repository-inspector-selected-file-load-diff")
       }
     }
     .accessibilityElement(children: .contain)

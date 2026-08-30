@@ -102,7 +102,9 @@ struct LocalContentImportIndexEntry: Codable, Equatable, Sendable {
 }
 
 struct LocalContentImportIndexSnapshot: Codable, Sendable {
-  static let currentSchemaVersion = 3
+  // Version 4 adds generator-aware article-path filtering before cache hits.
+  // Old entries may contain section pages, so they must be rebuilt.
+  static let currentSchemaVersion = 4
 
   var schemaVersion: Int
   var profileID: UUID

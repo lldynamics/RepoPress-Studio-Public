@@ -164,6 +164,12 @@ extension RemoteRepositoryPublishService {
           token: token
         )
         : nil
+      let existingReviewHeadSHA =
+        existingReviewURL == nil
+        ? nil
+        : try await gitLabBranchSHA(
+          repository: repository, branch: branchName, token: token
+        )
       return RemoteRepositoryPublishResult(
         provider: .gitlab,
         repositoryName: repository.displayName,
@@ -172,9 +178,12 @@ extension RemoteRepositoryPublishService {
         branchName: branchName,
         targetBranch: targetBranch,
         changedPaths: [],
-        commitSHA: nil,
+        commitSHA: existingReviewHeadSHA,
         remoteVersionsByPath: remoteVersionsByPath.isEmpty ? nil : remoteVersionsByPath,
         reviewPendingPaths: createsReview ? reviewPendingPaths : nil,
+        reviewNumber: existingReviewURL.flatMap {
+          reviewNumber(from: $0, provider: .gitlab)
+        },
         reviewURL: existingReviewURL,
         reviewTitle: createsReview ? reviewDraft.title : nil
       )
@@ -309,6 +318,7 @@ extension RemoteRepositoryPublishService {
       commitSHA: commit.id,
       remoteVersionsByPath: remoteVersionsByPath.isEmpty ? nil : remoteVersionsByPath,
       reviewPendingPaths: createsReview ? reviewPendingPaths : nil,
+      reviewNumber: reviewURL.flatMap { reviewNumber(from: $0, provider: .gitlab) },
       reviewURL: reviewURL,
       reviewTitle: createsReview ? reviewDraft.title : nil
     )

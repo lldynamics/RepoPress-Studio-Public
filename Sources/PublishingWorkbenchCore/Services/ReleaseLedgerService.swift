@@ -62,12 +62,27 @@ public struct ReleaseLedgerService {
         }
       }
       return deploymentStatus
+    case .remoteReviewRequest:
+      guard record.reviewStatus?.state == .merged,
+        let expectedCommitSHA = record.deploymentCommitSHA,
+        deploymentStatus.releaseRecordID == record.id,
+        deploymentStatus.expectedCommitSHA?.caseInsensitiveCompare(expectedCommitSHA)
+          == .orderedSame,
+        deploymentStatus.expectedBranch == record.deploymentBranchName
+      else {
+        return nil
+      }
+      if deploymentStatus.level == .success,
+        deploymentStatus.attributionVerified != true
+      {
+        return nil
+      }
+      return deploymentStatus
     case .localWrite,
       .batchLocalWrite,
       .directCommit,
       .reviewBranch,
       .remotePreviewBranch,
-      .remoteReviewRequest,
       .remoteReviewWithdrawal:
       return nil
     case .remotePublishFailure:
@@ -92,8 +107,22 @@ public struct ReleaseLedgerService {
       return localRollbackDraft(for: record)
     case .directCommit, .remoteDirectCommit:
       return commitRollbackDraft(for: record)
-    case .reviewBranch, .remoteReviewRequest:
+    case .reviewBranch:
       return reviewRollbackDraft(for: record)
+    case .remoteReviewRequest:
+      switch record.reviewStatus?.state {
+      case .merged:
+        guard record.deploymentCommitSHA != nil else { return nil }
+        var mergedRecord = record.deploymentAttributionRecord
+        // The original Review URL is evidence for the completed merge, not a
+        // rollback Review. Let the commit rollback builder create a new compare URL.
+        mergedRecord.reviewURL = nil
+        return commitRollbackDraft(for: mergedRecord)
+      case .closedWithoutMerge:
+        return nil
+      case .open, .locked, .none:
+        return reviewRollbackDraft(for: record)
+      }
     case .remotePublishFailure:
       return failedRemotePublishRollbackDraft(for: record)
     case .remotePreviewBranch, .remoteRollback, .remoteReviewWithdrawal:
@@ -133,8 +162,17 @@ public struct ReleaseLedgerService {
       return .localOnly
     case .remotePreviewBranch:
       return .previewOnly
-    case .reviewBranch, .remoteReviewRequest:
+    case .reviewBranch:
       return .pendingReview
+    case .remoteReviewRequest:
+      switch record.reviewStatus?.state {
+      case .open, .locked, .none:
+        return .pendingReview
+      case .closedWithoutMerge:
+        return .reviewWithdrawn
+      case .merged:
+        return record.deploymentCommitSHA == nil ? .unknown : .pendingDeployment
+      }
     case .remoteDirectCommit:
       return record.commitSHA?.trimmedForPublishing.nilIfEmpty == nil
         ? .unknown
@@ -181,12 +219,26 @@ public struct ReleaseLedgerService {
     case .previewOnly:
       return CoreL10n.text("预览分支已推送，未合并到正式分支，也未触发正式部署。")
     case .pendingReview:
+      if let reviewStatus = record.reviewStatus {
+        return reviewStatus.message
+      }
       return record.reviewURL == nil
         ? CoreL10n.text("发布分支已经准备好，等待创建或合并 Review。")
         : CoreL10n.text("PR/MR 已准备，等待合并后进入部署。")
     case .reviewWithdrawn:
+      if record.kind == .remoteReviewRequest,
+        record.reviewStatus?.state == .closedWithoutMerge
+      {
+        return record.reviewStatus?.message
+          ?? CoreL10n.text("PR/MR 已关闭且未合并，不会进入部署检查。")
+      }
       return CoreL10n.text("PR/MR 已撤回，未合并到目标分支，也未触发部署。")
     case .pendingDeployment:
+      if record.kind == .remoteReviewRequest,
+        let reviewStatus = record.reviewStatus
+      {
+        return reviewStatus.message
+      }
       return CoreL10n.text("提交已完成，尚未记录部署检查结果。")
     case .pendingRemoteRecovery:
       return CoreL10n.text("远端发布部分完成后中断；需要确认远端 commit、Review 或回滚方案。")
@@ -199,6 +251,12 @@ public struct ReleaseLedgerService {
     case .failed:
       return CoreL10n.text("发布或部署检查失败，需要处理后重试。")
     case .unknown:
+      if record.kind == .remoteReviewRequest,
+        record.reviewStatus?.state == .merged
+      {
+        return record.reviewStatus?.message
+          ?? CoreL10n.text("PR/MR 已合并，但缺少可绑定的合并提交，不能开始部署归因。")
+      }
       if record.kind == .remoteDirectCommit,
         record.commitSHA?.trimmedForPublishing.nilIfEmpty == nil
       {

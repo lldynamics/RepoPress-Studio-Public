@@ -168,4 +168,50 @@ final class WorkspaceWindowSessionTests: XCTestCase {
     XCTAssertEqual(session.selectedDraftID, fallbackDraftID)
     XCTAssertEqual(activatedDraftID, fallbackDraftID)
   }
+
+  func testAIInspectorDraftResolverKeepsEachWindowSelectionIndependent() {
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(
+        fileURL: FileManager.default.temporaryDirectory
+          .appendingPathComponent("window-inspector-\(UUID().uuidString).json")
+      ),
+      safeMode: true
+    )
+    let first = ArticleDraft(
+      siteProfileID: store.activeProfileID,
+      title: "窗口 A",
+      slug: "window-a"
+    )
+    let second = ArticleDraft(
+      siteProfileID: store.activeProfileID,
+      title: "窗口 B",
+      slug: "window-b"
+    )
+    store.setDrafts([first, second])
+    store.selectDraft(second.id)
+
+    XCTAssertEqual(
+      AIChatInspectorDraftResolver.resolve(
+        selectedDraftID: first.id,
+        usesWindowDraftSelection: true,
+        ai: store.ai
+      )?.id,
+      first.id
+    )
+    XCTAssertEqual(
+      AIChatInspectorDraftResolver.resolve(
+        selectedDraftID: second.id,
+        usesWindowDraftSelection: true,
+        ai: store.ai
+      )?.id,
+      second.id
+    )
+    XCTAssertNil(
+      AIChatInspectorDraftResolver.resolve(
+        selectedDraftID: nil,
+        usesWindowDraftSelection: true,
+        ai: store.ai
+      )
+    )
+  }
 }

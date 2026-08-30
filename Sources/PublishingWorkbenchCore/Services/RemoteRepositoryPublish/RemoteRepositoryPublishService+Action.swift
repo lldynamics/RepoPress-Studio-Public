@@ -114,6 +114,15 @@ extension RemoteRepositoryPublishService {
   ) async throws -> RemoteRepositoryReviewWithdrawalResult {
     let token = try requiredToken(token)
     let repository = try remoteRepository(from: profile)
+    guard
+      validatedReviewNumber(
+        from: draft.reviewURL,
+        provider: profile.repositoryProvider,
+        repository: repository
+      ) == draft.reviewNumber
+    else {
+      throw RemoteRepositoryPublishError.invalidReviewURL(draft.reviewURL)
+    }
 
     switch profile.repositoryProvider {
     case .github:

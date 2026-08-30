@@ -3,9 +3,167 @@ import Foundation
 import PDFKit
 import SQLite3
 import XCTest
+
 @testable import PublishingWorkbenchCore
 
 final class KnowledgeLibraryServiceTests: XCTestCase {
+  private final class ControlledDenseProvider: @unchecked Sendable,
+    KnowledgeSemanticEmbeddingProvider
+  {
+    let descriptor = KnowledgeSemanticEmbeddingDescriptor(
+      modelIdentifier: "test-dense-background-v1",
+      dimension: 2,
+      minimumSimilarity: 0,
+      maximumTokenCount: 32,
+      weightsVersion: "fixture",
+      artifactDigest: "fixture-dense",
+      preprocessingVersion: "fixture"
+    )
+    private let lock = NSLock()
+    private var passageEnabled = false
+
+    func enablePassages() {
+      lock.lock()
+      passageEnabled = true
+      lock.unlock()
+    }
+
+    func vector(for input: KnowledgeSemanticEmbeddingInput) -> KnowledgeSemanticVector? {
+      lock.lock()
+      let canEmbedPassage = passageEnabled
+      lock.unlock()
+      guard input.role == .query || canEmbedPassage else { return nil }
+      return KnowledgeSemanticVector(
+        modelIdentifier: descriptor.modelIdentifier,
+        values: [1, 1],
+        minimumSimilarity: 0,
+        encodingVersion: descriptor.encodingVersion
+      )
+    }
+  }
+
+  private struct TemporarilyUnavailableEmbeddingProvider: KnowledgeSemanticEmbeddingProvider {
+    let descriptor = KnowledgeSemanticEmbeddingDescriptor(
+      modelIdentifier: "bundled-bge-test",
+      dimension: 2,
+      minimumSimilarity: 0,
+      maximumTokenCount: 32,
+      weightsVersion: "fixture",
+      preprocessingVersion: "fixture",
+      availability: .temporarilyUnavailable
+    )
+
+    func vector(for input: KnowledgeSemanticEmbeddingInput) -> KnowledgeSemanticVector? { nil }
+  }
+
+  func testFullRepairPreservesKnownTemporarilyUnavailableProviderVectors() async throws {
+    let rootURL = temporaryDirectory(named: "knowledge-semantic-temporarily-unavailable")
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let storeURL = rootURL.appendingPathComponent("store", isDirectory: true)
+    let sourceURL = rootURL.appendingPathComponent("chapter.md")
+    try "# 本地模型\n\n即使模型资源暂时不可用，也不能删除已有向量。".write(
+      to: sourceURL, atomically: true, encoding: .utf8
+    )
+    let embeddingService = KnowledgeSemanticEmbeddingService(
+      providers: [TemporarilyUnavailableEmbeddingProvider()]
+    )
+    let service = KnowledgeLibraryService(
+      rootURL: storeURL,
+      semanticEmbeddingService: embeddingService,
+      searchCancellationCheck: { try Task.checkCancellation() }
+    )
+    _ = try await service.commit(try await service.makeImportPreview(sourceURL: sourceURL))
+    let databaseURL = storeURL.appendingPathComponent("library.sqlite")
+    try executeSQLite(
+      """
+      INSERT INTO knowledge_chunk_embeddings (
+        chunk_id, revision_id, model_id, dimension, vector, input_hash, encoding_version, created_at
+      ) SELECT id, revision_id, 'bundled-bge-test', 2, zeroblob(8), 'old', 'old', 0
+      FROM knowledge_chunks LIMIT 1;
+      """,
+      at: databaseURL
+    )
+
+    _ = try await service.repairSemanticVectors()
+    XCTAssertEqual(
+      try querySQLiteInt(
+        "SELECT COUNT(*) FROM knowledge_chunk_embeddings WHERE model_id = 'bundled-bge-test';",
+        at: databaseURL
+      ), 1)
+  }
+
+  func testSemanticRepairDetectsMetadataOnlySearchableTextHashChange() async throws {
+    let rootURL = temporaryDirectory(named: "knowledge-semantic-metadata-hash")
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let storeURL = rootURL.appendingPathComponent("store", isDirectory: true)
+    let sourceURL = rootURL.appendingPathComponent("chapter.md")
+    try "# 原始标题\n\n正文保持不变。".write(to: sourceURL, atomically: true, encoding: .utf8)
+    let service = KnowledgeLibraryService(rootURL: storeURL)
+    _ = try await service.commit(try await service.makeImportPreview(sourceURL: sourceURL))
+    let database = try service.database()
+    let before = try XCTUnwrap(database.semanticIndexRecords().first)
+    let databaseURL = storeURL.appendingPathComponent("library.sqlite")
+
+    // This intentionally leaves revision/chunk rows untouched.  The vector
+    // input nevertheless changed because the title participates in searchableText.
+    try executeSQLite(
+      "UPDATE knowledge_documents SET title = '仅改元数据后的标题' WHERE id = '\(before.document.id.uuidString)';",
+      at: databaseURL
+    )
+    let after = try XCTUnwrap(database.semanticIndexRecords().first)
+    XCTAssertEqual(after.chunk.id, before.chunk.id)
+    XCTAssertEqual(after.chunk.revisionID, before.chunk.revisionID)
+    XCTAssertNotEqual(after.searchableTextHash, before.searchableTextHash)
+
+    let needingRepair = try database.semanticIndexRecordsNeedingRepair(
+      modelIdentifier: KnowledgeSemanticEmbeddingService.fallbackModelIdentifier,
+      expectedDimension: 384,
+      expectedEncodingVersion: "features-v2"
+    )
+    XCTAssertEqual(needingRepair.map(\.chunk.id), [after.chunk.id])
+  }
+
+  func testDenseProviderBackfillIsDeferredAndCanBeRescheduledAfterCancellation() async throws {
+    let rootURL = temporaryDirectory(named: "knowledge-semantic-background-backfill")
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let storeURL = rootURL.appendingPathComponent("store", isDirectory: true)
+    let sourceURL = rootURL.appendingPathComponent("chapter.md")
+    try "# 后台回填\n\n首次搜索应使用已有 hash 向量，不应同步重建新稠密模型。".write(
+      to: sourceURL, atomically: true, encoding: .utf8
+    )
+    do {
+      let initialService = KnowledgeLibraryService(rootURL: storeURL)
+      _ = try await initialService.commit(
+        try await initialService.makeImportPreview(sourceURL: sourceURL))
+    }
+    let provider = ControlledDenseProvider()
+    let service = KnowledgeLibraryService(
+      rootURL: storeURL,
+      semanticEmbeddingService: KnowledgeSemanticEmbeddingService(providers: [provider]),
+      searchCancellationCheck: { try Task.checkCancellation() }
+    )
+    let databaseURL = storeURL.appendingPathComponent("library.sqlite")
+
+    _ = try service.search(query: "后台回填")
+    XCTAssertEqual(
+      try querySQLiteInt(
+        "SELECT COUNT(*) FROM knowledge_chunk_embeddings WHERE model_id = 'test-dense-background-v1';",
+        at: databaseURL
+      ), 0, "首次搜索不能同步写完整稠密索引")
+
+    service.invalidateSemanticBackfillCache()
+    provider.enablePassages()
+    _ = try service.search(query: "后台回填")
+    var denseCount = 0
+    for _ in 0..<80 where denseCount == 0 {
+      await Task.yield()
+      denseCount = try querySQLiteInt(
+        "SELECT COUNT(*) FROM knowledge_chunk_embeddings WHERE model_id = 'test-dense-background-v1';",
+        at: databaseURL
+      )
+    }
+    XCTAssertGreaterThan(denseCount, 0, "取消后的新 generation 应可重新调度并继续回填")
+  }
   func testRSSImportPreviewUsesCachedContentAndPreservesMetadata() async throws {
     let rootURL = temporaryDirectory(named: "knowledge-rss-cached-import")
     defer { try? FileManager.default.removeItem(at: rootURL) }
@@ -395,14 +553,16 @@ final class KnowledgeLibraryServiceTests: XCTestCase {
     XCTAssertTrue(try service.search(query: "语义检索", limit: 5).isEmpty)
     XCTAssertTrue(FileManager.default.fileExists(atPath: sourceURL.path))
     XCTAssertTrue(storedFileURLs.allSatisfy { !FileManager.default.fileExists(atPath: $0.path) })
-    XCTAssertEqual(try querySQLiteInt(
-      "SELECT COUNT(*) FROM knowledge_chunks;",
-      at: storeURL.appendingPathComponent("library.sqlite")
-    ), 0)
-    XCTAssertEqual(try querySQLiteInt(
-      "SELECT COUNT(*) FROM knowledge_chunk_embeddings;",
-      at: storeURL.appendingPathComponent("library.sqlite")
-    ), 0)
+    XCTAssertEqual(
+      try querySQLiteInt(
+        "SELECT COUNT(*) FROM knowledge_chunks;",
+        at: storeURL.appendingPathComponent("library.sqlite")
+      ), 0)
+    XCTAssertEqual(
+      try querySQLiteInt(
+        "SELECT COUNT(*) FROM knowledge_chunk_embeddings;",
+        at: storeURL.appendingPathComponent("library.sqlite")
+      ), 0)
   }
 
   func testDeleteDocumentRetainsContentAddressedFilesStillUsedByAnotherRevision() async throws {
@@ -434,8 +594,8 @@ final class KnowledgeLibraryServiceTests: XCTestCase {
       sharedRevision.originalStorageReference,
       sharedRevision.normalizedStorageReference,
     ]
-      .compactMap { $0 }
-      .map { storeURL.appendingPathComponent($0) }
+    .compactMap { $0 }
+    .map { storeURL.appendingPathComponent($0) }
 
     let report = try service.deleteDocument(id: secondDocument.id)
 
@@ -512,10 +672,12 @@ final class KnowledgeLibraryServiceTests: XCTestCase {
     let document = try XCTUnwrap(service.documents().first)
     let database = try KnowledgeDatabase(fileURL: storeURL.appendingPathComponent("library.sqlite"))
     let revision = try XCTUnwrap(database.currentRevision(documentID: document.id))
-    let references = [revision.originalStorageReference, revision.normalizedStorageReference].compactMap { $0 }
+    let references = [revision.originalStorageReference, revision.normalizedStorageReference]
+      .compactMap { $0 }
     XCTAssertEqual(references.count, 2)
     for reference in references {
-      try Data("damaged".utf8).write(to: storeURL.appendingPathComponent(reference), options: .atomic)
+      try Data("damaged".utf8).write(
+        to: storeURL.appendingPathComponent(reference), options: .atomic)
     }
 
     let duplicatePreview = try await service.makeImportPreview(sourceURL: sourceURL)
@@ -524,7 +686,8 @@ final class KnowledgeLibraryServiceTests: XCTestCase {
     XCTAssertEqual(result.skippedCount, 1)
     XCTAssertEqual(try service.normalizedText(documentID: document.id), source)
     let originalReference = try XCTUnwrap(revision.originalStorageReference)
-    XCTAssertEqual(try Data(contentsOf: storeURL.appendingPathComponent(originalReference)), Data(source.utf8))
+    XCTAssertEqual(
+      try Data(contentsOf: storeURL.appendingPathComponent(originalReference)), Data(source.utf8))
   }
 
   func testParserUpgradeReprocessesUnchangedHTMLInsteadOfTreatingItAsDuplicate() async throws {
@@ -549,10 +712,11 @@ final class KnowledgeLibraryServiceTests: XCTestCase {
     XCTAssertEqual(upgradedPreview.updateCount, 1)
     XCTAssertEqual(upgradedPreview.duplicateCount, 0)
     _ = try await service.commit(upgradedPreview)
-    XCTAssertEqual(try querySQLiteInt(
-      "SELECT parser_version FROM knowledge_revisions ORDER BY imported_at DESC LIMIT 1;",
-      at: databaseURL
-    ), KnowledgeLibraryService.parserVersion)
+    XCTAssertEqual(
+      try querySQLiteInt(
+        "SELECT parser_version FROM knowledge_revisions ORDER BY imported_at DESC LIMIT 1;",
+        at: databaseURL
+      ), KnowledgeLibraryService.parserVersion)
   }
 
   func testLocalContentRepairUsesStoredOriginalBlobAfterSourceDisappears() async throws {
@@ -588,10 +752,14 @@ final class KnowledgeLibraryServiceTests: XCTestCase {
     XCTAssertEqual(healthBefore.locallyRepairableDocumentCount, 1)
     XCTAssertEqual(previews.map(\.documentID), [document.id])
     XCTAssertEqual(previews.first?.importPreview.updateCount, 1)
-    XCTAssertTrue(previews.first?.importPreview.candidates.first?.normalizedText.contains("来源消失后仍可升级") == true)
-    XCTAssertFalse(previews.first?.importPreview.candidates.first?.normalizedText.contains("评论区") == true)
-    XCTAssertFalse(previews.first?.importPreview.candidates.first?.normalizedText.contains("查看新帖子") == true)
-    XCTAssertFalse(previews.first?.importPreview.candidates.first?.normalizedText.contains("所有人可以回复") == true)
+    XCTAssertTrue(
+      previews.first?.importPreview.candidates.first?.normalizedText.contains("来源消失后仍可升级") == true)
+    XCTAssertFalse(
+      previews.first?.importPreview.candidates.first?.normalizedText.contains("评论区") == true)
+    XCTAssertFalse(
+      previews.first?.importPreview.candidates.first?.normalizedText.contains("查看新帖子") == true)
+    XCTAssertFalse(
+      previews.first?.importPreview.candidates.first?.normalizedText.contains("所有人可以回复") == true)
     XCTAssertFalse(
       previews.first?.importPreview.candidates.first?.normalizedText
         .components(separatedBy: .newlines)
@@ -614,9 +782,10 @@ final class KnowledgeLibraryServiceTests: XCTestCase {
     XCTAssertEqual(healthAfterRepair.outdatedParserDocumentCount, 0)
     XCTAssertFalse(try service.normalizedText(documentID: document.id).contains("查看新帖子"))
     XCTAssertFalse(try service.normalizedText(documentID: document.id).contains("所有人可以回复"))
-    XCTAssertFalse(try service.search(query: "查看新帖子").contains {
-      $0.signals.contains(.fullText)
-    })
+    XCTAssertFalse(
+      try service.search(query: "查看新帖子").contains {
+        $0.signals.contains(.fullText)
+      })
     let defaultPreviews = try await service.makeLocalContentRepairPreviews()
     let userRequestedPreviews = try await service.makeLocalContentRepairPreviews(
       documentIDs: [document.id],
@@ -676,10 +845,10 @@ final class KnowledgeLibraryServiceTests: XCTestCase {
       tags: ["写作", "资料库"],
       capturedAt: Date(timeIntervalSince1970: 1_700_000_000),
       contentText: """
-      不同措辞也应该能够找到这一段关于长期知识积累的正文。
+        不同措辞也应该能够找到这一段关于长期知识积累的正文。
 
-      [继续阅读](https://example.com/notes/chapter)
-      """,
+        [继续阅读](https://example.com/notes/chapter)
+        """,
       archiveFormat: "mhtml",
       archiveData: archive
     )
@@ -783,9 +952,10 @@ final class KnowledgeLibraryServiceTests: XCTestCase {
     let candidate = try XCTUnwrap(preview.candidates.first)
     XCTAssertFalse(candidate.allowsLocalSemanticIndex ?? true)
     XCTAssertFalse(candidate.allowsRemoteAIUse ?? true)
-    XCTAssertTrue(candidate.warnings.contains {
-      $0.contains("仅保存页面标题和原始链接")
-    })
+    XCTAssertTrue(
+      candidate.warnings.contains {
+        $0.contains("仅保存页面标题和原始链接")
+      })
 
     let outcome = try await store.importBrowserCapture(
       capture,
@@ -796,9 +966,10 @@ final class KnowledgeLibraryServiceTests: XCTestCase {
       return XCTFail("Expected prepared capture to be saved")
     }
     XCTAssertEqual(action, .inserted)
-    let document = try XCTUnwrap(store.documents.first(where: {
-      $0.id == result.documentIDs.first
-    }))
+    let document = try XCTUnwrap(
+      store.documents.first(where: {
+        $0.id == result.documentIDs.first
+      }))
     XCTAssertEqual(document.title, "保存前编辑后的标题")
     XCTAssertEqual(document.authors, ["作者甲", "作者乙"])
     XCTAssertEqual(document.tags, ["研究", "写作"])
@@ -843,7 +1014,8 @@ final class KnowledgeLibraryServiceTests: XCTestCase {
     }
     XCTAssertEqual(action, .inserted)
     let documentID = try XCTUnwrap(result.documentIDs.first)
-    XCTAssertFalse(try XCTUnwrap(service.documents().first { $0.id == documentID }).allowsRemoteAIUse)
+    XCTAssertFalse(
+      try XCTUnwrap(service.documents().first { $0.id == documentID }).allowsRemoteAIUse)
   }
 
   @MainActor
@@ -874,7 +1046,9 @@ final class KnowledgeLibraryServiceTests: XCTestCase {
   }
 
   @MainActor
-  func testBrowserDuplicateResolutionSupportsVersionMoveCopyAndCancelWithoutSilentMutation() async throws {
+  func testBrowserDuplicateResolutionSupportsVersionMoveCopyAndCancelWithoutSilentMutation()
+    async throws
+  {
     let rootURL = temporaryDirectory(named: "knowledge-browser-duplicate-resolution")
     defer { try? FileManager.default.removeItem(at: rootURL) }
     let service = KnowledgeLibraryService(rootURL: rootURL.appendingPathComponent("store"))
@@ -996,10 +1170,11 @@ final class KnowledgeLibraryServiceTests: XCTestCase {
     defer { try? FileManager.default.removeItem(at: rootURL) }
 
     let service = KnowledgeLibraryService(rootURL: rootURL.appendingPathComponent("store"))
-    let archive = Data("""
-    <!doctype html><html><head><style>body{color:#222}</style></head>
-    <body><article><h1>离线资料</h1><img src="data:image/png;base64,AA=="></article></body></html>
-    """.utf8)
+    let archive = Data(
+      """
+      <!doctype html><html><head><style>body{color:#222}</style></head>
+      <body><article><h1>离线资料</h1><img src="data:image/png;base64,AA=="></article></body></html>
+      """.utf8)
     let capture = KnowledgeBrowserCapture(
       sourceURL: try XCTUnwrap(URL(string: "https://example.com/offline")),
       title: "Firefox 自包含归档",
@@ -1027,11 +1202,13 @@ final class KnowledgeLibraryServiceTests: XCTestCase {
     let chunks = service.chunks(
       documentID: UUID(),
       revisionID: UUID(),
-      sections: [KnowledgeExtractedSection(
-        headingPath: "第一章 › 资料库",
-        locator: "第 12 页",
-        text: longText
-      )]
+      sections: [
+        KnowledgeExtractedSection(
+          headingPath: "第一章 › 资料库",
+          locator: "第 12 页",
+          text: longText
+        )
+      ]
     )
 
     XCTAssertGreaterThan(chunks.count, 1)
@@ -1108,28 +1285,28 @@ final class KnowledgeLibraryServiceTests: XCTestCase {
     let sourceURL = try makeEPUB(
       in: rootURL,
       packageXML: """
-      <?xml version="1.0" encoding="UTF-8"?>
-      <package xmlns="http://www.idpf.org/2007/opf" unique-identifier="book-id" version="3.0">
-        <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
-          <dc:title>Thinking with Sources</dc:title>
-          <dc:creator>Ada Reader</dc:creator>
-          <dc:language>en</dc:language>
-          <dc:description>A practical book about durable research notes.</dc:description>
-          <dc:subject>research</dc:subject>
-          <dc:subject>writing</dc:subject>
-        </metadata>
-        <manifest>
-          <item id="chapter-one" href="Text/chapter%20one.xhtml" media-type="application/xhtml+xml"/>
-          <item id="chapter-two" href="Text/chapter-two.xhtml" media-type="application/xhtml+xml"/>
-          <item id="appendix" href="Text/appendix.xhtml" media-type="application/xhtml+xml"/>
-        </manifest>
-        <spine>
-          <itemref idref="chapter-two"/>
-          <itemref idref="chapter-one"/>
-          <itemref idref="appendix" linear="no"/>
-        </spine>
-      </package>
-      """,
+        <?xml version="1.0" encoding="UTF-8"?>
+        <package xmlns="http://www.idpf.org/2007/opf" unique-identifier="book-id" version="3.0">
+          <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+            <dc:title>Thinking with Sources</dc:title>
+            <dc:creator>Ada Reader</dc:creator>
+            <dc:language>en</dc:language>
+            <dc:description>A practical book about durable research notes.</dc:description>
+            <dc:subject>research</dc:subject>
+            <dc:subject>writing</dc:subject>
+          </metadata>
+          <manifest>
+            <item id="chapter-one" href="Text/chapter%20one.xhtml" media-type="application/xhtml+xml"/>
+            <item id="chapter-two" href="Text/chapter-two.xhtml" media-type="application/xhtml+xml"/>
+            <item id="appendix" href="Text/appendix.xhtml" media-type="application/xhtml+xml"/>
+          </manifest>
+          <spine>
+            <itemref idref="chapter-two"/>
+            <itemref idref="chapter-one"/>
+            <itemref idref="appendix" linear="no"/>
+          </spine>
+        </package>
+        """,
       chapters: [
         "OEBPS/Text/chapter one.xhtml": """
         <!doctype html><html><head><title>First Notes</title></head><body>
@@ -1193,17 +1370,17 @@ final class KnowledgeLibraryServiceTests: XCTestCase {
     let sourceURL = try makeEPUB(
       in: rootURL,
       packageXML: """
-      <?xml version="1.0" encoding="UTF-8"?>
-      <package xmlns="http://www.idpf.org/2007/opf" version="3.0">
-        <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
-          <dc:title>Unsafe Book</dc:title>
-        </metadata>
-        <manifest>
-          <item id="escape" href="../../../outside.xhtml" media-type="application/xhtml+xml"/>
-        </manifest>
-        <spine><itemref idref="escape"/></spine>
-      </package>
-      """,
+        <?xml version="1.0" encoding="UTF-8"?>
+        <package xmlns="http://www.idpf.org/2007/opf" version="3.0">
+          <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+            <dc:title>Unsafe Book</dc:title>
+          </metadata>
+          <manifest>
+            <item id="escape" href="../../../outside.xhtml" media-type="application/xhtml+xml"/>
+          </manifest>
+          <spine><itemref idref="escape"/></spine>
+        </package>
+        """,
       chapters: [:]
     )
 
@@ -1223,17 +1400,17 @@ final class KnowledgeLibraryServiceTests: XCTestCase {
     let sourceURL = try makeEPUB(
       in: rootURL,
       packageXML: """
-      <?xml version="1.0" encoding="UTF-8"?>
-      <!--\(preamble)-->
-      <!DOCTYPE package [<!ENTITY blocked "must not expand">]>
-      <package xmlns="http://www.idpf.org/2007/opf" version="3.0">
-        <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
-          <dc:title>&blocked;</dc:title>
-        </metadata>
-        <manifest><item id="chapter" href="chapter.xhtml" media-type="application/xhtml+xml"/></manifest>
-        <spine><itemref idref="chapter"/></spine>
-      </package>
-      """,
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!--\(preamble)-->
+        <!DOCTYPE package [<!ENTITY blocked "must not expand">]>
+        <package xmlns="http://www.idpf.org/2007/opf" version="3.0">
+          <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+            <dc:title>&blocked;</dc:title>
+          </metadata>
+          <manifest><item id="chapter" href="chapter.xhtml" media-type="application/xhtml+xml"/></manifest>
+          <spine><itemref idref="chapter"/></spine>
+        </package>
+        """,
       chapters: [
         "OEBPS/chapter.xhtml": "<html><body><h1>Chapter</h1><p>Body</p></body></html>"
       ]
@@ -1245,7 +1422,7 @@ final class KnowledgeLibraryServiceTests: XCTestCase {
         sourceName: "attack.epub"
       )
     ) { error in
-      guard case let KnowledgeLibraryError.unreadableSource(message) = error else {
+      guard case KnowledgeLibraryError.unreadableSource(let message) = error else {
         return XCTFail("Expected unreadableSource, got \(error)")
       }
       XCTAssertTrue(message.contains("DTD") || message.contains("实体"))
@@ -1324,7 +1501,7 @@ final class KnowledgeLibraryServiceTests: XCTestCase {
         sourceName: "record-limit.epub"
       )
     ) { error in
-      guard case let KnowledgeLibraryError.sourceLimitExceeded(message) = error else {
+      guard case KnowledgeLibraryError.sourceLimitExceeded(let message) = error else {
         return XCTFail("Expected sourceLimitExceeded, got \(error)")
       }
       XCTAssertTrue(message.contains("记录"))
@@ -1376,7 +1553,9 @@ final class KnowledgeLibraryServiceTests: XCTestCase {
     let documents = [
       KnowledgeDocument(kind: .text, title: "Beta", sourceByteCount: 500, importedAt: early),
       KnowledgeDocument(kind: .pdf, title: "Alpha", sourceByteCount: 100, importedAt: late),
-      KnowledgeDocument(kind: .book, title: "Gamma", sourceByteCount: 300, importedAt: Date(timeIntervalSince1970: 200)),
+      KnowledgeDocument(
+        kind: .book, title: "Gamma", sourceByteCount: 300,
+        importedAt: Date(timeIntervalSince1970: 200)),
     ]
 
     XCTAssertEqual(
@@ -1469,7 +1648,8 @@ final class KnowledgeLibraryServiceTests: XCTestCase {
     )
 
     let service = KnowledgeLibraryService(rootURL: rootURL.appendingPathComponent("store"))
-    let result = try await service.commit(try await service.makeImportPreview(sourceURL: sourceDirectory))
+    let result = try await service.commit(
+      try await service.makeImportPreview(sourceURL: sourceDirectory))
     try service.setAllowsRemoteAIUse(true, documentIDs: Set(result.documentIDs))
 
     let results = try service.search(query: "有什么办法可以省钱", limit: 10)
@@ -1517,21 +1697,24 @@ final class KnowledgeLibraryServiceTests: XCTestCase {
     XCTAssertTrue(document.allowsLocalSemanticIndex)
     XCTAssertFalse(document.allowsRemoteAIUse)
     try service.setAllowsRemoteAIUse(true, documentID: document.id)
-    XCTAssertFalse(try service.search(
-      query: "省钱方法",
-      onlyRemoteAIAllowed: true,
-      documentIDs: [document.id]
-    ).isEmpty)
+    XCTAssertFalse(
+      try service.search(
+        query: "省钱方法",
+        onlyRemoteAIAllowed: true,
+        documentIDs: [document.id]
+      ).isEmpty)
     try service.setAllowsRemoteAIUse(false, documentID: document.id)
-    XCTAssertTrue(try service.search(
-      query: "省钱方法",
-      onlyRemoteAIAllowed: true,
-      documentIDs: [document.id]
-    ).isEmpty)
-    XCTAssertTrue(try service.search(
-      query: "省钱方法",
-      documentIDs: [UUID()]
-    ).isEmpty)
+    XCTAssertTrue(
+      try service.search(
+        query: "省钱方法",
+        onlyRemoteAIAllowed: true,
+        documentIDs: [document.id]
+      ).isEmpty)
+    XCTAssertTrue(
+      try service.search(
+        query: "省钱方法",
+        documentIDs: [UUID()]
+      ).isEmpty)
   }
 
   func testLegacyBrowserPermissionBecomesLocalIndexOnlyAndRemoteAIStaysOff() async throws {
@@ -1587,19 +1770,21 @@ final class KnowledgeLibraryServiceTests: XCTestCase {
       "DELETE FROM knowledge_chunk_embeddings; PRAGMA user_version = 2;",
       at: databaseURL
     )
-    XCTAssertEqual(try querySQLiteInt(
-      "SELECT COUNT(*) FROM knowledge_chunk_embeddings;",
-      at: databaseURL
-    ), 0)
+    XCTAssertEqual(
+      try querySQLiteInt(
+        "SELECT COUNT(*) FROM knowledge_chunk_embeddings;",
+        at: databaseURL
+      ), 0)
 
     let migratedService = KnowledgeLibraryService(rootURL: storeURL)
     let result = try XCTUnwrap(migratedService.search(query: "如何省钱", limit: 5).first)
     XCTAssertEqual(result.document.title, "个人财务")
     XCTAssertTrue(result.signals.contains(.semantic))
-    XCTAssertGreaterThan(try querySQLiteInt(
-      "SELECT COUNT(*) FROM knowledge_chunk_embeddings;",
-      at: databaseURL
-    ), 0)
+    XCTAssertGreaterThan(
+      try querySQLiteInt(
+        "SELECT COUNT(*) FROM knowledge_chunk_embeddings;",
+        at: databaseURL
+      ), 0)
     XCTAssertEqual(
       try querySQLiteInt("PRAGMA user_version;", at: databaseURL),
       KnowledgeDatabase.currentSchemaVersion
@@ -1630,20 +1815,22 @@ final class KnowledgeLibraryServiceTests: XCTestCase {
       """,
       at: databaseURL
     )
-    XCTAssertGreaterThan(try querySQLiteInt(
-      "SELECT COUNT(*) FROM knowledge_chunk_embeddings WHERE model_id = 'local-semantic-hash-v2' AND dimension = 12;",
-      at: databaseURL
-    ), 0)
+    XCTAssertGreaterThan(
+      try querySQLiteInt(
+        "SELECT COUNT(*) FROM knowledge_chunk_embeddings WHERE model_id = 'local-semantic-hash-v2' AND dimension = 12;",
+        at: databaseURL
+      ), 0)
 
     let repairedService = KnowledgeLibraryService(rootURL: storeURL)
     let result = try XCTUnwrap(repairedService.search(query: "怎样省钱", limit: 5).first)
 
     XCTAssertEqual(result.document.title, "家庭预算")
     XCTAssertTrue(result.signals.contains(.semantic))
-    XCTAssertEqual(try querySQLiteInt(
-      "SELECT COUNT(*) FROM knowledge_chunk_embeddings WHERE model_id = 'local-semantic-hash-v2' AND dimension != 384;",
-      at: databaseURL
-    ), 0)
+    XCTAssertEqual(
+      try querySQLiteInt(
+        "SELECT COUNT(*) FROM knowledge_chunk_embeddings WHERE model_id = 'local-semantic-hash-v2' AND dimension != 384;",
+        at: databaseURL
+      ), 0)
   }
 
   func testExplicitSemanticRepairRebuildsVectorsAfterInProcessCorruption() async throws {
@@ -1670,23 +1857,26 @@ final class KnowledgeLibraryServiceTests: XCTestCase {
       """,
       at: databaseURL
     )
-    XCTAssertGreaterThan(try querySQLiteInt(
-      "SELECT COUNT(*) FROM knowledge_chunk_embeddings WHERE model_id = 'local-semantic-hash-v2' AND vector = zeroblob(dimension * 4);",
-      at: databaseURL
-    ), 0)
+    XCTAssertGreaterThan(
+      try querySQLiteInt(
+        "SELECT COUNT(*) FROM knowledge_chunk_embeddings WHERE model_id = 'local-semantic-hash-v2' AND vector = zeroblob(dimension * 4);",
+        at: databaseURL
+      ), 0)
 
     let report = try await service.repairSemanticVectors()
 
     XCTAssertGreaterThan(report.scannedChunkCount, 0)
     XCTAssertGreaterThan(report.regeneratedVectorCount, 0)
     XCTAssertTrue(report.modelIdentifiers.contains("local-semantic-hash-v2"))
-    XCTAssertEqual(try querySQLiteInt(
-      "SELECT COUNT(*) FROM knowledge_chunk_embeddings WHERE model_id = 'local-semantic-hash-v2' AND vector = zeroblob(dimension * 4);",
-      at: databaseURL
-    ), 0)
-    XCTAssertTrue(try service.search(query: "如何记住知识", limit: 5).contains {
-      $0.signals.contains(.semantic)
-    })
+    XCTAssertEqual(
+      try querySQLiteInt(
+        "SELECT COUNT(*) FROM knowledge_chunk_embeddings WHERE model_id = 'local-semantic-hash-v2' AND vector = zeroblob(dimension * 4);",
+        at: databaseURL
+      ), 0)
+    XCTAssertTrue(
+      try service.search(query: "如何记住知识", limit: 5).contains {
+        $0.signals.contains(.semantic)
+      })
   }
 
   func testFullSemanticRepairPrunesUnknownModelsAndHealthEnumeratesThem() async throws {
@@ -1715,20 +1905,22 @@ final class KnowledgeLibraryServiceTests: XCTestCase {
       at: databaseURL
     )
 
-    XCTAssertEqual(try querySQLiteInt(
-      "SELECT COUNT(*) FROM knowledge_chunk_embeddings WHERE model_id = 'retired-semantic-model';",
-      at: databaseURL
-    ), 1)
+    XCTAssertEqual(
+      try querySQLiteInt(
+        "SELECT COUNT(*) FROM knowledge_chunk_embeddings WHERE model_id = 'retired-semantic-model';",
+        at: databaseURL
+      ), 1)
     let healthBeforeRepair = try await service.libraryHealth()
     XCTAssertGreaterThan(healthBeforeRepair.semanticRepairChunkCount, 0)
 
     let report = try await service.repairSemanticVectors()
 
     XCTAssertGreaterThan(report.regeneratedVectorCount, 0)
-    XCTAssertEqual(try querySQLiteInt(
-      "SELECT COUNT(*) FROM knowledge_chunk_embeddings WHERE model_id = 'retired-semantic-model';",
-      at: databaseURL
-    ), 0)
+    XCTAssertEqual(
+      try querySQLiteInt(
+        "SELECT COUNT(*) FROM knowledge_chunk_embeddings WHERE model_id = 'retired-semantic-model';",
+        at: databaseURL
+      ), 0)
     let healthAfterRepair = try await service.libraryHealth()
     XCTAssertEqual(healthAfterRepair.semanticRepairChunkCount, 0)
   }
@@ -1776,18 +1968,21 @@ final class KnowledgeLibraryServiceTests: XCTestCase {
       XCTAssertTrue(error.localizedDescription.contains("forced semantic rebuild rollback"))
     }
 
-    XCTAssertEqual(try querySQLiteInt(
-      "SELECT COUNT(*) FROM knowledge_chunk_embeddings;",
-      at: databaseURL
-    ), originalVectorCount)
-    XCTAssertEqual(try querySQLiteInt(
-      "SELECT COUNT(*) FROM knowledge_chunk_embeddings WHERE model_id = 'retired-semantic-model';",
-      at: databaseURL
-    ), 1)
-    XCTAssertGreaterThan(try querySQLiteInt(
-      "SELECT COUNT(*) FROM knowledge_chunk_embeddings WHERE model_id = 'local-semantic-hash-v2';",
-      at: databaseURL
-    ), 0)
+    XCTAssertEqual(
+      try querySQLiteInt(
+        "SELECT COUNT(*) FROM knowledge_chunk_embeddings;",
+        at: databaseURL
+      ), originalVectorCount)
+    XCTAssertEqual(
+      try querySQLiteInt(
+        "SELECT COUNT(*) FROM knowledge_chunk_embeddings WHERE model_id = 'retired-semantic-model';",
+        at: databaseURL
+      ), 1)
+    XCTAssertGreaterThan(
+      try querySQLiteInt(
+        "SELECT COUNT(*) FROM knowledge_chunk_embeddings WHERE model_id = 'local-semantic-hash-v2';",
+        at: databaseURL
+      ), 0)
   }
 
   func testDocumentSemanticRepairPrunesOnlySelectedDocuments() async throws {
@@ -1825,20 +2020,22 @@ final class KnowledgeLibraryServiceTests: XCTestCase {
 
     _ = try await service.repairSemanticVectors(documentIDs: [firstDocumentID])
 
-    XCTAssertEqual(try querySQLiteInt(
-      """
-      SELECT COUNT(*)
-      FROM knowledge_chunk_embeddings e
-      JOIN knowledge_chunks c ON c.id = e.chunk_id
-      WHERE e.model_id = 'retired-semantic-model'
-        AND c.document_id = '\(firstDocumentID.uuidString)';
-      """,
-      at: databaseURL
-    ), 0)
-    XCTAssertGreaterThan(try querySQLiteInt(
-      "SELECT COUNT(*) FROM knowledge_chunk_embeddings WHERE model_id = 'retired-semantic-model';",
-      at: databaseURL
-    ), 0)
+    XCTAssertEqual(
+      try querySQLiteInt(
+        """
+        SELECT COUNT(*)
+        FROM knowledge_chunk_embeddings e
+        JOIN knowledge_chunks c ON c.id = e.chunk_id
+        WHERE e.model_id = 'retired-semantic-model'
+          AND c.document_id = '\(firstDocumentID.uuidString)';
+        """,
+        at: databaseURL
+      ), 0)
+    XCTAssertGreaterThan(
+      try querySQLiteInt(
+        "SELECT COUNT(*) FROM knowledge_chunk_embeddings WHERE model_id = 'retired-semantic-model';",
+        at: databaseURL
+      ), 0)
   }
 
   func testKnowledgeBackupRoundTripRestoresFoldersPinsAndReferencedFiles() async throws {
@@ -1896,12 +2093,14 @@ final class KnowledgeLibraryServiceTests: XCTestCase {
 
     XCTAssertEqual(result.restoredPreview.documentCount, 1)
     let recoveryURL = try XCTUnwrap(result.previousLibraryURL)
-    XCTAssertTrue(FileManager.default.fileExists(
-      atPath: recoveryURL.appendingPathComponent("current-only.txt").path
-    ))
-    XCTAssertFalse(FileManager.default.fileExists(
-      atPath: storeURL.appendingPathComponent("current-only.txt").path
-    ))
+    XCTAssertTrue(
+      FileManager.default.fileExists(
+        atPath: recoveryURL.appendingPathComponent("current-only.txt").path
+      ))
+    XCTAssertFalse(
+      FileManager.default.fileExists(
+        atPath: storeURL.appendingPathComponent("current-only.txt").path
+      ))
 
     let restoredService = KnowledgeLibraryService(rootURL: storeURL)
     let document = try XCTUnwrap(restoredService.documents().first)
@@ -1915,12 +2114,13 @@ final class KnowledgeLibraryServiceTests: XCTestCase {
     let rootURL = temporaryDirectory(named: "knowledge-browser-capture-backup")
     defer { try? FileManager.default.removeItem(at: rootURL) }
     let storeURL = rootURL.appendingPathComponent("store", isDirectory: true)
-    let backupURL = rootURL.appendingPathComponent("browser-capture.pslibrarybackup", isDirectory: true)
+    let backupURL = rootURL.appendingPathComponent(
+      "browser-capture.pslibrarybackup", isDirectory: true)
     let capturedText = """
-    # 浏览器采集正文
+      # 浏览器采集正文
 
-    这段文字必须和原始网页归档一起进入资料库备份。
-    """
+      这段文字必须和原始网页归档一起进入资料库备份。
+      """
     let archive = Data("From: browser-extension\nContent-Type: multipart/related".utf8)
     var restoredDocumentID: UUID?
 
@@ -1962,7 +2162,8 @@ final class KnowledgeLibraryServiceTests: XCTestCase {
     let restoredService = KnowledgeLibraryService(rootURL: storeURL)
     let documentID = try XCTUnwrap(restoredDocumentID)
     XCTAssertEqual(try restoredService.capturedText(documentID: documentID), capturedText)
-    XCTAssertTrue(try restoredService.normalizedText(documentID: documentID).contains("必须和原始网页归档一起"))
+    XCTAssertTrue(
+      try restoredService.normalizedText(documentID: documentID).contains("必须和原始网页归档一起"))
   }
 
   func testKnowledgeBackupRejectsTamperedFile() async throws {
@@ -2012,11 +2213,12 @@ final class KnowledgeLibraryServiceTests: XCTestCase {
     _ = try await service.createBackup(at: backupURL, applicationVersion: "test")
 
     var manifest = try decodeKnowledgeBackupManifest(at: backupURL)
-    manifest.files.append(KnowledgeLibraryBackupFileRecord(
-      relativePath: "../escape",
-      byteCount: 0,
-      sha256: String(repeating: "0", count: 64)
-    ))
+    manifest.files.append(
+      KnowledgeLibraryBackupFileRecord(
+        relativePath: "../escape",
+        byteCount: 0,
+        sha256: String(repeating: "0", count: 64)
+      ))
     let encoder = JSONEncoder()
     encoder.dateEncodingStrategy = .iso8601
     try encoder.encode(manifest).write(
@@ -2049,7 +2251,8 @@ final class KnowledgeLibraryServiceTests: XCTestCase {
     _ = try await service.commit(try await service.makeImportPreview(sourceURL: sourceURL))
     let backupURL = rootURL.appendingPathComponent("actual.pslibrarybackup", isDirectory: true)
     _ = try await service.createBackup(at: backupURL, applicationVersion: "test")
-    let linkedBackupURL = rootURL.appendingPathComponent("linked.pslibrarybackup", isDirectory: true)
+    let linkedBackupURL = rootURL.appendingPathComponent(
+      "linked.pslibrarybackup", isDirectory: true)
     try FileManager.default.createSymbolicLink(
       at: linkedBackupURL,
       withDestinationURL: backupURL
@@ -2079,9 +2282,10 @@ final class KnowledgeLibraryServiceTests: XCTestCase {
     _ = try await service.createBackup(at: backupURL, applicationVersion: "test")
 
     let manifest = try decodeKnowledgeBackupManifest(at: backupURL)
-    let nestedRecord = try XCTUnwrap(manifest.files.first {
-      $0.relativePath.split(separator: "/").count >= 2
-    })
+    let nestedRecord = try XCTUnwrap(
+      manifest.files.first {
+        $0.relativePath.split(separator: "/").count >= 2
+      })
     let storageDirectoryName = try XCTUnwrap(
       nestedRecord.relativePath.split(separator: "/").first.map(String.init)
     )
@@ -2201,12 +2405,14 @@ final class KnowledgeLibraryServiceTests: XCTestCase {
     _ = try await service.stageRestore(from: backupURL)
 
     let pendingURL = KnowledgeLibraryBackupService.pendingRestoreURL(for: storeURL)
-    XCTAssertFalse(FileManager.default.fileExists(
-      atPath: pendingURL.appendingPathComponent("unlisted/private.txt").path
-    ))
-    XCTAssertTrue(FileManager.default.fileExists(
-      atPath: pendingURL.appendingPathComponent("library.sqlite").path
-    ))
+    XCTAssertFalse(
+      FileManager.default.fileExists(
+        atPath: pendingURL.appendingPathComponent("unlisted/private.txt").path
+      ))
+    XCTAssertTrue(
+      FileManager.default.fileExists(
+        atPath: pendingURL.appendingPathComponent("library.sqlite").path
+      ))
   }
 
   private func makeEPUB(
@@ -2252,7 +2458,8 @@ final class KnowledgeLibraryServiceTests: XCTestCase {
 
     let archiveURL = rootURL.appendingPathComponent("book.epub")
     try runZIP(arguments: ["-q", "-X", "-0", archiveURL.path, "mimetype"], in: fixtureURL)
-    try runZIP(arguments: ["-q", "-X", "-9", "-r", archiveURL.path, "META-INF", "OEBPS"], in: fixtureURL)
+    try runZIP(
+      arguments: ["-q", "-X", "-9", "-r", archiveURL.path, "META-INF", "OEBPS"], in: fixtureURL)
     return archiveURL
   }
 
@@ -2327,13 +2534,16 @@ final class KnowledgeLibraryServiceTests: XCTestCase {
   private func storedKnowledgeContentFiles(at rootURL: URL) -> [URL] {
     ["blobs", "captured", "normalized"].flatMap { directoryName -> [URL] in
       let directoryURL = rootURL.appendingPathComponent(directoryName, isDirectory: true)
-      guard let enumerator = FileManager.default.enumerator(
-        at: directoryURL,
-        includingPropertiesForKeys: [.isRegularFileKey]
-      ) else { return [] }
+      guard
+        let enumerator = FileManager.default.enumerator(
+          at: directoryURL,
+          includingPropertiesForKeys: [.isRegularFileKey]
+        )
+      else { return [] }
       return enumerator.compactMap { item in
         guard let url = item as? URL,
-              (try? url.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true else {
+          (try? url.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true
+        else {
           return nil
         }
         return url
@@ -2349,7 +2559,8 @@ final class KnowledgeLibraryServiceTests: XCTestCase {
     defer { sqlite3_close(database) }
     var statement: OpaquePointer?
     guard sqlite3_prepare_v2(database, sql, -1, &statement, nil) == SQLITE_OK,
-          let statement else {
+      let statement
+    else {
       throw NSError(domain: "KnowledgeLibraryServiceTests.sqlite", code: 4)
     }
     defer { sqlite3_finalize(statement) }

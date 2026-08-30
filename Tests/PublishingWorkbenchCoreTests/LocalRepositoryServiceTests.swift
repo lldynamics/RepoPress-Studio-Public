@@ -488,7 +488,15 @@ final class LocalRepositoryServiceTests: XCTestCase {
     XCTAssertEqual(report.syncStatusTitle, "本地领先 1，落后 1")
     XCTAssertEqual(report.remoteChangedFiles.map(\.path), ["content/posts/remote.md"])
     XCTAssertEqual(report.remoteChangedFiles.first?.kind, .added)
-    XCTAssertTrue(report.remoteChangedFiles.first?.lineDiff?.contains("+remote") == true)
+    let remoteFile = try XCTUnwrap(report.remoteChangedFiles.first)
+    XCTAssertNil(remoteFile.lineDiff)
+    XCTAssertTrue(
+      LocalRepositoryService().diffForRemoteChangedFile(
+        remoteFile,
+        upstreamName: "remotes/origin/main",
+        rootURL: rootURL
+      )?.contains("+remote") == true
+    )
     XCTAssertEqual(report.remoteChangeSummary(contentRoot: "content", assetRoot: "static").articleCount, 1)
     XCTAssertTrue(report.preflightIssues.contains { issue in
       issue.severity == .warning
@@ -558,11 +566,13 @@ final class LocalRepositoryServiceTests: XCTestCase {
       }
     )
     XCTAssertTrue(renamed.status.contains("R"))
-    XCTAssertTrue(renamed.lineDiff?.contains("similarity index") == true)
-    XCTAssertTrue(renamed.lineDiff?.contains("rename from") == true)
-    XCTAssertTrue(renamed.lineDiff?.contains("rename to") == true)
-    XCTAssertTrue(renamed.lineDiff?.contains("+unstaged destination") == true)
-    if let lineDiff = renamed.lineDiff,
+    XCTAssertNil(renamed.lineDiff)
+    let lineDiff = LocalRepositoryService().diffForChangedFile(renamed, rootURL: rootURL)
+    XCTAssertTrue(lineDiff?.contains("similarity index") == true)
+    XCTAssertTrue(lineDiff?.contains("rename from") == true)
+    XCTAssertTrue(lineDiff?.contains("rename to") == true)
+    XCTAssertTrue(lineDiff?.contains("+unstaged destination") == true)
+    if let lineDiff,
        let renameIndex = lineDiff.range(of: "similarity index"),
        let unstagedIndex = lineDiff.range(of: "+unstaged destination") {
       XCTAssertLessThan(renameIndex.lowerBound, unstagedIndex.lowerBound)
@@ -574,7 +584,11 @@ final class LocalRepositoryServiceTests: XCTestCase {
 
     let magicUntracked = try XCTUnwrap(changedFiles.first { $0.path == untrackedPath })
     XCTAssertEqual(magicUntracked.kind, .untracked)
-    XCTAssertTrue(magicUntracked.lineDiff?.contains("+untracked") == true)
+    XCTAssertNil(magicUntracked.lineDiff)
+    XCTAssertTrue(
+      LocalRepositoryService().diffForChangedFile(magicUntracked, rootURL: rootURL)?
+        .contains("+untracked") == true
+    )
     XCTAssertFalse(changedFiles.contains { $0.path.contains("\\344") })
   }
 
@@ -628,14 +642,27 @@ final class LocalRepositoryServiceTests: XCTestCase {
     XCTAssertEqual(renamed.destinationPath, newPath)
     XCTAssertEqual(renamed.kind, .renamed)
     XCTAssertEqual(renamed.displayPath, newPath)
-    XCTAssertTrue(renamed.lineDiff?.contains("+remote updated") == true)
-    XCTAssertTrue(renamed.lineDiff?.contains("similarity index") == true)
-    XCTAssertTrue(renamed.lineDiff?.contains("rename from") == true)
-    XCTAssertTrue(renamed.lineDiff?.contains("rename to") == true)
+    XCTAssertNil(renamed.lineDiff)
+    let renamedDiff = service.diffForRemoteChangedFile(
+      renamed,
+      upstreamName: "origin/main",
+      rootURL: rootURL
+    )
+    XCTAssertTrue(renamedDiff?.contains("+remote updated") == true)
+    XCTAssertTrue(renamedDiff?.contains("similarity index") == true)
+    XCTAssertTrue(renamedDiff?.contains("rename from") == true)
+    XCTAssertTrue(renamedDiff?.contains("rename to") == true)
 
     let literal = try XCTUnwrap(changedFiles.first { $0.displayPath == literalPath })
     XCTAssertEqual(literal.kind, .added)
-    XCTAssertTrue(literal.lineDiff?.contains("+literal magic") == true)
+    XCTAssertNil(literal.lineDiff)
+    XCTAssertTrue(
+      service.diffForRemoteChangedFile(
+        literal,
+        upstreamName: "origin/main",
+        rootURL: rootURL
+      )?.contains("+literal magic") == true
+    )
     XCTAssertEqual(changedFiles.map(\.displayPath), [literalPath, newPath])
   }
 
@@ -1055,7 +1082,7 @@ final class LocalRepositoryServiceTests: XCTestCase {
     })
   }
 
-  func testScanIncludesLineDiffsForRepositoryChangedFiles() throws {
+  func testScanDefersLineDiffsUntilAFileIsRequested() throws {
     let rootURL = FileManager.default.temporaryDirectory
       .appendingPathComponent("PersonalSitePublisherMacDiffTests-\(UUID().uuidString)", isDirectory: true)
     defer {
@@ -1090,12 +1117,78 @@ final class LocalRepositoryServiceTests: XCTestCase {
     profile.contentRoot = "content"
     profile.assetRoot = "static"
 
-    let report = LocalRepositoryService().scan(profile: profile)
+    let service = LocalRepositoryService()
+    let report = service.scan(profile: profile)
     let changedArticle = try XCTUnwrap(report.changedFiles.first { $0.path == "content/posts/hello.md" })
 
     XCTAssertEqual(changedArticle.kind, .modified)
-    XCTAssertTrue(changedArticle.lineDiff?.contains("-old title") == true)
-    XCTAssertTrue(changedArticle.lineDiff?.contains("+new title") == true)
+    XCTAssertNil(changedArticle.lineDiff)
+    let lineDiff = service.diffForChangedFile(changedArticle, rootURL: rootURL)
+    XCTAssertTrue(lineDiff?.contains("-old title") == true)
+    XCTAssertTrue(lineDiff?.contains("+new title") == true)
+  }
+
+  @MainActor
+  func testRepositoryStoreLoadsOneRequestedDiffAndCachesItForTheCurrentScan() async throws {
+    let rootURL = FileManager.default.temporaryDirectory
+      .appendingPathComponent("RepositoryOnDemandDiffTests-\(UUID().uuidString)", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    try FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)
+    let articlePath = "content/posts/on-demand.md"
+    let articleURL = rootURL.appendingPathComponent(articlePath)
+    try FileManager.default.createDirectory(
+      at: articleURL.deletingLastPathComponent(),
+      withIntermediateDirectories: true
+    )
+    try "before\n".write(to: articleURL, atomically: true, encoding: .utf8)
+    try git(["init", "-b", "main"], rootURL: rootURL)
+    try git(["config", "user.email", "tests@example.com"], rootURL: rootURL)
+    try git(["config", "user.name", "Tests"], rootURL: rootURL)
+    try git(["add", "."], rootURL: rootURL)
+    try git(["commit", "-m", "Initial"], rootURL: rootURL)
+    try "after\n".write(to: articleURL, atomically: true, encoding: .utf8)
+
+    let commandLogURL = rootURL.appendingPathComponent("git-invocations.log")
+    let wrapperURL = rootURL.appendingPathComponent("git-wrapper.sh")
+    let shellQuotedLogPath = commandLogURL.path.replacingOccurrences(of: "'", with: "'\\\\''")
+    try """
+    #!/bin/sh
+    case " $* " in
+      *" diff "*) printf '%s\\n' diff >> '\(shellQuotedLogPath)' ;;
+    esac
+    exec /usr/bin/git "$@"
+    """.write(to: wrapperURL, atomically: true, encoding: .utf8)
+    try FileManager.default.setAttributes(
+      [.posixPermissions: 0o755],
+      ofItemAtPath: wrapperURL.path
+    )
+
+    let persistenceURL = rootURL.appendingPathComponent("workbench.json")
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: persistenceURL),
+      safeMode: true,
+      repositoryService: LocalRepositoryService(
+        gitCommandRunner: GitCommandRunner(executableURL: wrapperURL)
+      )
+    )
+    var profile = store.activeProfile
+    profile.rememberLocalRepositoryRoot(rootURL)
+    profile.contentRoot = "content"
+    store.updateActiveProfile(profile)
+
+    await store.repository.scanAsync()
+    let changedFile = try XCTUnwrap(
+      store.repository.report?.changedFiles.first { $0.destinationPath == articlePath }
+    )
+    XCTAssertNil(changedFile.lineDiff)
+    XCTAssertFalse(FileManager.default.fileExists(atPath: commandLogURL.path))
+
+    let first = await store.repository.loadLineDiff(for: changedFile, isRemote: false)
+    let second = await store.repository.loadLineDiff(for: changedFile, isRemote: false)
+    XCTAssertTrue(first?.contains("-before") == true)
+    XCTAssertEqual(second, first)
+    let commandLog = try String(contentsOf: commandLogURL, encoding: .utf8)
+    XCTAssertEqual(commandLog.split(whereSeparator: \.isNewline).filter { $0 == "diff" }.count, 1)
   }
 
   func testClassifiesChangedFilesByPublishingRole() {

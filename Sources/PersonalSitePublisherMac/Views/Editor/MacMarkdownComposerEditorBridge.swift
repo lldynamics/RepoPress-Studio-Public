@@ -466,14 +466,12 @@ extension MacMarkdownComposerView {
   func focusMarkdownText(
     for requestID: UUID,
     selectedRange: NSRange,
-    message: String,
-    isAnimated: Bool = false
+    message: String
   ) {
     self.selectedRange = selectedRange
     markdownTextFocusRequest = MarkdownTextFocusRequest(
       id: requestID,
-      selectedRange: selectedRange,
-      isAnimated: isAnimated
+      selectedRange: selectedRange
     )
     selectionActionMessage = message
   }

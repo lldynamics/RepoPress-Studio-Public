@@ -7,14 +7,16 @@ extension PublishingStore {
     store: WorkbenchStore
   ) async -> RemoteRepositoryPublishResult? {
     guard let draft = drafts.first(where: { $0.id == draftID }) else { return nil }
-    let hasRepositoryFile = !draft.isGeneralDraft
+    let hasRepositoryFile =
+      !draft.isGeneralDraft
       && draft.repositoryPath?.trimmedForPublishing.nilIfEmpty != nil
 
     deleteDraft(id: draftID, store: store)
     guard hasRepositoryFile,
-          let request = draftRepositoryCleanupRequests.first(where: {
-            $0.draftID == draftID && $0.needsAttention
-          }) else {
+      let request = draftRepositoryCleanupRequests.first(where: {
+        $0.draftID == draftID && $0.needsAttention
+      })
+    else {
       return nil
     }
     return await publishRepositoryCleanupRequestOnline(request.id, store: store)
@@ -25,10 +27,22 @@ extension PublishingStore {
     _ requestID: UUID,
     store: WorkbenchStore
   ) async -> RemoteRepositoryPublishResult? {
-    guard let request = draftRepositoryCleanupRequests.first(where: { $0.id == requestID }),
-          request.needsRemoteCleanup,
-          let profile = profiles.first(where: { $0.id == request.siteProfileID }),
-          let package = draftLifecycleService.cleanupPackage(for: [request]) else {
+    guard
+      let requestIndex = draftRepositoryCleanupRequests.firstIndex(where: {
+        $0.id == requestID
+      })
+    else {
+      return nil
+    }
+    if !draftRepositoryCleanupRequests[requestIndex].hasRemoteCleanupIntent {
+      draftRepositoryCleanupRequests[requestIndex].enqueueRemoteCleanup()
+      store.save()
+    }
+    let request = draftRepositoryCleanupRequests[requestIndex]
+    guard request.needsRemoteCleanup,
+      let profile = profiles.first(where: { $0.id == request.siteProfileID }),
+      let package = draftLifecycleService.cleanupPackage(for: [request])
+    else {
       return nil
     }
 
@@ -107,7 +121,8 @@ extension PublishingStore {
         [weak self, weak store] progress in
         Task { @MainActor in
           guard let self, let store,
-                self.remoteRepositoryMutationIsCurrent(operation, store: store) else { return }
+            self.remoteRepositoryMutationIsCurrent(operation, store: store)
+          else { return }
           store.setRemoteRepositoryPublishProgress(progress)
         }
       }
@@ -140,15 +155,17 @@ extension PublishingStore {
       )
       let remoteSummary: String
       if result.mode == .reviewRequest,
-         result.reviewURL?.trimmedForPublishing.nilIfEmpty != nil
-          || result.changedPaths.contains(request.repositoryPath) {
+        result.reviewURL?.trimmedForPublishing.nilIfEmpty != nil
+          || result.changedPaths.contains(request.repositoryPath)
+      {
         remoteSummary = CoreL10n.text("已创建下线 PR/MR，合并后软件会自动确认远端删除")
       } else if result.changedPaths.isEmpty {
         remoteSummary = CoreL10n.text("远端文件已不存在，按幂等成功处理")
       } else {
         remoteSummary = CoreL10n.text("远端文章已下线")
       }
-      let localSummary = locallyCleanedCount == 1
+      let localSummary =
+        locallyCleanedCount == 1
         ? CoreL10n.text("本地 Markdown 已清理")
         : CoreL10n.text("本地 Markdown 仍在待清理队列")
       setPublishActionMessage(
@@ -201,7 +218,10 @@ extension PublishingStore {
     store: WorkbenchStore
   ) -> Int {
     requests.reduce(into: 0) { count, request in
-      guard draftRepositoryCleanupRequests.first(where: { $0.id == request.id })?.needsLocalCleanup == true else {
+      guard
+        draftRepositoryCleanupRequests.first(where: { $0.id == request.id })?.needsLocalCleanup
+          == true
+      else {
         return
       }
       if performLocalRepositoryCleanup(request.id, store: store) {
@@ -223,7 +243,8 @@ extension PublishingStore {
       requests: requests,
       store: store
     )
-    let localSummary = locallyCleanedCount > 0
+    let localSummary =
+      locallyCleanedCount > 0
       ? CoreL10n.text("本地 Markdown 已清理")
       : CoreL10n.text("本地 Markdown 仍在待清理队列")
     setPublishActionMessage(

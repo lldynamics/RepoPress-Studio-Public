@@ -34,7 +34,7 @@ enum ContentMigrationLayout {
 }
 
 struct ContentMigrationAssistantView: View {
-  @ObservedObject var store: WorkbenchStore
+  @ObservedObject private var dataManagement: WorkbenchDataManagementFeatureFacade
   @Environment(\.dismiss) private var dismiss
   @State private var plan: ContentMigrationPlan?
   @State private var notice: ContentMigrationNotice?
@@ -42,6 +42,10 @@ struct ContentMigrationAssistantView: View {
   @State private var isApplying = false
   @State private var selectedDraftIDs = Set<UUID>()
   @State private var applyTask: Task<Void, Never>?
+
+  init(store: WorkbenchStore) {
+    _dataManagement = ObservedObject(wrappedValue: store.dataManagement)
+  }
 
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
@@ -191,7 +195,7 @@ struct ContentMigrationAssistantView: View {
       }
       .frame(maxWidth: .infinity, alignment: .leading)
       Text(
-        "来源：\(plan.sourceName)（\(plan.sourceKind.localizedDisplayName)） · 将导入到「\(store.activeProfile.name)」 · \(plan.imageMappings.count) 条图片路径 · \(plan.redirects.count) 条重定向"
+        "来源：\(plan.sourceName)（\(plan.sourceKind.localizedDisplayName)） · 将导入到「\(dataManagement.activeProfileName)」 · \(plan.imageMappings.count) 条图片路径 · \(plan.redirects.count) 条重定向"
       )
       .font(.caption)
       .foregroundStyle(.secondary)
@@ -630,7 +634,7 @@ struct ContentMigrationAssistantView: View {
         isAnalyzing = false
       }
       do {
-        let generatedPlan = try await store.makeContentMigrationPlan(sourceURL: url)
+        let generatedPlan = try await dataManagement.makeContentMigrationPlan(sourceURL: url)
         plan = generatedPlan
         selectedDraftIDs = selectableDraftIDs(in: generatedPlan)
         notice = .ready
@@ -651,7 +655,7 @@ struct ContentMigrationAssistantView: View {
         applyTask = nil
       }
       do {
-        let summary = try await store.applyContentMigrationAsync(
+        let summary = try await dataManagement.applyContentMigrationAsync(
           plan,
           selectedDraftIDs: frozenSelection
         )
@@ -665,7 +669,8 @@ struct ContentMigrationAssistantView: View {
           case .draftsChanged = migrationError
         {
           do {
-            let refreshedPlan = try await store.refreshContentMigrationPlanReviewAsync(plan)
+            let refreshedPlan = try await dataManagement.refreshContentMigrationPlanReviewAsync(
+              plan)
             self.plan = refreshedPlan
             selectedDraftIDs.formIntersection(selectableDraftIDs(in: refreshedPlan))
           } catch is CancellationError {

@@ -1,5 +1,18 @@
 import PublishingWorkbenchCore
 
+extension ArticleProvenance: WorkbenchDisplayNameLocalizable {
+  var workbenchDisplayNameSemanticKey: String {
+    switch self {
+    case .humanOriginal: "display.article-provenance.human-original"
+    case .aiAssisted: "display.article-provenance.ai-assisted"
+    case .aiAuthored: "display.article-provenance.ai-authored"
+    case .hybrid: "display.article-provenance.hybrid"
+    }
+  }
+
+  var fallbackDisplayName: String { displayName }
+}
+
 extension CodexAppServerModel {
   /// App Server owns this dynamic, account-specific model name. It is already
   /// presentation content rather than one of RepoPress Studio's catalog keys.
@@ -128,6 +141,8 @@ extension DeploymentPollingStatus {
     case .disabled: "display.deployment-polling-status.disabled"
     case .noEligibleRecords: "display.deployment-polling-status.no-eligible-records"
     case .checked: "display.deployment-polling-status.checked"
+    case .partial: "display.deployment-polling-status.partial"
+    case .failed: "display.deployment-polling-status.failed"
     }
   }
 
@@ -210,6 +225,20 @@ extension RemoteRepositoryPublishReadiness {
     case .needsPermissionCheck: "display.remote-repository-publish-readiness.needs-permission-check"
     case .needsRemoteCheck: "display.remote-repository-publish-readiness.needs-remote-check"
     case .blocked: "display.remote-repository-publish-readiness.blocked"
+    }
+  }
+
+  var fallbackDisplayName: String { displayName }
+}
+
+extension RemoteRepositoryReviewLifecycleState {
+  var workbenchDisplayNameSemanticKey: String {
+    switch self {
+    case .open: "display.remote-repository-review-lifecycle-state.open"
+    case .locked: "display.remote-repository-review-lifecycle-state.locked"
+    case .merged: "display.remote-repository-review-lifecycle-state.merged"
+    case .closedWithoutMerge:
+      "display.remote-repository-review-lifecycle-state.closed-without-merge"
     }
   }
 

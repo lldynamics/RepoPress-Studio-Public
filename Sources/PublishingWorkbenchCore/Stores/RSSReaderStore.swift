@@ -657,13 +657,29 @@ public final class RSSReaderStore: ObservableObject {
   public func articleHeadersAsync(
     for scope: RSSArticleScope,
     searchText: String = "",
-    unreadOnly: Bool = false
+    unreadOnly: Bool = false,
+    requiresArchiveQuery: Bool = false,
+    limit: Int? = nil,
+    offset: Int = 0
   ) async -> [RSSArticleHeader] {
     let headers = articleHeaders
     let database = self.database
     let legacyArticles = database == nil ? self.legacyArticles : []
+    let normalizedSearch = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+    let shouldQueryArchive =
+      database != nil && !articleHeadersAreComplete
+      && (requiresArchiveQuery || !normalizedSearch.isEmpty || scope != .all || unreadOnly)
     let task = Task.detached(priority: .userInitiated) {
-      RSSArticleSearchSupport.articleHeaders(
+      if shouldQueryArchive, let database {
+        return try database.articleHeaders(
+          for: scope,
+          searchText: searchText,
+          unreadOnly: unreadOnly,
+          limit: limit,
+          offset: offset
+        )
+      }
+      return RSSArticleSearchSupport.articleHeaders(
         headers,
         scope: scope,
         searchText: searchText,
@@ -674,7 +690,22 @@ public final class RSSReaderStore: ObservableObject {
     }
 
     return await withTaskCancellationHandler {
-      await task.value
+      do {
+        return try await task.value
+      } catch is CancellationError {
+        return []
+      } catch {
+        // A failed SQLite/FTS read retains the existing graceful in-memory
+        // fallback without forcing bootstrap completion.
+        return RSSArticleSearchSupport.articleHeaders(
+          headers,
+          scope: scope,
+          searchText: searchText,
+          unreadOnly: unreadOnly,
+          database: nil,
+          legacyArticles: legacyArticles
+        )
+      }
     } onCancel: {
       task.cancel()
     }

@@ -61,7 +61,8 @@ extension WorkbenchStore {
     for draftID: UUID?,
     flushEditorBuffer: Bool,
     invalidateDerivedCaches: Bool,
-    notifyingDraftList: Bool
+    notifyingDraftList: Bool,
+    suppressDuplicateDraftListPresentation: Bool = false
   ) {
     if flushEditorBuffer, let draftID {
       flushDraftBodyEditorBuffer(for: draftID)
@@ -81,7 +82,10 @@ extension WorkbenchStore {
       mergedDraftListNotification = notifyingDraftList
     }
     if invalidateDerivedCaches {
-      invalidateDraftDerivedCaches(notifyingDraftList: mergedDraftListNotification)
+      invalidateDraftDerivedCaches(
+        notifyingDraftList: mergedDraftListNotification,
+        suppressDuplicateDraftListPresentation: suppressDuplicateDraftListPresentation
+      )
     }
 
     guard let draftID else {
@@ -108,19 +112,13 @@ extension WorkbenchStore {
     let repositoryReportSnapshot = repositoryReport(for: selectedDraft)
     let preflightService = publishingStore.preflightService
     let generalDraftPublishingIssue = publishingStore.generalDraftPublishingIssue
-    let linkAuditKey = siteLinkAuditKey(
-      drafts: sameSiteDraftsSnapshot,
-      profile: profileSnapshot
-    )
-    let cachedLinkAuditReport = siteLinkAuditSnapshotStore.report(for: linkAuditKey)
-
     preflightRefreshTask = Task { [weak self] in
-      let calculationTask: Task<([PreflightIssue], SiteLinkAuditReport?)?, Never> = Task.detached(
+      let calculationTask: Task<[PreflightIssue]?, Never> = Task.detached(
         priority: .userInitiated
       ) {
         guard !Task.isCancelled else { return nil }
         if selectedDraftSnapshot.isGeneralDraft {
-          return ([generalDraftPublishingIssue], nil)
+          return [generalDraftPublishingIssue]
         }
         let duplicateIndex = PreflightDuplicateIndex(
           drafts: sameSiteDraftsSnapshot,
@@ -134,16 +132,25 @@ extension WorkbenchStore {
           includeRepositoryReadiness: true,
           duplicateIndex: duplicateIndex
         )
-        let linkAuditReport =
-          cachedLinkAuditReport
-          ?? SiteLinkAuditService().report(
-            drafts: sameSiteDraftsSnapshot,
-            profile: profileSnapshot
-          )
-        return (
-          linkAuditReport.mergingPreflightIssues(baseIssues, for: selectedDraftSnapshot),
-          linkAuditReport
-        )
+        return baseIssues
+      }
+      let linkAuditTask: Task<SiteLinkAuditReport?, Never>?
+      if selectedDraftSnapshot.isGeneralDraft {
+        linkAuditTask = nil
+      } else {
+        linkAuditTask = Task { [weak self] in
+          guard let self else { return nil }
+          do {
+            return try await self.localSiteLinkAuditReportAsync(
+              drafts: sameSiteDraftsSnapshot,
+              profile: profileSnapshot
+            )
+          } catch is CancellationError {
+            return nil
+          } catch {
+            return nil
+          }
+        }
       }
       let calculation = await withTaskCancellationHandler(
         operation: {
@@ -151,7 +158,9 @@ extension WorkbenchStore {
         },
         onCancel: {
           calculationTask.cancel()
+          linkAuditTask?.cancel()
         })
+      let linkAuditReport = await linkAuditTask?.value
 
       guard !Task.isCancelled,
         let calculation,
@@ -180,15 +189,11 @@ extension WorkbenchStore {
         return
       }
 
-      if let linkAuditReport = calculation.1 {
-        self.replaceSiteLinkAuditSnapshotIfCurrent(
-          linkAuditReport,
-          key: linkAuditKey,
-          drafts: sameSiteDraftsSnapshot,
-          profile: profileSnapshot
-        )
-      }
-      self.publishingStore.preflightIssues = calculation.0
+      self.publishingStore.preflightIssues =
+        linkAuditReport?.mergingPreflightIssues(
+          calculation,
+          for: selectedDraftSnapshot
+        ) ?? calculation
       self.preflightRefreshTask = nil
     }
   }
@@ -241,7 +246,8 @@ extension WorkbenchStore {
         for: draftID,
         flushEditorBuffer: true,
         invalidateDerivedCaches: true,
-        notifyingDraftList: requestedDraftListNotification
+        notifyingDraftList: requestedDraftListNotification,
+        suppressDuplicateDraftListPresentation: true
       )
     }
   }
@@ -720,12 +726,53 @@ extension WorkbenchStore {
   }
 
   @discardableResult
-  func recordVersionsBeforeBatchProcessing(draftIDs: Set<UUID>) -> Int {
+  func recordVersionsBeforeBatchProcessing(
+    draftIDs: Set<UUID>,
+    persisting: Bool = true
+  ) -> Int {
     flushDraftBodyEditorBuffers()
     return publishingStore.recordVersionsBeforeBatchProcessing(
       draftIDs: draftIDs,
-      store: self
+      store: self,
+      persisting: persisting
     )
+  }
+
+  /// Applies image-worker output as one store transaction. The worker has
+  /// already checked immutable operation baselines; this boundary performs one
+  /// publication, one derived-cache invalidation, one preflight refresh, and
+  /// one durable save for all accepted drafts.
+  @discardableResult
+  func applyImageBatchDraftUpdates(_ updatedDraftsByID: [UUID: ArticleDraft]) -> Bool {
+    guard !updatedDraftsByID.isEmpty else { return false }
+    let updatedDraftIDs = Set(updatedDraftsByID.keys)
+    guard drafts.filter({ updatedDraftIDs.contains($0.id) }).count == updatedDraftIDs.count else {
+      return false
+    }
+
+    _ = recordVersionsBeforeBatchProcessing(
+      draftIDs: updatedDraftIDs,
+      persisting: false
+    )
+    let updatedDrafts = drafts.map { currentDraft in
+      guard var updatedDraft = updatedDraftsByID[currentDraft.id] else { return currentDraft }
+      updatedDraft.markUpdated(replacing: currentDraft)
+      return updatedDraft
+    }
+    publishingStore.drafts = updatedDrafts
+    for updatedDraft in updatedDrafts where updatedDraftIDs.contains(updatedDraft.id) {
+      synchronizeDraftBodyEditorBuffer(with: updatedDraft)
+      scheduleSiteDraftFileAutosave(for: updatedDraft)
+    }
+    invalidateDraftDerivedCaches()
+    schedulePreflightCalculation(
+      for: selectedDraftID,
+      flushEditorBuffer: false,
+      invalidateDerivedCaches: false,
+      notifyingDraftList: false
+    )
+    save()
+    return true
   }
 
   @discardableResult

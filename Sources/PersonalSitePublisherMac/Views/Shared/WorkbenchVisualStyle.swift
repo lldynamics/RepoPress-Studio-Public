@@ -253,13 +253,69 @@ enum WorkbenchSpacing {
   static let spacious: CGFloat = 24
 }
 
+/// The complete allow-list for custom workbench motion.
+///
+/// Navigation, hover, focus, pressing, and ambient activity intentionally have
+/// no intent here. Those interactions should update immediately and rely on
+/// native selection, focus, and progress affordances instead of custom motion.
+enum WorkbenchMotionIntent: CaseIterable, Equatable, Sendable {
+  case statusChange
+  case drawerPresentation
+  case taskCompletion
+}
+
+enum WorkbenchMotionStyle: Equatable, Sendable {
+  case none
+  case quickFade
+  case drawerSlide
+  case completionBounce
+}
+
+struct WorkbenchMotionPolicy: Equatable, Sendable {
+  let reduceMotion: Bool
+
+  func style(for intent: WorkbenchMotionIntent) -> WorkbenchMotionStyle {
+    guard !reduceMotion else { return .none }
+
+    switch intent {
+    case .statusChange:
+      return .quickFade
+    case .drawerPresentation:
+      return .drawerSlide
+    case .taskCompletion:
+      return .completionBounce
+    }
+  }
+}
+
 enum WorkbenchMotion {
-  static let quick = Animation.easeOut(duration: 0.12)
-  static let standard = Animation.easeInOut(duration: 0.16)
-  static let deliberate = Animation.easeInOut(duration: 0.20)
-  static let hoverSpring = Animation.spring(response: 0.25, dampingFraction: 0.75)
-  static let emphasisSpring = Animation.spring(response: 0.20, dampingFraction: 0.70)
-  static let ambientPulse = Animation.easeInOut(duration: 1.35).repeatForever(autoreverses: true)
+  static func animation(
+    for intent: WorkbenchMotionIntent,
+    reduceMotion: Bool
+  ) -> Animation? {
+    switch WorkbenchMotionPolicy(reduceMotion: reduceMotion).style(for: intent) {
+    case .none:
+      return nil
+    case .quickFade:
+      return .easeOut(duration: 0.14)
+    case .drawerSlide:
+      return .easeInOut(duration: 0.20)
+    case .completionBounce:
+      return .spring(response: 0.20, dampingFraction: 0.70)
+    }
+  }
+
+  static func drawerTransition(reduceMotion: Bool) -> AnyTransition {
+    WorkbenchMotionPolicy(reduceMotion: reduceMotion).style(for: .drawerPresentation) == .none
+      ? .identity
+      : .move(edge: .trailing).combined(with: .opacity)
+  }
+
+  static func statusTransition(reduceMotion: Bool) -> AnyTransition {
+    WorkbenchMotionPolicy(reduceMotion: reduceMotion).style(for: .statusChange) == .none
+      ? .identity
+      : .opacity
+  }
 }
 
 enum WorkbenchSheetMetrics {
@@ -448,9 +504,7 @@ struct WorkbenchListDisclosureFooter: View {
         Button(
           showsAll ? String(localized: "收起") : String(localized: "显示全部")
         ) {
-          withAnimation(WorkbenchMotion.standard) {
-            showsAll.toggle()
-          }
+          showsAll.toggle()
         }
         .buttonStyle(.borderless)
         .controlSize(.small)
@@ -480,7 +534,6 @@ struct WorkbenchFocusRingButtonStyle: ButtonStyle {
           )
       }
       .opacity(configuration.isPressed ? 0.82 : 1)
-      .animation(WorkbenchMotion.quick, value: configuration.isPressed)
   }
 }
 

@@ -9,9 +9,11 @@ public final class KnowledgeLibraryService: @unchecked Sendable {
   public static let parserVersion = 7
 
   public static func defaultRootURL(fileManager: FileManager = .default) -> URL {
-    let supportURL = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+    let supportURL =
+      fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
       ?? fileManager.temporaryDirectory
-    return supportURL
+    return
+      supportURL
       .appendingPathComponent("PersonalSitePublisherMac", isDirectory: true)
       .appendingPathComponent("KnowledgeLibrary", isDirectory: true)
   }
@@ -38,6 +40,9 @@ public final class KnowledgeLibraryService: @unchecked Sendable {
   var cachedDatabase: KnowledgeDatabase?
   let semanticBackfillLock = NSLock()
   var backfilledSemanticModelIDs: Set<String> = []
+  var inflightSemanticModelIDs: Set<String> = []
+  var semanticBackfillTasks: [String: Task<Void, Never>] = [:]
+  var semanticBackfillGeneration = 0
   let chunkingService: KnowledgeChunkingService
   let semanticEmbeddingService: KnowledgeSemanticEmbeddingService
   let searchPresentationService = KnowledgeSearchPresentationService()
@@ -73,11 +78,13 @@ public final class KnowledgeLibraryService: @unchecked Sendable {
     rootURL: URL? = nil,
     chunkingService: KnowledgeChunkingService = KnowledgeChunkingService(),
     fileManager: FileManager = .default,
+    semanticEmbeddingService: KnowledgeSemanticEmbeddingService =
+      KnowledgeSemanticEmbeddingService(),
     searchCancellationCheck: @escaping @Sendable () throws -> Void
   ) {
     self.rootURL = rootURL ?? Self.defaultRootURL(fileManager: fileManager)
     self.chunkingService = chunkingService
-    self.semanticEmbeddingService = KnowledgeSemanticEmbeddingService()
+    self.semanticEmbeddingService = semanticEmbeddingService
     self.fileManager = fileManager
     self.searchCancellationCheck = searchCancellationCheck
   }

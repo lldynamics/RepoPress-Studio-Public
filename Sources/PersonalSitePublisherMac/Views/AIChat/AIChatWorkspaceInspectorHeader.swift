@@ -95,9 +95,7 @@ extension AIChatContextInspectorView {
       }
       .buttonStyle(.plain)
       .onHover { isHovered in
-        withAnimation(WorkbenchMotion.standard) {
-          isHeaderTitleHovered = isHovered
-        }
+        isHeaderTitleHovered = isHovered
       }
       .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
       .disabled(ai.chatContextMode != .general && ai.selectedChatDraft == nil)
@@ -354,9 +352,7 @@ extension AIChatContextInspectorView {
 
     return VStack(alignment: .leading, spacing: 7) {
       Button {
-        withAnimation(WorkbenchMotion.standard) {
-          isAdvancedSettingsExpanded.toggle()
-        }
+        isAdvancedSettingsExpanded.toggle()
       } label: {
         HStack(spacing: 6) {
           Label(String(localized: "上下文与来源"), systemImage: "scope")

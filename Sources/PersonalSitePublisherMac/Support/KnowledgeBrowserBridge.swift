@@ -912,6 +912,10 @@ final class KnowledgeBrowserBridge: ObservableObject {
       )
       return
     }
+    guard BrowserExtensionProtocol.allows(method: request.method, path: request.path) else {
+      sendResponse(.error(status: 404, message: "接口不存在。"), on: connection)
+      return
+    }
     if request.method == "GET", request.path == "/v1/status" {
       sendResponse(
         .json(

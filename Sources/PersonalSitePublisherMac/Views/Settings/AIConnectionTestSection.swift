@@ -90,7 +90,6 @@ struct AIConnectionTestSection: View {
       } label: {
         HStack(spacing: 5) {
           Image(systemName: "network")
-            .workbenchSyncSymbolEffect(trigger: isConnectionTestRunning ? 1 : 0)
           Text(
             isConnectionTestRunning
               ? String(localized: "正在测试…")

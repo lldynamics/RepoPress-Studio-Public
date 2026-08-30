@@ -1903,6 +1903,568 @@ final class DeploymentStatusServiceTests: XCTestCase {
     )
   }
 
+  func testPollingChecksMergedReviewThenAttributesDeploymentToMergeCommit() async throws {
+    let reviewTransport = SequencedRemoteRepositoryTransport(responses: [
+      response(
+        json:
+          #"{"number":12,"state":"closed","merged":true,"html_url":"https://github.com/owner/site/pull/12","merge_commit_sha":"merge-target-sha","head":{"ref":"publish/post","sha":"review-head-sha","repo":{"full_name":"owner/site"}},"base":{"ref":"main","sha":"base-sha","repo":{"full_name":"owner/site"}}}"#
+      )
+    ])
+    let deploymentTransport = SequencedDeploymentTransport(responses: [
+      deploymentResponse(
+        json: #"{"status":"ok","branch":"main","commit_sha":"merge-target-sha"}"#
+      )
+    ])
+    let repositoryTokenStore = KeychainTokenStore(
+      service: "PersonalSitePublisherMac.Tests.ReviewMergePolling",
+      accountPrefix: "review-merge-polling",
+      inMemory: true
+    )
+    let persistenceURL = try temporaryPersistenceURL()
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: persistenceURL),
+      remoteRepositoryPublishService: RemoteRepositoryPublishService(transport: reviewTransport),
+      deploymentStatusService: DeploymentStatusService(transport: deploymentTransport),
+      repositoryTokenStore: repositoryTokenStore
+    )
+    store.updateActiveProfile { profile in
+      profile.repositoryProvider = .github
+      profile.repositoryBaseURL = "https://api.github.com"
+      profile.repoOwner = "owner"
+      profile.repoName = "site"
+      profile.branch = "main"
+      profile.deploymentProvider = .custom
+      profile.deploymentStatusEndpointURL = "https://status.example.com/site"
+      profile.deploymentSiteURL = nil
+    }
+    XCTAssertTrue(store.saveRepositoryAccessToken("github-token"))
+    let record = ReleaseRecord(
+      kind: .remoteReviewRequest,
+      title: "线上 PR：Review 文章",
+      summary: "GitHub · publish/post · 1 个文件",
+      siteProfileID: store.activeProfileID,
+      draftTitle: "Review 文章",
+      changedPaths: ["content/posts/review.md"],
+      repositoryProvider: .github,
+      repositoryBaseURL: "https://api.github.com",
+      repoOwner: "owner",
+      repoName: "site",
+      branchName: "publish/post",
+      targetBranch: "main",
+      commitSHA: "review-head-sha",
+      reviewNumber: 12,
+      reviewURL: "https://github.com/owner/site/pull/12"
+    )
+    store.setReleaseRecords([record])
+    store.updateDeploymentPollingSettings(
+      DeploymentPollingSettings(isEnabled: true, intervalMinutes: 5)
+    )
+
+    let didRun = await store.runDeploymentPolling(now: Date(timeIntervalSince1970: 1_800_000_000))
+
+    XCTAssertTrue(didRun)
+    let updated = try XCTUnwrap(store.releaseRecords.first)
+    XCTAssertEqual(updated.commitSHA, "review-head-sha")
+    XCTAssertEqual(updated.reviewStatus?.state, .merged)
+    XCTAssertEqual(updated.reviewStatus?.mergeCommitSHA, "merge-target-sha")
+    let deployment = try XCTUnwrap(store.deploymentStatusSnapshot(for: updated))
+    XCTAssertEqual(deployment.expectedBranch, "main")
+    XCTAssertEqual(deployment.expectedCommitSHA, "merge-target-sha")
+    XCTAssertEqual(deployment.attributionVerified, true)
+    XCTAssertEqual(store.releaseLedgerEntry(for: updated).status, .succeeded)
+    XCTAssertEqual(store.deploymentPollingState.reviewCheckedRecordCount, 1)
+    XCTAssertEqual(store.deploymentPollingState.reviewMergedCount, 1)
+    let reviewRequests = await reviewTransport.capturedRequests()
+    let deploymentRequests = await deploymentTransport.capturedRequests()
+    XCTAssertEqual(reviewRequests.count, 1)
+    XCTAssertEqual(deploymentRequests.count, 1)
+
+    await store.waitForPendingSave()
+    let reloaded = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: persistenceURL))
+    XCTAssertEqual(reloaded.releaseRecords.first?.commitSHA, "review-head-sha")
+    XCTAssertEqual(reloaded.releaseRecords.first?.reviewStatus?.mergeCommitSHA, "merge-target-sha")
+    XCTAssertEqual(reloaded.releaseLedger.entries.first?.status, .succeeded)
+  }
+
+  func testReviewStatusFailurePreservesLastConfirmedStateAndSkipsDeployment() async throws {
+    let reviewTransport = SequencedRemoteRepositoryTransport(responses: [
+      response(
+        json:
+          #"{"number":12,"state":"open","merged":false,"html_url":"https://github.com/owner/site/pull/12","merge_commit_sha":null,"head":{"ref":"publish/post","sha":"review-head-sha","repo":{"full_name":"owner/site"}},"base":{"ref":"main","sha":"base-sha","repo":{"full_name":"owner/site"}}}"#
+      ),
+      response(statusCode: 500, json: #"{"message":"temporary failure"}"#),
+    ])
+    let deploymentTransport = SequencedDeploymentTransport(responses: [])
+    let repositoryTokenStore = KeychainTokenStore(
+      service: "PersonalSitePublisherMac.Tests.ReviewFailurePolling",
+      accountPrefix: "review-failure-polling",
+      inMemory: true
+    )
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()),
+      remoteRepositoryPublishService: RemoteRepositoryPublishService(transport: reviewTransport),
+      deploymentStatusService: DeploymentStatusService(transport: deploymentTransport),
+      repositoryTokenStore: repositoryTokenStore
+    )
+    store.updateActiveProfile { profile in
+      profile.repositoryProvider = .github
+      profile.repositoryBaseURL = "https://api.github.com"
+      profile.repoOwner = "owner"
+      profile.repoName = "site"
+      profile.branch = "main"
+      profile.deploymentProvider = .custom
+      profile.deploymentStatusEndpointURL = "https://status.example.com/site"
+    }
+    XCTAssertTrue(store.saveRepositoryAccessToken("github-token"))
+    let record = ReleaseRecord(
+      kind: .remoteReviewRequest,
+      title: "线上 PR：Review 文章",
+      summary: "GitHub · publish/post · 1 个文件",
+      siteProfileID: store.activeProfileID,
+      changedPaths: ["content/posts/review.md"],
+      repositoryProvider: .github,
+      repositoryBaseURL: "https://api.github.com",
+      repoOwner: "owner",
+      repoName: "site",
+      branchName: "publish/post",
+      targetBranch: "main",
+      commitSHA: "review-head-sha",
+      reviewNumber: 12,
+      reviewURL: "https://github.com/owner/site/pull/12"
+    )
+    store.setReleaseRecords([record])
+
+    let first = await store.refreshRemoteReviewStatus(for: record)
+    let confirmedRecord = try XCTUnwrap(store.releaseRecords.first)
+    let failed = await store.refreshRemoteReviewStatus(for: confirmedRecord)
+
+    XCTAssertEqual(first?.state, .open)
+    XCTAssertNil(failed)
+    XCTAssertEqual(store.releaseRecords.first?.reviewStatus?.state, .open)
+    XCTAssertEqual(store.releaseLedger.entries.first?.status, .pendingReview)
+    XCTAssertNil(store.deploymentStatusSnapshot(for: record))
+    let deploymentRequests = await deploymentTransport.capturedRequests()
+    XCTAssertEqual(deploymentRequests.count, 0)
+  }
+
+  func testLegacyReviewWithoutStoredNumberMigratesVerifiedURLNumberOnRefresh() async throws {
+    let reviewTransport = SequencedRemoteRepositoryTransport(responses: [
+      response(
+        json:
+          #"{"number":12,"state":"open","merged":false,"html_url":"https://github.com/owner/site/pull/12","merge_commit_sha":null,"head":{"ref":"publish/legacy","sha":"legacy-head","repo":{"full_name":"owner/site"}},"base":{"ref":"main","sha":"base","repo":{"full_name":"owner/site"}}}"#
+      )
+    ])
+    let tokenStore = KeychainTokenStore(
+      service: "PersonalSitePublisherMac.Tests.LegacyReviewNumber", accountPrefix: "legacy-review",
+      inMemory: true
+    )
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()),
+      remoteRepositoryPublishService: RemoteRepositoryPublishService(transport: reviewTransport),
+      repositoryTokenStore: tokenStore
+    )
+    store.updateActiveProfile { profile in
+      profile.repositoryProvider = .github
+      profile.repositoryBaseURL = "https://api.github.com"
+      profile.repoOwner = "owner"
+      profile.repoName = "site"
+      profile.branch = "main"
+    }
+    XCTAssertTrue(store.saveRepositoryAccessToken("token"))
+    let record = ReleaseRecord(
+      kind: .remoteReviewRequest, title: "Legacy", summary: "legacy",
+      siteProfileID: store.activeProfileID,
+      repositoryProvider: .github, repositoryBaseURL: "https://api.github.com", repoOwner: "owner",
+      repoName: "site",
+      branchName: "publish/legacy", targetBranch: "main", commitSHA: "legacy-head",
+      reviewURL: "https://github.com/owner/site/pull/12"
+    )
+    store.setReleaseRecords([record])
+
+    let snapshot = await store.refreshRemoteReviewStatus(for: record)
+
+    XCTAssertEqual(snapshot?.reviewNumber, 12)
+    XCTAssertEqual(store.releaseRecords.first?.reviewNumber, 12)
+    XCTAssertEqual(store.releaseRecords.first?.reviewStatus?.state, .open)
+  }
+
+  func testReviewPollingReportsPartialAndFailedRunsWithAttentionChecklist() async throws {
+    func makeStore(_ responses: [RemoteRepositoryTransportResponse]) throws -> WorkbenchStore {
+      let tokenStore = KeychainTokenStore(
+        service: "PersonalSitePublisherMac.Tests.ReviewPollingFailures.\(UUID().uuidString)",
+        accountPrefix: "review-polling", inMemory: true
+      )
+      let store = WorkbenchStore(
+        persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()),
+        remoteRepositoryPublishService: RemoteRepositoryPublishService(
+          transport: SequencedRemoteRepositoryTransport(responses: responses)
+        ),
+        repositoryTokenStore: tokenStore
+      )
+      store.updateActiveProfile { profile in
+        profile.repositoryProvider = .github
+        profile.repositoryBaseURL = "https://api.github.com"
+        profile.repoOwner = "owner"
+        profile.repoName = "site"
+        profile.branch = "main"
+      }
+      XCTAssertTrue(store.saveRepositoryAccessToken("token"))
+      store.updateDeploymentPollingSettings(
+        DeploymentPollingSettings(isEnabled: true, intervalMinutes: 5))
+      return store
+    }
+    func reviewRecord(_ number: Int, profileID: UUID) -> ReleaseRecord {
+      ReleaseRecord(
+        kind: .remoteReviewRequest, title: "Review \(number)", summary: "review",
+        siteProfileID: profileID,
+        repositoryProvider: .github, repositoryBaseURL: "https://api.github.com",
+        repoOwner: "owner", repoName: "site",
+        branchName: "publish/\(number)", targetBranch: "main", commitSHA: "head-\(number)",
+        reviewNumber: number,
+        reviewURL: "https://github.com/owner/site/pull/\(number)"
+      )
+    }
+    func openResponse(_ number: Int) -> RemoteRepositoryTransportResponse {
+      response(
+        json:
+          "{\"number\":\(number),\"state\":\"open\",\"merged\":false,\"html_url\":\"https://github.com/owner/site/pull/\(number)\",\"merge_commit_sha\":null,\"head\":{\"ref\":\"publish/\(number)\",\"sha\":\"head-\(number)\",\"repo\":{\"full_name\":\"owner/site\"}},\"base\":{\"ref\":\"main\",\"sha\":\"base\",\"repo\":{\"full_name\":\"owner/site\"}}}"
+      )
+    }
+
+    let partialStore = try makeStore([
+      openResponse(1), response(statusCode: 500, json: #"{"message":"offline"}"#),
+    ])
+    partialStore.setReleaseRecords([
+      reviewRecord(1, profileID: partialStore.activeProfileID),
+      reviewRecord(2, profileID: partialStore.activeProfileID),
+    ])
+    let partialDidRun = await partialStore.runDeploymentPolling(
+      now: Date(timeIntervalSince1970: 1_900_100_000)
+    )
+    XCTAssertTrue(partialDidRun)
+    XCTAssertEqual(partialStore.deploymentPollingState.status, .partial)
+    XCTAssertEqual(partialStore.deploymentPollingState.reviewFailureCount, 1)
+    XCTAssertEqual(partialStore.deploymentPollingState.reviewFailureRecords.count, 1)
+    XCTAssertGreaterThan(partialStore.deploymentPollingState.attentionCount, 0)
+    XCTAssertTrue(
+      partialStore.deploymentPollingState.followUpChecklistMarkdown.contains("Review 2"))
+
+    let failedStore = try makeStore([response(statusCode: 500, json: #"{"message":"offline"}"#)])
+    failedStore.setReleaseRecords([reviewRecord(3, profileID: failedStore.activeProfileID)])
+    let failedDidRun = await failedStore.runDeploymentPolling(
+      now: Date(timeIntervalSince1970: 1_900_100_001)
+    )
+    XCTAssertTrue(failedDidRun)
+    XCTAssertEqual(failedStore.deploymentPollingState.status, .failed)
+    XCTAssertEqual(failedStore.deploymentPollingState.reviewFailureCount, 1)
+  }
+
+  func testReviewPollingRotatesTwentyOneRecordsAcrossTwoRuns() async throws {
+    let responses: [RemoteRepositoryTransportResponse] = (1...42).map { _ in
+      response(
+        json:
+          #"{"number":1,"state":"open","merged":false,"html_url":"https://github.com/owner/site/pull/1","merge_commit_sha":null,"head":{"ref":"publish/1","sha":"head-1","repo":{"full_name":"owner/site"}},"base":{"ref":"main","sha":"base","repo":{"full_name":"owner/site"}}}"#
+      )
+    }
+    let repositoryTokenStore = KeychainTokenStore(
+      service: "PersonalSitePublisherMac.Tests.ReviewPollingRotation", accountPrefix: "rotation",
+      inMemory: true
+    )
+    let transport = SequencedRemoteRepositoryTransport(responses: responses)
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()),
+      remoteRepositoryPublishService: RemoteRepositoryPublishService(transport: transport),
+      repositoryTokenStore: repositoryTokenStore
+    )
+    store.updateActiveProfile { profile in
+      profile.repositoryProvider = .github
+      profile.repositoryBaseURL = "https://api.github.com"
+      profile.repoOwner = "owner"
+      profile.repoName = "site"
+      profile.branch = "main"
+    }
+    XCTAssertTrue(store.saveRepositoryAccessToken("token"))
+    store.updateDeploymentPollingSettings(
+      DeploymentPollingSettings(isEnabled: true, intervalMinutes: 5))
+    let records = (1...21).map { number in
+      ReleaseRecord(
+        kind: .remoteReviewRequest, title: "Review \(number)", summary: "review",
+        siteProfileID: store.activeProfileID,
+        repositoryProvider: .github, repositoryBaseURL: "https://api.github.com",
+        repoOwner: "owner", repoName: "site",
+        branchName: "publish/1", targetBranch: "main", commitSHA: "head-1", reviewNumber: 1,
+        reviewURL: "https://github.com/owner/site/pull/1",
+        createdAt: Date(timeIntervalSince1970: Double(number))
+      )
+    }
+    store.setReleaseRecords(records)
+
+    let firstDidRun = await store.runDeploymentPolling(
+      now: Date(timeIntervalSince1970: 1_900_100_002))
+    XCTAssertTrue(firstDidRun)
+    let firstIDs = Set(store.releaseRecords.filter { $0.reviewStatus != nil }.map(\.id))
+    XCTAssertEqual(firstIDs.count, 20)
+    let secondDidRun = await store.runDeploymentPolling(
+      now: Date(timeIntervalSince1970: 1_900_100_003))
+    XCTAssertTrue(secondDidRun)
+    let allIDs = Set(store.releaseRecords.filter { $0.reviewStatus != nil }.map(\.id))
+    XCTAssertEqual(allIDs, Set(records.map(\.id)))
+    XCTAssertEqual(store.remoteReviewPollingEligibleRecordCount, 21)
+  }
+
+  func testSameProfilePollingReentryDoesNotStartASecondReviewRequest() async throws {
+    let transport = SequencedRemoteRepositoryTransport(responses: [
+      response(
+        json:
+          #"{"number":1,"state":"open","merged":false,"html_url":"https://github.com/owner/site/pull/1","merge_commit_sha":null,"head":{"ref":"publish/1","sha":"head-1","repo":{"full_name":"owner/site"}},"base":{"ref":"main","sha":"base","repo":{"full_name":"owner/site"}}}"#,
+        delayNanoseconds: 200_000_000
+      )
+    ])
+    let repositoryTokenStore = KeychainTokenStore(
+      service: "PersonalSitePublisherMac.Tests.ReviewPollingReentry", accountPrefix: "reentry",
+      inMemory: true
+    )
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()),
+      remoteRepositoryPublishService: RemoteRepositoryPublishService(transport: transport),
+      repositoryTokenStore: repositoryTokenStore
+    )
+    store.updateActiveProfile { profile in
+      profile.repositoryProvider = .github
+      profile.repositoryBaseURL = "https://api.github.com"
+      profile.repoOwner = "owner"
+      profile.repoName = "site"
+      profile.branch = "main"
+    }
+    XCTAssertTrue(store.saveRepositoryAccessToken("token"))
+    store.updateDeploymentPollingSettings(
+      DeploymentPollingSettings(isEnabled: true, intervalMinutes: 5))
+    store.setReleaseRecords([
+      ReleaseRecord(
+        kind: .remoteReviewRequest, title: "Review", summary: "review",
+        siteProfileID: store.activeProfileID,
+        repositoryProvider: .github, repositoryBaseURL: "https://api.github.com",
+        repoOwner: "owner", repoName: "site",
+        branchName: "publish/1", targetBranch: "main", commitSHA: "head-1", reviewNumber: 1,
+        reviewURL: "https://github.com/owner/site/pull/1"
+      )
+    ])
+    let firstTask = Task {
+      await store.runDeploymentPolling(now: Date(timeIntervalSince1970: 1_900_100_004))
+    }
+    try await Task.sleep(nanoseconds: 20_000_000)
+    let secondDidRun = await store.runDeploymentPolling(
+      now: Date(timeIntervalSince1970: 1_900_100_004))
+    XCTAssertFalse(secondDidRun)
+    let firstDidRun = await firstTask.value
+    let requests = await transport.capturedRequests()
+    XCTAssertTrue(firstDidRun)
+    XCTAssertEqual(requests.count, 1)
+  }
+
+  func testReviewResponseIsRejectedWhenRecordIdentityChangesWhileRequestIsInFlight() async throws {
+    let transport = SequencedRemoteRepositoryTransport(responses: [
+      response(
+        json:
+          #"{"number":1,"state":"open","merged":false,"html_url":"https://github.com/owner/site/pull/1","merge_commit_sha":null,"head":{"ref":"publish/1","sha":"head-1","repo":{"full_name":"owner/site"}},"base":{"ref":"main","sha":"base","repo":{"full_name":"owner/site"}}}"#,
+        delayNanoseconds: 150_000_000
+      )
+    ])
+    let repositoryTokenStore = KeychainTokenStore(
+      service: "PersonalSitePublisherMac.Tests.ReviewIdentityReplacement",
+      accountPrefix: "replacement", inMemory: true
+    )
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()),
+      remoteRepositoryPublishService: RemoteRepositoryPublishService(transport: transport),
+      repositoryTokenStore: repositoryTokenStore
+    )
+    store.updateActiveProfile { profile in
+      profile.repositoryProvider = .github
+      profile.repositoryBaseURL = "https://api.github.com"
+      profile.repoOwner = "owner"
+      profile.repoName = "site"
+      profile.branch = "main"
+    }
+    XCTAssertTrue(store.saveRepositoryAccessToken("token"))
+    let record = ReleaseRecord(
+      kind: .remoteReviewRequest, title: "Review", summary: "review",
+      siteProfileID: store.activeProfileID,
+      repositoryProvider: .github, repositoryBaseURL: "https://api.github.com", repoOwner: "owner",
+      repoName: "site",
+      branchName: "publish/1", targetBranch: "main", commitSHA: "head-1", reviewNumber: 1,
+      reviewURL: "https://github.com/owner/site/pull/1"
+    )
+    store.setReleaseRecords([record])
+    let refreshTask = Task { await store.refreshRemoteReviewStatus(for: record) }
+    try await Task.sleep(nanoseconds: 20_000_000)
+    var replacement = record
+    replacement.commitSHA = "replacement-head"
+    store.setReleaseRecords([replacement])
+
+    let result = await refreshTask.value
+    XCTAssertNil(result)
+    XCTAssertEqual(store.releaseRecords.first?.commitSHA, "replacement-head")
+    XCTAssertNil(store.releaseRecords.first?.reviewStatus)
+  }
+
+  func testOperationalPollingUsesOneSharedHeartbeatUntilLastWindowStops() throws {
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL())
+    )
+    let firstClient = UUID()
+    let secondClient = UUID()
+
+    store.startOperationalPolling(clientID: firstClient)
+    let firstGeneration = store.operationalPollingGeneration
+    XCTAssertNotNil(store.operationalPollingTask)
+    XCTAssertEqual(store.operationalPollingClientIDs, Set([firstClient]))
+
+    store.startOperationalPolling(clientID: secondClient)
+    XCTAssertEqual(store.operationalPollingGeneration, firstGeneration)
+    XCTAssertNotNil(store.operationalPollingTask)
+    XCTAssertEqual(store.operationalPollingClientIDs, Set([firstClient, secondClient]))
+
+    store.stopOperationalPolling(clientID: firstClient)
+    XCTAssertNotNil(store.operationalPollingTask)
+    XCTAssertEqual(store.operationalPollingClientIDs, Set([secondClient]))
+
+    store.stopOperationalPolling(clientID: secondClient)
+    XCTAssertNil(store.operationalPollingTask)
+    XCTAssertTrue(store.operationalPollingClientIDs.isEmpty)
+    XCTAssertGreaterThan(store.operationalPollingGeneration, firstGeneration)
+  }
+
+  func testProfileSwitchDoesNotLeakHangingDeploymentRequestActivityOrMessage() async throws {
+    let transport = HangingDeploymentTransport()
+    let store = try deploymentStore(transport: transport)
+    store.updateActiveProfile { profile in
+      profile.deploymentProvider = .custom
+      profile.deploymentStatusEndpointURL = "https://status.example.com/profile-a"
+    }
+    let profileAID = store.activeProfileID
+    let record = releaseRecord(
+      title: "Profile A deployment",
+      summary: "custom",
+      siteProfileID: profileAID,
+      branchName: "main",
+      commitSHA: "profile-a-sha"
+    )
+    store.setReleaseRecords([record])
+
+    let refreshTask = Task { await store.refreshDeploymentStatus(for: record) }
+    await transport.waitForRequest()
+    XCTAssertTrue(store.isDeploymentStatusChecking)
+    XCTAssertEqual(store.deploymentStatusMessage, CoreL10n.text("正在检查部署状态..."))
+
+    let profileB = store.createProfile(named: "Profile B")
+    XCTAssertEqual(store.activeProfileID, profileB.id)
+    XCTAssertFalse(store.isDeploymentStatusChecking)
+    XCTAssertNil(store.deploymentStatusMessage)
+
+    try await transport.reply(
+      statusCode: 200,
+      json: #"{"status":"ok","branch":"main","commit":"profile-a-sha"}"#
+    )
+    let snapshot = await refreshTask.value
+    XCTAssertNotNil(snapshot)
+    XCTAssertEqual(store.activeProfileID, profileB.id)
+    XCTAssertFalse(store.isDeploymentStatusChecking)
+    XCTAssertNil(store.deploymentStatusMessage)
+
+    store.selectProfile(profileAID)
+    XCTAssertFalse(store.isDeploymentStatusChecking)
+    XCTAssertEqual(
+      store.deploymentStatusMessage,
+      CoreL10n.format("%@：%@", DeploymentProvider.custom.displayName, CoreL10n.text("正常"))
+    )
+  }
+
+  func testSwitchingIntoBackgroundDeploymentRequestShowsThatProfilesActivity() async throws {
+    let transport = HangingDeploymentTransport()
+    let store = try deploymentStore(transport: transport)
+    store.updateActiveProfile { profile in
+      profile.deploymentProvider = .custom
+      profile.deploymentStatusEndpointURL = "https://status.example.com/background-profile-a"
+    }
+    let profileAID = store.activeProfileID
+    let record = releaseRecord(
+      title: "Background Profile A deployment",
+      summary: "custom",
+      siteProfileID: profileAID,
+      branchName: "main",
+      commitSHA: "background-profile-a-sha"
+    )
+    store.setReleaseRecords([record])
+    let profileB = store.createProfile(named: "Profile B")
+
+    let refreshTask = Task { await store.refreshDeploymentStatus(for: record) }
+    await transport.waitForRequest()
+    XCTAssertEqual(store.activeProfileID, profileB.id)
+    XCTAssertFalse(store.isDeploymentStatusChecking)
+    XCTAssertNil(store.deploymentStatusMessage)
+
+    store.selectProfile(profileAID)
+    XCTAssertTrue(store.isDeploymentStatusChecking)
+    XCTAssertEqual(store.deploymentStatusMessage, CoreL10n.text("正在检查部署状态..."))
+
+    try await transport.reply(
+      statusCode: 200,
+      json: #"{"status":"ok","branch":"main","commit":"background-profile-a-sha"}"#
+    )
+    let snapshot = await refreshTask.value
+    XCTAssertNotNil(snapshot)
+    XCTAssertFalse(store.isDeploymentStatusChecking)
+    XCTAssertEqual(
+      store.deploymentStatusMessage,
+      CoreL10n.format("%@：%@", DeploymentProvider.custom.displayName, CoreL10n.text("正常"))
+    )
+  }
+
+  func testProfileSwitchDoesNotLeakHangingDeploymentPollingActivityOrMessage() async throws {
+    let transport = HangingDeploymentTransport()
+    let store = try deploymentStore(transport: transport)
+    store.updateActiveProfile { profile in
+      profile.deploymentProvider = .custom
+      profile.deploymentStatusEndpointURL = "https://status.example.com/profile-a-polling"
+    }
+    let profileAID = store.activeProfileID
+    let record = releaseRecord(
+      title: "Profile A polling",
+      summary: "custom",
+      siteProfileID: profileAID,
+      branchName: "main",
+      commitSHA: "profile-a-polling-sha"
+    )
+    store.setReleaseRecords([record])
+    store.updateDeploymentPollingSettings(
+      DeploymentPollingSettings(isEnabled: true, intervalMinutes: 5)
+    )
+
+    let pollingTask = Task {
+      await store.runDeploymentPolling(now: Date(timeIntervalSince1970: 1_900_000_000))
+    }
+    await transport.waitForRequest()
+    XCTAssertTrue(store.isDeploymentStatusChecking)
+
+    let profileB = store.createProfile(named: "Profile B")
+    XCTAssertEqual(store.activeProfileID, profileB.id)
+    XCTAssertFalse(store.isDeploymentStatusChecking)
+    XCTAssertNil(store.deploymentStatusMessage)
+
+    try await transport.reply(statusCode: 200, json: #"{"status":"ok"}"#)
+    let didRun = await pollingTask.value
+    XCTAssertTrue(didRun)
+    XCTAssertEqual(store.activeProfileID, profileB.id)
+    XCTAssertFalse(store.isDeploymentStatusChecking)
+    XCTAssertNil(store.deploymentStatusMessage)
+
+    store.selectProfile(profileAID)
+    XCTAssertFalse(store.isDeploymentStatusChecking)
+    XCTAssertEqual(store.deploymentStatusMessage, store.deploymentPollingState.message)
+    XCTAssertFalse(store.deploymentStatusMessage?.contains("正在检查") == true)
+  }
+
   private func deploymentProfile(
     _ configure: (inout SiteProfile) -> Void = { _ in }
   ) -> SiteProfile {
@@ -2009,6 +2571,37 @@ private actor SequencedDeploymentTransport: RemoteRepositoryHTTPTransport {
       }
     }
     return requests.count >= count
+  }
+}
+
+private actor HangingDeploymentTransport: RemoteRepositoryHTTPTransport {
+  private var request: URLRequest?
+  private var responseWaiter: CheckedContinuation<(Data, URLResponse), Never>?
+
+  func data(for request: URLRequest) async throws -> (Data, URLResponse) {
+    self.request = request
+    return await withCheckedContinuation { continuation in
+      responseWaiter = continuation
+    }
+  }
+
+  func waitForRequest() async {
+    while request == nil {
+      await Task.yield()
+    }
+  }
+
+  func reply(statusCode: Int, json: String) throws {
+    let requestURL = try XCTUnwrap(request?.url)
+    let waiter = try XCTUnwrap(responseWaiter)
+    responseWaiter = nil
+    waiter.resume(
+      returning: (
+        Data(json.utf8),
+        HTTPURLResponse(
+          url: requestURL, statusCode: statusCode, httpVersion: nil, headerFields: nil)!
+      )
+    )
   }
 }
 

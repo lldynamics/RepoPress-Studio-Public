@@ -61,6 +61,75 @@ public struct LocalContentImportService: Sendable {
 
   private var fileManager: FileManager { fileSystem.value }
 
+  /// Keeps repository discovery aligned with the publishing layout. Importing
+  /// every Markdown file below `contentRoot` is unsafe for generators such as
+  /// Zola and Hugo because their section pages are Markdown too, but do not
+  /// represent articles that the workbench is allowed to rewrite.
+  private struct ArticleRepositoryPathPolicy: Sendable {
+    let publicRoot: String
+    let privateRoot: String
+    let excludesGeneratorIndexPages: Bool
+
+    init(profile: SiteProfile) {
+      let pattern = profile.markdownPathPattern.normalizedRelativePath()
+      let prefix = String(pattern.prefix { $0 != "{" })
+      let prefixRoot =
+        prefix
+        .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        .normalizedRelativePath()
+      let configuredContentRoot = profile.contentRoot.normalizedRelativePath()
+
+      // Patterns normally put the first placeholder immediately after the
+      // article directory (`content/posts/{year}/…`). For a pattern without a
+      // directory prefix, retain the configured content root as the boundary.
+      publicRoot = prefixRoot.nilIfEmpty ?? configuredContentRoot
+
+      if publicRoot.isEmpty || publicRoot == configuredContentRoot {
+        privateRoot = SiteProfile.privateContentRoot
+      } else if !configuredContentRoot.isEmpty,
+        publicRoot.hasPrefix(configuredContentRoot + "/")
+      {
+        privateRoot =
+          SiteProfile.privateContentRoot + "/"
+          + String(
+            publicRoot.dropFirst(configuredContentRoot.count + 1)
+          )
+      } else {
+        // Jekyll-style roots such as `_posts` are outside `contentRoot` but
+        // still need a corresponding private namespace rather than accepting
+        // all of `private`.
+        privateRoot = SiteProfile.privateContentRoot + "/" + publicRoot
+      }
+      excludesGeneratorIndexPages = profile.siteKind == .zola || profile.siteKind == .hugo
+    }
+
+    var scanRoots: [String] {
+      // An empty public root already scans the repository. Adding `private`
+      // again would parse those files twice for root-based generators.
+      guard !publicRoot.isEmpty else { return [""] }
+      return Array(Set([publicRoot, privateRoot])).sorted()
+    }
+
+    func accepts(_ repositoryPath: String) -> Bool {
+      let normalizedPath = repositoryPath.normalizedRelativePath()
+      let pathExtension = (normalizedPath as NSString).pathExtension.lowercased()
+      guard ["md", "markdown", "mdx"].contains(pathExtension),
+        isDescendant(normalizedPath, of: publicRoot)
+          || isDescendant(normalizedPath, of: privateRoot)
+      else {
+        return false
+      }
+
+      guard excludesGeneratorIndexPages else { return true }
+      let filename = (normalizedPath as NSString).lastPathComponent.lowercased()
+      return filename != "_index.\(pathExtension)" && filename != "index.\(pathExtension)"
+    }
+
+    private func isDescendant(_ path: String, of root: String) -> Bool {
+      root.isEmpty || path == root || path.hasPrefix(root + "/")
+    }
+  }
+
   public init(
     fileManager: FileManager = .default,
     contentIndexDirectoryURL: URL? = nil,
@@ -83,7 +152,8 @@ public struct LocalContentImportService: Sendable {
     imageReferenceScanObserver: (@Sendable () -> Void)?
   ) {
     self.fileSystem = SendableFileManager(fileManager)
-    self.contentIndexStore = isContentIndexEnabled
+    self.contentIndexStore =
+      isContentIndexEnabled
       ? LocalContentImportIndexStore(
         fileManager: fileManager,
         directoryURL: contentIndexDirectoryURL
@@ -165,10 +235,13 @@ public struct LocalContentImportService: Sendable {
     }
   }
 
-  public func importDraft(profile: SiteProfile, repositoryPath: String) -> LocalContentImportResult {
-    guard let result = profile.withLocalRepositoryRootAccess({ rootURL in
-      importDraft(rootURL: rootURL, repositoryPath: repositoryPath, profile: profile)
-    }) else {
+  public func importDraft(profile: SiteProfile, repositoryPath: String) -> LocalContentImportResult
+  {
+    guard
+      let result = profile.withLocalRepositoryRootAccess({ rootURL in
+        importDraft(rootURL: rootURL, repositoryPath: repositoryPath, profile: profile)
+      })
+    else {
       return LocalContentImportResult(importedDrafts: [], skippedPaths: [repositoryPath])
     }
 
@@ -181,15 +254,17 @@ public struct LocalContentImportService: Sendable {
     profile: SiteProfile,
     repositorySHA: String? = nil
   ) -> LocalContentImportResult {
-    guard let result = profile.withLocalRepositoryRootAccess({ rootURL in
-      importDraft(
-        document: document,
-        rootURL: rootURL,
-        repositoryPath: repositoryPath,
-        profile: profile,
-        repositorySHA: repositorySHA
-      )
-    }) else {
+    guard
+      let result = profile.withLocalRepositoryRootAccess({ rootURL in
+        importDraft(
+          document: document,
+          rootURL: rootURL,
+          repositoryPath: repositoryPath,
+          profile: profile,
+          repositorySHA: repositorySHA
+        )
+      })
+    else {
       return LocalContentImportResult(importedDrafts: [], skippedPaths: [repositoryPath])
     }
 
@@ -205,14 +280,16 @@ public struct LocalContentImportService: Sendable {
     excludingRepositoryPaths: Set<String> = [],
     cancellationCheck: () throws -> Void
   ) rethrows -> LocalContentImportResult {
-    guard let result = try profile.withLocalRepositoryRootAccess({ rootURL in
-      try importDrafts(
-        rootURL: rootURL,
-        profile: profile,
-        excludingRepositoryPaths: excludingRepositoryPaths,
-        cancellationCheck: cancellationCheck
-      )
-    }) else {
+    guard
+      let result = try profile.withLocalRepositoryRootAccess({ rootURL in
+        try importDrafts(
+          rootURL: rootURL,
+          profile: profile,
+          excludingRepositoryPaths: excludingRepositoryPaths,
+          cancellationCheck: cancellationCheck
+        )
+      })
+    else {
       return LocalContentImportResult(
         importedDrafts: [],
         skippedPaths: [],
@@ -257,31 +334,31 @@ public struct LocalContentImportService: Sendable {
     let contentIndex = contentIndexStore?.snapshot(profile: profile, rootURL: rootURL)
     var refreshedIndexEntries: [String: LocalContentImportIndexEntry] = [:]
 
-    let normalizedContentRoot = profile.contentRoot.normalizedRelativePath()
-    var seenRoots = Set<String>()
-    let importRoots = (normalizedContentRoot.isEmpty
-      ? [""]
-      : [normalizedContentRoot, SiteProfile.privateContentRoot])
-      .filter { seenRoots.insert($0).inserted }
+    let pathPolicy = ArticleRepositoryPathPolicy(profile: profile)
+    let importRoots = pathPolicy.scanRoots
 
     for importRoot in importRoots {
       try cancellationCheck()
-      let importRootURL = importRoot.isEmpty
+      let importRootURL =
+        importRoot.isEmpty
         ? rootURL
         : rootURL.appendingPathComponent(importRoot, isDirectory: true)
-      guard let enumerator = fileManager.enumerator(
-        at: importRootURL,
-        includingPropertiesForKeys: [.isRegularFileKey, .contentModificationDateKey],
-        options: [.skipsHiddenFiles, .skipsPackageDescendants]
-      ) else {
+      guard
+        let enumerator = fileManager.enumerator(
+          at: importRootURL,
+          includingPropertiesForKeys: [.isRegularFileKey, .contentModificationDateKey],
+          options: [.skipsHiddenFiles, .skipsPackageDescendants]
+        )
+      else {
         continue
       }
 
       for case let fileURL as URL in enumerator {
         try cancellationCheck()
         if importRoot.isEmpty,
-           fileURL.lastPathComponent == "node_modules",
-           (try? fileURL.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true {
+          fileURL.lastPathComponent == "node_modules",
+          (try? fileURL.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true
+        {
           enumerator.skipDescendants()
           continue
         }
@@ -301,16 +378,25 @@ public struct LocalContentImportService: Sendable {
           continue
         }
 
+        // This must run before exclusion and cache handling. Otherwise an old
+        // cache entry can resurrect a section page after the profile policy is
+        // tightened.
+        guard pathPolicy.accepts(repositoryPath) else {
+          continue
+        }
+
         guard !excludingRepositoryPaths.contains(repositoryPath.normalizedRelativePath()) else {
           if let cached = contentIndex?.entries[repositoryPath],
-             cached.isCurrent(rootURL: rootURL, sourceURL: fileURL) {
+            cached.isCurrent(rootURL: rootURL, sourceURL: fileURL)
+          {
             refreshedIndexEntries[repositoryPath] = cached
           }
           continue
         }
 
         guard canonicalRepositoryDescendant(candidateURL: fileURL, rootURL: rootURL) != nil,
-              isRegularFile(at: fileURL) else {
+          isRegularFile(at: fileURL)
+        else {
           skippedPaths.append(repositoryPath)
           issues.append(
             LocalContentImportIssue(
@@ -323,7 +409,10 @@ public struct LocalContentImportService: Sendable {
         }
 
         if let cached = contentIndex?.entries[repositoryPath],
-           cached.isCurrent(rootURL: rootURL, sourceURL: fileURL) {
+          cached.isCurrent(rootURL: rootURL, sourceURL: fileURL),
+          isRoundTripConsistent(
+            cached.draft, sourceRepositoryPath: repositoryPath, profile: profile)
+        {
           importedDrafts.append(cached.draft)
           refreshedIndexEntries[repositoryPath] = cached
           continue
@@ -347,15 +436,27 @@ public struct LocalContentImportService: Sendable {
             repositoryPath: repositoryPath,
             profile: profile
           )
+          guard
+            isRoundTripConsistent(
+              importedDraft,
+              sourceRepositoryPath: repositoryPath,
+              profile: profile
+            )
+          else {
+            skippedPaths.append(repositoryPath)
+            issues.append(roundTripIssue(repositoryPath: repositoryPath, profile: profile))
+            continue
+          }
           importedDrafts.append(importedDraft)
           if isCacheableImportedDraft(importedDraft, parsedDocument: parsedDocument),
-             let sourceMetadataBeforeRead,
-             let entry = contentIndexStore?.entry(
-            draft: importedDraft,
-            sourceURL: fileURL,
-            rootURL: rootURL,
-            expectedSourceMetadata: sourceMetadataBeforeRead
-          ) {
+            let sourceMetadataBeforeRead,
+            let entry = contentIndexStore?.entry(
+              draft: importedDraft,
+              sourceURL: fileURL,
+              rootURL: rootURL,
+              expectedSourceMetadata: sourceMetadataBeforeRead
+            )
+          {
             refreshedIndexEntries[repositoryPath] = entry
           }
         } catch {
@@ -379,7 +480,8 @@ public struct LocalContentImportService: Sendable {
     return LocalContentImportResult(
       importedDrafts: importedDrafts.sorted {
         if $0.date == $1.date {
-          return ($0.repositoryPath ?? "").localizedCaseInsensitiveCompare($1.repositoryPath ?? "") == .orderedAscending
+          return ($0.repositoryPath ?? "").localizedCaseInsensitiveCompare($1.repositoryPath ?? "")
+            == .orderedAscending
         }
         return $0.date > $1.date
       },
@@ -393,14 +495,16 @@ public struct LocalContentImportService: Sendable {
     repositoryPaths: [String],
     cancellationCheck: () throws -> Void
   ) rethrows -> LocalContentImportResult {
-    guard let result = try profile.withLocalRepositoryRootAccess({ rootURL in
-      try importDrafts(
-        rootURL: rootURL,
-        repositoryPaths: repositoryPaths,
-        profile: profile,
-        cancellationCheck: cancellationCheck
-      )
-    }) else {
+    guard
+      let result = try profile.withLocalRepositoryRootAccess({ rootURL in
+        try importDrafts(
+          rootURL: rootURL,
+          repositoryPaths: repositoryPaths,
+          profile: profile,
+          cancellationCheck: cancellationCheck
+        )
+      })
+    else {
       return LocalContentImportResult(
         importedDrafts: [],
         skippedPaths: repositoryPaths,
@@ -452,7 +556,9 @@ public struct LocalContentImportService: Sendable {
     )
   }
 
-  func importDraft(rootURL: URL, repositoryPath: String, profile: SiteProfile) -> LocalContentImportResult {
+  func importDraft(rootURL: URL, repositoryPath: String, profile: SiteProfile)
+    -> LocalContentImportResult
+  {
     guard let safePath = safeMarkdownRepositoryPath(repositoryPath, profile: profile) else {
       return LocalContentImportResult(
         importedDrafts: [],
@@ -469,7 +575,8 @@ public struct LocalContentImportService: Sendable {
 
     let fileURL = rootURL.appendingPathComponent(safePath)
     guard canonicalRepositoryDescendant(candidateURL: fileURL, rootURL: rootURL) != nil,
-          isRegularFile(at: fileURL) else {
+      isRegularFile(at: fileURL)
+    else {
       return LocalContentImportResult(
         importedDrafts: [],
         skippedPaths: [safePath],
@@ -489,10 +596,27 @@ public struct LocalContentImportService: Sendable {
         under: rootURL,
         maximumByteCount: Self.maximumMarkdownDocumentByteCount
       )
-      return LocalContentImportResult(
-        importedDrafts: [draft(from: document, rootURL: rootURL, fileURL: fileURL, repositoryPath: safePath, profile: profile)],
-        skippedPaths: []
+      let importedDraft = draft(
+        from: document,
+        rootURL: rootURL,
+        fileURL: fileURL,
+        repositoryPath: safePath,
+        profile: profile
       )
+      guard
+        isRoundTripConsistent(
+          importedDraft,
+          sourceRepositoryPath: safePath,
+          profile: profile
+        )
+      else {
+        return LocalContentImportResult(
+          importedDrafts: [],
+          skippedPaths: [safePath],
+          issues: [roundTripIssue(repositoryPath: safePath, profile: profile)]
+        )
+      }
+      return LocalContentImportResult(importedDrafts: [importedDraft], skippedPaths: [])
     } catch {
       return LocalContentImportResult(
         importedDrafts: [],
@@ -520,19 +644,28 @@ public struct LocalContentImportService: Sendable {
     }
 
     let fileURL = rootURL.appendingPathComponent(safePath)
-    return LocalContentImportResult(
-      importedDrafts: [
-        draft(
-          from: document,
-          rootURL: rootURL,
-          fileURL: fileURL,
-          repositoryPath: safePath,
-          profile: profile,
-          repositorySHA: repositorySHA
-        )
-      ],
-      skippedPaths: []
+    let importedDraft = draft(
+      from: document,
+      rootURL: rootURL,
+      fileURL: fileURL,
+      repositoryPath: safePath,
+      profile: profile,
+      repositorySHA: repositorySHA
     )
+    guard
+      isRoundTripConsistent(
+        importedDraft,
+        sourceRepositoryPath: safePath,
+        profile: profile
+      )
+    else {
+      return LocalContentImportResult(
+        importedDrafts: [],
+        skippedPaths: [safePath],
+        issues: [roundTripIssue(repositoryPath: safePath, profile: profile)]
+      )
+    }
+    return LocalContentImportResult(importedDrafts: [importedDraft], skippedPaths: [])
   }
 
   private func draft(
@@ -562,22 +695,32 @@ public struct LocalContentImportService: Sendable {
     repositorySHA: String? = nil
   ) -> ArticleDraft {
     let values = parsedDocument.values
-    let fileModificationDate = (try? fileURL.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? Date()
-    let dateValue = values["date"]?.first
+    let fileModificationDate =
+      (try? fileURL.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate)
+      ?? Date()
+    let dateValue =
+      values["date"]?.first
       ?? values["published"]?.first
       ?? values["publishdate"]?.first
       ?? values["created"]?.first
-    let date = parsedDate(dateValue, profile: profile) ?? dateFromPath(repositoryPath) ?? fileModificationDate
+    let date =
+      parsedDate(dateValue, profile: profile) ?? dateFromPath(repositoryPath)
+      ?? fileModificationDate
     let title = values["title"]?.first?.nilIfEmpty ?? humanizedTitle(from: repositoryPath)
-    let slug = values["slug"]?.first?.nilIfEmpty ?? slugFromPath(repositoryPath) ?? SlugService.slug(from: title)
-    let summary = values["description"]?.first?.nilIfEmpty
+    let slug =
+      values["slug"]?.first?.nilIfEmpty ?? slugFromPath(repositoryPath)
+      ?? SlugService.slug(from: title)
+    let summary =
+      values["description"]?.first?.nilIfEmpty
       ?? values["summary"]?.first?.nilIfEmpty
       ?? values["excerpt"]?.first?.nilIfEmpty
       ?? values["socialdescription"]?.first?.nilIfEmpty
       ?? ""
     let draftFlag = importedDraftFlag(values: values, siteKind: profile.siteKind)
-    let visibility = importedVisibility(values: values, repositoryPath: repositoryPath, profile: profile)
-    let authors = values["authors"] ?? values["author"] ?? profile.defaultAuthor.nilIfEmpty.map { [$0] } ?? []
+    let visibility = importedVisibility(
+      values: values, repositoryPath: repositoryPath, profile: profile)
+    let authors =
+      values["authors"] ?? values["author"] ?? profile.defaultAuthor.nilIfEmpty.map { [$0] } ?? []
     let attachments = importedAttachments(
       values: values,
       imageReferences: parsedDocument.imageReferences,
@@ -639,13 +782,15 @@ public struct LocalContentImportService: Sendable {
     var indexesByPublishPath: [String: Int] = [:]
 
     for reference in imageReferences {
-      guard let metadata = attachmentMetadata(
-        imagePath: reference.path,
-        altText: reference.altText,
-        rootURL: rootURL,
-        articleRepositoryPath: articleRepositoryPath,
-        profile: profile
-      ) else {
+      guard
+        let metadata = attachmentMetadata(
+          imagePath: reference.path,
+          altText: reference.altText,
+          rootURL: rootURL,
+          articleRepositoryPath: articleRepositoryPath,
+          profile: profile
+        )
+      else {
         continue
       }
       append(metadata, attachments: &attachments, indexesByPublishPath: &indexesByPublishPath)
@@ -662,7 +807,8 @@ public struct LocalContentImportService: Sendable {
         articleRepositoryPath: articleRepositoryPath,
         profile: profile
       ) {
-        let index = append(metadata, attachments: &attachments, indexesByPublishPath: &indexesByPublishPath)
+        let index = append(
+          metadata, attachments: &attachments, indexesByPublishPath: &indexesByPublishPath)
         coverAttachmentID = attachments[index].id
       }
     }
@@ -674,11 +820,13 @@ public struct LocalContentImportService: Sendable {
     _ draft: ArticleDraft,
     parsedDocument: ParsedImportDocument
   ) -> Bool {
-    var localPublishPaths = Set(parsedDocument.imageReferences.map {
-      $0.path.trimmedForPublishing
-    })
+    var localPublishPaths = Set(
+      parsedDocument.imageReferences.map {
+        $0.path.trimmedForPublishing
+      })
     if let coverPath = importedCoverPath(parsedDocument.values),
-       let localCoverPath = markdownImagePath(coverPath) {
+      let localCoverPath = markdownImagePath(coverPath)
+    {
       localPublishPaths.insert(localCoverPath.trimmedForPublishing)
     }
 
@@ -688,7 +836,8 @@ public struct LocalContentImportService: Sendable {
     )
     return localPublishPaths.allSatisfy { publishPath in
       guard let attachment = attachmentsByPublishPath[publishPath],
-            attachment.sourceFilePath?.nilIfEmpty != nil else {
+        attachment.sourceFilePath?.nilIfEmpty != nil
+      else {
         return false
       }
       return true
@@ -784,7 +933,8 @@ public struct LocalContentImportService: Sendable {
 
     for line in lines {
       let trimmed = line.trimmedForPublishing
-      guard !trimmed.isEmpty, !trimmed.hasPrefix("#"), let separator = trimmed.firstIndex(of: "=") else {
+      guard !trimmed.isEmpty, !trimmed.hasPrefix("#"), let separator = trimmed.firstIndex(of: "=")
+      else {
         continue
       }
 
@@ -800,7 +950,8 @@ public struct LocalContentImportService: Sendable {
     let value = rawValue.trimmedForPublishing
     if value.hasPrefix("["), value.hasSuffix("]") {
       let inner = String(value.dropFirst().dropLast())
-      return inner
+      return
+        inner
         .split(separator: ",")
         .map { cleanScalar(String($0)) }
         .filter { !$0.isEmpty }
@@ -870,7 +1021,9 @@ public struct LocalContentImportService: Sendable {
     formatter.locale = Locale(identifier: "en_US_POSIX")
     formatter.timeZone = TimeZone(secondsFromGMT: 0)
 
-    for format in [profile.dateFormat, "yyyy-MM-dd", "yyyy-MM-dd HH:mm:ss Z", "yyyy-MM-dd'T'HH:mm:ssZ"] {
+    for format in [
+      profile.dateFormat, "yyyy-MM-dd", "yyyy-MM-dd HH:mm:ss Z", "yyyy-MM-dd'T'HH:mm:ssZ",
+    ] {
       formatter.dateFormat = format
       if let date = formatter.date(from: value) {
         return date
@@ -889,12 +1042,14 @@ public struct LocalContentImportService: Sendable {
     return String(filePath.dropFirst(rootPath.count + 1)).normalizedRelativePath()
   }
 
-  private func safeMarkdownRepositoryPath(_ repositoryPath: String, profile: SiteProfile) -> String? {
+  private func safeMarkdownRepositoryPath(_ repositoryPath: String, profile: SiteProfile) -> String?
+  {
     let literalPath = repositoryPath.trimmedForPublishing
     guard !literalPath.isEmpty,
-          !literalPath.hasPrefix("/"),
-          !literalPath.contains("\\"),
-          !literalPath.contains("://") else {
+      !literalPath.hasPrefix("/"),
+      !literalPath.contains("\\"),
+      !literalPath.contains("://")
+    else {
       return nil
     }
 
@@ -902,12 +1057,14 @@ public struct LocalContentImportService: Sendable {
     let pathComponents = normalizedPath.split(separator: "/")
     let pathExtension = (normalizedPath as NSString).pathExtension.lowercased()
     guard !normalizedPath.isEmpty,
-          !pathComponents.contains(".."),
-          ["md", "markdown", "mdx"].contains(pathExtension) else {
+      !pathComponents.contains(".."),
+      ["md", "markdown", "mdx"].contains(pathExtension)
+    else {
       return nil
     }
 
-    return isImportableArticleRepositoryPath(normalizedPath, profile: profile) ? normalizedPath : nil
+    return isImportableArticleRepositoryPath(normalizedPath, profile: profile)
+      ? normalizedPath : nil
   }
 
   public func isImportableArticleRepositoryPath(
@@ -920,11 +1077,27 @@ public struct LocalContentImportService: Sendable {
       return false
     }
 
-    let contentRoot = profile.contentRoot.normalizedRelativePath()
-    let isPublicArticle = contentRoot.isEmpty
-      || normalizedPath == contentRoot
-      || normalizedPath.hasPrefix(contentRoot + "/")
-    return isPublicArticle || profile.isPrivateContentPath(normalizedPath)
+    return ArticleRepositoryPathPolicy(profile: profile).accepts(normalizedPath)
+  }
+
+  private func isRoundTripConsistent(
+    _ draft: ArticleDraft,
+    sourceRepositoryPath: String,
+    profile: SiteProfile
+  ) -> Bool {
+    profile.markdownPath(for: draft).normalizedRelativePath()
+      == sourceRepositoryPath.normalizedRelativePath()
+  }
+
+  private func roundTripIssue(
+    repositoryPath: String,
+    profile: SiteProfile
+  ) -> LocalContentImportIssue {
+    LocalContentImportIssue(
+      path: repositoryPath,
+      kind: .invalidPath,
+      message: "文章路径与当前站点发布规则不一致，已跳过以避免覆盖 \(profile.markdownPathPattern)。"
+    )
   }
 
   private func isRegularFile(at url: URL) -> Bool {
@@ -976,9 +1149,10 @@ public struct LocalContentImportService: Sendable {
 
     value = value.trimmedForPublishing
     guard !value.isEmpty,
-          !value.hasPrefix("http://"),
-          !value.hasPrefix("https://"),
-          !value.hasPrefix("data:") else {
+      !value.hasPrefix("http://"),
+      !value.hasPrefix("https://"),
+      !value.hasPrefix("data:")
+    else {
       return nil
     }
     return value
@@ -1003,21 +1177,25 @@ public struct LocalContentImportService: Sendable {
       return nil
     }
 
-    guard let repositoryPath = imageRepositoryPath(
-      publishPath: publishPath,
-      rootURL: rootURL,
-      articleRepositoryPath: articleRepositoryPath,
-      profile: profile
-    ) else {
+    guard
+      let repositoryPath = imageRepositoryPath(
+        publishPath: publishPath,
+        rootURL: rootURL,
+        articleRepositoryPath: articleRepositoryPath,
+        profile: profile
+      )
+    else {
       return nil
     }
     let sourceURL = rootURL.appendingPathComponent(repositoryPath)
     let sourceFilePath: String?
     if fileManager.fileExists(atPath: sourceURL.path) {
-      guard let safeSourceURL = canonicalRepositoryDescendant(
-        candidateURL: sourceURL,
-        rootURL: rootURL
-      ), isRegularFile(at: safeSourceURL) else {
+      guard
+        let safeSourceURL = canonicalRepositoryDescendant(
+          candidateURL: sourceURL,
+          rootURL: rootURL
+        ), isRegularFile(at: safeSourceURL)
+      else {
         return nil
       }
       sourceFilePath = safeSourceURL.path
@@ -1025,7 +1203,8 @@ public struct LocalContentImportService: Sendable {
       sourceFilePath = nil
     }
     let byteSize = sourceFilePath.map { fileByteSize(at: URL(fileURLWithPath: $0)) } ?? 0
-    let filename = filenameFromImagePath(repositoryPath) ?? filenameFromImagePath(publishPath) ?? "image"
+    let filename =
+      filenameFromImagePath(repositoryPath) ?? filenameFromImagePath(publishPath) ?? "image"
 
     return DraftAttachment(
       originalFilename: filename,
@@ -1048,7 +1227,8 @@ public struct LocalContentImportService: Sendable {
     var candidates: [String] = []
 
     if publishPath.hasPrefix("/") {
-      let absolutePath = filePath.trimmingCharacters(in: CharacterSet(charactersIn: "/")).normalizedRelativePath()
+      let absolutePath = filePath.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        .normalizedRelativePath()
       if !assetRoot.isEmpty, absolutePath == assetRoot || absolutePath.hasPrefix(assetRoot + "/") {
         candidates.append(absolutePath)
       } else if !assetRoot.isEmpty {
@@ -1059,7 +1239,8 @@ public struct LocalContentImportService: Sendable {
       let normalized = filePath.normalizedRelativePath()
       candidates.append(normalized)
 
-      let articleDirectory = articleRepositoryPath
+      let articleDirectory =
+        articleRepositoryPath
         .normalizedRelativePath()
         .split(separator: "/")
         .dropLast()
@@ -1081,9 +1262,10 @@ public struct LocalContentImportService: Sendable {
   private func safeImageRepositoryPath(_ rawValue: String) -> String? {
     let value = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !value.isEmpty,
-          !value.hasPrefix("/"),
-          !value.contains("\\"),
-          !value.contains("\0") else {
+      !value.hasPrefix("/"),
+      !value.contains("\\"),
+      !value.contains("\0")
+    else {
       return nil
     }
     let components = value.split(separator: "/", omittingEmptySubsequences: false)
@@ -1093,8 +1275,9 @@ public struct LocalContentImportService: Sendable {
     let normalized = value.normalizedRelativePath()
     let normalizedComponents = normalized.split(separator: "/", omittingEmptySubsequences: false)
     guard !normalized.isEmpty,
-          !normalized.hasPrefix("/"),
-          !normalizedComponents.contains(where: { $0 == ".." }) else {
+      !normalized.hasPrefix("/"),
+      !normalizedComponents.contains(where: { $0 == ".." })
+    else {
       return nil
     }
     return normalized
@@ -1111,8 +1294,11 @@ public struct LocalContentImportService: Sendable {
   }
 
   private func imageFilePathComponent(_ path: String) -> String {
-    let withoutFragment = path.split(separator: "#", maxSplits: 1, omittingEmptySubsequences: false).first.map(String.init) ?? path
-    return withoutFragment.split(separator: "?", maxSplits: 1, omittingEmptySubsequences: false).first.map(String.init) ?? withoutFragment
+    let withoutFragment =
+      path.split(separator: "#", maxSplits: 1, omittingEmptySubsequences: false).first.map(
+        String.init) ?? path
+    return withoutFragment.split(separator: "?", maxSplits: 1, omittingEmptySubsequences: false)
+      .first.map(String.init) ?? withoutFragment
   }
 
   private func filenameFromImagePath(_ path: String) -> String? {
@@ -1128,8 +1314,10 @@ public struct LocalContentImportService: Sendable {
     let stem = URL(fileURLWithPath: path).deletingPathExtension().lastPathComponent
     let pattern = #"^\d{4}-\d{2}-\d{2}-(.+)$"#
     if let regex = try? NSRegularExpression(pattern: pattern),
-       let match = regex.firstMatch(in: stem, range: NSRange(stem.startIndex..<stem.endIndex, in: stem)),
-       let range = Range(match.range(at: 1), in: stem) {
+      let match = regex.firstMatch(
+        in: stem, range: NSRange(stem.startIndex..<stem.endIndex, in: stem)),
+      let range = Range(match.range(at: 1), in: stem)
+    {
       return String(stem[range]).nilIfEmpty
     }
     return stem.nilIfEmpty
@@ -1139,11 +1327,12 @@ public struct LocalContentImportService: Sendable {
     let stem = URL(fileURLWithPath: path).lastPathComponent
     let pattern = #"^(\d{4})-(\d{2})-(\d{2})-"#
     guard let regex = try? NSRegularExpression(pattern: pattern),
-          let match = regex.firstMatch(in: stem, range: NSRange(stem.startIndex..<stem.endIndex, in: stem)),
-          match.numberOfRanges == 4,
-          let yearRange = Range(match.range(at: 1), in: stem),
-          let monthRange = Range(match.range(at: 2), in: stem),
-          let dayRange = Range(match.range(at: 3), in: stem)
+      let match = regex.firstMatch(
+        in: stem, range: NSRange(stem.startIndex..<stem.endIndex, in: stem)),
+      match.numberOfRanges == 4,
+      let yearRange = Range(match.range(at: 1), in: stem),
+      let monthRange = Range(match.range(at: 2), in: stem),
+      let dayRange = Range(match.range(at: 3), in: stem)
     else {
       return nil
     }
@@ -1159,7 +1348,8 @@ public struct LocalContentImportService: Sendable {
 
   private func humanizedTitle(from path: String) -> String {
     let stem = slugFromPath(path) ?? "未命名文章"
-    return stem
+    return
+      stem
       .replacingOccurrences(of: "-", with: " ")
       .replacingOccurrences(of: "_", with: " ")
       .nilIfEmpty ?? "未命名文章"

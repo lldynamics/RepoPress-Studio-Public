@@ -160,6 +160,8 @@ final class DraftLifecycleServiceTests: XCTestCase {
     XCTAssertEqual(store.recycledDrafts.map(\.id), [draft.id])
     XCTAssertEqual(store.pendingRepositoryCleanupRequests.map(\.repositoryPath), ["content/posts/published.md"])
     XCTAssertEqual(store.pendingRepositoryCleanupRequests.first?.expectedRemoteSHA, "abc123")
+    XCTAssertTrue(store.pendingRemoteRepositoryCleanupRequests.isEmpty)
+    XCTAssertFalse(store.pendingRepositoryCleanupRequests.first?.hasRemoteCleanupIntent == true)
     XCTAssertTrue(store.versions(for: draft.id).contains { $0.reason == .beforeDeletion })
 
     XCTAssertTrue(store.restoreRecycledDraft(draft.id))
@@ -282,14 +284,14 @@ final class DraftLifecycleServiceTests: XCTestCase {
     XCTAssertNotNil(request.expectedGitBlobSHA)
     XCTAssertTrue(store.performLocalRepositoryCleanup(request.id))
     XCTAssertFalse(FileManager.default.fileExists(atPath: articleURL.path))
-    XCTAssertEqual(store.pendingRepositoryCleanupRequests.map(\.id), [request.id])
+    XCTAssertTrue(store.pendingRepositoryCleanupRequests.isEmpty)
     XCTAssertEqual(
       store.draftRepositoryCleanupRequests.first?.status,
       DraftRepositoryCleanupStatus.completed
     )
     XCTAssertEqual(
       store.draftRepositoryCleanupRequests.first?.remoteStatus,
-      DraftRepositoryRemoteCleanupStatus.pending
+      DraftRepositoryRemoteCleanupStatus.completed
     )
 
     await store.waitForPendingSave()
@@ -300,7 +302,7 @@ final class DraftLifecycleServiceTests: XCTestCase {
     )
     XCTAssertEqual(
       reloaded.draftRepositoryCleanupRequests.first?.remoteStatus,
-      DraftRepositoryRemoteCleanupStatus.pending
+      DraftRepositoryRemoteCleanupStatus.completed
     )
   }
 
@@ -359,6 +361,7 @@ final class DraftLifecycleServiceTests: XCTestCase {
     store.setSelectedDraftID(draft.id)
     store.deleteDraft(id: draft.id)
     let request = try XCTUnwrap(store.pendingRepositoryCleanupRequests.first)
+    enqueueAllRemoteCleanupRequests(in: store)
     store.publishingStore.draftRepositoryCleanupRequests[0].status = .completed
 
     let updatedCount = store.publishingStore.recordRemoteRepositoryCleanupResult(
@@ -403,6 +406,7 @@ final class DraftLifecycleServiceTests: XCTestCase {
     store.setSelectedDraftID(firstDraft.id)
     store.deleteDraft(id: firstDraft.id)
     store.deleteDraft(id: secondDraft.id)
+    enqueueAllRemoteCleanupRequests(in: store)
 
     let requests = store.draftRepositoryCleanupRequests
     var result = RemoteRepositoryPublishResult(
@@ -455,6 +459,7 @@ final class DraftLifecycleServiceTests: XCTestCase {
     store.setSelectedDraftID(changedDraft.id)
     store.deleteDraft(id: changedDraft.id)
     store.deleteDraft(id: unchangedDraft.id)
+    enqueueAllRemoteCleanupRequests(in: store)
 
     let requests = store.draftRepositoryCleanupRequests
     let result = RemoteRepositoryPublishResult(
@@ -495,6 +500,7 @@ final class DraftLifecycleServiceTests: XCTestCase {
     store.deleteDraft(id: draft.id)
     let requestID = try XCTUnwrap(store.draftRepositoryCleanupRequests.first?.id)
     let reviewURL = "https://github.com/owner/site/pull/9"
+    enqueueAllRemoteCleanupRequests(in: store)
     store.publishingStore.draftRepositoryCleanupRequests[0].remoteStatus = .reviewRequested
     store.publishingStore.draftRepositoryCleanupRequests[0].remoteReviewURL = reviewURL
 
@@ -527,6 +533,7 @@ final class DraftLifecycleServiceTests: XCTestCase {
     store.setSelectedDraftID(draft.id)
     store.deleteDraft(id: draft.id)
     let request = try XCTUnwrap(store.draftRepositoryCleanupRequests.first)
+    enqueueAllRemoteCleanupRequests(in: store)
     store.publishingStore.draftRepositoryCleanupRequests[0].remoteStatus = .reviewRequested
     store.publishingStore.draftRepositoryCleanupRequests[0].remoteReviewURL =
       "https://github.com/owner/site/pull/10"
@@ -573,6 +580,7 @@ final class DraftLifecycleServiceTests: XCTestCase {
     store.setSelectedDraftID(firstDraft.id)
     store.deleteDraft(id: firstDraft.id)
     store.deleteDraft(id: secondDraft.id)
+    enqueueAllRemoteCleanupRequests(in: store)
     XCTAssertEqual(
       store.draftRepositoryCleanupRequests.filter { $0.repositoryPath == sharedPath }.count,
       2
@@ -648,9 +656,9 @@ final class DraftLifecycleServiceTests: XCTestCase {
     let request = try XCTUnwrap(store.pendingRepositoryCleanupRequests.first)
 
     XCTAssertTrue(store.keepRepositoryFile(request.id))
-    XCTAssertTrue(store.publishActionMessage?.contains("远端下线请求仍会继续处理") == true)
+    XCTAssertTrue(store.publishActionMessage?.contains("未发起远端下线") == true)
     XCTAssertEqual(store.draftRepositoryCleanupRequests.first?.status, .kept)
-    XCTAssertEqual(store.draftRepositoryCleanupRequests.first?.remoteStatus, .pending)
+    XCTAssertEqual(store.draftRepositoryCleanupRequests.first?.remoteStatus, .completed)
   }
 
   func testRestoreBlocksDraftWhileUnpublishReviewIsAwaitingMerge() throws {
@@ -666,6 +674,7 @@ final class DraftLifecycleServiceTests: XCTestCase {
     store.setSelectedDraftID(draft.id)
     store.deleteDraft(id: draft.id)
     let request = try XCTUnwrap(store.pendingRepositoryCleanupRequests.first)
+    enqueueAllRemoteCleanupRequests(in: store)
     _ = store.publishingStore.recordRemoteRepositoryCleanupResult(
       requestIDs: Set([request.id]),
       result: RemoteRepositoryPublishResult(
@@ -684,7 +693,7 @@ final class DraftLifecycleServiceTests: XCTestCase {
     XCTAssertTrue(store.publishActionMessage?.contains("下线 PR/MR") == true)
   }
 
-  func testBatchRemotePackageIncludesPendingArticleDeletion() throws {
+  func testBatchRemotePackageNeverIncludesPendingArticleDeletion() throws {
     let store = try TestWorkbenchFactory.makeStore(prefix: "DraftCleanupBatchPackage")
     let draft = ArticleDraft(
       siteProfileID: store.activeProfileID,
@@ -696,6 +705,7 @@ final class DraftLifecycleServiceTests: XCTestCase {
     store.setDrafts([draft])
     store.setSelectedDraftID(draft.id)
     store.deleteDraft(id: draft.id)
+    enqueueAllRemoteCleanupRequests(in: store)
     let requests = store.pendingRemoteRepositoryCleanupRequests
     let plan = BatchPublishPlan(
       profileID: store.activeProfileID,
@@ -703,17 +713,10 @@ final class DraftLifecycleServiceTests: XCTestCase {
       items: []
     )
 
-    let package = try XCTUnwrap(
-      store.publishingStore.remotePublishPackage(
-        for: plan,
-        cleanupRequests: requests
-      )
+    XCTAssertFalse(requests.isEmpty)
+    XCTAssertNil(
+      store.publishingStore.remotePublishPackage(for: plan, cleanupRequests: requests)
     )
-
-    XCTAssertEqual(package.files.count, 1)
-    XCTAssertEqual(package.files.first?.operation, .delete)
-    XCTAssertEqual(package.files.first?.repositoryPath, "content/posts/batch-delete.md")
-    XCTAssertEqual(package.files.first?.expectedRemoteSHA, "known-sha")
   }
 
   func testLocalRepositoryCleanupPreservesFileChangedAfterConfirmationPreview() throws {
@@ -754,6 +757,99 @@ final class DraftLifecycleServiceTests: XCTestCase {
     XCTAssertTrue(store.publishActionMessage?.contains("预览后已被外部修改") == true)
   }
 
+  func testLegacyPendingCleanupWithoutExplicitRemoteIntentIsLocalOnly() throws {
+    let draft = ArticleDraft(
+      siteProfileID: UUID(),
+      title: "Legacy local cleanup",
+      slug: "legacy-local-cleanup",
+      repositoryPath: "content/posts/legacy-local-cleanup.md"
+    )
+    var request = DraftRepositoryCleanupRequest(
+      draft: draft,
+      repositoryPath: "content/posts/legacy-local-cleanup.md"
+    )
+    request.remoteStatus = .pending
+    let data = try JSONEncoder().encode(request)
+
+    let decoded = try JSONDecoder().decode(DraftRepositoryCleanupRequest.self, from: data)
+
+    XCTAssertFalse(decoded.hasRemoteCleanupIntent)
+    XCTAssertFalse(decoded.needsRemoteCleanup)
+    XCTAssertEqual(decoded.remoteStatus, .completed)
+  }
+
+  func testLegacyReviewURLPreservesRemoteReviewSafetyLock() throws {
+    let draft = ArticleDraft(
+      siteProfileID: UUID(),
+      title: "Legacy review",
+      slug: "legacy-review",
+      repositoryPath: "content/posts/legacy-review.md"
+    )
+    var request = DraftRepositoryCleanupRequest(
+      draft: draft,
+      repositoryPath: "content/posts/legacy-review.md"
+    )
+    request.remoteStatus = .reviewRequested
+    request.remoteReviewURL = "https://github.com/owner/site/pull/42"
+    let data = try JSONEncoder().encode(request)
+
+    let decoded = try JSONDecoder().decode(DraftRepositoryCleanupRequest.self, from: data)
+
+    XCTAssertTrue(decoded.hasRemoteCleanupIntent)
+    XCTAssertTrue(decoded.isAwaitingRemoteReview)
+    XCTAssertEqual(decoded.remoteReviewURL, request.remoteReviewURL)
+  }
+
+  func testCleanupPackageCountsUniqueManifestPathsAndRejectsConflictingBaselines() throws {
+    let profileID = UUID()
+    let firstDraft = ArticleDraft(
+      siteProfileID: profileID,
+      title: "First",
+      slug: "first",
+      repositoryPath: "content/posts/shared.md",
+      repositorySHA: "shared-sha"
+    )
+    let duplicateDraft = ArticleDraft(
+      siteProfileID: profileID,
+      title: "Duplicate",
+      slug: "duplicate",
+      repositoryPath: "content/posts/shared.md",
+      repositorySHA: "shared-sha"
+    )
+    let secondPathDraft = ArticleDraft(
+      siteProfileID: profileID,
+      title: "Second path",
+      slug: "second-path",
+      repositoryPath: "content/posts/second.md",
+      repositorySHA: "second-sha"
+    )
+    let enqueuedAt = Date(timeIntervalSince1970: 10)
+    let requests = try [firstDraft, duplicateDraft, secondPathDraft].map { draft in
+      DraftRepositoryCleanupRequest(
+        draft: draft,
+        repositoryPath: try XCTUnwrap(draft.repositoryPath),
+        remoteEnqueuedAt: enqueuedAt,
+        remoteStatus: .pending
+      )
+    }
+    let package = try XCTUnwrap(DraftLifecycleService().cleanupPackage(for: requests))
+
+    XCTAssertEqual(package.files.count, 2)
+    XCTAssertEqual(package.title, "下线 2 篇文章")
+
+    var conflictingDraft = duplicateDraft
+    conflictingDraft.repositorySHA = "different-sha"
+    let conflictingRequest = DraftRepositoryCleanupRequest(
+      draft: conflictingDraft,
+      repositoryPath: "content/posts/shared.md",
+      remoteEnqueuedAt: enqueuedAt,
+      remoteStatus: .pending
+    )
+    XCTAssertNil(
+      DraftLifecycleService().cleanupPackage(for: [requests[0], conflictingRequest])
+    )
+  }
+
   func testLegacySnapshotDecodesEmptyLifecycleCollections() throws {
     let profile = SiteProfile.defaultProfile
     let snapshot = WorkbenchSnapshot(
@@ -777,5 +873,11 @@ final class DraftLifecycleServiceTests: XCTestCase {
     XCTAssertTrue(decoded.recycledDrafts.isEmpty)
     XCTAssertTrue(decoded.draftRepositoryCleanupRequests.isEmpty)
     XCTAssertEqual(decoded.formatVersion, WorkbenchSnapshot.currentFormatVersion)
+  }
+
+  private func enqueueAllRemoteCleanupRequests(in store: WorkbenchStore) {
+    for index in store.publishingStore.draftRepositoryCleanupRequests.indices {
+      store.publishingStore.draftRepositoryCleanupRequests[index].enqueueRemoteCleanup()
+    }
   }
 }

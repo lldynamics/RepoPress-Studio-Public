@@ -91,7 +91,6 @@ extension KnowledgeSourceListColumn {
       in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
     )
     .contentShape(Rectangle())
-    .animation(WorkbenchMotion.hoverSpring, value: isHovered)
     .onHover { isHovered in
       if isHovered {
         hoveredDocumentID = document.id

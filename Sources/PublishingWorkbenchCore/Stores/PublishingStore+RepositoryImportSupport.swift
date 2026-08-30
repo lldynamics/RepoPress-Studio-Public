@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 
 /// Pure work used by repository imports after the operation has captured its
@@ -41,29 +42,50 @@ struct LocalRepositoryImportBackgroundWork: Sendable {
       }
 
       var updated = draft
-      var renderedDigest = updated.renderedRepositoryContentDigest(profile: profile)
-      var remoteImportFingerprint: String?
-      if let remoteDraft = importService.importDraft(
+      let renderedDigest = updated.renderedRepositoryContentDigest(profile: profile)
+      let renderedDocument = FrontMatterRenderer().renderDocument(draft: updated, profile: profile)
+
+      // LocalRepositoryService obtains this revision from Git's blob object.
+      // Compare it with the blob identity of the exact bytes the draft will
+      // publish. This remains exact even though the command runner trims text
+      // output used for parsing `snapshot.content`.
+      guard gitBlobSHA(for: renderedDocument) == remoteSHA.lowercased()
+      else {
+        return draft
+      }
+
+      let remoteImport = importService.importDraft(
         document: snapshot.content,
         repositoryPath: repositoryPath,
         profile: profile,
         repositorySHA: remoteSHA
-      ).importedDrafts.first {
-        remoteImportFingerprint = remoteDraft.repositoryContentFingerprint
-        renderedDigest = remoteDraft.renderedRepositoryContentDigest(profile: profile)
+      )
+      guard remoteImport.issues.isEmpty,
+        let remoteDraft = remoteImport.importedDrafts.first,
+        remoteDraft.renderedRepositoryContentDigest(profile: profile) == renderedDigest
+      else {
+        return draft
       }
+
       updated.confirmRepositoryBinding(
         profile: profile,
         repositoryPath: repositoryPath,
         remoteRevision: remoteSHA,
         renderedContentDigest: renderedDigest
       )
-      if let remoteImportFingerprint {
-        updated.repositoryImportFingerprint = remoteImportFingerprint
-      }
+      updated.repositoryImportFingerprint = remoteDraft.repositoryContentFingerprint
       return updated
     }
     return hydrated
+  }
+
+  private static func gitBlobSHA(for document: String) -> String {
+    let data = Data(document.utf8)
+    var blob = Data("blob \(data.count)\0".utf8)
+    blob.append(data)
+    return Insecure.SHA1.hash(data: blob)
+      .map { String(format: "%02x", $0) }
+      .joined()
   }
 
   static func makeRemoteContentImportResult(
@@ -74,6 +96,7 @@ struct LocalRepositoryImportBackgroundWork: Sendable {
   ) -> LocalContentImportResult {
     var importedDrafts: [ArticleDraft] = []
     var skippedPaths: [String] = []
+    var issues: [LocalContentImportIssue] = []
     let snapshotsByPath = Dictionary(
       snapshots.map { ($0.repositoryPath.normalizedRelativePath(), $0) },
       uniquingKeysWith: { _, latest in latest }
@@ -92,8 +115,13 @@ struct LocalRepositoryImportBackgroundWork: Sendable {
       )
       importedDrafts.append(contentsOf: imported.importedDrafts)
       skippedPaths.append(contentsOf: imported.skippedPaths)
+      issues.append(contentsOf: imported.issues)
     }
-    return LocalContentImportResult(importedDrafts: importedDrafts, skippedPaths: skippedPaths)
+    return LocalContentImportResult(
+      importedDrafts: importedDrafts,
+      skippedPaths: skippedPaths,
+      issues: issues
+    )
   }
 }
 

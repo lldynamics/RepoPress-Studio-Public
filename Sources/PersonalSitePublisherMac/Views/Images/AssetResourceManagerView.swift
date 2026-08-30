@@ -37,10 +37,10 @@ private struct ImageCompressionAchievement: Identifiable {
 
 struct AssetResourceManagerView: View {
   let store: WorkbenchStore
+  @ObservedObject private var imageWorkbench: WorkbenchImageWorkbenchFeatureFacade
 
   @State private var report: AssetResourceScanReport?
   @State private var errorMessage: String?
-  @State private var statusMessage: String?
   @State private var isLoading = false
   @State private var filter: AssetResourceManagerFilter = .all
   @State private var selectedOrphanPaths = Set<String>()
@@ -49,6 +49,11 @@ struct AssetResourceManagerView: View {
   @State private var isCleanupSheetPresented = false
   @State private var compressionAchievement: ImageCompressionAchievement?
   @State private var activeScanID: UUID?
+
+  init(store: WorkbenchStore) {
+    self.store = store
+    _imageWorkbench = ObservedObject(wrappedValue: store.imageWorkbench)
+  }
 
   var body: some View {
     VStack(alignment: .leading, spacing: 16) {
@@ -61,11 +66,11 @@ struct AssetResourceManagerView: View {
         )
       }
 
-      if let statusMessage {
-        Label(statusMessage, systemImage: "checkmark.circle")
-          .font(.workbenchSupporting)
-          .foregroundStyle(.secondary)
-          .textSelection(.enabled)
+      if let resourceOperationStatePresentation {
+        WorkbenchStateView(
+          presentation: resourceOperationStatePresentation,
+          density: .inline
+        )
       }
 
       if store.activeProfile.localRepositoryRootPath.trimmedForPublishing.isEmpty {
@@ -90,8 +95,9 @@ struct AssetResourceManagerView: View {
       report = nil
       selectedOrphanPaths.removeAll()
       selectedCompressionPaths.removeAll()
-      statusMessage = nil
       compressionAchievement = nil
+      pendingAction = nil
+      isCleanupSheetPresented = false
     }
     .sheet(isPresented: $isCleanupSheetPresented) {
       if let report {
@@ -211,9 +217,14 @@ struct AssetResourceManagerView: View {
 
       LazyVGrid(columns: [GridItem(.adaptive(minimum: 145), spacing: 10)], spacing: 10) {
         MetricTile(title: "资源总数", value: "\(report.assets.count)", systemImage: "photo.stack")
-        MetricTile(title: "孤立资源", value: "\(report.orphanedAssets.count)", systemImage: "questionmark.folder")
-        MetricTile(title: "失效引用", value: "\(report.brokenReferences.count)", systemImage: "link.badge.plus")
-        MetricTile(title: "可瘦身图片", value: "\(report.compressionCandidates.count)", systemImage: "arrow.down.right.and.arrow.up.left")
+        MetricTile(
+          title: "孤立资源", value: "\(report.orphanedAssets.count)", systemImage: "questionmark.folder"
+        )
+        MetricTile(
+          title: "失效引用", value: "\(report.brokenReferences.count)", systemImage: "link.badge.plus")
+        MetricTile(
+          title: "可瘦身图片", value: "\(report.compressionCandidates.count)",
+          systemImage: "arrow.down.right.and.arrow.up.left")
       }
 
       Text("已扫描 \(report.scannedMarkdownFileCount) 个 Markdown 文件；远程 URL、代码块和行内代码不会被当作本地资源。")
@@ -270,16 +281,28 @@ struct AssetResourceManagerView: View {
         Label("清理孤立资源（\(selectedOrphanPaths.count)）", systemImage: "trash")
       }
       .buttonStyle(.bordered)
-      .disabled(selectedOrphanPaths.isEmpty || report.orphanedAssets.isEmpty || isLoading)
+      .disabled(
+        selectedOrphanPaths.isEmpty
+          || report.orphanedAssets.isEmpty
+          || isLoading
+          || imageWorkbench.hasActiveAssetResourceOperation(for: store.activeProfile.id)
+      )
       .accessibilityIdentifier("asset-manager-cleanup")
 
       Button {
         pendingAction = .compress
       } label: {
-        Label("图片瘦身（\(selectedCompressionPaths.count)）", systemImage: "arrow.down.right.and.arrow.up.left")
+        Label(
+          "图片瘦身（\(selectedCompressionPaths.count)）",
+          systemImage: "arrow.down.right.and.arrow.up.left")
       }
       .workbenchProminentActionStyle()
-      .disabled(selectedCompressionPaths.isEmpty || report.compressionCandidates.isEmpty || isLoading)
+      .disabled(
+        selectedCompressionPaths.isEmpty
+          || report.compressionCandidates.isEmpty
+          || isLoading
+          || imageWorkbench.hasActiveAssetResourceOperation(for: store.activeProfile.id)
+      )
       .accessibilityIdentifier("asset-manager-compress")
     }
     .controlSize(.regular)
@@ -370,11 +393,14 @@ struct AssetResourceManagerView: View {
               AssetResourceManagerRow(item: item)
             }
             .toggleStyle(.checkbox)
-            .accessibilityIdentifier("asset-manager-item-\(AssetResourceIdentifier.token(for: item.repositoryPath))")
+            .accessibilityIdentifier(
+              "asset-manager-item-\(AssetResourceIdentifier.token(for: item.repositoryPath))")
           }
         }
         .listStyle(.inset)
-        .frame(minHeight: 120, idealHeight: min(300, CGFloat(items.count * 54 + 20)), maxHeight: 320)
+        .frame(
+          minHeight: 120, idealHeight: min(300, CGFloat(items.count * 54 + 20)), maxHeight: 320
+        )
         .accessibilityLabel(title)
       }
     }
@@ -425,16 +451,22 @@ struct AssetResourceManagerView: View {
               Text("\(reference.sourceMarkdownPath):\(reference.lineNumber) · \(reference.message)")
                 .font(.caption)
                 .foregroundStyle(.secondary)
-                .workbenchTruncatedIdentity("\(reference.sourceMarkdownPath):\(reference.lineNumber) · \(reference.message)", lineLimit: 2)
+                .workbenchTruncatedIdentity(
+                  "\(reference.sourceMarkdownPath):\(reference.lineNumber) · \(reference.message)",
+                  lineLimit: 2)
             }
             .padding(.vertical, 3)
             .accessibilityElement(children: .combine)
             .accessibilityLabel("失效本地资源引用")
-            .accessibilityValue("\(reference.sourceMarkdownPath) 第 \(reference.lineNumber) 行，\(reference.rawPath)，\(reference.message)")
+            .accessibilityValue(
+              "\(reference.sourceMarkdownPath) 第 \(reference.lineNumber) 行，\(reference.rawPath)，\(reference.message)"
+            )
           }
         }
         .listStyle(.inset)
-        .frame(minHeight: 120, idealHeight: min(260, CGFloat(references.count * 54 + 20)), maxHeight: 300)
+        .frame(
+          minHeight: 120, idealHeight: min(260, CGFloat(references.count * 54 + 20)), maxHeight: 300
+        )
         .accessibilityIdentifier("asset-manager-broken-reference-list")
       }
     }
@@ -448,40 +480,39 @@ struct AssetResourceManagerView: View {
   }
 
   private var loadingState: some View {
-    HStack(spacing: 10) {
-      ProgressView()
-        .controlSize(.small)
-      Text("正在扫描资源和 Markdown 引用…")
-        .foregroundStyle(.secondary)
-    }
+    WorkbenchStateView(
+      presentation: WorkbenchStatePresentation(
+        kind: .loading(detail: String(localized: "正在扫描资源和 Markdown 引用…"))
+      )
+    )
     .frame(maxWidth: .infinity, minHeight: 180, alignment: .center)
   }
 
   private var emptyRepositoryState: some View {
-    EmptyStateView(
-      title: "请先选择站点文件夹",
-      message: "资源管理器需要读取本地仓库，才能扫描 static/images 或当前站点配置的资源目录。",
-      systemImage: "folder.badge.questionmark",
-      density: .fullPage
+    WorkbenchStateView(
+      presentation: WorkbenchStatePresentation(
+        kind: .unavailable(
+          reason: String(
+            localized: "资源管理器需要读取本地仓库，才能扫描 static/images 或当前站点配置的资源目录。"
+          )
+        ),
+        icon: "folder.badge.questionmark"
+      )
     )
   }
 
   private func failureState(_ message: String) -> some View {
-    VStack(alignment: .leading, spacing: 10) {
-      Label("资源扫描失败", systemImage: "exclamationmark.triangle")
-        .font(.headline)
-        .foregroundStyle(WorkbenchTheme.risk)
-      Text(message)
-        .font(.callout)
-        .foregroundStyle(.secondary)
-        .textSelection(.enabled)
-      Button {
-        Task { await refresh() }
-      } label: {
-        Label("重新扫描", systemImage: "arrow.clockwise")
-      }
-      .workbenchProminentActionStyle()
-    }
+    WorkbenchStateView(
+      presentation: WorkbenchStatePresentation(kind: .failure(reason: message)),
+      actions: WorkbenchStateActions(
+        primary: WorkbenchStateAction(
+          title: "重新扫描",
+          systemImage: "arrow.clockwise"
+        ) {
+          Task { await refresh() }
+        }
+      )
+    )
     .frame(maxWidth: .infinity, minHeight: 180, alignment: .leading)
     .padding(14)
     .background(
@@ -495,7 +526,10 @@ struct AssetResourceManagerView: View {
       profileID: store.activeProfile.id,
       repositoryRootPath: store.activeProfile.localRepositoryRootPath,
       assetRoot: store.activeProfile.assetRoot,
-      contentRevision: store.imageWorkbenchInputRevision
+      contentRevision: store.imageWorkbenchInputRevision,
+      resourceOperationCompletionRevision:
+        imageWorkbench
+        .assetResourceOperationCompletionRevision(for: store.activeProfile.id)
     )
   }
 
@@ -506,6 +540,26 @@ struct AssetResourceManagerView: View {
         if !isPresented { pendingAction = nil }
       }
     )
+  }
+
+  private var resourceOperationStatePresentation: WorkbenchStatePresentation? {
+    guard
+      let operationPresentation = imageWorkbench.assetResourceOperationPresentation(
+        for: store.activeProfile.id
+      )
+    else {
+      return nil
+    }
+    switch operationPresentation {
+    case .loading(let detail):
+      return WorkbenchStatePresentation(kind: .loading(detail: detail))
+    case .success(let detail):
+      return WorkbenchStatePresentation(kind: .success(detail: detail))
+    case .partialSuccess(let detail):
+      return WorkbenchStatePresentation(kind: .partialSuccess(detail: detail))
+    case .failure(let reason):
+      return WorkbenchStatePresentation(kind: .failure(reason: reason))
+    }
   }
 
   private func refresh() async {
@@ -564,9 +618,17 @@ struct AssetResourceManagerView: View {
       set: { isSelected in
         switch selection {
         case .orphaned:
-          if isSelected { selectedOrphanPaths.insert(path) } else { selectedOrphanPaths.remove(path) }
+          if isSelected {
+            selectedOrphanPaths.insert(path)
+          } else {
+            selectedOrphanPaths.remove(path)
+          }
         case .compressible:
-          if isSelected { selectedCompressionPaths.insert(path) } else { selectedCompressionPaths.remove(path) }
+          if isSelected {
+            selectedCompressionPaths.insert(path)
+          } else {
+            selectedCompressionPaths.remove(path)
+          }
         }
       }
     )
@@ -593,11 +655,28 @@ struct AssetResourceManagerView: View {
     let items = report.orphanedAssets.filter { paths.contains($0.repositoryPath) }
     guard !items.isEmpty else { return }
     let profile = store.activeProfile
-    statusMessage = "正在校验并移入废纸篓…"
+    let loadingDetail = String(localized: "正在校验并移入废纸篓…")
+    guard
+      let operationID = imageWorkbench.beginAssetResourceOperation(
+        for: profile.id,
+        loadingDetail: loadingDetail
+      )
+    else {
+      return
+    }
     Task { @MainActor in
+      var completionPresentation: AssetResourceOperationPresentation?
+      defer {
+        imageWorkbench.finishAssetResourceOperation(
+          operationID,
+          for: profile.id,
+          presentation: completionPresentation
+        )
+      }
       do {
         let result = try await Task.detached(priority: .utility) {
-          try AssetResourceManagerService().moveOrphanedAssetsToTrash(profile: profile, items: items)
+          try AssetResourceManagerService().moveOrphanedAssetsToTrash(
+            profile: profile, items: items)
         }.value
         var parts = ["已移入废纸篓 \(result.movedToTrashPaths.count) 个资源"]
         if !result.needsReviewPaths.isEmpty {
@@ -606,13 +685,20 @@ struct AssetResourceManagerView: View {
         if !result.failedPaths.isEmpty {
           parts.append("\(result.failedPaths.count) 个未处理")
         }
-        statusMessage = parts.joined(separator: "；") + "。"
-        selectedOrphanPaths.subtract(items.map(\.repositoryPath))
-        await refresh()
+        let detail = parts.joined(separator: "；") + "。"
+        completionPresentation =
+          result.needsReviewPaths.isEmpty && result.failedPaths.isEmpty
+          ? .success(detail: detail)
+          : .partialSuccess(detail: detail)
+        guard imageWorkbench.isCurrentAssetResourceOperation(operationID, for: profile.id)
+        else { return }
+        if store.activeProfile.id == profile.id {
+          selectedOrphanPaths.subtract(items.map(\.repositoryPath))
+        }
       } catch is CancellationError {
-        statusMessage = "已取消资源清理。"
+        return
       } catch {
-        statusMessage = "资源清理失败：\(error.localizedDescription)"
+        completionPresentation = .failure(reason: error.localizedDescription)
       }
     }
   }
@@ -624,35 +710,64 @@ struct AssetResourceManagerView: View {
     let items = report.compressionCandidates.filter { paths.contains($0.repositoryPath) }
     guard !items.isEmpty else { return }
     let profile = store.activeProfile
-    statusMessage = "正在校验并生成图片优化结果…"
+    let loadingDetail = String(localized: "正在校验并生成图片优化结果…")
+    guard
+      let operationID = imageWorkbench.beginAssetResourceOperation(
+        for: profile.id,
+        loadingDetail: loadingDetail
+      )
+    else {
+      return
+    }
     Task { @MainActor in
+      var completionPresentation: AssetResourceOperationPresentation?
+      defer {
+        imageWorkbench.finishAssetResourceOperation(
+          operationID,
+          for: profile.id,
+          presentation: completionPresentation
+        )
+      }
       do {
         let result = try await Task.detached(priority: .utility) {
           try AssetResourceManagerService().optimizeAssets(profile: profile, items: items)
         }.value
         var parts: [String] = []
+        var achievement: ImageCompressionAchievement?
         if !result.optimizedPaths.isEmpty {
-          let origBytes = items.filter { result.optimizedPaths.contains($0.repositoryPath) }.reduce(0) { $0 + $1.byteSize }
+          let origBytes = items.filter { result.optimizedPaths.contains($0.repositoryPath) }.reduce(
+            0
+          ) { $0 + $1.byteSize }
           let pct = origBytes > 0 ? (Double(result.savedBytes) / Double(origBytes) * 100.0) : 0.0
-          compressionAchievement = ImageCompressionAchievement(
+          achievement = ImageCompressionAchievement(
             optimizedCount: result.optimizedPaths.count,
             savedBytes: result.savedBytes,
             savedPercentage: pct,
             totalProcessed: items.count
           )
-          parts.append("已瘦身 \(result.optimizedPaths.count) 张图片，减少 \(ByteCountFormatter.string(fromByteCount: result.savedBytes, countStyle: .file))")
+          parts.append(
+            "已瘦身 \(result.optimizedPaths.count) 张图片，减少 \(ByteCountFormatter.string(fromByteCount: result.savedBytes, countStyle: .file))"
+          )
         } else {
           parts.append("没有图片在优化后变得更小")
         }
         if !result.skippedPaths.isEmpty { parts.append("\(result.skippedPaths.count) 张保留原文件") }
         if !result.failedPaths.isEmpty { parts.append("\(result.failedPaths.count) 张处理失败") }
-        statusMessage = parts.joined(separator: "；") + "。"
-        selectedCompressionPaths.subtract(items.map(\.repositoryPath))
-        await refresh()
+        let detail = parts.joined(separator: "；") + "。"
+        completionPresentation =
+          result.skippedPaths.isEmpty && result.failedPaths.isEmpty
+          ? .success(detail: detail)
+          : .partialSuccess(detail: detail)
+        guard imageWorkbench.isCurrentAssetResourceOperation(operationID, for: profile.id)
+        else { return }
+        if store.activeProfile.id == profile.id {
+          compressionAchievement = achievement
+          selectedCompressionPaths.subtract(items.map(\.repositoryPath))
+        }
       } catch is CancellationError {
-        statusMessage = "已取消图片瘦身。"
+        return
       } catch {
-        statusMessage = "图片瘦身失败：\(error.localizedDescription)"
+        completionPresentation = .failure(reason: error.localizedDescription)
       }
     }
   }
@@ -692,9 +807,11 @@ private struct ImageCompressionAchievementCard: View {
       }
 
       VStack(alignment: .leading, spacing: 3) {
-        Text("成功为 \(achievement.optimizedCount) 张图片瘦身，节省了 \(ByteCountFormatter.string(fromByteCount: achievement.savedBytes, countStyle: .file)) (\(Int(round(achievement.savedPercentage)))%) 存储空间")
-          .font(.callout.weight(.semibold))
-          .foregroundStyle(WorkbenchTheme.success)
+        Text(
+          "成功为 \(achievement.optimizedCount) 张图片瘦身，节省了 \(ByteCountFormatter.string(fromByteCount: achievement.savedBytes, countStyle: .file)) (\(Int(round(achievement.savedPercentage)))%) 存储空间"
+        )
+        .font(.callout.weight(.semibold))
+        .foregroundStyle(WorkbenchTheme.success)
 
         Text("已自动将更优体积的原位替换，优化后未发生体积下降的图片已原样保留。")
           .font(.caption)
@@ -814,9 +931,9 @@ private struct AssetCleanupConfirmationSheet: View {
                 Int64(items.count - representativeItems.count)
               )
             )
-              .font(.workbenchMetadata)
-              .foregroundStyle(.tertiary)
-              .padding(.leading, 4)
+            .font(.workbenchMetadata)
+            .foregroundStyle(.tertiary)
+            .padding(.leading, 4)
           }
         }
       }
@@ -849,13 +966,17 @@ private struct AssetResourceScanInput: Hashable {
   let repositoryRootPath: String
   let assetRoot: String
   let contentRevision: UInt64
+  let resourceOperationCompletionRevision: UInt64
 }
 
 private enum AssetResourceIdentifier {
   static func token(for path: String) -> String {
     path.unicodeScalars
       .map { scalar in
-        scalar.isASCII && (scalar == "-" || scalar == "_" || scalar == "." || scalar == "/" || scalar.properties.isASCIIHexDigit || scalar.properties.isAlphabetic) ? String(scalar) : "-"
+        scalar.isASCII
+          && (scalar == "-" || scalar == "_" || scalar == "." || scalar == "/"
+            || scalar.properties.isASCIIHexDigit || scalar.properties.isAlphabetic)
+          ? String(scalar) : "-"
       }
       .joined()
       .replacingOccurrences(of: "/", with: "-")
@@ -898,6 +1019,8 @@ private struct AssetResourceManagerRow: View {
     .padding(.vertical, 3)
     .accessibilityElement(children: .combine)
     .accessibilityLabel(item.filename)
-    .accessibilityValue("\(item.kind.workbenchLocalizedDisplayName)，\(ByteCountFormatter.string(fromByteCount: item.byteSize, countStyle: .file))，\(item.references.count) 个 Markdown 引用")
+    .accessibilityValue(
+      "\(item.kind.workbenchLocalizedDisplayName)，\(ByteCountFormatter.string(fromByteCount: item.byteSize, countStyle: .file))，\(item.references.count) 个 Markdown 引用"
+    )
   }
 }

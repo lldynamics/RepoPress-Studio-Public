@@ -41,6 +41,8 @@ struct SiteMaintenanceMetricGrid: View {
         )
       }
 
+      Divider()
+
       Label("站点指标", systemImage: "chart.bar.xaxis")
         .font(.callout.weight(.medium))
 
@@ -64,8 +66,7 @@ struct SiteMaintenanceMetricGrid: View {
         )
       }
     }
-    .padding(12)
-    .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
+    .frame(maxWidth: .infinity, alignment: .leading)
   }
 }
 
@@ -105,8 +106,10 @@ struct SiteMaintenanceHealthSection: View {
         }
       }
     }
-    .padding(14)
-    .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
+    .padding(.vertical, WorkbenchSpacing.control)
+    .overlay(alignment: .bottom) {
+      Divider()
+    }
   }
 }
 
@@ -122,15 +125,18 @@ struct SiteMaintenanceActionQueueSection: View {
   @State private var showsAllActions = false
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 10) {
+    VStack(alignment: .leading, spacing: WorkbenchSpacing.card) {
       HStack {
         Label("维护行动队列", systemImage: "checklist")
-          .font(.headline)
+          .font(.workbenchSectionTitle)
+          .accessibilityAddTraits(.isHeader)
         Spacer()
         Text("\(report.actionItems.count) 项")
           .font(.caption)
           .foregroundStyle(.secondary)
       }
+
+      Divider()
 
       if report.actionItems.isEmpty {
         Label("当前没有需要优先处理的维护事项。", systemImage: "checkmark.circle")
@@ -139,10 +145,14 @@ struct SiteMaintenanceActionQueueSection: View {
         let visibleActions = showsAllActions
           ? report.actionItems
           : Array(report.actionItems.prefix(maximumVisibleCount))
-        ForEach(visibleActions) { item in
+        ForEach(Array(visibleActions.enumerated()), id: \.element.id) { index, item in
           actionQueueRow(item)
+          if index < visibleActions.count - 1 {
+            Divider()
+          }
         }
         if allowsExpansion, report.actionItems.count > maximumVisibleCount {
+          Divider()
           WorkbenchListDisclosureFooter(
             visibleCount: visibleActions.count,
             totalCount: report.actionItems.count,
@@ -151,8 +161,6 @@ struct SiteMaintenanceActionQueueSection: View {
         }
       }
     }
-    .padding(14)
-    .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
   }
 
   @ViewBuilder
@@ -192,9 +200,8 @@ struct SiteMaintenanceActionQueueSection: View {
       }
       .controlSize(.small)
     }
-    .padding(10)
+    .padding(.vertical, WorkbenchSpacing.control)
     .frame(maxWidth: .infinity, alignment: .leading)
-    .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
   }
 
   private func actionQueueRowContent(_ item: MaintenanceActionItem) -> some View {
@@ -211,9 +218,6 @@ struct SiteMaintenanceActionQueueSection: View {
           Text(item.kind.localizedDisplayName)
             .font(.caption)
             .foregroundStyle(.secondary)
-            .padding(.horizontal, 6)
-            .padding(.vertical, 2)
-            .background(WorkbenchBackgroundStyle.control, in: Capsule())
           Spacer()
           Text(item.priority.localizedDisplayName)
             .font(.caption.weight(.semibold))
@@ -239,10 +243,8 @@ struct SiteMaintenanceActionQueueSection: View {
 
 private func siteMaintenanceHealthForeground(_ level: SiteMaintenanceHealthLevel) -> AnyShapeStyle {
   switch level {
-  case .stable:
-    return AnyShapeStyle(WorkbenchTheme.success)
-  case .watch:
-    return AnyShapeStyle(WorkbenchTheme.primary)
+  case .stable, .watch:
+    return AnyShapeStyle(.secondary)
   case .needsWork:
     return AnyShapeStyle(WorkbenchTheme.warning)
   case .urgent:

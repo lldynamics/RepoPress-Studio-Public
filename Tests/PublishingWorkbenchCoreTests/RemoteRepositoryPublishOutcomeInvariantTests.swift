@@ -94,6 +94,7 @@ extension RemoteRepositoryPublishResult {
   fileprivate func withReviewURL(_ reviewURL: String) -> Self {
     var copy = self
     copy.reviewURL = reviewURL
+    copy.reviewNumber = 1
     return copy
   }
 }

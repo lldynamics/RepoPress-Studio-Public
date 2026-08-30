@@ -87,23 +87,191 @@ struct MetricTile: View {
   }
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 6) {
+    HStack(alignment: .firstTextBaseline, spacing: WorkbenchSpacing.control) {
       Label(LocalizedStringKey(title), systemImage: systemImage)
         .font(.workbenchSupporting)
         .foregroundStyle(tint ?? .secondary)
+
+      Spacer(minLength: WorkbenchSpacing.control)
+
       Text(value)
         .font(.workbenchMetricValue)
         .lineLimit(1)
     }
-    .padding(10)
+    .padding(.horizontal, 2)
+    .padding(.vertical, WorkbenchSpacing.control)
     .frame(maxWidth: .infinity, alignment: .leading)
-    .background(
-      WorkbenchBackgroundStyle.control,
-      in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
-    )
+    .overlay(alignment: .bottom) {
+      Divider()
+    }
     .accessibilityElement(children: .ignore)
     .accessibilityLabel(Text(LocalizedStringKey(title)))
     .accessibilityValue(value)
+  }
+}
+
+/// Visual emphasis for flat information rows. Ordinary rows stay neutral;
+/// color and a tinted surface are reserved for exceptions and selection.
+enum WorkbenchInformationEmphasis: Equatable {
+  case standard
+  case warning
+  case critical
+  case selected
+
+  fileprivate var color: Color {
+    switch self {
+    case .standard:
+      return .secondary
+    case .warning:
+      return WorkbenchTheme.warning
+    case .critical:
+      return WorkbenchTheme.risk
+    case .selected:
+      return WorkbenchTheme.navigationSelection
+    }
+  }
+
+  fileprivate var background: Color {
+    switch self {
+    case .standard:
+      return .clear
+    case .warning, .critical, .selected:
+      return color.opacity(WorkbenchOpacity.noticeBackground)
+    }
+  }
+}
+
+/// A flat settings/detail section: heading, optional explanation, divider, then content.
+/// It intentionally supplies no card background so sections can be nested without nested cards.
+struct WorkbenchSectionGroup<Content: View>: View {
+  let title: LocalizedStringKey
+  let detail: LocalizedStringKey?
+  let systemImage: String?
+  private let content: Content
+
+  init(
+    _ title: LocalizedStringKey,
+    detail: LocalizedStringKey? = nil,
+    systemImage: String? = nil,
+    @ViewBuilder content: () -> Content
+  ) {
+    self.title = title
+    self.detail = detail
+    self.systemImage = systemImage
+    self.content = content()
+  }
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: WorkbenchSpacing.card) {
+      VStack(alignment: .leading, spacing: 3) {
+        if let systemImage {
+          Label(title, systemImage: systemImage)
+            .font(.workbenchSectionTitle)
+            .accessibilityAddTraits(.isHeader)
+        } else {
+          Text(title)
+            .font(.workbenchSectionTitle)
+            .accessibilityAddTraits(.isHeader)
+        }
+
+        if let detail {
+          Text(detail)
+            .font(.workbenchSupporting)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+      }
+
+      Divider()
+      content
+    }
+    .frame(maxWidth: .infinity, alignment: .leading)
+  }
+}
+
+/// A reusable list-style information row. Wrap it in a plain button for navigation.
+struct WorkbenchInformationRow<Accessory: View>: View {
+  let title: LocalizedStringKey
+  let detail: Text?
+  let detailIdentityValue: String?
+  let systemImage: String?
+  let emphasis: WorkbenchInformationEmphasis
+  private let accessory: Accessory
+
+  init(
+    title: LocalizedStringKey,
+    detail: Text? = nil,
+    detailIdentityValue: String? = nil,
+    systemImage: String? = nil,
+    emphasis: WorkbenchInformationEmphasis = .standard,
+    @ViewBuilder accessory: () -> Accessory
+  ) {
+    self.title = title
+    self.detail = detail
+    self.detailIdentityValue = detailIdentityValue
+    self.systemImage = systemImage
+    self.emphasis = emphasis
+    self.accessory = accessory()
+  }
+
+  var body: some View {
+    HStack(alignment: .center, spacing: WorkbenchSpacing.card) {
+      if let systemImage {
+        Image(systemName: systemImage)
+          .foregroundStyle(emphasis.color)
+          .frame(width: 18)
+          .accessibilityHidden(true)
+      }
+
+      VStack(alignment: .leading, spacing: 2) {
+        Text(title)
+          .font(.workbenchItemTitle)
+        if let detail {
+          if let detailIdentityValue {
+            detail
+              .font(.workbenchMetadata.monospaced())
+              .foregroundStyle(.secondary)
+              .workbenchTruncatedIdentity(detailIdentityValue, lineLimit: 2)
+          } else {
+            detail
+              .font(.workbenchMetadata)
+              .foregroundStyle(.secondary)
+              .fixedSize(horizontal: false, vertical: true)
+          }
+        }
+      }
+
+      Spacer(minLength: WorkbenchSpacing.control)
+      accessory
+    }
+    .padding(.horizontal, WorkbenchSpacing.control)
+    .padding(.vertical, WorkbenchSpacing.control)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .background(
+      emphasis.background,
+      in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
+    )
+    .accessibilityElement(children: .combine)
+  }
+}
+
+extension WorkbenchInformationRow where Accessory == EmptyView {
+  init(
+    title: LocalizedStringKey,
+    detail: Text? = nil,
+    detailIdentityValue: String? = nil,
+    systemImage: String? = nil,
+    emphasis: WorkbenchInformationEmphasis = .standard
+  ) {
+    self.init(
+      title: title,
+      detail: detail,
+      detailIdentityValue: detailIdentityValue,
+      systemImage: systemImage,
+      emphasis: emphasis
+    ) {
+      EmptyView()
+    }
   }
 }
 
@@ -167,11 +335,7 @@ enum MetricTileSemantic {
       return WorkbenchTheme.risk
     case .warning:
       return WorkbenchTheme.warning
-    case .passed:
-      return WorkbenchTheme.success
-    case .progress:
-      return WorkbenchTheme.progress
-    case .neutral:
+    case .passed, .progress, .neutral:
       return .secondary
     }
   }
@@ -214,6 +378,17 @@ enum EmptyStateDensity {
   case fullPage
   case compactPane
   case inline
+
+  fileprivate var workbenchDensity: WorkbenchStateDensity {
+    switch self {
+    case .fullPage:
+      return .fullPage
+    case .compactPane:
+      return .compactPane
+    case .inline:
+      return .inline
+    }
+  }
 }
 
 struct EmptyStateView: View {
@@ -243,93 +418,27 @@ struct EmptyStateView: View {
     self.action = action
   }
 
-  @ViewBuilder
   var body: some View {
-    switch density {
-    case .fullPage:
-      VStack(spacing: 12) {
-        emptyStateIcon(size: 38)
-        emptyStateCopy(
-          titleFont: .headline,
-          messageFont: .callout,
-          messageWidth: 360,
-          alignment: .center
-        )
-        if let actionTitle, let action {
-          Button(action: action) {
-            Label(actionTitle, systemImage: actionSystemImage)
+    WorkbenchStateView(
+      presentation: WorkbenchStatePresentation(
+        kind: .empty,
+        icon: systemImage
+      ),
+      density: density.workbenchDensity,
+      titleOverride: title,
+      detail: message,
+      actions: WorkbenchStateActions(
+        primary: actionTitle.flatMap { title in
+          action.map { handler in
+            WorkbenchStateAction(
+              title: title,
+              systemImage: actionSystemImage,
+              action: handler
+            )
           }
-          .workbenchProminentActionStyle()
         }
-      }
-      .frame(maxWidth: .infinity, maxHeight: .infinity)
-
-    case .compactPane:
-      VStack(spacing: 9) {
-        emptyStateIcon(size: 28)
-        emptyStateCopy(
-          titleFont: .workbenchCardTitle,
-          messageFont: .workbenchSupporting,
-          messageWidth: 300,
-          alignment: .center
-        )
-        if let actionTitle, let action {
-          Button(action: action) {
-            Label(actionTitle, systemImage: actionSystemImage)
-          }
-          .buttonStyle(.bordered)
-          .controlSize(.small)
-        }
-      }
-      .padding(.vertical, 12)
-      .frame(maxWidth: .infinity)
-      .frame(minHeight: 120, idealHeight: 132, maxHeight: 140)
-
-    case .inline:
-      HStack(alignment: .top, spacing: 9) {
-        emptyStateIcon(size: 17)
-          .frame(width: 20)
-        emptyStateCopy(
-          titleFont: .workbenchItemTitle,
-          messageFont: .workbenchMetadata,
-          messageWidth: nil,
-          alignment: .leading
-        )
-        Spacer(minLength: 4)
-        if let actionTitle, let action {
-          Button(action: action) {
-            Label(actionTitle, systemImage: actionSystemImage)
-          }
-          .buttonStyle(.borderless)
-          .controlSize(.small)
-        }
-      }
-      .frame(maxWidth: .infinity, alignment: .leading)
-    }
-  }
-
-  private func emptyStateIcon(size: CGFloat) -> some View {
-    Image(systemName: systemImage)
-      .font(.system(size: size))
-      .foregroundStyle(.secondary)
-      .accessibilityHidden(true)
-  }
-
-  private func emptyStateCopy(
-    titleFont: Font,
-    messageFont: Font,
-    messageWidth: CGFloat?,
-    alignment: TextAlignment
-  ) -> some View {
-    VStack(alignment: alignment == .leading ? .leading : .center, spacing: 3) {
-      Text(title)
-        .font(titleFont)
-      Text(message)
-        .font(messageFont)
-        .foregroundStyle(.secondary)
-        .multilineTextAlignment(alignment)
-        .frame(maxWidth: messageWidth, alignment: alignment == .leading ? .leading : .center)
-    }
+      )
+    )
   }
 }
 
@@ -664,9 +773,7 @@ struct GuidedEmptyStateView: View {
             }
             .buttonStyle(.plain)
             .onHover { hovering in
-              withAnimation(WorkbenchMotion.hoverSpring) {
-                hoveredActionID = hovering ? item.id : nil
-              }
+              hoveredActionID = hovering ? item.id : nil
             }
           }
         }
@@ -682,7 +789,6 @@ struct GuidedEmptyStateView: View {
       Image(systemName: item.systemImage)
         .font(.system(size: 18, weight: .medium))
         .foregroundStyle(Color.accentColor)
-        .scaleEffect(isHovered ? 1.12 : 1.0)
         .frame(width: 28, height: 28)
 
       VStack(alignment: .leading, spacing: 2) {
@@ -699,7 +805,6 @@ struct GuidedEmptyStateView: View {
       Image(systemName: "chevron.right")
         .font(.caption.weight(.semibold))
         .foregroundStyle(isHovered ? Color.accentColor : Color.secondary.opacity(0.5))
-        .offset(x: isHovered ? 3 : 0)
     }
     .padding(.horizontal, 16)
     .padding(.vertical, 12)
@@ -712,8 +817,5 @@ struct GuidedEmptyStateView: View {
         .strokeBorder(
           isHovered ? Color.accentColor.opacity(0.45) : Color.primary.opacity(0.08), lineWidth: 1)
     )
-    .shadow(color: Color.accentColor.opacity(isHovered ? 0.16 : 0), radius: 10, x: 0, y: 4)
-    .scaleEffect(isHovered ? 1.02 : 1.0)
-    .animation(WorkbenchMotion.hoverSpring, value: isHovered)
   }
 }

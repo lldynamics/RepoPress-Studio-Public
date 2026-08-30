@@ -679,6 +679,14 @@ final class DroppableMarkdownTextView: NSTextView {
     }
   }
   var markdownParagraphHighlightColor = NSColor.controlAccentColor.withAlphaComponent(0.07)
+  /// Paint-only current hunk decoration.  This is intentionally not a text
+  /// storage attribute, so review state cannot leak into saved Markdown.
+  var markdownInlineAIReviewRange: NSRange? {
+    didSet {
+      guard oldValue != markdownInlineAIReviewRange else { return }
+      needsDisplay = true
+    }
+  }
   /// Called once when AppKit begins a new first-responder cycle for this view.
   ///
   /// The editor coordinator uses this narrow bridge to restore the editable
@@ -769,6 +777,15 @@ final class DroppableMarkdownTextView: NSTextView {
         markdownParagraphHighlightColor.setFill()
         clippedRect.fill()
       }
+    }
+    if let range = markdownInlineAIReviewRange,
+      let rect = MarkdownTextKit2RangeAdapter.rect(for: range, in: self),
+      rect.intersects(dirtyRect)
+    {
+      NSColor.controlAccentColor.withAlphaComponent(0.16).setFill()
+      var decorationRect = rect.insetBy(dx: -2, dy: -1)
+      if decorationRect.width < 4 { decorationRect.size.width = 4 }
+      NSBezierPath(roundedRect: decorationRect, xRadius: 4, yRadius: 4).fill()
     }
     drawMarkdownBlockMarkers(in: dirtyRect)
   }
@@ -958,7 +975,8 @@ final class DroppableMarkdownTextView: NSTextView {
 
     // kVK_ANSI_Backslash (0x2A): Option + backslash explicitly requests
     // inline AI. Consume repeats without issuing another network request.
-    if event.keyCode == 0x2A,
+    if !hasMarkedText(),
+      event.keyCode == 0x2A,
       shortcutModifiers == .option,
       let inlineAIRequestHandler
     {
@@ -968,7 +986,7 @@ final class DroppableMarkdownTextView: NSTextView {
       return
     }
 
-    if event.keyCode == 48 {  // Tab key
+    if !hasMarkedText(), event.keyCode == 48 {  // Tab key
       if modifiers.isEmpty, ghostTextAcceptHandler?() == true {
         return
       }
@@ -980,7 +998,7 @@ final class DroppableMarkdownTextView: NSTextView {
         }
         return
       }
-    } else if event.keyCode == 53 {  // Esc key
+    } else if !hasMarkedText(), event.keyCode == 53 {  // Esc key
       if modifiers.isEmpty, ghostTextDismissHandler?() == true {
         return
       }

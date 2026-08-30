@@ -213,12 +213,10 @@ struct MacMarkdownToolbarCustomizationView: View {
 
     list.swapAt(index, targetIndex)
 
-    withAnimation(.easeInOut(duration: 0.2)) {
-      if category == .header {
-        workingConfig.headerItemIDs = list
-      } else {
-        workingConfig.formattingItemIDs = list
-      }
+    if category == .header {
+      workingConfig.headerItemIDs = list
+    } else {
+      workingConfig.formattingItemIDs = list
     }
   }
 }

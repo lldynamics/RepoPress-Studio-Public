@@ -45,7 +45,12 @@ extension PublishingStore {
       setPublishActionMessage("已取消导入远端文章。", status: .warning)
       return LocalContentImportMergeSummary(insertedCount: 0, updatedCount: 0, skippedCount: 0)
     }
-    let summary = mergeImportedDrafts(result, store: store)
+    let mergedSummary = mergeImportedDrafts(result, store: store)
+    let summary = LocalContentImportMergeSummary(
+      insertedCount: mergedSummary.insertedCount,
+      updatedCount: mergedSummary.updatedCount,
+      skippedCount: mergedSummary.skippedCount + result.skippedPaths.count
+    )
     selectedSection = .writing
     if let firstPath = paths.first,
       let imported = drafts.first(where: {
@@ -55,10 +60,18 @@ extension PublishingStore {
     {
       selectedDraftID = imported.id
     }
-    setPublishActionMessage(
-      "已从远端文章变更导入 \(summary.insertedCount) 篇、更新 \(summary.updatedCount) 篇。",
-      status: .success
-    )
+    if result.skippedPaths.isEmpty, result.issues.isEmpty {
+      setPublishActionMessage(
+        "已从远端文章变更导入 \(summary.insertedCount) 篇、更新 \(summary.updatedCount) 篇。",
+        status: .success
+      )
+    } else {
+      let detail = result.issues.first?.message ?? "路径或内容未通过导入校验"
+      setPublishActionMessage(
+        "远端文章导入未全部完成：新增 \(summary.insertedCount) 篇、更新 \(summary.updatedCount) 篇；跳过 \(result.skippedPaths.count) 个候选文件。\(detail)",
+        status: summary.changedCount == 0 ? .failure : .warning
+      )
+    }
     store.save()
     return summary
   }
@@ -91,19 +104,28 @@ extension PublishingStore {
       setPublishActionMessage("已取消导入远端文章。", status: .warning)
       return LocalContentImportMergeSummary(insertedCount: 0, updatedCount: 0, skippedCount: 0)
     }
-    let summary = mergeImportedDrafts(result, store: store)
+    let mergedSummary = mergeImportedDrafts(result, store: store)
+    let summary = LocalContentImportMergeSummary(
+      insertedCount: mergedSummary.insertedCount,
+      updatedCount: mergedSummary.updatedCount,
+      skippedCount: mergedSummary.skippedCount + result.skippedPaths.count
+    )
     if let imported = drafts.first(where: {
       $0.belongs(toSiteProfileID: profile.id) && $0.repositoryPath == normalizedPath
     }) {
       selectedDraftID = imported.id
       selectedSection = .writing
     }
-    if let snapshot,
-      summary.changedCount > 0
-    {
+    if let snapshot, summary.changedCount > 0, result.skippedPaths.isEmpty, result.issues.isEmpty {
       setPublishActionMessage(
         "已从 \(snapshot.refName) 导入远端文章 \(normalizedPath)。",
         status: .success
+      )
+    } else if !result.skippedPaths.isEmpty || !result.issues.isEmpty {
+      let detail = result.issues.first?.message ?? "路径或内容未通过导入校验"
+      setPublishActionMessage(
+        "未能导入远端文章：\(normalizedPath)。已跳过候选文件。\(detail)",
+        status: .failure
       )
     } else {
       setPublishActionMessage("未能导入远端文章：\(normalizedPath)。", status: .failure)

@@ -12,7 +12,7 @@ for file in \
   Settings/SettingsView.swift; do
   [[ -f "$VIEWS/$file" ]] || fail "expected UI source is missing: $file"
 done
-grep -Fq '.frame(minHeight: 120, idealHeight: 132, maxHeight: 140)' "$VIEWS/Shared/SharedViews.swift" || fail "compact empty-state height contract changed"
+grep -Fq '.frame(minHeight: 120, idealHeight: 132, maxHeight: 140)' "$VIEWS/Shared/WorkbenchStateView.swift" || fail "compact empty-state height contract changed"
 grep -Fq 'ForEach(ImageWorkbenchBatchAction.allActions)' "$VIEWS/Images/ImageWorkbenchView.swift" || fail "image workbench operations are hidden"
 grep -Fq 'RepositoryImageBrowserView(' "$VIEWS/Images/ImageWorkbenchView.swift" || fail "image browser is missing"
 grep -Fq '.accessibilityIdentifier("image-workbench-refresh")' "$VIEWS/Images/ImageWorkbenchView.swift" || fail "image rescan identifier is missing"

@@ -500,7 +500,6 @@ extension PublishingStore {
 
   public func refreshBatchPublishPlan(store: WorkbenchStore) {
     cancelBatchPublishPlanRefresh()
-    let cleanupRequests = pendingRemoteRepositoryCleanupRequests(profileID: store.activeProfileID)
     let plan = batchPublishPlanService.plan(
       drafts: store.visibleDrafts,
       profile: store.activeProfile,
@@ -509,13 +508,10 @@ extension PublishingStore {
     batchPublishPlan = plan
     batchRemotePublishPreviewSnapshot = remoteRepositoryPublishPreview(
       for: plan,
-      cleanupRequests: cleanupRequests,
       store: store
     )
-    batchRemoteReviewDraft = remotePublishPackage(
-      for: plan,
-      cleanupRequests: cleanupRequests
-    ).map { remoteReviewDraftBuilder.build(package: $0, profile: store.activeProfile) }
+    batchRemoteReviewDraft = remotePublishPackage(for: plan)
+      .map { remoteReviewDraftBuilder.build(package: $0, profile: store.activeProfile) }
   }
 
   public func publishingPackage(for draft: ArticleDraft, store: WorkbenchStore) -> PublishPackage {
@@ -844,20 +840,15 @@ extension PublishingStore {
 
   public func remoteRepositoryPublishPreview(
     for plan: BatchPublishPlan,
-    cleanupRequests: [DraftRepositoryCleanupRequest]? = nil,
+    cleanupRequests _: [DraftRepositoryCleanupRequest]? = nil,
     store: WorkbenchStore
   ) -> RemoteRepositoryPublishPreview? {
-    let cleanupRequests =
-      cleanupRequests
-      ?? pendingRemoteRepositoryCleanupRequests(profileID: plan.profileID)
-    let cleanupPaths = Set(cleanupRequests.map { $0.repositoryPath.normalizedRelativePath() })
-    return remotePublishPackage(for: plan, cleanupRequests: cleanupRequests).map {
+    remotePublishPackage(for: plan).map {
       remoteRepositoryPublishPreview(
         package: $0,
         profile: store.activeProfile,
         mode: preferredRemoteRepositoryPublishMode(for: store.activeProfile),
         extraWarningIssues: batchRemoteRepositoryPublishWarningIssues(for: plan),
-        forcedChangedPaths: cleanupPaths,
         store: store
       )
     }
@@ -865,54 +856,31 @@ extension PublishingStore {
 
   public func remotePublishPackage(
     for plan: BatchPublishPlan,
-    cleanupRequests: [DraftRepositoryCleanupRequest] = []
+    cleanupRequests _: [DraftRepositoryCleanupRequest] = []
   ) -> PublishPackage? {
     let publishableItems = plan.remotePublishableItems
-    let cleanupPackage = draftLifecycleService.cleanupPackage(for: cleanupRequests)
-    let files = deduplicatedBatchPublishFiles(
-      publishableItems.flatMap(\.package.files) + (cleanupPackage?.files ?? [])
-    )
-    guard !files.isEmpty,
-      let draftID = publishableItems.first?.draftID ?? cleanupRequests.first?.draftID,
+    guard let files = validatedBatchPublishFiles(publishableItems.flatMap(\.package.files)),
+      !files.isEmpty,
+      let draftID = publishableItems.first?.draftID,
       let markdownPath = publishableItems.first?.markdownPath
-        ?? cleanupRequests.first?.repositoryPath
     else {
       return nil
     }
     let publishCount = publishableItems.count
-    let cleanupCount = cleanupRequests.count
-    let title: String
-    let commitMessage: String
-    let reviewTitle: String
-    if cleanupCount == 0 {
-      title = "批量发布 \(publishCount) 篇文章"
-      commitMessage = "Publish: \(publishCount) articles"
-      reviewTitle = "Publish \(publishCount) articles"
-    } else if publishCount == 0 {
-      title = "批量下线 \(cleanupCount) 篇文章"
-      commitMessage = "Delete: \(cleanupCount) articles"
-      reviewTitle = "Delete \(cleanupCount) articles"
-    } else {
-      title = "发布 \(publishCount) 篇并下线 \(cleanupCount) 篇文章"
-      commitMessage = "Publish: \(publishCount) articles; delete: \(cleanupCount) articles"
-      reviewTitle = "Publish \(publishCount) and delete \(cleanupCount) articles"
-    }
     return PublishPackage(
       draftID: draftID,
-      title: title,
+      title: "批量发布 \(publishCount) 篇文章",
       draftSummary: nil,
       draftCoverAltText: nil,
       markdownPath: markdownPath,
       files: files,
-      commitMessage: commitMessage,
+      commitMessage: "Publish: \(publishCount) articles",
       reviewBranchName: "publish/batch-\(Self.batchPublishDateToken())",
-      reviewTitle: reviewTitle,
+      reviewTitle: "Publish \(publishCount) articles",
       reviewChecklist: [
         "批量发布清单已确认",
         "图片路径和 alt/caption 已检查",
         "公开风险和私密内容已确认",
-        "已确认文章仍在回收站或已永久删除",
-        "已核对待删除的仓库路径",
       ]
     )
   }

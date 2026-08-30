@@ -181,11 +181,15 @@ extension KnowledgeLibraryService {
         document.allowsLocalSemanticIndex
         ? chunks.flatMap { chunk in
           let record = KnowledgeSemanticIndexRecord(document: document, chunk: chunk)
-          return semanticEmbeddingService.vectors(for: record.searchableText).map { vector in
+          return semanticEmbeddingService.vectors(
+            for: record.searchableText,
+            role: .passage
+          ).map { vector in
             KnowledgeChunkEmbedding(
               chunkID: chunk.id,
               revisionID: chunk.revisionID,
-              vector: vector
+              vector: vector,
+              inputHash: record.searchableTextHash
             )
           }
         } : []

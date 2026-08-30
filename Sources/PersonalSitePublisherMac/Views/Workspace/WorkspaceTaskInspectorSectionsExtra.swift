@@ -244,9 +244,7 @@ struct ArticleInspectorTabs: View {
     }
     Task { @MainActor in
       await Task.yield()
-      withAnimation(WorkbenchMotion.deliberate) {
-        proxy.scrollTo(request.attachmentID, anchor: .center)
-      }
+      proxy.scrollTo(request.attachmentID, anchor: .center)
     }
   }
 

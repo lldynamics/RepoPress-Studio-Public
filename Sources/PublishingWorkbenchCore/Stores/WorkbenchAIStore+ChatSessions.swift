@@ -123,7 +123,8 @@ extension WorkbenchAIStore {
 
   private func setAIChatSessionState(
     _ state: AIPublishingChatSessionState,
-    for identity: AIChatConversationIdentity
+    for identity: AIChatConversationIdentity,
+    streaming: Bool = false
   ) {
     guard
       let index = aiConversations.firstIndex(where: {
@@ -133,9 +134,16 @@ extension WorkbenchAIStore {
       return
     }
 
-    var updatedConversations = aiConversations
-    updatedConversations[index].apply(state.prepared())
-    aiConversations = updatedConversations
+    if streaming {
+      // Do not prepare or retain the entire conversation collection for a
+      // 50 ms stream tick. The final/cancel path below writes a prepared,
+      // bounded session before autosave is allowed to persist it.
+      replaceAIConversationStreaming(at: index, with: state)
+    } else {
+      var updatedConversations = aiConversations
+      updatedConversations[index].apply(state.prepared())
+      aiConversations = updatedConversations
+    }
     if aiChatDraftID == identity.draftID,
       activeAIChatConversationID(for: identity.draftID) == identity.conversationID,
       let updatedConversation = aiConversations.first(where: {
@@ -144,7 +152,9 @@ extension WorkbenchAIStore {
     {
       applyCurrentAIChatSession(updatedConversation.sessionState)
     }
-    store.scheduleAutosave()
+    if !streaming {
+      store.scheduleAutosave()
+    }
   }
 
   func removeAIChatSessionState(for draftID: UUID) {
@@ -259,11 +269,12 @@ extension WorkbenchAIStore {
 
   func updateAIChatSession(
     for identity: AIChatConversationIdentity,
+    streaming: Bool = false,
     update: (inout [AIPublishingChatMessage]) -> Void
   ) {
     guard var state = aiChatSessionState(for: identity) else { return }
     update(&state.messages)
-    setAIChatSessionState(state, for: identity)
+    setAIChatSessionState(state, for: identity, streaming: streaming)
   }
 
   func aiChatQuickHideOperationMessage() -> String {

@@ -240,10 +240,46 @@ struct GitHubCreatePullRequestBody: Encodable {
 }
 
 struct GitHubPullRequestResponse: Decodable {
+  var number: Int?
   var htmlURL: String?
 
   enum CodingKeys: String, CodingKey {
+    case number
     case htmlURL = "html_url"
+  }
+}
+
+struct GitHubPullRequestStatusResponse: Decodable {
+  var number: Int
+  var state: String
+  var merged: Bool
+  var htmlURL: String
+  var mergeCommitSHA: String?
+  var head: Branch
+  var base: Branch
+
+  struct Branch: Decodable {
+    var ref: String
+    var sha: String
+    var repo: Repository?
+  }
+
+  struct Repository: Decodable {
+    var fullName: String
+
+    enum CodingKeys: String, CodingKey {
+      case fullName = "full_name"
+    }
+  }
+
+  enum CodingKeys: String, CodingKey {
+    case number
+    case state
+    case merged
+    case htmlURL = "html_url"
+    case mergeCommitSHA = "merge_commit_sha"
+    case head
+    case base
   }
 }
 
@@ -418,10 +454,39 @@ struct GitLabCreateMergeRequestBody: Encodable {
 }
 
 struct GitLabMergeRequestResponse: Decodable {
+  var iid: Int?
   var webURL: String?
 
   enum CodingKeys: String, CodingKey {
+    case iid
     case webURL = "web_url"
+  }
+}
+
+struct GitLabBranchResponse: Decodable {
+  struct Commit: Decodable { var id: String }
+  var commit: Commit
+}
+
+struct GitLabMergeRequestStatusResponse: Decodable {
+  var iid: Int
+  var state: String
+  var webURL: String
+  var sourceBranch: String
+  var targetBranch: String
+  var headCommitSHA: String
+  var mergeCommitSHA: String?
+  var squashCommitSHA: String?
+
+  enum CodingKeys: String, CodingKey {
+    case iid
+    case state
+    case webURL = "web_url"
+    case sourceBranch = "source_branch"
+    case targetBranch = "target_branch"
+    case headCommitSHA = "sha"
+    case mergeCommitSHA = "merge_commit_sha"
+    case squashCommitSHA = "squash_commit_sha"
   }
 }
 

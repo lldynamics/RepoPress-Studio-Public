@@ -2,7 +2,7 @@ import AppKit
 import PublishingWorkbenchCore
 import SwiftUI
 
-enum RepositoryImageSortOrder: String, CaseIterable, Identifiable {
+enum RepositoryImageSortOrder: String, CaseIterable, Identifiable, Sendable {
   case nameAsc
   case nameDesc
   case dateNewest
@@ -37,7 +37,7 @@ enum RepositoryImageSortOrder: String, CaseIterable, Identifiable {
   }
 }
 
-enum RepositoryImageFilter: String, CaseIterable, Identifiable {
+enum RepositoryImageFilter: String, CaseIterable, Identifiable, Sendable {
   case all
   case registered
   case unregistered
@@ -75,6 +75,8 @@ struct RepositoryImageBrowserView: View {
   @State private var query = ""
   @State private var filter: RepositoryImageFilter = .all
   @State private var sortOrder: RepositoryImageSortOrder = .nameAsc
+  @State private var projectedAssets: [RepositoryImageAsset] = []
+  @State private var projectionGeneration = 0
 
   var body: some View {
     VStack(alignment: .leading, spacing: 14) {
@@ -119,7 +121,7 @@ struct RepositoryImageBrowserView: View {
   }
 
   private func inventoryContent(_ inventory: RepositoryImageInventory) -> some View {
-    let filteredAssets = filteredAssets(inventory)
+    let filteredAssets = projectedAssets
     return VStack(alignment: .leading, spacing: 12) {
       LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 10)], spacing: 10) {
         MetricTile(title: "仓库图片", value: "\(inventory.assets.count)", systemImage: "photo.stack")
@@ -172,11 +174,14 @@ struct RepositoryImageBrowserView: View {
         .font(.workbenchSupporting)
         .foregroundStyle(.tertiary)
     }
-    .onAppear { normalizeSelection(in: inventory) }
-    .onChange(of: query) { _, _ in normalizeSelection(in: inventory) }
-    .onChange(of: filter) { _, _ in normalizeSelection(in: inventory) }
-    .onChange(of: sortOrder) { _, _ in normalizeSelection(in: inventory) }
-    .onChange(of: inventory.revisionID) { _, _ in normalizeSelection(in: inventory) }
+    .task(id: projectionGeneration) {
+      await rebuildProjection(for: inventory)
+    }
+    .onAppear { projectionGeneration &+= 1 }
+    .onChange(of: query) { _, _ in projectionGeneration &+= 1 }
+    .onChange(of: filter) { _, _ in projectionGeneration &+= 1 }
+    .onChange(of: sortOrder) { _, _ in projectionGeneration &+= 1 }
+    .onChange(of: inventory.revisionID) { _, _ in projectionGeneration &+= 1 }
   }
 
   private var targetArticleControls: some View {
@@ -409,47 +414,67 @@ struct RepositoryImageBrowserView: View {
     .frame(maxWidth: .infinity, minHeight: 120, alignment: .leading)
   }
 
-  private func filteredAssets(_ inventory: RepositoryImageInventory) -> [RepositoryImageAsset] {
-    let normalizedQuery = query.trimmedForPublishing
-    let base = inventory.assets.filter { asset in
-      filter.includes(asset)
-        && (normalizedQuery.isEmpty
-          || asset.filename.localizedStandardContains(normalizedQuery)
-          || asset.repositoryPath.localizedStandardContains(normalizedQuery))
-    }
+  @MainActor
+  private func rebuildProjection(for inventory: RepositoryImageInventory) async {
+    // A short debounce keeps rapid typing off the synchronous view update
+    // path.  The task is cancelled automatically when any input changes.
+    try? await Task.sleep(for: .milliseconds(150))
+    guard !Task.isCancelled else { return }
+    let snapshot = inventory.assets
+    let requestedQuery = query.trimmedForPublishing
+    let requestedFilter = filter
+    let requestedSort = sortOrder
+    let result = await Task.detached(priority: .userInitiated) {
+      Self.project(
+        snapshot, query: requestedQuery, filter: requestedFilter, sortOrder: requestedSort)
+    }.value
+    guard !Task.isCancelled else { return }
+    projectedAssets = result
+    normalizeSelection(in: result)
+  }
 
+  nonisolated static func project(
+    _ assets: [RepositoryImageAsset],
+    query: String,
+    filter: RepositoryImageFilter,
+    sortOrder: RepositoryImageSortOrder
+  ) -> [RepositoryImageAsset] {
+    let base = assets.filter { asset in
+      filter.includes(asset)
+        && (query.isEmpty || asset.filename.localizedStandardContains(query)
+          || asset.repositoryPath.localizedStandardContains(query))
+    }
     return base.sorted { lhs, rhs in
       switch sortOrder {
-      case .nameAsc:
-        return lhs.filename.localizedStandardCompare(rhs.filename) == .orderedAscending
+      case .nameAsc: return lhs.filename.localizedStandardCompare(rhs.filename) == .orderedAscending
       case .nameDesc:
         return lhs.filename.localizedStandardCompare(rhs.filename) == .orderedDescending
       case .dateNewest:
-        let lDate = lhs.modifiedAt ?? .distantPast
-        let rDate = rhs.modifiedAt ?? .distantPast
-        if lDate != rDate { return lDate > rDate }
-        return lhs.filename.localizedStandardCompare(rhs.filename) == .orderedAscending
+        let l = lhs.modifiedAt ?? .distantPast
+        let r = rhs.modifiedAt ?? .distantPast
+        return l == r
+          ? lhs.filename.localizedStandardCompare(rhs.filename) == .orderedAscending : l > r
       case .dateOldest:
-        let lDate = lhs.modifiedAt ?? .distantPast
-        let rDate = rhs.modifiedAt ?? .distantPast
-        if lDate != rDate { return lDate < rDate }
-        return lhs.filename.localizedStandardCompare(rhs.filename) == .orderedAscending
+        let l = lhs.modifiedAt ?? .distantPast
+        let r = rhs.modifiedAt ?? .distantPast
+        return l == r
+          ? lhs.filename.localizedStandardCompare(rhs.filename) == .orderedAscending : l < r
       case .sizeLargest:
-        if lhs.byteSize != rhs.byteSize { return lhs.byteSize > rhs.byteSize }
-        return lhs.filename.localizedStandardCompare(rhs.filename) == .orderedAscending
+        return lhs.byteSize == rhs.byteSize
+          ? lhs.filename.localizedStandardCompare(rhs.filename) == .orderedAscending
+          : lhs.byteSize > rhs.byteSize
       case .sizeSmallest:
-        if lhs.byteSize != rhs.byteSize { return lhs.byteSize < rhs.byteSize }
-        return lhs.filename.localizedStandardCompare(rhs.filename) == .orderedAscending
+        return lhs.byteSize == rhs.byteSize
+          ? lhs.filename.localizedStandardCompare(rhs.filename) == .orderedAscending
+          : lhs.byteSize < rhs.byteSize
       case .unregisteredFirst:
-        if lhs.isRegisteredToArticle != rhs.isRegisteredToArticle {
-          return !lhs.isRegisteredToArticle && rhs.isRegisteredToArticle
-        }
-        return lhs.filename.localizedStandardCompare(rhs.filename) == .orderedAscending
+        return lhs.isRegisteredToArticle == rhs.isRegisteredToArticle
+          ? lhs.filename.localizedStandardCompare(rhs.filename) == .orderedAscending
+          : !lhs.isRegisteredToArticle
       case .registeredFirst:
-        if lhs.isRegisteredToArticle != rhs.isRegisteredToArticle {
-          return lhs.isRegisteredToArticle && !rhs.isRegisteredToArticle
-        }
-        return lhs.filename.localizedStandardCompare(rhs.filename) == .orderedAscending
+        return lhs.isRegisteredToArticle == rhs.isRegisteredToArticle
+          ? lhs.filename.localizedStandardCompare(rhs.filename) == .orderedAscending
+          : lhs.isRegisteredToArticle
       }
     }
   }
@@ -496,8 +521,7 @@ struct RepositoryImageBrowserView: View {
     return assets.first
   }
 
-  private func normalizeSelection(in inventory: RepositoryImageInventory) {
-    let assets = filteredAssets(inventory)
+  private func normalizeSelection(in assets: [RepositoryImageAsset]) {
     if let selectedRepositoryPath,
        assets.contains(where: { $0.repositoryPath == selectedRepositoryPath }) {
       return

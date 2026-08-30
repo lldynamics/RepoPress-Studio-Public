@@ -4,6 +4,73 @@ import XCTest
 @testable import PublishingKnowledgeCore
 
 final class KnowledgeSemanticEmbeddingServiceTests: XCTestCase {
+  private struct RoleAwareProvider: KnowledgeSemanticEmbeddingProvider {
+    let descriptor = KnowledgeSemanticEmbeddingDescriptor(
+      modelIdentifier: "test-role-aware",
+      dimension: 2,
+      minimumSimilarity: 0,
+      maximumTokenCount: 16,
+      weightsVersion: "test",
+      artifactDigest: "fixture",
+      preprocessingVersion: "fixture",
+      queryInstruction: "query only"
+    )
+
+    func vector(for input: KnowledgeSemanticEmbeddingInput) -> KnowledgeSemanticVector? {
+      KnowledgeSemanticVector(
+        modelIdentifier: descriptor.modelIdentifier,
+        values: input.role == .query ? [1, 0] : [0, 1],
+        minimumSimilarity: 0,
+        encodingVersion: descriptor.encodingVersion
+      )
+    }
+  }
+
+  private struct FailingProvider: KnowledgeSemanticEmbeddingProvider {
+    let descriptor = KnowledgeSemanticEmbeddingDescriptor(
+      modelIdentifier: "test-unavailable",
+      dimension: 2,
+      minimumSimilarity: 0,
+      maximumTokenCount: 16,
+      weightsVersion: "test",
+      preprocessingVersion: "fixture"
+    )
+
+    func vector(for input: KnowledgeSemanticEmbeddingInput) -> KnowledgeSemanticVector? { nil }
+  }
+
+  func testProviderReceivesDistinctQueryAndPassageRolesWhileFallbackRemainsAvailable() throws {
+    let service = KnowledgeSemanticEmbeddingService(providers: [RoleAwareProvider()])
+    let query = try XCTUnwrap(
+      service.vector(
+        for: "same text", modelIdentifier: "test-role-aware", role: .query
+      ))
+    let passage = try XCTUnwrap(
+      service.vector(
+        for: "same text", modelIdentifier: "test-role-aware", role: .passage
+      ))
+    XCTAssertEqual(query.values, [1, 0])
+    XCTAssertEqual(passage.values, [0, 1])
+    XCTAssertNotNil(service.vector(for: "same text", modelIdentifier: "local-semantic-hash-v2"))
+  }
+
+  func testProviderFailureFallsBackAndDescriptorFingerprintIncludesInferenceContract() {
+    let first = KnowledgeSemanticEmbeddingDescriptor(
+      modelIdentifier: "same", dimension: 2, minimumSimilarity: 0,
+      maximumTokenCount: 8, weightsVersion: "w", artifactDigest: "one",
+      preprocessingVersion: "p", poolingVersion: "mean", normalizationVersion: "l2",
+      precisionVersion: "f32", queryInstruction: "question"
+    )
+    let changed = KnowledgeSemanticEmbeddingDescriptor(
+      modelIdentifier: "same", dimension: 2, minimumSimilarity: 0,
+      maximumTokenCount: 8, weightsVersion: "w", artifactDigest: "two",
+      preprocessingVersion: "p", poolingVersion: "cls", normalizationVersion: "l2",
+      precisionVersion: "f32", queryInstruction: "question v2"
+    )
+    let service = KnowledgeSemanticEmbeddingService(providers: [FailingProvider()])
+    XCTAssertEqual(service.vectors(for: "本地回退").map(\.modelIdentifier), ["local-semantic-hash-v2"])
+    XCTAssertNotEqual(first.encodingVersion, changed.encodingVersion)
+  }
   func testDoesNotSynchronouslyLoadUnpreparedContextualModel() {
     let vectors = KnowledgeSemanticEmbeddingService().vectors(
       for: "本地资料库通过混合检索找到相关章节"

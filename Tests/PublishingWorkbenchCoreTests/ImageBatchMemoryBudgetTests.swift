@@ -1,3 +1,4 @@
+import Foundation
 import XCTest
 
 @testable import PublishingWorkbenchCore
@@ -73,6 +74,44 @@ final class ImageBatchMemoryBudgetTests: XCTestCase {
     XCTAssertTrue(scheduler.complete(index: 0))
     XCTAssertTrue(scheduler.acquire(items[2]))
     XCTAssertLessThanOrEqual(scheduler.peakRunningBytes, 100)
+  }
+
+  func testKnownPixelDimensionsUseDecodedSurfaceWithoutCompressedFallbackFloor() throws {
+    let imageURL = FileManager.default.temporaryDirectory
+      .appendingPathComponent("image-budget-\(UUID().uuidString).png")
+    defer { try? FileManager.default.removeItem(at: imageURL) }
+    let png = try XCTUnwrap(
+      Data(
+        base64Encoded:
+          "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl7mAAAAABJRU5ErkJggg=="
+      )
+    )
+    try png.write(to: imageURL)
+    let image = DraftAttachment(
+      originalFilename: imageURL.lastPathComponent,
+      relativePublishPath: "/images/pixel.png",
+      repositoryPath: "static/images/pixel.png",
+      byteSize: 1,
+      sourceFilePath: imageURL.path
+    )
+    let draft = ArticleDraft(
+      siteProfileID: SiteProfile.defaultProfile.id,
+      title: "Pixel budget",
+      slug: "pixel-budget",
+      attachments: [image]
+    )
+    let budget = ImageBatchMemoryBudget(
+      cpuLimit: 1,
+      byteBudget: 1,
+      decodeMultiplier: 16,
+      unknownAttachmentBytes: 1_024 * 1_024
+    )
+
+    XCTAssertEqual(
+      budget.estimatedBytes(for: draft),
+      ImageBatchMemoryBudget.decodedBytesPerPixel
+        * ImageBatchMemoryBudget.decodedBufferMultiplier
+    )
   }
 
   func testOversizedItemRunsAloneAndCancellationPreventsRefill() {

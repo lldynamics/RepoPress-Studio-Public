@@ -8,31 +8,30 @@ struct SiteMaintenanceSnapshotPlaceholder: View {
   let generate: () -> Void
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 12) {
-      Label(
-        isRefreshing ? "正在生成维护报告" : (errorMessage == nil ? "维护报告尚未生成" : "维护报告生成失败"),
-        systemImage: isRefreshing
-          ? "arrow.clockwise"
-          : (errorMessage == nil ? "wrench.and.screwdriver" : "exclamationmark.triangle")
-      )
-      .font(.headline)
-      .foregroundStyle(errorMessage == nil ? Color.primary : WorkbenchTheme.risk)
-      if isRefreshing {
-        ProgressView("正在扫描内容日历、标签、旧文和链接…")
-          .controlSize(.small)
-      } else {
-        Text(errorMessage ?? "点击生成后才会扫描内容日历、标签、旧文和链接，避免打开页面时自动重算。")
-          .foregroundStyle(.secondary)
-          .textSelection(.enabled)
-        Button {
-          generate()
-        } label: {
-          Label(errorMessage == nil ? "生成维护报告" : "重新生成", systemImage: "arrow.clockwise")
-        }
-        .workbenchProminentActionStyle()
-      }
-    }
-    .frame(maxWidth: .infinity, alignment: .leading)
+    WorkbenchStateView(
+      presentation: isRefreshing
+        ? WorkbenchStatePresentation(
+          kind: .loading(
+            detail: String(localized: "正在扫描内容日历、标签、旧文和链接…")
+          )
+        )
+        : (errorMessage.map {
+          WorkbenchStatePresentation(kind: .failure(reason: $0))
+        } ?? WorkbenchStatePresentation(kind: .empty)),
+      density: .compactPane,
+      detail: errorMessage == nil && !isRefreshing
+        ? "点击生成后才会扫描内容日历、标签、旧文和链接，避免打开页面时自动重算。"
+        : nil,
+      actions: isRefreshing
+        ? .none
+        : WorkbenchStateActions(
+          primary: WorkbenchStateAction(
+            title: errorMessage == nil ? "生成维护报告" : "重新生成",
+            systemImage: "arrow.clockwise",
+            action: generate
+          )
+        )
+    )
   }
 }
 

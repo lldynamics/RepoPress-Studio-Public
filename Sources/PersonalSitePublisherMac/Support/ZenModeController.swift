@@ -10,7 +10,6 @@ struct ZenModeToolbarVisibilityPolicy: Equatable, Sendable {
   let isKeyboardNavigationActive: Bool
   let isVoiceOverEnabled: Bool
   let isRecentlyTyped: Bool
-  let reduceMotion: Bool
 
   var toolbarOpacity: Double {
     guard isZenModeActive else { return 1.0 }
@@ -20,9 +19,6 @@ struct ZenModeToolbarVisibilityPolicy: Equatable, Sendable {
     return isRecentlyTyped ? 0.08 : 0.40
   }
 
-  var usesAnimatedTransitions: Bool {
-    !reduceMotion
-  }
 }
 
 @MainActor
@@ -85,14 +81,14 @@ final class ZenModeController: ObservableObject {
   }
 
   private func recalculateToolbarOpacity() {
-    toolbarOpacity = ZenModeToolbarVisibilityPolicy(
-      isZenModeActive: isZenModeActive,
-      isPointerHovering: isHovered,
-      isKeyboardNavigationActive: isKeyboardNavigationActive,
-      isVoiceOverEnabled: isVoiceOverEnabled,
-      isRecentlyTyped: isRecentlyTyped,
-      reduceMotion: isReduceMotionEnabled
-    ).toolbarOpacity
+    toolbarOpacity =
+      ZenModeToolbarVisibilityPolicy(
+        isZenModeActive: isZenModeActive,
+        isPointerHovering: isHovered,
+        isKeyboardNavigationActive: isKeyboardNavigationActive,
+        isVoiceOverEnabled: isVoiceOverEnabled,
+        isRecentlyTyped: isRecentlyTyped
+      ).toolbarOpacity
   }
 
   func refreshAccessibilityState(
@@ -100,7 +96,8 @@ final class ZenModeController: ObservableObject {
     reduceMotionEnabled: Bool? = nil
   ) {
     isVoiceOverEnabled = voiceOverEnabled ?? NSWorkspace.shared.isVoiceOverEnabled
-    let shouldReduceMotion = reduceMotionEnabled
+    let shouldReduceMotion =
+      reduceMotionEnabled
       ?? NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
     isReduceMotionEnabled = shouldReduceMotion
     if shouldReduceMotion {
@@ -135,13 +132,7 @@ final class ZenModeController: ObservableObject {
     if hovered {
       pendingHoverState = nil
       if !isHovered {
-        if isReduceMotionEnabled {
-          isHovered = true
-        } else {
-          withAnimation(.easeOut(duration: 0.15)) {
-            isHovered = true
-          }
-        }
+        isHovered = true
       }
     } else if isReduceMotionEnabled {
       pendingHoverState = nil
@@ -153,13 +144,7 @@ final class ZenModeController: ObservableObject {
         guard self.pendingHoverState == false else { return }
         self.pendingHoverState = nil
         self.hoverExitTask = nil
-        if self.isReduceMotionEnabled {
-          self.isHovered = false
-        } else {
-          withAnimation(.easeIn(duration: 0.25)) {
-            self.isHovered = false
-          }
-        }
+        self.isHovered = false
       }
     }
   }
@@ -178,46 +163,22 @@ final class ZenModeController: ObservableObject {
     endKeyboardNavigation()
     guard isZenModeActive else { return }
     if !isRecentlyTyped {
-      if isReduceMotionEnabled {
-        isRecentlyTyped = true
-      } else {
-        withAnimation(.easeInOut(duration: 0.25)) {
-          isRecentlyTyped = true
-        }
-      }
+      isRecentlyTyped = true
     }
     typingTimer?.cancel()
     typingTimer = Task { @MainActor in
       try? await Task.sleep(nanoseconds: 2_000_000_000)
       guard !Task.isCancelled else { return }
-      if self.isReduceMotionEnabled {
-        self.isRecentlyTyped = false
-      } else {
-        withAnimation(.easeInOut(duration: 0.35)) {
-          self.isRecentlyTyped = false
-        }
-      }
+      self.isRecentlyTyped = false
     }
   }
 
   func toggleZenMode() {
     endKeyboardNavigation()
-    if isReduceMotionEnabled {
-      isZenModeActive.toggle()
-    } else {
-      withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-        isZenModeActive.toggle()
-      }
-    }
+    isZenModeActive.toggle()
   }
 
   func toggleFormattingBar() {
-    if isReduceMotionEnabled {
-      isFormattingBarVisible.toggle()
-    } else {
-      withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-        isFormattingBarVisible.toggle()
-      }
-    }
+    isFormattingBarVisible.toggle()
   }
 }

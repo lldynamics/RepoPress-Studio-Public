@@ -36,10 +36,15 @@ struct SettingsTabContentFactory {
           allowsBackgroundRefresh: !context.store.isSafeMode
         )
       } else {
-        EmptyStateView(
-          title: "RSS 暂不可用",
-          message: "请先在主窗口完成数据文件夹设置。",
-          systemImage: "dot.radiowaves.left.and.right"
+        WorkbenchStateView(
+          presentation: WorkbenchStatePresentation(
+            kind: .unavailable(
+              reason: String(localized: "当前数据文件夹尚未准备完成。")
+            ),
+            icon: "dot.radiowaves.left.and.right"
+          ),
+          density: .compactPane,
+          detail: "请先在主窗口完成数据文件夹设置。"
         )
       }
     case .privacy:

@@ -335,7 +335,6 @@ struct WritingDraftColumn: View {
   @State var visibleDraftCount = 0
   @State var filteredDraftCount = 0
   @State var draftCountDelta: Int?
-  @State var isDraftCountPunching = false
   @State var draftListLoadingTask: Task<Void, Never>?
   @State var draftCountBadgeTask: Task<Void, Never>?
   @State var draftFilterDebounceTask: Task<Void, Never>?

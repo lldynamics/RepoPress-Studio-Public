@@ -95,6 +95,39 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
     XCTAssertEqual(payload["stream"] as? Bool, true)
   }
 
+  func testStreamingMessageReplacementsBypassRetentionUntilDurableBoundary() throws {
+    let persistenceURL = FileManager.default.temporaryDirectory
+      .appendingPathComponent(UUID().uuidString)
+      .appendingPathExtension("json")
+    defer { try? FileManager.default.removeItem(at: persistenceURL) }
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: persistenceURL),
+      keychainTokenStore: aiTokenStoreForTest()
+    )
+    let draft = try XCTUnwrap(store.selectedDraft)
+    store.aiStore.prepareAIChat(for: draft)
+    store.aiStore.updateAIChatSession(for: draft.id) { messages in
+      messages.append(AIPublishingChatMessage(role: .assistant, content: "0"))
+    }
+    let identity = try XCTUnwrap(store.aiStore.aiChatConversationIdentity(for: draft.id))
+    store.aiStore.aiConversationRetentionPassCount = 0
+    let lifecycleRevision = store.aiStore.aiChatSessionLifecycleRevision
+
+    for value in 1...100 {
+      store.aiStore.updateAIChatSession(for: identity, streaming: true) { messages in
+        messages[messages.count - 1].content = "\(value)"
+      }
+    }
+
+    XCTAssertEqual(store.aiStore.aiConversationRetentionPassCount, 0)
+    XCTAssertEqual(store.aiStore.aiChatSessionLifecycleRevision, lifecycleRevision)
+    XCTAssertEqual(store.aiStore.aiChatSessionState(for: identity)?.messages.last?.content, "100")
+
+    store.aiStore.updateAIChatSession(for: identity) { _ in }
+    XCTAssertEqual(store.aiStore.aiConversationRetentionPassCount, 1)
+    XCTAssertEqual(store.aiStore.aiChatSessionLifecycleRevision, lifecycleRevision + 1)
+  }
+
   func testExpectedArticleContextChangeFailsClosedBeforeTransport() async throws {
     let transport = RecordingAIChatTransport(
       data: Data(),
@@ -2037,17 +2070,24 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
         "",
       ]
     )
+    let consentStore = AIDataSharingConsentStore(
+      storageKey: "AIDataSharingConsent.KnowledgeFreeze.\(UUID().uuidString)"
+    )
+    let config = streamingSupportedConfig(remoteAIConfig)
+    consentStore.grant(for: config)
     let store = WorkbenchStore(
       persistence: WorkbenchPersistence(
         fileURL: directory.appendingPathComponent("workbench.json")
       ),
       knowledgeLibraryService: library,
+      keychainTokenStore: aiTokenStoreForTest(),
       aiPublishingAssistantService: AIPublishingAssistantService(
         client: AIChatCompletionClient(transport: transport)
-      )
+      ),
+      aiDataSharingConsentStore: consentStore
     )
     var profile = store.activeProfile
-    profile.aiProviderConfig = streamingSupportedConfig(remoteAIConfig)
+    profile.aiProviderConfig = config
     store.updateActiveProfile(profile)
     await store.knowledge.reload()
     let draft = try XCTUnwrap(store.selectedDraft)
@@ -2095,17 +2135,24 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
       library: library
     )
     let transport = RecordingAIChatTransport(data: Data(), statusCode: 200)
+    let consentStore = AIDataSharingConsentStore(
+      storageKey: "AIDataSharingConsent.KnowledgeRevocation.\(UUID().uuidString)"
+    )
+    let config = streamingSupportedConfig(remoteAIConfig)
+    consentStore.grant(for: config)
     let store = WorkbenchStore(
       persistence: WorkbenchPersistence(
         fileURL: directory.appendingPathComponent("workbench.json")
       ),
       knowledgeLibraryService: library,
+      keychainTokenStore: aiTokenStoreForTest(),
       aiPublishingAssistantService: AIPublishingAssistantService(
         client: AIChatCompletionClient(transport: transport)
-      )
+      ),
+      aiDataSharingConsentStore: consentStore
     )
     var profile = store.activeProfile
-    profile.aiProviderConfig = streamingSupportedConfig(remoteAIConfig)
+    profile.aiProviderConfig = config
     store.updateActiveProfile(profile)
     await store.knowledge.reload()
     let draft = try XCTUnwrap(store.selectedDraft)

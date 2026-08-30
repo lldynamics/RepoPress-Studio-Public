@@ -66,6 +66,8 @@ extension RepositoryWorkspaceView {
                       localChangedFileIdentity(file)
                     } actions: {
                       localChangedFileActions(file)
+                    } loadLineDiff: {
+                      _ = await store.repository.loadLineDiff(for: file, isRemote: false)
                     } diffActions: {
                       EmptyView()
                     }
@@ -210,8 +212,10 @@ struct RepositoryChangedFileDisclosureRow<Identity: View, Actions: View, DiffAct
   @Binding var selection: RepositoryChangedFileSelection?
   @ViewBuilder let identity: () -> Identity
   @ViewBuilder let actions: () -> Actions
+  let loadLineDiff: () async -> Void
   @ViewBuilder let diffActions: () -> DiffActions
   @State private var isDiffExpanded = false
+  @State private var isLoadingLineDiff = false
 
   var body: some View {
     VStack(alignment: .leading, spacing: 8) {
@@ -228,40 +232,54 @@ struct RepositoryChangedFileDisclosureRow<Identity: View, Actions: View, DiffAct
         }
       }
 
-      if isDiffExpanded, let lineDiff = file.lineDiff {
+      if isDiffExpanded {
         VStack(alignment: .leading, spacing: 8) {
-          if source == .remote {
-            Text(lineDiff)
-              .font(.caption.monospaced())
-              .textSelection(.enabled)
-              .lineLimit(16)
-              .padding(10)
-              .frame(maxWidth: .infinity, alignment: .leading)
-              .background(
-                WorkbenchBackgroundStyle.control,
-                in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
-              )
-              .accessibilityLabel("远端 diff 预览")
-              .accessibilityValue(file.path)
-              .accessibilityIdentifier(
-                "repository-remote-file-\(file.accessibilityIdentifierToken)-diff")
+          if let lineDiff = file.lineDiff {
+            if source == .remote {
+              Text(lineDiff)
+                .font(.caption.monospaced())
+                .textSelection(.enabled)
+                .lineLimit(16)
+                .padding(10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(
+                  WorkbenchBackgroundStyle.control,
+                  in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
+                )
+                .accessibilityLabel("远端 diff 预览")
+                .accessibilityValue(file.path)
+                .accessibilityIdentifier(
+                  "repository-remote-file-\(file.accessibilityIdentifierToken)-diff")
+            } else {
+              Text(lineDiff)
+                .font(.caption.monospaced())
+                .textSelection(.enabled)
+                .lineLimit(16)
+                .padding(10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(
+                  WorkbenchBackgroundStyle.control,
+                  in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
+                )
+                .accessibilityLabel("本地 diff 预览")
+                .accessibilityValue(file.path)
+                .accessibilityIdentifier(
+                  "repository-local-file-\(file.accessibilityIdentifierToken)-diff")
+            }
+            diffActions()
           } else {
-            Text(lineDiff)
-              .font(.caption.monospaced())
-              .textSelection(.enabled)
-              .lineLimit(16)
-              .padding(10)
-              .frame(maxWidth: .infinity, alignment: .leading)
-              .background(
-                WorkbenchBackgroundStyle.control,
-                in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
-              )
-              .accessibilityLabel("本地 diff 预览")
-              .accessibilityValue(file.path)
-              .accessibilityIdentifier(
-                "repository-local-file-\(file.accessibilityIdentifierToken)-diff")
+            if isLoadingLineDiff {
+              ProgressView("正在读取差异…")
+                .controlSize(.small)
+                .accessibilityIdentifier(
+                  "repository-\(source.rawValue)-file-\(file.accessibilityIdentifierToken)-loading-diff"
+                )
+            } else {
+              Text("没有可显示的文本差异。")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            }
           }
-          diffActions()
         }
       }
     }
@@ -277,22 +295,27 @@ struct RepositoryChangedFileDisclosureRow<Identity: View, Actions: View, DiffAct
   private var rowActions: some View {
     HStack(spacing: 8) {
       actions()
-      if file.lineDiff != nil {
-        Button {
-          selectFile()
-          isDiffExpanded.toggle()
-        } label: {
-          Label(
-            isDiffExpanded ? "收起差异" : "查看差异",
-            systemImage: isDiffExpanded ? "chevron.up" : "chevron.down"
-          )
+      Button {
+        selectFile()
+        isDiffExpanded.toggle()
+        if isDiffExpanded, file.lineDiff == nil {
+          isLoadingLineDiff = true
+          Task {
+            await loadLineDiff()
+            isLoadingLineDiff = false
+          }
         }
-        .buttonStyle(.borderless)
-        .accessibilityValue(isDiffExpanded ? "已展开" : "已收起")
-        .accessibilityIdentifier(
-          "repository-\(source.rawValue)-file-\(file.accessibilityIdentifierToken)-toggle-diff"
+      } label: {
+        Label(
+          isDiffExpanded ? "收起差异" : "查看差异",
+          systemImage: isDiffExpanded ? "chevron.up" : "chevron.down"
         )
       }
+      .buttonStyle(.borderless)
+      .accessibilityValue(isDiffExpanded ? "已展开" : "已收起")
+      .accessibilityIdentifier(
+        "repository-\(source.rawValue)-file-\(file.accessibilityIdentifierToken)-toggle-diff"
+      )
     }
   }
 
