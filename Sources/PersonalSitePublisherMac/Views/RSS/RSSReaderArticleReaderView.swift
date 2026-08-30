@@ -223,13 +223,6 @@ struct RSSArticleReader: View {
                 }
               )
               .padding(.top, 12)
-              .transition(
-                .asymmetric(
-                  insertion: .move(edge: .top).combined(with: .opacity),
-                  removal: .opacity
-                )
-              )
-              .animation(.easeInOut(duration: 0.15), value: hasSelectedText)
               .zIndex(3)
             }
           }

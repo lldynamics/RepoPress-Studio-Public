@@ -75,6 +75,7 @@ TEST_TARGET_DEPENDENCIES: dict[str, set[str]] = {
         "BrowserExtensionProtocolSupport",
         "PublishingAICore",
         "PublishingGitCore",
+        "PublishingKnowledgeCore",
         "PublishingWorkbenchCore",
     },
     "PublishingMCPClientTests": {
@@ -1006,11 +1007,60 @@ def _write_report(report_path: Path, report: dict[str, Any]) -> None:
         raise BoundaryError(f"cannot write boundary report {report_path}: {error}") from error
 
 
+def _load_workbench_import_maximums(path: Path) -> dict[str, int]:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as error:
+        raise BoundaryError(f"cannot read quality baseline {path}: {error}") from error
+    module_maximums = payload.get("swiftModuleBoundaryMaximums")
+    if not isinstance(module_maximums, dict):
+        raise BoundaryError("quality baseline must define swiftModuleBoundaryMaximums")
+    imports = module_maximums.get("publishingWorkbenchCoreImportsByScope")
+    if not isinstance(imports, dict) or set(imports) != {"Sources", "Tests"}:
+        raise BoundaryError(
+            "quality baseline PublishingWorkbenchCore import maximums must define Sources and Tests"
+        )
+    result: dict[str, int] = {}
+    for scope in ("Sources", "Tests"):
+        value = imports.get(scope)
+        if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+            raise BoundaryError(
+                f"quality baseline PublishingWorkbenchCore import maximum for {scope} must be non-negative"
+            )
+        result[scope] = value
+    return result
+
+
+def _enforce_workbench_import_maximums(
+    report: dict[str, Any],
+    maximums: dict[str, int],
+) -> None:
+    metrics = report["compatibilityUmbrellaConsumerMetrics"]
+    violations: list[str] = []
+    for scope in ("Sources", "Tests"):
+        actual = metrics[scope]["workbenchImportCount"]
+        maximum = maximums[scope]
+        if actual > maximum:
+            violations.append(f"{scope} {actual}>{maximum}")
+    if violations:
+        raise BoundaryError(
+            "PublishingWorkbenchCore compatibility-import maximum exceeded: "
+            + "; ".join(violations)
+        )
+    report["umbrellaRetirement"]["maximumsEnforced"] = dict(maximums)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--package-root", type=Path, default=ROOT)
     parser.add_argument("--report", type=Path, default=None)
     parser.add_argument("--dump-package-json", type=Path, default=None)
+    parser.add_argument(
+        "--quality-baseline",
+        type=Path,
+        default=None,
+        help="enforce progressive PublishingWorkbenchCore import maximums from this baseline",
+    )
     parser.add_argument(
         "--enforce-umbrella-retirement",
         action="store_true",
@@ -1039,6 +1089,16 @@ def main(argv: list[str] | None = None) -> int:
             package_root,
             enforce_umbrella_retirement=args.enforce_umbrella_retirement,
         )
+        if args.quality_baseline is not None:
+            baseline_path = (
+                args.quality_baseline.resolve()
+                if args.quality_baseline.is_absolute()
+                else (package_root / args.quality_baseline).resolve()
+            )
+            _enforce_workbench_import_maximums(
+                report,
+                _load_workbench_import_maximums(baseline_path),
+            )
         _write_report(report_path, report)
     except (BoundaryError, OSError) as error:
         print(f"swift module boundaries: {error}", file=sys.stderr)

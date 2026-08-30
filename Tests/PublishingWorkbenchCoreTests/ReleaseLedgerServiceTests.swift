@@ -166,6 +166,133 @@ final class ReleaseLedgerServiceTests: XCTestCase {
     XCTAssertEqual(ledger.summary.deploymentPendingCount, 0)
   }
 
+  func testMergedReviewPreservesHeadCommitAndWaitsForDeploymentEvidence() throws {
+    let profileID = UUID()
+    let record = mergedReviewRecord(profileID: profileID)
+
+    let entry = try XCTUnwrap(
+      ReleaseLedgerService().ledger(
+        releaseRecords: [record],
+        deploymentStatusSnapshots: [:]
+      ).entries.first
+    )
+
+    XCTAssertEqual(entry.status, .pendingDeployment)
+    XCTAssertEqual(entry.record.commitSHA, "review-head-sha")
+    XCTAssertEqual(entry.record.deploymentCommitSHA, "merge-target-sha")
+    XCTAssertTrue(entry.statusMessage.contains("merge-ta"))
+    XCTAssertTrue(entry.rollbackDraft?.commandLines.contains("git checkout 'main'") == true)
+    XCTAssertTrue(
+      entry.rollbackDraft?.commandLines.contains("git revert --no-edit 'merge-target-sha'") == true
+    )
+  }
+
+  func testClosedUnmergedReviewIsTerminalAndCannotProduceRollbackOrDeployment() throws {
+    let profileID = UUID()
+    var record = mergedReviewRecord(profileID: profileID)
+    record.reviewStatus = RemoteRepositoryReviewStatusSnapshot(
+      provider: .github,
+      reviewNumber: 12,
+      reviewURL: "https://github.com/owner/site/pull/12",
+      state: .closedWithoutMerge,
+      sourceBranch: "publish/post",
+      targetBranch: "main",
+      headCommitSHA: "review-head-sha"
+    )
+    let misleadingSnapshot = DeploymentStatusSnapshot(
+      profileID: profileID,
+      releaseRecordID: record.id,
+      provider: .githubPages,
+      level: .success,
+      title: "GitHub Pages · 正常",
+      message: "主站可访问。",
+      siteURLText: "https://example.com",
+      signals: [],
+      expectedBranch: "main",
+      expectedCommitSHA: "review-head-sha",
+      observedBranch: "main",
+      observedCommitSHA: "review-head-sha",
+      attributionVerified: true
+    )
+
+    let entry = try XCTUnwrap(
+      ReleaseLedgerService().ledger(
+        releaseRecords: [record],
+        deploymentStatusSnapshots: [record.id: misleadingSnapshot]
+      ).entries.first
+    )
+
+    XCTAssertEqual(entry.status, .reviewWithdrawn)
+    XCTAssertEqual(entry.statusMessage, "PR/MR 已关闭且未合并，不会进入部署检查。")
+    XCTAssertNil(entry.deploymentStatus)
+    XCTAssertNil(entry.rollbackDraft)
+  }
+
+  func testMergedReviewRequiresExactVerifiedMergeCommitBeforeBecomingSucceeded() throws {
+    let profileID = UUID()
+    let record = mergedReviewRecord(profileID: profileID)
+    let staleSnapshot = DeploymentStatusSnapshot(
+      profileID: profileID,
+      releaseRecordID: record.id,
+      provider: .githubPages,
+      level: .success,
+      title: "GitHub Pages · 正常",
+      message: "错误版本可访问。",
+      siteURLText: "https://example.com",
+      signals: [],
+      expectedBranch: "main",
+      expectedCommitSHA: "review-head-sha",
+      observedBranch: "main",
+      observedCommitSHA: "review-head-sha",
+      attributionVerified: true
+    )
+    let staleEntry = try XCTUnwrap(
+      ReleaseLedgerService().ledger(
+        releaseRecords: [record],
+        deploymentStatusSnapshots: [record.id: staleSnapshot]
+      ).entries.first
+    )
+    XCTAssertEqual(staleEntry.status, .pendingDeployment)
+    XCTAssertNil(staleEntry.deploymentStatus)
+
+    let verifiedSnapshot = DeploymentStatusSnapshot(
+      profileID: profileID,
+      releaseRecordID: record.id,
+      provider: .githubPages,
+      level: .success,
+      title: "GitHub Pages · 正常",
+      message: "合并版本已上线。",
+      siteURLText: "https://example.com",
+      signals: [],
+      expectedBranch: "main",
+      expectedCommitSHA: "merge-target-sha",
+      observedBranch: "main",
+      observedCommitSHA: "merge-target-sha",
+      attributionVerified: true
+    )
+    let verifiedEntry = try XCTUnwrap(
+      ReleaseLedgerService().ledger(
+        releaseRecords: [record],
+        deploymentStatusSnapshots: [record.id: verifiedSnapshot]
+      ).entries.first
+    )
+    XCTAssertEqual(verifiedEntry.status, .succeeded)
+    XCTAssertEqual(verifiedEntry.deploymentStatus, verifiedSnapshot)
+  }
+
+  func testMergedReviewWithUnacceptedHeadDriftNeverProducesDeploymentCommit() throws {
+    let profileID = UUID()
+    var record = mergedReviewRecord(profileID: profileID)
+    record.reviewStatus?.headCommitSHA = "later-review-head"
+    XCTAssertTrue(record.hasUnconfirmedReviewHeadDrift)
+    XCTAssertNil(record.deploymentCommitSHA)
+
+    record.acceptedReviewHeadCommitSHA = "later-review-head"
+    XCTAssertFalse(record.hasUnconfirmedReviewHeadDrift)
+    XCTAssertEqual(record.commitSHA, "review-head-sha")
+    XCTAssertEqual(record.deploymentCommitSHA, "merge-target-sha")
+  }
+
   func testLocalGitCommitStaysLocalAndIgnoresDeploymentSnapshot() throws {
     let profileID = UUID()
     let localCommit = ReleaseRecord(
@@ -341,6 +468,37 @@ final class ReleaseLedgerServiceTests: XCTestCase {
     XCTAssertTrue(markdown.contains(CoreL10n.format("  - 回滚 PR/MR：%@", "https://github.com/owner/site/compare/main...rollback/fedcba98?")))
     XCTAssertTrue(markdown.contains("- 线上 PR"))
     XCTAssertTrue(markdown.contains(CoreL10n.format("  - PR/MR：%@", "https://github.com/owner/site/pull/12")))
+  }
+
+  private func mergedReviewRecord(profileID: UUID) -> ReleaseRecord {
+    ReleaseRecord(
+      id: UUID(),
+      kind: .remoteReviewRequest,
+      title: "线上 PR",
+      summary: "GitHub · publish/post · 1 个文件",
+      siteProfileID: profileID,
+      draftTitle: "Review 文章",
+      changedPaths: ["content/posts/review.md"],
+      repositoryProvider: .github,
+      repositoryBaseURL: "https://api.github.com",
+      repoOwner: "owner",
+      repoName: "site",
+      branchName: "publish/post",
+      targetBranch: "main",
+      commitSHA: "review-head-sha",
+      reviewNumber: 12,
+      reviewURL: "https://github.com/owner/site/pull/12",
+      reviewStatus: RemoteRepositoryReviewStatusSnapshot(
+        provider: .github,
+        reviewNumber: 12,
+        reviewURL: "https://github.com/owner/site/pull/12",
+        state: .merged,
+        sourceBranch: "publish/post",
+        targetBranch: "main",
+        headCommitSHA: "review-head-sha",
+        mergeCommitSHA: "merge-target-sha"
+      )
+    )
   }
 
   func testReleaseLedgerActionItemsPrioritizeFailuresAndPendingRecovery() {

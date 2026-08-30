@@ -38,26 +38,19 @@ final class ZenModeToolbarVisibilityPolicyTests: XCTestCase {
     )
   }
 
-  func testReduceMotionDisablesAnimatedTransitions() {
-    XCTAssertFalse(policy(reduceMotion: true).usesAnimatedTransitions)
-    XCTAssertTrue(policy(reduceMotion: false).usesAnimatedTransitions)
-  }
-
   private func policy(
     isZenModeActive: Bool = true,
     isPointerHovering: Bool = false,
     isKeyboardNavigationActive: Bool = false,
     isVoiceOverEnabled: Bool = false,
     isRecentlyTyped: Bool = false,
-    reduceMotion: Bool = false
   ) -> ZenModeToolbarVisibilityPolicy {
     ZenModeToolbarVisibilityPolicy(
       isZenModeActive: isZenModeActive,
       isPointerHovering: isPointerHovering,
       isKeyboardNavigationActive: isKeyboardNavigationActive,
       isVoiceOverEnabled: isVoiceOverEnabled,
-      isRecentlyTyped: isRecentlyTyped,
-      reduceMotion: reduceMotion
+      isRecentlyTyped: isRecentlyTyped
     )
   }
 }

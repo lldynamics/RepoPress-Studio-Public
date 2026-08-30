@@ -45,9 +45,10 @@ enum WorkbenchImageIOThumbnailDecoder {
       max(maxPixelSize, 1),
       WorkbenchThumbnailRequest.maximumPixelSize
     )
-    let sourceOptions = [
-      kCGImageSourceShouldCache: false
-    ] as CFDictionary
+    let sourceOptions =
+      [
+        kCGImageSourceShouldCache: false
+      ] as CFDictionary
     guard
       let source = CGImageSourceCreateWithURL(fileURL as CFURL, sourceOptions),
       CGImageSourceGetCount(source) > 0
@@ -55,12 +56,13 @@ enum WorkbenchImageIOThumbnailDecoder {
       return nil
     }
 
-    let thumbnailOptions = [
-      kCGImageSourceCreateThumbnailFromImageAlways: true,
-      kCGImageSourceCreateThumbnailWithTransform: true,
-      kCGImageSourceShouldCacheImmediately: true,
-      kCGImageSourceThumbnailMaxPixelSize: boundedPixelSize,
-    ] as CFDictionary
+    let thumbnailOptions =
+      [
+        kCGImageSourceCreateThumbnailFromImageAlways: true,
+        kCGImageSourceCreateThumbnailWithTransform: true,
+        kCGImageSourceShouldCacheImmediately: true,
+        kCGImageSourceThumbnailMaxPixelSize: boundedPixelSize,
+      ] as CFDictionary
     guard
       let image = CGImageSourceCreateThumbnailAtIndex(
         source,
@@ -78,6 +80,65 @@ enum WorkbenchImageIOThumbnailDecoder {
 
 private struct WorkbenchDecodedImage: @unchecked Sendable {
   let value: CGImage
+}
+
+/// Shared, bounded ImageIO cache.  The actor also coalesces concurrent loads,
+/// which is important when a grid and inspector request the same asset.
+private actor WorkbenchThumbnailCache {
+  static let shared = WorkbenchThumbnailCache()
+  private var values: [Key: WorkbenchDecodedImage] = [:]
+  private var inFlight: [Key: Task<WorkbenchDecodedImage?, Never>] = [:]
+  private let capacity = 180
+
+  func image(for request: WorkbenchThumbnailRequest) async -> WorkbenchDecodedImage? {
+    let key = Key(request: request, version: fileVersion(for: request.fileURL))
+    if let value = values[key] { return value }
+    if let task = inFlight[key] { return await task.value }
+    let task: Task<WorkbenchDecodedImage?, Never> = Task.detached(priority: .utility) {
+      guard
+        !Task.isCancelled,
+        let image = WorkbenchImageIOThumbnailDecoder.downsampledImage(
+          at: request.fileURL,
+          maxPixelSize: request.maxPixelSize
+        ),
+        !Task.isCancelled
+      else {
+        return nil
+      }
+      return WorkbenchDecodedImage(value: image)
+    }
+    inFlight[key] = task
+    let result = await task.value
+    inFlight[key] = nil
+    if let result {
+      if values.count >= capacity { values.removeValue(forKey: values.keys.first!) }
+      values[key] = result
+    }
+    return result
+  }
+
+  private struct Key: Hashable {
+    let path: String
+    let version: String
+    let maxPixelSize: Int
+    let displayScale: CGFloat
+
+    init(request: WorkbenchThumbnailRequest, version: String) {
+      path = request.fileURL.standardizedFileURL.path
+      self.version = version
+      maxPixelSize = request.maxPixelSize
+      displayScale = request.displayScale
+    }
+  }
+
+  private func fileVersion(for url: URL) -> String {
+    let values = try? url.resourceValues(
+      forKeys: [.contentModificationDateKey, .fileSizeKey, .fileResourceIdentifierKey]
+    )
+    let identifier = values?.fileResourceIdentifier.map(String.init(describing:)) ?? ""
+    return
+      "\(identifier):\(values?.contentModificationDate?.timeIntervalSince1970 ?? 0):\(values?.fileSize ?? 0)"
+  }
 }
 
 enum WorkbenchThumbnailSizing {
@@ -173,25 +234,11 @@ struct WorkbenchThumbnailView: View {
   private func imageIOThumbnail(
     for request: WorkbenchThumbnailRequest
   ) async -> WorkbenchDecodedImage? {
-    let decodingTask: Task<WorkbenchDecodedImage?, Never> = Task.detached(
-      priority: .utility
-    ) {
-      guard !Task.isCancelled,
-        let image = WorkbenchImageIOThumbnailDecoder.downsampledImage(
-          at: request.fileURL,
-          maxPixelSize: request.maxPixelSize
-        ),
-        !Task.isCancelled
-      else {
-        return nil
-      }
-      return WorkbenchDecodedImage(value: image)
-    }
-
     return await withTaskCancellationHandler {
-      await decodingTask.value
+      await WorkbenchThumbnailCache.shared.image(for: request)
     } onCancel: {
-      decodingTask.cancel()
+      // Shared work is intentionally not cancelled by one cell; another
+      // visible cell may be awaiting the same decode.
     }
   }
 }

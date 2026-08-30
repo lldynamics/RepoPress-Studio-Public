@@ -251,12 +251,9 @@ extension PublishingStore {
     // Keep the reviewed candidate set as the authority for what may enter the
     // online queue. Site drafts remain excluded by remotePublishableItems.
     var publishableItems = batchPlan.remotePublishableItems
-    var cleanupRequests = pendingRemoteRepositoryCleanupRequests(
-      profileID: batchPlan.profileID
-    )
-    guard !publishableItems.isEmpty || !cleanupRequests.isEmpty else {
+    guard !publishableItems.isEmpty else {
       setPublishActionMessage(
-        "当前没有可批量处理的文章发布或下线请求。",
+        "当前没有可批量发布的文章。待下线请求请在回收站单独处理。",
         status: .warning
       )
       return nil
@@ -264,31 +261,26 @@ extension PublishingStore {
 
     var profile = store.activeProfile
     var mode = modeOverride ?? preferredRemoteRepositoryPublishMode(for: profile)
-    guard
-      var package = remotePublishPackage(
-        for: batchPlan,
-        cleanupRequests: cleanupRequests
-      )
-    else {
+    guard var package = remotePublishPackage(for: batchPlan) else {
       setPublishActionMessage("批量队列没有可上传的文件。", status: .warning)
       return nil
     }
-    let reviewedFiles = expectedChangedPaths == nil ? nil : package.files
+    let reviewedFiles = package.files
+    let reviewedDraftIDs = publishableItems.map(\.draftID)
 
     let initialPreview = remoteRepositoryPublishPreview(
       package: package,
       profile: profile,
       mode: mode,
       extraWarningIssues: batchRemoteRepositoryPublishWarningIssues(for: batchPlan),
-      forcedChangedPaths: Set(cleanupRequests.map { $0.repositoryPath.normalizedRelativePath() }),
       store: store
     )
+    let reviewedTarget = RemoteRepositoryPublishTargetSnapshot(
+      profile: profile,
+      preview: initialPreview
+    )
     if let expectedTarget,
-      expectedTarget
-        != RemoteRepositoryPublishTargetSnapshot(
-          profile: profile,
-          preview: initialPreview
-        )
+      expectedTarget != reviewedTarget
     {
       setPublishActionMessage(
         CoreL10n.text("发布目标已变化，请重新打开确认页核对仓库、分支和发布方式。"),
@@ -359,22 +351,16 @@ extension PublishingStore {
     }
     batchPlan = refreshedBatchPlan
     publishableItems = batchPlan.remotePublishableItems
-    cleanupRequests = pendingRemoteRepositoryCleanupRequests(profileID: batchPlan.profileID)
-    guard !publishableItems.isEmpty || !cleanupRequests.isEmpty,
-      let refreshedPackage = remotePublishPackage(
-        for: batchPlan,
-        cleanupRequests: cleanupRequests
-      )
+    guard publishableItems.map(\.draftID) == reviewedDraftIDs,
+      let refreshedPackage = remotePublishPackage(for: batchPlan)
     else {
       setPublishActionMessage(
-        "当前没有可批量处理的文章发布或下线请求。",
+        "待发布文章已变化，请重新打开确认页审阅完整清单。",
         status: .warning
       )
       return nil
     }
-    if let reviewedFiles,
-      refreshedPackage.files != reviewedFiles
-    {
+    if refreshedPackage.files != reviewedFiles {
       setPublishActionMessage(
         CoreL10n.text("待发布文件已变化，请重新打开确认页审阅完整清单。"),
         status: .warning
@@ -389,15 +375,10 @@ extension PublishingStore {
       profile: profile,
       mode: mode,
       extraWarningIssues: batchRemoteRepositoryPublishWarningIssues(for: batchPlan),
-      forcedChangedPaths: Set(cleanupRequests.map { $0.repositoryPath.normalizedRelativePath() }),
       store: store
     )
-    if let expectedTarget,
-      expectedTarget
-        != RemoteRepositoryPublishTargetSnapshot(
-          profile: profile,
-          preview: preview
-        )
+    if reviewedTarget
+      != RemoteRepositoryPublishTargetSnapshot(profile: profile, preview: preview)
     {
       setPublishActionMessage(
         CoreL10n.text("发布目标已变化，请重新打开确认页核对仓库、分支和发布方式。"),
@@ -583,7 +564,7 @@ extension PublishingStore {
       let releaseRecord = ReleaseRecord.batchRemotePublish(
         profile: profile,
         items: publishableItems,
-        cleanupCount: cleanupRequests.count,
+        cleanupCount: 0,
         result: result
       )
       prependReleaseRecord(releaseRecord)
@@ -594,22 +575,6 @@ extension PublishingStore {
       if mode == .reviewRequest {
         markRemotePublishReviewSuccess(packages: publishableItems.map(\.package))
       }
-      var locallyCleanedCount = 0
-      if mode != .previewBranch {
-        let cleanupRequestIDs = Set(cleanupRequests.map(\.id))
-        _ = recordRemoteRepositoryCleanupResult(
-          requestIDs: cleanupRequestIDs,
-          result: result
-        )
-        locallyCleanedCount = cleanupRequests.reduce(into: 0) { count, request in
-          if draftRepositoryCleanupRequests.first(where: { $0.id == request.id })?
-            .needsLocalCleanup == true,
-            performLocalRepositoryCleanup(request.id, store: store)
-          {
-            count += 1
-          }
-        }
-      }
       if mode != .previewBranch {
         store.recordRemoteRepositoryPublishInAutoSync(result, profileID: profile.id)
       }
@@ -618,12 +583,8 @@ extension PublishingStore {
         adoptedCount > 0
         ? "；自动认领 \(adoptedCount) 个已存在且内容一致的文件"
         : ""
-      let cleanupSummary =
-        cleanupRequests.isEmpty
-        ? ""
-        : "；处理下线 \(cleanupRequests.count) 篇，本地清理 \(locallyCleanedCount) 篇"
       let operationSummary =
-        "批量\(mode.displayName)完成：发布 \(publishableItems.count) 篇、\(result.changedPaths.count) 个文件\(cleanupSummary)\(adoptedSummary)。"
+        "批量\(mode.displayName)完成：发布 \(publishableItems.count) 篇、\(result.changedPaths.count) 个文件\(adoptedSummary)。"
       var deploymentStatus: DeploymentStatusSnapshot?
       if store.shouldRefreshDeploymentStatusAfterRemoteOperation(releaseRecord) {
         deploymentStatus = await store.refreshDeploymentStatus(
@@ -680,10 +641,6 @@ extension PublishingStore {
         return nil
       }
       let message = "批量\(mode.displayName)失败：\(error.localizedDescription)"
-      _ = recordRemoteRepositoryCleanupFailure(
-        requestIDs: Set(cleanupRequests.map(\.id)),
-        message: error.localizedDescription
-      )
       store.setRemoteRepositoryPublishProgress(
         .init(
           stage: .failed,
@@ -695,7 +652,7 @@ extension PublishingStore {
         package: package,
         profile: profile,
         items: publishableItems,
-        cleanupCount: cleanupRequests.count,
+        cleanupCount: 0,
         mode: mode,
         errorMessage: message,
         changedPaths: partialFailure?.changedPaths,

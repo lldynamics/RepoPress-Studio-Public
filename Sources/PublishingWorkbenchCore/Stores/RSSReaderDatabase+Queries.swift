@@ -97,6 +97,68 @@ extension RSSReaderDatabase {
     }
   }
 
+  /// Queries the lightweight list projection at SQLite instead of requiring a
+  /// bootstrap caller to materialise the entire header archive first. The FTS
+  /// predicate is intentionally kept inside SQL so a search stays bounded by
+  /// the maintained index rather than becoming an in-memory scan.
+  func articleHeaders(
+    for scope: RSSArticleScope,
+    searchText: String,
+    unreadOnly: Bool,
+    limit: Int? = nil,
+    offset: Int = 0
+  ) throws -> [RSSArticleHeader] {
+    let normalizedSearch = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+    return try withLock {
+      var predicates: [String] = []
+      var bindings: [String] = []
+      switch scope {
+      case .all:
+        break
+      case .unread:
+        predicates.append("read_at IS NULL")
+      case .starred:
+        predicates.append("is_starred = 1")
+      case .feed(let feedID):
+        predicates.append("feed_id = ?")
+        bindings.append(feedID.uuidString)
+      }
+      if unreadOnly, scope != .unread {
+        predicates.append("read_at IS NULL")
+      }
+      if !normalizedSearch.isEmpty {
+        predicates.append(
+          "id IN (SELECT article_id FROM rss_articles_fts WHERE rss_articles_fts MATCH ?)"
+        )
+        bindings.append(Self.ftsQuery(for: normalizedSearch))
+      }
+      let whereClause = predicates.isEmpty ? "" : " WHERE " + predicates.joined(separator: " AND ")
+      let pagination: String
+      if let limit {
+        pagination = " LIMIT \(max(0, limit)) OFFSET \(max(0, offset));"
+      } else {
+        pagination = " LIMIT -1 OFFSET \(max(0, offset));"
+      }
+      let statement = try prepareUnlocked(
+        rssArticleHeaderSelectSQL
+          + whereClause
+          + " ORDER BY COALESCE(published_at, fetched_at) DESC, id ASC"
+          + pagination
+      )
+      defer { sqlite3_finalize(statement) }
+      for (index, value) in bindings.enumerated() {
+        bind(value, at: Int32(index + 1), to: statement)
+      }
+      var output: [RSSArticleHeader] = []
+      while sqlite3_step(statement) == SQLITE_ROW {
+        try Task.checkCancellation()
+        output.append(try decodeArticleHeader(statement))
+      }
+      try checkStatementCompletion(statement)
+      return output
+    }
+  }
+
   func articleHeader(id: String) throws -> RSSArticleHeader? {
     try withLock {
       let statement = try prepareUnlocked(rssArticleHeaderSelectSQL + " WHERE id = ? LIMIT 1;")
@@ -150,6 +212,13 @@ extension RSSReaderDatabase {
         throw databaseErrorUnlocked()
       }
     }
+  }
+
+  static func ftsQuery(for normalizedSearch: String) -> String {
+    normalizedSearch
+      .split(whereSeparator: { $0.isWhitespace })
+      .map { "\"\(String($0).replacingOccurrences(of: "\"", with: ""))\"*" }
+      .joined(separator: " OR ")
   }
 
   func articles(ids: Set<String>) throws -> [RSSArticle] {

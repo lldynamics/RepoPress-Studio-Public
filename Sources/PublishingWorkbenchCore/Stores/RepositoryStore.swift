@@ -10,8 +10,25 @@ private struct RepositoryScanSnapshot: Sendable {
   var mergeConflictSession: RepositoryMergeConflictSession
 }
 
+private struct RepositoryLineDiffKey: Hashable {
+  let reportRevision: UUID
+  let isRemote: Bool
+  let fileID: String
+}
+
+private enum RepositoryLineDiffCacheValue {
+  case resolved(String?)
+
+  var value: String? {
+    switch self {
+    case .resolved(let value): value
+    }
+  }
+}
+
 @MainActor
 public final class RepositoryStore: ObservableObject {
+  private static let repositoryLineDiffCacheLimit = 48
   private let repositoryService: LocalRepositoryService
   private let repositoryTokenStore: KeychainTokenStore
   private let remoteRepositoryPublishService: RemoteRepositoryPublishService
@@ -65,6 +82,12 @@ public final class RepositoryStore: ObservableObject {
   private var repositoryScanWorkTask: Task<RepositoryScanSnapshot?, Never>?
   private var repositoryScanWorkGeneration: UInt64 = 0
   private var repositoryScanGeneration: UInt64 = 0
+  // A new scan is a new Git-state revision.  Never reuse a patch across it:
+  // the same path can refer to different staged, working-tree, or upstream
+  // content after a refresh.
+  private var repositoryLineDiffReportRevision = UUID()
+  private var repositoryLineDiffCache: [RepositoryLineDiffKey: RepositoryLineDiffCacheValue] = [:]
+  private var repositoryLineDiffTasks: [RepositoryLineDiffKey: Task<String?, Never>] = [:]
   private var repositoryAutoSyncTask: Task<Bool, Never>?
   private var repositoryAutoSyncGeneration: UInt64 = 0
   private var repositoryAutoSyncBackgroundGenerationByProfileID: [UUID: UInt64] = [:]
@@ -76,6 +99,7 @@ public final class RepositoryStore: ObservableObject {
     // Test-only barrier for proving that remote article imports validate the
     // active profile after detached snapshot work has completed.
     var remoteFileSnapshotTestHook: (@Sendable () async -> Void)?
+    var remoteFileSnapshotTestOverride: (@Sendable () async -> RepositoryFileSnapshot?)?
   #endif
 
   init(
@@ -252,7 +276,7 @@ public final class RepositoryStore: ObservableObject {
           generation: scanGeneration, operation: operation, store: store)
         return
       }
-      repositoryReport = snapshot.report
+      replaceRepositoryReport(snapshot.report, profileID: operation.profileID)
       repositoryReportProfileID = operation.profileID
       repositoryMergeConflictSession = snapshot.mergeConflictSession
       repositoryMergeConflictProfileID = operation.profileID
@@ -317,10 +341,99 @@ public final class RepositoryStore: ObservableObject {
   }
 
   func replaceRepositoryReport(_ report: RepositoryScanReport?, profileID: UUID?) {
+    invalidateRepositoryLineDiffs()
     repositoryReportProfileID = report == nil ? nil : profileID
     if report == nil {
       repositoryMergeConflictSession = nil
       repositoryMergeConflictProfileID = nil
+    }
+    repositoryReport = report
+  }
+
+  /// Loads a single file patch on demand.  Equal requests for the current
+  /// report share one detached Git process, and both successful and empty
+  /// results are cached until the next scan/report replacement.
+  func loadLineDiff(
+    for file: RepositoryChangedFile,
+    isRemote: Bool,
+    profile: SiteProfile,
+    store: WorkbenchStore
+  ) async -> String? {
+    guard let report = repositoryReport(for: profile, store: store) else { return nil }
+    let files = isRemote ? report.remoteChangedFiles : report.changedFiles
+    // A completed request republishes the report with `lineDiff` filled in.
+    // Callers may still hold the earlier summary value, so match Git's stable
+    // file identity rather than value equality (which includes `lineDiff`).
+    guard let currentFile = files.first(where: { $0.id == file.id }) else { return nil }
+    if let lineDiff = currentFile.lineDiff {
+      return lineDiff
+    }
+
+    let key = RepositoryLineDiffKey(
+      reportRevision: repositoryLineDiffReportRevision,
+      isRemote: isRemote,
+      fileID: currentFile.id
+    )
+    if let cached = repositoryLineDiffCache[key] {
+      return cached.value
+    }
+
+    let task: Task<String?, Never>
+    if let inFlight = repositoryLineDiffTasks[key] {
+      task = inFlight
+    } else {
+      let service = repositoryService
+      let upstreamName = report.branchStatus?.upstreamName
+      task = Task.detached(priority: .utility) {
+        profile.withLocalRepositoryRootAccess { rootURL in
+          if isRemote {
+            guard let upstreamName else { return nil }
+            return service.diffForRemoteChangedFile(
+              currentFile,
+              upstreamName: upstreamName,
+              rootURL: rootURL
+            )
+          }
+          return service.diffForChangedFile(currentFile, rootURL: rootURL)
+        } ?? nil
+      }
+      repositoryLineDiffTasks[key] = task
+    }
+
+    let lineDiff = await task.value
+    guard key.reportRevision == repositoryLineDiffReportRevision else { return nil }
+    repositoryLineDiffTasks.removeValue(forKey: key)
+    if repositoryLineDiffCache.count >= Self.repositoryLineDiffCacheLimit {
+      repositoryLineDiffCache.removeAll(keepingCapacity: true)
+    }
+    repositoryLineDiffCache[key] = .resolved(lineDiff)
+    applyLineDiff(lineDiff, to: currentFile, isRemote: isRemote)
+    return lineDiff
+  }
+
+  private func invalidateRepositoryLineDiffs() {
+    repositoryLineDiffReportRevision = UUID()
+    for task in repositoryLineDiffTasks.values {
+      task.cancel()
+    }
+    repositoryLineDiffTasks.removeAll(keepingCapacity: true)
+    repositoryLineDiffCache.removeAll(keepingCapacity: true)
+  }
+
+  private func applyLineDiff(
+    _ lineDiff: String?,
+    to file: RepositoryChangedFile,
+    isRemote: Bool
+  ) {
+    guard var report = repositoryReport else { return }
+    if isRemote {
+      guard let index = report.remoteChangedFiles.firstIndex(where: { $0.id == file.id }) else {
+        return
+      }
+      report.remoteChangedFiles[index].lineDiff = lineDiff
+    } else {
+      guard let index = report.changedFiles.firstIndex(where: { $0.id == file.id }) else { return }
+      report.changedFiles[index].lineDiff = lineDiff
     }
     repositoryReport = report
   }
@@ -658,6 +771,9 @@ public final class RepositoryStore: ObservableObject {
   /// site's map entries, so a profile switch cannot move runtime state across
   /// sites.
   func setActiveProfile(_ profileID: UUID, validProfileIDs: Set<UUID>) {
+    if boundAutomationProfileID != profileID {
+      invalidateRepositoryLineDiffs()
+    }
     if let boundAutomationProfileID {
       repositoryAutoSyncSettingsByProfileID[boundAutomationProfileID] = repositoryAutoSyncSettings
       repositoryAutoSyncStateByProfileID[boundAutomationProfileID] = repositoryAutoSyncState
@@ -773,12 +889,16 @@ public final class RepositoryStore: ObservableObject {
     let repositoryService = repositoryService
     #if DEBUG
       let testHook = remoteFileSnapshotTestHook
+      let testOverride = remoteFileSnapshotTestOverride
     #endif
     let work: Task<RepositoryFileSnapshot?, Never> = Task.detached(priority: .utility) {
       #if DEBUG
         guard !Task.isCancelled else { return nil }
         if let testHook {
           await testHook()
+        }
+        if let testOverride {
+          return await testOverride()
         }
       #endif
       guard !Task.isCancelled else { return nil }
@@ -1029,7 +1149,7 @@ public final class RepositoryStore: ObservableObject {
     state.lastAutoImportDeletionCount = 0
     state.message = backgroundRepositoryAutoSyncMessage(
       CoreL10n.format(
-        "自动检查远端完成：发现 %d 个远端变更，其中 %d 篇文章可手动导入。",
+        "自动检查远端完成：发现 %d 个远端变更，其中 %d 个文章候选路径可手动尝试导入（导入时会校验内容和 slug）。",
         detectedRemoteCount,
         importablePaths.count
       ),
@@ -1207,7 +1327,7 @@ public final class RepositoryStore: ObservableObject {
       repositoryAutoSyncState.lastAutoImportConflictCount = 0
       repositoryAutoSyncState.lastAutoImportDeletionCount = 0
       repositoryAutoSyncState.message = CoreL10n.format(
-        "自动检查远端完成：发现 %d 个远端变更，其中 %d 篇文章可手动导入。",
+        "自动检查远端完成：发现 %d 个远端变更，其中 %d 个文章候选路径可手动尝试导入（导入时会校验内容和 slug）。",
         detectedRemoteCount,
         importablePaths.count
       )

@@ -16,6 +16,7 @@ struct TokenRepositoryTokenSection: View {
   @State private var showsPATGuide = false
   @State private var isJustSaved = false
   @State private var saveFailureMessage: String?
+  @State private var saveFeedbackResetTask: Task<Void, Never>?
 
   var body: some View {
     Section("仓库凭据") {
@@ -81,16 +82,13 @@ struct TokenRepositoryTokenSection: View {
             )
             return
           }
-          withAnimation {
-            isJustSaved = true
-          }
-          Task {
+          saveFeedbackResetTask?.cancel()
+          isJustSaved = true
+          saveFeedbackResetTask = Task { @MainActor in
             try? await Task.sleep(for: .seconds(2.5))
-            await MainActor.run {
-              withAnimation {
-                isJustSaved = false
-              }
-            }
+            guard !Task.isCancelled else { return }
+            isJustSaved = false
+            saveFeedbackResetTask = nil
           }
         }
         .workbenchProminentActionStyle()
@@ -102,7 +100,6 @@ struct TokenRepositoryTokenSection: View {
             message: String(localized: "已保存"), severity: .success,
             announcesNonUrgentStatus: true
           )
-          .transition(.opacity)
         } else if !repositoryTokenInput.wrappedValue.trimmedForPublishing.isEmpty {
           Text("待保存修改")
             .font(.caption.weight(.medium))
@@ -111,6 +108,8 @@ struct TokenRepositoryTokenSection: View {
       }
       .onChange(of: repositoryTokenInput.wrappedValue) { _, newValue in
         if !newValue.trimmedForPublishing.isEmpty {
+          saveFeedbackResetTask?.cancel()
+          saveFeedbackResetTask = nil
           isJustSaved = false
           saveFailureMessage = nil
         }

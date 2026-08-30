@@ -2,6 +2,7 @@ import CoreGraphics
 import Foundation
 import ImageIO
 import XCTest
+
 @testable import PublishingWorkbenchCore
 
 final class BatchPublishPlanServiceTests: XCTestCase {
@@ -32,7 +33,8 @@ final class BatchPublishPlanServiceTests: XCTestCase {
       title: "Blocked",
       slug: "",
       draft: false,
-      bodyMarkdown: "Long enough body content for a blocked draft with a missing slug in the batch queue."
+      bodyMarkdown:
+        "Long enough body content for a blocked draft with a missing slug in the batch queue."
     )
 
     let plan = BatchPublishPlanService().plan(
@@ -66,9 +68,11 @@ final class BatchPublishPlanServiceTests: XCTestCase {
     profile.rememberLocalRepositoryRoot(rootURL)
     profile.markdownPathPattern = "content/posts/{slug}.md"
 
-    var readySiteDraft = longDraft(profile: profile, title: "Ready Site Draft", slug: "ready-site-draft")
+    var readySiteDraft = longDraft(
+      profile: profile, title: "Ready Site Draft", slug: "ready-site-draft")
     readySiteDraft.draft = true
-    var reviewSiteDraft = longDraft(profile: profile, title: "Review Site Draft", slug: "review-site-draft")
+    var reviewSiteDraft = longDraft(
+      profile: profile, title: "Review Site Draft", slug: "review-site-draft")
     reviewSiteDraft.draft = true
     reviewSiteDraft.bodyMarkdown = "Too short."
     let publicDraft = longDraft(profile: profile, title: "Public Article", slug: "public-article")
@@ -179,10 +183,11 @@ final class BatchPublishPlanServiceTests: XCTestCase {
     XCTAssertFalse(item.isWritable)
     XCTAssertEqual(plan.remotePublishableItems.map(\.draftID), [draft.id])
     XCTAssertEqual(item.warningCount, 1)
-    XCTAssertTrue(item.preflightIssues.contains { issue in
-      issue.title == "远端同路径变更"
-        && issue.message.contains("content/posts/remote-review.md")
-    })
+    XCTAssertTrue(
+      item.preflightIssues.contains { issue in
+        issue.title == "远端同路径变更"
+          && issue.message.contains("content/posts/remote-review.md")
+      })
   }
 
   func testPlanBlocksDifferentImagePayloadsForSameDestination() throws {
@@ -215,12 +220,13 @@ final class BatchPublishPlanServiceTests: XCTestCase {
 
     XCTAssertEqual(plan.blockedCount, 2)
     XCTAssertTrue(plan.remotePublishableItems.isEmpty)
-    XCTAssertTrue(plan.items.allSatisfy { item in
-      item.preflightIssues.contains {
-        $0.title == "批量目标路径冲突"
-          && $0.message.contains("static/images/shared.png")
-      }
-    })
+    XCTAssertTrue(
+      plan.items.allSatisfy { item in
+        item.preflightIssues.contains {
+          $0.title == "批量目标路径冲突"
+            && $0.message.contains("static/images/shared.png")
+        }
+      })
   }
 
   func testEquivalentSharedImageIsAllowedAndDeduplicatedForRemotePublish() throws {
@@ -252,7 +258,8 @@ final class BatchPublishPlanServiceTests: XCTestCase {
       profile: profile,
       repositoryReport: nil
     )
-    let mergedFiles = deduplicatedBatchPublishFiles(plan.remotePublishableItems.flatMap(\.package.files))
+    let mergedFiles = deduplicatedBatchPublishFiles(
+      plan.remotePublishableItems.flatMap(\.package.files))
     let sharedImages = mergedFiles.filter { $0.repositoryPath == "static/images/shared.png" }
 
     XCTAssertEqual(plan.blockedCount, 0)
@@ -261,9 +268,55 @@ final class BatchPublishPlanServiceTests: XCTestCase {
     XCTAssertEqual(sharedImages.first?.expectedRemoteSHA, "image-sha")
   }
 
+  func testEquivalentMarkdownFromDifferentDraftsStillBlocksSharedDestination() throws {
+    let rootURL = try makeRepositoryRoot()
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+
+    var profile = SiteProfile.defaultProfile
+    profile.rememberLocalRepositoryRoot(rootURL)
+    profile.markdownPathPattern = "content/posts/{slug}.md"
+    let firstDraft = longDraft(profile: profile, title: "Same", slug: "same")
+    let secondDraft = longDraft(profile: profile, title: "Same", slug: "same")
+
+    let plan = BatchPublishPlanService().plan(
+      drafts: [firstDraft, secondDraft],
+      profile: profile,
+      repositoryReport: nil
+    )
+
+    XCTAssertEqual(plan.blockedCount, 2)
+    XCTAssertTrue(plan.remotePublishableItems.isEmpty)
+    XCTAssertTrue(
+      plan.items.allSatisfy { item in
+        item.preflightIssues.contains { $0.title == "批量目标路径冲突" }
+      })
+  }
+
+  func testValidatedManifestRejectsMixedOperationsAndConflictingBaselines() {
+    let upsert = PublishPackageFile(
+      kind: .markdown,
+      operation: .upsert,
+      repositoryPath: "content/posts/shared.md",
+      content: "local",
+      expectedRemoteSHA: "sha-a"
+    )
+    let deletion = PublishPackageFile(
+      kind: .markdown,
+      operation: .delete,
+      repositoryPath: "content/posts/shared.md",
+      expectedRemoteSHA: "sha-a"
+    )
+    var conflictingBaseline = upsert
+    conflictingBaseline.expectedRemoteSHA = "sha-b"
+
+    XCTAssertNil(validatedBatchPublishFiles([upsert, deletion]))
+    XCTAssertNil(validatedBatchPublishFiles([upsert, conflictingBaseline]))
+  }
+
   private func makeRepositoryRoot() throws -> URL {
     let rootURL = FileManager.default.temporaryDirectory
-      .appendingPathComponent("PersonalSitePublisherMacBatchPlanTests-\(UUID().uuidString)", isDirectory: true)
+      .appendingPathComponent(
+        "PersonalSitePublisherMacBatchPlanTests-\(UUID().uuidString)", isDirectory: true)
     try FileManager.default.createDirectory(
       at: rootURL.appendingPathComponent("content/posts", isDirectory: true),
       withIntermediateDirectories: true
@@ -277,7 +330,8 @@ final class BatchPublishPlanServiceTests: XCTestCase {
       title: title,
       slug: slug,
       draft: false,
-      bodyMarkdown: "This article body is intentionally longer than the preflight minimum so batch readiness is driven by repository diff state."
+      bodyMarkdown:
+        "This article body is intentionally longer than the preflight minimum so batch readiness is driven by repository diff state."
     )
   }
 
@@ -330,7 +384,8 @@ final class BatchPublishCommandBuilderTests: XCTestCase {
     let firstDraft = longDraft(profile: profile, title: "First Batch", slug: "first-batch")
     let secondDraft = longDraft(profile: profile, title: "Second Batch", slug: "second-batch")
     var blockedDraft = longDraft(profile: profile, title: "Blocked Batch", slug: "")
-    blockedDraft.bodyMarkdown = "Long enough content but missing slug means this item stays blocked."
+    blockedDraft.bodyMarkdown =
+      "Long enough content but missing slug means this item stays blocked."
 
     let plan = BatchPublishPlanService().plan(
       drafts: [firstDraft, secondDraft, blockedDraft],
@@ -369,8 +424,10 @@ final class BatchPublishCommandBuilderTests: XCTestCase {
       title: "Title $(touch /tmp/should-not-run) `id` 'quoted'\nnext",
       slug: "safe"
     )
-    let plan = BatchPublishPlanService().plan(drafts: [draft], profile: profile, repositoryReport: nil)
-    let command = BatchPublishCommandBuilder().directCommitCommand(plan: plan, profile: profile) ?? ""
+    let plan = BatchPublishPlanService().plan(
+      drafts: [draft], profile: profile, repositoryReport: nil)
+    let command =
+      BatchPublishCommandBuilder().directCommitCommand(plan: plan, profile: profile) ?? ""
 
     XCTAssertEqual(
       command,
@@ -384,7 +441,8 @@ final class BatchPublishCommandBuilderTests: XCTestCase {
     profile.markdownPathPattern = "content/posts/{slug}.md"
 
     let draft = longDraft(profile: profile, title: "Ready", slug: "ready")
-    let plan = BatchPublishPlanService().plan(drafts: [draft], profile: profile, repositoryReport: nil)
+    let plan = BatchPublishPlanService().plan(
+      drafts: [draft], profile: profile, repositoryReport: nil)
     let builder = BatchPublishCommandBuilder()
 
     XCTAssertNil(builder.directCommitCommand(plan: plan, profile: profile))
@@ -425,7 +483,8 @@ final class BatchPublishCommandBuilderTests: XCTestCase {
       title: title,
       slug: slug,
       draft: false,
-      bodyMarkdown: "This article body is intentionally longer than the preflight minimum so batch command tests focus on git command output."
+      bodyMarkdown:
+        "This article body is intentionally longer than the preflight minimum so batch command tests focus on git command output."
     )
   }
 }
@@ -438,7 +497,8 @@ final class WorkbenchStoreBatchPublishTests: XCTestCase {
       try? FileManager.default.removeItem(at: rootURL)
     }
 
-    let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()))
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()))
     var profile = store.activeProfile
     profile.rememberLocalRepositoryRoot(rootURL)
     profile.markdownPathPattern = "content/posts/{slug}.md"
@@ -464,13 +524,16 @@ final class WorkbenchStoreBatchPublishTests: XCTestCase {
     XCTAssertEqual(result.writtenDraftCount, 1)
     XCTAssertEqual(result.skippedCount, 2)
     XCTAssertTrue(
-      FileManager.default.fileExists(atPath: rootURL.appendingPathComponent("content/posts/ready-batch.md").path)
+      FileManager.default.fileExists(
+        atPath: rootURL.appendingPathComponent("content/posts/ready-batch.md").path)
     )
     XCTAssertFalse(
-      FileManager.default.fileExists(atPath: rootURL.appendingPathComponent("content/posts/review-batch.md").path)
+      FileManager.default.fileExists(
+        atPath: rootURL.appendingPathComponent("content/posts/review-batch.md").path)
     )
     XCTAssertFalse(
-      FileManager.default.fileExists(atPath: rootURL.appendingPathComponent("content/posts/.md").path)
+      FileManager.default.fileExists(
+        atPath: rootURL.appendingPathComponent("content/posts/.md").path)
     )
     let materializedReadyDraft = try XCTUnwrap(
       store.drafts.first(where: { $0.id == readyDraft.id })
@@ -493,7 +556,8 @@ final class WorkbenchStoreBatchPublishTests: XCTestCase {
       try? FileManager.default.removeItem(at: rootURL)
     }
 
-    let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()))
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()))
     var profile = store.activeProfile
     profile.rememberLocalRepositoryRoot(rootURL)
     profile.markdownPathPattern = "content/posts/{slug}.md"
@@ -515,14 +579,16 @@ final class WorkbenchStoreBatchPublishTests: XCTestCase {
 
   private func temporaryPersistenceURL() throws -> URL {
     let directory = FileManager.default.temporaryDirectory
-      .appendingPathComponent("PersonalSitePublisherMacBatchStoreTests-\(UUID().uuidString)", isDirectory: true)
+      .appendingPathComponent(
+        "PersonalSitePublisherMacBatchStoreTests-\(UUID().uuidString)", isDirectory: true)
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     return directory.appendingPathComponent("workbench.json")
   }
 
   private func makeRepositoryRoot() throws -> URL {
     let rootURL = FileManager.default.temporaryDirectory
-      .appendingPathComponent("PersonalSitePublisherMacBatchStoreRepo-\(UUID().uuidString)", isDirectory: true)
+      .appendingPathComponent(
+        "PersonalSitePublisherMacBatchStoreRepo-\(UUID().uuidString)", isDirectory: true)
     try FileManager.default.createDirectory(
       at: rootURL.appendingPathComponent("content/posts", isDirectory: true),
       withIntermediateDirectories: true
@@ -540,7 +606,8 @@ final class WorkbenchStoreBatchPublishTests: XCTestCase {
       title: title,
       slug: slug,
       draft: false,
-      bodyMarkdown: "This article body is intentionally longer than the preflight minimum so store batch publishing can focus on write behavior."
+      bodyMarkdown:
+        "This article body is intentionally longer than the preflight minimum so store batch publishing can focus on write behavior."
     )
   }
 }

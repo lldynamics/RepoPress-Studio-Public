@@ -5,6 +5,84 @@ struct AIChatContextInspectorState {
   let draft: AIChatInspectorDraftContext?
 }
 
+@MainActor
+enum AIChatInspectorDraftResolver {
+  static func resolve(
+    selectedDraftID: UUID?,
+    usesWindowDraftSelection: Bool,
+    ai: WorkbenchAIFeatureFacade
+  ) -> ArticleDraft? {
+    if let selectedDraftID {
+      return ai.chatDraft(for: selectedDraftID)
+    }
+    return usesWindowDraftSelection ? nil : ai.selectedChatDraft
+  }
+}
+
+/// Static inspector data is relatively expensive (profile/context relation
+/// lookup and title derivation), while a stream changes only its final text
+/// leaf. This cache is deliberately main-actor confined because it backs one
+/// SwiftUI inspector instance.
+@MainActor
+final class AIChatInspectorStaticProjectionCache: ObservableObject {
+  struct Key: Equatable {
+    let draftID: UUID
+    let draftUpdatedAt: Date
+    let conversationID: UUID?
+    let contextMode: AIPublishingChatContextMode
+    let conversationTitle: String?
+    let firstUserMessageID: UUID?
+    let lifecycleRevision: UInt64
+    let siteMaintenanceSnapshotVersion: Int
+  }
+
+  struct Projection {
+    let draft: ArticleDraft
+    let conversationID: UUID?
+    let conversationTitle: String
+    let relatedSuggestions: [AIChatRelatedSuggestionPresentation]
+  }
+
+  private var key: Key?
+  private var projection: Projection?
+  private(set) var buildCount = 0
+
+  func resolve(
+    key: Key,
+    build: () -> Projection
+  ) -> Projection {
+    if self.key == key, let projection { return projection }
+    let next = build()
+    self.key = key
+    projection = next
+    buildCount &+= 1
+    return next
+  }
+}
+
+/// Keeps the inspector's scroll intent explicit: a user drag opts out of
+/// streaming auto-scroll, and only an explicit return action opts back in.
+enum AIChatScrollPinningPolicy {
+  static func shouldShowReturnToLatest(
+    isPinnedToLatest: Bool,
+    hasLatestMessage: Bool
+  ) -> Bool {
+    !isPinnedToLatest && hasLatestMessage
+  }
+
+  static func isPinnedAfterUserDrag() -> Bool { false }
+
+  static func isPinnedAfterReturnToLatest() -> Bool { true }
+
+  static func shouldFollowScheduledScroll(
+    isPinnedToLatest: Bool,
+    scheduledGeneration: UInt64,
+    currentGeneration: UInt64
+  ) -> Bool {
+    isPinnedToLatest && scheduledGeneration == currentGeneration
+  }
+}
+
 enum AIChatAssistantMessagePresentationMode: Equatable {
   case streamingText
   case structured

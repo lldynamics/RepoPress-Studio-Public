@@ -36,5 +36,9 @@ final class BrowserExtensionProtocolTests: XCTestCase {
         "/v1/suggestions": ["POST"],
       ]
     )
+    XCTAssertTrue(BrowserExtensionProtocol.allows(method: "get", path: "/v1/status"))
+    XCTAssertTrue(BrowserExtensionProtocol.allows(method: "POST", path: "/v1/import"))
+    XCTAssertFalse(BrowserExtensionProtocol.allows(method: "DELETE", path: "/v1/import"))
+    XCTAssertFalse(BrowserExtensionProtocol.allows(method: "GET", path: "/v1/unknown"))
   }
 }

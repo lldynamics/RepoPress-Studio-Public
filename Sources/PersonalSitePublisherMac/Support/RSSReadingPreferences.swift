@@ -327,6 +327,22 @@ actor RSSReadingProgressPersistence {
       rssReadingProgressLogger.error("Failed to persist RSS reading progress")
     }
   }
+
+  /// Orders the recency snapshot on the persistence actor after the UI-side
+  /// debounce has elapsed. This keeps high-frequency scroll callbacks O(1).
+  func save(
+    _ values: [String: Double],
+    recencyByArticleID: [String: UInt64],
+    revision: UInt64
+  ) {
+    let orderedArticleIDs =
+      recencyByArticleID
+      .sorted { lhs, rhs in
+        lhs.value == rhs.value ? lhs.key < rhs.key : lhs.value > rhs.value
+      }
+      .map(\.key)
+    save(values, orderedArticleIDs: orderedArticleIDs, revision: revision)
+  }
 }
 
 @MainActor

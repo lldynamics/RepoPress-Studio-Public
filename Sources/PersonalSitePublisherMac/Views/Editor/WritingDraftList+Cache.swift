@@ -101,9 +101,7 @@ extension WritingDraftColumn {
       refreshVisibleRowPresentations()
       return
     }
-    withAnimation(WorkbenchMotion.standard) {
-      draftListLimit = nextLimit
-    }
+    draftListLimit = nextLimit
     refreshVisibleRowPresentations()
   }
 
@@ -236,14 +234,11 @@ extension WritingDraftColumn {
 
     if delta != 0 {
       applyDraftCountDelta(delta)
-    } else if draftCountDelta == nil {
-      isDraftCountPunching = false
     }
   }
 
   private func applyDraftCountDelta(_ delta: Int) {
     draftCountDelta = delta
-    isDraftCountPunching = true
     draftCountBadgeTask?.cancel()
 
     draftCountBadgeTask = Task {
@@ -252,10 +247,7 @@ extension WritingDraftColumn {
         return
       }
       await MainActor.run {
-        withAnimation(WorkbenchMotion.deliberate) {
-          isDraftCountPunching = false
-          draftCountDelta = nil
-        }
+        draftCountDelta = nil
       }
     }
   }

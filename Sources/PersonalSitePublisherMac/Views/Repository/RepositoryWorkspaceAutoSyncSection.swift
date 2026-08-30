@@ -18,6 +18,8 @@ extension RepositoryWorkspaceView {
         }
       }
 
+      Divider()
+
       ViewThatFits(in: .horizontal) {
         HStack(spacing: 12) {
           repositoryAutoSyncEnabledToggle
@@ -84,16 +86,23 @@ extension RepositoryWorkspaceView {
         if let lastRunAt = store.repositoryAutoSyncState.lastRunAt {
           Label("上次：\(lastRunAt.workbenchShortText)", systemImage: "clock.arrow.circlepath")
         }
-        if let nextRunAt = store.repositoryAutoSyncState.nextRunAt, store.repositoryAutoSyncSettings.isEnabled {
+        if let nextRunAt = store.repositoryAutoSyncState.nextRunAt,
+          store.repositoryAutoSyncSettings.isEnabled
+        {
           Label("可再次自动检查：\(nextRunAt.workbenchShortText)", systemImage: "clock")
         }
         if let lastFetchAt = store.repositoryAutoSyncState.lastFetchAt {
-          Label("Fetch：\(lastFetchAt.workbenchShortText)", systemImage: store.repositoryAutoSyncState.fetchSucceeded == false ? "exclamationmark.arrow.triangle.2.circlepath" : "arrow.triangle.2.circlepath")
+          Label(
+            "Fetch：\(lastFetchAt.workbenchShortText)",
+            systemImage: store.repositoryAutoSyncState.fetchSucceeded == false
+              ? "exclamationmark.arrow.triangle.2.circlepath" : "arrow.triangle.2.circlepath")
         } else if store.repositoryAutoSyncState.fetchMessage != nil {
           Label("Fetch 已跳过", systemImage: "arrow.triangle.2.circlepath.circle")
         }
         if store.repositoryAutoSyncState.nonArticleRemoteChangedFileCount > 0 {
-          Label("其他变更：\(store.repositoryAutoSyncState.nonArticleRemoteChangedFileCount)", systemImage: "doc.badge.gearshape")
+          Label(
+            "其他变更：\(store.repositoryAutoSyncState.nonArticleRemoteChangedFileCount)",
+            systemImage: "doc.badge.gearshape")
         }
         if store.repositoryAutoSyncState.lastAutoImportedArticleCount > 0 {
           Label(
@@ -131,7 +140,7 @@ extension RepositoryWorkspaceView {
           )
           presentRemoteArticleImportPreview(files)
         } label: {
-          Label("导入远端文章", systemImage: "tray.and.arrow.down")
+          Label("导入候选文章", systemImage: "tray.and.arrow.down")
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .buttonStyle(.bordered)
@@ -144,16 +153,21 @@ extension RepositoryWorkspaceView {
       if !store.repositoryAutoSyncState.remoteChangedPaths.isEmpty {
         VStack(alignment: .leading, spacing: 8) {
           HStack {
-            Label("最近远端变更", systemImage: "arrow.down.doc")
+            Label("最近远端变更（候选路径）", systemImage: "arrow.down.doc")
               .font(.caption.weight(.semibold))
               .foregroundStyle(.secondary)
             Spacer()
-            Text("在远端 diff 审阅中导入文章或复制 diff")
+            Text("仅按路径初筛；导入时仍会校验内容和 slug")
               .font(.callout)
               .foregroundStyle(.secondary)
           }
 
-          ForEach(Array(store.repositoryAutoSyncState.remoteChangedPaths.prefix(5)), id: \.self) { path in
+          Divider()
+
+          ForEach(
+            Array(store.repositoryAutoSyncState.remoteChangedPaths.prefix(5).enumerated()),
+            id: \.element
+          ) { index, path in
             let identifierToken = RepositoryAccessibilityIdentifier.token(for: path)
             ViewThatFits(in: .horizontal) {
               HStack(spacing: 10) {
@@ -169,16 +183,16 @@ extension RepositoryWorkspaceView {
             }
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier("repository-auto-sync-path-\(identifierToken)")
+
+            if index != min(store.repositoryAutoSyncState.remoteChangedPaths.count, 5) - 1 {
+              Divider()
+            }
           }
         }
-        .padding(10)
-        .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("repository-auto-sync-recent-paths")
       }
     }
-    .padding(14)
-    .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("repository-section-auto-sync")
   }
@@ -186,7 +200,8 @@ extension RepositoryWorkspaceView {
   private var repositoryAutoSyncIntroduction: some View {
     VStack(alignment: .leading, spacing: 4) {
       Text("自动检查远端")
-        .font(.headline)
+        .font(.workbenchSectionTitle)
+        .accessibilityAddTraits(.isHeader)
       Text(store.repositoryAutoSyncState.message.nilIfEmpty ?? repositoryAutoSyncDescription)
         .font(.callout)
         .foregroundStyle(.secondary)
@@ -210,7 +225,8 @@ extension RepositoryWorkspaceView {
         }
       } label: {
         Label(
-          store.repositoryScanState.isScanning ? String(localized: "检查中") : String(localized: "立即检查"),
+          store.repositoryScanState.isScanning
+            ? String(localized: "检查中") : String(localized: "立即检查"),
           systemImage: "arrow.clockwise"
         )
       }
@@ -226,7 +242,8 @@ extension RepositoryWorkspaceView {
       .toggleStyle(.switch)
       .accessibilityLabel("启用自动检查远端")
       .accessibilityValue(
-        store.repositoryAutoSyncSettings.isEnabled ? String(localized: "开启") : String(localized: "关闭")
+        store.repositoryAutoSyncSettings.isEnabled
+          ? String(localized: "开启") : String(localized: "关闭")
       )
       .accessibilityIdentifier("repository-auto-sync-enabled")
   }
@@ -237,7 +254,8 @@ extension RepositoryWorkspaceView {
       .disabled(!store.repositoryAutoSyncSettings.isEnabled)
       .accessibilityLabel("检查前 fetch upstream")
       .accessibilityValue(
-        store.repositoryAutoSyncSettings.fetchBeforeScan ? String(localized: "开启") : String(localized: "关闭")
+        store.repositoryAutoSyncSettings.fetchBeforeScan
+          ? String(localized: "开启") : String(localized: "关闭")
       )
       .accessibilityIdentifier("repository-auto-sync-fetch-upstream")
   }

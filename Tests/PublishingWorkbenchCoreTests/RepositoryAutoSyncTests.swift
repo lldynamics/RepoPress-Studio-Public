@@ -481,6 +481,15 @@ final class RepositoryAutoSyncTests: XCTestCase {
     store.setDrafts([draft])
     store.setSelectedDraftID(draft.id)
     store.deleteDraft(id: draft.id)
+    guard
+      let requestIndex = store.draftRepositoryCleanupRequests.firstIndex(where: {
+        $0.draftID == draft.id
+      })
+    else {
+      XCTFail("Expected local deletion cleanup request")
+      return
+    }
+    store.publishingStore.draftRepositoryCleanupRequests[requestIndex].enqueueRemoteCleanup()
 
     let summary = store.autoImportRemoteArticleDrafts(
       remoteFiles: [

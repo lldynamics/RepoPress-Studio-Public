@@ -486,8 +486,14 @@ public struct ReleaseRecord: Identifiable, Codable, Hashable, Sendable {
   public var branchName: String?
   public var targetBranch: String?
   public var commitSHA: String?
+  /// A later PR/MR head explicitly accepted by the user. `commitSHA` always
+  /// remains the commit produced by the original publish operation.
+  public var acceptedReviewHeadCommitSHA: String?
+  public var acceptedReviewHeadAt: Date?
+  public var reviewNumber: Int?
   public var reviewURL: String?
   public var reviewTitle: String?
+  public var reviewStatus: RemoteRepositoryReviewStatusSnapshot?
   public var batchItems: [ReleaseRecordBatchItem]
   public var createdAt: Date
 
@@ -511,8 +517,12 @@ public struct ReleaseRecord: Identifiable, Codable, Hashable, Sendable {
     branchName: String? = nil,
     targetBranch: String? = nil,
     commitSHA: String? = nil,
+    acceptedReviewHeadCommitSHA: String? = nil,
+    acceptedReviewHeadAt: Date? = nil,
+    reviewNumber: Int? = nil,
     reviewURL: String? = nil,
     reviewTitle: String? = nil,
+    reviewStatus: RemoteRepositoryReviewStatusSnapshot? = nil,
     batchItems: [ReleaseRecordBatchItem] = [],
     createdAt: Date = Date()
   ) {
@@ -535,14 +545,60 @@ public struct ReleaseRecord: Identifiable, Codable, Hashable, Sendable {
     self.branchName = branchName
     self.targetBranch = targetBranch
     self.commitSHA = commitSHA
+    self.acceptedReviewHeadCommitSHA = acceptedReviewHeadCommitSHA
+    self.acceptedReviewHeadAt = acceptedReviewHeadAt
+    self.reviewNumber = reviewNumber
     self.reviewURL = reviewURL
     self.reviewTitle = reviewTitle
+    self.reviewStatus = reviewStatus
     self.batchItems = batchItems
     self.createdAt = createdAt
   }
 
   public var shortCommitSHA: String? {
     commitSHA.map { String($0.prefix(8)) }
+  }
+
+  /// The target-branch commit that deployment providers must prove. Review
+  /// records keep `commitSHA` as the original head commit for auditability;
+  /// only a verified merged snapshot can supply the deployment commit.
+  public var deploymentCommitSHA: String? {
+    if kind == .remoteReviewRequest {
+      guard reviewStatus?.state == .merged, reviewHeadIsAccepted else { return nil }
+      return reviewStatus?.mergeCommitSHA?.trimmedForPublishing.nilIfEmpty
+    }
+    return commitSHA?.trimmedForPublishing.nilIfEmpty
+  }
+
+  public var hasUnconfirmedReviewHeadDrift: Bool {
+    guard kind == .remoteReviewRequest,
+      let observed = reviewStatus?.headCommitSHA?.trimmedForPublishing.nilIfEmpty,
+      let original = commitSHA?.trimmedForPublishing.nilIfEmpty
+    else { return false }
+    return observed.caseInsensitiveCompare(original) != .orderedSame
+      && observed.caseInsensitiveCompare(acceptedReviewHeadCommitSHA?.trimmedForPublishing ?? "")
+        != .orderedSame
+  }
+
+  var reviewHeadIsAccepted: Bool {
+    !hasUnconfirmedReviewHeadDrift
+  }
+
+  var deploymentBranchName: String? {
+    if kind == .remoteReviewRequest, reviewStatus?.state == .merged {
+      return reviewStatus?.targetBranch.trimmedForPublishing.nilIfEmpty
+    }
+    return branchName?.trimmedForPublishing.nilIfEmpty
+  }
+
+  /// A transient projection for deployment-status providers. It deliberately
+  /// preserves the persisted Review record and its original head SHA.
+  var deploymentAttributionRecord: ReleaseRecord {
+    guard let deploymentCommitSHA, let deploymentBranchName else { return self }
+    var projected = self
+    projected.commitSHA = deploymentCommitSHA
+    projected.branchName = deploymentBranchName
+    return projected
   }
 
   public static func limitedHistory(_ records: [ReleaseRecord]) -> [ReleaseRecord] {
@@ -669,6 +725,7 @@ public struct ReleaseRecord: Identifiable, Codable, Hashable, Sendable {
       branchName: result.branchName,
       targetBranch: result.targetBranch,
       commitSHA: result.commitSHA,
+      reviewNumber: result.reviewNumber,
       reviewURL: result.reviewURL,
       reviewTitle: result.reviewTitle,
       createdAt: createdAt
@@ -713,6 +770,7 @@ public struct ReleaseRecord: Identifiable, Codable, Hashable, Sendable {
       branchName: result.branchName,
       targetBranch: result.targetBranch,
       commitSHA: result.commitSHA,
+      reviewNumber: result.reviewNumber,
       reviewURL: result.reviewURL,
       reviewTitle: result.reviewTitle,
       batchItems: items.map {
@@ -829,8 +887,12 @@ public struct ReleaseRecord: Identifiable, Codable, Hashable, Sendable {
     recovered.branchName = result.branchName
     recovered.targetBranch = result.targetBranch
     recovered.commitSHA = result.commitSHA ?? original.commitSHA
+    recovered.acceptedReviewHeadCommitSHA = nil
+    recovered.acceptedReviewHeadAt = nil
+    recovered.reviewNumber = result.reviewNumber
     recovered.reviewURL = result.reviewURL
     recovered.reviewTitle = result.reviewTitle
+    recovered.reviewStatus = nil
     return recovered
   }
 
@@ -921,8 +983,12 @@ public struct ReleaseRecord: Identifiable, Codable, Hashable, Sendable {
     case branchName
     case targetBranch
     case commitSHA
+    case acceptedReviewHeadCommitSHA
+    case acceptedReviewHeadAt
+    case reviewNumber
     case reviewURL
     case reviewTitle
+    case reviewStatus
     case batchItems
     case createdAt
   }
@@ -949,8 +1015,16 @@ public struct ReleaseRecord: Identifiable, Codable, Hashable, Sendable {
     branchName = try container.decodeIfPresent(String.self, forKey: .branchName)
     targetBranch = try container.decodeIfPresent(String.self, forKey: .targetBranch)
     commitSHA = try container.decodeIfPresent(String.self, forKey: .commitSHA)
+    acceptedReviewHeadCommitSHA = try container.decodeIfPresent(
+      String.self, forKey: .acceptedReviewHeadCommitSHA)
+    acceptedReviewHeadAt = try container.decodeIfPresent(Date.self, forKey: .acceptedReviewHeadAt)
+    reviewNumber = try container.decodeIfPresent(Int.self, forKey: .reviewNumber)
     reviewURL = try container.decodeIfPresent(String.self, forKey: .reviewURL)
     reviewTitle = try container.decodeIfPresent(String.self, forKey: .reviewTitle)
+    reviewStatus = try container.decodeIfPresent(
+      RemoteRepositoryReviewStatusSnapshot.self,
+      forKey: .reviewStatus
+    )
     batchItems =
       try container.decodeIfPresent([ReleaseRecordBatchItem].self, forKey: .batchItems) ?? []
     createdAt = try container.decode(Date.self, forKey: .createdAt)

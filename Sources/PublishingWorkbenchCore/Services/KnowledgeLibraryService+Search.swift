@@ -38,7 +38,10 @@ extension KnowledgeLibraryService {
       fullTextResults.append(explainedResult)
     }
 
-    let queryVectors = semanticEmbeddingService.vectors(for: trimmedQuery)
+    // `search` remains a hybrid API even when a caller later filters signals.
+    // The agent's dedicated lexical path calls the FTS store directly, so it
+    // does not need this public API to weaken normal retrieval semantics.
+    let queryVectors = semanticEmbeddingService.vectors(for: trimmedQuery, role: .query)
     try checkSearchCancellation()
     var semanticRankings: [[KnowledgeSearchResult]] = []
     semanticRankings.reserveCapacity(queryVectors.count)
@@ -160,7 +163,7 @@ extension KnowledgeLibraryService {
     }
 
     var semanticScores: [UUID: Double] = [:]
-    for queryVector in semanticEmbeddingService.vectors(for: anchorText) {
+    for queryVector in semanticEmbeddingService.vectors(for: anchorText, role: .query) {
       try ensureSemanticIndex(for: queryVector, database: database)
       let matches = try database.semanticSearch(
         queryVector: queryVector,
@@ -267,7 +270,8 @@ extension KnowledgeLibraryService {
     let tokenizer = KnowledgeSearchTokenSupport.tokenizer
     guard tokenizer.tokenCount(text) > maximumTokens else { return text }
 
-    let paragraphs = text
+    let paragraphs =
+      text
       .components(separatedBy: "\n\n")
       .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
       .filter { !$0.isEmpty }
@@ -368,51 +372,180 @@ extension KnowledgeLibraryService {
     while !semanticBackfillLock.lock(before: Date(timeIntervalSinceNow: 0.02)) {
       try checkSearchCancellation()
     }
-    defer { semanticBackfillLock.unlock() }
-    try checkSearchCancellation()
     let modelIdentifier = queryVector.modelIdentifier
-    guard !backfilledSemanticModelIDs.contains(modelIdentifier) else { return }
-
-    let repairRecords = try database.semanticIndexRecordsNeedingRepair(
-      modelIdentifier: modelIdentifier,
-      expectedDimension: queryVector.values.count
-    )
+    let isAlreadyBackfilled = backfilledSemanticModelIDs.contains(modelIdentifier)
+    let generation = semanticBackfillGeneration
+    semanticBackfillLock.unlock()
     try checkSearchCancellation()
+    guard !isAlreadyBackfilled else { return }
+
+    // The deterministic fallback is the baseline retrieval contract.  Repair
+    // one small page synchronously after an old-schema upgrade so an existing
+    // library regains local semantic recall without waiting for a detached
+    // task; dense/new providers are always background-only.
+    if modelIdentifier == KnowledgeSemanticEmbeddingService.fallbackModelIdentifier {
+      let page = try database.semanticIndexRepairScanPage(
+        modelIdentifier: modelIdentifier,
+        expectedDimension: queryVector.values.count,
+        expectedEncodingVersion: queryVector.encodingVersion,
+        offset: 0,
+        maximumScannedRecords: 24
+      )
+      _ = try backfillSemanticRecords(
+        page.records,
+        database: database,
+        modelIdentifier: modelIdentifier,
+        expectedDimension: queryVector.values.count,
+        expectedEncodingVersion: queryVector.encodingVersion,
+        generation: generation
+      )
+    }
+    // A newly available dense model must never make the first search wait for
+    // a whole-library rebuild.  Existing hash vectors are searched now; the
+    // incremental writer is cancellable and resumes from repair state later.
+    scheduleSemanticBackfill(
+      modelIdentifier: modelIdentifier,
+      expectedDimension: queryVector.values.count,
+      expectedEncodingVersion: queryVector.encodingVersion
+    )
+  }
+
+  /// Processes bounded scan/write pages. The offset advances by inspected
+  /// current chunks, not by repaired rows, so one run is linear in library
+  /// size. Interruption safely restarts because each upsert is idempotent.
+  func scheduleSemanticBackfill(
+    modelIdentifier: String,
+    expectedDimension: Int,
+    expectedEncodingVersion: String
+  ) {
+    guard
+      semanticEmbeddingService.availability(forStoredModelIdentifier: modelIdentifier) == .available
+    else {
+      return
+    }
+    let shouldSchedule: Bool
+    let generation: Int
+    semanticBackfillLock.lock()
+    shouldSchedule =
+      !backfilledSemanticModelIDs.contains(modelIdentifier)
+      && inflightSemanticModelIDs.insert(modelIdentifier).inserted
+    generation = semanticBackfillGeneration
+    semanticBackfillLock.unlock()
+    guard shouldSchedule else { return }
+
+    let service = self
+    let task = Task.detached(priority: .utility) {
+      defer {
+        service.finishSemanticBackfill(modelIdentifier, generation: generation)
+      }
+      do {
+        let database = try service.database()
+        var scanOffset = 0
+        while !Task.isCancelled {
+          let page = try database.semanticIndexRepairScanPage(
+            modelIdentifier: modelIdentifier,
+            expectedDimension: expectedDimension,
+            expectedEncodingVersion: expectedEncodingVersion,
+            offset: scanOffset,
+            maximumScannedRecords: 24
+          )
+          if !page.records.isEmpty {
+            let didWrite = try service.backfillSemanticRecords(
+              page.records,
+              database: database,
+              modelIdentifier: modelIdentifier,
+              expectedDimension: expectedDimension,
+              expectedEncodingVersion: expectedEncodingVersion,
+              generation: generation
+            )
+            guard didWrite else { return }
+          }
+          guard let nextOffset = page.nextOffset else {
+            service.markSemanticBackfillComplete(
+              modelIdentifier,
+              generation: generation,
+              cancelled: Task.isCancelled
+            )
+            return
+          }
+          scanOffset = nextOffset
+        }
+      } catch is CancellationError {
+        return
+      } catch {
+        // Fail soft.  The repair query keeps outstanding rows visible for a
+        // later scheduler invocation and the hash provider remains searchable.
+        return
+      }
+    }
+    semanticBackfillLock.lock()
+    if semanticBackfillGeneration == generation,
+      inflightSemanticModelIDs.contains(modelIdentifier),
+      !task.isCancelled
+    {
+      semanticBackfillTasks[modelIdentifier] = task
+    } else {
+      task.cancel()
+    }
+    semanticBackfillLock.unlock()
+  }
+
+  /// Returns true only if a durable batch was written.  A provider that goes
+  /// unavailable mid-run leaves rows repairable instead of replacing them with
+  /// invalid data.
+  func backfillSemanticRecords(
+    _ records: [KnowledgeSemanticIndexRecord],
+    database: KnowledgeDatabase,
+    modelIdentifier: String,
+    expectedDimension: Int,
+    expectedEncodingVersion: String,
+    generation: Int
+  ) throws -> Bool {
+    guard !records.isEmpty else { return false }
     var embeddings: [KnowledgeChunkEmbedding] = []
-    embeddings.reserveCapacity(repairRecords.count)
-    for record in repairRecords {
-      try checkSearchCancellation()
+    embeddings.reserveCapacity(records.count)
+    for record in records {
+      try Task.checkCancellation()
       guard
         let vector = semanticEmbeddingService.vector(
           for: record.searchableText,
-          modelIdentifier: modelIdentifier
-        )
-      else {
-        continue
-      }
-      try checkSearchCancellation()
+          modelIdentifier: modelIdentifier,
+          role: .passage
+        ), vector.values.count == expectedDimension,
+        vector.encodingVersion == expectedEncodingVersion
+      else { return false }
       embeddings.append(
         KnowledgeChunkEmbedding(
           chunkID: record.chunk.id,
           revisionID: record.chunk.revisionID,
-          vector: vector
+          vector: vector,
+          inputHash: record.searchableTextHash
         ))
     }
-    try checkSearchCancellation()
+    while !semanticBackfillLock.lock(before: Date(timeIntervalSinceNow: 0.02)) {
+      try Task.checkCancellation()
+    }
+    defer { semanticBackfillLock.unlock() }
+    guard semanticBackfillGeneration == generation, !Task.isCancelled else {
+      throw CancellationError()
+    }
     try database.upsertSemanticEmbeddings(embeddings)
-    try checkSearchCancellation()
-    backfilledSemanticModelIDs.insert(modelIdentifier)
+    return true
   }
 
   func repairSemanticVectorsSynchronously() throws -> KnowledgeSemanticRepairReport {
     try Task.checkCancellation()
+    cancelSemanticBackfillTasks()
     semanticBackfillLock.lock()
     defer { semanticBackfillLock.unlock() }
 
     let database = try database()
     let records = try database.semanticIndexRecords()
     let rebuilt = try rebuiltSemanticEmbeddings(for: records)
-    try database.replaceAllSemanticEmbeddings(rebuilt.embeddings)
+    try database.replaceAllSemanticEmbeddings(
+      rebuilt.embeddings,
+      preservingModelIdentifiers: try temporarilyUnavailableStoredModelIdentifiers(database)
+    )
     backfilledSemanticModelIDs.removeAll()
     return KnowledgeSemanticRepairReport(
       scannedChunkCount: records.count,
@@ -431,6 +564,7 @@ extension KnowledgeLibraryService {
         modelIdentifiers: []
       )
     }
+    cancelSemanticBackfillTasks()
     semanticBackfillLock.lock()
     defer { semanticBackfillLock.unlock() }
 
@@ -441,7 +575,8 @@ extension KnowledgeLibraryService {
     let rebuilt = try rebuiltSemanticEmbeddings(for: records)
     try database.replaceSemanticEmbeddings(
       documentIDs: documentIDs,
-      embeddings: rebuilt.embeddings
+      embeddings: rebuilt.embeddings,
+      preservingModelIdentifiers: try temporarilyUnavailableStoredModelIdentifiers(database)
     )
     backfilledSemanticModelIDs.removeAll()
     return KnowledgeSemanticRepairReport(
@@ -458,7 +593,7 @@ extension KnowledgeLibraryService {
     var modelIdentifiers = Set<String>()
     for record in records {
       try Task.checkCancellation()
-      let vectors = semanticEmbeddingService.vectors(for: record.searchableText)
+      let vectors = semanticEmbeddingService.vectors(for: record.searchableText, role: .passage)
       try Task.checkCancellation()
       for vector in vectors {
         modelIdentifiers.insert(vector.modelIdentifier)
@@ -466,7 +601,8 @@ extension KnowledgeLibraryService {
           KnowledgeChunkEmbedding(
             chunkID: record.chunk.id,
             revisionID: record.chunk.revisionID,
-            vector: vector
+            vector: vector,
+            inputHash: record.searchableTextHash
           ))
       }
     }
@@ -542,8 +678,48 @@ extension KnowledgeLibraryService {
   }
 
   func invalidateSemanticBackfillCache() {
+    cancelSemanticBackfillTasks()
+  }
+
+  func cancelSemanticBackfillTasks() {
     semanticBackfillLock.lock()
+    semanticBackfillGeneration &+= 1
+    let tasks = Array(semanticBackfillTasks.values)
+    semanticBackfillTasks.removeAll()
     backfilledSemanticModelIDs.removeAll()
+    inflightSemanticModelIDs.removeAll()
     semanticBackfillLock.unlock()
+    for task in tasks {
+      task.cancel()
+    }
+  }
+
+  func finishSemanticBackfill(_ modelIdentifier: String, generation: Int) {
+    semanticBackfillLock.lock()
+    defer { semanticBackfillLock.unlock() }
+    guard semanticBackfillGeneration == generation else { return }
+    inflightSemanticModelIDs.remove(modelIdentifier)
+    semanticBackfillTasks.removeValue(forKey: modelIdentifier)
+  }
+
+  func markSemanticBackfillComplete(
+    _ modelIdentifier: String,
+    generation: Int,
+    cancelled: Bool
+  ) {
+    semanticBackfillLock.lock()
+    defer { semanticBackfillLock.unlock() }
+    guard semanticBackfillGeneration == generation, !cancelled else { return }
+    backfilledSemanticModelIDs.insert(modelIdentifier)
+  }
+
+  func temporarilyUnavailableStoredModelIdentifiers(_ database: KnowledgeDatabase) throws -> Set<
+    String
+  > {
+    Set(
+      try database.semanticEmbeddingChunkIDsByModelIdentifier().keys.filter {
+        semanticEmbeddingService.availability(forStoredModelIdentifier: $0)
+          == .temporarilyUnavailable
+      })
   }
 }

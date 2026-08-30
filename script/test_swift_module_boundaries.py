@@ -173,6 +173,7 @@ def valid_payload() -> dict[str, Any]:
                     dependency("BrowserExtensionProtocolSupport"),
                     dependency("PublishingAICore"),
                     dependency("PublishingGitCore"),
+                    dependency("PublishingKnowledgeCore"),
                     dependency("PublishingWorkbenchCore"),
                 ],
             ),
@@ -256,6 +257,7 @@ def run_fixture(
     source: str | None = None,
     extra_sources: dict[str, str] | None = None,
     enforce_umbrella_retirement: bool = False,
+    workbench_import_maximums: dict[str, int] | None = None,
 ) -> subprocess.CompletedProcess[str]:
     dump_path = prepare_fixture(root, payload)
     if source is not None:
@@ -277,6 +279,20 @@ def run_fixture(
     ]
     if enforce_umbrella_retirement:
         command.append("--enforce-umbrella-retirement")
+    if workbench_import_maximums is not None:
+        baseline = root / "quality-baselines.json"
+        baseline.write_text(
+            json.dumps(
+                {
+                    "swiftModuleBoundaryMaximums": {
+                        "publishingWorkbenchCoreImportsByScope": workbench_import_maximums
+                    }
+                },
+                sort_keys=True,
+            ),
+            encoding="utf-8",
+        )
+        command.extend(["--quality-baseline", str(baseline)])
     return subprocess.run(
         command,
         text=True,
@@ -291,6 +307,7 @@ def expect_rejected(
     source: str | None = None,
     extra_sources: dict[str, str] | None = None,
     enforce_umbrella_retirement: bool = False,
+    workbench_import_maximums: dict[str, int] | None = None,
     message: str | None = None,
 ) -> None:
     with tempfile.TemporaryDirectory(prefix="swift-module-boundaries-fixture.") as temporary:
@@ -300,6 +317,7 @@ def expect_rejected(
             source=source,
             extra_sources=extra_sources,
             enforce_umbrella_retirement=enforce_umbrella_retirement,
+            workbench_import_maximums=workbench_import_maximums,
         )
         assert result.returncode != 0, result.stdout
         if message is not None:
@@ -342,6 +360,18 @@ def main() -> int:
         assert decoded["coreSourceMetrics"]["PublishingMCPClient"]["swiftFileCount"] == 1
         assert decoded["compatibilityUmbrellaConsumerMetrics"]["Tests"]["workbenchImportCount"] == 1
         assert decoded["umbrellaRetirement"]["enforced"] is False
+
+        bounded = run_fixture(
+            root,
+            payload,
+            workbench_import_maximums={"Sources": 0, "Tests": 1},
+        )
+        assert bounded.returncode == 0, bounded.stderr
+        bounded_report = json.loads(report.read_text(encoding="utf-8"))
+        assert bounded_report["umbrellaRetirement"]["maximumsEnforced"] == {
+            "Sources": 0,
+            "Tests": 1,
+        }
 
     missing_edge = valid_payload()
     git_target = next(item for item in missing_edge["targets"] if item["name"] == "PublishingGitCore")
@@ -481,6 +511,11 @@ def main() -> int:
         valid_payload(),
         enforce_umbrella_retirement=True,
         message="umbrella retirement enforcement failed",
+    )
+    expect_rejected(
+        valid_payload(),
+        workbench_import_maximums={"Sources": 0, "Tests": 0},
+        message="compatibility-import maximum exceeded",
     )
 
     print("swift module boundaries gate test: passed")

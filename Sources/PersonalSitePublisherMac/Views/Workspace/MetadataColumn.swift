@@ -51,6 +51,8 @@ struct MetadataColumn: View {
       case .aiAssistant:
         AIChatContextInspectorView(
           store: store,
+          selectedDraftID: selectedDraftID,
+          usesWindowDraftSelection: true,
           surfaceState: $aiChatSurfaceState,
           operationSession: aiChatOperationSession
         )
@@ -158,7 +160,6 @@ private struct InspectorSplitResizeHandle: View {
           )
       )
       .shadow(color: .black.opacity(isHovered ? 0.12 : 0.04), radius: 3, x: 0, y: 1)
-      .scaleEffect(isHovered ? 1.08 : 1.0)
       .opacity(isHovered ? 1.0 : (isAIAssistantPresented ? 0.65 : 0.28))
     }
     .frame(width: 16)
@@ -166,9 +167,7 @@ private struct InspectorSplitResizeHandle: View {
     .contentShape(Rectangle())
     .offset(x: -8)
     .onHover { hovering in
-      withAnimation(WorkbenchMotion.hoverSpring) {
-        isHovered = hovering
-      }
+      isHovered = hovering
       if hovering {
         NSCursor.resizeLeftRight.push()
       } else {

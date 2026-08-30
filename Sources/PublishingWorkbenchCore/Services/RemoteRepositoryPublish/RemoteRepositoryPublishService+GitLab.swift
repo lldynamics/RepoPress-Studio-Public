@@ -46,6 +46,23 @@ extension RemoteRepositoryPublishService {
     return true
   }
 
+  func gitLabBranchSHA(
+    repository: RemoteRepository,
+    branch: String,
+    token: String
+  ) async throws -> String {
+    let request = gitLabRequest(
+      repository: repository,
+      method: "GET",
+      path:
+        "/projects/\(encodedPathComponent(repository.projectPath))/repository/branches/\(encodedPathComponent(branch))",
+      token: token
+    )
+    let response = try await data(for: request)
+    try validate(response)
+    return try decoder.decode(GitLabBranchResponse.self, from: response.data).commit.id
+  }
+
   func gitLabExistingMergeRequestURL(
     repository: RemoteRepository,
     sourceBranch: String,

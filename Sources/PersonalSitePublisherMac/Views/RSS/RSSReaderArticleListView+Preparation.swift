@@ -45,16 +45,35 @@ extension RSSArticleList {
     let sortOrder = presentation.sortOrder
     let groupsByDate = presentation.groupsByDate
     let displayLimit = presentation.articleDisplayLimit
-    // Search and secondary facets must include the archive, not merely the
-    // first bootstrap window. Completing this utility read before querying
-    // keeps the main actor free while preserving exact FTS semantics.
-    if !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-      await store.loadRemainingArticleHeadersIfNeeded()
-    }
+    let requiresArchiveQuery =
+      sourceID != nil || author != nil || tag != nil
+      || dateRange != .all || sortOrder != .newest
+    // Secondary filters/sorts are still applied in memory. They must inspect
+    // the complete SQL-matched set before filtering/reordering; applying the
+    // visible-page cap first would drop an older author/tag match or make
+    // `.oldest` impossible to reach. Only the newest/default SQL order can
+    // safely page at this boundary.
+    // Keep one page of look-ahead so the list can prove that a "load more"
+    // action exists without materialising the full archive. Capping at the
+    // visible size would make `matchingArticles.count == visible.count` and
+    // strand every result beyond the first page.
+    let archiveQueryLimit: Int? =
+      requiresArchiveQuery
+      ? nil
+      : displayLimit + RSSReaderPresentationState.articlePageSize
+    // While bootstrap is incomplete, the store delegates the scoped search
+    // to SQLite/FTS. Do not promote the whole archive into the main store just
+    // because the user typed a filter.
     let base = await store.articleHeadersAsync(
       for: scope,
       searchText: searchText,
-      unreadOnly: unreadOnly
+      unreadOnly: unreadOnly,
+      requiresArchiveQuery: requiresArchiveQuery,
+      // A SQL-complete newest query materialises the visible page plus one
+      // bounded look-ahead page.
+      // Secondary filters/sorts intentionally use `nil` above so they remain
+      // correct before their predicates are moved into SQLite.
+      limit: archiveQueryLimit
     )
 
     let result = await Task.detached(priority: .userInitiated) {
@@ -118,9 +137,7 @@ extension RSSArticleList {
     let articles = preparedList?.matchingArticles ?? []
     guard !articles.isEmpty else { return }
 
-    let currentIndex = selectedArticleID.flatMap { selectedID in
-      articles.firstIndex { $0.id == selectedID }
-    }
+    let currentIndex = selectedArticleID.flatMap { preparedList?.indexByArticleID[$0] }
     let targetIndex: Int
     if let currentIndex {
       targetIndex = currentIndex + offset
@@ -129,8 +146,14 @@ extension RSSArticleList {
     }
     guard articles.indices.contains(targetIndex) else { return }
 
-    let targetArticleID = articles[targetIndex].id
-    presentation.revealArticle(targetArticleID, in: store)
+    let targetArticleID = preparedList?.articleIDsByIndex[targetIndex] ?? articles[targetIndex].id
+    if let preparedList {
+      presentation.revealArticle(
+        targetArticleID,
+        index: targetIndex,
+        totalCount: preparedList.articleIDsByIndex.count
+      )
+    }
     selectedArticleID = targetArticleID
   }
 

@@ -63,6 +63,177 @@ final class RSSReaderBootstrapTests: XCTestCase {
   }
 
   @MainActor
+  func testArchiveSearchUsesSQLiteWithoutCompletingBootstrapHeaders() async throws {
+    let directory = FileManager.default.temporaryDirectory
+      .appendingPathComponent("RSSReaderBootstrapSearch-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+
+    let fileURL = directory.appendingPathComponent("reader.json")
+    let feed = RSSFeed(
+      title: "Archive", url: try XCTUnwrap(URL(string: "https://example.com/feed")))
+    let articles = (0..<20).map { index in
+      RSSArticle(
+        id: "article-\(index)",
+        feedID: feed.id,
+        title: index == 19 ? "Needle title" : "Article \(index)",
+        contentHTML: index == 19 ? "<p>Needle body</p>" : "<p>Body \(index)</p>"
+      )
+    }
+    let encoder = JSONEncoder()
+    encoder.dateEncodingStrategy = .iso8601
+    try encoder.encode(RSSReaderSnapshot(feeds: [feed], articles: articles)).write(
+      to: fileURL,
+      options: .atomic
+    )
+
+    let bootstrap = await RSSReaderStore.prepareBootstrap(fileURL: fileURL, pageSize: 2)
+    let store = RSSReaderStore(fileURL: fileURL, bootstrap: bootstrap)
+    XCTAssertFalse(store.articleHeadersAreComplete)
+    XCTAssertEqual(store.articleHeaders.count, 2)
+
+    let results = await store.articleHeadersAsync(
+      for: .all,
+      searchText: "Needle",
+      unreadOnly: false,
+      limit: 1
+    )
+
+    XCTAssertEqual(results.map(\.id), ["article-19"])
+    XCTAssertFalse(store.articleHeadersAreComplete)
+    XCTAssertEqual(store.articleHeaders.count, 2)
+  }
+
+  @MainActor
+  func testIncompleteBootstrapFeedUnreadQueryStaysScopedInSQLite() async throws {
+    let directory = FileManager.default.temporaryDirectory
+      .appendingPathComponent(
+        "RSSReaderBootstrapFeedUnread-\(UUID().uuidString)",
+        isDirectory: true
+      )
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+
+    let fileURL = directory.appendingPathComponent("reader.json")
+    let firstFeed = RSSFeed(
+      title: "First",
+      url: try XCTUnwrap(URL(string: "https://example.com/first.xml"))
+    )
+    let secondFeed = RSSFeed(
+      title: "Second",
+      url: try XCTUnwrap(URL(string: "https://example.com/second.xml"))
+    )
+    let articles = [
+      RSSArticle(
+        id: "first-unread",
+        feedID: firstFeed.id,
+        title: "First unread",
+        publishedAt: Date(timeIntervalSince1970: 3)
+      ),
+      RSSArticle(
+        id: "first-read",
+        feedID: firstFeed.id,
+        title: "First read",
+        publishedAt: Date(timeIntervalSince1970: 2),
+        readAt: Date(timeIntervalSince1970: 4)
+      ),
+      RSSArticle(
+        id: "second-unread",
+        feedID: secondFeed.id,
+        title: "Second unread",
+        publishedAt: Date(timeIntervalSince1970: 1)
+      ),
+    ]
+    let encoder = JSONEncoder()
+    encoder.dateEncodingStrategy = .iso8601
+    try encoder.encode(
+      RSSReaderSnapshot(feeds: [firstFeed, secondFeed], articles: articles)
+    ).write(to: fileURL, options: .atomic)
+
+    let bootstrap = await RSSReaderStore.prepareBootstrap(fileURL: fileURL, pageSize: 1)
+    let store = RSSReaderStore(fileURL: fileURL, bootstrap: bootstrap)
+    let results = await store.articleHeadersAsync(
+      for: .feed(firstFeed.id),
+      unreadOnly: true
+    )
+
+    XCTAssertEqual(results.map(\.id), ["first-unread"])
+    XCTAssertFalse(store.articleHeadersAreComplete)
+    XCTAssertEqual(store.articleHeaders.count, 1)
+  }
+
+  @MainActor
+  func testIncompleteBootstrapScopedQueryHonorsSQLPageLimit() async throws {
+    let directory = FileManager.default.temporaryDirectory
+      .appendingPathComponent("RSSReaderBootstrapPage-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+
+    let fileURL = directory.appendingPathComponent("reader.json")
+    let feed = RSSFeed(title: "Paged", url: try XCTUnwrap(URL(string: "https://example.com/feed")))
+    let articles = (0..<20).map { index in
+      RSSArticle(id: "article-\(index)", feedID: feed.id, title: "Article \(index)")
+    }
+    let encoder = JSONEncoder()
+    encoder.dateEncodingStrategy = .iso8601
+    try encoder.encode(RSSReaderSnapshot(feeds: [feed], articles: articles)).write(
+      to: fileURL,
+      options: .atomic
+    )
+
+    let bootstrap = await RSSReaderStore.prepareBootstrap(fileURL: fileURL, pageSize: 2)
+    let store = RSSReaderStore(fileURL: fileURL, bootstrap: bootstrap)
+    let page = await store.articleHeadersAsync(for: .unread, limit: 3, offset: 4)
+
+    XCTAssertEqual(page.count, 3)
+    XCTAssertFalse(store.articleHeadersAreComplete)
+    XCTAssertEqual(store.articleHeaders.count, 2)
+  }
+
+  @MainActor
+  func testSecondaryAuthorFilterCanReadPageOutsideNewestVisibleWindow() async throws {
+    let directory = FileManager.default.temporaryDirectory
+      .appendingPathComponent(
+        "RSSReaderBootstrapSecondaryFilter-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+
+    let fileURL = directory.appendingPathComponent("reader.json")
+    let feed = RSSFeed(
+      title: "Secondary", url: try XCTUnwrap(URL(string: "https://example.com/feed")))
+    let articles = (0..<20).map { index in
+      RSSArticle(
+        id: "article-\(index)",
+        feedID: feed.id,
+        title: "Article \(index)",
+        author: index == 19 ? "Archive Author" : "Recent Author",
+        publishedAt: Date(timeIntervalSince1970: TimeInterval(100 - index))
+      )
+    }
+    let encoder = JSONEncoder()
+    encoder.dateEncodingStrategy = .iso8601
+    try encoder.encode(RSSReaderSnapshot(feeds: [feed], articles: articles)).write(
+      to: fileURL,
+      options: .atomic
+    )
+
+    let bootstrap = await RSSReaderStore.prepareBootstrap(fileURL: fileURL, pageSize: 2)
+    let store = RSSReaderStore(fileURL: fileURL, bootstrap: bootstrap)
+    let completeCandidates = await store.articleHeadersAsync(
+      for: .all,
+      requiresArchiveQuery: true,
+      limit: nil
+    )
+
+    XCTAssertEqual(
+      completeCandidates.filter { $0.author == "Archive Author" }.map(\.id),
+      ["article-19"]
+    )
+    XCTAssertFalse(store.articleHeadersAreComplete)
+    XCTAssertEqual(store.articleHeaders.count, 2)
+  }
+
+  @MainActor
   func testCustomFileManagerIsUsedForLegacyBootstrap() async throws {
     let directory = FileManager.default.temporaryDirectory
       .appendingPathComponent(

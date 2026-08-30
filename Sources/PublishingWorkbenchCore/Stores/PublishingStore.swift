@@ -119,6 +119,12 @@ public final class PublishingStore: ObservableObject {
   public let publishSession: PublishSessionStore
   public let siteStarter: SiteStarterStore
   private var childStateCancellables = Set<AnyCancellable>()
+  #if DEBUG
+    /// Signals that an asynchronous remote-SHA backfill has reached a terminal
+    /// path, allowing stale-result tests to distinguish completion from the
+    /// request's initial nil SHA.
+    var remoteSHABackfillCompletionTestHook: ((UUID) -> Void)?
+  #endif
 
   @Published public internal(set) var profiles: [SiteProfile]
   @Published public internal(set) var activeProfileID: UUID {

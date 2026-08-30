@@ -17,6 +17,13 @@ public final class DraftListStore: ObservableObject {
   public private(set) var taskQueueStateVersion = 0
   private(set) var searchIndexBuildCount = 0
   private var searchIndexCache: [SearchIndexCacheKey: DraftSearchIndex] = [:]
+  private var lastPresentationInput: PresentationInput?
+  // @Published emits from willSet. A structural publisher can therefore send
+  // the list its one required notification before the store exposes the new
+  // value to a fingerprint read. The next explicit boundary synchronizes the
+  // fingerprint without issuing a duplicate notification.
+  private var presentationInputNeedsSynchronization = false
+  private var presentationInputSynchronizationGeneration: UInt64 = 0
 
   public init(store: WorkbenchStore) {
     self.store = store
@@ -50,6 +57,7 @@ public final class DraftListStore: ObservableObject {
     observe(store.publishingStore.$draftListContentScope)
     observeTaskQueueValue(store.repositoryStore.$repositoryReport)
     observe(store.privacyProtectionStore.$privacySettings)
+    _ = recordCurrentPresentationInputIfChanged()
   }
 
   public var selectedDraftID: UUID? {
@@ -112,22 +120,90 @@ public final class DraftListStore: ObservableObject {
   }
 
   func invalidatePresentation() {
+    presentationInputNeedsSynchronization = true
+    presentationInputSynchronizationGeneration &+= 1
+    let synchronizationGeneration = presentationInputSynchronizationGeneration
     objectWillChange.send()
     presentationRevision &+= 1
     searchIndexCache.removeAll(keepingCapacity: true)
+    // If no explicit Workbench boundary follows this publisher event (privacy
+    // settings and navigation can take that path), synchronize after willSet
+    // has committed. The generation prevents an older deferred read from
+    // overwriting a newer input.
+    Task { @MainActor [weak self] in
+      guard let self,
+        self.presentationInputNeedsSynchronization,
+        self.presentationInputSynchronizationGeneration == synchronizationGeneration
+      else { return }
+      self.lastPresentationInput = self.currentPresentationInput()
+      self.presentationInputNeedsSynchronization = false
+    }
   }
 
-  func invalidatePresentationAndTaskQueueState() {
-    objectWillChange.send()
-    presentationRevision &+= 1
+  func invalidatePresentationAndTaskQueueState(
+    suppressDuplicatePresentation: Bool = false
+  ) {
+    // Metadata edits schedule both an immediate cache refresh and a delayed
+    // preflight refresh.  The latter must not rebuild the same list a second
+    // time when no list input has changed in between. Repository/task-only
+    // publishers use `invalidateTaskQueueState()` independently.
+    let input = currentPresentationInput()
+    if presentationInputNeedsSynchronization {
+      presentationInputNeedsSynchronization = false
+      lastPresentationInput = input
+      taskQueueStateVersion += 1
+      return
+    }
+    if lastPresentationInput != input {
+      lastPresentationInput = input
+      objectWillChange.send()
+      presentationRevision &+= 1
+      taskQueueStateVersion += 1
+      searchIndexCache.removeAll(keepingCapacity: true)
+      return
+    }
+
+    // A delayed metadata preflight carries the same list input as the
+    // immediate edit. Advance the semantic task token but avoid a second full
+    // list invalidation; standalone invalidations still notify task badges.
     taskQueueStateVersion += 1
-    searchIndexCache.removeAll(keepingCapacity: true)
+    if !suppressDuplicatePresentation {
+      objectWillChange.send()
+    }
   }
 
   private struct SearchIndexCacheKey: Hashable {
     let revision: UInt64
     let corpus: DraftSearchCorpus
     let masksPrivateContent: Bool
+  }
+
+  private struct PresentationInput: Equatable {
+    let drafts: [ArticleDraftListMetadataProjection]
+    let activeProfileID: UUID
+    let contentScope: DraftListContentScope
+    let profiles: [ProfileProjection]
+    let masksPrivateContent: Bool
+  }
+
+  private func currentPresentationInput() -> PresentationInput {
+    PresentationInput(
+      drafts: store.drafts.map(\.listMetadataProjection),
+      activeProfileID: store.activeProfileID,
+      contentScope: store.publishingStore.draftListContentScope,
+      profiles: store.publishingStore.profiles.map(ProfileProjection.init).sorted {
+        $0.id.uuidString < $1.id.uuidString
+      },
+      masksPrivateContent: store.privacyProtectionStore.privacySettings.masksPrivateContent
+    )
+  }
+
+  @discardableResult
+  private func recordCurrentPresentationInputIfChanged() -> Bool {
+    let input = currentPresentationInput()
+    guard input != lastPresentationInput else { return false }
+    lastPresentationInput = input
+    return true
   }
 
   private func observe<P: Publisher>(_ publisher: P)

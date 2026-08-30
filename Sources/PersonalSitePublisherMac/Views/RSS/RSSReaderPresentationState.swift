@@ -228,6 +228,17 @@ final class RSSReaderPresentationState: ObservableObject {
     articleDisplayLimit = nextLimit
   }
 
+  /// Fast-path for a prepared list. The visible list already owns this index
+  /// map, so keyboard navigation/reveal must not re-filter and linearly scan
+  /// thousands of headers on the main actor.
+  func revealArticle(_ articleID: String, index: Int, totalCount: Int) {
+    guard index >= 0, index < totalCount else { return }
+    let requiredLimit = ((index / Self.articlePageSize) + 1) * Self.articlePageSize
+    let nextLimit = min(totalCount, max(articleDisplayLimit, requiredLimit))
+    guard nextLimit != articleDisplayLimit else { return }
+    articleDisplayLimit = nextLimit
+  }
+
   func sidebarCounts(in store: RSSReaderStore) -> RSSFeedSidebarCounts {
     if let sidebarCountsCache, sidebarCountsCache.revision == store.mutationRevision {
       return sidebarCountsCache.counts

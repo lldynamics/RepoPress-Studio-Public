@@ -101,6 +101,14 @@ public struct DraftRepositoryCleanupRequest: Identifiable, Codable, Hashable, Se
   public var requestedAt: Date
   public var resolvedAt: Date?
   public var status: DraftRepositoryCleanupStatus
+  /// Records an explicit user request to delete this file from the remote
+  /// repository. Local recycle-bin cleanup deliberately leaves this nil.
+  ///
+  /// This is intentionally separate from `remoteStatus`: older persisted
+  /// records inferred a pending remote deletion from that status alone, which
+  /// made an ordinary local deletion capable of being published as a remote
+  /// deletion later.
+  public var remoteEnqueuedAt: Date?
   public var remoteStatus: DraftRepositoryRemoteCleanupStatus
   public var remoteResolvedAt: Date?
   public var remoteReviewURL: String?
@@ -115,7 +123,8 @@ public struct DraftRepositoryCleanupRequest: Identifiable, Codable, Hashable, Se
     status: DraftRepositoryCleanupStatus = .pending,
     expectedContentSHA256: String? = nil,
     expectedGitBlobSHA: String? = nil,
-    remoteStatus: DraftRepositoryRemoteCleanupStatus = .pending,
+    remoteEnqueuedAt: Date? = nil,
+    remoteStatus: DraftRepositoryRemoteCleanupStatus = .completed,
     remoteResolvedAt: Date? = nil,
     remoteReviewURL: String? = nil,
     lastRemoteErrorMessage: String? = nil
@@ -131,6 +140,7 @@ public struct DraftRepositoryCleanupRequest: Identifiable, Codable, Hashable, Se
     self.requestedAt = requestedAt
     self.resolvedAt = resolvedAt
     self.status = status
+    self.remoteEnqueuedAt = remoteEnqueuedAt
     self.remoteStatus = remoteStatus
     self.remoteResolvedAt = remoteResolvedAt
     self.remoteReviewURL = remoteReviewURL
@@ -141,16 +151,28 @@ public struct DraftRepositoryCleanupRequest: Identifiable, Codable, Hashable, Se
     status == .pending
   }
 
+  public var hasRemoteCleanupIntent: Bool {
+    remoteEnqueuedAt != nil
+  }
+
   public var needsRemoteCleanup: Bool {
-    remoteStatus == .pending
+    hasRemoteCleanupIntent && remoteStatus == .pending
   }
 
   public var isAwaitingRemoteReview: Bool {
-    remoteStatus == .reviewRequested
+    hasRemoteCleanupIntent && remoteStatus == .reviewRequested
   }
 
   public var needsAttention: Bool {
-    needsLocalCleanup || remoteStatus != .completed
+    needsLocalCleanup || needsRemoteCleanup || isAwaitingRemoteReview
+  }
+
+  public mutating func enqueueRemoteCleanup(at date: Date = Date()) {
+    remoteEnqueuedAt = date
+    remoteStatus = .pending
+    remoteResolvedAt = nil
+    remoteReviewURL = nil
+    lastRemoteErrorMessage = nil
   }
 
   private enum CodingKeys: String, CodingKey {
@@ -165,6 +187,7 @@ public struct DraftRepositoryCleanupRequest: Identifiable, Codable, Hashable, Se
     case requestedAt
     case resolvedAt
     case status
+    case remoteEnqueuedAt
     case remoteStatus
     case remoteResolvedAt
     case remoteReviewURL
@@ -186,14 +209,27 @@ public struct DraftRepositoryCleanupRequest: Identifiable, Codable, Hashable, Se
     expectedGitBlobSHA = try container.decodeIfPresent(String.self, forKey: .expectedGitBlobSHA)
     requestedAt = try container.decode(Date.self, forKey: .requestedAt)
     resolvedAt = try container.decodeIfPresent(Date.self, forKey: .resolvedAt)
-    status = try container.decodeIfPresent(DraftRepositoryCleanupStatus.self, forKey: .status)
+    status =
+      try container.decodeIfPresent(DraftRepositoryCleanupStatus.self, forKey: .status)
       ?? .pending
-    remoteStatus = try container.decodeIfPresent(
+    remoteEnqueuedAt = try container.decodeIfPresent(Date.self, forKey: .remoteEnqueuedAt)
+    let decodedRemoteStatus = try container.decodeIfPresent(
       DraftRepositoryRemoteCleanupStatus.self,
       forKey: .remoteStatus
-    ) ?? .pending
+    )
     remoteResolvedAt = try container.decodeIfPresent(Date.self, forKey: .remoteResolvedAt)
     remoteReviewURL = try container.decodeIfPresent(String.self, forKey: .remoteReviewURL)
+    // A legacy review URL proves that a remote operation was explicitly
+    // submitted. Preserve that safety lock so restoring the draft still
+    // requires closing the PR/MR. Ambiguous legacy pending records have no
+    // such proof and remain local-only.
+    if remoteEnqueuedAt == nil,
+      decodedRemoteStatus == .reviewRequested,
+      remoteReviewURL?.trimmedForPublishing.nilIfEmpty != nil
+    {
+      remoteEnqueuedAt = requestedAt
+    }
+    remoteStatus = remoteEnqueuedAt == nil ? .completed : (decodedRemoteStatus ?? .pending)
     lastRemoteErrorMessage = try container.decodeIfPresent(
       String.self,
       forKey: .lastRemoteErrorMessage
@@ -221,7 +257,8 @@ public struct DraftLifecycleService: Sendable {
     in versions: [DraftVersionSnapshot],
     at capturedAt: Date = Date()
   ) -> [DraftVersionSnapshot] {
-    let newestForDraft = versions
+    let newestForDraft =
+      versions
       .filter { $0.draftID == draft.id }
       .max { $0.capturedAt < $1.capturedAt }
 
@@ -230,8 +267,9 @@ public struct DraftLifecycleService: Sendable {
       let bodySizeDelta = abs(
         newestForDraft.draft.bodyMarkdown.utf8.count - draft.bodyMarkdown.utf8.count
       )
-      guard elapsed >= Self.automaticSnapshotInterval
-        || bodySizeDelta >= Self.automaticSnapshotMinimumBodySizeDelta
+      guard
+        elapsed >= Self.automaticSnapshotInterval
+          || bodySizeDelta >= Self.automaticSnapshotMinimumBodySizeDelta
       else {
         return versions
       }
@@ -287,9 +325,11 @@ public struct DraftLifecycleService: Sendable {
       return sorted
     }
 
-    let retainedHistoryCount = Self.maximumRepositoryCleanupRequests
+    let retainedHistoryCount =
+      Self.maximumRepositoryCleanupRequests
       - requestsNeedingAttention.count
-    let retainedHistory = sorted
+    let retainedHistory =
+      sorted
       .filter { !$0.needsAttention }
       .prefix(retainedHistoryCount)
     return (requestsNeedingAttention + retainedHistory)
@@ -322,7 +362,8 @@ public struct DraftLifecycleService: Sendable {
   }
 
   public func cleanupPackage(for requests: [DraftRepositoryCleanupRequest]) -> PublishPackage? {
-    let pending = requests
+    let pending =
+      requests
       .filter(\.needsRemoteCleanup)
       .sorted { lhs, rhs in
         if lhs.requestedAt != rhs.requestedAt {
@@ -337,33 +378,35 @@ public struct DraftLifecycleService: Sendable {
     for request in pending {
       let path = request.repositoryPath.normalizedRelativePath()
       guard !path.isEmpty else { continue }
+      let candidate = PublishPackageFile(
+        kind: .markdown,
+        operation: .delete,
+        repositoryPath: path,
+        expectedRemoteSHA: request.expectedRemoteSHA,
+        expectedContentSHA256: request.expectedContentSHA256,
+        expectedGitBlobSHA: request.expectedGitBlobSHA
+      )
       if filesByPath[path] == nil {
         orderedPaths.append(path)
-        filesByPath[path] = PublishPackageFile(
-          kind: .markdown,
-          operation: .delete,
-          repositoryPath: path,
-          expectedRemoteSHA: request.expectedRemoteSHA,
-          expectedContentSHA256: request.expectedContentSHA256,
-          expectedGitBlobSHA: request.expectedGitBlobSHA
-        )
-      } else if filesByPath[path]?.expectedRemoteSHA?.trimmedForPublishing.nilIfEmpty == nil,
-                let expectedRemoteSHA = request.expectedRemoteSHA?.trimmedForPublishing.nilIfEmpty
-      {
-        filesByPath[path]?.expectedRemoteSHA = expectedRemoteSHA
+        filesByPath[path] = candidate
       } else {
-        if filesByPath[path]?.expectedContentSHA256?.nilIfEmpty == nil {
-          filesByPath[path]?.expectedContentSHA256 = request.expectedContentSHA256?.nilIfEmpty
+        guard let existing = filesByPath[path],
+          cleanupBaselineEvidenceIsCompatible(existing, candidate)
+        else {
+          // Two cleanup records referring to one remote path disagree about
+          // the version being deleted. Publishing either would turn an
+          // ambiguous historical record into a destructive remote action.
+          return nil
         }
-        if filesByPath[path]?.expectedGitBlobSHA?.nilIfEmpty == nil {
-          filesByPath[path]?.expectedGitBlobSHA = request.expectedGitBlobSHA?.nilIfEmpty
-        }
+        filesByPath[path] = mergingCleanupBaselineEvidence(existing, candidate)
       }
     }
     let files = orderedPaths.compactMap { filesByPath[$0] }
     guard !files.isEmpty else { return nil }
 
-    let count = pending.count
+    // The manifest, not the number of historical cleanup records, is the
+    // number of files this operation can remove.
+    let count = files.count
     return PublishPackage(
       draftID: first.draftID,
       title: count == 1 ? first.draftTitle : "下线 \(count) 篇文章",
@@ -395,6 +438,41 @@ public struct DraftLifecycleService: Sendable {
         .sorted { $0.capturedAt > $1.capturedAt }
         .prefix(Self.maximumTotalVersions)
     )
+  }
+
+  private func cleanupBaselineEvidenceIsCompatible(
+    _ lhs: PublishPackageFile,
+    _ rhs: PublishPackageFile
+  ) -> Bool {
+    cleanupEvidenceMatches(lhs.expectedRemoteSHA, rhs.expectedRemoteSHA)
+      && cleanupEvidenceMatches(lhs.expectedContentSHA256, rhs.expectedContentSHA256)
+      && cleanupEvidenceMatches(lhs.expectedGitBlobSHA, rhs.expectedGitBlobSHA)
+  }
+
+  private func cleanupEvidenceMatches(_ lhs: String?, _ rhs: String?) -> Bool {
+    guard let lhs = lhs?.trimmedForPublishing.nilIfEmpty,
+      let rhs = rhs?.trimmedForPublishing.nilIfEmpty
+    else {
+      return true
+    }
+    return lhs == rhs
+  }
+
+  private func mergingCleanupBaselineEvidence(
+    _ lhs: PublishPackageFile,
+    _ rhs: PublishPackageFile
+  ) -> PublishPackageFile {
+    var merged = lhs
+    if merged.expectedRemoteSHA?.trimmedForPublishing.nilIfEmpty == nil {
+      merged.expectedRemoteSHA = rhs.expectedRemoteSHA?.trimmedForPublishing.nilIfEmpty
+    }
+    if merged.expectedContentSHA256?.trimmedForPublishing.nilIfEmpty == nil {
+      merged.expectedContentSHA256 = rhs.expectedContentSHA256?.trimmedForPublishing.nilIfEmpty
+    }
+    if merged.expectedGitBlobSHA?.trimmedForPublishing.nilIfEmpty == nil {
+      merged.expectedGitBlobSHA = rhs.expectedGitBlobSHA?.trimmedForPublishing.nilIfEmpty
+    }
+    return merged
   }
 
   private func draftsHaveEquivalentContent(_ lhs: ArticleDraft, _ rhs: ArticleDraft) -> Bool {

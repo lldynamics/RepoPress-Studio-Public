@@ -390,9 +390,7 @@ extension RSSReaderView {
       canActOnArticle: selectedArticle != nil,
       focusSearch: {
         if isReaderCompact, presentation.selectedArticleID != nil {
-          withAnimation(WorkbenchMotion.standard) {
-            presentation.selectedArticleID = nil
-          }
+          presentation.selectedArticleID = nil
           Task { @MainActor in
             await Task.yield()
             presentation.requestSearchFocus()

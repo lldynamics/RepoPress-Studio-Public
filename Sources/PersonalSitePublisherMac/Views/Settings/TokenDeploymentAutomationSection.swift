@@ -5,10 +5,10 @@ struct TokenDeploymentAutomationSection: View {
   @ObservedObject var automationSettings: WorkbenchAutomationSettingsFeatureFacade
 
   var body: some View {
-    Section("当前工作区部署自动化") {
-      Toggle("启用当前工作区部署状态自动检查", isOn: deploymentPollingEnabledBinding)
+    Section("当前工作区远端发布自动化") {
+      Toggle("启用 PR/MR 与部署状态自动检查", isOn: deploymentPollingEnabledBinding)
         .toggleStyle(.switch)
-        .accessibilityLabel("启用当前工作区部署状态自动检查")
+        .accessibilityLabel("启用当前工作区 PR/MR 与部署状态自动检查")
         .accessibilityValue(
           automationSettings.deploymentPollingSettings.isEnabled ? "开启" : "关闭"
         )
@@ -21,13 +21,13 @@ struct TokenDeploymentAutomationSection: View {
       }
       .pickerStyle(.menu)
       .disabled(!automationSettings.deploymentPollingSettings.isEnabled)
-      .accessibilityLabel("当前工作区部署状态自动检查最短间隔")
+      .accessibilityLabel("当前工作区远端发布状态自动检查最短间隔")
       .accessibilityValue(
         "\(automationSettings.deploymentPollingSettings.normalizedIntervalMinutes) 分钟"
       )
       .accessibilityIdentifier("token-deployment-polling-interval")
 
-      Text("这些选项只作用于当前工作区；发布或回到前台时会按需检查，所选分钟数用于限制最短重检间隔。")
+      Text("这些选项只作用于当前工作区；App 保持前台时会持续检查 PR/MR 是否合并，再验证对应部署。所选分钟数限制远端请求的最短间隔。")
         .font(.caption)
         .foregroundStyle(.secondary)
     }

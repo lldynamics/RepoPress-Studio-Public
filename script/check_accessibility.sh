@@ -338,26 +338,48 @@ require_absent_literal \
   "openWindow(id: \"ai-chat\")" \
   "the main AI entry must not open an independent window"
 
-require_literal \
-  "Sources/PersonalSitePublisherMac/Views/Workspace/ContentView.swift" \
-  ".accessibilityIdentifier(\"ai-assistant-toolbar-button\")" \
-  "main toolbar must expose the AI collaboration entry point"
-
 require_literal_count \
   "Sources/PersonalSitePublisherMac/Views/Workspace/ContentView.swift" \
-  "ToolbarItem(placement: .primaryAction)" \
+  "ToolbarItemGroup(placement: .primaryAction)" \
   "1" \
-  "workspace actions must share one custom toolbar host"
-
-require_literal \
-  "Sources/PersonalSitePublisherMac/Views/Workspace/ContentView.swift" \
-  ".accessibilityIdentifier(\"workspace-primary-toolbar-actions\")" \
-  "the shared toolbar host must preserve an accessible action container"
+  "workspace actions must use one native group with independent subitem hit targets"
 
 require_absent_literal \
   "Sources/PersonalSitePublisherMac/Views/Workspace/ContentView.swift" \
-  "ToolbarItemGroup(placement: .primaryAction)" \
-  "workspace actions must not regain separate native toolbar chrome"
+  "workspace-primary-toolbar-actions" \
+  "workspace actions must not collapse into one accessible hit target"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/Workspace/ContentView.swift" \
+  ".sharedBackgroundVisibility(.hidden)" \
+  "macOS 26 toolbar actions must suppress the shared glass background"
+
+for toolbar_identifier in \
+  "workspace-prepare-publish" \
+  "ai-assistant-toolbar-button" \
+  "workspace-inspector-toggle" \
+  "workspace-open-settings"; do
+  require_literal_count \
+    "Sources/PersonalSitePublisherMac/Views/Workspace/ContentView.swift" \
+    ".accessibilityIdentifier(\"${toolbar_identifier}\")" \
+    "1" \
+    "primary toolbar action identifiers must remain unique"
+done
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/Workspace/ContentView.swift" \
+  "dismissPublishDrawerForInspectorRequestIfNeeded()" \
+  "AI and Inspector requests must arbitrate with the publish drawer"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/Workspace/ContentView.swift" \
+  "modalPresentation.dismiss(.publishDrawer)" \
+  "Inspector destinations must replace the publish drawer instead of opening behind it"
+
+require_literal \
+  "UITests/WorkspaceAccessibilityUITests/WorkspaceAccessibilityUITests.swift" \
+  "testPublishDrawerYieldsToToolbarInspectorDestinations" \
+  "runtime coverage must switch from the publish drawer to both toolbar inspector destinations"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/Editor/MacMarkdownComposerToolbars.swift" \

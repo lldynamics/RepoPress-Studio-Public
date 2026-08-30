@@ -10,7 +10,9 @@
 
           palette
           controls
+          informationHierarchy
           emptyStates
+          unifiedStates
           modalSurface
         }
         .workbenchPageLayout(maxWidth: .infinity)
@@ -38,7 +40,7 @@
 
     private var controls: some View {
       VStack(alignment: .leading, spacing: WorkbenchSpacing.card) {
-        Text("工具栏与卡片")
+        Text("工具栏与强调表面")
           .font(.workbenchSectionTitle)
 
         HStack(spacing: WorkbenchSpacing.card) {
@@ -63,6 +65,37 @@
             WorkbenchBackgroundStyle.card,
             in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
           )
+      }
+    }
+
+    private var informationHierarchy: some View {
+      WorkbenchSectionGroup(
+        "扁平信息层级",
+        detail: "普通信息使用列表行和分隔线；只突出异常、选中项和主要动作。"
+      ) {
+        WorkbenchInformationRow(
+          title: "本地仓库",
+          detail: Text("站点目录已连接"),
+          systemImage: "folder"
+        )
+        Divider()
+        WorkbenchInformationRow(
+          title: "发布规则缺失",
+          detail: Text("请先补充文章路径规则。"),
+          systemImage: "exclamationmark.triangle",
+          emphasis: .warning
+        )
+        Divider()
+        WorkbenchInformationRow(
+          title: "当前站点",
+          detail: Text("RepoPress 文档站"),
+          systemImage: "checkmark.circle",
+          emphasis: .selected
+        ) {
+          Button("继续") {}
+            .workbenchProminentActionStyle()
+            .controlSize(.small)
+        }
       }
     }
 
@@ -97,6 +130,59 @@
           )
         }
         .frame(minHeight: 260)
+      }
+    }
+
+    private var unifiedStates: some View {
+      VStack(alignment: .leading, spacing: WorkbenchSpacing.card) {
+        Text("统一状态")
+          .font(.workbenchSectionTitle)
+
+        LazyVGrid(
+          columns: [GridItem(.adaptive(minimum: 250), spacing: WorkbenchSpacing.card)],
+          spacing: WorkbenchSpacing.card
+        ) {
+          WorkbenchStateView(
+            presentation: WorkbenchStatePresentation(kind: .loading()),
+            density: .compactPane,
+            detail: "正在读取站点内容…"
+          )
+          WorkbenchStateView(
+            presentation: WorkbenchStatePresentation(kind: .empty),
+            density: .compactPane,
+            detail: "完成首次操作后会显示在这里。"
+          )
+          WorkbenchStateView(
+            presentation: WorkbenchStatePresentation(kind: .failure(reason: "网络连接已断开。")),
+            density: .compactPane,
+            detail: "检查网络后重试。",
+            actions: WorkbenchStateActions(
+              primary: WorkbenchStateAction(
+                title: "重试",
+                systemImage: "arrow.clockwise",
+                action: {}
+              )
+            )
+          )
+          WorkbenchStateView(
+            presentation: WorkbenchStatePresentation(
+              kind: .partialSuccess(detail: "已完成 8 项；2 项需要复核。")
+            ),
+            density: .compactPane
+          )
+          WorkbenchStateView(
+            presentation: WorkbenchStatePresentation(
+              kind: .awaitingConfirmation(detail: "尚未写入，检查后确认继续。")
+            ),
+            density: .compactPane
+          )
+          WorkbenchStateView(
+            presentation: WorkbenchStatePresentation(
+              kind: .unavailable(reason: "请先选择站点文件夹。")
+            ),
+            density: .compactPane
+          )
+        }
       }
     }
 
@@ -210,5 +296,57 @@
     )
     .frame(width: 520, height: 260)
     .dynamicTypeSize(.accessibility2)
+  }
+
+  #Preview("Unified States - Dark Large Text") {
+    VStack(spacing: WorkbenchSpacing.card) {
+      WorkbenchStateView(
+        presentation: WorkbenchStatePresentation(kind: .loading(progress: 0.45)),
+        density: .inline,
+        detail: "正在检查发布前条件…"
+      )
+      WorkbenchStateView(
+        presentation: WorkbenchStatePresentation(
+          kind: .partialSuccess(detail: "已完成可执行项目；其余项目需要处理。")
+        ),
+        density: .inline
+      )
+      WorkbenchStateView(
+        presentation: WorkbenchStatePresentation(
+          kind: .unavailable(reason: "当前配置未提供所需权限。")
+        ),
+        density: .inline
+      )
+      WorkbenchStateView(
+        presentation: WorkbenchStatePresentation(
+          kind: .success(detail: "全部检查项均已完成。")
+        ),
+        density: .compactPane
+      )
+      WorkbenchStateView(
+        presentation: WorkbenchStatePresentation(
+          kind: .failure(
+            reason: "服务器返回了较长的诊断信息；请检查连接、凭据和访问权限后重试。"
+          )
+        ),
+        density: .compactPane,
+        actions: WorkbenchStateActions(
+          primary: WorkbenchStateAction(
+            title: "重试",
+            systemImage: "arrow.clockwise",
+            action: {}
+          ),
+          secondary: WorkbenchStateAction(
+            title: "查看详情",
+            systemImage: "doc.text.magnifyingglass",
+            action: {}
+          )
+        )
+      )
+    }
+    .padding(WorkbenchSpacing.page)
+    .frame(width: 620)
+    .dynamicTypeSize(.accessibility2)
+    .preferredColorScheme(.dark)
   }
 #endif

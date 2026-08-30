@@ -6,6 +6,11 @@ private struct KnowledgeSemanticTopKCandidate {
   let score: Double
 }
 
+struct KnowledgeSemanticRepairScanPage {
+  let records: [KnowledgeSemanticIndexRecord]
+  let nextOffset: Int?
+}
+
 /// A bounded min-heap whose root is the worst retained candidate.  This keeps
 /// memory and ranking work proportional to the requested limit instead of the
 /// number of stored embeddings.
@@ -265,9 +270,39 @@ extension KnowledgeDatabase {
 
   func semanticIndexRecordsNeedingRepair(
     modelIdentifier: String,
-    expectedDimension: Int
+    expectedDimension: Int,
+    expectedEncodingVersion: String = "legacy-v1"
   ) throws -> [KnowledgeSemanticIndexRecord] {
     guard expectedDimension > 0 else { return [] }
+    var output: [KnowledgeSemanticIndexRecord] = []
+    var offset = 0
+    while true {
+      let page = try semanticIndexRepairScanPage(
+        modelIdentifier: modelIdentifier,
+        expectedDimension: expectedDimension,
+        expectedEncodingVersion: expectedEncodingVersion,
+        offset: offset,
+        maximumScannedRecords: 512
+      )
+      output.append(contentsOf: page.records)
+      guard let nextOffset = page.nextOffset else { return output }
+      offset = nextOffset
+    }
+  }
+
+  /// Scans a bounded, stable slice of current chunks. `nextOffset` advances by
+  /// rows inspected rather than rows needing repair, so a background rebuild
+  /// visits a large library once instead of restarting at row zero per batch.
+  func semanticIndexRepairScanPage(
+    modelIdentifier: String,
+    expectedDimension: Int,
+    expectedEncodingVersion: String,
+    offset: Int,
+    maximumScannedRecords: Int
+  ) throws -> KnowledgeSemanticRepairScanPage {
+    guard expectedDimension > 0, offset >= 0, maximumScannedRecords > 0 else {
+      return KnowledgeSemanticRepairScanPage(records: [], nextOffset: nil)
+    }
     return try withCancellableLock {
       try withCancellationProgressHandler {
         let sql = """
@@ -278,7 +313,7 @@ extension KnowledgeDatabase {
                  d.imported_at, d.updated_at, d.current_revision_id,
                  c.id, c.document_id, c.revision_id, c.ordinal, c.heading_path,
                  c.locator, c.content, c.token_estimate, c.content_hash, c.visual_anchor_json,
-                 e.revision_id, e.dimension, e.vector
+                 e.revision_id, e.dimension, e.vector, e.input_hash, e.encoding_version
           FROM knowledge_chunks c
           JOIN knowledge_documents d ON d.id = c.document_id
           LEFT JOIN knowledge_chunk_embeddings e
@@ -286,13 +321,18 @@ extension KnowledgeDatabase {
           WHERE c.revision_id = d.current_revision_id
             AND d.is_archived = 0
             AND d.allows_local_semantic_index = 1
-          ORDER BY d.updated_at DESC, c.ordinal ASC;
+          ORDER BY d.updated_at DESC, c.ordinal ASC, c.id ASC
+          LIMIT ? OFFSET ?;
           """
         return try withCachedStatementUnlocked(sql) { statement in
           bind(modelIdentifier, at: 1, to: statement)
+          sqlite3_bind_int64(statement, 2, sqlite3_int64(maximumScannedRecords))
+          sqlite3_bind_int64(statement, 3, sqlite3_int64(offset))
           var output: [KnowledgeSemanticIndexRecord] = []
+          var scannedCount = 0
           while sqlite3_step(statement) == SQLITE_ROW {
             try Task.checkCancellation()
+            scannedCount += 1
             let chunk = try decodeChunk(statement, offset: 17)
             let storedRevisionID = try optionalUUID(
               statement,
@@ -302,21 +342,29 @@ extension KnowledgeDatabase {
             let storedDimension = Int(sqlite3_column_int64(statement, 28))
             let storedVector = KnowledgeSemanticVectorStorage.decodeVector(
               statement, index: 29, dimension: expectedDimension)
+            let record = KnowledgeSemanticIndexRecord(
+              document: try decodeDocument(statement, offset: 0), chunk: chunk
+            )
+            let storedInputHash = text(statement, 30) ?? ""
+            let storedEncodingVersion = text(statement, 31) ?? ""
             let needsRepair =
               storedRevisionID != chunk.revisionID
               || storedDimension != expectedDimension
+              || storedInputHash != record.searchableTextHash
+              || storedEncodingVersion != expectedEncodingVersion
               || !KnowledgeSemanticVectorStorage.isValidStoredSemanticVector(
                 storedVector, expectedDimension: expectedDimension)
             guard needsRepair else { continue }
-            output.append(
-              KnowledgeSemanticIndexRecord(
-                document: try decodeDocument(statement, offset: 0),
-                chunk: chunk
-              ))
+            output.append(record)
           }
           try Task.checkCancellation()
           try checkStatementCompletion(statement)
-          return output
+          return KnowledgeSemanticRepairScanPage(
+            records: output,
+            nextOffset: scannedCount == maximumScannedRecords
+              ? offset + scannedCount
+              : nil
+          )
         }
       }
     }
@@ -371,14 +419,18 @@ extension KnowledgeDatabase {
 
   func replaceSemanticEmbeddings(
     documentIDs: Set<UUID>,
-    embeddings: [KnowledgeChunkEmbedding]
+    embeddings: [KnowledgeChunkEmbedding],
+    preservingModelIdentifiers: Set<String> = []
   ) throws {
     guard !documentIDs.isEmpty else { return }
     try Task.checkCancellation()
     try withCancellableLock {
       try executeUnlocked("BEGIN IMMEDIATE TRANSACTION;")
       do {
-        try deleteSemanticEmbeddingsUnlocked(documentIDs: documentIDs)
+        try deleteSemanticEmbeddingsUnlocked(
+          documentIDs: documentIDs,
+          preservingModelIdentifiers: preservingModelIdentifiers
+        )
         try Task.checkCancellation()
         try upsertSemanticEmbeddingsUnlocked(embeddings)
         try Task.checkCancellation()
@@ -389,12 +441,28 @@ extension KnowledgeDatabase {
     }
   }
 
-  func replaceAllSemanticEmbeddings(_ embeddings: [KnowledgeChunkEmbedding]) throws {
+  func replaceAllSemanticEmbeddings(
+    _ embeddings: [KnowledgeChunkEmbedding],
+    preservingModelIdentifiers: Set<String> = []
+  ) throws {
     try Task.checkCancellation()
     try withCancellableLock {
       try executeUnlocked("BEGIN IMMEDIATE TRANSACTION;")
       do {
-        try executeUnlocked("DELETE FROM knowledge_chunk_embeddings;")
+        if preservingModelIdentifiers.isEmpty {
+          try executeUnlocked("DELETE FROM knowledge_chunk_embeddings;")
+        } else {
+          let placeholders = Array(repeating: "?", count: preservingModelIdentifiers.count).joined(
+            separator: ", ")
+          try withCachedStatementUnlocked(
+            "DELETE FROM knowledge_chunk_embeddings WHERE model_id NOT IN (\(placeholders));"
+          ) { statement in
+            for (offset, identifier) in preservingModelIdentifiers.sorted().enumerated() {
+              bind(identifier, at: Int32(offset + 1), to: statement)
+            }
+            guard sqlite3_step(statement) == SQLITE_DONE else { throw databaseError() }
+          }
+        }
         invalidateSemanticFlatVectorIndexesUnlocked()
         try Task.checkCancellation()
         try upsertSemanticEmbeddingsUnlocked(embeddings)
@@ -418,7 +486,8 @@ extension KnowledgeDatabase {
       try withCancellationProgressHandler {
         let index = try semanticFlatVectorIndex(
           modelIdentifier: queryVector.modelIdentifier,
-          dimension: queryVector.values.count
+          dimension: queryVector.values.count,
+          encodingVersion: queryVector.encodingVersion
         )
         var heap = KnowledgeSemanticTopKHeap(capacity: limit, index: index)
         let hasDocumentFilter = documentIDs.map { !$0.isEmpty } ?? false
@@ -427,9 +496,9 @@ extension KnowledgeDatabase {
           try Task.checkCancellation()
           let entry = index.entries[row]
           guard !entry.isArchived,
-                entry.allowsLocalSemanticIndex,
-                !onlyRemoteAIAllowed || entry.allowsRemoteAIUse,
-                !hasDocumentFilter || documentIDs?.contains(entry.documentID) == true
+            entry.allowsLocalSemanticIndex,
+            !onlyRemoteAIAllowed || entry.allowsRemoteAIUse,
+            !hasDocumentFilter || documentIDs?.contains(entry.documentID) == true
           else { continue }
 
           let similarity = index.similarity(to: queryVector.values, row: row)
@@ -462,11 +531,13 @@ extension KnowledgeDatabase {
 
   private func semanticFlatVectorIndex(
     modelIdentifier: String,
-    dimension: Int
+    dimension: Int,
+    encodingVersion: String
   ) throws -> KnowledgeSemanticVectorFlatIndex {
     let key = KnowledgeSemanticVectorIndexKey(
       modelIdentifier: modelIdentifier,
-      dimension: dimension
+      dimension: dimension,
+      encodingVersion: encodingVersion
     )
     let currentChangeToken = Int64(sqlite3_total_changes(handle))
     if currentChangeToken != semanticFlatVectorIndexChangeToken {
@@ -487,6 +558,8 @@ extension KnowledgeDatabase {
       JOIN knowledge_documents d ON d.id = c.document_id
       WHERE e.model_id = ?
         AND e.dimension = ?
+        AND e.encoding_version = ?
+        AND e.input_hash <> ''
         AND e.revision_id = c.revision_id
         AND c.revision_id = d.current_revision_id
       ORDER BY d.updated_at DESC, c.ordinal ASC, c.id ASC;
@@ -494,6 +567,7 @@ extension KnowledgeDatabase {
     ) { statement in
       bind(modelIdentifier, at: 1, to: statement)
       sqlite3_bind_int64(statement, 2, sqlite3_int64(dimension))
+      bind(encodingVersion, at: 3, to: statement)
 
       var entries: [KnowledgeSemanticVectorIndexEntry] = []
       var vectors: [Float] = []
@@ -504,10 +578,12 @@ extension KnowledgeDatabase {
           index: 8,
           dimension: dimension
         )
-        guard KnowledgeSemanticVectorStorage.isValidStoredSemanticVector(
-          vector,
-          expectedDimension: dimension
-        ) else {
+        guard
+          KnowledgeSemanticVectorStorage.isValidStoredSemanticVector(
+            vector,
+            expectedDimension: dimension
+          )
+        else {
           continue
         }
 
@@ -588,9 +664,11 @@ extension KnowledgeDatabase {
       while sqlite3_step(statement) == SQLITE_ROW {
         try Task.checkCancellation()
         let chunkID = try requiredUUID(statement, 17, field: "knowledge_chunks.id")
-        guard let winner = winners.first(where: {
-          index.entries[$0.row].chunkID == chunkID
-        }) else {
+        guard
+          let winner = winners.first(where: {
+            index.entries[$0.row].chunkID == chunkID
+          })
+        else {
           continue
         }
         let entry = index.entries[winner.row]
@@ -684,21 +762,32 @@ extension KnowledgeDatabase {
     }
   }
 
-  func deleteSemanticEmbeddingsUnlocked(documentIDs: Set<UUID>) throws {
+  func deleteSemanticEmbeddingsUnlocked(
+    documentIDs: Set<UUID>,
+    preservingModelIdentifiers: Set<String> = []
+  ) throws {
     invalidateSemanticFlatVectorIndexesUnlocked()
     guard !documentIDs.isEmpty else { return }
     let sortedIDs = documentIDs.sorted { $0.uuidString < $1.uuidString }
     let placeholders = Array(repeating: "?", count: sortedIDs.count).joined(separator: ", ")
+    let sortedModelIdentifiers = preservingModelIdentifiers.sorted()
+    let modelClause =
+      sortedModelIdentifiers.isEmpty
+      ? ""
+      : " AND model_id NOT IN (\(Array(repeating: "?", count: sortedModelIdentifiers.count).joined(separator: ", ")))"
     try withCachedStatementUnlocked(
       """
       DELETE FROM knowledge_chunk_embeddings
       WHERE chunk_id IN (
         SELECT id FROM knowledge_chunks WHERE document_id IN (\(placeholders))
-      );
+      )\(modelClause);
       """
     ) { statement in
       for (offset, id) in sortedIDs.enumerated() {
         bind(id.uuidString, at: Int32(offset + 1), to: statement)
+      }
+      for (offset, identifier) in sortedModelIdentifiers.enumerated() {
+        bind(identifier, at: Int32(sortedIDs.count + offset + 1), to: statement)
       }
       guard sqlite3_step(statement) == SQLITE_DONE else { throw databaseError() }
     }
@@ -710,12 +799,14 @@ extension KnowledgeDatabase {
     try withCachedStatementUnlocked(
       """
       INSERT INTO knowledge_chunk_embeddings (
-        chunk_id, revision_id, model_id, dimension, vector, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?)
+        chunk_id, revision_id, model_id, dimension, vector, input_hash, encoding_version, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(chunk_id, model_id) DO UPDATE SET
         revision_id = excluded.revision_id,
         dimension = excluded.dimension,
         vector = excluded.vector,
+        input_hash = excluded.input_hash,
+        encoding_version = excluded.encoding_version,
         created_at = excluded.created_at;
       """
     ) { statement in
@@ -728,8 +819,11 @@ extension KnowledgeDatabase {
         bind(embedding.revisionID.uuidString, at: 2, to: statement)
         bind(embedding.vector.modelIdentifier, at: 3, to: statement)
         sqlite3_bind_int64(statement, 4, sqlite3_int64(embedding.vector.values.count))
-        bind(KnowledgeSemanticVectorStorage.vectorData(embedding.vector.values), at: 5, to: statement)
-        sqlite3_bind_double(statement, 6, now)
+        bind(
+          KnowledgeSemanticVectorStorage.vectorData(embedding.vector.values), at: 5, to: statement)
+        bind(embedding.inputHash, at: 6, to: statement)
+        bind(embedding.vector.encodingVersion, at: 7, to: statement)
+        sqlite3_bind_double(statement, 8, now)
         guard sqlite3_step(statement) == SQLITE_DONE else { throw databaseError() }
       }
     }

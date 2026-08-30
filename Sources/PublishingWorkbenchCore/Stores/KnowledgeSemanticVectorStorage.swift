@@ -67,13 +67,23 @@ enum KnowledgeSemanticVectorStorage {
   }
 }
 
-/// The key for a contiguous semantic-vector snapshot.  Dimensions are part of
-/// the key because NaturalLanguage can expose multiple models with different
-/// vector widths, and a malformed/legacy row must never be compared against a
-/// query from another width.
+/// The key for a contiguous semantic-vector snapshot. Dimensions and the full
+/// inference contract are part of the key so a legacy tokenizer/checkpoint can
+/// never be compared against a query produced by a newer contract.
 struct KnowledgeSemanticVectorIndexKey: Hashable, Sendable {
   let modelIdentifier: String
   let dimension: Int
+  let encodingVersion: String
+
+  init(
+    modelIdentifier: String,
+    dimension: Int,
+    encodingVersion: String = "legacy-v1"
+  ) {
+    self.modelIdentifier = modelIdentifier
+    self.dimension = dimension
+    self.encodingVersion = encodingVersion
+  }
 }
 
 /// Metadata kept beside a row in the flat vector buffer.  Keeping this small

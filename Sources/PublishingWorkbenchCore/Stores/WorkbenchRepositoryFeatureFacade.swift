@@ -47,4 +47,17 @@ public final class WorkbenchRepositoryFeatureFacade {
   public func report(for profile: SiteProfile) -> RepositoryScanReport? {
     store.repositoryReport(for: profile)
   }
+
+  @discardableResult
+  public func loadLineDiff(
+    for file: RepositoryChangedFile,
+    isRemote: Bool
+  ) async -> String? {
+    await store.repositoryStore.loadLineDiff(
+      for: file,
+      isRemote: isRemote,
+      profile: store.activeProfile,
+      store: store
+    )
+  }
 }

@@ -50,6 +50,8 @@ def metadata() -> dict[str, str]:
         "architecture": "arm64",
         "operatingSystem": "Darwin 25.0",
         "machine": "Mac15,7",
+        "dirtyWorktree": "false",
+        "sourceTreeFingerprint": "a" * 64,
     }
 
 
@@ -58,7 +60,10 @@ def test_report_validation() -> None:
     report = {
         "schemaVersion": 6,
         "configuration": "release",
-        **provenance,
+        **{
+            key: provenance[key]
+            for key in MODULE.BENCHMARK_REPORT_METADATA_KEYS
+        },
         "sampleCount": 7,
         "iterations": 7,
         "scenarios": [{"parse": statistics()}],
@@ -89,6 +94,19 @@ def test_report_validation() -> None:
         ),
         "missing raw samples must fail",
     )
+
+
+def test_source_tree_fingerprint_includes_untracked_contents() -> None:
+    with tempfile.TemporaryDirectory(prefix="release-performance-fingerprint-") as directory:
+        root = Path(directory)
+        (root / "tracked.swift").write_text("let tracked = 1\n", encoding="utf-8")
+        untracked = root / "new.swift"
+        untracked.write_text("let value = 1\n", encoding="utf-8")
+        paths = "tracked.swift\0new.swift\0"
+        initial = MODULE.source_tree_fingerprint(paths, "?? new.swift", root)
+        untracked.write_text("let value = 2\n", encoding="utf-8")
+        changed = MODULE.source_tree_fingerprint(paths, "?? new.swift", root)
+        assert initial != changed, "untracked content must affect the evidence fingerprint"
 
 
 def test_complexity_validation() -> None:
@@ -135,6 +153,7 @@ def test_skip_is_not_silent() -> None:
 
 def main() -> int:
     test_report_validation()
+    test_source_tree_fingerprint_includes_untracked_contents()
     test_complexity_validation()
     test_skip_is_not_silent()
     print("release performance runner contract tests: passed")

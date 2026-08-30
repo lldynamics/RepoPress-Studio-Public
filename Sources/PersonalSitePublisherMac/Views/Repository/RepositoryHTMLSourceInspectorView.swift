@@ -144,6 +144,14 @@ struct RepositoryHTMLSourceInspectorView: View {
             .padding(8)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(WorkbenchBackgroundStyle.control, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
+        } else {
+          Button {
+            Task { _ = await store.repository.loadLineDiff(for: changedFile, isRemote: false) }
+          } label: {
+            Label("读取 Git 差异", systemImage: "doc.text.magnifyingglass")
+          }
+          .buttonStyle(.bordered)
+          .accessibilityIdentifier("html-source-inspector-load-git-diff")
         }
       } else {
       Text(statusState.repositoryReport == nil ? "扫描仓库后显示 Git 状态。" : "当前扫描中没有这个文件的 Git 变更。")

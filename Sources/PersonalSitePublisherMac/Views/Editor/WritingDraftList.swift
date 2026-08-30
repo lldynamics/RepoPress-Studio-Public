@@ -79,9 +79,7 @@ extension WritingDraftColumn {
       : String(localized: "已折叠")
 
     return Button {
-      withAnimation(WorkbenchMotion.standard) {
-        folderExpansionState.toggle(folder.id)
-      }
+      folderExpansionState.toggle(folder.id)
       updateFolderEntriesCache()
     } label: {
       HStack(spacing: 7) {

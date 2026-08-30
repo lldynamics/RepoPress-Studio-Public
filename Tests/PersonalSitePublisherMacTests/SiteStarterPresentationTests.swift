@@ -1,6 +1,5 @@
 import XCTest
 @testable import PersonalSitePublisherMac
-@testable import PublishingWorkbenchCore
 
 final class SiteStarterPresentationTests: XCTestCase {
   func testImportModeProjectionHidesRemotePushStepsEverywhere() {

@@ -69,6 +69,8 @@ extension RepositoryWorkspaceView {
                     remoteChangedFileIdentity(file)
                   } actions: {
                     remoteChangedFileActions(file, role: role)
+                  } loadLineDiff: {
+                    _ = await store.repository.loadLineDiff(for: file, isRemote: true)
                   } diffActions: {
                     if let lineDiff = file.lineDiff {
                       Button {

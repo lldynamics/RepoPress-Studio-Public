@@ -109,7 +109,6 @@ extension AIChatContextInspectorView {
           Image(systemName: "sparkles")
             .font(.workbenchMetadata)
             .foregroundStyle(Color.accentColor)
-            .workbenchAIThinkingSymbolEffect(isActive: isSending)
           Text("AI 思考中…")
             .font(.caption.weight(.medium))
             .foregroundStyle(Color.accentColor)
@@ -271,7 +270,6 @@ extension AIChatContextInspectorView {
           )
           .allowsHitTesting(false)
       }
-      .animation(WorkbenchMotion.quick, value: isComposerFocused)
     }
     .padding(10)
     .accessibilityElement(children: .contain)

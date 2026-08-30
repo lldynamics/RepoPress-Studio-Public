@@ -124,7 +124,9 @@ struct SettingsSaveStatusBar: View {
     }
     .padding(.horizontal, WorkbenchSpacing.content)
     .padding(.vertical, 11)
-    .background(WorkbenchBackgroundStyle.card)
+    .overlay(alignment: .top) {
+      Divider()
+    }
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("settings-save-status")
   }

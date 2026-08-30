@@ -207,6 +207,7 @@ final class WorkbenchStoreRemotePublishingLifecycleTests: WorkbenchStoreRemotePu
     XCTAssertTrue(store.pendingRepositoryCleanupRequests.isEmpty)
     XCTAssertEqual(store.draftRepositoryCleanupRequests.first?.status, .completed)
     XCTAssertEqual(store.draftRepositoryCleanupRequests.first?.remoteStatus, .completed)
+    XCTAssertNotNil(store.draftRepositoryCleanupRequests.first?.remoteEnqueuedAt)
     let requests = await transport.capturedRequests()
     XCTAssertEqual(requests.map(\.httpMethod), ["GET", "GET", "DELETE"])
   }

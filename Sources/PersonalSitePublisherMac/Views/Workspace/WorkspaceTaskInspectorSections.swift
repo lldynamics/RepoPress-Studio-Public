@@ -92,6 +92,27 @@ struct WorkspaceTaskMetadataSection: View {
         summaryField
       }
 
+      InspectorSection("创作信息") {
+        metadataField("创作来源") {
+          Picker("创作来源", selection: provenanceBinding) {
+            ForEach(ArticleProvenance.allCases) { provenance in
+              Label(provenance.localizedDisplayName, systemImage: provenance.systemImage)
+                .tag(provenance)
+            }
+          }
+          .labelsHidden()
+          .pickerStyle(.menu)
+          .accessibilityIdentifier("article-provenance-picker")
+          .accessibilityLabel("文章创作来源")
+          .accessibilityValue(selectedProvenance.localizedDisplayName)
+        }
+
+        Text(provenanceHelpText)
+          .font(.caption)
+          .foregroundStyle(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
+      }
+
       InspectorSection("分类") {
         TaxonomySuggestionField(
           title: "标签",
@@ -201,6 +222,28 @@ struct WorkspaceTaskMetadataSection: View {
     }
     .onDisappear {
       cancelSummaryGeneration()
+    }
+  }
+
+  private var selectedProvenance: ArticleProvenance {
+    ArticleProvenanceService().provenance(for: draft)
+  }
+
+  private var provenanceBinding: Binding<ArticleProvenance> {
+    Binding(
+      get: { selectedProvenance },
+      set: { provenance in
+        store.applyArticleProvenance(provenance, to: draft.id)
+      }
+    )
+  }
+
+  private var provenanceHelpText: String {
+    switch selectedProvenance {
+    case .humanOriginal:
+      return "真人原稿不会写入来源标签，也不会生成创作说明。"
+    case .aiAssisted, .aiAuthored, .hybrid:
+      return "RepoPress 会维护对应标签，并在正文顶部生成可见的创作说明。"
     }
   }
 

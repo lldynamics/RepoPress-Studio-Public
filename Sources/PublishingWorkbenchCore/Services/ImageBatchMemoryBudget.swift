@@ -1,4 +1,5 @@
 import Foundation
+import ImageIO
 
 /// A bounded estimate of the decoded memory needed by one image batch item.
 ///
@@ -12,6 +13,8 @@ public struct ImageBatchMemoryBudget: Equatable, Sendable {
   // and destination buffers. Compressed bytes therefore need a deliberately
   // wide multiplier when pixel dimensions are not persisted in the draft.
   public static let defaultDecodeMultiplier: Int64 = 16
+  public static let decodedBytesPerPixel: Int64 = 4
+  public static let decodedBufferMultiplier: Int64 = 2
   public static let defaultUnknownAttachmentBytes: Int64 = 1 * 1_024 * 1_024
   public static let minimumTotalBytes: Int64 = 128 * 1_024 * 1_024
   public static let maximumTotalBytes: Int64 = 512 * 1_024 * 1_024
@@ -95,23 +98,58 @@ public struct ImageBatchMemoryBudget: Equatable, Sendable {
     }
     guard !imageAttachments.isEmpty else { return 1 }
 
-    let knownBytes = imageAttachments.reduce(into: Int64(0)) { total, attachment in
-      total = saturatingAdd(total, max(0, attachment.byteSize))
+    var decodedPixelBytes: Int64 = 0
+    var compressedProxyBytes: Int64 = 0
+    for attachment in imageAttachments {
+      if let decodedBytes = decodedBytesForKnownPixels(of: attachment) {
+        decodedPixelBytes = saturatingAdd(decodedPixelBytes, decodedBytes)
+        continue
+      }
+      compressedProxyBytes = saturatingAdd(
+        compressedProxyBytes,
+        max(max(0, attachment.byteSize), unknownAttachmentBytes)
+      )
     }
-    let unknownFloor = saturatingMultiply(
-      unknownAttachmentBytes,
-      Int64(imageAttachments.count)
+    // Pixel dimensions already describe the decoded surface and must not be
+    // multiplied by the compressed-size safety factor a second time.
+    return saturatingAdd(
+      decodedPixelBytes,
+      saturatingMultiply(compressedProxyBytes, decodeMultiplier)
     )
-    return saturatingMultiply(max(knownBytes, unknownFloor), decodeMultiplier)
+  }
+
+  private func pixelDimensions(for attachment: DraftAttachment) -> (width: Int64, height: Int64)? {
+    let path = attachment.sourceFilePath ?? attachment.originalFilename
+    guard !path.isEmpty,
+      let source = CGImageSourceCreateWithURL(URL(fileURLWithPath: path) as CFURL, nil),
+      let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+      let width = properties[kCGImagePropertyPixelWidth] as? NSNumber,
+      let height = properties[kCGImagePropertyPixelHeight] as? NSNumber,
+      width.int64Value > 0, height.int64Value > 0
+    else { return nil }
+    return (width.int64Value, height.int64Value)
+  }
+
+  private func decodedBytesForKnownPixels(of attachment: DraftAttachment) -> Int64? {
+    guard let dimensions = pixelDimensions(for: attachment),
+      dimensions.width <= Int64.max / dimensions.height
+    else { return nil }
+    let pixelCount = dimensions.width * dimensions.height
+    guard pixelCount <= Int64.max / Self.decodedBytesPerPixel else { return nil }
+    let surfaceBytes = pixelCount * Self.decodedBytesPerPixel
+    guard surfaceBytes <= Int64.max / Self.decodedBufferMultiplier else { return nil }
+    return surfaceBytes * Self.decodedBufferMultiplier
   }
 
   private func saturatingAdd(_ lhs: Int64, _ rhs: Int64) -> Int64 {
-    guard rhs > 0, lhs <= Int64.max - rhs else { return Int64.max }
+    guard rhs > 0 else { return lhs }
+    guard lhs <= Int64.max - rhs else { return Int64.max }
     return lhs + rhs
   }
 
   private func saturatingMultiply(_ lhs: Int64, _ rhs: Int64) -> Int64 {
-    guard lhs > 0, rhs > 0, lhs <= Int64.max / rhs else { return Int64.max }
+    guard lhs > 0, rhs > 0 else { return 0 }
+    guard lhs <= Int64.max / rhs else { return Int64.max }
     return lhs * rhs
   }
 }

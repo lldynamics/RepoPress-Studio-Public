@@ -24,6 +24,12 @@ extension CodexAppServerError {
   public static var turnTimedOut: Self {
     .rpc(code: -32_003, message: "Codex turn 执行超时，请重试。")
   }
+
+  /// A bounded JSONL reader must reject an unterminated response before it can
+  /// retain unbounded process output in memory.
+  static var frameTooLarge: Self {
+    .rpc(code: -32_004, message: "Codex 响应帧超过大小限制，已停止当前连接。")
+  }
 }
 
 /// A `Process` backed stdio transport for `codex app-server`.
@@ -35,6 +41,10 @@ public final class CodexAppServerProcessTransport: CodexAppServerTransport, @unc
   private let configuredExecutableURL: URL?
   private let arguments: [String]
   private let lock = NSLock()
+  /// Serializes complete JSONL writes without blocking lifecycle transitions.
+  /// `terminate()` must remain able to close the pipe and unblock a writer
+  /// when the child process stops consuming stdin.
+  private let writeLock = NSLock()
   private var process: Process?
   private var input: FileHandle?
   private var output: FileHandle?
@@ -181,16 +191,24 @@ public final class CodexAppServerProcessTransport: CodexAppServerTransport, @unc
   }
 
   public func send(_ data: Data) async throws {
-    let handle: FileHandle = try withLock {
-      guard started, !terminated, let input else {
-        throw CodexAppServerError.processNotRunning
-      }
-      return input
-    }
-
     do {
-      try handle.write(contentsOf: data)
+      try withWriteLock {
+        let handle: FileHandle = try withLock {
+          guard started, !terminated, let input else {
+            throw CodexAppServerError.processNotRunning
+          }
+          return input
+        }
+        // A concurrent termination may close the snapshotted handle. That is
+        // intentional: it makes a blocked pipe write fail instead of making
+        // termination wait behind the writer. Concurrent sends still cannot
+        // interleave because they share `writeLock`.
+        try handle.write(contentsOf: data)
+      }
     } catch {
+      if let error = error as? CodexAppServerError {
+        throw error
+      }
       throw CodexAppServerError.processExited
     }
   }
@@ -243,6 +261,12 @@ public final class CodexAppServerProcessTransport: CodexAppServerTransport, @unc
     return try body()
   }
 
+  private func withWriteLock<T>(_ body: () throws -> T) rethrows -> T {
+    writeLock.lock()
+    defer { writeLock.unlock() }
+    return try body()
+  }
+
   deinit {
     lock.lock()
     let process = self.process
@@ -281,11 +305,20 @@ public actor CodexAppServerClient {
   private var pendingRequests: [Int: CheckedContinuation<CodexAppServerJSONValue, Error>] = [:]
   private var requestTimeoutTasks: [Int: Task<Void, Never>] = [:]
   private var startupTask: Task<Void, Error>?
+  /// Identity is separate from `Task` because an invalidated startup task can
+  /// finish after a new transport generation has already begun.
+  private var startupTaskID: UUID?
   private var readerTask: Task<Void, Never>?
   private var isInitialized = false
   private var transportEnded = false
+  private var transportEndError = CodexAppServerError.endOfStream
   private var transportGeneration = 0
   private var lineBuffer = Data()
+
+  /// One app-server response is expected to fit comfortably below this limit.
+  /// The limit applies to one JSONL frame, not to an arbitrary stdout chunk,
+  /// so multiple valid frames may arrive together.
+  static let maximumFrameByteCount = 1_024 * 1_024
 
   private struct TurnState {
     let threadID: String
@@ -652,12 +685,16 @@ public actor CodexAppServerClient {
   }
 
   public func shutdown() async {
+    // Invalidate the task before cancelling it. Cancellation is cooperative,
+    // so its deferred cleanup can otherwise race a replacement generation.
+    startupTaskID = nil
     readerTask?.cancel()
     readerTask = nil
     startupTask?.cancel()
     startupTask = nil
     isInitialized = false
     transportEnded = true
+    transportEndError = .endOfStream
     transportGeneration &+= 1
     failAll(with: .endOfStream)
     await transport.terminate()
@@ -672,21 +709,34 @@ public actor CodexAppServerClient {
       return
     }
 
+    let startupID = UUID()
     let task = Task<Void, Error> { [weak self] in
       guard let self else { throw CodexAppServerError.processExited }
-      try await self.startAndHandshake()
+      try await self.startAndHandshake(startupID: startupID)
     }
     startupTask = task
+    startupTaskID = startupID
     do {
       try await task.value
-      startupTask = nil
+      clearStartupTaskIfCurrent(startupID)
     } catch {
-      startupTask = nil
+      clearStartupTaskIfCurrent(startupID)
       throw Self.mapError(error)
     }
   }
 
-  private func startAndHandshake() async throws {
+  private func clearStartupTaskIfCurrent(_ startupID: UUID) {
+    guard startupTaskID == startupID else { return }
+    startupTask = nil
+    startupTaskID = nil
+  }
+
+  private func startAndHandshake(startupID: UUID) async throws {
+    // The task closure itself can start late, after `shutdown()` has already
+    // invalidated it and admitted a replacement task.
+    guard startupTaskID == startupID else {
+      throw CodexAppServerError.endOfStream
+    }
     let nextTransport: any CodexAppServerTransport
     if transportGeneration == 0 {
       // The initializer already created the first transport so a factory is
@@ -705,7 +755,14 @@ public actor CodexAppServerClient {
 
     do {
       transportEnded = false
+      transportEndError = .endOfStream
       try await nextTransport.start()
+      // `start()` is allowed to suspend and cancellation is cooperative. Do
+      // not install an old reader after shutdown has already admitted a new
+      // generation.
+      guard isCurrentStartup(startupID: startupID, generation: generation) else {
+        throw CodexAppServerError.endOfStream
+      }
       readerTask = Task { [weak self, nextTransport] in
         await self?.readLoop(transport: nextTransport, generation: generation)
       }
@@ -723,19 +780,35 @@ public actor CodexAppServerClient {
           ]),
         ])
       )
-      try await sendNotification(method: "initialized", params: nil)
-      guard !transportEnded else {
+      guard isCurrentStartup(startupID: startupID, generation: generation) else {
+        throw CodexAppServerError.endOfStream
+      }
+      try await sendNotification(
+        method: "initialized",
+        params: nil,
+        to: nextTransport,
+        generation: generation
+      )
+      guard isCurrentStartup(startupID: startupID, generation: generation), !transportEnded else {
         throw CodexAppServerError.endOfStream
       }
       isInitialized = true
     } catch {
+      let mappedError = Self.mapError(error)
+      // A shutdown/restart may have invalidated this task while it was
+      // suspended. Its completion belongs to the old generation and must not
+      // clear a replacement reader, startup task, or pending request table.
+      guard isCurrentStartup(startupID: startupID, generation: generation) else {
+        throw mappedError
+      }
       isInitialized = false
       transportEnded = true
+      transportEndError = mappedError
       readerTask?.cancel()
       readerTask = nil
-      failAll(with: Self.mapError(error))
+      failAll(with: mappedError)
       await nextTransport.terminate()
-      throw Self.mapError(error)
+      throw mappedError
     }
   }
 
@@ -767,6 +840,7 @@ public actor CodexAppServerClient {
       throw CodexAppServerError.invalidResponse
     }
     let requestTransport = transport
+    let requestGeneration = transportGeneration
 
     return try await withTaskCancellationHandler(
       operation: {
@@ -779,7 +853,11 @@ public actor CodexAppServerClient {
               // Bind the request to the transport generation that created it.
               // A delayed send from an ended generation must never land in a
               // newly started app-server process.
-              try await requestTransport.send(data)
+              try await self.sendFrame(
+                data,
+                to: requestTransport,
+                generation: requestGeneration
+              )
             } catch {
               await self.failPendingRequest(
                 requestID: requestID,
@@ -798,7 +876,9 @@ public actor CodexAppServerClient {
 
   private func sendNotification(
     method: String,
-    params: CodexAppServerJSONValue?
+    params: CodexAppServerJSONValue?,
+    to expectedTransport: (any CodexAppServerTransport)? = nil,
+    generation expectedGeneration: Int? = nil
   ) async throws {
     var object: [String: CodexAppServerJSONValue] = ["method": .string(method)]
     if let params {
@@ -806,12 +886,36 @@ public actor CodexAppServerClient {
     }
     do {
       let data = try encoder.encode(CodexAppServerJSONValue.object(object)) + Data([0x0A])
-      try await transport.send(data)
+      try await sendFrame(
+        data,
+        to: expectedTransport ?? transport,
+        generation: expectedGeneration ?? transportGeneration
+      )
     } catch let error as CodexAppServerError {
       throw error
     } catch {
       throw CodexAppServerError.processExited
     }
+  }
+
+  private func isCurrentStartup(startupID: UUID, generation: Int) -> Bool {
+    startupTaskID == startupID && transportGeneration == generation
+  }
+
+  /// Admits a frame only while its originating process generation is active.
+  /// `CodexAppServerProcessTransport` then serializes the full write together
+  /// with its handle lifecycle, so a queued request cannot reach a later
+  /// process or a handle that shutdown has closed.
+  private func sendFrame(
+    _ data: Data,
+    to expectedTransport: any CodexAppServerTransport,
+    generation: Int
+  ) async throws {
+    guard generation == transportGeneration else {
+      throw CodexAppServerError.processNotRunning
+    }
+    guard !transportEnded else { throw transportEndError }
+    try await expectedTransport.send(data)
   }
 
   private func cancelPendingRequest(requestID: Int) {
@@ -1097,20 +1201,40 @@ public actor CodexAppServerClient {
   }
 
   private func consume(chunk: Data) throws {
-    lineBuffer.append(chunk)
-    while let newline = lineBuffer.firstIndex(of: 0x0A) {
-      let line = Data(lineBuffer[..<newline])
-      let end = lineBuffer.index(after: newline)
-      lineBuffer.removeSubrange(lineBuffer.startIndex..<end)
-      guard !line.allSatisfy({ $0 == 0x20 || $0 == 0x09 || $0 == 0x0D }) else { continue }
-      let envelope: CodexAppServerRPCEnvelope
-      do {
-        envelope = try decoder.decode(CodexAppServerRPCEnvelope.self, from: line)
-      } catch {
-        throw CodexAppServerError.invalidJSON
+    var remaining = chunk[...]
+    while !remaining.isEmpty {
+      if let newline = remaining.firstIndex(of: 0x0A) {
+        let framePrefix = remaining[..<newline]
+        try appendFrameBytes(framePrefix)
+        remaining = remaining[remaining.index(after: newline)...]
+        try consumeBufferedFrame()
+      } else {
+        try appendFrameBytes(remaining)
+        return
       }
-      handle(envelope: envelope)
     }
+  }
+
+  private func appendFrameBytes(_ bytes: Data.SubSequence) throws {
+    let addition = lineBuffer.count.addingReportingOverflow(bytes.count)
+    guard !addition.overflow, addition.partialValue <= Self.maximumFrameByteCount else {
+      lineBuffer.removeAll(keepingCapacity: false)
+      throw CodexAppServerError.frameTooLarge
+    }
+    lineBuffer.append(contentsOf: bytes)
+  }
+
+  private func consumeBufferedFrame() throws {
+    let line = lineBuffer
+    lineBuffer.removeAll(keepingCapacity: true)
+    guard !line.allSatisfy({ $0 == 0x20 || $0 == 0x09 || $0 == 0x0D }) else { return }
+    let envelope: CodexAppServerRPCEnvelope
+    do {
+      envelope = try decoder.decode(CodexAppServerRPCEnvelope.self, from: line)
+    } catch {
+      throw CodexAppServerError.invalidJSON
+    }
+    handle(envelope: envelope)
   }
 
   private func handle(envelope: CodexAppServerRPCEnvelope) {
@@ -1238,9 +1362,8 @@ public actor CodexAppServerClient {
     via responseTransport: any CodexAppServerTransport,
     generation: Int
   ) async {
-    guard generation == transportGeneration else { return }
     do {
-      try await responseTransport.send(data)
+      try await sendFrame(data, to: responseTransport, generation: generation)
     } catch {
       processEnded(with: Self.mapError(error), generation: generation)
     }
@@ -1496,6 +1619,7 @@ public actor CodexAppServerClient {
     guard generation == transportGeneration else { return }
     isInitialized = false
     transportEnded = true
+    transportEndError = error
     lineBuffer.removeAll(keepingCapacity: false)
     failAll(with: error)
     let endedTransport = transport

@@ -35,7 +35,8 @@ extension PublishingStore {
   @discardableResult
   public func recordVersionsBeforeBatchProcessing(
     draftIDs: Set<UUID>,
-    store: WorkbenchStore
+    store: WorkbenchStore,
+    persisting: Bool = true
   ) -> Int {
     let candidates = drafts.filter { draftIDs.contains($0.id) }
     var recordedCount = 0
@@ -50,7 +51,7 @@ extension PublishingStore {
         recordedCount += 1
       }
     }
-    if recordedCount > 0 {
+    if recordedCount > 0, persisting {
       store.save()
     }
     return recordedCount
@@ -59,7 +60,7 @@ extension PublishingStore {
   @discardableResult
   public func restoreDraftVersion(_ versionID: UUID, store: WorkbenchStore) -> Bool {
     guard let version = draftVersions.first(where: { $0.id == versionID }),
-          let currentIndex = drafts.firstIndex(where: { $0.id == version.draftID })
+      let currentIndex = drafts.firstIndex(where: { $0.id == version.draftID })
     else {
       return false
     }
@@ -75,7 +76,8 @@ extension PublishingStore {
       into: currentDraft
     )
     if restored.isGeneralDraft,
-       !profiles.contains(where: { $0.id == restored.siteProfileID }) {
+      !profiles.contains(where: { $0.id == restored.siteProfileID })
+    {
       restored.assignToGeneralDraft(editingProfileID: activeProfileID)
     }
     restored.markUpdated(replacing: currentDraft)
@@ -105,7 +107,7 @@ extension PublishingStore {
   @discardableResult
   public func restoreRecycledDraft(_ draftID: UUID, store: WorkbenchStore) -> Bool {
     guard !drafts.contains(where: { $0.id == draftID }),
-          let recycledIndex = recycledDrafts.firstIndex(where: { $0.id == draftID })
+      let recycledIndex = recycledDrafts.firstIndex(where: { $0.id == draftID })
     else {
       return false
     }
@@ -119,8 +121,10 @@ extension PublishingStore {
       )
       return false
     }
-    guard recycled.draft.isGeneralDraft
-      || profiles.contains(where: { $0.id == recycled.draft.siteProfileID }) else {
+    guard
+      recycled.draft.isGeneralDraft
+        || profiles.contains(where: { $0.id == recycled.draft.siteProfileID })
+    else {
       store.setPublishActionMessage(
         CoreL10n.text("原站点 Profile 已不存在，无法恢复这篇文章。"),
         status: .warning
@@ -130,12 +134,14 @@ extension PublishingStore {
 
     recycledDrafts.remove(at: recycledIndex)
     draftRepositoryCleanupRequests.removeAll {
-      $0.draftID == draftID && $0.remoteStatus == .pending
+      $0.draftID == draftID
+        && (!$0.hasRemoteCleanupIntent || $0.needsRemoteCleanup)
     }
-    for index in draftRepositoryCleanupRequests.indices where
+    for index in draftRepositoryCleanupRequests.indices
+    where
       draftRepositoryCleanupRequests[index].draftID == draftID
-        && draftRepositoryCleanupRequests[index].remoteStatus == .completed
-        && draftRepositoryCleanupRequests[index].status == .pending
+      && draftRepositoryCleanupRequests[index].remoteStatus == .completed
+      && draftRepositoryCleanupRequests[index].status == .pending
     {
       draftRepositoryCleanupRequests[index].status = .kept
       draftRepositoryCleanupRequests[index].resolvedAt = Date()
@@ -200,7 +206,7 @@ extension PublishingStore {
 
   public func repositoryCleanupPreview(for requestID: UUID) -> LocalPublishPreview? {
     guard let request = draftRepositoryCleanupRequests.first(where: { $0.id == requestID }),
-          let profile = profiles.first(where: { $0.id == request.siteProfileID })
+      let profile = profiles.first(where: { $0.id == request.siteProfileID })
     else {
       return nil
     }
@@ -216,17 +222,21 @@ extension PublishingStore {
     preview providedPreview: LocalPublishPreview? = nil,
     store: WorkbenchStore
   ) -> Bool {
-    guard let requestIndex = draftRepositoryCleanupRequests.firstIndex(where: {
-      $0.id == requestID && $0.status == .pending
-    }),
-    let profile = profiles.first(where: { $0.id == draftRepositoryCleanupRequests[requestIndex].siteProfileID })
+    guard
+      let requestIndex = draftRepositoryCleanupRequests.firstIndex(where: {
+        $0.id == requestID && $0.status == .pending
+      }),
+      let profile = profiles.first(where: {
+        $0.id == draftRepositoryCleanupRequests[requestIndex].siteProfileID
+      })
     else {
       return false
     }
 
     let request = draftRepositoryCleanupRequests[requestIndex]
     let package = draftLifecycleService.cleanupPackage(for: request)
-    let preview = providedPreview ?? localPublishPreviewService.preview(package: package, profile: profile)
+    let preview =
+      providedPreview ?? localPublishPreviewService.preview(package: package, profile: profile)
     guard !preview.issues.contains(where: { $0.severity == .error }) else {
       store.setPublishActionMessage(
         CoreL10n.text("本地仓库清理被阻止：请先检查仓库路径和安全性问题。"),
@@ -261,15 +271,19 @@ extension PublishingStore {
 
   @discardableResult
   public func keepRepositoryFile(_ requestID: UUID, store: WorkbenchStore) -> Bool {
-    guard let index = draftRepositoryCleanupRequests.firstIndex(where: {
-      $0.id == requestID && $0.status == .pending
-    }) else {
+    guard
+      let index = draftRepositoryCleanupRequests.firstIndex(where: {
+        $0.id == requestID && $0.status == .pending
+      })
+    else {
       return false
     }
     draftRepositoryCleanupRequests[index].status = .kept
     draftRepositoryCleanupRequests[index].resolvedAt = Date()
     store.setPublishActionMessage(
-      CoreL10n.text("已保留本地仓库文件；远端下线请求仍会继续处理。"),
+      draftRepositoryCleanupRequests[index].hasRemoteCleanupIntent
+        ? CoreL10n.text("已保留本地仓库文件；远端下线请求仍会继续处理。")
+        : CoreL10n.text("已保留本地仓库文件；未发起远端下线。"),
       status: .success
     )
     store.save()
@@ -291,7 +305,11 @@ extension PublishingStore {
     }
     var updatedCount = 0
     for index in draftRepositoryCleanupRequests.indices {
-      guard requestIDs.contains(draftRepositoryCleanupRequests[index].id) else { continue }
+      guard requestIDs.contains(draftRepositoryCleanupRequests[index].id),
+        draftRepositoryCleanupRequests[index].hasRemoteCleanupIntent
+      else {
+        continue
+      }
       let path = draftRepositoryCleanupRequests[index].repositoryPath.normalizedRelativePath()
       let isReviewPendingPath: Bool
       if let explicitReviewPendingPaths {
@@ -322,9 +340,11 @@ extension PublishingStore {
     message: String
   ) -> Int {
     var updatedCount = 0
-    for index in draftRepositoryCleanupRequests.indices where
+    for index in draftRepositoryCleanupRequests.indices
+    where
       requestIDs.contains(draftRepositoryCleanupRequests[index].id)
-        && draftRepositoryCleanupRequests[index].remoteStatus == .pending
+      && draftRepositoryCleanupRequests[index].hasRemoteCleanupIntent
+      && draftRepositoryCleanupRequests[index].remoteStatus == .pending
     {
       draftRepositoryCleanupRequests[index].lastRemoteErrorMessage = message
       updatedCount += 1
@@ -340,10 +360,12 @@ extension PublishingStore {
   ) -> Bool {
     let path = repositoryPath.normalizedRelativePath()
     var didResolve = false
-    for index in draftRepositoryCleanupRequests.indices where
+    for index in draftRepositoryCleanupRequests.indices
+    where
       draftRepositoryCleanupRequests[index].siteProfileID == profileID
-        && draftRepositoryCleanupRequests[index].repositoryPath.normalizedRelativePath() == path
-        && draftRepositoryCleanupRequests[index].remoteStatus != .completed
+      && draftRepositoryCleanupRequests[index].repositoryPath.normalizedRelativePath() == path
+      && draftRepositoryCleanupRequests[index].hasRemoteCleanupIntent
+      && draftRepositoryCleanupRequests[index].remoteStatus != .completed
     {
       draftRepositoryCleanupRequests[index].remoteStatus = .completed
       draftRepositoryCleanupRequests[index].remoteResolvedAt = resolvedAt
@@ -365,12 +387,14 @@ extension PublishingStore {
     guard !normalizedReviewURLs.isEmpty else { return 0 }
 
     var restoredCount = 0
-    for index in draftRepositoryCleanupRequests.indices where
+    for index in draftRepositoryCleanupRequests.indices
+    where
       draftRepositoryCleanupRequests[index].siteProfileID == profileID
-        && draftRepositoryCleanupRequests[index].remoteStatus == .reviewRequested
-        && draftRepositoryCleanupRequests[index].remoteReviewURL
-          .flatMap({ $0.trimmedForPublishing.nilIfEmpty })
-          .map(normalizedReviewURLs.contains) == true
+      && draftRepositoryCleanupRequests[index].hasRemoteCleanupIntent
+      && draftRepositoryCleanupRequests[index].remoteStatus == .reviewRequested
+      && draftRepositoryCleanupRequests[index].remoteReviewURL
+        .flatMap({ $0.trimmedForPublishing.nilIfEmpty })
+        .map(normalizedReviewURLs.contains) == true
     {
       draftRepositoryCleanupRequests[index].remoteStatus = .pending
       draftRepositoryCleanupRequests[index].remoteResolvedAt = nil
@@ -386,9 +410,11 @@ extension PublishingStore {
     requestID: UUID,
     store: WorkbenchStore
   ) -> Bool {
-    guard let index = draftRepositoryCleanupRequests.firstIndex(where: {
-      $0.id == requestID && $0.remoteStatus == .reviewRequested
-    }) else {
+    guard
+      let index = draftRepositoryCleanupRequests.firstIndex(where: {
+        $0.id == requestID && $0.isAwaitingRemoteReview
+      })
+    else {
       return false
     }
 
@@ -430,41 +456,92 @@ extension PublishingStore {
       existing: draftRepositoryCleanupRequests,
       at: now
     )
-    guard let requestIndex = draftRepositoryCleanupRequests.firstIndex(where: {
-      $0.draftID == draft.id && $0.needsAttention
-    }) else {
+    guard
+      let requestIndex = draftRepositoryCleanupRequests.firstIndex(where: {
+        $0.draftID == draft.id && $0.needsAttention
+      })
+    else {
       return
     }
     let request = draftRepositoryCleanupRequests[requestIndex]
-    if request.expectedRemoteSHA?.trimmedForPublishing.nilIfEmpty == nil,
-       let snapshotSHA = store.repositoryStore.remoteFileSnapshot(
-         profile: store.profile(for: draft),
-         repositoryPath: request.repositoryPath
-       )?.repositorySHA?.trimmedForPublishing.nilIfEmpty {
-      draftRepositoryCleanupRequests[requestIndex].expectedRemoteSHA = snapshotSHA
-    }
     let profile = store.profile(for: draft)
+    if request.expectedRemoteSHA?.trimmedForPublishing.nilIfEmpty == nil {
+      scheduleRemoteSHABackfill(
+        for: request,
+        recycledDraft: draft,
+        profile: profile,
+        store: store
+      )
+    }
     if let evidence = localPublishPreviewService.deletionEvidence(
       repositoryPath: request.repositoryPath,
       profile: profile
     ) {
       draftRepositoryCleanupRequests[requestIndex].expectedContentSHA256 = evidence.contentSHA256
       draftRepositoryCleanupRequests[requestIndex].expectedGitBlobSHA = evidence.gitBlobSHA
-    } else if let generatedContent = publishPackageBuilder
+    } else if let generatedContent =
+      publishPackageBuilder
       .build(draft: draft, profile: profile)
       .files
       .first(where: {
         $0.kind == .markdown
           && $0.repositoryPath.normalizedRelativePath()
             == request.repositoryPath.normalizedRelativePath()
-      })?.content {
+      })?.content
+    {
       let evidence = deletionEvidence(for: generatedContent)
       draftRepositoryCleanupRequests[requestIndex].expectedContentSHA256 = evidence.contentSHA256
       draftRepositoryCleanupRequests[requestIndex].expectedGitBlobSHA = evidence.gitBlobSHA
     }
   }
 
-  private func deletionEvidence(for content: String) -> (contentSHA256: String, gitBlobSHA: String) {
+  /// The recycle-bin transition must not run Git on the caller's MainActor
+  /// turn. The request remains fail-closed while this lookup is pending; a
+  /// late SHA is installed only if the exact recycle-bin/request context is
+  /// still current.
+  private func scheduleRemoteSHABackfill(
+    for request: DraftRepositoryCleanupRequest,
+    recycledDraft: ArticleDraft,
+    profile: SiteProfile,
+    store: WorkbenchStore
+  ) {
+    let expectedRepositoryPath = request.repositoryPath.normalizedRelativePath()
+    Task { [weak self, weak store] in
+      guard let self, let store else { return }
+      #if DEBUG
+        defer { self.remoteSHABackfillCompletionTestHook?(request.id) }
+      #endif
+      let snapshot = await store.repositoryStore.remoteFileSnapshotAsync(
+        profile: profile,
+        repositoryPath: expectedRepositoryPath
+      )
+      guard !Task.isCancelled,
+        let snapshotSHA = snapshot?.repositorySHA?.trimmedForPublishing.nilIfEmpty,
+        let currentRecycledDraft = self.recycledDrafts.first(where: {
+          $0.draft.id == recycledDraft.id
+        })?.draft,
+        currentRecycledDraft.siteProfileID == recycledDraft.siteProfileID,
+        currentRecycledDraft.repositoryPath?.normalizedRelativePath() == expectedRepositoryPath,
+        store.profile(for: currentRecycledDraft) == profile,
+        let requestIndex = self.draftRepositoryCleanupRequests.firstIndex(where: {
+          $0.id == request.id
+            && $0.draftID == recycledDraft.id
+            && $0.siteProfileID == profile.id
+            && $0.repositoryPath.normalizedRelativePath() == expectedRepositoryPath
+        }),
+        self.draftRepositoryCleanupRequests[requestIndex].expectedRemoteSHA?
+          .trimmedForPublishing.nilIfEmpty == nil,
+        self.draftRepositoryCleanupRequests[requestIndex].needsAttention
+      else {
+        return
+      }
+      self.draftRepositoryCleanupRequests[requestIndex].expectedRemoteSHA = snapshotSHA
+      store.save()
+    }
+  }
+
+  private func deletionEvidence(for content: String) -> (contentSHA256: String, gitBlobSHA: String)
+  {
     let data = Data(content.utf8)
     let contentSHA256 = SHA256.hash(data: data)
       .map { String(format: "%02x", $0) }

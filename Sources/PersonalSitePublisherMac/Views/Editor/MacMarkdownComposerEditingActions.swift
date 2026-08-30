@@ -95,8 +95,7 @@ extension MacMarkdownComposerView {
     focusMarkdownText(
       for: UUID(),
       selectedRange: selectedRange,
-      message: "已平滑定位到「\(item.title)」。",
-      isAnimated: true
+      message: "已定位到「\(item.title)」。"
     )
   }
 

@@ -15,7 +15,7 @@ enum StorageManagementScope {
 
 @MainActor
 struct StorageManagementView: View {
-  @ObservedObject var store: WorkbenchStore
+  @ObservedObject private var dataManagement: WorkbenchDataManagementFeatureFacade
   @ObservedObject var rssStore: RSSReaderStore
   @ObservedObject var coordinator: WorkbenchLaunchCoordinator
   @ObservedObject var backupScheduler: WorkspaceBackupScheduler
@@ -46,7 +46,7 @@ struct StorageManagementView: View {
     presentation: StorageManagementPresentation = .standalone,
     scope: StorageManagementScope = .all
   ) {
-    self.store = store
+    _dataManagement = ObservedObject(wrappedValue: store.dataManagement)
     self.rssStore = rssStore
     self.coordinator = coordinator
     self.backupScheduler = backupScheduler
@@ -74,12 +74,12 @@ struct StorageManagementView: View {
       WorkspaceBackupRestorePreviewView(
         preview: preview,
         stageWorkspaceBackupRestore: { backupURL in
-          await store.stageWorkspaceBackupRestore(from: backupURL)
+          await dataManagement.stageWorkspaceBackupRestore(from: backupURL)
         }
       )
     }
     .sheet(item: $knowledgeBackupPreview) { preview in
-      KnowledgeLibraryRestorePreviewView(knowledge: store.knowledge, preview: preview)
+      KnowledgeLibraryRestorePreviewView(knowledge: dataManagement.knowledge, preview: preview)
     }
     .alert(
       String(localized: "清空资料库回收站？"),
@@ -303,11 +303,11 @@ struct StorageManagementView: View {
     Section(String(localized: "资料库清理")) {
       LabeledContent(
         String(localized: "资料"),
-        value: store.knowledge.documents.count.formatted()
+        value: dataManagement.knowledgeDocumentCount.formatted()
       )
       LabeledContent(
         String(localized: "回收站"),
-        value: store.knowledge.recycledDocuments.count.formatted()
+        value: dataManagement.knowledgeRecycledDocumentCount.formatted()
       )
       Text("只清空已经移入资料库回收站的内容；仍在资料库中的正文和原始外部文件不会被删除。")
         .font(.callout)
@@ -317,8 +317,8 @@ struct StorageManagementView: View {
         isKnowledgeCleanupConfirmationPresented = true
       }
       .disabled(
-        store.knowledge.recycledDocuments.isEmpty
-          || store.knowledge.isBusy
+        dataManagement.knowledgeRecycledDocumentCount == 0
+          || dataManagement.isKnowledgeBusy
           || isCleaningKnowledge
           || isRelocating
       )
@@ -383,7 +383,7 @@ struct StorageManagementView: View {
           chooseKnowledgeBackupForRestore()
         }
       }
-      .disabled(store.knowledge.isBusy || isRelocating)
+      .disabled(dataManagement.isKnowledgeBusy || isRelocating)
 
       automaticBackupSection
     }
@@ -588,7 +588,7 @@ struct StorageManagementView: View {
     operationMessage = nil
     operationError = nil
     Task {
-      let summary = await store.knowledge.emptyRecycleBin()
+      let summary = await dataManagement.knowledge.emptyRecycleBin()
       if summary.failedDocumentCount > 0 || summary.failedStoredFileCount > 0 {
         operationError = String(
           format: String(localized: "资料库仅完成部分清理：删除 %@ 条资料，%@ 条资料和 %@ 个本地文件未能移除。"),
@@ -632,7 +632,7 @@ struct StorageManagementView: View {
     operationMessage = nil
     operationError = nil
     Task {
-      let preview = await store.createWorkspaceBackup(at: destinationURL)
+      let preview = await dataManagement.createWorkspaceBackup(at: destinationURL)
       if let preview {
         operationMessage = String(
           format: String(localized: "完整备份已创建：%@（%@）。"),
@@ -640,7 +640,7 @@ struct StorageManagementView: View {
           formattedByteCount(preview.totalByteCount)
         )
       } else {
-        operationError = store.lastSaveStatus
+        operationError = dataManagement.lastSaveStatus
       }
       await refreshUsage()
     }
@@ -651,9 +651,9 @@ struct StorageManagementView: View {
     operationMessage = nil
     operationError = nil
     Task {
-      workspaceBackupPreview = await store.workspaceBackupPreview(from: backupURL)
+      workspaceBackupPreview = await dataManagement.workspaceBackupPreview(from: backupURL)
       if workspaceBackupPreview == nil {
-        operationError = store.lastSaveStatus
+        operationError = dataManagement.lastSaveStatus
       }
     }
   }
@@ -663,7 +663,7 @@ struct StorageManagementView: View {
       return
     }
     Task {
-      _ = await store.knowledge.createBackup(at: destinationURL)
+      _ = await dataManagement.knowledge.createBackup(at: destinationURL)
       await refreshUsage()
     }
   }
@@ -675,9 +675,9 @@ struct StorageManagementView: View {
     operationMessage = nil
     operationError = nil
     Task {
-      knowledgeBackupPreview = await store.knowledge.backupPreview(from: backupURL)
+      knowledgeBackupPreview = await dataManagement.knowledge.backupPreview(from: backupURL)
       if knowledgeBackupPreview == nil {
-        operationError = store.lastSaveStatus
+        operationError = dataManagement.lastSaveStatus
       }
     }
   }
@@ -698,7 +698,7 @@ struct StorageManagementView: View {
 
   private func restoreAutomaticBackup(_ preview: WorkspaceBackupPreview) {
     Task {
-      workspaceBackupPreview = await store.workspaceBackupPreview(from: preview.backupURL)
+      workspaceBackupPreview = await dataManagement.workspaceBackupPreview(from: preview.backupURL)
     }
   }
 

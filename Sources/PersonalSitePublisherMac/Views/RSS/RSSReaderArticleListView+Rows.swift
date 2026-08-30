@@ -79,7 +79,6 @@ struct RSSArticleRow: View {
   let onToggleRead: () -> Void
   let onToggleStarred: () -> Void
   let onOpenOriginal: () -> Void
-  @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
   @State private var isHovering = false
 
   var body: some View {
@@ -104,13 +103,6 @@ struct RSSArticleRow: View {
         Circle()
           .fill(article.isRead ? Color.clear : Color.accentColor)
           .frame(width: 7, height: 7)
-          .scaleEffect(
-            !accessibilityReduceMotion && isHovering && !article.isRead ? 1.15 : 1
-          )
-          .animation(
-            accessibilityReduceMotion ? nil : .easeInOut(duration: 0.16),
-            value: isHovering
-          )
           .overlay {
             Circle()
               .stroke(article.isRead ? Color.secondary.opacity(0.45) : Color.clear, lineWidth: 1)

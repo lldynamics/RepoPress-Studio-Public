@@ -6,7 +6,6 @@ struct InteractiveBreadcrumbView: View {
   let fileURL: URL?
   let pathSegments: [String]
 
-  @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
   @State private var hoveredSegmentIndex: Int? = nil
 
   init(markdownPath: String, fileURL: URL?) {
@@ -47,13 +46,7 @@ struct InteractiveBreadcrumbView: View {
           .buttonStyle(.plain)
           .accessibilityHint(isLast ? "在 Finder 中显示" : "复制相对路径")
           .onHover { isHovered in
-            if accessibilityReduceMotion {
-              hoveredSegmentIndex = isHovered ? index : nil
-            } else {
-              withAnimation(.easeInOut(duration: 0.12)) {
-                hoveredSegmentIndex = isHovered ? index : nil
-              }
-            }
+            hoveredSegmentIndex = isHovered ? index : nil
           }
 
           if !isLast {

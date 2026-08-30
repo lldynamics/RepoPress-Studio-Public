@@ -7,9 +7,6 @@ struct AIChatConnectionStatusCapsule: View {
   let draft: ArticleDraft?
   let open: () -> Void
 
-  @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
-  @State private var pulse = false
-
   private var isGeneralMode: Bool {
     ai.chatContextMode == .general || draft == nil
   }
@@ -24,8 +21,6 @@ struct AIChatConnectionStatusCapsule: View {
         Circle()
           .fill(statusColor)
           .frame(width: 7, height: 7)
-          .scaleEffect(pulse && isReady ? 1.18 : 1)
-          .opacity(pulse && isReady ? 0.72 : 1)
 
         Text(statusSummary)
           .font(.caption.weight(.semibold))
@@ -47,12 +42,6 @@ struct AIChatConnectionStatusCapsule: View {
     .accessibilityLabel(String(localized: "AI 连接与模型"))
     .accessibilityValue(statusDetail)
     .accessibilityIdentifier("ai-assistant-connection-status")
-    .onAppear {
-      guard isReady, !accessibilityReduceMotion else { return }
-      withAnimation(WorkbenchMotion.ambientPulse) {
-        pulse = true
-      }
-    }
   }
 
   private var config: AIProviderConfig {
@@ -175,7 +164,6 @@ struct AIChatModelQuickSwitchSheet: View {
           HStack(spacing: 5) {
             Image(systemName: "network")
               .symbolVariant(isTestingConnection ? .fill : .none)
-              .workbenchAIThinkingSymbolEffect(isActive: isTestingConnection)
             Text(
               isTestingConnection
                 ? String(localized: "测试中…")

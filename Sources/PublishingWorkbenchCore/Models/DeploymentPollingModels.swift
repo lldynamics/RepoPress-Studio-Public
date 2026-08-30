@@ -47,6 +47,8 @@ public enum DeploymentPollingStatus: String, Codable, Hashable, Sendable {
   case disabled
   case noEligibleRecords
   case checked
+  case partial
+  case failed
 
   public var displayName: String {
     switch self {
@@ -58,6 +60,10 @@ public enum DeploymentPollingStatus: String, Codable, Hashable, Sendable {
       return CoreL10n.text("无待检查")
     case .checked:
       return CoreL10n.text("已检查")
+    case .partial:
+      return CoreL10n.text("部分完成")
+    case .failed:
+      return CoreL10n.text("检查失败")
     }
   }
 
@@ -71,6 +77,10 @@ public enum DeploymentPollingStatus: String, Codable, Hashable, Sendable {
       return "checkmark.circle"
     case .checked:
       return "checkmark.icloud"
+    case .partial:
+      return "exclamationmark.icloud"
+    case .failed:
+      return "xmark.icloud"
     }
   }
 }
@@ -81,6 +91,11 @@ public struct DeploymentPollingState: Codable, Hashable, Sendable {
   public var nextRunAt: Date?
   public var checkedRecordCount: Int
   public var checkedRecords: [DeploymentPollingRecordSummary]
+  public var reviewCheckedRecordCount: Int
+  public var reviewMergedCount: Int
+  public var reviewClosedCount: Int
+  public var reviewFailureCount: Int
+  public var reviewFailureRecords: [DeploymentPollingReviewFailureSummary]
   public var message: String
 
   public init(
@@ -89,6 +104,11 @@ public struct DeploymentPollingState: Codable, Hashable, Sendable {
     nextRunAt: Date? = nil,
     checkedRecordCount: Int = 0,
     checkedRecords: [DeploymentPollingRecordSummary] = [],
+    reviewCheckedRecordCount: Int = 0,
+    reviewMergedCount: Int = 0,
+    reviewClosedCount: Int = 0,
+    reviewFailureCount: Int = 0,
+    reviewFailureRecords: [DeploymentPollingReviewFailureSummary] = [],
     message: String = DeploymentPollingState.defaultMessage
   ) {
     self.status = status
@@ -96,6 +116,11 @@ public struct DeploymentPollingState: Codable, Hashable, Sendable {
     self.nextRunAt = nextRunAt
     self.checkedRecordCount = checkedRecordCount
     self.checkedRecords = checkedRecords
+    self.reviewCheckedRecordCount = reviewCheckedRecordCount
+    self.reviewMergedCount = reviewMergedCount
+    self.reviewClosedCount = reviewClosedCount
+    self.reviewFailureCount = reviewFailureCount
+    self.reviewFailureRecords = reviewFailureRecords
     self.message = message
   }
 
@@ -124,7 +149,7 @@ public struct DeploymentPollingState: Codable, Hashable, Sendable {
   }
 
   public var attentionCount: Int {
-    checkedRecords.filter(\.requiresAttention).count
+    checkedRecords.filter(\.requiresAttention).count + reviewFailureRecords.count
   }
 
   public var followUpChecklistMarkdown: String {
@@ -135,6 +160,10 @@ public struct DeploymentPollingState: Codable, Hashable, Sendable {
       CoreL10n.format("- 状态：%@", status.displayName),
       CoreL10n.format("- 结论：%@", message),
       CoreL10n.format("- 已检查：%@", String(checkedRecordCount)),
+      CoreL10n.format("- Review 已检查：%@", String(reviewCheckedRecordCount)),
+      CoreL10n.format("- Review 已合并：%@", String(reviewMergedCount)),
+      CoreL10n.format("- Review 未合并关闭：%@", String(reviewClosedCount)),
+      CoreL10n.format("- Review 检查失败：%@", String(reviewFailureCount)),
       CoreL10n.format("- 正常：%@", String(successCount)),
       CoreL10n.format("- 部署中：%@", String(runningCount)),
       CoreL10n.format("- 失败：%@", String(failedCount)),
@@ -152,7 +181,7 @@ public struct DeploymentPollingState: Codable, Hashable, Sendable {
     lines.append("")
     lines.append(CoreL10n.text("## 记录清单"))
 
-    if checkedRecords.isEmpty {
+    if checkedRecords.isEmpty && reviewFailureRecords.isEmpty {
       lines.append(CoreL10n.text("- [ ] 先运行部署轮询，生成每条发布记录的部署状态。"))
     } else {
       for record in checkedRecords {
@@ -165,6 +194,14 @@ public struct DeploymentPollingState: Codable, Hashable, Sendable {
         lines.append(CoreL10n.format("  - 检查时间：%@", formatter.string(from: record.checkedAt)))
         lines.append(CoreL10n.format("  - 结果：%@", record.message))
       }
+    }
+
+    for failure in reviewFailureRecords {
+      lines.append(failure.followUpChecklistLine)
+      if let reviewURL = failure.reviewURL {
+        lines.append(CoreL10n.format("  - PR/MR：%@", reviewURL))
+      }
+      lines.append(CoreL10n.format("  - 检查时间：%@", formatter.string(from: failure.checkedAt)))
     }
 
     if attentionCount > 0 {
@@ -191,6 +228,11 @@ public struct DeploymentPollingState: Codable, Hashable, Sendable {
     case nextRunAt
     case checkedRecordCount
     case checkedRecords
+    case reviewCheckedRecordCount
+    case reviewMergedCount
+    case reviewClosedCount
+    case reviewFailureCount
+    case reviewFailureRecords
     case message
   }
 
@@ -203,7 +245,37 @@ public struct DeploymentPollingState: Codable, Hashable, Sendable {
     checkedRecords =
       try container.decodeIfPresent([DeploymentPollingRecordSummary].self, forKey: .checkedRecords)
       ?? []
+    reviewCheckedRecordCount =
+      try container.decodeIfPresent(Int.self, forKey: .reviewCheckedRecordCount) ?? 0
+    reviewMergedCount = try container.decodeIfPresent(Int.self, forKey: .reviewMergedCount) ?? 0
+    reviewClosedCount = try container.decodeIfPresent(Int.self, forKey: .reviewClosedCount) ?? 0
+    reviewFailureCount = try container.decodeIfPresent(Int.self, forKey: .reviewFailureCount) ?? 0
+    reviewFailureRecords =
+      try container.decodeIfPresent(
+        [DeploymentPollingReviewFailureSummary].self, forKey: .reviewFailureRecords
+      ) ?? []
     message = try container.decodeIfPresent(String.self, forKey: .message) ?? Self.defaultMessage
+  }
+}
+
+public struct DeploymentPollingReviewFailureSummary: Identifiable, Codable, Hashable, Sendable {
+  public var id: UUID { recordID }
+  public var recordID: UUID
+  public var title: String
+  public var reviewURL: String?
+  public var message: String
+  public var checkedAt: Date
+
+  public init(recordID: UUID, title: String, reviewURL: String?, message: String, checkedAt: Date) {
+    self.recordID = recordID
+    self.title = title
+    self.reviewURL = reviewURL
+    self.message = message
+    self.checkedAt = checkedAt
+  }
+
+  public var followUpChecklistLine: String {
+    CoreL10n.format("- [ ] %@：%@", title, message)
   }
 }
 

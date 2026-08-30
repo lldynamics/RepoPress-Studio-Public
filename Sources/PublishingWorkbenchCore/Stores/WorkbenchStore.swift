@@ -54,6 +54,8 @@ public final class WorkbenchStore: ObservableObject {
   public lazy var shell: WorkbenchShellFeatureFacade = WorkbenchShellFeatureFacade(store: self)
   public lazy var settings: WorkbenchSettingsFeatureFacade = WorkbenchSettingsFeatureFacade(
     store: self)
+  public lazy var dataManagement: WorkbenchDataManagementFeatureFacade =
+    WorkbenchDataManagementFeatureFacade(store: self)
   public lazy var publishStatus: WorkbenchPublishStatusFeatureFacade =
     WorkbenchPublishStatusFeatureFacade(store: self)
   /// Stable, narrow observation boundary for the Writing sidebar.  The child
@@ -126,6 +128,14 @@ public final class WorkbenchStore: ObservableObject {
   var siteLinkAuditRefreshKey: SiteLinkAuditSnapshotKey?
   var siteAnalyticsRefreshTask: Task<Void, Never>?
   var siteAnalyticsRefreshRequestID = UUID()
+  var operationalPollingTask: Task<Void, Never>?
+  var operationalPollingClientIDs = Set<UUID>()
+  var operationalPollingGeneration: UInt64 = 0
+  var operationalPollingTickTask: Task<Bool, Never>?
+  var operationalPollingTickRequestID: UUID?
+  #if DEBUG
+    private(set) var saveInvocationCount = 0
+  #endif
   var softwareGuideSeedVersion: Int
 
   lazy var aiStore: WorkbenchAIStore = WorkbenchAIStore(
@@ -516,6 +526,8 @@ public final class WorkbenchStore: ObservableObject {
       activeProfileID: initialActiveProfileID,
       deploymentStatusService: deploymentStatusService,
       deploymentTokenStore: deploymentTokenStore,
+      remoteRepositoryPublishService: remoteRepositoryPublishService,
+      repositoryTokenStore: repositoryTokenStore,
       releaseLedgerService: releaseLedgerService
     )
     self.repositoryDeploymentCoordinator = RepositoryDeploymentCoordinator(
@@ -703,6 +715,9 @@ public final class WorkbenchStore: ObservableObject {
   func profile(for package: PublishPackage) -> SiteProfile { publishingStore.profile(for: package) }
 
   public func save() {
+    #if DEBUG
+      saveInvocationCount += 1
+    #endif
     flushDraftBodyEditorBuffers()
     let input = persistenceStore.persistence.snapshotInput(from: self)
     persistenceStore.saveImmediately(input: input)
@@ -846,14 +861,19 @@ public final class WorkbenchStore: ObservableObject {
     }
   }
 
-  func invalidateDraftDerivedCaches(notifyingDraftList: Bool = true) {
+  func invalidateDraftDerivedCaches(
+    notifyingDraftList: Bool = true,
+    suppressDuplicateDraftListPresentation: Bool = false
+  ) {
     publishingStore.removeAllDraftPublishPreviewSnapshots()
     invalidateContentHealthSnapshot()
     invalidateSiteMaintenanceSnapshot()
     invalidateSiteLinkAuditSnapshot()
     draftTaskQueueStateCache.removeAll()
     if notifyingDraftList {
-      draftList.invalidatePresentationAndTaskQueueState()
+      draftList.invalidatePresentationAndTaskQueueState(
+        suppressDuplicatePresentation: suppressDuplicateDraftListPresentation
+      )
     }
     imageWorkbenchInputRevision &+= 1
   }
@@ -921,10 +941,16 @@ public final class WorkbenchStore: ObservableObject {
       drafts: preflightDrafts,
       profile: activeProfile
     )
-    let linkAuditReport = localSiteLinkAuditReport(
+    let linkAuditReport = cachedSiteLinkAuditReport(
       drafts: preflightDrafts,
       profile: activeProfile
     )
+    if linkAuditReport == nil {
+      scheduleSiteLinkAuditSnapshotRefresh(
+        drafts: preflightDrafts,
+        profile: activeProfile
+      )
+    }
     draftTaskQueueStateCache = draftTaskQueueStateCache.filter { draftIDs.contains($0.key) }
 
     return Dictionary(
@@ -940,17 +966,33 @@ public final class WorkbenchStore: ObservableObject {
           return (draft.id, cached)
         }
 
-        let state = DraftTaskQueueState(
-          draftID: draft.id,
-          signature: signature,
-          hasPreflightErrors: publishingStore.preflightIssues(
+        let hasPreflightErrors: Bool
+        if let linkAuditReport {
+          hasPreflightErrors = publishingStore.preflightIssues(
             for: draft,
             includeRepositoryReadiness: true,
             allDrafts: preflightDrafts,
             duplicateIndex: preflightDuplicateIndex,
             linkAuditReport: linkAuditReport,
             store: self
-          ).contains { $0.severity == .error },
+          ).contains { $0.severity == .error }
+        } else {
+          // The list deliberately consumes completed link snapshots only. A
+          // cache miss has already scheduled the shared audit above; until it
+          // completes, retain the inexpensive local preflight projection.
+          hasPreflightErrors = publishingStore.preflightService.run(
+            draft: draft,
+            allDrafts: preflightDrafts,
+            profile: profile(for: draft),
+            repositoryReport: repositoryReport(for: draft),
+            includeRepositoryReadiness: true,
+            duplicateIndex: preflightDuplicateIndex
+          ).contains { $0.severity == .error }
+        }
+        let state = DraftTaskQueueState(
+          draftID: draft.id,
+          signature: signature,
+          hasPreflightErrors: hasPreflightErrors,
           hasImageIssues: imageIssueCount > 0
         )
         draftTaskQueueStateCache[draft.id] = state

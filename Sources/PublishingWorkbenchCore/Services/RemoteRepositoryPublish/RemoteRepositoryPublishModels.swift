@@ -42,6 +42,86 @@ public enum RemoteRepositoryPublishMode: String, Codable, Sendable {
   }
 }
 
+public enum RemoteRepositoryReviewLifecycleState: String, Codable, Hashable, Sendable {
+  case open
+  case locked
+  case merged
+  case closedWithoutMerge
+
+  public var isTerminal: Bool {
+    self == .merged
+  }
+
+  public var displayName: String {
+    switch self {
+    case .open:
+      return CoreL10n.text("等待合并")
+    case .locked:
+      return CoreL10n.text("Review 已锁定")
+    case .merged:
+      return CoreL10n.text("已合并")
+    case .closedWithoutMerge:
+      return CoreL10n.text("未合并并已关闭")
+    }
+  }
+}
+
+public struct RemoteRepositoryReviewStatusSnapshot: Codable, Hashable, Sendable {
+  public var provider: RepositoryProvider
+  public var reviewNumber: Int
+  public var reviewURL: String
+  public var state: RemoteRepositoryReviewLifecycleState
+  public var sourceBranch: String
+  public var targetBranch: String
+  public var headCommitSHA: String?
+  public var mergeCommitSHA: String?
+  /// The original release record is immutable audit evidence. If a PR/MR head
+  /// later changes, this value is only actionable after the user explicitly
+  /// accepts that exact observed head on the record.
+  public var checkedAt: Date
+
+  public init(
+    provider: RepositoryProvider,
+    reviewNumber: Int,
+    reviewURL: String,
+    state: RemoteRepositoryReviewLifecycleState,
+    sourceBranch: String,
+    targetBranch: String,
+    headCommitSHA: String? = nil,
+    mergeCommitSHA: String? = nil,
+    checkedAt: Date = Date()
+  ) {
+    self.provider = provider
+    self.reviewNumber = reviewNumber
+    self.reviewURL = reviewURL
+    self.state = state
+    self.sourceBranch = sourceBranch
+    self.targetBranch = targetBranch
+    self.headCommitSHA = headCommitSHA
+    self.mergeCommitSHA = mergeCommitSHA
+    self.checkedAt = checkedAt
+  }
+
+  public var message: String {
+    switch state {
+    case .open:
+      return CoreL10n.text("PR/MR 仍在等待合并。")
+    case .locked:
+      return CoreL10n.text("PR/MR 已锁定但尚未合并；将继续等待远端终态。")
+    case .merged:
+      if let mergeCommitSHA = mergeCommitSHA?.trimmedForPublishing.nilIfEmpty {
+        return CoreL10n.format(
+          "PR/MR 已合并到目标分支，合并提交 %@，正在等待部署验证。",
+          String(mergeCommitSHA.prefix(8))
+        )
+      }
+      return CoreL10n.text("PR/MR 已合并，但缺少可绑定的合并提交，不能开始部署归因。")
+    case .closedWithoutMerge:
+      return CoreL10n.text("PR/MR 已关闭且未合并，不会进入部署检查。")
+    }
+  }
+}
+
 public enum RemoteRepositoryPublishProgressStage: String, Codable, Sendable {
   case preparing
   case validatingTarget
@@ -398,6 +478,7 @@ public struct RemoteRepositoryPublishResult: Codable, Hashable, Sendable {
   /// deletion remains pending review. Nil preserves compatibility with
   /// results persisted before per-path review tracking was introduced.
   public var reviewPendingPaths: [String]?
+  public var reviewNumber: Int?
   public var reviewURL: String?
   public var reviewTitle: String?
 
@@ -412,6 +493,7 @@ public struct RemoteRepositoryPublishResult: Codable, Hashable, Sendable {
     commitSHA: String?,
     remoteVersionsByPath: [String: String]? = nil,
     reviewPendingPaths: [String]? = nil,
+    reviewNumber: Int? = nil,
     reviewURL: String? = nil,
     reviewTitle: String? = nil
   ) {
@@ -425,6 +507,7 @@ public struct RemoteRepositoryPublishResult: Codable, Hashable, Sendable {
     self.commitSHA = commitSHA
     self.remoteVersionsByPath = remoteVersionsByPath
     self.reviewPendingPaths = reviewPendingPaths
+    self.reviewNumber = reviewNumber
     self.reviewURL = reviewURL
     self.reviewTitle = reviewTitle
   }
@@ -461,7 +544,9 @@ public struct RemoteRepositoryPublishResult: Codable, Hashable, Sendable {
       }
       return true
     }()
-    guard reviewURLIsUsable else {
+    let reviewNumberIsUsable = reviewNumber.map { $0 > 0 } ?? false
+    let headCommitIsUsable = commitSHA?.trimmedForPublishing.nilIfEmpty != nil
+    guard reviewURLIsUsable && reviewNumberIsUsable && headCommitIsUsable else {
       if !changedPaths.isEmpty || commitSHA?.trimmedForPublishing.nilIfEmpty != nil {
         throw RemoteRepositoryPublishError.partialPublish(
           provider: provider,
@@ -470,7 +555,7 @@ public struct RemoteRepositoryPublishResult: Codable, Hashable, Sendable {
           targetBranch: targetBranch,
           changedPaths: changedPaths,
           commitSHA: commitSHA,
-          underlyingMessage: CoreL10n.text("PR/MR 链接缺失，无法确认评审已创建。")
+          underlyingMessage: CoreL10n.text("PR/MR 编号、链接或当前 head commit 缺失，无法安全轮询评审。")
         )
       }
       throw RemoteRepositoryPublishError.reviewRecoveryUnavailable(

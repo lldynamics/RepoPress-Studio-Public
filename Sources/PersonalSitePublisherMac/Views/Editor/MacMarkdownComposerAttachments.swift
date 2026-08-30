@@ -5,8 +5,7 @@ import SwiftUI
 extension MacMarkdownComposerView {
   func insertImageReferences(
     _ urls: [URL],
-    automaticallyConvertToWebP: Bool = false,
-    reduceMotionEnabled: Bool = false
+    automaticallyConvertToWebP: Bool = false
   ) {
     guard requireBodyEditingContext() else { return }
     let imageURLs = ImageFileSupport.supportedImageURLs(in: urls)
@@ -111,10 +110,7 @@ extension MacMarkdownComposerView {
       insertedImageMetadataDrafts = insertedMetadata
       activeInsertedImageMetadataID = insertedMetadata.first?.id
       if automaticallyConvertToWebP {
-        showAutomaticImageImportToast(
-          for: automaticImportResults,
-          reduceMotionEnabled: reduceMotionEnabled
-        )
+        showAutomaticImageImportToast(for: automaticImportResults)
       } else {
         showWritingContextPanel(.imageInfo)
       }
@@ -252,8 +248,7 @@ extension MacMarkdownComposerView {
   }
 
   private func showAutomaticImageImportToast(
-    for results: [WorkbenchStore.AutomaticWebPAttachmentImportResult],
-    reduceMotionEnabled: Bool
+    for results: [WorkbenchStore.AutomaticWebPAttachmentImportResult]
   ) {
     let convertedResults = results.filter(\.wasConvertedToWebP)
     let message: String
@@ -279,9 +274,7 @@ extension MacMarkdownComposerView {
 
     automaticImageImportToastTask?.cancel()
     let toast = MarkdownAutomaticImageImportToast(message: message)
-    withAnimation(reduceMotionEnabled ? nil : .easeOut(duration: 0.18)) {
-      automaticImageImportToast = toast
-    }
+    automaticImageImportToast = toast
     automaticImageImportToastTask = Task { @MainActor in
       do {
         try await Task.sleep(for: .seconds(3))
@@ -289,9 +282,7 @@ extension MacMarkdownComposerView {
         return
       }
       guard automaticImageImportToast?.id == toast.id else { return }
-      withAnimation(reduceMotionEnabled ? nil : .easeIn(duration: 0.16)) {
-        automaticImageImportToast = nil
-      }
+      automaticImageImportToast = nil
       automaticImageImportToastTask = nil
     }
   }

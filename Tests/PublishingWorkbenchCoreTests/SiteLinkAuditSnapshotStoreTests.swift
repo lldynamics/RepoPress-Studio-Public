@@ -4,7 +4,7 @@ import XCTest
 
 @MainActor
 final class SiteLinkAuditSnapshotStoreTests: XCTestCase {
-  func testTaskQueueReusesOneSiteReportUntilDraftRevisionChanges() throws {
+  func testTaskQueueReusesOneSiteReportUntilDraftRevisionChanges() async throws {
     let store = WorkbenchStore(
       persistence: WorkbenchPersistence(fileURL: temporaryPersistenceURL()),
       safeMode: true
@@ -25,6 +25,7 @@ final class SiteLinkAuditSnapshotStoreTests: XCTestCase {
     store.setDrafts([source, target])
 
     _ = store.draftTaskQueueStates(for: store.drafts)
+    if let task = store.siteLinkAuditRefreshTask { _ = await task.value }
     XCTAssertEqual(store.siteLinkAuditSnapshotStore.replacementCount, 1)
 
     _ = store.draftTaskQueueStates(for: store.drafts)
@@ -35,6 +36,7 @@ final class SiteLinkAuditSnapshotStoreTests: XCTestCase {
     store.updateDraft(changed)
 
     _ = store.draftTaskQueueStates(for: store.drafts)
+    if let task = store.siteLinkAuditRefreshTask { _ = await task.value }
     XCTAssertEqual(store.siteLinkAuditSnapshotStore.replacementCount, 2)
   }
 

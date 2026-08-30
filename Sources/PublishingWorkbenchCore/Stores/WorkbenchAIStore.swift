@@ -61,6 +61,12 @@ public final class WorkbenchAIStore: ObservableObject {
   /// typewriter effect smooth without scheduling a SwiftUI state publication
   /// for every SSE token.
   let aiChatStreamPublishInterval: Duration = .milliseconds(50)
+  /// Test-visible instrumentation for the expensive, structure-level
+  /// retention pass. Streaming replacements must not increment this counter.
+  var aiConversationRetentionPassCount = 0
+  /// Changes only at a durable/structural conversation write. Inspector
+  /// projections use this to keep static context out of token publications.
+  @Published public internal(set) var aiChatSessionLifecycleRevision: UInt64 = 0
   @Published public internal(set) var aiChatManualRetryState: AIChatManualRetryState? = nil
   @Published public internal(set) var aiGeneralChatManualRetryState:
     AIGeneralChatManualRetryState? = nil
@@ -240,6 +246,8 @@ public final class WorkbenchAIStore: ObservableObject {
   public var aiConversations: [AIConversation] {
     get { workspace.aiConversations }
     set {
+      aiConversationRetentionPassCount &+= 1
+      aiChatSessionLifecycleRevision &+= 1
       let pendingAgentConversationIDs = Set(
         newValue.compactMap { conversation in
           conversation.messages.contains(where: { message in
@@ -265,6 +273,20 @@ public final class WorkbenchAIStore: ObservableObject {
           conversations: limitedConversations
         )
     }
+  }
+
+  /// Replaces the payload of an existing conversation during a live stream.
+  /// This intentionally bypasses `aiConversations` so a 20 FPS text update
+  /// cannot sort, group, or image-normalise every saved conversation. Normal
+  /// session writes still flow through the public property at completion,
+  /// cancellation, and all structural edits.
+  func replaceAIConversationStreaming(
+    at index: Int,
+    with state: AIPublishingChatSessionState,
+    updatedAt: Date = Date()
+  ) {
+    guard workspace.aiConversations.indices.contains(index) else { return }
+    workspace.aiConversations[index].applyStreaming(state, updatedAt: updatedAt)
   }
 
   public var activeAIConversationIDsByDraftID: [UUID: UUID] {

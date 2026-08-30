@@ -66,10 +66,22 @@ extension ReleaseHistoryDetailView {
           metadataRow("目标分支", targetBranch)
         }
         if let shortCommitSHA = record.shortCommitSHA {
-          metadataRow("Commit", shortCommitSHA)
+          metadataRow(
+            record.kind == .remoteReviewRequest ? "Review Commit" : "Commit",
+            shortCommitSHA
+          )
         }
         if let reviewTitle = record.reviewTitle {
           metadataRow("PR/MR 标题", reviewTitle)
+        }
+        if let reviewStatus = record.reviewStatus {
+          metadataRow("PR/MR 状态", reviewStatus.state.localizedDisplayName)
+          if let mergeCommitSHA = reviewStatus.mergeCommitSHA?.trimmedForPublishing.nilIfEmpty {
+            metadataRow("合并 Commit", String(mergeCommitSHA.prefix(8)))
+          }
+          if record.hasUnconfirmedReviewHeadDrift {
+            metadataRow("部署归因", "已检测到新的 Review Commit，需手动确认")
+          }
         }
       }
 
@@ -421,6 +433,31 @@ extension ReleaseHistoryDetailView {
         .accessibilityLabel("检查部署状态")
         .accessibilityIdentifier("release-record-\(record.id)-check-deployment")
 
+        if record.kind == .remoteReviewRequest,
+          record.reviewStatus?.state != .merged
+        {
+          Button {
+            Task {
+              await store.refreshRemoteReviewStatus(for: record)
+            }
+          } label: {
+            releaseRecordActionLabel("检查 PR/MR", systemImage: "arrow.triangle.pull")
+          }
+          .disabled(store.isDeploymentStatusChecking)
+          .accessibilityLabel("检查 PR/MR 合并状态")
+          .accessibilityIdentifier("release-record-\(record.id)-check-review")
+        }
+
+        if record.hasUnconfirmedReviewHeadDrift {
+          Button {
+            _ = store.acceptObservedReviewHead(for: record)
+          } label: {
+            releaseRecordActionLabel("确认新的 Review Commit", systemImage: "checkmark.shield")
+          }
+          .accessibilityLabel("确认新的 PR/MR head commit 后允许部署归因")
+          .accessibilityIdentifier("release-record-\(record.id)-accept-review-head")
+        }
+
         Button {
           Task {
             await store.sendReleaseRecoveryPackageToAI(for: entry)
@@ -431,11 +468,14 @@ extension ReleaseHistoryDetailView {
         .disabled(record.draftID == nil || store.ai.isChatRunning)
         .accessibilityIdentifier("release-record-\(record.id)-send-to-ai")
 
-        if let commitSHA = record.commitSHA {
+        if let commitSHA = record.deploymentCommitSHA ?? record.commitSHA {
           Button {
             copy(commitSHA, message: "已复制 commit SHA。")
           } label: {
-            releaseRecordActionLabel("复制 Commit", systemImage: "number")
+            releaseRecordActionLabel(
+              record.deploymentCommitSHA == nil ? "复制 Commit" : "复制部署 Commit",
+              systemImage: "number"
+            )
           }
           .accessibilityIdentifier("release-record-\(record.id)-copy-commit")
         }
@@ -578,7 +618,8 @@ extension ReleaseHistoryDetailView {
   func canWithdrawRemoteReview(_ record: ReleaseRecord) -> Bool {
     switch record.kind {
     case .remoteReviewRequest:
-      return record.reviewURL?.trimmedForPublishing.nilIfEmpty != nil
+      return record.reviewStatus?.state != .merged
+        && record.reviewURL?.trimmedForPublishing.nilIfEmpty != nil
     case .localWrite, .batchLocalWrite, .directCommit, .reviewBranch, .remoteDirectCommit,
       .remotePreviewBranch, .remotePublishFailure, .remoteRollback, .remoteReviewWithdrawal:
       return false

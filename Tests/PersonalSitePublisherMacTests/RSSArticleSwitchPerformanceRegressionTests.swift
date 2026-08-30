@@ -16,6 +16,78 @@ final class RSSArticleSwitchPerformanceRegressionTests: XCTestCase {
   }
 
   @MainActor
+  func testPreparedIndexRevealKeepsPageBoundariesWithoutStoreScan() {
+    let state = RSSReaderPresentationState()
+    state.revealArticle("article-9999", index: 9_999, totalCount: 10_000)
+    XCTAssertEqual(state.articleDisplayLimit, 10_000)
+
+    state.resetArticleDisplayLimit()
+    state.revealArticle("out-of-range", index: 10_000, totalCount: 10_000)
+    XCTAssertEqual(state.articleDisplayLimit, RSSReaderPresentationState.articlePageSize)
+  }
+
+  @MainActor
+  func testAIInspectorStaticProjectionStaysCachedForStreamingLeafUpdates() {
+    let cache = AIChatInspectorStaticProjectionCache()
+    let draftID = UUID()
+    let conversationID = UUID()
+    let baseKey = AIChatInspectorStaticProjectionCache.Key(
+      draftID: draftID,
+      draftUpdatedAt: Date(timeIntervalSince1970: 1),
+      conversationID: conversationID,
+      contextMode: .site,
+      conversationTitle: "Conversation",
+      firstUserMessageID: UUID(),
+      lifecycleRevision: 4,
+      siteMaintenanceSnapshotVersion: 7
+    )
+    let draft = ArticleDraft(siteProfileID: UUID(), title: "Draft", bodyMarkdown: "")
+    let makeProjection = {
+      AIChatInspectorStaticProjectionCache.Projection(
+        draft: draft,
+        conversationID: conversationID,
+        conversationTitle: "Conversation",
+        relatedSuggestions: []
+      )
+    }
+
+    _ = cache.resolve(key: baseKey, build: makeProjection)
+    for _ in 0..<100 {
+      _ = cache.resolve(key: baseKey) {
+        XCTFail("streaming leaf update rebuilt static inspector context")
+        return makeProjection()
+      }
+    }
+    XCTAssertEqual(cache.buildCount, 1)
+
+    let lifecycleKey = AIChatInspectorStaticProjectionCache.Key(
+      draftID: baseKey.draftID,
+      draftUpdatedAt: baseKey.draftUpdatedAt,
+      conversationID: baseKey.conversationID,
+      contextMode: baseKey.contextMode,
+      conversationTitle: baseKey.conversationTitle,
+      firstUserMessageID: baseKey.firstUserMessageID,
+      lifecycleRevision: 5,
+      siteMaintenanceSnapshotVersion: baseKey.siteMaintenanceSnapshotVersion
+    )
+    _ = cache.resolve(key: lifecycleKey, build: makeProjection)
+    XCTAssertEqual(cache.buildCount, 2)
+
+    let snapshotKey = AIChatInspectorStaticProjectionCache.Key(
+      draftID: lifecycleKey.draftID,
+      draftUpdatedAt: lifecycleKey.draftUpdatedAt,
+      conversationID: lifecycleKey.conversationID,
+      contextMode: lifecycleKey.contextMode,
+      conversationTitle: lifecycleKey.conversationTitle,
+      firstUserMessageID: lifecycleKey.firstUserMessageID,
+      lifecycleRevision: lifecycleKey.lifecycleRevision,
+      siteMaintenanceSnapshotVersion: 8
+    )
+    _ = cache.resolve(key: snapshotKey, build: makeProjection)
+    XCTAssertEqual(cache.buildCount, 3)
+  }
+
+  @MainActor
   func testBackgroundMetricsCanBePublishedWithoutRecomputingOnLookup() {
     let article = RSSArticle(
       id: "metrics-cache",

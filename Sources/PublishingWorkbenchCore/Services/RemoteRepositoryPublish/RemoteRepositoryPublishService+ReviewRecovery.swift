@@ -96,6 +96,7 @@ extension RemoteRepositoryPublishService {
       targetBranch: draft.targetBranch,
       changedPaths: draft.changedPaths,
       commitSHA: branchSHA,
+      reviewNumber: reviewURL.flatMap { reviewNumber(from: $0, provider: .github) },
       reviewURL: reviewURL,
       reviewTitle: draft.title
     )
@@ -153,6 +154,7 @@ extension RemoteRepositoryPublishService {
       targetBranch: draft.targetBranch,
       changedPaths: draft.changedPaths,
       commitSHA: draft.recordedCommitSHA,
+      reviewNumber: reviewURL.flatMap { reviewNumber(from: $0, provider: .gitlab) },
       reviewURL: reviewURL,
       reviewTitle: draft.title
     )

@@ -5,56 +5,75 @@ import SwiftUI
 extension AIChatContextInspectorView {
 
   var state: AIChatContextInspectorState {
-    guard let draft = ai.selectedChatDraft else {
+    guard let draft = inspectorDraft else {
       return AIChatContextInspectorState(draft: nil)
     }
 
-    let profile = ai.chatContextMode == .general ? nil : ai.chatProfile(for: draft)
-    let relationSuggestions =
-      ai.chatContextMode == .general
-      ? []
-      : ai.relatedChatArticleSuggestions(for: draft, limit: 5)
     let displayedGeneralConversation =
       ai.chatContextMode == .general
       ? ai.generalChatConversation(withID: inspectorSurfaceConversationID)
       : nil
+    let displayedDraftConversation =
+      ai.chatContextMode == .site
+      ? ai.chatConversations(for: draft.id).first(where: {
+        $0.id == ai.activeChatConversationID(for: draft.id)
+      })
+      : nil
     let displayedMessages =
       ai.chatContextMode == .general
       ? (displayedGeneralConversation?.messages ?? [])
-      : ai.chatMessages
+      : (displayedDraftConversation?.messages ?? [])
     let displayedConversationID =
       ai.chatContextMode == .general
       ? displayedGeneralConversation?.id
       : ai.activeChatConversationID(for: draft.id)
-    let displayedConversationTitle: String
-    if ai.chatContextMode == .general {
-      if let title = displayedGeneralConversation?.title?.trimmedForPublishing.nilIfEmpty {
-        displayedConversationTitle = title
-      } else if let firstUserMessage = displayedMessages.first(where: { $0.role == .user }) {
-        displayedConversationTitle = AIPublishingChatConversationPresentation.title(
-          fromUserText: AIPublishingChatMessageCompositionService.displayContent(
-            for: firstUserMessage),
-          fallbackTitle: String(localized: "通用 AI 对话")
-        )
-      } else {
-        displayedConversationTitle = String(localized: "通用 AI 对话")
-      }
-    } else {
-      displayedConversationTitle = AIPublishingChatConversationPresentation.displayTitle(
-        conversationTitle: ai.chatConversationTitle,
-        messages: displayedMessages,
-        draft: draft,
-        emptyTitle: String(localized: "AI 对话")
+    let firstUserMessage = displayedMessages.first(where: { $0.role == .user })
+    let conversationTitle =
+      ai.chatContextMode == .general
+      ? displayedGeneralConversation?.title
+      : displayedDraftConversation?.title
+    let staticProjection = staticProjectionCache.resolve(
+      key: .init(
+        draftID: draft.id,
+        draftUpdatedAt: draft.updatedAt,
+        conversationID: displayedConversationID,
+        contextMode: ai.chatContextMode,
+        conversationTitle: conversationTitle,
+        firstUserMessageID: firstUserMessage?.id,
+        lifecycleRevision: chatState.chatSessionLifecycleRevision,
+        siteMaintenanceSnapshotVersion: chatState.siteMaintenanceSnapshotVersion
       )
-    }
-
-    return AIChatContextInspectorState(
-      draft: AIChatInspectorDraftContext(
+    ) {
+      let profile = ai.chatContextMode == .general ? nil : ai.chatProfile(for: draft)
+      let relationSuggestions =
+        ai.chatContextMode == .general
+        ? []
+        : ai.relatedChatArticleSuggestions(for: draft, limit: 5)
+      let displayedConversationTitle: String
+      if ai.chatContextMode == .general {
+        if let title = conversationTitle?.trimmedForPublishing.nilIfEmpty {
+          displayedConversationTitle = title
+        } else if let firstUserMessage {
+          displayedConversationTitle = AIPublishingChatConversationPresentation.title(
+            fromUserText: AIPublishingChatMessageCompositionService.displayContent(
+              for: firstUserMessage),
+            fallbackTitle: String(localized: "通用 AI 对话")
+          )
+        } else {
+          displayedConversationTitle = String(localized: "通用 AI 对话")
+        }
+      } else {
+        displayedConversationTitle = AIPublishingChatConversationPresentation.displayTitle(
+          conversationTitle: conversationTitle,
+          messages: displayedMessages,
+          draft: draft,
+          emptyTitle: String(localized: "AI 对话")
+        )
+      }
+      return AIChatInspectorStaticProjectionCache.Projection(
         draft: draft,
         conversationID: displayedConversationID,
         conversationTitle: displayedConversationTitle,
-        messages: Array(displayedMessages.suffix(visibleMessageLimit)),
-        totalMessageCount: displayedMessages.count,
         relatedSuggestions: relationSuggestions.prefix(4).map { suggestion in
           AIChatRelatedSuggestionPresentation(
             id: suggestion.id,
@@ -70,7 +89,18 @@ extension AIChatContextInspectorView {
               )
             } ?? ""
           )
-        },
+        }
+      )
+    }
+
+    return AIChatContextInspectorState(
+      draft: AIChatInspectorDraftContext(
+        draft: staticProjection.draft,
+        conversationID: staticProjection.conversationID,
+        conversationTitle: staticProjection.conversationTitle,
+        messages: Array(displayedMessages.suffix(visibleMessageLimit)),
+        totalMessageCount: displayedMessages.count,
+        relatedSuggestions: staticProjection.relatedSuggestions,
         isChatRunning: ai.isChatRunning,
         isAutomationRunning: ai.isAutomationRunning,
         automationRunRecords: ai.automationRunRecords
@@ -127,22 +157,8 @@ extension AIChatContextInspectorView {
         _ = ai.openKnowledgeCitation(citation)
       },
       previewStructuredEdits: { message, review, draft in
-        guard
-          let current = ai.selectedChatDraft,
-          current.id == draft.id,
-          let updated = ai.reviewedStructuredEditDraft(
-            message: message,
-            review: review
-          )
-        else {
-          return
-        }
-        draftDiffPreview = AIChatDraftDiffPreview(
-          originalDraft: current,
-          updatedDraft: updated,
-          citations: [],
-          applicationKind: .structuredEdit
-        )
+        guard inspectorDraft?.id == draft.id else { return }
+        _ = ai.beginInlineStructuredEditReview(message: message, review: review)
       },
       recordStructuredEditFeedback: { decision, proposal, model in
         ai.recordStructuredEditFeedback(
@@ -393,7 +409,7 @@ extension AIChatContextInspectorView {
     let ownerToken = UUID()
     let submittedContextMode = ai.chatContextMode
     let submittedConversationID = inspectorSurfaceConversationID
-    let submittedDraft = ai.selectedChatDraft
+    let submittedDraft = inspectorDraft
     _ = operationSession.start(ownerToken: ownerToken) {
       if submittedContextMode == .general {
         _ = await ai.retryLastFailedGeneralChatReply(
@@ -431,7 +447,7 @@ extension AIChatContextInspectorView {
   }
 
   func focusComposerIfAvailable() {
-    guard ai.chatContextMode == .general || ai.selectedChatDraft != nil, !isChatBusy else {
+    guard ai.chatContextMode == .general || inspectorDraft != nil, !isChatBusy else {
       return
     }
     DispatchQueue.main.async {
@@ -440,45 +456,52 @@ extension AIChatContextInspectorView {
   }
 
   func synchronizeChatDraftWithSelection() {
-    guard let draft = ai.selectedChatDraft,
+    guard let draft = inspectorDraft,
       ai.chatDraftID != draft.id
     else { return }
     ai.prepareChat(for: draft)
   }
 
   func scrollToLatestMessage(
-    using proxy: ScrollViewProxy,
-    animated: Bool = true
+    using proxy: ScrollViewProxy
   ) {
     guard let latestMessageID else { return }
     DispatchQueue.main.async {
-      if animated {
-        withAnimation(WorkbenchMotion.standard) {
-          proxy.scrollTo(latestMessageID, anchor: .bottom)
-        }
-      } else {
-        proxy.scrollTo(latestMessageID, anchor: .bottom)
-      }
+      proxy.scrollTo(latestMessageID, anchor: .bottom)
+      isPinnedToLatestMessage = AIChatScrollPinningPolicy.isPinnedAfterReturnToLatest()
     }
   }
 
   func scheduleLatestMessageScroll(
-    using proxy: ScrollViewProxy,
-    animated: Bool
+    using proxy: ScrollViewProxy
   ) {
-    latestMessageScrollTask?.cancel()
-    let targetID = latestMessageID
+    // A stream can publish every 50 ms. Keep one scheduled scroll in flight
+    // rather than cancelling/reissuing a scroll for every token publication.
+    // This is a throttle (not a debounce), so a continuous reply still keeps
+    // moving at a readable cadence.
+    guard isPinnedToLatestMessage, latestMessageScrollTask == nil else { return }
+    latestMessageScrollGeneration &+= 1
+    let scheduledGeneration = latestMessageScrollGeneration
     latestMessageScrollTask = Task { @MainActor in
-      guard !Task.isCancelled, let targetID
-      else { return }
-      if animated {
-        withAnimation(WorkbenchMotion.standard) {
-          proxy.scrollTo(targetID, anchor: .bottom)
+      try? await Task.sleep(for: .milliseconds(90))
+      guard !Task.isCancelled,
+        let targetID = latestMessageID,
+        AIChatScrollPinningPolicy.shouldFollowScheduledScroll(
+          isPinnedToLatest: isPinnedToLatestMessage,
+          scheduledGeneration: scheduledGeneration,
+          currentGeneration: latestMessageScrollGeneration
+        )
+      else {
+        if scheduledGeneration == latestMessageScrollGeneration {
+          latestMessageScrollTask = nil
         }
-      } else {
-        proxy.scrollTo(targetID, anchor: .bottom)
+        return
       }
-      latestMessageScrollTask = nil
+      proxy.scrollTo(targetID, anchor: .bottom)
+      isPinnedToLatestMessage = AIChatScrollPinningPolicy.isPinnedAfterReturnToLatest()
+      if scheduledGeneration == latestMessageScrollGeneration {
+        latestMessageScrollTask = nil
+      }
     }
   }
 
@@ -509,7 +532,7 @@ extension AIChatContextInspectorView {
   }
 
   func applyDraftDiffPreview(_ preview: AIChatDraftDiffPreview) {
-    guard let current = ai.selectedChatDraft,
+    guard let current = inspectorDraft,
       AIChatDraftDiffApplicationPolicy.canApply(
         currentDraft: current,
         preview: preview

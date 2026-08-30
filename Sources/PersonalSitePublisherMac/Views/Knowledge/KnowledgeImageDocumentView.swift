@@ -95,7 +95,7 @@ struct KnowledgeImageDocumentView: View {
   let highlightedAnchor: KnowledgeVisualAnchor?
 
   @State private var image: KnowledgeDecodedImage?
-  @State private var isLoading = false
+  @State private var isLoading = true
   @State private var zoom: CGFloat = 1
   @State private var gestureStartZoom: CGFloat = 1
 
@@ -108,27 +108,30 @@ struct KnowledgeImageDocumentView: View {
           .fill(.quaternary.opacity(0.45))
 
         if isLoading {
-          ProgressView(String(localized: "正在载入图片…"))
-            .controlSize(.small)
+          WorkbenchStateView(
+            presentation: WorkbenchStatePresentation(
+              kind: .loading(detail: String(localized: "正在载入图片…"))
+            ),
+            density: .compactPane
+          )
         } else if let image {
           imageCanvas(image.value)
         } else {
-          ContentUnavailableView(
-            String(localized: "无法显示图片"),
-            systemImage: "photo.badge.exclamationmark",
-            description: Text("托管副本不可读，可在资料库健康检查中重新验证。")
+          WorkbenchStateView(
+            presentation: WorkbenchStatePresentation(
+              kind: .failure(
+                reason: String(localized: "托管副本不可读，可在资料库健康检查中重新验证。")
+              )
+            ),
+            density: .compactPane
           )
         }
       }
       .frame(minHeight: 360, idealHeight: 520, maxHeight: 680)
       .clipped()
       .accessibilityElement(children: .ignore)
-      .accessibilityLabel(
-        String(format: String(localized: "图片：%@"), title)
-      )
-      .accessibilityValue(
-        highlightedAnchor == nil ? "" : String(localized: "已高亮当前搜索命中区域")
-      )
+      .accessibilityLabel(imageAccessibilityLabel)
+      .accessibilityValue(imageAccessibilityValue)
       .onDrag {
         guard let imageURL else { return NSItemProvider() }
         return NSItemProvider(contentsOf: imageURL)
@@ -157,6 +160,31 @@ struct KnowledgeImageDocumentView: View {
       zoom = 1
       gestureStartZoom = 1
     }
+  }
+
+  private var imageAccessibilityLabel: String {
+    if isLoading {
+      return String(localized: "正在加载")
+    }
+    if image == nil {
+      return String(localized: "失败")
+    }
+    return String(format: String(localized: "图片：%@"), title)
+  }
+
+  private var imageAccessibilityValue: String {
+    if isLoading {
+      return String(localized: "正在载入图片…")
+    }
+    if image == nil {
+      return String(
+        format: String(localized: "原因：%@"),
+        String(localized: "托管副本不可读，可在资料库健康检查中重新验证。")
+      )
+    }
+    return highlightedAnchor == nil
+      ? ""
+      : String(localized: "已高亮当前搜索命中区域")
   }
 
   private var imageToolbar: some View {

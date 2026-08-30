@@ -15,15 +15,37 @@ struct MarkdownTextEditRequest: Equatable {
   }
 }
 
+struct MarkdownTextEditRequestOutcome: Equatable {
+  let id: UUID
+  let wasApplied: Bool
+}
+
 struct MarkdownTextFocusRequest: Equatable {
   let id: UUID
   let selectedRange: NSRange
-  let isAnimated: Bool
+}
 
-  init(id: UUID, selectedRange: NSRange, isAnimated: Bool = false) {
-    self.id = id
-    self.selectedRange = selectedRange
-    self.isAnimated = isAnimated
+/// Immutable, paint-only input for the editor's current structured-review
+/// hunk. The text storage remains the source Markdown and is never decorated.
+struct MarkdownEditorInlineAIReviewPresentation: Equatable {
+  let hunkID: String
+  let bodyRange: NSRange
+  let replacementText: String
+}
+
+enum MarkdownGhostTextCommandPolicy {
+  static func shouldAccept(
+    ghostText: String,
+    selectedRange: NSRange,
+    bodyUTF16Offset: Int,
+    hasMarkedText: Bool
+  ) -> Bool {
+    !hasMarkedText && !ghostText.isEmpty && selectedRange.length == 0
+      && selectedRange.location >= bodyUTF16Offset
+  }
+
+  static func shouldDismiss(ghostText: String, hasMarkedText: Bool) -> Bool {
+    !hasMarkedText && !ghostText.isEmpty
   }
 }
 
@@ -66,6 +88,7 @@ struct MacMarkdownTextView: NSViewRepresentable {
     MarkdownTextKit2ReadOnlyPresentationPolicy.isEnabled
   var editRequest: MarkdownTextEditRequest?
   var focusRequest: MarkdownTextFocusRequest?
+  var inlineAIReviewPresentation: MarkdownEditorInlineAIReviewPresentation? = nil
   var ghostText: String
   var ssgSnippets: [MarkdownSnippet]
   var scrollSyncUpdate: MarkdownScrollSyncUpdate?
@@ -73,7 +96,7 @@ struct MacMarkdownTextView: NSViewRepresentable {
   var onStatisticsChanged: (MarkdownEditorStatistics) -> Void
   var onFileDropTargetChanged: (Bool) -> Void
   var onPasteMessage: (String) -> Void
-  var onEditRequestHandled: (UUID) -> Void
+  var onEditRequestHandled: (MarkdownTextEditRequestOutcome) -> Void
   var onGhostTextAccepted: (String) -> Void
   var onGhostTextDismissed: () -> Void
   var onInlineAICompletionRequested: () -> Void
@@ -97,6 +120,7 @@ struct MacMarkdownTextView: NSViewRepresentable {
       attachments: attachments,
       readOnlyNativePresentationEnabled: readOnlyNativePresentationEnabled,
       ghostText: ghostText,
+      inlineAIReviewPresentation: inlineAIReviewPresentation,
       ssgSnippets: ssgSnippets,
       onStatisticsChanged: onStatisticsChanged,
       onPasteMessage: onPasteMessage,
@@ -228,6 +252,7 @@ struct MacMarkdownTextView: NSViewRepresentable {
       || context.coordinator.bodyUTF16Offset != bodyUTF16Offset
       || context.coordinator.attachments != attachments
       || context.coordinator.comfortConfiguration != comfortConfiguration
+      || context.coordinator.inlineAIReviewPresentation != inlineAIReviewPresentation
     let didReceiveChangedText = context.coordinator.updateRepresentedText(text)
     let hasPendingEditRequest =
       editRequest.map {
@@ -259,6 +284,10 @@ struct MacMarkdownTextView: NSViewRepresentable {
     context.coordinator.ssgSnippets = ssgSnippets
     context.coordinator.onGhostTextAccepted = onGhostTextAccepted
     context.coordinator.onGhostTextDismissed = onGhostTextDismissed
+    context.coordinator.updateInlineAIReviewPresentation(
+      inlineAIReviewPresentation,
+      in: textView
+    )
     context.coordinator.onSSGSnippetShortcut = onSSGSnippetShortcut
     context.coordinator.applyComfortConfiguration(
       comfortConfiguration,
@@ -287,16 +316,10 @@ struct MacMarkdownTextView: NSViewRepresentable {
       }
       droppableTextView.slashCommandKeyHandler = onSlashCommandKey
       droppableTextView.inlineAIRequestHandler = onInlineAICompletionRequested
-      droppableTextView.ghostTextAcceptHandler = {
-        guard !context.coordinator.ghostText.isEmpty else { return false }
-        context.coordinator.onGhostTextAccepted(context.coordinator.ghostText)
-        return true
-      }
-      droppableTextView.ghostTextDismissHandler = {
-        guard !context.coordinator.ghostText.isEmpty else { return false }
-        context.coordinator.onGhostTextDismissed()
-        return true
-      }
+      // NSTextViewDelegate.doCommandBy is the sole ghost command owner. A
+      // second keyDown route would schedule duplicate completion insertions.
+      droppableTextView.ghostTextAcceptHandler = nil
+      droppableTextView.ghostTextDismissHandler = nil
     }
 
     if context.coordinator.isShowingReadOnlyPresentation {
@@ -351,14 +374,9 @@ struct MacMarkdownTextView: NSViewRepresentable {
         bodyUTF16Offset: bodyUTF16Offset,
         documentLength: (textView.string as NSString).length
       )
-      let shouldAnimateFocus =
-        focusRequest?.isAnimated == true
-        && focusRequest?.selectedRange == selectedRange
       if textView.selectedRange() != range {
         textView.setSelectedRange(range)
-        if !shouldAnimateFocus {
-          textView.scrollRangeToVisible(range)
-        }
+        textView.scrollRangeToVisible(range)
       }
     }
     context.coordinator.updateDiagnostics(
@@ -373,9 +391,9 @@ struct MacMarkdownTextView: NSViewRepresentable {
 
     context.coordinator.refreshCachedTypingAttributes(in: textView)
     context.coordinator.updateGhostText(ghostText, in: textView)
-    if let handledRequestID = context.coordinator.handle(editRequest, in: textView) {
+    if let outcome = context.coordinator.handle(editRequest, in: textView) {
       DispatchQueue.main.async {
-        onEditRequestHandled(handledRequestID)
+        onEditRequestHandled(outcome)
       }
     }
     context.coordinator.requestKeyboardFocus(focusRequest, in: textView)
@@ -475,6 +493,7 @@ struct MacMarkdownTextView: NSViewRepresentable {
     var lastAppliedFocusRequestID: UUID?
     var focusRequestTask: Task<Void, Never>?
     var ghostText = ""
+    var inlineAIReviewPresentation: MarkdownEditorInlineAIReviewPresentation?
     var ssgSnippets: [MarkdownSnippet]
     weak var ghostTextOverlayView: MarkdownGhostTextOverlayView?
     var comfortConfiguration: MarkdownEditorComfortConfiguration
@@ -540,6 +559,7 @@ struct MacMarkdownTextView: NSViewRepresentable {
       attachments: [DraftAttachment] = [],
       readOnlyNativePresentationEnabled: Bool = false,
       ghostText: String,
+      inlineAIReviewPresentation: MarkdownEditorInlineAIReviewPresentation? = nil,
       ssgSnippets: [MarkdownSnippet],
       onStatisticsChanged: @escaping (MarkdownEditorStatistics) -> Void,
       onPasteMessage: @escaping (String) -> Void,
@@ -582,6 +602,7 @@ struct MacMarkdownTextView: NSViewRepresentable {
       self.onDroppedFiles = onDroppedFiles
       self.onDroppedMarkdown = onDroppedMarkdown
       self.ghostText = ghostText
+      self.inlineAIReviewPresentation = inlineAIReviewPresentation
       self.ssgSnippets = ssgSnippets
       scrollSyncBridge = MarkdownScrollViewSyncBridge(
         source: .editor,
@@ -680,6 +701,7 @@ struct MacMarkdownTextView: NSViewRepresentable {
       let overlay = MarkdownGhostTextOverlayView(frame: textView.bounds)
       overlay.autoresizingMask = [.width, .height]
       overlay.textView = textView
+      overlay.ghostText = ghostText
       overlay.isHidden = ghostText.isEmpty
       overlay.setAccessibilityLabel("AI 预测续写")
       overlay.setAccessibilityHelp("按 Tab 采纳预测内容，按 Escape 忽略预测内容")
@@ -696,9 +718,29 @@ struct MacMarkdownTextView: NSViewRepresentable {
       }
       guard let overlay = ghostTextOverlayView else { return }
       overlay.textView = textView
-      if didChange {
-        overlay.ghostText = text
-        overlay.setAccessibilityValue(text)
+      if didChange { overlay.ghostText = text }
+      // Restoring from a read-only presentation may supply the same value;
+      // visibility is state in its own right and must be resumed explicitly.
+      overlay.isHidden = text.isEmpty
+      overlay.setAccessibilityValue(text)
+    }
+
+    func updateInlineAIReviewPresentation(
+      _ presentation: MarkdownEditorInlineAIReviewPresentation?,
+      in textView: NSTextView
+    ) {
+      guard let editor = textView as? DroppableMarkdownTextView else { return }
+      let documentRange = presentation.map {
+        NSRange(location: bodyUTF16Offset + $0.bodyRange.location, length: $0.bodyRange.length)
+      }
+      guard
+        inlineAIReviewPresentation != presentation
+          || editor.markdownInlineAIReviewRange != documentRange
+      else { return }
+      inlineAIReviewPresentation = presentation
+      editor.markdownInlineAIReviewRange = documentRange
+      if let documentRange {
+        editor.scrollRangeToVisible(documentRange)
       }
     }
 
@@ -1276,7 +1318,10 @@ struct MacMarkdownTextView: NSViewRepresentable {
     }
 
     @discardableResult
-    func handle(_ request: MarkdownTextEditRequest?, in textView: NSTextView) -> UUID? {
+    func handle(
+      _ request: MarkdownTextEditRequest?,
+      in textView: NSTextView
+    ) -> MarkdownTextEditRequestOutcome? {
       guard let request,
         request.id != lastAppliedEditRequestID
       else {
@@ -1285,14 +1330,14 @@ struct MacMarkdownTextView: NSViewRepresentable {
 
       lastAppliedEditRequestID = request.id
       guard bodyMarkdown == request.expectedText else {
-        return request.id
+        return MarkdownTextEditRequestOutcome(id: request.id, wasApplied: false)
       }
 
       let textLength = (bodyMarkdown as NSString).length
       guard request.edit.replacedRange.location >= 0,
         NSMaxRange(request.edit.replacedRange) <= textLength
       else {
-        return request.id
+        return MarkdownTextEditRequestOutcome(id: request.id, wasApplied: false)
       }
 
       let documentEdit = MarkdownSmartEdit(
@@ -1301,7 +1346,7 @@ struct MacMarkdownTextView: NSViewRepresentable {
         selectedRange: documentRange(from: request.edit.selectedRange)
       )
       apply(documentEdit, in: textView)
-      return request.id
+      return MarkdownTextEditRequestOutcome(id: request.id, wasApplied: true)
     }
 
     func requestKeyboardFocus(
@@ -1348,8 +1393,7 @@ struct MacMarkdownTextView: NSViewRepresentable {
           textView.setSelectedRange(range)
           self.scrollToRange(
             range,
-            in: textView,
-            animated: request.isAnimated
+            in: textView
           )
           let didFocus =
             window.firstResponder === textView
@@ -1377,27 +1421,9 @@ struct MacMarkdownTextView: NSViewRepresentable {
 
     func scrollToRange(
       _ range: NSRange,
-      in textView: NSTextView,
-      animated: Bool
+      in textView: NSTextView
     ) {
-      guard animated,
-        let targetRect = MarkdownTextKit2RangeAdapter.rect(for: range, in: textView),
-        let clipView = textView.enclosingScrollView?.contentView
-      else {
-        textView.scrollRangeToVisible(range)
-        return
-      }
-      let targetY = targetRect.minY - 24
-      let maximumY = max(0, textView.bounds.height - clipView.bounds.height)
-      let clampedY = min(max(0, targetY), maximumY)
-
-      NSAnimationContext.runAnimationGroup { context in
-        context.duration = 0.24
-        context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-        clipView.animator().setBoundsOrigin(
-          NSPoint(x: clipView.bounds.origin.x, y: clampedY)
-        )
-      }
+      textView.scrollRangeToVisible(range)
     }
 
     func observeScrolling(in scrollView: NSScrollView) {
@@ -1713,44 +1739,47 @@ struct MacMarkdownTextView: NSViewRepresentable {
       let targetY = lineRect.midY - (clipView.bounds.height / 2.2)
       let clampedY = max(0, min(targetY, textView.bounds.height - clipView.bounds.height))
 
-      if comfortConfiguration.accessibilityReduceMotionEnabled {
-        clipView.setBoundsOrigin(NSPoint(x: 0, y: clampedY))
-        textView.enclosingScrollView?.reflectScrolledClipView(clipView)
-        return
-      }
-
-      NSAnimationContext.runAnimationGroup { context in
-        context.duration = 0.10
-        context.timingFunction = CAMediaTimingFunction(name: .easeOut)
-        clipView.animator().setBoundsOrigin(NSPoint(x: 0, y: clampedY))
-      }
+      clipView.setBoundsOrigin(NSPoint(x: 0, y: clampedY))
+      textView.enclosingScrollView?.reflectScrolledClipView(clipView)
     }
 
     func textView(
       _ textView: NSTextView,
       doCommandBy commandSelector: Selector
     ) -> Bool {
-      guard textView.selectedRange().location >= bodyUTF16Offset else {
-        return false
-      }
+      // An active input-method composition owns command routing.  In
+      // particular, Tab/Escape must reach the IME instead of accepting a
+      // completion, dismissing it, or falling through to smart indentation.
+      guard !textView.hasMarkedText() else { return false }
       if commandSelector == #selector(NSResponder.insertTab(_:)),
-        !ghostText.isEmpty,
-        textView.selectedRange().length == 0
+        MarkdownGhostTextCommandPolicy.shouldAccept(
+          ghostText: ghostText,
+          selectedRange: textView.selectedRange(),
+          bodyUTF16Offset: bodyUTF16Offset,
+          hasMarkedText: textView.hasMarkedText()
+        )
       {
         let acceptedText = ghostText
-        textView.insertText(acceptedText, replacementRange: textView.selectedRange())
+        // The SwiftUI owner schedules one undoable NSTextView edit. Inserting
+        // here as well would duplicate completion text.
         ghostText = ""
         ghostTextOverlayView?.ghostText = ""
         onGhostTextAccepted(acceptedText)
         return true
       }
       if commandSelector == #selector(NSResponder.cancelOperation(_:)),
-        !ghostText.isEmpty
+        MarkdownGhostTextCommandPolicy.shouldDismiss(
+          ghostText: ghostText,
+          hasMarkedText: textView.hasMarkedText()
+        )
       {
         ghostText = ""
         ghostTextOverlayView?.ghostText = ""
         onGhostTextDismissed()
         return true
+      }
+      guard textView.selectedRange().location >= bodyUTF16Offset else {
+        return false
       }
       let edit: MarkdownSmartEdit?
       switch commandSelector {

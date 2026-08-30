@@ -7,8 +7,6 @@ struct WorkspaceTaskNavigation: View {
   @Binding var contentHealthFilter: ContentHealthContextFilter
   let onSelectSection: (WorkspaceSection) -> Void
 
-  @State private var hoveredSection: WorkspaceSection?
-
   init(
     store: WorkbenchStore,
     selectedSection: WorkspaceSection,
@@ -48,7 +46,6 @@ struct WorkspaceTaskNavigation: View {
   ) -> some View {
     let title = workspaceNavigationLocalizedString(section.displayNameLocalizationKey)
     let isSelected = selectedSection == section
-    let isHovered = hoveredSection == section
 
     return Button {
       if section == .contentHealth, !isSelected {
@@ -68,8 +65,6 @@ struct WorkspaceTaskNavigation: View {
           .multilineTextAlignment(.leading)
       }
       .foregroundStyle(isSelected ? WorkbenchTheme.navigationSelection : Color.primary)
-      .scaleEffect(isHovered ? 1.03 : 1.0)
-      .animation(WorkbenchMotion.standard, value: isHovered)
       .frame(maxWidth: .infinity, minHeight: 32)
       .padding(.horizontal, prominence.horizontalPadding)
       .background {
@@ -94,11 +89,6 @@ struct WorkspaceTaskNavigation: View {
       .contentShape(RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
     }
     .buttonStyle(WorkbenchFocusRingButtonStyle())
-    .onHover { hovering in
-      withAnimation(WorkbenchMotion.standard) {
-        hoveredSection = hovering ? section : nil
-      }
-    }
     .help(title + shortcutHint(for: section))
     .accessibilityLabel(workspaceNavigationLocalizedKey(section.displayNameLocalizationKey))
     .accessibilityAddTraits(isSelected ? .isSelected : [])

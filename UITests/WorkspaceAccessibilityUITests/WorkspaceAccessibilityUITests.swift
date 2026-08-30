@@ -857,6 +857,80 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
     )
   }
 
+  func testPublishDrawerYieldsToToolbarInspectorDestinations() throws {
+    launchApplication(surface: "writing")
+
+    let mainWindow = application.windows.firstMatch
+    guard
+      let publishButton = waitForHittableElement(
+        timeout: 10,
+        query: {
+          mainWindow.descendants(matching: .any)
+            .matching(identifier: "workspace-prepare-publish")
+        }),
+      let aiButton = waitForHittableElement(
+        timeout: 10,
+        query: {
+          mainWindow.descendants(matching: .any)
+            .matching(identifier: "ai-assistant-toolbar-button")
+        }),
+      let inspectorButton = waitForHittableElement(
+        timeout: 10,
+        query: {
+          mainWindow.descendants(matching: .any)
+            .matching(identifier: "workspace-inspector-toggle")
+        }),
+      let settingsButton = waitForHittableElement(
+        timeout: 10,
+        query: {
+          mainWindow.descendants(matching: .any)
+            .matching(identifier: "workspace-open-settings")
+        })
+    else {
+      XCTFail("The primary toolbar actions must all remain directly clickable.")
+      return
+    }
+
+    publishButton.click()
+    XCTAssertTrue(
+      element(identifier: "workspace-publish-drawer-overlay").waitForExistence(timeout: 10),
+      "Prepare Publish must open the publish drawer."
+    )
+
+    aiButton.click()
+    assertIdentifierDisappears("workspace-publish-drawer-overlay")
+    XCTAssertTrue(
+      element(identifier: "ai-assistant-inspector").waitForExistence(timeout: 10),
+      "The AI toolbar action must replace, rather than sit behind, the publish drawer."
+    )
+
+    publishButton.click()
+    XCTAssertTrue(
+      element(identifier: "workspace-publish-drawer-overlay").waitForExistence(timeout: 10),
+      "Prepare Publish must remain available after leaving the AI Inspector."
+    )
+
+    inspectorButton.click()
+    assertIdentifierDisappears("workspace-publish-drawer-overlay")
+    XCTAssertTrue(
+      element(identifier: "article-inspector").waitForExistence(timeout: 10),
+      "The article Inspector toolbar action must replace, rather than sit behind, the publish drawer."
+    )
+
+    publishButton.click()
+    XCTAssertTrue(
+      element(identifier: "workspace-publish-drawer-overlay").waitForExistence(timeout: 10),
+      "Prepare Publish must remain available after leaving the article Inspector."
+    )
+
+    settingsButton.click()
+    assertIdentifierDisappears("workspace-publish-drawer-overlay")
+    XCTAssertTrue(
+      element(identifier: "settings-content").waitForExistence(timeout: 10),
+      "The Settings toolbar action must replace the publish drawer in the main window."
+    )
+  }
+
   func testSettingsSidebarVisitsEveryPageWithOneContentRoot() throws {
     openSettings()
     let settingsWindow = currentSettingsWindow()

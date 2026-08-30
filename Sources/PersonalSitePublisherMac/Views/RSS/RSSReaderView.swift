@@ -9,6 +9,7 @@ struct RSSReaderView: View {
   @Environment(\.openSettings) var openSettings
   @Environment(\.settingsWorkspaceCommandAction) var settingsWorkspaceCommandAction
   @EnvironmentObject var sceneCommandRouter: WorkspaceSceneCommandRouter
+  @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
   @State var sceneCommandOwnerID = UUID()
   @State var excerptNoteArticle: RSSArticle?
   @State var highlightDraft: RSSHighlightDraft?
@@ -30,6 +31,8 @@ struct RSSReaderView: View {
   @State var translationRouteTask: Task<Void, Never>?
   @State private var readingProgressByArticle = RSSReadingProgressStore.load()
   @State private var readingProgressOrder = RSSReadingProgressStore.loadOrder()
+  @State private var readingProgressRecency: [String: UInt64] = [:]
+  @State private var readingProgressSequence: UInt64 = 0
   @State private var readingProgressSaveTask: Task<Void, Never>?
   @AppStorage(ReaderTypographyConfiguration.fontSizeKey)
   private var readingFontSize = ReaderTypographyConfiguration.defaultFontSize
@@ -84,14 +87,18 @@ struct RSSReaderView: View {
   }
 
   var body: some View {
-    let loadRequest = selectedArticleLoadRequest
+    readerAlerts
+  }
+
+  private var readerSurface: some View {
     ZStack(alignment: .bottomLeading) {
       readerSplitView
-      if store.canUndoLastDeletion || store.canUndoLastBatchRead {
-        floatingUndoToast
-          .padding(16)
-          .transition(.move(edge: .bottom).combined(with: .opacity))
-      }
+      RSSUndoToastOverlay(
+        canUndoLastDeletion: store.canUndoLastDeletion,
+        canUndoLastBatchRead: store.canUndoLastBatchRead,
+        undoLastDeletion: store.undoLastDeletion,
+        undoLastBatchRead: { _ = store.undoLastBatchRead() }
+      )
     }
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("rss-reader-workspace")
@@ -102,6 +109,10 @@ struct RSSReaderView: View {
         onFailure: handleAppleTranslationFailure
       )
     }
+  }
+
+  private var readerLifecycle: some View {
+    readerSurface
     .onChange(of: readerCommandActions?.sceneCommandPresentation, initial: true) { _, _ in
       sceneCommandRouter.registerRSSReader(
         readerCommandActions,
@@ -172,17 +183,22 @@ struct RSSReaderView: View {
       guard let article = selectedArticle else { return }
       requestTranslation(for: article, backend: translationBackend, force: false)
     }
-    .task(id: loadRequest) {
-      await loadSelectedArticle(loadRequest)
-    }
-    .onChange(of: filterChangeToken) { oldValue, newValue in
-      let filterChanged = oldValue.filterOnly != newValue.filterOnly
-      handleFilterChange(
-        preservingArticle: oldValue.scope == newValue.scope,
-        resetsDisplayLimit: filterChanged,
-        resetsTransientState: filterChanged
-      )
-    }
+  }
+
+  private var readerLoading: some View {
+    let loadRequest = selectedArticleLoadRequest
+    return
+      readerLifecycle
+      .task(id: loadRequest) {
+        await loadSelectedArticle(loadRequest)
+      }
+      .onChange(of: filterChangeToken) { oldValue, newValue in
+        handleFilterChangeTokenUpdate(from: oldValue, to: newValue)
+      }
+  }
+
+  private var readerSheets: some View {
+    readerLoading
     .sheet(item: $excerptNoteArticle) { article in
       RSSExcerptNoteSheet(article: article) { excerpt, note in
         saveExcerptNote(for: article, excerpt: excerpt, note: note)
@@ -226,6 +242,10 @@ struct RSSReaderView: View {
         }
       )
     }
+  }
+
+  private var readerAlerts: some View {
+    readerSheets
     .alert("RSS 操作失败", isPresented: errorAlertBinding) {
       Button("确定") { presentation.errorMessage = nil }
     } message: {
@@ -244,6 +264,18 @@ struct RSSReaderView: View {
       dateRange: presentation.dateRange.rawValue,
       sortOrder: presentation.sortOrder.rawValue,
       mutationRevision: store.mutationRevision
+    )
+  }
+
+  private func handleFilterChangeTokenUpdate(
+    from oldValue: RSSReaderFilterChangeToken,
+    to newValue: RSSReaderFilterChangeToken
+  ) {
+    let filterChanged = oldValue.filterOnly != newValue.filterOnly
+    handleFilterChange(
+      preservingArticle: oldValue.scope == newValue.scope,
+      resetsDisplayLimit: filterChanged,
+      resetsTransientState: filterChanged
     )
   }
 
@@ -269,15 +301,9 @@ struct RSSReaderView: View {
     )
   }
 
-  private func updateReaderLayout(isCompact: Bool, animated: Bool) {
+  private func updateReaderLayout(isCompact: Bool) {
     guard isReaderCompact != isCompact else { return }
-    if animated {
-      withAnimation(WorkbenchMotion.standard) {
-        isReaderCompact = isCompact
-      }
-    } else {
-      isReaderCompact = isCompact
-    }
+    isReaderCompact = isCompact
   }
 
   private var selectedReadingTheme: RSSReadingTheme {
@@ -339,14 +365,14 @@ struct RSSReaderView: View {
       return
     }
     readingProgressByArticle[articleID] = normalized
-    for id in readingProgressByArticle.keys where !readingProgressOrder.contains(id) {
-      readingProgressOrder.append(id)
-    }
-    readingProgressOrder.removeAll { $0 == articleID }
-    readingProgressOrder.insert(articleID, at: 0)
-    while readingProgressOrder.count > RSSReadingProgressStore.maximumEntryCount {
-      let evictedID = readingProgressOrder.removeLast()
+    initializeReadingProgressRecencyIfNeeded()
+    readingProgressSequence &+= 1
+    readingProgressRecency[articleID] = readingProgressSequence
+    while readingProgressByArticle.count > RSSReadingProgressStore.maximumEntryCount,
+      let evictedID = readingProgressRecency.min(by: { $0.value < $1.value })?.key
+    {
       readingProgressByArticle.removeValue(forKey: evictedID)
+      readingProgressRecency.removeValue(forKey: evictedID)
     }
     scheduleReadingProgressPersistence()
 
@@ -362,14 +388,14 @@ struct RSSReaderView: View {
   private func scheduleReadingProgressPersistence() {
     readingProgressSaveTask?.cancel()
     let values = readingProgressByArticle
-    let order = readingProgressOrder
+    let recency = readingProgressRecency
     let revision = RSSReadingProgressPersistenceRevision.next()
     readingProgressSaveTask = Task {
       try? await Task.sleep(nanoseconds: 350_000_000)
       guard !Task.isCancelled else { return }
       await RSSReadingProgressPersistence.shared.save(
         values,
-        orderedArticleIDs: order,
+        recencyByArticleID: recency,
         revision: revision
       )
       if !Task.isCancelled {
@@ -380,45 +406,31 @@ struct RSSReaderView: View {
 
   private func persistReadingProgressAfterDisappear() {
     readingProgressSaveTask?.cancel()
+    initializeReadingProgressRecencyIfNeeded()
     let values = readingProgressByArticle
-    let order = readingProgressOrder
+    let recency = readingProgressRecency
     let revision = RSSReadingProgressPersistenceRevision.next()
     readingProgressSaveTask = Task {
       await RSSReadingProgressPersistence.shared.save(
         values,
-        orderedArticleIDs: order,
+        recencyByArticleID: recency,
         revision: revision
       )
     }
   }
 
-  @ViewBuilder
-  private var floatingUndoToast: some View {
-    HStack(alignment: .center, spacing: 12) {
-      if store.canUndoLastBatchRead {
-        Button("撤销全部已读") {
-          store.undoLastBatchRead()
-        }
-        .buttonStyle(.bordered)
-        .accessibilityLabel("撤销上一次批量标记已读")
-      }
-      if store.canUndoLastDeletion {
-        Button("撤销删除") {
-          store.undoLastDeletion()
-        }
-        .buttonStyle(.bordered)
-        .accessibilityLabel("撤销删除订阅和本地缓存")
-      }
+  private func initializeReadingProgressRecencyIfNeeded() {
+    guard readingProgressRecency.isEmpty, !readingProgressByArticle.isEmpty else { return }
+    let existingOrder = readingProgressOrder.filter { readingProgressByArticle[$0] != nil }
+    var sequence = UInt64(existingOrder.count)
+    for (offset, articleID) in existingOrder.enumerated() {
+      readingProgressRecency[articleID] = sequence - UInt64(offset)
     }
-    .padding(.horizontal, 14)
-    .padding(.vertical, 8)
-    .workbenchGlassSurface(
-      material: .regularMaterial,
-      in: Capsule()
-    )
-    .shadow(color: .black.opacity(0.16), radius: 8, x: 0, y: 3)
-    .accessibilityElement(children: .contain)
-    .accessibilityLabel("RSS 撤销操作")
+    for articleID in readingProgressByArticle.keys where readingProgressRecency[articleID] == nil {
+      sequence &+= 1
+      readingProgressRecency[articleID] = sequence
+    }
+    readingProgressSequence = max(readingProgressSequence, sequence)
   }
 
   @ViewBuilder
@@ -464,13 +476,10 @@ struct RSSReaderView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onAppear {
-          updateReaderLayout(isCompact: !isWide, animated: false)
+          updateReaderLayout(isCompact: !isWide)
         }
         .onChange(of: geometry.size.width) { _, width in
-          updateReaderLayout(
-            isCompact: WorkbenchLayoutMode.isCompactRSSReader(width: width),
-            animated: true
-          )
+          updateReaderLayout(isCompact: WorkbenchLayoutMode.isCompactRSSReader(width: width))
         }
       }
     }
@@ -530,9 +539,7 @@ struct RSSReaderView: View {
       },
       onBack: showsBackButton
         ? {
-          withAnimation(WorkbenchMotion.standard) {
-            presentation.selectedArticleID = nil
-          }
+          presentation.selectedArticleID = nil
         } : nil,
       onRetryLoad: { selectedArticleReloadToken &+= 1 },
       onOpenOriginal: openOriginal,
@@ -585,4 +592,56 @@ struct RSSReaderView: View {
     )
   }
 
+}
+
+private struct RSSUndoToastOverlay: View {
+  let canUndoLastDeletion: Bool
+  let canUndoLastBatchRead: Bool
+  let undoLastDeletion: () -> Void
+  let undoLastBatchRead: () -> Void
+  @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
+
+  private var isPresented: Bool {
+    canUndoLastDeletion || canUndoLastBatchRead
+  }
+
+  var body: some View {
+    ZStack(alignment: .bottomLeading) {
+      if isPresented {
+        HStack(alignment: .center, spacing: 12) {
+          if canUndoLastBatchRead {
+            Button("撤销全部已读", action: undoLastBatchRead)
+              .buttonStyle(.bordered)
+              .accessibilityLabel("撤销上一次批量标记已读")
+          }
+          if canUndoLastDeletion {
+            Button("撤销删除", action: undoLastDeletion)
+              .buttonStyle(.bordered)
+              .accessibilityLabel("撤销删除订阅和本地缓存")
+          }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .workbenchGlassSurface(
+          material: .regularMaterial,
+          in: Capsule()
+        )
+        .shadow(color: .black.opacity(0.16), radius: 8, x: 0, y: 3)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("RSS 撤销操作")
+        .padding(16)
+        .transition(
+          WorkbenchMotion.statusTransition(reduceMotion: accessibilityReduceMotion)
+        )
+      }
+    }
+    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+    .animation(
+      WorkbenchMotion.animation(
+        for: .statusChange,
+        reduceMotion: accessibilityReduceMotion
+      ),
+      value: isPresented
+    )
+  }
 }

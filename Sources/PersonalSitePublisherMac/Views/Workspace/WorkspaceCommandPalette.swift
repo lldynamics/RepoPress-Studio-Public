@@ -179,9 +179,7 @@ struct WorkspaceCommandPalette: View {
         }
         .onChange(of: selectedResultID) { _, resultID in
           guard let resultID else { return }
-          withAnimation(WorkbenchMotion.quick) {
-            proxy.scrollTo(resultID, anchor: .center)
-          }
+          proxy.scrollTo(resultID, anchor: .center)
         }
       }
     }

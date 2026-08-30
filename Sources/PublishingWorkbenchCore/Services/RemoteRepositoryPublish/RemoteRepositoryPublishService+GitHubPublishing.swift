@@ -97,9 +97,12 @@ extension RemoteRepositoryPublishService {
           token: token
         )
         let content = file.operation == .upsert ? try contentData(for: file) : nil
+        // A review branch may already contain the exact package content from
+        // an earlier attempt. Treat that as a real no-op too: creating a new
+        // identical commit would move the PR head unnecessarily and breaks
+        // the persisted head used for later review polling.
         let isAlreadyPublished =
-          mode == .directCommit
-          && file.operation == .upsert
+          file.operation == .upsert
           && content.flatMap {
             githubRemoteContentMatches(data: $0, remoteSHA: existingSHA)
           } == true
@@ -207,9 +210,14 @@ extension RemoteRepositoryPublishService {
           branchName: branchName,
           targetBranch: targetBranch,
           changedPaths: [],
-          commitSHA: nil,
+          commitSHA: reviewURL == nil
+            ? nil
+            : try await githubBranchSHA(
+              repository: repository, branch: branchName, token: token
+            ),
           remoteVersionsByPath: remoteVersionsByPath.isEmpty ? nil : remoteVersionsByPath,
           reviewPendingPaths: reviewPendingPaths,
+          reviewNumber: reviewURL.flatMap { reviewNumber(from: $0, provider: .github) },
           reviewURL: reviewURL,
           reviewTitle: reviewDraft.title
         )
@@ -324,6 +332,7 @@ extension RemoteRepositoryPublishService {
       commitSHA: lastCommitSHA,
       remoteVersionsByPath: remoteVersionsByPath.isEmpty ? nil : remoteVersionsByPath,
       reviewPendingPaths: createsReview ? reviewPendingPaths : nil,
+      reviewNumber: reviewURL.flatMap { reviewNumber(from: $0, provider: .github) },
       reviewURL: reviewURL,
       reviewTitle: createsReview ? reviewDraft.title : nil
     )
@@ -526,9 +535,12 @@ extension RemoteRepositoryPublishService {
           branchName: branchName,
           targetBranch: targetBranch,
           changedPaths: [],
-          commitSHA: nil,
+          commitSHA: existingReviewURL == nil ? nil : baseCommitSHA,
           remoteVersionsByPath: remoteVersionsByPath.isEmpty ? nil : remoteVersionsByPath,
           reviewPendingPaths: createsReview ? reviewPendingPaths : nil,
+          reviewNumber: existingReviewURL.flatMap {
+            reviewNumber(from: $0, provider: .github)
+          },
           reviewURL: existingReviewURL,
           reviewTitle: createsReview ? reviewDraft.title : nil
         )
@@ -660,6 +672,7 @@ extension RemoteRepositoryPublishService {
       commitSHA: commitSHA,
       remoteVersionsByPath: remoteVersionsByPath.isEmpty ? nil : remoteVersionsByPath,
       reviewPendingPaths: createsReview ? reviewPendingPaths : nil,
+      reviewNumber: reviewURL.flatMap { reviewNumber(from: $0, provider: .github) },
       reviewURL: reviewURL,
       reviewTitle: createsReview ? reviewDraft.title : nil
     )

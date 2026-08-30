@@ -12,7 +12,7 @@ struct KnowledgeImportAssistantView: View {
   @State private var performsImageOCR = true
   @State private var isAnalyzing = false
   @State private var isCommitting = false
-  @State private var statusMessage: StatusMessage?
+  @State private var statusMessage: WorkbenchStatePresentation?
   @State private var analysisTask: Task<Void, Never>?
   @State private var analysisGeneration = UUID()
   @State private var isFileDropTargeted = false
@@ -44,10 +44,12 @@ struct KnowledgeImportAssistantView: View {
             candidateList(preview)
             warningList(preview)
           } else {
-            ContentUnavailableView(
-              String(localized: "选择阅读资料"),
-              systemImage: "books.vertical",
-              description: Text("先提取并预览，再确认保存。预览阶段不会修改资料库索引。")
+            WorkbenchStateView(
+              presentation: WorkbenchStatePresentation(
+                kind: .empty,
+                icon: "books.vertical"
+              ),
+              detail: "先提取并预览，再确认保存。预览阶段不会修改资料库索引。"
             )
             .frame(maxWidth: .infinity, minHeight: 260)
           }
@@ -67,6 +69,10 @@ struct KnowledgeImportAssistantView: View {
     .onDisappear {
       analysisTask?.cancel()
       analysisTask = nil
+    }
+    .onChange(of: selectedCandidateIDs) { _, _ in
+      guard let preview, !isAnalyzing, !isCommitting else { return }
+      statusMessage = previewStatusPresentation(for: preview)
     }
   }
 
@@ -186,22 +192,28 @@ struct KnowledgeImportAssistantView: View {
         }
 
         if isAnalyzing {
-          HStack(spacing: 10) {
-            ProgressView("正在提取正文并检查重复内容…")
-              .controlSize(.small)
-            Button(String(localized: "取消分析")) {
-              cancelAnalysis()
-            }
-            .buttonStyle(.bordered)
-            .controlSize(.small)
-            .accessibilityLabel(String(localized: "取消分析"))
-          }
+          WorkbenchStateView(
+            presentation: WorkbenchStatePresentation(
+              kind: .loading(
+                detail: String(localized: "正在提取正文并检查重复内容…")
+              )
+            ),
+            density: .inline,
+            actions: WorkbenchStateActions(
+              primary: WorkbenchStateAction(
+                title: "取消分析",
+                systemImage: "xmark",
+                role: .cancel,
+                action: cancelAnalysis
+              )
+            )
+          )
         }
         if let statusMessage {
-          Text(statusMessage.text)
-            .font(.caption)
-            .foregroundStyle(statusMessage.color)
-            .textSelection(.enabled)
+          WorkbenchStateView(
+            presentation: statusMessage,
+            density: .inline
+          )
         }
       }
       .padding(.top, 4)
@@ -478,7 +490,9 @@ struct KnowledgeImportAssistantView: View {
   private func analyzeFileSources(_ urls: [URL]) {
     let fileURLs = normalizedFileURLs(urls)
     guard !fileURLs.isEmpty else {
-      statusMessage = .failure(String(localized: "失败：请拖入本机文件或文件夹。"))
+      statusMessage = WorkbenchStatePresentation(
+        kind: .failure(reason: String(localized: "请拖入本机文件或文件夹。"))
+      )
       return
     }
     analyze {
@@ -512,7 +526,7 @@ struct KnowledgeImportAssistantView: View {
   private func cancelAnalysis() {
     guard isAnalyzing else { return }
     analysisTask?.cancel()
-    statusMessage = .info(String(localized: "分析已取消。"))
+    statusMessage = nil
   }
 
   private func analyze(
@@ -538,7 +552,7 @@ struct KnowledgeImportAssistantView: View {
         selectedCandidateIDs = Set(generatedPreview.candidates.map(\.id))
         showsRemainingCandidates = false
         showsRemainingWarnings = false
-        statusMessage = .success(String(localized: "预览已生成，请检查后确认导入。"))
+        statusMessage = previewStatusPresentation(for: generatedPreview)
       } catch is CancellationError {
         return
       } catch {
@@ -547,11 +561,8 @@ struct KnowledgeImportAssistantView: View {
         selectedCandidateIDs.removeAll()
         showsRemainingCandidates = false
         showsRemainingWarnings = false
-        statusMessage = .failure(
-          String(
-            format: String(localized: "失败：%@"),
-            error.localizedDescription
-          )
+        statusMessage = WorkbenchStatePresentation(
+          kind: .failure(reason: error.localizedDescription)
         )
       }
     }
@@ -564,24 +575,44 @@ struct KnowledgeImportAssistantView: View {
       defer { isCommitting = false }
       do {
         let result = try await knowledge.commit(preview, destination: importDestination)
-        statusMessage = .success(
-          String(
-            format: String(localized: "导入完成：新增 %@，更新 %@，跳过 %@。"),
-            "\(result.insertedCount)",
-            "\(result.updatedCount)",
-            "\(result.skippedCount)"
+        statusMessage = WorkbenchStatePresentation(
+          kind: .success(
+            detail: String(
+              format: String(localized: "导入完成：新增 %@，更新 %@，跳过 %@。"),
+              "\(result.insertedCount)",
+              "\(result.updatedCount)",
+              "\(result.skippedCount)"
+            )
           )
         )
         dismiss()
       } catch {
-        statusMessage = .failure(
-          String(
-            format: String(localized: "失败：%@"),
-            error.localizedDescription
-          )
+        statusMessage = WorkbenchStatePresentation(
+          kind: .failure(reason: error.localizedDescription)
         )
       }
     }
+  }
+
+  private func previewStatusPresentation(
+    for preview: KnowledgeImportPreview
+  ) -> WorkbenchStatePresentation {
+    let selectedPreview = KnowledgeImportSelectionPresentation.selectedPreview(
+      from: preview,
+      selectedCandidateIDs: selectedCandidateIDs
+    )
+    guard selectedPreview.importableCount > 0 else {
+      return WorkbenchStatePresentation(
+        kind: .unavailable(
+          reason: String(localized: "当前没有可导入的已选资料。")
+        )
+      )
+    }
+    return WorkbenchStatePresentation(
+      kind: .awaitingConfirmation(
+        detail: String(localized: "预览已生成，请检查后确认导入。")
+      )
+    )
   }
 
   private func candidateDetail(_ candidate: KnowledgeImportCandidate) -> String {
@@ -610,29 +641,6 @@ struct KnowledgeImportAssistantView: View {
     return parts.joined(separator: " · ")
   }
 
-  private enum StatusMessage {
-    case success(String)
-    case failure(String)
-    case info(String)
-
-    var text: String {
-      switch self {
-      case let .success(text), let .failure(text), let .info(text):
-        return text
-      }
-    }
-
-    var color: Color {
-      switch self {
-      case .success:
-        return WorkbenchTheme.success
-      case .failure:
-        return WorkbenchTheme.risk
-      case .info:
-        return .secondary
-      }
-    }
-  }
 }
 
 enum KnowledgeImportSelectionPresentation {

@@ -22,13 +22,16 @@ struct RepositoryWorkspaceGitManagementSection: View {
     DisclosureGroup(isExpanded: $isExpanded) {
       VStack(alignment: .leading, spacing: 12) {
         branchSummary
+        Divider()
         branchList
+        Divider()
         newBranchControls
         if let branchActionUnavailableReason {
           Text(branchActionUnavailableReason)
             .font(.caption)
             .foregroundStyle(.secondary)
         }
+        Divider()
         commitHistory
       }
       .padding(.top, 10)
@@ -36,11 +39,6 @@ struct RepositoryWorkspaceGitManagementSection: View {
       Label("分支管理", systemImage: "arrow.triangle.branch")
         .font(.headline)
     }
-    .padding(14)
-    .background(
-      WorkbenchBackgroundStyle.card,
-      in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
-    )
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("repository-section-git-management")
   }
@@ -52,11 +50,13 @@ struct RepositoryWorkspaceGitManagementSection: View {
         value: currentBranch,
         systemImage: "pin.circle"
       )
+      Divider()
       repositoryInfoRow(
         title: "目标分支",
         value: store.activeProfile.branch.nilIfEmpty ?? String(localized: "未配置"),
         systemImage: "flag"
       )
+      Divider()
       repositoryInfoRow(
         title: "上游",
         value: currentBranchUpstream ?? String(localized: "未配置"),
@@ -155,7 +155,7 @@ struct RepositoryWorkspaceGitManagementSection: View {
       if branch.isCurrent {
         Label("当前", systemImage: "checkmark.circle.fill")
           .font(.caption)
-          .foregroundStyle(WorkbenchTheme.success)
+          .foregroundStyle(WorkbenchTheme.navigationSelection)
       } else {
         Button("切换") {
           Task {

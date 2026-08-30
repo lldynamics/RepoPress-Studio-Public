@@ -117,7 +117,6 @@ public final class ImageWorkbenchStore: ObservableObject {
     let cancellationToken = ImageProcessingCancellationToken()
     let batchProcessor = batchProcessor
     let destinationRoot = persistence.imageOptimizationDirectoryURL
-    _ = store.recordVersionsBeforeBatchProcessing(draftIDs: Set(currentDrafts.map(\.id)))
     imageBatchOperationID = operationID
     imageBatchDraftBaselines = Dictionary(
       uniqueKeysWithValues: currentDrafts.compactMap { draft in
@@ -183,7 +182,7 @@ public final class ImageWorkbenchStore: ObservableObject {
   }
 
   private func applyImageBatch(_ result: ImageBatchProcessingResult, operation: ImageBatchOperation) {
-    guard imageBatchOperationID != nil else {
+    guard let operationID = imageBatchOperationID else {
       try? FileManager.default.removeItem(at: result.outputDirectory)
       return
     }
@@ -195,7 +194,7 @@ public final class ImageWorkbenchStore: ObservableObject {
     guard conflictingDraftIDs.isEmpty else {
       try? FileManager.default.removeItem(at: result.outputDirectory)
       finishImageBatch(
-        operationID: imageBatchOperationID,
+        operationID: operationID,
         message: CoreL10n.format(
           "有 %d 篇文章在图片处理期间被修改，本次结果未应用；请确认编辑内容后重新运行。",
           conflictingDraftIDs.count
@@ -206,19 +205,22 @@ public final class ImageWorkbenchStore: ObservableObject {
     }
 
     if !result.updatedDraftsByID.isEmpty {
-      for updatedDraft in result.updatedDraftsByID.values {
-        store.updateDraft(updatedDraft)
+      guard store.applyImageBatchDraftUpdates(result.updatedDraftsByID) else {
+        try? FileManager.default.removeItem(at: result.outputDirectory)
+        finishImageBatch(
+          operationID: operationID,
+          message: CoreL10n.text("图片处理结果已过期，未应用任何更改。"),
+          failure: "图片处理结果已过期，未应用任何更改。"
+        )
+        return
       }
-      store.invalidateDraftDerivedCaches()
-      runPreflight()
-      save()
       persistence.pruneUnreferencedImageOptimizationBatches(
         referencedSourceFilePaths: store.drafts.flatMap(\.attachments).compactMap(\.sourceFilePath)
       )
+      scheduleImageWorkbenchCachesRefresh(force: true)
     } else {
       try? FileManager.default.removeItem(at: result.outputDirectory)
     }
-    scheduleImageWorkbenchCachesRefresh(force: true)
 
     let message: String
     if result.optimizedCount == 0 {
@@ -240,7 +242,7 @@ public final class ImageWorkbenchStore: ObservableObject {
         message = CoreL10n.format("已裁剪封面图为 16:9，预计减少 %@。", saved)
       }
     }
-    finishImageBatch(operationID: imageBatchOperationID, message: message, failure: nil)
+    finishImageBatch(operationID: operationID, message: message, failure: nil)
   }
 
   private func finishImageBatch(operationID: UUID?, message: String, failure: String? = nil) {
@@ -637,15 +639,11 @@ public final class ImageWorkbenchStore: ObservableObject {
       return
     }
 
-    _ = store.recordVersionsBeforeBatchProcessing(draftIDs: Set(updatedDraftsByID.keys))
-    drafts = drafts.map { current in
-      guard var updated = updatedDraftsByID[current.id] else { return current }
-      updated.markUpdated(replacing: current)
-      return updated
+    guard store.applyImageBatchDraftUpdates(updatedDraftsByID) else {
+      imageActionMessage = CoreL10n.text("图片元数据在应用前已发生变化，未写入任何更改。")
+      return
     }
-    runPreflight()
-    scheduleImageWorkbenchCachesRefresh()
-    save()
+    scheduleImageWorkbenchCachesRefresh(force: true)
     imageActionMessage = CoreL10n.format(
       "已批量补全 %d 个 alt、%d 个 caption，更新 %d 处正文引用。",
       filledAltTextCount,

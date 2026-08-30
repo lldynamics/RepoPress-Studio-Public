@@ -111,9 +111,7 @@ struct AIChatDraftDiffPreviewSheet: View {
             .font(.callout.weight(.semibold))
           Spacer()
           Button {
-            withAnimation(WorkbenchMotion.quick) {
-              wrapLines.toggle()
-            }
+            wrapLines.toggle()
           } label: {
             Label(
               wrapLines ? "已开启自动换行" : "单行横向微滚动",

@@ -45,6 +45,85 @@ final class WorkbenchAIChatFeatureFacadeTests: XCTestCase {
     withExtendedLifetime(cancellable) {}
   }
 
+  func testIgnoresBodyOnlyDraftFlushButPublishesSelectionAndAIConfiguration() {
+    let store = makeStore()
+    let first = ArticleDraft(
+      siteProfileID: store.activeProfileID,
+      title: "第一篇",
+      slug: "first",
+      bodyMarkdown: "原文"
+    )
+    let second = ArticleDraft(
+      siteProfileID: store.activeProfileID,
+      title: "第二篇",
+      slug: "second",
+      bodyMarkdown: "另一篇原文"
+    )
+    store.setDrafts([first, second])
+    store.selectDraft(first.id)
+    let facade = WorkbenchAIChatFeatureFacade(store: store)
+    var changes = 0
+    let cancellable = facade.objectWillChange.sink { changes += 1 }
+
+    var bodyOnlyUpdate = first
+    bodyOnlyUpdate.bodyMarkdown = "仅正文更新"
+    store.updateDraft(bodyOnlyUpdate)
+    XCTAssertEqual(changes, 0)
+
+    store.selectDraft(second.id)
+    XCTAssertEqual(changes, 1)
+
+    var updatedConnection = facade.activeChatConnectionProfile
+    updatedConnection.config.model = "selection-and-config-model"
+    XCTAssertTrue(store.updateAIConnectionProfile(updatedConnection))
+    XCTAssertGreaterThan(changes, 1)
+
+    withExtendedLifetime(cancellable) {}
+  }
+
+  func testWindowScopedMetadataProjectionIgnoresBodyButTracksMetadataAndLocalSelection() {
+    let store = makeStore()
+    let first = ArticleDraft(
+      siteProfileID: store.activeProfileID,
+      title: "窗口 A",
+      slug: "window-a",
+      tags: ["初始"],
+      bodyMarkdown: "原文"
+    )
+    let second = ArticleDraft(
+      siteProfileID: store.activeProfileID,
+      title: "窗口 B",
+      slug: "window-b",
+      bodyMarkdown: "另一篇原文"
+    )
+    store.setDrafts([first, second])
+    let facade = WorkbenchAIChatFeatureFacade(store: store, draftID: first.id)
+    var changes = 0
+    let cancellable = facade.objectWillChange.sink { changes += 1 }
+
+    var bodyOnly = first
+    bodyOnly.bodyMarkdown = "仅正文更新"
+    store.updateDraft(bodyOnly)
+    XCTAssertEqual(changes, 0)
+
+    var metadata = bodyOnly
+    metadata.tags = ["已更新"]
+    let changesBeforeMetadataUpdate = changes
+    store.updateDraft(metadata)
+    XCTAssertGreaterThan(changes, changesBeforeMetadataUpdate)
+
+    let changesBeforeLocalSelection = changes
+    facade.setObservedDraftID(second.id)
+    XCTAssertEqual(facade.observedDraftID, second.id)
+    XCTAssertGreaterThan(changes, changesBeforeLocalSelection)
+
+    let changesAfterLocalSelection = changes
+    store.selectDraft(first.id)
+    XCTAssertEqual(changes, changesAfterLocalSelection)
+
+    withExtendedLifetime(cancellable) {}
+  }
+
   func testPublishesQuickSwitchModelTokenAndConnectionProjection() throws {
     let store = makeStore()
     let facade = WorkbenchAIChatFeatureFacade(store: store)

@@ -123,6 +123,7 @@ extension LocalGitPublishMode: WorkbenchDisplayNameLocalizable {}
 extension PrivacyProtectionEventKind: WorkbenchDisplayNameLocalizable {}
 extension RemoteRepositoryPublishProgressStage: WorkbenchDisplayNameLocalizable {}
 extension RemoteRepositoryPublishReadiness: WorkbenchDisplayNameLocalizable {}
+extension RemoteRepositoryReviewLifecycleState: WorkbenchDisplayNameLocalizable {}
 extension RepositoryAutoSyncStatus: WorkbenchDisplayNameLocalizable {}
 extension SEOSocialPreviewCacheState: WorkbenchDisplayNameLocalizable {}
 extension SEOSocialPreviewCardKind: WorkbenchDisplayNameLocalizable {}

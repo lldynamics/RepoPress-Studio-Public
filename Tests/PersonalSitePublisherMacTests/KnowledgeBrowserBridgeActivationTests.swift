@@ -143,6 +143,78 @@ final class KnowledgeBrowserBridgeActivationTests: XCTestCase {
     XCTAssertEqual(try tokenStore.token(), existingToken)
   }
 
+  func testUnknownApprovedRouteReturns404AfterAuthorization() async throws {
+    let rootURL = FileManager.default.temporaryDirectory.appendingPathComponent(
+      "knowledge-browser-unknown-route-\(UUID().uuidString)",
+      isDirectory: true
+    )
+    let suiteName = "KnowledgeBrowserBridgeUnknownRouteTests.\(UUID().uuidString)"
+    let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+    defaults.removePersistentDomain(forName: suiteName)
+    try FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)
+    defer {
+      defaults.removePersistentDomain(forName: suiteName)
+      try? FileManager.default.removeItem(at: rootURL)
+    }
+
+    let bridge = KnowledgeBrowserBridge(
+      knowledge: KnowledgeStore(
+        service: KnowledgeLibraryService(
+          rootURL: rootURL.appendingPathComponent("KnowledgeLibrary", isDirectory: true)
+        )
+      ),
+      defaults: defaults,
+      connectionTokenKeychainStore: KeychainTokenStore(
+        service: KeychainCredentialServices.browserBridge,
+        accountPrefix: "browser-unknown-route-test-\(UUID().uuidString)",
+        inMemory: true,
+        allowsAuthenticationInteraction: false
+      ),
+      importOperationLedgerURL: nil,
+      makeListener: { _ in
+        try NWListener(using: .tcp, on: .any)
+      }
+    )
+    defer { bridge.stop() }
+
+    bridge.setEnabled(true)
+    guard
+      try await waitUntil(condition: {
+        bridge.state == .ready && bridge.activeListenerPort != nil
+      })
+    else {
+      return XCTFail("Browser bridge did not become ready for the route test")
+    }
+
+    let activePort = try XCTUnwrap(bridge.activeListenerPort)
+    let port = try XCTUnwrap(NWEndpoint.Port(rawValue: activePort))
+    let connection = NWConnection(host: "127.0.0.1", port: port, using: .tcp)
+    let responseExpectation = expectation(description: "unknown route response")
+    let reader = BrowserBridgeTestResponseReader(
+      connection: connection,
+      completion: responseExpectation
+    )
+    let request = Data(
+      [
+        "GET /v1/unknown HTTP/1.1",
+        "Host: 127.0.0.1:\(activePort)",
+        "Origin: chrome-extension://lnibkmfhfikfbkeehcjbiaalhkiankam",
+        "X-RepoPress-Protocol: 1",
+        "Authorization: Bearer \(bridge.connectionToken)",
+        "Connection: close",
+        "",
+        "",
+      ].joined(separator: "\r\n").utf8
+    )
+
+    reader.start(request: request)
+    await fulfillment(of: [responseExpectation], timeout: 3)
+
+    XCTAssertNil(reader.errorDescription)
+    let response = try XCTUnwrap(String(data: reader.response, encoding: .utf8))
+    XCTAssertTrue(response.hasPrefix("HTTP/1.1 404 Not Found\r\n"), response)
+  }
+
   func testLegacyIndependentExpiryForcesRotationBeforeTokenReuse() throws {
     let rootURL = FileManager.default.temporaryDirectory.appendingPathComponent(
       "knowledge-browser-legacy-expiry-\(UUID().uuidString)",
@@ -218,5 +290,87 @@ final class KnowledgeBrowserBridgeActivationTests: XCTestCase {
       try await Task.sleep(for: .milliseconds(10))
     }
     return false
+  }
+}
+
+private final class BrowserBridgeTestResponseReader: @unchecked Sendable {
+  private let connection: NWConnection
+  private let completion: XCTestExpectation
+  private let lock = NSLock()
+  private var receivedData = Data()
+  private var didComplete = false
+  private var failureDescription: String?
+
+  init(connection: NWConnection, completion: XCTestExpectation) {
+    self.connection = connection
+    self.completion = completion
+  }
+
+  var response: Data {
+    lock.lock()
+    defer { lock.unlock() }
+    return receivedData
+  }
+
+  var errorDescription: String? {
+    lock.lock()
+    defer { lock.unlock() }
+    return failureDescription
+  }
+
+  func start(request: Data) {
+    connection.stateUpdateHandler = { [weak self] state in
+      guard let self else { return }
+      switch state {
+      case .ready:
+        connection.send(
+          content: request,
+          completion: .contentProcessed { [weak self] error in
+            guard let self else { return }
+            if let error {
+              finish(error: error)
+            } else {
+              receive()
+            }
+          })
+      case .failed(let error):
+        finish(error: error)
+      default:
+        break
+      }
+    }
+    connection.start(queue: DispatchQueue(label: "KnowledgeBrowserBridgeUnknownRouteTests.client"))
+  }
+
+  private func receive() {
+    connection.receive(minimumIncompleteLength: 1, maximumLength: 64 * 1_024) {
+      [weak self] data, _, isComplete, error in
+      guard let self else { return }
+      if let data {
+        lock.lock()
+        receivedData.append(data)
+        lock.unlock()
+      }
+      if let error {
+        finish(error: error)
+      } else if isComplete {
+        finish(error: nil)
+      } else {
+        receive()
+      }
+    }
+  }
+
+  private func finish(error: NWError?) {
+    lock.lock()
+    guard !didComplete else {
+      lock.unlock()
+      return
+    }
+    didComplete = true
+    failureDescription = error?.localizedDescription
+    lock.unlock()
+    connection.cancel()
+    completion.fulfill()
   }
 }

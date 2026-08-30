@@ -1,10 +1,69 @@
 import Combine
 import Foundation
 
+/// Draft-scoped state for the editor's inline structured-edit review.  It is
+/// deliberately value state: AppKit receives a derived presentation only and
+/// never owns AI decisions or source-of-truth review data.
+public struct AIInlineStructuredEditReviewSession: Identifiable, Equatable, Sendable {
+  public let id: UUID
+  public let draftID: UUID
+  public let sourceContentFingerprint: String
+  public let sourceBody: String
+  public let review: AIStructuredEditReview
+  public let currentHunkID: String?
+
+  public init(
+    id: UUID = UUID(),
+    draftID: UUID,
+    sourceContentFingerprint: String,
+    sourceBody: String,
+    review: AIStructuredEditReview,
+    currentHunkID: String? = nil
+  ) {
+    self.id = id
+    self.draftID = draftID
+    self.sourceContentFingerprint = sourceContentFingerprint
+    self.sourceBody = sourceBody
+    self.review = review
+    self.currentHunkID = currentHunkID
+  }
+}
+
+/// Feature-scoped observation keeps streaming chat/image/site changes from
+/// invalidating the complete Markdown composer while a review is open.
+@MainActor
+public final class AIInlineStructuredEditReviewState: ObservableObject {
+  /// Reviews are keyed by their source draft so independent editor windows
+  /// never replace each other's pending decision state.
+  @Published public fileprivate(set) var sessionsByDraftID:
+    [UUID: AIInlineStructuredEditReviewSession]
+
+  public init(session: AIInlineStructuredEditReviewSession? = nil) {
+    if let session {
+      sessionsByDraftID = [session.draftID: session]
+    } else {
+      sessionsByDraftID = [:]
+    }
+  }
+
+  public func session(for draftID: UUID) -> AIInlineStructuredEditReviewSession? {
+    sessionsByDraftID[draftID]
+  }
+
+  fileprivate func replace(_ session: AIInlineStructuredEditReviewSession) {
+    sessionsByDraftID[session.draftID] = session
+  }
+
+  fileprivate func endReview(for draftID: UUID) {
+    sessionsByDraftID.removeValue(forKey: draftID)
+  }
+}
+
 @MainActor
 public final class WorkbenchAIFeatureFacade: ObservableObject {
   private unowned let store: WorkbenchStore
   private var cancellables = Set<AnyCancellable>()
+  public let inlineStructuredEditReviewState = AIInlineStructuredEditReviewState()
 
   init(store: WorkbenchStore) {
     self.store = store
@@ -341,6 +400,13 @@ public final class WorkbenchAIFeatureFacade: ObservableObject {
 
   public var selectedChatDraft: ArticleDraft? {
     store.selectedDraft
+  }
+
+  /// Inspector windows may retain a local selection while another window is
+  /// key. Callers that have a window-scoped identifier must not fall back to
+  /// the shared `selectedDraft`.
+  public func chatDraft(for draftID: UUID) -> ArticleDraft? {
+    store.draft(for: draftID)
   }
 
   public var chatVisibleDrafts: [ArticleDraft] {
@@ -906,6 +972,159 @@ public final class WorkbenchAIFeatureFacade: ObservableObject {
       store.setAIChatMessage("结构化修改未通过陈旧检查：\(error.localizedDescription)")
       return nil
     }
+  }
+
+  /// Begins a review in the editor rather than materializing an intermediate
+  /// draft. The captured body and repository fingerprint make the session
+  /// fail closed if either the document or its metadata changes.
+  @discardableResult
+  public func beginInlineStructuredEditReview(
+    message: AIPublishingChatMessage,
+    review: AIStructuredEditReview
+  ) -> Bool {
+    guard
+      let payload = message.structuredEditPayload,
+      payload.document == review.document,
+      let draft = store.drafts.first(where: { $0.id == payload.sourceDraftID }),
+      draft.repositoryContentFingerprint == payload.sourceContentFingerprint
+    else {
+      store.setAIChatMessage("文章已变化，结构化修改未应用；请重新校对。")
+      return false
+    }
+    do {
+      _ = try AIStructuredEditReviewService.apply(review, to: draft.bodyMarkdown)
+    } catch {
+      store.setAIChatMessage("结构化修改未通过陈旧检查：\(error.localizedDescription)")
+      return false
+    }
+    inlineStructuredEditReviewState.replace(
+      AIInlineStructuredEditReviewSession(
+        draftID: draft.id,
+        sourceContentFingerprint: payload.sourceContentFingerprint,
+        sourceBody: draft.bodyMarkdown,
+        review: review,
+        currentHunkID: review.document.changes.first?.id
+      ))
+    selectChatDraft(draft.id)
+    store.selectSection(.writing)
+    if let firstChange = review.document.changes.first {
+      store.requestEditorFocus(
+        draftID: draft.id,
+        field: "body",
+        selectedRange: firstChange.range.nsRange
+      )
+    }
+    return true
+  }
+
+  /// Returns the captured session without inspecting the full draft. This is
+  /// safe for SwiftUI presentation because mutation boundaries invalidate the
+  /// session before it can be consumed by the editor.
+  public func currentInlineStructuredEditReviewSession(
+    for draftID: UUID
+  ) -> AIInlineStructuredEditReviewSession? {
+    inlineStructuredEditReviewState.session(for: draftID)
+  }
+
+  /// Revalidates repository-controlled metadata only at an explicit action
+  /// boundary. Rendering uses `currentInlineStructuredEditReviewSession` so
+  /// an editor body evaluation never serializes or hashes the full document.
+  public func validatedInlineStructuredEditReviewSession(
+    for draft: ArticleDraft,
+    body: String
+  ) -> AIInlineStructuredEditReviewSession? {
+    invalidateInlineStructuredEditReviewIfStale(for: draft, body: body)
+    return currentInlineStructuredEditReviewSession(for: draft.id)
+  }
+
+  /// Explicit invalidation keeps the read accessor pure, so SwiftUI can query
+  /// it during body evaluation without publishing a state change mid-update.
+  public func invalidateInlineStructuredEditReviewIfStale(
+    for draft: ArticleDraft,
+    body: String
+  ) {
+    guard let session = inlineStructuredEditReviewState.session(for: draft.id) else { return }
+    // Another window may render or edit a different draft through the same
+    // shared store. Only the composer that owns this draft may invalidate its
+    // review session.
+    guard session.draftID == draft.id else { return }
+    guard session.sourceBody == body else {
+      inlineStructuredEditReviewState.endReview(for: draft.id)
+      store.setAIChatMessage("文章已变化，结构化修改未应用；请重新校对。")
+      return
+    }
+    // This is reached only from a document/metadata mutation or an explicit
+    // apply action, never from the SwiftUI presentation read path.
+    guard session.sourceContentFingerprint == draft.repositoryContentFingerprint else {
+      inlineStructuredEditReviewState.endReview(for: draft.id)
+      store.setAIChatMessage("文章已变化，结构化修改未应用；请重新校对。")
+      return
+    }
+  }
+
+  public func setInlineStructuredEditDecision(
+    _ decision: AIStructuredEditDecision,
+    for proposalID: String,
+    draftID: UUID
+  ) {
+    guard let session = inlineStructuredEditReviewState.session(for: draftID) else { return }
+    do {
+      let review: AIStructuredEditReview
+      switch decision {
+      case .accepted:
+        review = try AIStructuredEditReviewService.accepting(proposalID, in: session.review)
+      case .rejected:
+        review = try AIStructuredEditReviewService.rejecting(proposalID, in: session.review)
+      case .pending:
+        review = try AIStructuredEditReviewService.resetting(proposalID, in: session.review)
+      }
+      inlineStructuredEditReviewState.replace(
+        AIInlineStructuredEditReviewSession(
+          id: session.id, draftID: session.draftID,
+          sourceContentFingerprint: session.sourceContentFingerprint,
+          sourceBody: session.sourceBody, review: review, currentHunkID: proposalID
+        ))
+    } catch {
+      store.setAIChatMessage("结构化修改决策未能更新：\(error.localizedDescription)")
+    }
+  }
+
+  public func setAllInlineStructuredEditDecisions(
+    _ decision: AIStructuredEditDecision,
+    draftID: UUID
+  ) {
+    guard let session = inlineStructuredEditReviewState.session(for: draftID) else { return }
+    let review: AIStructuredEditReview
+    switch decision {
+    case .accepted: review = AIStructuredEditReviewService.acceptingAll(in: session.review)
+    case .rejected: review = AIStructuredEditReviewService.rejectingAll(in: session.review)
+    case .pending: review = session.review
+    }
+    inlineStructuredEditReviewState.replace(
+      AIInlineStructuredEditReviewSession(
+        id: session.id, draftID: session.draftID,
+        sourceContentFingerprint: session.sourceContentFingerprint,
+        sourceBody: session.sourceBody, review: review,
+        currentHunkID: session.currentHunkID
+      ))
+  }
+
+  public func moveInlineStructuredEditHunk(by offset: Int, draftID: UUID) {
+    guard let session = inlineStructuredEditReviewState.session(for: draftID) else { return }
+    let ids = session.review.document.changes.map(\.id)
+    guard !ids.isEmpty else { return }
+    let current = session.currentHunkID.flatMap { ids.firstIndex(of: $0) } ?? 0
+    let next = min(max(0, current + offset), ids.count - 1)
+    inlineStructuredEditReviewState.replace(
+      AIInlineStructuredEditReviewSession(
+        id: session.id, draftID: session.draftID,
+        sourceContentFingerprint: session.sourceContentFingerprint,
+        sourceBody: session.sourceBody, review: session.review, currentHunkID: ids[next]
+      ))
+  }
+
+  public func endInlineStructuredEditReview(for draftID: UUID) {
+    inlineStructuredEditReviewState.endReview(for: draftID)
   }
 
   @discardableResult

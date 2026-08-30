@@ -1,23 +1,23 @@
 {
   "schemaVersion": 2,
-  "sourceLineCoveragePercentMinimum": 38.0,
+  "sourceLineCoveragePercentMinimum": 44.0,
   "sourceLineCoveragePercentMinimumByTarget": {
     "BrowserExtensionProtocolSupport": 0.01,
-    "PersonalSitePublisherMac": 0.01,
-    "PublishingAICore": 0.01,
-    "PublishingCoreSupport": 0.01,
-    "PublishingDomainContracts": 0.01,
-    "PublishingGitCore": 0.01,
-    "PublishingKnowledgeCore": 0.01,
-    "PublishingMarkdownCore": 0.01,
+    "PersonalSitePublisherMac": 8.0,
+    "PublishingAICore": 87.0,
+    "PublishingCoreSupport": 87.0,
+    "PublishingDomainContracts": 90.0,
+    "PublishingGitCore": 89.0,
+    "PublishingKnowledgeCore": 83.0,
+    "PublishingMarkdownCore": 92.0,
     "PublishingMCPClient": 88.0,
-    "PublishingWorkbenchCore": 0.01
+    "PublishingWorkbenchCore": 82.0
   },
   "changedExecutableSourceLineCoveragePercentMinimum": 100.0,
   "swiftFormatWarningMaximums": {
     "sourcesByTarget": {
       "BrowserExtensionProtocolSupport": 0,
-      "PersonalSitePublisherMac": 2428,
+      "PersonalSitePublisherMac": 2036,
       "PublishingAICore": 33,
       "PublishingCoreSupport": 35,
       "PublishingDomainContracts": 1,
@@ -25,10 +25,10 @@
       "PublishingKnowledgeCore": 440,
       "PublishingMarkdownCore": 762,
       "PublishingMCPClient": 0,
-      "PublishingWorkbenchCore": 4921
+      "PublishingWorkbenchCore": 4140
     },
     "testsByTarget": {
-      "PersonalSitePublisherMacTests": 121,
+      "PersonalSitePublisherMacTests": 99,
       "PublishingAICoreTests": 179,
       "PublishingCoreSupportTests": 13,
       "PublishingDomainContractsTests": 1,
@@ -36,21 +36,27 @@
       "PublishingKnowledgeCoreTests": 273,
       "PublishingMarkdownCoreTests": 134,
       "PublishingMCPClientTests": 0,
-      "PublishingWorkbenchCoreTests": 2661
+      "PublishingWorkbenchCoreTests": 2177
     },
     "packageSwift": 6,
     "changedLines": 0
   },
   "swiftTestMinimumCountsByTarget": {
-    "PublishingMarkdownCoreTests": 220,
-    "PublishingGitCoreTests": 94,
-    "PublishingDomainContractsTests": 6,
-    "PublishingAICoreTests": 16,
-    "PublishingCoreSupportTests": 16,
-    "PublishingKnowledgeCoreTests": 24,
-    "PublishingMCPClientTests": 15,
-    "PersonalSitePublisherMacTests": 405,
-    "PublishingWorkbenchCoreTests": 1944
+    "PublishingMarkdownCoreTests": 280,
+    "PublishingGitCoreTests": 100,
+    "PublishingDomainContractsTests": 9,
+    "PublishingAICoreTests": 120,
+    "PublishingCoreSupportTests": 22,
+    "PublishingKnowledgeCoreTests": 57,
+    "PublishingMCPClientTests": 23,
+    "PersonalSitePublisherMacTests": 592,
+    "PublishingWorkbenchCoreTests": 2123
+  },
+  "swiftModuleBoundaryMaximums": {
+    "publishingWorkbenchCoreImportsByScope": {
+      "Sources": 262,
+      "Tests": 289
+    }
   },
   "releasePerformance": {
     "schemaVersion": 1,

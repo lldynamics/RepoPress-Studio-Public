@@ -129,13 +129,14 @@ enum DataManagementLayout {
 
 @MainActor
 struct DataManagementView: View {
-  @ObservedObject var store: WorkbenchStore
+  let store: WorkbenchStore
   let rssStore: RSSReaderStore?
   @ObservedObject var launchCoordinator: WorkbenchLaunchCoordinator
   let navigationDestination: SettingsDestination?
   let navigationRequestID: UUID
   @Environment(\.settingsSubsection) private var settingsSubsection
   @ObservedObject private var backupScheduler: WorkspaceBackupScheduler
+  @ObservedObject private var dataManagement: WorkbenchDataManagementFeatureFacade
   @AppStorage("dataManagementRequestedSection")
   private var legacyRequestedSectionRawValue = ""
   @State private var presentedTask: DataManagementTask?
@@ -153,6 +154,7 @@ struct DataManagementView: View {
     self.navigationDestination = navigationDestination
     self.navigationRequestID = navigationRequestID
     _backupScheduler = ObservedObject(wrappedValue: store.workspaceBackupScheduler)
+    _dataManagement = ObservedObject(wrappedValue: store.dataManagement)
   }
 
   var body: some View {
@@ -258,7 +260,7 @@ struct DataManagementView: View {
     case .drafts:
       overviewMetric(
         title: String(localized: "草稿"),
-        value: store.drafts.count.formatted(),
+        value: dataManagement.draftCount.formatted(),
         detail: String(localized: "工作台中的草稿"),
         systemImage: "doc.text"
       )
@@ -383,12 +385,12 @@ struct DataManagementView: View {
   }
 
   private var pendingItemCount: Int {
-    store.recycledDrafts.count + store.pendingRepositoryCleanupRequests.count
+    dataManagement.recycledDraftCount + dataManagement.pendingRepositoryCleanupCount
   }
 
   private var pendingItemDetail: String {
-    let recycledDraftCount = store.recycledDrafts.count
-    let repositoryCleanupCount = store.pendingRepositoryCleanupRequests.count
+    let recycledDraftCount = dataManagement.recycledDraftCount
+    let repositoryCleanupCount = dataManagement.pendingRepositoryCleanupCount
     return String(
       localized: "\(recycledDraftCount) 篇在回收站 · \(repositoryCleanupCount) 项仓库待清理"
     )
@@ -491,7 +493,7 @@ struct DataManagementView: View {
 @MainActor
 private struct DataManagementStorageTaskSheet: View {
   let task: DataManagementTask
-  @ObservedObject var store: WorkbenchStore
+  let store: WorkbenchStore
   @ObservedObject var rssStore: RSSReaderStore
   @ObservedObject var launchCoordinator: WorkbenchLaunchCoordinator
   @ObservedObject var backupScheduler: WorkspaceBackupScheduler

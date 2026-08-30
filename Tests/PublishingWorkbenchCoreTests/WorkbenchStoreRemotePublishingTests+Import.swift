@@ -33,15 +33,15 @@ final class WorkbenchStoreRemotePublishingImportTests: WorkbenchStoreRemotePubli
 
     Remote body for review.
     """.write(
-      to: rootURL.appendingPathComponent("content/posts/remote.md"),
+      to: rootURL.appendingPathComponent("content/posts/remote-draft.md"),
       atomically: true,
       encoding: .utf8
     )
-    try git(["add", "content/posts/remote.md"], rootURL: rootURL)
+    try git(["add", "content/posts/remote-draft.md"], rootURL: rootURL)
     try git(["commit", "-m", "Remote draft"], rootURL: rootURL)
     let remoteCommit = try git(["rev-parse", "HEAD"], rootURL: rootURL)
     let remoteBlobSHA = try git(
-      ["rev-parse", "\(remoteCommit):content/posts/remote.md"], rootURL: rootURL)
+      ["rev-parse", "\(remoteCommit):content/posts/remote-draft.md"], rootURL: rootURL)
 
     try git(["switch", "main"], rootURL: rootURL)
     try git(["remote", "add", "origin", "https://example.invalid/site.git"], rootURL: rootURL)
@@ -54,23 +54,25 @@ final class WorkbenchStoreRemotePublishingImportTests: WorkbenchStoreRemotePubli
     profile.repositoryProvider = .github
     profile.rememberLocalRepositoryRoot(rootURL)
     profile.contentRoot = "content"
+    profile.markdownPathPattern = "content/posts/{slug}.md"
     store.updateActiveProfile(profile)
     await store.scanRepositoryAsync()
 
     let summary = await store.importRemoteDraftFromRepository(
-      repositoryPath: "content/posts/remote.md")
+      repositoryPath: "content/posts/remote-draft.md")
 
     XCTAssertEqual(summary.insertedCount, 1)
     XCTAssertEqual(summary.updatedCount, 0)
     let imported = try XCTUnwrap(
-      store.drafts.first { $0.repositoryPath == "content/posts/remote.md" })
+      store.drafts.first { $0.repositoryPath == "content/posts/remote-draft.md" })
     XCTAssertEqual(imported.title, "Remote Draft")
     XCTAssertEqual(imported.summary, "Imported from upstream.")
     XCTAssertEqual(imported.bodyMarkdown, "Remote body for review.")
     XCTAssertEqual(imported.repositorySHA, remoteBlobSHA)
     XCTAssertEqual(store.selectedDraftID, imported.id)
     XCTAssertEqual(store.selectedSection, .writing)
-    XCTAssertEqual(store.publishActionMessage, "已从 origin/main 导入远端文章 content/posts/remote.md。")
+    XCTAssertEqual(
+      store.publishActionMessage, "已从 origin/main 导入远端文章 content/posts/remote-draft.md。")
   }
 
   func testImportsRemoteChangedArticleDraftsFromUpstreamQueue() async throws {
@@ -122,6 +124,7 @@ final class WorkbenchStoreRemotePublishingImportTests: WorkbenchStoreRemotePubli
     var profile = store.activeProfile
     profile.rememberLocalRepositoryRoot(rootURL)
     profile.contentRoot = "content"
+    profile.markdownPathPattern = "content/posts/{slug}.md"
     store.updateActiveProfile(profile)
     await store.scanRepositoryAsync()
     store.updateRepositoryAutoSyncSettings(
@@ -132,7 +135,7 @@ final class WorkbenchStoreRemotePublishingImportTests: WorkbenchStoreRemotePubli
     XCTAssertEqual(store.repositoryAutoSyncState.remoteChangedFileCount, 3)
     XCTAssertEqual(store.repositoryAutoSyncState.importableRemoteArticleCount, 2)
     XCTAssertEqual(store.repositoryAutoSyncState.nonArticleRemoteChangedFileCount, 1)
-    XCTAssertTrue(store.repositoryAutoSyncState.message.contains("其中 2 篇文章可手动导入"))
+    XCTAssertTrue(store.repositoryAutoSyncState.message.contains("其中 2 个文章候选路径可手动尝试导入"))
 
     let summary = await store.importRemoteChangedArticleDraftsFromRepository()
 
@@ -149,6 +152,51 @@ final class WorkbenchStoreRemotePublishingImportTests: WorkbenchStoreRemotePubli
     XCTAssertEqual(store.selectedSection, .writing)
     XCTAssertEqual(store.publishActionMessage, "已从远端文章变更导入 2 篇、更新 0 篇。")
   }
+
+  #if DEBUG
+    func testRemoteImportReportsSkippedCandidateWhenSlugDoesNotRoundTrip() async throws {
+      let rootURL = try temporaryDirectoryURL()
+      defer { try? FileManager.default.removeItem(at: rootURL) }
+      try FileManager.default.createDirectory(
+        at: rootURL.appendingPathComponent("content/posts", isDirectory: true),
+        withIntermediateDirectories: true
+      )
+      let store = try TestWorkbenchFactory.makeStore()
+      var profile = store.activeProfile
+      profile.rememberLocalRepositoryRoot(rootURL)
+      profile.contentRoot = "content"
+      profile.markdownPathPattern = "content/posts/{slug}.md"
+      store.updateActiveProfile(profile)
+      store.repositoryStore.remoteFileSnapshotTestOverride = {
+        RepositoryFileSnapshot(
+          refName: "origin/main",
+          repositoryPath: "content/posts/wrong-name.md",
+          content: """
+            ---
+            title: "Wrong Name"
+            slug: expected-name
+            ---
+
+            Body
+            """
+        )
+      }
+      defer { store.repositoryStore.remoteFileSnapshotTestOverride = nil }
+
+      let summary = await store.importRemoteDraftFromRepository(
+        repositoryPath: "content/posts/wrong-name.md"
+      )
+
+      XCTAssertEqual(summary.changedCount, 0)
+      XCTAssertGreaterThan(summary.skippedCount, 0)
+      let message = try XCTUnwrap(store.publishActionMessage)
+      XCTAssertTrue(message.contains("已跳过候选文件"), "实际消息：\(message)")
+      XCTAssertTrue(
+        message.contains("文章路径与当前站点发布规则不一致"),
+        "实际消息：\(message)"
+      )
+    }
+  #endif
 
   #if DEBUG
     func testRemoteArticleImportDropsResultWhenActiveProfileChangesDuringSnapshot() async throws {

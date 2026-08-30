@@ -12,6 +12,9 @@ final class MarkdownGhostTextOverlayView: NSView {
 
   override var isFlipped: Bool { true }
 
+  /// The completion is visual-only; the editor must retain all mouse routing.
+  override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
   override func draw(_ dirtyRect: NSRect) {
     super.draw(dirtyRect)
     guard let textView,

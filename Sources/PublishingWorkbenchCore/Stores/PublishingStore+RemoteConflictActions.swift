@@ -23,10 +23,7 @@ extension PublishingStore {
     store.flushDraftBodyEditorBuffers()
     await store.refreshBatchPublishPlanAsync()
     guard let plan = batchPublishPlan,
-      let package = remotePublishPackage(
-        for: plan,
-        cleanupRequests: pendingRemoteRepositoryCleanupRequests(profileID: plan.profileID)
-      ),
+      let package = remotePublishPackage(for: plan),
       remoteRepositoryPublishService.conflictPackageFingerprint(
         package: package,
         profile: store.activeProfile
@@ -151,10 +148,7 @@ extension PublishingStore {
   ) async -> RemoteRepositoryPublishResult? {
     await store.refreshBatchPublishPlanAsync()
     guard let plan = batchPublishPlan,
-      let package = remotePublishPackage(
-        for: plan,
-        cleanupRequests: pendingRemoteRepositoryCleanupRequests(profileID: plan.profileID)
-      )
+      let package = remotePublishPackage(for: plan)
     else {
       setPublishActionMessage(CoreL10n.text("没有可创建 PR/MR 的发布包。"), status: .warning)
       return nil

@@ -1,7 +1,6 @@
 import XCTest
 
 @testable import PersonalSitePublisherMac
-@testable import PublishingWorkbenchCore
 
 final class AIChatStreamingPresentationTests: XCTestCase {
   func testOnlyLatestAssistantUsesStreamingTextWhileChatRuns() {

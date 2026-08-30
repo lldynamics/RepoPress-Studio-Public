@@ -1,4 +1,5 @@
 import XCTest
+
 @testable import PersonalSitePublisherMac
 @testable import PublishingWorkbenchCore
 
@@ -107,7 +108,7 @@ final class ImageWorkbenchPresentationTests: XCTestCase {
       byteSize: 100,
       modifiedAt: nil,
       references: [
-        RepositoryImageReference(draftID: UUID(), draftTitle: "Using article", isCover: false),
+        RepositoryImageReference(draftID: UUID(), draftTitle: "Using article", isCover: false)
       ]
     )
     let unreferenced = RepositoryImageAsset(
@@ -126,6 +127,93 @@ final class ImageWorkbenchPresentationTests: XCTestCase {
     XCTAssertFalse(RepositoryImageFilter.registered.includes(unreferenced))
     XCTAssertFalse(RepositoryImageFilter.unregistered.includes(referenced))
     XCTAssertTrue(RepositoryImageFilter.unregistered.includes(unreferenced))
+  }
+
+  func testRepositoryImageProjectionFiltersQueriesAndSortsDeterministically() {
+    let sharedDate = Date(timeIntervalSince1970: 100)
+    let assets = [
+      makeRepositoryAsset(
+        path: "static/hero/apple.png",
+        filename: "apple.png",
+        byteSize: 100,
+        modifiedAt: sharedDate,
+        isRegistered: true
+      ),
+      makeRepositoryAsset(
+        path: "static/blog/banana.png",
+        filename: "banana.png",
+        byteSize: 100,
+        modifiedAt: sharedDate,
+        isRegistered: false
+      ),
+      makeRepositoryAsset(
+        path: "static/hero/cherry.png",
+        filename: "cherry.png",
+        byteSize: 300,
+        modifiedAt: nil,
+        isRegistered: true
+      ),
+      makeRepositoryAsset(
+        path: "static/archive/date.png",
+        filename: "date.png",
+        byteSize: 50,
+        modifiedAt: Date(timeIntervalSince1970: 200),
+        isRegistered: false
+      ),
+    ]
+
+    func projectedPaths(
+      query: String = "",
+      filter: RepositoryImageFilter = .all,
+      sortOrder: RepositoryImageSortOrder
+    ) -> [String] {
+      RepositoryImageBrowserView.project(
+        assets,
+        query: query,
+        filter: filter,
+        sortOrder: sortOrder
+      ).map(\.repositoryPath)
+    }
+
+    XCTAssertEqual(
+      projectedPaths(query: "hero", sortOrder: .nameAsc),
+      ["static/hero/apple.png", "static/hero/cherry.png"]
+    )
+    XCTAssertEqual(
+      projectedPaths(query: "BANANA", sortOrder: .nameAsc),
+      ["static/blog/banana.png"]
+    )
+    XCTAssertEqual(
+      projectedPaths(filter: .registered, sortOrder: .nameAsc),
+      ["static/hero/apple.png", "static/hero/cherry.png"]
+    )
+    XCTAssertEqual(
+      projectedPaths(filter: .unregistered, sortOrder: .nameAsc),
+      ["static/blog/banana.png", "static/archive/date.png"]
+    )
+
+    let expectedPaths: [RepositoryImageSortOrder: [String]] = [
+      .nameAsc: ["apple.png", "banana.png", "cherry.png", "date.png"],
+      .nameDesc: ["date.png", "cherry.png", "banana.png", "apple.png"],
+      .dateNewest: ["date.png", "apple.png", "banana.png", "cherry.png"],
+      .dateOldest: ["cherry.png", "apple.png", "banana.png", "date.png"],
+      .sizeLargest: ["cherry.png", "apple.png", "banana.png", "date.png"],
+      .sizeSmallest: ["date.png", "apple.png", "banana.png", "cherry.png"],
+      .unregisteredFirst: ["banana.png", "date.png", "apple.png", "cherry.png"],
+      .registeredFirst: ["apple.png", "cherry.png", "banana.png", "date.png"],
+    ]
+    for sortOrder in RepositoryImageSortOrder.allCases {
+      XCTAssertEqual(
+        RepositoryImageBrowserView.project(
+          assets,
+          query: "",
+          filter: .all,
+          sortOrder: sortOrder
+        ).map(\.filename),
+        expectedPaths[sortOrder],
+        "Unexpected projection for \(sortOrder)"
+      )
+    }
   }
 
   func testBatchAffectedItemIdentityIncludesDraftAndAttachment() {
@@ -183,6 +271,32 @@ final class ImageWorkbenchPresentationTests: XCTestCase {
       canOptimizeSVG: canOptimizeSVG,
       canResizeImage: canResizeImage,
       privacyStatus: hasSensitiveMetadata ? .sensitive : .clean
+    )
+  }
+
+  private func makeRepositoryAsset(
+    path: String,
+    filename: String,
+    byteSize: Int64,
+    modifiedAt: Date?,
+    isRegistered: Bool
+  ) -> RepositoryImageAsset {
+    RepositoryImageAsset(
+      repositoryPath: path,
+      absoluteFilePath: "/tmp/\(filename)",
+      filename: filename,
+      fileExtension: "png",
+      byteSize: byteSize,
+      modifiedAt: modifiedAt,
+      references: isRegistered
+        ? [
+          RepositoryImageReference(
+            draftID: UUID(),
+            draftTitle: "Referenced article",
+            isCover: false
+          )
+        ]
+        : []
     )
   }
 

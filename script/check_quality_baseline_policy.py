@@ -86,6 +86,79 @@ def format_buckets(payload: dict[str, Any], description: str) -> dict[str, int]:
     return result
 
 
+def release_performance_policy(payload: dict[str, Any], description: str) -> dict[str, Any]:
+    performance = payload.get("releasePerformance")
+    if not isinstance(performance, dict):
+        fail(f"[configuration:invalid-baseline] {description}.releasePerformance must be an object")
+    if performance.get("schemaVersion") != 1:
+        fail(f"[configuration:invalid-baseline] {description}.releasePerformance.schemaVersion must be 1")
+    if performance.get("configuration") != "release":
+        fail(f"[configuration:invalid-baseline] {description}.releasePerformance.configuration must be release")
+    minimum_samples = performance.get("minimumSampleCount")
+    if not isinstance(minimum_samples, int) or isinstance(minimum_samples, bool) or minimum_samples < 3:
+        fail(f"[configuration:invalid-baseline] {description}.releasePerformance.minimumSampleCount must be an integer at least 3")
+    relation = performance.get("siteMaintenanceRelation")
+    if not isinstance(relation, dict):
+        fail(f"[configuration:invalid-baseline] {description}.releasePerformance.siteMaintenanceRelation must be an object")
+    sizes = relation.get("sizes")
+    if (
+        not isinstance(sizes, list)
+        or not sizes
+        or not all(isinstance(size, int) and not isinstance(size, bool) and size > 0 for size in sizes)
+        or sizes != sorted(set(sizes))
+    ):
+        fail(f"[configuration:invalid-baseline] {description}.releasePerformance.siteMaintenanceRelation.sizes must be unique ascending positive integers")
+    label_group_size = relation.get("labelGroupSize")
+    if not isinstance(label_group_size, int) or isinstance(label_group_size, bool) or label_group_size < 2:
+        fail(f"[configuration:invalid-baseline] {description}.releasePerformance.siteMaintenanceRelation.labelGroupSize must be an integer at least 2")
+    complexity = relation.get("complexity")
+    if not isinstance(complexity, str) or not complexity:
+        fail(f"[configuration:invalid-baseline] {description}.releasePerformance.siteMaintenanceRelation.complexity must be non-empty")
+    wall_time = performance.get("wallTime")
+    if not isinstance(wall_time, dict):
+        fail(f"[configuration:invalid-baseline] {description}.releasePerformance.wallTime must be an object")
+    wall_time_policy = wall_time.get("policy")
+    wall_time_blocking = wall_time.get("blocking")
+    if not isinstance(wall_time_policy, str) or not wall_time_policy:
+        fail(f"[configuration:invalid-baseline] {description}.releasePerformance.wallTime.policy must be non-empty")
+    if not isinstance(wall_time_blocking, bool):
+        fail(f"[configuration:invalid-baseline] {description}.releasePerformance.wallTime.blocking must be boolean")
+    return {
+        "minimumSampleCount": minimum_samples,
+        "sizes": sizes,
+        "labelGroupSize": label_group_size,
+        "complexity": complexity,
+        "wallTimePolicy": wall_time_policy,
+        "wallTimeBlocking": wall_time_blocking,
+    }
+
+
+def module_boundary_maximums(
+    payload: dict[str, Any],
+    description: str,
+    *,
+    required: bool,
+) -> dict[str, int] | None:
+    maximums = payload.get("swiftModuleBoundaryMaximums")
+    if maximums is None and not required:
+        return None
+    if not isinstance(maximums, dict):
+        fail(f"[configuration:invalid-baseline] {description}.swiftModuleBoundaryMaximums must be an object")
+    imports = maximums.get("publishingWorkbenchCoreImportsByScope")
+    if not isinstance(imports, dict) or set(imports) != {"Sources", "Tests"}:
+        fail(
+            f"[configuration:invalid-baseline] {description}.swiftModuleBoundaryMaximums."
+            "publishingWorkbenchCoreImportsByScope must define Sources and Tests"
+        )
+    result: dict[str, int] = {}
+    for scope in ("Sources", "Tests"):
+        value = imports.get(scope)
+        if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+            fail(f"[configuration:invalid-baseline] {description} Workbench import maximum for {scope} must be non-negative")
+        result[scope] = value
+    return result
+
+
 def v1_baseline(payload: dict[str, Any]) -> tuple[float, int, dict[str, int]]:
     if payload.get("schemaVersion") != 1:
         fail("[configuration:invalid-base-schema] base quality baseline must use schemaVersion 1 or 2")
@@ -141,10 +214,50 @@ def compare_format(current: dict[str, int], base: dict[str, int]) -> None:
         fail("[policy:threshold-relaxed] Swift format changedLines maximum must remain 0")
 
 
+def compare_release_performance(current: dict[str, Any], base: dict[str, Any]) -> None:
+    compare_no_decrease(
+        "release performance minimum sample count",
+        current["minimumSampleCount"],
+        base["minimumSampleCount"],
+    )
+    removed_sizes = sorted(set(base["sizes"]) - set(current["sizes"]))
+    if removed_sizes:
+        fail(f"[policy:threshold-relaxed] release performance relation sizes were removed: {removed_sizes}")
+    for key, label in (
+        ("labelGroupSize", "label group size"),
+        ("complexity", "complexity policy"),
+        ("wallTimePolicy", "wall-time policy"),
+        ("wallTimeBlocking", "wall-time blocking policy"),
+    ):
+        if current[key] != base[key]:
+            fail(
+                f"[policy:threshold-relaxed] release performance {label} changed "
+                f"from {base[key]!r} to {current[key]!r}; use a reviewed schema migration"
+            )
+
+
+def compare_module_boundary_maximums(current: dict[str, int], base: dict[str, int]) -> None:
+    for scope, base_value in base.items():
+        if scope not in current:
+            fail(f"[policy:threshold-relaxed] Workbench import maximum was removed for {scope}")
+        compare_no_increase(
+            f"PublishingWorkbenchCore import maximum {scope}",
+            current[scope],
+            base_value,
+        )
+
+
 def enforce(root: Path, baseline_path: Path, requested_base: str | None) -> str:
     current = load_quality_baseline(baseline_path)
     current_tests = positive_test_minimums(current, "current quality baseline")
     current_format = format_buckets(current, "current quality baseline")
+    current_performance = release_performance_policy(current, "current quality baseline")
+    current_module_maximums = module_boundary_maximums(
+        current,
+        "current quality baseline",
+        required=True,
+    )
+    assert current_module_maximums is not None
     current_target_coverage = current["sourceLineCoveragePercentMinimumByTarget"]
     assert isinstance(current_target_coverage, dict)
     if float(current["changedExecutableSourceLineCoveragePercentMinimum"]) != 100:
@@ -187,6 +300,12 @@ def enforce(root: Path, baseline_path: Path, requested_base: str | None) -> str:
     base = load_quality_baseline_from_payload(base)
     base_tests = positive_test_minimums(base, "base quality baseline")
     base_format = format_buckets(base, "base quality baseline")
+    base_performance = release_performance_policy(base, "base quality baseline")
+    base_module_maximums = module_boundary_maximums(
+        base,
+        "base quality baseline",
+        required=False,
+    )
     base_target_coverage = base["sourceLineCoveragePercentMinimumByTarget"]
     assert isinstance(base_target_coverage, dict)
     compare_no_decrease(
@@ -197,6 +316,9 @@ def enforce(root: Path, baseline_path: Path, requested_base: str | None) -> str:
     compare_target_minimums(current_target_coverage, base_target_coverage)
     compare_test_minimums(current_tests, base_tests)
     compare_format(current_format, base_format)
+    compare_release_performance(current_performance, base_performance)
+    if base_module_maximums is not None:
+        compare_module_boundary_maximums(current_module_maximums, base_module_maximums)
     if float(base["changedExecutableSourceLineCoveragePercentMinimum"]) != 100:
         fail("[configuration:invalid-base-schema] base changed executable source coverage minimum must be 100")
     fallback = " via all-zero SHA fallback to HEAD^" if diff_base.used_all_zero_fallback else ""
@@ -213,6 +335,7 @@ def load_quality_baseline_from_payload(payload: dict[str, Any]) -> dict[str, Any
         "sourceLineCoveragePercentMinimumByTarget",
         "changedExecutableSourceLineCoveragePercentMinimum",
         "swiftFormatWarningMaximums",
+        "releasePerformance",
     )
     if payload.get("schemaVersion") != 2 or any(key not in payload for key in required):
         fail("[configuration:invalid-baseline] base schema v2 quality baseline is incomplete")
@@ -231,6 +354,7 @@ def load_quality_baseline_from_payload(payload: dict[str, Any]) -> dict[str, Any
     if not isinstance(changed, (int, float)) or isinstance(changed, bool) or not 0 <= float(changed) <= 100:
         fail("[configuration:invalid-baseline] base changed executable source coverage minimum must be 0 through 100")
     format_buckets(payload, "base quality baseline")
+    release_performance_policy(payload, "base quality baseline")
     return payload
 
 

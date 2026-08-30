@@ -96,7 +96,10 @@ struct SettingsConfigurationHealthCard: View {
           .foregroundStyle(overallStatusColor)
           .padding(.horizontal, 10)
           .padding(.vertical, 5)
-          .background(overallStatusColor.opacity(0.12), in: Capsule())
+          .background(
+            overallStatusColor.opacity(isComplete ? 0 : WorkbenchOpacity.noticeBackground),
+            in: Capsule()
+          )
       }
 
       GeometryReader { geo in
@@ -131,14 +134,12 @@ struct SettingsConfigurationHealthCard: View {
       } else {
         Label("本地发布基础已经就绪，可按需继续配置线上发布与 AI。", systemImage: "checkmark.circle.fill")
           .font(.callout)
-          .foregroundStyle(WorkbenchTheme.success)
+          .foregroundStyle(.secondary)
       }
     }
-    .padding(14)
-    .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
-    .overlay {
-      RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
-        .strokeBorder(Color(nsColor: .separatorColor).opacity(0.55))
+    .padding(.vertical, WorkbenchSpacing.control)
+    .overlay(alignment: .bottom) {
+      Divider()
     }
   }
 
@@ -146,21 +147,26 @@ struct SettingsConfigurationHealthCard: View {
     title: String,
     items: [SettingsConfigurationHealthItem]
   ) -> some View {
-    VStack(alignment: .leading, spacing: 10) {
+    VStack(alignment: .leading, spacing: 0) {
       Text(title)
         .font(.workbenchSectionTitle)
+        .padding(.bottom, WorkbenchSpacing.control)
 
-      LazyVGrid(columns: [GridItem(.adaptive(minimum: 220), spacing: 10)], spacing: 10) {
-        ForEach(items) { item in
+      ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
+        VStack(spacing: 0) {
           Button {
             selectDestination(item.destination)
           } label: {
             SettingsConfigurationHealthTile(item: item, showsActionIndicator: true)
           }
           .buttonStyle(
-            WorkbenchFocusRingButtonStyle(cornerRadius: WorkbenchCornerRadius.card)
+            WorkbenchFocusRingButtonStyle(cornerRadius: WorkbenchCornerRadius.control)
           )
           .accessibilityHint(item.actionTitle)
+
+          if index < items.count - 1 {
+            Divider()
+          }
         }
       }
     }
@@ -273,7 +279,7 @@ struct SettingsConfigurationHealthCard: View {
   }
 
   private var overallStatusColor: Color {
-    readyRequiredCount == requiredItems.count ? WorkbenchTheme.success : WorkbenchTheme.warning
+    readyRequiredCount == requiredItems.count ? .secondary : WorkbenchTheme.warning
   }
 
   private var isComplete: Bool {
@@ -292,52 +298,27 @@ private struct SettingsConfigurationHealthTile: View {
   let showsActionIndicator: Bool
 
   var body: some View {
-    let localizedTitle = Bundle.main.localizedString(forKey: item.title, value: item.title, table: nil)
-    HStack(alignment: .top, spacing: 8) {
-      Image(systemName: item.systemImage)
-        .foregroundStyle(.secondary)
-        .frame(width: 16)
+    WorkbenchInformationRow(
+      title: LocalizedStringKey(item.title),
+      detail: item.detail,
+      detailIdentityValue: item.identityValue,
+      systemImage: item.systemImage,
+      emphasis: item.state.emphasis
+    ) {
+      HStack(spacing: WorkbenchSpacing.control) {
+        Image(systemName: item.state.systemImage)
+          .font(.caption.weight(.semibold))
+          .foregroundStyle(item.state.color)
+          .accessibilityHidden(true)
 
-      VStack(alignment: .leading, spacing: 2) {
-        Text(LocalizedStringKey(item.title))
-          .font(.callout.weight(.semibold))
-          .workbenchTruncatedIdentity(localizedTitle)
-        if let identityValue = item.identityValue {
-          item.detail
-            .font(.caption.monospaced())
-            .foregroundStyle(.secondary)
-            .workbenchTruncatedIdentity(identityValue, lineLimit: 2)
-        } else {
-          item.detail
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .lineLimit(2)
+        if showsActionIndicator {
+          Image(systemName: "chevron.right")
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(.tertiary)
+            .accessibilityHidden(true)
         }
       }
-
-      Spacer(minLength: 0)
-
-      Image(systemName: item.state.systemImage)
-        .font(.caption.weight(.semibold))
-        .foregroundStyle(item.state.color)
-        .padding(5)
-        .background(item.state.color.opacity(0.12), in: Circle())
-        .accessibilityHidden(true)
-
-      if showsActionIndicator {
-        Image(systemName: "chevron.right")
-          .font(.caption.weight(.semibold))
-          .foregroundStyle(.tertiary)
-          .accessibilityHidden(true)
-      }
     }
-    .padding(10)
-    .frame(minHeight: 68)
-    .frame(maxWidth: .infinity, alignment: .leading)
-    .background(WorkbenchBackgroundStyle.control, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
-    .accessibilityElement(children: .combine)
-    .accessibilityLabel(Text(LocalizedStringKey(item.title)))
-    .accessibilityValue(item.detail)
   }
 }
 
@@ -390,11 +371,20 @@ private enum SettingsConfigurationHealthState {
   var color: Color {
     switch self {
     case .ready:
-      return WorkbenchTheme.success
+      return .secondary
     case .warning:
       return WorkbenchTheme.warning
     case .info:
       return .secondary
+    }
+  }
+
+  var emphasis: WorkbenchInformationEmphasis {
+    switch self {
+    case .warning:
+      return .warning
+    case .ready, .info:
+      return .standard
     }
   }
 

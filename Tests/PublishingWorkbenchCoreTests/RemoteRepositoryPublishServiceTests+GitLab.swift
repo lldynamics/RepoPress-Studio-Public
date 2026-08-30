@@ -774,6 +774,38 @@ final class RemoteRepositoryPublishServiceGitLabTests: RemoteRepositoryPublishSe
     XCTAssertTrue((requests[3].url?.query ?? "").contains("target_branch=main"))
   }
 
+  func testGitLabNoOpExistingMergeRequestPersistsCurrentBranchHead() async throws {
+    let transport = SequencedRemoteRepositoryTransport(responses: [
+      response(json: #"{"name":"publish/no-op"}"#),
+      response(
+        json:
+          #"{"file_path":"content/posts/no-op.md","last_commit_id":"old","content":"c2FtZQ==","encoding":"base64"}"#
+      ),
+      response(json: #"[{"iid":8,"web_url":"https://gitlab.com/group/site/-/merge_requests/8"}]"#),
+      response(json: #"{"name":"publish/no-op","commit":{"id":"current-review-head"}}"#),
+    ])
+    var profile = SiteProfile.defaultProfile
+    profile.repositoryProvider = .gitlab
+    profile.repositoryBaseURL = "https://gitlab.com"
+    profile.repoOwner = "group"
+    profile.repoName = "site"
+    profile.branch = "main"
+    let package = PublishPackage(
+      draftID: UUID(), title: "No-op", markdownPath: "content/posts/no-op.md",
+      files: [
+        PublishPackageFile(
+          kind: .markdown, repositoryPath: "content/posts/no-op.md", content: "same")
+      ],
+      commitMessage: "No-op", reviewBranchName: "publish/no-op", reviewTitle: "No-op",
+      reviewChecklist: []
+    )
+    let result = try await RemoteRepositoryPublishService(transport: transport).publish(
+      package: package, profile: profile, mode: .reviewRequest, token: "token"
+    )
+    XCTAssertEqual(result.reviewNumber, 8)
+    XCTAssertEqual(result.commitSHA, "current-review-head")
+  }
+
   func testGitLabReviewPublishReportsPartialFailureWhenMergeRequestCreationFails() async throws {
     let transport = SequencedRemoteRepositoryTransport(responses: [
       response(statusCode: 404, json: #"{"message":"not found"}"#),

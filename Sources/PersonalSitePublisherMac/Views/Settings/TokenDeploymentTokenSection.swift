@@ -11,6 +11,7 @@ struct TokenDeploymentTokenSection: View {
   @State private var isDeleteConfirmationPresented = false
   @State private var isJustSaved = false
   @State private var saveFailureMessage: String?
+  @State private var saveFeedbackResetTask: Task<Void, Never>?
 
   var body: some View {
     Section("部署凭据") {
@@ -28,16 +29,13 @@ struct TokenDeploymentTokenSection: View {
             )
             return
           }
-          withAnimation {
-            isJustSaved = true
-          }
-          Task {
+          saveFeedbackResetTask?.cancel()
+          isJustSaved = true
+          saveFeedbackResetTask = Task { @MainActor in
             try? await Task.sleep(for: .seconds(2.5))
-            await MainActor.run {
-              withAnimation {
-                isJustSaved = false
-              }
-            }
+            guard !Task.isCancelled else { return }
+            isJustSaved = false
+            saveFeedbackResetTask = nil
           }
         }
         .workbenchProminentActionStyle()
@@ -48,7 +46,6 @@ struct TokenDeploymentTokenSection: View {
             message: String(localized: "已保存"), severity: .success,
             announcesNonUrgentStatus: true
           )
-          .transition(.opacity)
         } else if !deploymentTokenInput.wrappedValue.trimmedForPublishing.isEmpty {
           Text("待保存修改")
             .font(.caption.weight(.medium))
@@ -57,6 +54,8 @@ struct TokenDeploymentTokenSection: View {
       }
       .onChange(of: deploymentTokenInput.wrappedValue) { _, newValue in
         if !newValue.trimmedForPublishing.isEmpty {
+          saveFeedbackResetTask?.cancel()
+          saveFeedbackResetTask = nil
           isJustSaved = false
           saveFailureMessage = nil
         }

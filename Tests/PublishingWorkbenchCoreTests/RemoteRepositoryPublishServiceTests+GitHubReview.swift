@@ -200,6 +200,43 @@ final class RemoteRepositoryPublishServiceGitHubReviewTests: RemoteRepositoryPub
       requests.contains { $0.httpMethod == "POST" && $0.url?.path == "/repos/owner/site/pulls" })
   }
 
+  func testGitHubSingleFileNoOpExistingPullPersistsCurrentBranchHead() async throws {
+    let body = "same remote review body"
+    let sha = RemoteRepositoryPublishService().gitBlobSHA(for: Data(body.utf8))
+    let transport = SequencedRemoteRepositoryTransport(responses: [
+      response(json: #"{"object":{"sha":"target-sha"}}"#),
+      response(statusCode: 422, json: #"{"message":"Reference already exists"}"#),
+      response(json: "{\"sha\":\"\(sha)\"}"),
+      response(json: #"[{"number":12,"html_url":"https://github.com/owner/site/pull/12"}]"#),
+      response(json: #"{"object":{"sha":"existing-review-head"}}"#),
+    ])
+    var profile = SiteProfile.defaultProfile
+    profile.repositoryProvider = .github
+    profile.repositoryBaseURL = "https://api.github.com"
+    profile.repoOwner = "owner"
+    profile.repoName = "site"
+    profile.branch = "main"
+    let package = PublishPackage(
+      draftID: UUID(), title: "No-op", markdownPath: "content/posts/no-op.md",
+      files: [
+        PublishPackageFile(kind: .markdown, repositoryPath: "content/posts/no-op.md", content: body)
+      ],
+      commitMessage: "No-op", reviewBranchName: "publish/no-op", reviewTitle: "No-op",
+      reviewChecklist: []
+    )
+    let result = try await RemoteRepositoryPublishService(transport: transport).publish(
+      package: package, profile: profile, mode: .reviewRequest, token: "token"
+    )
+    XCTAssertEqual(result.reviewNumber, 12)
+    XCTAssertEqual(result.commitSHA, "existing-review-head")
+    XCTAssertEqual(result.changedPaths, [])
+    let requests = await transport.capturedRequests()
+    XCTAssertEqual(requests.map(\.httpMethod), ["GET", "POST", "GET", "GET", "GET"])
+    XCTAssertEqual(requests[3].url?.path, "/repos/owner/site/pulls")
+    XCTAssertEqual(requests[4].url?.path, "/repos/owner/site/git/ref/heads/publish/no-op")
+    XCTAssertFalse(requests.contains { $0.httpMethod == "PUT" })
+  }
+
   func testReviewRecoveryDraftReusesRecordedBranchCommitAndBatchMetadata() throws {
     let profileID = UUID()
     let record = ReleaseRecord(

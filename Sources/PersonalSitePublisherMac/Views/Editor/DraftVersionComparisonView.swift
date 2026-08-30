@@ -183,21 +183,20 @@ struct DraftVersionComparisonView: View {
       Divider()
 
       if comparisonLoader.isLoading {
-        VStack(spacing: 10) {
-          ProgressView()
-          Text("正在计算版本差异…")
-            .foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("正在计算版本差异")
+        WorkbenchStateView(
+          presentation: WorkbenchStatePresentation(
+            kind: .loading(detail: String(localized: "正在计算版本差异…"))
+          )
+        )
       } else if let comparison = comparisonLoader.comparison {
         comparisonContent(comparison)
       } else {
-        ContentUnavailableView(
-          "无法比较版本",
-          systemImage: "clock.badge.exclamationmark",
-          description: Text("当前文章或所选对比版本已不存在。")
+        WorkbenchStateView(
+          presentation: WorkbenchStatePresentation(
+            kind: .unavailable(
+              reason: String(localized: "当前文章或所选对比版本已不存在。")
+            )
+          )
         )
       }
 
@@ -322,10 +321,12 @@ struct DraftVersionComparisonView: View {
         .padding(16)
       }
     } else {
-      ContentUnavailableView(
-        "内容完全相同",
-        systemImage: "equal.circle",
-        description: Text("这两个版本没有正文或可恢复元数据差异。")
+      WorkbenchStateView(
+        presentation: WorkbenchStatePresentation(
+          kind: .success(
+            detail: String(localized: "这两个版本没有正文或可恢复元数据差异。")
+          )
+        )
       )
     }
   }
