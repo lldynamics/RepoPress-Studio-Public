@@ -221,6 +221,7 @@ extension PublishingStore {
     store: WorkbenchStore,
     expectedChangedPaths: Set<String>? = nil,
     expectedTarget: RemoteRepositoryPublishTargetSnapshot? = nil,
+    expectedReview: BatchPublishReviewExpectation? = nil,
     authorization: AIPublishAuthorizationSnapshot? = nil,
     modeOverride: RemoteRepositoryPublishMode? = nil
   ) async -> RemoteRepositoryPublishResult? {
@@ -267,6 +268,14 @@ extension PublishingStore {
     }
     let reviewedFiles = package.files
     let reviewedDraftIDs = publishableItems.map(\.draftID)
+
+    if let expectedReview, !expectedReview.matches(plan: batchPlan, package: package) {
+      setPublishActionMessage(
+        CoreL10n.text("待发布文章或内容已变化，请重新打开确认页审阅完整清单。"),
+        status: .warning
+      )
+      return nil
+    }
 
     let initialPreview = remoteRepositoryPublishPreview(
       package: package,

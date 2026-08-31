@@ -45,6 +45,16 @@ final class LocalSitePreviewTrustConfirmationTests: XCTestCase {
     }
   }
 
+  func testExternalBrowserConfirmationExplainsThatBrowserWillOpen() {
+    let presentation = LocalSitePreviewTrustConfirmationPresentation(
+      request: makeRequest(),
+      entryPoint: .externalBrowser
+    )
+
+    XCTAssertTrue(presentation.riskMessage.contains("默认浏览器打开"))
+    XCTAssertTrue(presentation.confirmTitle.contains("打开"))
+  }
+
   func testRepositoryPrimaryActionRequiresTheSharedPanelCommand() {
     XCTAssertTrue(
       LocalSitePreviewTrustConfirmationPolicy.repositoryStartOpensConfirmationPanel(

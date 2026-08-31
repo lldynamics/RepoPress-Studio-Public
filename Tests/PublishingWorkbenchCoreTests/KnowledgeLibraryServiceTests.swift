@@ -2381,6 +2381,150 @@ final class KnowledgeLibraryServiceTests: XCTestCase {
     }
   }
 
+  func testKnowledgeBackupCancelsLargeStreamAndCleansTemporaryPackage() async throws {
+    let rootURL = temporaryDirectory(named: "knowledge-backup-stream-cancel")
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let storeURL = rootURL.appendingPathComponent("store", isDirectory: true)
+    let blobURL = storeURL.appendingPathComponent("blobs/big.bin")
+    try FileManager.default.createDirectory(
+      at: blobURL.deletingLastPathComponent(),
+      withIntermediateDirectories: true
+    )
+    try Data(repeating: 0xB4, count: 4 * 1_024 * 1_024).write(to: blobURL)
+    let destinationURL = rootURL.appendingPathComponent("existing.pslibrarybackup")
+    try FileManager.default.createDirectory(at: destinationURL, withIntermediateDirectories: true)
+    let sentinelURL = destinationURL.appendingPathComponent("sentinel.txt")
+    try Data("preserve".utf8).write(to: sentinelURL)
+
+    let gate = KnowledgeBackupStreamGate()
+    let inspection = KnowledgePersistenceInspection(
+      userVersion: 1,
+      documentCount: 0,
+      folderCount: 0,
+      revisionCount: 0,
+      chunkCount: 0,
+      storageReferences: ["blobs/big.bin"],
+      sampleTitles: []
+    )
+    let service = KnowledgeLibraryBackupService(
+      rootURL: storeURL,
+      lifecycle: KnowledgeBackupFixtureLifecycle(inspection: inspection),
+      streamChunkHook: { path, copiedByteCount in
+        guard path == "blobs/big.bin", copiedByteCount > 0 else { return }
+        gate.signalChunk()
+        gate.waitUntilCancellationIsForwarded()
+      }
+    )
+    let worker = Task.detached {
+      try service.createBackup(
+        at: destinationURL,
+        database: KnowledgeBackupFixtureSnapshot(inspection: inspection),
+        applicationVersion: "test"
+      )
+    }
+
+    XCTAssertTrue(gate.waitForChunk(timeout: 2))
+    let cancellationStartedAt = Date()
+    worker.cancel()
+    gate.allowCancellationToProceed()
+    let result = await worker.result
+    guard case .failure(let error) = result else {
+      return XCTFail("cancelled knowledge backup unexpectedly succeeded")
+    }
+    XCTAssertTrue(error is CancellationError)
+    XCTAssertLessThan(Date().timeIntervalSince(cancellationStartedAt), 1)
+    XCTAssertEqual(try Data(contentsOf: sentinelURL), Data("preserve".utf8))
+    let temporaryEntries = try FileManager.default.contentsOfDirectory(atPath: rootURL.path)
+      .filter { $0.hasPrefix(".existing.pslibrarybackup.creating-") }
+    XCTAssertEqual(temporaryEntries, [])
+  }
+
+  func testKnowledgeBackupCancelsDatabaseSnapshotAndCleansTemporaryPackage() async throws {
+    let rootURL = temporaryDirectory(named: "knowledge-backup-database-cancel")
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let storeURL = rootURL.appendingPathComponent("store", isDirectory: true)
+    let destinationURL = rootURL.appendingPathComponent("existing.pslibrarybackup")
+    try FileManager.default.createDirectory(at: destinationURL, withIntermediateDirectories: true)
+    let sentinelURL = destinationURL.appendingPathComponent("sentinel.txt")
+    try Data("preserve".utf8).write(to: sentinelURL)
+
+    let gate = KnowledgeDatabaseBackupStepGate()
+    let database = try KnowledgeDatabase(
+      fileURL: storeURL.appendingPathComponent("library.sqlite"),
+      backupStepHook: { step in
+        guard step == 1 else { return }
+        gate.signalStep()
+        gate.waitUntilCancellationIsForwarded()
+      }
+    )
+    let backupService = KnowledgeLibraryBackupService(rootURL: storeURL)
+    let worker = Task.detached {
+      try backupService.createBackup(
+        at: destinationURL,
+        database: database,
+        applicationVersion: "test"
+      )
+    }
+
+    XCTAssertTrue(gate.waitForStep(timeout: 2))
+    let cancellationStartedAt = Date()
+    worker.cancel()
+    gate.allowCancellationToProceed()
+    let result = await worker.result
+    guard case .failure(let error) = result else {
+      return XCTFail("cancelled database snapshot unexpectedly succeeded")
+    }
+    XCTAssertTrue(error is CancellationError)
+    XCTAssertLessThan(Date().timeIntervalSince(cancellationStartedAt), 1)
+    XCTAssertEqual(try Data(contentsOf: sentinelURL), Data("preserve".utf8))
+    let temporaryEntries = try FileManager.default.contentsOfDirectory(atPath: rootURL.path)
+      .filter { $0.hasPrefix(".existing.pslibrarybackup.creating-") }
+    XCTAssertEqual(temporaryEntries, [])
+  }
+
+  func testKnowledgeBackupCancellationAfterCommitReturnsPreview() async throws {
+    let rootURL = temporaryDirectory(named: "knowledge-backup-commit-cancel")
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let storeURL = rootURL.appendingPathComponent("store", isDirectory: true)
+    try FileManager.default.createDirectory(at: storeURL, withIntermediateDirectories: true)
+    let inspection = KnowledgePersistenceInspection(
+      userVersion: 1,
+      documentCount: 0,
+      folderCount: 0,
+      revisionCount: 0,
+      chunkCount: 0,
+      storageReferences: [],
+      sampleTitles: []
+    )
+    let destinationURL = rootURL.appendingPathComponent("committed.pslibrarybackup")
+    let gate = KnowledgeBackupCommitGate()
+    let service = KnowledgeLibraryBackupService(
+      rootURL: storeURL,
+      lifecycle: KnowledgeBackupFixtureLifecycle(inspection: inspection),
+      backupCommitHook: {
+        gate.signalCommitted()
+        gate.waitUntilTestReleasesCommit()
+      }
+    )
+    let worker = Task.detached {
+      try service.createBackup(
+        at: destinationURL,
+        database: KnowledgeBackupFixtureSnapshot(inspection: inspection),
+        applicationVersion: "test"
+      )
+    }
+
+    XCTAssertTrue(gate.waitForCommit(timeout: 2))
+    worker.cancel()
+    gate.releaseCommit()
+    let result = await worker.result
+    guard case .success(let preview) = result else {
+      return XCTFail("committed knowledge backup must not be reclassified as cancellation")
+    }
+    XCTAssertEqual(preview.backupURL, destinationURL)
+    XCTAssertTrue(FileManager.default.fileExists(atPath: destinationURL.path))
+  }
+
   func testKnowledgeBackupStageRestoreCopiesOnlyManifestFiles() async throws {
     let rootURL = temporaryDirectory(named: "knowledge-backup-listed-files")
     defer { try? FileManager.default.removeItem(at: rootURL) }
@@ -2576,6 +2720,65 @@ final class KnowledgeLibraryServiceTests: XCTestCase {
     try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
     return url
   }
+}
+
+private struct KnowledgeBackupFixtureSnapshot: KnowledgeBackupSnapshotSource {
+  let inspection: KnowledgePersistenceInspection
+
+  func createBackupSnapshot(at destinationURL: URL) throws -> KnowledgePersistenceInspection {
+    try Data("fixture database".utf8).write(to: destinationURL)
+    return inspection
+  }
+}
+
+private struct KnowledgeBackupFixtureLifecycle: KnowledgePersistenceLifecycle {
+  let inspection: KnowledgePersistenceInspection
+
+  var supportedSchemaVersion: Int { inspection.userVersion }
+
+  func createOrOpenAndValidate(at fileURL: URL) throws -> KnowledgePersistenceInspection {
+    inspection
+  }
+
+  func inspectBackup(at fileURL: URL) throws -> KnowledgePersistenceInspection {
+    inspection
+  }
+}
+
+private final class KnowledgeBackupStreamGate: Sendable {
+  private let chunk = DispatchSemaphore(value: 0)
+  private let release = DispatchSemaphore(value: 0)
+
+  func signalChunk() { chunk.signal() }
+  func waitForChunk(timeout: TimeInterval) -> Bool {
+    chunk.wait(timeout: .now() + timeout) == .success
+  }
+  func waitUntilCancellationIsForwarded() { release.wait() }
+  func allowCancellationToProceed() { release.signal() }
+}
+
+private final class KnowledgeBackupCommitGate: Sendable {
+  private let committed = DispatchSemaphore(value: 0)
+  private let release = DispatchSemaphore(value: 0)
+
+  func signalCommitted() { committed.signal() }
+  func waitForCommit(timeout: TimeInterval) -> Bool {
+    committed.wait(timeout: .now() + timeout) == .success
+  }
+  func waitUntilTestReleasesCommit() { release.wait() }
+  func releaseCommit() { release.signal() }
+}
+
+private final class KnowledgeDatabaseBackupStepGate: Sendable {
+  private let step = DispatchSemaphore(value: 0)
+  private let release = DispatchSemaphore(value: 0)
+
+  func signalStep() { step.signal() }
+  func waitForStep(timeout: TimeInterval) -> Bool {
+    step.wait(timeout: .now() + timeout) == .success
+  }
+  func waitUntilCancellationIsForwarded() { release.wait() }
+  func allowCancellationToProceed() { release.signal() }
 }
 
 private final class KnowledgeSearchCancellationProbe: @unchecked Sendable {

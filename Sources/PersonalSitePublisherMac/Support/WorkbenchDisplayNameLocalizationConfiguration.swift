@@ -7,6 +7,7 @@ extension WorkspaceBackupComponent {
     case .draftAttachments: "display.workspace-backup-component.draft-attachments"
     case .knowledgeLibrary: "display.workspace-backup-component.knowledge-library"
     case .rssReader: "display.workspace-backup-component.rss-reader"
+    case .operationHistory: "display.workspace-backup-component.operation-history"
     }
   }
 

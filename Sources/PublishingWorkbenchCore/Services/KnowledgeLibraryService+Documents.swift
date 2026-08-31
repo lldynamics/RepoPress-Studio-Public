@@ -3,6 +3,24 @@ import os
 
 private let logger = Logger(subsystem: "com.repopress", category: "KnowledgeLibraryService")
 
+/// Runs blocking SQLite and managed-file work outside an actor executor while
+/// preserving cooperative cancellation for callers that stop waiting.
+func performKnowledgeLibraryIO<T: Sendable>(
+  priority: TaskPriority = .utility,
+  _ operation: @escaping @Sendable () throws -> T
+) async throws -> T {
+  try Task.checkCancellation()
+  let task = Task.detached(priority: priority) {
+    try Task.checkCancellation()
+    return try operation()
+  }
+  return try await withTaskCancellationHandler {
+    try await task.value
+  } onCancel: {
+    task.cancel()
+  }
+}
+
 extension KnowledgeLibraryService {
   public func documents() throws -> [KnowledgeDocument] {
     let database = try database()
@@ -37,9 +55,9 @@ extension KnowledgeLibraryService {
 
   public func documentsAsync() async throws -> [KnowledgeDocument] {
     let service = self
-    return try await Task.detached(priority: .utility) {
+    return try await performKnowledgeLibraryIO {
       try service.documents()
-    }.value
+    }
   }
 
   public func document(id: UUID) throws -> KnowledgeDocument? {
@@ -57,15 +75,22 @@ extension KnowledgeLibraryService {
     return url
   }
 
+  public func originalFileURLAsync(documentID: UUID) async throws -> URL? {
+    let service = self
+    return try await performKnowledgeLibraryIO {
+      try service.originalFileURL(documentID: documentID)
+    }
+  }
+
   public func folders() throws -> [KnowledgeFolder] {
     try database().folders()
   }
 
   public func foldersAsync() async throws -> [KnowledgeFolder] {
     let service = self
-    return try await Task.detached(priority: .utility) {
+    return try await performKnowledgeLibraryIO {
       try service.folders()
-    }.value
+    }
   }
 
   public func recycledDocuments() throws -> [KnowledgeRecycledDocument] {
@@ -74,9 +99,9 @@ extension KnowledgeLibraryService {
 
   public func recycledDocumentsAsync() async throws -> [KnowledgeRecycledDocument] {
     let service = self
-    return try await Task.detached(priority: .utility) {
+    return try await performKnowledgeLibraryIO {
       try service.recycledDocuments()
-    }.value
+    }
   }
 
   @discardableResult
@@ -84,21 +109,56 @@ extension KnowledgeLibraryService {
     try database().createFolder(name: name)
   }
 
+  public func createFolderAsync(name: String) async throws -> KnowledgeFolder {
+    let service = self
+    return try await performKnowledgeLibraryIO {
+      try service.createFolder(name: name)
+    }
+  }
+
   @discardableResult
   public func renameFolder(id: UUID, name: String) throws -> KnowledgeFolder {
     try database().renameFolder(id: id, name: name)
+  }
+
+  public func renameFolderAsync(id: UUID, name: String) async throws -> KnowledgeFolder {
+    let service = self
+    return try await performKnowledgeLibraryIO {
+      try service.renameFolder(id: id, name: name)
+    }
   }
 
   public func deleteFolder(id: UUID) throws {
     try database().deleteFolder(id: id)
   }
 
+  public func deleteFolderAsync(id: UUID) async throws {
+    let service = self
+    try await performKnowledgeLibraryIO {
+      try service.deleteFolder(id: id)
+    }
+  }
+
   public func setFolder(_ folderID: UUID?, documentID: UUID) throws {
     try database().setFolder(folderID, documentID: documentID)
   }
 
+  public func setFolderAsync(_ folderID: UUID?, documentID: UUID) async throws {
+    let service = self
+    try await performKnowledgeLibraryIO {
+      try service.setFolder(folderID, documentID: documentID)
+    }
+  }
+
   public func setFolder(_ folderID: UUID?, documentIDs: Set<UUID>) throws {
     try database().setFolder(folderID, documentIDs: documentIDs)
+  }
+
+  public func setFolderAsync(_ folderID: UUID?, documentIDs: Set<UUID>) async throws {
+    let service = self
+    try await performKnowledgeLibraryIO {
+      try service.setFolder(folderID, documentIDs: documentIDs)
+    }
   }
 
   public func addTags(_ tags: [String], documentIDs: Set<UUID>) throws {
@@ -108,6 +168,13 @@ extension KnowledgeLibraryService {
     }
     try database().addTags(normalizedTags, documentIDs: documentIDs)
     invalidateSemanticBackfillCache()
+  }
+
+  public func addTagsAsync(_ tags: [String], documentIDs: Set<UUID>) async throws {
+    let service = self
+    try await performKnowledgeLibraryIO {
+      try service.addTags(tags, documentIDs: documentIDs)
+    }
   }
 
   @discardableResult
@@ -138,6 +205,16 @@ extension KnowledgeLibraryService {
     return document
   }
 
+  public func updateMetadataAsync(
+    documentID: UUID,
+    metadata: KnowledgeDocumentMetadata
+  ) async throws -> KnowledgeDocument {
+    let service = self
+    return try await performKnowledgeLibraryIO {
+      try service.updateMetadata(documentID: documentID, metadata: metadata)
+    }
+  }
+
   public func normalizedText(documentID: UUID) throws -> String {
     guard let revision = try database().currentRevision(documentID: documentID) else {
       throw KnowledgeLibraryError.missingDocument
@@ -159,9 +236,9 @@ extension KnowledgeLibraryService {
 
   public func normalizedTextAsync(documentID: UUID) async throws -> String {
     let service = self
-    return try await Task.detached(priority: .userInitiated) {
+    return try await performKnowledgeLibraryIO(priority: .userInitiated) {
       try service.normalizedText(documentID: documentID)
-    }.value
+    }
   }
 
   /// Returns the browser-extracted text before local reading/index cleanup.
@@ -215,13 +292,20 @@ extension KnowledgeLibraryService {
 
   public func capturedTextAsync(documentID: UUID) async throws -> String? {
     let service = self
-    return try await Task.detached(priority: .userInitiated) {
+    return try await performKnowledgeLibraryIO(priority: .userInitiated) {
       try service.capturedText(documentID: documentID)
-    }.value
+    }
   }
 
   public func revisions(documentID: UUID) throws -> [KnowledgeDocumentRevision] {
     try database().revisions(documentID: documentID)
+  }
+
+  public func revisionsAsync(documentID: UUID) async throws -> [KnowledgeDocumentRevision] {
+    let service = self
+    return try await performKnowledgeLibraryIO {
+      try service.revisions(documentID: documentID)
+    }
   }
 
   public func normalizedText(revisionID: UUID) throws -> String {
@@ -356,6 +440,16 @@ extension KnowledgeLibraryService {
     return document
   }
 
+  public func restoreRevisionAsync(
+    documentID: UUID,
+    revisionID: UUID
+  ) async throws -> KnowledgeDocument {
+    let service = self
+    return try await performKnowledgeLibraryIO {
+      try service.restoreRevision(documentID: documentID, revisionID: revisionID)
+    }
+  }
+
   public func revisionDifference(
     documentID: UUID,
     revisionID: UUID
@@ -372,6 +466,16 @@ extension KnowledgeLibraryService {
       previousText: try normalizedText(revisionID: revisionID),
       currentText: try normalizedText(revisionID: currentRevision.id)
     )
+  }
+
+  public func revisionDifferenceAsync(
+    documentID: UUID,
+    revisionID: UUID
+  ) async throws -> KnowledgeRevisionDifference {
+    let service = self
+    return try await performKnowledgeLibraryIO {
+      try service.revisionDifference(documentID: documentID, revisionID: revisionID)
+    }
   }
 
   public func makeSourceRefreshPreview(
@@ -438,8 +542,25 @@ extension KnowledgeLibraryService {
     try database().setAllowsRemoteAIUse(allowsRemoteAIUse, documentID: documentID)
   }
 
+  public func setAllowsRemoteAIUseAsync(_ allowsRemoteAIUse: Bool, documentID: UUID) async throws {
+    let service = self
+    try await performKnowledgeLibraryIO {
+      try service.setAllowsRemoteAIUse(allowsRemoteAIUse, documentID: documentID)
+    }
+  }
+
   public func setAllowsRemoteAIUse(_ allowsRemoteAIUse: Bool, documentIDs: Set<UUID>) throws {
     try database().setAllowsRemoteAIUse(allowsRemoteAIUse, documentIDs: documentIDs)
+  }
+
+  public func setAllowsRemoteAIUseAsync(
+    _ allowsRemoteAIUse: Bool,
+    documentIDs: Set<UUID>
+  ) async throws {
+    let service = self
+    try await performKnowledgeLibraryIO {
+      try service.setAllowsRemoteAIUse(allowsRemoteAIUse, documentIDs: documentIDs)
+    }
   }
 
   public func setAllowsLocalSemanticIndex(_ allowsLocalSemanticIndex: Bool, documentID: UUID) throws
@@ -447,10 +568,30 @@ extension KnowledgeLibraryService {
     try database().setAllowsLocalSemanticIndex(allowsLocalSemanticIndex, documentID: documentID)
   }
 
+  public func setAllowsLocalSemanticIndexAsync(
+    _ allowsLocalSemanticIndex: Bool,
+    documentID: UUID
+  ) async throws {
+    let service = self
+    try await performKnowledgeLibraryIO {
+      try service.setAllowsLocalSemanticIndex(allowsLocalSemanticIndex, documentID: documentID)
+    }
+  }
+
   public func setAllowsLocalSemanticIndex(_ allowsLocalSemanticIndex: Bool, documentIDs: Set<UUID>)
     throws
   {
     try database().setAllowsLocalSemanticIndex(allowsLocalSemanticIndex, documentIDs: documentIDs)
+  }
+
+  public func setAllowsLocalSemanticIndexAsync(
+    _ allowsLocalSemanticIndex: Bool,
+    documentIDs: Set<UUID>
+  ) async throws {
+    let service = self
+    try await performKnowledgeLibraryIO {
+      try service.setAllowsLocalSemanticIndex(allowsLocalSemanticIndex, documentIDs: documentIDs)
+    }
   }
 
   @available(*, deprecated, message: "请使用 setAllowsRemoteAIUse")
@@ -467,12 +608,33 @@ extension KnowledgeLibraryService {
     try database().moveToRecycleBin(documentIDs: documentIDs)
   }
 
+  public func moveToRecycleBinAsync(documentIDs: Set<UUID>) async throws {
+    let service = self
+    try await performKnowledgeLibraryIO {
+      try service.moveToRecycleBin(documentIDs: documentIDs)
+    }
+  }
+
   public func restoreFromRecycleBin(documentIDs: Set<UUID>) throws {
     try database().restoreFromRecycleBin(documentIDs: documentIDs)
   }
 
+  public func restoreFromRecycleBinAsync(documentIDs: Set<UUID>) async throws {
+    let service = self
+    try await performKnowledgeLibraryIO {
+      try service.restoreFromRecycleBin(documentIDs: documentIDs)
+    }
+  }
+
   public func annotations(documentID: UUID) throws -> [KnowledgeAnnotation] {
     try database().annotations(documentID: documentID)
+  }
+
+  public func annotationsAsync(documentID: UUID) async throws -> [KnowledgeAnnotation] {
+    let service = self
+    return try await performKnowledgeLibraryIO {
+      try service.annotations(documentID: documentID)
+    }
   }
 
   @discardableResult
@@ -493,12 +655,35 @@ extension KnowledgeLibraryService {
     return normalized
   }
 
+  public func saveAnnotationAsync(
+    _ annotation: KnowledgeAnnotation
+  ) async throws -> KnowledgeAnnotation {
+    let service = self
+    return try await performKnowledgeLibraryIO {
+      try service.saveAnnotation(annotation)
+    }
+  }
+
   public func deleteAnnotation(id: UUID) throws {
     try database().deleteAnnotation(id: id)
   }
 
+  public func deleteAnnotationAsync(id: UUID) async throws {
+    let service = self
+    try await performKnowledgeLibraryIO {
+      try service.deleteAnnotation(id: id)
+    }
+  }
+
   public func backlinks(documentID: UUID) throws -> [KnowledgeBacklink] {
     try database().backlinks(documentID: documentID)
+  }
+
+  public func backlinksAsync(documentID: UUID) async throws -> [KnowledgeBacklink] {
+    let service = self
+    return try await performKnowledgeLibraryIO {
+      try service.backlinks(documentID: documentID)
+    }
   }
 
   public func backlinks(
@@ -518,9 +703,9 @@ extension KnowledgeLibraryService {
     targetID: String
   ) async throws -> [KnowledgeBacklink] {
     let service = self
-    return try await Task.detached(priority: .utility) {
+    return try await performKnowledgeLibraryIO {
       try service.backlinks(targetKind: targetKind, targetID: targetID)
-    }.value
+    }
   }
 
   public func recordBacklinks(
@@ -535,18 +720,35 @@ extension KnowledgeLibraryService {
     try database().recordBacklinks(citations: citations, target: target)
   }
 
+  public func recordBacklinksAsync(
+    citations: [KnowledgeCitation],
+    target: KnowledgeBacklinkTarget
+  ) async throws {
+    let service = self
+    try await performKnowledgeLibraryIO {
+      try service.recordBacklinks(citations: citations, target: target)
+    }
+  }
+
   public func pinnedDocumentIDs() throws -> Set<UUID> {
     try database().pinnedDocumentIDs()
   }
 
   public func pinnedDocumentIDsAsync() async throws -> Set<UUID> {
     let service = self
-    return try await Task.detached(priority: .utility) {
+    return try await performKnowledgeLibraryIO {
       try service.pinnedDocumentIDs()
-    }.value
+    }
   }
 
   public func setPinned(_ pinned: Bool, documentID: UUID) throws {
     try database().setPinned(pinned, documentID: documentID)
+  }
+
+  public func setPinnedAsync(_ pinned: Bool, documentID: UUID) async throws {
+    let service = self
+    try await performKnowledgeLibraryIO {
+      try service.setPinned(pinned, documentID: documentID)
+    }
   }
 }

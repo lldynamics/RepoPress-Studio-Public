@@ -50,12 +50,11 @@ struct MacMarkdownEditorToolbar: View {
   let isSelectionAIActionRunning: Bool
   let canOpenAIChat: Bool
   let aiChatUnavailableReason: String?
+  @ObservedObject var externalBrowserPreviewCoordinator: ExternalBrowserPreviewCoordinator
   let writingToolDensity: MarkdownWritingToolDensity
   let availableWritingContextPanels: [MarkdownWritingContextPanel]
   let actions: MarkdownEditorToolbarActions
-  @EnvironmentObject private var localPreviewState: WorkbenchLocalSitePreviewFeatureFacade
   @EnvironmentObject private var zenModeController: ZenModeController
-  @State private var isLocalPreviewPopoverPresented = false
   @State private var selectedPublishAssets = AIPublishingAssetKind.defaultSelection
   @AppStorage("workspace.customToolbarConfig") private var customToolbarConfigRawValue = ""
   @State private var isCustomizationSheetPresented = false
@@ -87,6 +86,7 @@ struct MacMarkdownEditorToolbar: View {
     isSelectionAIActionRunning: Bool,
     canOpenAIChat: Bool,
     aiChatUnavailableReason: String?,
+    externalBrowserPreviewCoordinator: ExternalBrowserPreviewCoordinator,
     writingToolDensity: MarkdownWritingToolDensity,
     availableWritingContextPanels: [MarkdownWritingContextPanel],
     actions: MarkdownEditorToolbarActions
@@ -98,6 +98,9 @@ struct MacMarkdownEditorToolbar: View {
     self.isSelectionAIActionRunning = isSelectionAIActionRunning
     self.canOpenAIChat = canOpenAIChat
     self.aiChatUnavailableReason = aiChatUnavailableReason
+    _externalBrowserPreviewCoordinator = ObservedObject(
+      wrappedValue: externalBrowserPreviewCoordinator
+    )
     self.writingToolDensity = writingToolDensity
     self.availableWritingContextPanels = availableWritingContextPanels
     self.actions = actions
@@ -406,34 +409,12 @@ struct MacMarkdownEditorToolbar: View {
   }
 
   private func localSitePreviewButton(showsTitle: Bool) -> some View {
-    let isRunning = localPreviewState.runtimeStatus.isRunning
-    let isReady = localPreviewState.plan?.diagnostics.isReadyToStart == true
-    let title = isRunning ? "打开预览" : "本地预览"
-    let icon = isRunning ? "safari" : "play.rectangle"
-
-    return Button {
-      isLocalPreviewPopoverPresented.toggle()
-    } label: {
-      editorActionLabel(title, systemName: icon, showsTitle: showsTitle)
-    }
-    .buttonStyle(MarkdownEditorToolbarButtonStyle(showsTitle: showsTitle))
-    .help(
-      isRunning
-        ? String(localized: "管理本地站点预览")
-        : String(localized: "在写作界面启动本地站点预览")
+    MacMarkdownExternalBrowserPreviewControl(
+      store: store,
+      draftID: draftID,
+      showsTitle: showsTitle,
+      coordinator: externalBrowserPreviewCoordinator
     )
-    .accessibilityLabel(isRunning ? "打开本地站点预览" : "本地站点预览")
-    .accessibilityValue(
-      isRunning
-        ? String(localized: "预览正在运行")
-        : (isReady ? String(localized: "可以启动") : String(localized: "需要先配置站点仓库"))
-    )
-    .accessibilityIdentifier("markdown-local-site-preview")
-    .popover(isPresented: $isLocalPreviewPopoverPresented, arrowEdge: .top) {
-      MacMarkdownLocalPreviewPopover(
-        currentArticleURL: store.selectedDraft.flatMap { store.localSitePreviewURL(for: $0) }
-      )
-    }
   }
 
   @ViewBuilder
@@ -772,6 +753,8 @@ private struct MacMarkdownEditorTitleArea: View {
       .textFieldStyle(.plain)
       .font(.headline)
       .foregroundStyle(saveStatus.hasUnsavedChanges ? WorkbenchTheme.warning : Color.primary)
+      .accessibilityLabel("文章标题")
+      .accessibilityValue(title.nilIfEmpty ?? String(localized: "未命名文章"))
       .animation(
         WorkbenchMotion.animation(
           for: .statusChange,
@@ -781,8 +764,6 @@ private struct MacMarkdownEditorTitleArea: View {
       )
       .lineLimit(1)
       .help(title.nilIfEmpty ?? String(localized: "未命名文章"))
-      .accessibilityLabel("文章标题")
-      .accessibilityValue(title.nilIfEmpty ?? String(localized: "未命名文章"))
 
       InteractiveBreadcrumbView(
         markdownPath: markdownPath,
@@ -840,7 +821,7 @@ private struct MacMarkdownEditorSaveStatusIcon: View {
   }
 }
 
-private struct MarkdownEditorToolbarButtonStyle: ButtonStyle {
+struct MarkdownEditorToolbarButtonStyle: ButtonStyle {
   let showsTitle: Bool
   var isSelected = false
 

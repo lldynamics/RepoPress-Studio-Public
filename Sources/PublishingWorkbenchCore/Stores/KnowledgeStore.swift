@@ -4,6 +4,8 @@ import Foundation
 @MainActor
 public final class KnowledgeStore: ObservableObject {
   let service: KnowledgeLibraryService
+  private let operationEventRecorder:
+    (@MainActor @Sendable (WorkbenchOperationEventRecord) -> Void)?
   let smartCollectionService = KnowledgeSmartCollectionService()
   var searchTask: Task<Void, Never>?
   var selectedTextTask: Task<Void, Never>?
@@ -12,6 +14,14 @@ public final class KnowledgeStore: ObservableObject {
   var documentInsightsTask: Task<Void, Never>?
   var articleBacklinksTask: Task<Void, Never>?
   var articleBacklinksTargetID: String?
+  var startupReloadTask: Task<Void, Never>?
+  /// Test-only synchronization point for proving that an accepted write still
+  /// refreshes its projection when the initiating UI task is cancelled.
+  var afterAcceptedMutationBeforeProjection: (@MainActor () async -> Void)?
+  private var knowledgeMutationTail: Task<Void, Never>?
+  private var knowledgeMutationTailGeneration: UInt64 = 0
+  private var acceptedKnowledgeMutationGeneration: UInt64 = 0
+  private var busyOperationIDs = Set<UUID>()
   var lastImportRetryAction: (@MainActor () async -> Void)?
   var visibleDocumentsCacheRevision: UInt64?
   var visibleDocumentsCache: [KnowledgeDocument] = []
@@ -71,9 +81,40 @@ public final class KnowledgeStore: ObservableObject {
   @Published public internal(set) var healthSnapshot: KnowledgeLibraryHealthSnapshot?
   @Published public internal(set) var isLoadingHealth = false
 
-  public init(service: KnowledgeLibraryService = KnowledgeLibraryService()) {
+  public init(
+    service: KnowledgeLibraryService = KnowledgeLibraryService(),
+    operationEventRecorder:
+      (@MainActor @Sendable (WorkbenchOperationEventRecord) -> Void)? = nil
+  ) {
     self.service = service
-    Task { await reload() }
+    self.operationEventRecorder = operationEventRecorder
+    startupReloadTask = Task { [weak self] in
+      guard let self else { return }
+      await performReload()
+      startupReloadTask = nil
+    }
+  }
+
+  func recordKnowledgeImportEvent(
+    outcome: WorkbenchOperationLogOutcome,
+    result: KnowledgeImportResult? = nil
+  ) {
+    operationEventRecorder?(
+      WorkbenchOperationEventRecord(
+        kind: .knowledgeImport,
+        outcome: outcome,
+        createdItemCount: result?.insertedCount,
+        updatedItemCount: result?.updatedCount,
+        skippedItemCount: result?.skippedCount
+      )
+    )
+  }
+
+  func knowledgeImportOutcome(for result: KnowledgeImportResult) -> WorkbenchOperationLogOutcome {
+    let changedCount = result.insertedCount + result.updatedCount
+    if changedCount > 0, result.skippedCount > 0 { return .partial }
+    if changedCount > 0 { return .succeeded }
+    return .recorded
   }
 
   public var rootURL: URL {
@@ -87,6 +128,8 @@ public final class KnowledgeStore: ObservableObject {
     relatedChaptersTask?.cancel()
     documentInsightsTask?.cancel()
     articleBacklinksTask?.cancel()
+    startupReloadTask?.cancel()
+    knowledgeMutationTail?.cancel()
   }
 
   public var selectedDocument: KnowledgeDocument? {
@@ -168,5 +211,78 @@ public final class KnowledgeStore: ObservableObject {
     listPresentationRevision &+= 1
     visibleDocumentsCacheRevision = nil
     visibleSearchResultsCacheRevision = nil
+  }
+
+  /// Keeps the presentation busy state truthful when several asynchronous
+  /// knowledge operations overlap. Every operation receives its own lease, so
+  /// one completion cannot mark the store idle while another is still running.
+  func beginBusyOperation() -> UUID {
+    let operationID = UUID()
+    busyOperationIDs.insert(operationID)
+    isBusy = true
+    return operationID
+  }
+
+  func finishBusyOperation(_ operationID: UUID) {
+    busyOperationIDs.remove(operationID)
+    isBusy = !busyOperationIDs.isEmpty
+  }
+
+  /// Serializes all Store-originated knowledge writes in FIFO order. The tail
+  /// is intentionally never cancelled by a waiting caller: once accepted, a
+  /// persistence request either reaches the service or reports its real error.
+  func performQueuedKnowledgeMutation(
+    _ operation: @escaping @MainActor () async -> Void
+  ) async {
+    acceptedKnowledgeMutationGeneration &+= 1
+    let generation = acceptedKnowledgeMutationGeneration
+    let predecessor = knowledgeMutationTail
+    let task = Task { @MainActor in
+      if let predecessor { await predecessor.value }
+      await operation()
+    }
+    knowledgeMutationTail = task
+    knowledgeMutationTailGeneration = generation
+    await task.value
+  }
+
+  func performQueuedKnowledgeMutation<T: Sendable>(
+    _ operation: @escaping @MainActor () async throws -> T
+  ) async throws -> T {
+    acceptedKnowledgeMutationGeneration &+= 1
+    let generation = acceptedKnowledgeMutationGeneration
+    let predecessor = knowledgeMutationTail
+    let resultTask = Task<T, Error> { @MainActor in
+      if let predecessor { await predecessor.value }
+      return try await operation()
+    }
+    let tail = Task<Void, Never> {
+      do {
+        _ = try await resultTask.value
+      } catch {
+        // The result task's caller observes the error; the FIFO tail only waits
+        // for completion so a failed mutation cannot block later requests.
+      }
+    }
+    knowledgeMutationTail = tail
+    knowledgeMutationTailGeneration = generation
+    return try await resultTask.value
+  }
+
+  func flushKnowledgeMutations() async {
+    while let tail = knowledgeMutationTail {
+      let generation = knowledgeMutationTailGeneration
+      await tail.value
+      guard knowledgeMutationTailGeneration == generation else { continue }
+      return
+    }
+  }
+
+  func currentKnowledgeMutationGeneration() -> UInt64 {
+    acceptedKnowledgeMutationGeneration
+  }
+
+  func waitAfterAcceptedMutationBeforeProjection() async {
+    await afterAcceptedMutationBeforeProjection?()
   }
 }

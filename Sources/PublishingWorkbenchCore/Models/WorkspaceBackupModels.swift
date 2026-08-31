@@ -5,6 +5,7 @@ public enum WorkspaceBackupComponent: String, Codable, CaseIterable, Hashable, S
   case draftAttachments = "草稿附件"
   case knowledgeLibrary = "资料库"
   case rssReader = "RSS 阅读器"
+  case operationHistory = "操作记录"
 }
 
 public struct WorkspaceBackupComponentSummary: Codable, Hashable, Sendable {
@@ -64,7 +65,7 @@ public struct WorkspaceBackupAttachmentReference: Codable, Hashable, Sendable {
 }
 
 public struct WorkspaceBackupManifest: Codable, Hashable, Sendable {
-  public static let currentFormatVersion = 2
+  public static let currentFormatVersion = 3
   public static let minimumSupportedFormatVersion = 1
   public static let attachmentMarkerPrefix = "workspace-backup-attachment://"
 

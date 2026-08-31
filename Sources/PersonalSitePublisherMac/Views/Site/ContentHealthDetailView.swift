@@ -1073,33 +1073,21 @@ struct ContentHealthDetailView: View {
   private func applySelectedAIFixFields(
     _ fields: [FrontMatterFixFieldItem],
     for preview: ContentHealthAIFixResultPreview
-  ) {
+  ) -> ContentHealthAIFixApplyFeedback {
     guard let draftID = preview.draftID,
       var draft = store.publishing.visibleDrafts.first(where: { $0.id == draftID })
     else {
-      return
+      return .failed(String(localized: "未能找到原文章，未应用任何字段。"))
     }
 
-    for item in fields where item.isSelected {
-      switch item.fieldKey.lowercased() {
-      case "title":
-        draft.title = item.proposedValue
-      case "slug":
-        draft.slug = item.proposedValue
-      case "summary", "description":
-        draft.summary = item.proposedValue
-      case "tags":
-        draft.tags = item.proposedValue
-          .components(separatedBy: CharacterSet(charactersIn: ",，\n"))
-          .map { $0.trimmingCharacters(in: .whitespaces) }
-          .filter { !$0.isEmpty }
-      default:
-        break
-      }
+    let result = ContentHealthAIFixFieldPolicy.apply(fields, to: &draft)
+    guard result.didApplyChanges else {
+      return .failed(String(localized: "所选字段当前不能应用，文章未更改。"))
     }
 
     store.updateDraft(draft)
     refreshContentHealthSnapshot()
+    return .applied(result)
   }
 }
 

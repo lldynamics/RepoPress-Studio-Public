@@ -51,6 +51,36 @@ public struct LocalContentImportMergeSummary: Codable, Hashable, Sendable {
   }
 }
 
+/// The result of one content-import operation, including the outcome that
+/// belongs to that exact invocation. Keeping this beside the merge summary
+/// prevents operation history from inferring a result from the shared publish
+/// banner, which may already describe a different action.
+public struct LocalContentImportOperationResult: Hashable, Sendable {
+  public let summary: LocalContentImportMergeSummary
+  public let outcome: WorkbenchOperationLogOutcome
+
+  public init(
+    summary: LocalContentImportMergeSummary,
+    outcome: WorkbenchOperationLogOutcome
+  ) {
+    self.summary = summary
+    self.outcome = outcome
+  }
+
+  public static func empty(
+    outcome: WorkbenchOperationLogOutcome
+  ) -> LocalContentImportOperationResult {
+    LocalContentImportOperationResult(
+      summary: LocalContentImportMergeSummary(
+        insertedCount: 0,
+        updatedCount: 0,
+        skippedCount: 0
+      ),
+      outcome: outcome
+    )
+  }
+}
+
 public struct LocalContentImportService: Sendable {
   static let maximumMarkdownDocumentByteCount = 16 * 1024 * 1024
 

@@ -60,6 +60,7 @@ struct InsertedImageMetadataPanel: View {
       }
         .textFieldStyle(.roundedBorder)
         .focused($focusedField, equals: .alt)
+        .onSubmit(onApplyAndAdvance)
         .accessibilityLabel(Text("图片 Alt 文本"))
 
       TextField(text: $metadata.caption) {
@@ -67,6 +68,7 @@ struct InsertedImageMetadataPanel: View {
       }
         .textFieldStyle(.roundedBorder)
         .focused($focusedField, equals: .caption)
+        .onSubmit(onApplyAndAdvance)
         .accessibilityLabel(Text("图片 Caption"))
 
       HStack(spacing: 10) {

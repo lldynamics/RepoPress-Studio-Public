@@ -24,7 +24,7 @@ extension RepositoryWorkspaceView {
           .foregroundStyle(plan.usesDynamicPort ? WorkbenchTheme.warning : .secondary)
         }
 
-        let currentArticleURL = store.selectedDraft.flatMap { store.localSitePreviewURL(for: $0) }
+        let currentDraftID = store.selectedDraftID
         LazyVGrid(
           columns: [GridItem(.adaptive(minimum: 150, maximum: 240), spacing: 8)],
           alignment: .leading,
@@ -50,6 +50,7 @@ extension RepositoryWorkspaceView {
           .accessibilityIdentifier("repository-preview-open-in-app")
 
           Button {
+            externalBrowserPreviewCoordinator.cancelPendingOpen()
             store.stopLocalSitePreview()
           } label: {
             Label("停止", systemImage: "stop.circle")
@@ -72,25 +73,26 @@ extension RepositoryWorkspaceView {
           .accessibilityIdentifier("repository-preview-check-port")
 
           Button {
-            guard let currentArticleURL else { return }
-            ExternalURLOpener.open(currentArticleURL)
+            guard let currentDraftID else { return }
+            externalBrowserPreviewCoordinator.openCurrentArticle(for: currentDraftID)
           } label: {
             Label("打开当前文章", systemImage: "doc.richtext")
               .frame(maxWidth: .infinity, alignment: .leading)
           }
           .buttonStyle(.bordered)
-          .disabled(currentArticleURL == nil || !store.localSitePreviewRuntimeStatus.isReachable)
+          .disabled(currentDraftID == nil || externalBrowserPreviewCoordinator.isBusy)
           .accessibilityIdentifier("repository-preview-open-current-article")
 
           Button {
-            ExternalURLOpener.open(plan.previewURL)
+            guard let currentDraftID else { return }
+            externalBrowserPreviewCoordinator.openSiteHome(for: currentDraftID)
           } label: {
             Label("打开预览", systemImage: "safari")
               .frame(maxWidth: .infinity, alignment: .leading)
           }
           .buttonStyle(.bordered)
-          .disabled(!store.localSitePreviewRuntimeStatus.isReachable)
-          .help(String(localized: "仅在本地预览端口可达时打开站点"))
+          .disabled(currentDraftID == nil || externalBrowserPreviewCoordinator.isBusy)
+          .help(String(localized: "保存当前文章并在页面就绪后打开站点"))
           .accessibilityIdentifier("repository-preview-open-site")
         }
         .accessibilityElement(children: .contain)

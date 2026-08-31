@@ -5,9 +5,15 @@ extension PublishingStore {
   public func importDraftsFromLocalRepository(store: WorkbenchStore)
     -> LocalContentImportMergeSummary
   {
+    importDraftsFromLocalRepositoryOperation(store: store).summary
+  }
+
+  func importDraftsFromLocalRepositoryOperation(
+    store: WorkbenchStore
+  ) -> LocalContentImportOperationResult {
     guard !store.activeProfile.localRepositoryRootPath.trimmedForPublishing.isEmpty else {
       setPublishActionMessage("选择本地仓库后才能导入文章。", status: .warning)
-      return LocalContentImportMergeSummary(insertedCount: 0, updatedCount: 0, skippedCount: 0)
+      return .empty(outcome: .recorded)
     }
     store.flushDraftBodyEditorBuffers()
     let imported = hydrateLocalRepositoryBaselines(
@@ -15,7 +21,7 @@ extension PublishingStore {
       profile: store.activeProfile,
       store: store
     )
-    return mergeImportedDrafts(
+    return mergeImportedDraftsOperation(
       imported,
       store: store
     )
@@ -25,11 +31,17 @@ extension PublishingStore {
   public func importDraftsFromLocalRepositoryAsync(store: WorkbenchStore) async
     -> LocalContentImportMergeSummary
   {
+    await importDraftsFromLocalRepositoryAsyncOperation(store: store).summary
+  }
+
+  func importDraftsFromLocalRepositoryAsyncOperation(
+    store: WorkbenchStore
+  ) async -> LocalContentImportOperationResult {
     store.flushDraftBodyEditorBuffers()
     let profile = store.activeProfile
     guard !profile.localRepositoryRootPath.trimmedForPublishing.isEmpty else {
       setPublishActionMessage("选择本地仓库后才能导入文章。", status: .warning)
-      return LocalContentImportMergeSummary(insertedCount: 0, updatedCount: 0, skippedCount: 0)
+      return .empty(outcome: .recorded)
     }
 
     var draftBaselinesByRepositoryPath: [String: DraftOperationBaseline] = [:]
@@ -51,7 +63,7 @@ extension PublishingStore {
         localImportOperationContext = nil
         setPublishActionMessage("已取消从本地仓库导入文章。", status: .warning)
       }
-      return LocalContentImportMergeSummary(insertedCount: 0, updatedCount: 0, skippedCount: 0)
+      return .empty(outcome: .cancelled)
     } catch {
       if localImportOperationContext == operation {
         localImportOperationContext = nil
@@ -60,14 +72,14 @@ extension PublishingStore {
           status: .failure
         )
       }
-      return LocalContentImportMergeSummary(insertedCount: 0, updatedCount: 0, skippedCount: 0)
+      return .empty(outcome: .failed)
     }
     guard localImportOperationContext == operation else {
-      return LocalContentImportMergeSummary(insertedCount: 0, updatedCount: 0, skippedCount: 0)
+      return .empty(outcome: .cancelled)
     }
     guard operation.stillMatches(store.activeProfile) else {
       localImportOperationContext = nil
-      return LocalContentImportMergeSummary(insertedCount: 0, updatedCount: 0, skippedCount: 0)
+      return .empty(outcome: .cancelled)
     }
     guard let hydratedResult = await hydrateLocalRepositoryBaselinesAsync(
       result,
@@ -78,7 +90,7 @@ extension PublishingStore {
         localImportOperationContext = nil
         setPublishActionMessage("已取消从本地仓库导入文章。", status: .warning)
       }
-      return LocalContentImportMergeSummary(insertedCount: 0, updatedCount: 0, skippedCount: 0)
+      return .empty(outcome: .cancelled)
     }
     guard localImportOperationContext == operation,
       operation.stillMatches(store.activeProfile)
@@ -86,10 +98,10 @@ extension PublishingStore {
       if localImportOperationContext == operation {
         localImportOperationContext = nil
       }
-      return LocalContentImportMergeSummary(insertedCount: 0, updatedCount: 0, skippedCount: 0)
+      return .empty(outcome: .cancelled)
     }
     localImportOperationContext = nil
-    return mergeImportedDrafts(
+    return mergeImportedDraftsOperation(
       hydratedResult,
       expectedBaselinesByRepositoryPath: draftBaselinesByRepositoryPath,
       store: store
@@ -261,6 +273,16 @@ extension PublishingStore {
     repositoryPath: String,
     store: WorkbenchStore
   ) -> LocalContentImportMergeSummary {
+    importDraftFromLocalRepositoryOperation(
+      repositoryPath: repositoryPath,
+      store: store
+    ).summary
+  }
+
+  func importDraftFromLocalRepositoryOperation(
+    repositoryPath: String,
+    store: WorkbenchStore
+  ) -> LocalContentImportOperationResult {
     store.flushDraftBodyEditorBuffers()
     let imported = hydrateLocalRepositoryBaselines(
       localContentImportService.importDraft(
@@ -270,7 +292,7 @@ extension PublishingStore {
       profile: store.activeProfile,
       store: store
     )
-    let summary = mergeImportedDrafts(imported, store: store)
+    let operationResult = mergeImportedDraftsOperation(imported, store: store)
     let normalizedPath = repositoryPath.normalizedRelativePath()
     if let imported = drafts.first(where: {
       $0.belongs(toSiteProfileID: store.activeProfileID) && $0.repositoryPath == normalizedPath
@@ -279,16 +301,22 @@ extension PublishingStore {
     }
     selectedSection = .writing
     store.save()
-    return summary
+    return operationResult
   }
 
   @discardableResult
   public func importChangedArticleDraftsFromLocalRepository(store: WorkbenchStore) async
     -> LocalContentImportMergeSummary
   {
+    await importChangedArticleDraftsFromLocalRepositoryOperation(store: store).summary
+  }
+
+  func importChangedArticleDraftsFromLocalRepositoryOperation(
+    store: WorkbenchStore
+  ) async -> LocalContentImportOperationResult {
     guard !store.activeProfile.localRepositoryRootPath.trimmedForPublishing.isEmpty else {
       setPublishActionMessage("选择本地仓库后才能导入文章。", status: .warning)
-      return LocalContentImportMergeSummary(insertedCount: 0, updatedCount: 0, skippedCount: 0)
+      return .empty(outcome: .recorded)
     }
     let profile = store.activeProfile
     let operation = LocalRepositoryOperationContext(profile: profile)
@@ -328,14 +356,14 @@ extension PublishingStore {
           status: wasCancelled ? .warning : .failure
         )
       }
-      return LocalContentImportMergeSummary(insertedCount: 0, updatedCount: 0, skippedCount: 0)
+      return .empty(outcome: error is CancellationError ? .cancelled : .failed)
     }
     guard localImportOperationContext == operation else {
-      return LocalContentImportMergeSummary(insertedCount: 0, updatedCount: 0, skippedCount: 0)
+      return .empty(outcome: .cancelled)
     }
     guard operation.stillMatches(store.activeProfile) else {
       localImportOperationContext = nil
-      return LocalContentImportMergeSummary(insertedCount: 0, updatedCount: 0, skippedCount: 0)
+      return .empty(outcome: .cancelled)
     }
     guard let hydratedResult = await hydrateLocalRepositoryBaselinesAsync(
       result,
@@ -346,7 +374,7 @@ extension PublishingStore {
         localImportOperationContext = nil
         setPublishActionMessage("已取消导入本地文章变更。", status: .warning)
       }
-      return LocalContentImportMergeSummary(insertedCount: 0, updatedCount: 0, skippedCount: 0)
+      return .empty(outcome: .cancelled)
     }
     guard localImportOperationContext == operation,
       operation.stillMatches(store.activeProfile)
@@ -354,14 +382,15 @@ extension PublishingStore {
       if localImportOperationContext == operation {
         localImportOperationContext = nil
       }
-      return LocalContentImportMergeSummary(insertedCount: 0, updatedCount: 0, skippedCount: 0)
+      return .empty(outcome: .cancelled)
     }
     localImportOperationContext = nil
-    let summary = mergeImportedDrafts(
+    let operationResult = mergeImportedDraftsOperation(
       hydratedResult,
       expectedBaselinesByRepositoryPath: baselines,
       store: store
     )
+    let summary = operationResult.summary
     selectedSection = .writing
     if hydratedResult.issues.isEmpty {
       setPublishActionMessage(
@@ -370,6 +399,6 @@ extension PublishingStore {
       )
     }
     store.save()
-    return summary
+    return operationResult
   }
 }

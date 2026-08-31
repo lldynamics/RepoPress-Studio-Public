@@ -135,37 +135,16 @@ public final class ThinRedScroller: NSScroller {
   }
 }
 
-/// Settings-only scroller policy. The Settings window keeps the native
-/// NSScroller hit area and interaction model, while drawing only a thin
-/// vertical neutral knob and suppressing horizontal indicators that would signal
-/// an accidental horizontal layout overflow.
+/// Settings keep native scrollers so the system's “show scroll bars” preference
+/// remains authoritative for pointer, keyboard and VoiceOver users.
 @MainActor
 enum SettingsScrollViewStyling {
   static func install(on scrollView: NSScrollView) {
-    let needsVerticalReplacement =
-      scrollView.hasVerticalScroller && !(scrollView.verticalScroller is ThinRedScroller)
-    let needsOverlayStyle =
-      scrollView.scrollerStyle != .overlay
-      || scrollView.verticalScroller?.scrollerStyle != .overlay
-    let needsHorizontalFix =
-      scrollView.hasHorizontalScroller || scrollView.horizontalScrollElasticity != .none
-
-    if needsVerticalReplacement {
-      let scroller = ThinRedScroller()
-      scrollView.verticalScroller = scroller
-    }
-
-    if needsVerticalReplacement || needsOverlayStyle {
-      scrollView.scrollerStyle = .overlay
-      scrollView.verticalScroller?.scrollerStyle = .overlay
-      scrollView.reflectScrolledClipView(scrollView.contentView)
-      (scrollView.verticalScroller as? ThinRedScroller)?.enableSettingsKnobLayer()
-    }
-
-    if needsHorizontalFix {
-      scrollView.hasHorizontalScroller = false
-      scrollView.horizontalScrollElasticity = .none
-    }
+    scrollView.hasVerticalScroller = true
+    scrollView.hasHorizontalScroller = false
+    scrollView.scrollerStyle = NSScroller.preferredScrollerStyle
+    scrollView.autohidesScrollers = NSScroller.preferredScrollerStyle == .overlay
+    scrollView.horizontalScrollElasticity = .none
   }
 
   static func install(in view: NSView) {
@@ -240,12 +219,12 @@ public extension View {
     modifier(ThinRedScrollbarsModifier())
   }
 
-  /// Applies the neutral scroller only to a Settings scene window and its sheets.
+  /// Hides AppKit scrollers only in a Settings scene window and its sheets.
   func settingsThinRedScrollbars() -> some View {
     modifier(ThinRedScrollbarsModifier(scope: .settings))
   }
 
-  /// Installs the Settings scroller after this page's native scroll view has
+  /// Applies the Settings hidden-indicator policy after this page's native scroll view has
   /// been created. This is intentionally page-local so delayed SwiftUI Form
   /// construction cannot leave a system scroller unstyled.
   func settingsThinRedScroller() -> some View {
@@ -286,13 +265,6 @@ private final class SettingsThinRedScrollerConfiguratorView: NSView {
 
   override func layout() {
     super.layout()
-    if let scrollView = nearestScrollView {
-      if !(scrollView.verticalScroller is ThinRedScroller) {
-        scheduleConfiguration()
-      }
-    } else {
-      scheduleConfiguration()
-    }
   }
 
   func scheduleConfiguration() {

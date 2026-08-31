@@ -608,6 +608,14 @@
       resetsDraftRecovery: Bool
     ) throws {
       _ = try persistence.save(ScreenshotDemoDataService().makeSnapshot())
+      let ledgerPersistence = WorkbenchOperationLedgerPersistence(
+        fileURL: persistence.operationLedgerURL
+      )
+      for ledgerURL in [ledgerPersistence.fileURL, ledgerPersistence.lastKnownGoodURL]
+      where FileManager.default.fileExists(atPath: ledgerURL.path) {
+        try FileManager.default.removeItem(at: ledgerURL)
+      }
+      try ledgerPersistence.save(WorkbenchOperationLedgerDocument())
       if resetsDraftRecovery {
         try DraftRecoveryJournal(fileURL: persistence.draftRecoveryJournalURL).save([])
       }

@@ -134,7 +134,6 @@ struct DataManagementView: View {
   @ObservedObject var launchCoordinator: WorkbenchLaunchCoordinator
   let navigationDestination: SettingsDestination?
   let navigationRequestID: UUID
-  @Environment(\.settingsSubsection) private var settingsSubsection
   @ObservedObject private var backupScheduler: WorkspaceBackupScheduler
   @ObservedObject private var dataManagement: WorkbenchDataManagementFeatureFacade
   @AppStorage("dataManagementRequestedSection")
@@ -160,13 +159,23 @@ struct DataManagementView: View {
   var body: some View {
     ScrollView {
       VStack(alignment: .leading, spacing: WorkbenchSpacing.section) {
-        overviewSection(for: displayedTask)
-        taskSection(for: displayedTask)
+        SettingsSubsectionAnchor(subsection: .dataDrafts)
+        overviewSection(for: .drafts)
+        taskSection(for: .drafts)
+        SettingsSubsectionAnchor(subsection: .dataStorage)
+        overviewSection(for: .storage)
+        taskSection(for: .storage)
+        SettingsSubsectionAnchor(subsection: .dataBackup)
+        overviewSection(for: .backup)
+        taskSection(for: .backup)
+        SettingsSubsectionAnchor(subsection: .dataMigration)
+        overviewSection(for: .migration)
+        taskSection(for: .migration)
       }
       .padding(WorkbenchSpacing.content)
       .frame(maxWidth: .infinity, alignment: .topLeading)
     }
-    .scrollIndicators(.automatic)
+    .scrollIndicators(.hidden)
     // Match the horizontal content inset used by Form-backed Settings pages so
     // this page's native scroll view and visible thumb share the same trailing
     // content-panel edge.
@@ -183,25 +192,6 @@ struct DataManagementView: View {
     }
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("data-management-settings")
-  }
-
-  private var displayedSubsection: SettingsSubsection {
-    settingsSubsection.tab == .dataManagement ? settingsSubsection : .dataDrafts
-  }
-
-  private var displayedTask: DataManagementTask {
-    switch displayedSubsection {
-    case .dataDrafts:
-      return .drafts
-    case .dataStorage:
-      return .storage
-    case .dataBackup:
-      return .backup
-    case .dataMigration:
-      return .migration
-    default:
-      return .drafts
-    }
   }
 
   private func overviewSection(for task: DataManagementTask) -> some View {
@@ -224,7 +214,7 @@ struct DataManagementView: View {
       Label(String(localized: "数据概览"), systemImage: "chart.bar.doc.horizontal")
         .font(.workbenchSectionTitle)
     }
-    .accessibilityIdentifier("data-management-overview")
+    .accessibilityIdentifier("data-management-\(task.rawValue)-overview")
   }
 
   private func taskSection(for task: DataManagementTask) -> some View {
@@ -251,7 +241,7 @@ struct DataManagementView: View {
         taskCard(task)
       }
     }
-    .accessibilityIdentifier("data-management-tasks")
+    .accessibilityIdentifier("data-management-\(task.rawValue)-tasks")
   }
 
   @ViewBuilder

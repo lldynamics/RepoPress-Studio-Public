@@ -453,14 +453,16 @@ extension MacMarkdownComposerView {
     for draft: ArticleDraft
   ) {
     guard !citations.isEmpty else { return }
-    store.knowledge.recordBacklinks(
-      citations: citations,
-      target: KnowledgeBacklinkTarget(
-        kind: .articleDraft,
-        id: draft.id.uuidString,
-        title: draft.title.nilIfEmpty ?? "当前文章",
-        location: "正文"
+    Task {
+      await store.knowledge.recordBacklinks(
+        citations: citations,
+        target: KnowledgeBacklinkTarget(
+          kind: .articleDraft,
+          id: draft.id.uuidString,
+          title: draft.title.nilIfEmpty ?? "当前文章",
+          location: "正文"
+        )
       )
-    )
+    }
   }
 }

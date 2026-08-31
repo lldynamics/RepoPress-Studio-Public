@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 import XCTest
 
@@ -110,9 +111,270 @@ final class CodexAppServerClientTests: XCTestCase {
     XCTAssertTrue(currentVersion.isCompatible)
   }
 
+  func testRuntimeVersionProbeReturnsSuccessfulBoundedOutput() async throws {
+    let fixture = try makeRuntimeProbeFixture(
+      body: "printf 'codex-cli 0.148.0\\n'"
+    )
+    defer { try? FileManager.default.removeItem(at: fixture.rootURL) }
+
+    let value = await CodexAppServerProcessTransport.readVersion(
+      executableURL: fixture.executableURL,
+      timeout: .seconds(1)
+    )
+
+    XCTAssertEqual(value, "codex-cli 0.148.0")
+  }
+
+  func testRuntimeEnvironmentRetainsOnlyRequiredKeys() {
+    let environment = CodexRuntimeProcessEnvironment.sanitized(from: [
+      "HOME": "/tmp/home",
+      "CODEX_HOME": "/tmp/codex",
+      "LANG": "zh_CN.UTF-8",
+      "TMPDIR": "/tmp/",
+      "PATH": "/usr/bin:/bin",
+      "HTTPS_PROXY": "http://proxy.invalid",
+      "SSL_CERT_FILE": "/tmp/cert.pem",
+      "OPENAI_API_KEY": "secret",
+      "GITHUB_TOKEN": "secret",
+      "DYLD_INSERT_LIBRARIES": "/tmp/injected.dylib",
+      "NODE_OPTIONS": "--require /tmp/injected.js",
+    ])
+
+    XCTAssertEqual(environment["CODEX_HOME"], "/tmp/codex")
+    XCTAssertEqual(environment["HTTPS_PROXY"], "http://proxy.invalid")
+    XCTAssertEqual(environment["SSL_CERT_FILE"], "/tmp/cert.pem")
+    XCTAssertNil(environment["OPENAI_API_KEY"])
+    XCTAssertNil(environment["GITHUB_TOKEN"])
+    XCTAssertNil(environment["DYLD_INSERT_LIBRARIES"])
+    XCTAssertNil(environment["NODE_OPTIONS"])
+  }
+
+  func testProcessTransportRejectsUnsupportedRuntimeBeforeAppServerLaunch() async throws {
+    let fixture = try makeRuntimeProbeFixture(
+      body: "if [ \"$1\" = \"--version\" ]; then printf 'codex-cli 0.141.9\\n'; exit 0; fi; exit 91"
+    )
+    defer { try? FileManager.default.removeItem(at: fixture.rootURL) }
+    let transport = CodexAppServerProcessTransport(executableURL: fixture.executableURL)
+
+    do {
+      try await transport.start()
+      XCTFail("An unsupported runtime must not reach app-server launch")
+    } catch {
+      XCTAssertEqual(error as? CodexAppServerError, .processExited)
+    }
+  }
+
+  func testProcessTransportRejectsRuntimeReplacedAfterVersionProbe() async throws {
+    let rootURL = FileManager.default.temporaryDirectory.appendingPathComponent(
+      "CodexRuntimeBindingTests-\(UUID().uuidString)",
+      isDirectory: true
+    )
+    try FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let executableURL = rootURL.appendingPathComponent("codex")
+    let replacementURL = rootURL.appendingPathComponent("replacement")
+    let launchMarkerURL = rootURL.appendingPathComponent("replacement-launched")
+    let source = """
+      #!/bin/sh
+      if [ "$1" = "--version" ]; then
+        printf 'codex-cli 0.148.0\\n'
+        mv '\(replacementURL.path)' "$0"
+        exit 0
+      fi
+      exit 90
+      """
+    let replacement = """
+      #!/bin/sh
+      printf launched > '\(launchMarkerURL.path)'
+      exit 0
+      """
+    try Data(source.utf8).write(to: executableURL)
+    try Data(replacement.utf8).write(to: replacementURL)
+    try FileManager.default.setAttributes(
+      [.posixPermissions: 0o755],
+      ofItemAtPath: executableURL.path
+    )
+    try FileManager.default.setAttributes(
+      [.posixPermissions: 0o755],
+      ofItemAtPath: replacementURL.path
+    )
+    let transport = CodexAppServerProcessTransport(executableURL: executableURL)
+
+    do {
+      try await transport.start()
+      XCTFail("A runtime replaced after its version probe must not launch")
+    } catch {
+      XCTAssertEqual(error as? CodexAppServerError, .processExited)
+    }
+    XCTAssertFalse(FileManager.default.fileExists(atPath: launchMarkerURL.path))
+  }
+
+  func testCancellingOneConcurrentStartDoesNotCancelSharedTransportStartup() async throws {
+    let rootURL = FileManager.default.temporaryDirectory.appendingPathComponent(
+      "CodexRuntimeConcurrentStartTests-\(UUID().uuidString)",
+      isDirectory: true
+    )
+    try FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let executableURL = rootURL.appendingPathComponent("codex")
+    let probeMarkerURL = rootURL.appendingPathComponent("probe-started")
+    let source = """
+      #!/bin/sh
+      if [ "$1" = "--version" ]; then
+        printf probing > '\(probeMarkerURL.path)'
+        sleep 0.2
+        printf 'codex-cli 0.148.0\\n'
+        exit 0
+      fi
+      trap 'exit 0' TERM
+      while :; do sleep 1; done
+      """
+    try Data(source.utf8).write(to: executableURL)
+    try FileManager.default.setAttributes(
+      [.posixPermissions: 0o755],
+      ofItemAtPath: executableURL.path
+    )
+    let transport = CodexAppServerProcessTransport(executableURL: executableURL)
+    defer { Task { await transport.terminate() } }
+
+    let cancelledStart = Task { try await transport.start() }
+    for _ in 0..<100 where !FileManager.default.fileExists(atPath: probeMarkerURL.path) {
+      try await Task.sleep(for: .milliseconds(10))
+    }
+    XCTAssertTrue(FileManager.default.fileExists(atPath: probeMarkerURL.path))
+    let survivingStart = Task { try await transport.start() }
+
+    cancelledStart.cancel()
+    do {
+      try await cancelledStart.value
+      XCTFail("The cancelled waiter should retain its own cancellation result")
+    } catch is CancellationError {
+      // Expected: the caller is cancelled without cancelling shared startup.
+    }
+    try await survivingStart.value
+    await transport.terminate()
+  }
+
+  func testRuntimeVersionProbeRejectsNonZeroAndOversizedOutput() async throws {
+    let failure = try makeRuntimeProbeFixture(body: "exit 7")
+    defer { try? FileManager.default.removeItem(at: failure.rootURL) }
+    let failureValue = await CodexAppServerProcessTransport.readVersion(
+      executableURL: failure.executableURL,
+      timeout: .seconds(1)
+    )
+    XCTAssertNil(failureValue)
+
+    let oversized = try makeRuntimeProbeFixture(
+      body: "i=0; while [ \"$i\" -lt 5000 ]; do printf x; i=$((i + 1)); done"
+    )
+    defer { try? FileManager.default.removeItem(at: oversized.rootURL) }
+    let oversizedValue = await CodexAppServerProcessTransport.readVersion(
+      executableURL: oversized.executableURL,
+      timeout: .seconds(1)
+    )
+    XCTAssertNil(oversizedValue)
+  }
+
+  func testRuntimeVersionProbeTimesOutAndReapsProcess() async throws {
+    let fixture = try makeRuntimeProbeFixture(
+      body: "trap '' TERM; while :; do :; done"
+    )
+    defer { try? FileManager.default.removeItem(at: fixture.rootURL) }
+    let (launches, launchContinuation) = AsyncStream.makeStream(of: pid_t.self)
+    let probe = CodexRuntimeVersionProbe(
+      executableURL: fixture.executableURL,
+      processDidLaunch: { processIdentifier in
+        launchContinuation.yield(processIdentifier)
+        launchContinuation.finish()
+      }
+    )
+    let clock = ContinuousClock()
+    let startedAt = clock.now
+
+    let task = Task {
+      await probe.run(timeout: .seconds(1))
+    }
+    let pid = try await waitForRuntimeProbePID(from: launches)
+    let value = await task.value
+
+    XCTAssertNil(value)
+    XCTAssertLessThan(startedAt.duration(to: clock.now), .seconds(2))
+    await assertRuntimeProbeExited(pid)
+  }
+
+  func testRuntimeVersionProbeCancellationReapsProcess() async throws {
+    let fixture = try makeRuntimeProbeFixture(
+      body: "trap '' TERM; while :; do :; done"
+    )
+    defer { try? FileManager.default.removeItem(at: fixture.rootURL) }
+    let (launches, launchContinuation) = AsyncStream.makeStream(of: pid_t.self)
+    let probe = CodexRuntimeVersionProbe(
+      executableURL: fixture.executableURL,
+      processDidLaunch: { processIdentifier in
+        launchContinuation.yield(processIdentifier)
+        launchContinuation.finish()
+      }
+    )
+    let task = Task {
+      await probe.run(timeout: .seconds(30))
+    }
+    let pid = try await waitForRuntimeProbePID(from: launches)
+
+    task.cancel()
+
+    let cancelledValue = await task.value
+    XCTAssertNil(cancelledValue)
+    await assertRuntimeProbeExited(pid)
+  }
+
+  func testRuntimeVersionProbeOutputLimitReapsPublishedProcess() async throws {
+    let fixture = try makeRuntimeProbeFixture(
+      body: "i=0; while [ \"$i\" -lt 5000 ]; do printf x; i=$((i + 1)); done; "
+        + "trap '' TERM; while :; do :; done"
+    )
+    defer { try? FileManager.default.removeItem(at: fixture.rootURL) }
+    let (launches, launchContinuation) = AsyncStream.makeStream(of: pid_t.self)
+    let probe = CodexRuntimeVersionProbe(
+      executableURL: fixture.executableURL,
+      processDidLaunch: { processIdentifier in
+        launchContinuation.yield(processIdentifier)
+        launchContinuation.finish()
+      }
+    )
+    let clock = ContinuousClock()
+    let startedAt = clock.now
+
+    let task = Task {
+      await probe.run(timeout: .seconds(30))
+    }
+    let pid = try await waitForRuntimeProbePID(from: launches)
+    let value = await task.value
+
+    XCTAssertNil(value)
+    XCTAssertLessThan(startedAt.duration(to: clock.now), .seconds(2))
+    await assertRuntimeProbeExited(pid)
+  }
+
+  func testRuntimeVersionProbeReapsDescendantAfterLeaderExits() async throws {
+    let fixture = try makeRuntimeProbeDescendantFixture()
+    defer { try? FileManager.default.removeItem(at: fixture.rootURL) }
+
+    let value = await CodexAppServerProcessTransport.readVersion(
+      executableURL: fixture.executableURL,
+      timeout: .seconds(1)
+    )
+    let childPIDText = try String(contentsOf: fixture.childPIDURL, encoding: .utf8)
+    let childPID = try XCTUnwrap(
+      pid_t(childPIDText.trimmingCharacters(in: .whitespacesAndNewlines))
+    )
+
+    XCTAssertNil(value)
+    await assertRuntimeProbeExited(childPID)
+  }
+
   func testProcessTransportReturnsPartialPipeChunkWithoutWaitingForMaximum() async throws {
     let transport = CodexAppServerProcessTransport(
-      executableURL: URL(fileURLWithPath: "/bin/cat"),
+      testExecutableURL: URL(fileURLWithPath: "/bin/cat"),
       arguments: []
     )
     try await transport.start()
@@ -130,6 +392,87 @@ final class CodexAppServerClientTests: XCTestCase {
 
     let response = try await receiveTask.value
     XCTAssertEqual(response, payload)
+  }
+
+  private func makeRuntimeProbeFixture(
+    body: String
+  ) throws -> (rootURL: URL, executableURL: URL) {
+    let rootURL = FileManager.default.temporaryDirectory.appendingPathComponent(
+      "CodexRuntimeProbeTests-\(UUID().uuidString)",
+      isDirectory: true
+    )
+    try FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)
+    let executableURL = rootURL.appendingPathComponent("codex")
+    try Data("#!/bin/sh\n\(body)\n".utf8).write(to: executableURL)
+    try FileManager.default.setAttributes(
+      [.posixPermissions: 0o755],
+      ofItemAtPath: executableURL.path
+    )
+    return (rootURL, executableURL)
+  }
+
+  private func makeRuntimeProbeDescendantFixture() throws -> (
+    rootURL: URL,
+    executableURL: URL,
+    childPIDURL: URL
+  ) {
+    let rootURL = FileManager.default.temporaryDirectory.appendingPathComponent(
+      "CodexRuntimeProbeDescendantTests-\(UUID().uuidString)",
+      isDirectory: true
+    )
+    try FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)
+    let executableURL = rootURL.appendingPathComponent("codex")
+    let childPIDURL = rootURL.appendingPathComponent("child.pid")
+    let source = """
+      #!/bin/sh
+      (trap '' TERM; while :; do :; done) &
+      printf '%s' "$!" > "\(childPIDURL.path)"
+      exit 0
+      """
+    try Data(source.utf8).write(to: executableURL)
+    try FileManager.default.setAttributes(
+      [.posixPermissions: 0o755],
+      ofItemAtPath: executableURL.path
+    )
+    return (rootURL, executableURL, childPIDURL)
+  }
+
+  private func waitForRuntimeProbePID(
+    from launches: AsyncStream<pid_t>
+  ) async throws -> pid_t {
+    try await withThrowingTaskGroup(of: pid_t.self) { group in
+      group.addTask {
+        for await processIdentifier in launches {
+          return processIdentifier
+        }
+        throw RuntimeProbeTestError.launchSignalEnded
+      }
+      group.addTask {
+        try await Task.sleep(for: .seconds(5))
+        throw RuntimeProbeTestError.launchTimedOut
+      }
+
+      guard let processIdentifier = try await group.next() else {
+        throw RuntimeProbeTestError.launchSignalEnded
+      }
+      group.cancelAll()
+      return processIdentifier
+    }
+  }
+
+  private func assertRuntimeProbeExited(
+    _ processIdentifier: pid_t,
+    file: StaticString = #filePath,
+    line: UInt = #line
+  ) async {
+    for _ in 0..<100 {
+      errno = 0
+      if Darwin.kill(processIdentifier, 0) == -1, errno == ESRCH {
+        return
+      }
+      try? await Task.sleep(for: .milliseconds(10))
+    }
+    XCTFail("runtime version probe process was not reaped", file: file, line: line)
   }
 
   func testHandshakeAndAccountReadAreRoutedByRequestID() async throws {
@@ -655,6 +998,11 @@ final class CodexAppServerClientTests: XCTestCase {
     )
   }
 
+}
+
+private enum RuntimeProbeTestError: Error {
+  case launchSignalEnded
+  case launchTimedOut
 }
 
 private actor ScriptedCodexTransport: CodexAppServerTransport {

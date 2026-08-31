@@ -10,6 +10,11 @@ struct WorkspaceCommandPalette: View {
   @ObservedObject private var shell: WorkbenchShellFeatureFacade
   let store: WorkbenchStore
   let editorCommands: MarkdownEditorCommandActions?
+  /// The presenting workspace owns navigation. A native sheet can make that
+  /// window non-key while this palette is still active, so mutating the shared
+  /// store here would lose the presenting window's pending selection.
+  let onSelectSection: (WorkspaceSection) -> Void
+  let onFocusDraft: (UUID) -> Void
   let onToggleFocusMode: () -> Void
   @AppStorage("workspaceCommandPaletteRecentAIPromptIDs")
   private var recentAIPromptIDs = ""
@@ -18,15 +23,21 @@ struct WorkspaceCommandPalette: View {
   @State private var query = ""
   @State private var scope: WorkspaceUnifiedSearchScope = .all
   @State private var selectedResultID: String?
+  @State private var hoveredResultID: String?
+  @State private var selectionScrollRevision = 0
   @FocusState private var isSearchFocused: Bool
 
   init(
     store: WorkbenchStore,
     editorCommands: MarkdownEditorCommandActions? = nil,
+    onSelectSection: @escaping (WorkspaceSection) -> Void,
+    onFocusDraft: @escaping (UUID) -> Void,
     onToggleFocusMode: @escaping () -> Void
   ) {
     self.store = store
     self.editorCommands = editorCommands
+    self.onSelectSection = onSelectSection
+    self.onFocusDraft = onFocusDraft
     self.onToggleFocusMode = onToggleFocusMode
     _commandPresentation = ObservedObject(wrappedValue: store.commandPresentation)
     _draftListState = ObservedObject(wrappedValue: store.draftList)
@@ -177,9 +188,9 @@ struct WorkspaceCommandPalette: View {
           }
           .padding(16)
         }
-        .onChange(of: selectedResultID) { _, resultID in
-          guard let resultID else { return }
-          proxy.scrollTo(resultID, anchor: .center)
+        .onChange(of: selectionScrollRevision) { _, _ in
+          guard let selectedResultID else { return }
+          proxy.scrollTo(selectedResultID, anchor: .center)
         }
       }
     }
@@ -319,7 +330,7 @@ struct WorkspaceCommandPalette: View {
     var items: [PaletteCommand] = [
       registeredAutomationCommand(.createDraft, shortcut: "⌘N") {
         store.createDraft()
-        store.selectSection(.writing)
+        onSelectSection(.writing)
         dismiss()
       },
       registeredAutomationCommand(.saveWorkbench, shortcut: "⌘S") {
@@ -328,7 +339,7 @@ struct WorkspaceCommandPalette: View {
       },
       registeredAutomationCommand(.runPreflight) {
         store.runPreflight()
-        store.selectSection(.contentHealth)
+        onSelectSection(.contentHealth)
         dismiss()
       },
       PaletteCommand(
@@ -337,7 +348,7 @@ struct WorkspaceCommandPalette: View {
         detail: String(localized: "查找并管理写作资料"),
         systemImage: "books.vertical"
       ) {
-        store.selectSection(.library)
+        onSelectSection(.library)
         dismiss()
       },
       PaletteCommand(
@@ -346,7 +357,7 @@ struct WorkspaceCommandPalette: View {
         detail: String(localized: "管理文章图片与压缩设置"),
         systemImage: "photo.on.rectangle"
       ) {
-        store.selectSection(.images)
+        onSelectSection(.images)
         dismiss()
       },
       PaletteCommand(
@@ -512,7 +523,7 @@ struct WorkspaceCommandPalette: View {
     shortcut: String? = nil,
     action: @escaping () -> Void
   ) -> some View {
-    let isSelected = selectedResultID == id
+    let isSelected = (hoveredResultID ?? selectedResultID) == id
     return Button {
       selectedResultID = id
       action()
@@ -553,10 +564,15 @@ struct WorkspaceCommandPalette: View {
     .id(id)
     .onHover { isHovering in
       if isHovering {
-        selectedResultID = id
+        // Hover only highlights. Scrolling here moves the target underneath
+        // the pointer before mouse-up and can execute an unrelated command.
+        hoveredResultID = id
+      } else if hoveredResultID == id {
+        hoveredResultID = nil
       }
     }
-    .accessibilityAddTraits(isSelected ? .isSelected : [])
+    .accessibilityAddTraits(selectedResultID == id ? .isSelected : [])
+    .accessibilityIdentifier("workspace-command-palette-result-\(id)")
   }
 
   private var orderedResults: [PaletteResult] { makeSnapshot().results }
@@ -587,9 +603,11 @@ struct WorkspaceCommandPalette: View {
       return
     }
     selectedResultID = resultIDs.first
+    selectionScrollRevision &+= 1
   }
 
   private func moveSelection(by offset: Int) {
+    hoveredResultID = nil
     let results = orderedResults
     guard !results.isEmpty else {
       selectedResultID = nil
@@ -599,10 +617,12 @@ struct WorkspaceCommandPalette: View {
       let currentIndex = results.firstIndex(where: { $0.id == selectedResultID })
     else {
       self.selectedResultID = results.first?.id
+      selectionScrollRevision &+= 1
       return
     }
     let nextIndex = (currentIndex + offset + results.count) % results.count
     self.selectedResultID = results[nextIndex].id
+    selectionScrollRevision &+= 1
   }
 
   private func performSelectedResult() {
@@ -619,12 +639,12 @@ struct WorkspaceCommandPalette: View {
   }
 
   private func openDraft(_ draftID: UUID) {
-    _ = store.focusDraft(draftID, section: .writing)
+    onFocusDraft(draftID)
     dismiss()
   }
 
   private func openSection(_ section: WorkspaceSection) {
-    store.selectSection(section)
+    onSelectSection(section)
     dismiss()
   }
 

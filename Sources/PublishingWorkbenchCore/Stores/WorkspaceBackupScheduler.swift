@@ -258,7 +258,8 @@ public final class WorkspaceBackupScheduler: ObservableObject {
         let createdPreview = await store.createWorkspaceBackup(
           at: backupURL,
           applicationVersion: currentApplicationVersion,
-          limits: schedulerBackupLimits
+          limits: schedulerBackupLimits,
+          actor: isAutomatic ? .background : .user
         )
       else {
         throw WorkspaceBackupError.sourceUnavailable(

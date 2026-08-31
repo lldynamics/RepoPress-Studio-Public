@@ -1,14 +1,14 @@
 import CryptoKit
 import Foundation
 import PublishingAICore
-import PublishingWorkbenchCore
+import PublishingAgentContracts
 
-typealias PublishingMCPCallResult = WorkbenchAIAgentToolResult
+typealias PublishingMCPCallResult = AIAgentToolResult
 
 /// Converts one checked MCP discovery snapshot into host-side Agent contracts.
 /// A later discovery/configuration must create a new instance, making drift
 /// explicit instead of silently updating reviewed calls.
-public struct PublishingMCPToolRegistry: WorkbenchAIAgentToolRegistry {
+public struct PublishingMCPToolRegistry: AIAgentExternalToolRegistry {
   public let catalog: AIAgentToolCatalogSnapshot
   public let configuration: PublishingMCPSourceConfiguration
   private let toolsByModelName: [String: PublishingMCPDiscoveredTool]
@@ -65,8 +65,8 @@ public struct PublishingMCPToolRegistry: WorkbenchAIAgentToolRegistry {
 
   public func prepare(
     call: AIToolCall,
-    context _: WorkbenchAIAgentContext
-  ) throws -> WorkbenchAIAgentToolInvocation {
+    context _: AIAgentToolContext
+  ) throws -> AIAgentExternalToolInvocation {
     guard call.type == "function",
       !call.id.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
       let tool = toolsByModelName[call.function.name],
@@ -77,12 +77,12 @@ public struct PublishingMCPToolRegistry: WorkbenchAIAgentToolRegistry {
       Self.isJSONObject(call.function.arguments)
     else {
       if toolsByModelName[call.function.name] == nil {
-        throw WorkbenchAIAgentToolRegistryError.unknownTool(call.function.name)
+        throw AIAgentToolRegistryError.unknownTool(call.function.name)
       }
-      throw WorkbenchAIAgentToolRegistryError.invalidJSON(toolCallID: call.id)
+      throw AIAgentToolRegistryError.invalidJSON(toolCallID: call.id)
     }
 
-    return WorkbenchAIAgentToolInvocation(
+    return AIAgentExternalToolInvocation(
       toolCallID: call.id,
       toolID: descriptor.id,
       modelToolName: descriptor.definition.function.name,
@@ -98,34 +98,28 @@ public struct PublishingMCPToolRegistry: WorkbenchAIAgentToolRegistry {
   }
 
   public func revalidate(
-    invocation: WorkbenchAIAgentToolInvocation,
+    invocation: AIAgentExternalToolInvocation,
     matching call: AIToolCall,
-    context: WorkbenchAIAgentContext
-  ) throws -> WorkbenchAIAgentToolInvocation {
+    context: AIAgentToolContext
+  ) throws -> AIAgentExternalToolInvocation {
     let fresh = try prepare(call: call, context: context)
     guard invocation.toolCallID == fresh.toolCallID,
       invocation.toolID == fresh.toolID,
       invocation.modelToolName == fresh.modelToolName,
       invocation.executionPolicy == fresh.executionPolicy,
       invocation.catalogRevision == fresh.catalogRevision,
-      invocation.externalToolBinding == fresh.externalToolBinding,
-      invocation.automationStep == nil,
-      invocation.targetDraftID == nil,
-      invocation.targetDraftVersion == nil
+      invocation.externalToolBinding == fresh.externalToolBinding
     else {
-      throw WorkbenchAIAgentToolRegistryError.catalogDrift
+      throw AIAgentToolRegistryError.catalogDrift
     }
     return invocation
   }
 
   func validatedBinding(
-    for invocation: WorkbenchAIAgentToolInvocation
+    for invocation: AIAgentExternalToolInvocation
   ) throws -> AIAgentExternalToolBinding {
+    let binding = invocation.externalToolBinding
     guard invocation.catalogRevision == catalog.revision,
-      invocation.automationStep == nil,
-      invocation.targetDraftID == nil,
-      invocation.targetDraftVersion == nil,
-      let binding = invocation.externalToolBinding,
       binding.sourceID == configuration.sourceID,
       binding.sourceRevision == configuration.sourceRevision,
       binding.argumentsJSON.utf8.count <= configuration.maximumInputByteCount,
@@ -254,8 +248,8 @@ public actor PublishingMCPToolExecutor {
   }
 
   public func execute(
-    _ invocation: WorkbenchAIAgentToolInvocation
-  ) async throws -> WorkbenchAIAgentToolResult {
+    _ invocation: AIAgentExternalToolInvocation
+  ) async throws -> AIAgentToolResult {
     let binding = try registry.validatedBinding(for: invocation)
     return try await client.call(
       remoteToolName: binding.remoteToolName,

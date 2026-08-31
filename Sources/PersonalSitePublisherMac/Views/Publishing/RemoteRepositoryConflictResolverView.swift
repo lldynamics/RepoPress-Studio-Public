@@ -10,8 +10,7 @@ struct RemoteRepositoryConflictResolverView: View {
 
   @Environment(\.dismiss) private var dismiss
   @State private var selectedPath: String
-  @State private var choices: [String: RemoteRepositoryConflictResolutionChoice] = [:]
-  @State private var finalDocuments: [String: String]
+  @State private var draftSelection = RemoteConflictDraftSelection()
   @State private var isResolving = false
   @State private var resolutionFeedback: String?
 
@@ -25,13 +24,6 @@ struct RemoteRepositoryConflictResolverView: View {
     self.resolve = resolve
     let firstPath = session.conflicts.first?.repositoryPath ?? ""
     _selectedPath = State(initialValue: firstPath)
-    _finalDocuments = State(
-      initialValue: Dictionary(
-        uniqueKeysWithValues: session.conflicts.compactMap { item in
-          item.local.text.map { (item.repositoryPath, $0) }
-        }
-      )
-    )
   }
 
   var body: some View {
@@ -119,7 +111,7 @@ struct RemoteRepositoryConflictResolverView: View {
             WorkbenchBackgroundStyle.control,
             in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
           )
-          .disabled(choices[item.repositoryPath] != .merge)
+          .disabled(draftSelection.choice(for: item.repositoryPath) != .merge)
           .frame(minHeight: 320)
           .accessibilityLabel("最终合并版")
           .accessibilityIdentifier("remote-conflict-final-editor")
@@ -161,15 +153,14 @@ struct RemoteRepositoryConflictResolverView: View {
     item: RemoteRepositoryConflictItem,
     enabled: Bool
   ) -> some View {
-    let isSelected = choices[item.repositoryPath] == choice
+    let isSelected = draftSelection.choice(for: item.repositoryPath) == choice
     return Button {
-      choices[item.repositoryPath] = choice
-      switch choice {
-      case .keepLocal, .merge:
-        if let text = item.local.text { finalDocuments[item.repositoryPath] = text }
-      case .useRemote:
-        if let text = item.remote.text { finalDocuments[item.repositoryPath] = text }
-      }
+      draftSelection.select(
+        path: item.repositoryPath,
+        choice: choice,
+        local: item.local.text,
+        remote: item.remote.text
+      )
     } label: {
       HStack(spacing: 8) {
         Label(title, systemImage: systemImage)
@@ -241,13 +232,13 @@ struct RemoteRepositoryConflictResolverView: View {
       Spacer()
       if isResolving { ProgressView().controlSize(.small) }
       Button(actionTitle(for: item)) {
-        guard let choice = choices[item.repositoryPath] else { return }
+        guard let choice = draftSelection.choice(for: item.repositoryPath) else { return }
         isResolving = true
         Task {
           let outcome = await resolve(
             item.repositoryPath,
             choice,
-            choice == .merge ? finalDocuments[item.repositoryPath] : nil
+            choice == .merge ? draftSelection.mergeDraft(for: item.repositoryPath) : nil
           )
           await MainActor.run {
             isResolving = false
@@ -259,7 +250,7 @@ struct RemoteRepositoryConflictResolverView: View {
         }
       }
       .workbenchProminentActionStyle()
-      .disabled(choices[item.repositoryPath] == nil || isResolving)
+      .disabled(draftSelection.choice(for: item.repositoryPath) == nil || isResolving)
       .keyboardShortcut(.return, modifiers: [.command])
       .accessibilityIdentifier("remote-conflict-apply")
     }
@@ -267,7 +258,7 @@ struct RemoteRepositoryConflictResolverView: View {
   }
 
   private func actionTitle(for item: RemoteRepositoryConflictItem) -> String {
-    switch choices[item.repositoryPath] {
+    switch draftSelection.choice(for: item.repositoryPath) {
     case .keepLocal:
       return item.operation == .delete
         ? String(localized: "创建 PR/MR 继续下线")
@@ -279,7 +270,7 @@ struct RemoteRepositoryConflictResolverView: View {
   }
 
   private func actionExplanation(for item: RemoteRepositoryConflictItem) -> String {
-    switch choices[item.repositoryPath] {
+    switch draftSelection.choice(for: item.repositoryPath) {
     case .keepLocal:
       return item.operation == .delete
         ? String(localized: "将在独立分支提交下线操作并创建 PR/MR，目标分支不会被直接修改。")
@@ -319,8 +310,12 @@ struct RemoteRepositoryConflictResolverView: View {
 
   private func finalDocumentBinding(for item: RemoteRepositoryConflictItem) -> Binding<String> {
     Binding(
-      get: { finalDocuments[item.repositoryPath] ?? item.local.text ?? "" },
-      set: { finalDocuments[item.repositoryPath] = $0 }
+      get: {
+        draftSelection.displayedDocument(
+          for: item.repositoryPath, local: item.local.text, remote: item.remote.text
+        )
+      },
+      set: { draftSelection.updateMergeDraft($0, for: item.repositoryPath) }
     )
   }
 }

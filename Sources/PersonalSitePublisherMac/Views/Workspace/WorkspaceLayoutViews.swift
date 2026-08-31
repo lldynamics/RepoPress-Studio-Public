@@ -7,11 +7,13 @@ struct WorkspaceShellSplitLayout: View {
   let selectedDraftID: UUID?
   let isCompact: Bool
   let isFocusMode: Bool
+  let isSidebarPresented: Bool
   let isInspectorPresented: Bool
   @Binding var contentHealthFilter: ContentHealthContextFilter
   @Binding var imageWorkbenchContextStage: ImageWorkbenchContextStage
   @Binding var repositoryContextStage: RepositoryContextStage
   @Binding var repositoryChangedFileSelection: RepositoryChangedFileSelection?
+  @Binding var knowledgeInspectorPresentation: KnowledgeLibraryInspectorPresentationState
   let repositorySourceSession: RepositoryHTMLSourceSession
   let rssStore: RSSReaderStore
   let onSelectSection: (WorkspaceSection) -> Void
@@ -34,22 +36,26 @@ struct WorkspaceShellSplitLayout: View {
     imageWorkbenchContextStage: Binding<ImageWorkbenchContextStage>,
     repositoryContextStage: Binding<RepositoryContextStage>,
     repositoryChangedFileSelection: Binding<RepositoryChangedFileSelection?>,
+    knowledgeInspectorPresentation: Binding<KnowledgeLibraryInspectorPresentationState>,
     repositorySourceSession: RepositoryHTMLSourceSession,
     rssStore: RSSReaderStore,
     onSelectSection: @escaping (WorkspaceSection) -> Void,
     onSelectDraft: @escaping (UUID?) -> Void,
-    onFocusDraft: @escaping (UUID, WorkspaceSection) -> Void
+    onFocusDraft: @escaping (UUID, WorkspaceSection) -> Void,
+    isSidebarPresented: Bool = true
   ) {
     self.store = store
     self.selectedSection = selectedSection
     self.selectedDraftID = selectedDraftID
     self.isCompact = isCompact
     self.isFocusMode = isFocusMode
+    self.isSidebarPresented = isSidebarPresented
     self.isInspectorPresented = isInspectorPresented
     _contentHealthFilter = contentHealthFilter
     _imageWorkbenchContextStage = imageWorkbenchContextStage
     _repositoryContextStage = repositoryContextStage
     _repositoryChangedFileSelection = repositoryChangedFileSelection
+    _knowledgeInspectorPresentation = knowledgeInspectorPresentation
     self.repositorySourceSession = repositorySourceSession
     self.rssStore = rssStore
     self.onSelectSection = onSelectSection
@@ -65,7 +71,10 @@ struct WorkspaceShellSplitLayout: View {
 
   private func workspace(workspaceWidth: CGFloat) -> some View {
     HStack(spacing: 0) {
-      if !isFocusMode {
+      if WorkspaceSidebarVisibilityPolicy.shouldShowSidebar(
+        userWantsVisible: isSidebarPresented,
+        isFocusMode: isFocusMode
+      ) {
         WorkspacePrimarySidebar(
           store: store,
           selectedSection: selectedSection,
@@ -97,7 +106,8 @@ struct WorkspaceShellSplitLayout: View {
         contentHealthSidebarProjection: contentHealthSidebarProjection,
         repositorySourceSession: repositorySourceSession,
         rssStore: rssStore,
-        rssPresentation: rssPresentation
+        rssPresentation: rssPresentation,
+        knowledgeInspectorPresentation: $knowledgeInspectorPresentation
       )
       .frame(
         minWidth: isFocusMode ? 680 : centerMinimumWidth,

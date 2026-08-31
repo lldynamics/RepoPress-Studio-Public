@@ -69,6 +69,7 @@ public final class RSSReaderBackupService: Sendable {
   ]
   private static let sidecarSuffixes = ["-wal", "-shm", "-journal"]
   private let fileManagerDependency: SendableFileManager
+  private let backupStepHook: @Sendable (Int) -> Void
 
   private var fileManager: FileManager {
     fileManagerDependency.value
@@ -76,12 +77,22 @@ public final class RSSReaderBackupService: Sendable {
 
   public init(fileManager: FileManager = .default) {
     self.fileManagerDependency = SendableFileManager(fileManager)
+    self.backupStepHook = { _ in }
+  }
+
+  init(
+    fileManager: FileManager = .default,
+    backupStepHook: @escaping @Sendable (Int) -> Void
+  ) {
+    self.fileManagerDependency = SendableFileManager(fileManager)
+    self.backupStepHook = backupStepHook
   }
 
   public func createBackup(
     from sourceDatabaseURL: URL,
     at destinationURL: URL
   ) throws -> RSSReaderBackupInspection {
+    try Task.checkCancellation()
     let sourceURL = sourceDatabaseURL.standardizedFileURL.resolvingSymlinksInPath()
     let destinationURL = destinationURL.standardizedFileURL
     guard sourceURL != destinationURL.resolvingSymlinksInPath() else {
@@ -121,6 +132,7 @@ public final class RSSReaderBackupService: Sendable {
     let inspection: RSSReaderBackupInspection
     do {
       try copyDatabase(from: sourceHandle, to: destinationHandle)
+      try Task.checkCancellation()
       try execute("PRAGMA journal_mode = DELETE;", on: destinationHandle)
       try execute("PRAGMA synchronous = FULL;", on: destinationHandle)
       inspection = try inspectDatabase(destinationHandle)
@@ -140,15 +152,10 @@ public final class RSSReaderBackupService: Sendable {
     removeSidecars(at: temporaryURL)
     try ensureNoSidecars(at: temporaryURL)
 
+    try Task.checkCancellation()
     try replaceItem(at: destinationURL, withItemAt: temporaryURL)
     shouldRemoveTemporary = false
-    let installedInspection = try inspectBackup(at: destinationURL)
-    guard installedInspection == inspection else {
-      throw RSSReaderBackupError.databaseIntegrity(
-        CoreL10n.text("安装后的数据统计与快照不一致")
-      )
-    }
-    return installedInspection
+    return inspection
   }
 
   public func inspectBackup(at backupURL: URL) throws -> RSSReaderBackupInspection {
@@ -190,16 +197,27 @@ public final class RSSReaderBackupService: Sendable {
       throw RSSReaderBackupError.databaseIntegrity(databaseMessage(destinationHandle))
     }
 
+    var didFinish = false
+    defer {
+      if !didFinish { _ = sqlite3_backup_finish(backup) }
+    }
     var stepResult: Int32 = SQLITE_OK
     var retryCount = 0
+    var stepCount = 0
     repeat {
-      stepResult = sqlite3_backup_step(backup, -1)
+      try Task.checkCancellation()
+      stepResult = sqlite3_backup_step(backup, 128)
+      stepCount += 1
+      backupStepHook(stepCount)
+      try Task.checkCancellation()
       if stepResult == SQLITE_BUSY || stepResult == SQLITE_LOCKED {
         retryCount += 1
         sqlite3_sleep(10)
       }
-    } while (stepResult == SQLITE_BUSY || stepResult == SQLITE_LOCKED) && retryCount < 500
+    } while stepResult == SQLITE_OK
+      || ((stepResult == SQLITE_BUSY || stepResult == SQLITE_LOCKED) && retryCount < 500)
     let finishResult = sqlite3_backup_finish(backup)
+    didFinish = true
     guard stepResult == SQLITE_DONE, finishResult == SQLITE_OK else {
       throw RSSReaderBackupError.databaseIntegrity(databaseMessage(destinationHandle))
     }

@@ -1,4 +1,5 @@
 import Foundation
+import PublishingAgentContracts
 
 /// The narrow, host-owned boundary between model tool calls and executable
 /// Workbench capabilities. A registry snapshot is immutable for its lifetime;
@@ -24,13 +25,7 @@ public protocol WorkbenchAIAgentToolRegistry: Sendable {
 /// Errors deliberately separate malformed/untrusted input from a changed
 /// catalog. The Agent loop can therefore report a rejected tool call without
 /// treating it as a transport failure.
-public enum WorkbenchAIAgentToolRegistryError: Error, Equatable, Sendable {
-  case unknownTool(String)
-  case toolNotAllowed(AIAgentToolID)
-  case invalidJSON(toolCallID: String)
-  case argumentMismatch(toolCallID: String, toolName: String)
-  case catalogDrift
-}
+public typealias WorkbenchAIAgentToolRegistryError = AIAgentToolRegistryError
 
 /// The built-in adapter. It retains the existing Workbench command parser and
 /// validator while giving it a source-qualified, stable host identity.

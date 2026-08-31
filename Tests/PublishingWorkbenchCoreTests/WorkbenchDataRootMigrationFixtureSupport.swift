@@ -23,11 +23,49 @@ extension WorkbenchDataRootMigrationTests {
       unknownRootAttachmentURL: urls.unknownRoot
     )
     let migratedSnapshot = try persistLegacySnapshots(snapshot, with: persistence)
+    try createOperationLedgerFixture(with: persistence)
     try createDraftRecoveryFixture(
       draft: requiredDraft(from: migratedSnapshot),
       persistence: persistence
     )
     try createRecoveryArchiveFixtures(with: persistence)
+  }
+
+  func createOperationLedgerFixture(
+    with persistence: WorkbenchPersistence
+  ) throws {
+    let operationLedger = WorkbenchOperationLedgerPersistence(
+      fileURL: persistence.operationLedgerURL
+    )
+    let firstRecord = WorkbenchOperationEventRecord(
+      kind: .localContentImport,
+      outcome: .succeeded,
+      occurredAt: Date(timeIntervalSince1970: 1_700_000_000),
+      createdItemCount: 1
+    )
+    try operationLedger.save(
+      WorkbenchOperationLedgerDocument(records: [firstRecord]),
+      now: Date(timeIntervalSince1970: 1_700_000_100)
+    )
+    try operationLedger.save(
+      WorkbenchOperationLedgerDocument(
+        records: [
+          firstRecord,
+          WorkbenchOperationEventRecord(
+            kind: .workspaceBackupCreated,
+            outcome: .succeeded,
+            occurredAt: Date(timeIntervalSince1970: 1_700_000_050),
+            draftCount: 1
+          ),
+        ]
+      ),
+      now: Date(timeIntervalSince1970: 1_700_000_100)
+    )
+    try Data("unreadable operation ledger fixture".utf8).write(
+      to: persistence.operationLedgerURL
+        .deletingPathExtension()
+        .appendingPathExtension("unreadable-fixture.json")
+    )
   }
 
   func createAttachmentFixtureFiles(

@@ -16,11 +16,12 @@ extension PublishingStore {
         .path
     }
     if let currentPlan = localSitePreviewPlan,
-       profile.id == store.activeProfileID,
-       currentPlan.executionIdentity?.profileID == profile.id,
-       let profileRootPath,
-       let currentPlanRootPath,
-       currentPlanRootPath == profileRootPath {
+      profile.id == store.activeProfileID,
+      currentPlan.executionIdentity?.profileID == profile.id,
+      let profileRootPath,
+      let currentPlanRootPath,
+      currentPlanRootPath == profileRootPath
+    {
       return currentPlan
     }
     return localSitePreviewService.plan(profile: profile)
@@ -52,13 +53,14 @@ extension PublishingStore {
         .path
     }
     if localSitePreviewRuntimeStatus.isRunning,
-       let currentPlan = localSitePreviewPlan,
-       currentPlan.executionIdentity?.profileID == profile.id,
-       let profileRootPath,
-       let currentPlanRootPath,
-       currentPlan.siteKind == expectedSiteKind,
-       currentPlanRootPath == profileRootPath,
-       localSitePreviewProcessService.isExecutionCurrent(for: currentPlan) {
+      let currentPlan = localSitePreviewPlan,
+      currentPlan.executionIdentity?.profileID == profile.id,
+      let profileRootPath,
+      let currentPlanRootPath,
+      currentPlan.siteKind == expectedSiteKind,
+      currentPlanRootPath == profileRootPath,
+      localSitePreviewProcessService.isExecutionCurrent(for: currentPlan)
+    {
       return
     }
     let updatedPlan = localSitePreviewService.plan(
@@ -124,12 +126,16 @@ extension PublishingStore {
     }
 
     var request = URLRequest(url: previewURL)
+    request.httpMethod = "GET"
     request.timeoutInterval = 1.5
     request.cachePolicy = .reloadIgnoringLocalCacheData
 
     do {
-      let (_, response) = try await URLSession.shared.data(for: request)
-      let responseCode = (response as? HTTPURLResponse)?.statusCode
+      // This historical status check intentionally means "the loopback HTTP
+      // endpoint answered", not "the requested page is ready".  Keep that
+      // compatibility contract while sharing the bounded headers-only probe.
+      let response = try await LocalSitePreviewHTTPMetadataProbe.perform(request)
+      let responseCode = response.statusCode == 0 ? nil : response.statusCode
       localSitePreviewRuntimeStatus = LocalSitePreviewRuntimeStatus(
         isRunning: true,
         isReachable: true,
@@ -168,7 +174,8 @@ extension PublishingStore {
       return .failed(message)
     }
     guard plan.diagnostics.isReadyToStart else {
-      let message = plan.diagnostics.blockingMessages.first
+      let message =
+        plan.diagnostics.blockingMessages.first
         ?? CoreL10n.text("本地预览依赖检查未通过。")
       setPublishActionMessage(message, status: .warning)
       return .failed(message)

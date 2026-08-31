@@ -1,6 +1,7 @@
 import Foundation
+
 #if canImport(Darwin)
-import Darwin
+  import Darwin
 #endif
 
 public struct LocalSitePreviewPlan: Codable, Hashable, Sendable {
@@ -39,10 +40,12 @@ public struct LocalSitePreviewPlan: Codable, Hashable, Sendable {
     self.previewURL = previewURL
     self.notes = notes
     self.usesDynamicPort = usesDynamicPort
-    self.diagnostics = diagnostics ?? LocalSitePreviewDiagnostics(
-      siteKind: siteKind,
-      rootPath: rootPath
-    )
+    self.diagnostics =
+      diagnostics
+      ?? LocalSitePreviewDiagnostics(
+        siteKind: siteKind,
+        rootPath: rootPath
+      )
     self.executionIdentity = executionIdentity
   }
 
@@ -69,7 +72,8 @@ public struct LocalSitePreviewPlan: Codable, Hashable, Sendable {
     previewURL = try container.decode(URL.self, forKey: .previewURL)
     notes = try container.decode([String].self, forKey: .notes)
     usesDynamicPort = try container.decodeIfPresent(Bool.self, forKey: .usesDynamicPort) ?? false
-    diagnostics = try container.decodeIfPresent(LocalSitePreviewDiagnostics.self, forKey: .diagnostics)
+    diagnostics =
+      try container.decodeIfPresent(LocalSitePreviewDiagnostics.self, forKey: .diagnostics)
       ?? LocalSitePreviewDiagnostics(siteKind: siteKind, rootPath: rootPath)
     executionIdentity = try container.decodeIfPresent(
       LocalSitePreviewExecutionIdentity.self,
@@ -136,13 +140,20 @@ public final class LocalSitePreviewProcessService: @unchecked Sendable {
   private let logCollector = LocalSitePreviewLogCollector(maximumLineCount: 80)
   private let stopExecutor = LocalSitePreviewStopExecutor()
   private let trustStore: LocalSitePreviewTrustStore
+  private let isPortAvailable: @Sendable (Int) -> Bool
 
   public convenience init() {
     self.init(trustStore: LocalSitePreviewTrustStore())
   }
 
-  init(trustStore: LocalSitePreviewTrustStore) {
+  init(
+    trustStore: LocalSitePreviewTrustStore,
+    isPortAvailable: @escaping @Sendable (Int) -> Bool = {
+      LocalSitePreviewPortAllocator.isPortAvailable($0)
+    }
+  ) {
     self.trustStore = trustStore
+    self.isPortAvailable = isPortAvailable
   }
 
   private static let systemTrustedToolDirectories = [
@@ -318,7 +329,7 @@ public final class LocalSitePreviewProcessService: @unchecked Sendable {
       }
       return statusLocked()
     }
-    if let port = plan.port, !LocalSitePreviewPortAllocator.isPortAvailable(port) {
+    if let port = plan.port, !isPortAvailable(port) {
       throw LocalSitePreviewError.portUnavailable(port)
     }
 
@@ -348,13 +359,13 @@ public final class LocalSitePreviewProcessService: @unchecked Sendable {
       throw LocalSitePreviewError.launchFailed(error.localizedDescription)
     }
 
-#if canImport(Darwin)
-    if Darwin.setpgid(process.processIdentifier, process.processIdentifier) == 0 {
-      processGroupIdentifier = process.processIdentifier
-    } else {
-      processGroupIdentifier = nil
-    }
-#endif
+    #if canImport(Darwin)
+      if Darwin.setpgid(process.processIdentifier, process.processIdentifier) == 0 {
+        processGroupIdentifier = process.processIdentifier
+      } else {
+        processGroupIdentifier = nil
+      }
+    #endif
 
     self.process = process
     self.outputPipe = outputPipe
@@ -509,19 +520,19 @@ public final class LocalSitePreviewProcessService: @unchecked Sendable {
     else {
       return false
     }
-#if canImport(Darwin)
-    var metadata = stat()
-    guard resolvedURL.path.withCString({ Darwin.lstat($0, &metadata) }) == 0 else {
-      return false
-    }
-    return (metadata.st_mode & S_IFMT) == S_IFREG
-#else
-    let values = try? resolvedURL.resourceValues(forKeys: [
-      .isRegularFileKey,
-      .isSymbolicLinkKey,
-    ])
-    return values?.isRegularFile == true && values?.isSymbolicLink != true
-#endif
+    #if canImport(Darwin)
+      var metadata = stat()
+      guard resolvedURL.path.withCString({ Darwin.lstat($0, &metadata) }) == 0 else {
+        return false
+      }
+      return (metadata.st_mode & S_IFMT) == S_IFREG
+    #else
+      let values = try? resolvedURL.resourceValues(forKeys: [
+        .isRegularFileKey,
+        .isSymbolicLinkKey,
+      ])
+      return values?.isRegularFile == true && values?.isSymbolicLink != true
+    #endif
   }
 
   public func stop() {
@@ -541,27 +552,27 @@ public final class LocalSitePreviewProcessService: @unchecked Sendable {
     }
 
     if process.isRunning {
-#if canImport(Darwin)
-      if let processGroupIdentifier {
-        Darwin.kill(-processGroupIdentifier, SIGTERM)
-      } else {
+      #if canImport(Darwin)
+        if let processGroupIdentifier {
+          Darwin.kill(-processGroupIdentifier, SIGTERM)
+        } else {
+          process.terminate()
+        }
+      #else
         process.terminate()
-      }
-#else
-      process.terminate()
-#endif
+      #endif
       let gracefulExitDeadline = Date().addingTimeInterval(1)
       while process.isRunning, Date() < gracefulExitDeadline {
         Thread.sleep(forTimeInterval: 0.02)
       }
       if process.isRunning {
-#if canImport(Darwin)
-        if let processGroupIdentifier {
-          Darwin.kill(-processGroupIdentifier, SIGKILL)
-        } else {
-          Darwin.kill(process.processIdentifier, SIGKILL)
-        }
-#endif
+        #if canImport(Darwin)
+          if let processGroupIdentifier {
+            Darwin.kill(-processGroupIdentifier, SIGKILL)
+          } else {
+            Darwin.kill(process.processIdentifier, SIGKILL)
+          }
+        #endif
       }
     }
 
@@ -611,7 +622,8 @@ private final class LocalSitePreviewLogCollector: @unchecked Sendable {
       return
     }
 
-    let lines = output
+    let lines =
+      output
       .split(whereSeparator: \.isNewline)
       .map(String.init)
       .filter { !$0.isEmpty }
@@ -688,19 +700,21 @@ public struct LocalSitePreviewService {
     }
 
     let configuredRootPath = configuredRootURL.standardizedFileURL.resolvingSymlinksInPath().path
-    let reportMatchesProfile = repositoryReport.map {
-      URL(fileURLWithPath: $0.rootPath, isDirectory: true)
-        .standardizedFileURL
-        .resolvingSymlinksInPath()
-        .path == configuredRootPath
-    } ?? false
+    let reportMatchesProfile =
+      repositoryReport.map {
+        URL(fileURLWithPath: $0.rootPath, isDirectory: true)
+          .standardizedFileURL
+          .resolvingSymlinksInPath()
+          .path == configuredRootPath
+      } ?? false
     let rootPath = configuredRootPath
     let detectedSiteKind = reportMatchesProfile ? repositoryReport?.detectedKind : nil
     let siteKind = detectedSiteKind ?? profile.siteKind
 
     let fileManager = FileManager.default
     var isDirectory: ObjCBool = false
-    let rootExists = fileManager.fileExists(atPath: rootPath, isDirectory: &isDirectory) && isDirectory.boolValue
+    let rootExists =
+      fileManager.fileExists(atPath: rootPath, isDirectory: &isDirectory) && isDirectory.boolValue
     var executableName = ""
     var baseArguments: [String] = []
     var notes: [String] = []
@@ -735,11 +749,15 @@ public struct LocalSitePreviewService {
       executableName = packageManager ?? "npm"
       scriptName = "dev"
       baseArguments = ["run", "dev"]
-      notes = ["Next.js 默认 dev server 端口为 3000。", "兼容 Contentlayer / Velite 内容仓库。", "本地预览会执行仓库脚本，请只启动可信仓库。"]
+      notes = [
+        "Next.js 默认 dev server 端口为 3000。", "兼容 Contentlayer / Velite 内容仓库。",
+        "本地预览会执行仓库脚本，请只启动可信仓库。",
+      ]
     case .quartz:
-      executableName = "npx"
-      baseArguments = ["quartz", "build", "--serve"]
-      notes = ["Quartz 默认预览端口为 8080。", "使用 npx quartz build --serve 启动数字花园。", "本地预览会执行仓库脚本，请只启动可信仓库。"]
+      // Quartz's serve command exposes both an HTTP listener and a separate
+      // live-reload WebSocket without a supported host-binding option. Until
+      // both can be constrained to loopback, do not create an executable plan.
+      return nil
     case .foam:
       return nil
     case .hexo:
@@ -747,7 +765,9 @@ public struct LocalSitePreviewService {
       executableName = packageManager ?? "npm"
       scriptName = "server"
       baseArguments = ["run", "server"]
-      notes = ["Hexo 常见本地端口为 4000。", "如果没有 server script，可改用 hexo server。", "本地预览会执行仓库脚本，请只启动可信仓库。"]
+      notes = [
+        "Hexo 常见本地端口为 4000。", "如果没有 server script，可改用 hexo server。", "本地预览会执行仓库脚本，请只启动可信仓库。",
+      ]
     case .jekyll:
       executableName = "bundle"
       baseArguments = ["exec", "jekyll", "serve", "--drafts"]
@@ -824,8 +844,9 @@ public struct LocalSitePreviewService {
         under: URL(fileURLWithPath: rootPath, isDirectory: true),
         maximumByteCount: Self.maximumPackageJSONByteCount
       ),
-         let object = try? JSONSerialization.jsonObject(with: data),
-         let package = object as? [String: Any] {
+        let object = try? JSONSerialization.jsonObject(with: data),
+        let package = object as? [String: Any]
+      {
         let scripts = (package["scripts"] as? [String: Any]) ?? [:]
         if scripts[scriptName] != nil {
           dependencies.append(
@@ -880,7 +901,9 @@ public struct LocalSitePreviewService {
 
     switch siteKind {
     case .zola:
-      if !fileManager.fileExists(atPath: URL(fileURLWithPath: rootPath).appendingPathComponent("config.toml").path) {
+      if !fileManager.fileExists(
+        atPath: URL(fileURLWithPath: rootPath).appendingPathComponent("config.toml").path)
+      {
         issues.append(
           LocalSitePreviewIssue(
             id: "zola-config",
@@ -892,7 +915,8 @@ public struct LocalSitePreviewService {
       }
     case .hugo:
       let hasHugoConfig = ["hugo.toml", "hugo.yaml", "hugo.yml", "hugo.json"].contains {
-        fileManager.fileExists(atPath: URL(fileURLWithPath: rootPath).appendingPathComponent($0).path)
+        fileManager.fileExists(
+          atPath: URL(fileURLWithPath: rootPath).appendingPathComponent($0).path)
       }
       if !hasHugoConfig {
         issues.append(
@@ -964,7 +988,9 @@ public struct LocalSitePreviewService {
         )
       }
     case .jekyll:
-      if !fileManager.fileExists(atPath: URL(fileURLWithPath: rootPath).appendingPathComponent("Gemfile").path) {
+      if !fileManager.fileExists(
+        atPath: URL(fileURLWithPath: rootPath).appendingPathComponent("Gemfile").path)
+      {
         issues.append(
           LocalSitePreviewIssue(
             id: "gemfile",
@@ -1011,7 +1037,7 @@ public struct LocalSitePreviewService {
       siteKind: siteKind,
       packageManager: packageManager,
       port: selectedPort,
-      addPortArguments: allocation?.usesDynamicPort == true
+      includesPortArgument: allocation?.usesDynamicPort == true
     )
     let previewURL = URL(string: "http://127.0.0.1:\(selectedPort)")!
     let command = copyableCommand(
@@ -1062,33 +1088,53 @@ public struct LocalSitePreviewService {
     siteKind: SiteKind,
     packageManager: String?,
     port: Int,
-    addPortArguments: Bool
+    includesPortArgument: Bool
   ) -> [String] {
-    guard addPortArguments else { return baseArguments }
     switch siteKind {
     case .zola:
-      return baseArguments + ["--interface", "127.0.0.1", "--port", "\(port)"]
+      return baseArguments + ["--interface", "127.0.0.1"]
+        + portArguments(port, included: includesPortArgument)
     case .hugo:
-      return baseArguments + ["--bind", "127.0.0.1", "--port", "\(port)"]
-    case .astro, .nextJS:
-      if packageManager == "yarn" {
-        return baseArguments + ["--host", "127.0.0.1", "--port", "\(port)"]
-      }
-      return baseArguments + ["--", "--host", "127.0.0.1", "--port", "\(port)"]
-    case .vitePress:
-      if packageManager == "yarn" {
-        return baseArguments + ["--host", "127.0.0.1", "--port", "\(port)"]
-      }
-      return baseArguments + ["--", "--host", "127.0.0.1", "--port", "\(port)"]
+      return baseArguments + ["--bind", "127.0.0.1"]
+        + portArguments(port, included: includesPortArgument)
+    case .astro, .vitePress:
+      return baseArguments
+        + forwardedPackageScriptArguments(
+          ["--host", "127.0.0.1"]
+            + portArguments(port, included: includesPortArgument),
+          packageManager: packageManager
+        )
+    case .nextJS:
+      return baseArguments
+        + forwardedPackageScriptArguments(
+          ["--hostname", "127.0.0.1"]
+            + portArguments(port, included: includesPortArgument),
+          packageManager: packageManager
+        )
     case .hexo:
-      return baseArguments + ["--", "--ip", "127.0.0.1", "--port", "\(port)"]
+      return baseArguments
+        + forwardedPackageScriptArguments(
+          ["--ip", "127.0.0.1"]
+            + portArguments(port, included: includesPortArgument),
+          packageManager: packageManager
+        )
     case .jekyll:
-      return baseArguments + ["--host", "127.0.0.1", "--port", "\(port)"]
-    case .quartz:
-      return baseArguments + ["--port", "\(port)"]
-    case .foam:
+      return baseArguments + ["--host", "127.0.0.1"]
+        + portArguments(port, included: includesPortArgument)
+    case .quartz, .foam:
       return baseArguments
     }
+  }
+
+  private func portArguments(_ port: Int, included: Bool) -> [String] {
+    included ? ["--port", "\(port)"] : []
+  }
+
+  private func forwardedPackageScriptArguments(
+    _ arguments: [String],
+    packageManager: String?
+  ) -> [String] {
+    packageManager == "yarn" ? arguments : ["--"] + arguments
   }
 
   private static func defaultPort(for siteKind: SiteKind) -> Int {
@@ -1114,7 +1160,8 @@ public struct LocalSitePreviewService {
 
   private static func packageManagerName(in rootPath: String) -> String {
     let rootURL = URL(fileURLWithPath: rootPath, isDirectory: true)
-    if FileManager.default.fileExists(atPath: rootURL.appendingPathComponent("pnpm-lock.yaml").path) {
+    if FileManager.default.fileExists(atPath: rootURL.appendingPathComponent("pnpm-lock.yaml").path)
+    {
       return "pnpm"
     }
     if FileManager.default.fileExists(atPath: rootURL.appendingPathComponent("yarn.lock").path) {
@@ -1123,7 +1170,9 @@ public struct LocalSitePreviewService {
     return "npm"
   }
 
-  private func copyableCommand(rootPath: String, executableName: String, arguments: [String]) -> String {
+  private func copyableCommand(rootPath: String, executableName: String, arguments: [String])
+    -> String
+  {
     let command = ([executableName] + arguments).map(posixShellQuote).joined(separator: " ")
     return "cd \(posixShellQuote(rootPath)) && \(command)"
   }

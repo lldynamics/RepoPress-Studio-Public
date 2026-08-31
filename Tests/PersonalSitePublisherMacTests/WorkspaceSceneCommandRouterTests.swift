@@ -86,6 +86,25 @@ final class WorkspaceSceneCommandRouterTests: XCTestCase {
     withExtendedLifetime(cancellable) {}
   }
 
+  func testLatestMarkdownContextProvidesExternalBrowserPreviewAction() {
+    let router = WorkspaceSceneCommandRouter()
+    let owner = UUID()
+    var invocationCount = 0
+
+    router.registerMarkdownEditor(
+      makeMarkdownActions(
+        draftID: UUID(),
+        showFindReplace: {},
+        openExternalBrowserPreview: { invocationCount += 1 }
+      ),
+      owner: owner
+    )
+
+    router.markdownEditorCommandActions?.openExternalBrowserPreview()
+
+    XCTAssertEqual(invocationCount, 1)
+  }
+
   func testClearAllReleasesRootAndContextActions() {
     let router = WorkspaceSceneCommandRouter()
     router.updateRoot(
@@ -105,6 +124,11 @@ final class WorkspaceSceneCommandRouterTests: XCTestCase {
       draftFullTextSearchAction: DraftFullTextSearchAction(open: {}),
       workspaceFocusModeCommandAction: WorkspaceFocusModeCommandAction(
         isActive: false,
+        canToggle: true,
+        toggle: {}
+      ),
+      workspaceInspectorCommandAction: WorkspaceInspectorCommandAction(
+        isPresented: true,
         canToggle: true,
         toggle: {}
       ),
@@ -129,6 +153,7 @@ final class WorkspaceSceneCommandRouterTests: XCTestCase {
     XCTAssertNil(router.settingsWorkspaceCommandAction)
     XCTAssertNil(router.draftFullTextSearchAction)
     XCTAssertNil(router.workspaceFocusModeCommandAction)
+    XCTAssertNil(router.workspaceInspectorCommandAction)
     XCTAssertNil(router.repositorySourceSessionCommandActions)
     XCTAssertNil(router.markdownEditorCommandActions)
     XCTAssertNil(router.knowledgeLibraryCommandActions)
@@ -143,7 +168,8 @@ final class WorkspaceSceneCommandRouterTests: XCTestCase {
 
   private func makeMarkdownActions(
     draftID: UUID,
-    showFindReplace: @escaping () -> Void
+    showFindReplace: @escaping () -> Void,
+    openExternalBrowserPreview: @escaping () -> Void = {}
   ) -> MarkdownEditorCommandActions {
     MarkdownEditorCommandActions(
       draftID: draftID,
@@ -161,7 +187,8 @@ final class WorkspaceSceneCommandRouterTests: XCTestCase {
       runPreflight: {},
       rewriteSelection: {},
       openAIAssistant: {},
-      copyAIPrompt: {}
+      copyAIPrompt: {},
+      openExternalBrowserPreview: openExternalBrowserPreview
     )
   }
 

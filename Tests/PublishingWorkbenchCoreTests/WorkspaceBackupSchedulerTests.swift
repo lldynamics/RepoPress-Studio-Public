@@ -104,6 +104,23 @@ final class WorkspaceBackupSchedulerTests: XCTestCase {
     XCTAssertTrue(FileManager.default.fileExists(atPath: manualURL.path))
   }
 
+  func testRunBackupNowRecordsUserActorForTerminalBackupEvent() async throws {
+    let harness = try makeHarness()
+    defer { harness.cleanup() }
+    let scheduler = WorkspaceBackupScheduler(
+      store: harness.store,
+      defaults: harness.defaults,
+      defaultDestinationFolderURL: harness.injectedBackupURL
+    )
+
+    await scheduler.runBackupNow()
+
+    let operationEvent = try XCTUnwrap(harness.store.operationHistory.records.first)
+    XCTAssertEqual(harness.store.operationHistory.records.count, 1)
+    XCTAssertEqual(operationEvent.kind, .workspaceBackupCreated)
+    XCTAssertEqual(operationEvent.actor, .user)
+  }
+
   func testOffStartDoesNotScanUntilExplicitRefresh() async throws {
     let harness = try makeHarness()
     defer { harness.cleanup() }

@@ -1,7 +1,7 @@
 import Darwin
 import Foundation
 import PublishingAICore
-import PublishingWorkbenchCore
+import PublishingAgentContracts
 import XCTest
 
 @testable import PublishingMCPClient
@@ -78,6 +78,65 @@ final class PublishingMCPClientTests: XCTestCase {
     await client.disconnect()
   }
 
+  func testValidFrameFloodTimesOutAndReapsProcess() async throws {
+    let client = PublishingMCPClient(
+      configuration: try fixtureConfiguration(commandTimeoutMilliseconds: 150)
+    )
+    _ = try await client.discoverTools()
+    let identity = try await client.call(
+      remoteToolName: "echo",
+      argumentsJSON: #"{"text":"process_identity"}"#
+    )
+    let processIdentifier = try serverProcessIdentifier(from: identity.content)
+    defer { _ = Darwin.kill(processIdentifier, SIGKILL) }
+
+    let startedAt = Date()
+    do {
+      _ = try await client.call(
+        remoteToolName: "echo",
+        argumentsJSON: #"{"text":"valid_frame_flood"}"#
+      )
+      XCTFail("Expected timeout under valid-frame flood")
+    } catch let error as PublishingMCPClientError {
+      XCTAssertEqual(error, .requestTimedOut)
+    }
+    XCTAssertLessThan(Date().timeIntervalSince(startedAt), 1.5)
+    try await assertProcessExits(processIdentifier)
+    await client.disconnect()
+  }
+
+  func testDisconnectReturnsUnderValidFrameFlood() async throws {
+    let client = PublishingMCPClient(
+      configuration: try fixtureConfiguration(commandTimeoutMilliseconds: 5_000)
+    )
+    _ = try await client.discoverTools()
+    let identity = try await client.call(
+      remoteToolName: "echo",
+      argumentsJSON: #"{"text":"process_identity"}"#
+    )
+    let processIdentifier = try serverProcessIdentifier(from: identity.content)
+    defer { _ = Darwin.kill(processIdentifier, SIGKILL) }
+
+    let pendingCall = Task {
+      try await client.call(
+        remoteToolName: "echo",
+        argumentsJSON: #"{"text":"valid_frame_flood"}"#
+      )
+    }
+    try await Task.sleep(nanoseconds: 75_000_000)
+
+    let startedAt = Date()
+    await client.disconnect()
+    XCTAssertLessThan(Date().timeIntervalSince(startedAt), 1.0)
+    do {
+      _ = try await pendingCall.value
+      XCTFail("Expected the disconnected flood call to fail")
+    } catch {
+      // Closing the session may surface cancellation or a transport error.
+    }
+    try await assertProcessExits(processIdentifier)
+  }
+
   func testParentCancellationDisconnectsPendingRequest() async throws {
     let client = PublishingMCPClient(
       configuration: try fixtureConfiguration(commandTimeoutMilliseconds: 5_000)
@@ -109,6 +168,24 @@ final class PublishingMCPClientTests: XCTestCase {
     let large = try await client.call(remoteToolName: "echo", argumentsJSON: #"{"text":"large"}"#)
     XCTAssertTrue(large.isError)
     XCTAssertEqual(large.content, "External MCP tool returned more content than allowed.")
+    await client.disconnect()
+  }
+
+  func testLargeValidFrameSurvivesRelayPartialWrites() async throws {
+    let client = PublishingMCPClient(
+      configuration: try fixtureConfiguration(
+        maximumOutputByteCount: 128 * 1_024,
+        maximumRawMessageByteCount: 160 * 1_024
+      )
+    )
+    _ = try await client.discoverTools()
+    let result = try await client.call(
+      remoteToolName: "echo",
+      argumentsJSON: #"{"text":"large_valid_frame"}"#
+    )
+    XCTAssertFalse(result.isError)
+    XCTAssertEqual(result.content.utf8.count, 96 * 1_024)
+    XCTAssertTrue(result.content.allSatisfy { $0 == "x" })
     await client.disconnect()
   }
 
@@ -157,6 +234,81 @@ final class PublishingMCPClientTests: XCTestCase {
     await client.disconnect()
   }
 
+  func testStdioSessionReconnectResetsFrameLimitGeneration() async throws {
+    let session = PublishingMCPStdioSession(
+      configuration: try fixtureConfiguration(
+        commandTimeoutMilliseconds: 500,
+        maximumInputByteCount: 512,
+        maximumOutputByteCount: 128,
+        maximumRawMessageByteCount: 512
+      )
+    )
+    try await session.connect()
+    _ = try await session.listTools()
+    do {
+      _ = try await session.call(
+        remoteToolName: "echo",
+        argumentsJSON: #"{"text":"raw_frame"}"#
+      )
+      XCTFail("Expected raw frame rejection")
+    } catch let error as PublishingMCPClientError {
+      XCTAssertEqual(error, .outputLimitExceeded)
+    }
+    await session.close()
+
+    try await session.connect()
+    let tools = try await session.listTools()
+    XCTAssertEqual(tools.map(\.remoteName), ["echo"])
+    await session.close()
+  }
+
+  func testFrameRelayStopReturnsWhenDownstreamPipeIsFull() async throws {
+    let inputPipe = Pipe()
+    let outputPipe = Pipe()
+    let outputDescriptor = outputPipe.fileHandleForWriting.fileDescriptor
+    let originalFlags = Darwin.fcntl(outputDescriptor, F_GETFL)
+    XCTAssertGreaterThanOrEqual(originalFlags, 0)
+    XCTAssertGreaterThanOrEqual(
+      Darwin.fcntl(outputDescriptor, F_SETFL, originalFlags | O_NONBLOCK),
+      0
+    )
+
+    let fillChunk = [UInt8](repeating: 0x66, count: 16 * 1_024)
+    var filledByteCount = 0
+    while true {
+      let bytesWritten = fillChunk.withUnsafeBytes { buffer in
+        Darwin.write(outputDescriptor, buffer.baseAddress, buffer.count)
+      }
+      if bytesWritten > 0 {
+        filledByteCount += bytesWritten
+        continue
+      }
+      XCTAssertEqual(bytesWritten, -1)
+      XCTAssertTrue(errno == EAGAIN || errno == EWOULDBLOCK)
+      break
+    }
+    XCTAssertGreaterThan(filledByteCount, 0)
+    XCTAssertGreaterThanOrEqual(
+      Darwin.fcntl(outputDescriptor, F_SETFL, originalFlags),
+      0
+    )
+
+    let relay = PublishingMCPFrameRelay(
+      input: inputPipe.fileHandleForReading,
+      output: outputPipe.fileHandleForWriting,
+      maximumFrameByteCount: 1_024
+    )
+    relay.start()
+    try inputPipe.fileHandleForWriting.write(contentsOf: Data("{\"ok\":true}\n".utf8))
+    try await Task.sleep(nanoseconds: 75_000_000)
+
+    let startedAt = Date()
+    relay.stop()
+    XCTAssertLessThan(Date().timeIntervalSince(startedAt), 0.5)
+    inputPipe.fileHandleForWriting.closeFile()
+    outputPipe.fileHandleForReading.closeFile()
+  }
+
   func testDiscoveryRejectsSchemaOverConfiguredLimit() async throws {
     let client = PublishingMCPClient(
       configuration: try fixtureConfiguration(maximumInputByteCount: 8)
@@ -186,17 +338,17 @@ final class PublishingMCPClientTests: XCTestCase {
     let call = AIToolCall(id: "call-1", function: .init(name: name, arguments: #"{"text":"one"}"#))
     let invocation = try registry.prepare(
       call: call,
-      context: WorkbenchAIAgentContext(goal: "test")
+      context: AIAgentToolContext(goal: "test")
     )
-    XCTAssertEqual(invocation.externalToolBinding?.sourceID, configuration.sourceID)
-    XCTAssertEqual(invocation.externalToolBinding?.argumentsJSON, #"{"text":"one"}"#)
+    XCTAssertEqual(invocation.externalToolBinding.sourceID, configuration.sourceID)
+    XCTAssertEqual(invocation.externalToolBinding.argumentsJSON, #"{"text":"one"}"#)
 
     XCTAssertThrowsError(
       try registry.revalidate(
         invocation: invocation,
         matching: AIToolCall(
           id: "call-1", function: .init(name: name, arguments: #"{"text":"two"}"#)),
-        context: WorkbenchAIAgentContext(goal: "test")
+        context: AIAgentToolContext(goal: "test")
       )
     )
   }
@@ -218,12 +370,12 @@ final class PublishingMCPClientTests: XCTestCase {
           arguments: #"{"text":"hello"}"#
         )
       ),
-      context: WorkbenchAIAgentContext(goal: "allowed")
+      context: AIAgentToolContext(goal: "allowed")
     )
     let allowed = try await executor.execute(invocation)
     XCTAssertEqual(allowed.content, "hello")
 
-    let forged = WorkbenchAIAgentToolInvocation(
+    let forged = AIAgentExternalToolInvocation(
       toolCallID: "forged",
       toolID: PublishingMCPToolRegistry.toolID(
         sourceID: configuration.sourceID,
@@ -586,6 +738,28 @@ final class PublishingMCPClientTests: XCTestCase {
     await client.disconnect()
   }
 
+  private func serverProcessIdentifier(from identity: String) throws -> pid_t {
+    let processIdentifier = identity.split(separator: ",").compactMap { component -> pid_t? in
+      let pair = component.split(separator: ":", maxSplits: 1)
+      guard pair.count == 2, pair[0] == "pid" else { return nil }
+      return pid_t(pair[1])
+    }.first
+    return try XCTUnwrap(processIdentifier)
+  }
+
+  private func assertProcessExits(
+    _ processIdentifier: pid_t,
+    timeout: TimeInterval = 2
+  ) async throws {
+    let deadline = Date().addingTimeInterval(timeout)
+    while Darwin.kill(processIdentifier, 0) == 0, Date() < deadline {
+      try await Task.sleep(nanoseconds: 50_000_000)
+    }
+    errno = 0
+    XCTAssertEqual(Darwin.kill(processIdentifier, 0), -1)
+    XCTAssertEqual(errno, ESRCH)
+  }
+
   private func fixtureConfiguration(
     sourceRevision: String = "fixture-v1",
     configurationDigest: String = "fixture-config-v1",
@@ -702,11 +876,11 @@ private actor PublishingMCPControlledSession: PublishingMCPClientSession {
   func call(
     remoteToolName _: String,
     argumentsJSON _: String
-  ) async throws -> WorkbenchAIAgentToolResult {
+  ) async throws -> AIAgentToolResult {
     if failure == .call {
       try await suspendThenFail()
     }
-    return WorkbenchAIAgentToolResult(content: "ok", isError: false)
+    return AIAgentToolResult(content: "ok", isError: false)
   }
 
   func close() async {}

@@ -31,6 +31,12 @@ extension WorkbenchDataRootMigrationTests {
       sourceLayout: sourceLayout,
       destinationLayout: destinationLayout
     )
+    try verifyOperationLedgerCopy(
+      source: source,
+      destination: destination,
+      sourceLayout: sourceLayout,
+      destinationLayout: destinationLayout
+    )
 
     let recoveryRecords = try DraftRecoveryJournal(
       fileURL: destination.draftRecoveryJournalURL
@@ -46,6 +52,32 @@ extension WorkbenchDataRootMigrationTests {
       == regularFileMap(in: source.imageOptimizationDirectoryURL))
     #expect(try quarantineFileMap(in: destinationLayout.rootURL)
       == quarantineFileMap(in: sourceLayout.rootURL))
+  }
+
+  func verifyOperationLedgerCopy(
+    source: WorkbenchPersistence,
+    destination: WorkbenchPersistence,
+    sourceLayout: WorkbenchDataRootLayout,
+    destinationLayout: WorkbenchDataRootLayout
+  ) throws {
+    let sourceLedger = WorkbenchOperationLedgerPersistence(
+      fileURL: source.operationLedgerURL
+    )
+    let destinationLedger = WorkbenchOperationLedgerPersistence(
+      fileURL: destination.operationLedgerURL
+    )
+    #expect(
+      try Data(contentsOf: destinationLedger.fileURL)
+        == Data(contentsOf: sourceLedger.fileURL))
+    #expect(
+      try Data(contentsOf: destinationLedger.lastKnownGoodURL)
+        == Data(contentsOf: sourceLedger.lastKnownGoodURL))
+
+    let quarantineName = "workbench.operation-log.unreadable-fixture.json"
+    #expect(
+      try Data(contentsOf: destinationLayout.rootURL.appendingPathComponent(quarantineName))
+        == Data(contentsOf: sourceLayout.rootURL.appendingPathComponent(quarantineName))
+    )
   }
 
   func verifyLastKnownGoodAttachmentPaths(

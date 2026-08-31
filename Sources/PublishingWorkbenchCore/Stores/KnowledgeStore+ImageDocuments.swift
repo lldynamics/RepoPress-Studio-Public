@@ -4,9 +4,9 @@ import Foundation
 extension KnowledgeStore {
   /// Resolves the selected revision's managed original for image preview or
   /// insertion. No external source URL is consulted.
-  public func originalFileURL(documentID: UUID) -> URL? {
+  public func originalFileURL(documentID: UUID) async -> URL? {
     do {
-      return try service.originalFileURL(documentID: documentID)
+      return try await service.originalFileURLAsync(documentID: documentID)
     } catch {
       return nil
     }

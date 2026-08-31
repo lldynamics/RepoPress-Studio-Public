@@ -12,6 +12,7 @@ import Foundation
 public final class DraftListStore: ObservableObject {
   private unowned let store: WorkbenchStore
   private var cancellables = Set<AnyCancellable>()
+  let presentationDidChange = CurrentValueSubject<UInt64, Never>(0)
 
   public private(set) var presentationRevision: UInt64 = 0
   public private(set) var taskQueueStateVersion = 0
@@ -125,6 +126,7 @@ public final class DraftListStore: ObservableObject {
     let synchronizationGeneration = presentationInputSynchronizationGeneration
     objectWillChange.send()
     presentationRevision &+= 1
+    presentationDidChange.send(presentationRevision)
     searchIndexCache.removeAll(keepingCapacity: true)
     // If no explicit Workbench boundary follows this publisher event (privacy
     // settings and navigation can take that path), synchronize after willSet
@@ -158,6 +160,7 @@ public final class DraftListStore: ObservableObject {
       lastPresentationInput = input
       objectWillChange.send()
       presentationRevision &+= 1
+      presentationDidChange.send(presentationRevision)
       taskQueueStateVersion += 1
       searchIndexCache.removeAll(keepingCapacity: true)
       return

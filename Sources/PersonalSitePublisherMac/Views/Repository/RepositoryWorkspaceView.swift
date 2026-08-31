@@ -6,6 +6,7 @@ struct RepositoryWorkspaceView: View {
   let store: WorkbenchStore
   @ObservedObject private var workspaceObservation:
     WorkbenchRepositoryWorkspaceObservationFacade
+  @StateObject var externalBrowserPreviewCoordinator: ExternalBrowserPreviewCoordinator
   @Binding var stage: RepositoryContextStage
   @Binding var changedFileSelection: RepositoryChangedFileSelection?
   @ObservedObject var sourceSession: RepositoryHTMLSourceSession
@@ -28,6 +29,9 @@ struct RepositoryWorkspaceView: View {
     self.store = store
     _workspaceObservation = ObservedObject(
       wrappedValue: store.repositoryWorkspaceObservation
+    )
+    _externalBrowserPreviewCoordinator = StateObject(
+      wrappedValue: ExternalBrowserPreviewCoordinator(store: store)
     )
     _stage = stage
     _changedFileSelection = changedFileSelection
@@ -91,6 +95,13 @@ struct RepositoryWorkspaceView: View {
       if changedFileSelection != reconciled {
         changedFileSelection = reconciled
       }
+    }
+    .externalBrowserPreviewPresentation(coordinator: externalBrowserPreviewCoordinator)
+    .onChange(of: store.activeProfileID) {
+      externalBrowserPreviewCoordinator.cancelPendingOpen()
+    }
+    .onDisappear {
+      externalBrowserPreviewCoordinator.cancelPendingOpen()
     }
   }
 

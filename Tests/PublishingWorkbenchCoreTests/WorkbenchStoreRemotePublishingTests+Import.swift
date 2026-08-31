@@ -63,6 +63,13 @@ final class WorkbenchStoreRemotePublishingImportTests: WorkbenchStoreRemotePubli
 
     XCTAssertEqual(summary.insertedCount, 1)
     XCTAssertEqual(summary.updatedCount, 0)
+    let operationEvent = try XCTUnwrap(store.operationHistory.records.first)
+    XCTAssertEqual(store.operationHistory.records.count, 1)
+    XCTAssertEqual(operationEvent.kind, .remoteContentImport)
+    XCTAssertEqual(operationEvent.outcome, .succeeded)
+    XCTAssertEqual(operationEvent.actor, .user)
+    XCTAssertEqual(operationEvent.profileID, profile.id)
+    XCTAssertEqual(operationEvent.createdItemCount, 1)
     let imported = try XCTUnwrap(
       store.drafts.first { $0.repositoryPath == "content/posts/remote-draft.md" })
     XCTAssertEqual(imported.title, "Remote Draft")

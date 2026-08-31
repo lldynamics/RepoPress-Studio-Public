@@ -82,7 +82,21 @@ def main() -> int:
     assert len(batches) == 2 and sum(batch.test_count for batch in batches) == 4, batches
     assert batches[0].suites == ("FirstSuite", "SecondSuite"), batches
     assert "--build-tests" in gate.coverage_build_command("swift", Path("/tmp/a"), Path("/tmp/b"))
+    assert "--skip-build" in gate.coverage_batch_command(
+        "swift", Path("/tmp/a"), Path("/tmp/b"), batches[0]
+    )
     assert gate.coverage_batch_retries({}) == 1
+
+    # The timeout path captures an actual xctest descendant, rather than only
+    # assuming the `swift test` wrapper process is enough to kill.
+    captured = gate.xctest_pids_from_process_rows(100, [
+        "100 1 /usr/bin/swift test",
+        "101 100 /bin/sh runner",
+        "102 101 /tmp/Tests.xctest/Contents/MacOS/Tests",
+        "103 102 helper",
+        "104 100 /usr/bin/log",
+    ])
+    assert captured == {102}, captured
 
     assert parse_unified_zero_diff(
         "+++ b/Sources/A/F.swift\n@@ -2,2 +2,3 @@\n-x\n+y\n+z\n+++ b/Sources/A/G.swift\n@@ -1 +0,0 @@\n-x\n"
@@ -104,6 +118,17 @@ def main() -> int:
     )
     assert (changed_covered, changed_count) == (1, 2)
     assert unmatched == [] and no_executable == []
+
+    compiled_declaration = Path("/fixture/Sources/TargetA/CompiledDeclaration.swift")
+    changed_covered, changed_count, _files, unmatched, no_executable = gate.changed_source_line_coverage(
+        Path("/fixture"),
+        {"Sources/TargetA/CompiledDeclaration.swift": {1}},
+        {},
+        {compiled_declaration},
+    )
+    assert (changed_covered, changed_count) == (0, 0)
+    assert unmatched == []
+    assert no_executable == ["Sources/TargetA/CompiledDeclaration.swift"]
 
     with tempfile.TemporaryDirectory(prefix="swift-coverage-gate.") as temporary:
         fixture = Path(temporary)
@@ -168,6 +193,42 @@ def main() -> int:
             "Sources/TargetA/Missing.swift"
         ], missing_result
         missing_path.unlink()
+
+        compiled_only_path = fixture / "Sources" / "TargetA" / "CompiledOnly.swift"
+        compiled_only_path.write_text("struct CompiledOnly {}\n", encoding="utf-8")
+        build_description = fixture / "description.json"
+        build_description.write_text(
+            json.dumps(
+                {
+                    "swiftCommands": {
+                        "TargetA": {
+                            "sources": [
+                                str(fixture / "Sources" / "TargetA" / "Feature.swift"),
+                                str(no_executable_path),
+                                str(compiled_only_path),
+                            ]
+                        },
+                        "TargetB": {
+                            "sources": [str(fixture / "Sources" / "TargetB" / "Feature.swift")]
+                        },
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+        compiled_only_accepted = subprocess.run(
+            command + ["--swift-build-description", str(build_description)],
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        assert compiled_only_accepted.returncode == 0, compiled_only_accepted.stderr
+        compiled_only_result = json.loads(result_path.read_text(encoding="utf-8"))
+        assert compiled_only_result["changedExecutableSourceLines"]["unmatchedChangedSourceFiles"] == []
+        assert "Sources/TargetA/CompiledOnly.swift" in compiled_only_result[
+            "changedExecutableSourceLines"
+        ]["noExecutableChangedLineFiles"]
+        compiled_only_path.unlink()
 
         baseline_path.write_text(json.dumps(baseline(changed_minimum=100)), encoding="utf-8")
         uncovered = subprocess.run(command, text=True, capture_output=True, check=False)

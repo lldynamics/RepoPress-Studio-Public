@@ -29,7 +29,9 @@ struct KnowledgeImageDataThumbnailView: View {
     }
     .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
     .task(id: requestID) {
-      image = await Self.decodeThumbnail(data: data, maximumPixelSize: 160)
+      let decoded = await Self.decodeThumbnail(data: data, maximumPixelSize: 160)
+      guard !Task.isCancelled else { return }
+      image = decoded
     }
   }
 
@@ -37,7 +39,7 @@ struct KnowledgeImageDataThumbnailView: View {
     data: Data,
     maximumPixelSize: Int
   ) async -> KnowledgeDecodedImage? {
-    await Task.detached(priority: .utility) {
+    let decodingTask = Task.detached(priority: .utility) { () -> KnowledgeDecodedImage? in
       guard !Task.isCancelled,
         let source = CGImageSourceCreateWithData(
           data as CFData,
@@ -55,7 +57,12 @@ struct KnowledgeImageDataThumbnailView: View {
         !Task.isCancelled
       else { return nil }
       return KnowledgeDecodedImage(value: image)
-    }.value
+    }
+    return await withTaskCancellationHandler {
+      await decodingTask.value
+    } onCancel: {
+      decodingTask.cancel()
+    }
   }
 }
 
@@ -82,10 +89,18 @@ struct KnowledgeDocumentThumbnailView: View {
     }
     .frame(width: 38, height: 38)
     .accessibilityHidden(true)
-    .task(id: document.currentRevisionID) {
-      fileURL = knowledge.originalFileURL(documentID: document.id)
+    .task(id: ThumbnailRequestID(documentID: document.id, revisionID: document.currentRevisionID)) {
+      fileURL = nil
+      let resolvedURL = await knowledge.originalFileURL(documentID: document.id)
+      guard !Task.isCancelled else { return }
+      fileURL = resolvedURL
     }
   }
+}
+
+private struct ThumbnailRequestID: Hashable {
+  let documentID: UUID
+  let revisionID: UUID?
 }
 
 struct KnowledgeImageDocumentView: View {
@@ -98,6 +113,7 @@ struct KnowledgeImageDocumentView: View {
   @State private var isLoading = true
   @State private var zoom: CGFloat = 1
   @State private var gestureStartZoom: CGFloat = 1
+  @State private var viewportRevision = 0
 
   var body: some View {
     VStack(alignment: .leading, spacing: 14) {
@@ -128,15 +144,9 @@ struct KnowledgeImageDocumentView: View {
         }
       }
       .frame(minHeight: 360, idealHeight: 520, maxHeight: 680)
-      .clipped()
       .accessibilityElement(children: .ignore)
       .accessibilityLabel(imageAccessibilityLabel)
       .accessibilityValue(imageAccessibilityValue)
-      .onDrag {
-        guard let imageURL else { return NSItemProvider() }
-        return NSItemProvider(contentsOf: imageURL)
-          ?? NSItemProvider(object: imageURL as NSURL)
-      }
 
       GroupBox(String(localized: "本机 OCR 文字")) {
         if ocrText.trimmedForPublishing.isEmpty {
@@ -154,11 +164,12 @@ struct KnowledgeImageDocumentView: View {
       }
     }
     .task(id: imageURL) {
-      await loadImage()
+      await loadImage(requestURL: imageURL)
     }
     .onChange(of: highlightedAnchor) { _, _ in
       zoom = 1
       gestureStartZoom = 1
+      viewportRevision &+= 1
     }
   }
 
@@ -193,13 +204,13 @@ struct KnowledgeImageDocumentView: View {
         .font(.headline)
       Spacer()
       Button {
-        zoom = max(0.5, zoom - 0.25)
+        zoom = KnowledgeImageViewportPolicy.clampedZoom(zoom - 0.25)
         gestureStartZoom = zoom
       } label: {
         Label("缩小", systemImage: "minus.magnifyingglass")
       }
       .labelStyle(.iconOnly)
-      .disabled(image == nil || zoom <= 0.5)
+      .disabled(image == nil || zoom <= KnowledgeImageViewportPolicy.minimumZoom)
 
       Text("\(Int((zoom * 100).rounded()))%")
         .font(.caption.monospacedDigit())
@@ -207,13 +218,13 @@ struct KnowledgeImageDocumentView: View {
         .frame(minWidth: 40)
 
       Button {
-        zoom = min(4, zoom + 0.25)
+        zoom = KnowledgeImageViewportPolicy.clampedZoom(zoom + 0.25)
         gestureStartZoom = zoom
       } label: {
         Label("放大", systemImage: "plus.magnifyingglass")
       }
       .labelStyle(.iconOnly)
-      .disabled(image == nil || zoom >= 4)
+      .disabled(image == nil || zoom >= KnowledgeImageViewportPolicy.maximumZoom)
 
       Button("适合") {
         zoom = 1
@@ -243,6 +254,18 @@ struct KnowledgeImageDocumentView: View {
         Label("更多图片操作", systemImage: "ellipsis.circle")
       }
       .disabled(imageURL == nil)
+
+      if let imageURL {
+        Button {
+          NSWorkspace.shared.open(imageURL)
+        } label: {
+          Label("拖出图片文件", systemImage: "hand.draw")
+        }
+        .onDrag {
+          NSItemProvider(contentsOf: imageURL) ?? NSItemProvider(object: imageURL as NSURL)
+        }
+        .accessibilityLabel("拖出图片文件到其他应用")
+      }
     }
   }
 
@@ -253,42 +276,57 @@ struct KnowledgeImageDocumentView: View {
         imageSize: CGSize(width: decodedImage.width, height: decodedImage.height),
         in: canvasSize
       )
-      ZStack(alignment: .topLeading) {
-        Image(decorative: decodedImage, scale: 1)
-          .resizable()
-          .scaledToFit()
-          .frame(width: canvasSize.width, height: canvasSize.height)
+      let scaledSize = CGSize(width: fittedRect.width * zoom, height: fittedRect.height * zoom)
+      let contentSize = KnowledgeImageViewportPolicy.contentSize(
+        imageSize: CGSize(width: decodedImage.width, height: decodedImage.height),
+        viewportSize: canvasSize,
+        zoom: zoom
+      )
+      ScrollView([.horizontal, .vertical], showsIndicators: true) {
+        ZStack(alignment: .topLeading) {
+          Image(decorative: decodedImage, scale: 1)
+            .resizable()
+            .frame(width: scaledSize.width, height: scaledSize.height)
 
-        if let highlightedAnchor {
-          RoundedRectangle(cornerRadius: 4, style: .continuous)
-            .fill(Color.accentColor.opacity(0.16))
-            .overlay {
-              RoundedRectangle(cornerRadius: 4, style: .continuous)
-                .stroke(Color.accentColor, lineWidth: 3)
-            }
-            .frame(
-              width: fittedRect.width * CGFloat(highlightedAnchor.width),
-              height: fittedRect.height * CGFloat(highlightedAnchor.height)
-            )
-            .offset(
-              x: fittedRect.minX + fittedRect.width * CGFloat(highlightedAnchor.x),
-              y: fittedRect.minY
-                + fittedRect.height
-                * CGFloat(1 - highlightedAnchor.y - highlightedAnchor.height)
-            )
-            .accessibilityHidden(true)
+          if let highlightedAnchor {
+            RoundedRectangle(cornerRadius: 4, style: .continuous)
+              .fill(Color.accentColor.opacity(0.16))
+              .overlay {
+                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                  .stroke(Color.accentColor, lineWidth: 3)
+              }
+              .frame(
+                width: scaledSize.width * CGFloat(highlightedAnchor.width),
+                height: scaledSize.height * CGFloat(highlightedAnchor.height)
+              )
+              .offset(
+                x: scaledSize.width * CGFloat(highlightedAnchor.x),
+                y: scaledSize.height
+                  * CGFloat(1 - highlightedAnchor.y - highlightedAnchor.height)
+              )
+              .accessibilityHidden(true)
+          }
         }
+        .frame(
+          width: contentSize.width,
+          height: contentSize.height,
+          alignment: .center
+        )
+        .id(viewportRevision)
       }
-      .scaleEffect(zoom)
-      .frame(width: canvasSize.width, height: canvasSize.height)
+      .background(Color.clear)
       .contentShape(Rectangle())
       .gesture(
         MagnificationGesture()
           .onChanged { value in
-            zoom = min(4, max(0.5, gestureStartZoom * value))
+            zoom = KnowledgeImageViewportPolicy.clampedZoom(gestureStartZoom * value)
           }
           .onEnded { _ in gestureStartZoom = zoom }
       )
+      .onChange(of: proxy.size) { _, _ in
+        // Recreate the viewport so a resize never leaves an unreachable offset.
+        viewportRevision &+= 1
+      }
     }
   }
 
@@ -307,25 +345,30 @@ struct KnowledgeImageDocumentView: View {
   }
 
   @MainActor
-  private func loadImage() async {
+  private func loadImage(requestURL: URL?) async {
     image = nil
-    guard let imageURL else {
+    guard let requestURL else {
       isLoading = false
       return
     }
     isLoading = true
-    let result: KnowledgeDecodedImage? = await Task.detached(priority: .userInitiated) {
+    let decodeTask = Task.detached(priority: .userInitiated) {
       () -> KnowledgeDecodedImage? in
       guard !Task.isCancelled,
         let decoded = WorkbenchImageIOThumbnailDecoder.downsampledImage(
-          at: imageURL,
+          at: requestURL,
           maxPixelSize: WorkbenchThumbnailRequest.maximumPixelSize
         ),
         !Task.isCancelled
       else { return nil }
       return KnowledgeDecodedImage(value: decoded)
-    }.value
-    guard !Task.isCancelled else { return }
+    }
+    let result = await withTaskCancellationHandler {
+      await decodeTask.value
+    } onCancel: {
+      decodeTask.cancel()
+    }
+    guard !Task.isCancelled, imageURL == requestURL else { return }
     image = result
     isLoading = false
   }

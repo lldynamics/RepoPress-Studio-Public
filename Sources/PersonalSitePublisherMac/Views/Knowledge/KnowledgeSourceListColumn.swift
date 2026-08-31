@@ -113,7 +113,7 @@ struct KnowledgeSourceListColumn: View {
           ),
           role: .destructive
         ) {
-          knowledge.deleteFolder(id: folderPendingDeletion.id)
+          Task { await knowledge.deleteFolder(id: folderPendingDeletion.id) }
           self.folderPendingDeletion = nil
         }
       }

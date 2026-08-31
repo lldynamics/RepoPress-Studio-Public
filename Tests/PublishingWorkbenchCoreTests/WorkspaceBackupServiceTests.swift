@@ -2,6 +2,208 @@ import XCTest
 @testable import PublishingWorkbenchCore
 
 final class WorkspaceBackupServiceTests: XCTestCase {
+  func testCancellationAfterBackupCommitStillReturnsCommittedPreview() async throws {
+    let rootURL = try TestWorkbenchFactory.temporaryDirectoryURL(prefix: "WorkspaceBackupCommit")
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let profile = SiteProfile.defaultProfile
+    let snapshot = WorkbenchSnapshot(
+      profiles: [profile],
+      activeProfileID: profile.id,
+      drafts: [],
+      releaseRecords: []
+    )
+    let destinationURL = rootURL.appendingPathComponent("committed.psworkspacebackup")
+    let commitGate = WorkspaceBackupCommitGate()
+    let service = WorkspaceBackupService(
+      restoreMutationHook: { _ in },
+      backupCommitHook: {
+        commitGate.signalCommitted()
+        commitGate.waitUntilTestReleasesCommit()
+      }
+    )
+    let worker = Task.detached {
+      try service.createBackup(
+        at: destinationURL,
+        snapshot: snapshot,
+        knowledgeRootURL: rootURL.appendingPathComponent("KnowledgeLibrary"),
+        applicationVersion: "test"
+      )
+    }
+
+    XCTAssertTrue(commitGate.waitForCommit(timeout: 2))
+    worker.cancel()
+    commitGate.releaseCommit()
+    let result = await worker.result
+    guard case .success(let preview) = result else {
+      return XCTFail("committed backup must not be reclassified as cancellation")
+    }
+    XCTAssertEqual(preview.backupURL, destinationURL)
+    XCTAssertTrue(FileManager.default.fileExists(atPath: destinationURL.path))
+    XCTAssertEqual(
+      try temporaryEntries(in: rootURL, prefix: ".committed.psworkspacebackup.creating-"), [])
+  }
+
+  func testCancelledBackupCleansTemporaryPackageAndDoesNotReplaceDestination() async throws {
+    let rootURL = try TestWorkbenchFactory.temporaryDirectoryURL(prefix: "WorkspaceBackupCancel")
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let sourceURL = rootURL.appendingPathComponent("source-image.png")
+    try Data(repeating: 0xD2, count: 4 * 1_024 * 1_024).write(to: sourceURL)
+    let snapshot = makeCancellationSnapshot(sourceURL: sourceURL)
+    let destinationURL = rootURL.appendingPathComponent("existing.psworkspacebackup")
+    try FileManager.default.createDirectory(at: destinationURL, withIntermediateDirectories: true)
+    let sentinelURL = destinationURL.appendingPathComponent("sentinel.txt")
+    try Data("preserve destination".utf8).write(to: sentinelURL)
+
+    let copyGate = WorkspaceBackupCopyGate()
+    let service = WorkspaceBackupService(
+      fileManager: .default,
+      restoreMutationHook: { _ in },
+      fileCopyProgressHook: { _, copiedByteCount in
+        if copiedByteCount > 0 {
+          copyGate.signalCopyStarted()
+          copyGate.waitUntilCancellationIsForwarded()
+        }
+      }
+    )
+    let worker = Task.detached {
+      try service.createBackup(
+        at: destinationURL,
+        snapshot: snapshot,
+        knowledgeRootURL: rootURL.appendingPathComponent("KnowledgeLibrary"),
+        applicationVersion: "test"
+      )
+    }
+
+    XCTAssertTrue(copyGate.waitForCopyStart(timeout: 2))
+    let cancellationStartedAt = Date()
+    worker.cancel()
+    copyGate.allowCancellationToProceed()
+    let result = await worker.result
+    guard case .failure(let error) = result else {
+      return XCTFail("cancelled backup unexpectedly succeeded")
+    }
+    XCTAssertTrue(error is CancellationError)
+    XCTAssertLessThan(Date().timeIntervalSince(cancellationStartedAt), 1)
+    XCTAssertEqual(try Data(contentsOf: sentinelURL), Data("preserve destination".utf8))
+    XCTAssertEqual(
+      try temporaryEntries(in: rootURL, prefix: ".existing.psworkspacebackup.creating-"), [])
+  }
+
+  func testCancelledStageRestoreCleansTemporaryContentAndLeavesPendingDestination() async throws {
+    let rootURL = try TestWorkbenchFactory.temporaryDirectoryURL(prefix: "WorkspaceStageCancel")
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let sourceFileURL = rootURL.appendingPathComponent("source-image.png")
+    try Data(repeating: 0xE1, count: 4 * 1_024 * 1_024).write(to: sourceFileURL)
+    let snapshot = makeCancellationSnapshot(sourceURL: sourceFileURL)
+    let archiveURL = rootURL.appendingPathComponent("source.psworkspacebackup")
+    _ = try WorkspaceBackupService().createBackup(
+      at: archiveURL,
+      snapshot: snapshot,
+      knowledgeRootURL: rootURL.appendingPathComponent("SourceKnowledgeLibrary"),
+      applicationVersion: "test"
+    )
+    let persistenceURL = rootURL.appendingPathComponent("workbench.json")
+    let pendingURL = WorkspaceBackupService.pendingRestoreURL(for: persistenceURL)
+    try FileManager.default.createDirectory(at: pendingURL, withIntermediateDirectories: true)
+    let sentinelURL = pendingURL.appendingPathComponent("sentinel.txt")
+    try Data("preserve pending".utf8).write(to: sentinelURL)
+
+    let copyGate = WorkspaceBackupCopyGate()
+    let service = WorkspaceBackupService(
+      fileManager: .default,
+      restoreMutationHook: { _ in },
+      fileCopyProgressHook: { _, copiedByteCount in
+        if copiedByteCount > 0 {
+          copyGate.signalCopyStarted()
+          copyGate.waitUntilCancellationIsForwarded()
+        }
+      }
+    )
+    let worker = Task.detached {
+      try service.stageRestore(from: archiveURL, persistenceFileURL: persistenceURL)
+    }
+
+    XCTAssertTrue(copyGate.waitForCopyStart(timeout: 2))
+    let cancellationStartedAt = Date()
+    worker.cancel()
+    copyGate.allowCancellationToProceed()
+    let result = await worker.result
+    guard case .failure(let error) = result else {
+      return XCTFail("cancelled restore staging unexpectedly succeeded")
+    }
+    XCTAssertTrue(error is CancellationError)
+    XCTAssertLessThan(Date().timeIntervalSince(cancellationStartedAt), 1)
+    XCTAssertEqual(try Data(contentsOf: sentinelURL), Data("preserve pending".utf8))
+    XCTAssertEqual(try temporaryEntries(in: rootURL, prefix: ".WorkspaceBackupPendingRestore-"), [])
+  }
+
+  @MainActor
+  func testCancelledStoreBackupRecordsCancelledOperation() async throws {
+    let rootURL = try TestWorkbenchFactory.temporaryDirectoryURL(prefix: "WorkspaceStoreCancel")
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let persistence = WorkbenchPersistence(
+      fileURL: rootURL.appendingPathComponent("workbench.json"))
+    let store = WorkbenchStore(
+      persistence: persistence,
+      knowledgeLibraryService: KnowledgeLibraryService(
+        rootURL: rootURL.appendingPathComponent("KnowledgeLibrary")
+      )
+    )
+    let destinationURL = rootURL.appendingPathComponent("cancelled.psworkspacebackup")
+    let worker = Task { @MainActor in
+      await store.createWorkspaceBackup(at: destinationURL, applicationVersion: "test")
+    }
+    worker.cancel()
+    let preview = await worker.value
+    XCTAssertNil(preview)
+    _ = await store.operationHistory.flush()
+
+    let event = try XCTUnwrap(
+      store.operationHistory.records.first {
+        $0.kind == .workspaceBackupCreated
+      })
+    XCTAssertEqual(event.outcome, .cancelled)
+    XCTAssertFalse(FileManager.default.fileExists(atPath: destinationURL.path))
+  }
+
+  @MainActor
+  func testStoreBackupFlushesOperationHistoryBeforeFreezingLedger() async throws {
+    let rootURL = try TestWorkbenchFactory.temporaryDirectoryURL(
+      prefix: "WorkspaceBackupFlushLedger"
+    )
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let persistence = WorkbenchPersistence(
+      fileURL: rootURL.appendingPathComponent("workbench.json")
+    )
+    let store = WorkbenchStore(
+      persistence: persistence,
+      knowledgeLibraryService: KnowledgeLibraryService(
+        rootURL: rootURL.appendingPathComponent("KnowledgeLibrary")
+      )
+    )
+    let record = WorkbenchOperationEventRecord(
+      kind: .workspaceRestorePrepared,
+      outcome: .succeeded
+    )
+    XCTAssertTrue(store.recordOperationEvent(record))
+
+    let archiveURL = rootURL.appendingPathComponent("workspace.psworkspacebackup")
+    let preview = await store.createWorkspaceBackup(
+      at: archiveURL,
+      applicationVersion: "test"
+    )
+
+    XCTAssertNotNil(preview)
+    let archivedDocument = try WorkbenchOperationLedgerPersistence.decodedDocument(
+      from: Data(
+        contentsOf: archiveURL.appendingPathComponent(
+          WorkspaceBackupService.operationHistoryRelativePath
+        )
+      )
+    )
+    XCTAssertTrue(archivedDocument.records.contains { $0.id == record.id })
+  }
+
   func testBackupIncludesWorkspaceStateAndDoesNotEmbedSourceAbsolutePaths() throws {
     let rootURL = try TestWorkbenchFactory.temporaryDirectoryURL(prefix: "WorkspaceBackup")
     defer { try? FileManager.default.removeItem(at: rootURL) }
@@ -329,7 +531,7 @@ final class WorkspaceBackupServiceTests: XCTestCase {
       )
     }
 
-    XCTAssertEqual(created.formatVersion, WorkspaceBackupManifest.currentFormatVersion)
+    XCTAssertEqual(created.formatVersion, 2)
     let rssComponent = try XCTUnwrap(
       created.components.first { $0.component == .rssReader }
     )
@@ -402,6 +604,108 @@ final class WorkspaceBackupServiceTests: XCTestCase {
     XCTAssertEqual(try Data(contentsOf: restoredMediaURL), Data([0x89, 0x50, 0x4E, 0x47]))
   }
 
+  func testV3BackupRestoresOperationHistoryWithoutMixingTargetLedger() throws {
+    let rootURL = try TestWorkbenchFactory.temporaryDirectoryURL(
+      prefix: "WorkspaceBackupOperationHistoryV3"
+    )
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+
+    let sourceRootURL = rootURL.appendingPathComponent("Source", isDirectory: true)
+    let targetRootURL = rootURL.appendingPathComponent("Target", isDirectory: true)
+    try FileManager.default.createDirectory(at: sourceRootURL, withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(at: targetRootURL, withIntermediateDirectories: true)
+
+    let profile = SiteProfile.defaultProfile
+    let snapshot = WorkbenchSnapshot(
+      profiles: [profile],
+      activeProfileID: profile.id,
+      drafts: [],
+      releaseRecords: []
+    )
+    let sourceRecord = WorkbenchOperationEventRecord(
+      id: UUID(),
+      kind: .knowledgeImport,
+      outcome: .succeeded,
+      occurredAt: Date(timeIntervalSince1970: 2_000)
+    )
+    let sourceHistory = WorkbenchOperationLedgerDocument(
+      retentionPolicy: .forever,
+      records: [sourceRecord]
+    )
+    let archiveURL = sourceRootURL.appendingPathComponent("workspace.psworkspacebackup")
+    let service = WorkspaceBackupService()
+
+    let created = try service.createBackup(
+      at: archiveURL,
+      snapshot: snapshot,
+      operationHistoryDocument: sourceHistory,
+      knowledgeRootURL: sourceRootURL.appendingPathComponent("KnowledgeLibrary"),
+      applicationVersion: "test"
+    )
+
+    XCTAssertEqual(created.formatVersion, 3)
+    XCTAssertEqual(
+      created.components.first { $0.component == .operationHistory }?.fileCount,
+      1
+    )
+    XCTAssertTrue(
+      FileManager.default.fileExists(
+        atPath: archiveURL.appendingPathComponent(
+          WorkspaceBackupService.operationHistoryRelativePath
+        ).path
+      )
+    )
+
+    let targetPersistenceURL = targetRootURL.appendingPathComponent("workbench.json")
+    let targetPersistence = WorkbenchPersistence(fileURL: targetPersistenceURL)
+    _ = try targetPersistence.save(snapshot)
+    let targetLedger = WorkbenchOperationLedgerPersistence(
+      fileURL: targetPersistence.operationLedgerURL
+    )
+    let targetRecord = WorkbenchOperationEventRecord(
+      id: UUID(),
+      kind: .siteImport,
+      outcome: .failed,
+      occurredAt: Date(timeIntervalSince1970: 3_000)
+    )
+    try targetLedger.save(
+      WorkbenchOperationLedgerDocument(retentionPolicy: .forever, records: [targetRecord])
+    )
+
+    _ = try service.stageRestore(
+      from: archiveURL,
+      persistenceFileURL: targetPersistenceURL
+    )
+    let outcome = WorkspaceBackupService.applyPendingRestoreIfNeeded(
+      persistenceFileURL: targetPersistenceURL,
+      knowledgeRootURL: targetRootURL.appendingPathComponent("KnowledgeLibrary"),
+      attachmentRootURL: targetRootURL.appendingPathComponent("ManagedAttachments")
+    )
+
+    guard case .restored(let result) = outcome else {
+      return XCTFail("workspace v3 restore did not complete: \(outcome)")
+    }
+    let restoredHistory = try targetLedger.loadWithRecovery().document
+    XCTAssertEqual(restoredHistory.records.map(\.id), [sourceRecord.id])
+    XCTAssertFalse(restoredHistory.records.contains { $0.id == targetRecord.id })
+    XCTAssertEqual(
+      try Data(contentsOf: targetLedger.fileURL),
+      try Data(contentsOf: targetLedger.lastKnownGoodURL)
+    )
+    XCTAssertTrue(
+      FileManager.default.fileExists(
+        atPath: result.recoveryURL.appendingPathComponent("operation-log.json").path
+      )
+    )
+    XCTAssertTrue(
+      FileManager.default.fileExists(
+        atPath: result.recoveryURL.appendingPathComponent(
+          "operation-log-last-known-good.json"
+        ).path
+      )
+    )
+  }
+
   func testV1RestoreDoesNotTouchExistingRSSDatabase() throws {
     let rootURL = try TestWorkbenchFactory.temporaryDirectoryURL(
       prefix: "WorkspaceBackupRSSV1"
@@ -441,7 +745,19 @@ final class WorkspaceBackupServiceTests: XCTestCase {
     XCTAssertEqual(try service.inspectBackup(at: archiveURL), created)
 
     let targetPersistenceURL = targetRootURL.appendingPathComponent("workbench.json")
-    _ = try WorkbenchPersistence(fileURL: targetPersistenceURL).save(snapshot)
+    let targetPersistence = WorkbenchPersistence(fileURL: targetPersistenceURL)
+    _ = try targetPersistence.save(snapshot)
+    let targetLedger = WorkbenchOperationLedgerPersistence(
+      fileURL: targetPersistence.operationLedgerURL
+    )
+    try targetLedger.save(
+      WorkbenchOperationLedgerDocument(
+        retentionPolicy: .forever,
+        records: [
+          WorkbenchOperationEventRecord(kind: .siteImport, outcome: .succeeded)
+        ]
+      )
+    )
     let targetRSSURL = targetRootURL
       .appendingPathComponent("RSSReader", isDirectory: true)
       .appendingPathComponent("reader.sqlite")
@@ -483,6 +799,13 @@ final class WorkspaceBackupServiceTests: XCTestCase {
     XCTAssertEqual(try preservedDatabase.feeds().map(\.title), ["必须保留的 RSS"])
     XCTAssertEqual(try preservedDatabase.articles().map(\.id), ["preserved-rss-article"])
     XCTAssertEqual(try preservedDatabase.highlights().map(\.note), ["RSS 备份恢复测试"])
+    XCTAssertFalse(FileManager.default.fileExists(atPath: targetLedger.fileURL.path))
+    XCTAssertFalse(FileManager.default.fileExists(atPath: targetLedger.lastKnownGoodURL.path))
+    XCTAssertTrue(
+      FileManager.default.fileExists(
+        atPath: result.recoveryURL.appendingPathComponent("operation-log.json").path
+      )
+    )
   }
 
   func testInterruptedRestoreIsRolledBackIdempotentlyOnNextStartup() throws {
@@ -687,6 +1010,19 @@ final class WorkspaceBackupServiceTests: XCTestCase {
     _ = try persistence.save(originalSnapshot)
     let journalData = Data("original-draft-recovery-journal".utf8)
     try journalData.write(to: persistence.draftRecoveryJournalURL)
+    let operationLedger = WorkbenchOperationLedgerPersistence(
+      fileURL: persistence.operationLedgerURL
+    )
+    try operationLedger.save(
+      WorkbenchOperationLedgerDocument(
+        retentionPolicy: .forever,
+        records: [
+          WorkbenchOperationEventRecord(kind: .siteImport, outcome: .succeeded)
+        ]
+      )
+    )
+    let operationLedgerData = try Data(contentsOf: operationLedger.fileURL)
+    let operationLedgerLastKnownGoodData = try Data(contentsOf: operationLedger.lastKnownGoodURL)
 
     let knowledgeURL = targetRootURL.appendingPathComponent(
       "KnowledgeLibrary",
@@ -715,6 +1051,10 @@ final class WorkspaceBackupServiceTests: XCTestCase {
       attachmentURL: attachmentURL,
       journalURL: persistence.draftRecoveryJournalURL,
       journalData: journalData,
+      operationLedgerURL: operationLedger.fileURL,
+      operationLedgerData: operationLedgerData,
+      operationLedgerLastKnownGoodURL: operationLedger.lastKnownGoodURL,
+      operationLedgerLastKnownGoodData: operationLedgerLastKnownGoodData,
       attachmentData: attachmentData
     )
   }
@@ -725,6 +1065,14 @@ final class WorkspaceBackupServiceTests: XCTestCase {
     let snapshot = try XCTUnwrap(WorkbenchPersistence(fileURL: fixture.persistenceURL).load())
     XCTAssertEqual(snapshot.drafts.first?.title, "transaction-original")
     XCTAssertEqual(try Data(contentsOf: fixture.journalURL), fixture.journalData)
+    XCTAssertEqual(
+      try Data(contentsOf: fixture.operationLedgerURL),
+      fixture.operationLedgerData
+    )
+    XCTAssertEqual(
+      try Data(contentsOf: fixture.operationLedgerLastKnownGoodURL),
+      fixture.operationLedgerLastKnownGoodData
+    )
     XCTAssertEqual(
       try Data(contentsOf: fixture.attachmentURL.appendingPathComponent("original.txt")),
       fixture.attachmentData
@@ -742,6 +1090,63 @@ final class WorkspaceBackupServiceTests: XCTestCase {
       )
     )
   }
+
+  private func makeCancellationSnapshot(sourceURL: URL) -> WorkbenchSnapshot {
+    let profile = SiteProfile.defaultProfile
+    var draft = ArticleDraft.empty(profile: profile)
+    draft.attachments = [
+      DraftAttachment(
+        originalFilename: sourceURL.lastPathComponent,
+        relativePublishPath: "/images/source-image.png",
+        repositoryPath: "static/images/source-image.png",
+        sourceFilePath: sourceURL.path
+      )
+    ]
+    return WorkbenchSnapshot(
+      profiles: [profile],
+      activeProfileID: profile.id,
+      drafts: [draft],
+      releaseRecords: []
+    )
+  }
+
+  private func temporaryEntries(in directoryURL: URL, prefix: String) throws -> [String] {
+    try FileManager.default.contentsOfDirectory(atPath: directoryURL.path)
+      .filter { $0.hasPrefix(prefix) }
+  }
+}
+
+private final class WorkspaceBackupCopyGate: Sendable {
+  private let copyStarted = DispatchSemaphore(value: 0)
+  private let cancellationForwarded = DispatchSemaphore(value: 0)
+
+  func signalCopyStarted() {
+    copyStarted.signal()
+  }
+
+  func waitForCopyStart(timeout: TimeInterval) -> Bool {
+    copyStarted.wait(timeout: .now() + timeout) == .success
+  }
+
+  func waitUntilCancellationIsForwarded() {
+    cancellationForwarded.wait()
+  }
+
+  func allowCancellationToProceed() {
+    cancellationForwarded.signal()
+  }
+}
+
+private final class WorkspaceBackupCommitGate: Sendable {
+  private let committed = DispatchSemaphore(value: 0)
+  private let release = DispatchSemaphore(value: 0)
+
+  func signalCommitted() { committed.signal() }
+  func waitForCommit(timeout: TimeInterval) -> Bool {
+    committed.wait(timeout: .now() + timeout) == .success
+  }
+  func waitUntilTestReleasesCommit() { release.wait() }
+  func releaseCommit() { release.signal() }
 }
 
 private enum InjectedRestoreFailure: Error {
@@ -757,5 +1162,9 @@ private struct RestoreTransactionFixture {
   var attachmentURL: URL
   var journalURL: URL
   var journalData: Data
+  var operationLedgerURL: URL
+  var operationLedgerData: Data
+  var operationLedgerLastKnownGoodURL: URL
+  var operationLedgerLastKnownGoodData: Data
   var attachmentData: Data
 }

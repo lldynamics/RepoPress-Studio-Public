@@ -35,6 +35,13 @@ import XCTest
 
       XCTAssertEqual(summary.insertedCount, 1)
       XCTAssertEqual(summary.updatedCount, 0)
+      let operationEvent = try XCTUnwrap(store.operationHistory.records.first)
+      XCTAssertEqual(store.operationHistory.records.count, 1)
+      XCTAssertEqual(operationEvent.kind, .localContentImport)
+      XCTAssertEqual(operationEvent.outcome, .succeeded)
+      XCTAssertEqual(operationEvent.actor, .user)
+      XCTAssertEqual(operationEvent.profileID, profile.id)
+      XCTAssertEqual(operationEvent.createdItemCount, 1)
       let batchInvocationCount = await batchProbe.count
       XCTAssertEqual(batchInvocationCount, 1)
       XCTAssertGreaterThanOrEqual(parseProbe.totalCount, 1)
@@ -131,6 +138,7 @@ import XCTest
       var changedProfile = store.activeProfile
       _ = changedProfile.rememberLocalRepositoryRoot(changedRoot)
       store.updateActiveProfile(changedProfile)
+      store.setPublishActionMessage("上一个操作失败。", status: .failure)
 
       await gate.release()
       let summary = await importTask.value
@@ -138,6 +146,10 @@ import XCTest
 
       XCTAssertEqual(summary.changedCount, 0)
       XCTAssertFalse(store.drafts.contains { $0.repositoryPath == fixture.articlePath })
+      let operationEvent = try XCTUnwrap(store.operationHistory.records.first)
+      XCTAssertEqual(store.operationHistory.records.count, 1)
+      XCTAssertEqual(operationEvent.kind, .localContentImport)
+      XCTAssertEqual(operationEvent.outcome, .cancelled)
     }
 
     func testLocalImportCancellationDoesNotPublishHydratedDrafts() async throws {
@@ -167,6 +179,7 @@ import XCTest
       let didEnter = await gate.hasEntered
       XCTAssertTrue(didEnter)
 
+      store.setPublishActionMessage("上一个操作失败。", status: .failure)
       importTask.cancel()
       await gate.release()
       let summary = await importTask.value
@@ -174,6 +187,10 @@ import XCTest
 
       XCTAssertEqual(summary.changedCount, 0)
       XCTAssertFalse(store.drafts.contains { $0.repositoryPath == fixture.articlePath })
+      let operationEvent = try XCTUnwrap(store.operationHistory.records.first)
+      XCTAssertEqual(store.operationHistory.records.count, 1)
+      XCTAssertEqual(operationEvent.kind, .localContentImport)
+      XCTAssertEqual(operationEvent.outcome, .cancelled)
     }
 
     private func makeStore(importService: LocalContentImportService) throws -> WorkbenchStore {

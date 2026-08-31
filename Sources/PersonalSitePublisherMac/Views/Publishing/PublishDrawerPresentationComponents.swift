@@ -179,11 +179,11 @@ struct PublishDrawerBatchActionPresentation {
     }
   }
 
-  static let title = String(localized: "发布所有待处理变更")
+  static let title = String(localized: "审阅并发布文章变更")
   static let detail = String(
-    localized: "包含应用管理的文章发布包和待下线 Markdown；不会包含 CSS、模板、脚本等其他 Git 工作区变更。发布前会显示完整文件清单。"
+    localized: "仅包含应用管理的文章发布包；待下线请求请到回收站单独处理，不包含 CSS、模板、脚本等其他 Git 工作区变更。发布前会显示完整批次与文件差异。"
   )
-  static let actionTitle = String(localized: "发布所有待处理变更…")
+  static let actionTitle = String(localized: "审阅并发布文章变更…")
 
   static func isEnabled(_ state: State) -> Bool {
     guard !state.isPlanRefreshing,
@@ -196,7 +196,7 @@ struct PublishDrawerBatchActionPresentation {
       state.blockingIssueTitle == nil,
       !state.hasRemoteConflict,
       let articleCount = state.publishableArticleCount,
-      articleCount > 0 || state.pendingDeletionCount > 0
+      articleCount > 0
     else {
       return false
     }
@@ -239,7 +239,10 @@ struct PublishDrawerBatchActionPresentation {
     guard let articleCount = state.publishableArticleCount else {
       return String(localized: "正在准备文章发布包")
     }
-    guard articleCount > 0 || state.pendingDeletionCount > 0 else {
+    guard articleCount > 0 else {
+      if state.pendingDeletionCount > 0 {
+        return String(localized: "没有可发布文章；待下线请求请到回收站单独处理")
+      }
       if state.draftSyncArticleCount > 0 {
         return String(
           format: String(localized: "%d 篇网站草稿未纳入发布，请单独同步"),
@@ -256,19 +259,12 @@ struct PublishDrawerBatchActionPresentation {
         state.draftSyncArticleCount
       )
       : ""
-    if articleCount == 0 {
-      return String(
-        format: String(localized: "待下线 %d 篇文章 · %d 个文件"),
-        state.pendingDeletionCount,
-        fileCount
-      ) + draftSuffix
-    }
     if state.pendingDeletionCount > 0 {
       return String(
-        format: String(localized: "可发布 %d 篇 · 待下线 %d 篇 · %d 个文件"),
+        format: String(localized: "可发布 %d 篇 · %d 个文件 · 不包含 %d 个待下线请求"),
         articleCount,
-        state.pendingDeletionCount,
-        fileCount
+        fileCount,
+        state.pendingDeletionCount
       ) + draftSuffix
     }
     return String(
@@ -280,7 +276,7 @@ struct PublishDrawerBatchActionPresentation {
 
   static func accessibilityHint(isEnabled: Bool, status: String) -> String {
     if isEnabled {
-      return String(localized: "执行此操作")
+      return String(localized: "打开完整批次确认页，审阅全部文章和文件差异后再发布")
     }
     return status
   }
@@ -384,8 +380,8 @@ struct UnifiedPublishReadinessPresentation: Equatable {
         ? String(localized: "生成发布包 → 内容检查 → 远端预检 → 创建 PR/MR")
         : String(localized: "生成发布包 → 内容检查 → 远端预检 → 提交 → 部署检查"),
       actionTitle: mode == .reviewRequest
-        ? String(localized: "一键创建 PR/MR")
-        : String(localized: "一键发布上线"),
+        ? String(localized: "审阅并创建 PR/MR…")
+        : String(localized: "审阅并发布…"),
       contentHealth: contentHealth
     )
   }

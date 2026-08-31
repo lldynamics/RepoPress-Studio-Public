@@ -1,20 +1,34 @@
 import XCTest
-#if canImport(Darwin)
-import Darwin
-#endif
+
 @testable import PublishingWorkbenchCore
 
+#if canImport(Darwin)
+  import Darwin
+#endif
+
 final class LocalSitePreviewServiceTests: XCTestCase {
+  private var serviceWithAvailableDefaultPorts: LocalSitePreviewService {
+    LocalSitePreviewService(
+      portAllocator: LocalSitePreviewPortAllocator(
+        isPortAvailable: { _ in true },
+        dynamicPort: { nil }
+      )
+    )
+  }
+
   func testZolaPreviewPlanUsesDraftServeCommand() throws {
     var profile = SiteProfile.defaultProfile
     profile.siteKind = .zola
     profile.localRepositoryRootPath = "/tmp/site"
 
-    let plan = try XCTUnwrap(LocalSitePreviewService().plan(profile: profile))
+    let plan = try XCTUnwrap(serviceWithAvailableDefaultPorts.plan(profile: profile))
 
-    XCTAssertEqual(plan.command, "cd '/tmp/site' && 'zola' 'serve' '--drafts'")
+    XCTAssertEqual(
+      plan.command,
+      "cd '/tmp/site' && 'zola' 'serve' '--drafts' '--interface' '127.0.0.1'"
+    )
     XCTAssertEqual(URL(fileURLWithPath: plan.executablePath).lastPathComponent, "zola")
-    XCTAssertEqual(plan.arguments, ["serve", "--drafts"])
+    XCTAssertEqual(plan.arguments, ["serve", "--drafts", "--interface", "127.0.0.1"])
     XCTAssertEqual(plan.previewURL.absoluteString, "http://127.0.0.1:1111")
   }
 
@@ -23,11 +37,14 @@ final class LocalSitePreviewServiceTests: XCTestCase {
     profile.siteKind = .astro
     profile.localRepositoryRootPath = "/tmp/astro-site"
 
-    let plan = try XCTUnwrap(LocalSitePreviewService().plan(profile: profile))
+    let plan = try XCTUnwrap(serviceWithAvailableDefaultPorts.plan(profile: profile))
 
-    XCTAssertEqual(plan.command, "cd '/tmp/astro-site' && 'npm' 'run' 'dev'")
+    XCTAssertEqual(
+      plan.command,
+      "cd '/tmp/astro-site' && 'npm' 'run' 'dev' '--' '--host' '127.0.0.1'"
+    )
     XCTAssertEqual(URL(fileURLWithPath: plan.executablePath).lastPathComponent, "npm")
-    XCTAssertEqual(plan.arguments, ["run", "dev"])
+    XCTAssertEqual(plan.arguments, ["run", "dev", "--", "--host", "127.0.0.1"])
     XCTAssertEqual(plan.previewURL.absoluteString, "http://127.0.0.1:4321")
   }
 
@@ -36,11 +53,14 @@ final class LocalSitePreviewServiceTests: XCTestCase {
     profile.siteKind = .vitePress
     profile.localRepositoryRootPath = "/tmp/vitepress-site"
 
-    let plan = try XCTUnwrap(LocalSitePreviewService().plan(profile: profile))
+    let plan = try XCTUnwrap(serviceWithAvailableDefaultPorts.plan(profile: profile))
 
-    XCTAssertEqual(plan.command, "cd '/tmp/vitepress-site' && 'npm' 'run' 'dev'")
+    XCTAssertEqual(
+      plan.command,
+      "cd '/tmp/vitepress-site' && 'npm' 'run' 'dev' '--' '--host' '127.0.0.1'"
+    )
     XCTAssertEqual(URL(fileURLWithPath: plan.executablePath).lastPathComponent, "npm")
-    XCTAssertEqual(plan.arguments, ["run", "dev"])
+    XCTAssertEqual(plan.arguments, ["run", "dev", "--", "--host", "127.0.0.1"])
     XCTAssertEqual(plan.previewURL.absoluteString, "http://127.0.0.1:5173")
   }
 
@@ -49,23 +69,22 @@ final class LocalSitePreviewServiceTests: XCTestCase {
     profile.siteKind = .nextJS
     profile.localRepositoryRootPath = "/tmp/next-site"
 
-    let plan = try XCTUnwrap(LocalSitePreviewService().plan(profile: profile))
+    let plan = try XCTUnwrap(serviceWithAvailableDefaultPorts.plan(profile: profile))
 
-    XCTAssertEqual(plan.command, "cd '/tmp/next-site' && 'npm' 'run' 'dev'")
-    XCTAssertEqual(plan.arguments, ["run", "dev"])
+    XCTAssertEqual(
+      plan.command,
+      "cd '/tmp/next-site' && 'npm' 'run' 'dev' '--' '--hostname' '127.0.0.1'"
+    )
+    XCTAssertEqual(plan.arguments, ["run", "dev", "--", "--hostname", "127.0.0.1"])
     XCTAssertEqual(plan.previewURL.absoluteString, "http://127.0.0.1:3000")
   }
 
-  func testQuartzPreviewPlanUsesOfficialServeCommand() throws {
+  func testQuartzPreviewPlanFailsClosedWithoutLoopbackBindingSupport() {
     var profile = SiteProfile.defaultProfile
     profile.siteKind = .quartz
     profile.localRepositoryRootPath = "/tmp/quartz-site"
 
-    let plan = try XCTUnwrap(LocalSitePreviewService().plan(profile: profile))
-
-    XCTAssertEqual(plan.command, "cd '/tmp/quartz-site' && 'npx' 'quartz' 'build' '--serve'")
-    XCTAssertEqual(plan.arguments, ["quartz", "build", "--serve"])
-    XCTAssertEqual(plan.previewURL.absoluteString, "http://127.0.0.1:8080")
+    XCTAssertNil(serviceWithAvailableDefaultPorts.plan(profile: profile))
   }
 
   func testFoamWorkspaceDoesNotInventAStaticSitePreviewCommand() {
@@ -73,7 +92,7 @@ final class LocalSitePreviewServiceTests: XCTestCase {
     profile.siteKind = .foam
     profile.localRepositoryRootPath = "/tmp/foam-workspace"
 
-    XCTAssertNil(LocalSitePreviewService().plan(profile: profile))
+    XCTAssertNil(serviceWithAvailableDefaultPorts.plan(profile: profile))
   }
 
   func testHugoPreviewPlanUsesDraftServerCommand() throws {
@@ -81,11 +100,14 @@ final class LocalSitePreviewServiceTests: XCTestCase {
     profile.siteKind = .hugo
     profile.localRepositoryRootPath = "/tmp/hugo-site"
 
-    let plan = try XCTUnwrap(LocalSitePreviewService().plan(profile: profile))
+    let plan = try XCTUnwrap(serviceWithAvailableDefaultPorts.plan(profile: profile))
 
-    XCTAssertEqual(plan.command, "cd '/tmp/hugo-site' && 'hugo' 'server' '-D'")
+    XCTAssertEqual(
+      plan.command,
+      "cd '/tmp/hugo-site' && 'hugo' 'server' '-D' '--bind' '127.0.0.1'"
+    )
     XCTAssertEqual(URL(fileURLWithPath: plan.executablePath).lastPathComponent, "hugo")
-    XCTAssertEqual(plan.arguments, ["server", "-D"])
+    XCTAssertEqual(plan.arguments, ["server", "-D", "--bind", "127.0.0.1"])
     XCTAssertEqual(plan.previewURL.absoluteString, "http://127.0.0.1:1313")
     XCTAssertTrue(plan.notes.contains("包含草稿预览参数 -D。"))
   }
@@ -95,11 +117,14 @@ final class LocalSitePreviewServiceTests: XCTestCase {
     profile.siteKind = .hexo
     profile.localRepositoryRootPath = "/tmp/hexo-site"
 
-    let plan = try XCTUnwrap(LocalSitePreviewService().plan(profile: profile))
+    let plan = try XCTUnwrap(serviceWithAvailableDefaultPorts.plan(profile: profile))
 
-    XCTAssertEqual(plan.command, "cd '/tmp/hexo-site' && 'npm' 'run' 'server'")
+    XCTAssertEqual(
+      plan.command,
+      "cd '/tmp/hexo-site' && 'npm' 'run' 'server' '--' '--ip' '127.0.0.1'"
+    )
     XCTAssertEqual(URL(fileURLWithPath: plan.executablePath).lastPathComponent, "npm")
-    XCTAssertEqual(plan.arguments, ["run", "server"])
+    XCTAssertEqual(plan.arguments, ["run", "server", "--", "--ip", "127.0.0.1"])
     XCTAssertEqual(plan.previewURL.absoluteString, "http://127.0.0.1:4000")
     XCTAssertTrue(plan.notes.contains("如果没有 server script，可改用 hexo server。"))
   }
@@ -109,11 +134,17 @@ final class LocalSitePreviewServiceTests: XCTestCase {
     profile.siteKind = .jekyll
     profile.localRepositoryRootPath = "/tmp/jekyll-site"
 
-    let plan = try XCTUnwrap(LocalSitePreviewService().plan(profile: profile))
+    let plan = try XCTUnwrap(serviceWithAvailableDefaultPorts.plan(profile: profile))
 
-    XCTAssertEqual(plan.command, "cd '/tmp/jekyll-site' && 'bundle' 'exec' 'jekyll' 'serve' '--drafts'")
+    XCTAssertEqual(
+      plan.command,
+      "cd '/tmp/jekyll-site' && 'bundle' 'exec' 'jekyll' 'serve' '--drafts' '--host' '127.0.0.1'"
+    )
     XCTAssertEqual(URL(fileURLWithPath: plan.executablePath).lastPathComponent, "bundle")
-    XCTAssertEqual(plan.arguments, ["exec", "jekyll", "serve", "--drafts"])
+    XCTAssertEqual(
+      plan.arguments,
+      ["exec", "jekyll", "serve", "--drafts", "--host", "127.0.0.1"]
+    )
     XCTAssertEqual(plan.previewURL.absoluteString, "http://127.0.0.1:4000")
     XCTAssertTrue(plan.notes.contains("需要 Ruby bundle 环境可用。"))
   }
@@ -123,9 +154,12 @@ final class LocalSitePreviewServiceTests: XCTestCase {
     profile.siteKind = .zola
     profile.localRepositoryRootPath = "/tmp/My Site"
 
-    let plan = try XCTUnwrap(LocalSitePreviewService().plan(profile: profile))
+    let plan = try XCTUnwrap(serviceWithAvailableDefaultPorts.plan(profile: profile))
 
-    XCTAssertEqual(plan.command, "cd '/tmp/My Site' && 'zola' 'serve' '--drafts'")
+    XCTAssertEqual(
+      plan.command,
+      "cd '/tmp/My Site' && 'zola' 'serve' '--drafts' '--interface' '127.0.0.1'"
+    )
   }
 
   func testCurrentArticlePreviewUsesSharedSitePathRules() throws {
@@ -135,7 +169,8 @@ final class LocalSitePreviewServiceTests: XCTestCase {
     profile.markdownPathPattern = "src/content/blog/{slug}.md"
     let draft = ArticleDraft(siteProfileID: profile.id, title: "预览文章", slug: "preview-post")
 
-    let previewURL = try XCTUnwrap(LocalSitePreviewService().previewURL(for: draft, profile: profile))
+    let previewURL = try XCTUnwrap(
+      LocalSitePreviewService().previewURL(for: draft, profile: profile))
 
     XCTAssertEqual(previewURL.absoluteString, "http://127.0.0.1:4321/preview-post")
   }
@@ -161,10 +196,10 @@ final class LocalSitePreviewServiceTests: XCTestCase {
 
     service.stop()
     XCTAssertFalse(service.status.isRunning)
-#if canImport(Darwin)
-    XCTAssertEqual(Darwin.kill(try XCTUnwrap(started.processIdentifier), 0), -1)
-    XCTAssertEqual(errno, ESRCH)
-#endif
+    #if canImport(Darwin)
+      XCTAssertEqual(Darwin.kill(try XCTUnwrap(started.processIdentifier), 0), -1)
+      XCTAssertEqual(errno, ESRCH)
+    #endif
   }
 
   func testPreviewProcessServiceStopsAsynchronously() async throws {
@@ -183,10 +218,10 @@ final class LocalSitePreviewServiceTests: XCTestCase {
     await service.stopAsync()
 
     XCTAssertFalse(service.status.isRunning)
-#if canImport(Darwin)
-    XCTAssertEqual(Darwin.kill(try XCTUnwrap(started.processIdentifier), 0), -1)
-    XCTAssertEqual(errno, ESRCH)
-#endif
+    #if canImport(Darwin)
+      XCTAssertEqual(Darwin.kill(try XCTUnwrap(started.processIdentifier), 0), -1)
+      XCTAssertEqual(errno, ESRCH)
+    #endif
   }
 
   func testPreviewAuthorizationPersistsPerProfileAndSurvivesProfileRoundTrip() throws {
@@ -216,9 +251,10 @@ final class LocalSitePreviewServiceTests: XCTestCase {
     )
     XCTAssertNil(try roundTripService.authorizationRequest(for: planA))
     XCTAssertNil(try roundTripService.authorizationRequest(for: planB))
-    let permissions = try FileManager.default.attributesOfItem(atPath: trustFileURL.path)[
-      .posixPermissions
-    ] as? NSNumber
+    let permissions =
+      try FileManager.default.attributesOfItem(atPath: trustFileURL.path)[
+        .posixPermissions
+      ] as? NSNumber
     XCTAssertEqual(permissions?.intValue, 0o600)
   }
 
@@ -310,7 +346,8 @@ final class LocalSitePreviewServiceTests: XCTestCase {
     XCTAssertThrowsError(try fileLinkStore.authorize(identity))
 
     let actualContainerURL = rootURL.appendingPathComponent("actual", isDirectory: true)
-    try FileManager.default.createDirectory(at: actualContainerURL, withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(
+      at: actualContainerURL, withIntermediateDirectories: true)
     let containerLinkURL = rootURL.appendingPathComponent("container-link", isDirectory: true)
     try FileManager.default.createSymbolicLink(
       at: containerLinkURL,
@@ -403,7 +440,8 @@ final class LocalSitePreviewServiceTests: XCTestCase {
     siteKind: SiteKind = .zola,
     executablePath: String = "/bin/sleep"
   ) throws -> LocalSitePreviewPlan {
-    let command = "\(URL(fileURLWithPath: executablePath).lastPathComponent) "
+    let command =
+      "\(URL(fileURLWithPath: executablePath).lastPathComponent) "
       + arguments.joined(separator: " ")
     let identity = try LocalSitePreviewExecutionFingerprint.makeIdentity(
       profileID: profileID,
@@ -532,7 +570,7 @@ final class LocalSitePreviewServiceTests: XCTestCase {
     let plan = try XCTUnwrap(service.plan(profile: profile))
 
     XCTAssertEqual(plan.executablePath, "/trusted/tools/zola")
-    XCTAssertEqual(plan.arguments, ["serve", "--drafts"])
+    XCTAssertEqual(plan.arguments, ["serve", "--drafts", "--interface", "127.0.0.1"])
   }
 
   func testPortAllocatorUsesDynamicPortWhenPreferredPortIsUnavailable() {
@@ -547,10 +585,7 @@ final class LocalSitePreviewServiceTests: XCTestCase {
     XCTAssertEqual(allocation?.usesDynamicPort, true)
   }
 
-  func testDynamicPreviewPlanAddsFrameworkPortArguments() throws {
-    var profile = SiteProfile.defaultProfile
-    profile.siteKind = .zola
-    profile.localRepositoryRootPath = "/tmp/site"
+  func testDynamicPreviewPlanAddsFrameworkLoopbackAndPortArguments() throws {
     let allocator = LocalSitePreviewPortAllocator(
       isPortAvailable: { $0 == 23_456 },
       dynamicPort: { 23_456 }
@@ -559,16 +594,85 @@ final class LocalSitePreviewServiceTests: XCTestCase {
       executableResolver: { name in "/trusted/\(name)" },
       portAllocator: allocator
     )
+    let cases: [(kind: SiteKind, expectedArguments: [String])] = [
+      (
+        .zola,
+        ["serve", "--drafts", "--interface", "127.0.0.1", "--port", "23456"]
+      ),
+      (.hugo, ["server", "-D", "--bind", "127.0.0.1", "--port", "23456"]),
+      (.astro, ["run", "dev", "--", "--host", "127.0.0.1", "--port", "23456"]),
+      (
+        .vitePress,
+        ["run", "dev", "--", "--host", "127.0.0.1", "--port", "23456"]
+      ),
+      (
+        .nextJS,
+        ["run", "dev", "--", "--hostname", "127.0.0.1", "--port", "23456"]
+      ),
+      (.hexo, ["run", "server", "--", "--ip", "127.0.0.1", "--port", "23456"]),
+      (
+        .jekyll,
+        ["exec", "jekyll", "serve", "--drafts", "--host", "127.0.0.1", "--port", "23456"]
+      ),
+    ]
 
-    let plan = try XCTUnwrap(service.plan(profile: profile))
+    for testCase in cases {
+      var profile = SiteProfile.defaultProfile
+      profile.siteKind = testCase.kind
+      profile.localRepositoryRootPath = "/tmp/site"
 
-    XCTAssertTrue(plan.usesDynamicPort)
-    XCTAssertEqual(
-      plan.arguments,
-      ["serve", "--drafts", "--interface", "127.0.0.1", "--port", "23456"]
-    )
-    XCTAssertEqual(plan.previewURL.port, 23_456)
-    XCTAssertTrue(plan.command.contains("'--port' '23456'"))
+      let plan = try XCTUnwrap(service.plan(profile: profile), "\(testCase.kind)")
+
+      XCTAssertTrue(plan.usesDynamicPort, "\(testCase.kind)")
+      XCTAssertEqual(plan.arguments, testCase.expectedArguments, "\(testCase.kind)")
+      XCTAssertEqual(plan.previewURL.port, 23_456, "\(testCase.kind)")
+      XCTAssertTrue(plan.command.contains("'--port' '23456'"), "\(testCase.kind)")
+    }
+  }
+
+  func testPackageManagersForwardFrameworkSpecificLoopbackArguments() throws {
+    for packageManager in ["npm", "pnpm", "yarn"] {
+      let rootURL = FileManager.default.temporaryDirectory.appendingPathComponent(
+        "local-preview-\(packageManager)-\(UUID().uuidString)",
+        isDirectory: true
+      )
+      try FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)
+      defer { try? FileManager.default.removeItem(at: rootURL) }
+      try Data("{\"scripts\":{\"dev\":\"next dev\",\"server\":\"hexo server\"}}".utf8)
+        .write(to: rootURL.appendingPathComponent("package.json"))
+      if packageManager == "pnpm" {
+        try Data().write(to: rootURL.appendingPathComponent("pnpm-lock.yaml"))
+      } else if packageManager == "yarn" {
+        try Data().write(to: rootURL.appendingPathComponent("yarn.lock"))
+      }
+      let service = LocalSitePreviewService(
+        executableResolver: { name in "/trusted/\(name)" },
+        portAllocator: LocalSitePreviewPortAllocator(
+          isPortAvailable: { _ in true },
+          dynamicPort: { nil }
+        )
+      )
+      let separator = packageManager == "yarn" ? [] : ["--"]
+
+      var nextProfile = SiteProfile.defaultProfile
+      nextProfile.siteKind = .nextJS
+      nextProfile.localRepositoryRootPath = rootURL.path
+      let nextPlan = try XCTUnwrap(service.plan(profile: nextProfile))
+      XCTAssertEqual(
+        nextPlan.arguments,
+        ["run", "dev"] + separator + ["--hostname", "127.0.0.1"],
+        packageManager
+      )
+
+      var hexoProfile = nextProfile
+      hexoProfile.siteKind = .hexo
+      let hexoPlan = try XCTUnwrap(service.plan(profile: hexoProfile))
+      XCTAssertEqual(
+        hexoPlan.arguments,
+        ["run", "server"] + separator + ["--ip", "127.0.0.1"],
+        packageManager
+      )
+    }
   }
 
   func testPreviewPlanUsesRepositoryDetectedKindAndStartupScript() throws {
@@ -606,7 +710,7 @@ final class LocalSitePreviewServiceTests: XCTestCase {
     let plan = try XCTUnwrap(service.plan(profile: profile, repositoryReport: report))
 
     XCTAssertEqual(plan.siteKind, .astro)
-    XCTAssertEqual(plan.arguments, ["run", "dev"])
+    XCTAssertEqual(plan.arguments, ["run", "dev", "--", "--host", "127.0.0.1"])
     XCTAssertEqual(plan.previewURL.port, 4_321)
     XCTAssertEqual(plan.diagnostics.detectedSiteKind, .astro)
     XCTAssertEqual(plan.diagnostics.scriptName, "dev")
@@ -640,7 +744,8 @@ final class LocalSitePreviewServiceTests: XCTestCase {
 
   func testPreviewPlanRejectsOversizedPackageJSON() throws {
     let rootURL = FileManager.default.temporaryDirectory
-      .appendingPathComponent("local-preview-oversized-package-\(UUID().uuidString)", isDirectory: true)
+      .appendingPathComponent(
+        "local-preview-oversized-package-\(UUID().uuidString)", isDirectory: true)
     try FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: rootURL) }
     try Data(repeating: 0x41, count: 1_048_577)
@@ -660,14 +765,16 @@ final class LocalSitePreviewServiceTests: XCTestCase {
     let plan = try XCTUnwrap(service.plan(profile: profile))
 
     XCTAssertTrue(plan.diagnostics.dependencies.contains { $0.id == "package-json" })
-    XCTAssertFalse(plan.diagnostics.dependencies.contains { $0.id == "script" && $0.status == .available })
+    XCTAssertFalse(
+      plan.diagnostics.dependencies.contains { $0.id == "script" && $0.status == .available })
   }
 
   func testPreviewPlanRejectsPackageJSONSymbolicLink() throws {
     let rootURL = FileManager.default.temporaryDirectory
       .appendingPathComponent("local-preview-package-link-\(UUID().uuidString)", isDirectory: true)
     let outsideURL = FileManager.default.temporaryDirectory
-      .appendingPathComponent("local-preview-package-target-\(UUID().uuidString)", isDirectory: true)
+      .appendingPathComponent(
+        "local-preview-package-target-\(UUID().uuidString)", isDirectory: true)
     try FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)
     try FileManager.default.createDirectory(at: outsideURL, withIntermediateDirectories: true)
     defer {
@@ -695,7 +802,8 @@ final class LocalSitePreviewServiceTests: XCTestCase {
     let plan = try XCTUnwrap(service.plan(profile: profile))
 
     XCTAssertTrue(plan.diagnostics.dependencies.contains { $0.id == "package-json" })
-    XCTAssertFalse(plan.diagnostics.dependencies.contains { $0.id == "script" && $0.status == .available })
+    XCTAssertFalse(
+      plan.diagnostics.dependencies.contains { $0.id == "script" && $0.status == .available })
   }
 
   func testPreviewFileWatcherIgnoresGeneratedAndDependencyDirectories() async throws {

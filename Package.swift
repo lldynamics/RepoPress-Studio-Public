@@ -22,6 +22,10 @@ let package = Package(
       targets: ["PublishingAICore"]
     ),
     .library(
+      name: "PublishingAgentContracts",
+      targets: ["PublishingAgentContracts"]
+    ),
+    .library(
       name: "PublishingKnowledgeCore",
       targets: ["PublishingKnowledgeCore"]
     ),
@@ -108,6 +112,15 @@ let package = Package(
       ]
     ),
     .target(
+      name: "PublishingAgentContracts",
+      dependencies: [
+        "PublishingAICore"
+      ],
+      swiftSettings: [
+        .swiftLanguageMode(.v6)
+      ]
+    ),
+    .target(
       name: "PublishingKnowledgeCore",
       dependencies: [
         "PublishingCoreSupport",
@@ -130,6 +143,7 @@ let package = Package(
         "PublishingMarkdownCore",
         "PublishingGitCore",
         "PublishingAICore",
+        "PublishingAgentContracts",
         "PublishingKnowledgeCore",
       ],
       swiftSettings: [
@@ -146,7 +160,7 @@ let package = Package(
       name: "PublishingMCPClient",
       dependencies: [
         "PublishingAICore",
-        "PublishingWorkbenchCore",
+        "PublishingAgentContracts",
         .product(name: "MCP", package: "swift-sdk"),
         .product(name: "SystemPackage", package: "swift-system"),
       ],
@@ -216,6 +230,16 @@ let package = Package(
       ]
     ),
     .testTarget(
+      name: "PublishingAgentContractsTests",
+      dependencies: [
+        "PublishingAICore",
+        "PublishingAgentContracts",
+      ],
+      swiftSettings: [
+        .swiftLanguageMode(.v6)
+      ]
+    ),
+    .testTarget(
       name: "PublishingCoreSupportTests",
       dependencies: [
         "PublishingCoreSupport",
@@ -238,6 +262,7 @@ let package = Package(
       dependencies: [
         "BrowserExtensionProtocolSupport",
         "PublishingAICore",
+        "PublishingAgentContracts",
         "PublishingGitCore",
         "PublishingKnowledgeCore",
         "PublishingWorkbenchCore",
@@ -250,8 +275,8 @@ let package = Package(
       name: "PublishingMCPClientTests",
       dependencies: [
         "PublishingAICore",
+        "PublishingAgentContracts",
         "PublishingMCPClient",
-        "PublishingWorkbenchCore",
       ],
       swiftSettings: [
         .swiftLanguageMode(.v6)

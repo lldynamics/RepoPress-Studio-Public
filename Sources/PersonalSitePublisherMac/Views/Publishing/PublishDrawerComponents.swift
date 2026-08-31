@@ -152,6 +152,7 @@ struct RemotePublishConfirmationView: View {
   var purpose: PublishDrawerRemoteOperationPurpose = .publication
   let preview: RemoteRepositoryPublishPreview
   let reviewDraft: RemoteReviewDraft?
+  var batchReview: BatchPublishReviewSnapshot? = nil
   let isPublishing: Bool
   let cancelAction: () -> Void
   let confirmAction: () -> Void
@@ -226,6 +227,33 @@ struct RemotePublishConfirmationView: View {
             }
           }
 
+          if let batchReview {
+            PublishDrawerCard(title: "完整批次文章与差异", systemImage: "doc.text.magnifyingglass") {
+              Text("以下为本次确认的全部文章；差异以本地仓库为基线，远端版本仍会在写入前预检。")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+              if batchReview.excludedCleanupCount > 0 {
+                Label(
+                  String(format: String(localized: "%d 个待下线请求未纳入本次发布，请到回收站单独处理。"), batchReview.excludedCleanupCount),
+                  systemImage: "info.circle"
+                )
+                .font(.caption)
+              }
+              ForEach(batchReview.items) { item in
+                VStack(alignment: .leading, spacing: 8) {
+                  Text(item.draftTitle).font(.headline)
+                  Text(item.markdownPath)
+                    .font(.caption.monospaced())
+                    .textSelection(.enabled)
+                  ForEach(Array(item.preview.changedFileDiffs.enumerated()), id: \.element.id) { index, diff in
+                    PublishDrawerFileDiffRow(diff: diff, isExpandedInitially: index == 0)
+                  }
+                }
+              }
+            }
+            .accessibilityIdentifier("publish-batch-review-diffs")
+          }
+
           if !preview.warningIssues.isEmpty {
             PublishDrawerCard(title: purpose.warningTitle, systemImage: "exclamationmark.triangle") {
               ForEach(preview.warningIssues) { issue in
@@ -262,6 +290,7 @@ struct RemotePublishConfirmationView: View {
         .keyboardShortcut(.defaultAction)
         .disabled(!preview.canPublish || preview.changedPaths.isEmpty || isPublishing)
         .accessibilityHint(purpose.confirmAccessibilityHint)
+        .accessibilityIdentifier("remote-publish-confirm")
       }
       .padding(16)
     }

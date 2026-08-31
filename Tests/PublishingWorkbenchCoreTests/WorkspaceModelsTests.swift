@@ -94,8 +94,8 @@ final class WorkspaceModelsTests: XCTestCase {
       WorkspaceSection.allCases.map { WorkspaceInspectorPresentation.route(for: $0) },
       [
         .articleMetadata,
-        .unavailable,
-        .unavailable,
+        .knowledgeLibrary,
+        .rssLibrary,
         .siteStarter,
         .repository,
         .articleImages,
@@ -118,6 +118,8 @@ final class WorkspaceModelsTests: XCTestCase {
         for: .contentHealth, isMaintenancePresented: true)
     )
     XCTAssertTrue(WorkspaceInspectorPresentation.supportsInspector(for: .siteStarter))
+    XCTAssertTrue(WorkspaceInspectorPresentation.supportsInspector(for: .library))
+    XCTAssertTrue(WorkspaceInspectorPresentation.supportsInspector(for: .rss))
   }
 
   func testInspectorPresentationPreservesExplicitRequestAcrossResponsiveLayoutChanges() {

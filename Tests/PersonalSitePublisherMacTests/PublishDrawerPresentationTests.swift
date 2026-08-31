@@ -182,7 +182,7 @@ final class PublishDrawerPresentationTests: XCTestCase {
     )
     XCTAssertEqual(
       PublishDrawerBatchActionPresentation.title,
-      "发布所有待处理变更"
+      "审阅并发布文章变更"
     )
     XCTAssertTrue(
       PublishDrawerBatchActionPresentation.detail.contains("CSS")
@@ -195,7 +195,7 @@ final class PublishDrawerPresentationTests: XCTestCase {
     )
   }
 
-  func testBatchActionAllowsCleanupOnlyQueue() {
+  func testBatchActionExcludesCleanupOnlyQueue() {
     let cleanupOnly = PublishDrawerBatchActionPresentation.State(
       repositoryConfigured: true,
       hasToken: true,
@@ -205,14 +205,14 @@ final class PublishDrawerPresentationTests: XCTestCase {
       changedFileCount: 2
     )
 
-    XCTAssertTrue(PublishDrawerBatchActionPresentation.isEnabled(cleanupOnly))
+    XCTAssertFalse(PublishDrawerBatchActionPresentation.isEnabled(cleanupOnly))
     XCTAssertEqual(
       PublishDrawerBatchActionPresentation.status(cleanupOnly),
-      "待下线 2 篇文章 · 2 个文件"
+      "没有可发布文章；待下线请求请到回收站单独处理"
     )
   }
 
-  func testBatchActionSummarizesPublishAndCleanupTogether() {
+  func testBatchActionExplainsCleanupIsExcludedFromMixedQueue() {
     let mixed = PublishDrawerBatchActionPresentation.State(
       repositoryConfigured: true,
       hasToken: true,
@@ -225,7 +225,7 @@ final class PublishDrawerPresentationTests: XCTestCase {
     XCTAssertTrue(PublishDrawerBatchActionPresentation.isEnabled(mixed))
     XCTAssertEqual(
       PublishDrawerBatchActionPresentation.status(mixed),
-      "可发布 3 篇 · 待下线 2 篇 · 7 个文件"
+      "可发布 3 篇 · 7 个文件 · 不包含 2 个待下线请求"
     )
   }
 

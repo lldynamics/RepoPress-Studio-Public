@@ -1,5 +1,32 @@
 import Foundation
 
+/// The result of importing an existing site, separated from transient UI
+/// feedback so callers can record an accurate operation outcome even if a
+/// later action replaces the publish banner.
+public enum SiteStarterImportOperationOutcome: Sendable {
+  case succeeded(SiteStarterImportResult)
+  case partiallySucceeded(SiteStarterImportResult)
+  case cancelled
+  case superseded
+  case failed
+
+  public var result: SiteStarterImportResult? {
+    switch self {
+    case .succeeded(let result), .partiallySucceeded(let result): result
+    case .cancelled, .superseded, .failed: nil
+    }
+  }
+
+  public var operationLogOutcome: WorkbenchOperationLogOutcome {
+    switch self {
+    case .succeeded: .succeeded
+    case .partiallySucceeded: .partial
+    case .cancelled, .superseded: .cancelled
+    case .failed: .failed
+    }
+  }
+}
+
 private struct SiteStarterOperationBaseline: Equatable {
   let profiles: [SiteProfile]
   let activeProfileID: UUID
@@ -84,10 +111,10 @@ extension PublishingStore {
   }
 
   @discardableResult
-  public func importExistingSiteFromStarter(
+  public func importExistingSiteFromStarterOutcome(
     _ request: SiteStarterImportRequest,
     store: WorkbenchStore
-  ) async -> SiteStarterImportResult? {
+  ) async -> SiteStarterImportOperationOutcome {
     siteStarterOperationGeneration &+= 1
     let generation = siteStarterOperationGeneration
     let baseline = SiteStarterOperationBaseline(store: self)
@@ -111,9 +138,11 @@ extension PublishingStore {
         profile: result.profile,
         store: store
       ) else {
-        return nil
+        return Task.isCancelled ? .cancelled : .superseded
       }
-      guard siteStarterOperationGeneration == generation else { return nil }
+      guard siteStarterOperationGeneration == generation else {
+        return Task.isCancelled ? .cancelled : .superseded
+      }
       guard baseline.stillMatches(self) else {
         setPublishActionMessage(
           CoreL10n.text(
@@ -121,7 +150,7 @@ extension PublishingStore {
           ),
           status: .warning
         )
-        return nil
+        return .superseded
       }
       profiles.append(result.profile)
       activeProfileID = result.profile.id
@@ -149,9 +178,11 @@ extension PublishingStore {
         )
       }
       store.save()
-      return result
+      return hydratedDrafts.issues.isEmpty ? .succeeded(result) : .partiallySucceeded(result)
     } catch {
-      guard siteStarterOperationGeneration == generation else { return nil }
+      guard siteStarterOperationGeneration == generation else {
+        return Task.isCancelled ? .cancelled : .superseded
+      }
       setPublishActionMessage(
         CoreL10n.format(
           "导入已有站点失败：%@",
@@ -159,8 +190,20 @@ extension PublishingStore {
         ),
         status: .failure
       )
-      return nil
+      return Task.isCancelled ? .cancelled : .failed
     }
+  }
+
+  /// Compatibility convenience for callers that only need the accepted
+  /// import value. New orchestration and logging code should use the typed
+  /// outcome above rather than inspecting global publish feedback.
+  @discardableResult
+  public func importExistingSiteFromStarter(
+    _ request: SiteStarterImportRequest,
+    store: WorkbenchStore
+  ) async -> SiteStarterImportResult? {
+    let outcome = await importExistingSiteFromStarterOutcome(request, store: store)
+    return outcome.result
   }
 
   @discardableResult

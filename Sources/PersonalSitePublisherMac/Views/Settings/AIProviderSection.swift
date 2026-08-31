@@ -640,6 +640,7 @@ struct AIModelSearchPopoverView: View {
           }
           .padding(6)
         }
+        .scrollIndicators(.hidden)
         .frame(minHeight: 200, maxHeight: 320)
       }
 

@@ -24,7 +24,7 @@ enum KnowledgeArticleInsertionService {
     into store: WorkbenchStore
   ) async -> Bool {
     guard document.kind == .image,
-      let imageURL = knowledge.originalFileURL(documentID: document.id)
+      let imageURL = await knowledge.originalFileURL(documentID: document.id)
     else {
       store.setPublishActionMessage(
         "资料库图片副本不可读，请先运行资料库健康检查。",
@@ -128,15 +128,17 @@ enum KnowledgeArticleInsertionService {
         fallbackText: knowledge.selectedDocumentText
       )
     {
-      knowledge.recordBacklinks(
-        citations: [citation],
-        target: KnowledgeBacklinkTarget(
-          kind: .articleDraft,
-          id: currentDraft.id.uuidString,
-          title: currentDraft.title.nilIfEmpty ?? "当前文章",
-          location: "正文图片"
+      Task {
+        await knowledge.recordBacklinks(
+          citations: [citation],
+          target: KnowledgeBacklinkTarget(
+            kind: .articleDraft,
+            id: currentDraft.id.uuidString,
+            title: currentDraft.title.nilIfEmpty ?? "当前文章",
+            location: "正文图片"
+          )
         )
-      )
+      }
     }
     return true
   }
@@ -206,15 +208,17 @@ enum KnowledgeArticleInsertionService {
     guard inserted, selectedResult?.document.id == document.id else { return inserted }
 
     guard let draft = store.selectedDraft else { return inserted }
-    store.knowledge.recordBacklinks(
-      citations: [citation],
-      target: KnowledgeBacklinkTarget(
-        kind: .articleDraft,
-        id: draft.id.uuidString,
-        title: draft.title.nilIfEmpty ?? "当前文章",
-        location: "正文"
+    Task {
+      await store.knowledge.recordBacklinks(
+        citations: [citation],
+        target: KnowledgeBacklinkTarget(
+          kind: .articleDraft,
+          id: draft.id.uuidString,
+          title: draft.title.nilIfEmpty ?? "当前文章",
+          location: "正文"
+        )
       )
-    )
+    }
     return inserted
   }
 
@@ -249,15 +253,17 @@ enum KnowledgeArticleInsertionService {
       postProcess: postProcess
     )
     guard inserted, let citation, let draft = store.selectedDraft else { return inserted }
-    store.knowledge.recordBacklinks(
-      citations: [citation],
-      target: KnowledgeBacklinkTarget(
-        kind: .articleDraft,
-        id: draft.id.uuidString,
-        title: draft.title.nilIfEmpty ?? "当前文章",
-        location: "正文"
+    Task {
+      await store.knowledge.recordBacklinks(
+        citations: [citation],
+        target: KnowledgeBacklinkTarget(
+          kind: .articleDraft,
+          id: draft.id.uuidString,
+          title: draft.title.nilIfEmpty ?? "当前文章",
+          location: "正文"
+        )
       )
-    )
+    }
     return inserted
   }
 

@@ -6,35 +6,24 @@ struct PrivacySettingsView: View {
   let status: PrivacyProtectionStatus
   let onQuickHide: () -> Void
   let updatePrivacySettings: (PrivacyProtectionSettings) -> Void
-  @Environment(\.settingsSubsection) private var settingsSubsection
-
   var body: some View {
     Form {
-      switch displayedSubsection {
-      case .privacyQuickHide:
-        quickHideSection
-        currentStatusSection
-      case .privacyMasking:
-        PrivacySettingsVisibilitySection(
-          masksPrivateContent: privacySettingBinding(keyPath: \.masksPrivateContent)
-        )
-        maskingPreviewSection
-      case .privacyStatus:
-        currentStatusSection
-        supportSection
-      default:
-        EmptyView()
-      }
-
+      SettingsSubsectionAnchor(subsection: .privacyQuickHide)
+      quickHideSection
+      SettingsSubsectionAnchor(subsection: .privacyMasking)
+      PrivacySettingsVisibilitySection(
+        masksPrivateContent: privacySettingBinding(keyPath: \.masksPrivateContent)
+      )
+      maskingPreviewSection
+      SettingsSubsectionAnchor(subsection: .privacyStatus)
+      currentStatusSection
+      supportSection
     }
     .formStyle(.grouped)
+    .scrollIndicators(.hidden)
     .padding(WorkbenchSpacing.content)
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("privacy-settings")
-  }
-
-  private var displayedSubsection: SettingsSubsection {
-    settingsSubsection.tab == .privacy ? settingsSubsection : .privacyQuickHide
   }
 
   private var quickHideSection: some View {

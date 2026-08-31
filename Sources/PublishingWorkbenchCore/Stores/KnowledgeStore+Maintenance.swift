@@ -4,9 +4,9 @@ import Foundation
 @MainActor
 extension KnowledgeStore {
   public func createBackup(at destinationURL: URL) async -> KnowledgeLibraryBackupPreview? {
-    isBusy = true
+    let busyOperationID = beginBusyOperation()
     statusMessage = "正在创建资料库一致性备份…"
-    defer { isBusy = false }
+    defer { finishBusyOperation(busyOperationID) }
     do {
       let preview = try await service.createBackup(at: destinationURL)
       statusMessage = "资料库备份完成：\(preview.documentCount) 条资料，已通过完整性校验。"
@@ -24,9 +24,9 @@ extension KnowledgeStore {
     to destinationDirectory: URL
   ) async -> KnowledgeBatchExportReport? {
     guard !documentIDs.isEmpty else { return nil }
-    isBusy = true
+    let busyOperationID = beginBusyOperation()
     statusMessage = "正在导出 \(documentIDs.count) 条资料…"
-    defer { isBusy = false }
+    defer { finishBusyOperation(busyOperationID) }
     do {
       let report = try await service.exportDocuments(
         documentIDs: documentIDs,
@@ -44,11 +44,13 @@ extension KnowledgeStore {
 
   public func rebuildSemanticIndex(for documentIDs: Set<UUID>) async {
     guard !documentIDs.isEmpty else { return }
-    isBusy = true
+    let busyOperationID = beginBusyOperation()
     statusMessage = "正在重建所选资料的本地语义向量…"
-    defer { isBusy = false }
+    defer { finishBusyOperation(busyOperationID) }
     do {
-      let report = try await service.repairSemanticVectors(documentIDs: documentIDs)
+      let report = try await performQueuedKnowledgeMutation { [service] in
+        try await service.repairSemanticVectors(documentIDs: documentIDs)
+      }
       statusMessage =
         "语义索引重建完成：扫描 \(report.scannedChunkCount) 个片段，生成 \(report.regeneratedVectorCount) 个向量。"
       lastError = nil
@@ -60,11 +62,13 @@ extension KnowledgeStore {
   }
 
   public func rebuildAllSemanticIndex() async {
-    isBusy = true
+    let busyOperationID = beginBusyOperation()
     statusMessage = "正在事务性替换全部本地语义向量…"
-    defer { isBusy = false }
+    defer { finishBusyOperation(busyOperationID) }
     do {
-      let report = try await service.repairSemanticVectors()
+      let report = try await performQueuedKnowledgeMutation { [service] in
+        try await service.repairSemanticVectors()
+      }
       statusMessage =
         "语义索引重建完成：扫描 \(report.scannedChunkCount) 个片段，生成 \(report.regeneratedVectorCount) 个向量，并清理旧模型。"
       lastError = nil
@@ -100,9 +104,9 @@ extension KnowledgeStore {
     documentIDs: Set<UUID>? = nil,
     includingCurrentParserVersion: Bool = false
   ) async -> [KnowledgeSourceRefreshPreview]? {
-    isBusy = true
+    let busyOperationID = beginBusyOperation()
     statusMessage = "正在分析本机网页归档和旧解析器版本…"
-    defer { isBusy = false }
+    defer { finishBusyOperation(busyOperationID) }
     do {
       let previews = try await service.makeLocalContentRepairPreviews(
         documentIDs: documentIDs,
@@ -126,13 +130,15 @@ extension KnowledgeStore {
     _ previews: [KnowledgeSourceRefreshPreview]
   ) async -> Bool {
     guard !previews.isEmpty else { return true }
-    isBusy = true
+    let busyOperationID = beginBusyOperation()
     statusMessage = "正在重新净化网页正文并重建全文与语义索引…"
-    defer { isBusy = false }
+    defer { finishBusyOperation(busyOperationID) }
     do {
-      let result = try await service.applyLocalContentRepairs(previews)
+      let result = try await performQueuedKnowledgeMutation { [service] in
+        try await service.applyLocalContentRepairs(previews)
+      }
       let selectedID = selectedDocumentID
-      await reload(selecting: selectedID)
+      await reloadAfterAcceptedMutation(selecting: selectedID)
       _ = await refreshLibraryHealth()
       statusMessage = "资料质量修复完成：已为 \(result.updatedCount) 条网页创建新版，并重建检索索引。"
       lastError = nil
@@ -145,9 +151,9 @@ extension KnowledgeStore {
   }
 
   public func backupPreview(from backupURL: URL) async -> KnowledgeLibraryBackupPreview? {
-    isBusy = true
+    let busyOperationID = beginBusyOperation()
     statusMessage = "正在校验资料库备份…"
-    defer { isBusy = false }
+    defer { finishBusyOperation(busyOperationID) }
     do {
       let preview = try await service.inspectBackup(at: backupURL)
       statusMessage = "备份校验通过，可以预览后恢复。"
@@ -161,9 +167,9 @@ extension KnowledgeStore {
   }
 
   public func stageRestore(from backupURL: URL) async -> Bool {
-    isBusy = true
+    let busyOperationID = beginBusyOperation()
     statusMessage = "正在准备资料库恢复…"
-    defer { isBusy = false }
+    defer { finishBusyOperation(busyOperationID) }
     do {
       _ = try await service.stageRestore(from: backupURL)
       statusMessage = "恢复包已安全暂存，应用重新启动后生效。"

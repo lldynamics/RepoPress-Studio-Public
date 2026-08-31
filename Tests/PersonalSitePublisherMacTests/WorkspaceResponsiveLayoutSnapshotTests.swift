@@ -17,6 +17,19 @@ final class WorkspaceResponsiveLayoutSnapshotTests: XCTestCase {
     assertBoundaryChanges(at: WorkbenchLayoutMode.minimumHTMLSourceInspectorWorkspaceWidth)
   }
 
+  func testCompactInspectorOverrideIncludesWritingKnowledgeAndRSSOnly() {
+    let compactInspector = WorkspaceResponsiveLayoutSnapshot(width: 1_000)
+
+    XCTAssertTrue(compactInspector.canManuallyRevealInspector(for: .writing))
+    XCTAssertTrue(compactInspector.canManuallyRevealInspector(for: .library))
+    XCTAssertTrue(compactInspector.canManuallyRevealInspector(for: .rss))
+    XCTAssertFalse(compactInspector.canManuallyRevealInspector(for: .sync))
+    XCTAssertFalse(compactInspector.canManuallyRevealInspector(for: .contentHealth))
+
+    let constrained = WorkspaceResponsiveLayoutSnapshot(width: 959)
+    XCTAssertFalse(constrained.canManuallyRevealInspector(for: .library))
+  }
+
   private func assertBoundaryChanges(at width: CGFloat) {
     XCTAssertNotEqual(
       WorkspaceResponsiveLayoutSnapshot(width: width - 1),

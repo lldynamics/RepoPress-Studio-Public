@@ -1,124 +1,21 @@
 import AppKit
 import SwiftUI
 
-/// The only information that crosses from the detail scroll view into SwiftUI.
-enum SettingsDetailScrollBoundaryDirection: Equatable, Sendable {
-  case previous
-  case next
-
-  var arrival: SettingsDetailScrollArrival {
-    switch self {
-    case .previous: return .bottom
-    case .next: return .top
-    }
-  }
-}
-
-enum SettingsDetailScrollArrival: Equatable, Sendable {
-  case top
-  case bottom
-}
-
-struct SettingsDetailScrollArrivalRequest: Equatable, Sendable {
-  let id: UUID
-  let edge: SettingsDetailScrollArrival
-
-  init(edge: SettingsDetailScrollArrival, id: UUID = UUID()) {
-    self.id = id
-    self.edge = edge
-  }
-}
-
-/// Shared across rebuilt subsection views so one physical gesture cannot
-/// cascade through multiple short settings pages.
-@MainActor
-final class SettingsDetailScrollHandoffGate {
-  private static let mouseWheelIdleInterval: TimeInterval = 0.25
-  private var isLocked = false
-  private var lastPhaseLessEventTimestamp: TimeInterval?
-
-  func prepareForEvent(
-    phase: NSEvent.Phase,
-    momentumPhase: NSEvent.Phase,
-    timestamp: TimeInterval
-  ) {
-    if phase.contains(.began) || phase.contains(.ended) || phase.contains(.cancelled)
-      || momentumPhase.contains(.ended) || momentumPhase.contains(.cancelled)
-    {
-      reset()
-      return
-    }
-
-    guard phase.isEmpty, momentumPhase.isEmpty else { return }
-
-    if let lastPhaseLessEventTimestamp,
-      timestamp - lastPhaseLessEventTimestamp > Self.mouseWheelIdleInterval
-    {
-      reset()
-    }
-    lastPhaseLessEventTimestamp = timestamp
-  }
-
-  func lock() -> Bool {
-    guard !isLocked else { return false }
-    isLocked = true
-    return true
-  }
-
-  private func reset() {
-    isLocked = false
-    lastPhaseLessEventTimestamp = nil
-  }
-}
-
-/// Pure boundary policy. AppKit reports a positive delta when the pointer is
-/// moving up and a negative delta when it is moving down.
-enum SettingsDetailScrollBoundaryPolicy {
-  static func direction(
-    forVerticalDelta deltaY: CGFloat,
-    atTop: Bool,
-    atBottom: Bool
-  ) -> SettingsDetailScrollBoundaryDirection? {
-    guard deltaY != 0 else { return nil }
-    if deltaY > 0, atTop { return .previous }
-    if deltaY < 0, atBottom { return .next }
-    return nil
-  }
-}
-
-/// Styling for the settings detail owner. Indicators are hidden, while the
-/// scroll view remains fully scrollable by wheel, trackpad, keyboard, and
-/// accessibility actions.
-enum SettingsDetailScrollViewStyling {
-  @MainActor
-  static func install(on scrollView: NSScrollView) {
-    scrollView.hasVerticalScroller = false
-    scrollView.hasHorizontalScroller = false
-    scrollView.autohidesScrollers = true
-    scrollView.horizontalScrollElasticity = .none
-  }
+/// Narrow AppKit support for the one native scroll owner in each Settings tab.
+///
+/// SwiftUI remains responsible for targets and selection. AppKit only exposes
+/// reliable scroll notifications on macOS 14 so preference-based anchor frames
+/// are reevaluated while a Form or ScrollView is moved by any input method.
+struct SettingsDetailScrollPosition: Equatable, Sendable {
+  let isAtBottom: Bool
+  let visibleOriginY: CGFloat
 }
 
 struct SettingsDetailScrollBridge: NSViewRepresentable {
-  let arrivalRequest: SettingsDetailScrollArrivalRequest?
-  let handoffGate: SettingsDetailScrollHandoffGate
-  let onBoundaryCrossing: @MainActor (SettingsDetailScrollBoundaryDirection) -> Void
-
-  init(
-    arrivalRequest: SettingsDetailScrollArrivalRequest? = nil,
-    handoffGate: SettingsDetailScrollHandoffGate,
-    onBoundaryCrossing: @escaping @MainActor (SettingsDetailScrollBoundaryDirection) -> Void
-  ) {
-    self.arrivalRequest = arrivalRequest
-    self.handoffGate = handoffGate
-    self.onBoundaryCrossing = onBoundaryCrossing
-  }
+  let onScroll: @MainActor (SettingsDetailScrollPosition) -> Void
 
   func makeCoordinator() -> Coordinator {
-    Coordinator(
-      handoffGate: handoffGate,
-      onBoundaryCrossing: onBoundaryCrossing
-    )
+    Coordinator(onScroll: onScroll)
   }
 
   func makeNSView(context: Context) -> MarkerView {
@@ -131,10 +28,8 @@ struct SettingsDetailScrollBridge: NSViewRepresentable {
   }
 
   func updateNSView(_ nsView: MarkerView, context: Context) {
-    context.coordinator.onBoundaryCrossing = onBoundaryCrossing
-    context.coordinator.handoffGate = handoffGate
+    context.coordinator.onScroll = onScroll
     context.coordinator.connect(marker: nsView)
-    context.coordinator.updateArrivalRequest(arrivalRequest)
   }
 
   static func dismantleNSView(_ nsView: MarkerView, coordinator: Coordinator) {
@@ -143,149 +38,55 @@ struct SettingsDetailScrollBridge: NSViewRepresentable {
 
   @MainActor
   final class Coordinator {
-    var handoffGate: SettingsDetailScrollHandoffGate
-    var onBoundaryCrossing: @MainActor (SettingsDetailScrollBoundaryDirection) -> Void
-    private weak var marker: MarkerView?
+    var onScroll: @MainActor (SettingsDetailScrollPosition) -> Void
     private weak var scrollView: NSScrollView?
-    private var eventMonitor: Any?
-    private var pendingArrivalRequest: SettingsDetailScrollArrivalRequest?
-    private var appliedArrivalRequestID: UUID?
-    private var arrivalGeneration = 0
+    private var boundsObserver: NSObjectProtocol?
     private var connectionGeneration = 0
     private var connectionRetriesScheduled = false
-    private var stylingGeneration = 0
+    private var latestScrollPosition: SettingsDetailScrollPosition?
+    private var scrollNotificationScheduled = false
 
-    init(
-      handoffGate: SettingsDetailScrollHandoffGate,
-      onBoundaryCrossing: @escaping @MainActor (SettingsDetailScrollBoundaryDirection) -> Void
-    ) {
-      self.handoffGate = handoffGate
-      self.onBoundaryCrossing = onBoundaryCrossing
+    init(onScroll: @escaping @MainActor (SettingsDetailScrollPosition) -> Void) {
+      self.onScroll = onScroll
     }
 
     func connect(marker: MarkerView) {
-      self.marker = marker
       guard let candidate = Self.detailScrollView(for: marker) else {
         scheduleConnectionRetries(for: marker)
         return
       }
       connectionRetriesScheduled = false
-      connectionGeneration += 1
-      if scrollView !== candidate {
-        disconnect()
-        self.marker = marker
-        scrollView = candidate
-        appliedArrivalRequestID = nil
-        installMonitor()
-        applyPendingArrivalIfNeeded()
+      guard scrollView !== candidate else { return }
+
+      disconnect()
+      scrollView = candidate
+      SettingsDetailScrollViewStyling.install(on: candidate)
+      candidate.contentView.postsBoundsChangedNotifications = true
+      boundsObserver = NotificationCenter.default.addObserver(
+        forName: NSView.boundsDidChangeNotification,
+        object: candidate.contentView,
+        queue: .main
+      ) { [weak self] _ in
+        // The observer is explicitly delivered by OperationQueue.main. Keep
+        // the coalescing mutation synchronous so a burst does not first create
+        // one unstructured Task per bounds notification.
+        MainActor.assumeIsolated {
+          self?.scheduleScrollNotification()
+        }
       }
-      scheduleStyling(for: candidate)
+      notifyScroll()
     }
 
     func disconnect() {
-      if let eventMonitor { NSEvent.removeMonitor(eventMonitor) }
-      eventMonitor = nil
+      if let boundsObserver {
+        NotificationCenter.default.removeObserver(boundsObserver)
+      }
+      boundsObserver = nil
       scrollView = nil
-      arrivalGeneration += 1
+      latestScrollPosition = nil
+      scrollNotificationScheduled = false
       connectionGeneration += 1
       connectionRetriesScheduled = false
-      stylingGeneration += 1
-    }
-
-    func updateArrivalRequest(_ request: SettingsDetailScrollArrivalRequest?) {
-      pendingArrivalRequest = request
-      applyPendingArrivalIfNeeded()
-    }
-
-    private func applyPendingArrivalIfNeeded() {
-      guard let request = pendingArrivalRequest,
-        request.id != appliedArrivalRequestID,
-        scrollView != nil
-      else { return }
-
-      appliedArrivalRequestID = request.id
-      arrivalGeneration += 1
-      let generation = arrivalGeneration
-      for delay in [0.0, 0.05, 0.15] {
-        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
-          guard let self, self.arrivalGeneration == generation else { return }
-          self.scroll(to: request.edge)
-        }
-      }
-    }
-
-    private func scroll(to arrival: SettingsDetailScrollArrival) {
-      guard let scrollView, let documentView = scrollView.documentView else { return }
-      let clipView = scrollView.contentView
-      let documentBounds = documentView.bounds
-      let minimumY = documentBounds.minY
-      let maximumY = max(minimumY, documentBounds.maxY - clipView.bounds.height)
-      let y: CGFloat
-      if documentView.isFlipped {
-        y = arrival == .top ? minimumY : maximumY
-      } else {
-        y = arrival == .top ? maximumY : minimumY
-      }
-      clipView.scroll(to: NSPoint(x: clipView.bounds.origin.x, y: y))
-      scrollView.reflectScrolledClipView(clipView)
-    }
-
-    private func installMonitor() {
-      eventMonitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) {
-        [weak self] event in
-        guard let self else { return event }
-        return self.handle(event) ? nil : event
-      }
-    }
-
-    private func scheduleStyling(for target: NSScrollView) {
-      stylingGeneration += 1
-      let generation = stylingGeneration
-      for delay in [0.0, 0.05, 0.15, 0.35, 0.65, 1.0] {
-        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self, weak target] in
-          guard let self, self.stylingGeneration == generation,
-            let target, self.scrollView === target
-          else { return }
-          SettingsDetailScrollViewStyling.install(on: target)
-        }
-      }
-    }
-
-    private func handle(_ event: NSEvent) -> Bool {
-      guard let scrollView,
-        let window = scrollView.window,
-        event.window === window,
-        let hitView = window.contentView?.hitTest(event.locationInWindow),
-        Self.enclosingScrollView(of: hitView) === scrollView
-      else { return false }
-
-      handoffGate.prepareForEvent(
-        phase: event.phase,
-        momentumPhase: event.momentumPhase,
-        timestamp: event.timestamp
-      )
-
-      // Ended/cancelled events only release the gesture lock. They must not
-      // become a second handoff at the same edge.
-      guard !event.phase.contains(.ended), !event.phase.contains(.cancelled) else {
-        return false
-      }
-
-      // Momentum is allowed to finish the native scroll, but it must not
-      // carry one physical gesture through multiple settings subsections.
-      guard event.momentumPhase.isEmpty else { return false }
-
-      let boundaries = Self.boundaries(of: scrollView)
-      guard
-        let direction = SettingsDetailScrollBoundaryPolicy.direction(
-          forVerticalDelta: event.scrollingDeltaY,
-          atTop: boundaries.atTop,
-          atBottom: boundaries.atBottom
-        ), handoffGate.lock()
-      else { return false }
-
-      onBoundaryCrossing(direction)
-      return true
     }
 
     private func scheduleConnectionRetries(for marker: MarkerView) {
@@ -307,26 +108,39 @@ struct SettingsDetailScrollBridge: NSViewRepresentable {
       }
     }
 
-    private static func boundaries(of scrollView: NSScrollView) -> (
-      atTop: Bool,
-      atBottom: Bool
-    ) {
-      guard let documentView = scrollView.documentView else {
-        return (true, true)
+    private func notifyScroll() {
+      guard let scrollView else { return }
+      let position = SettingsDetailScrollPosition(
+        isAtBottom: Self.isAtBottom(scrollView),
+        visibleOriginY: scrollView.documentVisibleRect.minY
+      )
+      guard latestScrollPosition != position else { return }
+      latestScrollPosition = position
+      onScroll(position)
+    }
+
+    /// Bounds notifications can arrive many times during a single trackpad
+    /// frame. Coalesce them on the main run loop; the visible-subsection work
+    /// only needs the latest position.
+    private func scheduleScrollNotification() {
+      guard !scrollNotificationScheduled else { return }
+      scrollNotificationScheduled = true
+      DispatchQueue.main.async { [weak self] in
+        guard let self else { return }
+        self.scrollNotificationScheduled = false
+        self.notifyScroll()
       }
+    }
+
+    private static func isAtBottom(_ scrollView: NSScrollView) -> Bool {
+      guard let documentView = scrollView.documentView else { return true }
       let visibleBounds = scrollView.documentVisibleRect
       let documentBounds = documentView.bounds
       let tolerance: CGFloat = 0.5
       if documentView.isFlipped {
-        return (
-          visibleBounds.minY <= documentBounds.minY + tolerance,
-          visibleBounds.maxY >= documentBounds.maxY - tolerance
-        )
+        return visibleBounds.maxY >= documentBounds.maxY - tolerance
       }
-      return (
-        visibleBounds.maxY >= documentBounds.maxY - tolerance,
-        visibleBounds.minY <= documentBounds.minY + tolerance
-      )
+      return visibleBounds.minY <= documentBounds.minY + tolerance
     }
 
     private static func detailScrollView(for marker: MarkerView) -> NSScrollView? {
@@ -382,5 +196,18 @@ struct SettingsDetailScrollBridge: NSViewRepresentable {
       super.viewDidMoveToWindow()
       onMove()
     }
+  }
+}
+
+/// Keep Settings scrollbars under the user's system preference. The native
+/// scroll view remains responsible for pointer, keyboard and VoiceOver input.
+@MainActor
+enum SettingsDetailScrollViewStyling {
+  static func install(on scrollView: NSScrollView) {
+    scrollView.hasVerticalScroller = true
+    scrollView.hasHorizontalScroller = false
+    scrollView.scrollerStyle = NSScroller.preferredScrollerStyle
+    scrollView.autohidesScrollers = NSScroller.preferredScrollerStyle == .overlay
+    scrollView.horizontalScrollElasticity = .none
   }
 }

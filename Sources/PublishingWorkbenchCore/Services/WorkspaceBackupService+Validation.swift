@@ -6,6 +6,7 @@ extension WorkspaceBackupService {
     at packageURL: URL,
     currentApplicationVersion: String? = nil
   ) throws -> ValidatedBackup {
+    try Task.checkCancellation()
     var isDirectory: ObjCBool = false
     guard fileManager.fileExists(atPath: packageURL.path, isDirectory: &isDirectory),
           isDirectory.boolValue else {
@@ -48,6 +49,7 @@ extension WorkspaceBackupService {
 
     var seenPaths = Set<String>()
     for record in manifest.files {
+      try Task.checkCancellation()
       try validateRelativePath(record.relativePath)
       guard seenPaths.insert(record.relativePath).inserted else {
         throw WorkspaceBackupError.invalidManifest(
@@ -128,6 +130,30 @@ extension WorkspaceBackupService {
       )
     }
 
+    if manifest.formatVersion >= 3 {
+      try Task.checkCancellation()
+      guard
+        manifest.files.contains(where: {
+          $0.relativePath == Self.operationHistoryRelativePath
+            && $0.component == .operationHistory
+        })
+      else {
+        throw WorkspaceBackupError.missingFile(Self.operationHistoryRelativePath)
+      }
+      let operationHistoryData = try boundedData(
+        at: packageURL.appendingPathComponent(Self.operationHistoryRelativePath),
+        maximumByteCount: WorkbenchOperationLedgerPersistence.maximumLedgerByteCount,
+        relativePath: Self.operationHistoryRelativePath
+      )
+      do {
+        _ = try WorkbenchOperationLedgerPersistence.decodedDocument(
+          from: operationHistoryData
+        )
+      } catch {
+        throw WorkspaceBackupError.invalidManifest(error.localizedDescription)
+      }
+    }
+
     let knowledgeURL = packageURL.appendingPathComponent(Self.knowledgePackageName)
     do {
       _ = try KnowledgeLibraryBackupService(
@@ -138,7 +164,13 @@ extension WorkspaceBackupService {
       throw WorkspaceBackupError.knowledgeLibraryInvalid(error.localizedDescription)
     }
 
-    if manifest.formatVersion >= 2 {
+    let includesRSS = manifest.files.contains {
+      $0.relativePath == Self.rssDatabaseRelativePath && $0.component == .rssReader
+    }
+    if manifest.formatVersion == 2 || includesRSS {
+      guard includesRSS else {
+        throw WorkspaceBackupError.missingFile(Self.rssDatabaseRelativePath)
+      }
       do {
         _ = try RSSReaderBackupService(fileManager: fileManager).inspectBackup(
           at: packageURL.appendingPathComponent(Self.rssDatabaseRelativePath)
@@ -252,6 +284,7 @@ extension WorkspaceBackupService {
 
   func component(for relativePath: String) -> WorkspaceBackupComponent? {
     if relativePath == Self.workbenchRelativePath { return .workbenchState }
+    if relativePath == Self.operationHistoryRelativePath { return .operationHistory }
     if relativePath.hasPrefix(Self.attachmentsDirectoryName + "/") {
       return .draftAttachments
     }
@@ -270,7 +303,14 @@ extension WorkspaceBackupService {
     formatVersion: Int
   ) -> [WorkspaceBackupComponentSummary] {
     let components = WorkspaceBackupComponent.allCases.filter { component in
-      formatVersion >= 2 || component != .rssReader
+      switch component {
+      case .rssReader:
+        return formatVersion >= 2
+      case .operationHistory:
+        return formatVersion >= 3
+      case .workbenchState, .draftAttachments, .knowledgeLibrary:
+        return true
+      }
     }
     return components.map { component in
       let matching = records.filter { $0.component == component }
@@ -290,6 +330,7 @@ extension WorkspaceBackupService {
   ) throws -> [WorkspaceBackupFileRecord] {
     let files = try regularFileURLs(in: directoryURL)
     return try files.map { fileURL in
+      try Task.checkCancellation()
       let relativePath = try relativePath(of: fileURL, under: rootURL)
       guard relativePath.hasPrefix(relativePrefix + "/") else {
         throw WorkspaceBackupError.invalidPath(relativePath)
@@ -319,6 +360,7 @@ extension WorkspaceBackupService {
     }
     var files: [URL] = []
     for case let url as URL in enumerator {
+      try Task.checkCancellation()
       let values = try url.resourceValues(
         forKeys: [.isDirectoryKey, .isRegularFileKey, .isSymbolicLinkKey]
       )
@@ -362,6 +404,7 @@ extension WorkspaceBackupService {
     component: WorkspaceBackupComponent,
     under rootURL: URL
   ) throws -> WorkspaceBackupFileRecord {
+    try Task.checkCancellation()
     try validateRelativePath(relativePath)
     let url = rootURL.appendingPathComponent(relativePath)
     let values = try url.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey])

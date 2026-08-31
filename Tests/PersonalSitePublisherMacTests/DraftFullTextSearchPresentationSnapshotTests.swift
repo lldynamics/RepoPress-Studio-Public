@@ -61,6 +61,40 @@ final class DraftFullTextSearchPresentationSnapshotTests: XCTestCase {
     )
   }
 
+  func testPreparationUsesLiveBodyAndMasksPrivateDraftContentOffProjectionPath() {
+    let privateDraft = ArticleDraft(
+      siteProfileID: UUID(),
+      title: "私密文章",
+      slug: "private",
+      tags: ["secret"],
+      visibility: .private,
+      summary: "私密摘要",
+      bodyMarkdown: "私密正文"
+    )
+    let input = DraftFullTextSearchInput(
+      draft: privateDraft,
+      bodyMarkdown: "最新正文"
+    )
+
+    let prepared = DraftFullTextSearchPreparation.prepare(
+      inputs: [input],
+      masksPrivateContent: true
+    )
+
+    XCTAssertEqual(prepared.count, 1)
+    XCTAssertEqual(prepared[0].title, "私密文章")
+    XCTAssertTrue(prepared[0].bodyMarkdown.isEmpty)
+    XCTAssertTrue(prepared[0].tags.isEmpty)
+    XCTAssertTrue(prepared[0].summary.isEmpty)
+
+    let unmasked = DraftFullTextSearchPreparation.prepare(
+      inputs: [input],
+      masksPrivateContent: false
+    )
+    XCTAssertEqual(unmasked[0].bodyMarkdown, "最新正文")
+    XCTAssertEqual(unmasked[0].slug, "private")
+  }
+
   private func makeHit(
     draftID: UUID,
     title: String,

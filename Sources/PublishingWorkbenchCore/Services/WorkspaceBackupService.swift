@@ -11,10 +11,11 @@ struct WorkspaceRestoreProcessInterruption: Error, Sendable {}
 
 /// Creates and restores a portable, integrity-checked workspace package.
 ///
-/// The package intentionally contains the Codable workbench snapshot and the
-/// app-owned knowledge/RSS/attachment files only. Credentials are managed
-/// separately in a restricted local file, Keychain, or memory, so this service
-/// never receives a credential store and never reads API keys.
+/// The package intentionally contains the Codable workbench snapshot, the
+/// privacy-bounded operation ledger, and app-owned knowledge/RSS/attachment
+/// files only. Credentials are managed separately in a restricted local file,
+/// Keychain, or memory, so this service never receives a credential store and
+/// never reads API keys.
 public final class WorkspaceBackupService: Sendable {
   public struct Limits: Sendable {
     public var maximumManifestByteCount: Int
@@ -45,6 +46,7 @@ public final class WorkspaceBackupService: Sendable {
 
   public static let manifestFileName = "manifest.json"
   public static let workbenchRelativePath = "workbench/workbench.json"
+  public static let operationHistoryRelativePath = "operation-history/operation-log.json"
   public static let knowledgePackageName = "knowledge.pslibrarybackup"
   public static let rssDirectoryName = "rss"
   public static let rssDatabaseRelativePath = "rss/reader.sqlite"
@@ -59,6 +61,8 @@ public final class WorkspaceBackupService: Sendable {
   let limits: Limits
   let restoreMutationHook: @Sendable (WorkspaceBackupRestoreMutationCheckpoint) throws
     -> Void
+  let fileCopyProgressHook: @Sendable (String, Int64) -> Void
+  let backupCommitHook: @Sendable () -> Void
 
   var fileManager: FileManager {
     fileManagerDependency.value
@@ -71,17 +75,23 @@ public final class WorkspaceBackupService: Sendable {
     self.fileManagerDependency = SendableFileManager(fileManager)
     self.limits = limits
     self.restoreMutationHook = { _ in }
+    self.fileCopyProgressHook = { _, _ in }
+    self.backupCommitHook = {}
   }
 
   init(
     fileManager: FileManager = .default,
     limits: Limits = Limits(),
     restoreMutationHook: @escaping @Sendable (WorkspaceBackupRestoreMutationCheckpoint) throws
-      -> Void
+      -> Void,
+    fileCopyProgressHook: @escaping @Sendable (String, Int64) -> Void = { _, _ in },
+    backupCommitHook: @escaping @Sendable () -> Void = {}
   ) {
     self.fileManagerDependency = SendableFileManager(fileManager)
     self.limits = limits
     self.restoreMutationHook = restoreMutationHook
+    self.fileCopyProgressHook = fileCopyProgressHook
+    self.backupCommitHook = backupCommitHook
   }
 
   public static func defaultAutomaticBackupDirectoryURL(
@@ -99,12 +109,14 @@ public final class WorkspaceBackupService: Sendable {
   public func createBackup(
     at destinationURL: URL,
     snapshot: WorkbenchSnapshot,
+    operationHistoryDocument: WorkbenchOperationLedgerDocument? = nil,
     knowledgeRootURL: URL,
     rssDatabaseURL: URL? = nil,
     rssMediaDirectoryURL: URL? = nil,
     applicationVersion: String,
     currentApplicationVersion: String? = nil
   ) throws -> WorkspaceBackupPreview {
+    try Task.checkCancellation()
     let packageURL = normalizedPackageURL(destinationURL)
     let parentURL = packageURL.deletingLastPathComponent()
     try fileManager.createDirectory(at: parentURL, withIntermediateDirectories: true)
@@ -120,6 +132,7 @@ public final class WorkspaceBackupService: Sendable {
     }
 
     let preparedAttachments = try prepareAttachmentSnapshot(snapshot)
+    try Task.checkCancellation()
     let sanitizedSnapshot = preparedAttachments.snapshot
     let workbenchURL = temporaryURL.appendingPathComponent(Self.workbenchRelativePath)
     try fileManager.createDirectory(
@@ -141,7 +154,29 @@ public final class WorkspaceBackupService: Sendable {
       under: temporaryURL
     )]
 
+    if let operationHistoryDocument {
+      try Task.checkCancellation()
+      let operationHistoryURL = temporaryURL.appendingPathComponent(
+        Self.operationHistoryRelativePath
+      )
+      try fileManager.createDirectory(
+        at: operationHistoryURL.deletingLastPathComponent(),
+        withIntermediateDirectories: true
+      )
+      let operationHistoryData = try WorkbenchOperationLedgerPersistence.encodedDocument(
+        operationHistoryDocument
+      )
+      try operationHistoryData.write(to: operationHistoryURL, options: .atomic)
+      records.append(
+        try fileRecord(
+          relativePath: Self.operationHistoryRelativePath,
+          component: .operationHistory,
+          under: temporaryURL
+        ))
+    }
+
     for preparedAttachment in preparedAttachments.references {
+      try Task.checkCancellation()
       let destination = temporaryURL.appendingPathComponent(
         preparedAttachment.reference.archiveRelativePath
       )
@@ -162,6 +197,7 @@ public final class WorkspaceBackupService: Sendable {
       fileManager: fileManager
     )
     let knowledgeDatabase = try knowledgeService.database()
+    try Task.checkCancellation()
     _ = try KnowledgeLibraryBackupService(
       rootURL: knowledgeRootURL,
       fileManager: fileManager
@@ -177,8 +213,9 @@ public final class WorkspaceBackupService: Sendable {
       under: temporaryURL
     ))
 
-    let formatVersion: Int
+    var includesRSS = false
     if let rssDatabaseURL {
+      try Task.checkCancellation()
       let rssBackupURL = temporaryURL.appendingPathComponent(Self.rssDatabaseRelativePath)
       _ = try RSSReaderBackupService(fileManager: fileManager).createBackup(
         from: rssDatabaseURL,
@@ -193,6 +230,7 @@ public final class WorkspaceBackupService: Sendable {
         ?? RSSReaderStore.mediaCacheDirectoryURL(for: rssDatabaseURL)
       for sourceFileURL in try regularFileURLs(in: sourceMediaURL)
         where !sourceFileURL.lastPathComponent.hasPrefix(".") {
+        try Task.checkCancellation()
         let relativeMediaPath = try relativePath(of: sourceFileURL, under: sourceMediaURL)
         let archivePath = "\(Self.rssMediaRelativePrefix)/\(relativeMediaPath)"
         records.append(try copyRegularFile(
@@ -202,15 +240,19 @@ public final class WorkspaceBackupService: Sendable {
           component: .rssReader
         ))
       }
-      formatVersion = WorkspaceBackupManifest.currentFormatVersion
-    } else {
-      // Preserve the v1 contract for callers that intentionally create a
-      // workspace-only archive. The app's complete-backup path always passes
-      // the configured RSS database and therefore writes v2.
-      formatVersion = WorkspaceBackupManifest.minimumSupportedFormatVersion
+      includesRSS = true
     }
 
+    // Preserve the historical contracts for callers that do not yet supply an
+    // operation ledger. A complete app backup supplies the ledger and writes
+    // v3; legacy workspace-only and RSS-aware callers continue to write v1/v2.
+    let formatVersion =
+      operationHistoryDocument != nil
+      ? WorkspaceBackupManifest.currentFormatVersion
+      : (includesRSS ? 2 : WorkspaceBackupManifest.minimumSupportedFormatVersion)
+
     records.sort { $0.relativePath < $1.relativePath }
+    try Task.checkCancellation()
     let totalByteCount = try validateFileLimits(records)
     let manifest = WorkspaceBackupManifest(
       formatVersion: formatVersion,
@@ -232,20 +274,28 @@ public final class WorkspaceBackupService: Sendable {
       manifest,
       to: temporaryURL.appendingPathComponent(Self.manifestFileName)
     )
-    _ = try validatedBackup(at: temporaryURL)
+    try Task.checkCancellation()
+    var committedPreview = try validatedBackup(
+      at: temporaryURL,
+      currentApplicationVersion: currentApplicationVersion ?? applicationVersion
+    ).preview
+    committedPreview.backupURL = packageURL
 
+    // This is the last cancellation boundary. Once replacement commits, do
+    // not run another cancellation-aware read that could report cancellation
+    // after the destination has already changed.
+    try Task.checkCancellation()
     try replaceItem(at: packageURL, withItemAt: temporaryURL)
     shouldRemoveTemporary = false
-    return try inspectBackup(
-      at: packageURL,
-      currentApplicationVersion: currentApplicationVersion ?? applicationVersion
-    )
+    backupCommitHook()
+    return committedPreview
   }
 
   public func inspectBackup(
     at backupURL: URL,
     currentApplicationVersion: String? = nil
   ) throws -> WorkspaceBackupPreview {
+    try Task.checkCancellation()
     let packageURL = normalizedPackageURL(backupURL)
     return try validatedBackup(
       at: packageURL,
@@ -258,6 +308,7 @@ public final class WorkspaceBackupService: Sendable {
     persistenceFileURL: URL,
     currentApplicationVersion: String? = nil
   ) throws -> WorkspaceBackupPreview {
+    try Task.checkCancellation()
     let sourceURL = normalizedPackageURL(backupURL)
     let validated = try validatedBackup(
       at: sourceURL,
@@ -278,6 +329,7 @@ public final class WorkspaceBackupService: Sendable {
         to: temporaryURL.appendingPathComponent(Self.manifestFileName)
       )
       for record in validated.manifest.files {
+        try Task.checkCancellation()
         let destination = temporaryURL.appendingPathComponent(record.relativePath)
         let copiedRecord = try copyRegularFile(
           from: sourceURL.appendingPathComponent(record.relativePath),
@@ -293,7 +345,11 @@ public final class WorkspaceBackupService: Sendable {
         at: temporaryURL,
         currentApplicationVersion: currentApplicationVersion
       )
+      try Task.checkCancellation()
       try replaceItem(at: pendingURL, withItemAt: temporaryURL)
+    } catch is CancellationError {
+      try? fileManager.removeItem(at: temporaryURL)
+      throw CancellationError()
     } catch {
       try? fileManager.removeItem(at: temporaryURL)
       throw WorkspaceBackupError.stagingFailed(error.localizedDescription)

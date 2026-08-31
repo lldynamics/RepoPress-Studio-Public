@@ -530,10 +530,10 @@ extension RSSReaderView {
           highlightedText: highlight.text,
           note: highlight.note
         )
-        guard knowledge.saveAnnotation(annotation) else {
+        guard await knowledge.saveAnnotation(annotation) else {
           throw RSSReaderError.persistence("资料库批注保存失败")
         }
-        knowledge.addTags(highlight.tags, to: [document.id])
+        await knowledge.addTags(highlight.tags, to: [document.id])
       }
     } catch {
       workflowMessage = String(localized: "高亮保存失败：\(error.localizedDescription)")
@@ -599,7 +599,7 @@ extension RSSReaderView {
           excerpt.trimmingCharacters(in: .whitespacesAndNewlines).prefix(4_000)),
         note: note.trimmingCharacters(in: .whitespacesAndNewlines)
       )
-      guard knowledge.saveAnnotation(annotation) else {
+      guard await knowledge.saveAnnotation(annotation) else {
         throw RSSReaderError.persistence("资料标注保存失败")
       }
     }

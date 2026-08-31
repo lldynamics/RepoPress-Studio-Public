@@ -35,8 +35,7 @@ struct PublishDrawerView: View {
   // 部分属性尚未迁移到 Facade，保留 store 访问，但去除 @ObservedObject 以避免全局不相关事件触发重绘
   let store: WorkbenchStore
   @Binding var isPresented: Bool
-  @State private var reviewedAllChangesPaths: Set<String> = []
-  @State private var reviewedAllChangesTarget: RemoteRepositoryPublishTargetSnapshot?
+  @State private var pendingBatchReview: BatchPublishReviewSnapshot?
   @State private var pendingSingleOnlinePublishDraft: ArticleDraft?
   @State private var isAdvancedFlowExpanded = false
   @State private var isRemoteConflictResolverPresented = false
@@ -76,6 +75,21 @@ struct PublishDrawerView: View {
       }
       .sheet(item: $pendingSingleOnlinePublishDraft) { draft in
         singleArticleOnlinePublishConfirmation(draft: draft)
+      }
+      .sheet(item: $pendingBatchReview) { review in
+        RemotePublishConfirmationView(
+          targetLabel: String(localized: "完整批次"),
+          targetTitle: String(format: String(localized: "%d 篇文章"), review.items.count),
+          preview: review.preview,
+          reviewDraft: review.reviewDraft,
+          batchReview: review,
+          isPublishing: store.isRemoteRepositoryPublishing,
+          cancelAction: { pendingBatchReview = nil },
+          confirmAction: {
+            pendingBatchReview = nil
+            operationController.start { await publishAllChangesOnline(review: review) }
+          }
+        )
       }
       .sheet(isPresented: $isRemoteConflictResolverPresented) {
         if let session = store.remoteRepositoryConflictSession {
@@ -195,10 +209,10 @@ struct PublishDrawerView: View {
       Button {
         isAdvancedFlowExpanded = true
       } label: {
-        Label("审阅文件差异", systemImage: "doc.text.magnifyingglass")
+        Label("查看当前文章差异", systemImage: "doc.text.magnifyingglass")
       }
       .buttonStyle(.link)
-      .accessibilityHint("展开发布文件差异")
+      .accessibilityHint("展开当前文章差异；完整批次会在发布确认页显示")
     }
   }
 
@@ -235,7 +249,7 @@ struct PublishDrawerView: View {
         if summary.deletionCount > 0 {
           Label(
             String(
-              format: String(localized: "%d 篇文章将下线"),
+              format: String(localized: "%d 个待下线请求未纳入本次发布，请到回收站单独处理。"),
               summary.deletionCount
             ),
             systemImage: "trash"
@@ -632,7 +646,10 @@ struct PublishDrawerView: View {
     let preview = store.cachedLocalPublishPreview(for: draft)
     let changedDiffs = preview?.changedFileDiffs ?? []
 
-    return PublishDrawerCard(title: "差异", systemImage: "doc.text.magnifyingglass") {
+    return PublishDrawerCard(title: "当前文章差异", systemImage: "doc.text.magnifyingglass") {
+      Text("这里只显示当前文章；发布前还会打开完整批次确认页。")
+        .font(.caption)
+        .foregroundStyle(.secondary)
       HStack(spacing: 8) {
         PublishDrawerStat(
           title: "文件", value: preview.map { "\($0.fileDiffs.count)" } ?? "—",
@@ -682,13 +699,7 @@ struct PublishDrawerView: View {
 
   private func prepareAllChangesOnlinePublish() {
     operationController.start {
-      guard let reviewedPreview = store.batchRemotePublishPreviewSnapshot else { return }
-      let reviewedPaths = Set(reviewedPreview.changedPaths)
-      let reviewedTarget = RemoteRepositoryPublishTargetSnapshot(
-        profile: store.activeProfile,
-        preview: reviewedPreview
-      )
-      if reviewedPreview.accessCheck == nil {
+      if store.batchRemotePublishPreviewSnapshot?.accessCheck == nil {
         guard await store.checkRepositoryTokenAccess()?.canWrite == true else { return }
       }
       guard !Task.isCancelled else { return }
@@ -697,27 +708,20 @@ struct PublishDrawerView: View {
       guard let preview = store.batchRemotePublishPreviewSnapshot,
         canStartRemotePublish(preview),
         let plan = store.batchPublishPlan,
-        !plan.remotePublishableItems.isEmpty
-          || !store.pendingRemoteRepositoryCleanupRequests.isEmpty
+        plan.profileID == store.activeProfileID,
+        !plan.remotePublishableItems.isEmpty,
+        let package = store.remotePublishPackage(for: plan)
       else {
         return
       }
-      let refreshedTarget = RemoteRepositoryPublishTargetSnapshot(
+      pendingBatchReview = BatchPublishReviewSnapshot(
+        plan: plan,
+        package: package,
         profile: store.activeProfile,
-        preview: preview
+        preview: preview,
+        reviewDraft: store.batchRemoteReviewDraft,
+        excludedCleanupCount: store.pendingRemoteRepositoryCleanupRequests.count
       )
-      guard Set(preview.changedPaths) == reviewedPaths,
-        refreshedTarget == reviewedTarget
-      else {
-        store.setPublishActionMessage(
-          String(localized: "发布清单或目标已变化，已停止写入。请审阅刷新后的清单再发布。"),
-          status: .warning
-        )
-        return
-      }
-      reviewedAllChangesPaths = reviewedPaths
-      reviewedAllChangesTarget = reviewedTarget
-      await publishAllChangesOnline()
     }
   }
 
@@ -737,13 +741,13 @@ struct PublishDrawerView: View {
     }
   }
 
-  private func publishAllChangesOnline() async {
+  private func publishAllChangesOnline(review: BatchPublishReviewSnapshot) async {
     let currentSection = publishingFacade.selectedSection
     await store.publishBatchReadyDraftsOnlineUsingPreferredStrategy(
-      expectedChangedPaths: reviewedAllChangesPaths,
-      expectedTarget: reviewedAllChangesTarget
+      expectedChangedPaths: Set(review.preview.changedPaths),
+      expectedTarget: review.target,
+      expectedReview: review.expectation
     )
-    reviewedAllChangesTarget = nil
     guard !Task.isCancelled else { return }
     publishingFacade.selectSection(currentSection)
     store.refreshBatchPublishPlanInBackground()
@@ -791,7 +795,7 @@ struct PublishDrawerView: View {
     let interruptedOperation = operationController.isRunning
     operationController.cancel()
     pendingSingleOnlinePublishDraft = nil
-    reviewedAllChangesTarget = nil
+    pendingBatchReview = nil
     if interruptedOperation {
       store.setPublishActionMessage(
         String(localized: "发布流程已中断；如果远端请求已经发出，请刷新仓库状态确认结果。"),

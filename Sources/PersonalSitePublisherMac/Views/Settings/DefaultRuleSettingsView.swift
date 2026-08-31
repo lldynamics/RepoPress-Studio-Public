@@ -35,64 +35,52 @@ struct DefaultRuleSettingsView: View {
   let healthNavigationRequestID: UUID
   let navigationDestination: SettingsDestination?
   let navigationRequestID: UUID
-  @Environment(\.settingsSubsection) private var settingsSubsection
-
   var body: some View {
     Form {
-      switch activeSubsection {
-      case .rulesBasics:
-        DefaultRuleBasicsFocusedSection(
+      SettingsSubsectionAnchor(subsection: .rulesBasics)
+      DefaultRuleBasicsFocusedSection(
+        activeProfileBinding: activeProfileBinding,
+        siteKindBinding: siteKindBinding
+      )
+      SettingsSubsectionAnchor(subsection: .rulesDiscovery)
+      RepositoryDraftDiscoverySettingsSection(
+        store: store,
+        activeProfileBinding: activeProfileBinding
+      )
+      SettingsSubsectionAnchor(subsection: .rulesFrontMatter)
+      DefaultRuleFrontMatterFocusedSection(activeProfileBinding: activeProfileBinding)
+      SettingsSubsectionAnchor(subsection: .rulesPaths)
+      Section("文件路径与模板") {
+        DefaultRulePathSection(
           activeProfileBinding: activeProfileBinding,
-          siteKindBinding: siteKindBinding
+          shouldFocusPaths: shouldFocusPathRules,
+          navigationRequestID: pathNavigationRequestID
         )
-      case .rulesDiscovery:
-        RepositoryDraftDiscoverySettingsSection(
-          store: store,
-          activeProfileBinding: activeProfileBinding
-        )
-      case .rulesFrontMatter:
-        DefaultRuleFrontMatterFocusedSection(activeProfileBinding: activeProfileBinding)
-      case .rulesPaths:
-        Section("文件路径与模板") {
-          DefaultRulePathSection(
-            activeProfileBinding: activeProfileBinding,
-            shouldFocusPaths: shouldFocusPathRules,
-            navigationRequestID: pathNavigationRequestID
-          )
 
-          Text("仅在站点目录结构不同时调整；默认值适用于当前站点类型。")
-            .font(.caption)
-            .foregroundStyle(.secondary)
-        }
-        .accessibilityIdentifier("default-rule-path-rules")
-      default:
-        EmptyView()
+        Text("仅在站点目录结构不同时调整；默认值适用于当前站点类型。")
+          .font(.caption)
+          .foregroundStyle(.secondary)
       }
+      .accessibilityIdentifier("default-rule-path-rules")
     }
     .formStyle(.grouped)
-    .scrollIndicators(.automatic)
+    .scrollIndicators(.hidden)
     .padding(WorkbenchSpacing.content)
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("default-rule-settings")
   }
 
   private var shouldFocusPathRules: Bool {
-    activeSubsection == .rulesPaths
-      || DefaultRuleExpansionState.shouldRevealPathRules(
-        for: navigationDestination,
-        legacyHealthDestination: healthDestination
-      )
+    DefaultRuleExpansionState.shouldRevealPathRules(
+      for: navigationDestination,
+      legacyHealthDestination: healthDestination
+    )
   }
 
   private var pathNavigationRequestID: UUID {
     healthDestination == .defaultRules ? healthNavigationRequestID : navigationRequestID
   }
 
-  private var activeSubsection: SettingsSubsection {
-    settingsSubsection.tab == .defaultRules
-      ? settingsSubsection
-      : .rulesBasics
-  }
 }
 
 private struct DefaultRuleBasicsFocusedSection: View {
@@ -235,40 +223,19 @@ private struct DefaultRuleFrontMatterFocusedSection: View {
     activeProfileBinding.wrappedValue
   }
 
+  private var frontMatterPreview: DefaultRuleFrontMatterPreview {
+    DefaultRuleFrontMatterPreview.make(profile: activeProfile)
+  }
+
   private var generatedFrontMatterPreview: String {
-    let profile = activeProfile
-    let delimiter = profile.frontMatterStyle == .yaml ? "---" : "+++"
-    var lines: [String] = [delimiter, "title: 示例文章标题", "date: 2026-08-06 10:00:00"]
-    if !profile.defaultAuthor.isEmpty { lines.append("author: \(profile.defaultAuthor)") }
-    if !profile.defaultTags.isEmpty {
-      lines.append("tags: [\(profile.defaultTags.joined(separator: ", "))]")
-    }
-    if !profile.defaultCategories.isEmpty {
-      lines.append("categories: [\(profile.defaultCategories.joined(separator: ", "))]")
-    }
-    if profile.includeDraftFlagInFrontMatter { lines.append("draft: true") }
-    if profile.includeCoverInFrontMatter { lines.append("cover: /images/example-cover.png") }
-    lines.append(delimiter)
-    return lines.joined(separator: "\n")
+    frontMatterPreview.frontMatter
   }
 
   private var simulatedFilePath: String {
-    let pattern =
-      activeProfile.markdownPathPattern.isEmpty
-      ? "content/posts/{slug}.md"
-      : activeProfile.markdownPathPattern
-    return
-      pattern
-      .replacingOccurrences(of: "{slug}", with: "example-article")
-      .replacingOccurrences(of: "{year}", with: "2026")
-      .replacingOccurrences(of: "{month}", with: "08")
-      .replacingOccurrences(of: "{day}", with: "06")
+    frontMatterPreview.markdownPath
   }
 
   private var simulatedURLPath: String {
-    let siteURL = activeProfile.deploymentSiteURL?.trimmedForPublishing
-    let base = (siteURL?.isEmpty ?? true) ? "https://example.com" : siteURL!
-    let trimmedBase = base.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-    return "\(trimmedBase)/posts/2026/08/example-article/"
+    frontMatterPreview.url
   }
 }

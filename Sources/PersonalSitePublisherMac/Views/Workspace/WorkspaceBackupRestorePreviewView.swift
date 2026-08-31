@@ -143,6 +143,8 @@ struct WorkspaceBackupRestorePreviewView: View {
       return "books.vertical"
     case .rssReader:
       return "dot.radiowaves.left.and.right"
+    case .operationHistory:
+      return "clock.arrow.circlepath"
     }
   }
 

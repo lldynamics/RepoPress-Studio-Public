@@ -15,7 +15,7 @@ final class WorkbenchAIAgentExternalToolLoopTests: XCTestCase {
     let executions = ExternalToolExecutions()
     let service = WorkbenchAIAgentLoopService(
       modelTransport: { try await transport.complete($0) },
-      toolRegistry: try ExternalToolRegistry(policy: .automatic),
+      toolRegistry: try Self.registry(policy: .automatic),
       grantedScopes: [.localRead],
       automaticExecutor: { invocation in
         await executions.record(invocation)
@@ -47,7 +47,7 @@ final class WorkbenchAIAgentExternalToolLoopTests: XCTestCase {
     ])
     let service = WorkbenchAIAgentLoopService(
       modelTransport: { try await transport.complete($0) },
-      toolRegistry: try ExternalToolRegistry(policy: .requiresConfirmation),
+      toolRegistry: try Self.registry(policy: .requiresConfirmation),
       grantedScopes: [.localRead],
       automaticExecutor: { _ in
         XCTFail("Reviewed calls must not enter the automatic executor")
@@ -98,7 +98,7 @@ final class WorkbenchAIAgentExternalToolLoopTests: XCTestCase {
     ])
     let firstService = WorkbenchAIAgentLoopService(
       modelTransport: { try await firstTransport.complete($0) },
-      toolRegistry: try ExternalToolRegistry(
+      toolRegistry: try Self.registry(
         revision: "external-v1",
         policy: .requiresConfirmation
       ),
@@ -118,7 +118,7 @@ final class WorkbenchAIAgentExternalToolLoopTests: XCTestCase {
     ])
     let resumedService = WorkbenchAIAgentLoopService(
       modelTransport: { try await resumedTransport.complete($0) },
-      toolRegistry: try ExternalToolRegistry(
+      toolRegistry: try Self.registry(
         revision: "external-v2",
         policy: .requiresConfirmation
       ),
@@ -155,7 +155,7 @@ final class WorkbenchAIAgentExternalToolLoopTests: XCTestCase {
     let executions = ExternalToolExecutions()
     let service = WorkbenchAIAgentLoopService(
       modelTransport: { try await transport.complete($0) },
-      toolRegistry: try ExternalToolRegistry(policy: .automatic),
+      toolRegistry: try Self.registry(policy: .automatic),
       grantedScopes: [],
       automaticExecutor: { invocation in
         await executions.record(invocation)
@@ -187,7 +187,7 @@ final class WorkbenchAIAgentExternalToolLoopTests: XCTestCase {
     let executions = ExternalToolExecutions()
     let service = WorkbenchAIAgentLoopService(
       modelTransport: { try await transport.complete($0) },
-      toolRegistry: try ExternalToolRegistry(
+      toolRegistry: try Self.registry(
         policy: .automatic,
         rejectsRevalidation: true
       ),
@@ -216,6 +216,20 @@ final class WorkbenchAIAgentExternalToolLoopTests: XCTestCase {
     )
   }
 
+  private static func registry(
+    revision: String = "external-v1",
+    policy: AIAgentToolExecutionPolicy,
+    rejectsRevalidation: Bool = false
+  ) throws -> WorkbenchExternalAgentToolRegistryAdapter<ExternalToolRegistry> {
+    try WorkbenchExternalAgentToolRegistryAdapter(
+      ExternalToolRegistry(
+        revision: revision,
+        policy: policy,
+        rejectsRevalidation: rejectsRevalidation
+      )
+    )
+  }
+
   private static func call(id: String) -> AIToolCall {
     AIToolCall(
       id: id,
@@ -227,7 +241,7 @@ final class WorkbenchAIAgentExternalToolLoopTests: XCTestCase {
   }
 }
 
-private struct ExternalToolRegistry: WorkbenchAIAgentToolRegistry {
+private struct ExternalToolRegistry: AIAgentExternalToolRegistry {
   let catalog: AIAgentToolCatalogSnapshot
   let rejectsRevalidation: Bool
 
@@ -259,19 +273,19 @@ private struct ExternalToolRegistry: WorkbenchAIAgentToolRegistry {
 
   func prepare(
     call: AIToolCall,
-    context _: WorkbenchAIAgentContext
-  ) throws -> WorkbenchAIAgentToolInvocation {
+    context _: AIAgentToolContext
+  ) throws -> AIAgentExternalToolInvocation {
     guard call.function.name == "external_echo" else {
-      throw WorkbenchAIAgentToolRegistryError.unknownTool(call.function.name)
+      throw AIAgentToolRegistryError.unknownTool(call.function.name)
     }
     guard call.function.arguments == #"{"value":"hello"}"# else {
-      throw WorkbenchAIAgentToolRegistryError.argumentMismatch(
+      throw AIAgentToolRegistryError.argumentMismatch(
         toolCallID: call.id,
         toolName: call.function.name
       )
     }
     let descriptor = catalog.descriptors[0]
-    return WorkbenchAIAgentToolInvocation(
+    return AIAgentExternalToolInvocation(
       toolCallID: call.id,
       toolID: descriptor.id,
       modelToolName: descriptor.definition.function.name,
@@ -287,12 +301,12 @@ private struct ExternalToolRegistry: WorkbenchAIAgentToolRegistry {
   }
 
   func revalidate(
-    invocation: WorkbenchAIAgentToolInvocation,
+    invocation: AIAgentExternalToolInvocation,
     matching call: AIToolCall,
-    context: WorkbenchAIAgentContext
-  ) throws -> WorkbenchAIAgentToolInvocation {
+    context: AIAgentToolContext
+  ) throws -> AIAgentExternalToolInvocation {
     if rejectsRevalidation {
-      throw WorkbenchAIAgentToolRegistryError.catalogDrift
+      throw AIAgentToolRegistryError.catalogDrift
     }
     let fresh = try prepare(call: call, context: context)
     guard invocation.toolCallID == fresh.toolCallID,
@@ -300,10 +314,9 @@ private struct ExternalToolRegistry: WorkbenchAIAgentToolRegistry {
       invocation.modelToolName == fresh.modelToolName,
       invocation.executionPolicy == fresh.executionPolicy,
       invocation.catalogRevision == fresh.catalogRevision,
-      invocation.externalToolBinding == fresh.externalToolBinding,
-      invocation.automationStep == nil
+      invocation.externalToolBinding == fresh.externalToolBinding
     else {
-      throw WorkbenchAIAgentToolRegistryError.catalogDrift
+      throw AIAgentToolRegistryError.catalogDrift
     }
     return invocation
   }

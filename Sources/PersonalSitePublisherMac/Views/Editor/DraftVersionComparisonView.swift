@@ -225,7 +225,7 @@ struct DraftVersionComparisonView: View {
     .frame(minWidth: 860, idealWidth: 980, minHeight: 640, idealHeight: 720)
     .navigationTitle("版本差异")
     .confirmationDialog(
-      "恢复左侧版本？",
+      String(localized: "恢复左侧版本？"),
       isPresented: $isRestoreConfirmationPresented,
       titleVisibility: .visible
     ) {

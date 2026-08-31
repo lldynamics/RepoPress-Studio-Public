@@ -7,6 +7,8 @@ import json
 import subprocess
 from pathlib import Path
 
+from check_swift_module_boundaries import EXPECTED_PRODUCTION_TARGET_TYPES
+
 
 ROOT = Path(__file__).resolve().parent.parent
 GATE = ROOT / "script" / "check_release_gate.sh"
@@ -89,6 +91,19 @@ def main() -> int:
         if check_id in checks_by_id:
             fail(f"manifest contains duplicate check: {check_id}")
         checks_by_id[check_id] = check
+
+    module_boundary_sources = checks_by_id["swift-module-boundaries"].get("source")
+    if not isinstance(module_boundary_sources, list):
+        fail("swift-module-boundaries sources must be a list")
+    expected_module_sources = {
+        f"Sources/{target}" for target in EXPECTED_PRODUCTION_TARGET_TYPES
+    }
+    missing_module_sources = expected_module_sources - set(module_boundary_sources)
+    if missing_module_sources:
+        fail(
+            "swift-module-boundaries source metadata omits governed targets: "
+            f"{sorted(missing_module_sources)}"
+        )
 
     profile_ids: set[str] = set()
     for profile_name, ids in profiles.items():

@@ -20,6 +20,7 @@ final class SettingsNavigationVisibilityTests: XCTestCase {
     XCTAssertTrue(source.contains("ForEach(subsections)"))
     XCTAssertTrue(source.contains("settings-tab-\\(tab.id)"))
     XCTAssertTrue(source.contains("settings-subsection-\\(subsection.id)"))
+    XCTAssertTrue(source.contains(".scrollIndicators(.hidden)"))
   }
 
   func testSidebarExposesAllNineSettingsPagesInStableSections() {

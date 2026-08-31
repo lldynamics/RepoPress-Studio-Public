@@ -4,37 +4,72 @@ import Foundation
 @MainActor
 extension KnowledgeStore {
   public func reload(selecting preferredDocumentID: UUID? = nil) async {
-    isBusy = true
-    defer { isBusy = false }
-    do {
-      async let loadedDocuments = service.documentsAsync()
-      async let loadedRecycledDocuments = service.recycledDocumentsAsync()
-      async let loadedFolders = service.foldersAsync()
-      async let loadedPinnedDocumentIDs = service.pinnedDocumentIDsAsync()
-      documents = try await loadedDocuments
-      recycledDocuments = try await loadedRecycledDocuments
-      folders = try await loadedFolders
-      pinnedDocumentIDs = try await loadedPinnedDocumentIDs
-      if case .folder(let folderID) = folderScope,
-        !folders.contains(where: { $0.id == folderID })
-      {
-        folderScope = .all
+    if let startupReloadTask {
+      await startupReloadTask.value
+    }
+    await performReload(selecting: preferredDocumentID)
+  }
+
+  /// A mutation that has already crossed the persistence boundary must still
+  /// publish its authoritative projection when the UI task that initiated it
+  /// is cancelled. Detached here is deliberate: ordinary user-triggered
+  /// reloads remain cooperatively cancellable, while this repair read neither
+  /// inherits cancellation nor re-enters the mutation tail.
+  func reloadAfterAcceptedMutation(selecting preferredDocumentID: UUID? = nil) async {
+    let reloadTask = Task.detached { [weak self] in
+      await self?.performReload(selecting: preferredDocumentID)
+    }
+    await reloadTask.value
+  }
+
+  func performReload(selecting preferredDocumentID: UUID? = nil) async {
+    let busyOperationID = beginBusyOperation()
+    defer { finishBusyOperation(busyOperationID) }
+    while true {
+      let snapshotGeneration = currentKnowledgeMutationGeneration()
+      await flushKnowledgeMutations()
+      guard snapshotGeneration == currentKnowledgeMutationGeneration() else { continue }
+      do {
+        async let loadedDocuments = service.documentsAsync()
+        async let loadedRecycledDocuments = service.recycledDocumentsAsync()
+        async let loadedFolders = service.foldersAsync()
+        async let loadedPinnedDocumentIDs = service.pinnedDocumentIDsAsync()
+        let snapshot = try await (
+          loadedDocuments,
+          loadedRecycledDocuments,
+          loadedFolders,
+          loadedPinnedDocumentIDs
+        )
+        // A write accepted while the SQLite snapshot was being read wins. Do
+        // not publish an older result over that future mutation's state.
+        guard snapshotGeneration == currentKnowledgeMutationGeneration() else { continue }
+        documents = snapshot.0
+        recycledDocuments = snapshot.1
+        folders = snapshot.2
+        pinnedDocumentIDs = snapshot.3
+        if case .folder(let folderID) = folderScope,
+          !folders.contains(where: { $0.id == folderID })
+        {
+          folderScope = .all
+        }
+        if case .smartCollection(let rule) = folderScope,
+          !smartCollections.contains(where: { $0.rule == rule })
+        {
+          folderScope = .all
+        }
+        lastError = nil
+        let nextSelection = preferredDocumentID ?? selectedDocumentID
+        if let nextSelection, visibleDocuments.contains(where: { $0.id == nextSelection }) {
+          selectDocument(nextSelection)
+        } else {
+          selectDocument(visibleDocuments.first?.id)
+        }
+        return
+      } catch {
+        lastError = error.localizedDescription
+        statusMessage = "资料库读取失败：\(error.localizedDescription)"
+        return
       }
-      if case .smartCollection(let rule) = folderScope,
-        !smartCollections.contains(where: { $0.rule == rule })
-      {
-        folderScope = .all
-      }
-      lastError = nil
-      let nextSelection = preferredDocumentID ?? selectedDocumentID
-      if let nextSelection, visibleDocuments.contains(where: { $0.id == nextSelection }) {
-        selectDocument(nextSelection)
-      } else {
-        selectDocument(visibleDocuments.first?.id)
-      }
-    } catch {
-      lastError = error.localizedDescription
-      statusMessage = "资料库读取失败：\(error.localizedDescription)"
     }
   }
 
@@ -294,13 +329,10 @@ extension KnowledgeStore {
     let service = self.service
     documentInsightsTask = Task { [weak self] in
       do {
-        let loaded = try await Task.detached(priority: .utility) {
-          (
-            try service.annotations(documentID: documentID),
-            try service.backlinks(documentID: documentID),
-            try service.revisions(documentID: documentID)
-          )
-        }.value
+        async let loadedAnnotations = service.annotationsAsync(documentID: documentID)
+        async let loadedBacklinks = service.backlinksAsync(documentID: documentID)
+        async let loadedRevisions = service.revisionsAsync(documentID: documentID)
+        let loaded = try await (loadedAnnotations, loadedBacklinks, loadedRevisions)
         guard !Task.isCancelled, self?.selectedDocumentID == documentID else { return }
         self?.annotations = loaded.0
         self?.backlinks = loaded.1

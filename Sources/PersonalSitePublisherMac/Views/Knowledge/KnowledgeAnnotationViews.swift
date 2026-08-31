@@ -4,13 +4,13 @@ import SwiftUI
 struct KnowledgeAnnotationEditorView: View {
   @Environment(\.dismiss) private var dismiss
   let original: KnowledgeAnnotation
-  let onSave: (KnowledgeAnnotation) -> Bool
+  let onSave: (KnowledgeAnnotation) async -> Bool
   @State private var highlightedText: String
   @State private var note: String
 
   init(
     annotation: KnowledgeAnnotation,
-    onSave: @escaping (KnowledgeAnnotation) -> Bool
+    onSave: @escaping (KnowledgeAnnotation) async -> Bool
   ) {
     original = annotation
     self.onSave = onSave
@@ -81,7 +81,9 @@ struct KnowledgeAnnotationEditorView: View {
     var updated = original
     updated.highlightedText = highlightedText
     updated.note = note
-    if onSave(updated) { dismiss() }
+    Task {
+      if await onSave(updated) { dismiss() }
+    }
   }
 }
 

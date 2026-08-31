@@ -16,6 +16,7 @@ extension WorkbenchStore {
   public func publishBatchReadyDraftsOnlineUsingPreferredStrategy(
     expectedChangedPaths: Set<String>? = nil,
     expectedTarget: RemoteRepositoryPublishTargetSnapshot? = nil,
+    expectedReview: BatchPublishReviewExpectation? = nil,
     authorization: AIPublishAuthorizationSnapshot? = nil,
     modeOverride: RemoteRepositoryPublishMode? = nil
   ) async -> RemoteRepositoryPublishResult? {
@@ -23,6 +24,7 @@ extension WorkbenchStore {
       store: self,
       expectedChangedPaths: expectedChangedPaths,
       expectedTarget: expectedTarget,
+      expectedReview: expectedReview,
       authorization: authorization,
       modeOverride: modeOverride
     )

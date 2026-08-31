@@ -174,7 +174,7 @@ extension WorkbenchAIStore {
         updateAIChatSession(for: conversationIdentity) { messages in
           messages.append(assistantMessage)
         }
-        recordAIResponseBacklinks(message: assistantMessage, request: initialRequest)
+        await recordAIResponseBacklinks(message: assistantMessage, request: initialRequest)
         store.setAIChatMessage("AI 已回复。")
         return assistantMessage
 
@@ -270,7 +270,7 @@ extension WorkbenchAIStore {
         updateAIChatSession(for: conversationIdentity) { messages in
           messages.append(assistantMessage)
         }
-        recordAIResponseBacklinks(message: assistantMessage, request: initialRequest)
+        await recordAIResponseBacklinks(message: assistantMessage, request: initialRequest)
         if store.flushPendingChanges() {
           store.setAIChatMessage("AI 已生成待确认操作计划。")
         } else {

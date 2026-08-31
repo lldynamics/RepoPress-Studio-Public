@@ -2,9 +2,18 @@ import PublishingWorkbenchCore
 import SwiftUI
 
 struct LocalSitePreviewPanelView: View {
+  let store: WorkbenchStore
   @EnvironmentObject private var state: WorkbenchLocalSitePreviewFeatureFacade
+  @StateObject private var externalBrowserPreviewCoordinator: ExternalBrowserPreviewCoordinator
   @State private var navigationError: String?
   @State private var pendingAuthorizationRequest: LocalSitePreviewAuthorizationRequest?
+
+  init(store: WorkbenchStore) {
+    self.store = store
+    _externalBrowserPreviewCoordinator = StateObject(
+      wrappedValue: ExternalBrowserPreviewCoordinator(store: store)
+    )
+  }
 
   var body: some View {
     VStack(spacing: 0) {
@@ -22,14 +31,15 @@ struct LocalSitePreviewPanelView: View {
     )
     .onChange(of: state.activeProfileID) {
       pendingAuthorizationRequest = nil
+      externalBrowserPreviewCoordinator.cancelPendingOpen()
+    }
+    .onChange(of: store.selectedDraftID) { _, draftID in
+      externalBrowserPreviewCoordinator.cancelPendingOpen(ifDraftIsNoLongerCurrent: draftID)
     }
     .onDisappear {
-      // The panel owns the lifetime of its local preview. `state.stop()`
-      // marks the runtime stopped immediately and performs process/watcher
-      // termination asynchronously, so dismissing the sheet never waits on
-      // a child process from the main actor.
-      state.stop()
+      externalBrowserPreviewCoordinator.cancelPendingOpen()
     }
+    .externalBrowserPreviewPresentation(coordinator: externalBrowserPreviewCoordinator)
   }
 
   private var header: some View {
@@ -50,7 +60,7 @@ struct LocalSitePreviewPanelView: View {
 
       Spacer()
 
-      if let previewURL {
+      if previewURL != nil {
         Button {
           state.reload()
         } label: {
@@ -60,16 +70,20 @@ struct LocalSitePreviewPanelView: View {
         .disabled(!state.runtimeStatus.isRunning)
 
         Button {
-          ExternalURLOpener.open(previewURL)
+          guard let draftID = store.selectedDraftID else { return }
+          externalBrowserPreviewCoordinator.openSiteHome(for: draftID)
         } label: {
           Label("浏览器打开", systemImage: "safari")
         }
         .buttonStyle(.bordered)
-        .disabled(!state.runtimeStatus.isRunning)
+        .disabled(
+          store.selectedDraftID == nil || externalBrowserPreviewCoordinator.isBusy
+        )
       }
 
       if state.runtimeStatus.isRunning {
         Button {
+          externalBrowserPreviewCoordinator.cancelPendingOpen()
           state.stop()
         } label: {
           Label("停止", systemImage: "stop.circle")

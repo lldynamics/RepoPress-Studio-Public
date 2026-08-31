@@ -166,6 +166,15 @@ public struct WorkbenchPersistence: Sendable {
       .appendingPathExtension("draft-recovery.json")
   }
 
+  /// Independent, privacy-bounded activity history. It is intentionally kept
+  /// outside `WorkbenchSnapshot` so a damaged log cannot prevent the main
+  /// workspace from opening and clearing history never mutates release data.
+  public var operationLedgerURL: URL {
+    fileURL
+      .deletingPathExtension()
+      .appendingPathExtension("operation-log.json")
+  }
+
   public var recoveryArchiveDirectoryURL: URL {
     fileURL
       .deletingLastPathComponent()

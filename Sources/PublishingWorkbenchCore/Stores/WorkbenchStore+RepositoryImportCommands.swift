@@ -36,16 +36,22 @@ extension WorkbenchStore {
 
   @discardableResult
   public func importDraftsFromLocalRepository() -> LocalContentImportMergeSummary {
-    let summary = publishingStore.importDraftsFromLocalRepository(store: self)
+    let profileID = activeProfileID
+    let operationResult = publishingStore.importDraftsFromLocalRepositoryOperation(store: self)
     invalidateDraftDerivedCaches()
-    return summary
+    recordContentImport(operationResult, profileID: profileID)
+    return operationResult.summary
   }
 
   @discardableResult
   public func importDraftsFromLocalRepositoryAsync() async -> LocalContentImportMergeSummary {
-    let summary = await publishingStore.importDraftsFromLocalRepositoryAsync(store: self)
+    let profileID = activeProfileID
+    let operationResult = await publishingStore.importDraftsFromLocalRepositoryAsyncOperation(
+      store: self
+    )
     invalidateDraftDerivedCaches()
-    return summary
+    recordContentImport(operationResult, profileID: profileID)
+    return operationResult.summary
   }
 
   @discardableResult
@@ -53,6 +59,18 @@ extension WorkbenchStore {
     let insertedCount = await publishingStore.importMissingDraftsFromLocalRepository(store: self)
     if insertedCount > 0 {
       invalidateDraftDerivedCaches()
+      recordContentImport(
+        LocalContentImportOperationResult(
+          summary: LocalContentImportMergeSummary(
+            insertedCount: insertedCount,
+            updatedCount: 0,
+            skippedCount: 0
+          ),
+          outcome: .succeeded
+        ),
+        profileID: activeProfileID,
+        actor: .background
+      )
     }
     return insertedCount
   }
@@ -68,6 +86,18 @@ extension WorkbenchStore {
     )
     if insertedCount > 0 {
       invalidateDraftDerivedCaches()
+      recordContentImport(
+        LocalContentImportOperationResult(
+          summary: LocalContentImportMergeSummary(
+            insertedCount: insertedCount,
+            updatedCount: 0,
+            skippedCount: 0
+          ),
+          outcome: .succeeded
+        ),
+        profileID: activeProfileID,
+        actor: .background
+      )
     }
     return insertedCount
   }
@@ -77,15 +107,32 @@ extension WorkbenchStore {
     let insertedCount = await publishingStore.importMissingPrivateDraftsFromLocalRepository(store: self)
     if insertedCount > 0 {
       invalidateDraftDerivedCaches()
+      recordContentImport(
+        LocalContentImportOperationResult(
+          summary: LocalContentImportMergeSummary(
+            insertedCount: insertedCount,
+            updatedCount: 0,
+            skippedCount: 0
+          ),
+          outcome: .succeeded
+        ),
+        profileID: activeProfileID,
+        actor: .background
+      )
     }
     return insertedCount
   }
 
   @discardableResult
   public func importDraftFromLocalRepository(repositoryPath: String) -> LocalContentImportMergeSummary {
-    let summary = publishingStore.importDraftFromLocalRepository(repositoryPath: repositoryPath, store: self)
+    let profileID = activeProfileID
+    let operationResult = publishingStore.importDraftFromLocalRepositoryOperation(
+      repositoryPath: repositoryPath,
+      store: self
+    )
     invalidateDraftDerivedCaches()
-    return summary
+    recordContentImport(operationResult, profileID: profileID)
+    return operationResult.summary
   }
 
   public func makeContentMigrationPlan(sourceURL: URL) async throws -> ContentMigrationPlan {
@@ -104,9 +151,20 @@ extension WorkbenchStore {
 
   @discardableResult
   public func applyContentMigration(_ plan: ContentMigrationPlan) throws -> LocalContentImportMergeSummary {
-    let summary = try publishingStore.applyContentMigration(plan, store: self)
-    invalidateDraftDerivedCaches()
-    return summary
+    let profileID = activeProfileID
+    do {
+      let summary = try publishingStore.applyContentMigration(plan, store: self)
+      invalidateDraftDerivedCaches()
+      recordContentImport(
+        completedContentImportResult(summary),
+        profileID: profileID,
+        kind: .contentMigration
+      )
+      return summary
+    } catch {
+      recordContentImportFailure(error, profileID: profileID, kind: .contentMigration)
+      throw error
+    }
   }
 
   @discardableResult
@@ -114,13 +172,24 @@ extension WorkbenchStore {
     _ plan: ContentMigrationPlan,
     selectedDraftIDs: Set<UUID>
   ) throws -> LocalContentImportMergeSummary {
-    let summary = try publishingStore.applyContentMigration(
-      plan,
-      selectedDraftIDs: selectedDraftIDs,
-      store: self
-    )
-    invalidateDraftDerivedCaches()
-    return summary
+    let profileID = activeProfileID
+    do {
+      let summary = try publishingStore.applyContentMigration(
+        plan,
+        selectedDraftIDs: selectedDraftIDs,
+        store: self
+      )
+      invalidateDraftDerivedCaches()
+      recordContentImport(
+        completedContentImportResult(summary),
+        profileID: profileID,
+        kind: .contentMigration
+      )
+      return summary
+    } catch {
+      recordContentImportFailure(error, profileID: profileID, kind: .contentMigration)
+      throw error
+    }
   }
 
   @discardableResult
@@ -128,49 +197,70 @@ extension WorkbenchStore {
     _ plan: ContentMigrationPlan,
     selectedDraftIDs: Set<UUID>
   ) async throws -> LocalContentImportMergeSummary {
-    let summary = try await publishingStore.applyContentMigrationAsync(
-      plan,
-      selectedDraftIDs: selectedDraftIDs,
-      store: self
-    )
-    invalidateDraftDerivedCaches()
-    return summary
+    let profileID = activeProfileID
+    do {
+      let summary = try await publishingStore.applyContentMigrationAsync(
+        plan,
+        selectedDraftIDs: selectedDraftIDs,
+        store: self
+      )
+      invalidateDraftDerivedCaches()
+      recordContentImport(
+        completedContentImportResult(summary),
+        profileID: profileID,
+        kind: .contentMigration
+      )
+      return summary
+    } catch {
+      recordContentImportFailure(error, profileID: profileID, kind: .contentMigration)
+      throw error
+    }
   }
 
   @discardableResult
   public func importChangedArticleDraftsFromLocalRepository() async -> LocalContentImportMergeSummary {
-    let summary = await publishingStore.importChangedArticleDraftsFromLocalRepository(store: self)
+    let profileID = activeProfileID
+    let operationResult =
+      await publishingStore.importChangedArticleDraftsFromLocalRepositoryOperation(store: self)
     invalidateDraftDerivedCaches()
-    return summary
+    recordContentImport(operationResult, profileID: profileID)
+    return operationResult.summary
   }
 
   @discardableResult
   public func importRemoteChangedArticleDraftsFromRepository() async -> LocalContentImportMergeSummary {
-    let summary = await publishingStore.importRemoteChangedArticleDraftsFromRepository(store: self)
+    let profileID = activeProfileID
+    let operationResult =
+      await publishingStore.importRemoteChangedArticleDraftsFromRepositoryOperation(store: self)
     invalidateDraftDerivedCaches()
-    return summary
+    recordContentImport(operationResult, profileID: profileID, kind: .remoteContentImport)
+    return operationResult.summary
   }
 
   @discardableResult
   public func importRemoteArticleDraftsFromRepository(
     repositoryPaths: [String]
   ) async -> LocalContentImportMergeSummary {
-    let summary = await publishingStore.importRemoteArticleDraftsFromRepository(
+    let profileID = activeProfileID
+    let operationResult = await publishingStore.importRemoteArticleDraftsFromRepositoryOperation(
       repositoryPaths: repositoryPaths,
       store: self
     )
     invalidateDraftDerivedCaches()
-    return summary
+    recordContentImport(operationResult, profileID: profileID, kind: .remoteContentImport)
+    return operationResult.summary
   }
 
   @discardableResult
   public func importRemoteDraftFromRepository(repositoryPath: String) async -> LocalContentImportMergeSummary {
-    let summary = await publishingStore.importRemoteDraftFromRepository(
+    let profileID = activeProfileID
+    let operationResult = await publishingStore.importRemoteDraftFromRepositoryOperation(
       repositoryPath: repositoryPath,
       store: self
     )
     invalidateDraftDerivedCaches()
-    return summary
+    recordContentImport(operationResult, profileID: profileID, kind: .remoteContentImport)
+    return operationResult.summary
   }
 
   @discardableResult
@@ -179,6 +269,7 @@ extension WorkbenchStore {
     snapshots: [RepositoryFileSnapshot],
     locallyChangedPaths: Set<String>
   ) -> RemoteArticleAutoImportSummary {
+    let profileID = activeProfileID
     let summary = publishingStore.autoImportRemoteArticleDrafts(
       remoteFiles: remoteFiles,
       snapshots: snapshots,
@@ -188,6 +279,7 @@ extension WorkbenchStore {
     if summary.importedCount > 0 || summary.unchangedCount > 0 {
       invalidateDraftDerivedCaches()
     }
+    recordRemoteAutoImport(summary, profileID: profileID)
     return summary
   }
 
@@ -208,6 +300,80 @@ extension WorkbenchStore {
     if summary.importedCount > 0 || summary.unchangedCount > 0 {
       invalidateDraftDerivedCaches()
     }
+    recordRemoteAutoImport(summary, profileID: profileID)
     return summary
+  }
+
+  private func recordContentImport(
+    _ result: LocalContentImportOperationResult,
+    profileID: UUID,
+    actor: WorkbenchOperationLogActor = .user,
+    kind: WorkbenchOperationEventKind = .localContentImport
+  ) {
+    _ = recordOperationEvent(
+      WorkbenchOperationEventRecord(
+        kind: kind,
+        outcome: result.outcome,
+        actor: actor,
+        profileID: profileID,
+        createdItemCount: result.summary.insertedCount,
+        updatedItemCount: result.summary.updatedCount,
+        skippedItemCount: result.summary.skippedCount
+      )
+    )
+  }
+
+  private func completedContentImportResult(
+    _ summary: LocalContentImportMergeSummary
+  ) -> LocalContentImportOperationResult {
+    LocalContentImportOperationResult(
+      summary: summary,
+      outcome: summary.changedCount > 0 ? .succeeded : .recorded
+    )
+  }
+
+  private func recordContentImportFailure(
+    _ error: Error,
+    profileID: UUID,
+    kind: WorkbenchOperationEventKind
+  ) {
+    _ = recordOperationEvent(
+      WorkbenchOperationEventRecord(
+        kind: kind,
+        outcome: error is CancellationError ? .cancelled : .failed,
+        profileID: profileID
+      )
+    )
+  }
+
+  private func recordRemoteAutoImport(
+    _ summary: RemoteArticleAutoImportSummary,
+    profileID: UUID
+  ) {
+    let skippedCount = summary.unchangedCount + summary.pendingReviewCount
+    guard summary.importedCount > 0 || skippedCount > 0 || !summary.failedPaths.isEmpty else {
+      return
+    }
+    let outcome: WorkbenchOperationLogOutcome
+    if summary.importedCount > 0, summary.pendingReviewCount > 0 {
+      outcome = .partial
+    } else if summary.importedCount > 0 {
+      outcome = .succeeded
+    } else if !summary.failedPaths.isEmpty {
+      outcome = .failed
+    } else {
+      outcome = .recorded
+    }
+    _ = recordOperationEvent(
+      WorkbenchOperationEventRecord(
+        kind: .remoteContentImport,
+        outcome: outcome,
+        actor: .background,
+        profileID: profileID,
+        createdItemCount: summary.insertedCount,
+        updatedItemCount: summary.updatedCount,
+        skippedItemCount: skippedCount
+      )
+    )
   }
 }

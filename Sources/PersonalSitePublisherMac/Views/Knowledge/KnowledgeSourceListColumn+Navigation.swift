@@ -44,8 +44,10 @@ extension KnowledgeSourceListColumn {
       selectedDocumentIDs: selectedDocumentIDs,
       isDocumentListSelectionActive: usesDocumentListSelection
     )
-    knowledge.moveDocuments(documentIDs, to: folderID)
-    retainVisibleBatchSelection()
+    Task {
+      await knowledge.moveDocuments(documentIDs, to: folderID)
+      retainVisibleBatchSelection()
+    }
   }
 
   var selectedFolderTitle: String {
@@ -177,11 +179,12 @@ extension KnowledgeSourceListColumn {
   }
 
   func commitFolderEditor() {
+    let name = folderName
     switch folderEditorMode {
     case .create:
-      knowledge.createFolder(name: folderName)
+      Task { await knowledge.createFolder(name: name) }
     case .rename(let folderID):
-      knowledge.renameFolder(id: folderID, name: folderName)
+      Task { await knowledge.renameFolder(id: folderID, name: name) }
     }
   }
 

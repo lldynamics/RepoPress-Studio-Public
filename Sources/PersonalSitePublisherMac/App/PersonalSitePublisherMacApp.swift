@@ -124,6 +124,27 @@ struct PersonalSitePublisherMacApp: App {
       }
     }
 
+    Window("活动记录", id: "operation-log") {
+      Group {
+        if let store = launchCoordinator.store {
+          OperationLogSceneView(store: store)
+        } else {
+          VStack(spacing: 12) {
+            Image(systemName: "externaldrive.fill.badge.plus")
+              .font(.title)
+              .foregroundStyle(.secondary)
+            Text("请先在主窗口完成数据文件夹设置。")
+              .foregroundStyle(.secondary)
+          }
+          .workbenchSettingsWindowSize()
+        }
+      }
+      .tint(selectedAccentPalette.color)
+      .preferredColorScheme(selectedAppearanceMode.colorScheme)
+      .controlSize(selectedInterfaceDensity.controlSize)
+    }
+    .defaultSize(width: 960, height: 640)
+
     Settings {
       Group {
         if let store = launchCoordinator.store {
@@ -162,6 +183,148 @@ struct PersonalSitePublisherMacApp: App {
   }
 }
 
+private struct OperationLogSceneView: View {
+  @Environment(\.openWindow) private var openWindow
+  @ObservedObject private var operationLog: WorkbenchOperationLogFeatureFacade
+
+  init(store: WorkbenchStore) {
+    _operationLog = ObservedObject(wrappedValue: store.operationLog)
+  }
+
+  var body: some View {
+    if operationLog.isQuickHideActive {
+      OperationLogWindowView(
+        allEntries: [],
+        siteProfiles: [],
+        isQuickHideActive: true,
+        retentionPolicy: .ninetyDays,
+        statusMessage: nil,
+        openSyncWorkspace: {},
+        setRetentionPolicy: { _ in },
+        clearOperationLog: {},
+        dismissStatusMessage: {}
+      )
+    } else {
+      let entries = presentationEntries
+      OperationLogWindowView(
+        allEntries: entries,
+        siteProfiles: siteProfiles(for: entries),
+        isQuickHideActive: false,
+        retentionPolicy: .init(workbenchPolicy: operationLog.retentionPolicy),
+        statusMessage: operationLog.statusMessage,
+        openSyncWorkspace: openSyncWorkspace,
+        setRetentionPolicy: { policy in
+          operationLog.setRetentionPolicy(policy.workbenchPolicy)
+        },
+        clearOperationLog: operationLog.clear,
+        dismissStatusMessage: operationLog.dismissStatusMessage
+      )
+    }
+  }
+
+  private var presentationEntries: [OperationLogPresentation.Entry] {
+    operationLog.entries.map(OperationLogPresentation.Entry.init(operationLogEntry:))
+  }
+
+  private func siteProfiles(
+    for entries: [OperationLogPresentation.Entry]
+  ) -> [OperationLogPresentation.SiteProfileOption] {
+    let loggedProfileIDs = Set(entries.compactMap(\.profileID))
+    return operationLog.profiles
+      .filter { loggedProfileIDs.contains($0.id) }
+      .map { .init(id: $0.id, name: $0.name) }
+      .sorted { lhs, rhs in
+        lhs.name.localizedStandardCompare(rhs.name) == .orderedAscending
+      }
+  }
+
+  private func openSyncWorkspace() {
+    operationLog.selectSyncWorkspace()
+    openWindow(id: "main-workbench")
+  }
+}
+
+extension OperationLogPresentation.Entry {
+  fileprivate init(operationLogEntry entry: WorkbenchOperationLogEntry) {
+    let category: OperationLogPresentation.Category
+    switch entry.category {
+    case .publishing: category = .publishing
+    case .maintenance: category = .maintenance
+    case .automation: category = .automation
+    case .ai: category = .ai
+    case .deployment: category = .deployment
+    case .importing: category = .importing
+    case .images: category = .images
+    case .backup: category = .backup
+    }
+
+    let outcome: OperationLogPresentation.Outcome
+    switch entry.outcome {
+    case .succeeded: outcome = .succeeded
+    case .partial: outcome = .partial
+    case .failed: outcome = .failed
+    case .cancelled: outcome = .cancelled
+    case .recorded: outcome = .recorded
+    case .observed: outcome = .observed
+    }
+
+    let actor: OperationLogPresentation.Actor
+    switch entry.actor {
+    case .user: actor = .user
+    case .automation: actor = .automation
+    case .background: actor = .background
+    }
+
+    self.init(
+      id: entry.id,
+      sourceLabel: Self.sourceLabel(for: entry.sourceReference.kind),
+      category: category,
+      categoryDisplayName: category.title,
+      outcome: outcome,
+      outcomeDisplayName: outcome.title,
+      actor: actor,
+      actorDisplayName: actor.title,
+      title: entry.title,
+      summary: entry.summary,
+      profileID: entry.profileID,
+      targetLabel: entry.targetLabel,
+      occurredAt: entry.occurredAt,
+      systemImage: entry.systemImage
+    )
+  }
+
+  private static func sourceLabel(for kind: WorkbenchOperationLogSourceKind) -> String {
+    switch kind {
+    case .releaseRecord: String(localized: "发布记录")
+    case .maintenanceOperation: String(localized: "维护操作")
+    case .automationRun: String(localized: "自动化运行")
+    case .aiMetadataApplication: String(localized: "AI 元数据应用")
+    case .deploymentStatus: String(localized: "部署状态")
+    case .operationEvent: String(localized: "活动事件")
+    }
+  }
+}
+
+extension OperationLogPresentation.RetentionPolicy {
+  fileprivate init(workbenchPolicy: WorkbenchOperationLogRetentionPolicy) {
+    switch workbenchPolicy {
+    case .thirtyDays: self = .thirtyDays
+    case .ninetyDays: self = .ninetyDays
+    case .oneYear: self = .oneYear
+    case .forever: self = .forever
+    }
+  }
+
+  fileprivate var workbenchPolicy: WorkbenchOperationLogRetentionPolicy {
+    switch self {
+    case .thirtyDays: .thirtyDays
+    case .ninetyDays: .ninetyDays
+    case .oneYear: .oneYear
+    case .forever: .forever
+    }
+  }
+}
+
 private struct MainWindowOpenActionRegistration: View {
   @Environment(\.openWindow) private var openWindow
   let register: (@escaping () -> Void) -> Void
@@ -181,6 +344,8 @@ private struct MainWindowOpenActionRegistration: View {
 final class PersonalSitePublisherMacAppDelegate: NSObject, NSApplicationDelegate {
   var workbenchStore: WorkbenchStore?
   var browserBridge: KnowledgeBrowserBridge?
+  private var isWaitingForTerminationLedgerFlush = false
+  private var didConfirmTerminationLedgerFlush = false
   var openMainWindowAction: (() -> Void)? {
     didSet {
       guard openMainWindowAction != nil,
@@ -480,6 +645,9 @@ final class PersonalSitePublisherMacAppDelegate: NSObject, NSApplicationDelegate
   }
 
   func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+    if isWaitingForTerminationLedgerFlush {
+      return .terminateLater
+    }
     if RepositoryHTMLSourceSessionRegistry.shared.hasUnsavedChanges {
       let alert = NSAlert()
       alert.messageText = String(localized: "HTML 源文件尚未保存")
@@ -510,10 +678,32 @@ final class PersonalSitePublisherMacAppDelegate: NSObject, NSApplicationDelegate
       }
     }
 
-    guard let workbenchStore, !workbenchStore.flushPendingChanges() else {
+    guard let workbenchStore else {
       return .terminateNow
     }
 
+    guard workbenchStore.flushPendingChanges() else {
+      presentWorkspaceSaveFailure(for: workbenchStore)
+      return .terminateCancel
+    }
+
+    isWaitingForTerminationLedgerFlush = true
+    Task { @MainActor [weak self, weak workbenchStore] in
+      guard let self else { return }
+      let didFlush = await workbenchStore?.flushOperationLogPersistence() != nil
+      isWaitingForTerminationLedgerFlush = false
+      guard didFlush else {
+        presentOperationLedgerSaveFailure(for: workbenchStore)
+        sender.reply(toApplicationShouldTerminate: false)
+        return
+      }
+      didConfirmTerminationLedgerFlush = true
+      sender.reply(toApplicationShouldTerminate: true)
+    }
+    return .terminateLater
+  }
+
+  private func presentWorkspaceSaveFailure(for workbenchStore: WorkbenchStore) {
     let alert = NSAlert()
     alert.messageText = String(localized: "未能保存工作台修改")
     alert.informativeText =
@@ -522,14 +712,23 @@ final class PersonalSitePublisherMacAppDelegate: NSObject, NSApplicationDelegate
     alert.alertStyle = .warning
     alert.addButton(withTitle: String(localized: "继续编辑"))
     alert.runModal()
-    return .terminateCancel
+  }
+
+  private func presentOperationLedgerSaveFailure(for workbenchStore: WorkbenchStore?) {
+    let alert = NSAlert()
+    alert.messageText = String(localized: "未能保存活动记录")
+    alert.informativeText =
+      workbenchStore?.operationLogStatusMessage
+      ?? String(localized: "活动记录仍未持久化。应用将保持打开，请检查保存位置或权限后重试。")
+    alert.alertStyle = .warning
+    alert.addButton(withTitle: String(localized: "继续编辑"))
+    alert.runModal()
   }
 
   func applicationWillTerminate(_ notification: Notification) {
     browserBridge?.stop()
     workbenchStore?.stopLocalSitePreviewImmediately()
-    let didFlush = workbenchStore?.flushPendingChanges() ?? true
-    if didFlush {
+    if didConfirmTerminationLedgerFlush || workbenchStore == nil {
       WorkbenchSessionRecovery.shared.markCleanExit()
     }
   }

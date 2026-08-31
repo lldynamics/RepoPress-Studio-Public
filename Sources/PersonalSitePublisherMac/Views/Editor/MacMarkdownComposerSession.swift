@@ -3,6 +3,23 @@ import PublishingWorkbenchCore
 import SwiftUI
 
 extension MacMarkdownComposerView {
+  func receiveEditorStatistics(
+    _ statistics: MarkdownEditorStatistics,
+    for draftID: UUID
+  ) {
+    // The AppKit coordinator can finish a delayed statistics delivery while a
+    // different draft is being installed. The representable is draft-keyed,
+    // and this second check keeps that delivery out of both local and toolbar
+    // presentation state if it no longer belongs to the visible draft.
+    guard draft.id == draftID else { return }
+    editorStatisticsState.update(statistics)
+    sceneCommandRouter.updateToolbarEditorContext(
+      owner: sceneCommandOwnerID,
+      draftID: draftID,
+      statistics: statistics
+    )
+  }
+
   var commandActions: MarkdownEditorCommandActions {
     MarkdownEditorCommandActions(
       draftID: draft.id,
@@ -26,7 +43,10 @@ extension MacMarkdownComposerView {
       runPreflight: runPreflightForCurrentDraft,
       rewriteSelection: rewriteSelectedText,
       openAIAssistant: showAIContextInspector,
-      copyAIPrompt: pasteAIPromptToClipboard
+      copyAIPrompt: pasteAIPromptToClipboard,
+      openExternalBrowserPreview: {
+        externalBrowserPreviewCoordinator.openCurrentArticle(for: draft.id)
+      }
     )
   }
 

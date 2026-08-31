@@ -8,6 +8,8 @@ final class WorkspaceSceneCommandRouter: @preconcurrency ObservableObject {
     let selectedSection: WorkspaceSection
     let isFocusModeActive: Bool
     let canToggleFocusMode: Bool
+    let isInspectorPresented: Bool
+    let canToggleInspector: Bool
     let repositorySourceHasUnsavedChanges: Bool
     let isSettingsWorkspacePresented: Bool
   }
@@ -30,6 +32,9 @@ final class WorkspaceSceneCommandRouter: @preconcurrency ObservableObject {
   }
 
   let objectWillChange = ObservableObjectPublisher()
+  /// Kept separate from this router's presentation publisher so typing only
+  /// invalidates the small toolbar statistic observer.
+  let toolbarEditorContext = WorkspaceToolbarEditorContextStore()
 
   private(set) var publishDrawerCommandAction: PublishDrawerCommandAction?
   private(set) var localSitePreviewCommandAction: LocalSitePreviewCommandAction?
@@ -38,6 +43,7 @@ final class WorkspaceSceneCommandRouter: @preconcurrency ObservableObject {
   private(set) var settingsWorkspaceCommandAction: SettingsWorkspaceCommandAction?
   private(set) var draftFullTextSearchAction: DraftFullTextSearchAction?
   private(set) var workspaceFocusModeCommandAction: WorkspaceFocusModeCommandAction?
+  private(set) var workspaceInspectorCommandAction: WorkspaceInspectorCommandAction?
   private(set) var repositorySourceSessionCommandActions: RepositorySourceSessionCommandActions?
 
   private(set) var markdownEditorCommandActions: MarkdownEditorCommandActions?
@@ -61,6 +67,7 @@ final class WorkspaceSceneCommandRouter: @preconcurrency ObservableObject {
     settingsWorkspaceCommandAction: SettingsWorkspaceCommandAction,
     draftFullTextSearchAction: DraftFullTextSearchAction,
     workspaceFocusModeCommandAction: WorkspaceFocusModeCommandAction,
+    workspaceInspectorCommandAction: WorkspaceInspectorCommandAction,
     repositorySourceSessionCommandActions: RepositorySourceSessionCommandActions
   ) {
     mutatePresentation {
@@ -71,6 +78,7 @@ final class WorkspaceSceneCommandRouter: @preconcurrency ObservableObject {
       self.settingsWorkspaceCommandAction = settingsWorkspaceCommandAction
       self.draftFullTextSearchAction = draftFullTextSearchAction
       self.workspaceFocusModeCommandAction = workspaceFocusModeCommandAction
+      self.workspaceInspectorCommandAction = workspaceInspectorCommandAction
       self.repositorySourceSessionCommandActions = repositorySourceSessionCommandActions
     }
   }
@@ -84,6 +92,7 @@ final class WorkspaceSceneCommandRouter: @preconcurrency ObservableObject {
       settingsWorkspaceCommandAction = nil
       draftFullTextSearchAction = nil
       workspaceFocusModeCommandAction = nil
+      workspaceInspectorCommandAction = nil
       repositorySourceSessionCommandActions = nil
 
       markdownOwner = nil
@@ -97,6 +106,7 @@ final class WorkspaceSceneCommandRouter: @preconcurrency ObservableObject {
       repositorySourceEditorCommandActions = nil
       rssReaderCommandActions = nil
     }
+    toolbarEditorContext.clear()
   }
 
   func registerMarkdownEditor(_ actions: MarkdownEditorCommandActions, owner: UUID) {
@@ -104,6 +114,7 @@ final class WorkspaceSceneCommandRouter: @preconcurrency ObservableObject {
       markdownOwner = owner
       markdownEditorCommandActions = actions
     }
+    toolbarEditorContext.activate(ownerID: owner, draftID: actions.draftID)
   }
 
   func unregisterMarkdownEditor(owner: UUID) {
@@ -112,6 +123,20 @@ final class WorkspaceSceneCommandRouter: @preconcurrency ObservableObject {
       markdownOwner = nil
       markdownEditorCommandActions = nil
     }
+    toolbarEditorContext.clear(ownerID: owner)
+  }
+
+  func updateToolbarEditorContext(
+    owner: UUID,
+    draftID: UUID,
+    statistics: MarkdownEditorStatistics
+  ) {
+    toolbarEditorContext.update(
+      ownerID: owner,
+      draftID: draftID,
+      writingUnitCount: statistics.writingUnitCount,
+      readingMinutes: statistics.readingMinutes
+    )
   }
 
   func registerWritingDrafts(_ actions: WritingDraftCommandActions, owner: UUID) {
@@ -190,6 +215,8 @@ final class WorkspaceSceneCommandRouter: @preconcurrency ObservableObject {
       isSettingsWorkspacePresented: settingsWorkspaceCommandAction?.isPresented,
       focusModeIsActive: workspaceFocusModeCommandAction?.isActive,
       focusModeCanToggle: workspaceFocusModeCommandAction?.canToggle,
+      inspectorIsPresented: workspaceInspectorCommandAction?.isPresented,
+      inspectorCanToggle: workspaceInspectorCommandAction?.canToggle,
       repositorySourceHasUnsavedChanges: repositorySourceSessionCommandActions?.hasUnsavedChanges,
       markdownOwner: markdownOwner,
       markdown: markdownEditorCommandActions.map {
@@ -233,6 +260,8 @@ final class WorkspaceSceneCommandRouter: @preconcurrency ObservableObject {
     let isSettingsWorkspacePresented: Bool?
     let focusModeIsActive: Bool?
     let focusModeCanToggle: Bool?
+    let inspectorIsPresented: Bool?
+    let inspectorCanToggle: Bool?
     let repositorySourceHasUnsavedChanges: Bool?
     let markdownOwner: UUID?
     let markdown: MarkdownPresentation?

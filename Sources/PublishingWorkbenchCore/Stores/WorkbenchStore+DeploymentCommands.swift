@@ -110,6 +110,7 @@ extension WorkbenchStore {
       try deploymentStore.acceptObservedReviewHead(for: record, store: self)
       return true
     } catch {
+      deploymentStore.reportReviewHeadAcceptanceFailure(for: record, store: self)
       return false
     }
   }

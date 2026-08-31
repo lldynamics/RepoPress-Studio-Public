@@ -412,6 +412,9 @@ struct MarkdownSnippetLibraryPanel: View {
       kind: snippet.kind,
       markdown: snippet.markdown,
       siteProfileID: draft.siteProfileID,
+      shortcut: snippet.shortcut,
+      previewKind: snippet.previewKind,
+      selectionToken: snippet.selectionToken,
       in: customSnippets
     )
     if let saved = customSnippets.first(where: { $0.id == snippet.id }) {
@@ -529,6 +532,8 @@ private struct MarkdownCustomSnippetEditorPanel: View {
       markdown: markdown,
       siteProfileID: siteProfileID,
       shortcut: shortcut,
+      previewKind: snippet?.previewKind,
+      selectionToken: snippet?.selectionToken,
       in: []
     ).first else {
       return

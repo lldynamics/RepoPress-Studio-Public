@@ -3,8 +3,6 @@ import SwiftUI
 struct AppearanceSettingsView: View {
   let autoRunPreflightBinding: Binding<Bool>
   @Binding var scanRepositoryOnLaunch: Bool
-  @Environment(\.settingsSubsection) private var settingsSubsection
-
   @AppStorage(WorkbenchAccentPalette.storageKey)
   private var accentPaletteRawValue = WorkbenchAccentPalette.system.rawValue
   @AppStorage(WorkbenchAppearanceMode.storageKey)
@@ -26,33 +24,24 @@ struct AppearanceSettingsView: View {
   }
 
   var body: some View {
-    Group {
-      switch displayedSubsection {
-      case .appearanceBehavior:
-        settingsForm {
-          DefaultRuleGeneralSection(
-            autoRunPreflightBinding: autoRunPreflightBinding,
-            scanRepositoryOnLaunch: $scanRepositoryOnLaunch
-          )
-        }
-      case .appearanceTheme:
-        ScrollView {
-          appearanceSection
-            .padding(.horizontal, WorkbenchSpacing.spacious)
-            .padding(.vertical, WorkbenchSpacing.page)
-        }
-      case .appearanceLanguage:
-        settingsForm {
-          AppLanguageSettingsView(isEmbedded: true)
-        }
-      case .appearanceDefaults:
-        settingsForm {
-          globalFrontMatterSection
-        }
-      default:
-        EmptyView()
+    Form {
+      SettingsSubsectionAnchor(subsection: .appearanceBehavior)
+      DefaultRuleGeneralSection(
+        autoRunPreflightBinding: autoRunPreflightBinding,
+        scanRepositoryOnLaunch: $scanRepositoryOnLaunch
+      )
+      SettingsSubsectionAnchor(subsection: .appearanceTheme)
+      Section("外观") {
+        appearanceSection
       }
+      SettingsSubsectionAnchor(subsection: .appearanceLanguage)
+      AppLanguageSettingsView(isEmbedded: true)
+      SettingsSubsectionAnchor(subsection: .appearanceDefaults)
+      globalFrontMatterSection
     }
+    .formStyle(.grouped)
+    .scrollIndicators(.hidden)
+    .padding(WorkbenchSpacing.content)
     .tint(selectedPalette.color)
     .onAppear {
       if accentPaletteRawValue != selectedPalette.rawValue {
@@ -67,20 +56,6 @@ struct AppearanceSettingsView: View {
     }
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("appearance-settings")
-  }
-
-  private var displayedSubsection: SettingsSubsection {
-    settingsSubsection.tab == .appearance ? settingsSubsection : .appearanceBehavior
-  }
-
-  private func settingsForm<Content: View>(
-    @ViewBuilder content: () -> Content
-  ) -> some View {
-    Form {
-      content()
-    }
-    .formStyle(.grouped)
-    .padding(WorkbenchSpacing.content)
   }
 
   private var globalFrontMatterSection: some View {

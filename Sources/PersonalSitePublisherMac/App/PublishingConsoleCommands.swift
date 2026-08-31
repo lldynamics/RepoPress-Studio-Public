@@ -107,7 +107,17 @@ struct PublishingConsoleCommands: Commands {
           || workspaceFocusModeCommandAction?.canToggle != true
       )
 
-      if supportsInspector {
+      if let workspaceInspectorCommandAction {
+        Button(
+          workspaceInspectorCommandAction.isPresented
+            ? String(localized: "隐藏 Inspector")
+            : String(localized: "显示 Inspector")
+        ) {
+          workspaceInspectorCommandAction.toggle()
+        }
+        .keyboardShortcut("i", modifiers: [.command, .option])
+        .disabled(!canUseProtectedWorkbench || !workspaceInspectorCommandAction.canToggle)
+      } else if supportsInspector {
         Button(
           presentation.isInspectorPresented
             ? String(localized: "隐藏 Inspector")
@@ -149,6 +159,12 @@ struct PublishingConsoleCommands: Commands {
         presentSettings(destination: nil)
       }
       .disabled(!canUseProtectedWorkbench && settingsWorkspaceCommandAction != nil)
+
+      Button(String(localized: "活动记录…")) {
+        openWindow(id: "operation-log")
+      }
+      .keyboardShortcut("l", modifiers: [.command, .option])
+      .disabled(!canUseProtectedWorkbench)
 
       Divider()
 
@@ -209,7 +225,11 @@ struct PublishingConsoleCommands: Commands {
       Divider()
 
       Menu(String(localized: "本地预览")) {
-        Button(String(localized: "打开本地预览")) {
+        Button(
+          markdownEditorCommands == nil
+            ? String(localized: "打开本地预览")
+            : String(localized: "在浏览器打开当前文章")
+        ) {
           openLocalPreview()
         }
         .keyboardShortcut("p", modifiers: [.command, .shift])
@@ -317,6 +337,10 @@ struct PublishingConsoleCommands: Commands {
 
   private var workspaceFocusModeCommandAction: WorkspaceFocusModeCommandAction? {
     commandRouter?.workspaceFocusModeCommandAction
+  }
+
+  private var workspaceInspectorCommandAction: WorkspaceInspectorCommandAction? {
+    commandRouter?.workspaceInspectorCommandAction
   }
 
   private var workspaceFirstRunSetupCommandAction: WorkspaceFirstRunSetupCommandAction? {
@@ -659,6 +683,10 @@ struct PublishingConsoleCommands: Commands {
   }
 
   private func openLocalPreview() {
+    if let markdownEditorCommands {
+      markdownEditorCommands.openExternalBrowserPreview()
+      return
+    }
     if let localSitePreviewCommandAction {
       localSitePreviewCommandAction.open()
       return

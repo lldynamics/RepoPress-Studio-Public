@@ -44,7 +44,22 @@ extension WorkbenchStore {
   @discardableResult
   public func importExistingSiteFromStarter(_ request: SiteStarterImportRequest) async -> SiteStarterImportResult? {
     await waitForPendingDraftWordCountRefreshes()
-    return await publishingStore.importExistingSiteFromStarter(request, store: self)
+    let importOutcome = await publishingStore.importExistingSiteFromStarterOutcome(
+      request,
+      store: self
+    )
+    let result = importOutcome.result
+    _ = recordOperationEvent(
+      WorkbenchOperationEventRecord(
+        kind: .siteImport,
+        outcome: importOutcome.operationLogOutcome,
+        profileID: result?.profile.id,
+        createdItemCount: result?.importedDraftCount,
+        updatedItemCount: result?.updatedDraftCount,
+        skippedItemCount: result?.skippedPathCount
+      )
+    )
+    return result
   }
 
   @discardableResult

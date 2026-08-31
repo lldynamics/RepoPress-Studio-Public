@@ -13,6 +13,7 @@ struct EditorCenterColumn: View {
   let repositorySourceSession: RepositoryHTMLSourceSession
   let rssStore: RSSReaderStore
   let rssPresentation: RSSReaderPresentationState
+  @Binding var knowledgeInspectorPresentation: KnowledgeLibraryInspectorPresentationState
   @ObservedObject private var knowledge: KnowledgeStore
 
   init(
@@ -26,7 +27,8 @@ struct EditorCenterColumn: View {
     contentHealthSidebarProjection: ContentHealthSidebarProjection,
     repositorySourceSession: RepositoryHTMLSourceSession,
     rssStore: RSSReaderStore,
-    rssPresentation: RSSReaderPresentationState
+    rssPresentation: RSSReaderPresentationState,
+    knowledgeInspectorPresentation: Binding<KnowledgeLibraryInspectorPresentationState>
   ) {
     self.store = store
     self.selectedSection = selectedSection
@@ -39,6 +41,7 @@ struct EditorCenterColumn: View {
     self.repositorySourceSession = repositorySourceSession
     self.rssStore = rssStore
     self.rssPresentation = rssPresentation
+    _knowledgeInspectorPresentation = knowledgeInspectorPresentation
     _knowledge = ObservedObject(wrappedValue: store.knowledge)
   }
 
@@ -60,7 +63,10 @@ struct EditorCenterColumn: View {
   private func centerSurfaceView(_ surface: WorkspaceCenterSurface) -> some View {
     switch surface {
     case .knowledgeLibrary:
-      KnowledgeLibraryDetailView(knowledge: store.knowledge)
+      KnowledgeLibraryDetailView(
+        knowledge: store.knowledge,
+        inspectorPresentation: $knowledgeInspectorPresentation
+      )
     case .rssReader:
       RSSReaderView(
         store: rssStore,

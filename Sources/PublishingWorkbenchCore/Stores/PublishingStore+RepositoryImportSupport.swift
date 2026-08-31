@@ -231,6 +231,18 @@ extension PublishingStore {
     expectedBaselinesByRepositoryPath: [String: DraftOperationBaseline]? = nil,
     store: WorkbenchStore
   ) -> LocalContentImportMergeSummary {
+    mergeImportedDraftsOperation(
+      result,
+      expectedBaselinesByRepositoryPath: expectedBaselinesByRepositoryPath,
+      store: store
+    ).summary
+  }
+
+  func mergeImportedDraftsOperation(
+    _ result: LocalContentImportResult,
+    expectedBaselinesByRepositoryPath: [String: DraftOperationBaseline]? = nil,
+    store: WorkbenchStore
+  ) -> LocalContentImportOperationResult {
     let plan = LocalContentImportMergeService().makePlan(
       existingDrafts: drafts,
       result: result,
@@ -252,8 +264,10 @@ extension PublishingStore {
     {
       store.schedulePreflightRefresh()
     }
+    let outcome: WorkbenchOperationLogOutcome
     if let issue = result.issues.first {
       let changedCount = plan.summary.insertedCount + plan.summary.updatedCount
+      outcome = changedCount == 0 ? .failed : .partial
       setPublishActionMessage(
         changedCount == 0
           ? CoreL10n.format("导入失败：%@", issue.message)
@@ -266,17 +280,19 @@ extension PublishingStore {
         status: changedCount == 0 ? .failure : .warning
       )
     } else if plan.conflictCount > 0 {
+      outcome = .partial
       setPublishActionMessage(
         "导入完成：新增 \(plan.summary.insertedCount) 篇、更新 \(plan.summary.updatedCount) 篇；\(plan.conflictCount) 篇在导入期间被本地修改，已保留本地版本。",
         status: .warning
       )
     } else {
+      outcome = plan.summary.changedCount > 0 ? .succeeded : .recorded
       setPublishActionMessage(
         "导入完成：新增 \(plan.summary.insertedCount) 篇、更新 \(plan.summary.updatedCount) 篇、跳过 \(result.skippedPaths.count) 个文件。",
         status: .success
       )
     }
     store.save()
-    return plan.summary
+    return LocalContentImportOperationResult(summary: plan.summary, outcome: outcome)
   }
 }

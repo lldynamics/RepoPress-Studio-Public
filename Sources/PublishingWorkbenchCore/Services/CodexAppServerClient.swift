@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 
 /// The byte-oriented transport used by ``CodexAppServerClient``.
@@ -37,18 +38,23 @@ public final class CodexAppServerProcessTransport: CodexAppServerTransport, @unc
   public static let defaultArguments = ["app-server", "--listen", "stdio://"]
   public static let maximumReadChunkByteCount = 32 * 1_024
   public static let maximumStderrChunkByteCount = 16 * 1_024
+  static let defaultRuntimeVersionProbeTimeout: Duration = .seconds(2)
 
   private let configuredExecutableURL: URL?
   private let arguments: [String]
+  private let validatesRuntimeVersion: Bool
   private let lock = NSLock()
   /// Serializes complete JSONL writes without blocking lifecycle transitions.
   /// `terminate()` must remain able to close the pipe and unblock a writer
   /// when the child process stops consuming stdin.
   private let writeLock = NSLock()
-  private var process: Process?
+  private var processIdentifier: pid_t?
   private var input: FileHandle?
   private var output: FileHandle?
+  private var errorOutput: FileHandle?
   private var stderrDrainTask: Task<Void, Never>?
+  private var startupTask: Task<Void, Error>?
+  private var startupTaskID: UUID?
   private var started = false
   private var terminated = false
 
@@ -58,6 +64,18 @@ public final class CodexAppServerProcessTransport: CodexAppServerTransport, @unc
   ) {
     self.configuredExecutableURL = executableURL
     self.arguments = arguments
+    self.validatesRuntimeVersion = true
+  }
+
+  /// Test-only process fixtures are not Codex runtimes and therefore cannot
+  /// satisfy the production `codex --version` compatibility contract.
+  init(
+    testExecutableURL: URL,
+    arguments: [String]
+  ) {
+    self.configuredExecutableURL = testExecutableURL
+    self.arguments = arguments
+    self.validatesRuntimeVersion = false
   }
 
   public static func discoverExecutableURL() -> URL? {
@@ -68,9 +86,7 @@ public final class CodexAppServerProcessTransport: CodexAppServerTransport, @unc
     guard let location = discoverRuntimeLocation() else {
       return CodexAppServerRuntimeStatus()
     }
-    let version = await Task.detached(priority: .utility) {
-      readVersion(executableURL: location.url)
-    }.value
+    let version = await readVersion(executableURL: location.url)
     return CodexAppServerRuntimeStatus(
       executableURL: location.url,
       source: location.source,
@@ -115,63 +131,115 @@ public final class CodexAppServerProcessTransport: CodexAppServerTransport, @unc
     return nil
   }
 
-  private static func readVersion(executableURL: URL) -> String? {
-    let process = Process()
-    let outputPipe = Pipe()
-    process.executableURL = executableURL
-    process.arguments = ["--version"]
-    process.standardOutput = outputPipe
-    process.standardError = FileHandle.nullDevice
-    do {
-      try process.run()
-      process.waitUntilExit()
-      guard process.terminationStatus == 0 else { return nil }
-      let data = try outputPipe.fileHandleForReading.readToEnd() ?? Data()
-      guard data.count <= 4_096,
-        let value = String(data: data, encoding: .utf8)?
-          .trimmingCharacters(in: .whitespacesAndNewlines),
-        !value.isEmpty
-      else { return nil }
-      return String(value.prefix(256))
-    } catch {
-      return nil
-    }
+  static func readVersion(
+    executableURL: URL,
+    expectedExecutableIdentity: CodexExecutableIdentity? = nil,
+    timeout: Duration = defaultRuntimeVersionProbeTimeout
+  ) async -> String? {
+    guard let executable = CodexExecutableIdentity.capture(executableURL: executableURL),
+      expectedExecutableIdentity.map({ $0 == executable.identity }) ?? true
+    else { return nil }
+    let probe = CodexRuntimeVersionProbe(
+      executableURL: executable.url,
+      expectedExecutableIdentity: executable.identity
+    )
+    return await probe.run(timeout: timeout)
   }
 
   public func start() async throws {
-    try withLock {
-      if started {
-        return
+    let startup: (id: UUID, task: Task<Void, Error>)? = try withLock {
+      if started { return nil }
+      guard !terminated else { throw CodexAppServerError.processExited }
+      if let startupTask, let startupTaskID {
+        return (startupTaskID, startupTask)
       }
-      guard !terminated else {
+      let startupTaskID = UUID()
+      let startupTask = Task { [weak self] in
+        guard let self else { throw CodexAppServerError.processExited }
+        try await self.performStart()
+      }
+      self.startupTask = startupTask
+      self.startupTaskID = startupTaskID
+      return (startupTaskID, startupTask)
+    }
+    guard let startup else { return }
+
+    do {
+      // Callers share one transport startup. Cancellation belongs to the
+      // individual waiter; only `terminate()` owns cancellation of the shared
+      // lifecycle task. Otherwise one abandoned UI request can make every
+      // concurrent caller observe a failed transport startup.
+      try await startup.task.value
+      try Task.checkCancellation()
+      clearStartupTask(ifCurrent: startup.id)
+    } catch {
+      clearStartupTask(ifCurrent: startup.id)
+      throw error
+    }
+  }
+
+  private func performStart() async throws {
+    let executableURL = configuredExecutableURL ?? Self.discoverExecutableURL()
+    guard let executableURL,
+      let executable = CodexExecutableIdentity.capture(executableURL: executableURL)
+    else {
+      throw CodexAppServerError.executableNotFound
+    }
+
+    if validatesRuntimeVersion {
+      guard
+        let versionOutput = await Self.readVersion(
+          executableURL: executable.url,
+          expectedExecutableIdentity: executable.identity
+        ),
+        CodexAppServerRuntimeVersion.parse(versionOutput)?.isSupported == true,
+        CodexExecutableIdentity.capture(executableURL: executable.url)?.identity
+          == executable.identity
+      else {
         throw CodexAppServerError.processExited
       }
+    }
 
-      let executableURL = configuredExecutableURL ?? Self.discoverExecutableURL()
-      guard let executableURL, FileManager.default.isExecutableFile(atPath: executableURL.path)
-      else {
-        throw CodexAppServerError.executableNotFound
-      }
-
-      let process = Process()
+    try Task.checkCancellation()
+    try withLock {
+      if started { return }
+      guard !terminated else { throw CodexAppServerError.processExited }
+      guard
+        CodexExecutableIdentity.capture(executableURL: executable.url)?.identity
+          == executable.identity
+      else { throw CodexAppServerError.processExited }
       let inputPipe = Pipe()
       let outputPipe = Pipe()
       let errorPipe = Pipe()
-      process.executableURL = executableURL
-      process.arguments = arguments
-      process.standardInput = inputPipe
-      process.standardOutput = outputPipe
-      process.standardError = errorPipe
-
+      let processIdentifier: pid_t
       do {
-        try process.run()
+        processIdentifier = try Self.spawn(
+          executableURL: executable.url,
+          arguments: arguments,
+          environment: CodexRuntimeProcessEnvironment.sanitized(),
+          inputPipe: inputPipe,
+          outputPipe: outputPipe,
+          errorPipe: errorPipe
+        )
       } catch {
         throw CodexAppServerError.processExited
       }
 
-      self.process = process
+      // Detect a replacement between validation and launch. The child is
+      // immediately reaped rather than ever serving a request from an
+      // executable whose checked identity no longer matches.
+      guard
+        CodexExecutableIdentity.capture(executableURL: executable.url)?.identity
+          == executable.identity
+      else {
+        Self.terminateProcessGroup(processIdentifier)
+        throw CodexAppServerError.processExited
+      }
+
+      self.processIdentifier = processIdentifier
       self.input = inputPipe.fileHandleForWriting
       self.output = outputPipe.fileHandleForReading
+      self.errorOutput = errorPipe.fileHandleForReading
       self.started = true
 
       // Drain stderr so a noisy process cannot block on a full pipe.  We intentionally discard it:
@@ -187,6 +255,14 @@ public final class CodexAppServerProcessTransport: CodexAppServerTransport, @unc
           _ = data.count
         }
       }
+    }
+  }
+
+  private func clearStartupTask(ifCurrent startupID: UUID) {
+    withLock {
+      guard startupTaskID == startupID else { return }
+      startupTask = nil
+      startupTaskID = nil
     }
   }
 
@@ -231,24 +307,30 @@ public final class CodexAppServerProcessTransport: CodexAppServerTransport, @unc
   }
 
   public func terminate() async {
-    let snapshot: (Process?, [FileHandle]) = withLock {
+    let snapshot: (pid_t?, [FileHandle], Task<Void, Error>?) = withLock {
       if terminated {
-        return (nil, [])
+        return (nil, [], nil)
       }
       terminated = true
-      let process = self.process
-      let handles = [input, output].compactMap { $0 }
+      let processIdentifier = self.processIdentifier
+      self.processIdentifier = nil
+      let handles = [input, output, errorOutput].compactMap { $0 }
       self.input = nil
       self.output = nil
+      self.errorOutput = nil
       stderrDrainTask?.cancel()
       stderrDrainTask = nil
-      return (process, handles)
+      let startupTask = self.startupTask
+      self.startupTask = nil
+      startupTaskID = nil
+      return (processIdentifier, handles, startupTask)
     }
-    let process = snapshot.0
+    let processIdentifier = snapshot.0
     let handles = snapshot.1
+    snapshot.2?.cancel()
 
-    if let process, process.isRunning {
-      process.terminate()
+    if let processIdentifier {
+      Self.terminateProcessGroup(processIdentifier)
     }
     for handle in handles {
       try? handle.close()
@@ -269,15 +351,96 @@ public final class CodexAppServerProcessTransport: CodexAppServerTransport, @unc
 
   deinit {
     lock.lock()
-    let process = self.process
-    let handles = [input, output].compactMap { $0 }
+    let processIdentifier = self.processIdentifier
+    self.processIdentifier = nil
+    let handles = [input, output, errorOutput].compactMap { $0 }
     stderrDrainTask?.cancel()
+    startupTask?.cancel()
     lock.unlock()
-    if let process, process.isRunning {
-      process.terminate()
+    if let processIdentifier {
+      Self.terminateProcessGroup(processIdentifier)
     }
     for handle in handles {
       try? handle.close()
+    }
+  }
+
+  private static func spawn(
+    executableURL: URL,
+    arguments: [String],
+    environment: [String: String],
+    inputPipe: Pipe,
+    outputPipe: Pipe,
+    errorPipe: Pipe
+  ) throws -> pid_t {
+    let argv = try CodexRuntimeCStringArray([executableURL.path] + arguments)
+    let env = try CodexRuntimeCStringArray(
+      environment.sorted { $0.key < $1.key }.map { "\($0.key)=\($0.value)" })
+    var actions: posix_spawn_file_actions_t?
+    guard posix_spawn_file_actions_init(&actions) == 0 else {
+      throw CodexRuntimeProcessError.spawnFailed
+    }
+    defer { posix_spawn_file_actions_destroy(&actions) }
+    let inputRead = inputPipe.fileHandleForReading.fileDescriptor
+    let inputWrite = inputPipe.fileHandleForWriting.fileDescriptor
+    let outputRead = outputPipe.fileHandleForReading.fileDescriptor
+    let outputWrite = outputPipe.fileHandleForWriting.fileDescriptor
+    let errorRead = errorPipe.fileHandleForReading.fileDescriptor
+    let errorWrite = errorPipe.fileHandleForWriting.fileDescriptor
+    guard
+      posix_spawn_file_actions_adddup2(&actions, inputRead, STDIN_FILENO) == 0,
+      posix_spawn_file_actions_adddup2(&actions, outputWrite, STDOUT_FILENO) == 0,
+      posix_spawn_file_actions_adddup2(&actions, errorWrite, STDERR_FILENO) == 0,
+      posix_spawn_file_actions_addclose(&actions, inputWrite) == 0,
+      posix_spawn_file_actions_addclose(&actions, outputRead) == 0,
+      posix_spawn_file_actions_addclose(&actions, errorRead) == 0,
+      posix_spawn_file_actions_addclose(&actions, inputRead) == 0,
+      posix_spawn_file_actions_addclose(&actions, outputWrite) == 0,
+      posix_spawn_file_actions_addclose(&actions, errorWrite) == 0
+    else { throw CodexRuntimeProcessError.spawnFailed }
+    var attributes: posix_spawnattr_t?
+    guard posix_spawnattr_init(&attributes) == 0 else { throw CodexRuntimeProcessError.spawnFailed }
+    defer { posix_spawnattr_destroy(&attributes) }
+    let flags = Int16(POSIX_SPAWN_SETPGROUP | POSIX_SPAWN_CLOEXEC_DEFAULT)
+    guard posix_spawnattr_setflags(&attributes, flags) == 0,
+      posix_spawnattr_setpgroup(&attributes, 0) == 0
+    else { throw CodexRuntimeProcessError.spawnFailed }
+    var processIdentifier: pid_t = 0
+    let result = executableURL.path.withCString {
+      posix_spawn(&processIdentifier, $0, &actions, &attributes, argv.pointer, env.pointer)
+    }
+    try? inputPipe.fileHandleForReading.close()
+    try? outputPipe.fileHandleForWriting.close()
+    try? errorPipe.fileHandleForWriting.close()
+    guard result == 0, processIdentifier > 0 else { throw CodexRuntimeProcessError.spawnFailed }
+    return processIdentifier
+  }
+
+  private static func terminateProcessGroup(_ processIdentifier: pid_t) {
+    _ = Darwin.kill(-processIdentifier, SIGTERM)
+    let deadline = Date().addingTimeInterval(0.1)
+    var status: Int32 = 0
+    var leaderWasReaped = false
+    while Date() < deadline {
+      if !leaderWasReaped {
+        let result = Darwin.waitpid(processIdentifier, &status, WNOHANG)
+        if result == processIdentifier || (result == -1 && errno == ECHILD) {
+          leaderWasReaped = true
+        } else if result == -1 && errno != EINTR {
+          break
+        }
+      }
+      errno = 0
+      let groupProbe = Darwin.kill(-processIdentifier, 0)
+      if groupProbe == -1, errno == ESRCH {
+        return
+      }
+      Thread.sleep(forTimeInterval: 0.01)
+    }
+    _ = Darwin.kill(-processIdentifier, SIGKILL)
+    _ = Darwin.kill(processIdentifier, SIGKILL)
+    if !leaderWasReaped {
+      while Darwin.waitpid(processIdentifier, &status, 0) == -1, errno == EINTR {}
     }
   }
 }

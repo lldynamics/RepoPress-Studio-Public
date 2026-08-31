@@ -355,7 +355,6 @@ require_literal \
   "macOS 26 toolbar actions must suppress the shared glass background"
 
 for toolbar_identifier in \
-  "workspace-prepare-publish" \
   "ai-assistant-toolbar-button" \
   "workspace-inspector-toggle" \
   "workspace-open-settings"; do
@@ -365,6 +364,42 @@ for toolbar_identifier in \
     "1" \
     "primary toolbar action identifiers must remain unique"
 done
+
+for top_bar_identifier in \
+  "workspace-sidebar-toggle" \
+  "workspace-profile-menu" \
+  "workspace-publishing-status" \
+  "workspace-command-search" \
+  "workspace-live-preview" \
+  "workspace-open-preview-browser" \
+  "workspace-task-center-toggle" \
+  "workspace-prepare-publish"; do
+  require_literal_count \
+    "Sources/PersonalSitePublisherMac/Views/Workspace/WorkspaceTopBarView.swift" \
+    ".accessibilityIdentifier(\"${top_bar_identifier}\")" \
+    "1" \
+    "top bar identifiers must remain unique"
+done
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/Workspace/WorkspaceTopBarView.swift" \
+  ".accessibilityLabel(String(localized: \"浏览器预览\"))" \
+  "browser preview must retain its own native accessibility name"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/Workspace/WorkspaceCommandPalette.swift" \
+  ".accessibilityIdentifier(\"workspace-command-palette-result-\\(id)\")" \
+  "command palette results must expose stable native accessibility identifiers"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/Knowledge/KnowledgeLibraryInspectorPanel.swift" \
+  ".accessibilityIdentifier(\"knowledge-library-inspector\")" \
+  "knowledge Inspector content must expose a stable accessibility identifier"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/RSS/RSSLibraryInspectorPanel.swift" \
+  ".accessibilityIdentifier(\"rss-library-inspector-panel\")" \
+  "RSS Inspector content must expose a stable accessibility identifier"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/Workspace/ContentView.swift" \
@@ -693,12 +728,12 @@ require_literal \
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/Editor/DraftFullTextSearchPanel.swift" \
-  "Button(\"清除条件\"" \
+  "title: \"清除条件\"" \
   "empty full-text search results must offer to clear filters"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/Editor/DraftFullTextSearchPanel.swift" \
-  "Button(\"搜索全部站点\"" \
+  "title: \"搜索全部站点\"" \
   "empty full-text search results must offer an all-sites search"
 
 require_literal \
@@ -740,10 +775,22 @@ require_literal \
   ".keyboardShortcut(.cancelAction)" \
   "publish drawer must support Escape"
 
-require_literal \
-  "Sources/PersonalSitePublisherMac/Views/Publishing/PublishDrawerView.swift" \
-  "@Environment(\\.accessibilityReduceMotion)" \
-  "publish drawer disclosure motion must respect Reduce Motion"
+for publish_drawer_disclosure_file in \
+  "Sources/PersonalSitePublisherMac/Views/Publishing/PublishDrawerComponents.swift" \
+  "Sources/PersonalSitePublisherMac/Views/Publishing/PublishDrawerPresentationComponents.swift"; do
+  require_literal \
+    "$publish_drawer_disclosure_file" \
+    "DisclosureGroup(isExpanded:" \
+    "publish drawer disclosures must use the native Reduce Motion-aware control"
+  require_absent_literal \
+    "$publish_drawer_disclosure_file" \
+    "withAnimation" \
+    "publish drawer disclosures must not override native Reduce Motion behavior"
+  require_absent_literal \
+    "$publish_drawer_disclosure_file" \
+    ".animation(" \
+    "publish drawer disclosures must not add unconditional animation"
+done
 
 for publish_drawer_identifier in \
   publish-drawer-header \
@@ -775,23 +822,28 @@ require_literal \
   "personal website menu must expose an accessibility label"
 
 require_literal \
-  "Sources/PersonalSitePublisherMac/Views/Editor/MacMarkdownComposerToolbars.swift" \
-  ".accessibilityLabel(isRunning ? \"打开本地站点预览\" : \"本地站点预览\")" \
+  "Sources/PersonalSitePublisherMac/Views/Workspace/WorkspaceTopBarView.swift" \
+  ".accessibilityLabel(String(localized: \"实时预览\"))" \
   "local preview toolbar control must expose an accessibility label"
 
 require_literal \
-  "Sources/PersonalSitePublisherMac/Views/Editor/MacMarkdownComposerToolbars.swift" \
-  ".accessibilityValue(" \
+  "Sources/PersonalSitePublisherMac/Views/Editor/MacMarkdownExternalBrowserPreviewControl.swift" \
+  ".accessibilityLabel(String(localized: \"在浏览器中预览当前文章\"))" \
+  "external browser preview control must expose an accessibility label"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/Editor/MacMarkdownExternalBrowserPreviewControl.swift" \
+  ".accessibilityValue(accessibilityValue)" \
   "local preview toolbar control must expose its current runtime status"
 
 require_literal \
-  "Sources/PersonalSitePublisherMac/Views/Editor/MacMarkdownComposerToolbars.swift" \
-  "String(localized: \"预览正在运行\")" \
+  "Sources/PersonalSitePublisherMac/Views/Editor/MacMarkdownExternalBrowserPreviewControl.swift" \
+  "String(localized: \"本地预览正在运行\")" \
   "local preview toolbar control must announce when the preview is running"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/Publishing/ReleaseHistoryDetailView.swift" \
-  ".accessibilityLabel(\"启用部署状态自动检查\")" \
+  ".accessibilityLabel(\"启用 PR/MR 与部署状态自动检查\")" \
   "on-demand deployment status toggle must expose an accessibility label"
 
 require_literal_any_file \
@@ -1192,7 +1244,6 @@ for knowledge_detail_identifier in \
   knowledge-library-detail \
   knowledge-library-detail-title \
   knowledge-library-reader \
-  knowledge-library-inspector-toggle \
   knowledge-library-pin-toggle \
   knowledge-library-actions-menu \
   knowledge-library-import-button \

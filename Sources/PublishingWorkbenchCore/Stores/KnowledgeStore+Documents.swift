@@ -3,9 +3,27 @@ import Foundation
 
 @MainActor
 extension KnowledgeStore {
-  public func createFolder(name: String) {
+  /// Keeps legacy synchronous UI actions responsive while their persistence
+  /// work awaits the cancellable service boundary. The lease belongs to the
+  /// scheduled operation, so another completion cannot clear busy state.
+  func enqueueKnowledgeIO(_ operation: @escaping @MainActor () async -> Void) async {
+    let busyOperationID = beginBusyOperation()
+    await performQueuedKnowledgeMutation { [weak self] in
+      guard let self else { return }
+      defer { finishBusyOperation(busyOperationID) }
+      await operation()
+    }
+  }
+
+  public func createFolder(name: String) async {
+    await enqueueKnowledgeIO { [weak self] in
+      await self?.createFolderAsync(name: name)
+    }
+  }
+
+  private func createFolderAsync(name: String) async {
     do {
-      let folder = try service.createFolder(name: name)
+      let folder = try await service.createFolderAsync(name: name)
       folders.append(folder)
       folders.sort { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
       folderScope = .folder(folder.id)
@@ -18,10 +36,16 @@ extension KnowledgeStore {
     }
   }
 
-  public func renameFolder(id: UUID, name: String) {
+  public func renameFolder(id: UUID, name: String) async {
+    await enqueueKnowledgeIO { [weak self] in
+      await self?.renameFolderAsync(id: id, name: name)
+    }
+  }
+
+  private func renameFolderAsync(id: UUID, name: String) async {
     do {
-      _ = try service.renameFolder(id: id, name: name)
-      folders = try service.folders()
+      _ = try await service.renameFolderAsync(id: id, name: name)
+      folders = try await service.foldersAsync()
       statusMessage = "资料文件夹已重命名。"
       lastError = nil
     } catch {
@@ -30,10 +54,16 @@ extension KnowledgeStore {
     }
   }
 
-  public func deleteFolder(id: UUID) {
+  public func deleteFolder(id: UUID) async {
+    let name = folder(id: id)?.name ?? "文件夹"
+    await enqueueKnowledgeIO { [weak self] in
+      await self?.deleteFolderAsync(id: id, name: name)
+    }
+  }
+
+  private func deleteFolderAsync(id: UUID, name: String) async {
     do {
-      let name = folder(id: id)?.name ?? "文件夹"
-      try service.deleteFolder(id: id)
+      try await service.deleteFolderAsync(id: id)
       folders.removeAll { $0.id == id }
       for index in documents.indices where documents[index].folderID == id {
         documents[index].folderID = nil
@@ -56,9 +86,15 @@ extension KnowledgeStore {
     }
   }
 
-  public func moveDocument(_ documentID: UUID, to folderID: UUID?) {
+  public func moveDocument(_ documentID: UUID, to folderID: UUID?) async {
+    await enqueueKnowledgeIO { [weak self] in
+      await self?.moveDocumentAsync(documentID, to: folderID)
+    }
+  }
+
+  private func moveDocumentAsync(_ documentID: UUID, to folderID: UUID?) async {
     do {
-      try service.setFolder(folderID, documentID: documentID)
+      try await service.setFolderAsync(folderID, documentID: documentID)
       let now = Date()
       if let index = documents.firstIndex(where: { $0.id == documentID }) {
         documents[index].folderID = folderID
@@ -81,10 +117,16 @@ extension KnowledgeStore {
     }
   }
 
-  public func moveDocuments(_ documentIDs: Set<UUID>, to folderID: UUID?) {
+  public func moveDocuments(_ documentIDs: Set<UUID>, to folderID: UUID?) async {
     guard !documentIDs.isEmpty else { return }
+    await enqueueKnowledgeIO { [weak self] in
+      await self?.moveDocumentsAsync(documentIDs, to: folderID)
+    }
+  }
+
+  private func moveDocumentsAsync(_ documentIDs: Set<UUID>, to folderID: UUID?) async {
     do {
-      try service.setFolder(folderID, documentIDs: documentIDs)
+      try await service.setFolderAsync(folderID, documentIDs: documentIDs)
       let now = Date()
       for index in documents.indices where documentIDs.contains(documents[index].id) {
         documents[index].folderID = folderID
@@ -107,10 +149,16 @@ extension KnowledgeStore {
     }
   }
 
-  public func addTags(_ tags: [String], to documentIDs: Set<UUID>) {
+  public func addTags(_ tags: [String], to documentIDs: Set<UUID>) async {
     guard !documentIDs.isEmpty else { return }
+    await enqueueKnowledgeIO { [weak self] in
+      await self?.addTagsAsync(tags, to: documentIDs)
+    }
+  }
+
+  private func addTagsAsync(_ tags: [String], to documentIDs: Set<UUID>) async {
     do {
-      try service.addTags(tags, documentIDs: documentIDs)
+      try await service.addTagsAsync(tags, documentIDs: documentIDs)
       let now = Date()
       for index in documents.indices where documentIDs.contains(documents[index].id) {
         for tag in tags.map({ $0.trimmedForPublishing }).filter({ !$0.isEmpty })
@@ -138,9 +186,21 @@ extension KnowledgeStore {
   public func updateMetadata(
     documentID: UUID,
     metadata: KnowledgeDocumentMetadata
-  ) -> Bool {
+  ) async -> Bool {
+    var succeeded = false
+    await enqueueKnowledgeIO { [weak self] in
+      guard let self else { return }
+      succeeded = await self.updateMetadataAsync(documentID: documentID, metadata: metadata)
+    }
+    return succeeded
+  }
+
+  private func updateMetadataAsync(
+    documentID: UUID,
+    metadata: KnowledgeDocumentMetadata
+  ) async -> Bool {
     do {
-      let updatedDocument = try service.updateMetadata(
+      let updatedDocument = try await service.updateMetadataAsync(
         documentID: documentID,
         metadata: metadata
       )
@@ -238,23 +298,33 @@ extension KnowledgeStore {
         // silently turn a failed save into a successful-looking background job.
       }
     }
-    isBusy = true
+    let busyOperationID = beginBusyOperation()
     statusMessage = "正在保存并建立索引…"
-    defer { isBusy = false }
+    defer { finishBusyOperation(busyOperationID) }
     do {
       importProgress = 0.35
-      let result = try await service.commit(preview, destination: destination)
+      let result = try await performQueuedKnowledgeMutation { [service] in
+        try await service.commit(preview, destination: destination)
+      }
       importProgress = 0.72
-      await reload()
+      await waitAfterAcceptedMutationBeforeProjection()
+      await reloadAfterAcceptedMutation()
       finishImport()
       statusMessage =
         "资料导入完成：新增 \(result.insertedCount)，更新 \(result.updatedCount)，跳过 \(result.skippedCount)。"
       lastError = nil
+      recordKnowledgeImportEvent(
+        outcome: knowledgeImportOutcome(for: result),
+        result: result
+      )
       return result
     } catch {
       finishImport(failure: error.localizedDescription)
       lastError = error.localizedDescription
       statusMessage = "资料导入失败：\(error.localizedDescription)"
+      recordKnowledgeImportEvent(
+        outcome: error is CancellationError ? .cancelled : .failed
+      )
       throw error
     }
   }
@@ -278,17 +348,17 @@ extension KnowledgeStore {
         // `importBrowserCapture` publishes the user-visible error state itself.
       }
     }
-    isBusy = true
+    let busyOperationID = beginBusyOperation()
     statusMessage = "正在保存浏览器页面并建立索引…"
-    defer { isBusy = false }
+    defer { finishBusyOperation(busyOperationID) }
     do {
       importProgress = 0.25
       var preview = try await service.makeBrowserImportPreview(capture: capture)
       guard var candidate = preview.candidates.first else {
         throw KnowledgeLibraryError.invalidBrowserCapture("浏览器页面没有可保存的内容。")
       }
-      let currentDocuments = try service.documents()
-      let currentFolders = try service.folders()
+      let currentDocuments = try await service.documentsAsync()
+      let currentFolders = try await service.foldersAsync()
       let existingDocument = candidate.existingDocumentID.flatMap { documentID in
         currentDocuments.first(where: { $0.id == documentID })
       }
@@ -309,7 +379,7 @@ extension KnowledgeStore {
           ))
       }
 
-      let destination = try browserImportDestination(
+      let destination = try await browserImportDestination(
         folderID: folderID,
         newFolderName: newFolderName
       )
@@ -317,7 +387,9 @@ extension KnowledgeStore {
       let action: KnowledgeBrowserImportAction
       importProgress = 0.62
       if let existingDocument, hasSameURL, duplicateResolution == .moveOnly {
-        try service.setFolder(destination.folderID, documentID: existingDocument.id)
+        try await performQueuedKnowledgeMutation { [service] in
+          try await service.setFolderAsync(destination.folderID, documentID: existingDocument.id)
+        }
         result = KnowledgeImportResult(
           insertedCount: 0,
           updatedCount: 0,
@@ -335,7 +407,9 @@ extension KnowledgeStore {
           candidate.title = "\(candidate.title)（副本）"
         }
         preview.candidates = [candidate]
-        result = try await service.commit(preview, destination: destination.importDestination)
+        result = try await performQueuedKnowledgeMutation { [service] in
+          try await service.commit(preview, destination: destination.importDestination)
+        }
         if duplicateResolution == .keepCopy, hasSameURL {
           action = .copied
         } else if result.insertedCount > 0 {
@@ -348,16 +422,24 @@ extension KnowledgeStore {
       }
       // 新版本和副本的 AI 权限已由导入候选项带入数据库事务。
       // “仅移动分类”不提交候选项，因此仍只更新分类并保留原 AI 权限。
-      await reload(selecting: result.documentIDs.first)
+      await waitAfterAcceptedMutationBeforeProjection()
+      await reloadAfterAcceptedMutation(selecting: result.documentIDs.first)
       finishImport()
       statusMessage =
         action == .moved
         ? "已将原资料移到选定分类；正文、元数据和 AI 权限均保持不变。"
         : "浏览器页面已保存到资料库。"
       lastError = nil
+      recordKnowledgeImportEvent(
+        outcome: knowledgeImportOutcome(for: result),
+        result: result
+      )
       return .saved(result: result, action: action)
     } catch {
       finishImport(failure: error.localizedDescription)
+      recordKnowledgeImportEvent(
+        outcome: error is CancellationError ? .cancelled : .failed
+      )
       lastError = error.localizedDescription
       statusMessage = "浏览器页面保存失败：\(error.localizedDescription)"
       throw error
@@ -367,15 +449,17 @@ extension KnowledgeStore {
   func browserImportDestination(
     folderID: UUID?,
     newFolderName: String?
-  ) throws -> (importDestination: KnowledgeImportDestination, folderID: UUID?) {
+  ) async throws -> (importDestination: KnowledgeImportDestination, folderID: UUID?) {
     if let requestedName = newFolderName?.trimmedForPublishing.nilIfEmpty {
-      if let existing = try service.folders().first(where: {
+      if let existing = try await service.foldersAsync().first(where: {
         $0.name.compare(requestedName, options: [.caseInsensitive, .diacriticInsensitive])
           == .orderedSame
       }) {
         return (.folder(existing.id), existing.id)
       }
-      let folder = try service.createFolder(name: requestedName)
+      let folder = try await performQueuedKnowledgeMutation { [service] in
+        try await service.createFolderAsync(name: requestedName)
+      }
       return (.folder(folder.id), folder.id)
     }
     if let folderID {
@@ -384,9 +468,25 @@ extension KnowledgeStore {
     return (.unfiled, nil)
   }
 
-  public func setAllowsLocalSemanticIndex(_ allowsLocalSemanticIndex: Bool, documentID: UUID) {
+  public func setAllowsLocalSemanticIndex(_ allowsLocalSemanticIndex: Bool, documentID: UUID) async
+  {
+    await enqueueKnowledgeIO { [weak self] in
+      await self?.setAllowsLocalSemanticIndexAsync(
+        allowsLocalSemanticIndex,
+        documentID: documentID
+      )
+    }
+  }
+
+  private func setAllowsLocalSemanticIndexAsync(
+    _ allowsLocalSemanticIndex: Bool,
+    documentID: UUID
+  ) async {
     do {
-      try service.setAllowsLocalSemanticIndex(allowsLocalSemanticIndex, documentID: documentID)
+      try await service.setAllowsLocalSemanticIndexAsync(
+        allowsLocalSemanticIndex,
+        documentID: documentID
+      )
       if let index = documents.firstIndex(where: { $0.id == documentID }) {
         documents[index].allowsLocalSemanticIndex = allowsLocalSemanticIndex
         documents[index].updatedAt = Date()
@@ -398,7 +498,8 @@ extension KnowledgeStore {
         return updated
       }
       ensureVisibleSelection()
-      statusMessage = allowsLocalSemanticIndex
+      statusMessage =
+        allowsLocalSemanticIndex
         ? "这条资料已建立本地语义索引。"
         : "这条资料已关闭本地语义索引。"
       lastError = nil
@@ -408,10 +509,27 @@ extension KnowledgeStore {
     }
   }
 
-  public func setAllowsLocalSemanticIndex(_ allowsLocalSemanticIndex: Bool, documentIDs: Set<UUID>) {
+  public func setAllowsLocalSemanticIndex(_ allowsLocalSemanticIndex: Bool, documentIDs: Set<UUID>)
+    async
+  {
     guard !documentIDs.isEmpty else { return }
+    await enqueueKnowledgeIO { [weak self] in
+      await self?.setAllowsLocalSemanticIndexAsync(
+        allowsLocalSemanticIndex,
+        documentIDs: documentIDs
+      )
+    }
+  }
+
+  private func setAllowsLocalSemanticIndexAsync(
+    _ allowsLocalSemanticIndex: Bool,
+    documentIDs: Set<UUID>
+  ) async {
     do {
-      try service.setAllowsLocalSemanticIndex(allowsLocalSemanticIndex, documentIDs: documentIDs)
+      try await service.setAllowsLocalSemanticIndexAsync(
+        allowsLocalSemanticIndex,
+        documentIDs: documentIDs
+      )
       let now = Date()
       for index in documents.indices where documentIDs.contains(documents[index].id) {
         documents[index].allowsLocalSemanticIndex = allowsLocalSemanticIndex
@@ -436,9 +554,18 @@ extension KnowledgeStore {
     }
   }
 
-  public func setAllowsRemoteAIUse(_ allowsRemoteAIUse: Bool, documentID: UUID) {
+  public func setAllowsRemoteAIUse(_ allowsRemoteAIUse: Bool, documentID: UUID) async {
+    await enqueueKnowledgeIO { [weak self] in
+      await self?.setAllowsRemoteAIUseAsync(allowsRemoteAIUse, documentID: documentID)
+    }
+  }
+
+  private func setAllowsRemoteAIUseAsync(
+    _ allowsRemoteAIUse: Bool,
+    documentID: UUID
+  ) async {
     do {
-      try service.setAllowsRemoteAIUse(allowsRemoteAIUse, documentID: documentID)
+      try await service.setAllowsRemoteAIUseAsync(allowsRemoteAIUse, documentID: documentID)
       if let index = documents.firstIndex(where: { $0.id == documentID }) {
         documents[index].allowsRemoteAIUse = allowsRemoteAIUse
         documents[index].updatedAt = Date()
@@ -460,10 +587,19 @@ extension KnowledgeStore {
     }
   }
 
-  public func setAllowsRemoteAIUse(_ allowsRemoteAIUse: Bool, documentIDs: Set<UUID>) {
+  public func setAllowsRemoteAIUse(_ allowsRemoteAIUse: Bool, documentIDs: Set<UUID>) async {
     guard !documentIDs.isEmpty else { return }
+    await enqueueKnowledgeIO { [weak self] in
+      await self?.setAllowsRemoteAIUseAsync(allowsRemoteAIUse, documentIDs: documentIDs)
+    }
+  }
+
+  private func setAllowsRemoteAIUseAsync(
+    _ allowsRemoteAIUse: Bool,
+    documentIDs: Set<UUID>
+  ) async {
     do {
-      try service.setAllowsRemoteAIUse(allowsRemoteAIUse, documentIDs: documentIDs)
+      try await service.setAllowsRemoteAIUseAsync(allowsRemoteAIUse, documentIDs: documentIDs)
       let now = Date()
       for index in documents.indices where documentIDs.contains(documents[index].id) {
         documents[index].allowsRemoteAIUse = allowsRemoteAIUse
@@ -488,22 +624,31 @@ extension KnowledgeStore {
   }
 
   @available(*, deprecated, message: "请使用 setAllowsRemoteAIUse")
-  public func setAllowsAIUse(_ allowsAIUse: Bool, documentID: UUID) {
-    setAllowsRemoteAIUse(allowsAIUse, documentID: documentID)
+  public func setAllowsAIUse(_ allowsAIUse: Bool, documentID: UUID) async {
+    await setAllowsRemoteAIUse(allowsAIUse, documentID: documentID)
   }
 
   @available(*, deprecated, message: "请使用 setAllowsRemoteAIUse")
-  public func setAllowsAIUse(_ allowsAIUse: Bool, documentIDs: Set<UUID>) {
-    setAllowsRemoteAIUse(allowsAIUse, documentIDs: documentIDs)
+  public func setAllowsAIUse(_ allowsAIUse: Bool, documentIDs: Set<UUID>) async {
+    await setAllowsRemoteAIUse(allowsAIUse, documentIDs: documentIDs)
   }
 
   @discardableResult
-  public func moveToRecycleBin(_ documentIDs: Set<UUID>) -> Bool {
+  public func moveToRecycleBin(_ documentIDs: Set<UUID>) async -> Bool {
     guard !documentIDs.isEmpty else { return false }
+    var succeeded = false
+    await enqueueKnowledgeIO { [weak self] in
+      guard let self else { return }
+      succeeded = await self.moveToRecycleBinAsync(documentIDs)
+    }
+    return succeeded
+  }
+
+  private func moveToRecycleBinAsync(_ documentIDs: Set<UUID>) async -> Bool {
     do {
       let now = Date()
       let movingDocuments = documents.filter { documentIDs.contains($0.id) }
-      try service.moveToRecycleBin(documentIDs: documentIDs)
+      try await service.moveToRecycleBinAsync(documentIDs: documentIDs)
       documents.removeAll { documentIDs.contains($0.id) }
       searchResults.removeAll { documentIDs.contains($0.document.id) }
       recycledDocuments.insert(
@@ -525,12 +670,21 @@ extension KnowledgeStore {
   }
 
   @discardableResult
-  public func restoreFromRecycleBin(_ documentIDs: Set<UUID>) -> Bool {
+  public func restoreFromRecycleBin(_ documentIDs: Set<UUID>) async -> Bool {
     guard !documentIDs.isEmpty else { return false }
+    var succeeded = false
+    await enqueueKnowledgeIO { [weak self] in
+      guard let self else { return }
+      succeeded = await self.restoreFromRecycleBinAsync(documentIDs)
+    }
+    return succeeded
+  }
+
+  private func restoreFromRecycleBinAsync(_ documentIDs: Set<UUID>) async -> Bool {
     do {
       let now = Date()
       let restoring = recycledDocuments.filter { documentIDs.contains($0.id) }
-      try service.restoreFromRecycleBin(documentIDs: documentIDs)
+      try await service.restoreFromRecycleBinAsync(documentIDs: documentIDs)
       recycledDocuments.removeAll { documentIDs.contains($0.id) }
       documents.append(
         contentsOf: restoring.map { recycled in
@@ -551,9 +705,18 @@ extension KnowledgeStore {
   }
 
   @discardableResult
-  public func deleteDocument(_ documentID: UUID) -> Bool {
+  public func deleteDocument(_ documentID: UUID) async -> Bool {
+    var succeeded = false
+    await enqueueKnowledgeIO { [weak self] in
+      guard let self else { return }
+      succeeded = await self.deleteDocumentAsync(documentID)
+    }
+    return succeeded
+  }
+
+  private func deleteDocumentAsync(_ documentID: UUID) async -> Bool {
     do {
-      let report = try service.deleteDocument(id: documentID)
+      let report = try await service.deleteDocumentAsync(id: documentID)
       documents.removeAll { $0.id == documentID }
       recycledDocuments.removeAll { $0.id == documentID }
       searchResults.removeAll { $0.document.id == documentID }
@@ -586,34 +749,59 @@ extension KnowledgeStore {
         failedStoredFileCount: 0
       )
     }
-
-    isBusy = true
-    defer { isBusy = false }
-    let service = self.service
-    let result = await Task.detached(priority: .utility) {
-      var removedIDs: [UUID] = []
-      var failedDocumentCount = 0
-      var removedStoredFileCount = 0
-      var failedStoredFileCount = 0
-      for documentID in documentIDs {
-        do {
-          let report = try service.deleteDocument(id: documentID)
-          removedIDs.append(documentID)
-          removedStoredFileCount += report.removedStoredFileCount
-          failedStoredFileCount += report.failedStoredFileCount
-        } catch {
-          failedDocumentCount += 1
+    let busyOperationID = beginBusyOperation()
+    defer { finishBusyOperation(busyOperationID) }
+    do {
+      return try await performQueuedKnowledgeMutation { [weak self] in
+        guard let self else {
+          return KnowledgeRecycleBinCleanupSummary(
+            requestedDocumentCount: documentIDs.count,
+            removedDocumentCount: 0,
+            failedDocumentCount: documentIDs.count,
+            removedStoredFileCount: 0,
+            failedStoredFileCount: 0
+          )
         }
+        return await self.emptyRecycleBinMutation(documentIDs: documentIDs)
       }
-      return (
-        removedIDs,
-        failedDocumentCount,
-        removedStoredFileCount,
-        failedStoredFileCount
+    } catch {
+      return KnowledgeRecycleBinCleanupSummary(
+        requestedDocumentCount: documentIDs.count,
+        removedDocumentCount: 0,
+        failedDocumentCount: documentIDs.count,
+        removedStoredFileCount: 0,
+        failedStoredFileCount: 0
       )
-    }.value
+    }
+  }
 
-    let removedIDSet = Set(result.0)
+  private func emptyRecycleBinMutation(
+    documentIDs: [UUID]
+  ) async -> KnowledgeRecycleBinCleanupSummary {
+    let result: KnowledgeRecycleBinDeletionResult
+    do {
+      result = try await service.deleteDocumentsAsync(ids: documentIDs)
+    } catch is CancellationError {
+      return KnowledgeRecycleBinCleanupSummary(
+        requestedDocumentCount: documentIDs.count,
+        removedDocumentCount: 0,
+        failedDocumentCount: 0,
+        removedStoredFileCount: 0,
+        failedStoredFileCount: 0
+      )
+    } catch {
+      lastError = error.localizedDescription
+      statusMessage = "清空回收站失败：\(error.localizedDescription)"
+      return KnowledgeRecycleBinCleanupSummary(
+        requestedDocumentCount: documentIDs.count,
+        removedDocumentCount: 0,
+        failedDocumentCount: documentIDs.count,
+        removedStoredFileCount: 0,
+        failedStoredFileCount: 0
+      )
+    }
+
+    let removedIDSet = Set(result.removedIDs)
     documents.removeAll { removedIDSet.contains($0.id) }
     recycledDocuments.removeAll { removedIDSet.contains($0.id) }
     searchResults.removeAll { removedIDSet.contains($0.document.id) }
@@ -623,11 +811,17 @@ extension KnowledgeStore {
     let summary = KnowledgeRecycleBinCleanupSummary(
       requestedDocumentCount: documentIDs.count,
       removedDocumentCount: removedIDSet.count,
-      failedDocumentCount: result.1,
-      removedStoredFileCount: result.2,
-      failedStoredFileCount: result.3
+      failedDocumentCount: result.failedDocumentCount,
+      removedStoredFileCount: result.removedStoredFileCount,
+      failedStoredFileCount: result.failedStoredFileCount
     )
-    if summary.failedDocumentCount == 0, summary.failedStoredFileCount == 0 {
+    if result.wasCancelled {
+      statusMessage = CoreL10n.format(
+        "回收站清理已取消：已永久删除 %d 条资料，剩余项目保持不变。",
+        summary.removedDocumentCount
+      )
+      lastError = nil
+    } else if summary.failedDocumentCount == 0, summary.failedStoredFileCount == 0 {
       statusMessage = CoreL10n.format(
         "资料库回收站已清空：永久删除 %d 条资料。",
         summary.removedDocumentCount
@@ -646,9 +840,18 @@ extension KnowledgeStore {
   }
 
   @discardableResult
-  public func saveAnnotation(_ annotation: KnowledgeAnnotation) -> Bool {
+  public func saveAnnotation(_ annotation: KnowledgeAnnotation) async -> Bool {
+    var succeeded = false
+    await enqueueKnowledgeIO { [weak self] in
+      guard let self else { return }
+      succeeded = await self.saveAnnotationAsync(annotation)
+    }
+    return succeeded
+  }
+
+  private func saveAnnotationAsync(_ annotation: KnowledgeAnnotation) async -> Bool {
     do {
-      let saved = try service.saveAnnotation(annotation)
+      let saved = try await service.saveAnnotationAsync(annotation)
       annotations.removeAll { $0.id == saved.id }
       annotations.insert(saved, at: 0)
       statusMessage = "资料标注已保存。"
@@ -661,9 +864,15 @@ extension KnowledgeStore {
     }
   }
 
-  public func deleteAnnotation(_ annotationID: UUID) {
+  public func deleteAnnotation(_ annotationID: UUID) async {
+    await enqueueKnowledgeIO { [weak self] in
+      await self?.deleteAnnotationAsync(annotationID)
+    }
+  }
+
+  private func deleteAnnotationAsync(_ annotationID: UUID) async {
     do {
-      try service.deleteAnnotation(id: annotationID)
+      try await service.deleteAnnotationAsync(id: annotationID)
       annotations.removeAll { $0.id == annotationID }
       statusMessage = "资料标注已删除。"
       lastError = nil
@@ -676,12 +885,21 @@ extension KnowledgeStore {
   public func recordBacklinks(
     citations: [KnowledgeCitation],
     target: KnowledgeBacklinkTarget
-  ) {
+  ) async {
+    await enqueueKnowledgeIO { [weak self] in
+      await self?.recordBacklinksAsync(citations: citations, target: target)
+    }
+  }
+
+  private func recordBacklinksAsync(
+    citations: [KnowledgeCitation],
+    target: KnowledgeBacklinkTarget
+  ) async {
     do {
-      try service.recordBacklinks(citations: citations, target: target)
+      try await service.recordBacklinksAsync(citations: citations, target: target)
       if let selectedDocumentID, citations.contains(where: { $0.documentID == selectedDocumentID })
       {
-        backlinks = try service.backlinks(documentID: selectedDocumentID)
+        backlinks = try await service.backlinksAsync(documentID: selectedDocumentID)
       }
       if target.kind == .articleDraft,
          articleBacklinksTargetID == target.id {
@@ -716,19 +934,19 @@ extension KnowledgeStore {
     documentID: UUID,
     revisionID: UUID
   ) async throws -> KnowledgeRevisionDifference {
-    let service = self.service
-    return try await Task.detached(priority: .utility) {
-      try service.revisionDifference(documentID: documentID, revisionID: revisionID)
-    }.value
+    try await service.revisionDifferenceAsync(documentID: documentID, revisionID: revisionID)
   }
 
   @discardableResult
   public func applySourceRefresh(_ preview: KnowledgeSourceRefreshPreview) async -> Bool {
-    isBusy = true
-    defer { isBusy = false }
+    let busyOperationID = beginBusyOperation()
+    defer { finishBusyOperation(busyOperationID) }
     do {
-      let result = try await service.applySourceRefresh(preview)
-      await reload(selecting: preview.documentID)
+      let result = try await performQueuedKnowledgeMutation { [service] in
+        try await service.applySourceRefresh(preview)
+      }
+      await waitAfterAcceptedMutationBeforeProjection()
+      await reloadAfterAcceptedMutation(selecting: preview.documentID)
       statusMessage =
         result.updatedCount > 0
         ? "来源更新已保存为新版本，可在版本历史中恢复旧内容。"
@@ -743,9 +961,21 @@ extension KnowledgeStore {
   }
 
   @discardableResult
-  public func restoreRevision(_ revisionID: UUID, documentID: UUID) -> Bool {
+  public func restoreRevision(_ revisionID: UUID, documentID: UUID) async -> Bool {
+    var succeeded = false
+    await enqueueKnowledgeIO { [weak self] in
+      guard let self else { return }
+      succeeded = await self.restoreRevisionAsync(revisionID, documentID: documentID)
+    }
+    return succeeded
+  }
+
+  private func restoreRevisionAsync(_ revisionID: UUID, documentID: UUID) async -> Bool {
     do {
-      let restored = try service.restoreRevision(documentID: documentID, revisionID: revisionID)
+      let restored = try await service.restoreRevisionAsync(
+        documentID: documentID,
+        revisionID: revisionID
+      )
       if let index = documents.firstIndex(where: { $0.id == documentID }) {
         documents[index] = restored
       }
@@ -764,9 +994,15 @@ extension KnowledgeStore {
     }
   }
 
-  public func setPinned(_ pinned: Bool, documentID: UUID) {
+  public func setPinned(_ pinned: Bool, documentID: UUID) async {
+    await enqueueKnowledgeIO { [weak self] in
+      await self?.setPinnedAsync(pinned, documentID: documentID)
+    }
+  }
+
+  private func setPinnedAsync(_ pinned: Bool, documentID: UUID) async {
     do {
-      try service.setPinned(pinned, documentID: documentID)
+      try await service.setPinnedAsync(pinned, documentID: documentID)
       if pinned {
         pinnedDocumentIDs.insert(documentID)
       } else {
