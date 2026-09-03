@@ -29,12 +29,15 @@ done
   || fail "not a Git worktree: $ROOT_DIR"
 
 critical_paths=(
+  Apps
   Package.swift
   Packaging
   Config
   BrowserExtension
+  Shared
   Sources
   Tests
+  UITests
   script
   .github
 )

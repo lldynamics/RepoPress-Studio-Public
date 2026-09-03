@@ -1,6 +1,6 @@
 import AppKit
 import Foundation
-import PublishingWorkbenchCore
+import PublishingMarkdownCore
 import QuartzCore
 
 enum MarkdownScrollSyncSource: Equatable, Hashable {

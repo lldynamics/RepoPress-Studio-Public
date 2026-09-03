@@ -1,6 +1,6 @@
 import Foundation
+import PublishingKnowledgeCore
 import XCTest
-@testable import PublishingWorkbenchCore
 
 final class KnowledgeImportPreviewExecutionPolicyTests: XCTestCase {
   func testPDFPreviewUsesBackgroundPriority() {

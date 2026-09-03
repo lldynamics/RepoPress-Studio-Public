@@ -46,6 +46,106 @@ final class RSSReaderFullTextTests: XCTestCase {
     XCTAssertEqual(fallback.contentHTML, "")
   }
 
+  func testRestoringReadyFullTextCacheClearsPriorExtractionError() async throws {
+    let rootURL = FileManager.default.temporaryDirectory
+      .appendingPathComponent("rss-full-text-clears-error-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+
+    let feed = RSSFeed(
+      id: UUID(),
+      title: "测试订阅",
+      url: URL(string: "https://example.com/feed.xml")!
+    )
+    let articleID = "ready-cache-clears-error"
+    let invalidArticle = RSSArticle(
+      id: articleID,
+      feedID: feed.id,
+      title: "待提取文章",
+      link: nil,
+      summaryHTML: "<p>截断摘要</p>"
+    )
+    let article = RSSArticle(
+      id: articleID,
+      feedID: feed.id,
+      title: invalidArticle.title,
+      link: URL(string: "https://example.com/post")!,
+      summaryHTML: invalidArticle.summaryHTML
+    )
+    let fileURL = rootURL.appendingPathComponent("reader.sqlite")
+    let database = try RSSReaderDatabase(fileURL: fileURL)
+    try database.upsertFeed(feed)
+    try database.upsertArticles([article])
+    let store = RSSReaderStore(fileURL: fileURL)
+    try store.saveFullTextRecord(
+      .ready(
+        articleID: article.id,
+        contentHTML: "<p>已恢复的完整正文</p>",
+        plainText: "已恢复的完整正文",
+        sourceURL: article.link,
+        resolvedURL: article.link,
+        extractorIdentifier: RSSArticleDOMExtractionService.extractorIdentifier,
+        extractorVersion: RSSArticleDOMExtractionService.extractorVersion,
+        confidence: 0.9,
+        attemptedAt: Date()
+      )
+    )
+
+    let state = RSSReaderPresentationState()
+    await state.fetchFullText(for: invalidArticle)
+    XCTAssertNotNil(state.fullTextError(for: articleID))
+
+    XCTAssertTrue(state.restoreCachedFullText(for: article, store: store))
+    XCTAssertNil(state.fullTextError(for: articleID))
+  }
+
+  func testRestoringReadyFallbackKeepsLatestRefreshError() throws {
+    let rootURL = FileManager.default.temporaryDirectory
+      .appendingPathComponent("rss-full-text-keeps-error-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+
+    let feed = RSSFeed(
+      id: UUID(),
+      title: "测试订阅",
+      url: URL(string: "https://example.com/feed.xml")!
+    )
+    let article = RSSArticle(
+      id: "ready-fallback-keeps-error",
+      feedID: feed.id,
+      title: "保留旧全文",
+      link: URL(string: "https://example.com/post")!,
+      summaryHTML: "<p>截断摘要</p>"
+    )
+    let fileURL = rootURL.appendingPathComponent("reader.sqlite")
+    let database = try RSSReaderDatabase(fileURL: fileURL)
+    try database.upsertFeed(feed)
+    try database.upsertArticles([article])
+    let store = RSSReaderStore(fileURL: fileURL)
+    try store.saveFullTextRecord(
+      RSSArticleFullTextRecord(
+        articleID: article.id,
+        status: .ready,
+        contentHTML: "<p>上一次成功提取的正文</p>",
+        plainText: "上一次成功提取的正文",
+        sourceURL: article.link,
+        resolvedURL: article.link,
+        extractorIdentifier: RSSArticleDOMExtractionService.extractorIdentifier,
+        extractorVersion: RSSArticleDOMExtractionService.extractorVersion,
+        confidence: 0.8,
+        attemptedAt: Date(),
+        retryAfter: Date().addingTimeInterval(600),
+        failureMessage: "最近一次重新提取失败"
+      )
+    )
+
+    let state = RSSReaderPresentationState()
+    state.fullTextErrorByArticleID[article.id] = "最近一次重新提取失败"
+
+    XCTAssertTrue(state.restoreCachedFullText(for: article, store: store))
+    XCTAssertEqual(state.fullTextError(for: article.id), "最近一次重新提取失败")
+  }
+
   func testUserPreferencesDefaults() {
     let suiteName = "test-rss-user-prefs-\(UUID().uuidString)"
     let defaults = UserDefaults(suiteName: suiteName)!

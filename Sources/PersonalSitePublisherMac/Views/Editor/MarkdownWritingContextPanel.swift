@@ -65,13 +65,8 @@ struct MarkdownWritingContextPanelContainer<Content: View>: View {
           .padding(10)
       }
     }
-    .frame(minWidth: 360, idealWidth: 460, maxWidth: 520, maxHeight: .infinity)
-    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
-    .overlay {
-      RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
-        .strokeBorder(Color(nsColor: .separatorColor).opacity(0.55))
-    }
-    .shadow(color: Color.black.opacity(0.12), radius: 12, y: 4)
+    .frame(minWidth: 280, idealWidth: 360, maxWidth: 420, maxHeight: .infinity)
+    .background(WorkbenchBackgroundStyle.card)
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("markdown-writing-context-panel")
   }

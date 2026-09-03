@@ -480,6 +480,9 @@ public struct ReleaseRecord: Identifiable, Codable, Hashable, Sendable {
   public var draftSummary: String?
   public var draftCoverAltText: String?
   public var markdownPath: String?
+  /// The same-origin public route proven by a successful deployment page check.
+  /// Older records keep this nil and fall back to framework-aware discovery.
+  public var resolvedArticlePath: String?
   public var changedPaths: [String]
   public var repositoryProvider: RepositoryProvider?
   public var repositoryBaseURL: String?
@@ -496,6 +499,8 @@ public struct ReleaseRecord: Identifiable, Codable, Hashable, Sendable {
   public var reviewURL: String?
   public var reviewTitle: String?
   public var reviewStatus: RemoteRepositoryReviewStatusSnapshot?
+  /// Links a formal publication to its immutable preview history entry.
+  public var previewSourceRecordID: UUID?
   public var batchItems: [ReleaseRecordBatchItem]
   public var createdAt: Date
 
@@ -511,6 +516,7 @@ public struct ReleaseRecord: Identifiable, Codable, Hashable, Sendable {
     draftSummary: String? = nil,
     draftCoverAltText: String? = nil,
     markdownPath: String? = nil,
+    resolvedArticlePath: String? = nil,
     changedPaths: [String] = [],
     repositoryProvider: RepositoryProvider? = nil,
     repositoryBaseURL: String? = nil,
@@ -539,6 +545,7 @@ public struct ReleaseRecord: Identifiable, Codable, Hashable, Sendable {
     self.draftSummary = draftSummary
     self.draftCoverAltText = draftCoverAltText
     self.markdownPath = markdownPath
+    self.resolvedArticlePath = resolvedArticlePath
     self.changedPaths = changedPaths
     self.repositoryProvider = repositoryProvider
     self.repositoryBaseURL = repositoryBaseURL
@@ -553,6 +560,7 @@ public struct ReleaseRecord: Identifiable, Codable, Hashable, Sendable {
     self.reviewURL = reviewURL
     self.reviewTitle = reviewTitle
     self.reviewStatus = reviewStatus
+    self.previewSourceRecordID = nil
     self.batchItems = batchItems
     self.createdAt = createdAt
   }
@@ -604,7 +612,16 @@ public struct ReleaseRecord: Identifiable, Codable, Hashable, Sendable {
   }
 
   public static func limitedHistory(_ records: [ReleaseRecord]) -> [ReleaseRecord] {
-    Array(records.prefix(maximumRetainedRecords))
+    let byID = Dictionary(records.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+    var retained = Set<UUID>()
+    for record in records {
+      var group = Set([record.id])
+      if let source = record.previewSourceRecordID, byID[source]?.kind == .remotePreviewBranch {
+        group.insert(source)
+      }
+      if retained.union(group).count <= maximumRetainedRecords { retained.formUnion(group) }
+    }
+    return records.filter { retained.contains($0.id) }
   }
 
   public var reviewWebURL: URL? {
@@ -730,6 +747,38 @@ public struct ReleaseRecord: Identifiable, Codable, Hashable, Sendable {
       reviewNumber: result.reviewNumber,
       reviewURL: result.reviewURL,
       reviewTitle: result.reviewTitle,
+      createdAt: createdAt
+    )
+  }
+
+  public static func repositoryWorktreePublish(
+    profile: SiteProfile,
+    result: RepositoryWorktreePublishResult,
+    articleTarget: RepositoryWorktreeArticleVerificationTarget? = nil,
+    createdAt: Date = Date()
+  ) -> ReleaseRecord {
+    let title = articleTarget?.title ?? profile.name
+    return ReleaseRecord(
+      kind: .remoteDirectCommit,
+      title: "线上提交：\(title)",
+      summary:
+        "\(profile.repositoryProvider.displayName) · \(result.branch) · \(result.committedPaths.count) 个文件"
+        + " · \(String(result.commitSHA.prefix(8)))",
+      siteProfileID: profile.id,
+      siteName: profile.name,
+      draftID: articleTarget?.draftID,
+      draftTitle: articleTarget?.title,
+      draftSummary: articleTarget?.summary,
+      draftCoverAltText: articleTarget?.coverAltText,
+      markdownPath: articleTarget?.markdownPath,
+      changedPaths: result.committedPaths,
+      repositoryProvider: profile.repositoryProvider,
+      repositoryBaseURL: profile.repositoryBaseURL,
+      repoOwner: profile.repoOwner,
+      repoName: profile.repoName,
+      branchName: result.branch,
+      targetBranch: profile.branch,
+      commitSHA: result.commitSHA,
       createdAt: createdAt
     )
   }
@@ -977,6 +1026,7 @@ public struct ReleaseRecord: Identifiable, Codable, Hashable, Sendable {
     case draftSummary
     case draftCoverAltText
     case markdownPath
+    case resolvedArticlePath
     case changedPaths
     case repositoryProvider
     case repositoryBaseURL
@@ -991,6 +1041,7 @@ public struct ReleaseRecord: Identifiable, Codable, Hashable, Sendable {
     case reviewURL
     case reviewTitle
     case reviewStatus
+    case previewSourceRecordID
     case batchItems
     case createdAt
   }
@@ -1008,6 +1059,7 @@ public struct ReleaseRecord: Identifiable, Codable, Hashable, Sendable {
     draftSummary = try container.decodeIfPresent(String.self, forKey: .draftSummary)
     draftCoverAltText = try container.decodeIfPresent(String.self, forKey: .draftCoverAltText)
     markdownPath = try container.decodeIfPresent(String.self, forKey: .markdownPath)
+    resolvedArticlePath = try container.decodeIfPresent(String.self, forKey: .resolvedArticlePath)
     changedPaths = try container.decodeIfPresent([String].self, forKey: .changedPaths) ?? []
     repositoryProvider = try container.decodeIfPresent(
       RepositoryProvider.self, forKey: .repositoryProvider)
@@ -1027,6 +1079,7 @@ public struct ReleaseRecord: Identifiable, Codable, Hashable, Sendable {
       RemoteRepositoryReviewStatusSnapshot.self,
       forKey: .reviewStatus
     )
+    previewSourceRecordID = try container.decodeIfPresent(UUID.self, forKey: .previewSourceRecordID)
     batchItems =
       try container.decodeIfPresent([ReleaseRecordBatchItem].self, forKey: .batchItems) ?? []
     createdAt = try container.decode(Date.self, forKey: .createdAt)

@@ -59,6 +59,110 @@ struct MarkdownSyntaxHighlightComputation: Sendable {
   let parserMetrics: MarkdownSyntaxHighlightParserMetrics
 }
 
+@MainActor
+enum MarkdownEditorContextualAnchorResolver {
+  static func viewportRect(for range: NSRange, in textView: NSTextView) -> CGRect? {
+    guard
+      let scrollView = textView.enclosingScrollView,
+      let textRect = textRect(for: range, in: textView)
+    else {
+      return nil
+    }
+
+    let visibleTextRect = textView.convert(
+      scrollView.contentView.bounds,
+      from: scrollView.contentView
+    )
+    let visibleAnchor = textRect.intersection(visibleTextRect)
+    guard !visibleAnchor.isNull, !visibleAnchor.isEmpty else { return nil }
+
+    let appKitRect = scrollView.convert(visibleAnchor, from: textView)
+      .intersection(scrollView.contentView.frame)
+    guard !appKitRect.isNull, !appKitRect.isEmpty else { return nil }
+    return topLeadingRect(
+      from: appKitRect,
+      in: scrollView.bounds,
+      isFlipped: scrollView.isFlipped
+    )
+  }
+
+  private static func textRect(for range: NSRange, in textView: NSTextView) -> CGRect? {
+    if let rect = MarkdownTextKit2RangeAdapter.rect(for: range, in: textView) {
+      return rect
+    }
+    guard range.length == 0 else { return nil }
+
+    let source = textView.string as NSString
+    let location = min(max(range.location, 0), source.length)
+    if location < source.length,
+      source.substring(with: NSRange(location: location, length: 1)) != "\n",
+      let followingRect = MarkdownTextKit2RangeAdapter.rect(
+        for: NSRange(location: location, length: 1),
+        in: textView
+      )
+    {
+      return insertionRect(x: followingRect.minX, lineRect: followingRect)
+    }
+    if location > 0,
+      source.substring(with: NSRange(location: location - 1, length: 1)) != "\n",
+      let precedingRect = MarkdownTextKit2RangeAdapter.rect(
+        for: NSRange(location: location - 1, length: 1),
+        in: textView
+      )
+    {
+      return insertionRect(x: precedingRect.maxX, lineRect: precedingRect)
+    }
+
+    if location > 0,
+      source.substring(with: NSRange(location: location - 1, length: 1)) == "\n",
+      let newlineRect = MarkdownTextKit2RangeAdapter.rect(
+        for: NSRange(location: location - 1, length: 1),
+        in: textView
+      )
+    {
+      return CGRect(
+        x: textView.textContainerOrigin.x,
+        y: newlineRect.maxY,
+        width: 1,
+        height: max(1, newlineRect.height)
+      )
+    }
+
+    guard source.length == 0 else { return nil }
+    let lineHeight = textView.font?.boundingRectForFont.height ?? NSFont.systemFontSize
+    return CGRect(
+      x: textView.textContainerOrigin.x,
+      y: textView.textContainerOrigin.y,
+      width: 1,
+      height: lineHeight
+    )
+  }
+
+  private static func insertionRect(x: CGFloat, lineRect: CGRect) -> CGRect {
+    CGRect(
+      x: x,
+      y: lineRect.minY,
+      width: 1,
+      height: max(1, lineRect.height)
+    )
+  }
+
+  static func topLeadingRect(
+    from appKitRect: CGRect,
+    in bounds: CGRect,
+    isFlipped: Bool
+  ) -> CGRect {
+    CGRect(
+      x: appKitRect.minX - bounds.minX,
+      y: isFlipped
+        ? appKitRect.minY - bounds.minY
+        : bounds.maxY - appKitRect.maxY,
+      width: appKitRect.width,
+      height: appKitRect.height
+    )
+  }
+}
+
 enum MarkdownSyntaxViewportRepaintReason: Equatable, Sendable {
   case content
   case viewport
@@ -102,6 +206,7 @@ struct MacMarkdownTextView: NSViewRepresentable {
   var onInlineAICompletionRequested: () -> Void
   var onSSGSnippetShortcut: (MarkdownCompletionCandidate) -> Void
   var onSlashCommandKey: (MarkdownSlashCommandKey) -> Bool = { _ in false }
+  var onContextualAnchorChanged: (CGRect?) -> Void = { _ in }
   var onLiveBodyChange: (String, String) -> Void = { _, _ in }
   var onScrollPositionChanged: (MarkdownScrollSyncPosition) -> Void
   var onDroppedFiles: ([URL]) -> Void
@@ -127,6 +232,7 @@ struct MacMarkdownTextView: NSViewRepresentable {
       onGhostTextAccepted: onGhostTextAccepted,
       onGhostTextDismissed: onGhostTextDismissed,
       onSSGSnippetShortcut: onSSGSnippetShortcut,
+      onContextualAnchorChanged: onContextualAnchorChanged,
       onLiveBodyChange: onLiveBodyChange,
       onScrollPositionChanged: onScrollPositionChanged,
       onDroppedFiles: onDroppedFiles,
@@ -199,6 +305,7 @@ struct MacMarkdownTextView: NSViewRepresentable {
     // initial string; writing those values back into @Published bindings from
     // makeNSView would publish during SwiftUI's current update transaction.
     textView.delegate = context.coordinator
+    context.coordinator.textView = textView
     textView.isEditable = true
     textView.isSelectable = true
     textView.isRichText = true
@@ -236,12 +343,21 @@ struct MacMarkdownTextView: NSViewRepresentable {
     context.coordinator.configureReadOnlyPresentationFocusBridge(on: textView)
     scrollView.documentView = textView
     context.coordinator.observeScrolling(in: scrollView)
+    context.coordinator.observeContextualAnchorGeometry(in: scrollView)
     context.coordinator.scheduleFullStatistics(for: bodyMarkdown, isInitialLoad: true)
     context.coordinator.scheduleMarkdownSyntaxHighlighting(for: textView, text: text)
     context.coordinator.updateDiagnostics(diagnostics, in: textView, force: true)
     context.coordinator.updateCurrentParagraphHighlight(in: textView, force: true)
     context.coordinator.updateGhostText(ghostText, in: textView)
     context.coordinator.scheduleReadOnlyPresentationIfNeeded(in: textView)
+    // The initial NSTextView selection is assigned before its delegate so it
+    // cannot publish during SwiftUI's make transaction. Publish after the
+    // first layout instead, so a slash menu or selection toolbar never falls
+    // back to a synthetic corner position on first appearance.
+    DispatchQueue.main.async { [weak coordinator = context.coordinator, weak textView] in
+      guard let coordinator, let textView else { return }
+      coordinator.publishContextualAnchor(in: textView)
+    }
     return scrollView
   }
 
@@ -289,6 +405,7 @@ struct MacMarkdownTextView: NSViewRepresentable {
       in: textView
     )
     context.coordinator.onSSGSnippetShortcut = onSSGSnippetShortcut
+    context.coordinator.onContextualAnchorChanged = onContextualAnchorChanged
     context.coordinator.applyComfortConfiguration(
       comfortConfiguration,
       in: textView
@@ -399,6 +516,7 @@ struct MacMarkdownTextView: NSViewRepresentable {
     context.coordinator.requestKeyboardFocus(focusRequest, in: textView)
     context.coordinator.applySynchronizedScroll(scrollSyncUpdate, in: nsView)
     context.coordinator.applyRestoredScroll(scrollRestorationUpdate, in: nsView)
+    context.coordinator.publishContextualAnchor(in: textView)
     context.coordinator.scheduleReadOnlyPresentationIfNeeded(in: textView)
   }
 
@@ -415,6 +533,7 @@ struct MacMarkdownTextView: NSViewRepresentable {
       (nsView.documentView as? NSTextView)?.delegate = nil
     }
     coordinator.scrollSyncBridge.invalidate()
+    coordinator.invalidateContextualAnchorGeometryObservation()
   }
 
   @MainActor
@@ -435,6 +554,7 @@ struct MacMarkdownTextView: NSViewRepresentable {
     var onGhostTextAccepted: (String) -> Void
     var onGhostTextDismissed: () -> Void
     var onSSGSnippetShortcut: (MarkdownCompletionCandidate) -> Void
+    var onContextualAnchorChanged: (CGRect?) -> Void
     let onScrollPositionChanged: (MarkdownScrollSyncPosition) -> Void
     let onDroppedFiles: ([URL]) -> Void
     let onDroppedMarkdown: (String, NSRange, KnowledgeCitation?) -> Void
@@ -546,6 +666,8 @@ struct MacMarkdownTextView: NSViewRepresentable {
     let bindingFlushDelay: TimeInterval = 0.24
     let statisticsDelay = MarkdownEditorStatisticsDelayPolicy.incrementalDeliveryDelay
     var isApplyingAutomaticPairing = false
+    var lastContextualAnchorRect: CGRect?
+    var contextualAnchorGeometryObservationTokens: [NSObjectProtocol] = []
 
     init(
       text: Binding<String>,
@@ -566,6 +688,7 @@ struct MacMarkdownTextView: NSViewRepresentable {
       onGhostTextAccepted: @escaping (String) -> Void,
       onGhostTextDismissed: @escaping () -> Void,
       onSSGSnippetShortcut: @escaping (MarkdownCompletionCandidate) -> Void,
+      onContextualAnchorChanged: @escaping (CGRect?) -> Void = { _ in },
       onLiveBodyChange: @escaping (String, String) -> Void = { _, _ in },
       onScrollPositionChanged: @escaping (MarkdownScrollSyncPosition) -> Void,
       onDroppedFiles: @escaping ([URL]) -> Void,
@@ -598,6 +721,7 @@ struct MacMarkdownTextView: NSViewRepresentable {
       self.onGhostTextAccepted = onGhostTextAccepted
       self.onGhostTextDismissed = onGhostTextDismissed
       self.onSSGSnippetShortcut = onSSGSnippetShortcut
+      self.onContextualAnchorChanged = onContextualAnchorChanged
       self.onScrollPositionChanged = onScrollPositionChanged
       self.onDroppedFiles = onDroppedFiles
       self.onDroppedMarkdown = onDroppedMarkdown
@@ -639,6 +763,7 @@ struct MacMarkdownTextView: NSViewRepresentable {
         onGhostTextAccepted: { _ in },
         onGhostTextDismissed: {},
         onSSGSnippetShortcut: { _ in },
+        onContextualAnchorChanged: { _ in },
         onLiveBodyChange: onLiveBodyChange,
         onScrollPositionChanged: onScrollPositionChanged,
         onDroppedFiles: onDroppedFiles,
@@ -1438,8 +1563,69 @@ struct MacMarkdownTextView: NSViewRepresentable {
         onViewportChanged: { [weak self] in
           guard let self, let textView = self.textView else { return }
           self.repaintVisibleSyntaxViewport(in: textView, reason: .viewport)
+          self.publishContextualAnchor(in: textView)
         }
       )
+    }
+
+    /// Selection and scroll notifications cover typing and scrolling. Frame
+    /// notifications cover a split-view or window resize where AppKit may
+    /// reflow the text without changing the selected range or clip origin.
+    func observeContextualAnchorGeometry(in scrollView: NSScrollView) {
+      invalidateContextualAnchorGeometryObservation()
+      scrollView.postsFrameChangedNotifications = true
+      scrollView.contentView.postsBoundsChangedNotifications = true
+      if let textView {
+        textView.postsFrameChangedNotifications = true
+      }
+
+      let center = NotificationCenter.default
+      let refresh: (Notification) -> Void = { [weak self] _ in
+        DispatchQueue.main.async {
+          guard let self, let textView = self.textView else { return }
+          self.publishContextualAnchor(in: textView)
+        }
+      }
+      contextualAnchorGeometryObservationTokens = [
+        center.addObserver(
+          forName: NSView.frameDidChangeNotification,
+          object: scrollView,
+          queue: .main,
+          using: refresh
+        ),
+        center.addObserver(
+          forName: NSView.frameDidChangeNotification,
+          object: textView,
+          queue: .main,
+          using: refresh
+        ),
+        center.addObserver(
+          forName: NSView.boundsDidChangeNotification,
+          object: scrollView.contentView,
+          queue: .main,
+          using: refresh
+        ),
+      ]
+    }
+
+    func invalidateContextualAnchorGeometryObservation() {
+      let center = NotificationCenter.default
+      contextualAnchorGeometryObservationTokens.forEach(center.removeObserver)
+      contextualAnchorGeometryObservationTokens.removeAll()
+    }
+
+    func publishContextualAnchor(in textView: NSTextView) {
+      textView.layoutSubtreeIfNeeded()
+      let anchor = MarkdownEditorContextualAnchorResolver.viewportRect(
+        for: textView.selectedRange(),
+        in: textView
+      )
+      guard anchor != lastContextualAnchorRect else { return }
+      lastContextualAnchorRect = anchor
+      DispatchQueue.main.async { [weak self] in
+        guard let self, self.lastContextualAnchorRect == anchor else { return }
+        self.onContextualAnchorChanged(anchor)
+      }
     }
 
     private func topVisibleSourceLine(in scrollView: NSScrollView) -> Int? {
@@ -1724,6 +1910,7 @@ struct MacMarkdownTextView: NSViewRepresentable {
       updateGhostText(ghostText, in: textView)
       repaintVisibleSyntaxViewport(in: textView, reason: .selection)
       performTypewriterScrollIfNeeded(in: textView)
+      publishContextualAnchor(in: textView)
       updateCurrentParagraphHighlight(in: textView)
     }
 

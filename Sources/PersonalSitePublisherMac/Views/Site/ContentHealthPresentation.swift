@@ -32,13 +32,64 @@ enum ContentHealthSeverityFilter: String, CaseIterable, Identifiable, Sendable {
   }
 }
 
+/// The scope selected in the UI. `currentArticle` intentionally carries no
+/// draft ID: it follows the active article until the user explicitly switches
+/// back to the whole site.
+enum ContentHealthScope: String, CaseIterable, Identifiable, Sendable {
+  case currentArticle
+  case wholeSite
+
+  var id: String { rawValue }
+
+  var title: String {
+    switch self {
+    case .currentArticle:
+      return String(localized: "当前文章")
+    case .wholeSite:
+      return String(localized: "整个站点")
+    }
+  }
+
+  static func initial(selectedDraftID: UUID?) -> Self {
+    selectedDraftID == nil ? .wholeSite : .currentArticle
+  }
+
+  func resolved(selectedDraftID: UUID?) -> ContentHealthResolvedScope {
+    guard self == .currentArticle, let selectedDraftID else {
+      return .wholeSite
+    }
+    return .currentArticle(selectedDraftID)
+  }
+}
+
+enum ContentHealthResolvedScope: Hashable, Sendable {
+  case currentArticle(UUID)
+  case wholeSite
+
+  var draftID: UUID? {
+    guard case .currentArticle(let draftID) = self else { return nil }
+    return draftID
+  }
+
+  var isCurrentArticle: Bool {
+    draftID != nil
+  }
+}
+
 struct ContentHealthArticlePresentation: Sendable {
   let snapshotID: UUID
   let filter: ContentHealthContextFilter
   let severityFilter: ContentHealthSeverityFilter
+  let scope: ContentHealthResolvedScope
   let rows: [ContentHealthArticleRowModel]
   let rowByDraftID: [UUID: ContentHealthArticleRowModel]
   let siteIssues: [PreflightIssue]
+  let scopeErrorCount: Int
+  let scopeWarningCount: Int
+  let scopeDraftCount: Int
+  let wholeSiteErrorCount: Int
+  let wholeSiteWarningCount: Int
+  let globalBlockingSiteIssueCount: Int
   let recommendedAIFixItem: AIPublishingFixQueueItem?
   let duplicateMarkdownPaths: Set<String>
   let actionQueue: ContentHealthActionQueue
@@ -46,7 +97,8 @@ struct ContentHealthArticlePresentation: Sendable {
   init(
     snapshot: ContentHealthSnapshot,
     filter: ContentHealthContextFilter,
-    severityFilter: ContentHealthSeverityFilter
+    severityFilter: ContentHealthSeverityFilter,
+    scope: ContentHealthResolvedScope = .wholeSite
   ) {
     var aiFixItemByDraftID: [UUID: AIPublishingFixQueueItem] = [:]
     for item in snapshot.aiFixQueueItems where aiFixItemByDraftID[item.draftID] == nil {
@@ -67,7 +119,12 @@ struct ContentHealthArticlePresentation: Sendable {
       sourceSummaries = []
     }
 
-    let rows = sourceSummaries.compactMap { summary -> ContentHealthArticleRowModel? in
+    let scopedSummaries = sourceSummaries.filter { summary in
+      guard case .currentArticle(let draftID) = scope else { return true }
+      return summary.draftID == draftID
+    }
+
+    let rows = scopedSummaries.compactMap { summary -> ContentHealthArticleRowModel? in
       let sourceIssues: [PreflightIssue]
       switch filter {
       case .publicRisks:
@@ -89,12 +146,21 @@ struct ContentHealthArticlePresentation: Sendable {
       rowByDraftID[row.draftID] = row
     }
     let visibleDraftIDs = Set(rowByDraftID.keys)
-    let pathCounts = Dictionary(grouping: rows, by: \.normalizedMarkdownPath)
-      .mapValues(\.count)
+    // Path conflicts are a repository-wide invariant. Keep this computation
+    // on the complete snapshot so narrowing to one article cannot hide its
+    // collision with another article.
+    let pathCounts = Dictionary(
+      grouping: snapshot.contentHealthSummaries.filter {
+        !snapshot.maskedDraftIDs.contains($0.draftID)
+      },
+      by: { $0.markdownPath.normalizedRelativePath() }
+    )
+    .mapValues(\.count)
 
     snapshotID = snapshot.id
     self.filter = filter
     self.severityFilter = severityFilter
+    self.scope = scope
     self.rows = rows
     self.rowByDraftID = rowByDraftID
     let duplicateMarkdownPaths = Set(
@@ -106,6 +172,21 @@ struct ContentHealthArticlePresentation: Sendable {
       duplicateMarkdownPaths: duplicateMarkdownPaths
     )
     siteIssues = severityFilter.filter(snapshot.sitePreflightIssues)
+    let siteErrorCount = siteIssues.filter { $0.severity == .error }.count
+    let siteWarningCount = siteIssues.filter { $0.severity == .warning }.count
+    scopeErrorCount = rows.reduce(into: scope == .wholeSite ? siteErrorCount : 0) {
+      $0 += $1.errorCount
+    }
+    scopeWarningCount = rows.reduce(into: scope == .wholeSite ? siteWarningCount : 0) {
+      $0 += $1.warningCount
+    }
+    scopeDraftCount = scopedSummaries.count
+    wholeSiteErrorCount = snapshot.errorCount
+    wholeSiteWarningCount = snapshot.warningCount
+    globalBlockingSiteIssueCount =
+      snapshot.sitePreflightIssues.filter {
+        $0.severity == .error
+      }.count
     recommendedAIFixItem = snapshot.aiFixQueueItems.first {
       visibleDraftIDs.contains($0.draftID)
     }
@@ -114,11 +195,13 @@ struct ContentHealthArticlePresentation: Sendable {
   func matches(
     snapshotID: UUID,
     filter: ContentHealthContextFilter,
-    severityFilter: ContentHealthSeverityFilter
+    severityFilter: ContentHealthSeverityFilter,
+    scope: ContentHealthResolvedScope
   ) -> Bool {
     self.snapshotID == snapshotID
       && self.filter == filter
       && self.severityFilter == severityFilter
+      && self.scope == scope
   }
 }
 
@@ -135,6 +218,8 @@ struct ContentHealthSnapshot: Sendable {
   var errorCount: Int
   var warningCount: Int
   var passingDraftCount: Int
+  // Redacted display text is not a repository path and cannot identify a collision.
+  var maskedDraftIDs: Set<UUID> = []
 }
 
 struct ContentHealthPresentationService: Sendable {
@@ -142,6 +227,7 @@ struct ContentHealthPresentationService: Sendable {
     profileID: UUID,
     profileName: String,
     report: ContentHealthReport,
+    maskedDraftIDs: Set<UUID> = [],
     generatedAt: Date = Date()
   ) async throws -> ContentHealthSnapshot {
     let task = Task.detached(priority: .utility) {
@@ -184,7 +270,8 @@ struct ContentHealthPresentationService: Sendable {
         slugChangeImpacts: report.slugChangeImpacts,
         errorCount: errorCount,
         warningCount: warningCount,
-        passingDraftCount: passingDraftCount
+        passingDraftCount: passingDraftCount,
+        maskedDraftIDs: maskedDraftIDs
       )
     }
     return try await withTaskCancellationHandler {
@@ -197,14 +284,16 @@ struct ContentHealthPresentationService: Sendable {
   func articlePresentation(
     snapshot: ContentHealthSnapshot,
     filter: ContentHealthContextFilter,
-    severityFilter: ContentHealthSeverityFilter
+    severityFilter: ContentHealthSeverityFilter,
+    scope: ContentHealthResolvedScope = .wholeSite
   ) async throws -> ContentHealthArticlePresentation {
     let task = Task.detached(priority: .utility) {
       try Task.checkCancellation()
       return ContentHealthArticlePresentation(
         snapshot: snapshot,
         filter: filter,
-        severityFilter: severityFilter
+        severityFilter: severityFilter,
+        scope: scope
       )
     }
     return try await withTaskCancellationHandler {
@@ -229,9 +318,12 @@ enum ContentHealthRootCausePresentation {
   }
 
   static func groups(
-    rows: [ContentHealthArticleRowModel]
+    rows: [ContentHealthArticleRowModel],
+    duplicateMarkdownPaths: Set<String> = []
   ) -> [ContentHealthArticleGroup] {
-    let grouped = Dictionary(grouping: rows) { primaryCause(for: $0) }
+    let grouped = Dictionary(grouping: rows) {
+      primaryCause(for: $0, duplicateMarkdownPaths: duplicateMarkdownPaths)
+    }
     return
       grouped
       .map { cause, members in
@@ -254,7 +346,21 @@ enum ContentHealthRootCausePresentation {
       }
   }
 
-  private static func primaryCause(for row: ContentHealthArticleRowModel) -> Cause {
+  private static func primaryCause(
+    for row: ContentHealthArticleRowModel,
+    duplicateMarkdownPaths: Set<String>
+  ) -> Cause {
+    let normalizedPath = row.normalizedMarkdownPath
+    if duplicateMarkdownPaths.contains(normalizedPath) {
+      return Cause(
+        key: "duplicate-path.\(normalizedPath)|reason.markdown-path-collision",
+        title: String(localized: "重复发布路径：\(normalizedPath)"),
+        detail: String(localized: "同一路径的检查项已归组；请为文章保留唯一的发布路径。"),
+        systemImage: "arrow.triangle.branch",
+        severity: row.errorCount > 0 ? .error : .warning
+      )
+    }
+
     let issue = row.issues.sorted(by: isHigherPriority).first
     guard let issue else {
       return Cause(
@@ -306,6 +412,14 @@ enum ContentHealthRootCausePresentation {
           title: String(localized: "地址变更需要承接"),
           detail: String(localized: "确认旧地址引用、aliases 或重定向策略。"),
           systemImage: "arrow.triangle.branch",
+          severity: issue.severity
+        )
+      case .nonStandardSlug:
+        return Cause(
+          key: "category.non-standard-slug",
+          title: String(localized: "Slug 需要标准化"),
+          detail: String(localized: "将大写或中文 Slug 转换为稳定的小写拼音路径。"),
+          systemImage: "textformat.abc",
           severity: issue.severity
         )
       }
@@ -555,7 +669,8 @@ struct ContentHealthAIFixResultPreviewSheet: View {
                       .foregroundStyle(.secondary)
                       .padding(.horizontal, 4)
                       .padding(.vertical, 1)
-                      .background(WorkbenchBackgroundStyle.control, in: RoundedRectangle(cornerRadius: 3))
+                      .background(
+                        WorkbenchBackgroundStyle.control, in: RoundedRectangle(cornerRadius: 3))
                     if !item.isSupported {
                       Text("当前不支持应用")
                         .font(.caption)
@@ -599,7 +714,9 @@ struct ContentHealthAIFixResultPreviewSheet: View {
       if let applicationFeedback {
         Text(applicationFeedback.message)
           .font(.caption)
-          .foregroundStyle(applicationFeedback.isSuccess ? WorkbenchTheme.success : WorkbenchTheme.risk)
+          .foregroundStyle(
+            applicationFeedback.isSuccess ? WorkbenchTheme.success : WorkbenchTheme.risk
+          )
           .padding(.horizontal, 16)
           .padding(.bottom, 8)
           .accessibilityLabel(applicationFeedback.message)
@@ -634,7 +751,8 @@ struct ContentHealthAIFixResultPreviewSheet: View {
         let selectedFields = fields.filter { $0.isSelected && $0.isSupported }
         Button {
           if !selectedFields.isEmpty {
-            applicationFeedback = onApply?(selectedFields)
+            applicationFeedback =
+              onApply?(selectedFields)
               ?? .failed(String(localized: "当前修复结果没有可用的应用目标，未更改文章。"))
           } else {
             NSPasteboard.general.clearContents()
@@ -653,21 +771,33 @@ struct ContentHealthAIFixResultPreviewSheet: View {
     .padding(14)
   }
 
-  private static func parseFields(from result: AIPublishingActionResult) -> [FrontMatterFixFieldItem] {
+  private static func parseFields(from result: AIPublishingActionResult)
+    -> [FrontMatterFixFieldItem]
+  {
     var items: [FrontMatterFixFieldItem] = []
 
     if let suggestion = AIPublishingMetadataActionSuggestionFactory.suggestion(from: result) {
       if let title = suggestion.titles.first, !title.isEmpty {
-        items.append(FrontMatterFixFieldItem(id: "title", fieldKey: "title", title: "标题", proposedValue: title, isSelected: true))
+        items.append(
+          FrontMatterFixFieldItem(
+            id: "title", fieldKey: "title", title: "标题", proposedValue: title, isSelected: true))
       }
       if let slug = suggestion.slugs.first, !slug.isEmpty {
-        items.append(FrontMatterFixFieldItem(id: "slug", fieldKey: "slug", title: "Slug", proposedValue: slug, isSelected: true))
+        items.append(
+          FrontMatterFixFieldItem(
+            id: "slug", fieldKey: "slug", title: "Slug", proposedValue: slug, isSelected: true))
       }
       if let summary = suggestion.summary, !summary.isEmpty {
-        items.append(FrontMatterFixFieldItem(id: "summary", fieldKey: "summary", title: "摘要", proposedValue: summary, isSelected: true))
+        items.append(
+          FrontMatterFixFieldItem(
+            id: "summary", fieldKey: "summary", title: "摘要", proposedValue: summary,
+            isSelected: true))
       }
       if !suggestion.tags.isEmpty {
-        items.append(FrontMatterFixFieldItem(id: "tags", fieldKey: "tags", title: "标签", proposedValue: suggestion.tags.joined(separator: ", "), isSelected: true))
+        items.append(
+          FrontMatterFixFieldItem(
+            id: "tags", fieldKey: "tags", title: "标签",
+            proposedValue: suggestion.tags.joined(separator: ", "), isSelected: true))
       }
     }
 
@@ -682,17 +812,20 @@ struct ContentHealthAIFixResultPreviewSheet: View {
 
         if let colonIndex = line.firstIndex(of: ":"), !line.hasPrefix("-") {
           if let key = currentKey {
-            items.append(FrontMatterFixFieldItem(
-              id: key,
-              fieldKey: key,
-              title: localizedKeyTitle(key),
-              proposedValue: currentValueLines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines),
-              isSelected: ContentHealthAIFixFieldPolicy.supports(key)
-            ))
+            items.append(
+              FrontMatterFixFieldItem(
+                id: key,
+                fieldKey: key,
+                title: localizedKeyTitle(key),
+                proposedValue: currentValueLines.joined(separator: "\n").trimmingCharacters(
+                  in: .whitespacesAndNewlines),
+                isSelected: ContentHealthAIFixFieldPolicy.supports(key)
+              ))
             currentValueLines.removeAll()
           }
           let key = String(line[..<colonIndex]).trimmingCharacters(in: .whitespaces)
-          let val = String(line[line.index(after: colonIndex)...]).trimmingCharacters(in: .whitespaces)
+          let val = String(line[line.index(after: colonIndex)...]).trimmingCharacters(
+            in: .whitespaces)
           currentKey = key
           if !val.isEmpty {
             currentValueLines.append(val)
@@ -703,13 +836,15 @@ struct ContentHealthAIFixResultPreviewSheet: View {
       }
 
       if let key = currentKey, !currentValueLines.isEmpty {
-        items.append(FrontMatterFixFieldItem(
-          id: key,
-          fieldKey: key,
-          title: localizedKeyTitle(key),
-          proposedValue: currentValueLines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines),
-          isSelected: ContentHealthAIFixFieldPolicy.supports(key)
-        ))
+        items.append(
+          FrontMatterFixFieldItem(
+            id: key,
+            fieldKey: key,
+            title: localizedKeyTitle(key),
+            proposedValue: currentValueLines.joined(separator: "\n").trimmingCharacters(
+              in: .whitespacesAndNewlines),
+            isSelected: ContentHealthAIFixFieldPolicy.supports(key)
+          ))
       }
     }
 
@@ -734,10 +869,25 @@ struct ContentHealthAIFixResultPreviewSheet: View {
 struct ContentHealthIssueCard: View {
   let issue: PreflightIssue
   let onFocus: (() -> Void)?
+  let quickFix: ContentHealthQuickFixPresentation?
+  let isQuickFixRunning: Bool
+  let quickFixMessage: String?
+  let onQuickFix: (() -> Void)?
 
-  init(issue: PreflightIssue, onFocus: (() -> Void)? = nil) {
+  init(
+    issue: PreflightIssue,
+    onFocus: (() -> Void)? = nil,
+    quickFix: ContentHealthQuickFixPresentation? = nil,
+    isQuickFixRunning: Bool = false,
+    quickFixMessage: String? = nil,
+    onQuickFix: (() -> Void)? = nil
+  ) {
     self.issue = issue
     self.onFocus = onFocus
+    self.quickFix = quickFix
+    self.isQuickFixRunning = isQuickFixRunning
+    self.quickFixMessage = quickFixMessage
+    self.onQuickFix = onQuickFix
   }
 
   var body: some View {
@@ -750,16 +900,52 @@ struct ContentHealthIssueCard: View {
         .foregroundStyle(.secondary)
         .fixedSize(horizontal: false, vertical: true)
 
-      if let onFocus {
-        HStack {
-          Spacer(minLength: 0)
-          Button {
-            onFocus()
-          } label: {
-            Label("定位到\(issue.contentHealthFocusTargetTitle)", systemImage: "arrow.right.circle")
+      if let quickFixMessage {
+        Text(quickFixMessage)
+          .font(.caption)
+          .foregroundStyle(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
+          .accessibilityLabel(quickFixMessage)
+      }
+
+      if onFocus != nil || quickFix != nil {
+        HStack(spacing: 8) {
+          if let quickFix, let onQuickFix {
+            Button {
+              onQuickFix()
+            } label: {
+              if isQuickFixRunning {
+                Label {
+                  Text("正在修复…")
+                } icon: {
+                  ProgressView()
+                    .controlSize(.small)
+                }
+              } else {
+                Label(quickFix.title, systemImage: quickFix.systemImage)
+              }
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.small)
+            .disabled(isQuickFixRunning)
+            .help(quickFix.help)
+            .accessibilityIdentifier("content-health-quick-fix-\(issue.id.uuidString)")
           }
-          .buttonStyle(.link)
-          .controlSize(.small)
+
+          Spacer(minLength: 0)
+
+          if let onFocus {
+            Button {
+              onFocus()
+            } label: {
+              Label(
+                "定位到\(issue.contentHealthFocusTargetTitle)",
+                systemImage: "arrow.right.circle"
+              )
+            }
+            .buttonStyle(.link)
+            .controlSize(.small)
+          }
         }
       }
     }

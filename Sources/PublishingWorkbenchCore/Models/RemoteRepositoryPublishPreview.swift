@@ -154,11 +154,17 @@ public struct RemoteRepositoryPublishPreview: Codable, Hashable, Sendable {
     guard let accessCheck else {
       return CoreL10n.text("Token 已保存，尚未检查权限")
     }
+    if accessCheck.tokenWriteVerification == .verified {
+      return CoreL10n.text("Token API 写权限已验证")
+    }
+    if accessCheck.tokenWriteVerification == .insufficient {
+      return CoreL10n.text("Token API 写权限不足")
+    }
     if accessCheck.canWrite {
-      if provider == .github && mode == .reviewRequest {
-        return CoreL10n.text("内容可写，PR 权限待创建时验证")
+      if provider == .github {
+        return CoreL10n.text("仓库角色可写，Token API 权限待验证")
       }
-      return CoreL10n.text("Token 可写")
+      return CoreL10n.text("项目角色可写，Token API scope 待验证")
     }
     if accessCheck.canRead {
       return CoreL10n.text("Token 可读但未确认写入")
@@ -210,11 +216,24 @@ public struct RemoteRepositoryPublishPreview: Codable, Hashable, Sendable {
         )
       )
     } else {
-      lines.append(CoreL10n.format("- [%@] 已保存 %@ Token", hasToken ? "x" : " ", provider.displayName))
+      lines.append(
+        CoreL10n.format("- [%@] 已保存 %@ Token", hasToken ? "x" : " ", provider.displayName))
     }
-    lines.append(CoreL10n.format("- [%@] 已确认 Token 对 %@ 具备内容写入权限", accessCheck?.canWrite == true ? "x" : " ", repositoryName))
-    if provider == .github && mode == .reviewRequest {
-      lines.append(CoreL10n.text("- [ ] PR 创建权限将在实际创建时验证"))
+    if provider == .github {
+      lines.append(
+        CoreL10n.format(
+          "- [%@] 已检测到 %@ 的仓库写入角色", accessCheck?.canWrite == true ? "x" : " ", repositoryName))
+      lines.append(
+        CoreL10n.text(
+          "- [ ] Token 的 Contents、Pull requests、Checks 和 Commit statuses 权限需在相应 API 请求时验证"))
+    } else {
+      lines.append(
+        CoreL10n.format(
+          "- [%@] 已验证 Token 对 %@ 具备 REST API 写入权限",
+          accessCheck?.tokenWriteVerification == .verified ? "x" : " ",
+          repositoryName
+        )
+      )
     }
     lines.append(CoreL10n.format("- [%@] 没有阻断项", blockingIssues.isEmpty ? "x" : " "))
     lines.append(CoreL10n.format("- [%@] 已审阅警告项", warningIssues.isEmpty ? "x" : " "))
@@ -242,9 +261,10 @@ public struct RemoteRepositoryPublishPreview: Codable, Hashable, Sendable {
     if !issues.isEmpty {
       lines.append("")
       lines.append(CoreL10n.text("## 阻断和警告"))
-      lines.append(contentsOf: issues.map { issue in
-        CoreL10n.format("- [%@] %@：%@", issue.severity.displayName, issue.title, issue.message)
-      })
+      lines.append(
+        contentsOf: issues.map { issue in
+          CoreL10n.format("- [%@] %@：%@", issue.severity.displayName, issue.title, issue.message)
+        })
     }
 
     return lines.joined(separator: "\n")
@@ -281,19 +301,22 @@ public struct RemoteRepositoryPublishPreview: Codable, Hashable, Sendable {
     branchName = try container.decode(String.self, forKey: .branchName)
     targetBranch = try container.decode(String.self, forKey: .targetBranch)
     changedPaths = try container.decode([String].self, forKey: .changedPaths)
-    remoteConflictPaths = try container.decodeIfPresent([String].self, forKey: .remoteConflictPaths) ?? []
-    remoteRiskState = try container.decodeIfPresent(RemotePublishRiskState.self, forKey: .remoteRiskState)
+    remoteConflictPaths =
+      try container.decodeIfPresent([String].self, forKey: .remoteConflictPaths) ?? []
+    remoteRiskState =
+      try container.decodeIfPresent(RemotePublishRiskState.self, forKey: .remoteRiskState)
       ?? (remoteConflictPaths.isEmpty ? .unknown : .conflict)
     let decodedAccessFailure = try container.decodeIfPresent(
       String.self,
       forKey: .tokenAccessFailureMessage
     )?
-      .trimmedForPublishing
-      .nilIfEmpty
+    .trimmedForPublishing
+    .nilIfEmpty
     let decodedHasToken = try container.decode(Bool.self, forKey: .hasToken)
     hasToken = decodedAccessFailure == nil && decodedHasToken
     tokenAccessFailureMessage = decodedAccessFailure
-    accessCheck = try container.decodeIfPresent(RemoteRepositoryAccessCheck.self, forKey: .accessCheck)
+    accessCheck = try container.decodeIfPresent(
+      RemoteRepositoryAccessCheck.self, forKey: .accessCheck)
     blockingIssues = try container.decode([PreflightIssue].self, forKey: .blockingIssues)
     warningIssues = try container.decode([PreflightIssue].self, forKey: .warningIssues)
   }

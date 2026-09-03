@@ -59,7 +59,9 @@ extension PublishingStore {
     -> RemoteRepositoryOperationContext?
   {
     guard remoteRepositoryMutationContext == nil,
-      !store.isRemoteRepositoryChecking
+      !store.isRemoteRepositoryChecking,
+      !isLocalRepositoryMutationRunning,
+      !store.isLocalRepositoryBranchOperationRunning
     else { return nil }
     let context = RemoteRepositoryOperationContext(profile: profile)
     remoteRepositoryMutationContext = context

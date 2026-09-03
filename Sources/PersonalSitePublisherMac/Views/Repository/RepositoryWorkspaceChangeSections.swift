@@ -32,6 +32,9 @@ extension RepositoryWorkspaceView {
         if summary.totalCount > 0 {
           LazyVGrid(columns: repositoryMetricGridColumns, spacing: 8) {
             MetricTile(title: "文章", value: "\(summary.articleCount)", systemImage: "doc.text")
+            MetricTile(
+              title: "栏目结构页", value: "\(summary.structuralCount)",
+              systemImage: "folder.badge.gearshape")
             MetricTile(title: "图片", value: "\(summary.imageCount)", systemImage: "photo")
             MetricTile(
               title: "配置", value: "\(summary.configurationCount)", systemImage: "gearshape")
@@ -44,18 +47,18 @@ extension RepositoryWorkspaceView {
             .foregroundStyle(.secondary)
         } else {
           LazyVStack(alignment: .leading, spacing: 12) {
-            ForEach(RepositoryChangedFileRole.allCases, id: \.self) { role in
-              let files = report.changedFiles(
-                role: role,
-                contentRoot: store.activeProfile.contentRoot,
-                assetRoot: store.activeProfile.assetRoot
-              )
+            ForEach(RepositoryDisplayChangeRole.allCases, id: \.self) { role in
+              let files = summary.files(for: role)
 
               if !files.isEmpty {
                 LazyVStack(alignment: .leading, spacing: 8) {
-                  Text("\(role.localizedDisplayName)变更")
+                  Text(role.localizedTitle)
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
+
+                  if role == .structure {
+                    structuralChangesExplanation(isRemote: false)
+                  }
 
                   ForEach(files) { file in
                     RepositoryChangedFileDisclosureRow(
@@ -148,6 +151,9 @@ extension RepositoryWorkspaceView {
         .frame(width: 58, alignment: .leading)
         .foregroundStyle(.secondary)
       WorkbenchPathIdentity(path: file.path)
+      if RepositoryStructuralChangePresentation.isStructural(file, profile: store.activeProfile) {
+        structuralFileBadge
+      }
     }
     .frame(maxWidth: .infinity, alignment: .leading)
     .accessibilityElement(children: .contain)
@@ -187,21 +193,44 @@ extension RepositoryWorkspaceView {
     .accessibilityIdentifier("repository-local-file-\(file.accessibilityIdentifierToken)-actions")
   }
 
-  func repositoryChangeSummary(for report: RepositoryScanReport) -> RepositoryChangeSummary {
-    report.changeSummary(
-      contentRoot: store.activeProfile.contentRoot,
-      assetRoot: store.activeProfile.assetRoot
-    )
+  func repositoryChangeSummary(for report: RepositoryScanReport)
+    -> RepositoryStructuralChangePresentation
+  {
+    RepositoryStructuralChangePresentation(report: report, profile: store.activeProfile)
   }
 
   func importableChangedArticleCount(for report: RepositoryScanReport) -> Int {
-    report.changedFiles(
-      role: .article,
-      contentRoot: store.activeProfile.contentRoot,
-      assetRoot: store.activeProfile.assetRoot
-    )
-    .filter { $0.kind != .deleted }
-    .count
+    repositoryChangeSummary(for: report).importableArticles.count
+  }
+
+  var structuralFileBadge: some View {
+    Label("结构页保护", systemImage: "lock.shield")
+      .font(.caption)
+      .foregroundStyle(.secondary)
+      .fixedSize()
+  }
+
+  func structuralChangesExplanation(isRemote: Bool) -> some View {
+    VStack(alignment: .leading, spacing: 6) {
+      Text(
+        isRemote
+          ? String(localized: "这些文件定义网站栏目，不能作为普通文章导入。此处只审阅远端差异，不会修复或修改远端文件。")
+          : String(localized: "这些文件定义网站栏目，不计入普通文章。若被旧文章错误占用，可先检查遗留记录，再决定是否恢复文件。")
+      )
+      .font(.caption)
+      .foregroundStyle(.secondary)
+      if !isRemote, let structuralDraftRepairCommandAction {
+        Button("检查栏目修复", systemImage: "wrench.and.screwdriver") {
+          structuralDraftRepairCommandAction.open()
+        }
+        .buttonStyle(.bordered)
+        .disabled(structuralDraftRepairCommandAction.isScanning)
+        .accessibilityIdentifier("repository-open-structural-repair")
+        if structuralDraftRepairCommandAction.isScanning {
+          ProgressView().controlSize(.small)
+        }
+      }
+    }
   }
 
 }

@@ -2,10 +2,171 @@ import Foundation
 import PublishingWorkbenchCore
 import SwiftUI
 
+enum SelectionEditPreviewDiffKind: Equatable, Sendable {
+  case unchanged
+  case deletion
+  case insertion
+}
+
+struct SelectionEditPreviewDiffRun: Equatable, Sendable {
+  let kind: SelectionEditPreviewDiffKind
+  let text: String
+}
+
+/// A compact, deterministic diff prepared for the two-column selection preview.
+///
+/// The UI deliberately keeps unchanged text in both columns, then decorates only
+/// the removed or inserted runs. This makes punctuation-only edits just as
+/// discoverable as word changes without asking the reader to mentally align two
+/// unrelated paragraphs.
+struct SelectionEditPreviewPresentation: Equatable, Sendable {
+  static let minimumTextRegionHeight = 52.0
+  static let maximumTextRegionHeight = 300.0
+
+  let originalRuns: [SelectionEditPreviewDiffRun]
+  let replacementRuns: [SelectionEditPreviewDiffRun]
+  let textRegionHeight: Double
+
+  static func make(original: String, replacement: String) -> Self {
+    let runs = diffRuns(original: Array(original), replacement: Array(replacement))
+    return Self(
+      originalRuns: runs.original,
+      replacementRuns: runs.replacement,
+      textRegionHeight: textRegionHeight(original: original, replacement: replacement)
+    )
+  }
+
+  static func textRegionHeight(original: String, replacement: String) -> Double {
+    let estimatedLineCount = max(
+      estimatedLineCount(for: original),
+      estimatedLineCount(for: replacement)
+    )
+    let estimatedHeight = 16 + Double(estimatedLineCount) * 18
+    return min(maximumTextRegionHeight, max(minimumTextRegionHeight, estimatedHeight))
+  }
+
+  private static func estimatedLineCount(for text: String) -> Int {
+    guard !text.isEmpty else { return 1 }
+    return text.split(separator: "\n", omittingEmptySubsequences: false)
+      .reduce(into: 0) { count, line in
+        count += max(1, Int(ceil(Double(line.count) / 42)))
+      }
+  }
+
+  private static func diffRuns(
+    original: [Character],
+    replacement: [Character]
+  ) -> (original: [SelectionEditPreviewDiffRun], replacement: [SelectionEditPreviewDiffRun]) {
+    // A character matrix is ideal for short selections and punctuation changes.
+    // For unusually large selections, retain the same presentation contract with
+    // a prefix/suffix fallback rather than allocating an unbounded matrix.
+    let cellLimit = 240_000
+    guard original.count <= cellLimit / max(1, replacement.count) else {
+      return prefixSuffixRuns(original: original, replacement: replacement)
+    }
+
+    let columnCount = replacement.count + 1
+    var lengths = Array(repeating: 0, count: (original.count + 1) * columnCount)
+    for originalIndex in original.indices.reversed() {
+      for replacementIndex in replacement.indices.reversed() {
+        let index = originalIndex * columnCount + replacementIndex
+        if original[originalIndex] == replacement[replacementIndex] {
+          lengths[index] = lengths[(originalIndex + 1) * columnCount + replacementIndex + 1] + 1
+        } else {
+          lengths[index] = max(
+            lengths[(originalIndex + 1) * columnCount + replacementIndex],
+            lengths[originalIndex * columnCount + replacementIndex + 1]
+          )
+        }
+      }
+    }
+
+    var originalRuns: [SelectionEditPreviewDiffRun] = []
+    var replacementRuns: [SelectionEditPreviewDiffRun] = []
+    var originalIndex = 0
+    var replacementIndex = 0
+    while originalIndex < original.count || replacementIndex < replacement.count {
+      if originalIndex < original.count,
+        replacementIndex < replacement.count,
+        original[originalIndex] == replacement[replacementIndex]
+      {
+        append(String(original[originalIndex]), kind: .unchanged, to: &originalRuns)
+        append(String(replacement[replacementIndex]), kind: .unchanged, to: &replacementRuns)
+        originalIndex += 1
+        replacementIndex += 1
+      } else if replacementIndex == replacement.count
+        || (originalIndex < original.count
+          && lengths[(originalIndex + 1) * columnCount + replacementIndex]
+            >= lengths[originalIndex * columnCount + replacementIndex + 1])
+      {
+        append(String(original[originalIndex]), kind: .deletion, to: &originalRuns)
+        originalIndex += 1
+      } else {
+        append(String(replacement[replacementIndex]), kind: .insertion, to: &replacementRuns)
+        replacementIndex += 1
+      }
+    }
+    return (originalRuns, replacementRuns)
+  }
+
+  private static func prefixSuffixRuns(
+    original: [Character],
+    replacement: [Character]
+  ) -> (original: [SelectionEditPreviewDiffRun], replacement: [SelectionEditPreviewDiffRun]) {
+    var prefixCount = 0
+    while prefixCount < min(original.count, replacement.count),
+      original[prefixCount] == replacement[prefixCount]
+    {
+      prefixCount += 1
+    }
+
+    var suffixCount = 0
+    while suffixCount < min(original.count - prefixCount, replacement.count - prefixCount),
+      original[original.count - suffixCount - 1] == replacement[replacement.count - suffixCount - 1]
+    {
+      suffixCount += 1
+    }
+
+    let prefix = String(original.prefix(prefixCount))
+    let originalMiddle = String(original.dropFirst(prefixCount).dropLast(suffixCount))
+    let replacementMiddle = String(replacement.dropFirst(prefixCount).dropLast(suffixCount))
+    let suffix = suffixCount == 0 ? "" : String(original.suffix(suffixCount))
+    var originalRuns: [SelectionEditPreviewDiffRun] = []
+    var replacementRuns: [SelectionEditPreviewDiffRun] = []
+    append(prefix, kind: .unchanged, to: &originalRuns)
+    append(prefix, kind: .unchanged, to: &replacementRuns)
+    append(originalMiddle, kind: .deletion, to: &originalRuns)
+    append(replacementMiddle, kind: .insertion, to: &replacementRuns)
+    append(suffix, kind: .unchanged, to: &originalRuns)
+    append(suffix, kind: .unchanged, to: &replacementRuns)
+    return (originalRuns, replacementRuns)
+  }
+
+  private static func append(
+    _ text: String,
+    kind: SelectionEditPreviewDiffKind,
+    to runs: inout [SelectionEditPreviewDiffRun]
+  ) {
+    guard !text.isEmpty else { return }
+    if let last = runs.last, last.kind == kind {
+      runs[runs.count - 1] = SelectionEditPreviewDiffRun(kind: kind, text: last.text + text)
+    } else {
+      runs.append(SelectionEditPreviewDiffRun(kind: kind, text: text))
+    }
+  }
+}
+
 struct SelectionEditPreviewPanel: View {
   let preview: AIPublishingSelectionEditPreview
   let onApply: (AIPublishingSelectionEditPreview) -> Void
   let onDiscard: () -> Void
+
+  private var presentation: SelectionEditPreviewPresentation {
+    SelectionEditPreviewPresentation.make(
+      original: preview.originalText,
+      replacement: preview.trimmedReplacementText
+    )
+  }
 
   var body: some View {
     VStack(alignment: .leading, spacing: 8) {
@@ -43,9 +204,14 @@ struct SelectionEditPreviewPanel: View {
       HStack(alignment: .top, spacing: 10) {
         selectionPreviewColumn(
           title: preview.application == .replaceRange ? "原文" : "插入位置",
-          text: preview.originalText.nilIfEmpty ?? "将在当前光标位置插入。"
+          runs: presentation.originalRuns,
+          placeholder: preview.originalText.nilIfEmpty ?? "将在当前光标位置插入。"
         )
-        selectionPreviewColumn(title: "AI 建议", text: preview.trimmedReplacementText)
+        selectionPreviewColumn(
+          title: "AI 建议",
+          runs: presentation.replacementRuns,
+          placeholder: preview.trimmedReplacementText.nilIfEmpty ?? "AI 没有返回可应用的文本。"
+        )
       }
 
       HStack {
@@ -74,22 +240,61 @@ struct SelectionEditPreviewPanel: View {
     }
   }
 
-  private func selectionPreviewColumn(title: String, text: String) -> some View {
+  private func selectionPreviewColumn(
+    title: String,
+    runs: [SelectionEditPreviewDiffRun],
+    placeholder: String
+  ) -> some View {
     VStack(alignment: .leading, spacing: 5) {
       Text(title)
         .font(.caption.weight(.semibold))
         .foregroundStyle(.secondary)
       ScrollView {
-        Text(text)
+        SelectionEditPreviewDiffText(runs: runs, placeholder: placeholder)
           .font(.caption)
           .textSelection(.enabled)
           .frame(maxWidth: .infinity, alignment: .leading)
       }
-      .frame(maxHeight: 150)
+      .frame(height: presentation.textRegionHeight)
       .padding(8)
-      .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
+      .background(
+        WorkbenchBackgroundStyle.card,
+        in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
+      )
+      .accessibilityElement(children: .contain)
+      .accessibilityLabel("\(title)：\(placeholder)")
     }
     .frame(maxWidth: .infinity, alignment: .leading)
+  }
+}
+
+private struct SelectionEditPreviewDiffText: View {
+  let runs: [SelectionEditPreviewDiffRun]
+  let placeholder: String
+
+  var body: some View {
+    if runs.isEmpty {
+      Text(placeholder)
+        .foregroundStyle(.secondary)
+    } else {
+      runs.reduce(Text("")) { partialResult, run in
+        partialResult + styledText(for: run)
+      }
+    }
+  }
+
+  private func styledText(for run: SelectionEditPreviewDiffRun) -> Text {
+    switch run.kind {
+    case .unchanged:
+      Text(run.text)
+    case .deletion:
+      Text(run.text)
+        .foregroundColor(WorkbenchTheme.risk)
+        .strikethrough()
+    case .insertion:
+      Text(run.text)
+        .foregroundColor(WorkbenchTheme.success)
+    }
   }
 }
 

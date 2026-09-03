@@ -56,6 +56,24 @@ git -C "$TMP_DIR" commit -qm "track source input"
 REPOSITORY_SOURCE_BOUNDARY_ROOT="$TMP_DIR" bash "$CHECK" --release >/dev/null \
   || fail "release mode should pass after committing build inputs"
 
+critical_fixtures=(
+  "Apps/RepoPressDesktop/main.ts"
+  "Shared/RepoPressCoreContracts/fixture.json"
+  "UITests/WorkspaceAccessibilityUITests/Fixture.swift"
+  ".github/workflows/fixture.yml"
+)
+for fixture_path in "${critical_fixtures[@]}"; do
+  mkdir -p "$TMP_DIR/$(dirname "$fixture_path")"
+  printf 'release boundary fixture\n' >"$TMP_DIR/$fixture_path"
+  if REPOSITORY_SOURCE_BOUNDARY_ROOT="$TMP_DIR" bash "$CHECK" >/dev/null 2>&1; then
+    fail "untracked critical input should fail: $fixture_path"
+  fi
+  git -C "$TMP_DIR" add "$fixture_path"
+  REPOSITORY_SOURCE_BOUNDARY_ROOT="$TMP_DIR" bash "$CHECK" >/dev/null \
+    || fail "staged critical input should be present in the clean-checkout boundary: $fixture_path"
+done
+git -C "$TMP_DIR" commit -qm "track cross-platform and shared inputs"
+
 printf '#!/usr/bin/env bash\n' >"$TMP_DIR/script-new.sh"
 REPOSITORY_SOURCE_BOUNDARY_ROOT="$TMP_DIR" bash "$CHECK" >/dev/null \
   || fail "untracked file outside the critical paths should not fail"

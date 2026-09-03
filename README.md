@@ -2,7 +2,7 @@
 
 面向 Git 驱动静态站点作者的原生 macOS 写作、资料与发布工作台。
 
-RepoPress Studio 是 RepoPress 的桌面版本：用 Markdown 管理内容，以 Git 仓库作为发布边界，并把写作、图片、SEO、部署、RSS、知识库和可选 AI 集中到一个本地优先的工作区。本仓库只包含原生 macOS 实现，不使用 Catalyst。
+RepoPress Studio 是 RepoPress 的桌面版本：用 Markdown 管理内容，以 Git 仓库作为发布边界，并把写作、图片、SEO、部署、RSS、知识库和可选 AI 集中到一个本地优先的工作区。主产品是原生 macOS 实现，不使用 Catalyst；仓库同时包含一个边界独立的 Tauri 2 跨平台桌面原型，用于验证 Windows / Linux 上的只读仓库浏览与轻量编辑能力。
 
 > RepoPress 另有面向 iPhone 和 iPad 的 iOS 版，已经上架 App Store。两端围绕同一类静态站点工作流设计，但代码仓库、界面、数据模型、商业权益和发行节奏相互独立。
 
@@ -21,6 +21,7 @@ RepoPress Studio 是 RepoPress 的桌面版本：用 Markdown 管理内容，以
 | 产品 | 定位 | 代码与发行边界 |
 | --- | --- | --- |
 | RepoPress Studio for macOS | 桌面写作、资料管理、本地 Git / SSG 与完整发布工作台 | 本仓库；原生 SwiftUI + AppKit，独立构建和发行 |
+| RepoPress Desktop（实验性） | Windows / Linux 优先的仓库浏览与轻量 Markdown 编辑；当前不提供提交、推送、认证或发布 | `Apps/RepoPressDesktop/`；Tauri 2 + Rust + React，独立 CI，不承诺与 macOS 功能对等 |
 | RepoPress for iOS | 面向 iPhone 和 iPad 的移动发布控制台 | 已上架 App Store；在独立仓库中维护 |
 
 跨端演进以兼容现有产品为前提：优先共享端点、front matter、slug、路径、diff 等确定性规则；App 状态、持久化模型、Keychain、StoreKit、后台任务以及 AppKit / UIKit 界面继续由各端负责。
@@ -32,6 +33,7 @@ RepoPress Studio 是 RepoPress 的桌面版本：用 Markdown 管理内容，以
 - 质量脚本：Python 3 和系统开发工具。
 - 本地发布、预览与 ChatGPT 登录：按需安装 Git、Hugo、Zola、Codex CLI、Node.js/npm 等工具；应用优先从系统路径、Homebrew 或 `PATH` 中动态解析，不会将这些第三方 CLI 捆绑进 `.app`。
 - 浏览器扩展测试：Node.js 与 npm；日常 Swift 开发不依赖 Node。
+- Tauri 原型：Node.js 24、Rust 1.90，以及目标系统对应的 Tauri 2 桌面依赖；它不参与原生 macOS 应用的打包。
 
 所有 SwiftPM target 都必须显式使用 Swift 6 语言模式；模块边界门禁会从清单动态盘点 target、产品与依赖，不依赖容易过期的固定数量。
 
@@ -65,6 +67,7 @@ swift test
 - `Sources/BrowserExtensionProtocolSupport/`：应用与浏览器扩展共享的协议常量。
 - `Shared/RepoPressCoreContracts/`：跨 Swift / .NET 的版本化契约、固定样例和 Foundation-only 共享 Core。
 - `BrowserExtension/`：Chrome 和 Firefox 扩展源码与渠道配置。
+- `Apps/RepoPressDesktop/`：实验性的 Tauri 2 + Rust + React 跨平台桌面端，拥有独立依赖、测试和 CI 边界。
 - `Tests/`、`UITests/`：单元、集成、运行态 UI 和无障碍测试。
 - `Packaging/`：版本、entitlements、第三方声明与发行配置。
 - `script/`：构建、质量门禁、扩展和发行脚本。
@@ -116,6 +119,8 @@ bash script/check_accessibility_runtime.sh
 启动性能基线由 `script/check_launch_performance.sh` 检查，默认要求从打开应用包到主窗口可见不超过 5 秒；本机基线可通过 `LAUNCH_BASELINE_MAX_SECONDS` 调整。
 
 GitHub Actions 的证据层级按触发方式区分：`main` 分支 push 只运行快速静态门禁（Swift 6 严格测试清单编译、模块边界等）；Pull Request 运行快速门禁、覆盖率、分发构建和公共快照边界，但不运行真实窗口或无障碍 XCUITest。版本 tag push、固定夜间任务，以及 `workflow_dispatch` 选择 `release` 风险层，才运行发行构建后的真实启动、可见窗口与无障碍运行态检查，并附加 Release 性能证据；手动选择 `quick` 或 `pr` 时仅运行对应较低层级。Swift 6 证据由共享快速门禁提供，不存在独立的 Swift 6 migration lane。共享契约子树另有跨平台契约、Swift Core 与 .NET Core 门禁，使用说明见 [`Shared/RepoPressCoreContracts/README.md`](Shared/RepoPressCoreContracts/README.md)。
+
+Tauri 原型由 `.github/workflows/tauri-desktop.yml` 独立验证前端测试与构建、Rust 格式、单元测试和 clippy。macOS 上的本地通过只证明当前主机可构建；Linux 支持必须以 Ubuntu CI 或真实 Linux 设备上的同一套检查及窗口验证为准。
 
 ## 浏览器扩展
 

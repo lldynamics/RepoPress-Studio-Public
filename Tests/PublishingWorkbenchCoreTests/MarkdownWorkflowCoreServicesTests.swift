@@ -1,7 +1,6 @@
 import Foundation
+import PublishingMarkdownCore
 import XCTest
-
-@testable import PublishingWorkbenchCore
 
 final class MarkdownWorkflowCoreServicesTests: XCTestCase {
   func testExportPlansAllFormatsWithoutInvokingPlatformUI() throws {

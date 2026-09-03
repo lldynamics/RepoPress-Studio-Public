@@ -468,6 +468,8 @@ extension ReleaseHistoryDetailView {
         .disabled(record.draftID == nil || store.ai.isChatRunning)
         .accessibilityIdentifier("release-record-\(record.id)-send-to-ai")
 
+        PreviewPromotionEntryButton(store: store, record: record)
+
         if let commitSHA = record.deploymentCommitSHA ?? record.commitSHA {
           Button {
             copy(commitSHA, message: "已复制 commit SHA。")

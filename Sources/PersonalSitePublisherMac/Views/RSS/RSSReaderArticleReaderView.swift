@@ -144,21 +144,21 @@ struct RSSArticleReader: View {
   private func loadedArticleView(_ article: RSSArticle) -> some View {
     let displayedArticle = articleForDisplay(article)
     return ZStack {
-      if !hasRenderableBody {
-        VStack(alignment: .leading) {
-          Text("这篇文章没有可显示的正文，建议打开原文阅读。")
-            .foregroundStyle(.secondary)
-            .fixedSize(horizontal: false, vertical: true)
-            .accessibilityIdentifier("rss-reader-detail")
-          Spacer(minLength: 0)
-        }
-        .padding(WorkbenchSpacing.spacious)
-        .frame(maxWidth: 900, maxHeight: .infinity, alignment: .topLeading)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-      } else {
-        VStack(spacing: 0) {
-          readerTopChrome(for: article, speechArticle: displayedArticle)
+      VStack(spacing: 0) {
+        readerTopChrome(for: article, speechArticle: displayedArticle)
 
+        if !hasRenderableBody {
+          VStack(alignment: .leading) {
+            Text("这篇文章没有可显示的正文，建议打开原文阅读。")
+              .foregroundStyle(.secondary)
+              .fixedSize(horizontal: false, vertical: true)
+              .accessibilityIdentifier("rss-reader-detail")
+            Spacer(minLength: 0)
+          }
+          .padding(WorkbenchSpacing.spacious)
+          .frame(maxWidth: 900, maxHeight: .infinity, alignment: .topLeading)
+          .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        } else {
           RSSArticleWebView(
             article: displayedArticle,
             feedTitle: feedTitle,
@@ -360,6 +360,9 @@ struct RSSArticleReader: View {
       .padding(.horizontal, 8)
       .padding(.vertical, 4)
       .frame(maxWidth: .infinity, alignment: .leading)
+      .accessibilityElement(children: .combine)
+      .accessibilityLabel(String(localized: "正在从原站提取全文…"))
+      .accessibilityIdentifier("rss-reader-full-text-status-loading")
     } else if let error = fullTextError {
       VStack(alignment: .leading, spacing: 6) {
         HStack(spacing: 6) {
@@ -375,9 +378,10 @@ struct RSSArticleReader: View {
           .foregroundStyle(WorkbenchTheme.risk)
           .lineLimit(2)
           Spacer()
-          Button(String(localized: "重试"), action: onToggleFullText)
+          Button(String(localized: "重试"), action: onRefreshFullText)
             .buttonStyle(.bordered)
             .controlSize(.small)
+            .accessibilityIdentifier("rss-reader-full-text-retry")
           if article.link != nil {
             Button(String(localized: "在浏览器中打开原文"), action: onOpenOriginal)
               .buttonStyle(.bordered)
@@ -396,6 +400,14 @@ struct RSSArticleReader: View {
           .stroke(WorkbenchTheme.risk.opacity(0.2), lineWidth: 1)
       }
       .frame(maxWidth: .infinity, alignment: .leading)
+      .accessibilityElement(children: .contain)
+      .accessibilityLabel(
+        String(
+          format: String(localized: "提取全文失败：%@"),
+          error
+        )
+      )
+      .accessibilityIdentifier("rss-reader-full-text-status-error")
     } else if isTruncatedCandidate && !isShowingFullText {
       HStack(spacing: 8) {
         Label(String(localized: "当前为截断摘要，可提取原站全文阅读"), systemImage: "doc.text.magnifyingglass")
@@ -410,11 +422,15 @@ struct RSSArticleReader: View {
         }
         .workbenchProminentActionStyle()
         .controlSize(.small)
+        .accessibilityIdentifier("rss-reader-full-text-extract")
       }
       .padding(.horizontal, 8)
       .padding(.vertical, 4)
       .background(Color.accentColor.opacity(0.08), in: RoundedRectangle(cornerRadius: 6))
       .frame(maxWidth: .infinity, alignment: .leading)
+      .accessibilityElement(children: .contain)
+      .accessibilityLabel(String(localized: "当前为截断摘要，可提取原站全文阅读"))
+      .accessibilityIdentifier("rss-reader-full-text-status-truncated")
     } else if isShowingFullText {
       HStack(spacing: 6) {
         Image(systemName: "checkmark.seal.fill")
@@ -426,6 +442,7 @@ struct RSSArticleReader: View {
         Button(String(localized: "重新提取"), action: onRefreshFullText)
           .buttonStyle(.borderless)
           .font(.caption)
+          .accessibilityIdentifier("rss-reader-full-text-refresh")
         Button(String(localized: "恢复原始摘要"), action: onToggleFullText)
           .buttonStyle(.borderless)
           .font(.caption)
@@ -433,6 +450,9 @@ struct RSSArticleReader: View {
       .padding(.horizontal, 8)
       .padding(.vertical, 3)
       .frame(maxWidth: .infinity, alignment: .leading)
+      .accessibilityElement(children: .contain)
+      .accessibilityLabel(String(localized: "已加载原站全文"))
+      .accessibilityIdentifier("rss-reader-full-text-status-success")
     }
   }
 

@@ -2,7 +2,7 @@ import XCTest
 @testable import PublishingWorkbenchCore
 
 final class RepositorySyncCommandBuilderTests: XCTestCase {
-  func testPlansFastForwardOnlySyncForDivergedBranch() {
+  func testPlansRebaseAutostashFallbackForDivergedBranch() {
     var profile = SiteProfile.defaultProfile
     profile.localRepositoryRootPath = "/tmp/My Site"
     let report = report(
@@ -23,11 +23,12 @@ final class RepositorySyncCommandBuilderTests: XCTestCase {
         "cd '/tmp/My Site'",
         "git fetch --prune",
         "git status --short --branch",
-        "git pull --ff-only",
+        "git pull --rebase --autostash",
       ]
     )
     XCTAssertTrue(plan?.summary.contains("本地领先 2，落后 3") == true)
-    XCTAssertTrue(plan?.notes.first?.contains("fast-forward") == true)
+    XCTAssertTrue(plan?.notes.first?.contains("变基同步审阅") == true)
+    XCTAssertTrue(plan?.notes.last?.contains("不要直接强制推送") == true)
   }
 
   func testPlansSwitchBackForDetachedHead() {

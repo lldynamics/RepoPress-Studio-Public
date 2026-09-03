@@ -54,11 +54,22 @@ extension RemoteRepositoryPublishService {
     profile: SiteProfile,
     mode: RemoteRepositoryPublishMode,
     token: String?,
-    onProgress: (@Sendable (RemoteRepositoryPublishProgress) -> Void)? = nil
+    onProgress: (@Sendable (RemoteRepositoryPublishProgress) -> Void)? = nil,
+    expectedContentSHA256: [String: String]? = nil,
+    beforeMutation: (@Sendable () async throws -> Void)? = nil
   ) async throws -> RemoteRepositoryPublishResult {
+    try StructuralArticlePathPolicy.validate(package: package, profile: profile)
     let package = try normalizedPublishPackage(package)
     let token = try requiredToken(token)
     let repository = try remoteRepository(from: profile)
+    if let expectedContentSHA256 {
+      guard
+        Set(expectedContentSHA256.keys)
+          == Set(package.files.filter { $0.operation == .upsert }.map(\.repositoryPath))
+      else {
+        throw RemoteArticlePublicationReviewError.confirmationExpired
+      }
+    }
 
     onProgress?(
       .init(
@@ -69,10 +80,18 @@ extension RemoteRepositoryPublishService {
       )
     )
 
+    let publishingService: RemoteRepositoryPublishService
+    if beforeMutation != nil || expectedContentSHA256 != nil {
+      publishingService = withPublicationGuards(
+        beforeMutation: beforeMutation, expectedContentSHA256: expectedContentSHA256)
+    } else {
+      publishingService = self
+    }
+
     let result: RemoteRepositoryPublishResult
     switch profile.repositoryProvider {
     case .github:
-      result = try await publishToGitHub(
+      result = try await publishingService.publishToGitHub(
         package: package,
         repository: repository,
         mode: mode,
@@ -80,7 +99,7 @@ extension RemoteRepositoryPublishService {
         onProgress: onProgress
       )
     case .gitlab:
-      result = try await publishToGitLab(
+      result = try await publishingService.publishToGitLab(
         package: package,
         repository: repository,
         mode: mode,

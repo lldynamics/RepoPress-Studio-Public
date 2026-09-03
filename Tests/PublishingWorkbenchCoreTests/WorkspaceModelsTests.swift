@@ -342,7 +342,7 @@ final class WorkspaceModelsTests: XCTestCase {
     XCTAssertFalse(preview.canPublish)
     XCTAssertTrue(preview.checklistMarkdown.contains("- 状态：\(CoreL10n.text("已阻塞"))"))
     XCTAssertTrue(preview.checklistMarkdown.contains("- 权限检查端点：https://api.github.com"))
-    XCTAssertTrue(preview.checklistMarkdown.contains("- [ ] 已确认 Token 对 owner/site 具备内容写入权限"))
+    XCTAssertTrue(preview.checklistMarkdown.contains("- [ ] 已检测到 owner/site 的仓库写入角色"))
   }
 
   func testRemoteRepositoryPreviewDistinguishesTokenAccessFailureFromMissingToken() {

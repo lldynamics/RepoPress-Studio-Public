@@ -79,7 +79,8 @@ public final class WorkbenchMarkdownEditorLiveContextFeatureFacade: ObservableOb
 
   private static func projection(for draftID: UUID, in store: WorkbenchStore) -> Projection {
     let buffer = store.draftBodyEditorBuffer(for: draftID)
-    let selection = store.activeEditorSelection?.draftID == draftID
+    let selection =
+      store.activeEditorSelection?.draftID == draftID
       ? store.activeEditorSelection
       : nil
     let validatedRange: NSRange?
@@ -356,6 +357,8 @@ public final class WorkbenchReleaseHistoryObservationFacade: ObservableObject {
   private var cancellables = Set<AnyCancellable>()
 
   init(store: WorkbenchStore) {
+    observe(store.privacyProtectionStore.$isQuickHideActive)
+    observe(store.publishingStore.$selectedDraftID)
     observe(
       Publishers.CombineLatest(
         store.publishingStore.$profiles,
@@ -395,6 +398,7 @@ public final class WorkbenchPublishDrawerObservationFacade: ObservableObject {
   private var cancellables = Set<AnyCancellable>()
 
   init(store: WorkbenchStore) {
+    observe(store.privacyProtectionStore.$isQuickHideActive)
     observe(store.publishingStore.publishSession.$batchPublishPlan)
     observe(store.publishingStore.publishSession.$batchRemotePublishPreviewSnapshot)
     observe(store.publishingStore.publishSession.$remoteRepositoryConflictSession)

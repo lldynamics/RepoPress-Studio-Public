@@ -64,11 +64,13 @@ public struct LocalGitPublishService: Sendable {
     mode: LocalGitPublishMode,
     preview: LocalPublishPreview? = nil
   ) throws -> LocalGitPublishResult {
+    try previewService.validateArticleWrite(package: package, profile: profile)
     guard
       let result = try profile.withLocalRepositoryRootAccess({ rootURL in
         try publish(
           package: package,
           rootURL: rootURL,
+          profile: profile,
           mode: mode,
           preview: preview
         )
@@ -86,12 +88,14 @@ public struct LocalGitPublishService: Sendable {
     mode: LocalGitPublishMode,
     preview: LocalPublishPreview? = nil
   ) async throws -> LocalGitPublishResult {
+    try previewService.validateArticleWrite(package: package, profile: profile)
     guard let rootURL = profile.localRepositoryRootURL else {
       throw LocalGitPublishError.missingRepositoryRoot
     }
     return try await publishAsync(
       package: package,
       rootURL: rootURL,
+      profile: profile,
       mode: mode,
       preview: preview
     )
@@ -100,6 +104,7 @@ public struct LocalGitPublishService: Sendable {
   private func publish(
     package: PublishPackage,
     rootURL: URL,
+    profile: SiteProfile,
     mode: LocalGitPublishMode,
     preview: LocalPublishPreview?
   ) throws -> LocalGitPublishResult {
@@ -134,7 +139,8 @@ public struct LocalGitPublishService: Sendable {
       let writeResult = try previewService.writeWithEvidence(
         package: package,
         rootURL: rootURL,
-        preview: preview
+        preview: preview,
+        purpose: .article(profile)
       )
       let writtenPaths = writeResult.writtenPaths
       appliedStatesByRepositoryPath = writeResult.appliedStatesByRepositoryPath
@@ -201,6 +207,7 @@ public struct LocalGitPublishService: Sendable {
   private func publishAsync(
     package: PublishPackage,
     rootURL: URL,
+    profile: SiteProfile,
     mode: LocalGitPublishMode,
     preview: LocalPublishPreview?
   ) async throws -> LocalGitPublishResult {
@@ -236,7 +243,8 @@ public struct LocalGitPublishService: Sendable {
       let writeResult = try previewService.writeWithEvidence(
         package: package,
         rootURL: rootURL,
-        preview: preview
+        preview: preview,
+        purpose: .article(profile)
       )
       let writtenPaths = writeResult.writtenPaths
       appliedStatesByRepositoryPath = writeResult.appliedStatesByRepositoryPath

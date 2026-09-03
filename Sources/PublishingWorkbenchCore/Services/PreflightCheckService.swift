@@ -11,7 +11,8 @@ struct PreflightDuplicateIndex: Sendable {
     )
     indexedDraftIDs = Set(uniqueDrafts.map(\.id))
 
-    let titledDrafts = uniqueDrafts
+    let titledDrafts =
+      uniqueDrafts
       .filter { !$0.title.isEmpty }
       .sorted { lhs, rhs in
         let comparison = lhs.title.caseInsensitiveCompare(rhs.title)
@@ -25,7 +26,9 @@ struct PreflightDuplicateIndex: Sendable {
     while groupStart < titledDrafts.endIndex {
       var groupEnd = titledDrafts.index(after: groupStart)
       while groupEnd < titledDrafts.endIndex,
-            titledDrafts[groupStart].title.caseInsensitiveCompare(titledDrafts[groupEnd].title) == .orderedSame {
+        titledDrafts[groupStart].title.caseInsensitiveCompare(titledDrafts[groupEnd].title)
+          == .orderedSame
+      {
         groupEnd = titledDrafts.index(after: groupEnd)
       }
       if titledDrafts.distance(from: groupStart, to: groupEnd) > 1 {
@@ -102,58 +105,82 @@ public struct PreflightCheckService: Sendable {
     let slug = draft.slug.trimmedForPublishing
 
     if title.isEmpty {
-      issues.append(.init(
-        severity: .error,
-        title: CoreL10n.text("标题为空"),
-        message: CoreL10n.text("发布前必须填写 title。"),
-        field: "title"
-      ))
+      issues.append(
+        .init(
+          severity: .error,
+          title: CoreL10n.text("标题为空"),
+          message: CoreL10n.text("发布前必须填写 title。"),
+          field: "title"
+        ))
     }
 
     if slug.isEmpty {
-      issues.append(.init(
-        severity: .error,
-        title: CoreL10n.text("Slug 为空"),
-        message: CoreL10n.text("发布路径需要稳定 slug。"),
-        field: "slug"
-      ))
+      issues.append(
+        .init(
+          severity: .error,
+          title: CoreL10n.text("Slug 为空"),
+          message: CoreL10n.text("发布路径需要稳定 slug。"),
+          field: "slug"
+        ))
     } else if !SlugService.isValid(slug, rule: profile.slugValidationRule) {
-      issues.append(.init(
-        // Keep the slug visible in publishing review without preventing an
-        // otherwise safe publish. Unsafe rendered paths are checked
-        // independently below, while an empty slug remains a hard error.
-        severity: .warning,
-        title: CoreL10n.text("Slug 格式非法"),
-        message: profile.slugValidationRule.detail,
-        field: "slug"
-      ))
+      let normalizedSlug = SlugService.pinyinSlug(from: slug)
+      issues.append(
+        .init(
+          // Keep the slug visible in publishing review without preventing an
+          // otherwise safe publish. Unsafe rendered paths are checked
+          // independently below, while an empty slug remains a hard error.
+          severity: .warning,
+          title: CoreL10n.text("Slug 格式非法"),
+          message: CoreL10n.format(
+            "%@ 建议标准化为 %@。",
+            profile.slugValidationRule.detail,
+            normalizedSlug
+          ),
+          field: "slug",
+          category: .nonStandardSlug,
+          relatedValue: normalizedSlug
+        ))
+    } else if SlugService.needsPinyinNormalization(slug) {
+      let normalizedSlug = SlugService.pinyinSlug(from: slug)
+      issues.append(
+        .init(
+          severity: .warning,
+          title: CoreL10n.text("Slug 建议标准化"),
+          message: CoreL10n.format("可转换为小写拼音路径：%@。", normalizedSlug),
+          field: "slug",
+          category: .nonStandardSlug,
+          relatedValue: normalizedSlug
+        ))
     }
 
     if draft.draft && !draft.isPrivate {
-      issues.append(.init(
-        severity: .warning,
-        title: CoreL10n.text("仍是草稿"),
-        message: CoreL10n.text("draft 为 true，发布前需要确认这是计划行为。"),
-        field: "draft"
-      ))
+      issues.append(
+        .init(
+          severity: .warning,
+          title: CoreL10n.text("仍是草稿"),
+          message: CoreL10n.text("draft 为 true，发布前需要确认这是计划行为。"),
+          field: "draft"
+        ))
     }
 
     if draft.date > Date().addingTimeInterval(60) {
-      issues.append(.init(
-        severity: .warning,
-        title: CoreL10n.text("日期在未来"),
-        message: CoreL10n.text("确认文章发布日期是否正确。"),
-        field: "date"
-      ))
+      issues.append(
+        .init(
+          severity: .warning,
+          title: CoreL10n.text("日期在未来"),
+          message: CoreL10n.text("确认文章发布日期是否正确。"),
+          field: "date"
+        ))
     }
 
     if draft.bodyMarkdown.trimmedForPublishing.count < 80 {
-      issues.append(.init(
-        severity: .warning,
-        title: CoreL10n.text("正文偏短"),
-        message: CoreL10n.text("正文少于 80 个字符，发布前建议确认内容完整。"),
-        field: "body"
-      ))
+      issues.append(
+        .init(
+          severity: .warning,
+          title: CoreL10n.text("正文偏短"),
+          message: CoreL10n.text("正文少于 80 个字符，发布前建议确认内容完整。"),
+          field: "body"
+        ))
     }
 
     issues.append(contentsOf: publicRiskScanner.scan(draft: draft))
@@ -175,49 +202,66 @@ public struct PreflightCheckService: Sendable {
         field: "markdownPathPattern"
       )
     )
-    issues.append(contentsOf: rootPathIssues(
-      label: CoreL10n.text("内容目录"),
-      path: profile.contentRoot,
-      field: "contentRoot"
-    ))
-    issues.append(contentsOf: rootPathIssues(
-      label: CoreL10n.text("图片目录"),
-      path: profile.assetRoot,
-      field: "assetRoot"
-    ))
+    issues.append(
+      contentsOf: rootPathIssues(
+        label: CoreL10n.text("内容目录"),
+        path: profile.contentRoot,
+        field: "contentRoot"
+      ))
+    issues.append(
+      contentsOf: rootPathIssues(
+        label: CoreL10n.text("图片目录"),
+        path: profile.assetRoot,
+        field: "assetRoot"
+      ))
 
-    let hasDuplicateTitle = duplicateIndex?.hasDuplicateTitle(for: draft.id) ?? allDrafts.contains {
-      $0.id != draft.id && !$0.title.isEmpty && $0.title.caseInsensitiveCompare(draft.title) == .orderedSame
+    if let path = StructuralArticlePathPolicy.protectedPath(for: draft, profile: profile) {
+      issues.append(StructuralArticlePathPolicy.issue(path: path))
     }
+
+    let hasDuplicateTitle =
+      duplicateIndex?.hasDuplicateTitle(for: draft.id)
+      ?? allDrafts.contains {
+        $0.id != draft.id && !$0.title.isEmpty
+          && $0.title.caseInsensitiveCompare(draft.title) == .orderedSame
+      }
     if hasDuplicateTitle {
-      issues.append(.init(
-        severity: .error,
-        title: CoreL10n.text("标题重复"),
-        message: CoreL10n.text("本地已有同名文章，发布前需要区分标题。"),
-        field: "title"
-      ))
+      issues.append(
+        .init(
+          severity: .error,
+          title: CoreL10n.text("标题重复"),
+          message: CoreL10n.text("本地已有同名文章，发布前需要区分标题。"),
+          field: "title"
+        ))
     }
 
-    let hasDuplicatePath = duplicateIndex?.hasDuplicatePath(for: draft.id) ?? allDrafts.contains {
-      $0.id != draft.id && profile.markdownPath(for: $0) == markdownPath
-    }
+    let hasDuplicatePath =
+      duplicateIndex?.hasDuplicatePath(for: draft.id)
+      ?? allDrafts.contains {
+        $0.id != draft.id && profile.markdownPath(for: $0) == markdownPath
+      }
     if hasDuplicatePath {
-      issues.append(.init(
-        severity: .error,
-        title: CoreL10n.text("发布路径重复"),
-        message: CoreL10n.format("%@ 已被另一篇草稿占用。", markdownPath),
-        field: "slug"
-      ))
+      issues.append(
+        .init(
+          severity: .error,
+          title: CoreL10n.text("发布路径重复"),
+          message: CoreL10n.format("%@ 已被另一篇草稿占用。", markdownPath),
+          field: "slug"
+        ))
     }
 
-    let shouldIncludeRepositoryReadiness = includeRepositoryReadiness && profile.purpose.requiresRepositoryReadiness
-    if shouldIncludeRepositoryReadiness && profile.localRepositoryRootPath.trimmedForPublishing.isEmpty {
-      issues.append(.init(
-        severity: .warning,
-        title: CoreL10n.text("未选择本地仓库"),
-        message: profile.purpose.repositoryRootMissingMessage,
-        field: "repository"
-      ))
+    let shouldIncludeRepositoryReadiness =
+      includeRepositoryReadiness && profile.purpose.requiresRepositoryReadiness
+    if shouldIncludeRepositoryReadiness
+      && profile.localRepositoryRootPath.trimmedForPublishing.isEmpty
+    {
+      issues.append(
+        .init(
+          severity: .warning,
+          title: CoreL10n.text("未选择本地仓库"),
+          message: profile.purpose.repositoryRootMissingMessage,
+          field: "repository"
+        ))
     }
 
     if shouldIncludeRepositoryReadiness, let repositoryReport {
@@ -231,26 +275,29 @@ public struct PreflightCheckService: Sendable {
     for attachment in draft.attachments {
       let isVideo = attachment.mediaKind == .video
       if !isVideo, attachment.altText.trimmedForPublishing.isEmpty {
-        issues.append(.init(
-          severity: .warning,
-          title: CoreL10n.text("图片缺少 alt"),
-          message: CoreL10n.format("%@ 还没有可发布的 alt 文本。", attachment.originalFilename),
-          field: "attachments",
-          category: .missingMediaAlt
-        ))
+        issues.append(
+          .init(
+            severity: .warning,
+            title: CoreL10n.text("图片缺少 alt"),
+            message: CoreL10n.format("%@ 还没有可发布的 alt 文本。", attachment.originalFilename),
+            field: "attachments",
+            category: .missingMediaAlt,
+            relatedValue: attachment.id.uuidString
+          ))
       }
 
       if attachment.relativePublishPath.trimmedForPublishing.isEmpty {
-        issues.append(.init(
-          severity: .error,
-          title: CoreL10n.text(isVideo ? "视频发布路径为空" : "图片发布路径为空"),
-          message: CoreL10n.format(
-            isVideo ? "%@ 缺少视频发布路径。" : "%@ 缺少发布路径。",
-            attachment.originalFilename
-          ),
-          field: "attachments",
-          category: .missingMediaPublishPath
-        ))
+        issues.append(
+          .init(
+            severity: .error,
+            title: CoreL10n.text(isVideo ? "视频发布路径为空" : "图片发布路径为空"),
+            message: CoreL10n.format(
+              isVideo ? "%@ 缺少视频发布路径。" : "%@ 缺少发布路径。",
+              attachment.originalFilename
+            ),
+            field: "attachments",
+            category: .missingMediaPublishPath
+          ))
       }
 
       issues.append(
@@ -263,7 +310,9 @@ public struct PreflightCheckService: Sendable {
           category: .unsafeMediaRepositoryPath
         )
       )
-      issues.append(contentsOf: publicPathIssues(path: attachment.relativePublishPath, filename: attachment.originalFilename))
+      issues.append(
+        contentsOf: publicPathIssues(
+          path: attachment.relativePublishPath, filename: attachment.originalFilename))
 
       if !isVideo, let sourceFilePath = attachment.sourceFilePath?.nilIfEmpty {
         do {
@@ -302,22 +351,24 @@ public struct PreflightCheckService: Sendable {
     }
 
     for missingImagePath in missingMarkdownImagePaths(in: draft) {
-      issues.append(.init(
-        severity: .warning,
-        title: CoreL10n.text("正文图片未登记"),
-        message: CoreL10n.format("%@ 不在当前文章附件列表中。", missingImagePath),
-        field: "body",
-        category: .unregisteredBodyImage,
-        relatedValue: missingImagePath
-      ))
+      issues.append(
+        .init(
+          severity: .warning,
+          title: CoreL10n.text("正文图片未登记"),
+          message: CoreL10n.format("%@ 不在当前文章附件列表中。", missingImagePath),
+          field: "body",
+          category: .unregisteredBodyImage,
+          relatedValue: missingImagePath
+        ))
     }
 
     if issues.isEmpty {
-      issues.append(.init(
-        severity: .info,
-        title: CoreL10n.text("检查通过"),
-        message: CoreL10n.text("当前文章满足本地发布前检查条件。")
-      ))
+      issues.append(
+        .init(
+          severity: .info,
+          title: CoreL10n.text("检查通过"),
+          message: CoreL10n.text("当前文章满足本地发布前检查条件。")
+        ))
     }
 
     return issues.sorted {
@@ -340,25 +391,27 @@ public struct PreflightCheckService: Sendable {
     let value = path.trimmedForPublishing
 
     if value.isEmpty {
-      issues.append(.init(
-        severity: .error,
-        title: CoreL10n.format("%@为空", label),
-        message: CoreL10n.text("路径规则渲染结果为空。"),
-        field: field,
-        category: category
-      ))
+      issues.append(
+        .init(
+          severity: .error,
+          title: CoreL10n.format("%@为空", label),
+          message: CoreL10n.text("路径规则渲染结果为空。"),
+          field: field,
+          category: category
+        ))
       return issues
     }
 
     let normalizedPath = value.normalizedRelativePath()
     if hasUnsafeRepositoryPathSyntax(value) {
-      issues.append(.init(
-        severity: .error,
-        title: CoreL10n.format("%@不安全", label),
-        message: CoreL10n.format("%@ 必须是仓库内的相对路径，且不能包含 ..、反斜杠或 URL。", value),
-        field: field,
-        category: category
-      ))
+      issues.append(
+        .init(
+          severity: .error,
+          title: CoreL10n.format("%@不安全", label),
+          message: CoreL10n.format("%@ 必须是仓库内的相对路径，且不能包含 ..、反斜杠或 URL。", value),
+          field: field,
+          category: category
+        ))
       return issues
     }
 
@@ -381,12 +434,14 @@ public struct PreflightCheckService: Sendable {
   private func patternIssues(label: String, pattern: String, field: String) -> [PreflightIssue] {
     let value = pattern.trimmedForPublishing
     guard !value.isEmpty else {
-      return [.init(
-        severity: .error,
-        title: CoreL10n.format("%@为空", label),
-        message: CoreL10n.text("路径规则不能为空。"),
-        field: field
-      )]
+      return [
+        .init(
+          severity: .error,
+          title: CoreL10n.format("%@为空", label),
+          message: CoreL10n.text("路径规则不能为空。"),
+          field: field
+        )
+      ]
     }
 
     guard hasUnsafeRepositoryPathSyntax(value) else {

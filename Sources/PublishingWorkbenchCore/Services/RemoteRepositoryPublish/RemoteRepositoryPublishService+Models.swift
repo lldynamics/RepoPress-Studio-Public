@@ -327,6 +327,52 @@ struct GitLabProjectMetadata: Decodable {
   }
 }
 
+struct GitLabCurrentTokenMetadata: Decodable {
+  var scopes: [String]
+  var active: Bool?
+  var revoked: Bool?
+  var expiresAt: String?
+
+  enum CodingKeys: String, CodingKey {
+    case scopes
+    case active
+    case revoked
+    case expiresAt = "expires_at"
+  }
+
+  var normalizedScopes: [String] {
+    scopes
+      .map { $0.trimmedForPublishing.lowercased() }
+      .filter { !$0.isEmpty }
+  }
+
+  var isUsable: Bool {
+    active == true && revoked != true && !isExpired
+  }
+
+  private var isExpired: Bool {
+    guard let expiresAt = expiresAt?.trimmedForPublishing.nilIfEmpty else {
+      return false
+    }
+    let utcCalendar: Calendar = {
+      var calendar = Calendar(identifier: .gregorian)
+      calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+      return calendar
+    }()
+    guard
+      let year = Int(expiresAt.prefix(4)),
+      let month = Int(expiresAt.dropFirst(5).prefix(2)),
+      let day = Int(expiresAt.dropFirst(8).prefix(2)),
+      let expiryDay = utcCalendar.date(from: DateComponents(year: year, month: month, day: day))
+    else {
+      // An unknown date format is not proof that the token is expired. The
+      // provider's `active` flag remains authoritative in that case.
+      return false
+    }
+    return expiryDay < utcCalendar.startOfDay(for: Date())
+  }
+}
+
 struct GitLabGroupResponse: Decodable {
   var id: Int
   var fullPath: String?
@@ -518,6 +564,7 @@ public enum RemoteRepositoryPublishError: LocalizedError, Equatable {
   case invalidReviewURL(String)
   case reviewRecoveryUnavailable(String)
   case reviewCreationPermissionDenied(provider: RepositoryProvider, body: String)
+  case reviewCheckPermissionDenied(permission: GitHubReviewCheckPermission, body: String)
   case unsupportedRepositoryCreationProvider(String)
   case invalidBaseURL(String)
   case insecureBaseURL
@@ -563,15 +610,28 @@ public enum RemoteRepositoryPublishError: LocalizedError, Equatable {
     case .reviewRecoveryUnavailable(let reason):
       return CoreL10n.format("无法继续创建 PR/MR：%@", reason)
     case .reviewCreationPermissionDenied(let provider, let body):
-      let detail = remoteAPIErrorDetail(from: body)
+      let detail =
+        remoteAPIErrorDetail(from: body)
         .map { CoreL10n.format("\n远端信息：%@", $0) }
         ?? ""
       switch provider {
       case .github:
-        return CoreL10n.format("GitHub 内容写入已完成，但创建 PR 被拒绝。请给 fine-grained Token 开启 Pull requests: Read and write。%@", detail)
+        return CoreL10n.format(
+          "GitHub 内容写入已完成，但创建 PR 被拒绝。请给 fine-grained Token 开启 Pull requests: Read and write。%@",
+          detail)
       case .gitlab:
-        return CoreL10n.format("GitLab 内容写入已完成，但创建 MR 被拒绝。请确认 Token 具备 api scope，且账号至少是 Developer。%@", detail)
+        return CoreL10n.format(
+          "GitLab 内容写入已完成，但创建 MR 被拒绝。请确认 Token 具备 api scope，且账号至少是 Developer。%@", detail)
       }
+    case .reviewCheckPermissionDenied(let permission, let body):
+      let detail =
+        remoteAPIErrorDetail(from: body)
+        .map { CoreL10n.format("\n远端信息：%@", $0) }
+        ?? ""
+      return CoreL10n.format(
+        "GitHub 无法读取%@（HTTP 403）。请给当前仓库的 fine-grained Token 启用 %@，并确认仓库授权或组织审批。保存权限后回到此发布请求重新检查；读取不到检查结果时不会合并。%@",
+        permission.operationDescription, permission.requiredPermission, detail
+      )
     case .unsupportedRepositoryCreationProvider(let provider):
       return CoreL10n.format("%@ 暂不支持在 App 内创建仓库。", provider)
     case .invalidBaseURL(let value):
@@ -595,10 +655,12 @@ public enum RemoteRepositoryPublishError: LocalizedError, Equatable {
     case .invalidRepositoryPath(let path, let reason):
       return CoreL10n.format("仓库发布路径无效：%@。%@", path, reason)
     case .untrackedRemoteFile(let path, let actualSHA):
-      return CoreL10n.format("远端同路径文件已存在：%@ 的当前版本是 %@，但本地草稿没有记录远端版本。请先同步远端变更或改用 PR/MR。", path, actualSHA)
+      return CoreL10n.format(
+        "远端同路径文件已存在：%@ 的当前版本是 %@，但本地草稿没有记录远端版本。请先同步远端变更或改用 PR/MR。", path, actualSHA)
     case .remoteVersionConflict(let path, let expectedSHA, let actualSHA):
       let actual = actualSHA?.nilIfEmpty ?? CoreL10n.text("远端文件不存在")
-      return CoreL10n.format("远端版本冲突：%@ 的当前版本是 %@，本地草稿基于 %@。请先同步远端变更或改用 PR/MR。", path, actual, expectedSHA)
+      return CoreL10n.format(
+        "远端版本冲突：%@ 的当前版本是 %@，本地草稿基于 %@。请先同步远端变更或改用 PR/MR。", path, actual, expectedSHA)
     case .reviewBranchCleanupFailed(let branchName, let publishMessage, let cleanupMessage):
       return CoreL10n.format(
         "GitHub 发布未完成：%@；自动删除临时分支 %@ 失败：%@。该分支可能仍保留，请在远端删除后重试。",
@@ -606,17 +668,23 @@ public enum RemoteRepositoryPublishError: LocalizedError, Equatable {
         branchName,
         cleanupMessage
       )
-    case .partialPublish(let provider, let mode, let branchName, _, let changedPaths, let commitSHA, let underlyingMessage):
-      let commitSummary = commitSHA.map {
-        CoreL10n.format("，最后 commit：%@", String($0.prefix(8)))
-      } ?? ""
-      return CoreL10n.format("%@ %@部分完成后失败：%@ 个文件已写入 %@%@。%@", provider.displayName, mode.displayName, String(changedPaths.count), branchName, commitSummary, underlyingMessage)
+    case .partialPublish(
+      let provider, let mode, let branchName, _, let changedPaths, let commitSHA,
+      let underlyingMessage):
+      let commitSummary =
+        commitSHA.map {
+          CoreL10n.format("，最后 commit：%@", String($0.prefix(8)))
+        } ?? ""
+      return CoreL10n.format(
+        "%@ %@部分完成后失败：%@ 个文件已写入 %@%@。%@", provider.displayName, mode.displayName,
+        String(changedPaths.count), branchName, commitSummary, underlyingMessage)
     }
   }
 
   private func remoteAPIHTTPStatusDescription(status: Int, body: String) -> String {
     let detail = remoteAPIErrorDetail(from: body)
-    let detailLine = detail.map { CoreL10n.format("\n远端信息：%@", $0) }
+    let detailLine =
+      detail.map { CoreL10n.format("\n远端信息：%@", $0) }
       ?? body.nilIfEmpty.map { "\n\($0)" }
       ?? ""
     let nextStep: String
@@ -624,7 +692,9 @@ public enum RemoteRepositoryPublishError: LocalizedError, Equatable {
     case 401:
       nextStep = CoreL10n.text("Token 无效或已过期；请重新保存 GitHub/GitLab Token 后再检查权限。")
     case 403:
-      nextStep = CoreL10n.text("Token 权限不足或仓库策略拒绝操作；GitHub 写入内容需 Contents: Read and write，创建 PR 还需 Pull requests: Read and write；GitLab 请确认 Developer(30) 或更高权限。")
+      nextStep = CoreL10n.text(
+        "Token 权限不足或仓库策略拒绝操作；GitHub 写入内容需 Contents: Read and write，创建 PR 还需 Pull requests: Read and write；GitLab 请确认 Developer(30) 或更高权限。"
+      )
     case 404:
       nextStep = CoreL10n.text("仓库、分支或文件路径不存在；请确认 Owner/Namespace、Repo/Project、默认分支和发布路径。")
     case 409:
@@ -639,7 +709,8 @@ public enum RemoteRepositoryPublishError: LocalizedError, Equatable {
 
   private func remoteAPIErrorDetail(from body: String) -> String? {
     guard let data = body.data(using: .utf8),
-          let object = try? JSONSerialization.jsonObject(with: data) else {
+      let object = try? JSONSerialization.jsonObject(with: data)
+    else {
       return body.trimmedForPublishing.nilIfEmpty
     }
     var parts: [String] = []

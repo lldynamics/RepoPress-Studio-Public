@@ -27,6 +27,5 @@
   "查看当前文章差异": "View Current Article Differences",
   "没有匹配的仓库图片": "No matching repository images",
   "没有可发布文章；待下线请求请到回收站单独处理": "No articles to publish. Handle pending unpublish requests separately in Trash",
-  "清除搜索和筛选": "Clear Search and Filters",
-  "这里只显示当前文章；发布前还会打开完整批次确认页。": "Only the current article is shown here. A complete batch confirmation opens before publishing."
+  "清除搜索和筛选": "Clear Search and Filters"
 }

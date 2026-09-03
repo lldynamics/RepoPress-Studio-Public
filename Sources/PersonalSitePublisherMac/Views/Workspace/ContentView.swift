@@ -179,6 +179,14 @@ struct ContentView: View {
   @State private var isPersistenceResetConfirmationPresented = false
   @State private var persistenceResetFeedback: PersistenceRecoveryResetFeedback?
   @State private var modalPresentation = WorkspaceModalPresentationState()
+  @SceneStorage("workspace.localSitePreviewPresented")
+  private var isLocalSitePreviewPresented = false
+  @State private var structuralDraftRepairPreview: StructuralDraftRepairPreview?
+  @State private var isStructuralDraftRepairScanning = false
+  @State private var isStructuralDraftRepairApplying = false
+  @State private var structuralDraftRepairRequestID = UUID()
+  @State private var structuralRepairFollowUp: StructuralRepairFollowUp?
+  @State private var structuralDraftRepairError: String?
   @State private var isSettingsWorkspacePresented = false
   @State private var settingsWorkspaceDestination: SettingsDestination?
   @State private var settingsWorkspaceNavigationRequestID = UUID()
@@ -275,7 +283,19 @@ struct ContentView: View {
             WorkspacePublishDrawerOverlay(
               publishingFacade: store.publishing,
               store: store,
-              isPresented: modalIsPresentedBinding(.publishDrawer)
+              isPresented: modalIsPresentedBinding(.publishDrawer),
+              onOpenReleaseHistory: openReleaseHistorySubpage
+            )
+            .transition(
+              WorkbenchMotion.drawerTransition(reduceMotion: accessibilityReduceMotion)
+            )
+            .zIndex(2)
+          }
+
+          if isLocalSitePreviewPresented {
+            WorkspaceLocalSitePreviewOverlay(
+              store: store,
+              isPresented: $isLocalSitePreviewPresented
             )
             .transition(
               WorkbenchMotion.drawerTransition(reduceMotion: accessibilityReduceMotion)
@@ -303,167 +323,217 @@ struct ContentView: View {
   /// participate in lifecycle modifier type inference.
   private var workspaceToolbarAndEnvironmentContent: some View {
     workspaceRootContent
-    .environment(
-      \.settingsWorkspaceCommandAction,
-      settingsWorkspaceCommandAction
-    )
-    .background(WorkbenchAccessibilityStatusAnnouncer(store: store))
-    .safeAreaInset(edge: .top, spacing: 0) {
-      if store.isSafeMode {
-        WorkbenchSafeModeBanner()
+      .environment(
+        \.settingsWorkspaceCommandAction,
+        settingsWorkspaceCommandAction
+      )
+      .background(WorkbenchAccessibilityStatusAnnouncer(store: store))
+      .safeAreaInset(edge: .top, spacing: 0) {
+        if store.isSafeMode {
+          WorkbenchSafeModeBanner()
+        }
       }
-    }
-    .environment(
-      \.publishDrawerCommandAction,
-      PublishDrawerCommandAction { message in
-        openPublishDrawer(message: message)
-      }
-    )
-    .environment(
-      \.localSitePreviewCommandAction,
-      LocalSitePreviewCommandAction {
-        openLocalSitePreview()
-      }
-    )
-    .environment(
-      \.aiChatWorkspaceCommandAction,
-      AIChatWorkspaceCommandAction(
-        isAvailable: shellState.canUseProtectedWorkbench
-          && canRequestInspectorInCurrentLayout,
-        unavailableReason: canRequestInspectorInCurrentLayout
-          ? nil
-          : String(localized: "扩大窗口后可使用 Inspector"),
-        open: { draftID, quickPrompt in
-          openAIAssistantWorkspace(for: draftID, quickPrompt: quickPrompt)
+      .environment(
+        \.structuralDraftRepairCommandAction,
+        StructuralDraftRepairCommandAction(
+          isScanning: isStructuralDraftRepairScanning, open: openStructuralDraftRepair
+        )
+      )
+      .environment(
+        \.publishDrawerCommandAction,
+        PublishDrawerCommandAction { message in
+          openPublishDrawer(message: message)
         }
       )
-    )
-    .environmentObject(localSitePreviewState)
-    .environmentObject(sceneCommandRouter)
-    .focusedSceneObject(sceneCommandRouter)
-    .externalBrowserPreviewPresentation(coordinator: externalBrowserPreviewCoordinator)
-    .toolbar {
-      workspaceNavigationToolbar
-
-      if isSettingsWorkspacePresented {
-        ToolbarItem(placement: .principal) {
-          Text("设置")
-            .font(.headline)
-            .accessibilityAddTraits(.isHeader)
+      .environment(
+        \.localSitePreviewCommandAction,
+        LocalSitePreviewCommandAction {
+          openLocalSitePreview()
         }
-      } else {
-        // A principal ToolbarItem is an independent native host for the
-        // composed search button. Keeping it inside the navigation group lets
-        // AppKit omit the whole HStack from the toolbar AX tree.
-        ToolbarItem(placement: .principal) {
-          commandSearchToolbarButton
-            .accessibilityHidden(shellState.isQuickHideActive)
-        }
-      }
-
-      workspacePrimaryActionToolbar
-    }
-    .onChange(of: localSitePreviewState.activeProfileID) {
-      externalBrowserPreviewCoordinator.cancelPendingOpen()
-    }
-    .onChange(of: windowSession.selectedDraftID) { _, draftID in
-      externalBrowserPreviewCoordinator.cancelPendingOpen(ifDraftIsNoLongerCurrent: draftID)
-    }
-    .background(
-      MainWindowInitialSizeBridge(
-        sourceSession: repositorySourceSession,
-        profileProvider: { store.activeProfile }
       )
-    )
+      .environment(
+        \.aiChatWorkspaceCommandAction,
+        AIChatWorkspaceCommandAction(
+          isAvailable: shellState.canUseProtectedWorkbench
+            && canRequestInspectorInCurrentLayout,
+          unavailableReason: canRequestInspectorInCurrentLayout
+            ? nil
+            : String(localized: "扩大窗口后可使用 Inspector"),
+          open: { draftID, quickPrompt in
+            openAIAssistantWorkspace(for: draftID, quickPrompt: quickPrompt)
+          }
+        )
+      )
+      .environmentObject(localSitePreviewState)
+      .environmentObject(sceneCommandRouter)
+      .focusedSceneObject(sceneCommandRouter)
+      .externalBrowserPreviewPresentation(coordinator: externalBrowserPreviewCoordinator)
+      .toolbar {
+        workspaceNavigationToolbar
+
+        if isSettingsWorkspacePresented {
+          ToolbarItem(placement: .principal) {
+            Text("设置")
+              .font(.headline)
+              .accessibilityAddTraits(.isHeader)
+          }
+        } else {
+          // A principal ToolbarItem is an independent native host for the
+          // composed search button. Keeping it inside the navigation group lets
+          // AppKit omit the whole HStack from the toolbar AX tree.
+          ToolbarItem(placement: .principal) {
+            commandSearchToolbarButton
+              .accessibilityHidden(shellState.isQuickHideActive)
+          }
+        }
+
+        workspacePrimaryActionToolbar
+      }
+      .onChange(of: localSitePreviewState.activeProfileID) {
+        externalBrowserPreviewCoordinator.cancelPendingOpen()
+      }
+      .onChange(of: windowSession.selectedDraftID) { _, draftID in
+        externalBrowserPreviewCoordinator.cancelPendingOpen(ifDraftIsNoLongerCurrent: draftID)
+      }
+      .background(
+        MainWindowInitialSizeBridge(
+          sourceSession: repositorySourceSession,
+          profileProvider: { store.activeProfile }
+        )
+      )
   }
 
   /// Lifecycle, state synchronization, and sheet presentation are deliberately
   /// a second type-check boundary after the native toolbar chain.
   private var workspaceLifecycleContent: some View {
     workspaceToolbarAndEnvironmentContent
-    .onAppear {
-      restoreWindowSessionStorageIfNeeded()
-      synchronizeWindowSessionActivity()
-      configureRepositoryContentChangeMonitor()
-      configureOperationalPolling()
-    }
-    .onChange(of: sceneCommandRouterRootUpdateKey, initial: true) { _, _ in
-      updateSceneCommandRouterRootActions()
-    }
-    .onDisappear(perform: handleContentViewDisappear)
-    .task {
-      await MainRunLoopUpdateDeferral.waitForNextDefaultModeCycle()
-      guard !Task.isCancelled else { return }
-      handleContentViewAppear()
-    }
-    .onChange(of: autoRunPreflight) { _, newValue in
-      store.setAutomaticallyRefreshPreflightOnEdit(
-        store.isSafeMode ? false : newValue
-      )
-    }
-    .onChange(of: shellState.isQuickHideActive) { _, isActive in
-      if isActive {
-        modalPresentation.dismiss()
+      .onAppear {
+        restoreWindowSessionStorageIfNeeded()
+        synchronizeWindowSessionActivity()
+        configureRepositoryContentChangeMonitor()
+        configureOperationalPolling()
       }
-    }
-    .onChange(of: scenePhase) { oldPhase, newPhase in
-      handleScenePhaseChange(oldPhase: oldPhase, newPhase: newPhase)
-    }
-    .onChange(of: controlActiveState) { _, _ in
-      synchronizeWindowSessionActivity()
-    }
-    .onChange(of: shellState.selectedSection) { _, section in
-      windowSession.receiveSharedSection(section)
-    }
-    .onChange(of: shellState.selectedDraftID) { _, draftID in
-      windowSession.receiveSharedDraft(draftID)
-    }
-    .onChange(of: windowSession.selectedSection) { _, section in
-      handleSelectedSectionChange(section: section)
-    }
-    .onChange(of: windowSession.selectedDraftID) { _, draftID in
-      handleSelectedDraftIDChange(draftID: draftID)
-    }
-    .onChange(of: repositoryContextStage) { _, stage in
-      handleRepositoryContextStageChange(stage: stage)
-    }
-    .onChange(of: contentHealthFilter) { _, filter in
-      handleContentHealthFilterChange(filter: filter)
-    }
-    .onChange(of: presentationState.isAssistantPresented) { _, isAssistant in
-      handleAssistantPresentationChange(isAssistant: isAssistant)
-    }
-    .alert(
-      String(localized: "工作台数据恢复"),
-      isPresented: persistenceRecoveryAlertPresented,
-      actions: persistenceRecoveryAlertActions,
-      message: persistenceRecoveryAlertMessage
-    )
-    .confirmationDialog(
-      String(localized: "重置为空白工作台？"),
-      isPresented: $isPersistenceResetConfirmationPresented,
-      titleVisibility: .visible
-    ) {
-      Button(String(localized: "归档后重置"), role: .destructive) {
-        resetPersistenceAfterConfirmation()
+      .onChange(of: sceneCommandRouterRootUpdateKey, initial: true) { _, _ in
+        updateSceneCommandRouterRootActions()
       }
-      Button(String(localized: "取消"), role: .cancel) {}
-    } message: {
-      Text("这会归档当前无法读取的数据文件，然后保存一个空白工作台。请先导出故障文件或恢复其他备份；此操作不能自动还原旧工作台。")
-    }
-    .alert(item: $persistenceResetFeedback) { feedback in
-      Alert(
-        title: Text(feedback.title),
-        message: Text(feedback.message),
-        dismissButton: .default(Text("好"))
+      .onDisappear(perform: handleContentViewDisappear)
+      .task {
+        await MainRunLoopUpdateDeferral.waitForNextDefaultModeCycle()
+        guard !Task.isCancelled else { return }
+        handleContentViewAppear()
+      }
+      .onChange(of: autoRunPreflight) { _, newValue in
+        store.setAutomaticallyRefreshPreflightOnEdit(
+          store.isSafeMode ? false : newValue
+        )
+      }
+      .onChange(of: shellState.isQuickHideActive) { _, isActive in
+        if isActive {
+          modalPresentation.dismiss()
+          structuralDraftRepairRequestID = UUID()
+          structuralRepairFollowUp = nil
+          structuralDraftRepairError = nil
+          if !isStructuralDraftRepairApplying {
+            structuralDraftRepairPreview = nil
+          }
+        }
+      }
+      .onChange(of: scenePhase) { oldPhase, newPhase in
+        handleScenePhaseChange(oldPhase: oldPhase, newPhase: newPhase)
+      }
+      .onChange(of: controlActiveState) { _, _ in
+        synchronizeWindowSessionActivity()
+      }
+      .onChange(of: shellState.selectedSection) { _, section in
+        windowSession.receiveSharedSection(section)
+      }
+      .onChange(of: shellState.selectedDraftID) { _, draftID in
+        windowSession.receiveSharedDraft(draftID)
+      }
+      .onChange(of: windowSession.selectedSection) { _, section in
+        handleSelectedSectionChange(section: section)
+      }
+      .onChange(of: windowSession.selectedDraftID) { _, draftID in
+        handleSelectedDraftIDChange(draftID: draftID)
+      }
+      .onChange(of: repositoryContextStage) { _, stage in
+        handleRepositoryContextStageChange(stage: stage)
+      }
+      .onChange(of: contentHealthFilter) { _, filter in
+        handleContentHealthFilterChange(filter: filter)
+      }
+      .onChange(of: presentationState.isAssistantPresented) { _, isAssistant in
+        handleAssistantPresentationChange(isAssistant: isAssistant)
+      }
+      .alert(
+        String(localized: "工作台数据恢复"),
+        isPresented: persistenceRecoveryAlertPresented,
+        actions: persistenceRecoveryAlertActions,
+        message: persistenceRecoveryAlertMessage
       )
-    }
-    .sheet(isPresented: $isDraftRecoveryPresented, content: draftRecoveryPanel)
-    .sheet(item: sheetModalPresentationBinding, content: modalContent)
-    .knowledgeLibraryInspectorSheets(
-      knowledge: store.knowledge,
-      presentation: $knowledgeInspectorPresentation
-    )
+      .confirmationDialog(
+        String(localized: "重置为空白工作台？"),
+        isPresented: $isPersistenceResetConfirmationPresented,
+        titleVisibility: .visible
+      ) {
+        Button(String(localized: "归档后重置"), role: .destructive) {
+          resetPersistenceAfterConfirmation()
+        }
+        Button(String(localized: "取消"), role: .cancel) {}
+      } message: {
+        Text("这会归档当前无法读取的数据文件，然后保存一个空白工作台。请先导出故障文件或恢复其他备份；此操作不能自动还原旧工作台。")
+      }
+      .alert(item: $persistenceResetFeedback) { feedback in
+        Alert(
+          title: Text(feedback.title),
+          message: Text(feedback.message),
+          dismissButton: .default(Text("好"))
+        )
+      }
+      .sheet(isPresented: $isDraftRecoveryPresented, content: draftRecoveryPanel)
+      .sheet(item: sheetModalPresentationBinding, content: modalContent)
+      .sheet(item: $structuralDraftRepairPreview, onDismiss: finishStructuralDraftRepairFlow) {
+        preview in
+        StructuralDraftRepairSheet(
+          preview: preview,
+          rescan: { try await store.previewStructuralDraftRepair() },
+          apply: { preview, draftIDs, paths in
+            guard shellState.canUseProtectedWorkbench else { throw CancellationError() }
+            isStructuralDraftRepairApplying = true
+            defer { isStructuralDraftRepairApplying = false }
+            return try await store.applyStructuralDraftRepair(
+              preview: preview, selectedDraftIDs: draftIDs, selectedPaths: paths
+            )
+          },
+          onRepairCompleted: {},
+          onShowRepairedDrafts: { structuralRepairFollowUp = .showDrafts($0) },
+          onRecheck: { structuralRepairFollowUp = .recheck },
+          onPreparePublishing: { structuralRepairFollowUp = .preparePublishing }
+        )
+        // Preserve an in-flight transaction and its result while hiding all
+        // article text, paths and diffs from both the window and accessibility.
+        .opacity(shellState.isQuickHideActive ? 0 : 1)
+        .disabled(shellState.isQuickHideActive)
+        .accessibilityHidden(shellState.isQuickHideActive)
+        .overlay {
+          if shellState.isQuickHideActive { QuickHideOverlay(store: store) }
+        }
+      }
+      .alert(
+        "栏目修复检查失败",
+        isPresented: Binding(
+          get: { structuralDraftRepairError != nil },
+          set: { if !$0 { structuralDraftRepairError = nil } }
+        )
+      ) {
+        Button("好", role: .cancel) { structuralDraftRepairError = nil }
+      } message: {
+        Text(structuralDraftRepairError ?? "")
+      }
+      .knowledgeLibraryInspectorSheets(
+        knowledge: store.knowledge,
+        presentation: $knowledgeInspectorPresentation
+      )
   }
 
   private func handleScenePhaseChange(oldPhase: ScenePhase, newPhase: ScenePhase) {
@@ -782,7 +852,10 @@ struct ContentView: View {
   private var sheetModalPresentationBinding: Binding<WorkspaceModalPresentation?> {
     Binding(
       get: {
-        guard modalPresentation.presented != .publishDrawer else { return nil }
+        guard
+          modalPresentation.presented != .publishDrawer,
+          modalPresentation.presented != .localSitePreview
+        else { return nil }
         return modalPresentation.presented
       },
       set: { modalPresentation.replace(with: $0) }
@@ -871,7 +944,8 @@ struct ContentView: View {
       PublishDrawerView(
         publishingFacade: store.publishing,
         store: store,
-        isPresented: modalIsPresentedBinding(.publishDrawer)
+        isPresented: modalIsPresentedBinding(.publishDrawer),
+        onOpenReleaseHistory: openReleaseHistorySubpage
       )
       .frame(minWidth: 680, idealWidth: 780, minHeight: 600, idealHeight: 720)
     case .localSitePreview:
@@ -914,11 +988,11 @@ struct ContentView: View {
   private func openLocalSitePreview() {
     guard shellState.canUseProtectedWorkbench else { return }
     guard activateCurrentWindowSharedContext() else { return }
-    selectWorkspaceSection(.sync)
     if !store.localSitePreviewRuntimeStatus.isRunning {
       store.startLocalSitePreview()
     }
-    modalPresentation.present(.localSitePreview)
+    modalPresentation.dismiss(.localSitePreview)
+    isLocalSitePreviewPresented = true
   }
 
   private func applyWorkbenchPreferences() {
@@ -1129,7 +1203,8 @@ struct ContentView: View {
     ToolbarItemGroup(placement: .primaryAction) {
       if !isSettingsWorkspacePresented {
         let previewAvailability = WorkspaceTopBarPresentation.PreviewAvailability(
-          isLivePreviewEnabled: shellState.canUseProtectedWorkbench && !shellState.isQuickHideActive,
+          isLivePreviewEnabled: shellState.canUseProtectedWorkbench
+            && !shellState.isQuickHideActive,
           isLivePreviewRunning: localSitePreviewState.runtimeStatus.isRunning,
           isBrowserPreviewEnabled: shellState.canUseProtectedWorkbench
             && !shellState.isQuickHideActive
@@ -1445,6 +1520,60 @@ struct ContentView: View {
     }
   }
 
+  private func openStructuralDraftRepair() {
+    guard shellState.canUseProtectedWorkbench, activateCurrentWindowSharedContext(),
+      !isStructuralDraftRepairScanning, structuralDraftRepairPreview == nil
+    else { return }
+    isStructuralDraftRepairScanning = true
+    let expectedProfile = store.activeProfile
+    let requestID = UUID()
+    structuralDraftRepairRequestID = requestID
+    Task { @MainActor in
+      defer { isStructuralDraftRepairScanning = false }
+      do {
+        let preview = try await store.previewStructuralDraftRepair()
+        guard structuralDraftRepairRequestID == requestID,
+          shellState.canUseProtectedWorkbench,
+          store.activeProfile == expectedProfile,
+          preview.profileID == expectedProfile.id
+        else { return }
+        modalPresentation.dismiss(.publishDrawer)
+        structuralRepairFollowUp = nil
+        structuralDraftRepairPreview = preview
+      } catch {
+        guard structuralDraftRepairRequestID == requestID,
+          shellState.canUseProtectedWorkbench
+        else { return }
+        structuralDraftRepairError = error.localizedDescription
+        store.setPublishActionMessage(error.localizedDescription, status: .failure)
+      }
+    }
+  }
+
+  private func finishStructuralDraftRepairFlow() {
+    let action = structuralRepairFollowUp
+    structuralRepairFollowUp = nil
+    guard shellState.canUseProtectedWorkbench else { return }
+    switch action {
+    case .showDrafts(let ids):
+      if let id = ids.first(where: { store.draft(for: $0)?.isGeneralDraft == true }) {
+        focusWindowDraft(id, section: .writing)
+      }
+    case .recheck:
+      contentHealthFilter = .overview
+      selectWorkspaceSection(.contentHealth)
+      store.requestRepositoryScan()
+    case .preparePublishing:
+      // Native sheet dismissal must finish before the key-window command runs.
+      Task { @MainActor in
+        await MainRunLoopUpdateDeferral.waitForNextDefaultModeCycle()
+        openPublishDrawer(message: nil)
+      }
+    case nil:
+      break
+    }
+  }
+
   private func openPublishDrawer(message: String?) {
     guard activateCurrentWindowSharedContext() else { return }
     store.ensureEditableDraftSelected()
@@ -1663,7 +1792,6 @@ private struct WorkspaceCommandSearchToolbarControl: View {
   }
 }
 
-
 struct WorkspacePublishDrawerLayoutPolicy {
   static let minimumWidth: CGFloat = 380
   static let idealWidth: CGFloat = 500
@@ -1687,6 +1815,7 @@ private struct WorkspacePublishDrawerOverlay: View {
   @ObservedObject var publishingFacade: WorkbenchPublishingFeatureFacade
   let store: WorkbenchStore
   @Binding var isPresented: Bool
+  let onOpenReleaseHistory: () -> Void
 
   var body: some View {
     GeometryReader { geometry in
@@ -1698,7 +1827,8 @@ private struct WorkspacePublishDrawerOverlay: View {
         PublishDrawerView(
           publishingFacade: publishingFacade,
           store: store,
-          isPresented: $isPresented
+          isPresented: $isPresented,
+          onOpenReleaseHistory: onOpenReleaseHistory
         )
         .frame(width: WorkspacePublishDrawerLayoutPolicy.width(for: geometry.size.width))
         .frame(maxHeight: .infinity)
@@ -1706,7 +1836,39 @@ private struct WorkspacePublishDrawerOverlay: View {
         .shadow(color: .black.opacity(0.16), radius: 18, x: -6, y: 0)
       }
     }
+    .accessibilityElement(children: .contain)
     .accessibilityIdentifier("workspace-publish-drawer-overlay")
+  }
+}
+
+/// A live preview is a writing aid, so it stays in the workspace instead of
+/// taking keyboard focus through a modal sheet. The trailing panel leaves the
+/// editor interactive and uses the same bounded desktop geometry as the
+/// publish drawer.
+private struct WorkspaceLocalSitePreviewOverlay: View {
+  let store: WorkbenchStore
+  @Binding var isPresented: Bool
+
+  var body: some View {
+    GeometryReader { geometry in
+      HStack(spacing: 0) {
+        Spacer(minLength: 0)
+        Divider()
+        LocalSitePreviewPanelView(
+          store: store,
+          onClose: { isPresented = false }
+        )
+        .frame(width: WorkspacePublishDrawerLayoutPolicy.width(for: geometry.size.width))
+        .frame(maxHeight: .infinity)
+        .background(.regularMaterial)
+        .shadow(color: .black.opacity(0.16), radius: 18, x: -6, y: 0)
+      }
+    }
+    .onExitCommand {
+      isPresented = false
+    }
+    .accessibilityElement(children: .contain)
+    .accessibilityIdentifier("workspace-local-site-preview-overlay")
   }
 }
 

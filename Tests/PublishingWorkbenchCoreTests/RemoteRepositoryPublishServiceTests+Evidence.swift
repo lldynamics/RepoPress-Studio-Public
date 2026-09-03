@@ -29,10 +29,15 @@ final class RemoteRepositoryPublishServiceEvidenceTests: RemoteRepositoryPublish
     )
     XCTAssertTrue(markdown.contains(CoreL10n.format("# %@ Token 权限证据包", "GitHub")))
     XCTAssertTrue(markdown.contains(CoreL10n.format("- 仓库：%@", "owner/site")))
-    XCTAssertTrue(markdown.contains(CoreL10n.format("- 可写入：%@", CoreL10n.text("是"))))
+    XCTAssertTrue(markdown.contains(CoreL10n.format("- 检测到仓库写入角色：%@", CoreL10n.text("是"))))
+    XCTAssertTrue(markdown.contains(CoreL10n.format("- Token API 写权限：%@", CoreL10n.text("尚未验证"))))
     XCTAssertTrue(markdown.contains(CoreL10n.format("- Token scope：%@", "repo, workflow")))
-    XCTAssertTrue(markdown.contains(CoreL10n.format("- [%@] Token 满足内容写入所需权限", "x")))
-    XCTAssertTrue(markdown.contains(CoreL10n.text("- [ ] PR 创建权限需在实际创建时验证")))
+    XCTAssertTrue(markdown.contains(CoreL10n.format("- [%@] 已检测到仓库写入角色", "x")))
+    XCTAssertTrue(
+      markdown.contains(
+        CoreL10n.text(
+          "- [ ] Token 的 Contents、Pull requests、Checks 和 Commit statuses 权限需在相应 API 请求时验证")))
+    XCTAssertFalse(markdown.contains(CoreL10n.format("- [%@] Token 满足内容写入所需权限", "x")))
     XCTAssertTrue(markdown.contains("curl -fsS -H \"Authorization: Bearer $GITHUB_TOKEN\""))
     XCTAssertFalse(markdown.contains("secret-token"))
   }
@@ -45,6 +50,7 @@ final class RemoteRepositoryPublishServiceEvidenceTests: RemoteRepositoryPublish
       defaultBranch: "main",
       canRead: true,
       canWrite: false,
+      tokenWriteVerification: .insufficient,
       permissionSummary: "access_level=20",
       tokenScopeSummary: "read_api",
       minimumWritePermission: "GitLab Developer 及以上或 api scope",
@@ -56,12 +62,14 @@ final class RemoteRepositoryPublishServiceEvidenceTests: RemoteRepositoryPublish
     XCTAssertEqual(
       check.accessVerificationCommands,
       [
-        "curl -fsS --header \"PRIVATE-TOKEN: $GITLAB_TOKEN\" 'https://gitlab.example.com/api/v4/projects/group%2Fsub%2Fsite'"
+        "curl -fsS --header \"PRIVATE-TOKEN: $GITLAB_TOKEN\" 'https://gitlab.example.com/api/v4/projects/group%2Fsub%2Fsite'",
+        "curl -fsS --header \"PRIVATE-TOKEN: $GITLAB_TOKEN\" 'https://gitlab.example.com/api/v4/personal_access_tokens/self'",
       ]
     )
     XCTAssertTrue(markdown.contains(CoreL10n.format("# %@ Token 权限证据包", "GitLab")))
-    XCTAssertTrue(markdown.contains(CoreL10n.format("- 可写入：%@", CoreL10n.text("否"))))
-    XCTAssertTrue(markdown.contains(CoreL10n.format("- [%@] Token 满足内容写入所需权限", " ")))
+    XCTAssertTrue(markdown.contains(CoreL10n.format("- API 写入通道可用：%@", CoreL10n.text("否"))))
+    XCTAssertTrue(markdown.contains(CoreL10n.format("- Token API 写权限：%@", CoreL10n.text("权限不足"))))
+    XCTAssertTrue(markdown.contains(CoreL10n.format("- [%@] Token 已验证可执行仓库 API 写入", " ")))
     XCTAssertTrue(markdown.contains("GitLab Token 可读但未确认写入。"))
     XCTAssertFalse(markdown.contains("PRIVATE-TOKEN: secret"))
   }

@@ -26,6 +26,7 @@ final class WorkbenchStoreRemotePublishingPermissionTests: WorkbenchStoreRemoteP
         defaultBranch: "main",
         canRead: true,
         canWrite: true,
+        tokenWriteVerification: .verified,
         message: "GitLab Token 具备项目写入权限。"
       ))
 
@@ -66,7 +67,7 @@ final class WorkbenchStoreRemotePublishingPermissionTests: WorkbenchStoreRemoteP
     XCTAssertEqual(preview.changedPaths, ["content/posts/online-review-preview.md"])
     XCTAssertEqual(preview.remoteConflictPaths, ["content/posts/online-review-preview.md"])
     XCTAssertEqual(preview.remoteRiskState, .conflict)
-    XCTAssertEqual(preview.accessSummary, CoreL10n.text("Token 可写"))
+    XCTAssertEqual(preview.accessSummary, CoreL10n.text("Token API 写权限已验证"))
     XCTAssertEqual(preview.readiness, .ready)
     XCTAssertTrue(preview.canPublish)
     XCTAssertTrue(preview.warningIssues.contains { $0.title == "远端同路径变更" })
@@ -74,7 +75,8 @@ final class WorkbenchStoreRemotePublishingPermissionTests: WorkbenchStoreRemoteP
     XCTAssertTrue(preview.checklistMarkdown.contains(CoreL10n.text("# GitHub/GitLab 线上发布核对包")))
     XCTAssertTrue(preview.checklistMarkdown.contains("- 平台：GitLab"))
     XCTAssertTrue(preview.checklistMarkdown.contains("- 发布模式：线上 PR/MR"))
-    XCTAssertTrue(preview.checklistMarkdown.contains("- [x] 已确认 Token 对 group/site 具备内容写入权限"))
+    XCTAssertTrue(
+      preview.checklistMarkdown.contains("- [x] 已验证 Token 对 group/site 具备 REST API 写入权限"))
     XCTAssertTrue(preview.checklistMarkdown.contains("- [ ] 已确认远端同路径变更"))
     XCTAssertTrue(preview.checklistMarkdown.contains(CoreL10n.text("## 远端冲突预览")))
     XCTAssertTrue(preview.checklistMarkdown.contains("- [警告] 远端同路径变更"))
@@ -171,7 +173,7 @@ final class WorkbenchStoreRemotePublishingPermissionTests: WorkbenchStoreRemoteP
     XCTAssertEqual(preview.branchName, "main")
     XCTAssertTrue(preview.checklistMarkdown.contains("- Token：未保存"))
     XCTAssertTrue(preview.checklistMarkdown.contains("- [ ] 已保存 GitHub Token"))
-    XCTAssertTrue(preview.checklistMarkdown.contains("- [ ] 已确认 Token 对 owner/site 具备内容写入权限"))
+    XCTAssertTrue(preview.checklistMarkdown.contains("- [ ] 已检测到 owner/site 的仓库写入角色"))
   }
 
   func testRemoteRepositoryPublishPreviewBlocksTokenAccessFailureWithoutReportingMissingToken()
@@ -445,7 +447,7 @@ final class WorkbenchStoreRemotePublishingPermissionTests: WorkbenchStoreRemoteP
     XCTAssertEqual(check?.targetBranch, "main")
     XCTAssertEqual(check?.publishStrategy, .direct)
     XCTAssertTrue(check?.canWrite == true)
-    XCTAssertEqual(store.publishActionFeedback?.status, .success)
+    XCTAssertEqual(store.publishActionFeedback?.status, .warning)
     await store.waitForPendingSave()
     let reloaded = WorkbenchStore(
       persistence: WorkbenchPersistence(fileURL: persistenceURL),
@@ -461,7 +463,11 @@ final class WorkbenchStoreRemotePublishingPermissionTests: WorkbenchStoreRemoteP
     XCTAssertEqual(preview.remoteRiskState, .unknown)
     XCTAssertEqual(preview.readiness, .needsRemoteCheck)
     XCTAssertTrue(preview.canPublish)
-    XCTAssertEqual(preview.accessSummary, CoreL10n.text("Token 可写"))
+    XCTAssertEqual(preview.accessSummary, CoreL10n.text("仓库角色可写，Token API 权限待验证"))
+    XCTAssertTrue(
+      preview.checklistMarkdown.contains(
+        CoreL10n.text(
+          "- [ ] Token 的 Contents、Pull requests、Checks 和 Commit statuses 权限需在相应 API 请求时验证")))
     XCTAssertFalse(preview.checklistMarkdown.contains(CoreL10n.text("PR 创建权限将在实际创建时验证")))
     XCTAssertTrue(preview.warningIssues.contains { $0.title == CoreL10n.text("远端状态待确认") })
     XCTAssertTrue(preview.checklistMarkdown.contains(CoreL10n.text("## 远端状态待确认")))

@@ -1,5 +1,5 @@
-import Foundation
 import CryptoKit
+import Foundation
 
 extension RemoteRepositoryPublishService {
   func githubRequest<Body: Encodable>(
@@ -189,7 +189,8 @@ extension RemoteRepositoryPublishService {
     path: String,
     queryItems: [URLQueryItem]?
   ) -> URL {
-    let normalizedBase = baseURL.absoluteString.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+    let normalizedBase = baseURL.absoluteString.trimmingCharacters(
+      in: CharacterSet(charactersIn: "/"))
     guard var components = URLComponents(string: normalizedBase + path) else {
       return baseURL
     }
@@ -218,7 +219,8 @@ extension RemoteRepositoryPublishService {
       result[key] = String(describing: item.value)
     }
     let credentialHeaderNames: [String] = ["Authorization", "PRIVATE-TOKEN"]
-    let sensitiveValues: [String] = credentialHeaderNames
+    let sensitiveValues: [String] =
+      credentialHeaderNames
       .compactMap { headerName -> String? in
         request.value(forHTTPHeaderField: headerName)
       }
@@ -265,7 +267,8 @@ extension RemoteRepositoryPublishService {
   }
 
   func apiBaseURL(for profile: SiteProfile) throws -> URL {
-    let baseURLText = profile.repositoryBaseURL.nilIfEmpty ?? profile.repositoryProvider.defaultBaseURL
+    let baseURLText =
+      profile.repositoryBaseURL.nilIfEmpty ?? profile.repositoryProvider.defaultBaseURL
     guard let baseURL = URL(string: baseURLText), baseURL.scheme != nil, baseURL.host != nil else {
       throw RemoteRepositoryPublishError.invalidBaseURL(baseURLText)
     }
@@ -299,14 +302,21 @@ extension RemoteRepositoryPublishService {
       permissions.admin == true ? "admin" : nil,
     ].compactMap(\.self)
     let activeText = active.isEmpty ? "none" : active.joined(separator: ", ")
-    return CoreL10n.format("GitHub repository permissions: push=%@, maintain=%@, admin=%@; active=%@.", String(permissions.push == true), String(permissions.maintain == true), String(permissions.admin == true), activeText)
+    return CoreL10n.format(
+      "GitHub repository permissions: push=%@, maintain=%@, admin=%@; active=%@.",
+      String(permissions.push == true), String(permissions.maintain == true),
+      String(permissions.admin == true), activeText)
   }
 
   func gitLabPermissionSummary(_ permissions: GitLabProjectMetadata.Permissions?) -> String {
     let projectAccess = permissions?.projectAccess?.accessLevel ?? 0
     let groupAccess = permissions?.groupAccess?.accessLevel ?? 0
     let effectiveAccess = max(projectAccess, groupAccess)
-    return CoreL10n.format("GitLab access level: project=%@ (%@), group=%@ (%@), effective=%@ (%@).", String(projectAccess), gitLabAccessLevelName(projectAccess), String(groupAccess), gitLabAccessLevelName(groupAccess), String(effectiveAccess), gitLabAccessLevelName(effectiveAccess))
+    return CoreL10n.format(
+      "GitLab access level: project=%@ (%@), group=%@ (%@), effective=%@ (%@).",
+      String(projectAccess), gitLabAccessLevelName(projectAccess), String(groupAccess),
+      gitLabAccessLevelName(groupAccess), String(effectiveAccess),
+      gitLabAccessLevelName(effectiveAccess))
   }
 
   func gitLabAccessLevelName(_ level: Int) -> String {
@@ -349,15 +359,16 @@ extension RemoteRepositoryPublishService {
   }
 
   func contentData(for file: PublishPackageFile) throws -> Data {
+    let data: Data
     switch file.kind {
     case .markdown:
-      return Data((file.content ?? "").utf8)
+      data = Data((file.content ?? "").utf8)
     case .image, .video:
       guard let sourceFilePath = file.sourceFilePath else {
         throw RemoteRepositoryPublishError.missingSourceFile(file.repositoryPath)
       }
       do {
-        return try BoundedFileReader.data(
+        data = try BoundedFileReader.data(
           at: URL(fileURLWithPath: sourceFilePath),
           maximumByteCount: WorkbenchFileReadLimits.maximumRemoteMediaUploadByteCount
         )
@@ -373,6 +384,13 @@ extension RemoteRepositoryPublishService {
         )
       }
     }
+    if let expectedContentSHA256 {
+      let digest = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+      guard expectedContentSHA256[file.repositoryPath] == digest else {
+        throw RemoteArticlePublicationReviewError.confirmationExpired
+      }
+    }
+    return data
   }
 
   /// GitHub's Contents API returns the Git blob SHA for a file. Comparing the
@@ -398,9 +416,10 @@ extension RemoteRepositoryPublishService {
     remoteSHA: String?
   ) -> Bool {
     guard file.operation == .delete,
-          file.expectedRemoteSHA?.trimmedForPublishing.nilIfEmpty == nil,
-          let expectedGitBlobSHA = file.expectedGitBlobSHA?.trimmedForPublishing.nilIfEmpty,
-          let remoteSHA = remoteSHA?.trimmedForPublishing.nilIfEmpty else {
+      file.expectedRemoteSHA?.trimmedForPublishing.nilIfEmpty == nil,
+      let expectedGitBlobSHA = file.expectedGitBlobSHA?.trimmedForPublishing.nilIfEmpty,
+      let remoteSHA = remoteSHA?.trimmedForPublishing.nilIfEmpty
+    else {
       return false
     }
     return expectedGitBlobSHA.caseInsensitiveCompare(remoteSHA) == .orderedSame
@@ -411,9 +430,10 @@ extension RemoteRepositoryPublishService {
     remoteContent: Data?
   ) -> Bool {
     guard file.operation == .delete,
-          file.expectedRemoteSHA?.trimmedForPublishing.nilIfEmpty == nil,
-          let expectedContentSHA256 = file.expectedContentSHA256?.trimmedForPublishing.nilIfEmpty,
-          let remoteContent else {
+      file.expectedRemoteSHA?.trimmedForPublishing.nilIfEmpty == nil,
+      let expectedContentSHA256 = file.expectedContentSHA256?.trimmedForPublishing.nilIfEmpty,
+      let remoteContent
+    else {
       return false
     }
     let actual = SHA256.hash(data: remoteContent)

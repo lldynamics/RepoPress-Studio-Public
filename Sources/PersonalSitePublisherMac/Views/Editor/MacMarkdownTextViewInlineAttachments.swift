@@ -97,7 +97,82 @@ enum MarkdownInlineAttachmentDrawingLayoutMode {
   case inline
 }
 
+/// Geometry policy for the paint-only image card.  It intentionally uses the
+/// source pixel dimensions rather than a decoded `NSImage`, so viewport layout
+/// does not force a potentially expensive full image decode.
+enum MarkdownInlineAttachmentImageLayout {
+  static let minimumCardHeight: CGFloat = 120
+  static let maximumCardHeight: CGFloat = 360
+  static let verticalChrome: CGFloat = 16
+  static let horizontalChrome: CGFloat = 16
+  static let fallbackCardHeight: CGFloat = 164
+
+  static func cardHeight(
+    imageSize: CGSize?,
+    availableWidth: CGFloat
+  ) -> CGFloat {
+    guard
+      let imageSize,
+      imageSize.width > 0,
+      imageSize.height > 0,
+      availableWidth > 0
+    else {
+      return fallbackCardHeight
+    }
+
+    let imageWidth = max(1, availableWidth - horizontalChrome)
+    let naturalHeight = imageWidth * imageSize.height / imageSize.width
+    return min(
+      maximumCardHeight,
+      max(minimumCardHeight, ceil(naturalHeight + verticalChrome))
+    )
+  }
+
+  static func minimumLineHeight(forCardHeight cardHeight: CGFloat) -> CGFloat {
+    // Keep a small breathing gap around the card so the source paragraph does
+    // not collide with neighbouring lines after TextKit recomputes layout.
+    max(cardHeight + verticalChrome, minimumCardHeight + verticalChrome)
+  }
+}
+
+/// Pure geometry for the small hit target painted above a hovered image.
+enum MarkdownInlineAttachmentOpenOriginalControl {
+  static let size = NSSize(width: 88, height: 24)
+  static let inset: CGFloat = 8
+
+  static func frame(in imageCardFrame: NSRect) -> NSRect? {
+    let card = imageCardFrame.standardized
+    guard card.width > inset * 2 + 28, card.height > inset * 2 + 16 else {
+      return nil
+    }
+    let width = min(size.width, card.width - inset * 2)
+    return NSRect(
+      x: card.maxX - inset - width,
+      y: card.maxY - inset - size.height,
+      width: width,
+      height: size.height
+    )
+  }
+
+  static func contains(_ point: NSPoint, in imageCardFrame: NSRect) -> Bool {
+    frame(in: imageCardFrame)?.contains(point) == true
+  }
+}
+
 enum MarkdownInlineAttachmentDrawingLayout {
+  static func availableBlockWidth(
+    textViewBounds: NSRect,
+    horizontalInset: CGFloat
+  ) -> CGFloat? {
+    let bounds = textViewBounds.standardized
+    guard bounds.width > 0, bounds.height > 0 else { return nil }
+    let safeInset = min(
+      max(0, horizontalInset),
+      max(0, (bounds.width - 1) / 2)
+    )
+    return max(1, bounds.width - safeInset * 2)
+  }
+
   static func frame(
     sourceRect: NSRect,
     textViewBounds: NSRect,
@@ -177,6 +252,8 @@ private struct MarkdownInlineAttachmentDrawingCandidate {
 
 extension MacMarkdownTextView.Coordinator {
   private static let inlineAttachmentImageURLCacheLimit = 128
+  private static var inlineAttachmentImageDimensionsByPath: [String: CGSize] = [:]
+  private static var inlineAttachmentUnreadableImageDimensionPaths: Set<String> = []
 
   /// Invalidates attachment-derived caches without touching active drawings.
   /// The caller subsequently schedules a full viewport repaint, which restores
@@ -186,6 +263,8 @@ extension MacMarkdownTextView.Coordinator {
     inlineAttachmentImageURLCache.removeAll(keepingCapacity: false)
     inlineAttachmentUnsupportedImagePaths.removeAll(keepingCapacity: false)
     inlineAttachmentFailedImagePaths.removeAll(keepingCapacity: false)
+    Self.inlineAttachmentImageDimensionsByPath.removeAll(keepingCapacity: false)
+    Self.inlineAttachmentUnreadableImageDimensionPaths.removeAll(keepingCapacity: false)
     inlineAttachmentReferenceLookupCache = nil
   }
 
@@ -299,6 +378,10 @@ extension MacMarkdownTextView.Coordinator {
           altText.nilIfEmpty
           ?? attachment.altText.nilIfEmpty
           ?? attachment.originalFilename
+        let imageCardHeight = MarkdownInlineAttachmentImageLayout.cardHeight(
+          imageSize: inlineAttachmentImageDimensions(for: sourceURL),
+          availableWidth: inlineAttachmentAvailableBlockWidth(in: textView)
+        )
         desiredKeys.insert(key)
         desiredCandidates[key] =
           MarkdownInlineAttachmentDrawingCandidate(
@@ -307,8 +390,10 @@ extension MacMarkdownTextView.Coordinator {
           documentRange: documentRange,
           layout: .block,
           preferredWidth: nil,
-          preferredHeight: 164,
-          minimumLineHeight: 180
+          preferredHeight: imageCardHeight,
+          minimumLineHeight: MarkdownInlineAttachmentImageLayout.minimumLineHeight(
+            forCardHeight: imageCardHeight
+          )
         )
       case .formula(let source, let displayMode):
         let isMultiline = source.contains("\n") || source.contains("\r")
@@ -347,7 +432,9 @@ extension MacMarkdownTextView.Coordinator {
       guard let desired = desiredCandidates[key],
         let current = inlineAttachmentDrawingDescriptors[key]
       else { return !desiredKeys.contains(key) }
-      return current.content != desired.content || current.documentRange != desired.documentRange
+      return current.content != desired.content
+        || current.documentRange != desired.documentRange
+        || current.minimumLineHeight != desired.minimumLineHeight
     }
     for key in obsoleteKeys {
       removeInlineAttachmentDrawing(forKey: key, in: textView)
@@ -357,7 +444,8 @@ extension MacMarkdownTextView.Coordinator {
     for (key, candidate) in desiredCandidates {
       if let current = inlineAttachmentDrawingDescriptors[key],
         current.content == candidate.content,
-        current.documentRange == candidate.documentRange
+        current.documentRange == candidate.documentRange,
+        current.minimumLineHeight == candidate.minimumLineHeight
       {
         // This branch is only reachable when a caller requested a fresh
         // candidate but the descriptor remained reusable. Preserve geometry,
@@ -639,6 +727,49 @@ extension MacMarkdownTextView.Coordinator {
       preferredWidth: candidate.preferredWidth,
       preferredHeight: candidate.preferredHeight
     )
+  }
+
+  private func inlineAttachmentAvailableBlockWidth(in textView: NSTextView) -> CGFloat {
+    let containerSize = textView.textContainer?.containerSize ?? .zero
+    let viewBounds = NSRect(
+      x: textView.bounds.minX,
+      y: textView.bounds.minY,
+      width: textView.bounds.width > 0 ? textView.bounds.width : containerSize.width,
+      height: textView.bounds.height > 0 ? textView.bounds.height : containerSize.height
+    )
+    return MarkdownInlineAttachmentDrawingLayout.availableBlockWidth(
+      textViewBounds: viewBounds,
+      horizontalInset: textView.textContainerInset.width + 6
+    ) ?? 1
+  }
+
+  private func inlineAttachmentImageDimensions(for sourceURL: URL) -> CGSize? {
+    let path = sourceURL.path
+    if let cached = Self.inlineAttachmentImageDimensionsByPath[path] {
+      return cached
+    }
+    guard !Self.inlineAttachmentUnreadableImageDimensionPaths.contains(path),
+      let source = CGImageSourceCreateWithURL(sourceURL as CFURL, nil),
+      let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+      let width = (properties[kCGImagePropertyPixelWidth] as? NSNumber)?.doubleValue,
+      let height = (properties[kCGImagePropertyPixelHeight] as? NSNumber)?.doubleValue,
+      width > 0,
+      height > 0
+    else {
+      if Self.inlineAttachmentUnreadableImageDimensionPaths.count
+        >= Self.inlineAttachmentImageURLCacheLimit
+      {
+        Self.inlineAttachmentUnreadableImageDimensionPaths.removeAll(keepingCapacity: true)
+      }
+      Self.inlineAttachmentUnreadableImageDimensionPaths.insert(path)
+      return nil
+    }
+    if Self.inlineAttachmentImageDimensionsByPath.count >= Self.inlineAttachmentImageURLCacheLimit {
+      Self.inlineAttachmentImageDimensionsByPath.removeAll(keepingCapacity: true)
+    }
+    let dimensions = CGSize(width: width, height: height)
+    Self.inlineAttachmentImageDimensionsByPath[path] = dimensions
+    return dimensions
   }
 
   private func captureRenderingAttributes(

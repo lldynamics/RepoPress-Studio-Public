@@ -122,134 +122,26 @@ public struct RemoteRepositoryReviewStatusSnapshot: Codable, Hashable, Sendable 
   }
 }
 
-public enum RemoteRepositoryPublishProgressStage: String, Codable, Sendable {
-  case preparing
-  case validatingTarget
-  case creatingBranch
-  case uploadingFiles
-  case creatingReview
-  case completed
-  case failed
+public enum RemoteRepositoryTokenWriteVerification: String, Codable, Hashable, Sendable {
+  /// The provider returned direct evidence that the current token can perform
+  /// the API mutations used by RepoPress.
+  case verified
+  /// Repository membership or reachability is known, but the token's mutation
+  /// scopes could not be proved without changing remote state.
+  case unverified
+  /// Available provider evidence proves that the token cannot perform the
+  /// required API mutations.
+  case insufficient
 
-  public var displayName: String {
+  public var localizedDisplayName: String {
     switch self {
-    case .preparing:
-      return CoreL10n.text("准备")
-    case .validatingTarget:
-      return CoreL10n.text("校验")
-    case .creatingBranch:
-      return CoreL10n.text("分支")
-    case .uploadingFiles:
-      return CoreL10n.text("上传")
-    case .creatingReview:
-      return CoreL10n.text("提交评审")
-    case .completed:
-      return CoreL10n.text("完成")
-    case .failed:
-      return CoreL10n.text("失败")
+    case .verified:
+      return CoreL10n.text("已验证")
+    case .unverified:
+      return CoreL10n.text("尚未验证")
+    case .insufficient:
+      return CoreL10n.text("权限不足")
     }
-  }
-}
-
-public struct RemoteRepositoryPublishProgress: Codable, Hashable, Sendable {
-  public var stage: RemoteRepositoryPublishProgressStage
-  public var progress: Double?
-  public var message: String
-  public var detail: String?
-  public var filePath: String?
-  /// Bytes from the publish package that have completed processing. This is
-  /// source-content progress, not a credential-bearing network payload size.
-  public var completedByteCount: Int64?
-  /// Total source-content bytes represented by the publish package.
-  public var totalByteCount: Int64?
-
-  public init(
-    stage: RemoteRepositoryPublishProgressStage,
-    progress: Double? = nil,
-    message: String,
-    detail: String? = nil,
-    filePath: String? = nil,
-    completedByteCount: Int64? = nil,
-    totalByteCount: Int64? = nil
-  ) {
-    self.stage = stage
-    self.progress = progress
-    self.message = message
-    self.detail = detail
-    self.filePath = filePath
-    self.completedByteCount = completedByteCount
-    self.totalByteCount = totalByteCount
-  }
-
-  private enum CodingKeys: String, CodingKey {
-    case stage
-    case progress
-    case message
-    case detail
-    case filePath
-    case completedByteCount
-    case totalByteCount
-  }
-
-  public init(from decoder: Decoder) throws {
-    let container = try decoder.container(keyedBy: CodingKeys.self)
-    stage = try container.decode(RemoteRepositoryPublishProgressStage.self, forKey: .stage)
-    progress = try container.decodeIfPresent(Double.self, forKey: .progress)
-    message = try container.decode(String.self, forKey: .message)
-    detail = try container.decodeIfPresent(String.self, forKey: .detail)
-    filePath = try container.decodeIfPresent(String.self, forKey: .filePath)
-    completedByteCount = try container.decodeIfPresent(Int64.self, forKey: .completedByteCount)
-    totalByteCount = try container.decodeIfPresent(Int64.self, forKey: .totalByteCount)
-  }
-
-  public var byteProgress: Double? {
-    guard let completedByteCount,
-          let totalByteCount,
-          totalByteCount > 0 else {
-      return nil
-    }
-    return min(1, max(0, Double(completedByteCount) / Double(totalByteCount)))
-  }
-
-  public var byteProgressDescription: String? {
-    guard let byteProgress,
-          let completedByteCount,
-          let totalByteCount else {
-      return nil
-    }
-    let percentage = Int((byteProgress * 100).rounded())
-    return "\(Self.formatByteCount(completedByteCount)) / \(Self.formatByteCount(totalByteCount)) (\(percentage)%)"
-  }
-
-  public var statusDescription: String {
-    [
-      message.nilIfEmpty,
-      detail?.nilIfEmpty,
-      byteProgressDescription.map { CoreL10n.format("已上传 %@", $0) },
-    ]
-    .compactMap { $0 }
-    .joined(separator: " · ")
-  }
-
-  private static func formatByteCount(_ byteCount: Int64) -> String {
-    let value = Double(max(0, byteCount))
-    let units = ["B", "KB", "MB", "GB", "TB"]
-    guard value >= 1_000 else {
-      return "\(max(0, byteCount)) B"
-    }
-
-    let exponent = min(
-      units.count - 1,
-      Int(log(value) / log(1_000))
-    )
-    let scaledValue = value / pow(1_000, Double(exponent))
-    let format = scaledValue >= 100 ? "%.0f" : scaledValue >= 10 ? "%.1f" : "%.2f"
-    let number = String(
-      format: format,
-      locale: Locale(identifier: "en_US_POSIX"),
-      scaledValue
-    )
-    return "\(number) \(units[exponent])"
   }
 }
 
@@ -264,6 +156,7 @@ public struct RemoteRepositoryAccessCheck: Codable, Hashable, Sendable {
   public var publishStrategy: RepositoryPublishStrategy?
   public var canRead: Bool
   public var canWrite: Bool
+  public var tokenWriteVerification: RemoteRepositoryTokenWriteVerification
   public var permissionSummary: String
   public var tokenScopeSummary: String?
   public var minimumWritePermission: String
@@ -279,6 +172,7 @@ public struct RemoteRepositoryAccessCheck: Codable, Hashable, Sendable {
     publishStrategy: RepositoryPublishStrategy? = nil,
     canRead: Bool,
     canWrite: Bool,
+    tokenWriteVerification: RemoteRepositoryTokenWriteVerification = .unverified,
     permissionSummary: String? = nil,
     tokenScopeSummary: String? = nil,
     minimumWritePermission: String? = nil,
@@ -293,6 +187,7 @@ public struct RemoteRepositoryAccessCheck: Codable, Hashable, Sendable {
     self.publishStrategy = publishStrategy
     self.canRead = canRead
     self.canWrite = canWrite
+    self.tokenWriteVerification = tokenWriteVerification
     self.permissionSummary = permissionSummary ?? CoreL10n.text(canWrite ? "已确认写入权限。" : "未确认写入权限。")
     self.tokenScopeSummary = tokenScopeSummary
     self.minimumWritePermission = minimumWritePermission ?? CoreL10n.text("需要仓库写入权限。")
@@ -318,6 +213,7 @@ public struct RemoteRepositoryAccessCheck: Codable, Hashable, Sendable {
     case publishStrategy
     case canRead
     case canWrite
+    case tokenWriteVerification
     case permissionSummary
     case tokenScopeSummary
     case minimumWritePermission
@@ -338,29 +234,40 @@ public struct RemoteRepositoryAccessCheck: Codable, Hashable, Sendable {
     )
     canRead = try container.decodeIfPresent(Bool.self, forKey: .canRead) ?? false
     canWrite = try container.decodeIfPresent(Bool.self, forKey: .canWrite) ?? false
-    permissionSummary = try container.decodeIfPresent(String.self, forKey: .permissionSummary)
+    tokenWriteVerification =
+      try container.decodeIfPresent(
+        RemoteRepositoryTokenWriteVerification.self,
+        forKey: .tokenWriteVerification
+      ) ?? .unverified
+    permissionSummary =
+      try container.decodeIfPresent(String.self, forKey: .permissionSummary)
       ?? CoreL10n.text(canWrite ? "已确认写入权限。" : "未确认写入权限。")
     tokenScopeSummary = try container.decodeIfPresent(String.self, forKey: .tokenScopeSummary)
-    minimumWritePermission = try container.decodeIfPresent(String.self, forKey: .minimumWritePermission)
+    minimumWritePermission =
+      try container.decodeIfPresent(String.self, forKey: .minimumWritePermission)
       ?? CoreL10n.text("需要仓库写入权限。")
-    message = try container.decodeIfPresent(String.self, forKey: .message)
+    message =
+      try container.decodeIfPresent(String.self, forKey: .message)
       ?? CoreL10n.text(canWrite ? "Token 具备写入权限。" : "Token 未确认写入权限。")
     checkedAt = try container.decodeIfPresent(Date.self, forKey: .checkedAt)
   }
 }
 
-public extension RemoteRepositoryAccessCheck {
-  var accessEvidenceMarkdown: String {
+extension RemoteRepositoryAccessCheck {
+  public var accessEvidenceMarkdown: String {
     var lines: [String] = [
       CoreL10n.format("# %@ Token 权限证据包", provider.displayName),
       "",
       CoreL10n.format("- 平台：%@", provider.displayName),
       CoreL10n.format("- 仓库：%@", repositoryName),
       CoreL10n.format("- 可读取：%@", CoreL10n.text(canRead ? "是" : "否")),
-      CoreL10n.format("- 可写入：%@", CoreL10n.text(canWrite ? "是" : "否")),
+      provider == .github
+        ? CoreL10n.format("- 检测到仓库写入角色：%@", CoreL10n.text(canWrite ? "是" : "否"))
+        : CoreL10n.format("- API 写入通道可用：%@", CoreL10n.text(canWrite ? "是" : "否")),
+      CoreL10n.format("- Token API 写权限：%@", tokenWriteVerification.localizedDisplayName),
       CoreL10n.format("- 权限来源：%@", permissionSummary),
       CoreL10n.format("- 最低写入要求：%@", minimumWritePermission),
-      CoreL10n.format("- 结论：%@", message)
+      CoreL10n.format("- 结论：%@", message),
     ]
 
     if let apiBaseURL = apiBaseURL?.trimmedForPublishing.nilIfEmpty {
@@ -376,11 +283,22 @@ public extension RemoteRepositoryAccessCheck {
     lines.append("")
     lines.append(CoreL10n.text("## 发布前权限清单"))
     lines.append(CoreL10n.format("- [%@] Token 可以读取仓库元数据", canRead ? "x" : " "))
-    lines.append(CoreL10n.format("- [%@] Token 满足内容写入所需权限", canWrite ? "x" : " "))
     if provider == .github {
-      lines.append(CoreL10n.text("- [ ] PR 创建权限需在实际创建时验证"))
+      lines.append(CoreL10n.format("- [%@] 已检测到仓库写入角色", canWrite ? "x" : " "))
+      lines.append(
+        CoreL10n.text(
+          "- [ ] Token 的 Contents、Pull requests、Checks 和 Commit statuses 权限需在相应 API 请求时验证"))
+    } else {
+      lines.append(
+        CoreL10n.format(
+          "- [%@] Token 已验证可执行仓库 API 写入",
+          tokenWriteVerification == .verified ? "x" : " "
+        )
+      )
     }
-    lines.append(CoreL10n.format("- [%@] 权限检查仓库与当前发布仓库一致", repositoryName.trimmedForPublishing.isEmpty ? " " : "x"))
+    lines.append(
+      CoreL10n.format(
+        "- [%@] 权限检查仓库与当前发布仓库一致", repositoryName.trimmedForPublishing.isEmpty ? " " : "x"))
     lines.append(CoreL10n.text("- [ ] 使用最小权限 Token，未在截图、日志或证据包中暴露 Token 原文"))
 
     lines.append("")
@@ -397,30 +315,35 @@ public extension RemoteRepositoryAccessCheck {
     return lines.joined(separator: "\n")
   }
 
-  var accessVerificationCommands: [String] {
+  public var accessVerificationCommands: [String] {
     guard let repositoryName = repositoryName.trimmedForPublishing.nilIfEmpty else {
       return []
     }
 
     switch provider {
     case .github:
-      guard let base = secureVerificationAPIBaseURL(
-        apiBaseURL,
-        fallback: "https://api.github.com"
-      ) else { return [] }
+      guard
+        let base = secureVerificationAPIBaseURL(
+          apiBaseURL,
+          fallback: "https://api.github.com"
+        )
+      else { return [] }
       let url = "\(base)/repos/\(encodedRepositoryPath(repositoryName, separator: "/"))"
       return [
         "curl -fsS -H \"Authorization: Bearer $GITHUB_TOKEN\" \(shellSingleQuoted(url))"
       ]
 
     case .gitlab:
-      guard let base = secureVerificationAPIBaseURL(
-        apiBaseURL,
-        fallback: "https://gitlab.com/api/v4"
-      ) else { return [] }
+      guard
+        let base = secureVerificationAPIBaseURL(
+          apiBaseURL,
+          fallback: "https://gitlab.com/api/v4"
+        )
+      else { return [] }
       let url = "\(base)/projects/\(encodedRepositoryPath(repositoryName, separator: "%2F"))"
       return [
-        "curl -fsS --header \"PRIVATE-TOKEN: $GITLAB_TOKEN\" \(shellSingleQuoted(url))"
+        "curl -fsS --header \"PRIVATE-TOKEN: $GITLAB_TOKEN\" \(shellSingleQuoted(url))",
+        "curl -fsS --header \"PRIVATE-TOKEN: $GITLAB_TOKEN\" \(shellSingleQuoted("\(base)/personal_access_tokens/self"))",
       ]
     }
   }
@@ -429,7 +352,8 @@ public extension RemoteRepositoryAccessCheck {
     value
       .split(separator: "/", omittingEmptySubsequences: false)
       .map { component in
-        String(component).addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? String(component)
+        String(component).addingPercentEncoding(withAllowedCharacters: .urlPathAllowed)
+          ?? String(component)
       }
       .joined(separator: separator)
   }
@@ -522,7 +446,8 @@ public struct RemoteRepositoryPublishResult: Codable, Hashable, Sendable {
   public var automaticallyAdoptedPaths: [String] {
     let changed = Set(changedPaths.map { $0.normalizedRelativePath() })
     let adopted = remoteVersionsByPath?.keys.map { $0.normalizedRelativePath() } ?? []
-    return adopted
+    return
+      adopted
       .filter { !changed.contains($0) }
       .sorted()
   }
@@ -637,10 +562,12 @@ public struct RemoteRepositoryPublishPreflightResult: Codable, Hashable, Sendabl
     remoteVersionsByPath: [String: String] = [:]
   ) {
     self.conflicts = conflicts
-    self.remoteVersionsByPath = remoteVersionsByPath.reduce(into: [String: String]()) { result, entry in
+    self.remoteVersionsByPath = remoteVersionsByPath.reduce(into: [String: String]()) {
+      result, entry in
       let path = entry.key.normalizedRelativePath()
       guard !path.isEmpty,
-            let version = entry.value.trimmedForPublishing.nilIfEmpty else {
+        let version = entry.value.trimmedForPublishing.nilIfEmpty
+      else {
         return
       }
       result[path] = version
@@ -688,13 +615,14 @@ public struct RemoteRepositoryReviewRecoveryDraft: Codable, Hashable, Sendable {
   }
 }
 
-public extension RemoteRepositoryReviewRecoveryDraft {
-  static func make(record: ReleaseRecord) throws -> RemoteRepositoryReviewRecoveryDraft {
+extension RemoteRepositoryReviewRecoveryDraft {
+  public static func make(record: ReleaseRecord) throws -> RemoteRepositoryReviewRecoveryDraft {
     guard record.kind == .remotePublishFailure,
-          let branchName = record.branchName?.trimmedForPublishing.nilIfEmpty,
-          let targetBranch = record.targetBranch?.trimmedForPublishing.nilIfEmpty,
-          let commitSHA = record.commitSHA?.trimmedForPublishing.nilIfEmpty,
-          branchName != targetBranch else {
+      let branchName = record.branchName?.trimmedForPublishing.nilIfEmpty,
+      let targetBranch = record.targetBranch?.trimmedForPublishing.nilIfEmpty,
+      let commitSHA = record.commitSHA?.trimmedForPublishing.nilIfEmpty,
+      branchName != targetBranch
+    else {
       throw RemoteRepositoryPublishError.reviewRecoveryUnavailable(
         CoreL10n.text("记录中没有可恢复的 Review 分支、目标分支或 commit。")
       )
@@ -716,12 +644,13 @@ public extension RemoteRepositoryReviewRecoveryDraft {
       CoreL10n.format("- 发布分支：%@", branchName),
       CoreL10n.format("- Commit：%@", commitSHA),
       "",
-      CoreL10n.text("该分支的文件和 commit 已在之前的发布中写入；本次仅继续创建或获取 PR/MR，不重新上传文件。")
+      CoreL10n.text("该分支的文件和 commit 已在之前的发布中写入；本次仅继续创建或获取 PR/MR，不重新上传文件。"),
     ]
 
     if !record.batchItems.isEmpty {
       bodyLines.append(contentsOf: ["", CoreL10n.text("## 文章")])
-      bodyLines.append(contentsOf: record.batchItems.map { "- \($0.draftTitle): `\($0.markdownPath)`" })
+      bodyLines.append(
+        contentsOf: record.batchItems.map { "- \($0.draftTitle): `\($0.markdownPath)`" })
     }
     if !record.changedPaths.isEmpty {
       bodyLines.append(contentsOf: ["", CoreL10n.text("## 文件")])
@@ -850,26 +779,26 @@ public struct RemoteRepositoryReviewWithdrawalResult: Codable, Hashable, Sendabl
   }
 }
 
-public extension RemoteRepositoryPublishResult {
-  var shortCommitSHA: String? {
+extension RemoteRepositoryPublishResult {
+  public var shortCommitSHA: String? {
     commitSHA.map { String($0.prefix(8)) }
   }
 
-  var displayTitle: String {
+  public var displayTitle: String {
     "\(provider.displayName) \(mode.displayName)"
   }
 
-  var branchSummary: String {
+  public var branchSummary: String {
     mode.usesDedicatedBranch
       ? "\(branchName) -> \(targetBranch)"
       : targetBranch
   }
 
-  var clipboardSummary: String {
+  public var clipboardSummary: String {
     var lines = [
       "\(displayTitle)",
       CoreL10n.format("分支：%@", branchSummary),
-      CoreL10n.format("文件：%@", String(changedPaths.count))
+      CoreL10n.format("文件：%@", String(changedPaths.count)),
     ]
     if let repositoryName {
       lines.insert(CoreL10n.format("仓库：%@", repositoryName), at: 1)
@@ -891,13 +820,13 @@ public extension RemoteRepositoryPublishResult {
     return lines.joined(separator: "\n")
   }
 
-  var remoteVerificationMarkdown: String {
+  public var remoteVerificationMarkdown: String {
     var lines = [
       CoreL10n.format("# %@ 线上发布实测包", provider.displayName),
       "",
       CoreL10n.format("- 发布方式：%@", mode.displayName),
       CoreL10n.format("- 分支：%@", branchSummary),
-      CoreL10n.format("- 文件：%@", String(changedPaths.count))
+      CoreL10n.format("- 文件：%@", String(changedPaths.count)),
     ]
     if let repositoryName = repositoryName?.trimmedForPublishing.nilIfEmpty {
       lines.append(CoreL10n.format("- 仓库：%@", repositoryName))
@@ -939,7 +868,7 @@ public extension RemoteRepositoryPublishResult {
     return lines.joined(separator: "\n")
   }
 
-  var remoteVerificationCommands: [String] {
+  public var remoteVerificationCommands: [String] {
     guard let repositoryName = repositoryName?.trimmedForPublishing.nilIfEmpty else {
       return []
     }
@@ -947,58 +876,77 @@ public extension RemoteRepositoryPublishResult {
     let ref = mode.usesDedicatedBranch ? branchName : targetBranch
     switch provider {
     case .github:
-      guard let base = secureVerificationAPIBaseURL(
-        apiBaseURL,
-        fallback: "https://api.github.com"
-      ) else { return [] }
+      guard
+        let base = secureVerificationAPIBaseURL(
+          apiBaseURL,
+          fallback: "https://api.github.com"
+        )
+      else { return [] }
       var commands: [String] = []
       if let commitSHA = commitSHA?.trimmedForPublishing.nilIfEmpty {
-        commands.append("curl -fsS -H \"Authorization: Bearer $GITHUB_TOKEN\" \(shellSingleQuoted("\(base)/repos/\(repositoryName)/commits/\(commitSHA)"))")
+        commands.append(
+          "curl -fsS -H \"Authorization: Bearer $GITHUB_TOKEN\" \(shellSingleQuoted("\(base)/repos/\(repositoryName)/commits/\(commitSHA)"))"
+        )
       }
       if let reviewNumber = reviewNumber(from: reviewURL) {
-        commands.append("curl -fsS -H \"Authorization: Bearer $GITHUB_TOKEN\" \(shellSingleQuoted("\(base)/repos/\(repositoryName)/pulls/\(reviewNumber)"))")
+        commands.append(
+          "curl -fsS -H \"Authorization: Bearer $GITHUB_TOKEN\" \(shellSingleQuoted("\(base)/repos/\(repositoryName)/pulls/\(reviewNumber)"))"
+        )
       }
-      commands.append(contentsOf: changedPaths.prefix(6).map { path in
-        let url = "\(base)/repos/\(repositoryName)/contents/\(encodedVerificationRepositoryPath(path))?ref=\(encodedVerificationPath(ref))"
-        return "curl -fsS -H \"Authorization: Bearer $GITHUB_TOKEN\" \(shellSingleQuoted(url))"
-      })
+      commands.append(
+        contentsOf: changedPaths.prefix(6).map { path in
+          let url =
+            "\(base)/repos/\(repositoryName)/contents/\(encodedVerificationRepositoryPath(path))?ref=\(encodedVerificationPath(ref))"
+          return "curl -fsS -H \"Authorization: Bearer $GITHUB_TOKEN\" \(shellSingleQuoted(url))"
+        })
       return commands
 
     case .gitlab:
-      guard let base = secureVerificationAPIBaseURL(
-        apiBaseURL,
-        fallback: "https://gitlab.com/api/v4"
-      ) else { return [] }
+      guard
+        let base = secureVerificationAPIBaseURL(
+          apiBaseURL,
+          fallback: "https://gitlab.com/api/v4"
+        )
+      else { return [] }
       let project = encodedVerificationPath(repositoryName)
       var commands: [String] = []
       if let commitSHA = commitSHA?.trimmedForPublishing.nilIfEmpty {
-        commands.append("curl -fsS --header \"PRIVATE-TOKEN: $GITLAB_TOKEN\" \(shellSingleQuoted("\(base)/projects/\(project)/repository/commits/\(encodedVerificationPath(commitSHA))"))")
+        commands.append(
+          "curl -fsS --header \"PRIVATE-TOKEN: $GITLAB_TOKEN\" \(shellSingleQuoted("\(base)/projects/\(project)/repository/commits/\(encodedVerificationPath(commitSHA))"))"
+        )
       }
       if let reviewNumber = reviewNumber(from: reviewURL) {
-        commands.append("curl -fsS --header \"PRIVATE-TOKEN: $GITLAB_TOKEN\" \(shellSingleQuoted("\(base)/projects/\(project)/merge_requests/\(reviewNumber)"))")
+        commands.append(
+          "curl -fsS --header \"PRIVATE-TOKEN: $GITLAB_TOKEN\" \(shellSingleQuoted("\(base)/projects/\(project)/merge_requests/\(reviewNumber)"))"
+        )
       }
-      commands.append(contentsOf: changedPaths.prefix(6).map { path in
-        let url = "\(base)/projects/\(project)/repository/files/\(encodedVerificationPath(path))?ref=\(encodedVerificationPath(ref))"
-        return "curl -fsS --header \"PRIVATE-TOKEN: $GITLAB_TOKEN\" \(shellSingleQuoted(url))"
-      })
+      commands.append(
+        contentsOf: changedPaths.prefix(6).map { path in
+          let url =
+            "\(base)/projects/\(project)/repository/files/\(encodedVerificationPath(path))?ref=\(encodedVerificationPath(ref))"
+          return "curl -fsS --header \"PRIVATE-TOKEN: $GITLAB_TOKEN\" \(shellSingleQuoted(url))"
+        })
       return commands
     }
   }
 
   private func reviewNumber(from urlText: String?) -> Int? {
     guard let urlText = urlText?.trimmedForPublishing.nilIfEmpty,
-          let url = URL(string: urlText) else {
+      let url = URL(string: urlText)
+    else {
       return nil
     }
     let components = url.pathComponents
     if let pullIndex = components.firstIndex(of: "pull"),
-       components.indices.contains(components.index(after: pullIndex)),
-       let number = Int(components[components.index(after: pullIndex)]) {
+      components.indices.contains(components.index(after: pullIndex)),
+      let number = Int(components[components.index(after: pullIndex)])
+    {
       return number
     }
     if let mrIndex = components.firstIndex(of: "merge_requests"),
-       components.indices.contains(components.index(after: mrIndex)),
-       let number = Int(components[components.index(after: mrIndex)]) {
+      components.indices.contains(components.index(after: mrIndex)),
+      let number = Int(components[components.index(after: mrIndex)])
+    {
       return number
     }
     return nil
@@ -1008,7 +956,8 @@ public extension RemoteRepositoryPublishResult {
     value
       .split(separator: "/", omittingEmptySubsequences: false)
       .map { component in
-        String(component).addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? String(component)
+        String(component).addingPercentEncoding(withAllowedCharacters: .urlPathAllowed)
+          ?? String(component)
       }
       .joined(separator: "%2F")
   }
@@ -1017,7 +966,8 @@ public extension RemoteRepositoryPublishResult {
     value
       .split(separator: "/", omittingEmptySubsequences: false)
       .map { component in
-        String(component).addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? String(component)
+        String(component).addingPercentEncoding(withAllowedCharacters: .urlPathAllowed)
+          ?? String(component)
       }
       .joined(separator: "/")
   }
@@ -1026,7 +976,8 @@ public extension RemoteRepositoryPublishResult {
 private func secureVerificationAPIBaseURL(_ candidate: String?, fallback: String) -> String? {
   let text = candidate?.trimmedForPublishing.nilIfEmpty ?? fallback
   guard let url = URL(string: text),
-        CredentialedEndpointPolicy.isSecureAPIBaseURL(url) else {
+    CredentialedEndpointPolicy.isSecureAPIBaseURL(url)
+  else {
     return nil
   }
   return url.absoluteString.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
@@ -1036,12 +987,13 @@ private func shellSingleQuoted(_ value: String) -> String {
   "'" + value.replacingOccurrences(of: "'", with: "'\"'\"'") + "'"
 }
 
-public extension RemoteRepositoryRollbackDraft {
-  static func make(record: ReleaseRecord) throws -> RemoteRepositoryRollbackDraft {
+extension RemoteRepositoryRollbackDraft {
+  public static func make(record: ReleaseRecord) throws -> RemoteRepositoryRollbackDraft {
     guard let commitSHA = record.commitSHA?.trimmedForPublishing.nilIfEmpty else {
       throw RemoteRepositoryPublishError.missingRollbackCommit
     }
-    let targetBranch = record.targetBranch?.nilIfEmpty
+    let targetBranch =
+      record.targetBranch?.nilIfEmpty
       ?? record.branchName?.nilIfEmpty
       ?? "main"
     let displayTitle = record.draftTitle ?? record.title
@@ -1057,8 +1009,8 @@ public extension RemoteRepositoryRollbackDraft {
   }
 }
 
-public extension RemoteRepositoryReviewWithdrawalDraft {
-  static func make(record: ReleaseRecord) throws -> RemoteRepositoryReviewWithdrawalDraft {
+extension RemoteRepositoryReviewWithdrawalDraft {
+  public static func make(record: ReleaseRecord) throws -> RemoteRepositoryReviewWithdrawalDraft {
     guard let reviewURL = record.reviewURL?.trimmedForPublishing.nilIfEmpty else {
       throw RemoteRepositoryPublishError.missingReviewURL
     }
@@ -1081,13 +1033,15 @@ public extension RemoteRepositoryReviewWithdrawalDraft {
     }
     let components = url.pathComponents
     if let pullIndex = components.firstIndex(of: "pull"),
-       components.indices.contains(components.index(after: pullIndex)),
-       let number = Int(components[components.index(after: pullIndex)]) {
+      components.indices.contains(components.index(after: pullIndex)),
+      let number = Int(components[components.index(after: pullIndex)])
+    {
       return number
     }
     if let mrIndex = components.firstIndex(of: "merge_requests"),
-       components.indices.contains(components.index(after: mrIndex)),
-       let number = Int(components[components.index(after: mrIndex)]) {
+      components.indices.contains(components.index(after: mrIndex)),
+      let number = Int(components[components.index(after: mrIndex)])
+    {
       return number
     }
     return nil

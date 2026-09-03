@@ -1,12 +1,59 @@
+import CryptoKit
 import Foundation
 
+enum LocalPublishWritePurpose {
+  case article(SiteProfile?)
+  case structuralRepair(Set<String>)
+}
+
+private final class LocalPublishWriteCoordinator: @unchecked Sendable {
+  static let shared = LocalPublishWriteCoordinator()
+  let lock = NSRecursiveLock()
+}
+
 extension LocalPublishPreviewService {
+  func withWriteLock<T>(_ work: () throws -> T) rethrows -> T {
+    LocalPublishWriteCoordinator.shared.lock.lock()
+    defer { LocalPublishWriteCoordinator.shared.lock.unlock() }
+    return try work()
+  }
+
   func writeWithEvidence(
     package: PublishPackage,
     rootURL: URL,
-    preview: LocalPublishPreview? = nil
+    preview: LocalPublishPreview? = nil,
+    purpose: LocalPublishWritePurpose = .article(nil)
   ) throws -> LocalPublishWriteResult {
-    try recoverInterruptedTransaction(at: rootURL)
+    try withWriteLock {
+      try writeLocked(package: package, rootURL: rootURL, preview: preview, purpose: purpose)
+    }
+  }
+
+  private func writeLocked(
+    package: PublishPackage, rootURL: URL, preview: LocalPublishPreview?,
+    purpose: LocalPublishWritePurpose
+  ) throws -> LocalPublishWriteResult {
+    switch purpose {
+    case .article(let profile):
+      for path in [package.markdownPath] + package.files.map(\.repositoryPath) {
+        let protected =
+          profile.map { StructuralArticlePathPolicy.isProtected(path, profile: $0) }
+          ?? StructuralArticlePathPolicy.isSectionFile(path)
+        if protected { throw StructuralArticlePathError.protectedPath(path) }
+      }
+      try recoverInterruptedTransaction(at: rootURL, articleProfile: profile)
+    case .structuralRepair(let approvedPaths):
+      guard !approvedPaths.isEmpty,
+        Set(package.files.map(\.repositoryPath)) == approvedPaths,
+        package.files.allSatisfy({
+          $0.operation == .upsert && StructuralArticlePathPolicy.isSectionFile($0.repositoryPath)
+        }),
+        !fileManager.fileExists(atPath: localPublishTransactionURL(for: rootURL).path),
+        !isSymbolicLink(localPublishTransactionURL(for: rootURL))
+      else {
+        throw LocalPublishPreviewError.recoveryFailed("栏目恢复范围或事务状态已变化，请重新扫描。")
+      }
+    }
     let previewBaseStates: [String: LocalPublishFileState]?
     let previewSourceStates: [String: LocalPublishSourceFileState]?
     if let preview {
@@ -54,7 +101,7 @@ extension LocalPublishPreviewService {
           repositoryPath: file.repositoryPath
         )
         let normalizedPath = file.repositoryPath.normalizedRelativePath()
-        expectedSourceState = previewSourceStates?[normalizedPath]
+        expectedSourceState = previewSourceStates?[normalizedPath] ?? currentSourceState
         if let expectedSourceState, currentSourceState != expectedSourceState {
           throw LocalPublishPreviewError.sourcePreviewOutdated(file.repositoryPath)
         }
@@ -149,6 +196,20 @@ extension LocalPublishPreviewService {
           destinationURL: destinationURL,
           expectedBaseStates: previewBaseStates
         )
+        // Record the payload we intend to write, never adopt a post-write
+        // observation: an external editor may already have replaced it.
+        let appliedState: LocalPublishFileState
+        if prepared.file.operation == .delete {
+          appliedState = .missing
+        } else if prepared.file.kind == .markdown {
+          appliedState = .fileDigest(
+            Data(SHA256.hash(data: Data((prepared.file.content ?? "").utf8))))
+        } else if let sourceState = prepared.expectedSourceState {
+          appliedState = .fileDigest(sourceState.sha256)
+        } else {
+          throw LocalPublishPreviewError.missingSource(prepared.file.repositoryPath)
+        }
+        rollbackEntries[index].appliedState = appliedState
         switch prepared.file.operation {
         case .delete:
           if fileManager.fileExists(atPath: destinationURL.path) {
@@ -174,8 +235,11 @@ extension LocalPublishPreviewService {
           rollbackEntries[index].didMutateDestination = true
         }
 
-        let appliedState = try localPublishFileState(at: destinationURL, fileManager: fileManager)
-        rollbackEntries[index].appliedState = appliedState
+        guard
+          try localPublishFileState(at: destinationURL, fileManager: fileManager) == appliedState
+        else {
+          throw LocalPublishPreviewError.previewOutdated(prepared.file.repositoryPath)
+        }
         appliedStates.append(appliedState)
         writtenPaths.append(prepared.file.repositoryPath)
       }
@@ -201,11 +265,28 @@ extension LocalPublishPreviewService {
         )
       }
       do {
+        // If rollback is interrupted or detects an external change, a later
+        // ordinary publish must not replay the original applying journal.
         if fileManager.fileExists(atPath: transactionURL.path) {
-          try recoverInterruptedTransaction(at: rootURL)
-        } else {
-          try rollbackLocalPublishWrites(rollbackEntries)
+          try persistLocalPublishTransaction(
+            LocalPublishTransaction(
+              phase: .manualRecoveryRequired,
+              rollbackDirectoryPath: rollbackDirectory.path,
+              entries: rollbackEntries.enumerated().map { index, entry in
+                LocalPublishTransactionEntry(
+                  repositoryPath: preparedWrites[index].file.repositoryPath
+                    .normalizedRelativePath(),
+                  backupFileName: entry.backupURL?.lastPathComponent
+                )
+              }
+            ), at: transactionURL)
         }
+        // A live attempt knows which destinations it actually changed. The
+        // crash journal also contains untouched files, including a file whose
+        // external edit may have caused the preview check to fail. Never
+        // replay that journal here; preserve external changes and keep the
+        // journal/backups intact if an applied destination has also changed.
+        try rollbackLocalPublishWrites(rollbackEntries)
       } catch let rollbackError {
         throw LocalPublishPreviewError.rollbackFailed(
           original: error.localizedDescription,

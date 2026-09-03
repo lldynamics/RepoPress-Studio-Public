@@ -1,19 +1,20 @@
 import XCTest
+
 @testable import PublishingWorkbenchCore
 
 @MainActor
 final class ReleaseRecordTests: XCTestCase {
   func testDecodesLegacyReleaseRecordWithTraceableDefaults() throws {
     let json = """
-    {
-      "id": "1F3A8208-4D37-49FB-9DF3-3F9C29B6403A",
-      "title": "旧记录",
-      "summary": "旧版摘要",
-      "commitSHA": "0123456789abcdef",
-      "reviewURL": "https://example.com/review",
-      "createdAt": "2026-07-05T12:00:00Z"
-    }
-    """.data(using: .utf8)!
+      {
+        "id": "1F3A8208-4D37-49FB-9DF3-3F9C29B6403A",
+        "title": "旧记录",
+        "summary": "旧版摘要",
+        "commitSHA": "0123456789abcdef",
+        "reviewURL": "https://example.com/review",
+        "createdAt": "2026-07-05T12:00:00Z"
+      }
+      """.data(using: .utf8)!
 
     let record = try JSONDecoder.workbench.decode(ReleaseRecord.self, from: json)
 
@@ -22,8 +23,25 @@ final class ReleaseRecordTests: XCTestCase {
     XCTAssertEqual(record.summary, "旧版摘要")
     XCTAssertEqual(record.changedPaths, [])
     XCTAssertEqual(record.batchItems, [])
+    XCTAssertNil(record.resolvedArticlePath)
     XCTAssertEqual(record.shortCommitSHA, "01234567")
     XCTAssertEqual(record.reviewWebURL?.absoluteString, "https://example.com/review")
+  }
+
+  func testResolvedArticlePathRoundTripsAsDeploymentEvidence() throws {
+    let expectedPath =
+      "/posts/2026/repopress-studioshi-yong-deepseekguan-fang-apijiao-cheng/"
+    let record = ReleaseRecord(
+      kind: .remoteReviewRequest,
+      title: "线上 PR：RepoPress Studio",
+      summary: "Cloudflare Pages",
+      resolvedArticlePath: expectedPath
+    )
+
+    let data = try JSONEncoder.workbench.encode(record)
+    let decoded = try JSONDecoder.workbench.decode(ReleaseRecord.self, from: data)
+
+    XCTAssertEqual(decoded.resolvedArticlePath, expectedPath)
   }
 
   func testLocalWriteRecordCapturesPackageSiteAndPaths() {
@@ -196,6 +214,105 @@ final class ReleaseRecordTests: XCTestCase {
     XCTAssertTrue(record.summary.contains("GitLab"))
   }
 
+  func testRepositoryWorktreePublishRecordCapturesArticleTarget() {
+    var profile = SiteProfile.defaultProfile
+    profile.name = "整仓库站点"
+    profile.repoOwner = "jinfang"
+    profile.repoName = "site"
+    profile.branch = "main"
+    let draftID = UUID()
+    let target = RepositoryWorktreeArticleVerificationTarget(
+      draftID: draftID,
+      title: "整仓库发布",
+      summary: "用于线上验证的摘要",
+      coverAltText: "封面图",
+      markdownPath: "content/posts/repository-publish.md"
+    )
+    let result = RepositoryWorktreePublishResult(
+      commitSHA: "fedcba9876543210",
+      branch: "main",
+      pushed: true,
+      remoteCommitSHA: "fedcba9876543210",
+      committedPaths: [target.markdownPath, "static/images/cover.jpg"]
+    )
+
+    let record = ReleaseRecord.repositoryWorktreePublish(
+      profile: profile,
+      result: result,
+      articleTarget: target
+    )
+
+    XCTAssertEqual(record.kind, .remoteDirectCommit)
+    XCTAssertEqual(record.siteProfileID, profile.id)
+    XCTAssertEqual(record.siteName, profile.name)
+    XCTAssertEqual(record.repoOwner, "jinfang")
+    XCTAssertEqual(record.repoName, "site")
+    XCTAssertEqual(record.branchName, "main")
+    XCTAssertEqual(record.targetBranch, "main")
+    XCTAssertEqual(record.commitSHA, result.commitSHA)
+    XCTAssertEqual(record.changedPaths, result.committedPaths)
+    XCTAssertEqual(record.draftID, draftID)
+    XCTAssertEqual(record.draftTitle, target.title)
+    XCTAssertEqual(record.draftSummary, target.summary)
+    XCTAssertEqual(record.draftCoverAltText, target.coverAltText)
+    XCTAssertEqual(record.markdownPath, target.markdownPath)
+  }
+
+  func testRepositoryWorktreePublishRecordWithoutArticleTargetLeavesArticleFieldsNil() {
+    let profile = SiteProfile.defaultProfile
+    let result = RepositoryWorktreePublishResult(
+      commitSHA: "0123456789abcdef",
+      branch: "main",
+      pushed: true,
+      remoteCommitSHA: "0123456789abcdef",
+      committedPaths: ["content/about.md"]
+    )
+
+    let record = ReleaseRecord.repositoryWorktreePublish(profile: profile, result: result)
+
+    XCTAssertEqual(record.kind, .remoteDirectCommit)
+    XCTAssertEqual(record.siteName, profile.name)
+    XCTAssertEqual(record.branchName, result.branch)
+    XCTAssertEqual(record.targetBranch, profile.branch)
+    XCTAssertEqual(record.commitSHA, result.commitSHA)
+    XCTAssertEqual(record.changedPaths, result.committedPaths)
+    XCTAssertNil(record.draftID)
+    XCTAssertNil(record.draftTitle)
+    XCTAssertNil(record.draftSummary)
+    XCTAssertNil(record.draftCoverAltText)
+    XCTAssertNil(record.markdownPath)
+  }
+
+  func testRepositoryWorktreeConfirmationKeepsLegacyInitializerAndFreezesTargetIdentityInID() {
+    let snapshot = RepositoryWorktreePublishSnapshot(
+      repositoryRoot: "/tmp/site",
+      gitCommonDirectory: "/tmp/site/.git",
+      branch: "main",
+      headSHA: "parent",
+      originURL: "https://github.com/jinfang/site.git",
+      remoteBranchSHA: "parent",
+      statusFingerprint: "clean",
+      entries: []
+    )
+    let legacy = RepositoryWorktreePublishConfirmation(
+      snapshot: snapshot,
+      commitMessage: "Publish repository"
+    )
+    let targeted = RepositoryWorktreePublishConfirmation(
+      snapshot: snapshot,
+      commitMessage: "Publish repository",
+      articleVerificationTarget: RepositoryWorktreeArticleVerificationTarget(
+        draftID: UUID(uuidString: "D8E9B5E5-4AAE-4F73-A70A-2E5E5D9D3A2F")!,
+        title: "目标文章",
+        summary: "摘要",
+        markdownPath: "content/posts/target.md"
+      )
+    )
+
+    XCTAssertNil(legacy.articleVerificationTarget)
+    XCTAssertNotEqual(legacy.id, targeted.id)
+  }
+
   func testPreviewPublishRecordUsesDedicatedNonProductionKind() {
     var profile = SiteProfile.defaultProfile
     profile.name = "预览站点"
@@ -249,7 +366,7 @@ final class ReleaseRecordTests: XCTestCase {
       title: "Batch Remote Two",
       markdownPath: "content/posts/batch-remote-two.md",
       files: [
-        PublishPackageFile(kind: .markdown, repositoryPath: "content/posts/batch-remote-two.md"),
+        PublishPackageFile(kind: .markdown, repositoryPath: "content/posts/batch-remote-two.md")
       ],
       commitMessage: "Publish: Batch Remote Two",
       reviewBranchName: "publish/batch-remote-two",
@@ -280,10 +397,12 @@ final class ReleaseRecordTests: XCTestCase {
     XCTAssertEqual(record.batchItems.map(\.draftID), [firstPackage.draftID, secondPackage.draftID])
     XCTAssertEqual(record.batchItems.first?.draftTitle, "Batch Remote One")
     XCTAssertEqual(record.batchItems.first?.markdownPath, "content/posts/batch-remote-one.md")
-    XCTAssertEqual(record.batchItems.first?.changedPaths, [
-      "content/posts/batch-remote-one.md",
-      "static/images/batch-remote-one.png",
-    ])
+    XCTAssertEqual(
+      record.batchItems.first?.changedPaths,
+      [
+        "content/posts/batch-remote-one.md",
+        "static/images/batch-remote-one.png",
+      ])
     XCTAssertEqual(record.batchItems.last?.changedPaths, ["content/posts/batch-remote-two.md"])
   }
 
@@ -297,7 +416,7 @@ final class ReleaseRecordTests: XCTestCase {
       title: "Batch Failure One",
       markdownPath: "content/posts/batch-failure-one.md",
       files: [
-        PublishPackageFile(kind: .markdown, repositoryPath: "content/posts/batch-failure-one.md"),
+        PublishPackageFile(kind: .markdown, repositoryPath: "content/posts/batch-failure-one.md")
       ],
       commitMessage: "Publish: Batch Failure One",
       reviewBranchName: "publish/batch-failure-one",
@@ -309,7 +428,7 @@ final class ReleaseRecordTests: XCTestCase {
       title: "Batch Failure Two",
       markdownPath: "content/posts/batch-failure-two.md",
       files: [
-        PublishPackageFile(kind: .markdown, repositoryPath: "content/posts/batch-failure-two.md"),
+        PublishPackageFile(kind: .markdown, repositoryPath: "content/posts/batch-failure-two.md")
       ],
       commitMessage: "Publish: Batch Failure Two",
       reviewBranchName: "publish/batch-failure-two",
@@ -343,8 +462,10 @@ final class ReleaseRecordTests: XCTestCase {
 
     XCTAssertEqual(record.batchItems.count, 2)
     XCTAssertTrue(package.clipboardMarkdown.contains("## 批量文章明细"))
-    XCTAssertTrue(package.clipboardMarkdown.contains("Batch Failure One：content/posts/batch-failure-one.md"))
-    XCTAssertTrue(package.clipboardMarkdown.contains("Batch Failure Two：content/posts/batch-failure-two.md"))
+    XCTAssertTrue(
+      package.clipboardMarkdown.contains("Batch Failure One：content/posts/batch-failure-one.md"))
+    XCTAssertTrue(
+      package.clipboardMarkdown.contains("Batch Failure Two：content/posts/batch-failure-two.md"))
   }
 
   func testRemotePublishFailureRecordCapturesErrorAndPendingPaths() {
@@ -378,7 +499,8 @@ final class ReleaseRecordTests: XCTestCase {
 
   func testStoreCreatesReleaseRecordWhenWritingSelectedDraftToRepository() async throws {
     let rootURL = FileManager.default.temporaryDirectory
-      .appendingPathComponent("PersonalSitePublisherMacReleaseRecordTests-\(UUID().uuidString)", isDirectory: true)
+      .appendingPathComponent(
+        "PersonalSitePublisherMacReleaseRecordTests-\(UUID().uuidString)", isDirectory: true)
     try FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)
     try FileManager.default.createDirectory(
       at: rootURL.appendingPathComponent(".git", isDirectory: true),
@@ -388,7 +510,8 @@ final class ReleaseRecordTests: XCTestCase {
       try? FileManager.default.removeItem(at: rootURL)
     }
 
-    let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()))
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()))
     var profile = store.activeProfile
     profile.name = "发布站点"
     profile.markdownPathPattern = "content/posts/{slug}.md"
@@ -416,7 +539,8 @@ final class ReleaseRecordTests: XCTestCase {
 
   private func temporaryPersistenceURL() throws -> URL {
     let directory = FileManager.default.temporaryDirectory
-      .appendingPathComponent("PersonalSitePublisherMacReleaseRecordPersistence-\(UUID().uuidString)", isDirectory: true)
+      .appendingPathComponent(
+        "PersonalSitePublisherMacReleaseRecordPersistence-\(UUID().uuidString)", isDirectory: true)
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     return directory.appendingPathComponent("workbench.json")
   }

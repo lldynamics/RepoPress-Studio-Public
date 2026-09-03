@@ -1,0 +1,13 @@
+{
+  "Checks: Read-only": "Checks: Read-only",
+  "Classic token 可使用 repo scope。只有修改 .github/workflows 中的工作流文件时才需要 workflow scope。": "A classic token can use the repo scope. The workflow scope is only needed when modifying workflow files under .github/workflows.",
+  "Commit statuses: Read-only": "Commit statuses: Read-only",
+  "Contents 和 Pull requests 的写入权限仍按原发布流程保留。编辑现有 Token 时请授权当前仓库；无需向任何人提供 Token。保存后回到此 PR，点击“重新检查”。读取不到完整检查结果时，软件不会合并。": "Keep the Contents and Pull requests write permissions used for publishing. Edit your existing token and grant it access to this repository; do not share the token with anyone. Save, return to this PR, and choose Recheck. The app will not merge until it can read the complete check results.",
+  "GitHub 拒绝读取合并检查；本次请求需要 %@。请在 fine-grained Token 中为当前仓库同时启用以下只读权限：": "GitHub denied access to merge checks; this request requires %@. Enable both of the following read-only permissions for this repository on your fine-grained token:",
+  "发布内容与创建 PR：Contents: Read and write；Pull requests: Read and write。": "Publishing content and creating PRs: Contents: Read and write; Pull requests: Read and write.",
+  "尚未完成合并检查。修复问题后可重新检查。": "Merge checks are incomplete. Resolve the issue, then check again.",
+  "建议使用 fine-grained personal access token，并将仓库访问范围限制为当前仓库。": "Use a fine-grained personal access token and limit its repository access to this repository.",
+  "打开 GitHub Token 设置": "Open GitHub Token Settings",
+  "无法读取合并检查": "Cannot Read Merge Checks",
+  "重新检查 PR 合并条件：Checks: Read-only；Commit statuses: Read-only。": "Checking PR merge conditions: Checks: Read-only; Commit statuses: Read-only."
+}

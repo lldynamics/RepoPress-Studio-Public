@@ -1,4 +1,3 @@
-import PublishingWorkbenchCore
 import XCTest
 
 @testable import PersonalSitePublisherMac

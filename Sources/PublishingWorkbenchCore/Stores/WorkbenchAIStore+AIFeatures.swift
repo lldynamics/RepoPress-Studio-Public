@@ -470,7 +470,10 @@ extension WorkbenchAIStore {
   }
 
   @discardableResult
-  public func generateAIImageTextSuggestions(draft: ArticleDraft) async
+  public func generateAIImageTextSuggestions(
+    draft: ArticleDraft,
+    targetAttachmentIDs: Set<UUID>? = nil
+  ) async
     -> [AIPublishingImageTextSuggestion]
   {
     guard store.canUseProtectedWorkbench else {
@@ -486,13 +489,23 @@ extension WorkbenchAIStore {
     let requestDraft = baseline.draft
     let profile = store.profile(for: requestDraft)
     let report = store.imageWorkbenchReport(for: requestDraft)
-    let targets = imageWorkbenchService.imageTextTargets(
+    let availableTargets = imageWorkbenchService.imageTextTargets(
       draft: requestDraft, profile: profile, report: report)
+    let targets =
+      targetAttachmentIDs.map { requestedIDs in
+        availableTargets.filter { requestedIDs.contains($0.attachmentID) }
+      } ?? availableTargets
     guard !targets.isEmpty else {
       aiActionMessage = "当前文章没有需要补全 alt/caption 的图片。"
       store.setImageActionMessage(aiActionMessage)
       return []
     }
+    let retainedSuggestions =
+      targetAttachmentIDs.map { requestedIDs in
+        aiImageTextSuggestions(for: draft.id).filter {
+          !requestedIDs.contains($0.attachmentID)
+        }
+      } ?? []
     do {
       let token = try aiChatAvailableAPIKey(for: profile)
       let generation = beginAIImageTextSuggestionOperation(for: draft.id)
@@ -570,11 +583,13 @@ extension WorkbenchAIStore {
         store.setImageActionMessage(aiActionMessage)
         return []
       }
-      guard installAIImageTextSuggestions(
-        suggestions,
-        for: draft.id,
-        generation: generation
-      ) else {
+      guard
+        installAIImageTextSuggestions(
+          retainedSuggestions + suggestions,
+          for: draft.id,
+          generation: generation
+        )
+      else {
         aiActionMessage = "文章的较新图片文案已生成，当前结果已丢弃。"
         store.setImageActionMessage(aiActionMessage)
         return []

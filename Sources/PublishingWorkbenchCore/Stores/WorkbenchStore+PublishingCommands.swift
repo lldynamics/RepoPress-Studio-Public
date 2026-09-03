@@ -67,6 +67,20 @@ extension WorkbenchStore {
     return await publishingStore.publishSelectedDraftOnlineUsingPreferredStrategy(store: self)
   }
 
+  @discardableResult
+  public func reviewRemoteArticlePublication(
+    for draft: ArticleDraft
+  ) async -> RemoteArticlePublicationReview? {
+    await publishingStore.reviewRemoteArticlePublication(for: draft, store: self)
+  }
+
+  @discardableResult
+  public func publishReviewedRemoteArticlePublication(
+    _ review: RemoteArticlePublicationReview
+  ) async -> RemoteRepositoryPublishResult? {
+    await publishingStore.publishReviewedRemoteArticlePublication(review, store: self)
+  }
+
   /// Pushes the selected article to its isolated `draft/<slug>` preview branch.
   /// This path never promotes the article to the formal published lifecycle.
   @discardableResult

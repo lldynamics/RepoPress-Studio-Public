@@ -16,13 +16,23 @@ ROOT = Path(__file__).resolve().parent.parent
 # These directories are reproducible outputs, not SwiftPM dependency caches or
 # captured performance evidence. Keep the allow-list exact so a new directory
 # is report-only until somebody deliberately classifies it.
-REBUILDABLE_DIRECTORIES = (
+SWIFTPM_REBUILDABLE_DIRECTORIES = (
     "coverage",
     "strict-concurrency",
     "swift-test-shards",
     "swift6-migration",
     "ui-smoke-derived-data",
 )
+
+REBUILDABLE_OUTPUTS = {
+    **{
+        name: Path(".build", name)
+        for name in SWIFTPM_REBUILDABLE_DIRECTORIES
+    },
+    "tauri-node-modules": Path("Apps/RepoPressDesktop/node_modules"),
+    "tauri-dist": Path("Apps/RepoPressDesktop/dist"),
+    "tauri-rust-target": Path("Apps/RepoPressDesktop/src-tauri/target"),
+}
 
 PRESERVED_DIRECTORIES = {
     "arm64-apple-macosx": "active SwiftPM products and intermediates",
@@ -54,38 +64,62 @@ def directory_size(path: Path) -> int:
     return total
 
 
-def checked_candidate(build_root: Path, name: str) -> Path:
-    if name not in REBUILDABLE_DIRECTORIES:
+def checked_candidate(root: Path, name: str) -> Path:
+    relative = REBUILDABLE_OUTPUTS.get(name)
+    if relative is None:
         raise CachePolicyError(f"refusing non-allow-listed build output: {name}")
-    candidate = build_root / name
-    if candidate.is_symlink():
-        raise CachePolicyError(f"refusing symlink build output: {candidate}")
+    candidate = root / relative
+    current = root
+    for component in relative.parts:
+        current = current / component
+        if current.is_symlink():
+            raise CachePolicyError(f"refusing symlink build output path: {current}")
     resolved = candidate.resolve(strict=False)
-    if resolved.parent != build_root:
-        raise CachePolicyError(f"refusing path outside the build root: {candidate}")
+    try:
+        resolved.relative_to(root)
+    except ValueError as error:
+        raise CachePolicyError(f"refusing path outside the repository root: {candidate}") from error
     return candidate
 
 
-def inventory(build_root: Path) -> list[dict[str, object]]:
-    if not build_root.exists():
-        return []
+def inventory(root: Path, build_root: Path) -> list[dict[str, object]]:
     rows: list[dict[str, object]] = []
-    for child in sorted(build_root.iterdir(), key=lambda item: item.name):
-        if not child.is_dir() or child.is_symlink():
+    if build_root.exists():
+        for child in sorted(build_root.iterdir(), key=lambda item: item.name):
+            if not child.is_dir() or child.is_symlink():
+                continue
+            if child.name in SWIFTPM_REBUILDABLE_DIRECTORIES:
+                policy = "explicitly-prunable"
+                note = "reproducible local output"
+            else:
+                policy = "preserve"
+                note = PRESERVED_DIRECTORIES.get(
+                    child.name, "unclassified; preserve by default"
+                )
+            rows.append(
+                {
+                    "name": child.name,
+                    "path": str(child),
+                    "bytes": directory_size(child),
+                    "policy": policy,
+                    "note": note,
+                }
+            )
+    for name in ("tauri-node-modules", "tauri-dist", "tauri-rust-target"):
+        candidate = root / REBUILDABLE_OUTPUTS[name]
+        if not candidate.exists() and not candidate.is_symlink():
             continue
-        if child.name in REBUILDABLE_DIRECTORIES:
-            policy = "explicitly-prunable"
-            note = "reproducible local output"
-        else:
-            policy = "preserve"
-            note = PRESERVED_DIRECTORIES.get(child.name, "unclassified; preserve by default")
         rows.append(
             {
-                "name": child.name,
-                "path": str(child),
-                "bytes": directory_size(child),
-                "policy": policy,
-                "note": note,
+                "name": name,
+                "path": str(candidate),
+                "bytes": 0 if candidate.is_symlink() else directory_size(candidate),
+                "policy": "preserve" if candidate.is_symlink() else "explicitly-prunable",
+                "note": (
+                    "symlink; removal is refused"
+                    if candidate.is_symlink()
+                    else "reproducible Tauri desktop output"
+                ),
             }
         )
     return rows
@@ -98,7 +132,7 @@ def main() -> int:
         "--remove",
         action="append",
         default=[],
-        choices=REBUILDABLE_DIRECTORIES,
+        choices=tuple(REBUILDABLE_OUTPUTS),
         metavar="NAME",
         help="select one exact rebuildable directory; repeat for more than one",
     )
@@ -123,18 +157,21 @@ def main() -> int:
         return 2
 
     try:
-        selected = [checked_candidate(build_root, name) for name in dict.fromkeys(args.remove)]
-        before = inventory(build_root)
+        selected = [
+            (name, checked_candidate(root, name))
+            for name in dict.fromkeys(args.remove)
+        ]
+        before = inventory(root, build_root)
         actions: list[dict[str, object]] = []
-        for candidate in selected:
-            candidate = checked_candidate(build_root, candidate.name)
+        for name, candidate in selected:
+            candidate = checked_candidate(root, name)
             existed = candidate.exists()
             size = directory_size(candidate) if existed else 0
             if args.apply and existed:
                 shutil.rmtree(candidate)
             actions.append(
                 {
-                    "name": candidate.name,
+                    "name": name,
                     "path": str(candidate),
                     "bytes": size,
                     "existed": existed,

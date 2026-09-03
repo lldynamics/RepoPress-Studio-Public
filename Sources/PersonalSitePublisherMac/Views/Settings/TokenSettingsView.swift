@@ -128,6 +128,15 @@ struct TokenSettingsView<RepositoryPermissionContent: View>: View {
 
   @ViewBuilder
   private var repositorySections: some View {
+    PublishingCredentialCapabilitySection(
+      presentation: .make(
+        profile: activeProfile,
+        repositoryTokenAvailability: repositoryTokenAvailability,
+        deploymentTokenAvailability: deploymentTokenAvailability,
+        readiness: readiness
+      )
+    )
+
     TokenConnectionStatusSummary(
       presentation: .repository(
         profile: activeProfile,
@@ -158,6 +167,7 @@ struct TokenSettingsView<RepositoryPermissionContent: View>: View {
 
     TokenRepositoryTokenSection(
       repositoryProvider: activeProfile.repositoryProvider,
+      repositoryBaseURL: activeProfile.repositoryBaseURL,
       repositoryTokenInput: $credentialDrafts.repository,
       shouldFocusInput: shouldFocusRepositoryToken,
       navigationRequestID: repositoryTokenFocusRequestID,
@@ -209,6 +219,8 @@ struct TokenSettingsView<RepositoryPermissionContent: View>: View {
     TokenDeploymentDefaultsSection(
       deploymentProviderBinding: deploymentProviderBinding,
       deploymentProviderDisplayName: activeDeploymentProvider.localizedDisplayName,
+      productionVerificationIssues: readiness.productionVerificationIssues,
+      needsExplicitProviderConfirmation: readiness.needsExplicitProviderConfirmation,
       deploymentSiteURL: optionalProfileStringBinding(\.deploymentSiteURL),
       deploymentSiteURLDisplayValue: activeProfile.deploymentSiteURL?.nilIfEmpty ?? "未填写",
       deploymentStatusEndpointURL: optionalProfileStringBinding(\.deploymentStatusEndpointURL),
@@ -241,15 +253,25 @@ struct TokenSettingsView<RepositoryPermissionContent: View>: View {
     .id(activeProfile.id)
 
     Section("验证与最近结果") {
+      if !readiness.productionVerificationIssues.isEmpty {
+        Label("生产部署尚未完整配置", systemImage: "exclamationmark.triangle")
+          .foregroundStyle(WorkbenchTheme.warning)
+
+        Text(readiness.productionVerificationIssues.joined(separator: "\n"))
+          .font(.caption)
+          .foregroundStyle(WorkbenchTheme.warning)
+          .accessibilityIdentifier("deployment-production-configuration-warning")
+      }
+
       Label(
-        readiness.statusTitle,
+        readiness.isAPIReady ? "部署状态校验已配置（未验证线上部署）" : readiness.statusTitle,
         systemImage: readiness.isAPIReady
           ? "checkmark.seal"
           : readiness.canCheckAnyStatus ? "exclamationmark.triangle" : "xmark.octagon"
       )
       .foregroundStyle(
         readiness.isAPIReady
-          ? WorkbenchTheme.success
+          ? .secondary
           : readiness.canCheckAnyStatus ? WorkbenchTheme.warning : WorkbenchTheme.risk
       )
 

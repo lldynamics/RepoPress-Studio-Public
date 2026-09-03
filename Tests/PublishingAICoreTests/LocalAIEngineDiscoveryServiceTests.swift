@@ -1,12 +1,14 @@
 import Foundation
+import PublishingAICore
+import PublishingCoreSupport
 import XCTest
-@testable import PublishingWorkbenchCore
 
 final class LocalAIEngineDiscoveryServiceTests: XCTestCase {
   func testDiscoversFixedLoopbackEnginesAndNormalizesModels() async throws {
     let transport = RecordingLocalAIEngineDiscoveryTransport(responses: [
       "http://127.0.0.1:11434/api/tags": StubLocalAIResponse(
-        body: #"{"models":[{"name":"zeta:latest"},{"name":" alpha "},{"name":"alpha"},{"model":"beta"}]}"#
+        body:
+          #"{"models":[{"name":"zeta:latest"},{"name":" alpha "},{"name":"alpha"},{"model":"beta"}]}"#
       ),
       "http://127.0.0.1:1234/v1/models": StubLocalAIResponse(
         body: #"{"data":[{"id":"model-b"},{"id":"model-a"},{"id":"model-b"}]}"#
@@ -50,11 +52,12 @@ final class LocalAIEngineDiscoveryServiceTests: XCTestCase {
     )
     XCTAssertTrue(requests.allSatisfy { $0.httpMethod == "GET" })
     XCTAssertTrue(requests.allSatisfy { $0.timeoutInterval == 1.5 })
-    XCTAssertTrue(requests.allSatisfy {
-      $0.value(forHTTPHeaderField: "Authorization") == nil
-        && $0.value(forHTTPHeaderField: "X-API-Key") == nil
-        && $0.value(forHTTPHeaderField: "Cookie") == nil
-    })
+    XCTAssertTrue(
+      requests.allSatisfy {
+        $0.value(forHTTPHeaderField: "Authorization") == nil
+          && $0.value(forHTTPHeaderField: "X-API-Key") == nil
+          && $0.value(forHTTPHeaderField: "Cookie") == nil
+      })
   }
 
   func testSuccessfulEmptyModelListStillMarksEngineAvailable() async {
@@ -69,9 +72,10 @@ final class LocalAIEngineDiscoveryServiceTests: XCTestCase {
 
     XCTAssertTrue(results.allSatisfy(\.isAvailable))
     XCTAssertTrue(results.allSatisfy { $0.models.isEmpty })
-    XCTAssertTrue(results.allSatisfy {
-      $0.message == CoreL10n.text("本地服务可用，但未返回模型。")
-    })
+    XCTAssertTrue(
+      results.allSatisfy {
+        $0.message == CoreL10n.text("本地服务可用，但未返回模型。")
+      })
   }
 
   func testRejectsNonLoopbackResponseURL() async {
@@ -88,9 +92,10 @@ final class LocalAIEngineDiscoveryServiceTests: XCTestCase {
 
     XCTAssertTrue(results.allSatisfy { !$0.isAvailable })
     XCTAssertTrue(results.allSatisfy { $0.models.isEmpty })
-    XCTAssertTrue(results.allSatisfy {
-      $0.message == CoreL10n.text("已阻止非本机探测响应。")
-    })
+    XCTAssertTrue(
+      results.allSatisfy {
+        $0.message == CoreL10n.text("已阻止非本机探测响应。")
+      })
   }
 
   func testRejectsOversizedInjectedResponse() async {
@@ -106,9 +111,10 @@ final class LocalAIEngineDiscoveryServiceTests: XCTestCase {
     let results = await LocalAIEngineDiscoveryService(transport: transport).discoverAll()
 
     XCTAssertTrue(results.allSatisfy { !$0.isAvailable })
-    XCTAssertTrue(results.allSatisfy {
-      $0.message == CoreL10n.text("本地服务响应超过安全上限。")
-    })
+    XCTAssertTrue(
+      results.allSatisfy {
+        $0.message == CoreL10n.text("本地服务响应超过安全上限。")
+      })
   }
 
   func testFailureMessagesDoNotExposeResponseBodyOrTransportError() async {
@@ -125,17 +131,19 @@ final class LocalAIEngineDiscoveryServiceTests: XCTestCase {
     ).discoverAll()
 
     XCTAssertTrue(statusResults.allSatisfy { !$0.message.contains(secret) })
-    XCTAssertTrue(statusResults.allSatisfy {
-      $0.message == CoreL10n.format("本地服务响应异常（HTTP %d）。", 500)
-    })
+    XCTAssertTrue(
+      statusResults.allSatisfy {
+        $0.message == CoreL10n.format("本地服务响应异常（HTTP %d）。", 500)
+      })
 
     let failureResults = await LocalAIEngineDiscoveryService(
       transport: FailingLocalAIEngineDiscoveryTransport(secret: secret)
     ).discoverAll()
     XCTAssertTrue(failureResults.allSatisfy { !$0.message.contains(secret) })
-    XCTAssertTrue(failureResults.allSatisfy {
-      $0.message == CoreL10n.text("未检测到本地服务。")
-    })
+    XCTAssertTrue(
+      failureResults.allSatisfy {
+        $0.message == CoreL10n.text("未检测到本地服务。")
+      })
   }
 }
 
@@ -173,7 +181,8 @@ private actor RecordingLocalAIEngineDiscoveryTransport: LocalAIEngineDiscoveryTr
   func data(for request: URLRequest) async throws -> (Data, URLResponse) {
     requests.append(request)
     guard let requestURL = request.url,
-          let stub = responses[requestURL.absoluteString] ?? fallback else {
+      let stub = responses[requestURL.absoluteString] ?? fallback
+    else {
       throw StubLocalAITransportError.missingResponse
     }
     let responseURL = stub.responseURL ?? requestURL

@@ -1,0 +1,7 @@
+{
+  "以下清单和正文差异直接读取自目标分支；本地工作区差异不会决定是否写入远端。": "The file list and body diff come directly from the target branch; local working-tree differences do not decide whether the remote is written.",
+  "查看发布记录": "View Release History",
+  "目标分支中不存在该文件，将作为新增文件发布。": "This file does not exist on the target branch and will be published as a new file.",
+  "远端已同步": "Remote is synchronized",
+  "远端已同步；确认不会创建重复写入。可前往同步中心检查部署或查看发布记录。": "Remote is synchronized; confirming will not create a duplicate write. Open Sync to check deployment or view release history."
+}

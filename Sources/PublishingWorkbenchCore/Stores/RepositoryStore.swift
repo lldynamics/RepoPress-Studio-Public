@@ -91,6 +91,9 @@ public final class RepositoryStore: ObservableObject {
   private var repositoryAutoSyncTask: Task<Bool, Never>?
   private var repositoryAutoSyncGeneration: UInt64 = 0
   private var repositoryAutoSyncBackgroundGenerationByProfileID: [UUID: UInt64] = [:]
+  /// Safe synchronization owns the worktree transaction. Scans are read-only,
+  /// but must not observe its transient collision-reconciliation state.
+  private var isRepositorySafeSyncOperationRunning = false
   private var remoteRepositoryCheckContext: RemoteRepositoryOperationContext?
   private var boundAutomationProfileID: UUID?
   #if DEBUG
@@ -210,10 +213,11 @@ public final class RepositoryStore: ObservableObject {
   }
 
   public func scanRepositoryAsync(store: WorkbenchStore) async {
+    guard !isRepositorySafeSyncOperationRunning else { return }
     await scanRepositoryAsync(store: store, autoSyncGeneration: nil)
   }
 
-  private func scanRepositoryAsync(
+  func scanRepositoryAsync(
     store: WorkbenchStore,
     autoSyncGeneration: UInt64?
   ) async {
@@ -457,6 +461,82 @@ public final class RepositoryStore: ObservableObject {
     repositoryAutoSyncTask = nil
   }
 
+  /// Acquires the paired worktree and publishing mutation locks used by the
+  /// safe fast-forward transaction. Kept beside the private lock state so
+  /// other store extensions cannot manipulate it independently.
+  func beginRepositorySafeSyncOperation(store: WorkbenchStore) -> LocalRepositoryOperationContext? {
+    guard !isRepositorySafeSyncOperationRunning,
+      !isRemoteRepositoryPublishing,
+      !isRemoteRepositoryChecking,
+      !isLocalRepositoryBranchOperationRunning,
+      !store.isLocalRepositoryMutationRunning
+    else {
+      store.setPublishActionMessage(
+        CoreL10n.text("已有仓库操作正在运行，请等待完成。"),
+        status: .warning
+      )
+      return nil
+    }
+
+    let profile = store.activeProfile
+    guard
+      let operation = store.publishingStore.beginLocalRepositoryMutation(profile: profile)
+    else {
+      store.setPublishActionMessage(
+        CoreL10n.text("已有本地仓库写入或提交任务正在运行，请等待完成。"),
+        status: .warning
+      )
+      return nil
+    }
+    isRepositorySafeSyncOperationRunning = true
+    isLocalRepositoryBranchOperationRunning = true
+    return operation
+  }
+
+  func finishRepositorySafeSyncOperation(
+    _ operation: LocalRepositoryOperationContext,
+    store: WorkbenchStore
+  ) {
+    guard isRepositorySafeSyncOperationRunning else { return }
+    store.publishingStore.finishLocalRepositoryMutation(operation)
+    isLocalRepositoryBranchOperationRunning = false
+    isRepositorySafeSyncOperationRunning = false
+  }
+
+  func repositorySafeSyncOperationIsCurrent(
+    _ operation: LocalRepositoryOperationContext,
+    store: WorkbenchStore
+  ) -> Bool {
+    isRepositorySafeSyncOperationRunning && operation.stillMatches(store.activeProfile)
+  }
+
+  /// Cancellation invalidates every repository-read result before the service
+  /// starts modifying the Git worktree. Awaiting foreground tasks closes the
+  /// scan/auto-sync race instead of merely requesting cancellation.
+  func cancelAndAwaitRepositoryBackgroundWorkForSafeSync(store: WorkbenchStore) async {
+    let scanTask = repositoryScanTask
+    let scanWorkTask = repositoryScanWorkTask
+    let autoSyncTask = repositoryAutoSyncTask
+    repositoryScanTask?.cancel()
+    repositoryScanWorkTask?.cancel()
+    repositoryAutoSyncTask?.cancel()
+    repositoryScanTask = nil
+    repositoryScanWorkTask = nil
+    repositoryAutoSyncTask = nil
+    repositoryScanGeneration &+= 1
+    repositoryScanWorkGeneration &+= 1
+    repositoryAutoSyncGeneration &+= 1
+    for profileID in store.profiles.map(\.id) {
+      repositoryAutoSyncBackgroundGenerationByProfileID[profileID, default: 0] &+= 1
+    }
+    if repositoryScanState.isScanning {
+      repositoryScanState = .cancelled()
+    }
+    await scanTask?.value
+    _ = await scanWorkTask?.value
+    _ = await autoSyncTask?.value
+  }
+
   private func beginBackgroundRepositoryAutoSyncRun(for profileID: UUID) -> UInt64 {
     repositoryAutoSyncBackgroundGenerationByProfileID[profileID, default: 0] &+= 1
     return repositoryAutoSyncBackgroundGenerationByProfileID[profileID] ?? 0
@@ -563,8 +643,8 @@ public final class RepositoryStore: ObservableObject {
       return profile
     }
     guard
-      (owner.isEmpty || owner == remote.owner.trimmedForPublishing),
-      (name.isEmpty || name == remote.name.trimmedForPublishing)
+      owner.isEmpty || owner == remote.owner.trimmedForPublishing,
+      name.isEmpty || name == remote.name.trimmedForPublishing
     else {
       // A partially entered target that disagrees with origin is ambiguous;
       // leave it untouched and let the remote service return its structured
@@ -870,7 +950,7 @@ public final class RepositoryStore: ObservableObject {
       }
     }.value
 
-    if case let .failure(error) = outcome {
+    if case .failure(let error) = outcome {
       throw error
     }
     guard operation.stillMatches(store.activeProfile) else {
@@ -961,7 +1041,11 @@ public final class RepositoryStore: ObservableObject {
     store: WorkbenchStore,
     now: Date = Date()
   ) async -> Bool {
-    guard repositoryAutoSyncTask == nil else {
+    guard !isRepositorySafeSyncOperationRunning,
+      !isLocalRepositoryBranchOperationRunning,
+      !store.isLocalRepositoryMutationRunning,
+      repositoryAutoSyncTask == nil
+    else {
       return false
     }
     let settings = repositoryAutoSyncSettings(for: profileID)
@@ -983,6 +1067,12 @@ public final class RepositoryStore: ObservableObject {
     store: WorkbenchStore,
     now: Date = Date()
   ) async -> Bool {
+    guard !isRepositorySafeSyncOperationRunning,
+      !isLocalRepositoryBranchOperationRunning,
+      !store.isLocalRepositoryMutationRunning
+    else {
+      return false
+    }
     guard profileID == store.activeProfileID else {
       return await runBackgroundRepositoryAutoSync(for: profileID, store: store, now: now)
     }
@@ -1173,7 +1263,7 @@ public final class RepositoryStore: ObservableObject {
     }
     return [
       scanMessage,
-      CoreL10n.text("该站点未处于前台，已跳过自动导入；切换到该站点后可手动处理。")
+      CoreL10n.text("该站点未处于前台，已跳过自动导入；切换到该站点后可手动处理。"),
     ].joined(separator: " ")
   }
 
@@ -1453,7 +1543,7 @@ public final class RepositoryStore: ObservableObject {
       store.publishingStore.removeDraftPublishPreviewSnapshots(forProfileID: profile.id)
       store.setPublishActionMessage(
         check.message,
-        status: check.canWrite ? .success : .warning
+        status: check.tokenWriteVerification == .verified ? .success : .warning
       )
       store.save()
       store.refreshPublishPreviewInBackground(for: store.selectedDraft)
@@ -1504,6 +1594,13 @@ public final class RepositoryStore: ObservableObject {
     }
 
     if let check = activeRemoteRepositoryAccessCheck(store: store) {
+      guard check.tokenWriteVerification != .insufficient else {
+        store.setPublishActionMessage(
+          CoreL10n.text("Token 的 API 写入权限不足，无法线上发布。"),
+          status: .failure
+        )
+        return false
+      }
       guard check.canWrite else {
         store.setPublishActionMessage(
           CoreL10n.text("Token 无写入权限，无法线上发布。"),
@@ -1520,7 +1617,9 @@ public final class RepositoryStore: ObservableObject {
       return false
     }
     guard check.canWrite,
-      activeRemoteRepositoryAccessCheck(store: store)?.canWrite == true
+      check.tokenWriteVerification != .insufficient,
+      activeRemoteRepositoryAccessCheck(store: store)?.canWrite == true,
+      activeRemoteRepositoryAccessCheck(store: store)?.tokenWriteVerification != .insufficient
     else {
       store.setPublishActionMessage(
         CoreL10n.text("Token 无写入权限，无法线上发布。"),
@@ -1678,7 +1777,10 @@ public final class RepositoryStore: ObservableObject {
     store: WorkbenchStore
   ) -> RemoteRepositoryOperationContext? {
     guard remoteRepositoryCheckContext == nil,
-      !store.isRemoteRepositoryPublishing
+      !store.isRemoteRepositoryPublishing,
+      !isRepositorySafeSyncOperationRunning,
+      !isLocalRepositoryBranchOperationRunning,
+      !store.isLocalRepositoryMutationRunning
     else { return nil }
     let operation = RemoteRepositoryOperationContext(profile: profile)
     remoteRepositoryCheckContext = operation

@@ -50,6 +50,10 @@ public final class SiteDraftFileStore: @unchecked Sendable {
       throw SiteDraftFileStoreError.generalDraftCannotBeWritten
     }
 
+    if let path = StructuralArticlePathPolicy.protectedPath(for: draft, profile: profile) {
+      throw StructuralArticlePathError.protectedPath(path)
+    }
+
     lock.lock()
     defer { lock.unlock() }
 

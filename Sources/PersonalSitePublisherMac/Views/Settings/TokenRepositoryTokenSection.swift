@@ -3,6 +3,7 @@ import SwiftUI
 
 struct TokenRepositoryTokenSection: View {
   let repositoryProvider: RepositoryProvider
+  let repositoryBaseURL: String
   let repositoryTokenInput: Binding<String>
   let shouldFocusInput: Bool
   let navigationRequestID: UUID
@@ -19,25 +20,32 @@ struct TokenRepositoryTokenSection: View {
   @State private var saveFeedbackResetTask: Task<Void, Never>?
 
   var body: some View {
-    Section("仓库凭据") {
+    Section("仓库 API 凭据") {
       if repositoryProvider == .github {
         DisclosureGroup(isExpanded: $showsPATGuide) {
-          VStack(alignment: .leading, spacing: 6) {
-            Text("创建 Token 时请注意勾选 repo (全权控制私有仓库) 与 workflow 权限。")
+          VStack(alignment: .leading, spacing: 8) {
+            Text("建议使用 fine-grained personal access token，并将仓库访问范围限制为当前仓库。")
               .font(.caption)
               .foregroundStyle(.secondary)
-
-            Button {
-              NSWorkspace.shared.open(
-                URL(
-                  string:
-                    "https://github.com/settings/tokens/new?scopes=repo,workflow&description=RepoPressMac"
-                )!)
-            } label: {
-              Label("前往 GitHub 打开 Token 创建页", systemImage: "arrow.up.right.square")
-                .font(.caption.weight(.medium))
+            Text("发布内容与创建 PR：Contents: Read and write；Pull requests: Read and write。")
+              .font(.caption)
+              .foregroundStyle(.secondary)
+            Text("重新检查 PR 合并条件：Checks: Read-only；Commit statuses: Read-only。")
+              .font(.caption)
+              .foregroundStyle(.secondary)
+            Text("Classic token 可使用 repo scope。只有修改 .github/workflows 中的工作流文件时才需要 workflow scope。")
+              .font(.caption)
+              .foregroundStyle(.secondary)
+            if PreviewPromotionPresentation.offersGitHubTokenSettingsLink(
+              provider: repositoryProvider,
+              repositoryBaseURL: repositoryBaseURL
+            ) {
+              Link(destination: URL(string: "https://github.com/settings/personal-access-tokens")!)
+              {
+                Label("打开 GitHub Token 设置", systemImage: "arrow.up.right.square")
+                  .font(.caption.weight(.medium))
+              }
             }
-            .buttonStyle(.borderless)
           }
           .padding(.vertical, 4)
         } label: {
@@ -49,14 +57,14 @@ struct TokenRepositoryTokenSection: View {
 
       HStack(spacing: 8) {
         if isTokenRevealed {
-          TextField(String(localized: "仓库平台访问令牌（GitHub / GitLab）"), text: repositoryTokenInput)
+          TextField(String(localized: "仓库 API 访问令牌（GitHub / GitLab）"), text: repositoryTokenInput)
             .focused($isRepositoryTokenFocused)
             .font(.body.monospaced())
-            .accessibilityLabel("仓库访问令牌")
+            .accessibilityLabel("仓库 API 访问令牌")
         } else {
-          SecureField(String(localized: "仓库平台访问令牌（GitHub / GitLab）"), text: repositoryTokenInput)
+          SecureField(String(localized: "仓库 API 访问令牌（GitHub / GitLab）"), text: repositoryTokenInput)
             .focused($isRepositoryTokenFocused)
-            .accessibilityLabel("仓库访问令牌")
+            .accessibilityLabel("仓库 API 访问令牌")
         }
 
         Button {
@@ -67,10 +75,17 @@ struct TokenRepositoryTokenSection: View {
         }
         .buttonStyle(.plain)
         .help(isTokenRevealed ? "隐藏令牌" : "显示令牌明文")
-        .accessibilityLabel(isTokenRevealed ? "隐藏仓库访问令牌" : "显示仓库访问令牌明文")
+        .accessibilityLabel(isTokenRevealed ? "隐藏仓库 API 访问令牌" : "显示仓库 API 访问令牌明文")
       }
-      .accessibilityLabel("仓库访问令牌")
-      .accessibilityHint("仅用于仓库创建、权限检查、提交、PR/MR 和回滚")
+      .accessibilityLabel("仓库 API 访问令牌")
+      .accessibilityHint(
+        "用于仓库创建、API 提交、PR/MR、权限检查和回滚；不会替代 origin 的 SSH key 或 HTTPS 凭据，也不会自动用于 SSH push")
+
+      Text(
+        "此令牌仅用于仓库 API（建仓、API 提交、PR/MR、权限检查与回滚）。Git push 使用 origin 的系统 SSH key 或 HTTPS 凭据；保存令牌不代表已有写入权限。"
+      )
+      .font(.caption)
+      .foregroundStyle(.secondary)
 
       HStack(alignment: .center, spacing: 10) {
         Button(String(localized: "保存令牌")) {
@@ -93,7 +108,7 @@ struct TokenRepositoryTokenSection: View {
         }
         .workbenchProminentActionStyle()
         .disabled(repositoryTokenInput.wrappedValue.trimmedForPublishing.isEmpty)
-        .accessibilityLabel("保存仓库访问令牌")
+        .accessibilityLabel("保存仓库 API 访问令牌")
 
         if isJustSaved {
           AccessibleStatusMessage(
@@ -125,14 +140,14 @@ struct TokenRepositoryTokenSection: View {
           onRefreshTokenState()
         }
         .buttonStyle(.borderless)
-        .accessibilityLabel("刷新访问令牌状态")
+        .accessibilityLabel("刷新仓库 API 访问令牌状态")
 
         Button("删除", role: .destructive) {
           isDeleteConfirmationPresented = true
         }
         .buttonStyle(.borderless)
         .disabled(!tokenAvailability.hasToken)
-        .accessibilityLabel("删除仓库访问令牌")
+        .accessibilityLabel("删除仓库 API 访问令牌")
       }
 
       if let accessFailureMessage = tokenAvailability.accessFailureMessage {
@@ -151,16 +166,18 @@ struct TokenRepositoryTokenSection: View {
       isRepositoryTokenFocused = true
     }
     .confirmationDialog(
-      "删除\(repositoryProvider.localizedDisplayName)仓库访问令牌？",
+      "删除\(repositoryProvider.localizedDisplayName)仓库 API 访问令牌？",
       isPresented: $isDeleteConfirmationPresented,
       titleVisibility: .visible
     ) {
-      Button("删除\(repositoryProvider.localizedDisplayName)仓库访问令牌", role: .destructive) {
+      Button("删除\(repositoryProvider.localizedDisplayName)仓库 API 访问令牌", role: .destructive) {
         onDeleteToken()
       }
       Button("取消", role: .cancel) {}
     } message: {
-      Text("删除后，\(repositoryProvider.localizedDisplayName) 的仓库创建、权限检查、线上发布与回滚将不可用，直到重新保存令牌。")
+      Text(
+        "删除后，\(repositoryProvider.localizedDisplayName) 的仓库创建、API 权限检查、API 提交、PR/MR 与回滚将不可用，直到重新保存令牌。Git push 的 SSH/HTTPS 系统凭据不受影响。"
+      )
     }
   }
 

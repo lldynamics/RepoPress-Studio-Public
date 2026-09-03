@@ -435,6 +435,21 @@
       "file": "Tests/PublishingWorkbenchCoreTests/RSSArticlePageClientTests.swift",
       "declaration": "Probe",
       "rationale": "The async download test probe protects every captured request field with one NSLock before observations cross task boundaries."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/Services/LocalPublishPreviewWriting.swift",
+      "declaration": "LocalPublishWriteCoordinator",
+      "rationale": "The singleton owns only an immutable NSRecursiveLock; every local publish and recovery entry point uses that same lock, and recursion is required because a locked write performs interrupted-transaction recovery before mutation."
+    },
+    {
+      "file": "Tests/PublishingWorkbenchCoreTests/StructuralArticleProtectionTests.swift",
+      "declaration": "ExternalEditDuringBackupFileManager",
+      "rationale": "This test-only FileManager subclass adds only an immutable target URL; the injected publish transaction invokes its override synchronously and the subclass exposes no mutable state across tasks."
+    },
+    {
+      "file": "Tests/PublishingWorkbenchCoreTests/StructuralArticleProtectionTests.swift",
+      "declaration": "ExternalEditAfterWriteFileManager",
+      "rationale": "This test-only FileManager subclass adds only an immutable URL array; the injected publish transaction invokes its override synchronously and the subclass exposes no mutable state across tasks."
     }
   ],
   "forcedOperations": [
@@ -769,6 +784,24 @@
       "category": "cacheBestEffort",
       "contains": "try? await store.saveFullTextRecordAsync(",
       "rationale": "Full-text records are an auxiliary SQLite cache: ready or preserved content is already held in memory, while failed records carry only retry diagnostics; if persistence fails, the UI retains the current article or error and a later request can safely re-fetch or revalidate it."
+    },
+    {
+      "file": "Sources/PublishingCoreSupport/PublishedArticleURLDiscovery.swift",
+      "category": "validationFallback",
+      "contains": "UntrustedXMLParserGuard.validate(",
+      "rationale": "A sitemap that fails bounded XML validation yields no article URL candidates; the discovery is read-only and never treats unvalidated input as publish attribution evidence."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/Services/RemoteRepositoryPublish/RemoteRepositoryPublishService+ProviderAccess.swift",
+      "category": "validationFallback",
+      "contains": "decoder.decode(GitLabCurrentTokenMetadata.self",
+      "rationale": "Malformed or unsupported GitLab token metadata is treated as unavailable, so the caller cannot claim or grant write permission from an unvalidated response."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/Services/RepositoryWorktreePublishService.swift",
+      "category": "probeFallback",
+      "contains": "try? output([\"rev-parse\", \"HEAD\"], root: root)",
+      "rationale": "These read-only HEAD probes preserve the best available commit identity for an already-failed publish; failure returns the explicit unknown sentinel and never authorizes a commit or push."
     }
   ],
   "optionalOperationRules": [

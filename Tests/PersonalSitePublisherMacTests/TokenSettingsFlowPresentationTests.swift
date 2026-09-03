@@ -1,5 +1,6 @@
 import PublishingWorkbenchCore
 import XCTest
+
 @testable import PersonalSitePublisherMac
 
 final class TokenSettingsFlowPresentationTests: XCTestCase {
@@ -38,7 +39,7 @@ final class TokenSettingsFlowPresentationTests: XCTestCase {
     )
 
     XCTAssertEqual(presentation.title, "仓库目标已填写")
-    XCTAssertEqual(presentation.tone, .success)
+    XCTAssertEqual(presentation.tone, .neutral)
     XCTAssertTrue(presentation.detail.contains("运行权限检查"))
     XCTAssertFalse(presentation.detail.contains("已验证"))
   }

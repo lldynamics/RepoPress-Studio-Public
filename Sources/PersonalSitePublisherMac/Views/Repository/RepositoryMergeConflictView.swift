@@ -174,6 +174,7 @@ private struct RepositoryMergeQuickChoiceBar: View {
 /// unmerged index. Only the final column is editable; no side is auto-applied.
 struct RepositoryMergeConflictView: View {
   let session: RepositoryMergeConflictSession
+  let branchGraphPresentation: RepositoryBranchGraphPresentation?
   let resolveAction: (String, String) async throws -> Void
 
   @State private var selectedPath: String?
@@ -189,9 +190,11 @@ struct RepositoryMergeConflictView: View {
 
   init(
     session: RepositoryMergeConflictSession,
+    branchGraphPresentation: RepositoryBranchGraphPresentation? = nil,
     resolveAction: @escaping (String, String) async throws -> Void
   ) {
     self.session = session
+    self.branchGraphPresentation = branchGraphPresentation
     self.resolveAction = resolveAction
     let firstPath = session.conflicts.first?.repositoryPath
     _selectedPath = State(initialValue: firstPath)
@@ -207,6 +210,15 @@ struct RepositoryMergeConflictView: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 12) {
       header
+
+      if let branchGraphPresentation {
+        RepositoryBranchGraphWidget(presentation: branchGraphPresentation)
+          .padding(10)
+          .background(
+            WorkbenchBackgroundStyle.control,
+            in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
+          )
+      }
 
       Text("先比较本地、远程和最终版本；只有点击“应用最终版本并暂存”后，才会写入工作区并执行 git add。")
         .font(.callout)

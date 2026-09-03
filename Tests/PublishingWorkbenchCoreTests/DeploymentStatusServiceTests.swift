@@ -804,6 +804,109 @@ final class DeploymentStatusServiceTests: XCTestCase {
       ])
   }
 
+  func testDeploymentArticleCheckPrefersResolvedZolaArticlePath() async throws {
+    let resolvedPath =
+      "/posts/2026/repopress-studioshi-yong-deepseekguan-fang-apijiao-cheng/"
+    let articleURL = "https://chengjinfang.com\(resolvedPath)"
+    let transport = SequencedDeploymentTransport(responses: [
+      deploymentResponse(statusCode: 200, json: #"{"ok":true,"message":"Site is live"}"#),
+      deploymentResponse(
+        statusCode: 200,
+        json: """
+          <html><head><link rel="canonical" href="\(articleURL)"></head>
+          <body>RepoPress Studio使用教程：购买并接入DeepSeek官方API</body></html>
+          """
+      ),
+    ])
+    let service = DeploymentStatusService(transport: transport)
+    var profile = SiteProfile.defaultProfile
+    profile.deploymentProvider = .custom
+    profile.deploymentSiteURL = "https://chengjinfang.com/"
+    let record = releaseRecord(
+      title: "线上 PR：RepoPress Studio",
+      summary: "custom",
+      siteProfileID: profile.id,
+      draftTitle: "RepoPress Studio使用教程：购买并接入DeepSeek官方API",
+      markdownPath: "content/posts/2026/RepoPress Studio使用DeepSeek官方API教程.md",
+      resolvedArticlePath: resolvedPath
+    )
+
+    let snapshot = await service.check(profile: profile, releaseRecord: record)
+
+    XCTAssertEqual(snapshot.level, .success)
+    XCTAssertEqual(
+      snapshot.signals.first { $0.title == CoreL10n.text("发布页面内容") }?.urlText,
+      articleURL
+    )
+    let requests = await transport.capturedRequests()
+    XCTAssertEqual(
+      requests.map { $0.url?.absoluteString },
+      [
+        "https://chengjinfang.com/",
+        articleURL,
+      ])
+  }
+
+  func testDeploymentStoreDiscoversAndPersistsZolaArticlePathFromFeed() async throws {
+    let expectedTitle = "RepoPress Studio使用教程：购买并接入DeepSeek官方API"
+    let resolvedPath =
+      "/posts/2026/repopress-studioshi-yong-deepseekguan-fang-apijiao-cheng/"
+    let articleURL = "https://chengjinfang.com\(resolvedPath)"
+    let atom = """
+      <?xml version="1.0" encoding="utf-8"?>
+      <feed xmlns="http://www.w3.org/2005/Atom">
+        <title>锦方的个人网页</title>
+        <link rel="alternate" href="https://chengjinfang.com/" />
+        <entry>
+          <title>\(expectedTitle)</title>
+          <link rel="alternate" type="text/html" href="\(articleURL)" />
+          <id>\(articleURL)</id>
+        </entry>
+      </feed>
+      """
+    let transport = SequencedDeploymentTransport(responses: [
+      deploymentResponse(statusCode: 200, json: #"{"ok":true,"message":"Site is live"}"#),
+      deploymentResponse(statusCode: 404, json: #"<html><body>Not Found</body></html>"#),
+      deploymentResponse(statusCode: 200, json: atom),
+      deploymentResponse(
+        statusCode: 200,
+        json: """
+          <html><head><link href=\(articleURL) rel=canonical><meta content=\(articleURL) property=og:url></head>
+          <body>\(expectedTitle)</body></html>
+          """
+      ),
+    ])
+    let store = try deploymentStore(transport: transport)
+    store.updateActiveProfile { profile in
+      profile.applyPublishingDefaults(for: .zola)
+      profile.deploymentProvider = .custom
+      profile.deploymentSiteURL = "https://chengjinfang.com/"
+    }
+    let record = releaseRecord(
+      title: "线上 PR：RepoPress Studio",
+      summary: "custom",
+      siteProfileID: store.activeProfileID,
+      draftTitle: expectedTitle,
+      markdownPath: "content/posts/2026/RepoPress Studio使用DeepSeek官方API教程.md"
+    )
+    store.setReleaseRecords([record])
+
+    let refreshed = await store.refreshDeploymentStatus(for: record)
+    let snapshot = try XCTUnwrap(refreshed)
+
+    XCTAssertEqual(snapshot.level, .success)
+    XCTAssertEqual(store.releaseRecords.first?.resolvedArticlePath, resolvedPath)
+    let requests = await transport.capturedRequests()
+    XCTAssertEqual(
+      requests.map { $0.url?.absoluteString },
+      [
+        "https://chengjinfang.com/",
+        "https://chengjinfang.com/2026/RepoPress%20Studio%E4%BD%BF%E7%94%A8DeepSeek%E5%AE%98%E6%96%B9API%E6%95%99%E7%A8%8B",
+        "https://chengjinfang.com/atom.xml",
+        articleURL,
+      ])
+  }
+
   func testNetlifyDeployAPIBuildsSuccessfulSnapshotWithoutCustomEndpoint() async throws {
     let transport = SequencedDeploymentTransport(responses: [
       deploymentResponse(
@@ -2529,7 +2632,8 @@ final class DeploymentStatusServiceTests: XCTestCase {
     draftTitle: String? = nil,
     draftSummary: String? = nil,
     draftCoverAltText: String? = nil,
-    markdownPath: String? = nil
+    markdownPath: String? = nil,
+    resolvedArticlePath: String? = nil
   ) -> ReleaseRecord {
     ReleaseRecord(
       kind: kind,
@@ -2540,6 +2644,7 @@ final class DeploymentStatusServiceTests: XCTestCase {
       draftSummary: draftSummary,
       draftCoverAltText: draftCoverAltText,
       markdownPath: markdownPath,
+      resolvedArticlePath: resolvedArticlePath,
       branchName: branchName,
       commitSHA: commitSHA
     )

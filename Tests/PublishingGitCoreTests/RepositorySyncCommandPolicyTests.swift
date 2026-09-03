@@ -112,7 +112,7 @@ private let repositorySyncPolicyCases: [RepositorySyncPolicyCase] = [
       "cd '/tmp/site'",
       "git fetch --prune",
       "git status --short --branch",
-      "git pull --ff-only",
+      "git pull --rebase --autostash",
     ]
   ),
   RepositorySyncPolicyCase(

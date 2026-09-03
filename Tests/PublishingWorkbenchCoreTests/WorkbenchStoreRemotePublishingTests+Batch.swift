@@ -80,7 +80,7 @@ final class WorkbenchStoreRemotePublishingBatchTests: WorkbenchStoreRemotePublis
     XCTAssertEqual(preview.changedPaths, ["content/posts/batch-review-conflict.md"])
     XCTAssertEqual(preview.remoteConflictPaths, ["content/posts/batch-review-conflict.md"])
     XCTAssertEqual(preview.remoteRiskState, .conflict)
-    XCTAssertEqual(preview.accessSummary, CoreL10n.text("内容可写，PR 权限待创建时验证"))
+    XCTAssertEqual(preview.accessSummary, CoreL10n.text("仓库角色可写，Token API 权限待验证"))
     XCTAssertEqual(preview.readiness, .ready)
     XCTAssertTrue(preview.canPublish)
     XCTAssertTrue(preview.warningIssues.contains { $0.title == "远端同路径变更" })
@@ -1065,7 +1065,8 @@ final class WorkbenchStoreRemotePublishingBatchTests: WorkbenchStoreRemotePublis
       title: "Reviewed Batch",
       slug: "reviewed-batch",
       draft: false,
-      bodyMarkdown: "The original article body is long enough to pass the content checks and enter the batch review."
+      bodyMarkdown:
+        "The original article body is long enough to pass the content checks and enter the batch review."
     )
     store.setDrafts([draft])
     store.setSelectedDraftID(draft.id)
@@ -1087,7 +1088,8 @@ final class WorkbenchStoreRemotePublishingBatchTests: WorkbenchStoreRemotePublis
 
     XCTAssertNil(result)
     XCTAssertEqual(requestCount, 0, "A stale review must be rejected before any network request")
-    XCTAssertEqual(Set(store.batchRemotePublishPreviewSnapshot?.changedPaths ?? []), Set(preview.changedPaths))
+    XCTAssertEqual(
+      Set(store.batchRemotePublishPreviewSnapshot?.changedPaths ?? []), Set(preview.changedPaths))
     XCTAssertTrue(store.publishActionMessage?.contains("待发布文章或内容已变化") == true)
   }
 

@@ -367,10 +367,16 @@ extension WorkbenchStore {
   }
 
   @discardableResult
-  public func generateAIImageTextSuggestions(draft: ArticleDraft) async
+  public func generateAIImageTextSuggestions(
+    draft: ArticleDraft,
+    targetAttachmentIDs: Set<UUID>? = nil
+  ) async
     -> [AIPublishingImageTextSuggestion]
   {
-    await aiStore.generateAIImageTextSuggestions(draft: draft)
+    await aiStore.generateAIImageTextSuggestions(
+      draft: draft,
+      targetAttachmentIDs: targetAttachmentIDs
+    )
   }
 
   public func applyAIImageTextSuggestion(_ suggestion: AIPublishingImageTextSuggestion) {

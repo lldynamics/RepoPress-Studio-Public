@@ -85,6 +85,7 @@ struct EditorCenterColumn: View {
     case .contentHealth:
       ContentHealthDetailView(
         store: store,
+        currentDraftID: selectedDraftID,
         filter: $contentHealthFilter,
         sidebarProjection: contentHealthSidebarProjection
       )

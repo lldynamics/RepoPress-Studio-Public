@@ -133,24 +133,18 @@ extension DeploymentStatusService {
     guard let releaseRecord,
       let markdownPath = releaseRecord.markdownPath?.trimmedForPublishing.nilIfEmpty,
       let articleURLText = articleURL(
-        siteURLText: siteURLText, markdownPath: markdownPath, siteKind: profile.siteKind),
+        siteURLText: siteURLText,
+        markdownPath: markdownPath,
+        profile: profile,
+        resolvedArticlePath: releaseRecord.resolvedArticlePath
+      ),
       let articleURL = URL(string: articleURLText)
     else {
       return []
     }
 
-    var request = URLRequest(url: articleURL)
-    request.httpMethod = "GET"
-    request.setValue(
-      "PersonalSitePublisherMac/DeploymentArticleCheck", forHTTPHeaderField: "User-Agent")
-
     do {
-      let (data, response) = try await transport.data(for: request)
-      try BoundedHTTPResponseLoader.validate(
-        data,
-        response: response,
-        maximumByteCount: URLSessionRemoteRepositoryHTTPTransport.maximumResponseByteCount
-      )
+      let (data, response) = try await articlePageResponse(url: articleURL)
       guard let httpResponse = response as? HTTPURLResponse else {
         return [
           DeploymentStatusSignal(
@@ -162,6 +156,21 @@ extension DeploymentStatusService {
         ]
       }
       guard (200..<400).contains(httpResponse.statusCode) else {
+        if httpResponse.statusCode == 404,
+          profile.siteKind == .zola,
+          let discoveredPage = await discoverPublishedArticlePage(
+            siteURLText: siteURLText,
+            markdownPath: markdownPath,
+            expectedTitle: releaseRecord.draftTitle,
+            excluding: articleURL
+          )
+        {
+          return verifiedArticlePageSignals(
+            body: discoveredPage.body,
+            articleURLText: discoveredPage.url.absoluteString,
+            releaseRecord: releaseRecord
+          )
+        }
         return [
           DeploymentStatusSignal(
             level: .failed,
@@ -174,46 +183,11 @@ extension DeploymentStatusService {
 
       let body =
         String(data: data, encoding: .utf8) ?? String(data: data, encoding: .isoLatin1) ?? ""
-      let seoSignal = articlePageSEOSignal(body: body, expectedURLText: articleURLText)
-      let socialSignal = articlePageSocialSignal(
+      return verifiedArticlePageSignals(
         body: body,
-        expectedTitle: releaseRecord.draftTitle,
-        expectedSummary: releaseRecord.draftSummary,
-        expectedImageAltText: releaseRecord.draftCoverAltText,
-        expectedURLText: articleURLText
+        articleURLText: articleURLText,
+        releaseRecord: releaseRecord
       )
-      guard let expectedTitle = releaseRecord.draftTitle?.trimmedForPublishing.nilIfEmpty else {
-        return [
-          DeploymentStatusSignal(
-            level: .success,
-            title: CoreL10n.text("发布页面内容"),
-            message: CoreL10n.text("文章页面可访问。"),
-            urlText: articleURLText
-          ),
-          seoSignal,
-        ] + [socialSignal].compactMap { $0 }
-      }
-
-      if body.localizedCaseInsensitiveContains(expectedTitle) {
-        return [
-          DeploymentStatusSignal(
-            level: .success,
-            title: CoreL10n.text("发布页面内容"),
-            message: CoreL10n.format("已在发布页面找到文章标题：%@", expectedTitle),
-            urlText: articleURLText
-          ),
-          seoSignal,
-        ] + [socialSignal].compactMap { $0 }
-      }
-      return [
-        DeploymentStatusSignal(
-          level: .failed,
-          title: CoreL10n.text("发布页面内容"),
-          message: CoreL10n.format("文章页面可访问，但没有找到文章标题：%@", expectedTitle),
-          urlText: articleURLText
-        ),
-        seoSignal,
-      ] + [socialSignal].compactMap { $0 }
     } catch {
       return [
         DeploymentStatusSignal(
@@ -223,6 +197,224 @@ extension DeploymentStatusService {
           urlText: articleURLText
         )
       ]
+    }
+  }
+
+  private func articlePageResponse(url: URL) async throws -> (Data, URLResponse) {
+    var request = URLRequest(url: url)
+    request.httpMethod = "GET"
+    request.setValue(
+      "PersonalSitePublisherMac/DeploymentArticleCheck",
+      forHTTPHeaderField: "User-Agent"
+    )
+    let (data, response) = try await transport.data(for: request)
+    try BoundedHTTPResponseLoader.validate(
+      data,
+      response: response,
+      maximumByteCount: URLSessionRemoteRepositoryHTTPTransport.maximumResponseByteCount
+    )
+    return (data, response)
+  }
+
+  private func verifiedArticlePageSignals(
+    body: String,
+    articleURLText: String,
+    releaseRecord: ReleaseRecord
+  ) -> [DeploymentStatusSignal] {
+    let seoSignal = articlePageSEOSignal(body: body, expectedURLText: articleURLText)
+    let socialSignal = articlePageSocialSignal(
+      body: body,
+      expectedTitle: releaseRecord.draftTitle,
+      expectedSummary: releaseRecord.draftSummary,
+      expectedImageAltText: releaseRecord.draftCoverAltText,
+      expectedURLText: articleURLText
+    )
+    guard let expectedTitle = releaseRecord.draftTitle?.trimmedForPublishing.nilIfEmpty else {
+      return [
+        DeploymentStatusSignal(
+          level: .success,
+          title: CoreL10n.text("发布页面内容"),
+          message: CoreL10n.text("文章页面可访问。"),
+          urlText: articleURLText
+        ),
+        seoSignal,
+      ] + [socialSignal].compactMap { $0 }
+    }
+
+    if body.localizedCaseInsensitiveContains(expectedTitle) {
+      return [
+        DeploymentStatusSignal(
+          level: .success,
+          title: CoreL10n.text("发布页面内容"),
+          message: CoreL10n.format("已在发布页面找到文章标题：%@", expectedTitle),
+          urlText: articleURLText
+        ),
+        seoSignal,
+      ] + [socialSignal].compactMap { $0 }
+    }
+    return [
+      DeploymentStatusSignal(
+        level: .failed,
+        title: CoreL10n.text("发布页面内容"),
+        message: CoreL10n.format("文章页面可访问，但没有找到文章标题：%@", expectedTitle),
+        urlText: articleURLText
+      ),
+      seoSignal,
+    ] + [socialSignal].compactMap { $0 }
+  }
+
+  private func discoverPublishedArticlePage(
+    siteURLText: String,
+    markdownPath: String,
+    expectedTitle: String?,
+    excluding failedURL: URL
+  ) async -> (url: URL, body: String)? {
+    guard let siteURL = URL(string: siteURLText),
+      let expectedTitle = expectedTitle?.trimmedForPublishing.nilIfEmpty
+    else {
+      return nil
+    }
+
+    for filename in ["atom.xml", "rss.xml"] {
+      guard let feedURL = siteResourceURL(baseURL: siteURL, filename: filename),
+        let pageURL = await articleURLFromFeed(
+          feedURL: feedURL,
+          siteURL: siteURL,
+          expectedTitle: expectedTitle
+        ),
+        pageURL != failedURL,
+        let page = await verifiedDiscoveredArticlePage(
+          url: pageURL,
+          expectedTitle: expectedTitle
+        )
+      else {
+        continue
+      }
+      return page
+    }
+
+    guard let sitemapURL = siteResourceURL(baseURL: siteURL, filename: "sitemap.xml") else {
+      return nil
+    }
+    do {
+      let (data, response) = try await articlePageResponse(url: sitemapURL)
+      guard let httpResponse = response as? HTTPURLResponse,
+        (200..<400).contains(httpResponse.statusCode)
+      else {
+        return nil
+      }
+      let candidates = PublishedArticleURLDiscovery().candidates(
+        baseURL: siteURL,
+        sitemap: data,
+        markdownPath: markdownPath,
+        expectedTitle: expectedTitle
+      )
+      for candidate in candidates where candidate != failedURL {
+        if let page = await verifiedDiscoveredArticlePage(
+          url: candidate,
+          expectedTitle: expectedTitle
+        ) {
+          return page
+        }
+      }
+    } catch {
+      return nil
+    }
+    return nil
+  }
+
+  private func articleURLFromFeed(
+    feedURL: URL,
+    siteURL: URL,
+    expectedTitle: String
+  ) async -> URL? {
+    do {
+      let (data, response) = try await articlePageResponse(url: feedURL)
+      guard let httpResponse = response as? HTTPURLResponse,
+        (200..<400).contains(httpResponse.statusCode)
+      else {
+        return nil
+      }
+      let feed = try RSSFeedParser.parse(data: data, feedURL: feedURL)
+      let matches = Set(
+        feed.articles.compactMap { article -> URL? in
+          guard article.title.trimmedForPublishing == expectedTitle,
+            let url = article.link,
+            sameOrigin(url, siteURL)
+          else {
+            return nil
+          }
+          return url
+        }
+      )
+      return matches.count == 1 ? matches.first : nil
+    } catch {
+      return nil
+    }
+  }
+
+  private func verifiedDiscoveredArticlePage(
+    url: URL,
+    expectedTitle: String
+  ) async -> (url: URL, body: String)? {
+    do {
+      let (data, response) = try await articlePageResponse(url: url)
+      guard let httpResponse = response as? HTTPURLResponse,
+        (200..<400).contains(httpResponse.statusCode),
+        let finalURL = httpResponse.url,
+        sameOrigin(finalURL, url)
+      else {
+        return nil
+      }
+      let body =
+        String(data: data, encoding: .utf8)
+        ?? String(data: data, encoding: .isoLatin1)
+        ?? ""
+      guard body.localizedCaseInsensitiveContains(expectedTitle),
+        articlePageSEOSignal(
+          body: body,
+          expectedURLText: finalURL.absoluteString
+        ).level == .success
+      else {
+        return nil
+      }
+      return (finalURL, body)
+    } catch {
+      return nil
+    }
+  }
+
+  private func siteResourceURL(baseURL: URL, filename: String) -> URL? {
+    guard var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false),
+      let scheme = components.scheme?.lowercased(),
+      scheme == "https" || scheme == "http",
+      components.host?.nilIfEmpty != nil
+    else {
+      return nil
+    }
+    let basePath = components.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+    components.path = "/" + [basePath, filename].filter { !$0.isEmpty }.joined(separator: "/")
+    components.query = nil
+    components.fragment = nil
+    return components.url
+  }
+
+  private func sameOrigin(_ lhs: URL, _ rhs: URL) -> Bool {
+    let lhsScheme = lhs.scheme?.lowercased()
+    let rhsScheme = rhs.scheme?.lowercased()
+    return lhsScheme == rhsScheme
+      && lhs.host?.lowercased() == rhs.host?.lowercased()
+      && effectivePort(lhs) == effectivePort(rhs)
+      && lhs.user == nil
+      && lhs.password == nil
+  }
+
+  private func effectivePort(_ url: URL) -> Int? {
+    if let port = url.port { return port }
+    switch url.scheme?.lowercased() {
+    case "http": return 80
+    case "https": return 443
+    default: return nil
     }
   }
 
@@ -510,17 +702,28 @@ extension DeploymentStatusService {
 
   func htmlAttributeValue(named name: String, in tag: String) -> String? {
     let escapedName = NSRegularExpression.escapedPattern(for: name)
-    let pattern = #"\b"# + escapedName + #"\s*=\s*(['"])(.*?)\1"#
+    // HTML5 permits attribute values without quotes when they contain no
+    // whitespace or any of the characters that terminate an unquoted value.
+    // Keep the match bounded to the current tag and retain the quoted form
+    // for existing pages that use the more common spelling.
+    let pattern = #"\b"# + escapedName + #"\s*=\s*(?:(['"])(.*?)\1|([^\s"'`=<>]+))"#
     guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else {
       return nil
     }
     let source = tag as NSString
     guard let match = regex.firstMatch(in: tag, range: NSRange(location: 0, length: source.length)),
-      match.numberOfRanges >= 3
+      match.numberOfRanges >= 4
     else {
       return nil
     }
-    return source.substring(with: match.range(at: 2))
+    let valueRange =
+      match.range(at: 2).location == NSNotFound
+      ? match.range(at: 3)
+      : match.range(at: 2)
+    guard valueRange.location != NSNotFound else {
+      return nil
+    }
+    return source.substring(with: valueRange)
       .replacingOccurrences(of: "&amp;", with: "&")
       .replacingOccurrences(of: "&quot;", with: "\"")
       .replacingOccurrences(of: "&#39;", with: "'")

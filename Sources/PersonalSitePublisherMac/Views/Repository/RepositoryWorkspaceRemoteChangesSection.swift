@@ -34,8 +34,12 @@ extension RepositoryWorkspaceView {
         if summary.totalCount > 0 {
           LazyVGrid(columns: repositoryMetricGridColumns, spacing: 8) {
             MetricTile(title: "文章", value: "\(summary.articleCount)", systemImage: "doc.text")
+            MetricTile(
+              title: "栏目结构页", value: "\(summary.structuralCount)",
+              systemImage: "folder.badge.gearshape")
             MetricTile(title: "图片", value: "\(summary.imageCount)", systemImage: "photo")
-            MetricTile(title: "配置", value: "\(summary.configurationCount)", systemImage: "gearshape")
+            MetricTile(
+              title: "配置", value: "\(summary.configurationCount)", systemImage: "gearshape")
             MetricTile(title: "其他", value: "\(summary.otherCount)", systemImage: "ellipsis")
           }
         }
@@ -47,18 +51,18 @@ extension RepositoryWorkspaceView {
           Text("当前 upstream 没有待拉取的文件变化。")
             .foregroundStyle(.secondary)
         } else {
-          ForEach(RepositoryChangedFileRole.allCases, id: \.self) { role in
-            let files = report.remoteChangedFilesForRole(
-              role: role,
-              contentRoot: store.activeProfile.contentRoot,
-              assetRoot: store.activeProfile.assetRoot
-            )
+          ForEach(RepositoryDisplayChangeRole.allCases, id: \.self) { role in
+            let files = summary.files(for: role)
 
             if !files.isEmpty {
               VStack(alignment: .leading, spacing: 8) {
-                Text("远端\(role.localizedDisplayName)变更")
+                Text(role.localizedTitle)
                   .font(.caption.weight(.semibold))
                   .foregroundStyle(.secondary)
+
+                if role == .structure {
+                  structuralChangesExplanation(isRemote: true)
+                }
 
                 ForEach(files, id: \.id) { (file: RepositoryChangedFile) in
                   RepositoryChangedFileDisclosureRow(
@@ -98,7 +102,10 @@ extension RepositoryWorkspaceView {
         }
       }
       .padding(14)
-      .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
+      .background(
+        WorkbenchBackgroundStyle.card,
+        in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
+      )
       .accessibilityElement(children: .contain)
       .accessibilityIdentifier("repository-section-remote-changes")
     }
@@ -170,6 +177,9 @@ extension RepositoryWorkspaceView {
         .frame(width: 58, alignment: .leading)
         .foregroundStyle(.secondary)
       WorkbenchPathIdentity(path: file.displayPath)
+      if RepositoryStructuralChangePresentation.isStructural(file, profile: store.activeProfile) {
+        structuralFileBadge
+      }
     }
     .frame(maxWidth: .infinity, alignment: .leading)
     .accessibilityElement(children: .contain)
@@ -178,7 +188,7 @@ extension RepositoryWorkspaceView {
 
   private func remoteChangedFileActions(
     _ file: RepositoryChangedFile,
-    role: RepositoryChangedFileRole
+    role: RepositoryDisplayChangeRole
   ) -> some View {
     HStack(spacing: 8) {
       if role == .article, file.kind != .deleted {
@@ -192,7 +202,8 @@ extension RepositoryWorkspaceView {
         .help("导入远端文章草稿")
         .accessibilityLabel("导入远端文章草稿")
         .accessibilityValue(file.displayPath)
-        .accessibilityIdentifier("repository-remote-file-\(file.accessibilityIdentifierToken)-import")
+        .accessibilityIdentifier(
+          "repository-remote-file-\(file.accessibilityIdentifierToken)-import")
       }
 
       Button {
@@ -205,32 +216,31 @@ extension RepositoryWorkspaceView {
       .help("复制远端路径")
       .accessibilityLabel("复制远端路径")
       .accessibilityValue(file.displayPath)
-      .accessibilityIdentifier("repository-remote-file-\(file.accessibilityIdentifierToken)-copy-path")
+      .accessibilityIdentifier(
+        "repository-remote-file-\(file.accessibilityIdentifierToken)-copy-path")
 
       Text(file.status)
         .font(.caption.monospaced())
         .foregroundStyle(.secondary)
         .accessibilityLabel("远端文件状态")
         .accessibilityValue(file.status)
-        .accessibilityIdentifier("repository-remote-file-\(file.accessibilityIdentifierToken)-status")
+        .accessibilityIdentifier(
+          "repository-remote-file-\(file.accessibilityIdentifierToken)-status")
     }
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("repository-remote-file-\(file.accessibilityIdentifierToken)-actions")
   }
 
-  private func remoteRepositoryChangeSummary(for report: RepositoryScanReport) -> RepositoryChangeSummary {
-    report.remoteChangeSummary(
-      contentRoot: store.activeProfile.contentRoot,
-      assetRoot: store.activeProfile.assetRoot
-    )
+  private func remoteRepositoryChangeSummary(for report: RepositoryScanReport)
+    -> RepositoryStructuralChangePresentation
+  {
+    RepositoryStructuralChangePresentation(
+      report: report, profile: store.activeProfile, isRemote: true)
   }
 
-  private func importableRemoteChangedArticleFiles(for report: RepositoryScanReport) -> [RepositoryChangedFile] {
-    report.remoteChangedFilesForRole(
-      role: .article,
-      contentRoot: store.activeProfile.contentRoot,
-      assetRoot: store.activeProfile.assetRoot
-    )
-    .filter { $0.kind != .deleted }
+  private func importableRemoteChangedArticleFiles(for report: RepositoryScanReport)
+    -> [RepositoryChangedFile]
+  {
+    remoteRepositoryChangeSummary(for: report).importableArticles
   }
 }

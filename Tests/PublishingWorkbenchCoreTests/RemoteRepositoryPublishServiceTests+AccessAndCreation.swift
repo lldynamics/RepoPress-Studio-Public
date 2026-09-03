@@ -33,6 +33,7 @@ final class RemoteRepositoryPublishServiceAccessAndCreationTests:
     XCTAssertEqual(check.publishStrategy, .reviewRequest)
     XCTAssertTrue(check.canRead)
     XCTAssertTrue(check.canWrite)
+    XCTAssertEqual(check.tokenWriteVerification, .unverified)
     XCTAssertEqual(
       check.permissionSummary,
       CoreL10n.format(
@@ -49,7 +50,14 @@ final class RemoteRepositoryPublishServiceAccessAndCreationTests:
     )
     XCTAssertTrue(check.minimumWritePermission.contains("Contents: Read and write"))
     XCTAssertTrue(check.minimumWritePermission.contains("Pull requests: Read and write"))
-    XCTAssertTrue(check.message.contains("PR 创建权限需在实际创建时验证"))
+    XCTAssertTrue(check.minimumWritePermission.contains("Checks: Read-only"))
+    XCTAssertTrue(check.minimumWritePermission.contains("Commit statuses: Read-only"))
+    XCTAssertTrue(check.message.contains("API"))
+    XCTAssertFalse(check.message.contains("已确认内容写入能力"))
+    let requests = await transport.capturedRequests()
+    XCTAssertEqual(requests.count, 1)
+    XCTAssertEqual(requests.first?.httpMethod, "GET")
+    XCTAssertEqual(requests.first?.url?.path, "/repos/owner/site")
   }
 
   func testAccessCheckReportsNormalizedGitLabAPIBaseURL() async throws {
@@ -57,7 +65,11 @@ final class RemoteRepositoryPublishServiceAccessAndCreationTests:
       response(
         json:
           #"{"path_with_namespace":"group/site","default_branch":"main","permissions":{"project_access":{"access_level":30}}}"#
-      )
+      ),
+      response(
+        json:
+          #"{"scopes":["api","read_user"],"active":true,"revoked":false,"expires_at":"2099-01-01"}"#
+      ),
     ])
     let service = RemoteRepositoryPublishService(transport: transport)
     var profile = SiteProfile.defaultProfile
@@ -76,6 +88,7 @@ final class RemoteRepositoryPublishServiceAccessAndCreationTests:
     XCTAssertEqual(check.publishStrategy, .reviewRequest)
     XCTAssertTrue(check.canRead)
     XCTAssertTrue(check.canWrite)
+    XCTAssertEqual(check.tokenWriteVerification, .verified)
     XCTAssertEqual(
       check.permissionSummary,
       CoreL10n.format(
@@ -88,8 +101,93 @@ final class RemoteRepositoryPublishServiceAccessAndCreationTests:
         "Developer"
       )
     )
-    XCTAssertNil(check.tokenScopeSummary)
+    XCTAssertTrue(check.tokenScopeSummary?.contains("api") == true)
     XCTAssertTrue(check.minimumWritePermission.contains("Developer(30)"))
+    XCTAssertTrue(check.minimumWritePermission.contains("write_repository"))
+    let requests = await transport.capturedRequests()
+    XCTAssertEqual(
+      requests.map { percentEncodedPath($0.url) },
+      [
+        "/api/v4/projects/group%2Fsite",
+        "/api/v4/personal_access_tokens/self",
+      ])
+  }
+
+  func testGitLabWriteRepositoryScopeDoesNotClaimRESTAPIWritePermission() async throws {
+    let transport = SequencedRemoteRepositoryTransport(responses: [
+      response(
+        json:
+          #"{"path_with_namespace":"group/site","default_branch":"main","permissions":{"project_access":{"access_level":30}}}"#
+      ),
+      response(
+        json:
+          #"{"scopes":["write_repository"],"active":true,"revoked":false,"expires_at":"2099-01-01"}"#
+      ),
+    ])
+    let service = RemoteRepositoryPublishService(transport: transport)
+    var profile = SiteProfile.defaultProfile
+    profile.repositoryProvider = .gitlab
+    profile.repositoryBaseURL = "https://gitlab.com"
+    profile.repoOwner = "group"
+    profile.repoName = "site"
+
+    let check = try await service.checkAccess(profile: profile, token: "token")
+
+    XCTAssertTrue(check.canRead)
+    XCTAssertFalse(check.canWrite)
+    XCTAssertEqual(check.tokenWriteVerification, .insufficient)
+    XCTAssertTrue(check.tokenScopeSummary?.contains("write_repository") == true)
+    XCTAssertTrue(check.message.contains("Git-over-HTTP"))
+    XCTAssertTrue(check.message.contains("REST API"))
+  }
+
+  func testGitLabUnsupportedTokenSelfEndpointKeepsRoleButMarksScopeUnverified() async throws {
+    let transport = SequencedRemoteRepositoryTransport(responses: [
+      response(
+        json:
+          #"{"path_with_namespace":"group/site","default_branch":"main","permissions":{"group_access":{"access_level":40}}}"#
+      ),
+      response(statusCode: 404, json: #"{"message":"404 Not Found"}"#),
+    ])
+    let service = RemoteRepositoryPublishService(transport: transport)
+    var profile = SiteProfile.defaultProfile
+    profile.repositoryProvider = .gitlab
+    profile.repositoryBaseURL = "https://gitlab.com"
+    profile.repoOwner = "group"
+    profile.repoName = "site"
+
+    let check = try await service.checkAccess(profile: profile, token: "project-token")
+
+    XCTAssertTrue(check.canRead)
+    XCTAssertTrue(check.canWrite)
+    XCTAssertEqual(check.tokenWriteVerification, .unverified)
+    XCTAssertTrue(check.message.contains("未能验证"))
+    XCTAssertFalse(check.message.contains("已验证 Token"))
+  }
+
+  func testGitLabInactiveAPITokenIsInsufficientDespiteDeveloperRole() async throws {
+    let transport = SequencedRemoteRepositoryTransport(responses: [
+      response(
+        json:
+          #"{"path_with_namespace":"group/site","default_branch":"main","permissions":{"project_access":{"access_level":30}}}"#
+      ),
+      response(
+        json:
+          #"{"scopes":["api"],"active":false,"revoked":true,"expires_at":"2099-01-01"}"#
+      ),
+    ])
+    let service = RemoteRepositoryPublishService(transport: transport)
+    var profile = SiteProfile.defaultProfile
+    profile.repositoryProvider = .gitlab
+    profile.repositoryBaseURL = "https://gitlab.com"
+    profile.repoOwner = "group"
+    profile.repoName = "site"
+
+    let check = try await service.checkAccess(profile: profile, token: "inactive-token")
+
+    XCTAssertFalse(check.canWrite)
+    XCTAssertEqual(check.tokenWriteVerification, .insufficient)
+    XCTAssertTrue(check.message.contains("失效"))
   }
 
   func testAccessCheckRejectsHTTPBaseURLBeforeSendingGitHubToken() async {
@@ -187,6 +285,7 @@ final class RemoteRepositoryPublishServiceAccessAndCreationTests:
     XCTAssertEqual(check.permissionSummary, CoreL10n.text("未确认写入权限。"))
     XCTAssertEqual(check.minimumWritePermission, CoreL10n.text("需要仓库写入权限。"))
     XCTAssertNil(check.tokenScopeSummary)
+    XCTAssertEqual(check.tokenWriteVerification, .unverified)
     XCTAssertNil(check.checkedAt)
     XCTAssertFalse(check.isFresh())
   }

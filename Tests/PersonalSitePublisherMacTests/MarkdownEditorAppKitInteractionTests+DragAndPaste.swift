@@ -1,5 +1,6 @@
 import AppKit
-import PublishingWorkbenchCore
+import PublishingCoreSupport
+import PublishingKnowledgeCore
 import SwiftUI
 import XCTest
 

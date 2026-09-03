@@ -776,6 +776,7 @@ require_literal \
   "publish drawer must support Escape"
 
 for publish_drawer_disclosure_file in \
+  "Sources/PersonalSitePublisherMac/Views/Publishing/PublishDrawerView.swift" \
   "Sources/PersonalSitePublisherMac/Views/Publishing/PublishDrawerComponents.swift" \
   "Sources/PersonalSitePublisherMac/Views/Publishing/PublishDrawerPresentationComponents.swift"; do
   require_literal \
@@ -799,10 +800,11 @@ for publish_drawer_identifier in \
   publish-drawer-action-publish-current \
   publish-drawer-review-disclosure \
   publish-drawer-diff; do
-  require_literal \
-    "Sources/PersonalSitePublisherMac/Views/Publishing/PublishDrawerView.swift" \
+  require_literal_any_file \
     "\"$publish_drawer_identifier\"" \
-    "publish drawer must expose $publish_drawer_identifier"
+    "publish drawer must expose $publish_drawer_identifier" \
+    "Sources/PersonalSitePublisherMac/Views/Publishing/PublishDrawerView.swift" \
+    "Sources/PersonalSitePublisherMac/Views/Publishing/PublishJourneyView.swift"
 done
 
 require_literal \
@@ -813,6 +815,7 @@ require_literal \
 require_literal_any_file \
   ".keyboardShortcut(.defaultAction)" \
   "publish drawer must expose a visible Return action through its composed controls" \
+  "Sources/PersonalSitePublisherMac/Views/Publishing/PublishJourneyView.swift" \
   "Sources/PersonalSitePublisherMac/Views/Publishing/PublishDrawerPresentationComponents.swift" \
   "Sources/PersonalSitePublisherMac/Views/Publishing/PublishDrawerComponents.swift"
 

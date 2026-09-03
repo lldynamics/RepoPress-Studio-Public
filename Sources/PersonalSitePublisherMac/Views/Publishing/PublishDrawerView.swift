@@ -32,11 +32,16 @@ final class PublishDrawerOperationController: ObservableObject {
 struct PublishDrawerView: View {
   @ObservedObject var publishingFacade: WorkbenchPublishingFeatureFacade
   @ObservedObject private var drawerObservation: WorkbenchPublishDrawerObservationFacade
+  @Environment(\.openSettings) private var openNativeSettings
+  @Environment(\.settingsWorkspaceCommandAction) private var settingsWorkspaceCommandAction
   // 部分属性尚未迁移到 Facade，保留 store 访问，但去除 @ObservedObject 以避免全局不相关事件触发重绘
   let store: WorkbenchStore
+  let onOpenReleaseHistory: () -> Void
   @Binding var isPresented: Bool
+  @State private var pendingWorktreeReview: RepositoryWorktreePublishConfirmation?
   @State private var pendingBatchReview: BatchPublishReviewSnapshot?
-  @State private var pendingSingleOnlinePublishDraft: ArticleDraft?
+  @State private var pendingSingleOnlinePublishReview: RemoteArticlePublicationReview?
+  @State private var isOtherPublishActionsExpanded = false
   @State private var isAdvancedFlowExpanded = false
   @State private var isRemoteConflictResolverPresented = false
   @StateObject private var operationController = PublishDrawerOperationController()
@@ -44,11 +49,13 @@ struct PublishDrawerView: View {
   init(
     publishingFacade: WorkbenchPublishingFeatureFacade,
     store: WorkbenchStore,
-    isPresented: Binding<Bool>
+    isPresented: Binding<Bool>,
+    onOpenReleaseHistory: @escaping () -> Void = {}
   ) {
     self.publishingFacade = publishingFacade
     _drawerObservation = ObservedObject(wrappedValue: store.publishDrawerObservation)
     self.store = store
+    self.onOpenReleaseHistory = onOpenReleaseHistory
     _isPresented = isPresented
   }
 
@@ -73,8 +80,21 @@ struct PublishDrawerView: View {
           }
         }
       }
-      .sheet(item: $pendingSingleOnlinePublishDraft) { draft in
-        singleArticleOnlinePublishConfirmation(draft: draft)
+      .sheet(item: $pendingSingleOnlinePublishReview) { review in
+        singleArticleOnlinePublishConfirmation(review: review)
+      }
+      .sheet(item: $pendingWorktreeReview) { confirmation in
+        RepositoryWorktreePublishConfirmationView(
+          confirmation: confirmation,
+          isPublishing: store.isRemoteRepositoryPublishing,
+          cancelAction: { pendingWorktreeReview = nil },
+          confirmAction: {
+            pendingWorktreeReview = nil
+            operationController.start {
+              await publishRepositoryWorktree(confirmation)
+            }
+          }
+        )
       }
       .sheet(item: $pendingBatchReview) { review in
         RemotePublishConfirmationView(
@@ -108,6 +128,16 @@ struct PublishDrawerView: View {
           isRemoteConflictResolverPresented = true
         }
       }
+      .onChange(of: store.canUseProtectedWorkbench) { _, allowed in
+        if !allowed { dismissDrawer() }
+      }
+      .onChange(of: store.activeProfileID) { _, _ in dismissDrawer() }
+      .onChange(of: store.selectedDraftID) { _, _ in
+        operationController.cancel()
+        pendingWorktreeReview = nil
+        pendingSingleOnlinePublishReview = nil
+        pendingBatchReview = nil
+      }
       .onDisappear {
         operationController.cancel()
       }
@@ -122,14 +152,15 @@ struct PublishDrawerView: View {
         Divider()
         ScrollView {
           VStack(alignment: .leading, spacing: 14) {
+            publishPrimaryActions(draft: draft, issues: issues)
             unifiedPublishSummary
             publishDecisionSummary(draft: draft, issues: issues)
-            publishPrimaryActions(draft: draft, issues: issues)
             postPublishAnalytics(draft: draft)
             advancedPublishOptions(draft: draft)
           }
           .padding(16)
         }
+        .accessibilityIdentifier("publish-drawer-scroll")
         Divider()
         drawerFooter
       }
@@ -224,8 +255,13 @@ struct PublishDrawerView: View {
       pendingDeletionCount: store.pendingRemoteRepositoryCleanupRequests.count
     )
 
-    return PublishDrawerCard(title: "本次发布清单", systemImage: "list.clipboard") {
+    return PublishDrawerCard(title: "应用管理的文章清单", systemImage: "list.clipboard") {
       VStack(alignment: .leading, spacing: 9) {
+        Text("这是单篇与仅文章批次的辅助摘要；默认的全文件发布以 Git 工作区确认页为准。")
+          .font(.caption)
+          .foregroundStyle(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
+
         Label(
           String(
             format: String(localized: "%d 篇变更文章（含 %d 篇新建）"),
@@ -280,111 +316,265 @@ struct PublishDrawerView: View {
     .accessibilityIdentifier("publish-drawer-unified-summary")
   }
 
+  @ViewBuilder
   private func publishPrimaryActions(
     draft: ArticleDraft,
     issues: [PreflightIssue]
   ) -> some View {
     let blockingCount = issues.filter { $0.severity == .error }.count
     let localReadiness = store.localPublishReadiness
-    let singleArticlePreview = store.cachedRemotePublishPreview(for: draft)
     let previewBranchPreview = store.remoteRepositoryDraftPreview(for: draft)
     let canSaveLocally =
       blockingCount == 0
       && localReadiness?.canWrite == true
       && !store.isLocalRepositoryMutationRunning
       && !operationController.isRunning
-    let canPublishCurrentArticle =
-      singleArticlePreview.map(canStartRemotePublish) == true
-      && !store.isRemoteRepositoryChecking
-      && !store.isRemoteRepositoryPublishing
-      && !operationController.isRunning
     let canPushPreviewBranch =
       canStartRemotePublish(previewBranchPreview)
       && !store.isRemoteRepositoryChecking
       && !store.isRemoteRepositoryPublishing
       && !operationController.isRunning
-    let singleArticleAction = PublishDrawerSingleArticleActionPresentation.make(
-      isWebsiteDraft: draft.draft
-    )
     let previewBranchAction = PublishDrawerPreviewBranchActionPresentation.make(
       branchName: previewBranchPreview.branchName,
       targetBranch: previewBranchPreview.targetBranch
     )
 
-    return PublishDrawerCard(title: "选择操作", systemImage: "cursorarrow.click.2") {
-      LazyVGrid(
-        columns: [GridItem(.adaptive(minimum: 250, maximum: 420), spacing: 12)],
-        spacing: 12
-      ) {
-        PublishDrawerActionChoice(
-          title: String(localized: "保存到本地"),
-          detail: String(localized: "只更新站点文件，不提交到 Git，也不会上传到网站。"),
-          status: localActionStatus(
-            blockingCount: blockingCount,
-            readiness: localReadiness
-          ),
-          systemImage: "folder.badge.plus",
-          tint: WorkbenchTheme.navigationSelection,
-          isEnabled: canSaveLocally,
-          isPrimary: false,
-          actionStyle: .localSave,
-          targetBadge: String(localized: "本地文件"),
-          targetBadgeTint: .secondary,
-          actionTitle: String(localized: "保存到本地"),
-          actionSystemImage: "square.and.arrow.down",
-          actionIdentifier: "publish-drawer-action-save-local"
-        ) {
+    repositoryWorktreePrimaryAction
+
+    secondaryPublishActions(
+      draft: draft,
+      blockingCount: blockingCount,
+      localReadiness: localReadiness,
+      previewBranchPreview: previewBranchPreview,
+      previewBranchAction: previewBranchAction,
+      canSaveLocally: canSaveLocally,
+      canPushPreviewBranch: canPushPreviewBranch
+    )
+  }
+
+  private func secondaryPublishActions(
+    draft: ArticleDraft,
+    blockingCount: Int,
+    localReadiness: LocalPublishReadiness?,
+    previewBranchPreview: RemoteRepositoryPublishPreview,
+    previewBranchAction: PublishDrawerPreviewBranchActionPresentation,
+    canSaveLocally: Bool,
+    canPushPreviewBranch: Bool
+  ) -> some View {
+    let plan = store.batchPublishPlan
+    let batchPreview = store.batchRemotePublishPreviewSnapshot
+    let batchState = batchActionState(plan: plan, preview: batchPreview)
+    let canPublishBatch =
+      batchPreview != nil
+      && PublishDrawerBatchActionPresentation.isEnabled(batchState)
+
+    return DisclosureGroup(isExpanded: $isOtherPublishActionsExpanded) {
+      VStack(alignment: .leading, spacing: 10) {
+        singleArticleSecondaryAction(draft: draft)
+
+        Divider()
+
+        Button {
           writeDraftToRepository(draft)
+        } label: {
+          Label("保存到本地", systemImage: "square.and.arrow.down")
         }
+        .buttonStyle(.bordered)
+        .disabled(!canSaveLocally)
+        .help(localActionStatus(blockingCount: blockingCount, readiness: localReadiness))
+        .accessibilityIdentifier("publish-drawer-action-save-local")
 
-        PublishDrawerActionChoice(
-          title: previewBranchAction.title,
-          detail: previewBranchAction.detail,
-          status: previewBranchActionStatus(preview: previewBranchPreview),
-          systemImage: "arrow.triangle.branch",
-          tint: WorkbenchTheme.info,
-          isEnabled: canPushPreviewBranch,
-          isPrimary: false,
-          actionStyle: .isolatedPreview,
-          targetBadge: String(
-            format: String(localized: "隔离预览 · %@"),
-            previewBranchPreview.branchName
-          ),
-          targetBadgeTint: WorkbenchTheme.info,
-          actionTitle: previewBranchAction.actionTitle,
-          actionSystemImage: "arrow.up.forward.app",
-          actionIdentifier: "publish-drawer-action-preview-branch"
-        ) {
+        Button {
           prepareSingleArticlePreviewBranch(draft)
+        } label: {
+          Label(previewBranchAction.actionTitle, systemImage: "arrow.up.forward.app")
+        }
+        .buttonStyle(.bordered)
+        .disabled(!canPushPreviewBranch)
+        .help(previewBranchActionStatus(preview: previewBranchPreview))
+        .accessibilityIdentifier("publish-drawer-action-preview-branch")
+
+        Button {
+          prepareAllChangesOnlinePublish()
+        } label: {
+          Label("仅发布应用管理的全部文章…", systemImage: "doc.on.doc")
+        }
+        .buttonStyle(.bordered)
+        .disabled(!canPublishBatch)
+        .help(PublishDrawerBatchActionPresentation.status(batchState))
+        .accessibilityIdentifier("publish-drawer-action-publish-articles")
+
+        Text(
+          String(
+            format: String(localized: "预览分支：%@"),
+            previewBranchPreview.branchName
+          )
+        )
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .textSelection(.enabled)
+
+        if let promotionRecord = store.activeProfileReleaseRecords.first(where: {
+          $0.draftID == draft.id
+            && PreviewPromotionPresentation.eligibility(for: $0).isEligible
+        }) {
+          PreviewPromotionEntryButton(store: store, record: promotionRecord)
+            .buttonStyle(.link)
         }
       }
-
-      Button {
-        prepareSingleArticleOnlinePublish(draft)
-      } label: {
-        Label(singleArticleAction.actionTitle, systemImage: "doc.badge.arrow.up")
+      .padding(.top, 10)
+    } label: {
+      VStack(alignment: .leading, spacing: 2) {
+        Label("其他发布方式", systemImage: "ellipsis.circle")
+          .font(.headline)
+        Text("单篇发布、本地保存、预览分支和仅文章批次保留为次级操作。")
+          .font(.caption)
+          .foregroundStyle(.secondary)
       }
-      .buttonStyle(.link)
-      .disabled(!canPublishCurrentArticle)
-      .accessibilityIdentifier("publish-drawer-action-publish-current")
-      .accessibilityLabel(singleArticleAction.accessibilityLabel)
-      .accessibilityHint(
-        canPublishCurrentArticle
-          ? singleArticleAction.enabledHint
-          : singleArticleAction.disabledHint
-      )
-      Text(
-        String(
-          format: String(localized: "预览分支：%@"),
-          previewBranchPreview.branchName
-        )
-      )
-      .font(.caption)
-      .foregroundStyle(.secondary)
-      .textSelection(.enabled)
-      .accessibilityLabel("草稿预览分支")
-      .accessibilityValue(previewBranchPreview.branchName)
     }
+    .padding(WorkbenchSpacing.section)
+    .background(
+      WorkbenchBackgroundStyle.card,
+      in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
+    )
+    .accessibilityIdentifier("publish-drawer-secondary-actions")
+  }
+
+  private var repositoryWorktreePrimaryAction: some View {
+    let profile = store.activeProfile
+    let repositoryConfigured =
+      profile.localRepositoryRootURL != nil
+      && !profile.repoOwner.trimmedForPublishing.isEmpty
+      && !profile.repoName.trimmedForPublishing.isEmpty
+    let branch = profile.branch.trimmedForPublishing.nilIfEmpty ?? "main"
+    let detectedChangeCount = store.repositoryReport?.changedFiles.count
+    let isBusy = operationController.isRunning || store.isRemoteRepositoryPublishing
+
+    return PublishDrawerCard(title: "发布仓库全部文件", systemImage: "shippingbox.and.arrow.backward") {
+      VStack(alignment: .leading, spacing: 10) {
+        Text("默认发布会审阅当前 Git 工作区的全部待提交文件，包括文章、图片、主题、配置、脚本与删除。确认后创建一次提交并推送到目标分支。")
+          .font(.callout)
+          .foregroundStyle(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
+
+        Label("目标：origin/\(branch)", systemImage: "arrow.triangle.branch")
+          .font(.callout.weight(.medium))
+
+        if let detectedChangeCount, detectedChangeCount > 0 {
+          Label(
+            String(format: String(localized: "当前扫描检测到 %d 个变更；确认页会重新完整扫描。"), detectedChangeCount),
+            systemImage: "doc.on.doc"
+          )
+          .font(.caption)
+          .foregroundStyle(.secondary)
+        } else {
+          Label("打开确认页时会完整扫描所有未忽略变更。", systemImage: "magnifyingglass")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        }
+
+        if repositoryConfigured {
+          Button {
+            prepareRepositoryWorktreePublish()
+          } label: {
+            Label("审阅并发布所有文件…", systemImage: "paperplane.fill")
+          }
+          .workbenchProminentActionStyle()
+          .disabled(isBusy)
+          .accessibilityIdentifier("publish-drawer-action-publish-all")
+          .accessibilityHint("先打开完整文件清单；确认后才会提交并推送")
+        } else {
+          Button {
+            openPublishingSettings(.repository)
+          } label: {
+            Label("配置代码仓库", systemImage: "gearshape")
+          }
+          .workbenchProminentActionStyle()
+          .accessibilityIdentifier("publish-worktree-open-settings")
+          .accessibilityHint("打开代码仓库设置，配置本地仓库与远端目标")
+        }
+
+        Label(
+          "为保护现有 Git 状态，已有暂存内容、分支未同步、冲突、敏感文件或确认后发生变化时会停止发布。",
+          systemImage: "lock.shield"
+        )
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
+      }
+    }
+    .accessibilityIdentifier("publish-worktree-primary")
+  }
+
+  @ViewBuilder
+  private func singleArticleSecondaryAction(draft: ArticleDraft) -> some View {
+    if let preview = store.cachedRemotePublishPreview(for: draft) {
+      // A prior release must not make new local edits look already published.
+      let latestRecord =
+        preview.changedPaths.isEmpty
+        ? latestRemoteReleaseRecord(for: draft, matching: preview.mode)
+        : nil
+      let journey = PublishJourneyPresentation.make(
+        profile: store.profile(for: draft),
+        preview: preview,
+        isWebsiteDraft: draft.draft,
+        isPreparing: publishingFacade.isPublishPreviewRefreshing
+          || store.isRemoteRepositoryChecking
+          || (operationController.isRunning && !store.isRemoteRepositoryPublishing),
+        isPublishing: store.isRemoteRepositoryPublishing,
+        progressStage: store.remoteRepositoryPublishProgress?.stage,
+        latestRecord: latestRecord,
+        deploymentSnapshot: latestRecord.flatMap { store.deploymentStatusSnapshots[$0.id] }
+      )
+
+      PublishJourneyView(
+        presentation: journey,
+        primaryAction: { prepareSingleArticleOnlinePublish(draft) },
+        settingsAction: openPublishingSettings,
+        releaseHistoryAction: openReleaseHistory
+      )
+    } else {
+      HStack(spacing: 8) {
+        ProgressView().controlSize(.small)
+        Text("正在准备当前文章的远端发布预览…")
+          .foregroundStyle(.secondary)
+      }
+      .accessibilityIdentifier("publish-journey-loading")
+    }
+  }
+
+  private func latestRemoteReleaseRecord(
+    for draft: ArticleDraft,
+    matching mode: RemoteRepositoryPublishMode
+  ) -> ReleaseRecord? {
+    store.activeProfileReleaseRecords.first { record in
+      let includesDraft =
+        record.draftID == draft.id
+        || record.batchItems.contains(where: { $0.draftID == draft.id })
+      guard includesDraft else { return false }
+      switch (record.kind, mode) {
+      case (.remoteDirectCommit, .directCommit), (.remotePreviewBranch, .previewBranch),
+        (.remoteReviewRequest, .reviewRequest), (.remotePublishFailure, _):
+        return true
+      default:
+        return false
+      }
+    }
+  }
+
+  private func openPublishingSettings(_ target: PublishJourneySettingsTarget) {
+    let destination: SettingsTokenDestination = target == .repository ? .repository : .deployment
+    SettingsNavigation.present(
+      destination: .token(destination),
+      workspaceAction: settingsWorkspaceCommandAction
+    ) {
+      openNativeSettings()
+    }
+  }
+
+  private func openReleaseHistory() {
+    dismissDrawer()
+    onOpenReleaseHistory()
   }
 
   private func previewBranchActionStatus(
@@ -532,18 +722,7 @@ struct PublishDrawerView: View {
   }
 
   private var drawerFooter: some View {
-    let plan = store.batchPublishPlan
-    let preview = store.batchRemotePublishPreviewSnapshot
-    let actionState = batchActionState(plan: plan, preview: preview)
-    let canPublish = preview != nil && PublishDrawerBatchActionPresentation.isEnabled(actionState)
-    let summary = UnifiedPublishSummaryPresentation.make(
-      plan: plan,
-      preview: preview,
-      profile: store.activeProfile,
-      pendingDeletionCount: store.pendingRemoteRepositoryCleanupRequests.count
-    )
-
-    return HStack(spacing: 12) {
+    HStack(spacing: 12) {
       Button(
         operationController.isRunning
           ? String(localized: "中断流程")
@@ -619,23 +798,6 @@ struct PublishDrawerView: View {
         .keyboardShortcut(.return, modifiers: [.command])
         .accessibilityIdentifier("publish-drawer-action-resolve-remote-conflicts")
         .accessibilityHint("打开三方对比，不会直接覆盖远端")
-      } else {
-        Button {
-          prepareAllChangesOnlinePublish()
-        } label: {
-          Label(summary.actionTitle, systemImage: "paperplane.fill")
-        }
-        .workbenchProminentActionStyle()
-        .keyboardShortcut(.return, modifiers: [.command])
-        .disabled(!canPublish)
-        .help(PublishDrawerBatchActionPresentation.status(actionState))
-        .accessibilityIdentifier("publish-drawer-action-publish-all")
-        .accessibilityHint(
-          PublishDrawerBatchActionPresentation.accessibilityHint(
-            isEnabled: canPublish,
-            status: PublishDrawerBatchActionPresentation.status(actionState)
-          )
-        )
       }
     }
     .padding(.horizontal, 16)
@@ -647,7 +809,7 @@ struct PublishDrawerView: View {
     let changedDiffs = preview?.changedFileDiffs ?? []
 
     return PublishDrawerCard(title: "当前文章差异", systemImage: "doc.text.magnifyingglass") {
-      Text("这里只显示当前文章；发布前还会打开完整批次确认页。")
+      Text("这里只显示当前文章；默认全文件发布会在确认页显示整个 Git 工作区。")
         .font(.caption)
         .foregroundStyle(.secondary)
       HStack(spacing: 8) {
@@ -697,6 +859,28 @@ struct PublishDrawerView: View {
     }
   }
 
+  private func prepareRepositoryWorktreePublish() {
+    operationController.start {
+      guard let confirmation = await store.prepareRepositoryWorktreePublish(),
+        !Task.isCancelled
+      else {
+        return
+      }
+      pendingWorktreeReview = confirmation
+    }
+  }
+
+  private func publishRepositoryWorktree(
+    _ confirmation: RepositoryWorktreePublishConfirmation
+  ) async {
+    let result = await store.publishRepositoryWorktree(confirmation)
+    guard !Task.isCancelled, result != nil else { return }
+    store.refreshBatchPublishPlanInBackground()
+    if let draft = publishingFacade.selectedDraft {
+      publishingFacade.refreshPublishPreviewInBackground(for: draft)
+    }
+  }
+
   private func prepareAllChangesOnlinePublish() {
     operationController.start {
       if store.batchRemotePublishPreviewSnapshot?.accessCheck == nil {
@@ -737,7 +921,11 @@ struct PublishDrawerView: View {
       guard let refreshedPreview = store.cachedRemotePublishPreview(for: draft),
         canStartRemotePublish(refreshedPreview)
       else { return }
-      pendingSingleOnlinePublishDraft = draft
+      guard let review = await store.reviewRemoteArticlePublication(for: draft), !Task.isCancelled
+      else {
+        return
+      }
+      pendingSingleOnlinePublishReview = review
     }
   }
 
@@ -756,14 +944,16 @@ struct PublishDrawerView: View {
     }
   }
 
-  private func publishSingleArticleOnline(_ draft: ArticleDraft) {
+  private func publishSingleArticleOnline(_ review: RemoteArticlePublicationReview) {
     let currentSection = publishingFacade.selectedSection
-    _ = publishingFacade.focusDraft(draft.id)
+    _ = publishingFacade.focusDraft(review.package.draftID)
     operationController.start {
-      await store.publishSelectedDraftOnlineUsingPreferredStrategy()
+      await store.publishReviewedRemoteArticlePublication(review)
       guard !Task.isCancelled else { return }
       publishingFacade.selectSection(currentSection)
-      publishingFacade.refreshPublishPreviewInBackground(for: draft)
+      if let draft = store.draft(for: review.package.draftID) {
+        publishingFacade.refreshPublishPreviewInBackground(for: draft)
+      }
       store.refreshBatchPublishPlanInBackground()
     }
   }
@@ -794,7 +984,8 @@ struct PublishDrawerView: View {
   private func dismissDrawer() {
     let interruptedOperation = operationController.isRunning
     operationController.cancel()
-    pendingSingleOnlinePublishDraft = nil
+    pendingWorktreeReview = nil
+    pendingSingleOnlinePublishReview = nil
     pendingBatchReview = nil
     if interruptedOperation {
       store.setPublishActionMessage(
@@ -806,8 +997,12 @@ struct PublishDrawerView: View {
   }
 
   @ViewBuilder
-  private func singleArticleOnlinePublishConfirmation(draft: ArticleDraft) -> some View {
-    if let preview = store.cachedRemotePublishPreview(for: draft) {
+  private func singleArticleOnlinePublishConfirmation(review: RemoteArticlePublicationReview)
+    -> some View
+  {
+    if let draft = store.draft(for: review.package.draftID),
+      let preview = store.cachedRemotePublishPreview(for: draft)
+    {
       let presentation = PublishDrawerSingleArticleActionPresentation.make(
         isWebsiteDraft: draft.draft
       )
@@ -817,13 +1012,19 @@ struct PublishDrawerView: View {
         purpose: presentation.confirmationPurpose,
         preview: preview,
         reviewDraft: store.cachedRemoteReviewDraft(for: draft),
+        articleReview: review,
         isPublishing: store.isRemoteRepositoryPublishing,
         cancelAction: {
-          pendingSingleOnlinePublishDraft = nil
+          pendingSingleOnlinePublishReview = nil
         },
         confirmAction: {
-          pendingSingleOnlinePublishDraft = nil
-          publishSingleArticleOnline(draft)
+          pendingSingleOnlinePublishReview = nil
+          publishSingleArticleOnline(review)
+        },
+        synchronizedAction: {
+          pendingSingleOnlinePublishReview = nil
+          dismissDrawer()
+          onOpenReleaseHistory()
         }
       )
     } else {
@@ -836,7 +1037,7 @@ struct PublishDrawerView: View {
         Text("请关闭确认页，刷新发布快照后重新审阅。")
           .foregroundStyle(.secondary)
         Button("关闭") {
-          pendingSingleOnlinePublishDraft = nil
+          pendingSingleOnlinePublishReview = nil
         }
       }
       .frame(minWidth: 420, minHeight: 260)

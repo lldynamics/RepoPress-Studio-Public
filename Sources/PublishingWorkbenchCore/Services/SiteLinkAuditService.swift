@@ -455,7 +455,7 @@ public struct SiteLinkAuditService: Sendable {
 
     let targetPath = pathWithoutQueryOrFragment(target)
     let normalizedRepositoryTarget = resolvedRepositoryPath(
-      targetPath,
+      targetPath.removingPercentEncoding ?? targetPath,
       relativeTo: sourceRepositoryPath
     )
     if looksLikeMarkdownPath(targetPath),
@@ -477,7 +477,11 @@ public struct SiteLinkAuditService: Sendable {
       route.trimmingCharacters(in: CharacterSet(charactersIn: "/")),
       normalizedRepositoryTarget ?? "",
     ]
-    if assetCandidates.contains(where: knownAssets.contains) {
+    if assetCandidates.contains(where: knownAssets.contains)
+      || normalizedRepositoryTarget.map({
+        repositoryFileExists(at: $0, profile: profile)
+      }) == true
+    {
       return reference(
         raw,
         source: sourceDraft,
@@ -884,6 +888,21 @@ public struct SiteLinkAuditService: Sendable {
           ]
         }
       }.filter { !$0.isEmpty })
+  }
+
+  private func repositoryFileExists(at repositoryPath: String, profile: SiteProfile) -> Bool {
+    guard let rootURL = profile.localRepositoryRootURL else { return false }
+    let root = rootURL.standardizedFileURL.resolvingSymlinksInPath()
+    let candidate =
+      root
+      .appendingPathComponent(repositoryPath)
+      .standardizedFileURL
+      .resolvingSymlinksInPath()
+    let rootPath = root.path.hasSuffix("/") ? String(root.path.dropLast()) : root.path
+    guard candidate.path.hasPrefix(rootPath + "/") else { return false }
+    var isDirectory: ObjCBool = false
+    return FileManager.default.fileExists(atPath: candidate.path, isDirectory: &isDirectory)
+      && !isDirectory.boolValue
   }
 
   private func referenceOrdering(_ lhs: SiteLinkReference, _ rhs: SiteLinkReference) -> Bool {

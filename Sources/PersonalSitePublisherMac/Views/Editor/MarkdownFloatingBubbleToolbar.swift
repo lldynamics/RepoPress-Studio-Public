@@ -59,7 +59,8 @@ struct MarkdownFloatingBubbleToolbar: View {
             .font(.workbenchMetadata.weight(.semibold))
             .monospaced()
           Image(systemName: "chevron.down")
-            .font(.system(size: 7, weight: .bold))
+            .font(.caption2.weight(.bold))
+            .imageScale(.small)
             .foregroundStyle(.secondary)
         }
         .frame(minHeight: 24)
@@ -96,7 +97,8 @@ struct MarkdownFloatingBubbleToolbar: View {
           Image(systemName: "list.bullet")
             .font(.system(size: 11, weight: .medium))
           Image(systemName: "chevron.down")
-            .font(.system(size: 7, weight: .bold))
+            .font(.caption2.weight(.bold))
+            .imageScale(.small)
             .foregroundStyle(.secondary)
         }
         .frame(minHeight: 24)

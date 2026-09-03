@@ -115,7 +115,12 @@ public struct LocalPublishPreviewService: Sendable {
   public func preview(package: PublishPackage, profile: SiteProfile) -> LocalPublishPreview {
     guard
       let preview = profile.withLocalRepositoryRootAccess({ rootURL in
-        preview(package: package, rootURL: rootURL)
+        var result = preview(package: package, rootURL: rootURL)
+        for path in Set([package.markdownPath] + package.files.map(\.repositoryPath))
+        where StructuralArticlePathPolicy.isProtected(path, profile: profile) {
+          result.issues.append(StructuralArticlePathPolicy.issue(path: path))
+        }
+        return result
       })
     else {
       return missingRepositoryPreview(package: package)
@@ -138,10 +143,11 @@ public struct LocalPublishPreviewService: Sendable {
   }
 
   public func write(package: PublishPackage, profile: SiteProfile) throws -> [String] {
+    try validateArticleWrite(package: package, profile: profile)
     guard
       let writtenPaths = try profile.withLocalRepositoryRootAccess({ rootURL in
         try requireRepositoryRootForProfileWrite(profile: profile, rootURL: rootURL)
-        return try write(package: package, rootURL: rootURL)
+        return try write(package: package, rootURL: rootURL, purpose: .article(profile))
       })
     else {
       throw LocalPublishPreviewError.missingRepositoryRoot
@@ -151,10 +157,11 @@ public struct LocalPublishPreviewService: Sendable {
   }
 
   public func write(preview: LocalPublishPreview, profile: SiteProfile) throws -> [String] {
+    try validateArticleWrite(package: preview.package, profile: profile)
     guard
       let writtenPaths = try profile.withLocalRepositoryRootAccess({ rootURL in
         try requireRepositoryRootForProfileWrite(profile: profile, rootURL: rootURL)
-        return try write(preview: preview, rootURL: rootURL)
+        return try write(preview: preview, rootURL: rootURL, purpose: .article(profile))
       })
     else {
       throw LocalPublishPreviewError.missingRepositoryRoot
@@ -164,24 +171,26 @@ public struct LocalPublishPreviewService: Sendable {
   }
 
   public func writeAsync(package: PublishPackage, profile: SiteProfile) async throws -> [String] {
+    try validateArticleWrite(package: package, profile: profile)
     guard let rootURL = profile.localRepositoryRootURL else {
       throw LocalPublishPreviewError.missingRepositoryRoot
     }
     return try await Task.detached(priority: .userInitiated) {
       try requireRepositoryRootForProfileWrite(profile: profile, rootURL: rootURL)
-      return try write(package: package, rootURL: rootURL)
+      return try write(package: package, rootURL: rootURL, purpose: .article(profile))
     }.value
   }
 
   public func writeAsync(preview: LocalPublishPreview, profile: SiteProfile) async throws
     -> [String]
   {
+    try validateArticleWrite(package: preview.package, profile: profile)
     guard let rootURL = profile.localRepositoryRootURL else {
       throw LocalPublishPreviewError.missingRepositoryRoot
     }
     return try await Task.detached(priority: .userInitiated) {
       try requireRepositoryRootForProfileWrite(profile: profile, rootURL: rootURL)
-      return try write(preview: preview, rootURL: rootURL)
+      return try write(preview: preview, rootURL: rootURL, purpose: .article(profile))
     }.value
   }
 
@@ -202,15 +211,20 @@ public struct LocalPublishPreviewService: Sendable {
     }
   }
 
-  func write(package: PublishPackage, rootURL: URL) throws -> [String] {
-    try writeWithEvidence(package: package, rootURL: rootURL).writtenPaths
+  func write(
+    package: PublishPackage, rootURL: URL, purpose: LocalPublishWritePurpose = .article(nil)
+  ) throws -> [String] {
+    try writeWithEvidence(package: package, rootURL: rootURL, purpose: purpose).writtenPaths
   }
 
-  func write(preview: LocalPublishPreview, rootURL: URL) throws -> [String] {
+  func write(
+    preview: LocalPublishPreview, rootURL: URL, purpose: LocalPublishWritePurpose = .article(nil)
+  ) throws -> [String] {
     try writeWithEvidence(
       package: preview.package,
       rootURL: rootURL,
-      preview: preview
+      preview: preview,
+      purpose: purpose
     ).writtenPaths
   }
 
@@ -298,6 +312,7 @@ struct PreparedLocalPublishRecovery {
 enum LocalPublishTransactionPhase: String, Codable {
   case applying
   case committed
+  case manualRecoveryRequired
 }
 
 struct LocalPublishTransactionEntry: Codable {

@@ -82,8 +82,10 @@ TEST_TARGET_DEPENDENCIES: dict[str, set[str]] = {
         "BrowserExtensionProtocolSupport",
         "PublishingAICore",
         "PublishingAgentContracts",
+        "PublishingCoreSupport",
         "PublishingGitCore",
         "PublishingKnowledgeCore",
+        "PublishingMarkdownCore",
         "PublishingWorkbenchCore",
     },
     "PublishingMCPClientTests": {
@@ -94,7 +96,10 @@ TEST_TARGET_DEPENDENCIES: dict[str, set[str]] = {
     "PersonalSitePublisherMacTests": {
         "BrowserExtensionProtocolSupport",
         "PersonalSitePublisherMac",
+        "PublishingAICore",
+        "PublishingCoreSupport",
         "PublishingGitCore",
+        "PublishingKnowledgeCore",
         "PublishingMarkdownCore",
         "PublishingWorkbenchCore",
     },

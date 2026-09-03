@@ -39,6 +39,20 @@ REQUIRED_QUICK_PRODUCT_IDS = {
     "swift-tests",
 }
 
+REQUIRED_SOURCE_BOUNDARY_PATHS = {
+    ".github",
+    "Apps",
+    "BrowserExtension",
+    "Config",
+    "Package.swift",
+    "Packaging",
+    "Shared",
+    "Sources",
+    "Tests",
+    "UITests",
+    "script",
+}
+
 
 def fail(message: str) -> None:
     raise SystemExit(f"release gate selection test: {message}")
@@ -103,6 +117,16 @@ def main() -> int:
         fail(
             "swift-module-boundaries source metadata omits governed targets: "
             f"{sorted(missing_module_sources)}"
+        )
+
+    source_boundary_sources = checks_by_id["repository-source-boundary"].get("source")
+    if not isinstance(source_boundary_sources, list):
+        fail("repository-source-boundary sources must be a list")
+    missing_source_boundary_paths = REQUIRED_SOURCE_BOUNDARY_PATHS - set(source_boundary_sources)
+    if missing_source_boundary_paths:
+        fail(
+            "repository-source-boundary source metadata omits governed paths: "
+            f"{sorted(missing_source_boundary_paths)}"
         )
 
     profile_ids: set[str] = set()

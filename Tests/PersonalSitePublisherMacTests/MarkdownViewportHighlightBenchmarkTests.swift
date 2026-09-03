@@ -1,7 +1,6 @@
 import AppKit
 import Foundation
 import PublishingMarkdownCore
-import PublishingWorkbenchCore
 import SwiftUI
 import XCTest
 
@@ -11,14 +10,15 @@ import XCTest
 final class MarkdownViewportHighlightBenchmarkTests: XCTestCase {
   func testInlineAttachmentLayoutRejectsUnsafeExpansionAndClipsBlocks() throws {
     let container = NSRect(x: 0, y: 0, width: 96, height: 480)
-    let safeBlock = try XCTUnwrap(MarkdownInlineAttachmentDrawingLayout.frame(
-      sourceRect: NSRect(x: 20, y: 40, width: 200, height: 24),
-      textViewBounds: container,
-      horizontalInset: 26,
-      mode: .block,
-      preferredWidth: nil,
-      preferredHeight: 164
-    ))
+    let safeBlock = try XCTUnwrap(
+      MarkdownInlineAttachmentDrawingLayout.frame(
+        sourceRect: NSRect(x: 20, y: 40, width: 200, height: 24),
+        textViewBounds: container,
+        horizontalInset: 26,
+        mode: .block,
+        preferredWidth: nil,
+        preferredHeight: 164
+      ))
     let unsafeInline = MarkdownInlineAttachmentDrawingLayout.frame(
       sourceRect: NSRect(x: 34, y: 40, width: 40, height: 20),
       textViewBounds: container,
@@ -53,7 +53,8 @@ final class MarkdownViewportHighlightBenchmarkTests: XCTestCase {
     }
     let small = try XCTUnwrap(scenarios.first)
     let large = try XCTUnwrap(scenarios.last)
-    let ratio = large.total.medianMilliseconds
+    let ratio =
+      large.total.medianMilliseconds
       / max(small.total.medianMilliseconds, 0.001)
     let rapidCoalesced = try await measureRapidCoalesced(
       targetUTF16Length: 100_000,
@@ -98,7 +99,8 @@ final class MarkdownViewportHighlightBenchmarkTests: XCTestCase {
     XCTAssertEqual(rapidCoalesced.treeSynchronizationCount, iterations)
     XCTAssertEqual(rapidCoalesced.editHintParseCount, iterations)
 
-    let outputPath = environment["MARKDOWN_VIEWPORT_BENCHMARK_OUTPUT"]
+    let outputPath =
+      environment["MARKDOWN_VIEWPORT_BENCHMARK_OUTPUT"]
       ?? ".build/benchmarks/markdown-viewport-highlight-baseline.json"
     let outputURL = URL(fileURLWithPath: outputPath)
     try FileManager.default.createDirectory(
@@ -357,7 +359,8 @@ final class MarkdownViewportHighlightBenchmarkTests: XCTestCase {
         preservingExisting: true
       )
       reconcileSamples.append(Self.milliseconds(since: start))
-      reusedOverlayIdentity = reusedOverlayIdentity
+      reusedOverlayIdentity =
+        reusedOverlayIdentity
         && coordinator.inlineAttachmentDrawingDescriptors[key] == warmDrawing
     }
     let planComputationCountAfterReconciliation =
@@ -586,7 +589,7 @@ final class MarkdownViewportHighlightBenchmarkTests: XCTestCase {
             .font: NSFont.systemFont(ofSize: 14),
           ],
           styleAttributes: [
-            .heading: [.foregroundColor: NSColor.systemBlue],
+            .heading: [.foregroundColor: NSColor.systemBlue]
           ],
           in: textView
         )

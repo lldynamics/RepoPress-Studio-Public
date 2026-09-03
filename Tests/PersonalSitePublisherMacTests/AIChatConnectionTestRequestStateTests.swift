@@ -1,6 +1,6 @@
+import PublishingAICore
 import XCTest
 @testable import PersonalSitePublisherMac
-@testable import PublishingWorkbenchCore
 
 final class AIChatConnectionTestRequestStateTests: XCTestCase {
   func testLateResultForConnectionACannotFinishAfterSwitchToB() {

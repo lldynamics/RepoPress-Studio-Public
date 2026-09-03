@@ -3,13 +3,15 @@ import SwiftUI
 
 struct LocalSitePreviewPanelView: View {
   let store: WorkbenchStore
+  var onClose: (() -> Void)? = nil
   @EnvironmentObject private var state: WorkbenchLocalSitePreviewFeatureFacade
   @StateObject private var externalBrowserPreviewCoordinator: ExternalBrowserPreviewCoordinator
   @State private var navigationError: String?
   @State private var pendingAuthorizationRequest: LocalSitePreviewAuthorizationRequest?
 
-  init(store: WorkbenchStore) {
+  init(store: WorkbenchStore, onClose: (() -> Void)? = nil) {
     self.store = store
+    self.onClose = onClose
     _externalBrowserPreviewCoordinator = StateObject(
       wrappedValue: ExternalBrowserPreviewCoordinator(store: store)
     )
@@ -21,7 +23,6 @@ struct LocalSitePreviewPanelView: View {
       Divider()
       content
     }
-    .workbenchSheetSize(.full)
     .localSitePreviewTrustConfirmation(
       request: $pendingAuthorizationRequest,
       entryPoint: .panel,
@@ -79,6 +80,14 @@ struct LocalSitePreviewPanelView: View {
         .disabled(
           store.selectedDraftID == nil || externalBrowserPreviewCoordinator.isBusy
         )
+      }
+
+      if let onClose {
+        Button(action: onClose) {
+          Label("关闭", systemImage: "xmark")
+        }
+        .buttonStyle(.bordered)
+        .accessibilityIdentifier("local-site-preview-close")
       }
 
       if state.runtimeStatus.isRunning {

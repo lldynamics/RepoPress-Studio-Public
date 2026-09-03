@@ -40,10 +40,13 @@ struct TokenConnectionStatusPresentation: Equatable {
         title: String(localized: "仓库目标已填写"),
         detail: String(
           localized:
-            "\(profile.repositoryProvider.localizedDisplayName) · \(tokenDetail)。请在页面底部运行权限检查确认实际访问。"
+            "\(profile.repositoryProvider.localizedDisplayName) · \(tokenDetail)。这仅表示配置存在；请在页面底部运行权限检查确认 API 实际访问。Git push 使用 origin 的 SSH/HTTPS 系统凭据，不会自动使用此令牌。"
         ),
         systemImage: tokenAvailability.hasToken ? "shippingbox.fill" : "shippingbox",
-        tone: tokenAvailability.hasToken ? .success : .neutral
+        // Saved configuration is not evidence that the API token or Git
+        // transport can write. Only an explicit permission check may use a
+        // success state for that claim.
+        tone: .neutral
       )
     }
 
@@ -70,15 +73,15 @@ struct TokenConnectionStatusPresentation: Equatable {
       : String(localized: "钥匙串读取失败")
 
     return Self(
-      title: readiness.statusTitle,
+      title: readiness.isAPIReady ? String(localized: "部署状态校验已配置") : readiness.statusTitle,
       detail: String(
         localized:
-          "\(readiness.provider.localizedDisplayName) · \(tokenDetail)。\(readiness.nextStep)"
+          "\(readiness.provider.localizedDisplayName) · \(tokenDetail)。\(readiness.nextStep) 这仅表示状态校验配置，不代表线上部署成功，也不会自动触发部署。"
       ),
       systemImage: readiness.isAPIReady
         ? "checkmark.seal"
         : readiness.canCheckAnyStatus ? "exclamationmark.triangle" : "xmark.octagon",
-      tone: readiness.isAPIReady ? .success : .warning
+      tone: readiness.isAPIReady ? .neutral : .warning
     )
   }
 }

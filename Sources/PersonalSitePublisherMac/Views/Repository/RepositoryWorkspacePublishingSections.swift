@@ -22,8 +22,9 @@ struct RepositoryPermissionActionPresentation: Equatable {
       )
     }
     if let detectedOrigin,
-       !detectedOrigin.owner.trimmedForPublishing.isEmpty,
-       !detectedOrigin.name.trimmedForPublishing.isEmpty {
+      !detectedOrigin.owner.trimmedForPublishing.isEmpty,
+      !detectedOrigin.name.trimmedForPublishing.isEmpty
+    {
       let detectedOwner = detectedOrigin.owner.trimmedForPublishing
       let detectedRepository = detectedOrigin.name.trimmedForPublishing
       let ownerMatches = owner.isEmpty || owner == detectedOwner
@@ -141,8 +142,8 @@ extension RepositoryWorkspaceView {
               ? String(localized: "正在执行线上发布...")
               : String(localized: "正在检查仓库权限...")
           )
-            .font(.callout)
-            .foregroundStyle(.secondary)
+          .font(.callout)
+          .foregroundStyle(.secondary)
         }
       }
 
@@ -155,9 +156,12 @@ extension RepositoryWorkspaceView {
       }
 
       if let latestEntry {
-        Label("最近记录：\(latestEntry.status.localizedDisplayName)", systemImage: latestEntry.status.systemImage)
-          .font(.callout)
-          .foregroundStyle(ledgerStatusForeground(latestEntry.status))
+        Label(
+          "最近记录：\(latestEntry.status.localizedDisplayName)",
+          systemImage: latestEntry.status.systemImage
+        )
+        .font(.callout)
+        .foregroundStyle(ledgerStatusForeground(latestEntry.status))
       }
     }
     .padding(14)
@@ -186,6 +190,15 @@ extension RepositoryWorkspaceView {
   @ViewBuilder
   var repositorySyncPlan: some View {
     if let plan = store.repositorySyncCommandPlan {
+      let safeSyncAction = RepositorySafeSyncActionPresentation.make(
+        hasRepository: hasSelectedRepository,
+        branchStatus: store.repositoryReport?.branchStatus,
+        isScanning: store.repositoryScanState.isScanning,
+        isRepositoryOperationRunning: store.isLocalRepositoryBranchOperationRunning,
+        isLocalMutationRunning: store.isLocalRepositoryMutationRunning,
+        isRemoteOperationRunning: store.isRemoteRepositoryChecking
+          || store.isRemoteRepositoryPublishing
+      )
       VStack(alignment: .leading, spacing: 12) {
         HStack(alignment: .firstTextBaseline) {
           VStack(alignment: .leading, spacing: 3) {
@@ -197,6 +210,17 @@ extension RepositoryWorkspaceView {
           }
           Spacer()
           Button {
+            prepareRepositorySyncReview(safeSyncAction.reviewKind)
+          } label: {
+            Label(safeSyncAction.title, systemImage: "arrow.trianglehead.2.clockwise.rotate.90")
+          }
+          .buttonStyle(.borderedProminent)
+          .disabled(!safeSyncAction.isEnabled)
+          .help(safeSyncAction.help)
+          .accessibilityIdentifier("repository-action-prepare-safe-sync")
+          .accessibilityHint(safeSyncAction.help)
+
+          Button {
             copy(plan.commandText, message: "已复制同步建议命令。")
           } label: {
             Label("复制命令", systemImage: "terminal")
@@ -207,13 +231,26 @@ extension RepositoryWorkspaceView {
           .font(.callout)
           .foregroundStyle(.secondary)
 
+        if let branchStatus = store.repositoryReport?.branchStatus {
+          RepositoryBranchGraphWidget(
+            presentation: RepositoryBranchGraphPresentation(status: branchStatus)
+          )
+          .padding(10)
+          .background(
+            WorkbenchBackgroundStyle.control,
+            in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
+          )
+        }
+
         Text(plan.commandText)
           .font(.callout.monospaced())
           .textSelection(.enabled)
           .lineLimit(8)
           .padding(10)
           .frame(maxWidth: .infinity, alignment: .leading)
-          .background(WorkbenchBackgroundStyle.control, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
+          .background(
+            WorkbenchBackgroundStyle.control,
+            in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
 
         ForEach(plan.notes, id: \.self) { note in
           Label(note, systemImage: "info.circle")
@@ -222,9 +259,40 @@ extension RepositoryWorkspaceView {
         }
       }
       .padding(14)
-      .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
+      .background(
+        WorkbenchBackgroundStyle.card,
+        in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
+      )
       .accessibilityElement(children: .contain)
       .accessibilityIdentifier("repository-section-sync-plan")
+    }
+  }
+
+  private func prepareRepositorySyncReview(_ kind: RepositorySyncReviewKind?) {
+    guard let kind else { return }
+    switch kind {
+    case .fastForward:
+      prepareRepositorySafeSyncReview()
+    case .rebase:
+      prepareRepositoryRebaseSyncReview()
+    }
+  }
+
+  private func prepareRepositorySafeSyncReview() {
+    Task { @MainActor in
+      guard let preparation = await store.prepareRepositorySafeSync() else { return }
+      if case .confirmation(let confirmation) = preparation {
+        pendingRepositorySafeSyncConfirmation = confirmation
+      }
+    }
+  }
+
+  private func prepareRepositoryRebaseSyncReview() {
+    Task { @MainActor in
+      guard let preparation = await store.prepareRepositoryRebaseSync() else { return }
+      if case .confirmation(let confirmation) = preparation {
+        pendingRepositoryRebaseSyncConfirmation = confirmation
+      }
     }
   }
 
@@ -241,7 +309,9 @@ extension RepositoryWorkspaceView {
       )
     }
     .padding(14)
-    .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
+    .background(
+      WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
+    )
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("repository-section-path-rules")
   }
@@ -337,7 +407,9 @@ extension RepositoryWorkspaceView {
       }
     }
     .padding(10)
-    .background(WorkbenchBackgroundStyle.control, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
+    .background(
+      WorkbenchBackgroundStyle.control,
+      in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
   }
 
   func remoteRepositoryCreationResultCard(_ result: RemoteRepositoryCreationResult) -> some View {
@@ -387,14 +459,18 @@ extension RepositoryWorkspaceView {
       .font(.caption)
     }
     .padding(10)
-    .background(WorkbenchBackgroundStyle.control, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
+    .background(
+      WorkbenchBackgroundStyle.control,
+      in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
   }
 
   func remoteConflictPreview(paths: [String], isDirectCommit: Bool) -> some View {
-    let title: LocalizedStringKey = isDirectCommit
+    let title: LocalizedStringKey =
+      isDirectCommit
       ? "远端冲突会阻断直接提交"
       : "远端冲突预览"
-    let detail: LocalizedStringKey = isDirectCommit
+    let detail: LocalizedStringKey =
+      isDirectCommit
       ? "先同步这些 upstream 变更，或切换为 PR/MR 发布。"
       : "这些路径在 upstream 也有变更，合并前需要审阅远端 diff。"
 
@@ -414,7 +490,10 @@ extension RepositoryWorkspaceView {
     }
     .padding(8)
     .frame(maxWidth: .infinity, alignment: .leading)
-    .background((isDirectCommit ? WorkbenchTheme.risk : WorkbenchTheme.warning).opacity(WorkbenchOpacity.warningBackground), in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
+    .background(
+      (isDirectCommit ? WorkbenchTheme.risk : WorkbenchTheme.warning).opacity(
+        WorkbenchOpacity.warningBackground),
+      in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
   }
 
 }

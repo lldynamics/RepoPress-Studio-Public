@@ -1,13 +1,4 @@
 import Foundation
-import PublishingCoreSupport
-
-public enum WorkbenchFileReadLimits {
-  public static let maximumRemoteMediaUploadByteCount = 50 * 1_024 * 1_024
-  public static let maximumSVGOptimizationByteCount = 32 * 1_024 * 1_024
-  public static let maximumRecoverySnapshotByteCount = 256 * 1_024 * 1_024
-  public static let maximumLocalPublishTrackedFileByteCount = 1_024 * 1_024 * 1_024
-  public static let maximumBrowserImportLedgerByteCount = 16 * 1_024 * 1_024
-}
 
 public enum BoundedFileReadError: Error, Equatable, LocalizedError, Sendable {
   case invalidByteLimit
@@ -23,19 +14,19 @@ public enum BoundedFileReadError: Error, Equatable, LocalizedError, Sendable {
     switch self {
     case .invalidByteLimit:
       return CoreL10n.text("文件读取上限必须大于 0。")
-    case let .unsafeRelativePath(path):
+    case .unsafeRelativePath(let path):
       return CoreL10n.format("文件路径不安全：%@", path)
-    case let .cannotOpen(path, code):
+    case .cannotOpen(let path, let code):
       return CoreL10n.format("无法安全打开文件：%@（错误 %d）", path, code)
-    case let .cannotInspect(path, code):
+    case .cannotInspect(let path, let code):
       return CoreL10n.format("无法检查文件：%@（错误 %d）", path, code)
-    case let .notRegularFile(path):
+    case .notRegularFile(let path):
       return CoreL10n.format("只允许读取普通文件：%@", path)
-    case let .exceedsByteLimit(path, limit):
+    case .exceedsByteLimit(let path, let limit):
       return CoreL10n.format("文件超过允许的 %d 字节：%@", limit, path)
-    case let .cannotRead(path, code):
+    case .cannotRead(let path, let code):
       return CoreL10n.format("读取文件失败：%@（错误 %d）", path, code)
-    case let .invalidUTF8(path):
+    case .invalidUTF8(let path):
       return CoreL10n.format("文件不是有效的 UTF-8 文本：%@", path)
     }
   }
@@ -44,19 +35,19 @@ public enum BoundedFileReadError: Error, Equatable, LocalizedError, Sendable {
     switch error {
     case .invalidByteLimit:
       self = .invalidByteLimit
-    case let .unsafeRelativePath(path):
+    case .unsafeRelativePath(let path):
       self = .unsafeRelativePath(path)
-    case let .cannotOpen(path, code):
+    case .cannotOpen(let path, let code):
       self = .cannotOpen(path, code)
-    case let .cannotInspect(path, code):
+    case .cannotInspect(let path, let code):
       self = .cannotInspect(path, code)
-    case let .notRegularFile(path):
+    case .notRegularFile(let path):
       self = .notRegularFile(path)
-    case let .exceedsByteLimit(path, limit):
+    case .exceedsByteLimit(let path, let limit):
       self = .exceedsByteLimit(path, limit)
-    case let .cannotRead(path, code):
+    case .cannotRead(let path, let code):
       self = .cannotRead(path, code)
-    case let .invalidUTF8(path):
+    case .invalidUTF8(let path):
       self = .invalidUTF8(path)
     }
   }

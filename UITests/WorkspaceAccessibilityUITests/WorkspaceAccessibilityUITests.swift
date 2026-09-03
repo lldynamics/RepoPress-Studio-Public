@@ -61,7 +61,6 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
     for identifier in persistentIdentifiers + writingIdentifiers {
       assertUniqueIdentifier(identifier)
     }
-
     select(
       "workspace-sidebar-library",
       revealing: "knowledge-source-list"
@@ -192,6 +191,7 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
     ] {
       assertUniqueIdentifier(identifier)
     }
+
     XCTAssertTrue(
       element(identifier: "rss-library-inspector-panel").waitForExistence(timeout: 10),
       "Selecting RSS must keep the shared Inspector open and route it to RSS content."
@@ -341,6 +341,7 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
       "repository-section-auto-sync",
       "repository-section-local-preview",
       "repository-section-sync-plan",
+      "repository-action-prepare-safe-sync",
       "repository-section-path-rules",
     ]
     for identifier in overviewIdentifiers {
@@ -432,23 +433,54 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
       element(identifier: "repository-workspace").waitForExistence(timeout: 10),
       "The repository workspace did not appear for the publishing demo surface."
     )
-    assertUniqueIdentifier("workspace-prepare-publish")
+    select("workspace-sidebar-writing", revealing: "writing-draft-list")
 
-    revealByScrolling("repository-next-action")
-    element(identifier: "repository-next-action")
-      .coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
-      .tap()
+    let publishButton = element(identifier: "workspace-prepare-publish")
+    XCTAssertTrue(
+      publishButton.waitForExistence(timeout: 10),
+      "The stable publish entry point did not appear in the workspace toolbar."
+    )
+    XCTAssertTrue(
+      publishButton.isEnabled && publishButton.isHittable,
+      "The selected publishing demo article must enable the stable publish entry point."
+    )
+    publishButton.click()
+    XCTAssertTrue(
+      element(identifier: "workspace-publish-drawer-overlay").waitForExistence(timeout: 10),
+      "The stable publish entry point did not open the trailing publish drawer."
+    )
 
     for identifier in [
       "publish-drawer-header",
       "publish-drawer-unified-summary",
       "publish-drawer-readiness-checklist",
-      "publish-drawer-action-save-local",
+      "publish-worktree-primary",
       "publish-drawer-action-publish-all",
-      "publish-drawer-action-publish-current",
+      "publish-drawer-secondary-actions",
       "publish-drawer-review-disclosure",
     ] {
       assertUniqueIdentifier(identifier)
+    }
+
+    let publishAll = element(identifier: "publish-drawer-action-publish-all")
+    XCTAssertEqual(publishAll.label, "审阅并发布所有文件…")
+    XCTAssertTrue(
+      publishAll.isEnabled,
+      "The configured publishing fixture must enable the all-files primary action."
+    )
+
+    for identifier in [
+      "publish-drawer-action-save-local",
+      "publish-drawer-action-preview-branch",
+      "publish-drawer-action-publish-articles",
+      "publish-drawer-action-publish-current",
+      "publish-journey",
+      "publish-journey-open-history",
+    ] {
+      XCTAssertFalse(
+        element(identifier: identifier).exists,
+        "Secondary action \(identifier) must remain folded until explicitly requested."
+      )
     }
 
     XCTAssertFalse(
@@ -460,8 +492,6 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
       showAllChecks.waitForExistence(timeout: 10),
       "The publish drawer did not expose the checks-and-diff disclosure button."
     )
-    showAllChecks.click()
-    assertUniqueIdentifier("publish-drawer-diff")
     Thread.sleep(forTimeInterval: 0.3)
 
     let screenshot = XCTAttachment(screenshot: application.screenshot())
@@ -481,6 +511,37 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
         "\(removedSectionTitle) must remain outside the publish drawer."
       )
     }
+  }
+
+  func testPublishJourneyBlocksPublishAndOffersRepositoryRemediation() throws {
+    launchApplication(
+      surface: "sync-api-publish",
+      additionalLaunchEnvironment: [
+        "PERSONAL_SITE_PUBLISHER_SCREENSHOT_UI_TEST_PUBLISH_CONFIGURATION":
+          "missing-repository"
+      ]
+    )
+    XCTAssertTrue(
+      element(identifier: "repository-workspace").waitForExistence(timeout: 10),
+      "The repository workspace did not appear for the publishing remediation fixture."
+    )
+    select("workspace-sidebar-writing", revealing: "writing-draft-list")
+
+    let publishButton = element(identifier: "workspace-prepare-publish")
+    XCTAssertTrue(publishButton.waitForExistence(timeout: 10))
+    XCTAssertTrue(publishButton.isEnabled && publishButton.isHittable)
+    publishButton.click()
+
+    XCTAssertTrue(
+      element(identifier: "workspace-publish-drawer-overlay").waitForExistence(timeout: 10)
+    )
+    XCTAssertFalse(
+      element(identifier: "publish-drawer-action-publish-all").exists,
+      "A missing repository target must not expose the all-files publish action."
+    )
+    let openRepositorySettings = element(identifier: "publish-worktree-open-settings")
+    XCTAssertTrue(openRepositorySettings.waitForExistence(timeout: 10))
+    XCTAssertEqual(openRepositorySettings.label, "配置代码仓库")
   }
 
   func testMenuMutationsAndMainWindowRecoveryRemainStable() throws {
@@ -1428,6 +1489,7 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
   private func launchApplication(
     surface: String?,
     additionalLaunchArguments: [String] = [],
+    additionalLaunchEnvironment: [String: String] = [:],
     screenshotContentSize: CGSize? = nil,
     dynamicTypeSize: String? = nil
   ) {
@@ -1491,6 +1553,9 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
       screenshotRuntimeRootURL
       .appendingPathComponent("tmp", isDirectory: true)
       .path
+    for (key, value) in additionalLaunchEnvironment {
+      application.launchEnvironment[key] = value
+    }
     application.launch()
 
     XCTAssertTrue(

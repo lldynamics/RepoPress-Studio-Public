@@ -35,8 +35,10 @@ extension RemoteRepositoryPublishService {
   func preflightInspection(
     package: PublishPackage,
     profile: SiteProfile,
-    token: String?
+    token: String?,
+    ref: String? = nil
   ) async throws -> RemoteRepositoryPreflightInspection {
+    try StructuralArticlePathPolicy.validate(package: package, profile: profile)
     let package = try normalizedPublishPackage(package)
     let token = try requiredToken(token)
     let repository = try remoteRepository(from: profile)
@@ -50,14 +52,16 @@ extension RemoteRepositoryPublishService {
         package: package,
         files: files,
         repository: repository,
-        token: token
+        token: token,
+        ref: ref ?? repository.branch
       )
     case .gitlab:
       inspection = try await preflightGitLab(
         package: package,
         files: files,
         repository: repository,
-        token: token
+        token: token,
+        ref: ref ?? repository.branch
       )
     }
     inspection.package = package
@@ -68,7 +72,8 @@ extension RemoteRepositoryPublishService {
     package: PublishPackage,
     files: [(path: String, file: PublishPackageFile)],
     repository: RemoteRepository,
-    token: String
+    token: String,
+    ref: String
   ) async throws -> RemoteRepositoryPreflightInspection {
     var conflicts: [RemoteRepositoryPublishPreflightConflict] = []
     var remoteVersionsByPath: [String: String] = [:]
@@ -81,7 +86,7 @@ extension RemoteRepositoryPublishService {
       let remoteState = try await githubFileState(
         repository: repository,
         path: path,
-        ref: repository.branch,
+        ref: ref,
         token: token
       )
       try Task.checkCancellation()
@@ -95,9 +100,10 @@ extension RemoteRepositoryPublishService {
       let content = file.operation == .upsert ? try contentData(for: file) : nil
       switch file.operation {
       case .upsert:
-        let isAlreadyPublished = content.map {
-          githubRemoteContentMatches(data: $0, remoteSHA: remoteSHA)
-        } ?? false
+        let isAlreadyPublished =
+          content.map {
+            githubRemoteContentMatches(data: $0, remoteSHA: remoteSHA)
+          } ?? false
         if isAlreadyPublished {
           if let remoteSHA = remoteSHA?.trimmedForPublishing.nilIfEmpty {
             remoteVersionsByPath[path] = remoteSHA
@@ -143,7 +149,8 @@ extension RemoteRepositoryPublishService {
     package: PublishPackage,
     files: [(path: String, file: PublishPackageFile)],
     repository: RemoteRepository,
-    token: String
+    token: String,
+    ref: String
   ) async throws -> RemoteRepositoryPreflightInspection {
     var conflicts: [RemoteRepositoryPublishPreflightConflict] = []
     var remoteVersionsByPath: [String: String] = [:]
@@ -156,7 +163,7 @@ extension RemoteRepositoryPublishService {
       let remoteState = try await gitLabFileState(
         repository: repository,
         path: path,
-        ref: repository.branch,
+        ref: ref,
         token: token
       )
       try Task.checkCancellation()
@@ -187,10 +194,12 @@ extension RemoteRepositoryPublishService {
           // Deleting a file that is already absent is idempotent and safe.
           continue
         }
-        guard !gitLabLegacyDeleteContentMatches(
-          file: file,
-          remoteContent: remoteState.content
-        ) else {
+        guard
+          !gitLabLegacyDeleteContentMatches(
+            file: file,
+            remoteContent: remoteState.content
+          )
+        else {
           continue
         }
         if let conflict = preflightVersionConflict(

@@ -141,7 +141,8 @@ public struct GitCommandRunner: Sendable {
     _ arguments: [String],
     rootURL: URL,
     inputLines: [String]? = nil,
-    inputDelimiter: GitCommandInputDelimiter = .newline
+    inputDelimiter: GitCommandInputDelimiter = .newline,
+    preserveStandardOutputWhitespace: Bool = false
   ) -> GitCommandResult {
     if let reason = Self.repositoryConfigurationBlockReason(rootURL: rootURL) {
       return Self.blockedConfigurationResult(reason)
@@ -235,7 +236,10 @@ public struct GitCommandRunner: Sendable {
     errorPipe.fileHandleForReading.closeFile()
 
     let collected = outputCollector.result()
-    let standardOutput = collected.standardOutput.trimmedForPublishing
+    let standardOutput =
+      preserveStandardOutputWhitespace
+      ? collected.standardOutput
+      : collected.standardOutput.trimmedForPublishing
     let standardError = Self.redactedDiagnosticText(
       collected.standardError.trimmedForPublishing
     )

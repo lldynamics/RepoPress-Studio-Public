@@ -1,7 +1,7 @@
 import Foundation
+import PublishingKnowledgeCore
 import XCTest
 @testable import PersonalSitePublisherMac
-import PublishingWorkbenchCore
 
 final class KnowledgeBrowserImportLedgerStoreTests: XCTestCase {
   func testPersistWritesAtomicFileAndRemovesLegacyDefaults() async throws {

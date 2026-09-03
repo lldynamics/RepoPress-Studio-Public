@@ -4,21 +4,24 @@ import SwiftUI
 
 struct RepositoryWorkspaceView: View {
   let store: WorkbenchStore
-  @ObservedObject private var workspaceObservation:
-    WorkbenchRepositoryWorkspaceObservationFacade
+  @ObservedObject private var workspaceObservation: WorkbenchRepositoryWorkspaceObservationFacade
   @StateObject var externalBrowserPreviewCoordinator: ExternalBrowserPreviewCoordinator
   @Binding var stage: RepositoryContextStage
   @Binding var changedFileSelection: RepositoryChangedFileSelection?
   @ObservedObject var sourceSession: RepositoryHTMLSourceSession
   @Environment(\.openSettings) var openSettings
+  @Environment(\.structuralDraftRepairCommandAction) var structuralDraftRepairCommandAction
   @Environment(\.publishDrawerCommandAction) var publishDrawerCommandAction
   @Environment(\.localSitePreviewCommandAction) var localSitePreviewCommandAction
   @Environment(\.settingsWorkspaceCommandAction) var settingsWorkspaceCommandAction
-  @AppStorage("dataManagementRequestedSection") var dataManagementRequestedSection = DataManagementSection.migration.rawValue
+  @AppStorage("dataManagementRequestedSection") var dataManagementRequestedSection =
+    DataManagementSection.migration.rawValue
   @State var isRepositoryCreationConfirmationPresented = false
   @State var createsPrivateRepository = true
   @State var repositoryCreationFailureMessage: String?
   @State var pendingRemoteArticleImportFiles: [RepositoryChangedFile] = []
+  @State var pendingRepositorySafeSyncConfirmation: RepositorySafeSyncConfirmation?
+  @State var pendingRepositoryRebaseSyncConfirmation: RepositoryRebaseSyncConfirmation?
 
   init(
     store: WorkbenchStore,
@@ -86,6 +89,32 @@ struct RepositoryWorkspaceView: View {
         }
       )
     }
+    .sheet(item: $pendingRepositorySafeSyncConfirmation) { confirmation in
+      RepositorySafeSyncConfirmationView(
+        confirmation: confirmation,
+        isApplying: store.isLocalRepositoryBranchOperationRunning,
+        feedback: store.publishActionFeedback,
+        cancelAction: {
+          pendingRepositorySafeSyncConfirmation = nil
+        },
+        confirmAction: {
+          applyRepositorySafeSync(confirmation)
+        }
+      )
+    }
+    .sheet(item: $pendingRepositoryRebaseSyncConfirmation) { confirmation in
+      RepositoryRebaseSyncConfirmationView(
+        confirmation: confirmation,
+        isApplying: store.isLocalRepositoryBranchOperationRunning,
+        feedback: store.publishActionFeedback,
+        cancelAction: {
+          pendingRepositoryRebaseSyncConfirmation = nil
+        },
+        confirmAction: {
+          applyRepositoryRebaseSync(confirmation)
+        }
+      )
+    }
     .onChange(of: store.repositoryReport) { _, report in
       let reconciled = RepositoryChangedFileSelectionPresentation.reconciledSelection(
         changedFileSelection,
@@ -99,6 +128,8 @@ struct RepositoryWorkspaceView: View {
     .externalBrowserPreviewPresentation(coordinator: externalBrowserPreviewCoordinator)
     .onChange(of: store.activeProfileID) {
       externalBrowserPreviewCoordinator.cancelPendingOpen()
+      pendingRepositorySafeSyncConfirmation = nil
+      pendingRepositoryRebaseSyncConfirmation = nil
     }
     .onDisappear {
       externalBrowserPreviewCoordinator.cancelPendingOpen()
@@ -184,7 +215,26 @@ struct RepositoryWorkspaceView: View {
   }
 
   func presentRemoteArticleImportPreview(_ files: [RepositoryChangedFile]) {
-    pendingRemoteArticleImportFiles = files.filter { $0.kind != .deleted }
+    pendingRemoteArticleImportFiles = files.filter {
+      $0.kind != .deleted
+        && !RepositoryStructuralChangePresentation.isStructural($0, profile: store.activeProfile)
+    }
+  }
+
+  private func applyRepositorySafeSync(_ confirmation: RepositorySafeSyncConfirmation) {
+    Task { @MainActor in
+      guard await store.applyRepositorySafeSync(confirmation) != nil else { return }
+      pendingRepositorySafeSyncConfirmation = nil
+    }
+  }
+
+  private func applyRepositoryRebaseSync(_ confirmation: RepositoryRebaseSyncConfirmation) {
+    Task { @MainActor in
+      let result = await store.applyRepositoryRebaseSync(confirmation)
+      if result != nil || store.repositoryMergeConflictSession?.conflicts.isEmpty == false {
+        pendingRepositoryRebaseSyncConfirmation = nil
+      }
+    }
   }
 
   func openDataManagement(_ section: DataManagementSection = .migration) {

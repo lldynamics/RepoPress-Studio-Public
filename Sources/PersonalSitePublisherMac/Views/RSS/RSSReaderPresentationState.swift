@@ -480,6 +480,8 @@ final class RSSReaderPresentationState: ObservableObject {
              Self.record(persistedRecord, matches: article),
              persistedRecord.attemptedAt > record.attemptedAt {
             cacheFullText(persistedRecord, for: article)
+          } else if Self.isSuccessfulFullTextRecord(record) {
+            clearFullTextError(articleID: article.id)
           }
           touchFullTextArticle(article.id)
           return true
@@ -642,6 +644,9 @@ final class RSSReaderPresentationState: ObservableObject {
     _ record: RSSArticleFullTextRecord,
     for article: RSSArticle
   ) {
+    if Self.isSuccessfulFullTextRecord(record) {
+      clearFullTextError(articleID: article.id)
+    }
     fullTextRecords[article.id] = record
     fullTextArticles[article.id] = fullTextService.articleByApplying(record, to: article)
     readerMetricsCache.removeValue(forKey: article.id)
@@ -677,6 +682,19 @@ final class RSSReaderPresentationState: ObservableObject {
       fullTextErrorLRU.removeFirst()
       fullTextErrorByArticleID.removeValue(forKey: evictedID)
     }
+  }
+
+  private func clearFullTextError(articleID: String) {
+    fullTextErrorByArticleID.removeValue(forKey: articleID)
+    fullTextErrorLRU.removeAll { $0 == articleID }
+  }
+
+  private static func isSuccessfulFullTextRecord(
+    _ record: RSSArticleFullTextRecord
+  ) -> Bool {
+    record.status == .ready
+      && record.failureMessage == nil
+      && record.retryAfter == nil
   }
 
   private static func record(

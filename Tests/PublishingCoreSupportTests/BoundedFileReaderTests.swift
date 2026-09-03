@@ -1,6 +1,6 @@
 import Foundation
+import PublishingCoreSupport
 import XCTest
-@testable import PublishingWorkbenchCore
 
 final class BoundedFileReaderTests: XCTestCase {
   func testFacadeReadsRegularFileWithinLimit() throws {
@@ -45,9 +45,10 @@ final class BoundedFileReaderTests: XCTestCase {
     XCTAssertThrowsError(
       try BoundedFileReader.data(at: fileURL, maximumByteCount: 8)
     ) { error in
-      guard case let BoundedFileReadError.exceedsByteLimit(path, limit) = error,
-            path == fileURL.path,
-            limit == 8 else {
+      guard case BoundedFileReadError.exceedsByteLimit(let path, let limit) = error,
+        path == fileURL.path,
+        limit == 8
+      else {
         return XCTFail("Unexpected error: \(error)")
       }
       XCTAssertFalse((error as? LocalizedError)?.errorDescription?.isEmpty ?? true)

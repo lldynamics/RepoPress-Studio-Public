@@ -192,6 +192,7 @@ final class WorkbenchPersistenceTests: XCTestCase {
         "personal-site-publisher-writing-preview",
         "personal-site-publisher-ai-assistant",
         "personal-site-publisher-knowledge-library",
+        "personal-site-publisher-rss-reading",
         "personal-site-publisher-safe-publishing",
         "personal-site-publisher-maintenance",
       ]
@@ -221,7 +222,7 @@ final class WorkbenchPersistenceTests: XCTestCase {
     XCTAssertEqual(reloaded.drafts.map(\.id), initialIDs)
   }
 
-  func testSoftwareGuidesFollowPreferredChineseAndEnglishLanguage() {
+  func testSoftwareGuidesFollowPreferredChineseAndEnglishLanguage() throws {
     let profile = SiteProfile.defaultProfile
     let now = Date(timeIntervalSince1970: 1_900_000_000)
     let chinese = ArticleDraft.samples(
@@ -237,22 +238,137 @@ final class WorkbenchPersistenceTests: XCTestCase {
 
     XCTAssertEqual(chinese.map(\.slug), english.map(\.slug))
     XCTAssertEqual(chinese.map(\.softwareGuideID), english.map(\.softwareGuideID))
+    XCTAssertEqual(chinese.count, 7)
     XCTAssertEqual(chinese.first?.title, "开始使用：认识发布工作台")
     XCTAssertEqual(english.first?.title, "Getting Started: Meet Your Publishing Workbench")
-    XCTAssertTrue(chinese[2].bodyMarkdown.contains("独立免费版中直接开放"))
+    let chineseByID = Dictionary(
+      uniqueKeysWithValues: chinese.compactMap { guide in
+        guide.softwareGuideID.map { ($0, guide) }
+      }
+    )
+    let englishByID = Dictionary(
+      uniqueKeysWithValues: english.compactMap { guide in
+        guide.softwareGuideID.map { ($0, guide) }
+      }
+    )
+    let chineseGettingStarted = try XCTUnwrap(chineseByID["getting-started"])
+    let englishGettingStarted = try XCTUnwrap(englishByID["getting-started"])
+    let chineseWriting = try XCTUnwrap(chineseByID["writing-preview"])
+    let englishWriting = try XCTUnwrap(englishByID["writing-preview"])
+    let chineseAI = try XCTUnwrap(chineseByID["ai-assistant"])
+    let englishAI = try XCTUnwrap(englishByID["ai-assistant"])
+    let chineseLibrary = try XCTUnwrap(chineseByID["knowledge-library"])
+    let englishLibrary = try XCTUnwrap(englishByID["knowledge-library"])
+    let chineseRSS = try XCTUnwrap(chineseByID["rss-reading"])
+    let englishRSS = try XCTUnwrap(englishByID["rss-reading"])
+    let chinesePublishing = try XCTUnwrap(chineseByID["safe-publishing"])
+    let englishPublishing = try XCTUnwrap(englishByID["safe-publishing"])
+    let chineseMaintenance = try XCTUnwrap(chineseByID["maintenance-recovery"])
+    let englishMaintenance = try XCTUnwrap(englishByID["maintenance-recovery"])
+
+    XCTAssertTrue(chineseGettingStarted.bodyMarkdown.contains("写作、资料库、RSS 阅读、站点、检查"))
     XCTAssertTrue(
-      english[2].bodyMarkdown.contains("available directly in the free standalone edition"))
-    XCTAssertTrue(chinese[3].bodyMarkdown.contains("不包含在 App 包内"))
-    XCTAssertTrue(english[3].bodyMarkdown.contains("Chrome extension is not included"))
-    XCTAssertTrue(chinese[4].bodyMarkdown.contains("保存到本地"))
-    XCTAssertTrue(english[4].bodyMarkdown.contains("Save Locally"))
+      englishGettingStarted.bodyMarkdown.contains("Writing, Library, RSS, Site, and Checks")
+    )
+    XCTAssertTrue(chineseGettingStarted.bodyMarkdown.contains("通用草稿（General Drafts）"))
+    XCTAssertTrue(englishGettingStarted.bodyMarkdown.contains("General Drafts"))
+    XCTAssertTrue(chineseWriting.bodyMarkdown.contains("新建通用草稿"))
+    XCTAssertTrue(englishWriting.bodyMarkdown.contains("New General Draft"))
+    XCTAssertTrue(chineseWriting.bodyMarkdown.contains("本地预览"))
+    XCTAssertTrue(englishWriting.bodyMarkdown.contains("Local Preview"))
+    XCTAssertTrue(chineseAI.bodyMarkdown.contains("ChatGPT 登录"))
+    XCTAssertTrue(chineseAI.bodyMarkdown.contains("本地模型"))
+    XCTAssertTrue(chineseAI.bodyMarkdown.contains("允许发送给远程 AI"))
+    XCTAssertTrue(englishAI.bodyMarkdown.contains("ChatGPT Sign-In"))
+    XCTAssertTrue(englishAI.bodyMarkdown.contains("Local Model"))
+    XCTAssertTrue(englishAI.bodyMarkdown.contains("Allow Sending to Remote AI"))
+    XCTAssertTrue(chineseLibrary.bodyMarkdown.contains("不包含在 App 包内"))
+    XCTAssertTrue(englishLibrary.bodyMarkdown.contains("Chrome extension is not included"))
+    XCTAssertTrue(chineseLibrary.bodyMarkdown.contains("资料需先固定到 AI"))
+    XCTAssertTrue(englishLibrary.bodyMarkdown.contains("Pin a source to AI first"))
+    XCTAssertTrue(chineseRSS.bodyMarkdown.contains("发现并添加"))
+    XCTAssertTrue(chineseRSS.bodyMarkdown.contains("订阅迁移"))
+    XCTAssertTrue(chineseRSS.bodyMarkdown.contains("Apple 本机翻译"))
+    XCTAssertTrue(chineseRSS.bodyMarkdown.contains("当前 AI 服务"))
+    XCTAssertTrue(chineseRSS.bodyMarkdown.contains("新建灵感草稿"))
+    XCTAssertTrue(chineseRSS.bodyMarkdown.contains("其中包含 RSS 数据，但不包含 API Key"))
+    XCTAssertTrue(englishRSS.bodyMarkdown.contains("Discover and Add"))
+    XCTAssertTrue(englishRSS.bodyMarkdown.contains("Subscription Migration"))
+    XCTAssertTrue(englishRSS.bodyMarkdown.contains("Apple On-Device Translation"))
+    XCTAssertTrue(englishRSS.bodyMarkdown.contains("Current AI Service"))
+    XCTAssertTrue(englishRSS.bodyMarkdown.contains("New Idea Draft"))
+    XCTAssertTrue(englishRSS.bodyMarkdown.contains("It includes RSS data but excludes API keys"))
+    XCTAssertTrue(chineseGettingStarted.bodyMarkdown.contains("审阅并发布所有文件"))
+    XCTAssertTrue(englishGettingStarted.bodyMarkdown.contains("Review and Publish All Files"))
+    XCTAssertTrue(chinesePublishing.bodyMarkdown.contains("发布仓库全部文件"))
+    XCTAssertTrue(englishPublishing.bodyMarkdown.contains("Publish All Repository Files"))
+    XCTAssertTrue(chinesePublishing.bodyMarkdown.contains("推送成功不等于生产站点已上线"))
+    XCTAssertTrue(englishPublishing.bodyMarkdown.contains("not proof that production is live"))
+    XCTAssertTrue(chineseMaintenance.bodyMarkdown.contains("检查 → 站点维护"))
+    XCTAssertTrue(englishMaintenance.bodyMarkdown.contains("Checks → Site Maintenance"))
+    XCTAssertFalse(chinese.contains { $0.bodyMarkdown.contains("仓库与发布") })
+    XCTAssertFalse(chinese.contains { $0.bodyMarkdown.contains("内容健康") })
+    XCTAssertFalse(english.contains { $0.bodyMarkdown.contains("Repository & Publish") })
+    XCTAssertFalse(english.contains { $0.bodyMarkdown.contains("Content Health") })
     XCTAssertTrue(
       (chinese + english).allSatisfy { !$0.summary.isEmpty && !$0.bodyMarkdown.isEmpty })
     XCTAssertTrue((chinese + english).allSatisfy { $0.authors == [profile.defaultAuthor] })
     XCTAssertTrue((chinese + english).allSatisfy(\.isGeneralDraft))
   }
 
-  func testSoftwareGuideVersionUpgradeRefreshesManagedGuidesAndAddsOnlyNewGuide() async throws {
+  func testSoftwareGuideVersionFiveRefreshesManagedVersionFourGuideInGeneralDrafts()
+    async throws
+  {
+    XCTAssertEqual(ArticleDraft.currentSoftwareGuideSeedVersion, 5)
+    let url = temporaryPersistenceURL()
+    defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+    let persistence = WorkbenchPersistence(fileURL: url)
+    let profile = SiteProfile.defaultProfile
+    let currentTemplate = try XCTUnwrap(
+      ArticleDraft.samples(profile: profile).first { $0.softwareGuideID == "safe-publishing" }
+    )
+    var versionFourGuide = currentTemplate
+    versionFourGuide.assignToSite(profile.id)
+    versionFourGuide.bodyMarkdown = "# Version 4 publishing guide\n"
+    versionFourGuide.softwareGuideTemplateVersion = 4
+    _ = try persistence.save(
+      WorkbenchSnapshot(
+        profiles: [profile],
+        activeProfileID: profile.id,
+        drafts: [versionFourGuide],
+        softwareGuideSeedVersion: 4,
+        releaseRecords: []
+      )
+    )
+
+    let store = WorkbenchStore(
+      persistence: persistence,
+      freshWorkspaceSeedPolicy: .softwareGuides
+    )
+
+    let refreshedGuide = try XCTUnwrap(
+      store.drafts.first { $0.softwareGuideID == "safe-publishing" }
+    )
+    let newlyInstalledRSSGuide = try XCTUnwrap(
+      store.drafts.first { $0.softwareGuideID == "rss-reading" }
+    )
+    XCTAssertEqual(store.drafts.count, 2)
+    XCTAssertEqual(refreshedGuide.id, versionFourGuide.id)
+    XCTAssertTrue(refreshedGuide.isGeneralDraft)
+    XCTAssertNil(refreshedGuide.repositoryPath)
+    XCTAssertNil(refreshedGuide.repositorySHA)
+    XCTAssertEqual(refreshedGuide.bodyMarkdown, currentTemplate.bodyMarkdown)
+    XCTAssertEqual(refreshedGuide.softwareGuideTemplateVersion, 5)
+    XCTAssertTrue(newlyInstalledRSSGuide.isGeneralDraft)
+    XCTAssertNil(newlyInstalledRSSGuide.repositoryPath)
+    XCTAssertNil(newlyInstalledRSSGuide.repositorySHA)
+    XCTAssertEqual(newlyInstalledRSSGuide.softwareGuideTemplateVersion, 5)
+    XCTAssertFalse(store.drafts.contains { $0.softwareGuideID == "writing-preview" })
+    XCTAssertEqual(store.softwareGuideSeedVersion, 5)
+    await store.waitForPendingSave()
+  }
+
+  func testSoftwareGuideVersionUpgradeRefreshesManagedGuidesAndAddsNewGuides() async throws {
     let url = temporaryPersistenceURL()
     defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
     let persistence = WorkbenchPersistence(fileURL: url)
@@ -260,7 +376,9 @@ final class WorkbenchPersistenceTests: XCTestCase {
     var legacyGuides = ArticleDraft.samples(
       profile: profile,
       preferredLanguage: "zh-Hans"
-    ).filter { $0.softwareGuideID != "ai-assistant" }
+    ).filter {
+      $0.softwareGuideID != "ai-assistant" && $0.softwareGuideID != "rss-reading"
+    }
     let legacyIDs = legacyGuides.map(\.id)
     for index in legacyGuides.indices {
       legacyGuides[index].assignToSite(profile.id)
@@ -283,7 +401,7 @@ final class WorkbenchPersistenceTests: XCTestCase {
       freshWorkspaceSeedPolicy: .softwareGuides
     )
 
-    XCTAssertEqual(Set(store.drafts.compactMap(\.softwareGuideID)).count, 6)
+    XCTAssertEqual(Set(store.drafts.compactMap(\.softwareGuideID)).count, 7)
     XCTAssertEqual(
       store.drafts.compactMap(\.softwareGuideID),
       [
@@ -291,12 +409,14 @@ final class WorkbenchPersistenceTests: XCTestCase {
         "writing-preview",
         "ai-assistant",
         "knowledge-library",
+        "rss-reading",
         "safe-publishing",
         "maintenance-recovery",
       ]
     )
     XCTAssertTrue(legacyIDs.allSatisfy { legacyID in store.drafts.contains { $0.id == legacyID } })
     XCTAssertTrue(store.drafts.contains { $0.softwareGuideID == "ai-assistant" })
+    XCTAssertTrue(store.drafts.contains { $0.softwareGuideID == "rss-reading" })
     XCTAssertTrue(store.drafts.allSatisfy(\.isGeneralDraft))
     XCTAssertNotEqual(
       try XCTUnwrap(
@@ -328,7 +448,7 @@ final class WorkbenchPersistenceTests: XCTestCase {
         profiles: [profile],
         activeProfileID: profile.id,
         drafts: [customizedGuide],
-        softwareGuideSeedVersion: 1,
+        softwareGuideSeedVersion: 4,
         releaseRecords: []
       )
     )
@@ -339,8 +459,9 @@ final class WorkbenchPersistenceTests: XCTestCase {
     )
     let guideIDs = Set(store.drafts.compactMap(\.softwareGuideID))
 
-    XCTAssertEqual(guideIDs, Set(["getting-started", "ai-assistant"]))
+    XCTAssertEqual(guideIDs, Set(["getting-started", "rss-reading"]))
     XCTAssertFalse(guideIDs.contains("writing-preview"))
+    XCTAssertFalse(guideIDs.contains("ai-assistant"))
     XCTAssertEqual(
       store.drafts.first { $0.softwareGuideID == "getting-started" }?.bodyMarkdown,
       "# 我的发布手册\n"
@@ -371,7 +492,7 @@ final class WorkbenchPersistenceTests: XCTestCase {
       freshWorkspaceSeedPolicy: .softwareGuides
     )
 
-    XCTAssertEqual(Set(store.drafts.compactMap(\.softwareGuideID)).count, 6)
+    XCTAssertEqual(Set(store.drafts.compactMap(\.softwareGuideID)).count, 7)
     XCTAssertEqual(store.selectedDraft?.softwareGuideID, "getting-started")
     XCTAssertEqual(store.draftListContentScope, .general)
     XCTAssertTrue(store.drafts.allSatisfy(\.isGeneralDraft))
@@ -406,10 +527,10 @@ final class WorkbenchPersistenceTests: XCTestCase {
     let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: url))
     let originalDraftID = store.drafts[0].id
 
-    XCTAssertEqual(store.installSoftwareGuides(), 6)
+    XCTAssertEqual(store.installSoftwareGuides(), 7)
     await store.waitForPendingSave()
 
-    XCTAssertEqual(store.drafts.count, 7)
+    XCTAssertEqual(store.drafts.count, 8)
     XCTAssertTrue(store.drafts.contains { $0.id == originalDraftID })
     XCTAssertEqual(store.selectedDraft?.softwareGuideID, "getting-started")
     XCTAssertEqual(store.selectedSection, .writing)
@@ -423,7 +544,7 @@ final class WorkbenchPersistenceTests: XCTestCase {
     )
 
     XCTAssertEqual(store.installSoftwareGuides(), 0)
-    XCTAssertEqual(store.drafts.count, 7)
+    XCTAssertEqual(store.drafts.count, 8)
     XCTAssertEqual(Set(store.drafts.map(\.slug)).count, store.drafts.count)
 
     var customizedGuide = try XCTUnwrap(
@@ -443,8 +564,8 @@ final class WorkbenchPersistenceTests: XCTestCase {
     await store.waitForPendingSave()
 
     let reloaded = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: url))
-    XCTAssertEqual(reloaded.drafts.count, 7)
-    XCTAssertEqual(Set(reloaded.drafts.compactMap(\.softwareGuideID)).count, 6)
+    XCTAssertEqual(reloaded.drafts.count, 8)
+    XCTAssertEqual(Set(reloaded.drafts.compactMap(\.softwareGuideID)).count, 7)
   }
 
   func testInstallingSoftwareGuidesResolvesUserSlugCollisionWithoutMisidentification() async throws
@@ -457,7 +578,7 @@ final class WorkbenchPersistenceTests: XCTestCase {
     userDraft.slug = "personal-site-publisher-getting-started"
     store.updateDraft(userDraft)
 
-    XCTAssertEqual(store.installSoftwareGuides(), 6)
+    XCTAssertEqual(store.installSoftwareGuides(), 7)
     await store.waitForPendingSave()
 
     let preservedUserDraft = try XCTUnwrap(store.drafts.first(where: { $0.id == userDraft.id }))
@@ -487,10 +608,10 @@ final class WorkbenchPersistenceTests: XCTestCase {
     )
     let store = WorkbenchStore(persistence: persistence)
 
-    XCTAssertEqual(store.installSoftwareGuides(), 5)
+    XCTAssertEqual(store.installSoftwareGuides(), 6)
     await store.waitForPendingSave()
 
-    XCTAssertEqual(Set(store.drafts.compactMap(\.softwareGuideID)).count, 6)
+    XCTAssertEqual(Set(store.drafts.compactMap(\.softwareGuideID)).count, 7)
     XCTAssertEqual(
       store.drafts.filter { $0.softwareGuideID == existingGuide.softwareGuideID }.count, 1)
     XCTAssertEqual(store.selectedDraft?.softwareGuideID, "getting-started")

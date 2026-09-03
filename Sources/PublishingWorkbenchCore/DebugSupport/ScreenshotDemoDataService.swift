@@ -9,6 +9,8 @@
     public static let uiTestEnvironmentKey = "PERSONAL_SITE_PUBLISHER_SCREENSHOT_UI_TEST"
     public static let uiTestRepositoryRootEnvironmentKey =
       "PERSONAL_SITE_PUBLISHER_SCREENSHOT_UI_TEST_REPOSITORY_ROOT"
+    public static let uiTestPublishConfigurationEnvironmentKey =
+      "PERSONAL_SITE_PUBLISHER_SCREENSHOT_UI_TEST_PUBLISH_CONFIGURATION"
     public static let persistenceRootEnvironmentKey =
       "PERSONAL_SITE_PUBLISHER_SCREENSHOT_PERSISTENCE_ROOT"
     public static let performancePersistenceRootEnvironmentKey =
@@ -671,6 +673,15 @@
       if isUITest || surface == .syncAPIPublish {
         prepareRepositoryFixture(in: store, isUITest: isUITest)
         if surface == .syncAPIPublish {
+          if isUITest,
+            ProcessInfo.processInfo.environment[uiTestPublishConfigurationEnvironmentKey]
+              == "missing-repository"
+          {
+            store.updateActiveProfile { profile in
+              profile.repoOwner = ""
+              profile.repoName = ""
+            }
+          }
           seedSyncAPIPublishPreview(in: store)
         }
         // The publish-drawer UI test must always expose its intended "Open

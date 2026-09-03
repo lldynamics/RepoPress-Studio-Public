@@ -122,6 +122,7 @@ extension DeploymentStatusService {
     profile: SiteProfile,
     hasToken: Bool
   ) -> DeploymentStatusProviderReadiness {
+    let configurationReadiness = DeploymentConfigurationReadiness(profile: profile)
     let provider = profile.deploymentProvider ?? defaultProvider(for: profile)
     let hasRepository = hasRepositoryConfiguration(profile)
     let hasProjectID = profile.deploymentProjectID?.trimmedForPublishing.nilIfEmpty != nil
@@ -278,6 +279,8 @@ extension DeploymentStatusService {
       canCheckAnyStatus: hasProviderConfiguration || hasReachabilityFallback,
       configuredSignals: configured,
       missingRequirements: Array(Set(missing)).sorted(),
+      productionVerificationIssues: configurationReadiness.issues,
+      needsExplicitProviderConfirmation: configurationReadiness.needsExplicitProviderConfirmation,
       fallbackMessage: fallbackMessage,
       nextStep: nextStep
     )
@@ -331,6 +334,49 @@ extension DeploymentStatusService {
     return SiteArticleURLResolver()
       .url(baseURL: siteURL, markdownPath: markdownPath, siteKind: siteKind)?
       .absoluteString
+  }
+
+  public func articleURL(
+    siteURLText: String,
+    markdownPath: String,
+    profile: SiteProfile,
+    resolvedArticlePath: String? = nil
+  ) -> String? {
+    if let resolvedURL = resolvedArticleURL(
+      siteURLText: siteURLText,
+      path: resolvedArticlePath
+    ) {
+      return resolvedURL.absoluteString
+    }
+    guard let siteURL = URL(string: siteURLText) else { return nil }
+    return SiteArticleURLResolver()
+      .url(baseURL: siteURL, markdownPath: markdownPath, profile: profile)?
+      .absoluteString
+  }
+
+  private func resolvedArticleURL(siteURLText: String, path: String?) -> URL? {
+    guard var path = path?.trimmedForPublishing.nilIfEmpty,
+      path.hasPrefix("/"),
+      !path.hasPrefix("//"),
+      !path.contains("\\"),
+      !path.contains("://")
+    else {
+      return nil
+    }
+    path = String(path.split(separator: "#", maxSplits: 1).first ?? "")
+    path = String(path.split(separator: "?", maxSplits: 1).first ?? "")
+    guard !path.split(separator: "/").contains(".."),
+      var components = URLComponents(string: siteURLText),
+      let scheme = components.scheme?.lowercased(),
+      scheme == "https" || scheme == "http",
+      components.host?.nilIfEmpty != nil
+    else {
+      return nil
+    }
+    components.path = path
+    components.query = nil
+    components.fragment = nil
+    return components.url
   }
 
   private func aggregateLevel(_ signals: [DeploymentStatusSignal]) -> DeploymentStatusLevel {

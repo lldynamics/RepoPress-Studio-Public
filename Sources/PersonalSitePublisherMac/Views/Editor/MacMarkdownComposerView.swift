@@ -59,9 +59,12 @@ struct MacMarkdownComposerView: View {
   @AppStorage(MarkdownEditorComfortPreferences.realtimeAnalysisEnabledKey)
   var isRealtimeAnalysisEnabled = MarkdownEditorComfortConfiguration
     .defaultRealtimeAnalysisEnabled
+  @AppStorage("workspace.inlineFrontMatterPropertiesExpanded")
+  private var isInlineFrontMatterPropertiesExpanded = true
   @State private var slashCommandQuery: String? = nil
   @State private var isSlashMenuPresented: Bool = false
   @State private var slashCommandSelectedIndex = 0
+  @State private var editorContextualAnchorRect: CGRect?
   @State private var isDiscardInvalidFrontMatterConfirmationPresented = false
   let findReplaceService = MarkdownFindReplaceService()
   let outlineService = MarkdownOutlineService()
@@ -153,6 +156,49 @@ struct MacMarkdownComposerView: View {
 
   var editorDocumentBodyOffset: Int {
     editorDocumentBodyOffsetCache
+  }
+
+  var showsFrontMatterSource: Bool {
+    InlineFrontMatterPropertiesPresentation.showsSource(
+      requested: isFrontMatterSourceVisible,
+      hasIssue: frontMatterIssue != nil
+    )
+  }
+
+  var visibleEditorText: Binding<String> {
+    if showsFrontMatterSource {
+      return Binding(
+        get: { editorDocument },
+        set: { editorDocument = $0 }
+      )
+    }
+    return Binding(
+      get: { editorBody },
+      set: { editorBody = $0 }
+    )
+  }
+
+  var visibleEditorBodyOffset: Int {
+    showsFrontMatterSource ? editorDocumentBodyOffset : 0
+  }
+
+  var inlineFrontMatterCategorySuggestions: [String] {
+    let existingCategories = editorState.drafts
+      .filter { $0.siteProfileID == draft.siteProfileID }
+      .flatMap(\.categories)
+    let values = draft.categories + activeProfile.defaultCategories + existingCategories
+    var seen = Set<String>()
+    return values.compactMap { value in
+      let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+      guard !trimmed.isEmpty else { return nil }
+      let key = trimmed.folding(
+        options: [.caseInsensitive, .diacriticInsensitive],
+        locale: .current
+      )
+      guard seen.insert(key).inserted else { return nil }
+      return trimmed
+    }
+    .sorted { $0.localizedStandardCompare($1) == .orderedAscending }
   }
 
   init(
@@ -361,6 +407,16 @@ struct MacMarkdownComposerView: View {
         syncActiveEditorSelection()
       }
     }
+    .onChange(of: frontMatterIssue) { _, issue in
+      if issue != nil {
+        isFrontMatterSourceVisible = true
+      }
+    }
+    .onChange(of: isFrontMatterSourceVisible) { _, isVisible in
+      if !isVisible {
+        isFrontMatterSelection = false
+      }
+    }
     .onChange(of: findQuery) { _, _ in
       findReplaceMessage = ""
       refreshFindMatchSnapshot()
@@ -425,11 +481,28 @@ struct MacMarkdownComposerView: View {
   }
 
   private var editorOverlaySurface: some View {
-    ZStack(alignment: .top) {
-      editorSurface
-      writingContextPanelOverlay
+    ZStack(alignment: .bottom) {
+      HStack(spacing: 0) {
+        editorSurface
+          .layoutPriority(1)
+
+        if let panel = activeWritingContextPanel {
+          Divider()
+          writingContextPanelPane(panel)
+            .transition(
+              WorkbenchMotion.drawerTransition(reduceMotion: accessibilityReduceMotion)
+            )
+        }
+      }
       automaticImageImportToastOverlay
     }
+    .animation(
+      WorkbenchMotion.animation(
+        for: .drawerPresentation,
+        reduceMotion: accessibilityReduceMotion
+      ),
+      value: activeWritingContextPanel
+    )
   }
 
   @ViewBuilder
@@ -462,23 +535,14 @@ struct MacMarkdownComposerView: View {
     )
   }
 
-  @ViewBuilder
-  private var writingContextPanelOverlay: some View {
-    if let panel = activeWritingContextPanel {
-      HStack {
-        Spacer(minLength: 0)
-        MarkdownWritingContextPanelContainer(
-          selectedPanel: panel,
-          availablePanels: availableWritingContextPanels,
-          onSelectPanel: showWritingContextPanel,
-          onClose: dismissWritingContextPanel
-        ) {
-          writingContextPanelContent(for: panel)
-        }
-      }
-      .padding(12)
-      .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-      .zIndex(4)
+  private func writingContextPanelPane(_ panel: MarkdownWritingContextPanel) -> some View {
+    MarkdownWritingContextPanelContainer(
+      selectedPanel: panel,
+      availablePanels: availableWritingContextPanels,
+      onSelectPanel: showWritingContextPanel,
+      onClose: dismissWritingContextPanel
+    ) {
+      writingContextPanelContent(for: panel)
     }
   }
 
@@ -647,13 +711,39 @@ struct MacMarkdownComposerView: View {
 
       let reviewPresentation = inlineStructuredEditReviewPresentation
       let statisticsDraftID = draft.id
+      InlineFrontMatterPropertiesView(
+        draft: $draft,
+        profile: activeProfile,
+        categorySuggestions: inlineFrontMatterCategorySuggestions,
+        isSourceVisible: $presentationState.isFrontMatterSourceVisible,
+        sourceIssueMessage: frontMatterIssue?.workbenchMessage,
+        isExpanded: $isInlineFrontMatterPropertiesExpanded,
+        forceCompact: zenModeController.isZenModeActive
+      )
+      .padding(.horizontal, 18)
+      .padding(
+        .vertical,
+        isInlineFrontMatterPropertiesExpanded && !zenModeController.isZenModeActive ? 12 : 4
+      )
+      .opacity(zenModeController.toolbarOpacity)
+      .onHover { isHovered in
+        zenModeController.updateHovered(isHovered)
+      }
+      .animation(
+        WorkbenchMotion.animation(
+          for: .statusChange,
+          reduceMotion: accessibilityReduceMotion
+        ),
+        value: zenModeController.toolbarOpacity
+      )
+
       ZStack {
         WorkbenchWritingSurface.color(usesWarmPaper: isWarmPaperBackgroundEnabled)
 
         MacMarkdownTextView(
-          text: $editorSessionState.editorDocument,
+          text: visibleEditorText,
           bodyMarkdown: editorBody,
-          bodyUTF16Offset: editorDocumentBodyOffset,
+          bodyUTF16Offset: visibleEditorBodyOffset,
           allowsLiveBodyChanges: frontMatterIssue == nil,
           selectedRange: $editorSessionState.selectedRange,
           isFrontMatterSelection: $editorSessionState.isFrontMatterSelection,
@@ -703,6 +793,11 @@ struct MacMarkdownComposerView: View {
           onSlashCommandKey: { key in
             handleSlashCommandKey(key)
           },
+          onContextualAnchorChanged: { anchor in
+            if editorContextualAnchorRect != anchor {
+              editorContextualAnchorRect = anchor
+            }
+          },
           onLiveBodyChange: { previousBody, updatedBody in
             handleLiveEditorBodyChange(from: previousBody, to: updatedBody)
           },
@@ -722,7 +817,7 @@ struct MacMarkdownComposerView: View {
         // The coordinator owns delayed statistics tasks. Recreating it for a
         // different draft binds each callback to the correct draft identity
         // and cancels any pending delivery from the prior document.
-        .id(statisticsDraftID)
+        .id("\(statisticsDraftID.uuidString)-\(showsFrontMatterSource ? "source" : "body")")
         .frame(maxWidth: .infinity, maxHeight: .infinity)
 
         if let reviewPresentation {
@@ -804,8 +899,14 @@ struct MacMarkdownComposerView: View {
           }
         }
 
-        if selectionBubblePresentationState.shouldRender(for: editorSessionState.selectedRange) {
-          VStack {
+        if selectionBubblePresentationState.shouldRender(for: editorSessionState.selectedRange),
+          let editorContextualAnchorRect
+        {
+          MarkdownContextualPopoverLayout(
+            anchor: editorContextualAnchorRect,
+            preferredEdge: .above,
+            horizontalAlignment: .center
+          ) {
             MarkdownFloatingBubbleToolbar(
               isSelectionAIActionRunning: isSelectionAIActionRunning,
               onApplyFormatting: applyMarkdownFormatting,
@@ -813,9 +914,9 @@ struct MacMarkdownComposerView: View {
               onPerformSelectionAIAction: performSelectionAIAction,
               onPerformConvergedSelectionAIAction: performConvergedSelectionAIAction
             )
-            Spacer()
           }
-          .padding(.top, 16)
+          .frame(maxWidth: .infinity, maxHeight: .infinity)
+          .zIndex(5)
         }
 
         if isImageDropTargeted {
@@ -837,25 +938,26 @@ struct MacMarkdownComposerView: View {
           .accessibilityHidden(true)
         }
 
-        if isSlashMenuPresented {
-          VStack {
-            Spacer()
-            HStack {
-              MarkdownSlashCommandMenu(
-                filterText: slashCommandQuery ?? "",
-                items: buildDefaultSlashCommands(),
-                selectedIndex: $slashCommandSelectedIndex,
-                onSelect: { item in
-                  selectSlashCommand(item)
-                },
-                onDismiss: {
-                  dismissSlashCommandMenu()
-                }
-              )
-              Spacer()
-            }
+        if isSlashMenuPresented, let editorContextualAnchorRect {
+          MarkdownContextualPopoverLayout(
+            anchor: editorContextualAnchorRect,
+            preferredEdge: .below,
+            horizontalAlignment: .leading
+          ) {
+            MarkdownSlashCommandMenu(
+              filterText: slashCommandQuery ?? "",
+              items: buildDefaultSlashCommands(),
+              selectedIndex: $slashCommandSelectedIndex,
+              onSelect: { item in
+                selectSlashCommand(item)
+              },
+              onDismiss: {
+                dismissSlashCommandMenu()
+              }
+            )
           }
-          .padding(20)
+          .frame(maxWidth: .infinity, maxHeight: .infinity)
+          .zIndex(6)
         }
       }
       .frame(maxWidth: .infinity, maxHeight: .infinity)

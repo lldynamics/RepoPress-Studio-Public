@@ -208,9 +208,11 @@ struct PublishingConsoleCommands: Commands {
     }
 
     CommandMenu(String(localized: "发布")) {
-      Button(String(localized: "发布所有变更…")) {
+      Button(String(localized: "打开发布流程…")) {
         openPublishDrawerForCommandDraft(
-          message: String(localized: "发布中心已打开；默认操作为发布所有变更，也可以仅发布当前文章。")
+          message: String(
+            localized: "发布流程已打开；默认审阅并推送仓库全部文件，单篇发布、本地保存和预览分支在“其他发布方式”中。"
+          )
         )
       }
       .keyboardShortcut("p", modifiers: [.command, .option])

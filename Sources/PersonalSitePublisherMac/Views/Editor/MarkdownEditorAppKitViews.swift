@@ -665,6 +665,25 @@ final class DroppableMarkdownTextView: NSTextView {
     [MarkdownInlineAttachmentAccessibilityElement] = []
   private var markdownInlineAttachmentAccessibilityElementsByKey:
     [String: MarkdownInlineAttachmentAccessibilityElement] = [:]
+  /// The image card currently under the pointer. This stays paint-only: the
+  /// affordance is drawn in the text view rather than installed as a child
+  /// button for every image in the viewport.
+  private var markdownHoveredInlineAttachmentKey: String? {
+    didSet {
+      guard oldValue != markdownHoveredInlineAttachmentKey else { return }
+      let oldFrame = oldValue.flatMap { markdownInlineAttachmentDrawings[$0]?.frame } ?? .null
+      let newFrame = markdownHoveredInlineAttachmentKey.flatMap {
+        markdownInlineAttachmentDrawings[$0]?.frame
+      } ?? .null
+      let invalidated = oldFrame.union(newFrame)
+      if invalidated.isNull || invalidated.isEmpty {
+        needsDisplay = true
+      } else {
+        setNeedsDisplay(invalidated)
+      }
+    }
+  }
+  private var markdownInlineAttachmentTrackingArea: NSTrackingArea?
   /// The current paragraph spotlight is painted in drawBackground(in:) so it
   /// does not enter TextKit's rendering-attribute invalidation path.
   var markdownParagraphHighlightRect: NSRect? {
@@ -751,6 +770,21 @@ final class DroppableMarkdownTextView: NSTextView {
   override func viewDidMoveToWindow() {
     super.viewDidMoveToWindow()
     registerMarkdownDraggedTypes()
+  }
+
+  override func updateTrackingAreas() {
+    if let markdownInlineAttachmentTrackingArea {
+      removeTrackingArea(markdownInlineAttachmentTrackingArea)
+    }
+    let trackingArea = NSTrackingArea(
+      rect: .zero,
+      options: [.mouseMoved, .mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect],
+      owner: self,
+      userInfo: nil
+    )
+    addTrackingArea(trackingArea)
+    markdownInlineAttachmentTrackingArea = trackingArea
+    super.updateTrackingAreas()
   }
 
   private func registerMarkdownDraggedTypes() {
@@ -857,6 +891,11 @@ final class DroppableMarkdownTextView: NSTextView {
           )
           placeholder.draw(in: placeholderRect)
         }
+        if drawing.key == markdownHoveredInlineAttachmentKey,
+          let controlFrame = MarkdownInlineAttachmentOpenOriginalControl.frame(in: drawing.frame)
+        {
+          drawMarkdownInlineAttachmentOpenOriginalControl(in: controlFrame)
+        }
       case .formula(let source, _, let fontSize):
         let contentRect = drawing.frame.insetBy(dx: 12, dy: 4)
         MarkdownInlineFormulaPresentation.attributedString(
@@ -873,6 +912,39 @@ final class DroppableMarkdownTextView: NSTextView {
       }
       NSGraphicsContext.restoreGraphicsState()
     }
+  }
+
+  private func drawMarkdownInlineAttachmentOpenOriginalControl(in frame: NSRect) {
+    let controlPath = NSBezierPath(roundedRect: frame, xRadius: 5, yRadius: 5)
+    NSColor.windowBackgroundColor.withAlphaComponent(0.94).setFill()
+    controlPath.fill()
+    NSColor.separatorColor.withAlphaComponent(0.7).setStroke()
+    controlPath.lineWidth = 1
+    controlPath.stroke()
+
+    let icon = NSImage(
+      systemSymbolName: "arrow.up.right.square",
+      accessibilityDescription: "打开原图"
+    )?.withSymbolConfiguration(
+      NSImage.SymbolConfiguration(pointSize: 11, weight: .medium)
+    )
+    let iconRect = NSRect(x: frame.minX + 7, y: frame.midY - 5.5, width: 11, height: 11)
+    icon?.draw(in: iconRect)
+    let label = NSAttributedString(
+      string: "打开原图",
+      attributes: [
+        .font: NSFont.systemFont(ofSize: 11, weight: .medium),
+        .foregroundColor: NSColor.labelColor,
+      ]
+    )
+    label.draw(
+      in: NSRect(
+        x: iconRect.maxX + 4,
+        y: frame.minY + 5,
+        width: max(0, frame.maxX - iconRect.maxX - 8),
+        height: frame.height - 8
+      )
+    )
   }
 
   override func becomeFirstResponder() -> Bool {
@@ -931,11 +1003,45 @@ final class DroppableMarkdownTextView: NSTextView {
 
   override func mouseDown(with event: NSEvent) {
     let point = convert(event.locationInWindow, from: nil)
+    if openMarkdownInlineAttachmentOriginal(at: point) { return }
     if handleMarkdownBlockMarkerClick(at: point) { return }
     super.mouseDown(with: event)
     if window?.firstResponder !== self {
       window?.makeFirstResponder(self)
     }
+  }
+
+  override func mouseMoved(with event: NSEvent) {
+    updateMarkdownInlineAttachmentHover(at: convert(event.locationInWindow, from: nil))
+    super.mouseMoved(with: event)
+  }
+
+  override func mouseExited(with event: NSEvent) {
+    markdownHoveredInlineAttachmentKey = nil
+    super.mouseExited(with: event)
+  }
+
+  private func updateMarkdownInlineAttachmentHover(at point: NSPoint) {
+    let hoveredKey = markdownInlineAttachmentDrawings.values
+      .filter { drawing in
+        guard case .image = drawing.content else { return false }
+        return drawing.frame.contains(point)
+      }
+      .sorted { $0.documentRange.location < $1.documentRange.location }
+      .last?
+      .key
+    markdownHoveredInlineAttachmentKey = hoveredKey
+  }
+
+  private func openMarkdownInlineAttachmentOriginal(at point: NSPoint) -> Bool {
+    guard let drawing = markdownInlineAttachmentDrawings.values.first(where: { drawing in
+      guard case .image = drawing.content else { return false }
+      return MarkdownInlineAttachmentOpenOriginalControl.contains(point, in: drawing.frame)
+    }), case .image(let path, _) = drawing.content else {
+      return false
+    }
+    _ = NSWorkspace.shared.open(URL(fileURLWithPath: path))
+    return true
   }
 
   override func keyDown(with event: NSEvent) {

@@ -58,12 +58,14 @@ public enum DeploymentProvider: String, Codable, CaseIterable, Identifiable, Sen
     case .vercel:
       return DeploymentProviderIntegrationDepth(
         title: "Vercel Deployments API",
-        detail: CoreL10n.text("配置 Project ID 和 Token 后调用 Vercel Deployments API，并按分支/commit 关联当前发布。")
+        detail: CoreL10n.text(
+          "配置 Project ID 和 Token 后调用 Vercel Deployments API，并按分支/commit 关联当前发布。")
       )
     case .cloudflarePages:
       return DeploymentProviderIntegrationDepth(
         title: "Cloudflare Pages API",
-        detail: CoreL10n.text("配置 Account ID、Pages Project 和 Token 后调用 Cloudflare Pages Deployments API。")
+        detail: CoreL10n.text(
+          "配置 Account ID、Pages Project 和 Token 后调用 Cloudflare Pages Deployments API。")
       )
     case .custom:
       return DeploymentProviderIntegrationDepth(
@@ -412,8 +414,24 @@ public struct DeploymentStatusProviderReadiness: Codable, Hashable, Sendable {
   public var canCheckAnyStatus: Bool
   public var configuredSignals: [String]
   public var missingRequirements: [String]
+  /// Non-blocking production-evidence gaps. These are separate from API
+  /// requirements so local saves and Git publication remain usable.
+  public var productionVerificationIssues: [String]
+  public var needsExplicitProviderConfirmation: Bool
   public var fallbackMessage: String
   public var nextStep: String
+
+  private enum CodingKeys: String, CodingKey {
+    case provider
+    case isAPIReady
+    case canCheckAnyStatus
+    case configuredSignals
+    case missingRequirements
+    case productionVerificationIssues
+    case needsExplicitProviderConfirmation
+    case fallbackMessage
+    case nextStep
+  }
 
   public init(
     provider: DeploymentProvider,
@@ -421,6 +439,8 @@ public struct DeploymentStatusProviderReadiness: Codable, Hashable, Sendable {
     canCheckAnyStatus: Bool,
     configuredSignals: [String],
     missingRequirements: [String],
+    productionVerificationIssues: [String] = [],
+    needsExplicitProviderConfirmation: Bool = false,
     fallbackMessage: String,
     nextStep: String
   ) {
@@ -429,8 +449,47 @@ public struct DeploymentStatusProviderReadiness: Codable, Hashable, Sendable {
     self.canCheckAnyStatus = canCheckAnyStatus
     self.configuredSignals = configuredSignals
     self.missingRequirements = missingRequirements
+    self.productionVerificationIssues = productionVerificationIssues
+    self.needsExplicitProviderConfirmation = needsExplicitProviderConfirmation
     self.fallbackMessage = fallbackMessage
     self.nextStep = nextStep
+  }
+
+  public init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    provider = try container.decode(DeploymentProvider.self, forKey: .provider)
+    isAPIReady = try container.decode(Bool.self, forKey: .isAPIReady)
+    canCheckAnyStatus = try container.decode(Bool.self, forKey: .canCheckAnyStatus)
+    configuredSignals = try container.decode([String].self, forKey: .configuredSignals)
+    missingRequirements = try container.decode([String].self, forKey: .missingRequirements)
+    productionVerificationIssues =
+      try container.decodeIfPresent(
+        [String].self,
+        forKey: .productionVerificationIssues
+      ) ?? []
+    needsExplicitProviderConfirmation =
+      try container.decodeIfPresent(
+        Bool.self,
+        forKey: .needsExplicitProviderConfirmation
+      ) ?? false
+    fallbackMessage = try container.decode(String.self, forKey: .fallbackMessage)
+    nextStep = try container.decode(String.self, forKey: .nextStep)
+  }
+
+  public func encode(to encoder: Encoder) throws {
+    var container = encoder.container(keyedBy: CodingKeys.self)
+    try container.encode(provider, forKey: .provider)
+    try container.encode(isAPIReady, forKey: .isAPIReady)
+    try container.encode(canCheckAnyStatus, forKey: .canCheckAnyStatus)
+    try container.encode(configuredSignals, forKey: .configuredSignals)
+    try container.encode(missingRequirements, forKey: .missingRequirements)
+    try container.encode(productionVerificationIssues, forKey: .productionVerificationIssues)
+    try container.encode(
+      needsExplicitProviderConfirmation,
+      forKey: .needsExplicitProviderConfirmation
+    )
+    try container.encode(fallbackMessage, forKey: .fallbackMessage)
+    try container.encode(nextStep, forKey: .nextStep)
   }
 
   public var statusTitle: String {
@@ -452,7 +511,7 @@ public struct DeploymentStatusProviderReadiness: Codable, Hashable, Sendable {
       CoreL10n.format("- 平台：%@", provider.displayName),
       CoreL10n.format("- API 状态：%@", apiStatus),
       CoreL10n.format("- 可检查状态：%@", canCheckStatus),
-      CoreL10n.format("- 下一步：%@", nextStep)
+      CoreL10n.format("- 下一步：%@", nextStep),
     ]
 
     if !configuredSignals.isEmpty {
@@ -474,8 +533,8 @@ public struct DeploymentStatusProviderReadiness: Codable, Hashable, Sendable {
   }
 }
 
-public extension DeploymentStatusSnapshot {
-  var nextActionTitle: String {
+extension DeploymentStatusSnapshot {
+  public var nextActionTitle: String {
     switch level {
     case .success:
       return CoreL10n.text("保持监控")
@@ -488,7 +547,7 @@ public extension DeploymentStatusSnapshot {
     }
   }
 
-  var nextActionMessage: String {
+  public var nextActionMessage: String {
     switch level {
     case .success:
       return CoreL10n.text("部署状态正常；保留记录即可，下一次发布后会继续检查。")
@@ -501,11 +560,11 @@ public extension DeploymentStatusSnapshot {
     }
   }
 
-  var diagnosticSignals: [DeploymentStatusSignal] {
+  public var diagnosticSignals: [DeploymentStatusSignal] {
     signals.filter { $0.level == .failed || $0.level == .running || $0.level == .unknown }
   }
 
-  var clipboardSummary: String {
+  public var clipboardSummary: String {
     let formatter = ISO8601DateFormatter()
     var lines = [
       title,
@@ -513,7 +572,7 @@ public extension DeploymentStatusSnapshot {
       CoreL10n.format("Provider：%@", provider.displayName),
       CoreL10n.format("检查时间：%@", formatter.string(from: checkedAt)),
       CoreL10n.format("结论：%@", message),
-      CoreL10n.format("下一步：%@ - %@", nextActionTitle, nextActionMessage)
+      CoreL10n.format("下一步：%@ - %@", nextActionTitle, nextActionMessage),
     ]
     if let siteURLText {
       lines.append(CoreL10n.format("站点：%@", siteURLText))
@@ -542,7 +601,7 @@ public extension DeploymentStatusSnapshot {
     return lines.joined(separator: "\n")
   }
 
-  var postPublishCheckItems: [DeploymentPostPublishCheckItem] {
+  public var postPublishCheckItems: [DeploymentPostPublishCheckItem] {
     var items: [DeploymentPostPublishCheckItem] = []
     if let siteURLText = siteURLText?.nilIfEmpty {
       items.append(
@@ -588,9 +647,11 @@ public extension DeploymentStatusSnapshot {
       }
     }
 
-    if releaseRecordID != nil && !signals.contains(where: {
-      $0.title == CoreL10n.text("发布页面内容") || $0.title == "发布页面内容"
-    }) {
+    if releaseRecordID != nil
+      && !signals.contains(where: {
+        $0.title == CoreL10n.text("发布页面内容") || $0.title == "发布页面内容"
+      })
+    {
       items.append(
         DeploymentPostPublishCheckItem(
           id: "article-page",
@@ -612,7 +673,7 @@ public extension DeploymentStatusSnapshot {
     return items
   }
 
-  var postPublishChecklistMarkdown: String {
+  public var postPublishChecklistMarkdown: String {
     let formatter = ISO8601DateFormatter()
     var lines = [
       CoreL10n.text("# 发布后校验报告"),
@@ -621,7 +682,7 @@ public extension DeploymentStatusSnapshot {
       CoreL10n.format("- 状态：%@", level.displayName),
       CoreL10n.format("- 标题：%@", title),
       CoreL10n.format("- 检查时间：%@", formatter.string(from: checkedAt)),
-      CoreL10n.format("- 结论：%@", message)
+      CoreL10n.format("- 结论：%@", message),
     ]
     if let siteURLText = siteURLText?.nilIfEmpty {
       lines.append(CoreL10n.format("- 站点：%@", siteURLText))
@@ -876,8 +937,10 @@ struct CloudflarePagesDeploymentStatusResponse: Decodable {
     id = try container.decodeIfPresent(String.self, forKey: .id)
     url = try container.decodeIfPresent(String.self, forKey: .url)
     aliases = try container.decodeIfPresent([String].self, forKey: .aliases) ?? []
-    latestStage = try container.decodeIfPresent(CloudflarePagesDeploymentStage.self, forKey: .latestStage)
-    deploymentTrigger = try container.decodeIfPresent(CloudflarePagesDeploymentTrigger.self, forKey: .deploymentTrigger)
+    latestStage = try container.decodeIfPresent(
+      CloudflarePagesDeploymentStage.self, forKey: .latestStage)
+    deploymentTrigger = try container.decodeIfPresent(
+      CloudflarePagesDeploymentTrigger.self, forKey: .deploymentTrigger)
   }
 }
 

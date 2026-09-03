@@ -27,7 +27,9 @@ struct PublishDrawerCard<Content: View>: View {
     }
     .padding(12)
     .frame(maxWidth: .infinity, alignment: .topLeading)
-    .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
+    .background(
+      WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
+    )
     .accessibilityElement(children: .contain)
     .accessibilityLabel(Text(LocalizedStringKey(title)))
   }
@@ -92,7 +94,8 @@ struct PublishDrawerFileDiffRow: View {
       if let lineDiff = diff.lineDiff?.nilIfEmpty {
         ScrollView(.horizontal) {
           VStack(alignment: .leading, spacing: 1) {
-            ForEach(Array(lineDiff.components(separatedBy: "\n").enumerated()), id: \.offset) { _, line in
+            ForEach(Array(lineDiff.components(separatedBy: "\n").enumerated()), id: \.offset) {
+              _, line in
               Text(line.isEmpty ? " " : line)
                 .font(.caption.monospaced())
                 .foregroundStyle(color(for: line))
@@ -120,14 +123,19 @@ struct PublishDrawerFileDiffRow: View {
           .frame(width: 16)
         VStack(alignment: .leading, spacing: 2) {
           WorkbenchPathIdentity(path: diff.path)
-          Text("\(diff.kind.localizedDisplayName) · \(diff.status.localizedDisplayName) · \(formattedByteSize)")
-            .font(.caption)
-            .foregroundStyle(.secondary)
+          Text(
+            "\(diff.kind.localizedDisplayName) · \(diff.status.localizedDisplayName) · \(formattedByteSize)"
+          )
+          .font(.caption)
+          .foregroundStyle(.secondary)
         }
       }
     }
     .padding(9)
-    .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
+    .background(
+      WorkbenchBackgroundStyle.card,
+      in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
+    )
     .accessibilityElement(children: .contain)
   }
 
@@ -153,10 +161,16 @@ struct RemotePublishConfirmationView: View {
   let preview: RemoteRepositoryPublishPreview
   let reviewDraft: RemoteReviewDraft?
   var batchReview: BatchPublishReviewSnapshot? = nil
+  var articleReview: RemoteArticlePublicationReview? = nil
   let isPublishing: Bool
   let cancelAction: () -> Void
   let confirmAction: () -> Void
+  var synchronizedAction: (() -> Void)? = nil
   @State private var copyMessage: String?
+
+  private var reviewedTargetBranch: String {
+    articleReview?.target.targetBranch ?? preview.targetBranch
+  }
 
   var body: some View {
     VStack(spacing: 0) {
@@ -175,11 +189,21 @@ struct RemotePublishConfirmationView: View {
         VStack(alignment: .leading, spacing: 14) {
           PublishDrawerCard(title: purpose.targetSectionTitle, systemImage: "network") {
             PublishDrawerInfoRow(title: targetLabel, value: targetTitle, systemImage: "doc.text")
-            PublishDrawerInfoRow(title: "远端", value: preview.repositoryName, systemImage: "shippingbox")
-            PublishDrawerInfoRow(title: purpose.modeLabel, value: preview.mode.localizedDisplayName, systemImage: "arrow.up.circle")
-            PublishDrawerInfoRow(title: purpose.branchLabel, value: preview.branchName, systemImage: "arrow.triangle.branch")
-            PublishDrawerInfoRow(title: "目标分支", value: preview.targetBranch, systemImage: "arrow.down.to.line")
-            PublishDrawerInfoRow(title: "权限", value: preview.accessSummary, systemImage: "person.badge.key")
+            PublishDrawerInfoRow(
+              title: "远端", value: preview.repositoryName, systemImage: "shippingbox")
+            PublishDrawerInfoRow(
+              title: purpose.modeLabel, value: preview.mode.localizedDisplayName,
+              systemImage: "arrow.up.circle")
+            PublishDrawerInfoRow(
+              title: purpose.branchLabel, value: preview.branchName,
+              systemImage: "arrow.triangle.branch")
+            PublishDrawerInfoRow(
+              title: "目标分支",
+              value: reviewedTargetBranch,
+              systemImage: "arrow.down.to.line"
+            )
+            PublishDrawerInfoRow(
+              title: "权限", value: preview.accessSummary, systemImage: "person.badge.key")
           }
 
           if preview.mode == .reviewRequest, let reviewDraft {
@@ -215,7 +239,48 @@ struct RemotePublishConfirmationView: View {
           }
 
           PublishDrawerCard(title: purpose.fileListTitle, systemImage: "doc.on.doc") {
-            if preview.changedPaths.isEmpty {
+            if let articleReview {
+              Text("以下清单和正文差异直接读取自目标分支；本地工作区差异不会决定是否写入远端。")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+              ForEach(Array(articleReview.files.enumerated()), id: \.element.id) { index, file in
+                VStack(alignment: .leading, spacing: 6) {
+                  Label(
+                    "\(file.status.localizedDisplayName) · \(file.path)",
+                    systemImage: file.status.publishDrawerSystemImage
+                  )
+                  .font(.caption.monospaced())
+                  .foregroundStyle(file.status.publishDrawerColor)
+                  .textSelection(.enabled)
+                  if let remoteVersion = file.remoteVersion {
+                    Text("远端基线：\(remoteVersion)")
+                      .font(.workbenchMetadata.monospaced())
+                      .foregroundStyle(.secondary)
+                  } else if file.status == .added {
+                    Text("目标分支中不存在该文件，将作为新增文件发布。")
+                      .font(.caption)
+                      .foregroundStyle(.secondary)
+                  }
+                  if let lineDiff = file.lineDiff {
+                    PublishDrawerFileDiffRow(
+                      diff: PublishFileDiff(
+                        path: file.path,
+                        kind: file.kind,
+                        status: file.status,
+                        lineDiff: lineDiff,
+                        byteSize: file.byteSize
+                      ),
+                      isExpandedInitially: index == 0
+                    )
+                  }
+                }
+              }
+              if articleReview.isFullySynchronized {
+                Label("远端已同步；确认不会创建重复写入。可前往同步中心检查部署或查看发布记录。", systemImage: "checkmark.seal")
+                  .font(.caption)
+                  .foregroundStyle(WorkbenchTheme.success)
+              }
+            } else if preview.changedPaths.isEmpty {
               Label(purpose.emptyFileMessage, systemImage: "equal.circle")
                 .foregroundStyle(.secondary)
             } else {
@@ -234,7 +299,9 @@ struct RemotePublishConfirmationView: View {
                 .foregroundStyle(.secondary)
               if batchReview.excludedCleanupCount > 0 {
                 Label(
-                  String(format: String(localized: "%d 个待下线请求未纳入本次发布，请到回收站单独处理。"), batchReview.excludedCleanupCount),
+                  String(
+                    format: String(localized: "%d 个待下线请求未纳入本次发布，请到回收站单独处理。"),
+                    batchReview.excludedCleanupCount),
                   systemImage: "info.circle"
                 )
                 .font(.caption)
@@ -245,7 +312,8 @@ struct RemotePublishConfirmationView: View {
                   Text(item.markdownPath)
                     .font(.caption.monospaced())
                     .textSelection(.enabled)
-                  ForEach(Array(item.preview.changedFileDiffs.enumerated()), id: \.element.id) { index, diff in
+                  ForEach(Array(item.preview.changedFileDiffs.enumerated()), id: \.element.id) {
+                    index, diff in
                     PublishDrawerFileDiffRow(diff: diff, isExpandedInitially: index == 0)
                   }
                 }
@@ -255,7 +323,8 @@ struct RemotePublishConfirmationView: View {
           }
 
           if !preview.warningIssues.isEmpty {
-            PublishDrawerCard(title: purpose.warningTitle, systemImage: "exclamationmark.triangle") {
+            PublishDrawerCard(title: purpose.warningTitle, systemImage: "exclamationmark.triangle")
+            {
               ForEach(preview.warningIssues) { issue in
                 VStack(alignment: .leading, spacing: 2) {
                   Text(issue.title)
@@ -278,19 +347,35 @@ struct RemotePublishConfirmationView: View {
         Button("取消", action: cancelAction)
           .keyboardShortcut(.cancelAction)
         Spacer()
-        Text(purpose.footerSummary(fileCount: preview.changedPaths.count))
-          .font(.caption)
-          .foregroundStyle(.secondary)
-        Button {
-          confirmAction()
-        } label: {
-          Label(purpose.confirmActionTitle, systemImage: "paperplane.fill")
+        Text(
+          articleReview?.isFullySynchronized == true
+            ? String(localized: "远端已同步")
+            : purpose.footerSummary(
+              fileCount: articleReview?.changedPaths.count ?? preview.changedPaths.count
+            )
+        )
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        if articleReview?.isFullySynchronized == true, let synchronizedAction {
+          Button("查看发布记录", action: synchronizedAction)
+            .workbenchProminentActionStyle()
+            .accessibilityIdentifier("remote-publish-synchronized")
+        } else {
+          Button {
+            confirmAction()
+          } label: {
+            Label(purpose.confirmActionTitle, systemImage: "paperplane.fill")
+          }
+          .workbenchProminentActionStyle()
+          .keyboardShortcut(.defaultAction)
+          .disabled(
+            !preview.canPublish
+              || articleReview?.changedPaths.isEmpty == true
+              || isPublishing
+          )
+          .accessibilityHint(purpose.confirmAccessibilityHint)
+          .accessibilityIdentifier("remote-publish-confirm")
         }
-        .workbenchProminentActionStyle()
-        .keyboardShortcut(.defaultAction)
-        .disabled(!preview.canPublish || preview.changedPaths.isEmpty || isPublishing)
-        .accessibilityHint(purpose.confirmAccessibilityHint)
-        .accessibilityIdentifier("remote-publish-confirm")
       }
       .padding(16)
     }

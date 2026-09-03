@@ -58,7 +58,8 @@ struct SettingsTokenTabFactory {
       repositoryPermissionContent: { isPresented in
         RepositoryPermissionSettingsView(
           state: RepositoryPermissionSettingsState(
-            repositoryProviderDisplayName: context.store.activeProfile.repositoryProvider.localizedDisplayName,
+            repositoryProviderDisplayName: context.store.activeProfile.repositoryProvider
+              .localizedDisplayName,
             repoOwner: context.store.activeProfile.repoOwner,
             repoName: context.store.activeProfile.repoName,
             branch: context.store.activeProfile.branch,
@@ -69,6 +70,13 @@ struct SettingsTokenTabFactory {
             publishActionMessage: context.store.publishActionMessage
           ),
           actions: RepositoryPermissionSettingsActions(
+            checkGitTransport: {
+              let profileSnapshot = context.store.activeProfile
+              return await RepositoryGitTransportCheckService().check(
+                profile: profileSnapshot,
+                remoteName: "origin"
+              )
+            },
             checkAccess: {
               await context.actions.checkRepositoryTokenAccess()
             }

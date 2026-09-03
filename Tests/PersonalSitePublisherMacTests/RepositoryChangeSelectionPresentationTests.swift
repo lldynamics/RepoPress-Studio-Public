@@ -1,6 +1,6 @@
+import PublishingGitCore
 import XCTest
 @testable import PersonalSitePublisherMac
-@testable import PublishingWorkbenchCore
 
 final class RepositoryChangeSelectionPresentationTests: XCTestCase {
   func testSelectionResolvesWithinItsOwnSource() {

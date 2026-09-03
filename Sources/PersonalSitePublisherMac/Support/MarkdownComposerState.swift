@@ -335,6 +335,7 @@ struct MarkdownComposerPresentationState {
   var isDiagnosticsPresented = false
   var isSnippetLibraryPresented = false
   var isAITemplateLibraryPresented = false
+  var isFrontMatterSourceVisible = false
 }
 
 struct MarkdownComposerAnalysisState {
@@ -573,6 +574,11 @@ extension MacMarkdownComposerView {
   var isAITemplateLibraryPresented: Bool {
     get { presentationState.isAITemplateLibraryPresented }
     nonmutating set { presentationState.isAITemplateLibraryPresented = newValue }
+  }
+
+  var isFrontMatterSourceVisible: Bool {
+    get { presentationState.isFrontMatterSourceVisible }
+    nonmutating set { presentationState.isFrontMatterSourceVisible = newValue }
   }
 
   var markdownAnalysis: MarkdownEditorAnalysisSnapshot {

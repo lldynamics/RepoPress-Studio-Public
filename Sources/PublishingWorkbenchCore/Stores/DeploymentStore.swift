@@ -991,6 +991,7 @@ public final class DeploymentStore: ObservableObject {
     guard store.profiles.first(where: { $0.id == profile.id }) == profile else {
       return nil
     }
+    persistResolvedArticlePath(from: snapshot, for: record.id, store: store)
     recordDeploymentStatusSnapshot(snapshot, for: record)
     if updatesProfileUI {
       let statusMessage = CoreL10n.format(
@@ -1007,6 +1008,50 @@ public final class DeploymentStore: ObservableObject {
     }
     store.save()
     return snapshot
+  }
+
+  private func persistResolvedArticlePath(
+    from snapshot: DeploymentStatusSnapshot,
+    for recordID: UUID,
+    store: WorkbenchStore
+  ) {
+    guard
+      let contentSignal = snapshot.signals.first(where: {
+        $0.title == CoreL10n.text("发布页面内容") && $0.level == .success
+      }),
+      snapshot.signals.contains(where: {
+        $0.title == CoreL10n.text("发布页面 SEO") && $0.level == .success
+      }),
+      let articleURLText = contentSignal.urlText,
+      let articleURL = URL(string: articleURLText),
+      let siteURLText = snapshot.siteURLText,
+      let siteURL = URL(string: siteURLText),
+      sameDeploymentOrigin(articleURL, siteURL),
+      !articleURL.path.isEmpty,
+      let index = store.publishingStore.releaseRecords.firstIndex(where: { $0.id == recordID })
+    else {
+      return
+    }
+    let keepsTrailingSlash = articleURL.absoluteString.hasSuffix("/") && articleURL.path != "/"
+    store.publishingStore.releaseRecords[index].resolvedArticlePath =
+      articleURL.path + (keepsTrailingSlash && !articleURL.path.hasSuffix("/") ? "/" : "")
+  }
+
+  private func sameDeploymentOrigin(_ lhs: URL, _ rhs: URL) -> Bool {
+    lhs.scheme?.lowercased() == rhs.scheme?.lowercased()
+      && lhs.host?.lowercased() == rhs.host?.lowercased()
+      && effectiveDeploymentPort(lhs) == effectiveDeploymentPort(rhs)
+      && lhs.user == nil
+      && lhs.password == nil
+  }
+
+  private func effectiveDeploymentPort(_ url: URL) -> Int? {
+    if let port = url.port { return port }
+    switch url.scheme?.lowercased() {
+    case "http": return 80
+    case "https": return 443
+    default: return nil
+    }
   }
 
   public func recordDeploymentStatusSnapshot(

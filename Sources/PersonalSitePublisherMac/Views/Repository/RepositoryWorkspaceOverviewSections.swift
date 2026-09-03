@@ -613,7 +613,12 @@ extension RepositoryWorkspaceView {
   var repositoryMergeConflictSection: some View {
     if let session = store.repositoryMergeConflictSession,
        !session.conflicts.isEmpty {
-      RepositoryMergeConflictView(session: session) { path, finalContent in
+      RepositoryMergeConflictView(
+        session: session,
+        branchGraphPresentation: store.repositoryReport?.branchStatus.map {
+          RepositoryBranchGraphPresentation(status: $0)
+        }
+      ) { path, finalContent in
         try await store.resolveRepositoryMergeConflict(
           repositoryPath: path,
           finalContent: finalContent

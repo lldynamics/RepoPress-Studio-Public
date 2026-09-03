@@ -1,6 +1,98 @@
 import Foundation
 
 extension WorkbenchStore {
+  public func prepareRepositorySafeSync() async -> RepositorySafeSyncPreparation? {
+    await repositoryStore.prepareRepositorySafeSync(store: self)
+  }
+
+  public func applyRepositorySafeSync(
+    _ confirmation: RepositorySafeSyncConfirmation
+  ) async -> RepositorySafeSyncResult? {
+    await repositoryStore.applyRepositorySafeSync(confirmation, store: self)
+  }
+
+  public func prepareRepositoryRebaseSync() async -> RepositoryRebaseSyncPreparation? {
+    await repositoryStore.prepareRepositoryRebaseSync(store: self)
+  }
+
+  public func applyRepositoryRebaseSync(
+    _ confirmation: RepositoryRebaseSyncConfirmation
+  ) async -> RepositoryRebaseSyncResult? {
+    await repositoryStore.applyRepositoryRebaseSync(confirmation, store: self)
+  }
+
+  public func prepareRepositoryWorktreePublish(
+    commitMessage: String = "Publish all site changes"
+  ) async -> RepositoryWorktreePublishConfirmation? {
+    guard
+      let confirmation = await repositoryStore.prepareRepositoryWorktreePublish(
+        store: self,
+        commitMessage: commitMessage
+      )
+    else { return nil }
+    return RepositoryWorktreePublishConfirmation(
+      snapshot: confirmation.snapshot,
+      commitMessage: confirmation.commitMessage,
+      safetyReport: confirmation.safetyReport,
+      sitePreflightResult: confirmation.sitePreflightResult,
+      articleVerificationTarget: repositoryWorktreeArticleVerificationTarget(
+        for: confirmation,
+        profile: activeProfile
+      )
+    )
+  }
+
+  public func publishRepositoryWorktree(
+    _ confirmation: RepositoryWorktreePublishConfirmation
+  ) async -> RepositoryWorktreePublishResult? {
+    let profile = activeProfile
+    guard
+      let result = await repositoryStore.publishRepositoryWorktree(
+        confirmation,
+        store: self
+      )
+    else { return nil }
+
+    let record = ReleaseRecord.repositoryWorktreePublish(
+      profile: profile,
+      result: result,
+      articleTarget: confirmation.articleVerificationTarget
+    )
+    publishingStore.prependReleaseRecord(record)
+    save()
+
+    var deploymentStatus: DeploymentStatusSnapshot?
+    if shouldRefreshDeploymentStatusAfterRemoteOperation(record) {
+      setPublishActionMessage(
+        CoreL10n.text("Git 推送已确认，正在等待部署与文章页面验证…"),
+        status: .inProgress
+      )
+      deploymentStatus = await boundedRepositoryWorktreeDeploymentVerification(
+        record: record,
+        articleTarget: confirmation.articleVerificationTarget
+      )
+    }
+
+    let outcome = RepositoryWorktreePublicationOutcome.evaluate(
+      result: result,
+      articleTarget: confirmation.articleVerificationTarget,
+      deploymentStatus: deploymentStatus
+    )
+    if outcome.articleVerified,
+      let draftID = confirmation.articleVerificationTarget?.draftID
+    {
+      markDraftsAsPublishedIfDirectRemoteCommit(
+        mode: .directCommit,
+        draftIDs: [draftID]
+      )
+    }
+    if activeProfileID == profile.id {
+      setPublishActionMessage(outcome.feedback.message, status: outcome.feedback.status)
+    }
+    save()
+    return result
+  }
+
   public func applyDetectedRepositoryRemote() {
     repositoryStore.applyDetectedRepositoryRemote(store: self)
   }
@@ -49,7 +141,10 @@ extension WorkbenchStore {
   public func createRemoteRepositoryForActiveProfile(
     privateRepository: Bool = true
   ) async -> RemoteRepositoryCreationResult? {
-    await repositoryStore.createRemoteRepositoryForActiveProfile(privateRepository: privateRepository, store: self)
+    await repositoryStore.createRemoteRepositoryForActiveProfile(
+      privateRepository: privateRepository,
+      store: self
+    )
   }
 
   public func switchActiveProfileRepositoryBranch(to branchName: String) async {
@@ -92,5 +187,50 @@ extension WorkbenchStore {
     for profileID: UUID
   ) {
     repositoryStore.updateRepositoryAutoSyncSettings(settings, for: profileID, store: self)
+  }
+
+  private func repositoryWorktreeArticleVerificationTarget(
+    for confirmation: RepositoryWorktreePublishConfirmation,
+    profile: SiteProfile
+  ) -> RepositoryWorktreeArticleVerificationTarget? {
+    guard let draft = selectedDraft,
+      draft.belongs(toSiteProfileID: profile.id),
+      !draft.draft,
+      draft.visibility == .public
+    else { return nil }
+    let markdownPath = profile.markdownPath(for: draft).normalizedRelativePath()
+    guard confirmation.snapshot.paths.contains(markdownPath) else { return nil }
+    let coverAltText = draft.coverAttachmentID.flatMap { coverID in
+      draft.attachments.first(where: { $0.id == coverID })?.altText
+        .trimmedForPublishing.nilIfEmpty
+    }
+    return RepositoryWorktreeArticleVerificationTarget(
+      draftID: draft.id,
+      title: draft.title,
+      summary: draft.summary,
+      coverAltText: coverAltText,
+      markdownPath: markdownPath
+    )
+  }
+
+  private func boundedRepositoryWorktreeDeploymentVerification(
+    record: ReleaseRecord,
+    articleTarget: RepositoryWorktreeArticleVerificationTarget?
+  ) async -> DeploymentStatusSnapshot? {
+    var latest: DeploymentStatusSnapshot?
+    for delay in [0, 2, 3, 5, 8] {
+      if delay > 0 {
+        try? await Task.sleep(for: .seconds(Double(delay)))
+        guard !Task.isCancelled else { break }
+      }
+      latest = await refreshDeploymentStatus(for: record, updatesMessage: false)
+      if RepositoryWorktreePublicationOutcome.verificationIsComplete(
+        articleTarget: articleTarget,
+        deploymentStatus: latest
+      ) {
+        break
+      }
+    }
+    return latest
   }
 }

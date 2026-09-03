@@ -73,7 +73,10 @@ public struct RepositorySyncCommandBuilder {
         String(aheadCount),
         String(behindCount)
       )
-      notes = [CoreL10n.text("如果 fast-forward 失败，说明需要手动处理分叉后再继续发布。")]
+      notes = [
+        CoreL10n.text("建议优先使用上方的变基同步审阅；复制命令仅作为终端备选。"),
+        CoreL10n.text("如果变基或恢复本地改动发生冲突，请先在冲突解决器中处理，不要直接强制推送。"),
+      ]
     case .behind(let behindCount):
       title = CoreL10n.text("先拉取远端")
       summary = CoreL10n.format(

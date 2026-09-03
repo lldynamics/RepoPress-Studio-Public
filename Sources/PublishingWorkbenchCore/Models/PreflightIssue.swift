@@ -39,6 +39,7 @@ public enum PreflightIssueCategory: String, Codable, Hashable, Sendable {
   case brokenInternalLink
   case unreachableExternalLink
   case slugRedirectCandidate
+  case nonStandardSlug
 }
 
 public enum PreflightIssueField: String, Codable, Hashable, Sendable {

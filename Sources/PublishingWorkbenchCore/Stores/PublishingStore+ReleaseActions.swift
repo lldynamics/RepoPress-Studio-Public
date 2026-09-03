@@ -345,10 +345,11 @@ extension PublishingStore {
     )
   }
 
-  private func publishSelectedDraftOnline(
+  func publishSelectedDraftOnline(
     package: PublishPackage,
     profile requestedProfile: SiteProfile,
     mode: RemoteRepositoryPublishMode,
+    expectedRemoteArticleReview: RemoteArticlePublicationReview? = nil,
     store: WorkbenchStore
   ) async -> RemoteRepositoryPublishResult? {
     let initialPreview = remoteRepositoryPublishPreview(
@@ -412,6 +413,31 @@ extension PublishingStore {
       return nil
     }
 
+    if let expectedRemoteArticleReview {
+      do {
+        let token = try repositoryAccessToken(for: profile)
+        let currentReview = try await remoteRepositoryPublishService.reviewRemoteArticlePublication(
+          package: package,
+          profile: profile,
+          mode: mode,
+          token: token
+        )
+        guard remoteArticleReviewMatches(expectedRemoteArticleReview, currentReview) else {
+          setPublishActionMessage(
+            RemoteArticlePublicationReviewError.remoteChanged.localizedDescription,
+            status: .warning
+          )
+          return nil
+        }
+      } catch {
+        setPublishActionMessage(
+          CoreL10n.format("远端审阅失败：%@", error.localizedDescription),
+          status: .failure
+        )
+        return nil
+      }
+    }
+
     guard remoteRepositoryMutationContext == nil else {
       setPublishActionMessage(
         CoreL10n.text("已有远端仓库操作正在运行，请等待完成。"),
@@ -439,6 +465,52 @@ extension PublishingStore {
 
     do {
       let token = try repositoryAccessToken(for: profile)
+      let remoteArticleMutationGate = RemoteArticlePublicationMutationGate()
+      let beforeMutation: (@Sendable () async throws -> Void)?
+      if let review = expectedRemoteArticleReview {
+        beforeMutation = { [weak self, weak store, remoteArticleMutationGate] in
+          guard let self, let store else { throw CancellationError() }
+          try Task.checkCancellation()
+
+          let current = try await MainActor.run {
+            try self.currentReviewedRemoteArticlePublicationContext(
+              review,
+              requestedProfile: profile,
+              mode: mode,
+              operation: operation,
+              store: store
+            )
+          }
+
+          if await remoteArticleMutationGate.claimInitialRemoteBaselineCheck() {
+            let token = try await MainActor.run {
+              try self.repositoryAccessToken(for: current.profile)
+            }
+            let service = await MainActor.run { self.remoteRepositoryPublishService }
+            let latest = try await service.reviewRemoteArticlePublication(
+              package: current.package,
+              profile: current.profile,
+              mode: mode,
+              token: token
+            )
+            guard await MainActor.run(body: { self.remoteArticleReviewMatches(review, latest) })
+            else {
+              throw RemoteArticlePublicationReviewError.remoteChanged
+            }
+            _ = try await MainActor.run {
+              try self.currentReviewedRemoteArticlePublicationContext(
+                review,
+                requestedProfile: profile,
+                mode: mode,
+                operation: operation,
+                store: store
+              )
+            }
+          }
+        }
+      } else {
+        beforeMutation = nil
+      }
       let progressHandler: @Sendable (RemoteRepositoryPublishProgress) -> Void = {
         [weak self, weak store] progress in
         Task { @MainActor in
@@ -453,7 +525,14 @@ extension PublishingStore {
         profile: profile,
         mode: mode,
         token: token,
-        onProgress: progressHandler
+        onProgress: progressHandler,
+        expectedContentSHA256: expectedRemoteArticleReview.map { review in
+          Dictionary(
+            uniqueKeysWithValues: review.files.compactMap { file in
+              file.contentSHA256.map { (file.path, $0) }
+            })
+        },
+        beforeMutation: beforeMutation
       )
       guard remoteRepositoryMutationIsCurrent(operation, store: store) else { return nil }
       store.setRemoteRepositoryPublishResult(result)
@@ -559,6 +638,46 @@ extension PublishingStore {
       store.save()
       return nil
     }
+  }
+
+  private func currentReviewedRemoteArticlePublicationContext(
+    _ review: RemoteArticlePublicationReview,
+    requestedProfile: SiteProfile,
+    mode: RemoteRepositoryPublishMode,
+    operation: RemoteRepositoryOperationContext,
+    store: WorkbenchStore
+  ) throws -> (package: PublishPackage, profile: SiteProfile) {
+    try Task.checkCancellation()
+    guard store.canUseProtectedWorkbench,
+      remoteRepositoryMutationIsCurrent(operation, store: store),
+      store.activeProfileID == requestedProfile.id,
+      store.selectedDraft?.id == review.package.draftID,
+      let draft = drafts.first(where: { $0.id == review.package.draftID }),
+      !draft.isGeneralDraft,
+      !draft.isPrivate
+    else {
+      throw RemoteArticlePublicationReviewError.confirmationExpired
+    }
+    store.flushDraftBodyEditorBuffer(for: draft.id)
+    guard let currentDraft = drafts.first(where: { $0.id == review.package.draftID }) else {
+      throw RemoteArticlePublicationReviewError.confirmationExpired
+    }
+    let profile = store.profile(for: currentDraft)
+    let package = publishingPackage(for: currentDraft, store: store)
+    let preview = remoteRepositoryPublishPreview(
+      package: package,
+      profile: profile,
+      mode: mode,
+      store: store
+    )
+    guard profile == requestedProfile,
+      RemoteRepositoryPublishTargetSnapshot(profile: profile, preview: preview) == review.target,
+      remoteArticlePackageMatches(review.package, package),
+      try remoteArticlePackageContentMatches(review, package: package)
+    else {
+      throw RemoteArticlePublicationReviewError.confirmationExpired
+    }
+    return (package, profile)
   }
 
   @discardableResult

@@ -1,6 +1,32 @@
 import Foundation
 
 extension LocalPublishPreviewService {
+  /// A legacy journal can otherwise mutate a section before the new article
+  /// package is validated. Leave that journal intact for explicit inspection.
+  func validateArticleWrite(package: PublishPackage, profile: SiteProfile) throws {
+    try StructuralArticlePathPolicy.validate(package: package, profile: profile)
+    guard let root = profile.localRepositoryRootURL else { return }
+    let journalURL = localPublishTransactionURL(for: root)
+    guard fileManager.fileExists(atPath: journalURL.path) else { return }
+    guard !isSymbolicLink(journalURL) else {
+      throw LocalPublishPreviewError.recoveryFailed("事务日志不能是符号链接")
+    }
+    let transaction = try JSONDecoder().decode(
+      LocalPublishTransaction.self,
+      from: BoundedFileReader.data(
+        at: journalURL, maximumByteCount: Self.maximumTransactionByteCount))
+    guard transaction.phase != .manualRecoveryRequired else {
+      throw LocalPublishPreviewError.recoveryFailed("上次写入回滚未完成，已保留事务和备份；请先人工核对外部修改。")
+    }
+    if transaction.phase == .applying,
+      let entry = transaction.entries.first(where: {
+        StructuralArticlePathPolicy.isProtected($0.repositoryPath, profile: profile)
+      })
+    {
+      throw StructuralArticlePathError.protectedPath(entry.repositoryPath)
+    }
+  }
+
   static let maximumTransactionByteCount = 1_048_576
 
   func replaceBinaryFileAtomically(
@@ -105,7 +131,17 @@ extension LocalPublishPreviewService {
     try handle.close()
   }
 
-  func recoverInterruptedTransaction(at rootURL: URL) throws {
+  func recoverInterruptedTransaction(
+    at rootURL: URL, articleProfile: SiteProfile? = nil
+  ) throws {
+    try withWriteLock {
+      try recoverLockedTransaction(at: rootURL, articleProfile: articleProfile)
+    }
+  }
+
+  private func recoverLockedTransaction(
+    at rootURL: URL, articleProfile: SiteProfile?
+  ) throws {
     let transactionURL = localPublishTransactionURL(for: rootURL)
     guard fileManager.fileExists(atPath: transactionURL.path) else { return }
     do {
@@ -117,6 +153,9 @@ extension LocalPublishPreviewService {
         maximumByteCount: Self.maximumTransactionByteCount
       )
       let transaction = try JSONDecoder().decode(LocalPublishTransaction.self, from: data)
+      guard transaction.phase != .manualRecoveryRequired else {
+        throw LocalPublishPreviewError.recoveryFailed("上次写入回滚未完成，可能存在外部修改。已保留事务和备份，请先人工核对，禁止自动恢复。")
+      }
       let root = rootURL.standardizedFileURL
       let rollbackDirectory = URL(fileURLWithPath: transaction.rollbackDirectoryPath)
         .standardizedFileURL
@@ -132,6 +171,13 @@ extension LocalPublishPreviewService {
       // list must not allow an earlier content path to be removed first.
       var preparedRecoveries: [PreparedLocalPublishRecovery] = []
       for entry in transaction.entries {
+        let protectsSection =
+          articleProfile.map {
+            StructuralArticlePathPolicy.isProtected(entry.repositoryPath, profile: $0)
+          } ?? StructuralArticlePathPolicy.isSectionFile(entry.repositoryPath)
+        guard !protectsSection else {
+          throw StructuralArticlePathError.protectedPath(entry.repositoryPath)
+        }
         guard !isGitControlPath(entry.repositoryPath) else {
           throw LocalPublishPreviewError.recoveryFailed("恢复路径属于 Git 管理目录：\(entry.repositoryPath)")
         }
@@ -223,9 +269,11 @@ extension LocalPublishPreviewService {
           CoreL10n.text("检测到上一次写入中断；再次写入前会先自动恢复原文件。")
         case .committed:
           CoreL10n.text("上一次文件写入已完成，但事务清理尚未完成；再次写入前会先清理。")
+        case .manualRecoveryRequired:
+          CoreL10n.text("上次回滚未完成，已保留事务和备份。请先人工核对外部修改，自动恢复已停止。")
         }
       return PreflightIssue(
-        severity: .warning,
+        severity: transaction.phase == .manualRecoveryRequired ? .error : .warning,
         title: CoreL10n.text("发现未完成的本地发布事务"),
         message: message,
         field: "repository"

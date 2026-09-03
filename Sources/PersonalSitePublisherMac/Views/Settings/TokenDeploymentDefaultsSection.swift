@@ -4,6 +4,8 @@ import SwiftUI
 struct TokenDeploymentDefaultsSection: View {
   let deploymentProviderBinding: Binding<DeploymentProvider>
   let deploymentProviderDisplayName: String
+  let productionVerificationIssues: [String]
+  let needsExplicitProviderConfirmation: Bool
   let deploymentSiteURL: Binding<String>
   let deploymentSiteURLDisplayValue: String
   let deploymentStatusEndpointURL: Binding<String>
@@ -23,6 +25,23 @@ struct TokenDeploymentDefaultsSection: View {
       }
       .accessibilityLabel("部署状态平台")
       .accessibilityValue(deploymentProviderDisplayName)
+
+      if !productionVerificationIssues.isEmpty {
+        Label("生产部署尚未完整配置", systemImage: "exclamationmark.triangle")
+          .foregroundStyle(WorkbenchTheme.warning)
+
+        Text(productionVerificationIssues.joined(separator: "\n"))
+          .font(.caption)
+          .foregroundStyle(WorkbenchTheme.warning)
+          .accessibilityIdentifier("deployment-platform-configuration-warning")
+      }
+
+      if needsExplicitProviderConfirmation {
+        Button("确认使用\(deploymentProviderDisplayName)") {
+          deploymentProviderBinding.wrappedValue = deploymentProviderBinding.wrappedValue
+        }
+        .accessibilityIdentifier("confirm-deployment-provider")
+      }
 
       TextField("站点 URL", text: deploymentSiteURL)
         .accessibilityLabel("站点 URL")
@@ -51,9 +70,11 @@ struct TokenDeploymentDefaultsSection: View {
         .accessibilityLabel("部署账号、Team 或 Account ID")
         .accessibilityValue(deploymentAccountIDDisplayValue)
 
-      Text("GitHub/GitLab 会优先读取 Pages 与构建状态；Netlify 填写站点 ID 和访问令牌后会读取最近部署记录；Vercel、Cloudflare Pages 和自定义平台使用这里的状态端点或站点 URL 做发布后校验。只有自定义平台的 HTTPS 状态端点可使用 Bearer Token。")
-        .font(.caption)
-        .foregroundStyle(.secondary)
+      Text(
+        "GitHub/GitLab 会优先读取 Pages 与构建状态；Netlify 填写站点 ID 和访问令牌后会读取最近部署记录；Vercel、Cloudflare Pages 和自定义平台使用这里的状态端点或站点 URL 做发布后校验。只有自定义平台的 HTTPS 状态端点可使用 Bearer Token。"
+      )
+      .font(.caption)
+      .foregroundStyle(.secondary)
     }
   }
 }

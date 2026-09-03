@@ -1,5 +1,6 @@
+import Foundation
+import PublishingGitCore
 import XCTest
-@testable import PublishingWorkbenchCore
 
 final class RemoteRepositoryPublishProgressTests: XCTestCase {
   func testByteProgressDescriptionIncludesReadableBytesAndPercentage() throws {

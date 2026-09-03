@@ -62,7 +62,7 @@ let package = Package(
     .package(
       url: "https://github.com/apple/swift-system.git",
       from: "1.0.0"
-    )
+    ),
   ],
   targets: [
     .target(
@@ -105,7 +105,7 @@ let package = Package(
     .target(
       name: "PublishingAICore",
       dependencies: [
-        "PublishingCoreSupport",
+        "PublishingCoreSupport"
       ],
       swiftSettings: [
         .swiftLanguageMode(.v6)
@@ -123,7 +123,7 @@ let package = Package(
     .target(
       name: "PublishingKnowledgeCore",
       dependencies: [
-        "PublishingCoreSupport",
+        "PublishingCoreSupport"
       ],
       swiftSettings: [
         .swiftLanguageMode(.v6)
@@ -213,7 +213,7 @@ let package = Package(
     .testTarget(
       name: "PublishingDomainContractsTests",
       dependencies: [
-        "PublishingDomainContracts",
+        "PublishingDomainContracts"
       ],
       swiftSettings: [
         .swiftLanguageMode(.v6)
@@ -242,7 +242,7 @@ let package = Package(
     .testTarget(
       name: "PublishingCoreSupportTests",
       dependencies: [
-        "PublishingCoreSupport",
+        "PublishingCoreSupport"
       ],
       swiftSettings: [
         .swiftLanguageMode(.v6)
@@ -251,7 +251,7 @@ let package = Package(
     .testTarget(
       name: "PublishingKnowledgeCoreTests",
       dependencies: [
-        "PublishingKnowledgeCore",
+        "PublishingKnowledgeCore"
       ],
       swiftSettings: [
         .swiftLanguageMode(.v6)
@@ -263,8 +263,10 @@ let package = Package(
         "BrowserExtensionProtocolSupport",
         "PublishingAICore",
         "PublishingAgentContracts",
+        "PublishingCoreSupport",
         "PublishingGitCore",
         "PublishingKnowledgeCore",
+        "PublishingMarkdownCore",
         "PublishingWorkbenchCore",
       ],
       swiftSettings: [
@@ -287,7 +289,10 @@ let package = Package(
       dependencies: [
         "PersonalSitePublisherMac",
         "BrowserExtensionProtocolSupport",
+        "PublishingAICore",
+        "PublishingCoreSupport",
         "PublishingGitCore",
+        "PublishingKnowledgeCore",
         "PublishingMarkdownCore",
         "PublishingWorkbenchCore",
       ],

@@ -1,6 +1,6 @@
 import Foundation
+import PublishingAICore
 import XCTest
-@testable import PublishingWorkbenchCore
 
 actor RecordingAIChatTransport: AIChatStreamingTransport {
   private let data: Data

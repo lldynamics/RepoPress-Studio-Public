@@ -1,5 +1,6 @@
 import Foundation
 
+/// Shared image-extension policy for editor, repository, and import surfaces.
 public enum ImageFileSupport {
   public static let supportedExtensions: Set<String> = [
     "avif",

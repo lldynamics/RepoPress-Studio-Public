@@ -1,7 +1,7 @@
 import AppKit
 import Foundation
 import OSLog
-import PublishingWorkbenchCore
+import PublishingMarkdownCore
 
 private struct MarkdownSyntaxSnapshotMergeResult: Sendable {
   let snapshot: MarkdownSyntaxHighlightSnapshot
