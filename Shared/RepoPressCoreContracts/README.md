@@ -82,6 +82,15 @@ The macOS CI job also cross-builds the package for an iOS Simulator SDK with an
 independent SwiftPM scratch directory. This is source/build evidence only; it is
 not signing, App Store, deployment, or Apple approval evidence.
 
+The workflow also runs the shared package in an Ubuntu container using the
+official `swift:6.3.3-noble` image. That Linux job checks the Swift toolchain,
+manifest (`swift package dump-package`), dependency graph (`swift package
+show-dependencies`), `swift build`, and `swift test`, using an independent
+SwiftPM scratch directory. Linux CI proves only that the shared `RepoPressCore`
+package builds and tests on this toolchain; it does not prove that a Linux
+desktop application, desktop UI, packaging, signing, or distribution is
+complete.
+
 For adoption, use a local package path first, verify both app adapters, then
 move to an exact version tag only after the shared commit and tag exist. The
 adapter boundary, minimum consumer checks, and rollback procedure are documented

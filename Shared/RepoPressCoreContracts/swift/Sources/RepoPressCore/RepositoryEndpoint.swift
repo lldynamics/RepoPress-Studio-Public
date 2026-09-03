@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 
 public enum RepositoryEndpointError: String, Error, Equatable, Sendable {
   case invalidURL = "repository_endpoint.invalid_url"

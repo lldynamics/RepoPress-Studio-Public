@@ -66,3 +66,30 @@ jobs:
             --triple arm64-apple-ios17.0-simulator \
             --sdk "$sdk_path" \
             --scratch-path "$RUNNER_TEMP/RepoPressCoreIOSBuild"
+
+  swift-core-linux:
+    name: Swift Core on Ubuntu
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    container:
+      image: swift:6.3.3-noble
+    defaults:
+      run:
+        working-directory: Shared/RepoPressCoreContracts
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - name: Check Swift toolchain
+        run: swift --version
+      - name: Check package manifest and graph
+        run: |
+          swift package dump-package --package-path swift \
+            --scratch-path "$RUNNER_TEMP/RepoPressCoreLinuxBuild"
+          swift package show-dependencies --package-path swift \
+            --scratch-path "$RUNNER_TEMP/RepoPressCoreLinuxBuild"
+      - name: Build Swift Core
+        run: swift build --package-path swift \
+          --scratch-path "$RUNNER_TEMP/RepoPressCoreLinuxBuild"
+      - name: Test Swift Core
+        run: swift test --package-path swift \
+          --scratch-path "$RUNNER_TEMP/RepoPressCoreLinuxBuild"
