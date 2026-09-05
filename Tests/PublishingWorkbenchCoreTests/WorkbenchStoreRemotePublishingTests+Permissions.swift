@@ -853,6 +853,25 @@ final class WorkbenchStoreRemotePublishingPermissionTests: WorkbenchStoreRemoteP
     )
   }
 
+  func testLocalRepositoryMutationDoesNotStartDuringRemotePublish() throws {
+    let store = try TestWorkbenchFactory.makeStore()
+    let profile = store.activeProfile
+    let remoteOperation = try XCTUnwrap(
+      store.publishingStore.beginRemoteRepositoryMutation(profile: profile, store: store)
+    )
+
+    XCTAssertNil(
+      store.publishingStore.beginLocalRepositoryMutation(profile: profile),
+      "Local Git writes and remote publication must share one mutation boundary."
+    )
+
+    store.publishingStore.finishRemoteRepositoryMutation(remoteOperation, store: store)
+    let localOperation = try XCTUnwrap(
+      store.publishingStore.beginLocalRepositoryMutation(profile: profile)
+    )
+    store.publishingStore.finishLocalRepositoryMutation(localOperation)
+  }
+
   func testRepositoryPermissionCheckBecomesStaleAfterBranchOrStrategyChanges() throws {
     let store = try TestWorkbenchFactory.makeStore()
     var profile = store.activeProfile

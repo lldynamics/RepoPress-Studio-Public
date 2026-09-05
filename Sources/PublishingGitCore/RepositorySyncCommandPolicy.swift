@@ -131,7 +131,7 @@ public struct RepositorySyncCommandPolicy: Sendable {
           cdCommand,
           "git fetch --prune",
           "git status --short --branch",
-          "git pull --ff-only",
+          "git log --oneline --left-right --graph 'HEAD...@{upstream}'",
         ]
       )
     }

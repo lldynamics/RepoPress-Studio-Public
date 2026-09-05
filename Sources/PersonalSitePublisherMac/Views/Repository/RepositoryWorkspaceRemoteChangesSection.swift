@@ -64,6 +64,8 @@ extension RepositoryWorkspaceView {
                   RepositoryChangedFileDisclosureRow(
                     file: file,
                     source: .remote,
+                    profile: store.activeProfile,
+                    upstreamName: report.branchStatus?.upstreamName,
                     selection: $changedFileSelection
                   ) {
                     remoteChangedFileIdentity(file)

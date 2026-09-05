@@ -176,7 +176,11 @@ struct WritingDraftRow: View {
       VStack(alignment: .leading, spacing: 4) {
         Text(presentation.title)
           .font(.workbenchBody.weight(.medium))
-          .workbenchTruncatedIdentity(presentation.title)
+          .workbenchTruncatedIdentity(
+            presentation.title,
+            lineLimit: 2,
+            truncationMode: .tail
+          )
 
         Text(presentation.metadata)
           .font(.workbenchSupporting)

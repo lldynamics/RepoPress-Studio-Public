@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 import XCTest
 
@@ -6,7 +7,7 @@ import XCTest
 final class CodexAppServerTransportConcurrencyTests: XCTestCase {
   func testProcessTransportSerializesConcurrentJSONLFrameWrites() async throws {
     let transport = CodexAppServerProcessTransport(
-      executableURL: URL(fileURLWithPath: "/bin/cat"),
+      testExecutableURL: URL(fileURLWithPath: "/bin/cat"),
       arguments: []
     )
     try await transport.start()
@@ -62,6 +63,52 @@ final class CodexAppServerTransportConcurrencyTests: XCTestCase {
     let terminationCount = await transport.terminationCount
     XCTAssertTrue(didTerminate)
     XCTAssertEqual(terminationCount, 1)
+  }
+
+  func testProcessTransportTerminationReapsProcessGroupDescendant() async throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(
+      "CodexAppServerTransport-\(UUID().uuidString)", isDirectory: true
+    )
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let childPID = root.appendingPathComponent("child.pid")
+    let executable = root.appendingPathComponent("codex")
+    let script = """
+      #!/bin/sh
+      (trap '' TERM; while :; do :; done) &
+      printf '%s' "$!" > '\(childPID.path)'
+      trap 'exit 0' TERM
+      while :; do :; done
+      """
+    try Data(script.utf8).write(to: executable)
+    try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: executable.path)
+    let transport = CodexAppServerProcessTransport(
+      testExecutableURL: executable,
+      arguments: []
+    )
+    try await transport.start()
+    let pid = try await waitForPID(at: childPID)
+
+    await transport.terminate()
+
+    for _ in 0..<100 {
+      errno = 0
+      if Darwin.kill(pid, 0) == -1, errno == ESRCH { return }
+      try? await Task.sleep(for: .milliseconds(10))
+    }
+    XCTFail("app-server descendant was not reaped")
+  }
+
+  private func waitForPID(at url: URL) async throws -> pid_t {
+    for _ in 0..<100 {
+      if let text = try? String(contentsOf: url, encoding: .utf8),
+        let value = pid_t(text.trimmingCharacters(in: .whitespacesAndNewlines))
+      {
+        return value
+      }
+      try await Task.sleep(for: .milliseconds(10))
+    }
+    throw NSError(domain: "CodexAppServerTransportTests", code: 1)
   }
 
   func testShutdownDuringHandshakeCannotTearDownReplacementGeneration() async throws {

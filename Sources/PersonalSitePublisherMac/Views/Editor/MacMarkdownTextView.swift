@@ -103,6 +103,7 @@ struct MacMarkdownTextView: NSViewRepresentable {
   var onSSGSnippetShortcut: (MarkdownCompletionCandidate) -> Void
   var onSlashCommandKey: (MarkdownSlashCommandKey) -> Bool = { _ in false }
   var onLiveBodyChange: (String, String) -> Void = { _, _ in }
+  var onContextualAnchorChanged: (MarkdownContextualPopoverAnchor?) -> Void = { _ in }
   var onScrollPositionChanged: (MarkdownScrollSyncPosition) -> Void
   var onDroppedFiles: ([URL]) -> Void
   var onDroppedMarkdown: (String, NSRange, KnowledgeCitation?) -> Void
@@ -128,6 +129,7 @@ struct MacMarkdownTextView: NSViewRepresentable {
       onGhostTextDismissed: onGhostTextDismissed,
       onSSGSnippetShortcut: onSSGSnippetShortcut,
       onLiveBodyChange: onLiveBodyChange,
+      onContextualAnchorChanged: onContextualAnchorChanged,
       onScrollPositionChanged: onScrollPositionChanged,
       onDroppedFiles: onDroppedFiles,
       onDroppedMarkdown: onDroppedMarkdown
@@ -282,6 +284,7 @@ struct MacMarkdownTextView: NSViewRepresentable {
       in: textView
     )
     context.coordinator.ssgSnippets = ssgSnippets
+    context.coordinator.onContextualAnchorChanged = onContextualAnchorChanged
     context.coordinator.onGhostTextAccepted = onGhostTextAccepted
     context.coordinator.onGhostTextDismissed = onGhostTextDismissed
     context.coordinator.updateInlineAIReviewPresentation(
@@ -397,6 +400,7 @@ struct MacMarkdownTextView: NSViewRepresentable {
       }
     }
     context.coordinator.requestKeyboardFocus(focusRequest, in: textView)
+    context.coordinator.publishContextualAnchor(in: textView)
     context.coordinator.applySynchronizedScroll(scrollSyncUpdate, in: nsView)
     context.coordinator.applyRestoredScroll(scrollRestorationUpdate, in: nsView)
     context.coordinator.scheduleReadOnlyPresentationIfNeeded(in: textView)
@@ -435,6 +439,7 @@ struct MacMarkdownTextView: NSViewRepresentable {
     var onGhostTextAccepted: (String) -> Void
     var onGhostTextDismissed: () -> Void
     var onSSGSnippetShortcut: (MarkdownCompletionCandidate) -> Void
+    var onContextualAnchorChanged: (MarkdownContextualPopoverAnchor?) -> Void
     let onScrollPositionChanged: (MarkdownScrollSyncPosition) -> Void
     let onDroppedFiles: ([URL]) -> Void
     let onDroppedMarkdown: (String, NSRange, KnowledgeCitation?) -> Void
@@ -567,6 +572,7 @@ struct MacMarkdownTextView: NSViewRepresentable {
       onGhostTextDismissed: @escaping () -> Void,
       onSSGSnippetShortcut: @escaping (MarkdownCompletionCandidate) -> Void,
       onLiveBodyChange: @escaping (String, String) -> Void = { _, _ in },
+      onContextualAnchorChanged: @escaping (MarkdownContextualPopoverAnchor?) -> Void = { _ in },
       onScrollPositionChanged: @escaping (MarkdownScrollSyncPosition) -> Void,
       onDroppedFiles: @escaping ([URL]) -> Void,
       onDroppedMarkdown: @escaping (String, NSRange, KnowledgeCitation?) -> Void
@@ -598,6 +604,7 @@ struct MacMarkdownTextView: NSViewRepresentable {
       self.onGhostTextAccepted = onGhostTextAccepted
       self.onGhostTextDismissed = onGhostTextDismissed
       self.onSSGSnippetShortcut = onSSGSnippetShortcut
+      self.onContextualAnchorChanged = onContextualAnchorChanged
       self.onScrollPositionChanged = onScrollPositionChanged
       self.onDroppedFiles = onDroppedFiles
       self.onDroppedMarkdown = onDroppedMarkdown
@@ -640,6 +647,7 @@ struct MacMarkdownTextView: NSViewRepresentable {
         onGhostTextDismissed: {},
         onSSGSnippetShortcut: { _ in },
         onLiveBodyChange: onLiveBodyChange,
+        onContextualAnchorChanged: { _ in },
         onScrollPositionChanged: onScrollPositionChanged,
         onDroppedFiles: onDroppedFiles,
         onDroppedMarkdown: { _, _, _ in }
@@ -1438,8 +1446,94 @@ struct MacMarkdownTextView: NSViewRepresentable {
         onViewportChanged: { [weak self] in
           guard let self, let textView = self.textView else { return }
           self.repaintVisibleSyntaxViewport(in: textView, reason: .viewport)
+          self.publishContextualAnchor(in: textView)
         }
       )
+    }
+
+    func publishContextualAnchor(in textView: NSTextView) {
+      let documentSelection = textView.selectedRange()
+      let documentLength = (textView.string as NSString).length
+      let bodyLength = (bodyMarkdown as NSString).length
+      guard let selection = MarkdownContextualPopoverAnchorResolver.selection(
+        forDocumentRange: documentSelection,
+        documentUTF16Length: documentLength,
+        bodyUTF16Offset: bodyUTF16Offset,
+        bodyUTF16Length: bodyLength
+      ),
+        let textRect = contextualTextRect(
+          for: documentSelection,
+          documentLength: documentLength,
+          in: textView
+        ),
+        let scrollView = textView.enclosingScrollView
+      else {
+        onContextualAnchorChanged(nil)
+        return
+      }
+      let visibleRect = scrollView.documentVisibleRect
+      let viewport = CGRect(origin: .zero, size: scrollView.contentView.bounds.size)
+      onContextualAnchorChanged(
+        MarkdownContextualPopoverAnchorResolver.anchor(
+          selection: selection,
+          textRect: textRect,
+          visibleTextRect: visibleRect,
+          viewport: viewport
+        )
+      )
+    }
+
+    private func contextualTextRect(
+      for documentRange: NSRange,
+      documentLength: Int,
+      in textView: NSTextView
+    ) -> NSRect? {
+      if let rect = MarkdownTextKit2RangeAdapter.rect(for: documentRange, in: textView),
+        !rect.isNull,
+        !rect.isInfinite,
+        rect.height > 0
+      {
+        return normalizedContextualRect(rect, for: documentRange)
+      }
+      guard documentRange.length == 0 else { return nil }
+
+      if documentRange.location < documentLength,
+        let followingRect = MarkdownTextKit2RangeAdapter.rect(
+          for: NSRange(location: documentRange.location, length: 1),
+          in: textView
+        )
+      {
+        return NSRect(
+          x: followingRect.minX,
+          y: followingRect.minY,
+          width: 1,
+          height: max(1, followingRect.height)
+        )
+      }
+      if documentRange.location > 0,
+        let precedingRect = MarkdownTextKit2RangeAdapter.rect(
+          for: NSRange(location: documentRange.location - 1, length: 1),
+          in: textView
+        )
+      {
+        return NSRect(
+          x: max(precedingRect.minX, precedingRect.maxX - 1),
+          y: precedingRect.minY,
+          width: 1,
+          height: max(1, precedingRect.height)
+        )
+      }
+      let origin = textView.textContainerOrigin
+      return NSRect(
+        x: origin.x,
+        y: origin.y,
+        width: 1,
+        height: max(1, textView.font?.pointSize ?? NSFont.systemFontSize)
+      )
+    }
+
+    private func normalizedContextualRect(_ rect: NSRect, for range: NSRange) -> NSRect {
+      MarkdownContextualPopoverAnchorResolver.normalizedTextRect(rect, for: range)
     }
 
     private func topVisibleSourceLine(in scrollView: NSScrollView) -> Int? {
@@ -1718,9 +1812,11 @@ struct MacMarkdownTextView: NSViewRepresentable {
       {
         readOnlyPresentationSourceSelection = sourceRange
         updateSelectionBinding(from: sourceRange)
+        onContextualAnchorChanged(nil)
         return
       }
       updateSelectionBinding(from: textView.selectedRange())
+      publishContextualAnchor(in: textView)
       updateGhostText(ghostText, in: textView)
       repaintVisibleSyntaxViewport(in: textView, reason: .selection)
       performTypewriterScrollIfNeeded(in: textView)

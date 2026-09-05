@@ -164,6 +164,18 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
   func testRSSReaderUsesTheMainWorkspaceFramework() throws {
     launchApplication(surface: "writing")
     let windowCountBeforeSelection = application.windows.count
+    let inspectorToggle = element(identifier: "workspace-inspector-toggle")
+    XCTAssertTrue(
+      inspectorToggle.waitForExistence(timeout: 10),
+      "The shared Inspector toggle was unavailable before opening RSS."
+    )
+    if !element(identifier: "workspace-inspector").exists {
+      inspectorToggle.click()
+      XCTAssertTrue(
+        element(identifier: "workspace-inspector").waitForExistence(timeout: 10),
+        "The shared Inspector did not open before the RSS route change."
+      )
+    }
 
     select(
       "workspace-sidebar-rss",
@@ -180,6 +192,10 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
     ] {
       assertUniqueIdentifier(identifier)
     }
+    XCTAssertTrue(
+      element(identifier: "rss-library-inspector-panel").waitForExistence(timeout: 10),
+      "Selecting RSS must keep the shared Inspector open and route it to RSS content."
+    )
 
     let articleRow = application.descendants(matching: .any)
       .matching(NSPredicate(format: "identifier BEGINSWITH %@", "rss-article-row-"))
@@ -240,7 +256,6 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
       "knowledge-library-detail",
       "knowledge-library-detail-title",
       "knowledge-library-reader",
-      "knowledge-library-inspector-toggle",
       "knowledge-library-pin-toggle",
       "knowledge-library-actions-menu",
       "knowledge-library-import-button",
@@ -256,6 +271,20 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
       "资料库辅助功能演示",
       "The detail title identifier must remain attached to the selected document title."
     )
+
+    let inspectorToggle = element(identifier: "workspace-inspector-toggle")
+    XCTAssertTrue(
+      inspectorToggle.waitForExistence(timeout: 10),
+      "The knowledge workspace must use the shared Inspector toolbar toggle."
+    )
+    if !element(identifier: "knowledge-library-inspector").exists {
+      inspectorToggle.click()
+    }
+    XCTAssertTrue(
+      element(identifier: "knowledge-library-inspector").waitForExistence(timeout: 10),
+      "The shared Inspector must route to the selected knowledge document."
+    )
+    assertUniqueIdentifier("knowledge-library-inspector")
   }
 
   func testOperationalSidebarQuickSearchIdentifiersRemainUnique() throws {
@@ -440,6 +469,7 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
     screenshot.lifetime = .keepAlways
     add(screenshot)
 
+    let drawer = element(identifier: "workspace-publish-drawer-overlay")
     for removedSectionTitle in [
       "分支管理",
       "提交历史",
@@ -754,7 +784,7 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
     XCTAssertGreaterThan(
       inspectorToolbarButton.frame.midX,
       toolbarButton.frame.midX,
-      "The original workspace Inspector entry must remain at the right edge of the toolbar."
+      "The workspace Inspector entry must remain immediately after the AI collaboration entry."
     )
     writingAIEntry.click()
     XCTAssertTrue(
@@ -891,6 +921,58 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
       return
     }
 
+    let taskCenterButton = mainWindow.descendants(matching: .any)
+      .matching(identifier: "workspace-task-center-toggle")
+      .firstMatch
+    let sidebarButton = mainWindow.descendants(matching: .any)
+      .matching(identifier: "workspace-sidebar-toggle")
+      .firstMatch
+    let profileMenu = mainWindow.descendants(matching: .any)
+      .matching(identifier: "workspace-profile-menu")
+      .firstMatch
+    let commandSearch = mainWindow.descendants(matching: .any)
+      .matching(identifier: "workspace-command-search")
+      .firstMatch
+    let livePreviewButton = mainWindow.descendants(matching: .any)
+      .matching(identifier: "workspace-live-preview")
+      .firstMatch
+    let browserPreviewButton = mainWindow.descendants(matching: .any)
+      .matching(identifier: "workspace-open-preview-browser")
+      .firstMatch
+    XCTAssertTrue(
+      sidebarButton.waitForExistence(timeout: 10),
+      "The sidebar toggle must lead the native toolbar."
+    )
+    XCTAssertTrue(
+      taskCenterButton.waitForExistence(timeout: 10),
+      "The task center must stay directly available in the trailing toolbar group."
+    )
+    XCTAssertTrue(
+      commandSearch.waitForExistence(timeout: 10),
+      "The command search must remain between the workspace context and action groups."
+    )
+    XCTAssertTrue(
+      profileMenu.waitForExistence(timeout: 10),
+      "The active site selector must remain in the leading toolbar group."
+    )
+    XCTAssertTrue(
+      livePreviewButton.waitForExistence(timeout: 10),
+      "The in-app live preview must remain directly available."
+    )
+    XCTAssertTrue(
+      browserPreviewButton.waitForExistence(timeout: 10),
+      "The browser preview must remain visible even when its current context disables it."
+    )
+    XCTAssertLessThan(sidebarButton.frame.midX, profileMenu.frame.midX)
+    XCTAssertLessThan(profileMenu.frame.midX, commandSearch.frame.midX)
+    XCTAssertLessThan(commandSearch.frame.midX, livePreviewButton.frame.midX)
+    XCTAssertLessThan(livePreviewButton.frame.midX, browserPreviewButton.frame.midX)
+    XCTAssertLessThan(browserPreviewButton.frame.midX, taskCenterButton.frame.midX)
+    XCTAssertLessThan(taskCenterButton.frame.midX, aiButton.frame.midX)
+    XCTAssertLessThan(aiButton.frame.midX, inspectorButton.frame.midX)
+    XCTAssertLessThan(inspectorButton.frame.midX, settingsButton.frame.midX)
+    XCTAssertLessThan(settingsButton.frame.midX, publishButton.frame.midX)
+
     publishButton.click()
     XCTAssertTrue(
       element(identifier: "workspace-publish-drawer-overlay").waitForExistence(timeout: 10),
@@ -928,6 +1010,75 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
     XCTAssertTrue(
       element(identifier: "settings-content").waitForExistence(timeout: 10),
       "The Settings toolbar action must replace the publish drawer in the main window."
+    )
+  }
+
+  func testNativeToolbarControlsKeepTheirOwnAccessibilityNames() throws {
+    launchApplication(surface: "writing")
+
+    let expectedNames: [(identifier: String, labels: Set<String>)] = [
+      ("workspace-sidebar-toggle", ["隐藏侧栏", "显示侧栏"]),
+      ("workspace-publishing-status", ["文章状态"]),
+      ("workspace-command-search", ["全局搜索"]),
+      ("workspace-live-preview", ["实时预览"]),
+      ("workspace-open-preview-browser", ["浏览器预览"]),
+      ("workspace-task-center-toggle", ["任务", "统一任务中心"]),
+    ]
+
+    for (identifier, labels) in expectedNames {
+      let control = element(identifier: identifier)
+      XCTAssertTrue(
+        control.waitForExistence(timeout: 10),
+        "The native toolbar must expose \(identifier)."
+      )
+      XCTAssertTrue(
+        labels.contains(control.label),
+        "\(identifier) must retain one of \(labels) instead of inheriting an adjacent toolbar control; found \(control.label)."
+      )
+    }
+    let screenshot = XCTAttachment(screenshot: application.screenshot())
+    screenshot.name = "native-toolbar-independent-controls"
+    screenshot.lifetime = .keepAlways
+    add(screenshot)
+  }
+
+  func testCommandPaletteNavigationRestoresThePresentingWindowSection() throws {
+    launchApplication(surface: "writing")
+
+    let commandSearch = element(identifier: "workspace-command-search")
+    XCTAssertTrue(commandSearch.waitForExistence(timeout: 10))
+
+    commandSearch.click()
+    let palette = element(identifier: "workspace-command-palette")
+    XCTAssertTrue(
+      palette.waitForExistence(timeout: 10),
+      "The command palette must be presented as a native sheet before navigation."
+    )
+
+    let images = element(
+      identifier: "workspace-command-palette-result-command:workspace:images"
+    )
+    XCTAssertTrue(images.waitForExistence(timeout: 10))
+    images.click()
+    XCTAssertFalse(
+      palette.waitForExistence(timeout: 2),
+      "Selecting a command palette workspace result must dismiss its sheet."
+    )
+    XCTAssertTrue(
+      element(identifier: "image-workbench").waitForExistence(timeout: 10),
+      "The presenting window must restore as the Images workspace after the sheet resigns key status."
+    )
+
+    commandSearch.click()
+    XCTAssertTrue(palette.waitForExistence(timeout: 10))
+    let library = element(
+      identifier: "workspace-command-palette-result-command:workspace:library"
+    )
+    XCTAssertTrue(library.waitForExistence(timeout: 10))
+    library.click()
+    XCTAssertTrue(
+      element(identifier: "knowledge-source-list").waitForExistence(timeout: 10),
+      "The same non-key-sheet path must retain a pending Library section for the presenting window."
     )
   }
 
@@ -1310,10 +1461,10 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
     if let screenshotContentSize {
       application.launchEnvironment[
         "PERSONAL_SITE_PUBLISHER_SCREENSHOT_CONTENT_WIDTH"
-      ] = String(screenshotContentSize.width)
+      ] = String(Double(screenshotContentSize.width))
       application.launchEnvironment[
         "PERSONAL_SITE_PUBLISHER_SCREENSHOT_CONTENT_HEIGHT"
-      ] = String(screenshotContentSize.height)
+      ] = String(Double(screenshotContentSize.height))
     } else {
       application.launchEnvironment.removeValue(
         forKey: "PERSONAL_SITE_PUBLISHER_SCREENSHOT_CONTENT_WIDTH"

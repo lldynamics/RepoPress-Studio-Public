@@ -5,7 +5,6 @@ import SwiftUI
 struct RSSMaintenanceSettingsView: View {
   @ObservedObject var store: RSSReaderStore
   let allowsBackgroundRefresh: Bool
-  @Environment(\.settingsSubsection) private var settingsSubsection
 
   @AppStorage(RSSReaderStore.automaticPruningDefaultsKey)
   private var automaticPruningEnabled = false
@@ -43,7 +42,8 @@ struct RSSMaintenanceSettingsView: View {
 
   var body: some View {
     Form {
-      if displayedSubsection == .rssRefresh {
+      SettingsSubsectionAnchor(subsection: .rssRefresh)
+      Group {
         Section(String(localized: "本地 RSS 缓存")) {
           LabeledContent("订阅数量", value: store.feeds.count.formatted())
           LabeledContent("本机文章", value: store.articleHeaders.count.formatted())
@@ -144,7 +144,8 @@ struct RSSMaintenanceSettingsView: View {
         .accessibilityIdentifier("rss-automation-settings")
       }
 
-      if displayedSubsection == .rssReading {
+      SettingsSubsectionAnchor(subsection: .rssReading)
+      Group {
         Section(String(localized: "阅读默认值")) {
           Toggle(
             String(localized: "读到文章末尾时自动标记为已读"),
@@ -205,36 +206,8 @@ struct RSSMaintenanceSettingsView: View {
         }
       }
 
-      if displayedSubsection == .rssMigration {
-        Section(String(localized: "订阅迁移")) {
-          Text("低频的 OPML 导入和导出放在这里；文件只包含订阅名称与地址，不包含文章缓存或阅读状态。")
-            .font(.callout)
-            .foregroundStyle(.secondary)
-            .fixedSize(horizontal: false, vertical: true)
-
-          HStack {
-            Button("导入 OPML", systemImage: "square.and.arrow.down") {
-              importOPML()
-            }
-
-            Button("导出 OPML", systemImage: "square.and.arrow.up") {
-              exportOPML()
-            }
-            .disabled(store.feeds.isEmpty)
-          }
-
-          if let opmlFeedback {
-            AccessibleStatusMessage(
-              message: opmlFeedback,
-              severity: opmlFeedbackIsError ? .error : .success,
-              announcesNonUrgentStatus: true
-            )
-            .textSelection(.enabled)
-          }
-        }
-      }
-
-      if displayedSubsection == .rssOfflineNetwork {
+      SettingsSubsectionAnchor(subsection: .rssOfflineNetwork)
+      Group {
         Section(String(localized: "离线保存范围")) {
           settingsToggle(
             title: String(localized: "Feed 正文"),
@@ -265,7 +238,38 @@ struct RSSMaintenanceSettingsView: View {
         }
       }
 
-      if displayedSubsection == .rssCleanup {
+      SettingsSubsectionAnchor(subsection: .rssMigration)
+      Group {
+        Section(String(localized: "订阅迁移")) {
+          Text("低频的 OPML 导入和导出放在这里；文件只包含订阅名称与地址，不包含文章缓存或阅读状态。")
+            .font(.callout)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+
+          HStack {
+            Button("导入 OPML", systemImage: "square.and.arrow.down") {
+              importOPML()
+            }
+
+            Button("导出 OPML", systemImage: "square.and.arrow.up") {
+              exportOPML()
+            }
+            .disabled(store.feeds.isEmpty)
+          }
+
+          if let opmlFeedback {
+            AccessibleStatusMessage(
+              message: opmlFeedback,
+              severity: opmlFeedbackIsError ? .error : .success,
+              announcesNonUrgentStatus: true
+            )
+            .textSelection(.enabled)
+          }
+        }
+      }
+
+      SettingsSubsectionAnchor(subsection: .rssCleanup)
+      Group {
         Section(String(localized: "自动清理历史文章")) {
           Toggle("启用自动清理", isOn: $automaticPruningEnabled)
             .onChange(of: automaticPruningEnabled) { _, enabled in
@@ -304,7 +308,7 @@ struct RSSMaintenanceSettingsView: View {
       }
     }
     .formStyle(.grouped)
-    .scrollIndicators(.automatic)
+    .scrollIndicators(.hidden)
     .padding(WorkbenchSpacing.content)
     .onAppear {
       normalizeBackgroundRefreshInterval()
@@ -332,10 +336,6 @@ struct RSSMaintenanceSettingsView: View {
     }
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("rss-maintenance-settings")
-  }
-
-  private var displayedSubsection: SettingsSubsection {
-    settingsSubsection.tab == .rss ? settingsSubsection : .rssRefresh
   }
 
   private var pruneButton: some View {

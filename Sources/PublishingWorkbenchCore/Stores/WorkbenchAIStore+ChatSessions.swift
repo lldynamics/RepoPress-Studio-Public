@@ -295,7 +295,7 @@ extension WorkbenchAIStore {
     guard
       let token = try aiCredentialStore.token(
         forConnectionProfileID: connection.id,
-        legacyProfile: profile
+        legacyProfile: connection.canUseLegacyCredentials ? profile : nil
       )?.nilIfEmpty
     else {
       throw AIPublishingAssistantError.missingAPIKey

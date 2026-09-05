@@ -3,6 +3,8 @@ import SwiftUI
 
 struct AIChatToolRunCard: View {
   let runs: [WorkbenchAIAgentToolRunRecord]
+  @State private var expandedRunIDs: Set<String> = []
+  @State private var copyStatus: String?
 
   var body: some View {
     VStack(alignment: .leading, spacing: 8) {
@@ -26,6 +28,12 @@ struct AIChatToolRunCard: View {
       .overlay {
         RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
           .stroke(.separator.opacity(0.65), lineWidth: 1)
+      }
+      if let copyStatus {
+        Text(copyStatus)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.secondary)
+          .accessibilityElement(children: .combine)
       }
     }
     .accessibilityElement(children: .contain)
@@ -54,12 +62,46 @@ struct AIChatToolRunCard: View {
           }
         }
 
-        Text(run.summary.nilIfEmpty ?? fallbackSummary(run.status))
+        let summary = run.summary.nilIfEmpty ?? fallbackSummary(run.status)
+        let isExpanded = expandedRunIDs.contains(run.id)
+        Text(summary)
           .font(.caption)
           .foregroundStyle(.secondary)
-          .lineLimit(4)
+          .lineLimit(isExpanded ? nil : 4)
           .textSelection(.enabled)
           .fixedSize(horizontal: false, vertical: true)
+
+        if run.status == .failed, !summary.isEmpty {
+          HStack(spacing: 10) {
+            Button(isExpanded ? String(localized: "收起摘要") : String(localized: "展开摘要")) {
+              if isExpanded {
+                expandedRunIDs.remove(run.id)
+              } else {
+                expandedRunIDs.insert(run.id)
+              }
+            }
+            .buttonStyle(.borderless)
+            .font(.workbenchMetadata)
+            .accessibilityLabel(
+              isExpanded
+                ? String(localized: "收起工具失败摘要") : String(localized: "展开工具失败摘要")
+            )
+            .accessibilityHint("显示当前已保存的完整摘要")
+
+            Button("复制完整摘要") {
+              _ = ClipboardWriter.copy(
+                summary,
+                successMessage: String(localized: "已复制完整工具摘要。"),
+                setMessage: { copyStatus = $0 }
+              )
+            }
+            .buttonStyle(.borderless)
+            .font(.workbenchMetadata)
+            .accessibilityLabel("复制完整工具失败摘要")
+            .accessibilityHint("复制当前已保存的完整摘要")
+          }
+        }
+
       }
     }
     .padding(.horizontal, 8)

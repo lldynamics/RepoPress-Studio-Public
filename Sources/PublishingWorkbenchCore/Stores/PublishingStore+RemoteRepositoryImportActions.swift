@@ -5,9 +5,18 @@ extension PublishingStore {
   public func importRemoteChangedArticleDraftsFromRepository(store: WorkbenchStore)
     async -> LocalContentImportMergeSummary
   {
+    await importRemoteChangedArticleDraftsFromRepositoryOperation(store: store).summary
+  }
+
+  func importRemoteChangedArticleDraftsFromRepositoryOperation(
+    store: WorkbenchStore
+  ) async -> LocalContentImportOperationResult {
     let paths = (store.repositoryReport?.remoteChangedFiles ?? [])
       .map(\.displayPath)
-    return await importRemoteArticleDraftsFromRepository(repositoryPaths: paths, store: store)
+    return await importRemoteArticleDraftsFromRepositoryOperation(
+      repositoryPaths: paths,
+      store: store
+    )
   }
 
   @discardableResult
@@ -15,6 +24,16 @@ extension PublishingStore {
     repositoryPaths: [String],
     store: WorkbenchStore
   ) async -> LocalContentImportMergeSummary {
+    await importRemoteArticleDraftsFromRepositoryOperation(
+      repositoryPaths: repositoryPaths,
+      store: store
+    ).summary
+  }
+
+  func importRemoteArticleDraftsFromRepositoryOperation(
+    repositoryPaths: [String],
+    store: WorkbenchStore
+  ) async -> LocalContentImportOperationResult {
     store.flushDraftBodyEditorBuffers()
     let profile = store.activeProfile
     var seenPaths = Set<String>()
@@ -31,11 +50,11 @@ extension PublishingStore {
     )
     guard !Task.isCancelled else {
       setPublishActionMessage("已取消导入远端文章。", status: .warning)
-      return LocalContentImportMergeSummary(insertedCount: 0, updatedCount: 0, skippedCount: 0)
+      return .empty(outcome: .cancelled)
     }
     guard store.activeProfileID == profile.id else {
       setPublishActionMessage("当前站点已变化，未导入原站点远端文章。", status: .warning)
-      return LocalContentImportMergeSummary(insertedCount: 0, updatedCount: 0, skippedCount: 0)
+      return .empty(outcome: .cancelled)
     }
     guard let result = await remoteContentImportResultAsync(
       paths: paths,
@@ -43,9 +62,10 @@ extension PublishingStore {
       profile: profile
     ) else {
       setPublishActionMessage("已取消导入远端文章。", status: .warning)
-      return LocalContentImportMergeSummary(insertedCount: 0, updatedCount: 0, skippedCount: 0)
+      return .empty(outcome: .cancelled)
     }
-    let mergedSummary = mergeImportedDrafts(result, store: store)
+    let mergedOperation = mergeImportedDraftsOperation(result, store: store)
+    let mergedSummary = mergedOperation.summary
     let summary = LocalContentImportMergeSummary(
       insertedCount: mergedSummary.insertedCount,
       updatedCount: mergedSummary.updatedCount,
@@ -73,7 +93,13 @@ extension PublishingStore {
       )
     }
     store.save()
-    return summary
+    let outcome: WorkbenchOperationLogOutcome
+    if !result.skippedPaths.isEmpty || !result.issues.isEmpty {
+      outcome = summary.changedCount == 0 ? .failed : .partial
+    } else {
+      outcome = mergedOperation.outcome
+    }
+    return LocalContentImportOperationResult(summary: summary, outcome: outcome)
   }
 
   @discardableResult
@@ -81,6 +107,16 @@ extension PublishingStore {
     repositoryPath: String,
     store: WorkbenchStore
   ) async -> LocalContentImportMergeSummary {
+    await importRemoteDraftFromRepositoryOperation(
+      repositoryPath: repositoryPath,
+      store: store
+    ).summary
+  }
+
+  func importRemoteDraftFromRepositoryOperation(
+    repositoryPath: String,
+    store: WorkbenchStore
+  ) async -> LocalContentImportOperationResult {
     store.flushDraftBodyEditorBuffers()
     let profile = store.activeProfile
     let normalizedPath = repositoryPath.normalizedRelativePath()
@@ -90,11 +126,11 @@ extension PublishingStore {
     )
     guard !Task.isCancelled else {
       setPublishActionMessage("已取消导入远端文章。", status: .warning)
-      return LocalContentImportMergeSummary(insertedCount: 0, updatedCount: 0, skippedCount: 0)
+      return .empty(outcome: .cancelled)
     }
     guard store.activeProfileID == profile.id else {
       setPublishActionMessage("当前站点已变化，未导入原站点远端文章。", status: .warning)
-      return LocalContentImportMergeSummary(insertedCount: 0, updatedCount: 0, skippedCount: 0)
+      return .empty(outcome: .cancelled)
     }
     guard let result = await remoteContentImportResultAsync(
       paths: [normalizedPath],
@@ -102,9 +138,10 @@ extension PublishingStore {
       profile: profile
     ) else {
       setPublishActionMessage("已取消导入远端文章。", status: .warning)
-      return LocalContentImportMergeSummary(insertedCount: 0, updatedCount: 0, skippedCount: 0)
+      return .empty(outcome: .cancelled)
     }
-    let mergedSummary = mergeImportedDrafts(result, store: store)
+    let mergedOperation = mergeImportedDraftsOperation(result, store: store)
+    let mergedSummary = mergedOperation.summary
     let summary = LocalContentImportMergeSummary(
       insertedCount: mergedSummary.insertedCount,
       updatedCount: mergedSummary.updatedCount,
@@ -131,7 +168,15 @@ extension PublishingStore {
       setPublishActionMessage("未能导入远端文章：\(normalizedPath)。", status: .failure)
     }
     store.save()
-    return summary
+    let outcome: WorkbenchOperationLogOutcome
+    if !result.skippedPaths.isEmpty || !result.issues.isEmpty {
+      outcome = summary.changedCount == 0 ? .failed : .partial
+    } else if summary.changedCount == 0 {
+      outcome = .failed
+    } else {
+      outcome = mergedOperation.outcome
+    }
+    return LocalContentImportOperationResult(summary: summary, outcome: outcome)
   }
 
   /// Imports only remote article changes that can be proven safe. New paths are

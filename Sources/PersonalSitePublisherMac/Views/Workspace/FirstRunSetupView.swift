@@ -249,6 +249,7 @@ struct FirstRunSetupView: View {
   @State private var completionMessage: String?
   @State private var requiresSamePathRetry = false
   @State private var isCommitConfirmationPresented = false
+  @State private var showsAdvancedPublishingRules = false
 
   var body: some View {
     VStack(spacing: 0) {
@@ -454,7 +455,7 @@ struct FirstRunSetupView: View {
     VStack(alignment: .leading, spacing: 14) {
       stepTitle(
         String(localized: "确认自动探测的发布规则"),
-        detail: String(localized: "30 秒内完成：检查自动识别结果，必要时只改这四项。")
+        detail: String(localized: "检查网站生成器、文章头信息和保存路径；远端发布方式可在进阶设置中调整。")
       )
 
       if let autoConfigurationProposal {
@@ -476,14 +477,14 @@ struct FirstRunSetupView: View {
 
       GroupBox("内容规则") {
         VStack(alignment: .leading, spacing: 12) {
-          Picker("SSG", selection: siteKindBinding) {
+          Picker("网站生成器", selection: siteKindBinding) {
             ForEach(SiteKind.allCases) { kind in
               Text(kind.localizedDisplayName).tag(kind)
             }
           }
           .accessibilityHint("选择当前网站使用的静态站点生成器")
 
-          Picker("Front Matter", selection: frontMatterStyleBinding) {
+          Picker("文章头信息格式", selection: frontMatterStyleBinding) {
             ForEach(FrontMatterStyle.allCases) { style in
               Text(style == .toml ? "TOML" : "YAML").tag(style)
             }
@@ -493,12 +494,24 @@ struct FirstRunSetupView: View {
             .accessibilityLabel("内容目录")
           TextField("文章路径", text: markdownPathPatternBinding)
             .accessibilityLabel("文章路径")
+
+          if let path = FirstRunRulePreviewPresentation.markdownPath(profile: setupProfile) {
+            VStack(alignment: .leading, spacing: 4) {
+              Text("示例文件：\(path)")
+                .font(.caption.monospaced())
+                .textSelection(.enabled)
+                .accessibilityIdentifier("first-run-article-path-example")
+              Text("以今天的日期和 my-first-post 为示例，仅预览路径，不创建文件。")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            }
+          }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.top, 4)
       }
 
-      GroupBox("发布方式") {
+      DisclosureGroup(String(localized: "进阶：远端发布方式"), isExpanded: $showsAdvancedPublishingRules) {
         VStack(alignment: .leading, spacing: 12) {
           Picker("远端平台", selection: repositoryProviderBinding) {
             ForEach(RepositoryProvider.allCases) { provider in
@@ -592,7 +605,7 @@ struct FirstRunSetupView: View {
         Text(
           !isRepositorySetupActive
             ? String(localized: "下次启动仍可从这三个入口开始。")
-            : String(localized: "当前路径的设置会保留，可稍后在设置中继续修改。")
+            : String(localized: "退出后，本次向导中未完成的设置不会保存；已有工作台配置保持不变。之后可重新设置。")
         )
         .font(.workbenchSupporting)
         .foregroundStyle(.tertiary)
@@ -704,7 +717,7 @@ struct FirstRunSetupView: View {
     let frontMatter = proposal.frontMatterStyle == .toml ? "TOML" : "YAML"
     return [
       evidence,
-      String(format: String(localized: "Front Matter：%@"), frontMatter),
+      String(format: String(localized: "文章头信息格式：%@"), frontMatter),
       String(format: String(localized: "内容目录：%@"), proposal.contentRoot),
       String(format: String(localized: "文章路径：%@"), proposal.markdownPathPattern),
     ].joined(separator: "\n")

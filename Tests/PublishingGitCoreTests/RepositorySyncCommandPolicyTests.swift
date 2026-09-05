@@ -112,7 +112,7 @@ private let repositorySyncPolicyCases: [RepositorySyncPolicyCase] = [
       "cd '/tmp/site'",
       "git fetch --prune",
       "git status --short --branch",
-      "git pull --ff-only",
+      "git log --oneline --left-right --graph 'HEAD...@{upstream}'",
     ]
   ),
   RepositorySyncPolicyCase(

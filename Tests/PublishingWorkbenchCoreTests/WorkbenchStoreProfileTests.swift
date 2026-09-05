@@ -147,7 +147,7 @@ final class WorkbenchStoreProfileTests: XCTestCase {
     XCTAssertEqual(store.activeProfileID, profile.id)
     XCTAssertEqual(plan.rootPath, rootURL.path)
     XCTAssertEqual(URL(fileURLWithPath: plan.executablePath).lastPathComponent, "npm")
-    XCTAssertEqual(plan.arguments, ["run", "dev"])
+    XCTAssertEqual(plan.arguments, ["run", "dev", "--", "--host", "127.0.0.1"])
     XCTAssertEqual(plan.previewURL.absoluteString, "http://127.0.0.1:4321")
   }
 

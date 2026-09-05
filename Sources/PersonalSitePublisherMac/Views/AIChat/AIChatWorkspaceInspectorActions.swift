@@ -5,37 +5,43 @@ import SwiftUI
 extension AIChatContextInspectorView {
 
   var state: AIChatContextInspectorState {
-    guard let draft = inspectorDraft else {
-      return AIChatContextInspectorState(draft: nil)
+    let isGeneralConversation = ai.chatContextMode == .general
+    let draft = isGeneralConversation ? nil : inspectorDraft
+    guard
+      AIChatInspectorContextPresentationPolicy.canPresentConversation(
+        mode: ai.chatContextMode,
+        hasDraft: draft != nil
+      )
+    else {
+      return AIChatContextInspectorState(conversation: nil)
     }
 
     let displayedGeneralConversation =
       ai.chatContextMode == .general
       ? ai.generalChatConversation(withID: inspectorSurfaceConversationID)
       : nil
-    let displayedDraftConversation =
-      ai.chatContextMode == .site
-      ? ai.chatConversations(for: draft.id).first(where: {
+    let displayedDraftConversation = draft.flatMap { draft in
+      ai.chatConversations(for: draft.id).first(where: {
         $0.id == ai.activeChatConversationID(for: draft.id)
       })
-      : nil
+    }
     let displayedMessages =
-      ai.chatContextMode == .general
+      isGeneralConversation
       ? (displayedGeneralConversation?.messages ?? [])
       : (displayedDraftConversation?.messages ?? [])
     let displayedConversationID =
-      ai.chatContextMode == .general
+      isGeneralConversation
       ? displayedGeneralConversation?.id
-      : ai.activeChatConversationID(for: draft.id)
+      : draft.flatMap { ai.activeChatConversationID(for: $0.id) }
     let firstUserMessage = displayedMessages.first(where: { $0.role == .user })
     let conversationTitle =
-      ai.chatContextMode == .general
+      isGeneralConversation
       ? displayedGeneralConversation?.title
       : displayedDraftConversation?.title
     let staticProjection = staticProjectionCache.resolve(
       key: .init(
-        draftID: draft.id,
-        draftUpdatedAt: draft.updatedAt,
+        draftID: draft?.id,
+        draftUpdatedAt: draft?.updatedAt,
         conversationID: displayedConversationID,
         contextMode: ai.chatContextMode,
         conversationTitle: conversationTitle,
@@ -44,13 +50,11 @@ extension AIChatContextInspectorView {
         siteMaintenanceSnapshotVersion: chatState.siteMaintenanceSnapshotVersion
       )
     ) {
-      let profile = ai.chatContextMode == .general ? nil : ai.chatProfile(for: draft)
+      let profile = isGeneralConversation ? nil : draft.map(ai.chatProfile(for:))
       let relationSuggestions =
-        ai.chatContextMode == .general
-        ? []
-        : ai.relatedChatArticleSuggestions(for: draft, limit: 5)
+        draft.map { ai.relatedChatArticleSuggestions(for: $0, limit: 5) } ?? []
       let displayedConversationTitle: String
-      if ai.chatContextMode == .general {
+      if isGeneralConversation {
         if let title = conversationTitle?.trimmedForPublishing.nilIfEmpty {
           displayedConversationTitle = title
         } else if let firstUserMessage {
@@ -62,39 +66,42 @@ extension AIChatContextInspectorView {
         } else {
           displayedConversationTitle = String(localized: "通用 AI 对话")
         }
-      } else {
+      } else if let draft {
         displayedConversationTitle = AIPublishingChatConversationPresentation.displayTitle(
           conversationTitle: conversationTitle,
           messages: displayedMessages,
           draft: draft,
           emptyTitle: String(localized: "AI 对话")
         )
+      } else {
+        displayedConversationTitle = String(localized: "AI 对话")
       }
       return AIChatInspectorStaticProjectionCache.Projection(
         draft: draft,
         conversationID: displayedConversationID,
         conversationTitle: displayedConversationTitle,
         relatedSuggestions: relationSuggestions.prefix(4).map { suggestion in
-          AIChatRelatedSuggestionPresentation(
+          let prompt: String
+          if let profile, let draft {
+            prompt = AIPublishingChatPromptTemplateService.relatedArticleSuggestionPrompt(
+              for: suggestion, draft: draft, profile: profile)
+          } else {
+            prompt = ""
+          }
+          return AIChatRelatedSuggestionPresentation(
             id: suggestion.id,
             targetTitle: suggestion.targetTitle,
             reason: suggestion.reason,
             targetPath: suggestion.targetPath,
             targetDraftID: suggestion.targetDraftID,
-            prompt: profile.map {
-              AIPublishingChatPromptTemplateService.relatedArticleSuggestionPrompt(
-                for: suggestion,
-                draft: draft,
-                profile: $0
-              )
-            } ?? ""
+            prompt: prompt
           )
         }
       )
     }
 
     return AIChatContextInspectorState(
-      draft: AIChatInspectorDraftContext(
+      conversation: AIChatInspectorConversationContext(
         draft: staticProjection.draft,
         conversationID: staticProjection.conversationID,
         conversationTitle: staticProjection.conversationTitle,
@@ -252,16 +259,16 @@ extension AIChatContextInspectorView {
   }
 
   var latestMessageID: AIPublishingChatMessage.ID? {
-    state.draft?.messages.last?.id
+    state.conversation?.messages.last?.id
   }
 
   var latestMessageContent: String {
-    state.draft?.messages.last?.content ?? ""
+    state.conversation?.messages.last?.content ?? ""
   }
 
   func startSending(
     _ message: String,
-    draft: ArticleDraft,
+    draft: ArticleDraft?,
     clearsComposerOnAccept: Bool
   ) {
     guard
@@ -288,15 +295,17 @@ extension AIChatContextInspectorView {
       ? submittedGeneralConversation?.connectionProfileID
         ?? ai.activeGeneralChatConnectionProfile.id
       : nil
-    let submittedDraftConversation =
-      submittedContextMode == .site
-      ? AIChatDraftConversationExpectation(
+    let submittedDraftConversation: AIChatDraftConversationExpectation?
+    if submittedContextMode == .site, let draft {
+      submittedDraftConversation = AIChatDraftConversationExpectation(
         draftID: draft.id,
         conversation: ai.chatConversations(for: draft.id).first(where: {
           $0.id == ai.activeChatConversationID(for: draft.id)
         })
       )
-      : nil
+    } else {
+      submittedDraftConversation = nil
+    }
     let existingMessageIDs = Set(
       (submittedContextMode == .general
         ? submittedGeneralConversation?.messages ?? []
@@ -305,10 +314,17 @@ extension AIChatContextInspectorView {
     let requestedImageAttachmentIDs = selectedImageAttachmentIDs
     let requestedContextReferences = selectedContextReferences
     _ = operationSession.start(ownerToken: ownerToken) {
-      let imageAttachments = await ai.chatImageAttachments(
-        for: draft,
-        attachmentIDs: requestedImageAttachmentIDs
-      )
+      let imageAttachments: [AIChatImageAttachment]
+      if submittedContextMode == .general {
+        imageAttachments = []
+      } else if let draft {
+        imageAttachments = await ai.chatImageAttachments(
+          for: draft,
+          attachmentIDs: requestedImageAttachmentIDs
+        )
+      } else {
+        return
+      }
       guard !Task.isCancelled else {
         return
       }
@@ -323,7 +339,7 @@ extension AIChatContextInspectorView {
           ownerToken: ownerToken,
           expectedConversation: submittedGeneralConversationExpectation
         )
-      } else {
+      } else if let draft {
         reply = await ai.sendChatMessage(
           message,
           draft: draft,
@@ -333,6 +349,8 @@ extension AIChatContextInspectorView {
           expectedContextMode: submittedContextMode,
           expectedDraftConversation: submittedDraftConversation
         )
+      } else {
+        return
       }
       let currentMessages: [AIPublishingChatMessage]
       if submittedContextMode == .general {
@@ -342,8 +360,13 @@ extension AIChatContextInspectorView {
           )?.messages
           ?? ai.activeGeneralChatConversation?.messages
           ?? []
+      } else if let draft {
+        currentMessages =
+          ai.chatConversations(for: draft.id).first(where: {
+            $0.id == ai.activeChatConversationID(for: draft.id)
+          })?.messages ?? []
       } else {
-        currentMessages = ai.chatMessages
+        currentMessages = []
       }
       let didAcceptUserMessage = currentMessages.contains {
         !existingMessageIDs.contains($0.id) && $0.role == .user
@@ -429,7 +452,7 @@ extension AIChatContextInspectorView {
   }
 
   func loadEarlierMessages() {
-    guard let context = state.draft,
+    guard let context = state.conversation,
       context.totalMessageCount > context.messages.count
     else { return }
     messageAnchorToPreserve = context.messages.first?.id
@@ -456,6 +479,7 @@ extension AIChatContextInspectorView {
   }
 
   func synchronizeChatDraftWithSelection() {
+    guard !usesWindowDraftSelection else { return }
     guard let draft = inspectorDraft,
       ai.chatDraftID != draft.id
     else { return }

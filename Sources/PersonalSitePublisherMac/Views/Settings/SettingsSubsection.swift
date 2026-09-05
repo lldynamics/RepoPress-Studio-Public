@@ -188,22 +188,6 @@ enum SettingsSubsection: String, CaseIterable, Identifiable, Sendable {
     sections(for: tab).first ?? .configurationReadiness
   }
 
-  var previous: SettingsSubsection? {
-    adjacent(offset: -1)
-  }
-
-  var next: SettingsSubsection? {
-    adjacent(offset: 1)
-  }
-
-  private func adjacent(offset: Int) -> SettingsSubsection? {
-    let siblings = Self.sections(for: tab)
-    guard let index = siblings.firstIndex(of: self) else { return nil }
-    let adjacentIndex = index + offset
-    guard siblings.indices.contains(adjacentIndex) else { return nil }
-    return siblings[adjacentIndex]
-  }
-
   static func section(for destination: SettingsDestination) -> SettingsSubsection {
     switch destination {
     case .tab(let tab):

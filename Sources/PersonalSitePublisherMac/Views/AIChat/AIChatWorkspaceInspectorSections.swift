@@ -2,7 +2,7 @@ import PublishingWorkbenchCore
 import SwiftUI
 
 struct AIChatConversationInspectorSection: View {
-  let context: AIChatInspectorDraftContext
+  let context: AIChatInspectorConversationContext
   let actions: AIChatContextInspectorActions
 
   var body: some View {
@@ -11,7 +11,11 @@ struct AIChatConversationInspectorSection: View {
         ContentUnavailableView(
           String(localized: "开始对话"),
           systemImage: "bubble.left.and.text.bubble.right",
-          description: Text("在下方输入问题，AI 会结合当前文章回答。")
+          description: Text(
+            context.draft == nil
+              ? String(localized: "在下方输入问题，AI 不会自动读取当前文章。")
+              : String(localized: "在下方输入问题，AI 会结合当前文章回答。")
+          )
         )
         .frame(minHeight: 130)
       } else {
@@ -78,7 +82,9 @@ struct AIChatConversationInspectorSection: View {
               AIChatToolRunCard(runs: message.toolRuns)
             }
 
-            if let payload = message.structuredEditPayload {
+            if let payload = message.structuredEditPayload,
+              let draft = context.draft
+            {
               AIChatStructuredEditReviewCard(
                 message: message,
                 payload: payload,
@@ -86,7 +92,7 @@ struct AIChatConversationInspectorSection: View {
                   actions.previewStructuredEdits(
                     message,
                     review,
-                    context.draft
+                    draft
                   )
                 },
                 recordDecision: actions.recordStructuredEditFeedback
@@ -99,12 +105,14 @@ struct AIChatConversationInspectorSection: View {
               }
             }
 
-            if let plan = message.automationPlan {
+            if let plan = message.automationPlan,
+              let draft = context.draft
+            {
               AIChatAutomationPlanCard(
                 message: message,
                 plan: plan,
                 conversationID: context.conversationID,
-                currentDraft: context.draft,
+                currentDraft: draft,
                 isChatRunning: context.isChatRunning,
                 isAutomationRunning: context.isAutomationRunning,
                 latestRunRecord: context.automationRunRecords.first {
@@ -115,23 +123,25 @@ struct AIChatConversationInspectorSection: View {
             }
 
             if message.id == latestAssistantMessageID,
-              !message.followUpSuggestions.isEmpty
+              !message.followUpSuggestions.isEmpty,
+              let draft = context.draft
             {
               AIChatFollowUpSuggestionsView(
                 suggestions: message.followUpSuggestions,
                 isChatRunning: context.isChatRunning,
-                draft: context.draft
+                draft: draft
               ) { suggestion in
-                actions.sendMessage(suggestion.prompt, context.draft)
+                actions.sendMessage(suggestion.prompt, draft)
               }
             }
 
             if message.id == latestAssistantMessageID,
               message.automationPlan == nil,
-              message.allowsDraftAppend
+              message.allowsDraftAppend,
+              let draft = context.draft
             {
               Button {
-                actions.appendReply(message, context.draft)
+                actions.appendReply(message, draft)
               } label: {
                 Label(
                   message.knowledgeCitations.isEmpty
@@ -165,12 +175,14 @@ struct AIChatConversationInspectorSection: View {
           }
           .id(message.id)
           .contextMenu {
-            Button {
-              actions.branchConversation(message.id, context.draft)
-            } label: {
-              Label("从这条消息处分支对话", systemImage: "arrow.triangle.branch")
+            if let draft = context.draft {
+              Button {
+                actions.branchConversation(message.id, draft)
+              } label: {
+                Label("从这条消息处分支对话", systemImage: "arrow.triangle.branch")
+              }
+              .disabled(context.isChatRunning)
             }
-            .disabled(context.isChatRunning)
           }
         }
       }
@@ -226,11 +238,11 @@ struct AIChatConversationInspectorSection: View {
 }
 
 struct AIChatRelatedSuggestionsInspectorSection: View {
-  let context: AIChatInspectorDraftContext
+  let context: AIChatInspectorConversationContext
   let actions: AIChatContextInspectorActions
 
   var body: some View {
-    if !context.relatedSuggestions.isEmpty {
+    if let draft = context.draft, !context.relatedSuggestions.isEmpty {
       AIChatInspectorSection(String(localized: "关联文章建议")) {
         ForEach(context.relatedSuggestions) { suggestion in
           VStack(alignment: .leading, spacing: 5) {
@@ -248,7 +260,7 @@ struct AIChatRelatedSuggestionsInspectorSection: View {
 
             HStack {
               Button {
-                actions.sendMessage(suggestion.prompt, context.draft)
+                actions.sendMessage(suggestion.prompt, draft)
               } label: {
                 Label(
                   String(localized: "让 AI 写内链段落"),

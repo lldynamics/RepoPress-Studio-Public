@@ -17,7 +17,7 @@ final class RepositoryMergeConflictDraftPolicyTests: XCTestCase {
     )
   }
 
-  func testManualMergeRemovesDiff3MarkersAndBaseSection() {
+  func testManualMergeNeverConcatenatesDiff3ConflictSides() {
     let conflict = makeConflict(
       final: """
         before
@@ -37,19 +37,37 @@ final class RepositoryMergeConflictDraftPolicyTests: XCTestCase {
       conflict: conflict
     )
 
-    XCTAssertEqual(prepared, "before\nlocal\nremote\nafter")
-    XCTAssertFalse(prepared?.contains("<<<<<<<") == true)
-    XCTAssertFalse(prepared?.contains("=======") == true)
-    XCTAssertFalse(prepared?.contains(">>>>>>>") == true)
-    XCTAssertFalse(prepared?.contains("old") == true)
+    XCTAssertNil(prepared)
+    XCTAssertTrue(
+      RepositoryMergeConflictPolicy.containsConflictMarkers(
+        RepositoryMergeConflictDraftPolicy.initialText(for: conflict)
+      )
+    )
   }
 
-  func testMalformedMarkersNeverSeedFinalEditor() {
+  func testManualMergeAcceptsOnlyAnAlreadyMarkerFreeWorkingTreeVersion() {
+    let conflict = makeConflict(final: "carefully merged\n")
+
+    XCTAssertEqual(
+      RepositoryMergeConflictDraftPolicy.preparedText(for: .manualMerge, conflict: conflict),
+      "carefully merged\n"
+    )
+  }
+
+  func testMalformedMarkersRemainVisibleForManualResolution() {
     let conflict = makeConflict(final: "<<<<<<< HEAD\nunterminated")
 
     XCTAssertEqual(
       RepositoryMergeConflictDraftPolicy.initialText(for: conflict),
-      "local\n"
+      "<<<<<<< HEAD\nunterminated"
+    )
+  }
+
+  func testMarkdownSetextHeadingDividerIsNotTreatedAsAConflictMarker() {
+    XCTAssertFalse(
+      RepositoryMergeConflictPolicy.containsConflictMarkers(
+        "A valid Markdown heading\n=======\n"
+      )
     )
   }
 

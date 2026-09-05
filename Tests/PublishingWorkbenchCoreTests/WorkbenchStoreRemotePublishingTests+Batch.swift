@@ -320,6 +320,8 @@ final class WorkbenchStoreRemotePublishingBatchTests: WorkbenchStoreRemotePublis
     try makePNG().write(to: imageURL, options: .atomic)
 
     let transport = SequencedWorkbenchRemoteRepositoryTransport(responses: [
+      workbenchRemoteResponse(statusCode: 404, json: #"{"message":"not found"}"#),
+      workbenchRemoteResponse(statusCode: 404, json: #"{"message":"not found"}"#),
       workbenchRemoteResponse(json: #"{"object":{"sha":"base-commit-sha"}}"#),
       workbenchRemoteResponse(
         json: #"{"sha":"base-commit-sha","tree":{"sha":"base-tree-sha"},"parents":[]}"#),
@@ -730,6 +732,14 @@ final class WorkbenchStoreRemotePublishingBatchTests: WorkbenchStoreRemotePublis
       store.batchRemotePublishPreviewSnapshot?.remoteConflictPaths,
       ["content/posts/batch-conflict.md"]
     )
+    let conflictSession = try XCTUnwrap(store.remoteRepositoryConflictSession)
+    guard case .batch(let reviewedDraftIDs) = conflictSession.publishScope else {
+      return XCTFail("Expected a batch-scoped conflict session")
+    }
+    XCTAssertEqual(
+      Set(reviewedDraftIDs),
+      Set([identicalDraft.id, conflictedDraft.id])
+    )
 
     let requests = await transport.capturedRequests()
     XCTAssertEqual(requests.map(\.httpMethod), ["GET", "GET"])
@@ -1034,6 +1044,63 @@ final class WorkbenchStoreRemotePublishingBatchTests: WorkbenchStoreRemotePublis
     XCTAssertNil(result)
     XCTAssertEqual(requestCount, 0)
     XCTAssertTrue(store.publishActionMessage?.contains("发布目标已变化") == true)
+  }
+
+  func testBatchOnlinePublishRejectsSamePathContentChangedAfterReviewBeforeNetwork() async throws {
+    let rootURL = try preparedGitRepositoryRoot()
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let transport = CountingRemoteRepositoryTransport()
+    let tokenStore = repositoryTokenStoreForTest()
+    let store = WorkbenchStore(
+      persistence: try TestWorkbenchFactory.persistence(),
+      remoteRepositoryPublishService: RemoteRepositoryPublishService(transport: transport),
+      repositoryTokenStore: tokenStore
+    )
+    var profile = store.activeProfile
+    profile.repositoryProvider = .github
+    profile.repositoryBaseURL = RepositoryProvider.github.defaultBaseURL
+    profile.repoOwner = "owner"
+    profile.repoName = "site"
+    profile.branch = "main"
+    profile.repositoryPublishStrategy = .direct
+    profile.markdownPathPattern = "content/posts/{slug}.md"
+    profile.rememberLocalRepositoryRoot(rootURL)
+    store.updateActiveProfile(profile)
+    defer { try? tokenStore.deleteToken(for: profile) }
+    try tokenStore.saveRepositoryToken("github-token", for: profile)
+    store.refreshRepositoryTokenAvailability()
+
+    var draft = ArticleDraft(
+      siteProfileID: profile.id,
+      title: "Reviewed Batch",
+      slug: "reviewed-batch",
+      draft: false,
+      bodyMarkdown:
+        "The original article body is long enough to pass the content checks and enter the batch review."
+    )
+    store.setDrafts([draft])
+    store.setSelectedDraftID(draft.id)
+    await store.refreshBatchPublishPlanAsync()
+    let plan = try XCTUnwrap(store.batchPublishPlan)
+    let package = try XCTUnwrap(store.remotePublishPackage(for: plan))
+    let preview = try XCTUnwrap(store.batchRemotePublishPreviewSnapshot)
+    let review = BatchPublishReviewExpectation(plan: plan, package: package)
+    XCTAssertTrue(review.matches(plan: plan, package: package))
+
+    draft.bodyMarkdown += "\n\nThis unreviewed addition keeps the same repository path."
+    store.setDrafts([draft])
+    let result = await store.publishBatchReadyDraftsOnlineUsingPreferredStrategy(
+      expectedChangedPaths: Set(preview.changedPaths),
+      expectedTarget: RemoteRepositoryPublishTargetSnapshot(profile: profile, preview: preview),
+      expectedReview: review
+    )
+    let requestCount = await transport.requestCount()
+
+    XCTAssertNil(result)
+    XCTAssertEqual(requestCount, 0, "A stale review must be rejected before any network request")
+    XCTAssertEqual(
+      Set(store.batchRemotePublishPreviewSnapshot?.changedPaths ?? []), Set(preview.changedPaths))
+    XCTAssertTrue(store.publishActionMessage?.contains("待发布文章或内容已变化") == true)
   }
 
   private func makePNG() throws -> Data {

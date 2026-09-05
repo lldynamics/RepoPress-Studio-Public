@@ -1,4 +1,5 @@
 import AppKit
+import PublishingGitCore
 import PublishingWorkbenchCore
 import SwiftUI
 
@@ -41,7 +42,7 @@ extension RepositoryWorkspaceView {
             hasSelectedRepository ? String(localized: "更换仓库") : String(localized: "选择站点文件夹"),
             systemImage: "folder"
           )
-            .frame(maxWidth: .infinity, alignment: .leading)
+          .frame(maxWidth: .infinity, alignment: .leading)
         }
         .buttonStyle(.bordered)
         .disabled(
@@ -67,7 +68,7 @@ extension RepositoryWorkspaceView {
               hasSelectedRepository ? String(localized: "重新扫描") : String(localized: "扫描仓库"),
               systemImage: "arrow.clockwise"
             )
-              .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(maxWidth: .infinity, alignment: .leading)
           }
           .buttonStyle(.bordered)
           .disabled(
@@ -77,11 +78,9 @@ extension RepositoryWorkspaceView {
           .help(
             store.isLocalRepositoryBranchOperationRunning
               ? String(localized: "正在处理分支")
-              : (
-                hasSelectedRepository
-                  ? String(localized: "重新读取仓库结构、Git 状态和文件变化")
-                  : String(localized: "请先选择站点文件夹")
-              )
+              : (hasSelectedRepository
+                ? String(localized: "重新读取仓库结构、Git 状态和文件变化")
+                : String(localized: "请先选择站点文件夹"))
           )
           .accessibilityIdentifier("repository-action-scan")
         }
@@ -143,7 +142,7 @@ extension RepositoryWorkspaceView {
           .adaptive(minimum: 460, maximum: 720),
           spacing: 16,
           alignment: .top
-        ),
+        )
       ],
       alignment: .leading,
       spacing: 16
@@ -158,22 +157,32 @@ extension RepositoryWorkspaceView {
   private var repositoryOverviewPrimaryColumn: some View {
     VStack(alignment: .leading, spacing: 16) {
       repositoryScanProgress
+      repositoryProblemsSection
+      repositoryMergeConflictSection
       repositorySummary
       repositoryPublishReadinessSummary
-      repositoryMergeConflictSection
-      repositoryProblemsSection
       onlinePublishCenterSection
-      repositoryAutoSyncSection
     }
   }
 
   private var repositoryOverviewContextColumn: some View {
     VStack(alignment: .leading, spacing: 16) {
-      repositoryInformationSection
       RepositoryWorkspaceGitManagementSection(store: store)
-      repositoryOverviewLocalPreviewSection
-      repositoryOverviewSyncPlanSection
-      pathRules
+
+      DisclosureGroup {
+        VStack(alignment: .leading, spacing: 16) {
+          repositoryInformationSection
+          repositoryAutoSyncSection
+          repositoryOverviewLocalPreviewSection
+          repositoryOverviewSyncPlanSection
+          pathRules
+        }
+        .padding(.top, 8)
+      } label: {
+        Label("更多信息与工具", systemImage: "slider.horizontal.3")
+          .font(.workbenchSectionTitle)
+      }
+      .accessibilityIdentifier("repository-section-more-tools")
     }
   }
 
@@ -238,19 +247,33 @@ extension RepositoryWorkspaceView {
         actionTitle: "取消扫描",
         action: store.repository.cancelScan
       )
-    } else if let session = store.repositoryMergeConflictSession,
-              !session.conflicts.isEmpty {
+    } else if let lifecycle = store.repositoryOperationLifecycle,
+      lifecycle.isOperationInProgress
+    {
       workflowBanner(
-        title: "Git 有 \(session.conflicts.count) 个未解决冲突",
-        detail: "请先在三栏合并视图中明确编辑最终版本并暂存，避免覆盖本地或远程内容。",
+        title: lifecycleBannerTitle(lifecycle),
+        detail: lifecycleBannerDetail(lifecycle),
         systemImage: "arrow.left.arrow.right.square",
         tint: WorkbenchTheme.risk,
         isExceptional: true,
-        actionTitle: "查看冲突",
+        actionTitle: "处理 Git 操作",
+        action: { stage = .changes }
+      )
+    } else if store.repositoryRebaseRecoveryContext != nil
+      || store.repositoryRebaseRecoveryDiagnostic != nil
+    {
+      workflowBanner(
+        title: "本地改动恢复待确认",
+        detail: "变基的恢复记录仍在，软件不会猜测或重复应用 stash。",
+        systemImage: "archivebox",
+        tint: WorkbenchTheme.warning,
+        isExceptional: true,
+        actionTitle: "查看恢复状态",
         action: { stage = .changes }
       )
     } else if let report = store.repositoryReport,
-              let issue = report.preflightIssues.first(where: { $0.severity == .error }) {
+      let issue = report.preflightIssues.first(where: { $0.severity == .error })
+    {
       workflowBanner(
         title: "需要先处理：\(issue.title)",
         detail: LocalizedStringKey(issue.message),
@@ -290,8 +313,9 @@ extension RepositoryWorkspaceView {
         action: scanRepository
       )
     } else if let draft = store.selectedDraft,
-              let readiness = store.localPublishReadiness,
-              readiness.blockingIssueCount > 0 {
+      let readiness = store.localPublishReadiness,
+      readiness.blockingIssueCount > 0
+    {
       workflowBanner(
         title: "当前文章存在 \(readiness.blockingIssueCount) 个发布阻断项",
         detail: "先处理文章检查结果，再写入或线上发布。",
@@ -304,7 +328,7 @@ extension RepositoryWorkspaceView {
     } else if store.selectedDraft != nil {
       workflowBanner(
         title: "可以继续保存或发布",
-        detail: "打开发布流程后，只需选择“保存到本地”或“发布上线”。",
+        detail: "打开发布流程，先选择发布范围，再审阅文件与目标分支。",
         systemImage: "paperplane",
         tint: .secondary,
         actionTitle: "打开发布",
@@ -538,10 +562,20 @@ extension RepositoryWorkspaceView {
 
         Divider()
 
+        Text("同步状态只描述本地与网站仓库的差异；公开检查单独显示在下方。")
+          .font(.caption)
+          .foregroundStyle(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
+
         LazyVGrid(columns: repositoryMetricGridColumns, spacing: 10) {
-          MetricTile(title: "本地变化", value: "\(report.changedFiles.count)", systemImage: "desktopcomputer")
-          MetricTile(title: "网站更新", value: "\(report.remoteChangedFiles.count)", systemImage: "arrow.down.doc")
-          MetricTile(title: "需要处理", value: "\(blockingIssueCount)", systemImage: blockingIssueCount == 0 ? "checkmark.circle" : "exclamationmark.triangle")
+          MetricTile(
+            title: "本地变化", value: "\(report.changedFiles.count)", systemImage: "desktopcomputer")
+          MetricTile(
+            title: "网站更新", value: "\(report.remoteChangedFiles.count)",
+            systemImage: "arrow.down.doc")
+          MetricTile(
+            title: "需要处理", value: "\(blockingIssueCount)",
+            systemImage: blockingIssueCount == 0 ? "checkmark.circle" : "exclamationmark.triangle")
         }
       }
       .accessibilityElement(children: .contain)
@@ -570,7 +604,7 @@ extension RepositoryWorkspaceView {
 
     return VStack(alignment: .leading, spacing: 10) {
       HStack {
-        Label("发布就绪", systemImage: summary.preflightSystemImage)
+        Label("公开检查", systemImage: summary.preflightSystemImage)
           .font(.workbenchSectionTitle)
           .accessibilityAddTraits(.isHeader)
         Spacer()
@@ -580,6 +614,11 @@ extension RepositoryWorkspaceView {
       }
 
       Divider()
+
+      Text("公开检查只说明当前发布包是否可继续审阅；推送完成不等于网站已经上线。")
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
 
       Label(summary.preflightTitle, systemImage: summary.preflightSystemImage)
         .font(.callout)
@@ -611,15 +650,95 @@ extension RepositoryWorkspaceView {
 
   @ViewBuilder
   var repositoryMergeConflictSection: some View {
-    if let session = store.repositoryMergeConflictSession,
-       !session.conflicts.isEmpty {
-      RepositoryMergeConflictView(session: session) { path, finalContent in
-        try await store.resolveRepositoryMergeConflict(
-          repositoryPath: path,
-          finalContent: finalContent
-        )
+    if let session = store.repositoryMergeConflictSession {
+      VStack(alignment: .leading, spacing: 12) {
+        if let lifecycle = session.operationLifecycle,
+          lifecycle.isOperationInProgress
+            || store.repositoryRebaseRecoveryContext != nil
+            || store.repositoryRebaseRecoveryDiagnostic != nil
+        {
+          RepositoryOperationLifecycleView(
+            lifecycle: lifecycle,
+            recovery: store.repositoryRebaseRecoveryContext,
+            diagnostic: store.repositoryRebaseRecoveryDiagnostic,
+            isRunning: store.isLocalRepositoryBranchOperationRunning
+              || store.isLocalRepositoryMutationRunning,
+            completeAction: { message in
+              Task { @MainActor in
+                _ = await store.completeRepositoryOperation(mergeMessage: message)
+              }
+            },
+            abortAction: {
+              Task { @MainActor in
+                _ = await store.abortRepositoryOperation()
+              }
+            },
+            restoreRebaseWIPAction: {
+              Task { @MainActor in
+                _ = await store.restoreRepositoryRebaseWIP()
+              }
+            },
+            finishStashRecoveryAction: {
+              Task { @MainActor in
+                _ = await store.finishRepositoryStashConflictRecovery()
+              }
+            },
+            discardRecoveryRecordAction: {
+              Task { @MainActor in
+                _ = await store.discardRepositoryRebaseRecoveryRecord()
+              }
+            }
+          )
+        }
+
+        if !session.conflicts.isEmpty {
+          RepositoryMergeConflictView(session: session) { request in
+            try await store.resolveRepositoryMergeConflict(request: request)
+          }
+        }
       }
-      .id(session.scannedAt)
+    }
+  }
+
+  private func lifecycleBannerTitle(
+    _ lifecycle: RepositoryOperationLifecycle
+  ) -> LocalizedStringKey {
+    switch lifecycle.kind {
+    case .merge:
+      return lifecycle.unresolvedConflictCount == 0
+        ? "冲突已暂存，等待完成合并"
+        : "Git 合并有 \(lifecycle.unresolvedConflictCount) 个未解决冲突"
+    case .rebase:
+      return lifecycle.unresolvedConflictCount == 0
+        ? "冲突已暂存，等待继续变基"
+        : "Git 变基有 \(lifecycle.unresolvedConflictCount) 个未解决冲突"
+    case .unmergedIndex:
+      return "本地改动恢复有 \(lifecycle.unresolvedConflictCount) 个冲突"
+    case .ambiguous:
+      return "Git 操作状态不明确"
+    case .none:
+      return "Git 操作已结束"
+    }
+  }
+
+  private func lifecycleBannerDetail(
+    _ lifecycle: RepositoryOperationLifecycle
+  ) -> LocalizedStringKey {
+    switch lifecycle.kind {
+    case .merge:
+      return lifecycle.unresolvedConflictCount == 0
+        ? "点击“完成合并并提交”，真正退出 MERGING 状态。"
+        : "请逐个审阅最终版本并暂存，全部完成后再提交合并。"
+    case .rebase:
+      return lifecycle.unresolvedConflictCount == 0
+        ? "点击“继续变基”；下一批冲突仍会留在软件内处理。"
+        : "请逐个处理当前变基冲突，恢复 stash 将持续保留。"
+    case .unmergedIndex:
+      return "这是恢复 stash 时的冲突，不存在安全的通用 continue/abort。"
+    case .ambiguous:
+      return "软件已停止自动写入，请检查仓库操作标记。"
+    case .none:
+      return "仓库已退出 Git 操作状态。"
     }
   }
 
@@ -639,8 +758,12 @@ extension RepositoryWorkspaceView {
           .textSelection(.enabled)
           .workbenchTruncatedIdentity(rootDisplayText, lineLimit: 2)
 
-        Label(report.detectedKind?.localizedDisplayName ?? String(localized: "未识别"), systemImage: "globe")
-        Label("Markdown \(report.markdownFileCount) · 图片 \(report.imageFileCount)", systemImage: "doc.on.doc")
+        Label(
+          report.detectedKind?.localizedDisplayName ?? String(localized: "未识别"),
+          systemImage: "globe")
+        Label(
+          "Markdown \(report.markdownFileCount) · 图片 \(report.imageFileCount)",
+          systemImage: "doc.on.doc")
 
         if let branchStatus = report.branchStatus {
           Label(
@@ -697,11 +820,11 @@ extension RepositoryWorkspaceView {
   }
 
   private func repositoryRootDisplayText(for report: RepositoryScanReport) -> String {
-#if DEBUG || SCREENSHOT_CAPTURE_BUILD
-    if ScreenshotDemoDataService.isEnabledFromEnvironment {
-      return "示例仓库（隔离演示数据）"
-    }
-#endif
+    #if DEBUG || SCREENSHOT_CAPTURE_BUILD
+      if ScreenshotDemoDataService.isEnabledFromEnvironment {
+        return "示例仓库（隔离演示数据）"
+      }
+    #endif
     return report.rootPath.isEmpty ? String(localized: "未选择仓库") : report.rootPath
   }
 

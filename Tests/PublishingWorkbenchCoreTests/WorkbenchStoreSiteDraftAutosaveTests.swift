@@ -110,6 +110,53 @@ final class WorkbenchStoreSiteDraftAutosaveTests: XCTestCase {
     XCTAssertFalse(contents.contains("第一版通过发布抽屉"))
   }
 
+  func testDebouncedAutosavePreservesExternalEditMadeBeforePreview() async throws {
+    let rootURL = try temporaryDirectory(prefix: "site-draft-external-edit-during-debounce")
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(
+        fileURL: rootURL.appendingPathComponent("app-data/workbench.json")
+      )
+    )
+    store.updateActiveProfile { profile in
+      profile.localRepositoryRootPath = rootURL.path
+      profile.markdownPathPattern = "content/posts/{slug}.md"
+    }
+
+    store.createDraft()
+    var draft = try XCTUnwrap(store.selectedDraft)
+    draft.title = "External edit debounce"
+    draft.slug = "external-edit-debounce"
+    draft.bodyMarkdown = "Initial app content"
+    store.updateDraft(draft)
+    let didAddToProject = await store.writeSiteDraftToProject(draftID: draft.id)
+    XCTAssertTrue(didAddToProject)
+    await store.waitForPendingSiteDraftFileWrites()
+
+    draft = try XCTUnwrap(store.selectedDraft)
+    let repositoryPath = try XCTUnwrap(draft.repositoryPath)
+    let destinationURL = rootURL.appendingPathComponent(repositoryPath)
+    draft.bodyMarkdown = "Pending app content"
+    store.updateDraft(draft)
+
+    // This write intentionally lands inside the 350 ms debounce window,
+    // before SiteDraftFileStore generates its preview.
+    let externalDocument = "---\ntitle: External version\n---\n\nExternal editor content\n"
+    try externalDocument.write(to: destinationURL, atomically: true, encoding: .utf8)
+    await store.waitForPendingSiteDraftFileWrites()
+
+    XCTAssertEqual(
+      try String(contentsOf: destinationURL, encoding: .utf8),
+      externalDocument
+    )
+    guard case .failed(let failedPath, let message) = store.siteDraftFileSaveStates[draft.id] else {
+      return XCTFail("Expected autosave to fail closed after the external edit")
+    }
+    XCTAssertEqual(failedPath, repositoryPath)
+    XCTAssertTrue(message.contains("其他软件或 Git 修改"))
+    XCTAssertTrue(store.publishActionMessage?.contains("其他软件或 Git 修改") == true)
+  }
+
   func testRestartWithUnchangedBoundDraftSkipsWriteAndStateChurn() async throws {
     let rootURL = try temporaryDirectory(prefix: "site-draft-unchanged-restart")
     defer { try? FileManager.default.removeItem(at: rootURL) }

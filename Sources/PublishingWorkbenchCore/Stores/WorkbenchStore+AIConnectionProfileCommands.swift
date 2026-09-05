@@ -39,12 +39,56 @@ extension WorkbenchStore {
     return profile
   }
 
+  /// Copies only settings and atomically binds the current site to the new
+  /// profile. Existing shared or legacy credentials are never read or changed.
+  @discardableResult
+  public func duplicateAIConnectionProfileForActiveSite(_ connectionID: UUID)
+    -> AIConnectionProfile?
+  {
+    guard activeProfile.aiConnectionProfileID == connectionID,
+      let original = aiConnectionProfile(for: connectionID)
+    else {
+      setAIActionMessage(CoreL10n.text("当前站点的 AI 连接已变化，请重新选择后再复制。"))
+      return nil
+    }
+    guard aiConnectionProfiles.count < 64 else {
+      setAIActionMessage(CoreL10n.text("AI 连接档案已达上限，请先删除未使用的档案。"))
+      return nil
+    }
+    var config = original.config
+    config.capabilityProbeEvidence = nil
+    let copy = AIConnectionProfile(
+      name: CoreL10n.format("%@ · %@", original.name, activeProfile.name),
+      config: config,
+      allowsLegacyCredentialFallback: false
+    )
+    let previousConnections = aiConnectionProfiles
+    aiConnectionProfiles.append(copy)
+    var site = activeProfile
+    site.aiConnectionProfileID = copy.id
+    site.aiProviderConfig = copy.config
+    guard commitActiveProfileSynchronously(site) else {
+      aiConnectionProfiles = previousConnections
+      setAIActionMessage(CoreL10n.text("AI 连接副本未能保存，当前站点仍使用原连接。"))
+      return nil
+    }
+    refreshAIKeyAvailability()
+    setAIActionMessage(
+      copy.config.requiresAPIKey
+        ? CoreL10n.text("已为当前站点复制配置，请为副本单独保存 API Key。")
+        : CoreL10n.text("已为当前站点复制配置，其他站点仍使用原连接。")
+    )
+    return copy
+  }
+
   @discardableResult
   public func updateAIConnectionProfile(_ connection: AIConnectionProfile) -> Bool {
     guard let index = aiConnectionProfiles.firstIndex(where: { $0.id == connection.id }) else {
       return false
     }
     var normalized = connection
+    normalized.allowsLegacyCredentialFallback =
+      aiConnectionProfiles[index].allowsLegacyCredentialFallback
     normalized.name =
       normalized.name.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
       ?? normalized.config.normalizedDisplayName
@@ -85,7 +129,9 @@ extension WorkbenchStore {
     }
     let previousProfile = activeProfile
     guard previousProfile.aiConnectionProfileID != connectionID else { return true }
-    if previousProfile.aiProviderConfig.chatCompletionsURL != nil {
+    if aiConnectionProfile(for: previousProfile).canUseLegacyCredentials,
+      previousProfile.aiProviderConfig.chatCompletionsURL != nil
+    {
       do {
         try aiCredentialStore.deleteLegacyTokenIfKeychainIsSelected(
           for: previousProfile
@@ -172,10 +218,13 @@ extension WorkbenchStore {
 
     let isActiveConnection = activeAIConnectionProfile.id == connectionProfileID
     do {
-      let legacyProfiles = profiles.filter {
-        $0.aiConnectionProfileID == connectionProfileID
-          && $0.aiProviderConfig.chatCompletionsURL != nil
-      }
+      let legacyProfiles =
+        aiConnectionProfile(for: connectionProfileID)?.canUseLegacyCredentials == false
+        ? []
+        : profiles.filter {
+          $0.aiConnectionProfileID == connectionProfileID
+            && $0.aiProviderConfig.chatCompletionsURL != nil
+        }
       try aiCredentialStore.invalidateTokenAcrossStorageModes(
         forConnectionProfileID: connectionProfileID,
         legacyProfiles: legacyProfiles

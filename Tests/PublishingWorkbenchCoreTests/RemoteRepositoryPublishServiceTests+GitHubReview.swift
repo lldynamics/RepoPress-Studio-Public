@@ -237,6 +237,73 @@ final class RemoteRepositoryPublishServiceGitHubReviewTests: RemoteRepositoryPub
     XCTAssertFalse(requests.contains { $0.httpMethod == "PUT" })
   }
 
+  func testGitHubReviewRetryCreatesPullRequestAfterPriorCommitWhenBranchAlreadyMatches()
+    async throws
+  {
+    let body = "same remote review body after a partial publish"
+    let blobSHA = RemoteRepositoryPublishService().gitBlobSHA(for: Data(body.utf8))
+    let transport = SequencedRemoteRepositoryTransport(responses: [
+      // First attempt: the branch commit succeeds, but PR creation fails.
+      response(json: #"{"object":{"sha":"target-sha"}}"#),
+      response(json: #"{"ref":"refs/heads/publish/retry-after-pr-failure","object":{"sha":"target-sha"}}"#),
+      response(statusCode: 404, json: #"{"message":"not found"}"#),
+      response(json: #"{"content":{"sha":"written-file-sha"},"commit":{"sha":"written-commit"}}"#),
+      response(statusCode: 500, json: #"{"message":"pull request failed"}"#),
+      // Retry: the branch now has the exact payload but no open PR yet.
+      response(json: #"{"object":{"sha":"target-sha"}}"#),
+      response(statusCode: 422, json: #"{"message":"Reference already exists"}"#),
+      response(json: "{\"sha\":\"\(blobSHA)\"}"),
+      response(json: #"[]"#),
+      response(json: #"{"html_url":"https://github.com/owner/site/pull/44"}"#),
+      response(json: #"{"object":{"sha":"written-commit"}}"#),
+    ])
+    var profile = SiteProfile.defaultProfile
+    profile.repositoryProvider = .github
+    profile.repositoryBaseURL = "https://api.github.com"
+    profile.repoOwner = "owner"
+    profile.repoName = "site"
+    profile.branch = "main"
+    let package = PublishPackage(
+      draftID: UUID(), title: "Retry", markdownPath: "content/posts/retry.md",
+      files: [
+        PublishPackageFile(kind: .markdown, repositoryPath: "content/posts/retry.md", content: body)
+      ],
+      commitMessage: "Retry", reviewBranchName: "publish/retry-after-pr-failure",
+      reviewTitle: "Retry", reviewChecklist: []
+    )
+    let service = RemoteRepositoryPublishService(transport: transport)
+
+    do {
+      _ = try await service.publish(
+        package: package, profile: profile, mode: .reviewRequest, token: "token"
+      )
+      XCTFail("Expected the first PR creation to be reported as a partial publish")
+    } catch let error as RemoteRepositoryPublishError {
+      guard case .partialPublish(_, _, _, _, let changedPaths, let commitSHA, _) = error else {
+        XCTFail("Expected partialPublish, got \(error)")
+        return
+      }
+      XCTAssertEqual(changedPaths, ["content/posts/retry.md"])
+      XCTAssertEqual(commitSHA, "written-commit")
+    }
+
+    let result = try await service.publish(
+      package: package, profile: profile, mode: .reviewRequest, token: "token"
+    )
+
+    XCTAssertEqual(result.changedPaths, [])
+    XCTAssertEqual(result.commitSHA, "written-commit")
+    XCTAssertEqual(result.reviewURL, "https://github.com/owner/site/pull/44")
+    let requests = await transport.capturedRequests()
+    XCTAssertEqual(
+      requests.map(\.httpMethod),
+      ["GET", "POST", "GET", "PUT", "POST", "GET", "POST", "GET", "GET", "POST", "GET"]
+    )
+    XCTAssertEqual(requests[8].url?.path, "/repos/owner/site/pulls")
+    XCTAssertEqual(requests[9].url?.path, "/repos/owner/site/pulls")
+    XCTAssertFalse(requests[5...].contains { $0.httpMethod == "PUT" })
+  }
+
   func testReviewRecoveryDraftReusesRecordedBranchCommitAndBatchMetadata() throws {
     let profileID = UUID()
     let record = ReleaseRecord(

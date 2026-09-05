@@ -350,7 +350,7 @@ extension WorkbenchAIStore {
           messages[index] = assistantMessage
         }
       }
-      recordAIResponseBacklinks(message: assistantMessage, request: request)
+      await recordAIResponseBacklinks(message: assistantMessage, request: request)
       store.setAIChatMessage("AI 已回复。")
       return assistantMessage
     } catch is CancellationError {
@@ -368,7 +368,7 @@ extension WorkbenchAIStore {
           messages[index] = assistantMessage
         }
       }
-      recordAIResponseBacklinks(message: assistantMessage, request: request)
+      await recordAIResponseBacklinks(message: assistantMessage, request: request)
       store.setAIChatMessage("AI 回复已停止。")
       return assistantMessage
     } catch let error as AIChatCompletionClientError where error.didReceivePartialContent {
@@ -386,7 +386,7 @@ extension WorkbenchAIStore {
           messages[index] = assistantMessage
         }
       }
-      recordAIResponseBacklinks(message: assistantMessage, request: request)
+      await recordAIResponseBacklinks(message: assistantMessage, request: request)
       throw error
     } catch {
       updateAIChatSession(for: conversationIdentity) { messages in
@@ -424,7 +424,7 @@ extension WorkbenchAIStore {
     updateAIChatSession(for: conversationIdentity) { messages in
       messages.append(assistantMessage)
     }
-    recordAIResponseBacklinks(message: assistantMessage, request: request)
+    await recordAIResponseBacklinks(message: assistantMessage, request: request)
     store.setAIChatMessage("AI 已回复。")
     return assistantMessage
   }
@@ -432,9 +432,9 @@ extension WorkbenchAIStore {
   func recordAIResponseBacklinks(
     message: AIPublishingChatMessage,
     request: AIPublishingChatRequest
-  ) {
+  ) async {
     guard !message.knowledgeCitations.isEmpty else { return }
-    store.knowledge.recordBacklinks(
+    await store.knowledge.recordBacklinks(
       citations: message.knowledgeCitations,
       target: KnowledgeBacklinkTarget(
         kind: .aiResponse,

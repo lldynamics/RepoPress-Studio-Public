@@ -357,6 +357,20 @@ final class RSSReaderPresentationState: ObservableObject {
     }
   }
 
+  /// The reader may deliberately retain an existing article when filters in
+  /// the same scope no longer include it. Keep that reading context distinct
+  /// from membership in the visible result set.
+  func isSelectedArticleOutsideMatchingResults(in store: RSSReaderStore) -> Bool {
+    guard let selectedArticleID,
+      store.articleHeader(id: selectedArticleID) != nil
+    else { return false }
+    return !matchingArticles(in: store).contains { $0.id == selectedArticleID }
+  }
+
+  func returnToArticleResults() {
+    selectedArticleID = nil
+  }
+
   func addSubscription(_ value: String, to store: RSSReaderStore) {
     let trimmedValue = value.trimmedForPublishing
     guard let url = URL(string: trimmedValue) else {

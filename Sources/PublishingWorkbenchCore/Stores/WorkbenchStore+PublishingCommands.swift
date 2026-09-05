@@ -16,6 +16,7 @@ extension WorkbenchStore {
   public func publishBatchReadyDraftsOnlineUsingPreferredStrategy(
     expectedChangedPaths: Set<String>? = nil,
     expectedTarget: RemoteRepositoryPublishTargetSnapshot? = nil,
+    expectedReview: BatchPublishReviewExpectation? = nil,
     authorization: AIPublishAuthorizationSnapshot? = nil,
     modeOverride: RemoteRepositoryPublishMode? = nil
   ) async -> RemoteRepositoryPublishResult? {
@@ -23,6 +24,7 @@ extension WorkbenchStore {
       store: self,
       expectedChangedPaths: expectedChangedPaths,
       expectedTarget: expectedTarget,
+      expectedReview: expectedReview,
       authorization: authorization,
       modeOverride: modeOverride
     )
@@ -38,6 +40,16 @@ extension WorkbenchStore {
       repositoryPath: repositoryPath,
       choice: choice,
       mergedDocument: mergedDocument,
+      store: self
+    )
+  }
+
+  @discardableResult
+  public func resolveRemoteRepositoryConflicts(
+    plan: RemoteRepositoryConflictResolutionPlan
+  ) async -> RemoteRepositoryConflictResolutionOutcome {
+    await publishingStore.resolveRemoteRepositoryConflicts(
+      plan: plan,
       store: self
     )
   }
@@ -63,6 +75,22 @@ extension WorkbenchStore {
   {
     refreshSelectedDraftPublishingState()
     return await publishingStore.publishSelectedDraftOnlineUsingPreferredStrategy(store: self)
+  }
+
+  /// Refreshes local remote-tracking metadata and performs an authoritative,
+  /// read-only provider preflight before the single-article confirmation UI.
+  @discardableResult
+  public func prepareSelectedDraftOnlinePublish(draftID: UUID) async -> Bool {
+    await publishingStore.prepareSelectedDraftOnlinePublish(
+      draftID: draftID,
+      store: self
+    )
+  }
+
+  /// Batch equivalent of `prepareSelectedDraftOnlinePublish(draftID:)`.
+  @discardableResult
+  public func prepareBatchOnlinePublish() async -> Bool {
+    await publishingStore.prepareBatchOnlinePublish(store: self)
   }
 
   /// Pushes the selected article to its isolated `draft/<slug>` preview branch.

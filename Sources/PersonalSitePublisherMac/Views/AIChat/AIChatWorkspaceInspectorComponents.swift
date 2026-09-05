@@ -122,7 +122,7 @@ struct AIChatContextInspectorView: View {
             } label: {
               Label(String(localized: "回到最新消息"), systemImage: "arrow.down.to.line")
             }
-            .buttonStyle(.borderedProminent)
+            .workbenchProminentActionStyle()
             .controlSize(.small)
             .padding(16)
             .accessibilityIdentifier("ai-chat-return-to-latest")

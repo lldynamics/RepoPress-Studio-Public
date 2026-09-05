@@ -392,6 +392,14 @@ final class WorkbenchStoreImageBatchTests: XCTestCase {
     XCTAssertNotEqual(updatedFirst.attachments.first?.sourceFilePath, firstURL.path)
     XCTAssertEqual(untouchedOther.attachments.first?.sourceFilePath, otherURL.path)
     XCTAssertTrue(store.imageActionMessage?.contains("已批量生成") ?? false)
+    let operationEvent = try XCTUnwrap(store.operationHistory.records.first)
+    XCTAssertEqual(store.operationHistory.records.count, 1)
+    XCTAssertEqual(operationEvent.kind, .imageJPEGOptimization)
+    XCTAssertEqual(operationEvent.outcome, .succeeded)
+    XCTAssertEqual(operationEvent.actor, .user)
+    XCTAssertEqual(operationEvent.profileID, activeProfile.id)
+    XCTAssertEqual(operationEvent.draftID, firstDraft.id)
+    XCTAssertGreaterThan(operationEvent.processedItemCount ?? 0, 0)
   }
 
   func testCropCoverRunsThroughBackgroundBatchAndAppliesResult() async throws {

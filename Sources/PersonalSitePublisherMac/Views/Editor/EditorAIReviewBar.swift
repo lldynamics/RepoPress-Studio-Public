@@ -87,7 +87,7 @@ struct EditorAIReviewBar: View {
           .accessibilityIdentifier("editor-ai-review-reject-all")
         Spacer()
         Button(action: onApply) { Label("应用已接受", systemImage: "checkmark.seal") }
-          .buttonStyle(.borderedProminent)
+          .workbenchProminentActionStyle()
           .accessibilityIdentifier("editor-ai-review-apply")
       }
     }

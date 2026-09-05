@@ -10,17 +10,24 @@ public struct AIConnectionProfile: Codable, Hashable, Identifiable, Sendable {
   public var id: UUID
   public var name: String
   public var config: AIProviderConfig
+  /// Older snapshots may resolve origin-bound credentials. A copied
+  /// configuration deliberately starts with its own credential identity.
+  public var allowsLegacyCredentialFallback: Bool?
+
+  public var canUseLegacyCredentials: Bool { allowsLegacyCredentialFallback != false }
 
   public init(
     id: UUID = UUID(),
     name: String,
-    config: AIProviderConfig
+    config: AIProviderConfig,
+    allowsLegacyCredentialFallback: Bool? = nil
   ) {
     self.id = id
     self.name =
       name.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
       ?? config.normalizedDisplayName
     self.config = config
+    self.allowsLegacyCredentialFallback = allowsLegacyCredentialFallback
   }
 
   public var summary: String {

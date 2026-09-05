@@ -42,7 +42,10 @@ extension PublishingStore {
   }
 
   func beginLocalRepositoryMutation(profile: SiteProfile) -> LocalRepositoryOperationContext? {
-    guard localRepositoryMutationContext == nil else { return nil }
+    guard localRepositoryMutationContext == nil,
+      remoteRepositoryMutationContext == nil,
+      remoteConflictResolutionOperationID == nil
+    else { return nil }
     let context = LocalRepositoryOperationContext(profile: profile)
     localRepositoryMutationContext = context
     isLocalRepositoryMutationRunning = true
@@ -55,10 +58,18 @@ extension PublishingStore {
     isLocalRepositoryMutationRunning = false
   }
 
-  func beginRemoteRepositoryMutation(profile: SiteProfile, store: WorkbenchStore)
+  func beginRemoteRepositoryMutation(
+    profile: SiteProfile,
+    store: WorkbenchStore,
+    conflictResolutionOperationID: UUID? = nil
+  )
     -> RemoteRepositoryOperationContext?
   {
     guard remoteRepositoryMutationContext == nil,
+      localRepositoryMutationContext == nil,
+      (remoteConflictResolutionOperationID == nil
+        || remoteConflictResolutionOperationID == conflictResolutionOperationID),
+      !store.isLocalRepositoryBranchOperationRunning,
       !store.isRemoteRepositoryChecking
     else { return nil }
     let context = RemoteRepositoryOperationContext(profile: profile)

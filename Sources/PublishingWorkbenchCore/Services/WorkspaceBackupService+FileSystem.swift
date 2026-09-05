@@ -8,6 +8,7 @@ extension WorkspaceBackupService {
     relativePath: String,
     component: WorkspaceBackupComponent
   ) throws -> WorkspaceBackupFileRecord {
+    try Task.checkCancellation()
     try validateRelativePath(relativePath)
     let sourceValues = try sourceURL.resourceValues(
       forKeys: [.isRegularFileKey, .isSymbolicLinkKey]
@@ -30,7 +31,24 @@ extension WorkspaceBackupService {
       throw WorkspaceBackupError.invalidPath(relativePath)
     }
     do {
-      try fileManager.copyItem(at: sourceURL, to: destinationURL)
+      guard fileManager.createFile(atPath: destinationURL.path, contents: nil) else {
+        throw WorkspaceBackupError.stagingFailed("无法创建 \(relativePath)")
+      }
+      let input = try FileHandle(forReadingFrom: sourceURL)
+      defer { try? input.close() }
+      let output = try FileHandle(forWritingTo: destinationURL)
+      defer { try? output.close() }
+      var copiedByteCount: Int64 = 0
+      while true {
+        try Task.checkCancellation()
+        let data = input.readData(ofLength: 1_048_576)
+        if data.isEmpty { break }
+        try output.write(contentsOf: data)
+        copiedByteCount += Int64(data.count)
+        fileCopyProgressHook(relativePath, copiedByteCount)
+      }
+      try Task.checkCancellation()
+      try output.synchronize()
       let actualSize = try fileSize(of: destinationURL, relativePath: relativePath)
       let actualDigest = try sha256(of: destinationURL, relativePath: relativePath)
       guard actualSize == sourceSize else {
@@ -78,6 +96,7 @@ extension WorkspaceBackupService {
     var hasher = SHA256()
     var totalByteCount: Int64 = 0
     while true {
+      try Task.checkCancellation()
       let data = handle.readData(ofLength: 1_048_576)
       if data.isEmpty { break }
       totalByteCount += Int64(data.count)
@@ -97,6 +116,7 @@ extension WorkspaceBackupService {
     maximumByteCount: Int,
     relativePath: String
   ) throws -> Data {
+    try Task.checkCancellation()
     let size = try fileSize(of: url, relativePath: relativePath)
     guard size <= Int64(maximumByteCount) else {
       throw WorkspaceBackupError.fileTooLarge(
@@ -117,6 +137,7 @@ extension WorkspaceBackupService {
     }
     var totalByteCount: Int64 = 0
     for record in records {
+      try Task.checkCancellation()
       guard record.byteCount >= 0,
             record.byteCount <= limits.maximumSingleFileByteCount else {
         throw WorkspaceBackupError.fileTooLarge(
@@ -140,6 +161,7 @@ extension WorkspaceBackupService {
     _ manifest: WorkspaceBackupManifest,
     to url: URL
   ) throws {
+    try Task.checkCancellation()
     let encoder = JSONEncoder()
     encoder.dateEncodingStrategy = .iso8601
     encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
@@ -147,6 +169,7 @@ extension WorkspaceBackupService {
   }
 
   func encodedWorkbenchSnapshot(_ snapshot: WorkbenchSnapshot) throws -> Data {
+    try Task.checkCancellation()
     let encoder = JSONEncoder()
     encoder.dateEncodingStrategy = .iso8601
     encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
@@ -183,6 +206,7 @@ extension WorkspaceBackupService {
   }
 
   func replaceItem(at destinationURL: URL, withItemAt sourceURL: URL) throws {
+    try Task.checkCancellation()
     guard !fileManager.fileExists(atPath: destinationURL.path) else {
       let displacedURL = destinationURL.deletingLastPathComponent().appendingPathComponent(
         ".\(destinationURL.lastPathComponent).replaced-\(UUID().uuidString)",
@@ -190,6 +214,7 @@ extension WorkspaceBackupService {
       )
       try fileManager.moveItem(at: destinationURL, to: displacedURL)
       do {
+        try Task.checkCancellation()
         try fileManager.moveItem(at: sourceURL, to: destinationURL)
         do {
           try fileManager.removeItem(at: displacedURL)
@@ -214,6 +239,7 @@ extension WorkspaceBackupService {
       }
       return
     }
+    try Task.checkCancellation()
     try fileManager.moveItem(at: sourceURL, to: destinationURL)
   }
 }

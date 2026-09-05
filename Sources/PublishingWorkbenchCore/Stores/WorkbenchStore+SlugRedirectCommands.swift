@@ -19,7 +19,9 @@ extension WorkbenchStore {
 
   @discardableResult
   public func updateReferencesForPendingSlugChange(
-    draftID: UUID
+    draftID: UUID,
+    expectedImpact: SlugChangeImpact? = nil,
+    expectedTargetSlug: String? = nil
   ) -> SlugChangeApplicationResult {
     guard let initialTarget = draft(for: draftID), !initialTarget.isGeneralDraft else {
       return slugChangeFailure("目标文章不存在或不是站点稿件。")
@@ -40,6 +42,11 @@ extension WorkbenchStore {
       )
     else {
       return slugChangeFailure("没有待处理的 Slug 变更。")
+    }
+    guard expectedImpact.map({ $0 == initialImpact }) ?? true,
+      expectedTargetSlug.map({ $0 == initialTarget.slug }) ?? true
+    else {
+      return slugChangeFailure(CoreL10n.text("引用或目标地址在审阅后发生变化，请重新审阅；未更新任何引用。"))
     }
 
     let affectedIDs = Set(initialImpact.references.map(\.sourceDraftID)).union([draftID])
@@ -68,6 +75,11 @@ extension WorkbenchStore {
       )
     else {
       return slugChangeFailure("文章在预览后发生变化，未更新任何引用。")
+    }
+    guard expectedImpact.map({ $0 == impact }) ?? true,
+      expectedTargetSlug.map({ $0 == target.slug }) ?? true
+    else {
+      return slugChangeFailure(CoreL10n.text("引用或目标地址在审阅后发生变化，请重新审阅；未更新任何引用。"))
     }
 
     let baselines = Dictionary(

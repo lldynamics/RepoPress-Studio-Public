@@ -4,6 +4,7 @@ import SwiftUI
 enum AIConnectionTestAvailability: Equatable {
   case ready
   case missingBaseURL
+  case invalidEndpoint(AIConnectionEndpointValidation)
   case missingModel
   case missingAPIKey
   case credentialAccessFailed(String)
@@ -16,6 +17,8 @@ enum AIConnectionTestAvailability: Equatable {
   ) {
     if config.normalizedBaseURL.isEmpty {
       self = .missingBaseURL
+    } else if AIConnectionEndpointValidation.validate(config: config) != .ready {
+      self = .invalidEndpoint(AIConnectionEndpointValidation.validate(config: config))
     } else if config.normalizedModel.isEmpty {
       self = .missingModel
     } else if config.requiresAPIKey,
@@ -41,6 +44,8 @@ enum AIConnectionTestAvailability: Equatable {
       return String(localized: "准备就绪，可以发送一次最小请求验证当前服务。")
     case .missingBaseURL:
       return String(localized: "请先在“连接与服务”中填写 API 基础地址。")
+    case .invalidEndpoint(let validation):
+      return validation.message ?? String(localized: "AI 接口地址无效。")
     case .missingModel:
       return String(localized: "请先在“连接与服务”中选择或填写模型。")
     case .missingAPIKey:
@@ -56,7 +61,7 @@ enum AIConnectionTestAvailability: Equatable {
     switch self {
     case .ready:
       return "checkmark.circle"
-    case .missingBaseURL, .missingModel:
+    case .missingBaseURL, .invalidEndpoint, .missingModel:
       return "gearshape"
     case .missingAPIKey:
       return "key"

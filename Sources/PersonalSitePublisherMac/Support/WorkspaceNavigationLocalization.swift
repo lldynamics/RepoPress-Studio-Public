@@ -1,5 +1,4 @@
 import Foundation
-import PublishingWorkbenchCore
 import SwiftUI
 
 func workspaceNavigationLocalizedKey(_ key: String) -> LocalizedStringKey {

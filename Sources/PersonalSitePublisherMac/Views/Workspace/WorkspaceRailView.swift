@@ -21,17 +21,14 @@ struct WorkspaceTaskNavigation: View {
 
   var body: some View {
     VStack(spacing: 8) {
-      HStack(spacing: 8) {
-        sectionButton(.rss, prominence: .primary)
-        sectionButton(.library, prominence: .primary)
+      ForEach(Array(WorkspaceNavigationRouteDescriptor.primaryRows.enumerated()), id: \.offset) {
+        row in
+        HStack(spacing: row.offset == 0 ? 8 : 6) {
+          ForEach(row.element) { section in
+            sectionButton(section, prominence: row.offset == 0 ? .primary : .compact)
+          }
+        }
       }
-
-      HStack(spacing: 6) {
-        sectionButton(.sync, prominence: .compact)
-        sectionButton(.contentHealth, prominence: .compact)
-      }
-
-      sectionButton(.writing, prominence: .compact)
     }
     .padding(.horizontal, WorkspaceSidebarMetrics.horizontalPadding)
     .padding(.vertical, WorkspaceSidebarMetrics.headerVerticalPadding)
@@ -44,7 +41,7 @@ struct WorkspaceTaskNavigation: View {
     _ section: WorkspaceSection,
     prominence: NavigationButtonProminence
   ) -> some View {
-    let title = workspaceNavigationLocalizedString(section.displayNameLocalizationKey)
+    let title = WorkspaceNavigationRouteDescriptor.title(for: section)
     let isSelected = selectedSection == section
 
     return Button {
@@ -90,7 +87,7 @@ struct WorkspaceTaskNavigation: View {
     }
     .buttonStyle(WorkbenchFocusRingButtonStyle())
     .help(title + shortcutHint(for: section))
-    .accessibilityLabel(workspaceNavigationLocalizedKey(section.displayNameLocalizationKey))
+    .accessibilityLabel(WorkspaceNavigationRouteDescriptor.accessibilityLabel(for: section))
     .accessibilityAddTraits(isSelected ? .isSelected : [])
     .accessibilityIdentifier("workspace-sidebar-\(section.rawValue)")
   }

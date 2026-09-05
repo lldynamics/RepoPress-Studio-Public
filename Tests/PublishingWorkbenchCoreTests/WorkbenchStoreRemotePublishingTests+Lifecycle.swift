@@ -264,11 +264,20 @@ final class WorkbenchStoreRemotePublishingLifecycleTests: WorkbenchStoreRemotePu
       })
   }
 
-  func testOnlineDirectPublishBlocksRemoteSamePathConflictBeforeCallingAPI() async throws {
-    let transport = CountingRemoteRepositoryTransport()
+  func testOnlineDirectPublishUsesAuthoritativeAPIForKnownLocalConflict() async throws {
+    let rootURL = try preparedGitRepositoryRoot(prefix: "KnownLocalRemoteConflict")
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let remoteContent = Data("edited by another tool".utf8).base64EncodedString()
+    let transport = SequencedWorkbenchRemoteRepositoryTransport(responses: [
+      workbenchRemoteResponse(
+        json: #"{"sha":"new-remote-sha","content":"\#(remoteContent)","encoding":"base64"}"#
+      )
+    ])
+    let tokenStore = repositoryTokenStoreForTest()
     let store = WorkbenchStore(
       persistence: try TestWorkbenchFactory.persistence(),
-      remoteRepositoryPublishService: RemoteRepositoryPublishService(transport: transport)
+      remoteRepositoryPublishService: RemoteRepositoryPublishService(transport: transport),
+      repositoryTokenStore: tokenStore
     )
 
     var profile = store.activeProfile
@@ -279,8 +288,20 @@ final class WorkbenchStoreRemotePublishingLifecycleTests: WorkbenchStoreRemotePu
     profile.branch = "main"
     profile.repositoryPublishStrategy = .direct
     profile.markdownPathPattern = "content/posts/{slug}.md"
+    profile.rememberLocalRepositoryRoot(rootURL)
     store.updateActiveProfile(profile)
-    store.setRepositoryTokenAvailability(KeychainTokenAvailability(hasToken: true))
+    try tokenStore.saveRepositoryToken("github-token", for: profile)
+    store.refreshRepositoryTokenAvailability()
+    store.setRemoteRepositoryAccessCheck(
+      RemoteRepositoryAccessCheck(
+        provider: .github,
+        repositoryName: "owner/site",
+        apiBaseURL: RepositoryProvider.github.defaultBaseURL,
+        defaultBranch: "main",
+        canRead: true,
+        canWrite: true,
+        message: "GitHub Token 具备仓库写入权限。"
+      ))
 
     let draft = ArticleDraft(
       siteProfileID: profile.id,
@@ -295,7 +316,7 @@ final class WorkbenchStoreRemotePublishingLifecycleTests: WorkbenchStoreRemotePu
     store.setSelectedDraftID(draft.id)
     store.setRepositoryReport(
       RepositoryScanReport(
-        rootPath: "/tmp/site",
+        rootPath: rootURL.path,
         detectedKind: profile.siteKind,
         expectedKind: profile.siteKind,
         hasGitDirectory: true,
@@ -316,22 +337,25 @@ final class WorkbenchStoreRemotePublishingLifecycleTests: WorkbenchStoreRemotePu
 
     XCTAssertNil(result)
     XCTAssertNil(store.remoteRepositoryPublishResult)
-    let requestCount = await transport.requestCount()
-    XCTAssertEqual(requestCount, 0)
+    let requests = await transport.capturedRequests()
+    XCTAssertEqual(requests.map(\.httpMethod), ["GET"])
     let preview = store.remoteRepositoryPublishPreview(for: draft)
     XCTAssertEqual(preview.remoteConflictPaths, ["content/posts/online-direct-conflict.md"])
     XCTAssertEqual(preview.remoteRiskState, .conflict)
     XCTAssertEqual(preview.readiness, .blocked)
     XCTAssertFalse(preview.canPublish)
     XCTAssertTrue(preview.checklistMarkdown.contains(CoreL10n.text("## 远端冲突预览")))
-    XCTAssertTrue(store.publishActionMessage?.contains("已停止线上发布") == true)
-    XCTAssertTrue(store.publishActionMessage?.contains("远端同路径变更") == true)
+    XCTAssertTrue(store.publishActionMessage?.contains("其他软件已更新远端") == true)
     XCTAssertTrue(
       store.publishActionMessage?.contains("content/posts/online-direct-conflict.md") == true)
-
-    let cachedPreview = try XCTUnwrap(store.remotePublishPreviewSnapshot)
-    XCTAssertEqual(cachedPreview.changedPaths, preview.changedPaths)
-    XCTAssertEqual(cachedPreview.remoteConflictPaths, preview.remoteConflictPaths)
+    XCTAssertEqual(
+      store.remoteRepositoryConflictSession?.publishScope,
+      .selectedDraft(draft.id)
+    )
+    XCTAssertEqual(
+      store.remoteRepositoryConflictSession?.conflicts.map(\.repositoryPath),
+      ["content/posts/online-direct-conflict.md"]
+    )
   }
 
   func testOnlinePublishWithoutLocalProjectDoesNotCallRemoteTransport() async throws {
@@ -395,6 +419,7 @@ final class WorkbenchStoreRemotePublishingLifecycleTests: WorkbenchStoreRemotePu
 
     let transport = SequencedWorkbenchRemoteRepositoryTransport(
       responses: [
+        workbenchRemoteResponse(statusCode: 404, json: #"{"message":"not found"}"#),
         workbenchRemoteResponse(statusCode: 404, json: #"{"message":"not found"}"#),
         workbenchRemoteResponse(
           json:
@@ -542,6 +567,7 @@ final class WorkbenchStoreRemotePublishingLifecycleTests: WorkbenchStoreRemotePu
       workbenchRemoteResponse(
         json: #"{"full_name":"owner/site","default_branch":"main","permissions":{"push":true}}"#),
       workbenchRemoteResponse(statusCode: 404, json: #"{"message":"not found"}"#),
+      workbenchRemoteResponse(statusCode: 404, json: #"{"message":"not found"}"#),
       workbenchRemoteResponse(
         json:
           #"{"content":{"path":"content/posts/online-direct-success.md","sha":"online-direct-content-sha"},"commit":{"sha":"online-direct-commit"}}"#
@@ -637,7 +663,7 @@ final class WorkbenchStoreRemotePublishingLifecycleTests: WorkbenchStoreRemotePu
       store.repositoryAutoSyncReviewMarkdown.contains("- content/posts/online-direct-success.md"))
 
     let publishRequests = await publishTransport.capturedRequests()
-    XCTAssertEqual(publishRequests.map(\.httpMethod), ["GET", "GET", "PUT"])
+    XCTAssertEqual(publishRequests.map(\.httpMethod), ["GET", "GET", "GET", "PUT"])
     XCTAssertEqual(publishRequests.first?.url?.path, "/repos/owner/site")
     XCTAssertEqual(publishRequests.filter { $0.httpMethod != "GET" }.count, 1)
     let deploymentRequests = await deploymentTransport.capturedRequests()

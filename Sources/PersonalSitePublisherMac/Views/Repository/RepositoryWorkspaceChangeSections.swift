@@ -61,6 +61,8 @@ extension RepositoryWorkspaceView {
                     RepositoryChangedFileDisclosureRow(
                       file: file,
                       source: .local,
+                      profile: store.activeProfile,
+                      upstreamName: nil,
                       selection: $changedFileSelection
                     ) {
                       localChangedFileIdentity(file)
@@ -209,6 +211,8 @@ extension RepositoryWorkspaceView {
 struct RepositoryChangedFileDisclosureRow<Identity: View, Actions: View, DiffActions: View>: View {
   let file: RepositoryChangedFile
   let source: RepositoryChangedFileSource
+  let profile: SiteProfile
+  let upstreamName: String?
   @Binding var selection: RepositoryChangedFileSelection?
   @ViewBuilder let identity: () -> Identity
   @ViewBuilder let actions: () -> Actions
@@ -216,6 +220,7 @@ struct RepositoryChangedFileDisclosureRow<Identity: View, Actions: View, DiffAct
   @ViewBuilder let diffActions: () -> DiffActions
   @State private var isDiffExpanded = false
   @State private var isLoadingLineDiff = false
+  @State private var showsFullDiff = false
 
   var body: some View {
     VStack(alignment: .leading, spacing: 8) {
@@ -235,6 +240,17 @@ struct RepositoryChangedFileDisclosureRow<Identity: View, Actions: View, DiffAct
       if isDiffExpanded {
         VStack(alignment: .leading, spacing: 8) {
           if let lineDiff = file.lineDiff {
+            ViewThatFits(in: .horizontal) {
+              HStack {
+                diffPreviewNotice
+                Spacer(minLength: 8)
+                fullDiffButton
+              }
+              VStack(alignment: .leading, spacing: 6) {
+                diffPreviewNotice
+                fullDiffButton
+              }
+            }
             if source == .remote {
               Text(lineDiff)
                 .font(.caption.monospaced())
@@ -289,6 +305,29 @@ struct RepositoryChangedFileDisclosureRow<Identity: View, Actions: View, DiffAct
     .accessibilityIdentifier(
       "repository-\(source.rawValue)-file-\(file.accessibilityIdentifierToken)"
     )
+    .sheet(isPresented: $showsFullDiff) {
+      RepositoryFullDiffSheet(
+        file: file, profile: profile, source: source, upstreamName: upstreamName
+      )
+      .id(profile.id)
+    }
+  }
+
+  private var diffPreviewNotice: some View {
+    Text("差异预览（最多 16 行）")
+      .font(.caption)
+      .foregroundStyle(.secondary)
+  }
+
+  private var fullDiffButton: some View {
+    Button("查看完整差异") {
+      selectFile()
+      showsFullDiff = true
+    }
+    .buttonStyle(.link)
+    .accessibilityIdentifier(
+      "repository-\(source.rawValue)-file-\(file.accessibilityIdentifierToken)-full-diff"
+    )
   }
 
   @ViewBuilder
@@ -307,7 +346,7 @@ struct RepositoryChangedFileDisclosureRow<Identity: View, Actions: View, DiffAct
         }
       } label: {
         Label(
-          isDiffExpanded ? "收起差异" : "查看差异",
+          isDiffExpanded ? String(localized: "收起差异") : String(localized: "预览差异"),
           systemImage: isDiffExpanded ? "chevron.up" : "chevron.down"
         )
       }

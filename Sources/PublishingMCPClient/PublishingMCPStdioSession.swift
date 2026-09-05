@@ -199,6 +199,9 @@ actor PublishingMCPStdioSession: PublishingMCPClientSession {
   private var stdoutPipe: Pipe?
   private var stdoutRelay: PublishingMCPFrameRelay?
   private var stderrDrainer: PublishingMCPStderrDrainer?
+  private var hasExceededFrameLimit = false
+  private var activeTimedOperationCount = 0
+  private var retiredSDKHandles: [FileHandle] = []
 
   init(configuration: PublishingMCPSourceConfiguration) {
     self.configuration = configuration
@@ -206,6 +209,7 @@ actor PublishingMCPStdioSession: PublishingMCPClientSession {
 
   func connect() async throws {
     guard client == nil else { return }
+    hasExceededFrameLimit = false
     guard configuration.hasCurrentFilesystemIdentity(),
       FileManager.default.isExecutableFile(atPath: configuration.executableURL.path)
     else {
@@ -369,23 +373,7 @@ actor PublishingMCPStdioSession: PublishingMCPClientSession {
   }
 
   func close() async {
-    if let client {
-      await client.disconnect()
-    } else if let transport {
-      await transport.disconnect()
-    }
-    stderrDrainer?.stop()
-    stdoutRelay?.stop()
-    stdinPipe?.fileHandleForWriting.closeFile()
-    stdoutPipe?.fileHandleForReading.closeFile()
-    terminateProcessIfNeeded()
-    client = nil
-    transport = nil
-    process = nil
-    stdinPipe = nil
-    stdoutPipe = nil
-    stdoutRelay = nil
-    stderrDrainer = nil
+    await tearDownTransport()
   }
 
   private func assertRunning() throws {
@@ -396,7 +384,12 @@ actor PublishingMCPStdioSession: PublishingMCPClientSession {
     milliseconds: UInt64,
     _ operation: @escaping @Sendable () async throws -> T
   ) async throws -> T {
-    try await withThrowingTaskGroup(of: T.self) { group in
+    activeTimedOperationCount += 1
+    defer {
+      activeTimedOperationCount -= 1
+      closeRetiredSDKHandlesIfPossible()
+    }
+    return try await withThrowingTaskGroup(of: T.self) { group in
       group.addTask(operation: operation)
       group.addTask {
         try await Task.sleep(nanoseconds: milliseconds * 1_000_000)
@@ -424,24 +417,66 @@ actor PublishingMCPStdioSession: PublishingMCPClientSession {
   }
 
   private func forceCloseForTimeout() async {
-    if let client {
-      await client.disconnect()
-    } else if let transport {
-      await transport.disconnect()
-    }
-    stderrDrainer?.stop()
-    stdoutRelay?.stop()
-    stdinPipe?.fileHandleForWriting.closeFile()
-    stdoutPipe?.fileHandleForReading.closeFile()
-    terminateProcessIfNeeded()
+    await tearDownTransport()
   }
 
-  private func terminateProcessIfNeeded() {
-    process?.terminateThenKillAfterGracePeriod()
+  /// Stops peer I/O before awaiting SDK actor cleanup, then retires the SDK
+  /// handles only after every timed operation has left its task-group scope.
+  /// This keeps teardown bounded without exposing reused descriptor numbers to
+  /// late SDK reads or writes.
+  private func tearDownTransport() async {
+    let clientToDisconnect = client
+    let transportToDisconnect = clientToDisconnect == nil ? transport : nil
+    let processToTerminate = process
+    let stdinPipeToClose = stdinPipe
+    let stdoutPipeToClose = stdoutPipe
+    let stdoutRelayToStop = stdoutRelay
+    let stderrDrainerToStop = stderrDrainer
+
+    if stdoutRelayToStop?.didExceedFrameLimit == true {
+      hasExceededFrameLimit = true
+    }
+    client = nil
+    transport = nil
+    process = nil
+    stdinPipe = nil
+    stdoutPipe = nil
+    stdoutRelay = nil
+    stderrDrainer = nil
+
+    // Close the relay's writer and terminate the child first. These peer-side
+    // closures make SDK reads/writes finite without closing a descriptor that
+    // an in-flight SDK task may still reference by its reusable integer value.
+    stdoutRelayToStop?.stop()
+    processToTerminate?.terminateThenKillAfterGracePeriod()
+    stderrDrainerToStop?.stop()
+
+    if let clientToDisconnect {
+      await clientToDisconnect.disconnect()
+    } else if let transportToDisconnect {
+      await transportToDisconnect.disconnect()
+    }
+
+    if let handle = stdinPipeToClose?.fileHandleForWriting {
+      retiredSDKHandles.append(handle)
+    }
+    if let handle = stdoutPipeToClose?.fileHandleForReading {
+      retiredSDKHandles.append(handle)
+    }
+    closeRetiredSDKHandlesIfPossible()
+  }
+
+  private func closeRetiredSDKHandlesIfPossible() {
+    guard activeTimedOperationCount == 0, !retiredSDKHandles.isEmpty else { return }
+    let handles = retiredSDKHandles
+    retiredSDKHandles.removeAll(keepingCapacity: true)
+    for handle in handles {
+      handle.closeFile()
+    }
   }
 
   private func mappedTransportError(_ error: Error) -> Error {
-    stdoutRelay?.didExceedFrameLimit == true
+    hasExceededFrameLimit || stdoutRelay?.didExceedFrameLimit == true
       ? PublishingMCPClientError.outputLimitExceeded : error
   }
 

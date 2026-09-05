@@ -80,6 +80,8 @@ public enum WorkspaceInspectorRoute: String, CaseIterable, Sendable {
   case articleMetadata
   case articleChecks
   case articleImages
+  case knowledgeLibrary
+  case rssLibrary
   case repository
   case siteStarter
   case aiAssistant
@@ -114,9 +116,9 @@ public enum WorkspaceInspectorPresentation {
     case .writing:
       return .articleMetadata
     case .library:
-      return .unavailable
+      return .knowledgeLibrary
     case .rss:
-      return .unavailable
+      return .rssLibrary
     case .contentHealth:
       return isMaintenancePresented ? .unavailable : .articleChecks
     case .images:

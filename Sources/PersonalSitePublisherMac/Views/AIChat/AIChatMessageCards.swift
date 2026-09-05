@@ -80,7 +80,7 @@ struct AIChatAssistantMessageContent: View, Equatable {
   let content: String
   let presentation: AIChatAssistantMessagePresentationMode
   let actions: AIChatContextInspectorActions
-  let draft: ArticleDraft
+  let draft: ArticleDraft?
 
   nonisolated static func == (lhs: Self, rhs: Self) -> Bool {
     // The command closures stay bound to the same Inspector. Content,
@@ -113,17 +113,55 @@ struct AIChatAssistantMessageContent: View, Equatable {
                 .fixedSize(horizontal: false, vertical: true)
             }
           case let .code(block):
-            AIChatCodeBlockActionCard(
-              block: block,
-              apply: { actions.applyCodeBlock(block, draft) },
-              insertAtCursor: { actions.insertCodeBlockAtCursor(block, draft) },
-              copy: { actions.copyCodeBlock(block) }
-            )
+            if let draft {
+              AIChatCodeBlockActionCard(
+                block: block,
+                apply: { actions.applyCodeBlock(block, draft) },
+                insertAtCursor: { actions.insertCodeBlockAtCursor(block, draft) },
+                copy: { actions.copyCodeBlock(block) }
+              )
+            } else {
+              AIChatCodeBlockReadOnlyCard(block: block) { actions.copyCodeBlock(block) }
+            }
           }
         }
       }
     }
     .frame(maxWidth: .infinity, alignment: .leading)
+  }
+}
+
+private struct AIChatCodeBlockReadOnlyCard: View {
+  let block: AIChatCodeBlock
+  let copy: () -> Void
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 8) {
+      HStack {
+        Text(block.language?.uppercased() ?? String(localized: "MARKDOWN"))
+          .font(.caption.weight(.semibold))
+        Spacer(minLength: 8)
+        Button(action: copy) {
+          Label(String(localized: "复制"), systemImage: "doc.on.doc")
+        }
+        .buttonStyle(.borderless)
+        .controlSize(.small)
+        .accessibilityLabel(String(localized: "复制代码块"))
+        .accessibilityIdentifier("ai-code-block-copy")
+      }
+      ScrollView(.horizontal, showsIndicators: true) {
+        Text(verbatim: block.content.isEmpty ? String(localized: "（空代码块）") : block.content)
+          .font(.caption.monospaced())
+          .lineSpacing(2)
+          .textSelection(.enabled)
+          .frame(maxWidth: .infinity, alignment: .leading)
+          .padding(9)
+      }
+      .frame(maxHeight: 260)
+    }
+    .padding(9)
+    .background(WorkbenchBackgroundStyle.control, in: RoundedRectangle(cornerRadius: 7))
+    .accessibilityLabel(String(localized: "代码块，只读"))
   }
 }
 

@@ -298,7 +298,15 @@ final class RSSReaderPresentationSupportTests: XCTestCase {
 
     presentation.synchronizeSelection(in: store, preservingExistingArticle: true)
     XCTAssertEqual(presentation.selectedArticleID, selected.id)
+    XCTAssertTrue(presentation.isSelectedArticleOutsideMatchingResults(in: store))
+    XCTAssertEqual(presentation.matchingArticles(in: store).map(\.id), [visible.id])
 
+    let articleCount = store.articleHeaders.count
+    presentation.returnToArticleResults()
+    XCTAssertNil(presentation.selectedArticleID)
+    XCTAssertEqual(store.articleHeaders.count, articleCount)
+
+    presentation.selectedArticleID = selected.id
     presentation.synchronizeSelection(in: store, preservingExistingArticle: false)
     XCTAssertNil(presentation.selectedArticleID)
   }

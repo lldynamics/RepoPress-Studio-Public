@@ -20,6 +20,7 @@ struct SettingsNavigationList: View {
     }
     .listStyle(.sidebar)
     .scrollContentBackground(.hidden)
+    .scrollIndicators(.hidden)
     .accessibilityIdentifier("settings-sidebar")
   }
 
@@ -53,17 +54,26 @@ struct SettingsNavigationList: View {
                 .foregroundStyle(Color.primary)
                 .lineLimit(1)
 
-              Text("\(item.tab.title) · \(item.detail)")
+              Text(item.tab.title)
                 .font(.workbenchMetadata)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
+
+              Text(item.detail)
+                .font(.workbenchMetadata)
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
             }
             .padding(.vertical, 3)
             .frame(maxWidth: .infinity, alignment: .leading)
           }
           .buttonStyle(.plain)
           .accessibilityElement(children: .combine)
-          .accessibilityLabel("\(item.sectionTitle)，属于 \(item.tab.title)")
+          .help("\(item.tab.title) · \(item.detail)")
+          .accessibilityLabel(Self.searchResultAccessibilityLabel(for: item))
+          .accessibilityValue(item.detail)
+          .accessibilityHint("打开此设置项")
           .accessibilityIdentifier("settings-search-result-\(item.id)")
         }
       } header: {
@@ -162,6 +172,10 @@ struct SettingsNavigationList: View {
       .foregroundStyle(.secondary)
       .textCase(nil)
   }
+
+  static func searchResultAccessibilityLabel(for item: SettingsSearchItem) -> String {
+    "\(item.sectionTitle)，属于 \(item.tab.title)。\(item.detail)"
+  }
 }
 
 struct SettingsDetailHeader: View {
@@ -201,8 +215,8 @@ struct SettingsDetailHeader: View {
 
   private var scopeBadge: some View {
     Label(
-      tab.isSiteScoped ? "当前站点" : "全局共享",
-      systemImage: tab.isSiteScoped ? "globe.asia.australia" : "globe"
+      tab.scopePresentation.badgeTitle,
+      systemImage: tab.scopePresentation.systemImage
     )
     .font(.caption.weight(.medium))
     .foregroundStyle(.secondary)
@@ -210,7 +224,7 @@ struct SettingsDetailHeader: View {
     .padding(.vertical, 5)
     .background(Color.primary.opacity(0.06), in: Capsule())
     .accessibilityLabel(
-      tab.isSiteScoped ? "当前站点，切换站点后可分别配置" : "全局共享，适用于所有站点"
+      tab.scopePresentation.accessibilityDescription
     )
   }
 }

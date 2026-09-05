@@ -12,23 +12,6 @@ final class SettingsSubsectionNavigationTests: XCTestCase {
     }
   }
 
-  func testAdjacentSubsectionsStayWithinTheirTopLevelPage() {
-    for tab in SettingsTab.allCases {
-      let sections = SettingsSubsection.sections(for: tab)
-
-      for (index, section) in sections.enumerated() {
-        XCTAssertEqual(section.previous, index > 0 ? sections[index - 1] : nil)
-        XCTAssertEqual(section.next, index + 1 < sections.count ? sections[index + 1] : nil)
-        if let previous = section.previous {
-          XCTAssertEqual(previous.tab, tab)
-        }
-        if let next = section.next {
-          XCTAssertEqual(next.tab, tab)
-        }
-      }
-    }
-  }
-
   func testSiteSettingsDestinationsResolveToExpectedSubsections() {
     XCTAssertEqual(
       SettingsSubsection.sections(for: .defaultRules),

@@ -145,14 +145,13 @@ extension MacMarkdownComposerView {
   ) {
     let rawSelectedText = selectedText(in: editorBody)
     let promptSelectedText = rawSelectedText.trimmedForPublishing
-    let availability = selectionAIActionAvailability(kind, respectActiveAction: false)
+    let availability = selectionAIActionAvailability(kind)
     guard availability.isEnabled else {
       selectionActionMessage = "\(kind.localizedDisplayName)：\(availability.unavailableReason ?? "需要更多上下文")"
       return
     }
 
     cancelInlineGhostText()
-    cancelSelectionAIAction()
     let requestedDraft = previewDraft
     let requestID = UUID()
     activeSelectionAIAction = kind
@@ -453,14 +452,16 @@ extension MacMarkdownComposerView {
     for draft: ArticleDraft
   ) {
     guard !citations.isEmpty else { return }
-    store.knowledge.recordBacklinks(
-      citations: citations,
-      target: KnowledgeBacklinkTarget(
-        kind: .articleDraft,
-        id: draft.id.uuidString,
-        title: draft.title.nilIfEmpty ?? "当前文章",
-        location: "正文"
+    Task {
+      await store.knowledge.recordBacklinks(
+        citations: citations,
+        target: KnowledgeBacklinkTarget(
+          kind: .articleDraft,
+          id: draft.id.uuidString,
+          title: draft.title.nilIfEmpty ?? "当前文章",
+          location: "正文"
+        )
       )
-    )
+    }
   }
 }

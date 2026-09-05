@@ -129,24 +129,28 @@ struct KnowledgeRecycleBinView: View {
 
   private func restore(_ documentIDs: Set<UUID>) {
     let count = documentIDs.count
-    guard knowledge.restoreFromRecycleBin(documentIDs) else { return }
-    selection.subtract(documentIDs)
-    EditorAccessibilityAnnouncementCenter.announce(
-      "已从回收站恢复 \(count) 条资料。",
-      priority: .medium
-    )
+    Task {
+      guard await knowledge.restoreFromRecycleBin(documentIDs) else { return }
+      selection.subtract(documentIDs)
+      EditorAccessibilityAnnouncementCenter.announce(
+        "已从回收站恢复 \(count) 条资料。",
+        priority: .medium
+      )
+    }
   }
 
   private func permanentlyDeleteSelection() {
     let ids = selection
-    var deletedCount = 0
-    for id in ids where knowledge.deleteDocument(id) {
-      deletedCount += 1
-      selection.remove(id)
+    Task {
+      var deletedCount = 0
+      for id in ids where await knowledge.deleteDocument(id) {
+        deletedCount += 1
+        selection.remove(id)
+      }
+      EditorAccessibilityAnnouncementCenter.announce(
+        "已永久删除 \(deletedCount) 条资料。",
+        priority: .medium
+      )
     }
-    EditorAccessibilityAnnouncementCenter.announce(
-      "已永久删除 \(deletedCount) 条资料。",
-      priority: .medium
-    )
   }
 }

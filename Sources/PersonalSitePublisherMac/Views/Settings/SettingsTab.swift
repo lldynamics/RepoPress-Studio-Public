@@ -138,6 +138,17 @@ enum SettingsTab: Hashable, CaseIterable, Identifiable, Sendable {
     }
   }
 
+  var scopePresentation: SettingsScopePresentation {
+    switch self {
+    case .ai:
+      return .mixed
+    case .configurationStatus, .defaultRules, .token:
+      return .currentSite
+    case .appearance, .editor, .rss, .privacy, .dataManagement:
+      return .shared
+    }
+  }
+
   var contentMaxWidth: CGFloat {
     switch self {
     case .appearance, .editor, .rss, .privacy:

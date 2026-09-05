@@ -2,7 +2,7 @@ import XCTest
 @testable import PublishingWorkbenchCore
 
 final class RepositorySyncCommandBuilderTests: XCTestCase {
-  func testPlansFastForwardOnlySyncForDivergedBranch() {
+  func testPlansReadOnlyDiagnosisInsteadOfImpossibleFastForwardForDivergedBranch() {
     var profile = SiteProfile.defaultProfile
     profile.localRepositoryRootPath = "/tmp/My Site"
     let report = report(
@@ -23,11 +23,12 @@ final class RepositorySyncCommandBuilderTests: XCTestCase {
         "cd '/tmp/My Site'",
         "git fetch --prune",
         "git status --short --branch",
-        "git pull --ff-only",
+        "git log --oneline --left-right --graph 'HEAD...@{upstream}'",
       ]
     )
     XCTAssertTrue(plan?.summary.contains("本地领先 2，落后 3") == true)
-    XCTAssertTrue(plan?.notes.first?.contains("fast-forward") == true)
+    XCTAssertTrue(plan?.notes.first?.contains("不能 fast-forward") == true)
+    XCTAssertFalse(plan?.commands.contains("git pull --ff-only") == true)
   }
 
   func testPlansSwitchBackForDetachedHead() {

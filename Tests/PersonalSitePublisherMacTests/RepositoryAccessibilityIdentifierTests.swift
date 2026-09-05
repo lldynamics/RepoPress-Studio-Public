@@ -1,6 +1,7 @@
+import PublishingGitCore
 import XCTest
+
 @testable import PersonalSitePublisherMac
-@testable import PublishingWorkbenchCore
 
 final class RepositoryAccessibilityIdentifierTests: XCTestCase {
   func testRepositoryFileIdentifierTokenIsStableAcrossStatusChangesAndHidesPath() {

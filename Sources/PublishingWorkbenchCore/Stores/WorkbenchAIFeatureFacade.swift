@@ -441,7 +441,9 @@ public final class WorkbenchAIFeatureFacade: ObservableObject {
     _ citations: [KnowledgeCitation],
     target: KnowledgeBacklinkTarget
   ) {
-    store.knowledge.recordBacklinks(citations: citations, target: target)
+    Task { @MainActor [store] in
+      await store.knowledge.recordBacklinks(citations: citations, target: target)
+    }
   }
 
   @discardableResult

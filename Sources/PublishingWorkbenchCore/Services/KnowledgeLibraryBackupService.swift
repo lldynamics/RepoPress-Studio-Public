@@ -60,17 +60,23 @@ final class KnowledgeLibraryBackupService: @unchecked Sendable {
   private let fileManager: FileManager
   private let limits: Limits
   private let lifecycle: any KnowledgePersistenceLifecycle
+  private let streamChunkHook: @Sendable (String, Int64) -> Void
+  private let backupCommitHook: @Sendable () -> Void
 
   init(
     rootURL: URL,
     fileManager: FileManager = .default,
     limits: Limits = Limits(),
-    lifecycle: any KnowledgePersistenceLifecycle = SQLiteKnowledgePersistenceLifecycle()
+    lifecycle: any KnowledgePersistenceLifecycle = SQLiteKnowledgePersistenceLifecycle(),
+    streamChunkHook: @escaping @Sendable (String, Int64) -> Void = { _, _ in },
+    backupCommitHook: @escaping @Sendable () -> Void = {}
   ) {
     self.rootURL = rootURL
     self.fileManager = fileManager
     self.limits = limits
     self.lifecycle = lifecycle
+    self.streamChunkHook = streamChunkHook
+    self.backupCommitHook = backupCommitHook
   }
 
   func createBackup(
@@ -78,6 +84,7 @@ final class KnowledgeLibraryBackupService: @unchecked Sendable {
     database: any KnowledgeBackupSnapshotSource,
     applicationVersion: String
   ) throws -> KnowledgeLibraryBackupPreview {
+    try Task.checkCancellation()
     let destinationURL = normalizedPackageURL(destinationURL)
     let parentURL = destinationURL.deletingLastPathComponent()
     try fileManager.createDirectory(at: parentURL, withIntermediateDirectories: true)
@@ -94,12 +101,14 @@ final class KnowledgeLibraryBackupService: @unchecked Sendable {
 
     let databaseURL = temporaryURL.appendingPathComponent(Self.databaseFileName)
     let inspection = try database.createBackupSnapshot(at: databaseURL)
+    try Task.checkCancellation()
     var records = [try validatedFileRecord(
       relativePath: Self.databaseFileName,
       under: temporaryURL
     )]
 
     for reference in inspection.storageReferences.sorted() {
+      try Task.checkCancellation()
       try validateStorageReference(reference)
       let copiedURL = temporaryURL.appendingPathComponent(reference)
       try fileManager.createDirectory(
@@ -114,6 +123,7 @@ final class KnowledgeLibraryBackupService: @unchecked Sendable {
     }
 
     records.sort { $0.relativePath < $1.relativePath }
+    try Task.checkCancellation()
     let totalByteCount = try validateFileLimits(records)
     let manifest = KnowledgeLibraryBackupManifest(
       applicationVersion: applicationVersion,
@@ -126,15 +136,19 @@ final class KnowledgeLibraryBackupService: @unchecked Sendable {
       files: records
     )
     try encodeManifest(manifest, to: temporaryURL.appendingPathComponent(Self.manifestFileName))
-    _ = try validatedBackup(at: temporaryURL)
+    try Task.checkCancellation()
+    var committedPreview = try validatedBackup(at: temporaryURL).preview
+    committedPreview.backupURL = destinationURL
 
+    try Task.checkCancellation()
     try replaceItem(at: destinationURL, withItemAt: temporaryURL)
     shouldRemoveTemporary = false
-    let preview = try inspectBackup(at: destinationURL)
-    return preview
+    backupCommitHook()
+    return committedPreview
   }
 
   func inspectBackup(at backupURL: URL) throws -> KnowledgeLibraryBackupPreview {
+    try Task.checkCancellation()
     let packageURL = normalizedPackageURL(backupURL)
     return try validatedBackup(at: packageURL).preview
   }
@@ -641,6 +655,7 @@ final class KnowledgeLibraryBackupService: @unchecked Sendable {
     var totalByteCount: Int64 = 0
     var buffer = [UInt8](repeating: 0, count: 1_048_576)
     while true {
+      try Task.checkCancellation()
       let bytesRead = buffer.withUnsafeMutableBytes { rawBuffer in
         Darwin.read(descriptor, rawBuffer.baseAddress, rawBuffer.count)
       }
@@ -659,6 +674,7 @@ final class KnowledgeLibraryBackupService: @unchecked Sendable {
       let data = Data(buffer.prefix(bytesRead))
       try consume(data)
       totalByteCount = addition.partialValue
+      streamChunkHook(relativePath, totalByteCount)
     }
   }
 

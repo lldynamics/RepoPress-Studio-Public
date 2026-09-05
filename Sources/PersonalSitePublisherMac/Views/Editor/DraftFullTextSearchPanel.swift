@@ -432,13 +432,18 @@ struct DraftFullTextSearchPanel: View {
         ? !draft.isGeneralDraft
         : draft.belongs(toSiteProfileID: publishing.activeProfileID)
     }
-    protectedPrivateDraftCount = scopedDrafts.count {
-      store.privateContentDisplay(for: $0).isMasked
-    }
-    let searchableDrafts = scopedDrafts.map { draft in
-      var liveDraft = draft
-      liveDraft.bodyMarkdown = publishing.draftBodyEditorBuffer(for: draft.id).bodyMarkdown
-      return store.privacyProtectedSearchDraft(for: liveDraft)
+    let privacyMasksPrivateContent = store.privacySettings.masksPrivateContent
+    protectedPrivateDraftCount =
+      privacyMasksPrivateContent
+      ? scopedDrafts.count(where: \.isPrivate)
+      : 0
+    // Capture the actor-owned editor buffers once, then perform the expensive
+    // draft copying and privacy projection in the detached worker below.
+    let searchInputs = scopedDrafts.map { draft in
+      DraftFullTextSearchInput(
+        draft: draft,
+        bodyMarkdown: publishing.draftBodyEditorBuffer(for: draft.id).bodyMarkdown
+      )
     }
     searchSnapshot = .empty
     selectedHitID = nil
@@ -451,6 +456,10 @@ struct DraftFullTextSearchPanel: View {
       }
       guard !Task.isCancelled else { return }
       let searchWorker = Task.detached(priority: .userInitiated) {
+        let searchableDrafts = DraftFullTextSearchPreparation.prepare(
+          inputs: searchInputs,
+          masksPrivateContent: privacyMasksPrivateContent
+        )
         let matches = DraftFullTextSearchService().search(
           query: requestedQuery,
           drafts: searchableDrafts
@@ -514,6 +523,32 @@ struct DraftFullTextSearchPanel: View {
       selectedRange: hit.field == .body ? hit.sourceRange : nil
     )
     dismiss()
+  }
+}
+
+struct DraftFullTextSearchInput: Sendable {
+  let draft: ArticleDraft
+  let bodyMarkdown: String
+}
+
+enum DraftFullTextSearchPreparation {
+  static func prepare(
+    inputs: [DraftFullTextSearchInput],
+    masksPrivateContent: Bool
+  ) -> [ArticleDraft] {
+    inputs.map { input in
+      var draft = input.draft
+      draft.bodyMarkdown = input.bodyMarkdown
+      guard masksPrivateContent, draft.isPrivate else { return draft }
+      draft.slug = ""
+      draft.summary = ""
+      draft.bodyMarkdown = ""
+      draft.tags = []
+      draft.categories = []
+      draft.authors = []
+      draft.detachFromRepository()
+      return draft
+    }
   }
 }
 

@@ -574,6 +574,8 @@ struct RSSReaderView: View {
       isShowingFullText: isShowingFullText,
       isFetchingFullText: isFetchingFullText,
       fullTextError: fullTextError,
+      isOutsideFilteredResults: presentation.isSelectedArticleOutsideMatchingResults(in: store),
+      onReturnToResults: presentation.returnToArticleResults,
       automaticFullTextExtraction: $automaticFullTextExtractionEnabled,
       onToggleFullText: {
         guard let actionArticle else { return }

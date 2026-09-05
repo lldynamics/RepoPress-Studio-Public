@@ -19,6 +19,18 @@ final class SettingsSearchAndSavePresentationTests: XCTestCase {
     XCTAssertTrue(SettingsTab.allCases.allSatisfy { $0.matchesSearch("  ") })
   }
 
+  @MainActor
+  func testSearchResultAccessibilityIncludesTheDistinguishingDetail() throws {
+    let item = try XCTUnwrap(
+      SettingsSearchIndex.allItems.first { $0.id == "ai.credentials" }
+    )
+
+    let label = SettingsNavigationList.searchResultAccessibilityLabel(for: item)
+    XCTAssertTrue(label.contains(item.sectionTitle))
+    XCTAssertTrue(label.contains(item.tab.title))
+    XCTAssertTrue(label.contains(item.detail))
+  }
+
   func testSaveStatusDistinguishesIdleSavingAndFailure() {
     XCTAssertEqual(
       SettingsSaveStatusPresentation(

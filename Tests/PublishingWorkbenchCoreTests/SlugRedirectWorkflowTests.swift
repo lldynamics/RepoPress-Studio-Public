@@ -3,6 +3,55 @@ import XCTest
 
 @MainActor
 final class SlugRedirectWorkflowTests: XCTestCase {
+  func testReviewedReferenceUpdateRejectsNewReferencesWithoutWriting() throws {
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL())
+    )
+    store.updateActiveProfile { $0.markdownPathPattern = "content/posts/{slug}.md" }
+    let target = ArticleDraft(
+      siteProfileID: store.activeProfileID, title: "Target",
+      slug: "new-route", pendingSlugRedirectPaths: ["/old-route/"])
+    var source = ArticleDraft(
+      siteProfileID: store.activeProfileID, title: "Source",
+      slug: "source", bodyMarkdown: "[first](/old-route/)")
+    store.setDrafts([target, source])
+    let review = try XCTUnwrap(store.slugChangeImpact(for: target.id))
+    source.bodyMarkdown += "\n[added after review](/old-route/)"
+    store.updateDraft(source)
+    let priorVersionCount = store.versions(for: source.id).count
+
+    let result = store.updateReferencesForPendingSlugChange(
+      draftID: target.id,
+      expectedImpact: review, expectedTargetSlug: target.slug)
+
+    XCTAssertFalse(result.wasApplied)
+    XCTAssertEqual(store.draft(for: source.id)?.bodyMarkdown, source.bodyMarkdown)
+    XCTAssertEqual(store.draft(for: target.id)?.pendingSlugRedirectPaths, ["/old-route/"])
+    XCTAssertEqual(store.versions(for: source.id).count, priorVersionCount)
+  }
+
+  func testReviewedReferenceUpdateRejectsChangedWikiTargetSlug() throws {
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL())
+    )
+    store.updateActiveProfile { $0.markdownPathPattern = "content/posts/{slug}.md" }
+    let target = ArticleDraft(
+      siteProfileID: store.activeProfileID, title: "Target",
+      slug: "new-route", pendingSlugRedirectPaths: ["/old-route/"])
+    let source = ArticleDraft(
+      siteProfileID: store.activeProfileID, title: "Source",
+      slug: "source", bodyMarkdown: "[[old-route]]")
+    store.setDrafts([target, source])
+    let review = try XCTUnwrap(store.slugChangeImpact(for: target.id))
+
+    let result = store.updateReferencesForPendingSlugChange(
+      draftID: target.id,
+      expectedImpact: review, expectedTargetSlug: "different-reviewed-slug")
+
+    XCTAssertFalse(result.wasApplied)
+    XCTAssertEqual(store.draft(for: source.id)?.bodyMarkdown, source.bodyMarkdown)
+  }
+
   func testOneClickReferenceUpdateUsesTokenRangesAndClearsPendingRoute() throws {
     let store = WorkbenchStore(
       persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL())
@@ -33,7 +82,9 @@ final class SlugRedirectWorkflowTests: XCTestCase {
     XCTAssertEqual(impact.affectedDraftCount, 1)
     XCTAssertEqual(impact.referenceCount, 3)
 
-    let result = store.updateReferencesForPendingSlugChange(draftID: target.id)
+    let result = store.updateReferencesForPendingSlugChange(
+      draftID: target.id,
+      expectedImpact: impact, expectedTargetSlug: renamed.slug)
 
     XCTAssertTrue(result.wasApplied)
     XCTAssertEqual(

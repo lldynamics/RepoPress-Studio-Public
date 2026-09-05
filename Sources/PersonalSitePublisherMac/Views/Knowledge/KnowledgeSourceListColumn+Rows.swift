@@ -129,17 +129,19 @@ extension KnowledgeSourceListColumn {
         ? String(localized: "关闭本地语义索引")
         : String(localized: "建立本地语义索引")
     ) {
-      knowledge.setAllowsLocalSemanticIndex(
-        !document.allowsLocalSemanticIndex,
-        documentID: document.id
-      )
+      Task {
+        await knowledge.setAllowsLocalSemanticIndex(
+          !document.allowsLocalSemanticIndex,
+          documentID: document.id
+        )
+      }
     }
     Button(
       knowledge.isPinned(document.id)
         ? String(localized: "取消固定")
         : String(localized: "固定到 AI 对话")
     ) {
-      knowledge.setPinned(!knowledge.isPinned(document.id), documentID: document.id)
+      Task { await knowledge.setPinned(!knowledge.isPinned(document.id), documentID: document.id) }
     }
     Button(
       document.allowsRemoteAIUse
@@ -150,7 +152,9 @@ extension KnowledgeSourceListColumn {
           ? String(localized: "允许发送识别文字给远程 AI")
           : String(localized: "允许发送给远程 AI")
     ) {
-      knowledge.setAllowsRemoteAIUse(!document.allowsRemoteAIUse, documentID: document.id)
+      Task {
+        await knowledge.setAllowsRemoteAIUse(!document.allowsRemoteAIUse, documentID: document.id)
+      }
     }
     Divider()
     Button("移到回收站…", role: .destructive) {
@@ -222,10 +226,12 @@ extension KnowledgeSourceListColumn {
                     ? String(localized: "取消固定")
                     : String(localized: "固定到 AI 对话")
                 ) {
-                  knowledge.setPinned(
-                    !knowledge.isPinned(result.document.id),
-                    documentID: result.document.id
-                  )
+                  Task {
+                    await knowledge.setPinned(
+                      !knowledge.isPinned(result.document.id),
+                      documentID: result.document.id
+                    )
+                  }
                 }
                 Divider()
                 Button("移到回收站…", role: .destructive) {
@@ -265,8 +271,16 @@ extension KnowledgeSourceListColumn {
     Binding(
       get: { knowledge.selectedSearchResult?.id },
       set: { resultID in
-        guard let resultID,
-              let result = knowledge.searchResult(id: resultID) else { return }
+        guard let resultID else {
+          if knowledge.clearSearchResultSelection() {
+            EditorAccessibilityAnnouncementCenter.announce(
+              "已取消搜索命中的高亮，继续显示当前资料。",
+              priority: .low
+            )
+          }
+          return
+        }
+        guard let result = knowledge.searchResult(id: resultID) else { return }
         knowledge.selectSearchResult(result)
         let location = result.chunk.locator?.nilIfEmpty
           ?? result.chunk.headingPath?.nilIfEmpty
@@ -295,11 +309,13 @@ extension KnowledgeSourceListColumn {
   func confirmDocumentDeletion() {
     guard let document = documentPendingDeletion else { return }
     documentPendingDeletion = nil
-    if knowledge.moveToRecycleBin([document.id]) {
-      EditorAccessibilityAnnouncementCenter.announce(
-        "已将资料移到回收站：\(document.title)。",
-        priority: .medium
-      )
+    Task {
+      if await knowledge.moveToRecycleBin([document.id]) {
+        EditorAccessibilityAnnouncementCenter.announce(
+          "已将资料移到回收站：\(document.title)。",
+          priority: .medium
+        )
+      }
     }
   }
 }

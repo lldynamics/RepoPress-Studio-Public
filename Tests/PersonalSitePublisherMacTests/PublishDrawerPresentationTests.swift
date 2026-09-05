@@ -1,8 +1,36 @@
 import XCTest
+
 @testable import PersonalSitePublisherMac
 @testable import PublishingWorkbenchCore
 
 final class PublishDrawerPresentationTests: XCTestCase {
+  @MainActor
+  func testRefreshCannotReplaceOrCancelAnInFlightOperation() async {
+    let controller = PublishDrawerOperationController()
+    let cancelled = expectation(description: "cleanup cancels original operation")
+    var started = false
+    var observedCancellation = false
+    var refreshStarted = false
+    controller.start {
+      started = true
+      do {
+        try await Task.sleep(for: .seconds(30))
+      } catch {
+        observedCancellation = true
+        cancelled.fulfill()
+      }
+    }
+    for _ in 0..<20 where !started { await Task.yield() }
+    XCTAssertTrue(started)
+    XCTAssertFalse(controller.startIfIdle { refreshStarted = true })
+    await Task.yield()
+    XCTAssertTrue(controller.isRunning)
+    XCTAssertFalse(observedCancellation)
+    XCTAssertFalse(refreshStarted)
+    controller.cancel()
+    await fulfillment(of: [cancelled], timeout: 1)
+  }
+
   func testPublishDrawerOverlayUsesStableTrailingWidthWithoutGrowingPastItsIdeal() {
     XCTAssertEqual(
       WorkspacePublishDrawerLayoutPolicy.width(for: 1_200),
@@ -182,7 +210,7 @@ final class PublishDrawerPresentationTests: XCTestCase {
     )
     XCTAssertEqual(
       PublishDrawerBatchActionPresentation.title,
-      "发布所有待处理变更"
+      "审阅并发布文章变更"
     )
     XCTAssertTrue(
       PublishDrawerBatchActionPresentation.detail.contains("CSS")
@@ -195,7 +223,24 @@ final class PublishDrawerPresentationTests: XCTestCase {
     )
   }
 
-  func testBatchActionAllowsCleanupOnlyQueue() {
+  func testBatchActionAllowsKnownRemoteConflictToEnterAuthoritativeRecheck() {
+    let conflicted = PublishDrawerBatchActionPresentation.State(
+      repositoryConfigured: true,
+      hasToken: true,
+      permission: .writable,
+      hasRemoteConflict: true,
+      publishableArticleCount: 2,
+      changedFileCount: 2
+    )
+
+    XCTAssertTrue(PublishDrawerBatchActionPresentation.isEnabled(conflicted))
+    XCTAssertEqual(
+      PublishDrawerBatchActionPresentation.status(conflicted),
+      "远端存在冲突，请先核对"
+    )
+  }
+
+  func testBatchActionExcludesCleanupOnlyQueue() {
     let cleanupOnly = PublishDrawerBatchActionPresentation.State(
       repositoryConfigured: true,
       hasToken: true,
@@ -205,14 +250,14 @@ final class PublishDrawerPresentationTests: XCTestCase {
       changedFileCount: 2
     )
 
-    XCTAssertTrue(PublishDrawerBatchActionPresentation.isEnabled(cleanupOnly))
+    XCTAssertFalse(PublishDrawerBatchActionPresentation.isEnabled(cleanupOnly))
     XCTAssertEqual(
       PublishDrawerBatchActionPresentation.status(cleanupOnly),
-      "待下线 2 篇文章 · 2 个文件"
+      "没有可发布文章；待下线请求请到回收站单独处理"
     )
   }
 
-  func testBatchActionSummarizesPublishAndCleanupTogether() {
+  func testBatchActionExplainsCleanupIsExcludedFromMixedQueue() {
     let mixed = PublishDrawerBatchActionPresentation.State(
       repositoryConfigured: true,
       hasToken: true,
@@ -225,7 +270,7 @@ final class PublishDrawerPresentationTests: XCTestCase {
     XCTAssertTrue(PublishDrawerBatchActionPresentation.isEnabled(mixed))
     XCTAssertEqual(
       PublishDrawerBatchActionPresentation.status(mixed),
-      "可发布 3 篇 · 待下线 2 篇 · 7 个文件"
+      "可发布 3 篇 · 7 个文件 · 不包含 2 个待下线请求"
     )
   }
 

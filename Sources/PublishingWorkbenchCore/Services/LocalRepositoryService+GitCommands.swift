@@ -2,6 +2,51 @@ import Foundation
 import PublishingGitCore
 
 extension LocalRepositoryService {
+  /// Reads one file on demand without the overview's 160-line preview limit.
+  /// The runner's byte and time limits still apply; partial output is rejected.
+  public func fullDiff(
+    for file: RepositoryChangedFile,
+    profile: SiteProfile,
+    upstreamName: String? = nil
+  ) throws -> String {
+    guard
+      let diff = try profile.withLocalRepositoryRootAccess({ rootURL in
+        let commands: [[String]]
+        if let upstreamName {
+          guard
+            let plan = RepositoryRemoteDiffCommandPolicy().plan(
+              for: RepositoryRemoteDiffCommandInput(upstreamName: upstreamName)
+            ), let arguments = plan.fileDiffArguments(for: file)
+          else {
+            throw RepositoryFullDiffError.unavailable
+          }
+          commands = [arguments]
+        } else {
+          guard let plan = RepositoryLocalDiffCommandPolicy().plan(for: file) else {
+            throw RepositoryFullDiffError.unavailable
+          }
+          commands = relevantLocalDiffArguments(for: file, plan: plan)
+        }
+
+        return try commands.map { arguments in
+          var safeArguments = arguments
+          safeArguments.insert(contentsOf: ["--no-ext-diff", "--no-textconv", "--no-color"], at: 1)
+          let result = gitCommandRunner.run(
+            safeArguments, rootURL: rootURL, preserveStandardOutputWhitespace: true
+          )
+          guard !result.didTimeOut,
+            result.terminationStatus == 0 || result.terminationStatus == 1
+          else { throw RepositoryFullDiffError.unavailable }
+          guard !result.wasOutputTruncated else { throw RepositoryFullDiffError.outputTruncated }
+          return result.standardOutput
+        }.filter { !$0.isEmpty }.joined(separator: "\n")
+      })
+    else {
+      throw LocalRepositoryServiceError.repositoryUnavailable
+    }
+    return diff
+  }
+
   func fetchUpstream(rootURL: URL) -> RepositoryFetchResult {
     let status = gitStatus(rootURL: rootURL)
     guard let upstreamName = status.branchStatus?.upstreamName?.nilIfEmpty else {
@@ -121,13 +166,15 @@ extension LocalRepositoryService {
     _ arguments: [String],
     rootURL: URL,
     inputLines: [String]? = nil,
-    inputDelimiter: GitCommandInputDelimiter = .newline
+    inputDelimiter: GitCommandInputDelimiter = .newline,
+    acceptExistingCommitMessage: Bool = false
   ) -> GitCommandResult {
     gitCommandRunner.run(
       arguments,
       rootURL: rootURL,
       inputLines: inputLines,
-      inputDelimiter: inputDelimiter
+      inputDelimiter: inputDelimiter,
+      acceptExistingCommitMessage: acceptExistingCommitMessage
     )
   }
 
@@ -236,5 +283,19 @@ extension LocalRepositoryService {
 
     return (Array(lines.prefix(maxLineCount)) + ["... diff 已截断，仅显示前 \(maxLineCount) 行 ..."])
       .joined(separator: "\n")
+  }
+}
+
+public enum RepositoryFullDiffError: Error, LocalizedError, Sendable {
+  case unavailable
+  case outputTruncated
+
+  public var errorDescription: String? {
+    switch self {
+    case .unavailable:
+      return CoreL10n.text("无法读取此文件差异，请重新审阅。")
+    case .outputTruncated:
+      return CoreL10n.text("差异超过应用内审阅容量，未显示完整内容。请缩小本次变更后重新审阅。")
+    }
   }
 }

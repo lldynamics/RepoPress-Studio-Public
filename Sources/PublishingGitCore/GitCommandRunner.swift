@@ -141,7 +141,10 @@ public struct GitCommandRunner: Sendable {
     _ arguments: [String],
     rootURL: URL,
     inputLines: [String]? = nil,
-    inputDelimiter: GitCommandInputDelimiter = .newline
+    inputDelimiter: GitCommandInputDelimiter = .newline,
+    preserveStandardOutputWhitespace: Bool = false,
+    acceptExistingCommitMessage: Bool = false,
+    environmentOverrides: [String: String] = [:]
   ) -> GitCommandResult {
     if let reason = Self.repositoryConfigurationBlockReason(rootURL: rootURL) {
       return Self.blockedConfigurationResult(reason)
@@ -149,7 +152,19 @@ public struct GitCommandRunner: Sendable {
     let process = Process()
     process.executableURL = executableURL
     process.arguments = ["-C", rootURL.path] + arguments
-    process.environment = Self.isolatedGitEnvironment()
+    var environment = Self.isolatedGitEnvironment()
+    if acceptExistingCommitMessage {
+      // `git rebase --continue` may open the existing commit message even
+      // though the user already reviewed it. `/usr/bin/true` accepts that
+      // frozen message without enabling an arbitrary configured editor.
+      environment["GIT_EDITOR"] = "/usr/bin/true"
+    }
+    // A narrow caller-owned overlay supports isolated Git state such as a
+    // temporary index without exposing the host process environment.
+    for (key, value) in environmentOverrides where key == "GIT_INDEX_FILE" {
+      environment[key] = value
+    }
+    process.environment = environment
 
     let outputPipe = Pipe()
     let errorPipe = Pipe()
@@ -235,7 +250,10 @@ public struct GitCommandRunner: Sendable {
     errorPipe.fileHandleForReading.closeFile()
 
     let collected = outputCollector.result()
-    let standardOutput = collected.standardOutput.trimmedForPublishing
+    let standardOutput =
+      preserveStandardOutputWhitespace
+      ? collected.standardOutput
+      : collected.standardOutput.trimmedForPublishing
     let standardError = Self.redactedDiagnosticText(
       collected.standardError.trimmedForPublishing
     )

@@ -65,9 +65,11 @@ struct KnowledgeSourceHistoryView: View {
       Button("恢复所选版本") {
         guard let revision = pendingRestore else { return }
         pendingRestore = nil
-        if knowledge.restoreRevision(revision.id, documentID: documentID) {
-          comparison = nil
-          comparedRevisionID = nil
+        Task {
+          if await knowledge.restoreRevision(revision.id, documentID: documentID) {
+            comparison = nil
+            comparedRevisionID = nil
+          }
         }
       }
       Button("取消", role: .cancel) { pendingRestore = nil }

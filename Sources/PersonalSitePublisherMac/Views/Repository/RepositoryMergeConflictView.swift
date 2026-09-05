@@ -1,5 +1,6 @@
 import AppKit
 import PublishingGitCore
+import PublishingMarkdownCore
 import PublishingWorkbenchCore
 import SwiftUI
 
@@ -39,78 +40,35 @@ struct RepositoryMergeConflictDraftPolicy {
       return conflict.theirs.isText ? conflict.theirs.text : nil
     case .manualMerge:
       guard conflict.canResolve, let finalText = conflict.final.text else { return nil }
-      if let markerFreeDraft = markerFreeWorkingTreeDraft(finalText) {
-        return markerFreeDraft
-      }
-      if containsGitConflictMarker(finalText) {
-        return conflict.ours.text ?? conflict.theirs.text
-      }
-      return finalText
+      return RepositoryMergeConflictPolicy.containsConflictMarkers(finalText) ? nil : finalText
     }
   }
 
   static func initialText(for conflict: RepositoryMergeConflict) -> String {
-    preparedText(for: .manualMerge, conflict: conflict)
+    (conflict.canResolve ? conflict.final.text : nil)
       ?? preparedText(for: .ours, conflict: conflict)
       ?? preparedText(for: .theirs, conflict: conflict)
       ?? ""
-  }
-
-  /// Keep the ours/theirs sections from Git's working-tree merge seed,
-  /// discard the optional base section, and remove every marker line.
-  static func markerFreeWorkingTreeDraft(_ text: String) -> String? {
-    enum Region: Equatable { case normal, ours, base, theirs }
-    var region = Region.normal
-    var sawStart = false
-    var sawEnd = false
-    var output: [String] = []
-
-    for line in text.components(separatedBy: "\n") {
-      if line.hasPrefix("<<<<<<<") {
-        sawStart = true
-        region = .ours
-        continue
-      }
-      if line.hasPrefix("|||||||") && region == .ours {
-        region = .base
-        continue
-      }
-      if line.hasPrefix("=======") && (region == .ours || region == .base) {
-        region = .theirs
-        continue
-      }
-      if line.hasPrefix(">>>>>>>") && region == .theirs {
-        sawEnd = true
-        region = .normal
-        continue
-      }
-      if region != .base {
-        output.append(line)
-      }
-    }
-
-    guard sawStart, sawEnd, region == .normal else { return nil }
-    return output.joined(separator: "\n")
-  }
-
-  private static func containsGitConflictMarker(_ text: String) -> Bool {
-    text.components(separatedBy: "\n").contains { line in
-      line.hasPrefix("<<<<<<<")
-        || line.hasPrefix("|||||||")
-        || line.hasPrefix("=======")
-        || line.hasPrefix(">>>>>>>")
-    }
   }
 }
 
 private struct RepositoryMergeQuickChoiceBar: View {
   let conflict: RepositoryMergeConflict
+  let isDeletionSelected: Bool
   let choose: (RepositoryMergeConflictDraftChoice) -> Void
+  let chooseDeletion: () -> Void
 
   var body: some View {
-    ViewThatFits(in: .horizontal) {
-      HStack(spacing: 10) { buttons }
-      VStack(spacing: 8) { buttons }
+    VStack(alignment: .leading, spacing: 8) {
+      ViewThatFits(in: .horizontal) {
+        HStack(spacing: 10) { buttons }
+        VStack(spacing: 8) { buttons }
+      }
+      if isDeletionSelected {
+        Label("已选择删除作为最终结果；尚未删除或暂存。", systemImage: "trash.circle.fill")
+          .font(.caption.weight(.semibold))
+          .foregroundStyle(.red)
+      }
     }
     .accessibilityElement(children: .contain)
     .accessibilityLabel("冲突快捷选择")
@@ -128,11 +86,40 @@ private struct RepositoryMergeQuickChoiceBar: View {
       systemImage: "cloud.badge.checkmark",
       choice: .theirs
     )
-    choiceButton(
-      title: "合并双方内容",
-      systemImage: "arrow.triangle.merge",
-      choice: .manualMerge
-    )
+    if conflict.canResolveByDeleting {
+      deletionButton
+    }
+  }
+
+  private var deletionButton: some View {
+    Button {
+      chooseDeletion()
+    } label: {
+      deletionLabel
+    }
+    .buttonStyle(.bordered)
+    .controlSize(.large)
+    .tint(isDeletionSelected ? .red : nil)
+    .accessibilityIdentifier("repository-merge-choose-delete")
+    .help("只选择删除作为最终结果；点击应用前不会执行 git rm。")
+  }
+
+  @ViewBuilder
+  private var deletionLabel: some View {
+    let stages = Set(conflict.stageEntries.map(\.stage))
+    if stages.contains(.ours) {
+      Label(
+        "接受远端删除",
+        systemImage: isDeletionSelected ? "checkmark.circle.fill" : "trash"
+      )
+      .frame(maxWidth: .infinity, minHeight: 28)
+    } else {
+      Label(
+        "保留我的删除",
+        systemImage: isDeletionSelected ? "checkmark.circle.fill" : "trash"
+      )
+      .frame(maxWidth: .infinity, minHeight: 28)
+    }
   }
 
   private func choiceButton(
@@ -149,11 +136,13 @@ private struct RepositoryMergeQuickChoiceBar: View {
     .buttonStyle(.bordered)
     .controlSize(.large)
     .disabled(
-      RepositoryMergeConflictDraftPolicy.preparedText(for: choice, conflict: conflict) == nil
+      !conflict.canResolve
+        || RepositoryMergeConflictDraftPolicy.preparedText(for: choice, conflict: conflict) == nil
     )
     .accessibilityIdentifier(accessibilityIdentifier(for: choice))
     .help(
-      RepositoryMergeConflictDraftPolicy.preparedText(for: choice, conflict: conflict) == nil
+      !conflict.canResolve
+        || RepositoryMergeConflictDraftPolicy.preparedText(for: choice, conflict: conflict) == nil
         ? String(localized: "该版本不是可安全编辑的文本；不会将删除语义改成空文件。")
         : String(localized: "只准备最终内容，不会写入或暂存。")
     )
@@ -174,10 +163,10 @@ private struct RepositoryMergeQuickChoiceBar: View {
 /// unmerged index. Only the final column is editable; no side is auto-applied.
 struct RepositoryMergeConflictView: View {
   let session: RepositoryMergeConflictSession
-  let resolveAction: (String, String) async throws -> Void
+  let resolveAction: (RepositoryMergeConflictResolutionRequest) async throws -> Void
 
   @State private var selectedPath: String?
-  @State private var finalTexts: [String: String]
+  @State private var semanticDrafts: [String: RepositoryMergeConflictSemanticDraft]
   @State private var resolvingPath: String?
   @State private var feedbackMessage: String?
   @State private var feedbackSeverity: AccessibleStatusSeverity = .info
@@ -189,16 +178,16 @@ struct RepositoryMergeConflictView: View {
 
   init(
     session: RepositoryMergeConflictSession,
-    resolveAction: @escaping (String, String) async throws -> Void
+    resolveAction: @escaping (RepositoryMergeConflictResolutionRequest) async throws -> Void
   ) {
     self.session = session
     self.resolveAction = resolveAction
     let firstPath = session.conflicts.first?.repositoryPath
     _selectedPath = State(initialValue: firstPath)
-    _finalTexts = State(
+    _semanticDrafts = State(
       initialValue: Dictionary(
         uniqueKeysWithValues: session.conflicts.map { conflict in
-          (conflict.repositoryPath, RepositoryMergeConflictDraftPolicy.initialText(for: conflict))
+          (conflict.repositoryPath, RepositoryMergeConflictSemanticDraft(conflict: conflict))
         }
       )
     )
@@ -208,7 +197,7 @@ struct RepositoryMergeConflictView: View {
     VStack(alignment: .leading, spacing: 12) {
       header
 
-      Text("先比较本地、远程和最终版本；只有点击“应用最终版本并暂存”后，才会写入工作区并执行 git add。")
+      Text("先比较本地、远程和最终结果；只有点击底部应用按钮后，才会写入工作区并执行 git add 或 git rm。")
         .font(.callout)
         .foregroundStyle(.secondary)
         .fixedSize(horizontal: false, vertical: true)
@@ -260,9 +249,10 @@ struct RepositoryMergeConflictView: View {
           conflict: selectedConflict,
           layoutMode: $layoutMode,
           dualColumnSource: $dualColumnSource,
-          finalText: finalBinding(for: selectedConflict),
+          semanticDraft: semanticDraftBinding(for: selectedConflict),
           resolvingPath: resolvingPath,
           onChoose: { prepare($0, for: selectedConflict) },
+          onChooseDeletion: { prepareDeletion(for: selectedConflict) },
           onResolve: { resolve(selectedConflict) },
           onOpenBaseSheet: { isBaseSheetPresented = true }
         )
@@ -272,6 +262,9 @@ struct RepositoryMergeConflictView: View {
       guard !session.conflicts.isEmpty, !hasAutomaticallyPresentedResolver else { return }
       hasAutomaticallyPresentedResolver = true
       isMaximizeSheetPresented = true
+    }
+    .onChange(of: session) { _, updatedSession in
+      reconcileDrafts(with: updatedSession)
     }
   }
 
@@ -360,6 +353,24 @@ struct RepositoryMergeConflictView: View {
     return session.conflicts.first { $0.repositoryPath == path }
   }
 
+  private func reconcileDrafts(with updatedSession: RepositoryMergeConflictSession) {
+    let paths = Set(updatedSession.conflicts.map(\.repositoryPath))
+    semanticDrafts = semanticDrafts.filter { paths.contains($0.key) }
+    for conflict in updatedSession.conflicts {
+      if semanticDrafts[conflict.repositoryPath]?.matches(conflict) != true {
+        semanticDrafts[conflict.repositoryPath] = RepositoryMergeConflictSemanticDraft(
+          conflict: conflict)
+      }
+    }
+    if let selectedPath, !paths.contains(selectedPath) {
+      self.selectedPath = updatedSession.conflicts.first?.repositoryPath
+    }
+    if updatedSession.conflicts.isEmpty {
+      isMaximizeSheetPresented = false
+      isBaseSheetPresented = false
+    }
+  }
+
   private var selectedPathBinding: Binding<String?> {
     Binding(
       get: { selectedPath ?? session.conflicts.first?.repositoryPath },
@@ -369,7 +380,21 @@ struct RepositoryMergeConflictView: View {
 
   private func conflictColumns(for conflict: RepositoryMergeConflict) -> some View {
     VStack(alignment: .leading, spacing: 10) {
-      if layoutMode == .threeWay {
+      let draft = semanticDraft(for: conflict)
+      if draft.mode == .semantic {
+        RepositoryMergeConflictSemanticWorkspace(
+          state: draft,
+          isDisabled: resolvingPath != nil,
+          selectMode: { selectSemanticMode($0, for: conflict) },
+          selectFrontMatterChoice: { id, choice in
+            selectFrontMatterChoice(choice, conflictID: id, for: conflict)
+          },
+          selectBodyChoice: { id, choice in
+            selectBodyChoice(choice, conflictID: id, for: conflict)
+          },
+          copySemanticResultToSource: { copySemanticResultToSource(for: conflict) }
+        )
+      } else if layoutMode == .threeWay {
         HStack(alignment: .top, spacing: 10) {
           mergeColumn(
             title: "本地版本",
@@ -404,9 +429,16 @@ struct RepositoryMergeConflictView: View {
         }
       }
 
-      RepositoryMergeQuickChoiceBar(conflict: conflict) { choice in
-        prepare(choice, for: conflict)
+      if draft.mode == .source {
+        sourceModeControls(for: conflict, draft: draft)
       }
+
+      RepositoryMergeQuickChoiceBar(
+        conflict: conflict,
+        isDeletionSelected: draft.isDeletionSelected,
+        choose: { choice in prepare(choice, for: conflict) },
+        chooseDeletion: { prepareDeletion(for: conflict) }
+      )
 
       baselineSection(for: conflict)
 
@@ -415,10 +447,12 @@ struct RepositoryMergeConflictView: View {
         Button {
           resolve(conflict)
         } label: {
-          Label("应用最终版本并暂存", systemImage: "checkmark.circle")
+          RepositoryMergeApplyActionLabel(isDeletion: draft.isDeletionSelected)
         }
         .workbenchProminentActionStyle()
-        .disabled(!conflict.canResolve || resolvingPath != nil)
+        .tint(draft.isDeletionSelected ? .red : nil)
+        .disabled(!draft.canApply || resolvingPath != nil)
+        .help(resolveHelpText(for: conflict))
         .accessibilityIdentifier("repository-merge-conflict-resolve")
       }
     }
@@ -555,20 +589,142 @@ struct RepositoryMergeConflictView: View {
 
   private func finalBinding(for conflict: RepositoryMergeConflict) -> Binding<String> {
     Binding(
-      get: { finalTexts[conflict.repositoryPath] ?? conflict.final.text ?? "" },
-      set: { finalTexts[conflict.repositoryPath] = $0 }
+      get: { semanticDraft(for: conflict).sourceDraft },
+      set: { updateSourceDraft($0, for: conflict) }
     )
+  }
+
+  private func semanticDraftBinding(
+    for conflict: RepositoryMergeConflict
+  ) -> Binding<RepositoryMergeConflictSemanticDraft> {
+    Binding(
+      get: { semanticDraft(for: conflict) },
+      set: { semanticDrafts[conflict.repositoryPath] = $0 }
+    )
+  }
+
+  private func semanticDraft(for conflict: RepositoryMergeConflict)
+    -> RepositoryMergeConflictSemanticDraft
+  {
+    semanticDrafts[conflict.repositoryPath]
+      ?? RepositoryMergeConflictSemanticDraft(conflict: conflict)
+  }
+
+  private func sourceModeControls(
+    for conflict: RepositoryMergeConflict,
+    draft: RepositoryMergeConflictSemanticDraft
+  ) -> some View {
+    VStack(alignment: .leading, spacing: 8) {
+      HStack(spacing: 8) {
+        Button {
+          selectSemanticMode(.semantic, for: conflict)
+        } label: {
+          Label("逐块协调", systemImage: "rectangle.split.2x1")
+        }
+        .buttonStyle(.bordered)
+        .disabled(resolvingPath != nil || !draft.canUseSemanticMode)
+        .accessibilityIdentifier("repository-merge-semantic-mode-semantic")
+
+        Label("完整源码", systemImage: "chevron.left.forwardslash.chevron.right")
+          .font(.caption.weight(.semibold))
+          .foregroundStyle(.secondary)
+        Spacer()
+      }
+
+      if draft.sourceReviewed {
+        Label("完整源码已确认", systemImage: "checkmark.circle.fill")
+          .font(.caption.weight(.semibold))
+          .foregroundStyle(.green)
+      } else {
+        HStack {
+          Text("请检查并确认最终源码；确认前不会应用或暂存。")
+            .font(.caption)
+            .foregroundStyle(.orange)
+          Spacer()
+          Button("确认源码已协调") { confirmSourceDraft(for: conflict) }
+            .buttonStyle(.bordered)
+            .disabled(resolvingPath != nil || !conflict.canResolve)
+            .accessibilityIdentifier("repository-merge-semantic-confirm-source")
+        }
+      }
+
+      if let reason = draft.semanticUnavailableReason {
+        RepositoryMergeConflictSemanticUnavailableBanner(reason: reason)
+      }
+    }
+  }
+
+  private func selectSemanticMode(
+    _ mode: RepositoryMergeConflictSemanticMode,
+    for conflict: RepositoryMergeConflict
+  ) {
+    var draft = semanticDraft(for: conflict)
+    draft.selectMode(mode)
+    semanticDrafts[conflict.repositoryPath] = draft
+  }
+
+  private func selectFrontMatterChoice(
+    _ choice: MarkdownThreeWayMergeFieldChoice,
+    conflictID: String,
+    for conflict: RepositoryMergeConflict
+  ) {
+    var draft = semanticDraft(for: conflict)
+    draft.selectFrontMatterChoice(choice, conflictID: conflictID)
+    semanticDrafts[conflict.repositoryPath] = draft
+  }
+
+  private func selectBodyChoice(
+    _ choice: MarkdownThreeWayMergeBodyChoice,
+    conflictID: Int,
+    for conflict: RepositoryMergeConflict
+  ) {
+    var draft = semanticDraft(for: conflict)
+    draft.selectBodyChoice(choice, conflictID: conflictID)
+    semanticDrafts[conflict.repositoryPath] = draft
+  }
+
+  private func updateSourceDraft(_ text: String, for conflict: RepositoryMergeConflict) {
+    var draft = semanticDraft(for: conflict)
+    draft.updateSourceDraft(text)
+    semanticDrafts[conflict.repositoryPath] = draft
+  }
+
+  private func confirmSourceDraft(for conflict: RepositoryMergeConflict) {
+    var draft = semanticDraft(for: conflict)
+    draft.confirmSourceDraft()
+    semanticDrafts[conflict.repositoryPath] = draft
+  }
+
+  private func copySemanticResultToSource(for conflict: RepositoryMergeConflict) {
+    var draft = semanticDraft(for: conflict)
+    draft.copySemanticResultToSource()
+    semanticDrafts[conflict.repositoryPath] = draft
+  }
+
+  private func resolveHelpText(for conflict: RepositoryMergeConflict) -> String {
+    let draft = semanticDraft(for: conflict)
+    if draft.canApply {
+      return draft.isDeletionSelected
+        ? String(localized: "删除该冲突文件并执行 git rm")
+        : String(localized: "写入已审阅的最终版本并执行 git add")
+    }
+    if draft.snapshot.conflict.resolutionExpectation == nil {
+      return String(localized: "冲突快照不完整，请重新扫描后再处理")
+    }
+    if let document = draft.resolvedDocument,
+      RepositoryMergeConflictPolicy.containsConflictMarkers(document)
+    {
+      return String(localized: "请先清除所有 Git 冲突标记")
+    }
+    return String(localized: "请先完成逐块选择或确认完整源码")
   }
 
   private func prepare(
     _ choice: RepositoryMergeConflictDraftChoice,
     for conflict: RepositoryMergeConflict
   ) {
-    guard
-      let text = RepositoryMergeConflictDraftPolicy.preparedText(
-        for: choice,
-        conflict: conflict
-      )
+    guard conflict.canResolve,
+      RepositoryMergeConflictDraftPolicy.preparedText(for: choice, conflict: conflict) != nil
     else {
       feedbackMessage = String(
         localized: "该选择不能安全转换为文本文件，已保留当前最终版。"
@@ -576,7 +732,9 @@ struct RepositoryMergeConflictView: View {
       feedbackSeverity = .warning
       return
     }
-    finalTexts[conflict.repositoryPath] = text
+    var draft = semanticDraft(for: conflict)
+    draft.prepareQuickChoice(choice)
+    semanticDrafts[conflict.repositoryPath] = draft
     feedbackMessage =
       choice == .manualMerge
       ? String(localized: "已准备无 Git 标记的合并草稿；请审阅后再应用。")
@@ -584,23 +742,49 @@ struct RepositoryMergeConflictView: View {
     feedbackSeverity = .info
   }
 
+  private func prepareDeletion(for conflict: RepositoryMergeConflict) {
+    var draft = semanticDraft(for: conflict)
+    draft.selectDeletion()
+    guard draft.isDeletionSelected else {
+      feedbackMessage = String(localized: "当前冲突不能安全选择删除，请重新扫描后再处理。")
+      feedbackSeverity = .warning
+      return
+    }
+    semanticDrafts[conflict.repositoryPath] = draft
+    feedbackMessage = String(localized: "已选择删除作为最终结果；尚未删除或暂存。")
+    feedbackSeverity = .warning
+  }
+
   private func resolve(_ conflict: RepositoryMergeConflict) {
     let path = conflict.repositoryPath
-    let content = finalTexts[path] ?? conflict.final.text ?? ""
+    let draft = semanticDraft(for: conflict)
+    guard let request = draft.resolutionRequest else { return }
+    let isDeletion = draft.isDeletionSelected
     resolvingPath = path
     feedbackMessage = nil
     Task {
       do {
-        try await resolveAction(path, content)
+        try await resolveAction(request)
         await MainActor.run {
           resolvingPath = nil
-          feedbackMessage = "已暂存 " + path + "，正在刷新冲突列表。"
+          feedbackMessage =
+            isDeletion
+            ? "已删除并暂存 " + path + "，正在刷新冲突列表。"
+            : "已暂存 " + path + "，正在刷新冲突列表。"
           feedbackSeverity = .success
         }
       } catch {
         await MainActor.run {
           resolvingPath = nil
-          feedbackMessage = "处理失败：\(error.localizedDescription)"
+          if let conflictError = error as? RepositoryMergeConflictError,
+            conflictError == .repositoryChanged || conflictError == .conflictNotFound
+          {
+            feedbackMessage = String(
+              localized: "检测到外部仓库更新，未覆盖或删除文件；冲突列表已刷新。"
+            )
+          } else {
+            feedbackMessage = "处理失败：\(error.localizedDescription)"
+          }
           feedbackSeverity = .error
         }
       }
@@ -663,110 +847,169 @@ private struct RepositoryMergeMaximizedSheet: View {
   let conflict: RepositoryMergeConflict
   @Binding var layoutMode: ConflictViewLayoutMode
   @Binding var dualColumnSource: DualColumnSource
-  @Binding var finalText: String
+  @Binding var semanticDraft: RepositoryMergeConflictSemanticDraft
   let resolvingPath: String?
   let onChoose: (RepositoryMergeConflictDraftChoice) -> Void
+  let onChooseDeletion: () -> Void
   let onResolve: () -> Void
   let onOpenBaseSheet: () -> Void
 
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
-      HStack {
-        VStack(alignment: .leading, spacing: 3) {
-          Label("冲突合并 - \(conflict.repositoryPath)", systemImage: "arrow.left.arrow.right.square")
-            .font(.headline)
-          Text("在此独立大窗口中比对并编辑最终合并内容。")
-            .font(.caption)
-            .foregroundStyle(.secondary)
-        }
-        Spacer()
-
-        Picker("视图模式", selection: $layoutMode) {
-          ForEach(ConflictViewLayoutMode.allCases) { mode in
-            Text(mode.rawValue).tag(mode)
-          }
-        }
-        .pickerStyle(.segmented)
-        .frame(maxWidth: 180)
-
-        Button("关闭") { dismiss() }
-          .keyboardShortcut(.cancelAction)
-      }
-      .padding(14)
-
+      sheetHeader
       Divider()
-
-      VStack(spacing: 12) {
-        if layoutMode == .threeWay {
-          HStack(alignment: .top, spacing: 12) {
-            columnBox(
-              title: "本地版本 (Ours)",
-              subtitle: "Git stage 2",
-              content: conflict.ours.displayText
-            )
-            columnBox(
-              title: "远程版本 (Theirs)",
-              subtitle: "Git stage 3",
-              content: conflict.theirs.displayText
-            )
-            editorBox
-          }
-        } else {
-          HStack(alignment: .top, spacing: 12) {
-            VStack(alignment: .leading, spacing: 6) {
-              Picker("对比源版本", selection: $dualColumnSource) {
-                ForEach(DualColumnSource.allCases) { src in
-                  Text(src.rawValue).tag(src)
-                }
-              }
-              .pickerStyle(.segmented)
-
-              let text = {
-                switch dualColumnSource {
-                case .ours: return conflict.ours.displayText
-                case .theirs: return conflict.theirs.displayText
-                case .base: return conflict.base.displayText
-                }
-              }()
-              columnBox(title: "参考源版本", subtitle: dualColumnSource.rawValue, content: text)
-            }
-            editorBox
-          }
-        }
-      }
-      .padding(14)
-      .frame(maxHeight: .infinity)
-
-      RepositoryMergeQuickChoiceBar(conflict: conflict, choose: onChoose)
-        .padding(.horizontal, 14)
-        .padding(.bottom, 12)
-
+      mergeWorkspace
+      RepositoryMergeQuickChoiceBar(
+        conflict: conflict,
+        isDeletionSelected: semanticDraft.isDeletionSelected,
+        choose: onChoose,
+        chooseDeletion: onChooseDeletion
+      )
+      .padding(.horizontal, 14)
+      .padding(.bottom, 12)
       Divider()
-
-      HStack {
-        Button {
-          onOpenBaseSheet()
-        } label: {
-          Label("查看共同基线", systemImage: "arrow.triangle.branch")
-        }
-        .buttonStyle(.bordered)
-        .controlSize(.small)
-
-        Spacer()
-
-        Button {
-          onResolve()
-          dismiss()
-        } label: {
-          Label("应用最终版本并暂存", systemImage: "checkmark.circle")
-        }
-        .workbenchProminentActionStyle()
-        .disabled(!conflict.canResolve || resolvingPath != nil)
-      }
-      .padding(14)
+      sheetFooter
     }
     .frame(minWidth: 960, idealWidth: 1100, minHeight: 640, idealHeight: 780)
     .accessibilityLabel("最大化冲突合并窗口")
+  }
+
+  private var sheetHeader: some View {
+    HStack {
+      VStack(alignment: .leading, spacing: 3) {
+        Label("冲突合并 - \(conflict.repositoryPath)", systemImage: "arrow.left.arrow.right.square")
+          .font(.headline)
+        Text("在此独立大窗口中比对并编辑最终合并内容。")
+          .font(.caption)
+          .foregroundStyle(.secondary)
+      }
+      Spacer()
+      Picker("视图模式", selection: $layoutMode) {
+        ForEach(ConflictViewLayoutMode.allCases) { mode in
+          Text(mode.rawValue).tag(mode)
+        }
+      }
+      .pickerStyle(.segmented)
+      .frame(maxWidth: 180)
+      Button("关闭") { dismiss() }
+        .keyboardShortcut(.cancelAction)
+    }
+    .padding(14)
+  }
+
+  @ViewBuilder
+  private var mergeWorkspace: some View {
+    if semanticDraft.mode == .semantic {
+      ScrollView {
+        RepositoryMergeConflictSemanticWorkspace(
+          state: semanticDraft,
+          isDisabled: resolvingPath != nil,
+          selectMode: selectMode,
+          selectFrontMatterChoice: { id, choice in
+            selectFrontMatterChoice(choice, conflictID: id)
+          },
+          selectBodyChoice: { id, choice in selectBodyChoice(choice, conflictID: id) },
+          copySemanticResultToSource: copySemanticResultToSource
+        )
+        .padding(14)
+      }
+    } else {
+      sourceWorkspace
+    }
+  }
+
+  private var sourceWorkspace: some View {
+    VStack(spacing: 12) {
+      sourceModeSelector
+      sourceComparison
+    }
+    .padding(14)
+    .frame(maxHeight: .infinity)
+  }
+
+  @ViewBuilder
+  private var sourceComparison: some View {
+    if layoutMode == .threeWay {
+      HStack(alignment: .top, spacing: 12) {
+        columnBox(
+          title: "本地版本 (Ours)",
+          subtitle: "Git stage 2",
+          content: conflict.ours.displayText
+        )
+        columnBox(
+          title: "远程版本 (Theirs)",
+          subtitle: "Git stage 3",
+          content: conflict.theirs.displayText
+        )
+        editorBox
+      }
+    } else {
+      HStack(alignment: .top, spacing: 12) {
+        VStack(alignment: .leading, spacing: 6) {
+          Picker("对比源版本", selection: $dualColumnSource) {
+            ForEach(DualColumnSource.allCases) { source in
+              Text(source.rawValue).tag(source)
+            }
+          }
+          .pickerStyle(.segmented)
+          columnBox(
+            title: "参考源版本",
+            subtitle: dualColumnSource.rawValue,
+            content: dualColumnSourceText
+          )
+        }
+        editorBox
+      }
+    }
+  }
+
+  private var dualColumnSourceText: String {
+    switch dualColumnSource {
+    case .ours: conflict.ours.displayText
+    case .theirs: conflict.theirs.displayText
+    case .base: conflict.base.displayText
+    }
+  }
+
+  private var sheetFooter: some View {
+    HStack {
+      Button {
+        onOpenBaseSheet()
+      } label: {
+        Label("查看共同基线", systemImage: "arrow.triangle.branch")
+      }
+      .buttonStyle(.bordered)
+      .controlSize(.small)
+      Spacer()
+      Button {
+        onResolve()
+        dismiss()
+      } label: {
+        RepositoryMergeApplyActionLabel(isDeletion: semanticDraft.isDeletionSelected)
+      }
+      .workbenchProminentActionStyle()
+      .tint(semanticDraft.isDeletionSelected ? .red : nil)
+      .disabled(!semanticDraft.canApply || resolvingPath != nil)
+      .help(resolveHelpText)
+    }
+    .padding(14)
+  }
+
+  private var resolveHelpText: String {
+    if semanticDraft.canApply {
+      return semanticDraft.isDeletionSelected
+        ? String(localized: "删除该冲突文件并执行 git rm")
+        : String(localized: "写入已审阅的最终版本并执行 git add")
+    }
+    if semanticDraft.snapshot.conflict.resolutionExpectation == nil {
+      return String(localized: "冲突快照不完整，请重新扫描后再处理")
+    }
+    if let document = semanticDraft.resolvedDocument,
+      RepositoryMergeConflictPolicy.containsConflictMarkers(document)
+    {
+      return String(localized: "请先清除所有 Git 冲突标记")
+    }
+    return String(localized: "请先完成逐块选择或确认完整源码")
   }
 
   private func columnBox(title: String, subtitle: String, content: String) -> some View {
@@ -798,7 +1041,7 @@ private struct RepositoryMergeMaximizedSheet: View {
       Text("仅此列可编辑")
         .font(.caption)
         .foregroundStyle(.secondary)
-      TextEditor(text: $finalText)
+      TextEditor(text: sourceBinding)
         .font(.system(.body, design: .monospaced))
         .scrollContentBackground(.hidden)
         .padding(6)
@@ -811,5 +1054,77 @@ private struct RepositoryMergeMaximizedSheet: View {
         .accessibilityIdentifier("repository-merge-maximized-final-editor")
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+  }
+
+  private var sourceModeSelector: some View {
+    VStack(alignment: .leading, spacing: 8) {
+      HStack {
+        Button {
+          selectMode(.semantic)
+        } label: {
+          Label("逐块协调", systemImage: "rectangle.split.2x1")
+        }
+        .buttonStyle(.bordered)
+        .disabled(!semanticDraft.canUseSemanticMode || resolvingPath != nil)
+        Spacer()
+        if semanticDraft.sourceReviewed {
+          Label("完整源码已确认", systemImage: "checkmark.circle.fill")
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(.green)
+        } else {
+          Button("确认源码已协调") { confirmSource() }
+            .buttonStyle(.bordered)
+            .disabled(resolvingPath != nil || !conflict.canResolve)
+        }
+      }
+      if let reason = semanticDraft.semanticUnavailableReason {
+        RepositoryMergeConflictSemanticUnavailableBanner(reason: reason)
+      }
+    }
+  }
+
+  private var sourceBinding: Binding<String> {
+    Binding(
+      get: { semanticDraft.sourceDraft },
+      set: { updatedSource in
+        semanticDraft.updateSourceDraft(updatedSource)
+      }
+    )
+  }
+
+  private func selectMode(_ mode: RepositoryMergeConflictSemanticMode) {
+    semanticDraft.selectMode(mode)
+  }
+
+  private func selectFrontMatterChoice(
+    _ choice: MarkdownThreeWayMergeFieldChoice,
+    conflictID: String
+  ) {
+    semanticDraft.selectFrontMatterChoice(choice, conflictID: conflictID)
+  }
+
+  private func selectBodyChoice(_ choice: MarkdownThreeWayMergeBodyChoice, conflictID: Int) {
+    semanticDraft.selectBodyChoice(choice, conflictID: conflictID)
+  }
+
+  private func confirmSource() {
+    semanticDraft.confirmSourceDraft()
+  }
+
+  private func copySemanticResultToSource() {
+    semanticDraft.copySemanticResultToSource()
+  }
+}
+
+private struct RepositoryMergeApplyActionLabel: View {
+  let isDeletion: Bool
+
+  @ViewBuilder
+  var body: some View {
+    if isDeletion {
+      Label("应用删除并暂存", systemImage: "trash")
+    } else {
+      Label("应用最终版本并暂存", systemImage: "checkmark.circle")
+    }
   }
 }

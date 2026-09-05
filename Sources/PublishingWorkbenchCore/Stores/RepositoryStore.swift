@@ -8,6 +8,8 @@ private struct RepositoryScanSnapshot: Sendable {
   var recentCommits: [RepositoryCommitInfo]
   var releaseHistory: RepositoryReleaseHistorySnapshot
   var mergeConflictSession: RepositoryMergeConflictSession
+  var rebaseRecoveryContext: RepositoryRebaseRecoveryContext?
+  var rebaseRecoveryDiagnostic: String?
 }
 
 private struct RepositoryLineDiffKey: Hashable {
@@ -29,7 +31,7 @@ private enum RepositoryLineDiffCacheValue {
 @MainActor
 public final class RepositoryStore: ObservableObject {
   private static let repositoryLineDiffCacheLimit = 48
-  private let repositoryService: LocalRepositoryService
+  let repositoryService: LocalRepositoryService
   private let repositoryTokenStore: KeychainTokenStore
   private let remoteRepositoryPublishService: RemoteRepositoryPublishService
   private let repositorySyncCommandBuilder: RepositorySyncCommandBuilder
@@ -37,6 +39,9 @@ public final class RepositoryStore: ObservableObject {
   @Published public internal(set) var repositoryReport: RepositoryScanReport?
   @Published public internal(set) var repositoryMergeConflictSession:
     RepositoryMergeConflictSession?
+  @Published public internal(set) var repositoryRebaseRecoveryContext:
+    RepositoryRebaseRecoveryContext?
+  @Published public internal(set) var repositoryRebaseRecoveryDiagnostic: String?
   @Published public internal(set) var repositoryScanState: RepositoryScanState
   @Published public internal(set) var localGitPublishResult: LocalGitPublishResult?
   @Published public internal(set) var localRepositoryBranches: [RepositoryBranch]
@@ -77,6 +82,7 @@ public final class RepositoryStore: ObservableObject {
     [UUID: RepositoryAutoSyncState]
   private var repositoryReportProfileID: UUID?
   private var repositoryMergeConflictProfileID: UUID?
+  var repositoryRebaseRecoveryProfileID: UUID?
   private var repositoryScanProfileID: UUID?
   private var repositoryScanTask: Task<Void, Never>?
   private var repositoryScanWorkTask: Task<RepositoryScanSnapshot?, Never>?
@@ -91,6 +97,11 @@ public final class RepositoryStore: ObservableObject {
   private var repositoryAutoSyncTask: Task<Bool, Never>?
   private var repositoryAutoSyncGeneration: UInt64 = 0
   private var repositoryAutoSyncBackgroundGenerationByProfileID: [UUID: UInt64] = [:]
+  private var repositoryAutoSyncBackgroundTasksByProfileID: [UUID: Task<Bool, Never>] = [:]
+  private var repositoryAutoSyncBackgroundTaskTokensByProfileID: [UUID: UUID] = [:]
+  /// Synchronization owns the local worktree mutation boundary. Public scans
+  /// and polling must not observe its temporary stash/rebase/restore state.
+  private var isRepositorySafeSyncOperationRunning = false
   private var remoteRepositoryCheckContext: RemoteRepositoryOperationContext?
   private var boundAutomationProfileID: UUID?
   #if DEBUG
@@ -100,11 +111,16 @@ public final class RepositoryStore: ObservableObject {
     // active profile after detached snapshot work has completed.
     var remoteFileSnapshotTestHook: (@Sendable () async -> Void)?
     var remoteFileSnapshotTestOverride: (@Sendable () async -> RepositoryFileSnapshot?)?
+    // Test-only barrier immediately before a foreground auto-sync is allowed
+    // to import remote article snapshots into the draft store.
+    var repositoryAutoSyncBeforeImportTestHook: (() async -> Void)?
   #endif
 
   init(
     repositoryReport: RepositoryScanReport? = nil,
     repositoryMergeConflictSession: RepositoryMergeConflictSession? = nil,
+    repositoryRebaseRecoveryContext: RepositoryRebaseRecoveryContext? = nil,
+    repositoryRebaseRecoveryDiagnostic: String? = nil,
     repositoryScanState: RepositoryScanState = .idle,
     localGitPublishResult: LocalGitPublishResult? = nil,
     localRepositoryBranches: [RepositoryBranch] = [],
@@ -140,6 +156,8 @@ public final class RepositoryStore: ObservableObject {
     self.repositorySyncCommandBuilder = repositorySyncCommandBuilder
     self.repositoryReport = repositoryReport
     self.repositoryMergeConflictSession = repositoryMergeConflictSession
+    self.repositoryRebaseRecoveryContext = repositoryRebaseRecoveryContext
+    self.repositoryRebaseRecoveryDiagnostic = repositoryRebaseRecoveryDiagnostic
     self.repositoryScanState = repositoryScanState
     self.localGitPublishResult = localGitPublishResult
     self.localRepositoryBranches = localRepositoryBranches
@@ -172,6 +190,8 @@ public final class RepositoryStore: ObservableObject {
     self.boundAutomationProfileID = activeProfileID
     repositoryReportProfileID = nil
     repositoryMergeConflictProfileID = repositoryMergeConflictSession == nil ? nil : activeProfileID
+    repositoryRebaseRecoveryProfileID =
+      repositoryRebaseRecoveryContext == nil ? nil : activeProfileID
     repositoryScanProfileID = nil
   }
 
@@ -209,11 +229,66 @@ public final class RepositoryStore: ObservableObject {
       : nil
   }
 
+  public func repositoryRebaseRecoveryContext(
+    for profile: SiteProfile
+  ) -> RepositoryRebaseRecoveryContext? {
+    guard let repositoryRebaseRecoveryContext,
+      repositoryRebaseRecoveryProfileID == profile.id,
+      let rootURL = profile.localRepositoryRootURL,
+      repositoryRebaseRecoveryContext.repositoryRoot == rootURL.standardizedFileURL.path,
+      repositoryRebaseRecoveryContext.branch == profile.branch.trimmedForPublishing
+    else {
+      return nil
+    }
+    return repositoryRebaseRecoveryContext
+  }
+
   public func scanRepositoryAsync(store: WorkbenchStore) async {
+    guard !isRepositorySafeSyncOperationRunning else { return }
     await scanRepositoryAsync(store: store, autoSyncGeneration: nil)
   }
 
-  private func scanRepositoryAsync(
+  /// Refreshes the remote-tracking reference used by publish previews without
+  /// touching the current branch, index, or working tree. This intentionally
+  /// ignores the optional auto-sync setting: entering a publish confirmation
+  /// must not rely on a possibly stale `origin/*` snapshot.
+  @discardableResult
+  public func refreshRepositoryStateForPublishing(
+    store: WorkbenchStore
+  ) async -> RepositoryFetchResult? {
+    let profile = store.activeProfile
+    guard let operation = beginRepositorySafeSyncOperation(store: store) else { return nil }
+    defer { finishRepositorySafeSyncOperation(operation, store: store) }
+
+    await cancelAndAwaitRepositoryBackgroundWorkForSafeSync(store: store)
+    let repositoryService = repositoryService
+    let fetch = await Task.detached(priority: .utility) {
+      repositoryService.fetchUpstream(profile: profile)
+    }.value
+
+    guard !Task.isCancelled,
+      repositorySafeSyncOperationIsCurrent(operation, store: store)
+    else {
+      return nil
+    }
+
+    // A failed fetch must not install a newly scanned report whose recent
+    // timestamp could be mistaken for fresh upstream evidence. The exact
+    // provider API preflight may still continue and remains authoritative.
+    guard fetch.status != .failed else {
+      return fetch
+    }
+
+    await scanRepositoryAsync(store: store, autoSyncGeneration: nil)
+    guard !Task.isCancelled,
+      repositorySafeSyncOperationIsCurrent(operation, store: store)
+    else {
+      return nil
+    }
+    return fetch
+  }
+
+  func scanRepositoryAsync(
     store: WorkbenchStore,
     autoSyncGeneration: UInt64?
   ) async {
@@ -229,6 +304,8 @@ public final class RepositoryStore: ObservableObject {
     repositoryScanState = .scanning()
     let operation = LocalRepositoryOperationContext(profile: profile)
     let repositoryService = repositoryService
+    let recoveryArchiveDirectoryURL =
+      store.persistenceStore.persistence.recoveryArchiveDirectoryURL
     let previousScanWork = repositoryScanWorkTask
     repositoryScanWorkGeneration &+= 1
     let scanWorkGeneration = repositoryScanWorkGeneration
@@ -244,7 +321,39 @@ public final class RepositoryStore: ObservableObject {
         }
       )
       guard !Task.isCancelled else { return nil }
-      let mergeConflictSession = repositoryService.mergeConflictSession(profile: profile)
+      var mergeConflictSession = repositoryService.mergeConflictSession(profile: profile)
+      mergeConflictSession.operationLifecycle = repositoryService.operationLifecycle(
+        profile: profile)
+      guard !Task.isCancelled else { return nil }
+      let rebaseRecoveryContext: RepositoryRebaseRecoveryContext?
+      let rebaseRecoveryDiagnostic: String?
+      do {
+        let candidate = try RepositoryRebaseRecoveryStore(
+          recoveryArchiveDirectoryURL: recoveryArchiveDirectoryURL
+        ).load(profileID: profile.id)
+        if let candidate,
+          let rootURL = profile.localRepositoryRootURL,
+          candidate.repositoryRoot == rootURL.standardizedFileURL.path,
+          candidate.branch == profile.branch.trimmedForPublishing
+        {
+          rebaseRecoveryContext = candidate
+          rebaseRecoveryDiagnostic = nil
+        } else if candidate != nil {
+          rebaseRecoveryContext = nil
+          rebaseRecoveryDiagnostic = CoreL10n.text(
+            "变基恢复记录与当前仓库或分支不匹配，已停止自动恢复。"
+          )
+        } else {
+          rebaseRecoveryContext = nil
+          rebaseRecoveryDiagnostic = nil
+        }
+      } catch {
+        rebaseRecoveryContext = nil
+        rebaseRecoveryDiagnostic = CoreL10n.format(
+          "无法读取变基恢复记录：%@",
+          error.localizedDescription
+        )
+      }
       guard !Task.isCancelled else { return nil }
       let branches = repositoryService.localBranches(profile: profile)
       guard !Task.isCancelled else { return nil }
@@ -255,7 +364,9 @@ public final class RepositoryStore: ObservableObject {
         branches: branches,
         recentCommits: releaseHistory.commits,
         releaseHistory: releaseHistory,
-        mergeConflictSession: mergeConflictSession
+        mergeConflictSession: mergeConflictSession,
+        rebaseRecoveryContext: rebaseRecoveryContext,
+        rebaseRecoveryDiagnostic: rebaseRecoveryDiagnostic
       )
     }
     repositoryScanWorkTask = scanWork
@@ -280,6 +391,9 @@ public final class RepositoryStore: ObservableObject {
       repositoryReportProfileID = operation.profileID
       repositoryMergeConflictSession = snapshot.mergeConflictSession
       repositoryMergeConflictProfileID = operation.profileID
+      repositoryRebaseRecoveryContext = snapshot.rebaseRecoveryContext
+      repositoryRebaseRecoveryDiagnostic = snapshot.rebaseRecoveryDiagnostic
+      repositoryRebaseRecoveryProfileID = operation.profileID
       localRepositoryBranches = snapshot.branches
       localRepositoryRecentCommits = snapshot.recentCommits
       localRepositoryReleaseHistory = snapshot.releaseHistory
@@ -346,6 +460,9 @@ public final class RepositoryStore: ObservableObject {
     if report == nil {
       repositoryMergeConflictSession = nil
       repositoryMergeConflictProfileID = nil
+      repositoryRebaseRecoveryContext = nil
+      repositoryRebaseRecoveryDiagnostic = nil
+      repositoryRebaseRecoveryProfileID = nil
     }
     repositoryReport = report
   }
@@ -457,6 +574,89 @@ public final class RepositoryStore: ObservableObject {
     repositoryAutoSyncTask = nil
   }
 
+  /// Acquires the repository and publishing mutation locks as one boundary.
+  /// The caller must release the returned context with
+  /// `finishRepositorySafeSyncOperation` on every path.
+  func beginRepositorySafeSyncOperation(store: WorkbenchStore)
+    -> LocalRepositoryOperationContext?
+  {
+    guard !isRepositorySafeSyncOperationRunning,
+      !isRemoteRepositoryPublishing,
+      !isRemoteRepositoryChecking,
+      !isLocalRepositoryBranchOperationRunning,
+      !store.isLocalRepositoryMutationRunning
+    else {
+      store.setPublishActionMessage(
+        CoreL10n.text("已有仓库操作正在运行，请等待完成。"),
+        status: .warning
+      )
+      return nil
+    }
+
+    let profile = store.activeProfile
+    guard let operation = store.publishingStore.beginLocalRepositoryMutation(profile: profile)
+    else {
+      store.setPublishActionMessage(
+        CoreL10n.text("已有本地仓库写入或提交任务正在运行，请等待完成。"),
+        status: .warning
+      )
+      return nil
+    }
+    isRepositorySafeSyncOperationRunning = true
+    isLocalRepositoryBranchOperationRunning = true
+    return operation
+  }
+
+  func finishRepositorySafeSyncOperation(
+    _ operation: LocalRepositoryOperationContext,
+    store: WorkbenchStore
+  ) {
+    guard isRepositorySafeSyncOperationRunning else { return }
+    store.publishingStore.finishLocalRepositoryMutation(operation)
+    isLocalRepositoryBranchOperationRunning = false
+    isRepositorySafeSyncOperationRunning = false
+  }
+
+  func repositorySafeSyncOperationIsCurrent(
+    _ operation: LocalRepositoryOperationContext,
+    store: WorkbenchStore
+  ) -> Bool {
+    isRepositorySafeSyncOperationRunning && operation.stillMatches(store.activeProfile)
+  }
+
+  /// Invalidates and awaits foreground repository readers before the service
+  /// starts a reviewed worktree mutation.
+  func cancelAndAwaitRepositoryBackgroundWorkForSafeSync(store: WorkbenchStore) async {
+    let scanTask = repositoryScanTask
+    let scanWorkTask = repositoryScanWorkTask
+    let autoSyncTask = repositoryAutoSyncTask
+    let backgroundAutoSyncTasks = Array(repositoryAutoSyncBackgroundTasksByProfileID.values)
+    repositoryScanTask?.cancel()
+    repositoryScanWorkTask?.cancel()
+    repositoryAutoSyncTask?.cancel()
+    for task in backgroundAutoSyncTasks { task.cancel() }
+    repositoryScanTask = nil
+    repositoryScanWorkTask = nil
+    repositoryAutoSyncTask = nil
+    repositoryAutoSyncBackgroundTasksByProfileID.removeAll()
+    repositoryAutoSyncBackgroundTaskTokensByProfileID.removeAll()
+    repositoryScanGeneration &+= 1
+    repositoryScanWorkGeneration &+= 1
+    repositoryAutoSyncGeneration &+= 1
+    for profileID in store.profiles.map(\.id) {
+      repositoryAutoSyncBackgroundGenerationByProfileID[profileID, default: 0] &+= 1
+    }
+    if repositoryScanState.isScanning {
+      repositoryScanState = .cancelled()
+    }
+    await scanTask?.value
+    _ = await scanWorkTask?.value
+    _ = await autoSyncTask?.value
+    for task in backgroundAutoSyncTasks {
+      _ = await task.value
+    }
+  }
+
   private func beginBackgroundRepositoryAutoSyncRun(for profileID: UUID) -> UInt64 {
     repositoryAutoSyncBackgroundGenerationByProfileID[profileID, default: 0] &+= 1
     return repositoryAutoSyncBackgroundGenerationByProfileID[profileID] ?? 0
@@ -563,8 +763,8 @@ public final class RepositoryStore: ObservableObject {
       return profile
     }
     guard
-      (owner.isEmpty || owner == remote.owner.trimmedForPublishing),
-      (name.isEmpty || name == remote.name.trimmedForPublishing)
+      owner.isEmpty || owner == remote.owner.trimmedForPublishing,
+      name.isEmpty || name == remote.name.trimmedForPublishing
     else {
       // A partially entered target that disagrees with origin is ambiguous;
       // leave it untouched and let the remote service return its structured
@@ -615,9 +815,19 @@ public final class RepositoryStore: ObservableObject {
     guard !isLocalRepositoryBranchOperationRunning else { return }
     let branchName = branchName.trimmedForPublishing
     let profile = store.activeProfile
-    let operation = LocalRepositoryOperationContext(profile: profile)
+    guard let operation = store.publishingStore.beginLocalRepositoryMutation(profile: profile)
+    else {
+      store.setPublishActionMessage(
+        CoreL10n.text("已有仓库操作正在运行，请等待完成。"),
+        status: .warning
+      )
+      return
+    }
     isLocalRepositoryBranchOperationRunning = true
-    defer { isLocalRepositoryBranchOperationRunning = false }
+    defer {
+      store.publishingStore.finishLocalRepositoryMutation(operation)
+      isLocalRepositoryBranchOperationRunning = false
+    }
 
     let result: Result<Void, LocalRepositoryServiceError> = await Task.detached(
       priority: .userInitiated
@@ -663,9 +873,19 @@ public final class RepositoryStore: ObservableObject {
     guard !isLocalRepositoryBranchOperationRunning else { return }
     let branchName = branchName.trimmedForPublishing
     let profile = store.activeProfile
-    let operation = LocalRepositoryOperationContext(profile: profile)
+    guard let operation = store.publishingStore.beginLocalRepositoryMutation(profile: profile)
+    else {
+      store.setPublishActionMessage(
+        CoreL10n.text("已有仓库操作正在运行，请等待完成。"),
+        status: .warning
+      )
+      return
+    }
     isLocalRepositoryBranchOperationRunning = true
-    defer { isLocalRepositoryBranchOperationRunning = false }
+    defer {
+      store.publishingStore.finishLocalRepositoryMutation(operation)
+      isLocalRepositoryBranchOperationRunning = false
+    }
 
     let result: Result<Void, LocalRepositoryServiceError> = await Task.detached(
       priority: .userInitiated
@@ -846,19 +1066,22 @@ public final class RepositoryStore: ObservableObject {
   }
 
   public func resolveRepositoryMergeConflict(
-    repositoryPath: String,
-    finalContent: String,
+    request: RepositoryMergeConflictResolutionRequest,
     store: WorkbenchStore
   ) async throws {
     let profile = store.activeProfile
-    let operation = LocalRepositoryOperationContext(profile: profile)
+    guard let operation = beginRepositorySafeSyncOperation(store: store) else {
+      throw RepositoryMergeConflictError.operationInProgress
+    }
+    defer { finishRepositorySafeSyncOperation(operation, store: store) }
+
+    await cancelAndAwaitRepositoryBackgroundWorkForSafeSync(store: store)
     let repositoryService = repositoryService
     let outcome = await Task.detached(priority: .userInitiated) {
       do {
         try repositoryService.resolveMergeConflict(
           profile: profile,
-          repositoryPath: repositoryPath,
-          finalContent: finalContent
+          request: request
         )
         return Result<Void, RepositoryMergeConflictError>.success(())
       } catch let error as RepositoryMergeConflictError {
@@ -870,13 +1093,15 @@ public final class RepositoryStore: ObservableObject {
       }
     }.value
 
-    if case let .failure(error) = outcome {
-      throw error
-    }
-    guard operation.stillMatches(store.activeProfile) else {
+    guard repositorySafeSyncOperationIsCurrent(operation, store: store) else {
       throw RepositoryMergeConflictError.repositoryChanged
     }
-    await scanRepositoryAsync(store: store)
+
+    if case .failure(let error) = outcome {
+      await scanRepositoryAsync(store: store, autoSyncGeneration: nil)
+      throw error
+    }
+    await scanRepositoryAsync(store: store, autoSyncGeneration: nil)
   }
 
   /// Reads one upstream article snapshot away from the main actor. The
@@ -961,7 +1186,12 @@ public final class RepositoryStore: ObservableObject {
     store: WorkbenchStore,
     now: Date = Date()
   ) async -> Bool {
-    guard repositoryAutoSyncTask == nil else {
+    guard !isRepositorySafeSyncOperationRunning,
+      !isLocalRepositoryBranchOperationRunning,
+      !store.isLocalRepositoryMutationRunning,
+      !store.isRemoteConflictResolutionRunning,
+      repositoryAutoSyncTask == nil
+    else {
       return false
     }
     let settings = repositoryAutoSyncSettings(for: profileID)
@@ -983,8 +1213,34 @@ public final class RepositoryStore: ObservableObject {
     store: WorkbenchStore,
     now: Date = Date()
   ) async -> Bool {
+    guard !isRepositorySafeSyncOperationRunning,
+      !isLocalRepositoryBranchOperationRunning,
+      !store.isLocalRepositoryMutationRunning,
+      !store.isRemoteConflictResolutionRunning
+    else {
+      return false
+    }
     guard profileID == store.activeProfileID else {
-      return await runBackgroundRepositoryAutoSync(for: profileID, store: store, now: now)
+      if let task = repositoryAutoSyncBackgroundTasksByProfileID[profileID] {
+        return await task.value
+      }
+      let token = UUID()
+      let task = Task { @MainActor [weak self] in
+        guard let self else { return false }
+        return await self.runBackgroundRepositoryAutoSync(
+          for: profileID,
+          store: store,
+          now: now
+        )
+      }
+      repositoryAutoSyncBackgroundTasksByProfileID[profileID] = task
+      repositoryAutoSyncBackgroundTaskTokensByProfileID[profileID] = token
+      let didRun = await task.value
+      if repositoryAutoSyncBackgroundTaskTokensByProfileID[profileID] == token {
+        repositoryAutoSyncBackgroundTasksByProfileID[profileID] = nil
+        repositoryAutoSyncBackgroundTaskTokensByProfileID[profileID] = nil
+      }
+      return didRun
     }
     if let repositoryAutoSyncTask {
       return await repositoryAutoSyncTask.value
@@ -1173,7 +1429,7 @@ public final class RepositoryStore: ObservableObject {
     }
     return [
       scanMessage,
-      CoreL10n.text("该站点未处于前台，已跳过自动导入；切换到该站点后可手动处理。")
+      CoreL10n.text("该站点未处于前台，已跳过自动导入；切换到该站点后可手动处理。"),
     ].joined(separator: " ")
   }
 
@@ -1274,6 +1530,11 @@ public final class RepositoryStore: ObservableObject {
         profile: profile,
         repositoryPaths: candidatePaths
       )
+      #if DEBUG
+        if let testHook = repositoryAutoSyncBeforeImportTestHook {
+          await testHook()
+        }
+      #endif
       guard isCurrentRepositoryAutoSync(generation: generation, operation: operation, store: store)
       else {
         return false
@@ -1678,7 +1939,10 @@ public final class RepositoryStore: ObservableObject {
     store: WorkbenchStore
   ) -> RemoteRepositoryOperationContext? {
     guard remoteRepositoryCheckContext == nil,
-      !store.isRemoteRepositoryPublishing
+      !store.isRemoteRepositoryPublishing,
+      !isRepositorySafeSyncOperationRunning,
+      !isLocalRepositoryBranchOperationRunning,
+      !store.isLocalRepositoryMutationRunning
     else { return nil }
     let operation = RemoteRepositoryOperationContext(profile: profile)
     remoteRepositoryCheckContext = operation

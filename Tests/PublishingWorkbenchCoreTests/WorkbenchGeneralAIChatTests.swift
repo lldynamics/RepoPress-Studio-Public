@@ -600,6 +600,10 @@ final class WorkbenchGeneralAIChatTests: XCTestCase {
       aiDataSharingConsentStore: consentStore
     )
     configureActiveAIConnection(in: store, config: config)
+    store.setDrafts([])
+    store.setSelectedDraftID(nil)
+    XCTAssertNil(store.selectedDraftID)
+    XCTAssertNil(store.ai.selectedChatDraft)
     let initialDraftCount = store.drafts.count
 
     let reply = await store.aiStore.sendGeneralAIChatMessage(

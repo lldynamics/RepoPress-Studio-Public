@@ -152,4 +152,16 @@ final class MarkdownToolbarCustomizationModelTests: XCTestCase {
       .compact
     )
   }
+
+  func testArticleToolbarKeepsWritingAIUtilitiesAndDefersWorkspaceActions() {
+    let visible = MarkdownArticleToolbarScope.articleItemIDs(
+      from: [.saveStatus, .aiActions, .autoInlineAI, .aiChat, .localPreview, .preparePublish]
+    )
+
+    XCTAssertEqual(visible, [.saveStatus, .aiActions, .autoInlineAI])
+    XCTAssertTrue(MarkdownArticleToolbarScope.isWorkspaceOwned(.aiChat))
+    XCTAssertTrue(MarkdownArticleToolbarScope.isWorkspaceOwned(.localPreview))
+    XCTAssertTrue(MarkdownArticleToolbarScope.isWorkspaceOwned(.preparePublish))
+    XCTAssertFalse(MarkdownArticleToolbarScope.isWorkspaceOwned(.aiActions))
+  }
 }

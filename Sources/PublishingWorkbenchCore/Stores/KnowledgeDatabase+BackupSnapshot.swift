@@ -23,7 +23,7 @@ extension KnowledgeDatabase {
   }
 
   func createBackupSnapshot(at destinationURL: URL) throws -> KnowledgePersistenceInspection {
-    try withLock {
+    try withCancellableLock {
       guard let handle else {
         throw KnowledgeLibraryBackupError.databaseIntegrity("资料库数据库尚未打开")
       }
@@ -52,14 +52,34 @@ extension KnowledgeDatabase {
         )
       }
 
+      var didFinishBackup = false
+      defer {
+        if !didFinishBackup {
+          _ = sqlite3_backup_finish(backup)
+        }
+      }
+
       var stepResult: Int32 = SQLITE_OK
-      repeat {
-        stepResult = sqlite3_backup_step(backup, -1)
+      var stepCount = 0
+      while true {
+        try Task.checkCancellation()
+        stepResult = sqlite3_backup_step(backup, 128)
+        stepCount += 1
+        backupStepHook(stepCount)
+        try Task.checkCancellation()
+
+        if stepResult == SQLITE_DONE {
+          break
+        }
         if stepResult == SQLITE_BUSY || stepResult == SQLITE_LOCKED {
           sqlite3_sleep(10)
+          continue
         }
-      } while stepResult == SQLITE_BUSY || stepResult == SQLITE_LOCKED
+
+        break
+      }
       let finishResult = sqlite3_backup_finish(backup)
+      didFinishBackup = true
       guard stepResult == SQLITE_DONE, finishResult == SQLITE_OK else {
         throw KnowledgeLibraryBackupError.databaseIntegrity(
           String(cString: sqlite3_errmsg(destinationHandle))

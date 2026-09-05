@@ -186,6 +186,19 @@ extension RepositoryWorkspaceView {
   @ViewBuilder
   var repositorySyncPlan: some View {
     if let plan = store.repositorySyncCommandPlan {
+      let safeSyncAction = RepositorySafeSyncActionPresentation.make(
+        hasRepository: hasSelectedRepository,
+        branchStatus: store.repositoryReport?.branchStatus,
+        isScanning: store.repositoryScanState.isScanning,
+        hasPendingRecoveryOrLifecycle: store.repositoryOperationLifecycle?.isOperationInProgress
+          == true
+          || store.repositoryRebaseRecoveryContext != nil
+          || store.repositoryRebaseRecoveryDiagnostic != nil,
+        isRepositoryOperationRunning: store.isLocalRepositoryBranchOperationRunning,
+        isLocalMutationRunning: store.isLocalRepositoryMutationRunning,
+        isRemoteOperationRunning: store.isRemoteRepositoryChecking
+          || store.isRemoteRepositoryPublishing
+      )
       VStack(alignment: .leading, spacing: 12) {
         HStack(alignment: .firstTextBaseline) {
           VStack(alignment: .leading, spacing: 3) {
@@ -196,6 +209,17 @@ extension RepositoryWorkspaceView {
               .font(.callout.weight(.medium))
           }
           Spacer()
+          Button {
+            prepareRepositorySyncReview(safeSyncAction.reviewKind)
+          } label: {
+            Label(safeSyncAction.title, systemImage: "arrow.trianglehead.2.clockwise.rotate.90")
+          }
+          .workbenchProminentActionStyle()
+          .disabled(!safeSyncAction.isEnabled)
+          .help(safeSyncAction.help)
+          .accessibilityIdentifier("repository-action-prepare-safe-sync")
+          .accessibilityHint(safeSyncAction.help)
+
           Button {
             copy(plan.commandText, message: "已复制同步建议命令。")
           } label: {
@@ -225,6 +249,34 @@ extension RepositoryWorkspaceView {
       .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
       .accessibilityElement(children: .contain)
       .accessibilityIdentifier("repository-section-sync-plan")
+    }
+  }
+
+  private func prepareRepositorySyncReview(_ kind: RepositorySyncReviewKind?) {
+    guard let kind else { return }
+    switch kind {
+    case .fastForward:
+      prepareRepositorySafeSyncReview()
+    case .rebase:
+      prepareRepositoryRebaseSyncReview()
+    }
+  }
+
+  private func prepareRepositorySafeSyncReview() {
+    Task { @MainActor in
+      guard let preparation = await store.prepareRepositorySafeSync() else { return }
+      if case .confirmation(let confirmation) = preparation {
+        pendingRepositorySafeSyncConfirmation = confirmation
+      }
+    }
+  }
+
+  private func prepareRepositoryRebaseSyncReview() {
+    Task { @MainActor in
+      guard let preparation = await store.prepareRepositoryRebaseSync() else { return }
+      if case .confirmation(let confirmation) = preparation {
+        pendingRepositoryRebaseSyncConfirmation = confirmation
+      }
     }
   }
 

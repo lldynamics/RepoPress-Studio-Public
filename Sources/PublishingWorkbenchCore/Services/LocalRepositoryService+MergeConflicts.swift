@@ -5,9 +5,11 @@ extension LocalRepositoryService {
   /// Reads the current unmerged Git index and materializes a bounded,
   /// text-only three-way merge session. This is intentionally read-only.
   public func mergeConflictSession(profile: SiteProfile) -> RepositoryMergeConflictSession {
-    guard let session = profile.withLocalRepositoryRootAccess({ rootURL in
-      mergeConflictSession(rootURL: rootURL)
-    }) else {
+    guard
+      let session = profile.withLocalRepositoryRootAccess({ rootURL in
+        mergeConflictSession(rootURL: rootURL)
+      })
+    else {
       return RepositoryMergeConflictSession(
         rootPath: "",
         diagnostic: RepositoryMergeConflictError.repositoryUnavailable.localizedDescription
@@ -53,6 +55,7 @@ extension LocalRepositoryService {
       let ours = contentForStage(entriesByStage[.ours], rootURL: rootURL)
       let theirs = contentForStage(entriesByStage[.theirs], rootURL: rootURL)
       let final = contentForWorkingTree(path: path, rootURL: rootURL)
+      let workingTreeContentSHA = workingTreeContentSHA(path: path, rootURL: rootURL)
       conflicts.append(
         RepositoryMergeConflict(
           repositoryPath: path,
@@ -60,13 +63,16 @@ extension LocalRepositoryService {
           ours: ours,
           theirs: theirs,
           final: final,
-          stageEntries: pathEntries.sorted { $0.stage.rawValue < $1.stage.rawValue }
+          stageEntries: pathEntries.sorted { $0.stage.rawValue < $1.stage.rawValue },
+          workingTreeContentSHA: workingTreeContentSHA
         )
       )
     }
 
     var diagnostic: String?
-    if result.wasOutputTruncated || groupedEntries.count > RepositoryMergeConflictPolicy.maximumConflictCount {
+    if result.wasOutputTruncated
+      || groupedEntries.count > RepositoryMergeConflictPolicy.maximumConflictCount
+    {
       diagnostic = "冲突文件数量超过可视化上限，仅显示前 \(RepositoryMergeConflictPolicy.maximumConflictCount) 个。"
     }
 
@@ -77,34 +83,64 @@ extension LocalRepositoryService {
     )
   }
 
-  /// Writes only an explicitly supplied final text and then stages that exact
-  /// path. The path is validated before I/O and the index is rechecked to
-  /// avoid applying a stale visual session to a changed repository.
+  /// Resolves a conflict only if the request's scan snapshot still exactly
+  /// matches the unmerged index and working tree immediately before mutation.
   public func resolveMergeConflict(
     profile: SiteProfile,
-    repositoryPath: String,
-    finalContent: String
+    request: RepositoryMergeConflictResolutionRequest
   ) throws {
     guard profile.resolvedLocalRepositoryRootURL != nil else {
       throw RepositoryMergeConflictError.repositoryUnavailable
     }
     _ = try profile.withLocalRepositoryRootAccess { rootURL in
-      try resolveMergeConflict(
-        rootURL: rootURL,
-        repositoryPath: repositoryPath,
-        finalContent: finalContent
-      )
+      try resolveMergeConflict(rootURL: rootURL, request: request)
     }
   }
 
   func resolveMergeConflict(
     rootURL: URL,
-    repositoryPath: String,
+    request: RepositoryMergeConflictResolutionRequest
+  ) throws {
+    guard
+      let expectation = RepositoryMergeConflictExpectation(
+        repositoryPath: request.expectation.repositoryPath,
+        stageEntries: request.expectation.stageEntries,
+        finalContent: request.expectation.finalContent,
+        workingTreeContentSHA: request.expectation.workingTreeContentSHA
+      )
+    else {
+      throw RepositoryMergeConflictError.repositoryChanged
+    }
+
+    let currentSession = mergeConflictSession(rootURL: rootURL)
+    guard
+      let currentConflict = currentSession.conflicts.first(where: {
+        $0.repositoryPath == expectation.repositoryPath
+      })
+    else {
+      throw RepositoryMergeConflictError.conflictNotFound
+    }
+    guard currentConflict.resolutionExpectation == expectation else {
+      throw RepositoryMergeConflictError.repositoryChanged
+    }
+
+    switch request.resolution {
+    case .finalText(let finalContent):
+      try resolveTextMergeConflict(
+        rootURL: rootURL,
+        conflict: currentConflict,
+        finalContent: finalContent
+      )
+    case .delete:
+      try resolveMergeConflictByDeleting(rootURL: rootURL, conflict: currentConflict)
+    }
+  }
+
+  private func resolveTextMergeConflict(
+    rootURL: URL,
+    conflict: RepositoryMergeConflict,
     finalContent: String
   ) throws {
-    guard let normalizedPath = RepositoryMergeConflictPolicy.normalizedRepositoryPath(repositoryPath) else {
-      throw RepositoryMergeConflictError.unsafeRepositoryPath
-    }
     let finalData = Data(finalContent.utf8)
     guard finalData.count <= RepositoryMergeConflictPolicy.maximumFinalByteCount else {
       throw RepositoryMergeConflictError.finalContentTooLarge
@@ -112,17 +148,15 @@ extension LocalRepositoryService {
     guard !Self.looksBinary(finalContent) else {
       throw RepositoryMergeConflictError.unsupportedBinaryContent
     }
-
-    let currentSession = mergeConflictSession(rootURL: rootURL)
-    guard let currentConflict = currentSession.conflicts.first(where: {
-      $0.repositoryPath == normalizedPath
-    }) else {
-      throw RepositoryMergeConflictError.conflictNotFound
+    guard !RepositoryMergeConflictPolicy.containsConflictMarkers(finalContent) else {
+      throw RepositoryMergeConflictError.unresolvedConflictMarkers
     }
-    guard currentConflict.canResolve else {
+    guard conflict.canResolve else {
       throw RepositoryMergeConflictError.unsupportedBinaryContent
     }
-    guard let fileURL = safeRepositoryFileURL(rootURL: rootURL, repositoryPath: normalizedPath) else {
+    guard
+      let fileURL = safeRepositoryFileURL(rootURL: rootURL, repositoryPath: conflict.repositoryPath)
+    else {
       throw RepositoryMergeConflictError.unsafeRepositoryPath
     }
     var isDirectory: ObjCBool = false
@@ -143,9 +177,26 @@ extension LocalRepositoryService {
       throw RepositoryMergeConflictError.writeFailed(error.localizedDescription)
     }
 
-    let stageResult = runGitCommand(["add", "--", normalizedPath], rootURL: rootURL)
+    let stageResult = runGitCommand(["add", "--", conflict.repositoryPath], rootURL: rootURL)
     guard stageResult.terminationStatus == 0 else {
       throw RepositoryMergeConflictError.stageFailed(
+        terminated: stageResult.terminationStatus,
+        output: stageResult.output
+      )
+    }
+  }
+
+  private func resolveMergeConflictByDeleting(
+    rootURL: URL,
+    conflict: RepositoryMergeConflict
+  ) throws {
+    guard conflict.canResolveByDeleting else {
+      throw RepositoryMergeConflictError.deleteNotAllowed
+    }
+
+    let stageResult = runGitCommand(["rm", "--", conflict.repositoryPath], rootURL: rootURL)
+    guard stageResult.terminationStatus == 0 else {
+      throw RepositoryMergeConflictError.deleteFailed(
         terminated: stageResult.terminationStatus,
         output: stageResult.output
       )
@@ -157,16 +208,18 @@ extension LocalRepositoryService {
     rootURL: URL
   ) -> RepositoryMergeConflictContent {
     guard let entry,
-          let specifier = RepositoryMergeConflictPolicy.stageSpecifier(
-            entry.stage,
-            repositoryPath: entry.repositoryPath
-          ) else {
+      let specifier = RepositoryMergeConflictPolicy.stageSpecifier(
+        entry.stage,
+        repositoryPath: entry.repositoryPath
+      )
+    else {
       return .missing()
     }
 
     let sizeResult = runGitCommand(["cat-file", "-s", specifier], rootURL: rootURL)
     guard sizeResult.terminationStatus == 0,
-          let byteCount = Int(sizeResult.standardOutput.trimmedForPublishing) else {
+      let byteCount = Int(sizeResult.standardOutput.trimmedForPublishing)
+    else {
       return .diagnostic(
         .unavailable,
         message: "无法读取 Git " + entry.stage.displayName + " 的对象大小。"
@@ -188,8 +241,11 @@ extension LocalRepositoryService {
       inputLines: [specifier, specifier]
     )
     guard contentResult.terminationStatus == 0,
-          let text = parseFirstBatchBlobText(contentResult.standardOutput, byteCount: byteCount) else {
-      if contentResult.terminationStatus == 0 && byteCount > 0 && contentResult.standardOutput.isEmpty {
+      let text = parseFirstBatchBlobText(contentResult.standardOutput, byteCount: byteCount)
+    else {
+      if contentResult.terminationStatus == 0 && byteCount > 0
+        && contentResult.standardOutput.isEmpty
+      {
         return .diagnostic(
           .undecodable,
           byteCount: byteCount,
@@ -242,12 +298,16 @@ extension LocalRepositoryService {
     guard let fileURL = safeRepositoryFileURL(rootURL: rootURL, repositoryPath: path) else {
       return .diagnostic(.unavailable, message: "工作区路径不在仓库根目录内。")
     }
+    if (try? fileManager.destinationOfSymbolicLink(atPath: fileURL.path)) != nil {
+      return .diagnostic(.unavailable, message: "工作区版本是符号链接，不能用于冲突处理。")
+    }
     guard fileManager.fileExists(atPath: fileURL.path) else {
       return .missing()
     }
 
     guard let attributes = try? fileManager.attributesOfItem(atPath: fileURL.path),
-          let number = attributes[.size] as? NSNumber else {
+      let number = attributes[.size] as? NSNumber
+    else {
       return .diagnostic(.unavailable, message: "无法读取工作区文件大小。")
     }
     let byteCount = number.intValue
@@ -261,7 +321,8 @@ extension LocalRepositoryService {
       )
     }
     guard let data = try? Data(contentsOf: fileURL),
-          let text = String(data: data, encoding: .utf8) else {
+      let text = String(data: data, encoding: .utf8)
+    else {
       return .diagnostic(
         .undecodable,
         byteCount: byteCount,
@@ -278,12 +339,36 @@ extension LocalRepositoryService {
     return .text(text, byteCount: byteCount)
   }
 
+  /// Uses Git's raw-content object hash rather than byte count or mtime so an
+  /// outside edit to a same-sized (including binary) working-tree file still
+  /// invalidates a pending delete/text resolution request.
+  private func workingTreeContentSHA(path: String, rootURL: URL) -> String? {
+    guard let fileURL = safeRepositoryFileURL(rootURL: rootURL, repositoryPath: path),
+      (try? fileManager.destinationOfSymbolicLink(atPath: fileURL.path)) == nil,
+      fileManager.fileExists(atPath: fileURL.path)
+    else {
+      return nil
+    }
+    let result = runGitCommand(["hash-object", "--no-filters", "--", path], rootURL: rootURL)
+    let objectSHA = result.standardOutput.trimmedForPublishing
+    guard result.terminationStatus == 0,
+      objectSHA.count == 40 || objectSHA.count == 64,
+      objectSHA.allSatisfy(\.isHexDigit)
+    else {
+      return nil
+    }
+    return objectSHA
+  }
+
   private func safeRepositoryFileURL(rootURL: URL, repositoryPath: String) -> URL? {
-    guard let normalizedPath = RepositoryMergeConflictPolicy.normalizedRepositoryPath(repositoryPath) else {
+    guard
+      let normalizedPath = RepositoryMergeConflictPolicy.normalizedRepositoryPath(repositoryPath)
+    else {
       return nil
     }
     let canonicalRoot = rootURL.resolvingSymlinksInPath().standardizedFileURL
-    let candidate = rootURL
+    let candidate =
+      rootURL
       .appendingPathComponent(normalizedPath, isDirectory: false)
       .standardizedFileURL
     guard isDescendant(candidate, of: rootURL.standardizedFileURL) else { return nil }
@@ -300,7 +385,8 @@ extension LocalRepositoryService {
 
   private func isDirectory(_ url: URL) -> Bool {
     var isDirectory: ObjCBool = false
-    return fileManager.fileExists(atPath: url.path, isDirectory: &isDirectory) && isDirectory.boolValue
+    return fileManager.fileExists(atPath: url.path, isDirectory: &isDirectory)
+      && isDirectory.boolValue
   }
 
   private static func looksBinary(_ text: String) -> Bool {

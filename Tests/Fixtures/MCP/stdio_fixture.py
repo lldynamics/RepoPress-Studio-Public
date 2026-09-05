@@ -80,6 +80,20 @@ for line in sys.stdin:
             continue
         elif text == "large":
             text = "x" * 4096
+        elif text == "large_valid_frame":
+            text = "x" * (96 * 1024)
+        elif text == "valid_frame_flood":
+            frame = (
+                json.dumps({
+                    "jsonrpc": "2.0",
+                    "method": "notifications/progress",
+                    "params": {"progressToken": "flood", "progress": 1},
+                })
+                + "\n"
+            )
+            while True:
+                sys.stdout.write(frame * 64)
+                sys.stdout.flush()
         elif text == "structured":
             reply(request_id, {
                 "content": [],

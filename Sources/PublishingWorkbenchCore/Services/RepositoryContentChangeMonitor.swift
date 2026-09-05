@@ -46,6 +46,20 @@ enum RepositoryContentChangeEventDecision: Equatable, Sendable {
         return normalizedPath == prefix || normalizedPath.hasPrefix(prefix + "/")
       }
     guard isWithinAllowedPrefix else { return .ignore }
+    let components = normalizedPath.split(separator: "/").map(String.init)
+    let noiseDirectories: Set<String> = [".build", "dist", "public"]
+    if let topLevelComponent = components.first,
+      noiseDirectories.contains(topLevelComponent)
+    {
+      return .ignore
+    }
+    if components.first == ".git" {
+      let metadataPath = components.dropFirst().joined(separator: "/")
+      if metadataPath == "objects" || metadataPath.hasPrefix("objects/")
+        || metadataPath == "logs" || metadataPath.hasPrefix("logs/")
+      { return .ignore }
+      return .fullScan
+    }
     if flags.contains(.itemIsDir) {
       let isTopologyChange = flags.intersection([
         .itemCreated,
@@ -54,28 +68,30 @@ enum RepositoryContentChangeEventDecision: Equatable, Sendable {
       ]).isEmpty == false
       return isTopologyChange ? .fullScan : .ignore
     }
-    guard !flags.contains(.itemRemoved),
-      flags.intersection([
+    guard flags.intersection([
         .itemCreated,
+        .itemRemoved,
         .itemRenamed,
         .itemModified,
         .itemInodeMetaMod,
-      ]).isEmpty == false,
-      ["md", "markdown", "mdx"].contains((normalizedPath as NSString).pathExtension.lowercased())
+      ]).isEmpty == false
     else {
       return .ignore
     }
-    return .paths([normalizedPath])
+    let extensionName = (normalizedPath as NSString).pathExtension.lowercased()
+    if ["md", "markdown", "mdx"].contains(extensionName) {
+      return flags.contains(.itemRemoved) || flags.contains(.itemRenamed)
+        ? .fullScan : .paths([normalizedPath])
+    }
+    return .fullScan
   }
 }
 
 /// Delivers path-level file-system changes for a repository content subtree.
 ///
-/// FSEvents is configured for file events instead of directory-only events so
-/// a known article's own autosave can be discarded by the import layer without
-/// traversing the whole content tree. Coalesced/dropped or directory-topology
-/// events intentionally return `nil`, which tells the caller to use the safe
-/// full-discovery fallback.
+/// FSEvents is configured for file events and meaningful events are coalesced
+/// into one scan/import decision. Scanning is authoritative; path values only
+/// optimize importing unknown Markdown candidates.
 public final class RepositoryContentChangeMonitor: @unchecked Sendable {
   public static let defaultDebounceInterval: TimeInterval = 0.35
   public typealias ChangeHandler = @Sendable ([String]?) -> Void
@@ -464,13 +480,14 @@ public final class RepositoryContentChangeMonitorCoordinator: ObservableObject {
   /// Performs the initial/explicit automatic discovery using the full index
   /// path. File events use `requestImport(repositoryPaths:)` below instead.
   public func requestImport() {
-    guard shouldRunAutomatically, needsFullDiscovery else { return }
+    guard isStarted, !store.isSafeMode, store.canUseProtectedWorkbench,
+      needsFullDiscovery else { return }
     needsFullDiscovery = false
     requestImport(repositoryPaths: nil)
   }
 
   private func requestImport(repositoryPaths: [String]?) {
-    guard shouldRunAutomatically else { return }
+    guard isStarted, !store.isSafeMode, store.canUseProtectedWorkbench else { return }
     guard importTask == nil else {
       if let repositoryPaths {
         importPendingPaths.formUnion(repositoryPaths)
@@ -486,13 +503,35 @@ public final class RepositoryContentChangeMonitorCoordinator: ObservableObject {
     let requestID = importRequestID
     importTask = Task { @MainActor [weak self] in
       guard let self else { return }
-      if let repositoryPaths {
-        _ = await self.store.importMissingDraftsFromLocalRepository(
-          repositoryPaths: repositoryPaths
-        )
-      } else {
-        _ = await self.store.importMissingDraftsFromLocalRepository()
+      await self.store.repositoryStore.scanRepositoryAsync(store: self.store)
+      guard self.importRequestID == requestID,
+        !Task.isCancelled,
+        self.store.activeProfileID == profileID
+      else {
+        if self.importRequestID == requestID {
+          self.importTask = nil
+        }
+        return
       }
+      if self.shouldRunAutomatically {
+        if let repositoryPaths {
+          _ = await self.store.importMissingDraftsFromLocalRepository(
+            repositoryPaths: repositoryPaths
+          )
+        } else {
+          _ = await self.store.importMissingDraftsFromLocalRepository()
+        }
+      }
+      guard self.importRequestID == requestID,
+        !Task.isCancelled,
+        self.store.activeProfileID == profileID
+      else {
+        if self.importRequestID == requestID {
+          self.importTask = nil
+        }
+        return
+      }
+      await self.store.refreshBatchPublishPlanAsync()
       guard self.importRequestID == requestID else { return }
       guard !Task.isCancelled else {
         self.importTask = nil
@@ -507,7 +546,7 @@ public final class RepositoryContentChangeMonitorCoordinator: ObservableObject {
       if self.importPendingFullScan {
         self.importPendingFullScan = false
         self.importPendingPaths.removeAll()
-        self.requestImport()
+        self.requestImport(repositoryPaths: nil)
       } else if !self.importPendingPaths.isEmpty {
         let pendingPaths = Array(self.importPendingPaths).sorted()
         self.importPendingPaths.removeAll()
@@ -563,8 +602,7 @@ public final class RepositoryContentChangeMonitorCoordinator: ObservableObject {
     let paths: [WatchPath]
     if isStarted,
       !store.isSafeMode,
-      store.canUseProtectedWorkbench,
-      store.activeProfile.resolvedAutomaticallyImportsNewRepositoryArticles
+      store.canUseProtectedWorkbench
     {
       paths = repositoryContentWatchPaths(for: store.activeProfile)
     } else {
@@ -590,14 +628,13 @@ public final class RepositoryContentChangeMonitorCoordinator: ObservableObject {
   private func repositoryContentWatchPaths(for profile: SiteProfile) -> [WatchPath] {
     guard let rootURL = profile.localRepositoryRootURL else { return [] }
     let rootPath = rootURL.standardizedFileURL.path
-    let relativePrefixes = [profile.contentRoot, SiteProfile.privateContentRoot]
-      .map { $0.normalizedRelativePath() }
-      .filter { !$0.isEmpty }
     return [
       WatchPath(
         repositoryRootPath: rootPath,
         watchedPath: rootPath,
-        allowedRelativePrefixes: relativePrefixes
+        // Repository-level watching is required for static/configuration and
+        // Git metadata changes. Import still filters candidates to Markdown.
+        allowedRelativePrefixes: []
       )
     ]
   }

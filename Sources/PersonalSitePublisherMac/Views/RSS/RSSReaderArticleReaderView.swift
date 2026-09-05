@@ -54,6 +54,8 @@ struct RSSArticleReader: View {
   let isShowingFullText: Bool
   let isFetchingFullText: Bool
   let fullTextError: String?
+  let isOutsideFilteredResults: Bool
+  let onReturnToResults: () -> Void
   let automaticFullTextExtraction: Binding<Bool>?
   let onToggleFullText: () -> Void
   let onRefreshFullText: () -> Void
@@ -73,6 +75,7 @@ struct RSSArticleReader: View {
               Button("返回文章列表", systemImage: "chevron.left", action: onBack)
                 .buttonStyle(.borderless)
             }
+            filteredResultExclusionBanner
             Text(articleHeader.title)
               .font(.workbenchPageTitle)
               .fixedSize(horizontal: false, vertical: true)
@@ -146,6 +149,7 @@ struct RSSArticleReader: View {
     return ZStack {
       if !hasRenderableBody {
         VStack(alignment: .leading) {
+          filteredResultExclusionBanner
           Text("这篇文章没有可显示的正文，建议打开原文阅读。")
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
@@ -246,6 +250,7 @@ struct RSSArticleReader: View {
     VStack(spacing: 4) {
       readingProgressBar
       readerToolbar(for: article, speechArticle: speechArticle)
+      filteredResultExclusionBanner
       fullTextStatusBanner(for: article)
       translationStatusView
     }
@@ -255,6 +260,27 @@ struct RSSArticleReader: View {
     .padding(.horizontal, 8)
     .padding(.top, 6)
     .accessibilityIdentifier("rss-reader-top-chrome")
+  }
+
+  @ViewBuilder
+  private var filteredResultExclusionBanner: some View {
+    if isOutsideFilteredResults {
+      HStack(spacing: 8) {
+        Label("当前文章不在筛选结果中", systemImage: "line.3.horizontal.decrease.circle")
+          .font(.caption)
+          .foregroundStyle(.secondary)
+        Spacer(minLength: 8)
+        Button("返回结果", action: onReturnToResults)
+          .buttonStyle(.bordered)
+          .controlSize(.small)
+      }
+      .padding(.horizontal, 8)
+      .padding(.vertical, 5)
+      .background(Color.accentColor.opacity(0.08), in: RoundedRectangle(cornerRadius: 7))
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .accessibilityElement(children: .contain)
+      .accessibilityLabel("当前文章不在筛选结果中")
+    }
   }
 
   private func isStaleOrLoading(_ article: RSSArticle) -> Bool {
@@ -1194,6 +1220,8 @@ struct RSSArticleReader: View {
           isShowingFullText: false,
           isFetchingFullText: false,
           fullTextError: nil,
+          isOutsideFilteredResults: false,
+          onReturnToResults: {},
           automaticFullTextExtraction: nil,
           onToggleFullText: {},
           onRefreshFullText: {}

@@ -508,7 +508,7 @@ public final class WorkbenchAIStore: ObservableObject {
     do {
       aiTokenAvailability = try aiCredentialStore.availability(
         forConnectionProfileID: connection.id,
-        legacyProfile: profile
+        legacyProfile: connection.canUseLegacyCredentials ? profile : nil
       )
     } catch {
       aiTokenAvailability = KeychainTokenAvailability(accessFailure: error)
@@ -526,7 +526,7 @@ public final class WorkbenchAIStore: ObservableObject {
       try aiCredentialStore.saveToken(
         token.trimmedForPublishing,
         forConnectionProfileID: connection.id,
-        legacyProfile: store.activeProfile
+        legacyProfile: connection.canUseLegacyCredentials ? store.activeProfile : nil
       )
       refreshAIKeyAvailability()
       aiActionMessage = CoreL10n.format(
@@ -546,7 +546,7 @@ public final class WorkbenchAIStore: ObservableObject {
       let connection = store.activeAIConnectionProfile
       try aiCredentialStore.deleteToken(
         forConnectionProfileID: connection.id,
-        legacyProfiles: [store.activeProfile]
+        legacyProfiles: connection.canUseLegacyCredentials ? [store.activeProfile] : []
       )
       refreshAIKeyAvailability()
       aiActionMessage = "AI API Key 已删除。"

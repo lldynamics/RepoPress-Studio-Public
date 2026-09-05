@@ -11,9 +11,11 @@ struct MetadataColumn: View {
   @Binding private var repositoryChangedFileSelection: RepositoryChangedFileSelection?
   @ObservedObject var repositorySourceSession: RepositoryHTMLSourceSession
   @Binding private var aiChatSurfaceState: AIChatSurfaceState
+  @Binding private var knowledgeInspectorPresentation: KnowledgeLibraryInspectorPresentationState
   private let aiChatOperationSession: AIChatSurfaceOperationSession
   let prioritizesChecks: Bool
   let onResetWidth: (() -> Void)?
+  @StateObject private var articlePresentation = ArticleInspectorPresentationState()
 
   init(
     store: WorkbenchStore,
@@ -24,6 +26,7 @@ struct MetadataColumn: View {
     repositoryChangedFileSelection: Binding<RepositoryChangedFileSelection?>,
     repositorySourceSession: RepositoryHTMLSourceSession,
     aiChatSurfaceState: Binding<AIChatSurfaceState>,
+    knowledgeInspectorPresentation: Binding<KnowledgeLibraryInspectorPresentationState>,
     aiChatOperationSession: AIChatSurfaceOperationSession,
     prioritizesChecks: Bool = false,
     onResetWidth: (() -> Void)? = nil
@@ -37,6 +40,7 @@ struct MetadataColumn: View {
     _repositoryChangedFileSelection = repositoryChangedFileSelection
     _repositorySourceSession = ObservedObject(wrappedValue: repositorySourceSession)
     _aiChatSurfaceState = aiChatSurfaceState
+    _knowledgeInspectorPresentation = knowledgeInspectorPresentation
     self.aiChatOperationSession = aiChatOperationSession
     self.prioritizesChecks = prioritizesChecks
     self.onResetWidth = onResetWidth
@@ -45,17 +49,8 @@ struct MetadataColumn: View {
   var body: some View {
     ZStack(alignment: .topLeading) {
       switch WorkspaceInspectorPresentation.route(
-        for: selectedSection,
-        isAIAssistantPresented: contentPresentation.isAssistantPresented
+        for: selectedSection
       ) {
-      case .aiAssistant:
-        AIChatContextInspectorView(
-          store: store,
-          selectedDraftID: selectedDraftID,
-          usesWindowDraftSelection: true,
-          surfaceState: $aiChatSurfaceState,
-          operationSession: aiChatOperationSession
-        )
       case .siteStarter:
         SiteStarterInspectorView(store: store)
       case .repository:
@@ -72,8 +67,24 @@ struct MetadataColumn: View {
             changedFileSelection: $repositoryChangedFileSelection
           )
         }
+      case .knowledgeLibrary:
+        knowledgeInspector
+      case .rssLibrary:
+        ScrollView {
+          RSSLibraryInspectorPanel(
+            rssStore: rssStore,
+            workbenchStore: store
+          )
+          .padding(14)
+        }
+        .background(.bar)
       case .articleMetadata, .articleChecks, .articleImages:
         articleInspector
+          .opacity(isAssistantOverlayPresented ? 0 : 1)
+          .allowsHitTesting(!isAssistantOverlayPresented)
+          .accessibilityHidden(isAssistantOverlayPresented)
+      case .aiAssistant:
+        EmptyView()
       case .unavailable:
         EmptyStateView(
           title: "当前页面没有 Inspector",
@@ -83,16 +94,72 @@ struct MetadataColumn: View {
         )
         .background(.bar)
       }
+
+      if isAssistantOverlayPresented {
+        AIChatContextInspectorView(
+          store: store,
+          selectedDraftID: selectedDraftID,
+          usesWindowDraftSelection: true,
+          surfaceState: $aiChatSurfaceState,
+          operationSession: aiChatOperationSession
+        )
+      }
     }
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("workspace-inspector")
     .accessibilityLabel("工作区 Inspector")
-    .overlay(alignment: .leading) {
-      InspectorSplitResizeHandle(
-        isAIAssistantPresented: contentPresentation.isAssistantPresented,
-        onResetWidth: onResetWidth
-      )
+    .overlay(alignment: .topTrailing) {
+      InspectorWidthResetControl(onResetWidth: onResetWidth)
+        .padding(8)
     }
+  }
+
+  @ViewBuilder
+  private var knowledgeInspector: some View {
+    if let document = store.knowledge.selectedDocument {
+      KnowledgeLibraryInspectorPanel(
+        knowledge: store.knowledge,
+        document: document,
+        activeSearchResult: activeKnowledgeSearchResult,
+        onEditMetadata: { knowledgeInspectorPresentation.editMetadata(for: document) },
+        onAddAnnotation: { knowledgeInspectorPresentation.addAnnotation(to: document) },
+        onAnnotateSearchHit: {
+          knowledgeInspectorPresentation.annotateSearchResult(
+            activeKnowledgeSearchResult,
+            in: document
+          )
+        },
+        onEditAnnotation: { knowledgeInspectorPresentation.editAnnotation($0) },
+        onDeleteAnnotation: { annotationID in
+          Task { await store.knowledge.deleteAnnotation(annotationID) }
+        },
+        onOpenSourceHistory: {
+          knowledgeInspectorPresentation.openSourceHistory(for: document.id)
+        },
+        onReportContentIssue: {
+          knowledgeInspectorPresentation.openSourceHistory(
+            for: document.id,
+            preparesLocalRepairOnAppear: true
+          )
+        }
+      )
+      .background(.bar)
+    } else {
+      EmptyStateView(
+        title: "没有选中的资料",
+        message: "从左侧资料列表选择一项后，这里会显示批注、相关内容和版本操作。",
+        systemImage: "sidebar.right",
+        density: .compactPane
+      )
+      .background(.bar)
+    }
+  }
+
+  private var activeKnowledgeSearchResult: KnowledgeSearchResult? {
+    guard let result = store.knowledge.selectedSearchResult,
+      result.document.id == store.knowledge.selectedDocumentID
+    else { return nil }
+    return result
   }
 
   @ViewBuilder
@@ -107,6 +174,7 @@ struct MetadataColumn: View {
         draft: draft,
         store: store,
         rssStore: rssStore,
+        presentation: articlePresentation,
         prioritizesChecks: prioritizesChecks
       )
     } else {
@@ -125,61 +193,28 @@ struct MetadataColumn: View {
       .background(.bar)
     }
   }
+
+  /// AI is an overlay only for Writing. The underlying article Inspector stays
+  /// at a stable tree position, so its selected tab and ScrollView state can
+  /// survive a temporary AI presentation without exposing a second host.
+  private var isAssistantOverlayPresented: Bool {
+    selectedSection == .writing && contentPresentation.isAssistantPresented
+  }
 }
 
-private struct InspectorSplitResizeHandle: View {
-  let isAIAssistantPresented: Bool
+private struct InspectorWidthResetControl: View {
   let onResetWidth: (() -> Void)?
-  @State private var isHovered = false
 
   var body: some View {
-    ZStack(alignment: .center) {
-      // Hover highlight hairline along divider
-      Rectangle()
-        .fill(isHovered ? WorkbenchTheme.primary.opacity(0.45) : Color.clear)
-        .frame(width: 2)
-        .frame(maxHeight: .infinity)
-        .allowsHitTesting(false)
-
-      // Capsule indicator
-      HStack(spacing: 3) {
-        Image(systemName: "arrow.left.and.right")
-          .font(.system(size: 9, weight: .bold))
-          .foregroundStyle(isHovered ? WorkbenchTheme.primary : .secondary)
-      }
-      .padding(.horizontal, 5)
-      .padding(.vertical, 4)
-      .background(.regularMaterial, in: Capsule())
-      .overlay(
-        Capsule()
-          .stroke(
-            isHovered
-              ? WorkbenchTheme.primary.opacity(0.35)
-              : Color.primary.opacity(0.12),
-            lineWidth: 1
-          )
-      )
-      .shadow(color: .black.opacity(isHovered ? 0.12 : 0.04), radius: 3, x: 0, y: 1)
-      .opacity(isHovered ? 1.0 : (isAIAssistantPresented ? 0.65 : 0.28))
-    }
-    .frame(width: 16)
-    .frame(maxHeight: .infinity)
-    .contentShape(Rectangle())
-    .offset(x: -8)
-    .onHover { hovering in
-      isHovered = hovering
-      if hovering {
-        NSCursor.resizeLeftRight.push()
-      } else {
-        NSCursor.pop()
-      }
-    }
-    .onTapGesture(count: 2) {
+    Button {
       onResetWidth?()
+    } label: {
+      Label(String(localized: "恢复默认检查器宽度"), systemImage: "arrow.counterclockwise")
     }
-    .help("拖拽调整检查器宽度，双击恢复默认宽度（320pt）")
-    .accessibilityElement(children: .ignore)
-    .accessibilityLabel("检查器分栏拖拽手柄")
-    .accessibilityHint("双击恢复默认宽度")
+    .buttonStyle(.borderless)
+    .help(String(localized: "恢复默认检查器宽度（Option-Command-0）"))
+    .accessibilityHint(String(localized: "恢复默认宽度；也可按 Option-Command-0。"))
+    .keyboardShortcut("0", modifiers: [.option, .command])
+    .disabled(onResetWidth == nil)
   }
 }

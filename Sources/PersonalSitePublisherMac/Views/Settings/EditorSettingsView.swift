@@ -7,7 +7,6 @@ import SwiftUI
 /// persisted values; it does not introduce a second editor configuration
 /// source.
 struct EditorSettingsView: View {
-  @Environment(\.settingsSubsection) private var settingsSubsection
   @AppStorage(MarkdownEditorComfortPreferences.fontSizeKey)
   private var fontSize = MarkdownEditorComfortConfiguration.defaultFontSize
   @AppStorage(MarkdownEditorComfortPreferences.lineSpacingKey)
@@ -37,28 +36,20 @@ struct EditorSettingsView: View {
 
   var body: some View {
     Form {
-      switch displayedSubsection {
-      case .editorPreview:
-        previewSection
-      case .editorTypography:
-        typographySection
-      case .editorAssistance:
-        assistanceSection
-      case .editorAutomation:
-        automationSection
-      default:
-        EmptyView()
-      }
+      SettingsSubsectionAnchor(subsection: .editorPreview)
+      previewSection
+      SettingsSubsectionAnchor(subsection: .editorTypography)
+      typographySection
+      SettingsSubsectionAnchor(subsection: .editorAssistance)
+      assistanceSection
+      SettingsSubsectionAnchor(subsection: .editorAutomation)
+      automationSection
     }
     .formStyle(.grouped)
-    .scrollIndicators(.automatic)
+    .scrollIndicators(.hidden)
     .padding(WorkbenchSpacing.content)
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("editor-settings")
-  }
-
-  private var displayedSubsection: SettingsSubsection {
-    settingsSubsection.tab == .editor ? settingsSubsection : .editorPreview
   }
 
   private var previewSection: some View {

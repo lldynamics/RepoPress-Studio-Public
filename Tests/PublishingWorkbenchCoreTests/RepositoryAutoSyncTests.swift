@@ -466,6 +466,30 @@ final class RepositoryAutoSyncTests: XCTestCase {
     )
   }
 
+  func testAutomaticRemoteArticleImportRecordsAnAllFailedBatch() throws {
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL())
+    )
+    let path = "content/posts/missing-snapshot.md"
+
+    let summary = store.autoImportRemoteArticleDrafts(
+      remoteFiles: [
+        RepositoryChangedFile(status: "A", path: path, kind: .added)
+      ],
+      snapshots: [],
+      locallyChangedPaths: []
+    )
+
+    XCTAssertEqual(summary.importedCount, 0)
+    XCTAssertEqual(summary.failedPaths, [path])
+    let operationEvent = try XCTUnwrap(store.operationHistory.records.first)
+    XCTAssertEqual(store.operationHistory.records.count, 1)
+    XCTAssertEqual(operationEvent.kind, .remoteContentImport)
+    XCTAssertEqual(operationEvent.outcome, .failed)
+    XCTAssertEqual(operationEvent.actor, .background)
+    XCTAssertEqual(operationEvent.skippedItemCount, 1)
+  }
+
   func testAutomaticRemoteDeletionCompletesMatchingUnpublishRequest() throws {
     let store = WorkbenchStore(
       persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL())

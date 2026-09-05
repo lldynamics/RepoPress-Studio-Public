@@ -250,6 +250,15 @@ struct AIProviderSection: View {
         .accessibilityIdentifier("ai-base-url-restore-default")
       }
 
+      if let message = baseURLValidation.message {
+        Label(message, systemImage: "exclamationmark.triangle")
+          .font(.workbenchMetadata)
+          .foregroundStyle(WorkbenchTheme.warning)
+          .fixedSize(horizontal: false, vertical: true)
+          .accessibilityElement(children: .combine)
+          .accessibilityIdentifier("ai-base-url-validation")
+      }
+
       if hasUnappliedBaseURL {
         HStack(spacing: WorkbenchSpacing.control) {
           Label("地址修改尚未应用", systemImage: "pencil.and.outline")
@@ -466,12 +475,39 @@ struct AIProviderSection: View {
   }
 
   private var canDiscoverModels: Bool {
-    !baseURL.wrappedValue.trimmedForPublishing.isEmpty && !hasUnappliedBaseURL
+    !baseURL.wrappedValue.trimmedForPublishing.isEmpty
+      && !hasUnappliedBaseURL
+      && appliedBaseURLValidation.isUsable
+  }
+
+  private var baseURLValidation: AIConnectionEndpointValidation {
+    AIConnectionEndpointValidation.validate(
+      config: AIProviderConfig(
+        preset: presetBinding.wrappedValue,
+        baseURL: baseURLDraft,
+        model: model.wrappedValue,
+        requiresAPIKey: requiresAPIKeyBinding.wrappedValue
+      )
+    )
+  }
+
+  private var appliedBaseURLValidation: AIConnectionEndpointValidation {
+    AIConnectionEndpointValidation.validate(
+      config: AIProviderConfig(
+        preset: presetBinding.wrappedValue,
+        baseURL: baseURL.wrappedValue,
+        model: model.wrappedValue,
+        requiresAPIKey: requiresAPIKeyBinding.wrappedValue
+      )
+    )
   }
 
   private func fetchModelsFromAPI() {
     guard canDiscoverModels else {
-      discoveryErrorMessage = String(localized: "请先应用 API 基础地址，再拉取模型。")
+      discoveryErrorMessage =
+        hasUnappliedBaseURL
+        ? String(localized: "请先应用 API 基础地址，再拉取模型。")
+        : (appliedBaseURLValidation.message ?? String(localized: "AI 接口地址无效。"))
       return
     }
     modelDiscoveryTask?.cancel()
@@ -640,6 +676,7 @@ struct AIModelSearchPopoverView: View {
           }
           .padding(6)
         }
+        .scrollIndicators(.hidden)
         .frame(minHeight: 200, maxHeight: 320)
       }
 

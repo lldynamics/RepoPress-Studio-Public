@@ -11,6 +11,7 @@ struct SettingsView: View {
   let workspaceDestination: SettingsDestination?
   let workspaceSubsection: SettingsSubsection?
   let workspaceNavigationRequestID: UUID?
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
   @AppStorage("autoRunPreflight") private var autoRunPreflight = true
   @AppStorage("scanRepositoryOnLaunch") private var scanRepositoryOnLaunch = false
   @AppStorage(WorkbenchInterfaceDensity.storageKey)
@@ -28,8 +29,10 @@ struct SettingsView: View {
   @State private var healthNavigationRequestID = UUID()
   @State private var pendingSiteKind: SiteKind?
   @State private var searchText = ""
-  @State private var detailScrollArrivalRequest: SettingsDetailScrollArrivalRequest?
-  @State private var detailScrollHandoffGate = SettingsDetailScrollHandoffGate()
+  @State private var subsectionAnchorFrames: [SettingsSubsection: CGRect] = [:]
+  @State private var detailScrollObservation = 0
+  @State private var detailScrollIsAtBottom = false
+  @State private var detailScrollRequest: SettingsSubsectionScrollRequest?
   @ScaledMetric(relativeTo: .body)
   private var scaledSidebarWidth = WorkbenchSettingsMetrics.sidebarWidth
 
@@ -88,6 +91,7 @@ struct SettingsView: View {
       }
       lastViewedSettingsTabID = selectedSettingsTab.id
       store.setAutomaticallyRefreshPreflightOnEdit(autoRunPreflight)
+      requestDetailScroll(to: selectedSubsection)
     }
     .onChange(of: requestedSettingsTabID) { _, requestedTabID in
       guard closeWorkspace == nil else { return }
@@ -258,15 +262,16 @@ struct SettingsView: View {
   }
 
   private func selectSettingsSearchItem(_ item: SettingsSearchItem) {
+    let subsection = SettingsSubsection.section(forSearchItemID: item.id)
     if let destination = item.destination {
-      selectSettingsDestination(destination, healthDestination: nil)
+      selectSettingsDestination(
+        destination,
+        healthDestination: nil,
+        targetRoute: subsection.map(SettingsRoute.subsection)
+      )
     } else {
-      selectTopLevelSettingsTab(item.tab)
-    }
-    if let subsection = SettingsSubsection.section(forSearchItemID: item.id),
-      subsection.tab == item.tab
-    {
-      selectedRoute = .subsection(subsection)
+      let route = subsection.map(SettingsRoute.subsection) ?? .tab(item.tab)
+      selectSettingsDestination(.tab(item.tab), healthDestination: nil, targetRoute: route)
     }
     searchText = ""
   }
@@ -361,24 +366,48 @@ struct SettingsView: View {
   /// Form-backed pages use their Form, while data management owns a ScrollView.
   @ViewBuilder
   private var settingsPageContent: some View {
-    switch selectedSettingsTab.scrollOwnership {
-    case .nativeForm, .nativeScrollView:
+    ScrollViewReader { proxy in
       selectedSettingsTab.makeContent(context: settingsContext)
-        .environment(\.settingsSubsection, selectedSubsection)
+        // Child pages render every subsection for their selected tab. Keep the
+        // legacy environment value stable within that tab so a manual sidebar
+        // sync cannot rebuild page content.
+        .environment(
+          \.settingsSubsection,
+          SettingsSubsection.defaultSection(for: selectedSettingsTab)
+        )
         .frame(maxWidth: selectedSettingsTab.contentMaxWidth, maxHeight: .infinity)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .coordinateSpace(name: SettingsSubsectionAnchor.coordinateSpaceName)
+        .scrollIndicators(.hidden)
+        .onPreferenceChange(SettingsSubsectionAnchorFramePreferenceKey.self) { frames in
+          subsectionAnchorFrames = frames
+          synchronizeVisibleSubsection()
+        }
+        .onChange(of: detailScrollObservation) { _, _ in
+          synchronizeVisibleSubsection()
+        }
+        .onChange(of: detailScrollRequest) { _, request in
+          guard let request else { return }
+          scroll(proxy, to: request)
+        }
+        .onAppear {
+          if let detailScrollRequest {
+            scroll(proxy, to: detailScrollRequest)
+          }
+        }
         .overlay(alignment: .top) {
-          SettingsDetailScrollBridge(
-            arrivalRequest: detailScrollArrivalRequest,
-            handoffGate: detailScrollHandoffGate,
-            onBoundaryCrossing: handleDetailScrollBoundaryCrossing
-          )
+          SettingsDetailScrollBridge { position in
+            detailScrollIsAtBottom = position.isAtBottom
+            detailScrollObservation &+= 1
+          }
           .frame(width: 1, height: 1)
           .allowsHitTesting(false)
           .accessibilityHidden(true)
         }
-        .id(selectedSubsection.id)
     }
+    // The identity belongs to the top-level tab only. Subsection selection is
+    // an in-page scroll request, never a replacement of the detail content.
+    .id(selectedSettingsTab.id)
   }
 
   private var settingsRouteSelection: Binding<SettingsRoute> {
@@ -386,8 +415,7 @@ struct SettingsView: View {
       get: { selectedRoute },
       set: { route in
         clearFocusedSettingsDestination()
-        detailScrollArrivalRequest = SettingsDetailScrollArrivalRequest(edge: .top)
-        selectedRoute = route
+        selectRoute(route)
       }
     )
   }
@@ -409,26 +437,8 @@ struct SettingsView: View {
       destination: workspaceDestination,
       subsection: workspaceSubsection
     ) {
-      detailScrollArrivalRequest = SettingsDetailScrollArrivalRequest(edge: .top)
-      selectedRoute = route
+      selectRoute(route)
     }
-  }
-
-  private func handleDetailScrollBoundaryCrossing(
-    _ direction: SettingsDetailScrollBoundaryDirection
-  ) {
-    let target: SettingsSubsection?
-    switch direction {
-    case .previous:
-      target = selectedSubsection.previous
-    case .next:
-      target = selectedSubsection.next
-    }
-    guard let target else { return }
-
-    clearFocusedSettingsDestination()
-    detailScrollArrivalRequest = SettingsDetailScrollArrivalRequest(edge: direction.arrival)
-    selectedRoute = .subsection(target)
   }
 
   private func clearFocusedSettingsDestination() {
@@ -520,15 +530,16 @@ struct SettingsView: View {
     default:
       compatibilityHealthDestination = nil
     }
+    let requestedRoute = SettingsRoute.requestedID(requestedTabID)
+    let targetRoute =
+      requestedRoute?.tab == resolvedDestination.tab
+      ? requestedRoute
+      : nil
     selectSettingsDestination(
       resolvedDestination,
-      healthDestination: compatibilityHealthDestination
+      healthDestination: compatibilityHealthDestination,
+      targetRoute: targetRoute
     )
-    if let requestedRoute = SettingsRoute.requestedID(requestedTabID),
-      requestedRoute.tab == resolvedDestination.tab
-    {
-      selectedRoute = requestedRoute
-    }
     requestedSettingsTabID = ""
   }
 
@@ -538,14 +549,58 @@ struct SettingsView: View {
 
   private func selectSettingsDestination(
     _ destination: SettingsDestination,
-    healthDestination: SettingsConfigurationHealthDestination?
+    healthDestination: SettingsConfigurationHealthDestination?,
+    targetRoute: SettingsRoute? = nil
   ) {
     self.healthDestination = healthDestination
     healthNavigationRequestID = UUID()
     navigationDestination = destination
     navigationRequestID = UUID()
-    detailScrollArrivalRequest = SettingsDetailScrollArrivalRequest(edge: .top)
-    selectedRoute = .destination(destination)
+    selectRoute(targetRoute ?? .destination(destination))
+  }
+
+  private func selectRoute(_ route: SettingsRoute) {
+    selectedRoute = route
+    requestDetailScroll(to: route.subsection)
+  }
+
+  private func requestDetailScroll(to subsection: SettingsSubsection) {
+    detailScrollRequest = SettingsSubsectionScrollRequest(subsection: subsection)
+  }
+
+  private func scroll(
+    _ proxy: ScrollViewProxy,
+    to request: SettingsSubsectionScrollRequest
+  ) {
+    DispatchQueue.main.async {
+      let performScroll = {
+        proxy.scrollTo(request.subsection.id, anchor: .top)
+      }
+      if reduceMotion {
+        performScroll()
+      } else {
+        withAnimation(.easeInOut(duration: 0.2)) {
+          performScroll()
+        }
+      }
+    }
+  }
+
+  private func synchronizeVisibleSubsection() {
+    guard
+      let visibleSubsection = SettingsSubsectionVisibilityPolicy.visibleSubsection(
+        in: selectedSettingsTab,
+        anchorFrames: subsectionAnchorFrames,
+        isAtBottom: detailScrollIsAtBottom
+      ),
+      visibleSubsection != selectedSubsection
+    else {
+      return
+    }
+
+    // Do not call `selectRoute` here: this state change comes from native
+    // scrolling and must never produce a compensating scrollTo feedback loop.
+    selectedRoute = .subsection(visibleSubsection)
   }
 
   static func settingsDestination(

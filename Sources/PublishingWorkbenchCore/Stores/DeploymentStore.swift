@@ -371,6 +371,20 @@ public final class DeploymentStore: ObservableObject {
     deploymentStatusSnapshots.removeValue(forKey: record.id)
     deploymentStatusHistory.removeValue(forKey: record.id)
     store.save()
+    setDeploymentStatusMessage(
+      CoreL10n.text("已确认新的 Review Commit，可继续检查部署状态。"),
+      for: record.siteProfileID ?? store.activeProfileID
+    )
+  }
+
+  func reportReviewHeadAcceptanceFailure(
+    for record: ReleaseRecord,
+    store: WorkbenchStore
+  ) {
+    setDeploymentStatusMessage(
+      CoreL10n.text("发布记录已变化，未确认 Review Commit；请重新检查 PR/MR 后再试。"),
+      for: record.siteProfileID ?? store.activeProfileID
+    )
   }
 
   public func releaseLedger(store: WorkbenchStore) -> ReleaseLedger {

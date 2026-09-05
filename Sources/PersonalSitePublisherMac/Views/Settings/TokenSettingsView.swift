@@ -31,7 +31,6 @@ struct TokenSettingsView<RepositoryPermissionContent: View>: View {
   @StateObject private var automationSettings: WorkbenchAutomationSettingsFeatureFacade
   @State private var credentialDrafts = TokenCredentialDrafts()
   @State private var isRepositoryPermissionPresented = false
-  @Environment(\.settingsSubsection) private var settingsSubsection
 
   init(
     store: WorkbenchStore,
@@ -94,17 +93,15 @@ struct TokenSettingsView<RepositoryPermissionContent: View>: View {
 
   var body: some View {
     Form {
-      switch selectedScope {
-      case .repository:
-        repositorySections
-      case .deployment:
-        deploymentSections
-      case .analytics:
-        analyticsSections
-      }
+      SettingsSubsectionAnchor(subsection: .tokenRepository)
+      repositorySections
+      SettingsSubsectionAnchor(subsection: .tokenDeployment)
+      deploymentSections
+      SettingsSubsectionAnchor(subsection: .tokenAnalytics)
+      analyticsSections
     }
     .formStyle(.grouped)
-    .scrollIndicators(.automatic)
+    .scrollIndicators(.hidden)
     .padding(WorkbenchSpacing.content)
     .frame(maxWidth: .infinity, maxHeight: .infinity)
     .sheet(isPresented: $isRepositoryPermissionPresented) {
@@ -127,25 +124,6 @@ struct TokenSettingsView<RepositoryPermissionContent: View>: View {
     }
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("token-settings")
-  }
-
-  private var activeSubsection: SettingsSubsection {
-    settingsSubsection.tab == .token
-      ? settingsSubsection
-      : .tokenRepository
-  }
-
-  private var selectedScope: TokenSettingsScope {
-    switch activeSubsection {
-    case .tokenRepository:
-      return .repository
-    case .tokenDeployment:
-      return .deployment
-    case .tokenAnalytics:
-      return .analytics
-    default:
-      return .repository
-    }
   }
 
   @ViewBuilder

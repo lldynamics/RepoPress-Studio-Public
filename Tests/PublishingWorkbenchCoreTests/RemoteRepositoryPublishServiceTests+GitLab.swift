@@ -806,6 +806,76 @@ final class RemoteRepositoryPublishServiceGitLabTests: RemoteRepositoryPublishSe
     XCTAssertEqual(result.commitSHA, "current-review-head")
   }
 
+  func testGitLabReviewRetryCreatesMergeRequestAfterPriorCommitWhenBranchAlreadyMatches()
+    async throws
+  {
+    let transport = SequencedRemoteRepositoryTransport(responses: [
+      // First attempt: the commit is accepted, then MR creation fails.
+      response(statusCode: 404, json: #"{"message":"not found"}"#),
+      response(statusCode: 404, json: #"{"message":"not found"}"#),
+      response(json: #"{"id":"written-commit"}"#),
+      response(json: #"[]"#),
+      response(statusCode: 500, json: #"{"message":"merge request failed"}"#),
+      // Retry: the review branch contains the exact file but still has no MR.
+      response(json: #"{"name":"publish/retry-after-mr-failure"}"#),
+      response(
+        json:
+          #"{"file_path":"content/posts/retry.md","last_commit_id":"written-commit","content":"c2FtZQ==","encoding":"base64"}"#
+      ),
+      response(json: #"[]"#),
+      response(json: #"{"web_url":"https://gitlab.com/group/site/-/merge_requests/44"}"#),
+      response(json: #"{"name":"publish/retry-after-mr-failure","commit":{"id":"written-commit"}}"#),
+    ])
+    var profile = SiteProfile.defaultProfile
+    profile.repositoryProvider = .gitlab
+    profile.repositoryBaseURL = "https://gitlab.com"
+    profile.repoOwner = "group"
+    profile.repoName = "site"
+    profile.branch = "main"
+    let package = PublishPackage(
+      draftID: UUID(), title: "Retry", markdownPath: "content/posts/retry.md",
+      files: [
+        PublishPackageFile(kind: .markdown, repositoryPath: "content/posts/retry.md", content: "same")
+      ],
+      commitMessage: "Retry", reviewBranchName: "publish/retry-after-mr-failure",
+      reviewTitle: "Retry", reviewChecklist: []
+    )
+    let service = RemoteRepositoryPublishService(transport: transport)
+
+    do {
+      _ = try await service.publish(
+        package: package, profile: profile, mode: .reviewRequest, token: "token"
+      )
+      XCTFail("Expected the first MR creation to be reported as a partial publish")
+    } catch let error as RemoteRepositoryPublishError {
+      guard case .partialPublish(_, _, _, _, let changedPaths, let commitSHA, _) = error else {
+        XCTFail("Expected partialPublish, got \(error)")
+        return
+      }
+      XCTAssertEqual(changedPaths, ["content/posts/retry.md"])
+      XCTAssertEqual(commitSHA, "written-commit")
+    }
+
+    let result = try await service.publish(
+      package: package, profile: profile, mode: .reviewRequest, token: "token"
+    )
+
+    XCTAssertEqual(result.changedPaths, [])
+    XCTAssertEqual(result.commitSHA, "written-commit")
+    XCTAssertEqual(result.reviewURL, "https://gitlab.com/group/site/-/merge_requests/44")
+    let requests = await transport.capturedRequests()
+    XCTAssertEqual(
+      requests.map(\.httpMethod),
+      ["GET", "GET", "POST", "GET", "POST", "GET", "GET", "GET", "POST", "GET"]
+    )
+    XCTAssertEqual(
+      percentEncodedPath(requests[7].url), "/api/v4/projects/group%2Fsite/merge_requests")
+    XCTAssertEqual(
+      percentEncodedPath(requests[8].url), "/api/v4/projects/group%2Fsite/merge_requests")
+    XCTAssertFalse(requests[5...].contains { $0.httpMethod == "POST" &&
+      (percentEncodedPath($0.url) ?? "").contains("/repository/commits") })
+  }
+
   func testGitLabReviewPublishReportsPartialFailureWhenMergeRequestCreationFails() async throws {
     let transport = SequencedRemoteRepositoryTransport(responses: [
       response(statusCode: 404, json: #"{"message":"not found"}"#),

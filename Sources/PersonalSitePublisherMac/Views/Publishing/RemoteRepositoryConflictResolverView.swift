@@ -5,33 +5,25 @@ import SwiftUI
 struct RemoteRepositoryConflictResolverView: View {
   let session: RemoteRepositoryConflictSession
   let resolve:
-    (String, RemoteRepositoryConflictResolutionChoice, String?) async
+    (RemoteRepositoryConflictResolutionPlan) async
       -> RemoteRepositoryConflictResolutionOutcome
 
   @Environment(\.dismiss) private var dismiss
   @State private var selectedPath: String
-  @State private var choices: [String: RemoteRepositoryConflictResolutionChoice] = [:]
-  @State private var finalDocuments: [String: String]
+  @State private var draftSelection = RemoteConflictDraftSelection()
   @State private var isResolving = false
   @State private var resolutionFeedback: String?
 
   init(
     session: RemoteRepositoryConflictSession,
     resolve:
-      @escaping (String, RemoteRepositoryConflictResolutionChoice, String?) async
+      @escaping (RemoteRepositoryConflictResolutionPlan) async
       -> RemoteRepositoryConflictResolutionOutcome
   ) {
     self.session = session
     self.resolve = resolve
     let firstPath = session.conflicts.first?.repositoryPath ?? ""
     _selectedPath = State(initialValue: firstPath)
-    _finalDocuments = State(
-      initialValue: Dictionary(
-        uniqueKeysWithValues: session.conflicts.compactMap { item in
-          item.local.text.map { (item.repositoryPath, $0) }
-        }
-      )
-    )
   }
 
   var body: some View {
@@ -60,6 +52,7 @@ struct RemoteRepositoryConflictResolverView: View {
     }
     .frame(minWidth: 900, idealWidth: 1180, minHeight: 620, idealHeight: 760)
     .accessibilityIdentifier("remote-repository-conflict-resolver")
+    .interactiveDismissDisabled(isResolving)
   }
 
   private var header: some View {
@@ -68,17 +61,33 @@ struct RemoteRepositoryConflictResolverView: View {
         .font(.headline)
       Picker("冲突文件", selection: $selectedPath) {
         ForEach(session.conflicts) { item in
-          Text(item.repositoryPath).tag(item.repositoryPath)
+          Text(
+            verbatim:
+              "\(draftSelection.isResolved(item) ? "✓" : "○") \(item.repositoryPath)"
+          )
+          .tag(item.repositoryPath)
         }
       }
       .pickerStyle(.menu)
       .frame(maxWidth: 420)
+      .disabled(isResolving)
       Spacer()
-      Text("\(session.conflicts.count) 个冲突")
-        .font(.caption)
-        .foregroundStyle(.secondary)
+      VStack(alignment: .trailing, spacing: 3) {
+        Text(
+          "\(draftSelection.resolvedCount(in: session))/\(session.totalConflictCount) 已协调"
+        )
+        .font(.caption.weight(.semibold))
+        ProgressView(
+          value: Double(draftSelection.resolvedCount(in: session)),
+          total: Double(max(session.totalConflictCount, 1))
+        )
+        .frame(width: 100)
+        .accessibilityLabel("冲突协调进度")
+      }
+      .foregroundStyle(.secondary)
       Button("关闭") { dismiss() }
         .keyboardShortcut(.cancelAction)
+        .disabled(isResolving)
     }
     .padding(16)
   }
@@ -107,22 +116,53 @@ struct RemoteRepositoryConflictResolverView: View {
       readOnlyColumn(title: "我的修改", subtitle: "冻结发布包", content: item.local)
       readOnlyColumn(title: "远端版本", subtitle: "当前目标分支", content: item.remote)
       VStack(alignment: .leading, spacing: 5) {
-        Text("最终合并版").font(.callout.weight(.semibold))
-        Text("选择“合并双方内容”后可编辑")
+        Text("合并协调区").font(.callout.weight(.semibold))
+        Text("安全逐块选择；复杂格式保留完整源码")
           .font(.caption)
           .foregroundStyle(.secondary)
-        TextEditor(text: finalDocumentBinding(for: item))
-          .font(.system(.body, design: .monospaced))
-          .scrollContentBackground(.hidden)
-          .padding(6)
-          .background(
-            WorkbenchBackgroundStyle.control,
-            in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
+        if draftSelection.choice(for: item.repositoryPath) == .merge,
+          let state = draftSelection.mergeState(for: item.repositoryPath)
+        {
+          RemoteConflictSemanticMergeWorkspace(
+            state: state,
+            isDisabled: isResolving,
+            selectMode: { mode in
+              draftSelection.selectMergeMode(mode, for: item.repositoryPath)
+            },
+            selectFrontMatterChoice: { conflictID, choice in
+              draftSelection.selectFrontMatterChoice(
+                choice,
+                conflictID: conflictID,
+                path: item.repositoryPath
+              )
+            },
+            selectBodyChoice: { conflictID, choice in
+              draftSelection.selectBodyChoice(
+                choice,
+                conflictID: conflictID,
+                path: item.repositoryPath
+              )
+            },
+            updateSource: { text in
+              draftSelection.updateMergeDraft(text, for: item.repositoryPath)
+            },
+            confirmSource: {
+              draftSelection.confirmSourceDraft(for: item.repositoryPath)
+            },
+            copySemanticResultToSource: {
+              draftSelection.copySemanticResultToSource(for: item.repositoryPath)
+            }
           )
-          .disabled(choices[item.repositoryPath] != .merge)
-          .frame(minHeight: 320)
-          .accessibilityLabel("最终合并版")
-          .accessibilityIdentifier("remote-conflict-final-editor")
+        } else {
+          Text("选择“合并双方内容”后，这里会显示逐字段和逐段落协调。")
+            .font(.callout)
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, minHeight: 320, alignment: .center)
+            .background(
+              WorkbenchBackgroundStyle.control,
+              in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
+            )
+        }
       }
       .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -161,15 +201,15 @@ struct RemoteRepositoryConflictResolverView: View {
     item: RemoteRepositoryConflictItem,
     enabled: Bool
   ) -> some View {
-    let isSelected = choices[item.repositoryPath] == choice
+    let isSelected = draftSelection.choice(for: item.repositoryPath) == choice
     return Button {
-      choices[item.repositoryPath] = choice
-      switch choice {
-      case .keepLocal, .merge:
-        if let text = item.local.text { finalDocuments[item.repositoryPath] = text }
-      case .useRemote:
-        if let text = item.remote.text { finalDocuments[item.repositoryPath] = text }
-      }
+      draftSelection.select(
+        path: item.repositoryPath,
+        choice: choice,
+        base: item.base.text,
+        local: item.local.text,
+        remote: item.remote.text
+      )
     } label: {
       HStack(spacing: 8) {
         Label(title, systemImage: systemImage)
@@ -203,7 +243,7 @@ struct RemoteRepositoryConflictResolverView: View {
       case .useRemote:
         return String(localized: "导入当前远端 Markdown，不写入远端")
       case .merge:
-        return String(localized: "编辑最终合并版并通过 PR/MR 交付")
+        return String(localized: "逐块协调 Front Matter 与正文，并通过 PR/MR 交付")
       }
     }
     switch choice {
@@ -235,20 +275,16 @@ struct RemoteRepositoryConflictResolverView: View {
 
   private func footer(_ item: RemoteRepositoryConflictItem) -> some View {
     HStack {
-      Text(resolutionFeedback ?? actionExplanation(for: item))
+      Text(resolutionFeedback ?? transactionExplanation(for: item))
         .font(.caption)
         .foregroundStyle(resolutionFeedback == nil ? Color.secondary : Color.orange)
       Spacer()
       if isResolving { ProgressView().controlSize(.small) }
-      Button(actionTitle(for: item)) {
-        guard let choice = choices[item.repositoryPath] else { return }
+      Button(transactionActionTitle) {
+        guard let plan = draftSelection.resolutionPlan(for: session) else { return }
         isResolving = true
         Task {
-          let outcome = await resolve(
-            item.repositoryPath,
-            choice,
-            choice == .merge ? finalDocuments[item.repositoryPath] : nil
-          )
+          let outcome = await resolve(plan)
           await MainActor.run {
             isResolving = false
             resolutionFeedback = outcome.message
@@ -259,37 +295,67 @@ struct RemoteRepositoryConflictResolverView: View {
         }
       }
       .workbenchProminentActionStyle()
-      .disabled(choices[item.repositoryPath] == nil || isResolving)
+      .disabled(draftSelection.resolutionPlan(for: session) == nil || isResolving)
       .keyboardShortcut(.return, modifiers: [.command])
-      .accessibilityIdentifier("remote-conflict-apply")
+      .accessibilityIdentifier("remote-conflict-apply-all")
     }
     .padding(16)
   }
 
-  private func actionTitle(for item: RemoteRepositoryConflictItem) -> String {
-    switch choices[item.repositoryPath] {
-    case .keepLocal:
-      return item.operation == .delete
-        ? String(localized: "创建 PR/MR 继续下线")
-        : String(localized: "创建 PR/MR 保留我的修改")
-    case .useRemote: return String(localized: "采用远端版本")
-    case .merge: return String(localized: "应用合并并创建 PR/MR")
-    case nil: return String(localized: "请选择处理方式")
+  private var transactionActionTitle: String {
+    guard draftSelection.resolutionPlan(for: session) != nil else {
+      return String(localized: "请先协调全部文件")
     }
+    let requiresReviewRequest = session.conflicts.contains { item in
+      switch draftSelection.choice(for: item.repositoryPath) {
+      case .keepLocal, .merge: return true
+      case .useRemote, nil: return false
+      }
+    }
+    return requiresReviewRequest
+      ? String(localized: "应用全部协调并创建 PR/MR")
+      : String(localized: "应用全部协调")
   }
 
-  private func actionExplanation(for item: RemoteRepositoryConflictItem) -> String {
-    switch choices[item.repositoryPath] {
+  private func transactionExplanation(for item: RemoteRepositoryConflictItem) -> String {
+    guard session.hasCompleteConflictSnapshot else {
+      return String(
+        format: String(localized: "冲突共 %d 个，超过单次安全协调上限；请缩小发布批次后重试。"),
+        session.totalConflictCount
+      )
+    }
+    let unresolvedPaths = draftSelection.unresolvedPaths(in: session)
+    if !unresolvedPaths.isEmpty {
+      return String(
+        format: String(localized: "还需协调 %d 个文件；当前选择只会保存在面板中。"),
+        unresolvedPaths.count
+      )
+    }
+    let invalidPaths = draftSelection.invalidPaths(in: session)
+    if !invalidPaths.isEmpty {
+      if let state = draftSelection.mergeState(for: item.repositoryPath),
+        state.mode == .semantic,
+        state.unresolvedSemanticCount > 0
+      {
+        return String(
+          format: String(localized: "当前文件还有 %d 个冲突块待选择。"),
+          state.unresolvedSemanticCount
+        )
+      }
+      return String(
+        format: String(localized: "%d 个最终合并版无效或仍含冲突标记。"),
+        invalidPaths.count
+      )
+    }
+    switch draftSelection.choice(for: item.repositoryPath) {
     case .keepLocal:
-      return item.operation == .delete
-        ? String(localized: "将在独立分支提交下线操作并创建 PR/MR，目标分支不会被直接修改。")
-        : String(localized: "将在独立分支提交并创建 PR/MR，目标分支不会被直接覆盖。")
+      return String(localized: "全部选择已就绪；确认后统一校验，并只创建一次 PR/MR。")
     case .useRemote:
-      return String(localized: "将先保存草稿历史，再导入当前远端正文；不会写远端。")
+      return String(localized: "全部选择已就绪；确认后统一应用，只有需要交付的修改才创建 PR/MR。")
     case .merge:
-      return String(localized: "将更新草稿并通过 PR/MR 交付合并结果。")
+      return String(localized: "全部选择已就绪；确认后统一应用合并稿，并只创建一次 PR/MR。")
     case nil:
-      return String(localized: "三个快捷按钮只准备选择；确认后才执行。")
+      return String(localized: "当前选择只会保存在面板中。")
     }
   }
 
@@ -317,10 +383,4 @@ struct RemoteRepositoryConflictResolverView: View {
     .frame(maxWidth: .infinity, alignment: .leading)
   }
 
-  private func finalDocumentBinding(for item: RemoteRepositoryConflictItem) -> Binding<String> {
-    Binding(
-      get: { finalDocuments[item.repositoryPath] ?? item.local.text ?? "" },
-      set: { finalDocuments[item.repositoryPath] = $0 }
-    )
-  }
 }

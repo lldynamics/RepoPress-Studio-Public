@@ -111,7 +111,8 @@ extension RemoteRepositoryPublishService {
         package: inspection.package,
         profile: profile
       ),
-      conflicts: items
+      conflicts: items,
+      totalConflictCount: inspection.result.conflicts.count
     )
   }
 
@@ -129,19 +130,14 @@ extension RemoteRepositoryPublishService {
     records.append(
       contentsOf: package.files
         .map { file in
-          let contentDigest =
-            file.content.map { value in
-              SHA256.hash(data: Data(value.utf8))
-                .map { String(format: "%02x", $0) }
-                .joined()
-            } ?? ""
           return [
             file.repositoryPath.normalizedRelativePath(),
             file.kind.rawValue,
             file.operation.rawValue,
             file.expectedRemoteSHA ?? "",
-            contentDigest,
-            file.sourceFilePath ?? "",
+            file.expectedContentSHA256 ?? "",
+            file.expectedGitBlobSHA ?? "",
+            conflictPayloadDigest(for: file),
             String(file.byteSize),
           ].joined(separator: "\u{1f}")
         }
@@ -151,6 +147,34 @@ extension RemoteRepositoryPublishService {
     return SHA256.hash(data: Data(payload.utf8))
       .map { String(format: "%02x", $0) }
       .joined()
+  }
+
+  private func conflictPayloadDigest(for file: PublishPackageFile) -> String {
+    guard file.operation == .upsert else {
+      return Data(SHA256.hash(data: Data()))
+        .map { String(format: "%02x", $0) }
+        .joined()
+    }
+    switch file.kind {
+    case .markdown:
+      guard let content = file.content else { return "missing-markdown-content" }
+      return SHA256.hash(data: Data(content.utf8))
+        .map { String(format: "%02x", $0) }
+        .joined()
+    case .image, .video:
+      guard let sourceFilePath = file.sourceFilePath?.trimmedForPublishing.nilIfEmpty else {
+        return "missing-media-source"
+      }
+      guard
+        let digest = try? BoundedFileReader.sha256(
+          at: URL(fileURLWithPath: sourceFilePath),
+          maximumByteCount: WorkbenchFileReadLimits.maximumRemoteMediaUploadByteCount
+        )
+      else {
+        return "unreadable-media-source"
+      }
+      return digest.map { String(format: "%02x", $0) }.joined()
+    }
   }
 
   private func localConflictContent(

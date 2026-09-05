@@ -57,9 +57,14 @@ final class KnowledgeDatabase: @unchecked Sendable, KnowledgeBackupSnapshotSourc
   let semanticFlatVectorIndexes = KnowledgeSemanticVectorFlatIndexCache()
   var semanticFlatVectorIndexChangeToken: Int64 = 0
   let statementCache = SQLitePreparedStatementCache()
+  let backupStepHook: @Sendable (Int) -> Void
   var handle: OpaquePointer?
 
-  init(fileURL: URL) throws {
+  init(
+    fileURL: URL,
+    backupStepHook: @escaping @Sendable (Int) -> Void = { _ in }
+  ) throws {
+    self.backupStepHook = backupStepHook
     try FileManager.default.createDirectory(
       at: fileURL.deletingLastPathComponent(),
       withIntermediateDirectories: true
@@ -106,6 +111,7 @@ final class KnowledgeDatabase: @unchecked Sendable, KnowledgeBackupSnapshotSourc
   }
 
   init(readOnlyBackupURL fileURL: URL) throws {
+    backupStepHook = { _ in }
     var database: OpaquePointer?
     let flags = SQLITE_OPEN_READONLY | SQLITE_OPEN_FULLMUTEX
     guard sqlite3_open_v2(fileURL.path, &database, flags, nil) == SQLITE_OK,

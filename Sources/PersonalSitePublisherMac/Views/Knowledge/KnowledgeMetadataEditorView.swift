@@ -4,7 +4,7 @@ import SwiftUI
 struct KnowledgeMetadataEditorView: View {
   @Environment(\.dismiss) private var dismiss
   let documentID: UUID
-  let onSave: (KnowledgeDocumentMetadata) -> Bool
+  let onSave: (KnowledgeDocumentMetadata) async -> Bool
   @State private var kind: KnowledgeDocumentKind
   @State private var title: String
   @State private var authors: String
@@ -14,7 +14,7 @@ struct KnowledgeMetadataEditorView: View {
 
   init(
     document: KnowledgeDocument,
-    onSave: @escaping (KnowledgeDocumentMetadata) -> Bool
+    onSave: @escaping (KnowledgeDocumentMetadata) async -> Bool
   ) {
     documentID = document.id
     self.onSave = onSave
@@ -92,7 +92,9 @@ struct KnowledgeMetadataEditorView: View {
       summary: summary,
       tags: separatedValues(tags)
     )
-    if onSave(metadata) { dismiss() }
+    Task {
+      if await onSave(metadata) { dismiss() }
+    }
   }
 
   private func separatedValues(_ value: String) -> [String] {

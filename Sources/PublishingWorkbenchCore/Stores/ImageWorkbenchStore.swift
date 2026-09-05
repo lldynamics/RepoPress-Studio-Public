@@ -11,6 +11,8 @@ public final class ImageWorkbenchStore: ObservableObject {
   private var imageBatchCancellationToken: ImageProcessingCancellationToken?
   private var imageBatchOperationID: UUID?
   private var imageBatchDraftBaselines: [UUID: DraftOperationBaseline] = [:]
+  private var imageBatchProfileID: UUID?
+  private var imageBatchDraftID: UUID?
   private var imageReportTasks: [UUID: Task<ImageWorkbenchReport, Error>] = [:]
   private var imageReportGenerations: [UUID: UInt64] = [:]
   private var imageReportBaselines: [UUID: ImageWorkbenchReportInputSignature] = [:]
@@ -118,6 +120,9 @@ public final class ImageWorkbenchStore: ObservableObject {
     let batchProcessor = batchProcessor
     let destinationRoot = persistence.imageOptimizationDirectoryURL
     imageBatchOperationID = operationID
+    let profileIDs = Set(currentDrafts.map(\.siteProfileID))
+    imageBatchProfileID = profileIDs.count == 1 ? profileIDs.first : nil
+    imageBatchDraftID = currentDrafts.count == 1 ? currentDrafts.first?.id : nil
     imageBatchDraftBaselines = Dictionary(
       uniqueKeysWithValues: currentDrafts.compactMap { draft in
         store.draftOperationBaseline(for: draft.id).map { (draft.id, $0) }
@@ -166,12 +171,22 @@ public final class ImageWorkbenchStore: ObservableObject {
         }
         self?.applyImageBatch(result, operation: operation)
       } catch is CancellationError {
+        guard self?.imageBatchOperationID == operationID else { return }
+        self?.recordImageBatchEvent(
+          operation: operation,
+          outcome: .cancelled
+        )
         self?.finishImageBatch(
           operationID: operationID,
           message: CoreL10n.format("已取消%@，临时文件已清理。", operation.progressTitle),
           failure: nil
         )
       } catch {
+        guard self?.imageBatchOperationID == operationID else { return }
+        self?.recordImageBatchEvent(
+          operation: operation,
+          outcome: .failed
+        )
         self?.finishImageBatch(
           operationID: operationID,
           message: CoreL10n.format("%@失败：%@", operation.progressTitle, error.localizedDescription),
@@ -193,6 +208,7 @@ public final class ImageWorkbenchStore: ObservableObject {
     }
     guard conflictingDraftIDs.isEmpty else {
       try? FileManager.default.removeItem(at: result.outputDirectory)
+      recordImageBatchEvent(operation: operation, outcome: .failed)
       finishImageBatch(
         operationID: operationID,
         message: CoreL10n.format(
@@ -207,6 +223,7 @@ public final class ImageWorkbenchStore: ObservableObject {
     if !result.updatedDraftsByID.isEmpty {
       guard store.applyImageBatchDraftUpdates(result.updatedDraftsByID) else {
         try? FileManager.default.removeItem(at: result.outputDirectory)
+        recordImageBatchEvent(operation: operation, outcome: .failed)
         finishImageBatch(
           operationID: operationID,
           message: CoreL10n.text("图片处理结果已过期，未应用任何更改。"),
@@ -242,7 +259,35 @@ public final class ImageWorkbenchStore: ObservableObject {
         message = CoreL10n.format("已裁剪封面图为 16:9，预计减少 %@。", saved)
       }
     }
+    recordImageBatchEvent(
+      operation: operation,
+      outcome: result.optimizedCount > 0 ? .succeeded : .recorded,
+      processedItemCount: result.optimizedCount,
+      skippedItemCount: result.skippedCount,
+      savedByteCount: result.savedBytes
+    )
     finishImageBatch(operationID: operationID, message: message, failure: nil)
+  }
+
+  private func recordImageBatchEvent(
+    operation: ImageBatchOperation,
+    outcome: WorkbenchOperationLogOutcome,
+    processedItemCount: Int? = nil,
+    skippedItemCount: Int? = nil,
+    savedByteCount: Int64? = nil
+  ) {
+    _ = store.recordOperationEvent(
+      WorkbenchOperationEventRecord(
+        id: imageBatchOperationID ?? UUID(),
+        kind: operation.operationEventKind,
+        outcome: outcome,
+        profileID: imageBatchProfileID,
+        draftID: imageBatchDraftID,
+        processedItemCount: processedItemCount,
+        skippedItemCount: skippedItemCount,
+        savedByteCount: savedByteCount
+      )
+    )
   }
 
   private func finishImageBatch(operationID: UUID?, message: String, failure: String? = nil) {
@@ -251,6 +296,8 @@ public final class ImageWorkbenchStore: ObservableObject {
     imageBatchCancellationToken = nil
     imageBatchOperationID = nil
     imageBatchDraftBaselines = [:]
+    imageBatchProfileID = nil
+    imageBatchDraftID = nil
     imageBatchProgress = nil
     isImageBatchProcessing = false
     lastBatchFailure = failure
@@ -885,5 +932,18 @@ public final class ImageWorkbenchStore: ObservableObject {
     store.selectSection(.images)
     imageActionMessage = CoreL10n.format("已把 %@ 加入目标文章图片列表。", location.repositoryPath)
     save()
+  }
+}
+
+extension ImageBatchOperation {
+  fileprivate var operationEventKind: WorkbenchOperationEventKind {
+    switch self {
+    case .removePrivacyMetadata: .imagePrivacySanitization
+    case .optimizeJPEG: .imageJPEGOptimization
+    case .convertWebP: .imageWebPConversion
+    case .optimizeSVG: .imageSVGOptimization
+    case .resizeLargeImages: .imageResize
+    case .cropCover16By9: .imageCoverCrop
+    }
   }
 }

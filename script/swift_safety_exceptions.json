@@ -22,6 +22,31 @@
       "rationale": "Process and pipe lifecycle state is protected by one NSLock, while a separate write lock serializes complete JSONL frames; termination never waits on a potentially blocked writer and closes the pipe to unblock it."
     },
     {
+      "file": "Sources/PublishingWorkbenchCore/Services/CodexRuntimeVersionProbe.swift",
+      "declaration": "CodexRuntimeVersionProbe",
+      "rationale": "POSIX process-group lifecycle callbacks, bounded output, stop state, timeout ownership, and the single continuation are protected by one NSLock; group cleanup and reader cleanup are each admitted exactly once before callbacks cross queues."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/Services/LocalSitePreviewHTTPMetadataProbe.swift",
+      "declaration": "LocalSitePreviewHTTPMetadataTransaction",
+      "rationale": "All mutable connection lifecycle, cancellation, timeout, receive-buffer, and continuation state is confined to one private serial DispatchQueue; immutable request metadata is established before the transaction crosses task and Network callbacks."
+    },
+    {
+      "file": "Tests/PublishingWorkbenchCoreTests/LocalSitePreviewPageReadinessServiceTests.swift",
+      "declaration": "LockedProbeCounter",
+      "rationale": "The test-only counter protects its sole mutable integer with one NSLock while async probe closures execute on concurrent tasks."
+    },
+    {
+      "file": "Tests/PublishingWorkbenchCoreTests/LocalSitePreviewPageReadinessServiceTests.swift",
+      "declaration": "LocalSitePreviewStreamingHTTPServer",
+      "rationale": "The test-only listener and immutable URL cross Network callback queues; its mutable connection collection is read and changed only while holding one NSLock."
+    },
+    {
+      "file": "Tests/PublishingWorkbenchCoreTests/LocalSitePreviewPageReadinessServiceTests.swift",
+      "declaration": "LocalSitePreviewListenerStartupState",
+      "rationale": "The test-only listener readiness port and failure description are read and written only while holding one NSLock as Network state callbacks cross queues."
+    },
+    {
       "file": "Sources/PublishingKnowledgeCore/KnowledgeCoreMLEmbeddingProvider.swift",
       "declaration": "KnowledgeCoreMLEmbeddingProvider",
       "rationale": "Core ML does not provide Sendable model types; immutable model configuration is set at initialization, prediction is serialized by inferenceLock, and availability state is protected by availabilityLock."
@@ -185,6 +210,11 @@
       "file": "Tests/PublishingWorkbenchCoreTests/WorkbenchPersistenceTests.swift",
       "declaration": "ControlledPersistenceCommit",
       "rationale": "Test commit coordination state is protected by its lock and continuation handoff."
+    },
+    {
+      "file": "Tests/PublishingWorkbenchCoreTests/WorkbenchProjectionTests.swift",
+      "declaration": "LedgerThreadRecorder",
+      "rationale": "The test hook records and reads its main-thread observations only while holding one NSLock as persistence callbacks cross task boundaries."
     },
     {
       "file": "Sources/PublishingWorkbenchCore/Models/DraftRecoveryModels.swift",
@@ -471,18 +501,6 @@
       "rationale": "Disconnect and deinit cancel the shared connection task; a successful late session is closed, while failure or cancellation already closes its provisional session and leaves no recoverable result."
     },
     {
-      "file": "Sources/PublishingMCPClient/PublishingMCPFrameRelay.swift",
-      "category": "ioBestEffort",
-      "contains": "try? input.close()",
-      "rationale": "Relay shutdown marks the lifecycle stopped and discards pending data before best-effort input closure; a close failure cannot recover a frame or replace the primary EOF, limit, transport, or timeout outcome."
-    },
-    {
-      "file": "Sources/PublishingMCPClient/PublishingMCPFrameRelay.swift",
-      "category": "ioBestEffort",
-      "contains": "try? output.close()",
-      "rationale": "Relay shutdown marks the lifecycle stopped and discards pending data before best-effort output closure; a close failure cannot recover a frame or replace the primary EOF, limit, transport, or timeout outcome."
-    },
-    {
       "file": "Sources/PublishingGitCore/GitCommandRunner.swift",
       "category": "validationFallback",
       "contains": "try? SafeFileReader.utf8String(",
@@ -559,6 +577,36 @@
       "category": "temporaryCleanup",
       "contains": "try? output.close()",
       "rationale": "The output handle is closed during temporary backup cleanup after the package operation has completed."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/Services/WorkspaceBackupService+FileSystem.swift",
+      "category": "ioBestEffort",
+      "contains": "try? input.close()",
+      "rationale": "The source handle closes in defer after the copy result is already determined; a close failure must not hide the primary copy or cancellation outcome."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/Services/CodexAppServerClient.swift",
+      "category": "ioBestEffort",
+      "contains": "try? inputPipe.fileHandleForReading.close()",
+      "rationale": "After posix_spawn duplicates the child stdin descriptor, closing the parent-only end is required for EOF and cannot change the launch outcome."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/Services/CodexAppServerClient.swift",
+      "category": "ioBestEffort",
+      "contains": "try? outputPipe.fileHandleForWriting.close()",
+      "rationale": "After posix_spawn duplicates the child stdout descriptor, closing the parent-only write end is required for EOF and cannot change the launch outcome."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/Services/CodexAppServerClient.swift",
+      "category": "ioBestEffort",
+      "contains": "try? errorPipe.fileHandleForWriting.close()",
+      "rationale": "After posix_spawn duplicates the child stderr descriptor, closing the parent-only write end prevents a retained pipe and cannot change the launch outcome."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/Services/WorkspaceBackupService+FileSystem.swift",
+      "category": "ioBestEffort",
+      "contains": "try? output.close()",
+      "rationale": "The destination handle closes in defer after an explicit synchronize; a close failure must not hide the primary copy or cancellation outcome, and failed staging is removed by the caller."
     },
     {
       "file": "Sources/PublishingKnowledgeCore/KnowledgePDFOCRService.swift",

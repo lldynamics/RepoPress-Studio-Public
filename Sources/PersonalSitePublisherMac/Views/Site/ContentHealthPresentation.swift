@@ -393,6 +393,10 @@ struct FrontMatterFixFieldItem: Identifiable, Hashable {
   let title: String
   let proposedValue: String
   var isSelected: Bool
+
+  var isSupported: Bool {
+    ContentHealthAIFixFieldPolicy.supports(fieldKey)
+  }
 }
 
 struct ContentHealthAIFixResultPreview: Identifiable {
@@ -405,10 +409,11 @@ struct ContentHealthAIFixResultPreview: Identifiable {
 struct ContentHealthAIFixResultPreviewSheet: View {
   @Environment(\.dismiss) private var dismiss
   let preview: ContentHealthAIFixResultPreview
-  var onApply: (([FrontMatterFixFieldItem]) -> Void)? = nil
+  var onApply: (([FrontMatterFixFieldItem]) -> ContentHealthAIFixApplyFeedback)? = nil
 
   @State private var fields: [FrontMatterFixFieldItem] = []
   @State private var previewTab: PreviewTab = .fields
+  @State private var applicationFeedback: ContentHealthAIFixApplyFeedback?
 
   private enum PreviewTab: String, CaseIterable, Identifiable {
     case fields = "逐项勾选"
@@ -419,7 +424,7 @@ struct ContentHealthAIFixResultPreviewSheet: View {
 
   init(
     preview: ContentHealthAIFixResultPreview,
-    onApply: (([FrontMatterFixFieldItem]) -> Void)? = nil
+    onApply: (([FrontMatterFixFieldItem]) -> ContentHealthAIFixApplyFeedback)? = nil
   ) {
     self.preview = preview
     self.onApply = onApply
@@ -490,8 +495,9 @@ struct ContentHealthAIFixResultPreviewSheet: View {
   private var fieldsContent: some View {
     VStack(alignment: .leading, spacing: 10) {
       HStack {
-        let selectedCount = fields.filter(\.isSelected).count
-        Text("选择要应用的 Front Matter 字段（已选 \(selectedCount)/\(fields.count) 项）：")
+        let selectedCount = fields.filter { $0.isSelected && $0.isSupported }.count
+        let selectableCount = fields.filter(\.isSupported).count
+        Text("选择要应用的 Front Matter 字段（已选 \(selectedCount)/\(selectableCount) 项）：")
           .font(.caption.weight(.semibold))
           .foregroundStyle(.secondary)
 
@@ -499,7 +505,7 @@ struct ContentHealthAIFixResultPreviewSheet: View {
 
         Button("全选") {
           for i in fields.indices {
-            fields[i].isSelected = true
+            fields[i].isSelected = fields[i].isSupported
           }
         }
         .buttonStyle(.borderless)
@@ -536,6 +542,8 @@ struct ContentHealthAIFixResultPreviewSheet: View {
                 Toggle("", isOn: $item.isSelected)
                   .toggleStyle(.checkbox)
                   .labelsHidden()
+                  .accessibilityLabel("应用 \(item.title) 字段")
+                  .disabled(!item.isSupported)
                   .padding(.top, 2)
 
                 VStack(alignment: .leading, spacing: 4) {
@@ -548,6 +556,11 @@ struct ContentHealthAIFixResultPreviewSheet: View {
                       .padding(.horizontal, 4)
                       .padding(.vertical, 1)
                       .background(WorkbenchBackgroundStyle.control, in: RoundedRectangle(cornerRadius: 3))
+                    if !item.isSupported {
+                      Text("当前不支持应用")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    }
                   }
 
                   Text(item.proposedValue)
@@ -582,6 +595,15 @@ struct ContentHealthAIFixResultPreviewSheet: View {
           .padding(.vertical, 6)
         }
       }
+
+      if let applicationFeedback {
+        Text(applicationFeedback.message)
+          .font(.caption)
+          .foregroundStyle(applicationFeedback.isSuccess ? WorkbenchTheme.success : WorkbenchTheme.risk)
+          .padding(.horizontal, 16)
+          .padding(.bottom, 8)
+          .accessibilityLabel(applicationFeedback.message)
+      }
     }
   }
 
@@ -603,22 +625,30 @@ struct ContentHealthAIFixResultPreviewSheet: View {
 
       Spacer()
 
-      let selectedFields = fields.filter(\.isSelected)
-      Button {
-        if !selectedFields.isEmpty {
-          onApply?(selectedFields)
-        } else {
-          NSPasteboard.general.clearContents()
-          NSPasteboard.general.setString(preview.result.content, forType: .string)
+      if applicationFeedback != nil {
+        Button("关闭") {
+          dismiss()
         }
-        dismiss()
-      } label: {
-        Label(
-          selectedFields.isEmpty ? "复制完整内容" : "应用所选 \(selectedFields.count) 个字段",
-          systemImage: "checkmark.circle"
-        )
+        .workbenchProminentActionStyle()
+      } else {
+        let selectedFields = fields.filter { $0.isSelected && $0.isSupported }
+        Button {
+          if !selectedFields.isEmpty {
+            applicationFeedback = onApply?(selectedFields)
+              ?? .failed(String(localized: "当前修复结果没有可用的应用目标，未更改文章。"))
+          } else {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(preview.result.content, forType: .string)
+            dismiss()
+          }
+        } label: {
+          Label(
+            selectedFields.isEmpty ? "复制完整内容" : "应用所选 \(selectedFields.count) 个字段",
+            systemImage: "checkmark.circle"
+          )
+        }
+        .workbenchProminentActionStyle()
       }
-      .workbenchProminentActionStyle()
     }
     .padding(14)
   }
@@ -657,7 +687,7 @@ struct ContentHealthAIFixResultPreviewSheet: View {
               fieldKey: key,
               title: localizedKeyTitle(key),
               proposedValue: currentValueLines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines),
-              isSelected: true
+              isSelected: ContentHealthAIFixFieldPolicy.supports(key)
             ))
             currentValueLines.removeAll()
           }
@@ -678,7 +708,7 @@ struct ContentHealthAIFixResultPreviewSheet: View {
           fieldKey: key,
           title: localizedKeyTitle(key),
           proposedValue: currentValueLines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines),
-          isSelected: true
+          isSelected: ContentHealthAIFixFieldPolicy.supports(key)
         ))
       }
     }

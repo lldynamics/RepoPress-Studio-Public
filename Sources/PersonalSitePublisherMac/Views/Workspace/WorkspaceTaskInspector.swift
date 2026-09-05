@@ -6,22 +6,23 @@ struct WorkspaceTaskInspector: View {
   @Binding var draft: ArticleDraft
   let store: WorkbenchStore
   let rssStore: RSSReaderStore
+  let presentation: ArticleInspectorPresentationState
   let prioritizesChecks: Bool
-  @State private var selectedTab: ArticleInspectorTab
 
   init(
     section: WorkspaceSection,
     draft: Binding<ArticleDraft>,
     store: WorkbenchStore,
     rssStore: RSSReaderStore,
+    presentation: ArticleInspectorPresentationState,
     prioritizesChecks: Bool = false
   ) {
     self.section = section
     _draft = draft
     self.store = store
     self.rssStore = rssStore
+    self.presentation = presentation
     self.prioritizesChecks = prioritizesChecks
-    _selectedTab = State(initialValue: ArticleInspectorTab.defaultTab(for: section))
   }
 
   var body: some View {
@@ -32,19 +33,13 @@ struct WorkspaceTaskInspector: View {
       EmptyView()
     case .writing, .contentHealth, .images:
       ArticleInspectorTabs(
-        selectedTab: $selectedTab,
+        selectedTab: selectedTab,
         draft: $draft,
         store: store,
         rssStore: rssStore,
         section: section,
         availableTabs: availableTabs
       )
-      .onAppear {
-        selectedTab = initialTab(for: section)
-      }
-      .onChange(of: section) { _, newSection in
-        selectedTab = initialTab(for: newSection)
-      }
     case .siteStarter:
       SiteStarterInspectorView(store: store)
     }
@@ -66,6 +61,14 @@ struct WorkspaceTaskInspector: View {
 
   private var availableTabs: [ArticleInspectorTab] {
     ArticleInspectorTab.availableTabs(for: section)
+  }
+
+  private var selectedTab: Binding<ArticleInspectorTab> {
+    presentation.binding(
+      for: draft.id,
+      section: section,
+      defaultTab: initialTab(for: section)
+    )
   }
 }
 

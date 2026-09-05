@@ -3,7 +3,8 @@ import SwiftUI
 
 struct MacMarkdownLocalPreviewPopover: View {
   @EnvironmentObject private var state: WorkbenchLocalSitePreviewFeatureFacade
-  let currentArticleURL: URL?
+  let draftID: UUID
+  @ObservedObject var coordinator: ExternalBrowserPreviewCoordinator
 
   @State private var isCheckingReachability = false
   @State private var pendingAuthorizationRequest: LocalSitePreviewAuthorizationRequest?
@@ -18,6 +19,9 @@ struct MacMarkdownLocalPreviewPopover: View {
     .task(id: state.activeProfileID) {
       pendingAuthorizationRequest = nil
       state.refreshStatus()
+    }
+    .onChange(of: state.activeProfileID) {
+      coordinator.cancelPendingOpen()
     }
     .localSitePreviewTrustConfirmation(
       request: $pendingAuthorizationRequest,
@@ -103,16 +107,12 @@ struct MacMarkdownLocalPreviewPopover: View {
 
         HStack(spacing: 8) {
           Button {
-            guard let url = currentArticleURL ?? previewURL else { return }
-            ExternalURLOpener.open(url)
+            coordinator.openCurrentArticle(for: draftID)
           } label: {
-            Label(
-              currentArticleURL == nil ? "浏览器打开" : "打开当前文章",
-              systemImage: "safari"
-            )
+            Label("打开当前文章", systemImage: "safari")
           }
           .buttonStyle(.bordered)
-          .disabled(!state.runtimeStatus.isRunning || previewURL == nil)
+          .disabled(coordinator.isBusy)
           .accessibilityIdentifier("markdown-local-preview-open-browser")
         }
 
@@ -191,6 +191,7 @@ struct MacMarkdownLocalPreviewPopover: View {
   private var startStopButtonBody: some View {
     Button {
       if state.runtimeStatus.isRunning {
+        coordinator.cancelPendingOpen()
         state.stop()
       } else {
         pendingAuthorizationRequest = LocalSitePreviewTrustConfirmationPolicy.request(

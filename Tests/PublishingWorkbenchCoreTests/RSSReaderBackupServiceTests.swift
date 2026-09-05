@@ -6,6 +6,40 @@ import XCTest
 
 @MainActor
 final class RSSReaderBackupServiceTests: XCTestCase {
+  func testCancelledBackupStepCleansTemporaryFileAndPreservesDestination() async throws {
+    let rootURL = temporaryRoot("rss-backup-cancel")
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let sourceURL = rootURL.appendingPathComponent("source.sqlite")
+    _ = try makeVersionSixDatabase(at: sourceURL)
+    let destinationURL = rootURL.appendingPathComponent("existing.sqlite")
+    let sentinel = Data("preserve destination".utf8)
+    try sentinel.write(to: destinationURL)
+
+    let gate = RSSBackupStepGate()
+    let service = RSSReaderBackupService(backupStepHook: { _ in
+      gate.signalStep()
+      gate.waitUntilCancellationIsForwarded()
+    })
+    let worker = Task.detached {
+      try service.createBackup(from: sourceURL, at: destinationURL)
+    }
+
+    XCTAssertTrue(gate.waitForStep(timeout: 2))
+    let cancellationStartedAt = Date()
+    worker.cancel()
+    gate.allowCancellationToProceed()
+    let result = await worker.result
+    guard case .failure(let error) = result else {
+      return XCTFail("cancelled RSS backup unexpectedly succeeded")
+    }
+    XCTAssertTrue(error is CancellationError)
+    XCTAssertLessThan(Date().timeIntervalSince(cancellationStartedAt), 1)
+    XCTAssertEqual(try Data(contentsOf: destinationURL), sentinel)
+    let temporaryEntries = try FileManager.default.contentsOfDirectory(atPath: rootURL.path)
+      .filter { $0.hasPrefix(".existing.sqlite.creating-") }
+    XCTAssertEqual(temporaryEntries, [])
+  }
+
   func testVersionFiveBackupPassesInspectionAndMigratesWhenOpened() throws {
     let rootURL = temporaryRoot("rss-backup-v5-compatibility")
     defer { try? FileManager.default.removeItem(at: rootURL) }
@@ -223,4 +257,16 @@ final class RSSReaderBackupServiceTests: XCTestCase {
     }
     return Int(sqlite3_column_int64(statement, 0))
   }
+}
+
+private final class RSSBackupStepGate: Sendable {
+  private let stepped = DispatchSemaphore(value: 0)
+  private let release = DispatchSemaphore(value: 0)
+
+  func signalStep() { stepped.signal() }
+  func waitForStep(timeout: TimeInterval) -> Bool {
+    stepped.wait(timeout: .now() + timeout) == .success
+  }
+  func waitUntilCancellationIsForwarded() { release.wait() }
+  func allowCancellationToProceed() { release.signal() }
 }

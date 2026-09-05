@@ -62,6 +62,22 @@ final class WorkspaceQuickSearchPresentationTests: XCTestCase {
     }
   }
 
+  func testContentHealthQueueCancellationEndsLoadingAndAllowsRetry() async {
+    await MainActor.run {
+      let projection = ContentHealthSidebarProjection()
+      let profileID = UUID()
+      projection.beginLoading(profileID: profileID)
+      projection.cancelLoading()
+      XCTAssertEqual(projection.queueState(for: profileID), .cancelled)
+      XCTAssertEqual(projection.queueState(for: UUID()), .loading)
+      projection.beginLoading(profileID: profileID)
+      XCTAssertEqual(projection.queueState(for: profileID), .loading)
+      projection.replace(profileID: profileID, aiFixQueueItems: [])
+      projection.cancelLoading()
+      XCTAssertEqual(projection.queueState(for: profileID), .ready([]))
+    }
+  }
+
   func testContentHealthSidebarProjectionDistinguishesLoadingEmptyAndFailure() async {
     await MainActor.run {
       let projection = ContentHealthSidebarProjection()

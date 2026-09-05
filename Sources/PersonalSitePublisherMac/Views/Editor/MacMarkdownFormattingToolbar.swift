@@ -58,35 +58,34 @@ struct MacMarkdownFormattingToolbar: View {
       .unorderedList,
       .link,
       .image,
+      .moreInsertions,
       .formatChineseTypography,
     ]
-    return configuredFormattingItemIDs.filter(basicItems.contains)
+    var items = configuredFormattingItemIDs.filter(basicItems.contains)
+    if !items.contains(.moreInsertions) {
+      items.append(.moreInsertions)
+    }
+    return items
   }
 
   var body: some View {
-    ScrollView(.horizontal, showsIndicators: false) {
-      Group {
-        if writingToolDensity == .basic {
-          formattingRow(itemIDs: basicFormattingItemIDs, showsTitle: false)
-        } else {
-          formattingRow(itemIDs: configuredFormattingItemIDs, showsTitle: false)
+    HStack(spacing: 4) {
+      ScrollView(.horizontal, showsIndicators: false) {
+        Group {
+          if writingToolDensity == .basic {
+            formattingRow(itemIDs: basicFormattingItemIDs, showsTitle: false)
+          } else {
+            formattingRow(itemIDs: configuredFormattingItemIDs, showsTitle: false)
+          }
         }
+        .fixedSize(horizontal: true, vertical: false)
+        .padding(.horizontal, 4)
       }
-      .fixedSize(horizontal: true, vertical: false)
-      .padding(.horizontal, 4)
+
+      if writingToolDensity == .professional {
+        professionalFormattingOverflowMenu
+      }
     }
-    .mask(
-      LinearGradient(
-        stops: [
-          .init(color: .clear, location: 0),
-          .init(color: .black, location: 0.012),
-          .init(color: .black, location: 0.988),
-          .init(color: .clear, location: 1.0)
-        ],
-        startPoint: .leading,
-        endPoint: .trailing
-      )
-    )
     .frame(maxWidth: .infinity, alignment: .leading)
     .frame(minHeight: 34)
     .buttonStyle(WorkbenchFocusRingButtonStyle())
@@ -135,6 +134,23 @@ struct MacMarkdownFormattingToolbar: View {
       Spacer(minLength: 8)
       fixedTrailingControls(showsTitle: showsTitle)
     }
+  }
+
+  private var professionalFormattingOverflowMenu: some View {
+    Menu {
+      ForEach(configuredFormattingItemIDs) { item in
+        formattingItem(item, showsTitle: true)
+      }
+    } label: {
+      Label("全部格式", systemImage: "ellipsis.circle")
+        .font(.workbenchButtonLabel)
+        .frame(minHeight: 30)
+    }
+    .menuIndicator(.hidden)
+    .buttonStyle(WorkbenchFocusRingButtonStyle())
+    .help("打开全部专业格式与插入操作")
+    .accessibilityLabel("全部格式")
+    .accessibilityIdentifier("markdown-professional-format-overflow")
   }
 
   @ViewBuilder

@@ -421,6 +421,8 @@ struct WorkspaceQuickSearchView: View {
         aiFixQueueLoadingState
       case .failed:
         aiFixQueueFailureState
+      case .cancelled:
+        aiFixQueueCancelledState
       case .ready:
         if snapshot.isEmpty {
           if normalizedQuery.isEmpty {
@@ -605,6 +607,27 @@ struct WorkspaceQuickSearchView: View {
     .accessibilityIdentifier("content-health-sidebar-ai-fix-failure")
   }
 
+  private var aiFixQueueCancelledState: some View {
+    VStack(spacing: 10) {
+      Image(systemName: "pause.circle")
+        .font(.title2)
+        .foregroundStyle(.secondary)
+        .accessibilityHidden(true)
+      Text("内容健康检查已取消")
+        .font(.workbenchItemTitle)
+      Text("请在内容健康页面点击“重新开始”，生成 AI 可修复队列。")
+        .font(.workbenchSupporting)
+        .foregroundStyle(.secondary)
+        .multilineTextAlignment(.center)
+        .fixedSize(horizontal: false, vertical: true)
+    }
+    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+    .padding(.horizontal, WorkbenchSpacing.page)
+    .padding(.top, 28)
+    .accessibilityElement(children: .combine)
+    .accessibilityIdentifier("content-health-sidebar-ai-fix-cancelled")
+  }
+
   private var noAIFixableArticlesState: some View {
     VStack(spacing: 10) {
       Image(systemName: "checkmark.circle")
@@ -672,7 +695,7 @@ struct WorkspaceQuickSearchView: View {
       switch contentHealthQueueState {
       case .ready(let orderedDraftIDs):
         return Set(orderedDraftIDs)
-      case .loading, .failed:
+      case .loading, .failed, .cancelled:
         return []
       }
     }

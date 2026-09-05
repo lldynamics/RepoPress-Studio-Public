@@ -1,5 +1,160 @@
+import Foundation
 import PublishingWorkbenchCore
 import SwiftUI
+
+/// Values used to keep the native toolbar readable while the workspace moves
+/// through its three supported window-width bands. Keeping this presentation
+/// policy independent of `ContentView` lets every toolbar placement use the
+/// same visual language without observing editor state from the toolbar.
+enum WorkspaceTopBarPresentation {
+  enum Density: Equatable {
+    case expanded
+    case compact
+    case minimal
+  }
+
+  struct ContextStatistics: Equatable {
+    let wordCount: Int?
+    let readingMinutes: Int?
+    let locale: Locale
+    let bundle: Bundle
+
+    init(
+      wordCount: Int? = nil,
+      readingMinutes: Int? = nil,
+      locale: Locale = .current,
+      bundle: Bundle = .main
+    ) {
+      self.wordCount = wordCount.map { max(0, $0) }
+      self.readingMinutes = readingMinutes.map { max(1, $0) }
+      self.locale = locale
+      self.bundle = bundle
+    }
+
+    var displayText: String? {
+      switch (wordCount, readingMinutes) {
+      case (.some(let words), .some(let minutes)):
+        return String(
+          format: String(
+            localized: "%lld 字 · %lld 分钟阅读",
+            bundle: bundle,
+            locale: locale
+          ),
+          locale: locale,
+          words,
+          minutes
+        )
+      case (.some(let words), .none):
+        return String(
+          format: String(localized: "%lld 字", bundle: bundle, locale: locale),
+          locale: locale,
+          words
+        )
+      case (.none, .some(let minutes)):
+        return String(
+          format: String(localized: "%lld 分钟阅读", bundle: bundle, locale: locale),
+          locale: locale,
+          minutes
+        )
+      case (.none, .none):
+        return nil
+      }
+    }
+
+    var accessibilityValue: String? {
+      switch (wordCount, readingMinutes) {
+      case (.some(let words), .some(let minutes)):
+        return String(
+          format: String(
+            localized: "字数 %lld，预计阅读 %lld 分钟",
+            bundle: bundle,
+            locale: locale
+          ),
+          locale: locale,
+          words,
+          minutes
+        )
+      case (.some(let words), .none):
+        return String(
+          format: String(localized: "字数 %lld", bundle: bundle, locale: locale),
+          locale: locale,
+          words
+        )
+      case (.none, .some(let minutes)):
+        return String(
+          format: String(localized: "预计阅读 %lld 分钟", bundle: bundle, locale: locale),
+          locale: locale,
+          minutes
+        )
+      case (.none, .none):
+        return nil
+      }
+    }
+
+    static func == (lhs: Self, rhs: Self) -> Bool {
+      lhs.wordCount == rhs.wordCount
+        && lhs.readingMinutes == rhs.readingMinutes
+        && lhs.locale == rhs.locale
+        && lhs.bundle.bundleURL == rhs.bundle.bundleURL
+    }
+
+  }
+
+  struct PreviewAvailability: Equatable {
+    let isLivePreviewEnabled: Bool
+    let isLivePreviewRunning: Bool
+    let isBrowserPreviewEnabled: Bool
+
+    var livePreviewAccessibilityValue: String {
+      guard isLivePreviewEnabled else { return String(localized: "不可用") }
+      return isLivePreviewRunning ? String(localized: "正在运行") : String(localized: "准备就绪")
+    }
+
+    var browserPreviewAccessibilityValue: String {
+      isBrowserPreviewEnabled ? String(localized: "可打开") : String(localized: "不可用")
+    }
+  }
+
+  enum SidebarVisibility: Equatable {
+    case visible
+    case hidden
+
+    var title: String {
+      switch self {
+      case .visible: return String(localized: "隐藏侧栏")
+      case .hidden: return String(localized: "显示侧栏")
+      }
+    }
+
+    var accessibilityValue: String {
+      switch self {
+      case .visible: return String(localized: "侧栏已显示")
+      case .hidden: return String(localized: "侧栏已隐藏")
+      }
+    }
+  }
+
+  static let expandedMinimumWidth: CGFloat = 1_180
+  static let compactMinimumWidth: CGFloat = 960
+
+  static func density(for workspaceWidth: CGFloat) -> Density {
+    if workspaceWidth >= expandedMinimumWidth {
+      return .expanded
+    }
+    if workspaceWidth >= compactMinimumWidth {
+      return .compact
+    }
+    return .minimal
+  }
+
+  static func searchWidth(for density: Density) -> CGFloat {
+    switch density {
+    case .expanded: 340
+    case .compact: 216
+    case .minimal: 32
+    }
+  }
+}
 
 extension WorkspaceSection {
   var showsPublishingStatusToolbar: Bool {
@@ -18,7 +173,6 @@ struct WorkspaceToolbarNavigationContent: View {
   let selectedDraftID: UUID?
   let selectedSection: WorkspaceSection
   let isCompact: Bool
-  let isQuickHideActive: Bool
   let openPublishFlow: () -> Void
   let openRepositoryOverview: () -> Void
   let openContentHealthOverview: () -> Void
@@ -45,12 +199,6 @@ struct WorkspaceToolbarNavigationContent: View {
           openReleaseHistory: openReleaseHistory
         )
       }
-
-      WorkspaceTaskCenterToolbarButton(
-        store: store,
-        isCompact: isCompact
-      )
-      .disabled(!canUseProtectedWorkbench || isQuickHideActive)
     }
     .fixedSize(horizontal: true, vertical: false)
   }
@@ -74,6 +222,8 @@ struct WorkspaceToolbarMenuLabel: View {
         if !siteKindDisplayName.isEmpty {
           Text(siteKindDisplayName)
             .font(.workbenchMetadata.weight(.medium))
+            .lineLimit(1)
+            .fixedSize(horizontal: true, vertical: false)
             .padding(.horizontal, 5)
             .padding(.vertical, 1)
             .background(Color.primary.opacity(0.06), in: Capsule())
@@ -114,10 +264,10 @@ struct WorkspaceTaskCenterToolbarButton: View {
     .buttonStyle(
       WorkspaceToolbarIconButtonStyle(
         isActive: activityStatus.activeTaskCount > 0,
-        showsTitle: !isCompact
+        showsTitle: false
       )
     )
-    .frame(width: isCompact ? 30 : 64, height: 28)
+    .frame(width: 30, height: 28)
     .overlay(alignment: .topTrailing) {
       if activityStatus.failedTaskCount > 0 {
         Text("\(min(activityStatus.failedTaskCount, 9))")
@@ -149,8 +299,31 @@ struct WorkspaceTaskCenterToolbarButton: View {
 }
 
 struct OmniCommandSearchBar: View {
-  let isCompact: Bool
+  let density: WorkspaceTopBarPresentation.Density
+  let statistics: WorkspaceTopBarPresentation.ContextStatistics
   let action: () -> Void
+
+  init(
+    isCompact: Bool,
+    statistics: WorkspaceTopBarPresentation.ContextStatistics = .init(),
+    action: @escaping () -> Void
+  ) {
+    self.init(
+      density: isCompact ? .compact : .expanded,
+      statistics: statistics,
+      action: action
+    )
+  }
+
+  init(
+    density: WorkspaceTopBarPresentation.Density,
+    statistics: WorkspaceTopBarPresentation.ContextStatistics = .init(),
+    action: @escaping () -> Void
+  ) {
+    self.density = density
+    self.statistics = statistics
+    self.action = action
+  }
 
   var body: some View {
     Button(action: action) {
@@ -159,28 +332,38 @@ struct OmniCommandSearchBar: View {
           .font(.caption.weight(.semibold))
           .foregroundStyle(.secondary)
 
-        if !isCompact {
+        if density == .expanded {
           Text("搜索草稿、标签与指令…")
             .font(.caption)
             .foregroundStyle(.secondary)
             .lineLimit(1)
         }
 
-        Spacer(minLength: 4)
-
-        HStack(spacing: 2) {
-          Text("⌘")
-            .font(.workbenchMetadata.weight(.bold))
-          Text("P")
-            .font(.workbenchMetadata.weight(.bold))
+        if density == .expanded, let statisticsText = statistics.displayText {
+          Text(statisticsText)
+            .font(.workbenchMetadata.weight(.medium).monospacedDigit())
+            .foregroundStyle(.tertiary)
+            .lineLimit(1)
+            .accessibilityHidden(true)
         }
-        .padding(.horizontal, 4)
-        .padding(.vertical, 1)
-        .background(Color.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 4))
-        .foregroundStyle(.tertiary)
+
+        if density != .minimal {
+          Spacer(minLength: 4)
+
+          HStack(spacing: 2) {
+            Text("⌘")
+              .font(.workbenchMetadata.weight(.bold))
+            Text("P")
+              .font(.workbenchMetadata.weight(.bold))
+          }
+          .padding(.horizontal, 4)
+          .padding(.vertical, 1)
+          .background(Color.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 4))
+          .foregroundStyle(.tertiary)
+        }
       }
       .padding(.horizontal, 8)
-      .frame(width: isCompact ? 70 : 220, height: 28)
+      .frame(width: WorkspaceTopBarPresentation.searchWidth(for: density), height: 28)
       .background(
         Color.primary.opacity(0.06),
         in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.searchBar, style: .continuous)
@@ -194,6 +377,8 @@ struct OmniCommandSearchBar: View {
     .layoutPriority(1)
     .help(String(localized: "唤起命令面板与全局搜索 (⌘P)"))
     .accessibilityLabel("全局搜索")
+    .accessibilityValue(statistics.accessibilityValue ?? "")
+    .accessibilityIdentifier("workspace-command-search")
   }
 }
 
@@ -267,7 +452,9 @@ struct WorkspaceToolbarIconButtonStyle: ButtonStyle {
 
   private func backgroundColor(isPressed: Bool) -> Color {
     if prominence == .primaryAction {
-      return WorkbenchTheme.primaryActionFill
+      // The final publish CTA deliberately uses the system's semantic blue;
+      // it must remain distinct even when a user selects another app accent.
+      return .blue
     }
     if isPressed {
       return Color.primary.opacity(0.08)
@@ -276,6 +463,161 @@ struct WorkspaceToolbarIconButtonStyle: ButtonStyle {
       return WorkbenchTheme.navigationSelection.opacity(WorkbenchOpacity.selectionBackground)
     }
     return .clear
+  }
+}
+
+/// A standalone sidebar command for the native navigation placement. The
+/// parent owns the actual split-view visibility, while this component keeps
+/// the selected/hidden state available to VoiceOver.
+struct WorkspaceSidebarToggleToolbarButton: View {
+  let visibility: WorkspaceTopBarPresentation.SidebarVisibility
+  let action: () -> Void
+
+  var body: some View {
+    Button(action: action) {
+      Label(visibility.title, systemImage: "sidebar.left")
+    }
+    .buttonStyle(
+      WorkspaceToolbarIconButtonStyle(
+        isActive: visibility == .visible,
+        showsTitle: false
+      )
+    )
+    .help(visibility.title)
+    .accessibilityLabel(String(localized: "侧栏"))
+    .accessibilityValue(visibility.accessibilityValue)
+    .accessibilityIdentifier("workspace-sidebar-toggle")
+  }
+}
+
+/// A single, independently accessible toolbar action. It deliberately stays
+/// a `Button` so callers can place several instances in one native
+/// `ToolbarItemGroup(.primaryAction)` without turning the action row into a
+/// custom hit target or menu.
+struct WorkspaceToolbarActionButton: View {
+  let title: String
+  let systemImage: String
+  let accessibilityIdentifier: String
+  let isActive: Bool
+  let isEnabled: Bool
+  let showsTitle: Bool
+  let help: String
+  let action: () -> Void
+
+  init(
+    title: String,
+    systemImage: String,
+    accessibilityIdentifier: String,
+    isActive: Bool = false,
+    isEnabled: Bool = true,
+    showsTitle: Bool = false,
+    help: String? = nil,
+    action: @escaping () -> Void
+  ) {
+    self.title = title
+    self.systemImage = systemImage
+    self.accessibilityIdentifier = accessibilityIdentifier
+    self.isActive = isActive
+    self.isEnabled = isEnabled
+    self.showsTitle = showsTitle
+    self.help = help ?? title
+    self.action = action
+  }
+
+  var body: some View {
+    Button(action: action) {
+      Label(title, systemImage: systemImage)
+    }
+    .buttonStyle(
+      WorkspaceToolbarIconButtonStyle(
+        isActive: isActive,
+        showsTitle: showsTitle
+      )
+    )
+    .disabled(!isEnabled)
+    .help(help)
+    .accessibilityLabel(title)
+    .accessibilityIdentifier(accessibilityIdentifier)
+  }
+}
+
+/// The live-preview control intentionally has its own native toolbar host.
+/// Do not compose it with the browser button: AppKit otherwise flattens the
+/// pair and can expose the first button's AX label for both controls.
+struct WorkspaceLivePreviewToolbarButton: View {
+  let availability: WorkspaceTopBarPresentation.PreviewAvailability
+  let openLivePreview: () -> Void
+
+  var body: some View {
+    Button(action: openLivePreview) {
+      Label(
+        String(localized: "实时预览"),
+        systemImage: availability.isLivePreviewRunning
+          ? "play.rectangle.fill"
+          : "play.rectangle"
+      )
+    }
+    .buttonStyle(
+      WorkspaceToolbarIconButtonStyle(
+        isActive: availability.isLivePreviewRunning,
+        showsTitle: false
+      )
+    )
+    .disabled(!availability.isLivePreviewEnabled)
+    .help(String(localized: "在 RepoPress Studio 中打开实时预览"))
+    .accessibilityLabel(String(localized: "实时预览"))
+    .accessibilityValue(availability.livePreviewAccessibilityValue)
+    .accessibilityIdentifier("workspace-live-preview")
+  }
+}
+
+/// Kept separate from the in-app preview so the real native toolbar item owns
+/// this exact AX label and action rather than inheriting the live-preview one.
+struct WorkspaceBrowserPreviewToolbarButton: View {
+  let availability: WorkspaceTopBarPresentation.PreviewAvailability
+  let openBrowserPreview: () -> Void
+
+  var body: some View {
+    Button(action: openBrowserPreview) {
+      Label(String(localized: "浏览器预览"), systemImage: "safari")
+    }
+    .buttonStyle(
+      WorkspaceToolbarIconButtonStyle(
+        isActive: false,
+        showsTitle: false
+      )
+    )
+    .disabled(!availability.isBrowserPreviewEnabled)
+    .help(String(localized: "在默认浏览器中打开预览"))
+    .accessibilityLabel(String(localized: "浏览器预览"))
+    .accessibilityValue(availability.browserPreviewAccessibilityValue)
+    .accessibilityIdentifier("workspace-open-preview-browser")
+  }
+}
+
+/// A semantic blue publish CTA for the end of a primary-action toolbar group.
+/// Availability remains a caller-provided value so the component never bypasses
+/// the publishing flow's existing readiness checks.
+struct WorkspacePreparePublishToolbarButton: View {
+  let isEnabled: Bool
+  let density: WorkspaceTopBarPresentation.Density
+  let action: () -> Void
+
+  var body: some View {
+    Button(action: action) {
+      Label(String(localized: "准备发布"), systemImage: "paperplane.fill")
+    }
+    .buttonStyle(
+      WorkspaceToolbarIconButtonStyle(
+        isActive: false,
+        showsTitle: true,
+        prominence: .primaryAction
+      )
+    )
+    .disabled(!isEnabled)
+    .help(String(localized: "打开本次发布清单和一键发布流程"))
+    .accessibilityLabel(String(localized: "准备发布"))
+    .accessibilityIdentifier("workspace-prepare-publish")
   }
 }
 
@@ -310,7 +652,12 @@ struct WorkspaceToolbarLeadingContent: View {
         showsTitle: !isCompact,
         siteKindDisplayName: shell.activeProfile.siteKind.localizedDisplayName
       )
-      .frame(width: isCompact ? 30 : 180, height: 28, alignment: .leading)
+      .frame(
+        minWidth: isCompact ? 30 : nil,
+        maxWidth: isCompact ? 30 : 220,
+        minHeight: 28,
+        alignment: .leading
+      )
     }
     .menuStyle(.borderlessButton)
     .menuIndicator(.hidden)
@@ -436,7 +783,12 @@ struct PublishingStatusToolbarControl: View {
       statusToolbarLabel(currentToolbarStatus)
         .font(.workbenchButtonLabel)
         .accessibilityLabel(contextualStatusTitle)
-        .frame(width: isCompact ? 112 : 128, height: 28)
+        .padding(.horizontal, isCompact ? 0 : 8)
+        .frame(
+          minWidth: isCompact ? 30 : 96,
+          maxWidth: isCompact ? 30 : 200,
+          minHeight: 28
+        )
         .background(currentToolbarStatus.color.opacity(0.12), in: Capsule())
         .contentShape(Capsule())
     }
@@ -449,6 +801,7 @@ struct PublishingStatusToolbarControl: View {
     )
     .accessibilityLabel(contextualStatusTitle)
     .accessibilityValue("\(currentToolbarStatus.area.title)：\(currentToolbarStatus.value)")
+    .accessibilityIdentifier("workspace-publishing-status")
     .popover(isPresented: $isPresented, arrowEdge: .bottom) {
       VStack(alignment: .leading, spacing: 0) {
         Label(contextualStatusTitle, systemImage: "paperplane.circle")
@@ -486,14 +839,15 @@ struct PublishingStatusToolbarControl: View {
   private func statusToolbarLabel(_ status: PublishingStatusPopoverItem) -> some View {
     HStack(spacing: 5) {
       Image(systemName: status.severity.symbol)
-        .font(.system(size: 8, weight: .semibold))
+        .font(.system(size: isCompact ? 12 : 8, weight: .semibold))
         .foregroundStyle(status.color)
-      Text(status.value)
-        .foregroundStyle(.primary)
-        .lineLimit(1)
-        .truncationMode(.middle)
+      if !isCompact {
+        Text(status.value)
+          .foregroundStyle(.primary)
+          .lineLimit(1)
+          .truncationMode(.tail)
+      }
     }
-    .frame(maxWidth: .infinity, alignment: .center)
   }
 
   private var statusItems: [PublishingStatusPopoverItem] {

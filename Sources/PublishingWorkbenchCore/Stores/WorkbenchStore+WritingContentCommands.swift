@@ -547,6 +547,9 @@ extension WorkbenchStore {
       kind: snippet.kind,
       markdown: snippet.markdown,
       siteProfileID: siteProfileID,
+      shortcut: snippet.shortcut,
+      previewKind: snippet.previewKind,
+      selectionToken: snippet.selectionToken,
       in: publishingStore.customMarkdownSnippets
     )
     scheduleAutosave()

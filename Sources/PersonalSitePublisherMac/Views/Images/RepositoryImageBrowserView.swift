@@ -61,6 +61,23 @@ enum RepositoryImageFilter: String, CaseIterable, Identifiable, Sendable {
   }
 }
 
+enum RepositoryImageBrowserPresentationState: Equatable {
+  case preparing
+  case inventoryEmpty
+  case filteredEmpty
+  case results
+
+  static func resolve(
+    isLoading: Bool,
+    inventoryCount: Int,
+    projectedCount: Int
+  ) -> Self {
+    if isLoading { return .preparing }
+    if projectedCount > 0 { return .results }
+    return inventoryCount == 0 ? .inventoryEmpty : .filteredEmpty
+  }
+}
+
 struct RepositoryImageBrowserView: View {
   let inventory: RepositoryImageInventory?
   let isLoading: Bool
@@ -76,6 +93,7 @@ struct RepositoryImageBrowserView: View {
   @State private var filter: RepositoryImageFilter = .all
   @State private var sortOrder: RepositoryImageSortOrder = .nameAsc
   @State private var projectedAssets: [RepositoryImageAsset] = []
+  @State private var isProjecting = false
   @State private var projectionGeneration = 0
 
   var body: some View {
@@ -157,16 +175,32 @@ struct RepositoryImageBrowserView: View {
         }
       }
 
-      if filteredAssets.isEmpty {
+      switch RepositoryImageBrowserPresentationState.resolve(
+        isLoading: isProjecting,
+        inventoryCount: inventory.assets.count,
+        projectedCount: filteredAssets.count
+      ) {
+      case .preparing:
+        loadingState
+      case .inventoryEmpty, .filteredEmpty:
+        let hasInventory = !inventory.assets.isEmpty
+        let hasQueryOrFilter = !query.trimmedForPublishing.isEmpty || filter != .all
         EmptyStateView(
-          title: query.trimmedForPublishing.isEmpty ? "图片目录中还没有图片" : "没有匹配的仓库图片",
-          message: query.trimmedForPublishing.isEmpty
-            ? "在写作页插入图片，或把图片文件放入当前站点的图片目录。"
-            : "请尝试其他文件名、路径或筛选范围。",
+          title: !hasInventory
+            ? LocalizedStringKey("图片目录中还没有图片")
+            : LocalizedStringKey("没有匹配的仓库图片"),
+          message: !hasInventory
+            ? LocalizedStringKey("在写作页插入图片，或把图片文件放入当前站点的图片目录。")
+            : LocalizedStringKey("当前库存有图片，但没有符合搜索或筛选条件的结果。"),
           systemImage: "photo.on.rectangle.angled",
-          density: .compactPane
+          density: .compactPane,
+          actionTitle: hasQueryOrFilter ? LocalizedStringKey("清除搜索和筛选") : nil,
+          action: hasQueryOrFilter ? {
+            query = ""
+            filter = .all
+          } : nil
         )
-      } else {
+      case .results:
         browserLayout(inventory, assets: filteredAssets)
       }
 
@@ -416,6 +450,7 @@ struct RepositoryImageBrowserView: View {
 
   @MainActor
   private func rebuildProjection(for inventory: RepositoryImageInventory) async {
+    isProjecting = true
     // A short debounce keeps rapid typing off the synchronous view update
     // path.  The task is cancelled automatically when any input changes.
     try? await Task.sleep(for: .milliseconds(150))
@@ -430,6 +465,7 @@ struct RepositoryImageBrowserView: View {
     }.value
     guard !Task.isCancelled else { return }
     projectedAssets = result
+    isProjecting = false
     normalizeSelection(in: result)
   }
 

@@ -105,6 +105,9 @@ extension WorkbenchDataRootMigrator {
     fileManager: FileManager
   ) throws -> [MigrationPayloadItem] {
     let persistence = WorkbenchPersistence(fileURL: layout.workbenchFileURL)
+    let operationLedgerPersistence = WorkbenchOperationLedgerPersistence(
+      fileURL: persistence.operationLedgerURL
+    )
     // Automatic backups and completed recovery points are durable user data.
     // Root-level pending, applying, and transaction items are intentionally not
     // candidates: they could trigger an unintended restore in the new root.
@@ -112,6 +115,14 @@ extension WorkbenchDataRootMigrator {
       MigrationPayloadItem(url: persistence.fileURL, expectedKind: .regularFile),
       MigrationPayloadItem(url: persistence.lastKnownGoodURL, expectedKind: .regularFile),
       MigrationPayloadItem(url: persistence.draftRecoveryJournalURL, expectedKind: .regularFile),
+      MigrationPayloadItem(
+        url: operationLedgerPersistence.fileURL,
+        expectedKind: .regularFile
+      ),
+      MigrationPayloadItem(
+        url: operationLedgerPersistence.lastKnownGoodURL,
+        expectedKind: .regularFile
+      ),
       MigrationPayloadItem(url: persistence.recoveryArchiveDirectoryURL, expectedKind: .directory),
       MigrationPayloadItem(url: persistence.retiredFeatureArchiveDirectoryURL, expectedKind: .directory),
       MigrationPayloadItem(url: persistence.imageOptimizationDirectoryURL, expectedKind: .directory),
@@ -135,23 +146,32 @@ extension WorkbenchDataRootMigrator {
           isDirectory: true
         ),
         expectedKind: .directory
-      )
+      ),
     ]
 
-    let quarantinePrefix = persistence.draftRecoveryJournalURL
-      .deletingPathExtension()
-      .lastPathComponent + ".unreadable-"
+    let quarantinePrefixes = [
+      persistence.draftRecoveryJournalURL.deletingPathExtension().lastPathComponent
+        + ".unreadable-",
+      operationLedgerPersistence.fileURL.deletingPathExtension().lastPathComponent
+        + ".unreadable-",
+      operationLedgerPersistence.lastKnownGoodURL.deletingPathExtension().lastPathComponent
+        + ".unreadable-",
+    ]
     let rootItems = try fileManager.contentsOfDirectory(
       at: layout.rootURL,
       includingPropertiesForKeys: [.isRegularFileKey, .isSymbolicLinkKey],
       options: []
     )
-    candidates.append(contentsOf: rootItems.compactMap { url in
-      let name = url.lastPathComponent
-      guard name.hasPrefix(quarantinePrefix), name.hasSuffix(".json") else { return nil }
-      return MigrationPayloadItem(url: url, expectedKind: .regularFile)
-    })
-    return candidates
+    candidates.append(
+      contentsOf: rootItems.compactMap { url in
+        let name = url.lastPathComponent
+        guard quarantinePrefixes.contains(where: name.hasPrefix), name.hasSuffix(".json") else {
+          return nil
+        }
+        return MigrationPayloadItem(url: url, expectedKind: .regularFile)
+      })
+    return
+      candidates
       .filter { itemExists(at: $0.url, fileManager: fileManager) }
       .sorted { $0.url.path < $1.url.path }
   }

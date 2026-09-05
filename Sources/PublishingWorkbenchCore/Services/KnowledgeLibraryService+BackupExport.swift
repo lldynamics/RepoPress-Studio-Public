@@ -1,17 +1,25 @@
 import Foundation
 
+struct KnowledgeRecycleBinDeletionResult: Sendable {
+  let removedIDs: [UUID]
+  let failedDocumentCount: Int
+  let removedStoredFileCount: Int
+  let failedStoredFileCount: Int
+  let wasCancelled: Bool
+}
+
 extension KnowledgeLibraryService {
   public func exportDocuments(
     documentIDs: Set<UUID>,
     to destinationDirectory: URL
   ) async throws -> KnowledgeBatchExportReport {
     let service = self
-    return try await Task.detached(priority: .utility) {
+    return try await performKnowledgeLibraryIO {
       try service.exportDocumentsSynchronously(
         documentIDs: documentIDs,
         to: destinationDirectory
       )
-    }.value
+    }
   }
 
   public func createBackup(
@@ -22,30 +30,42 @@ extension KnowledgeLibraryService {
     let resolvedVersion = applicationVersion
       ?? Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
       ?? "development"
-    return try await Task.detached(priority: .utility) {
-      try KnowledgeLibraryBackupService(rootURL: service.rootURL, fileManager: service.fileManager)
-        .createBackup(
-          at: destinationURL,
-          database: try service.database(),
-          applicationVersion: resolvedVersion
-        )
-    }.value
+    return try await performKnowledgeLibraryIO {
+      try service.createBackupSynchronously(
+        at: destinationURL,
+        applicationVersion: resolvedVersion
+      )
+    }
+  }
+
+  func createBackupSynchronously(
+    at destinationURL: URL,
+    applicationVersion: String
+  ) throws -> KnowledgeLibraryBackupPreview {
+    storageMutationLock.lock()
+    defer { storageMutationLock.unlock() }
+    return try KnowledgeLibraryBackupService(rootURL: rootURL, fileManager: fileManager)
+      .createBackup(
+        at: destinationURL,
+        database: try database(),
+        applicationVersion: applicationVersion
+      )
   }
 
   public func inspectBackup(at backupURL: URL) async throws -> KnowledgeLibraryBackupPreview {
     let service = self
-    return try await Task.detached(priority: .utility) {
+    return try await performKnowledgeLibraryIO {
       try KnowledgeLibraryBackupService(rootURL: service.rootURL, fileManager: service.fileManager)
         .inspectBackup(at: backupURL)
-    }.value
+    }
   }
 
   public func stageRestore(from backupURL: URL) async throws -> KnowledgeLibraryBackupPreview {
     let service = self
-    return try await Task.detached(priority: .utility) {
+    return try await performKnowledgeLibraryIO {
       try KnowledgeLibraryBackupService(rootURL: service.rootURL, fileManager: service.fileManager)
         .stageRestore(from: backupURL)
-    }.value
+    }
   }
 
   @discardableResult
@@ -81,6 +101,51 @@ extension KnowledgeLibraryService {
       removedStoredFileCount: removedStoredFileCount,
       failedStoredFileCount: failedStoredFileCount
     )
+  }
+
+  public func deleteDocumentAsync(id: UUID) async throws -> KnowledgeDocumentDeletionReport {
+    let service = self
+    return try await performKnowledgeLibraryIO {
+      try service.deleteDocument(id: id)
+    }
+  }
+
+  func deleteDocumentsAsync(
+    ids: [UUID]
+  ) async throws -> KnowledgeRecycleBinDeletionResult {
+    let service = self
+    return try await performKnowledgeLibraryIO {
+      var removedIDs: [UUID] = []
+      var failedDocumentCount = 0
+      var removedStoredFileCount = 0
+      var failedStoredFileCount = 0
+      for id in ids {
+        if Task.isCancelled {
+          return KnowledgeRecycleBinDeletionResult(
+            removedIDs: removedIDs,
+            failedDocumentCount: failedDocumentCount,
+            removedStoredFileCount: removedStoredFileCount,
+            failedStoredFileCount: failedStoredFileCount,
+            wasCancelled: true
+          )
+        }
+        do {
+          let report = try service.deleteDocument(id: id)
+          removedIDs.append(id)
+          removedStoredFileCount += report.removedStoredFileCount
+          failedStoredFileCount += report.failedStoredFileCount
+        } catch {
+          failedDocumentCount += 1
+        }
+      }
+      return KnowledgeRecycleBinDeletionResult(
+        removedIDs: removedIDs,
+        failedDocumentCount: failedDocumentCount,
+        removedStoredFileCount: removedStoredFileCount,
+        failedStoredFileCount: failedStoredFileCount,
+        wasCancelled: false
+      )
+    }
   }
 
   func safeStorageFileURL(for reference: String) -> URL? {

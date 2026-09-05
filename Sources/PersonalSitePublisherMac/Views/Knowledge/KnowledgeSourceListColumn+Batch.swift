@@ -17,14 +17,18 @@ extension KnowledgeSourceListColumn {
 
       Menu {
         Button("未分类") {
-          knowledge.moveDocuments(selectedDocumentIDs, to: nil)
-          retainVisibleBatchSelection()
+          Task {
+            await knowledge.moveDocuments(selectedDocumentIDs, to: nil)
+            retainVisibleBatchSelection()
+          }
         }
         if !knowledge.folders.isEmpty { Divider() }
         ForEach(knowledge.folders) { folder in
           Button(folder.name) {
-            knowledge.moveDocuments(selectedDocumentIDs, to: folder.id)
-            retainVisibleBatchSelection()
+            Task {
+              await knowledge.moveDocuments(selectedDocumentIDs, to: folder.id)
+              retainVisibleBatchSelection()
+            }
           }
         }
       } label: {
@@ -45,17 +49,21 @@ extension KnowledgeSourceListColumn {
 
       Menu {
         Button("建立本地语义索引") {
-          knowledge.setAllowsLocalSemanticIndex(true, documentIDs: selectedDocumentIDs)
+          Task {
+            await knowledge.setAllowsLocalSemanticIndex(true, documentIDs: selectedDocumentIDs)
+          }
         }
         Button("关闭本地语义索引") {
-          knowledge.setAllowsLocalSemanticIndex(false, documentIDs: selectedDocumentIDs)
+          Task {
+            await knowledge.setAllowsLocalSemanticIndex(false, documentIDs: selectedDocumentIDs)
+          }
         }
         Divider()
         Button("允许发送给远程 AI") {
-          knowledge.setAllowsRemoteAIUse(true, documentIDs: selectedDocumentIDs)
+          Task { await knowledge.setAllowsRemoteAIUse(true, documentIDs: selectedDocumentIDs) }
         }
         Button("禁止发送给远程 AI") {
-          knowledge.setAllowsRemoteAIUse(false, documentIDs: selectedDocumentIDs)
+          Task { await knowledge.setAllowsRemoteAIUse(false, documentIDs: selectedDocumentIDs) }
         }
       } label: {
         Image(systemName: "slider.horizontal.3")
@@ -105,18 +113,21 @@ extension KnowledgeSourceListColumn {
   }
 
   func confirmBatchTags() {
-    knowledge.addTags(parsedBatchTags, to: selectedDocumentIDs)
+    let tags = parsedBatchTags
     batchTags = ""
+    Task { await knowledge.addTags(tags, to: selectedDocumentIDs) }
   }
 
   func confirmBatchRecycle() {
     let count = selectedDocumentIDs.count
-    guard knowledge.moveToRecycleBin(selectedDocumentIDs) else { return }
-    selectedDocumentIDs = []
-    EditorAccessibilityAnnouncementCenter.announce(
-      "已将 \(count) 条资料移到回收站。",
-      priority: .medium
-    )
+    Task {
+      guard await knowledge.moveToRecycleBin(selectedDocumentIDs) else { return }
+      selectedDocumentIDs = []
+      EditorAccessibilityAnnouncementCenter.announce(
+        "已将 \(count) 条资料移到回收站。",
+        priority: .medium
+      )
+    }
   }
 
   func exitBatchSelection() {

@@ -101,6 +101,15 @@ extension PublishingStore {
     set { publishSession.remoteRepositoryMutationContext = newValue }
   }
 
+  var remoteConflictResolutionOperationID: UUID? {
+    get { publishSession.remoteConflictResolutionOperationID }
+    set { publishSession.remoteConflictResolutionOperationID = newValue }
+  }
+
+  public var isRemoteConflictResolutionRunning: Bool {
+    remoteConflictResolutionOperationID != nil
+  }
+
   var localImportOperationContext: LocalRepositoryOperationContext? {
     get { publishSession.localImportOperationContext }
     set { publishSession.localImportOperationContext = newValue }

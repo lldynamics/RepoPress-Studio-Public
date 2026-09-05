@@ -22,7 +22,7 @@ final class RepositoryEventDrivenRefreshTests: XCTestCase {
     )
   }
 
-  func testEventClassificationUsesPathImportOnlyForUnknownMarkdownCandidates() {
+  func testEventClassificationScansAssetsAndUsesPathImportForMarkdown() {
     XCTAssertEqual(
       RepositoryContentChangeEventDecision.classify(
         flags: [.itemModified],
@@ -37,7 +37,39 @@ final class RepositoryEventDrivenRefreshTests: XCTestCase {
         relativePath: "static/images/post.png",
         allowedPrefixes: ["content", "private"]
       ),
-      .ignore
+      .ignore // outside an explicitly scoped content watch
+    )
+    XCTAssertEqual(
+      RepositoryContentChangeEventDecision.classify(
+        flags: [.itemModified], relativePath: "static/images/post.png", allowedPrefixes: []
+      ), .fullScan
+    )
+    XCTAssertEqual(
+      RepositoryContentChangeEventDecision.classify(
+        flags: [.itemRemoved], relativePath: "content/posts/post.md", allowedPrefixes: []
+      ), .fullScan
+    )
+    XCTAssertEqual(
+      RepositoryContentChangeEventDecision.classify(
+        flags: [.itemModified], relativePath: ".git/HEAD", allowedPrefixes: []
+      ), .fullScan
+    )
+    XCTAssertEqual(
+      RepositoryContentChangeEventDecision.classify(
+        flags: [.itemModified], relativePath: ".git/objects/pack/a", allowedPrefixes: []
+      ), .ignore
+    )
+    XCTAssertEqual(
+      RepositoryContentChangeEventDecision.classify(
+        flags: [.itemModified], relativePath: ".build/debug/app", allowedPrefixes: []
+      ), .ignore
+    )
+    XCTAssertEqual(
+      RepositoryContentChangeEventDecision.classify(
+        flags: [.itemModified],
+        relativePath: "themes/example/public/source.css",
+        allowedPrefixes: []
+      ), .fullScan
     )
     XCTAssertEqual(
       RepositoryContentChangeEventDecision.classify(

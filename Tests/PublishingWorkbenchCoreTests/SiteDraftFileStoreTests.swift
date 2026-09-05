@@ -53,6 +53,72 @@ struct SiteDraftFileStoreTests {
   }
 
   @Test
+  func refusesToOverwriteBoundFileChangedByAnotherEditor() throws {
+    let rootURL = try makeTemporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    try makeGitMarker(at: rootURL)
+    var profile = SiteProfile.defaultProfile
+    profile.localRepositoryRootPath = rootURL.path
+    var draft = ArticleDraft.empty(profile: profile)
+    draft.slug = "external-edit"
+    draft.bodyMarkdown = "App baseline"
+    let fileStore = SiteDraftFileStore()
+
+    let firstResult = try fileStore.write(draft: draft, profile: profile)
+    let destinationURL = rootURL.appendingPathComponent(firstResult.repositoryPath)
+    let baselineDocument = try String(contentsOf: destinationURL, encoding: .utf8)
+    draft.recordProjectFile(
+      profile: profile,
+      repositoryPath: firstResult.repositoryPath,
+      renderedContentDigest: ArticleDraft.repositoryDocumentDigest(baselineDocument)
+    )
+    draft.bodyMarkdown = "Pending app edit"
+    let externalDocument = "---\ntitle: External editor\n---\n\nExternal content\n"
+    try externalDocument.write(to: destinationURL, atomically: true, encoding: .utf8)
+
+    #expect(throws: SiteDraftFileStoreError.projectFileChangedExternally(firstResult.repositoryPath)) {
+      try fileStore.write(draft: draft, profile: profile)
+    }
+    #expect(try String(contentsOf: destinationURL, encoding: .utf8) == externalDocument)
+  }
+
+  @Test
+  func refusesPathMoveWhenAnotherFileAlreadyUsesDestination() throws {
+    let rootURL = try makeTemporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    try makeGitMarker(at: rootURL)
+    var profile = SiteProfile.defaultProfile
+    profile.localRepositoryRootPath = rootURL.path
+    var draft = ArticleDraft.empty(profile: profile)
+    draft.slug = "before-collision"
+    let fileStore = SiteDraftFileStore()
+
+    let firstResult = try fileStore.write(draft: draft, profile: profile)
+    let oldURL = rootURL.appendingPathComponent(firstResult.repositoryPath)
+    let baselineDocument = try String(contentsOf: oldURL, encoding: .utf8)
+    draft.recordProjectFile(
+      profile: profile,
+      repositoryPath: firstResult.repositoryPath,
+      renderedContentDigest: ArticleDraft.repositoryDocumentDigest(baselineDocument)
+    )
+    draft.slug = "occupied-destination"
+    let destinationPath = profile.markdownPath(for: draft)
+    let destinationURL = rootURL.appendingPathComponent(destinationPath)
+    try FileManager.default.createDirectory(
+      at: destinationURL.deletingLastPathComponent(),
+      withIntermediateDirectories: true
+    )
+    let externalDocument = "Existing destination owned by another tool"
+    try externalDocument.write(to: destinationURL, atomically: true, encoding: .utf8)
+
+    #expect(throws: SiteDraftFileStoreError.projectFileChangedExternally(destinationPath)) {
+      try fileStore.write(draft: draft, profile: profile)
+    }
+    #expect(FileManager.default.fileExists(atPath: oldURL.path))
+    #expect(try String(contentsOf: destinationURL, encoding: .utf8) == externalDocument)
+  }
+
+  @Test
   func neverWritesGeneralDraftIntoProject() throws {
     let rootURL = try makeTemporaryDirectory()
     defer { try? FileManager.default.removeItem(at: rootURL) }

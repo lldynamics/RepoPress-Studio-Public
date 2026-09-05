@@ -395,15 +395,17 @@ extension MacMarkdownComposerView {
     guard requestUndoableBodyUpdate(updated, selectionOverride: range) else { return false }
     selectedRange = insertionEndRange
     if let citation {
-      store.knowledge.recordBacklinks(
-        citations: [citation],
-        target: KnowledgeBacklinkTarget(
-          kind: .articleDraft,
-          id: draft.id.uuidString,
-          title: draft.title.nilIfEmpty ?? "当前文章",
-          location: "正文"
+      Task {
+        await store.knowledge.recordBacklinks(
+          citations: [citation],
+          target: KnowledgeBacklinkTarget(
+            kind: .articleDraft,
+            id: draft.id.uuidString,
+            title: draft.title.nilIfEmpty ?? "当前文章",
+            location: "正文"
+          )
         )
-      )
+      }
     }
     selectionActionMessage = "已从资料库插入引用块。"
     return true

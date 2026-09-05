@@ -43,11 +43,49 @@ final class WorkbenchFeatureFacadeTests: XCTestCase {
     XCTAssertTrue(store.rootPresentation === store.rootPresentation)
     XCTAssertTrue(store.commandPresentation === store.commandPresentation)
     XCTAssertTrue(store.activityStatus === store.activityStatus)
+    XCTAssertTrue(store.operationLog === store.operationLog)
     XCTAssertTrue(store.workspaceLayout === store.workspaceLayout)
     XCTAssertTrue(store.settings === store.settings)
     XCTAssertTrue(store.publishStatus === store.publishStatus)
     XCTAssertTrue(store.draftList === store.draftList)
     XCTAssertTrue(store.siteMaintenance === store.siteMaintenance)
+  }
+
+  func testOperationLogFacadeIgnoresBodyAutosaveAndDoesNotInvalidateRootForLedgerEvents()
+    throws
+  {
+    let store = makeIsolatedStore(safeMode: true)
+    let draft = try XCTUnwrap(store.selectedDraft)
+    let operationLog = store.operationLog
+    var operationLogChanges = 0
+    let operationLogCancellable = operationLog.objectWillChange.sink {
+      operationLogChanges += 1
+    }
+
+    _ = store.stageDraftBody(
+      "正文自动保存不应重算活动记录。",
+      for: draft.id,
+      baseRevision: store.draftBodyEditorBuffer(for: draft.id).revision
+    )
+    store.flushDraftBodyEditorBuffer(for: draft.id)
+    XCTAssertEqual(operationLogChanges, 0)
+
+    var rootChanges = 0
+    let rootCancellable = store.objectWillChange.sink { rootChanges += 1 }
+    XCTAssertTrue(
+      store.recordOperationEvent(
+        WorkbenchOperationEventRecord(
+          kind: .workspaceBackupCreated,
+          outcome: .succeeded,
+          draftCount: 1
+        )
+      )
+    )
+
+    XCTAssertEqual(operationLogChanges, 1)
+    XCTAssertEqual(rootChanges, 0)
+    XCTAssertEqual(operationLog.entries.first?.sourceReference.kind, .operationEvent)
+    withExtendedLifetime([operationLogCancellable, rootCancellable]) {}
   }
 
   func testDraftListStoreIgnoresBodyAutosaveButPublishesDelayedPreflightTaskState() async throws {

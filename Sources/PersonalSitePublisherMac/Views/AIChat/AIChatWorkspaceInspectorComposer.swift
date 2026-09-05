@@ -217,7 +217,7 @@ extension AIChatContextInspectorView {
           .menuStyle(.borderlessButton)
           .fixedSize()
           .disabled(
-            ai.selectedChatDraft == nil
+            inspectorDraft == nil
               || !currentAIProviderConfig.supportsImageInput
               || isChatBusy
           )
@@ -284,7 +284,7 @@ extension AIChatContextInspectorView {
     if ai.chatContextMode == .general {
       return ai.availableGeneralChatContextReferences()
     }
-    guard let draft = ai.selectedChatDraft else { return [] }
+    guard let draft = inspectorDraft else { return [] }
     return ai.availableChatContextReferences(for: draft)
   }
 
@@ -427,7 +427,7 @@ extension AIChatContextInspectorView {
   }
 
   var availableChatImageAttachments: [DraftAttachment] {
-    guard let draft = ai.selectedChatDraft else { return [] }
+    guard ai.chatContextMode == .site, let draft = inspectorDraft else { return [] }
     return draft.attachments.filter { $0.mediaKind == .image }
   }
 
@@ -468,7 +468,7 @@ extension AIChatContextInspectorView {
       return ai.generalChatConversation(withID: inspectorSurfaceConversationID)?.isArchived == true
         || isChatBusy
     }
-    return ai.selectedChatDraft == nil || isChatBusy
+    return inspectorDraft == nil || isChatBusy
   }
 
   var canSubmitMessage: Bool {
@@ -478,7 +478,8 @@ extension AIChatContextInspectorView {
   }
 
   func submitMessage() {
-    guard let draft = ai.selectedChatDraft else { return }
+    let draft = ai.chatContextMode == .site ? inspectorDraft : nil
+    guard ai.chatContextMode == .general || draft != nil else { return }
     let message = trimmedInput
     guard !message.isEmpty || !selectedImageAttachmentIDs.isEmpty,
       !isChatBusy
@@ -580,7 +581,7 @@ extension AIChatContextInspectorView {
 
   var activeManualRetryState: AIChatManualRetryState? {
     guard ai.chatContextMode != .general else { return nil }
-    guard let draftID = ai.selectedChatDraft?.id,
+    guard let draftID = inspectorDraft?.id,
       let retryState = ai.chatManualRetryState,
       retryState.draftID == draftID,
       retryState.conversationID == ai.activeChatConversationID(for: draftID)
@@ -625,12 +626,12 @@ extension AIChatContextInspectorView {
     {
       return activeConversationID
     }
-    if let draftID = ai.selectedChatDraft?.id,
+    if let draftID = inspectorDraft?.id,
       let activeConversationID = ai.activeChatConversationID(for: draftID)
     {
       return activeConversationID
     }
-    return ai.selectedChatDraft?.id ?? inspectorTransientConversationID
+    return inspectorDraft?.id ?? inspectorTransientConversationID
   }
 
   var inputText: String {
@@ -697,7 +698,7 @@ extension AIChatContextInspectorView {
       {
         return
       }
-    } else if let draftID = ai.selectedChatDraft?.id {
+    } else if let draftID = inspectorDraft?.id {
       if let selectedConversationID = surfaceState.selectedConversationID,
         ai.chatConversations(for: draftID).contains(where: {
           $0.id == selectedConversationID
@@ -719,7 +720,7 @@ extension AIChatContextInspectorView {
     if ai.chatContextMode == .general {
       updatedState.selectedConversationID =
         ai.activeGeneralChatConversationID ?? inspectorTransientConversationID
-    } else if let draftID = ai.selectedChatDraft?.id {
+    } else if let draftID = inspectorDraft?.id {
       updatedState.selectedConversationID =
         ai.activeChatConversationID(for: draftID) ?? draftID
     } else {

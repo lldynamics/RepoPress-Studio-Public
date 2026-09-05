@@ -55,6 +55,10 @@ struct WorkspaceResponsiveLayoutSnapshot: Equatable {
 
   var allowsHTMLSourceInspector: Bool { band == .htmlSourceInspector }
   var canManuallyRevealInspector: Bool { band == .compactInspector }
+
+  func canManuallyRevealInspector(for section: WorkspaceSection) -> Bool {
+    canManuallyRevealInspector && [.writing, .library, .rss].contains(section)
+  }
 }
 
 struct PersistenceRecoveryResetFeedback: Identifiable {
@@ -161,8 +165,9 @@ struct ContentView: View {
     RSSReaderUserPreferences.defaultBackgroundRefreshIntervalMinutes
   @AppStorage("didCompleteFirstRunSetup") private var didCompleteFirstRunSetup = false
   @SceneStorage("workspace.focusMode") private var isFocusMode = false
+  @SceneStorage("workspace.sidebarPresented") private var isSidebarPresented = true
   @SceneStorage("workspace.revealInspectorInCompactWriting") private
-    var revealsInspectorInCompactWriting = false
+    var revealsInspectorInCompactWorkspace = false
   @SceneStorage("workspace.windowID") private var windowIDRawValue = ""
   @SceneStorage("workspace.selectedSection") private var selectedSectionRawValue = ""
   @SceneStorage("workspace.selectedDraftID") private var selectedDraftIDRawValue = ""
@@ -189,14 +194,17 @@ struct ContentView: View {
   @State private var imageWorkbenchContextStage: ImageWorkbenchContextStage = .overview
   @State private var repositoryContextStage: RepositoryContextStage = .overview
   @State private var repositoryChangedFileSelection: RepositoryChangedFileSelection?
+  @State private var knowledgeInspectorPresentation = KnowledgeLibraryInspectorPresentationState()
   @StateObject private var repositorySourceSession: RepositoryHTMLSourceSession
   @State private var localSitePreviewState: WorkbenchLocalSitePreviewFeatureFacade
+  @StateObject private var externalBrowserPreviewCoordinator: ExternalBrowserPreviewCoordinator
   @StateObject private var repositoryContentChangeMonitor: RepositoryContentChangeMonitorCoordinator
   @State private var sceneCommandRouter = WorkspaceSceneCommandRouter()
   @StateObject private var windowSession: WorkspaceWindowSession
   @State private var inspectorWidthState = WorkspaceInspectorWidthState(
     isAIAssistantPresented: false
   )
+  @State private var inspectorWidthResetGeneration = 0
 
   private var shellState: WorkbenchRootPresentationFeatureFacade { rootPresentation }
   private var presentationState: WorkbenchRootPresentationFeatureFacade { rootPresentation }
@@ -208,6 +216,9 @@ struct ContentView: View {
     _repositorySourceSession = StateObject(wrappedValue: RepositoryHTMLSourceSession())
     _localSitePreviewState = State(
       initialValue: WorkbenchLocalSitePreviewFeatureFacade(store: store)
+    )
+    _externalBrowserPreviewCoordinator = StateObject(
+      wrappedValue: ExternalBrowserPreviewCoordinator(store: store)
     )
     _repositoryContentChangeMonitor = StateObject(
       wrappedValue: RepositoryContentChangeMonitorCoordinator.shared(store: store)
@@ -228,6 +239,13 @@ struct ContentView: View {
     #if DEBUG || SCREENSHOT_CAPTURE_BUILD
       let _ = ContentViewBodyPerformanceProbe.record()
     #endif
+    return workspaceLifecycleContent
+  }
+
+  /// The responsive root remains independent from its modifier chains so the
+  /// compiler does not have to infer the full scene, toolbar, and lifecycle
+  /// expression as one nested generic type.
+  private var workspaceRootContent: some View {
     return WorkspaceResponsiveLayoutHost(onChange: applyResponsiveLayout) {
       let compactLayout = isCompactLayout
       let isInspectorVisible = inspectorPresentation.wrappedValue
@@ -278,6 +296,13 @@ struct ContentView: View {
         quickHideOverlay
       }
     }
+  }
+
+  /// Keep environment injection and native toolbar construction together:
+  /// their relative order is part of the scene contract, but neither needs to
+  /// participate in lifecycle modifier type inference.
+  private var workspaceToolbarAndEnvironmentContent: some View {
+    workspaceRootContent
     .environment(
       \.settingsWorkspaceCommandAction,
       settingsWorkspaceCommandAction
@@ -316,49 +341,33 @@ struct ContentView: View {
     .environmentObject(localSitePreviewState)
     .environmentObject(sceneCommandRouter)
     .focusedSceneObject(sceneCommandRouter)
+    .externalBrowserPreviewPresentation(coordinator: externalBrowserPreviewCoordinator)
     .toolbar {
-      ToolbarItem(placement: .navigation) {
-        if !isSettingsWorkspacePresented {
-          WorkspaceToolbarNavigationContent(
-            store: store,
-            canUseProtectedWorkbench: shellState.canUseProtectedWorkbench,
-            selectedDraftID: windowSession.selectedDraftID,
-            selectedSection: windowSession.selectedSection,
-            isCompact: isCompactLayout,
-            isQuickHideActive: shellState.isQuickHideActive,
-            openPublishFlow: { openPublishDrawer(message: nil) },
-            openRepositoryOverview: {
-              repositoryContextStage = .overview
-              selectWorkspaceSection(.sync)
-            },
-            openContentHealthOverview: {
-              contentHealthFilter = .overview
-              selectWorkspaceSection(.contentHealth)
-            },
-            openReleaseHistory: {
-              repositoryContextStage = .history
-              selectWorkspaceSection(.sync)
-            }
-          )
-          .accessibilityHidden(shellState.isQuickHideActive)
-        }
-      }
+      workspaceNavigationToolbar
 
-      ToolbarItem(placement: .principal) {
-        if isSettingsWorkspacePresented {
+      if isSettingsWorkspacePresented {
+        ToolbarItem(placement: .principal) {
           Text("设置")
             .font(.headline)
             .accessibilityAddTraits(.isHeader)
-        } else {
-          OmniCommandSearchBar(isCompact: isCompactLayout) {
-            guard shellState.canUseProtectedWorkbench else { return }
-            commandPaletteEditorCommands = sceneCommandRouter.markdownEditorCommandActions
-            modalPresentation.present(.commandPalette)
-          }
+        }
+      } else {
+        // A principal ToolbarItem is an independent native host for the
+        // composed search button. Keeping it inside the navigation group lets
+        // AppKit omit the whole HStack from the toolbar AX tree.
+        ToolbarItem(placement: .principal) {
+          commandSearchToolbarButton
+            .accessibilityHidden(shellState.isQuickHideActive)
         }
       }
 
       workspacePrimaryActionToolbar
+    }
+    .onChange(of: localSitePreviewState.activeProfileID) {
+      externalBrowserPreviewCoordinator.cancelPendingOpen()
+    }
+    .onChange(of: windowSession.selectedDraftID) { _, draftID in
+      externalBrowserPreviewCoordinator.cancelPendingOpen(ifDraftIsNoLongerCurrent: draftID)
     }
     .background(
       MainWindowInitialSizeBridge(
@@ -366,6 +375,12 @@ struct ContentView: View {
         profileProvider: { store.activeProfile }
       )
     )
+  }
+
+  /// Lifecycle, state synchronization, and sheet presentation are deliberately
+  /// a second type-check boundary after the native toolbar chain.
+  private var workspaceLifecycleContent: some View {
+    workspaceToolbarAndEnvironmentContent
     .onAppear {
       restoreWindowSessionStorageIfNeeded()
       synchronizeWindowSessionActivity()
@@ -375,17 +390,7 @@ struct ContentView: View {
     .onChange(of: sceneCommandRouterRootUpdateKey, initial: true) { _, _ in
       updateSceneCommandRouterRootActions()
     }
-    .onDisappear {
-      repositoryContentChangeMonitor.stop(clientID: repositoryContentMonitorClientID)
-      store.stopOperationalPolling(clientID: operationalPollingClientID)
-      sceneCommandRouter.clearAll()
-      _ = aiChatInspectorOperationSession.handle(
-        .ownerTeardown,
-        forwardingTo: { ownerToken in
-          store.ai.cancelChatReply(expectedOwnerToken: ownerToken)
-        }
-      )
-    }
+    .onDisappear(perform: handleContentViewDisappear)
     .task {
       await MainRunLoopUpdateDeferral.waitForNextDefaultModeCycle()
       guard !Task.isCancelled else { return }
@@ -455,6 +460,10 @@ struct ContentView: View {
     }
     .sheet(isPresented: $isDraftRecoveryPresented, content: draftRecoveryPanel)
     .sheet(item: sheetModalPresentationBinding, content: modalContent)
+    .knowledgeLibraryInspectorSheets(
+      knowledge: store.knowledge,
+      presentation: $knowledgeInspectorPresentation
+    )
   }
 
   private func handleScenePhaseChange(oldPhase: ScenePhase, newPhase: ScenePhase) {
@@ -470,9 +479,27 @@ struct ContentView: View {
     refreshStaleRSSIfNeeded()
   }
 
+  private func handleContentViewDisappear() {
+    repositoryContentChangeMonitor.stop(clientID: repositoryContentMonitorClientID)
+    store.stopOperationalPolling(clientID: operationalPollingClientID)
+    externalBrowserPreviewCoordinator.cancelPendingOpen()
+    sceneCommandRouter.clearAll()
+
+    let cancelChatReply: (UUID) -> Void = { ownerToken in
+      store.ai.cancelChatReply(expectedOwnerToken: ownerToken)
+    }
+    _ = aiChatInspectorOperationSession.handle(
+      .ownerTeardown,
+      forwardingTo: cancelChatReply
+    )
+  }
+
   private func handleSelectedSectionChange(section: WorkspaceSection) {
     selectedSectionRawValue = section.rawValue
     normalizeWorkspacePresentation(for: section)
+    if section != .library {
+      knowledgeInspectorPresentation.dismissAll()
+    }
     if section == .rss {
       refreshStaleRSSIfNeeded()
     }
@@ -509,17 +536,20 @@ struct ContentView: View {
       selectedSection: windowSession.selectedSection,
       selectedDraftID: windowSession.selectedDraftID,
       isCompact: compactLayout,
-      isFocusMode: hidesWorkspaceSidebar,
+      isFocusMode: effectiveFocusMode,
       isInspectorPresented: isInspectorVisible,
       contentHealthFilter: $contentHealthFilter,
       imageWorkbenchContextStage: $imageWorkbenchContextStage,
       repositoryContextStage: $repositoryContextStage,
       repositoryChangedFileSelection: $repositoryChangedFileSelection,
+      knowledgeInspectorPresentation: $knowledgeInspectorPresentation,
       repositorySourceSession: repositorySourceSession,
       rssStore: rssStore,
       onSelectSection: selectWorkspaceSection,
       onSelectDraft: selectWindowDraft,
-      onFocusDraft: focusWindowDraft
+      onFocusDraft: focusWindowDraft,
+      isSidebarPresented: shouldPresentWorkspaceSidebar,
+      showsCompactNavigationRail: shouldShowCompactNavigationRail
     )
     .frame(maxWidth: .infinity, maxHeight: .infinity)
     .inspector(isPresented: inspectorPresentation) {
@@ -532,10 +562,12 @@ struct ContentView: View {
         repositoryChangedFileSelection: $repositoryChangedFileSelection,
         repositorySourceSession: repositorySourceSession,
         aiChatSurfaceState: $aiChatInspectorSurfaceState,
+        knowledgeInspectorPresentation: $knowledgeInspectorPresentation,
         aiChatOperationSession: aiChatInspectorOperationSession,
         prioritizesChecks: compactLayout,
         onResetWidth: resetInspectorWidth
       )
+      .id(inspectorWidthResetGeneration)
       .inspectorColumnWidth(
         min: inspectorColumnWidthState.constraints.minimum,
         ideal: inspectorColumnWidthState.preferredWidth,
@@ -547,6 +579,7 @@ struct ContentView: View {
   }
 
   private func resetInspectorWidth() {
+    inspectorWidthResetGeneration &+= 1
     updateInspectorWidthState(
       isAIAssistantPresented: presentationState.isAssistantPresented
     )
@@ -636,6 +669,11 @@ struct ContentView: View {
       isFocusModeActive: effectiveFocusMode,
       canToggleFocusMode: shellState.canUseProtectedWorkbench
         && windowSession.selectedSection == .writing,
+      isInspectorPresented: inspectorPresentation.wrappedValue,
+      canToggleInspector: shellState.canUseProtectedWorkbench
+        && !isSettingsWorkspacePresented
+        && supportsInspector
+        && canRequestInspectorInCurrentLayout,
       repositorySourceHasUnsavedChanges: repositorySourceSession.hasUnsavedChanges,
       isSettingsWorkspacePresented: isSettingsWorkspacePresented
     )
@@ -670,6 +708,15 @@ struct ContentView: View {
         canToggle: shellState.canUseProtectedWorkbench
           && windowSession.selectedSection == .writing,
         toggle: toggleFocusMode
+      ),
+      workspaceInspectorCommandAction: WorkspaceInspectorCommandAction(
+        isPresented: inspectorPresentation.wrappedValue,
+        canToggle: shellState.canUseProtectedWorkbench
+          && !isSettingsWorkspacePresented
+          && supportsInspector
+          && canRequestInspectorInCurrentLayout,
+        exitsFocusMode: effectiveFocusMode,
+        toggle: toggleWorkspaceInspector
       ),
       repositorySourceSessionCommandActions: RepositorySourceSessionCommandActions(
         hasUnsavedChanges: repositorySourceSession.hasUnsavedChanges,
@@ -830,7 +877,7 @@ struct ContentView: View {
       )
       .frame(minWidth: 680, idealWidth: 780, minHeight: 600, idealHeight: 720)
     case .localSitePreview:
-      LocalSitePreviewPanelView()
+      LocalSitePreviewPanelView(store: store)
     case .firstRunSetup:
       FirstRunSetupView(
         store: store,
@@ -841,6 +888,10 @@ struct ContentView: View {
       WorkspaceCommandPalette(
         store: store,
         editorCommands: commandPaletteEditorCommands,
+        onSelectSection: selectWorkspaceSection,
+        onFocusDraft: { draftID in
+          focusWindowDraft(draftID, section: .writing)
+        },
         onToggleFocusMode: toggleFocusMode
       )
     case .draftFullTextSearch:
@@ -1004,6 +1055,64 @@ struct ContentView: View {
     )
   }
 
+  private var commandSearchToolbarButton: some View {
+    WorkspaceCommandSearchToolbarControl(
+      contextStore: sceneCommandRouter.toolbarEditorContext,
+      selectedDraftID: windowSession.selectedDraftID,
+      density: toolbarDensity,
+      isEnabled: shellState.canUseProtectedWorkbench
+    ) {
+      commandPaletteEditorCommands = sceneCommandRouter.markdownEditorCommandActions
+      modalPresentation.present(.commandPalette)
+    }
+  }
+
+  /// Each control is a direct child of the native navigation group. Keeping
+  /// them in an HStack makes AppKit flatten the AX tree and associate later
+  /// buttons with the sidebar toggle's label.
+  private var workspaceNavigationToolbar: some ToolbarContent {
+    ToolbarItemGroup(placement: .navigation) {
+      if !isSettingsWorkspacePresented {
+        WorkspaceSidebarToggleToolbarButton(
+          visibility: workspaceSidebarVisibility,
+          action: toggleWorkspaceSidebar
+        )
+        .accessibilityHidden(shellState.isQuickHideActive)
+
+        WorkspaceToolbarLeadingContent(
+          store: store,
+          isCompact: isCompactLayout
+        )
+        .disabled(!shellState.canUseProtectedWorkbench)
+        .accessibilityHidden(shellState.isQuickHideActive)
+
+        if windowSession.selectedSection.showsPublishingStatusToolbar {
+          PublishingStatusToolbarControl(
+            store: store,
+            canUseProtectedWorkbench: shellState.canUseProtectedWorkbench,
+            selectedDraftID: windowSession.selectedDraftID,
+            selectedSection: windowSession.selectedSection,
+            isCompact: isCompactLayout,
+            openPublishFlow: { openPublishDrawer(message: nil) },
+            openRepositoryOverview: {
+              repositoryContextStage = .overview
+              selectWorkspaceSection(.sync)
+            },
+            openContentHealthOverview: {
+              contentHealthFilter = .overview
+              selectWorkspaceSection(.contentHealth)
+            },
+            openReleaseHistory: {
+              repositoryContextStage = .history
+              selectWorkspaceSection(.sync)
+            }
+          )
+          .accessibilityHidden(shellState.isQuickHideActive)
+        }
+      }
+    }
+  }
+
   @ToolbarContentBuilder
   private var workspacePrimaryActionToolbar: some ToolbarContent {
     #if compiler(>=6.2)
@@ -1021,37 +1130,80 @@ struct ContentView: View {
   private var workspacePrimaryActionToolbarGroup: some ToolbarContent {
     ToolbarItemGroup(placement: .primaryAction) {
       if !isSettingsWorkspacePresented {
-        preparePublishToolbarButton
-        aiAssistantToolbarButton
+        switch WorkspaceToolbarContextPolicy.primaryActionContext(
+          for: windowSession.selectedSection
+        ) {
+        case .rssReading:
+          WorkspaceRSSReadingToolbar(
+            rssStore: rssStore,
+            commandRouter: sceneCommandRouter,
+            isEnabled: shellState.canUseProtectedWorkbench && !shellState.isQuickHideActive
+          )
 
-        if supportsInspector && (!isCompactLayout || canRequestInspectorInCurrentLayout) {
-          inspectorToolbarButton
+          if supportsInspector && (!isCompactLayout || canRequestInspectorInCurrentLayout) {
+            inspectorToolbarButton
+          }
+
+          settingsToolbarButton
+        case .publishing:
+          let previewAvailability = WorkspaceTopBarPresentation.PreviewAvailability(
+            isLivePreviewEnabled: shellState.canUseProtectedWorkbench
+              && !shellState.isQuickHideActive,
+            isLivePreviewRunning: localSitePreviewState.runtimeStatus.isRunning,
+            isBrowserPreviewEnabled: shellState.canUseProtectedWorkbench
+              && !shellState.isQuickHideActive
+              && windowSession.selectedDraftID != nil
+              && !externalBrowserPreviewCoordinator.isBusy
+          )
+
+          // These must stay direct ToolbarItemGroup children. In particular, do
+          // not restore the former HStack wrapper: it merged browser preview
+          // into the live preview accessibility element on native macOS.
+          WorkspaceLivePreviewToolbarButton(
+            availability: previewAvailability,
+            openLivePreview: openLocalSitePreview
+          )
+
+          WorkspaceBrowserPreviewToolbarButton(
+            availability: previewAvailability,
+            openBrowserPreview: {
+              guard let selectedDraftID = windowSession.selectedDraftID else { return }
+              externalBrowserPreviewCoordinator.openCurrentArticle(for: selectedDraftID)
+            }
+          )
+
+          Divider()
+            .frame(height: 18)
+            .padding(.horizontal, 1)
+            .accessibilityHidden(true)
+
+          WorkspaceTaskCenterToolbarButton(
+            store: store,
+            isCompact: isCompactLayout
+          )
+          .disabled(!shellState.canUseProtectedWorkbench || shellState.isQuickHideActive)
+
+          aiAssistantToolbarButton
+
+          if supportsInspector && (!isCompactLayout || canRequestInspectorInCurrentLayout) {
+            inspectorToolbarButton
+          }
+
+          Divider()
+            .frame(height: 18)
+            .padding(.horizontal, 1)
+            .accessibilityHidden(true)
+
+          settingsToolbarButton
+          WorkspacePreparePublishToolbarButton(
+            isEnabled: shellState.canUseProtectedWorkbench
+              && windowSession.selectedDraftID != nil,
+            density: toolbarDensity,
+            action: { openPublishDrawer(message: nil) }
+          )
         }
-
-        settingsToolbarButton
       }
     }
-  }
-
-  private var preparePublishToolbarButton: some View {
-    Button {
-      openPublishDrawer(message: nil)
-    } label: {
-      Label(String(localized: "准备发布"), systemImage: "paperplane.fill")
-    }
-    .buttonStyle(
-      WorkspaceToolbarIconButtonStyle(
-        isActive: false,
-        showsTitle: !isCompactLayout,
-        prominence: .primaryAction
-      )
-    )
-    .help(String(localized: "打开本次发布清单和一键发布流程"))
-    .accessibilityIdentifier("workspace-prepare-publish")
-    .disabled(
-      !shellState.canUseProtectedWorkbench
-        || windowSession.selectedDraftID == nil
-    )
   }
 
   private var aiAssistantToolbarButton: some View {
@@ -1080,7 +1232,7 @@ struct ContentView: View {
   }
 
   private var inspectorToolbarButton: some View {
-    Button(action: toggleArticleInspector) {
+    Button(action: toggleWorkspaceInspector) {
       Label(String(localized: "Inspector"), systemImage: "sidebar.right")
     }
     .buttonStyle(
@@ -1104,8 +1256,7 @@ struct ContentView: View {
     }
     .buttonStyle(
       WorkspaceToolbarIconButtonStyle(
-        isActive: false,
-        showsTitle: !isCompactLayout
+        isActive: false
       )
     )
     .disabled(!shellState.canUseProtectedWorkbench)
@@ -1120,11 +1271,7 @@ struct ContentView: View {
 
   private func toggleAIAssistantWorkspace() {
     if isAIAssistantWorkspaceVisible {
-      guard !store.ai.isChatRunning else {
-        store.ai.setChatMessage(String(localized: "请先停止当前 AI 回复，再关闭 AI 助手。"))
-        return
-      }
-      store.ai.closeAssistantPanel()
+      store.ai.hideAssistant()
       return
     }
 
@@ -1147,6 +1294,9 @@ struct ContentView: View {
   }
 
   private var inspectorToolbarHelp: String {
+    if effectiveFocusMode && canRequestInspectorInCurrentLayout {
+      return String(localized: "显示 Inspector 并退出专注")
+    }
     if canOverrideInspectorInCurrentLayout && !allowsInspectorInCurrentLayout {
       return String(localized: "窗口较窄；点击后会收起左侧栏并显示 Inspector")
     }
@@ -1203,20 +1353,10 @@ struct ContentView: View {
   private func normalizeWorkspacePresentation(for section: WorkspaceSection) {
     if section != .writing {
       isFocusMode = false
-      revealsInspectorInCompactWriting = false
     }
     guard windowSession.isKeyWindow else { return }
     if section != .writing && presentationState.isAssistantPresented {
       presentationState.hideAssistant()
-    }
-
-    switch section {
-    case .siteStarter:
-      break
-    case .sync, .images, .contentHealth, .rss:
-      hideInspectorIfNeeded()
-    case .writing, .library:
-      break
     }
   }
 
@@ -1253,11 +1393,6 @@ struct ContentView: View {
     var transaction = Transaction(animation: nil)
     transaction.disablesAnimations = true
     withTransaction(transaction) {
-      if section != .writing {
-        if windowSession.isKeyWindow {
-          hideInspectorIfNeeded()
-        }
-      }
       windowSession.selectSection(section) { selectedSection in
         guard store.selectedSection != selectedSection else { return }
         store.selectSection(selectedSection)
@@ -1290,7 +1425,8 @@ struct ContentView: View {
     }
   }
 
-  private func toggleArticleInspector() {
+  private func toggleWorkspaceInspector() {
+    guard shellState.canUseProtectedWorkbench else { return }
     let wasAllowed = allowsInspectorInCurrentLayout
     guard prepareInspectorForUserRequest() else { return }
     if effectiveFocusMode {
@@ -1376,6 +1512,17 @@ struct ContentView: View {
     responsiveLayout.isCompact
   }
 
+  private var toolbarDensity: WorkspaceTopBarPresentation.Density {
+    switch responsiveLayout.band {
+    case .constrained:
+      return .minimal
+    case .compactInspector:
+      return .compact
+    case .standardInspector, .htmlSourceInspector:
+      return .expanded
+    }
+  }
+
   private func applyResponsiveLayout(_ snapshot: WorkspaceResponsiveLayoutSnapshot) {
     guard snapshot != responsiveLayout else { return }
     var transaction = Transaction(animation: nil)
@@ -1383,14 +1530,14 @@ struct ContentView: View {
     withTransaction(transaction) {
       responsiveLayout = snapshot
       if !canOverrideInspector(snapshot) {
-        revealsInspectorInCompactWriting = false
+        revealsInspectorInCompactWorkspace = false
       }
     }
   }
 
   private var allowsInspectorInCurrentLayout: Bool {
     allowsInspectorByWidth
-      || (canOverrideInspectorInCurrentLayout && revealsInspectorInCompactWriting)
+      || (canOverrideInspectorInCurrentLayout && revealsInspectorInCompactWorkspace)
   }
 
   private var allowsInspectorByWidth: Bool {
@@ -1405,8 +1552,7 @@ struct ContentView: View {
   }
 
   private func canOverrideInspector(_ snapshot: WorkspaceResponsiveLayoutSnapshot) -> Bool {
-    windowSession.selectedSection == .writing
-      && snapshot.canManuallyRevealInspector
+    snapshot.canManuallyRevealInspector(for: windowSession.selectedSection)
   }
 
   private var canRequestInspectorInCurrentLayout: Bool {
@@ -1417,12 +1563,34 @@ struct ContentView: View {
     isFocusMode
   }
 
-  private var hidesWorkspaceSidebar: Bool {
-    effectiveFocusMode
-      || (revealsInspectorInCompactWriting
-        && canOverrideInspectorInCurrentLayout
-        && shellState.isInspectorPresented
-        && supportsInspector)
+  private var hidesWorkspaceSidebarForCompactInspector: Bool {
+    revealsInspectorInCompactWorkspace
+      && canOverrideInspectorInCurrentLayout
+      && shellState.isInspectorPresented
+      && supportsInspector
+  }
+
+  private var shouldPresentWorkspaceSidebar: Bool {
+    isSidebarPresented && !hidesWorkspaceSidebarForCompactInspector
+  }
+
+  private var shouldShowCompactNavigationRail: Bool {
+    WorkspaceSidebarVisibilityPolicy.shouldShowCompactNavigationRail(
+      userWantsVisible: isSidebarPresented,
+      isFocusMode: effectiveFocusMode,
+      inspectorTemporarilyReplacesSidebar: hidesWorkspaceSidebarForCompactInspector
+    )
+  }
+
+  private var isWorkspaceSidebarVisible: Bool {
+    WorkspaceSidebarVisibilityPolicy.shouldShowSidebar(
+      userWantsVisible: shouldPresentWorkspaceSidebar,
+      isFocusMode: effectiveFocusMode
+    )
+  }
+
+  private var workspaceSidebarVisibility: WorkspaceTopBarPresentation.SidebarVisibility {
+    isWorkspaceSidebarVisible ? .visible : .hidden
   }
 
   @discardableResult
@@ -1431,7 +1599,7 @@ struct ContentView: View {
       guard canOverrideInspectorInCurrentLayout else {
         return false
       }
-      revealsInspectorInCompactWriting = true
+      revealsInspectorInCompactWorkspace = true
     }
 
     dismissPublishDrawerForInspectorRequestIfNeeded()
@@ -1458,7 +1626,70 @@ struct ContentView: View {
       isFocusMode = true
     }
   }
+
+  private func toggleWorkspaceSidebar() {
+    if effectiveFocusMode {
+      isFocusMode = false
+      isSidebarPresented = true
+      return
+    }
+
+    if hidesWorkspaceSidebarForCompactInspector {
+      revealsInspectorInCompactWorkspace = false
+      store.setInspectorPresented(false)
+      isSidebarPresented = true
+      return
+    }
+
+    isSidebarPresented.toggle()
+  }
 }
+
+@MainActor
+private struct WorkspaceCommandSearchToolbarControl: View {
+  @ObservedObject private var contextStore: WorkspaceToolbarEditorContextStore
+  let selectedDraftID: UUID?
+  let density: WorkspaceTopBarPresentation.Density
+  let isEnabled: Bool
+  let action: () -> Void
+
+  init(
+    contextStore: WorkspaceToolbarEditorContextStore,
+    selectedDraftID: UUID?,
+    density: WorkspaceTopBarPresentation.Density,
+    isEnabled: Bool,
+    action: @escaping () -> Void
+  ) {
+    _contextStore = ObservedObject(wrappedValue: contextStore)
+    self.selectedDraftID = selectedDraftID
+    self.density = density
+    self.isEnabled = isEnabled
+    self.action = action
+  }
+
+  var body: some View {
+    WorkspaceCommandSearchNativeHost(
+      density: density,
+      statistics: statistics,
+      isEnabled: isEnabled,
+      action: action
+    )
+    .frame(width: WorkspaceTopBarPresentation.searchWidth(for: density), height: 28)
+  }
+
+  private var statistics: WorkspaceTopBarPresentation.ContextStatistics {
+    guard let context = contextStore.context,
+      context.draftID == selectedDraftID
+    else {
+      return .init()
+    }
+    return .init(
+      wordCount: context.writingUnitCount,
+      readingMinutes: context.readingMinutes
+    )
+  }
+}
+
 
 struct WorkspacePublishDrawerLayoutPolicy {
   static let minimumWidth: CGFloat = 380

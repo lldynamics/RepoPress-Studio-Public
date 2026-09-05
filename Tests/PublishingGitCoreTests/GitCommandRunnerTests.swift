@@ -58,6 +58,20 @@ final class GitCommandRunnerTests: XCTestCase {
     }
   }
 
+  func testCanPreserveLeadingWhitespaceAndNulDelimitedOutputForMachineParsing() throws {
+    let scriptURL = try makeFakeGitExecutable()
+    defer { try? FileManager.default.removeItem(at: scriptURL.deletingLastPathComponent()) }
+
+    let result = GitCommandRunner(executableURL: scriptURL).run(
+      ["raw-status"],
+      rootURL: FileManager.default.temporaryDirectory,
+      preserveStandardOutputWhitespace: true
+    )
+
+    XCTAssertEqual(result.terminationStatus, 0)
+    XCTAssertEqual(result.standardOutput, " M leading-space.md\0?? untracked.md\0")
+  }
+
   func testAsyncSuccessfulCommandKeepsStandardErrorOutOfMachineReadableOutput() async throws {
     let scriptURL = try makeFakeGitExecutable()
     defer { try? FileManager.default.removeItem(at: scriptURL.deletingLastPathComponent()) }
@@ -254,6 +268,10 @@ final class GitCommandRunnerTests: XCTestCase {
     fi
     if [ "$1" = "short-output" ]; then
       printf 'content/posts/article.md\n'
+      exit 0
+    fi
+    if [ "$1" = "raw-status" ]; then
+      printf ' M leading-space.md\\0?? untracked.md\\0'
       exit 0
     fi
     if [ "$1" = "redaction" ]; then

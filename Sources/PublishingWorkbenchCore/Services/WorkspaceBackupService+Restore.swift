@@ -9,6 +9,7 @@ extension WorkspaceBackupService {
     attachmentRootURL: URL,
     currentApplicationVersion: String?
   ) throws -> WorkspaceBackupRestoreStartupResult? {
+    try Task.checkCancellation()
     let runtimePaths = RestoreRuntimePaths(
       persistenceFileURL: persistenceFileURL,
       knowledgeRootURL: knowledgeRootURL,
@@ -23,6 +24,7 @@ extension WorkspaceBackupService {
       at: pendingURL,
       currentApplicationVersion: currentApplicationVersion
     )
+    try Task.checkCancellation()
     let parentURL = persistenceFileURL.deletingLastPathComponent()
     let transactionID = UUID()
     let stagingURL = restoreStagingURL(
@@ -56,6 +58,19 @@ extension WorkspaceBackupService {
     try restoredSnapshotData.write(to: stagedWorkbenchURL, options: .atomic)
     try restoredSnapshotData.write(to: stagedLastKnownGoodURL, options: .atomic)
 
+    let restoredOperationHistoryData: Data?
+    if validated.manifest.formatVersion >= 3 {
+      let data = try boundedData(
+        at: pendingURL.appendingPathComponent(Self.operationHistoryRelativePath),
+        maximumByteCount: WorkbenchOperationLedgerPersistence.maximumLedgerByteCount,
+        relativePath: Self.operationHistoryRelativePath
+      )
+      _ = try WorkbenchOperationLedgerPersistence.decodedDocument(from: data)
+      restoredOperationHistoryData = data
+    } else {
+      restoredOperationHistoryData = nil
+    }
+
     let stagedKnowledgeURL = stagingURL.appendingPathComponent(
       Self.knowledgePackageName,
       isDirectory: true
@@ -63,6 +78,7 @@ extension WorkspaceBackupService {
     for record in validated.manifest.files where record.relativePath.hasPrefix(
       Self.knowledgePackageName + "/"
     ) {
+      try Task.checkCancellation()
       let relativePath = String(
         record.relativePath.dropFirst(Self.knowledgePackageName.count + 1)
       )
@@ -93,7 +109,11 @@ extension WorkspaceBackupService {
     let stagedRSSDatabaseURL = stagedRSSDirectoryURL.appendingPathComponent(
       RSSReaderBackupService.databaseFileName
     )
-    if validated.manifest.formatVersion >= 2 {
+    let includesRSS = validated.manifest.files.contains {
+      $0.relativePath == Self.rssDatabaseRelativePath && $0.component == .rssReader
+    }
+    if includesRSS {
+      try Task.checkCancellation()
       guard let rssRecord = validated.manifest.files.first(where: {
         $0.relativePath == Self.rssDatabaseRelativePath && $0.component == .rssReader
       }) else {
@@ -118,6 +138,7 @@ extension WorkspaceBackupService {
       for record in validated.manifest.files where record.relativePath.hasPrefix(
         Self.rssMediaRelativePrefix + "/"
       ) {
+        try Task.checkCancellation()
         let relativePath = String(
           record.relativePath.dropFirst(Self.rssMediaRelativePrefix.count + 1)
         )
@@ -145,6 +166,7 @@ extension WorkspaceBackupService {
       withIntermediateDirectories: true
     )
     for reference in validated.manifest.attachmentReferences {
+      try Task.checkCancellation()
       let destination = stagedAttachmentsURL.appendingPathComponent(
         reference.restoredRelativePath
       )
@@ -167,7 +189,7 @@ extension WorkspaceBackupService {
 
     let transaction = makeRestoreTransaction(
       transactionID: transactionID,
-      includesRSS: validated.manifest.formatVersion >= 2,
+      includesRSS: includesRSS,
       paths: runtimePaths
     )
     let recoveryRoot = restoreRecoveryRootURL(
@@ -193,12 +215,14 @@ extension WorkspaceBackupService {
     }
 
     do {
+      try Task.checkCancellation()
       try restoreMutationHook(.transactionRecorded)
       let pendingRecoveryURL = restorePendingRecoveryURL(recoveryRoot: recoveryRoot)
       try fileManager.moveItem(at: pendingURL, to: pendingRecoveryURL)
       try restoreMutationHook(.pendingRestoreMoved)
 
       for item in transaction.items where item.existedBefore {
+        try Task.checkCancellation()
         let itemPaths = restoreItemPaths(
           for: item.kind,
           runtimePaths: runtimePaths,
@@ -207,6 +231,7 @@ extension WorkspaceBackupService {
         try moveRequiredItem(from: itemPaths.currentURL, to: itemPaths.recoveryURL)
       }
       try restoreMutationHook(.existingDataMoved)
+      try Task.checkCancellation()
 
       let lastKnownGoodURL = WorkbenchPersistence(fileURL: persistenceFileURL).lastKnownGoodURL
       try fileManager.createDirectory(
@@ -215,12 +240,22 @@ extension WorkspaceBackupService {
       )
       try restoredSnapshotData.write(to: persistenceFileURL, options: .atomic)
       try restoredSnapshotData.write(to: lastKnownGoodURL, options: .atomic)
+      if let restoredOperationHistoryData {
+        let operationLedger = WorkbenchOperationLedgerPersistence(
+          fileURL: WorkbenchPersistence(fileURL: persistenceFileURL).operationLedgerURL
+        )
+        try restoredOperationHistoryData.write(to: operationLedger.fileURL, options: .atomic)
+        try restoredOperationHistoryData.write(
+          to: operationLedger.lastKnownGoodURL,
+          options: .atomic
+        )
+      }
 
       try installDirectory(
         stagedKnowledgeURL,
         at: knowledgeRootURL
       )
-      if validated.manifest.formatVersion >= 2 {
+      if includesRSS {
         try installDirectory(
           stagedRSSDirectoryURL,
           at: rssDatabaseURL.deletingLastPathComponent()
@@ -265,6 +300,8 @@ extension WorkspaceBackupService {
     case workbench
     case lastKnownGood
     case draftRecoveryJournal
+    case operationLedger
+    case operationLedgerLastKnownGood
     case knowledgeLibrary
     case rssReader
     case managedAttachments
@@ -277,7 +314,7 @@ extension WorkspaceBackupService {
   }
 
   struct RestoreTransaction: Codable, Hashable, Sendable {
-    static let currentFormatVersion = 1
+    static let currentFormatVersion = 2
 
     var formatVersion: Int
     var transactionID: UUID
@@ -299,6 +336,8 @@ extension WorkspaceBackupService {
       .workbench,
       .lastKnownGood,
       .draftRecoveryJournal,
+      .operationLedger,
+      .operationLedgerLastKnownGood,
       .knowledgeLibrary
     ]
     if includesRSS {
@@ -439,10 +478,14 @@ extension WorkspaceBackupService {
   }
 
   func validateRestoreTransaction(_ transaction: RestoreTransaction) throws {
-    guard transaction.formatVersion == RestoreTransaction.currentFormatVersion else {
+    guard (1...RestoreTransaction.currentFormatVersion).contains(transaction.formatVersion) else {
       throw CocoaError(.fileReadCorruptFile)
     }
     var expectedKinds = Set(RestoreItemKind.allCases)
+    if transaction.formatVersion == 1 {
+      expectedKinds.remove(.operationLedger)
+      expectedKinds.remove(.operationLedgerLastKnownGood)
+    }
     if !transaction.includesRSS {
       expectedKinds.remove(.rssReader)
     }
@@ -474,6 +517,19 @@ extension WorkspaceBackupService {
       return RestoreItemPaths(
         currentURL: persistence.draftRecoveryJournalURL,
         recoveryURL: recoveryRoot.appendingPathComponent("draft-recovery.json")
+      )
+    case .operationLedger:
+      return RestoreItemPaths(
+        currentURL: persistence.operationLedgerURL,
+        recoveryURL: recoveryRoot.appendingPathComponent("operation-log.json")
+      )
+    case .operationLedgerLastKnownGood:
+      let ledgerPersistence = WorkbenchOperationLedgerPersistence(
+        fileURL: persistence.operationLedgerURL
+      )
+      return RestoreItemPaths(
+        currentURL: ledgerPersistence.lastKnownGoodURL,
+        recoveryURL: recoveryRoot.appendingPathComponent("operation-log-last-known-good.json")
       )
     case .knowledgeLibrary:
       return RestoreItemPaths(

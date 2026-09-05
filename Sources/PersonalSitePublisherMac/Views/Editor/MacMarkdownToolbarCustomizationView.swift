@@ -82,7 +82,10 @@ struct MacMarkdownToolbarCustomizationView: View {
   }
 
   private func itemList(for category: MarkdownToolbarCategory) -> some View {
-    let allItems = MarkdownToolbarItemID.allCases.filter { $0.defaultCategory == category }
+    let allItems = MarkdownToolbarItemID.allCases.filter {
+      $0.defaultCategory == category
+        && (category != .header || !MarkdownArticleToolbarScope.isWorkspaceOwned($0))
+    }
     let currentIDs =
       category == .header ? workingConfig.headerItemIDs : workingConfig.formattingItemIDs
 

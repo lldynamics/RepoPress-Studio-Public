@@ -2308,6 +2308,52 @@ final class DeploymentStatusServiceTests: XCTestCase {
     XCTAssertNil(store.releaseRecords.first?.reviewStatus)
   }
 
+  func testReviewHeadAcceptanceReportsSuccessAndStaleRecordFailure() throws {
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL())
+    )
+    var record = ReleaseRecord(
+      kind: .remoteReviewRequest,
+      title: "Review",
+      summary: "review",
+      siteProfileID: store.activeProfileID,
+      repositoryProvider: .github,
+      repositoryBaseURL: "https://api.github.com",
+      repoOwner: "owner",
+      repoName: "site",
+      branchName: "publish/1",
+      targetBranch: "main",
+      commitSHA: "original-head",
+      reviewNumber: 1,
+      reviewURL: "https://github.com/owner/site/pull/1",
+      reviewStatus: RemoteRepositoryReviewStatusSnapshot(
+        provider: .github,
+        reviewNumber: 1,
+        reviewURL: "https://github.com/owner/site/pull/1",
+        state: .merged,
+        sourceBranch: "publish/1",
+        targetBranch: "main",
+        headCommitSHA: "observed-head",
+        mergeCommitSHA: "merge-head"
+      )
+    )
+    store.setReleaseRecords([record])
+
+    XCTAssertTrue(store.acceptObservedReviewHead(for: record))
+    XCTAssertEqual(store.releaseRecords.first?.acceptedReviewHeadCommitSHA, "observed-head")
+    XCTAssertEqual(
+      store.deploymentStatusMessage,
+      CoreL10n.text("已确认新的 Review Commit，可继续检查部署状态。")
+    )
+
+    record.reviewStatus?.checkedAt = Date(timeIntervalSince1970: 1_900_100_005)
+    XCTAssertFalse(store.acceptObservedReviewHead(for: record))
+    XCTAssertEqual(
+      store.deploymentStatusMessage,
+      CoreL10n.text("发布记录已变化，未确认 Review Commit；请重新检查 PR/MR 后再试。")
+    )
+  }
+
   func testOperationalPollingUsesOneSharedHeartbeatUntilLastWindowStops() throws {
     let store = WorkbenchStore(
       persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL())

@@ -38,7 +38,7 @@ extension AIChatContextInspectorView {
       return connection.config.requiresAPIKey
         && generalKeyAvailabilityByConnectionID[connection.id]?.hasToken != true
     }
-    guard let draft = ai.selectedChatDraft else { return false }
+    guard let draft = inspectorDraft else { return false }
     return ai.chatProviderConfig(for: draft).requiresAPIKey
       && !ai.tokenAvailability.hasToken
   }
@@ -61,7 +61,7 @@ extension AIChatContextInspectorView {
     if ai.chatContextMode == .general {
       conversationCount =
         ai.generalChatConversationsIncludingArchived.filter { !$0.isArchived }.count
-    } else if let draft = ai.selectedChatDraft {
+    } else if let draft = inspectorDraft {
       conversationCount = ai.chatConversations(for: draft.id, includingArchived: false).count
     } else {
       conversationCount = 0
@@ -98,7 +98,7 @@ extension AIChatContextInspectorView {
         isHeaderTitleHovered = isHovered
       }
       .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
-      .disabled(ai.chatContextMode != .general && ai.selectedChatDraft == nil)
+      .disabled(ai.chatContextMode != .general && inspectorDraft == nil)
       .help(
         String(
           format: String(localized: "点击切换对话历史（当前草稿共 %lld 条对话）"),
@@ -115,7 +115,7 @@ extension AIChatContextInspectorView {
       AIChatConnectionStatusCapsule(
         ai: ai,
         chatState: chatState,
-        draft: ai.selectedChatDraft
+        draft: inspectorDraft
       ) {
         isModelQuickSwitchPresented = true
       }
@@ -123,7 +123,7 @@ extension AIChatContextInspectorView {
       .layoutPriority(1)
 
       Button {
-        startNewInspectorConversation(draft: ai.selectedChatDraft)
+        startNewInspectorConversation(draft: inspectorDraft)
       } label: {
         Image(systemName: "square.and.pencil")
           .font(.caption.weight(.semibold))
@@ -132,7 +132,7 @@ extension AIChatContextInspectorView {
       .controlSize(.small)
       .disabled(
         isChatBusy
-          || (ai.chatContextMode != .general && ai.selectedChatDraft == nil)
+          || (ai.chatContextMode != .general && inspectorDraft == nil)
       )
       .help(String(localized: "新对话"))
       .accessibilityLabel(String(localized: "新建 AI 对话"))
@@ -141,7 +141,7 @@ extension AIChatContextInspectorView {
       .layoutPriority(1)
 
       Button {
-        ai.closeAssistantPanel()
+        ai.hideAssistant()
       } label: {
         Image(systemName: "xmark")
           .font(.caption.weight(.semibold))
@@ -149,7 +149,6 @@ extension AIChatContextInspectorView {
           .frame(width: 20, height: 20)
       }
       .buttonStyle(.plain)
-      .disabled(isChatBusy)
       .help(String(localized: "关闭 AI 助手"))
       .accessibilityLabel(String(localized: "关闭 AI 助手"))
       .accessibilityIdentifier("ai-assistant-close")
@@ -202,7 +201,7 @@ extension AIChatContextInspectorView {
           }
         }
       )
-    } else if let draft = ai.selectedChatDraft {
+    } else if let draft = inspectorDraft {
       AIChatConversationPicker(
         draft: draft,
         conversations: ai.chatConversations(
@@ -344,7 +343,7 @@ extension AIChatContextInspectorView {
     )
     let compactSummary = AIChatInspectorDensityPresentation.compactContextSummary(
       mode: ai.chatContextMode,
-      draftTitle: ai.selectedChatDraft?.title,
+      draftTitle: inspectorDraft?.title,
       explicitReferenceCount: selectedContextReferences.count,
       knowledgeTitle: localizedKnowledgePolicyTitle(knowledgePolicyBinding.wrappedValue),
       agentTitle: localizedAgentModeTitle(agentModeBinding.wrappedValue)
@@ -432,7 +431,7 @@ extension AIChatContextInspectorView {
           AIChatInspectorHeaderPresentation.contextTitle(for: .site),
           "doc.text"
         ))
-      if let title = ai.selectedChatDraft?.title.trimmedForPublishing.nilIfEmpty {
+      if let title = inspectorDraft?.title.trimmedForPublishing.nilIfEmpty {
         items.append((title, "doc"))
       }
       items.append((String(localized: "站点上下文"), "globe"))
@@ -629,7 +628,7 @@ extension AIChatContextInspectorView {
   }
 
   var conversationNavigationTitle: String {
-    AIChatInspectorHeaderPresentation.conversationTitle(state.draft?.conversationTitle)
+    AIChatInspectorHeaderPresentation.conversationTitle(state.conversation?.conversationTitle)
   }
 
   var displayedGeneralConversation: AIConversation? {
@@ -688,7 +687,7 @@ extension AIChatContextInspectorView {
     if ai.chatContextMode == .general {
       return selectedGeneralConnectionProfile?.config ?? AIProviderConfig()
     }
-    guard let draft = ai.selectedChatDraft else { return AIProviderConfig() }
+    guard let draft = inspectorDraft else { return AIProviderConfig() }
     return ai.chatProviderConfig(for: draft)
   }
 
@@ -704,7 +703,7 @@ extension AIChatContextInspectorView {
     }
     return AIChatInspectorHeaderPresentation.supportsSelectableReasoningLevel(
       config: currentAIProviderConfig,
-      hasDraft: ai.selectedChatDraft != nil
+      hasDraft: inspectorDraft != nil
     )
   }
 

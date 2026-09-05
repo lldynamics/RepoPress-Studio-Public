@@ -39,6 +39,7 @@ public final class WorkbenchStore: ObservableObject {
   let siteMaintenanceStore: SiteMaintenanceStore
   let siteLinkAuditSnapshotStore = SiteLinkAuditSnapshotStore()
   public let knowledge: KnowledgeStore
+  public let operationHistory: WorkbenchOperationHistoryStore
   let persistenceStore: WorkbenchPersistenceStore
   let repositoryDeploymentCoordinator: RepositoryDeploymentCoordinator
 
@@ -72,6 +73,8 @@ public final class WorkbenchStore: ObservableObject {
     WorkbenchCommandPresentationFeatureFacade(store: self)
   public lazy var activityStatus: WorkbenchActivityStatusFacade = WorkbenchActivityStatusFacade(
     store: self)
+  public lazy var operationLog: WorkbenchOperationLogFeatureFacade =
+    WorkbenchOperationLogFeatureFacade(store: self)
   public lazy var workspaceLayout: WorkbenchWorkspaceLayoutFeatureFacade =
     WorkbenchWorkspaceLayoutFeatureFacade(store: self)
   public lazy var repositoryWorkspaceObservation:
@@ -278,6 +281,12 @@ public final class WorkbenchStore: ObservableObject {
       }
     }
     self.persistenceStore = WorkbenchPersistenceStore(persistence: persistence)
+    let operationHistory = WorkbenchOperationHistoryStore(
+      persistence: WorkbenchOperationLedgerPersistence(
+        fileURL: persistence.operationLedgerURL
+      )
+    )
+    self.operationHistory = operationHistory
     self.imageWorkbenchService = imageWorkbenchService
     self.aiCredentialStore =
       aiCredentialStore
@@ -299,7 +308,12 @@ public final class WorkbenchStore: ObservableObject {
     self.draftRecoveryJournal = draftRecoveryJournal
     self.draftRecoveryRecords = Self.mergedRecoveryRecords(from: loadedDraftRecoveryRecords)
     self.siteMaintenanceStore = SiteMaintenanceStore()
-    self.knowledge = KnowledgeStore(service: knowledgeLibraryService)
+    self.knowledge = KnowledgeStore(
+      service: knowledgeLibraryService,
+      operationEventRecorder: { record in
+        _ = operationHistory.record(record)
+      }
+    )
 
     let snapshotLoad: WorkbenchSnapshotLoadResult
     let requiresPersistenceRecoveryDecision: Bool
@@ -752,6 +766,15 @@ public final class WorkbenchStore: ObservableObject {
       pruningResolvedRecords: primarySaveSucceeded
     )
     return siteDraftFilesSucceeded && persistenceSucceeded && draftRecoverySucceeded
+  }
+
+  /// Completes the synchronous workspace save and then waits for the separate
+  /// operation ledger.  Process termination must use this path: accepting the
+  /// workspace snapshot alone must not mark a session clean while the ledger
+  /// write is still pending or has failed.
+  public func flushPendingChangesForTermination() async -> Bool {
+    guard flushPendingChanges() else { return false }
+    return await flushOperationLogPersistence() != nil
   }
 
   /// Marks the current in-memory snapshot dirty and commits it synchronously.

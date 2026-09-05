@@ -31,9 +31,11 @@ GOVERNED_DEPENDENCIES: dict[str, set[str]] = {
     "PublishingMarkdownCore": {"PublishingCoreSupport"},
     "PublishingGitCore": {"PublishingCoreSupport", "PublishingDomainContracts"},
     "PublishingAICore": {"PublishingCoreSupport"},
+    "PublishingAgentContracts": {"PublishingAICore"},
     "PublishingKnowledgeCore": {"PublishingCoreSupport"},
     "PublishingWorkbenchCore": {
         "PublishingAICore",
+        "PublishingAgentContracts",
         "PublishingCoreSupport",
         "PublishingDomainContracts",
         "PublishingGitCore",
@@ -42,7 +44,7 @@ GOVERNED_DEPENDENCIES: dict[str, set[str]] = {
     },
     "PublishingMCPClient": {
         "PublishingAICore",
-        "PublishingWorkbenchCore",
+        "PublishingAgentContracts",
     },
     "BrowserExtensionProtocolSupport": set(),
     "PersonalSitePublisherMac": {
@@ -58,6 +60,7 @@ EXPECTED_PRODUCTION_TARGET_TYPES = {
     "PublishingMarkdownCore": "regular",
     "PublishingGitCore": "regular",
     "PublishingAICore": "regular",
+    "PublishingAgentContracts": "regular",
     "PublishingKnowledgeCore": "regular",
     "PublishingWorkbenchCore": "regular",
     "PublishingMCPClient": "regular",
@@ -69,19 +72,25 @@ TEST_TARGET_DEPENDENCIES: dict[str, set[str]] = {
     "PublishingGitCoreTests": {"PublishingDomainContracts", "PublishingGitCore"},
     "PublishingDomainContractsTests": {"PublishingDomainContracts"},
     "PublishingAICoreTests": {"PublishingAICore", "PublishingCoreSupport"},
+    "PublishingAgentContractsTests": {
+        "PublishingAICore",
+        "PublishingAgentContracts",
+    },
     "PublishingCoreSupportTests": {"PublishingCoreSupport"},
     "PublishingKnowledgeCoreTests": {"PublishingKnowledgeCore"},
     "PublishingWorkbenchCoreTests": {
         "BrowserExtensionProtocolSupport",
         "PublishingAICore",
+        "PublishingAgentContracts",
+        "PublishingCoreSupport",
         "PublishingGitCore",
         "PublishingKnowledgeCore",
         "PublishingWorkbenchCore",
     },
     "PublishingMCPClientTests": {
         "PublishingAICore",
+        "PublishingAgentContracts",
         "PublishingMCPClient",
-        "PublishingWorkbenchCore",
     },
     "PersonalSitePublisherMacTests": {
         "BrowserExtensionProtocolSupport",
@@ -95,6 +104,10 @@ EXPECTED_PRODUCTS = {
     "PublishingMarkdownCore": {"type": "library", "targets": {"PublishingMarkdownCore"}},
     "PublishingGitCore": {"type": "library", "targets": {"PublishingGitCore"}},
     "PublishingAICore": {"type": "library", "targets": {"PublishingAICore"}},
+    "PublishingAgentContracts": {
+        "type": "library",
+        "targets": {"PublishingAgentContracts"},
+    },
     "PublishingKnowledgeCore": {"type": "library", "targets": {"PublishingKnowledgeCore"}},
     "PublishingWorkbenchCore": {"type": "library", "targets": {"PublishingWorkbenchCore"}},
     "PublishingMCPClient": {"type": "library", "targets": {"PublishingMCPClient"}},
@@ -110,6 +123,7 @@ EXPECTED_EXTERNAL_PRODUCTS: dict[str, dict[str, str]] = {
     },
     "PublishingGitCore": {},
     "PublishingAICore": {},
+    "PublishingAgentContracts": {},
     "PublishingKnowledgeCore": {},
     "PublishingWorkbenchCore": {},
     "PublishingMCPClient": {
@@ -128,6 +142,7 @@ LEAF_TARGETS = {
     "PublishingMarkdownCore",
     "PublishingGitCore",
     "PublishingAICore",
+    "PublishingAgentContracts",
     "PublishingKnowledgeCore",
     "BrowserExtensionProtocolSupport",
 }
@@ -142,12 +157,14 @@ CORE_SOURCE_TARGETS = (
     "PublishingMarkdownCore",
     "PublishingGitCore",
     "PublishingAICore",
+    "PublishingAgentContracts",
     "PublishingKnowledgeCore",
     "PublishingWorkbenchCore",
     "PublishingMCPClient",
 )
 EXPECTED_EXPORTS = {
     "PublishingAICore",
+    "PublishingAgentContracts",
     "PublishingCoreSupport",
     "PublishingDomainContracts",
     "PublishingGitCore",

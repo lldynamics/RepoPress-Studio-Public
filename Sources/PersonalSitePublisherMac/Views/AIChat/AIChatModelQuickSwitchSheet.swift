@@ -112,7 +112,8 @@ struct AIChatModelQuickSwitchSheet: View {
   @State private var searchText = ""
   @State private var customModelInput = ""
   @State private var connectionReport: AIConnectionTestReport?
-  @State private var isTestingConnection = false
+  @State private var connectionTestRequestState = AIChatConnectionTestRequestState()
+  @State private var connectionTestTask: Task<Void, Never>?
   @State var codexModels: [CodexAppServerModel] = []
   @State var isLoadingCodexModels = false
   @State var codexModelsError: String?
@@ -190,12 +191,12 @@ struct AIChatModelQuickSwitchSheet: View {
       synchronizeCustomModelInput()
       loadCodexModelsIfNeeded()
     }
-    .onChange(of: chatState.chatModelGrade) { _, _ in
-      connectionReport = nil
+    .onChange(of: currentConnectionTestIdentity) { _, _ in
+      invalidateConnectionTest()
       synchronizeCustomModelInput()
     }
     .onChange(of: chatState.chatSelectedModel) { _, _ in
-      connectionReport = nil
+      invalidateConnectionTest()
       synchronizeCustomModelInput()
       normalizeCodexReasoningEffort()
     }
@@ -205,7 +206,7 @@ struct AIChatModelQuickSwitchSheet: View {
       loadCodexModelsIfNeeded()
     }
     .onDisappear {
-      isTestingConnection = false
+      invalidateConnectionTest()
     }
   }
 
@@ -257,6 +258,18 @@ struct AIChatModelQuickSwitchSheet: View {
   private var connectionStatusColor: Color {
     if connectionReport != nil { return WorkbenchTheme.success }
     return currentReadiness.isReady ? WorkbenchTheme.success : WorkbenchTheme.warning
+  }
+
+  private var isTestingConnection: Bool {
+    connectionTestRequestState.isTesting
+  }
+
+  private var currentConnectionTestIdentity: AIChatConnectionTestRequestIdentity {
+    AIChatConnectionTestRequestIdentity(
+      connectionProfileID: activeConnectionProfileID,
+      config: currentConfig,
+      model: currentSelection?.activeModel ?? currentSelectedModel
+    )
   }
 
   private var connectionStatusTitle: String {
@@ -426,7 +439,6 @@ struct AIChatModelQuickSwitchSheet: View {
               ai.setGeneralChatConnectionProfile(profile.id)
             }
             ai.selectChatConnectionProfile(profile.id)
-            connectionReport = nil
             synchronizeCustomModelInput()
           } label: {
             HStack(spacing: 9) {
@@ -611,12 +623,24 @@ struct AIChatModelQuickSwitchSheet: View {
 
   private func testConnection() {
     guard draft != nil else { return }
-    isTestingConnection = true
-    Task {
+    let request = connectionTestRequestState.begin(for: currentConnectionTestIdentity)
+    connectionReport = nil
+    connectionTestTask?.cancel()
+    connectionTestTask = Task {
       let report = await ai.testConnection()
       guard !Task.isCancelled else { return }
+      guard connectionTestRequestState.finish(
+        request,
+        whileCurrentIdentityIs: currentConnectionTestIdentity
+      ) else { return }
       connectionReport = report
-      isTestingConnection = false
     }
+  }
+
+  private func invalidateConnectionTest() {
+    connectionTestTask?.cancel()
+    connectionTestTask = nil
+    connectionTestRequestState.invalidate()
+    connectionReport = nil
   }
 }

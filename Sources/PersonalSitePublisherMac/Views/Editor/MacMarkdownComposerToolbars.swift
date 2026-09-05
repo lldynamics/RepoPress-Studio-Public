@@ -42,6 +42,25 @@ enum MarkdownEditorToolbarLayoutPlanner {
   }
 }
 
+/// The workspace toolbar already owns navigation to AI chat, preview, and
+/// publication. Keep the article toolbar focused on writing actions while
+/// preserving its direct, high-frequency AI utilities.
+enum MarkdownArticleToolbarScope {
+  private static let workspaceOwnedItems: Set<MarkdownToolbarItemID> = [
+    .aiChat,
+    .localPreview,
+    .preparePublish,
+  ]
+
+  static func articleItemIDs(from itemIDs: [MarkdownToolbarItemID]) -> [MarkdownToolbarItemID] {
+    itemIDs.filter { !workspaceOwnedItems.contains($0) }
+  }
+
+  static func isWorkspaceOwned(_ item: MarkdownToolbarItemID) -> Bool {
+    workspaceOwnedItems.contains(item)
+  }
+}
+
 struct MacMarkdownEditorToolbar: View {
   @Binding var title: String
   let store: WorkbenchStore
@@ -50,12 +69,11 @@ struct MacMarkdownEditorToolbar: View {
   let isSelectionAIActionRunning: Bool
   let canOpenAIChat: Bool
   let aiChatUnavailableReason: String?
+  @ObservedObject var externalBrowserPreviewCoordinator: ExternalBrowserPreviewCoordinator
   let writingToolDensity: MarkdownWritingToolDensity
   let availableWritingContextPanels: [MarkdownWritingContextPanel]
   let actions: MarkdownEditorToolbarActions
-  @EnvironmentObject private var localPreviewState: WorkbenchLocalSitePreviewFeatureFacade
   @EnvironmentObject private var zenModeController: ZenModeController
-  @State private var isLocalPreviewPopoverPresented = false
   @State private var selectedPublishAssets = AIPublishingAssetKind.defaultSelection
   @AppStorage("workspace.customToolbarConfig") private var customToolbarConfigRawValue = ""
   @State private var isCustomizationSheetPresented = false
@@ -87,6 +105,7 @@ struct MacMarkdownEditorToolbar: View {
     isSelectionAIActionRunning: Bool,
     canOpenAIChat: Bool,
     aiChatUnavailableReason: String?,
+    externalBrowserPreviewCoordinator: ExternalBrowserPreviewCoordinator,
     writingToolDensity: MarkdownWritingToolDensity,
     availableWritingContextPanels: [MarkdownWritingContextPanel],
     actions: MarkdownEditorToolbarActions
@@ -98,6 +117,9 @@ struct MacMarkdownEditorToolbar: View {
     self.isSelectionAIActionRunning = isSelectionAIActionRunning
     self.canOpenAIChat = canOpenAIChat
     self.aiChatUnavailableReason = aiChatUnavailableReason
+    _externalBrowserPreviewCoordinator = ObservedObject(
+      wrappedValue: externalBrowserPreviewCoordinator
+    )
     self.writingToolDensity = writingToolDensity
     self.availableWritingContextPanels = availableWritingContextPanels
     self.actions = actions
@@ -164,7 +186,7 @@ struct MacMarkdownEditorToolbar: View {
   }
 
   private var enabledHeaderItemIDs: [MarkdownToolbarItemID] {
-    currentToolbarConfig.headerItemIDs
+    MarkdownArticleToolbarScope.articleItemIDs(from: currentToolbarConfig.headerItemIDs)
   }
 
   /// 中度折叠时保留的项目：取 collapseOrder 小于等于阈值的所有已启用项。
@@ -406,34 +428,12 @@ struct MacMarkdownEditorToolbar: View {
   }
 
   private func localSitePreviewButton(showsTitle: Bool) -> some View {
-    let isRunning = localPreviewState.runtimeStatus.isRunning
-    let isReady = localPreviewState.plan?.diagnostics.isReadyToStart == true
-    let title = isRunning ? "打开预览" : "本地预览"
-    let icon = isRunning ? "safari" : "play.rectangle"
-
-    return Button {
-      isLocalPreviewPopoverPresented.toggle()
-    } label: {
-      editorActionLabel(title, systemName: icon, showsTitle: showsTitle)
-    }
-    .buttonStyle(MarkdownEditorToolbarButtonStyle(showsTitle: showsTitle))
-    .help(
-      isRunning
-        ? String(localized: "管理本地站点预览")
-        : String(localized: "在写作界面启动本地站点预览")
+    MacMarkdownExternalBrowserPreviewControl(
+      store: store,
+      draftID: draftID,
+      showsTitle: showsTitle,
+      coordinator: externalBrowserPreviewCoordinator
     )
-    .accessibilityLabel(isRunning ? "打开本地站点预览" : "本地站点预览")
-    .accessibilityValue(
-      isRunning
-        ? String(localized: "预览正在运行")
-        : (isReady ? String(localized: "可以启动") : String(localized: "需要先配置站点仓库"))
-    )
-    .accessibilityIdentifier("markdown-local-site-preview")
-    .popover(isPresented: $isLocalPreviewPopoverPresented, arrowEdge: .top) {
-      MacMarkdownLocalPreviewPopover(
-        currentArticleURL: store.selectedDraft.flatMap { store.localSitePreviewURL(for: $0) }
-      )
-    }
   }
 
   @ViewBuilder
@@ -772,6 +772,8 @@ private struct MacMarkdownEditorTitleArea: View {
       .textFieldStyle(.plain)
       .font(.headline)
       .foregroundStyle(saveStatus.hasUnsavedChanges ? WorkbenchTheme.warning : Color.primary)
+      .accessibilityLabel("文章标题")
+      .accessibilityValue(title.nilIfEmpty ?? String(localized: "未命名文章"))
       .animation(
         WorkbenchMotion.animation(
           for: .statusChange,
@@ -781,13 +783,37 @@ private struct MacMarkdownEditorTitleArea: View {
       )
       .lineLimit(1)
       .help(title.nilIfEmpty ?? String(localized: "未命名文章"))
-      .accessibilityLabel("文章标题")
-      .accessibilityValue(title.nilIfEmpty ?? String(localized: "未命名文章"))
 
       InteractiveBreadcrumbView(
         markdownPath: markdownPath,
         fileURL: nil
       )
+
+      if let failure = saveStatus.saveFailure {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+          Label(
+            failure.scope == .project ? String(localized: "项目保存失败") : String(localized: "保存到软件失败"),
+            systemImage: "exclamationmark.triangle.fill"
+          )
+          .font(.caption.weight(.semibold))
+          .foregroundStyle(WorkbenchTheme.warning)
+
+          Text(failure.message)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .lineLimit(2)
+            .help(failure.message)
+
+          if failure.canRetry {
+            Button("重试") {
+              saveStatus.retrySave()
+            }
+            .controlSize(.small)
+          }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("markdown-editor-save-failure")
+      }
     }
     .frame(minWidth: 220, idealWidth: 320, maxWidth: 460, alignment: .leading)
     .onChange(of: draftID) { _, updatedDraftID in
@@ -840,7 +866,7 @@ private struct MacMarkdownEditorSaveStatusIcon: View {
   }
 }
 
-private struct MarkdownEditorToolbarButtonStyle: ButtonStyle {
+struct MarkdownEditorToolbarButtonStyle: ButtonStyle {
   let showsTitle: Bool
   var isSelected = false
 

@@ -17,6 +17,7 @@ final class ContentHealthSidebarProjection: ObservableObject {
     case loading
     case ready([UUID])
     case failed
+    case cancelled
   }
 
   private enum State: Equatable {
@@ -24,6 +25,7 @@ final class ContentHealthSidebarProjection: ObservableObject {
     case loading(profileID: UUID)
     case ready(Snapshot)
     case failed(profileID: UUID)
+    case cancelled(profileID: UUID)
   }
 
   @Published private var state: State = .idle
@@ -47,13 +49,20 @@ final class ContentHealthSidebarProjection: ObservableObject {
     state = .failed(profileID: profileID)
   }
 
+  func cancelLoading() {
+    guard case .loading(let profileID) = state else { return }
+    state = .cancelled(profileID: profileID)
+  }
+
   func queueState(for profileID: UUID) -> QueueState {
     switch state {
     case .ready(let snapshot) where snapshot.profileID == profileID:
       return .ready(snapshot.orderedAIFixDraftIDs)
     case .failed(let failedProfileID) where failedProfileID == profileID:
       return .failed
-    case .idle, .loading, .ready, .failed:
+    case .cancelled(let cancelledProfileID) where cancelledProfileID == profileID:
+      return .cancelled
+    case .idle, .loading, .ready, .failed, .cancelled:
       return .loading
     }
   }

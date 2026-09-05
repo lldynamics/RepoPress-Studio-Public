@@ -1,3 +1,4 @@
+import Foundation
 import XCTest
 
 @testable import PublishingWorkbenchCore
@@ -69,6 +70,58 @@ final class WorkbenchMarkdownEditorSaveCompletionTests: XCTestCase {
     )
 
     XCTAssertEqual(facade.saveCompletionRevision, 0)
+  }
+
+  func testProjectSaveFailureRetainsItsReasonAndOffersRetry() throws {
+    let store = makeStore()
+    let draft = makeSiteDraft(in: store, title: "失败草稿")
+    store.setDrafts([draft])
+    let facade = WorkbenchMarkdownEditorSaveStatusFeatureFacade(
+      store: store,
+      draftID: draft.id
+    )
+    store.siteDraftFileSaveStates[draft.id] = .failed(
+      repositoryPath: "content/posts/failure.md",
+      message: "磁盘空间不足"
+    )
+
+    let failure = try XCTUnwrap(facade.saveFailure)
+    XCTAssertEqual(failure.scope, .project)
+    XCTAssertEqual(failure.message, "磁盘空间不足")
+    XCTAssertTrue(failure.canRetry)
+  }
+
+  func testApplicationSaveFailureIsKeptSeparateFromProjectWriteFailures() throws {
+    let store = makeStore()
+    let draft = ArticleDraft.emptyGeneralDraft(editingProfile: store.activeProfile)
+    store.setDrafts([draft])
+    let facade = WorkbenchMarkdownEditorSaveStatusFeatureFacade(
+      store: store,
+      draftID: draft.id
+    )
+    store.recordPersistenceSaveFailed(
+      NSError(domain: "SaveFailure", code: 1, userInfo: [NSLocalizedDescriptionKey: "无法写入工作台"])
+    )
+
+    let failure = try XCTUnwrap(facade.saveFailure)
+    XCTAssertEqual(failure.scope, .application)
+    XCTAssertEqual(failure.message, "无法写入工作台")
+    XCTAssertTrue(failure.canRetry)
+  }
+
+  func testMissingDraftSaveFailureDoesNotOfferRetry() throws {
+    let store = makeStore()
+    let facade = WorkbenchMarkdownEditorSaveStatusFeatureFacade(
+      store: store,
+      draftID: UUID()
+    )
+    store.recordPersistenceSaveFailed(
+      NSError(domain: "SaveFailure", code: 1, userInfo: [NSLocalizedDescriptionKey: "无法写入工作台"])
+    )
+
+    let failure = try XCTUnwrap(facade.saveFailure)
+    XCTAssertEqual(failure.scope, .application)
+    XCTAssertFalse(failure.canRetry)
   }
 
   func testUnrelatedSiteDraftTransitionsDoNotEmitACompletionEvent() {

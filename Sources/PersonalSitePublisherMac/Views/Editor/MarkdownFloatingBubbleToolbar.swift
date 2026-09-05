@@ -41,6 +41,7 @@ struct MarkdownListMenuItems: View {
 
 struct MarkdownFloatingBubbleToolbar: View {
   let isSelectionAIActionRunning: Bool
+  let selectionAIActionAvailability: (AIPublishingActionKind) -> AIPublishingActionAvailabilityPresentation
   let onApplyFormatting: (MarkdownFormattingCommand) -> Void
   let onApplyAdvancedFormatting: (MarkdownAdvancedFormattingCommand) -> Void
   let onPerformSelectionAIAction: (AIPublishingActionKind) -> Void
@@ -139,6 +140,8 @@ struct MarkdownFloatingBubbleToolbar: View {
       }
       .menuIndicator(.hidden)
       .foregroundStyle(WorkbenchTheme.progress)
+      .disabled(!selectionAIActionAvailability(.rewriteSelection).isEnabled)
+      .help(selectionAIActionAvailability(.rewriteSelection).unavailableReason ?? "AI 润色")
       .accessibilityLabel("AI 润色与处理")
 
       Menu {
@@ -158,7 +161,15 @@ struct MarkdownFloatingBubbleToolbar: View {
       }
       .menuIndicator(.hidden)
       .foregroundStyle(WorkbenchTheme.brand)
+      .disabled(isSelectionAIActionRunning)
+      .help(isSelectionAIActionRunning ? "AI 正在处理" : "翻译")
       .accessibilityLabel("AI 翻译")
+
+      if isSelectionAIActionRunning {
+        ProgressView()
+          .controlSize(.small)
+          .accessibilityLabel("AI 正在处理")
+      }
     }
     .padding(.horizontal, 8)
     .padding(.vertical, 4)

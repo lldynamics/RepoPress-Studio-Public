@@ -14,6 +14,7 @@ struct MacMarkdownComposerView: View {
   @EnvironmentObject var sceneCommandRouter: WorkspaceSceneCommandRouter
   @StateObject var editorState: WorkbenchMarkdownEditorFeatureFacade
   @StateObject var editorSessionState: MarkdownComposerEditorSessionState
+  @StateObject var externalBrowserPreviewCoordinator: ExternalBrowserPreviewCoordinator
   /// Stored as reference state rather than an observed object so delayed
   /// whole-document statistics invalidate only the formatting toolbar that
   /// observes this model, not the complete composer hierarchy.
@@ -61,6 +62,7 @@ struct MacMarkdownComposerView: View {
   @State private var slashCommandQuery: String? = nil
   @State private var isSlashMenuPresented: Bool = false
   @State private var slashCommandSelectedIndex = 0
+  @State private var contextualPopoverAnchor: MarkdownContextualPopoverAnchor?
   @State private var isDiscardInvalidFrontMatterConfirmationPresented = false
   let findReplaceService = MarkdownFindReplaceService()
   let outlineService = MarkdownOutlineService()
@@ -185,6 +187,9 @@ struct MacMarkdownComposerView: View {
     _editorState = StateObject(
       wrappedValue: WorkbenchMarkdownEditorFeatureFacade(store: store, draftID: draftID)
     )
+    _externalBrowserPreviewCoordinator = StateObject(
+      wrappedValue: ExternalBrowserPreviewCoordinator(store: store)
+    )
   }
 
   @MainActor
@@ -238,6 +243,7 @@ struct MacMarkdownComposerView: View {
         isSelectionAIActionRunning: isSelectionAIActionRunning,
         canOpenAIChat: aiChatWorkspaceCommandAction?.isAvailable ?? true,
         aiChatUnavailableReason: aiChatWorkspaceCommandAction?.unavailableReason,
+        externalBrowserPreviewCoordinator: externalBrowserPreviewCoordinator,
         writingToolDensity: writingToolDensity,
         availableWritingContextPanels: availableWritingContextPanels,
         actions: markdownEditorToolbarActions
@@ -399,6 +405,7 @@ struct MacMarkdownComposerView: View {
       // destination composer simply hides sessions for other draft IDs.
       selectionBubblePresentationState.reset()
       cancelFindMatchRefresh()
+      editorStatisticsState.update(.empty)
       editorState.trackDraft(draft.id)
       flushEditorSessionSave(for: oldDraftID)
       cancelAttachmentImport()
@@ -569,6 +576,7 @@ struct MacMarkdownComposerView: View {
     cancelSelectionAIAction()
     cancelInlineGhostText()
     cancelAIPromptClipboardTask()
+    externalBrowserPreviewCoordinator.cancelPendingOpen()
     store.clearActiveEditorSelection(for: draft.id)
   }
 
@@ -639,6 +647,7 @@ struct MacMarkdownComposerView: View {
       }
 
       let reviewPresentation = inlineStructuredEditReviewPresentation
+      let statisticsDraftID = draft.id
       ZStack {
         WorkbenchWritingSurface.color(usesWarmPaper: isWarmPaperBackgroundEnabled)
 
@@ -659,7 +668,9 @@ struct MacMarkdownComposerView: View {
           ssgSnippets: markdownSSGSnippets,
           scrollSyncUpdate: nil,
           scrollRestorationUpdate: editorScrollRestorationUpdate,
-          onStatisticsChanged: { editorStatisticsState.update($0) },
+          onStatisticsChanged: { statistics in
+            receiveEditorStatistics(statistics, for: statisticsDraftID)
+          },
           onFileDropTargetChanged: { isImageDropTargeted = $0 },
           onPasteMessage: { message in
             selectionActionMessage = message
@@ -696,6 +707,9 @@ struct MacMarkdownComposerView: View {
           onLiveBodyChange: { previousBody, updatedBody in
             handleLiveEditorBodyChange(from: previousBody, to: updatedBody)
           },
+          onContextualAnchorChanged: { anchor in
+            contextualPopoverAnchor = anchor
+          },
           onScrollPositionChanged: { position in
             updateEditorScrollPosition(position)
           },
@@ -709,6 +723,10 @@ struct MacMarkdownComposerView: View {
             insertKnowledgeMarkdown(markdown, at: range, citation: citation)
           }
         )
+        // The coordinator owns delayed statistics tasks. Recreating it for a
+        // different draft binds each callback to the correct draft identity
+        // and cancels any pending delivery from the prior document.
+        .id(statisticsDraftID)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
 
         if let reviewPresentation {
@@ -791,17 +809,23 @@ struct MacMarkdownComposerView: View {
         }
 
         if selectionBubblePresentationState.shouldRender(for: editorSessionState.selectedRange) {
-          VStack {
+          if let placement = contextualPopoverPlacement(
+            contentSize: CGSize(width: 344, height: 42),
+            preferredEdge: .above
+          ) {
             MarkdownFloatingBubbleToolbar(
               isSelectionAIActionRunning: isSelectionAIActionRunning,
+              selectionAIActionAvailability: { kind in
+                selectionAIActionAvailability(kind)
+              },
               onApplyFormatting: applyMarkdownFormatting,
               onApplyAdvancedFormatting: applyAdvancedMarkdownFormatting,
               onPerformSelectionAIAction: performSelectionAIAction,
               onPerformConvergedSelectionAIAction: performConvergedSelectionAIAction
             )
-            Spacer()
+            .frame(width: placement.frame.width, height: placement.frame.height)
+            .position(x: placement.frame.midX, y: placement.frame.midY)
           }
-          .padding(.top, 16)
         }
 
         if isImageDropTargeted {
@@ -824,24 +848,24 @@ struct MacMarkdownComposerView: View {
         }
 
         if isSlashMenuPresented {
-          VStack {
-            Spacer()
-            HStack {
-              MarkdownSlashCommandMenu(
-                filterText: slashCommandQuery ?? "",
-                items: buildDefaultSlashCommands(),
-                selectedIndex: $slashCommandSelectedIndex,
-                onSelect: { item in
-                  selectSlashCommand(item)
-                },
-                onDismiss: {
-                  dismissSlashCommandMenu()
-                }
-              )
-              Spacer()
-            }
+          if let placement = contextualPopoverPlacement(
+            contentSize: CGSize(width: 280, height: 250),
+            preferredEdge: .below
+          ) {
+            MarkdownSlashCommandMenu(
+              filterText: slashCommandQuery ?? "",
+              items: buildDefaultSlashCommands(),
+              selectedIndex: $slashCommandSelectedIndex,
+              onSelect: { item in
+                selectSlashCommand(item)
+              },
+              onDismiss: {
+                dismissSlashCommandMenu()
+              }
+            )
+            .frame(width: placement.frame.width, height: placement.frame.height)
+            .position(x: placement.frame.midX, y: placement.frame.midY)
           }
-          .padding(20)
         }
       }
       .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -860,6 +884,20 @@ struct MacMarkdownComposerView: View {
     .overlay(
       RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
         .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
+    )
+  }
+
+  private func contextualPopoverPlacement(
+    contentSize: CGSize,
+    preferredEdge: MarkdownContextualPopoverPreferredEdge
+  ) -> MarkdownContextualPopoverPlacement? {
+    guard let contextualPopoverAnchor,
+      contextualPopoverAnchor.selection == editorSessionState.selectedRange
+    else { return nil }
+    return MarkdownContextualPopoverPlacement.resolve(
+      anchor: contextualPopoverAnchor,
+      contentSize: contentSize,
+      preferredEdge: preferredEdge
     )
   }
 

@@ -21,6 +21,9 @@ struct ContentHealthDetailView: View {
   @State private var selectedHealthDraftID: UUID?
   @State private var articlePresentation: ContentHealthArticlePresentation?
   @State private var expandedActionQueueGroupIDs: Set<String> = []
+  @State private var slugReferenceReview: SlugReferenceUpdateReview?
+  @State private var slugReferenceResult: SlugReferenceUpdateResult?
+  @State private var showsSlugRecoveryVersions = false
 
   init(
     store: WorkbenchStore,
@@ -60,6 +63,18 @@ struct ContentHealthDetailView: View {
           applySelectedAIFixFields(selectedFields, for: preview)
         }
       }
+      .sheet(item: $slugReferenceReview) { review in
+        SlugReferenceUpdateReviewSheet(review: review) {
+          applyReviewedSlugReferences(review)
+        }
+      }
+      .sheet(isPresented: $showsSlugRecoveryVersions) {
+        DraftLifecycleCenterView(store: store)
+      }
+      .onChange(of: store.activeProfileID) {
+        slugReferenceReview = nil
+        slugReferenceResult = nil
+      }
       .accessibilityElement(children: .contain)
       .accessibilityLabel("内容健康")
       .accessibilityIdentifier("content-health-workspace")
@@ -89,6 +104,12 @@ struct ContentHealthDetailView: View {
     GeometryReader { geometry in
       ScrollView(.vertical, showsIndicators: true) {
         VStack(alignment: .leading, spacing: 16) {
+          if let result = slugReferenceResult {
+            SlugReferenceUpdateResultView(result: result) { draftID in
+              guard store.focusDraft(draftID, section: .contentHealth) else { return }
+              showsSlugRecoveryVersions = true
+            }
+          }
           if filter == .maintenance {
             SiteMaintenanceDetailView(store: store, isEmbedded: true)
               .accessibilityElement(children: .contain)
@@ -299,8 +320,12 @@ struct ContentHealthDetailView: View {
   }
 
   private func refreshContentHealthSnapshotIfNeeded() {
-    guard healthSnapshot == nil else { return }
-    refreshContentHealthSnapshot()
+    guard !wasHealthSnapshotCancelled else { return }
+    if healthSnapshot == nil {
+      refreshContentHealthSnapshot()
+    } else if articlePresentation == nil && articlePresentationTask == nil {
+      rebuildArticlePresentation()
+    }
   }
 
   private func rebuildArticlePresentation() {
@@ -384,6 +409,8 @@ struct ContentHealthDetailView: View {
         guard healthSnapshotRequestID == requestID else { return }
         isHealthSnapshotRefreshing = false
         healthSnapshotTask = nil
+        sidebarProjection.cancelLoading()
+        wasHealthSnapshotCancelled = true
         return
       } catch {
         guard !Task.isCancelled,
@@ -408,6 +435,7 @@ struct ContentHealthDetailView: View {
   }
 
   private func cancelContentHealthWork(showsCancelledState: Bool) {
+    sidebarProjection.cancelLoading()
     healthSnapshotRequestID = UUID()
     articlePresentationRequestID = UUID()
     healthSnapshotTask?.cancel()
@@ -698,6 +726,45 @@ struct ContentHealthDetailView: View {
     .accessibilityLabel("问题详情")
   }
 
+  private func prepareSlugReferenceReview(draftID: UUID) {
+    guard let target = store.draft(for: draftID),
+      let impact = store.slugChangeImpact(for: draftID)
+    else { return }
+    var sources: [UUID: (draft: ArticleDraft, body: String, path: String)] = [:]
+    for sourceID in Set(impact.references.map(\.sourceDraftID)) {
+      guard let draft = store.draft(for: sourceID) else { continue }
+      sources[sourceID] = (
+        draft, store.draftBodyEditorBuffer(for: sourceID).bodyMarkdown,
+        store.profile(for: draft).markdownPath(for: draft)
+      )
+    }
+    guard
+      let review = SlugReferenceUpdateReview(
+        profileID: store.activeProfileID,
+        impact: impact, targetSlug: target.slug, sources: sources)
+    else {
+      slugReferenceResult = SlugReferenceUpdateResult(
+        application: SlugChangeApplicationResult(
+          wasApplied: false, message: String(localized: "引用已发生变化，请重新检查后再审阅。")), review: nil)
+      return
+    }
+    slugReferenceReview = review
+  }
+
+  private func applyReviewedSlugReferences(_ review: SlugReferenceUpdateReview) {
+    slugReferenceReview = nil
+    guard store.activeProfileID == review.profileID else { return }
+    let result = store.updateReferencesForPendingSlugChange(
+      draftID: review.impact.targetDraftID,
+      expectedImpact: review.impact,
+      expectedTargetSlug: review.targetSlug
+    )
+    slugReferenceResult = SlugReferenceUpdateResult(application: result, review: review)
+    if result.wasApplied {
+      refreshContentHealthSnapshot()
+    }
+  }
+
   private func slugChangeResolutionCard(_ impact: SlugChangeImpact) -> some View {
     VStack(alignment: .leading, spacing: 9) {
       Label("Slug 变更处理", systemImage: "arrow.triangle.branch")
@@ -715,12 +782,12 @@ struct ContentHealthDetailView: View {
       .foregroundStyle(.secondary)
 
       Button {
-        _ = store.updateReferencesForPendingSlugChange(draftID: impact.targetDraftID)
+        prepareSlugReferenceReview(draftID: impact.targetDraftID)
       } label: {
         Label(
           impact.referenceCount == 0
-            ? "确认无需更新站内引用"
-            : "一键更新 \(impact.referenceCount) 处引用",
+            ? String(localized: "确认无需更新站内引用")
+            : String(localized: "审阅 \(impact.referenceCount) 处引用更新…"),
           systemImage: "link.badge.plus"
         )
       }
@@ -1073,33 +1140,21 @@ struct ContentHealthDetailView: View {
   private func applySelectedAIFixFields(
     _ fields: [FrontMatterFixFieldItem],
     for preview: ContentHealthAIFixResultPreview
-  ) {
+  ) -> ContentHealthAIFixApplyFeedback {
     guard let draftID = preview.draftID,
       var draft = store.publishing.visibleDrafts.first(where: { $0.id == draftID })
     else {
-      return
+      return .failed(String(localized: "未能找到原文章，未应用任何字段。"))
     }
 
-    for item in fields where item.isSelected {
-      switch item.fieldKey.lowercased() {
-      case "title":
-        draft.title = item.proposedValue
-      case "slug":
-        draft.slug = item.proposedValue
-      case "summary", "description":
-        draft.summary = item.proposedValue
-      case "tags":
-        draft.tags = item.proposedValue
-          .components(separatedBy: CharacterSet(charactersIn: ",，\n"))
-          .map { $0.trimmingCharacters(in: .whitespaces) }
-          .filter { !$0.isEmpty }
-      default:
-        break
-      }
+    let result = ContentHealthAIFixFieldPolicy.apply(fields, to: &draft)
+    guard result.didApplyChanges else {
+      return .failed(String(localized: "所选字段当前不能应用，文章未更改。"))
     }
 
     store.updateDraft(draft)
     refreshContentHealthSnapshot()
+    return .applied(result)
   }
 }
 

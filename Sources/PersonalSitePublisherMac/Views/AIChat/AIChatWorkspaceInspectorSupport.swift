@@ -8,9 +8,9 @@ struct AIChatContextInspectorContent: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: 16) {
-      if let draftContext = state.draft {
-        AIChatConversationInspectorSection(context: draftContext, actions: actions)
-        AIChatRelatedSuggestionsInspectorSection(context: draftContext, actions: actions)
+      if let conversation = state.conversation {
+        AIChatConversationInspectorSection(context: conversation, actions: actions)
+        AIChatRelatedSuggestionsInspectorSection(context: conversation, actions: actions)
       } else {
         EmptyStateView(
           title: "没有上下文",

@@ -156,14 +156,33 @@ extension RemoteRepositoryPublishService {
     }
 
     guard !actions.isEmpty else {
-      let existingReviewURL = createsReview && reviewBranchExists
-        ? try await gitLabExistingMergeRequestURL(
+      var existingReviewURL: String?
+      if createsReview && reviewBranchExists {
+        existingReviewURL = try await gitLabExistingMergeRequestURL(
           repository: repository,
           sourceBranch: branchName,
           targetBranch: targetBranch,
           token: token
         )
-        : nil
+        if existingReviewURL == nil {
+          let mergeRequest: GitLabMergeRequestResponse = try await send(
+            gitLabRequest(
+              repository: repository,
+              method: "POST",
+              path: "/projects/\(encodedPathComponent(repository.projectPath))/merge_requests",
+              token: token,
+              body: GitLabCreateMergeRequestBody(
+                sourceBranch: branchName,
+                targetBranch: targetBranch,
+                title: reviewDraft.title,
+                description: reviewDraft.body,
+                removeSourceBranch: false
+              )
+            )
+          )
+          existingReviewURL = mergeRequest.webURL
+        }
+      }
       let existingReviewHeadSHA =
         existingReviewURL == nil
         ? nil

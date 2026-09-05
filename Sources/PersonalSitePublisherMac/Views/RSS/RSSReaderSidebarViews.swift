@@ -129,8 +129,8 @@ struct RSSFeedSidebar: View {
         }
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
-        .help("刷新订阅")
-        .accessibilityLabel("RSS 订阅管理")
+        .help("订阅刷新选项")
+        .accessibilityLabel("订阅刷新选项")
         .accessibilityIdentifier("rss-subscription-management")
       }
       .padding(.horizontal, WorkspaceSidebarMetrics.horizontalPadding)

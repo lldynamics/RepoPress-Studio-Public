@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 import XCTest
 
 @testable import PersonalSitePublisherMac
@@ -212,6 +213,66 @@ final class WorkspaceWindowSessionTests: XCTestCase {
         usesWindowDraftSelection: true,
         ai: store.ai
       )
+    )
+  }
+
+  func testGeneralInspectorCanPresentWithoutAnyWindowOrSharedDraftSelection() {
+    XCTAssertTrue(
+      AIChatInspectorContextPresentationPolicy.canPresentConversation(
+        mode: .general,
+        hasDraft: false
+      )
+    )
+    XCTAssertFalse(
+      AIChatInspectorContextPresentationPolicy.canPresentConversation(
+        mode: .site,
+        hasDraft: false
+      )
+    )
+  }
+
+  func testGeneralInspectorStateKeepsHistoryWhenWindowAndSharedDraftSelectionsAreNil() {
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(
+        fileURL: FileManager.default.temporaryDirectory
+          .appendingPathComponent("general-inspector-state-\(UUID().uuidString).json")
+      ),
+      safeMode: true
+    )
+    store.setDrafts([])
+    store.setSelectedDraftID(nil)
+    XCTAssertNil(store.selectedDraftID)
+    XCTAssertNil(store.ai.selectedChatDraft)
+    store.setAIChatContextMode(.general)
+
+    let conversation = AIConversation(
+      scope: .general,
+      connectionProfileID: store.activeAIConnectionProfile.id,
+      messages: [
+        AIPublishingChatMessage(role: .user, content: "没有文章时仍可提问", contextMode: .general),
+        AIPublishingChatMessage(role: .assistant, content: "通用历史仍会显示", contextMode: .general),
+      ]
+    )
+    store.aiStore.aiConversations = [conversation]
+    store.aiStore.activeAIConversationIDsByScope = [
+      AIConversationScope.general.storageKey: conversation.id
+    ]
+
+    let inspector = AIChatContextInspectorView(
+      store: store,
+      selectedDraftID: nil,
+      usesWindowDraftSelection: true,
+      surfaceState: .constant(
+        AIChatSurfaceState(surface: .inspector, selectedConversationID: conversation.id)
+      ),
+      operationSession: AIChatSurfaceOperationSession()
+    )
+
+    XCTAssertNil(inspector.inspectorDraft)
+    XCTAssertNil(inspector.state.conversation?.draft)
+    XCTAssertEqual(
+      inspector.state.conversation?.messages.map(\.content),
+      ["没有文章时仍可提问", "通用历史仍会显示"]
     )
   }
 }

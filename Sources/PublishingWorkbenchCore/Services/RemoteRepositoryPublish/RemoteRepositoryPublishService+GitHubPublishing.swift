@@ -201,6 +201,23 @@ extension RemoteRepositoryPublishService {
             targetBranch: targetBranch,
             token: token
           )
+          if reviewURL == nil {
+            let pull: GitHubPullRequestResponse = try await send(
+              githubRequest(
+                repository: repository,
+                method: "POST",
+                path: "/repos/\(encodedPathComponent(repository.owner))/\(encodedPathComponent(repository.name))/pulls",
+                token: token,
+                body: GitHubCreatePullRequestBody(
+                  title: reviewDraft.title,
+                  body: reviewDraft.body,
+                  head: branchName,
+                  base: targetBranch
+                )
+              )
+            )
+            reviewURL = pull.htmlURL
+          }
         }
         return RemoteRepositoryPublishResult(
           provider: .github,
@@ -513,7 +530,7 @@ extension RemoteRepositoryPublishService {
       }
 
       guard !treeEntries.isEmpty else {
-        let existingReviewURL: String?
+        var existingReviewURL: String?
         if didCreateReviewBranch {
           try await githubDeleteBranch(repository: repository, branch: branchName, token: token)
           existingReviewURL = nil
@@ -524,6 +541,23 @@ extension RemoteRepositoryPublishService {
             targetBranch: targetBranch,
             token: token
           )
+          if existingReviewURL == nil {
+            let pull: GitHubPullRequestResponse = try await send(
+              githubRequest(
+                repository: repository,
+                method: "POST",
+                path: "/repos/\(encodedPathComponent(repository.owner))/\(encodedPathComponent(repository.name))/pulls",
+                token: token,
+                body: GitHubCreatePullRequestBody(
+                  title: reviewDraft.title,
+                  body: reviewDraft.body,
+                  head: branchName,
+                  base: targetBranch
+                )
+              )
+            )
+            existingReviewURL = pull.htmlURL
+          }
         } else {
           existingReviewURL = nil
         }

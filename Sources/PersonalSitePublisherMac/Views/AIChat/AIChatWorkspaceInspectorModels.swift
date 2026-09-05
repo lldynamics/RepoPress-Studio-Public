@@ -2,7 +2,16 @@ import Foundation
 import PublishingWorkbenchCore
 
 struct AIChatContextInspectorState {
-  let draft: AIChatInspectorDraftContext?
+  let conversation: AIChatInspectorConversationContext?
+}
+
+enum AIChatInspectorContextPresentationPolicy {
+  static func canPresentConversation(
+    mode: AIPublishingChatContextMode,
+    hasDraft: Bool
+  ) -> Bool {
+    mode == .general || hasDraft
+  }
 }
 
 @MainActor
@@ -26,8 +35,8 @@ enum AIChatInspectorDraftResolver {
 @MainActor
 final class AIChatInspectorStaticProjectionCache: ObservableObject {
   struct Key: Equatable {
-    let draftID: UUID
-    let draftUpdatedAt: Date
+    let draftID: UUID?
+    let draftUpdatedAt: Date?
     let conversationID: UUID?
     let contextMode: AIPublishingChatContextMode
     let conversationTitle: String?
@@ -37,7 +46,7 @@ final class AIChatInspectorStaticProjectionCache: ObservableObject {
   }
 
   struct Projection {
-    let draft: ArticleDraft
+    let draft: ArticleDraft?
     let conversationID: UUID?
     let conversationTitle: String
     let relatedSuggestions: [AIChatRelatedSuggestionPresentation]
@@ -541,8 +550,10 @@ enum AIChatAgentReviewPresentation {
   }
 }
 
-struct AIChatInspectorDraftContext {
-  let draft: ArticleDraft
+struct AIChatInspectorConversationContext {
+  /// General conversations deliberately have no implicit draft. Site
+  /// conversations retain the draft only for explicit editing affordances.
+  let draft: ArticleDraft?
   let conversationID: UUID?
   let conversationTitle: String
   let messages: [AIPublishingChatMessage]

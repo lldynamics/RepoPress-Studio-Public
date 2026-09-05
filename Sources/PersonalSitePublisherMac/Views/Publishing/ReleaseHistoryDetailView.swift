@@ -40,7 +40,7 @@ struct ReleaseHistoryDetailView: View {
       }
     }
     .confirmationDialog(
-      "确认危险操作",
+      String(localized: "确认危险操作"),
       isPresented: pendingDangerousReleaseActionPresented,
       titleVisibility: .visible,
       presenting: pendingDangerousReleaseAction

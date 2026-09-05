@@ -4,6 +4,7 @@ import SwiftUI
 enum LocalSitePreviewTrustEntryPoint: String, CaseIterable {
   case panel
   case markdownPopover
+  case externalBrowser
 }
 
 struct LocalSitePreviewTrustConfirmationPresentation: Equatable {
@@ -16,16 +17,27 @@ struct LocalSitePreviewTrustConfirmationPresentation: Equatable {
   let confirmTitle: String
   let cancelTitle: String
 
-  init(request: LocalSitePreviewAuthorizationRequest) {
+  init(
+    request: LocalSitePreviewAuthorizationRequest,
+    entryPoint: LocalSitePreviewTrustEntryPoint = .panel
+  ) {
     title = String(localized: "确认运行本地预览命令")
     repositoryLabel = String(localized: "仓库路径")
     repositoryPath = request.repositoryPath
     commandLabel = String(localized: "将要执行的命令")
     command = request.command
-    riskMessage = String(
-      localized: "本地预览会在这台 Mac 上执行仓库中的代码。确认后会在这台 Mac 上记住此仓库和命令；仅当你信任它们时继续。命令或项目清单变更后需重新确认。"
-    )
-    confirmTitle = String(localized: "确认并启动")
+    switch entryPoint {
+    case .externalBrowser:
+      riskMessage = String(
+        localized: "本地预览会在这台 Mac 上执行仓库中的代码。确认后会记住此仓库和命令，并在页面就绪后用默认浏览器打开；仅当你信任它们时继续。命令或项目清单变更后需重新确认。"
+      )
+      confirmTitle = String(localized: "确认、启动并打开")
+    case .panel, .markdownPopover:
+      riskMessage = String(
+        localized: "本地预览会在这台 Mac 上执行仓库中的代码。确认后会在这台 Mac 上记住此仓库和命令；仅当你信任它们时继续。命令或项目清单变更后需重新确认。"
+      )
+      confirmTitle = String(localized: "确认并启动")
+    }
     cancelTitle = String(localized: "取消")
   }
 }
@@ -53,7 +65,10 @@ struct LocalSitePreviewTrustConfirmationView: View {
   let confirmAction: () -> Void
 
   private var presentation: LocalSitePreviewTrustConfirmationPresentation {
-    LocalSitePreviewTrustConfirmationPresentation(request: request)
+    LocalSitePreviewTrustConfirmationPresentation(
+      request: request,
+      entryPoint: entryPoint
+    )
   }
 
   var body: some View {

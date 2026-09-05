@@ -4,9 +4,12 @@ import SwiftUI
 struct AISettingsView: View {
   let activeProfileBinding: Binding<SiteProfile>
   let connectionProfiles: [AIConnectionProfile]
+  let referencingSiteProfiles: [SiteProfile]
   let selectedConnectionProfileID: Binding<UUID>
   let updateConnectionProfile: (AIConnectionProfile) -> Bool
   let createConnectionProfile: (String, AIProviderPreset) -> AIConnectionProfile
+  let duplicateConnectionProfile: (UUID) -> AIConnectionProfile?
+  let currentActionMessage: () -> String?
   let deleteConnectionProfile: (UUID) -> Void
   let deletableConnectionProfiles: [AIConnectionProfile]
   let credentialStorageMode: AICredentialStorageMode
@@ -38,149 +41,144 @@ struct AISettingsView: View {
   @State private var hasAttemptedConnectionTest = false
   @State private var selectedCapabilityProbes: Set<AIProviderCapabilityProbeKind> = []
   @State private var connectionUpdateFailed = false
-  @Environment(\.settingsSubsection) private var settingsSubsection
-
   var body: some View {
     Form {
-      switch selectedSection {
-      case .connection:
-        AIConnectionProfilesSection(
-          profiles: connectionProfiles,
-          selectedProfileID: selectedConnectionProfileID,
-          updateProfile: { profile in
-            _ = commitConnectionUpdate(profile)
-          },
-          createProfile: createConnectionProfile,
-          deleteProfile: deleteConnectionProfile,
-          deletableProfiles: deletableConnectionProfiles
+      SettingsSubsectionAnchor(subsection: .aiConnection)
+      AIConnectionProfilesSection(
+        profiles: connectionProfiles,
+        referencingSiteProfiles: referencingSiteProfiles,
+        selectedProfileID: selectedConnectionProfileID,
+        updateProfile: { profile in
+          _ = commitConnectionUpdate(profile)
+        },
+        createProfile: createConnectionProfile,
+        duplicateProfileForCurrentSite: duplicateConnectionProfile,
+        currentActionMessage: currentActionMessage,
+        deleteProfile: deleteConnectionProfile,
+        deletableProfiles: deletableConnectionProfiles
+      )
+
+      AIProviderSection(
+        presetBinding: aiPresetBinding,
+        presetDisplayName: activeConnection.config.preset.localizedDisplayName,
+        baseURL: aiProviderStringBinding(\.baseURL),
+        baseURLDisplayValue: activeConnection.config.baseURL,
+        model: aiProviderStringBinding(\.model),
+        modelDisplayValue: activeConnection.config.model,
+        requiresAPIKeyBinding: aiProviderBoolBinding(\.requiresAPIKey),
+        requiresAPIKeyDisplayValue: activeConnection.config.requiresAPIKey
+          ? String(localized: "开启")
+          : String(localized: "关闭"),
+        connectionProfileID: activeConnection.id,
+        discoverModels: discoverModels
+      )
+
+      if connectionUpdateFailed {
+        AccessibleStatusMessage(
+          message: connectionUpdateFailureMessage,
+          severity: .error
         )
+        .textSelection(.enabled)
+        .accessibilityIdentifier("settings-ai-connection-update-error")
+      }
 
-        AIProviderSection(
-          presetBinding: aiPresetBinding,
-          presetDisplayName: activeConnection.config.preset.localizedDisplayName,
-          baseURL: aiProviderStringBinding(\.baseURL),
-          baseURLDisplayValue: activeConnection.config.baseURL,
-          model: aiProviderStringBinding(\.model),
-          modelDisplayValue: activeConnection.config.model,
-          requiresAPIKeyBinding: aiProviderBoolBinding(\.requiresAPIKey),
-          requiresAPIKeyDisplayValue: activeConnection.config.requiresAPIKey
-            ? String(localized: "开启")
-            : String(localized: "关闭"),
-          connectionProfileID: activeConnection.id,
-          discoverModels: discoverModels
-        )
-
-        if connectionUpdateFailed {
-          AccessibleStatusMessage(
-            message: connectionUpdateFailureMessage,
-            severity: .error
-          )
-          .textSelection(.enabled)
-          .accessibilityIdentifier("settings-ai-connection-update-error")
-        }
-
-        if activeConnection.config.usesCodexAppServer {
-          codexAccountSection
-        } else {
-          if activeConnection.config.preset == .local {
-            LocalAIEngineDiscoverySection { baseURL, model in
-              applyLocalAIConfiguration(baseURL: baseURL, model: model)
-            }
-          } else {
-            AIKeychainSection(
-              aiAPIKeyInput: $aiAPIKeyInput,
-              shouldFocusInput: shouldFocusAPIKey,
-              navigationRequestID: healthNavigationRequestID,
-              config: activeConnection.config,
-              storageMode: credentialStorageMode,
-              tokenAvailability: tokenAvailability,
-              actionMessage: actionMessage,
-              onSaveAPIKey: {
-                connectionUpdateFailed = false
-                guard saveAPIKey(aiAPIKeyInput) else { return false }
-                aiAPIKeyInput = ""
-                invalidateConnectionReport()
-                return true
-              },
-              onDeleteAPIKey: {
-                connectionUpdateFailed = false
-                deleteAPIKey()
-                aiAPIKeyInput = ""
-                invalidateConnectionReport()
-              },
-              onRefreshState: refreshKeyAvailability,
-              onChangeStorageMode: { mode in
-                connectionUpdateFailed = false
-                setCredentialStorageMode(mode)
-                aiAPIKeyInput = ""
-                invalidateConnectionReport()
-              }
-            )
-          }
-
-          AIConnectionTestSection(
-            config: activeConnection.config,
-            tokenAvailability: tokenAvailability,
-            dataSharingConsent: dataSharingConsent,
-            report: isConnectionReportStale ? nil : aiConnectionReport,
-            isReportStale: isConnectionReportStale,
-            isAIActionRunning: isActionRunning,
-            isConnectionTestRunning: connectionTestTask != nil,
-            hasAttemptedConnectionTest: hasAttemptedConnectionTest,
-            actionMessage: actionMessage,
-            selectedProbeCapabilities: $selectedCapabilityProbes,
-            onTestConnection: startConnectionTest
-          )
-        }
-
-      case .credentials:
-        AIAdvancedSettingsSection(
-          settings: aiAdvancedSettingsBinding,
-          reasoningSupport: activeConnection.config.capabilitySupport(
-            for: .reasoningControl
-          ),
-          usesCodexAppServer: activeConnection.config.usesCodexAppServer
-        )
-
-        AIProviderCapabilitiesSection(config: activeConnection.config)
-
-        AIDataSharingConsentSection(
-          presentation: dataSharingConsent,
-          isCodexAppServer: activeConnection.config.usesCodexAppServer,
-          setRemoteAIEnabled: { enabled in
-            setRemoteAIEnabled(enabled)
-            invalidateConnectionReport()
-          },
-          grantConsent: {
-            grantDataSharingConsent()
-            invalidateConnectionReport()
-          },
-          revokeConsent: {
-            revokeDataSharingConsent()
-            invalidateConnectionReport()
-          }
-        )
-
-        if activeConnection.config.preset != .local && !activeConnection.config.usesCodexAppServer {
+      if activeConnection.config.usesCodexAppServer {
+        codexAccountSection
+      } else {
+        if activeConnection.config.preset == .local {
           LocalAIEngineDiscoverySection { baseURL, model in
             applyLocalAIConfiguration(baseURL: baseURL, model: model)
           }
+        } else {
+          AIKeychainSection(
+            aiAPIKeyInput: $aiAPIKeyInput,
+            shouldFocusInput: shouldFocusAPIKey,
+            navigationRequestID: healthNavigationRequestID,
+            config: activeConnection.config,
+            storageMode: credentialStorageMode,
+            tokenAvailability: tokenAvailability,
+            actionMessage: actionMessage,
+            onSaveAPIKey: {
+              connectionUpdateFailed = false
+              guard saveAPIKey(aiAPIKeyInput) else { return false }
+              aiAPIKeyInput = ""
+              invalidateConnectionReport()
+              return true
+            },
+            onDeleteAPIKey: {
+              connectionUpdateFailed = false
+              deleteAPIKey()
+              aiAPIKeyInput = ""
+              invalidateConnectionReport()
+            },
+            onRefreshState: refreshKeyAvailability,
+            onChangeStorageMode: { mode in
+              connectionUpdateFailed = false
+              setCredentialStorageMode(mode)
+              aiAPIKeyInput = ""
+              invalidateConnectionReport()
+            }
+          )
         }
 
-      case .writingStyle:
-        AIWritingStyleSection(
-          presetBinding: aiWritingStylePresetBinding,
-          presetDisplayName: activeProfile.resolvedAIWritingStyle.preset.localizedDisplayName,
-          toneText: aiWritingStyleTextBinding(\.tone),
-          audienceText: aiWritingStyleTextBinding(\.audience),
-          summaryGuidanceText: aiWritingStyleTextBinding(\.summaryGuidance),
-          tagGuidanceText: aiWritingStyleTextBinding(\.tagGuidance),
-          seoGuidanceText: aiWritingStyleTextBinding(\.seoGuidance)
+        AIConnectionTestSection(
+          config: activeConnection.config,
+          tokenAvailability: tokenAvailability,
+          dataSharingConsent: dataSharingConsent,
+          report: isConnectionReportStale ? nil : aiConnectionReport,
+          isReportStale: isConnectionReportStale,
+          isAIActionRunning: isActionRunning,
+          isConnectionTestRunning: connectionTestTask != nil,
+          hasAttemptedConnectionTest: hasAttemptedConnectionTest,
+          actionMessage: actionMessage,
+          selectedProbeCapabilities: $selectedCapabilityProbes,
+          onTestConnection: startConnectionTest
         )
       }
+
+      SettingsSubsectionAnchor(subsection: .aiAdvanced)
+      AIAdvancedSettingsSection(
+        settings: aiAdvancedSettingsBinding,
+        reasoningSupport: activeConnection.config.capabilitySupport(for: .reasoningControl),
+        usesCodexAppServer: activeConnection.config.usesCodexAppServer
+      )
+      AIProviderCapabilitiesSection(config: activeConnection.config)
+      AIDataSharingConsentSection(
+        presentation: dataSharingConsent,
+        isCodexAppServer: activeConnection.config.usesCodexAppServer,
+        setRemoteAIEnabled: { enabled in
+          setRemoteAIEnabled(enabled)
+          invalidateConnectionReport()
+        },
+        grantConsent: {
+          grantDataSharingConsent()
+          invalidateConnectionReport()
+        },
+        revokeConsent: {
+          revokeDataSharingConsent()
+          invalidateConnectionReport()
+        }
+      )
+      if activeConnection.config.preset != .local && !activeConnection.config.usesCodexAppServer {
+        LocalAIEngineDiscoverySection { baseURL, model in
+          applyLocalAIConfiguration(baseURL: baseURL, model: model)
+        }
+      }
+
+      SettingsSubsectionAnchor(subsection: .aiWritingStyle)
+      AIWritingStyleScopeNotice(siteName: activeProfile.name)
+      AIWritingStyleSection(
+        presetBinding: aiWritingStylePresetBinding,
+        presetDisplayName: activeProfile.resolvedAIWritingStyle.preset.localizedDisplayName,
+        toneText: aiWritingStyleTextBinding(\.tone),
+        audienceText: aiWritingStyleTextBinding(\.audience),
+        summaryGuidanceText: aiWritingStyleTextBinding(\.summaryGuidance),
+        tagGuidanceText: aiWritingStyleTextBinding(\.tagGuidance),
+        seoGuidanceText: aiWritingStyleTextBinding(\.seoGuidance)
+      )
     }
     .formStyle(.grouped)
-    .scrollIndicators(.automatic)
+    .scrollIndicators(.hidden)
     .padding(WorkbenchSpacing.content)
     .frame(maxWidth: .infinity, maxHeight: .infinity)
     .onChange(of: aiAPIKeyInput) { _, _ in
@@ -229,26 +227,6 @@ struct AISettingsView: View {
         return report
       }
     )
-  }
-
-  private var activeSubsection: SettingsSubsection {
-    settingsSubsection.tab == .ai ? settingsSubsection : .aiConnection
-  }
-
-  private var selectedSection: AISettingsSection {
-    if shouldFocusAPIKey {
-      return .connection
-    }
-    switch activeSubsection {
-    case .aiConnection:
-      return .connection
-    case .aiAdvanced:
-      return .credentials
-    case .aiWritingStyle:
-      return .writingStyle
-    default:
-      return .connection
-    }
   }
 
   private var activeProfile: SiteProfile {
@@ -442,6 +420,22 @@ struct AISettingsView: View {
     return sanitized
   }
 
+}
+
+private struct AIWritingStyleScopeNotice: View {
+  let siteName: String
+
+  var body: some View {
+    Section {
+      Label(
+        "写作偏好只应用于当前站点“\(siteName)”。修改语气、受众和 SEO 指引不会改动共享的连接档案。",
+        systemImage: "text.quote"
+      )
+      .font(.caption)
+      .foregroundStyle(.secondary)
+      .accessibilityIdentifier("settings-ai-writing-style-current-site-scope")
+    }
+  }
 }
 
 enum AISettingsSection: String, CaseIterable, Identifiable {

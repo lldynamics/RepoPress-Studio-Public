@@ -12,6 +12,7 @@ import shutil
 import signal
 import subprocess
 import sys
+import time
 from decimal import Decimal
 from pathlib import Path
 
@@ -173,8 +174,45 @@ def source_coverage_by_target(
     return by_target, evidence_by_path
 
 
+def compiled_source_paths_from_build_description(
+    description_path: Path, root: Path
+) -> set[Path]:
+    """Return package Sources that SwiftPM proved were inputs to this build."""
+    try:
+        payload = json.loads(description_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        fail(f"cannot load SwiftPM build description {description_path}: {error}")
+    commands = payload.get("swiftCommands")
+    if not isinstance(commands, dict):
+        fail(f"SwiftPM build description has no swiftCommands map: {description_path}")
+
+    source_root = (root / "Sources").resolve()
+    compiled: set[Path] = set()
+    for command in commands.values():
+        if not isinstance(command, dict):
+            fail(f"SwiftPM build description contains an invalid Swift command: {description_path}")
+        sources = command.get("sources")
+        if not isinstance(sources, list) or not all(isinstance(item, str) for item in sources):
+            fail(f"SwiftPM build description contains invalid Swift sources: {description_path}")
+        for raw_source in sources:
+            source = Path(raw_source)
+            resolved = (source if source.is_absolute() else root / source).resolve()
+            try:
+                resolved.relative_to(source_root)
+            except ValueError:
+                continue
+            if resolved.suffix == ".swift":
+                compiled.add(resolved)
+    if not compiled:
+        fail(f"SwiftPM build description contains no package Sources inputs: {description_path}")
+    return compiled
+
+
 def changed_source_line_coverage(
-    root: Path, changed: dict[str, set[int]], evidence_by_path: dict[Path, dict[int, bool]]
+    root: Path,
+    changed: dict[str, set[int]],
+    evidence_by_path: dict[Path, dict[int, bool]],
+    compiled_source_paths: set[Path] | None = None,
 ) -> tuple[int, int, list[dict[str, object]], list[str], list[str]]:
     covered = 0
     count = 0
@@ -193,7 +231,13 @@ def changed_source_line_coverage(
         source_path = (root / relative).resolve()
         evidence = evidence_by_path.get(source_path)
         if evidence is None:
-            unmatched_files.append(relative)
+            # LLVM omits declaration/import-only files from its coverage map.
+            # Treat them as non-executable only when this exact SwiftPM build
+            # independently proves that the file was a compiler input.
+            if compiled_source_paths is not None and source_path in compiled_source_paths:
+                no_executable_line_files.append(relative)
+            else:
+                unmatched_files.append(relative)
             continue
         executable = sorted(line for line in lines if line in evidence)
         file_covered = sum(1 for line in executable if evidence[line])
@@ -254,6 +298,7 @@ def coverage_batch_command(
         swift,
         "test",
         *swift_test_arguments(scratch_path, swift_build_root),
+        "--skip-build",
         "--filter",
         batch.filter_pattern,
     ]
@@ -325,15 +370,9 @@ def run_coverage_batch(
         try:
             return_code = process.wait(timeout=timeout_seconds)
         except subprocess.TimeoutExpired:
-            try:
-                os.killpg(process.pid, signal.SIGTERM)
-                process.wait(timeout=2)
-            except (ProcessLookupError, subprocess.TimeoutExpired):
-                try:
-                    os.killpg(process.pid, signal.SIGKILL)
-                except ProcessLookupError:
-                    pass
-                process.wait()
+            xctest_pids = descendant_xctest_pids(process.pid)
+            terminate_coverage_batch(process, xctest_pids)
+            assert_pids_reaped(xctest_pids)
             if attempt <= retries:
                 print(
                     f"swift coverage gate: batch timed out after "
@@ -346,6 +385,82 @@ def run_coverage_batch(
         if return_code != 0:
             fail(f"coverage batch failed with status {return_code}: {label}")
         return
+
+
+def descendant_xctest_pids(root_pid: int) -> set[int]:
+    """Return the real xctest descendants before their wrapper is reaped."""
+    try:
+        rows = subprocess.check_output(
+            ["ps", "-axo", "pid=,ppid=,command="], text=True, stderr=subprocess.DEVNULL
+        ).splitlines()
+    except (OSError, subprocess.CalledProcessError):
+        fail("cannot inspect xctest descendants after a timed-out coverage batch")
+    return xctest_pids_from_process_rows(root_pid, rows)
+
+
+def xctest_pids_from_process_rows(root_pid: int, rows: list[str]) -> set[int]:
+    children: dict[int, set[int]] = {}
+    commands: dict[int, str] = {}
+    for row in rows:
+        fields = row.strip().split(None, 2)
+        if len(fields) != 3:
+            continue
+        try:
+            pid, parent = int(fields[0]), int(fields[1])
+        except ValueError:
+            continue
+        children.setdefault(parent, set()).add(pid)
+        commands[pid] = fields[2]
+    descendants: set[int] = set()
+    pending = list(children.get(root_pid, set()))
+    while pending:
+        pid = pending.pop()
+        descendants.add(pid)
+        pending.extend(children.get(pid, set()))
+    return {pid for pid in descendants if ".xctest/Contents/MacOS/" in commands.get(pid, "")}
+
+
+def terminate_coverage_batch(process: subprocess.Popen[object], xctest_pids: set[int]) -> None:
+    """TERM then bounded KILL the wrapper group and its captured xctest children."""
+    try:
+        os.killpg(process.pid, signal.SIGTERM)
+    except ProcessLookupError:
+        pass
+    try:
+        process.wait(timeout=2)
+    except subprocess.TimeoutExpired:
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        process.wait()
+    # A misbehaving runner may move the test process to another group. The
+    # snapshot made before wrapper cleanup keeps retry fail-closed in that case.
+    for pid in xctest_pids:
+        if pid_exists(pid):
+            try:
+                os.kill(pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+
+
+def pid_exists(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+def assert_pids_reaped(pids: set[int], timeout_seconds: float = 2) -> None:
+    deadline = time.monotonic() + timeout_seconds
+    while any(pid_exists(pid) for pid in pids) and time.monotonic() < deadline:
+        time.sleep(0.02)
+    remaining = sorted(pid for pid in pids if pid_exists(pid))
+    if remaining:
+        fail("coverage batch left xctest descendants after timeout: " + ", ".join(map(str, remaining)))
 
 
 def coverage_batch_retries(environment: dict[str, str]) -> int:
@@ -370,7 +485,7 @@ def find_test_binary(scratch_path: Path) -> Path:
     return candidates[0]
 
 
-def run_coverage(root: Path, scratch_path: Path) -> Path:
+def run_coverage(root: Path, scratch_path: Path) -> tuple[Path, Path]:
     swift = os.environ.get("SWIFT_BIN", "swift")
     environment = os.environ.copy()
     swift_build_root = Path(
@@ -479,8 +594,11 @@ def run_coverage(root: Path, scratch_path: Path) -> Path:
                 stdout=coverage_file,
                 check=True,
             )
+        build_description = test_binary.parents[3] / "description.json"
+        if not build_description.is_file():
+            fail(f"SwiftPM build description is missing: {build_description}")
         shutil.rmtree(profile_directory)
-        return coverage_path
+        return coverage_path, build_description
     except FileNotFoundError:
         print(
             "swift coverage gate [environment:tool-unavailable]: required Swift/LLVM "
@@ -500,6 +618,11 @@ def main() -> int:
         "--coverage-json",
         type=Path,
         help="validate an existing SwiftPM coverage JSON instead of running tests",
+    )
+    parser.add_argument(
+        "--swift-build-description",
+        type=Path,
+        help="SwiftPM description.json paired with --coverage-json; proves declaration-only files were compiled",
     )
     parser.add_argument(
         "--diff-base",
@@ -523,10 +646,17 @@ def main() -> int:
     minimum = float(baseline_payload["sourceLineCoveragePercentMinimum"])
     changed_minimum = float(baseline_payload["changedExecutableSourceLineCoveragePercentMinimum"])
 
-    coverage_path = (
-        args.coverage_json.resolve()
-        if args.coverage_json
-        else run_coverage(
+    if args.coverage_json:
+        coverage_path = args.coverage_json.resolve()
+        build_description_path = (
+            args.swift_build_description.resolve()
+            if args.swift_build_description
+            else None
+        )
+    else:
+        if args.swift_build_description:
+            fail("--swift-build-description is only valid with --coverage-json")
+        coverage_path, build_description_path = run_coverage(
             root,
             Path(
                 os.environ.get(
@@ -535,12 +665,27 @@ def main() -> int:
                 )
             ),
         )
+    compiled_source_paths = (
+        compiled_source_paths_from_build_description(build_description_path, root)
+        if build_description_path is not None
+        else None
     )
     try:
         coverage_payload = json.loads(coverage_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as error:
         fail(f"cannot load coverage JSON {coverage_path}: {error}")
     by_target, evidence_by_path = source_coverage_by_target(coverage_payload, root)
+    if compiled_source_paths is not None:
+        coverage_sources_missing_from_build = sorted(
+            path.relative_to(root).as_posix()
+            for path in evidence_by_path
+            if path not in compiled_source_paths
+        )
+        if coverage_sources_missing_from_build:
+            fail(
+                "SwiftPM build description does not match coverage Sources: "
+                + ", ".join(coverage_sources_missing_from_build)
+            )
     overall_covered = sum(int(bucket["covered"]) for bucket in by_target.values())
     overall_count = sum(int(bucket["count"]) for bucket in by_target.values())
     if overall_count == 0:
@@ -573,7 +718,12 @@ def main() -> int:
         changed_files,
         unmatched_changed_files,
         no_executable_changed_line_files,
-    ) = changed_source_line_coverage(root, changed, evidence_by_path)
+    ) = changed_source_line_coverage(
+        root,
+        changed,
+        evidence_by_path,
+        compiled_source_paths,
+    )
     changed_percent = percent(changed_covered, changed_count)
     changed_meets_minimum = not unmatched_changed_files and meets_minimum(
         changed_covered, changed_count, changed_minimum
@@ -602,6 +752,9 @@ def main() -> int:
         "requestedDiffBase": diff_base.requested,
         "usedAllZeroDiffBaseFallback": diff_base.used_all_zero_fallback,
         "coverageJSON": str(coverage_path),
+        "swiftBuildDescription": (
+            str(build_description_path) if build_description_path is not None else None
+        ),
     }
     if args.result_json:
         args.result_json.parent.mkdir(parents=True, exist_ok=True)

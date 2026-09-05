@@ -18,6 +18,7 @@ struct MarkdownEditorCommandActions {
   var rewriteSelection: () -> Void
   var openAIAssistant: () -> Void
   var copyAIPrompt: () -> Void
+  var openExternalBrowserPreview: () -> Void = {}
 }
 
 private struct MarkdownEditorCommandActionsKey: FocusedValueKey {

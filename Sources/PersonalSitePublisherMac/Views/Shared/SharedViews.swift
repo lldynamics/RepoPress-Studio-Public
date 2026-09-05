@@ -5,11 +5,12 @@ import SwiftUI
 private struct WorkbenchTruncatedIdentityModifier: ViewModifier {
   let value: String
   let lineLimit: Int
+  let truncationMode: Text.TruncationMode
 
   func body(content: Content) -> some View {
     content
       .lineLimit(lineLimit)
-      .truncationMode(.middle)
+      .truncationMode(truncationMode)
       .help(value)
       .contextMenu {
         Button(action: copyValue) {
@@ -31,8 +32,12 @@ private struct WorkbenchTruncatedIdentityModifier: ViewModifier {
 
 extension View {
   /// Applies the shared treatment for titles, paths, URLs, and identifiers that may truncate.
-  func workbenchTruncatedIdentity(_ value: String, lineLimit: Int = 1) -> some View {
-    modifier(WorkbenchTruncatedIdentityModifier(value: value, lineLimit: lineLimit))
+  func workbenchTruncatedIdentity(
+    _ value: String, lineLimit: Int = 1, truncationMode: Text.TruncationMode = .middle
+  ) -> some View {
+    modifier(
+      WorkbenchTruncatedIdentityModifier(
+        value: value, lineLimit: lineLimit, truncationMode: truncationMode))
   }
 }
 

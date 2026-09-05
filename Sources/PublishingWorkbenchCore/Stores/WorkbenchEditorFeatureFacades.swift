@@ -94,6 +94,17 @@ private struct WorkbenchMarkdownEditorSaveDraftContext: Equatable {
   let repositoryPath: String?
 }
 
+public enum WorkbenchMarkdownEditorSaveFailureScope: Equatable {
+  case application
+  case project
+}
+
+public struct WorkbenchMarkdownEditorSaveFailurePresentation: Equatable {
+  public let scope: WorkbenchMarkdownEditorSaveFailureScope
+  public let message: String
+  public let canRetry: Bool
+}
+
 @MainActor
 private enum WorkbenchMarkdownEditorSaveStatusProjection {
   static func lastSaveStatus(in store: WorkbenchStore, draftID: UUID) -> String {
@@ -389,6 +400,61 @@ public final class WorkbenchMarkdownEditorSaveStatusFeatureFacade: ObservableObj
       in: store,
       draftID: trackedDraftID
     )
+  }
+
+  public var saveFailure: WorkbenchMarkdownEditorSaveFailurePresentation? {
+    guard store.drafts.contains(where: { $0.id == trackedDraftID }) else {
+      if let recoveryError = store.draftRecoveryJournalErrorMessage?.nilIfEmpty {
+        return WorkbenchMarkdownEditorSaveFailurePresentation(
+          scope: .application,
+          message: recoveryError,
+          canRetry: false
+        )
+      }
+      return store.lastSaveError?.nilIfEmpty.map {
+        WorkbenchMarkdownEditorSaveFailurePresentation(
+          scope: .application,
+          message: $0,
+          canRetry: false
+        )
+      }
+    }
+    if let recoveryError = store.draftRecoveryJournalErrorMessage?.nilIfEmpty {
+      return WorkbenchMarkdownEditorSaveFailurePresentation(
+        scope: .application,
+        message: recoveryError,
+        canRetry: !store.isPersistenceRecoveryWriteProtected
+      )
+    }
+    if case .some(.failed(_, let message)) = store.siteDraftFileSaveStates[trackedDraftID] {
+      return WorkbenchMarkdownEditorSaveFailurePresentation(
+        scope: .project,
+        message: message,
+        canRetry: true
+      )
+    }
+    if let error = store.lastSaveError?.nilIfEmpty {
+      return WorkbenchMarkdownEditorSaveFailurePresentation(
+        scope: .application,
+        message: error,
+        canRetry: !store.isPersistenceRecoveryWriteProtected
+      )
+    }
+    return nil
+  }
+
+  public func retrySave() {
+    guard let failure = saveFailure,
+      failure.canRetry,
+      let draft = store.drafts.first(where: { $0.id == trackedDraftID })
+    else { return }
+    switch failure.scope {
+    case .application:
+      _ = store.saveCurrentStateSynchronously()
+    case .project:
+      guard case .some(.failed) = store.siteDraftFileSaveStates[trackedDraftID] else { return }
+      store.scheduleSiteDraftFileAutosave(for: draft, immediate: true)
+    }
   }
 
   public func trackDraft(_ draftID: UUID) {

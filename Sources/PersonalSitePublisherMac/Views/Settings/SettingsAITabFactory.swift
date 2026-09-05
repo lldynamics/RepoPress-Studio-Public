@@ -7,6 +7,7 @@ struct SettingsAITabFactory {
     AISettingsView(
       activeProfileBinding: context.activeProfileBinding,
       connectionProfiles: context.store.aiConnectionProfiles,
+      referencingSiteProfiles: context.store.profiles,
       selectedConnectionProfileID: Binding(
         get: { context.store.activeAIConnectionProfile.id },
         set: { context.store.selectAIConnectionProfile($0) }
@@ -16,6 +17,12 @@ struct SettingsAITabFactory {
       },
       createConnectionProfile: { name, preset in
         context.store.createAIConnectionProfile(named: name, preset: preset)
+      },
+      duplicateConnectionProfile: { connectionID in
+        context.store.duplicateAIConnectionProfileForActiveSite(connectionID)
+      },
+      currentActionMessage: {
+        context.store.ai.actionMessage
       },
       deleteConnectionProfile: { profileID in
         context.store.deleteAIConnectionProfile(profileID)

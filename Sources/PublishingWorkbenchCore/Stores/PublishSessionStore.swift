@@ -29,6 +29,7 @@ public final class PublishSessionStore: ObservableObject {
 
   var localRepositoryMutationContext: LocalRepositoryOperationContext?
   var remoteRepositoryMutationContext: RemoteRepositoryOperationContext?
+  var remoteConflictResolutionOperationID: UUID?
   var localImportOperationContext: LocalRepositoryOperationContext?
   var localSitePreviewStopTask: Task<Void, Never>?
   var localSitePreviewStopOperationID: UUID?

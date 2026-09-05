@@ -110,6 +110,44 @@ final class AISettingsFlowPresentationTests: XCTestCase {
     )
   }
 
+  func testInvalidURLAndHTTPAPIKeyBlockConnectionTestingBeforeAnyRequest() {
+    let consent = AIDataSharingConsentPresentation(
+      providerName: "Remote AI",
+      destination: "api.example.com",
+      destinationState: .remote,
+      isGranted: true
+    )
+    let malformed = AIProviderConfig(
+      preset: .custom,
+      baseURL: "not a valid URL",
+      model: "model",
+      requiresAPIKey: false
+    )
+    let credentialedHTTP = AIProviderConfig(
+      preset: .custom,
+      baseURL: "http://127.0.0.1:11434/v1",
+      model: "model",
+      requiresAPIKey: true
+    )
+
+    XCTAssertEqual(
+      AIConnectionTestAvailability(
+        config: malformed,
+        tokenAvailability: KeychainTokenAvailability(hasToken: false),
+        dataSharingConsent: consent
+      ),
+      .invalidEndpoint(.invalidURL)
+    )
+    XCTAssertEqual(
+      AIConnectionTestAvailability(
+        config: credentialedHTTP,
+        tokenAvailability: KeychainTokenAvailability(hasToken: true),
+        dataSharingConsent: consent
+      ),
+      .invalidEndpoint(.insecureCredentialURL)
+    )
+  }
+
   func testCodexConnectionNeedsRemoteConsentButNoAPIKey() {
     var config = AIProviderConfig(preset: .codexAppServer)
     config.applyPresetDefaults()
