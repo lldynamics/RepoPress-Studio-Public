@@ -682,28 +682,92 @@ final class PersonalSitePublisherMacAppDelegate: NSObject, NSApplicationDelegate
       return .terminateNow
     }
 
-    guard workbenchStore.flushPendingChanges() else {
-      presentWorkspaceSaveFailure(for: workbenchStore)
-      return .terminateCancel
-    }
-
     isWaitingForTerminationLedgerFlush = true
     Task { @MainActor [weak self, weak workbenchStore] in
-      guard let self else { return }
-      let didFlush = await workbenchStore?.flushOperationLogPersistence() != nil
-      isWaitingForTerminationLedgerFlush = false
-      guard didFlush else {
-        presentOperationLedgerSaveFailure(for: workbenchStore)
+      guard let self, let workbenchStore else {
         sender.reply(toApplicationShouldTerminate: false)
         return
       }
-      didConfirmTerminationLedgerFlush = true
-      sender.reply(toApplicationShouldTerminate: true)
+      let result = await workbenchStore.prepareForSafeTermination()
+      var mayExit = false
+      var usedRecoveryExport = false
+      switch result {
+      case .saved:
+        mayExit = true
+      case .savedLocally(let count):
+        let alert = NSAlert()
+        alert.messageText = String(localized: "草稿已保存在本地")
+        alert.informativeText = String(format: String(localized: "%lld 篇草稿尚未同步到项目。退出后会保留待同步记录，项目文件不会被覆盖。"), count)
+        alert.alertStyle = .informational
+        alert.addButton(withTitle: String(localized: "保留草稿并退出"))
+        alert.addButton(withTitle: String(localized: "查看冲突"))
+        alert.addButton(withTitle: String(localized: "继续编辑")).keyEquivalent = "\u{1b}"
+        let choice = alert.runModal()
+        if choice == .alertSecondButtonReturn {
+          isWaitingForTerminationLedgerFlush = false
+          sender.reply(toApplicationShouldTerminate: false)
+          if let failure = workbenchStore.siteDraftFileSaveFailureGroups
+            .first(where: { $0.reason == .externalChange })?.failures.first {
+            ProjectFileConflictReviewPanel.present(for: workbenchStore, draftID: failure.draftID)
+          } else {
+            ProjectFileSaveRecoveryPanel.present(for: workbenchStore)
+          }
+          return
+        }
+        mayExit = choice == .alertFirstButtonReturn
+      case .failed(let message):
+        let alert = NSAlert()
+        alert.messageText = String(localized: "本地草稿尚未安全保存")
+        alert.informativeText = message
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: String(localized: "另存恢复包…"))
+        alert.addButton(withTitle: String(localized: "继续编辑")).keyEquivalent = "\u{1b}"
+        if alert.runModal() == .alertFirstButtonReturn {
+          let panel = NSSavePanel()
+          panel.title = String(localized: "另存退出恢复包")
+          panel.nameFieldStringValue = "RepoPress-Recovery.psworkspacebackup"
+          panel.canCreateDirectories = true
+          if panel.runModal() == .OK, let url = panel.url {
+            do {
+              let savedURL = try await workbenchStore.exportSafeTerminationRecovery(at: url)
+              let confirmation = NSAlert()
+              confirmation.messageText = String(localized: "恢复包已保存并校验")
+              confirmation.informativeText = String(localized: "原保存位置仍有问题。下次打开软件后，可从工作区备份中导入此恢复包继续编辑。") + "\n" + savedURL.path
+              confirmation.addButton(withTitle: String(localized: "退出"))
+              confirmation.addButton(withTitle: String(localized: "继续编辑"))
+              mayExit = confirmation.runModal() == .alertFirstButtonReturn
+              usedRecoveryExport = mayExit
+            } catch {
+              let failure = NSAlert()
+              failure.messageText = String(localized: "恢复包未能完成")
+              failure.informativeText = error.localizedDescription
+              failure.addButton(withTitle: String(localized: "继续编辑"))
+              failure.runModal()
+            }
+          }
+        }
+      }
+      if mayExit && !workbenchStore.validatePreparedSafeTermination() {
+        mayExit = false
+        let changed = NSAlert()
+        changed.messageText = String(localized: "确认期间内容发生变化")
+        changed.informativeText = String(localized: "最新内容仍保留在软件中，请再次退出以保存这些修改。")
+        changed.addButton(withTitle: String(localized: "继续编辑"))
+        changed.runModal()
+      }
+      isWaitingForTerminationLedgerFlush = false
+      // An emergency export must not mark the broken primary data root clean.
+      didConfirmTerminationLedgerFlush = mayExit && !usedRecoveryExport
+      sender.reply(toApplicationShouldTerminate: mayExit)
     }
     return .terminateLater
   }
 
   private func presentWorkspaceSaveFailure(for workbenchStore: WorkbenchStore) {
+    if !workbenchStore.siteDraftFileSaveFailureGroups.isEmpty {
+      ProjectFileSaveRecoveryPanel.present(for: workbenchStore)
+      return
+    }
     let alert = NSAlert()
     alert.messageText = String(localized: "未能保存工作台修改")
     alert.informativeText =

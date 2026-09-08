@@ -31,9 +31,10 @@ extension RSSReaderView {
 
   var selectedTranslation: RSSArticleTranslationResult? {
     guard let article = selectedArticle else { return nil }
+    let effectiveArticle = presentation.effectiveArticle(for: article)
     return translationCache[
       translationCacheKey(
-        for: article,
+        for: effectiveArticle,
         target: selectedTranslationTarget,
         backend: translationBackend
       )
@@ -117,6 +118,7 @@ extension RSSReaderView {
     RSSArticleTranslationCacheKey(
       articleID: article.id,
       fetchedAt: article.fetchedAt,
+      contentVersion: RSSArticleTranslationContentVersion.make(for: article),
       targetCode: target.languageCode,
       backend: backend
     )
@@ -136,8 +138,9 @@ extension RSSReaderView {
     backend: RSSArticleTranslationBackend,
     force: Bool
   ) {
+    let effectiveArticle = presentation.effectiveArticle(for: article)
     let target = selectedTranslationTarget
-    let cacheKey = translationCacheKey(for: article, target: target, backend: backend)
+    let cacheKey = translationCacheKey(for: effectiveArticle, target: target, backend: backend)
     let requestID = UUID()
     translationRequestID = requestID
     translationRouteTask?.cancel()
@@ -155,12 +158,13 @@ extension RSSReaderView {
     case .ai:
       translationRouteTask = Task { @MainActor in
         do {
-          let result = try await workbenchStore.ai.translateRSSArticle(article, target: target)
+          let result = try await workbenchStore.ai.translateRSSArticle(
+            effectiveArticle, target: target)
           guard isCurrentTranslationRequest(
             requestID: requestID,
-            article: article,
-            backend: backend
-          )
+              article: effectiveArticle,
+              backend: backend
+            )
           else { return }
           storeTranslationResult(result, forKey: cacheKey)
           translationRouteTask = nil
@@ -169,9 +173,9 @@ extension RSSReaderView {
         } catch {
           guard isCurrentTranslationRequest(
             requestID: requestID,
-            article: article,
-            backend: backend
-          )
+              article: effectiveArticle,
+              backend: backend
+            )
           else { return }
           translationError = error.localizedDescription
         }
@@ -181,7 +185,7 @@ extension RSSReaderView {
       }
     case .apple:
       requestAppleTranslation(
-        for: article,
+        for: effectiveArticle,
         target: target,
         cacheKey: cacheKey,
         requestID: requestID,
@@ -300,8 +304,9 @@ extension RSSReaderView {
       article.id == result.articleID,
       translationBackend == .apple
     else { return }
+    let effectiveArticle = presentation.effectiveArticle(for: article)
     let cacheKey = translationCacheKey(
-      for: article,
+      for: effectiveArticle,
       target: result.target,
       backend: .apple
     )
@@ -325,8 +330,13 @@ extension RSSReaderView {
     backend: RSSArticleTranslationBackend
   ) -> Bool {
     requestID == translationRequestID
-      && selectedArticle?.id == article.id
-      && selectedArticle?.fetchedAt == article.fetchedAt
+      && selectedArticle.map { presentation.effectiveArticle(for: $0).id } == article.id
+      && selectedArticle.map { presentation.effectiveArticle(for: $0).fetchedAt }
+        == article.fetchedAt
+      && selectedArticle.map {
+        RSSArticleTranslationContentVersion.make(for: presentation.effectiveArticle(for: $0))
+      }
+        == RSSArticleTranslationContentVersion.make(for: article)
       && translationBackend == backend
   }
 
@@ -498,6 +508,10 @@ extension RSSReaderView {
   }
 
   func saveHighlight(_ draft: RSSHighlightDraft, note: String, tags: [String]) {
+    guard !workflowIsBusy else {
+      workflowMessage = String(localized: "正在处理另一项 RSS 操作，请稍候再保存批注。")
+      return
+    }
     do {
       let highlight = try store.saveHighlight(
         articleID: draft.articleID,
@@ -565,7 +579,14 @@ extension RSSReaderView {
           guard let article = try await store.loadArticle(id: articleID) else {
             throw RSSReaderError.persistence("文章已不存在")
           }
-          _ = try await Self.importArticle(article, into: workbenchStore.knowledge)
+          _ = presentation.restoreCachedFullText(for: article, store: store)
+          let effectiveArticle = presentation.effectiveArticle(for: article)
+          let hasCachedFullText = presentation.isShowingFullText(for: article.id)
+          _ = try await Self.importArticle(
+            effectiveArticle,
+            into: workbenchStore.knowledge,
+            contentLabel: hasCachedFullText ? "RSS 全文缓存" : "RSS 摘要"
+          )
           successCount += 1
         } catch {
           failureCount += 1
@@ -580,7 +601,11 @@ extension RSSReaderView {
     }
   }
 
-  func saveExcerptNote(for article: RSSArticle, excerpt: String, note: String) {
+  func saveExcerptNote(for article: RSSArticle, excerpt: String, note: String) -> Bool {
+    guard !workflowIsBusy else {
+      workflowMessage = String(localized: "正在处理另一项 RSS 操作，请稍候再保存笔记。")
+      return false
+    }
     runWorkflow(
       for: article,
       success: String(localized: "摘录和笔记已保存到资料库。")
@@ -603,9 +628,13 @@ extension RSSReaderView {
         throw RSSReaderError.persistence("资料标注保存失败")
       }
     }
+    return true
   }
 
   func insertReference(_ article: RSSArticle) {
+    guard let target = KnowledgeArticleInsertionService.captureRSSDraftInsertionTarget(
+      in: workbenchStore
+    ) else { return }
     runWorkflow(
       for: article,
       success: String(localized: "已插入安全引用：只包含摘要、摘录和来源。")
@@ -622,6 +651,7 @@ extension RSSReaderView {
           summary: RSSArticleWorkflow.summary(for: article),
           excerpt: excerpt,
           citation: citation,
+          targeting: target,
           into: workbenchStore
         )
       else {
@@ -641,6 +671,11 @@ extension RSSReaderView {
         draft.title = "灵感：\(article.title)"
         workbenchStore.updateDraft(draft)
       }
+      guard let target = KnowledgeArticleInsertionService.captureRSSDraftInsertionTarget(
+        in: workbenchStore
+      ) else {
+        throw RSSReaderError.persistence("灵感草稿未能建立写入目标")
+      }
       let excerpt = RSSArticleWorkflow.excerpt(for: article)
       let citation = await knowledge.makeCitationForDocument(
         documentID: document.id,
@@ -653,6 +688,7 @@ extension RSSReaderView {
           excerpt: excerpt,
           citation: citation,
           appendingFootnote: true,
+          targeting: target,
           into: workbenchStore
         )
       else {
@@ -672,7 +708,7 @@ extension RSSReaderView {
     Task { @MainActor in
       defer { workflowIsBusy = false }
       do {
-        try await operation(article, workbenchStore.knowledge)
+        try await operation(presentation.effectiveArticle(for: article), workbenchStore.knowledge)
         workflowMessage = success
       } catch {
         workflowMessage = String(localized: "操作失败：\(error.localizedDescription)")
@@ -682,11 +718,16 @@ extension RSSReaderView {
 
   static func importArticle(
     _ article: RSSArticle,
-    into knowledge: KnowledgeStore
+    into knowledge: KnowledgeStore,
+    contentLabel: String? = nil
   ) async throws -> KnowledgeDocument {
-    let preview = try await knowledge.makeRSSImportPreview(article: article)
+    var articleForImport = article
+    if let contentLabel, !articleForImport.tags.contains(contentLabel) {
+      articleForImport.tags.append(contentLabel)
+    }
+    let preview = try await knowledge.makeRSSImportPreview(article: articleForImport)
     let destination = RSSArticleWorkflow.preferredImportDestination(
-      article: article,
+      article: articleForImport,
       documents: knowledge.documents,
       folders: knowledge.folders
     )

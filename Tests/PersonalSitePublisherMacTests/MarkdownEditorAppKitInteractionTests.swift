@@ -1,5 +1,4 @@
 import AppKit
-import PublishingWorkbenchCore
 import SwiftUI
 import XCTest
 

@@ -807,6 +807,45 @@ final class MarkdownSyntaxHighlightRangeServiceTests: XCTestCase {
     )
   }
 
+  func testPaddedVisibleRangeBoundsASingleLongLineAroundTheViewport() {
+    let markdown = String(repeating: "🙂", count: 12_000)
+    let source = markdown as NSString
+    let visibleRange = NSRange(location: 12_000, length: 16)
+
+    let paddedRange = MarkdownSyntaxHighlightRangeService.paddedLineRange(
+      in: markdown,
+      visibleRange: visibleRange
+    )
+
+    XCTAssertLessThanOrEqual(
+      paddedRange.length,
+      MarkdownSyntaxHighlightRangeService.maximumViewportUTF16Length + 1
+    )
+    XCTAssertGreaterThanOrEqual(visibleRange.location, paddedRange.location)
+    XCTAssertLessThanOrEqual(NSMaxRange(visibleRange), NSMaxRange(paddedRange))
+    XCTAssertLessThan(NSMaxRange(paddedRange), source.length)
+  }
+
+  func testPaddedVisibleRangeKeepsAnOversizedViewportWhole() {
+    let markdown = String(repeating: "🙂", count: 12_000)
+    let source = markdown as NSString
+    let visibleRange = NSRange(
+      location: 4_000,
+      length: MarkdownSyntaxHighlightRangeService.maximumViewportUTF16Length + 2_048
+    )
+
+    let paddedRange = MarkdownSyntaxHighlightRangeService.paddedLineRange(
+      in: markdown,
+      visibleRange: visibleRange
+    )
+
+    XCTAssertGreaterThan(visibleRange.length, MarkdownSyntaxHighlightRangeService.maximumViewportUTF16Length)
+    XCTAssertLessThanOrEqual(paddedRange.location, visibleRange.location)
+    XCTAssertGreaterThanOrEqual(NSMaxRange(paddedRange), NSMaxRange(visibleRange))
+    XCTAssertEqual(paddedRange, visibleRange)
+    XCTAssertLessThan(NSMaxRange(paddedRange), source.length)
+  }
+
   func testResolvingUnknownCodeBlockRangesBuildsReusableCache() {
     let markdown = "before\n```swift\nlet x = 1\n```\nafter"
     let unresolved = MarkdownSyntaxHighlightPlan.fullDocument(for: markdown)

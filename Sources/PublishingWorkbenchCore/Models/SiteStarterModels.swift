@@ -336,6 +336,19 @@ public struct SiteStarterPushResult: Codable, Hashable, Sendable {
   }
 }
 
+/// The locally committed, still-unpublished revision. Keeping this separate
+/// from the push result makes a rejected first push recoverable without ever
+/// substituting whatever happens to be `HEAD` later.
+public struct SiteStarterCommittedPush: Codable, Hashable, Sendable {
+  public var commitSHA: String
+  public var committedPaths: [String]
+
+  public init(commitSHA: String, committedPaths: [String]) {
+    self.commitSHA = commitSHA
+    self.committedPaths = committedPaths
+  }
+}
+
 /// An immutable, user-reviewable description of the exact first-push operation.
 /// The service recreates this immediately before writing so confirmation cannot
 /// silently apply to a changed remote, branch, staged state, or file set.
@@ -348,6 +361,9 @@ public struct SiteStarterPushConfirmation: Codable, Hashable, Sendable {
   public var fileObjectIDs: [String: String]
   public var headCommitSHA: String?
   public var remoteBranchCommitSHA: String?
+  /// Set only for a retry review. It is the exact already-committed revision
+  /// the user is being asked to publish; a new commit is never substituted.
+  public var existingCommitSHA: String?
 
   public init(
     rootPath: String,
@@ -357,7 +373,8 @@ public struct SiteStarterPushConfirmation: Codable, Hashable, Sendable {
     committedPaths: [String],
     fileObjectIDs: [String: String],
     headCommitSHA: String?,
-    remoteBranchCommitSHA: String?
+    remoteBranchCommitSHA: String?,
+    existingCommitSHA: String? = nil
   ) {
     self.rootPath = rootPath
     self.branch = branch
@@ -367,6 +384,7 @@ public struct SiteStarterPushConfirmation: Codable, Hashable, Sendable {
     self.fileObjectIDs = fileObjectIDs
     self.headCommitSHA = headCommitSHA
     self.remoteBranchCommitSHA = remoteBranchCommitSHA
+    self.existingCommitSHA = existingCommitSHA
   }
 }
 

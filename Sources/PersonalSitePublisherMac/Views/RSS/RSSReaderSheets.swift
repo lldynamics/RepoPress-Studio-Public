@@ -6,6 +6,7 @@ struct RSSHighlightEditorSheet: View {
   let text: String
   let initialNote: String
   let initialTags: [String]
+  let isSaveUnavailable: Bool
   let onSave: (String, [String]) -> Void
 
   @Environment(\.dismiss) private var dismiss
@@ -16,11 +17,13 @@ struct RSSHighlightEditorSheet: View {
     text: String,
     initialNote: String = "",
     initialTags: [String] = [],
+    isSaveUnavailable: Bool = false,
     onSave: @escaping (String, [String]) -> Void
   ) {
     self.text = text
     self.initialNote = initialNote
     self.initialTags = initialTags
+    self.isSaveUnavailable = isSaveUnavailable
     self.onSave = onSave
     _note = State(initialValue: initialNote)
     _tagsText = State(initialValue: initialTags.joined(separator: ", "))
@@ -59,10 +62,16 @@ struct RSSHighlightEditorSheet: View {
         .accessibilityLabel("高亮标签")
 
       HStack {
+        if isSaveUnavailable {
+          Label("正在完成另一项 RSS 操作，请稍候保存。", systemImage: "clock")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        }
         Spacer()
         Button("保存", action: save)
           .workbenchProminentActionStyle()
           .keyboardShortcut(.defaultAction)
+          .disabled(isSaveUnavailable)
       }
     }
     .padding(20)
@@ -274,12 +283,18 @@ struct RSSEditFeedURLSheet: View {
 struct RSSExcerptNoteSheet: View {
   @Environment(\.dismiss) private var dismiss
   let article: RSSArticle
-  let onSave: (String, String) -> Void
+  let isSaveUnavailable: Bool
+  let onSave: (String, String) -> Bool
   @State private var excerpt: String
   @State private var note = ""
 
-  init(article: RSSArticle, onSave: @escaping (String, String) -> Void) {
+  init(
+    article: RSSArticle,
+    isSaveUnavailable: Bool = false,
+    onSave: @escaping (String, String) -> Bool
+  ) {
     self.article = article
+    self.isSaveUnavailable = isSaveUnavailable
     self.onSave = onSave
     _excerpt = State(initialValue: RSSArticleWorkflow.excerpt(for: article))
   }
@@ -310,17 +325,25 @@ struct RSSExcerptNoteSheet: View {
         .accessibilityLabel("关于这段摘录的笔记")
 
       HStack {
+        if isSaveUnavailable {
+          Label("正在完成另一项 RSS 操作，请稍候保存。", systemImage: "clock")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        }
         Spacer()
         Button("取消", action: dismiss.callAsFunction)
           .keyboardShortcut(.cancelAction)
         Button("保存摘录和笔记") {
-          onSave(excerpt, note)
-          dismiss()
+          if onSave(excerpt, note) {
+            dismiss()
+          }
         }
         .workbenchProminentActionStyle()
         .keyboardShortcut(.defaultAction)
         .disabled(
-          excerpt.trimmedForPublishing.isEmpty || note.trimmedForPublishing.isEmpty
+          isSaveUnavailable
+            || excerpt.trimmedForPublishing.isEmpty
+            || note.trimmedForPublishing.isEmpty
         )
       }
     }

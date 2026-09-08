@@ -22,6 +22,14 @@ extension WritingDraftColumn {
       .controlSize(.small)
       .help(String(localized: "批量移动、复制或转为通用草稿"))
 
+      Button {
+        isMetadataBatchMaintenancePresented = true
+      } label: {
+        Label(String(localized: "维护标签与分类"), systemImage: "tag")
+      }
+      .controlSize(.small)
+      .help(String(localized: "逐篇预览后批量添加、移除、重命名或合并标签和分类"))
+
       Button(String(localized: "全选筛选结果")) {
         selectedDraftIDs = Set(draftListCache.filteredDraftIDs)
       }

@@ -184,17 +184,22 @@ extension MacMarkdownComposerView {
       guard !Task.isCancelled, draft.id == requestedDraft.id else { return }
 
       if let result {
+        let citationPlan = KnowledgeCitationMarkdownService.applicationPlan(
+          for: result.content,
+          candidates: result.knowledgeCitations,
+          existingMarkdown: requestedDraft.bodyMarkdown
+        )
         let preview = AIPublishingSelectionEditPreview(
           draftID: requestedDraft.id,
           sourceBodyMarkdown: requestedDraft.bodyMarkdown,
           kind: result.kind,
           range: previewRange,
           originalText: rawSelectedText,
-          replacementText: result.content,
+          replacementText: citationPlan.renderedContent,
           application: selectionEditApplication(for: result.kind),
           providerName: result.providerName,
           model: result.model,
-          knowledgeCitations: result.knowledgeCitations
+          knowledgeCitations: citationPlan.referencedCitations
         )
         selectionEditPreview = preview
         if !presentsInlineResult {
@@ -259,17 +264,22 @@ extension MacMarkdownComposerView {
           selectionActionMessage = actionName + "已生成，可在元数据建议中应用。"
           EditorAccessibilityAnnouncementCenter.announce(selectionActionMessage)
         } else {
+          let citationPlan = KnowledgeCitationMarkdownService.applicationPlan(
+            for: result.content,
+            candidates: result.knowledgeCitations,
+            existingMarkdown: requestedDraft.bodyMarkdown
+          )
           let preview = AIPublishingSelectionEditPreview(
             draftID: requestedDraft.id,
             sourceBodyMarkdown: requestedDraft.bodyMarkdown,
             kind: result.kind,
             range: previewRange,
             originalText: "",
-            replacementText: result.content,
+            replacementText: citationPlan.renderedContent,
             application: .insertAtRange,
             providerName: result.providerName,
             model: result.model,
-            knowledgeCitations: result.knowledgeCitations
+            knowledgeCitations: citationPlan.referencedCitations
           )
           selectionEditPreview = preview
           showWritingContextPanel(.aiReview)
@@ -366,9 +376,14 @@ extension MacMarkdownComposerView {
       return
     }
 
+    let citationPlan = KnowledgeCitationMarkdownService.applicationPlan(
+      for: message.content,
+      candidates: message.knowledgeCitations,
+      existingMarkdown: previewDraft.bodyMarkdown
+    )
     guard let result = AIPublishingChatDraftApplicationService.applyAssistantContent(
-      message.content,
-      to: previewDraft,
+        citationPlan.renderedContent,
+        to: previewDraft,
       mode: .replaceSelection,
       selectionRange: range
     ) else {
@@ -376,12 +391,17 @@ extension MacMarkdownComposerView {
       return
     }
 
-    let replacementLength = (message.content.trimmedForPublishing as NSString).length
-    guard requestUndoableBodyUpdate(result.draft, selectionOverride: range) else { return }
+    let replacementLength = (citationPlan.renderedContent as NSString).length
+    var citedDraft = result.draft
+    citedDraft.bodyMarkdown = KnowledgeCitationMarkdownService.appendingMissingDefinitions(
+      to: citedDraft.bodyMarkdown,
+      citations: citationPlan.referencedCitations
+    )
+    guard requestUndoableBodyUpdate(citedDraft, selectionOverride: range) else { return }
     selectedRange = NSRange(location: range.location + replacementLength, length: 0)
     recordKnowledgeCitations(
-      message.knowledgeCitations,
-      for: result.draft
+      citationPlan.referencedCitations,
+      for: citedDraft
     )
     selectionActionMessage = result.action.statusMessage
   }
@@ -413,9 +433,14 @@ extension MacMarkdownComposerView {
   func applySelectionEditPreview(_ preview: AIPublishingSelectionEditPreview) {
     do {
       let originalLength = (editorBody as NSString).length
-      let updated = try AIPublishingSelectionEditPreviewService.apply(preview, to: previewDraft)
-      let updatedLength = (updated.bodyMarkdown as NSString).length
-      let insertedLength = max(0, updatedLength - originalLength)
+      let applied = try AIPublishingSelectionEditPreviewService.apply(preview, to: previewDraft)
+      let appliedLength = (applied.bodyMarkdown as NSString).length
+      var updated = applied
+      updated.bodyMarkdown = KnowledgeCitationMarkdownService.appendingMissingDefinitions(
+        to: updated.bodyMarkdown,
+        citations: preview.knowledgeCitations
+      )
+      let insertedLength = max(0, appliedLength - originalLength)
       let newSelectionLocation: Int
       switch preview.application {
       case .replaceRange:
@@ -452,16 +477,48 @@ extension MacMarkdownComposerView {
     for draft: ArticleDraft
   ) {
     guard !citations.isEmpty else { return }
-    Task {
-      await store.knowledge.recordBacklinks(
-        citations: citations,
-        target: KnowledgeBacklinkTarget(
-          kind: .articleDraft,
-          id: draft.id.uuidString,
-          title: draft.title.nilIfEmpty ?? "当前文章",
-          location: "正文"
-        )
+    let retry = MarkdownComposerCitationBacklinkRetry(
+      draftID: draft.id,
+      citations: citations,
+      target: KnowledgeBacklinkTarget(
+        kind: .articleDraft,
+        id: draft.id.uuidString,
+        title: draft.title.nilIfEmpty ?? "当前文章",
+        location: String(localized: "正文")
       )
+    )
+    recordKnowledgeCitationBacklinks(retry)
+  }
+
+  func retryPendingKnowledgeCitationBacklinks() {
+    guard let retry = selectionActionState.pendingCitationBacklinkRetry,
+      retry.draftID == draft.id
+    else {
+      return
+    }
+    selectionActionMessage = String(localized: "正在重试保存本篇文章的资料引用…")
+    recordKnowledgeCitationBacklinks(retry)
+  }
+
+  private func recordKnowledgeCitationBacklinks(
+    _ retry: MarkdownComposerCitationBacklinkRetry
+  ) {
+    Task { @MainActor in
+      let result = await store.knowledge.recordBacklinks(
+        citations: retry.citations,
+        target: retry.target
+      )
+      guard draft.id == retry.draftID else { return }
+      switch result {
+      case .recorded:
+        if selectionActionState.pendingCitationBacklinkRetry?.id == retry.id {
+          selectionActionState.pendingCitationBacklinkRetry = nil
+        }
+      case .failed:
+        selectionActionState.pendingCitationBacklinkRetry = retry
+        selectionActionMessage = String(localized: "正文已更新，但资料引用记录未保存；可重试。")
+        EditorAccessibilityAnnouncementCenter.announce(selectionActionMessage, priority: .high)
+      }
     }
   }
 }

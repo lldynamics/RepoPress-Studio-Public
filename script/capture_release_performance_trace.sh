@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 APP_BUNDLE="$ROOT_DIR/dist/RepoPress Studio.app"
-APP_BINARY="$APP_BUNDLE/Contents/MacOS/PersonalSitePublisherMac"
+APP_BUNDLE_WAS_SET=0
 OUTPUT_DIRECTORY="$ROOT_DIR/.build/performance-traces"
 SCENARIO="launch"
 DURATION="20s"
@@ -51,6 +51,7 @@ Options:
                            SwiftUI for interactive scenarios).
   --note <text>            Required reproduction note except for launch.
   --output-directory <dir> Trace output root.
+  --app-bundle <path>      Absolute packaged app path to capture.
   --document-length <n>    Markdown fixture UTF-16 minimum (1,000...1,000,000).
   --scroll-pattern <name>  Markdown scroll pattern: forward, ping-pong, or loop.
   --scroll-cycles <n>      Ping-pong/loop traversals (1...32, default: 4).
@@ -103,6 +104,12 @@ while [[ "$#" -gt 0 ]]; do
     --output-directory)
       [[ "$#" -ge 2 ]] || { usage >&2; exit 2; }
       OUTPUT_DIRECTORY="$2"
+      shift 2
+      ;;
+    --app-bundle)
+      [[ "$#" -ge 2 ]] || { usage >&2; exit 2; }
+      APP_BUNDLE="$2"
+      APP_BUNDLE_WAS_SET=1
       shift 2
       ;;
     --document-length)
@@ -184,6 +191,16 @@ while [[ "$#" -gt 0 ]]; do
       ;;
   esac
 done
+
+if [[ "$APP_BUNDLE" != /* ]]; then
+  echo "app bundle path must be absolute: $APP_BUNDLE" >&2
+  exit 2
+fi
+if [[ "$APP_BUNDLE" != *.app ]]; then
+  echo "app bundle path must end in .app: $APP_BUNDLE" >&2
+  exit 2
+fi
+APP_BINARY="$APP_BUNDLE/Contents/MacOS/PersonalSitePublisherMac"
 
 case "$SCENARIO" in
   launch|typing|markdown-scroll|markdown-rich-scroll|markdown-typing|rss|image-batch|ai-streaming) ;;
@@ -391,6 +408,7 @@ if [[ "$DRY_RUN" == "1" ]]; then
   printf 'scenario=%s\n' "$SCENARIO"
   printf 'interaction_driver=%s\n' "$INTERACTION_DRIVER"
   printf 'note=%s\n' "$NOTE"
+  printf 'app_bundle=%s\n' "$APP_BUNDLE"
   printf 'metadata=%s\n' "$metadata_path"
   if is_markdown_scroll_scenario; then
     printf 'document_length=%s\n' "$DOCUMENT_LENGTH"
@@ -448,7 +466,20 @@ command -v xcrun >/dev/null || {
 }
 
 if [[ "$SKIP_BUILD" != "1" ]]; then
-  if is_markdown_scenario; then
+  if [[ "$APP_BUNDLE_WAS_SET" == "1" ]]; then
+    app_bundle_output_directory="$(dirname "$APP_BUNDLE")"
+    app_bundle_name="$(basename "$APP_BUNDLE" .app)"
+    if is_markdown_scenario; then
+      PERSONAL_SITE_PUBLISHER_CAPTURE_BUILD=1 \
+        PERSONAL_SITE_PUBLISHER_DIST_DIR="$app_bundle_output_directory" \
+        PERSONAL_SITE_PUBLISHER_BUNDLE_NAME="$app_bundle_name" \
+        bash "$ROOT_DIR/script/build_and_run.sh" --package-only --release
+    else
+      PERSONAL_SITE_PUBLISHER_DIST_DIR="$app_bundle_output_directory" \
+        PERSONAL_SITE_PUBLISHER_BUNDLE_NAME="$app_bundle_name" \
+        bash "$ROOT_DIR/script/build_and_run.sh" --package-only --release
+    fi
+  elif is_markdown_scenario; then
     PERSONAL_SITE_PUBLISHER_CAPTURE_BUILD=1 \
       bash "$ROOT_DIR/script/build_and_run.sh" --package-only --release
   else
@@ -483,9 +514,10 @@ if is_markdown_scenario; then
   "${capture_launch_command[@]}" &
   capture_app_pid="$!"
   cleanup_capture_app() {
-    if kill -0 "$capture_app_pid" 2>/dev/null; then
-      kill "$capture_app_pid" 2>/dev/null || true
-      wait "$capture_app_pid" 2>/dev/null || true
+    local pid="$capture_app_pid"
+    if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
+      kill "$pid" 2>/dev/null || true
+      wait "$pid" 2>/dev/null || true
     fi
   }
   trap cleanup_capture_app EXIT

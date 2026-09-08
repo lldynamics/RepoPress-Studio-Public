@@ -371,10 +371,12 @@ final class RSSArticleFullTextPersistenceTests: XCTestCase {
       fileURL: rootURL.appendingPathComponent("reader.sqlite")
     )
     let feed = try makeFeed()
+    let articleURL = try XCTUnwrap(URL(string: "https://example.com/posts/refresh"))
     let article = RSSArticle(
       id: "refresh-article",
       feedID: feed.id,
       title: "刷新测试",
+      link: articleURL,
       contentHTML: "<p>Feed 第一版摘要</p>"
     )
     try database.upsertFeed(feed)
@@ -383,6 +385,7 @@ final class RSSArticleFullTextPersistenceTests: XCTestCase {
       articleID: article.id,
       contentHTML: "<article><p>独立全文</p></article>",
       plainText: "独立检索 extractedsentinel",
+      sourceURL: articleURL,
       confidence: 0.92,
       attemptedAt: Date(timeIntervalSince1970: 1_700_000_100)
     )
@@ -408,6 +411,116 @@ final class RSSArticleFullTextPersistenceTests: XCTestCase {
     try database.deleteFullTextRecord(articleID: article.id)
     XCTAssertFalse(
       try database.matchingArticleIDs(query: "extractedsentinel").contains(article.id)
+    )
+  }
+
+  func testConditionalFullTextWriteRejectsResultForFormerURLOfSameGUID() throws {
+    let rootURL = temporaryRoot("rss-full-text-moved-guid")
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let database = try RSSReaderDatabase(
+      fileURL: rootURL.appendingPathComponent("reader.sqlite")
+    )
+    let feed = try makeFeed()
+    let oldURL = try XCTUnwrap(URL(string: "https://example.com/posts/old"))
+    let newURL = try XCTUnwrap(URL(string: "https://example.com/posts/new"))
+    let article = RSSArticle(
+      id: "stable-guid",
+      feedID: feed.id,
+      title: "移动链接",
+      link: oldURL,
+      contentHTML: "<p>RSS 摘要</p>"
+    )
+    try database.upsertFeed(feed)
+    try database.upsertArticles([article])
+    let staleResult = RSSArticleFullTextRecord.ready(
+      articleID: article.id,
+      contentHTML: "<p>旧链接的独立正文</p>",
+      plainText: "staleformerurlsentinel",
+      sourceURL: oldURL,
+      confidence: 0.9
+    )
+    XCTAssertTrue(try database.upsertFullTextRecordIfCurrentSource(staleResult))
+    let persistedOriginal = try database.fullTextRecord(articleID: article.id)
+    XCTAssertTrue(
+      try database.matchingArticleIDs(query: "staleformerurlsentinel").contains(article.id)
+    )
+
+    var movedArticle = article
+    movedArticle.link = newURL
+    movedArticle.fetchedAt = article.fetchedAt.addingTimeInterval(60)
+    try database.upsertArticles([movedArticle])
+
+    XCTAssertFalse(try database.upsertFullTextRecordIfCurrentSource(staleResult))
+    XCTAssertEqual(try database.fullTextRecord(articleID: article.id), persistedOriginal)
+    XCTAssertFalse(
+      try database.matchingArticleIDs(query: "staleformerurlsentinel").contains(article.id)
+    )
+
+    let currentResult = RSSArticleFullTextRecord.ready(
+      articleID: article.id,
+      contentHTML: "<p>新链接的独立正文</p>",
+      plainText: "currenturlsentinel",
+      sourceURL: newURL,
+      confidence: 0.9,
+      attemptedAt: Date(timeIntervalSince1970: 1_700_000_100)
+    )
+    XCTAssertTrue(try database.upsertFullTextRecordIfCurrentSource(currentResult))
+    XCTAssertEqual(try database.fullTextRecord(articleID: article.id), currentResult)
+    XCTAssertTrue(
+      try database.matchingArticleIDs(query: "currenturlsentinel").contains(article.id)
+    )
+  }
+
+  func testV6MigrationRebuildsFTSWithoutFormerURLFullText() throws {
+    let rootURL = temporaryRoot("rss-full-text-v6-former-url")
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let fileURL = rootURL.appendingPathComponent("reader.sqlite")
+    let feed = try makeFeed()
+    let oldURL = try XCTUnwrap(URL(string: "https://example.com/posts/old"))
+    let newURL = try XCTUnwrap(URL(string: "https://example.com/posts/new"))
+    let article = RSSArticle(
+      id: "migration-stable-guid",
+      feedID: feed.id,
+      title: "迁移链接",
+      link: oldURL,
+      contentHTML: "<p>RSS 摘要</p>"
+    )
+    do {
+      let database = try RSSReaderDatabase(fileURL: fileURL)
+      try database.upsertFeed(feed)
+      try database.upsertArticles([article])
+      try database.upsertFullTextRecord(
+        .ready(
+          articleID: article.id,
+          contentHTML: "<p>旧链接正文</p>",
+          plainText: "legacyformersourcesentinel",
+          sourceURL: oldURL,
+          confidence: 0.9
+        )
+      )
+      var movedArticle = article
+      movedArticle.link = newURL
+      movedArticle.fetchedAt = article.fetchedAt.addingTimeInterval(60)
+      try database.upsertArticles([movedArticle])
+    }
+    // Model the FTS row created by v6 before source_url was part of its
+    // inclusion rule, then prove the v7 migration rebuilds it safely.
+    try executeSQLite(
+      """
+      INSERT INTO rss_articles_fts(article_id, title, summary, content)
+      VALUES ('migration-stable-guid', '迁移链接', '', 'legacyformersourcesentinel');
+      PRAGMA user_version = 6;
+      """,
+      at: fileURL
+    )
+
+    let migrated = try RSSReaderDatabase(fileURL: fileURL)
+    XCTAssertEqual(
+      try migrated.scalarInt("PRAGMA user_version;"),
+      RSSReaderDatabase.currentSchemaVersion
+    )
+    XCTAssertFalse(
+      try migrated.matchingArticleIDs(query: "legacyformersourcesentinel").contains(article.id)
     )
   }
 

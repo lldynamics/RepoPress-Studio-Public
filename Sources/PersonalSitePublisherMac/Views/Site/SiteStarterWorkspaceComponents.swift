@@ -110,6 +110,22 @@ enum SiteStarterWorkflowProjection {
   }
 }
 
+enum SiteStarterFormProfileBinding {
+  static func canPersistGitHubInputs(
+    boundProfileID: UUID?,
+    activeProfileID: UUID,
+    starterResultProfileID: UUID?
+  ) -> Bool {
+    boundProfileID == activeProfileID && starterResultProfileID == activeProfileID
+  }
+}
+
+enum SiteStarterDeploymentConfigurationLock {
+  static func isLocked(activeProfileID: UUID, starterResultProfileID: UUID?) -> Bool {
+    activeProfileID == starterResultProfileID
+  }
+}
+
 enum SiteStarterWizardStepStatus {
   case done
   case active
@@ -229,6 +245,10 @@ struct SiteStarterTemplateStep: View {
   let siteDescription: Binding<String>
   let author: Binding<String>
   let baseURL: Binding<String>
+  let deploymentTarget: Binding<SiteStarterDeploymentTarget>
+  let deploymentProjectID: Binding<String>
+  let deploymentAccountID: Binding<String>
+  let deploymentConfigurationLocked: Bool
 
   var body: some View {
     SiteStarterWizardPanel(title: String(localized: "选择模板"), systemImage: "sparkles.rectangle.stack") {
@@ -296,6 +316,44 @@ struct SiteStarterTemplateStep: View {
       TextField("生产站 URL", text: baseURL)
         .accessibilityLabel("生产站 URL")
         .accessibilityValue(baseURL.wrappedValue.nilIfEmpty ?? String(localized: "未填写"))
+
+      if deploymentConfigurationLocked {
+        Label(
+          "部署配置已在生成站点前锁定：\(deploymentTarget.wrappedValue.localizedDisplayName)",
+          systemImage: "lock.fill"
+        )
+        .font(.caption)
+        .foregroundStyle(.secondary)
+      }
+
+      Picker("部署", selection: deploymentTarget) {
+        ForEach(SiteStarterDeploymentTarget.allCases) { target in
+          Text(target.localizedDisplayName).tag(target)
+        }
+      }
+      .accessibilityLabel("部署平台")
+      .accessibilityValue(deploymentTarget.wrappedValue.localizedDisplayName)
+      .disabled(deploymentConfigurationLocked)
+
+      if deploymentTarget.wrappedValue == .netlify {
+        TextField("Netlify Site ID（可稍后补）", text: deploymentProjectID)
+          .accessibilityLabel("Netlify Site ID（可稍后补）")
+          .disabled(deploymentConfigurationLocked)
+      } else if deploymentTarget.wrappedValue == .vercel {
+        TextField("Vercel Project ID（可稍后补）", text: deploymentProjectID)
+          .accessibilityLabel("Vercel Project ID（可稍后补）")
+          .disabled(deploymentConfigurationLocked)
+        TextField("Vercel Team ID（可选）", text: deploymentAccountID)
+          .accessibilityLabel("Vercel Team ID（可选）")
+          .disabled(deploymentConfigurationLocked)
+      } else if deploymentTarget.wrappedValue == .cloudflarePages {
+        TextField("Cloudflare Account ID（可稍后补）", text: deploymentAccountID)
+          .accessibilityLabel("Cloudflare Account ID（可稍后补）")
+          .disabled(deploymentConfigurationLocked)
+        TextField("Cloudflare Pages Project", text: deploymentProjectID)
+          .accessibilityLabel("Cloudflare Pages Project")
+          .disabled(deploymentConfigurationLocked)
+      }
     }
   }
 }
@@ -405,9 +463,9 @@ struct SiteStarterGitHubStep: View {
   let githubOwner: Binding<String>
   let githubRepo: Binding<String>
   let branch: Binding<String>
-  let deploymentTarget: Binding<SiteStarterDeploymentTarget>
-  let deploymentProjectID: Binding<String>
-  let deploymentAccountID: Binding<String>
+  let deploymentTarget: SiteStarterDeploymentTarget
+  let deploymentProjectID: String
+  let deploymentAccountID: String
   let createsPrivateRepository: Binding<Bool>
   let canCreateGitHubRepository: Bool
   let isRepositoryOperationRunning: Bool
@@ -433,34 +491,13 @@ struct SiteStarterGitHubStep: View {
           .accessibilityValue(branch.wrappedValue.nilIfEmpty ?? String(localized: "未填写"))
       }
 
-      Picker("部署", selection: deploymentTarget) {
-        ForEach(SiteStarterDeploymentTarget.allCases) { target in
-          Text(target.localizedDisplayName).tag(target)
-        }
-      }
-      .accessibilityLabel("部署平台")
-      .accessibilityValue(deploymentTarget.wrappedValue.localizedDisplayName)
-
-      if deploymentTarget.wrappedValue == .netlify {
-        TextField("Netlify Site ID（可稍后补）", text: deploymentProjectID)
-          .accessibilityLabel("Netlify Site ID")
-          .accessibilityValue(deploymentProjectID.wrappedValue.nilIfEmpty ?? String(localized: "未填写"))
-      }
-      if deploymentTarget.wrappedValue == .vercel {
-        TextField("Vercel Project ID（可稍后补）", text: deploymentProjectID)
-          .accessibilityLabel("Vercel Project ID")
-          .accessibilityValue(deploymentProjectID.wrappedValue.nilIfEmpty ?? String(localized: "未填写"))
-        TextField("Vercel Team ID（可选）", text: deploymentAccountID)
-          .accessibilityLabel("Vercel Team ID")
-          .accessibilityValue(deploymentAccountID.wrappedValue.nilIfEmpty ?? String(localized: "未填写"))
-      }
-      if deploymentTarget.wrappedValue == .cloudflarePages {
-        TextField("Cloudflare Account ID（可稍后补）", text: deploymentAccountID)
-          .accessibilityLabel("Cloudflare Account ID")
-          .accessibilityValue(deploymentAccountID.wrappedValue.nilIfEmpty ?? String(localized: "未填写"))
-        TextField("Cloudflare Pages Project", text: deploymentProjectID)
-          .accessibilityLabel("Cloudflare Pages Project")
-          .accessibilityValue(deploymentProjectID.wrappedValue.nilIfEmpty ?? String(localized: "未填写"))
+      Label("部署配置已在生成站点前锁定：\(deploymentTarget.localizedDisplayName)", systemImage: "lock.fill")
+        .font(.caption)
+        .foregroundStyle(.secondary)
+      if !deploymentProjectID.isEmpty || !deploymentAccountID.isEmpty {
+        Text([deploymentProjectID, deploymentAccountID].filter { !$0.isEmpty }.joined(separator: " · "))
+          .font(.caption.monospaced())
+          .foregroundStyle(.secondary)
       }
 
       Toggle("创建为私有仓库", isOn: createsPrivateRepository)
@@ -650,10 +687,22 @@ struct SiteStarterFirstPushConfirmationView: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: 16) {
-      Text("复核首次提交")
-        .font(.title2.weight(.semibold))
-      Text("以下是刚刚冻结的快照。确认后会再次校验；任一项变化都会停止，不会提交或推送。")
-        .foregroundStyle(.secondary)
+      Group {
+        if confirmation.existingCommitSHA == nil {
+          Text("复核首次提交")
+        } else {
+          Text("复核重试推送")
+        }
+      }
+      .font(.title2.weight(.semibold))
+      Group {
+        if confirmation.existingCommitSHA == nil {
+          Text("以下是刚刚冻结的快照。确认后会再次校验；任一项变化都会停止，不会提交或推送。")
+        } else {
+          Text("以下是已提交版本的冻结复核。确认后只会推送显示的 SHA；任一项变化都会停止。")
+        }
+      }
+      .foregroundStyle(.secondary)
 
       GroupBox("目标") {
         VStack(alignment: .leading, spacing: 8) {
@@ -668,10 +717,13 @@ struct SiteStarterFirstPushConfirmationView: View {
             "本地 HEAD",
             confirmation.headCommitSHA.map { String($0.prefix(12)) } ?? String(localized: "尚无提交")
           )
+          if let existingCommitSHA = confirmation.existingCommitSHA {
+            confirmationRow("允许推送的已提交 SHA", String(existingCommitSHA.prefix(12)))
+          }
         }
       }
 
-      GroupBox("将提交 \(confirmation.committedPaths.count) 个文件") {
+      GroupBox {
         ScrollView {
           VStack(alignment: .leading, spacing: 4) {
             ForEach(confirmation.committedPaths, id: \.self) { path in
@@ -683,6 +735,12 @@ struct SiteStarterFirstPushConfirmationView: View {
           .frame(maxWidth: .infinity, alignment: .leading)
         }
         .frame(maxHeight: 180)
+      } label: {
+        if confirmation.existingCommitSHA == nil {
+          Text(String(format: String(localized: "将提交 %lld 个文件"), confirmation.committedPaths.count))
+        } else {
+          Text(String(format: String(localized: "已提交 %lld 个文件"), confirmation.committedPaths.count))
+        }
       }
 
       Label("已检查暂存区没有 Starter 清单外的文件。", systemImage: "checkmark.shield")
@@ -705,6 +763,8 @@ struct SiteStarterFirstPushConfirmationView: View {
           if isPushing {
             ProgressView()
               .controlSize(.small)
+          } else if confirmation.existingCommitSHA != nil {
+            Label("确认重试推送", systemImage: "arrow.up.circle")
           } else {
             Label("确认提交并推送", systemImage: "arrow.up.circle")
           }

@@ -27,6 +27,44 @@ public struct AIInlineStructuredEditReviewSession: Identifiable, Equatable, Send
     self.review = review
     self.currentHunkID = currentHunkID
   }
+
+  /// Counts reflect the review document's stable source order.  Keeping this
+  /// derived from the review makes the toolbar a pure projection and ensures
+  /// applying accepted edits keeps the existing semantics unchanged.
+  public var decisionSummary: AIInlineStructuredEditDecisionSummary {
+    let decisions = review.document.changes.map { review.decision(for: $0.id) }
+    return AIInlineStructuredEditDecisionSummary(
+      pending: decisions.filter { $0 == .pending }.count,
+      accepted: decisions.filter { $0 == .accepted }.count,
+      rejected: decisions.filter { $0 == .rejected }.count
+    )
+  }
+
+  /// Finds the next pending hunk after the current one, wrapping once.  This
+  /// deliberately returns nil when all hunks have been decided so callers can
+  /// keep the current hunk visible at the end of review.
+  public func nextPendingHunkID(after hunkID: String?) -> String? {
+    let ids = review.document.changes.map(\.id)
+    guard !ids.isEmpty else { return nil }
+    let start = hunkID.flatMap { ids.firstIndex(of: $0) } ?? -1
+    for offset in 1...ids.count {
+      let candidate = ids[(start + offset) % ids.count]
+      if review.decision(for: candidate) == .pending { return candidate }
+    }
+    return nil
+  }
+}
+
+public struct AIInlineStructuredEditDecisionSummary: Equatable, Sendable {
+  public let pending: Int
+  public let accepted: Int
+  public let rejected: Int
+
+  public init(pending: Int, accepted: Int, rejected: Int) {
+    self.pending = pending
+    self.accepted = accepted
+    self.rejected = rejected
+  }
 }
 
 /// Feature-scoped observation keeps streaming chat/image/site changes from
@@ -437,13 +475,12 @@ public final class WorkbenchAIFeatureFacade: ObservableObject {
     store.isAIImageTextRunning
   }
 
+  @discardableResult
   public func recordKnowledgeBacklinks(
     _ citations: [KnowledgeCitation],
     target: KnowledgeBacklinkTarget
-  ) {
-    Task { @MainActor [store] in
-      await store.knowledge.recordBacklinks(citations: citations, target: target)
-    }
+  ) async -> KnowledgeBacklinkRecordingResult {
+    await store.knowledge.recordBacklinks(citations: citations, target: target)
   }
 
   @discardableResult
@@ -934,6 +971,16 @@ public final class WorkbenchAIFeatureFacade: ObservableObject {
     )
   }
 
+  public func chatImageAttachmentLoadResult(
+    for draft: ArticleDraft,
+    attachmentIDs: Set<UUID>
+  ) async -> AIChatImageAttachmentLoadResult {
+    await store.aiStore.aiChatImageAttachmentLoadResult(
+      for: draft,
+      attachmentIDs: attachmentIDs
+    )
+  }
+
   public func availableChatContextReferences(
     for draft: ArticleDraft
   ) -> [AIContextReference] {
@@ -1084,7 +1131,10 @@ public final class WorkbenchAIFeatureFacade: ObservableObject {
         AIInlineStructuredEditReviewSession(
           id: session.id, draftID: session.draftID,
           sourceContentFingerprint: session.sourceContentFingerprint,
-          sourceBody: session.sourceBody, review: review, currentHunkID: proposalID
+          sourceBody: session.sourceBody, review: review,
+          currentHunkID: decision == .pending
+            ? proposalID
+            : session.nextPendingHunkID(after: proposalID) ?? proposalID
         ))
     } catch {
       store.setAIChatMessage("结构化修改决策未能更新：\(error.localizedDescription)")

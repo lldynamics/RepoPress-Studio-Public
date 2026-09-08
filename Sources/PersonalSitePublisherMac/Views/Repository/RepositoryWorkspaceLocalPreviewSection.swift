@@ -1,4 +1,3 @@
-import PublishingWorkbenchCore
 import SwiftUI
 
 extension RepositoryWorkspaceView {

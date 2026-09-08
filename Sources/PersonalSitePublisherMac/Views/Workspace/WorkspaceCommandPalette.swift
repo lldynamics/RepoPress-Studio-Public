@@ -10,35 +10,40 @@ struct WorkspaceCommandPalette: View {
   @ObservedObject private var shell: WorkbenchShellFeatureFacade
   let store: WorkbenchStore
   let editorCommands: MarkdownEditorCommandActions?
+  let contextDraftID: UUID?
   /// The presenting workspace owns navigation. A native sheet can make that
   /// window non-key while this palette is still active, so mutating the shared
   /// store here would lose the presenting window's pending selection.
   let onSelectSection: (WorkspaceSection) -> Void
   let onFocusDraft: (UUID) -> Void
   let onToggleFocusMode: () -> Void
+  let onOpenAI: (UUID?, AIPublishingQuickPrompt?) -> Void
   @AppStorage("workspaceCommandPaletteRecentAIPromptIDs")
   private var recentAIPromptIDs = ""
   @AppStorage("workspaceCommandPaletteRecentSettingsItemIDs")
   private var recentSettingsItemIDs = ""
   @State private var query = ""
   @State private var scope: WorkspaceUnifiedSearchScope = .all
-  @State private var selectedResultID: String?
-  @State private var hoveredResultID: String?
-  @State private var selectionScrollRevision = 0
+  @State private var selectionState = WorkspaceCommandPaletteSelection()
+  private var selectedResultID: String? { selectionState.selectedID }
   @FocusState private var isSearchFocused: Bool
 
   init(
     store: WorkbenchStore,
     editorCommands: MarkdownEditorCommandActions? = nil,
+    contextDraftID: UUID?,
     onSelectSection: @escaping (WorkspaceSection) -> Void,
     onFocusDraft: @escaping (UUID) -> Void,
-    onToggleFocusMode: @escaping () -> Void
+    onToggleFocusMode: @escaping () -> Void,
+    onOpenAI: @escaping (UUID?, AIPublishingQuickPrompt?) -> Void
   ) {
     self.store = store
     self.editorCommands = editorCommands
+    self.contextDraftID = contextDraftID
     self.onSelectSection = onSelectSection
     self.onFocusDraft = onFocusDraft
     self.onToggleFocusMode = onToggleFocusMode
+    self.onOpenAI = onOpenAI
     _commandPresentation = ObservedObject(wrappedValue: store.commandPresentation)
     _draftListState = ObservedObject(wrappedValue: store.draftList)
     _shell = ObservedObject(wrappedValue: store.shell)
@@ -59,6 +64,18 @@ struct WorkspaceCommandPalette: View {
         Text("⌘P")
           .font(.caption.monospaced())
           .foregroundStyle(.tertiary)
+        Button {
+          dismiss()
+        } label: {
+          Label("关闭", systemImage: "xmark")
+            .labelStyle(.iconOnly)
+            .frame(width: 28, height: 28)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(String(localized: "关闭"))
+        .accessibilityLabel("关闭")
+        .accessibilityIdentifier("workspace-command-palette-close")
       }
       .padding(16)
 
@@ -188,7 +205,7 @@ struct WorkspaceCommandPalette: View {
           }
           .padding(16)
         }
-        .onChange(of: selectionScrollRevision) { _, _ in
+        .onChange(of: selectionState.scrollRevision) { _, _ in
           guard let selectedResultID else { return }
           proxy.scrollTo(selectedResultID, anchor: .center)
         }
@@ -221,6 +238,7 @@ struct WorkspaceCommandPalette: View {
     .onExitCommand {
       dismiss()
     }
+    .accessibilityElement(children: .contain)
     .accessibilityLabel("命令面板")
     .accessibilityIdentifier("workspace-command-palette")
   }
@@ -330,7 +348,14 @@ struct WorkspaceCommandPalette: View {
     var items: [PaletteCommand] = [
       registeredAutomationCommand(.createDraft, shortcut: "⌘N") {
         store.createDraft()
-        onSelectSection(.writing)
+        if let draftID = store.selectedDraftID {
+          // A palette is a sheet, so its presenting window may not be key
+          // while this runs. Preserve the new draft in that window rather
+          // than relying on the shared Store selection alone.
+          onFocusDraft(draftID)
+        } else {
+          onSelectSection(.writing)
+        }
         dismiss()
       },
       registeredAutomationCommand(.saveWorkbench, shortcut: "⌘S") {
@@ -468,8 +493,8 @@ struct WorkspaceCommandPalette: View {
         systemImage: "sparkles",
         shortcut: "⌥⌘A"
       ) {
-        guard let draftID = commandPresentation.selectedDraftID else { return }
-        store.ai.openChatWorkspace(for: draftID)
+        guard let draftID = contextDraftID else { return }
+        onOpenAI(draftID, nil)
         dismiss()
       },
       at: min(3, items.count)
@@ -523,9 +548,9 @@ struct WorkspaceCommandPalette: View {
     shortcut: String? = nil,
     action: @escaping () -> Void
   ) -> some View {
-    let isSelected = (hoveredResultID ?? selectedResultID) == id
+    let isSelected = selectedResultID == id
     return Button {
-      selectedResultID = id
+      selectionState.select(id)
       action()
     } label: {
       HStack(spacing: 11) {
@@ -564,11 +589,9 @@ struct WorkspaceCommandPalette: View {
     .id(id)
     .onHover { isHovering in
       if isHovering {
-        // Hover only highlights. Scrolling here moves the target underneath
-        // the pointer before mouse-up and can execute an unrelated command.
-        hoveredResultID = id
-      } else if hoveredResultID == id {
-        hoveredResultID = nil
+        // The highlighted row is also the Return target. Pointer selection
+        // must not scroll, which would move the target before mouse-up.
+        selectionState.select(id)
       }
     }
     .accessibilityAddTraits(selectedResultID == id ? .isSelected : [])
@@ -598,31 +621,11 @@ struct WorkspaceCommandPalette: View {
   }
 
   private func synchronizeSelection() {
-    let resultIDs = orderedResults.map(\.id)
-    if let selectedResultID, resultIDs.contains(selectedResultID) {
-      return
-    }
-    selectedResultID = resultIDs.first
-    selectionScrollRevision &+= 1
+    selectionState.synchronize(with: orderedResults.map(\.id))
   }
 
   private func moveSelection(by offset: Int) {
-    hoveredResultID = nil
-    let results = orderedResults
-    guard !results.isEmpty else {
-      selectedResultID = nil
-      return
-    }
-    guard let selectedResultID,
-      let currentIndex = results.firstIndex(where: { $0.id == selectedResultID })
-    else {
-      self.selectedResultID = results.first?.id
-      selectionScrollRevision &+= 1
-      return
-    }
-    let nextIndex = (currentIndex + offset + results.count) % results.count
-    self.selectedResultID = results[nextIndex].id
-    selectionScrollRevision &+= 1
+    selectionState.move(by: offset, among: orderedResults.map(\.id))
   }
 
   private func performSelectedResult() {
@@ -702,10 +705,7 @@ struct WorkspaceCommandPalette: View {
     var recents = recentAIPromptIDList.filter { $0 != prompt.rawValue }
     recents.insert(prompt.rawValue, at: 0)
     recentAIPromptIDs = recents.prefix(12).joined(separator: ",")
-    _ = store.ai.openChatWorkspace(
-      for: commandPresentation.selectedDraftID,
-      quickPrompt: prompt
-    )
+    onOpenAI(contextDraftID, prompt)
     dismiss()
   }
 }

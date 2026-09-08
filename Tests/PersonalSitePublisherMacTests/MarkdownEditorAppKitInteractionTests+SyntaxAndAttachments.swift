@@ -139,6 +139,366 @@ final class MarkdownEditorAppKitInteractionSyntaxAndAttachmentTests:
     XCTAssertEqual(coordinator.statistics, MarkdownEditorStatistics.make(for: updated))
   }
 
+  func testStatisticsUsesIncrementalPathForExactLongNonASCIICache() {
+    let initial = String(repeating: "正文😀 ", count: 100_000)
+    XCTAssertEqual(initial.utf16.count, 500_000)
+    let coordinator = makeCoordinator(
+      source: initial,
+      bodyMarkdown: initial,
+      bodyUTF16Offset: 0
+    )
+    coordinator.statistics = MarkdownEditorStatistics.make(for: initial)
+    coordinator.statisticsText = initial
+    coordinator.statisticsFullScanCount = 0
+    coordinator.statisticsIncrementalUpdateCount = 0
+
+    let updated = initial + "x"
+    coordinator.updateStatistics(
+      afterEditing: updated,
+      edit: MarkdownTextEdit(
+        previousText: initial,
+        replacedRange: NSRange(location: initial.utf16.count, length: 0)
+      )
+    )
+
+    XCTAssertEqual(coordinator.statisticsIncrementalUpdateCount, 1)
+    XCTAssertEqual(coordinator.statisticsFullScanCount, 0)
+    XCTAssertEqual(coordinator.statistics.characterCount, updated.utf16.count)
+  }
+
+  func testStatisticsKeepsCanonicalEquivalentCacheCompatibility() {
+    let previousBody = "e\u{301} body"
+    let cachedStatisticsText = "\u{00E9} body"
+    XCTAssertNotEqual(previousBody.utf16.count, cachedStatisticsText.utf16.count)
+    XCTAssertEqual(previousBody, cachedStatisticsText)
+    let coordinator = makeCoordinator(
+      source: previousBody,
+      bodyMarkdown: previousBody,
+      bodyUTF16Offset: 0
+    )
+    coordinator.statistics = MarkdownEditorStatistics.make(for: previousBody)
+    coordinator.statisticsText = cachedStatisticsText
+    coordinator.statisticsFullScanCount = 0
+    coordinator.statisticsIncrementalUpdateCount = 0
+
+    let updated = "x" + previousBody
+    coordinator.updateStatistics(
+      afterEditing: updated,
+      edit: MarkdownTextEdit(
+        previousText: previousBody,
+        replacedRange: NSRange(location: 0, length: 0)
+      )
+    )
+
+    XCTAssertEqual(coordinator.statisticsIncrementalUpdateCount, 1)
+    XCTAssertEqual(coordinator.statisticsFullScanCount, 0)
+    XCTAssertEqual(coordinator.statistics, MarkdownEditorStatistics.make(for: updated))
+  }
+
+  func testStatisticsRejectsDifferentSameUTF16LengthCache() {
+    let previousBody = "你 body"
+    let staleStatisticsText = "他 body"
+    XCTAssertEqual(previousBody.utf16.count, staleStatisticsText.utf16.count)
+    XCTAssertNotEqual(previousBody, staleStatisticsText)
+    let coordinator = makeCoordinator(
+      source: previousBody,
+      bodyMarkdown: previousBody,
+      bodyUTF16Offset: 0
+    )
+    coordinator.statistics = MarkdownEditorStatistics.make(for: staleStatisticsText)
+    coordinator.statisticsText = staleStatisticsText
+    coordinator.statisticsFullScanCount = 0
+    coordinator.statisticsIncrementalUpdateCount = 0
+
+    coordinator.updateStatistics(
+      afterEditing: previousBody + "x",
+      edit: MarkdownTextEdit(
+        previousText: previousBody,
+        replacedRange: NSRange(location: previousBody.utf16.count, length: 0)
+      )
+    )
+
+    XCTAssertEqual(coordinator.statisticsIncrementalUpdateCount, 0)
+    XCTAssertEqual(coordinator.statisticsFullScanCount, 1)
+  }
+
+  func testStatisticsRevisionProofUsesFastPathForConsecutiveRealTextEdits() async {
+    let initial = String(repeating: "正文😀 ", count: 1_200)
+    let coordinator = makeCoordinator(
+      source: initial,
+      bodyMarkdown: initial,
+      bodyUTF16Offset: 0
+    )
+    let textView = NSTextView()
+    textView.string = initial
+    textView.delegate = coordinator
+    coordinator.scheduleFullStatistics(for: initial, isInitialLoad: true)
+    await coordinator.statisticsTask?.value
+    XCTAssertEqual(coordinator.statisticsDocumentRevision, coordinator.syntaxDocumentRevision)
+    XCTAssertEqual(coordinator.statisticsBodyUTF16Offset, 0)
+
+    func append(_ text: String) {
+      let editRange = NSRange(location: (textView.string as NSString).length, length: 0)
+      XCTAssertTrue(
+        coordinator.textView(
+          textView,
+          shouldChangeTextIn: editRange,
+          replacementString: text
+        )
+      )
+      textView.string = (textView.string as NSString).replacingCharacters(
+        in: editRange,
+        with: text
+      )
+      coordinator.textDidChange(
+        Notification(name: NSText.didChangeNotification, object: textView)
+      )
+    }
+
+    append("你")
+    XCTAssertEqual(coordinator.statisticsRevisionValidatedUpdateCount, 1)
+    XCTAssertEqual(coordinator.statistics, MarkdownEditorStatistics.make(for: textView.string))
+    append("😀")
+    XCTAssertEqual(coordinator.statisticsRevisionValidatedUpdateCount, 2)
+    XCTAssertEqual(coordinator.statistics, MarkdownEditorStatistics.make(for: textView.string))
+  }
+
+  func testStatisticsRevisionOrOffsetProofMismatchDoesNotUseFastPath() async {
+    let initial = "中文 😀 baseline"
+    let coordinator = makeCoordinator(
+      source: initial,
+      bodyMarkdown: initial,
+      bodyUTF16Offset: 0
+    )
+    coordinator.scheduleFullStatistics(for: initial, isInitialLoad: true)
+    await coordinator.statisticsTask?.value
+    XCTAssertEqual(coordinator.statisticsRevisionValidatedUpdateCount, 0)
+
+    let firstPreviousRevision = coordinator.syntaxDocumentRevision
+    let firstUpdated = initial + "你"
+    coordinator.syntaxDocumentRevision = firstPreviousRevision + 1
+    coordinator.statisticsDocumentRevision = firstPreviousRevision + 9
+    coordinator.updateStatistics(
+      afterEditing: firstUpdated,
+      edit: MarkdownTextEdit(
+        previousText: initial,
+        replacedRange: NSRange(location: initial.utf16.count, length: 0)
+      ),
+      previousDocumentRevision: firstPreviousRevision
+    )
+    await coordinator.statisticsTask?.value
+    XCTAssertEqual(coordinator.statisticsRevisionValidatedUpdateCount, 0)
+    XCTAssertEqual(coordinator.statistics, MarkdownEditorStatistics.make(for: firstUpdated))
+
+    let secondPreviousRevision = coordinator.syntaxDocumentRevision
+    let secondUpdated = firstUpdated + "😀"
+    coordinator.syntaxDocumentRevision = secondPreviousRevision + 1
+    coordinator.statisticsDocumentRevision = secondPreviousRevision
+    coordinator.statisticsBodyUTF16Offset = coordinator.bodyUTF16Offset + 1
+    coordinator.updateStatistics(
+      afterEditing: secondUpdated,
+      edit: MarkdownTextEdit(
+        previousText: firstUpdated,
+        replacedRange: NSRange(location: firstUpdated.utf16.count, length: 0)
+      ),
+      previousDocumentRevision: secondPreviousRevision
+    )
+    await coordinator.statisticsTask?.value
+    XCTAssertEqual(coordinator.statisticsRevisionValidatedUpdateCount, 0)
+    XCTAssertEqual(coordinator.statistics, MarkdownEditorStatistics.make(for: secondUpdated))
+  }
+
+  func testStatisticsRevisionProofSkipsMultipleIMEPreeditCallbacks() async throws {
+    let initial = "**A** 中文 😀"
+    let coordinator = makeCoordinator(
+      source: initial,
+      bodyMarkdown: initial,
+      bodyUTF16Offset: 0
+    )
+    let textView = NSTextView()
+    textView.string = initial
+    textView.delegate = coordinator
+    coordinator.scheduleFullStatistics(for: initial, isInitialLoad: true)
+    await coordinator.statisticsTask?.value
+
+    let firstRange = (textView.string as NSString).range(of: "A")
+    XCTAssertTrue(
+      coordinator.textView(
+        textView,
+        shouldChangeTextIn: firstRange,
+        replacementString: "你"
+      )
+    )
+    textView.replaceCharacters(in: firstRange, with: "你")
+    let secondRange = (textView.string as NSString).range(of: "你")
+    XCTAssertTrue(
+      coordinator.textView(
+        textView,
+        shouldChangeTextIn: secondRange,
+        replacementString: "😀"
+      )
+    )
+    textView.replaceCharacters(in: secondRange, with: "😀")
+    coordinator.textDidChange(
+      Notification(name: NSText.didChangeNotification, object: textView)
+    )
+    await coordinator.statisticsTask?.value
+
+    XCTAssertEqual(coordinator.statisticsRevisionValidatedUpdateCount, 0)
+    XCTAssertEqual(coordinator.statistics, MarkdownEditorStatistics.make(for: textView.string))
+  }
+
+  func testOldDocumentContextEchoDoesNotCancelPendingIncrementalStatisticsDelivery() async {
+    let initial = "中文 baseline"
+    var boundText = initial
+    var selectedRange = NSRange(location: 0, length: 0)
+    var isFrontMatterSelection = false
+    var deliveredStatistics: [MarkdownEditorStatistics] = []
+    let coordinator = MacMarkdownTextView.Coordinator(
+      text: Binding(
+        get: { boundText },
+        set: { boundText = $0 }
+      ),
+      bodyMarkdown: initial,
+      bodyUTF16Offset: 0,
+      selectedRange: Binding(
+        get: { selectedRange },
+        set: { selectedRange = $0 }
+      ),
+      isFrontMatterSelection: Binding(
+        get: { isFrontMatterSelection },
+        set: { isFrontMatterSelection = $0 }
+      ),
+      comfortConfiguration: MarkdownEditorComfortConfiguration(),
+      diagnostics: [],
+      onStatisticsChanged: { deliveredStatistics.append($0) },
+      onPasteMessage: { _ in },
+      onLiveBodyChange: { _, _ in },
+      onScrollPositionChanged: { _ in },
+      onDroppedFiles: { _ in }
+    )
+    let textView = NSTextView()
+    textView.string = initial
+    textView.delegate = coordinator
+    coordinator.scheduleFullStatistics(for: initial, isInitialLoad: true)
+    await coordinator.statisticsTask?.value
+    deliveredStatistics.removeAll()
+    XCTAssertEqual(coordinator.statisticsDocumentRevision, coordinator.syntaxDocumentRevision)
+
+    let editRange = NSRange(location: (textView.string as NSString).length, length: 0)
+    XCTAssertTrue(
+      coordinator.textView(
+        textView,
+        shouldChangeTextIn: editRange,
+        replacementString: "😀"
+      )
+    )
+    textView.string = (textView.string as NSString).replacingCharacters(
+      in: editRange,
+      with: "😀"
+    )
+    coordinator.textDidChange(
+      Notification(name: NSText.didChangeNotification, object: textView)
+    )
+    let editedBody = textView.string
+
+    XCTAssertFalse(coordinator.updateRepresentedText(initial))
+    coordinator.updateDocumentContext(
+      bodyMarkdown: initial,
+      bodyUTF16Offset: 0,
+      allowsLiveBodyChanges: true,
+      attachments: [],
+      in: textView
+    )
+    coordinator.flushPendingBindingWrites()
+    coordinator.updateDocumentContext(
+      bodyMarkdown: editedBody,
+      bodyUTF16Offset: 0,
+      allowsLiveBodyChanges: true,
+      attachments: [],
+      in: textView
+    )
+    await coordinator.statisticsTask?.value
+
+    XCTAssertEqual(boundText, editedBody)
+    XCTAssertEqual(deliveredStatistics.last, MarkdownEditorStatistics.make(for: editedBody))
+    XCTAssertEqual(coordinator.statisticsDocumentRevision, coordinator.syntaxDocumentRevision)
+    XCTAssertEqual(coordinator.statisticsBodyUTF16Offset, 0)
+  }
+
+  func testStatisticsRevisionProofSurvivesOldBodyEchoBeforeModelCatchUp() async {
+    let initial = "中文 baseline"
+    let coordinator = makeCoordinator(
+      source: initial,
+      bodyMarkdown: initial,
+      bodyUTF16Offset: 0
+    )
+    let textView = NSTextView()
+    textView.string = initial
+    textView.delegate = coordinator
+    coordinator.scheduleFullStatistics(for: initial, isInitialLoad: true)
+    await coordinator.statisticsTask?.value
+
+    func append(_ text: String) {
+      let editRange = NSRange(location: (textView.string as NSString).length, length: 0)
+      XCTAssertTrue(
+        coordinator.textView(
+          textView,
+          shouldChangeTextIn: editRange,
+          replacementString: text
+        )
+      )
+      textView.string = (textView.string as NSString).replacingCharacters(
+        in: editRange,
+        with: text
+      )
+      coordinator.textDidChange(
+        Notification(name: NSText.didChangeNotification, object: textView)
+      )
+    }
+
+    append("你")
+    let firstEditedBody = textView.string
+    XCTAssertEqual(coordinator.statisticsRevisionValidatedUpdateCount, 1)
+    XCTAssertFalse(coordinator.updateRepresentedText(initial))
+    coordinator.updateDocumentContext(
+      bodyMarkdown: initial,
+      bodyUTF16Offset: 0,
+      allowsLiveBodyChanges: true,
+      attachments: [],
+      in: textView
+    )
+    XCTAssertEqual(textView.string, firstEditedBody)
+    XCTAssertEqual(coordinator.bodyMarkdown, initial)
+
+    append("😀")
+    XCTAssertEqual(coordinator.statisticsRevisionValidatedUpdateCount, 2)
+    XCTAssertEqual(coordinator.bodyMarkdown, textView.string)
+    XCTAssertEqual(coordinator.statistics, MarkdownEditorStatistics.make(for: textView.string))
+  }
+
+  func testStaleFullStatisticsTaskCannotValidateNewRevisionOrOffset() async {
+    let initial = "中文 😀 baseline"
+    let coordinator = makeCoordinator(
+      source: initial,
+      bodyMarkdown: initial,
+      bodyUTF16Offset: 0
+    )
+    coordinator.scheduleFullStatistics(for: initial, isInitialLoad: true)
+    await coordinator.statisticsTask?.value
+    XCTAssertEqual(coordinator.statisticsDocumentRevision, coordinator.syntaxDocumentRevision)
+
+    coordinator.scheduleFullStatistics(for: initial + " stale", isInitialLoad: true)
+    let staleTask = coordinator.statisticsTask
+    coordinator.syntaxDocumentRevision &+= 1
+    coordinator.bodyUTF16Offset = 1
+    await staleTask?.value
+
+    XCTAssertNil(coordinator.statisticsDocumentRevision)
+    XCTAssertNil(coordinator.statisticsBodyUTF16Offset)
+    XCTAssertEqual(coordinator.statisticsText, initial)
+  }
+
   func testMultipleIMEPreeditCallbacksInferOneCumulativeUTF16Edit() throws {
     let initial = "**A** 正文"
     let coordinator = makeCoordinator(
@@ -897,7 +1257,24 @@ final class MarkdownEditorAppKitInteractionSyntaxAndAttachmentTests:
       containerSize: NSSize(width: 640, height: 480)
     )
     textView.string = source
+    textView.frame = NSRect(x: 0, y: 0, width: 640, height: 480)
+    let scrollView = NSScrollView(frame: textView.frame)
+    scrollView.documentView = textView
+    let window = NSWindow(
+      contentRect: textView.frame,
+      styleMask: .borderless,
+      backing: .buffered,
+      defer: false
+    )
+    window.contentView = scrollView
+    window.orderFront(nil)
+    window.layoutIfNeeded()
+    window.displayIfNeeded()
+    RunLoop.main.run(until: Date().addingTimeInterval(0.01))
+    defer { window.orderOut(nil) }
     textView.setSelectedRange(NSRange(location: 2, length: 0))
+
+    XCTAssertNotNil(MarkdownTextKit2RangeAdapter.visibleRange(in: textView))
 
     XCTAssertTrue(
       coordinator.updateCurrentParagraphHighlight(in: textView, force: true)

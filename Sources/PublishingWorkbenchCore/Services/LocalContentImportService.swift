@@ -51,6 +51,20 @@ public struct LocalContentImportMergeSummary: Codable, Hashable, Sendable {
   }
 }
 
+public enum LocalContentImportProjectDocumentError: LocalizedError, Equatable, Sendable {
+  case invalidRepositoryPath(String)
+  case roundTripPathMismatch(String)
+
+  public var errorDescription: String? {
+    switch self {
+    case .invalidRepositoryPath(let path):
+      return "路径不是站点内容目录中的安全 Markdown 路径：\(path)"
+    case .roundTripPathMismatch(let path):
+      return "文章路径与当前站点发布规则不一致，无法建立项目文件绑定：\(path)"
+    }
+  }
+}
+
 /// The result of one content-import operation, including the outcome that
 /// belongs to that exact invocation. Keeping this beside the merge summary
 /// prevents operation history from inferring a result from the shared publish
@@ -301,6 +315,33 @@ public struct LocalContentImportService: Sendable {
     return result
   }
 
+  /// Parses one already-read local project document without reading or writing
+  /// the repository. The result carries both the original UTF-8 byte digest
+  /// and the normalized draft-rendering digest for separate CAS and editor
+  /// comparisons.
+  public func parseProjectDocument(
+    _ document: String,
+    repositoryPath: String,
+    rootURL: URL,
+    profile: SiteProfile
+  ) throws -> ArticleDraft {
+    guard let safePath = safeMarkdownRepositoryPath(repositoryPath, profile: profile) else {
+      throw LocalContentImportProjectDocumentError.invalidRepositoryPath(repositoryPath)
+    }
+    let importedDraft = draft(
+      from: document,
+      rootURL: rootURL,
+      fileURL: rootURL.appendingPathComponent(safePath),
+      repositoryPath: safePath,
+      profile: profile
+    )
+    guard isRoundTripConsistent(importedDraft, sourceRepositoryPath: safePath, profile: profile)
+    else {
+      throw LocalContentImportProjectDocumentError.roundTripPathMismatch(safePath)
+    }
+    return importedDraft
+  }
+
   func importDrafts(rootURL: URL, profile: SiteProfile) -> LocalContentImportResult {
     importDrafts(rootURL: rootURL, profile: profile, cancellationCheck: {})
   }
@@ -464,7 +505,8 @@ public struct LocalContentImportService: Sendable {
             rootURL: rootURL,
             fileURL: fileURL,
             repositoryPath: repositoryPath,
-            profile: profile
+            profile: profile,
+            projectFileContentDigest: ArticleDraft.repositoryDocumentDigest(document)
           )
           guard
             isRoundTripConsistent(
@@ -712,7 +754,8 @@ public struct LocalContentImportService: Sendable {
       fileURL: fileURL,
       repositoryPath: repositoryPath,
       profile: profile,
-      repositorySHA: repositorySHA
+      repositorySHA: repositorySHA,
+      projectFileContentDigest: ArticleDraft.repositoryDocumentDigest(document)
     )
   }
 
@@ -722,7 +765,8 @@ public struct LocalContentImportService: Sendable {
     fileURL: URL,
     repositoryPath: String,
     profile: SiteProfile,
-    repositorySHA: String? = nil
+    repositorySHA: String? = nil,
+    projectFileContentDigest: String? = nil
   ) -> ArticleDraft {
     let values = parsedDocument.values
     let fileModificationDate =
@@ -788,13 +832,15 @@ public struct LocalContentImportService: Sendable {
         repositoryPath: repositoryPath,
         remoteRevision: repositorySHA,
         renderedContentDigest: renderedDigest,
+        projectFileContentDigest: projectFileContentDigest,
         verifiedAt: fileModificationDate
       )
     } else {
       importedDraft.recordProjectFile(
         profile: profile,
         repositoryPath: repositoryPath,
-        renderedContentDigest: renderedDigest
+        renderedContentDigest: renderedDigest,
+        projectFileContentDigest: projectFileContentDigest ?? renderedDigest
       )
       importedDraft.repositoryImportFingerprint = importedDraft.repositoryContentFingerprint
     }

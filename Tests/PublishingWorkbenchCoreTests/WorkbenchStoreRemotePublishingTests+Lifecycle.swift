@@ -472,7 +472,7 @@ final class WorkbenchStoreRemotePublishingLifecycleTests: WorkbenchStoreRemotePu
     draft.recordProjectFile(
       profile: profile,
       repositoryPath: repositoryPath,
-      renderedContentDigest: draft.renderedRepositoryContentDigest(profile: profile)
+      renderedContentDigest: ArticleDraft.repositoryDocumentDigest("STALE_DISK_SENTINEL\n")
     )
     store.setDrafts([draft])
     store.setSelectedDraftID(draft.id)
@@ -481,7 +481,7 @@ final class WorkbenchStoreRemotePublishingLifecycleTests: WorkbenchStoreRemotePu
     let result = await store.publishSelectedDraftOnlineUsingPreferredStrategy()
     let localContentsAtFirstRequest = await transport.inspectedLocalFileContentsAtFirstRequest()
 
-    XCTAssertEqual(result?.commitSHA, "fresh-commit-sha")
+    XCTAssertEqual(result?.commitSHA, "fresh-commit-sha", store.publishActionMessage ?? "")
     XCTAssertTrue(
       localContentsAtFirstRequest?.contains("This current payload must replace") == true)
     XCTAssertFalse(localContentsAtFirstRequest?.contains("STALE_DISK_SENTINEL") == true)
@@ -578,14 +578,22 @@ final class WorkbenchStoreRemotePublishingLifecycleTests: WorkbenchStoreRemotePu
         statusCode: 200,
         json:
           #"{"status":"ok","message":"Site is live","branch":"main","commit_sha":"online-direct-commit"}"#
-      )
+      ),
+      workbenchRemoteResponse(
+        json: """
+          <html><h1>Online Direct Success</h1>
+          <link rel="canonical" href="https://example.com/online-direct-success/">
+          </html>
+          """
+      ),
     ])
     let tokenStore = repositoryTokenStoreForTest()
     let store = WorkbenchStore(
       persistence: try TestWorkbenchFactory.persistence(),
       remoteRepositoryPublishService: RemoteRepositoryPublishService(transport: publishTransport),
       deploymentStatusService: DeploymentStatusService(transport: deploymentTransport),
-      repositoryTokenStore: tokenStore
+      repositoryTokenStore: tokenStore,
+      deploymentTokenStore: repositoryTokenStoreForTest()
     )
 
     var profile = store.activeProfile
@@ -597,6 +605,7 @@ final class WorkbenchStoreRemotePublishingLifecycleTests: WorkbenchStoreRemotePu
     profile.repositoryPublishStrategy = .direct
     profile.deploymentProvider = .custom
     profile.deploymentStatusEndpointURL = "https://status.example.com/site"
+    profile.deploymentSiteURL = "https://example.com/"
     profile.markdownPathPattern = "content/posts/{slug}.md"
     profile.rememberLocalRepositoryRoot(rootURL)
     store.updateActiveProfile(profile)
@@ -632,7 +641,15 @@ final class WorkbenchStoreRemotePublishingLifecycleTests: WorkbenchStoreRemotePu
       )
     )
 
-    let result = await store.publishSelectedDraftOnlineUsingPreferredStrategy()
+    store.refreshPublishPreview(for: draft)
+    let reviewedSnapshot = try XCTUnwrap(store.cachedDraftPublishPreviewSnapshot(for: draft.id))
+    let review = try SinglePublishReviewExpectation(
+      package: reviewedSnapshot.publishPackage,
+      profile: profile,
+      preview: reviewedSnapshot.remotePublishPreview
+    )
+    let result = await store.publishSelectedDraftOnlineUsingPreferredStrategy(
+      expectedReview: review)
 
     XCTAssertEqual(result?.commitSHA, "online-direct-commit")
     XCTAssertEqual(store.drafts.first?.status, .published)
@@ -667,8 +684,10 @@ final class WorkbenchStoreRemotePublishingLifecycleTests: WorkbenchStoreRemotePu
     XCTAssertEqual(publishRequests.first?.url?.path, "/repos/owner/site")
     XCTAssertEqual(publishRequests.filter { $0.httpMethod != "GET" }.count, 1)
     let deploymentRequests = await deploymentTransport.capturedRequests()
-    XCTAssertEqual(deploymentRequests.count, 1)
+    XCTAssertEqual(deploymentRequests.count, 2)
     XCTAssertEqual(deploymentRequests.first?.url?.absoluteString, "https://status.example.com/site")
+    XCTAssertEqual(
+      deploymentRequests.last?.url?.absoluteString, "https://example.com/online-direct-success/")
   }
 
   func testOnlineReviewPublishWaitsForMergeWithoutDeploymentStatusRefresh() async throws {
@@ -835,14 +854,17 @@ final class WorkbenchStoreRemotePublishingLifecycleTests: WorkbenchStoreRemotePu
     XCTAssertEqual(rollbackRecord.kind, .remoteRollback)
     XCTAssertEqual(rollbackRecord.commitSHA, "rollback-sha")
     XCTAssertEqual(rollbackRecord.changedPaths, ["content/posts/rollback-me.md"])
-    XCTAssertEqual(store.deploymentStatusSnapshot(for: rollbackRecord)?.level, .success)
+    // This legacy record has no public URL: the rollback commit is verified,
+    // while article-level verification remains explicitly pending.
+    XCTAssertEqual(store.deploymentStatusSnapshot(for: rollbackRecord)?.platformLevel, .success)
+    XCTAssertEqual(store.deploymentStatusSnapshot(for: rollbackRecord)?.level, .unknown)
     XCTAssertTrue(
       store.deploymentStatusSnapshot(for: rollbackRecord)?.signals.contains {
         $0.message == "Rollback commit is live"
       } == true
     )
     XCTAssertEqual(store.releaseRecords.dropFirst().first?.id, original.id)
-    XCTAssertEqual(store.activeProfileReleaseLedger.entries.first?.status, .succeeded)
+    XCTAssertEqual(store.activeProfileReleaseLedger.entries.first?.status, .pendingRetry)
 
     let requests = await transport.capturedRequests()
     XCTAssertEqual(requests.map(\.httpMethod), ["GET", "GET", "GET", "POST", "PATCH"])

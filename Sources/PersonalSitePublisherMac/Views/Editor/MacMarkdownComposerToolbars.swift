@@ -36,7 +36,10 @@ enum MarkdownEditorToolbarLayoutPlanner {
     let containsGroupDivider = itemIDs.contains(where: \.isAIGroupItem)
     let dividerCount = containsGroupDivider ? 1 : 0
     let childCount = itemCount + dividerCount
-    return CGFloat(itemCount) * controlWidth
+    let controlsWidth = itemIDs.reduce(CGFloat.zero) { width, item in
+      width + (item == .saveStatus ? 138 : controlWidth)
+    } + (showsOverflow ? controlWidth : 0)
+    return controlsWidth
       + CGFloat(max(0, childCount - 1)) * itemSpacing
       + CGFloat(dividerCount) * groupDividerWidth
   }
@@ -196,7 +199,9 @@ struct MacMarkdownEditorToolbar: View {
 
   /// 紧凑折叠时保留的项目：取 collapseOrder 小于等于阈值的所有已启用项。
   private var compactHeaderItemIDs: [MarkdownToolbarItemID] {
-    enabledHeaderItemIDs.filter { $0.collapseOrder <= 3 }
+    // The save label is intentionally readable at the minimum editor width.
+    // Secondary AI actions remain available in overflow at this size.
+    enabledHeaderItemIDs.filter { $0.collapseOrder <= 1 }
   }
 
   private var configuredIconToolbarControls: some View {
@@ -822,46 +827,85 @@ private struct MacMarkdownEditorTitleArea: View {
   }
 }
 
-/// The status symbol has a fixed footprint, so save transitions repaint only
-/// this leaf and cannot invalidate `ViewThatFits` toolbar measurement.
+/// Fixed width keeps persistence transitions inside this leaf and avoids
+/// repeatedly measuring the adaptive toolbar while the user is typing.
 private struct MacMarkdownEditorSaveStatusIcon: View {
+  let store: WorkbenchStore
   let draftID: UUID
   @StateObject private var saveStatus: WorkbenchMarkdownEditorSaveStatusFeatureFacade
-  @State private var completionTrigger = 0
+  @State private var isDetailPresented = false
 
   init(store: WorkbenchStore, draftID: UUID) {
+    self.store = store
     self.draftID = draftID
     _saveStatus = StateObject(
-      wrappedValue: WorkbenchMarkdownEditorSaveStatusFeatureFacade(
-        store: store,
-        draftID: draftID
-      )
+      wrappedValue: WorkbenchMarkdownEditorSaveStatusFeatureFacade(store: store, draftID: draftID)
     )
   }
 
+  private var statusImage: String {
+    if saveStatus.saveFailure != nil { return "exclamationmark.triangle.fill" }
+    return saveStatus.hasUnsavedChanges ? "clock" : "checkmark.circle.fill"
+  }
+
   var body: some View {
-    Group {
-      if saveStatus.hasUnsavedChanges {
-        Circle()
-          .fill(WorkbenchTheme.warning)
-          .frame(width: 7, height: 7)
-          .shadow(color: WorkbenchTheme.warning.opacity(0.6), radius: 3)
-      } else {
-        Image(systemName: "checkmark.circle.fill")
-          .font(.caption)
-          .foregroundStyle(WorkbenchTheme.success)
-      }
+    Button {
+      isDetailPresented.toggle()
+    } label: {
+      Label(saveStatus.shortSaveStatus, systemImage: statusImage)
+        .font(.caption)
+        .lineLimit(1)
+        .frame(width: 130, alignment: .leading)
+        .foregroundStyle(
+          saveStatus.saveFailure != nil || saveStatus.hasUnsavedChanges
+            ? WorkbenchTheme.warning : WorkbenchTheme.success
+        )
     }
-    .frame(width: 18, height: 30)
-    .workbenchTaskCompletionSymbolEffect(trigger: completionTrigger)
+    .buttonStyle(.borderless)
+    .frame(width: 138, height: 30)
     .help(saveStatus.lastSaveStatus)
     .accessibilityLabel("保存状态")
-    .accessibilityValue(saveStatus.lastSaveStatus)
-    .onChange(of: draftID) { _, updatedDraftID in
-      saveStatus.trackDraft(updatedDraftID)
+    .accessibilityValue(saveStatus.shortSaveStatus)
+    .accessibilityIdentifier("markdown-editor-save-status")
+    .popover(isPresented: $isDetailPresented) {
+      VStack(alignment: .leading, spacing: 10) {
+        Label(saveStatus.shortSaveStatus, systemImage: statusImage)
+          .font(.headline)
+        if let failure = saveStatus.saveFailure {
+          Text(failure.message)
+            .font(.callout)
+            .textSelection(.enabled)
+          if failure.scope == .project {
+            Button(saveStatus.hasProjectFileConflict ? String(localized: "处理冲突…") : String(localized: "处理项目保存问题…")) {
+              isDetailPresented = false
+              if saveStatus.hasProjectFileConflict {
+                ProjectFileConflictReviewPanel.present(for: store, draftID: draftID)
+              } else {
+                ProjectFileSaveRecoveryPanel.present(for: store)
+              }
+            }
+          } else if failure.canRetry {
+            Button("重新保存") { saveStatus.retrySave() }
+          }
+        } else {
+          Text("发布进度请在“准备发布”中查看。")
+            .font(.callout)
+            .foregroundStyle(.secondary)
+        }
+        if let draft = store.draft(for: draftID), !draft.isGeneralDraft {
+          Text(store.profile(for: draft).markdownPath(for: draft))
+            .font(.caption.monospaced())
+            .foregroundStyle(.secondary)
+            .textSelection(.enabled)
+        }
+      }
+      .padding(16)
+      .frame(width: 340, alignment: .leading)
+      .accessibilityIdentifier("markdown-editor-save-details")
     }
-    .onChange(of: saveStatus.saveCompletionRevision) { _, _ in
-      completionTrigger &+= 1
+    .onChange(of: draftID) { _, updatedDraftID in
+      isDetailPresented = false
+      saveStatus.trackDraft(updatedDraftID)
     }
   }
 }

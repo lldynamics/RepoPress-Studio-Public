@@ -52,6 +52,9 @@ public struct ReleaseLedgerService {
     for record: ReleaseRecord
   ) -> DeploymentStatusSnapshot? {
     guard let deploymentStatus else { return nil }
+    if deploymentStatus.level == .success, !deploymentStatus.verifiesAllArticles(in: record) {
+      return nil
+    }
     switch record.kind {
     case .remoteDirectCommit, .remoteRollback:
       if deploymentStatus.level == .success {

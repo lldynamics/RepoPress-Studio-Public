@@ -111,19 +111,28 @@ public struct RepositoryWorktreeArticleVerificationTarget: Hashable, Sendable {
   public let summary: String
   public let coverAltText: String?
   public let markdownPath: String
+  public let publicPath: String?
+  public let publicURLText: String?
+  public let sourceDocumentDigest: String?
 
   public init(
     draftID: UUID,
     title: String,
     summary: String,
     coverAltText: String? = nil,
-    markdownPath: String
+    markdownPath: String,
+    publicPath: String? = nil,
+    publicURLText: String? = nil,
+    sourceDocumentDigest: String? = nil
   ) {
     self.draftID = draftID
     self.title = title
     self.summary = summary
     self.coverAltText = coverAltText
     self.markdownPath = markdownPath
+    self.publicPath = publicPath
+    self.publicURLText = publicURLText
+    self.sourceDocumentDigest = sourceDocumentDigest
   }
 }
 

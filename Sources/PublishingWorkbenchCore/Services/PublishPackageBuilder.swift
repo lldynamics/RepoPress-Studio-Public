@@ -71,11 +71,17 @@ public struct PublishPackageBuilder: Sendable {
       previousMarkdownDeletion = nil
     }
 
+    let publicPath = SiteArticleURLResolver().relativeWebPath(
+      from: markdownPath, profile: profile, permalink: draft.permalink)
     let input = PublishPackageBuildInput(
       draftID: draft.id,
       title: draft.title,
       draftSummary: draft.summary.trimmedForPublishing.nilIfEmpty,
       draftCoverAltText: coverAltText(for: draft),
+      publicPath: publicPath,
+      publicURLText: DeploymentStatusService().publicArticleURL(
+        profile: profile, publicPath: publicPath),
+      sourceDocumentDigest: ArticleDraft.repositoryDocumentDigest(markdown.content),
       markdown: markdown,
       attachments: attachments,
       previousMarkdownDeletion: previousMarkdownDeletion,

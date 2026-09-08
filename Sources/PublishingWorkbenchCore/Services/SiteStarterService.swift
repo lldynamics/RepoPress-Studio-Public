@@ -254,57 +254,137 @@ public struct SiteStarterService: Sendable {
     createdFilePaths: [String],
     confirmation: SiteStarterPushConfirmation
   ) async throws -> SiteStarterPushResult {
+    let committed = try await commitStarterSiteAsync(
+      profile: profile,
+      createdFilePaths: createdFilePaths,
+      confirmation: confirmation
+    )
+    var committedConfirmation = confirmation
+    committedConfirmation.existingCommitSHA = committed.commitSHA
+    let result = try await pushCommittedStarterSiteAsync(
+      profile: profile,
+      confirmation: committedConfirmation,
+      committedPush: committed
+    )
+    return SiteStarterPushResult(
+      rootPath: result.rootPath,
+      branch: result.branch,
+      remoteURL: result.remoteURL,
+      commitSHA: committed.commitSHA,
+      committedPaths: committed.committedPaths,
+      output: result.output
+    )
+  }
+
+  /// Creates only the reviewed local commit. Callers must durably record its
+  /// SHA before calling `pushCommittedStarterSiteAsync`.
+  public func commitStarterSiteAsync(
+    profile: SiteProfile,
+    createdFilePaths: [String],
+    confirmation: SiteStarterPushConfirmation
+  ) async throws -> SiteStarterCommittedPush {
     let current = try await prepareStarterPushConfirmationAsync(
       profile: profile,
       createdFilePaths: createdFilePaths,
       commitMessage: confirmation.commitMessage
     )
-    guard current == confirmation else {
+    guard current == confirmation, confirmation.headCommitSHA == nil,
+      confirmation.existingCommitSHA == nil, let rootURL = profile.localRepositoryRootURL else {
       throw SiteStarterError.starterPushConfirmationChanged
     }
-
-    guard let rootURL = profile.localRepositoryRootURL else {
-      throw SiteStarterError.missingRepositoryRoot
+    guard try await symbolicHEADBranch(at: rootURL) == confirmation.branch else {
+      throw SiteStarterError.starterPushConfirmationChanged
     }
     _ = try await runGitOutputAsync(["add", "--"] + confirmation.committedPaths, at: rootURL)
     let stagedPaths = try await runGitOutputAsync(["diff", "--cached", "--name-only"], at: rootURL)
-      .split(separator: "\n")
-      .map { String($0).trimmedForPublishing }
-      .filter { !$0.isEmpty }
-      .sorted()
-    guard stagedPaths == confirmation.committedPaths else {
-      throw SiteStarterError.starterPushConfirmationChanged
-    }
+      .split(separator: "\n").map { String($0).trimmedForPublishing }.filter { !$0.isEmpty }.sorted()
+    guard stagedPaths == confirmation.committedPaths,
+      try await stagedFileObjectIDs(paths: confirmation.committedPaths, at: rootURL) == confirmation.fileObjectIDs
+    else { throw SiteStarterError.starterPushConfirmationChanged }
+    _ = try await runGitOutputAsync(["commit", "-m", confirmation.commitMessage], at: rootURL)
+    let sha = try await runGitOutputAsync(["rev-parse", "--verify", "HEAD^{commit}"], at: rootURL)
+    return SiteStarterCommittedPush(commitSHA: sha.trimmedForPublishing, committedPaths: confirmation.committedPaths)
+  }
 
-    let stagedObjectIDs = try await stagedFileObjectIDs(
-      paths: confirmation.committedPaths,
-      at: rootURL
+  /// Pushes only a previously recorded commit SHA after proving it is still the
+  /// reviewed branch tip and exactly changes the starter manifest.
+  public func pushCommittedStarterSiteAsync(
+    profile: SiteProfile,
+    confirmation: SiteStarterPushConfirmation,
+    committedPush: SiteStarterCommittedPush
+  ) async throws -> (rootPath: String, branch: String, remoteURL: String, output: String) {
+    guard let rootURL = profile.localRepositoryRootURL else { throw SiteStarterError.missingRepositoryRoot }
+    let isAlreadyPushed = try await validateCommittedStarterPush(
+      profile: profile, confirmation: confirmation, committedPush: committedPush, at: rootURL
     )
-    guard stagedObjectIDs == confirmation.fileObjectIDs else {
-      throw SiteStarterError.starterPushConfirmationChanged
+    if isAlreadyPushed {
+      try await configureStarterUpstream(branch: confirmation.branch, at: rootURL)
+      return (rootURL.path, confirmation.branch, confirmation.remoteURL, "Remote already contains \(committedPush.commitSHA)")
     }
+    let output = try await runGitOutputAsync(
+      ["push", "-u", "origin", "\(committedPush.commitSHA):refs/heads/\(confirmation.branch)"], at: rootURL
+    )
+    try await configureStarterUpstream(branch: confirmation.branch, at: rootURL)
+    return (rootURL.path, confirmation.branch, confirmation.remoteURL, GitCommandRunner.redactedDiagnosticText(output).trimmedForPublishing)
+  }
 
-    let commitOutput = try await runGitOutputAsync(
-      ["commit", "-m", confirmation.commitMessage],
-      at: rootURL
+  private func configureStarterUpstream(branch: String, at rootURL: URL) async throws {
+    _ = try await runGitOutputAsync(["config", "branch.\(branch).remote", "origin"], at: rootURL)
+    _ = try await runGitOutputAsync(["config", "branch.\(branch).merge", "refs/heads/\(branch)"], at: rootURL)
+  }
+
+  public func validateCommittedStarterPush(
+    profile: SiteProfile,
+    confirmation: SiteStarterPushConfirmation,
+    committedPush: SiteStarterCommittedPush,
+    at rootURL: URL
+  ) async throws -> Bool {
+    let remote = GitCommandRunner.redactedDiagnosticText(
+      try await runGitOutputAsync(["remote", "get-url", "origin"], at: rootURL)
+    ).trimmedForPublishing
+    let branch = profile.branch.trimmedForPublishing.nilIfEmpty ?? "main"
+    let head = try await runGitOutputAsync(["rev-parse", "--verify", "HEAD^{commit}"], at: rootURL)
+    let remoteBranch = try await remoteBranchCommitSHAAsync(branch: confirmation.branch, at: rootURL)
+    guard SiteStarterProgress.normalizedRootPath(confirmation.rootPath)
+        == SiteStarterProgress.normalizedRootPath(rootURL.path),
+      remote == confirmation.remoteURL, branch == confirmation.branch,
+      try await symbolicHEADBranch(at: rootURL) == confirmation.branch,
+      try await workingTreeIsClean(at: rootURL),
+      head.trimmedForPublishing == committedPush.commitSHA,
+      confirmation.existingCommitSHA == committedPush.commitSHA,
+      confirmation.headCommitSHA == nil,
+      committedPush.committedPaths == confirmation.committedPaths,
+      confirmation.fileObjectIDs.keys.sorted() == confirmation.committedPaths,
+      try await committedPaths(for: committedPush.commitSHA, at: rootURL) == committedPush.committedPaths,
+      try await committedTreePaths(for: committedPush.commitSHA, at: rootURL) == committedPush.committedPaths,
+      try await committedFileObjectIDs(for: committedPush.commitSHA, paths: confirmation.committedPaths, at: rootURL) == confirmation.fileObjectIDs,
+      try await committedParent(for: committedPush.commitSHA, at: rootURL) == confirmation.headCommitSHA,
+      remoteBranch == confirmation.remoteBranchCommitSHA || remoteBranch == committedPush.commitSHA
+    else { throw SiteStarterError.starterPushConfirmationChanged }
+    return remoteBranch == committedPush.commitSHA
+  }
+
+  /// Crash recovery deliberately treats HEAD as a candidate only. It is
+  /// accepted solely when it is the initial root commit and its full tree,
+  /// remote, branch, and frozen remote state still exactly match the review.
+  public func recoverCommittedStarterPush(
+    profile: SiteProfile,
+    confirmation: SiteStarterPushConfirmation
+  ) async throws -> SiteStarterCommittedPush? {
+    guard let rootURL = profile.localRepositoryRootURL else { throw SiteStarterError.missingRepositoryRoot }
+    guard let candidate = try? await runGitOutputAsync(["rev-parse", "--verify", "HEAD^{commit}"], at: rootURL) else {
+      return nil
+    }
+    var frozen = confirmation
+    frozen.existingCommitSHA = candidate.trimmedForPublishing
+    let committed = SiteStarterCommittedPush(
+      commitSHA: candidate.trimmedForPublishing,
+      committedPaths: confirmation.committedPaths
     )
-    let commitSHA = try await runGitOutputAsync(["rev-parse", "HEAD"], at: rootURL)
-    let pushOutput = try await runGitOutputAsync(
-      ["push", "-u", "origin", confirmation.branch],
-      at: rootURL
+    _ = try await validateCommittedStarterPush(
+      profile: profile, confirmation: frozen, committedPush: committed, at: rootURL
     )
-    return SiteStarterPushResult(
-      rootPath: rootURL.path,
-      branch: confirmation.branch,
-      remoteURL: confirmation.remoteURL,
-      commitSHA: commitSHA.trimmedForPublishing,
-      committedPaths: confirmation.committedPaths,
-      output: [commitOutput, pushOutput]
-        .map(GitCommandRunner.redactedDiagnosticText)
-        .map(\.trimmedForPublishing)
-        .filter { !$0.isEmpty }
-        .joined(separator: "\n")
-    )
+    return committed
   }
 
   public func prepareStarterPushConfirmationAsync(

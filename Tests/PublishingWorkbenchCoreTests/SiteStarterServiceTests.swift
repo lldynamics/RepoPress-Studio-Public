@@ -476,6 +476,7 @@ final class SiteStarterServiceTests: XCTestCase {
     XCTAssertEqual(confirmation.commitMessage, "Initial site")
     XCTAssertTrue(confirmation.committedPaths.contains("config.toml"))
     XCTAssertNil(confirmation.remoteBranchCommitSHA)
+    try FileManager.default.removeItem(at: rootURL.appendingPathComponent(".env"))
 
     let result = try await service.commitAndPushStarterSiteAsync(
       profile: starter.profile,
@@ -491,7 +492,122 @@ final class SiteStarterServiceTests: XCTestCase {
     XCTAssertEqual(try git(["rev-parse", "main"], rootURL: remoteURL), result.commitSHA)
     XCTAssertTrue(try git(["ls-tree", "--name-only", "main"], rootURL: remoteURL).contains("config.toml"))
     XCTAssertFalse(try git(["ls-tree", "--name-only", "main"], rootURL: remoteURL).contains(".env"))
-    XCTAssertEqual(try git(["status", "--porcelain"], rootURL: rootURL), "?? .env")
+    XCTAssertEqual(try git(["status", "--porcelain"], rootURL: rootURL), "")
+  }
+
+  func testFirstPushRetryPublishesOnlyPersistedCommitAfterRemoteRejection() async throws {
+    let rootURL = try temporaryDirectoryURL()
+    let remoteURL = try temporaryDirectoryURL()
+    defer {
+      try? FileManager.default.removeItem(at: rootURL)
+      try? FileManager.default.removeItem(at: remoteURL)
+    }
+    try git(["init", "--bare"], rootURL: remoteURL)
+    let service = SiteStarterService()
+    let starter = try service.createSite(
+      request: SiteStarterRequest(
+        rootPath: rootURL.path, siteName: "Retry Starter", initializeGit: true,
+        configureOriginRemote: false, now: fixedDate
+      )
+    )
+    try git(["config", "user.email", "tests@example.com"], rootURL: rootURL)
+    try git(["config", "user.name", "Tests"], rootURL: rootURL)
+    try git(["remote", "add", "origin", remoteURL.path], rootURL: rootURL)
+    let confirmation = try service.prepareStarterPushConfirmation(
+      profile: starter.profile, createdFilePaths: starter.createdFilePaths
+    )
+    let committed = try await service.commitStarterSiteAsync(
+      profile: starter.profile, createdFilePaths: starter.createdFilePaths, confirmation: confirmation
+    )
+    let recovered = try await service.recoverCommittedStarterPush(
+      profile: starter.profile, confirmation: confirmation
+    )
+    XCTAssertEqual(try XCTUnwrap(recovered).commitSHA, committed.commitSHA)
+    var retryConfirmation = confirmation
+    retryConfirmation.existingCommitSHA = committed.commitSHA
+    try "unrelated\n".write(to: rootURL.appendingPathComponent(".retry-dirty"), atomically: true, encoding: .utf8)
+    do {
+      _ = try await service.pushCommittedStarterSiteAsync(
+        profile: starter.profile, confirmation: retryConfirmation, committedPush: committed
+      )
+      XCTFail("Dirty worktree must stop a committed push retry")
+    } catch {}
+    try FileManager.default.removeItem(at: rootURL.appendingPathComponent(".retry-dirty"))
+    var wrongRoot = retryConfirmation
+    wrongRoot.rootPath = rootURL.appendingPathComponent("other").path
+    do {
+      _ = try await service.pushCommittedStarterSiteAsync(
+        profile: starter.profile, confirmation: wrongRoot, committedPush: committed
+      )
+      XCTFail("A changed confirmation root must stop the retry")
+    } catch {}
+    var wrongBranchProfile = starter.profile
+    wrongBranchProfile.branch = "other"
+    do {
+      _ = try await service.pushCommittedStarterSiteAsync(
+        profile: wrongBranchProfile, confirmation: retryConfirmation, committedPush: committed
+      )
+      XCTFail("A changed symbolic branch must stop the retry")
+    } catch {}
+    let hook = remoteURL.appendingPathComponent("hooks/pre-receive")
+    try "#!/bin/sh\nexit 1\n".write(to: hook, atomically: true, encoding: .utf8)
+    try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: hook.path)
+
+    do {
+      _ = try await service.pushCommittedStarterSiteAsync(
+        profile: starter.profile, confirmation: retryConfirmation, committedPush: committed
+      )
+      XCTFail("Expected the rejecting remote to refuse the first push")
+    } catch {
+    }
+    XCTAssertEqual(try git(["rev-parse", "HEAD"], rootURL: rootURL), committed.commitSHA)
+    try "#!/bin/sh\nexit 0\n".write(to: hook, atomically: true, encoding: .utf8)
+    let pushed = try await service.pushCommittedStarterSiteAsync(
+      profile: starter.profile, confirmation: retryConfirmation, committedPush: committed
+    )
+    XCTAssertEqual(pushed.branch, "main")
+    XCTAssertEqual(try git(["rev-parse", "main"], rootURL: remoteURL), committed.commitSHA)
+    XCTAssertEqual(try git(["config", "--get", "branch.main.remote"], rootURL: rootURL), "origin")
+    XCTAssertEqual(try git(["config", "--get", "branch.main.merge"], rootURL: rootURL), "refs/heads/main")
+
+    let alreadyPushed = try await service.pushCommittedStarterSiteAsync(
+      profile: starter.profile, confirmation: retryConfirmation, committedPush: committed
+    )
+    XCTAssertTrue(alreadyPushed.output.contains("already contains"))
+
+    try "amended\n".write(to: rootURL.appendingPathComponent("README.md"), atomically: true, encoding: .utf8)
+    try git(["add", "--", "README.md"], rootURL: rootURL)
+    try git(["commit", "--amend", "--no-edit"], rootURL: rootURL)
+    do {
+      _ = try await service.recoverCommittedStarterPush(profile: starter.profile, confirmation: confirmation)
+      XCTFail("A same-path amended root commit must not be recovered")
+    } catch {}
+  }
+
+  func testGeneratedDeploymentConfigurationSurvivesProfileAndCheckpointPresentation() throws {
+    let rootURL = try temporaryDirectoryURL()
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let result = try SiteStarterService().createSite(
+      request: SiteStarterRequest(
+        rootPath: rootURL.path, siteName: "Cloudflare", deploymentTarget: .cloudflarePages,
+        deploymentProjectID: "project-42", deploymentAccountID: "account-42", initializeGit: false
+      )
+    )
+    XCTAssertEqual(result.profile.deploymentProvider, .cloudflarePages)
+    XCTAssertEqual(result.profile.deploymentProjectID, "project-42")
+    XCTAssertEqual(result.profile.deploymentAccountID, "account-42")
+    XCTAssertTrue(result.createdFilePaths.contains("wrangler.toml"))
+    XCTAssertFalse(result.createdFilePaths.contains(".github/workflows/pages.yml"))
+    let progress = SiteStarterProgress(
+      profileID: result.profile.id, repositoryRootPath: result.profile.localRepositoryRootPath,
+      templateID: .zolaPersonalBlog, initialDraftID: result.initialDraft.id,
+      createdFilePaths: result.createdFilePaths, initializedGit: false, originConfigured: false,
+      deploymentTarget: .cloudflarePages
+    )
+    let presentation = try XCTUnwrap(progress.resumePresentation(for: result.profile))
+    XCTAssertEqual(presentation.deploymentTarget, .cloudflarePages)
+    XCTAssertEqual(presentation.deploymentProjectID, "project-42")
+    XCTAssertEqual(presentation.deploymentAccountID, "account-42")
   }
 
   func testFirstPushConfirmationRejectsStarterFileDriftBeforeCommitOrPush() async throws {
@@ -521,6 +637,34 @@ final class SiteStarterServiceTests: XCTestCase {
       profile: starter.profile,
       createdFilePaths: starter.createdFilePaths
     )
+    var nonRootConfirmation = confirmation
+    nonRootConfirmation.headCommitSHA = "unexpected-parent"
+    do {
+      _ = try await service.commitStarterSiteAsync(
+        profile: starter.profile,
+        createdFilePaths: starter.createdFilePaths,
+        confirmation: nonRootConfirmation
+      )
+      XCTFail("A non-root initial confirmation must fail before commit")
+    } catch {
+      XCTAssertThrowsError(try git(["rev-parse", "HEAD"], rootURL: rootURL))
+    }
+    XCTAssertEqual(
+      try service.prepareStarterPushConfirmation(profile: starter.profile, createdFilePaths: starter.createdFilePaths),
+      confirmation
+    )
+    try git(["checkout", "-b", "other"], rootURL: rootURL)
+    do {
+      _ = try await service.commitStarterSiteAsync(
+        profile: starter.profile,
+        createdFilePaths: starter.createdFilePaths,
+        confirmation: confirmation
+      )
+      XCTFail("A changed symbolic branch must fail before staging or commit")
+    } catch {
+      XCTAssertThrowsError(try git(["rev-parse", "HEAD"], rootURL: rootURL))
+    }
+    try git(["symbolic-ref", "HEAD", "refs/heads/main"], rootURL: rootURL)
     try "# Changed after review\n".write(
       to: rootURL.appendingPathComponent("README.md"),
       atomically: true,

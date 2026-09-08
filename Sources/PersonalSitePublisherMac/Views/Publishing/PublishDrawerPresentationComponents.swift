@@ -542,6 +542,7 @@ struct PublishDrawerActionChoice: View {
 }
 
 private struct PublishDrawerReadinessIssue: Identifiable {
+  let target: PublishReadinessTarget
   let id: String
   let severity: PreflightSeverity
   let title: String
@@ -594,6 +595,7 @@ struct PublishDrawerReadinessChecklist: View {
   let seoReport: SEOAuditReport
   let socialSnapshot: SEOSocialPreviewSnapshot?
   let isSocialPreviewStale: Bool
+  var onNavigate: ((PublishReadinessTarget) -> Void)? = nil
 
   @State private var expandedSectionIDs: Set<String> = ["preflight"]
 
@@ -689,6 +691,7 @@ struct PublishDrawerReadinessChecklist: View {
       .filter { $0.severity != .info }
       .map { issue in
         PublishDrawerReadinessIssue(
+          target: .preflight(issue),
           id: "preflight-\(issue.id.uuidString)",
           severity: issue.severity,
           title: issue.title,
@@ -701,6 +704,7 @@ struct PublishDrawerReadinessChecklist: View {
       .filter { !$0.isCovered(by: preflightIssues) }
       .map { issue in
         PublishDrawerReadinessIssue(
+          target: .image(issue),
           id: "image-\(issue.id.uuidString)",
           severity: issue.severity,
           title: issue.title,
@@ -712,6 +716,7 @@ struct PublishDrawerReadinessChecklist: View {
       .filter { $0.severity != .info }
       .map { finding in
         PublishDrawerReadinessIssue(
+          target: .seo(finding),
           id: "seo-\(finding.id.uuidString)",
           severity: finding.severity,
           title: finding.title,
@@ -724,6 +729,7 @@ struct PublishDrawerReadinessChecklist: View {
       .filter { $0.severity != .info }
       .map { finding in
         PublishDrawerReadinessIssue(
+          target: .seo(finding),
           id: "social-\(finding.id.uuidString)",
           severity: finding.severity,
           title: finding.title,
@@ -733,6 +739,7 @@ struct PublishDrawerReadinessChecklist: View {
     if socialSnapshot == nil {
       socialIssues.append(
         PublishDrawerReadinessIssue(
+          target: .seo,
           id: "social-missing",
           severity: .warning,
           title: "社交预览尚未生成",
@@ -742,6 +749,7 @@ struct PublishDrawerReadinessChecklist: View {
     } else if isSocialPreviewStale {
       socialIssues.append(
         PublishDrawerReadinessIssue(
+          target: .seo,
           id: "social-stale",
           severity: .warning,
           title: "社交预览需要刷新",
@@ -811,6 +819,12 @@ struct PublishDrawerReadinessChecklist: View {
           .font(.caption)
           .foregroundStyle(.secondary)
           .fixedSize(horizontal: false, vertical: true)
+        if let onNavigate {
+          Button(issue.target.title) { onNavigate(issue.target) }
+            .buttonStyle(.link)
+            .accessibilityLabel("\(issue.target.title)：\(issue.title)")
+            .accessibilityIdentifier("publish-readiness-action-\(issue.id)")
+        }
       }
     }
   }

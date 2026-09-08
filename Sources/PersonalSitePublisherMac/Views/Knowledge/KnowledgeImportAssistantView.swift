@@ -20,6 +20,7 @@ struct KnowledgeImportAssistantView: View {
   @State private var selectedCandidateIDs: Set<UUID> = []
   @State private var showsRemainingCandidates = false
   @State private var showsRemainingWarnings = false
+  @State private var completedImportResult: KnowledgeImportResult?
 
   init(
     knowledge: KnowledgeStore,
@@ -37,24 +38,29 @@ struct KnowledgeImportAssistantView: View {
       Divider()
 
       ScrollView {
-        VStack(alignment: .leading, spacing: 18) {
-          sourceSection
-          if let preview {
-            previewSummary(preview)
-            candidateList(preview)
-            warningList(preview)
-          } else {
-            WorkbenchStateView(
-              presentation: WorkbenchStatePresentation(
-                kind: .empty,
-                icon: "books.vertical"
-              ),
-              detail: "先提取并预览，再确认保存。预览阶段不会修改资料库索引。"
-            )
-            .frame(maxWidth: .infinity, minHeight: 260)
+        if let completedImportResult {
+          importCompletion(completedImportResult)
+            .padding(WorkbenchSpacing.page)
+        } else {
+          VStack(alignment: .leading, spacing: 18) {
+            sourceSection
+            if let preview {
+              previewSummary(preview)
+              candidateList(preview)
+              warningList(preview)
+            } else {
+              WorkbenchStateView(
+                presentation: WorkbenchStatePresentation(
+                  kind: .empty,
+                  icon: "books.vertical"
+                ),
+                detail: "先提取并预览，再确认保存。预览阶段不会修改资料库索引。"
+              )
+              .frame(maxWidth: .infinity, minHeight: 260)
+            }
           }
+          .padding(WorkbenchSpacing.page)
         }
-        .padding(WorkbenchSpacing.page)
       }
 
       Divider()
@@ -429,38 +435,45 @@ struct KnowledgeImportAssistantView: View {
 
   private var footer: some View {
     HStack {
-      Button("取消") { dismiss() }
-        .keyboardShortcut(.cancelAction)
-        .disabled(isCommitting)
+      if completedImportResult == nil {
+        Button("取消") { dismiss() }
+          .keyboardShortcut(.cancelAction)
+          .disabled(isCommitting)
+      } else {
+        Button("完成") { dismiss() }
+          .keyboardShortcut(.defaultAction)
+      }
 
-      Spacer()
+      if completedImportResult == nil {
+        Spacer()
 
-      Text("只会保存已勾选的内容；搜索索引在本机建立。")
-        .font(.caption)
-        .foregroundStyle(.secondary)
-      if let preview {
-        let selectedPreview = KnowledgeImportSelectionPresentation.selectedPreview(
-          from: preview,
-          selectedCandidateIDs: selectedCandidateIDs
-        )
-        Button {
-          commit(selectedPreview)
-        } label: {
-          if isCommitting {
-            Label(String(localized: "正在建立索引"), systemImage: "hourglass")
-          } else {
-            Label(
-              String(
-                format: String(localized: "确认导入 %@ 条"),
-                "\(selectedPreview.importableCount)"
-              ),
-              systemImage: "tray.and.arrow.down.fill"
-            )
+        Text("只会保存已勾选的内容；搜索索引在本机建立。")
+          .font(.caption)
+          .foregroundStyle(.secondary)
+        if let preview {
+          let selectedPreview = KnowledgeImportSelectionPresentation.selectedPreview(
+            from: preview,
+            selectedCandidateIDs: selectedCandidateIDs
+          )
+          Button {
+            commit(selectedPreview)
+          } label: {
+            if isCommitting {
+              Label(String(localized: "正在建立索引"), systemImage: "hourglass")
+            } else {
+              Label(
+                String(
+                  format: String(localized: "确认导入 %@ 条"),
+                  "\(selectedPreview.importableCount)"
+                ),
+                systemImage: "tray.and.arrow.down.fill"
+              )
+            }
           }
+          .workbenchProminentActionStyle()
+          .keyboardShortcut(.defaultAction)
+          .disabled(isCommitting || isAnalyzing || selectedPreview.importableCount == 0)
         }
-        .workbenchProminentActionStyle()
-        .keyboardShortcut(.defaultAction)
-        .disabled(isCommitting || isAnalyzing || selectedPreview.importableCount == 0)
       }
     }
     .padding(WorkbenchSpacing.content)
@@ -569,29 +582,38 @@ struct KnowledgeImportAssistantView: View {
   }
 
   private func commit(_ preview: KnowledgeImportPreview) {
+    guard completedImportResult == nil, !isCommitting else { return }
     isCommitting = true
     statusMessage = nil
     Task {
       defer { isCommitting = false }
       do {
         let result = try await knowledge.commit(preview, destination: importDestination)
-        statusMessage = WorkbenchStatePresentation(
-          kind: .success(
-            detail: String(
-              format: String(localized: "导入完成：新增 %@，更新 %@，跳过 %@。"),
-              "\(result.insertedCount)",
-              "\(result.updatedCount)",
-              "\(result.skippedCount)"
-            )
-          )
-        )
-        dismiss()
+        completedImportResult = result
       } catch {
         statusMessage = WorkbenchStatePresentation(
           kind: .failure(reason: error.localizedDescription)
         )
       }
     }
+  }
+
+  private func importCompletion(_ result: KnowledgeImportResult) -> some View {
+    WorkbenchStateView(
+      presentation: WorkbenchStatePresentation(
+        kind: .success(
+          detail: String(
+            format: String(localized: "导入完成：新增 %@，更新 %@，跳过 %@。"),
+            "\(result.insertedCount)",
+            "\(result.updatedCount)",
+            "\(result.skippedCount)"
+          )
+        )
+      ),
+      density: .compactPane
+    )
+    .frame(maxWidth: .infinity, minHeight: 260)
+    .accessibilityIdentifier("knowledge-import-completion")
   }
 
   private func previewStatusPresentation(

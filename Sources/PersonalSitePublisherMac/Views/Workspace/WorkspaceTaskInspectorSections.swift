@@ -55,6 +55,7 @@ struct WorkspaceTaskMetadataSection: View {
             .accessibilityLabel("元数据标题")
             .accessibilityValue(draft.title.isEmpty ? "未填写" : draft.title)
         }
+        .id(PublishMetadataFieldAnchor.id(for: "title"))
         metadataField("固定链接（Slug）") {
           TextField("例如 my-article", text: $slugText)
             .textFieldStyle(.roundedBorder)
@@ -89,7 +90,9 @@ struct WorkspaceTaskMetadataSection: View {
             .accessibilityIdentifier("open-slug-change-resolution")
           }
         }
+        .id(PublishMetadataFieldAnchor.id(for: "slug"))
         summaryField
+          .id(PublishMetadataFieldAnchor.id(for: "summary"))
       }
 
       InspectorSection("创作信息") {
@@ -119,6 +122,7 @@ struct WorkspaceTaskMetadataSection: View {
           values: $draft.tags,
           suggestions: tagSuggestions
         )
+        .id(PublishMetadataFieldAnchor.id(for: "tags"))
         TaxonomySuggestionField(
           title: "分类",
           values: $draft.categories,
@@ -137,6 +141,7 @@ struct WorkspaceTaskMetadataSection: View {
               .accessibilityLabel("文章发布时间")
               .accessibilityValue(draft.date.formatted(date: .abbreviated, time: .shortened))
             }
+            .id(PublishMetadataFieldAnchor.id(for: "date"))
             metadataField("可见性") {
               Picker("可见性", selection: $draft.visibility) {
                 ForEach(ArticleVisibility.allCases) { visibility in
@@ -149,6 +154,7 @@ struct WorkspaceTaskMetadataSection: View {
               .accessibilityValue(draft.visibility.localizedDisplayName)
             }
             Toggle("标记为草稿", isOn: $draft.draft)
+              .id(PublishMetadataFieldAnchor.id(for: "draft"))
               .accessibilityLabel("草稿状态")
               .accessibilityValue(draft.draft ? "草稿" : "非草稿")
           }

@@ -1940,3 +1940,148 @@
 "HTTP 地址仅允许不带 API Key 的本机回环服务。" = "HTTP is allowed only for local loopback services without an API key.";
 "已取消搜索命中的高亮，继续显示已加载的资料。" = "Cleared the search-result highlight and kept the loaded document open.";
 "引用或目标地址在审阅后发生变化，请重新审阅；未更新任何引用。" = "The references or target URL changed after review. Review again; no references were updated.";
+"任务已变化或已结束，未停止其他操作。" = "The task changed or ended; no other operation was stopped.";
+"原引用位置已变化，已拒绝替换。" = "The original reference location changed; the replacement was refused.";
+"文章或编辑缓冲已变化，请重新扫描并预览。" = "The article or editor content changed. Scan again and generate a new preview.";
+"替换资源不再位于当前站点资源目录中。" = "The replacement resource is no longer in this site's asset directory.";
+"标签" = "Tags";
+"此任务当前不支持安全停止。" = "This task does not currently support safe stopping.";
+"此任务没有稳定的定位目标。" = "This task has no stable target to locate.";
+"此文章尚未验证，请检查全部文章。" = "This article has not been verified. Check all articles.";
+"目标发布记录已不存在或无法访问。" = "The target release record no longer exists or is unavailable.";
+"目标发布记录所属站点已不存在，未打开其他站点记录。" = "The target release record's site no longer exists; no other site record was opened.";
+"目标文章已不存在或无法访问。" = "The target article no longer exists or is unavailable.";
+"目标文章或 AI 对话已不存在或无法访问。" = "The target article or AI conversation no longer exists or is unavailable.";
+"目标站点已不存在或无法访问。" = "The target site no longer exists or is unavailable.";
+"目标通用 AI 对话已不存在或无法访问。" = "The target general AI conversation no longer exists or is unavailable.";
+"缺少文章公开地址，无法验证本次发布。" = "The public article URL is missing, so this release cannot be verified.";
+"该引用未对应到可安全修改的工作区草稿。" = "This reference could not be matched to an editable workspace draft.";
+"恢复版本尚未完整保存，未应用替换；请减少选择数量或检查存储。" = "Recovery versions were not fully saved. No replacements were applied; select fewer articles or check storage.";
+"GitHub Pages 部署状态：%@" = "GitHub Pages deployment state: %@";
+"最新 GitHub Pages 部署没有可验证的状态。" = "The newest GitHub Pages deployment has no verifiable status.";
+"最新 GitHub Pages 部署的 ref 不属于本次发布分支或提交。" = "The newest GitHub Pages deployment ref does not belong to this release branch or commit.";
+"最新 GitHub Pages 部署的提交与本次发布不一致。" = "The newest GitHub Pages deployment commit does not match this release.";
+"最新 GitHub Pages 部署缺少可验证的提交、环境或持久化标记。" = "The newest GitHub Pages deployment lacks a verifiable commit, environment, or persistent marker.";
+"没有找到当前提交的 GitHub Pages 部署。" = "No GitHub Pages deployment was found for the current commit.";
+"流水线已完成，但缺少 Pages 部署证据；请配置返回本次提交 SHA 的状态端点。" = "The pipeline completed, but Pages deployment is unverified. Configure a status endpoint that returns this release commit SHA.";
+"缺少当前发布提交或 GitHub 部署检查凭据，无法确认文章已上线。" = "The current release commit or GitHub deployment credential is missing, so article publication cannot be confirmed.";
+"读取 GitHub Pages 部署状态失败，无法确认文章已上线。" = "GitHub Pages deployment status could not be read, so article publication cannot be confirmed.";
+
+"等待部署" = "Waiting for deployment";
+
+"证据不足" = "Insufficient evidence";
+
+"查看并处理" = "Review and resolve";
+
+"重新检查" = "Check again";
+
+"重试" = "Retry";
+
+"附件内容在审阅后变化，请重新审阅。" = "The attachment changed after review. Review it again.";
+
+"文章内容或发布目标已变化，请重新打开确认页审阅。" = "The article or publishing destination changed. Reopen the confirmation to review it.";
+
+"已定位原操作。请核对原分支和发布方式，重新审阅后再执行；未自动提交或推送。" = "The original operation has been located. Check its branch and publishing method, then review before proceeding. No automatic commit or push was performed.";
+
+"正在检查部署状态…" = "Checking deployment status…";
+
+"原分支：%@" = "Original branch: %@";
+
+"资料引用记录未保存：%@" = "References were not saved: %@";
+
+"资源或引用已变化，或扫描不完整。请重新扫描并确认清理清单。" = "Assets or references have changed, or the scan is incomplete. Scan again and review the cleanup selection.";
+
+"找不到原始文件" = "Original file unavailable";
+
+"无法读取文件" = "File could not be read";
+
+"格式不支持（仅支持 PNG、JPEG、GIF 或 WebP）" = "Unsupported format (PNG, JPEG, GIF, or WebP only)";
+
+"文件为空" = "File is empty";
+
+"超过 %@ 限制" = "Exceeds the %@ limit";
+
+"已从当前文章中移除" = "Removed from the current article";
+
+"不是图片文件" = "Not an image file";
+
+"一次最多发送 %d 张图片" = "Send up to %d images at once";
+
+"图片“%@”%@。" = "Image “%@”: %@.";
+
+"已移除的图片" = "Removed image";
+
+"等待部署完成" = "Waiting for deployment";
+"平台仍在构建；完成后再检查文章页面与正文版本。" = "The platform is still building. Article pages and body versions will be checked after deployment.";
+"部署已完成，但文章检查未通过；查看文章详情，确认公开路径和缓存版本后重试。" = "Deployment completed, but the article check failed. Review its details, public path, and cached version, then retry.";
+"页面正文版本尚未确认；请让站点构建输出文章版本标记，再重新检查此文章。" = "The page body version is not yet confirmed. Add article version markers to the site build, then check this article again.";
+"页面版本标记与本次发布的文章源文件一致。" = "The page version marker matches the article source file in this release.";
+"此历史发布没有保存文章源文件摘要，正文版本尚未确认。" = "This older release has no saved article source digest. The body version is not yet confirmed.";
+"页面未提供文章版本标记；可达性与标题检查不能确认正文已更新。" = "The page has no article version marker. Reachability and title checks cannot confirm that the body has been updated.";
+"页面的文章版本标记无效或重复；请检查站点构建配置。" = "The page has an invalid or duplicate article version marker. Check the site build configuration.";
+"页面版本与本次发布不一致；请等待缓存更新或检查部署产物。" = "The page version differs from this release. Wait for the cache to update or check the deployed output.";
+"文章正文版本" = "Article body version";
+"已找到 Starter 提交，但无法安全持久化 SHA，已停止推送。" = "The Starter commit was found, but its SHA could not be saved safely. The push was stopped.";
+"已按冻结复核恢复 Starter 提交；确认后只会推送该 SHA。" = "The Starter commit was recovered from the saved review. Only this SHA will be pushed after confirmation.";
+"已复核已提交的 Starter 版本；确认后只会推送该 SHA。" = "The existing Starter commit has been reviewed. Only this SHA will be pushed after confirmation.";
+"无法持久化首次推送复核，未提交或推送。" = "The first-push review could not be saved. Nothing was committed or pushed.";
+"Starter 已提交，但无法持久化提交 SHA；为避免推送未复核版本，已停止推送。" = "Starter was committed, but its SHA could not be saved. The push was stopped to avoid sending an unreviewed version.";
+
+// Project file save recovery
+"项目磁盘不可用" = "Project disk unavailable";
+"项目目录不存在" = "Project folder is missing";
+"项目目录访问被拒绝" = "Project folder access denied";
+"所选目录不是 Git 仓库根目录" = "The selected folder is not a Git repository root";
+"尚未选择项目目录" = "No project folder selected";
+"项目文件已被其他软件或 Git 修改" = "Project files were changed by another app or Git";
+"项目文件写入失败" = "Could not write project files";
+"请连接项目磁盘后重新检查，或更改项目目录。" = "Connect the project disk and check again, or change the project folder.";
+"请选择包含 .git 的项目根目录后重试。" = "Select the project root containing .git and try again.";
+"请检查目录的访问权限和磁盘是否只读，再重新检查。" = "Check folder permissions and whether the disk is read-only, then check again.";
+"请先核对项目文件中的外部修改；重试不会强制覆盖。" = "Review the external changes in the project files first. Retrying will not force an overwrite.";
+"请查看详情，修复保存位置或权限后重新检查。" = "View the details, fix the save location or permissions, and check again.";
+"%@：%d 篇草稿等待写入项目" = "%@: %d drafts waiting to be written to the project";
+"%d 篇草稿等待写入项目，涉及 %d 个站点。" = "%d drafts across %d sites are waiting to be written to their projects.";
+"报错所属的站点已不存在，请重新检查。" = "The site associated with this error no longer exists. Check again.";
+"工作台处于恢复保护状态，请先处理恢复问题。" = "The workspace is protected during recovery. Resolve the recovery issue first.";
+"本地仓库所在磁盘不可用，已停止写入：%@" = "The local repository disk is unavailable. Writing stopped: %@";
+"所选本地仓库目录不存在或不是目录，已停止写入：%@" = "The selected local repository folder is missing or is not a directory. Writing stopped: %@";
+"没有读取或写入本地仓库的权限，已停止写入：%@" = "Read or write permission for the local repository is denied. Writing stopped: %@";
+
+"冲突恢复副本校验失败，原内容保持不变。" = "The conflict recovery copy failed verification. The original content is unchanged.";
+
+"导出期间草稿发生变化，恢复包已保留；请重新导出后退出。" = "Drafts changed during export. The recovery package was retained; export again before quitting.";
+
+"工作台处于恢复保护状态，请另存恢复包。" = "The workspace is protected for recovery. Save a recovery package elsewhere.";
+
+"恢复包中仍有无法打包的附件。恢复包已保留，请修复附件后重新导出。" = "Some attachments could not be included. The recovery package was retained; fix the attachments and export again.";
+
+"无法确认项目目录身份，请重新选择目录。" = "The project directory could not be identified. Select the directory again.";
+
+"本地草稿保存后的校验失败，应用将保持打开。" = "The saved local drafts failed verification. The app will remain open.";
+
+"本地草稿保存失败，请另存恢复包。" = "Local drafts could not be saved. Save a recovery package elsewhere.";
+
+"正在处理项目文件，请稍候再试。" = "Project files are being processed. Please try again shortly.";
+
+"正在处理项目文件，请稍候再退出。" = "Project files are being processed. Please try quitting again shortly.";
+
+"活动记录尚未安全保存。" = "The activity log has not been saved safely.";
+
+"草稿已不存在，请重新检查。" = "The draft no longer exists. Please check again.";
+
+"草稿恢复记录未能保存。" = "Draft recovery records could not be saved.";
+
+"草稿或站点在审阅期间发生变化，请重新载入差异。" = "The draft or site changed during review. Reload the differences.";
+
+"草稿未绑定项目文件。" = "The draft is not linked to a project file.";
+
+"草稿路径已变化，请重新检查项目文件。" = "The draft path changed. Check the project file again.";
+
+"项目目录已被替换，请重新载入差异。" = "The project directory was replaced. Reload the differences.";
+
+"（冲突恢复副本）" = " (Conflict recovery copy)";
+
+"保存到软件失败" = "Failed to save to the app";
+
+"项目文件冲突" = "Project File Conflict";

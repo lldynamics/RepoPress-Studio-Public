@@ -355,6 +355,12 @@ public final class WorkbenchMarkdownEditorSaveStatusFeatureFacade: ObservableObj
     observeValue(store.persistenceStore.$status)
     observeValue(store.$draftRecoveryJournalErrorMessage)
 
+    observeValue(
+      store.$siteDraftFileSaveFailures.map { [weak self] failures in
+        self.flatMap { failures[$0.trackedDraftID] }
+      }
+    )
+
     store.$siteDraftFileSaveStates
       .map { [weak self] states in
         self.flatMap { states[$0.trackedDraftID] }
@@ -441,6 +447,24 @@ public final class WorkbenchMarkdownEditorSaveStatusFeatureFacade: ObservableObj
       )
     }
     return nil
+  }
+
+  public var hasProjectFileConflict: Bool {
+    store.siteDraftFileSaveFailures[trackedDraftID]?.reason == .externalChange
+  }
+
+  /// A short label for the always-visible toolbar leaf. Detailed errors stay
+  /// in the disclosure instead of changing the editor's layout on each save.
+  public var shortSaveStatus: String {
+    if let failure = saveFailure {
+      switch failure.scope {
+      case .application: return CoreL10n.text("保存到软件失败")
+      case .project:
+        return hasProjectFileConflict
+          ? CoreL10n.text("项目文件冲突") : CoreL10n.text("项目保存失败")
+      }
+    }
+    return lastSaveStatus
   }
 
   public func retrySave() {

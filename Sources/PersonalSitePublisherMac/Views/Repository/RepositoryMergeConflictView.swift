@@ -1,7 +1,6 @@
 import AppKit
 import PublishingGitCore
 import PublishingMarkdownCore
-import PublishingWorkbenchCore
 import SwiftUI
 
 private enum ConflictViewLayoutMode: String, CaseIterable, Identifiable {

@@ -62,6 +62,14 @@ extension WritingDraftColumn {
         } label: {
           Label("新建通用草稿", systemImage: "square.and.pencil")
         }
+
+        Divider()
+
+        Button {
+          isTemplatePickerPresented = true
+        } label: {
+          Label("从模板新建…", systemImage: "doc.text.image")
+        }
       } label: {
         Label("新建", systemImage: "plus")
           .labelStyle(.titleAndIcon)

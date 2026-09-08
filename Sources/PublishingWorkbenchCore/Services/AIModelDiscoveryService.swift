@@ -6,7 +6,7 @@ public protocol AIModelDiscoveryTransport: Sendable {
 }
 
 public struct URLSessionAIModelDiscoveryTransport: AIModelDiscoveryTransport {
-  private let session: URLSession
+  private let sessionOwner: ManagedURLSession
 
   public init() {
     // This overload has no caller-provided proxy to validate, so use the
@@ -39,18 +39,19 @@ public struct URLSessionAIModelDiscoveryTransport: AIModelDiscoveryTransport {
     // redirect; model discovery must additionally fail closed for local
     // no-key requests, where a stripped redirect would otherwise still make a
     // request to the wrong service.
-    session = URLSession(
+    sessionOwner = ManagedURLSession(session: URLSession(
       configuration: safeSession.configuration,
       delegate: AIModelDiscoveryURLSessionDelegate(),
       delegateQueue: nil
-    )
+    ), ownsSession: true)
     safeSession.invalidateAndCancel()
   }
 
   public func data(for request: URLRequest) async throws -> (Data, URLResponse) {
-    try await BoundedHTTPResponseLoader.data(
+    defer { withExtendedLifetime(sessionOwner) {} }
+    return try await BoundedHTTPResponseLoader.data(
       for: request,
-      using: session,
+      using: sessionOwner.session,
       maximumByteCount: AIModelDiscoveryService.maximumResponseByteCount
     )
   }

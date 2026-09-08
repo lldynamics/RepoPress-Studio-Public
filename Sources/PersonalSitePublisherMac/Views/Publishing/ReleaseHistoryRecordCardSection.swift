@@ -96,29 +96,7 @@ extension ReleaseHistoryDetailView {
         }
       }
 
-      if !record.batchItems.isEmpty {
-        VStack(alignment: .leading, spacing: 6) {
-          Text("批量文章")
-            .font(.callout.weight(.medium))
-            .foregroundStyle(.secondary)
-          ForEach(record.batchItems) { item in
-            VStack(alignment: .leading, spacing: 2) {
-              Text(item.draftTitle)
-                .font(.caption.weight(.medium))
-                .workbenchTruncatedIdentity(item.draftTitle)
-              Text(item.markdownPath)
-                .font(.caption.monospaced())
-                .foregroundStyle(.secondary)
-                .workbenchTruncatedIdentity(item.markdownPath)
-              if item.changedPaths.count > 1 {
-                Text("\(item.changedPaths.count) 个相关文件")
-                  .font(.caption)
-                  .foregroundStyle(.secondary)
-              }
-            }
-          }
-        }
-      }
+      ReleaseArticleVerificationRows(store: store, record: record, snapshot: deploymentStatus)
 
       if let deploymentStatus {
         VStack(alignment: .leading, spacing: 8) {
@@ -403,6 +381,15 @@ extension ReleaseHistoryDetailView {
   func releaseRecordActions(_ entry: ReleaseLedgerEntry) -> some View {
     let record = entry.record
     let rollbackDraft = entry.rollbackDraft
+    let canReviewFailure = ReleaseFailureReviewContext.canReview(
+      record,
+      profile: store.activeProfile,
+      drafts: store.drafts,
+      batchPlan: store.batchPublishPlan
+    )
+    let reviewFailureHelp = !record.batchItems.isEmpty && !canReviewFailure
+      ? String(localized: "批量发布范围已变化，请先在发布面板核对批次。")
+      : String(localized: "重新核对发布范围和目标分支；不会自动重放原操作。")
 
     return VStack(alignment: .leading, spacing: 10) {
       Label("记录操作", systemImage: "slider.horizontal.3")
@@ -414,6 +401,20 @@ extension ReleaseHistoryDetailView {
         alignment: .leading,
         spacing: 8
       ) {
+        if record.kind == .remotePublishFailure {
+          Button {
+            beginFailureReview(record)
+          } label: {
+            releaseRecordActionLabel("重新审阅发布…", systemImage: "doc.text.magnifyingglass")
+          }
+          .disabled(
+            store.isQuickHideActive || store.isRemoteRepositoryPublishing
+              || !canReviewFailure
+          )
+          .help(reviewFailureHelp)
+          .accessibilityIdentifier("release-record-\(record.id)-review-again")
+        }
+
         Button {
           copyRecoveryPackage(entry.recoveryPackage)
         } label: {

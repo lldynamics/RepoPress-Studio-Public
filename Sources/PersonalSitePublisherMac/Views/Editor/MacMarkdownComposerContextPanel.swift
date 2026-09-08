@@ -28,6 +28,42 @@ extension MacMarkdownComposerView {
     activeWritingContextPanel = nil
   }
 
+  func dismissOutlinePanel() {
+    activeWritingContextPanel = nil
+    isOutlinePinned = false
+  }
+
+  func toggleOutlinePinned() {
+    isOutlinePinned.toggle()
+    activeWritingContextPanel = .outline
+  }
+
+  var activeOutlineItemID: String? {
+    MarkdownOutlinePresentationPolicy.activeItemID(
+      in: outlineItems,
+      selectedRange: selectedRange
+    )
+  }
+
+  @ViewBuilder
+  func outlinePanelContent() -> some View {
+    MarkdownOutlinePopover(
+      items: outlineItems,
+      activeItemID: activeOutlineItemID,
+      collapsedItemIDs: $editorSessionState.collapsedOutlineItemIDs,
+      isPinned: isOutlinePinned,
+      onSelect: { item in
+        selectOutlineItem(item)
+        if !isOutlinePinned {
+          dismissWritingContextPanel()
+        }
+      },
+      onAction: performOutlineAction,
+      onTogglePinned: toggleOutlinePinned,
+      onClose: dismissOutlinePanel
+    )
+  }
+
   func preparePublish() {
     guard store.ensureEditableDraftSelected() != nil else { return }
     store.runPreflight()
@@ -48,10 +84,13 @@ extension MacMarkdownComposerView {
           isSelectionAIActionRunning: isSelectionAIActionRunning,
           activeSelectionActionName: activeSelectionAIAction?.localizedDisplayName,
           hasLatestAssistantMessage: latestAssistantMessageForCurrentDraft != nil,
+          hasPendingCitationBacklinkRetry:
+            selectionActionState.pendingCitationBacklinkRetry?.draftID == draft.id,
           selectionActionMessage: selectionActionMessage,
           onSelectSelectionAction: performSelectionAIAction,
           onSelectConvergedSelectionAction: performConvergedSelectionAIAction,
           onApplyLatestAIReply: applyLatestAIReplyToSelection,
+          onRetryCitationBacklink: retryPendingKnowledgeCitationBacklinks,
           onInsertImages: {
             insertImageReferences(ImageSelectionPanel.chooseImages())
           },
@@ -115,11 +154,7 @@ extension MacMarkdownComposerView {
       }
 
     case .outline:
-      MarkdownOutlinePopover(
-        items: outlineItems,
-        onSelect: selectOutlineItem,
-        onAction: performOutlineAction
-      )
+      outlinePanelContent()
       .frame(maxWidth: .infinity, alignment: .leading)
     }
   }

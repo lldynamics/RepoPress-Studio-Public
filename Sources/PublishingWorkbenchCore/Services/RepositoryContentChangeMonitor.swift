@@ -531,7 +531,7 @@ public final class RepositoryContentChangeMonitorCoordinator: ObservableObject {
         }
         return
       }
-      await self.store.refreshBatchPublishPlanAsync()
+      self.store.invalidateBatchPublishPlanForRepositoryChange()
       guard self.importRequestID == requestID else { return }
       guard !Task.isCancelled else {
         self.importTask = nil

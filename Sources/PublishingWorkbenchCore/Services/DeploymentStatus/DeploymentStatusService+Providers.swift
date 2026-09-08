@@ -29,6 +29,13 @@ extension DeploymentStatusService {
     let pages = await githubPagesSignal(profile: profile, token: token)
     let actions = await githubActionsSignal(
       profile: profile, releaseRecord: releaseRecord, token: token)
+    if let releaseRecord, !releaseRecord.articleVerificationTargets.isEmpty,
+      releaseRecord.commitSHA?.trimmedForPublishing.nilIfEmpty != nil
+    {
+      let deployment = await githubArticleDeploymentSignal(
+        profile: profile, releaseRecord: releaseRecord, token: token)
+      return [pages, actions, deployment]
+    }
     return [pages, actions]
   }
 

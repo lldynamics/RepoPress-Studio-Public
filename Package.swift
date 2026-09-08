@@ -172,7 +172,11 @@ let package = Package(
       name: "PersonalSitePublisherMac",
       dependencies: [
         "BrowserExtensionProtocolSupport",
+        "PublishingAICore",
+        "PublishingCoreSupport",
+        "PublishingDomainContracts",
         "PublishingGitCore",
+        "PublishingKnowledgeCore",
         "PublishingMarkdownCore",
         "PublishingWorkbenchCore",
         .product(name: "Sparkle", package: "Sparkle"),
@@ -266,6 +270,7 @@ let package = Package(
         "PublishingCoreSupport",
         "PublishingGitCore",
         "PublishingKnowledgeCore",
+        "PublishingMarkdownCore",
         "PublishingWorkbenchCore",
       ],
       swiftSettings: [
@@ -288,7 +293,9 @@ let package = Package(
       dependencies: [
         "PersonalSitePublisherMac",
         "BrowserExtensionProtocolSupport",
+        "PublishingAICore",
         "PublishingGitCore",
+        "PublishingKnowledgeCore",
         "PublishingMarkdownCore",
         "PublishingWorkbenchCore",
       ],

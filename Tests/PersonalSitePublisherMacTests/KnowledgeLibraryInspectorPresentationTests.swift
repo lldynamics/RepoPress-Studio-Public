@@ -1,4 +1,5 @@
-import PublishingWorkbenchCore
+import Foundation
+import PublishingKnowledgeCore
 import XCTest
 
 @testable import PersonalSitePublisherMac

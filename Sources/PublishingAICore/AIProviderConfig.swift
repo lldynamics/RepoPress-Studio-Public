@@ -177,14 +177,40 @@ public enum AIChatModelCatalog {
     let standardModel = defaultModel(for: config)
     switch grade {
     case .fast:
+      guard usesBundledGradeModels(config) else { return standardModel }
       return fastModel(for: config, fallback: standardModel)
     case .standard:
       return standardModel
     case .highQuality:
+      guard usesBundledGradeModels(config) else { return standardModel }
       return highQualityModel(for: config, fallback: standardModel)
     case .custom:
       return trimmedCurrentModel.isEmpty ? standardModel : trimmedCurrentModel
     }
+  }
+
+  /// A provider label is not proof that an arbitrary endpoint serves that
+  /// provider's bundled models. Preserve explicit model choices and custom
+  /// gateways; only the bundled endpoint/model pairs participate in grading.
+  private static func usesBundledGradeModels(_ config: AIProviderConfig) -> Bool {
+    switch config.preset {
+    case .codexAppServer, .openRouter, .local, .custom:
+      return false
+    default:
+      break
+    }
+    let presetConfig = AIProviderConfig(
+      preset: config.preset,
+      baseURL: config.preset.defaultBaseURL,
+      model: config.preset.defaultModel
+    )
+    guard config.capabilityEndpointIdentity == presetConfig.capabilityEndpointIdentity else {
+      return false
+    }
+    return [
+      config.preset.defaultModel,
+      highQualityModel(for: presetConfig, fallback: presetConfig.normalizedModel),
+    ].contains(config.normalizedRequestModel)
   }
 
   private static func defaultModel(for config: AIProviderConfig) -> String {
@@ -227,7 +253,9 @@ public enum AIChatModelCatalog {
     case .anthropic:
       return "claude-sonnet-4-6"
     case .gemini:
-      return "gemini-1.5-pro"
+      // Do not route review tasks to a retired Pro model. Users can select a
+      // current model from their connection's discovered catalog explicitly.
+      return fallback
     case .siliconFlow:
       return "deepseek-ai/DeepSeek-R1"
     case .moonshot:

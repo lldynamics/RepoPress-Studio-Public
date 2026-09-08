@@ -1,4 +1,5 @@
 import Foundation
+import PublishingMarkdownCore
 
 extension PublishingStore {
   public func selectDraft(_ id: UUID?, store: WorkbenchStore) {
@@ -131,6 +132,45 @@ extension PublishingStore {
     store.scheduleImageWorkbenchReportRefresh(for: draft)
     store.save()
     store.scheduleDraftWordCountRefresh(for: draft.id, bodyMarkdown: draft.bodyMarkdown)
+  }
+
+  /// Creates one complete draft from an article template.  The draft is only
+  /// inserted after the template has been validated and expanded, so a
+  /// cancelled picker or an invalid snippet can never leave an empty draft.
+  @discardableResult
+  public func createDraft(
+    from snippet: MarkdownSnippet,
+    asGeneralDraft: Bool,
+    title: String? = nil,
+    store: WorkbenchStore
+  ) -> UUID? {
+    guard snippet.kind == .articleTemplate,
+      snippet.siteProfileID == nil || snippet.siteProfileID == store.activeProfileID,
+      !snippet.markdown.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    else { return nil }
+
+    var draft = asGeneralDraft
+      ? ArticleDraft.emptyGeneralDraft(editingProfile: store.activeProfile)
+      : ArticleDraft.empty(profile: store.activeProfile)
+    if let title = title?.trimmingCharacters(in: .whitespacesAndNewlines), !title.isEmpty {
+      draft.title = title
+    }
+    draft.bodyMarkdown = MarkdownSnippetLibraryService.expandedMarkdown(
+      for: snippet,
+      draft: draft
+    )
+    drafts.insert(draft, at: 0)
+    draftListContentScope = asGeneralDraft ? .general : .currentSite
+    draftNavigationHistory.recordVisit(draft.id)
+    selectedDraftID = draft.id
+    selectedSection = .writing
+    store.setAIPublishingAssistantPresented(false)
+    store.restoreSEOSocialPreviewSnapshotForCurrentSelection()
+    store.runPreflight()
+    store.scheduleImageWorkbenchReportRefresh(for: draft)
+    store.save()
+    store.scheduleDraftWordCountRefresh(for: draft.id, bodyMarkdown: draft.bodyMarkdown)
+    return draft.id
   }
 
   public func setDraftListContentScope(_ scope: DraftListContentScope, store: WorkbenchStore) {

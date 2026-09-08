@@ -118,9 +118,11 @@ extension WorkbenchStore {
   @discardableResult
   public func refreshDeploymentStatus(
     for record: ReleaseRecord,
-    updatesMessage: Bool = true
+    updatesMessage: Bool = true,
+    articleDraftID: UUID? = nil
   ) async -> DeploymentStatusSnapshot? {
-    await deploymentStore.refreshDeploymentStatus(for: record, store: self, updatesMessage: updatesMessage)
+    await deploymentStore.refreshDeploymentStatus(
+      for: record, store: self, updatesMessage: updatesMessage, articleDraftID: articleDraftID)
   }
 
   public var releaseLedger: ReleaseLedger {

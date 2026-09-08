@@ -23,6 +23,17 @@ private struct SiteDraftFileReconciliationCandidate: Sendable {
 }
 
 extension WorkbenchStore {
+  /// Only failures that blocked the latest flush belong in the exit error.
+  /// Full file paths remain available in each group's details.
+  var siteDraftFileFlushErrorMessage: String? {
+    let failures = currentSiteDraftFileSaveFailures.filter {
+      siteDraftFileFlushFailureIDs.contains($0.draftID)
+    }
+    let groups = SiteDraftFileSaveFailureGroup.grouped(failures)
+    guard !groups.isEmpty else { return nil }
+    return groups.map(\.summary).joined(separator: "\n\n")
+  }
+
   func scheduleSiteDraftFileAutosave(
     for draft: ArticleDraft,
     immediate: Bool = false
@@ -31,6 +42,9 @@ extension WorkbenchStore {
       cancelSiteDraftFileAutosave(for: draft.id)
       return
     }
+    // A known conflict is a durable pending operation, not an invitation to
+    // repeat the same failing write after every keystroke or every launch.
+    if siteDraftFileSaveFailures[draft.id] != nil { return }
     // New site drafts are local-first.  A missing repository path means the
     // user has not explicitly added this draft to a project yet.
     guard draft.repositoryPath?.nilIfEmpty != nil else {
@@ -45,7 +59,7 @@ extension WorkbenchStore {
     siteDraftFileSaveGenerations[draft.id] = generation
     siteDraftFileSaveStates[draft.id] = .pending(repositoryPath: repositoryPath)
 
-    if siteDraftFileWritesInProgress.contains(draft.id) {
+    if isPreparingSafeTermination || siteDraftFileWritesInProgress.contains(draft.id) {
       return
     }
 
@@ -87,6 +101,7 @@ extension WorkbenchStore {
         self.failSiteDraftFileWrite(
           draftID: draft.id,
           generation: generation,
+          profile: currentProfile,
           repositoryPath: currentDraft.repositoryPath?.normalizedRelativePath()
             ?? currentProfile.markdownPath(for: currentDraft),
           error: error
@@ -114,7 +129,8 @@ extension WorkbenchStore {
           draft: draft,
           profile: profile,
           repositoryPath: repositoryPath,
-          storedProjectFileContentDigest: draft.repositoryBinding?.projectFileContentDigest
+          storedProjectFileContentDigest: draft.repositoryBinding?.projectFileRenderedContentDigest
+            ?? draft.repositoryBinding?.projectFileContentDigest
         )
       )
     }
@@ -215,6 +231,8 @@ extension WorkbenchStore {
   }
 
   func cancelSiteDraftFileAutosave(for draftID: UUID) {
+    siteDraftFileFlushFailureIDs.remove(draftID)
+    siteDraftFileSaveFailures[draftID] = nil
     siteDraftFileSaveGenerations[draftID] = (siteDraftFileSaveGenerations[draftID] ?? 0) &+ 1
     siteDraftFileAutosaveTasks[draftID]?.cancel()
     siteDraftFileAutosaveTasks[draftID] = nil
@@ -225,7 +243,8 @@ extension WorkbenchStore {
   /// Forces the latest site-draft Markdown to disk before termination or a
   /// publish operation. General drafts are deliberately excluded.
   @discardableResult
-  func flushPendingSiteDraftFileWrites() -> Bool {
+  func flushPendingSiteDraftFileWrites(retryKnownFailures: Bool = true) -> Bool {
+    siteDraftFileFlushFailureIDs.removeAll()
     cancelSiteDraftFileReconciliation()
     let pendingIDs = Set(siteDraftFileAutosaveTasks.keys)
       .union(siteDraftFileWritesInProgress)
@@ -250,10 +269,24 @@ extension WorkbenchStore {
     var succeeded = true
     for draftID in pendingIDs.sorted(by: { $0.uuidString < $1.uuidString }) {
       guard let draft = drafts.first(where: { $0.id == draftID }),
-        !draft.isGeneralDraft,
-        draft.repositoryPath?.nilIfEmpty != nil
+        !draft.isGeneralDraft
       else {
         siteDraftFileSaveStates[draftID] = nil
+        siteDraftFileSaveFailures[draftID] = nil
+        continue
+      }
+      if !retryKnownFailures, siteDraftFileSaveFailures[draftID] != nil {
+        succeeded = false
+        siteDraftFileFlushFailureIDs.insert(draftID)
+        continue
+      }
+      guard draft.repositoryPath?.nilIfEmpty != nil else {
+        if siteDraftFileSaveFailures[draftID] != nil {
+          succeeded = false
+          siteDraftFileFlushFailureIDs.insert(draftID)
+        } else {
+          siteDraftFileSaveStates[draftID] = nil
+        }
         continue
       }
       let profile = profile(for: draft)
@@ -271,6 +304,7 @@ extension WorkbenchStore {
           repositoryPath: result.repositoryPath,
           savedAt: Date()
         )
+        siteDraftFileSaveFailures[draftID] = nil
         scheduleDueOperationalRefresh()
       } catch {
         if case LocalPublishPreviewError.missingRepositoryRoot = error {
@@ -278,12 +312,13 @@ extension WorkbenchStore {
           // selects a project folder, so this does not make termination unsafe.
         } else {
           succeeded = false
+          siteDraftFileFlushFailureIDs.insert(draftID)
         }
         siteDraftFileSaveStates[draftID] = .failed(
           repositoryPath: repositoryPath,
           message: error.localizedDescription
         )
-        setSiteDraftFileFailureMessage(error)
+        setSiteDraftFileFailureMessage(error, draftID: draftID, profile: profile)
       }
     }
     return succeeded
@@ -298,6 +333,7 @@ extension WorkbenchStore {
   /// app-owned draft intact.
   @discardableResult
   public func writeSiteDraftToProject(draftID: UUID) async -> Bool {
+    guard !isPreparingSafeTermination else { return false }
     guard let draft = drafts.first(where: { $0.id == draftID }) else {
       setPublishActionMessage(CoreL10n.text("找不到要加入项目的草稿。"), status: .warning)
       return false
@@ -338,6 +374,10 @@ extension WorkbenchStore {
         return true
       }
 
+      guard matchesCurrentSiteDraftWriteProfile(profile, draft: currentDraft) else {
+        scheduleSiteDraftFileAutosave(for: currentDraft, immediate: true)
+        return false
+      }
       let currentUpdatedAt = currentDraft.updatedAt
       applyWrittenSiteDraftRepositoryPath(
         result.repositoryPath,
@@ -363,13 +403,19 @@ extension WorkbenchStore {
         repositoryPath: result.repositoryPath,
         savedAt: Date()
       )
+      siteDraftFileFlushFailureIDs.remove(draftID)
+      siteDraftFileSaveFailures[draftID] = nil
       setPublishActionMessage(CoreL10n.text("已将草稿加入项目并写入文件。"), status: .success)
       save()
       scheduleDueOperationalRefresh()
       return true
     } catch {
       siteDraftFileWritesInProgress.remove(draftID)
-      guard siteDraftFileSaveGenerations[draftID] == generation else {
+      guard siteDraftFileSaveGenerations[draftID] == generation,
+        drafts.first(where: { $0.id == draftID }).map({
+          matchesCurrentSiteDraftWriteProfile(profile, draft: $0)
+        }) == true
+      else {
         if let currentDraft = drafts.first(where: { $0.id == draftID }),
           !currentDraft.isGeneralDraft,
           currentDraft.repositoryPath?.nilIfEmpty != nil
@@ -382,8 +428,18 @@ extension WorkbenchStore {
         repositoryPath: repositoryPath,
         message: error.localizedDescription
       )
-      setSiteDraftFileFailureMessage(error)
+      setSiteDraftFileFailureMessage(error, draftID: draftID, profile: profile)
       return false
+    }
+  }
+
+  func suspendScheduledSiteDraftFileWrites() {
+    cancelSiteDraftFileReconciliation()
+    for draftID in Array(siteDraftFileAutosaveTasks.keys)
+      where !siteDraftFileWritesInProgress.contains(draftID) {
+      siteDraftFileAutosaveTasks[draftID]?.cancel()
+      siteDraftFileAutosaveTasks[draftID] = nil
+      siteDraftFileSaveGenerations[draftID] = (siteDraftFileSaveGenerations[draftID] ?? 0) &+ 1
     }
   }
 
@@ -421,6 +477,10 @@ extension WorkbenchStore {
       return
     }
 
+    guard matchesCurrentSiteDraftWriteProfile(profile, draft: currentDraft) else {
+      scheduleSiteDraftFileAutosave(for: currentDraft, immediate: true)
+      return
+    }
     let currentUpdatedAt = currentDraft.updatedAt
     applyWrittenSiteDraftRepositoryPath(
       result.repositoryPath,
@@ -446,6 +506,8 @@ extension WorkbenchStore {
       repositoryPath: result.repositoryPath,
       savedAt: Date()
     )
+    siteDraftFileFlushFailureIDs.remove(draftID)
+    siteDraftFileSaveFailures[draftID] = nil
     scheduleAutosave()
     scheduleDueOperationalRefresh()
   }
@@ -453,12 +515,17 @@ extension WorkbenchStore {
   private func failSiteDraftFileWrite(
     draftID: UUID,
     generation: UInt64,
+    profile: SiteProfile,
     repositoryPath: String,
     error: Error
   ) {
     siteDraftFileAutosaveTasks[draftID] = nil
     siteDraftFileWritesInProgress.remove(draftID)
-    guard siteDraftFileSaveGenerations[draftID] == generation else {
+    guard siteDraftFileSaveGenerations[draftID] == generation,
+      drafts.first(where: { $0.id == draftID }).map({
+        matchesCurrentSiteDraftWriteProfile(profile, draft: $0)
+      }) == true
+    else {
       if let currentDraft = drafts.first(where: { $0.id == draftID }),
         !currentDraft.isGeneralDraft
       {
@@ -470,7 +537,17 @@ extension WorkbenchStore {
       repositoryPath: repositoryPath,
       message: error.localizedDescription
     )
-    setSiteDraftFileFailureMessage(error)
+    setSiteDraftFileFailureMessage(error, draftID: draftID, profile: profile)
+  }
+
+  private func matchesCurrentSiteDraftWriteProfile(
+    _ writtenProfile: SiteProfile, draft: ArticleDraft
+  ) -> Bool {
+    let currentProfile = profile(for: draft)
+    return currentProfile.id == writtenProfile.id
+      && currentProfile.localRepositoryRootURL == writtenProfile.localRepositoryRootURL
+      && DraftRepositoryIdentity(profile: currentProfile)
+        == DraftRepositoryIdentity(profile: writtenProfile)
   }
 
   private func applyWrittenSiteDraftRepositoryPath(
@@ -501,8 +578,18 @@ extension WorkbenchStore {
     scheduleAutosave()
   }
 
-  private func setSiteDraftFileFailureMessage(_ error: Error) {
+  private func setSiteDraftFileFailureMessage(
+    _ error: Error, draftID: UUID, profile: SiteProfile
+  ) {
+    if let state = siteDraftFileSaveStates[draftID] {
+      siteDraftFileSaveFailures[draftID] = SiteDraftFileSaveFailure(
+        draftID: draftID, profile: profile, repositoryPath: state.repositoryPath, error: error
+      )
+    }
+    scheduleAutosave()
     if case LocalPublishPreviewError.missingRepositoryRoot = error {
+      siteDraftFileFlushFailureIDs.remove(draftID)
+      siteDraftFileSaveFailures[draftID] = nil
       setPublishActionMessage(
         CoreL10n.text("当前站点未选择本地项目；站点草稿仍保存在软件中，请选择项目后使用“加入项目”重试。"),
         status: .warning

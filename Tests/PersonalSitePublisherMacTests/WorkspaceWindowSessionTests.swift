@@ -105,6 +105,114 @@ final class WorkspaceWindowSessionTests: XCTestCase {
     XCTAssertEqual(activations, [draftID])
   }
 
+  func testPaletteCreatedDraftRemainsThePresentingWindowIntentAfterSheetDismissal() {
+    let originalDraftID = UUID()
+    let createdDraftID = UUID()
+    let secondDraftID = UUID()
+    let first = WorkspaceWindowSession(
+      selectedSection: .writing,
+      selectedDraftID: originalDraftID
+    )
+    let second = WorkspaceWindowSession(
+      selectedSection: .writing,
+      selectedDraftID: secondDraftID
+    )
+    var activatedByFirst: (WorkspaceSection, UUID?)?
+
+    first.setKeyWindow(false) { _, _ in }
+    // This is the sheet path used by WorkspaceCommandPalette after
+    // createDraft() has updated the shared compatibility Store.
+    first.selectContext(section: .writing, draftID: createdDraftID) { _, _ in
+      XCTFail("A sheet-presenting non-key window must not activate the shared Store early.")
+    }
+    second.setKeyWindow(true) { _, _ in }
+
+    first.setKeyWindow(true) { section, draftID in
+      activatedByFirst = (section, draftID)
+    }
+
+    XCTAssertEqual(first.selectedDraftID, createdDraftID)
+    XCTAssertEqual(second.selectedDraftID, secondDraftID)
+    XCTAssertEqual(activatedByFirst?.0, .writing)
+    XCTAssertEqual(activatedByFirst?.1, createdDraftID)
+  }
+
+  func testSheetSearchFocusIsDeliveredOnlyOnceToItsPresentingWindow() {
+    let delivery = WorkspaceEditorFocusRequestDelivery()
+    let targetDraftID = UUID()
+    let requestID = UUID()
+    let presenting = WorkspaceWindowSession(
+      selectedSection: .writing,
+      selectedDraftID: UUID(),
+      editorFocusRequestDelivery: delivery
+    )
+    let otherWindow = WorkspaceWindowSession(
+      selectedSection: .writing,
+      selectedDraftID: targetDraftID,
+      editorFocusRequestDelivery: delivery
+    )
+    var restoredContext: (WorkspaceSection, UUID?)?
+
+    // Full-text search updates the presenting window before it creates the
+    // shared request, while the sheet has made that window non-key.
+    presenting.selectContext(section: .writing, draftID: targetDraftID) { _, _ in
+      XCTFail("The sheet-presenting window is not key yet.")
+    }
+    presenting.registerEditorFocusRequest(requestID)
+
+    otherWindow.setKeyWindow(true) { _, _ in }
+    XCTAssertFalse(
+      otherWindow.consumeEditorFocusRequest(requestID),
+      "Another key window on the same draft must not steal the request."
+    )
+
+    presenting.setKeyWindow(true) { section, draftID in
+      restoredContext = (section, draftID)
+    }
+    XCTAssertEqual(restoredContext?.0, .writing)
+    XCTAssertEqual(restoredContext?.1, targetDraftID)
+    XCTAssertTrue(presenting.consumeEditorFocusRequest(requestID))
+    XCTAssertFalse(
+      presenting.consumeEditorFocusRequest(requestID),
+      "Re-mounting the presenting editor must not restore an old selection."
+    )
+    XCTAssertFalse(otherWindow.consumeEditorFocusRequest(requestID))
+  }
+
+  func testLegacyFocusRequestCanRetryWhenItsEditorBecomesKey() {
+    let delivery = WorkspaceEditorFocusRequestDelivery()
+    let requestID = UUID()
+    let session = WorkspaceWindowSession(
+      selectedSection: .writing,
+      editorFocusRequestDelivery: delivery
+    )
+
+    XCTAssertFalse(
+      session.consumeEditorFocusRequest(requestID),
+      "A legacy request must remain available while its editor is behind a sheet."
+    )
+    session.setKeyWindow(true) { _, _ in }
+    XCTAssertTrue(session.consumeEditorFocusRequest(requestID))
+    XCTAssertFalse(
+      session.consumeEditorFocusRequest(requestID),
+      "The retry consumes the request exactly once."
+    )
+  }
+
+  func testFocusRequestDeliveryLedgerRetainsAtMost128Entries() {
+    let delivery = WorkspaceEditorFocusRequestDelivery()
+    let session = WorkspaceWindowSession(
+      selectedSection: .writing,
+      editorFocusRequestDelivery: delivery
+    )
+
+    for _ in 0...128 {
+      session.registerEditorFocusRequest(UUID())
+    }
+
+    XCTAssertEqual(delivery.entryCount, 128)
+  }
+
   func testContextSelectionActivatesSectionAndDraftAtomicallyForKeyWindow() {
     let draftID = UUID()
     let session = WorkspaceWindowSession(selectedSection: .writing)

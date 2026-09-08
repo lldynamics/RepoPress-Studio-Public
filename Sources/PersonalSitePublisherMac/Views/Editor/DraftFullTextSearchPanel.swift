@@ -6,6 +6,9 @@ struct DraftFullTextSearchPanel: View {
   @AppStorage("draftFullTextSavedQueriesV1") private var savedQueriesStorage = ""
   @ObservedObject private var publishing: WorkbenchPublishingFeatureFacade
   let store: WorkbenchStore
+  /// The main workspace supplies this so result navigation remains owned by
+  /// the window that presented this sheet.
+  let onOpenHit: ((DraftFullTextSearchHit) -> Void)?
   @State private var query = ""
   @State private var scope = DraftFullTextSearchScope.currentSite
   @State private var searchSnapshot = DraftFullTextSearchPresentationSnapshot.empty
@@ -17,8 +20,12 @@ struct DraftFullTextSearchPanel: View {
   @State private var isBatchReplacePresented = false
   @FocusState private var isSearchFocused: Bool
 
-  init(store: WorkbenchStore) {
+  init(
+    store: WorkbenchStore,
+    onOpenHit: ((DraftFullTextSearchHit) -> Void)? = nil
+  ) {
     self.store = store
+    self.onOpenHit = onOpenHit
     _publishing = ObservedObject(wrappedValue: store.publishing)
   }
 
@@ -74,6 +81,7 @@ struct DraftFullTextSearchPanel: View {
         siteProfileID: scope == .currentSite ? publishing.activeProfileID : nil
       )
     }
+    .accessibilityElement(children: .contain)
     .accessibilityLabel("跨文章全文搜索")
     .accessibilityIdentifier("draft-full-text-search-panel")
   }
@@ -515,6 +523,14 @@ struct DraftFullTextSearchPanel: View {
   }
 
   private func open(_ hit: DraftFullTextSearchHit) {
+    if let onOpenHit {
+      onOpenHit(hit)
+      dismiss()
+      return
+    }
+
+    // Standalone previews retain the existing direct Store behavior. The main
+    // workspace always injects onOpenHit and uses its window-local route.
     guard store.focusDraft(hit.draftID, section: .writing) else { return }
     store.requestEditorFocus(
       draftID: hit.draftID,

@@ -499,6 +499,7 @@ public enum AIConversationRetentionPolicy {
     if lhs.updatedAt != rhs.updatedAt {
       return lhs.updatedAt > rhs.updatedAt
     }
-    return lhs.createdAt > rhs.createdAt
+    if lhs.createdAt != rhs.createdAt { return lhs.createdAt > rhs.createdAt }
+    return lhs.id.uuidString < rhs.id.uuidString
   }
 }

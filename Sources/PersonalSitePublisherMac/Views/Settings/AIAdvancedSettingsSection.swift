@@ -5,10 +5,11 @@ struct AIAdvancedSettingsSection: View {
   @Binding var settings: AIProviderAdvancedSettings
   let reasoningSupport: AIProviderCapabilitySupport
   let usesCodexAppServer: Bool
+  var subsectionAnchor: SettingsSubsection? = nil
 
   var body: some View {
     if !usesCodexAppServer {
-      Section("网络代理 (Network Proxy)") {
+      Section {
         Toggle("配置 AI 独立网络代理", isOn: proxyEnabledBinding)
           .accessibilityIdentifier("settings-ai-proxy-toggle")
 
@@ -29,10 +30,13 @@ struct AIAdvancedSettingsSection: View {
               .foregroundStyle(.secondary)
           }
         }
+      } header: {
+        Text("网络代理 (Network Proxy)")
+          .settingsSubsectionAnchor(subsectionAnchor)
       }
     }
 
-    Section("模型生成与推理参数") {
+    Section {
       Toggle("允许 AI 使用应用内工具 (Agent)", isOn: allowsApplicationToolsBinding)
         .accessibilityIdentifier("settings-ai-agent-tools-toggle")
       Text(applicationToolsDescription)
@@ -147,6 +151,9 @@ struct AIAdvancedSettingsSection: View {
           .buttonStyle(.borderless)
         }
       }
+    } header: {
+      Text("模型生成与推理参数")
+        .settingsSubsectionAnchor(usesCodexAppServer ? subsectionAnchor : nil)
     }
 
     Section("全局系统提示词 (System Prompt)") {

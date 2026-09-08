@@ -106,7 +106,8 @@ extension WorkbenchAIStore {
     guard
       let operationID = beginAIChatOperation(
         statusMessage: CoreL10n.text("AI 正在结合当前文章回复..."),
-        ownerToken: ownerToken
+        ownerToken: ownerToken,
+        target: articleAIChatOperationTarget(for: chatDraft.id)
       )
     else {
       return nil

@@ -42,35 +42,41 @@ struct PublishDrawerView: View {
   @ObservedObject private var drawerObservation: WorkbenchPublishDrawerObservationFacade
   // 部分属性尚未迁移到 Facade，保留 store 访问，但去除 @ObservedObject 以避免全局不相关事件触发重绘
   let store: WorkbenchStore
+  private let onNavigateIssue: ((UUID, PublishReadinessTarget) -> Void)?
   @Binding var isPresented: Bool
   @State private var pendingWorktreeReview: RepositoryWorktreePublishConfirmation?
   @State private var pendingWorktreePushRetryReview: RepositoryWorktreePushRetryConfirmation?
   @State private var pendingBatchReview: BatchPublishReviewSnapshot?
-  @State private var pendingSingleOnlinePublishDraft: ArticleDraft?
+  @State private var pendingSingleReview: SinglePublishReviewSnapshot?
   @State private var scope: PublishScope = .repository
-  @State private var completedWorktreeRelease: ReleaseRecord?
+  @State private var completedReleaseRecordID: UUID?
   @State private var showsReleaseHistory = false
-  @State private var completedDeploymentStatus: DeploymentStatusSnapshot?
   @State private var isAdvancedFlowExpanded = false
   @State private var isAnalyticsSetupExpanded = false
   @State private var isRemoteConflictResolverPresented = false
+  @State private var batchPlanConsumerID = UUID()
   @StateObject private var operationController = PublishDrawerOperationController()
 
   init(
     publishingFacade: WorkbenchPublishingFeatureFacade,
     store: WorkbenchStore,
-    isPresented: Binding<Bool>
+    isPresented: Binding<Bool>,
+    initialScope: PublishScope = .repository,
+    onNavigateIssue: ((UUID, PublishReadinessTarget) -> Void)? = nil
   ) {
     self.publishingFacade = publishingFacade
     _drawerObservation = ObservedObject(wrappedValue: store.publishDrawerObservation)
     self.store = store
+    self.onNavigateIssue = onNavigateIssue
     _isPresented = isPresented
+    _scope = State(initialValue: initialScope)
   }
 
   var body: some View {
     drawerContent
       .frame(maxWidth: .infinity, maxHeight: .infinity)
       .onAppear {
+        store.setBatchPublishPlanConsumer(batchPlanConsumerID, isActive: true)
         if store.remoteRepositoryConflictSession?.isEmpty == false {
           isRemoteConflictResolverPresented = true
         }
@@ -91,8 +97,8 @@ struct PublishDrawerView: View {
           }
         }
       }
-      .sheet(item: $pendingSingleOnlinePublishDraft) { draft in
-        singleArticleOnlinePublishConfirmation(draft: draft)
+      .sheet(item: $pendingSingleReview) { review in
+        singleArticleOnlinePublishConfirmation(review: review)
       }
       .sheet(item: $pendingWorktreeReview) { confirmation in
         RepositoryWorktreePublishConfirmationView(
@@ -149,23 +155,24 @@ struct PublishDrawerView: View {
       }
       .sheet(isPresented: $showsReleaseHistory) {
         VStack(spacing: 0) {
-          ReleaseHistoryDetailView(store: store)
+          ReleaseHistoryDetailView(store: store, focusedRecordID: completedReleaseRecordID)
           Button("关闭") { showsReleaseHistory = false }.padding()
         }
         .frame(minWidth: 760, minHeight: 600)
       }
       .onChange(of: store.activeProfileID) {
-        completedWorktreeRelease = nil
+        completedReleaseRecordID = nil
         pendingWorktreeReview = nil
         pendingWorktreePushRetryReview = nil
         pendingBatchReview = nil
-        pendingSingleOnlinePublishDraft = nil
-        scope = .repository
+        pendingSingleReview = nil
+        scope = scope == .currentArticle ? .currentArticle : .repository
       }
       .onChange(of: store.remoteRepositoryConflictSession?.id) { _, sessionID in
         isRemoteConflictResolverPresented = sessionID != nil
       }
       .onDisappear {
+        store.setBatchPublishPlanConsumer(batchPlanConsumerID, isActive: false)
         operationController.cancel()
         pendingWorktreeReview = nil
         pendingWorktreePushRetryReview = nil
@@ -296,7 +303,10 @@ struct PublishDrawerView: View {
         isImageReportLoading: imageReport == nil || store.isImageWorkbenchReportLoading(for: draft),
         seoReport: store.seoReport(for: draft),
         socialSnapshot: store.seoSocialPreviewSnapshot(for: draft),
-        isSocialPreviewStale: store.isSEOSocialPreviewStale(for: draft)
+        isSocialPreviewStale: store.isSEOSocialPreviewStale(for: draft),
+        onNavigate: onNavigateIssue.map { navigate in
+          { target in navigate(draft.id, target) }
+        }
       )
 
       Button {
@@ -362,24 +372,26 @@ struct PublishDrawerView: View {
 
   @ViewBuilder
   private var completedWorktreeResult: some View {
-    if let record = completedWorktreeRelease, record.siteProfileID == store.activeProfileID {
+    if let record = store.releaseRecords.first(where: { $0.id == completedReleaseRecordID }),
+      record.siteProfileID == store.activeProfileID
+    {
+      let status = store.deploymentStatusSnapshot(for: record)
+      let entry = store.activeProfileReleaseLedger.entries.first(where: { $0.id == record.id })
       PublishDrawerCard(title: "本次发布结果", systemImage: "checkmark.icloud") {
-        Label("Git 推送已确认", systemImage: "checkmark.circle")
-          .foregroundStyle(WorkbenchTheme.success)
+        Label(record.title, systemImage: record.kind.systemImage)
+          .font(.callout.weight(.medium))
         Text("\(record.branchName ?? "") · \(record.shortCommitSHA ?? "")")
           .font(.caption.monospaced()).textSelection(.enabled)
-        Text("网站部署与文章页面需要继续验证。")
+        Text(entry?.statusMessage ?? record.summary)
           .font(.callout).foregroundStyle(.secondary)
-        if record.markdownPath == nil {
+        if record.articleVerificationTargets.isEmpty {
           Text("本次没有已确认的文章目标，仅检查站点部署。")
             .font(.caption).foregroundStyle(.secondary)
         }
         HStack {
           Button("检查部署与页面") {
             operationController.start {
-              let status = await store.refreshDeploymentStatus(for: record)
-              guard !Task.isCancelled, store.activeProfileID == record.siteProfileID else { return }
-              completedDeploymentStatus = status
+              _ = await store.refreshDeploymentStatus(for: record)
             }
           }
           .disabled(!store.canCheckDeploymentStatus(for: record) || operationController.isRunning)
@@ -392,11 +404,31 @@ struct PublishDrawerView: View {
           Text(store.deploymentStatusReadiness(for: record).nextStep)
             .font(.caption).foregroundStyle(.secondary)
         }
-        if let status = completedDeploymentStatus, status.releaseRecordID == record.id {
+        if record.kind == .remoteReviewRequest, record.reviewStatus?.state != .merged {
+          HStack {
+            Button("检查 PR/MR 合并状态") {
+              operationController.start { _ = await store.refreshRemoteReviewStatus(for: record) }
+            }
+            .disabled(operationController.isRunning || store.isDeploymentStatusChecking)
+            if let url = record.reviewURL.flatMap(URL.init(string:)) {
+              Button("打开 PR/MR") { ExternalURLOpener.open(url) }
+            }
+          }
+        }
+        ReleaseArticleVerificationRows(store: store, record: record, snapshot: status)
+        if let status, status.releaseRecordID == record.id {
           Label(status.title, systemImage: status.level.systemImage)
             .font(.callout.weight(.medium))
           Text(status.message).font(.caption).textSelection(.enabled)
-          ForEach(status.signals) { signal in
+          Text("\(status.nextActionTitle)：\(status.nextActionMessage)")
+            .font(.callout).foregroundStyle(.secondary)
+          ForEach(
+            status.signals.filter { signal in
+              !(status.articleResults ?? []).flatMap(\.signals).contains(where: {
+                $0.id == signal.id
+              })
+            }
+          ) { signal in
             VStack(alignment: .leading, spacing: 4) {
               Label(signal.title, systemImage: signal.level.systemImage)
               Text(signal.message).font(.caption).foregroundStyle(.secondary)
@@ -934,9 +966,11 @@ struct PublishDrawerView: View {
     guard let result = await store.publishRepositoryWorktree(confirmation), !Task.isCancelled else {
       return false
     }
-    completedWorktreeRelease = store.releaseRecords.first {
-      $0.commitSHA == result.commitSHA && $0.siteProfileID == store.activeProfileID
-    }
+    completedReleaseRecordID =
+      store.releaseRecords.first {
+        $0.commitSHA == result.commitSHA && $0.siteProfileID == store.activeProfileID
+          && $0.kind == .remoteDirectCommit
+      }?.id
     store.refreshBatchPublishPlanInBackground()
     if let draft = publishingFacade.selectedDraft {
       publishingFacade.refreshPublishPreviewInBackground(for: draft)
@@ -963,9 +997,11 @@ struct PublishDrawerView: View {
     else {
       return false
     }
-    completedWorktreeRelease = store.releaseRecords.first {
-      $0.commitSHA == result.commitSHA && $0.siteProfileID == store.activeProfileID
-    }
+    completedReleaseRecordID =
+      store.releaseRecords.first {
+        $0.commitSHA == result.commitSHA && $0.siteProfileID == store.activeProfileID
+          && $0.kind == .remoteDirectCommit
+      }?.id
     store.refreshBatchPublishPlanInBackground()
     if let draft = publishingFacade.selectedDraft {
       publishingFacade.refreshPublishPreviewInBackground(for: draft)
@@ -1001,20 +1037,34 @@ struct PublishDrawerView: View {
     operationController.start {
       guard await store.prepareSelectedDraftOnlinePublish(draftID: draft.id) else { return }
       guard !Task.isCancelled else { return }
-      guard let refreshedPreview = store.cachedRemotePublishPreview(for: draft),
-        canStartRemotePublish(refreshedPreview)
+      guard let snapshot = store.cachedDraftPublishPreviewSnapshot(for: draft.id),
+        let currentDraft = store.draft(for: draft.id),
+        snapshot.publishPackage.draftID == currentDraft.id,
+        currentDraft.siteProfileID == store.activeProfileID,
+        canStartRemotePublish(snapshot.remotePublishPreview)
       else { return }
-      pendingSingleOnlinePublishDraft = draft
+      pendingSingleReview = try? SinglePublishReviewSnapshot(
+        draft: currentDraft, profile: store.activeProfile, snapshot: snapshot
+      )
+      if pendingSingleReview == nil {
+        store.setPublishActionMessage(
+          String(localized: "无法读取待审阅的附件，请检查文件后重新准备发布。"), status: .warning)
+      }
     }
   }
 
   private func publishAllChangesOnline(review: BatchPublishReviewSnapshot) async {
     let currentSection = publishingFacade.selectedSection
-    await store.publishBatchReadyDraftsOnlineUsingPreferredStrategy(
+    let previousIDs = Set(store.releaseRecords.map(\.id))
+    let profileID = store.activeProfileID
+    let result = await store.publishBatchReadyDraftsOnlineUsingPreferredStrategy(
       expectedChangedPaths: Set(review.preview.changedPaths),
       expectedTarget: review.target,
       expectedReview: review.expectation
     )
+    completedReleaseRecordID = PublishResultRecordSelection.recordID(
+      result: result, records: store.releaseRecords, previousRecordIDs: previousIDs,
+      profileID: profileID, draftIDs: Set(review.items.map(\.draftID)))
     guard !Task.isCancelled else { return }
     _ = await store.refreshRepositoryStateForPublishing()
     guard !Task.isCancelled else { return }
@@ -1025,11 +1075,19 @@ struct PublishDrawerView: View {
     }
   }
 
-  private func publishSingleArticleOnline(_ draft: ArticleDraft) {
+  private func publishSingleArticleOnline(_ review: SinglePublishReviewSnapshot) {
+    let draft = review.draft
     let currentSection = publishingFacade.selectedSection
-    _ = publishingFacade.focusDraft(draft.id)
+    guard publishingFacade.focusDraft(draft.id) else { return }
     operationController.start {
-      await store.publishSelectedDraftOnlineUsingPreferredStrategy()
+      let previousIDs = Set(store.releaseRecords.map(\.id))
+      let profileID = store.activeProfileID
+      let result = await store.publishSelectedDraftOnlineUsingPreferredStrategy(
+        expectedReview: review.expectation
+      )
+      completedReleaseRecordID = PublishResultRecordSelection.recordID(
+        result: result, records: store.releaseRecords, previousRecordIDs: previousIDs,
+        profileID: profileID, draftIDs: [draft.id])
       guard !Task.isCancelled else { return }
       _ = await store.refreshRepositoryStateForPublishing()
       guard !Task.isCancelled else { return }
@@ -1042,7 +1100,12 @@ struct PublishDrawerView: View {
   private func publishSingleArticlePreviewBranch(_ draft: ArticleDraft) async {
     let currentSection = publishingFacade.selectedSection
     _ = publishingFacade.focusDraft(draft.id)
-    await store.publishSelectedDraftToPreviewBranch()
+    let previousIDs = Set(store.releaseRecords.map(\.id))
+    let profileID = store.activeProfileID
+    let result = await store.publishSelectedDraftToPreviewBranch()
+    completedReleaseRecordID = PublishResultRecordSelection.recordID(
+      result: result, records: store.releaseRecords, previousRecordIDs: previousIDs,
+      profileID: profileID, draftIDs: [draft.id])
     guard !Task.isCancelled else { return }
     _ = await store.refreshRepositoryStateForPublishing()
     guard !Task.isCancelled else { return }
@@ -1076,7 +1139,7 @@ struct PublishDrawerView: View {
     operationController.cancel()
     pendingWorktreeReview = nil
     pendingWorktreePushRetryReview = nil
-    pendingSingleOnlinePublishDraft = nil
+    pendingSingleReview = nil
     pendingBatchReview = nil
     if interruptedOperation {
       store.setPublishActionMessage(
@@ -1121,43 +1184,25 @@ struct PublishDrawerView: View {
     }
   }
 
-  @ViewBuilder
-  private func singleArticleOnlinePublishConfirmation(draft: ArticleDraft) -> some View {
-    if let preview = store.cachedRemotePublishPreview(for: draft) {
-      let presentation = PublishDrawerSingleArticleActionPresentation.make(
-        isWebsiteDraft: draft.draft
-      )
-      RemotePublishConfirmationView(
-        targetLabel: draft.draft ? String(localized: "网站草稿") : String(localized: "文章"),
-        targetTitle: draft.title,
-        purpose: presentation.confirmationPurpose,
-        preview: preview,
-        reviewDraft: store.cachedRemoteReviewDraft(for: draft),
-        isPublishing: store.isRemoteRepositoryPublishing,
-        cancelAction: {
-          pendingSingleOnlinePublishDraft = nil
-        },
-        confirmAction: {
-          pendingSingleOnlinePublishDraft = nil
-          publishSingleArticleOnline(draft)
-        }
-      )
-    } else {
-      VStack(spacing: 12) {
-        Image(systemName: "clock.arrow.circlepath")
-          .font(.system(size: 28))
-          .foregroundStyle(.secondary)
-        Text("发布预览已失效")
-          .font(.headline)
-        Text("请关闭确认页，刷新发布快照后重新审阅。")
-          .foregroundStyle(.secondary)
-        Button("关闭") {
-          pendingSingleOnlinePublishDraft = nil
-        }
+  private func singleArticleOnlinePublishConfirmation(review: SinglePublishReviewSnapshot)
+    -> some View
+  {
+    let draft = review.draft
+    let presentation = PublishDrawerSingleArticleActionPresentation.make(
+      isWebsiteDraft: draft.draft)
+    return RemotePublishConfirmationView(
+      targetLabel: draft.draft ? String(localized: "网站草稿") : String(localized: "文章"),
+      targetTitle: draft.title,
+      purpose: presentation.confirmationPurpose,
+      preview: review.preview,
+      reviewDraft: review.reviewDraft,
+      isPublishing: store.isRemoteRepositoryPublishing,
+      cancelAction: { pendingSingleReview = nil },
+      confirmAction: {
+        pendingSingleReview = nil
+        publishSingleArticleOnline(review)
       }
-      .frame(minWidth: 420, minHeight: 260)
-      .padding(WorkbenchSpacing.spacious)
-    }
+    )
   }
 
 }

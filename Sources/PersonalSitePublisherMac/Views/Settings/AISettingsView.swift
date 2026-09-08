@@ -43,7 +43,6 @@ struct AISettingsView: View {
   @State private var connectionUpdateFailed = false
   var body: some View {
     Form {
-      SettingsSubsectionAnchor(subsection: .aiConnection)
       AIConnectionProfilesSection(
         profiles: connectionProfiles,
         referencingSiteProfiles: referencingSiteProfiles,
@@ -55,7 +54,8 @@ struct AISettingsView: View {
         duplicateProfileForCurrentSite: duplicateConnectionProfile,
         currentActionMessage: currentActionMessage,
         deleteProfile: deleteConnectionProfile,
-        deletableProfiles: deletableConnectionProfiles
+        deletableProfiles: deletableConnectionProfiles,
+        subsectionAnchor: .aiConnection
       )
 
       AIProviderSection(
@@ -136,11 +136,11 @@ struct AISettingsView: View {
         )
       }
 
-      SettingsSubsectionAnchor(subsection: .aiAdvanced)
       AIAdvancedSettingsSection(
         settings: aiAdvancedSettingsBinding,
         reasoningSupport: activeConnection.config.capabilitySupport(for: .reasoningControl),
-        usesCodexAppServer: activeConnection.config.usesCodexAppServer
+        usesCodexAppServer: activeConnection.config.usesCodexAppServer,
+        subsectionAnchor: .aiAdvanced
       )
       AIProviderCapabilitiesSection(config: activeConnection.config)
       AIDataSharingConsentSection(
@@ -165,7 +165,6 @@ struct AISettingsView: View {
         }
       }
 
-      SettingsSubsectionAnchor(subsection: .aiWritingStyle)
       AIWritingStyleScopeNotice(siteName: activeProfile.name)
       AIWritingStyleSection(
         presetBinding: aiWritingStylePresetBinding,
@@ -434,6 +433,7 @@ private struct AIWritingStyleScopeNotice: View {
       .font(.caption)
       .foregroundStyle(.secondary)
       .accessibilityIdentifier("settings-ai-writing-style-current-site-scope")
+      .settingsSubsectionAnchor(.aiWritingStyle)
     }
   }
 }

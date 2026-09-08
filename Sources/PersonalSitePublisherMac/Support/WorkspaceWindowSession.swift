@@ -1,6 +1,7 @@
 import Combine
 import Foundation
 import PublishingWorkbenchCore
+import SwiftUI
 
 /// Window-owned navigation state for the main `WindowGroup` scene.
 ///
@@ -19,18 +20,21 @@ final class WorkspaceWindowSession: ObservableObject {
   @Published private(set) var windowID: UUID
   @Published private(set) var selectedSection: WorkspaceSection
   @Published private(set) var selectedDraftID: UUID?
-  private(set) var isKeyWindow = false
+  @Published private(set) var isKeyWindow = false
 
   private var didRestoreStorage = false
+  private let editorFocusRequestDelivery: WorkspaceEditorFocusRequestDelivery
 
   init(
     windowID: UUID = UUID(),
     selectedSection: WorkspaceSection,
-    selectedDraftID: UUID? = nil
+    selectedDraftID: UUID? = nil,
+    editorFocusRequestDelivery: WorkspaceEditorFocusRequestDelivery = .shared
   ) {
     self.windowID = windowID
     self.selectedSection = selectedSection
     self.selectedDraftID = selectedDraftID
+    self.editorFocusRequestDelivery = editorFocusRequestDelivery
   }
 
   var storageValues: StorageValues {
@@ -154,5 +158,108 @@ final class WorkspaceWindowSession: ObservableObject {
     self.selectedDraftID = fallbackDraftID.flatMap { fallback in
       validDraftIDs.contains(fallback) ? fallback : nil
     }
+  }
+
+  /// Records that this WindowGroup initiated an editor-location request while
+  /// a sheet may have temporarily made it non-key. The shared Store keeps the
+  /// request for compatibility, while this delivery ledger keeps another
+  /// window displaying the same draft from applying it.
+  func registerEditorFocusRequest(_ requestID: UUID) {
+    editorFocusRequestDelivery.register(requestID, for: windowID)
+  }
+
+  /// Returns true exactly once for the window allowed to apply a location
+  /// request. Legacy requests that have no explicit owner may be claimed only
+  /// by the current key window, never by a background editor.
+  func consumeEditorFocusRequest(_ requestID: UUID) -> Bool {
+    editorFocusRequestDelivery.consume(
+      requestID,
+      for: windowID,
+      isKeyWindow: isKeyWindow
+    )
+  }
+}
+
+/// App-lifetime, bounded delivery ledger for transient editor focus requests.
+/// It deliberately does not clear the Store's request: clearing it globally
+/// lets a background window race the presenting window and loses restoration
+/// information for the request owner.
+@MainActor
+final class WorkspaceEditorFocusRequestDelivery {
+  static let shared = WorkspaceEditorFocusRequestDelivery()
+
+  private struct Entry {
+    let ownerWindowID: UUID
+    var wasConsumed = false
+  }
+
+  private var entries: [UUID: Entry] = [:]
+  private var insertionOrder: [UUID] = []
+  private let maximumEntryCount = 128
+
+  var entryCount: Int { entries.count }
+
+  func register(_ requestID: UUID, for windowID: UUID) {
+    guard entries[requestID] == nil else { return }
+    entries[requestID] = Entry(ownerWindowID: windowID)
+    insertionOrder.append(requestID)
+    trimEntriesIfNeeded()
+  }
+
+  func consume(_ requestID: UUID, for windowID: UUID, isKeyWindow: Bool) -> Bool {
+    if var entry = entries[requestID] {
+      guard entry.ownerWindowID == windowID, !entry.wasConsumed else { return false }
+      entry.wasConsumed = true
+      entries[requestID] = entry
+      return true
+    }
+
+    // Requests issued by older call sites have no explicit owner. Retain the
+    // historic key-window behavior, then make that choice durable so a later
+    // remount or another window on the same draft cannot replay it.
+    guard isKeyWindow else { return false }
+    entries[requestID] = Entry(ownerWindowID: windowID, wasConsumed: true)
+    insertionOrder.append(requestID)
+    trimEntriesIfNeeded()
+    return true
+  }
+
+  private func trimEntriesIfNeeded() {
+    guard insertionOrder.count > maximumEntryCount else { return }
+    let excessCount = insertionOrder.count - maximumEntryCount
+    let removed = Array(insertionOrder.prefix(excessCount))
+    insertionOrder.removeFirst(excessCount)
+    for requestID in removed {
+      entries.removeValue(forKey: requestID)
+    }
+  }
+}
+
+private struct WorkspaceWindowIDEnvironmentKey: EnvironmentKey {
+  static let defaultValue: UUID? = nil
+}
+
+private struct WorkspaceWindowSessionEnvironmentKey: EnvironmentKey {
+  static let defaultValue: WorkspaceWindowSession? = nil
+}
+
+private struct WorkspaceWindowIsKeyEnvironmentKey: EnvironmentKey {
+  static let defaultValue = false
+}
+
+extension EnvironmentValues {
+  var workspaceWindowID: UUID? {
+    get { self[WorkspaceWindowIDEnvironmentKey.self] }
+    set { self[WorkspaceWindowIDEnvironmentKey.self] = newValue }
+  }
+
+  var workspaceWindowSession: WorkspaceWindowSession? {
+    get { self[WorkspaceWindowSessionEnvironmentKey.self] }
+    set { self[WorkspaceWindowSessionEnvironmentKey.self] = newValue }
+  }
+
+  var workspaceWindowIsKey: Bool {
+    get { self[WorkspaceWindowIsKeyEnvironmentKey.self] }
+    set { self[WorkspaceWindowIsKeyEnvironmentKey.self] = newValue }
   }
 }

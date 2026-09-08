@@ -68,6 +68,10 @@ public enum MarkdownSyntaxHighlightSchedulingPolicy {
 
 public enum MarkdownSyntaxHighlightRangeService {
   public static let defaultViewportContextLineCount = 50
+  /// Keep the additional paint context bounded when a malformed or generated
+  /// document contains one very long physical line. Parsing remains
+  /// source-complete, and the actual TextKit viewport is never truncated.
+  public static let maximumViewportUTF16Length = 8_192
 
   public static func paddedLineRange(
     in markdown: String,
@@ -98,7 +102,32 @@ public enum MarkdownSyntaxHighlightRangeService {
       )
       paddedRange = NSUnionRange(paddedRange, nextLineRange)
     }
-    return paddedRange
+    return boundedViewportRange(
+      paddedRange,
+      around: visibleRange,
+      source: source
+    )
+  }
+
+  private static func boundedViewportRange(
+    _ range: NSRange,
+    around visibleRange: NSRange,
+    source: NSString
+  ) -> NSRange {
+    let visibleStart = min(max(visibleRange.location, range.location), NSMaxRange(range))
+    let visibleEnd = min(max(NSMaxRange(visibleRange), visibleStart), NSMaxRange(range))
+    let visibleLength = visibleEnd - visibleStart
+    let budget = max(maximumViewportUTF16Length, visibleLength)
+    guard range.length > budget else { return range }
+
+    let preferredStart = visibleStart
+      - max(0, (budget - visibleLength) / 2)
+    let start = min(
+      max(range.location, preferredStart),
+      NSMaxRange(range) - budget
+    )
+    let rawRange = NSRange(location: start, length: budget)
+    return source.rangeOfComposedCharacterSequences(for: rawRange)
   }
 
   public static func plan(

@@ -18,36 +18,36 @@ extension RepositoryStore {
       )
       return nil
     }
-    guard let operation = beginRepositorySafeSyncOperation(store: store) else { return nil }
-    defer { finishRepositorySafeSyncOperation(operation, store: store) }
+    return await withRepositorySafeSyncOperation(store: store, unavailable: { nil }) { operation in
 
-    await cancelAndAwaitRepositoryBackgroundWorkForSafeSync(store: store)
-    store.setPublishActionMessage(
-      CoreL10n.text("正在冻结分叉、远端提交与本地改动…"),
-      status: .inProgress
-    )
-    do {
-      let preparation = try await Task.detached(priority: .userInitiated) {
-        try RepositoryRebaseSyncService().prepare(profile: profile)
-      }.value
-      guard repositorySafeSyncOperationIsCurrent(operation, store: store) else { return nil }
-      switch preparation {
-      case .alreadySynchronized(let branch, let headSHA):
-        store.setPublishActionMessage(
-          CoreL10n.format("本地 %@ 已与远端同步（%@）。", branch, String(headSHA.prefix(8))),
-          status: .success
-        )
-      case .confirmation:
-        store.setPublishActionMessage(
-          CoreL10n.text("已冻结变基同步复核；请确认后继续。"),
-          status: .information
-        )
+      await cancelAndAwaitRepositoryBackgroundWorkForSafeSync(store: store)
+      store.setPublishActionMessage(
+        CoreL10n.text("正在冻结分叉、远端提交与本地改动…"),
+        status: .inProgress
+      )
+      do {
+        let preparation = try await Task.detached(priority: .userInitiated) {
+          try RepositoryRebaseSyncService().prepare(profile: profile)
+        }.value
+        guard repositorySafeSyncOperationIsCurrent(operation, store: store) else { return nil }
+        switch preparation {
+        case .alreadySynchronized(let branch, let headSHA):
+          store.setPublishActionMessage(
+            CoreL10n.format("本地 %@ 已与远端同步（%@）。", branch, String(headSHA.prefix(8))),
+            status: .success
+          )
+        case .confirmation:
+          store.setPublishActionMessage(
+            CoreL10n.text("已冻结变基同步复核；请确认后继续。"),
+            status: .information
+          )
+        }
+        return preparation
+      } catch {
+        guard repositorySafeSyncOperationIsCurrent(operation, store: store) else { return nil }
+        presentRepositoryRebaseSyncFailure(error, store: store)
+        return nil
       }
-      return preparation
-    } catch {
-      guard repositorySafeSyncOperationIsCurrent(operation, store: store) else { return nil }
-      presentRepositoryRebaseSyncFailure(error, store: store)
-      return nil
     }
   }
 
@@ -70,85 +70,85 @@ extension RepositoryStore {
       )
       return nil
     }
-    guard let operation = beginRepositorySafeSyncOperation(store: store) else { return nil }
-    defer { finishRepositorySafeSyncOperation(operation, store: store) }
+    return await withRepositorySafeSyncOperation(store: store, unavailable: { nil }) { operation in
 
-    await cancelAndAwaitRepositoryBackgroundWorkForSafeSync(store: store)
-    store.setPublishActionMessage(
-      CoreL10n.text("正在封存本地改动并对已审阅远端提交变基…"),
-      status: .inProgress
-    )
-    let rebaseSyncService = makeRepositoryRebaseSyncService(
-      profile: profile,
-      store: store
-    )
-    do {
-      let result = try await Task.detached(priority: .userInitiated) {
-        try rebaseSyncService.apply(
-          profile: profile,
-          confirmation: confirmation
-        )
-      }.value
-      guard repositorySafeSyncOperationIsCurrent(operation, store: store) else { return nil }
-      var recoveryCleanupError: Error?
-      do {
-        try clearRepositoryRebaseRecovery(profile: profile, store: store)
-      } catch {
-        recoveryCleanupError = error
-        repositoryRebaseRecoveryDiagnostic = error.localizedDescription
-      }
-      await scanRepositoryAsync(store: store, autoSyncGeneration: nil)
-      guard repositorySafeSyncOperationIsCurrent(operation, store: store) else { return nil }
-      if let recoveryCleanupError {
-        store.setPublishActionMessage(
-          CoreL10n.format(
-            "变基和本地改动恢复已完成，但恢复记录清理失败：%@",
-            recoveryCleanupError.localizedDescription
-          ),
-          status: .warning
-        )
-      } else if result.stashWasRetained {
-        store.setPublishActionMessage(
-          CoreL10n.format(
-            "已变基同步 %@ 并恢复本地改动；恢复 stash 作为备份保留。",
-            result.branch
-          ),
-          status: .warning
-        )
-      } else {
-        store.setPublishActionMessage(
-          CoreL10n.format(
-            "已变基同步 %@，本地未提交改动已恢复；文章变化请在文件变更中审阅导入。",
-            result.branch
-          ),
-          status: .success
-        )
-      }
-      return result
-    } catch {
-      guard repositorySafeSyncOperationIsCurrent(operation, store: store) else { return nil }
-      let recoverySaveError = recordRecoveryContext(
-        from: error,
+      await cancelAndAwaitRepositoryBackgroundWorkForSafeSync(store: store)
+      store.setPublishActionMessage(
+        CoreL10n.text("正在封存本地改动并对已审阅远端提交变基…"),
+        status: .inProgress
+      )
+      let rebaseSyncService = makeRepositoryRebaseSyncService(
         profile: profile,
         store: store
       )
-      // The service may have durably advanced a recovery phase before a later
-      // diagnostic command failed. Always rescan so the persistent banner is
-      // installed in this process, not only after the next app launch.
-      await scanRepositoryAsync(store: store, autoSyncGeneration: nil)
-      guard repositorySafeSyncOperationIsCurrent(operation, store: store) else { return nil }
-      presentRepositoryRebaseSyncFailure(error, store: store)
-      if let recoverySaveError {
-        store.setPublishActionMessage(
-          CoreL10n.format(
-            "%@ 恢复记录未能持久化：%@",
-            error.localizedDescription,
-            recoverySaveError.localizedDescription
-          ),
-          status: .warning
+      do {
+        let result = try await Task.detached(priority: .userInitiated) {
+          try rebaseSyncService.apply(
+            profile: profile,
+            confirmation: confirmation
+          )
+        }.value
+        guard repositorySafeSyncOperationIsCurrent(operation, store: store) else { return nil }
+        var recoveryCleanupError: Error?
+        do {
+          try clearRepositoryRebaseRecovery(profile: profile, store: store)
+        } catch {
+          recoveryCleanupError = error
+          repositoryRebaseRecoveryDiagnostic = error.localizedDescription
+        }
+        await scanRepositoryAsync(store: store, autoSyncGeneration: nil)
+        guard repositorySafeSyncOperationIsCurrent(operation, store: store) else { return nil }
+        if let recoveryCleanupError {
+          store.setPublishActionMessage(
+            CoreL10n.format(
+              "变基和本地改动恢复已完成，但恢复记录清理失败：%@",
+              recoveryCleanupError.localizedDescription
+            ),
+            status: .warning
+          )
+        } else if result.stashWasRetained {
+          store.setPublishActionMessage(
+            CoreL10n.format(
+              "已变基同步 %@ 并恢复本地改动；恢复 stash 作为备份保留。",
+              result.branch
+            ),
+            status: .warning
+          )
+        } else {
+          store.setPublishActionMessage(
+            CoreL10n.format(
+              "已变基同步 %@，本地未提交改动已恢复；文章变化请在文件变更中审阅导入。",
+              result.branch
+            ),
+            status: .success
+          )
+        }
+        return result
+      } catch {
+        guard repositorySafeSyncOperationIsCurrent(operation, store: store) else { return nil }
+        let recoverySaveError = recordRecoveryContext(
+          from: error,
+          profile: profile,
+          store: store
         )
+        // The service may have durably advanced a recovery phase before a later
+        // diagnostic command failed. Always rescan so the persistent banner is
+        // installed in this process, not only after the next app launch.
+        await scanRepositoryAsync(store: store, autoSyncGeneration: nil)
+        guard repositorySafeSyncOperationIsCurrent(operation, store: store) else { return nil }
+        presentRepositoryRebaseSyncFailure(error, store: store)
+        if let recoverySaveError {
+          store.setPublishActionMessage(
+            CoreL10n.format(
+              "%@ 恢复记录未能持久化：%@",
+              error.localizedDescription,
+              recoverySaveError.localizedDescription
+            ),
+            status: .warning
+          )
+        }
+        return nil
       }
-      return nil
     }
   }
 
@@ -169,42 +169,42 @@ extension RepositoryStore {
       )
       return nil
     }
-    guard let operation = beginRepositorySafeSyncOperation(store: store) else { return nil }
-    defer { finishRepositorySafeSyncOperation(operation, store: store) }
+    return await withRepositorySafeSyncOperation(store: store, unavailable: { nil }) { operation in
 
-    await cancelAndAwaitRepositoryBackgroundWorkForSafeSync(store: store)
-    store.setPublishActionMessage(
-      CoreL10n.text("正在安全核对本地工作区与远端分支…"),
-      status: .inProgress
-    )
+      await cancelAndAwaitRepositoryBackgroundWorkForSafeSync(store: store)
+      store.setPublishActionMessage(
+        CoreL10n.text("正在安全核对本地工作区与远端分支…"),
+        status: .inProgress
+      )
 
-    do {
-      let preparation = try await Task.detached(priority: .userInitiated) {
-        try RepositorySafeSyncService().prepare(profile: profile)
-      }.value
-      guard repositorySafeSyncOperationIsCurrent(operation, store: store) else { return nil }
+      do {
+        let preparation = try await Task.detached(priority: .userInitiated) {
+          try RepositorySafeSyncService().prepare(profile: profile)
+        }.value
+        guard repositorySafeSyncOperationIsCurrent(operation, store: store) else { return nil }
 
-      switch preparation {
-      case .alreadySynchronized(let branch, let headSHA):
-        store.setPublishActionMessage(
-          CoreL10n.format(
-            "本地 %@ 已与远端同步（%@）。",
-            branch,
-            String(headSHA.prefix(8))
-          ),
-          status: .success
-        )
-      case .confirmation:
-        store.setPublishActionMessage(
-          CoreL10n.text("已冻结安全同步复核；请确认后继续。"),
-          status: .information
-        )
+        switch preparation {
+        case .alreadySynchronized(let branch, let headSHA):
+          store.setPublishActionMessage(
+            CoreL10n.format(
+              "本地 %@ 已与远端同步（%@）。",
+              branch,
+              String(headSHA.prefix(8))
+            ),
+            status: .success
+          )
+        case .confirmation:
+          store.setPublishActionMessage(
+            CoreL10n.text("已冻结安全同步复核；请确认后继续。"),
+            status: .information
+          )
+        }
+        return preparation
+      } catch {
+        guard repositorySafeSyncOperationIsCurrent(operation, store: store) else { return nil }
+        presentRepositorySafeSyncFailure(error, store: store)
+        return nil
       }
-      return preparation
-    } catch {
-      guard repositorySafeSyncOperationIsCurrent(operation, store: store) else { return nil }
-      presentRepositorySafeSyncFailure(error, store: store)
-      return nil
     }
   }
 
@@ -227,51 +227,51 @@ extension RepositoryStore {
       )
       return nil
     }
-    guard let operation = beginRepositorySafeSyncOperation(store: store) else { return nil }
-    defer { finishRepositorySafeSyncOperation(operation, store: store) }
+    return await withRepositorySafeSyncOperation(store: store, unavailable: { nil }) { operation in
 
-    await cancelAndAwaitRepositoryBackgroundWorkForSafeSync(store: store)
-    store.setPublishActionMessage(
-      CoreL10n.text("正在安全同步远端分支…"),
-      status: .inProgress
-    )
-    let recoveryRootURL = store.persistenceStore.persistence.recoveryArchiveDirectoryURL
-      .appendingPathComponent("RepositorySafeSync", isDirectory: true)
+      await cancelAndAwaitRepositoryBackgroundWorkForSafeSync(store: store)
+      store.setPublishActionMessage(
+        CoreL10n.text("正在安全同步远端分支…"),
+        status: .inProgress
+      )
+      let recoveryRootURL = store.persistenceStore.persistence.recoveryArchiveDirectoryURL
+        .appendingPathComponent("RepositorySafeSync", isDirectory: true)
 
-    do {
-      let result = try await Task.detached(priority: .userInitiated) {
-        try RepositorySafeSyncService().apply(
-          profile: profile,
-          confirmation: confirmation,
-          recoveryRootURL: recoveryRootURL
-        )
-      }.value
-      guard repositorySafeSyncOperationIsCurrent(operation, store: store) else { return nil }
+      do {
+        let result = try await Task.detached(priority: .userInitiated) {
+          try RepositorySafeSyncService().apply(
+            profile: profile,
+            confirmation: confirmation,
+            recoveryRootURL: recoveryRootURL
+          )
+        }.value
+        guard repositorySafeSyncOperationIsCurrent(operation, store: store) else { return nil }
 
-      await scanRepositoryAsync(store: store, autoSyncGeneration: nil)
-      guard repositorySafeSyncOperationIsCurrent(operation, store: store) else { return nil }
-      if result.remoteAdvancedAgain {
-        store.setPublishActionMessage(
-          CoreL10n.format(
-            "已安全同步 %@ 到审阅版本，但远端又有新提交；请重新审阅同步。",
-            result.branch
-          ),
-          status: .warning
-        )
-      } else {
-        store.setPublishActionMessage(
-          CoreL10n.format(
-            "已安全同步 %@，本地工作区已重新扫描；文章变化请在文件变更中审阅导入。",
-            result.branch
-          ),
-          status: .success
-        )
+        await scanRepositoryAsync(store: store, autoSyncGeneration: nil)
+        guard repositorySafeSyncOperationIsCurrent(operation, store: store) else { return nil }
+        if result.remoteAdvancedAgain {
+          store.setPublishActionMessage(
+            CoreL10n.format(
+              "已安全同步 %@ 到审阅版本，但远端又有新提交；请重新审阅同步。",
+              result.branch
+            ),
+            status: .warning
+          )
+        } else {
+          store.setPublishActionMessage(
+            CoreL10n.format(
+              "已安全同步 %@，本地工作区已重新扫描；文章变化请在文件变更中审阅导入。",
+              result.branch
+            ),
+            status: .success
+          )
+        }
+        return result
+      } catch {
+        guard repositorySafeSyncOperationIsCurrent(operation, store: store) else { return nil }
+        presentRepositorySafeSyncFailure(error, store: store)
+        return nil
       }
-      return result
-    } catch {
-      guard repositorySafeSyncOperationIsCurrent(operation, store: store) else { return nil }
-      presentRepositorySafeSyncFailure(error, store: store)
-      return nil
     }
   }
 

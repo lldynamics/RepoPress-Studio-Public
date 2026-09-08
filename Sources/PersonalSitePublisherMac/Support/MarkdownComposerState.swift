@@ -88,8 +88,12 @@ final class MarkdownComposerEditorSessionState: ObservableObject {
   @Published var isFindCaseSensitive: Bool
   @Published var isFindWholeWord: Bool
   @Published var isFindRegularExpression: Bool
+  @Published var findScope: MarkdownFindScope
   @Published var findReplaceMessage = ""
   @Published var findMatchSnapshot: MarkdownFindMatchSnapshot
+  var findScopeSnapshot: MarkdownFindScopeSnapshot?
+  @Published var pendingFindReplacePreview: MarkdownFindReplacePreview?
+  @Published var collapsedOutlineItemIDs: Set<String>
   @Published var editorEditRequest: MarkdownTextEditRequest?
   @Published var markdownTextFocusRequest: MarkdownTextFocusRequest?
   @Published var editorScrollRestorationUpdate: MarkdownScrollSyncUpdate?
@@ -119,6 +123,7 @@ final class MarkdownComposerEditorSessionState: ObservableObject {
     isFindCaseSensitive: Bool,
     isFindWholeWord: Bool,
     isFindRegularExpression: Bool,
+    findScope: MarkdownFindScope = .body,
     findMatchSnapshot: MarkdownFindMatchSnapshot,
     editorScrollRestorationUpdate: MarkdownScrollSyncUpdate?,
     editorScrollProgress: Double,
@@ -128,7 +133,10 @@ final class MarkdownComposerEditorSessionState: ObservableObject {
     invalidFrontMatterBaseBodyMarkdown: String? = nil,
     invalidFrontMatterBaseBodyRevision: UInt64? = nil,
     markdownCursorContextSnapshot: MarkdownCursorContextSnapshot? = nil,
-    markdownCursorCompletionSnapshot: MarkdownCompletionContext? = nil
+    markdownCursorCompletionSnapshot: MarkdownCompletionContext? = nil,
+    findScopeSnapshot: MarkdownFindScopeSnapshot? = nil,
+    pendingFindReplacePreview: MarkdownFindReplacePreview? = nil,
+    collapsedOutlineItemIDs: Set<String> = []
   ) {
     self.editorBody = editorBody
     self.editorDocument = editorDocument
@@ -139,7 +147,11 @@ final class MarkdownComposerEditorSessionState: ObservableObject {
     self.isFindCaseSensitive = isFindCaseSensitive
     self.isFindWholeWord = isFindWholeWord
     self.isFindRegularExpression = isFindRegularExpression
+    self.findScope = findScope
     self.findMatchSnapshot = findMatchSnapshot
+    self.findScopeSnapshot = findScopeSnapshot
+    self.pendingFindReplacePreview = pendingFindReplacePreview
+    self.collapsedOutlineItemIDs = collapsedOutlineItemIDs
     self.editorScrollRestorationUpdate = editorScrollRestorationUpdate
     self.editorScrollProgress = editorScrollProgress
     self.editorBodyRevision = editorBodyRevision
@@ -185,6 +197,17 @@ struct MarkdownComposerSelectionActionState {
   var aiPromptClipboardRequestID: UUID?
   var selectionActionMessage = ""
   var selectionEditPreview: AIPublishingSelectionEditPreview?
+  var pendingCitationBacklinkRetry: MarkdownComposerCitationBacklinkRetry?
+}
+
+/// Keeps retry data tied to the exact article whose body was already applied.
+/// A later editor switch must not let an old asynchronous backlink result
+/// update the newly selected article's UI.
+struct MarkdownComposerCitationBacklinkRetry: Identifiable {
+  let id = UUID()
+  let draftID: UUID
+  let citations: [KnowledgeCitation]
+  let target: KnowledgeBacklinkTarget
 }
 
 /// Value state for the delayed selection bubble presentation.
@@ -403,6 +426,26 @@ extension MacMarkdownComposerView {
   var isFindRegularExpression: Bool {
     get { editorSessionState.isFindRegularExpression }
     nonmutating set { editorSessionState.isFindRegularExpression = newValue }
+  }
+
+  var findScope: MarkdownFindScope {
+    get { editorSessionState.findScope }
+    nonmutating set { editorSessionState.findScope = newValue }
+  }
+
+  var findScopeSnapshot: MarkdownFindScopeSnapshot? {
+    get { editorSessionState.findScopeSnapshot }
+    nonmutating set { editorSessionState.findScopeSnapshot = newValue }
+  }
+
+  var pendingFindReplacePreview: MarkdownFindReplacePreview? {
+    get { editorSessionState.pendingFindReplacePreview }
+    nonmutating set { editorSessionState.pendingFindReplacePreview = newValue }
+  }
+
+  var collapsedOutlineItemIDs: Set<String> {
+    get { editorSessionState.collapsedOutlineItemIDs }
+    nonmutating set { editorSessionState.collapsedOutlineItemIDs = newValue }
   }
 
   var findReplaceMessage: String {

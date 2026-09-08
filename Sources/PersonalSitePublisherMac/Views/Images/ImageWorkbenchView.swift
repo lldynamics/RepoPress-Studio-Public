@@ -4,6 +4,7 @@ import SwiftUI
 
 struct ImageWorkbenchView: View {
   let store: WorkbenchStore
+  @Environment(\.workspaceWindowID) private var workspaceWindowID
   @Binding private var stage: ImageWorkbenchContextStage
   @ObservedObject private var imageWorkbench: WorkbenchImageWorkbenchFeatureFacade
 
@@ -37,11 +38,16 @@ struct ImageWorkbenchView: View {
     .accessibilityIdentifier("image-workbench")
     .onAppear {
       normalizeRepositoryTargetDraft()
+      applyAssetResourceManagerNavigationRequest()
     }
     .onChange(of: store.activeProfile.id) { _, _ in
       repositoryInventory = nil
       selectedRepositoryPath = nil
       normalizeRepositoryTargetDraft()
+      applyAssetResourceManagerNavigationRequest()
+    }
+    .onChange(of: imageWorkbench.assetResourceManagerNavigationRequest?.id) { _, _ in
+      applyAssetResourceManagerNavigationRequest()
     }
     .onChange(of: store.visibleDrafts.map(\.id)) { _, _ in
       normalizeRepositoryTargetDraft()
@@ -563,6 +569,22 @@ struct ImageWorkbenchView: View {
     }
   }
 
+  private func applyAssetResourceManagerNavigationRequest() {
+    guard let workspaceWindowID,
+      let request = imageWorkbench.assetResourceManagerNavigationRequest,
+      ImageWorkbenchResourceNavigationPolicy.destination(
+        for: request,
+        activeProfileID: store.activeProfile.id,
+        windowID: workspaceWindowID
+      ) == .assetResourceManager
+    else {
+      return
+    }
+    stage = .resources
+    resourceMode = .manager
+    imageWorkbench.consumeAssetResourceManagerNavigationRequest(request, from: workspaceWindowID)
+  }
+
   private func openDraft(_ draftID: UUID) {
     _ = store.focusDraft(draftID, section: .writing)
   }
@@ -578,7 +600,7 @@ private struct RepositoryInventoryRefreshInput: Hashable {
   let resourceMode: ImageWorkbenchResourceMode
 }
 
-private enum ImageWorkbenchResourceMode: String, CaseIterable, Identifiable, Hashable {
+enum ImageWorkbenchResourceMode: String, CaseIterable, Identifiable, Hashable {
   case repository
   case manager
 
@@ -618,5 +640,20 @@ private enum ImageWorkbenchResourceMode: String, CaseIterable, Identifiable, Has
     case .manager:
       return "扫描全仓库 Markdown 引用，清理孤立资源并安全压缩大图。"
     }
+  }
+}
+
+enum ImageWorkbenchResourceNavigationDestination: Equatable {
+  case assetResourceManager
+}
+
+enum ImageWorkbenchResourceNavigationPolicy {
+  static func destination(
+    for request: AssetResourceManagerNavigationRequest,
+    activeProfileID: UUID,
+    windowID: UUID? = nil
+  ) -> ImageWorkbenchResourceNavigationDestination? {
+    guard request.profileID == activeProfileID, request.windowID == windowID else { return nil }
+    return .assetResourceManager
   }
 }

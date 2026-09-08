@@ -400,7 +400,8 @@ public struct ArticleDraft: Identifiable, Codable, Hashable, Sendable {
   public mutating func recordProjectFile(
     profile: SiteProfile,
     repositoryPath: String,
-    renderedContentDigest: String
+    renderedContentDigest: String,
+    projectFileContentDigest: String? = nil
   ) {
     let normalizedPath = repositoryPath.normalizedRelativePath()
     let identity = DraftRepositoryIdentity(profile: profile)
@@ -444,7 +445,8 @@ public struct ArticleDraft: Identifiable, Codable, Hashable, Sendable {
       repositoryPath: normalizedPath,
       remoteRevision: retainedRevision,
       renderedContentDigest: recordedDigest,
-      projectFileContentDigest: renderedContentDigest,
+      projectFileContentDigest: projectFileContentDigest ?? renderedContentDigest,
+      projectFileRenderedContentDigest: renderedContentDigest,
       pendingReviewContentDigest: recordedSyncState == .awaitingReview
         ? retainedPendingReviewDigest
         : nil,
@@ -459,6 +461,7 @@ public struct ArticleDraft: Identifiable, Codable, Hashable, Sendable {
     repositoryPath: String,
     remoteRevision: String,
     renderedContentDigest: String,
+    projectFileContentDigest: String? = nil,
     verifiedAt: Date = Date()
   ) {
     let normalizedPath = repositoryPath.normalizedRelativePath()
@@ -471,7 +474,8 @@ public struct ArticleDraft: Identifiable, Codable, Hashable, Sendable {
       repositoryPath: normalizedPath,
       remoteRevision: normalizedRevision,
       renderedContentDigest: renderedContentDigest,
-      projectFileContentDigest: renderedContentDigest,
+      projectFileContentDigest: projectFileContentDigest ?? renderedContentDigest,
+      projectFileRenderedContentDigest: renderedContentDigest,
       verification: .verified,
       syncState: .synced,
       verifiedAt: verifiedAt

@@ -1,4 +1,3 @@
-import PublishingWorkbenchCore
 import SwiftUI
 
 enum SettingsSaveStatusKind: Equatable {

@@ -7,16 +7,20 @@ public protocol RemoteRepositoryHTTPTransport: Sendable {
 public struct URLSessionRemoteRepositoryHTTPTransport: RemoteRepositoryHTTPTransport {
   static let maximumResponseByteCount = 8 * 1_024 * 1_024
 
-  private let session: URLSession
+  private let sessionOwner: ManagedURLSession
+
+  var hasCreatedSession: Bool { sessionOwner.hasCreatedSession }
 
   public init(session: URLSession? = nil) {
-    self.session = session ?? CredentialSafeURLSession.make()
+    sessionOwner = session.map { ManagedURLSession(session: $0) }
+      ?? ManagedURLSession { CredentialSafeURLSession.make() }
   }
 
   public func data(for request: URLRequest) async throws -> (Data, URLResponse) {
-    try await BoundedHTTPResponseLoader.data(
+    defer { withExtendedLifetime(sessionOwner) {} }
+    return try await BoundedHTTPResponseLoader.data(
       for: request,
-      using: session,
+      using: sessionOwner.session,
       maximumByteCount: Self.maximumResponseByteCount
     )
   }

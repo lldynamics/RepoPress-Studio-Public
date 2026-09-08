@@ -1,4 +1,3 @@
-import PublishingWorkbenchCore
 import SwiftUI
 
 @MainActor
@@ -6,7 +5,6 @@ struct SettingsConfigurationStatusView: View {
   let context: SettingsContext
   var body: some View {
     Form {
-      SettingsSubsectionAnchor(subsection: .configurationReadiness)
       SettingsConfigurationHealthCard(
         profile: context.store.activeProfile,
         aiProviderConfig: context.store.aiProviderConfig(for: context.store.activeProfile),
@@ -15,6 +13,7 @@ struct SettingsConfigurationStatusView: View {
         selectDestination: context.selectConfigurationHealthDestination,
         isEmbedded: true
       )
+      .settingsSubsectionAnchor(.configurationReadiness)
     }
     .formStyle(.grouped)
     .scrollIndicators(.hidden)

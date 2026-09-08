@@ -1,4 +1,5 @@
-import PublishingWorkbenchCore
+import PublishingCoreSupport
+import PublishingKnowledgeCore
 import SwiftUI
 
 extension KnowledgeSourceListColumn {

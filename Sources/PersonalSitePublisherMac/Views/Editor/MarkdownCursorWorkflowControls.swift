@@ -1,4 +1,5 @@
-import PublishingWorkbenchCore
+import PublishingDomainContracts
+import PublishingMarkdownCore
 import SwiftUI
 
 struct MarkdownCursorWorkflowControls: View {

@@ -330,6 +330,25 @@ extension WorkbenchStore {
     publishingStore.scheduleBatchPublishPlanRefresh(store: self)
   }
 
+  public func setBatchPublishPlanConsumer(_ consumerID: UUID, isActive: Bool) {
+    if isActive {
+      publishingStore.publishSession.batchPublishPlanConsumers.insert(consumerID)
+    } else {
+      let removed = publishingStore.publishSession.batchPublishPlanConsumers.remove(consumerID)
+      if removed != nil, publishingStore.publishSession.batchPublishPlanConsumers.isEmpty {
+        publishingStore.invalidateBatchPublishPlan()
+      }
+    }
+  }
+
+  /// File-system observations invalidate review evidence, but ordinary writing
+  /// must not flush editor buffers or rebuild an unused whole-site plan.
+  public func invalidateBatchPublishPlanForRepositoryChange() {
+    publishingStore.invalidateBatchPublishPlan()
+    guard !publishingStore.publishSession.batchPublishPlanConsumers.isEmpty else { return }
+    refreshBatchPublishPlanInBackground()
+  }
+
   public func refreshBatchPublishPlanAsync() async {
     refreshBatchPublishPlanInBackground()
     await publishingStore.waitForBatchPublishPlanRefresh()
@@ -606,6 +625,22 @@ extension WorkbenchStore {
     invalidateDraftDerivedCaches()
   }
 
+  @discardableResult
+  public func createDraft(
+    from snippet: MarkdownSnippet,
+    asGeneralDraft: Bool,
+    title: String? = nil
+  ) -> UUID? {
+    let id = publishingStore.createDraft(
+      from: snippet,
+      asGeneralDraft: asGeneralDraft,
+      title: title,
+      store: self
+    )
+    if id != nil { invalidateDraftDerivedCaches() }
+    return id
+  }
+
   public func setDraftListContentScope(_ scope: DraftListContentScope) {
     flushDraftBodyEditorBuffers()
     publishingStore.setDraftListContentScope(scope, store: self)
@@ -620,17 +655,7 @@ extension WorkbenchStore {
     }
 
     let previousDraft = drafts.first { $0.id == bufferedDraft.id }
-    // The list projection is the invalidation boundary. Body, word-count,
-    // repository and attachment-only changes can refresh their own derived
-    // caches without rebuilding the sidebar projection.
-    let isListMetadataEdit =
-      previousDraft.map {
-        !$0.hasSameListMetadata(as: bufferedDraft)
-      } ?? true
-    let isNonListEditorMetadataEdit =
-      previousDraft.map {
-        !$0.hasSameEditorMetadata(as: bufferedDraft)
-      } ?? true
+    let impact = DraftChangeImpact(previous: previousDraft, updated: bufferedDraft)
     publishingStore.updateDraft(bufferedDraft, store: self)
     if bufferedDraft.wordCountNeedsRefresh {
       scheduleDraftWordCountRefresh(
@@ -641,24 +666,14 @@ extension WorkbenchStore {
     if !buffer.isDirty, previousDraft?.bodyMarkdown != bufferedDraft.bodyMarkdown {
       synchronizeDraftBodyEditorBuffer(with: bufferedDraft)
     }
-    if isListMetadataEdit {
+    switch impact {
+    case .listMetadata:
       invalidateDraftDerivedCaches()
-    } else if isNonListEditorMetadataEdit {
-      // Attachments, aliases, authors and other editor metadata can affect
-      // publish/maintenance projections without belonging to the sidebar.
-      // Clear those projections while keeping the list observation boundary
-      // silent.
+    case .editorMetadata:
       invalidateDraftDerivedCaches(notifyingDraftList: false)
-    } else {
-      let imageInputsDidChange =
-        previousDraft.map {
-          ImageWorkbenchMarkdownReferenceSignature(markdown: $0.bodyMarkdown)
-            != ImageWorkbenchMarkdownReferenceSignature(markdown: bufferedDraft.bodyMarkdown)
-        } ?? true
+    case .body(let imageReferencesChanged):
       invalidateBodyEditingDerivedCaches(
-        for: bufferedDraft.id,
-        imageInputsDidChange: imageInputsDidChange
-      )
+        for: bufferedDraft.id, imageInputsDidChange: imageReferencesChanged)
     }
   }
 

@@ -11,6 +11,7 @@ public final class WorkbenchRootPresentationFeatureFacade: ObservableObject {
   private unowned let store: WorkbenchStore
   private var cancellables = Set<AnyCancellable>()
   private var isChangeNotificationScheduled = false
+  private var didPrepareInitialWindowPresentation = false
 
   init(store: WorkbenchStore) {
     self.store = store
@@ -36,6 +37,13 @@ public final class WorkbenchRootPresentationFeatureFacade: ObservableObject {
 
   public func hideAssistant() {
     store.hideAIPublishingAssistant()
+  }
+
+  /// Reset restored visibility once per workbench, not once per window.
+  public func prepareInitialWindowPresentation() {
+    guard !didPrepareInitialWindowPresentation else { return }
+    didPrepareInitialWindowPresentation = true
+    hideAssistant()
   }
 
   private func observe<P: Publisher>(_ publisher: P)

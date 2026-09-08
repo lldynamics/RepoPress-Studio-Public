@@ -53,7 +53,51 @@ extension MacMarkdownComposerView {
   var canUseFindReplace: Bool {
     guard !findQuery.isEmpty else { return false }
     guard !findMatchRefreshCoordinator.isPending else { return false }
+    guard currentFindScopeRange != nil else { return false }
     return findMatchSnapshot.errorMessage == nil
+  }
+
+  var hasUsableFindSelectionScope: Bool {
+    findScopeSnapshot?.hasMatchingRevision(
+      for: draft.id,
+      bodyRevision: editorBodyRevision,
+      body: editorBody
+    ) == true
+  }
+
+  var currentFindScopeRange: NSRange? {
+    MarkdownFindReplaceScopePlanner.scopeRange(
+      scope: findScope,
+      snapshot: findScopeSnapshot,
+      draftID: draft.id,
+      bodyRevision: editorBodyRevision,
+      body: editorBody
+    )
+  }
+
+  var findScopeStatus: String? {
+    guard findScope == .selection, !hasUsableFindSelectionScope else { return nil }
+    return String(localized: "选区已变化，请重新打开查找")
+  }
+
+  func freezeFindSelectionScope() {
+    let source = editorBody as NSString
+    let range = selectedRange
+    guard
+      range.location >= 0,
+      range.length > 0,
+      NSMaxRange(range) <= source.length
+    else {
+      findScopeSnapshot = nil
+      if findScope == .selection { findScope = .body }
+      return
+    }
+    findScopeSnapshot = MarkdownFindScopeSnapshot(
+      draftID: draft.id,
+      bodyRevision: editorBodyRevision,
+      range: range,
+      selectedText: source.substring(with: range)
+    )
   }
 
   func updateEditorScrollPosition(_ position: MarkdownScrollSyncPosition) {
@@ -76,6 +120,10 @@ extension MacMarkdownComposerView {
     isFindCaseSensitive = editorSession.isFindCaseSensitive
     isFindWholeWord = editorSession.isFindWholeWord
     isFindRegularExpression = editorSession.isFindRegularExpression
+    findScope = .body
+    findScopeSnapshot = nil
+    pendingFindReplacePreview = nil
+    collapsedOutlineItemIDs = []
     editorScrollProgress = editorSession.editorScrollProgress
     editorScrollRestorationUpdate = MarkdownScrollSyncUpdate(
       source: .editor,
@@ -196,6 +244,7 @@ extension MacMarkdownComposerView {
   }
 
   var findReplaceFeedbackMessage: String {
+    if let findScopeStatus { return findScopeStatus }
     guard !findQuery.isEmpty else { return findReplaceMessage }
     if findMatchRefreshCoordinator.isPending {
       return String(localized: "正在搜索…")
@@ -206,16 +255,25 @@ extension MacMarkdownComposerView {
   func refreshFindMatchSnapshot() {
     let text = editorBody
     let query = findQuery
+    guard !query.isEmpty else {
+      cancelFindMatchRefresh()
+      findMatchSnapshot = .empty
+      return
+    }
     let options = findOptions
     let bodyRevision = editorBodyRevision
     let session = editorSessionState
+    guard let scopeRange = currentFindScopeRange else {
+      findMatchSnapshot = .empty
+      return
+    }
 
     // A new request invalidates the previous snapshot immediately. This keeps
     // find-next/replace from acting on a result for an older body or query
     // while the replacement scan is running in the background.
     findMatchSnapshot = .empty
     findMatchRefreshCoordinator.schedule(
-      text: text,
+      text: findScope == .body ? text : (text as NSString).substring(with: scopeRange),
       query: query,
       options: options
     ) { [weak session] result in
@@ -231,8 +289,17 @@ extension MacMarkdownComposerView {
       else {
         return
       }
+      guard MarkdownFindReplaceScopePlanner.scopeRange(
+        scope: session.findScope,
+        snapshot: session.findScopeSnapshot,
+        draftID: draft.id,
+        bodyRevision: bodyRevision,
+        body: text
+      ) == scopeRange else {
+        return
+      }
       session.findMatchSnapshot = MarkdownFindMatchSnapshot(
-        ranges: result.ranges,
+        ranges: result.ranges.map { NSRange(location: scopeRange.location + $0.location, length: $0.length) },
         errorMessage: result.errorMessage
       )
     }

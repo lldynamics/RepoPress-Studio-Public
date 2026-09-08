@@ -1,7 +1,6 @@
 import AppKit
 import Foundation
 import PublishingMarkdownCore
-import PublishingWorkbenchCore
 import SwiftUI
 import XCTest
 

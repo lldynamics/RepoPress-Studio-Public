@@ -1,6 +1,5 @@
 import AppKit
 import Foundation
-import PublishingWorkbenchCore
 import SwiftUI
 import UniformTypeIdentifiers
 #if canImport(Darwin)
@@ -14,8 +13,12 @@ struct FindReplaceBar: View {
   @Binding var isFindRegularExpression: Bool
 
   let canUseFindReplace: Bool
+  let findScope: MarkdownFindScope
+  let canUseSelectionScope: Bool
+  let findScopeStatus: String?
   let findMatchStatus: String
   let findReplaceMessage: String
+  let onSetScope: (MarkdownFindScope) -> Void
   let onFindPrevious: () -> Void
   let onFindNext: () -> Void
   let onReplaceCurrentOrNext: () -> Void
@@ -51,6 +54,7 @@ struct FindReplaceBar: View {
     HStack(spacing: 8) {
       findField(maxWidth: 240)
       replacementField(maxWidth: 240)
+      scopeControl
       findControls
       replaceControls
 
@@ -75,7 +79,12 @@ struct FindReplaceBar: View {
       }
 
       HStack(spacing: 8) {
+        scopeControl
         findControls
+        Spacer(minLength: 0)
+      }
+
+      HStack(spacing: 8) {
         replaceControls
         if !findReplaceMessage.isEmpty {
           Text(findReplaceMessage)
@@ -147,6 +156,30 @@ struct FindReplaceBar: View {
     .fixedSize()
   }
 
+  private var scopeControl: some View {
+    Menu {
+      ForEach(MarkdownFindScope.allCases) { scope in
+        Button {
+          onSetScope(scope)
+        } label: {
+          if scope == findScope {
+            Label(scope.title, systemImage: "checkmark")
+          } else {
+            Text(scope.title)
+          }
+        }
+        .disabled(scope == .selection && !canUseSelectionScope)
+      }
+    } label: {
+      Label(findScope.title, systemImage: findScope == .body ? "doc.text" : "selection.pin.in.out")
+    }
+    .menuStyle(.borderlessButton)
+    .fixedSize()
+    .help(findScopeStatus ?? String(localized: "查找作用范围"))
+    .accessibilityLabel("查找作用范围")
+    .accessibilityValue(findScopeStatus ?? findScope.title)
+  }
+
   private var replaceControls: some View {
     HStack(spacing: 6) {
       Button {
@@ -160,7 +193,7 @@ struct FindReplaceBar: View {
       Button {
         onReplaceAll()
       } label: {
-        Label("全部替换", systemImage: "arrow.triangle.2.circlepath")
+        Label("预览全部替换", systemImage: "arrow.triangle.2.circlepath")
       }
       .disabled(!canUseFindReplace)
       .accessibilityLabel("全部替换")
@@ -177,5 +210,60 @@ struct FindReplaceBar: View {
     .buttonStyle(.borderless)
     .help(String(localized: "关闭查找替换"))
     .accessibilityLabel("关闭查找替换")
+  }
+}
+
+struct MarkdownFindReplacePreviewSheet: View {
+  let preview: MarkdownFindReplacePreview
+  let onConfirm: () -> Void
+  let onCancel: () -> Void
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 16) {
+      HStack {
+        Label("确认全部替换", systemImage: "arrow.triangle.2.circlepath")
+          .font(.headline)
+        Spacer()
+        Text("\(preview.replacementCount) 处")
+          .font(.callout.monospacedDigit().weight(.semibold))
+          .foregroundStyle(.secondary)
+      }
+
+      Text("范围：\(preview.scope.title)；确认后会作为一次可撤销编辑写入正文。")
+        .font(.callout)
+        .foregroundStyle(.secondary)
+
+      HStack(alignment: .top, spacing: 12) {
+        previewColumn(title: "替换前", text: preview.originalScope)
+        previewColumn(title: "替换后", text: preview.proposedScope)
+      }
+
+      HStack {
+        Spacer()
+        Button("取消", action: onCancel)
+        Button("确认替换", action: onConfirm)
+          .buttonStyle(.borderedProminent)
+          .disabled(preview.replacementCount == 0)
+      }
+    }
+    .padding(20)
+    .frame(minWidth: 640, idealWidth: 760, minHeight: 420)
+    .accessibilityIdentifier("markdown-find-replace-preview")
+  }
+
+  private func previewColumn(title: String, text: String) -> some View {
+    VStack(alignment: .leading, spacing: 6) {
+      Text(title)
+        .font(.subheadline.weight(.semibold))
+      ScrollView {
+        Text(text)
+          .font(.system(.body, design: .monospaced))
+          .textSelection(.enabled)
+          .frame(maxWidth: .infinity, alignment: .leading)
+          .padding(10)
+      }
+      .background(.quaternary, in: RoundedRectangle(cornerRadius: 6))
+    }
+    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
   }
 }

@@ -50,6 +50,70 @@ final class AIChatFollowUpSuggestionTests: XCTestCase {
     XCTAssertTrue(result.suggestions.contains(where: { $0.title.contains("代码") }))
   }
 
+  func testWritingFenceWithNestedCodeFenceDoesNotSuggestCodeOrOutlineActions() {
+    let content = """
+      ```markdown
+      # 发布大纲
+
+      下面这段文字讨论代码，但它仍然属于文章内容：
+      ```swift
+      func example() { print("文章中的示例") }
+      ```
+      ```
+      """
+
+    let result = AIChatFollowUpSuggestionService.extractOrInferSuggestions(content: content)
+    XCTAssertFalse(result.suggestions.contains(where: { $0.title.contains("代码") }))
+    XCTAssertFalse(result.suggestions.contains(where: { $0.title.contains("大纲") }))
+  }
+
+  func testUnmarkedWritingFenceWithCodeWordsDoesNotSuggestUnitTests() {
+    let content = """
+      ```
+      这是文章中的代码一词和 func 单词，不是可执行代码。
+      ```
+      """
+
+    let result = AIChatFollowUpSuggestionService.extractOrInferSuggestions(content: content)
+    XCTAssertFalse(result.suggestions.contains(where: { $0.title.contains("代码") }))
+    XCTAssertFalse(result.suggestions.contains(where: { $0.title.contains("单元测试") }))
+  }
+
+  func testMarkdownAndTextWritingFencesAreExcludedFromCodeInference() {
+    let content = """
+      ```md
+      # 大纲
+      ```
+      ```text
+      Python 和 JavaScript 是文章中的单词。
+      ```
+      """
+
+    let result = AIChatFollowUpSuggestionService.extractOrInferSuggestions(content: content)
+    XCTAssertFalse(result.suggestions.contains(where: { $0.title.contains("代码") }))
+    XCTAssertFalse(result.suggestions.contains(where: { $0.title.contains("大纲") }))
+  }
+
+  func testAutomationSuggestionsKeepPriorityOverCodeInference() {
+    let content = """
+      ```swift
+      func hello() {}
+      ```
+      """
+
+    let result = AIChatFollowUpSuggestionService.extractOrInferSuggestions(
+      content: content, hasAutomationPlan: true)
+    XCTAssertEqual(result.suggestions.first?.title, "查看计划执行细节")
+    XCTAssertFalse(result.suggestions.contains(where: { $0.title.contains("代码") }))
+  }
+
+  func testGenericSuggestionsDoNotClaimCurrentArticleWithoutDraft() {
+    let result = AIChatFollowUpSuggestionService.extractOrInferSuggestions(content: "普通回复")
+    XCTAssertFalse(result.suggestions.contains(where: { $0.prompt.contains("当前文章") }))
+    XCTAssertFalse(result.suggestions.contains(where: { $0.prompt.contains("这篇文章") }))
+    XCTAssertTrue(result.suggestions.contains(where: { $0.prompt.contains("上述内容") }))
+  }
+
   func testInfersDefaultSuggestionsForOutlines() {
     let content = "这是文章的整体大纲，分为三个主要章节。"
     let result = AIChatFollowUpSuggestionService.extractOrInferSuggestions(content: content)

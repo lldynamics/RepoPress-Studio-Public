@@ -259,6 +259,33 @@ final class AIInlineStructuredEditReviewFacadeTests: XCTestCase {
     XCTAssertNotNil(store.ai.currentInlineStructuredEditReviewSession(for: second.id))
   }
 
+  func testDecisionAdvancesToNextPendingAndSummaryKeepsCurrentWhenComplete() {
+    let store = makeStore()
+    let draft = ArticleDraft(
+      siteProfileID: store.activeProfileID, title: "审阅", slug: "review", bodyMarkdown: "甲乙丙"
+    )
+    store.setDrafts([draft])
+    let document = AIStructuredEditDocument(changes: [
+      AIStructuredEditProposal(id: "a", range: .init(location: 0, length: 1), originalText: "甲", replacementText: "一", reason: "a", category: .clarity, confidence: 1),
+      AIStructuredEditProposal(id: "b", range: .init(location: 1, length: 1), originalText: "乙", replacementText: "二", reason: "b", category: .clarity, confidence: 1),
+      AIStructuredEditProposal(id: "c", range: .init(location: 2, length: 1), originalText: "丙", replacementText: "三", reason: "c", category: .clarity, confidence: 1)
+    ])
+    XCTAssertTrue(store.ai.beginInlineStructuredEditReview(message: structuredEditMessage(for: draft, document: document), review: .init(document: document)))
+
+    store.ai.setInlineStructuredEditDecision(.accepted, for: "a", draftID: draft.id)
+    var session = store.ai.currentInlineStructuredEditReviewSession(for: draft.id)
+    XCTAssertEqual(session?.currentHunkID, "b")
+    XCTAssertEqual(session?.decisionSummary, .init(pending: 2, accepted: 1, rejected: 0))
+
+    store.ai.setInlineStructuredEditDecision(.rejected, for: "b", draftID: draft.id)
+    session = store.ai.currentInlineStructuredEditReviewSession(for: draft.id)
+    XCTAssertEqual(session?.currentHunkID, "c")
+    store.ai.setInlineStructuredEditDecision(.accepted, for: "c", draftID: draft.id)
+    session = store.ai.currentInlineStructuredEditReviewSession(for: draft.id)
+    XCTAssertEqual(session?.currentHunkID, "c")
+    XCTAssertEqual(session?.decisionSummary, .init(pending: 0, accepted: 2, rejected: 1))
+  }
+
   private func structuredEditMessage(
     for draft: ArticleDraft,
     document: AIStructuredEditDocument

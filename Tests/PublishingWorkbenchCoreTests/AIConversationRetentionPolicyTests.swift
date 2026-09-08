@@ -5,6 +5,17 @@ import XCTest
 
 @MainActor
 final class AIConversationRetentionPolicyTests: XCTestCase {
+  func testEqualTimestampConversationsHaveStableOrderAcrossScopeGrouping() {
+    let date = Date(timeIntervalSince1970: 1_000)
+    let conversations = (0..<20).map { index in
+      AIConversation(draftID: UUID(), title: "Conversation \(index)", createdAt: date, updatedAt: date)
+    }
+    let forward = AIConversationRetentionPolicy.limited(conversations)
+    let reversed = AIConversationRetentionPolicy.limited(Array(conversations.reversed()))
+    XCTAssertEqual(forward, reversed)
+    XCTAssertEqual(Set(forward.map(\.id)), Set(conversations.map(\.id)))
+  }
+
   func testRetentionLimitsConversationsPerDraftAndKeepsPreferredConversation() {
     let draftID = UUID()
     let baseDate = Date(timeIntervalSince1970: 1_000)

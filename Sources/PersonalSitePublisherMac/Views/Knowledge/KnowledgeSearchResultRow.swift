@@ -1,4 +1,4 @@
-import PublishingWorkbenchCore
+import PublishingKnowledgeCore
 import SwiftUI
 
 struct KnowledgeSearchResultRow: View {

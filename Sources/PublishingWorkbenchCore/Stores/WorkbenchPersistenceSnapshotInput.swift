@@ -33,6 +33,8 @@ struct WorkbenchPersistenceSnapshotInput: Sendable {
   let deploymentPollingStateByProfileID: [UUID: DeploymentPollingState]
   let deploymentStatusSnapshots: [UUID: DeploymentStatusSnapshot]
   let deploymentStatusHistory: [UUID: [DeploymentStatusSnapshot]]
+  let siteStarterProgress: SiteStarterProgress?
+  let deferredProjectFileWrites: [SiteDraftFileSaveFailure]
 
   init(
     profiles: [SiteProfile],
@@ -66,7 +68,9 @@ struct WorkbenchPersistenceSnapshotInput: Sendable {
     deploymentPollingSettingsByProfileID: [UUID: DeploymentPollingSettings],
     deploymentPollingStateByProfileID: [UUID: DeploymentPollingState],
     deploymentStatusSnapshots: [UUID: DeploymentStatusSnapshot],
-    deploymentStatusHistory: [UUID: [DeploymentStatusSnapshot]]
+    deploymentStatusHistory: [UUID: [DeploymentStatusSnapshot]],
+    siteStarterProgress: SiteStarterProgress?,
+    deferredProjectFileWrites: [SiteDraftFileSaveFailure] = []
   ) {
     self.profiles = profiles
     self.aiConnectionProfiles = aiConnectionProfiles
@@ -100,6 +104,8 @@ struct WorkbenchPersistenceSnapshotInput: Sendable {
     self.deploymentPollingStateByProfileID = deploymentPollingStateByProfileID
     self.deploymentStatusSnapshots = deploymentStatusSnapshots
     self.deploymentStatusHistory = deploymentStatusHistory
+    self.siteStarterProgress = siteStarterProgress
+    self.deferredProjectFileWrites = deferredProjectFileWrites
   }
 }
 
@@ -139,7 +145,9 @@ extension WorkbenchPersistence {
       deploymentPollingSettingsByProfileID: input.deploymentPollingSettingsByProfileID,
       deploymentPollingStateByProfileID: input.deploymentPollingStateByProfileID,
       deploymentStatusSnapshots: Array(input.deploymentStatusSnapshots.values),
-      deploymentStatusHistory: input.deploymentStatusHistory
+      deploymentStatusHistory: input.deploymentStatusHistory,
+      siteStarterProgress: input.siteStarterProgress,
+      deferredProjectFileWrites: input.deferredProjectFileWrites
     )
   }
 }
@@ -181,7 +189,9 @@ extension WorkbenchPersistence {
       deploymentPollingSettingsByProfileID: store.deploymentStore.deploymentPollingSettingsByProfileID,
       deploymentPollingStateByProfileID: store.deploymentStore.deploymentPollingStateByProfileID,
       deploymentStatusSnapshots: store.deploymentStatusSnapshots,
-      deploymentStatusHistory: store.deploymentStatusHistory
+      deploymentStatusHistory: store.deploymentStatusHistory,
+      siteStarterProgress: store.siteStarterProgress,
+      deferredProjectFileWrites: store.currentSiteDraftFileSaveFailures.sorted { $0.draftID.uuidString < $1.draftID.uuidString }
     )
   }
 

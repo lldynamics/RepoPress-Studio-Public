@@ -6,6 +6,12 @@ private enum KnowledgeSearchTokenSupport {
   static let tokenizer = LocalBPETokenizer(encoding: .o200kBase)
 }
 
+private struct KnowledgeQueryExcerptParagraph {
+  let text: String
+  let tokenCount: Int
+  let firstMatch: Range<String.Index>?
+}
+
 extension KnowledgeLibraryService {
   public func search(
     query: String,
@@ -221,6 +227,7 @@ extension KnowledgeLibraryService {
     var documentUseCounts: [UUID: Int] = [:]
 
     for result in candidates {
+      try checkSearchCancellation()
       guard citations.count < maximumCitations else { break }
       let currentDocumentCount = documentUseCounts[result.document.id, default: 0]
       guard currentDocumentCount < 2 else { continue }
@@ -228,10 +235,13 @@ extension KnowledgeLibraryService {
       guard remainingBudget > 100 else { break }
 
       let maximumTokens = min(1_500, remainingBudget)
-      let excerpt = clippedToTokenBudget(
+      let excerpt = try clippedToTokenBudget(
         result.chunk.content,
+        query: query,
         maximumTokens: maximumTokens
       )
+      try checkSearchCancellation()
+      guard !excerpt.isEmpty else { continue }
       let estimatedTokens = max(1, KnowledgeSearchTokenSupport.tokenizer.tokenCount(excerpt))
       guard estimatedTokens <= remainingBudget else { continue }
 
@@ -239,6 +249,7 @@ extension KnowledgeLibraryService {
         KnowledgeCitation(
           id: "K\(citations.count + 1)",
           documentID: result.document.id,
+          revisionID: result.chunk.revisionID,
           chunkID: result.chunk.id,
           title: result.document.title,
           authors: result.document.authors,
@@ -265,7 +276,12 @@ extension KnowledgeLibraryService {
     )
   }
 
-  private func clippedToTokenBudget(_ text: String, maximumTokens: Int) -> String {
+  private func clippedToTokenBudget(
+    _ text: String,
+    query: String,
+    maximumTokens: Int
+  ) throws -> String {
+    try checkSearchCancellation()
     guard maximumTokens > 0 else { return "" }
     let tokenizer = KnowledgeSearchTokenSupport.tokenizer
     guard tokenizer.tokenCount(text) > maximumTokens else { return text }
@@ -276,39 +292,207 @@ extension KnowledgeLibraryService {
       .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
       .filter { !$0.isEmpty }
     guard paragraphs.count >= 2 else {
-      let scalars = Array(text.unicodeScalars)
-      var low = 0
-      var high = scalars.count
-      var best = ""
-      while low <= high {
-        let middle = (low + high) / 2
-        let prefix = String(String.UnicodeScalarView(scalars.prefix(middle)))
-        if tokenizer.tokenCount(prefix + "…") <= maximumTokens {
-          best = prefix
-          low = middle + 1
-        } else {
-          high = middle - 1
-        }
-      }
-      return (best + "…").trimmingCharacters(in: .whitespacesAndNewlines)
+      return try clippedParagraph(
+        text,
+        preferredRange: firstMatch(in: text, terms: queryTerms(in: query)),
+        maximumTokens: maximumTokens
+      )
     }
 
-    var head = paragraphs[0]
-    var tail = paragraphs[paragraphs.count - 1]
-    var candidate = head + "\n…\n" + tail
-    while tokenizer.tokenCount(candidate) > maximumTokens {
-      if head.count >= tail.count, head.count > 1 {
-        head = String(head.dropLast(max(1, head.count / 8)))
-      } else if tail.count > 1 {
-        tail = String(tail.dropFirst(max(1, tail.count / 8)))
-      } else {
-        break
-      }
-      candidate = head + "\n…\n" + tail
+    let terms = queryTerms(in: query)
+    let entries = try paragraphs.map { paragraph in
+      try checkSearchCancellation()
+      return KnowledgeQueryExcerptParagraph(
+        text: paragraph,
+        tokenCount: tokenizer.tokenCount(paragraph),
+        firstMatch: firstMatch(in: paragraph, terms: terms)
+      )
     }
-    return tokenizer.tokenCount(candidate) <= maximumTokens
-      ? candidate
-      : String(head.prefix(1)) + "…"
+    let hitIndexes = entries.indices.filter { entries[$0].firstMatch != nil }
+    guard !hitIndexes.isEmpty else {
+      // A semantic or title-only result has no lexical anchor in its chunk.
+      // Keep a bounded beginning rather than pretending that an invented term
+      // identifies a relevant passage.
+      return try clippedParagraph(text, preferredRange: nil, maximumTokens: maximumTokens)
+    }
+
+    // Select hit paragraphs first. Dividing the remaining budget among the
+    // remaining hits avoids allowing an early long paragraph to hide later,
+    // independently matching passages.
+    let omissionCost = tokenizer.tokenCount("\n…\n")
+    var selected: [Int: String] = [:]
+    var reservedTokens = 0
+    for (offset, index) in hitIndexes.enumerated() {
+      try checkSearchCancellation()
+      let remainingHitCount = hitIndexes.count - offset
+      let connectorCost = selected.isEmpty ? 0 : omissionCost
+      let availableTokens = maximumTokens - reservedTokens - connectorCost
+      guard availableTokens > 0 else { break }
+      let allocation = max(1, availableTokens / remainingHitCount)
+      let entry = entries[index]
+      let excerpt: String
+      if entry.tokenCount <= allocation {
+        excerpt = entry.text
+      } else {
+        excerpt = try clippedParagraph(
+          entry.text,
+          preferredRange: entry.firstMatch,
+          maximumTokens: allocation
+        )
+      }
+      guard !excerpt.isEmpty else { continue }
+      let excerptTokens = tokenizer.tokenCount(excerpt)
+      guard excerptTokens + connectorCost <= maximumTokens - reservedTokens else { continue }
+      selected[index] = excerpt
+      reservedTokens += excerptTokens + connectorCost
+    }
+
+    // Then use any leftover capacity for nearby paragraphs. Distances are
+    // computed with two linear passes so a dense document does not repeatedly
+    // rescan all hits while assembling the prompt.
+    let distances = distancesToNearestHit(in: entries.indices, hitIndexes: Set(hitIndexes))
+    let nearbyIndexes = entries.indices
+      .filter { selected[$0] == nil }
+      .sorted {
+        if distances[$0] == distances[$1] { return $0 < $1 }
+        return distances[$0] < distances[$1]
+      }
+    for index in nearbyIndexes {
+      try checkSearchCancellation()
+      let connectorCost = selected.isEmpty ? 0 : omissionCost
+      let entry = entries[index]
+      guard entry.tokenCount + connectorCost <= maximumTokens - reservedTokens else { continue }
+      selected[index] = entry.text
+      reservedTokens += entry.tokenCount + connectorCost
+    }
+
+    let excerpt = assembledExcerpt(from: selected)
+    guard tokenizer.tokenCount(excerpt) <= maximumTokens else {
+      // The conservative per-part accounting above should keep this branch
+      // unreachable. Keep the public budget guarantee if a future tokenizer
+      // changes boundary behavior.
+      let firstHit = entries[hitIndexes[0]]
+      return try clippedParagraph(
+        firstHit.text,
+        preferredRange: firstHit.firstMatch,
+        maximumTokens: maximumTokens
+      )
+    }
+    return excerpt
+  }
+
+  private func queryTerms(in query: String) -> [String] {
+    let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmed.isEmpty else { return [] }
+    let tokens =
+      trimmed
+      .split { !$0.isLetter && !$0.isNumber }
+      .map(String.init)
+      .filter { !$0.isEmpty }
+    var terms: [String] = []
+    var normalized = Set<String>()
+    for term in [trimmed] + tokens {
+      let key = term.folding(
+        options: [.caseInsensitive, .diacriticInsensitive],
+        locale: .current
+      )
+      guard normalized.insert(key).inserted else { continue }
+      terms.append(term)
+    }
+    return terms.sorted { $0.count > $1.count }
+  }
+
+  private func firstMatch(in text: String, terms: [String]) -> Range<String.Index>? {
+    terms.compactMap { term in
+      text.range(
+        of: term,
+        options: [.caseInsensitive, .diacriticInsensitive],
+        locale: .current
+      )
+    }
+    .min {
+      text.distance(from: text.startIndex, to: $0.lowerBound)
+        < text.distance(from: text.startIndex, to: $1.lowerBound)
+    }
+  }
+
+  private func clippedParagraph(
+    _ text: String,
+    preferredRange: Range<String.Index>?,
+    maximumTokens: Int
+  ) throws -> String {
+    try checkSearchCancellation()
+    guard maximumTokens > 0 else { return "" }
+    let tokenizer = KnowledgeSearchTokenSupport.tokenizer
+    guard tokenizer.tokenCount(text) > maximumTokens else { return text }
+
+    let characters = Array(text)
+    guard !characters.isEmpty else { return "" }
+    let preferredStart =
+      preferredRange.map {
+        text.distance(from: text.startIndex, to: $0.lowerBound)
+      } ?? 0
+    let preferredLength =
+      preferredRange.map {
+        text.distance(from: $0.lowerBound, to: $0.upperBound)
+      } ?? 0
+    var low = 1
+    var high = characters.count
+    var best = ""
+
+    while low <= high {
+      try checkSearchCancellation()
+      let length = (low + high) / 2
+      let unclampedStart = max(0, preferredStart - max(0, length - preferredLength) / 2)
+      let end = min(characters.count, unclampedStart + length)
+      let start = max(0, end - length)
+      let prefix = start > 0 ? "…" : ""
+      let suffix = end < characters.count ? "…" : ""
+      let candidate = (prefix + String(characters[start..<end]) + suffix)
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+      if tokenizer.tokenCount(candidate) <= maximumTokens {
+        best = candidate
+        low = length + 1
+      } else {
+        high = length - 1
+      }
+    }
+
+    guard !best.isEmpty else { return "" }
+    return best
+  }
+
+  private func distancesToNearestHit(
+    in indexes: Range<Int>,
+    hitIndexes: Set<Int>
+  ) -> [Int] {
+    var distances = Array(repeating: Int.max, count: indexes.count)
+    var lastHit: Int?
+    for index in indexes {
+      if hitIndexes.contains(index) { lastHit = index }
+      if let lastHit { distances[index] = index - lastHit }
+    }
+    lastHit = nil
+    for index in indexes.reversed() {
+      if hitIndexes.contains(index) { lastHit = index }
+      if let lastHit { distances[index] = min(distances[index], lastHit - index) }
+    }
+    return distances
+  }
+
+  private func assembledExcerpt(from selected: [Int: String]) -> String {
+    let indexes = selected.keys.sorted()
+    var excerpt = ""
+    var previousIndex: Int?
+    for index in indexes {
+      guard let text = selected[index] else { continue }
+      if let previousIndex {
+        excerpt += index == previousIndex + 1 ? "\n\n" : "\n…\n"
+      }
+      excerpt += text
+      previousIndex = index
+    }
+    return excerpt
   }
 
   public func contextAsync(

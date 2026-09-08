@@ -116,16 +116,30 @@ final class RSSAppleTranslationRoutingTests: XCTestCase {
     let appleKey = RSSArticleTranslationCacheKey(
       articleID: "article-1",
       fetchedAt: fetchedAt,
+      contentVersion: 1,
       targetCode: target.languageCode,
       backend: .apple
     )
     let aiKey = RSSArticleTranslationCacheKey(
       articleID: "article-1",
       fetchedAt: fetchedAt,
+      contentVersion: 1,
       targetCode: target.languageCode,
       backend: .ai
     )
 
     XCTAssertNotEqual(appleKey, aiKey)
+  }
+
+  func testTranslationCacheKeySeparatesSummaryAndCachedFullText() {
+    let summary = RSSArticleTranslationContentVersion.make(
+      for: RSSArticle(id: "article-1", feedID: UUID(), title: "标题", summaryHTML: "摘要")
+    )
+    let fullText = RSSArticleTranslationContentVersion.make(
+      for: RSSArticle(
+        id: "article-1", feedID: UUID(), title: "标题", summaryHTML: "摘要", contentHTML: "完整正文")
+    )
+
+    XCTAssertNotEqual(summary, fullText)
   }
 }

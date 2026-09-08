@@ -25,18 +25,21 @@ struct AppearanceSettingsView: View {
 
   var body: some View {
     Form {
-      SettingsSubsectionAnchor(subsection: .appearanceBehavior)
       DefaultRuleGeneralSection(
         autoRunPreflightBinding: autoRunPreflightBinding,
-        scanRepositoryOnLaunch: $scanRepositoryOnLaunch
+        scanRepositoryOnLaunch: $scanRepositoryOnLaunch,
+        subsectionAnchor: .appearanceBehavior
       )
-      SettingsSubsectionAnchor(subsection: .appearanceTheme)
-      Section("外观") {
+      Section {
         appearanceSection
+      } header: {
+        Text("外观")
+          .settingsSubsectionAnchor(.appearanceTheme)
       }
-      SettingsSubsectionAnchor(subsection: .appearanceLanguage)
-      AppLanguageSettingsView(isEmbedded: true)
-      SettingsSubsectionAnchor(subsection: .appearanceDefaults)
+      AppLanguageSettingsView(
+        isEmbedded: true,
+        subsectionAnchor: .appearanceLanguage
+      )
       globalFrontMatterSection
     }
     .formStyle(.grouped)
@@ -74,6 +77,7 @@ struct AppearanceSettingsView: View {
       .accessibilityIdentifier("settings-global-front-matter-preset")
     } header: {
       Text("新建文章默认")
+        .settingsSubsectionAnchor(.appearanceDefaults)
     }
   }
 

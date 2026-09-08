@@ -107,6 +107,40 @@ final class WorkbenchAgentKnowledgeServiceTests: XCTestCase {
     XCTAssertLessThanOrEqual(read.title.count, WorkbenchAgentKnowledgeService.maximumTitleLength)
   }
 
+  func testChunkReadPaginatesAndRechecksRevokedPermission() async throws {
+    let rootURL = try temporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let library = KnowledgeLibraryService(rootURL: rootURL.appendingPathComponent("library"))
+    let documentID = try await commit(
+      title: "长资料",
+      text: (0..<2_000).map { "段落\($0)：后段可读取的资料正文。" }.joined(separator: "\n"),
+      allowsRemoteAIUse: true,
+      library: library
+    )
+    let service = WorkbenchAgentKnowledgeService(library: library)
+    let hits = try await service.search(query: "后段可读取", limit: 10)
+    let hit = try XCTUnwrap(hits.last)
+    let first = try await service.read(
+      documentID: documentID, chunkID: hit.chunkID, maximumCharacters: 80
+    )
+    let cursor = try XCTUnwrap(first.nextCursor)
+    let second = try await service.read(
+      documentID: documentID, chunkID: hit.chunkID, cursor: cursor, maximumCharacters: 80
+    )
+
+    XCTAssertEqual(first.chunkID, hit.chunkID)
+    XCTAssertEqual(second.chunkID, hit.chunkID)
+    XCTAssertEqual(second.cursor, cursor)
+    XCTAssertNotEqual(first.text, second.text)
+
+    try library.setAllowsRemoteAIUse(false, documentID: documentID)
+    await XCTAssertThrowsErrorAsync(
+      try await service.read(documentID: documentID, chunkID: hit.chunkID, cursor: cursor)
+    ) { error in
+      XCTAssertEqual(error as? WorkbenchAgentKnowledgeError, .notAllowed)
+    }
+  }
+
   func testReadRejectsMissingAndUnapprovedDocumentsWithoutLeakingPaths() async throws {
     let rootURL = try temporaryDirectory()
     defer { try? FileManager.default.removeItem(at: rootURL) }
@@ -149,6 +183,87 @@ final class WorkbenchAgentKnowledgeServiceTests: XCTestCase {
       XCTAssertEqual(error, .missingDocument)
       XCTAssertFalse(error.localizedDescription.contains(rootURL.path))
     }
+  }
+
+  func testChunkReadDoesNotRequireLocalSemanticIndexPermission() async throws {
+    let rootURL = try temporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let library = KnowledgeLibraryService(rootURL: rootURL.appendingPathComponent("library"))
+    let documentID = try await commit(
+      title: "独立授权资料",
+      text: "片段读取应只取决于远程 AI 授权，不依赖本地语义索引。",
+      allowsRemoteAIUse: true,
+      library: library
+    )
+    try library.setAllowsLocalSemanticIndex(false, documentID: documentID)
+    let service = WorkbenchAgentKnowledgeService(library: library)
+    let hits = try await service.search(query: "片段读取")
+    let hit = try XCTUnwrap(hits.first { $0.documentID == documentID })
+
+    let result = try await service.read(documentID: documentID, chunkID: hit.chunkID)
+
+    XCTAssertEqual(result.chunkID, hit.chunkID)
+    XCTAssertTrue(result.text.contains("不依赖本地语义索引"))
+    XCTAssertFalse(try XCTUnwrap(library.document(id: documentID)).allowsLocalSemanticIndex)
+    try library.setAllowsRemoteAIUse(false, documentID: documentID)
+    await XCTAssertThrowsErrorAsync(
+      try await service.read(documentID: documentID, chunkID: hit.chunkID)
+    ) { error in
+      XCTAssertEqual(error as? WorkbenchAgentKnowledgeError, .notAllowed)
+    }
+  }
+
+  func testChunkReadRejectsAnotherDocumentsLocator() async throws {
+    let rootURL = try temporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let library = KnowledgeLibraryService(rootURL: rootURL.appendingPathComponent("library"))
+    let firstID = try await commit(
+      title: "第一份资料", text: "跨文档片段定位校验。",
+      allowsRemoteAIUse: true, library: library
+    )
+    let secondID = try await commit(
+      title: "第二份资料", text: "另一份允许读取的独立内容。",
+      allowsRemoteAIUse: true, library: library
+    )
+    let service = WorkbenchAgentKnowledgeService(library: library)
+    let hits = try await service.search(query: "跨文档片段")
+    let hit = try XCTUnwrap(hits.first { $0.documentID == firstID })
+
+    await XCTAssertThrowsErrorAsync(
+      try await service.read(documentID: secondID, chunkID: hit.chunkID)
+    ) { error in
+      XCTAssertEqual(error as? WorkbenchAgentKnowledgeError, .missingDocument)
+    }
+  }
+
+  func testChunkReadRejectsPreviousRevisionAfterReimport() async throws {
+    let rootURL = try temporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let library = KnowledgeLibraryService(rootURL: rootURL.appendingPathComponent("library"))
+    let sourceURL = rootURL.appendingPathComponent("revision.txt")
+    try "旧版本片段内容。".write(to: sourceURL, atomically: true, encoding: .utf8)
+    let imported = try await library.commit(
+      try await library.makeImportPreview(sourceURL: sourceURL))
+    let documentID = try XCTUnwrap(imported.documentIDs.first)
+    try library.setAllowsRemoteAIUse(true, documentID: documentID)
+    let service = WorkbenchAgentKnowledgeService(library: library)
+    let hits = try await service.search(query: "旧版本片段")
+    let hit = try XCTUnwrap(hits.first)
+
+    try "新版本正文应取代旧内容。".write(to: sourceURL, atomically: true, encoding: .utf8)
+    let updated = try await library.commit(
+      try await library.makeImportPreview(sourceURL: sourceURL))
+    XCTAssertEqual(updated.updatedCount, 1)
+    try library.setAllowsRemoteAIUse(true, documentID: documentID)
+
+    await XCTAssertThrowsErrorAsync(
+      try await service.read(documentID: documentID, chunkID: hit.chunkID)
+    ) { error in
+      XCTAssertEqual(error as? WorkbenchAgentKnowledgeError, .missingDocument)
+    }
+    let current = try await service.read(documentID: documentID)
+    XCTAssertTrue(current.text.contains("新版本正文"))
+    XCTAssertFalse(current.text.contains("旧版本片段"))
   }
 
   func testEmptyQueryAndCancellationUseDistinctErrors() async throws {

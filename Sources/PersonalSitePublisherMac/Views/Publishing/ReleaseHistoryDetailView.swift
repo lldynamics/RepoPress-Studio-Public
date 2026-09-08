@@ -4,14 +4,19 @@ import SwiftUI
 
 struct ReleaseHistoryDetailView: View {
   let store: WorkbenchStore
+  let focusedRecordID: UUID?
   @ObservedObject private var historyObservation: WorkbenchReleaseHistoryObservationFacade
   @State var pendingDangerousReleaseAction: DangerousReleaseAction?
+  @State private var showsAllRecords = false
+  @State var pendingFailureReview: ReleaseRecord?
 
   init(
     store: WorkbenchStore,
+    focusedRecordID: UUID? = nil,
     pendingDangerousReleaseAction: DangerousReleaseAction? = nil
   ) {
     self.store = store
+    self.focusedRecordID = focusedRecordID
     _historyObservation = ObservedObject(wrappedValue: store.releaseHistoryObservation)
     _pendingDangerousReleaseAction = State(wrappedValue: pendingDangerousReleaseAction)
   }
@@ -27,14 +32,18 @@ struct ReleaseHistoryDetailView: View {
             feedback.message.nilIfEmpty != nil {
             releaseHistoryActionMessage(feedback)
           }
-          releasePrimaryMetrics(ledger.summary)
-          releaseSecondaryMetrics(ledger.summary)
-          releaseOperationalContent(
-            ledger,
-            usesSplitLayout: WorkbenchPageMetrics.usesOperationalSplit(
-              for: geometry.size.width
+          if let focusedRecordID, !showsAllRecords {
+            focusedReleaseRecordContent(focusedRecordID)
+          } else {
+            releasePrimaryMetrics(ledger.summary)
+            releaseSecondaryMetrics(ledger.summary)
+            releaseOperationalContent(
+              ledger,
+              usesSplitLayout: WorkbenchPageMetrics.usesOperationalSplit(
+                for: geometry.size.width
+              )
             )
-          )
+          }
         }
         .workbenchOperationalPageLayout()
       }
@@ -56,6 +65,26 @@ struct ReleaseHistoryDetailView: View {
     }
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("repository-section-release-history")
+    .sheet(item: $pendingFailureReview) { record in
+      ReleaseFailureReviewSheet(store: store, record: record)
+    }
+  }
+
+  func beginFailureReview(_ record: ReleaseRecord) {
+    guard !store.isQuickHideActive, !store.isRemoteRepositoryPublishing,
+      store.activeProfileReleaseRecords.contains(where: { $0.id == record.id }),
+      ReleaseFailureReviewContext.canReview(
+        record,
+        profile: store.activeProfile,
+        drafts: store.drafts,
+        batchPlan: store.batchPublishPlan
+      )
+    else { return }
+    if let draftID = record.draftID, record.batchItems.isEmpty {
+      // Preserve the history surface that owns the review sheet.
+      guard store.focusDraft(draftID) else { return }
+    }
+    pendingFailureReview = record
   }
 
   private func releaseHistoryActionMessage(_ feedback: PublishActionFeedback) -> some View {
@@ -106,6 +135,12 @@ struct ReleaseHistoryDetailView: View {
 
   private func releaseHistoryHeaderActions(_ ledger: ReleaseLedger) -> some View {
     HStack(spacing: 10) {
+      if focusedRecordID != nil, !showsAllRecords {
+        Button(String(localized: "查看全部记录")) {
+          showsAllRecords = true
+        }
+        .accessibilityIdentifier("release-history-show-all-records")
+      }
       Button {
         copy(ledger.operationLogMarkdown, message: "已复制发布台账。")
       } label: {
@@ -116,6 +151,38 @@ struct ReleaseHistoryDetailView: View {
       Text("\(ledger.summary.totalCount) 条")
         .font(.callout.monospacedDigit())
         .foregroundStyle(.secondary)
+    }
+  }
+
+  @ViewBuilder
+  private func focusedReleaseRecordContent(_ recordID: UUID) -> some View {
+    if let record = store.releaseRecords.first(where: { $0.id == recordID }) {
+      VStack(alignment: .leading, spacing: 14) {
+        if let profileID = record.siteProfileID, profileID != store.activeProfileID {
+          Label {
+            Text(String(localized: "该发布记录属于另一个站点；当前未自动替换为其它记录。"))
+          } icon: {
+            Image(systemName: "arrow.triangle.branch")
+          }
+          .font(.callout)
+          .foregroundStyle(WorkbenchTheme.risk)
+          .accessibilityIdentifier("release-history-focused-record-site-changed")
+        }
+
+        Label(String(localized: "已定位到指定发布记录"), systemImage: "scope")
+          .font(.headline)
+        releaseRecordCard(store.releaseLedgerEntry(for: record))
+      }
+      .accessibilityElement(children: .contain)
+      .accessibilityIdentifier("release-history-focused-record")
+    } else {
+      ContentUnavailableView(
+        String(localized: "发布记录已不可用"),
+        systemImage: "exclamationmark.triangle",
+        description: Text(String(localized: "该发布记录已被清理或当前无权访问；未跳转到其他记录。"))
+      )
+      .frame(maxWidth: .infinity, minHeight: 260)
+      .accessibilityIdentifier("release-history-focused-record-unavailable")
     }
   }
 

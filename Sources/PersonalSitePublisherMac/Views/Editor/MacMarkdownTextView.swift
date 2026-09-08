@@ -434,6 +434,8 @@ struct MacMarkdownTextView: NSViewRepresentable {
     var isAwaitingDocumentValidation = false
     var bodyLineUTF16Offsets: [Int]
     var representedText: String
+    var documentEnvelopeRevision: UInt64 = 0
+    var cachedDocumentEnvelope: (revision: UInt64, bodyUTF16Offset: Int?)?
     let onStatisticsChanged: (MarkdownEditorStatistics) -> Void
     let onPasteMessage: (String) -> Void
     var onGhostTextAccepted: (String) -> Void
@@ -476,13 +478,17 @@ struct MacMarkdownTextView: NSViewRepresentable {
     var loggedSyntaxFallbackCount = 0
     var statisticsTask: Task<Void, Never>?
     var statisticsGeneration = 0
+    var statisticsContextGeneration = 0
     var statisticsText: String?
+    var statisticsDocumentRevision: UInt64?
+    var statisticsBodyUTF16Offset: Int?
     var statistics = MarkdownEditorStatistics.empty
     // These counters make the editor's update path observable in focused
     // AppKit tests. They are intentionally kept on the coordinator so tests
     // can distinguish a local delta from a scheduled document-wide scan.
     var statisticsFullScanCount = 0
     var statisticsIncrementalUpdateCount = 0
+    var statisticsRevisionValidatedUpdateCount = 0
     var pendingTextEdit: MarkdownTextEdit?
     var pendingTextEditRequiresInference = false
     var isApplyingRepresentedText = false
@@ -530,6 +536,7 @@ struct MacMarkdownTextView: NSViewRepresentable {
     var inlineAttachmentPlanIncrementalUpdateCount = 0
     var inlineAttachmentReferenceLookupCache: [String: DraftAttachment]?
     var appliedParagraphHighlightRange: NSRange?
+    var appliedParagraphHighlightGeometryRange: NSRange?
     var appliedDiagnosticOverlays: [MarkdownEditorDiagnosticOverlay] = []
     var cachedDocumentDiagnosticOverlays: [MarkdownEditorDiagnosticOverlay] = []
     var cachedDiagnosticOverlayRevision: UInt64?
@@ -580,7 +587,12 @@ struct MacMarkdownTextView: NSViewRepresentable {
       _text = text
       self.bodyMarkdown = bodyMarkdown
       self.bodyUTF16Offset = bodyUTF16Offset
-      let hasDelimitedFrontMatter = Self.documentParts(in: text.wrappedValue) != nil
+      let delimitedBodyUTF16Offset = Self.delimitedBodyUTF16Offset(in: text.wrappedValue)
+      cachedDocumentEnvelope = (
+        revision: 0,
+        bodyUTF16Offset: delimitedBodyUTF16Offset
+      )
+      let hasDelimitedFrontMatter = delimitedBodyUTF16Offset != nil
       requiresFrontMatterEnvelope = bodyUTF16Offset > 0 || hasDelimitedFrontMatter
       hasValidDocumentBodyMapping = !requiresFrontMatterEnvelope || hasDelimitedFrontMatter
       self.allowsLiveBodyChanges = allowsLiveBodyChanges
@@ -661,14 +673,25 @@ struct MacMarkdownTextView: NSViewRepresentable {
       attachments: [DraftAttachment],
       in textView: NSTextView
     ) {
-      if self.bodyMarkdown != bodyMarkdown {
+      let bodyChanged = self.bodyMarkdown != bodyMarkdown
+      if bodyChanged {
         bodyLineUTF16Offsets = Self.lineUTF16Offsets(in: bodyMarkdown)
       }
       let attachmentsChanged = self.attachments != attachments
       let bodyOffsetChanged = self.bodyUTF16Offset != bodyUTF16Offset
+      if bodyChanged || bodyOffsetChanged {
+        // An in-flight scan must not certify a different represented context.
+        // An already certified live document remains valid across a body echo:
+        // actual text replacements advance syntaxDocumentRevision separately.
+        statisticsContextGeneration += 1
+      }
+      if bodyOffsetChanged {
+        statisticsDocumentRevision = nil
+        statisticsBodyUTF16Offset = nil
+      }
       self.bodyMarkdown = bodyMarkdown
       self.bodyUTF16Offset = bodyUTF16Offset
-      let hasDelimitedFrontMatter = Self.documentParts(in: representedText) != nil
+      let hasDelimitedFrontMatter = cachedDelimitedBodyUTF16Offset(in: representedText) != nil
       requiresFrontMatterEnvelope =
         requiresFrontMatterEnvelope || bodyUTF16Offset > 0 || hasDelimitedFrontMatter
       hasValidDocumentBodyMapping =
@@ -761,6 +784,7 @@ struct MacMarkdownTextView: NSViewRepresentable {
       }
       guard representedText != text else { return false }
       representedText = text
+      invalidateDocumentEnvelopeCache()
       lastCommittedText = text
       return true
     }
@@ -957,7 +981,35 @@ struct MacMarkdownTextView: NSViewRepresentable {
       let bodyUTF16Offset: Int
     }
 
-    private static func documentParts(in source: String) -> DocumentParts? {
+    private func invalidateDocumentEnvelopeCache() {
+      documentEnvelopeRevision &+= 1
+      cachedDocumentEnvelope = nil
+    }
+
+    private func cachedDelimitedBodyUTF16Offset(in source: String) -> Int? {
+      if let cachedDocumentEnvelope,
+        cachedDocumentEnvelope.revision == documentEnvelopeRevision
+      {
+        return cachedDocumentEnvelope.bodyUTF16Offset
+      }
+      let bodyUTF16Offset = Self.delimitedBodyUTF16Offset(in: source)
+      cachedDocumentEnvelope = (
+        revision: documentEnvelopeRevision,
+        bodyUTF16Offset: bodyUTF16Offset
+      )
+      return bodyUTF16Offset
+    }
+
+    private func documentParts(in source: String) -> DocumentParts? {
+      let sourceText = source as NSString
+      guard let bodyUTF16Offset = cachedDelimitedBodyUTF16Offset(in: source) else { return nil }
+      return DocumentParts(
+        bodyMarkdown: sourceText.substring(from: bodyUTF16Offset),
+        bodyUTF16Offset: bodyUTF16Offset
+      )
+    }
+
+    private static func delimitedBodyUTF16Offset(in source: String) -> Int? {
       let sourceText = source as NSString
       guard sourceText.length > 0 else { return nil }
 
@@ -1009,10 +1061,7 @@ struct MacMarkdownTextView: NSViewRepresentable {
             bodyOffset = nextLineEnd
           }
         }
-        return DocumentParts(
-          bodyMarkdown: sourceText.substring(from: bodyOffset),
-          bodyUTF16Offset: bodyOffset
-        )
+        return bodyOffset
       }
       return nil
     }
@@ -1092,6 +1141,7 @@ struct MacMarkdownTextView: NSViewRepresentable {
         !textView.hasMarkedText(),
         let replacementString,
         !replacementString.isEmpty,
+        MarkdownAdvancedEditingService.isAutomaticPairingCandidate(replacementString),
         affectedCharRange.location >= bodyUTF16Offset,
         let pairingEdit = automaticPairingEdit(
           in: textView,
@@ -1337,7 +1387,20 @@ struct MacMarkdownTextView: NSViewRepresentable {
       }
 
       lastAppliedEditRequestID = request.id
-      guard bodyMarkdown == request.expectedText else {
+      // Explicit edits must match the actual text storage as well as the
+      // represented cache. Live keystrokes can precede a coalesced Binding
+      // update; an old preview must never overwrite those keystrokes.
+      let document = textView.string as NSString
+      let expectedLength = (request.expectedText as NSString).length
+      guard !textView.hasMarkedText(),
+        bodyUTF16Offset >= 0, bodyUTF16Offset <= document.length,
+        document.length - bodyUTF16Offset == expectedLength,
+        document.compare(
+          request.expectedText, options: .literal,
+          range: NSRange(location: bodyUTF16Offset, length: expectedLength)
+        ) == .orderedSame,
+        bodyMarkdown == request.expectedText
+      else {
         return MarkdownTextEditRequestOutcome(id: request.id, wasApplied: false)
       }
 
@@ -1446,6 +1509,7 @@ struct MacMarkdownTextView: NSViewRepresentable {
         onViewportChanged: { [weak self] in
           guard let self, let textView = self.textView else { return }
           self.repaintVisibleSyntaxViewport(in: textView, reason: .viewport)
+          _ = self.updateCurrentParagraphHighlight(in: textView)
           self.publishContextualAnchor(in: textView)
         }
       )
@@ -1455,6 +1519,13 @@ struct MacMarkdownTextView: NSViewRepresentable {
       let documentSelection = textView.selectedRange()
       let documentLength = (textView.string as NSString).length
       let bodyLength = (bodyMarkdown as NSString).length
+      guard let geometryRange = MarkdownTextKit2RangeAdapter.visibleGeometryRange(
+        for: documentSelection,
+        in: textView
+      ) else {
+        onContextualAnchorChanged(nil)
+        return
+      }
       guard let selection = MarkdownContextualPopoverAnchorResolver.selection(
         forDocumentRange: documentSelection,
         documentUTF16Length: documentLength,
@@ -1462,7 +1533,7 @@ struct MacMarkdownTextView: NSViewRepresentable {
         bodyUTF16Length: bodyLength
       ),
         let textRect = contextualTextRect(
-          for: documentSelection,
+          for: geometryRange,
           documentLength: documentLength,
           in: textView
         ),
@@ -1620,9 +1691,12 @@ struct MacMarkdownTextView: NSViewRepresentable {
       guard !isShowingReadOnlyPresentation else { return }
       (textView.enclosingScrollView as? MarkdownEditorScrollView)?.invalidateDocumentHeight()
       let updatedText = textView.string
+      invalidateDocumentEnvelopeCache()
       let previousBodyMarkdown = bodyMarkdown
       let previousBodyUTF16Offset = bodyUTF16Offset
       let requiresInferredTextEdit = pendingTextEditRequiresInference
+      let hasExplicitStatisticsEdit =
+        pendingTextEdit != nil && !requiresInferredTextEdit && !textView.hasMarkedText()
       pendingTextEditRequiresInference = false
       let syntaxHighlightEdit =
         (requiresInferredTextEdit ? nil : pendingTextEdit)
@@ -1694,7 +1768,7 @@ struct MacMarkdownTextView: NSViewRepresentable {
       {
         bodyMarkdown = incrementallyUpdatedBody
         canPublishBodyChange = true
-      } else if let parts = Self.documentParts(in: updatedText) {
+      } else if let parts = documentParts(in: updatedText) {
         bodyMarkdown = parts.bodyMarkdown
         bodyUTF16Offset = parts.bodyUTF16Offset
         requiresFrontMatterEnvelope = true
@@ -1739,7 +1813,13 @@ struct MacMarkdownTextView: NSViewRepresentable {
       // same explicit edit value for statistics instead of looking it up from
       // the now-cleared coordinator slot; otherwise every ordinary keystroke
       // falls back to the delayed full-document scanner.
-      updateStatistics(afterEditing: bodyMarkdown, edit: syntaxHighlightEdit)
+      updateStatistics(
+        afterEditing: bodyMarkdown,
+        edit: syntaxHighlightEdit,
+        previousDocumentRevision:
+          hasExplicitStatisticsEdit && canPublishBodyChange && editIsBodyOnly
+            && previousBodyUTF16Offset == bodyUTF16Offset ? previousSyntaxRevision : nil
+      )
       if canPublishBodyChange,
         editIsBodyOnly,
         allowsLiveBodyChanges,

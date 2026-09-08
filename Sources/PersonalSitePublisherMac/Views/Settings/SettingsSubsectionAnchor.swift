@@ -2,7 +2,9 @@ import SwiftUI
 
 /// A zero-height, stable target at the beginning of a Settings subsection.
 ///
-/// Settings pages place this immediately before each subsection's content.
+/// ScrollView pages place this immediately before each subsection's content.
+/// Form pages attach it to the first header or content block with
+/// `settingsSubsectionAnchor(_:)` so Form does not render an empty settings row.
 /// `ScrollViewReader` uses the stable ID for sidebar/deep-link navigation;
 /// the frame preference lets the Settings shell keep its selection in sync
 /// when the user scrolls manually.
@@ -22,6 +24,24 @@ struct SettingsSubsectionAnchor: View {
     .id(subsection.id)
     .allowsHitTesting(false)
     .accessibilityHidden(true)
+  }
+}
+
+extension View {
+  /// Attach to an actual header or content block, never a Section or Group
+  /// that can expand into several form elements. Optional anchors allow shared
+  /// sections to retain their existing layout outside the Settings workspace.
+  @ViewBuilder
+  func settingsSubsectionAnchor(_ subsection: SettingsSubsection?) -> some View {
+    if let subsection {
+      self
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(alignment: .top) {
+          SettingsSubsectionAnchor(subsection: subsection)
+        }
+    } else {
+      self
+    }
   }
 }
 

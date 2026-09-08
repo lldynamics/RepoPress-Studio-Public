@@ -628,7 +628,7 @@ extension PublishingStore {
           store.save()
         }
       }
-      let result = try await remoteRepositoryPublishService.publish(
+      var result = try await remoteRepositoryPublishService.publish(
         package: packageForRemoteAttempt,
         profile: profile,
         mode: mode,
@@ -639,12 +639,21 @@ extension PublishingStore {
       remoteRepositoryConflictSession = nil
       store.setRemoteRepositoryPublishResult(result)
       store.setRepositoryTokenAvailability(KeychainTokenAvailability(hasToken: true))
+      let verifiedItems = publishableItems.map { item in
+        var updated = item
+        updated.package = item.package.freezingArticleVerification(
+          finalFiles: packageForRemoteAttempt.files, profile: profile)
+        updated.draftTitle = updated.package.title
+        return updated
+      }
       let releaseRecord = ReleaseRecord.batchRemotePublish(
         profile: profile,
-        items: publishableItems,
+        items: verifiedItems,
         cleanupCount: 0,
         result: result
       )
+      result.releaseRecordID = releaseRecord.id
+      store.setRemoteRepositoryPublishResult(result)
       prependReleaseRecord(releaseRecord)
       if !deferDraftLifecycleMutation {
         confirmDirectRemotePublishLifecycle(
@@ -672,17 +681,6 @@ extension PublishingStore {
           updatesMessage: false
         )
         guard remoteRepositoryMutationIsCurrent(operation, store: store) else { return nil }
-      }
-      if mode == .directCommit,
-        result.commitSHA?.trimmedForPublishing.nilIfEmpty != nil,
-        deploymentStatus?.level == .success,
-        deploymentStatus?.attributionVerified == true,
-        markDraftsAsPublishedIfDirectRemoteCommit(
-          mode: mode,
-          draftIDs: publishableItems.map(\.draftID)
-        )
-      {
-        store.invalidateDraftDerivedCaches()
       }
       let completionFeedback = remotePublishCompletionFeedback(
         mode: mode,

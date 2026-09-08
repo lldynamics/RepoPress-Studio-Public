@@ -62,12 +62,14 @@ public struct AssetResourceReferenceLocation: Codable, Hashable, Sendable {
 
 public struct AssetResourceBrokenReference: Identifiable, Codable, Hashable, Sendable {
   public var id: String {
-    "\(sourceMarkdownPath):\(lineNumber):\(rawPath)"
+    "\(sourceMarkdownPath):\(lineNumber):\(tokenUTF16Location):\(rawPath)"
   }
 
   public let sourceMarkdownPath: String
   public let lineNumber: Int
   public let rawPath: String
+  public let tokenUTF16Location: Int
+  public let tokenUTF16Length: Int
   public let kind: AssetResourceReferenceIssueKind
   public let message: String
 
@@ -75,14 +77,52 @@ public struct AssetResourceBrokenReference: Identifiable, Codable, Hashable, Sen
     sourceMarkdownPath: String,
     lineNumber: Int,
     rawPath: String,
+    tokenUTF16Location: Int = 0,
+    tokenUTF16Length: Int = 0,
     kind: AssetResourceReferenceIssueKind,
     message: String
   ) {
     self.sourceMarkdownPath = sourceMarkdownPath
     self.lineNumber = lineNumber
     self.rawPath = rawPath
+    self.tokenUTF16Location = max(0, tokenUTF16Location)
+    self.tokenUTF16Length = max(0, tokenUTF16Length)
     self.kind = kind
     self.message = message
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case sourceMarkdownPath
+    case lineNumber
+    case rawPath
+    case tokenUTF16Location
+    case tokenUTF16Length
+    case kind
+    case message
+  }
+
+  public init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    sourceMarkdownPath = try container.decode(String.self, forKey: .sourceMarkdownPath)
+    lineNumber = try container.decode(Int.self, forKey: .lineNumber)
+    rawPath = try container.decode(String.self, forKey: .rawPath)
+    tokenUTF16Location = max(
+      0, try container.decodeIfPresent(Int.self, forKey: .tokenUTF16Location) ?? 0)
+    tokenUTF16Length = max(
+      0, try container.decodeIfPresent(Int.self, forKey: .tokenUTF16Length) ?? 0)
+    kind = try container.decode(AssetResourceReferenceIssueKind.self, forKey: .kind)
+    message = try container.decode(String.self, forKey: .message)
+  }
+
+  public func encode(to encoder: Encoder) throws {
+    var container = encoder.container(keyedBy: CodingKeys.self)
+    try container.encode(sourceMarkdownPath, forKey: .sourceMarkdownPath)
+    try container.encode(lineNumber, forKey: .lineNumber)
+    try container.encode(rawPath, forKey: .rawPath)
+    try container.encode(tokenUTF16Location, forKey: .tokenUTF16Location)
+    try container.encode(tokenUTF16Length, forKey: .tokenUTF16Length)
+    try container.encode(kind, forKey: .kind)
+    try container.encode(message, forKey: .message)
   }
 }
 
@@ -188,6 +228,13 @@ public struct AssetResourceScanReport: Codable, Hashable, Sendable {
     assets.filter(\.canCompress)
   }
 
+  /// An incomplete reference scan cannot safely establish that an asset is
+  /// orphaned. Callers must keep destructive cleanup unavailable until a
+  /// complete scan succeeds.
+  public var isComplete: Bool {
+    !wasTruncated && skippedMarkdownFileCount == 0
+  }
+
   public var totalByteSize: Int64 {
     assets.reduce(0) { $0 + max(0, $1.byteSize) }
   }
@@ -234,12 +281,15 @@ public struct AssetResourceOptimizationResult: Hashable, Sendable {
 
 public enum AssetResourceManagerError: LocalizedError, Equatable {
   case repositoryUnavailable
+  case cleanupReviewChanged
   case invalidAssetRoot
   case assetDirectoryUnavailable(String)
   case unsafeAssetPath(String)
 
   public var errorDescription: String? {
     switch self {
+    case .cleanupReviewChanged:
+      CoreL10n.text("资源或引用已变化，或扫描不完整。请重新扫描并确认清理清单。")
     case .repositoryUnavailable:
       CoreL10n.text("请先选择一个本地站点文件夹。")
     case .invalidAssetRoot:

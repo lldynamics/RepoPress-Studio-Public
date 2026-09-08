@@ -412,7 +412,9 @@ extension MacMarkdownComposerView {
   }
 
   func applyEditorFocusRequest() {
-    guard let request = editorState.editorFocusRequest, request.draftID == draft.id else {
+    guard let request = editorState.editorFocusRequest, request.draftID == draft.id,
+      workspaceWindowSession?.consumeEditorFocusRequest(request.id) ?? true
+    else {
       return
     }
 

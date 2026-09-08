@@ -296,7 +296,8 @@ extension PublishingStore {
 
   @discardableResult
   public func publishSelectedDraftOnlineUsingPreferredStrategy(
-    store: WorkbenchStore
+    store: WorkbenchStore,
+    expectedReview: SinglePublishReviewExpectation? = nil
   ) async -> RemoteRepositoryPublishResult? {
     guard !blockPublishingIfGeneralDraftSelected(store: store) else { return nil }
     guard store.canUseProtectedWorkbench else {
@@ -315,6 +316,7 @@ extension PublishingStore {
       package: package,
       profile: profile,
       mode: mode,
+      expectedReview: expectedReview,
       store: store
     )
   }
@@ -353,6 +355,7 @@ extension PublishingStore {
     skipDraftMaterialization: Bool = false,
     deferDraftLifecycleMutation: Bool = false,
     validationBeforeRemoteMutation: (@MainActor () async -> Bool)? = nil,
+    expectedReview: SinglePublishReviewExpectation? = nil,
     store: WorkbenchStore
   ) async -> RemoteRepositoryPublishResult? {
     guard self.remoteConflictResolutionOperationID == nil
@@ -370,6 +373,30 @@ extension PublishingStore {
       mode: mode,
       store: store
     )
+    func reviewedContentIsCurrent() -> Bool {
+      guard let expectedReview else { return true }
+      guard store.selectedDraftID == expectedReview.draftID,
+        let currentPackage = publishPackageForSelectedDraft(store: store)
+      else { return false }
+      let currentProfile = store.profile(for: currentPackage)
+      let currentPreview = remoteRepositoryPublishPreview(
+        package: currentPackage, profile: currentProfile,
+        mode: preferredRemoteRepositoryPublishMode(for: currentProfile), store: store
+      )
+      return expectedReview.matches(
+        package: currentPackage, profile: currentProfile, preview: currentPreview
+      )
+    }
+    func requireCurrentReview() -> Bool {
+      guard reviewedContentIsCurrent() else {
+        setPublishActionMessage(
+          CoreL10n.text("文章内容或发布目标已变化，请重新打开确认页审阅。"), status: .warning
+        )
+        return false
+      }
+      return true
+    }
+    guard requireCurrentReview() else { return nil }
     if let tokenAccessFailureMessage = initialPreview.tokenAccessFailureMessage {
       setPublishActionMessage(
         CoreL10n.format(
@@ -420,6 +447,8 @@ extension PublishingStore {
       return nil
     }
 
+    guard requireCurrentReview() else { return nil }
+
     if !skipDraftMaterialization {
       guard
         await ensureDraftMaterializedForRemotePublish(
@@ -431,6 +460,8 @@ extension PublishingStore {
         return nil
       }
     }
+
+    guard requireCurrentReview() else { return nil }
 
     if let validationBeforeRemoteMutation {
       let isStillValid = await validationBeforeRemoteMutation()
@@ -537,7 +568,11 @@ extension PublishingStore {
           store.save()
         }
       }
-      let result = try await remoteRepositoryPublishService.publish(
+      guard requireCurrentReview() else { return nil }
+      if let expectedReview {
+        packageForRemoteAttempt = expectedReview.bindingMediaContent(in: packageForRemoteAttempt)
+      }
+      var result = try await remoteRepositoryPublishService.publish(
         package: packageForRemoteAttempt,
         profile: profile,
         mode: mode,
@@ -549,7 +584,11 @@ extension PublishingStore {
       store.setRemoteRepositoryPublishResult(result)
       store.setRepositoryTokenAvailability(KeychainTokenAvailability(hasToken: true))
       let releaseRecord = ReleaseRecord.remotePublish(
-        package: package, profile: profile, result: result)
+        package: package.freezingArticleVerification(
+          finalFiles: packageForRemoteAttempt.files, profile: profile),
+        profile: profile, result: result)
+      result.releaseRecordID = releaseRecord.id
+      store.setRemoteRepositoryPublishResult(result)
       prependReleaseRecord(releaseRecord)
       if !deferDraftLifecycleMutation {
         confirmDirectRemotePublishLifecycle(packages: [package], result: result)
@@ -578,17 +617,6 @@ extension PublishingStore {
           updatesMessage: false
         )
         guard remoteRepositoryMutationIsCurrent(operation, store: store) else { return nil }
-      }
-      if mode == .directCommit,
-        result.commitSHA?.trimmedForPublishing.nilIfEmpty != nil,
-        deploymentStatus?.level == .success,
-        deploymentStatus?.attributionVerified == true,
-        markDraftsAsPublishedIfDirectRemoteCommit(
-          mode: mode,
-          draftIDs: [package.draftID]
-        )
-      {
-        store.invalidateDraftDerivedCaches()
       }
       let completionFeedback = remotePublishCompletionFeedback(
         mode: mode,

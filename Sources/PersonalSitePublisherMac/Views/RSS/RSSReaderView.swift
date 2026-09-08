@@ -100,6 +100,20 @@ struct RSSReaderView: View {
         undoLastBatchRead: { _ = store.undoLastBatchRead() }
       )
     }
+    .safeAreaInset(edge: .top, spacing: 0) {
+      if let workflowMessage {
+        RSSWorkflowFeedback(message: workflowMessage) {
+          self.workflowMessage = nil
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .transition(.move(edge: .top).combined(with: .opacity))
+      }
+    }
+    .onChange(of: workflowMessage) { _, message in
+      guard let message else { return }
+      EditorAccessibilityAnnouncementCenter.announce(message)
+    }
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("rss-reader-workspace")
     .background {
@@ -146,9 +160,12 @@ struct RSSReaderView: View {
       // method preserves this window's summary/full-text toggle.
       guard let article = selectedArticle else { return }
       _ = presentation.restoreCachedFullText(for: article, store: store)
-    }
-    .onChange(of: presentation.selectedArticleID) { _, newArticleID in
-      selectedReaderText = ""
+        if automaticTranslationEnabled {
+          requestTranslation(for: article, backend: translationBackend, force: false)
+        }
+      }
+      .onChange(of: presentation.selectedArticleID) { _, newArticleID in
+        selectedReaderText = ""
       // The article-level switch is intentionally transient. A new article
       // starts from the application default, while changes made in the
       // reader never write back to that default.
@@ -200,7 +217,7 @@ struct RSSReaderView: View {
   private var readerSheets: some View {
     readerLoading
     .sheet(item: $excerptNoteArticle) { article in
-      RSSExcerptNoteSheet(article: article) { excerpt, note in
+      RSSExcerptNoteSheet(article: article, isSaveUnavailable: workflowIsBusy) { excerpt, note in
         saveExcerptNote(for: article, excerpt: excerpt, note: note)
       }
     }
@@ -226,6 +243,7 @@ struct RSSReaderView: View {
         text: draft.text,
         initialNote: draft.initialNote,
         initialTags: draft.initialTags,
+        isSaveUnavailable: workflowIsBusy,
         onSave: { note, tags in
           saveHighlight(draft, note: note, tags: tags)
         }
@@ -580,6 +598,9 @@ struct RSSReaderView: View {
       onToggleFullText: {
         guard let actionArticle else { return }
         presentation.toggleFullText(for: actionArticle, store: store)
+        if automaticTranslationEnabled {
+          requestTranslation(for: actionArticle, backend: translationBackend, force: false)
+        }
       },
       onRefreshFullText: {
         guard let actionArticle else { return }
@@ -594,6 +615,36 @@ struct RSSReaderView: View {
     )
   }
 
+}
+
+private struct RSSWorkflowFeedback: View {
+  let message: String
+  let onDismiss: () -> Void
+
+  var body: some View {
+    HStack(alignment: .top, spacing: 10) {
+      Label(message, systemImage: "info.circle")
+        .font(.callout)
+        .foregroundStyle(.primary)
+        .multilineTextAlignment(.leading)
+        .fixedSize(horizontal: false, vertical: true)
+      Button(String(localized: "关闭反馈"), systemImage: "xmark", action: onDismiss)
+        .labelStyle(.iconOnly)
+        .buttonStyle(.borderless)
+        .help(String(localized: "关闭反馈"))
+        .accessibilityLabel(String(localized: "关闭反馈"))
+    }
+    .padding(10)
+    .frame(maxWidth: 360, alignment: .leading)
+    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
+    .overlay {
+      RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
+        .strokeBorder(.separator.opacity(0.45))
+    }
+    .accessibilityElement(children: .contain)
+    .accessibilityLabel(message)
+    .accessibilityIdentifier("rss-workflow-feedback")
+  }
 }
 
 private struct RSSUndoToastOverlay: View {

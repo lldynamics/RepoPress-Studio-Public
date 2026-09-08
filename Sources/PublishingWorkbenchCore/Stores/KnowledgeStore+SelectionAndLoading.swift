@@ -232,6 +232,7 @@ extension KnowledgeStore {
       return KnowledgeCitation(
         id: "\(document.id.uuidString.prefix(8))-\(result.chunk.id.uuidString.prefix(8))",
         documentID: document.id,
+        revisionID: result.chunk.revisionID,
         chunkID: result.chunk.id,
         title: document.title,
         authors: document.authors,
@@ -245,16 +246,21 @@ extension KnowledgeStore {
   }
 
   func loadDocument(_ documentID: UUID?) {
+    let document = documentID.flatMap { id in documents.first { $0.id == id } }
+    let revisionID = document?.currentRevisionID
     if selectedDocumentID == documentID,
       documentID != nil,
+      selectedDocumentTextRevisionID == revisionID,
       !selectedDocumentText.isEmpty
     {
       return
     }
     selectedDocumentID = documentID
     selectedDocumentText = ""
+    selectedDocumentTextRevisionID = revisionID
     selectedDocumentTextError = nil
     selectedDocumentCapturedText = nil
+    selectedDocumentCapturedTextRevisionID = revisionID
     selectedDocumentCapturedTextError = nil
     selectedTextTask?.cancel()
     selectedCapturedTextTask?.cancel()
@@ -264,12 +270,15 @@ extension KnowledgeStore {
       return
     }
     isLoadingSelectedDocumentText = true
-    let documentKind = documents.first(where: { $0.id == documentID })?.kind
+    let documentKind = document?.kind
     let service = self.service
     selectedTextTask = Task { [weak self] in
       do {
         let text = try await service.normalizedTextAsync(documentID: documentID)
-        guard !Task.isCancelled, self?.selectedDocumentID == documentID else { return }
+        guard !Task.isCancelled,
+              self?.selectedDocumentID == documentID,
+              self?.selectedDocumentTextRevisionID == revisionID
+        else { return }
         self?.selectedDocumentText =
           documentKind == .webpage
           ? KnowledgeWebContentSanitizer().sanitizeExtractedReadingText(text)
@@ -277,7 +286,10 @@ extension KnowledgeStore {
         self?.isLoadingSelectedDocumentText = false
         self?.selectedDocumentTextError = nil
       } catch {
-        guard !Task.isCancelled, self?.selectedDocumentID == documentID else { return }
+        guard !Task.isCancelled,
+              self?.selectedDocumentID == documentID,
+              self?.selectedDocumentTextRevisionID == revisionID
+        else { return }
         self?.isLoadingSelectedDocumentText = false
         self?.selectedDocumentTextError = error.localizedDescription
         self?.lastError = error.localizedDescription
@@ -291,12 +303,18 @@ extension KnowledgeStore {
     selectedCapturedTextTask = Task { [weak self] in
       do {
         let text = try await service.capturedTextAsync(documentID: documentID)
-        guard !Task.isCancelled, self?.selectedDocumentID == documentID else { return }
+        guard !Task.isCancelled,
+              self?.selectedDocumentID == documentID,
+              self?.selectedDocumentCapturedTextRevisionID == revisionID
+        else { return }
         self?.selectedDocumentCapturedText = text
         self?.isLoadingSelectedDocumentCapturedText = false
         self?.selectedDocumentCapturedTextError = nil
       } catch {
-        guard !Task.isCancelled, self?.selectedDocumentID == documentID else { return }
+        guard !Task.isCancelled,
+              self?.selectedDocumentID == documentID,
+              self?.selectedDocumentCapturedTextRevisionID == revisionID
+        else { return }
         self?.isLoadingSelectedDocumentCapturedText = false
         self?.selectedDocumentCapturedTextError = error.localizedDescription
       }

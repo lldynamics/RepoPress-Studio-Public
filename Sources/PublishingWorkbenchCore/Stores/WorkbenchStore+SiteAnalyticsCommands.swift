@@ -115,15 +115,10 @@ extension WorkbenchStore {
     }
 
     let now = Date()
-    let latestReleaseDate = releaseRecords
-      .filter { $0.draftID == draft.id && $0.siteProfileID == profile.id }
-      .map(\.createdAt)
-      .max() ?? draft.date
     let requestedStart = now.addingTimeInterval(
       -TimeInterval(settings.normalizedDateRangeDays) * 24 * 60 * 60
     )
-    let rangeStart = min(max(requestedStart, latestReleaseDate), now.addingTimeInterval(-60))
-    let dateRange = SiteAnalyticsDateRange(start: rangeStart, end: now)
+    let dateRange = SiteAnalyticsDateRange(start: requestedStart, end: now)
     let pagePath = SiteArticleURLResolver().relativeWebPath(
       from: profile.markdownPath(for: draft),
       profile: profile,

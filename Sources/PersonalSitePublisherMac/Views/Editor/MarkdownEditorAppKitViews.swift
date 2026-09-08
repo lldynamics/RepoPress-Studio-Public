@@ -3,9 +3,30 @@ import OSLog
 import PublishingWorkbenchCore
 
 final class MarkdownEditorScrollView: NSScrollView {
+  private struct LiveResizeSession {
+    let viewportAnchor: MarkdownEditorViewportAnchor?
+    let text: String
+    let viewportOriginY: CGFloat
+    let selectedRange: NSRange?
+  }
+
+  private struct DeferredFrameReflow {
+    let viewportAnchor: MarkdownEditorViewportAnchor?
+    let text: String
+    let targetWidth: CGFloat
+    let viewportOriginY: CGFloat
+  }
+
   private var cachedLayoutWidth: CGFloat = 0
   private var cachedTextHeight: CGFloat?
   private var heightInvalidationWorkItem: DispatchWorkItem?
+  private var liveResizeSession: LiveResizeSession?
+  private var pendingLiveResizeAnchor: MarkdownEditorViewportAnchor?
+  private var deferredFrameReflow: DeferredFrameReflow?
+  private var deferredFrameReflowWorkItem: DispatchWorkItem?
+  private var deferredFrameReflowGeneration = 0
+  private var isApplyingDeferredFrameReflow = false
+  private var requiresImmediateReflow = false
 #if DEBUG || SCREENSHOT_CAPTURE_BUILD
   private enum PerformanceAutoScrollPattern: String {
     case forward
@@ -64,7 +85,6 @@ final class MarkdownEditorScrollView: NSScrollView {
   var preferredBodyWidth = CGFloat(MarkdownEditorComfortConfiguration.defaultBodyWidth) {
     didSet {
       guard abs(oldValue - preferredBodyWidth) > 0.5 else { return }
-      cachedLayoutWidth = 0
       invalidateDocumentHeight(immediately: true)
     }
   }
@@ -83,7 +103,53 @@ final class MarkdownEditorScrollView: NSScrollView {
 #endif
   }
 
+  /// TextKit 2 invalidates both the visible prefix and final fragments when a
+  /// container width changes. Holding the current container width through a
+  /// window drag avoids doing that full reflow for every pointer update.
+  override func viewWillStartLiveResize() {
+    super.viewWillStartLiveResize()
+    cancelDeferredFrameReflow()
+    let textView = documentView as? NSTextView
+    let text = textView?.string ?? ""
+    liveResizeSession = LiveResizeSession(
+      viewportAnchor: MarkdownEditorViewportAnchor.capture(in: self),
+      text: text,
+      viewportOriginY: contentView.bounds.minY,
+      selectedRange: textView?.selectedRange()
+    )
+  }
+
+  override func viewDidEndLiveResize() {
+    // Keep the session active while AppKit performs its own end-of-resize
+    // layout, then apply the final width exactly once below.
+    super.viewDidEndLiveResize()
+    guard let session = liveResizeSession else { return }
+    liveResizeSession = nil
+    let textView = documentView as? NSTextView
+    let currentText = textView?.string ?? ""
+    let viewportChanged = abs(contentView.bounds.minY - session.viewportOriginY) > 0.5
+    let missingRange = NSRange(location: NSNotFound, length: 0)
+    let selectionChanged = !NSEqualRanges(
+      session.selectedRange ?? missingRange,
+      textView?.selectedRange() ?? missingRange
+    )
+    // A live resize can still receive wheel/trackpad input and cursor moves.
+    // Those are newer than the anchor captured at resize start, so preserve
+    // the viewport currently chosen by the user rather than jumping back.
+    pendingLiveResizeAnchor = session.text == currentText
+      ? (viewportChanged || selectionChanged
+        ? MarkdownEditorViewportAnchor.capture(in: self)
+        : session.viewportAnchor)
+      : nil
+    requiresImmediateReflow = true
+    cachedTextHeight = nil
+    needsLayout = true
+    layoutSubtreeIfNeeded()
+  }
+
   func invalidateDocumentHeight(immediately: Bool = false) {
+    cancelDeferredFrameReflow()
+    requiresImmediateReflow = true
     heightInvalidationWorkItem?.cancel()
     if immediately {
       cachedTextHeight = nil
@@ -100,6 +166,16 @@ final class MarkdownEditorScrollView: NSScrollView {
   }
 
   override func layout() {
+    let nextBodyWidth = min(preferredBodyWidth, max(contentSize.width - 32, 1))
+    let defersWidthChangeForLiveResize = liveResizeSession != nil
+    let normalViewportAnchor =
+      !defersWidthChangeForLiveResize
+        && !isApplyingDeferredFrameReflow
+        && pendingLiveResizeAnchor == nil
+        && deferredFrameReflow == nil
+        && cachedLayoutWidth > 0
+        && abs(cachedLayoutWidth - nextBodyWidth) > 0.5
+      ? MarkdownEditorViewportAnchor.capture(in: self) : nil
     super.layout()
     guard let textView = documentView as? NSTextView else { return }
 
@@ -110,18 +186,65 @@ final class MarkdownEditorScrollView: NSScrollView {
     let horizontalInset: CGFloat = 16
     let layoutWidth = bodyWidth
     let widthChanged = abs(cachedLayoutWidth - layoutWidth) > 0.5
-    if widthChanged {
+    if let deferredFrameReflow,
+      deferredFrameReflow.text != textView.string
+    {
+      cancelDeferredFrameReflow()
+      requiresImmediateReflow = true
+    }
+    if deferredFrameReflow != nil && !widthChanged {
+      cancelDeferredFrameReflow()
+    }
+    if !widthChanged && !defersWidthChangeForLiveResize {
+      requiresImmediateReflow = false
+    }
+    let finalLiveResizeAnchor = pendingLiveResizeAnchor
+    if !defersWidthChangeForLiveResize {
+      pendingLiveResizeAnchor = nil
+    }
+    let shouldDeferFrameReflow = widthChanged
+      && !defersWidthChangeForLiveResize
+      && !isApplyingDeferredFrameReflow
+      && !requiresImmediateReflow
+      && cachedLayoutWidth > 0
+    if shouldDeferFrameReflow {
+      if let deferredFrameReflow,
+        abs(deferredFrameReflow.targetWidth - layoutWidth) > 0.5
+      {
+        scheduleDeferredFrameReflow(
+          viewportAnchor: deferredFrameReflow.viewportAnchor,
+          text: deferredFrameReflow.text,
+          targetWidth: layoutWidth
+        )
+      } else if deferredFrameReflow == nil {
+        scheduleDeferredFrameReflow(
+          viewportAnchor: normalViewportAnchor,
+          text: textView.string,
+          targetWidth: layoutWidth
+        )
+      }
+    }
+    let isDeferringFrameReflow = deferredFrameReflow != nil
+      && !isApplyingDeferredFrameReflow
+      && !requiresImmediateReflow
+    if widthChanged && !defersWidthChangeForLiveResize && !isDeferringFrameReflow {
       textView.textContainer?.containerSize = NSSize(
         width: layoutWidth,
         height: CGFloat.greatestFiniteMagnitude
       )
       cachedTextHeight = nil
       cachedLayoutWidth = layoutWidth
+      requiresImmediateReflow = false
     }
     let textContainerInset = NSSize(width: horizontalInset, height: 16)
     if textView.textContainerInset != textContainerInset {
       textView.textContainerInset = textContainerInset
     }
+    // Resolving the visible text after reflow refreshes TextKit's lazy height
+    // estimate before the document frame can clamp the viewport back to zero.
+    let restoredOrigin = widthChanged && !defersWidthChangeForLiveResize
+      ? (finalLiveResizeAnchor ?? normalViewportAnchor)?.origin(afterReflowIn: textView)
+      : nil
     let textHeight =
       textView.textLayoutManager.map { textLayoutManager in
         if let cachedTextHeight {
@@ -141,9 +264,75 @@ final class MarkdownEditorScrollView: NSScrollView {
     if textView.frame.size != documentSize {
       textView.setFrameSize(documentSize)
     }
+    if let restoredOrigin {
+      let maximumY = max(0, documentSize.height - contentSize.height)
+      contentView.scroll(to: NSPoint(x: 0, y: min(max(restoredOrigin, 0), maximumY)))
+      reflectScrolledClipView(contentView)
+    }
 #if DEBUG || SCREENSHOT_CAPTURE_BUILD
     schedulePerformanceInteractionIfNeeded()
 #endif
+  }
+
+  /// Inspector animation and ordinary split-view changes can emit several
+  /// frames. Keep the old, fully laid-out container until their width settles,
+  /// then reuse the normal exact reflow and anchor restoration once.
+  private func scheduleDeferredFrameReflow(
+    viewportAnchor: MarkdownEditorViewportAnchor?,
+    text: String,
+    targetWidth: CGFloat
+  ) {
+    let viewportOriginY = deferredFrameReflow?.viewportOriginY ?? contentView.bounds.minY
+    cancelDeferredFrameReflow()
+    let generation = deferredFrameReflowGeneration
+    deferredFrameReflow = DeferredFrameReflow(
+      viewportAnchor: viewportAnchor,
+      text: text,
+      targetWidth: targetWidth,
+      viewportOriginY: viewportOriginY
+    )
+    let workItem = DispatchWorkItem { [weak self] in
+      guard let self,
+        self.deferredFrameReflowGeneration == generation
+      else { return }
+      self.completeDeferredFrameReflow()
+    }
+    deferredFrameReflowWorkItem = workItem
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.075, execute: workItem)
+  }
+
+  private func cancelDeferredFrameReflow() {
+    deferredFrameReflowGeneration &+= 1
+    deferredFrameReflowWorkItem?.cancel()
+    deferredFrameReflowWorkItem = nil
+    deferredFrameReflow = nil
+  }
+
+  /// Tests use this deterministic completion point instead of relying on a
+  /// timing delay. Production calls it from the coalesced main-queue work item.
+  func completeDeferredFrameReflow() {
+    guard let deferredFrameReflow else { return }
+    deferredFrameReflowWorkItem?.cancel()
+    deferredFrameReflowWorkItem = nil
+    self.deferredFrameReflow = nil
+    guard let textView = documentView as? NSTextView,
+      deferredFrameReflow.text == textView.string
+    else {
+      requiresImmediateReflow = true
+      needsLayout = true
+      return
+    }
+    isApplyingDeferredFrameReflow = true
+    // Scrolling or caret navigation during the quiet period belongs to the
+    // user. Reflow the current viewport instead of pulling it back to the
+    // position captured before that input.
+    pendingLiveResizeAnchor = abs(contentView.bounds.minY - deferredFrameReflow.viewportOriginY) > 0.5
+      ? MarkdownEditorViewportAnchor.capture(in: self)
+      : deferredFrameReflow.viewportAnchor
+    cachedTextHeight = nil
+    needsLayout = true
+    layoutSubtreeIfNeeded()
+    isApplyingDeferredFrameReflow = false
   }
 
 #if DEBUG || SCREENSHOT_CAPTURE_BUILD

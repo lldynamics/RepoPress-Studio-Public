@@ -232,10 +232,12 @@ final class MarkdownEditorEnhancementServicesTests: XCTestCase {
 
   func testKnowledgeCitationsBecomeDeduplicatedFootnotes() {
     let documentID = UUID()
+    let revisionID = UUID()
     let chunkID = UUID()
     let citation = KnowledgeCitation(
-      id: "1",
+      id: "K1",
       documentID: documentID,
+      revisionID: revisionID,
       chunkID: chunkID,
       title: "本地资料",
       authors: ["作者"],
@@ -248,15 +250,134 @@ final class MarkdownEditorEnhancementServicesTests: XCTestCase {
       citations: [citation, citation]
     )
 
-    XCTAssertTrue(result.contains("## 资料来源"))
-    XCTAssertEqual(result.components(separatedBy: "[^kb-1]:").count - 1, 1)
-    XCTAssertTrue(result.contains("第 3 页"))
+    XCTAssertFalse(result.contains("## 资料来源"))
+    XCTAssertFalse(result.contains("第 3 页"))
+  }
+
+  func testKnowledgeCitationMarkersKeepDifferentK1SourcesSeparateAcrossReplies() {
+    let documentID = UUID()
+    let revisionID = UUID()
+    let first = KnowledgeCitation(
+      id: "K1", documentID: documentID, revisionID: revisionID, chunkID: UUID(),
+      title: "资料一", excerpt: "资料一摘录")
+    let second = KnowledgeCitation(
+      id: "K1", documentID: documentID, revisionID: revisionID, chunkID: UUID(),
+      title: "资料二", excerpt: "资料二摘录")
+    let existing = KnowledgeCitationMarkdownService.appendingCitations(
+      to: "初始结论 [K1]。",
+      citations: [first]
+    )
+    let result = KnowledgeCitationMarkdownService.appendingCitations(
+      to: "补充结论 [K1]。\n```text\n[K1]\n```",
+      citations: [second],
+      existingMarkdown: existing
+    )
+
+    XCTAssertTrue(result.contains(KnowledgeCitationMarkdownService.footnoteReference(for: second)))
+    XCTAssertTrue(result.contains("```text\n[K1]\n```"))
+    XCTAssertFalse(result.contains(KnowledgeCitationMarkdownService.footnoteDefinition(for: first)))
+    XCTAssertTrue(result.contains(KnowledgeCitationMarkdownService.footnoteDefinition(for: second)))
+  }
+
+  func testKnowledgeCitationMarkersIgnoreMixedLongFencesAndInlineCode() {
+    let citation = KnowledgeCitation(
+      id: "K1", documentID: UUID(), revisionID: UUID(), chunkID: UUID(),
+      title: "资料", excerpt: "摘录")
+    let markdown = """
+      正文 [K1]，以及 `行内示例 [K1]`。
+      ````markdown
+      [K1]
+      ~~~
+      [K1]
+      ````
+      """
+
+    let result = KnowledgeCitationMarkdownService.appendingCitations(
+      to: markdown,
+      citations: [citation],
+      existingMarkdown:
+        "```text\n\(KnowledgeCitationMarkdownService.footnoteDefinition(for: citation))\n```"
+    )
+
+    let reference = KnowledgeCitationMarkdownService.footnoteReference(for: citation)
+    let prose = result.split(separator: "\n", omittingEmptySubsequences: false)
+      .filter { !$0.hasPrefix(reference + ":") }.joined(separator: "\n")
+    XCTAssertEqual(prose.components(separatedBy: reference).count - 1, 1)
+    XCTAssertTrue(result.contains("`行内示例 [K1]`"))
+    XCTAssertTrue(result.contains("````markdown\n[K1]\n~~~\n[K1]\n````"))
+    XCTAssertEqual(
+      result.components(
+        separatedBy: KnowledgeCitationMarkdownService.footnoteDefinition(for: citation)
+      ).count - 1, 1)
+  }
+
+  func testKnowledgeCitationConflictingMarkerFailsClosedAndSameSourceCanReuseMarkers() {
+    let first = KnowledgeCitation(
+      id: "K1", documentID: UUID(), revisionID: UUID(), chunkID: UUID(),
+      title: "资料一", excerpt: "摘录一")
+    let conflicting = KnowledgeCitation(
+      id: "K1", documentID: UUID(), revisionID: UUID(), chunkID: UUID(),
+      title: "资料二", excerpt: "摘录二")
+
+    let rejected = KnowledgeCitationMarkdownService.appendingCitations(
+      to: "冲突 [K1]。",
+      citations: [first, conflicting]
+    )
+    XCTAssertEqual(rejected, "冲突 [K1]。")
+    XCTAssertTrue(
+      KnowledgeCitationMarkdownService.referencedCitations(
+        in: "冲突 [K1]。",
+        candidates: [first, conflicting]
+      ).isEmpty)
+
+    var sameSource = first
+    sameSource.id = "K2"
+    let reused = KnowledgeCitationMarkdownService.appendingCitations(
+      to: "同源 [K1] 与 [K2]。",
+      citations: [first, sameSource]
+    )
+    let reference = KnowledgeCitationMarkdownService.footnoteReference(for: first)
+    let prose = reused.split(separator: "\n", omittingEmptySubsequences: false)
+      .filter { !$0.hasPrefix(reference + ":") }.joined(separator: "\n")
+    XCTAssertEqual(prose.components(separatedBy: reference).count - 1, 2)
+    XCTAssertEqual(
+      reused.components(
+        separatedBy: KnowledgeCitationMarkdownService.footnoteDefinition(for: first)
+      ).count - 1,
+      1
+    )
+    XCTAssertEqual(
+      KnowledgeCitationMarkdownService.referencedCitations(
+        in: "同源 [K1] 与 [K2]。",
+        candidates: [first, sameSource]
+      ), [first])
+  }
+
+  func testLegacyCitationMarkersRetainDefinitionsForEachLegacyIdentity() {
+    let first = KnowledgeCitation(
+      id: "K1", documentID: UUID(), chunkID: UUID(), title: "旧资料", excerpt: "摘录")
+    var second = first
+    second.id = "K2"
+
+    let result = KnowledgeCitationMarkdownService.appendingCitations(
+      to: "旧引用 [K1] 与 [K2]。", citations: [first, second])
+
+    for citation in [first, second] {
+      XCTAssertEqual(
+        result.components(
+          separatedBy: KnowledgeCitationMarkdownService.footnoteDefinition(for: citation)
+        ).count - 1, 1)
+    }
+    XCTAssertEqual(
+      KnowledgeCitationMarkdownService.referencedCitations(
+        in: "旧引用 [K1] 与 [K2]。", candidates: [first, second]), [first, second])
   }
 
   func testKnowledgeCitationFootnoteReferenceAndDefinitionAreStable() {
     let citation = KnowledgeCitation(
       id: "react-source",
       documentID: UUID(),
+      revisionID: UUID(),
       chunkID: UUID(),
       title: "React 官方文档",
       authors: [],
@@ -265,12 +386,12 @@ final class MarkdownEditorEnhancementServicesTests: XCTestCase {
       sourceURL: URL(string: "https://react.dev/reference/rsc/server-components")
     )
 
-    XCTAssertEqual(
-      KnowledgeCitationMarkdownService.footnoteReference(for: citation),
-      "[^kb-react-source]"
-    )
+    let key = KnowledgeCitationMarkdownService.footnoteKey(for: citation, fallbackIndex: 1)
+    XCTAssertTrue(key.contains("d\(citation.documentID.uuidString.lowercased())"))
+    XCTAssertTrue(key.contains("r\(citation.revisionID!.uuidString.lowercased())"))
+    XCTAssertTrue(key.contains("c\(citation.chunkID.uuidString.lowercased())"))
     let definition = KnowledgeCitationMarkdownService.footnoteDefinition(for: citation)
-    XCTAssertTrue(definition.hasPrefix("[^kb-react-source]: React 官方文档"))
+    XCTAssertTrue(definition.contains(": React 官方文档"))
     XCTAssertTrue(definition.contains("Server Components"))
     XCTAssertTrue(definition.contains("https://react.dev/reference/rsc/server-components"))
   }

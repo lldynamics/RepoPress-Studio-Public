@@ -38,6 +38,10 @@ private struct ImageCompressionAchievement: Identifiable {
 struct AssetResourceManagerView: View {
   let store: WorkbenchStore
   @ObservedObject private var imageWorkbench: WorkbenchImageWorkbenchFeatureFacade
+  @Environment(\.openSettings) private var openSettings
+  @Environment(\.settingsWorkspaceCommandAction) private var settingsWorkspaceCommandAction
+  @AppStorage("dataManagementRequestedSection") private var dataManagementRequestedSection =
+    DataManagementSection.drafts.rawValue
 
   @State private var report: AssetResourceScanReport?
   @State private var errorMessage: String?
@@ -45,9 +49,17 @@ struct AssetResourceManagerView: View {
   @State private var filter: AssetResourceManagerFilter = .all
   @State private var selectedOrphanPaths = Set<String>()
   @State private var selectedCompressionPaths = Set<String>()
+  @State private var hasInitializedOrphanSelection = false
+  @State private var hasInitializedCompressionSelection = false
   @State private var pendingAction: AssetResourceManagerPendingAction?
-  @State private var isCleanupSheetPresented = false
+  @State private var cleanupReview: AssetCleanupReview?
+  @State private var cleanupReviewMessage: String?
   @State private var compressionAchievement: ImageCompressionAchievement?
+  @State private var repairReplacementPathByReferenceID: [String: String] = [:]
+  @State private var repairPreviews: [AssetReferenceRepairPreview] = []
+  @State private var selectedRepairPreviewIDs = Set<UUID>()
+  @State private var repairMessage: String?
+  @State private var repairRecoveryDraftID: UUID?
   @State private var activeScanID: UUID?
 
   init(store: WorkbenchStore) {
@@ -63,6 +75,13 @@ struct AssetResourceManagerView: View {
         ImageCompressionAchievementCard(
           achievement: achievement,
           onDismiss: { compressionAchievement = nil }
+        )
+      }
+
+      if let cleanupReviewMessage {
+        WorkbenchStateView(
+          presentation: WorkbenchStatePresentation(kind: .failure(reason: cleanupReviewMessage)),
+          density: .inline
         )
       }
 
@@ -95,25 +114,27 @@ struct AssetResourceManagerView: View {
       report = nil
       selectedOrphanPaths.removeAll()
       selectedCompressionPaths.removeAll()
+      hasInitializedOrphanSelection = false
+      hasInitializedCompressionSelection = false
       compressionAchievement = nil
+      repairReplacementPathByReferenceID = [:]
+      repairPreviews = []
+      selectedRepairPreviewIDs = []
+      repairMessage = nil
+      repairRecoveryDraftID = nil
       pendingAction = nil
-      isCleanupSheetPresented = false
+      cleanupReview = nil
+      cleanupReviewMessage = nil
     }
-    .sheet(isPresented: $isCleanupSheetPresented) {
-      if let report {
-        let paths = selectedOrphanPaths
-        let items = report.orphanedAssets.filter { paths.contains($0.repositoryPath) }
-        AssetCleanupConfirmationSheet(
-          items: items,
-          onConfirm: {
-            isCleanupSheetPresented = false
-            runCleanup()
-          },
-          onCancel: {
-            isCleanupSheetPresented = false
-          }
-        )
-      }
+    .sheet(item: $cleanupReview) { review in
+      AssetCleanupConfirmationSheet(
+        items: review.items,
+        onConfirm: {
+          cleanupReview = nil
+          runCleanup(review)
+        },
+        onCancel: { cleanupReview = nil }
+      )
     }
     .confirmationDialog(
       "确认开始图片瘦身？",
@@ -276,7 +297,11 @@ struct AssetResourceManagerView: View {
   private func actionButtons(_ report: AssetResourceScanReport) -> some View {
     HStack(spacing: 8) {
       Button {
-        isCleanupSheetPresented = true
+        cleanupReviewMessage = nil
+        cleanupReview = AssetCleanupReview(
+          profile: store.activeProfile, report: report, scanInput: scanInput,
+          items: report.orphanedAssets.filter { selectedOrphanPaths.contains($0.repositoryPath) }
+        )
       } label: {
         Label("清理孤立资源（\(selectedOrphanPaths.count)）", systemImage: "trash")
       }
@@ -284,6 +309,7 @@ struct AssetResourceManagerView: View {
       .disabled(
         selectedOrphanPaths.isEmpty
           || report.orphanedAssets.isEmpty
+          || !report.isComplete
           || isLoading
           || imageWorkbench.hasActiveAssetResourceOperation(for: store.activeProfile.id)
       )
@@ -328,7 +354,7 @@ struct AssetResourceManagerView: View {
         emptyTitle: "没有可瘦身图片",
         emptyMessage: "当前没有达到建议阈值且格式可安全处理的图片。"
       )
-      brokenSection(report.brokenReferences)
+      brokenSection(report)
     case .orphaned:
       assetSection(
         title: "孤立资源",
@@ -348,7 +374,7 @@ struct AssetResourceManagerView: View {
         emptyMessage: "当前没有达到建议阈值且格式可安全处理的图片。"
       )
     case .broken:
-      brokenSection(report.brokenReferences)
+      brokenSection(report)
     }
   }
 
@@ -414,12 +440,13 @@ struct AssetResourceManagerView: View {
   }
 
   @ViewBuilder
-  private func brokenSection(_ references: [AssetResourceBrokenReference]) -> some View {
+  private func brokenSection(_ report: AssetResourceScanReport) -> some View {
+    let references = report.brokenReferences
     VStack(alignment: .leading, spacing: 10) {
       VStack(alignment: .leading, spacing: 3) {
         Text("失效的本地相对路径")
           .font(.workbenchSectionTitle)
-        Text("这些引用来自 Markdown 或正文 HTML；请打开对应文件修复路径。资源管理器不会自动改写文章。")
+        Text("选择已导入文章中的断链来预览替换。其他文件可定位后编辑。")
           .font(.workbenchSupporting)
           .foregroundStyle(.secondary)
           .fixedSize(horizontal: false, vertical: true)
@@ -454,9 +481,28 @@ struct AssetResourceManagerView: View {
                 .workbenchTruncatedIdentity(
                   "\(reference.sourceMarkdownPath):\(reference.lineNumber) · \(reference.message)",
                   lineLimit: 2)
+              Picker("替换为", selection: repairReplacementBinding(for: reference.id)) {
+                Text("选择本次扫描中的资源").tag("")
+                ForEach(report.assets) { asset in
+                  Text(asset.repositoryPath).tag(asset.repositoryPath)
+                }
+              }
+              .pickerStyle(.menu)
+              HStack {
+                Button("预览替换") {
+                  prepareRepair(reference: reference, report: report)
+                }
+                .disabled(repairReplacementPathByReferenceID[reference.id]?.isEmpty != false)
+                Button("定位文章") {
+                  locateArticle(reference: reference, report: report)
+                }
+                Button("在 Finder 中显示") {
+                  revealSourceFile(reference: reference, report: report)
+                }
+              }
             }
             .padding(.vertical, 3)
-            .accessibilityElement(children: .combine)
+            .accessibilityElement(children: .contain)
             .accessibilityLabel("失效本地资源引用")
             .accessibilityValue(
               "\(reference.sourceMarkdownPath) 第 \(reference.lineNumber) 行，\(reference.rawPath)，\(reference.message)"
@@ -468,6 +514,38 @@ struct AssetResourceManagerView: View {
           minHeight: 120, idealHeight: min(260, CGFloat(references.count * 54 + 20)), maxHeight: 300
         )
         .accessibilityIdentifier("asset-manager-broken-reference-list")
+      }
+      if !repairPreviews.isEmpty {
+        Divider()
+        Text("替换预览")
+          .font(.headline)
+        ForEach(repairPreviews) { preview in
+          Toggle(isOn: repairPreviewBinding(for: preview.id)) {
+            VStack(alignment: .leading, spacing: 2) {
+              Text("\(preview.sourcePath):\(preview.lineNumber)")
+              Text("\(preview.oldPath) → \(preview.newPath)")
+                .font(.caption.monospaced())
+                .foregroundStyle(.secondary)
+            }
+          }
+        }
+        Button("应用选中的替换（\(selectedRepairPreviewIDs.count)）") {
+          applySelectedRepairs(report: report)
+        }
+        .workbenchProminentActionStyle()
+        .disabled(selectedRepairPreviewIDs.isEmpty || isLoading)
+      }
+      if let repairMessage {
+        Text(repairMessage)
+          .font(.workbenchSupporting)
+          .foregroundStyle(.secondary)
+      }
+      if let repairRecoveryDraftID {
+        Button("打开版本恢复") {
+          openVersionHistory(for: repairRecoveryDraftID)
+        }
+        .buttonStyle(.bordered)
+        .accessibilityIdentifier("asset-manager-open-repair-version-history")
       }
     }
     .padding(14)
@@ -564,6 +642,11 @@ struct AssetResourceManagerView: View {
 
   private func refresh() async {
     let profile = store.activeProfile
+    let input = scanInput
+    if cleanupReview != nil {
+      cleanupReviewMessage = AssetResourceManagerError.cleanupReviewChanged.localizedDescription
+    }
+    cleanupReview = nil
     let taskID = UUID()
     activeScanID = taskID
     isLoading = true
@@ -574,13 +657,13 @@ struct AssetResourceManagerView: View {
     do {
       let result = try await AssetResourceManagerService().scanAsync(profile: profile)
       try Task.checkCancellation()
-      guard activeScanID == taskID, profile.id == store.activeProfile.id else { return }
+      guard activeScanID == taskID, input == scanInput else { return }
       report = result
       normalizeSelections(result)
     } catch is CancellationError {
       return
     } catch {
-      guard activeScanID == taskID, profile.id == store.activeProfile.id else { return }
+      guard activeScanID == taskID, input == scanInput else { return }
       report = nil
       errorMessage = error.localizedDescription
     }
@@ -589,13 +672,197 @@ struct AssetResourceManagerView: View {
   private func normalizeSelections(_ report: AssetResourceScanReport) {
     let orphanPaths = Set(report.orphanedAssets.map(\.repositoryPath))
     let compressionPaths = Set(report.compressionCandidates.map(\.repositoryPath))
-    selectedOrphanPaths.formIntersection(orphanPaths)
-    selectedCompressionPaths.formIntersection(compressionPaths)
-    if selectedOrphanPaths.isEmpty {
-      selectedOrphanPaths = orphanPaths
+    let orphanSelection = AssetResourceSelectionPolicy.normalizedSelection(
+      currentSelection: selectedOrphanPaths,
+      candidates: orphanPaths,
+      hasInitializedSelection: hasInitializedOrphanSelection
+    )
+    selectedOrphanPaths = orphanSelection.selection
+    hasInitializedOrphanSelection = orphanSelection.hasInitializedSelection
+    let compressionSelection = AssetResourceSelectionPolicy.normalizedSelection(
+      currentSelection: selectedCompressionPaths,
+      candidates: compressionPaths,
+      hasInitializedSelection: hasInitializedCompressionSelection
+    )
+    selectedCompressionPaths = compressionSelection.selection
+    hasInitializedCompressionSelection = compressionSelection.hasInitializedSelection
+    // A scan is the immutable baseline for both broken-token offsets and the
+    // replacement inventory. Never carry a preview across a fresh scan.
+    repairPreviews = []
+    selectedRepairPreviewIDs = []
+  }
+
+  private func repairReplacementBinding(for referenceID: String) -> Binding<String> {
+    Binding(
+      get: { repairReplacementPathByReferenceID[referenceID] ?? "" },
+      set: { repairReplacementPathByReferenceID[referenceID] = $0 }
+    )
+  }
+
+  private func repairPreviewBinding(for previewID: UUID) -> Binding<Bool> {
+    Binding(
+      get: { selectedRepairPreviewIDs.contains(previewID) },
+      set: { selected in
+        if selected {
+          selectedRepairPreviewIDs.insert(previewID)
+        } else {
+          selectedRepairPreviewIDs.remove(previewID)
+        }
+      }
+    )
+  }
+
+  private func prepareRepair(
+    reference: AssetResourceBrokenReference, report: AssetResourceScanReport
+  ) {
+    guard let path = repairReplacementPathByReferenceID[reference.id],
+      let replacement = report.assets.first(where: { $0.repositoryPath == path })
+    else { return }
+    do {
+      let preview = try AssetReferenceRepairService().makePreview(
+        reference: reference, replacement: replacement, report: report, drafts: store.drafts
+      )
+      let selectionReplacement = AssetReferenceRepairPreviewSelectionPolicy.replacing(
+        preview: AssetReferenceRepairPreviewSelectionCandidate(
+          id: preview.id,
+          draftID: preview.draftID,
+          sourcePath: preview.sourcePath.normalizedRelativePath()
+        ),
+        existingPreviews: repairPreviews.map {
+          AssetReferenceRepairPreviewSelectionCandidate(
+            id: $0.id,
+            draftID: $0.draftID,
+            sourcePath: $0.sourcePath.normalizedRelativePath()
+          )
+        },
+        selectedPreviewIDs: selectedRepairPreviewIDs
+      )
+      repairPreviews.removeAll { selectionReplacement.removedPreviewIDs.contains($0.id) }
+      repairPreviews.append(preview)
+      selectedRepairPreviewIDs = selectionReplacement.selectedPreviewIDs
+      repairMessage =
+        selectionReplacement.removedPreviewIDs.isEmpty
+        ? String(localized: "已生成替换预览；应用前会重新校验文章、编辑缓冲和资源路径。")
+        : String(localized: "同一篇文章一次只能保留一个待应用替换；已替换该文章先前的预览。")
+    } catch {
+      repairRecoveryDraftID = importedDraftID(for: reference, report: report)
+      repairMessage = error.localizedDescription
     }
-    if selectedCompressionPaths.isEmpty {
-      selectedCompressionPaths = compressionPaths
+  }
+
+  private func applySelectedRepairs(report: AssetResourceScanReport) {
+    let selected = repairPreviews.filter { selectedRepairPreviewIDs.contains($0.id) }
+    do {
+      let result = try store.applyAssetReferenceRepairs(selected, report: report)
+      guard result.persistenceSucceeded else {
+        repairRecoveryDraftID = result.appliedDraftIDs.first
+        repairMessage = String(localized: "替换已写入工作区并保留恢复版本，但持久化失败；请从版本入口恢复或重试。")
+        return
+      }
+      repairMessage = String(localized: "已应用替换并保存可恢复版本，正在重新扫描。")
+      repairPreviews.removeAll { selectedRepairPreviewIDs.contains($0.id) }
+      selectedRepairPreviewIDs.removeAll()
+      Task { await refresh() }
+    } catch {
+      repairMessage = error.localizedDescription
+    }
+  }
+
+  private func locateArticle(
+    reference: AssetResourceBrokenReference, report: AssetResourceScanReport
+  ) {
+    guard report.profileID == store.activeProfile.id else {
+      repairMessage = String(localized: "站点已切换，请重新扫描后再定位引用。")
+      return
+    }
+    do {
+      let location = try AssetReferenceRepairService().editorLocation(
+        for: reference,
+        report: report,
+        drafts: store.drafts
+      )
+      guard store.focusDraft(location.draftID, section: .writing) else {
+        throw AssetReferenceRepairError.unavailableDraft
+      }
+      store.requestEditorFocus(
+        draftID: location.draftID,
+        field: "body",
+        query: reference.rawPath,
+        selectedRange: location.selectedRange
+      )
+      repairRecoveryDraftID = location.draftID
+      repairMessage = String(localized: "已打开文章并选中第 \(reference.lineNumber) 行的失效引用。")
+    } catch {
+      if let draftID = importedDraftID(for: reference, report: report),
+        store.focusDraft(draftID, section: .writing)
+      {
+        repairRecoveryDraftID = draftID
+        repairMessage = String(localized: "已打开文章；第 \(reference.lineNumber) 行的位置已变化，未自动选择。")
+        return
+      }
+      openExternalSourceFile(reference: reference, report: report)
+    }
+  }
+
+  private func revealSourceFile(
+    reference: AssetResourceBrokenReference, report: AssetResourceScanReport
+  ) {
+    do {
+      let source = try AssetReferenceRepairService().sourceURL(
+        for: reference.sourceMarkdownPath,
+        report: report
+      )
+      NSWorkspace.shared.activateFileViewerSelecting([source])
+      repairMessage = String(
+        localized: "已在 Finder 中显示 \(reference.sourceMarkdownPath) 第 \(reference.lineNumber) 行所在文件。")
+    } catch {
+      repairMessage = error.localizedDescription
+    }
+  }
+
+  private func openExternalSourceFile(
+    reference: AssetResourceBrokenReference, report: AssetResourceScanReport
+  ) {
+    do {
+      let source = try AssetReferenceRepairService().sourceURL(
+        for: reference.sourceMarkdownPath,
+        report: report
+      )
+      guard NSWorkspace.shared.open(source) else {
+        repairMessage = String(localized: "无法打开仓库文件 \(reference.sourceMarkdownPath)。")
+        return
+      }
+      repairMessage = String(
+        localized: "已在默认编辑器打开 \(reference.sourceMarkdownPath)；请编辑第 \(reference.lineNumber) 行。")
+    } catch {
+      repairMessage = error.localizedDescription
+    }
+  }
+
+  private func importedDraftID(
+    for reference: AssetResourceBrokenReference,
+    report: AssetResourceScanReport
+  ) -> UUID? {
+    store.drafts.first {
+      $0.siteProfileID == report.profileID
+        && !$0.isGeneralDraft
+        && $0.repositoryPath?.normalizedRelativePath()
+          == reference.sourceMarkdownPath.normalizedRelativePath()
+    }?.id
+  }
+
+  private func openVersionHistory(for draftID: UUID) {
+    guard store.focusDraft(draftID, section: .writing) else {
+      repairMessage = String(localized: "无法打开文章的版本恢复入口。")
+      return
+    }
+    store.flushDraftBodyEditorBuffers()
+    dataManagementRequestedSection = DataManagementSection.drafts.rawValue
+    SettingsNavigation.present(
+      destination: .data(.drafts),
+      workspaceAction: settingsWorkspaceCommandAction
+    ) {
+      openSettings()
     }
   }
 
@@ -618,12 +885,14 @@ struct AssetResourceManagerView: View {
       set: { isSelected in
         switch selection {
         case .orphaned:
+          hasInitializedOrphanSelection = true
           if isSelected {
             selectedOrphanPaths.insert(path)
           } else {
             selectedOrphanPaths.remove(path)
           }
         case .compressible:
+          hasInitializedCompressionSelection = true
           if isSelected {
             selectedCompressionPaths.insert(path)
           } else {
@@ -636,29 +905,42 @@ struct AssetResourceManagerView: View {
 
   private func selectAll(_ items: [AssetResourceItem], selection: AssetResourceSelection) {
     switch selection {
-    case .orphaned: selectedOrphanPaths.formUnion(items.map(\.repositoryPath))
-    case .compressible: selectedCompressionPaths.formUnion(items.map(\.repositoryPath))
+    case .orphaned:
+      hasInitializedOrphanSelection = true
+      selectedOrphanPaths.formUnion(items.map(\.repositoryPath))
+    case .compressible:
+      hasInitializedCompressionSelection = true
+      selectedCompressionPaths.formUnion(items.map(\.repositoryPath))
     }
   }
 
   private func clearAll(_ items: [AssetResourceItem], selection: AssetResourceSelection) {
     switch selection {
-    case .orphaned: selectedOrphanPaths.subtract(items.map(\.repositoryPath))
-    case .compressible: selectedCompressionPaths.subtract(items.map(\.repositoryPath))
+    case .orphaned:
+      hasInitializedOrphanSelection = true
+      selectedOrphanPaths.subtract(items.map(\.repositoryPath))
+    case .compressible:
+      hasInitializedCompressionSelection = true
+      selectedCompressionPaths.subtract(items.map(\.repositoryPath))
     }
   }
 
-  private func runCleanup() {
+  private func runCleanup(_ review: AssetCleanupReview) {
     pendingAction = nil
-    guard let report else { return }
-    let paths = selectedOrphanPaths
-    let items = report.orphanedAssets.filter { paths.contains($0.repositoryPath) }
+    guard !isLoading, review.scanInput == scanInput,
+      report?.revisionID == review.report.revisionID, review.report.isComplete
+    else {
+      cleanupReviewMessage = AssetResourceManagerError.cleanupReviewChanged.localizedDescription
+      return
+    }
+    let items = review.items
     guard !items.isEmpty else { return }
-    let profile = store.activeProfile
+    let profile = review.profile
     let loadingDetail = String(localized: "正在校验并移入废纸篓…")
     guard
       let operationID = imageWorkbench.beginAssetResourceOperation(
         for: profile.id,
+        operationTitle: String(localized: "清理孤立资源（\(items.count)）"),
         loadingDetail: loadingDetail
       )
     else {
@@ -676,7 +958,7 @@ struct AssetResourceManagerView: View {
       do {
         let result = try await Task.detached(priority: .utility) {
           try AssetResourceManagerService().moveOrphanedAssetsToTrash(
-            profile: profile, items: items)
+            profile: profile, items: items, reviewedReport: review.report)
         }.value
         var parts = ["已移入废纸篓 \(result.movedToTrashPaths.count) 个资源"]
         if !result.needsReviewPaths.isEmpty {
@@ -714,6 +996,7 @@ struct AssetResourceManagerView: View {
     guard
       let operationID = imageWorkbench.beginAssetResourceOperation(
         for: profile.id,
+        operationTitle: String(localized: "图片瘦身（\(items.count)）"),
         loadingDetail: loadingDetail
       )
     else {
@@ -778,9 +1061,9 @@ struct AssetResourceManagerView: View {
       parts.append("有 \(report.skippedMarkdownFileCount) 个 Markdown 文件过大或无法读取")
     }
     if report.wasTruncated {
-      parts.append("扫描达到安全数量上限")
+      parts.append("扫描达到安全数量或累计读取字节预算")
     }
-    return parts.joined(separator: "；") + "，结果可能不完整；请先处理后重新扫描。"
+    return parts.joined(separator: "；") + "，结果不完整；不会开放孤立资源清理，请先处理后重新扫描。"
   }
 
   private func openAssetDirectory() {
@@ -959,6 +1242,14 @@ private struct AssetCleanupConfirmationSheet: View {
     .frame(minWidth: 480, idealWidth: 540, minHeight: 380, idealHeight: 460)
     .accessibilityLabel("孤立资源清理确认")
   }
+}
+
+private struct AssetCleanupReview: Identifiable {
+  let id = UUID()
+  let profile: SiteProfile
+  let report: AssetResourceScanReport
+  let scanInput: AssetResourceScanInput
+  let items: [AssetResourceItem]
 }
 
 private struct AssetResourceScanInput: Hashable {

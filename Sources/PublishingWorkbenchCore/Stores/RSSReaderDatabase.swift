@@ -27,7 +27,7 @@ public enum RSSReaderDatabaseWALCheckpointMode: Sendable {
 /// the main-actor store and a detached read-only search task without moving
 /// the store itself off the main actor.
 final class RSSReaderDatabase: @unchecked Sendable {
-  static let currentSchemaVersion = 6
+  static let currentSchemaVersion = 7
 
   let fileURL: URL
   var handle: OpaquePointer?

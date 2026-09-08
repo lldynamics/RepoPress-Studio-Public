@@ -189,28 +189,38 @@ extension AIChatContextInspectorView {
               Text(String(localized: "当前文章没有可发送的图片"))
             } else {
               ForEach(availableChatImageAttachments) { attachment in
+                let knownFailureReason = AIChatImageAttachmentSelectionPolicy.knownFailureReason(
+                  for: attachment
+                )
+                let isSelected = selectedChatImageAttachmentIDs.contains(attachment.id)
                 Button {
                   toggleChatImageAttachment(attachment.id)
                 } label: {
-                  Label(
-                    attachment.originalFilename,
-                    systemImage: selectedImageAttachmentIDs.contains(attachment.id)
-                      ? "checkmark.circle.fill"
-                      : "circle"
-                  )
+                  VStack(alignment: .leading, spacing: 2) {
+                    Label(
+                      attachment.originalFilename,
+                      systemImage: isSelected ? "checkmark.circle.fill" : "circle"
+                    )
+                    if let knownFailureReason {
+                      Text(knownFailureReason)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    }
+                  }
                 }
+                .disabled(!isSelected && knownFailureReason != nil)
               }
               Divider()
               Button(String(localized: "清空图片选择")) {
                 setSelectedImageAttachmentIDs([])
               }
-              .disabled(selectedImageAttachmentIDs.isEmpty)
+              .disabled(selectedChatImageAttachmentIDs.isEmpty)
             }
           } label: {
             Label(
-              selectedImageAttachmentIDs.isEmpty
+              selectedChatImageAttachmentIDs.isEmpty
                 ? String(localized: "添加图片")
-                : String(localized: "图片 \(selectedImageAttachmentIDs.count)"),
+                : String(localized: "图片 \(selectedChatImageAttachmentIDs.count)"),
               systemImage: "paperclip"
             )
           }
@@ -433,8 +443,15 @@ extension AIChatContextInspectorView {
 
   var selectedChatImageAttachments: [DraftAttachment] {
     availableChatImageAttachments.filter {
-      selectedImageAttachmentIDs.contains($0.id)
+      selectedChatImageAttachmentIDs.contains($0.id)
     }
+  }
+
+  var selectedChatImageAttachmentIDs: Set<UUID> {
+    AIChatImageAttachmentSelectionPolicy.validSelection(
+      selectedImageAttachmentIDs,
+      availableAttachmentIDs: Set(availableChatImageAttachments.map(\.id))
+    )
   }
 
   @ViewBuilder
@@ -472,7 +489,7 @@ extension AIChatContextInspectorView {
   }
 
   var canSubmitMessage: Bool {
-    (!trimmedInput.isEmpty || !selectedImageAttachmentIDs.isEmpty)
+    (!trimmedInput.isEmpty || !selectedChatImageAttachmentIDs.isEmpty)
       && !isComposerInputUnavailable
       && !isAIKeyMissing
   }
@@ -481,7 +498,7 @@ extension AIChatContextInspectorView {
     let draft = ai.chatContextMode == .site ? inspectorDraft : nil
     guard ai.chatContextMode == .general || draft != nil else { return }
     let message = trimmedInput
-    guard !message.isEmpty || !selectedImageAttachmentIDs.isEmpty,
+    guard !message.isEmpty || !selectedChatImageAttachmentIDs.isEmpty,
       !isChatBusy
     else { return }
     let config = currentAIProviderConfig
@@ -523,7 +540,7 @@ extension AIChatContextInspectorView {
   }
 
   func toggleChatImageAttachment(_ attachmentID: UUID) {
-    var attachmentIDs = selectedImageAttachmentIDs
+    var attachmentIDs = selectedChatImageAttachmentIDs
     if attachmentIDs.remove(attachmentID) != nil {
       setSelectedImageAttachmentIDs(attachmentIDs)
       return
@@ -650,7 +667,19 @@ extension AIChatContextInspectorView {
   }
 
   var selectedImageAttachmentIDs: Set<UUID> {
-    surfaceState.imageAttachmentIDs(for: inspectorSurfaceConversationID)
+    surfaceState.imageAttachmentIDs(for: imageAttachmentSelectionConversationID)
+  }
+
+  var imageAttachmentSelectionConversationID: UUID {
+    guard ai.chatContextMode == .site, let draft = inspectorDraft else {
+      return inspectorSurfaceConversationID
+    }
+    let fallbackConversationID = ai.activeChatConversationID(for: draft.id) ?? draft.id
+    return AIChatImageAttachmentSelectionPolicy.conversationID(
+      selectedConversationID: surfaceState.selectedConversationID,
+      currentDraftConversationIDs: Set(ai.chatConversations(for: draft.id).map(\.id)),
+      fallbackConversationID: fallbackConversationID
+    )
   }
 
   func updateInspectorSurfaceState(
@@ -676,9 +705,28 @@ extension AIChatContextInspectorView {
   }
 
   func setSelectedImageAttachmentIDs(_ attachmentIDs: Set<UUID>) {
-    let conversationID = inspectorSurfaceConversationID
+    let conversationID = imageAttachmentSelectionConversationID
+    let validAttachmentIDs = Set(availableChatImageAttachments.map(\.id))
+    let validatedAttachmentIDs = AIChatImageAttachmentSelectionPolicy.validSelection(
+      attachmentIDs,
+      availableAttachmentIDs: validAttachmentIDs
+    )
     updateInspectorSurfaceState { state in
-      state.setImageAttachmentIDs(attachmentIDs, for: conversationID)
+      state.setImageAttachmentIDs(validatedAttachmentIDs, for: conversationID)
+    }
+  }
+
+  func pruneInvalidChatImageAttachmentSelection() {
+    guard ai.chatContextMode == .site, inspectorDraft != nil else { return }
+    let conversationID = imageAttachmentSelectionConversationID
+    let selectedIDs = surfaceState.imageAttachmentIDs(for: conversationID)
+    let validIDs = AIChatImageAttachmentSelectionPolicy.validSelection(
+      selectedIDs,
+      availableAttachmentIDs: Set(availableChatImageAttachments.map(\.id))
+    )
+    guard selectedIDs != validIDs else { return }
+    updateInspectorSurfaceState { state in
+      state.setImageAttachmentIDs(validIDs, for: conversationID)
     }
   }
 

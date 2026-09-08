@@ -36,13 +36,9 @@ struct EditorSettingsView: View {
 
   var body: some View {
     Form {
-      SettingsSubsectionAnchor(subsection: .editorPreview)
       previewSection
-      SettingsSubsectionAnchor(subsection: .editorTypography)
       typographySection
-      SettingsSubsectionAnchor(subsection: .editorAssistance)
       assistanceSection
-      SettingsSubsectionAnchor(subsection: .editorAutomation)
       automationSection
     }
     .formStyle(.grouped)
@@ -57,6 +53,7 @@ struct EditorSettingsView: View {
       editorLivePreviewCard
     } header: {
       Text("排版效果实时预览")
+        .settingsSubsectionAnchor(.editorPreview)
     } footer: {
       Text("拖动下方滑块或切换开关，此处会即时呈现文章在编辑器内的排版与视觉氛围。")
     }
@@ -95,13 +92,14 @@ struct EditorSettingsView: View {
       )
     } header: {
       Text("文字与版式")
+        .settingsSubsectionAnchor(.editorTypography)
     } footer: {
       Text("这些值会应用到所有文章的编辑器。")
     }
   }
 
   private var assistanceSection: some View {
-    Section("编辑辅助") {
+    Section {
       preferenceToggle(
         title: "拼写检查",
         detail: String(localized: "在编辑器中使用 macOS 的连续拼写检查。"),
@@ -138,6 +136,9 @@ struct EditorSettingsView: View {
         isOn: $isParagraphSpotlightEnabled,
         accessibilityIdentifier: "editor-paragraph-spotlight"
       )
+    } header: {
+      Text("编辑辅助")
+        .settingsSubsectionAnchor(.editorAssistance)
     }
   }
 
@@ -152,6 +153,7 @@ struct EditorSettingsView: View {
         )
       } header: {
         Text("自动化")
+          .settingsSubsectionAnchor(.editorAutomation)
       } footer: {
         Text("关闭后仍可在打开诊断或大纲时手动分析。")
       }

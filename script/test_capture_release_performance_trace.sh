@@ -8,6 +8,73 @@ export LC_ALL=C
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SCRIPT="$ROOT_DIR/script/capture_release_performance_trace.sh"
 
+fixture_root="$(mktemp -d "${TMPDIR:-/tmp}/repopress-performance-trace-test.XXXXXX")"
+trap 'rm -rf "$fixture_root"' EXIT
+
+custom_skip_bundle="$fixture_root/isolated bundle/RepoPress Trace.app"
+custom_skip_output="$(
+  bash "$SCRIPT" \
+    --dry-run \
+    --skip-build \
+    --scenario launch \
+    --duration 12s \
+    --app-bundle "$custom_skip_bundle"
+)"
+grep -Fxq "app_bundle=$custom_skip_bundle" <<<"$custom_skip_output"
+
+mkdir -p "$fixture_root/script" "$fixture_root/bin"
+cp "$SCRIPT" "$fixture_root/script/capture_release_performance_trace.sh"
+cat >"$fixture_root/script/build_and_run.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'dist=%s\nname=%s\n' \
+  "$PERSONAL_SITE_PUBLISHER_DIST_DIR" \
+  "$PERSONAL_SITE_PUBLISHER_BUNDLE_NAME" >"$BUILD_LOG"
+exit 73
+EOF
+chmod +x "$fixture_root/script/build_and_run.sh"
+cat >"$fixture_root/bin/xcrun" <<'EOF'
+#!/usr/bin/env bash
+exit 0
+EOF
+chmod +x "$fixture_root/bin/xcrun"
+
+custom_build_bundle="$fixture_root/isolated output/RepoPress Review.app"
+set +e
+build_output="$(
+  PATH="$fixture_root/bin:$PATH" \
+    BUILD_LOG="$fixture_root/build.log" \
+    bash "$fixture_root/script/capture_release_performance_trace.sh" \
+      --scenario launch \
+      --duration 12s \
+      --app-bundle "$custom_build_bundle" 2>&1
+)"
+build_exit_code="$?"
+set -e
+[[ "$build_exit_code" == "73" ]]
+grep -Fxq "dist=$fixture_root/isolated output" "$fixture_root/build.log"
+grep -Fxq 'name=RepoPress Review' "$fixture_root/build.log"
+[[ ! -e "$fixture_root/dist/RepoPress Studio.app" ]]
+
+mkdir -p "$custom_build_bundle/Contents/MacOS"
+touch "$custom_build_bundle/Contents/MacOS/PersonalSitePublisherMac"
+chmod +x "$custom_build_bundle/Contents/MacOS/PersonalSitePublisherMac"
+set +e
+marker_output="$(
+  PATH="$fixture_root/bin:$PATH" \
+    bash "$fixture_root/script/capture_release_performance_trace.sh" \
+      --skip-build \
+      --scenario markdown-scroll \
+      --duration 12s \
+      --document-length 1000 \
+      --note 'Check the supplied capture bundle marker.' \
+      --app-bundle "$custom_build_bundle" 2>&1
+)"
+marker_exit_code="$?"
+set -e
+[[ "$marker_exit_code" == "1" ]]
+grep -Fq 'require a Release capture build' <<<"$marker_output"
+
 launch_output="$(bash "$SCRIPT" --dry-run --scenario launch --duration 12s)"
 grep -Fq 'scenario=launch' <<<"$launch_output"
 grep -Fq -- '--template App\ Launch' <<<"$launch_output"

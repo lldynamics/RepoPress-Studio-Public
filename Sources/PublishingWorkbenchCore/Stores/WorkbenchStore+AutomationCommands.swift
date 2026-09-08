@@ -535,15 +535,23 @@ public enum WorkbenchAutomationExecutor {
       }
       let document = try await WorkbenchAgentKnowledgeService(
         library: store.knowledge.service
-      ).read(documentID: documentID)
+      ).read(
+        documentID: documentID,
+        chunkID: step.arguments.chunkID,
+        cursor: step.arguments.readCursor ?? 0,
+        maximumCharacters: 3_400
+      )
       let maximumTextCharacters = 3_400
       let text = String(document.text.prefix(maximumTextCharacters))
       let toolOutputWasTruncated = document.isTruncated || document.text.count > text.count
+      let chunk = document.chunkID.map { "; chunkID=\($0.uuidString)" } ?? ""
+      let locator = document.locator.map { "; locator=\($0)" } ?? ""
+      let nextCursor = document.nextCursor.map { "; nextCursor=\($0)" } ?? ""
       return success(
         step,
         """
         已读取允许远程 AI 使用的本地资料；未访问网络，也未读取原始文件。
-        documentID=\(document.documentID.uuidString); title=\(document.title); truncated=\(toolOutputWasTruncated)
+        documentID=\(document.documentID.uuidString)\(chunk)\(locator); cursor=\(document.cursor)\(nextCursor); truncated=\(toolOutputWasTruncated)
         \(text)
         """
       )

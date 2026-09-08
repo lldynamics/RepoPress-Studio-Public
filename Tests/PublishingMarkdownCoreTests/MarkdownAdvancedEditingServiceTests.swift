@@ -5,6 +5,15 @@ import XCTest
 final class MarkdownAdvancedEditingServiceTests: XCTestCase {
   private let service = MarkdownAdvancedEditingService()
 
+  func testAutomaticPairingCandidateGateAcceptsOnlySupportedSymbols() {
+    XCTAssertTrue(MarkdownAdvancedEditingService.isAutomaticPairingCandidate("("))
+    XCTAssertTrue(MarkdownAdvancedEditingService.isAutomaticPairingCandidate("```"))
+    XCTAssertTrue(MarkdownAdvancedEditingService.isAutomaticPairingCandidate("》"))
+    XCTAssertFalse(MarkdownAdvancedEditingService.isAutomaticPairingCandidate("a"))
+    XCTAssertFalse(MarkdownAdvancedEditingService.isAutomaticPairingCandidate("你"))
+    XCTAssertFalse(MarkdownAdvancedEditingService.isAutomaticPairingCandidate("\n"))
+  }
+
   func testInlineFormattingWrapsAndTogglesEverySupportedStyle() throws {
     let cases: [(MarkdownAdvancedFormattingCommand, String)] = [
       (.bold, "**"),

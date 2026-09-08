@@ -139,6 +139,70 @@ extension SiteStarterService {
     (try? runGitOutput(arguments, at: rootURL))?.nilIfEmpty
   }
 
+  func committedPaths(for commitSHA: String, at rootURL: URL) async throws -> [String] {
+    Array(Set(
+      try await runGitOutputAsync(
+        ["diff-tree", "--root", "--no-commit-id", "--name-only", "-r", commitSHA], at: rootURL
+      )
+      .split(separator: "\n")
+      .map { String($0).trimmedForPublishing }
+      .filter { !$0.isEmpty }
+    )).sorted()
+  }
+
+  func committedTreePaths(for commitSHA: String, at rootURL: URL) async throws -> [String] {
+    (try await runGitOutputAsync(["ls-tree", "-r", "--name-only", commitSHA], at: rootURL))
+      .split(separator: "\n")
+      .map { String($0).trimmedForPublishing }
+      .filter { !$0.isEmpty }
+      .sorted()
+  }
+
+  func committedFileObjectIDs(for commitSHA: String, paths: [String], at rootURL: URL) async throws -> [String: String] {
+    var objectIDs: [String: String] = [:]
+    for path in paths {
+      let output = try await runGitOutputAsync(["ls-tree", commitSHA, "--", path], at: rootURL)
+      let fields = output.split(maxSplits: 3, whereSeparator: { $0 == " " || $0 == "\t" })
+      guard fields.count == 4 else { throw SiteStarterError.starterPushConfirmationChanged }
+      objectIDs[path] = String(fields[2])
+    }
+    return objectIDs
+  }
+
+  func symbolicHEADBranch(at rootURL: URL) async throws -> String {
+    (try await runGitOutputAsync(["symbolic-ref", "--quiet", "--short", "HEAD"], at: rootURL))
+      .trimmedForPublishing
+  }
+
+  func workingTreeIsClean(at rootURL: URL) async throws -> Bool {
+    (try await runGitOutputAsync(["status", "--porcelain"], at: rootURL))
+      .trimmedForPublishing
+      .isEmpty
+  }
+
+  func committedParent(for commitSHA: String, at rootURL: URL) async throws -> String? {
+    let parents = try await runGitOutputAsync(
+      ["rev-list", "--parents", "-n", "1", commitSHA], at: rootURL
+    )
+    let values = parents.split(whereSeparator: { $0 == " " || $0 == "\n" })
+    guard values.count <= 2 else { throw SiteStarterError.starterPushConfirmationChanged }
+    return values.count == 2 ? String(values[1]).trimmedForPublishing.nilIfEmpty : nil
+  }
+
+  func remoteBranchCommitSHAAsync(branch: String, at rootURL: URL) async throws -> String? {
+    let output = try await runGitOutputAsync(
+      ["ls-remote", "--heads", "origin", "refs/heads/\(branch)"], at: rootURL
+    )
+    return output
+      .split(separator: "\n")
+      .first?
+      .split(whereSeparator: { $0 == "\t" || $0 == " " })
+      .first
+      .map(String.init)?
+      .trimmedForPublishing
+      .nilIfEmpty
+  }
+
   func parseGitHubRemote(_ remoteURL: String) -> (owner: String, repo: String)? {
     let trimmed = remoteURL.trimmedForPublishing
     let patterns = [

@@ -156,6 +156,12 @@ struct RSSArticleRow: View {
         if let coverURL = article.coverURL {
           RSSArticleCoverThumbnail(articleID: article.id, url: coverURL)
         }
+        if !isBatchSelectionMode {
+          ViewThatFits(in: .horizontal) {
+            articleActionButtons
+            articleActionMenu
+          }
+        }
       }
       .padding(.horizontal, 12)
       .padding(.vertical, 8)
@@ -173,14 +179,6 @@ struct RSSArticleRow: View {
         }
         .frame(height: 2)
         .accessibilityHidden(true)
-      }
-    }
-    .overlay(alignment: .topTrailing) {
-      if !isBatchSelectionMode {
-        articleActionButtons
-          .padding(.top, 6)
-          .padding(.trailing, 8)
-          .opacity(isHovering ? 1 : 0.72)
       }
     }
     .background(isHovering ? Color.primary.opacity(0.04) : Color.clear)
@@ -221,6 +219,22 @@ struct RSSArticleRow: View {
     .background(.regularMaterial, in: Capsule())
     .accessibilityElement(children: .contain)
     .accessibilityLabel("文章操作")
+  }
+
+  private var articleActionMenu: some View {
+    Menu {
+      Button(article.isRead ? "标为未读" : "标为已读", action: onToggleRead)
+      Button(article.isStarred ? "移出稍后阅读" : "加入稍后阅读", action: onToggleStarred)
+      if article.link != nil {
+        Button("打开原文", action: onOpenOriginal)
+      }
+    } label: {
+      Image(systemName: "ellipsis.circle")
+        .frame(width: 24, height: 24)
+    }
+    .menuStyle(.borderlessButton)
+    .help(String(localized: "文章操作"))
+    .accessibilityLabel(String(localized: "文章操作菜单"))
   }
 
   private func accessibilityValue(relativeDate: String) -> String {

@@ -107,6 +107,25 @@ final class WorkbenchMarkdownEditorSaveCompletionTests: XCTestCase {
     XCTAssertEqual(failure.scope, .application)
     XCTAssertEqual(failure.message, "无法写入工作台")
     XCTAssertTrue(failure.canRetry)
+    XCTAssertEqual(facade.shortSaveStatus, "保存到软件失败")
+  }
+
+  func testVisibleSaveStatusDistinguishesProjectConflictAndFollowsDraftSwitch() {
+    let store = makeStore()
+    let first = makeSiteDraft(in: store, title: "冲突文章")
+    let second = makeSiteDraft(in: store, title: "已保存文章")
+    store.setDrafts([first, second])
+    store.siteDraftFileSaveStates[first.id] = .failed(repositoryPath: first.repositoryPath!, message: "文件已变化")
+    store.siteDraftFileSaveFailures[first.id] = SiteDraftFileSaveFailure(
+      draftID: first.id, profile: store.activeProfile, repositoryPath: first.repositoryPath!,
+      error: SiteDraftFileStoreError.projectFileChangedExternally(first.repositoryPath!)
+    )
+    let facade = WorkbenchMarkdownEditorSaveStatusFeatureFacade(store: store, draftID: first.id)
+    XCTAssertTrue(facade.hasProjectFileConflict)
+    XCTAssertEqual(facade.shortSaveStatus, "项目文件冲突")
+    facade.trackDraft(second.id)
+    XCTAssertFalse(facade.hasProjectFileConflict)
+    XCTAssertEqual(facade.shortSaveStatus, "已保存到项目")
   }
 
   func testMissingDraftSaveFailureDoesNotOfferRetry() throws {

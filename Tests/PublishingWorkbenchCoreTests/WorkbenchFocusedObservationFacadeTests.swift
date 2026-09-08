@@ -195,6 +195,29 @@ final class WorkbenchFocusedObservationFacadeTests: XCTestCase {
     withExtendedLifetime(cancellable) {}
   }
 
+  func testReleaseHistoryObservationTracksDraftScopeAndBatchPlan() throws {
+    let store = makeStore()
+    let facade = WorkbenchReleaseHistoryObservationFacade(store: store)
+    var changes = 0
+    let cancellable = facade.objectWillChange.sink { changes += 1 }
+    var draft = try XCTUnwrap(store.drafts.first)
+    store.setDrafts([draft])
+    changes = 0
+    draft.bodyMarkdown += "More text"
+    store.setDrafts([draft])
+    XCTAssertEqual(changes, 0, "Body edits do not change review eligibility")
+    draft.assignToGeneralDraft()
+    store.setDrafts([draft])
+    XCTAssertEqual(changes, 1, "Moving a draft out of the site invalidates review")
+    store.publishingStore.publishSession.batchPublishPlan = BatchPublishPlan(
+      profileID: store.activeProfileID, siteName: "Test", items: []
+    )
+    XCTAssertEqual(changes, 2)
+    store.setDrafts([])
+    XCTAssertEqual(changes, 3)
+    withExtendedLifetime(cancellable) {}
+  }
+
   func testSiteStarterObservationIgnoresUnrelatedFeatures() {
     let store = makeStore()
     let facade = WorkbenchSiteStarterObservationFacade(store: store)

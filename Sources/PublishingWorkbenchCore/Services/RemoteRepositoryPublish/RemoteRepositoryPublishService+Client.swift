@@ -357,10 +357,19 @@ extension RemoteRepositoryPublishService {
         throw RemoteRepositoryPublishError.missingSourceFile(file.repositoryPath)
       }
       do {
-        return try BoundedFileReader.data(
+        let data = try BoundedFileReader.data(
           at: URL(fileURLWithPath: sourceFilePath),
           maximumByteCount: WorkbenchFileReadLimits.maximumRemoteMediaUploadByteCount
         )
+        if let expectedDigest = file.reviewedSourceSHA256 {
+          let actualDigest = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+          guard actualDigest == expectedDigest else {
+            throw RemoteRepositoryPublishError.invalidSourceFile(
+              path: file.repositoryPath, reason: CoreL10n.text("附件内容在审阅后变化，请重新审阅。")
+            )
+          }
+        }
+        return data
       } catch BoundedFileReadError.exceedsByteLimit(_, _) {
         throw RemoteRepositoryPublishError.sourceFileTooLarge(
           path: file.repositoryPath,

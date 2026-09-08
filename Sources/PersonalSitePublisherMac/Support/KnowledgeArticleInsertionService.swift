@@ -7,6 +7,17 @@ enum KnowledgeArticleInsertionStyle: String {
   case footnote
 }
 
+/// A write target captured before RSS/knowledge work suspends. It prevents an
+/// asynchronous import from following a later editor selection into a
+/// different article.
+struct RSSDraftInsertionTarget {
+  let draftID: UUID
+  let siteProfileID: UUID
+  let bodyMarkdown: String
+  let bodyRevision: UInt64
+  let selectionRange: NSRange?
+}
+
 @MainActor
 enum KnowledgeArticleInsertionService {
   static let knowledgeMarkdownPasteboardType = NSPasteboard.PasteboardType(
@@ -231,6 +242,31 @@ enum KnowledgeArticleInsertionService {
     appendingFootnote: Bool = false,
     into store: WorkbenchStore
   ) -> Bool {
+    guard let target = captureRSSDraftInsertionTarget(in: store) else { return false }
+    return insertRSSReference(
+      article: article,
+      summary: summary,
+      excerpt: excerpt,
+      citation: citation,
+      appendingFootnote: appendingFootnote,
+      targeting: target,
+      into: store
+    )
+  }
+
+  /// Inserts into a draft captured before an asynchronous RSS operation.
+  /// The body revision remains an optimistic-lock token, so a changed or
+  /// deleted target is rejected without falling through to the current draft.
+  @discardableResult
+  static func insertRSSReference(
+    article: RSSArticle,
+    summary: String,
+    excerpt: String,
+    citation: KnowledgeCitation?,
+    appendingFootnote: Bool = false,
+    targeting target: RSSDraftInsertionTarget,
+    into store: WorkbenchStore
+  ) -> Bool {
     let fragment = RSSArticleWorkflow.safeReferenceMarkdown(
       article: article,
       summary: summary,
@@ -249,10 +285,15 @@ enum KnowledgeArticleInsertionService {
     let inserted = insert(
       fragment,
       message: "已插入“\(article.title)”的摘要、摘录和来源；未复制全文。",
+      targeting: target,
       into: store,
       postProcess: postProcess
     )
-    guard inserted, let citation, let draft = store.selectedDraft else { return inserted }
+    guard
+      inserted,
+      let citation,
+      let draft = store.drafts.first(where: { $0.id == target.draftID })
+    else { return inserted }
     Task {
       await store.knowledge.recordBacklinks(
         citations: [citation],
@@ -272,6 +313,24 @@ enum KnowledgeArticleInsertionService {
     article: RSSArticle,
     highlight: RSSArticleHighlight?,
     style: KnowledgeArticleInsertionStyle,
+    into store: WorkbenchStore
+  ) -> Bool {
+    guard let target = captureRSSDraftInsertionTarget(in: store) else { return false }
+    return insertRSSContent(
+      article: article,
+      highlight: highlight,
+      style: style,
+      targeting: target,
+      into: store
+    )
+  }
+
+  @discardableResult
+  static func insertRSSContent(
+    article: RSSArticle,
+    highlight: RSSArticleHighlight?,
+    style: KnowledgeArticleInsertionStyle,
+    targeting target: RSSDraftInsertionTarget,
     into store: WorkbenchStore
   ) -> Bool {
     let fragment = RSSArticleWorkflow.insertionMarkdown(
@@ -299,6 +358,7 @@ enum KnowledgeArticleInsertionService {
     return insert(
       fragment,
       message: style == .footnote ? "已插入 RSS 脚注。" : "已插入 RSS 引用块。",
+      targeting: target,
       into: store,
       postProcess: postProcess
     )
@@ -407,6 +467,7 @@ enum KnowledgeArticleInsertionService {
     return KnowledgeCitation(
       id: documentIDPrefix + "-" + chunkIDPrefix,
       documentID: document.id,
+      revisionID: result?.chunk.revisionID ?? document.currentRevisionID,
       chunkID: result?.chunk.id ?? UUID(),
       title: document.title,
       authors: document.authors,
@@ -442,54 +503,113 @@ enum KnowledgeArticleInsertionService {
     into store: WorkbenchStore,
     postProcess: ((String) -> String)? = nil
   ) -> Bool {
-    guard let selectedDraft = store.selectedDraft ?? store.ensureEditableDraftSelected() else {
-      store.setPublishActionMessage(
-        "请先创建或选择一篇当前文章。",
-        status: .warning
-      )
+    guard let target = captureRSSDraftInsertionTarget(in: store) else { return false }
+    return insert(
+      fragment,
+      message: message,
+      targeting: target,
+      into: store,
+      postProcess: postProcess
+    )
+  }
+
+  @discardableResult
+  private static func insert(
+    _ fragment: String,
+    message: String,
+    targeting target: RSSDraftInsertionTarget,
+    into store: WorkbenchStore,
+    postProcess: ((String) -> String)? = nil
+  ) -> Bool {
+    guard let draft = store.drafts.first(where: { $0.id == target.draftID }) else {
+      store.setPublishActionMessage(String(localized: "原文章已删除，未写入引用；请重新尝试。"), status: .warning)
       return false
     }
-
-    store.flushDraftBodyEditorBuffer(for: selectedDraft.id)
-    guard let draft = store.drafts.first(where: { $0.id == selectedDraft.id }) else {
-      store.setPublishActionMessage(
-        "当前文章已变化，请重新选择后再插入。",
-        status: .warning
-      )
+    guard draft.siteProfileID == target.siteProfileID else {
+      store.setPublishActionMessage(String(localized: "原文章所属站点已变化，未写入引用；请重新尝试。"), status: .warning)
+      return false
+    }
+    let buffer = store.draftBodyEditorBuffer(for: target.draftID)
+    guard
+      buffer.revision == target.bodyRevision,
+      buffer.bodyMarkdown == target.bodyMarkdown,
+      draft.bodyMarkdown == target.bodyMarkdown
+    else {
+      store.setPublishActionMessage(String(localized: "原文章内容已变化，未写入引用；请重新尝试。"), status: .warning)
       return false
     }
 
     let plan = insertionPlan(
       fragment: fragment,
-      body: draft.bodyMarkdown,
-      range: store.activeEditorSelectionRange(for: draft)
+      body: target.bodyMarkdown,
+      range: target.selectionRange
     )
     let updatedBody = postProcess?(plan.updatedBody) ?? plan.updatedBody
-    let buffer = store.draftBodyEditorBuffer(for: draft.id)
     guard let staged = store.replaceDraftBody(
       updatedBody,
-      for: draft.id,
-      expectedRevision: buffer.revision
+      for: target.draftID,
+      expectedRevision: target.bodyRevision
     ), staged.wasAccepted else {
       store.setPublishActionMessage(
-        "当前文章在插入前已被其他窗口修改，请重新尝试。",
+        String(localized: "原文章在插入前已被其他窗口修改，未写入引用；请重新尝试。"),
         status: .warning
       )
       return false
     }
 
     store.save()
-    store.selectSection(.writing)
-    store.requestEditorFocus(
-      draftID: draft.id,
-      field: "body",
-      selectedRange: NSRange(
-        location: plan.cursorLocation,
-        length: 0
+    // A reader operation must never pull a different active editor or another
+    // window back to its original target after the user has navigated away.
+    if store.selectedDraftID == target.draftID {
+      store.selectSection(.writing)
+      store.requestEditorFocus(
+        draftID: target.draftID,
+        field: "body",
+        selectedRange: NSRange(
+          location: plan.cursorLocation,
+          length: 0
+        )
       )
-    )
+    }
     store.setPublishActionMessage(message, status: .success)
     return true
+  }
+
+  static func captureRSSDraftInsertionTarget(
+    in store: WorkbenchStore
+  ) -> RSSDraftInsertionTarget? {
+    guard let selectedDraft = store.selectedDraft ?? store.ensureEditableDraftSelected() else {
+      store.setPublishActionMessage("请先创建或选择一篇当前文章。", status: .warning)
+      return nil
+    }
+    let editorSelection = store.activeEditorSelection
+    store.flushDraftBodyEditorBuffer(for: selectedDraft.id)
+    guard let draft = store.drafts.first(where: { $0.id == selectedDraft.id }) else {
+      store.setPublishActionMessage("当前文章已变化，请重新选择后再插入。", status: .warning)
+      return nil
+    }
+    let buffer = store.draftBodyEditorBuffer(for: draft.id)
+    // ActiveEditorSelection.validatedRange is a text-selection API and
+    // deliberately ignores a caret. An insertion target must preserve both.
+    let insertionRange: NSRange?
+    if let selection = editorSelection,
+      selection.draftID == draft.id,
+      selection.bodyUTF16Count == buffer.bodyMarkdown.utf16.count,
+      selection.range.location >= 0,
+      selection.range.location <= selection.bodyUTF16Count,
+      selection.range.length == 0
+    {
+      insertionRange = selection.range
+    } else {
+      insertionRange = editorSelection?.validatedRange(in: draft)
+    }
+    return RSSDraftInsertionTarget(
+      draftID: draft.id,
+      siteProfileID: draft.siteProfileID,
+      bodyMarkdown: buffer.bodyMarkdown,
+      bodyRevision: buffer.revision,
+      selectionRange: insertionRange
+    )
   }
 
   private static func insertionPlan(

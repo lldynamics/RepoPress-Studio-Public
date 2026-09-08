@@ -96,6 +96,11 @@ public final class WorkbenchStore: ObservableObject {
   @Published public private(set) var imageWorkbenchInputRevision: UInt64 = 0
   @Published public internal(set) var aiConnectionProfiles: [AIConnectionProfile]
   @Published public internal(set) var siteDraftFileSaveStates: [UUID: SiteDraftFileSaveState] = [:]
+  @Published var siteDraftFileFlushFailureIDs: Set<UUID> = []
+  @Published var siteDraftFileSaveFailures: [UUID: SiteDraftFileSaveFailure] = [:]
+  @Published public internal(set) var isRetryingProjectFileWrites = false
+  var isPreparingSafeTermination = false
+  var safeTerminationProof: WorkbenchSafeTerminationProof?
   @Published public internal(set) var pendingDraftRecoveries: [DraftRecoveryRecord] = []
   @Published public private(set) var draftRecoveryJournalErrorMessage: String?
   @Published public internal(set) var siteAnalyticsSummaries: [UUID: SiteAnalyticsSummary] = [:]
@@ -488,6 +493,7 @@ public final class WorkbenchStore: ObservableObject {
       $0.capturedAt > $1.capturedAt
     }
     self.draftRecoveryJournalErrorMessage = draftRecoveryLoadErrorMessage
+
     self.softwareGuideSeedVersion = initialSoftwareGuideSeedVersion
     let initialDraftListContentScope: DraftListContentScope =
       initialDrafts.contains { $0.belongs(toSiteProfileID: initialActiveProfileID) }
@@ -573,6 +579,7 @@ public final class WorkbenchStore: ObservableObject {
       releaseRecords: snapshot?.releaseRecords ?? [],
       selectedDraftID: initialSelectedDraftID,
       draftListContentScope: initialDraftListContentScope,
+      siteStarterProgress: snapshot?.siteStarterProgress,
       markdownEditorSessionStates: snapshot?.markdownEditorSessionStates ?? [:],
       maintenanceOperationRecords: snapshot?.maintenanceOperationRecords ?? [],
       preflightService: preflightService,
@@ -683,6 +690,20 @@ public final class WorkbenchStore: ObservableObject {
     repositoryDeploymentCoordinator.refreshTokenAvailability(store: self)
     aiStore.refreshAIKeyAvailability()
     refreshSiteAnalyticsTokenAvailability()
+    if snapshot?.siteStarterProgress?.profileID == initialActiveProfileID {
+      _ = publishingStore.resumeSiteStarterProgress(store: self)
+    }
+    for failure in snapshot?.deferredProjectFileWrites ?? [] {
+      guard initialDrafts.contains(where: {
+        $0.id == failure.draftID && $0.siteProfileID == failure.profileID
+          && !$0.isGeneralDraft
+          && ($0.repositoryPath ?? initialProfiles.first { $0.id == failure.profileID }?.markdownPath(for: $0))?
+            .normalizedRelativePath() == failure.repositoryPath.normalizedRelativePath()
+      }) else { continue }
+      siteDraftFileSaveFailures[failure.draftID] = failure
+      siteDraftFileSaveStates[failure.draftID] = .failed(
+        repositoryPath: failure.repositoryPath, message: failure.message)
+    }
     if let recoveryMessage = snapshotLoad.recoveryMessage {
       if requiresPersistenceRecoveryDecision {
         persistenceStore.protectWritesForUnrecoverableSnapshot(message: recoveryMessage)
@@ -769,9 +790,8 @@ public final class WorkbenchStore: ObservableObject {
   }
 
   /// Completes the synchronous workspace save and then waits for the separate
-  /// operation ledger.  Process termination must use this path: accepting the
-  /// workspace snapshot alone must not mark a session clean while the ledger
-  /// write is still pending or has failed.
+  /// operation ledger. This strict barrier also requires project synchronization;
+  /// application exit uses prepareForSafeTermination to retain deferred writes.
   public func flushPendingChangesForTermination() async -> Bool {
     guard flushPendingChanges() else { return false }
     return await flushOperationLogPersistence() != nil

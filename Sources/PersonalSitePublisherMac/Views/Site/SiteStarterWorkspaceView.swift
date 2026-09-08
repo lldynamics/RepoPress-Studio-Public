@@ -28,6 +28,10 @@ struct SiteStarterWorkspaceView: View {
   @State private var starterPushConfirmation: SiteStarterPushConfirmation?
   @State private var isStarterPushConfirmationPresented = false
   @State private var starterPushFailureMessage: String?
+  @State private var appliedResumeProgress: SiteStarterProgress?
+  /// SceneStorage may outlive an active-site switch. This identity prevents a
+  /// window from ever applying its old form values to the newly active site.
+  @State private var boundProfileID: UUID?
 
   init(store: WorkbenchStore) {
     self.store = store
@@ -74,9 +78,14 @@ struct SiteStarterWorkspaceView: View {
       .disabled(store.isSiteStarterOperationRunning)
     }
     .onAppear {
-      hydrateDefaults()
       selectedStep = SiteStarterWizardStep(rawValue: selectedStepRaw) ?? .template
+      bindForm(to: store.activeProfile)
+      applyResumePresentationIfNeeded()
       normalizeSelectedStep()
+    }
+    .onChange(of: store.activeProfileID) { _, _ in
+      bindForm(to: store.activeProfile)
+      applyResumePresentationIfNeeded()
     }
     .onChange(of: modeRaw) { _, _ in
       normalizeSelectedStep()
@@ -125,6 +134,14 @@ struct SiteStarterWorkspaceView: View {
       }
 
       Spacer()
+
+      if canResumeStarterSite {
+        Button {
+          resumeStarterSite()
+        } label: {
+          Label("继续建站", systemImage: "arrow.clockwise")
+        }
+      }
 
       if store.isSiteStarterOperationRunning {
         ProgressView()
@@ -193,7 +210,16 @@ struct SiteStarterWorkspaceView: View {
         siteName: $siteName,
         siteDescription: $siteDescription,
         author: $author,
-        baseURL: $baseURL
+        baseURL: $baseURL,
+        deploymentTarget: Binding(
+          get: { deploymentTarget }, set: { deploymentTarget = $0 }
+        ),
+        deploymentProjectID: $deploymentProjectID,
+        deploymentAccountID: $deploymentAccountID,
+        deploymentConfigurationLocked: SiteStarterDeploymentConfigurationLock.isLocked(
+          activeProfileID: store.activeProfileID,
+          starterResultProfileID: store.siteStarterResult?.profile.id
+        )
       )
     case .localDirectory:
       SiteStarterLocalDirectoryStep(
@@ -214,12 +240,9 @@ struct SiteStarterWorkspaceView: View {
         githubOwner: $githubOwner,
         githubRepo: $githubRepo,
         branch: $branch,
-        deploymentTarget: Binding(
-          get: { deploymentTarget },
-          set: { deploymentTarget = $0 }
-        ),
-        deploymentProjectID: $deploymentProjectID,
-        deploymentAccountID: $deploymentAccountID,
+        deploymentTarget: deploymentTarget,
+        deploymentProjectID: deploymentProjectID,
+        deploymentAccountID: deploymentAccountID,
         createsPrivateRepository: $createsPrivateRepository,
         canCreateGitHubRepository: canCreateGitHubRepository,
         isRepositoryOperationRunning: store.isRemoteRepositoryChecking || store.isLocalRepositoryMutationRunning,
@@ -327,16 +350,48 @@ struct SiteStarterWorkspaceView: View {
   }
 
   private var canCreateGitHubRepository: Bool {
-    !githubOwner.trimmedForPublishing.isEmpty
+    isBoundToActiveStarterProfile
+      && !githubOwner.trimmedForPublishing.isEmpty
       && !githubRepo.trimmedForPublishing.isEmpty
       && !branch.trimmedForPublishing.isEmpty
+  }
+
+  private var isBoundToActiveStarterProfile: Bool {
+    SiteStarterFormProfileBinding.canPersistGitHubInputs(
+      boundProfileID: boundProfileID,
+      activeProfileID: store.activeProfileID,
+      starterResultProfileID: store.siteStarterResult?.profile.id
+    )
   }
 
   private var canPushStarterSite: Bool {
     store.siteStarterResult?.initializedGit == true
       && store.siteStarterResult?.configuredRemoteURL != nil
-      && hasReadyGitHubRepository
+      && (hasReadyGitHubRepository || hasRecoverableCommittedStarterPush)
       && !store.isLocalRepositoryMutationRunning
+  }
+
+  private var hasRecoverableCommittedStarterPush: Bool {
+    guard let progress = store.siteStarterProgress else { return false }
+    return progress.profileID == store.activeProfileID
+      && progress.localCommitSHA != nil
+      && progress.frozenFirstPushRemoteURL != nil
+  }
+
+  private var hasConfiguredStarterOriginForActiveProfile: Bool {
+    guard let result = store.siteStarterResult,
+      result.profile.id == store.activeProfileID,
+      result.configuredRemoteURL != nil,
+      let progress = store.siteStarterProgress
+    else {
+      return false
+    }
+    return progress.profileID == store.activeProfileID && progress.originConfigured
+  }
+
+  private var canResumeStarterSite: Bool {
+    guard let progress = store.siteStarterProgress else { return false }
+    return progress.profileID == store.activeProfileID
   }
 
   private var expectedGitHubRepositoryName: String {
@@ -408,11 +463,13 @@ struct SiteStarterWorkspaceView: View {
       if deploymentTarget == .none {
         return true
       }
-      return hasReadyGitHubRepository
+      return hasConfiguredStarterOriginForActiveProfile || hasReadyGitHubRepository
     case .generate:
       return mode == .create ? store.siteStarterResult != nil : store.siteStarterImportResult != nil
     case .firstPush:
-      return deploymentTarget == .none || store.siteStarterPushResult != nil
+      return deploymentTarget == .none
+        || store.siteStarterPushResult != nil
+        || store.siteStarterProgress?.firstPushStage == .completed
     case .deployment:
       return deploymentTarget == .none
     }
@@ -486,6 +543,24 @@ struct SiteStarterWorkspaceView: View {
     }
   }
 
+  private func bindForm(to profile: SiteProfile) {
+    guard boundProfileID != profile.id else { return }
+    boundProfileID = profile.id
+    appliedResumeProgress = nil
+    rootPath = ""
+    siteName = ""
+    siteDescription = ""
+    author = ""
+    baseURL = ""
+    branch = "main"
+    githubOwner = ""
+    githubRepo = ""
+    deploymentTarget = .githubPages
+    deploymentProjectID = ""
+    deploymentAccountID = ""
+    hydrateDefaults()
+  }
+
   private func createStarterSite() {
     let request = SiteStarterRequest(
       templateID: selectedTemplate?.id ?? .zolaPersonalBlog,
@@ -512,6 +587,51 @@ struct SiteStarterWorkspaceView: View {
     }
   }
 
+  private func resumeStarterSite() {
+    guard store.resumeSiteStarterProgress() else { return }
+    appliedResumeProgress = nil
+    applyResumePresentationIfNeeded()
+  }
+
+  private func applyResumePresentationIfNeeded() {
+    guard let progress = store.siteStarterProgress,
+      appliedResumeProgress != progress,
+      boundProfileID == progress.profileID,
+      store.siteStarterResult?.profile.id == progress.profileID,
+      let presentation = progress.resumePresentation(for: store.activeProfile)
+    else {
+      return
+    }
+    mode = .create
+    selectedTemplateID = presentation.templateID
+    rootPath = presentation.rootPath
+    siteName = presentation.siteName
+    siteDescription = presentation.siteDescription
+    author = presentation.author
+    baseURL = presentation.baseURL
+    branch = presentation.branch
+    githubOwner = presentation.githubOwner
+    githubRepo = presentation.githubRepositoryName
+    deploymentTarget = presentation.deploymentTarget
+    deploymentProjectID = presentation.deploymentProjectID
+    deploymentAccountID = presentation.deploymentAccountID
+    initializesGit = presentation.initializesGit
+    configuresOrigin = presentation.configuresOrigin
+    selectedStep = step(for: presentation.route)
+    appliedResumeProgress = progress
+  }
+
+  private func step(for route: SiteStarterResumeRoute) -> SiteStarterWizardStep {
+    switch route {
+    case .github:
+      return .github
+    case .firstPush:
+      return .firstPush
+    case .deployment:
+      return .deployment
+    }
+  }
+
   private func importExistingSite() {
     let request = SiteStarterImportRequest(
       rootPath: rootPath,
@@ -535,7 +655,7 @@ struct SiteStarterWorkspaceView: View {
   }
 
   private func presentGitHubRepositoryConfirmation() {
-    syncGitHubInputsToActiveProfile()
+    guard syncGitHubInputsToActiveProfile() else { return }
     repositoryCreationFailureMessage = nil
     isRepositoryCreationConfirmationPresented = true
   }
@@ -544,6 +664,7 @@ struct SiteStarterWorkspaceView: View {
     let privateRepository = createsPrivateRepository
     repositoryCreationFailureMessage = nil
     Task { @MainActor in
+      guard isBoundToActiveStarterProfile else { return }
       guard await store.createGitHubRepositoryForActiveProfile(
         privateRepository: privateRepository
       ) != nil else {
@@ -560,7 +681,7 @@ struct SiteStarterWorkspaceView: View {
   }
 
   private func verifyExistingGitHubRepository() {
-    syncGitHubInputsToActiveProfile()
+    guard syncGitHubInputsToActiveProfile() else { return }
     Task { @MainActor in
       guard let check = await store.checkRepositoryTokenAccess(),
             check.canRead,
@@ -585,6 +706,7 @@ struct SiteStarterWorkspaceView: View {
 
   private func commitStarterPushAfterConfirmation() {
     guard let confirmation = starterPushConfirmation else { return }
+    let profileID = store.activeProfileID
     starterPushFailureMessage = nil
     Task { @MainActor in
       if await store.commitAndPushStarterSite(confirmation: confirmation) != nil {
@@ -593,11 +715,31 @@ struct SiteStarterWorkspaceView: View {
         selectedStep = .deployment
       } else {
         starterPushFailureMessage = store.publishActionMessage
+        // Keep the failed dialog usable: its next confirmation must show and
+        // authorize the saved commit, rather than resend the unborn review.
+        if isStarterPushConfirmationPresented,
+          store.activeProfileID == profileID,
+          let progress = store.siteStarterProgress,
+          progress.profileID == profileID,
+          let commitSHA = progress.localCommitSHA,
+          let retryConfirmation = progress.frozenPushConfirmation {
+          var expected = confirmation
+          expected.existingCommitSHA = commitSHA
+          if retryConfirmation == expected {
+            starterPushConfirmation = retryConfirmation
+          }
+        }
       }
     }
   }
 
-  private func syncGitHubInputsToActiveProfile() {
+  @discardableResult
+  private func syncGitHubInputsToActiveProfile() -> Bool {
+    guard isBoundToActiveStarterProfile
+    else {
+      store.setPublishActionMessage("当前站点已变化，未写入仓库配置。", status: .warning)
+      return false
+    }
     let owner = githubOwner.trimmedForPublishing
     let repo = githubRepo.trimmedForPublishing
     let targetBranch = branch.trimmedForPublishing
@@ -609,6 +751,7 @@ struct SiteStarterWorkspaceView: View {
       profile.repoName = repo
       profile.branch = targetBranch
     }
+    return true
   }
 
   private func copyStarterCommands(_ commands: [String]) {

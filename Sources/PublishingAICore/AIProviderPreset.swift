@@ -121,7 +121,9 @@ public enum AIProviderPreset: String, Codable, CaseIterable, Identifiable, Senda
     case .anthropic:
       return "claude-sonnet-4-6"
     case .gemini:
-      return "gemini-2.0-flash"
+      // Stable replacement listed by Google for the retired Gemini 2.0 Flash.
+      // https://ai.google.dev/gemini-api/docs/deprecations (2026-09-09)
+      return "gemini-3.6-flash"
     case .siliconFlow:
       return "deepseek-ai/DeepSeek-V3"
     case .moonshot:

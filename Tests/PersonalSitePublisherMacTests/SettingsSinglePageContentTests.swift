@@ -4,7 +4,7 @@ import XCTest
 @testable import PersonalSitePublisherMac
 
 final class SettingsSinglePageContentTests: XCTestCase {
-  func testEverySettingsPageDeclaresEachSubsectionAnchorExactlyOnce() throws {
+  func testEverySettingsPageConfiguresEachSubsectionAnchorExactlyOnce() throws {
     let pageTabs: [(String, SettingsTab)] = [
       ("SettingsConfigurationStatusView.swift", .configurationStatus),
       ("DefaultRuleSettingsView.swift", .defaultRules),
@@ -20,11 +20,23 @@ final class SettingsSinglePageContentTests: XCTestCase {
     for (file, tab) in pageTabs {
       let source = try source(for: file)
       for subsection in SettingsSubsection.sections(for: tab) {
-        let anchor = "SettingsSubsectionAnchor(subsection: .\(subsection.rawValue))"
+        let anchorDeclarations = [
+          "SettingsSubsectionAnchor(subsection: .\(subsection.rawValue))",
+          ".settingsSubsectionAnchor(.\(subsection.rawValue))",
+          "subsectionAnchor: .\(subsection.rawValue)",
+        ]
         XCTAssertEqual(
-          source.components(separatedBy: anchor).count - 1,
+          anchorDeclarations.reduce(0) {
+            $0 + source.components(separatedBy: $1).count - 1
+          },
           1,
-          "\(file) must declare \(anchor) exactly once"
+          "\(file) must configure \(subsection.rawValue) exactly once"
+        )
+      }
+      if tab != .dataManagement {
+        XCTAssertFalse(
+          source.contains("SettingsSubsectionAnchor(subsection:"),
+          "\(file) must attach anchors to real content so Form cannot render empty rows"
         )
       }
     }

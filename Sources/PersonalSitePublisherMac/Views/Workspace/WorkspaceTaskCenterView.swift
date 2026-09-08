@@ -1,8 +1,10 @@
+import AppKit
 import PublishingWorkbenchCore
 import SwiftUI
 
 struct WorkspaceTaskCenterView: View {
   @Environment(\.dismiss) private var dismiss
+  @Environment(\.workspaceWindowID) private var workspaceWindowID
   @Environment(\.openWindow) private var openWindow
   @ObservedObject private var activityStatus: WorkbenchActivityStatusFacade
   @ObservedObject private var operationLog: WorkbenchOperationLogFeatureFacade
@@ -12,6 +14,9 @@ struct WorkspaceTaskCenterView: View {
   private let store: WorkbenchStore
   @State private var retryingTaskID: String?
   @State private var duplicateChargeConfirmationTask: WorkbenchTaskItem?
+  @State private var expandedTaskIDs = Set<String>()
+  @State private var taskActionFeedback: String?
+  @State private var focusedReleaseRecord: TaskCenterReleaseRecordFocus?
 
   init(store: WorkbenchStore) {
     self.store = store
@@ -24,6 +29,15 @@ struct WorkspaceTaskCenterView: View {
 
     VStack(spacing: 0) {
       header
+      if let taskActionFeedback {
+        Text(taskActionFeedback)
+          .font(.caption)
+          .foregroundStyle(.secondary)
+          .frame(maxWidth: .infinity, alignment: .leading)
+          .padding(.horizontal, 16)
+          .padding(.bottom, 8)
+          .accessibilityIdentifier("workspace-task-action-feedback")
+      }
       Divider()
 
       ScrollView {
@@ -43,7 +57,12 @@ struct WorkspaceTaskCenterView: View {
                 WorkspaceTaskCenterRow(
                   task: task,
                   isRetrying: retryingTaskID == task.id,
-                  retry: { retry(task) }
+                  isExpanded: expandedTaskIDs.contains(task.id),
+                  retry: { retry(task) },
+                  locate: { _ = locate(task) },
+                  cancel: { cancel(task) },
+                  toggleDetails: { toggleDetails(task) },
+                  copyDiagnostic: { copyDiagnostic(for: task) }
                 )
               }
             }
@@ -87,6 +106,17 @@ struct WorkspaceTaskCenterView: View {
     } message: {
       Text("AI 已返回部分内容，软件没有自动重放请求。继续会移除这段未完成回复并重新生成，可能产生重复内容和费用。")
     }
+    .sheet(item: $focusedReleaseRecord) { focus in
+      VStack(spacing: 0) {
+        ReleaseHistoryDetailView(store: store, focusedRecordID: focus.id)
+        Divider()
+        Button(String(localized: "关闭")) {
+          focusedReleaseRecord = nil
+        }
+        .padding()
+      }
+      .frame(minWidth: 760, minHeight: 620)
+    }
     .accessibilityLabel("统一任务中心")
     .accessibilityIdentifier("workspace-task-center")
   }
@@ -113,6 +143,10 @@ struct WorkspaceTaskCenterView: View {
   private var headerDetail: String {
     let active = activityStatus.activeTaskCount
     let failed = activityStatus.failedTaskCount
+    let waiting = activityStatus.waitingTaskCount
+    if waiting > 0 {
+      return String(localized: "进行中 \(active) · 失败 \(failed) · 等待处理 \(waiting)")
+    }
     if active == 0, failed == 0 {
       return String(localized: "所有后台任务均已完成")
     }
@@ -174,6 +208,11 @@ struct WorkspaceTaskCenterView: View {
     confirmingPossibleDuplicateCharge: Bool = false
   ) {
     guard task.canRetry, retryingTaskID == nil else { return }
+    if task.requiresPublishReview {
+      guard locate(task) else { return }
+      taskActionFeedback = String(localized: "请在原记录核对分支与发布方式，重新审阅后执行；未自动提交或推送。")
+      return
+    }
     retryingTaskID = task.id
     Task { @MainActor in
       await activityStatus.retryTask(
@@ -183,6 +222,43 @@ struct WorkspaceTaskCenterView: View {
       retryingTaskID = nil
     }
   }
+
+  @discardableResult
+  private func locate(_ task: WorkbenchTaskItem) -> Bool {
+    if let message = activityStatus.locateTask(task, windowID: workspaceWindowID) {
+      taskActionFeedback = message
+      return false
+    }
+    if case .releaseRecord(let recordID) = task.target {
+      focusedReleaseRecord = TaskCenterReleaseRecordFocus(id: recordID)
+    }
+    taskActionFeedback = String(localized: "已定位到任务目标。")
+    return true
+  }
+
+  private func cancel(_ task: WorkbenchTaskItem) {
+    taskActionFeedback =
+      activityStatus.cancelTask(task)
+      ?? String(localized: "已请求停止该任务。")
+  }
+
+  private func toggleDetails(_ task: WorkbenchTaskItem) {
+    if expandedTaskIDs.contains(task.id) {
+      expandedTaskIDs.remove(task.id)
+    } else {
+      expandedTaskIDs.insert(task.id)
+    }
+  }
+
+  private func copyDiagnostic(for task: WorkbenchTaskItem) {
+    NSPasteboard.general.clearContents()
+    NSPasteboard.general.setString(task.diagnosticText, forType: .string)
+    taskActionFeedback = String(localized: "已复制任务诊断。")
+  }
+}
+
+private struct TaskCenterReleaseRecordFocus: Identifiable {
+  let id: UUID
 }
 
 private struct WorkspaceRecentActivityRow: View {
@@ -245,7 +321,12 @@ private func workspaceOperationOutcomeTitle(_ outcome: WorkbenchOperationLogOutc
 private struct WorkspaceTaskCenterRow: View {
   let task: WorkbenchTaskItem
   let isRetrying: Bool
+  let isExpanded: Bool
   let retry: () -> Void
+  let locate: () -> Void
+  let cancel: () -> Void
+  let toggleDetails: () -> Void
+  let copyDiagnostic: () -> Void
 
   var body: some View {
     VStack(alignment: .leading, spacing: 9) {
@@ -263,7 +344,12 @@ private struct WorkspaceTaskCenterRow: View {
               .font(.caption.weight(.medium))
               .foregroundStyle(statusColor)
           }
-          Text(task.detail)
+          if let checkedAt = task.checkedAt {
+            Text("最近检查：\(checkedAt.formatted(date: .abbreviated, time: .shortened))")
+              .font(.workbenchMetadata)
+              .foregroundStyle(.secondary)
+          }
+          Text(task.primaryPresentationDetail)
             .font(.caption)
             .foregroundStyle(.secondary)
             .lineLimit(3)
@@ -272,21 +358,32 @@ private struct WorkspaceTaskCenterRow: View {
 
         Spacer(minLength: 8)
 
-        if task.canRetry {
-          Button {
-            retry()
-          } label: {
-            if isRetrying {
-              ProgressView()
-                .controlSize(.small)
-            } else {
-              Label("重试", systemImage: "arrow.clockwise")
+        VStack(alignment: .trailing, spacing: 5) {
+          if task.canRetry {
+            Button {
+              retry()
+            } label: {
+              if isRetrying {
+                ProgressView()
+                  .controlSize(.small)
+              } else {
+                Label(
+                  task.retryTitle,
+                  systemImage: task.requiresPublishReview
+                    ? "doc.text.magnifyingglass" : "arrow.clockwise")
+              }
             }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .disabled(isRetrying)
+            .accessibilityIdentifier("workspace-task-retry-\(task.id)")
           }
-          .buttonStyle(.bordered)
-          .controlSize(.small)
-          .disabled(isRetrying)
-          .accessibilityIdentifier("workspace-task-retry-\(task.id)")
+          if task.canCancel {
+            Button(String(localized: "停止"), role: .destructive, action: cancel)
+              .buttonStyle(.bordered)
+              .controlSize(.small)
+              .accessibilityIdentifier("workspace-task-cancel-\(task.id)")
+          }
         }
       }
 
@@ -307,15 +404,30 @@ private struct WorkspaceTaskCenterRow: View {
           .accessibilityLabel("任务进行中")
       }
 
-      if let failureReason = task.failureReason, task.isFailure {
-        Label {
-          Text(String(localized: "失败原因：\(failureReason)"))
-            .font(.caption)
-            .fixedSize(horizontal: false, vertical: true)
-        } icon: {
-          Image(systemName: "exclamationmark.triangle")
+      HStack(spacing: 10) {
+        Button(String(localized: "查看详情"), action: toggleDetails)
+          .buttonStyle(.borderless)
+          .accessibilityIdentifier("workspace-task-details-\(task.id)")
+        if task.target != nil {
+          Button(String(localized: "定位目标"), action: locate)
+            .buttonStyle(.borderless)
+            .accessibilityIdentifier("workspace-task-locate-\(task.id)")
         }
-        .foregroundStyle(WorkbenchTheme.risk)
+        Button(String(localized: "复制诊断"), action: copyDiagnostic)
+          .buttonStyle(.borderless)
+          .accessibilityIdentifier("workspace-task-copy-diagnostic-\(task.id)")
+        Spacer()
+      }
+      .font(.caption)
+
+      if isExpanded {
+        Text(task.diagnosticText)
+          .font(.system(.caption, design: .monospaced))
+          .textSelection(.enabled)
+          .frame(maxWidth: .infinity, alignment: .leading)
+          .padding(8)
+          .background(WorkbenchBackgroundStyle.control, in: RoundedRectangle(cornerRadius: 6))
+          .accessibilityIdentifier("workspace-task-diagnostic-\(task.id)")
       }
     }
     .padding(12)
@@ -340,7 +452,7 @@ private struct WorkspaceTaskCenterRow: View {
       return WorkbenchTheme.risk
     case .completed:
       return WorkbenchTheme.success
-    case .cancelled:
+    case .cancelled, .waiting, .needsAttention:
       return .secondary
     }
   }

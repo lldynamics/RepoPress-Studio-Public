@@ -353,7 +353,7 @@ struct RemoteConflictSemanticMergeWorkspace: View {
   private func sourceBlock(title: LocalizedStringKey, text: String?, tint: Color) -> some View {
     VStack(alignment: .leading, spacing: 3) {
       Text(title)
-        .font(.caption2.weight(.semibold))
+        .font(.caption.weight(.semibold))
         .foregroundStyle(tint)
       ScrollView(.vertical) {
         Text(verbatim: text ?? String(localized: "（此版本没有该内容）"))
@@ -375,7 +375,7 @@ struct RemoteConflictSemanticMergeWorkspace: View {
       isResolved ? "已选择" : "待选择",
       systemImage: isResolved ? "checkmark.circle.fill" : "circle.dashed"
     )
-    .font(.caption2.weight(.semibold))
+    .font(.caption.weight(.semibold))
     .foregroundStyle(isResolved ? Color.green : Color.orange)
   }
 

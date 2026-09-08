@@ -93,11 +93,8 @@ struct TokenSettingsView<RepositoryPermissionContent: View>: View {
 
   var body: some View {
     Form {
-      SettingsSubsectionAnchor(subsection: .tokenRepository)
       repositorySections
-      SettingsSubsectionAnchor(subsection: .tokenDeployment)
       deploymentSections
-      SettingsSubsectionAnchor(subsection: .tokenAnalytics)
       analyticsSections
     }
     .formStyle(.grouped)
@@ -132,7 +129,8 @@ struct TokenSettingsView<RepositoryPermissionContent: View>: View {
       presentation: .repository(
         profile: activeProfile,
         tokenAvailability: repositoryTokenAvailability
-      )
+      ),
+      subsectionAnchor: .tokenRepository
     )
 
     TokenRepositoryDefaultsSection(
@@ -203,7 +201,8 @@ struct TokenSettingsView<RepositoryPermissionContent: View>: View {
       presentation: .deployment(
         readiness: readiness,
         tokenAvailability: deploymentTokenAvailability
-      )
+      ),
+      subsectionAnchor: .tokenDeployment
     )
 
     TokenDeploymentDefaultsSection(
@@ -295,7 +294,8 @@ struct TokenSettingsView<RepositoryPermissionContent: View>: View {
         deleteSiteAnalyticsAccessToken()
         credentialDrafts.analytics = ""
       },
-      onRefreshTokenState: refreshSiteAnalyticsTokenAvailability
+      onRefreshTokenState: refreshSiteAnalyticsTokenAvailability,
+      subsectionAnchor: .tokenAnalytics
     )
     .id(activeProfile.id)
 

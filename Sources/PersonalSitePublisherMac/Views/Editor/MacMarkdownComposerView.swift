@@ -11,6 +11,8 @@ struct MacMarkdownComposerView: View {
   @Environment(\.aiChatWorkspaceCommandAction) var aiChatWorkspaceCommandAction
   @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
   @Environment(\.accessibilityVoiceOverEnabled) private var accessibilityVoiceOverEnabled
+  @Environment(\.workspaceWindowSession) var workspaceWindowSession
+  @Environment(\.workspaceWindowIsKey) private var workspaceWindowIsKey
   @EnvironmentObject var sceneCommandRouter: WorkspaceSceneCommandRouter
   @StateObject var editorState: WorkbenchMarkdownEditorFeatureFacade
   @StateObject var editorSessionState: MarkdownComposerEditorSessionState
@@ -30,6 +32,7 @@ struct MacMarkdownComposerView: View {
   @State var editorSessionSaveTask: Task<Void, Never>?
   @State var editorSessionSaveGeneration: UInt64 = 0
   @State var pendingInlineStructuredEditApplyRequestID: UUID?
+  @State var pendingFindReplacement: MarkdownPendingFindReplacement?
   @StateObject var findMatchRefreshCoordinator = MarkdownFindMatchRefreshCoordinator()
   @State var markdownAnalysisTaskIsAutomatic = false
   @State var sceneCommandOwnerID = UUID()
@@ -59,6 +62,7 @@ struct MacMarkdownComposerView: View {
   @AppStorage(MarkdownEditorComfortPreferences.realtimeAnalysisEnabledKey)
   var isRealtimeAnalysisEnabled = MarkdownEditorComfortConfiguration
     .defaultRealtimeAnalysisEnabled
+  @AppStorage("workspace.markdownOutlinePinned") var isOutlinePinned = false
   @State private var slashCommandQuery: String? = nil
   @State private var isSlashMenuPresented: Bool = false
   @State private var slashCommandSelectedIndex = 0
@@ -262,19 +266,31 @@ struct MacMarkdownComposerView: View {
           isFindWholeWord: $editorSessionState.isFindWholeWord,
           isFindRegularExpression: $editorSessionState.isFindRegularExpression,
           canUseFindReplace: canUseFindReplace,
+          findScope: findScope,
+          canUseSelectionScope: hasUsableFindSelectionScope,
+          findScopeStatus: findScopeStatus,
           findMatchStatus: findMatchStatus,
           findReplaceMessage: findReplaceFeedbackMessage,
+          onSetScope: setFindScope,
           onFindPrevious: findPrevious,
           onFindNext: findNext,
           onReplaceCurrentOrNext: replaceCurrentOrNext,
           onReplaceAll: replaceAll,
           onDismiss: {
             isFindReplacePresented = false
+            discardPendingFindReplacePreview()
           }
         )
         Divider()
       }
       editorOverlaySurface
+    }
+    .sheet(item: $editorSessionState.pendingFindReplacePreview) { preview in
+      MarkdownFindReplacePreviewSheet(
+        preview: preview,
+        onConfirm: applyPendingFindReplacePreview,
+        onCancel: discardPendingFindReplacePreview
+      )
     }
     .onChange(of: commandActions.sceneCommandPresentation, initial: true) { _, _ in
       sceneCommandRouter.registerMarkdownEditor(
@@ -326,6 +342,13 @@ struct MacMarkdownComposerView: View {
     .onChange(of: editorState.editorFocusRequest?.id) { _, _ in
       applyEditorFocusRequest()
     }
+    .onChange(of: workspaceWindowIsKey) { _, isKeyWindow in
+      // A legacy Store request can arrive while this editor is behind a
+      // sheet. It remains unconsumed until this window becomes key; owned
+      // requests still reject every non-owner and every replay.
+      guard isKeyWindow else { return }
+      applyEditorFocusRequest()
+    }
     .onChange(of: selectedRange) { oldRange, newRange in
       selectionBubblePresentationState.selectionDidChange(to: newRange)
       if !NSEqualRanges(oldRange, newRange) {
@@ -347,6 +370,7 @@ struct MacMarkdownComposerView: View {
       cancelInlineGhostText()
       zenModeController.handleTypingActivity()
       checkSlashCommandTrigger()
+      pendingFindReplacePreview = nil
     }
     .onChange(of: isRealtimeAnalysisEnabled) { _, isEnabled in
       if isEnabled {
@@ -376,7 +400,16 @@ struct MacMarkdownComposerView: View {
       saveCurrentEditorSession()
     }
     .onChange(of: isFindReplacePresented) { _, _ in
+      if !isFindReplacePresented {
+        findScopeSnapshot = nil
+        if findScope == .selection { findScope = .body }
+        discardPendingFindReplacePreview()
+      }
       saveCurrentEditorSession()
+    }
+    .onChange(of: editorBodyRevision) { _, _ in
+      pendingFindReplacePreview = nil
+      refreshFindMatchSnapshot()
     }
     .modifier(
       MarkdownDocumentSynchronizationModifier(
@@ -400,6 +433,7 @@ struct MacMarkdownComposerView: View {
     }
     .onChange(of: draft.id) { oldDraftID, _ in
       pendingInlineStructuredEditApplyRequestID = nil
+      pendingFindReplacement = nil
       // Review state is application-scoped and draft-keyed. Switching one
       // window must not destroy a review still visible in another window; the
       // destination composer simply hides sessions for other draft IDs.
@@ -426,10 +460,31 @@ struct MacMarkdownComposerView: View {
   }
 
   private var editorOverlaySurface: some View {
-    ZStack(alignment: .top) {
-      editorSurface
-      writingContextPanelOverlay
-      automaticImageImportToastOverlay
+    GeometryReader { geometry in
+      let usesDockedOutline = MarkdownOutlinePresentationPolicy.usesDockedLayout(
+        isPinned: isOutlinePinned && activeWritingContextPanel == .outline,
+        availableWidth: geometry.size.width
+      )
+      ZStack(alignment: .top) {
+        HStack(spacing: 0) {
+          editorSurface
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+          if usesDockedOutline {
+            Divider()
+            outlinePanelContent()
+              .frame(width: 320)
+              .frame(maxHeight: .infinity)
+              .padding(12)
+              .accessibilityIdentifier("markdown-outline-dock")
+          }
+        }
+
+        if !usesDockedOutline {
+          writingContextPanelOverlay
+        }
+        automaticImageImportToastOverlay
+      }
     }
   }
 
@@ -466,20 +521,30 @@ struct MacMarkdownComposerView: View {
   @ViewBuilder
   private var writingContextPanelOverlay: some View {
     if let panel = activeWritingContextPanel {
-      HStack {
-        Spacer(minLength: 0)
-        MarkdownWritingContextPanelContainer(
-          selectedPanel: panel,
-          availablePanels: availableWritingContextPanels,
-          onSelectPanel: showWritingContextPanel,
-          onClose: dismissWritingContextPanel
-        ) {
-          writingContextPanelContent(for: panel)
+      if panel == .outline {
+        HStack {
+          Spacer(minLength: 0)
+          outlinePanelContent()
         }
+        .padding(12)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+        .zIndex(4)
+      } else {
+        HStack {
+          Spacer(minLength: 0)
+          MarkdownWritingContextPanelContainer(
+            selectedPanel: panel,
+            availablePanels: availableWritingContextPanels,
+            onSelectPanel: showWritingContextPanel,
+            onClose: dismissWritingContextPanel
+          ) {
+            writingContextPanelContent(for: panel)
+          }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+        .zIndex(4)
       }
-      .padding(12)
-      .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-      .zIndex(4)
     }
   }
 
@@ -679,6 +744,7 @@ struct MacMarkdownComposerView: View {
           onEditRequestHandled: { outcome in
             guard editorEditRequest?.id == outcome.id else { return }
             editorEditRequest = nil
+            handleFindReplacementOutcome(outcome)
             guard pendingInlineStructuredEditApplyRequestID == outcome.id else { return }
             pendingInlineStructuredEditApplyRequestID = nil
             if outcome.wasApplied {
@@ -734,6 +800,7 @@ struct MacMarkdownComposerView: View {
             hunk: reviewPresentation.hunk,
             position: reviewPresentation.position,
             decision: reviewPresentation.decision,
+            decisionSummary: reviewPresentation.session.decisionSummary,
             onPrevious: { aiActions.moveInlineStructuredEditHunk(by: -1, draftID: draft.id) },
             onNext: { aiActions.moveInlineStructuredEditHunk(by: 1, draftID: draft.id) },
             onAccept: {

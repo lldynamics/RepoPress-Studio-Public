@@ -1,4 +1,4 @@
-import PublishingWorkbenchCore
+import PublishingMarkdownCore
 import SwiftUI
 
 struct MarkdownEditorCommandActions {

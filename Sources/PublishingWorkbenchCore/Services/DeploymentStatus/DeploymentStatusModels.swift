@@ -247,6 +247,7 @@ public struct DeploymentStatusSignal: Identifiable, Codable, Hashable, Sendable 
   public var observedBranch: String?
   public var observedCommitSHA: String?
   public var attributionVerified: Bool?
+  public var verifiedSourceDocumentDigest: String?
 
   private enum CodingKeys: String, CodingKey {
     case id
@@ -260,6 +261,7 @@ public struct DeploymentStatusSignal: Identifiable, Codable, Hashable, Sendable 
     case observedBranch
     case observedCommitSHA
     case attributionVerified
+    case verifiedSourceDocumentDigest
   }
 
   public init(
@@ -273,7 +275,8 @@ public struct DeploymentStatusSignal: Identifiable, Codable, Hashable, Sendable 
     expectedCommitSHA: String? = nil,
     observedBranch: String? = nil,
     observedCommitSHA: String? = nil,
-    attributionVerified: Bool? = nil
+    attributionVerified: Bool? = nil,
+    verifiedSourceDocumentDigest: String? = nil
   ) {
     self.id = id
     self.level = level
@@ -286,6 +289,7 @@ public struct DeploymentStatusSignal: Identifiable, Codable, Hashable, Sendable 
     self.observedBranch = observedBranch
     self.observedCommitSHA = observedCommitSHA
     self.attributionVerified = attributionVerified
+    self.verifiedSourceDocumentDigest = verifiedSourceDocumentDigest
   }
 
   public init(from decoder: Decoder) throws {
@@ -305,6 +309,8 @@ public struct DeploymentStatusSignal: Identifiable, Codable, Hashable, Sendable 
     observedBranch = try container.decodeIfPresent(String.self, forKey: .observedBranch)
     observedCommitSHA = try container.decodeIfPresent(String.self, forKey: .observedCommitSHA)
     attributionVerified = try container.decodeIfPresent(Bool.self, forKey: .attributionVerified)
+    verifiedSourceDocumentDigest = try container.decodeIfPresent(
+      String.self, forKey: .verifiedSourceDocumentDigest)
   }
 
   public func encode(to encoder: Encoder) throws {
@@ -320,6 +326,7 @@ public struct DeploymentStatusSignal: Identifiable, Codable, Hashable, Sendable 
     try container.encodeIfPresent(observedBranch, forKey: .observedBranch)
     try container.encodeIfPresent(observedCommitSHA, forKey: .observedCommitSHA)
     try container.encodeIfPresent(attributionVerified, forKey: .attributionVerified)
+    try container.encodeIfPresent(verifiedSourceDocumentDigest, forKey: .verifiedSourceDocumentDigest)
   }
 }
 
@@ -339,6 +346,8 @@ public struct DeploymentStatusSnapshot: Identifiable, Codable, Hashable, Sendabl
   public var observedBranch: String?
   public var observedCommitSHA: String?
   public var attributionVerified: Bool?
+  public var platformLevel: DeploymentStatusLevel?
+  public var articleResults: [DeploymentArticleVerificationResult]?
 
   public init(
     id: UUID = UUID(),
@@ -355,7 +364,9 @@ public struct DeploymentStatusSnapshot: Identifiable, Codable, Hashable, Sendabl
     expectedCommitSHA: String? = nil,
     observedBranch: String? = nil,
     observedCommitSHA: String? = nil,
-    attributionVerified: Bool? = nil
+    attributionVerified: Bool? = nil,
+    platformLevel: DeploymentStatusLevel? = nil,
+    articleResults: [DeploymentArticleVerificationResult]? = nil
   ) {
     self.id = id
     self.profileID = profileID
@@ -372,6 +383,8 @@ public struct DeploymentStatusSnapshot: Identifiable, Codable, Hashable, Sendabl
     self.observedBranch = observedBranch
     self.observedCommitSHA = observedCommitSHA
     self.attributionVerified = attributionVerified
+    self.platformLevel = platformLevel
+    self.articleResults = articleResults
   }
 }
 
@@ -495,8 +508,14 @@ public extension DeploymentStatusSnapshot {
     case .running:
       return CoreL10n.text("部署仍在运行；稍后手动检查，或开启部署轮询等待完成。")
     case .failed:
+      if platformLevel == .success, articleResults?.contains(where: { $0.level == .failed }) == true {
+        return CoreL10n.text("部署已完成，但文章检查未通过；查看文章详情，确认公开路径和缓存版本后重试。")
+      }
       return CoreL10n.text("打开失败的 Actions、Pipeline 或状态端点，修复后重新检查部署。")
     case .unknown:
+      if platformLevel == .success, articleResults?.contains(where: { !$0.verifiesSourceVersion }) == true {
+        return CoreL10n.text("页面正文版本尚未确认；请让站点构建输出文章版本标记，再重新检查此文章。")
+      }
       return CoreL10n.text("检查仓库 Token、站点 URL 或状态端点配置，补齐后重新校验。")
     }
   }

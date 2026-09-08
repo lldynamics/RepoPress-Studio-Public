@@ -238,6 +238,7 @@ public final class PublishingStore: ObservableObject {
     siteStarterResult: SiteStarterResult? = nil,
     siteStarterImportResult: SiteStarterImportResult? = nil,
     siteStarterPushResult: SiteStarterPushResult? = nil,
+    siteStarterProgress: SiteStarterProgress? = nil,
     imageWorkbenchReport: ImageWorkbenchReport? = nil,
     preflightIssues: [PreflightIssue] = [],
     isInspectorPresented: Bool = true,
@@ -318,7 +319,8 @@ public final class PublishingStore: ObservableObject {
       service: siteStarterService,
       result: siteStarterResult,
       importResult: siteStarterImportResult,
-      pushResult: siteStarterPushResult
+      pushResult: siteStarterPushResult,
+      progress: siteStarterProgress
     )
     self.profiles = profiles
     self.activeProfileID = activeProfileID

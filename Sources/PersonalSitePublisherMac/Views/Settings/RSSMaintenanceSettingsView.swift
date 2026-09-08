@@ -42,9 +42,8 @@ struct RSSMaintenanceSettingsView: View {
 
   var body: some View {
     Form {
-      SettingsSubsectionAnchor(subsection: .rssRefresh)
       Group {
-        Section(String(localized: "本地 RSS 缓存")) {
+        Section {
           LabeledContent("订阅数量", value: store.feeds.count.formatted())
           LabeledContent("本机文章", value: store.articleHeaders.count.formatted())
           Text(
@@ -75,6 +74,9 @@ struct RSSMaintenanceSettingsView: View {
                 .foregroundStyle(.secondary)
             }
           }
+        } header: {
+          Text(String(localized: "本地 RSS 缓存"))
+            .settingsSubsectionAnchor(.rssRefresh)
         }
 
         Section(String(localized: "自动刷新与阅读")) {
@@ -144,9 +146,8 @@ struct RSSMaintenanceSettingsView: View {
         .accessibilityIdentifier("rss-automation-settings")
       }
 
-      SettingsSubsectionAnchor(subsection: .rssReading)
       Group {
-        Section(String(localized: "阅读默认值")) {
+        Section {
           Toggle(
             String(localized: "读到文章末尾时自动标记为已读"),
             isOn: $automaticMarkReadAtEndEnabled
@@ -203,12 +204,14 @@ struct RSSMaintenanceSettingsView: View {
             isOn: $automaticFullTextExtractionEnabled,
             accessibilityIdentifier: "rss-automatic-full-text-extraction"
           )
+        } header: {
+          Text(String(localized: "阅读默认值"))
+            .settingsSubsectionAnchor(.rssReading)
         }
       }
 
-      SettingsSubsectionAnchor(subsection: .rssOfflineNetwork)
       Group {
-        Section(String(localized: "离线保存范围")) {
+        Section {
           settingsToggle(
             title: String(localized: "Feed 正文"),
             detail: String(localized: "只保存 RSS 或 Atom 实际返回的摘要和正文 HTML；不会抓取原网页缺失的全文。"),
@@ -223,6 +226,9 @@ struct RSSMaintenanceSettingsView: View {
             .font(.workbenchSupporting)
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
+        } header: {
+          Text(String(localized: "离线保存范围"))
+            .settingsSubsectionAnchor(.rssOfflineNetwork)
         }
 
         Section(String(localized: "网络安全")) {
@@ -238,9 +244,8 @@ struct RSSMaintenanceSettingsView: View {
         }
       }
 
-      SettingsSubsectionAnchor(subsection: .rssMigration)
       Group {
-        Section(String(localized: "订阅迁移")) {
+        Section {
           Text("低频的 OPML 导入和导出放在这里；文件只包含订阅名称与地址，不包含文章缓存或阅读状态。")
             .font(.callout)
             .foregroundStyle(.secondary)
@@ -265,12 +270,14 @@ struct RSSMaintenanceSettingsView: View {
             )
             .textSelection(.enabled)
           }
+        } header: {
+          Text(String(localized: "订阅迁移"))
+            .settingsSubsectionAnchor(.rssMigration)
         }
       }
 
-      SettingsSubsectionAnchor(subsection: .rssCleanup)
       Group {
-        Section(String(localized: "自动清理历史文章")) {
+        Section {
           Toggle("启用自动清理", isOn: $automaticPruningEnabled)
             .onChange(of: automaticPruningEnabled) { _, enabled in
               store.updateRetentionSettings(enabled: enabled, days: retentionDays)
@@ -304,6 +311,9 @@ struct RSSMaintenanceSettingsView: View {
               pruneStatus
             }
           }
+        } header: {
+          Text(String(localized: "自动清理历史文章"))
+            .settingsSubsectionAnchor(.rssCleanup)
         }
       }
     }

@@ -332,12 +332,57 @@ extension WorkbenchAIStore {
     return true
   }
 
+  @discardableResult func requestAIChatCancellation(expectedOperationID: UUID) -> Bool {
+    guard
+      aiChatOperationCoordinator.requestCancellation(
+        whileRunning: isAIChatRunning,
+        expectedOperationID: expectedOperationID
+      )
+    else { return false }
+    aiChatMessage = "正在停止 AI 回复..."
+    return true
+  }
+
+  var activeAIChatOperationID: UUID? {
+    aiChatOperationCoordinator.currentOperationID
+  }
+
+  /// This identity belongs to the active operation, not to whichever chat is
+  /// currently focused. Task-center rows must use this frozen value.
+  var activeAIChatOperationTarget: WorkbenchTaskTarget? {
+    guard aiChatOperationCoordinator.currentOperationID != nil else { return nil }
+    return aiChatOperationCoordinator.currentTarget
+  }
+
+  func articleAIChatOperationTarget(for draftID: UUID) -> WorkbenchTaskTarget {
+    guard let conversationID = activeAIChatConversationID(for: draftID) else {
+      return .draft(draftID)
+    }
+    return .articleConversation(draftID: draftID, conversationID: conversationID)
+  }
+
+  private func currentAIChatOperationTarget() -> WorkbenchTaskTarget? {
+    if store.aiChatContextMode == .general,
+      let conversationID = activeGeneralAIChatConversation?.id
+    {
+      return .generalAIConversation(conversationID)
+    }
+    guard let draftID = store.aiChatDraftID else { return nil }
+    return articleAIChatOperationTarget(for: draftID)
+  }
+
   func beginAIChatOperation(
     statusMessage: String,
     clearsManualRetryState: Bool = true,
-    ownerToken: UUID? = nil
+    ownerToken: UUID? = nil,
+    target: WorkbenchTaskTarget? = nil
   ) -> UUID? {
-    guard let operationID = aiChatOperationCoordinator.begin(ownerToken: ownerToken) else {
+    guard
+      let operationID = aiChatOperationCoordinator.begin(
+        ownerToken: ownerToken,
+        target: target ?? currentAIChatOperationTarget()
+      )
+    else {
       store.setAIChatMessage("AI 正在回复，请先停止当前回复后再试。")
       return nil
     }
@@ -1196,7 +1241,11 @@ extension WorkbenchAIStore {
     guard
       let operationID = beginAIChatOperation(
         statusMessage: "AI 正在重新生成回复...",
-        ownerToken: ownerToken
+        ownerToken: ownerToken,
+        target: .articleConversation(
+          draftID: conversationIdentity.draftID,
+          conversationID: conversationIdentity.conversationID
+        )
       )
     else {
       return nil
@@ -1272,7 +1321,11 @@ extension WorkbenchAIStore {
     }
     guard
       let operationID = beginAIChatOperation(
-        statusMessage: "AI 正在重新生成此回复..."
+        statusMessage: "AI 正在重新生成此回复...",
+        target: .articleConversation(
+          draftID: conversationIdentity.draftID,
+          conversationID: conversationIdentity.conversationID
+        )
       )
     else {
       return nil

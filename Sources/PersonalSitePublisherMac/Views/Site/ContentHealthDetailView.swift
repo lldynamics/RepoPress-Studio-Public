@@ -1147,8 +1147,15 @@ struct ContentHealthDetailView: View {
       return .failed(String(localized: "未能找到原文章，未应用任何字段。"))
     }
 
-    let result = ContentHealthAIFixFieldPolicy.apply(fields, to: &draft)
+    let result = ContentHealthAIFixFieldPolicy.apply(
+      fields,
+      to: &draft,
+      baseline: preview.metadataBaseline
+    )
     guard result.didApplyChanges else {
+      if result.conflictCount > 0 {
+        return .applied(result)
+      }
       return .failed(String(localized: "所选字段当前不能应用，文章未更改。"))
     }
 

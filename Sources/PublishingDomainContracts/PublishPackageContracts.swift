@@ -28,6 +28,8 @@ public struct PublishPackageFile: Identifiable, Codable, Hashable, Sendable {
   /// known-version comparison.
   public var expectedContentSHA256: String?
   public var expectedGitBlobSHA: String?
+  /// Digest of the local media bytes accepted by the user, distinct from remote baseline evidence.
+  public var reviewedSourceSHA256: String?
 
   public init(
     kind: PublishFileKind,
@@ -38,7 +40,8 @@ public struct PublishPackageFile: Identifiable, Codable, Hashable, Sendable {
     byteSize: Int64 = 0,
     expectedRemoteSHA: String? = nil,
     expectedContentSHA256: String? = nil,
-    expectedGitBlobSHA: String? = nil
+    expectedGitBlobSHA: String? = nil,
+    reviewedSourceSHA256: String? = nil
   ) {
     self.kind = kind
     self.operation = operation
@@ -49,6 +52,7 @@ public struct PublishPackageFile: Identifiable, Codable, Hashable, Sendable {
     self.expectedRemoteSHA = expectedRemoteSHA
     self.expectedContentSHA256 = expectedContentSHA256
     self.expectedGitBlobSHA = expectedGitBlobSHA
+    self.reviewedSourceSHA256 = reviewedSourceSHA256
   }
 
   private enum CodingKeys: String, CodingKey {
@@ -61,6 +65,7 @@ public struct PublishPackageFile: Identifiable, Codable, Hashable, Sendable {
     case expectedRemoteSHA
     case expectedContentSHA256
     case expectedGitBlobSHA
+    case reviewedSourceSHA256
   }
 
   public init(from decoder: Decoder) throws {
@@ -79,6 +84,7 @@ public struct PublishPackageFile: Identifiable, Codable, Hashable, Sendable {
       forKey: .expectedContentSHA256
     )
     expectedGitBlobSHA = try container.decodeIfPresent(String.self, forKey: .expectedGitBlobSHA)
+    reviewedSourceSHA256 = try container.decodeIfPresent(String.self, forKey: .reviewedSourceSHA256)
   }
 }
 
@@ -89,6 +95,9 @@ public struct PublishPackage: Identifiable, Codable, Hashable, Sendable {
   public var title: String
   public var draftSummary: String?
   public var draftCoverAltText: String?
+  public var publicPath: String?
+  public var publicURLText: String?
+  public var sourceDocumentDigest: String?
   public var markdownPath: String
   public var files: [PublishPackageFile]
   public var commitMessage: String
@@ -103,6 +112,9 @@ public struct PublishPackage: Identifiable, Codable, Hashable, Sendable {
     title: String,
     draftSummary: String? = nil,
     draftCoverAltText: String? = nil,
+    publicPath: String? = nil,
+    publicURLText: String? = nil,
+    sourceDocumentDigest: String? = nil,
     markdownPath: String,
     files: [PublishPackageFile],
     commitMessage: String,
@@ -116,6 +128,9 @@ public struct PublishPackage: Identifiable, Codable, Hashable, Sendable {
     self.title = title
     self.draftSummary = draftSummary
     self.draftCoverAltText = draftCoverAltText
+    self.publicPath = publicPath
+    self.publicURLText = publicURLText
+    self.sourceDocumentDigest = sourceDocumentDigest
     self.markdownPath = markdownPath
     self.files = files
     self.commitMessage = commitMessage
@@ -209,6 +224,9 @@ public struct PublishPackageBuildInput: Hashable, Sendable {
   public let title: String
   public let draftSummary: String?
   public let draftCoverAltText: String?
+  public let publicPath: String?
+  public let publicURLText: String?
+  public let sourceDocumentDigest: String?
   public let markdown: Markdown
   public let attachments: [Attachment]
   public let previousMarkdownDeletion: PreviousMarkdownDeletion?
@@ -221,6 +239,9 @@ public struct PublishPackageBuildInput: Hashable, Sendable {
     title: String,
     draftSummary: String? = nil,
     draftCoverAltText: String? = nil,
+    publicPath: String? = nil,
+    publicURLText: String? = nil,
+    sourceDocumentDigest: String? = nil,
     markdown: Markdown,
     attachments: [Attachment] = [],
     previousMarkdownDeletion: PreviousMarkdownDeletion? = nil,
@@ -232,6 +253,9 @@ public struct PublishPackageBuildInput: Hashable, Sendable {
     self.title = title
     self.draftSummary = draftSummary
     self.draftCoverAltText = draftCoverAltText
+    self.publicPath = publicPath
+    self.publicURLText = publicURLText
+    self.sourceDocumentDigest = sourceDocumentDigest
     self.markdown = markdown
     self.attachments = attachments
     self.previousMarkdownDeletion = previousMarkdownDeletion

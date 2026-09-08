@@ -2,12 +2,17 @@ import SwiftUI
 
 struct AppLanguageSettingsView: View {
   let isEmbedded: Bool
+  let subsectionAnchor: SettingsSubsection?
 
   @AppStorage(AppLanguagePreference.storageKey)
   private var appLanguage = AppLanguagePreference.system
 
-  init(isEmbedded: Bool = false) {
+  init(
+    isEmbedded: Bool = false,
+    subsectionAnchor: SettingsSubsection? = nil
+  ) {
     self.isEmbedded = isEmbedded
+    self.subsectionAnchor = subsectionAnchor
   }
 
   var body: some View {
@@ -27,7 +32,7 @@ struct AppLanguageSettingsView: View {
 
   @ViewBuilder
   private var languageSections: some View {
-    Section("界面语言") {
+    Section {
       VStack(alignment: .leading, spacing: 8) {
         Text("语言")
           .font(.body)
@@ -49,6 +54,9 @@ struct AppLanguageSettingsView: View {
       Text(languageDescription)
         .font(.callout)
         .foregroundStyle(.secondary)
+    } header: {
+      Text("界面语言")
+        .settingsSubsectionAnchor(subsectionAnchor)
     }
 
     Section("应用方式") {

@@ -1,5 +1,5 @@
 import AppKit
-import PublishingWorkbenchCore
+import PublishingMarkdownCore
 
 @MainActor
 enum MarkdownTextKit2RangeAdapter {
@@ -74,6 +74,30 @@ enum MarkdownTextKit2RangeAdapter {
       return nil
     }
     return range(for: viewportRange, in: textView)
+  }
+
+  /// Returns the part of a document range that can be positioned from the
+  /// current viewport without forcing TextKit to lay out an offscreen range.
+  static func visibleGeometryRange(
+    for range: NSRange,
+    in textView: NSTextView
+  ) -> NSRange? {
+    guard let visibleRange = visibleRange(in: textView) else { return nil }
+    return visibleGeometryRange(for: range, within: visibleRange)
+  }
+
+  nonisolated static func visibleGeometryRange(
+    for range: NSRange,
+    within visibleRange: NSRange
+  ) -> NSRange? {
+    if range.length == 0 {
+      guard range.location >= visibleRange.location,
+        range.location <= NSMaxRange(visibleRange)
+      else { return nil }
+      return range
+    }
+    let intersection = NSIntersectionRange(range, visibleRange)
+    return intersection.length > 0 ? intersection : nil
   }
 
   static func rangeResolver(

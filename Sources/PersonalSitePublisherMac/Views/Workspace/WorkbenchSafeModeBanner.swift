@@ -1,5 +1,4 @@
 import AppKit
-import PublishingWorkbenchCore
 import SwiftUI
 
 struct WorkbenchSafeModeBanner: View {

@@ -7,15 +7,28 @@ import SwiftUI
 struct KnowledgeContextRecommendationCard: View {
   let draft: ArticleDraft
   let store: WorkbenchStore
+  let onOpenSource: (KnowledgeSearchResult) -> Void
+  let onSearch: (String) -> Void
   @ObservedObject private var knowledge: KnowledgeStore
   @StateObject private var queryCoordinator: KnowledgeContextQueryRefreshCoordinator
+  @StateObject private var presentationCoordinator = KnowledgeContextPresentationCoordinator()
   @State private var recommendations: [KnowledgeSearchResult] = []
+  @State private var dismissedDocumentIDsByQuery: [String: Set<UUID>] = [:]
+  @State private var expandedDocumentIDs = Set<UUID>()
+  @State private var isPossibleRecommendationsExpanded = false
   @State private var isLoading = false
   @State private var errorMessage: String?
 
-  init(draft: ArticleDraft, store: WorkbenchStore) {
+  init(
+    draft: ArticleDraft,
+    store: WorkbenchStore,
+    onOpenSource: @escaping (KnowledgeSearchResult) -> Void = { _ in },
+    onSearch: @escaping (String) -> Void = { _ in }
+  ) {
     self.draft = draft
     self.store = store
+    self.onOpenSource = onOpenSource
+    self.onSearch = onSearch
     _knowledge = ObservedObject(wrappedValue: store.knowledge)
     _queryCoordinator = StateObject(
       wrappedValue: KnowledgeContextQueryRefreshCoordinator(
@@ -25,8 +38,8 @@ struct KnowledgeContextRecommendationCard: View {
     )
   }
 
-  private var semanticRecommendationCount: Int {
-    recommendations.filter { $0.signals.contains(.semantic) }.count
+  private func feedbackScope(for query: String) -> String {
+    draft.id.uuidString + "\u{0}" + query
   }
 
   private var hasLocalSources: Bool {
@@ -38,14 +51,28 @@ struct KnowledgeContextRecommendationCard: View {
   var body: some View {
     let currentQuery = queryCoordinator.query
     let currentMetadata = KnowledgeContextQueryMetadata(draft: draft)
+    let dismissedDocumentIDs = dismissedDocumentIDsByQuery[feedbackScope(for: currentQuery)] ?? []
+    let presentationInput = KnowledgeContextRecommendationPresentationInput(
+      query: currentQuery,
+      results: recommendations,
+      excludingDocumentIDs: dismissedDocumentIDs
+    )
+    let presentationSnapshot = presentationCoordinator.snapshot
+    let hasCurrentPresentation = presentationSnapshot?.query == currentQuery
+    let recommendationGroups = hasCurrentPresentation
+      ? presentationSnapshot?.groups ?? .empty
+      : .empty
+    let semanticRecommendationCount = hasCurrentPresentation
+      ? presentationSnapshot?.semanticRecommendationCount ?? 0
+      : 0
     VStack(alignment: .leading, spacing: 9) {
-      header
+      header(query: currentQuery, semanticRecommendationCount: semanticRecommendationCount)
 
       if currentQuery.isEmpty {
         Text("写入标题、摘要或正文后，这里会自动关联本地资料。")
           .font(.workbenchSupporting)
           .foregroundStyle(.secondary)
-      } else if isLoading && recommendations.isEmpty {
+      } else if !hasCurrentPresentation || (isLoading && recommendations.isEmpty) {
         HStack(spacing: 8) {
           ProgressView()
             .controlSize(.small)
@@ -53,14 +80,35 @@ struct KnowledgeContextRecommendationCard: View {
             .font(.workbenchSupporting)
             .foregroundStyle(.secondary)
         }
-      } else if recommendations.isEmpty {
+      } else if recommendationGroups.strong.isEmpty && recommendationGroups.possible.isEmpty {
         emptyState
       } else {
-        ForEach(Array(recommendations.prefix(4))) { result in
-          recommendationRow(result, query: currentQuery)
+        if let presentationSnapshot {
+          ForEach(recommendationGroups.strong) { card in
+            recommendationCard(card, query: currentQuery, snapshot: presentationSnapshot)
+          }
         }
-        if recommendations.count > 4 {
-          Text("还有 \(recommendations.count - 4) 个相关片段，可在资料库中查看全部结果。")
+        if !recommendationGroups.possible.isEmpty {
+          DisclosureGroup(
+            String(localized: "可能相关（\(recommendationGroups.possible.count)）"),
+            isExpanded: $isPossibleRecommendationsExpanded
+          ) {
+            VStack(alignment: .leading, spacing: 8) {
+              if let presentationSnapshot {
+                ForEach(recommendationGroups.possible) { card in
+                  recommendationCard(card, query: currentQuery, snapshot: presentationSnapshot)
+                }
+              }
+            }
+            .padding(.top, 4)
+          }
+          .font(.workbenchMetadata)
+        }
+        let additionalCount = recommendationGroups.strong.reduce(0) {
+          $0 + $1.additionalResults.count
+        }
+        if additionalCount > 0 {
+          Text(String(localized: "另有 \(additionalCount) 个同源相关片段，可在资料库中查看全部结果。"))
             .font(.workbenchMetadata)
             .foregroundStyle(.secondary)
         }
@@ -77,17 +125,31 @@ struct KnowledgeContextRecommendationCard: View {
     .task(id: currentQuery) {
       await loadRecommendations(for: currentQuery)
     }
+    .task(id: presentationInput) {
+      presentationCoordinator.update(with: presentationInput)
+    }
     .onChange(of: currentMetadata) { _, metadata in
       queryCoordinator.updateMetadata(metadata)
     }
   }
 
-  private var header: some View {
+  private func header(query: String, semanticRecommendationCount: Int) -> some View {
     HStack(alignment: .firstTextBaseline, spacing: 7) {
       Label("上下文知识建议", systemImage: "books.vertical")
         .font(.workbenchCardTitle)
 
       Spacer(minLength: 6)
+
+      if !query.isEmpty {
+        Button(String(localized: "查看全部结果")) {
+          onSearch(query)
+        }
+        .buttonStyle(.borderless)
+        .font(.workbenchMetadata)
+        .help(String(localized: "在资料库中用当前上下文检索查看全部片段。"))
+        .accessibilityLabel(String(localized: "查看资料库全部结果"))
+        .accessibilityHint(String(localized: "打开资料库，并保留当前文章上下文作为检索词。"))
+      }
 
       if isLoading {
         ProgressView()
@@ -132,15 +194,69 @@ struct KnowledgeContextRecommendationCard: View {
     }
   }
 
+  private func recommendationCard(
+    _ card: KnowledgeContextRecommendationPresentation,
+    query: String,
+    snapshot: KnowledgeContextRecommendationPresentationSnapshot
+  ) -> some View {
+    VStack(alignment: .leading, spacing: 7) {
+      recommendationRow(
+        card.primaryResult,
+        hit: snapshot.hitsByResultID[card.primaryResult.id]!,
+        reason: card.reason
+      )
+
+      if !card.additionalResults.isEmpty {
+        DisclosureGroup(
+          String(localized: "另外 \(card.additionalResults.count) 个片段"),
+          isExpanded: Binding(
+            get: { expandedDocumentIDs.contains(card.document.id) },
+            set: { isExpanded in
+              if isExpanded {
+                expandedDocumentIDs.insert(card.document.id)
+              } else {
+                expandedDocumentIDs.remove(card.document.id)
+              }
+            }
+          )
+        ) {
+          VStack(alignment: .leading, spacing: 7) {
+            ForEach(card.additionalResults) { result in
+              recommendationRow(
+                result,
+                hit: snapshot.hitsByResultID[result.id]!,
+                reason: nil
+              )
+            }
+          }
+          .padding(.top, 4)
+        }
+        .font(.workbenchMetadata)
+      }
+
+      HStack {
+        Spacer()
+        Button(String(localized: "不相关")) {
+          dismiss(card.document.id, for: query)
+        }
+        .buttonStyle(.borderless)
+        .font(.workbenchMetadata)
+        .foregroundStyle(.secondary)
+        .help(String(localized: "只隐藏本次查询中的这份资料，不会影响其他文章或查询。"))
+      }
+    }
+    .padding(9)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: 9))
+    .accessibilityElement(children: .contain)
+    .accessibilityLabel(String(localized: "\(card.document.title)。推荐原因：\(card.reason)"))
+  }
+
   private func recommendationRow(
     _ result: KnowledgeSearchResult,
-    query: String
+    hit: KnowledgeSearchHitPresentation,
+    reason: String?
   ) -> some View {
-    let hit = KnowledgeSearchPresentationService().presentation(
-      for: result,
-      query: query,
-      maximumSnippetCharacters: 210
-    )
     return VStack(alignment: .leading, spacing: 6) {
       HStack(alignment: .firstTextBaseline, spacing: 6) {
         Image(systemName: result.document.kind.systemImage)
@@ -151,6 +267,12 @@ struct KnowledgeContextRecommendationCard: View {
           .workbenchTruncatedIdentity(result.document.title)
         Spacer(minLength: 4)
         Text(sourceKindTitle(for: result))
+          .font(.workbenchMetadata)
+          .foregroundStyle(.secondary)
+      }
+
+      if let reason {
+        Label(reason, systemImage: "text.magnifyingglass")
           .font(.workbenchMetadata)
           .foregroundStyle(.secondary)
       }
@@ -179,6 +301,17 @@ struct KnowledgeContextRecommendationCard: View {
       }
 
       HStack(spacing: 6) {
+        Button {
+          onOpenSource(result)
+        } label: {
+          Label("查看来源", systemImage: "arrow.up.right.square")
+        }
+        .buttonStyle(.bordered)
+        .controlSize(.small)
+        .help(String(localized: "在资料库中打开并定位这个来源片段。"))
+        .accessibilityLabel(String(localized: "查看来源：\(result.document.title)"))
+        .accessibilityHint(String(localized: "打开资料库并跳转到当前推荐片段。"))
+
         Button {
           insert(result, style: .blockquote)
         } label: {
@@ -209,13 +342,8 @@ struct KnowledgeContextRecommendationCard: View {
           }
       }
     }
-    .padding(9)
-    .frame(maxWidth: .infinity, alignment: .leading)
-    .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: 9))
     .accessibilityElement(children: .combine)
-    .accessibilityLabel(
-      "\(result.document.title)，\(sourceKindTitle(for: result))。\(hit.snippet)"
-    )
+    .accessibilityLabel("\(result.document.title)，\(sourceKindTitle(for: result))。\(hit.snippet)")
   }
 
   private func sourceKindTitle(for result: KnowledgeSearchResult) -> String {
@@ -244,6 +372,11 @@ struct KnowledgeContextRecommendationCard: View {
     )
   }
 
+  private func dismiss(_ documentID: UUID, for query: String) {
+    dismissedDocumentIDsByQuery[feedbackScope(for: query), default: []].insert(documentID)
+    expandedDocumentIDs.remove(documentID)
+  }
+
   private func loadRecommendations(for query: String) async {
     guard !query.trimmedForPublishing.isEmpty else {
       recommendations = []
@@ -254,7 +387,7 @@ struct KnowledgeContextRecommendationCard: View {
 
     isLoading = true
     do {
-      let results = try await knowledge.contextRecommendations(query: query, limit: 6)
+      let results = try await knowledge.contextRecommendations(query: query, limit: 12)
       guard !Task.isCancelled else { return }
       recommendations = results
       errorMessage = nil

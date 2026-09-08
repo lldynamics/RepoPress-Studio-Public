@@ -1,50 +1,62 @@
 import Foundation
 
+struct BatchPublishPlanRefreshInput: Equatable, Sendable {
+  let drafts: [ArticleDraft]
+  let profile: SiteProfile
+  let repositoryReport: RepositoryScanReport?
+}
+
 extension PublishingStore {
   func scheduleBatchPublishPlanRefresh(store: WorkbenchStore) {
-    batchPublishPlanRefreshTask?.cancel()
-    batchPublishPlanRefreshGeneration &+= 1
+    let input = BatchPublishPlanRefreshInput(
+      drafts: store.visibleDrafts,
+      profile: store.activeProfile,
+      repositoryReport: store.repositoryReport
+    )
+    // Share only work in progress. Completed plans are not a cache of disk
+    // state: explicit review must still read current files and permissions.
+    if batchPublishPlanRefreshTask != nil,
+      publishSession.batchPublishPlanRefreshInput == input
+    {
+      return
+    }
+    cancelBatchPublishPlanRefresh()
     let generation = batchPublishPlanRefreshGeneration
-    let drafts = store.visibleDrafts
-    let profile = store.activeProfile
-    let repositoryReport = store.repositoryReport
+    publishSession.batchPublishPlanRefreshInput = input
     let service = batchPublishPlanService
 
     isBatchPublishPlanRefreshing = true
     batchPublishPlanRefreshTask = Task { [weak self, weak store] in
-      let plan = await service.planAsync(
-        drafts: drafts,
-        profile: profile,
-        repositoryReport: repositoryReport
-      )
-      guard let self, let store,
-        generation == self.batchPublishPlanRefreshGeneration
-      else {
-        return
-      }
-
       defer {
-        if generation == self.batchPublishPlanRefreshGeneration {
+        if let self, generation == self.batchPublishPlanRefreshGeneration {
           self.batchPublishPlanRefreshTask = nil
+          self.publishSession.batchPublishPlanRefreshInput = nil
           self.isBatchPublishPlanRefreshing = false
         }
       }
+      do {
+        let plan = try await service.planCancellableAsync(
+          drafts: input.drafts,
+          profile: input.profile,
+          repositoryReport: input.repositoryReport
+        )
+        guard let self, let store,
+          generation == self.batchPublishPlanRefreshGeneration,
+          !Task.isCancelled,
+          store.activeProfile == input.profile,
+          store.visibleDrafts == input.drafts,
+          store.repositoryReport == input.repositoryReport
+        else { return }
 
-      guard !Task.isCancelled,
-        store.activeProfile == profile,
-        store.visibleDrafts == drafts,
-        store.repositoryReport == repositoryReport
-      else {
-        return
+        self.batchPublishPlan = plan
+        self.batchRemotePublishPreviewSnapshot = self.remoteRepositoryPublishPreview(
+          for: plan, store: store
+        )
+        self.batchRemoteReviewDraft = self.remotePublishPackage(for: plan)
+          .map { self.remoteReviewDraftBuilder.build(package: $0, profile: input.profile) }
+      } catch {
+        // The worker only throws cancellation. Never publish a partial plan.
       }
-
-      self.batchPublishPlan = plan
-      self.batchRemotePublishPreviewSnapshot = self.remoteRepositoryPublishPreview(
-        for: plan,
-        store: store
-      )
-      self.batchRemoteReviewDraft = self.remotePublishPackage(for: plan)
-        .map { self.remoteReviewDraftBuilder.build(package: $0, profile: profile) }
     }
   }
 
@@ -52,7 +64,15 @@ extension PublishingStore {
     batchPublishPlanRefreshGeneration &+= 1
     batchPublishPlanRefreshTask?.cancel()
     batchPublishPlanRefreshTask = nil
+    publishSession.batchPublishPlanRefreshInput = nil
     isBatchPublishPlanRefreshing = false
+  }
+
+  func invalidateBatchPublishPlan() {
+    cancelBatchPublishPlanRefresh()
+    batchPublishPlan = nil
+    batchRemotePublishPreviewSnapshot = nil
+    batchRemoteReviewDraft = nil
   }
 
   /// Removes remote-derived batch state while a repository access proof is

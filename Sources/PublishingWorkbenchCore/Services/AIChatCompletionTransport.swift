@@ -7,7 +7,9 @@ public struct URLSessionAIChatTransport: AIChatTransport, AIChatStreamingTranspo
     AIChatTransportLimits.maximumStreamingResponseByteCount
   static let maximumStreamingLineByteCount = AIChatTransportLimits.maximumStreamingLineByteCount
 
-  private let session: URLSession
+  private let sessionOwner: ManagedURLSession
+
+  private var session: URLSession { sessionOwner.session }
 
   var sessionConfiguration: URLSessionConfiguration {
     session.configuration
@@ -22,12 +24,17 @@ public struct URLSessionAIChatTransport: AIChatTransport, AIChatStreamingTranspo
     firstByteTimeout: TimeInterval = AIChatNetworkRecoveryPolicy.default.firstByteTimeout,
     resourceTimeout: TimeInterval = AIChatNetworkRecoveryPolicy.default.resourceTimeout
   ) {
-    self.session =
-      session
-      ?? CredentialSafeURLSession.make(
-        timeoutIntervalForRequest: firstByteTimeout,
-        timeoutIntervalForResource: resourceTimeout
-      )
+    sessionOwner = session.map { ManagedURLSession(session: $0) }
+      ?? ManagedURLSession {
+        CredentialSafeURLSession.make(
+          timeoutIntervalForRequest: firstByteTimeout,
+          timeoutIntervalForResource: resourceTimeout
+        )
+      }
+  }
+
+  private init(ownedSession: URLSession) {
+    sessionOwner = ManagedURLSession(session: ownedSession, ownsSession: true)
   }
 
   static func makeValidated(
@@ -40,15 +47,12 @@ public struct URLSessionAIChatTransport: AIChatTransport, AIChatStreamingTranspo
       timeoutIntervalForResource: resourceTimeout,
       proxyURL: proxyURL
     )
-    return URLSessionAIChatTransport(
-      session: session,
-      firstByteTimeout: firstByteTimeout,
-      resourceTimeout: resourceTimeout
-    )
+    return URLSessionAIChatTransport(ownedSession: session)
   }
 
   public func data(for request: URLRequest) async throws -> (Data, URLResponse) {
-    try await BoundedHTTPResponseLoader.data(
+    defer { withExtendedLifetime(sessionOwner) {} }
+    return try await BoundedHTTPResponseLoader.data(
       for: request,
       using: session,
       maximumByteCount: Self.maximumResponseByteCount
@@ -58,13 +62,15 @@ public struct URLSessionAIChatTransport: AIChatTransport, AIChatStreamingTranspo
   public func lines(for request: URLRequest) async throws -> (
     AsyncThrowingStream<String, Error>, URLResponse
   ) {
+    defer { withExtendedLifetime(sessionOwner) {} }
     let (bytes, response) = try await session.bytes(for: request)
     try BoundedHTTPResponseLoader.validateExpectedLength(
       response,
       maximumByteCount: Self.maximumStreamingResponseByteCount
     )
     let stream = AsyncThrowingStream<String, Error> { continuation in
-      let task = Task {
+      let task = Task { [sessionOwner] in
+        defer { withExtendedLifetime(sessionOwner) {} }
         do {
           var lineBytes: [UInt8] = []
           lineBytes.reserveCapacity(4 * 1_024)

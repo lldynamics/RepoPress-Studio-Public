@@ -128,6 +128,79 @@ final class RSSArticleFullTextRequestBrokerTests: XCTestCase {
     XCTAssertEqual(callCount, 2)
   }
 
+  func testDoesNotDeduplicateWhenSameGUIDMovesToAnotherSourceURL() async throws {
+    let broker = RSSArticleFullTextRequestBroker()
+    let probe = Probe()
+    let oldURL = try XCTUnwrap(URL(string: "https://example.com/posts/old"))
+    let newURL = try XCTUnwrap(URL(string: "https://example.com/posts/new"))
+
+    async let oldRequest = broker.perform(
+      articleID: "stable-guid",
+      host: "example.com",
+      sourceURL: oldURL
+    ) {
+      await probe.start(host: "example.com")
+      try await Task.sleep(for: .milliseconds(25))
+      await probe.finish(host: "example.com")
+      return Self.record(articleID: "stable-guid")
+    }
+    async let newRequest = broker.perform(
+      articleID: "stable-guid",
+      host: "example.com",
+      sourceURL: newURL,
+      forceRefresh: true,
+      allowsPrivateNetworkAccess: true
+    ) {
+      await probe.start(host: "example.com")
+      await probe.finish(host: "example.com")
+      return Self.record(articleID: "stable-guid")
+    }
+
+    _ = try await [oldRequest, newRequest]
+    let callCount = await probe.callCount
+    XCTAssertEqual(callCount, 2)
+  }
+
+  func testDoesNotDeduplicateWhenRefreshOrPrivateNetworkPermissionChanges() async throws {
+    let broker = RSSArticleFullTextRequestBroker()
+    let probe = Probe()
+    let sourceURL = try XCTUnwrap(URL(string: "https://example.com/posts/same"))
+
+    async let normal = broker.perform(
+      articleID: "same-guid",
+      host: "example.com",
+      sourceURL: sourceURL
+    ) {
+      await probe.start(host: "example.com")
+      await probe.finish(host: "example.com")
+      return Self.record(articleID: "same-guid")
+    }
+    async let forceRefresh = broker.perform(
+      articleID: "same-guid",
+      host: "example.com",
+      sourceURL: sourceURL,
+      forceRefresh: true
+    ) {
+      await probe.start(host: "example.com")
+      await probe.finish(host: "example.com")
+      return Self.record(articleID: "same-guid")
+    }
+    async let privateNetwork = broker.perform(
+      articleID: "same-guid",
+      host: "example.com",
+      sourceURL: sourceURL,
+      allowsPrivateNetworkAccess: true
+    ) {
+      await probe.start(host: "example.com")
+      await probe.finish(host: "example.com")
+      return Self.record(articleID: "same-guid")
+    }
+
+    _ = try await [normal, forceRefresh, privateNetwork]
+    let callCount = await probe.callCount
+    XCTAssertEqual(callCount, 3)
+  }
+
   private static func run(
     broker: RSSArticleFullTextRequestBroker,
     probe: Probe,

@@ -15,22 +15,25 @@ public protocol SiteOperationsHTTPTransport: Sendable {
 }
 
 public struct URLSessionSiteOperationsHTTPTransport: SiteOperationsHTTPTransport {
-  private let session: URLSession
+  private let sessionOwner: ManagedURLSession
 
   public init(session: URLSession? = nil) {
-    self.session = session ?? CredentialSafeURLSession.make(
-      timeoutIntervalForRequest: 30,
-      timeoutIntervalForResource: 60
-    )
+    sessionOwner = session.map { ManagedURLSession(session: $0) }
+      ?? ManagedURLSession {
+        CredentialSafeURLSession.make(
+          timeoutIntervalForRequest: 30, timeoutIntervalForResource: 60
+        )
+      }
   }
 
   public func data(
     for request: URLRequest,
     maximumByteCount: Int
   ) async throws -> (Data, URLResponse) {
-    try await BoundedHTTPResponseLoader.data(
+    defer { withExtendedLifetime(sessionOwner) {} }
+    return try await BoundedHTTPResponseLoader.data(
       for: request,
-      using: session,
+      using: sessionOwner.session,
       maximumByteCount: maximumByteCount
     )
   }

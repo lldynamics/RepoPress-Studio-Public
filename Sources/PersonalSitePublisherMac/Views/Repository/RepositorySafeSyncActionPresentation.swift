@@ -1,4 +1,4 @@
-import PublishingWorkbenchCore
+import PublishingGitCore
 
 enum RepositorySyncReviewKind: Equatable {
   case fastForward

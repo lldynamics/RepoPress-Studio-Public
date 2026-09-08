@@ -13,6 +13,8 @@ public final class WorkbenchActivityStatusFacade: ObservableObject {
   private var activeGitOperationKind: GitOperationKind?
   private var lastGitOperationKind: GitOperationKind?
   private var gitRetryIntent: WorkbenchTaskRetryIntent?
+  private var gitOperationID = UUID()
+  private var releaseRecordIDsBeforeGitOperation: Set<UUID>?
   private var imageSummaryFailureProfileID: UUID?
 
   init(store: WorkbenchStore) {
@@ -51,15 +53,20 @@ public final class WorkbenchActivityStatusFacade: ObservableObject {
     observe(store.imageStore.$imageBatchProgress)
     observe(store.imageStore.$isImageBatchProcessing)
     observe(store.imageStore.$lastBatchFailure)
+    observe(store.imageStore.$imageBatchTaskOwner)
     observe(store.imageStore.$lastBatchOperation)
     observe(store.imageStore.$isSiteSummaryLoading)
     observeImageSummaryFailure(store.imageStore.$siteSummaryErrorMessage)
+    observe(store.imageWorkbench.objectWillChange)
     observe(store.deploymentStore.$isDeploymentStatusChecking)
     observe(store.deploymentStore.$deploymentStatusMessage)
     observe(store.deploymentStore.$deploymentStatusSnapshots)
     observe(store.persistenceStore.$lastSaveError)
     observe(store.persistenceStore.$status)
     observe(store.$draftRecoveryJournalErrorMessage)
+    observe(store.$siteDraftFileFlushFailureIDs)
+    observe(store.$siteDraftFileSaveStates)
+    observe(store.$siteDraftFileSaveFailures)
   }
 
   public var isQuickHideActive: Bool { store.isQuickHideActive }
@@ -81,6 +88,7 @@ public final class WorkbenchActivityStatusFacade: ObservableObject {
     if let imageTask {
       tasks.append(imageTask)
     }
+    tasks.append(contentsOf: assetResourceTasks)
     if let siteScanTask {
       tasks.append(siteScanTask)
     }
@@ -101,8 +109,98 @@ public final class WorkbenchActivityStatusFacade: ObservableObject {
     taskCenterItems.filter(\.isActive).count
   }
 
+  public var waitingTaskCount: Int {
+    taskCenterItems.filter { $0.state == .waiting || $0.state == .needsAttention }.count
+  }
+
   public var failedTaskCount: Int {
     taskCenterItems.filter(\.isFailure).count
+  }
+
+  /// Opens exactly the persisted target carried by a task. The task center
+  /// never falls back to the article or site that happens to be selected.
+  @discardableResult
+  public func locateTask(_ task: WorkbenchTaskItem, windowID: UUID? = nil) -> String? {
+    guard let target = task.target else {
+      return CoreL10n.text("此任务没有稳定的定位目标。")
+    }
+    switch target {
+    case .draft(let draftID):
+      guard store.focusDraft(draftID, section: .writing) else {
+        return CoreL10n.text("目标文章已不存在或无法访问。")
+      }
+    case .articleConversation(let draftID, let conversationID):
+      guard store.drafts.contains(where: { $0.id == draftID }),
+        store.aiStore.aiChatConversations(for: draftID).contains(where: { $0.id == conversationID }
+        ),
+        store.aiStore.openAIChatWorkspace(for: draftID),
+        store.aiStore.selectAIChatConversation(conversationID)
+      else {
+        return CoreL10n.text("目标文章或 AI 对话已不存在或无法访问。")
+      }
+    case .generalAIConversation(let conversationID):
+      guard
+        store.aiStore.aiConversations.contains(where: {
+          $0.id == conversationID && $0.scope == .general && !$0.isArchived
+        }), store.aiStore.selectGeneralAIChatConversation(conversationID)
+      else {
+        return CoreL10n.text("目标通用 AI 对话已不存在或无法访问。")
+      }
+      store.setAIChatContextMode(.general)
+      store.setInspectorPresented(true)
+    case .siteProfile(let profileID):
+      guard store.profiles.contains(where: { $0.id == profileID }) else {
+        return CoreL10n.text("目标站点已不存在或无法访问。")
+      }
+      store.selectProfile(profileID)
+      store.selectSection(.sync)
+    case .siteProfilePage(let profileID, let section):
+      guard store.profiles.contains(where: { $0.id == profileID }) else {
+        return CoreL10n.text("目标站点已不存在或无法访问。")
+      }
+      store.selectProfile(profileID)
+      store.selectSection(section)
+    case .assetResourceManager(let profileID):
+      guard store.profiles.contains(where: { $0.id == profileID }) else {
+        return CoreL10n.text("目标站点已不存在或无法访问。")
+      }
+      store.selectProfile(profileID)
+      store.selectSection(.images)
+      store.imageWorkbench.requestAssetResourceManagerNavigation(for: profileID, windowID: windowID)
+    case .releaseRecord(let recordID):
+      guard let record = store.releaseRecords.first(where: { $0.id == recordID }) else {
+        return CoreL10n.text("目标发布记录已不存在或无法访问。")
+      }
+      if let profileID = record.siteProfileID {
+        guard store.profiles.contains(where: { $0.id == profileID }) else {
+          return CoreL10n.text("目标发布记录所属站点已不存在，未打开其他站点记录。")
+        }
+        store.selectProfile(profileID)
+      }
+      store.selectSection(.sync)
+    }
+    return nil
+  }
+
+  /// Stops only the exact AI operation shown in the task row. Operation and
+  /// conversation identity are both rechecked at click time so an old row
+  /// cannot cancel a later reply after focus has changed.
+  @discardableResult
+  public func cancelTask(_ task: WorkbenchTaskItem) -> String? {
+    guard task.canCancel, let intent = task.cancellationIntent else {
+      return CoreL10n.text("此任务当前不支持安全停止。")
+    }
+    switch intent {
+    case .aiChat(let operationID, let target):
+      guard task.target == target,
+        activeAIChatTarget == target,
+        store.aiStore.activeAIChatOperationID == operationID,
+        store.aiStore.requestAIChatCancellation(expectedOperationID: operationID)
+      else {
+        return CoreL10n.text("任务已变化或已结束，未停止其他操作。")
+      }
+      return nil
+    }
   }
 
   public func retryTask(
@@ -113,6 +211,18 @@ public final class WorkbenchActivityStatusFacade: ObservableObject {
       // A task without a typed intent is deliberately not retryable. Falling
       // back to the currently selected article would make the task center
       // execute a different user's operation.
+      return
+    }
+
+    if task.requiresPublishReview {
+      if let message = locateTask(task) {
+        store.setPublishActionMessage(message, status: .warning)
+      } else {
+        store.setPublishActionMessage(
+          CoreL10n.text("已定位原操作。请核对原分支和发布方式，重新审阅后再执行；未自动提交或推送。"),
+          status: .information
+        )
+      }
       return
     }
 
@@ -181,12 +291,8 @@ public final class WorkbenchActivityStatusFacade: ObservableObject {
     case .siteScan(let profileID):
       guard profileID == store.activeProfileID else { return }
       await store.repository.scanAsync()
-    case .gitDraft(let profileID, let draftID):
-      await retryGitDraft(profileID: profileID, draftID: draftID, remote: false)
-    case .gitRemoteDraft(let profileID, let draftID):
-      await retryGitDraft(profileID: profileID, draftID: draftID, remote: true)
-    case .gitRemoteBatch(let profileID, let draftIDs):
-      await retryGitRemoteBatch(profileID: profileID, draftIDs: draftIDs)
+    case .gitDraft, .gitRemoteDraft, .gitRemoteBatch:
+      return
     case .deployment(let recordID):
       guard let record = store.releaseRecords.first(where: { $0.id == recordID }) else {
         return
@@ -205,11 +311,17 @@ public final class WorkbenchActivityStatusFacade: ObservableObject {
       || ai.isAIImageTextRunning
     let message = ai.aiChatMessage ?? ai.aiActionMessage
     if isRunning {
+      let target = activeAIChatTarget
+      let cancellationIntent = store.aiStore.activeAIChatOperationID.flatMap { operationID in
+        target.map { WorkbenchTaskCancellationIntent.aiChat(operationID: operationID, target: $0) }
+      }
       return WorkbenchTaskItem(
         id: "ai-request",
         kind: .aiRequest,
         detail: message ?? CoreL10n.text("正在等待 AI 服务响应…"),
-        state: .running
+        state: .running,
+        target: target,
+        cancellationIntent: cancellationIntent
       )
     }
     let retryIntent: WorkbenchTaskRetryIntent?
@@ -239,7 +351,8 @@ public final class WorkbenchActivityStatusFacade: ObservableObject {
       detail: failure,
       state: .failed,
       failureReason: failure,
-      retryIntent: retryIntent
+      retryIntent: retryIntent,
+      target: retryIntent.flatMap(taskTarget(for:))
     )
   }
 
@@ -267,6 +380,9 @@ public final class WorkbenchActivityStatusFacade: ObservableObject {
 
   private var imageTask: WorkbenchTaskItem? {
     let image = store.imageStore
+    let batchTarget = image.imageBatchTaskOwner?.profileID.map {
+      WorkbenchTaskTarget.siteProfilePage(profileID: $0, section: .images)
+    }
     if image.isImageBatchProcessing {
       let progress = image.imageBatchProgress
       return WorkbenchTaskItem(
@@ -277,7 +393,8 @@ public final class WorkbenchActivityStatusFacade: ObservableObject {
           ?? WorkbenchTaskKind.imageProcessing.title,
         detail: store.imageActionMessage ?? CoreL10n.text("正在处理图片…"),
         progress: progress?.fractionCompleted,
-        state: .running
+        state: .running,
+        target: batchTarget
       )
     }
     if image.isSiteSummaryLoading {
@@ -286,7 +403,8 @@ public final class WorkbenchActivityStatusFacade: ObservableObject {
         kind: .imageProcessing,
         title: "图片资源扫描",
         detail: CoreL10n.text("正在汇总当前站点图片资源…"),
-        state: .running
+        state: .running,
+        target: .siteProfilePage(profileID: store.activeProfileID, section: .images)
       )
     }
     if let failure = image.lastBatchFailure {
@@ -296,7 +414,8 @@ public final class WorkbenchActivityStatusFacade: ObservableObject {
         title: image.lastBatchOperation?.progressTitle ?? WorkbenchTaskKind.imageProcessing.title,
         detail: "图片处理失败：\(failure)",
         state: .failed,
-        failureReason: failure
+        failureReason: failure,
+        target: batchTarget
       )
     }
     if let failure = image.siteSummaryErrorMessage?.nilIfEmpty {
@@ -315,10 +434,53 @@ public final class WorkbenchActivityStatusFacade: ObservableObject {
         detail: "图片资源扫描失败：\(failure)",
         state: .failed,
         failureReason: failure,
-        retryIntent: retryIntent
+        retryIntent: retryIntent,
+        target: retryIntent.flatMap(taskTarget(for:))
       )
     }
     return nil
+  }
+
+  private var assetResourceTasks: [WorkbenchTaskItem] {
+    store.imageWorkbench.assetResourceOperationTaskDescriptors.map { descriptor in
+      assetResourceTask(from: descriptor)
+    }
+  }
+
+  private func assetResourceTask(
+    from descriptor: AssetResourceOperationTaskDescriptor
+  ) -> WorkbenchTaskItem {
+    let profileID = descriptor.profileID
+    let state: WorkbenchTaskState
+    let detail: String
+    let failureReason: String?
+    switch descriptor.presentation {
+    case .loading(let loadingDetail):
+      state = .running
+      detail = loadingDetail
+      failureReason = nil
+    case .success(let completionDetail):
+      state = .completed
+      detail = completionDetail
+      failureReason = nil
+    case .partialSuccess(let completionDetail):
+      state = .needsAttention
+      detail = completionDetail
+      failureReason = nil
+    case .failure(let reason):
+      state = .failed
+      detail = reason
+      failureReason = reason
+    }
+    return WorkbenchTaskItem(
+      id: "asset-resource-\(profileID.uuidString)",
+      kind: .imageProcessing,
+      title: descriptor.title,
+      detail: detail,
+      state: state,
+      failureReason: failureReason,
+      target: .assetResourceManager(profileID: profileID)
+    )
   }
 
   private var siteScanTask: WorkbenchTaskItem? {
@@ -328,7 +490,8 @@ public final class WorkbenchActivityStatusFacade: ObservableObject {
         id: "site-scan",
         kind: .siteScan,
         detail: state.message,
-        state: .running
+        state: .running,
+        target: .siteProfile(store.activeProfileID)
       )
     }
     guard
@@ -345,7 +508,8 @@ public final class WorkbenchActivityStatusFacade: ObservableObject {
       state: .failed,
       failureReason: repositoryFailure.message,
       canRetry: true,
-      retryIntent: .siteScan(profileID: store.activeProfileID)
+      retryIntent: .siteScan(profileID: store.activeProfileID),
+      target: .siteProfile(store.activeProfileID)
     )
   }
 
@@ -359,7 +523,7 @@ public final class WorkbenchActivityStatusFacade: ObservableObject {
       || publishing.isLocalRepositoryMutationRunning
     if isRunning {
       let detail =
-        progress?.statusDescription
+        (progress?.stage == .failed ? nil : progress?.statusDescription)
         ?? publishing.publishActionMessage
         ?? (repository.isRemoteRepositoryChecking ? "正在检查远端仓库权限…" : "正在执行 Git 操作…")
       return WorkbenchTaskItem(
@@ -370,17 +534,20 @@ public final class WorkbenchActivityStatusFacade: ObservableObject {
         state: .running
       )
     }
-    if let progress, progress.stage == .failed {
-      let reason = progress.detail ?? progress.message
+    if lastGitOperationKind != .local, let progress, progress.stage == .failed {
+      let reason = currentGitFailureRecord?.summary ?? progress.detail ?? progress.message
       let retryIntent = failedGitRetryIntent
       return WorkbenchTaskItem(
-        id: "git-push",
+        id: currentGitFailureRecord?.id.uuidString ?? "git-\(gitOperationID)",
         kind: .gitPush,
-        detail: reason,
+        title: currentGitFailureRecord?.title,
+        detail: gitFailureDetail(reason),
         state: .failed,
         failureReason: reason,
         canRetry: retryIntent != nil,
-        retryIntent: retryIntent
+        retryIntent: retryIntent,
+        target: currentGitFailureRecord.map { .releaseRecord($0.id) }
+          ?? retryIntent.flatMap(taskTarget(for:))
       )
     }
     guard let feedback = publishing.publishActionFeedback,
@@ -388,55 +555,94 @@ public final class WorkbenchActivityStatusFacade: ObservableObject {
     else { return nil }
     let retryIntent = failedGitRetryIntent
     return WorkbenchTaskItem(
-      id: "git-push",
+      id: currentGitFailureRecord?.id.uuidString ?? "git-\(gitOperationID)",
       kind: .gitPush,
-      detail: feedback.message,
+      title: currentGitFailureRecord?.title,
+      detail: gitFailureDetail(currentGitFailureRecord?.summary ?? feedback.message),
       state: .failed,
-      failureReason: feedback.message,
+      failureReason: currentGitFailureRecord?.summary ?? feedback.message,
       canRetry: retryIntent != nil,
-      retryIntent: retryIntent
+      retryIntent: retryIntent,
+      target: currentGitFailureRecord.map { .releaseRecord($0.id) }
+        ?? retryIntent.flatMap(taskTarget(for:))
     )
   }
 
   private var deploymentTask: WorkbenchTaskItem? {
-    let records = store.activeProfileReleaseRecords
-    let candidate = records.first { record in
-      guard let snapshot = store.deploymentStore.deploymentStatusSnapshot(for: record) else {
-        return false
-      }
-      return snapshot.level == .running || snapshot.level == .failed
-    }
-    let isChecking = store.deploymentStore.isDeploymentStatusChecking
-    guard isChecking || candidate != nil else { return nil }
-    let snapshot = candidate.flatMap { store.deploymentStore.deploymentStatusSnapshot(for: $0) }
-    if let snapshot, snapshot.level == .failed {
+    // A real request has its own activity; a historical provider result does
+    // not mean a network operation is still executing.
+    if store.deploymentStore.isDeploymentStatusChecking {
       return WorkbenchTaskItem(
-        id: "deployment-\(candidate?.id.uuidString ?? "latest")",
-        kind: .deployment,
-        detail: snapshot.message,
-        state: .failed,
-        failureReason: snapshot.message,
-        canRetry: candidate != nil,
-        targetID: candidate?.id,
-        retryIntent: candidate.map { .deployment(recordID: $0.id) }
+        id: "deployment-check", kind: .deployment,
+        detail: store.deploymentStore.deploymentStatusMessage ?? CoreL10n.text("正在检查部署状态…"),
+        state: .running
       )
     }
+    guard
+      let record = store.activeProfileReleaseRecords.first(where: { record in
+        guard let snapshot = store.deploymentStore.deploymentStatusSnapshot(for: record) else {
+          return false
+        }
+        return snapshot.level != .success
+      }), let snapshot = store.deploymentStore.deploymentStatusSnapshot(for: record)
+    else { return nil }
+    let state: WorkbenchTaskState =
+      switch snapshot.level {
+      case .failed: .failed
+      case .running: .waiting
+      default: .needsAttention
+      }
     return WorkbenchTaskItem(
-      id: candidate.map { "deployment-\($0.id.uuidString)" } ?? "deployment-latest",
-      kind: .deployment,
-      detail: store.deploymentStore.deploymentStatusMessage ?? snapshot?.message ?? "正在检查部署状态…",
-      state: .running,
-      canRetry: false,
-      targetID: candidate?.id
+      id: "deployment-\(record.id)", kind: .deployment,
+      detail: snapshot.message, state: state,
+      failureReason: state == .failed ? snapshot.message : nil,
+      targetID: record.id, retryIntent: .deployment(recordID: record.id),
+      target: .releaseRecord(record.id), checkedAt: snapshot.checkedAt
     )
   }
 
-  private var failedGitRetryIntent: WorkbenchTaskRetryIntent? {
-    if lastGitOperationKind != .local,
-      let record = store.activeProfileReleaseRecords.first(where: {
+  private var activeAIChatTarget: WorkbenchTaskTarget? {
+    store.aiStore.activeAIChatOperationTarget
+  }
+
+  private func taskTarget(for intent: WorkbenchTaskRetryIntent) -> WorkbenchTaskTarget? {
+    switch intent {
+    case .aiChat(let draftID, let conversationID, _):
+      .articleConversation(draftID: draftID, conversationID: conversationID)
+    case .generalAIChat(let conversationID, _, _):
+      .generalAIConversation(conversationID)
+    case .imageSummary(let profileID):
+      .siteProfilePage(profileID: profileID, section: .images)
+    case .siteScan(let profileID):
+      .siteProfile(profileID)
+    case .gitDraft(_, let draftID), .gitRemoteDraft(_, let draftID):
+      .draft(draftID)
+    case .gitRemoteBatch(let profileID, _):
+      .siteProfile(profileID)
+    case .deployment(let recordID):
+      .releaseRecord(recordID)
+    case .knowledgeImport, .imageProcessing:
+      nil
+    }
+  }
+
+  private var currentGitFailureRecord: ReleaseRecord? {
+    guard lastGitOperationKind != .local else { return nil }
+    return store.activeProfileReleaseRecords.first {
       $0.kind == .remotePublishFailure
-    })
-    {
+        && !(releaseRecordIDsBeforeGitOperation?.contains($0.id) ?? false)
+    }
+  }
+
+  private func gitFailureDetail(_ reason: String) -> String {
+    guard let record = currentGitFailureRecord, let branch = record.branchName else {
+      return reason
+    }
+    return reason + "\n" + CoreL10n.format("原分支：%@", branch)
+  }
+
+  private var failedGitRetryIntent: WorkbenchTaskRetryIntent? {
+    if let record = currentGitFailureRecord {
       if !record.batchItems.isEmpty {
         return .gitRemoteBatch(
           profileID: record.siteProfileID ?? store.activeProfileID,
@@ -450,52 +656,7 @@ public final class WorkbenchActivityStatusFacade: ObservableObject {
         )
       }
     }
-    guard lastGitOperationKind == .local else { return nil }
     return gitRetryIntent
-  }
-
-  private func retryGitDraft(profileID: UUID, draftID: UUID, remote: Bool) async {
-    guard store.drafts.contains(where: {
-      $0.id == draftID && $0.siteProfileID == profileID
-    }) else {
-      return
-    }
-    guard store.focusDraft(draftID, section: .writing) else { return }
-    if remote {
-      _ = await store.publishSelectedDraftOnlineUsingPreferredStrategy()
-    } else if store.repository.report?.hasGitDirectory == false {
-      _ = await store.writeSelectedDraftToLocalRepository()
-    } else {
-      await store.commitSelectedDraftUsingPreferredStrategy()
-    }
-  }
-
-  private func retryGitRemoteBatch(profileID: UUID, draftIDs: [UUID]) async {
-    guard !draftIDs.isEmpty,
-      draftIDs.allSatisfy({ draftID in
-        store.drafts.contains { $0.id == draftID && $0.siteProfileID == profileID }
-      })
-    else {
-      return
-    }
-    if store.activeProfileID != profileID {
-      guard let firstDraftID = draftIDs.first,
-        store.focusDraft(firstDraftID, section: .sync)
-      else { return }
-    }
-    guard store.activeProfileID == profileID else { return }
-    await store.refreshBatchPublishPlanAsync()
-    guard let plan = store.batchPublishPlan,
-      plan.profileID == profileID,
-      Set(plan.remotePublishableItems.map(\.draftID)) == Set(draftIDs)
-    else {
-      store.setPublishActionMessage(
-        "待重试的批量发布队列已变化，请重新审阅后再发布。",
-        status: .warning
-      )
-      return
-    }
-    _ = await store.publishBatchReadyDraftsOnlineUsingPreferredStrategy()
   }
 
   private func observeGitOperation(
@@ -508,6 +669,8 @@ public final class WorkbenchActivityStatusFacade: ObservableObject {
         guard let self else { return }
         if isRunning {
           if self.activeGitOperationKind != kind {
+            self.gitOperationID = UUID()
+            self.releaseRecordIDsBeforeGitOperation = Set(self.store.releaseRecords.map(\.id))
             self.activeGitOperationKind = kind
             self.lastGitOperationKind = kind
             self.gitRetryIntent = self.makeGitRetryIntent(for: kind)

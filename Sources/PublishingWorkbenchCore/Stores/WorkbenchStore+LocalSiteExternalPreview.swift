@@ -93,7 +93,7 @@ extension WorkbenchStore {
       throw LocalSiteExternalPreviewPreparationError.inactiveSite
     }
     let renderedDigest = writtenDraft.renderedRepositoryContentDigest(profile: profile)
-    guard writtenDraft.repositoryBinding?.projectFileContentDigest == renderedDigest else {
+    guard (writtenDraft.repositoryBinding?.projectFileRenderedContentDigest ?? writtenDraft.repositoryBinding?.projectFileContentDigest) == renderedDigest else {
       throw LocalSiteExternalPreviewPreparationError.projectSaveFailed(
         CoreL10n.text("项目文件与当前正文不一致。")
       )
@@ -210,7 +210,7 @@ extension WorkbenchStore {
     let profile = profile(for: draft)
     let expectedContentDigest = draft.renderedRepositoryContentDigest(profile: profile)
     guard profile.id == preparation.profileID,
-      draft.repositoryBinding?.projectFileContentDigest == expectedContentDigest,
+      (draft.repositoryBinding?.projectFileRenderedContentDigest ?? draft.repositoryBinding?.projectFileContentDigest) == expectedContentDigest,
       let rootURL = profile.localRepositoryRootURL,
       let repositoryPath = draft.repositoryPath?.normalizedRelativePath().nilIfEmpty,
       publishingStore.localSitePreviewURL(for: draft, store: self)

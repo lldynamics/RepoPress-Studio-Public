@@ -75,6 +75,9 @@ public struct WorkbenchAutomationArguments: Codable, Hashable, Sendable {
   public var url: String?
   public var query: String?
   public var documentID: UUID?
+  public var chunkID: UUID?
+  /// Zero-based character offset for the bounded knowledge-read page.
+  public var readCursor: Int?
   public var originalText: String?
   public var replacementText: String?
 
@@ -92,6 +95,8 @@ public struct WorkbenchAutomationArguments: Codable, Hashable, Sendable {
     url: String? = nil,
     query: String? = nil,
     documentID: UUID? = nil,
+    chunkID: UUID? = nil,
+    readCursor: Int? = nil,
     originalText: String? = nil,
     replacementText: String? = nil
   ) {
@@ -108,6 +113,8 @@ public struct WorkbenchAutomationArguments: Codable, Hashable, Sendable {
     self.url = url
     self.query = query
     self.documentID = documentID
+    self.chunkID = chunkID
+    self.readCursor = readCursor
     self.originalText = originalText
     self.replacementText = replacementText
   }
@@ -126,6 +133,8 @@ public struct WorkbenchAutomationArguments: Codable, Hashable, Sendable {
     case url
     case query
     case documentID
+    case chunkID
+    case readCursor
     case originalText
     case replacementText
   }
@@ -147,6 +156,8 @@ public struct WorkbenchAutomationArguments: Codable, Hashable, Sendable {
     url = try container.decodeIfPresent(String.self, forKey: .url)
     query = try container.decodeIfPresent(String.self, forKey: .query)
     documentID = try container.decodeIfPresent(UUID.self, forKey: .documentID)
+    chunkID = try container.decodeIfPresent(UUID.self, forKey: .chunkID)
+    readCursor = try container.decodeIfPresent(Int.self, forKey: .readCursor)
     originalText = try container.decodeIfPresent(String.self, forKey: .originalText)
     replacementText = try container.decodeIfPresent(String.self, forKey: .replacementText)
   }
@@ -170,6 +181,8 @@ public struct WorkbenchAutomationArguments: Codable, Hashable, Sendable {
     try container.encodeIfPresent(url, forKey: .url)
     try container.encodeIfPresent(query, forKey: .query)
     try container.encodeIfPresent(documentID, forKey: .documentID)
+    try container.encodeIfPresent(chunkID, forKey: .chunkID)
+    try container.encodeIfPresent(readCursor, forKey: .readCursor)
     try container.encodeIfPresent(originalText, forKey: .originalText)
     try container.encodeIfPresent(replacementText, forKey: .replacementText)
   }

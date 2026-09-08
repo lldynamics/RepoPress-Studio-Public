@@ -366,6 +366,12 @@ public final class WorkbenchReleaseHistoryObservationFacade: ObservableObject {
       }
       .removeDuplicates()
     )
+    observe(
+      store.publishingStore.$drafts.map { drafts in
+        Dictionary(uniqueKeysWithValues: drafts.map { ($0.id, $0.scope) })
+      }.removeDuplicates()
+    )
+    observe(store.publishingStore.publishSession.$batchPublishPlan)
     observe(store.publishingStore.publishSession.$releaseRecords)
     observe(store.publishingStore.publishSession.$publishActionFeedback)
     observe(store.repositoryStore.$isRemoteRepositoryPublishing)

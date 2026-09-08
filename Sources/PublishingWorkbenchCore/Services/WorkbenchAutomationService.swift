@@ -156,7 +156,7 @@ public enum WorkbenchAutomationRegistry {
       detail: "按稳定资料 ID 读取明确允许远程 AI 使用的文档，内容有长度上限",
       systemImage: "doc.text.magnifyingglass",
       risk: .readOnly,
-      arguments: [.documentID],
+      arguments: [.documentID, .chunkID, .readCursor],
       required: [.documentID]
     ),
     entry(
@@ -467,6 +467,8 @@ enum WorkbenchAutomationArgumentKey: String, CaseIterable, Hashable, Sendable {
   case url
   case query
   case documentID
+  case chunkID
+  case readCursor
   case originalText
   case replacementText
 
@@ -480,7 +482,8 @@ enum WorkbenchAutomationArgumentKey: String, CaseIterable, Hashable, Sendable {
       return AIPublishingMetadataField.allCases.map(\.rawValue)
     case .mode:
       return ["outline", "full", "paragraph_range"]
-    case .draftID, .documentID, .value, .values, .content, .paragraphIndices, .url, .query,
+    case .draftID, .documentID, .chunkID, .readCursor, .value, .values, .content, .paragraphIndices,
+      .url, .query,
       .originalText, .replacementText:
       return []
     }
@@ -502,6 +505,17 @@ enum WorkbenchAutomationArgumentKey: String, CaseIterable, Hashable, Sendable {
       return .object([
         "type": .string("string"),
         "description": .string("Stable knowledge document UUID returned by knowledgeSearch."),
+      ])
+    case .chunkID:
+      return .object([
+        "type": .string("string"),
+        "description": .string("Stable knowledge chunk UUID returned by knowledgeSearch."),
+      ])
+    case .readCursor:
+      return .object([
+        "type": .string("integer"),
+        "minimum": .number(0),
+        "description": .string("Zero-based cursor returned by a previous bounded knowledgeRead."),
       ])
     case .value:
       return .object(["type": .string("string")])
@@ -570,6 +584,10 @@ enum WorkbenchAutomationArgumentKey: String, CaseIterable, Hashable, Sendable {
       return "query: string"
     case .documentID:
       return "documentID: UUID"
+    case .chunkID:
+      return "chunkID: UUID"
+    case .readCursor:
+      return "readCursor: int"
     case .originalText:
       return "originalText: string"
     case .replacementText:
@@ -707,6 +725,19 @@ struct WorkbenchAutomationCommandSpecification: Sendable {
           throw WorkbenchAutomationAgentToolError.argumentMismatch
         }
         arguments.documentID = documentID
+      case (.chunkID, .string(let raw)):
+        guard let chunkID = UUID(uuidString: raw) else {
+          throw WorkbenchAutomationAgentToolError.argumentMismatch
+        }
+        arguments.chunkID = chunkID
+      case (.readCursor, .number(let raw)):
+        let cursor = Int(raw)
+        guard raw == Double(cursor), cursor >= 0,
+          cursor <= WorkbenchAgentKnowledgeService.maximumReadCursor
+        else {
+          throw WorkbenchAutomationAgentToolError.argumentMismatch
+        }
+        arguments.readCursor = cursor
       case (.originalText, .string(let raw)):
         arguments.originalText = raw
       case (.replacementText, .string(let raw)):
@@ -794,6 +825,10 @@ struct WorkbenchAutomationCommandSpecification: Sendable {
       return arguments.query?.nilIfEmpty != nil
     case .documentID:
       return arguments.documentID != nil
+    case .chunkID:
+      return arguments.chunkID != nil
+    case .readCursor:
+      return arguments.readCursor != nil
     case .originalText:
       return arguments.originalText?.nilIfEmpty != nil
     case .replacementText:
@@ -830,6 +865,10 @@ struct WorkbenchAutomationCommandSpecification: Sendable {
       return arguments.query != nil
     case .documentID:
       return arguments.documentID != nil
+    case .chunkID:
+      return arguments.chunkID != nil
+    case .readCursor:
+      return arguments.readCursor != nil
     case .originalText:
       return arguments.originalText != nil
     case .replacementText:

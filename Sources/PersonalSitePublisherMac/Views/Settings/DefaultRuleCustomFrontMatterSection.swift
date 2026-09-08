@@ -1,4 +1,3 @@
-import PublishingWorkbenchCore
 import SwiftUI
 
 struct DefaultRuleCustomFrontMatterSection: View {

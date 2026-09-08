@@ -40,6 +40,42 @@ extension RSSReaderDatabase {
     }
   }
 
+  /// Writes an extraction only while its source remains the current link for
+  /// this stable RSS article ID. Feed publishers can update a GUID in place;
+  /// a completed request for the former URL must never become searchable as
+  /// the new article's original-page body.
+  @discardableResult
+  func upsertFullTextRecordIfCurrentSource(
+    _ record: RSSArticleFullTextRecord
+  ) throws -> Bool {
+    guard let sourceURL = record.sourceURL else { return false }
+    var didPersist = false
+    try withLock {
+      try transactionUnlocked {
+        guard try articleLinkUnlocked(articleID: record.articleID) == sourceURL.absoluteString else { return }
+        try upsertFullTextRecordUnlocked(record)
+        didPersist = true
+      }
+    }
+    return didPersist
+  }
+
+  private func articleLinkUnlocked(articleID: String) throws -> String? {
+    let statement = try prepareUnlocked(
+      "SELECT link FROM rss_articles WHERE id = ? LIMIT 1;"
+    )
+    defer { sqlite3_finalize(statement) }
+    bind(articleID, at: 1, to: statement)
+    switch sqlite3_step(statement) {
+    case SQLITE_ROW:
+      return text(statement, 0)
+    case SQLITE_DONE:
+      return nil
+    default:
+      throw databaseErrorUnlocked()
+    }
+  }
+
   func upsertFullTextRecordUnlocked(_ record: RSSArticleFullTextRecord) throws {
     let statement = try prepareUnlocked(
       """
@@ -132,8 +168,10 @@ extension RSSReaderDatabase {
     }
   }
 
-  /// Rebuilds the single FTS row from both the feed payload and an accepted
-  /// extraction. Refreshing either source therefore cannot erase the other.
+  /// Rebuilds the single FTS row from the feed payload and an extraction that
+  /// still belongs to the article's current link. Legacy cache rows without a
+  /// source URL remain recoverable data, but cannot be attributed to a moved
+  /// GUID and are therefore deliberately excluded from search.
   func reindexArticleFullTextUnlocked(articleID: String) throws {
     let deleteStatement = try prepareUnlocked(
       "DELETE FROM rss_articles_fts WHERE article_id = ?;"
@@ -150,7 +188,9 @@ extension RSSReaderDatabase {
       INSERT INTO rss_articles_fts(article_id, title, summary, content)
       SELECT article.id, article.title, article.summary_html,
              article.content_html || CASE
-               WHEN full_text.status = 'ready' AND full_text.plain_text != ''
+               WHEN full_text.status = 'ready'
+                    AND full_text.plain_text != ''
+                    AND full_text.source_url = article.link
                  THEN ' ' || full_text.plain_text
                ELSE ''
              END

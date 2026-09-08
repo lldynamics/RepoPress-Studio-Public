@@ -217,6 +217,12 @@ struct RSSLibraryInspectorPanel: View {
     style: KnowledgeArticleInsertionStyle
   ) {
     guard loadingEntryIDs.insert(entry.id).inserted else { return }
+    guard let target = KnowledgeArticleInsertionService.captureRSSDraftInsertionTarget(
+      in: workbenchStore
+    ) else {
+      loadingEntryIDs.remove(entry.id)
+      return
+    }
     Task { @MainActor in
       defer { loadingEntryIDs.remove(entry.id) }
       do {
@@ -224,12 +230,16 @@ struct RSSLibraryInspectorPanel: View {
           errorMessage = String(localized: "找不到这篇文章的本机正文。")
           return
         }
-        _ = KnowledgeArticleInsertionService.insertRSSContent(
+        guard KnowledgeArticleInsertionService.insertRSSContent(
           article: article,
           highlight: entry.highlight,
           style: style,
+          targeting: target,
           into: workbenchStore
-        )
+        ) else {
+          errorMessage = String(localized: "目标文章在读取 RSS 内容期间已变化；未写入，请重新尝试。")
+          return
+        }
       } catch {
         errorMessage = error.localizedDescription
       }

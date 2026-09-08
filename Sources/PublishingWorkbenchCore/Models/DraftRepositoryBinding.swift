@@ -107,6 +107,11 @@ public struct DraftRepositoryBinding: Codable, Hashable, Sendable {
   /// once a remote revision is verified that property remains the remote CAS
   /// baseline while this one advances with successful local writes.
   public var projectFileContentDigest: String?
+  /// Digest of the rendered Markdown represented by the local project file.
+  /// This remains separate from the exact on-disk byte digest because an
+  /// imported hand-formatted document need not reproduce its original layout.
+  /// `nil` keeps snapshots written before this field compatible.
+  public var projectFileRenderedContentDigest: String?
   /// Rendered bytes submitted to an open PR/MR. This is separate from the
   /// target-branch baseline above so a pending review can survive startup file
   /// reconciliation while a later local edit still becomes `localChanged`.
@@ -121,6 +126,7 @@ public struct DraftRepositoryBinding: Codable, Hashable, Sendable {
     remoteRevision: String? = nil,
     renderedContentDigest: String? = nil,
     projectFileContentDigest: String? = nil,
+    projectFileRenderedContentDigest: String? = nil,
     pendingReviewContentDigest: String? = nil,
     verification: DraftRepositoryBindingVerification = .legacyUnverified,
     syncState: DraftRepositorySyncState = .projectSaved,
@@ -131,6 +137,8 @@ public struct DraftRepositoryBinding: Codable, Hashable, Sendable {
     self.remoteRevision = remoteRevision?.trimmedForPublishing.nilIfEmpty
     self.renderedContentDigest = renderedContentDigest?.trimmedForPublishing.nilIfEmpty
     self.projectFileContentDigest = projectFileContentDigest?.trimmedForPublishing.nilIfEmpty
+    self.projectFileRenderedContentDigest = projectFileRenderedContentDigest?
+      .trimmedForPublishing.nilIfEmpty
     self.pendingReviewContentDigest = pendingReviewContentDigest?.trimmedForPublishing.nilIfEmpty
     self.verification = verification
     self.syncState = syncState

@@ -1,6 +1,6 @@
 import AppKit
 import Foundation
-import PublishingWorkbenchCore
+import PublishingMarkdownCore
 import UniformTypeIdentifiers
 import WebKit
 

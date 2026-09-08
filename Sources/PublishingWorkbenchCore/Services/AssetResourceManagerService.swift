@@ -8,15 +8,21 @@ public struct AssetResourceManagerService: Sendable {
   public static let maximumAssetCount = 10_000
   public static let maximumMarkdownFileCount = 10_000
   public static let maximumMarkdownByteCount = 4 * 1024 * 1024
+  public static let maximumTotalMarkdownByteCount: Int64 = 64 * 1024 * 1024
   public static let compressionMinimumByteCount: Int64 = 256 * 1024
   public static let compressionDimensionThreshold = 1_600
   public static let maximumSafeInputPixelCount = 64_000_000
 
   private let fileSystem: SendableFileManager
+  private let markdownByteBudget: Int64
   private var fileManager: FileManager { fileSystem.value }
 
-  public init(fileManager: FileManager = .default) {
+  public init(
+    fileManager: FileManager = .default,
+    maximumTotalMarkdownByteCount: Int64 = AssetResourceManagerService.maximumTotalMarkdownByteCount
+  ) {
     self.fileSystem = SendableFileManager(fileManager)
+    markdownByteBudget = max(0, maximumTotalMarkdownByteCount)
   }
 
   public func scanAsync(profile: SiteProfile) async throws -> AssetResourceScanReport {
@@ -70,12 +76,8 @@ public struct AssetResourceManagerService: Sendable {
       throw AssetResourceManagerError.assetDirectoryUnavailable(normalizedAssetRoot)
     }
 
-    let markdown = try readMarkdownDocuments(
+    let markdown = try scanMarkdownReferences(
       in: canonicalRoot,
-      root: canonicalRoot
-    )
-    let references = resolveReferences(
-      in: markdown,
       root: canonicalRoot,
       assetRoot: canonicalAssetRoot,
       assetRootPath: normalizedAssetRoot
@@ -83,7 +85,7 @@ public struct AssetResourceManagerService: Sendable {
     let inventory = try readAssets(
       in: canonicalAssetRoot,
       root: canonicalRoot,
-      referencesByPath: references.referencesByPath,
+      referencesByPath: markdown.referencesByPath,
       wasTruncatedByMarkdown: markdown.wasTruncated
     )
 
@@ -92,7 +94,7 @@ public struct AssetResourceManagerService: Sendable {
       repositoryRootPath: canonicalRoot.path,
       assetRootPath: normalizedAssetRoot,
       assets: inventory.assets,
-      brokenReferences: references.brokenReferences,
+      brokenReferences: markdown.brokenReferences,
       scannedMarkdownFileCount: markdown.scannedFileCount,
       skippedMarkdownFileCount: markdown.skippedFileCount,
       wasTruncated: markdown.wasTruncated || inventory.wasTruncated
@@ -101,13 +103,16 @@ public struct AssetResourceManagerService: Sendable {
 
   public func moveOrphanedAssetsToTrash(
     profile: SiteProfile,
-    items: [AssetResourceItem]
+    items: [AssetResourceItem],
+    reviewedReport: AssetResourceScanReport? = nil
   ) throws -> AssetResourceCleanupResult {
     guard let result = try profile.withLocalRepositoryRootAccess({ rootURL in
       try moveOrphanedAssetsToTrash(
         repositoryRootURL: rootURL,
         assetRoot: profile.assetRoot,
-        items: items
+        profileID: profile.id,
+        items: items,
+        reviewedReport: reviewedReport
       )
     }) else {
       throw AssetResourceManagerError.repositoryUnavailable
@@ -134,8 +139,14 @@ public struct AssetResourceManagerService: Sendable {
   private func moveOrphanedAssetsToTrash(
     repositoryRootURL: URL,
     assetRoot: String,
-    items: [AssetResourceItem]
+    profileID: UUID,
+    items: [AssetResourceItem],
+    reviewedReport: AssetResourceScanReport?
   ) throws -> AssetResourceCleanupResult {
+    try validateOrphanedAssetsForCleanup(
+      repositoryRootURL: repositoryRootURL, assetRoot: assetRoot,
+      profileID: profileID, items: items, reviewedReport: reviewedReport
+    )
     let validated = try makePathValidator(
       repositoryRootURL: repositoryRootURL,
       assetRoot: assetRoot
@@ -169,6 +180,41 @@ public struct AssetResourceManagerService: Sendable {
       needsReviewPaths: needsReview,
       failedPaths: failed
     )
+  }
+
+  /// Re-read references at execution time. File size and mtime alone cannot
+  /// prove an asset is still unused. Reject the whole selection before moving
+  /// anything if its reviewed scope or any candidate is no longer valid.
+  func validateOrphanedAssetsForCleanup(
+    repositoryRootURL: URL,
+    assetRoot: String,
+    profileID: UUID,
+    items: [AssetResourceItem],
+    reviewedReport: AssetResourceScanReport? = nil
+  ) throws {
+    let current = try scan(
+      repositoryRootURL: repositoryRootURL, assetRoot: assetRoot, profileID: profileID
+    )
+    guard current.isComplete else { throw AssetResourceManagerError.cleanupReviewChanged }
+    if let reviewedReport {
+      guard reviewedReport.isComplete,
+        reviewedReport.profileID == profileID,
+        reviewedReport.repositoryRootPath == current.repositoryRootPath,
+        reviewedReport.assetRootPath == current.assetRootPath,
+        items.allSatisfy({ reviewedReport.orphanedAssets.contains($0) })
+      else { throw AssetResourceManagerError.cleanupReviewChanged }
+    }
+    let currentByPath = Dictionary(uniqueKeysWithValues: current.assets.map { ($0.repositoryPath, $0) })
+    let validatePath = try makePathValidator(repositoryRootURL: repositoryRootURL, assetRoot: assetRoot)
+    for item in items {
+      try Task.checkCancellation()
+      guard item.isOrphaned,
+        let candidate = currentByPath[item.repositoryPath], candidate.isOrphaned,
+        candidate.absoluteFilePath == item.absoluteFilePath,
+        candidate.byteSize == item.byteSize, candidate.modifiedAt == item.modifiedAt
+      else { throw AssetResourceManagerError.cleanupReviewChanged }
+      _ = try validatePath(item)
+    }
   }
 
   private func optimizeAssets(
@@ -333,30 +379,44 @@ public struct AssetResourceManagerService: Sendable {
     return size
   }
 
-  private struct MarkdownReadResult {
-    let documents: [(path: String, url: URL, text: String)]
+  private struct MarkdownReferenceScanResult {
+    let referencesByPath: [String: [AssetResourceReferenceLocation]]
+    let brokenReferences: [AssetResourceBrokenReference]
     let scannedFileCount: Int
     let skippedFileCount: Int
     let wasTruncated: Bool
   }
 
-  private func readMarkdownDocuments(in root: URL, root canonicalRoot: URL) throws -> MarkdownReadResult {
-    let keys: Set<URLResourceKey> = [.isDirectoryKey, .isRegularFileKey, .isSymbolicLinkKey, .fileSizeKey]
+  private func scanMarkdownReferences(
+    in root: URL,
+    root canonicalRoot: URL,
+    assetRoot: URL,
+    assetRootPath: String
+  ) throws -> MarkdownReferenceScanResult {
+    let keys: Set<URLResourceKey> = [.isDirectoryKey, .isRegularFileKey, .isSymbolicLinkKey]
     guard let enumerator = fileManager.enumerator(
       at: root,
       includingPropertiesForKeys: Array(keys),
       options: [.skipsHiddenFiles, .skipsPackageDescendants]
     ) else {
-      return MarkdownReadResult(documents: [], scannedFileCount: 0, skippedFileCount: 0, wasTruncated: false)
+      return MarkdownReferenceScanResult(
+        referencesByPath: [:],
+        brokenReferences: [],
+        scannedFileCount: 0,
+        skippedFileCount: 0,
+        wasTruncated: false
+      )
     }
 
     let skippedDirectoryNames: Set<String> = [
       ".git", ".cache", ".next", ".nuxt", ".vercel", ".vite", "build", "dist", "node_modules", "public", "target",
     ]
-    var documents: [(path: String, url: URL, text: String)] = []
+    var referencesByPath: [String: [AssetResourceReferenceLocation]] = [:]
+    var brokenReferences: [AssetResourceBrokenReference] = []
     var scanned = 0
     var skipped = 0
     var wasTruncated = false
+    var totalReadBytes: Int64 = 0
 
     for case let fileURL as URL in enumerator {
       try Task.checkCancellation()
@@ -376,100 +436,129 @@ public struct AssetResourceManagerService: Sendable {
         continue
       }
       guard let relativePath = relativePath(of: fileURL, root: canonicalRoot) else { continue }
-      guard documents.count < Self.maximumMarkdownFileCount else {
+      guard scanned < Self.maximumMarkdownFileCount else {
         wasTruncated = true
         break
       }
-      let byteSize = Int64(values?.fileSize ?? 0)
-      guard byteSize <= Self.maximumMarkdownByteCount else {
-        skipped += 1
-        continue
+      let remainingByteBudget = markdownByteBudget - totalReadBytes
+      guard remainingByteBudget > 0 else {
+        wasTruncated = true
+        break
       }
+      let maximumReadByteCount = min(
+        Int64(Self.maximumMarkdownByteCount),
+        remainingByteBudget
+      )
       do {
-        let text = try String(contentsOf: fileURL, encoding: .utf8)
-        documents.append((relativePath, fileURL, text))
+        let data = try BoundedFileReader.data(
+          at: fileURL,
+          maximumByteCount: Int(maximumReadByteCount)
+        )
+        totalReadBytes += Int64(data.count)
+        guard let text = String(data: data, encoding: .utf8) else {
+          skipped += 1
+          continue
+        }
+        try accumulateReferences(
+          in: text,
+          documentPath: relativePath,
+          documentURL: fileURL,
+          root: canonicalRoot,
+          assetRoot: assetRoot,
+          assetRootPath: assetRootPath,
+          referencesByPath: &referencesByPath,
+          brokenReferences: &brokenReferences
+        )
         scanned += 1
+      } catch is CancellationError {
+        throw CancellationError()
+      } catch let error as BoundedFileReadError {
+        if case .exceedsByteLimit = error,
+          remainingByteBudget <= Int64(Self.maximumMarkdownByteCount)
+        {
+          wasTruncated = true
+          break
+        }
+        skipped += 1
       } catch {
         skipped += 1
       }
     }
 
-    return MarkdownReadResult(
-      documents: documents,
+    return MarkdownReferenceScanResult(
+      referencesByPath: referencesByPath,
+      brokenReferences: brokenReferences.sorted {
+        if $0.sourceMarkdownPath == $1.sourceMarkdownPath {
+          return $0.lineNumber < $1.lineNumber
+        }
+        return $0.sourceMarkdownPath.localizedStandardCompare($1.sourceMarkdownPath)
+          == .orderedAscending
+      },
       scannedFileCount: scanned,
       skippedFileCount: skipped,
       wasTruncated: wasTruncated
     )
   }
 
-  private struct ReferenceResolutionResult {
-    let referencesByPath: [String: [AssetResourceReferenceLocation]]
-    let brokenReferences: [AssetResourceBrokenReference]
-  }
-
-  private func resolveReferences(
-    in markdown: MarkdownReadResult,
+  private func accumulateReferences(
+    in text: String,
+    documentPath: String,
+    documentURL: URL,
     root: URL,
     assetRoot: URL,
-    assetRootPath: String
-  ) -> ReferenceResolutionResult {
-    var referencesByPath: [String: [AssetResourceReferenceLocation]] = [:]
-    var brokenReferences: [AssetResourceBrokenReference] = []
-
-    for document in markdown.documents {
-      for candidate in extractReferences(text: document.text, documentPath: document.path) {
-        guard let resolution = resolve(
+    assetRootPath: String,
+    referencesByPath: inout [String: [AssetResourceReferenceLocation]],
+    brokenReferences: inout [AssetResourceBrokenReference]
+  ) throws {
+    for candidate in try extractReferences(text: text, documentPath: documentPath) {
+      guard
+        let resolution = resolve(
           rawPath: candidate.rawPath,
           isImageSyntax: candidate.isImageSyntax,
-          sourceDocumentURL: document.url,
+          sourceDocumentURL: documentURL,
           root: root,
           assetRoot: assetRoot,
           assetRootPath: assetRootPath
-        ) else {
-          continue
-        }
-        guard resolution.shouldInspect else { continue }
-        let location = AssetResourceReferenceLocation(
-          sourceMarkdownPath: document.path,
-          lineNumber: candidate.lineNumber,
-          rawPath: candidate.rawPath,
-          isImageSyntax: candidate.isImageSyntax
         )
+      else {
+        continue
+      }
+      guard resolution.shouldInspect else { continue }
+      let location = AssetResourceReferenceLocation(
+        sourceMarkdownPath: documentPath,
+        lineNumber: candidate.lineNumber,
+        rawPath: candidate.rawPath,
+        isImageSyntax: candidate.isImageSyntax
+      )
 
-        if let existingAssetPath = resolution.existingAssetPath {
-          referencesByPath[existingAssetPath, default: []].append(location)
-        } else if let issue = resolution.issue {
-          brokenReferences.append(
-            AssetResourceBrokenReference(
-              sourceMarkdownPath: document.path,
-              lineNumber: candidate.lineNumber,
-              rawPath: candidate.rawPath,
-              kind: issue.kind,
-              message: issue.message
-            )
+      if let existingAssetPath = resolution.existingAssetPath {
+        referencesByPath[existingAssetPath, default: []].append(location)
+      } else if let issue = resolution.issue {
+        brokenReferences.append(
+          AssetResourceBrokenReference(
+            sourceMarkdownPath: documentPath,
+            lineNumber: candidate.lineNumber,
+            rawPath: candidate.rawPath,
+            tokenUTF16Location: candidate.tokenUTF16Location,
+            tokenUTF16Length: candidate.tokenUTF16Length,
+            kind: issue.kind,
+            message: issue.message
           )
-        }
+        )
       }
     }
-
-    return ReferenceResolutionResult(
-      referencesByPath: referencesByPath,
-      brokenReferences: brokenReferences.sorted {
-        if $0.sourceMarkdownPath == $1.sourceMarkdownPath {
-          return $0.lineNumber < $1.lineNumber
-        }
-        return $0.sourceMarkdownPath.localizedStandardCompare($1.sourceMarkdownPath) == .orderedAscending
-      }
-    )
   }
 
   private struct ExtractedReference {
     let rawPath: String
     let lineNumber: Int
     let isImageSyntax: Bool
+    let tokenUTF16Location: Int
+    let tokenUTF16Length: Int
   }
 
-  private func extractReferences(text: String, documentPath: String) -> [ExtractedReference] {
+  private func extractReferences(text: String, documentPath: String) throws -> [ExtractedReference]
+  {
     let source = text as NSString
     let protectedRanges = MarkdownCodeRangeScanner.scan(text).allRanges
     var references: [ExtractedReference] = []
@@ -485,14 +574,15 @@ public struct AssetResourceManagerService: Sendable {
       guard let regex = try? NSRegularExpression(pattern: pattern) else { continue }
       let matches = regex.matches(in: text, range: NSRange(location: 0, length: source.length))
       for match in matches {
+        try Task.checkCancellation()
         guard !protectedRanges.contains(where: { NSIntersectionRange($0, match.range).length > 0 }) else {
           continue
         }
         let pathCaptureIndexes: [Int] = isAttribute ? [2, 3, 4] : [2, 3]
-        let rawPath = pathCaptureIndexes.lazy
-          .filter { $0 < match.numberOfRanges && match.range(at: $0).location != NSNotFound }
-          .map { source.substring(with: match.range(at: $0)) }
-          .first
+        let pathCaptureIndex = pathCaptureIndexes.first {
+          $0 < match.numberOfRanges && match.range(at: $0).location != NSNotFound
+        }
+        let rawPath = pathCaptureIndex.map { source.substring(with: match.range(at: $0)) }
         guard let rawPath, !rawPath.trimmedForPublishing.isEmpty else { continue }
         let isImageSyntax: Bool
         if isAttribute {
@@ -507,7 +597,9 @@ public struct AssetResourceManagerService: Sendable {
           ExtractedReference(
             rawPath: rawPath,
             lineNumber: lineNumber,
-            isImageSyntax: isImageSyntax
+            isImageSyntax: isImageSyntax,
+            tokenUTF16Location: pathCaptureIndex.map { match.range(at: $0).location } ?? 0,
+            tokenUTF16Length: pathCaptureIndex.map { match.range(at: $0).length } ?? 0
           )
         )
       }
@@ -530,14 +622,17 @@ public struct AssetResourceManagerService: Sendable {
     assetRoot: URL,
     assetRootPath: String
   ) -> ReferenceResolution? {
-    let decoded = (rawPath.removingPercentEncoding ?? rawPath)
+    let reference = rawPath
       .trimmingCharacters(in: .whitespacesAndNewlines)
       .replacingOccurrences(of: "\\", with: "/")
-    guard !decoded.isEmpty, !decoded.hasPrefix("#") else { return nil }
-    guard !isRemoteOrNonFileURL(decoded) else { return nil }
+    guard !reference.isEmpty, !reference.hasPrefix("#") else { return nil }
+    guard !isRemoteOrNonFileURL(reference) else { return nil }
 
-    let pathWithoutFragment = decoded.split(separator: "#", maxSplits: 1, omittingEmptySubsequences: false).first.map(String.init) ?? decoded
-    let path = pathWithoutFragment.split(separator: "?", maxSplits: 1, omittingEmptySubsequences: false).first.map(String.init) ?? pathWithoutFragment
+    // Only literal URL delimiters separate a query or fragment. Decoding first
+    // would turn photo%231.png into photo#1.png and discard part of its filename,
+    // incorrectly making the referenced asset eligible for orphan cleanup.
+    let encodedPath = String(reference.prefix { $0 != "?" && $0 != "#" })
+    let path = encodedPath.removingPercentEncoding ?? encodedPath
     guard !path.isEmpty else { return nil }
 
     let explicitAssetPath = path == assetRootPath || path.hasPrefix(assetRootPath + "/")

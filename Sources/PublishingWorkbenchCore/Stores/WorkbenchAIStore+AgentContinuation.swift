@@ -347,7 +347,11 @@ extension WorkbenchAIStore {
     guard
       let operationID = beginAIChatOperation(
         statusMessage: CoreL10n.text("正在继续已审阅的 AI 操作…"),
-        clearsManualRetryState: false
+        clearsManualRetryState: false,
+        target: .articleConversation(
+          draftID: initialBinding.identity.draftID,
+          conversationID: initialBinding.identity.conversationID
+        )
       )
     else {
       return

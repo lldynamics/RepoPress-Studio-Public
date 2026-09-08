@@ -6,7 +6,7 @@ import XCTest
 final class AIModelDiscoveryServiceTests: XCTestCase {
   @MainActor
   func testStoreRejectsUnappliedEndpointBeforeReadingCredentialOrTransport() async throws {
-    let store = try TestWorkbenchFactory.makeStore(prefix: "AIModelDiscoveryIdentityTests")
+    let store = try makeStore(prefix: "AIModelDiscoveryIdentityTests")
     let connection = store.activeAIConnectionProfile
     var requestedConfig = connection.config
     requestedConfig.baseURL = "https://different.example/v1"
@@ -34,7 +34,7 @@ final class AIModelDiscoveryServiceTests: XCTestCase {
 
   @MainActor
   func testStoreUsesAppliedProxyWhenRequestedConfigOmitsAdvancedSettings() async throws {
-    let store = try TestWorkbenchFactory.makeStore(prefix: "AIModelDiscoveryProxyBindingTests")
+    let store = try makeStore(prefix: "AIModelDiscoveryProxyBindingTests")
     var connection = store.activeAIConnectionProfile
     let expectedProxy = "socks5://127.0.0.1:1080"
     connection.config = AIProviderConfig(
@@ -44,7 +44,10 @@ final class AIModelDiscoveryServiceTests: XCTestCase {
       requiresAPIKey: false,
       advancedSettings: AIProviderAdvancedSettings(proxyURL: expectedProxy)
     )
-    XCTAssertTrue(store.updateAIConnectionProfile(connection))
+    guard store.updateAIConnectionProfile(connection) else {
+      XCTFail("The isolated fixture must apply the proxy configuration")
+      return
+    }
 
     var requestedConfig = connection.config
     requestedConfig.advancedSettings = nil
@@ -75,7 +78,7 @@ final class AIModelDiscoveryServiceTests: XCTestCase {
 
   @MainActor
   func testStoreRejectsResultWhenAppliedProxyChangesDuringRequest() async throws {
-    let store = try TestWorkbenchFactory.makeStore(prefix: "AIModelDiscoveryProxyDriftTests")
+    let store = try makeStore(prefix: "AIModelDiscoveryProxyDriftTests")
     var connection = store.activeAIConnectionProfile
     let initialProxy = "socks5://127.0.0.1:1080"
     connection.config = AIProviderConfig(
@@ -85,7 +88,10 @@ final class AIModelDiscoveryServiceTests: XCTestCase {
       requiresAPIKey: false,
       advancedSettings: AIProviderAdvancedSettings(proxyURL: initialProxy)
     )
-    XCTAssertTrue(store.updateAIConnectionProfile(connection))
+    guard store.updateAIConnectionProfile(connection) else {
+      XCTFail("The isolated fixture must apply the initial proxy configuration")
+      return
+    }
 
     var requestedConfig = connection.config
     requestedConfig.advancedSettings = nil
@@ -114,7 +120,11 @@ final class AIModelDiscoveryServiceTests: XCTestCase {
     changedConnection.config.advancedSettings = AIProviderAdvancedSettings(
       proxyURL: "socks5://127.0.0.1:1081"
     )
-    XCTAssertTrue(store.updateAIConnectionProfile(changedConnection))
+    guard store.updateAIConnectionProfile(changedConnection) else {
+      await barrier.release()
+      XCTFail("The isolated fixture must apply the changed proxy configuration")
+      return
+    }
     await barrier.release()
 
     do {
@@ -843,6 +853,21 @@ final class AIModelDiscoveryServiceTests: XCTestCase {
     )
     XCTAssertEqual(recovered.map(\.id), ["recovered-model"])
     XCTAssertEqual(transport.requests.count, 2)
+  }
+
+  @MainActor
+  private func makeStore(prefix: String) throws -> WorkbenchStore {
+    let tokenStore = KeychainTokenStore(
+      service: "PersonalSitePublisherMac.Tests.\(prefix).\(UUID().uuidString)",
+      accountPrefix: "ai-model-discovery-tests",
+      inMemory: true
+    )
+    let credentialStore = AICredentialStore(keychainTokenStore: tokenStore)
+    return WorkbenchStore(
+      persistence: try TestWorkbenchFactory.persistence(prefix: prefix),
+      keychainTokenStore: tokenStore,
+      aiCredentialStore: credentialStore
+    )
   }
 
   private func httpResponse(

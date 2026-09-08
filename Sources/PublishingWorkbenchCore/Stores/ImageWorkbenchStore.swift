@@ -1,6 +1,19 @@
 import Combine
 import Foundation
 
+/// Immutable routing ownership for the latest image batch. This survives
+/// completion or failure so task-center navigation never follows a later
+/// active-profile selection.
+public struct ImageBatchTaskOwner: Equatable, Sendable {
+  public let profileID: UUID?
+  public let draftID: UUID?
+
+  public init(profileID: UUID?, draftID: UUID?) {
+    self.profileID = profileID
+    self.draftID = draftID
+  }
+}
+
 @MainActor
 public final class ImageWorkbenchStore: ObservableObject {
   private unowned let store: WorkbenchStore
@@ -27,6 +40,7 @@ public final class ImageWorkbenchStore: ObservableObject {
   @Published public private(set) var isImageBatchProcessing = false
   @Published public private(set) var lastBatchFailure: String?
   @Published public private(set) var lastBatchOperation: ImageBatchOperation?
+  @Published public private(set) var imageBatchTaskOwner: ImageBatchTaskOwner?
   @Published public private(set) var backgroundImageReport: ImageWorkbenchReport?
   @Published public private(set) var imageReportLoadingDraftID: UUID?
   @Published public private(set) var backgroundSiteSummary: ImageWorkbenchSiteSummary?
@@ -123,6 +137,7 @@ public final class ImageWorkbenchStore: ObservableObject {
     let profileIDs = Set(currentDrafts.map(\.siteProfileID))
     imageBatchProfileID = profileIDs.count == 1 ? profileIDs.first : nil
     imageBatchDraftID = currentDrafts.count == 1 ? currentDrafts.first?.id : nil
+    captureImageBatchTaskOwner(for: currentDrafts)
     imageBatchDraftBaselines = Dictionary(
       uniqueKeysWithValues: currentDrafts.compactMap { draft in
         store.draftOperationBaseline(for: draft.id).map { (draft.id, $0) }
@@ -302,6 +317,17 @@ public final class ImageWorkbenchStore: ObservableObject {
     isImageBatchProcessing = false
     lastBatchFailure = failure
     imageActionMessage = message
+  }
+
+  /// Replaces the retained task owner only after a batch has resolved its
+  /// actual target drafts. Tests use this same state transition without
+  /// starting a file-processing task.
+  func captureImageBatchTaskOwner(for drafts: [ArticleDraft]) {
+    let profileIDs = Set(drafts.map(\.siteProfileID))
+    imageBatchTaskOwner = ImageBatchTaskOwner(
+      profileID: profileIDs.count == 1 ? profileIDs.first : nil,
+      draftID: drafts.count == 1 ? drafts.first?.id : nil
+    )
   }
 
   public func retryLastBatch() {

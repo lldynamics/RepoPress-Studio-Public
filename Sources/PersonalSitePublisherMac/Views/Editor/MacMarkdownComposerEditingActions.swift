@@ -146,12 +146,31 @@ extension MacMarkdownComposerView {
   }
 
   func showFindReplace() {
+    syncEditorBodyFromStore()
+    let wasPresented = isFindReplacePresented
     let selected = selectedText(in: editorBody).trimmedForPublishing
     if !selected.isEmpty, !selected.contains("\n") {
       findQuery = selected
     }
     isFindReplacePresented = true
+    if !wasPresented {
+      freezeFindSelectionScope()
+    }
     findReplaceMessage = findQuery.isEmpty ? "输入查找内容。" : ""
+  }
+
+  func setFindScope(_ scope: MarkdownFindScope) {
+    guard scope != .selection || currentFindScopeRange != nil || findScopeSnapshot != nil else {
+      findReplaceMessage = String(localized: "打开查找时没有可用选区。")
+      return
+    }
+    guard scope != .selection || hasUsableFindSelectionScope else {
+      findReplaceMessage = String(localized: "选区已变化，请重新打开查找。")
+      return
+    }
+    findScope = scope
+    findReplaceMessage = ""
+    refreshFindMatchSnapshot()
   }
 
   func findNext() {
@@ -221,52 +240,86 @@ extension MacMarkdownComposerView {
       return
     }
 
+    guard let scopeRange = currentFindScopeRange else {
+      findReplaceMessage = String(localized: "选区已变化，请重新打开查找。")
+      return
+    }
+
     do {
-      let mutation = try findReplaceService.replaceCurrentOrNext(
+      guard let mutation = try MarkdownFindReplaceScopePlanner.replaceCurrentOrNext(
         in: editorBody,
+        scopeRange: scopeRange,
         query: findQuery,
         replacement: replacementText,
         selectedRange: selectedRange,
-        options: findOptions
-      )
-
-      guard mutation.replacementCount > 0 else {
+        options: findOptions,
+        service: findReplaceService
+      ) else {
         findReplaceMessage = "没有找到可替换内容。"
         return
       }
 
-      applyFindReplaceMutation(mutation)
-      findReplaceMessage = "已替换 1 处。"
+      enqueueFindReplacement(edit: mutation.edit, count: 1, expectedBody: editorBody)
     } catch {
       findReplaceMessage = error.localizedDescription
     }
   }
 
   func replaceAll() {
+    guard editorSessionState.liveBodyRevision == editorBodyRevision else {
+      findReplaceMessage = String(localized: "正文正在同步，请稍后重试。")
+      return
+    }
     isFindReplacePresented = true
     guard !findQuery.isEmpty else {
       findReplaceMessage = "输入查找内容。"
       return
     }
 
+    guard let scopeRange = currentFindScopeRange else {
+      findReplaceMessage = String(localized: "选区已变化，请重新打开查找。")
+      return
+    }
+
     do {
-      let mutation = try findReplaceService.replaceAll(
+      let preview = try MarkdownFindReplaceScopePlanner.previewReplaceAll(
         in: editorBody,
+        draftID: draft.id,
+        bodyRevision: editorBodyRevision,
+        scope: findScope,
+        scopeRange: scopeRange,
         query: findQuery,
         replacement: replacementText,
-        options: findOptions
+        options: findOptions,
+        service: findReplaceService
       )
 
-      guard mutation.replacementCount > 0 else {
+      guard preview.replacementCount > 0 else {
         findReplaceMessage = "没有找到可替换内容。"
         return
       }
-
-      applyFindReplaceMutation(mutation)
-      findReplaceMessage = "已替换 \(mutation.replacementCount) 处，可撤销。"
+      pendingFindReplacePreview = preview
+      findReplaceMessage = String(format: String(localized: "请检查 %d 处变化后确认。"), preview.replacementCount)
     } catch {
       findReplaceMessage = error.localizedDescription
     }
+  }
+
+  func applyPendingFindReplacePreview() {
+    guard let preview = pendingFindReplacePreview else { return }
+    guard editorSessionState.liveBodyRevision == editorBodyRevision,
+      preview.isValid(for: draft.id, bodyRevision: editorSessionState.liveBodyRevision, body: editorSessionState.liveBodyMarkdown)
+    else {
+      pendingFindReplacePreview = nil
+      findReplaceMessage = String(localized: "正文已变化，替换预览已失效。")
+      return
+    }
+    pendingFindReplacePreview = nil
+    enqueueFindReplacement(edit: preview.edit, count: preview.replacementCount, expectedBody: preview.expectedBody)
+  }
+
+  func discardPendingFindReplacePreview() {
+    pendingFindReplacePreview = nil
   }
 
   func applyFindReplaceMutation(_ mutation: MarkdownFindReplaceMutation) {

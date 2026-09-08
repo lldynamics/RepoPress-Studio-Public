@@ -184,7 +184,12 @@ private final class CaptureBridgeView: NSView {
       return
     }
     didConfigureWindow = true
-    configureWindow(window)
+      // WindowGroup's scene identifier is shared by all instances. Expose a
+      // fixture-only instance identity so UI tests can keep queries window-scoped.
+      if role == .workbench {
+        window.setAccessibilityIdentifier("workbench-capture-\(window.windowNumber)")
+      }
+      configureWindow(window)
     window.makeKeyAndOrderFront(nil)
     NSApp.activate(ignoringOtherApps: true)
 

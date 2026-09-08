@@ -6,18 +6,26 @@ import XCTest
 
 @MainActor
 final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
+  private var consentSuiteName: String!
+  private var testConsentDefaults: UserDefaults!
+
   override func setUp() async throws {
+    consentSuiteName = "WorkbenchStoreAIChatStreamingTests.\(UUID().uuidString)"
+    testConsentDefaults = UserDefaults(suiteName: consentSuiteName)
     // Production defaults to automatic remote authorization. Tests that need
     // fail-closed fault injection install an explicit provider below.
     AIOutboundPayloadApprovalBroker.shared.testingDecisionProvider = nil
-    AIDataSharingConsentStore().grant(for: remoteAIConfig)
+    AIDataSharingConsentStore(defaults: testConsentDefaults).grant(for: remoteAIConfig)
   }
 
   override func tearDown() async throws {
     AIOutboundPayloadApprovalBroker.shared.cancelPendingRequest()
     AIOutboundPayloadApprovalBroker.shared.testingDecisionProvider = nil
     AIOutboundPayloadApprovalBroker.shared.testingConfirmationDateProvider = nil
-    AIDataSharingConsentStore().revoke(for: remoteAIConfig)
+    AIDataSharingConsentStore(defaults: testConsentDefaults).revoke(for: remoteAIConfig)
+    testConsentDefaults.removePersistentDomain(forName: consentSuiteName)
+    testConsentDefaults = nil
+    consentSuiteName = nil
   }
 
   private var remoteAIConfig: AIProviderConfig {
@@ -54,7 +62,8 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
       keychainTokenStore: aiTokenStoreForTest(),
       aiPublishingAssistantService: AIPublishingAssistantService(
         client: AIChatCompletionClient(transport: transport)
-      )
+      ),
+      aiDataSharingConsentStore: AIDataSharingConsentStore(defaults: testConsentDefaults)
     )
     var profile = store.activeProfile
     profile.aiProviderConfig = AIProviderConfig(
@@ -102,7 +111,8 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
     defer { try? FileManager.default.removeItem(at: persistenceURL) }
     let store = WorkbenchStore(
       persistence: WorkbenchPersistence(fileURL: persistenceURL),
-      keychainTokenStore: aiTokenStoreForTest()
+      keychainTokenStore: aiTokenStoreForTest(),
+      aiDataSharingConsentStore: AIDataSharingConsentStore(defaults: testConsentDefaults)
     )
     let draft = try XCTUnwrap(store.selectedDraft)
     store.aiStore.prepareAIChat(for: draft)
@@ -142,7 +152,8 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
       keychainTokenStore: aiTokenStoreForTest(),
       aiPublishingAssistantService: AIPublishingAssistantService(
         client: AIChatCompletionClient(transport: transport)
-      )
+      ),
+      aiDataSharingConsentStore: AIDataSharingConsentStore(defaults: testConsentDefaults)
     )
     let draft = try XCTUnwrap(store.selectedDraft)
     store.prepareAIChat(for: draft)
@@ -178,7 +189,8 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
       keychainTokenStore: aiTokenStoreForTest(),
       aiPublishingAssistantService: AIPublishingAssistantService(
         client: AIChatCompletionClient(transport: transport)
-      )
+      ),
+      aiDataSharingConsentStore: AIDataSharingConsentStore(defaults: testConsentDefaults)
     )
     let draft = try XCTUnwrap(store.selectedDraft)
     let conversationID = try XCTUnwrap(store.startNewAIChatConversation(draft: draft)).id
@@ -219,7 +231,8 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
       keychainTokenStore: aiTokenStoreForTest(),
       aiPublishingAssistantService: AIPublishingAssistantService(
         client: AIChatCompletionClient(transport: transport)
-      )
+      ),
+      aiDataSharingConsentStore: AIDataSharingConsentStore(defaults: testConsentDefaults)
     )
     let draft = try XCTUnwrap(store.selectedDraft)
     let expectedDraftConversation = AIChatDraftConversationExpectation(
@@ -264,7 +277,8 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
       keychainTokenStore: aiTokenStoreForTest(),
       aiPublishingAssistantService: AIPublishingAssistantService(
         client: AIChatCompletionClient(transport: transport)
-      )
+      ),
+      aiDataSharingConsentStore: AIDataSharingConsentStore(defaults: testConsentDefaults)
     )
     let draft = try XCTUnwrap(store.selectedDraft)
     _ = try XCTUnwrap(store.startNewAIChatConversation(draft: draft))
@@ -327,7 +341,8 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
       keychainTokenStore: aiTokenStoreForTest(),
       aiPublishingAssistantService: AIPublishingAssistantService(
         client: AIChatCompletionClient(transport: transport)
-      )
+      ),
+      aiDataSharingConsentStore: AIDataSharingConsentStore(defaults: testConsentDefaults)
     )
     var profile = store.activeProfile
     var outboundConfig = remoteAIConfig
@@ -389,7 +404,8 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
       keychainTokenStore: aiTokenStoreForTest(),
       aiPublishingAssistantService: AIPublishingAssistantService(
         client: AIChatCompletionClient(transport: transport)
-      )
+      ),
+      aiDataSharingConsentStore: AIDataSharingConsentStore(defaults: testConsentDefaults)
     )
     var profile = store.activeProfile
     profile.aiProviderConfig = remoteAIConfig
@@ -417,7 +433,8 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
       keychainTokenStore: aiTokenStoreForTest(),
       aiPublishingAssistantService: AIPublishingAssistantService(
         client: AIChatCompletionClient(transport: transport)
-      )
+      ),
+      aiDataSharingConsentStore: AIDataSharingConsentStore(defaults: testConsentDefaults)
     )
     var profile = store.activeProfile
     profile.aiProviderConfig = remoteAIConfig
@@ -442,7 +459,8 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
       keychainTokenStore: aiTokenStoreForTest(),
       aiPublishingAssistantService: AIPublishingAssistantService(
         client: AIChatCompletionClient(transport: transport)
-      )
+      ),
+      aiDataSharingConsentStore: AIDataSharingConsentStore(defaults: testConsentDefaults)
     )
     var profile = store.activeProfile
     profile.aiProviderConfig = remoteAIConfig
@@ -474,7 +492,8 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
       keychainTokenStore: aiTokenStoreForTest(),
       aiPublishingAssistantService: AIPublishingAssistantService(
         client: AIChatCompletionClient(transport: transport)
-      )
+      ),
+      aiDataSharingConsentStore: AIDataSharingConsentStore(defaults: testConsentDefaults)
     )
     var profile = store.activeProfile
     profile.aiProviderConfig = AIProviderConfig(
@@ -512,7 +531,8 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
       keychainTokenStore: aiTokenStoreForTest(),
       aiPublishingAssistantService: AIPublishingAssistantService(
         client: AIChatCompletionClient(transport: transport)
-      )
+      ),
+      aiDataSharingConsentStore: AIDataSharingConsentStore(defaults: testConsentDefaults)
     )
     var profile = store.activeProfile
     profile.aiProviderConfig = AIProviderConfig(
@@ -675,7 +695,8 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
       keychainTokenStore: aiTokenStoreForTest(),
       aiPublishingAssistantService: AIPublishingAssistantService(
         client: AIChatCompletionClient(transport: transport)
-      )
+      ),
+      aiDataSharingConsentStore: AIDataSharingConsentStore(defaults: testConsentDefaults)
     )
     var profile = store.activeProfile
     profile.aiProviderConfig = AIProviderConfig(
@@ -721,7 +742,8 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
       keychainTokenStore: aiTokenStoreForTest(),
       aiPublishingAssistantService: AIPublishingAssistantService(
         client: AIChatCompletionClient(transport: transport)
-      )
+      ),
+      aiDataSharingConsentStore: AIDataSharingConsentStore(defaults: testConsentDefaults)
     )
     var profile = store.activeProfile
     profile.aiProviderConfig = AIProviderConfig(
@@ -754,7 +776,8 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
   }
 
   func testStoreRejectsUnsupportedDirectAIChatImageAttachment() async throws {
-    let store = WorkbenchStore()
+    let fixture = TestWorkbenchFixture()
+    let store = fixture.store
     let draft = try XCTUnwrap(store.selectedDraft)
     let attachment = AIChatImageAttachment(
       filename: "unsupported.heic",
@@ -794,7 +817,8 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
       keychainTokenStore: aiTokenStoreForTest(),
       aiPublishingAssistantService: AIPublishingAssistantService(
         client: AIChatCompletionClient(transport: transport)
-      )
+      ),
+      aiDataSharingConsentStore: AIDataSharingConsentStore(defaults: testConsentDefaults)
     )
     var profile = store.activeProfile
     profile.aiProviderConfig = AIProviderConfig(
@@ -857,7 +881,8 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
       keychainTokenStore: aiTokenStoreForTest(),
       aiPublishingAssistantService: AIPublishingAssistantService(
         client: AIChatCompletionClient(transport: transport)
-      )
+      ),
+      aiDataSharingConsentStore: AIDataSharingConsentStore(defaults: testConsentDefaults)
     )
     var profile = store.activeProfile
     profile.aiProviderConfig = remoteAIConfig
@@ -897,7 +922,8 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
       keychainTokenStore: aiTokenStoreForTest(),
       aiPublishingAssistantService: AIPublishingAssistantService(
         client: AIChatCompletionClient(transport: transport)
-      )
+      ),
+      aiDataSharingConsentStore: AIDataSharingConsentStore(defaults: testConsentDefaults)
     )
     var profile = store.activeProfile
     profile.aiProviderConfig = remoteAIConfig
@@ -934,7 +960,8 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
       keychainTokenStore: aiTokenStoreForTest(),
       aiPublishingAssistantService: AIPublishingAssistantService(
         client: AIChatCompletionClient(transport: transport)
-      )
+      ),
+      aiDataSharingConsentStore: AIDataSharingConsentStore(defaults: testConsentDefaults)
     )
     var profile = store.activeProfile
     profile.aiProviderConfig = AIProviderConfig(
@@ -999,7 +1026,8 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
       keychainTokenStore: aiTokenStoreForTest(),
       aiPublishingAssistantService: AIPublishingAssistantService(
         client: AIChatCompletionClient(transport: transport)
-      )
+      ),
+      aiDataSharingConsentStore: AIDataSharingConsentStore(defaults: testConsentDefaults)
     )
     var profile = store.activeProfile
     profile.aiProviderConfig = AIProviderConfig(
@@ -1072,7 +1100,8 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
       keychainTokenStore: aiTokenStoreForTest(),
       aiPublishingAssistantService: AIPublishingAssistantService(
         client: AIChatCompletionClient(transport: transport)
-      )
+      ),
+      aiDataSharingConsentStore: AIDataSharingConsentStore(defaults: testConsentDefaults)
     )
     var profile = store.activeProfile
     profile.aiProviderConfig = AIProviderConfig(
@@ -1138,7 +1167,8 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
       keychainTokenStore: aiTokenStoreForTest(),
       aiPublishingAssistantService: AIPublishingAssistantService(
         client: AIChatCompletionClient(transport: transport)
-      )
+      ),
+      aiDataSharingConsentStore: AIDataSharingConsentStore(defaults: testConsentDefaults)
     )
     var profile = store.activeProfile
     profile.aiProviderConfig = AIProviderConfig(
@@ -1180,7 +1210,8 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
       keychainTokenStore: aiTokenStoreForTest(),
       aiPublishingAssistantService: AIPublishingAssistantService(
         client: AIChatCompletionClient(transport: transport)
-      )
+      ),
+      aiDataSharingConsentStore: AIDataSharingConsentStore(defaults: testConsentDefaults)
     )
     var profile = store.activeProfile
     profile.aiProviderConfig = AIProviderConfig(
@@ -1238,7 +1269,8 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
     let store = WorkbenchStore(
       persistence: WorkbenchPersistence(fileURL: persistenceURL),
       keychainTokenStore: aiTokenStoreForTest(),
-      aiPublishingAssistantService: AIPublishingAssistantService(client: client)
+      aiPublishingAssistantService: AIPublishingAssistantService(client: client),
+      aiDataSharingConsentStore: AIDataSharingConsentStore(defaults: testConsentDefaults)
     )
     var profile = store.activeProfile
     profile.aiProviderConfig = AIProviderConfig(
@@ -1306,7 +1338,8 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
       keychainTokenStore: aiTokenStoreForTest(),
       aiPublishingAssistantService: AIPublishingAssistantService(
         client: AIChatCompletionClient(transport: transport)
-      )
+      ),
+      aiDataSharingConsentStore: AIDataSharingConsentStore(defaults: testConsentDefaults)
     )
     var profile = store.activeProfile
     profile.aiProviderConfig = AIProviderConfig(
@@ -1364,7 +1397,8 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
       keychainTokenStore: aiTokenStoreForTest(),
       aiPublishingAssistantService: AIPublishingAssistantService(
         client: AIChatCompletionClient(transport: transport)
-      )
+      ),
+      aiDataSharingConsentStore: AIDataSharingConsentStore(defaults: testConsentDefaults)
     )
     var profile = store.activeProfile
     profile.aiProviderConfig = AIProviderConfig(
@@ -1418,7 +1452,8 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
     let store = WorkbenchStore(
       persistence: WorkbenchPersistence(fileURL: persistenceURL),
       keychainTokenStore: aiTokenStoreForTest(),
-      aiPublishingAssistantService: AIPublishingAssistantService(client: client)
+      aiPublishingAssistantService: AIPublishingAssistantService(client: client),
+      aiDataSharingConsentStore: AIDataSharingConsentStore(defaults: testConsentDefaults)
     )
     var profile = store.activeProfile
     profile.aiProviderConfig = streamingSupportedConfig(remoteAIConfig)
@@ -1502,7 +1537,8 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
       keychainTokenStore: aiTokenStoreForTest(),
       aiPublishingAssistantService: AIPublishingAssistantService(
         client: AIChatCompletionClient(transport: transport)
-      )
+      ),
+      aiDataSharingConsentStore: AIDataSharingConsentStore(defaults: testConsentDefaults)
     )
     var profile = store.activeProfile
     profile.aiProviderConfig = AIProviderConfig(
@@ -1554,7 +1590,8 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
     let store = WorkbenchStore(
       persistence: WorkbenchPersistence(fileURL: persistenceURL),
       keychainTokenStore: aiTokenStoreForTest(),
-      aiPublishingAssistantService: AIPublishingAssistantService(client: client)
+      aiPublishingAssistantService: AIPublishingAssistantService(client: client),
+      aiDataSharingConsentStore: AIDataSharingConsentStore(defaults: testConsentDefaults)
     )
     var profile = store.activeProfile
     profile.aiProviderConfig = streamingSupportedConfig(remoteAIConfig)
@@ -1616,7 +1653,8 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
       try? FileManager.default.removeItem(at: persistenceURL)
     }
     let store = WorkbenchStore(
-      persistence: WorkbenchPersistence(fileURL: persistenceURL)
+      persistence: WorkbenchPersistence(fileURL: persistenceURL),
+      aiDataSharingConsentStore: AIDataSharingConsentStore(defaults: testConsentDefaults)
     )
     let firstDraft = try XCTUnwrap(store.selectedDraft)
     let secondDraft = ArticleDraft(
@@ -1652,7 +1690,8 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
       try? FileManager.default.removeItem(at: persistenceURL)
     }
     let store = WorkbenchStore(
-      persistence: WorkbenchPersistence(fileURL: persistenceURL)
+      persistence: WorkbenchPersistence(fileURL: persistenceURL),
+      aiDataSharingConsentStore: AIDataSharingConsentStore(defaults: testConsentDefaults)
     )
     let firstDraft = try XCTUnwrap(store.selectedDraft)
     let secondDraft = ArticleDraft(
@@ -1680,7 +1719,8 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
   }
 
   func testDeletingAIChatMessageRemovesOnlySelectedRuntimeMessage() throws {
-    let store = WorkbenchStore()
+    let fixture = TestWorkbenchFixture()
+    let store = fixture.store
     let draft = try XCTUnwrap(store.selectedDraft)
     let firstUser = AIPublishingChatMessage(role: .user, content: "保留的问题")
     let assistant = AIPublishingChatMessage(role: .assistant, content: "要删除的回答")
@@ -1708,7 +1748,8 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
       try? FileManager.default.removeItem(at: persistenceURL)
     }
     let store = WorkbenchStore(
-      persistence: WorkbenchPersistence(fileURL: persistenceURL)
+      persistence: WorkbenchPersistence(fileURL: persistenceURL),
+      aiDataSharingConsentStore: AIDataSharingConsentStore(defaults: testConsentDefaults)
     )
     let firstDraft = try XCTUnwrap(store.selectedDraft)
     let secondDraft = ArticleDraft(
@@ -1755,7 +1796,8 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
       try? FileManager.default.removeItem(at: persistenceURL)
     }
     let store = WorkbenchStore(
-      persistence: WorkbenchPersistence(fileURL: persistenceURL)
+      persistence: WorkbenchPersistence(fileURL: persistenceURL),
+      aiDataSharingConsentStore: AIDataSharingConsentStore(defaults: testConsentDefaults)
     )
     var firstDraft = try XCTUnwrap(store.selectedDraft)
     firstDraft.bodyMarkdown = """
@@ -1803,7 +1845,8 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
       try? FileManager.default.removeItem(at: persistenceURL)
     }
     let store = WorkbenchStore(
-      persistence: WorkbenchPersistence(fileURL: persistenceURL)
+      persistence: WorkbenchPersistence(fileURL: persistenceURL),
+      aiDataSharingConsentStore: AIDataSharingConsentStore(defaults: testConsentDefaults)
     )
     let draft = try XCTUnwrap(store.selectedDraft)
 
@@ -1841,7 +1884,8 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
       persistence: WorkbenchPersistence(
         fileURL: FileManager.default.temporaryDirectory
           .appendingPathComponent(UUID().uuidString)
-          .appendingPathExtension("json"))
+          .appendingPathExtension("json")),
+      aiDataSharingConsentStore: AIDataSharingConsentStore(defaults: testConsentDefaults)
     )
     var drafts = [try XCTUnwrap(store.selectedDraft)]
     for _ in 0..<13 {
@@ -1877,7 +1921,10 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
       try? FileManager.default.removeItem(at: persistenceURL)
     }
     let persistence = WorkbenchPersistence(fileURL: persistenceURL)
-    let store = WorkbenchStore(persistence: persistence)
+    let store = WorkbenchStore(
+      persistence: persistence,
+      aiDataSharingConsentStore: AIDataSharingConsentStore(defaults: testConsentDefaults)
+    )
     var draft = try XCTUnwrap(store.selectedDraft)
     draft.bodyMarkdown = """
       # 持久化 AI 对话
@@ -1909,7 +1956,10 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
     store.save()
     await store.waitForPendingSave()
 
-    let reloaded = WorkbenchStore(persistence: persistence)
+    let reloaded = WorkbenchStore(
+      persistence: persistence,
+      aiDataSharingConsentStore: AIDataSharingConsentStore(defaults: testConsentDefaults)
+    )
     let reloadedDraft = try XCTUnwrap(reloaded.drafts.first { $0.id == draft.id })
     reloaded.prepareAIChat(for: reloadedDraft)
 
@@ -1941,7 +1991,8 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
       try? FileManager.default.removeItem(at: persistenceURL)
     }
     let store = WorkbenchStore(
-      persistence: WorkbenchPersistence(fileURL: persistenceURL)
+      persistence: WorkbenchPersistence(fileURL: persistenceURL),
+      aiDataSharingConsentStore: AIDataSharingConsentStore(defaults: testConsentDefaults)
     )
     let draft = try XCTUnwrap(store.selectedDraft)
     store.prepareAIChat(for: draft)
@@ -2001,7 +2052,8 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
       keychainTokenStore: aiTokenStoreForTest(),
       aiPublishingAssistantService: AIPublishingAssistantService(
         client: AIChatCompletionClient(transport: transport)
-      )
+      ),
+      aiDataSharingConsentStore: AIDataSharingConsentStore(defaults: testConsentDefaults)
     )
     var profile = store.activeProfile
     profile.aiProviderConfig = AIProviderConfig(
@@ -2071,6 +2123,7 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
       ]
     )
     let consentStore = AIDataSharingConsentStore(
+      defaults: testConsentDefaults,
       storageKey: "AIDataSharingConsent.KnowledgeFreeze.\(UUID().uuidString)"
     )
     let config = streamingSupportedConfig(remoteAIConfig)
@@ -2136,6 +2189,7 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
     )
     let transport = RecordingAIChatTransport(data: Data(), statusCode: 200)
     let consentStore = AIDataSharingConsentStore(
+      defaults: testConsentDefaults,
       storageKey: "AIDataSharingConsent.KnowledgeRevocation.\(UUID().uuidString)"
     )
     let config = streamingSupportedConfig(remoteAIConfig)
@@ -2215,6 +2269,7 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
       )
     )
     let consentStore = AIDataSharingConsentStore(
+      defaults: testConsentDefaults,
       storageKey: "AIDataSharingConsent.CredentialTOCTOU.\(suffix).\(UUID().uuidString)"
     )
     let persistenceURL = FileManager.default.temporaryDirectory

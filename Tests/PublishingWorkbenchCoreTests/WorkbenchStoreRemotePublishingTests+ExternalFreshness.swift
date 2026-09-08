@@ -149,6 +149,10 @@ final class WorkbenchStoreRemotePublishingExternalFreshnessTests:
     )
     let package = PublishPackageBuilder().build(draft: draft, profile: store.activeProfile)
     let localContent = Data((package.markdownFile?.content ?? "").utf8).base64EncodedString()
+    // A confirmed local binding must have the matching file on disk before
+    // this test advances to the independent remote freshness boundary.
+    try XCTUnwrap(package.markdownFile?.content).write(
+      to: rootURL.appendingPathComponent(package.markdownPath), atomically: true, encoding: .utf8)
     let remoteContent = Data("edited after confirmation".utf8).base64EncodedString()
     await transport.replaceResponses([
       workbenchRemoteResponse(
@@ -172,7 +176,8 @@ final class WorkbenchStoreRemotePublishingExternalFreshnessTests:
     let requests = await transport.capturedRequests()
 
     XCTAssertNil(result)
-    XCTAssertEqual(requests.map(\.httpMethod), ["GET", "GET", "GET", "GET"])
+    XCTAssertEqual(
+      requests.map(\.httpMethod), ["GET", "GET", "GET", "GET"], store.publishActionMessage ?? "")
     XCTAssertTrue(store.releaseRecords.isEmpty)
     XCTAssertEqual(
       store.remoteRepositoryConflictSession?.publishScope,

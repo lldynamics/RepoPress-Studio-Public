@@ -55,13 +55,18 @@ extension DeploymentStatusService {
           message: CoreL10n.text("端点没有返回 HTTP 状态。")
         )
       }
+      guard (200..<400).contains(httpResponse.statusCode) else {
+        return DeploymentStatusSignal(
+          level: .failed,
+          title: CoreL10n.format("%@ 可达性", provider.displayName),
+          message: "HTTP \(httpResponse.statusCode)",
+          urlText: urlText,
+          attributionVerified: releaseRecord?.commitSHA == nil ? nil : false
+        )
+      }
       if let endpoint = decodedEndpointStatus(data: data) {
-        let httpSucceeded = (200..<400).contains(httpResponse.statusCode)
-        let level = endpoint.level == .unknown && !httpSucceeded ? .failed : endpoint.level
-        let fallbackMessage =
-          level == .failed && endpoint.level == .unknown
-          ? "HTTP \(httpResponse.statusCode)"
-          : "HTTP \(httpResponse.statusCode) · \(endpoint.rawStatus)"
+        let level = endpoint.level
+        let fallbackMessage = "HTTP \(httpResponse.statusCode) · \(endpoint.rawStatus)"
         if let mismatch = releaseAttributionMismatchMessage(
           provider: provider,
           deploymentBranch: endpoint.branch,
@@ -126,17 +131,36 @@ extension DeploymentStatusService {
   }
 
   func articlePageSignals(
-    siteURLText: String,
+    siteURLText: String?,
     profile: SiteProfile,
     releaseRecord: ReleaseRecord?
   ) async -> [DeploymentStatusSignal] {
-    guard let releaseRecord,
-      let markdownPath = releaseRecord.markdownPath?.trimmedForPublishing.nilIfEmpty,
-      let articleURLText = articleURL(
-        siteURLText: siteURLText, markdownPath: markdownPath, siteKind: profile.siteKind),
-      let articleURL = URL(string: articleURLText)
+    guard let releaseRecord else { return [] }
+    let resolvedURL: String?
+    if let frozenURL = releaseRecord.publicURLText {
+      resolvedURL = frozenURL
+    } else if let siteURLText, let base = URL(string: siteURLText),
+      let path = releaseRecord.publicPath
+    {
+      let relative = path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+      resolvedURL =
+        relative.isEmpty
+        ? base.absoluteString
+        : base.appendingPathComponent(relative, isDirectory: path.hasSuffix("/")).absoluteString
+    } else if let siteURLText, let markdownPath = releaseRecord.markdownPath {
+      resolvedURL = articleURL(
+        siteURLText: siteURLText, markdownPath: markdownPath, siteKind: profile.siteKind)
+    } else {
+      resolvedURL = nil
+    }
+    guard let articleURLText = resolvedURL, let articleURL = URL(string: articleURLText),
+      ["http", "https"].contains(articleURL.scheme?.lowercased() ?? ""), articleURL.host != nil
     else {
-      return []
+      return [
+        DeploymentStatusSignal(
+          level: .unknown, title: CoreL10n.text("发布页面内容"),
+          message: CoreL10n.text("缺少文章公开地址，无法验证本次发布。"))
+      ]
     }
 
     var request = URLRequest(url: articleURL)
@@ -174,6 +198,8 @@ extension DeploymentStatusService {
 
       let body =
         String(data: data, encoding: .utf8) ?? String(data: data, encoding: .isoLatin1) ?? ""
+      let versionSignal = articleSourceVersionSignal(
+        body: body, expectedDigest: releaseRecord.sourceDocumentDigest, urlText: articleURLText)
       let seoSignal = articlePageSEOSignal(body: body, expectedURLText: articleURLText)
       let socialSignal = articlePageSocialSignal(
         body: body,
@@ -191,10 +217,10 @@ extension DeploymentStatusService {
             urlText: articleURLText
           ),
           seoSignal,
-        ] + [socialSignal].compactMap { $0 }
+        ] + [versionSignal] + [socialSignal].compactMap { $0 }
       }
 
-      if body.localizedCaseInsensitiveContains(expectedTitle) {
+      if HTMLMetadataScanner.decodeEntities(body).localizedCaseInsensitiveContains(expectedTitle) {
         return [
           DeploymentStatusSignal(
             level: .success,
@@ -203,7 +229,7 @@ extension DeploymentStatusService {
             urlText: articleURLText
           ),
           seoSignal,
-        ] + [socialSignal].compactMap { $0 }
+        ] + [versionSignal] + [socialSignal].compactMap { $0 }
       }
       return [
         DeploymentStatusSignal(
@@ -213,7 +239,7 @@ extension DeploymentStatusService {
           urlText: articleURLText
         ),
         seoSignal,
-      ] + [socialSignal].compactMap { $0 }
+      ] + [versionSignal] + [socialSignal].compactMap { $0 }
     } catch {
       return [
         DeploymentStatusSignal(
@@ -487,43 +513,17 @@ extension DeploymentStatusService {
     requiredAttributeValue: String,
     outputAttributeName: String
   ) -> String? {
-    let elementPattern = "<\\s*\(element)\\b[^>]*>"
-    guard let regex = try? NSRegularExpression(pattern: elementPattern, options: [.caseInsensitive])
-    else {
-      return nil
-    }
-    let source = html as NSString
-    let matches = regex.matches(in: html, range: NSRange(location: 0, length: source.length))
-    for match in matches {
-      let tag = source.substring(with: match.range)
-      guard let requiredValue = htmlAttributeValue(named: requiredAttributeName, in: tag),
-        requiredValue.caseInsensitiveCompare(requiredAttributeValue) == .orderedSame
-      else {
-        continue
-      }
-      if let outputValue = htmlAttributeValue(named: outputAttributeName, in: tag) {
-        return outputValue
-      }
+    for attributes in HTMLMetadataScanner.elements(named: element, in: html) {
+      guard let value = attributes[requiredAttributeName.lowercased()],
+        value.caseInsensitiveCompare(requiredAttributeValue) == .orderedSame
+      else { continue }
+      if let output = attributes[outputAttributeName.lowercased()] { return output }
     }
     return nil
   }
 
   func htmlAttributeValue(named name: String, in tag: String) -> String? {
-    let escapedName = NSRegularExpression.escapedPattern(for: name)
-    let pattern = #"\b"# + escapedName + #"\s*=\s*(['"])(.*?)\1"#
-    guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else {
-      return nil
-    }
-    let source = tag as NSString
-    guard let match = regex.firstMatch(in: tag, range: NSRange(location: 0, length: source.length)),
-      match.numberOfRanges >= 3
-    else {
-      return nil
-    }
-    return source.substring(with: match.range(at: 2))
-      .replacingOccurrences(of: "&amp;", with: "&")
-      .replacingOccurrences(of: "&quot;", with: "\"")
-      .replacingOccurrences(of: "&#39;", with: "'")
+    HTMLMetadataScanner.attribute(named: name, in: tag)
   }
 
   func normalizedComparableURL(_ value: String) -> String {

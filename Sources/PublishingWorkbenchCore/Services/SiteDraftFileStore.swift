@@ -60,12 +60,17 @@ public final class SiteDraftFileStore: @unchecked Sendable {
     guard !draft.isGeneralDraft else {
       throw SiteDraftFileStoreError.generalDraftCannotBeWritten
     }
-    guard profile.localRepositoryRootURL != nil else {
+    guard let repositoryRootURL = profile.localRepositoryRootURL else {
       throw LocalPublishPreviewError.missingRepositoryRoot
     }
 
     lock.lock()
     defer { lock.unlock() }
+
+    // Check a restored/selected location before preview baseline comparison.
+    // Otherwise a disconnected volume or deleted folder produces a synthetic
+    // missing baseline and is incorrectly reported as an external edit.
+    try previewService.validateRepositoryRoot(profile: profile, rootURL: repositoryRootURL)
 
     let key = DraftSiteKey(draftID: draft.id, profileID: profile.id)
     let draftBaseline = repositoryFileBaseline(for: draft, profile: profile)
@@ -81,28 +86,32 @@ public final class SiteDraftFileStore: @unchecked Sendable {
 
     var package = packageBuilder.build(draft: preparedDraft, profile: profile)
     package.files = package.files.filter { $0.kind == .markdown }
-    // Capture the destination baseline and carry it through to the actual
-    // write.  The preview writer revalidates every target immediately before
-    // mutation, so an external editor update between these operations fails
-    // closed instead of being overwritten.  A moved draft's package includes
-    // both the old deletion and new upsert, protecting both paths.
-    let preview = previewService.preview(package: package, profile: profile)
-    try validateRepositoryBaseline(
-      preview: preview,
-      expectedBaseline: expectedBaseline,
-      destinationPath: package.markdownPath
-    )
-    let writtenPaths = try previewService.write(preview: preview, profile: profile)
     guard
       let writtenDocument = package.files.first(where: {
-        $0.kind == .markdown
-          && $0.operation == .upsert
+        $0.operation == .upsert
           && $0.repositoryPath.normalizedRelativePath()
             == package.markdownPath.normalizedRelativePath()
       })?.content
     else {
       throw LocalPublishPreviewError.invalidPreview(package.markdownPath)
     }
+    // Capture the destination baseline and carry it through to the actual
+    // write.  The preview writer revalidates every target immediately before
+    // mutation, so an external editor update between these operations fails
+    // closed instead of being overwritten.  A moved draft's package includes
+    // both the old deletion and new upsert, protecting both paths.
+    let preview = previewService.preview(package: package, profile: profile)
+    let isIdempotentWrite = try validateRepositoryBaseline(
+      preview: preview,
+      expectedBaseline: expectedBaseline,
+      destinationPath: package.markdownPath,
+      intendedDocument: writtenDocument,
+      hasOnlyDestinationUpsert: package.files.count == 1
+        && package.files.first?.operation == .upsert
+        && package.files.first?.repositoryPath.normalizedRelativePath()
+          == package.markdownPath.normalizedRelativePath()
+    )
+    let writtenPaths = isIdempotentWrite ? [] : try previewService.write(preview: preview, profile: profile)
     latestRepositoryBaselines[key] = RepositoryFileBaseline(
       repositoryPath: package.markdownPath.normalizedRelativePath(),
       contentDigest: ArticleDraft.repositoryDocumentDigest(writtenDocument)
@@ -147,26 +156,44 @@ public final class SiteDraftFileStore: @unchecked Sendable {
   private func validateRepositoryBaseline(
     preview: LocalPublishPreview,
     expectedBaseline: RepositoryFileBaseline?,
-    destinationPath: String
-  ) throws {
+    destinationPath: String,
+    intendedDocument: String,
+    hasOnlyDestinationUpsert: Bool
+  ) throws -> Bool {
     let normalizedDestinationPath = destinationPath.normalizedRelativePath()
     if let expectedBaseline {
       let baselineState = try previewBaselineState(
         for: expectedBaseline.repositoryPath,
         in: preview
       )
-      guard case .fileDigest(let digest) = baselineState,
-        hexadecimalDigest(digest) == expectedBaseline.contentDigest.lowercased()
-      else {
+      guard case .fileDigest(let digest) = baselineState else {
         throw SiteDraftFileStoreError.projectFileChangedExternally(
           expectedBaseline.repositoryPath
         )
       }
 
+      let actualDigest = hexadecimalDigest(digest)
+      if actualDigest != expectedBaseline.contentDigest.lowercased() {
+        // A completed write can outlive its persisted baseline. Only accept
+        // exact intended bytes at the unchanged path, and only for the one
+        // upsert this store owns. Moves and multi-operation packages remain
+        // protected by the normal conflict path.
+        guard
+          expectedBaseline.repositoryPath.normalizedRelativePath() == normalizedDestinationPath,
+          hasOnlyDestinationUpsert,
+          actualDigest == ArticleDraft.repositoryDocumentDigest(intendedDocument)
+        else {
+          throw SiteDraftFileStoreError.projectFileChangedExternally(
+            expectedBaseline.repositoryPath
+          )
+        }
+        return true
+      }
+
       if expectedBaseline.repositoryPath.normalizedRelativePath()
         == normalizedDestinationPath
       {
-        return
+        return false
       }
     }
 
@@ -182,6 +209,7 @@ public final class SiteDraftFileStore: @unchecked Sendable {
         normalizedDestinationPath
       )
     }
+    return false
   }
 
   private func previewBaselineState(

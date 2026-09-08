@@ -464,6 +464,7 @@ public struct RemoteRepositoryCreationResult: Codable, Hashable, Sendable {
 }
 
 public struct RemoteRepositoryPublishResult: Codable, Hashable, Sendable {
+  public var releaseRecordID: UUID?
   public var provider: RepositoryProvider
   public var repositoryName: String?
   public var apiBaseURL: String?
@@ -493,6 +494,7 @@ public struct RemoteRepositoryPublishResult: Codable, Hashable, Sendable {
     commitSHA: String?,
     remoteVersionsByPath: [String: String]? = nil,
     reviewPendingPaths: [String]? = nil,
+    releaseRecordID: UUID? = nil,
     reviewNumber: Int? = nil,
     reviewURL: String? = nil,
     reviewTitle: String? = nil
@@ -507,6 +509,7 @@ public struct RemoteRepositoryPublishResult: Codable, Hashable, Sendable {
     self.commitSHA = commitSHA
     self.remoteVersionsByPath = remoteVersionsByPath
     self.reviewPendingPaths = reviewPendingPaths
+    self.releaseRecordID = releaseRecordID
     self.reviewNumber = reviewNumber
     self.reviewURL = reviewURL
     self.reviewTitle = reviewTitle

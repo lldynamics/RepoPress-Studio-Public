@@ -16,11 +16,13 @@ enum MarkdownOutlineSectionAction {
 }
 struct MarkdownOutlinePopover: View {
   let items: [MarkdownOutlineItem]
+  let activeItemID: String?
+  @Binding var collapsedItemIDs: Set<String>
+  let isPinned: Bool
   let onSelect: (MarkdownOutlineItem) -> Void
   let onAction: (MarkdownOutlineSectionAction, MarkdownOutlineItem) -> Void
-
-  @Environment(\.dismiss) private var dismiss
-  @State private var collapsedItemIDs: Set<String> = []
+  let onTogglePinned: () -> Void
+  let onClose: () -> Void
 
   var body: some View {
     VStack(spacing: 0) {
@@ -33,6 +35,20 @@ struct MarkdownOutlinePopover: View {
         Text(String(localized: "章节 \(items.count)"))
           .font(.caption)
           .foregroundStyle(.secondary)
+
+        Button(action: onTogglePinned) {
+          Image(systemName: isPinned ? "pin.fill" : "pin")
+        }
+        .buttonStyle(.borderless)
+        .help(isPinned ? String(localized: "取消固定大纲") : String(localized: "固定大纲"))
+        .accessibilityLabel(isPinned ? "取消固定大纲" : "固定大纲")
+
+        Button(action: onClose) {
+          Image(systemName: "xmark")
+        }
+        .buttonStyle(.borderless)
+        .help(String(localized: "关闭文章大纲"))
+        .accessibilityLabel("关闭文章大纲")
       }
       .padding(.horizontal, 14)
       .padding(.vertical, 12)
@@ -62,7 +78,7 @@ struct MarkdownOutlinePopover: View {
           }
           .padding(8)
         }
-        .frame(maxHeight: 360)
+        .frame(maxHeight: isPinned ? .infinity : 360)
       }
     }
     .frame(width: 320)
@@ -77,7 +93,6 @@ struct MarkdownOutlinePopover: View {
     HStack(spacing: 4) {
       Button {
         onSelect(item)
-        dismiss()
       } label: {
         HStack(spacing: 8) {
           Text("H\(item.level)")
@@ -106,6 +121,12 @@ struct MarkdownOutlinePopover: View {
         .padding(.horizontal, 8)
         .padding(.vertical, 7)
         .contentShape(Rectangle())
+        .background {
+          if item.id == activeItemID {
+            RoundedRectangle(cornerRadius: 6)
+              .fill(Color.accentColor.opacity(0.18))
+          }
+        }
       }
       .buttonStyle(.plain)
       .accessibilityLabel(String(localized: "\(item.level) 级标题：\(item.title)"))
@@ -206,19 +227,7 @@ struct MarkdownOutlinePopover: View {
   }
 
   private var visibleItems: [MarkdownOutlineItem] {
-    var collapsedLevel: Int?
-    return items.filter { item in
-      if let level = collapsedLevel {
-        if item.level > level {
-          return false
-        }
-        collapsedLevel = nil
-      }
-      if collapsedItemIDs.contains(item.id) {
-        collapsedLevel = item.level
-      }
-      return true
-    }
+    MarkdownOutlinePresentationPolicy.visibleItems(items, collapsedItemIDs: collapsedItemIDs)
   }
 
   private func hasChildItems(_ item: MarkdownOutlineItem) -> Bool {

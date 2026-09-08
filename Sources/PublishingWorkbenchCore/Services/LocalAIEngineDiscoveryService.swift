@@ -313,7 +313,7 @@ private struct OpenAICompatibleModelsResponse: Decodable {
 }
 
 private struct URLSessionLocalAIEngineDiscoveryTransport: LocalAIEngineDiscoveryTransport {
-  private let session: URLSession
+  private let sessionOwner: ManagedURLSession
 
   init() {
     let configuration = URLSessionConfiguration.ephemeral
@@ -326,17 +326,18 @@ private struct URLSessionLocalAIEngineDiscoveryTransport: LocalAIEngineDiscovery
     configuration.timeoutIntervalForRequest = LocalAIEngineDiscoveryService.requestTimeout
     configuration.timeoutIntervalForResource = LocalAIEngineDiscoveryService.requestTimeout
     configuration.waitsForConnectivity = false
-    session = URLSession(
+    sessionOwner = ManagedURLSession(session: URLSession(
       configuration: configuration,
       delegate: LocalAIEngineDiscoveryURLSessionDelegate(),
       delegateQueue: nil
-    )
+    ), ownsSession: true)
   }
 
   func data(for request: URLRequest) async throws -> (Data, URLResponse) {
-    try await BoundedHTTPResponseLoader.data(
+    defer { withExtendedLifetime(sessionOwner) {} }
+    return try await BoundedHTTPResponseLoader.data(
       for: request,
-      using: session,
+      using: sessionOwner.session,
       maximumByteCount: LocalAIEngineDiscoveryService.maximumResponseByteCount
     )
   }

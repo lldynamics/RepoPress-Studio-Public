@@ -4,6 +4,18 @@ import SwiftUI
 
 extension AIChatContextInspectorView {
 
+  struct AIChatCitationBacklinkRetry: Identifiable {
+    let id = UUID()
+    let draftID: UUID
+    let conversationID: UUID?
+    let citations: [KnowledgeCitation]
+    let target: KnowledgeBacklinkTarget
+
+    func matches(draftID: UUID?, conversationID: UUID?) -> Bool {
+      self.draftID == draftID && self.conversationID == conversationID
+    }
+  }
+
   var state: AIChatContextInspectorState {
     let isGeneralConversation = ai.chatContextMode == .general
     let draft = isGeneralConversation ? nil : inspectorDraft
@@ -311,17 +323,23 @@ extension AIChatContextInspectorView {
         ? submittedGeneralConversation?.messages ?? []
         : ai.chatMessages).map(\.id)
     )
-    let requestedImageAttachmentIDs = selectedImageAttachmentIDs
+    let submittedImageAttachmentSelectionConversationID = imageAttachmentSelectionConversationID
+    let requestedImageAttachmentIDs = selectedChatImageAttachmentIDs
     let requestedContextReferences = selectedContextReferences
     _ = operationSession.start(ownerToken: ownerToken) {
       let imageAttachments: [AIChatImageAttachment]
       if submittedContextMode == .general {
         imageAttachments = []
       } else if let draft {
-        imageAttachments = await ai.chatImageAttachments(
+        let imageLoadResult = await ai.chatImageAttachmentLoadResult(
           for: draft,
           attachmentIDs: requestedImageAttachmentIDs
         )
+        if let message = imageLoadResult.submissionFailureMessage {
+          ai.setChatMessage(message)
+          return
+        }
+        imageAttachments = imageLoadResult.images
       } else {
         return
       }
@@ -379,11 +397,11 @@ extension AIChatContextInspectorView {
         updateInspectorSurfaceState { state in
           state.setComposerText("", for: submittedSurfaceConversationID)
         }
-        if surfaceState.imageAttachmentIDs(for: submittedSurfaceConversationID)
+        if surfaceState.imageAttachmentIDs(for: submittedImageAttachmentSelectionConversationID)
           == requestedImageAttachmentIDs
         {
           updateInspectorSurfaceState { state in
-            state.setImageAttachmentIDs([], for: submittedSurfaceConversationID)
+            state.setImageAttachmentIDs([], for: submittedImageAttachmentSelectionConversationID)
           }
         }
         if surfaceState.contextReferences(for: submittedSurfaceConversationID)
@@ -530,9 +548,14 @@ extension AIChatContextInspectorView {
   }
 
   func append(_ message: AIPublishingChatMessage, to draft: ArticleDraft) {
+    let appliedCitations = KnowledgeCitationMarkdownService.referencedCitations(
+      in: message.content,
+      candidates: message.knowledgeCitations
+    )
     let content = KnowledgeCitationMarkdownService.appendingCitations(
       to: message.content,
-      citations: message.knowledgeCitations
+      citations: appliedCitations,
+      existingMarkdown: draft.bodyMarkdown
     )
     guard
       let result = AIPublishingChatDraftApplicationService.applyAssistantContent(
@@ -548,7 +571,7 @@ extension AIChatContextInspectorView {
     draftDiffPreview = AIChatDraftDiffPreview(
       originalDraft: draft,
       updatedDraft: result.draft,
-      citations: message.knowledgeCitations
+      citations: appliedCitations
     )
     ai.setChatMessage(
       String(localized: "AI 修改预览已打开，接受后才会写入文章。")
@@ -569,18 +592,52 @@ extension AIChatContextInspectorView {
     }
     ai.updateChatDraft(preview.updatedDraft)
     ai.saveChatDraftChanges()
-    ai.recordKnowledgeBacklinks(
-      preview.citations,
+    let retry = AIChatCitationBacklinkRetry(
+      draftID: preview.updatedDraft.id,
+      conversationID: state.conversation?.conversationID,
+      citations: preview.citations,
       target: KnowledgeBacklinkTarget(
         kind: .articleDraft,
         id: preview.updatedDraft.id.uuidString,
         title: preview.updatedDraft.title,
-        location: "正文"
+        location: String(localized: "正文")
       )
     )
-    ai.setChatMessage(
-      applicationSuccessMessage(for: preview)
-    )
+    guard !retry.citations.isEmpty else {
+      ai.setChatMessage(applicationSuccessMessage(for: preview))
+      return
+    }
+    ai.setChatMessage(String(localized: "正文已更新，正在保存资料引用…"))
+    retryCitationBacklinks(retry, successMessage: applicationSuccessMessage(for: preview))
+  }
+
+  func retryCitationBacklinks(_ retry: AIChatCitationBacklinkRetry) {
+    retryCitationBacklinks(retry, successMessage: String(localized: "资料引用已保存。"))
+  }
+
+  private func retryCitationBacklinks(
+    _ retry: AIChatCitationBacklinkRetry,
+    successMessage: String
+  ) {
+    Task { @MainActor in
+      let result = await ai.recordKnowledgeBacklinks(retry.citations, target: retry.target)
+      guard
+        retry.matches(
+          draftID: inspectorDraft?.id,
+          conversationID: state.conversation?.conversationID
+        )
+      else { return }
+      switch result {
+      case .recorded:
+        if pendingCitationBacklinkRetry?.id == retry.id {
+          pendingCitationBacklinkRetry = nil
+        }
+        ai.setChatMessage(successMessage)
+      case .failed:
+        pendingCitationBacklinkRetry = retry
+        ai.setChatMessage(String(localized: "正文已更新，但资料引用记录未保存；可在上方重试。"))
+      }
+    }
   }
 
   func applicationSuccessMessage(

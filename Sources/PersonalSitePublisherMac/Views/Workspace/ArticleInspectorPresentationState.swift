@@ -5,8 +5,8 @@ import SwiftUI
 
 /// Keeps article Inspector choices local to one native Inspector column.
 ///
-/// `MetadataColumn` owns this object, so its selections survive an AI surface
-/// swap but are released with the window's Inspector. The section belongs in
+/// `ContentView` owns this object, so its selections survive Inspector mounting,
+/// width changes, and an AI surface swap, and remain local to the window. The section belongs in
 /// the key because the same article has separate useful defaults in Writing,
 /// Images, and Content Health.
 @MainActor

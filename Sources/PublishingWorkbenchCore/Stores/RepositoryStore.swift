@@ -257,35 +257,35 @@ public final class RepositoryStore: ObservableObject {
     store: WorkbenchStore
   ) async -> RepositoryFetchResult? {
     let profile = store.activeProfile
-    guard let operation = beginRepositorySafeSyncOperation(store: store) else { return nil }
-    defer { finishRepositorySafeSyncOperation(operation, store: store) }
+    return await withRepositorySafeSyncOperation(store: store, unavailable: { nil }) { operation in
 
-    await cancelAndAwaitRepositoryBackgroundWorkForSafeSync(store: store)
-    let repositoryService = repositoryService
-    let fetch = await Task.detached(priority: .utility) {
-      repositoryService.fetchUpstream(profile: profile)
-    }.value
+      await cancelAndAwaitRepositoryBackgroundWorkForSafeSync(store: store)
+      let repositoryService = repositoryService
+      let fetch = await Task.detached(priority: .utility) {
+        repositoryService.fetchUpstream(profile: profile)
+      }.value
 
-    guard !Task.isCancelled,
-      repositorySafeSyncOperationIsCurrent(operation, store: store)
-    else {
-      return nil
-    }
+      guard !Task.isCancelled,
+        repositorySafeSyncOperationIsCurrent(operation, store: store)
+      else {
+        return nil
+      }
 
-    // A failed fetch must not install a newly scanned report whose recent
-    // timestamp could be mistaken for fresh upstream evidence. The exact
-    // provider API preflight may still continue and remains authoritative.
-    guard fetch.status != .failed else {
+      // A failed fetch must not install a newly scanned report whose recent
+      // timestamp could be mistaken for fresh upstream evidence. The exact
+      // provider API preflight may still continue and remains authoritative.
+      guard fetch.status != .failed else {
+        return fetch
+      }
+
+      await scanRepositoryAsync(store: store, autoSyncGeneration: nil)
+      guard !Task.isCancelled,
+        repositorySafeSyncOperationIsCurrent(operation, store: store)
+      else {
+        return nil
+      }
       return fetch
     }
-
-    await scanRepositoryAsync(store: store, autoSyncGeneration: nil)
-    guard !Task.isCancelled,
-      repositorySafeSyncOperationIsCurrent(operation, store: store)
-    else {
-      return nil
-    }
-    return fetch
   }
 
   func scanRepositoryAsync(
@@ -574,10 +574,22 @@ public final class RepositoryStore: ObservableObject {
     repositoryAutoSyncTask = nil
   }
 
-  /// Acquires the repository and publishing mutation locks as one boundary.
-  /// The caller must release the returned context with
-  /// `finishRepositorySafeSyncOperation` on every path.
-  func beginRepositorySafeSyncOperation(store: WorkbenchStore)
+  /// Owns both repository mutation locks for the entire async operation, including
+  /// errors, cancellation, and early returns. Callers retain their existing stale
+  /// profile checks before applying results.
+  func withRepositorySafeSyncOperation<Result>(
+    store: WorkbenchStore,
+    unavailable: () throws -> Result,
+    perform: @MainActor (LocalRepositoryOperationContext) async throws -> Result
+  ) async rethrows -> Result {
+    guard let context = beginRepositorySafeSyncOperation(store: store) else {
+      return try unavailable()
+    }
+    defer { finishRepositorySafeSyncOperation(context, store: store) }
+    return try await perform(context)
+  }
+
+  private func beginRepositorySafeSyncOperation(store: WorkbenchStore)
     -> LocalRepositoryOperationContext?
   {
     guard !isRepositorySafeSyncOperationRunning,
@@ -607,7 +619,7 @@ public final class RepositoryStore: ObservableObject {
     return operation
   }
 
-  func finishRepositorySafeSyncOperation(
+  private func finishRepositorySafeSyncOperation(
     _ operation: LocalRepositoryOperationContext,
     store: WorkbenchStore
   ) {
@@ -1070,38 +1082,38 @@ public final class RepositoryStore: ObservableObject {
     store: WorkbenchStore
   ) async throws {
     let profile = store.activeProfile
-    guard let operation = beginRepositorySafeSyncOperation(store: store) else {
-      throw RepositoryMergeConflictError.operationInProgress
-    }
-    defer { finishRepositorySafeSyncOperation(operation, store: store) }
+    try await withRepositorySafeSyncOperation(
+      store: store, unavailable: { throw RepositoryMergeConflictError.operationInProgress }
+    ) { operation in
 
-    await cancelAndAwaitRepositoryBackgroundWorkForSafeSync(store: store)
-    let repositoryService = repositoryService
-    let outcome = await Task.detached(priority: .userInitiated) {
-      do {
-        try repositoryService.resolveMergeConflict(
-          profile: profile,
-          request: request
-        )
-        return Result<Void, RepositoryMergeConflictError>.success(())
-      } catch let error as RepositoryMergeConflictError {
-        return Result<Void, RepositoryMergeConflictError>.failure(error)
-      } catch {
-        return Result<Void, RepositoryMergeConflictError>.failure(
-          .writeFailed(error.localizedDescription)
-        )
+      await cancelAndAwaitRepositoryBackgroundWorkForSafeSync(store: store)
+      let repositoryService = repositoryService
+      let outcome = await Task.detached(priority: .userInitiated) {
+        do {
+          try repositoryService.resolveMergeConflict(
+            profile: profile,
+            request: request
+          )
+          return Result<Void, RepositoryMergeConflictError>.success(())
+        } catch let error as RepositoryMergeConflictError {
+          return Result<Void, RepositoryMergeConflictError>.failure(error)
+        } catch {
+          return Result<Void, RepositoryMergeConflictError>.failure(
+            .writeFailed(error.localizedDescription)
+          )
+        }
+      }.value
+
+      guard repositorySafeSyncOperationIsCurrent(operation, store: store) else {
+        throw RepositoryMergeConflictError.repositoryChanged
       }
-    }.value
 
-    guard repositorySafeSyncOperationIsCurrent(operation, store: store) else {
-      throw RepositoryMergeConflictError.repositoryChanged
-    }
-
-    if case .failure(let error) = outcome {
+      if case .failure(let error) = outcome {
+        await scanRepositoryAsync(store: store, autoSyncGeneration: nil)
+        throw error
+      }
       await scanRepositoryAsync(store: store, autoSyncGeneration: nil)
-      throw error
     }
-    await scanRepositoryAsync(store: store, autoSyncGeneration: nil)
   }
 
   /// Reads one upstream article snapshot away from the main actor. The

@@ -5,7 +5,9 @@ extension DeploymentStatusService {
   public func check(
     profile: SiteProfile,
     releaseRecord: ReleaseRecord? = nil,
-    token: String? = nil
+    token: String? = nil,
+    articleDraftID: UUID? = nil,
+    previousSnapshot: DeploymentStatusSnapshot? = nil
   ) async -> DeploymentStatusSnapshot {
     let provider = profile.deploymentProvider ?? defaultProvider(for: profile)
     let siteURLText =
@@ -44,17 +46,28 @@ extension DeploymentStatusService {
       break
     }
 
-    if let endpointURLText {
-      signals.append(
-        await endpointSignal(
-          urlText: endpointURLText,
-          provider: provider,
-          profile: profile,
-          releaseRecord: provider == .custom ? releaseRecord : nil,
-          token: token,
-          usesToken: canUseEndpointToken
-        )
+    let requiresGitLabPagesEvidence =
+      provider == .gitlabPages
+      && releaseRecord?.articleVerificationTargets.isEmpty == false
+      && releaseRecord?.commitSHA?.trimmedForPublishing.nilIfEmpty != nil
+    var hasGitLabPagesEvidence = false
+    // An old or missing public page is expected while the provider is building.
+    // Explicit status endpoints still report real failures independently.
+    let waitsForPublicSite = explicitEndpointURLText == nil && aggregateLevel(signals) == .running
+    if let endpointURLText, !waitsForPublicSite {
+      let endpoint = await endpointSignal(
+        urlText: endpointURLText,
+        provider: provider,
+        profile: profile,
+        releaseRecord: provider == .custom
+          || (requiresGitLabPagesEvidence && explicitEndpointURLText != nil) ? releaseRecord : nil,
+        token: token,
+        usesToken: canUseEndpointToken
       )
+      signals.append(endpoint)
+      hasGitLabPagesEvidence =
+        explicitEndpointURLText != nil
+        && endpoint.level == .success && endpoint.attributionVerified == true
     } else if signals.isEmpty {
       signals.append(
         DeploymentStatusSignal(
@@ -64,16 +77,16 @@ extension DeploymentStatusService {
         )
       )
     }
-    if let siteURLText {
+    if requiresGitLabPagesEvidence && !hasGitLabPagesEvidence {
       signals.append(
-        contentsOf: await articlePageSignals(
-          siteURLText: siteURLText,
-          profile: profile,
-          releaseRecord: releaseRecord
+        DeploymentStatusSignal(
+          level: .unknown, title: "GitLab Pages",
+          message: CoreL10n.text(
+            "流水线已完成，但缺少 Pages 部署证据；请配置返回本次提交 SHA 的状态端点。"),
+          attributionVerified: false
         )
       )
     }
-
     let expectedCommitSHA = releaseRecord?.commitSHA?.trimmedForPublishing.nilIfEmpty
     if let expectedCommitSHA,
       !signals.contains(where: { $0.attributionVerified != nil })
@@ -95,6 +108,50 @@ extension DeploymentStatusService {
       )
     }
 
+    let platformLevel = aggregateLevel(signals)
+    var articleResults: [DeploymentArticleVerificationResult] = []
+    if let releaseRecord {
+      let targets = releaseRecord.articleVerificationTargets
+      let canReuse =
+        previousSnapshot.map {
+          $0.releaseRecordID == releaseRecord.id && $0.profileID == profile.id
+            && $0.provider == provider && $0.expectedCommitSHA == expectedCommitSHA
+            && $0.expectedBranch
+              == expectedDeploymentBranch(releaseRecord: releaseRecord, profile: profile)
+            && $0.siteURLText == siteURLText && $0.attributionVerified == true
+            && $0.platformLevel == .success
+        } ?? false
+      for target in targets {
+        let result: DeploymentArticleVerificationResult
+        if platformLevel == .running {
+          result = DeploymentArticleVerificationResult(
+            target: target, signals: [
+              DeploymentStatusSignal(
+                level: .running, title: CoreL10n.text("等待部署完成"),
+                message: CoreL10n.text("平台仍在构建；完成后再检查文章页面与正文版本。"))
+            ])
+        } else if let articleDraftID, articleDraftID != target.draftID, canReuse,
+          let prior = previousSnapshot?.articleResults?.first(where: { $0.target == target })
+        {
+          result = prior
+        } else if articleDraftID == nil || articleDraftID == target.draftID {
+          let articleSignals = await articlePageSignals(
+            siteURLText: siteURLText, profile: profile,
+            releaseRecord: releaseRecord.projectingArticle(target))
+          result = DeploymentArticleVerificationResult(target: target, signals: articleSignals)
+        } else {
+          result = DeploymentArticleVerificationResult(
+            target: target,
+            signals: [
+              DeploymentStatusSignal(
+                level: .unknown, title: CoreL10n.text("发布页面内容"),
+                message: CoreL10n.text("此文章尚未验证，请检查全部文章。"))
+            ])
+        }
+        articleResults.append(result)
+        signals.append(contentsOf: result.signals)
+      }
+    }
     let level = aggregateLevel(signals)
     let attributionSignal =
       signals.first(where: { $0.attributionVerified == true })
@@ -114,7 +171,9 @@ extension DeploymentStatusService {
       observedCommitSHA: attributionSignal?.observedCommitSHA,
       attributionVerified: expectedCommitSHA == nil
         ? nil
-        : attributionSignal?.attributionVerified == true
+        : attributionSignal?.attributionVerified == true,
+      platformLevel: platformLevel,
+      articleResults: articleResults
     )
   }
 
@@ -282,6 +341,22 @@ extension DeploymentStatusService {
       nextStep: nextStep
     )
   }
+  public func publicSiteURL(profile: SiteProfile) -> String? {
+    normalizedURLText(profile.deploymentSiteURL)
+      ?? inferredSiteURL(
+        profile: profile, provider: profile.deploymentProvider ?? defaultProvider(for: profile))
+  }
+
+  public func publicArticleURL(profile: SiteProfile, publicPath: String) -> String? {
+    guard let text = publicSiteURL(profile: profile), let base = URL(string: text),
+      ["http", "https"].contains(base.scheme?.lowercased() ?? ""), base.host != nil
+    else { return nil }
+    let path = publicPath.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+    return path.isEmpty
+      ? base.absoluteString
+      : base.appendingPathComponent(path, isDirectory: publicPath.hasSuffix("/")).absoluteString
+  }
+
   private func defaultProvider(for profile: SiteProfile) -> DeploymentProvider {
     switch profile.repositoryProvider {
     case .github:

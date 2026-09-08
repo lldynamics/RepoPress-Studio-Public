@@ -148,7 +148,7 @@ enum MarkdownToolbarItemID: String, CaseIterable, Codable, Hashable, Identifiabl
     case .contextPanelMenu: return 7
     case .localPreview: return 8
     case .exportMenu: return 9
-    case .outline: return 10
+    case .outline: return 1
     case .shortcutHelp: return 11
     case .copyRichText: return 12
     default: return 99
@@ -191,6 +191,7 @@ struct MarkdownToolbarConfiguration: Codable, Equatable {
         .saveStatus,
         .writingToolDensity,
         .findReplace,
+        .outline,
         .contextPanelMenu,
         .shortcutHelp,
         .exportMenu,

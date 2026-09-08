@@ -62,7 +62,6 @@
   "%@ 个月": "%@ months",
   "%@ 个未解决文件": "%@ unresolved files",
   "%@ 个片段": "%@ Chunks",
-  "%@ 个相关文件": "%@ related files",
   "%@ 个章节/页面": "%@ sections/pages",
   "%@ 个自动备份校验失败，已从一键恢复列表中隐藏；请检查备份目录或重新创建备份。": "%@ automatic backups failed validation and were hidden from Quick Restore. Check the backup folder or create new backups.",
   "%@ 个订阅 · %@ 篇未读": "%@ feeds · %@ unread articles",
@@ -269,10 +268,6 @@
   "%lld 个未解决": "%lld unresolved",
   "%lld 个未解决文件": "%lld unresolved files",
   "%lld 个片段": "%lld snippets",
-  "%lld 个相关文件": {
-    "en": "%lld Related Files",
-    "zh-Hans": "%lld 个相关文件"
-  },
   "%lld 个自动备份校验失败": "%lld automatic backup(s) failed validation",
   "%lld 个订阅": "%lld Subscriptions",
   "%lld 个订阅 · %lld 篇未读": "%lld feeds · %lld unread articles",
@@ -575,7 +570,6 @@
     "en": "Chrome and Firefox extensions are installed and updated separately; both connect through the local loopback interface.",
     "zh-Hans": "Chrome 和 Firefox 扩展独立安装和更新，均通过本机回环接口连接。"
   },
-  "Cloudflare Account ID": "Cloudflare 账户 ID",
   "Cloudflare Account ID（可稍后补）": {
     "en": "Cloudflare Account ID (can be added later)",
     "zh-Hans": "Cloudflare Account ID（可稍后补）"
@@ -629,7 +623,6 @@
   "Git 分支": "Git Branch",
   "Git 将恢复到变基开始前，然后按记录的精确 stash 恢复本地改动。": "Git will return to the pre-rebase state, then restore local changes from the recorded exact stash.",
   "Git 将恢复到合并开始前。": "Git will return to the state before the merge began.",
-  "Git 推送已确认": "Git push confirmed",
   "Git 操作已结束": "Git Operation Finished",
   "Git 操作状态不明确": "Git Operation State Is Unclear",
   "GitHub": {
@@ -745,7 +738,6 @@
     "en": "Modal Surface",
     "zh-Hans": "模态界面"
   },
-  "Netlify Site ID": "Netlify 站点 ID",
   "Netlify Site ID（可稍后补）": {
     "en": "Netlify Site ID (can be added later)",
     "zh-Hans": "Netlify Site ID（可稍后补）"
@@ -858,12 +850,10 @@
     "en": "VIDEO_ID",
     "zh-Hans": "VIDEO_ID"
   },
-  "Vercel Project ID": "Vercel 项目 ID",
   "Vercel Project ID（可稍后补）": {
     "en": "Vercel Project ID (can be added later)",
     "zh-Hans": "Vercel Project ID（可稍后补）"
   },
-  "Vercel Team ID": "Vercel 团队 ID",
   "Vercel Team ID（可选）": {
     "en": "Vercel Team ID (optional)",
     "zh-Hans": "Vercel Team ID（可选）"
@@ -3055,6 +3045,7 @@
   "仅用于当前部署平台的官方 API": "Used only for the current deployment provider's official API",
   "仅用于自定义 HTTPS 状态端点": "Used only for the custom HTTPS status endpoint",
   "仅移到回收站…": "Move to Trash Only…",
+  "仅选区": "Selection Only",
   "仅问答": "Text Only",
   "今天": "Today",
   "仍有修改未能保存，未更改存储位置。请先解决保存错误。": "Some changes could not be saved, so the storage location was not changed. Resolve the save error first.",
@@ -3089,6 +3080,8 @@
     "en": "Start a site from a template, then configure its folders, Git repository, and deployment step by step in the setup assistant.",
     "zh-Hans": "从模板开始创建站点，目录、Git 和部署可以在建站向导中逐步完成。"
   },
+  "从模板新建…": "New from Template…",
+  "从模板新建文章": "New Article from Template",
   "从站点仓库导入文章…": "Import Articles from Site Repository…",
   "从网站下线…": "Unpublish from Website…",
   "从网站下线这篇文章？": "Unpublish This Article?",
@@ -3261,7 +3254,7 @@
     "en": "Save Locally",
     "zh-Hans": "保存到本地"
   },
-  "保存到软件失败": "Failed to Save in App",
+  "保存到软件失败": "Failed to save to the app",
   "保存后关闭可保留源码更改；也可以返回编辑器继续处理。": {
     "en": "Save before closing to keep your source changes, or return to the editor to continue working.",
     "zh-Hans": "保存后关闭可保留源码更改；也可以返回编辑器继续处理。"
@@ -3542,6 +3535,7 @@
   "关闭后仍会保存阅读进度，但读到正文末尾不会改变已读状态。": "When off, reading progress is still saved, but reaching the end of the article does not change its read status.",
   "关闭后仍可在打开诊断或大纲时手动分析。": "When off, you can still analyze manually by opening diagnostics or the outline.",
   "关闭后会停止自动刷新计时器和失败订阅重试计时器；手动刷新仍可使用。": "When off, the automatic refresh and failed-feed retry timers stop; manual refresh remains available.",
+  "关闭文章大纲": "Close Article Outline",
   "关闭时不会访问浏览器连接钥匙串，也不会监听本机端口。": "When off, RepoPress Studio does not access the browser-connection Keychain item or listen on a local port.",
   "关闭本地语义索引": {
     "en": "Disable Local Semantic Index",
@@ -4022,8 +4016,8 @@
   },
   "发布记录：%@": "Release Record: %@",
   "发布资产包": "Publishing Asset Pack",
+  "发布进度请在“准备发布”中查看。": "View publishing progress in “Prepare to Publish”.",
   "发布连接": "Publishing Connections",
-  "发布预览已失效": "Publishing Preview Expired",
   "发现 %@ 项冲突，当前操作不会执行": "%@ conflicts found. This action will not run.",
   "发现 %lld 项冲突，当前操作不会执行": {
     "en": "Found %lld Conflicts; This Action Will Not Run",
@@ -4051,6 +4045,7 @@
   "取消修改": "Cancel Changes",
   "取消勾选后不会保存这条资料": "This item will not be saved when deselected",
   "取消固定": "Unpin",
+  "取消固定大纲": "Unpin Outline",
   "取消扫描": {
     "en": "Cancel Scan",
     "zh-Hans": "取消扫描"
@@ -4107,6 +4102,7 @@
     "zh-Hans": "只显示 .html / .htm"
   },
   "只显示当前阻断与文件变更": "Shows only the current blocker and file changes",
+  "只更改所选站点的项目目录。": "Only the selected site’s project folder will change.",
   "只更新工作台中的草稿归属，不会改写原仓库文件。": "Updates draft ownership in the workspace only; original repository files are not rewritten.",
   "只更新站点文件，不提交到 Git，也不会上传到网站。": {
     "en": "Updates site files only. Does not commit to Git or upload to the website.",
@@ -4287,6 +4283,7 @@
   "固定到 AI": "Pin to AI",
   "固定到 AI 对话": "Pin to AI Chat",
   "固定地址": "Fixed URL",
+  "固定大纲": "Pin Outline",
   "图片": "Images",
   "图片 %@ / %@": {
     "en": "Image %1$@ / %2$@",
@@ -4444,10 +4441,12 @@
   "增加列表层级": "Increase List Level",
   "处理": "Process",
   "处理 Git 操作": "Handle Git Operation",
+  "处理…": "Resolve…",
   "处理中": {
     "en": "Processing",
     "zh-Hans": "处理中"
   },
+  "处理项目保存问题…": "Resolve Project Save Issue…",
   "备份": "Backups",
   "备份与导入": "Backup and Import",
   "备份与恢复": "Backup and Restore",
@@ -4650,10 +4649,6 @@
     "zh-Hans": "失效的本地相对路径"
   },
   "失败": "Failed",
-  "失败原因：%@": {
-    "en": "Failure reason: %@",
-    "zh-Hans": "失败原因：%@"
-  },
   "好": {
     "en": "OK",
     "zh-Hans": "好"
@@ -4733,6 +4728,7 @@
     "en": "Go to line %@: %@",
     "zh-Hans": "定位到第 %@ 行的%@"
   },
+  "定位正文": "Focus Body",
   "实时分析正文诊断与大纲": "Analyze Body Diagnostics and Outline in Real Time",
   "实时预览": "Live Preview",
   "实际支持范围取决于服务和模型": "Actual support depends on the service and model",
@@ -5115,6 +5111,7 @@
     "zh-Hans": "已显示全部 %lld 个变化，可展开逐文件审阅。"
   },
   "已暂存全部冲突": "All Conflicts Staged",
+  "已替换 %d 处，可撤销。": "Replaced %d matches. You can undo this change.",
   "已替换 %lld 篇文章、%lld 处；可用“回滚上次替换”恢复。": "Replaced content in %lld articles at %lld occurrences; use “Roll Back Last Replacement” to restore them.",
   "已有扫描、发布或仓库写入正在进行，请等待完成。": "A scan, publication, or repository write is already running. Wait for it to finish.",
   "已有站点仓库路径": {
@@ -5497,6 +5494,7 @@
   "当前站点配置": "Current Site Configuration",
   "当前站点配置没有可统计的文章。": "The current site configuration has no articles to summarize.",
   "当前站点，切换站点后可分别配置": "Current site; settings can be configured separately for each site",
+  "当前站点：%@": "Current Site: %@",
   "当前筛选下没有待处理的文章问题。": "No article issues need attention for this filter.",
   "当前续跑已结束，原审计记录仍然保留。": {
     "en": "This continuation has ended, and its original audit record is still preserved.",
@@ -5549,6 +5547,7 @@
   },
   "待合并": "Awaiting Merge",
   "待处理": "Action Items",
+  "待处理 %@ · 已接受 %@ · 已拒绝 %@": "Pending %@ · Accepted %@ · Rejected %@",
   "待审阅文章": "Articles to Review",
   "待恢复与清理": "Awaiting recovery and cleanup",
   "待执行": "Ready",
@@ -5741,6 +5740,7 @@
     "en": "Open Original RSS Article",
     "zh-Hans": "打开 RSS 原文"
   },
+  "打开 SEO 与社交预览": "Open SEO & Social Preview",
   "打开%@": "Open %@",
   "打开三方对比，不会直接覆盖远端": "Open the three-way comparison without directly overwriting the remote",
   "打开仓库": "Open Repository",
@@ -5794,6 +5794,7 @@
   "打开文章时自动翻译": "Automatically translate when opening an article",
   "打开旧文整理文章": "Open Article Refresh Item",
   "打开本次发布清单和一键发布流程": "Open the publish checklist and one-click publishing flow",
+  "打开查找时没有可用选区。": "There was no selection when Find opened.",
   "打开检查页面": "Open checks page",
   "打开此设置项": "Open this setting",
   "打开浏览器连接设置…": "Open Browser Connection Settings…",
@@ -5844,6 +5845,7 @@
   "打开部署信号": "Open Deployment Signal",
   "打开链接审计文章": "Open Link Audit Article",
   "打开链接建议来源文章": "Open Link Suggestion Source Article",
+  "打开项目配置": "Open Project Configuration",
   "打开预览": "Open Preview",
   "打开验证页面": "Open Verification Page",
   "托管副本不可读，可在资料库健康检查中重新验证。": "The managed copy cannot be read. Recheck it in Library Health.",
@@ -5892,7 +5894,6 @@
     "en": "Batch actions, %lld items selected",
     "zh-Hans": "批量操作，已选择 %lld 条资料"
   },
-  "批量文章": "Batch Articles",
   "批量替换": {
     "en": "Batch Replace",
     "zh-Hans": "批量替换"
@@ -6352,6 +6353,7 @@
   "文章封面": "Article Cover",
   "文章封面缩略图": "Article Cover Thumbnail",
   "文章将解除站点归属并保留正文，之后不能直接发布。": "The article will keep its content but lose its site assignment, so it cannot be published directly.",
+  "文章已不存在。": "Article no longer exists.",
   "文章已变化，未复制陈旧 AI Prompt；请重试。": "The article changed, so the stale AI prompt was not copied. Try again.",
   "文章已变化，这份 AI 修改预览未应用；请重新预览。": "The article changed, so this AI edit preview was not applied. Preview it again.",
   "文章总数 %lld，待发布 %lld": {
@@ -6372,6 +6374,7 @@
     "zh-Hans": "文章标签已保存。"
   },
   "文章标题": "Article Title",
+  "文章标题（可稍后修改）": "Article title (you can edit it later)",
   "文章模板": "Article Templates",
   "文章版本历史": "Article Version History",
   "文章状态": "Article Status",
@@ -6439,6 +6442,7 @@
   "无变化": "Unchanged",
   "无序列表": "Bulleted List",
   "无效原文已写入本地恢复副本；修正格式前不会覆盖结构化文章信息。": "The invalid source was written to a local recovery copy; structured article information will not be overwritten until the format is fixed.",
+  "无法使用此项目目录": "Cannot Use This Project Folder",
   "无法准备运行时辅助功能测试仓库。": {
     "en": "Could not prepare the repository fixture for runtime accessibility testing.",
     "zh-Hans": "无法准备运行时辅助功能测试仓库。"
@@ -6576,6 +6580,7 @@
   "更改存储位置": "Change Storage Location",
   "更改存储位置失败：%@。原文件夹保持不变。": "Could not change the storage location: %@. The original folder is unchanged.",
   "更改本地仓库": "Change Local Repository",
+  "更改项目目录": "Change Project Folder",
   "更新": "Updates",
   "更新会创建新版本；原版本、标注和反向链接都会保留。": "Updating creates a new version while preserving the previous version, annotations, and backlinks.",
   "更早": "Earlier",
@@ -6960,6 +6965,7 @@
   "查找与搜索": "Find & Search",
   "查找与替换": "Find and Replace",
   "查找与替换（⌘F）": "Find and Replace (⌘F)",
+  "查找作用范围": "Find Scope",
   "查找匹配位置": "Find Match Position",
   "查找并管理写作资料": "Find and manage writing sources",
   "查找文本": "Find Text",
@@ -6987,6 +6993,7 @@
     "zh-Hans": "查看发布检查"
   },
   "查看发布记录": "View publication history",
+  "查看图片": "View Image",
   "查看完整差异": "View Full Diff",
   "查看工作台数据占用、执行全库图片无损/有损瘦身与孤立附件清理。": "View workbench data usage, optimize images across library, and clean up orphaned attachments.",
   "查看当前文章的标签、高亮与批注": "View tags, highlights, and notes for the current article",
@@ -7077,6 +7084,7 @@
     "en": "Checking",
     "zh-Hans": "检查中"
   },
+  "检查保存错误、更改项目目录或查看失败文件": "Review save errors, change the project folder, or view failed files",
   "检查元数据、链接、图片与公开风险": {
     "en": "Check metadata, links, images, and public exposure risks",
     "zh-Hans": "检查元数据、链接、图片与公开风险"
@@ -7158,10 +7166,12 @@
     "en": "Use the repository's local site preview for template files.",
     "zh-Hans": "模板文件请使用资料库中的本地站点预览。"
   },
+  "模板无法创建文章，请检查模板正文后重试。": "The template could not create an article. Check the template body and try again.",
   "模板档位": {
     "en": "Template Dialect",
     "zh-Hans": "模板档位"
   },
+  "模板正文预览": "Template Body Preview",
   "模板范围": "Template Scope",
   "正则表达式": "Regular Expression",
   "正在从原站提取全文…": {
@@ -7356,6 +7366,7 @@
   "正在读取账户可用模型…": "Reading models available to the account…",
   "正在载入图片…": "Loading image…",
   "正在运行": "Running",
+  "正在重新写入项目文件…": "Retrying project file writes…",
   "正常": "Healthy",
   "正式发布候选": "Formal Publish Candidate",
   "正式文章": "Published Article",
@@ -7379,7 +7390,10 @@
   "正文宽度": "Content Width",
   "正文差异": "Body Differences",
   "正文差异过于复杂，已切换到完整源码。": "The body diff is too complex. Switched to Full Source.",
+  "正文已变化，替换预览已失效。": "The body changed. The replacement preview is out of date.",
+  "正文已变化，未应用替换。请重新预览。": "The body changed. The replacement was not applied. Preview it again.",
   "正文插入点 · 基线第 %d 行前": "Body insertion · before base line %d",
+  "正文正在同步，请稍后重试。": "The body is syncing. Try again shortly.",
   "正文没有变化": "No body changes",
   "正文片段": "Body Snippets",
   "正文版本": "Content Version",
@@ -7847,6 +7861,7 @@
   "确认“%@”？": "Confirm \"%@\"?",
   "确认、启动并打开": "Confirm, Start, and Open",
   "确认下线": "Confirm Unpublish",
+  "确认全部替换": "Confirm Replace All",
   "确认创建仓库": "Confirm Repository Creation",
   "确认前不会改变 HEAD、索引、工作区或 stash；冲突时会停止并保留 sequencer 与恢复 stash。": "HEAD, the index, worktree, and stash remain unchanged until confirmation. Conflicts stop the operation while preserving the sequencer and recovery stash.",
   "确认危险操作": "Confirm Risky Action",
@@ -7886,6 +7901,7 @@
     "zh-Hans": "确认旧地址引用、aliases 或重定向策略。"
   },
   "确认更新 %lld 处引用": "Confirm %lld Reference Updates",
+  "确认替换": "Confirm Replacement",
   "确认清理孤立资源？": "Clean Up Orphan Assets?",
   "确认源码已协调": "Confirm Source Resolution",
   "确认移动": "Move",
@@ -8010,6 +8026,7 @@
     "en": "Site publishing configuration",
     "zh-Hans": "站点发布配置"
   },
+  "站点已切换，请重新打开模板选择。": "The site changed. Reopen the template picker.",
   "站点引擎与基本参数": "Site Engine and Basic Parameters",
   "站点或仓库在刷新期间发生变化，请重试。": "The site or repository changed during refresh. Try again.",
   "站点指标": "Site Metrics",
@@ -8059,6 +8076,7 @@
     "en": "Line %1$@: %2$@",
     "zh-Hans": "第 %1$@ 行：%2$@"
   },
+  "等待写入的文件及失败原因": "Pending files and reasons for failure",
   "等待合并": "Awaiting Merge",
   "等待恢复 stash": "Waiting to Restore Stash",
   "等待确认": "Awaiting Confirmation",
@@ -8278,7 +8296,6 @@
   "网站草稿": "Website Draft",
   "网站草稿同步确认": "Website Draft Sync Confirmation",
   "网站草稿，默认不参与批量发布": "Website draft; excluded from batch publishing by default",
-  "网站部署与文章页面需要继续验证。": "The website deployment and article page still need verification.",
   "网络代理 (Network Proxy)": "Network Proxy",
   "网页地址": "Web Page URL",
   "网页正文净化": "Web Content Cleaning",
@@ -8378,6 +8395,7 @@
     "en": "Comfortable",
     "zh-Hans": "舒适"
   },
+  "范围：%@；确认后会作为一次可撤销编辑写入正文。": "Scope: %@; after confirmation, this will be written to the body as one undoable edit.",
   "草稿": "Drafts",
   "草稿与版本": "Drafts and Versions",
   "草稿同步目标": "Draft Sync Target",
@@ -8517,6 +8535,7 @@
   "语音朗读选中内容": "Read Selected Content Aloud",
   "说明（可选）": "Description (Optional)",
   "请从顶部发布状态打开统一发布流程。": "Open the unified publishing flow from the publishing status at the top.",
+  "请修复保存位置或权限后重新检查。应用将保持打开。": "Fix the save location or permissions and check again. The app will remain open.",
   "请修复保存位置或权限后重试。应用将保持打开，避免丢失未保存修改。": "Fix the save location or permissions and try again. The app will remain open to avoid losing unsaved changes.",
   "请先为当前站点选择本地仓库。": "Choose a local repository for the current site first.",
   "请先为当前站点选择本地仓库，然后扫描仓库以识别启动命令。": {
@@ -8576,7 +8595,6 @@
   "请先配置 API 基础地址。配置完成后，应用会判断数据只发送到本机，还是需要第三方授权。": "Configure the API Base URL first. The app will then determine whether data stays on this Mac or requires third-party authorization.",
   "请先配置仓库 Owner/Namespace 和 Repo/Project，或扫描包含 origin 的站点仓库。": "Configure the repository Owner/Namespace and Repo/Project, or scan a site repository with an origin.",
   "请先重新扫描仓库，确认当前分支与 upstream。": "Rescan the repository and verify the current branch and upstream first.",
-  "请关闭确认页，刷新发布快照后重新审阅。": "Close this confirmation page, refresh the publishing snapshot, and review it again.",
   "请关闭面板并重新运行发布预检。": "Close this panel and run publish preflight again.",
   "请再次确认本地预览命令。": "Confirm the local preview command again.",
   "请在“模型与连接”中确认 ChatGPT 账户、内容授权和连接测试。": "Confirm the ChatGPT account, content authorization, and connection test under Model and Connection.",
@@ -8599,6 +8617,7 @@
     "en": "Drop a local file or folder.",
     "zh-Hans": "请拖入本机文件或文件夹。"
   },
+  "请检查 %d 处变化后确认。": "Review %d changes before confirming.",
   "请检查并确认完整源码；确认前不会加入发布事务。": "Review and confirm the full source. It will not be added to the publishing transaction until confirmed.",
   "请检查并确认最终源码；确认前不会应用或暂存。": "Review and confirm the final source. It will not be applied or staged until confirmed.",
   "请求": {
@@ -8864,17 +8883,9 @@
     "en": "%@ more excerpts",
     "zh-Hans": "还有 %@ 个片段"
   },
-  "还有 %@ 个相关片段，可在资料库中查看全部结果。": {
-    "en": "Additional related excerpts: %@. View all results in the knowledge base.",
-    "zh-Hans": "还有 %@ 个相关片段，可在资料库中查看全部结果。"
-  },
   "还有 %lld 个片段": {
     "en": "%lld more excerpts",
     "zh-Hans": "还有 %lld 个片段"
-  },
-  "还有 %lld 个相关片段，可在资料库中查看全部结果。": {
-    "en": "Additional related excerpts: %lld. View all results in the knowledge base.",
-    "zh-Hans": "还有 %lld 个相关片段，可在资料库中查看全部结果。"
   },
   "还没有其他文章链接到当前文章。": "No other articles link to the current article yet.",
   "还没有内容节奏": "No Content Cadence Yet",
@@ -8928,10 +8939,6 @@
   "这些内容来自上次异常结束前的编辑缓冲区。恢复已有草稿时，如果当前内容已经变化，会自动创建恢复副本。": {
     "en": "This content comes from the editing buffer saved before the app last exited unexpectedly. If an existing draft has changed, restoring it creates a recovery copy automatically.",
     "zh-Hans": "这些内容来自上次异常结束前的编辑缓冲区。恢复已有草稿时，如果当前内容已经变化，会自动创建恢复副本。"
-  },
-  "这些引用来自 Markdown 或正文 HTML；请打开对应文件修复路径。资源管理器不会自动改写文章。": {
-    "en": "These references come from Markdown or body HTML. Open the corresponding file to fix the path. The asset manager does not rewrite articles automatically.",
-    "zh-Hans": "这些引用来自 Markdown 或正文 HTML；请打开对应文件修复路径。资源管理器不会自动改写文章。"
   },
   "这些操作只处理图片资源；点击后会先预览影响的文章和图片，不会直接改动文件。": "These operations only process image resources. Each action previews the affected articles and images before making any file changes.",
   "这些未跟踪文件与远端内容及权限完全一致；软件会先建立并校验恢复备份。": "These untracked files exactly match the remote content and permissions. The app creates and verifies a recovery backup first.",
@@ -9073,6 +9080,8 @@
     "en": "Selection Tools",
     "zh-Hans": "选区工具"
   },
+  "选区已变化，请重新打开查找": "The selection changed. Reopen Find.",
+  "选区已变化，请重新打开查找。": "The selection changed. Reopen Find.",
   "选区整理成结构": "Turn a Selection into Structure",
   "选区润色改写": "Rewrite a Selection",
   "选择": "Choose",
@@ -9115,6 +9124,7 @@
   "选择导出来源": "Choose Export Source",
   "选择工作区备份": "Choose Workspace Backup",
   "选择工作台恢复文件": "Choose a Workbench Recovery File",
+  "选择并重试": "Choose and Retry",
   "选择开始方式": "Choose How to Start",
   "选择当前文章图片并发送给视觉模型": {
     "en": "Select images from the current article and send them to the vision model",
@@ -9173,9 +9183,11 @@
     "en": "Choose Diagnostics Export Location",
     "zh-Hans": "选择诊断包导出位置"
   },
+  "选择该站点的新项目根目录。随后会重试待写入草稿，外部修改不会被强制覆盖。": "Choose the new project root for this site. Pending drafts will then be retried; external changes will not be forcibly overwritten.",
   "选择资料导出文件夹": "Choose Knowledge Export Folder",
   "选择资料库备份": "Select Knowledge Library Backup",
   "选择迁移目的地": "Choose Migration Destination",
+  "选择需要修复的站点": "Choose a Site to Repair",
   "逐块协调": "Resolve by Hunk",
   "逐块协调 Front Matter 与正文，并通过 PR/MR 交付": "Resolve Front Matter and body hunks individually, then deliver through a PR/MR",
   "通用与外观": "General and Appearance",
@@ -9259,6 +9271,8 @@
     "en": "Rebuild Semantic Index",
     "zh-Hans": "重建语义索引"
   },
+  "重新保存": "Save Again",
+  "重新保存完成": "Save Completed",
   "重新保存当前工作台设置": "Save the current workbench settings again",
   "重新加载模型": "Reload Models",
   "重新同意并启用此 AI 服务": "Consent Again and Enable This AI Service",
@@ -9390,6 +9404,7 @@
   },
   "需要安装运行组件": "Runtime installation required",
   "需要手动处理": "Manual Action Required",
+  "需要更改项目目录的站点": "Site whose project folder needs to change",
   "需要确认本地预览命令后才能打开浏览器。": "Confirm the local preview command before opening the browser.",
   "需要配置": "Configuration Required",
   "需配置": "Needs Setup",
@@ -9401,6 +9416,9 @@
   },
   "项目保存失败": "Project Save Failed",
   "项目写入失败：%@": "Project write failed: %@",
+  "项目文件写入详情": "Project File Save Details",
+  "项目文件和工作台修改已保存。应用将保持打开。": "Project files and workspace changes have been saved. The app will remain open.",
+  "项目文件尚未写入": "Project files have not been saved",
   "顺序": "Order",
   "预览": {
     "en": "Preview",
@@ -9408,6 +9426,7 @@
   },
   "预览会转换文章头信息（Front Matter）、Slug、图片目标路径和重定向候选，但不会复制文件或访问网络。": "The preview converts article metadata (Front Matter), slugs, image destination paths, and redirect candidates without copying files or accessing the network.",
   "预览修改": "Preview Changes",
+  "预览全部替换": "Preview Replace All",
   "预览分支：%@": "Preview branch: %@",
   "预览差异": "Preview Diff",
   "预览已接受修改": {

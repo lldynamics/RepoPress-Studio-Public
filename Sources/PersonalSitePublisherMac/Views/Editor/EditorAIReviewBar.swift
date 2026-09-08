@@ -33,6 +33,7 @@ struct EditorAIReviewBar: View {
   let hunk: EditorAIReviewHunkPresentation
   let position: (current: Int, total: Int)
   let decision: AIStructuredEditDecision
+  let decisionSummary: AIInlineStructuredEditDecisionSummary
   let onPrevious: () -> Void
   let onNext: () -> Void
   let onAccept: () -> Void
@@ -58,6 +59,9 @@ struct EditorAIReviewBar: View {
       Label(decisionLabel, systemImage: decisionIcon)
         .font(.caption.weight(.medium))
         .foregroundStyle(decisionColor)
+      Text("待处理 \(decisionSummary.pending.formatted()) · 已接受 \(decisionSummary.accepted.formatted()) · 已拒绝 \(decisionSummary.rejected.formatted())")
+        .font(.caption2)
+        .foregroundStyle(.secondary)
       Text(hunk.originalText)
         .font(.caption.monospaced())
         .strikethrough()

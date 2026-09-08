@@ -250,32 +250,58 @@ public struct BatchPublishPlanService: Sendable {
     profile: SiteProfile,
     repositoryReport: RepositoryScanReport?
   ) -> BatchPublishPlan {
-    var items = drafts.map { draft in
-      let package = publishPackageBuilder.build(draft: draft, profile: profile)
-      let preview = localPublishPreviewService.preview(package: package, profile: profile)
-      var issues = preflightService.run(
-        draft: draft,
-        allDrafts: drafts,
-        profile: profile,
-        repositoryReport: repositoryReport
-      )
-      issues.append(
-        contentsOf: remotePublishRiskService.issues(
-          package: package, repositoryReport: repositoryReport))
+    planCheckingCancellation(
+      drafts: drafts, profile: profile, repositoryReport: repositoryReport,
+      checkCancellation: {}
+    )
+  }
 
-      return BatchPublishPlanItem(
-        draftID: draft.id,
-        draftTitle: draft.title,
-        markdownPath: package.markdownPath,
-        readiness: readiness(preflightIssues: issues, preview: preview),
-        package: package,
-        preview: preview,
-        preflightIssues: issues,
-        isSiteDraft: draft.draft
-      )
+  func planCheckingCancellation(
+    drafts: [ArticleDraft],
+    profile: SiteProfile,
+    repositoryReport: RepositoryScanReport?,
+    checkCancellation: () throws -> Void
+  ) rethrows -> BatchPublishPlan {
+    try checkCancellation()
+    let duplicateIndex = PreflightDuplicateIndex(drafts: drafts, profile: profile)
+    try checkCancellation()
+    var items = try drafts.map { draft in
+      try checkCancellation()
+      // Foundation's temporary strings and formatters must not accumulate for
+      // an entire site's plan on a long-lived cooperative worker thread.
+      return try autoreleasepool {
+        let package = publishPackageBuilder.build(draft: draft, profile: profile)
+        try checkCancellation()
+        let preview = localPublishPreviewService.preview(package: package, profile: profile)
+        try checkCancellation()
+        var issues = preflightService.run(
+          draft: draft,
+          allDrafts: drafts,
+          profile: profile,
+          repositoryReport: repositoryReport,
+          duplicateIndex: duplicateIndex
+        )
+        try checkCancellation()
+        issues.append(
+          contentsOf: remotePublishRiskService.issues(
+            package: package, repositoryReport: repositoryReport))
+
+        return BatchPublishPlanItem(
+          draftID: draft.id,
+          draftTitle: draft.title,
+          markdownPath: package.markdownPath,
+          readiness: readiness(preflightIssues: issues, preview: preview),
+          package: package,
+          preview: preview,
+          preflightIssues: issues,
+          isSiteDraft: draft.draft
+        )
+      }
     }
 
-    applyBatchDestinationConflicts(to: &items)
+    try checkCancellation()
+    try applyBatchDestinationConflicts(to: &items, checkCancellation: checkCancellation)
+    try checkCancellation()
 
     return BatchPublishPlan(profileID: profile.id, siteName: profile.name, items: items)
   }
@@ -290,10 +316,37 @@ public struct BatchPublishPlanService: Sendable {
     }.value
   }
 
-  private func applyBatchDestinationConflicts(to items: inout [BatchPublishPlanItem]) {
+  /// A cancelled refresh never produces a partially checked, executable plan.
+  public func planCancellableAsync(
+    drafts: [ArticleDraft],
+    profile: SiteProfile,
+    repositoryReport: RepositoryScanReport?
+  ) async throws -> BatchPublishPlan {
+    try Task.checkCancellation()
+    let worker = Task.detached(priority: .utility) {
+      try planCheckingCancellation(
+        drafts: drafts, profile: profile, repositoryReport: repositoryReport,
+        checkCancellation: { try Task.checkCancellation() }
+      )
+    }
+    return try await withTaskCancellationHandler {
+      let plan = try await worker.value
+      try Task.checkCancellation()
+      return plan
+    } onCancel: {
+      worker.cancel()
+    }
+  }
+
+  private func applyBatchDestinationConflicts(
+    to items: inout [BatchPublishPlanItem],
+    checkCancellation: () throws -> Void
+  ) rethrows {
     var occurrencesByPath: [String: [(itemIndex: Int, file: PublishPackageFile)]] = [:]
     for (itemIndex, item) in items.enumerated() {
+      try checkCancellation()
       for file in item.package.files {
+        try checkCancellation()
         let path = file.repositoryPath.normalizedRelativePath()
         guard !path.isEmpty else { continue }
         occurrencesByPath[path, default: []].append((itemIndex, file))
@@ -302,13 +355,15 @@ public struct BatchPublishPlanService: Sendable {
 
     var conflictsByItemIndex: [Int: Set<String>] = [:]
     for (path, occurrences) in occurrencesByPath where occurrences.count > 1 {
+      try checkCancellation()
       guard let first = occurrences.first else { continue }
       let ownerCount = Set(occurrences.map(\.itemIndex)).count
       let hasCrossDraftMarkdownOwnership =
         ownerCount > 1
         && occurrences.contains { $0.file.kind == .markdown }
-      let payloadsMatch = occurrences.dropFirst().allSatisfy {
-        publishFilesHaveEquivalentPayload(first.file, $0.file)
+      let payloadsMatch = try occurrences.dropFirst().allSatisfy {
+        try checkCancellation()
+        return publishFilesHaveEquivalentPayload(first.file, $0.file)
       }
       let expectedVersions = Set(
         occurrences.compactMap { $0.file.expectedRemoteSHA?.trimmedForPublishing.nilIfEmpty }
@@ -317,11 +372,13 @@ public struct BatchPublishPlanService: Sendable {
         continue
       }
       for occurrence in occurrences {
+        try checkCancellation()
         conflictsByItemIndex[occurrence.itemIndex, default: []].insert(path)
       }
     }
 
     for (itemIndex, paths) in conflictsByItemIndex {
+      try checkCancellation()
       let sortedPaths = paths.sorted()
       items[itemIndex].preflightIssues.append(
         PreflightIssue(

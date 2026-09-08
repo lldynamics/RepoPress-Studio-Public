@@ -553,7 +553,8 @@ extension WorkbenchAIStore {
     guard
       let operationID = beginAIChatOperation(
         statusMessage: "AI 正在回复...",
-        ownerToken: ownerToken
+        ownerToken: ownerToken,
+        target: .generalAIConversation(conversation.id)
       )
     else {
       return nil
@@ -1348,7 +1349,8 @@ extension WorkbenchAIStore {
       let operationID = beginAIChatOperation(
         statusMessage: "AI 正在重新生成回复...",
         clearsManualRetryState: false,
-        ownerToken: ownerToken
+        ownerToken: ownerToken,
+        target: .generalAIConversation(conversation.id)
       )
     else {
       return nil

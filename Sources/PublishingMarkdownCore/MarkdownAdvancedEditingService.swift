@@ -29,6 +29,18 @@ public enum MarkdownLineEditingCommand: Equatable, Sendable {
 public struct MarkdownAdvancedEditingService: Sendable {
   public init() {}
 
+  /// Returns whether an input can change automatic-pairing state. Editors use
+  /// this inexpensive gate before materializing their document body.
+  public static func isAutomaticPairingCandidate(_ typedText: String) -> Bool {
+    switch typedText {
+    case "(", "[", "{", "（", "【", "《", "\"", "'", "“", "‘", "`",
+      ")", "]", "}", "）", "】", "》", "”", "’", "```", "~~~":
+      true
+    default:
+      false
+    }
+  }
+
   public func formattingEdit(
     in markdown: String,
     selectedRange: NSRange,
@@ -125,6 +137,7 @@ public struct MarkdownAdvancedEditingService: Sendable {
     selectedRange: NSRange,
     typedText: String
   ) -> MarkdownSmartEdit? {
+    guard Self.isAutomaticPairingCandidate(typedText) else { return nil }
     let source = markdown as NSString
     guard let selection = clamped(selectedRange, length: source.length) else {
       return nil

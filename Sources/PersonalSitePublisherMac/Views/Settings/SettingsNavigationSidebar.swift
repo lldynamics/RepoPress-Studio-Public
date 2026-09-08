@@ -1,6 +1,9 @@
 import SwiftUI
 
 struct SettingsNavigationList: View {
+  @SceneStorage(SettingsNavigationExpansionState.sceneStorageKey)
+  private var expandedTabIDsRawValue = SettingsNavigationExpansionState.defaultRawValue
+
   let searchText: String
   let searchItems: [SettingsSearchItem]
   @Binding var selection: SettingsRoute
@@ -10,7 +13,7 @@ struct SettingsNavigationList: View {
   let selectSearchItem: (SettingsSearchItem) -> Void
 
   var body: some View {
-    List(selection: $selection) {
+    List(selection: visibleSelection) {
       if isSearching {
         searchResults
       } else {
@@ -26,6 +29,16 @@ struct SettingsNavigationList: View {
 
   private var isSearching: Bool {
     !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+  }
+
+  private var visibleSelection: Binding<SettingsRoute> {
+    Binding(
+      get: {
+        SettingsNavigationExpansionState(rawValue: expandedTabIDsRawValue)
+          .visibleSelection(for: selection)
+      },
+      set: { selection = $0 }
+    )
   }
 
   @ViewBuilder
@@ -90,20 +103,32 @@ struct SettingsNavigationList: View {
   ) -> some View {
     Section {
       ForEach(tabs) { tab in
-        pageRow(tab)
-
-        if selection.tab == tab {
-          let subsections = SettingsSubsection.sections(for: tab)
-          if subsections.count > 1 {
-            ForEach(subsections) { subsection in
-              subsectionRow(subsection)
-            }
+        DisclosureGroup(isExpanded: expansionBinding(for: tab)) {
+          ForEach(SettingsSubsection.sections(for: tab)) { subsection in
+            subsectionRow(subsection)
           }
+        } label: {
+          pageRow(tab)
         }
+        .tag(SettingsRoute.tab(tab))
       }
     } header: {
       sidebarSectionHeader(title)
     }
+  }
+
+  private func expansionBinding(for tab: SettingsTab) -> Binding<Bool> {
+    Binding(
+      get: {
+        SettingsNavigationExpansionState(rawValue: expandedTabIDsRawValue)
+          .contains(tab)
+      },
+      set: { isExpanded in
+        var expansionState = SettingsNavigationExpansionState(rawValue: expandedTabIDsRawValue)
+        expansionState.setExpanded(isExpanded, for: tab)
+        expandedTabIDsRawValue = expansionState.rawValue
+      }
+    )
   }
 
   private func pageRow(_ tab: SettingsTab) -> some View {
@@ -136,7 +161,6 @@ struct SettingsNavigationList: View {
     .padding(.vertical, rowVerticalPadding)
     .frame(maxWidth: .infinity, alignment: .leading)
     .contentShape(Rectangle())
-    .tag(SettingsRoute.tab(tab))
     .accessibilityElement(children: .ignore)
     .accessibilityLabel(tab.title)
     .accessibilityValue(
@@ -189,26 +213,24 @@ struct SettingsDetailHeader: View {
         HStack(spacing: WorkbenchSpacing.card) {
           Text(tab.title)
             .font(.title2.weight(.semibold))
+            .layoutPriority(1)
             .accessibilityAddTraits(.isHeader)
             .accessibilityIdentifier("settings-detail-title")
 
           scopeBadge
         }
 
-        Label(subsection.title, systemImage: subsection.systemImage)
-          .font(.headline)
-
-        Text(subsection.subtitle)
+        Text(tab.subtitle)
           .font(.callout)
           .foregroundStyle(.secondary)
-          .lineLimit(2)
           .fixedSize(horizontal: false, vertical: true)
+          .layoutPriority(1)
       }
 
       Spacer(minLength: WorkbenchSpacing.content)
     }
     .padding(.horizontal, WorkbenchSpacing.spacious)
-    .padding(.vertical, WorkbenchSpacing.content)
+    .padding(.vertical, WorkbenchSpacing.card)
     .frame(maxWidth: .infinity, minHeight: minimumHeight, alignment: .leading)
     .background(Color(nsColor: .windowBackgroundColor))
   }
@@ -223,6 +245,7 @@ struct SettingsDetailHeader: View {
     .padding(.horizontal, 8)
     .padding(.vertical, 5)
     .background(Color.primary.opacity(0.06), in: Capsule())
+    .fixedSize(horizontal: true, vertical: false)
     .accessibilityLabel(
       tab.scopePresentation.accessibilityDescription
     )

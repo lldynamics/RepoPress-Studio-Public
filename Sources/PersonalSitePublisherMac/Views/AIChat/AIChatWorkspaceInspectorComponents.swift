@@ -2,6 +2,55 @@ import Foundation
 import PublishingWorkbenchCore
 import SwiftUI
 
+/// Keeps the composer selection tied to attachments that still belong to the
+/// current draft. The caller owns the conversation scope; this policy must not
+/// decide which other conversation's ephemeral selection to discard.
+enum AIChatImageAttachmentSelectionPolicy {
+  static func validSelection(
+    _ selectedIDs: Set<UUID>,
+    availableAttachmentIDs: Set<UUID>
+  ) -> Set<UUID> {
+    selectedIDs.intersection(availableAttachmentIDs)
+  }
+
+  static func conversationID(
+    selectedConversationID: UUID?,
+    currentDraftConversationIDs: Set<UUID>,
+    fallbackConversationID: UUID
+  ) -> UUID {
+    guard
+      let selectedConversationID,
+      currentDraftConversationIDs.contains(selectedConversationID)
+    else {
+      return fallbackConversationID
+    }
+    return selectedConversationID
+  }
+
+  /// Uses attachment metadata only so opening the menu never synchronously
+  /// reads a large local file. The send path still verifies the file itself.
+  static func knownFailureReason(for attachment: DraftAttachment) -> String? {
+    let filename = attachment.sourceFilePath ?? attachment.originalFilename
+    let mimeType: String
+    switch URL(fileURLWithPath: filename).pathExtension.lowercased() {
+    case "jpg", "jpeg": mimeType = "image/jpeg"
+    case "png": mimeType = "image/png"
+    case "webp": mimeType = "image/webp"
+    case "gif": mimeType = "image/gif"
+    default: mimeType = "application/octet-stream"
+    }
+    guard AIPublishingChatImageAttachmentPresentation.supportedMIMETypes.contains(mimeType) else {
+      return String(localized: "格式不支持（仅支持 PNG、JPEG、GIF 或 WebP）")
+    }
+    guard AIPublishingChatImageAttachmentPresentation.isWithinAttachmentSizeLimit(attachment.byteSize) else {
+      return String(
+        localized: "超过 \(AIPublishingChatImageAttachmentPresentation.attachmentSizeLimitText()) 限制"
+      )
+    }
+    return nil
+  }
+}
+
 struct AIChatGeneralKeyAvailabilityRefreshKey: Equatable {
   let connectionProfileID: UUID?
   let providerConfig: AIProviderConfig?
@@ -25,6 +74,7 @@ struct AIChatContextInspectorView: View {
   /// the scroll position. A newly selected conversation starts pinned again.
   @State var isPinnedToLatestMessage = true
   @State var draftDiffPreview: AIChatDraftDiffPreview?
+  @State var pendingCitationBacklinkRetry: AIChatCitationBacklinkRetry?
   @State var visibleMessageLimit = 8
   @State var messageAnchorToPreserve: AIPublishingChatMessage.ID?
   @State var isPartialRetryConfirmationPresented = false
@@ -62,6 +112,27 @@ struct AIChatContextInspectorView: View {
   private var inspectorContent: some View {
     VStack(spacing: 0) {
       inspectorHeader
+
+      if let retry = pendingCitationBacklinkRetry,
+        retry.matches(
+          draftID: inspectorDraft?.id,
+          conversationID: state.conversation?.conversationID
+        )
+      {
+        HStack(spacing: 8) {
+          Label(String(localized: "正文已更新，资料引用尚未保存"), systemImage: "exclamationmark.triangle")
+            .font(.workbenchSupporting)
+            .foregroundStyle(.secondary)
+          Spacer(minLength: 6)
+          Button(String(localized: "重试保存")) {
+            retryCitationBacklinks(retry)
+          }
+          .controlSize(.small)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 9)
+        .background(WorkbenchTheme.warning.opacity(0.1))
+      }
 
       Divider()
 
@@ -143,6 +214,7 @@ struct AIChatContextInspectorView: View {
     inspectorContent
       .onAppear {
         ensureInspectorSurfaceConversationSelection()
+        pruneInvalidChatImageAttachmentSelection()
         refreshDisplayedGeneralKeyAvailability()
         synchronizeChatDraftWithSelection()
         applyPendingQuickPrompt()
@@ -155,6 +227,7 @@ struct AIChatContextInspectorView: View {
         }
         ensureInspectorSurfaceConversationSelection()
         synchronizeChatDraftWithSelection()
+        pruneInvalidChatImageAttachmentSelection()
       }
       .onDisappear {
         handleInspectorSurfaceDisappearance()
@@ -165,6 +238,10 @@ struct AIChatContextInspectorView: View {
         }
         ensureInspectorSurfaceConversationSelection()
         synchronizeChatDraftWithSelection()
+        pruneInvalidChatImageAttachmentSelection()
+      }
+      .onChange(of: inspectorDraft?.attachments) { _, _ in
+        pruneInvalidChatImageAttachmentSelection()
       }
       .onChange(of: ai.pendingQuickPrompt?.id) { _, _ in
         applyPendingQuickPrompt()
@@ -180,6 +257,7 @@ struct AIChatContextInspectorView: View {
       }
       .onChange(of: ai.chatContextMode) { _, mode in
         synchronizeInspectorConversationForContextMode(mode)
+        pruneInvalidChatImageAttachmentSelection()
         refreshDisplayedGeneralKeyAvailability()
       }
       .onChange(of: generalKeyAvailabilityRefreshKey) { _, _ in

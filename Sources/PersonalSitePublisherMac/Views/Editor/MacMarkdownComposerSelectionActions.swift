@@ -10,10 +10,12 @@ struct SelectionActionBar: View {
   let isSelectionAIActionRunning: Bool
   let activeSelectionActionName: String?
   let hasLatestAssistantMessage: Bool
+  let hasPendingCitationBacklinkRetry: Bool
   let selectionActionMessage: String
   let onSelectSelectionAction: (AIPublishingActionKind) -> Void
   let onSelectConvergedSelectionAction: (AIPublishingActionConvergence) -> Void
   let onApplyLatestAIReply: () -> Void
+  let onRetryCitationBacklink: () -> Void
   let onInsertImages: () -> Void
   let onCheckSelectedPublicRisk: () -> Void
   let onOpenAITemplateLibrary: () -> Void
@@ -60,6 +62,15 @@ struct SelectionActionBar: View {
         Label("应用 AI 回复", systemImage: "text.badge.checkmark")
       }
       .disabled(!hasLatestAssistantMessage)
+
+      if hasPendingCitationBacklinkRetry {
+        Button {
+          onRetryCitationBacklink()
+        } label: {
+          Label(String(localized: "重试资料引用"), systemImage: "arrow.clockwise")
+        }
+        .help(String(localized: "只重试保存当前文章的资料引用，不会再次修改正文。"))
+      }
 
       Button {
         onInsertImages()

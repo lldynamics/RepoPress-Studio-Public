@@ -70,11 +70,15 @@ extension WorkbenchStore {
   }
 
   @discardableResult
-  public func publishSelectedDraftOnlineUsingPreferredStrategy() async
+  public func publishSelectedDraftOnlineUsingPreferredStrategy(
+    expectedReview: SinglePublishReviewExpectation? = nil
+  ) async
     -> RemoteRepositoryPublishResult?
   {
     refreshSelectedDraftPublishingState()
-    return await publishingStore.publishSelectedDraftOnlineUsingPreferredStrategy(store: self)
+    return await publishingStore.publishSelectedDraftOnlineUsingPreferredStrategy(
+      store: self, expectedReview: expectedReview
+    )
   }
 
   /// Refreshes local remote-tracking metadata and performs an authoritative,
@@ -259,12 +263,17 @@ extension WorkbenchStore {
     mode: RemoteRepositoryPublishMode,
     draftIDs: [UUID]
   ) {
-    if publishingStore.markDraftsAsPublishedIfDirectRemoteCommit(
-      mode: mode,
-      draftIDs: draftIDs
-    ) {
-      invalidateDraftDerivedCaches()
+    guard mode == .directCommit else { return }
+    let previousDrafts = drafts
+    for record in releaseRecords where record.kind == .remoteDirectCommit {
+      guard let profile = profiles.first(where: { $0.id == record.siteProfileID }),
+        let snapshot = deploymentStatusSnapshot(for: record)
+      else { continue }
+      markVerifiedArticlesAsPublished(
+        record: record, snapshot: snapshot, profile: profile,
+        allowedDraftIDs: Set(draftIDs))
     }
+    if drafts != previousDrafts { save() }
   }
 
   public func recordRemoteRepositoryPublishInAutoSync(

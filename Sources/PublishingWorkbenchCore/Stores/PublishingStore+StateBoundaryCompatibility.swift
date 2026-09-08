@@ -197,6 +197,11 @@ extension PublishingStore {
     set { siteStarter.pushResult = newValue }
   }
 
+  public internal(set) var siteStarterProgress: SiteStarterProgress? {
+    get { siteStarter.progress }
+    set { siteStarter.progress = newValue }
+  }
+
   public internal(set) var isSiteStarterOperationRunning: Bool {
     get { siteStarter.isOperationRunning }
     set { siteStarter.isOperationRunning = newValue }

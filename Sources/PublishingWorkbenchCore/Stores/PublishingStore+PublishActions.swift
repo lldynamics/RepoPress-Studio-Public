@@ -1117,30 +1117,6 @@ extension PublishingStore {
     }
   }
 
-  @discardableResult
-  public func markDraftsAsPublishedIfDirectRemoteCommit(
-    mode: RemoteRepositoryPublishMode,
-    draftIDs: [UUID]
-  ) -> Bool {
-    guard mode == .directCommit else { return false }
-    let now = Date()
-    let updatedDrafts = drafts.map { draft in
-      guard draftIDs.contains(draft.id), !draft.draft else { return draft }
-      var updatedDraft = draft
-      updatedDraft.status = .published
-      updatedDraft.markUpdated(at: now, replacing: draft)
-      return updatedDraft
-    }
-    let didChange = updatedDrafts != drafts
-    if didChange {
-      drafts = updatedDrafts
-    }
-    for draftID in draftIDs {
-      removeDraftPublishPreviewSnapshot(for: draftID)
-    }
-    return didChange
-  }
-
   func markDraftsRepositorySyncState(
     _ state: DraftRepositorySyncState,
     draftIDs: Set<UUID>

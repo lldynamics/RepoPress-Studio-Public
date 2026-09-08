@@ -59,6 +59,7 @@ extension WorkbenchStore {
     publishingStore.siteStarterImportResult
   }
   public var siteStarterPushResult: SiteStarterPushResult? { publishingStore.siteStarterPushResult }
+  public var siteStarterProgress: SiteStarterProgress? { publishingStore.siteStarterProgress }
   public var isSiteStarterOperationRunning: Bool { publishingStore.isSiteStarterOperationRunning }
   public var preflightIssues: [PreflightIssue] { publishingStore.preflightIssues }
   public var isInspectorPresented: Bool { publishingStore.isInspectorPresented }
@@ -73,7 +74,8 @@ extension WorkbenchStore {
   public var lastSaveStatus: String { persistenceStore.status }
   public var hasUnsavedChanges: Bool { persistenceStore.hasUnsavedChanges }
   public var lastSaveError: String? {
-    draftRecoveryJournalErrorMessage ?? persistenceStore.lastSaveError
+    draftRecoveryJournalErrorMessage ?? siteDraftFileFlushErrorMessage
+      ?? persistenceStore.lastSaveError
   }
   public var persistenceRecoveryMessage: String? { persistenceStore.recoveryMessage }
   public var isPersistenceRecoveryWriteProtected: Bool { persistenceStore.isRecoveryWriteProtected }

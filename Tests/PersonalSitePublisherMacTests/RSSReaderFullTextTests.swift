@@ -1,11 +1,69 @@
 import Combine
 import Foundation
+import SQLite3
 import XCTest
 @testable import PersonalSitePublisherMac
 @testable import PublishingWorkbenchCore
 
 @MainActor
 final class RSSReaderFullTextTests: XCTestCase {
+  func testCurrentFullTextRemainsReadableWhenCacheWriteFails() async throws {
+    let rootURL = FileManager.default.temporaryDirectory
+      .appendingPathComponent("rss-full-text-write-failure-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let fileURL = rootURL.appendingPathComponent("reader.sqlite")
+    let feed = RSSFeed(
+      id: UUID(), title: "缓存失败订阅", url: try XCTUnwrap(URL(string: "https://example.com/feed.xml"))
+    )
+    let sourceURL = try XCTUnwrap(URL(string: "https://example.com/current"))
+    let article = RSSArticle(
+      id: "cache-write-failure", feedID: feed.id, title: "当前文章", link: sourceURL,
+      summaryHTML: "<p>摘要</p>"
+    )
+    do {
+      let database = try RSSReaderDatabase(fileURL: fileURL)
+      try database.upsertFeed(feed)
+      try database.upsertArticles([article])
+    }
+    try executeSQLite(
+      """
+      CREATE TRIGGER reject_full_text_cache_write
+      BEFORE INSERT ON rss_article_full_text
+      BEGIN
+        SELECT RAISE(ABORT, 'cache write intentionally rejected');
+      END;
+      """,
+      at: fileURL
+    )
+    let store = RSSReaderStore(fileURL: fileURL)
+    let state = RSSReaderPresentationState()
+    let record = RSSArticleFullTextRecord.ready(
+      articleID: article.id,
+      contentHTML: "<p>已抽取正文</p>",
+      plainText: "已抽取正文",
+      sourceURL: sourceURL,
+      confidence: 0.9
+    )
+
+    let current = await state.persistAndConfirmCurrentFullTextRecord(
+      record, requestedArticle: article, store: store
+    )
+
+    XCTAssertEqual(current?.id, article.id)
+    XCTAssertEqual(current?.link, sourceURL)
+    XCTAssertNil(try store.fullTextRecord(articleID: article.id))
+
+    var movedArticle = article
+    movedArticle.link = try XCTUnwrap(URL(string: "https://example.com/moved"))
+    let movedDatabase = try RSSReaderDatabase(fileURL: fileURL)
+    try movedDatabase.upsertArticles([movedArticle])
+    let rejected = await state.persistAndConfirmCurrentFullTextRecord(
+      record, requestedArticle: article, store: store
+    )
+    XCTAssertNil(rejected)
+  }
+
   func testPresentationStateFullTextToggling() async {
     let state = RSSReaderPresentationState()
     let article = RSSArticle(
@@ -205,5 +263,25 @@ final class RSSReaderFullTextTests: XCTestCase {
       )
     )
     XCTAssertEqual(state.effectiveArticle(for: article).contentHTML, "<p>上一次成功正文</p>")
+  }
+
+  private func executeSQLite(_ sql: String, at fileURL: URL) throws {
+    var handle: OpaquePointer?
+    guard sqlite3_open_v2(
+      fileURL.path, &handle, SQLITE_OPEN_READWRITE | SQLITE_OPEN_FULLMUTEX, nil
+    ) == SQLITE_OK, let handle else {
+      if let handle { sqlite3_close(handle) }
+      throw NSError(domain: "RSSReaderFullTextTests", code: 1)
+    }
+    defer { sqlite3_close(handle) }
+    var errorMessage: UnsafeMutablePointer<CChar>?
+    guard sqlite3_exec(handle, sql, nil, nil, &errorMessage) == SQLITE_OK else {
+      let message = errorMessage.map { String(cString: $0) } ?? String(cString: sqlite3_errmsg(handle))
+      sqlite3_free(errorMessage)
+      throw NSError(
+        domain: "RSSReaderFullTextTests", code: 2,
+        userInfo: [NSLocalizedDescriptionKey: message]
+      )
+    }
   }
 }

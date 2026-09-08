@@ -69,6 +69,13 @@ public struct WorkbenchAgentKnowledgeReadResult:
 {
   public let documentID: UUID
   public let title: String
+  /// A searched chunk is an explicit, stable position within the document.
+  public let chunkID: UUID?
+  public let locator: String?
+  /// Zero-based offset of this returned page within the selected text.
+  public let cursor: Int
+  /// Pass this value back to continue the same bounded read, if present.
+  public let nextCursor: Int?
   public let text: String
   public let isTruncated: Bool
 
@@ -79,11 +86,19 @@ public struct WorkbenchAgentKnowledgeReadResult:
   public init(
     documentID: UUID,
     title: String,
+    chunkID: UUID? = nil,
+    locator: String? = nil,
+    cursor: Int = 0,
+    nextCursor: Int? = nil,
     text: String,
     isTruncated: Bool
   ) {
     self.documentID = documentID
     self.title = title
+    self.chunkID = chunkID
+    self.locator = locator
+    self.cursor = cursor
+    self.nextCursor = nextCursor
     self.text = text
     self.isTruncated = isTruncated
   }
@@ -104,6 +119,7 @@ public struct WorkbenchAgentKnowledgeService: Sendable {
   public static let maximumSourceURLLength = 2_048
   public static let maximumSearchOutputCharacters = 8_192
   public static let maximumReadCharacters = 24_000
+  public static let maximumReadCursor = 1_000_000
 
   private let library: KnowledgeLibraryService
 
@@ -161,8 +177,23 @@ public struct WorkbenchAgentKnowledgeService: Sendable {
   /// remote-AI-allowed document.  It never reads the original blob or source
   /// URL and never exposes a filesystem path.
   public func read(documentID: UUID) async throws -> WorkbenchAgentKnowledgeReadResult {
+    try await read(documentID: documentID, cursor: 0, maximumCharacters: Self.maximumReadCharacters)
+  }
+
+  /// Reads a bounded page of either a searched chunk or the normalized
+  /// document. The permission check is repeated after every local read so a
+  /// revoked authorization cannot be bypassed by a previously returned cursor.
+  public func read(
+    documentID: UUID,
+    chunkID: UUID? = nil,
+    cursor: Int = 0,
+    maximumCharacters: Int = Self.maximumReadCharacters
+  ) async throws -> WorkbenchAgentKnowledgeReadResult {
     do {
       try checkCancellation()
+      guard cursor >= 0, cursor <= Self.maximumReadCursor else {
+        throw WorkbenchAgentKnowledgeError.unavailable
+      }
       guard let document = try library.document(id: documentID) else {
         throw WorkbenchAgentKnowledgeError.missingDocument
       }
@@ -171,7 +202,20 @@ public struct WorkbenchAgentKnowledgeService: Sendable {
       }
       try checkCancellation()
 
-      let normalizedText = try await readOnlyNormalizedText(documentID: documentID)
+      let selectedChunk = try await readOnlyChunk(
+        documentID: documentID, revisionID: document.currentRevisionID, chunkID: chunkID
+      )
+      guard chunkID == nil || selectedChunk != nil else {
+        // Do not silently fall back to the full document when a stale or
+        // cross-document chunk locator is supplied.
+        throw WorkbenchAgentKnowledgeError.missingDocument
+      }
+      let normalizedText: String
+      if let selectedChunk {
+        normalizedText = selectedChunk.content
+      } else {
+        normalizedText = try await readOnlyNormalizedText(revisionID: document.currentRevisionID)
+      }
       try checkCancellation()
       guard let currentDocument = try library.document(id: documentID) else {
         throw WorkbenchAgentKnowledgeError.missingDocument
@@ -179,12 +223,27 @@ public struct WorkbenchAgentKnowledgeService: Sendable {
       guard !currentDocument.isArchived, currentDocument.allowsRemoteAIUse else {
         throw WorkbenchAgentKnowledgeError.notAllowed
       }
-      let text = String(normalizedText.prefix(Self.maximumReadCharacters))
+      guard currentDocument.currentRevisionID == document.currentRevisionID else {
+        throw WorkbenchAgentKnowledgeError.missingDocument
+      }
+      let boundedCursor = min(cursor, normalizedText.count)
+      let pageLength = min(Self.maximumReadCharacters, max(1, maximumCharacters))
+      let text = String(normalizedText.dropFirst(boundedCursor).prefix(pageLength))
+      let nextCursor =
+        boundedCursor + text.count < normalizedText.count
+        ? boundedCursor + text.count
+        : nil
       return WorkbenchAgentKnowledgeReadResult(
         documentID: documentID,
         title: bounded(currentDocument.title, maximumLength: Self.maximumTitleLength),
+        chunkID: selectedChunk?.id,
+        locator: selectedChunk.flatMap { chunk in
+          chunk.locator?.nilIfEmpty ?? chunk.headingPath?.nilIfEmpty
+        }.map { bounded($0, maximumLength: Self.maximumLocatorLength) },
+        cursor: boundedCursor,
+        nextCursor: nextCursor,
         text: text,
-        isTruncated: normalizedText.count > Self.maximumReadCharacters
+        isTruncated: nextCursor != nil
       )
     } catch let error as WorkbenchAgentKnowledgeError {
       throw error
@@ -232,13 +291,38 @@ public struct WorkbenchAgentKnowledgeService: Sendable {
     }
   }
 
-  private func readOnlyNormalizedText(documentID: UUID) async throws -> String {
+  private func readOnlyNormalizedText(revisionID: UUID) async throws -> String {
     let library = self.library
     let task = Task.detached(priority: .userInitiated) {
       try Task.checkCancellation()
-      let text = try library.normalizedText(documentID: documentID)
+      let text = try library.normalizedText(revisionID: revisionID)
       try Task.checkCancellation()
       return text
+    }
+    return try await withTaskCancellationHandler {
+      try await task.value
+    } onCancel: {
+      task.cancel()
+    }
+  }
+
+  private func readOnlyChunk(
+    documentID: UUID,
+    revisionID: UUID,
+    chunkID: UUID?
+  ) async throws -> KnowledgeChunk? {
+    guard let chunkID else { return nil }
+    let library = self.library
+    let task = Task.detached(priority: .userInitiated) {
+      try Task.checkCancellation()
+      // Reading an explicitly authorized chunk does not require permission to
+      // build a local semantic index. Bind the direct lookup to the exact
+      // document revision instead of scanning semantic-index-eligible records.
+      let chunk = try library.database().chunk(
+        id: chunkID, documentID: documentID, revisionID: revisionID
+      )
+      try Task.checkCancellation()
+      return chunk
     }
     return try await withTaskCancellationHandler {
       try await task.value

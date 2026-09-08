@@ -28,7 +28,8 @@ struct SettingsView: View {
   @State private var healthDestination: SettingsConfigurationHealthDestination?
   @State private var healthNavigationRequestID = UUID()
   @State private var pendingSiteKind: SiteKind?
-  @State private var searchText = ""
+  @State private var searchSession = SettingsSearchSession()
+  @FocusState private var isSearchFocused: Bool
   @State private var subsectionAnchorFrames: [SettingsSubsection: CGRect] = [:]
   @State private var detailScrollObservation = 0
   @State private var detailScrollIsAtBottom = false
@@ -106,6 +107,15 @@ struct SettingsView: View {
     .onChange(of: autoRunPreflight) { _, newValue in
       store.setAutomaticallyRefreshPreflightOnEdit(newValue)
     }
+    .task(id: searchSession.highlight?.id) {
+      guard let highlightID = searchSession.highlight?.id else { return }
+      do {
+        try await Task.sleep(for: .seconds(3))
+        searchSession.dismissHighlight(id: highlightID)
+      } catch {
+        // A newer search result or navigation cancels the old cue.
+      }
+    }
     .sheet(item: $pendingSiteKind) { siteKind in
       SiteKindChangeConfirmationView(
         currentProfile: store.activeProfile,
@@ -146,7 +156,14 @@ struct SettingsView: View {
           lastSaveError: persistenceStatus.lastSaveError,
           isRecoveryWriteProtected: persistenceStatus.isRecoveryWriteProtected,
           recoveryMessage: persistenceStatus.recoveryMessage,
-          retry: store.save
+          retry: {
+            Task { await store.retryPendingProjectFileWrites() }
+          }
+        )
+        ProjectFileSaveRecoveryBanner(
+          summary: persistenceStatus.siteDraftFileSaveFailureSummary,
+          isRetrying: persistenceStatus.isRetryingProjectFileWrites,
+          recover: { ProjectFileSaveRecoveryPanel.present(for: store) }
         )
       }
       .background(Color(nsColor: .windowBackgroundColor))
@@ -156,7 +173,7 @@ struct SettingsView: View {
   }
 
   private var matchingSearchItems: [SettingsSearchItem] {
-    SettingsSearchIndex.search(query: searchText)
+    SettingsSearchIndex.search(query: searchSession.query)
   }
 
   private var shouldShowSaveStatusBar: Bool {
@@ -207,11 +224,28 @@ struct SettingsView: View {
         .padding(.horizontal, WorkbenchSpacing.content)
         .padding(.bottom, WorkbenchSpacing.card)
 
+      if searchSession.canReturnToResults {
+        Button {
+          searchSession.showResults()
+          isSearchFocused = true
+        } label: {
+          Label("返回搜索结果", systemImage: "arrow.uturn.backward")
+            .font(.callout)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(Color.accentColor)
+        .padding(.horizontal, WorkbenchSpacing.content)
+        .padding(.bottom, WorkbenchSpacing.card)
+        .accessibilityIdentifier("settings-return-to-search-results")
+      }
+
       Divider()
         .padding(.horizontal, WorkbenchSpacing.content)
 
       SettingsNavigationList(
-        searchText: searchText,
+        searchText: searchSession.sidebarQuery,
         searchItems: matchingSearchItems,
         selection: settingsRouteSelection,
         tabsNeedingAttention: tabsNeedingAttention,
@@ -231,15 +265,22 @@ struct SettingsView: View {
         .foregroundStyle(.secondary)
         .accessibilityHidden(true)
 
-      TextField("搜索所有设置", text: $searchText)
-        .font(.callout)
-        .textFieldStyle(.plain)
-        .accessibilityLabel("搜索所有设置")
-        .accessibilityIdentifier("settings-search-field")
+      TextField(
+        "搜索所有设置",
+        text: Binding(
+          get: { searchSession.query },
+          set: { searchSession.updateQuery($0) }
+        )
+      )
+      .font(.callout)
+      .textFieldStyle(.plain)
+      .focused($isSearchFocused)
+      .accessibilityLabel("搜索所有设置")
+      .accessibilityIdentifier("settings-search-field")
 
-      if !searchText.isEmpty {
+      if !searchSession.query.isEmpty {
         Button {
-          searchText = ""
+          searchSession.updateQuery("")
         } label: {
           Image(systemName: "xmark.circle.fill")
             .foregroundStyle(.secondary)
@@ -247,6 +288,7 @@ struct SettingsView: View {
         .buttonStyle(.plain)
         .help("清除搜索")
         .accessibilityLabel("清除设置搜索")
+        .accessibilityIdentifier("settings-clear-search")
       }
     }
     .padding(.horizontal, WorkbenchSpacing.card)
@@ -273,7 +315,8 @@ struct SettingsView: View {
       let route = subsection.map(SettingsRoute.subsection) ?? .tab(item.tab)
       selectSettingsDestination(.tab(item.tab), healthDestination: nil, targetRoute: route)
     }
-    searchText = ""
+    searchSession.open(item)
+    isSearchFocused = false
   }
 
   private var tabsNeedingAttention: Set<SettingsTab> {
@@ -378,6 +421,12 @@ struct SettingsView: View {
         .frame(maxWidth: selectedSettingsTab.contentMaxWidth, maxHeight: .infinity)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .coordinateSpace(name: SettingsSubsectionAnchor.coordinateSpaceName)
+        .overlay {
+          SettingsSearchHighlightOverlay(
+            highlight: searchSession.highlight,
+            anchorFrames: subsectionAnchorFrames
+          )
+        }
         .scrollIndicators(.hidden)
         .onPreferenceChange(SettingsSubsectionAnchorFramePreferenceKey.self) { frames in
           subsectionAnchorFrames = frames
@@ -560,6 +609,10 @@ struct SettingsView: View {
   }
 
   private func selectRoute(_ route: SettingsRoute) {
+    searchSession.dismissHighlight()
+    if selectedRoute.tab != route.tab {
+      subsectionAnchorFrames = [:]
+    }
     selectedRoute = route
     requestDetailScroll(to: route.subsection)
   }
@@ -691,7 +744,7 @@ enum SettingsWorkspaceLayout {
       primarySidebarWidth: compactPrimaryWidth,
       workspaceHeaderHeight: usesCompactVerticalMetrics ? 48 : 52,
       searchFieldHeight: usesCompactVerticalMetrics ? 32 : 36,
-      pageHeaderHeight: usesCompactVerticalMetrics ? 88 : 96,
+      pageHeaderHeight: usesCompactVerticalMetrics ? 68 : 76,
       sidebarRowVerticalPadding: usesCompactVerticalMetrics ? 4 : 6,
       subsectionRowVerticalPadding: usesCompactVerticalMetrics ? 3 : 5
     )

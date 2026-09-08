@@ -49,6 +49,13 @@ final class RSSReaderPresentationState: ObservableObject {
     let readingMinutes: Int
   }
 
+  private struct FullTextRequestKey: Hashable {
+    let articleID: String
+    let sourceURL: String
+    let forceRefresh: Bool
+    let allowsPrivateNetworkAccess: Bool
+  }
+
   static let articlePageSize = 120
 
   @Published var selectedScope: RSSArticleScope? = .all
@@ -101,6 +108,8 @@ final class RSSReaderPresentationState: ObservableObject {
   private var readerMetricsLRU: [String] = []
   private var fullTextArticleLRU: [String] = []
   private var fullTextErrorLRU: [String] = []
+  private var fetchingFullTextRequestKeys = Set<FullTextRequestKey>()
+  private var latestFullTextRequestIDByArticleID: [String: UUID] = [:]
   private var sidebarCountsCache: (revision: UInt64, counts: RSSFeedSidebarCounts)?
 
   func matchingArticles(in store: RSSReaderStore) -> [RSSArticleHeader] {
@@ -466,7 +475,9 @@ final class RSSReaderPresentationState: ObservableObject {
   }
 
   public func effectiveArticle(for article: RSSArticle) -> RSSArticle {
-    if showingFullTextIDs.contains(article.id), let fullText = fullTextArticles[article.id] {
+    if showingFullTextIDs.contains(article.id),
+       let fullText = fullTextArticles[article.id],
+       fullText.link?.absoluteString == article.link?.absoluteString {
       return fullText
     }
     return article
@@ -535,7 +546,15 @@ final class RSSReaderPresentationState: ObservableObject {
     forceRefresh: Bool = false
   ) async {
     let articleID = article.id
-    guard !fetchingFullTextIDs.contains(articleID) else { return }
+    let allowsPrivateNetworkAccess = store?.privateNetworkAccessEnabled ?? false
+    let requestKey = FullTextRequestKey(
+      articleID: articleID,
+      sourceURL: article.link?.absoluteString ?? "",
+      forceRefresh: forceRefresh,
+      allowsPrivateNetworkAccess: allowsPrivateNetworkAccess
+    )
+    guard !fetchingFullTextRequestKeys.contains(requestKey) else { return }
+    let requestID = UUID()
 
     var cachedRecord: RSSArticleFullTextRecord?
     if let memoryRecord = fullTextRecords[articleID] {
@@ -563,34 +582,48 @@ final class RSSReaderPresentationState: ObservableObject {
       return
     }
 
+    latestFullTextRequestIDByArticleID[articleID] = requestID
+    fetchingFullTextRequestKeys.insert(requestKey)
     fetchingFullTextIDs.insert(articleID)
     fullTextErrorByArticleID.removeValue(forKey: articleID)
     fullTextErrorLRU.removeAll { $0 == articleID }
-    defer { fetchingFullTextIDs.remove(articleID) }
+    defer {
+      fetchingFullTextRequestKeys.remove(requestKey)
+      if latestFullTextRequestIDByArticleID[articleID] == requestID {
+        latestFullTextRequestIDByArticleID.removeValue(forKey: articleID)
+      }
+      if !fetchingFullTextRequestKeys.contains(where: { $0.articleID == articleID }) {
+        fetchingFullTextIDs.remove(articleID)
+      }
+    }
 
     do {
       let record = try await fullTextRequestBroker.fetch(
         article: article,
         cachedRecord: cachedRecord,
-        allowsPrivateNetworkAccess: store?.privateNetworkAccessEnabled ?? false,
+        allowsPrivateNetworkAccess: allowsPrivateNetworkAccess,
         forceRefresh: forceRefresh,
         service: fullTextService
       )
       if record.status == .ready {
-        let fullTextArticle = fullTextService.articleByApplying(record, to: article)
+        guard let currentArticle = await persistAndConfirmCurrentFullTextRecord(
+          record,
+          requestedArticle: article,
+          store: store
+        ) else { return }
+        guard isCurrentFullTextRequest(articleID: articleID, requestID: requestID) else { return }
+        let fullTextArticle = fullTextService.articleByApplying(record, to: currentArticle)
         let bodyMetrics = await Task.detached(priority: .userInitiated) {
           RSSArticleHTMLRenderer.bodyMetrics(article: fullTextArticle)
         }.value
-        cacheFullText(record, for: article)
+        guard isCurrentFullTextRequest(articleID: articleID, requestID: requestID) else { return }
+        cacheFullText(record, for: currentArticle)
         cacheReaderMetrics(
           for: fullTextArticle,
           hasRenderableBody: bodyMetrics.hasRenderableBody,
           readingUnits: bodyMetrics.readingUnits
         )
         showingFullTextIDs.insert(articleID)
-        // Reading proceeds immediately; SQLite/FTS persistence stays off the
-        // main actor and may finish just after the reader updates.
-        if let store { try? await store.saveFullTextRecordAsync(record) }
         return
       }
 
@@ -602,17 +635,27 @@ final class RSSReaderPresentationState: ObservableObject {
           preserving: cachedRecord,
           afterFailedAttempt: record
         )
-        cacheFullText(preservedRecord, for: article)
+        guard let currentArticle = await persistAndConfirmCurrentFullTextRecord(
+          preservedRecord,
+          requestedArticle: article,
+          store: store
+        ) else { return }
+        guard isCurrentFullTextRequest(articleID: articleID, requestID: requestID) else { return }
+        cacheFullText(preservedRecord, for: currentArticle)
         showingFullTextIDs.insert(articleID)
-        if let store { try? await store.saveFullTextRecordAsync(preservedRecord) }
       }
+      if cachedRecord?.status != .ready {
+        guard await persistAndConfirmCurrentFullTextRecord(
+          record,
+          requestedArticle: article,
+          store: store
+        ) != nil else { return }
+      }
+      guard isCurrentFullTextRequest(articleID: articleID, requestID: requestID) else { return }
       recordFullTextError(
         record.failureMessage ?? String(localized: "提取结果未通过正文质量校验。"),
         articleID: articleID
       )
-      if let store, cachedRecord?.status != .ready {
-        try? await store.saveFullTextRecordAsync(record)
-      }
     } catch {
       let failedRecord = fullTextService.failureRecord(
         for: article,
@@ -624,12 +667,22 @@ final class RSSReaderPresentationState: ObservableObject {
           preserving: cachedRecord,
           afterFailedAttempt: failedRecord
         )
-        cacheFullText(preservedRecord, for: article)
+        guard let currentArticle = await persistAndConfirmCurrentFullTextRecord(
+          preservedRecord,
+          requestedArticle: article,
+          store: store
+        ) else { return }
+        guard isCurrentFullTextRequest(articleID: articleID, requestID: requestID) else { return }
+        cacheFullText(preservedRecord, for: currentArticle)
         showingFullTextIDs.insert(articleID)
-        if let store { try? await store.saveFullTextRecordAsync(preservedRecord) }
-      } else if let store {
-        try? await store.saveFullTextRecordAsync(failedRecord)
+      } else {
+        guard await persistAndConfirmCurrentFullTextRecord(
+          failedRecord,
+          requestedArticle: article,
+          store: store
+        ) != nil else { return }
       }
+      guard isCurrentFullTextRequest(articleID: articleID, requestID: requestID) else { return }
       recordFullTextError(error.localizedDescription, articleID: articleID)
     }
   }
@@ -650,6 +703,35 @@ final class RSSReaderPresentationState: ObservableObject {
         }
       }
     }
+  }
+
+  /// The database check is transactional with the write, while this second
+  /// read rejects a result whose article URL changed before it reached the
+  /// reader projection.
+  func persistAndConfirmCurrentFullTextRecord(
+    _ record: RSSArticleFullTextRecord,
+    requestedArticle: RSSArticle,
+    store: RSSReaderStore?
+  ) async -> RSSArticle? {
+    guard Self.record(record, matches: requestedArticle) else { return nil }
+    guard let store else { return requestedArticle }
+    do {
+      // `false` means the database observed a different current link in the
+      // same transaction, which is a stale result and must never be applied.
+      guard try await store.saveFullTextRecordIfCurrentSourceAsync(record) else { return nil }
+    } catch {
+      // A cache-write failure does not make a successfully extracted page
+      // unsafe to read. Continue only through the same current-link check
+      // used after a successful persistence boundary.
+    }
+    guard let currentArticle = try? await store.loadArticle(id: record.articleID),
+          Self.record(record, matches: currentArticle)
+    else { return nil }
+    return currentArticle
+  }
+
+  private func isCurrentFullTextRequest(articleID: String, requestID: UUID) -> Bool {
+    latestFullTextRequestIDByArticleID[articleID] == requestID
   }
 
   private func cacheFullText(

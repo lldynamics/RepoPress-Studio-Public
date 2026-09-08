@@ -1,4 +1,5 @@
 import Foundation
+import PublishingWorkbenchCore
 
 enum PublishScope: String, CaseIterable, Identifiable {
   case repository
@@ -6,6 +7,10 @@ enum PublishScope: String, CaseIterable, Identifiable {
   case currentArticle
 
   var id: String { rawValue }
+
+  static func initialScope(for section: WorkspaceSection) -> Self {
+    section == .writing ? .currentArticle : .repository
+  }
   var title: String {
     switch self {
     case .repository: String(localized: "整个仓库")

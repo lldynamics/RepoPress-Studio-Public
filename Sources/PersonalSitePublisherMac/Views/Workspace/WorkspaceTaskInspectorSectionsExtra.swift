@@ -93,6 +93,8 @@ extension PreflightIssue {
 }
 
 struct ArticleInspectorTabs: View {
+  @Environment(\.publishReadinessNavigationRequest) private var publishNavigationRequest
+
   @Binding var selectedTab: ArticleInspectorTab
   @Binding var draft: ArticleDraft
   let store: WorkbenchStore
@@ -140,6 +142,14 @@ struct ArticleInspectorTabs: View {
         }
         .onChange(of: imageWorkbench.imageInspectorFocusRequest?.id) { _, _ in
           scrollToFocusedImage(using: proxy)
+        }
+        .task(id: publishNavigationRequest?.id) {
+          guard let request = publishNavigationRequest, request.draftID == draft.id,
+            selectedTab == .metadata,
+            case .metadata(let field) = request.target else { return }
+          await Task.yield()
+          guard !Task.isCancelled else { return }
+          proxy.scrollTo(PublishMetadataFieldAnchor.id(for: field), anchor: .center)
         }
       }
 
@@ -274,7 +284,15 @@ struct ArticleInspectorTabs: View {
       )
       KnowledgeContextRecommendationCard(
         draft: draft,
-        store: store
+        store: store,
+        onOpenSource: { result in
+          store.knowledge.selectSearchResult(result)
+          store.selectSection(.library)
+        },
+        onSearch: { query in
+          store.knowledge.updateSearchText(query)
+          store.selectSection(.library)
+        }
       )
       KnowledgeArticleBacklinksSection(
         draft: draft,

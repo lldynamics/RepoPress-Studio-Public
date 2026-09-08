@@ -68,6 +68,43 @@ final class LocalContentImportServiceTests: XCTestCase {
     XCTAssertEqual(toml.status, .draft)
   }
 
+  func testParseProjectDocumentRetainsOriginalAndRenderedDigestsSeparately() throws {
+    let rootURL = try temporaryDirectory()
+    var profile = SiteProfile.defaultProfile
+    profile.contentRoot = "content"
+    profile.markdownPathPattern = "content/posts/{slug}.md"
+    let document = """
+    ---
+    title: Original document
+    slug: original-document
+    tags: [Swift]
+
+    ---
+
+    Body
+    """
+
+    let draft = try LocalContentImportService(isContentIndexEnabled: false).parseProjectDocument(
+      document,
+      repositoryPath: "content/posts/original-document.md",
+      rootURL: rootURL,
+      profile: profile
+    )
+
+    XCTAssertEqual(
+      draft.repositoryBinding?.projectFileContentDigest,
+      ArticleDraft.repositoryDocumentDigest(document)
+    )
+    XCTAssertEqual(
+      draft.repositoryBinding?.projectFileRenderedContentDigest,
+      draft.renderedRepositoryContentDigest(profile: profile)
+    )
+    XCTAssertNotEqual(
+      draft.repositoryBinding?.projectFileContentDigest,
+      draft.repositoryBinding?.projectFileRenderedContentDigest
+    )
+  }
+
   func testImportsPrivateDirectoryAndFrontMatterVisibility() throws {
     let rootURL = try temporaryDirectory()
     try FileManager.default.createDirectory(

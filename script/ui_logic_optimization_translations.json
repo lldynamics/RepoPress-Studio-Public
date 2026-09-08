@@ -1,0 +1,20 @@
+{
+  "%@。推荐原因：%@": "%@. Recommended because: %@",
+  "不相关": "Not relevant",
+  "另外 %lld 个片段": "%lld more excerpts",
+  "另有 %lld 个同源相关片段，可在资料库中查看全部结果。": "There are %lld more excerpts from these sources. View all results in the library.",
+  "只重试保存当前文章的资料引用，不会再次修改正文。": "Retry saving references for this article without changing its body again.",
+  "只隐藏本次查询中的这份资料，不会影响其他文章或查询。": "Hide this source for this query only. Other articles and queries are unaffected.",
+  "同一篇文章一次只能保留一个待应用替换；已替换该文章先前的预览。": "Only one pending replacement is supported per article. The previous preview for this article was replaced.",
+  "无法读取待审阅的附件，请检查文件后重新准备发布。": "The attachments could not be read for review. Check the files and prepare the publication again.",
+  "正在重试保存本篇文章的资料引用…": "Retrying reference saving for this article…",
+  "正文已更新，但资料引用记录未保存；可在上方重试。": "The body was updated, but references were not saved. Retry above.",
+  "正文已更新，但资料引用记录未保存；可重试。": "The body was updated, but references were not saved. You can retry.",
+  "正文已更新，正在保存资料引用…": "The body was updated. Saving references…",
+  "正文已更新，资料引用尚未保存": "Body updated; references not yet saved",
+  "请在原记录核对分支与发布方式，重新审阅后执行；未自动提交或推送。": "Check the branch and publishing method in the original record, then review before proceeding. No automatic commit or push was performed.",
+  "资料引用已保存。": "References saved.",
+  "进行中 %@ · 失败 %@ · 等待处理 %@": "Running %@ · Failed %@ · Awaiting action %@",
+  "重试保存": "Retry saving",
+  "重试资料引用": "Retry references"
+}

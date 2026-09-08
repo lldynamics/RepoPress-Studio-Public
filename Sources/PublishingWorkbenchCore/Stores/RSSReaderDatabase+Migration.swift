@@ -138,6 +138,27 @@ extension RSSReaderDatabase {
             SELECT id, title, summary_html, content_html FROM rss_articles;
             """)
         }
+        if version < 7 {
+          // Rebuild rather than preserving historical FTS rows: v6 indexed a
+          // ready extraction by article ID alone, which could retain text from
+          // an earlier URL when a publisher updated a stable GUID in place.
+          try executeUnlocked(
+            """
+            DELETE FROM rss_articles_fts;
+            INSERT INTO rss_articles_fts(article_id, title, summary, content)
+            SELECT article.id, article.title, article.summary_html,
+                   article.content_html || CASE
+                     WHEN full_text.status = 'ready'
+                          AND full_text.plain_text != ''
+                          AND full_text.source_url = article.link
+                       THEN ' ' || full_text.plain_text
+                     ELSE ''
+                   END
+            FROM rss_articles AS article
+            LEFT JOIN rss_article_full_text AS full_text
+              ON full_text.article_id = article.id;
+            """)
+        }
         try validateSchemaContractUnlocked()
         try validateMigrationIntegrityUnlocked()
         try executeUnlocked("PRAGMA user_version = \(Self.currentSchemaVersion);")

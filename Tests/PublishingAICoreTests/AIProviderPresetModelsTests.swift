@@ -63,35 +63,36 @@ final class AIProviderPresetModelsTests: XCTestCase {
   }
 
   func testProviderPresetDefaultsAndDisplayNamesRemainStable() {
-    let expectations: [(
-      preset: AIProviderPreset,
-      baseURL: String,
-      model: String
-    )] = [
-      (
-        .codexAppServer,
-        "http://127.0.0.1/__repopress_codex_app_server__",
-        "codex-default"
-      ),
-      (.openAICompatible, "https://api.openai.com/v1", "gpt-4.1-mini"),
-      (.deepSeek, "https://api.deepseek.com", "deepseek-v4-flash"),
-      (.anthropic, "https://api.anthropic.com/v1", "claude-sonnet-4-6"),
-      (
-        .gemini,
-        "https://generativelanguage.googleapis.com/v1beta/openai",
-        "gemini-2.0-flash"
-      ),
-      (
-        .siliconFlow,
-        "https://api.siliconflow.cn/v1",
-        "deepseek-ai/DeepSeek-V3"
-      ),
-      (.moonshot, "https://api.moonshot.cn/v1", "moonshot-v1-auto"),
-      (.zhipu, "https://open.bigmodel.cn/api/paas/v4", "glm-4-flash"),
-      (.openRouter, "https://openrouter.ai/api/v1", ""),
-      (.local, "http://127.0.0.1:11434/v1", "llama3.1"),
-      (.custom, "", ""),
-    ]
+    let expectations:
+      [(
+        preset: AIProviderPreset,
+        baseURL: String,
+        model: String
+      )] = [
+        (
+          .codexAppServer,
+          "http://127.0.0.1/__repopress_codex_app_server__",
+          "codex-default"
+        ),
+        (.openAICompatible, "https://api.openai.com/v1", "gpt-4.1-mini"),
+        (.deepSeek, "https://api.deepseek.com", "deepseek-v4-flash"),
+        (.anthropic, "https://api.anthropic.com/v1", "claude-sonnet-4-6"),
+        (
+          .gemini,
+          "https://generativelanguage.googleapis.com/v1beta/openai",
+          "gemini-3.6-flash"
+        ),
+        (
+          .siliconFlow,
+          "https://api.siliconflow.cn/v1",
+          "deepseek-ai/DeepSeek-V3"
+        ),
+        (.moonshot, "https://api.moonshot.cn/v1", "moonshot-v1-auto"),
+        (.zhipu, "https://open.bigmodel.cn/api/paas/v4", "glm-4-flash"),
+        (.openRouter, "https://openrouter.ai/api/v1", ""),
+        (.local, "http://127.0.0.1:11434/v1", "llama3.1"),
+        (.custom, "", ""),
+      ]
 
     for expectation in expectations {
       XCTAssertEqual(expectation.preset.defaultBaseURL, expectation.baseURL)

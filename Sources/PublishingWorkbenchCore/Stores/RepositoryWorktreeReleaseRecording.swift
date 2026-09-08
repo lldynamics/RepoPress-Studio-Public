@@ -19,6 +19,9 @@ extension ReleaseRecord {
       draftTitle: target?.title,
       draftSummary: target?.summary,
       draftCoverAltText: target?.coverAltText,
+      publicPath: target?.publicPath,
+      publicURLText: target?.publicURLText,
+      sourceDocumentDigest: target?.sourceDocumentDigest,
       markdownPath: target?.markdownPath,
       changedPaths: result.committedPaths,
       repositoryProvider: profile.repositoryProvider,
@@ -72,10 +75,16 @@ extension RepositoryWorktreeArticleVerificationTarget {
       ArticleDraft.repositoryDocumentDigest(document)
         == draft.renderedRepositoryContentDigest(profile: profile)
     else { return nil }
+    let publicPath = SiteArticleURLResolver().relativeWebPath(
+      from: path, profile: profile, permalink: draft.permalink)
     return Self(
       draftID: draft.id, title: draft.title, summary: draft.summary,
       coverAltText: draft.attachments.first(where: { $0.id == draft.coverAttachmentID })?.altText,
-      markdownPath: path
+      markdownPath: path,
+      publicPath: publicPath,
+      publicURLText: DeploymentStatusService().publicArticleURL(
+        profile: profile, publicPath: publicPath),
+      sourceDocumentDigest: ArticleDraft.repositoryDocumentDigest(document)
     )
   }
 }

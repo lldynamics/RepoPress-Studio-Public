@@ -15,7 +15,7 @@ struct MetadataColumn: View {
   private let aiChatOperationSession: AIChatSurfaceOperationSession
   let prioritizesChecks: Bool
   let onResetWidth: (() -> Void)?
-  @StateObject private var articlePresentation = ArticleInspectorPresentationState()
+  @ObservedObject private var articlePresentation: ArticleInspectorPresentationState
 
   init(
     store: WorkbenchStore,
@@ -29,6 +29,7 @@ struct MetadataColumn: View {
     knowledgeInspectorPresentation: Binding<KnowledgeLibraryInspectorPresentationState>,
     aiChatOperationSession: AIChatSurfaceOperationSession,
     prioritizesChecks: Bool = false,
+    articlePresentation: ArticleInspectorPresentationState,
     onResetWidth: (() -> Void)? = nil
   ) {
     self.store = store
@@ -42,6 +43,7 @@ struct MetadataColumn: View {
     _aiChatSurfaceState = aiChatSurfaceState
     _knowledgeInspectorPresentation = knowledgeInspectorPresentation
     self.aiChatOperationSession = aiChatOperationSession
+    _articlePresentation = ObservedObject(wrappedValue: articlePresentation)
     self.prioritizesChecks = prioritizesChecks
     self.onResetWidth = onResetWidth
   }

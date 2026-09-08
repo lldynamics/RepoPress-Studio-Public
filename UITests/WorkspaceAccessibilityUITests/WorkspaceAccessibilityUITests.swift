@@ -116,6 +116,102 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
     )
   }
 
+  func testSheetNavigationKeepsThePresentingWindowDraftAfterDismissal() throws {
+    launchApplication(surface: "sync-api-publish")
+    let window = application.windows.firstMatch
+    select("workspace-sidebar-writing", revealing: "writing-draft-list", in: window)
+
+    let firstArticle = window.staticTexts["RepoPress Studio 发布流程"]
+    XCTAssertTrue(firstArticle.waitForExistence(timeout: 10))
+    firstArticle.click()
+    let editor = window.descendants(matching: .any)
+      .matching(identifier: "markdown-document-editor")
+      .firstMatch
+    XCTAssertTrue(editor.waitForExistence(timeout: 10))
+    let originalBody = try XCTUnwrap(editor.value as? String)
+
+    application.typeKey("p", modifierFlags: [.command])
+    let palette = element(identifier: "workspace-command-palette")
+    XCTAssertTrue(palette.waitForExistence(timeout: 10))
+    let paletteQueryField = palette.textFields.firstMatch
+    XCTAssertTrue(paletteQueryField.waitForExistence(timeout: 5))
+    paletteQueryField.click()
+    paletteQueryField.typeText("新建文章")
+    let createDraft = palette.descendants(matching: .any)
+      .matching(identifier: "workspace-command-palette-result-command:automation:createDraft")
+      .firstMatch
+    XCTAssertTrue(createDraft.waitForExistence(timeout: 10))
+    createDraft.click()
+    assertDisappears(palette)
+    XCTAssertEqual(
+      XCTWaiter.wait(
+        for: [
+          XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "value != %@", originalBody),
+            object: editor
+          )
+        ],
+        timeout: 10
+      ),
+      .completed,
+      "A draft created in the palette sheet must remain selected after its parent window regains focus."
+    )
+
+    // Start over with a known article, then exercise the sheet result path.
+    firstArticle.click()
+    XCTAssertEqual(
+      XCTWaiter.wait(
+        for: [
+          XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "value == %@", originalBody),
+            object: editor
+          )
+        ],
+        timeout: 10
+      ),
+      .completed
+    )
+    application.typeKey("f", modifierFlags: [.option, .command])
+    // macOS exposes the NavigationStack as a native sheet; its outer SwiftUI
+    // identifier is not necessarily represented in the accessibility tree.
+    let search = window.sheets.firstMatch
+    XCTAssertTrue(search.waitForExistence(timeout: 10))
+    let queryField = search.textFields["搜索文章或输入结构化条件"]
+    XCTAssertTrue(queryField.waitForExistence(timeout: 5))
+    queryField.click()
+    queryField.typeText("客户复盘")
+    let open = search.buttons["打开所选结果"]
+    XCTAssertTrue(open.waitForExistence(timeout: 10))
+    XCTAssertEqual(
+      XCTWaiter.wait(
+        for: [
+          XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "enabled == true"),
+            object: open
+          )
+        ],
+        timeout: 10
+      ),
+      .completed,
+      "The filtered fixture result must finish its asynchronous search before opening."
+    )
+    open.click()
+    assertDisappears(search)
+    XCTAssertEqual(
+      XCTWaiter.wait(
+        for: [
+          XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "value != %@", originalBody),
+            object: editor
+          )
+        ],
+        timeout: 10
+      ),
+      .completed,
+      "Opening a full-text result must update the presenting window before the sheet closes."
+    )
+  }
+
   /// Focused responsive/accessibility smoke: this deliberately uses the
   /// smallest supported window and a large Dynamic Type size, then exercises
   /// the existing editor keyboard path. It is not a substitute for a manual
@@ -247,6 +343,121 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
       1,
       "The non-screenshot launch regression must keep one main application window."
     )
+  }
+
+  /// The PR lane deliberately keeps this to one isolated fixture: it proves
+  /// that article navigation remains local to each WindowGroup instance while
+  /// the privacy-wide Quick Hide masks both, then stops at final confirmation.
+  func testPRSmokeKeepsWindowsIsolatedAndCancelsPublishConfirmation() throws {
+    launchApplication(surface: "sync-api-publish")
+
+    let initialWindow = application.windows.firstMatch
+    XCTAssertTrue(initialWindow.waitForExistence(timeout: 10))
+    let firstWindowIdentifier = initialWindow.identifier
+    XCTAssertTrue(
+      firstWindowIdentifier.hasPrefix("workbench-capture-"),
+      "The fixture must expose a window instance identity.")
+    let firstWindow = application.windows.matching(identifier: firstWindowIdentifier).firstMatch
+    select("workspace-sidebar-writing", revealing: "writing-draft-list", in: firstWindow)
+    let firstArticle = firstWindow.staticTexts["RepoPress Studio 发布流程"]
+    XCTAssertTrue(firstArticle.waitForExistence(timeout: 10))
+    firstArticle.click()
+    let firstEditor = firstWindow.descendants(matching: .any)
+      .matching(identifier: "markdown-document-editor")
+      .firstMatch
+    XCTAssertTrue(firstEditor.waitForExistence(timeout: 10))
+    let firstEditorValue = try XCTUnwrap(firstEditor.value as? String)
+
+    application.typeKey("n", modifierFlags: [.command, .shift])
+    let secondWindowDeadline = Date().addingTimeInterval(10)
+    while application.windows.count < 2 && Date() < secondWindowDeadline {
+      RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+    }
+    XCTAssertEqual(
+      application.windows.count, 2, "Shift-Command-N must create one additional workbench window.")
+    let secondWindow = try XCTUnwrap(
+      application.windows.allElementsBoundByIndex.first(where: {
+        !$0.identifier.isEmpty && $0.identifier != firstWindowIdentifier
+      }),
+      "The second workbench window did not retain a distinct identity."
+    )
+    secondWindow.click()
+    select("workspace-sidebar-writing", revealing: "writing-draft-list", in: secondWindow)
+    let secondArticle = secondWindow.staticTexts["私密客户复盘草稿"]
+    XCTAssertTrue(secondArticle.waitForExistence(timeout: 10))
+    secondArticle.click()
+    let secondEditor = secondWindow.descendants(matching: .any)
+      .matching(identifier: "markdown-document-editor")
+      .firstMatch
+    XCTAssertTrue(secondEditor.waitForExistence(timeout: 10))
+    XCTAssertNotEqual(
+      secondEditor.value as? String,
+      firstEditorValue,
+      "Selecting an article in the second window must not replace the first window's document."
+    )
+    XCTAssertEqual(
+      firstEditor.value as? String,
+      firstEditorValue,
+      "The first window must keep its article after the second window changes selection."
+    )
+
+    secondWindow.click()
+    application.typeKey("l", modifierFlags: [.control, .command])
+    let secondQuickHide = secondWindow.descendants(matching: .any)
+      .matching(identifier: "quick-hide-overlay")
+      .firstMatch
+    XCTAssertTrue(secondQuickHide.waitForExistence(timeout: 10))
+    XCTAssertTrue(
+      firstWindow.descendants(matching: .any)
+        .matching(identifier: "quick-hide-overlay")
+        .firstMatch.waitForExistence(timeout: 10),
+      "Quick Hide must mask every workbench window because privacy state is shared."
+    )
+    application.typeKey(XCUIKeyboardKey.return.rawValue, modifierFlags: [])
+    assertDisappears(secondQuickHide)
+    assertDisappears(
+      firstWindow.descendants(matching: .any)
+        .matching(identifier: "quick-hide-overlay")
+        .firstMatch
+    )
+
+    firstWindow.click()
+    select("workspace-sidebar-sync", revealing: "repository-workspace", in: firstWindow)
+    let preparePublish = firstWindow.descendants(matching: .any)
+      .matching(identifier: "workspace-prepare-publish")
+      .firstMatch
+    XCTAssertTrue(preparePublish.waitForExistence(timeout: 10))
+    preparePublish.click()
+    let scopePicker = firstWindow.descendants(matching: .any)
+      .matching(identifier: "publish-drawer-scope")
+      .firstMatch
+    XCTAssertTrue(scopePicker.waitForExistence(timeout: 10))
+    let currentArticleScope = scopePicker.descendants(matching: .any)
+      .matching(NSPredicate(format: "label == %@", "当前文章"))
+      .firstMatch
+    XCTAssertTrue(currentArticleScope.waitForExistence(timeout: 5))
+    currentArticleScope.click()
+    let publishCurrent = firstWindow.descendants(matching: .any)
+      .matching(identifier: "publish-drawer-action-publish-current")
+      .firstMatch
+    XCTAssertTrue(publishCurrent.waitForExistence(timeout: 10))
+    XCTAssertTrue(
+      publishCurrent.isEnabled, "The fixture must reach a review-only publish confirmation.")
+    publishCurrent.click()
+
+    let confirmation = application.sheets.firstMatch
+    XCTAssertTrue(confirmation.waitForExistence(timeout: 10))
+    let cancel = confirmation.buttons["取消"]
+    XCTAssertTrue(cancel.waitForExistence(timeout: 5))
+    cancel.click()
+    assertDisappears(
+      confirmation,
+      "Cancelling the publish confirmation must close it before any publish is started.")
+
+    let screenshot = XCTAttachment(screenshot: application.screenshot())
+    screenshot.name = "pr-isolated-window-smoke"
+    screenshot.lifetime = .keepAlways
+    add(screenshot)
   }
 
   func testKnowledgeDetailIdentifiersRemainUniqueAndActionSpecific() throws {
@@ -649,6 +860,121 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
     ] {
       assertUniqueIdentifier(identifier)
     }
+  }
+
+  func testImageWorkbenchReturnsToWritingInThePresentingWindow() throws {
+    launchApplication(surface: "sync-api-publish")
+    let firstWindowIdentifier = application.windows.firstMatch.identifier
+    // firstMatch is a live query: opening B can reorder it to point at B.
+    // Keep A's identity fixed throughout this two-window interaction.
+    let firstWindow = application.windows.matching(identifier: firstWindowIdentifier).firstMatch
+    XCTAssertTrue(firstWindowIdentifier.hasPrefix("workbench-capture-"))
+
+    select("workspace-sidebar-writing", revealing: "writing-draft-list", in: firstWindow)
+    let firstArticle = firstWindow.staticTexts["RepoPress Studio 发布流程"]
+    XCTAssertTrue(firstArticle.waitForExistence(timeout: 10))
+    firstArticle.click()
+    let firstEditor = firstWindow.descendants(matching: .any)
+      .matching(identifier: "markdown-document-editor")
+      .firstMatch
+    XCTAssertTrue(firstEditor.waitForExistence(timeout: 10))
+    let firstEditorValue = try XCTUnwrap(firstEditor.value as? String)
+
+    select("workspace-sidebar-sync", revealing: "repository-workspace", in: firstWindow)
+    select("repository-action-open-images", revealing: "image-workbench-overview", in: firstWindow)
+    let imageWorkbench = firstWindow.descendants(matching: .any)
+      .matching(identifier: "image-workbench")
+      .firstMatch
+    XCTAssertTrue(imageWorkbench.waitForExistence(timeout: 10))
+
+    application.typeKey("n", modifierFlags: [.command, .shift])
+    let twoWindows = XCTNSPredicateExpectation(
+      predicate: NSPredicate { object, _ in
+        (object as? XCUIApplication)?.windows.count == 2
+      }, object: application)
+    XCTAssertEqual(XCTWaiter.wait(for: [twoWindows], timeout: 10), .completed)
+    let secondWindow = try XCTUnwrap(
+      application.windows.allElementsBoundByIndex.first(where: {
+        !$0.identifier.isEmpty && $0.identifier != firstWindowIdentifier
+      })
+    )
+    secondWindow.click()
+    select("workspace-sidebar-writing", revealing: "writing-draft-list", in: secondWindow)
+    let secondArticle = secondWindow.staticTexts["私密客户复盘草稿"]
+    XCTAssertTrue(secondArticle.waitForExistence(timeout: 10))
+    secondArticle.click()
+    let secondEditor = secondWindow.descendants(matching: .any)
+      .matching(identifier: "markdown-document-editor")
+      .firstMatch
+    XCTAssertTrue(secondEditor.waitForExistence(timeout: 10))
+    let secondEditorValue = try XCTUnwrap(secondEditor.value as? String)
+
+    // Capture fixtures place both windows at the same coordinates, so clicking
+    // A's center would hit B. Use the native window cycle to bring A forward.
+    application.activate()
+    if application.windows.firstMatch.identifier != firstWindowIdentifier {
+      application.typeKey("`", modifierFlags: [.command])
+    }
+    XCTAssertEqual(
+      XCTWaiter.wait(
+        for: [
+          XCTNSPredicateExpectation(
+            predicate: NSPredicate { _, _ in
+              self.application.windows.firstMatch.identifier == firstWindowIdentifier
+            },
+            object: application
+          )
+        ],
+        timeout: 5
+      ),
+      .completed,
+      "The presenting window must be frontmost before its handoff control is clicked."
+    )
+    // A's control must route through A's WindowGroup and keep B's article intact.
+    let openWriting = try XCTUnwrap(
+      waitForHittableElement(timeout: 10) {
+        firstWindow.buttons.matching(identifier: "image-workbench-open-writing")
+      },
+      "The presenting window must expose a hittable writing handoff action."
+    )
+    XCTAssertTrue(openWriting.isEnabled, "The writing handoff must be actionable in the fixture.")
+    openWriting.click()
+
+    XCTAssertTrue(
+      firstWindow.descendants(matching: .any)
+        .matching(identifier: "writing-draft-list")
+        .firstMatch.waitForExistence(timeout: 10),
+      "Opening writing from Images must return to the writing section."
+    )
+    assertDisappears(
+      imageWorkbench,
+      "Opening writing from Images must dismiss the image workbench in place."
+    )
+    XCTAssertEqual(
+      firstWindow.descendants(matching: .any)
+        .matching(identifier: "markdown-document-editor")
+        .firstMatch.value as? String,
+      firstEditorValue,
+      "Returning to Writing must restore the article selected in the presenting window."
+    )
+    XCTAssertTrue(
+      secondWindow.descendants(matching: .any)
+        .matching(identifier: "writing-draft-list")
+        .firstMatch.waitForExistence(timeout: 10),
+      "The other workbench window must remain in its Writing section."
+    )
+    XCTAssertEqual(
+      secondWindow.descendants(matching: .any)
+        .matching(identifier: "markdown-document-editor")
+        .firstMatch.value as? String,
+      secondEditorValue,
+      "Returning to Writing in A must not replace the article still selected in B."
+    )
+    XCTAssertEqual(
+      application.windows.count,
+      2,
+      "The image-to-writing handoff must preserve both existing workbench windows."
+    )
   }
 
   func testContentHealthIdentifiersRemainUniqueAcrossAllStages() throws {
@@ -1425,6 +1751,20 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
     )
   }
 
+  private func assertDisappears(
+    _ element: XCUIElement,
+    _ message: String = "The accessibility element did not disappear.",
+    timeout: TimeInterval = 10,
+    file: StaticString = #filePath,
+    line: UInt = #line
+  ) {
+    let expectation = XCTNSPredicateExpectation(
+      predicate: NSPredicate(format: "exists == false"), object: element)
+    XCTAssertEqual(
+      XCTWaiter.wait(for: [expectation], timeout: timeout), .completed, message, file: file,
+      line: line)
+  }
+
   private func launchApplication(
     surface: String?,
     additionalLaunchArguments: [String] = [],
@@ -1563,6 +1903,31 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
     }
     XCTFail(
       "Selecting \(controlIdentifier) did not reveal \(destinationIdentifier).",
+      file: file,
+      line: line
+    )
+  }
+
+  private func select(
+    _ controlIdentifier: String,
+    revealing destinationIdentifier: String,
+    in window: XCUIElement,
+    file: StaticString = #filePath,
+    line: UInt = #line
+  ) {
+    let destination = window.descendants(matching: .any)
+      .matching(identifier: destinationIdentifier)
+      .firstMatch
+    let control = window.descendants(matching: .any)
+      .matching(identifier: controlIdentifier)
+      .firstMatch
+    XCTAssertTrue(
+      control.waitForExistence(timeout: 5),
+      "No window-local control exists for \(controlIdentifier).", file: file, line: line)
+    control.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+    XCTAssertTrue(
+      destination.waitForExistence(timeout: 5),
+      "Selecting \(controlIdentifier) did not reveal \(destinationIdentifier) in its own window.",
       file: file,
       line: line
     )

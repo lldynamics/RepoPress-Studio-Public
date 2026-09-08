@@ -85,6 +85,7 @@ struct TokenConnectionStatusPresentation: Equatable {
 
 struct TokenConnectionStatusSummary: View {
   let presentation: TokenConnectionStatusPresentation
+  var subsectionAnchor: SettingsSubsection? = nil
 
   var body: some View {
     Section {
@@ -107,6 +108,7 @@ struct TokenConnectionStatusSummary: View {
       .accessibilityElement(children: .combine)
       .accessibilityLabel(presentation.title)
       .accessibilityValue(presentation.detail)
+      .settingsSubsectionAnchor(subsectionAnchor)
     }
   }
 

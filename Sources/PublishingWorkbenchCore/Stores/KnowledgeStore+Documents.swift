@@ -1,6 +1,16 @@
 import Combine
 import Foundation
 
+public enum KnowledgeBacklinkRecordingResult: Equatable, Sendable {
+  case recorded
+  case failed(message: String)
+
+  public var isRecorded: Bool {
+    if case .recorded = self { return true }
+    return false
+  }
+}
+
 @MainActor
 extension KnowledgeStore {
   /// Keeps legacy synchronous UI actions responsive while their persistence
@@ -852,8 +862,12 @@ extension KnowledgeStore {
   private func saveAnnotationAsync(_ annotation: KnowledgeAnnotation) async -> Bool {
     do {
       let saved = try await service.saveAnnotationAsync(annotation)
-      annotations.removeAll { $0.id == saved.id }
-      annotations.insert(saved, at: 0)
+      // Saving a note for a background document must not replace the
+      // inspector projection for the document the user is reading now.
+      if selectedDocumentID == saved.documentID {
+        annotations.removeAll { $0.id == saved.id }
+        annotations.insert(saved, at: 0)
+      }
       statusMessage = "资料标注已保存。"
       lastError = nil
       return true
@@ -882,32 +896,38 @@ extension KnowledgeStore {
     }
   }
 
+  @discardableResult
   public func recordBacklinks(
     citations: [KnowledgeCitation],
     target: KnowledgeBacklinkTarget
-  ) async {
-    await enqueueKnowledgeIO { [weak self] in
-      await self?.recordBacklinksAsync(citations: citations, target: target)
-    }
-  }
-
-  private func recordBacklinksAsync(
-    citations: [KnowledgeCitation],
-    target: KnowledgeBacklinkTarget
-  ) async {
+  ) async -> KnowledgeBacklinkRecordingResult {
+    guard !citations.isEmpty else { return .recorded }
+    let busyOperationID = beginBusyOperation()
+    defer { finishBusyOperation(busyOperationID) }
     do {
-      try await service.recordBacklinksAsync(citations: citations, target: target)
-      if let selectedDocumentID, citations.contains(where: { $0.documentID == selectedDocumentID })
+      try await performQueuedKnowledgeMutation { [service] in
+        try await service.recordBacklinksAsync(citations: citations, target: target)
+      }
+      if let selectedDocumentID,
+         citations.contains(where: { $0.documentID == selectedDocumentID })
       {
-        backlinks = try await service.backlinksAsync(documentID: selectedDocumentID)
+        let loadedBacklinks = try await service.backlinksAsync(documentID: selectedDocumentID)
+        // The selection can change while the backlinks query is suspended.
+        // Publish only to the same inspector that requested this projection.
+        if self.selectedDocumentID == selectedDocumentID {
+          backlinks = loadedBacklinks
+        }
       }
       if target.kind == .articleDraft,
          articleBacklinksTargetID == target.id {
         loadArticleBacklinks(for: UUID(uuidString: target.id))
       }
+      return .recorded
     } catch {
-      lastError = error.localizedDescription
-      statusMessage = "资料引用记录未保存：\(error.localizedDescription)"
+      let message = error.localizedDescription
+      lastError = message
+      statusMessage = CoreL10n.format("资料引用记录未保存：%@", message)
+      return .failed(message: message)
     }
   }
 

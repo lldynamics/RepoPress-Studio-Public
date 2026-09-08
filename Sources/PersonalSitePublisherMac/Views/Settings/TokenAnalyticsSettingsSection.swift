@@ -8,10 +8,11 @@ struct TokenAnalyticsSettingsSection: View {
   let onSaveToken: () -> Void
   let onDeleteToken: () -> Void
   let onRefreshTokenState: () -> Void
+  var subsectionAnchor: SettingsSubsection? = nil
   @State private var isDeleteConfirmationPresented = false
 
   var body: some View {
-    Section("阅读数据回流") {
+    Section {
       Toggle("启用只读阅读数据", isOn: settings.isEnabled)
         .accessibilityLabel("启用只读阅读数据回流")
         .accessibilityValue(settings.wrappedValue.isEnabled ? "开启" : "关闭")
@@ -88,6 +89,9 @@ struct TokenAnalyticsSettingsSection: View {
       Text("发布抽屉会按当前文章的公开 URL 路径读取页面级数据；不会写入统计服务、上传内容或把令牌保存到工作区文件。")
         .font(.caption)
         .foregroundStyle(.secondary)
+    } header: {
+      Text("阅读数据回流")
+        .settingsSubsectionAnchor(subsectionAnchor)
     }
     .confirmationDialog(
       "删除阅读数据只读访问令牌？",

@@ -43,6 +43,8 @@ public final class PublishSessionStore: ObservableObject {
   var publishPreviewRefreshGeneration: UInt64 = 0
   var batchPublishPlanRefreshTask: Task<Void, Never>?
   var batchPublishPlanRefreshGeneration: UInt64 = 0
+  var batchPublishPlanRefreshInput: BatchPublishPlanRefreshInput?
+  var batchPublishPlanConsumers: Set<UUID> = []
 
   init(
     releaseRecords: [ReleaseRecord],
@@ -90,18 +92,21 @@ public final class SiteStarterStore: ObservableObject {
   @Published public internal(set) var result: SiteStarterResult?
   @Published public internal(set) var importResult: SiteStarterImportResult?
   @Published public internal(set) var pushResult: SiteStarterPushResult?
+  @Published public internal(set) var progress: SiteStarterProgress?
   @Published public internal(set) var isOperationRunning: Bool
 
   init(
     service: SiteStarterService,
     result: SiteStarterResult?,
     importResult: SiteStarterImportResult?,
-    pushResult: SiteStarterPushResult?
+    pushResult: SiteStarterPushResult?,
+    progress: SiteStarterProgress?
   ) {
     self.service = service
     self.result = result
     self.importResult = importResult
     self.pushResult = pushResult
+    self.progress = progress
     self.isOperationRunning = false
   }
 }

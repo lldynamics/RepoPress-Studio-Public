@@ -1,5 +1,5 @@
 import Foundation
-import PublishingWorkbenchCore
+import PublishingAICore
 
 /// UI-local ownership for a connection test. The store still owns credentials
 /// and consent; this state only prevents an old completion from being rendered

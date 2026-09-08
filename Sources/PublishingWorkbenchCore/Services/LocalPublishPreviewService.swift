@@ -189,17 +189,74 @@ public struct LocalPublishPreviewService: Sendable {
   /// the user. Publishing and repository-backup profiles must point at the
   /// repository root itself; otherwise autosave could silently write into an
   /// unrelated look-alike directory and never enter the Git publish flow.
-  func requireRepositoryRootForProfileWrite(
+  ///
+  /// This is intentionally public so selection and recovery UI can check a
+  /// remembered folder without creating files. Writes call it again directly
+  /// before mutation to close the time-of-check/time-of-use window.
+  public func validateRepositoryRoot(
     profile: SiteProfile,
     rootURL: URL
   ) throws {
     guard profile.purpose.requiresRepositoryReadiness else { return }
-    let gitMarkerURL = rootURL.standardizedFileURL.appendingPathComponent(".git")
-    guard fileManager.fileExists(atPath: gitMarkerURL.path),
-      !isSymbolicLink(gitMarkerURL)
-    else {
-      throw LocalPublishPreviewError.notGitRepositoryRoot(rootURL.path)
+
+    let repositoryRootURL = rootURL.standardizedFileURL
+    let rootAttributes: [FileAttributeKey: Any]
+    do {
+      rootAttributes = try fileManager.attributesOfItem(atPath: repositoryRootURL.path)
+    } catch {
+      throw repositoryRootAvailabilityError(for: error, rootURL: repositoryRootURL)
     }
+
+    guard rootAttributes[.type] as? FileAttributeType == .typeDirectory else {
+      throw LocalPublishPreviewError.repositoryDirectoryMissing(repositoryRootURL.path)
+    }
+
+    do {
+      // Listing makes a protected directory fail explicitly instead of letting
+      // a later .git lookup collapse it into a misleading "not a repository".
+      _ = try fileManager.contentsOfDirectory(atPath: repositoryRootURL.path)
+    } catch {
+      throw repositoryRootAvailabilityError(for: error, rootURL: repositoryRootURL)
+    }
+
+    guard fileManager.isReadableFile(atPath: repositoryRootURL.path),
+      fileManager.isWritableFile(atPath: repositoryRootURL.path)
+    else {
+      throw LocalPublishPreviewError.repositoryAccessDenied(repositoryRootURL.path)
+    }
+
+    let gitMarkerURL = repositoryRootURL.appendingPathComponent(".git")
+    // destinationOfSymbolicLink catches dangling links too. A marker link
+    // could redirect Git operations away from the user-selected repository.
+    guard !isSymbolicLink(gitMarkerURL) else {
+      throw LocalPublishPreviewError.notGitRepositoryRoot(repositoryRootURL.path)
+    }
+
+    let gitAttributes: [FileAttributeKey: Any]
+    do {
+      gitAttributes = try fileManager.attributesOfItem(atPath: gitMarkerURL.path)
+    } catch {
+      if repositoryPathIsMissing(error) {
+        throw LocalPublishPreviewError.notGitRepositoryRoot(repositoryRootURL.path)
+      }
+      if repositoryPathAccessIsDenied(error) {
+        throw LocalPublishPreviewError.repositoryAccessDenied(repositoryRootURL.path)
+      }
+      throw error
+    }
+
+    guard let gitMarkerType = gitAttributes[.type] as? FileAttributeType,
+      gitMarkerType == .typeDirectory || gitMarkerType == .typeRegular
+    else {
+      throw LocalPublishPreviewError.notGitRepositoryRoot(repositoryRootURL.path)
+    }
+  }
+
+  func requireRepositoryRootForProfileWrite(
+    profile: SiteProfile,
+    rootURL: URL
+  ) throws {
+    try validateRepositoryRoot(profile: profile, rootURL: rootURL)
   }
 
   func write(package: PublishPackage, rootURL: URL) throws -> [String] {
@@ -229,10 +286,94 @@ public struct LocalPublishPreviewService: Sendable {
     return
       "cd \(posixShellQuote(rootPath)) && git add \(paths) && git commit -m \(posixShellQuote(package.commitMessage))"
   }
+
+  private func repositoryRootAvailabilityError(
+    for error: Error,
+    rootURL: URL
+  ) -> Error {
+    if repositoryPathIsMissing(error) {
+      if repositoryVolumeIsUnavailable(for: rootURL) {
+        return LocalPublishPreviewError.repositoryVolumeUnavailable(rootURL.path)
+      }
+      return LocalPublishPreviewError.repositoryDirectoryMissing(rootURL.path)
+    }
+    if repositoryPathAccessIsDenied(error) {
+      return LocalPublishPreviewError.repositoryAccessDenied(rootURL.path)
+    }
+    // Unknown filesystem errors still stop the write, but retaining them
+    // prevents an I/O or disconnected-volume failure from being misreported
+    // as a permission problem.
+    return error
+  }
+
+  private func repositoryPathIsMissing(_ error: Error) -> Bool {
+    let nsError = error as NSError
+    if nsError.domain == NSCocoaErrorDomain,
+      nsError.code == CocoaError.Code.fileNoSuchFile.rawValue
+        || nsError.code == CocoaError.Code.fileReadNoSuchFile.rawValue
+    {
+      return true
+    }
+    if nsError.domain == NSPOSIXErrorDomain,
+      nsError.code == Int(POSIXErrorCode.ENOENT.rawValue)
+        || nsError.code == Int(POSIXErrorCode.ENOTDIR.rawValue)
+    {
+      return true
+    }
+    if let underlyingError = nsError.userInfo[NSUnderlyingErrorKey] as? Error {
+      return repositoryPathIsMissing(underlyingError)
+    }
+    return false
+  }
+
+  private func repositoryPathAccessIsDenied(_ error: Error) -> Bool {
+    let nsError = error as NSError
+    if nsError.domain == NSCocoaErrorDomain,
+      nsError.code == CocoaError.Code.fileReadNoPermission.rawValue
+        || nsError.code == CocoaError.Code.fileWriteNoPermission.rawValue
+        || nsError.code == CocoaError.Code.fileWriteVolumeReadOnly.rawValue
+    {
+      return true
+    }
+    if nsError.domain == NSPOSIXErrorDomain,
+      nsError.code == Int(POSIXErrorCode.EACCES.rawValue)
+        || nsError.code == Int(POSIXErrorCode.EPERM.rawValue)
+        || nsError.code == Int(POSIXErrorCode.EROFS.rawValue)
+    {
+      return true
+    }
+    if let underlyingError = nsError.userInfo[NSUnderlyingErrorKey] as? Error {
+      return repositoryPathAccessIsDenied(underlyingError)
+    }
+    return false
+  }
+
+  private func repositoryVolumeIsUnavailable(for rootURL: URL) -> Bool {
+    let pathComponents = rootURL.standardizedFileURL.pathComponents
+    guard pathComponents.count >= 3, pathComponents[1] == "Volumes" else {
+      return false
+    }
+
+    let volumeURL = URL(
+      fileURLWithPath: "/Volumes/\(pathComponents[2])",
+      isDirectory: true
+    )
+    do {
+      _ = try fileManager.attributesOfItem(atPath: volumeURL.path)
+      return false
+    } catch {
+      // Do not turn a protected mounted volume into a false "missing volume"
+      // result. Only a confirmed no-such-file error gets that classification.
+      return repositoryPathIsMissing(error)
+    }
+  }
 }
 
-public enum LocalPublishPreviewError: LocalizedError {
+public enum LocalPublishPreviewError: LocalizedError, Equatable {
   case missingRepositoryRoot
+  case repositoryVolumeUnavailable(String)
+  case repositoryDirectoryMissing(String)
+  case repositoryAccessDenied(String)
   case notGitRepositoryRoot(String)
   case unsafePath(String)
   case missingSource(String)
@@ -248,6 +389,12 @@ public enum LocalPublishPreviewError: LocalizedError {
     switch self {
     case .missingRepositoryRoot:
       return CoreL10n.text("未选择本地仓库。")
+    case .repositoryVolumeUnavailable(let path):
+      return CoreL10n.format("本地仓库所在磁盘不可用，已停止写入：%@", path)
+    case .repositoryDirectoryMissing(let path):
+      return CoreL10n.format("所选本地仓库目录不存在或不是目录，已停止写入：%@", path)
+    case .repositoryAccessDenied(let path):
+      return CoreL10n.format("没有读取或写入本地仓库的权限，已停止写入：%@", path)
     case .notGitRepositoryRoot(let path):
       return CoreL10n.format("所选目录不是 Git 仓库根目录，已停止写入：%@", path)
     case .unsafePath(let path):

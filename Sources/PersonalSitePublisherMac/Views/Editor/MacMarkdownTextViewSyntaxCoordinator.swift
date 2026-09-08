@@ -300,6 +300,7 @@ extension MacMarkdownTextView.Coordinator {
       droppableTextView.markdownParagraphHighlightRect = nil
     }
     appliedParagraphHighlightRange = nil
+    appliedParagraphHighlightGeometryRange = nil
     syntaxHighlightDebouncer.cancel()
     syntaxTreeSynchronizationDebouncer.cancel()
     cancelPendingSyntaxAttributeApplication()
@@ -336,6 +337,7 @@ extension MacMarkdownTextView.Coordinator {
       droppableTextView.markdownParagraphHighlightRect = nil
     }
     appliedParagraphHighlightRange = nil
+    appliedParagraphHighlightGeometryRange = nil
     guard syntaxPaintedDocumentRevision == syntaxDocumentRevision,
       let paintedSyntaxViewportRange
     else {
@@ -470,8 +472,13 @@ extension MacMarkdownTextView.Coordinator {
   func scheduleFullStatistics(for text: String, isInitialLoad: Bool = false) {
     statisticsFullScanCount += 1
     statisticsTask?.cancel()
+    statisticsDocumentRevision = nil
+    statisticsBodyUTF16Offset = nil
     statisticsGeneration += 1
     let generation = statisticsGeneration
+    let documentRevision = syntaxDocumentRevision
+    let bodyOffset = bodyUTF16Offset
+    let contextGeneration = statisticsContextGeneration
     let delay = MarkdownEditorStatisticsDelayPolicy.fullScanDelay(
       for: text,
       isInitialLoad: isInitialLoad
@@ -483,7 +490,10 @@ extension MacMarkdownTextView.Coordinator {
       await self?.applyFullStatistics(
         updatedStatistics,
         for: text,
-        generation: generation
+        generation: generation,
+        documentRevision: documentRevision,
+        bodyOffset: bodyOffset,
+        contextGeneration: contextGeneration
       )
     }
   }
@@ -669,11 +679,21 @@ extension MacMarkdownTextView.Coordinator {
   private func applyFullStatistics(
     _ updatedStatistics: MarkdownEditorStatistics,
     for text: String,
-    generation: Int
+    generation: Int,
+    documentRevision: UInt64,
+    bodyOffset: Int,
+    contextGeneration: Int
   ) {
-    guard statisticsGeneration == generation else { return }
+    guard statisticsGeneration == generation,
+      syntaxDocumentRevision == documentRevision,
+      bodyUTF16Offset == bodyOffset
+    else { return }
     statistics = updatedStatistics
     statisticsText = text
+    let matchesCurrentDocument =
+      hasValidDocumentBodyMapping && statisticsContextGeneration == contextGeneration
+    statisticsDocumentRevision = matchesCurrentDocument ? documentRevision : nil
+    statisticsBodyUTF16Offset = matchesCurrentDocument ? bodyOffset : nil
     statisticsTask = nil
     let signpostState = syntaxHighlightSignposter.beginInterval("DeliverEditorStatistics")
     defer {
@@ -1219,23 +1239,30 @@ extension MacMarkdownTextView.Coordinator {
       selectedRange: textView.selectedRange(),
       isEnabled: comfortConfiguration.currentParagraphHighlightEnabled
     )
+    let geometryRange = paragraphRange.flatMap {
+      MarkdownTextKit2RangeAdapter.visibleGeometryRange(for: $0, in: textView)
+    }
     let wasInvalidated =
       paragraphRange.map { paragraphRange in
         invalidatedRanges.contains {
           NSIntersectionRange($0, paragraphRange).length > 0
         }
       } ?? false
-    guard force || paragraphRange != appliedParagraphHighlightRange || wasInvalidated else {
+    guard force || paragraphRange != appliedParagraphHighlightRange
+      || geometryRange != appliedParagraphHighlightGeometryRange
+      || wasInvalidated
+    else {
       return false
     }
 
-    let paragraphRect = paragraphRange.flatMap {
+    let paragraphRect = geometryRange.flatMap {
       MarkdownTextKit2RangeAdapter.rect(for: $0, in: textView)
     }
     if let droppableTextView = textView as? DroppableMarkdownTextView {
       droppableTextView.markdownParagraphHighlightRect = paragraphRect
     }
     appliedParagraphHighlightRange = paragraphRange
+    appliedParagraphHighlightGeometryRange = geometryRange
     return true
   }
 
@@ -1379,7 +1406,11 @@ extension MacMarkdownTextView.Coordinator {
     return overlays
   }
 
-  func updateStatistics(afterEditing updatedText: String, edit: MarkdownTextEdit?) {
+  func updateStatistics(
+    afterEditing updatedText: String,
+    edit: MarkdownTextEdit?,
+    previousDocumentRevision: UInt64? = nil
+  ) {
     guard let edit,
       edit.replacedRange.location >= bodyUTF16Offset,
       let previousStatisticsText = statisticsText
@@ -1393,10 +1424,30 @@ extension MacMarkdownTextView.Coordinator {
       scheduleFullStatistics(for: updatedText)
       return
     }
-    let previousBody = previousDocument.substring(from: bodyUTF16Offset)
-    guard previousStatisticsText == previousBody else {
-      scheduleFullStatistics(for: updatedText)
-      return
+    let hasContinuousDocumentRevision = previousDocumentRevision.map {
+      statisticsDocumentRevision == $0
+        && syntaxDocumentRevision == $0 &+ 1
+        && statisticsBodyUTF16Offset == bodyUTF16Offset
+        && hasValidDocumentBodyMapping
+        && (previousStatisticsText as NSString).length
+          == previousDocument.length - bodyUTF16Offset
+    } ?? false
+    let previousBody: String
+    if hasContinuousDocumentRevision {
+      // The cache belongs to the immediately preceding document and body
+      // mapping. Reuse it without copying or comparing the entire document.
+      previousBody = previousStatisticsText
+    } else {
+      previousBody = previousDocument.substring(from: bodyUTF16Offset)
+      // Preserve the prior canonical-equivalence behavior when no continuous
+      // edit proof is available (for example inferred IME edits).
+      let statisticsTextMatchesPreviousBody =
+        previousStatisticsText.compare(previousBody, options: .literal) == .orderedSame
+        || previousStatisticsText == previousBody
+      guard statisticsTextMatchesPreviousBody else {
+        scheduleFullStatistics(for: updatedText)
+        return
+      }
     }
 
     let bodyReplacedRange = NSRange(
@@ -1435,7 +1486,15 @@ extension MacMarkdownTextView.Coordinator {
       in: updatedText
     )
     statisticsText = updatedText
+    let canCertifyCurrentDocument =
+      previousDocumentRevision.map { syntaxDocumentRevision == $0 &+ 1 } == true
+      && hasValidDocumentBodyMapping
+    statisticsDocumentRevision = canCertifyCurrentDocument ? syntaxDocumentRevision : nil
+    statisticsBodyUTF16Offset = canCertifyCurrentDocument ? bodyUTF16Offset : nil
     statisticsIncrementalUpdateCount += 1
+    if hasContinuousDocumentRevision {
+      statisticsRevisionValidatedUpdateCount += 1
+    }
     scheduleStatisticsDelivery()
   }
 

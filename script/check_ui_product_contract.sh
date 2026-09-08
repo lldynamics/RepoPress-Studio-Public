@@ -38,6 +38,7 @@ for source in \
   Repository/RepositoryWorkspaceOverviewSections.swift:repository-action-open-images \
   Repository/RepositoryWorkspaceOverviewSections.swift:repository-next-action \
   Repository/RepositoryWorkspaceOverviewSections.swift:repository-section-summary \
+  Repository/RepositoryWorkspaceOverviewSections.swift:repository-section-more-tools \
   Repository/RepositoryWorkspaceOverviewSections.swift:repository-section-information \
   Repository/RepositoryWorkspacePublishingSections.swift:repository-section-online-publish \
   Repository/RepositoryWorkspaceAutoSyncSection.swift:repository-section-auto-sync \
@@ -51,7 +52,23 @@ for source in \
   grep -Fq ".accessibilityIdentifier(\"$identifier\")" "$VIEWS/$file" || fail "repository UI identifier missing: $identifier"
 done
 grep -Fq 'onlinePublishCenterSection' "$VIEWS/Repository/RepositoryWorkspaceOverviewSections.swift" || fail "online publish center is missing"
-for folded in Repository/RepositoryWorkspaceOverviewSections.swift Repository/RepositoryWorkspacePublishingSections.swift Repository/RepositoryWorkspaceLocalPreviewSection.swift Publishing/ReleaseHistoryDetailView.swift Publishing/ReleaseHistoryRecordCardSection.swift; do
+overview_sections="$VIEWS/Repository/RepositoryWorkspaceOverviewSections.swift"
+primary_column="$(sed -n '/private var repositoryOverviewPrimaryColumn/,/private var repositoryOverviewContextColumn/p' "$overview_sections")"
+context_column="$(sed -n '/private var repositoryOverviewContextColumn/,/private var repositoryOverviewLocalPreviewSection/p' "$overview_sections")"
+for direct_primary in repositoryScanProgress onlinePublishCenterSection; do
+  grep -Fq "$direct_primary" <<<"$primary_column" || fail "repository primary action is no longer directly reachable: $direct_primary"
+done
+if grep -Fq 'DisclosureGroup' <<<"$primary_column"; then
+  fail "repository scan or online publish must not be folded into more tools"
+fi
+grep -Fq 'DisclosureGroup' <<<"$context_column" || fail "repository secondary tools must use the explicit more-tools disclosure"
+grep -Fq 'repository-section-more-tools' <<<"$context_column" || fail "repository more-tools disclosure lost its accessibility identifier"
+for direct_primary in repositoryScanProgress onlinePublishCenterSection; do
+  if grep -Fq "$direct_primary" <<<"$context_column"; then
+    fail "repository primary action is folded into more tools: $direct_primary"
+  fi
+done
+for folded in Repository/RepositoryWorkspacePublishingSections.swift Repository/RepositoryWorkspaceLocalPreviewSection.swift Publishing/ReleaseHistoryDetailView.swift Publishing/ReleaseHistoryRecordCardSection.swift; do
   if grep -Fq 'DisclosureGroup' "$VIEWS/$folded"; then fail "repository/release history must remain visible: $folded"; fi
 done
 if grep -Fq 'repositoryActionsMenu' "$VIEWS/Repository/RepositoryWorkspaceOverviewSections.swift" || grep -Fq 'Menu {' "$VIEWS/Repository/RepositoryWorkspaceOverviewSections.swift"; then fail "repository primary actions returned to a hidden menu"; fi

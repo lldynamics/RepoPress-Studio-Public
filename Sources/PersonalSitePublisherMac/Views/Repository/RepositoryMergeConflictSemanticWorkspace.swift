@@ -213,7 +213,7 @@ struct RepositoryMergeConflictSemanticWorkspace: View {
 
   private func sourceBlock(_ title: LocalizedStringKey, text: String?, color: Color) -> some View {
     VStack(alignment: .leading, spacing: 3) {
-      Text(title).font(.caption2.weight(.semibold)).foregroundStyle(color)
+      Text(title).font(.caption.weight(.semibold)).foregroundStyle(color)
       ScrollView(.vertical) {
         Text(verbatim: text ?? "（此版本没有该内容）")
           .font(.system(.caption, design: .monospaced))
@@ -230,7 +230,7 @@ struct RepositoryMergeConflictSemanticWorkspace: View {
     Label(
       resolved ? "已选择" : "待选择", systemImage: resolved ? "checkmark.circle.fill" : "circle.dashed"
     )
-    .font(.caption2.weight(.semibold))
+    .font(.caption.weight(.semibold))
     .foregroundStyle(resolved ? Color.green : Color.orange)
   }
 

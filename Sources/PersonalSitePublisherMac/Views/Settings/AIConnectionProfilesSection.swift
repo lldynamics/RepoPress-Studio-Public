@@ -11,6 +11,7 @@ struct AIConnectionProfilesSection: View {
   let currentActionMessage: () -> String?
   let deleteProfile: (UUID) -> Void
   let deletableProfiles: [AIConnectionProfile]
+  var subsectionAnchor: SettingsSubsection? = nil
   @State private var profilePendingDeletion: AIConnectionProfile?
   @State private var isDeleteConfirmationPresented = false
   @State private var copyFeedbackMessage: String?
@@ -124,6 +125,7 @@ struct AIConnectionProfilesSection: View {
       }
     } header: {
       Text("AI 连接配置档案")
+        .settingsSubsectionAnchor(subsectionAnchor)
     } footer: {
       Text("连接档案可供多个站点复用。复制后仅当前站点改用副本；若服务需要 API Key，请为副本单独保存。")
     }

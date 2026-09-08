@@ -179,10 +179,16 @@ struct ContentView: View {
   @State private var isPersistenceResetConfirmationPresented = false
   @State private var persistenceResetFeedback: PersistenceRecoveryResetFeedback?
   @State private var modalPresentation = WorkspaceModalPresentationState()
+  @State private var publishDrawerInitialScope: PublishScope = .repository
+  @State private var publishReadinessNavigationRequest: PublishReadinessNavigationRequest?
+  @State private var readinessInspectorSheet: PublishReadinessNavigationRequest?
+  @State private var articleInspectorPresentation = ArticleInspectorPresentationState()
   @State private var isSettingsWorkspacePresented = false
   @State private var settingsWorkspaceDestination: SettingsDestination?
   @State private var settingsWorkspaceNavigationRequestID = UUID()
   @State private var commandPaletteEditorCommands: MarkdownEditorCommandActions?
+  @State private var commandPaletteDraftID: UUID?
+  @State private var deferredPaletteAIRequest = WorkspaceDeferredAIRequestState()
   @State private var responsiveLayout = WorkspaceResponsiveLayoutSnapshot.initial
   @State private var repositoryContentMonitorClientID = UUID()
   @State private var operationalPollingClientID = UUID()
@@ -275,7 +281,9 @@ struct ContentView: View {
             WorkspacePublishDrawerOverlay(
               publishingFacade: store.publishing,
               store: store,
-              isPresented: modalIsPresentedBinding(.publishDrawer)
+              isPresented: modalIsPresentedBinding(.publishDrawer),
+              initialScope: publishDrawerInitialScope,
+              onNavigateIssue: navigateToPublishIssue
             )
             .transition(
               WorkbenchMotion.drawerTransition(reduceMotion: accessibilityReduceMotion)
@@ -303,6 +311,10 @@ struct ContentView: View {
   /// participate in lifecycle modifier type inference.
   private var workspaceToolbarAndEnvironmentContent: some View {
     workspaceRootContent
+    .environment(\.publishReadinessNavigationRequest, publishReadinessNavigationRequest)
+    .environment(\.workspaceWindowID, windowSession.windowID)
+    .environment(\.workspaceWindowSession, windowSession)
+    .environment(\.workspaceWindowIsKey, windowSession.isKeyWindow)
     .environment(
       \.settingsWorkspaceCommandAction,
       settingsWorkspaceCommandAction
@@ -403,6 +415,7 @@ struct ContentView: View {
     }
     .onChange(of: shellState.isQuickHideActive) { _, isActive in
       if isActive {
+        deferredPaletteAIRequest.cancel()
         modalPresentation.dismiss()
       }
     }
@@ -458,8 +471,15 @@ struct ContentView: View {
         dismissButton: .default(Text("好"))
       )
     }
+    .sheet(item: $readinessInspectorSheet) { request in
+      readinessInspectorSheetContent(request)
+    }
     .sheet(isPresented: $isDraftRecoveryPresented, content: draftRecoveryPanel)
-    .sheet(item: sheetModalPresentationBinding, content: modalContent)
+    .sheet(
+      item: sheetModalPresentationBinding,
+      onDismiss: handleWorkspaceSheetDismissal,
+      content: modalContent
+    )
     .knowledgeLibraryInspectorSheets(
       knowledge: store.knowledge,
       presentation: $knowledgeInspectorPresentation
@@ -565,6 +585,7 @@ struct ContentView: View {
         knowledgeInspectorPresentation: $knowledgeInspectorPresentation,
         aiChatOperationSession: aiChatInspectorOperationSession,
         prioritizesChecks: compactLayout,
+        articlePresentation: articleInspectorPresentation,
         onResetWidth: resetInspectorWidth
       )
       .id(inspectorWidthResetGeneration)
@@ -661,6 +682,7 @@ struct ContentView: View {
       let activatedDraftID = store.activateDraftSelectionContext(draftID)
       windowSession.receiveSharedDraft(activatedDraftID)
     }
+    performDeferredPaletteAIRequestIfReady()
   }
 
   private var sceneCommandRouterRootUpdateKey: WorkspaceSceneCommandRouter.RootUpdateKey {
@@ -691,6 +713,7 @@ struct ContentView: View {
       workspaceCommandPaletteAction: WorkspaceCommandPaletteAction(
         open: { [weak commandRouter] in
           guard shellState.canUseProtectedWorkbench else { return }
+          commandPaletteDraftID = windowSession.selectedDraftID
           commandPaletteEditorCommands = commandRouter?.markdownEditorCommandActions
           modalPresentation.present(.commandPalette)
         },
@@ -873,7 +896,9 @@ struct ContentView: View {
       PublishDrawerView(
         publishingFacade: store.publishing,
         store: store,
-        isPresented: modalIsPresentedBinding(.publishDrawer)
+        isPresented: modalIsPresentedBinding(.publishDrawer),
+        initialScope: publishDrawerInitialScope,
+        onNavigateIssue: navigateToPublishIssue
       )
       .frame(minWidth: 680, idealWidth: 780, minHeight: 600, idealHeight: 720)
     case .localSitePreview:
@@ -888,14 +913,18 @@ struct ContentView: View {
       WorkspaceCommandPalette(
         store: store,
         editorCommands: commandPaletteEditorCommands,
+        contextDraftID: commandPaletteDraftID,
         onSelectSection: selectWorkspaceSection,
         onFocusDraft: { draftID in
           focusWindowDraft(draftID, section: .writing)
         },
-        onToggleFocusMode: toggleFocusMode
+        onToggleFocusMode: toggleFocusMode,
+        onOpenAI: { draftID, quickPrompt in
+          deferredPaletteAIRequest.enqueue(draftID: draftID, quickPrompt: quickPrompt)
+        }
       )
     case .draftFullTextSearch:
-      DraftFullTextSearchPanel(store: store)
+      DraftFullTextSearchPanel(store: store, onOpenHit: openDraftFullTextSearchHit)
     }
   }
 
@@ -913,6 +942,22 @@ struct ContentView: View {
     modalPresentation.present(.draftFullTextSearch)
   }
 
+  private func openDraftFullTextSearchHit(_ hit: DraftFullTextSearchHit) {
+    // The sheet can make its presenting window non-key. Update that window's
+    // own intent before publishing the compatibility request to the shared
+    // Store, so returning from the sheet cannot restore an older article.
+    focusWindowDraft(hit.draftID, section: .writing)
+    store.requestEditorFocus(
+      draftID: hit.draftID,
+      field: hit.field.rawValue,
+      query: hit.matchedText,
+      selectedRange: hit.field == .body ? hit.sourceRange : nil
+    )
+    if let request = store.editorFocusRequest {
+      windowSession.registerEditorFocusRequest(request.id)
+    }
+  }
+
   private func openLocalSitePreview() {
     guard shellState.canUseProtectedWorkbench else { return }
     guard activateCurrentWindowSharedContext() else { return }
@@ -926,7 +971,7 @@ struct ContentView: View {
   private func applyWorkbenchPreferences() {
     if !didApplyInitialWorkbenchPreferences {
       // AI is an explicit writing tool; a previous session must not reclaim the Inspector on launch.
-      presentationState.hideAssistant()
+      presentationState.prepareInitialWindowPresentation()
       if scanRepositoryOnLaunch, !store.isSafeMode {
         Task {
           await store.repository.scanAsync()
@@ -1062,6 +1107,7 @@ struct ContentView: View {
       density: toolbarDensity,
       isEnabled: shellState.canUseProtectedWorkbench
     ) {
+      commandPaletteDraftID = windowSession.selectedDraftID
       commandPaletteEditorCommands = sceneCommandRouter.markdownEditorCommandActions
       modalPresentation.present(.commandPalette)
     }
@@ -1199,7 +1245,7 @@ struct ContentView: View {
             isEnabled: shellState.canUseProtectedWorkbench
               && windowSession.selectedDraftID != nil,
             density: toolbarDensity,
-            action: { openPublishDrawer(message: nil) }
+            action: togglePublishDrawer
           )
         }
       }
@@ -1291,6 +1337,26 @@ struct ContentView: View {
       isFocusMode = false
     }
     return store.ai.openChatWorkspace(for: draftID, quickPrompt: quickPrompt)
+  }
+
+  private func handleWorkspaceSheetDismissal() {
+    deferredPaletteAIRequest.sheetDidDismiss()
+    performDeferredPaletteAIRequestIfReady()
+  }
+
+  private func performDeferredPaletteAIRequestIfReady() {
+    guard shellState.canUseProtectedWorkbench else {
+      deferredPaletteAIRequest.cancel()
+      return
+    }
+    guard modalPresentation.presented == nil,
+      let request = deferredPaletteAIRequest.consume(isKeyWindow: windowSession.isKeyWindow)
+    else { return }
+    if let draftID = request.draftID {
+      guard store.drafts.contains(where: { $0.id == draftID }) else { return }
+      focusWindowDraft(draftID, section: .writing)
+    }
+    _ = openAIAssistantWorkspace(for: request.draftID, quickPrompt: request.quickPrompt)
   }
 
   private var inspectorToolbarHelp: String {
@@ -1464,10 +1530,19 @@ struct ContentView: View {
     }
   }
 
+  private func togglePublishDrawer() {
+    if isPublishDrawerPresented {
+      dismissPublishDrawerIfNeeded()
+    } else {
+      openPublishDrawer(message: nil)
+    }
+  }
+
   private func openPublishDrawer(message: String?) {
     guard activateCurrentWindowSharedContext() else { return }
     store.ensureEditableDraftSelected()
     windowSession.receiveSharedDraft(store.selectedDraftID)
+    publishDrawerInitialScope = PublishScope.initialScope(for: windowSession.selectedSection)
     hideInspectorIfNeeded()
     withAnimation(
       WorkbenchMotion.animation(
@@ -1481,6 +1556,76 @@ struct ContentView: View {
       message ?? String(localized: "发布流程已打开，请选择保存到本地或发布上线。"),
       status: .information
     )
+  }
+
+  private func navigateToPublishIssue(draftID: UUID, target: PublishReadinessTarget) {
+    guard shellState.canUseProtectedWorkbench, store.draft(for: draftID) != nil else { return }
+    dismissPublishDrawerIfNeeded()
+    presentationState.hideAssistant()
+    isFocusMode = false
+    let section: WorkspaceSection
+    switch target {
+    case .repository: section = .sync
+    case .images: section = .images
+    default: section = .writing
+    }
+    focusWindowDraft(draftID, section: section)
+    let request = PublishReadinessNavigationRequest(draftID: draftID, target: target)
+    publishReadinessNavigationRequest = request
+    if let tab = target.inspectorTab {
+      articleInspectorPresentation.select(tab, for: draftID, section: section)
+    }
+    switch target {
+    case .body(let query):
+      store.requestEditorFocus(draftID: draftID, field: "body", query: query)
+      if let request = store.editorFocusRequest {
+        windowSession.registerEditorFocusRequest(request.id)
+      }
+    case .images(let attachmentID):
+      imageWorkbenchContextStage = .overview
+      if let attachmentID {
+        _ = store.focusImageInspector(draftID: draftID, attachmentID: attachmentID)
+      }
+      revealPublishIssueInspector(request)
+    case .metadata, .seo:
+      revealPublishIssueInspector(request)
+    case .repository:
+      repositoryContextStage = .overview
+    }
+  }
+
+  private func revealPublishIssueInspector(_ request: PublishReadinessNavigationRequest) {
+    if prepareInspectorForUserRequest() {
+      store.setInspectorPresented(true)
+    } else {
+      readinessInspectorSheet = request
+    }
+  }
+
+  @ViewBuilder
+  private func readinessInspectorSheetContent(_ request: PublishReadinessNavigationRequest) -> some View {
+    if let initialDraft = store.draft(for: request.draftID) {
+      VStack(spacing: 0) {
+        WorkspaceTaskInspector(
+          section: request.target.inspectorTab == .images ? .images : .writing,
+          draft: Binding(
+            get: { store.draft(for: request.draftID) ?? initialDraft },
+            set: { store.updateDraftFromEditor($0) }
+          ),
+          store: store,
+          rssStore: rssStore,
+          presentation: articleInspectorPresentation
+        )
+        Button("完成") { readinessInspectorSheet = nil }
+          .padding(12)
+      }
+      .environment(\.publishReadinessNavigationRequest, request)
+      .frame(width: 460, height: 620)
+      .disabled(shellState.isQuickHideActive)
+    } else {
+      Text("文章已不存在。")
+        .padding(24)
+    }
   }
 
   @discardableResult
@@ -1607,6 +1752,10 @@ struct ContentView: View {
   }
 
   private func dismissPublishDrawerForInspectorRequestIfNeeded() {
+    dismissPublishDrawerIfNeeded()
+  }
+
+  private func dismissPublishDrawerIfNeeded() {
     guard isPublishDrawerPresented else { return }
     withAnimation(
       WorkbenchMotion.animation(
@@ -1714,6 +1863,8 @@ private struct WorkspacePublishDrawerOverlay: View {
   @ObservedObject var publishingFacade: WorkbenchPublishingFeatureFacade
   let store: WorkbenchStore
   @Binding var isPresented: Bool
+  let initialScope: PublishScope
+  let onNavigateIssue: (UUID, PublishReadinessTarget) -> Void
 
   var body: some View {
     GeometryReader { geometry in
@@ -1725,7 +1876,9 @@ private struct WorkspacePublishDrawerOverlay: View {
         PublishDrawerView(
           publishingFacade: publishingFacade,
           store: store,
-          isPresented: $isPresented
+          isPresented: $isPresented,
+          initialScope: initialScope,
+          onNavigateIssue: onNavigateIssue
         )
         .frame(width: WorkspacePublishDrawerLayoutPolicy.width(for: geometry.size.width))
         .frame(maxHeight: .infinity)

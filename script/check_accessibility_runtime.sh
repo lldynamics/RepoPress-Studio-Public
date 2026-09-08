@@ -8,10 +8,11 @@ RUNTIME_HOME="${PERSONAL_SITE_PUBLISHER_RUNTIME_HOME:-${HOME:?HOME is required}}
 TEST_DIST_DIR=""
 TEST_BUNDLE_ID=""
 NON_SCREENSHOT_REGRESSION=0
+PR_SMOKE=0
 LSREGISTER_TOOL="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
 
 usage() {
-  echo "usage: check_accessibility_runtime.sh [--non-screenshot-regression]" >&2
+  echo "usage: check_accessibility_runtime.sh [--non-screenshot-regression|--pr-smoke]" >&2
 }
 
 case "${1:-}" in
@@ -19,6 +20,9 @@ case "${1:-}" in
     ;;
   --non-screenshot-regression)
     NON_SCREENSHOT_REGRESSION=1
+    ;;
+  --pr-smoke)
+    PR_SMOKE=1
     ;;
   -h|--help)
     usage
@@ -119,6 +123,10 @@ if [[ "$NON_SCREENSHOT_REGRESSION" == "1" ]]; then
   xcodebuild_arguments+=(
     "-only-testing:WorkspaceAccessibilityUITests/WorkspaceAccessibilityUITests/testReleaseBundleLaunchesWithoutScreenshotFixture"
   )
+elif [[ "$PR_SMOKE" == "1" ]]; then
+  xcodebuild_arguments+=(
+    "-only-testing:WorkspaceAccessibilityUITests/WorkspaceAccessibilityUITests/testPRSmokeKeepsWindowsIsolatedAndCancelsPublishConfirmation"
+  )
 elif [[ "${WORKBENCH_XCUI_RETRY_FAILURES:-0}" == "1" ]]; then
   # The complete macOS UI suite has occasionally lost one synthetic navigation
   # event on hosted runners even though the same test passes in isolation. Retry
@@ -138,6 +146,8 @@ HOME="$RUNTIME_HOME" \
 
 if [[ "$NON_SCREENSHOT_REGRESSION" == "1" ]]; then
   echo "runtime accessibility gate: non-screenshot Release regression passed"
+elif [[ "$PR_SMOKE" == "1" ]]; then
+  echo "runtime accessibility gate: isolated PR window smoke passed"
 else
   echo "runtime accessibility gate: passed"
 fi

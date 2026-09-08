@@ -919,7 +919,8 @@ public final class DeploymentStore: ObservableObject {
   public func refreshDeploymentStatus(
     for record: ReleaseRecord,
     store: WorkbenchStore,
-    updatesMessage: Bool = true
+    updatesMessage: Bool = true,
+    articleDraftID: UUID? = nil
   ) async -> DeploymentStatusSnapshot? {
     let profile = store.profile(for: record)
     let updatesProfileUI = updatesMessage
@@ -933,6 +934,8 @@ public final class DeploymentStore: ObservableObject {
       return nil
     }
 
+    let storedRecord = store.releaseRecords.first(where: { $0.id == record.id })
+    let previousSnapshot = deploymentStatusSnapshots[record.id]
     let requestID = UUID()
     latestDeploymentStatusRequestIDByRecord[record.id] = requestID
     if updatesProfileUI {
@@ -983,7 +986,9 @@ public final class DeploymentStore: ObservableObject {
     let snapshot = await deploymentStatusService.check(
       profile: profile,
       releaseRecord: record.deploymentAttributionRecord,
-      token: token
+      token: token,
+      articleDraftID: articleDraftID,
+      previousSnapshot: previousSnapshot
     )
     guard latestDeploymentStatusRequestIDByRecord[record.id] == requestID else {
       return nil
@@ -991,7 +996,13 @@ public final class DeploymentStore: ObservableObject {
     guard store.profiles.first(where: { $0.id == profile.id }) == profile else {
       return nil
     }
+    guard store.releaseRecords.first(where: { $0.id == record.id }) == storedRecord,
+      storedRecord == nil || storedRecord == record
+    else { return nil }
     recordDeploymentStatusSnapshot(snapshot, for: record)
+    if storedRecord != nil {
+      store.markVerifiedArticlesAsPublished(record: record, snapshot: snapshot, profile: profile)
+    }
     if updatesProfileUI {
       let statusMessage = CoreL10n.format(
         "%@：%@",

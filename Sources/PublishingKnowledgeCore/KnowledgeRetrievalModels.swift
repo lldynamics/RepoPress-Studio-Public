@@ -136,6 +136,9 @@ public struct KnowledgeSemanticRepairReport: Hashable, Sendable {
 public struct KnowledgeCitation: Identifiable, Codable, Hashable, Sendable {
   public var id: String
   public var documentID: UUID
+  /// Revision whose indexed chunk supported the citation. Optional keeps
+  /// persisted conversations created before revision-aware citations readable.
+  public var revisionID: UUID?
   public var chunkID: UUID
   public var title: String
   public var authors: [String]
@@ -146,6 +149,7 @@ public struct KnowledgeCitation: Identifiable, Codable, Hashable, Sendable {
   public init(
     id: String,
     documentID: UUID,
+    revisionID: UUID? = nil,
     chunkID: UUID,
     title: String,
     authors: [String] = [],
@@ -155,6 +159,7 @@ public struct KnowledgeCitation: Identifiable, Codable, Hashable, Sendable {
   ) {
     self.id = id
     self.documentID = documentID
+    self.revisionID = revisionID
     self.chunkID = chunkID
     self.title = title
     self.authors = authors

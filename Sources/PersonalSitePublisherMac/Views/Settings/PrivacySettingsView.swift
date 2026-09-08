@@ -8,14 +8,12 @@ struct PrivacySettingsView: View {
   let updatePrivacySettings: (PrivacyProtectionSettings) -> Void
   var body: some View {
     Form {
-      SettingsSubsectionAnchor(subsection: .privacyQuickHide)
       quickHideSection
-      SettingsSubsectionAnchor(subsection: .privacyMasking)
       PrivacySettingsVisibilitySection(
-        masksPrivateContent: privacySettingBinding(keyPath: \.masksPrivateContent)
+        masksPrivateContent: privacySettingBinding(keyPath: \.masksPrivateContent),
+        subsectionAnchor: .privacyMasking
       )
       maskingPreviewSection
-      SettingsSubsectionAnchor(subsection: .privacyStatus)
       currentStatusSection
       supportSection
     }
@@ -64,6 +62,7 @@ struct PrivacySettingsView: View {
         }
       }
       .padding(.vertical, 4)
+      .settingsSubsectionAnchor(.privacyQuickHide)
     }
   }
 
@@ -106,7 +105,11 @@ struct PrivacySettingsView: View {
   }
 
   private var currentStatusSection: some View {
-    PrivacySettingsCurrentStatusSection(status: status, onQuickHide: onQuickHide)
+    PrivacySettingsCurrentStatusSection(
+      status: status,
+      onQuickHide: onQuickHide,
+      subsectionAnchor: .privacyStatus
+    )
   }
 
   private var supportSection: some View {

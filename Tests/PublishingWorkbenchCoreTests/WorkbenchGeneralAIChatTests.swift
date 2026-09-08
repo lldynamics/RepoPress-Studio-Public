@@ -5,7 +5,12 @@ import XCTest
 
 @MainActor
 final class WorkbenchGeneralAIChatTests: XCTestCase {
+  private var consentSuiteName: String!
+  private var testConsentDefaults: UserDefaults!
+
   override func setUp() async throws {
+    consentSuiteName = "WorkbenchGeneralAIChatTests.\(UUID().uuidString)"
+    testConsentDefaults = UserDefaults(suiteName: consentSuiteName)
     // Production defaults to automatic remote authorization. Tests that need
     // fail-closed fault injection install an explicit provider below.
     AIOutboundPayloadApprovalBroker.shared.testingDecisionProvider = nil
@@ -15,6 +20,9 @@ final class WorkbenchGeneralAIChatTests: XCTestCase {
     AIOutboundPayloadApprovalBroker.shared.cancelPendingRequest()
     AIOutboundPayloadApprovalBroker.shared.testingDecisionProvider = nil
     AIOutboundPayloadApprovalBroker.shared.testingConfirmationDateProvider = nil
+    testConsentDefaults.removePersistentDomain(forName: consentSuiteName)
+    testConsentDefaults = nil
+    consentSuiteName = nil
   }
 
   func testConnectionProfileKeyAvailabilityIsScopedToDisplayedGeneralConnection() throws {
@@ -28,7 +36,8 @@ final class WorkbenchGeneralAIChatTests: XCTestCase {
     )
     let store = WorkbenchStore(
       persistence: WorkbenchPersistence(fileURL: persistenceURL),
-      keychainTokenStore: tokenStore
+      keychainTokenStore: tokenStore,
+      aiDataSharingConsentStore: AIDataSharingConsentStore(defaults: testConsentDefaults)
     )
     let configured = store.createAIConnectionProfile(
       named: "已配置 Key",
@@ -62,7 +71,8 @@ final class WorkbenchGeneralAIChatTests: XCTestCase {
     let store = WorkbenchStore(
       persistence: WorkbenchPersistence(
         fileURL: directory.appendingPathComponent("workbench.json")
-      )
+      ),
+      aiDataSharingConsentStore: AIDataSharingConsentStore(defaults: testConsentDefaults)
     )
     let draft = try XCTUnwrap(store.selectedDraft)
     let conversation = AIConversation(
@@ -94,7 +104,8 @@ final class WorkbenchGeneralAIChatTests: XCTestCase {
       persistence: WorkbenchPersistence(fileURL: persistenceURL),
       aiPublishingAssistantService: AIPublishingAssistantService(
         client: AIChatCompletionClient(transport: transport)
-      )
+      ),
+      aiDataSharingConsentStore: AIDataSharingConsentStore(defaults: testConsentDefaults)
     )
     let expectedConversation = AIChatGeneralConversationExpectation(
       conversation: nil
@@ -137,7 +148,8 @@ final class WorkbenchGeneralAIChatTests: XCTestCase {
     let store = WorkbenchStore(
       persistence: WorkbenchPersistence(
         fileURL: persistenceURL
-      )
+      ),
+      aiDataSharingConsentStore: AIDataSharingConsentStore(defaults: testConsentDefaults)
     )
     defer { try? FileManager.default.removeItem(at: persistenceURL) }
     let conversation = try XCTUnwrap(
@@ -172,7 +184,8 @@ final class WorkbenchGeneralAIChatTests: XCTestCase {
       .appendingPathComponent("WorkbenchGeneralExplicitReference-\(UUID().uuidString).json")
     defer { try? FileManager.default.removeItem(at: persistenceURL) }
     let store = WorkbenchStore(
-      persistence: WorkbenchPersistence(fileURL: persistenceURL)
+      persistence: WorkbenchPersistence(fileURL: persistenceURL),
+      aiDataSharingConsentStore: AIDataSharingConsentStore(defaults: testConsentDefaults)
     )
     var draft = try XCTUnwrap(store.selectedDraft)
     draft.title = "明确附加的文章标题"
@@ -209,7 +222,8 @@ final class WorkbenchGeneralAIChatTests: XCTestCase {
     let store = WorkbenchStore(
       persistence: WorkbenchPersistence(
         fileURL: directory.appendingPathComponent("workbench.json")
-      )
+      ),
+      aiDataSharingConsentStore: AIDataSharingConsentStore(defaults: testConsentDefaults)
     )
     let initialDraftCount = store.drafts.count
     let connection = store.activeAIConnectionProfile
@@ -244,7 +258,8 @@ final class WorkbenchGeneralAIChatTests: XCTestCase {
       .appendingPathComponent("WorkbenchGeneralProfileDelete-\(UUID().uuidString).json")
     defer { try? FileManager.default.removeItem(at: persistenceURL) }
     let store = WorkbenchStore(
-      persistence: WorkbenchPersistence(fileURL: persistenceURL)
+      persistence: WorkbenchPersistence(fileURL: persistenceURL),
+      aiDataSharingConsentStore: AIDataSharingConsentStore(defaults: testConsentDefaults)
     )
     let profile = store.createAIConnectionProfile(
       named: "通用会话专用档案",
@@ -273,7 +288,8 @@ final class WorkbenchGeneralAIChatTests: XCTestCase {
       persistence: WorkbenchPersistence(
         fileURL: FileManager.default.temporaryDirectory
           .appendingPathComponent("WorkbenchGeneralMissingProfileSend-\(UUID().uuidString).json")
-      )
+      ),
+      aiDataSharingConsentStore: AIDataSharingConsentStore(defaults: testConsentDefaults)
     )
     let conversation = try XCTUnwrap(
       store.aiStore.startNewGeneralAIChatConversation()
@@ -301,7 +317,8 @@ final class WorkbenchGeneralAIChatTests: XCTestCase {
       persistence: WorkbenchPersistence(
         fileURL: FileManager.default.temporaryDirectory
           .appendingPathComponent("WorkbenchGeneralMissingProfileRetry-\(UUID().uuidString).json")
-      )
+      ),
+      aiDataSharingConsentStore: AIDataSharingConsentStore(defaults: testConsentDefaults)
     )
     let conversation = try XCTUnwrap(
       store.aiStore.startNewGeneralAIChatConversation()
@@ -337,7 +354,8 @@ final class WorkbenchGeneralAIChatTests: XCTestCase {
   }
 
   func testGeneralRetryRejectsStaleOperationID() async throws {
-    let store = WorkbenchStore()
+    let fixture = TestWorkbenchFixture()
+    let store = fixture.store
     let conversation = try XCTUnwrap(
       store.aiStore.startNewGeneralAIChatConversation()
     )
@@ -369,7 +387,7 @@ final class WorkbenchGeneralAIChatTests: XCTestCase {
       ),
       capabilities: [.visionInput]
     )
-    let consentStore = AIDataSharingConsentStore()
+    let consentStore = AIDataSharingConsentStore(defaults: testConsentDefaults)
     consentStore.grant(for: config)
     defer { consentStore.revoke(for: config) }
     let persistenceURL = FileManager.default.temporaryDirectory
@@ -429,7 +447,7 @@ final class WorkbenchGeneralAIChatTests: XCTestCase {
       model: "general-cancel-model",
       requiresAPIKey: false
     )
-    let consentStore = AIDataSharingConsentStore()
+    let consentStore = AIDataSharingConsentStore(defaults: testConsentDefaults)
     consentStore.grant(for: config)
     defer { consentStore.revoke(for: config) }
     let persistenceURL = FileManager.default.temporaryDirectory
@@ -578,7 +596,7 @@ final class WorkbenchGeneralAIChatTests: XCTestCase {
       ),
       capabilities: [.streamingResponse]
     )
-    let consentStore = AIDataSharingConsentStore()
+    let consentStore = AIDataSharingConsentStore(defaults: testConsentDefaults)
     consentStore.grant(for: config)
     defer { consentStore.revoke(for: config) }
 
@@ -649,7 +667,7 @@ final class WorkbenchGeneralAIChatTests: XCTestCase {
       advancedSettings: AIProviderAdvancedSettings(allowsApplicationTools: true)
     )
     let config = capabilitySupportedConfig(baseConfig, capabilities: [.toolCalling])
-    let consentStore = AIDataSharingConsentStore()
+    let consentStore = AIDataSharingConsentStore(defaults: testConsentDefaults)
     consentStore.grant(for: config)
     defer { consentStore.revoke(for: config) }
     let persistenceURL = FileManager.default.temporaryDirectory
@@ -952,7 +970,7 @@ final class WorkbenchGeneralAIChatTests: XCTestCase {
       advancedSettings: AIProviderAdvancedSettings(allowsApplicationTools: true)
     )
     let config = capabilitySupportedConfig(baseConfig, capabilities: [.toolCalling])
-    let consentStore = AIDataSharingConsentStore()
+    let consentStore = AIDataSharingConsentStore(defaults: testConsentDefaults)
     consentStore.grant(for: config)
     defer { consentStore.revoke(for: config) }
     let directory = try TestWorkbenchFactory.temporaryDirectoryURL(
@@ -1045,6 +1063,7 @@ final class WorkbenchGeneralAIChatTests: XCTestCase {
       capabilities: [.streamingResponse]
     )
     let consentStore = AIDataSharingConsentStore(
+      defaults: testConsentDefaults,
       storageKey: "GeneralExplicitKnowledgeRevocation.\(UUID().uuidString)"
     )
     consentStore.grant(for: config)
@@ -1113,7 +1132,7 @@ final class WorkbenchGeneralAIChatTests: XCTestCase {
       advancedSettings: AIProviderAdvancedSettings(allowsApplicationTools: true)
     )
     let config = capabilitySupportedConfig(baseConfig, capabilities: [.toolCalling])
-    let consentStore = AIDataSharingConsentStore()
+    let consentStore = AIDataSharingConsentStore(defaults: testConsentDefaults)
     consentStore.grant(for: config)
     defer { consentStore.revoke(for: config) }
     let directory = try TestWorkbenchFactory.temporaryDirectoryURL(
@@ -1204,7 +1223,7 @@ final class WorkbenchGeneralAIChatTests: XCTestCase {
       model: "general-test-model",
       requiresAPIKey: false
     )
-    let consentStore = AIDataSharingConsentStore()
+    let consentStore = AIDataSharingConsentStore(defaults: testConsentDefaults)
     consentStore.grant(for: config)
     defer { consentStore.revoke(for: config) }
     let directory = FileManager.default.temporaryDirectory
@@ -1277,7 +1296,7 @@ final class WorkbenchGeneralAIChatTests: XCTestCase {
       ),
       capabilities: [.streamingResponse]
     )
-    let consentStore = AIDataSharingConsentStore()
+    let consentStore = AIDataSharingConsentStore(defaults: testConsentDefaults)
     consentStore.grant(for: config)
     defer { consentStore.revoke(for: config) }
     let directory = FileManager.default.temporaryDirectory
@@ -1326,7 +1345,8 @@ final class WorkbenchGeneralAIChatTests: XCTestCase {
       .appendingPathComponent("WorkbenchGeneralModelSelection-\(UUID().uuidString).json")
     defer { try? FileManager.default.removeItem(at: persistenceURL) }
     let store = WorkbenchStore(
-      persistence: WorkbenchPersistence(fileURL: persistenceURL)
+      persistence: WorkbenchPersistence(fileURL: persistenceURL),
+      aiDataSharingConsentStore: AIDataSharingConsentStore(defaults: testConsentDefaults)
     )
     let conversation = try XCTUnwrap(store.aiStore.startNewGeneralAIChatConversation())
 
@@ -1349,7 +1369,8 @@ final class WorkbenchGeneralAIChatTests: XCTestCase {
       .appendingPathComponent("WorkbenchGeneralReasoning-\(UUID().uuidString).json")
     defer { try? FileManager.default.removeItem(at: persistenceURL) }
     let store = WorkbenchStore(
-      persistence: WorkbenchPersistence(fileURL: persistenceURL)
+      persistence: WorkbenchPersistence(fileURL: persistenceURL),
+      aiDataSharingConsentStore: AIDataSharingConsentStore(defaults: testConsentDefaults)
     )
     let conversation = try XCTUnwrap(
       store.aiStore.startNewGeneralAIChatConversation()
@@ -1374,7 +1395,8 @@ final class WorkbenchGeneralAIChatTests: XCTestCase {
       .appendingPathComponent("WorkbenchGeneralExplicitSettings-\(UUID().uuidString).json")
     defer { try? FileManager.default.removeItem(at: persistenceURL) }
     let store = WorkbenchStore(
-      persistence: WorkbenchPersistence(fileURL: persistenceURL)
+      persistence: WorkbenchPersistence(fileURL: persistenceURL),
+      aiDataSharingConsentStore: AIDataSharingConsentStore(defaults: testConsentDefaults)
     )
     let displayed = try XCTUnwrap(
       store.aiStore.startNewGeneralAIChatConversation()
@@ -1414,7 +1436,8 @@ final class WorkbenchGeneralAIChatTests: XCTestCase {
       .appendingPathComponent("WorkbenchGeneralRunningSettings-\(UUID().uuidString).json")
     defer { try? FileManager.default.removeItem(at: persistenceURL) }
     let store = WorkbenchStore(
-      persistence: WorkbenchPersistence(fileURL: persistenceURL)
+      persistence: WorkbenchPersistence(fileURL: persistenceURL),
+      aiDataSharingConsentStore: AIDataSharingConsentStore(defaults: testConsentDefaults)
     )
     let conversation = try XCTUnwrap(
       store.aiStore.startNewGeneralAIChatConversation()
@@ -1494,7 +1517,7 @@ final class WorkbenchGeneralAIChatTests: XCTestCase {
       ),
       capabilities: [.streamingResponse]
     )
-    let consentStore = AIDataSharingConsentStore()
+    let consentStore = AIDataSharingConsentStore(defaults: testConsentDefaults)
     consentStore.grant(for: config)
     defer { consentStore.revoke(for: config) }
     let persistenceURL = FileManager.default.temporaryDirectory
@@ -1621,7 +1644,7 @@ final class WorkbenchGeneralAIChatTests: XCTestCase {
       model: "general-payload-\(suffix.lowercased())",
       requiresAPIKey: false
     )
-    let consentStore = AIDataSharingConsentStore()
+    let consentStore = AIDataSharingConsentStore(defaults: testConsentDefaults)
     consentStore.grant(for: config)
     let persistenceURL = FileManager.default.temporaryDirectory
       .appendingPathComponent("WorkbenchGeneralPayload\(suffix)-\(UUID().uuidString).json")
@@ -1701,6 +1724,7 @@ final class WorkbenchGeneralAIChatTests: XCTestCase {
     directory: URL
   ) {
     let consentStore = AIDataSharingConsentStore(
+      defaults: testConsentDefaults,
       storageKey: "\(prefix).\(UUID().uuidString)"
     )
     consentStore.grant(for: config)

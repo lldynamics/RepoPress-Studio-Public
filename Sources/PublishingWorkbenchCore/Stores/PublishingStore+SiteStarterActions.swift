@@ -35,6 +35,7 @@ private struct SiteStarterOperationBaseline: Equatable {
   let siteStarterResult: SiteStarterResult?
   let siteStarterImportResult: SiteStarterImportResult?
   let siteStarterPushResult: SiteStarterPushResult?
+  let siteStarterProgress: SiteStarterProgress?
 
   @MainActor
   init(store: PublishingStore) {
@@ -45,6 +46,7 @@ private struct SiteStarterOperationBaseline: Equatable {
     siteStarterResult = store.siteStarterResult
     siteStarterImportResult = store.siteStarterImportResult
     siteStarterPushResult = store.siteStarterPushResult
+    siteStarterProgress = store.siteStarterProgress
   }
 
   @MainActor
@@ -87,6 +89,18 @@ extension PublishingStore {
       siteStarterResult = result
       siteStarterImportResult = nil
       siteStarterPushResult = nil
+      siteStarterProgress = SiteStarterProgress(
+        profileID: result.profile.id,
+        repositoryRootPath: result.profile.localRepositoryRootPath,
+        templateID: request.templateID,
+        initialDraftID: result.initialDraft.id,
+        createdFilePaths: result.createdFilePaths,
+        initializedGit: result.initializedGit,
+        originConfigured: result.configuredRemoteURL != nil,
+        siteDescription: request.siteDescription,
+        deploymentTarget: request.deploymentTarget,
+        configureOriginRemote: request.configureOriginRemote
+      )
       profiles.append(result.profile)
       activeProfileID = result.profile.id
       drafts.append(result.initialDraft)
@@ -244,6 +258,13 @@ extension PublishingStore {
       starterResult.profile = profile
       starterResult.configuredRemoteURL = remoteURL
       siteStarterResult = starterResult
+      if var progress = siteStarterProgress,
+        let rootPath = SiteStarterProgress.normalizedRootPath(profile.localRepositoryRootPath),
+        progress.profileID == profile.id,
+        progress.repositoryRootPath == rootPath {
+        progress.originConfigured = true
+        siteStarterProgress = progress
+      }
       setPublishActionMessage(
         CoreL10n.format(
           "已配置 Starter 远端：%@。",
@@ -307,6 +328,71 @@ extension PublishingStore {
       status: .inProgress
     )
     do {
+      if let progress = siteStarterProgress,
+        progress.localCommitSHA == nil,
+        progress.frozenFirstPushRemoteURL != nil {
+        let confirmation = try starterFrozenPushConfirmation(progress: progress, starterResult: starterResult)
+        guard let recovered = try await siteStarterService.recoverCommittedStarterPush(
+          profile: profile, confirmation: confirmation
+        ) else {
+          guard localRepositoryMutationContext == operation, operation.stillMatches(store.activeProfile) else {
+            return nil
+          }
+          // The pre-commit persistence succeeded but no commit exists yet.
+          // Discard that incomplete frozen attempt and permit a fresh review.
+          var pendingProgress = progress
+          pendingProgress.frozenPushConfirmation = nil
+          pendingProgress.frozenFirstPushRemoteURL = nil
+          pendingProgress.frozenFirstPushBranch = nil
+          pendingProgress.frozenFirstPushHeadCommitSHA = nil
+          pendingProgress.frozenFirstPushRemoteBranchCommitSHA = nil
+          siteStarterProgress = pendingProgress
+          guard store.saveCurrentStateSynchronously() else { return nil }
+          let freshConfirmation = try await siteStarterService.prepareStarterPushConfirmationAsync(
+            profile: profile, createdFilePaths: starterResult.createdFilePaths
+          )
+          guard localRepositoryMutationContext == operation, operation.stillMatches(store.activeProfile) else {
+            return nil
+          }
+          return freshConfirmation
+        }
+        guard localRepositoryMutationContext == operation, operation.stillMatches(store.activeProfile) else {
+          return nil
+        }
+        var recoveredProgress = progress
+        recoveredProgress.firstPushStage = .committed
+        recoveredProgress.localCommitSHA = recovered.commitSHA
+        var recoveredConfirmation = confirmation
+        recoveredConfirmation.existingCommitSHA = recovered.commitSHA
+        recoveredProgress.frozenPushConfirmation = recoveredConfirmation
+        siteStarterProgress = recoveredProgress
+        guard store.saveCurrentStateSynchronously() else {
+          setPublishActionMessage(CoreL10n.text("已找到 Starter 提交，但无法安全持久化 SHA，已停止推送。"), status: .failure)
+          return nil
+        }
+        setPublishActionMessage(CoreL10n.text("已按冻结复核恢复 Starter 提交；确认后只会推送该 SHA。"), status: .warning)
+        return recoveredConfirmation
+      }
+      if let progress = siteStarterProgress, let committedSHA = progress.localCommitSHA {
+        let confirmation = try starterPushRetryConfirmation(progress: progress, starterResult: starterResult)
+        _ = try await siteStarterService.validateCommittedStarterPush(
+          profile: profile,
+          confirmation: confirmation,
+          committedPush: SiteStarterCommittedPush(
+            commitSHA: committedSHA,
+            committedPaths: starterResult.createdFilePaths
+          ),
+          at: try starterRepositoryRoot(profile: profile)
+        )
+        guard localRepositoryMutationContext == operation, operation.stillMatches(store.activeProfile) else {
+          return nil
+        }
+        setPublishActionMessage(
+          CoreL10n.text("已复核已提交的 Starter 版本；确认后只会推送该 SHA。"),
+          status: .warning
+        )
+        return confirmation
+      }
       let confirmation = try await siteStarterService.prepareStarterPushConfirmationAsync(
         profile: profile,
         createdFilePaths: starterResult.createdFilePaths
@@ -369,22 +455,87 @@ extension PublishingStore {
     defer { finishLocalRepositoryMutation(operation) }
     setPublishActionMessage(CoreL10n.text("正在重新校验并推送 Starter…"), status: .inProgress)
     do {
-      let result = try await siteStarterService.commitAndPushStarterSiteAsync(
-        profile: profile,
-        createdFilePaths: starterResult.createdFilePaths,
-        confirmation: confirmation
+      let progress = try starterProgressForPush(profile: profile)
+      if let localCommitSHA = progress.localCommitSHA {
+        let retryConfirmation = try starterPushRetryConfirmation(progress: progress, starterResult: starterResult)
+        guard confirmation == retryConfirmation else { throw SiteStarterError.starterPushConfirmationChanged }
+        // A prior persistence failure may have left this SHA only in memory.
+        // Retry must durably save the same proof before any network push too.
+        guard store.saveCurrentStateSynchronously() else {
+          setPublishActionMessage(
+            CoreL10n.text("Starter 已提交，但无法持久化提交 SHA；为避免推送未复核版本，已停止推送。"),
+            status: .failure
+          )
+          return nil
+        }
+        let result = try await siteStarterService.pushCommittedStarterSiteAsync(
+          profile: profile,
+          confirmation: retryConfirmation,
+          committedPush: SiteStarterCommittedPush(
+            commitSHA: localCommitSHA,
+            committedPaths: starterResult.createdFilePaths
+          )
+        )
+        return finishStarterPush(
+          rootPath: result.rootPath,
+          branch: result.branch,
+          remoteURL: result.remoteURL,
+          commitSHA: localCommitSHA,
+          committedPaths: starterResult.createdFilePaths,
+          output: result.output,
+          profile: profile,
+          store: store,
+          operation: operation
+        )
+      }
+
+      var preparedProgress = progress
+      preparedProgress.frozenFirstPushRemoteURL = confirmation.remoteURL
+      preparedProgress.frozenFirstPushBranch = confirmation.branch
+      preparedProgress.frozenFirstPushHeadCommitSHA = confirmation.headCommitSHA
+      preparedProgress.frozenFirstPushRemoteBranchCommitSHA = confirmation.remoteBranchCommitSHA
+      preparedProgress.frozenPushConfirmation = confirmation
+      siteStarterProgress = preparedProgress
+      guard store.saveCurrentStateSynchronously() else {
+        setPublishActionMessage(CoreL10n.text("无法持久化首次推送复核，未提交或推送。"), status: .failure)
+        return nil
+      }
+
+      let committed = try await siteStarterService.commitStarterSiteAsync(
+        profile: profile, createdFilePaths: starterResult.createdFilePaths, confirmation: confirmation
       )
       guard localRepositoryMutationContext == operation, operation.stillMatches(store.activeProfile)
       else {
         return nil
       }
-      siteStarterPushResult = result
-      setPublishActionMessage(
-        CoreL10n.format("Starter 已提交并推送：%@。", String(result.commitSHA.prefix(8))),
-        status: .success
+      if var progress = siteStarterProgress,
+        let rootPath = SiteStarterProgress.normalizedRootPath(profile.localRepositoryRootPath),
+        progress.profileID == profile.id,
+        progress.repositoryRootPath == rootPath {
+        progress.firstPushStage = .committed
+        progress.localCommitSHA = committed.commitSHA
+        var committedConfirmation = confirmation
+        committedConfirmation.existingCommitSHA = committed.commitSHA
+        progress.frozenPushConfirmation = committedConfirmation
+        siteStarterProgress = progress
+      }
+      guard store.saveCurrentStateSynchronously() else {
+        setPublishActionMessage(
+          CoreL10n.text("Starter 已提交，但无法持久化提交 SHA；为避免推送未复核版本，已停止推送。"),
+          status: .failure
+        )
+        return nil
+      }
+      let result = try await siteStarterService.pushCommittedStarterSiteAsync(
+        profile: profile, confirmation: try starterPushRetryConfirmation(
+          progress: try starterProgressForPush(profile: profile), starterResult: starterResult
+        ), committedPush: committed
       )
-      store.save()
-      return result
+      return finishStarterPush(
+        rootPath: result.rootPath, branch: result.branch, remoteURL: result.remoteURL,
+        commitSHA: committed.commitSHA, committedPaths: committed.committedPaths, output: result.output,
+        profile: profile, store: store, operation: operation
+      )
     } catch {
       guard localRepositoryMutationContext == operation, operation.stillMatches(store.activeProfile)
       else {
@@ -396,5 +547,94 @@ extension PublishingStore {
       )
       return nil
     }
+  }
+
+  private func starterProgressForPush(profile: SiteProfile) throws -> SiteStarterProgress {
+    guard let progress = siteStarterProgress,
+      progress.profileID == profile.id,
+      progress.repositoryRootPath == SiteStarterProgress.normalizedRootPath(profile.localRepositoryRootPath)
+    else { throw SiteStarterError.starterPushConfirmationChanged }
+    return progress
+  }
+
+  private func starterRepositoryRoot(profile: SiteProfile) throws -> URL {
+    guard let rootURL = profile.localRepositoryRootURL else { throw SiteStarterError.missingRepositoryRoot }
+    return rootURL
+  }
+
+  private func starterPushRetryConfirmation(
+    progress: SiteStarterProgress,
+    starterResult: SiteStarterResult
+  ) throws -> SiteStarterPushConfirmation {
+    guard progress.localCommitSHA != nil else { throw SiteStarterError.starterPushConfirmationChanged }
+    guard let confirmation = progress.frozenPushConfirmation,
+      confirmation.existingCommitSHA == progress.localCommitSHA,
+      confirmation.committedPaths == starterResult.createdFilePaths.sorted()
+    else { throw SiteStarterError.starterPushConfirmationChanged }
+    return confirmation
+  }
+
+  private func starterFrozenPushConfirmation(
+    progress: SiteStarterProgress,
+    starterResult: SiteStarterResult
+  ) throws -> SiteStarterPushConfirmation {
+    guard let confirmation = progress.frozenPushConfirmation,
+      confirmation.existingCommitSHA == nil,
+      confirmation.committedPaths == starterResult.createdFilePaths.sorted(),
+      confirmation.fileObjectIDs.keys.sorted() == confirmation.committedPaths
+    else { throw SiteStarterError.starterPushConfirmationChanged }
+    return confirmation
+  }
+
+  private func finishStarterPush(
+    rootPath: String,
+    branch: String,
+    remoteURL: String,
+    commitSHA: String,
+    committedPaths: [String],
+    output: String,
+    profile: SiteProfile,
+    store: WorkbenchStore,
+    operation: LocalRepositoryOperationContext
+  ) -> SiteStarterPushResult? {
+    guard localRepositoryMutationContext == operation, operation.stillMatches(store.activeProfile) else { return nil }
+    let result = SiteStarterPushResult(
+      rootPath: rootPath, branch: branch, remoteURL: remoteURL, commitSHA: commitSHA,
+      committedPaths: committedPaths, output: output
+    )
+    siteStarterPushResult = result
+    if var progress = siteStarterProgress,
+      progress.profileID == profile.id,
+      progress.repositoryRootPath == SiteStarterProgress.normalizedRootPath(profile.localRepositoryRootPath) {
+      progress.firstPushStage = .completed
+      siteStarterProgress = progress
+    }
+    setPublishActionMessage(CoreL10n.format("Starter 已提交并推送：%@。", String(commitSHA.prefix(8))), status: .success)
+    store.save()
+    return result
+  }
+
+  /// Rebuilds the wizard's transient result from the normal profile and draft
+  /// snapshot after verifying that the same local directory still contains the
+  /// saved, safe starter-file manifest.
+  @discardableResult
+  public func resumeSiteStarterProgress(store: WorkbenchStore) -> Bool {
+    guard let progress = siteStarterProgress else { return false }
+    guard let result = progress.resumedResult(
+      activeProfile: store.activeProfile,
+      drafts: drafts
+    ) else {
+      setPublishActionMessage(
+        CoreL10n.text("当前站点或仓库目录已变化，请重新生成或导入站点后再复核。"),
+        status: .warning
+      )
+      return false
+    }
+    siteStarterResult = result
+    siteStarterImportResult = nil
+    if progress.firstPushStage != .completed {
+      siteStarterPushResult = nil
+    }
+    return true
   }
 }

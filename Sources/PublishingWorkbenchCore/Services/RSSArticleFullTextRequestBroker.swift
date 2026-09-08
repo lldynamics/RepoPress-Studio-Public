@@ -5,13 +5,20 @@ import Foundation
 public actor RSSArticleFullTextRequestBroker {
   public static let shared = RSSArticleFullTextRequestBroker()
 
+  private struct RequestKey: Hashable, Sendable {
+    let articleID: String
+    let sourceURL: String
+    let forceRefresh: Bool
+    let allowsPrivateNetworkAccess: Bool
+  }
+
   private struct InFlightRequest {
     let token: UUID
     let task: Task<RSSArticleFullTextRecord, Error>
   }
 
   private let limiter: RSSArticleFullTextRequestLimiter
-  private var inFlightByArticleID: [String: InFlightRequest] = [:]
+  private var inFlightByRequestKey: [RequestKey: InFlightRequest] = [:]
 
   public init(
     maximumConcurrentRequests: Int = 2,
@@ -33,7 +40,13 @@ public actor RSSArticleFullTextRequestBroker {
     guard let host = article.link?.host?.lowercased(), !host.isEmpty else {
       throw RSSReaderError.persistence("该文章没有有效的原文网页链接。")
     }
-    return try await perform(articleID: article.id, host: host) {
+    return try await perform(
+      articleID: article.id,
+      host: host,
+      sourceURL: article.link,
+      forceRefresh: forceRefresh,
+      allowsPrivateNetworkAccess: allowsPrivateNetworkAccess
+    ) {
       try await service.fetchFullTextRecord(
         for: article,
         cachedRecord: cachedRecord,
@@ -47,9 +60,21 @@ public actor RSSArticleFullTextRequestBroker {
   func perform(
     articleID: String,
     host: String,
+    sourceURL: URL? = nil,
+    forceRefresh: Bool = false,
+    allowsPrivateNetworkAccess: Bool = false,
     operation: @escaping @Sendable () async throws -> RSSArticleFullTextRecord
   ) async throws -> RSSArticleFullTextRecord {
-    if let existing = inFlightByArticleID[articleID] {
+    let requestKey = RequestKey(
+      articleID: articleID,
+      // Older internal callers do not have a source URL. Keep their previous
+      // per-article de-duplication contract without allowing production RSS
+      // fetches (which always pass a URL) to share that compatibility key.
+      sourceURL: sourceURL?.absoluteString ?? "",
+      forceRefresh: forceRefresh,
+      allowsPrivateNetworkAccess: allowsPrivateNetworkAccess
+    )
+    if let existing = inFlightByRequestKey[requestKey] {
       return try await existing.task.value
     }
 
@@ -59,21 +84,21 @@ public actor RSSArticleFullTextRequestBroker {
     let task = Task<RSSArticleFullTextRecord, Error> {
       try await limiter.perform(host: normalizedHost, operation: operation)
     }
-    inFlightByArticleID[articleID] = InFlightRequest(token: token, task: task)
+    inFlightByRequestKey[requestKey] = InFlightRequest(token: token, task: task)
 
     do {
       let result = try await task.value
-      removeInFlightRequest(articleID: articleID, token: token)
+      removeInFlightRequest(requestKey: requestKey, token: token)
       return result
     } catch {
-      removeInFlightRequest(articleID: articleID, token: token)
+      removeInFlightRequest(requestKey: requestKey, token: token)
       throw error
     }
   }
 
-  private func removeInFlightRequest(articleID: String, token: UUID) {
-    guard inFlightByArticleID[articleID]?.token == token else { return }
-    inFlightByArticleID.removeValue(forKey: articleID)
+  private func removeInFlightRequest(requestKey: RequestKey, token: UUID) {
+    guard inFlightByRequestKey[requestKey]?.token == token else { return }
+    inFlightByRequestKey.removeValue(forKey: requestKey)
   }
 }
 

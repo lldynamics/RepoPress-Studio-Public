@@ -139,4 +139,52 @@ final class WorkbenchTaskCenterModelsTests: XCTestCase {
     XCTAssertEqual(decoded.retryIntent, .imageSummary(profileID: profileID))
     XCTAssertTrue(decoded.canRetry)
   }
+
+  func testTargetedCancellationRoundTripsAndDiagnosticsStaySpecific() throws {
+    let draftID = UUID()
+    let conversationID = UUID()
+    let operationID = UUID()
+    let target = WorkbenchTaskTarget.articleConversation(
+      draftID: draftID,
+      conversationID: conversationID
+    )
+    let original = WorkbenchTaskItem(
+      id: "ai-running",
+      kind: .aiRequest,
+      detail: "正在回复",
+      state: .running,
+      target: target,
+      cancellationIntent: .aiChat(operationID: operationID, target: target)
+    )
+
+    let decoded = try JSONDecoder().decode(
+      WorkbenchTaskItem.self,
+      from: JSONEncoder().encode(original)
+    )
+
+    XCTAssertEqual(decoded, original)
+    XCTAssertTrue(decoded.canCancel)
+    XCTAssertTrue(decoded.diagnosticText.contains(operationID.uuidString))
+    XCTAssertTrue(decoded.diagnosticText.contains(draftID.uuidString))
+  }
+
+  func testCancellationIsUnavailableForCompletedOrUntargetedTasks() {
+    XCTAssertFalse(
+      WorkbenchTaskItem(
+        id: "completed",
+        kind: .aiRequest,
+        detail: "完成",
+        state: .completed,
+        cancellationIntent: .aiChat(operationID: UUID(), target: .draft(UUID()))
+      ).canCancel
+    )
+    XCTAssertFalse(
+      WorkbenchTaskItem(
+        id: "unbound",
+        kind: .aiRequest,
+        detail: "运行",
+        state: .running
+      ).canCancel
+    )
+  }
 }

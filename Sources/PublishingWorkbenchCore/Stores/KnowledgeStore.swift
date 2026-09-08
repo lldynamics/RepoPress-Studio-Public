@@ -54,9 +54,14 @@ public final class KnowledgeStore: ObservableObject {
     didSet { invalidateListPresentation() }
   }
   @Published public internal(set) var selectedDocumentText = ""
+  /// The revision for which the reading projection was requested. A document
+  /// ID is stable across source refreshes, so it alone cannot safely identify
+  /// the text currently shown by the inspector.
+  @Published public internal(set) var selectedDocumentTextRevisionID: UUID?
   @Published public internal(set) var isLoadingSelectedDocumentText = false
   @Published public internal(set) var selectedDocumentTextError: String?
   @Published public internal(set) var selectedDocumentCapturedText: String?
+  @Published public internal(set) var selectedDocumentCapturedTextRevisionID: UUID?
   @Published public internal(set) var isLoadingSelectedDocumentCapturedText = false
   @Published public internal(set) var selectedDocumentCapturedTextError: String?
   @Published public internal(set) var searchText = "" {

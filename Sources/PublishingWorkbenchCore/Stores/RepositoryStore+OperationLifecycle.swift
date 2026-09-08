@@ -35,58 +35,58 @@ extension RepositoryStore {
       )
       return false
     }
-    guard let operation = beginRepositorySafeSyncOperation(store: store) else { return false }
-    defer { finishRepositorySafeSyncOperation(operation, store: store) }
+    return await withRepositorySafeSyncOperation(store: store, unavailable: { false }) { operation in
 
-    await cancelAndAwaitRepositoryBackgroundWorkForSafeSync(store: store)
-    let repositoryService = repositoryService
-    do {
-      switch lifecycle.kind {
-      case .merge:
-        store.setPublishActionMessage(CoreL10n.text("正在完成合并提交…"), status: .inProgress)
-        _ = try await Task.detached(priority: .userInitiated) {
-          try repositoryService.commitMerge(profile: profile, message: mergeMessage)
-        }.value
-        guard repositorySafeSyncOperationIsCurrent(operation, store: store) else { return false }
-        await scanRepositoryAsync(store: store, autoSyncGeneration: nil)
-        store.setPublishActionMessage(
-          CoreL10n.text("合并已完成并提交，发布门禁已恢复正常检查。"),
-          status: .success
-        )
-        return true
-
-      case .rebase:
-        store.setPublishActionMessage(CoreL10n.text("正在继续变基…"), status: .inProgress)
-        let after = try await Task.detached(priority: .userInitiated) {
-          try repositoryService.continueRebase(profile: profile)
-        }.value
-        guard repositorySafeSyncOperationIsCurrent(operation, store: store) else { return false }
-        if after.kind == .rebase {
+      await cancelAndAwaitRepositoryBackgroundWorkForSafeSync(store: store)
+      let repositoryService = repositoryService
+      do {
+        switch lifecycle.kind {
+        case .merge:
+          store.setPublishActionMessage(CoreL10n.text("正在完成合并提交…"), status: .inProgress)
+          _ = try await Task.detached(priority: .userInitiated) {
+            try repositoryService.commitMerge(profile: profile, message: mergeMessage)
+          }.value
+          guard repositorySafeSyncOperationIsCurrent(operation, store: store) else { return false }
           await scanRepositoryAsync(store: store, autoSyncGeneration: nil)
           store.setPublishActionMessage(
-            CoreL10n.text("变基已进入下一个冲突步骤，请继续逐个处理。"),
-            status: .warning
+            CoreL10n.text("合并已完成并提交，发布门禁已恢复正常检查。"),
+            status: .success
           )
           return true
-        }
-        try await restoreRebaseWIPIfNeeded(profile: profile, store: store)
-        guard repositorySafeSyncOperationIsCurrent(operation, store: store) else { return false }
-        await scanRepositoryAsync(store: store, autoSyncGeneration: nil)
-        store.setPublishActionMessage(
-          CoreL10n.text("变基已完成，变基前的本地改动已按精确 stash 恢复。"),
-          status: .success
-        )
-        return true
 
-      case .none, .unmergedIndex, .ambiguous:
+        case .rebase:
+          store.setPublishActionMessage(CoreL10n.text("正在继续变基…"), status: .inProgress)
+          let after = try await Task.detached(priority: .userInitiated) {
+            try repositoryService.continueRebase(profile: profile)
+          }.value
+          guard repositorySafeSyncOperationIsCurrent(operation, store: store) else { return false }
+          if after.kind == .rebase {
+            await scanRepositoryAsync(store: store, autoSyncGeneration: nil)
+            store.setPublishActionMessage(
+              CoreL10n.text("变基已进入下一个冲突步骤，请继续逐个处理。"),
+              status: .warning
+            )
+            return true
+          }
+          try await restoreRebaseWIPIfNeeded(profile: profile, store: store)
+          guard repositorySafeSyncOperationIsCurrent(operation, store: store) else { return false }
+          await scanRepositoryAsync(store: store, autoSyncGeneration: nil)
+          store.setPublishActionMessage(
+            CoreL10n.text("变基已完成，变基前的本地改动已按精确 stash 恢复。"),
+            status: .success
+          )
+          return true
+
+        case .none, .unmergedIndex, .ambiguous:
+          return false
+        }
+      } catch {
+        guard repositorySafeSyncOperationIsCurrent(operation, store: store) else { return false }
+        let recoverySaveError = recordRecoveryContext(from: error, profile: profile, store: store)
+        await scanRepositoryAsync(store: store, autoSyncGeneration: nil)
+        presentRepositoryOperationFailure(error, recoverySaveError: recoverySaveError, store: store)
         return false
       }
-    } catch {
-      guard repositorySafeSyncOperationIsCurrent(operation, store: store) else { return false }
-      let recoverySaveError = recordRecoveryContext(from: error, profile: profile, store: store)
-      await scanRepositoryAsync(store: store, autoSyncGeneration: nil)
-      presentRepositoryOperationFailure(error, recoverySaveError: recoverySaveError, store: store)
-      return false
     }
   }
 
@@ -115,45 +115,45 @@ extension RepositoryStore {
       )
       return false
     }
-    guard let operation = beginRepositorySafeSyncOperation(store: store) else { return false }
-    defer { finishRepositorySafeSyncOperation(operation, store: store) }
+    return await withRepositorySafeSyncOperation(store: store, unavailable: { false }) { operation in
 
-    await cancelAndAwaitRepositoryBackgroundWorkForSafeSync(store: store)
-    let repositoryService = repositoryService
-    do {
-      switch lifecycle.kind {
-      case .merge:
-        _ = try await Task.detached(priority: .userInitiated) {
-          try repositoryService.abortMerge(profile: profile)
-        }.value
-      case .rebase:
-        _ = try await Task.detached(priority: .userInitiated) {
-          try repositoryService.abortRebase(profile: profile)
-        }.value
+      await cancelAndAwaitRepositoryBackgroundWorkForSafeSync(store: store)
+      let repositoryService = repositoryService
+      do {
+        switch lifecycle.kind {
+        case .merge:
+          _ = try await Task.detached(priority: .userInitiated) {
+            try repositoryService.abortMerge(profile: profile)
+          }.value
+        case .rebase:
+          _ = try await Task.detached(priority: .userInitiated) {
+            try repositoryService.abortRebase(profile: profile)
+          }.value
+          guard repositorySafeSyncOperationIsCurrent(operation, store: store) else { return false }
+          try await restoreRebaseWIPIfNeeded(
+            profile: profile,
+            store: store,
+            afterAbort: true
+          )
+        case .none, .unmergedIndex, .ambiguous:
+          return false
+        }
         guard repositorySafeSyncOperationIsCurrent(operation, store: store) else { return false }
-        try await restoreRebaseWIPIfNeeded(
-          profile: profile,
-          store: store,
-          afterAbort: true
+        await scanRepositoryAsync(store: store, autoSyncGeneration: nil)
+        store.setPublishActionMessage(
+          lifecycle.kind == .merge
+            ? CoreL10n.text("已放弃本次合并，仓库已恢复到合并前状态。")
+            : CoreL10n.text("已放弃本次变基，变基前的本地改动已恢复。"),
+          status: .success
         )
-      case .none, .unmergedIndex, .ambiguous:
+        return true
+      } catch {
+        guard repositorySafeSyncOperationIsCurrent(operation, store: store) else { return false }
+        let recoverySaveError = recordRecoveryContext(from: error, profile: profile, store: store)
+        await scanRepositoryAsync(store: store, autoSyncGeneration: nil)
+        presentRepositoryOperationFailure(error, recoverySaveError: recoverySaveError, store: store)
         return false
       }
-      guard repositorySafeSyncOperationIsCurrent(operation, store: store) else { return false }
-      await scanRepositoryAsync(store: store, autoSyncGeneration: nil)
-      store.setPublishActionMessage(
-        lifecycle.kind == .merge
-          ? CoreL10n.text("已放弃本次合并，仓库已恢复到合并前状态。")
-          : CoreL10n.text("已放弃本次变基，变基前的本地改动已恢复。"),
-        status: .success
-      )
-      return true
-    } catch {
-      guard repositorySafeSyncOperationIsCurrent(operation, store: store) else { return false }
-      let recoverySaveError = recordRecoveryContext(from: error, profile: profile, store: store)
-      await scanRepositoryAsync(store: store, autoSyncGeneration: nil)
-      presentRepositoryOperationFailure(error, recoverySaveError: recoverySaveError, store: store)
-      return false
     }
   }
 
@@ -173,38 +173,38 @@ extension RepositoryStore {
       store.setPublishActionMessage(CoreL10n.text("当前没有待完成的 stash 恢复。"), status: .warning)
       return false
     }
-    guard let operation = beginRepositorySafeSyncOperation(store: store) else { return false }
-    defer { finishRepositorySafeSyncOperation(operation, store: store) }
-    await cancelAndAwaitRepositoryBackgroundWorkForSafeSync(store: store)
+    return await withRepositorySafeSyncOperation(store: store, unavailable: { false }) { operation in
+      await cancelAndAwaitRepositoryBackgroundWorkForSafeSync(store: store)
 
-    let repositoryService = repositoryService
-    let lifecycle = await Task.detached(priority: .userInitiated) {
-      repositoryService.operationLifecycle(profile: profile)
-    }.value
-    guard lifecycle.kind == .none else {
-      await scanRepositoryAsync(store: store, autoSyncGeneration: nil)
-      store.setPublishActionMessage(
-        lifecycle.unresolvedConflictCount > 0
-          ? CoreL10n.format("仍有 %d 个 stash 恢复冲突未解决。", lifecycle.unresolvedConflictCount)
-          : CoreL10n.text("当前 Git 状态尚未恢复正常。"),
-        status: .warning
-      )
-      return false
-    }
-    do {
-      try clearRepositoryRebaseRecovery(profile: profile, store: store)
-      await scanRepositoryAsync(store: store, autoSyncGeneration: nil)
-      store.setPublishActionMessage(
-        recovery.phase == .completed
-          ? CoreL10n.text("已清理完成的恢复记录；不会重复应用 stash。")
-          : CoreL10n.text("本地改动冲突已全部处理；原恢复 stash 作为备份保留。"),
-        status: .warning
-      )
-      return true
-    } catch {
-      repositoryRebaseRecoveryDiagnostic = error.localizedDescription
-      store.setPublishActionMessage(error.localizedDescription, status: .failure)
-      return false
+      let repositoryService = repositoryService
+      let lifecycle = await Task.detached(priority: .userInitiated) {
+        repositoryService.operationLifecycle(profile: profile)
+      }.value
+      guard lifecycle.kind == .none else {
+        await scanRepositoryAsync(store: store, autoSyncGeneration: nil)
+        store.setPublishActionMessage(
+          lifecycle.unresolvedConflictCount > 0
+            ? CoreL10n.format("仍有 %d 个 stash 恢复冲突未解决。", lifecycle.unresolvedConflictCount)
+            : CoreL10n.text("当前 Git 状态尚未恢复正常。"),
+          status: .warning
+        )
+        return false
+      }
+      do {
+        try clearRepositoryRebaseRecovery(profile: profile, store: store)
+        await scanRepositoryAsync(store: store, autoSyncGeneration: nil)
+        store.setPublishActionMessage(
+          recovery.phase == .completed
+            ? CoreL10n.text("已清理完成的恢复记录；不会重复应用 stash。")
+            : CoreL10n.text("本地改动冲突已全部处理；原恢复 stash 作为备份保留。"),
+          status: .warning
+        )
+        return true
+      } catch {
+        repositoryRebaseRecoveryDiagnostic = error.localizedDescription
+        store.setPublishActionMessage(error.localizedDescription, status: .failure)
+        return false
+      }
     }
   }
 
@@ -228,35 +228,35 @@ extension RepositoryStore {
       )
       return false
     }
-    guard let operation = beginRepositorySafeSyncOperation(store: store) else { return false }
-    defer { finishRepositorySafeSyncOperation(operation, store: store) }
-    await cancelAndAwaitRepositoryBackgroundWorkForSafeSync(store: store)
+    return await withRepositorySafeSyncOperation(store: store, unavailable: { false }) { operation in
+      await cancelAndAwaitRepositoryBackgroundWorkForSafeSync(store: store)
 
-    let repositoryService = repositoryService
-    let lifecycle = await Task.detached(priority: .userInitiated) {
-      repositoryService.operationLifecycle(profile: profile)
-    }.value
-    guard lifecycle.kind == .none else {
-      await scanRepositoryAsync(store: store, autoSyncGeneration: nil)
-      store.setPublishActionMessage(
-        CoreL10n.text("当前仍有 Git 操作，不能移除其恢复记录。"),
-        status: .warning
-      )
-      return false
-    }
+      let repositoryService = repositoryService
+      let lifecycle = await Task.detached(priority: .userInitiated) {
+        repositoryService.operationLifecycle(profile: profile)
+      }.value
+      guard lifecycle.kind == .none else {
+        await scanRepositoryAsync(store: store, autoSyncGeneration: nil)
+        store.setPublishActionMessage(
+          CoreL10n.text("当前仍有 Git 操作，不能移除其恢复记录。"),
+          status: .warning
+        )
+        return false
+      }
 
-    do {
-      try clearRepositoryRebaseRecovery(profile: profile, store: store)
-      await scanRepositoryAsync(store: store, autoSyncGeneration: nil)
-      store.setPublishActionMessage(
-        CoreL10n.text("已移除软件恢复记录；Git stash 与工作区均保持不变。"),
-        status: .warning
-      )
-      return true
-    } catch {
-      repositoryRebaseRecoveryDiagnostic = error.localizedDescription
-      store.setPublishActionMessage(error.localizedDescription, status: .failure)
-      return false
+      do {
+        try clearRepositoryRebaseRecovery(profile: profile, store: store)
+        await scanRepositoryAsync(store: store, autoSyncGeneration: nil)
+        store.setPublishActionMessage(
+          CoreL10n.text("已移除软件恢复记录；Git stash 与工作区均保持不变。"),
+          status: .warning
+        )
+        return true
+      } catch {
+        repositoryRebaseRecoveryDiagnostic = error.localizedDescription
+        store.setPublishActionMessage(error.localizedDescription, status: .failure)
+        return false
+      }
     }
   }
 
@@ -278,64 +278,64 @@ extension RepositoryStore {
       )
       return false
     }
-    guard let operation = beginRepositorySafeSyncOperation(store: store) else { return false }
-    defer { finishRepositorySafeSyncOperation(operation, store: store) }
-    await cancelAndAwaitRepositoryBackgroundWorkForSafeSync(store: store)
+    return await withRepositorySafeSyncOperation(store: store, unavailable: { false }) { operation in
+      await cancelAndAwaitRepositoryBackgroundWorkForSafeSync(store: store)
 
-    let repositoryService = repositoryService
-    let lifecycle = await Task.detached(priority: .userInitiated) {
-      repositoryService.operationLifecycle(profile: profile)
-    }.value
-    guard lifecycle.kind == .none else {
-      await scanRepositoryAsync(store: store, autoSyncGeneration: nil)
-      store.setPublishActionMessage(
-        CoreL10n.text("请先在软件内完成或放弃当前 Merge/Rebase，再恢复封存的本地改动。"),
-        status: .warning
-      )
-      return false
-    }
-
-    let rebaseSyncService = makeRepositoryRebaseSyncService(
-      profile: profile,
-      store: store
-    )
-    do {
-      let result = try await Task.detached(priority: .userInitiated) {
-        try rebaseSyncService.restoreAfterRebase(profile: profile, recovery: recovery)
+      let repositoryService = repositoryService
+      let lifecycle = await Task.detached(priority: .userInitiated) {
+        repositoryService.operationLifecycle(profile: profile)
       }.value
-      guard repositorySafeSyncOperationIsCurrent(operation, store: store) else { return false }
-      do {
-        try clearRepositoryRebaseRecovery(profile: profile, store: store)
-      } catch {
-        repositoryRebaseRecoveryDiagnostic = error.localizedDescription
+      guard lifecycle.kind == .none else {
         await scanRepositoryAsync(store: store, autoSyncGeneration: nil)
         store.setPublishActionMessage(
-          CoreL10n.format(
-            "本地改动已恢复，但恢复记录清理失败：%@",
-            error.localizedDescription
-          ),
+          CoreL10n.text("请先在软件内完成或放弃当前 Merge/Rebase，再恢复封存的本地改动。"),
           status: .warning
         )
-        return true
+        return false
       }
-      await scanRepositoryAsync(store: store, autoSyncGeneration: nil)
-      store.setPublishActionMessage(
-        result.stashWasRetained
-          ? CoreL10n.text("已恢复封存的本地改动；原 stash 作为备份保留。")
-          : CoreL10n.text("已按精确 stash 恢复变基前的本地改动。"),
-        status: result.stashWasRetained ? .warning : .success
-      )
-      return true
-    } catch {
-      guard repositorySafeSyncOperationIsCurrent(operation, store: store) else { return false }
-      let recoverySaveError = recordRecoveryContext(
-        from: error,
+
+      let rebaseSyncService = makeRepositoryRebaseSyncService(
         profile: profile,
         store: store
       )
-      await scanRepositoryAsync(store: store, autoSyncGeneration: nil)
-      presentRepositoryOperationFailure(error, recoverySaveError: recoverySaveError, store: store)
-      return false
+      do {
+        let result = try await Task.detached(priority: .userInitiated) {
+          try rebaseSyncService.restoreAfterRebase(profile: profile, recovery: recovery)
+        }.value
+        guard repositorySafeSyncOperationIsCurrent(operation, store: store) else { return false }
+        do {
+          try clearRepositoryRebaseRecovery(profile: profile, store: store)
+        } catch {
+          repositoryRebaseRecoveryDiagnostic = error.localizedDescription
+          await scanRepositoryAsync(store: store, autoSyncGeneration: nil)
+          store.setPublishActionMessage(
+            CoreL10n.format(
+              "本地改动已恢复，但恢复记录清理失败：%@",
+              error.localizedDescription
+            ),
+            status: .warning
+          )
+          return true
+        }
+        await scanRepositoryAsync(store: store, autoSyncGeneration: nil)
+        store.setPublishActionMessage(
+          result.stashWasRetained
+            ? CoreL10n.text("已恢复封存的本地改动；原 stash 作为备份保留。")
+            : CoreL10n.text("已按精确 stash 恢复变基前的本地改动。"),
+          status: result.stashWasRetained ? .warning : .success
+        )
+        return true
+      } catch {
+        guard repositorySafeSyncOperationIsCurrent(operation, store: store) else { return false }
+        let recoverySaveError = recordRecoveryContext(
+          from: error,
+          profile: profile,
+          store: store
+        )
+        await scanRepositoryAsync(store: store, autoSyncGeneration: nil)
+        presentRepositoryOperationFailure(error, recoverySaveError: recoverySaveError, store: store)
+        return false
+      }
     }
   }
 

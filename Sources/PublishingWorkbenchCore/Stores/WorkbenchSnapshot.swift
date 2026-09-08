@@ -1,8 +1,8 @@
 import Foundation
 
-public struct WorkbenchSnapshot: Codable, Sendable {
+public struct WorkbenchSnapshot: Codable, Equatable, Sendable {
   /// Bump this only together with a backwards-compatible decode migration.
-  public static let currentFormatVersion = 14
+  public static let currentFormatVersion = 16
   public static let maximumAIConversationsPerDraft =
     AIConversationRetentionPolicy.maximumConversationsPerDraft
   public static let maximumAIConversationCount =
@@ -46,6 +46,10 @@ public struct WorkbenchSnapshot: Codable, Sendable {
   public var deploymentPollingStateByProfileID: [UUID: DeploymentPollingState]
   public var deploymentStatusSnapshots: [DeploymentStatusSnapshot]
   public var deploymentStatusHistory: [UUID: [DeploymentStatusSnapshot]]
+  /// Minimal resume data for the starter wizard. Profile and draft contents
+  /// remain owned by their existing snapshot collections.
+  public var siteStarterProgress: SiteStarterProgress?
+  public var deferredProjectFileWrites: [SiteDraftFileSaveFailure]
 
   public init(
     profiles: [SiteProfile],
@@ -80,7 +84,9 @@ public struct WorkbenchSnapshot: Codable, Sendable {
     deploymentPollingSettingsByProfileID: [UUID: DeploymentPollingSettings]? = nil,
     deploymentPollingStateByProfileID: [UUID: DeploymentPollingState]? = nil,
     deploymentStatusSnapshots: [DeploymentStatusSnapshot] = [],
-    deploymentStatusHistory: [UUID: [DeploymentStatusSnapshot]] = [:]
+    deploymentStatusHistory: [UUID: [DeploymentStatusSnapshot]] = [:],
+    siteStarterProgress: SiteStarterProgress? = nil,
+    deferredProjectFileWrites: [SiteDraftFileSaveFailure] = []
   ) {
     self.formatVersion = Self.currentFormatVersion
     self.profiles = profiles
@@ -172,6 +178,16 @@ public struct WorkbenchSnapshot: Codable, Sendable {
     self.deploymentStatusSnapshots = Self.limitedDeploymentStatusSnapshots(
       deploymentStatusSnapshots)
     self.deploymentStatusHistory = Self.limitedDeploymentStatusHistory(deploymentStatusHistory)
+    self.siteStarterProgress = siteStarterProgress
+    var deferredIDs = Set<UUID>()
+    self.deferredProjectFileWrites = deferredProjectFileWrites.filter { failure in
+      drafts.contains { draft in
+        draft.id == failure.draftID && draft.siteProfileID == failure.profileID
+          && !draft.isGeneralDraft
+          && (draft.repositoryPath ?? profiles.first { $0.id == failure.profileID }?.markdownPath(for: draft))?
+            .normalizedRelativePath() == failure.repositoryPath.normalizedRelativePath()
+      } && deferredIDs.insert(failure.draftID).inserted
+    }
   }
 
   private enum CodingKeys: String, CodingKey {
@@ -209,6 +225,8 @@ public struct WorkbenchSnapshot: Codable, Sendable {
     case deploymentPollingStateByProfileID
     case deploymentStatusSnapshots
     case deploymentStatusHistory
+    case siteStarterProgress
+    case deferredProjectFileWrites
   }
 
   public init(from decoder: Decoder) throws {
@@ -225,7 +243,8 @@ public struct WorkbenchSnapshot: Codable, Sendable {
     // Version 1 had no explicit format marker. Optional fields migrate through
     // stable defaults; retired feature data is archived before the next save.
     // Version 13 introduces profile-keyed automation maps. Version 14 adds
-    // profile-keyed remote permission evidence. The fallback below
+    // profile-keyed remote permission evidence; version 15 adds optional
+    // starter-site progress; version 16 retains deferred project-file writes. The fallback below
     // deliberately uses the legacy scalar only for the persisted active site;
     // every other profile starts from a clean default.
     formatVersion = Self.currentFormatVersion
@@ -418,6 +437,13 @@ public struct WorkbenchSnapshot: Codable, Sendable {
         forKey: .deploymentStatusHistory
       ) ?? [:]
     )
+    deferredProjectFileWrites = try container.decodeIfPresent(
+      [SiteDraftFileSaveFailure].self, forKey: .deferredProjectFileWrites
+    ) ?? []
+    siteStarterProgress = try container.decodeIfPresent(
+      SiteStarterProgress.self,
+      forKey: .siteStarterProgress
+    )
   }
 
   private static func limitedMetadataApplicationRecords(
@@ -463,12 +489,17 @@ public struct WorkbenchSnapshot: Codable, Sendable {
     return Array(
       grouped.values
         .flatMap { entries in
-          entries.sorted { $0.capturedAt > $1.capturedAt }
+          entries.sorted(by: versionPrecedes)
             .prefix(DraftLifecycleService.maximumVersionsPerDraft)
         }
-        .sorted { $0.capturedAt > $1.capturedAt }
+        .sorted(by: versionPrecedes)
         .prefix(DraftLifecycleService.maximumTotalVersions)
     )
+  }
+
+  private static func versionPrecedes(_ lhs: DraftVersionSnapshot, _ rhs: DraftVersionSnapshot) -> Bool {
+    if lhs.capturedAt != rhs.capturedAt { return lhs.capturedAt > rhs.capturedAt }
+    return lhs.id.uuidString < rhs.id.uuidString
   }
 
   private static func limitedMaintenanceOperationRecords(
@@ -551,7 +582,10 @@ public struct WorkbenchSnapshot: Codable, Sendable {
       }
     )
     .values
-    .sorted { $0.generatedAt > $1.generatedAt }
+    .sorted {
+      if $0.generatedAt != $1.generatedAt { return $0.generatedAt > $1.generatedAt }
+      return $0.draftID.uuidString < $1.draftID.uuidString
+    }
   }
 
   private static func limitedDeploymentStatusSnapshots(

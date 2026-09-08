@@ -37,20 +37,21 @@ struct DefaultRuleSettingsView: View {
   let navigationRequestID: UUID
   var body: some View {
     Form {
-      SettingsSubsectionAnchor(subsection: .rulesBasics)
       DefaultRuleBasicsFocusedSection(
         activeProfileBinding: activeProfileBinding,
-        siteKindBinding: siteKindBinding
+        siteKindBinding: siteKindBinding,
+        subsectionAnchor: .rulesBasics
       )
-      SettingsSubsectionAnchor(subsection: .rulesDiscovery)
       RepositoryDraftDiscoverySettingsSection(
         store: store,
-        activeProfileBinding: activeProfileBinding
+        activeProfileBinding: activeProfileBinding,
+        subsectionAnchor: .rulesDiscovery
       )
-      SettingsSubsectionAnchor(subsection: .rulesFrontMatter)
-      DefaultRuleFrontMatterFocusedSection(activeProfileBinding: activeProfileBinding)
-      SettingsSubsectionAnchor(subsection: .rulesPaths)
-      Section("文件路径与模板") {
+      DefaultRuleFrontMatterFocusedSection(
+        activeProfileBinding: activeProfileBinding,
+        subsectionAnchor: .rulesFrontMatter
+      )
+      Section {
         DefaultRulePathSection(
           activeProfileBinding: activeProfileBinding,
           shouldFocusPaths: shouldFocusPathRules,
@@ -60,6 +61,9 @@ struct DefaultRuleSettingsView: View {
         Text("仅在站点目录结构不同时调整；默认值适用于当前站点类型。")
           .font(.caption)
           .foregroundStyle(.secondary)
+      } header: {
+        Text("文件路径与模板")
+          .settingsSubsectionAnchor(.rulesPaths)
       }
       .accessibilityIdentifier("default-rule-path-rules")
     }
@@ -86,9 +90,10 @@ struct DefaultRuleSettingsView: View {
 private struct DefaultRuleBasicsFocusedSection: View {
   let activeProfileBinding: Binding<SiteProfile>
   let siteKindBinding: Binding<SiteKind>
+  var subsectionAnchor: SettingsSubsection? = nil
 
   var body: some View {
-    Section("常用默认") {
+    Section {
       Picker("站点类型", selection: siteKindBinding) {
         ForEach(SiteKind.allCases) { kind in
           Text(kind.localizedDisplayName).tag(kind)
@@ -134,6 +139,9 @@ private struct DefaultRuleBasicsFocusedSection: View {
         .accessibilityValue(
           activeProfile.defaultCategories.isEmpty
             ? "未填写" : activeProfile.defaultCategories.joined(separator: "，"))
+    } header: {
+      Text("常用默认")
+        .settingsSubsectionAnchor(subsectionAnchor)
     }
   }
 
@@ -161,9 +169,10 @@ private struct DefaultRuleBasicsFocusedSection: View {
 
 private struct DefaultRuleFrontMatterFocusedSection: View {
   let activeProfileBinding: Binding<SiteProfile>
+  var subsectionAnchor: SettingsSubsection? = nil
 
   var body: some View {
-    Section("文章头信息") {
+    Section {
       Picker("文章头信息格式", selection: activeProfileBinding.frontMatterStyle) {
         ForEach(FrontMatterStyle.allCases) { style in
           Text(style.localizedDisplayName).tag(style)
@@ -191,6 +200,9 @@ private struct DefaultRuleFrontMatterFocusedSection: View {
       Toggle("包含封面图字段", isOn: activeProfileBinding.includeCoverInFrontMatter)
         .accessibilityLabel("文章头信息包含封面图字段")
         .accessibilityValue(activeProfile.includeCoverInFrontMatter ? "开启" : "关闭")
+    } header: {
+      Text("文章头信息")
+        .settingsSubsectionAnchor(subsectionAnchor)
     }
     .accessibilityIdentifier("default-rule-advanced-front-matter")
 

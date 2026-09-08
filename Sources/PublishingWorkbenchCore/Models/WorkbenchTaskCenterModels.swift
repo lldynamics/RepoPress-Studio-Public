@@ -61,6 +61,8 @@ public enum WorkbenchTaskState: String, Codable, Hashable, Sendable {
   case failed
   case completed
   case cancelled
+  case waiting
+  case needsAttention
 
   public var title: String {
     switch self {
@@ -72,6 +74,10 @@ public enum WorkbenchTaskState: String, Codable, Hashable, Sendable {
       return CoreL10n.text("已完成")
     case .cancelled:
       return CoreL10n.text("已停止")
+    case .waiting:
+      return CoreL10n.text("等待部署")
+    case .needsAttention:
+      return CoreL10n.text("证据不足")
     }
   }
 
@@ -85,8 +91,32 @@ public enum WorkbenchTaskState: String, Codable, Hashable, Sendable {
       return "checkmark.circle.fill"
     case .cancelled:
       return "stop.circle"
+    case .waiting:
+      return "clock"
+    case .needsAttention:
+      return "questionmark.circle"
     }
   }
+}
+
+/// A stable, user-navigable task target.  Labels are intentionally derived at
+/// presentation time so a persisted task never accidentally follows a later
+/// selection with the same display name.
+public enum WorkbenchTaskTarget: Codable, Equatable, Hashable, Sendable {
+  case draft(UUID)
+  case articleConversation(draftID: UUID, conversationID: UUID)
+  case generalAIConversation(UUID)
+  case siteProfile(UUID)
+  case siteProfilePage(profileID: UUID, section: WorkspaceSection)
+  case assetResourceManager(profileID: UUID)
+  case releaseRecord(UUID)
+}
+
+/// Cancellation is deliberately narrower than retry.  Only an operation that
+/// exposes a stable operation ID and target may be stopped from the task
+/// center; Git, legacy imports, scans and image batches stay informational.
+public enum WorkbenchTaskCancellationIntent: Codable, Equatable, Hashable, Sendable {
+  case aiChat(operationID: UUID, target: WorkbenchTaskTarget)
 }
 
 /// The exact operation that a task-center retry is allowed to repeat.
@@ -254,7 +284,10 @@ public struct WorkbenchTaskItem: Identifiable, Codable, Equatable, Hashable, Sen
   public let state: WorkbenchTaskState
   public let failureReason: String?
   public let targetID: UUID?
+  public let target: WorkbenchTaskTarget?
   public let retryIntent: WorkbenchTaskRetryIntent?
+  public let cancellationIntent: WorkbenchTaskCancellationIntent?
+  public let checkedAt: Date?
 
   public init(
     id: String,
@@ -266,7 +299,10 @@ public struct WorkbenchTaskItem: Identifiable, Codable, Equatable, Hashable, Sen
     failureReason: String? = nil,
     canRetry: Bool = false,
     targetID: UUID? = nil,
-    retryIntent: WorkbenchTaskRetryIntent? = nil
+    retryIntent: WorkbenchTaskRetryIntent? = nil,
+    target: WorkbenchTaskTarget? = nil,
+    cancellationIntent: WorkbenchTaskCancellationIntent? = nil,
+    checkedAt: Date? = nil
   ) {
     // Keep the parameter for source compatibility with older task producers;
     // retryability is derived solely from the typed intent below.
@@ -279,7 +315,10 @@ public struct WorkbenchTaskItem: Identifiable, Codable, Equatable, Hashable, Sen
     self.state = state
     self.failureReason = failureReason
     self.targetID = targetID
+    self.target = target
     self.retryIntent = retryIntent
+    self.cancellationIntent = cancellationIntent
+    self.checkedAt = checkedAt
   }
 
   public var canRetry: Bool {
@@ -295,6 +334,21 @@ public struct WorkbenchTaskItem: Identifiable, Codable, Equatable, Hashable, Sen
     }
   }
 
+  /// Legacy Git intents lack the original bytes and operation mode. They can
+  /// navigate to a review, but must never replay a mutation.
+  public var requiresPublishReview: Bool {
+    switch retryIntent {
+    case .gitDraft, .gitRemoteDraft, .gitRemoteBatch: return true
+    default: return false
+    }
+  }
+
+  public var retryTitle: String {
+    if requiresPublishReview { return CoreL10n.text("查看并处理") }
+    if kind == .deployment { return CoreL10n.text("重新检查") }
+    return CoreL10n.text("重试")
+  }
+
   public var isActive: Bool {
     state == .running
   }
@@ -305,5 +359,49 @@ public struct WorkbenchTaskItem: Identifiable, Codable, Equatable, Hashable, Sen
 
   public var requiresDuplicateChargeConfirmation: Bool {
     retryIntent?.requiresDuplicateChargeConfirmation ?? false
+  }
+
+  public var canCancel: Bool {
+    state == .running && cancellationIntent != nil
+  }
+
+  /// Failed task cards show the actual recovery reason once. The full detail
+  /// remains available in diagnostics, including any contextual metadata.
+  public var primaryPresentationDetail: String {
+    if state == .failed, let failureReason { return failureReason }
+    return detail
+  }
+
+  public var diagnosticText: String {
+    var lines = [
+      "task_id=\(id)",
+      "kind=\(kind.rawValue)",
+      "state=\(state.rawValue)",
+      "detail=\(detail)",
+    ]
+    if let target { lines.append("target=\(target.diagnosticIdentifier)") }
+    if let failureReason { lines.append("failure=\(failureReason)") }
+    if let retryIntent { lines.append("retry=\(String(describing: retryIntent))") }
+    if let cancellationIntent {
+      lines.append("cancellation=\(String(describing: cancellationIntent))")
+    }
+    return lines.joined(separator: "\n")
+  }
+}
+
+extension WorkbenchTaskTarget {
+  public var diagnosticIdentifier: String {
+    switch self {
+    case .draft(let id): "draft:\(id.uuidString)"
+    case .articleConversation(let draftID, let conversationID):
+      "articleConversation:\(draftID.uuidString):\(conversationID.uuidString)"
+    case .generalAIConversation(let id): "generalAIConversation:\(id.uuidString)"
+    case .siteProfile(let id): "siteProfile:\(id.uuidString)"
+    case .siteProfilePage(let profileID, let section):
+      "siteProfilePage:\(profileID.uuidString):\(section.rawValue)"
+    case .assetResourceManager(let profileID):
+      "assetResourceManager:\(profileID.uuidString)"
+    case .releaseRecord(let id): "releaseRecord:\(id.uuidString)"
+    }
   }
 }

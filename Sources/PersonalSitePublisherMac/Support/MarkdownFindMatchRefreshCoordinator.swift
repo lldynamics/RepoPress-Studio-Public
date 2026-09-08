@@ -1,6 +1,6 @@
 import Combine
 import Foundation
-import PublishingWorkbenchCore
+import PublishingMarkdownCore
 
 struct MarkdownFindMatchRefreshResult: Equatable, Sendable {
   let ranges: [NSRange]

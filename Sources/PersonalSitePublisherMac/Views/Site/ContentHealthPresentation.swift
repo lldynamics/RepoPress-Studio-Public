@@ -404,6 +404,22 @@ struct ContentHealthAIFixResultPreview: Identifiable {
   var draftID: UUID? = nil
   let draftTitle: String
   let result: AIPublishingActionResult
+  /// Captured when the suggestion was generated. It is intentionally field
+  /// scoped; `updatedAt` is not a freshness signal because unrelated edits
+  /// legitimately advance it.
+  let metadataBaseline: [String: [String]]
+
+  init(
+    draftID: UUID? = nil,
+    draftTitle: String,
+    result: AIPublishingActionResult,
+    metadataBaseline: [String: [String]] = [:]
+  ) {
+    self.draftID = draftID
+    self.draftTitle = draftTitle
+    self.result = result
+    self.metadataBaseline = metadataBaseline
+  }
 }
 
 struct ContentHealthAIFixResultPreviewSheet: View {
@@ -563,25 +579,32 @@ struct ContentHealthAIFixResultPreviewSheet: View {
                     }
                   }
 
-                  Text(item.proposedValue)
-                    .font(.system(.caption, design: .monospaced))
-                    .foregroundStyle(.primary)
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(8)
-                    .background(
-                      item.isSelected
-                        ? AnyShapeStyle(WorkbenchTheme.success.opacity(0.06))
-                        : WorkbenchBackgroundStyle.control,
-                      in: RoundedRectangle(cornerRadius: 6)
+                  VStack(alignment: .leading, spacing: 3) {
+                    Text(String(localized: "生成时原值"))
+                      .font(.caption.weight(.semibold))
+                      .foregroundStyle(.secondary)
+                    Text(
+                      preview.metadataBaseline[
+                        ContentHealthAIFixFieldPolicy.canonicalKey(for: item.fieldKey)]?.joined(
+                          separator: ", ") ?? "—"
                     )
-                    .overlay {
-                      RoundedRectangle(cornerRadius: 6)
-                        .stroke(
-                          item.isSelected ? WorkbenchTheme.success.opacity(0.3) : Color.clear,
-                          lineWidth: 1
-                        )
-                    }
+                    .font(.system(.caption, design: .monospaced))
+                    .textSelection(.enabled)
+                    Text(String(localized: "建议值"))
+                      .font(.caption.weight(.semibold))
+                      .foregroundStyle(.secondary)
+                    Text(item.proposedValue)
+                      .font(.system(.caption, design: .monospaced))
+                      .textSelection(.enabled)
+                  }
+                  .padding(8)
+                  .frame(maxWidth: .infinity, alignment: .leading)
+                  .background(
+                    item.isSelected
+                      ? AnyShapeStyle(WorkbenchTheme.success.opacity(0.06))
+                      : WorkbenchBackgroundStyle.control,
+                    in: RoundedRectangle(cornerRadius: 6)
+                  )
                 }
               }
               .padding(8)

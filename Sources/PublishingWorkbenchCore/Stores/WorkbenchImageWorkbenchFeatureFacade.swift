@@ -8,8 +8,31 @@ public enum AssetResourceOperationPresentation: Equatable, Sendable {
   case failure(reason: String)
 }
 
+/// A navigation request is scoped to the site that owns the resource
+/// operation, so opening a completed task cannot redirect the current site.
+public struct AssetResourceManagerNavigationRequest: Equatable, Identifiable, Sendable {
+  public let id: UUID
+  public let profileID: UUID
+  public let windowID: UUID?
+
+  public init(id: UUID = UUID(), profileID: UUID, windowID: UUID? = nil) {
+    self.id = id
+    self.profileID = profileID
+    self.windowID = windowID
+  }
+}
+
+public struct AssetResourceOperationTaskDescriptor: Equatable, Identifiable, Sendable {
+  public let profileID: UUID
+  public let title: String
+  public let presentation: AssetResourceOperationPresentation
+
+  public var id: UUID { profileID }
+}
+
 private struct AssetResourceOperationState {
   var operationID: UUID?
+  var title: String?
   var presentation: AssetResourceOperationPresentation?
   var completionRevision: UInt64 = 0
 }
@@ -20,6 +43,8 @@ public final class WorkbenchImageWorkbenchFeatureFacade: ObservableObject {
   private var cancellables = Set<AnyCancellable>()
   @Published private var assetResourceOperationStatesByProfileID:
     [UUID: AssetResourceOperationState] = [:]
+  @Published public private(set) var assetResourceManagerNavigationRequest:
+    AssetResourceManagerNavigationRequest?
 
   init(store: WorkbenchStore) {
     self.store = store
@@ -90,6 +115,7 @@ public final class WorkbenchImageWorkbenchFeatureFacade: ObservableObject {
   /// in-flight lock while the underlying file operation is still running.
   public func beginAssetResourceOperation(
     for profileID: UUID,
+    operationTitle: String = "资源处理",
     loadingDetail: String
   ) -> UUID? {
     var state =
@@ -100,6 +126,7 @@ public final class WorkbenchImageWorkbenchFeatureFacade: ObservableObject {
     }
     let operationID = UUID()
     state.operationID = operationID
+    state.title = operationTitle
     state.presentation = .loading(detail: loadingDetail)
     assetResourceOperationStatesByProfileID[profileID] = state
     return operationID
@@ -124,6 +151,37 @@ public final class WorkbenchImageWorkbenchFeatureFacade: ObservableObject {
     for profileID: UUID
   ) -> AssetResourceOperationPresentation? {
     assetResourceOperationStatesByProfileID[profileID]?.presentation
+  }
+
+  public func assetResourceOperationTitle(for profileID: UUID) -> String? {
+    assetResourceOperationStatesByProfileID[profileID]?.title
+  }
+
+  public var assetResourceOperationTaskDescriptors: [AssetResourceOperationTaskDescriptor] {
+    assetResourceOperationStatesByProfileID.compactMap { profileID, state in
+      guard let title = state.title, let presentation = state.presentation else { return nil }
+      return AssetResourceOperationTaskDescriptor(
+        profileID: profileID,
+        title: title,
+        presentation: presentation
+      )
+    }
+    .sorted { $0.profileID.uuidString < $1.profileID.uuidString }
+  }
+
+  public func requestAssetResourceManagerNavigation(for profileID: UUID, windowID: UUID? = nil) {
+    assetResourceManagerNavigationRequest = AssetResourceManagerNavigationRequest(
+      profileID: profileID, windowID: windowID
+    )
+  }
+
+  public func consumeAssetResourceManagerNavigationRequest(
+    _ request: AssetResourceManagerNavigationRequest,
+    from windowID: UUID? = nil
+  ) {
+    guard assetResourceManagerNavigationRequest == request, request.windowID == windowID
+    else { return }
+    assetResourceManagerNavigationRequest = nil
   }
 
   public func finishAssetResourceOperation(

@@ -163,6 +163,30 @@ final class MarkdownContextualPopoverTests: XCTestCase {
     )
   }
 
+  func testVisibleGeometryRangeClipsSelectionsAndRejectsOffscreenCarets() {
+    let viewportRange = NSRange(location: 100, length: 40)
+    XCTAssertEqual(
+      MarkdownTextKit2RangeAdapter.visibleGeometryRange(
+        for: NSRange(location: 80, length: 80),
+        within: viewportRange
+      ),
+      viewportRange
+    )
+    XCTAssertEqual(
+      MarkdownTextKit2RangeAdapter.visibleGeometryRange(
+        for: NSRange(location: 140, length: 0),
+        within: viewportRange
+      ),
+      NSRange(location: 140, length: 0)
+    )
+    XCTAssertNil(
+      MarkdownTextKit2RangeAdapter.visibleGeometryRange(
+        for: NSRange(location: 141, length: 0),
+        within: viewportRange
+      )
+    )
+  }
+
   func testEmptyCaretRectGetsANonZeroHitTargetBeforePlacement() {
     let rect = MarkdownContextualPopoverAnchorResolver.normalizedTextRect(
       CGRect(x: 20, y: 30, width: 0, height: 18),

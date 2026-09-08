@@ -129,7 +129,8 @@ extension ContentHealthDetailView {
       aiFixResultPreview = ContentHealthAIFixResultPreview(
         draftID: draft.id,
         draftTitle: draft.title.nilIfEmpty ?? String(localized: "未命名文章"),
-        result: result
+        result: result,
+        metadataBaseline: ContentHealthAIFixFieldPolicy.baseline(for: draft)
       )
     }
   }

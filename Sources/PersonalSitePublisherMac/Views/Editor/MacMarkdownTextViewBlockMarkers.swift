@@ -1,5 +1,6 @@
 import AppKit
-import PublishingWorkbenchCore
+import PublishingDomainContracts
+import PublishingMarkdownCore
 
 /// Paint-only state for a visible Markdown block marker. The source range is
 /// retained for the single task-checkbox hit proxy; the text view owns the

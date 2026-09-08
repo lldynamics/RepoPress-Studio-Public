@@ -2,7 +2,6 @@ import SwiftUI
 import XCTest
 
 @testable import PersonalSitePublisherMac
-@testable import PublishingWorkbenchCore
 
 final class ZenModeToolbarVisibilityPolicyTests: XCTestCase {
   func testNormalModeAlwaysKeepsToolbarVisible() {

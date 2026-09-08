@@ -73,6 +73,11 @@ extension WorkbenchStore {
   }
 
   @discardableResult
+  public func resumeSiteStarterProgress() -> Bool {
+    publishingStore.resumeSiteStarterProgress(store: self)
+  }
+
+  @discardableResult
   public func commitAndPushStarterSite(
     confirmation: SiteStarterPushConfirmation
   ) async -> SiteStarterPushResult? {

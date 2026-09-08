@@ -20,6 +20,7 @@ enum RepositoryDraftDiscoveryPolicy {
 struct RepositoryDraftDiscoverySettingsSection: View {
   let store: WorkbenchStore
   let activeProfileBinding: Binding<SiteProfile>
+  var subsectionAnchor: SettingsSubsection? = nil
   @State private var scanTask: Task<Void, Never>?
   @State private var statusMessage: String?
   @State private var statusSeverity: AccessibleStatusSeverity = .success
@@ -77,6 +78,7 @@ struct RepositoryDraftDiscoverySettingsSection: View {
       }
     } header: {
       Text("本地文章发现")
+        .settingsSubsectionAnchor(subsectionAnchor)
     } footer: {
       Text("关闭自动发现后，“立即扫描新文章”和仓库工作区里的手动扫描仍可使用。")
     }

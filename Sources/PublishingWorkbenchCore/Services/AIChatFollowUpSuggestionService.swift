@@ -1,4 +1,5 @@
 import Foundation
+import PublishingAICore
 
 public enum AIChatFollowUpSuggestionService {
   public static let openingTag = "<follow_up_suggestions>"
@@ -66,6 +67,7 @@ public enum AIChatFollowUpSuggestionService {
     draft: ArticleDraft?,
     hasAutomationPlan: Bool
   ) -> [AIChatFollowUpSuggestion] {
+    let subject = draft == nil ? "上述内容" : "当前文章"
     if hasAutomationPlan {
       return [
         AIChatFollowUpSuggestion(
@@ -76,17 +78,30 @@ public enum AIChatFollowUpSuggestionService {
         ),
         AIChatFollowUpSuggestion(
           title: "检查发布就绪度",
-          prompt: "请帮我检查当前文章是否满足发布上线的所有要求。",
+          prompt: "请帮我检查\(subject)是否满足发布上线的所有要求。",
           kind: .prompt,
           icon: "checkmark.seal"
         ),
       ]
     }
 
-    let lower = content.lowercased()
+    let segments = AIChatCodeBlockPresentationService.segments(in: content)
+    let codeBlocks = segments.compactMap { segment -> AIChatCodeBlock? in
+      if case .code(let block) = segment { return block }
+      return nil
+    }
+    let hasCode = codeBlocks.contains { block in
+      guard let language = block.language?.lowercased() else { return false }
+      return Self.codeLanguages.contains(language)
+    }
+    let prose = segments.compactMap { segment -> String? in
+      if case .text(_, let text) = segment { return text }
+      return nil
+    }.joined(separator: "\n")
+    let lower = prose.lowercased()
     var suggestions: [AIChatFollowUpSuggestion] = []
 
-    if lower.contains("```") {
+    if hasCode {
       suggestions.append(
         AIChatFollowUpSuggestion(
           title: "解释代码实现",
@@ -143,7 +158,7 @@ public enum AIChatFollowUpSuggestionService {
       suggestions.append(
         AIChatFollowUpSuggestion(
           title: "检查错别字与语法",
-          prompt: "请检查当前文章中是否存在错别字、标点误用或语病。",
+          prompt: "请检查\(subject)中是否存在错别字、标点误用或语病。",
           kind: .prompt,
           icon: "character.cursor.ibeam"
         )
@@ -151,7 +166,7 @@ public enum AIChatFollowUpSuggestionService {
       suggestions.append(
         AIChatFollowUpSuggestion(
           title: "提取核心 TL;DR",
-          prompt: "请用 3 句话为这篇文章提炼一份精炼的 TL;DR 摘要。",
+          prompt: "请用 3 句话为\(subject)提炼一份精炼的 TL;DR 摘要。",
           kind: .prompt,
           icon: "text.quote"
         )
@@ -159,7 +174,7 @@ public enum AIChatFollowUpSuggestionService {
       suggestions.append(
         AIChatFollowUpSuggestion(
           title: "生成文章标签与元数据",
-          prompt: "请为这篇文章推荐 3-5 个精准的 Tags 并生成一段 SEO 描述。",
+          prompt: "请为\(subject)推荐 3-5 个精准的 Tags 并生成一段 SEO 描述。",
           kind: .prompt,
           icon: "tag"
         )
@@ -176,4 +191,11 @@ public enum AIChatFollowUpSuggestionService {
     var icon: String?
     var toolCommand: String?
   }
+
+  /// Languages for which a fenced block is unambiguously source code. Fences
+  /// without a language, or marked as prose/Markdown, remain ordinary writing.
+  private static let codeLanguages: Set<String> = [
+    "swift", "javascript", "js", "typescript", "ts", "python", "py", "ruby", "go", "rust",
+    "java", "kotlin", "c", "cpp", "c++", "csharp", "cs", "shell", "sh", "bash", "zsh", "sql",
+  ]
 }

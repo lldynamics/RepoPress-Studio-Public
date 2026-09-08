@@ -350,6 +350,8 @@ struct WritingDraftColumn: View {
   @State var draftPendingUnpublish: ArticleDraft?
   @State var selectedDraftIDs: Set<UUID> = []
   @State var draftOwnershipTransferPlan: DraftOwnershipTransferPlan?
+  @State var isMetadataBatchMaintenancePresented = false
+  @State var isTemplatePickerPresented = false
   @Environment(\.undoManager) var undoManager
   @EnvironmentObject private var sceneCommandRouter: WorkspaceSceneCommandRouter
   @State private var sceneCommandOwnerID = UUID()
@@ -466,6 +468,18 @@ struct WritingDraftColumn: View {
     .sheet(item: $draftOwnershipTransferPlan) { plan in
       DraftOwnershipTransferConfirmationView(plan: plan) { confirmedPlan in
         applyDraftOwnershipTransfer(confirmedPlan)
+      }
+    }
+    .sheet(isPresented: $isMetadataBatchMaintenancePresented) {
+      MetadataBatchMaintenancePanel(store: store, initialDraftIDs: selectedDraftIDs)
+    }
+    .sheet(isPresented: $isTemplatePickerPresented) {
+      WritingDraftTemplatePicker(store: store) { template, asGeneralDraft, title in
+        guard let draftID = store.createDraft(from: template, asGeneralDraft: asGeneralDraft, title: title) else {
+          return false
+        }
+        onFocusDraft(draftID, .writing)
+        return true
       }
     }
   }

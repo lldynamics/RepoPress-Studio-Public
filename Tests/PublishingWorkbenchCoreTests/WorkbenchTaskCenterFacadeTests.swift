@@ -3,8 +3,30 @@ import XCTest
 
 @MainActor
 final class WorkbenchTaskCenterFacadeTests: XCTestCase {
+  private func makeStore() -> WorkbenchStore {
+    let fileURL = FileManager.default.temporaryDirectory
+      .appendingPathComponent("task-center-followup-" + UUID().uuidString + ".json")
+    return WorkbenchStore(persistence: WorkbenchPersistence(fileURL: fileURL))
+  }
+
+  func testResourceNavigationCanOnlyBeConsumedByRequestingWindow() throws {
+    let store = makeStore()
+    let windowID = UUID()
+    let task = WorkbenchTaskItem(
+      id: "resource-owner", kind: .imageProcessing, detail: "Done", state: .completed,
+      target: .assetResourceManager(profileID: store.activeProfileID)
+    )
+    XCTAssertNil(store.activityStatus.locateTask(task, windowID: windowID))
+    let request = try XCTUnwrap(store.imageWorkbench.assetResourceManagerNavigationRequest)
+    XCTAssertEqual(request.windowID, windowID)
+    store.imageWorkbench.consumeAssetResourceManagerNavigationRequest(request, from: UUID())
+    XCTAssertEqual(store.imageWorkbench.assetResourceManagerNavigationRequest, request)
+    store.imageWorkbench.consumeAssetResourceManagerNavigationRequest(request, from: windowID)
+    XCTAssertNil(store.imageWorkbench.assetResourceManagerNavigationRequest)
+  }
+
   func testTaskCenterAggregatesRunningAIRepositoryAndGitTasks() throws {
-    let store = WorkbenchStore()
+    let store = makeStore()
     let activityStatus = store.activityStatus
 
     store.setAIChatRunning(true)
@@ -34,7 +56,7 @@ final class WorkbenchTaskCenterFacadeTests: XCTestCase {
   }
 
   func testTaskCenterKeepsGitProgressIndeterminateWithoutByteTotals() throws {
-    let store = WorkbenchStore()
+    let store = makeStore()
     store.setRemoteRepositoryPublishing(true)
     store.setRemoteRepositoryPublishProgress(
       RemoteRepositoryPublishProgress(
@@ -53,9 +75,15 @@ final class WorkbenchTaskCenterFacadeTests: XCTestCase {
   }
 
   func testTaskCenterExposesAIFailureAndManualRetryAvailability() throws {
-    let store = WorkbenchStore()
+    let store = makeStore()
     let draft = try XCTUnwrap(store.selectedDraft)
     let conversationID = UUID()
+    store.setReleaseRecords([
+      ReleaseRecord(
+        kind: .remotePublishFailure, title: "Unrelated publish", summary: "Failed",
+        siteProfileID: store.activeProfileID
+      )
+    ])
     store.aiStore.aiChatManualRetryState = AIChatManualRetryState(
       draftID: draft.id,
       conversationID: conversationID,
@@ -68,10 +96,95 @@ final class WorkbenchTaskCenterFacadeTests: XCTestCase {
     XCTAssertEqual(task.state, .failed)
     XCTAssertEqual(task.failureReason, "AI 讨论失败：网络超时")
     XCTAssertTrue(task.canRetry)
+    XCTAssertEqual(
+      task.target, .articleConversation(draftID: draft.id, conversationID: conversationID)
+    )
+  }
+
+  func testCancellingAnOldTaskCannotCancelTheNewAIChatOperation() throws {
+    let store = makeStore()
+    let draft = try XCTUnwrap(store.selectedDraft)
+    store.aiStore.prepareAIChat(for: draft)
+    _ = try XCTUnwrap(store.aiStore.startNewAIChatConversation(draft: draft))
+    let firstOperationID = try XCTUnwrap(
+      store.aiStore.beginAIChatOperation(statusMessage: "第一项任务")
+    )
+    let oldTask = try XCTUnwrap(
+      store.activityStatus.taskCenterItems.first { $0.kind == .aiRequest }
+    )
+    XCTAssertTrue(oldTask.canCancel)
+    store.aiStore.finishAIChatOperation(firstOperationID)
+
+    let secondOperationID = try XCTUnwrap(
+      store.aiStore.beginAIChatOperation(statusMessage: "第二项任务")
+    )
+    XCTAssertNotNil(store.activityStatus.cancelTask(oldTask))
+    XCTAssertEqual(store.aiStore.activeAIChatOperationID, secondOperationID)
+    XCTAssertFalse(store.aiStore.aiChatCancellationRequested())
+    store.aiStore.finishAIChatOperation(secondOperationID)
+  }
+
+  func testRunningAIChatTaskKeepsOriginalConversationWhenFocusChanges() throws {
+    let store = makeStore()
+    let originalDraft = try XCTUnwrap(store.selectedDraft)
+    store.aiStore.prepareAIChat(for: originalDraft)
+    let originalConversation = try XCTUnwrap(
+      store.aiStore.startNewAIChatConversation(draft: originalDraft)
+    )
+
+    store.createDraft()
+    let differentDraft = try XCTUnwrap(store.selectedDraft)
+    store.aiStore.prepareAIChat(for: differentDraft)
+    _ = try XCTUnwrap(store.aiStore.startNewAIChatConversation(draft: differentDraft))
+
+    store.aiStore.prepareAIChat(for: originalDraft)
+    let operationID = try XCTUnwrap(
+      store.aiStore.beginAIChatOperation(statusMessage: "原对话正在回复")
+    )
+    store.aiStore.prepareAIChat(for: differentDraft)
+    let task = try XCTUnwrap(
+      store.activityStatus.taskCenterItems.first { $0.kind == .aiRequest }
+    )
+
+    XCTAssertEqual(
+      task.target,
+      .articleConversation(draftID: originalDraft.id, conversationID: originalConversation.id)
+    )
+    XCTAssertEqual(
+      task.cancellationIntent,
+      .aiChat(
+        operationID: operationID,
+        target: .articleConversation(
+          draftID: originalDraft.id,
+          conversationID: originalConversation.id
+        )
+      )
+    )
+    XCTAssertNil(store.activityStatus.cancelTask(task))
+    XCTAssertTrue(store.aiStore.aiChatCancellationRequested())
+    store.aiStore.finishAIChatOperation(operationID)
+  }
+
+  func testLocatingTaskUsesFrozenDraftTargetInsteadOfCurrentSelection() throws {
+    let store = makeStore()
+    let originalDraftID = try XCTUnwrap(store.selectedDraft?.id)
+    store.createDraft()
+    let differentDraftID = try XCTUnwrap(store.selectedDraft?.id)
+    XCTAssertNotEqual(originalDraftID, differentDraftID)
+    let task = WorkbenchTaskItem(
+      id: "frozen-draft-target",
+      kind: .gitPush,
+      detail: "需要定位",
+      state: .failed,
+      target: .draft(originalDraftID)
+    )
+
+    XCTAssertNil(store.activityStatus.locateTask(task))
+    XCTAssertEqual(store.selectedDraftID, originalDraftID)
   }
 
   func testGitFailureUsesStructuredStatusInsteadOfMessageKeywords() throws {
-    let store = WorkbenchStore()
+    let store = makeStore()
     store.setPublishActionMessage(
       "Repository rejected the operation.",
       status: .failure
@@ -85,7 +198,7 @@ final class WorkbenchTaskCenterFacadeTests: XCTestCase {
   }
 
   func testGitWarningDoesNotBecomeFailureFromMessageText() {
-    let store = WorkbenchStore()
+    let store = makeStore()
     store.setPublishActionMessage("没有可提交的发布包。", status: .warning)
 
     XCTAssertNil(
@@ -94,7 +207,7 @@ final class WorkbenchTaskCenterFacadeTests: XCTestCase {
   }
 
   func testLegacyMessageDefaultsToInformation() {
-    let store = WorkbenchStore()
+    let store = makeStore()
     store.setPublishActionMessage("旧调用中的失败文案")
 
     XCTAssertEqual(store.publishActionFeedback?.status, .information)
@@ -104,7 +217,7 @@ final class WorkbenchTaskCenterFacadeTests: XCTestCase {
   }
 
   func testAIRetryWithoutConfirmationDoesNotClearRetryStateOrSend() async throws {
-    let store = WorkbenchStore()
+    let store = makeStore()
     let draft = try XCTUnwrap(store.selectedDraft)
     let retryState = AIChatManualRetryState(
       draftID: draft.id,
@@ -125,7 +238,7 @@ final class WorkbenchTaskCenterFacadeTests: XCTestCase {
   }
 
   func testGeneralAIRetryRequiresExactOperationAndConfirmation() async throws {
-    let store = WorkbenchStore()
+    let store = makeStore()
     let conversation = try XCTUnwrap(
       store.aiStore.startNewGeneralAIChatConversation()
     )
@@ -172,7 +285,7 @@ final class WorkbenchTaskCenterFacadeTests: XCTestCase {
   }
 
   func testImageSummaryRetryFailsClosedForAnotherProfile() async throws {
-    let store = WorkbenchStore()
+    let store = makeStore()
     let task = WorkbenchTaskItem(
       id: "image-summary",
       kind: .imageProcessing,
@@ -188,7 +301,7 @@ final class WorkbenchTaskCenterFacadeTests: XCTestCase {
   }
 
   func testBatchGitFailureCarriesBatchIntentInsteadOfSelectedDraft() throws {
-    let store = WorkbenchStore()
+    let store = makeStore()
     let firstDraftID = UUID()
     let secondDraftID = UUID()
     let record = ReleaseRecord(

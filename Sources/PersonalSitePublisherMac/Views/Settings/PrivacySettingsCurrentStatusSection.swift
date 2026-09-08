@@ -5,9 +5,20 @@ import SwiftUI
 struct PrivacySettingsCurrentStatusSection: View {
   let status: PrivacyProtectionStatus
   let onQuickHide: () -> Void
+  let subsectionAnchor: SettingsSubsection?
+
+  init(
+    status: PrivacyProtectionStatus,
+    onQuickHide: @escaping () -> Void,
+    subsectionAnchor: SettingsSubsection? = nil
+  ) {
+    self.status = status
+    self.onQuickHide = onQuickHide
+    self.subsectionAnchor = subsectionAnchor
+  }
 
   var body: some View {
-    Section(String(localized: "快速隐藏状态")) {
+    Section {
       Label(
         status.title,
         systemImage: status.isQuickHideActive ? "eye.slash" : "eye"
@@ -31,6 +42,9 @@ struct PrivacySettingsCurrentStatusSection: View {
       }
       .workbenchProminentActionStyle(tint: WorkbenchTheme.warningActionFill)
       .disabled(status.isQuickHideActive)
+    } header: {
+      Text(String(localized: "快速隐藏状态"))
+        .settingsSubsectionAnchor(subsectionAnchor)
     }
   }
 }

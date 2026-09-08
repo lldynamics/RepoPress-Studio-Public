@@ -5,7 +5,7 @@ import XCTest
 
 /// Protects the user-visible nine-page Settings navigation contract.
 final class SettingsNavigationVisibilityTests: XCTestCase {
-  func testSidebarRendersEveryPageAndExpandedSubsectionAsVisibleRows() throws {
+  func testSidebarRendersEveryPageAndExplicitlyDisclosedSubsectionRows() throws {
     let repositoryRoot = URL(fileURLWithPath: #filePath)
       .deletingLastPathComponent()
       .deletingLastPathComponent()
@@ -17,7 +17,10 @@ final class SettingsNavigationVisibilityTests: XCTestCase {
 
     XCTAssertTrue(source.contains("pageSection(\"当前站点\", tabs: SettingsTab.siteSettings)"))
     XCTAssertTrue(source.contains("pageSection(\"应用\", tabs: SettingsTab.applicationSettings)"))
-    XCTAssertTrue(source.contains("ForEach(subsections)"))
+    XCTAssertTrue(source.contains("DisclosureGroup(isExpanded: expansionBinding(for: tab))"))
+    XCTAssertTrue(source.contains("ForEach(SettingsSubsection.sections(for: tab))"))
+    XCTAssertTrue(
+      source.contains("@SceneStorage(SettingsNavigationExpansionState.sceneStorageKey)"))
     XCTAssertTrue(source.contains("settings-tab-\\(tab.id)"))
     XCTAssertTrue(source.contains("settings-subsection-\\(subsection.id)"))
     XCTAssertTrue(source.contains(".scrollIndicators(.hidden)"))

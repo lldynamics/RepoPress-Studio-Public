@@ -1,8 +1,7 @@
 import Foundation
+import PublishingMarkdownCore
 import XCTest
-
 @testable import PersonalSitePublisherMac
-@testable import PublishingWorkbenchCore
 
 @MainActor
 final class MarkdownFindMatchRefreshCoordinatorTests: XCTestCase {

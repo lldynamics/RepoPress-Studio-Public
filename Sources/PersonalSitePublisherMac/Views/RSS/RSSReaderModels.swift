@@ -34,8 +34,34 @@ struct RSSArticleLoadRequest: Equatable {
 struct RSSArticleTranslationCacheKey: Hashable {
   let articleID: String
   let fetchedAt: Date
+  /// The reader can switch between the feed summary and a locally cached
+  /// full-text extraction without changing `fetchedAt`.  Keep results for the
+  /// two bodies separate so the visible body and translated body stay aligned.
+  let contentVersion: UInt64
   let targetCode: String
   let backend: RSSArticleTranslationBackend
+}
+
+enum RSSArticleTranslationContentVersion {
+  static func make(for article: RSSArticle) -> UInt64 {
+    // FNV-1a is small, deterministic, and avoids retaining a full HTML body in
+    // each cache key. This is a cache discriminator, not a security digest.
+    var hash: UInt64 = 1_469_598_103_934_665_603
+    for component in [
+      article.title,
+      article.summaryHTML,
+      article.contentHTML,
+      article.webPageSnapshotHTML ?? "",
+    ] {
+      for byte in component.utf8 {
+        hash ^= UInt64(byte)
+        hash &*= 1_099_511_628_211
+      }
+      hash ^= 0
+      hash &*= 1_099_511_628_211
+    }
+    return hash
+  }
 }
 
 struct RSSReaderFilterChangeToken: Equatable {

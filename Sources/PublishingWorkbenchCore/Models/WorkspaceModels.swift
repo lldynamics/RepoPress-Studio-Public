@@ -437,17 +437,32 @@ public struct ReleaseRecordBatchItem: Identifiable, Codable, Hashable, Sendable 
   public var draftID: UUID
   public var draftTitle: String
   public var markdownPath: String
+  public var draftSummary: String?
+  public var draftCoverAltText: String?
+  public var publicPath: String?
+  public var publicURLText: String?
+  public var sourceDocumentDigest: String?
   public var changedPaths: [String]
 
   public init(
     draftID: UUID,
     draftTitle: String,
     markdownPath: String,
+    draftSummary: String? = nil,
+    draftCoverAltText: String? = nil,
+    publicPath: String? = nil,
+    publicURLText: String? = nil,
+    sourceDocumentDigest: String? = nil,
     changedPaths: [String]
   ) {
     self.draftID = draftID
     self.draftTitle = draftTitle
     self.markdownPath = markdownPath
+    self.draftSummary = draftSummary
+    self.draftCoverAltText = draftCoverAltText
+    self.publicPath = publicPath
+    self.publicURLText = publicURLText
+    self.sourceDocumentDigest = sourceDocumentDigest
     self.changedPaths = changedPaths
   }
 
@@ -461,6 +476,11 @@ public struct ReleaseRecordBatchItem: Identifiable, Codable, Hashable, Sendable 
       draftID: planItem.draftID,
       draftTitle: planItem.draftTitle,
       markdownPath: planItem.markdownPath,
+      draftSummary: planItem.package.draftSummary,
+      draftCoverAltText: planItem.package.draftCoverAltText,
+      publicPath: planItem.package.publicPath,
+      publicURLText: planItem.package.publicURLText,
+      sourceDocumentDigest: planItem.package.sourceDocumentDigest,
       changedPaths: matchedChangedPaths.isEmpty ? itemPaths : matchedChangedPaths
     )
   }
@@ -479,6 +499,9 @@ public struct ReleaseRecord: Identifiable, Codable, Hashable, Sendable {
   public var draftTitle: String?
   public var draftSummary: String?
   public var draftCoverAltText: String?
+  public var publicPath: String?
+  public var publicURLText: String?
+  public var sourceDocumentDigest: String?
   public var markdownPath: String?
   public var changedPaths: [String]
   public var repositoryProvider: RepositoryProvider?
@@ -510,6 +533,9 @@ public struct ReleaseRecord: Identifiable, Codable, Hashable, Sendable {
     draftTitle: String? = nil,
     draftSummary: String? = nil,
     draftCoverAltText: String? = nil,
+    publicPath: String? = nil,
+    publicURLText: String? = nil,
+    sourceDocumentDigest: String? = nil,
     markdownPath: String? = nil,
     changedPaths: [String] = [],
     repositoryProvider: RepositoryProvider? = nil,
@@ -538,6 +564,9 @@ public struct ReleaseRecord: Identifiable, Codable, Hashable, Sendable {
     self.draftTitle = draftTitle
     self.draftSummary = draftSummary
     self.draftCoverAltText = draftCoverAltText
+    self.publicPath = publicPath
+    self.publicURLText = publicURLText
+    self.sourceDocumentDigest = sourceDocumentDigest
     self.markdownPath = markdownPath
     self.changedPaths = changedPaths
     self.repositoryProvider = repositoryProvider
@@ -627,6 +656,9 @@ public struct ReleaseRecord: Identifiable, Codable, Hashable, Sendable {
       draftTitle: package.title,
       draftSummary: package.draftSummary,
       draftCoverAltText: package.draftCoverAltText,
+      publicPath: package.publicPath,
+      publicURLText: package.publicURLText,
+      sourceDocumentDigest: package.sourceDocumentDigest,
       markdownPath: package.markdownPath,
       changedPaths: writtenPaths,
       repositoryProvider: profile.repositoryProvider,
@@ -678,6 +710,9 @@ public struct ReleaseRecord: Identifiable, Codable, Hashable, Sendable {
       draftTitle: package.title,
       draftSummary: package.draftSummary,
       draftCoverAltText: package.draftCoverAltText,
+      publicPath: package.publicPath,
+      publicURLText: package.publicURLText,
+      sourceDocumentDigest: package.sourceDocumentDigest,
       markdownPath: package.markdownPath,
       changedPaths: result.committedPaths,
       repositoryProvider: profile.repositoryProvider,
@@ -718,6 +753,9 @@ public struct ReleaseRecord: Identifiable, Codable, Hashable, Sendable {
       draftTitle: package.title,
       draftSummary: package.draftSummary,
       draftCoverAltText: package.draftCoverAltText,
+      publicPath: package.publicPath,
+      publicURLText: package.publicURLText,
+      sourceDocumentDigest: package.sourceDocumentDigest,
       markdownPath: package.markdownPath,
       changedPaths: result.changedPaths,
       repositoryProvider: profile.repositoryProvider,
@@ -810,6 +848,9 @@ public struct ReleaseRecord: Identifiable, Codable, Hashable, Sendable {
       draftTitle: package.title,
       draftSummary: package.draftSummary,
       draftCoverAltText: package.draftCoverAltText,
+      publicPath: package.publicPath,
+      publicURLText: package.publicURLText,
+      sourceDocumentDigest: package.sourceDocumentDigest,
       markdownPath: package.markdownPath,
       changedPaths: changedPaths ?? package.files.map(\.repositoryPath),
       repositoryProvider: profile.repositoryProvider,
@@ -916,6 +957,9 @@ public struct ReleaseRecord: Identifiable, Codable, Hashable, Sendable {
       draftTitle: original.draftTitle,
       draftSummary: original.draftSummary,
       draftCoverAltText: original.draftCoverAltText,
+      publicPath: original.publicPath,
+      publicURLText: original.publicURLText,
+      sourceDocumentDigest: original.sourceDocumentDigest,
       markdownPath: original.markdownPath,
       changedPaths: result.changedPaths,
       repositoryProvider: result.provider,
@@ -948,6 +992,9 @@ public struct ReleaseRecord: Identifiable, Codable, Hashable, Sendable {
       draftTitle: original.draftTitle,
       draftSummary: original.draftSummary,
       draftCoverAltText: original.draftCoverAltText,
+      publicPath: original.publicPath,
+      publicURLText: original.publicURLText,
+      sourceDocumentDigest: original.sourceDocumentDigest,
       markdownPath: original.markdownPath,
       changedPaths: original.changedPaths,
       repositoryProvider: result.provider,
@@ -976,6 +1023,9 @@ public struct ReleaseRecord: Identifiable, Codable, Hashable, Sendable {
     case draftTitle
     case draftSummary
     case draftCoverAltText
+    case publicPath
+    case publicURLText
+    case sourceDocumentDigest
     case markdownPath
     case changedPaths
     case repositoryProvider
@@ -1007,6 +1057,9 @@ public struct ReleaseRecord: Identifiable, Codable, Hashable, Sendable {
     draftTitle = try container.decodeIfPresent(String.self, forKey: .draftTitle)
     draftSummary = try container.decodeIfPresent(String.self, forKey: .draftSummary)
     draftCoverAltText = try container.decodeIfPresent(String.self, forKey: .draftCoverAltText)
+    publicPath = try container.decodeIfPresent(String.self, forKey: .publicPath)
+    publicURLText = try container.decodeIfPresent(String.self, forKey: .publicURLText)
+    sourceDocumentDigest = try container.decodeIfPresent(String.self, forKey: .sourceDocumentDigest)
     markdownPath = try container.decodeIfPresent(String.self, forKey: .markdownPath)
     changedPaths = try container.decodeIfPresent([String].self, forKey: .changedPaths) ?? []
     repositoryProvider = try container.decodeIfPresent(

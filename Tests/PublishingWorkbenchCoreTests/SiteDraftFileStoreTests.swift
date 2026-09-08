@@ -83,6 +83,113 @@ struct SiteDraftFileStoreTests {
   }
 
   @Test
+  func importedFormattingUsesOriginalFileDigestForFirstEdit() throws {
+    let rootURL = try makeTemporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    try makeGitMarker(at: rootURL)
+    var profile = SiteProfile.defaultProfile
+    profile.localRepositoryRootPath = rootURL.path
+    profile.contentRoot = "content"
+    profile.markdownPathPattern = "content/posts/{slug}.md"
+    let repositoryPath = "content/posts/imported-formatting.md"
+    let originalDocument = """
+    ---
+    tags: [Swift, Local]
+    slug: imported-formatting
+    title: Imported formatting
+
+    ---
+
+    Original body
+    """
+    let destinationURL = rootURL.appendingPathComponent(repositoryPath)
+    try FileManager.default.createDirectory(
+      at: destinationURL.deletingLastPathComponent(),
+      withIntermediateDirectories: true
+    )
+    try originalDocument.write(to: destinationURL, atomically: true, encoding: .utf8)
+
+    let importer = LocalContentImportService(isContentIndexEnabled: false)
+    var draft = try importer.parseProjectDocument(
+      originalDocument,
+      repositoryPath: repositoryPath,
+      rootURL: rootURL,
+      profile: profile
+    )
+    let originalDigest = ArticleDraft.repositoryDocumentDigest(originalDocument)
+    #expect(draft.repositoryBinding?.projectFileContentDigest == originalDigest)
+    #expect(
+      draft.repositoryBinding?.projectFileRenderedContentDigest
+        == draft.renderedRepositoryContentDigest(profile: profile)
+    )
+    #expect(draft.repositoryBinding?.projectFileContentDigest
+      != draft.repositoryBinding?.projectFileRenderedContentDigest)
+
+    draft.bodyMarkdown = "Original body\n\nFirst editor change"
+    let result = try SiteDraftFileStore().write(draft: draft, profile: profile)
+
+    #expect(result.writtenPaths == [repositoryPath])
+    #expect(try String(contentsOf: destinationURL, encoding: .utf8).contains("First editor change"))
+  }
+
+  @Test
+  func importedDocumentWithRemoteRevisionStillUsesExactLocalBytes() throws {
+    let rootURL = try makeTemporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    try makeGitMarker(at: rootURL)
+    var profile = SiteProfile.defaultProfile
+    profile.localRepositoryRootPath = rootURL.path
+    profile.markdownPathPattern = "content/posts/{slug}.md"
+    let path = "content/posts/revision-import.md"
+    let document = "---\ntitle: Revision import\nslug: revision-import\n\n---\n\nOriginal body\n"
+    let url = rootURL.appendingPathComponent(path)
+    try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+    try document.write(to: url, atomically: true, encoding: .utf8)
+    let result = LocalContentImportService().importDraft(document: document, repositoryPath: path,
+      profile: profile, repositorySHA: String(repeating: "a", count: 40))
+    var draft = try #require(result.importedDrafts.first)
+    #expect(draft.repositoryBinding?.projectFileContentDigest == ArticleDraft.repositoryDocumentDigest(document))
+    draft.bodyMarkdown = "Edited body"
+    _ = try SiteDraftFileStore().write(draft: draft, profile: profile)
+    #expect(try String(contentsOf: url, encoding: .utf8).contains("Edited body"))
+    try "Unreviewed external edit".write(to: url, atomically: true, encoding: .utf8)
+    #expect(throws: SiteDraftFileStoreError.projectFileChangedExternally(path)) {
+      try SiteDraftFileStore().write(draft: draft, profile: profile)
+    }
+  }
+
+  @Test
+  func exactCurrentDocumentRepairsStaleBaselineWithoutRewriting() throws {
+    let rootURL = try makeTemporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    try makeGitMarker(at: rootURL)
+    var profile = SiteProfile.defaultProfile
+    profile.localRepositoryRootPath = rootURL.path
+    var draft = ArticleDraft.empty(profile: profile)
+    draft.slug = "already-written"
+    draft.bodyMarkdown = "The write completed before its baseline was persisted."
+    let repositoryPath = profile.markdownPath(for: draft)
+    let destinationURL = rootURL.appendingPathComponent(repositoryPath)
+    let intendedDocument = FrontMatterRenderer().renderDocument(draft: draft, profile: profile)
+    try FileManager.default.createDirectory(
+      at: destinationURL.deletingLastPathComponent(),
+      withIntermediateDirectories: true
+    )
+    try intendedDocument.write(to: destinationURL, atomically: true, encoding: .utf8)
+    draft.recordProjectFile(
+      profile: profile,
+      repositoryPath: repositoryPath,
+      renderedContentDigest: String(repeating: "0", count: 64)
+    )
+
+    let result = try SiteDraftFileStore().write(draft: draft, profile: profile)
+
+    #expect(result.repositoryPath == repositoryPath)
+    #expect(result.writtenPaths.isEmpty)
+    #expect(try String(contentsOf: destinationURL, encoding: .utf8) == intendedDocument)
+  }
+
+  @Test
   func refusesPathMoveWhenAnotherFileAlreadyUsesDestination() throws {
     let rootURL = try makeTemporaryDirectory()
     defer { try? FileManager.default.removeItem(at: rootURL) }

@@ -17,12 +17,25 @@ enum ContentHealthAIFixFieldPolicy {
 
   static func apply(
     _ fields: [FrontMatterFixFieldItem],
-    to draft: inout ArticleDraft
+    to draft: inout ArticleDraft,
+    baseline: [String: [String]] = [:]
   ) -> ContentHealthAIFixApplicationResult {
     var appliedKeys: [String] = []
     var skippedKeys: [String] = []
+    var conflicts: [ContentHealthAIFixFieldConflict] = []
 
     for item in fields where item.isSelected {
+      let key = canonicalKey(for: item.fieldKey)
+      if let originalValue = baseline[key],
+        originalValue != comparisonValue(for: draft, fieldKey: key)
+      {
+        conflicts.append(
+          ContentHealthAIFixFieldConflict(
+            fieldKey: item.fieldKey,
+            currentValue: value(for: draft, fieldKey: key)
+          ))
+        continue
+      }
       switch canonicalKey(for: item.fieldKey) {
       case "title":
         draft.title = item.proposedValue
@@ -46,18 +59,47 @@ enum ContentHealthAIFixFieldPolicy {
 
     return ContentHealthAIFixApplicationResult(
       appliedKeys: appliedKeys,
-      skippedKeys: skippedKeys
+      skippedKeys: skippedKeys,
+      conflicts: conflicts
     )
+  }
+
+  static func value(for draft: ArticleDraft, fieldKey rawKey: String) -> String {
+    switch canonicalKey(for: rawKey) {
+    case "title": draft.title
+    case "slug": draft.slug
+    case "summary", "description": draft.summary
+    case "tags": draft.tags.joined(separator: ", ")
+    default: ""
+    }
+  }
+
+  private static func comparisonValue(for draft: ArticleDraft, fieldKey: String) -> [String] {
+    canonicalKey(for: fieldKey) == "tags" ? draft.tags : [value(for: draft, fieldKey: fieldKey)]
+  }
+
+  static func baseline(for draft: ArticleDraft) -> [String: [String]] {
+    Dictionary(
+      uniqueKeysWithValues: supportedFieldKeys.map {
+        ($0, comparisonValue(for: draft, fieldKey: $0))
+      })
   }
 }
 
 struct ContentHealthAIFixApplicationResult: Equatable {
   let appliedKeys: [String]
   let skippedKeys: [String]
+  let conflicts: [ContentHealthAIFixFieldConflict]
 
   var appliedCount: Int { appliedKeys.count }
   var skippedCount: Int { skippedKeys.count }
+  var conflictCount: Int { conflicts.count }
   var didApplyChanges: Bool { appliedCount > 0 }
+}
+
+struct ContentHealthAIFixFieldConflict: Equatable {
+  let fieldKey: String
+  let currentValue: String
 }
 
 enum ContentHealthAIFixApplyFeedback: Equatable {
@@ -67,6 +109,22 @@ enum ContentHealthAIFixApplyFeedback: Equatable {
   var message: String {
     switch self {
     case .applied(let result):
+      if result.conflictCount > 0 {
+        let currentValues = result.conflicts.map { "\($0.fieldKey)：\($0.currentValue)" }
+          .joined(separator: "；")
+        if result.appliedCount > 0 {
+          return String(
+            format: String(localized: "已应用 %d 个字段；%d 个字段已在其他窗口变化，保留当前值：%@。"),
+            result.appliedCount,
+            result.conflictCount,
+            currentValues
+          )
+        }
+        return String(
+          format: String(localized: "所选字段已在其他窗口变化，未覆盖当前值：%@。请重新生成预览。"),
+          currentValues
+        )
+      }
       if result.skippedCount > 0 {
         return String(
           format: String(localized: "已应用 %d 个字段，跳过 %d 个当前不支持的字段。"),
@@ -80,7 +138,7 @@ enum ContentHealthAIFixApplyFeedback: Equatable {
   }
 
   var isSuccess: Bool {
-    if case .applied = self { return true }
+    if case .applied(let result) = self { return result.didApplyChanges }
     return false
   }
 }

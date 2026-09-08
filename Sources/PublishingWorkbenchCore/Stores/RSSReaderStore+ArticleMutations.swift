@@ -473,6 +473,24 @@ extension RSSReaderStore {
     bumpMutationRevision()
   }
 
+  /// Persists a record only if the article has not changed its source URL
+  /// while extraction was in flight. Existing cache records remain readable;
+  /// this guard applies to new asynchronous extraction results.
+  @discardableResult
+  public func saveFullTextRecordIfCurrentSourceAsync(
+    _ record: RSSArticleFullTextRecord
+  ) async throws -> Bool {
+    guard let database else {
+      throw RSSReaderError.persistence("全文缓存需要可用的 SQLite 数据库。")
+    }
+    let task = Task.detached(priority: .utility) {
+      try database.upsertFullTextRecordIfCurrentSource(record)
+    }
+    let saved = try await task.value
+    if saved { bumpMutationRevision() }
+    return saved
+  }
+
   public func deleteFullTextRecord(articleID: String) throws {
     try database?.deleteFullTextRecord(articleID: articleID)
     bumpMutationRevision()
@@ -537,8 +555,9 @@ extension RSSReaderStore {
       var successfulCount = 0
       while let record = await group.next() {
         do {
-          try await saveFullTextRecordAsync(record)
-          if record.status == .ready { successfulCount += 1 }
+          if try await saveFullTextRecordIfCurrentSourceAsync(record), record.status == .ready {
+            successfulCount += 1
+          }
         } catch {
           // Keep draining the bounded queue even if one persistence fails.
         }

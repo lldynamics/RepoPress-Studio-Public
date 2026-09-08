@@ -377,13 +377,15 @@ final class DeploymentStatusServiceTests: XCTestCase {
 
     let snapshot = await service.check(profile: profile, releaseRecord: record)
 
-    XCTAssertEqual(snapshot.level, .success)
+    XCTAssertEqual(snapshot.level, .unknown)
+    XCTAssertFalse(snapshot.articleResults?.first?.verifiesSourceVersion == true)
     XCTAssertEqual(
       snapshot.signals.map(\.title),
       [
         CoreL10n.format("%@ 状态", DeploymentProvider.custom.displayName),
         CoreL10n.text("发布页面内容"),
         CoreL10n.text("发布页面 SEO"),
+        CoreL10n.text("文章正文版本"),
       ])
     XCTAssertEqual(
       snapshot.signals.first { $0.title == CoreL10n.text("发布页面内容") }?.message,
@@ -401,9 +403,11 @@ final class DeploymentStatusServiceTests: XCTestCase {
         CoreL10n.format("%@ 状态", DeploymentProvider.custom.displayName),
         CoreL10n.text("发布页面内容"),
         CoreL10n.text("发布页面 SEO"),
-        CoreL10n.text("保持监控"),
+        CoreL10n.text("文章正文版本"),
+        CoreL10n.text("补充状态证据"),
       ])
-    XCTAssertTrue(snapshot.postPublishCheckItems.allSatisfy { $0.level == .success })
+    XCTAssertEqual(
+      snapshot.signals.first { $0.title == CoreL10n.text("文章正文版本") }?.level, .unknown)
     XCTAssertTrue(snapshot.postPublishChecklistMarkdown.contains(CoreL10n.text("# 发布后校验报告")))
     XCTAssertTrue(
       snapshot.postPublishChecklistMarkdown.contains(
@@ -554,13 +558,15 @@ final class DeploymentStatusServiceTests: XCTestCase {
 
     let snapshot = await service.check(profile: profile, releaseRecord: record)
 
-    XCTAssertEqual(snapshot.level, .success)
+    XCTAssertEqual(snapshot.level, .unknown)
+    XCTAssertFalse(snapshot.articleResults?.first?.verifiesSourceVersion == true)
     XCTAssertEqual(
       snapshot.signals.map(\.title),
       [
         CoreL10n.format("%@ 状态", DeploymentProvider.custom.displayName),
         CoreL10n.text("发布页面内容"),
         CoreL10n.text("发布页面 SEO"),
+        CoreL10n.text("文章正文版本"),
         CoreL10n.text("发布页面社交元数据"),
       ])
     let matchedPieces = [
@@ -758,8 +764,10 @@ final class DeploymentStatusServiceTests: XCTestCase {
 
     let snapshot = await service.check(profile: profile, releaseRecord: record)
 
-    XCTAssertEqual(snapshot.level, .success)
-    XCTAssertEqual(snapshot.signals.last?.title, CoreL10n.text("发布页面 SEO"))
+    XCTAssertEqual(snapshot.level, .unknown)
+    XCTAssertFalse(snapshot.articleResults?.first?.verifiesSourceVersion == true)
+    XCTAssertEqual(
+      snapshot.signals.first { $0.title == CoreL10n.text("发布页面 SEO") }?.level, .success)
     XCTAssertEqual(
       snapshot.signals.last?.urlText, "https://example.com/blog/2026/07/07/jekyll-article")
     let requests = await transport.capturedRequests()
@@ -793,7 +801,8 @@ final class DeploymentStatusServiceTests: XCTestCase {
 
     let snapshot = await service.check(profile: profile, releaseRecord: record)
 
-    XCTAssertEqual(snapshot.level, .success)
+    XCTAssertEqual(snapshot.level, .unknown)
+    XCTAssertFalse(snapshot.articleResults?.first?.verifiesSourceVersion == true)
     XCTAssertEqual(snapshot.signals.last?.urlText, "https://example.com/posts/hugo-article")
     let requests = await transport.capturedRequests()
     XCTAssertEqual(
@@ -2554,8 +2563,9 @@ final class DeploymentStatusServiceTests: XCTestCase {
     let tokenStore =
       deploymentTokenStore
       ?? KeychainTokenStore(
-        service: KeychainCredentialServices.deployment,
-        accountPrefix: "deployment-provider"
+        service: "PSPMDeploymentStatusTests.\(UUID().uuidString.prefix(8))",
+        accountPrefix: "deployment-provider",
+        inMemory: true
       )
     return WorkbenchStore(
       persistence: WorkbenchPersistence(fileURL: url),
