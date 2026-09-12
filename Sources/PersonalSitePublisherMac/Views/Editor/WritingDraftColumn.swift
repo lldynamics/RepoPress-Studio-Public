@@ -319,17 +319,16 @@ struct WritingDraftColumn: View {
   let selectedDraftID: UUID?
   let onSelectDraft: (UUID?) -> Void
   let onFocusDraft: (UUID, WorkspaceSection) -> Void
+  @ObservedObject var writingListState: WritingListWindowPresentationState
   @ObservedObject var draftListState: DraftListStore
   @Environment(\.openSettings) var openSettings
   @Environment(\.settingsWorkspaceCommandAction) var settingsWorkspaceCommandAction
   @AppStorage("dataManagementRequestedSection") var dataManagementRequestedSection =
     DataManagementSection.drafts.rawValue
-  @AppStorage("writingDraftListDisplayModeV1") var displayModeRawValue =
-    WritingDraftListDisplayMode.flat.rawValue
+  @State var displayModeRawValue = WritingDraftListDisplayMode.flat.rawValue
   @State var searchText = ""
   @State var filter: DraftListFilter = .all
-  @AppStorage("writingDraftSortOrderV1") var sortOrderRawValue = WritingDraftSortOrder
-    .updatedNewest.rawValue
+  @State var sortOrderRawValue = WritingDraftSortOrder.updatedNewest.rawValue
   @State var isDraftListLoading = false
   @State var draftListLoadingNonce = 0
   @State var visibleDraftCount = 0
@@ -351,9 +350,10 @@ struct WritingDraftColumn: View {
   @State var selectedDraftIDs: Set<UUID> = []
   @State var draftOwnershipTransferPlan: DraftOwnershipTransferPlan?
   @State var isMetadataBatchMaintenancePresented = false
+  @State var isAIBatchMaintenancePresented = false
   @State var isTemplatePickerPresented = false
   @Environment(\.undoManager) var undoManager
-  @EnvironmentObject private var sceneCommandRouter: WorkspaceSceneCommandRouter
+  @EnvironmentObject var sceneCommandRouter: WorkspaceSceneCommandRouter
   @State private var sceneCommandOwnerID = UUID()
 
   init(
@@ -361,13 +361,20 @@ struct WritingDraftColumn: View {
     isCompact: Bool,
     selectedDraftID: UUID?,
     onSelectDraft: @escaping (UUID?) -> Void,
-    onFocusDraft: @escaping (UUID, WorkspaceSection) -> Void
+    onFocusDraft: @escaping (UUID, WorkspaceSection) -> Void,
+    writingListState: WritingListWindowPresentationState
   ) {
     self.store = store
     self.isCompact = isCompact
     self.selectedDraftID = selectedDraftID
     self.onSelectDraft = onSelectDraft
     self.onFocusDraft = onFocusDraft
+    _writingListState = ObservedObject(wrappedValue: writingListState)
+    _displayModeRawValue = State(initialValue: writingListState.displayMode.rawValue)
+    _searchText = State(initialValue: writingListState.searchText)
+    _filter = State(initialValue: writingListState.filter)
+    _sortOrderRawValue = State(initialValue: writingListState.sortOrder.rawValue)
+    _folderExpansionState = State(initialValue: writingListState.makeFolderExpansionState())
     _draftListState = ObservedObject(wrappedValue: store.draftList)
   }
 
@@ -416,6 +423,7 @@ struct WritingDraftColumn: View {
       draftList
     }
     .onAppear {
+      applyWindowListState()
       sceneCommandRouter.registerWritingDrafts(
         writingDraftCommandActions,
         owner: sceneCommandOwnerID
@@ -426,6 +434,24 @@ struct WritingDraftColumn: View {
     }
     .onChange(of: store.activeProfileID) { _, _ in
       synchronizeFolderExpansionState()
+    }
+    .onChange(of: writingListState.restorationRevision) { _, _ in
+      applyWindowListState()
+    }
+    .onChange(of: searchText) { _, value in
+      writingListState.searchText = value
+    }
+    .onChange(of: filter) { _, value in
+      writingListState.filter = value
+    }
+    .onChange(of: displayModeRawValue) { _, value in
+      writingListState.displayMode = WritingDraftListDisplayMode(rawValue: value) ?? .flat
+    }
+    .onChange(of: sortOrderRawValue) { _, value in
+      writingListState.sortOrder = WritingDraftSortOrder(rawValue: value) ?? .updatedNewest
+    }
+    .onChange(of: folderExpansionState.userExpandedFolderIDs) { _, value in
+      writingListState.setUserExpandedFolderIDs(value)
     }
     .confirmationDialog(
       "从网站下线这篇文章？",
@@ -473,6 +499,9 @@ struct WritingDraftColumn: View {
     .sheet(isPresented: $isMetadataBatchMaintenancePresented) {
       MetadataBatchMaintenancePanel(store: store, initialDraftIDs: selectedDraftIDs)
     }
+    .sheet(isPresented: $isAIBatchMaintenancePresented) {
+      AIBatchMaintenancePanel(store: store, initialDraftIDs: selectedDraftIDs)
+    }
     .sheet(isPresented: $isTemplatePickerPresented) {
       WritingDraftTemplatePicker(store: store) { template, asGeneralDraft, title in
         guard let draftID = store.createDraft(from: template, asGeneralDraft: asGeneralDraft, title: title) else {
@@ -481,6 +510,20 @@ struct WritingDraftColumn: View {
         onFocusDraft(draftID, .writing)
         return true
       }
+    }
+  }
+
+  private func applyWindowListState() {
+    searchText = writingListState.searchText
+    filter = writingListState.filter
+    displayModeRawValue = writingListState.displayMode.rawValue
+    sortOrderRawValue = writingListState.sortOrder.rawValue
+    folderExpansionState = writingListState.makeFolderExpansionState()
+    if writingListState.hasPersistedFolderExpansion {
+      // The cache's first-projection policy would otherwise replace restored
+      // choices with defaults before it has a chance to reconcile old IDs.
+      folderExpansionSiteID = store.activeProfile.id
+      synchronizeFolderExpansionState()
     }
   }
 }

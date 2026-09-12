@@ -179,6 +179,8 @@ struct ContentView: View {
   @State private var isPersistenceResetConfirmationPresented = false
   @State private var persistenceResetFeedback: PersistenceRecoveryResetFeedback?
   @State private var modalPresentation = WorkspaceModalPresentationState()
+  @State private var fullTextSearchRequest: DraftFullTextSearchRequest?
+  @State private var deferredFullTextSearchRequest: DraftFullTextSearchRequest?
   @State private var publishDrawerInitialScope: PublishScope = .repository
   @State private var publishReadinessNavigationRequest: PublishReadinessNavigationRequest?
   @State private var readinessInspectorSheet: PublishReadinessNavigationRequest?
@@ -314,6 +316,7 @@ struct ContentView: View {
     .environment(\.publishReadinessNavigationRequest, publishReadinessNavigationRequest)
     .environment(\.workspaceWindowID, windowSession.windowID)
     .environment(\.workspaceWindowSession, windowSession)
+    .modifier(WritingListWindowStorageModifier(state: windowSession.writingListState))
     .environment(\.workspaceWindowIsKey, windowSession.isKeyWindow)
     .environment(
       \.settingsWorkspaceCommandAction,
@@ -416,6 +419,8 @@ struct ContentView: View {
     .onChange(of: shellState.isQuickHideActive) { _, isActive in
       if isActive {
         deferredPaletteAIRequest.cancel()
+        deferredFullTextSearchRequest = nil
+        fullTextSearchRequest = nil
         modalPresentation.dismiss()
       }
     }
@@ -555,6 +560,7 @@ struct ContentView: View {
       store: store,
       selectedSection: windowSession.selectedSection,
       selectedDraftID: windowSession.selectedDraftID,
+      writingListState: windowSession.writingListState,
       isCompact: compactLayout,
       isFocusMode: effectiveFocusMode,
       isInspectorPresented: isInspectorVisible,
@@ -683,6 +689,7 @@ struct ContentView: View {
       windowSession.receiveSharedDraft(activatedDraftID)
     }
     performDeferredPaletteAIRequestIfReady()
+    performDeferredFullTextSearchIfReady()
   }
 
   private var sceneCommandRouterRootUpdateKey: WorkspaceSceneCommandRouter.RootUpdateKey {
@@ -725,7 +732,9 @@ struct ContentView: View {
         modalPresentation.present(.firstRunSetup)
       },
       settingsWorkspaceCommandAction: settingsWorkspaceCommandAction,
-      draftFullTextSearchAction: DraftFullTextSearchAction(open: openDraftFullTextSearch),
+      draftFullTextSearchAction: DraftFullTextSearchAction(
+        open: openDraftFullTextSearch, openRequest: requestDraftFullTextSearch
+      ),
       workspaceFocusModeCommandAction: WorkspaceFocusModeCommandAction(
         isActive: effectiveFocusMode,
         canToggle: shellState.canUseProtectedWorkbench
@@ -921,10 +930,15 @@ struct ContentView: View {
         onToggleFocusMode: toggleFocusMode,
         onOpenAI: { draftID, quickPrompt in
           deferredPaletteAIRequest.enqueue(draftID: draftID, quickPrompt: quickPrompt)
+        },
+        onOpenFullTextSearch: { request in
+          deferredFullTextSearchRequest = request
         }
       )
     case .draftFullTextSearch:
-      DraftFullTextSearchPanel(store: store, onOpenHit: openDraftFullTextSearchHit)
+      DraftFullTextSearchPanel(
+        store: store, initialRequest: fullTextSearchRequest, onOpenHit: openDraftFullTextSearchHit
+      )
     }
   }
 
@@ -938,6 +952,32 @@ struct ContentView: View {
   private func openDraftFullTextSearch() {
     guard shellState.canUseProtectedWorkbench else { return }
     guard activateCurrentWindowSharedContext() else { return }
+    store.flushDraftBodyEditorBuffers()
+    fullTextSearchRequest = nil
+    modalPresentation.present(.draftFullTextSearch)
+  }
+
+  private func requestDraftFullTextSearch(_ request: DraftFullTextSearchRequest) {
+    guard shellState.canUseProtectedWorkbench else { return }
+    deferredFullTextSearchRequest = request
+    if modalPresentation.presented != nil {
+      modalPresentation.dismiss()
+    } else {
+      performDeferredFullTextSearchIfReady()
+    }
+  }
+
+  private func performDeferredFullTextSearchIfReady() {
+    guard shellState.canUseProtectedWorkbench else {
+      deferredFullTextSearchRequest = nil
+      return
+    }
+    guard modalPresentation.presented == nil,
+      let request = deferredFullTextSearchRequest,
+      activateCurrentWindowSharedContext()
+    else { return }
+    deferredFullTextSearchRequest = nil
+    fullTextSearchRequest = request
     store.flushDraftBodyEditorBuffers()
     modalPresentation.present(.draftFullTextSearch)
   }
@@ -1342,6 +1382,7 @@ struct ContentView: View {
   private func handleWorkspaceSheetDismissal() {
     deferredPaletteAIRequest.sheetDidDismiss()
     performDeferredPaletteAIRequestIfReady()
+    performDeferredFullTextSearchIfReady()
   }
 
   private func performDeferredPaletteAIRequestIfReady() {

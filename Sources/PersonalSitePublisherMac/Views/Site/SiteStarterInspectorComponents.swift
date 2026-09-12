@@ -187,11 +187,15 @@ struct SiteStarterInspectorView: View {
     case .template:
       return [String(localized: "新建站点提供四套现代 SSG 起点；导入模式仍会按已有站点类型读取内容目录和 Front Matter。")]
     case .localDirectory:
-      return [String(localized: "目标目录必须是空文件夹；生成后会成为本地站点仓库。")]
+      return SiteStarterMode(rawValue: modeRaw) == .importExisting
+        ? [String(localized: "导入已有仓库不会改写文件；会按所选 SSG 默认内容目录导入文章。")]
+        : [String(localized: "目标目录必须是空文件夹；生成后会成为本地站点仓库。")]
     case .github:
       return [String(localized: "GitHub 仓库创建以向导里的所有者、仓库名和分支为准；创建前会同步到当前站点配置。")]
     case .generate:
-      return [String(localized: "生成会创建模板文件、部署工作流、部署说明和初始文章草稿。")]
+      return SiteStarterMode(rawValue: modeRaw) == .importExisting
+        ? [String(localized: "导入模式会保留已有文件，只创建工作台站点配置并导入内容目录里的 Markdown/MDX。")]
+        : [String(localized: "生成会创建模板文件、部署工作流、部署说明和初始文章草稿。")]
     case .firstPush:
       return [String(localized: "首次推送会提交 Starter 文件，并把分支推送到 origin。")]
     case .deployment:

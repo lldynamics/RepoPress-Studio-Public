@@ -28,6 +28,9 @@ struct CodexAppServerAccountSection: View {
   var body: some View {
     Group {
       Section("ChatGPT 账户") {
+        CodexRuntimeSetupSection(status: runtimeStatus) {
+          await refreshAll(showSuccess: true)
+        }
         CodexAppServerRuntimeStatusContent(
           runtimeStatus: runtimeStatus,
           openInstallationGuide: openRuntimeInstallationGuide,
@@ -435,6 +438,7 @@ struct CodexAppServerAccountSection: View {
       do {
         let login = try await CodexAppServerClient.shared.startChatGPTLogin()
         guard NSWorkspace.shared.open(login.authURL) else {
+          await CodexAppServerClient.shared.cancelLogin(loginID: login.loginID)
           isWorking = false
           isLoginFlowActive = false
           isError = true

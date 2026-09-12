@@ -61,6 +61,7 @@ struct RSSLibraryInspectorPanel: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: 10) {
+      KnowledgeWritingContextView(store: workbenchStore)
       header
 
       if entries.isEmpty {

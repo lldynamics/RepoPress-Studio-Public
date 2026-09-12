@@ -21,6 +21,9 @@ struct CodexAppServerModelSelectionSection: View {
         Text("跟随账户默认")
           .tag(AIProviderPreset.codexDefaultModel)
 
+        if normalizedModel != AIProviderPreset.codexDefaultModel, selectedModel == nil {
+          Text("\(normalizedModel)（待验证）").tag(normalizedModel)
+        }
         ForEach(models, id: \.id) { option in
           Text(modelTitle(option))
             .tag(option.model)
@@ -173,17 +176,13 @@ struct CodexAppServerModelSelectionSection: View {
     if models.isEmpty {
       guard !isLoading, errorMessage == nil else { return }
       if normalizedModel != AIProviderPreset.codexDefaultModel {
-        model = AIProviderPreset.codexDefaultModel
-        reasoningEffortOverride = nil
-        selectionMessage = "当前账户没有返回已保存的模型，已切回账户默认模型。"
+        selectionMessage = "当前账户暂未返回已保存的模型。原选择已保留，请刷新列表或选择其他模型。"
       }
       return
     }
 
     if normalizedModel != AIProviderPreset.codexDefaultModel, selectedModel == nil {
-      model = AIProviderPreset.codexDefaultModel
-      reasoningEffortOverride = nil
-      selectionMessage = "已保存的模型不在当前套餐可用列表中，已切回账户默认模型。"
+      selectionMessage = "已保存的模型不在当前返回列表中。原选择已保留，请检查账户权限、组件版本或选择其他模型。"
       return
     }
 
@@ -231,21 +230,26 @@ struct CodexAppServerRuntimeStatusContent: View {
         runtimeStatus?.isCompatible == true ? WorkbenchTheme.success : WorkbenchTheme.warning
       )
       Spacer()
-      if runtimeStatus?.compatibility == .missingExecutable {
-        Button("打开安装说明", action: openInstallationGuide)
-          .buttonStyle(.borderless)
-        Button("复制安装命令", action: copyInstallationCommand)
-          .buttonStyle(.borderless)
-      }
     }
     .accessibilityElement(children: .combine)
     .accessibilityIdentifier("settings-ai-codex-runtime-status")
 
+    if runtimeStatus?.compatibility == .missingExecutable {
+      DisclosureGroup("手动安装选项") {
+        Button("打开安装说明", action: openInstallationGuide)
+          .buttonStyle(.borderless)
+        Button("复制 Homebrew 安装命令", action: copyInstallationCommand)
+          .buttonStyle(.borderless)
+      }
+    }
+
     if let path = runtimeStatus?.executableURL?.path {
-      Text(path)
-        .font(.workbenchMetadata.monospaced())
-        .foregroundStyle(.secondary)
-        .textSelection(.enabled)
+      DisclosureGroup("组件路径") {
+        Text(path)
+          .font(.workbenchMetadata.monospaced())
+          .foregroundStyle(.secondary)
+          .textSelection(.enabled)
+      }
     }
 
     if let runtimeStatus, !runtimeStatus.isCompatible {
@@ -285,7 +289,7 @@ struct CodexAppServerRuntimeStatusContent: View {
   private func runtimeRecoveryHint(for status: CodexAppServerRuntimeStatus) -> String {
     switch status.compatibility {
     case .missingExecutable:
-      return String(localized: "ChatGPT 登录需要本机 Codex 运行组件。安装后点“重新检测”；RepoPress 不会静默安装或修改系统。")
+      return String(localized: "点击“安装并继续”准备 ChatGPT 连接组件。也可按官方说明自行安装，再点“重新检测”。")
     case .missingVersion:
       return String(localized: "Codex 运行组件未返回版本号。请更新 Codex 后点“重新检测”。")
     case .unparseableVersion:

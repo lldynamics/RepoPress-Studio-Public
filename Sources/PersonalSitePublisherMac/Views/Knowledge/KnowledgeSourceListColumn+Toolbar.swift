@@ -67,71 +67,75 @@ extension KnowledgeSourceListColumn {
 
   @ViewBuilder
   var knowledgeInsertionActions: some View {
-    if let document = knowledge.selectedDocument {
-      HStack(spacing: 8) {
-        if document.kind == .image {
-          Button {
-            isInsertingKnowledgeImage = true
-            Task { @MainActor in
-              defer { isInsertingKnowledgeImage = false }
-              _ = await KnowledgeArticleInsertionService.insertImage(
-                document: document,
-                selectedResult: knowledge.selectedSearchResult,
-                knowledge: knowledge,
-                into: store
+    VStack(alignment: .leading, spacing: 8) {
+      KnowledgeWritingContextView(store: store)
+
+      if let document = knowledge.selectedDocument {
+        HStack(spacing: 8) {
+          if document.kind == .image {
+            Button {
+              isInsertingKnowledgeImage = true
+              Task { @MainActor in
+                defer { isInsertingKnowledgeImage = false }
+                _ = await KnowledgeArticleInsertionService.insertImage(
+                  document: document,
+                  selectedResult: knowledge.selectedSearchResult,
+                  knowledge: knowledge,
+                  into: store
+                )
+              }
+            } label: {
+              Label(
+                isInsertingKnowledgeImage ? String(localized: "正在插入图片") : String(localized: "插入图片"),
+                systemImage: isInsertingKnowledgeImage ? "hourglass" : "photo.badge.plus"
               )
             }
-          } label: {
-            Label(
-              isInsertingKnowledgeImage ? String(localized: "正在插入图片") : String(localized: "插入图片"),
-              systemImage: isInsertingKnowledgeImage ? "hourglass" : "photo.badge.plus"
-            )
+            .workbenchProminentActionStyle()
+            .controlSize(.small)
+            .disabled(isInsertingKnowledgeImage || knowledge.isBusy)
+            .help("将资料库托管副本复制到当前文章附件后插入")
+            .accessibilityIdentifier("knowledge-insert-current-image")
+          } else {
+            Button {
+              _ = KnowledgeArticleInsertionService.insertCurrentArticle(
+                document: document,
+                text: knowledge.selectedDocumentText,
+                into: store
+              )
+            } label: {
+              Label("插入当前文章", systemImage: "text.insert")
+            }
+            .workbenchProminentActionStyle()
+            .controlSize(.small)
+            .disabled(knowledge.selectedDocumentText.trimmedForPublishing.isEmpty || knowledge.isBusy)
+            .help("将当前资料正文插入正在编辑的文章")
+            .accessibilityIdentifier("knowledge-insert-current-article")
           }
-          .workbenchProminentActionStyle()
-          .controlSize(.small)
-          .disabled(isInsertingKnowledgeImage || knowledge.isBusy)
-          .help("将资料库托管副本复制到当前文章附件后插入")
-          .accessibilityIdentifier("knowledge-insert-current-image")
-        } else {
+
           Button {
-            _ = KnowledgeArticleInsertionService.insertCurrentArticle(
+            _ = KnowledgeArticleInsertionService.insertCitation(
               document: document,
-              text: knowledge.selectedDocumentText,
+              selectedResult: knowledge.selectedSearchResult,
+              fallbackText: knowledge.selectedDocumentText,
               into: store
             )
           } label: {
-            Label("插入当前文章", systemImage: "text.insert")
+            Label("插入引用", systemImage: "quote.opening")
           }
-          .workbenchProminentActionStyle()
+          .buttonStyle(.bordered)
           .controlSize(.small)
           .disabled(knowledge.selectedDocumentText.trimmedForPublishing.isEmpty || knowledge.isBusy)
-          .help("将当前资料正文插入正在编辑的文章")
-          .accessibilityIdentifier("knowledge-insert-current-article")
-        }
+          .help("将当前选中片段作为引用插入正在编辑的文章")
+          .accessibilityIdentifier("knowledge-insert-citation")
 
-        Button {
-          _ = KnowledgeArticleInsertionService.insertCitation(
-            document: document,
-            selectedResult: knowledge.selectedSearchResult,
-            fallbackText: knowledge.selectedDocumentText,
-            into: store
-          )
-        } label: {
-          Label("插入引用", systemImage: "quote.opening")
+          Spacer(minLength: 0)
         }
-        .buttonStyle(.bordered)
-        .controlSize(.small)
-        .disabled(knowledge.selectedDocumentText.trimmedForPublishing.isEmpty || knowledge.isBusy)
-        .help("将当前选中片段作为引用插入正在编辑的文章")
-        .accessibilityIdentifier("knowledge-insert-citation")
-
-        Spacer(minLength: 0)
+        .padding(.horizontal, WorkspaceSidebarMetrics.horizontalPadding)
+        .padding(.vertical, 8)
+        .background(WorkbenchBackgroundStyle.card)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("插入当前资料")
       }
-      .padding(.horizontal, WorkspaceSidebarMetrics.horizontalPadding)
-      .padding(.vertical, 8)
-      .background(WorkbenchBackgroundStyle.card)
-      .accessibilityElement(children: .contain)
-      .accessibilityLabel("插入当前资料")
     }
   }
 

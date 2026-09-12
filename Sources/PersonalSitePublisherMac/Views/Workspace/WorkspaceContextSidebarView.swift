@@ -55,6 +55,7 @@ struct WorkspacePrimarySidebar: View {
   let store: WorkbenchStore
   let selectedSection: WorkspaceSection
   let selectedDraftID: UUID?
+  let writingListState: WritingListWindowPresentationState
   @Binding var contentHealthFilter: ContentHealthContextFilter
   @Binding var imageWorkbenchContextStage: ImageWorkbenchContextStage
   @Binding var repositoryContextStage: RepositoryContextStage
@@ -69,6 +70,7 @@ struct WorkspacePrimarySidebar: View {
     store: WorkbenchStore,
     selectedSection: WorkspaceSection,
     selectedDraftID: UUID?,
+    writingListState: WritingListWindowPresentationState,
     contentHealthFilter: Binding<ContentHealthContextFilter>,
     imageWorkbenchContextStage: Binding<ImageWorkbenchContextStage>,
     repositoryContextStage: Binding<RepositoryContextStage>,
@@ -82,6 +84,7 @@ struct WorkspacePrimarySidebar: View {
     self.store = store
     self.selectedSection = selectedSection
     self.selectedDraftID = selectedDraftID
+    self.writingListState = writingListState
     _contentHealthFilter = contentHealthFilter
     _imageWorkbenchContextStage = imageWorkbenchContextStage
     _repositoryContextStage = repositoryContextStage
@@ -167,7 +170,8 @@ struct WorkspacePrimarySidebar: View {
         isCompact: true,
         selectedDraftID: selectedDraftID,
         onSelectDraft: onSelectDraft,
-        onFocusDraft: onFocusDraft
+        onFocusDraft: onFocusDraft,
+        writingListState: writingListState
       )
     case .library:
       KnowledgeSourceListColumn(store: store, knowledge: store.knowledge)

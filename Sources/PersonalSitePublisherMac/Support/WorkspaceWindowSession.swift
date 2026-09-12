@@ -21,6 +21,10 @@ final class WorkspaceWindowSession: ObservableObject {
   @Published private(set) var selectedSection: WorkspaceSection
   @Published private(set) var selectedDraftID: UUID?
   @Published private(set) var isKeyWindow = false
+  /// Writing-list controls belong to this window for the same reason as the
+  /// selected draft: another window must not replace a user's active filter
+  /// or folder expansion while it is in the background.
+  let writingListState: WritingListWindowPresentationState
 
   private var didRestoreStorage = false
   private let editorFocusRequestDelivery: WorkspaceEditorFocusRequestDelivery
@@ -29,11 +33,13 @@ final class WorkspaceWindowSession: ObservableObject {
     windowID: UUID = UUID(),
     selectedSection: WorkspaceSection,
     selectedDraftID: UUID? = nil,
+    writingListState: WritingListWindowPresentationState = WritingListWindowPresentationState(),
     editorFocusRequestDelivery: WorkspaceEditorFocusRequestDelivery = .shared
   ) {
     self.windowID = windowID
     self.selectedSection = selectedSection
     self.selectedDraftID = selectedDraftID
+    self.writingListState = writingListState
     self.editorFocusRequestDelivery = editorFocusRequestDelivery
   }
 

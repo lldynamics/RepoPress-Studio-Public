@@ -146,6 +146,8 @@ public final class WorkbenchStore: ObservableObject {
   #endif
   var softwareGuideSeedVersion: Int
 
+  public lazy var aiBatchMaintenance = AIBatchMaintenanceStore(store: self)
+
   lazy var aiStore: WorkbenchAIStore = WorkbenchAIStore(
     store: self,
     workspace: aiWorkspaceStore,

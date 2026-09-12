@@ -993,13 +993,21 @@ extension MacMarkdownTextView.Coordinator {
       guard intersection.length > 0 else { return nil }
       return MarkdownSyntaxMarker(range: intersection, presentation: marker.presentation)
     }
+    let visibleMarkerRangeResolver = MarkdownTextKit2RangeAdapter.rangeResolver(
+      for: visibleRange,
+      in: textView
+    )
+    // Applying the compact marker font above invalidates TextKit layout.  Do
+    // one viewport-scoped layout before deriving paint-only marker frames.
+    if let visibleMarkerRangeResolver {
+      visibleMarkerRangeResolver.manager.ensureLayout(
+        for: visibleMarkerRangeResolver.baseTextRange
+      )
+    }
     applyBlockMarkerDrawings(
       visibleBlockMarkers,
       in: textView,
-      rangeResolver: MarkdownTextKit2RangeAdapter.rangeResolver(
-        for: visibleRange,
-        in: textView
-      )
+      rangeResolver: visibleMarkerRangeResolver
     )
     syntaxHighlightSignposter.endInterval(
       "ApplyBlockMarkerDrawings",

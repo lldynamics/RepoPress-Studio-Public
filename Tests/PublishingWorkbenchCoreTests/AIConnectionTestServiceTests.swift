@@ -33,6 +33,7 @@ final class AIConnectionTestServiceTests: XCTestCase {
 
     XCTAssertEqual(report.providerName, "开放AI兼容接口")
     XCTAssertEqual(report.model, "deepseek-test")
+    XCTAssertEqual(report.requestedModel, "gpt-4.1-mini")
     XCTAssertEqual(report.endpoint.absoluteString, "https://api.openai.com/v1/chat/completions")
     XCTAssertEqual(report.responsePreview, "OK")
 

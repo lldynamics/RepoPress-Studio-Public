@@ -116,7 +116,10 @@ extension MacMarkdownTextView.Coordinator {
         for: marker.range,
         using: $0,
         in: textView,
-        ensuringLayout: false
+        // Marker fonts are changed immediately before this paint pass.  Read
+        // the post-mutation TextKit geometry so a task box cannot retain the
+        // preceding line's fragment while the document reflows.
+        ensuringLayout: true
       )
     } ?? MarkdownTextKit2RangeAdapter.rect(for: marker.range, in: textView)
     guard let sourceRect else { return nil }
@@ -127,23 +130,37 @@ extension MacMarkdownTextView.Coordinator {
           for: NSRange(location: NSMaxRange(marker.range), length: 1),
           using: $0,
           in: textView,
-          ensuringLayout: false
+          ensuringLayout: true
         )
       }) ?? MarkdownTextKit2RangeAdapter.rect(
         for: NSRange(location: NSMaxRange(marker.range), length: 1),
         in: textView
       )
     {
+      // Task marker source is intentionally compact for editing, so it does
+      // not reserve a full checkbox-width slot. Anchor the painted slot to
+      // the first visible content glyph instead: this retains list nesting
+      // while guaranteeing the checkbox ends before editable text begins.
+      let taskSlotWidth: CGFloat = 16
+      let taskContentGap: CGFloat = 2
       let taskFrame = NSRect(
-        x: sourceRect.minX,
+        x: contentRect.minX - taskSlotWidth - taskContentGap,
         y: contentRect.midY - 8,
-        width: max(16, sourceRect.width),
+        width: taskSlotWidth,
         height: 16
+      )
+      let expandedHitMinX = taskFrame.minX - 3
+      let expandedHitMaxX = min(taskFrame.maxX + 3, contentRect.minX - 1)
+      let taskHitFrame = NSRect(
+        x: expandedHitMinX,
+        y: taskFrame.minY - 3,
+        width: max(1, expandedHitMaxX - expandedHitMinX),
+        height: taskFrame.height + 6
       )
       return MarkdownBlockMarkerDrawing(
         marker: marker,
         frame: taskFrame,
-        taskHitFrame: taskFrame.insetBy(dx: -3, dy: -3)
+        taskHitFrame: taskHitFrame
       )
     }
     return MarkdownBlockMarkerDrawing(

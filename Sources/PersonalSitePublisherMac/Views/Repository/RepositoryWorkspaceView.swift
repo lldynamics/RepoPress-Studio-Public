@@ -15,6 +15,8 @@ struct RepositoryWorkspaceView: View {
   @Environment(\.localSitePreviewCommandAction) var localSitePreviewCommandAction
   @Environment(\.settingsWorkspaceCommandAction) var settingsWorkspaceCommandAction
   @AppStorage("dataManagementRequestedSection") var dataManagementRequestedSection = DataManagementSection.migration.rawValue
+  @SceneStorage("siteStarterSelectedStep") var siteStarterSelectedStepRaw = SiteStarterWizardStep.template.rawValue
+  @SceneStorage("siteStarterMode") var siteStarterModeRaw = SiteStarterMode.create.rawValue
   @State var isRepositoryCreationConfirmationPresented = false
   @State var createsPrivateRepository = true
   @State var repositoryCreationFailureMessage: String?
@@ -226,6 +228,12 @@ struct RepositoryWorkspaceView: View {
 
   func presentRemoteArticleImportPreview(_ files: [RepositoryChangedFile]) {
     pendingRemoteArticleImportFiles = files.filter { $0.kind != .deleted }
+  }
+
+  func openSiteStarter(mode: SiteStarterMode) {
+    siteStarterModeRaw = mode.rawValue
+    siteStarterSelectedStepRaw = SiteStarterWizardStep.template.rawValue
+    store.selectSection(.siteStarter)
   }
 
   private func applyRepositorySafeSync(_ confirmation: RepositorySafeSyncConfirmation) {

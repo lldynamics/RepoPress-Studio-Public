@@ -76,6 +76,22 @@ struct SettingsAITabFactory {
       },
       grantCodexDataSharingConsent: { accountStatus in
         context.store.ai.grantCodexDataSharingConsent(for: accountStatus)
+      },
+      writingStyleArticles: context.store.drafts.filter { draft in
+        draft.belongs(toSiteProfileID: context.store.activeProfileID)
+          && !draft.isPrivate
+          && !draft.bodyMarkdown.trimmedForPublishing.isEmpty
+      },
+      writingStylePreview: context.store.aiWritingStylePreview,
+      isWritingStyleExtractionRunning: context.store.isAIWritingStyleExtractionRunning,
+      generateWritingStylePreview: { articleIDs in
+        await context.store.generateAIWritingStyleProfile(exemplarArticleIDs: Array(articleIDs))
+      },
+      applyWritingStylePreview: { preview in
+        context.store.applyAIWritingStyleProfile(preview)
+      },
+      discardWritingStylePreview: {
+        context.store.discardAIWritingStyleProfilePreview()
       }
     )
   }

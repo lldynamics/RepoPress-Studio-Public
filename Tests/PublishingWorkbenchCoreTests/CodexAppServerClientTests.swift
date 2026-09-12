@@ -5,6 +5,99 @@ import XCTest
 @testable import PublishingWorkbenchCore
 
 final class CodexAppServerClientTests: XCTestCase {
+
+  func testRuntimeUpdateWaitsForStandaloneStartup() async throws {
+    let transport = ScriptedCodexTransport(mode: .heldInitialization)
+    let client = CodexAppServerClient(transport: transport)
+    let startup = Task { try await client.start() }
+    let initialized = await transport.waitUntilSent(method: "initialize")
+    XCTAssertTrue(initialized)
+    let reconnected = await client.reconnectAfterRuntimeUpdate()
+    XCTAssertFalse(reconnected)
+    await transport.completeHeldInitialization()
+    try await startup.value
+    for _ in 0..<100 {
+      if await transport.hasTerminated { return }
+      try await Task.sleep(for: .milliseconds(10))
+    }
+    XCTFail("Standalone startup must wake a pending runtime replacement")
+  }
+
+  func testOverlappingRuntimeUpdatesDoNotLeavePendingReload() async throws {
+    let transport = ScriptedCodexTransport(mode: .heldTermination)
+    let client = CodexAppServerClient(transport: transport)
+    try await client.start()
+    let first = Task { await client.reconnectAfterRuntimeUpdate() }
+    for _ in 0..<100 {
+      if await transport.isTerminationSuspended { break }
+      try await Task.sleep(for: .milliseconds(10))
+    }
+    let suspended = await transport.isTerminationSuspended
+    XCTAssertTrue(suspended)
+    let second = await client.reconnectAfterRuntimeUpdate()
+    XCTAssertFalse(second)
+    await transport.releaseTermination()
+    _ = await first.value
+    let pending = await client.isRuntimeReconnectPending
+    XCTAssertFalse(pending)
+  }
+
+  func testRuntimeUpdateWaitsForLoginTimeoutCancellation() async throws {
+    let transport = ScriptedCodexTransport(mode: .hangingLogin)
+    let client = CodexAppServerClient(transport: transport, loginTimeout: .milliseconds(20))
+    let login = try await client.startChatGPTLogin()
+    let reconnected = await client.reconnectAfterRuntimeUpdate()
+    XCTAssertFalse(reconnected)
+    do {
+      try await client.waitForLoginCompletion(loginID: login.loginID)
+      XCTFail("Expected the pending login to time out")
+    } catch {
+      XCTAssertEqual(error as? CodexAppServerError, .loginTimedOut)
+    }
+    for _ in 0..<100 {
+      if await transport.hasTerminated {
+        let cancelCount = await transport.sentMessageCount(method: "account/login/cancel")
+        XCTAssertEqual(cancelCount, 1)
+        return
+      }
+      try await Task.sleep(for: .milliseconds(10))
+    }
+    XCTFail("Runtime replacement should proceed after timed-out login cleanup")
+  }
+
+  func testRuntimeUpdatePreservesBufferedLoginCompletion() async throws {
+    let transport = ScriptedCodexTransport(mode: .loginCompletion)
+    let client = CodexAppServerClient(transport: transport, loginTimeout: .seconds(1))
+    let login = try await client.startChatGPTLogin()
+    let immediatelyReconnected = await client.reconnectAfterRuntimeUpdate()
+    XCTAssertFalse(immediatelyReconnected)
+    try await client.waitForLoginCompletion(loginID: login.loginID)
+    for _ in 0..<100 {
+      if await transport.hasTerminated { return }
+      try await Task.sleep(for: .milliseconds(10))
+    }
+    XCTFail("The queued runtime replacement should proceed after login result consumption")
+  }
+
+  func testRuntimeUpdateWaitsForActiveGeneration() async throws {
+    let transport = ScriptedCodexTransport(mode: .hangingTurn)
+    let client = CodexAppServerClient(transport: transport)
+    let completion = Task { try await client.complete(prompt: "fixture") }
+    let started = await transport.waitUntilSent(method: "turn/start")
+    XCTAssertTrue(started)
+    let reconnected = await client.reconnectAfterRuntimeUpdate()
+    let terminatedBeforeCompletion = await transport.hasTerminated
+    XCTAssertFalse(reconnected)
+    XCTAssertFalse(terminatedBeforeCompletion)
+    completion.cancel()
+    _ = await completion.result
+    for _ in 0..<100 {
+      if await transport.hasTerminated { return }
+      try await Task.sleep(for: .milliseconds(10))
+    }
+    XCTFail("Runtime should be replaced after the active generation ends")
+  }
+
   func testRuntimeDiscoveryUsesExecutableFromSystemPATH() throws {
     let fileManager = FileManager.default
     let rootURL = fileManager.temporaryDirectory
@@ -1033,6 +1126,8 @@ private actor ScriptedCodexTransport: CodexAppServerTransport {
     case dynamicTool
     case lateAccountResponse
     case eofAfterHandshake
+    case heldInitialization
+    case heldTermination
   }
 
   private let mode: Mode
@@ -1041,6 +1136,9 @@ private actor ScriptedCodexTransport: CodexAppServerTransport {
   private var messages: [CodexAppServerJSONValue] = []
   private var bytes = Data()
   private var isClosed = false
+  private var heldInitializationRequestID: Int?
+  private var heldTerminationWaiter: CheckedContinuation<Void, Never>?
+  private var hasSuspendedTermination = false
 
   init(mode: Mode) {
     self.mode = mode
@@ -1069,6 +1167,10 @@ private actor ScriptedCodexTransport: CodexAppServerTransport {
 
     switch method {
     case "initialize":
+      if mode == .heldInitialization {
+        heldInitializationRequestID = requestID
+        return
+      }
       enqueue(
         json: """
           {"id":\(requestID),"result":{"serverInfo":{"version":"1"}}}
@@ -1283,7 +1385,26 @@ private actor ScriptedCodexTransport: CodexAppServerTransport {
     }
   }
 
+  var hasTerminated: Bool { isClosed }
+  var isTerminationSuspended: Bool { heldTerminationWaiter != nil }
+
+  func completeHeldInitialization() {
+    guard let requestID = heldInitializationRequestID else { return }
+    heldInitializationRequestID = nil
+    enqueue(json: "{\"id\":\(requestID),\"result\":{\"serverInfo\":{\"version\":\"1\"}}}")
+  }
+
+  func releaseTermination() {
+    let waiter = heldTerminationWaiter
+    heldTerminationWaiter = nil
+    waiter?.resume()
+  }
+
   func terminate() async {
+    if mode == .heldTermination, !hasSuspendedTermination {
+      hasSuspendedTermination = true
+      await withCheckedContinuation { heldTerminationWaiter = $0 }
+    }
     close()
   }
 

@@ -18,12 +18,14 @@ struct WorkspaceCommandPalette: View {
   let onFocusDraft: (UUID) -> Void
   let onToggleFocusMode: () -> Void
   let onOpenAI: (UUID?, AIPublishingQuickPrompt?) -> Void
+  let onOpenFullTextSearch: (DraftFullTextSearchRequest) -> Void
   @AppStorage("workspaceCommandPaletteRecentAIPromptIDs")
   private var recentAIPromptIDs = ""
   @AppStorage("workspaceCommandPaletteRecentSettingsItemIDs")
   private var recentSettingsItemIDs = ""
   @State private var query = ""
   @State private var scope: WorkspaceUnifiedSearchScope = .all
+  @State private var showsAllArticleResults = false
   @State private var selectionState = WorkspaceCommandPaletteSelection()
   private var selectedResultID: String? { selectionState.selectedID }
   @FocusState private var isSearchFocused: Bool
@@ -35,7 +37,8 @@ struct WorkspaceCommandPalette: View {
     onSelectSection: @escaping (WorkspaceSection) -> Void,
     onFocusDraft: @escaping (UUID) -> Void,
     onToggleFocusMode: @escaping () -> Void,
-    onOpenAI: @escaping (UUID?, AIPublishingQuickPrompt?) -> Void
+    onOpenAI: @escaping (UUID?, AIPublishingQuickPrompt?) -> Void,
+    onOpenFullTextSearch: @escaping (DraftFullTextSearchRequest) -> Void = { _ in }
   ) {
     self.store = store
     self.editorCommands = editorCommands
@@ -44,6 +47,7 @@ struct WorkspaceCommandPalette: View {
     self.onFocusDraft = onFocusDraft
     self.onToggleFocusMode = onToggleFocusMode
     self.onOpenAI = onOpenAI
+    self.onOpenFullTextSearch = onOpenFullTextSearch
     _commandPresentation = ObservedObject(wrappedValue: store.commandPresentation)
     _draftListState = ObservedObject(wrappedValue: store.draftList)
     _shell = ObservedObject(wrappedValue: store.shell)
@@ -126,8 +130,8 @@ struct WorkspaceCommandPalette: View {
               }
             }
 
-            if !snapshot.drafts.isEmpty {
-              paletteSection(String(localized: "文章")) {
+            if !snapshot.drafts.isEmpty || (scope.includesArticles && !normalizedQuery.isEmpty) {
+              paletteSection(articleSectionTitle(snapshot.articleMatchCount)) {
                 ForEach(snapshot.drafts) { draft in
                   let display = store.privateContentDisplay(for: draft)
                   row(
@@ -139,6 +143,8 @@ struct WorkspaceCommandPalette: View {
                     action: { openDraft(draft.id) }
                   )
                 }
+
+                articleSearchActions(snapshot: snapshot)
               }
             }
 
@@ -217,9 +223,11 @@ struct WorkspaceCommandPalette: View {
       synchronizeSelection()
     }
     .onChange(of: query) { _, _ in
+      showsAllArticleResults = false
       synchronizeSelection()
     }
     .onChange(of: scope) { _, _ in
+      showsAllArticleResults = false
       synchronizeSelection()
     }
     .onChange(of: shell.isQuickHideActive) { _, isActive in
@@ -269,7 +277,7 @@ struct WorkspaceCommandPalette: View {
     let workspaceSections = matchingSections.filter {
       !resourceSections.contains($0) && !rssSections.contains($0)
     }
-    let drafts =
+    let matchingDrafts =
       scope.includesArticles
       ? Array(
         draftListState.searchIndex(for: .allDrafts)
@@ -282,8 +290,11 @@ struct WorkspaceCommandPalette: View {
                 profile: store.profile(for: draft)
               )
           }
-          .prefix(12)
       ) : []
+    let drafts = WorkspacePaletteArticleResultPresentation.visibleDrafts(
+      from: matchingDrafts,
+      showsAll: showsAllArticleResults
+    )
     let settings =
       scope.includesSettings
       ? WorkspaceUnifiedSearchPresentation.matchingSettings(
@@ -315,6 +326,7 @@ struct WorkspaceCommandPalette: View {
       commands: commandItems,
       aiPrompts: promptItems,
       drafts: drafts,
+      articleMatchCount: matchingDrafts.count,
       resourceSections: resourceSections,
       rssSections: rssSections,
       workspaceSections: workspaceSections,
@@ -346,6 +358,15 @@ struct WorkspaceCommandPalette: View {
 
   private var commands: [PaletteCommand] {
     var items: [PaletteCommand] = [
+      PaletteCommand(
+        id: "workspace:full-text-search",
+        title: String(localized: "搜索正文…"),
+        detail: String(localized: "打开跨文章全文搜索；此面板的文章结果只搜索标题和元数据"),
+        systemImage: "doc.text.magnifyingglass",
+        shortcut: "⌥⌘F"
+      ) {
+        openFullTextSearch()
+      },
       registeredAutomationCommand(.createDraft, shortcut: "⌘N") {
         store.createDraft()
         if let draftID = store.selectedDraftID {
@@ -540,6 +561,50 @@ struct WorkspaceCommandPalette: View {
     }
   }
 
+  private func articleSectionTitle(_ resultCount: Int) -> String {
+    String(localized: "文章（\(resultCount)，仅标题和元数据）")
+  }
+
+  @ViewBuilder
+  private func articleSearchActions(snapshot: PaletteSnapshot) -> some View {
+    if WorkspacePaletteArticleResultPresentation.shouldOfferViewAll(
+      visibleCount: snapshot.drafts.count,
+      resultCount: snapshot.articleMatchCount
+    ) {
+      Button {
+        showsAllArticleResults = true
+        synchronizeSelection()
+      } label: {
+        Label(
+          "查看全部 \(snapshot.articleMatchCount) 篇文章",
+          systemImage: "list.bullet"
+        )
+      }
+      .buttonStyle(.borderless)
+      .accessibilityIdentifier("workspace-command-palette-view-all-articles")
+    }
+
+    if !normalizedQuery.isEmpty {
+      Button {
+        openFullTextSearch()
+      } label: {
+        Label(
+          "在站点文章正文中搜索“\(normalizedQuery)”",
+          systemImage: "doc.text.magnifyingglass"
+        )
+      }
+      .buttonStyle(.borderless)
+      .accessibilityIdentifier("workspace-command-palette-search-full-text")
+      Button {
+        openFullTextSearch(scope: .generalDrafts)
+      } label: {
+        Label("在通用草稿正文中搜索“\(normalizedQuery)”", systemImage: "square.and.pencil")
+      }
+      .buttonStyle(.borderless)
+      .accessibilityIdentifier("workspace-command-palette-search-general-full-text")
+    }
+  }
+
   private func row(
     id: String,
     title: String,
@@ -651,6 +716,15 @@ struct WorkspaceCommandPalette: View {
     dismiss()
   }
 
+  private func openFullTextSearch(scope: DraftFullTextSearchScope = .allSites) {
+    let request = DraftFullTextSearchRequest(
+      query: normalizedQuery,
+      scope: scope
+    )
+    dismiss()
+    onOpenFullTextSearch(request)
+  }
+
   private var recentSettingsItemIDList: [String] {
     recentSettingsItemIDs.split(separator: ",").map(String.init)
   }
@@ -740,11 +814,28 @@ private struct PaletteSnapshot {
   let commands: [PaletteCommand]
   let aiPrompts: [AIPublishingQuickPrompt]
   let drafts: [ArticleDraft]
+  let articleMatchCount: Int
   let resourceSections: [WorkspaceSection]
   let rssSections: [WorkspaceSection]
   let workspaceSections: [WorkspaceSection]
   let settings: [SettingsSearchItem]
   let results: [PaletteResult]
+}
+
+struct WorkspacePaletteArticleResultPresentation {
+  static let defaultVisibleResultLimit = 12
+
+  static func visibleDrafts(
+    from matchingDrafts: [ArticleDraft],
+    showsAll: Bool
+  ) -> [ArticleDraft] {
+    guard !showsAll else { return matchingDrafts }
+    return Array(matchingDrafts.prefix(defaultVisibleResultLimit))
+  }
+
+  static func shouldOfferViewAll(visibleCount: Int, resultCount: Int) -> Bool {
+    visibleCount < resultCount
+  }
 }
 
 private struct PaletteResult {

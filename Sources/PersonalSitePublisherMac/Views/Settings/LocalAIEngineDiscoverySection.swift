@@ -9,6 +9,7 @@ struct LocalAIEngineDiscoverySection: View {
   @State private var isDiscovering = false
   @State private var statusMessage: String?
   @State private var discoveryTask: Task<Void, Never>?
+  @StateObject private var setupCoordinator = LocalAIEngineSetupCoordinator()
 
   var body: some View {
     Section {
@@ -16,7 +17,8 @@ struct LocalAIEngineDiscoverySection: View {
         Button {
           startDiscovery()
         } label: {
-          let title = results.isEmpty
+          let title =
+            results.isEmpty
             ? String(localized: "检测本地 AI")
             : String(localized: "重新检测本地 AI")
           Label(
@@ -46,8 +48,8 @@ struct LocalAIEngineDiscoverySection: View {
           statusMessage
             ?? String(localized: "检测后可选择本机已有模型，并应用到当前 AI 连接档案。")
         )
-          .font(.caption)
-          .foregroundStyle(.secondary)
+        .font(.caption)
+        .foregroundStyle(.secondary)
       } else {
         ForEach(results, id: \.kind) { result in
           engineRow(result)
@@ -68,6 +70,7 @@ struct LocalAIEngineDiscoverySection: View {
       discoveryTask?.cancel()
       discoveryTask = nil
       isDiscovering = false
+      setupCoordinator.cancelDownload(announce: false)
     }
   }
 
@@ -133,14 +136,123 @@ struct LocalAIEngineDiscoverySection: View {
           .disabled(selectedModel(for: result).isEmpty)
           .accessibilityHint("使用所选模型更新当前 AI 连接档案")
         }
-      } else if !result.message.isEmpty {
-        Text(verbatim: result.message)
-          .font(.caption)
-          .foregroundStyle(.secondary)
+
+        if result.kind == .ollama {
+          ollamaModelDownloadControls()
+        }
+      } else {
+        if !result.message.isEmpty {
+          Text(verbatim: result.message)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        }
+        engineSetupControls(for: result)
       }
     }
     .padding(.vertical, 4)
     .accessibilityElement(children: .contain)
+  }
+
+  @ViewBuilder
+  private func engineSetupControls(for result: LocalAIEngineDiscoveryResult) -> some View {
+    if result.kind == .ollama, result.isAvailable {
+      Text("Ollama 尚未安装任何模型。下载可能较大，请确认精确模型 ID 后开始。")
+        .font(.caption)
+        .foregroundStyle(.secondary)
+
+      ollamaModelDownloadControls()
+    } else if result.kind == .lmStudio, result.isAvailable {
+      Text("LM Studio 已响应，但尚未返回模型。请在 LM Studio 中下载或加载模型后重新检测。")
+        .font(.caption)
+        .foregroundStyle(.secondary)
+      Button(
+        LocalAIEngineSetupCoordinator.applicationIsInstalled(kind: .lmStudio)
+          ? "打开 LM Studio 管理模型"
+          : "打开 LM Studio 官方下载"
+      ) {
+        setupCoordinator.startEngine(.lmStudio)
+      }
+      .controlSize(.small)
+    } else if !result.isAvailable {
+      let recommendation = LocalAIEngineSetupService().recommendation(
+        for: result.kind,
+        applicationIsInstalled: LocalAIEngineSetupCoordinator.applicationIsInstalled(
+          kind: result.kind)
+      )
+      switch recommendation {
+      case .launchApplication:
+        Button("启动 \(result.kind.localizedTitle)") {
+          setupCoordinator.startEngine(result.kind)
+        }
+        .controlSize(.small)
+      case .openOfficialDownloadPage:
+        Button("打开 \(result.kind.localizedTitle) 官方下载") {
+          setupCoordinator.startEngine(result.kind)
+        }
+        .controlSize(.small)
+      case .unavailable:
+        Text("请启动对应本地服务后重新检测。")
+          .font(.caption)
+          .foregroundStyle(.secondary)
+      }
+    }
+
+    if let setupMessage = setupCoordinator.message {
+      Text(setupMessage)
+        .font(.caption)
+        .foregroundStyle(.secondary)
+    }
+  }
+
+  @ViewBuilder
+  private func ollamaModelDownloadControls() -> some View {
+    TextField("模型 ID，例如 qwen3:8b", text: $setupCoordinator.ollamaModelID)
+      .textFieldStyle(.roundedBorder)
+      .disabled(setupCoordinator.isDownloading)
+      .accessibilityLabel("Ollama 模型 ID")
+
+    HStack(spacing: 8) {
+      if setupCoordinator.isDownloading {
+        ProgressView()
+          .controlSize(.small)
+        Button("停止等待下载", role: .cancel) {
+          setupCoordinator.cancelDownload()
+        }
+      } else {
+        Button("下载到 Ollama") {
+          setupCoordinator.startOllamaDownload(onCompletion: startDiscovery)
+        }
+        .workbenchProminentActionStyle()
+        .controlSize(.small)
+      }
+      Button("浏览 Ollama 模型库") {
+        setupCoordinator.openOllamaModelLibrary()
+      }
+      .controlSize(.small)
+      .disabled(setupCoordinator.isDownloading)
+      Spacer(minLength: 0)
+    }
+
+    if let progress = setupCoordinator.downloadProgress {
+      VStack(alignment: .leading, spacing: 4) {
+        Text(verbatim: progress.status)
+          .font(.caption)
+          .foregroundStyle(.secondary)
+        if let fractionCompleted = progress.fractionCompleted {
+          ProgressView(value: fractionCompleted)
+        }
+        if let completedBytes = progress.completedBytes,
+          let totalBytes = progress.totalBytes,
+          totalBytes > 0
+        {
+          Text(
+            "\(ByteCountFormatter.string(fromByteCount: completedBytes, countStyle: .file)) / \(ByteCountFormatter.string(fromByteCount: totalBytes, countStyle: .file))"
+          )
+          .font(.caption2.monospacedDigit())
+          .foregroundStyle(.secondary)
+        }
+      }
+    }
   }
 
   private func startDiscovery() {
@@ -156,7 +268,8 @@ struct LocalAIEngineDiscoverySection: View {
       synchronizeSelectedModels(with: discovered)
       isDiscovering = false
       discoveryTask = nil
-      statusMessage = discovered.contains(where: \.isAvailable)
+      statusMessage =
+        discovered.contains(where: \.isAvailable)
         ? String(localized: "本地 AI 检测完成。")
         : String(localized: "未发现正在运行的本地 AI 服务。")
     }
@@ -170,11 +283,15 @@ struct LocalAIEngineDiscoverySection: View {
   }
 
   private func synchronizeSelectedModels(with discovered: [LocalAIEngineDiscoveryResult]) {
-    var updatedSelections: [String: String] = [:]
+    // A failed or empty re-detection must not replace a model the user had
+    // selected previously. Only a live engine that returns a nonempty model
+    // list is allowed to reconcile that engine's selection.
+    var updatedSelections = selectedModels
     for result in discovered where result.isAvailable && !result.models.isEmpty {
       let key = resultKey(result)
       let existing = selectedModels[key]
-      updatedSelections[key] = existing.flatMap { result.models.contains($0) ? $0 : nil }
+      updatedSelections[key] =
+        existing.flatMap { result.models.contains($0) ? $0 : nil }
         ?? result.models.first
     }
     selectedModels = updatedSelections

@@ -153,6 +153,10 @@ final class WorkbenchFeatureFacadeTests: XCTestCase {
     _ = draftList.searchIndex(for: .allDrafts)
     XCTAssertEqual(draftList.searchIndexBuildCount, 2)
     XCTAssertEqual(activeIndex.sourceRevision, allIndex.sourceRevision)
+    XCTAssertTrue(
+      activeIndex.matching(query: "Body").isEmpty,
+      "The palette/list metadata index must never make body text searchable."
+    )
 
     var changed = privateDraft
     changed.title = "Renamed private title"

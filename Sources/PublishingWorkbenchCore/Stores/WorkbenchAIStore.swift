@@ -45,7 +45,7 @@ struct AIChatConversationIdentity: Equatable, Sendable {
 }
 
 @MainActor
-public final class WorkbenchAIStore: ObservableObject {
+  public final class WorkbenchAIStore: ObservableObject {
   unowned let store: WorkbenchStore
   let workspace: AIWorkspaceStore
   let aiPublishingAssistantService: AIPublishingAssistantService
@@ -56,6 +56,8 @@ public final class WorkbenchAIStore: ObservableObject {
   private let seoAuditService: SEOAuditService
   private let seoSocialPreviewService: SEOSocialPreviewService
   let aiChatOperationCoordinator = AIChatOperationCoordinator()
+  @Published public internal(set) var aiWritingStylePreview: AIWritingStyleProfilePreview? = nil
+  @Published public internal(set) var isAIWritingStyleExtractionRunning = false
   /// Caps observable chat updates at about 20 FPS while network chunks are
   /// still consumed immediately and accumulated off-view. This keeps the
   /// typewriter effect smooth without scheduling a SwiftUI state publication

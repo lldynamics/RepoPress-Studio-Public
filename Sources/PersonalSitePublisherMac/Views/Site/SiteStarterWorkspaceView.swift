@@ -5,6 +5,9 @@ import SwiftUI
 struct SiteStarterWorkspaceView: View {
   let store: WorkbenchStore
   @ObservedObject private var starterObservation: WorkbenchSiteStarterObservationFacade
+  @FocusedValue(\.workspaceCommandPaletteAction) private var workspaceCommandPaletteAction
+  @Environment(\.openSettings) private var openSettings
+  @Environment(\.settingsWorkspaceCommandAction) private var settingsWorkspaceCommandAction
   @SceneStorage("siteStarterSelectedStep") private var selectedStepRaw = SiteStarterWizardStep.template.rawValue
   @SceneStorage("siteStarterMode") private var modeRaw = SiteStarterMode.create.rawValue
   @SceneStorage("siteStarterTemplateID") private var selectedTemplateIDRaw = SiteStarterTemplateID.zolaPersonalBlog.rawValue
@@ -28,6 +31,7 @@ struct SiteStarterWorkspaceView: View {
   @State private var starterPushConfirmation: SiteStarterPushConfirmation?
   @State private var isStarterPushConfirmationPresented = false
   @State private var starterPushFailureMessage: String?
+  @State private var directoryPreflight: SiteStarterDirectoryPreflight?
   @State private var appliedResumeProgress: SiteStarterProgress?
   /// SceneStorage may outlive an active-site switch. This identity prevents a
   /// window from ever applying its old form values to the newly active site.
@@ -68,6 +72,9 @@ struct SiteStarterWorkspaceView: View {
 
       ScrollView {
         VStack(alignment: .leading, spacing: 18) {
+          if needsInitialSiteChoice {
+            initialSiteChoice
+          }
           selectedStepHeader
           selectedStepContent
           navigationBar
@@ -92,6 +99,16 @@ struct SiteStarterWorkspaceView: View {
     }
     .onChange(of: deploymentTarget) { _, _ in
       normalizeSelectedStep()
+    }
+    .task(id: directoryPreflightIdentity) {
+      let expectedIdentity = directoryPreflightIdentity
+      directoryPreflight = nil
+      let preflight = await SiteStarterDirectoryPreflightService().inspectAsync(
+        path: rootPath,
+        selectedSiteKind: importedSiteKind
+      )
+      guard !Task.isCancelled, expectedIdentity == directoryPreflightIdentity else { return }
+      directoryPreflight = preflight
     }
     .sheet(isPresented: $isRepositoryCreationConfirmationPresented) {
       RemoteRepositoryCreationConfirmationView(
@@ -229,7 +246,9 @@ struct SiteStarterWorkspaceView: View {
         configuresOrigin: $configuresOrigin,
         siteStarterResultProfilePath: store.siteStarterResult?.profile.localRepositoryRootPath,
         siteStarterImportProfilePath: store.siteStarterImportResult?.profile.localRepositoryRootPath,
-        importedDraftCount: store.siteStarterImportResult?.importedDraftCount
+        importedDraftCount: store.siteStarterImportResult?.importedDraftCount,
+        preflight: directoryPreflight,
+        selectedImportKind: importedSiteKind
       ) {
         if let url = RepositorySelectionPanel.chooseDirectory() {
           rootPath = url.path
@@ -246,12 +265,21 @@ struct SiteStarterWorkspaceView: View {
         createsPrivateRepository: $createsPrivateRepository,
         canCreateGitHubRepository: canCreateGitHubRepository,
         isRepositoryOperationRunning: store.isRemoteRepositoryChecking || store.isLocalRepositoryMutationRunning,
+        repositoryTokenAvailability: store.repositoryTokenAvailability,
         hasVerifiedExistingRepository: hasVerifiedExistingGitHubRepository,
         remoteRepositoryURL: matchingRemoteRepositoryCreationResult?.cloneURL,
         remoteRepositoryHTMLURL: matchingRemoteRepositoryCreationResult?.htmlURL,
         remoteRepositoryName: matchingRemoteRepositoryCreationResult?.repositoryName,
         createAction: presentGitHubRepositoryConfirmation,
-        verifyExistingAction: verifyExistingGitHubRepository
+        verifyExistingAction: verifyExistingGitHubRepository,
+        openRepositoryTokenSettings: {
+          SettingsNavigation.present(
+            destination: .token(.repository),
+            workspaceAction: settingsWorkspaceCommandAction
+          ) {
+            openSettings()
+          }
+        }
       )
     case .generate:
       SiteStarterGenerateStep(
@@ -287,7 +315,12 @@ struct SiteStarterWorkspaceView: View {
         deploymentGuidePath: store.siteStarterResult?.deploymentGuidePath,
         deploymentCommands: store.siteStarterResult?.nextCommands ?? [],
         deploymentStatusMessage: store.deploymentStatusMessage,
-        copyCommands: copyStarterCommands
+        pushedCommitSHA: store.siteStarterPushResult?.commitSHA,
+        siteURL: store.activeProfile.deploymentSiteURL,
+        copyCommands: copyStarterCommands,
+        checkDeploymentStatus: checkDeploymentStatus,
+        openHistory: openReleaseHistory,
+        openSite: openDeploymentSite
       )
     }
   }
@@ -344,9 +377,51 @@ struct SiteStarterWorkspaceView: View {
   }
 
   private var canCreateStarterSite: Bool {
-    !rootPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-      && !siteName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-      && !branch.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    guard !rootPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+      !siteName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+      !branch.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+      let directoryPreflight
+    else { return false }
+
+    if mode == .create {
+      if !directoryPreflight.exists {
+        return directoryPreflight.parentIsDirectory && directoryPreflight.parentIsWritable
+      }
+      return directoryPreflight.isDirectory
+        && directoryPreflight.isReadable
+        && directoryPreflight.isWritable
+        && directoryPreflight.visibleEntryCount == 0
+        && directoryPreflight.readErrorMessage == nil
+    }
+    return directoryPreflight.exists
+      && directoryPreflight.isDirectory
+      && directoryPreflight.isReadable
+      && directoryPreflight.readErrorMessage == nil
+  }
+
+  private var directoryPreflightIdentity: String {
+    [mode.rawValue, importedSiteKind.rawValue, rootPath.trimmingCharacters(in: .whitespacesAndNewlines)]
+      .joined(separator: "|")
+  }
+
+  private var needsInitialSiteChoice: Bool {
+    store.activeProfile.localRepositoryRootPath.trimmedForPublishing.isEmpty
+      && store.siteStarterResult?.profile.id != store.activeProfileID
+      && store.siteStarterImportResult?.profile.id != store.activeProfileID
+  }
+
+  private var initialSiteChoice: some View {
+    SiteStarterInitialSiteChoice(
+      writeAction: { store.selectSection(.writing) },
+      connectAction: {
+        mode = .importExisting
+        selectedStep = .template
+      },
+      createAction: {
+        mode = .create
+        selectedStep = .template
+      }
+    )
   }
 
   private var canCreateGitHubRepository: Bool {
@@ -486,7 +561,8 @@ struct SiteStarterWorkspaceView: View {
     case .localDirectory:
       return store.siteStarterResult?.profile.localRepositoryRootPath.nilIfEmpty
         ?? rootPath.nilIfEmpty
-        ?? String(localized: "选择空文件夹")
+        ?? (mode == .importExisting
+          ? String(localized: "选择已有站点文件夹") : String(localized: "选择空文件夹"))
     case .github:
       if let remote = store.siteStarterResult?.configuredRemoteURL {
         return remote
@@ -651,6 +727,45 @@ struct SiteStarterWorkspaceView: View {
         store.selectSection(.siteStarter)
         selectedStep = .deployment
       }
+    }
+  }
+
+  private func openReleaseHistory() {
+    if let action = workspaceCommandPaletteAction {
+      action.openReleaseHistory()
+    } else {
+      store.selectSection(.sync)
+    }
+  }
+
+  private func openDeploymentSite() {
+    guard let siteURLText = store.activeProfile.deploymentSiteURL,
+      let siteURL = URL(string: siteURLText),
+      ["http", "https"].contains(siteURL.scheme?.lowercased() ?? "")
+    else { return }
+    ExternalURLOpener.open(siteURL)
+  }
+
+  private func checkDeploymentStatus() {
+    guard let push = store.siteStarterPushResult else { return }
+    guard let releaseRecord = store.activeProfileReleaseRecords.first(where: {
+      $0.commitSHA == push.commitSHA
+    }) else {
+      if let url = SiteStarterDeploymentLink.commitURL(for: push) {
+        ExternalURLOpener.open(url, report: { message in
+          store.setPublishActionMessage(message, status: .failure)
+        })
+        return
+      }
+      store.setPublishActionMessage(
+        String(localized: "无法打开本次推送的提交页面，请到远端仓库检查部署结果。"),
+        status: .information
+      )
+      openReleaseHistory()
+      return
+    }
+    Task { @MainActor in
+      _ = await store.refreshDeploymentStatus(for: releaseRecord)
     }
   }
 

@@ -1,4 +1,5 @@
 import Foundation
+import PublishingCoreSupport
 
 public enum AIChatCompletionClientError: LocalizedError, Equatable, Sendable {
   case invalidBaseURL(String)
@@ -54,7 +55,8 @@ public enum AIChatCompletionClientError: LocalizedError, Equatable, Sendable {
         retryAfterSeconds.map {
           "\n服务器建议等待 \(Self.durationText($0))后再手动重试。"
         } ?? ""
-      return "AI 请求失败：HTTP \(status)\n\(body)\(retryHint)"
+      let recoveryHint = recoverySuggestion.map { CoreL10n.format("\n建议：%@", $0) } ?? ""
+      return "AI 请求失败：HTTP \(status)\n\(body)\(retryHint)\(recoveryHint)"
     case .firstByteTimedOut(let timeout):
       return "等待 AI 返回首字节超过 \(Self.durationText(timeout))，请求已停止。可以检查网络后手动重试。"
     case .resourceTimedOut(let timeout):
@@ -77,6 +79,35 @@ public enum AIChatCompletionClientError: LocalizedError, Equatable, Sendable {
       return "Anthropic 原生 Messages 暂不支持当前结构化输出约束；本次未发送请求。"
     case .emptyContent:
       return "AI 服务没有返回可用内容。"
+    }
+  }
+
+  public var recoverySuggestion: String? {
+    switch self {
+    case .httpStatus(let status, let body, _):
+      switch status {
+      case 401:
+        return CoreL10n.text("请检查 API Key 是否正确且仍有效，并确认服务地址与账户所属服务一致。")
+      case 403:
+        return CoreL10n.text("请检查账户权限、项目权限或地区限制。")
+      case 404:
+        return CoreL10n.text("请检查模型 ID 与接口路径是否正确。")
+      case 429:
+        if Self.hasExplicitBalanceError(in: body) {
+          return CoreL10n.text("账户余额或配额不足，请到服务商账户页面检查余额和用量。")
+        }
+        return CoreL10n.text("请求过于频繁，请稍后重试或减少并发。")
+      case 500...599:
+        return CoreL10n.text("服务暂时异常，请稍后重试并查看服务状态。")
+      default:
+        return nil
+      }
+    case .firstByteTimedOut, .resourceTimedOut:
+      return CoreL10n.text("请求超时，请检查网络或稍后手动重试。")
+    case .networkFailure:
+      return CoreL10n.text("请检查网络连接、代理和服务地址后手动重试。")
+    default:
+      return nil
     }
   }
 
@@ -120,5 +151,20 @@ public enum AIChatCompletionClientError: LocalizedError, Equatable, Sendable {
       return String(format: "%.1f 秒", seconds)
     }
     return "\(Int(ceil(seconds))) 秒"
+  }
+
+  private static func hasExplicitBalanceError(in body: String) -> Bool {
+    guard let data = body.data(using: .utf8),
+      let object = try? JSONSerialization.jsonObject(with: data),
+      let root = object as? [String: Any],
+      let error = root["error"] as? [String: Any]
+    else {
+      return false
+    }
+    let values = [error["code"], error["type"]].compactMap { $0 as? String }
+    let balanceCodes: Set<String> = [
+      "insufficient_quota", "quota_exceeded", "insufficient_balance",
+    ]
+    return values.contains { balanceCodes.contains($0.lowercased()) }
   }
 }

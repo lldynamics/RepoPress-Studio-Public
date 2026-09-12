@@ -79,6 +79,7 @@ struct MacMarkdownTextView: NSViewRepresentable {
   var bodyMarkdown: String
   var bodyUTF16Offset: Int
   var allowsLiveBodyChanges: Bool = true
+  var isFrontMatterFolded: Bool = false
   @Binding var selectedRange: NSRange
   @Binding var isFrontMatterSelection: Bool
   var comfortConfiguration: MarkdownEditorComfortConfiguration
@@ -138,6 +139,9 @@ struct MacMarkdownTextView: NSViewRepresentable {
 
   func makeNSView(context: Context) -> NSScrollView {
     let scrollView = MarkdownEditorScrollView()
+    scrollView.contentView = MarkdownFrontMatterClipView()
+    scrollView.foldedFrontMatterBodyOffset = isFrontMatterFolded ? bodyUTF16Offset : 0
+    context.coordinator.isFrontMatterFolded = isFrontMatterFolded
     let editorBackgroundColor = WorkbenchWritingSurface.nsColor(
       usesWarmPaper: comfortConfiguration.warmPaperBackgroundEnabled
     )
@@ -249,6 +253,16 @@ struct MacMarkdownTextView: NSViewRepresentable {
 
   func updateNSView(_ nsView: NSScrollView, context: Context) {
     guard let textView = nsView.documentView as? NSTextView else { return }
+    context.coordinator.isFrontMatterFolded = isFrontMatterFolded
+    (nsView as? MarkdownEditorScrollView)?.foldedFrontMatterBodyOffset =
+      isFrontMatterFolded ? bodyUTF16Offset : 0
+    if isFrontMatterFolded, textView.selectedRange().location < bodyUTF16Offset {
+      textView.setSelectedRange(
+        MarkdownFrontMatterFoldSelection.visibleRange(
+          textView.selectedRange(), bodyOffset: bodyUTF16Offset,
+          documentLength: (textView.string as NSString).length
+        ))
+    }
     let presentationContextChanged =
       context.coordinator.bodyMarkdown != bodyMarkdown
       || context.coordinator.bodyUTF16Offset != bodyUTF16Offset
@@ -428,6 +442,7 @@ struct MacMarkdownTextView: NSViewRepresentable {
     @Binding var isFrontMatterSelection: Bool
     var bodyMarkdown: String
     var bodyUTF16Offset: Int
+    var isFrontMatterFolded = false
     var requiresFrontMatterEnvelope: Bool
     var hasValidDocumentBodyMapping: Bool
     var allowsLiveBodyChanges: Bool
@@ -1085,6 +1100,7 @@ struct MacMarkdownTextView: NSViewRepresentable {
       textView.enclosingScrollView?.backgroundColor = editorBackgroundColor
       if let scrollView = textView.enclosingScrollView as? MarkdownEditorScrollView {
         scrollView.preferredBodyWidth = CGFloat(configuration.bodyWidth)
+        if shouldRebuildSyntaxPalette { scrollView.invalidateFrontMatterFoldGeometry() }
       }
       if shouldRebuildSyntaxPalette {
         invalidateHighlightedTextCache(in: textView)
@@ -1136,6 +1152,13 @@ struct MacMarkdownTextView: NSViewRepresentable {
       replacementString: String?
     ) -> Bool {
       guard !isShowingReadOnlyPresentation else { return false }
+      // Backspace at the first visible character must never erase a hidden
+      // delimiter. Undo remains free to restore its original document range.
+      if isFrontMatterFolded, affectedCharRange.location < bodyUTF16Offset,
+        textView.undoManager?.isUndoing != true, textView.undoManager?.isRedoing != true
+      {
+        return false
+      }
       if !isApplyingAutomaticPairing,
         comfortConfiguration.automaticPairingEnabled,
         !textView.hasMarkedText(),
@@ -1172,6 +1195,33 @@ struct MacMarkdownTextView: NSViewRepresentable {
         )
       }
       return true
+    }
+
+    func textView(
+      _ textView: NSTextView,
+      willChangeSelectionFromCharacterRange oldSelectedCharRange: NSRange,
+      toCharacterRange newSelectedCharRange: NSRange
+    ) -> NSRange {
+      guard isFrontMatterFolded else { return newSelectedCharRange }
+      return MarkdownFrontMatterFoldSelection.visibleRange(
+        newSelectedCharRange, bodyOffset: bodyUTF16Offset,
+        documentLength: (textView.string as NSString).length
+      )
+    }
+
+    func textView(
+      _ textView: NSTextView,
+      willChangeSelectionFromCharacterRanges oldSelectedCharRanges: [NSValue],
+      toCharacterRanges newSelectedCharRanges: [NSValue]
+    ) -> [NSValue] {
+      guard isFrontMatterFolded else { return newSelectedCharRanges }
+      return newSelectedCharRanges.map {
+        NSValue(
+          range: MarkdownFrontMatterFoldSelection.visibleRange(
+            $0.rangeValue, bodyOffset: bodyUTF16Offset,
+            documentLength: (textView.string as NSString).length
+          ))
+      }
     }
 
     private func automaticPairingEdit(
@@ -1519,19 +1569,22 @@ struct MacMarkdownTextView: NSViewRepresentable {
       let documentSelection = textView.selectedRange()
       let documentLength = (textView.string as NSString).length
       let bodyLength = (bodyMarkdown as NSString).length
-      guard let geometryRange = MarkdownTextKit2RangeAdapter.visibleGeometryRange(
-        for: documentSelection,
-        in: textView
-      ) else {
+      guard
+        let geometryRange = MarkdownTextKit2RangeAdapter.visibleGeometryRange(
+          for: documentSelection,
+          in: textView
+        )
+      else {
         onContextualAnchorChanged(nil)
         return
       }
-      guard let selection = MarkdownContextualPopoverAnchorResolver.selection(
-        forDocumentRange: documentSelection,
-        documentUTF16Length: documentLength,
-        bodyUTF16Offset: bodyUTF16Offset,
-        bodyUTF16Length: bodyLength
-      ),
+      guard
+        let selection = MarkdownContextualPopoverAnchorResolver.selection(
+          forDocumentRange: documentSelection,
+          documentUTF16Length: documentLength,
+          bodyUTF16Offset: bodyUTF16Offset,
+          bodyUTF16Length: bodyLength
+        ),
         let textRect = contextualTextRect(
           for: geometryRange,
           documentLength: documentLength,
@@ -1818,7 +1871,7 @@ struct MacMarkdownTextView: NSViewRepresentable {
         edit: syntaxHighlightEdit,
         previousDocumentRevision:
           hasExplicitStatisticsEdit && canPublishBodyChange && editIsBodyOnly
-            && previousBodyUTF16Offset == bodyUTF16Offset ? previousSyntaxRevision : nil
+          && previousBodyUTF16Offset == bodyUTF16Offset ? previousSyntaxRevision : nil
       )
       if canPublishBodyChange,
         editIsBodyOnly,

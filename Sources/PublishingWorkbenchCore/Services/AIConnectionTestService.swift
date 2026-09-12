@@ -3,6 +3,8 @@ import Foundation
 public struct AIConnectionTestReport: Equatable, Sendable {
   public var providerName: String
   public var model: String
+  /// The configured model that was tested; the response may name a resolved alias.
+  public var requestedModel: String
   public var endpoint: URL
   public var responsePreview: String
   public var capabilityProbeReport: AIProviderCapabilityProbeReport?
@@ -12,10 +14,12 @@ public struct AIConnectionTestReport: Equatable, Sendable {
     model: String,
     endpoint: URL,
     responsePreview: String,
-    capabilityProbeReport: AIProviderCapabilityProbeReport? = nil
+    capabilityProbeReport: AIProviderCapabilityProbeReport? = nil,
+    requestedModel: String? = nil
   ) {
     self.providerName = providerName
     self.model = model
+    self.requestedModel = requestedModel ?? model
     self.endpoint = endpoint
     self.responsePreview = responsePreview
     self.capabilityProbeReport = capabilityProbeReport
@@ -248,7 +252,8 @@ public struct AIConnectionTestService: Sendable {
         ? URL(string: "codex-app-server://stdio")!
         : endpoint,
       responsePreview: String(result.content.trimmedForPublishing.prefix(80)),
-      capabilityProbeReport: capabilityProbeReport
+      capabilityProbeReport: capabilityProbeReport,
+      requestedModel: model
     )
   }
 }

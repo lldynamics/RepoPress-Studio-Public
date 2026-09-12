@@ -7,6 +7,69 @@ import XCTest
 
 @MainActor
 final class WorkspaceWindowSessionTests: XCTestCase {
+  func testWritingListRestorationKeepsFiltersAndFolderExpansionPerWindow() {
+    let firstListState = WritingListWindowPresentationState()
+    let secondListState = WritingListWindowPresentationState()
+    let first = WorkspaceWindowSession(
+      selectedSection: .writing,
+      writingListState: firstListState
+    )
+    let second = WorkspaceWindowSession(
+      selectedSection: .writing,
+      writingListState: secondListState
+    )
+
+    _ = first.writingListState.restoreStorageIfNeeded(
+      searchText: "发布计划",
+      filterRawValue: DraftListFilter.ready.rawValue,
+      displayModeRawValue: WritingDraftListDisplayMode.folders.rawValue,
+      sortOrderRawValue: WritingDraftSortOrder.titleAscending.rawValue,
+      expandedFolderIDsData: "[\"posts\",\"posts/2026\"]"
+    )
+    _ = second.writingListState.restoreStorageIfNeeded(
+      searchText: "",
+      filterRawValue: DraftListFilter.privateArticles.rawValue,
+      displayModeRawValue: WritingDraftListDisplayMode.flat.rawValue,
+      sortOrderRawValue: WritingDraftSortOrder.updatedNewest.rawValue,
+      expandedFolderIDsData: "[\"private\"]"
+    )
+
+    XCTAssertEqual(first.writingListState.searchText, "发布计划")
+    XCTAssertEqual(first.writingListState.filter, .ready)
+    XCTAssertEqual(first.writingListState.displayMode, .folders)
+    XCTAssertEqual(first.writingListState.sortOrder, .titleAscending)
+    XCTAssertEqual(first.writingListState.userExpandedFolderIDs, ["posts", "posts/2026"])
+    XCTAssertTrue(first.writingListState.hasPersistedFolderExpansion)
+    XCTAssertEqual(second.writingListState.filter, .privateArticles)
+    XCTAssertEqual(second.writingListState.userExpandedFolderIDs, ["private"])
+  }
+
+  func testWritingListRestorationRejectsInvalidLegacyValuesWithoutOverwritingLaterState() {
+    let state = WritingListWindowPresentationState()
+    _ = state.restoreStorageIfNeeded(
+      searchText: "保留查询",
+      filterRawValue: "retired-filter",
+      displayModeRawValue: "retired-display",
+      sortOrderRawValue: "retired-sort",
+      expandedFolderIDsData: "not-json"
+    )
+    _ = state.restoreStorageIfNeeded(
+      searchText: "不应覆盖",
+      filterRawValue: DraftListFilter.ready.rawValue,
+      displayModeRawValue: WritingDraftListDisplayMode.folders.rawValue,
+      sortOrderRawValue: WritingDraftSortOrder.titleAscending.rawValue,
+      expandedFolderIDsData: "[\"later\"]"
+    )
+
+    XCTAssertEqual(state.searchText, "保留查询")
+    XCTAssertEqual(state.filter, .all)
+    XCTAssertEqual(state.displayMode, .flat)
+    XCTAssertEqual(state.sortOrder, .updatedNewest)
+    XCTAssertTrue(state.userExpandedFolderIDs.isEmpty)
+    XCTAssertFalse(state.hasPersistedFolderExpansion)
+    XCTAssertEqual(state.restorationRevision, 1)
+  }
+
   func testRestoresStableWindowIdentityAndSectionFromSceneStorage() throws {
     let expectedWindowID = UUID()
     let expectedDraftID = UUID()

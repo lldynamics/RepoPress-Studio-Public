@@ -5,6 +5,7 @@ struct WorkspaceShellSplitLayout: View {
   let store: WorkbenchStore
   let selectedSection: WorkspaceSection
   let selectedDraftID: UUID?
+  let writingListState: WritingListWindowPresentationState
   let isCompact: Bool
   let isFocusMode: Bool
   let isSidebarPresented: Bool
@@ -30,6 +31,7 @@ struct WorkspaceShellSplitLayout: View {
     store: WorkbenchStore,
     selectedSection: WorkspaceSection,
     selectedDraftID: UUID?,
+    writingListState: WritingListWindowPresentationState,
     isCompact: Bool,
     isFocusMode: Bool,
     isInspectorPresented: Bool,
@@ -49,6 +51,7 @@ struct WorkspaceShellSplitLayout: View {
     self.store = store
     self.selectedSection = selectedSection
     self.selectedDraftID = selectedDraftID
+    self.writingListState = writingListState
     self.isCompact = isCompact
     self.isFocusMode = isFocusMode
     self.isSidebarPresented = isSidebarPresented
@@ -92,6 +95,7 @@ struct WorkspaceShellSplitLayout: View {
           store: store,
           selectedSection: selectedSection,
           selectedDraftID: selectedDraftID,
+          writingListState: writingListState,
           contentHealthFilter: $contentHealthFilter,
           imageWorkbenchContextStage: $imageWorkbenchContextStage,
           repositoryContextStage: $repositoryContextStage,

@@ -1,6 +1,11 @@
 import PublishingWorkbenchCore
 import SwiftUI
 
+struct DraftFullTextSearchRequest: Equatable, Sendable {
+  let query: String
+  let scope: DraftFullTextSearchScope
+}
+
 struct DraftFullTextSearchPanel: View {
   @Environment(\.dismiss) private var dismiss
   @AppStorage("draftFullTextSavedQueriesV1") private var savedQueriesStorage = ""
@@ -22,10 +27,13 @@ struct DraftFullTextSearchPanel: View {
 
   init(
     store: WorkbenchStore,
+    initialRequest: DraftFullTextSearchRequest? = nil,
     onOpenHit: ((DraftFullTextSearchHit) -> Void)? = nil
   ) {
     self.store = store
     self.onOpenHit = onOpenHit
+    _query = State(initialValue: initialRequest?.query ?? "")
+    _scope = State(initialValue: initialRequest?.scope ?? .currentSite)
     _publishing = ObservedObject(wrappedValue: store.publishing)
   }
 
@@ -151,7 +159,12 @@ struct DraftFullTextSearchPanel: View {
       } label: {
         Label("批量替换", systemImage: "arrow.triangle.2.circlepath")
       }
-      .help("预览并安全替换多篇文章的正文")
+      .disabled(scope == .generalDrafts)
+      .help(
+        scope == .generalDrafts
+          ? String(localized: "批量替换暂不支持通用草稿范围，以免扩大到全部站点。")
+          : String(localized: "预览并安全替换多篇文章的正文")
+      )
       .accessibilityLabel("跨文章批量查找替换")
 
       Spacer()
@@ -366,7 +379,16 @@ struct DraftFullTextSearchPanel: View {
       } label: {
         Label("保存当前查询", systemImage: "bookmark")
       }
-      .disabled(!parsedQuery.hasCriteria)
+      .disabled(!parsedQuery.hasCriteria || scope == .generalDrafts)
+      .help(
+        scope == .generalDrafts
+          ? String(localized: "通用草稿范围暂不能保存，避免重新载入时扩大到当前站点。")
+          : String(localized: "保存当前全文搜索查询")
+      )
+
+      if scope == .generalDrafts {
+        Text("通用草稿搜索不会保存，避免重新载入时改变范围。")
+      }
 
       if !savedQueries.isEmpty {
         Menu("删除保存的查询") {
@@ -436,9 +458,14 @@ struct DraftFullTextSearchPanel: View {
     }
 
     let scopedDrafts = publishing.drafts.filter { draft in
-      scope == .allSites
-        ? !draft.isGeneralDraft
-        : draft.belongs(toSiteProfileID: publishing.activeProfileID)
+      switch scope {
+      case .currentSite:
+        draft.belongs(toSiteProfileID: publishing.activeProfileID)
+      case .allSites:
+        !draft.isGeneralDraft
+      case .generalDrafts:
+        draft.isGeneralDraft
+      }
     }
     let privacyMasksPrivateContent = store.privacySettings.masksPrivateContent
     protectedPrivateDraftCount =
@@ -568,9 +595,10 @@ enum DraftFullTextSearchPreparation {
   }
 }
 
-private enum DraftFullTextSearchScope: String, CaseIterable, Identifiable {
+enum DraftFullTextSearchScope: String, CaseIterable, Identifiable, Sendable {
   case currentSite
   case allSites
+  case generalDrafts
 
   var id: String { rawValue }
 
@@ -578,6 +606,7 @@ private enum DraftFullTextSearchScope: String, CaseIterable, Identifiable {
     switch self {
     case .currentSite: String(localized: "当前站点")
     case .allSites: String(localized: "全部站点")
+    case .generalDrafts: String(localized: "通用草稿")
     }
   }
 }

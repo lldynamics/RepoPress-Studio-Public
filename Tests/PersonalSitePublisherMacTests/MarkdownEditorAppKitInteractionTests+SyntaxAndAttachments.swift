@@ -1120,11 +1120,23 @@ final class MarkdownEditorAppKitInteractionSyntaxAndAttachmentTests:
       preservingExisting: true
     )
     XCTAssertNil(coordinator.inlineAttachmentDrawingDescriptors[formulaKey])
-    XCTAssertEqual(
-      coordinator.inlineAttachmentDrawingDescriptors[imageKey],
-      imageDrawing
+    let reflowedImageDrawing = try XCTUnwrap(
+      coordinator.inlineAttachmentDrawingDescriptors[imageKey]
     )
+    let reflowedImageSourceRect = try XCTUnwrap(
+      MarkdownTextKit2RangeAdapter.rect(for: imageRange, in: textView)
+    )
+    XCTAssertEqual(reflowedImageDrawing.content, imageDrawing.content)
+    XCTAssertEqual(reflowedImageDrawing.documentRange, imageDrawing.documentRange)
+    if let initialImage = imageDrawing.image {
+      XCTAssertTrue(reflowedImageDrawing.image === initialImage)
+    } else {
+      XCTAssertNil(reflowedImageDrawing.image)
+    }
+    XCTAssertEqual(reflowedImageDrawing.isImageLoading, imageDrawing.isImageLoading)
     XCTAssertNotNil(coordinator.inlineAttachmentImageTasks[imageKey])
+    XCTAssertEqual(reflowedImageDrawing.frame.midY, reflowedImageSourceRect.midY, accuracy: 1)
+    XCTAssertLessThan(reflowedImageDrawing.frame.minY, imageDrawing.frame.minY)
     XCTAssertFalse(probe.cancelled)
     XCTAssertNotEqual(
       textView.textStorage?.attribute(

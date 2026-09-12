@@ -39,11 +39,12 @@ public struct URLSessionAIModelDiscoveryTransport: AIModelDiscoveryTransport {
     // redirect; model discovery must additionally fail closed for local
     // no-key requests, where a stripped redirect would otherwise still make a
     // request to the wrong service.
-    sessionOwner = ManagedURLSession(session: URLSession(
-      configuration: safeSession.configuration,
-      delegate: AIModelDiscoveryURLSessionDelegate(),
-      delegateQueue: nil
-    ), ownsSession: true)
+    sessionOwner = ManagedURLSession(
+      session: URLSession(
+        configuration: safeSession.configuration,
+        delegate: AIModelDiscoveryURLSessionDelegate(),
+        delegateQueue: nil
+      ), ownsSession: true)
     safeSession.invalidateAndCancel()
   }
 
@@ -425,7 +426,7 @@ public struct AIModelDiscoveryService: Sendable {
         item -> AIModelDescriptor? in
         let id = item.id.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !id.isEmpty, seen.insert(id).inserted else { return nil }
-        return descriptor(for: id)
+        return descriptor(for: item)
       }
       return ModelPage(
         models: models.sorted(by: sortModels),
@@ -495,6 +496,54 @@ public struct AIModelDiscoveryService: Sendable {
     )
   }
 
+  private func descriptor(for item: OpenAIModelsResponse.Item) -> AIModelDescriptor {
+    let id = item.id.trimmingCharacters(in: .whitespacesAndNewlines)
+    let anthropicCapabilities = item.capabilities
+    let modalities = item.architecture?.inputModalities ?? []
+    let parameters = item.supportedParameters ?? []
+    let hasMetadata =
+      item.name != nil || item.displayName != nil || item.contextLength != nil
+      || item.maxInputTokens != nil || item.maxTokens != nil
+      || anthropicCapabilities != nil || item.architecture != nil
+      || item.supportedParameters != nil || item.pricing != nil
+    guard hasMetadata else { return descriptor(for: id) }
+    let isVision =
+      anthropicCapabilities?.contains("image_input") == true
+      || modalities.contains(where: { $0.lowercased() == "image" })
+    let isReasoning =
+      anthropicCapabilities?.contains("extended_thinking") == true
+      || anthropicCapabilities?.contains("thinking") == true
+      || anthropicCapabilities?.contains("effort") == true
+      || parameters.contains(where: {
+        let parameter = $0.lowercased()
+        return parameter.contains("reasoning") || parameter == "thinking" || parameter == "effort"
+      })
+    return AIModelDescriptor(
+      id: id,
+      name: item.displayName?.nilIfEmpty ?? item.name?.nilIfEmpty ?? id,
+      isReasoning: isReasoning,
+      isVision: isVision,
+      isChat: true,
+      contextWindow: positive(item.contextLength),
+      maxInputTokens: positive(item.maxInputTokens),
+      maxOutputTokens: positive(item.maxTokens),
+      inputPricePerMillionUSD: pricePerMillion(item.pricing?.prompt),
+      outputPricePerMillionUSD: pricePerMillion(item.pricing?.completion),
+      metadataSource: .provider
+    )
+  }
+
+  private func positive(_ value: Int?) -> Int? {
+    guard let value, value > 0 else { return nil }
+    return value
+  }
+
+  private func pricePerMillion(_ value: String?) -> Double? {
+    guard let value, let price = Double(value), price.isFinite, price >= 0 else { return nil }
+    let scaled = price * 1_000_000
+    return scaled.isFinite ? scaled : nil
+  }
+
   private func sortModels(_ lhs: AIModelDescriptor, _ rhs: AIModelDescriptor) -> Bool {
     if lhs.isReasoning != rhs.isReasoning {
       return lhs.isReasoning && !rhs.isReasoning
@@ -546,6 +595,71 @@ private final class AIModelDiscoveryURLSessionDelegate: NSObject, URLSessionTask
 private struct OpenAIModelsResponse: Decodable {
   struct Item: Decodable {
     var id: String
+    var name: String?
+    var displayName: String?
+    var contextLength: Int?
+    var maxInputTokens: Int?
+    var maxTokens: Int?
+    var capabilities: Set<String>?
+    var architecture: Architecture?
+    var supportedParameters: [String]?
+    var pricing: Pricing?
+
+    struct Architecture: Decodable {
+      var inputModalities: [String]?
+
+      enum CodingKeys: String, CodingKey {
+        case inputModalities = "input_modalities"
+      }
+    }
+
+    struct Capability: Decodable {
+      let supported: Bool
+      enum CodingKeys: String, CodingKey { case supported }
+      init(from decoder: Decoder) throws {
+        if let value = try? decoder.singleValueContainer().decode(Bool.self) {
+          supported = value
+        } else {
+          let container = try decoder.container(keyedBy: CodingKeys.self)
+          supported = (try? container.decode(Bool.self, forKey: .supported)) ?? false
+        }
+      }
+    }
+
+    struct Pricing: Decodable {
+      var prompt: String?
+      var completion: String?
+    }
+
+    enum CodingKeys: String, CodingKey {
+      case id, name, capabilities, architecture, pricing
+      case displayName = "display_name"
+      case contextLength = "context_length"
+      case maxInputTokens = "max_input_tokens"
+      case maxTokens = "max_tokens"
+      case supportedParameters = "supported_parameters"
+    }
+
+    init(from decoder: Decoder) throws {
+      let container = try decoder.container(keyedBy: CodingKeys.self)
+      id = try container.decode(String.self, forKey: .id)
+      name = try? container.decodeIfPresent(String.self, forKey: .name)
+      displayName = try? container.decodeIfPresent(String.self, forKey: .displayName)
+      contextLength = try? container.decodeIfPresent(Int.self, forKey: .contextLength)
+      maxInputTokens = try? container.decodeIfPresent(Int.self, forKey: .maxInputTokens)
+      maxTokens = try? container.decodeIfPresent(Int.self, forKey: .maxTokens)
+      architecture = try? container.decodeIfPresent(Architecture.self, forKey: .architecture)
+      supportedParameters = try? container.decodeIfPresent(
+        [String].self, forKey: .supportedParameters)
+      pricing = try? container.decodeIfPresent(Pricing.self, forKey: .pricing)
+      let capabilityNames = try? container.decode(Set<String>.self, forKey: .capabilities)
+      let capabilityFlags = try? container.decode([String: Capability].self, forKey: .capabilities)
+      capabilities =
+        capabilityNames
+        ?? capabilityFlags?.compactMap {
+          $0.value.supported ? $0.key : nil
+        }.reduce(into: Set<String>()) { $0.insert($1) }
+    }
   }
   var data: [Item]
   var hasMore: Bool?

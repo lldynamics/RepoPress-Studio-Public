@@ -908,12 +908,26 @@ public enum AIWritingStylePreset: String, Codable, CaseIterable, Identifiable, S
 }
 
 public struct AIWritingStyleConfig: Codable, Hashable, Sendable {
+  public static let maximumTerminologyCount = 24
+  public static let maximumTerminologyCharacterCount = 80
+  public static let maximumExemplarCount = 4
+  public static let maximumRuleCharacterCount = 1_000
+
   public var preset: AIWritingStylePreset
   public var tone: String
   public var audience: String
   public var summaryGuidance: String
   public var tagGuidance: String
   public var seoGuidance: String
+  /// Site-owned words and product names that AI should use consistently.
+  /// Kept with the writing profile rather than an AI connection so terminology
+  /// cannot leak to another site that shares the same provider configuration.
+  public var preferredTerminology: [String]
+  /// Expressions that should not appear in generated copy for this site.
+  public var avoidedExpressions: [String]
+  /// Article identities only. Article text is rebuilt locally at request time
+  /// and is never persisted into the style profile.
+  public var exemplarArticleIDs: [UUID]
 
   public init(
     preset: AIWritingStylePreset = .jinfangZola,
@@ -921,7 +935,10 @@ public struct AIWritingStyleConfig: Codable, Hashable, Sendable {
     audience: String? = nil,
     summaryGuidance: String? = nil,
     tagGuidance: String? = nil,
-    seoGuidance: String? = nil
+    seoGuidance: String? = nil,
+    preferredTerminology: [String] = [],
+    avoidedExpressions: [String] = [],
+    exemplarArticleIDs: [UUID] = []
   ) {
     self.preset = preset
     self.tone = tone ?? preset.defaultTone
@@ -929,6 +946,11 @@ public struct AIWritingStyleConfig: Codable, Hashable, Sendable {
     self.summaryGuidance = summaryGuidance ?? preset.defaultSummaryGuidance
     self.tagGuidance = tagGuidance ?? preset.defaultTagGuidance
     self.seoGuidance = seoGuidance ?? preset.defaultSEOGuidance
+    self.preferredTerminology = Self.normalizedTerminology(preferredTerminology)
+    self.avoidedExpressions = Self.normalizedTerminology(avoidedExpressions)
+    self.exemplarArticleIDs = Array(
+      Self.unique(exemplarArticleIDs).prefix(Self.maximumExemplarCount)
+    )
   }
 
   public static let `default` = AIWritingStyleConfig()
@@ -952,15 +974,20 @@ public struct AIWritingStyleConfig: Codable, Hashable, Sendable {
     summaryGuidance = normalized(summaryGuidance)
     tagGuidance = normalized(tagGuidance)
     seoGuidance = normalized(seoGuidance)
+    preferredTerminology = Self.normalizedTerminology(preferredTerminology)
+    avoidedExpressions = Self.normalizedTerminology(avoidedExpressions)
+    exemplarArticleIDs = Array(Self.unique(exemplarArticleIDs).prefix(Self.maximumExemplarCount))
   }
 
   public var promptInstructions: String {
     [
-      ("语气", normalized(tone)),
-      ("目标读者", normalized(audience)),
-      ("摘要规则", normalized(summaryGuidance)),
-      ("标签规则", normalized(tagGuidance)),
-      ("SEO 检查重点", normalized(seoGuidance)),
+      ("语气", bounded(tone)),
+      ("目标读者", bounded(audience)),
+      ("摘要规则", bounded(summaryGuidance)),
+      ("标签规则", bounded(tagGuidance)),
+      ("SEO 检查重点", bounded(seoGuidance)),
+      ("优先使用术语", Self.normalizedTerminology(preferredTerminology).joined(separator: "、")),
+      ("避免表达", Self.normalizedTerminology(avoidedExpressions).joined(separator: "、")),
     ]
     .filter { !$0.1.isEmpty }
     .map { "- \($0.0)：\($0.1)" }
@@ -969,5 +996,55 @@ public struct AIWritingStyleConfig: Codable, Hashable, Sendable {
 
   private func normalized(_ value: String) -> String {
     value.trimmingCharacters(in: .whitespacesAndNewlines)
+  }
+
+  private func bounded(_ value: String) -> String {
+    String(normalized(value).prefix(Self.maximumRuleCharacterCount))
+  }
+
+  private static func normalizedTerminology(_ values: [String]) -> [String] {
+    var result: [String] = []
+    var seen = Set<String>()
+    for rawValue in values {
+      let value = String(rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        .prefix(maximumTerminologyCharacterCount))
+      guard !value.isEmpty, seen.insert(value).inserted else { continue }
+      result.append(value)
+      if result.count == maximumTerminologyCount { break }
+    }
+    return result
+  }
+
+  private static func unique<T: Hashable>(_ values: [T]) -> [T] {
+    var seen = Set<T>()
+    return values.filter { seen.insert($0).inserted }
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case preset
+    case tone
+    case audience
+    case summaryGuidance
+    case tagGuidance
+    case seoGuidance
+    case preferredTerminology
+    case avoidedExpressions
+    case exemplarArticleIDs
+  }
+
+  public init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    let preset = try container.decodeIfPresent(AIWritingStylePreset.self, forKey: .preset) ?? .jinfangZola
+    self.init(
+      preset: preset,
+      tone: try container.decodeIfPresent(String.self, forKey: .tone),
+      audience: try container.decodeIfPresent(String.self, forKey: .audience),
+      summaryGuidance: try container.decodeIfPresent(String.self, forKey: .summaryGuidance),
+      tagGuidance: try container.decodeIfPresent(String.self, forKey: .tagGuidance),
+      seoGuidance: try container.decodeIfPresent(String.self, forKey: .seoGuidance),
+      preferredTerminology: try container.decodeIfPresent([String].self, forKey: .preferredTerminology) ?? [],
+      avoidedExpressions: try container.decodeIfPresent([String].self, forKey: .avoidedExpressions) ?? [],
+      exemplarArticleIDs: try container.decodeIfPresent([UUID].self, forKey: .exemplarArticleIDs) ?? []
+    )
   }
 }

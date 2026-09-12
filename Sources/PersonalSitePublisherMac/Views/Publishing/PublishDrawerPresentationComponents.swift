@@ -606,7 +606,7 @@ struct PublishDrawerReadinessChecklist: View {
     let isLoading = sections.contains(where: \.isLoading)
 
     PublishDrawerCard(title: "发布就绪清单", systemImage: "checklist.checked") {
-      Text("Preflight、图片、SEO 和社交卡片在同一处复核，发布前只需要看这一张清单。")
+      Text("这里汇总内容检查；发布连接与账户权限请查看发布按钮旁的状态。")
         .font(.caption)
         .foregroundStyle(.secondary)
 
@@ -633,12 +633,12 @@ struct PublishDrawerReadinessChecklist: View {
 
       Label(
         isLoading
-          ? "正在准备图片或社交预览检查…"
+          ? String(localized: "正在准备图片或社交预览检查…")
           : blockingCount > 0
-            ? "处理阻断项后再发布。"
+            ? String(localized: "处理阻断项后再发布。")
             : warningCount > 0
-              ? "可以发布，但建议先确认提醒。"
-              : "四类发布检查均已通过。",
+              ? String(localized: "内容检查没有阻断项，请确认以下提醒。")
+              : String(localized: "四类内容检查均已通过。"),
         systemImage: isLoading
           ? "arrow.clockwise"
           : blockingCount > 0
@@ -687,7 +687,7 @@ struct PublishDrawerReadinessChecklist: View {
 
   private var readinessSections: [PublishDrawerReadinessSection] {
     let preflight =
-      preflightIssues
+      PublishReadinessIssueGrouping.coalesced(preflightIssues)
       .filter { $0.severity != .info }
       .map { issue in
         PublishDrawerReadinessIssue(

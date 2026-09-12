@@ -38,6 +38,8 @@ final class PublishDrawerOperationController: ObservableObject {
 }
 
 struct PublishDrawerView: View {
+  @Environment(\.openSettings) private var openSettings
+  @Environment(\.settingsWorkspaceCommandAction) private var settingsWorkspaceCommandAction
   @ObservedObject var publishingFacade: WorkbenchPublishingFeatureFacade
   @ObservedObject private var drawerObservation: WorkbenchPublishDrawerObservationFacade
   // 部分属性尚未迁移到 Facade，保留 store 访问，但去除 @ObservedObject 以避免全局不相关事件触发重绘
@@ -340,7 +342,10 @@ struct PublishDrawerView: View {
       Label("审阅并发布文章变更…", systemImage: "doc.on.doc")
     }
     .workbenchProminentActionStyle()
-    .disabled(store.batchRemotePublishPreviewSnapshot == nil || !PublishDrawerBatchActionPresentation.isEnabled(state))
+    .disabled(
+      store.batchRemotePublishPreviewSnapshot == nil
+        || !PublishDrawerBatchActionPresentation.isEnabled(state)
+    )
     .help(PublishDrawerBatchActionPresentation.status(state))
     .accessibilityIdentifier("publish-drawer-action-publish-articles")
   }
@@ -348,6 +353,11 @@ struct PublishDrawerView: View {
   private func currentArticlePrimaryAction(draft: ArticleDraft) -> some View {
     let preview = store.cachedRemotePublishPreview(for: draft)
     let action = PublishDrawerSingleArticleActionPresentation.make(isWebsiteDraft: draft.draft)
+    let connection = PublishDrawerConnectionPresentation.make(
+      preview: preview,
+      isChecking: store.isRemoteRepositoryChecking,
+      isPublishing: store.isRemoteRepositoryPublishing || operationController.isRunning
+    )
     return PublishDrawerCard(title: "当前文章发布清单", systemImage: "doc.text") {
       Text(draft.title).font(.headline)
       if let preview {
@@ -361,12 +371,47 @@ struct PublishDrawerView: View {
         Label(action.actionTitle, systemImage: "doc.badge.arrow.up")
       }
       .workbenchProminentActionStyle()
-      .disabled(
-        preview.map(canStartRemotePublish) != true || store.isRemoteRepositoryChecking
-          || store.isRemoteRepositoryPublishing || operationController.isRunning
-      )
+      .disabled(!connection.canStart)
       .accessibilityIdentifier("publish-drawer-action-publish-current")
       .accessibilityLabel(action.accessibilityLabel)
+      Label(
+        connection.message, systemImage: connection.canStart ? "checkmark.circle" : "info.circle"
+      )
+      .font(.caption)
+      .foregroundStyle(.secondary)
+      .fixedSize(horizontal: false, vertical: true)
+      .accessibilityIdentifier("publish-current-connection-status")
+      if let remedy = connection.remedy {
+        connectionRemedy(remedy, draft: draft)
+      }
+    }
+  }
+
+  @ViewBuilder
+  private func connectionRemedy(
+    _ remedy: PublishDrawerConnectionPresentation.Remedy, draft: ArticleDraft
+  ) -> some View {
+    switch remedy {
+    case .account:
+      Button("设置发布账户") {
+        isPresented = false
+        SettingsNavigation.present(
+          destination: .token(.repository), workspaceAction: settingsWorkspaceCommandAction
+        ) {
+          openSettings()
+        }
+      }.buttonStyle(.link)
+    case .refresh:
+      Button("刷新发布检查") {
+        operationController.startIfIdle {
+          await refreshPublishingStateFromRemote(draftID: draft.id)
+        }
+      }.buttonStyle(.link)
+    case .issue(let issue):
+      if let onNavigateIssue {
+        let target = PublishReadinessTarget.preflight(issue)
+        Button(target.title) { onNavigateIssue(draft.id, target) }.buttonStyle(.link)
+      }
     }
   }
 
@@ -727,19 +772,11 @@ struct PublishDrawerView: View {
   /// An absent access check is intentionally actionable. The publish action
   /// performs the check immediately before confirmation or remote mutation.
   private func canStartRemotePublish(_ preview: RemoteRepositoryPublishPreview) -> Bool {
-    preview.hasToken
-      && preview.tokenAccessFailureMessage == nil
-      && !preview.blockingIssues.contains(where: {
-        !isAuthoritativeRemotePreflightIssue($0)
-      })
-      && preview.accessCheck?.canWrite != false
+    PublishDrawerConnectionPresentation.make(preview: preview).canStart
   }
 
   private func isAuthoritativeRemotePreflightIssue(_ issue: PreflightIssue) -> Bool {
-    issue.field == "remoteBaseline"
-      || (issue.field == "repository"
-        && (issue.title == String(localized: "远端同路径变更")
-          || issue.title == String(localized: "远端状态待确认")))
+    PublishDrawerConnectionPresentation.isDeferredRemoteIssue(issue)
   }
 
   private func postPublishAnalytics(draft: ArticleDraft) -> some View {
@@ -823,8 +860,8 @@ struct PublishDrawerView: View {
         store.isRemoteRepositoryPublishing
           ? String(localized: "正在提交并推送，完成前不能关闭发布抽屉")
           : operationController.isRunning
-          ? String(localized: "停止当前发布流程并关闭发布抽屉")
-          : String(localized: "关闭发布流程")
+            ? String(localized: "停止当前发布流程并关闭发布抽屉")
+            : String(localized: "关闭发布流程")
       )
 
       if store.isRemoteRepositoryPublishing {

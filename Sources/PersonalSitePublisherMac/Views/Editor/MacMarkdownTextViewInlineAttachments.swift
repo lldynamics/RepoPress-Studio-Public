@@ -264,24 +264,6 @@ extension MacMarkdownTextView.Coordinator {
       else { continue }
 
       let key = inlineAttachmentDrawingKey(for: documentRange)
-      if preservingExisting,
-        let current = inlineAttachmentDrawingDescriptors[key],
-        canReuseInlineAttachmentDrawing(
-          current,
-          item: item,
-          documentRange: documentRange,
-          attachmentByReference: attachmentByReference
-        )
-      {
-        // A viewport scroll or selection repaint does not change the
-        // document-space geometry of an unchanged drawing. Keep its value
-        // identity and image task; only restore the source-hiding attributes
-        // that a full syntax repaint may have removed.
-        desiredKeys.insert(key)
-        applyInlineAttachmentDrawingRendering(current, in: textView)
-        continue
-      }
-
       switch item.kind {
       case .image(let reference, let altText):
         let attachment = Self.referenceVariants(reference).compactMap {
@@ -359,9 +341,8 @@ extension MacMarkdownTextView.Coordinator {
         current.content == candidate.content,
         current.documentRange == candidate.documentRange
       {
-        // This branch is only reachable when a caller requested a fresh
-        // candidate but the descriptor remained reusable. Preserve geometry,
-        // image value, and task identity rather than re-measuring it.
+        // Keep the loaded image and task identity; all visible frames are
+        // remeasured together once paragraph styles have settled below.
         applyInlineAttachmentDrawingRendering(current, in: textView)
         continue
       }
@@ -375,10 +356,43 @@ extension MacMarkdownTextView.Coordinator {
         didMutateDrawings = true
       }
     }
+    // A newly expanded card can shift every following card. Measure only
+    // after all visible paragraph styles are installed, independent of the
+    // dictionary iteration order used above.
+    rangeResolver.manager.ensureLayout(for: rangeResolver.baseTextRange)
+    for (key, candidate) in desiredCandidates {
+      guard let current = inlineAttachmentDrawingDescriptors[key],
+        let frame = inlineAttachmentDrawingFrame(
+          for: candidate, in: textView, rangeResolver: rangeResolver),
+        frame != current.frame
+      else { continue }
+      inlineAttachmentDrawingDescriptors[key] = MarkdownInlineAttachmentDrawing(
+        key: current.key,
+        content: current.content,
+        documentRange: current.documentRange,
+        frame: frame,
+        renderingAttributesSnapshots: current.renderingAttributesSnapshots,
+        originalParagraphStyle: current.originalParagraphStyle,
+        minimumLineHeight: current.minimumLineHeight,
+        image: current.image,
+        isImageLoading: current.isImageLoading
+      )
+      didMutateDrawings = true
+    }
     inlineAttachmentPaintedRanges = inlineAttachmentDrawingDescriptors.values
       .map(\.documentRange)
       .sorted { $0.location < $1.location }
     droppableTextView.markdownInlineAttachmentDrawings = inlineAttachmentDrawingDescriptors
+    // The syntax pass paints list markers before this deferred attachment
+    // pass. Expanded cards can move the following lists, so refresh only the
+    // already-visible markers against the settled paragraph geometry.
+    if !droppableTextView.markdownBlockMarkerDrawings.isEmpty {
+      applyBlockMarkerDrawings(
+        droppableTextView.markdownBlockMarkerDrawings.map(\.marker),
+        in: textView,
+        rangeResolver: rangeResolver
+      )
+    }
     if didMutateDrawings {
       (textView.enclosingScrollView as? MarkdownEditorScrollView)?.invalidateDocumentHeight()
     }
@@ -390,14 +404,14 @@ extension MacMarkdownTextView.Coordinator {
     in textView: NSTextView,
     rangeResolver: MarkdownTextKit2RangeAdapter.RangeResolver
   ) {
-    // Resolve geometry only from the already laid out viewport. If TextKit has
-    // not produced a usable rect yet, leave the Markdown source visible and
-    // let the next viewport pass retry.
-    guard let frame = inlineAttachmentDrawingFrame(
+    // Resolve once before changing rendering attributes so an unsafe inline
+    // source span remains visible. The final frame is deliberately measured
+    // again after the attachment line-height takes part in TextKit layout.
+    guard inlineAttachmentDrawingFrame(
       for: candidate,
       in: textView,
       rangeResolver: rangeResolver
-    ) else {
+    ) != nil else {
       return
     }
 
@@ -411,6 +425,32 @@ extension MacMarkdownTextView.Coordinator {
       at: candidate.documentRange.location,
       effectiveRange: nil
     ) as? NSParagraphStyle
+    let provisionalDrawing = MarkdownInlineAttachmentDrawing(
+      key: key,
+      content: candidate.content,
+      documentRange: candidate.documentRange,
+      frame: .zero,
+      renderingAttributesSnapshots: renderingAttributesSnapshots,
+      originalParagraphStyle: originalParagraphStyle,
+      minimumLineHeight: candidate.minimumLineHeight,
+      image: nil,
+      isImageLoading: candidate.sourceURL != nil
+    )
+    applyInlineAttachmentDrawingRendering(provisionalDrawing, in: textView)
+    rangeResolver.manager.ensureLayout(for: rangeResolver.baseTextRange)
+    guard let frame = inlineAttachmentDrawingFrame(
+      for: candidate,
+      in: textView,
+      rangeResolver: rangeResolver
+    ) else {
+      restoreInlineAttachmentRendering(
+        in: candidate.documentRange,
+        textView: textView,
+        renderingAttributesSnapshots: renderingAttributesSnapshots,
+        originalParagraphStyle: originalParagraphStyle
+      )
+      return
+    }
     let drawing = MarkdownInlineAttachmentDrawing(
       key: key,
       content: candidate.content,
@@ -422,7 +462,6 @@ extension MacMarkdownTextView.Coordinator {
       image: nil,
       isImageLoading: candidate.sourceURL != nil
     )
-    applyInlineAttachmentDrawingRendering(drawing, in: textView)
     inlineAttachmentDrawingDescriptors[key] = drawing
     if let droppableTextView = textView as? DroppableMarkdownTextView {
       droppableTextView.markdownInlineAttachmentDrawings = inlineAttachmentDrawingDescriptors
@@ -477,11 +516,17 @@ extension MacMarkdownTextView.Coordinator {
       (syntaxHighlightPalette.defaultAttributes[.paragraphStyle] as? NSParagraphStyle)?
       .mutableCopy() as? NSMutableParagraphStyle ?? NSMutableParagraphStyle()
     paragraphStyle.minimumLineHeight = drawing.minimumLineHeight
-    textView.textStorage?.addAttribute(
-      .paragraphStyle,
-      value: paragraphStyle,
-      range: drawing.documentRange
-    )
+    guard let storage = textView.textStorage else { return }
+    var needsParagraphUpdate = false
+    storage.enumerateAttribute(.paragraphStyle, in: drawing.documentRange) { value, _, stop in
+      if (value as? NSParagraphStyle)?.isEqual(paragraphStyle) != true {
+        needsParagraphUpdate = true
+        stop.pointee = true
+      }
+    }
+    if needsParagraphUpdate {
+      storage.addAttribute(.paragraphStyle, value: paragraphStyle, range: drawing.documentRange)
+    }
   }
 
   private func cachedInlineAttachmentPlan(in document: NSString) -> MarkdownInlineAttachmentPlan {
@@ -536,48 +581,6 @@ extension MacMarkdownTextView.Coordinator {
 
   private func inlineAttachmentDrawingKey(for range: NSRange) -> String {
     "attachment:\(range.location)"
-  }
-
-  private func canReuseInlineAttachmentDrawing(
-    _ descriptor: MarkdownInlineAttachmentDrawing,
-    item: MarkdownInlineAttachmentItem,
-    documentRange: NSRange,
-    attachmentByReference: [String: DraftAttachment]
-  ) -> Bool {
-    guard descriptor.documentRange == documentRange else { return false }
-
-    switch item.kind {
-    case .image(let reference, let altText):
-      guard case .image(let path, let accessibilityText) = descriptor.content,
-        let attachment = Self.referenceVariants(reference).compactMap({
-          attachmentByReference[$0]
-        }).first,
-        let sourcePath = attachment.sourceFilePath?.nilIfEmpty,
-        !inlineAttachmentFailedImagePaths.contains(sourcePath)
-      else {
-        return false
-      }
-      let expectedAccessibilityText =
-        altText.nilIfEmpty
-        ?? attachment.altText.nilIfEmpty
-        ?? attachment.originalFilename
-      let expectedPath = URL(fileURLWithPath: sourcePath)
-        .standardizedFileURL
-        .resolvingSymlinksInPath()
-        .path
-      return path == expectedPath && accessibilityText == expectedAccessibilityText
-
-    case .formula(let source, let displayMode):
-      let fontSize =
-        displayMode == .inline
-        ? syntaxHighlightPalette.baseFont.pointSize
-        : max(19, syntaxHighlightPalette.baseFont.pointSize)
-      return descriptor.content == .formula(
-        source: source,
-        displayMode: displayMode,
-        fontSize: fontSize
-      )
-    }
   }
 
   private func visibleInlineAttachmentItems(

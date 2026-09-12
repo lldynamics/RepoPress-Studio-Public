@@ -83,7 +83,8 @@ public struct LocalAIEngineDiscoveryService: Sendable {
     _ endpoint: LocalAIEngineDiscoveryEndpoint
   ) async -> LocalAIEngineDiscoveryResult {
     guard let modelsURL = URL(string: endpoint.modelsURL),
-          Self.isStrictLoopbackURL(modelsURL) else {
+      Self.isStrictLoopbackURL(modelsURL)
+    else {
       return unavailableResult(endpoint, reason: .unsafeEndpoint)
     }
 
@@ -101,8 +102,9 @@ public struct LocalAIEngineDiscoveryService: Sendable {
         maximumByteCount: Self.maximumResponseByteCount
       )
       guard let responseURL = response.url,
-            Self.isStrictLoopbackURL(responseURL),
-            Self.isSameOrigin(modelsURL, responseURL) else {
+        Self.isStrictLoopbackURL(responseURL),
+        Self.isSameOrigin(modelsURL, responseURL)
+      else {
         return unavailableResult(endpoint, reason: .unsafeResponse)
       }
       guard let httpResponse = response as? HTTPURLResponse else {
@@ -119,7 +121,8 @@ public struct LocalAIEngineDiscoveryService: Sendable {
         return unavailableResult(endpoint, reason: .invalidPayload)
       }
 
-      let message = models.isEmpty
+      let message =
+        models.isEmpty
         ? CoreL10n.text("本地服务可用，但未返回模型。")
         : CoreL10n.format("已检测到 %d 个本地模型。", models.count)
       return LocalAIEngineDiscoveryResult(
@@ -160,7 +163,8 @@ public struct LocalAIEngineDiscoveryService: Sendable {
 
   private static func normalizedModels(_ models: [String]) -> [String] {
     var seen: Set<String> = []
-    return models
+    return
+      models
       .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
       .filter { !$0.isEmpty && seen.insert($0).inserted }
       .sorted { lhs, rhs in
@@ -177,16 +181,18 @@ public struct LocalAIEngineDiscoveryService: Sendable {
       }
   }
 
-  private static func isStrictLoopbackURL(_ url: URL) -> Bool {
+  static func isStrictLoopbackURL(_ url: URL) -> Bool {
     guard url.scheme?.lowercased() == "http",
-          url.user == nil,
-          url.password == nil,
-          url.query == nil,
-          url.fragment == nil,
-          let rawHost = url.host else {
+      url.user == nil,
+      url.password == nil,
+      url.query == nil,
+      url.fragment == nil,
+      let rawHost = url.host
+    else {
       return false
     }
-    let host = rawHost
+    let host =
+      rawHost
       .trimmingCharacters(in: CharacterSet(charactersIn: "[]"))
       .lowercased()
     if host == "localhost" || host == "::1" {
@@ -194,17 +200,19 @@ public struct LocalAIEngineDiscoveryService: Sendable {
     }
     let octets = host.split(separator: ".", omittingEmptySubsequences: false)
     guard octets.count == 4,
-          octets.allSatisfy({ !$0.isEmpty && UInt8($0) != nil }) else {
+      octets.allSatisfy({ !$0.isEmpty && UInt8($0) != nil })
+    else {
       return false
     }
     return octets[0] == "127"
   }
 
-  private static func isSameOrigin(_ lhs: URL, _ rhs: URL) -> Bool {
+  static func isSameOrigin(_ lhs: URL, _ rhs: URL) -> Bool {
     guard let lhsScheme = lhs.scheme?.lowercased(),
-          let rhsScheme = rhs.scheme?.lowercased(),
-          let lhsHost = lhs.host?.lowercased(),
-          let rhsHost = rhs.host?.lowercased() else {
+      let rhsScheme = rhs.scheme?.lowercased(),
+      let lhsHost = lhs.host?.lowercased(),
+      let rhsHost = rhs.host?.lowercased()
+    else {
       return false
     }
     let lhsPort = lhs.port ?? (lhsScheme == "https" ? 443 : 80)
@@ -281,7 +289,7 @@ private enum LocalAIEngineDiscoveryFailureReason {
       return CoreL10n.text("已阻止非本机探测响应。")
     case .invalidResponse:
       return CoreL10n.text("本地服务返回了无效响应。")
-    case let .httpStatus(statusCode):
+    case .httpStatus(let statusCode):
       return CoreL10n.format("本地服务响应异常（HTTP %d）。", statusCode)
     case .invalidPayload:
       return CoreL10n.text("本地服务响应格式无法识别。")
@@ -326,11 +334,12 @@ private struct URLSessionLocalAIEngineDiscoveryTransport: LocalAIEngineDiscovery
     configuration.timeoutIntervalForRequest = LocalAIEngineDiscoveryService.requestTimeout
     configuration.timeoutIntervalForResource = LocalAIEngineDiscoveryService.requestTimeout
     configuration.waitsForConnectivity = false
-    sessionOwner = ManagedURLSession(session: URLSession(
-      configuration: configuration,
-      delegate: LocalAIEngineDiscoveryURLSessionDelegate(),
-      delegateQueue: nil
-    ), ownsSession: true)
+    sessionOwner = ManagedURLSession(
+      session: URLSession(
+        configuration: configuration,
+        delegate: LocalAIEngineDiscoveryURLSessionDelegate(),
+        delegateQueue: nil
+      ), ownsSession: true)
   }
 
   func data(for request: URLRequest) async throws -> (Data, URLResponse) {

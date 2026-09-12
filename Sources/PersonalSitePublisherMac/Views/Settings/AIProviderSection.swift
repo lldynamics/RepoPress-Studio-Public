@@ -49,6 +49,8 @@ struct AIProviderSection: View {
   let requiresAPIKeyDisplayValue: String
   let connectionProfileID: UUID
   let discoverModels: (UUID, AIProviderConfig) async throws -> [AIModelDescriptor]
+  let modelDiscoveryTrigger: UUID?
+  let modelDiscoveryAuthorizationMessage: String?
   @State private var baseURLDraft: String
   @State private var discoveredModels: [AIModelDescriptor] = []
   @State private var isDiscoveringModels = false
@@ -56,6 +58,7 @@ struct AIProviderSection: View {
   @State private var modelDiscoveryTask: Task<Void, Never>?
   @State private var modelDiscoveryRequestID = UUID()
   @State private var isSearchPopoverPresented = false
+  @State private var hasLoadedModels = false
 
   init(
     presetBinding: Binding<AIProviderPreset>,
@@ -67,7 +70,9 @@ struct AIProviderSection: View {
     requiresAPIKeyBinding: Binding<Bool>,
     requiresAPIKeyDisplayValue: String,
     connectionProfileID: UUID,
-    discoverModels: @escaping (UUID, AIProviderConfig) async throws -> [AIModelDescriptor]
+    discoverModels: @escaping (UUID, AIProviderConfig) async throws -> [AIModelDescriptor],
+    modelDiscoveryTrigger: UUID? = nil,
+    modelDiscoveryAuthorizationMessage: String? = nil
   ) {
     self.presetBinding = presetBinding
     self.presetDisplayName = presetDisplayName
@@ -79,6 +84,8 @@ struct AIProviderSection: View {
     self.requiresAPIKeyDisplayValue = requiresAPIKeyDisplayValue
     self.connectionProfileID = connectionProfileID
     self.discoverModels = discoverModels
+    self.modelDiscoveryTrigger = modelDiscoveryTrigger
+    self.modelDiscoveryAuthorizationMessage = modelDiscoveryAuthorizationMessage
     _baseURLDraft = State(initialValue: baseURL.wrappedValue)
   }
 
@@ -145,6 +152,16 @@ struct AIProviderSection: View {
     }
     .onChange(of: baseURL.wrappedValue) { _, newValue in
       baseURLDraft = newValue
+      invalidateModelDiscovery()
+    }
+    .onChange(of: modelDiscoveryTrigger) { _, _ in
+      if canDiscoverModels { fetchModelsFromAPI() }
+    }
+    .onChange(of: modelDiscoveryAuthorizationMessage) { _, message in
+      if message != nil { invalidateModelDiscovery() }
+    }
+    .onChange(of: requiresAPIKeyBinding.wrappedValue) { _, _ in
+      invalidateModelDiscovery()
     }
     .onChange(of: presetBinding.wrappedValue) { _, _ in
       invalidateModelDiscovery()
@@ -307,30 +324,32 @@ struct AIProviderSection: View {
         }
       }
 
-      HStack(spacing: 6) {
-        Text("常用候选:")
-          .font(.caption)
-          .foregroundStyle(.secondary)
-        ForEach(suggestedModels, id: \.self) { candidate in
-          Button {
-            model.wrappedValue = candidate
-          } label: {
-            Text(candidate)
-              .font(.caption)
-              .padding(.horizontal, 6)
-              .padding(.vertical, 2)
-              .background(
-                model.wrappedValue == candidate
-                  ? WorkbenchTheme.brand.opacity(0.15) : Color.primary.opacity(0.06),
-                in: Capsule()
-              )
-              .foregroundStyle(
-                model.wrappedValue == candidate ? WorkbenchTheme.brand : Color.primary)
+      if !suggestedModels.isEmpty {
+        HStack(spacing: 6) {
+          Text("可用候选:")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+          ForEach(suggestedModels, id: \.self) { candidate in
+            Button {
+              model.wrappedValue = candidate
+            } label: {
+              Text(candidate)
+                .font(.caption)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(
+                  model.wrappedValue == candidate
+                    ? WorkbenchTheme.brand.opacity(0.15) : Color.primary.opacity(0.06),
+                  in: Capsule()
+                )
+                .foregroundStyle(
+                  model.wrappedValue == candidate ? WorkbenchTheme.brand : Color.primary)
+            }
+            .buttonStyle(.plain)
           }
-          .buttonStyle(.plain)
         }
-      }
 
+      }
       if !discoveredModels.isEmpty {
         HStack(spacing: 8) {
           Button {
@@ -397,6 +416,20 @@ struct AIProviderSection: View {
         .accessibilityIdentifier("ai-model-restore-default")
       }
 
+      if let modelDiscoveryAuthorizationMessage {
+        Text(modelDiscoveryAuthorizationMessage)
+          .font(.caption).foregroundStyle(.secondary)
+      }
+      if hasLoadedModels, !model.wrappedValue.isEmpty,
+        !discoveredModels.contains(where: { $0.id == model.wrappedValue })
+      {
+        Text("当前模型未出现在本次返回列表中，原选择已保留。可检查账户权限或选择列表中的模型；列表缺失不代表模型已下线。")
+          .font(.caption).foregroundStyle(WorkbenchTheme.warning)
+          .accessibilityIdentifier("settings-ai-model-not-listed")
+      }
+      if let selected = discoveredModels.first(where: { $0.id == model.wrappedValue }) {
+        AIModelMetadataView(model: selected)
+      }
       if let discoveryErrorMessage {
         Text(discoveryErrorMessage)
           .font(.workbenchMetadata)
@@ -408,30 +441,7 @@ struct AIProviderSection: View {
   }
 
   private var suggestedModels: [String] {
-    switch presetBinding.wrappedValue {
-    case .codexAppServer:
-      return []
-    case .openAICompatible:
-      return ["gpt-4o", "gpt-4o-mini", "o3-mini"]
-    case .deepSeek:
-      return ["deepseek-chat", "deepseek-reasoner"]
-    case .anthropic:
-      return ["claude-sonnet-4-6", "claude-opus-4-6", "claude-haiku-4-5"]
-    case .gemini:
-      return ["gemini-2.0-flash", "gemini-1.5-pro", "gemini-1.5-flash"]
-    case .siliconFlow:
-      return ["deepseek-ai/DeepSeek-V3", "deepseek-ai/DeepSeek-R1", "Qwen/Qwen2.5-72B-Instruct"]
-    case .moonshot:
-      return ["moonshot-v1-auto", "moonshot-v1-8k", "moonshot-v1-32k"]
-    case .zhipu:
-      return ["glm-4-flash", "glm-4-plus", "glm-4-air"]
-    case .openRouter:
-      return ["anthropic/claude-sonnet-4-6", "google/gemini-2.0-flash-001", "deepseek/deepseek-r1"]
-    case .local:
-      return ["llama3.2", "qwen2.5-coder", "deepseek-r1"]
-    case .custom:
-      return ["gpt-4o", "deepseek-chat", "claude-sonnet-4-6"]
-    }
+    Array(discoveredModels.prefix(4).map(\.id))
   }
 
   private func pasteBaseURLFromClipboard() {
@@ -475,7 +485,8 @@ struct AIProviderSection: View {
   }
 
   private var canDiscoverModels: Bool {
-    !baseURL.wrappedValue.trimmedForPublishing.isEmpty
+    modelDiscoveryAuthorizationMessage == nil
+      && !baseURL.wrappedValue.trimmedForPublishing.isEmpty
       && !hasUnappliedBaseURL
       && appliedBaseURLValidation.isUsable
   }
@@ -528,6 +539,8 @@ struct AIProviderSection: View {
         await MainActor.run {
           guard self.modelDiscoveryRequestID == requestID else { return }
           self.discoveredModels = models
+          self.hasLoadedModels = true
+          self.isSearchPopoverPresented = !models.isEmpty
           self.isDiscoveringModels = false
           self.modelDiscoveryTask = nil
           if models.isEmpty {
@@ -557,6 +570,8 @@ struct AIProviderSection: View {
     modelDiscoveryTask = nil
     isDiscoveringModels = false
     discoveredModels = []
+    hasLoadedModels = false
+    isSearchPopoverPresented = false
     discoveryErrorMessage = nil
   }
 }
@@ -633,11 +648,12 @@ struct AIModelSearchPopoverView: View {
                         .font(.workbenchMetadata.monospaced())
                         .foregroundStyle(.secondary)
                     }
+                    AIModelMetadataView(model: descriptor)
                   }
 
                   Spacer()
 
-                  if descriptor.isReasoning {
+                  if descriptor.hasProviderMetadata, descriptor.isReasoning {
                     Text("深度思考")
                       .font(.workbenchMetadata.weight(.medium))
                       .padding(.horizontal, 5)
@@ -646,7 +662,7 @@ struct AIModelSearchPopoverView: View {
                       .foregroundStyle(.purple)
                   }
 
-                  if descriptor.isVision {
+                  if descriptor.hasProviderMetadata, descriptor.isVision {
                     Text("多模态")
                       .font(.workbenchMetadata.weight(.medium))
                       .padding(.horizontal, 5)

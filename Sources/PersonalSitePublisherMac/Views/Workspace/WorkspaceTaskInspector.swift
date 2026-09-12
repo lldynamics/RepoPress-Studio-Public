@@ -46,15 +46,21 @@ struct WorkspaceTaskInspector: View {
   }
 
   private func initialTab(for section: WorkspaceSection) -> ArticleInspectorTab {
-#if DEBUG || SCREENSHOT_CAPTURE_BUILD
-    if ScreenshotDemoDataService.isEnabledFromEnvironment,
-       ScreenshotDemoDataService.requestedSurfaceFromEnvironment == .seoSocialPreview,
-       section == .writing {
-      return .seo
-    }
-#endif
+    #if DEBUG || SCREENSHOT_CAPTURE_BUILD
+      if ScreenshotDemoDataService.isEnabledFromEnvironment,
+        ScreenshotDemoDataService.requestedSurfaceFromEnvironment == .seoSocialPreview,
+        section == .writing
+      {
+        return .seo
+      }
+    #endif
     if prioritizesChecks && ArticleInspectorTab.availableTabs(for: section).contains(.checks) {
       return .checks
+    }
+    if section == .writing,
+      !store.knowledge.documents.contains(where: { !$0.isArchived && $0.allowsLocalSemanticIndex })
+    {
+      return .metadata
     }
     return ArticleInspectorTab.defaultTab(for: section)
   }
@@ -122,7 +128,8 @@ struct RepositoryContextInspectorView: View {
   private var blockerSection: some View {
     let issues = statusState.repositoryReport?.preflightIssues ?? []
     if let issue = issues.first(where: { $0.severity == .error })
-      ?? issues.first(where: { $0.severity == .warning }) {
+      ?? issues.first(where: { $0.severity == .warning })
+    {
       inspectorCard(title: "当前阻断", systemImage: "exclamationmark.triangle") {
         SeverityBadge(severity: issue.severity)
         Text(issue.title)
@@ -132,7 +139,8 @@ struct RepositoryContextInspectorView: View {
           .foregroundStyle(.secondary)
       }
     } else if let readiness = statusState.localPublishReadiness,
-              readiness.blockingIssueCount > 0 {
+      readiness.blockingIssueCount > 0
+    {
       inspectorCard(title: "当前阻断", systemImage: "checklist") {
         Text("当前文章有 \(readiness.blockingIssueCount) 个发布阻断项。")
           .font(.callout)
@@ -189,9 +197,12 @@ struct RepositoryContextInspectorView: View {
     source: RepositoryChangedFileSource
   ) -> some View {
     VStack(alignment: .leading, spacing: 8) {
-      Label(source.localizedDisplayName, systemImage: source == .local ? "desktopcomputer" : "arrow.down.doc")
-        .font(.caption.weight(.semibold))
-        .foregroundStyle(.secondary)
+      Label(
+        source.localizedDisplayName,
+        systemImage: source == .local ? "desktopcomputer" : "arrow.down.doc"
+      )
+      .font(.caption.weight(.semibold))
+      .foregroundStyle(.secondary)
       WorkbenchPathIdentity(path: file.displayPath)
       LabeledContent("状态", value: file.status)
         .font(.caption.monospaced())
@@ -247,6 +258,7 @@ struct RepositoryContextInspectorView: View {
     }
     .padding(12)
     .frame(maxWidth: .infinity, alignment: .leading)
-    .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
+    .background(
+      WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
   }
 }

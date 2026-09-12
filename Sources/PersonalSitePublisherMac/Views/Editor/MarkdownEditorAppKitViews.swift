@@ -3,6 +3,19 @@ import OSLog
 import PublishingWorkbenchCore
 
 final class MarkdownEditorScrollView: NSScrollView {
+  var foldedFrontMatterBodyOffset = 0 {
+    didSet {
+      guard oldValue != foldedFrontMatterBodyOffset else { return }
+      cachedFoldGeometry = nil
+      invalidateDocumentHeight(immediately: true)
+    }
+  }
+  private var cachedFoldGeometry: (prefix: String, width: CGFloat, height: CGFloat)?
+
+  func invalidateFrontMatterFoldGeometry() {
+    cachedFoldGeometry = nil
+    needsLayout = true
+  }
   private struct LiveResizeSession {
     let viewportAnchor: MarkdownEditorViewportAnchor?
     let text: String
@@ -257,9 +270,34 @@ final class MarkdownEditorScrollView: NSScrollView {
         return measuredHeight
       } ?? contentHeight
 
+    let foldedPrefixHeight: CGFloat
+    if foldedFrontMatterBodyOffset > 0,
+      foldedFrontMatterBodyOffset <= (textView.string as NSString).length
+    {
+      let prefix = (textView.string as NSString).substring(to: foldedFrontMatterBodyOffset)
+      if let cache = cachedFoldGeometry, cache.prefix == prefix,
+        abs(cache.width - layoutWidth) < 0.5, !widthChanged
+      {
+        foldedPrefixHeight = cache.height
+      } else {
+        let bodyOrigin = MarkdownFrontMatterFoldGeometry.bodyOrigin(
+          at: foldedFrontMatterBodyOffset, in: textView
+        )
+        foldedPrefixHeight = max(0, (bodyOrigin ?? 16) - 16)
+        if bodyOrigin != nil {
+          cachedFoldGeometry = (prefix, layoutWidth, foldedPrefixHeight)
+        }
+      }
+    } else {
+      foldedPrefixHeight = 0
+      cachedFoldGeometry = nil
+    }
+    let foldClipView = contentView as? MarkdownFrontMatterClipView
+    let previousPrefixHeight = foldClipView?.hiddenPrefixHeight ?? 0
+    foldClipView?.hiddenPrefixHeight = foldedPrefixHeight
     let documentSize = NSSize(
       width: contentWidth,
-      height: max(contentHeight, textHeight, 1)
+      height: max(contentHeight + foldedPrefixHeight, textHeight, 1)
     )
     if textView.frame.size != documentSize {
       textView.setFrameSize(documentSize)
@@ -267,6 +305,12 @@ final class MarkdownEditorScrollView: NSScrollView {
     if let restoredOrigin {
       let maximumY = max(0, documentSize.height - contentSize.height)
       contentView.scroll(to: NSPoint(x: 0, y: min(max(restoredOrigin, 0), maximumY)))
+      reflectScrolledClipView(contentView)
+    }
+    if abs(previousPrefixHeight - foldedPrefixHeight) > 0.5 {
+      let origin = contentView.bounds.origin
+      let targetY = foldedPrefixHeight == 0 ? 0 : max(origin.y, foldedPrefixHeight)
+      contentView.scroll(to: NSPoint(x: origin.x, y: targetY))
       reflectScrolledClipView(contentView)
     }
 #if DEBUG || SCREENSHOT_CAPTURE_BUILD

@@ -68,6 +68,7 @@ struct MacMarkdownComposerView: View {
   @State private var slashCommandSelectedIndex = 0
   @State private var contextualPopoverAnchor: MarkdownContextualPopoverAnchor?
   @State private var isDiscardInvalidFrontMatterConfirmationPresented = false
+  @State var isArticleInformationExpanded = false
   let findReplaceService = MarkdownFindReplaceService()
   let outlineService = MarkdownOutlineService()
   let markdownAnalysisService = MarkdownEditorAnalysisService()
@@ -258,6 +259,7 @@ struct MacMarkdownComposerView: View {
       }
       .environmentObject(zenModeController)
       Divider()
+      articleInformationDisclosure
       if isFindReplacePresented {
         FindReplaceBar(
           findQuery: $editorSessionState.findQuery,
@@ -721,6 +723,8 @@ struct MacMarkdownComposerView: View {
           bodyMarkdown: editorBody,
           bodyUTF16Offset: editorDocumentBodyOffset,
           allowsLiveBodyChanges: frontMatterIssue == nil,
+          isFrontMatterFolded: writingToolDensity == .basic
+            && !isArticleInformationExpanded && frontMatterIssue == nil,
           selectedRange: $editorSessionState.selectedRange,
           isFrontMatterSelection: $editorSessionState.isFrontMatterSelection,
           comfortConfiguration: editorComfortConfiguration,

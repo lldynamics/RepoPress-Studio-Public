@@ -120,8 +120,15 @@ public final class CodexAppServerProcessTransport: CodexAppServerTransport, @unc
           ? .homebrew : .path
         return (path, source)
       } ?? []
+    let userCandidates: [(path: String, source: CodexAppServerRuntimeSource)] =
+      [
+        (
+          (environment["HOME"] ?? fileManager.homeDirectoryForCurrentUser.path)
+            + "/.local/bin/codex", .path
+        )
+      ]
     var visitedPaths = Set<String>()
-    for candidate in pathCandidates + fallbackCandidates {
+    for candidate in pathCandidates + userCandidates + fallbackCandidates {
       let standardizedPath = URL(fileURLWithPath: candidate.path).standardizedFileURL.path
       guard visitedPaths.insert(standardizedPath).inserted,
         fileManager.isExecutableFile(atPath: standardizedPath)
@@ -477,6 +484,9 @@ public actor CodexAppServerClient {
   private var transportEndError = CodexAppServerError.endOfStream
   private var transportGeneration = 0
   private var lineBuffer = Data()
+  private var activeUserOperations = 0
+  private var runtimeReconnectRequested = false
+  private var runtimeReconnectTask: Task<Void, Never>?
 
   /// One app-server response is expected to fit comfortably below this limit.
   /// The limit applies to one JSONL frame, not to an arbitrary stdout chunk,
@@ -598,6 +608,8 @@ public actor CodexAppServerClient {
   }
 
   public func start() async throws {
+    activeUserOperations += 1
+    defer { endUserOperation() }
     try await ensureStarted()
   }
 
@@ -607,6 +619,8 @@ public actor CodexAppServerClient {
   }
 
   public func startChatGPTLogin() async throws -> CodexAppServerLoginResult {
+    activeUserOperations += 1
+    defer { endUserOperation() }
     let value = try await request(
       method: "account/login/start",
       params: .object([
@@ -631,6 +645,8 @@ public actor CodexAppServerClient {
   }
 
   public func startChatGPTDeviceCodeLogin() async throws -> CodexAppServerDeviceCodeLoginResult {
+    activeUserOperations += 1
+    defer { endUserOperation() }
     let value = try await request(
       method: "account/login/start",
       params: .object(["type": .string("chatgptDeviceCode")])
@@ -661,6 +677,8 @@ public actor CodexAppServerClient {
   }
 
   public func waitForLoginCompletion(loginID: String) async throws {
+    activeUserOperations += 1
+    defer { endUserOperation() }
     try await withTaskCancellationHandler(
       operation: {
         try await withCheckedThrowingContinuation { continuation in
@@ -682,6 +700,8 @@ public actor CodexAppServerClient {
   }
 
   public func cancelLogin(loginID: String) async {
+    activeUserOperations += 1
+    defer { endUserOperation() }
     let waiter = loginWaiters.removeValue(forKey: loginID)
     loginOutcomes.removeValue(forKey: loginID)
     let wasActive = activeLoginIDs.remove(loginID) != nil
@@ -799,6 +819,8 @@ public actor CodexAppServerClient {
     workingDirectory: URL? = nil,
     dynamicTools: [AIToolDefinition]
   ) async throws -> CodexAppServerCompletion {
+    activeUserOperations += 1
+    defer { endUserOperation() }
     try await ensureStarted()
     let normalizedModel = Self.trimmedNonEmpty(model)
     let normalizedReasoningEffort = Self.trimmedNonEmpty(reasoningEffort)
@@ -847,6 +869,41 @@ public actor CodexAppServerClient {
     ).text
   }
 
+  /// Enqueue a runtime replacement without interrupting generation or login.
+  /// New requests wait for the shutdown of the idle generation to complete.
+  @discardableResult
+  public func reconnectAfterRuntimeUpdate() async -> Bool {
+    runtimeReconnectRequested = true
+    return await reconnectRuntimeIfIdle()
+  }
+
+  public var isRuntimeReconnectPending: Bool {
+    runtimeReconnectRequested || runtimeReconnectTask != nil
+  }
+
+  private func endUserOperation() {
+    activeUserOperations -= 1
+    if runtimeReconnectRequested {
+      Task { [weak self] in _ = await self?.reconnectRuntimeIfIdle() }
+    }
+  }
+
+  private func reconnectRuntimeIfIdle() async -> Bool {
+    guard runtimeReconnectRequested else { return true }
+    guard runtimeReconnectTask == nil, activeUserOperations == 0,
+      pendingRequests.isEmpty, turnStates.isEmpty, activeLoginIDs.isEmpty,
+      loginOutcomes.isEmpty, loginWaiters.isEmpty,
+      startupTask == nil
+    else { return false }
+    runtimeReconnectRequested = false
+    let task = Task { await self.shutdown() }
+    runtimeReconnectTask = task
+    await task.value
+    runtimeReconnectTask = nil
+    if runtimeReconnectRequested { return await reconnectRuntimeIfIdle() }
+    return true
+  }
+
   public func shutdown() async {
     // Invalidate the task before cancelling it. Cancellation is cooperative,
     // so its deferred cleanup can otherwise race a replacement generation.
@@ -864,6 +921,8 @@ public actor CodexAppServerClient {
   }
 
   private func ensureStarted() async throws {
+    if let runtimeReconnectTask { await runtimeReconnectTask.value }
+    try Task.checkCancellation()
     if isInitialized {
       return
     }
@@ -979,6 +1038,8 @@ public actor CodexAppServerClient {
     method: String,
     params: CodexAppServerJSONValue?
   ) async throws -> CodexAppServerJSONValue {
+    activeUserOperations += 1
+    defer { endUserOperation() }
     try await ensureStarted()
     return try await requestWithoutStartup(method: method, params: params)
   }
@@ -1326,6 +1387,8 @@ public actor CodexAppServerClient {
   }
 
   private func interruptTurn(threadID: String, turnID: String, generation: Int) async {
+    activeUserOperations += 1
+    defer { endUserOperation() }
     guard generation == transportGeneration else { return }
     do {
       _ = try await requestWithoutStartup(
@@ -1707,6 +1770,8 @@ public actor CodexAppServerClient {
   }
 
   private func timeoutLogin(loginID: String) async {
+    activeUserOperations += 1
+    defer { endUserOperation() }
     guard let waiter = loginWaiters.removeValue(forKey: loginID) else {
       // Completion or task cancellation won the actor race and already
       // consumed the continuation. In particular, do not cancel remotely a
@@ -1716,7 +1781,9 @@ public actor CodexAppServerClient {
     }
     loginOutcomes.removeValue(forKey: loginID)
     let wasActive = activeLoginIDs.remove(loginID) != nil
-    cancelLoginTimeout(loginID: loginID)
+    // This is the timeout task itself. Removing it is enough; cancelling it
+    // would also cancel the best-effort server cleanup that follows.
+    loginTimeoutTasks.removeValue(forKey: loginID)
     waiter.resume(throwing: CodexAppServerError.loginTimedOut)
     guard wasActive else { return }
     markLoginOutcomeIgnored(loginID)

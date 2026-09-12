@@ -30,6 +30,14 @@ extension WritingDraftColumn {
       .controlSize(.small)
       .help(String(localized: "逐篇预览后批量添加、移除、重命名或合并标签和分类"))
 
+      Button {
+        isAIBatchMaintenancePresented = true
+      } label: {
+        Label("AI 批量维护", systemImage: "sparkles.rectangle.stack")
+      }
+      .controlSize(.small)
+      .accessibilityIdentifier("writing-ai-batch-maintenance")
+
       Button(String(localized: "全选筛选结果")) {
         selectedDraftIDs = Set(draftListCache.filteredDraftIDs)
       }

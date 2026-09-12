@@ -230,13 +230,14 @@ extension RepositoryWorkspaceView {
   @ViewBuilder
   var repositoryWorkflowBanner: some View {
     if !hasSelectedRepository {
-      workflowBanner(
-        title: "先选择站点文件夹",
-        detail: "请选择保存网站文章和图片的文件夹。",
-        systemImage: "externaldrive.badge.questionmark",
-        tint: .secondary,
-        actionTitle: "选择站点文件夹",
-        action: chooseRepository
+      SiteStarterInitialSiteChoice(
+        writeAction: { store.selectSection(.writing) },
+        connectAction: {
+          openSiteStarter(mode: .importExisting)
+        },
+        createAction: {
+          openSiteStarter(mode: .create)
+        }
       )
     } else if store.repository.scanState.isScanning {
       workflowBanner(

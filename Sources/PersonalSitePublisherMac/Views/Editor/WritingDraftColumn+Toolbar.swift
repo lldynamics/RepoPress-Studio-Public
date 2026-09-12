@@ -52,6 +52,12 @@ extension WritingDraftColumn {
 
       Menu {
         Button {
+          isAIBatchMaintenancePresented = true
+        } label: {
+          Label("AI 批量维护", systemImage: "sparkles.rectangle.stack")
+        }
+        Divider()
+        Button {
           store.createDraft()
         } label: {
           Label("新建站点文章", systemImage: "doc.badge.plus")
@@ -103,10 +109,13 @@ extension WritingDraftColumn {
           .foregroundStyle(.secondary)
           .font(.footnote)
 
-        TextField("搜索草稿", text: $searchText)
+        TextField(
+          "搜索标题、摘要、标签或路径",
+          text: Binding(get: { searchText }, set: { searchText = $0 })
+        )
           .textFieldStyle(.plain)
           .focused($isSearchFieldFocused)
-          .accessibilityLabel("搜索草稿")
+          .accessibilityLabel("搜索标题、摘要、标签或路径")
           .accessibilityValue(searchText.nilIfEmpty ?? String(localized: "未输入"))
           .accessibilityIdentifier("writing-draft-search")
 
@@ -127,6 +136,22 @@ extension WritingDraftColumn {
       .background(
         WorkbenchBackgroundStyle.control,
         in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
+
+      Button {
+        sceneCommandRouter.draftFullTextSearchAction?.open(
+          DraftFullTextSearchRequest(
+            query: searchText.trimmingCharacters(in: .whitespacesAndNewlines),
+            scope: store.draftListContentScope == .general ? .generalDrafts : .currentSite
+          )
+        )
+      } label: {
+        Label("搜索正文…", systemImage: "doc.text.magnifyingglass")
+      }
+      .buttonStyle(.plain)
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .help("在当前范围内搜索标题、元数据和正文")
+      .accessibilityLabel("打开跨文章全文搜索")
+      .accessibilityIdentifier("writing-draft-full-text-search")
 
       if filter != .all || !searchText.isEmpty {
         HStack(spacing: 6) {

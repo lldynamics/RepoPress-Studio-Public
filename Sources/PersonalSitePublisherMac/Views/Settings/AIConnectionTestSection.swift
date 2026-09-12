@@ -19,8 +19,6 @@ enum AIConnectionTestAvailability: Equatable {
       self = .missingBaseURL
     } else if AIConnectionEndpointValidation.validate(config: config) != .ready {
       self = .invalidEndpoint(AIConnectionEndpointValidation.validate(config: config))
-    } else if config.normalizedModel.isEmpty {
-      self = .missingModel
     } else if config.requiresAPIKey,
       let accessFailureMessage = tokenAvailability.accessFailureMessage
     {
@@ -29,6 +27,8 @@ enum AIConnectionTestAvailability: Equatable {
       self = .missingAPIKey
     } else if !dataSharingConsent.isGranted {
       self = .consentRequired
+    } else if config.normalizedModel.isEmpty {
+      self = .missingModel
     } else {
       self = .ready
     }

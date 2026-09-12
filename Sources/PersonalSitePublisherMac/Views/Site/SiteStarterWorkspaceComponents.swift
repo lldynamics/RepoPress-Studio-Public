@@ -50,7 +50,7 @@ enum SiteStarterWizardStep: String, CaseIterable, Identifiable {
     case .template:
       return String(localized: "新建站点可选 Astro、Hugo、Zola 或 VitePress 起点；导入已有站点时选择其类型。")
     case .localDirectory:
-      return String(localized: "选择一个空文件夹作为本地静态站点仓库。")
+      return String(localized: "选择本地静态站点仓库文件夹。")
     case .github:
       return String(localized: "配置 owner/repo/branch，必要时直接创建 GitHub 仓库。")
     case .generate:
@@ -391,6 +391,8 @@ struct SiteStarterLocalDirectoryStep: View {
   let siteStarterResultProfilePath: String?
   let siteStarterImportProfilePath: String?
   let importedDraftCount: Int?
+  let preflight: SiteStarterDirectoryPreflight?
+  let selectedImportKind: SiteKind
 
   let selectDirectory: () -> Void
 
@@ -435,6 +437,14 @@ struct SiteStarterLocalDirectoryStep: View {
           .foregroundStyle(.secondary)
       }
 
+      if !rootPath.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        SiteStarterDirectoryPreflightSummary(
+          preflight: preflight,
+          mode: mode,
+          selectedImportKind: selectedImportKind
+        )
+      }
+
       if let path = siteStarterResultProfilePath {
         Divider()
         let generatedPathLabel = String(format: String(localized: "已生成到 %@"), path)
@@ -459,6 +469,139 @@ struct SiteStarterLocalDirectoryStep: View {
   }
 }
 
+struct SiteStarterInitialSiteChoice: View {
+  let writeAction: () -> Void
+  let connectAction: () -> Void
+  let createAction: () -> Void
+
+  var body: some View {
+    SiteStarterWizardPanel(title: "从这里开始", systemImage: "flag.checkered") {
+      Text("还没有配置站点。先写文章，或连接/新建一个站点后再发布。")
+        .font(.callout)
+        .foregroundStyle(.secondary)
+      HStack(spacing: 10) {
+        Button(action: writeAction) {
+          Label("先写文章", systemImage: "square.and.pencil")
+        }
+        .buttonStyle(.bordered)
+        Button(action: connectAction) {
+          Label("连接已有站点", systemImage: "link")
+        }
+        .buttonStyle(.bordered)
+        Button(action: createAction) {
+          Label("新建站点", systemImage: "plus.circle")
+        }
+        .workbenchProminentActionStyle()
+      }
+    }
+    .accessibilityIdentifier("site-starter-initial-choices")
+  }
+}
+
+struct SiteStarterDirectoryPreflightSummary: View {
+  let preflight: SiteStarterDirectoryPreflight?
+  let mode: SiteStarterMode
+  let selectedImportKind: SiteKind
+
+  var body: some View {
+    Group {
+      if let preflight {
+        if let readErrorMessage = preflight.readErrorMessage {
+          Label("无法完整读取目录：\(readErrorMessage)", systemImage: "xmark.octagon")
+            .foregroundStyle(WorkbenchTheme.warning)
+        } else if !preflight.exists {
+          Label(
+            preflight.parentIsWritable
+              ? String(localized: "目录尚不存在；生成时会创建它，实际写入前仍会验证。")
+              : String(localized: "目录尚不存在，且父目录不可写。"),
+            systemImage: preflight.parentIsWritable ? "folder.badge.plus" : "xmark.octagon"
+          )
+          .foregroundStyle(preflight.parentIsWritable ? .secondary : WorkbenchTheme.warning)
+        } else if !preflight.isDirectory {
+          Label("所选路径不是目录；生成或导入前会再次验证路径。", systemImage: "xmark.octagon")
+            .foregroundStyle(WorkbenchTheme.warning)
+        } else {
+          VStack(alignment: .leading, spacing: 6) {
+            Label("只读预检", systemImage: "eye")
+              .font(.caption.weight(.semibold))
+              .foregroundStyle(.secondary)
+            Text(directorySummary(preflight))
+              .font(.caption)
+              .foregroundStyle(.secondary)
+            if mode == .importExisting {
+              importKindSummary(preflight)
+            } else if (preflight.visibleEntryCount ?? 0) > 0 {
+              Label("新建站点要求空文件夹；实际写入前仍会执行安全检查。", systemImage: "exclamationmark.triangle")
+                .font(.caption)
+                .foregroundStyle(WorkbenchTheme.warning)
+            }
+            if preflight.traversalWasCapped {
+              Label(
+                String(
+                  format: String(localized: "内容目录已达到预检上限；显示的是前 %lld 个条目的计数。"),
+                  SiteStarterDirectoryPreflightService.maximumTraversalEntries
+                ),
+                systemImage: "gauge.with.dots.needle.67percent"
+              )
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            }
+          }
+        }
+      } else {
+        Label("正在读取目录信息…", systemImage: "eye")
+          .font(.caption)
+          .foregroundStyle(.secondary)
+      }
+    }
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .padding(10)
+    .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
+    .accessibilityElement(children: .combine)
+    .accessibilityIdentifier("site-starter-directory-preflight")
+  }
+
+  private func directorySummary(_ preflight: SiteStarterDirectoryPreflight) -> String {
+    let git = preflight.isGitRepository ? String(localized: "Git 仓库") : String(localized: "非 Git 目录")
+    let entryCount = preflight.visibleEntryCount.map(String.init) ?? String(localized: "无法读取")
+    let articleCount = preflight.markdownFileCount.map(String.init) ?? String(localized: "无法读取")
+    let access = [preflight.isReadable ? String(localized: "可读") : String(localized: "不可读"), preflight.isWritable ? String(localized: "可写") : String(localized: "不可写")]
+      .joined(separator: " · ")
+    return String(
+      format: String(localized: "%@ 个顶层项目 · %@/ 中 %@ 个 Markdown/MDX 文件 · %@ · %@"),
+      entryCount, preflight.selectedContentRootPath, articleCount, git, access
+    )
+  }
+
+  @ViewBuilder
+  private func importKindSummary(_ preflight: SiteStarterDirectoryPreflight) -> some View {
+    if preflight.detectionIsAmbiguous {
+      Label(
+        "检测结果不明确：\(preflight.detectionEvidence.joined(separator: "、"))；当前仍按 \(selectedImportKind.localizedDisplayName) 的内容目录导入。",
+        systemImage: "questionmark.folder"
+      )
+      .font(.caption)
+      .foregroundStyle(WorkbenchTheme.warning)
+    } else if let detectedKind = preflight.detectedSiteKind {
+      let evidence = preflight.detectionEvidence.isEmpty ? "" : "（\(preflight.detectionEvidence.joined(separator: "、"))）"
+      let detectedRoot = preflight.detectedContentRootPath.map { String(localized: "，建议内容目录 \($0)") } ?? ""
+      Label(
+        "检测到 \(detectedKind.localizedDisplayName)\(evidence)\(detectedRoot)；当前将按 \(selectedImportKind.localizedDisplayName) 导入。",
+        systemImage: detectedKind == selectedImportKind ? "checkmark.circle" : "slider.horizontal.3"
+      )
+      .font(.caption)
+      .foregroundStyle(detectedKind == selectedImportKind ? WorkbenchTheme.success : WorkbenchTheme.warning)
+    } else {
+      Label(
+        "未识别站点配置；将按你选择的 \(selectedImportKind.localizedDisplayName) 导入。",
+        systemImage: "questionmark.folder"
+      )
+      .font(.caption)
+      .foregroundStyle(.secondary)
+    }
+  }
+}
+
 struct SiteStarterGitHubStep: View {
   let githubOwner: Binding<String>
   let githubRepo: Binding<String>
@@ -469,12 +612,14 @@ struct SiteStarterGitHubStep: View {
   let createsPrivateRepository: Binding<Bool>
   let canCreateGitHubRepository: Bool
   let isRepositoryOperationRunning: Bool
+  let repositoryTokenAvailability: KeychainTokenAvailability
   let hasVerifiedExistingRepository: Bool
   let remoteRepositoryURL: String?
   let remoteRepositoryHTMLURL: String?
   let remoteRepositoryName: String?
   let createAction: () -> Void
   let verifyExistingAction: () -> Void
+  let openRepositoryTokenSettings: () -> Void
 
   var body: some View {
     SiteStarterWizardPanel(title: String(localized: "GitHub"), systemImage: "point.3.connected.trianglepath.dotted") {
@@ -505,6 +650,12 @@ struct SiteStarterGitHubStep: View {
         .accessibilityValue(
           createsPrivateRepository.wrappedValue ? String(localized: "开启") : String(localized: "关闭")
         )
+
+      Label("填写 Owner、Repo 和分支后，可创建仓库或验证已有仓库。验证会实际检查读写权限，不会只因检测到 Token 就通过。", systemImage: "checkmark.shield")
+        .font(.caption)
+        .foregroundStyle(.secondary)
+
+      repositoryCredentialStatus
 
       if !createsPrivateRepository.wrappedValue {
         Label {
@@ -540,12 +691,6 @@ struct SiteStarterGitHubStep: View {
         }
       }
 
-      if hasVerifiedExistingRepository, remoteRepositoryName == nil {
-        Label("已验证远端仓库可读且可写", systemImage: "checkmark.shield.fill")
-          .font(.caption)
-          .foregroundStyle(WorkbenchTheme.success)
-      }
-
       if let repositoryName = remoteRepositoryName {
         Divider()
         Label(repositoryName, systemImage: "checkmark.circle")
@@ -556,6 +701,31 @@ struct SiteStarterGitHubStep: View {
           .foregroundStyle(.secondary)
           .workbenchTruncatedIdentity(remoteURL, lineLimit: 2)
       }
+    }
+  }
+
+  @ViewBuilder
+  private var repositoryCredentialStatus: some View {
+    if let failureMessage = repositoryTokenAvailability.accessFailureMessage {
+      Label("无法读取 GitHub 凭据：\(failureMessage)", systemImage: "xmark.octagon")
+        .font(.caption)
+        .foregroundStyle(WorkbenchTheme.warning)
+      Button("打开 GitHub 令牌设置", action: openRepositoryTokenSettings)
+        .buttonStyle(.link)
+    } else if !repositoryTokenAvailability.hasToken {
+      Label("未保存 GitHub 凭据；创建或验证时仍会进行实际权限检查。", systemImage: "key.slash")
+        .font(.caption)
+        .foregroundStyle(WorkbenchTheme.warning)
+      Button("打开 GitHub 令牌设置", action: openRepositoryTokenSettings)
+        .buttonStyle(.link)
+    } else if hasVerifiedExistingRepository {
+      Label("已验证远端仓库可读且可写", systemImage: "checkmark.shield.fill")
+        .font(.caption)
+        .foregroundStyle(WorkbenchTheme.success)
+    } else {
+      Label("检测到已保存 GitHub 凭据；尚未验证此仓库的读写权限。", systemImage: "key")
+        .font(.caption)
+        .foregroundStyle(.secondary)
     }
   }
 }
@@ -603,6 +773,7 @@ struct SiteStarterGenerateStep: View {
             isCreateMode ? String(localized: "生成站点") : String(localized: "导入已有仓库"),
             systemImage: isCreateMode ? "wand.and.stars" : "tray.and.arrow.down"
           )
+
         }
       }
       .workbenchProminentActionStyle()
@@ -796,7 +967,12 @@ struct SiteStarterDeploymentStep: View {
   let deploymentGuidePath: String?
   let deploymentCommands: [String]
   let deploymentStatusMessage: String?
+  let pushedCommitSHA: String?
+  let siteURL: String?
   let copyCommands: ([String]) -> Void
+  let checkDeploymentStatus: () -> Void
+  let openHistory: () -> Void
+  let openSite: () -> Void
 
   var body: some View {
     SiteStarterWizardPanel(title: String(localized: "部署状态"), systemImage: "checkmark.icloud") {
@@ -805,7 +981,7 @@ struct SiteStarterDeploymentStep: View {
           .font(.callout)
           .foregroundStyle(.secondary)
       } else {
-        Text("首次推送后，到 GitHub 仓库的 Pages / Actions 确认构建状态。后续文章发布会在发布记录里持续追踪部署。")
+        Text("推送成功表示提交已到远端。检查部署会核对对应发布记录；首次推送尚无记录时，打开本次提交页面查看 GitHub 检查结果。")
           .font(.callout)
           .foregroundStyle(.secondary)
       }
@@ -839,6 +1015,29 @@ struct SiteStarterDeploymentStep: View {
         Text(message)
           .font(.caption)
           .foregroundStyle(.secondary)
+      }
+
+      if let pushedCommitSHA {
+        Divider()
+        Label("已推送 \(pushedCommitSHA.prefix(8))；下一步确认部署。", systemImage: "arrow.up.circle.fill")
+          .font(.caption)
+          .foregroundStyle(WorkbenchTheme.success)
+        HStack(spacing: 10) {
+          Button(action: checkDeploymentStatus) {
+            Label("检查部署状态", systemImage: "arrow.clockwise")
+          }
+          .buttonStyle(.bordered)
+          Button(action: openHistory) {
+            Label("查看发布记录", systemImage: "clock.arrow.circlepath")
+          }
+          .buttonStyle(.bordered)
+          if let siteURL, URL(string: siteURL) != nil {
+            Button(action: openSite) {
+              Label("打开站点", systemImage: "safari")
+            }
+            .buttonStyle(.bordered)
+          }
+        }
       }
     }
   }
