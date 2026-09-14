@@ -674,6 +674,50 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
     XCTAssertFalse(previewJSON.contains(rotatedCredential))
   }
 
+  func testCapturedProfileWithChangedStoredConnectionDriftsBeforeCredentialLookup() async throws {
+    let transport = RecordingAIChatTransport(data: Data(), statusCode: 200)
+    let persistenceURL = FileManager.default.temporaryDirectory
+      .appendingPathComponent("AIStoredConnectionDrift-\(UUID().uuidString).json")
+    defer { try? FileManager.default.removeItem(at: persistenceURL) }
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: persistenceURL),
+      keychainTokenStore: aiTokenStoreForTest(),
+      aiPublishingAssistantService: AIPublishingAssistantService(
+        client: AIChatCompletionClient(transport: transport)
+      ),
+      aiDataSharingConsentStore: AIDataSharingConsentStore(defaults: testConsentDefaults)
+    )
+    var connection = store.activeAIConnectionProfile
+    connection.config = streamingSupportedConfig(
+      AIProviderConfig(
+        preset: .custom, baseURL: "https://api.openai.example/v1",
+        model: "captured-model", requiresAPIKey: true
+      )
+    )
+    XCTAssertTrue(store.updateAIConnectionProfile(connection))
+    let capturedProfile = store.activeProfile
+    let capturedConnectionID = try XCTUnwrap(capturedProfile.aiConnectionProfileID)
+    let capturedConfig = AIOutboundPayloadPrivacyService().sanitizedProviderConfig(
+      store.aiProviderConfig(for: capturedProfile)
+    )
+
+    var currentConnection = store.activeAIConnectionProfile
+    currentConnection.config.model = "current-model"
+    XCTAssertTrue(store.updateAIConnectionProfile(currentConnection))
+
+    XCTAssertThrowsError(
+      try store.aiStore.aiChatAvailableAPIKey(
+        for: capturedProfile,
+        matching: capturedConfig,
+        connectionProfileID: capturedConnectionID
+      )
+    ) { error in
+      XCTAssertEqual(error as? AIOutboundPayloadConfirmationError, .drifted)
+    }
+    let requestCount = await transport.capturedRequestCount()
+    XCTAssertEqual(requestCount, 0)
+  }
+
   func testStoreBatchesRapidStreamingMessagePublications() async throws {
     let streamLines =
       (0..<80).flatMap { _ in

@@ -62,9 +62,11 @@ public struct RepositoryWorktreePushRetryService: Sendable {
     profile: SiteProfile,
     confirmation: RepositoryWorktreePushRetryConfirmation
   ) throws -> RepositoryWorktreePublishResult {
-    guard RepositoryWorktreeFileReview.isComplete(
-      entries: confirmation.snapshot.entries, reviews: confirmation.fileReviews
-    ) else { throw RepositoryWorktreePublishError.incompleteReview }
+    guard confirmation.snapshot.isHistoryReviewComplete,
+      RepositoryWorktreeFileReview.isComplete(
+        entries: confirmation.snapshot.entries, reviews: confirmation.fileReviews
+      )
+    else { throw RepositoryWorktreePublishError.incompleteReview }
     let current = try prepare(profile: profile)
     guard current.snapshot == confirmation.snapshot,
       current.safetyReport == confirmation.safetyReport,
@@ -80,7 +82,7 @@ public struct RepositoryWorktreePushRetryService: Sendable {
     }
     let result = git.run(
       [
-        "push", "--porcelain", "origin",
+        "push", "--porcelain", "--no-follow-tags", "--recurse-submodules=no", "origin",
         "\(snapshot.localHeadSHA):refs/heads/\(snapshot.branch)",
       ],
       rootURL: rootURL
@@ -117,7 +119,8 @@ public struct RepositoryWorktreePushRetryService: Sendable {
       .recoverIfNeeded(profile: profile, root: root)
     let topLevel = try output(["rev-parse", "--show-toplevel"], root: root)
       .trimmedForPublishing
-    guard URL(fileURLWithPath: topLevel, isDirectory: true).standardizedFileURL.path == root.path else {
+    guard URL(fileURLWithPath: topLevel, isDirectory: true).standardizedFileURL.path == root.path
+    else {
       throw RepositoryWorktreePublishError.invalidRepository("配置目录不是 Git 工作树根目录。")
     }
     let branchResult = git.run(
@@ -193,6 +196,8 @@ public struct RepositoryWorktreePushRetryService: Sendable {
     guard let commitCount = Int(commitCountText), commitCount > 0 else {
       throw RepositoryWorktreePublishError.invalidRepository("无法确认待推送的本地提交。")
     }
+    let commitReviews = try validateOutgoingHistory(
+      base: remoteBranchSHA, head: localHeadSHA, count: commitCount, root: root)
     let rawDiff = try output(
       [
         "diff", "--name-status", "-z", "--find-renames",
@@ -236,8 +241,79 @@ public struct RepositoryWorktreePushRetryService: Sendable {
       localHeadSHA: localHeadSHA,
       localTreeSHA: localTreeSHA,
       commitCount: commitCount,
-      entries: entries
+      entries: entries,
+      commitReviews: commitReviews
     )
+  }
+
+  /// A clean final tree can still transmit deleted secrets or unsupported blobs
+  /// through earlier commits. Walk every outgoing commit, including merge
+  /// parent differences, and fail closed if the bounded inspection is incomplete.
+  private func validateOutgoingHistory(base: String, head: String, count: Int, root: URL) throws
+    -> [RepositoryWorktreePushRetryCommitReview]
+  {
+    guard count <= 500 else {
+      throw RepositoryWorktreePublishError.invalidRepository(
+        CoreL10n.text("待推送提交超过 500 个，请先在 Git 工具中审阅历史。"))
+    }
+    let commits = try output(["rev-list", "\(base)..\(head)"], root: root)
+      .split(whereSeparator: { $0.isWhitespace }).map(String.init)
+    guard commits.count == count else {
+      throw RepositoryWorktreePublishError.invalidRepository(CoreL10n.text("待推送历史不完整，已停止推送。"))
+    }
+    var checkedBlobs: Set<String> = []
+    var reviews: [RepositoryWorktreePushRetryCommitReview] = []
+    var remainingReviewBytes = 32 * 1_024 * 1_024
+    for commit in commits {
+      let changes = try parseDiff(
+        output(
+          [
+            "diff-tree", "--root", "-m", "--no-commit-id", "--no-renames", "--name-status", "-r",
+            "-z", commit, "--",
+          ],
+          root: root, preserveWhitespace: true
+        ))
+      let sensitive = Array(Set(changes.map(\.path).filter(isSensitive))).sorted()
+      guard sensitive.isEmpty else {
+        throw RepositoryWorktreePublishError.sensitivePaths(sensitive)
+      }
+      for change in changes where change.kind != .deleted {
+        let entry = try frozenEntry(change, head: commit, root: root)
+        guard entry.byteSize <= Self.maximumBlobByteCount else {
+          throw RepositoryWorktreePublishError.oversizedPaths([entry.path])
+        }
+        // Pointer detection uses the committed blob, not current worktree attributes.
+        if let oid = entry.blobOID, entry.byteSize <= 1_024, checkedBlobs.insert(oid).inserted {
+          let contents = try output(
+            ["cat-file", "blob", oid], root: root, preserveWhitespace: true)
+          if contents.hasPrefix("version https://git-lfs.github.com/spec/v1\n") {
+            throw RepositoryWorktreePublishError.unsupportedPaths([entry.path])
+          }
+        }
+      }
+      let parent = try output(["rev-parse", "--verify", "\(commit)^"], root: root)
+        .trimmedForPublishing
+      let reviewDiff = try output(
+        ["diff", "--name-status", "--no-renames", "-z", parent, commit, "--"], root: root,
+        preserveWhitespace: true
+      )
+      let entries = try parseDiff(reviewDiff).map { try frozenEntry($0, head: commit, root: root) }
+      let fileReviews = RepositoryWorktreeReviewService(git: git).capture(
+        entries: entries, root: root, baseRevision: parent, targetRevision: commit
+      )
+      guard RepositoryWorktreeFileReview.isComplete(entries: entries, reviews: fileReviews) else {
+        throw RepositoryWorktreePublishError.incompleteReview
+      }
+      remainingReviewBytes -= fileReviews.reduce(0) { $0 + $1.patch.utf8.count }
+      guard remainingReviewBytes >= 0 else {
+        throw RepositoryWorktreePublishError.incompleteReview
+      }
+      reviews.append(
+        RepositoryWorktreePushRetryCommitReview(
+          commitSHA: commit, parentSHA: parent,
+          entries: entries, fileReviews: fileReviews))
+    }
+    return reviews
   }
 
   private func parseDiff(_ value: String) throws -> [RawDiffEntry] {
@@ -265,8 +341,8 @@ public struct RepositoryWorktreePushRetryService: Sendable {
         guard index + 1 < tokens.count else {
           throw RepositoryWorktreePublishError.invalidRepository("无法解析重命名文件清单。")
         }
-        let sourcePath = tokens[index].normalizedRelativePath()
-        let path = tokens[index + 1].normalizedRelativePath()
+        let sourcePath = tokens[index]
+        let path = tokens[index + 1]
         index += 2
         try validateRelativePath(sourcePath)
         try validateRelativePath(path)
@@ -277,7 +353,7 @@ public struct RepositoryWorktreePushRetryService: Sendable {
         guard index < tokens.count else {
           throw RepositoryWorktreePublishError.invalidRepository("无法解析待推送文件清单。")
         }
-        let path = tokens[index].normalizedRelativePath()
+        let path = tokens[index]
         index += 1
         try validateRelativePath(path)
         entries.append(RawDiffEntry(kind: kind, status: status, path: path, sourcePath: nil))
@@ -300,14 +376,18 @@ public struct RepositoryWorktreePushRetryService: Sendable {
       )
     }
     let treeEntry = try output(
-      ["ls-tree", "-z", head, "--", raw.path],
+      ["--literal-pathspecs", "ls-tree", "-z", head, "--", raw.path],
       root: root,
       preserveWhitespace: true
     )
-    guard let tab = treeEntry.firstIndex(of: "\t") else {
+    let records = treeEntry.split(separator: "\0", omittingEmptySubsequences: true)
+    guard records.count == 1, let record = records.first,
+      let tab = record.firstIndex(of: "\t"),
+      String(record[record.index(after: tab)...]) == raw.path
+    else {
       throw RepositoryWorktreePublishError.invalidRepository("无法读取待推送文件：\(raw.path)")
     }
-    let header = treeEntry[..<tab].split(separator: " ")
+    let header = record[..<tab].split(separator: " ")
     guard header.count == 3, header[1] == "blob" else {
       throw RepositoryWorktreePublishError.unsupportedPaths([raw.path])
     }
@@ -386,7 +466,8 @@ public struct RepositoryWorktreePushRetryService: Sendable {
     }
     let repositoryName = localURL.deletingPathExtension().lastPathComponent
     let expectedName = profile.repoName.trimmedForPublishing
-    let expectedOwner = profile.repoOwner.trimmedForPublishing
+    let expectedOwner =
+      profile.repoOwner.trimmedForPublishing
       .split(separator: "/").last.map(String.init) ?? ""
     guard !expectedName.isEmpty,
       repositoryName.caseInsensitiveCompare(expectedName) == .orderedSame,

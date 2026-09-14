@@ -151,7 +151,7 @@ struct AIBatchMaintenancePanel: View {
       GroupBox("队列") {
         VStack(alignment: .leading, spacing: 10) {
           HStack {
-            Text("\(queue.operation.title) · \(queue.modelName)")
+            Text("\(queue.operation.title) · \(queue.displayModelName)")
             Spacer()
             Text("\(queue.processedCount)/\(queue.totalCount)")
               .monospacedDigit()
@@ -215,6 +215,9 @@ struct AIBatchMaintenancePanel: View {
       HStack {
         Text(item.draftTitle.nilIfEmpty ?? String(localized: "未命名文章")).font(
           .subheadline.weight(.semibold))
+        if let modelName = item.modelName ?? queue?.modelName {
+          Text(modelName).font(.caption).foregroundStyle(.secondary)
+        }
         Spacer()
         Text(statusTitle(item.status)).font(.caption).foregroundStyle(.secondary)
         if item.status == .ready {
@@ -229,6 +232,24 @@ struct AIBatchMaintenancePanel: View {
             Button("应用") { _ = maintenance.apply(itemID: item.id, siteProfileID: siteProfileID) }
               .disabled(!current || maintenance.runningSiteID != nil)
           }
+          if !current {
+            Button("丢弃陈旧结果") {
+              _ = maintenance.discardStaleResult(itemID: item.id, siteProfileID: siteProfileID)
+            }
+            .disabled(maintenance.runningSiteID != nil)
+          }
+        }
+        if item.status != .running && item.status != .applied {
+          Button("重新生成") {
+            _ = maintenance.regenerate(itemID: item.id, siteProfileID: siteProfileID)
+          }
+          .disabled(maintenance.runningSiteID != nil)
+        }
+        if [.pending, .ready, .failed].contains(item.status) {
+          Button("跳过") {
+            _ = maintenance.skip(itemID: item.id, siteProfileID: siteProfileID)
+          }
+          .disabled(maintenance.runningSiteID != nil)
         }
         if item.status == .ready && !maintenance.isCurrent(item: item, siteProfileID: siteProfileID)
         {

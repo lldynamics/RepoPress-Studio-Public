@@ -38,9 +38,9 @@ public enum AIChatContentSegment: Hashable, Identifiable, Sendable {
 
   public var id: String {
     switch self {
-    case let .text(id, _):
+    case .text(let id, _):
       return id
-    case let .code(block):
+    case .code(let block):
       return block.id
     }
   }
@@ -86,21 +86,25 @@ public enum AIChatCodeBlockPresentationService {
             segments: &segments
           )
 
-          let rawContent = source.substring(with: NSRange(
-            location: codeContentStart,
-            length: max(0, lineStart - codeContentStart)
-          ))
+          let rawContent = source.substring(
+            with: NSRange(
+              location: codeContentStart,
+              length: max(0, lineStart - codeContentStart)
+            ))
           let codeContent = trimTrailingLineBreak(from: rawContent)
-          let fencedMarkdown = source.substring(with: NSRange(
-            location: activeOpening.start,
-            length: max(0, contentsEnd - activeOpening.start)
-          ))
-          segments.append(.code(AIChatCodeBlock(
-            id: "ai-code-block-" + String(nextCodeID),
-            language: activeOpening.language,
-            content: codeContent,
-            fencedMarkdown: fencedMarkdown
-          )))
+          let fencedMarkdown = source.substring(
+            with: NSRange(
+              location: activeOpening.start,
+              length: max(0, contentsEnd - activeOpening.start)
+            ))
+          segments.append(
+            .code(
+              AIChatCodeBlock(
+                id: "ai-code-block-" + String(nextCodeID),
+                language: activeOpening.language,
+                content: codeContent,
+                fencedMarkdown: fencedMarkdown
+              )))
           nextCodeID += 1
           opening = nil
           textStart = lineEnd
@@ -173,7 +177,8 @@ public enum AIChatCodeBlockPresentationService {
     if marker == 96, info.contains("`") {
       return nil
     }
-    let language = info
+    let language =
+      info
       .split(whereSeparator: { $0 == " " || $0 == "\t" })
       .first
       .map(String.init)
@@ -199,7 +204,8 @@ public enum AIChatCodeBlockPresentationService {
       cursor += 1
     }
     guard indentation <= 3, cursor < end,
-          source.character(at: cursor) == opening.marker else { return false }
+      source.character(at: cursor) == opening.marker
+    else { return false }
 
     let markerStart = cursor
     while cursor < end, source.character(at: cursor) == opening.marker {
@@ -254,8 +260,9 @@ public enum AIChatMarkdownInsertionService {
     let body = bodyMarkdown as NSString
     let selection = selection ?? NSRange(location: body.length, length: 0)
     guard selection.location >= 0,
-          selection.length >= 0,
-          NSMaxRange(selection) <= body.length else {
+      selection.length >= 0,
+      NSMaxRange(selection) <= body.length
+    else {
       return nil
     }
 
@@ -267,15 +274,17 @@ public enum AIChatMarkdownInsertionService {
       replacementRange = NSRange(location: selection.location, length: 0)
     }
 
-    let before = body.substring(with: NSRange(
-      location: 0,
-      length: replacementRange.location
-    ))
+    let before = body.substring(
+      with: NSRange(
+        location: 0,
+        length: replacementRange.location
+      ))
     let afterStart = NSMaxRange(replacementRange)
-    let after = body.substring(with: NSRange(
-      location: afterStart,
-      length: body.length - afterStart
-    ))
+    let after = body.substring(
+      with: NSRange(
+        location: afterStart,
+        length: body.length - afterStart
+      ))
     let leadingSeparator = before.isEmpty || before.hasSuffix("\n") ? "" : "\n\n"
     let trailingSeparator = after.isEmpty || after.hasPrefix("\n") ? "" : "\n\n"
     let replacement = leadingSeparator + fragment + trailingSeparator

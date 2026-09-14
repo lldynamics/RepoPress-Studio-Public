@@ -23,7 +23,7 @@ struct AIModelMetadataView: View {
         Text("服务商未返回价格，请查看账户计费说明。")
       }
     }
-    .font(.caption2)
+    .font(.workbenchMetadata)
     .foregroundStyle(.secondary)
   }
 }

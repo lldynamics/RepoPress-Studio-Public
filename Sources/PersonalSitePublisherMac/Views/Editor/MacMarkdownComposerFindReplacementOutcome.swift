@@ -1,5 +1,5 @@
 import Foundation
-import PublishingWorkbenchCore
+import PublishingMarkdownCore
 
 struct MarkdownPendingFindReplacement {
   let requestID: UUID
@@ -20,7 +20,8 @@ struct MarkdownPendingFindReplacement {
     let selectedText = (selection.selectedText as NSString).replacingCharacters(
       in: relativeRange, with: edit.replacement
     )
-    let newRange = NSRange(location: selection.range.location, length: (selectedText as NSString).length)
+    let newRange = NSRange(
+      location: selection.range.location, length: (selectedText as NSString).length)
     let result = MarkdownFindScopeSnapshot(
       draftID: draftID, bodyRevision: bodyRevision, range: newRange, selectedText: selectedText
     )

@@ -435,6 +435,31 @@
       "file": "Tests/PublishingWorkbenchCoreTests/RSSArticlePageClientTests.swift",
       "declaration": "Probe",
       "rationale": "The async download test probe protects every captured request field with one NSLock before observations cross task boundaries."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/Services/AIComponentProcessRunner.swift",
+      "declaration": "AIComponentProcessRunner",
+      "rationale": "Process identity, output buffers, stop reasons, timeout task, pipe state, and the single continuation are all read or mutated while holding one NSLock; callbacks only publish immutable output fragments."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/Services/ManagedURLSession.swift",
+      "declaration": "ManagedURLSession",
+      "rationale": "Lazy session creation and cached-session access are serialized by one NSLock; injected session ownership is immutable and deinit only invalidates an owned session."
+    },
+    {
+      "file": "Tests/PublishingWorkbenchCoreTests/ManagedURLSessionTests.swift",
+      "declaration": "SessionFactoryProbe",
+      "rationale": "The test factory's sole mutable creation count is protected by one NSLock while it is called from a Sendable factory closure."
+    },
+    {
+      "file": "Tests/PublishingWorkbenchCoreTests/ManagedURLSessionTests.swift",
+      "declaration": "InvalidationObserver",
+      "rationale": "The delegate protects its invalidation counter with one NSLock before assertions read it; XCTest expectation fulfillment is thread-safe."
+    },
+    {
+      "file": "Tests/PublishingWorkbenchCoreTests/RepositoryRebaseSyncServiceTests.swift",
+      "declaration": "RecoveryPhaseRecorder",
+      "rationale": "The test recorder's phase array is appended and read only while holding one NSLock as recovery callbacks may cross concurrency boundaries."
     }
   ],
   "forcedOperations": [
@@ -765,10 +790,70 @@
       "rationale": "Opening an article treats the persisted full-text cache as an optional read-through probe; an unreadable record falls back to the in-memory summary and the explicit fetch path."
     },
     {
+      "file": "Sources/PersonalSitePublisherMac/Views/Publishing/PublishDrawerView.swift",
+      "category": "validationFallback",
+      "contains": "try? SinglePublishReviewSnapshot(",
+      "rationale": "The snapshot validates attachment state before any publish action is enabled; construction failure leaves the review nil and shows a warning instead of publishing."
+    },
+    {
       "file": "Sources/PersonalSitePublisherMac/Views/RSS/RSSReaderPresentationState.swift",
-      "category": "cacheBestEffort",
-      "contains": "try? await store.saveFullTextRecordAsync(",
-      "rationale": "Full-text records are an auxiliary SQLite cache: ready or preserved content is already held in memory, while failed records carry only retry diagnostics; if persistence fails, the UI retains the current article or error and a later request can safely re-fetch or revalidate it."
+      "category": "probeFallback",
+      "contains": "try? await store.loadArticle(id: record.articleID)",
+      "rationale": "Cache restoration re-reads the current article only to verify the stored record still matches; an unreadable article returns nil and never presents stale cache content."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/Models/SinglePublishReviewExpectation.swift",
+      "category": "validationFallback",
+      "contains": "try? Self.mediaDigests(package)",
+      "rationale": "A media digest failure makes the immutable publish expectation mismatch, so the caller must rebuild and review rather than treating the package as current."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/Services/AIModelDiscoveryService.swift",
+      "category": "parsing",
+      "contains": "try? container.decodeIfPresent(",
+      "rationale": "Provider model metadata fields are optional and independently malformed values are omitted while the required model identifier remains decoded and validated."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/Services/AIWritingStyleProfileService.swift",
+      "category": "validationFallback",
+      "contains": "try? exemplarContext(",
+      "rationale": "A preview is reusable only when its exemplar context can be reconstructed and fingerprinted; failure returns nil and forces a new preview."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/Services/LocalRepositoryService+OperationLifecycle.swift",
+      "category": "probeFallback",
+      "contains": "try? readOperationLifecycle(rootURL: rootURL)",
+      "rationale": "After a failed Git operation, lifecycle inspection only recognizes an existing unresolved rebase; a read failure falls through to the original operation failure without mutating recovery state."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/Services/RepositoryWorktreePublishService.swift",
+      "category": "probeFallback",
+      "contains": "try? output([\"rev-parse\", \"HEAD\"], root: root)",
+      "rationale": "The commit SHA appears only in failure diagnostics; an unavailable repository identity is displayed as unknown and cannot affect publish or rollback control flow."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/Services/RepositoryWorktreePublishTransitionCoordinator.swift",
+      "category": "externalRollbackCleanup",
+      "contains": "try? removeOwnedArtifacts(transition)",
+      "rationale": "This only removes transition-owned marker, journal, and temporary index artifacts after a failed pre-HEAD operation; the original error is preserved and later recovery detects any remaining artifacts."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/Services/SiteStarterService.swift",
+      "category": "probeFallback",
+      "contains": "try? await runGitOutputAsync([\"rev-parse\", \"--verify\", \"HEAD^{commit}\"]",
+      "rationale": "Recovery first probes whether an existing commit exists; failure returns nil and does not construct or push a recovered starter commit."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/Stores/RepositoryWorktreeReleaseRecording.swift",
+      "category": "validationFallback",
+      "contains": "try? Data(",
+      "rationale": "Release recording accepts a draft only after its on-disk file can be read, decoded, and matched to the frozen review entry; any read failure returns no record."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/Stores/WorkbenchStore+SafeTermination.swift",
+      "category": "validationFallback",
+      "contains": "try? savedSnapshotMatches(proof.snapshot)",
+      "rationale": "Termination proof is valid only when the primary persisted snapshot can be read and matches exactly; failure rejects safe termination."
     }
   ],
   "optionalOperationRules": [

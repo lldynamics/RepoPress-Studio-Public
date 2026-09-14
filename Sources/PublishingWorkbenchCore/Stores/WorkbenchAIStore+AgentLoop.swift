@@ -400,12 +400,22 @@ extension WorkbenchAIStore {
       prepared: authorizedTransport.payload,
       privacyService: privacyService
     )
-    let token = try aiChatAvailableAPIKey(for: initialRequest.profile)
+    let connectionProfileID = try aiChatConnectionProfileID(
+      for: initialRequest.profile,
+      matching: refreshedConfig
+    )
     try await validateAgentKnowledgeAuthorization(
       bindings: initialRequest.knowledgeContext?.authorizationBindings ?? [],
       policy: initialRequest.knowledgePolicy,
       failureState: knowledgeAuthorizationState
     )
+    try checkAIChatOperation(operationID)
+    let token = try aiChatAvailableAPIKey(
+      for: initialRequest.profile,
+      matching: refreshedConfig,
+      connectionProfileID: connectionProfileID
+    )
+    try checkAIChatOperation(operationID)
     try authorization.consume()
     try checkAIChatOperation(operationID)
     return try await aiPublishingAssistantService.completePreparedResult(

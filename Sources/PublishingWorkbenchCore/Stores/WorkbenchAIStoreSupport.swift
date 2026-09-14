@@ -6,6 +6,9 @@ final class AIChatOperationCoordinator {
   private var activeOwnerToken: UUID?
   private var activeTarget: WorkbenchTaskTarget?
   private var cancellationRequested = false
+  /// Kept only for the active operation; stale task rows cannot reach a later
+  /// request because registration and cancellation both require its ID.
+  private var activeCancellation: (() -> Void)?
 
   var currentOperationID: UUID? { activeOperationID }
   var currentTarget: WorkbenchTaskTarget? { activeTarget }
@@ -27,6 +30,7 @@ final class AIChatOperationCoordinator {
       return false
     }
     cancellationRequested = true
+    activeCancellation?()
     return true
   }
 
@@ -38,6 +42,7 @@ final class AIChatOperationCoordinator {
     guard isRunning, activeOperationID == expectedOperationID else { return false }
     if let expectedOwnerToken, activeOwnerToken != expectedOwnerToken { return false }
     cancellationRequested = true
+    activeCancellation?()
     return true
   }
 
@@ -51,7 +56,14 @@ final class AIChatOperationCoordinator {
     activeOwnerToken = ownerToken
     activeTarget = target
     cancellationRequested = false
+    activeCancellation = nil
     return operationID
+  }
+
+  func registerCancellation(for operationID: UUID, cancellation: @escaping () -> Void) {
+    guard activeOperationID == operationID else { return }
+    activeCancellation = cancellation
+    if cancellationRequested { cancellation() }
   }
 
   func finish(_ operationID: UUID) -> Bool {
@@ -60,6 +72,7 @@ final class AIChatOperationCoordinator {
     activeOwnerToken = nil
     activeTarget = nil
     cancellationRequested = false
+    activeCancellation = nil
     return true
   }
 
@@ -180,7 +193,8 @@ enum AIChatImageAttachmentLoader {
         failures.append(failure(for: attachment, reason: .emptyFile))
         continue
       }
-      guard AIPublishingChatImageAttachmentPresentation.isWithinAttachmentSizeLimit(Int64(fileSize)) else {
+      guard AIPublishingChatImageAttachmentPresentation.isWithinAttachmentSizeLimit(Int64(fileSize))
+      else {
         failures.append(failure(for: attachment, reason: .exceedsSizeLimit))
         continue
       }
@@ -207,7 +221,9 @@ enum AIChatImageAttachmentLoader {
         failures.append(failure(for: attachment, reason: .emptyFile))
         continue
       }
-      guard AIPublishingChatImageAttachmentPresentation.isWithinAttachmentSizeLimit(Int64(data.count)) else {
+      guard
+        AIPublishingChatImageAttachmentPresentation.isWithinAttachmentSizeLimit(Int64(data.count))
+      else {
         failures.append(failure(for: attachment, reason: .exceedsSizeLimit))
         continue
       }

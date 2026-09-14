@@ -14,24 +14,33 @@ final class ManagedURLSessionTests: XCTestCase {
     XCTAssertEqual(factory.creationCount, 1)
   }
 
-  func testOnlyLastOwnedReferenceInvalidatesSession() {
-    let session = InvalidationCountingSession()
+  func testOnlyLastOwnedReferenceInvalidatesSession() async {
+    let invalidated = expectation(description: "Last owner invalidates session")
+    let delegate = InvalidationObserver(invalidated: invalidated)
+    let session = URLSession(configuration: .ephemeral, delegate: delegate, delegateQueue: nil)
     var owner: ManagedURLSession? = ManagedURLSession(session: session, ownsSession: true)
     var copy = owner
     owner = nil
-    XCTAssertEqual(session.invalidationCount, 0)
+    XCTAssertEqual(delegate.invalidationCount, 0)
     XCTAssertNotNil(copy)
     copy = nil
-    XCTAssertEqual(session.invalidationCount, 1)
+    await fulfillment(of: [invalidated], timeout: 3)
+    XCTAssertEqual(delegate.invalidationCount, 1)
   }
 
-  func testBorrowedSessionIsNeverInvalidatedByTransportOwner() {
-    let session = InvalidationCountingSession()
+  func testBorrowedSessionIsNeverInvalidatedByTransportOwner() async {
+    let invalidated = expectation(description: "Borrowed session stays valid")
+    invalidated.isInverted = true
+    let delegate = InvalidationObserver(invalidated: invalidated)
+    let session = URLSession(configuration: .ephemeral, delegate: delegate, delegateQueue: nil)
     autoreleasepool {
       let owner = ManagedURLSession(session: session)
       XCTAssertTrue(owner.session === session)
     }
-    XCTAssertEqual(session.invalidationCount, 0)
+    await fulfillment(of: [invalidated], timeout: 0.05)
+    XCTAssertEqual(delegate.invalidationCount, 0)
+    delegate.stopObserving()
+    session.invalidateAndCancel()
   }
 
   func testURLOnlyDeploymentCalculationsNeverCreateNetworkSessions() throws {
@@ -63,23 +72,23 @@ private final class SessionFactoryProbe: @unchecked Sendable {
   var creationCount: Int { lock.withLock { count } }
   func makeSession() -> URLSession {
     lock.withLock { count += 1 }
-    return InvalidationCountingSession()
-  }
-}
-
-private final class InvalidationCountingSession: URLSession, @unchecked Sendable {
-  private let countLock = NSLock()
-  private var count = 0
-  var invalidationCount: Int { countLock.withLock { count } }
-  override func finishTasksAndInvalidate() {
-    countLock.withLock { count += 1 }
+    return URLSession(configuration: .ephemeral)
   }
 }
 
 private final class InvalidationObserver: NSObject, URLSessionDelegate, @unchecked Sendable {
+  private let countLock = NSLock()
+  private var count = 0
+  private var isObserving = true
+  var invalidationCount: Int { countLock.withLock { count } }
+  func stopObserving() { countLock.withLock { isObserving = false } }
   let invalidated: XCTestExpectation
   init(invalidated: XCTestExpectation) { self.invalidated = invalidated }
   func urlSession(_ session: URLSession, didBecomeInvalidWithError error: Error?) {
-    invalidated.fulfill()
+    let shouldFulfill = countLock.withLock {
+      count += 1
+      return isObserving
+    }
+    if shouldFulfill { invalidated.fulfill() }
   }
 }

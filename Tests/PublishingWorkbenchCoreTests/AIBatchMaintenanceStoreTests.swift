@@ -79,6 +79,99 @@ final class AIBatchMaintenanceStoreTests: XCTestCase {
     XCTAssertEqual(store.draft(for: drafts[0].id)?.bodyMarkdown, "用户最新的正文内容")
   }
 
+  func testDiscardingStaleResultAndRegeneratingOneItemRetainsOtherReadyResults() async throws {
+    let store = try TestWorkbenchFactory.makeStore()
+    let drafts = makeDrafts(store: store)
+    let siteID = store.activeProfileID
+    var calls = 0
+    let batch = AIBatchMaintenanceStore(store: store) { _, _, _ in
+      calls += 1
+      return self.summary
+    }
+    XCTAssertTrue(
+      batch.create(draftIDs: Set(drafts.map(\.id)), operation: .summary, siteProfileID: siteID))
+    batch.start(siteProfileID: siteID)
+    try await waitUntilIdle(batch)
+
+    let stale = try XCTUnwrap(batch.queue(for: siteID)?.items.first)
+    let retained = try XCTUnwrap(batch.queue(for: siteID)?.items.last)
+    var changed = try XCTUnwrap(store.draft(for: stale.draftID))
+    changed.bodyMarkdown = "用户更新后的正文"
+    store.updateDraft(changed)
+
+    XCTAssertTrue(batch.discardStaleResult(itemID: stale.id, siteProfileID: siteID))
+    XCTAssertEqual(
+      batch.queue(for: siteID)?.items.first(where: { $0.id == stale.id })?.status, .skipped)
+    XCTAssertEqual(
+      batch.queue(for: siteID)?.items.first(where: { $0.id == retained.id })?.status, .ready)
+    XCTAssertTrue(batch.regenerate(itemID: stale.id, siteProfileID: siteID))
+    try await waitUntilIdle(batch)
+
+    XCTAssertEqual(calls, 3)
+    XCTAssertEqual(
+      batch.queue(for: siteID)?.items.first(where: { $0.id == stale.id })?.status, .ready)
+    XCTAssertEqual(
+      batch.queue(for: siteID)?.items.first(where: { $0.id == retained.id })?.status, .ready)
+  }
+
+  func testRegeneratingOneItemCapturesNewModelWithoutRelabelingRetainedReadyResult() async throws {
+    let store = try TestWorkbenchFactory.makeStore()
+    let initialModel = "initial-batch-model"
+    let refreshedModel = "regenerated-item-model"
+    var initialConnection = store.activeAIConnectionProfile
+    initialConnection.config = AIProviderConfig(
+      preset: .local, baseURL: "http://localhost:11434/v1", model: initialModel,
+      requiresAPIKey: false)
+    XCTAssertTrue(store.updateAIConnectionProfile(initialConnection))
+    let drafts = makeDrafts(store: store)
+    let siteID = store.activeProfileID
+    let batch = AIBatchMaintenanceStore(store: store) { _, _, _ in self.summary }
+    XCTAssertTrue(
+      batch.create(draftIDs: Set(drafts.map(\.id)), operation: .summary, siteProfileID: siteID))
+    batch.start(siteProfileID: siteID)
+    try await waitUntilIdle(batch)
+
+    let regenerated = try XCTUnwrap(batch.queue(for: siteID)?.items.first)
+    let retained = try XCTUnwrap(batch.queue(for: siteID)?.items.last)
+    XCTAssertEqual(regenerated.modelName, initialModel)
+    XCTAssertEqual(retained.modelName, initialModel)
+
+    var replacementConnection = store.activeAIConnectionProfile
+    replacementConnection.config.model = refreshedModel
+    XCTAssertTrue(store.updateAIConnectionProfile(replacementConnection))
+
+    XCTAssertTrue(batch.regenerate(itemID: regenerated.id, siteProfileID: siteID))
+    try await waitUntilIdle(batch)
+
+    let queue = try XCTUnwrap(batch.queue(for: siteID))
+    XCTAssertEqual(queue.items.first(where: { $0.id == regenerated.id })?.modelName, refreshedModel)
+    XCTAssertEqual(queue.items.first(where: { $0.id == retained.id })?.modelName, initialModel)
+    XCTAssertEqual(queue.items.first(where: { $0.id == retained.id })?.status, .ready)
+    XCTAssertEqual(queue.displayModelName, CoreL10n.text("多个模型"))
+  }
+
+  func testSkippingPendingItemKeepsItOutOfTheLaterRun() async throws {
+    let store = try TestWorkbenchFactory.makeStore()
+    let drafts = makeDrafts(store: store)
+    let siteID = store.activeProfileID
+    var calls = 0
+    let batch = AIBatchMaintenanceStore(store: store) { _, _, _ in
+      calls += 1
+      return self.summary
+    }
+    XCTAssertTrue(
+      batch.create(draftIDs: Set(drafts.map(\.id)), operation: .summary, siteProfileID: siteID))
+    let skipped = try XCTUnwrap(batch.queue(for: siteID)?.items.first)
+    XCTAssertTrue(batch.skip(itemID: skipped.id, siteProfileID: siteID))
+    batch.start(siteProfileID: siteID)
+    try await waitUntilIdle(batch)
+
+    XCTAssertEqual(calls, 1)
+    XCTAssertEqual(
+      batch.queue(for: siteID)?.items.first(where: { $0.id == skipped.id })?.status, .skipped)
+    XCTAssertEqual(batch.queue(for: siteID)?.readyCount, 1)
+  }
+
   func testRetryFailedDoesNotDispatchUntouchedPendingArticles() async throws {
     let store = try TestWorkbenchFactory.makeStore()
     let drafts = makeDrafts(store: store)

@@ -1,4 +1,5 @@
 import XCTest
+
 @testable import PublishingWorkbenchCore
 
 @MainActor
@@ -122,6 +123,75 @@ final class WorkbenchTaskCenterFacadeTests: XCTestCase {
     XCTAssertEqual(store.aiStore.activeAIChatOperationID, secondOperationID)
     XCTAssertFalse(store.aiStore.aiChatCancellationRequested())
     store.aiStore.finishAIChatOperation(secondOperationID)
+  }
+
+  func testTaskCenterStopCancelsRegisteredRequestTaskAndReleasesAIRequestLane() async throws {
+    let store = makeStore()
+    let draft = try XCTUnwrap(store.selectedDraft)
+    store.aiStore.prepareAIChat(for: draft)
+    _ = try XCTUnwrap(store.aiStore.startNewAIChatConversation(draft: draft))
+    let operationID = try XCTUnwrap(
+      store.aiStore.beginAIChatOperation(statusMessage: "等待首个响应")
+    )
+    let taskRow = try XCTUnwrap(
+      store.activityStatus.taskCenterItems.first { $0.kind == .aiRequest }
+    )
+    let started = expectation(description: "request task started")
+    let cancelled = expectation(description: "request task cancelled")
+    let request = Task { @MainActor in
+      await store.aiStore.runAIChatRequestTask(operationID: operationID) {
+        started.fulfill()
+        defer { store.aiStore.finishAIChatOperation(operationID) }
+        do {
+          try await Task.sleep(nanoseconds: 30_000_000_000)
+        } catch is CancellationError {
+          cancelled.fulfill()
+        } catch {
+          XCTFail("Unexpected request error: \(error)")
+        }
+        return nil
+      }
+    }
+    await fulfillment(of: [started], timeout: 1)
+
+    XCTAssertNil(store.activityStatus.cancelTask(taskRow))
+    await fulfillment(of: [cancelled], timeout: 1)
+    _ = await request.value
+    XCTAssertFalse(store.isAIChatRunning)
+    XCTAssertNil(store.aiStore.activeAIChatOperationID)
+  }
+
+  func testParentTaskCancellationPropagatesToRegisteredRequestTask() async throws {
+    let store = makeStore()
+    let draft = try XCTUnwrap(store.selectedDraft)
+    store.aiStore.prepareAIChat(for: draft)
+    _ = try XCTUnwrap(store.aiStore.startNewAIChatConversation(draft: draft))
+    let operationID = try XCTUnwrap(
+      store.aiStore.beginAIChatOperation(statusMessage: "等待首个响应")
+    )
+    let started = expectation(description: "request task started")
+    let cancelled = expectation(description: "child task cancelled")
+    let parent = Task { @MainActor in
+      await store.aiStore.runAIChatRequestTask(operationID: operationID) {
+        started.fulfill()
+        defer { store.aiStore.finishAIChatOperation(operationID) }
+        do {
+          try await Task.sleep(nanoseconds: 30_000_000_000)
+        } catch is CancellationError {
+          cancelled.fulfill()
+        } catch {
+          XCTFail("Unexpected request error: \(error)")
+        }
+        return nil
+      }
+    }
+    await fulfillment(of: [started], timeout: 1)
+
+    parent.cancel()
+    await fulfillment(of: [cancelled], timeout: 1)
+    _ = await parent.value
+    XCTAssertFalse(store.isAIChatRunning)
+    XCTAssertNil(store.aiStore.activeAIChatOperationID)
   }
 
   func testRunningAIChatTaskKeepsOriginalConversationWhenFocusChanges() throws {
@@ -253,11 +323,13 @@ final class WorkbenchTaskCenterFacadeTests: XCTestCase {
     let task = try XCTUnwrap(
       store.activityStatus.taskCenterItems.first { $0.kind == .aiRequest }
     )
-    guard case .generalAIChat(
-      let taskConversationID,
-      let taskOperationID,
-      let requiresConfirmation
-    )? = task.retryIntent else {
+    guard
+      case .generalAIChat(
+        let taskConversationID,
+        let taskOperationID,
+        let requiresConfirmation
+      )? = task.retryIntent
+    else {
       return XCTFail("expected a typed general AI retry intent")
     }
     XCTAssertEqual(taskConversationID, conversation.id)

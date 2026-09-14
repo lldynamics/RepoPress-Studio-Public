@@ -226,6 +226,7 @@ public enum RepositoryRebaseSyncError: Error, LocalizedError, Hashable, Sendable
   case notDiverged(ahead: Int, behind: Int)
   case operationInProgress(String)
   case unsupportedLocalChanges([String])
+  case mergeHistoryRequiresReview
   case snapshotDrift
   case gitFailed(command: String, output: String)
   case invalidRecoveryContext(String)
@@ -251,6 +252,8 @@ public enum RepositoryRebaseSyncError: Error, LocalizedError, Hashable, Sendable
       "仓库正在进行 \(operation)，请先完成或中止后再同步。"
     case .unsupportedLocalChanges(let paths):
       "存在无法安全封存的本地改动：\(paths.joined(separator: "、"))"
+    case .mergeHistoryRequiresReview:
+      CoreL10n.text("待同步历史包含合并提交，自动变基可能丢失合并时的修改。请先在 Git 工具中审阅并处理合并历史，本地提交和改动已保留。")
     case .snapshotDrift: "审阅后的仓库、远端或本地改动已变化，请重新确认。"
     case .gitFailed(let command, let output): "Git 命令失败：\(command)\n\(output)"
     case .invalidRecoveryContext(let message): "恢复上下文无效：\(message)"

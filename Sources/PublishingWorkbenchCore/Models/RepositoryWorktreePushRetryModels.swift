@@ -1,5 +1,23 @@
 import Foundation
 
+public struct RepositoryWorktreePushRetryCommitReview: Hashable, Sendable, Identifiable {
+  public let commitSHA: String
+  public let parentSHA: String
+  public let entries: [RepositoryWorktreePublishEntry]
+  public let fileReviews: [RepositoryWorktreeFileReview]
+  public var id: String { commitSHA }
+
+  public init(
+    commitSHA: String, parentSHA: String, entries: [RepositoryWorktreePublishEntry],
+    fileReviews: [RepositoryWorktreeFileReview]
+  ) {
+    self.commitSHA = commitSHA
+    self.parentSHA = parentSHA
+    self.entries = entries
+    self.fileReviews = fileReviews
+  }
+}
+
 /// Frozen evidence for commits that exist locally but have not reached the
 /// configured remote branch. It can be rebuilt after relaunch from Git itself.
 public struct RepositoryWorktreePushRetrySnapshot: Hashable, Sendable {
@@ -13,6 +31,15 @@ public struct RepositoryWorktreePushRetrySnapshot: Hashable, Sendable {
   public let localTreeSHA: String
   public let commitCount: Int
   public let entries: [RepositoryWorktreePublishEntry]
+  public let commitReviews: [RepositoryWorktreePushRetryCommitReview]
+
+  public var isHistoryReviewComplete: Bool {
+    commitReviews.count == commitCount
+      && Set(commitReviews.map(\.commitSHA)).count == commitCount
+      && commitReviews.allSatisfy {
+        RepositoryWorktreeFileReview.isComplete(entries: $0.entries, reviews: $0.fileReviews)
+      }
+  }
 
   public var paths: [String] {
     Array(
@@ -34,7 +61,8 @@ public struct RepositoryWorktreePushRetrySnapshot: Hashable, Sendable {
     localHeadSHA: String,
     localTreeSHA: String,
     commitCount: Int,
-    entries: [RepositoryWorktreePublishEntry]
+    entries: [RepositoryWorktreePublishEntry],
+    commitReviews: [RepositoryWorktreePushRetryCommitReview] = []
   ) {
     self.repositoryRoot = repositoryRoot
     self.gitCommonDirectory = gitCommonDirectory
@@ -46,6 +74,7 @@ public struct RepositoryWorktreePushRetrySnapshot: Hashable, Sendable {
     self.localTreeSHA = localTreeSHA
     self.commitCount = commitCount
     self.entries = entries
+    self.commitReviews = commitReviews
   }
 }
 

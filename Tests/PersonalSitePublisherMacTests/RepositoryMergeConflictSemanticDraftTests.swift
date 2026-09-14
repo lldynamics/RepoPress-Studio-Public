@@ -21,9 +21,9 @@ final class RepositoryMergeConflictSemanticDraftTests: XCTestCase {
     XCTAssertTrue(draft.canApply)
   }
 
-  func testSemanticResultIsGatedUntilEveryFieldAndHunkHasChoice() {
+  func testSemanticResultIsGatedUntilEveryFieldAndHunkHasChoice() throws {
     var draft = RepositoryMergeConflictSemanticDraft(conflict: overlappingMarkdownConflict())
-    let plan = try! XCTUnwrap(draft.semanticPlan)
+    let plan = try XCTUnwrap(draft.semanticPlan)
 
     XCTAssertGreaterThan(plan.frontMatterConflicts.count + plan.bodyConflicts.count, 0)
     XCTAssertNil(draft.semanticResolvedDocument)

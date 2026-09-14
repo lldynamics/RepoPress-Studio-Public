@@ -40,7 +40,8 @@ final class RepositoryWorktreePushRetryServiceTests: XCTestCase {
     XCTAssertThrowsError(try service.push(profile: fixture.profile, confirmation: incomplete)) {
       XCTAssertEqual($0 as? RepositoryWorktreePublishError, .incompleteReview)
     }
-    XCTAssertEqual(try git(["rev-parse", "refs/heads/main"], at: fixture.remoteURL).trimmedForPublishing,
+    XCTAssertEqual(
+      try git(["rev-parse", "refs/heads/main"], at: fixture.remoteURL).trimmedForPublishing,
       fixture.remoteBaseline)
 
     let result = try service.push(profile: fixture.profile, confirmation: confirmation)
@@ -232,6 +233,133 @@ final class RepositoryWorktreePushRetryServiceTests: XCTestCase {
 
     XCTAssertTrue(result.pushed)
     XCTAssertEqual(sequence.commandCount, 4)
+  }
+
+  func testRejectsSensitiveFilesRemovedOrRenamedInLaterOutgoingCommits() throws {
+    for rename in [false, true] {
+      let fixture = try makeFixture()
+      defer { try? FileManager.default.removeItem(at: fixture.baseURL) }
+      try "TEST_VALUE=history fixture\n".write(
+        to: fixture.worktreeURL.appendingPathComponent(".env"),
+        atomically: true, encoding: .utf8)
+      _ = try git(["add", ".env"], at: fixture.worktreeURL)
+      _ = try git(["commit", "-m", "historical sensitive path"], at: fixture.worktreeURL)
+      if rename {
+        _ = try git(["mv", ".env", "ordinary.txt"], at: fixture.worktreeURL)
+      } else {
+        _ = try git(["rm", ".env"], at: fixture.worktreeURL)
+      }
+      _ = try git(["commit", "-m", "clean final tree"], at: fixture.worktreeURL)
+      XCTAssertThrowsError(
+        try RepositoryWorktreePushRetryService().prepare(profile: fixture.profile)
+      ) {
+        XCTAssertEqual($0 as? RepositoryWorktreePublishError, .sensitivePaths([".env"]))
+      }
+      XCTAssertEqual(
+        try git(["rev-parse", "main"], at: fixture.remoteURL).trimmedForPublishing,
+        fixture.remoteBaseline)
+    }
+  }
+
+  func testRejectsDeletedHistoricalLFSPointerWithoutCurrentAttributes() throws {
+    let fixture = try makeFixture()
+    defer { try? FileManager.default.removeItem(at: fixture.baseURL) }
+    try "version https://git-lfs.github.com/spec/v1\noid sha256:abc\nsize 1\n".write(
+      to: fixture.worktreeURL.appendingPathComponent("historical.bin"), atomically: true,
+      encoding: .utf8)
+    _ = try git(["add", "historical.bin"], at: fixture.worktreeURL)
+    _ = try git(["commit", "-m", "historical pointer"], at: fixture.worktreeURL)
+    _ = try git(["rm", "historical.bin"], at: fixture.worktreeURL)
+    _ = try git(["commit", "-m", "remove pointer"], at: fixture.worktreeURL)
+    XCTAssertThrowsError(try RepositoryWorktreePushRetryService().prepare(profile: fixture.profile))
+    {
+      XCTAssertEqual($0 as? RepositoryWorktreePublishError, .unsupportedPaths(["historical.bin"]))
+    }
+  }
+
+  func testAllowsOrdinaryMultiCommitHistoryIncludingDeletedTemporaryArticle() throws {
+    let fixture = try makeFixture()
+    defer { try? FileManager.default.removeItem(at: fixture.baseURL) }
+    try "temporary article\n".write(
+      to: fixture.worktreeURL.appendingPathComponent("temporary.md"),
+      atomically: true, encoding: .utf8)
+    _ = try git(["add", "temporary.md"], at: fixture.worktreeURL)
+    _ = try git(["commit", "-m", "draft article"], at: fixture.worktreeURL)
+    _ = try git(["rm", "temporary.md"], at: fixture.worktreeURL)
+    try "final article\n".write(
+      to: fixture.worktreeURL.appendingPathComponent("tracked.md"),
+      atomically: true, encoding: .utf8)
+    _ = try git(["commit", "-am", "final article"], at: fixture.worktreeURL)
+    let service = RepositoryWorktreePushRetryService()
+    let review = try service.prepare(profile: fixture.profile)
+    XCTAssertEqual(review.snapshot.commitCount, 2)
+    XCTAssertTrue(review.snapshot.isHistoryReviewComplete)
+    XCTAssertEqual(review.snapshot.commitReviews.count, 2)
+    XCTAssertTrue(
+      review.snapshot.commitReviews.contains { commit in
+        commit.fileReviews.contains { $0.patch.contains("temporary article") }
+      })
+    XCTAssertTrue(try service.push(profile: fixture.profile, confirmation: review).pushed)
+  }
+
+  func testReplacementCommitCannotHideSensitiveOutgoingHistory() throws {
+    let fixture = try makeFixture()
+    defer { try? FileManager.default.removeItem(at: fixture.baseURL) }
+    try "TEST_VALUE=replacement fixture\n".write(
+      to: fixture.worktreeURL.appendingPathComponent(".env"), atomically: true, encoding: .utf8)
+    _ = try git(["add", ".env"], at: fixture.worktreeURL)
+    _ = try git(["commit", "-m", "sensitive original"], at: fixture.worktreeURL)
+    let sensitiveCommit = try git(["rev-parse", "HEAD"], at: fixture.worktreeURL)
+      .trimmedForPublishing
+    _ = try git(["rm", ".env"], at: fixture.worktreeURL)
+    try "final\n".write(
+      to: fixture.worktreeURL.appendingPathComponent("tracked.md"), atomically: true,
+      encoding: .utf8)
+    _ = try git(["commit", "-am", "clean final tree"], at: fixture.worktreeURL)
+    let baseTree = try git(["rev-parse", "origin/main^{tree}"], at: fixture.worktreeURL)
+      .trimmedForPublishing
+    let replacement = try git(
+      ["commit-tree", baseTree, "-p", fixture.remoteBaseline, "-m", "clean replacement"],
+      at: fixture.worktreeURL
+    ).trimmedForPublishing
+    _ = try git(["replace", sensitiveCommit, replacement], at: fixture.worktreeURL)
+    XCTAssertFalse(
+      try git(["ls-tree", sensitiveCommit], at: fixture.worktreeURL).contains(".env"))
+
+    XCTAssertThrowsError(try RepositoryWorktreePushRetryService().prepare(profile: fixture.profile))
+    {
+      XCTAssertEqual($0 as? RepositoryWorktreePublishError, .sensitivePaths([".env"]))
+    }
+    XCTAssertEqual(
+      try git(["rev-parse", "main"], at: fixture.remoteURL).trimmedForPublishing,
+      fixture.remoteBaseline)
+  }
+
+  func testGraftedHistoryCannotHideDeletedLFSPointer() throws {
+    let fixture = try makeFixture()
+    defer { try? FileManager.default.removeItem(at: fixture.baseURL) }
+    try "version https://git-lfs.github.com/spec/v1\noid sha256:abc\nsize 1\n".write(
+      to: fixture.worktreeURL.appendingPathComponent("historical.bin"), atomically: true,
+      encoding: .utf8)
+    _ = try git(["add", "historical.bin"], at: fixture.worktreeURL)
+    _ = try git(["commit", "-m", "hidden pointer"], at: fixture.worktreeURL)
+    _ = try git(["rm", "historical.bin"], at: fixture.worktreeURL)
+    try "final\n".write(
+      to: fixture.worktreeURL.appendingPathComponent("tracked.md"), atomically: true,
+      encoding: .utf8)
+    _ = try git(["commit", "-am", "clean final tree"], at: fixture.worktreeURL)
+    let head = try git(["rev-parse", "HEAD"], at: fixture.worktreeURL).trimmedForPublishing
+    try "\(head) \(fixture.remoteBaseline)\n".write(
+      to: fixture.worktreeURL.appendingPathComponent(".git/info/grafts"), atomically: true,
+      encoding: .utf8)
+
+    XCTAssertThrowsError(try RepositoryWorktreePushRetryService().prepare(profile: fixture.profile))
+    {
+      XCTAssertTrue($0.localizedDescription.contains("info/grafts"), $0.localizedDescription)
+    }
+    XCTAssertEqual(
+      try git(["rev-parse", "main"], at: fixture.remoteURL).trimmedForPublishing,
+      fixture.remoteBaseline)
   }
 
   private func makeFixture() throws -> Fixture {

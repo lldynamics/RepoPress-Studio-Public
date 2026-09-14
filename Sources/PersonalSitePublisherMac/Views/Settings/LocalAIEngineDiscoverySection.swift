@@ -248,7 +248,7 @@ struct LocalAIEngineDiscoverySection: View {
           Text(
             "\(ByteCountFormatter.string(fromByteCount: completedBytes, countStyle: .file)) / \(ByteCountFormatter.string(fromByteCount: totalBytes, countStyle: .file))"
           )
-          .font(.caption2.monospacedDigit())
+          .font(.workbenchMetadata.monospacedDigit())
           .foregroundStyle(.secondary)
         }
       }

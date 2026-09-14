@@ -315,7 +315,8 @@ struct AIWritingStyleSection: View {
 }
 
 extension Binding where Value == AIWritingStyleConfig {
-  fileprivate func text(_ keyPath: WritableKeyPath<AIWritingStyleConfig, String>) -> Binding<String>
+  fileprivate func text(_ keyPath: WritableKeyPath<AIWritingStyleConfig, String> & Sendable)
+    -> Binding<String>
   {
     Binding<String>(
       get: { wrappedValue[keyPath: keyPath] },
@@ -328,7 +329,9 @@ extension Binding where Value == AIWritingStyleConfig {
     )
   }
 
-  fileprivate func terminologyText(_ keyPath: WritableKeyPath<AIWritingStyleConfig, [String]>)
+  fileprivate func terminologyText(
+    _ keyPath: WritableKeyPath<AIWritingStyleConfig, [String]> & Sendable
+  )
     -> Binding<String>
   {
     Binding<String>(

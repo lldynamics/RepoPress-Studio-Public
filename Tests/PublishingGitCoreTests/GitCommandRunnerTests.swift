@@ -1,7 +1,90 @@
 import XCTest
+
 @testable import PublishingGitCore
 
 final class GitCommandRunnerTests: XCTestCase {
+  func testSyncAndAsyncCommandsDisableReplacementAndGraftHistory() async throws {
+    let scriptURL = try makeFakeGitExecutable()
+    defer { try? FileManager.default.removeItem(at: scriptURL.deletingLastPathComponent()) }
+    let runner = GitCommandRunner(executableURL: scriptURL)
+    let root = scriptURL.deletingLastPathComponent()
+    let synchronous = Self.runSynchronously(runner, ["history-environment"], at: root)
+    let asynchronous = await runner.runAsync(["history-environment"], rootURL: root)
+    XCTAssertEqual(synchronous.terminationStatus, 0)
+    XCTAssertEqual(asynchronous.terminationStatus, 0)
+    XCTAssertEqual(synchronous.standardOutput, "1|/dev/null")
+    XCTAssertEqual(asynchronous.standardOutput, "1|/dev/null")
+  }
+
+  func testSyncAndAsyncCommandsRejectGraftsInWorktreeAndCommonMetadata() async throws {
+    for commonMetadata in [false, true] {
+      let scriptURL = try makeFakeGitExecutable()
+      let root = scriptURL.deletingLastPathComponent()
+      defer { try? FileManager.default.removeItem(at: root) }
+      let gitDirectory = root.appendingPathComponent("metadata", isDirectory: true)
+      let commonDirectory = root.appendingPathComponent("shared", isDirectory: true)
+      try FileManager.default.createDirectory(at: gitDirectory, withIntermediateDirectories: true)
+      try FileManager.default.createDirectory(
+        at: commonDirectory, withIntermediateDirectories: true)
+      try "gitdir: metadata\n".write(
+        to: root.appendingPathComponent(".git"), atomically: true, encoding: .utf8)
+      try "../shared\n".write(
+        to: gitDirectory.appendingPathComponent("commondir"), atomically: true, encoding: .utf8)
+      let info = (commonMetadata ? commonDirectory : gitDirectory).appendingPathComponent("info")
+      try FileManager.default.createDirectory(at: info, withIntermediateDirectories: true)
+      try "fixture\n".write(
+        to: info.appendingPathComponent("grafts"), atomically: true, encoding: .utf8)
+      let runner = GitCommandRunner(executableURL: scriptURL)
+      let synchronous = Self.runSynchronously(runner, ["short-output"], at: root)
+      let asynchronous = await runner.runAsync(["short-output"], rootURL: root)
+      for result in [synchronous, asynchronous] {
+        XCTAssertEqual(result.terminationStatus, 126)
+        XCTAssertEqual(result.standardOutput, "")
+        XCTAssertTrue(result.standardError.contains("info/grafts"))
+      }
+    }
+  }
+
+  func testRealGitIgnoresGraftCreatedAfterConfigurationCheck() async throws {
+    let scriptURL = try makeFakeGitExecutable()
+    let root = scriptURL.deletingLastPathComponent()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let setupRunner = GitCommandRunner()
+    for arguments in [
+      ["init", "-b", "main"],
+      [
+        "-c", "user.name=Tests", "-c", "user.email=tests@example.com", "commit", "--allow-empty",
+        "-m", "base",
+      ],
+      [
+        "-c", "user.name=Tests", "-c", "user.email=tests@example.com", "commit", "--allow-empty",
+        "-m", "child",
+      ],
+    ] {
+      let result = await setupRunner.runAsync(arguments, rootURL: root)
+      XCTAssertEqual(result.terminationStatus, 0, result.output)
+    }
+    let head = await setupRunner.runAsync(["rev-parse", "HEAD"], rootURL: root)
+    XCTAssertEqual(head.terminationStatus, 0)
+    let graftData = Data("\(head.standardOutput)\n".utf8)
+    let graftsURL = root.appendingPathComponent(".git/info/grafts")
+    let runner = GitCommandRunner(
+      executableURL: URL(fileURLWithPath: "/usr/bin/git"),
+      testingBeforeProcessRun: {
+        _ = FileManager.default.createFile(atPath: graftsURL.path, contents: graftData)
+      })
+    let result = await runner.runAsync(["rev-list", "--count", "HEAD"], rootURL: root)
+    XCTAssertTrue(FileManager.default.fileExists(atPath: graftsURL.path))
+    XCTAssertEqual(result.terminationStatus, 0, result.output)
+    XCTAssertEqual(result.standardOutput, "2")
+  }
+
+  private static func runSynchronously(
+    _ runner: GitCommandRunner, _ arguments: [String], at root: URL
+  ) -> GitCommandResult {
+    runner.run(arguments, rootURL: root)
+  }
+
   func testContinuouslyDrainsNoisyStandardStreamsWithinOutputLimit() throws {
     let scriptURL = try makeFakeGitExecutable()
     defer { try? FileManager.default.removeItem(at: scriptURL.deletingLastPathComponent()) }
@@ -244,48 +327,53 @@ final class GitCommandRunnerTests: XCTestCase {
 
   private func makeFakeGitExecutable() throws -> URL {
     let directoryURL = FileManager.default.temporaryDirectory
-      .appendingPathComponent("PersonalSitePublisherMacGitRunnerTests-\(UUID().uuidString)", isDirectory: true)
+      .appendingPathComponent(
+        "PersonalSitePublisherMacGitRunnerTests-\(UUID().uuidString)", isDirectory: true)
     try FileManager.default.createDirectory(at: directoryURL, withIntermediateDirectories: true)
     let scriptURL = directoryURL.appendingPathComponent("fake-git")
     let script = """
-    #!/bin/sh
-    shift 2
-    if [ "$1" = "sleep" ]; then
-      sleep 2
-      exit 0
-    fi
-    if [ "$1" = "startup-barrier" ]; then
-      trap 'exit 130' TERM INT
-      while :; do :; done
-    fi
-    if [ "$1" = "pre-cancel" ]; then
-      printf 'started' > "$2"
-      exit 0
-    fi
-    if [ "$1" = "stderr-warning" ]; then
-      printf 'warning: simulated fsmonitor failure\n' >&2
-      exit 0
-    fi
-    if [ "$1" = "short-output" ]; then
-      printf 'content/posts/article.md\n'
-      exit 0
-    fi
-    if [ "$1" = "raw-status" ]; then
-      printf ' M leading-space.md\\0?? untracked.md\\0'
-      exit 0
-    fi
-    if [ "$1" = "redaction" ]; then
-      printf 'remote=https://alice:url-secret@github.com/owner/site.git?token=stdout-token\n'
-      printf 'Authorization: Bearer stderr-secret token=stderr-token\n' >&2
-      exit 1
-    fi
-    count=0
-    while [ "$count" -lt 512 ]; do
-      printf 'oooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo\n'
-      printf 'eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee\n' >&2
-      count=$((count + 1))
-    done
-    """
+      #!/bin/sh
+      shift 2
+      if [ "$1" = "history-environment" ]; then
+        printf '%s|%s' "$GIT_NO_REPLACE_OBJECTS" "$GIT_GRAFT_FILE"
+        exit 0
+      fi
+      if [ "$1" = "sleep" ]; then
+        sleep 2
+        exit 0
+      fi
+      if [ "$1" = "startup-barrier" ]; then
+        trap 'exit 130' TERM INT
+        while :; do :; done
+      fi
+      if [ "$1" = "pre-cancel" ]; then
+        printf 'started' > "$2"
+        exit 0
+      fi
+      if [ "$1" = "stderr-warning" ]; then
+        printf 'warning: simulated fsmonitor failure\n' >&2
+        exit 0
+      fi
+      if [ "$1" = "short-output" ]; then
+        printf 'content/posts/article.md\n'
+        exit 0
+      fi
+      if [ "$1" = "raw-status" ]; then
+        printf ' M leading-space.md\\0?? untracked.md\\0'
+        exit 0
+      fi
+      if [ "$1" = "redaction" ]; then
+        printf 'remote=https://alice:url-secret@github.com/owner/site.git?token=stdout-token\n'
+        printf 'Authorization: Bearer stderr-secret token=stderr-token\n' >&2
+        exit 1
+      fi
+      count=0
+      while [ "$count" -lt 512 ]; do
+        printf 'oooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo\n'
+        printf 'eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee\n' >&2
+        count=$((count + 1))
+      done
+      """
     try script.write(to: scriptURL, atomically: true, encoding: .utf8)
     try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: scriptURL.path)
     return scriptURL

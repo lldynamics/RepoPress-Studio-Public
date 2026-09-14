@@ -23,8 +23,7 @@ public struct RepositoryRebaseSyncService: Sendable {
   }
 
   private let git: GitCommandRunner
-  private let recoveryRecorder:
-    (@Sendable (RepositoryRebaseRecoveryContext) throws -> Void)?
+  private let recoveryRecorder: (@Sendable (RepositoryRebaseRecoveryContext) throws -> Void)?
 
   public init(
     gitCommandRunner: GitCommandRunner = GitCommandRunner(timeout: 120),
@@ -81,7 +80,9 @@ public struct RepositoryRebaseSyncService: Sendable {
 
     let hasLocalChanges = !snapshot.localChanges.isEmpty
     let stashSHA = try hasLocalChanges ? createVerifiedStash(snapshot: snapshot, root: root) : nil
-    func recovery(_ phase: RepositoryRebaseRecoveryContext.Phase) -> RepositoryRebaseRecoveryContext? {
+    func recovery(_ phase: RepositoryRebaseRecoveryContext.Phase)
+      -> RepositoryRebaseRecoveryContext?
+    {
       stashSHA.map { makeRecoveryContext(snapshot: snapshot, stashSHA: $0, phase: phase) }
     }
 
@@ -241,7 +242,8 @@ public struct RepositoryRebaseSyncService: Sendable {
         try recordRecovery(recovery)
         throw RepositoryRebaseSyncError.partial(
           recovery: recovery,
-          message: "恢复 stash 失败，且无法读取冲突路径：\(error.localizedDescription)；\(diagnostic(for: restore, arguments: arguments))"
+          message:
+            "恢复 stash 失败，且无法读取冲突路径：\(error.localizedDescription)；\(diagnostic(for: restore, arguments: arguments))"
         )
       }
       if !paths.isEmpty {
@@ -300,6 +302,12 @@ public struct RepositoryRebaseSyncService: Sendable {
       throw RepositoryRebaseSyncError.snapshotDrift
     }
     let counts = try aheadBehind(local: head, remote: trackedRemote, root: root)
+    // Plain rebase drops merge commits, including edits recorded only in their
+    // merge resolution. Reject before creating a stash or rewriting history.
+    let merges = try output(
+      ["rev-list", "--min-parents=2", "--max-count=1", "\(trackedRemote)..\(head)"], root: root
+    ).trimmedForPublishing
+    guard merges.isEmpty else { throw RepositoryRebaseSyncError.mergeHistoryRequiresReview }
     let rawStatus = try output(
       ["status", "--porcelain=v1", "-z", "--untracked-files=all"],
       root: root,

@@ -5,6 +5,8 @@ struct AIAuthorizedPublishingChatAttempt {
   let authorization: AIOutboundPayloadTransportAuthorization
   let knowledgeAuthorizationBindings: [KnowledgeAuthorizationBinding]
   let knowledgePolicy: KnowledgeRetrievalPolicy
+  let providerConfig: AIProviderConfig
+  let connectionProfileID: UUID
 }
 
 /// The knowledge portion of a request has deliberately distinct states so an
@@ -303,6 +305,60 @@ extension WorkbenchAIStore {
     return token
   }
 
+  /// The final credential lookup must still refer to the connection that was
+  /// approved for this payload. This prevents a changed endpoint from using a
+  /// credential resolved under an earlier configuration.
+  func aiChatAvailableAPIKey(
+    for profile: SiteProfile,
+    matching expectedConfig: AIProviderConfig,
+    connectionProfileID expectedConnectionID: UUID
+  ) throws -> String? {
+    guard let currentProfile = store.profiles.first(where: { $0.id == profile.id }),
+      currentProfile.aiConnectionProfileID == expectedConnectionID,
+      let connection = store.aiConnectionProfile(for: expectedConnectionID)
+    else {
+      throw AIOutboundPayloadConfirmationError.drifted
+    }
+    let currentConfig = AIOutboundPayloadPrivacyService().sanitizedProviderConfig(connection.config)
+    guard currentConfig == expectedConfig else {
+      throw AIOutboundPayloadConfirmationError.drifted
+    }
+    let consent = aiDataSharingConsentStore.presentation(for: connection.config)
+    guard consent.isGranted else {
+      throw AIPublishingAssistantError.dataSharingConsentRequired(
+        providerName: consent.providerName,
+        destination: consent.destination
+      )
+    }
+    guard connection.config.requiresAPIKey else { return nil }
+    guard
+      let token = try aiCredentialStore.token(
+        forConnectionProfileID: expectedConnectionID,
+        legacyProfile: connection.canUseLegacyCredentials ? currentProfile : nil
+      )?.nilIfEmpty
+    else {
+      throw AIPublishingAssistantError.missingAPIKey
+    }
+    return token
+  }
+
+  /// Resolves only the currently stored reusable connection. A captured
+  /// `SiteProfile` may still carry an embedded legacy config, which must never
+  /// authorize a request after that stored connection changed.
+  func aiChatConnectionProfileID(
+    for profile: SiteProfile,
+    matching expectedConfig: AIProviderConfig
+  ) throws -> UUID {
+    guard let currentProfile = store.profiles.first(where: { $0.id == profile.id }),
+      let connectionID = currentProfile.aiConnectionProfileID,
+      let connection = store.aiConnectionProfile(for: connectionID),
+      AIOutboundPayloadPrivacyService().sanitizedProviderConfig(connection.config) == expectedConfig
+    else {
+      throw AIOutboundPayloadConfirmationError.drifted
+    }
+    return connectionID
+  }
+
   func setAIChatCancellationRequested(_ value: Bool) {
     aiChatOperationCoordinator.setCancellationRequested(value)
   }
@@ -474,6 +530,10 @@ extension WorkbenchAIStore {
     let authorizedTransport = refreshedTransport.bindingAuthorizationDeadline(
       refreshedTransport.payload.preview.expiresAt
     )
+    let connectionProfileID = try aiChatConnectionProfileID(
+      for: refreshedRequest.profile,
+      matching: refreshedConfig
+    )
     return AIAuthorizedPublishingChatAttempt(
       transport: authorizedTransport,
       authorization: AIOutboundPayloadTransportAuthorization(
@@ -483,7 +543,9 @@ extension WorkbenchAIStore {
       ),
       knowledgeAuthorizationBindings: resolvedInitialRequest.knowledgeContext?.authorizationBindings
         ?? [],
-      knowledgePolicy: resolvedInitialRequest.knowledgePolicy
+      knowledgePolicy: resolvedInitialRequest.knowledgePolicy,
+      providerConfig: refreshedConfig,
+      connectionProfileID: connectionProfileID
     )
   }
 

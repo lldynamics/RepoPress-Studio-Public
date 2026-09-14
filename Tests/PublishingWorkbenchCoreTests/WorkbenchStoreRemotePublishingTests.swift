@@ -138,7 +138,8 @@ actor SequencedWorkbenchRemoteRepositoryTransport: RemoteRepositoryHTTPTransport
     return (
       response.data,
       HTTPURLResponse(
-        url: request.url!, statusCode: response.statusCode, httpVersion: nil, headerFields: nil)!
+        url: request.url!, statusCode: response.statusCode, httpVersion: nil,
+        headerFields: response.headerFields)!
     )
   }
 
@@ -207,13 +208,19 @@ actor SuspendedWorkbenchRemoteRepositoryTransport: RemoteRepositoryHTTPTransport
 struct WorkbenchRemoteRepositoryTransportResponse {
   var statusCode: Int
   var data: Data
+  var headerFields: [String: String]?
 }
 
 func workbenchRemoteResponse(
   statusCode: Int = 200,
-  json: String
+  json: String,
+  headerFields: [String: String]? = nil
 ) -> WorkbenchRemoteRepositoryTransportResponse {
-  WorkbenchRemoteRepositoryTransportResponse(statusCode: statusCode, data: Data(json.utf8))
+  WorkbenchRemoteRepositoryTransportResponse(
+    statusCode: statusCode,
+    data: Data(json.utf8),
+    headerFields: headerFields
+  )
 }
 
 #if DEBUG

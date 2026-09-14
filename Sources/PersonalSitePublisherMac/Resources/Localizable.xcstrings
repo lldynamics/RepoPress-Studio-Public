@@ -17137,6 +17137,22 @@
         }
       }
     },
+    "丢弃陈旧结果": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Discard outdated result"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "丢弃陈旧结果"
+          }
+        }
+      }
+    },
     "丢弃预览": {
       "localizations": {
         "en": {
@@ -22333,6 +22349,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "全部已读（%lld）"
+          }
+        }
+      }
+    },
+    "全部待推送历史": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "All outgoing history"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "全部待推送历史"
           }
         }
       }
@@ -29053,6 +29085,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "变更方式"
+          }
+        }
+      }
+    },
+    "另一窗口已修改文章信息；恢复原文仍保留，请复制原文后决定如何合并。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Another window changed the article information. The recovered source is preserved; copy it, then decide how to merge."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "另一窗口已修改文章信息；恢复原文仍保留，请复制原文后决定如何合并。"
           }
         }
       }
@@ -50317,6 +50365,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "推荐：用 AI 修复 %@"
+          }
+        }
+      }
+    },
+    "推送包含这些提交中的历史内容，包括后来删除或改名的文件。请展开逐项审阅。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The push includes content from all these commits, including files later removed or renamed. Expand each commit to review it."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "推送包含这些提交中的历史内容，包括后来删除或改名的文件。请展开逐项审阅。"
           }
         }
       }
@@ -79885,6 +79949,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "跳转到行"
+          }
+        }
+      }
+    },
+    "跳过": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Skip"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "跳过"
           }
         }
       }

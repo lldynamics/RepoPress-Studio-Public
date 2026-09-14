@@ -3,9 +3,10 @@ import Foundation
 extension WorkbenchStore {
   func recordDraftRecovery(for draft: ArticleDraft, bodyMarkdown: String) {
     if let existingRecord = draftRecoveryRecords[draft.id],
-       existingRecord.recoveredBodyMarkdown != bodyMarkdown,
-       pendingDraftRecoveries.contains(where: { $0.draftID == existingRecord.draftID }),
-       !materializePendingRecoveryBeforeEditing(existingRecord) {
+      existingRecord.recoveredBodyMarkdown != bodyMarkdown,
+      pendingDraftRecoveries.contains(where: { $0.draftID == existingRecord.draftID }),
+      !materializePendingRecoveryBeforeEditing(existingRecord)
+    {
       return
     }
 
@@ -28,6 +29,7 @@ extension WorkbenchStore {
     if let currentIndex = drafts.firstIndex(where: { $0.id == currentRecord.draftID }) {
       let currentDraft = drafts[currentIndex]
       if currentDraft.bodyMarkdown == currentRecord.recoveredBodyMarkdown {
+        synchronizeRecoveredDraftBodyEditorBuffer(with: currentDraft)
         guard persistRestoredDraftBeforeRemovingRecovery() else { return false }
         removeDraftRecovery(draftID: currentRecord.draftID, persistImmediately: true)
         return true
@@ -37,6 +39,7 @@ extension WorkbenchStore {
         var restored = currentDraft
         restored.bodyMarkdown = currentRecord.recoveredBodyMarkdown
         publishingStore.updateDraft(restored, store: self)
+        synchronizeRecoveredDraftBodyEditorBuffer(with: restored)
         guard persistRestoredDraftBeforeRemovingRecovery() else { return false }
         removeDraftRecovery(draftID: currentRecord.draftID, persistImmediately: true)
         return true

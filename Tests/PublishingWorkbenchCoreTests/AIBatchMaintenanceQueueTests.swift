@@ -24,6 +24,15 @@ final class AIBatchMaintenanceQueueTests: XCTestCase {
     XCTAssertEqual(queue.beginNext()?.draftTitle, "文章1")
   }
 
+  func testMixedModelsIncludeLegacyItemsWithoutPerItemModel() {
+    var queue = makeQueue(2)
+    queue.items[0].modelName = "new-model"
+    XCTAssertNil(queue.items[1].modelName)
+    XCTAssertEqual(queue.displayModelName, CoreL10n.text("多个模型"))
+    queue.items[0].modelName = "test-model"
+    XCTAssertEqual(queue.displayModelName, "test-model")
+  }
+
   func testRetryFailedOnlyRetriesFailedItems() {
     var queue = makeQueue()
     let first = queue.beginNext()!
@@ -59,6 +68,29 @@ final class AIBatchMaintenanceQueueTests: XCTestCase {
     XCTAssertTrue(queue.isPaused)
     XCTAssertEqual(queue.items.first(where: { $0.id == item.id })?.status, .pending)
     XCTAssertNil(queue.beginNext())
+  }
+
+  func testLegacyItemWithoutModelNameDecodesAndUsesQueueModel() throws {
+    let queue = AIBatchMaintenanceQueue(
+      siteProfileID: UUID(), operation: .summary, modelName: "legacy-model",
+      items: [
+        AIBatchMaintenanceItem(
+          draftID: UUID(), draftTitle: "旧文章", sourceFingerprint: "legacy-fingerprint",
+          modelName: "old-item-model")
+      ]
+    )
+    var object = try XCTUnwrap(
+      JSONSerialization.jsonObject(with: try JSONEncoder().encode(queue)) as? [String: Any]
+    )
+    var items = try XCTUnwrap(object["items"] as? [[String: Any]])
+    items[0].removeValue(forKey: "modelName")
+    object["items"] = items
+    let legacyData = try JSONSerialization.data(withJSONObject: object)
+
+    let decoded = try JSONDecoder().decode(AIBatchMaintenanceQueue.self, from: legacyData)
+
+    XCTAssertNil(decoded.items[0].modelName)
+    XCTAssertEqual(decoded.displayModelName, "legacy-model")
   }
 
   func testLateCompletionIsIgnoredAndProgressCountsAreUseful() throws {

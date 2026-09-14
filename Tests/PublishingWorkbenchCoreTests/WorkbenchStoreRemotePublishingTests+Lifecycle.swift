@@ -573,20 +573,7 @@ final class WorkbenchStoreRemotePublishingLifecycleTests: WorkbenchStoreRemotePu
           #"{"content":{"path":"content/posts/online-direct-success.md","sha":"online-direct-content-sha"},"commit":{"sha":"online-direct-commit"}}"#
       ),
     ])
-    let deploymentTransport = SequencedWorkbenchRemoteRepositoryTransport(responses: [
-      workbenchRemoteResponse(
-        statusCode: 200,
-        json:
-          #"{"status":"ok","message":"Site is live","branch":"main","commit_sha":"online-direct-commit"}"#
-      ),
-      workbenchRemoteResponse(
-        json: """
-          <html><h1>Online Direct Success</h1>
-          <link rel="canonical" href="https://example.com/online-direct-success/">
-          </html>
-          """
-      ),
-    ])
+    let deploymentTransport = SequencedWorkbenchRemoteRepositoryTransport(responses: [])
     let tokenStore = repositoryTokenStoreForTest()
     let store = WorkbenchStore(
       persistence: try TestWorkbenchFactory.persistence(),
@@ -622,6 +609,24 @@ final class WorkbenchStoreRemotePublishingLifecycleTests: WorkbenchStoreRemotePu
       bodyMarkdown: "This body is intentionally long enough for online direct success publishing.",
       status: .ready
     )
+    let sourceDigest = draft.renderedRepositoryContentDigest(profile: profile)
+    await deploymentTransport.replaceResponses([
+      workbenchRemoteResponse(
+        statusCode: 200,
+        json:
+          #"{"status":"ok","message":"Site is live","branch":"main","commit_sha":"online-direct-commit"}"#,
+        headerFields: ["Content-Type": "application/json"]
+      ),
+      workbenchRemoteResponse(
+        json: """
+          <html><head>
+          <meta name="repopress:source-digest" content="\(sourceDigest)">
+          <link rel="canonical" href="https://example.com/online-direct-success/">
+          </head><body><h1>Online Direct Success</h1></body></html>
+          """,
+        headerFields: ["Content-Type": "text/html; charset=utf-8"]
+      ),
+    ])
     store.setDrafts([draft])
     store.setSelectedDraftID(draft.id)
     store.setPublishPackage(store.publishingPackage(for: draft))
@@ -663,7 +668,9 @@ final class WorkbenchStoreRemotePublishingLifecycleTests: WorkbenchStoreRemotePu
     XCTAssertEqual(store.drafts.first?.repositorySyncState(for: profile), .synced)
     let record = try XCTUnwrap(store.releaseRecords.first)
     XCTAssertEqual(record.kind, .remoteDirectCommit)
-    XCTAssertEqual(store.deploymentStatusSnapshot(for: record)?.level, .success)
+    let deploymentSnapshot = try XCTUnwrap(store.deploymentStatusSnapshot(for: record))
+    XCTAssertEqual(deploymentSnapshot.level, .success)
+    XCTAssertTrue(deploymentSnapshot.articleResults?.first?.verifiesSourceVersion == true)
     XCTAssertEqual(store.releaseLedger.entries.first?.status, .succeeded)
     XCTAssertEqual(
       store.repositoryAutoSyncState.remoteChangedPaths, ["content/posts/remote-only.md"])

@@ -1,4 +1,5 @@
 import XCTest
+
 @testable import PublishingWorkbenchCore
 
 final class LocalRepositoryServiceTests: XCTestCase {
@@ -26,7 +27,8 @@ final class LocalRepositoryServiceTests: XCTestCase {
       try LocalRepositoryService().switchLocalBranch(profile: profile, to: "release")
     ) { error in
       guard let serviceError = error as? LocalRepositoryServiceError,
-            case .workingTreeHasChanges = serviceError else {
+        case .workingTreeHasChanges = serviceError
+      else {
         return XCTFail("Expected workingTreeHasChanges, got \(error)")
       }
     }
@@ -44,7 +46,9 @@ final class LocalRepositoryServiceTests: XCTestCase {
     )
 
     XCTAssertEqual(try git(["branch", "--show-current"], rootURL: rootURL), "review/article")
-    XCTAssertEqual(try git(["rev-parse", "review/article"], rootURL: rootURL), try git(["rev-parse", "main"], rootURL: rootURL))
+    XCTAssertEqual(
+      try git(["rev-parse", "review/article"], rootURL: rootURL),
+      try git(["rev-parse", "main"], rootURL: rootURL))
   }
 
   func testIgnoredRepositoryPathsUsesNULTerminatedStandardInput() throws {
@@ -66,7 +70,8 @@ final class LocalRepositoryServiceTests: XCTestCase {
 
   func testDetectsZolaRepositoryShapeAndCountsFiles() throws {
     let rootURL = FileManager.default.temporaryDirectory
-      .appendingPathComponent("PersonalSitePublisherMacTests-\(UUID().uuidString)", isDirectory: true)
+      .appendingPathComponent(
+        "PersonalSitePublisherMacTests-\(UUID().uuidString)", isDirectory: true)
     defer {
       try? FileManager.default.removeItem(at: rootURL)
     }
@@ -426,7 +431,8 @@ final class LocalRepositoryServiceTests: XCTestCase {
 
   func testReportsBranchUpstreamAheadBehindFromGitStatus() throws {
     let rootURL = FileManager.default.temporaryDirectory
-      .appendingPathComponent("PersonalSitePublisherMacBranchTests-\(UUID().uuidString)", isDirectory: true)
+      .appendingPathComponent(
+        "PersonalSitePublisherMacBranchTests-\(UUID().uuidString)", isDirectory: true)
     defer {
       try? FileManager.default.removeItem(at: rootURL)
     }
@@ -448,13 +454,16 @@ final class LocalRepositoryServiceTests: XCTestCase {
     try git(["init", "-b", "main"], rootURL: rootURL)
     try git(["config", "user.email", "tests@example.com"], rootURL: rootURL)
     try git(["config", "user.name", "Tests"], rootURL: rootURL)
-    try "initial\n".write(to: rootURL.appendingPathComponent("README.md"), atomically: true, encoding: .utf8)
+    try "initial\n".write(
+      to: rootURL.appendingPathComponent("README.md"), atomically: true, encoding: .utf8)
     try git(["add", "README.md"], rootURL: rootURL)
     try git(["commit", "-m", "Initial"], rootURL: rootURL)
     let baseCommit = try git(["rev-parse", "HEAD"], rootURL: rootURL)
 
     try git(["switch", "-c", "remote-work"], rootURL: rootURL)
-    try "remote\n".write(to: rootURL.appendingPathComponent("content/posts/remote.md"), atomically: true, encoding: .utf8)
+    try "remote\n".write(
+      to: rootURL.appendingPathComponent("content/posts/remote.md"), atomically: true,
+      encoding: .utf8)
     try git(["add", "content/posts/remote.md"], rootURL: rootURL)
     try git(["commit", "-m", "Remote"], rootURL: rootURL)
     let remoteCommit = try git(["rev-parse", "HEAD"], rootURL: rootURL)
@@ -464,7 +473,9 @@ final class LocalRepositoryServiceTests: XCTestCase {
       at: rootURL.appendingPathComponent("content/posts", isDirectory: true),
       withIntermediateDirectories: true
     )
-    try "local\n".write(to: rootURL.appendingPathComponent("content/posts/local.md"), atomically: true, encoding: .utf8)
+    try "local\n".write(
+      to: rootURL.appendingPathComponent("content/posts/local.md"), atomically: true,
+      encoding: .utf8)
     try git(["add", "content/posts/local.md"], rootURL: rootURL)
     try git(["commit", "-m", "Local"], rootURL: rootURL)
     try git(["remote", "add", "origin", "https://example.invalid/site.git"], rootURL: rootURL)
@@ -497,17 +508,20 @@ final class LocalRepositoryServiceTests: XCTestCase {
         rootURL: rootURL
       )?.contains("+remote") == true
     )
-    XCTAssertEqual(report.remoteChangeSummary(contentRoot: "content", assetRoot: "static").articleCount, 1)
-    XCTAssertTrue(report.preflightIssues.contains { issue in
-      issue.severity == .warning
-        && issue.title == "本地分支与远端分叉"
-        && issue.message.contains("本地领先 1，落后 1")
-    })
+    XCTAssertEqual(
+      report.remoteChangeSummary(contentRoot: "content", assetRoot: "static").articleCount, 1)
+    XCTAssertTrue(
+      report.preflightIssues.contains { issue in
+        issue.severity == .warning
+          && issue.title == "本地分支与远端分叉"
+          && issue.message.contains("本地领先 1，落后 1")
+      })
   }
 
   func testGitStatusPreservesUnicodeSpacesQuotesAndRenamePaths() throws {
     let rootURL = FileManager.default.temporaryDirectory
-      .appendingPathComponent("PersonalSitePublisherMacNULStatusTests-\(UUID().uuidString)", isDirectory: true)
+      .appendingPathComponent(
+        "PersonalSitePublisherMacNULStatusTests-\(UUID().uuidString)", isDirectory: true)
     defer {
       try? FileManager.default.removeItem(at: rootURL)
     }
@@ -573,8 +587,9 @@ final class LocalRepositoryServiceTests: XCTestCase {
     XCTAssertTrue(lineDiff?.contains("rename to") == true)
     XCTAssertTrue(lineDiff?.contains("+unstaged destination") == true)
     if let lineDiff,
-       let renameIndex = lineDiff.range(of: "similarity index"),
-       let unstagedIndex = lineDiff.range(of: "+unstaged destination") {
+      let renameIndex = lineDiff.range(of: "similarity index"),
+      let unstagedIndex = lineDiff.range(of: "+unstaged destination")
+    {
       XCTAssertLessThan(renameIndex.lowerBound, unstagedIndex.lowerBound)
     } else {
       XCTFail("Expected staged rename metadata and destination unstaged content")
@@ -594,7 +609,8 @@ final class LocalRepositoryServiceTests: XCTestCase {
 
   func testRemoteNameStatusPreservesUnicodeRenamePaths() throws {
     let rootURL = FileManager.default.temporaryDirectory
-      .appendingPathComponent("PersonalSitePublisherMacNULRemoteTests-\(UUID().uuidString)", isDirectory: true)
+      .appendingPathComponent(
+        "PersonalSitePublisherMacNULRemoteTests-\(UUID().uuidString)", isDirectory: true)
     defer {
       try? FileManager.default.removeItem(at: rootURL)
     }
@@ -668,7 +684,8 @@ final class LocalRepositoryServiceTests: XCTestCase {
 
   func testFetchUpstreamRefreshesRemoteTrackingBranchBeforeScan() throws {
     let rootURL = FileManager.default.temporaryDirectory
-      .appendingPathComponent("PersonalSitePublisherMacFetchTests-\(UUID().uuidString)", isDirectory: true)
+      .appendingPathComponent(
+        "PersonalSitePublisherMacFetchTests-\(UUID().uuidString)", isDirectory: true)
     defer {
       try? FileManager.default.removeItem(at: rootURL)
     }
@@ -685,7 +702,8 @@ final class LocalRepositoryServiceTests: XCTestCase {
       at: localURL.appendingPathComponent("content/posts", isDirectory: true),
       withIntermediateDirectories: true
     )
-    try "base\n".write(to: localURL.appendingPathComponent("README.md"), atomically: true, encoding: .utf8)
+    try "base\n".write(
+      to: localURL.appendingPathComponent("README.md"), atomically: true, encoding: .utf8)
     try git(["add", "README.md"], rootURL: localURL)
     try git(["commit", "-m", "Initial"], rootURL: localURL)
     try git(["push", "-u", "origin", "main"], rootURL: localURL)
@@ -725,7 +743,8 @@ final class LocalRepositoryServiceTests: XCTestCase {
 
   func testReadsRemoteArticleSnapshotFromConfiguredUpstream() throws {
     let rootURL = FileManager.default.temporaryDirectory
-      .appendingPathComponent("PersonalSitePublisherMacRemoteSnapshotTests-\(UUID().uuidString)", isDirectory: true)
+      .appendingPathComponent(
+        "PersonalSitePublisherMacRemoteSnapshotTests-\(UUID().uuidString)", isDirectory: true)
     defer {
       try? FileManager.default.removeItem(at: rootURL)
     }
@@ -743,7 +762,8 @@ final class LocalRepositoryServiceTests: XCTestCase {
     try git(["init", "-b", "main"], rootURL: rootURL)
     try git(["config", "user.email", "tests@example.com"], rootURL: rootURL)
     try git(["config", "user.name", "Tests"], rootURL: rootURL)
-    try "initial\n".write(to: rootURL.appendingPathComponent("README.md"), atomically: true, encoding: .utf8)
+    try "initial\n".write(
+      to: rootURL.appendingPathComponent("README.md"), atomically: true, encoding: .utf8)
     try git(["add", "README.md"], rootURL: rootURL)
     try git(["commit", "-m", "Initial"], rootURL: rootURL)
 
@@ -763,7 +783,8 @@ final class LocalRepositoryServiceTests: XCTestCase {
     try git(["add", "content/posts/remote.md"], rootURL: rootURL)
     try git(["commit", "-m", "Remote article"], rootURL: rootURL)
     let remoteCommit = try git(["rev-parse", "HEAD"], rootURL: rootURL)
-    let remoteBlobSHA = try git(["rev-parse", "\(remoteCommit):content/posts/remote.md"], rootURL: rootURL)
+    let remoteBlobSHA = try git(
+      ["rev-parse", "\(remoteCommit):content/posts/remote.md"], rootURL: rootURL)
 
     try git(["switch", "main"], rootURL: rootURL)
     try git(["remote", "add", "origin", "https://example.invalid/site.git"], rootURL: rootURL)
@@ -785,19 +806,22 @@ final class LocalRepositoryServiceTests: XCTestCase {
     profile.contentRoot = "content"
 
     let snapshot = try XCTUnwrap(
-      LocalRepositoryService().remoteFileSnapshot(profile: profile, repositoryPath: "content/posts/remote.md")
+      LocalRepositoryService().remoteFileSnapshot(
+        profile: profile, repositoryPath: "content/posts/remote.md")
     )
 
     XCTAssertEqual(snapshot.refName, "origin/main")
     XCTAssertEqual(snapshot.repositoryPath, "content/posts/remote.md")
     XCTAssertEqual(snapshot.repositorySHA, remoteBlobSHA)
     XCTAssertTrue(snapshot.content.contains("title: \"Remote Article\""))
-    XCTAssertNil(LocalRepositoryService().remoteFileSnapshot(profile: profile, repositoryPath: "../secret.md"))
+    XCTAssertNil(
+      LocalRepositoryService().remoteFileSnapshot(profile: profile, repositoryPath: "../secret.md"))
   }
 
   func testReadsRemoteArticleSnapshotsInInputOrderAndSkipsInvalidMissingAndDuplicatePaths() throws {
     let rootURL = FileManager.default.temporaryDirectory
-      .appendingPathComponent("PersonalSitePublisherMacRemoteBatchSnapshotTests-\(UUID().uuidString)", isDirectory: true)
+      .appendingPathComponent(
+        "PersonalSitePublisherMacRemoteBatchSnapshotTests-\(UUID().uuidString)", isDirectory: true)
     defer {
       try? FileManager.default.removeItem(at: rootURL)
     }
@@ -884,7 +908,8 @@ final class LocalRepositoryServiceTests: XCTestCase {
     XCTAssertEqual(snapshots.map(\.content), ["second remote body", "first remote body"])
     let commandLog = try String(contentsOf: commandLogURL, encoding: .utf8)
     XCTAssertEqual(commandLog.split(whereSeparator: \.isNewline).filter { $0 == "status" }.count, 0)
-    XCTAssertEqual(commandLog.split(whereSeparator: \.isNewline).filter { $0 == "upstream" }.count, 1)
+    XCTAssertEqual(
+      commandLog.split(whereSeparator: \.isNewline).filter { $0 == "upstream" }.count, 1)
 
     let cancellationProbe = LocalRepositoryCancellationProbe(cancelAfterCheck: 5)
     let cancelledSnapshots = service.remoteFileSnapshots(
@@ -898,7 +923,8 @@ final class LocalRepositoryServiceTests: XCTestCase {
 
   func testReadsGitLabRemoteArticleSnapshotWithLastCommitID() throws {
     let rootURL = FileManager.default.temporaryDirectory
-      .appendingPathComponent("PersonalSitePublisherMacGitLabRemoteSnapshotTests-\(UUID().uuidString)", isDirectory: true)
+      .appendingPathComponent(
+        "PersonalSitePublisherMacGitLabRemoteSnapshotTests-\(UUID().uuidString)", isDirectory: true)
     defer {
       try? FileManager.default.removeItem(at: rootURL)
     }
@@ -916,7 +942,8 @@ final class LocalRepositoryServiceTests: XCTestCase {
     try git(["init", "-b", "main"], rootURL: rootURL)
     try git(["config", "user.email", "tests@example.com"], rootURL: rootURL)
     try git(["config", "user.name", "Tests"], rootURL: rootURL)
-    try "initial\n".write(to: rootURL.appendingPathComponent("README.md"), atomically: true, encoding: .utf8)
+    try "initial\n".write(
+      to: rootURL.appendingPathComponent("README.md"), atomically: true, encoding: .utf8)
     try git(["add", "README.md"], rootURL: rootURL)
     try git(["commit", "-m", "Initial"], rootURL: rootURL)
 
@@ -957,7 +984,8 @@ final class LocalRepositoryServiceTests: XCTestCase {
     profile.contentRoot = "content"
 
     let snapshot = try XCTUnwrap(
-      LocalRepositoryService().remoteFileSnapshot(profile: profile, repositoryPath: "content/posts/gitlab-remote.md")
+      LocalRepositoryService().remoteFileSnapshot(
+        profile: profile, repositoryPath: "content/posts/gitlab-remote.md")
     )
 
     XCTAssertEqual(snapshot.refName, "origin/main")
@@ -969,7 +997,8 @@ final class LocalRepositoryServiceTests: XCTestCase {
 
   func testScanDetectsGitHubOriginRemoteForReviewRequests() throws {
     let rootURL = FileManager.default.temporaryDirectory
-      .appendingPathComponent("PersonalSitePublisherMacRemoteTests-\(UUID().uuidString)", isDirectory: true)
+      .appendingPathComponent(
+        "PersonalSitePublisherMacRemoteTests-\(UUID().uuidString)", isDirectory: true)
     defer {
       try? FileManager.default.removeItem(at: rootURL)
     }
@@ -1038,7 +1067,8 @@ final class LocalRepositoryServiceTests: XCTestCase {
 
   func testReportsDetachedHeadAsRepositoryPreflightError() throws {
     let rootURL = FileManager.default.temporaryDirectory
-      .appendingPathComponent("PersonalSitePublisherMacDetachedTests-\(UUID().uuidString)", isDirectory: true)
+      .appendingPathComponent(
+        "PersonalSitePublisherMacDetachedTests-\(UUID().uuidString)", isDirectory: true)
     defer {
       try? FileManager.default.removeItem(at: rootURL)
     }
@@ -1077,14 +1107,16 @@ final class LocalRepositoryServiceTests: XCTestCase {
     let report = LocalRepositoryService().scan(profile: profile)
 
     XCTAssertTrue(report.branchStatus?.isDetached == true)
-    XCTAssertTrue(report.preflightIssues.contains { issue in
-      issue.severity == .error && issue.title == "当前是 Detached HEAD"
-    })
+    XCTAssertTrue(
+      report.preflightIssues.contains { issue in
+        issue.severity == .error && issue.title == "当前是 Detached HEAD"
+      })
   }
 
   func testScanDefersLineDiffsUntilAFileIsRequested() throws {
     let rootURL = FileManager.default.temporaryDirectory
-      .appendingPathComponent("PersonalSitePublisherMacDiffTests-\(UUID().uuidString)", isDirectory: true)
+      .appendingPathComponent(
+        "PersonalSitePublisherMacDiffTests-\(UUID().uuidString)", isDirectory: true)
     defer {
       try? FileManager.default.removeItem(at: rootURL)
     }
@@ -1119,7 +1151,8 @@ final class LocalRepositoryServiceTests: XCTestCase {
 
     let service = LocalRepositoryService()
     let report = service.scan(profile: profile)
-    let changedArticle = try XCTUnwrap(report.changedFiles.first { $0.path == "content/posts/hello.md" })
+    let changedArticle = try XCTUnwrap(
+      report.changedFiles.first { $0.path == "content/posts/hello.md" })
 
     XCTAssertEqual(changedArticle.kind, .modified)
     XCTAssertNil(changedArticle.lineDiff)
@@ -1154,7 +1187,7 @@ final class LocalRepositoryServiceTests: XCTestCase {
     try """
     #!/bin/sh
     case " $* " in
-      *" diff "*) printf '%s\\n' diff >> '\(shellQuotedLogPath)' ;;
+      *" diff -M -C -- "*) printf '%s\\n' line-diff >> '\(shellQuotedLogPath)' ;;
     esac
     exec /usr/bin/git "$@"
     """.write(to: wrapperURL, atomically: true, encoding: .utf8)
@@ -1183,12 +1216,18 @@ final class LocalRepositoryServiceTests: XCTestCase {
     XCTAssertNil(changedFile.lineDiff)
     XCTAssertFalse(FileManager.default.fileExists(atPath: commandLogURL.path))
 
-    let first = await store.repository.loadLineDiff(for: changedFile, isRemote: false)
-    let second = await store.repository.loadLineDiff(for: changedFile, isRemote: false)
+    async let firstRequest = store.repository.loadLineDiff(for: changedFile, isRemote: false)
+    async let secondRequest = store.repository.loadLineDiff(for: changedFile, isRemote: false)
+    let (first, second) = await (firstRequest, secondRequest)
     XCTAssertTrue(first?.contains("-before") == true)
     XCTAssertEqual(second, first)
+    let cached = await store.repository.loadLineDiff(for: changedFile, isRemote: false)
+    XCTAssertEqual(cached, first)
     let commandLog = try String(contentsOf: commandLogURL, encoding: .utf8)
-    XCTAssertEqual(commandLog.split(whereSeparator: \.isNewline).filter { $0 == "diff" }.count, 1)
+    XCTAssertEqual(
+      commandLog.split(whereSeparator: \.isNewline).filter { $0 == "line-diff" }.count,
+      1
+    )
   }
 
   func testClassifiesChangedFilesByPublishingRole() {
@@ -1203,8 +1242,10 @@ final class LocalRepositoryServiceTests: XCTestCase {
       imageFileCount: 0,
       changedFiles: [
         RepositoryChangedFile(status: " M", path: "content/posts/mac-editor.md", kind: .modified),
-        RepositoryChangedFile(status: "R ", path: "content/old.md -> content/posts/new-name.md", kind: .renamed),
-        RepositoryChangedFile(status: "??", path: "private/posts/private-note.md", kind: .untracked),
+        RepositoryChangedFile(
+          status: "R ", path: "content/old.md -> content/posts/new-name.md", kind: .renamed),
+        RepositoryChangedFile(
+          status: "??", path: "private/posts/private-note.md", kind: .untracked),
         RepositoryChangedFile(status: "??", path: "static/images/cover.webp", kind: .untracked),
         RepositoryChangedFile(status: " M", path: "config.toml", kind: .modified),
         RepositoryChangedFile(status: " M", path: "README.md", kind: .modified),
@@ -1221,7 +1262,10 @@ final class LocalRepositoryServiceTests: XCTestCase {
     XCTAssertEqual(summary.publishRelevantCount, 5)
     XCTAssertEqual(
       report.changedFiles(role: .article, contentRoot: "content", assetRoot: "static").map(\.path),
-      ["content/posts/mac-editor.md", "content/old.md -> content/posts/new-name.md", "private/posts/private-note.md"]
+      [
+        "content/posts/mac-editor.md", "content/old.md -> content/posts/new-name.md",
+        "private/posts/private-note.md",
+      ]
     )
   }
 
@@ -1240,8 +1284,10 @@ final class LocalRepositoryServiceTests: XCTestCase {
         RepositoryChangedFile(status: " M", path: "config.toml", kind: .modified),
         RepositoryChangedFile(status: "??", path: "static/images/cover.webp", kind: .untracked),
         RepositoryChangedFile(status: " M", path: "content/posts/mac-editor.md", kind: .modified),
-        RepositoryChangedFile(status: "R ", path: "content/old.md -> content/posts/new-name.md", kind: .renamed),
-        RepositoryChangedFile(status: "??", path: "private/posts/private-note.md", kind: .untracked),
+        RepositoryChangedFile(
+          status: "R ", path: "content/old.md -> content/posts/new-name.md", kind: .renamed),
+        RepositoryChangedFile(
+          status: "??", path: "private/posts/private-note.md", kind: .untracked),
       ],
       preflightIssues: []
     )
@@ -1251,7 +1297,9 @@ final class LocalRepositoryServiceTests: XCTestCase {
     XCTAssertEqual(sections.map(\.role), [.article, .image, .configuration, .other])
     XCTAssertEqual(sections.map(\.title), ["文章变更", "图片变更", "配置变更", "其他变更"])
     XCTAssertEqual(sections.map(\.count), [3, 1, 1, 1])
-    XCTAssertEqual(sections.first?.files.map(\.displayPath), ["content/posts/mac-editor.md", "content/posts/new-name.md", "private/posts/private-note.md"])
+    XCTAssertEqual(
+      sections.first?.files.map(\.displayPath),
+      ["content/posts/mac-editor.md", "content/posts/new-name.md", "private/posts/private-note.md"])
     XCTAssertTrue(sections[0].role.isPublishRelevant)
     XCTAssertFalse(sections[3].role.isPublishRelevant)
   }
@@ -1270,8 +1318,10 @@ final class LocalRepositoryServiceTests: XCTestCase {
     try process.run()
     process.waitUntilExit()
 
-    let output = String(data: outputPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
-    let error = String(data: errorPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+    let output =
+      String(data: outputPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+    let error =
+      String(data: errorPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
     guard process.terminationStatus == 0 else {
       throw NSError(
         domain: "LocalRepositoryServiceTests",
@@ -1284,7 +1334,8 @@ final class LocalRepositoryServiceTests: XCTestCase {
 
   private func makeBranchOperationRepository() throws -> (URL, SiteProfile) {
     let rootURL = FileManager.default.temporaryDirectory
-      .appendingPathComponent("PersonalSitePublisherMacBranchOperationTests-\(UUID().uuidString)", isDirectory: true)
+      .appendingPathComponent(
+        "PersonalSitePublisherMacBranchOperationTests-\(UUID().uuidString)", isDirectory: true)
     try FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)
     do {
       try git(["init", "-b", "main"], rootURL: rootURL)

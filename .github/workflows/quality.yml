@@ -1,6 +1,8 @@
 name: Public Source Gate
 
 on:
+  push:
+    branches: [main]
   pull_request:
   workflow_dispatch:
 
@@ -15,17 +17,34 @@ jobs:
   build-and-test:
     runs-on: macos-15
     timeout-minutes: 30
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
+      SWIFT_TEST_WARNINGS_AS_ERRORS: "1"
+      QUALITY_DIFF_BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || (github.event_name == 'push' && github.event.before) || '' }}
     steps:
       - name: Check out repository
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          fetch-depth: 0
       - name: Install public gate dependencies
         run: command -v rg >/dev/null 2>&1 || brew install ripgrep
       - name: Verify public repository boundary
         run: bash script/check_public_snapshot.sh .
       - name: Show toolchain
         run: swift --version
-      - name: Build and test
-        run: swift test
+      - name: Configure deterministic test language
+        run: |
+          defaults write NSGlobalDomain AppleLanguages -array "zh-Hans"
+          defaults write NSGlobalDomain AppleLocale "zh_CN"
+      - name: Verify source quality
+        run: |
+          python3 script/release_gate_runner.py \
+            --check localization --check typography --check quality-baseline-policy \
+            --check swift-format-lint --check test-isolation --check swift-safety \
+            --check swift-module-boundaries \
+            --result-json .build/public-quality.json
+      - name: Build strictly and run complete test inventory
+        run: python3 script/run_swift_test_process.py
       - name: Verify pinned Node dependencies
         run: |
           npm ci --ignore-scripts

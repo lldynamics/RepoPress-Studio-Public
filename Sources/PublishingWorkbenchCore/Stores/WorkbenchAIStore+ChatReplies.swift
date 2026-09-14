@@ -135,11 +135,14 @@ extension WorkbenchAIStore {
       return nil
     }
 
-    return await generateAIChatReply(
-      for: chatDraft,
-      conversationIdentity: conversationIdentity,
-      operationID: operationID
-    )
+    return await runAIChatRequestTask(operationID: operationID) { [weak self] in
+      guard let self else { return nil }
+      return await self.generateAIChatReply(
+        for: chatDraft,
+        conversationIdentity: conversationIdentity,
+        operationID: operationID
+      )
+    }
   }
 
   @discardableResult
@@ -214,6 +217,12 @@ extension WorkbenchAIStore {
     } catch is CancellationError {
       store.setAIChatMessage("AI 回复已停止。")
       return nil
+    } catch let error as AIOutboundPayloadConfirmationError where error == .drifted {
+      discardUnsentAIChatUserMessage(for: conversationIdentity)
+      store.setAIChatMessage(
+        CoreL10n.text("AI 连接配置已变化，本次未发送；输入已保留，请重新确认后发送。")
+      )
+      return nil
     } catch {
       store.setAIChatMessage(error.localizedDescription)
       return nil
@@ -236,7 +245,15 @@ extension WorkbenchAIStore {
       // checked before any later connection-state error can mask a revoked
       // explicit reference. Both checks remain before authorization consume
       // and before the transport boundary.
-      let token = try aiChatAvailableAPIKey(for: profile)
+      // Knowledge validation above can suspend. Immediately before consuming
+      // authorization, confirm that this is still the approved connection.
+      try checkAIChatOperation(operationID)
+      let token = try aiChatAvailableAPIKey(
+        for: profile,
+        matching: attempt.providerConfig,
+        connectionProfileID: attempt.connectionProfileID
+      )
+      try checkAIChatOperation(operationID)
       try attempt.authorization.consume()
       switch attempt.transport.preparedRequest.mode {
       case .streaming:
@@ -266,10 +283,46 @@ extension WorkbenchAIStore {
           .messages.last { $0.role == .assistant }
       }
       return nil
+    } catch let error as AIOutboundPayloadConfirmationError where error == .drifted {
+      discardUnsentAIChatUserMessage(for: conversationIdentity)
+      store.setAIChatMessage(
+        CoreL10n.text("AI 连接配置已变化，本次未发送；输入已保留，请重新确认后发送。")
+      )
+      return nil
     } catch {
       store.setAIChatMessage("AI 讨论失败：\(error.localizedDescription)")
       return nil
     }
+  }
+
+  private func discardUnsentAIChatUserMessage(for conversationIdentity: AIChatConversationIdentity)
+  {
+    updateAIChatSession(for: conversationIdentity) { messages in
+      guard messages.last?.role == .user else { return }
+      messages.removeLast()
+    }
+  }
+
+  /// Both the chat surface and the task center stop through this registered
+  /// child task, including while its transport waits for a first response.
+  func runAIChatRequestTask(
+    operationID: UUID,
+    operation: @escaping @MainActor () async -> AIPublishingChatMessage?
+  ) async -> AIPublishingChatMessage? {
+    let task = Task { @MainActor in await operation() }
+    aiChatOperationCoordinator.registerCancellation(for: operationID) {
+      task.cancel()
+    }
+    return await withTaskCancellationHandler(
+      operation: {
+        await task.value
+      },
+      onCancel: {
+        // The surface owns a parent Task. Propagate its cancellation to the
+        // registered request even when a caller cannot also reach the facade.
+        task.cancel()
+      }
+    )
   }
 
   private func generateStreamingAIChatReply(

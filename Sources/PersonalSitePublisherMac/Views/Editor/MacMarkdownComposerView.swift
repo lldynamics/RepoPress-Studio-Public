@@ -229,7 +229,9 @@ struct MacMarkdownComposerView: View {
       editorScrollProgress: editorSession.editorScrollProgress,
       editorBodyRevision: buffer.revision,
       invalidFrontMatterBaseBodyMarkdown: editorSession.invalidFrontMatterBaseBodyMarkdown,
-      invalidFrontMatterBaseBodyRevision: editorSession.invalidFrontMatterBaseBodyRevision
+      invalidFrontMatterBaseBodyRevision: editorSession.invalidFrontMatterBaseBodyRevision,
+      invalidFrontMatterBaseMetadataRevision:
+        editorSession.invalidFrontMatterBaseMetadataRevision
     )
     state.findReplaceMessage =
       editorSession.findQuery.isEmpty && editorSession.isFindReplacePresented
@@ -311,7 +313,8 @@ struct MacMarkdownComposerView: View {
       restoreInvalidFrontMatterDocument(
         restoredSession.invalidFrontMatterDocument,
         baseBodyMarkdown: restoredSession.invalidFrontMatterBaseBodyMarkdown,
-        baseBodyRevision: restoredSession.invalidFrontMatterBaseBodyRevision
+        baseBodyRevision: restoredSession.invalidFrontMatterBaseBodyRevision,
+        baseMetadataRevision: restoredSession.invalidFrontMatterBaseMetadataRevision
       )
       refreshFindMatchSnapshot()
       syncActiveEditorSelection()
@@ -776,6 +779,9 @@ struct MacMarkdownComposerView: View {
           },
           onLiveBodyChange: { previousBody, updatedBody in
             handleLiveEditorBodyChange(from: previousBody, to: updatedBody)
+          },
+          onDocumentTextCommitted: { previousDocument, updatedDocument in
+            commitEditorDocumentForTermination(from: previousDocument, to: updatedDocument)
           },
           onContextualAnchorChanged: { anchor in
             contextualPopoverAnchor = anchor

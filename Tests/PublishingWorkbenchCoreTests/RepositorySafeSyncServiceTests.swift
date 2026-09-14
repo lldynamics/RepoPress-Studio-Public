@@ -142,7 +142,8 @@ final class RepositorySafeSyncServiceTests: XCTestCase {
     try advanceRemote(fixture, path: "remote.md", contents: "remote\n")
     let originalHead = try git(["rev-parse", "HEAD"], at: fixture.worktree)
 
-    XCTAssertThrowsError(try RepositorySafeSyncService().prepare(profile: fixture.profile)) { error in
+    XCTAssertThrowsError(try RepositorySafeSyncService().prepare(profile: fixture.profile)) {
+      error in
       XCTAssertEqual(error as? RepositorySafeSyncError, .notBehind(ahead: 1, behind: 1))
     }
     XCTAssertEqual(try git(["rev-parse", "HEAD"], at: fixture.worktree), originalHead)
@@ -173,6 +174,74 @@ final class RepositorySafeSyncServiceTests: XCTestCase {
       XCTAssertTrue(message.contains("forced merge failure"))
       XCTAssertTrue(message.contains("forced restore hash failure"))
     }
+  }
+
+  func testRejectsIgnoredFileAndDirectoryCollisionsWithoutChangingLocalData() throws {
+    for path in ["draft.md", "私有目录/nested/draft.md", "cache"] {
+      let fixture = try makeFixture()
+      defer { try? FileManager.default.removeItem(at: fixture.base) }
+      let ignoredPath = path == "cache" ? "cache/local.md" : path
+      try write("local only\n", to: fixture.worktree, path: ignoredPath)
+      try write("draft.md\n私有目录/\ncache/\n", to: fixture.worktree, path: ".git/info/exclude")
+      try advanceRemote(fixture, path: path, contents: "remote\n")
+      let head = try git(["rev-parse", "HEAD"], at: fixture.worktree)
+      XCTAssertThrowsError(try RepositorySafeSyncService().prepare(profile: fixture.profile)) {
+        guard case .unsafeLocalChanges = $0 as? RepositorySafeSyncError else {
+          return XCTFail("Unexpected error: \($0)")
+        }
+      }
+      XCTAssertEqual(try content(fixture.worktree, path: ignoredPath), "local only\n")
+      XCTAssertEqual(try git(["rev-parse", "HEAD"], at: fixture.worktree), head)
+    }
+  }
+
+  func testIgnoredCollisionCreatedAfterReviewIsRejectedAndUnrelatedIgnoredDataIsPreserved() throws {
+    let fixture = try makeFixture()
+    defer { try? FileManager.default.removeItem(at: fixture.base) }
+    try advanceRemote(fixture, path: "draft.md", contents: "remote\n")
+    try write("draft.md\ncache/\n", to: fixture.worktree, path: ".git/info/exclude")
+    try write("unrelated\n", to: fixture.worktree, path: "cache/local.md")
+    let service = RepositorySafeSyncService()
+    let review = try confirmation(from: service.prepare(profile: fixture.profile))
+    try write("late local\n", to: fixture.worktree, path: "draft.md")
+    XCTAssertThrowsError(
+      try service.apply(
+        profile: fixture.profile, confirmation: review,
+        recoveryRootURL: fixture.base.appendingPathComponent("recovery")))
+    XCTAssertEqual(try content(fixture.worktree, path: "draft.md"), "late local\n")
+    try FileManager.default.removeItem(at: fixture.worktree.appendingPathComponent("draft.md"))
+    _ = try service.apply(
+      profile: fixture.profile, confirmation: review,
+      recoveryRootURL: fixture.base.appendingPathComponent("recovery"))
+    XCTAssertEqual(try content(fixture.worktree, path: "cache/local.md"), "unrelated\n")
+  }
+
+  func testGitLayerRejectsIgnoredFileCreatedAtMergeBoundary() throws {
+    let fixture = try makeFixture()
+    defer { try? FileManager.default.removeItem(at: fixture.base) }
+    try advanceRemote(fixture, path: "draft.md", contents: "remote\n")
+    try write("draft.md\n", to: fixture.worktree, path: ".git/info/exclude")
+    let wrapper = fixture.base.appendingPathComponent("late-ignored.sh")
+    try """
+    #!/bin/sh
+    root="$2"
+    shift 2
+    if [ "$1" = "merge" ]; then
+      printf 'created during merge\\n' > "$root/draft.md"
+    fi
+    exec /usr/bin/git -C "$root" "$@"
+    """.write(to: wrapper, atomically: true, encoding: .utf8)
+    try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: wrapper.path)
+    let service = RepositorySafeSyncService(
+      gitCommandRunner: GitCommandRunner(executableURL: wrapper))
+    let review = try confirmation(from: service.prepare(profile: fixture.profile))
+    let head = try git(["rev-parse", "HEAD"], at: fixture.worktree)
+    XCTAssertThrowsError(
+      try service.apply(
+        profile: fixture.profile, confirmation: review,
+        recoveryRootURL: fixture.base.appendingPathComponent("recovery")))
+    XCTAssertEqual(try content(fixture.worktree, path: "draft.md"), "created during merge\n")
+    XCTAssertEqual(try git(["rev-parse", "HEAD"], at: fixture.worktree), head)
   }
 
   private func confirmation(

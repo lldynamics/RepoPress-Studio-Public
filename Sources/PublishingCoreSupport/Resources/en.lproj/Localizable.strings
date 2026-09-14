@@ -2155,3 +2155,12 @@
 "写作风格预览已过期，请重新提炼后再应用。" = "The writing-style preview is stale. Extract it again before applying.";
 "写作风格未保存；请先处理当前项目文件的保存问题。" = "The writing style was not saved. Resolve the current project-file save issue first.";
 "已保存当前站点的个人写作风格和术语。" = "Saved the current site's personal writing style and terminology.";
+"另一窗口已修改文章信息；恢复原文仍保留，请复制原文后决定如何合并。" = "Another window changed the article information. The recovered source is preserved; copy it, then decide how to merge.";
+"AI 连接配置已变化，本次未发送；输入已保留，请重新确认后发送。" = "The AI connection settings changed. Nothing was sent and your input is preserved. Review the settings and send again.";
+"丢弃陈旧结果" = "Discard outdated result";
+"重新生成" = "Regenerate";
+"跳过" = "Skip";
+"待同步历史包含合并提交，自动变基可能丢失合并时的修改。请先在 Git 工具中审阅并处理合并历史，本地提交和改动已保留。" = "The outgoing history contains merge commits. Automatic rebase could lose changes made during a merge. Review this history in a Git tool first; local commits and changes are preserved.";
+"待推送提交超过 500 个，请先在 Git 工具中审阅历史。" = "More than 500 commits are awaiting push. Review the history in a Git tool first.";
+"待推送历史不完整，已停止推送。" = "The outgoing history could not be fully inspected. The push was stopped.";
+"多个模型" = "Multiple models";

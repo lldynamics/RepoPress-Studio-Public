@@ -1,6 +1,7 @@
+import PublishingWorkbenchCore
 import XCTest
+
 @testable import PersonalSitePublisherMac
-@testable import PublishingWorkbenchCore
 
 final class WorkbenchMotionLayoutPolicyTests: XCTestCase {
   func testInspectorWidthStateKeepsArticleTripleTogether() {

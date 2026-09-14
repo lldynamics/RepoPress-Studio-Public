@@ -2,7 +2,7 @@ import Foundation
 import XCTest
 
 @testable import PersonalSitePublisherMac
-@testable import PublishingWorkbenchCore
+@testable import PublishingKnowledgeCore
 
 final class AIChatCitationBacklinkRetryTests: XCTestCase {
   func testRetryDoesNotMatchAnotherConversationForTheSameDraft() {

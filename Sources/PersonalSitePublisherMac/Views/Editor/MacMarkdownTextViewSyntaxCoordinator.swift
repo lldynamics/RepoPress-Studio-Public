@@ -1,7 +1,7 @@
 import AppKit
 import Foundation
 import OSLog
-import PublishingWorkbenchCore
+import PublishingMarkdownCore
 
 private struct MarkdownSyntaxSnapshotMergeResult: Sendable {
   let snapshot: MarkdownSyntaxHighlightSnapshot
@@ -1256,9 +1256,10 @@ extension MacMarkdownTextView.Coordinator {
           NSIntersectionRange($0, paragraphRange).length > 0
         }
       } ?? false
-    guard force || paragraphRange != appliedParagraphHighlightRange
-      || geometryRange != appliedParagraphHighlightGeometryRange
-      || wasInvalidated
+    guard
+      force || paragraphRange != appliedParagraphHighlightRange
+        || geometryRange != appliedParagraphHighlightGeometryRange
+        || wasInvalidated
     else {
       return false
     }
@@ -1432,14 +1433,15 @@ extension MacMarkdownTextView.Coordinator {
       scheduleFullStatistics(for: updatedText)
       return
     }
-    let hasContinuousDocumentRevision = previousDocumentRevision.map {
-      statisticsDocumentRevision == $0
-        && syntaxDocumentRevision == $0 &+ 1
-        && statisticsBodyUTF16Offset == bodyUTF16Offset
-        && hasValidDocumentBodyMapping
-        && (previousStatisticsText as NSString).length
-          == previousDocument.length - bodyUTF16Offset
-    } ?? false
+    let hasContinuousDocumentRevision =
+      previousDocumentRevision.map {
+        statisticsDocumentRevision == $0
+          && syntaxDocumentRevision == $0 &+ 1
+          && statisticsBodyUTF16Offset == bodyUTF16Offset
+          && hasValidDocumentBodyMapping
+          && (previousStatisticsText as NSString).length
+            == previousDocument.length - bodyUTF16Offset
+      } ?? false
     let previousBody: String
     if hasContinuousDocumentRevision {
       // The cache belongs to the immediately preceding document and body

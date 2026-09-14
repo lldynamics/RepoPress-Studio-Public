@@ -151,6 +151,20 @@ extension MacMarkdownComposerView {
       frontMatterIssue != nil
       || editorSessionState.invalidFrontMatterBaseBodyMarkdown != nil
     if wasRecoveringInvalidDocument,
+      !MacMarkdownFrontMatterRecoveryConflictPolicy.hasMatchingMetadataRevision(
+        baseline: editorSessionState.invalidFrontMatterBaseMetadataRevision,
+        current: draft.editorMetadataRevision
+      )
+    {
+      frontMatterIssue = .concurrentBodyChange
+      selectionActionMessage = String(
+        localized: "另一窗口已修改文章信息；恢复原文仍保留，请复制原文后决定如何合并。"
+      )
+      EditorAccessibilityAnnouncementCenter.announce(selectionActionMessage)
+      saveCurrentEditorSession()
+      return
+    }
+    if wasRecoveringInvalidDocument,
       !stageRecoveredFrontMatterBody(parts.bodyMarkdown)
     {
       frontMatterIssue = .concurrentBodyChange
@@ -176,6 +190,7 @@ extension MacMarkdownComposerView {
     }
     editorSessionState.invalidFrontMatterBaseBodyMarkdown = nil
     editorSessionState.invalidFrontMatterBaseBodyRevision = nil
+    editorSessionState.invalidFrontMatterBaseMetadataRevision = nil
     saveCurrentEditorSession()
   }
 
@@ -185,6 +200,7 @@ extension MacMarkdownComposerView {
       editorSessionState.liveBodyMarkdown
     editorSessionState.invalidFrontMatterBaseBodyRevision =
       editorSessionState.liveBodyRevision
+    editorSessionState.invalidFrontMatterBaseMetadataRevision = draft.editorMetadataRevision
   }
 
   private func stageRecoveredFrontMatterBody(_ recoveredBody: String) -> Bool {
@@ -300,6 +316,7 @@ extension MacMarkdownComposerView {
     frontMatterIssue = nil
     editorSessionState.invalidFrontMatterBaseBodyMarkdown = nil
     editorSessionState.invalidFrontMatterBaseBodyRevision = nil
+    editorSessionState.invalidFrontMatterBaseMetadataRevision = nil
     isFrontMatterSelection = false
     editorDocument = frontMatterEditingService.renderDocument(
       draft: draft,

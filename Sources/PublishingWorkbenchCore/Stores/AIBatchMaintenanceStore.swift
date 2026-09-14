@@ -53,7 +53,8 @@ public final class AIBatchMaintenanceStore: ObservableObject {
     let items = drafts.map {
       AIBatchMaintenanceItem(
         draftID: $0.id, draftTitle: $0.title,
-        sourceFingerprint: service.fingerprint(draft: $0, profile: profile, config: config))
+        sourceFingerprint: service.fingerprint(draft: $0, profile: profile, config: config),
+        modelName: config.normalizedModel)
     }
     queues[siteProfileID] = AIBatchMaintenanceQueue(
       siteProfileID: siteProfileID, operation: operation, modelName: config.normalizedModel,
@@ -71,11 +72,7 @@ public final class AIBatchMaintenanceStore: ObservableObject {
     queue.resume()
     queues[siteProfileID] = queue
     guard persist() else { return }
-    runningSiteID = siteProfileID
-    message = nil
-    task = Task { [weak self] in
-      await self?.run(siteProfileID: siteProfileID, eligibleItemIDs: retryIDs)
-    }
+    beginRun(siteProfileID: siteProfileID, eligibleItemIDs: retryIDs)
   }
 
   /// A pause completes the current request, then stops before the next article.
@@ -159,6 +156,64 @@ public final class AIBatchMaintenanceStore: ObservableObject {
     _ = persist()
   }
 
+  /// Skipping is local only. A running item is deliberately excluded because
+  /// its request already owns the one shared batch lane.
+  @discardableResult
+  public func skip(itemID: UUID, siteProfileID: UUID) -> Bool {
+    guard task == nil, var queue = queues[siteProfileID],
+      let item = queue.items.first(where: { $0.id == itemID }), item.status != .running
+    else { return false }
+    queue.skip(id: itemID)
+    queues[siteProfileID] = queue
+    return persist()
+  }
+
+  /// Removes a ready preview only after it has become stale. The item becomes
+  /// skipped until the user explicitly asks to regenerate it.
+  @discardableResult
+  public func discardStaleResult(itemID: UUID, siteProfileID: UUID) -> Bool {
+    guard let queue = queues[siteProfileID],
+      let item = queue.items.first(where: { $0.id == itemID }),
+      item.status == .ready, !isCurrent(item: item, siteProfileID: siteProfileID)
+    else { return false }
+    return skip(itemID: itemID, siteProfileID: siteProfileID)
+  }
+
+  /// Rebuilds one legal item from its current same-site, non-private source
+  /// and runs only that item. Existing results in the queue are retained.
+  @discardableResult
+  public func regenerate(itemID: UUID, siteProfileID: UUID) -> Bool {
+    guard task == nil, !loadFailed, let store, store.canUseProtectedWorkbench,
+      var queue = queues[siteProfileID],
+      let item = queue.items.first(where: { $0.id == itemID }), item.status != .running,
+      let draft = store.draft(for: item.draftID), !draft.isPrivate,
+      draft.scope == .site(siteProfileID),
+      let profile = store.profiles.first(where: { $0.id == siteProfileID }),
+      !store.draftBodyEditorBuffer(for: draft.id).isDirty
+    else { return false }
+    let config = store.aiProviderConfig(for: profile)
+    queue.requeue(
+      id: itemID,
+      draftTitle: draft.title,
+      sourceFingerprint: service.fingerprint(draft: draft, profile: profile, config: config),
+      modelName: config.normalizedModel
+    )
+    guard queue.items.first(where: { $0.id == itemID })?.status == .pending else { return false }
+    queue.resume()
+    queues[siteProfileID] = queue
+    guard persist() else { return false }
+    beginRun(siteProfileID: siteProfileID, eligibleItemIDs: [itemID])
+    return true
+  }
+
+  private func beginRun(siteProfileID: UUID, eligibleItemIDs: Set<UUID>? = nil) {
+    runningSiteID = siteProfileID
+    message = nil
+    task = Task { [weak self] in
+      await self?.run(siteProfileID: siteProfileID, eligibleItemIDs: eligibleItemIDs)
+    }
+  }
+
   private func run(siteProfileID: UUID, eligibleItemIDs: Set<UUID>? = nil) async {
     defer {
       runningSiteID = nil
@@ -179,6 +234,13 @@ public final class AIBatchMaintenanceStore: ObservableObject {
         else { throw AIBatchMaintenanceError.unavailable }
         guard isCurrent(item: item, siteProfileID: siteProfileID) else {
           throw AIBatchMaintenanceError.changed
+        }
+        // Legacy items are upgraded at their first actual dispatch. New items
+        // already carry this frozen model, so a later single-item redo cannot
+        // relabel retained ready results.
+        let modelName = store.aiProviderConfig(for: profile).normalizedModel
+        if queues[siteProfileID]?.items.first(where: { $0.id == item.id })?.modelName == nil {
+          queues[siteProfileID]?.setModelName(id: item.id, modelName: modelName)
         }
         let result: String
         if let generate {

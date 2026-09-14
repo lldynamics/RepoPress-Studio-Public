@@ -3,7 +3,7 @@ import SwiftUI
 import XCTest
 
 @testable import PersonalSitePublisherMac
-@testable import PublishingWorkbenchCore
+@testable import PublishingAICore
 
 @MainActor
 final class SettingsSubsectionAnchorLayoutTests: XCTestCase {

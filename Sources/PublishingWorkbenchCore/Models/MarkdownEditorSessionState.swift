@@ -13,6 +13,7 @@ public struct MarkdownEditorSessionState: Codable, Equatable, Sendable {
   public var invalidFrontMatterDocument: String?
   public var invalidFrontMatterBaseBodyMarkdown: String?
   public var invalidFrontMatterBaseBodyRevision: UInt64?
+  public var invalidFrontMatterBaseMetadataRevision: UInt64?
 
   public init(
     selectedRange: NSRange = NSRange(location: 0, length: 0),
@@ -25,7 +26,8 @@ public struct MarkdownEditorSessionState: Codable, Equatable, Sendable {
     isFindRegularExpression: Bool = false,
     invalidFrontMatterDocument: String? = nil,
     invalidFrontMatterBaseBodyMarkdown: String? = nil,
-    invalidFrontMatterBaseBodyRevision: UInt64? = nil
+    invalidFrontMatterBaseBodyRevision: UInt64? = nil,
+    invalidFrontMatterBaseMetadataRevision: UInt64? = nil
   ) {
     selectionLocation = max(0, selectedRange.location)
     selectionLength = max(0, selectedRange.length)
@@ -39,6 +41,7 @@ public struct MarkdownEditorSessionState: Codable, Equatable, Sendable {
     self.invalidFrontMatterDocument = invalidFrontMatterDocument
     self.invalidFrontMatterBaseBodyMarkdown = invalidFrontMatterBaseBodyMarkdown
     self.invalidFrontMatterBaseBodyRevision = invalidFrontMatterBaseBodyRevision
+    self.invalidFrontMatterBaseMetadataRevision = invalidFrontMatterBaseMetadataRevision
   }
 
   public static let empty = MarkdownEditorSessionState()
@@ -58,7 +61,8 @@ public struct MarkdownEditorSessionState: Codable, Equatable, Sendable {
       isFindRegularExpression: isFindRegularExpression,
       invalidFrontMatterDocument: invalidFrontMatterDocument,
       invalidFrontMatterBaseBodyMarkdown: invalidFrontMatterBaseBodyMarkdown,
-      invalidFrontMatterBaseBodyRevision: invalidFrontMatterBaseBodyRevision
+      invalidFrontMatterBaseBodyRevision: invalidFrontMatterBaseBodyRevision,
+      invalidFrontMatterBaseMetadataRevision: invalidFrontMatterBaseMetadataRevision
     )
   }
 

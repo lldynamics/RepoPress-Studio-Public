@@ -104,6 +104,7 @@ struct MacMarkdownTextView: NSViewRepresentable {
   var onSSGSnippetShortcut: (MarkdownCompletionCandidate) -> Void
   var onSlashCommandKey: (MarkdownSlashCommandKey) -> Bool = { _ in false }
   var onLiveBodyChange: (String, String) -> Void = { _, _ in }
+  var onDocumentTextCommitted: (String, String) -> Void = { _, _ in }
   var onContextualAnchorChanged: (MarkdownContextualPopoverAnchor?) -> Void = { _ in }
   var onScrollPositionChanged: (MarkdownScrollSyncPosition) -> Void
   var onDroppedFiles: ([URL]) -> Void
@@ -130,6 +131,7 @@ struct MacMarkdownTextView: NSViewRepresentable {
       onGhostTextDismissed: onGhostTextDismissed,
       onSSGSnippetShortcut: onSSGSnippetShortcut,
       onLiveBodyChange: onLiveBodyChange,
+      onDocumentTextCommitted: onDocumentTextCommitted,
       onContextualAnchorChanged: onContextualAnchorChanged,
       onScrollPositionChanged: onScrollPositionChanged,
       onDroppedFiles: onDroppedFiles,
@@ -298,6 +300,7 @@ struct MacMarkdownTextView: NSViewRepresentable {
       in: textView
     )
     context.coordinator.ssgSnippets = ssgSnippets
+    context.coordinator.onDocumentTextCommitted = onDocumentTextCommitted
     context.coordinator.onContextualAnchorChanged = onContextualAnchorChanged
     context.coordinator.onGhostTextAccepted = onGhostTextAccepted
     context.coordinator.onGhostTextDismissed = onGhostTextDismissed
@@ -362,9 +365,7 @@ struct MacMarkdownTextView: NSViewRepresentable {
       let currentDocumentRange = textView.selectedRange()
       context.coordinator.syntaxDocumentRevision &+= 1
       context.coordinator.pendingSyntaxParserEdit = nil
-      context.coordinator.isApplyingRepresentedText = true
-      textView.string = text
-      context.coordinator.isApplyingRepresentedText = false
+      context.coordinator.replaceDocumentTextFromExternalUpdate(text, in: textView)
       (nsView as? MarkdownEditorScrollView)?.invalidateDocumentHeight(immediately: true)
       let replacementRange =
         isFrontMatterSelection
@@ -421,7 +422,8 @@ struct MacMarkdownTextView: NSViewRepresentable {
   }
 
   static func dismantleNSView(_ nsView: NSScrollView, coordinator: Coordinator) {
-    coordinator.flushPendingBindingWrites()
+    coordinator.flushPendingBindingWrites(notifyingDocumentCommit: true)
+    MacMarkdownEditorTerminationFlushRegistry.unregister(coordinator)
     coordinator.inlineAttachmentDrawingApplicationTask?.cancel()
     coordinator.cancelReadOnlyPresentationTasks()
     if let textView = nsView.documentView as? DroppableMarkdownTextView {
@@ -511,6 +513,7 @@ struct MacMarkdownTextView: NSViewRepresentable {
     var lastCommittedSelectedRange: NSRange
     var lastCommittedIsFrontMatterSelection: Bool
     var pendingTextBindingValue: String?
+    var onDocumentTextCommitted: (String, String) -> Void
     var pendingSelectedRangeBindingValue: NSRange?
     var pendingFrontMatterBindingValue: Bool?
     var bindingFlushTask: Task<Void, Never>?
@@ -594,6 +597,7 @@ struct MacMarkdownTextView: NSViewRepresentable {
       onGhostTextDismissed: @escaping () -> Void,
       onSSGSnippetShortcut: @escaping (MarkdownCompletionCandidate) -> Void,
       onLiveBodyChange: @escaping (String, String) -> Void = { _, _ in },
+      onDocumentTextCommitted: @escaping (String, String) -> Void = { _, _ in },
       onContextualAnchorChanged: @escaping (MarkdownContextualPopoverAnchor?) -> Void = { _ in },
       onScrollPositionChanged: @escaping (MarkdownScrollSyncPosition) -> Void,
       onDroppedFiles: @escaping ([URL]) -> Void,
@@ -619,6 +623,7 @@ struct MacMarkdownTextView: NSViewRepresentable {
       lastCommittedSelectedRange = selectedRange.wrappedValue
       lastCommittedIsFrontMatterSelection = isFrontMatterSelection.wrappedValue
       self.onLiveBodyChange = onLiveBodyChange
+      self.onDocumentTextCommitted = onDocumentTextCommitted
       self.comfortConfiguration = comfortConfiguration
       syntaxHighlightPalette = MarkdownTextViewSyntaxPalette(
         configuration: comfortConfiguration
@@ -642,6 +647,8 @@ struct MacMarkdownTextView: NSViewRepresentable {
         source: .editor,
         onPositionChanged: onScrollPositionChanged
       )
+      super.init()
+      MacMarkdownEditorTerminationFlushRegistry.register(self)
     }
 
     convenience init(
@@ -674,6 +681,7 @@ struct MacMarkdownTextView: NSViewRepresentable {
         onGhostTextDismissed: {},
         onSSGSnippetShortcut: { _ in },
         onLiveBodyChange: onLiveBodyChange,
+        onDocumentTextCommitted: { _, _ in },
         onContextualAnchorChanged: { _ in },
         onScrollPositionChanged: onScrollPositionChanged,
         onDroppedFiles: onDroppedFiles,
@@ -804,6 +812,20 @@ struct MacMarkdownTextView: NSViewRepresentable {
       return true
     }
 
+    /// SwiftUI can replace the complete Markdown document after a structured
+    /// metadata edit or another editor writes the same draft. NSTextView's
+    /// undo manager stores UTF-16 ranges, so retaining local edit actions
+    /// across a differently-shaped document can make Undo target unrelated
+    /// Front Matter. An external replacement is therefore an explicit undo
+    /// boundary: it clears only the stale local history before installing the
+    /// new source.
+    func replaceDocumentTextFromExternalUpdate(_ text: String, in textView: NSTextView) {
+      textView.undoManager?.removeAllActions()
+      isApplyingRepresentedText = true
+      textView.string = text
+      isApplyingRepresentedText = false
+    }
+
     func shouldApplyRepresentedSelection(
       selectedRange incomingRange: NSRange,
       isFrontMatterSelection incomingFrontMatterSelection: Bool,
@@ -900,7 +922,7 @@ struct MacMarkdownTextView: NSViewRepresentable {
       scheduleBindingFlush()
     }
 
-    func flushPendingBindingWrites() {
+    func flushPendingBindingWrites(notifyingDocumentCommit: Bool = false) {
       let signpostState = syntaxHighlightSignposter.beginInterval("FlushEditorBindings")
       defer {
         syntaxHighlightSignposter.endInterval(
@@ -909,6 +931,7 @@ struct MacMarkdownTextView: NSViewRepresentable {
         )
       }
       let nextText = pendingTextBindingValue
+      let previousText = lastCommittedText
       let nextSelectedRange = pendingSelectedRangeBindingValue
       let nextFrontMatterSelection = pendingFrontMatterBindingValue
       pendingTextBindingValue = nil
@@ -922,6 +945,9 @@ struct MacMarkdownTextView: NSViewRepresentable {
         lastCommittedText = nextText
         if text != nextText {
           text = nextText
+        }
+        if notifyingDocumentCommit, previousText != nextText {
+          onDocumentTextCommitted(previousText, nextText)
         }
       }
       if let nextSelectedRange {

@@ -1,10 +1,12 @@
 import XCTest
+
 @testable import PublishingWorkbenchCore
 
 @MainActor
 final class DraftRecoveryJournalTests: XCTestCase {
   func testJournalRoundTripsRecordsAndCapsHistory() throws {
-    let directoryURL = try TestWorkbenchFactory.temporaryDirectoryURL(prefix: "DraftRecoveryJournal")
+    let directoryURL = try TestWorkbenchFactory.temporaryDirectoryURL(
+      prefix: "DraftRecoveryJournal")
     defer { try? FileManager.default.removeItem(at: directoryURL) }
     let journal = DraftRecoveryJournal(
       fileURL: directoryURL.appendingPathComponent("draft-recovery.json")
@@ -84,7 +86,8 @@ final class DraftRecoveryJournalTests: XCTestCase {
   }
 
   func testUncommittedEditorBodySurvivesStoreReloadAndCanBeRestored() async throws {
-    let persistenceURL = try TestWorkbenchFactory.temporaryPersistenceURL(prefix: "DraftRecoveryStore")
+    let persistenceURL = try TestWorkbenchFactory.temporaryPersistenceURL(
+      prefix: "DraftRecoveryStore")
     defer { try? FileManager.default.removeItem(at: persistenceURL.deletingLastPathComponent()) }
     let persistence = WorkbenchPersistence(fileURL: persistenceURL)
     let store = WorkbenchStore(persistence: persistence, safeMode: true)
@@ -114,6 +117,55 @@ final class DraftRecoveryJournalTests: XCTestCase {
       "这段正文尚未进入主工作台快照。"
     )
     XCTAssertTrue(reloaded.pendingDraftRecoveries.isEmpty)
+  }
+
+  func testRestoringRecoveryAdvancesBufferAndRejectsInputCapturedBeforeRestore() async throws {
+    let persistenceURL = try TestWorkbenchFactory.temporaryPersistenceURL(
+      prefix: "DraftRecoveryRejectsOldInput"
+    )
+    defer { try? FileManager.default.removeItem(at: persistenceURL.deletingLastPathComponent()) }
+    let persistence = WorkbenchPersistence(fileURL: persistenceURL)
+    let originalStore = WorkbenchStore(persistence: persistence, safeMode: true)
+    let draft = try XCTUnwrap(originalStore.selectedDraft)
+    originalStore.save()
+    await originalStore.waitForPendingSave()
+
+    _ = originalStore.stageDraftBody(
+      "应当恢复的新正文。",
+      for: draft.id,
+      baseRevision: 0
+    )
+    XCTAssertTrue(originalStore.flushDraftRecoveryJournal())
+
+    let resumedStore = WorkbenchStore(persistence: persistence, safeMode: true)
+    let staleInputRevision = resumedStore.draftBodyEditorBuffer(for: draft.id).revision
+    XCTAssertEqual(staleInputRevision, 0)
+    let recovery = try XCTUnwrap(resumedStore.pendingDraftRecoveries.first)
+
+    XCTAssertTrue(resumedStore.restoreDraftRecovery(recovery))
+    let restoredBuffer = resumedStore.draftBodyEditorBuffer(for: draft.id)
+    XCTAssertEqual(restoredBuffer.bodyMarkdown, "应当恢复的新正文。")
+    XCTAssertGreaterThan(restoredBuffer.revision, staleInputRevision)
+    XCTAssertFalse(restoredBuffer.isDirty)
+
+    let staleWrite = try XCTUnwrap(
+      resumedStore.stageDraftBody(
+        "恢复前已排队的旧输入。",
+        for: draft.id,
+        baseRevision: staleInputRevision
+      )
+    )
+    XCTAssertFalse(staleWrite.wasAccepted)
+
+    let continuedWrite = try XCTUnwrap(
+      resumedStore.stageDraftBody(
+        "恢复后继续输入的新正文。",
+        for: draft.id,
+        baseRevision: restoredBuffer.revision
+      )
+    )
+    XCTAssertTrue(continuedWrite.wasAccepted)
+    XCTAssertEqual(continuedWrite.buffer.bodyMarkdown, "恢复后继续输入的新正文。")
   }
 
   func testBackgroundJournalFailureIsObservableAndNextSuccessfulWriteClearsIt() async throws {
@@ -268,7 +320,8 @@ final class DraftRecoveryJournalTests: XCTestCase {
     XCTAssertFalse(records.contains { $0.recoveredBodyMarkdown == "连续输入的第一版正文。" })
   }
 
-  func testEditingAfterDeferringRecoveryMaterializesOldRecoveryBeforeReplacingJournal() async throws {
+  func testEditingAfterDeferringRecoveryMaterializesOldRecoveryBeforeReplacingJournal() async throws
+  {
     let persistenceURL = try TestWorkbenchFactory.temporaryPersistenceURL(
       prefix: "DraftRecoveryDeferredEditing"
     )
@@ -287,13 +340,15 @@ final class DraftRecoveryJournalTests: XCTestCase {
     _ = resumedStore.stageDraftBody("本次继续输入的新正文。", for: draft.id, baseRevision: 0)
     await resumedStore.waitForPendingDraftRecoveryJournalWrite()
 
-    XCTAssertTrue(resumedStore.drafts.contains {
-      $0.id != draft.id && $0.bodyMarkdown == "上次崩溃留下的正文。"
-    })
+    XCTAssertTrue(
+      resumedStore.drafts.contains {
+        $0.id != draft.id && $0.bodyMarkdown == "上次崩溃留下的正文。"
+      })
     let reloaded = WorkbenchStore(persistence: persistence, safeMode: true)
-    XCTAssertTrue(reloaded.drafts.contains {
-      $0.id != draft.id && $0.bodyMarkdown == "上次崩溃留下的正文。"
-    })
+    XCTAssertTrue(
+      reloaded.drafts.contains {
+        $0.id != draft.id && $0.bodyMarkdown == "上次崩溃留下的正文。"
+      })
     XCTAssertEqual(reloaded.pendingDraftRecoveries.first?.recoveredBodyMarkdown, "本次继续输入的新正文。")
   }
 
@@ -335,9 +390,10 @@ final class DraftRecoveryJournalTests: XCTestCase {
     XCTAssertTrue(deletion.recycledDrafts.contains { $0.id == recycledDraft.id })
     XCTAssertFalse(store.recycledDrafts.contains { $0.id == recycledDraft.id })
     XCTAssertFalse(store.draftVersions.contains { $0.draftID == recycledDraft.id })
-    XCTAssertFalse(store.draftRepositoryCleanupRequests.contains {
-      $0.siteProfileID == deletedProfile.id
-    })
+    XCTAssertFalse(
+      store.draftRepositoryCleanupRequests.contains {
+        $0.siteProfileID == deletedProfile.id
+      })
     XCTAssertTrue(
       store.flushPendingChanges(),
       store.lastSaveError ?? "profile deletion snapshot failed without an error"
@@ -346,9 +402,10 @@ final class DraftRecoveryJournalTests: XCTestCase {
     XCTAssertTrue(store.restoreRecentlyDeletedProfile())
     XCTAssertTrue(store.recycledDrafts.contains { $0.id == recycledDraft.id })
     XCTAssertTrue(store.draftVersions.contains { $0.draftID == recycledDraft.id })
-    XCTAssertTrue(store.draftRepositoryCleanupRequests.contains {
-      $0.siteProfileID == deletedProfile.id
-    })
+    XCTAssertTrue(
+      store.draftRepositoryCleanupRequests.contains {
+        $0.siteProfileID == deletedProfile.id
+      })
   }
 
   func testDeletingEditingProfileRebindsGeneralDraftHistoryAndRecycleBin() throws {
@@ -390,9 +447,10 @@ final class DraftRecoveryJournalTests: XCTestCase {
     let deletion = try XCTUnwrap(store.deleteActiveProfile())
 
     XCTAssertEqual(store.activeProfileID, fallbackProfileID)
-    XCTAssertFalse(deletion.draftVersions.contains {
-      retainedGeneralIDs.contains($0.draftID)
-    })
+    XCTAssertFalse(
+      deletion.draftVersions.contains {
+        retainedGeneralIDs.contains($0.draftID)
+      })
     XCTAssertEqual(
       store.drafts.first { $0.id == retainedGeneralDraft.id }?.siteProfileID,
       fallbackProfileID
@@ -405,10 +463,11 @@ final class DraftRecoveryJournalTests: XCTestCase {
       store.draftVersions.filter { retainedGeneralIDs.contains($0.draftID) }.count,
       versionCountBeforeDeletion
     )
-    XCTAssertFalse(store.draftVersions.contains {
-      ($0.draftID == retainedGeneralDraft.id || $0.draftID == recycledGeneralDraft.id)
-        && $0.draft.siteProfileID == deletedProfile.id
-    })
+    XCTAssertFalse(
+      store.draftVersions.contains {
+        ($0.draftID == retainedGeneralDraft.id || $0.draftID == recycledGeneralDraft.id)
+          && $0.draft.siteProfileID == deletedProfile.id
+      })
     XCTAssertTrue(
       store.flushPendingChanges(),
       store.lastSaveError ?? "general draft rebinding failed without an error"
@@ -425,10 +484,11 @@ final class DraftRecoveryJournalTests: XCTestCase {
     sourceDraft.slug = "moved-site-history-\(UUID().uuidString.lowercased())"
     store.updateDraft(sourceDraft)
     XCTAssertTrue(store.createManualVersion(for: sourceDraft.id))
-    XCTAssertTrue(store.draftVersions.contains {
-      $0.draftID == sourceDraft.id
-        && $0.draft.belongs(toSiteProfileID: sourceProfile.id)
-    })
+    XCTAssertTrue(
+      store.draftVersions.contains {
+        $0.draftID == sourceDraft.id
+          && $0.draft.belongs(toSiteProfileID: sourceProfile.id)
+      })
 
     let movePlan = store.draftOwnershipTransferPlan(
       draftIDs: [sourceDraft.id],
@@ -449,12 +509,13 @@ final class DraftRecoveryJournalTests: XCTestCase {
       store.draftVersions.filter { $0.draftID == sourceDraft.id }.count,
       versionCountBeforeDeletion
     )
-    XCTAssertTrue(store.draftVersions
-      .filter { $0.draftID == sourceDraft.id }
-      .allSatisfy {
-        $0.draft.siteProfileID == targetProfileID
-          && $0.draft.scope == .site(targetProfileID)
-      })
+    XCTAssertTrue(
+      store.draftVersions
+        .filter { $0.draftID == sourceDraft.id }
+        .allSatisfy {
+          $0.draft.siteProfileID == targetProfileID
+            && $0.draft.scope == .site(targetProfileID)
+        })
     XCTAssertTrue(
       store.flushPendingChanges(),
       store.lastSaveError ?? "moved site history rebinding failed without an error"

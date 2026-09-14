@@ -90,7 +90,9 @@ public struct RepositorySafeSyncService: Sendable {
         try FileManager.default.removeItem(at: url)
         removedPaths.append(collision.path)
       }
-      _ = try output(["merge", "--ff-only", confirmation.snapshot.remoteHeadSHA], root: root)
+      _ = try output(
+        ["merge", "--ff-only", "--no-overwrite-ignore", confirmation.snapshot.remoteHeadSHA],
+        root: root)
       didFastForward = true
       try verifyApplied(snapshot: confirmation.snapshot, root: root)
       let remoteAdvancedAgain =
@@ -225,6 +227,7 @@ public struct RepositorySafeSyncService: Sendable {
     let remoteChanges = try parseRemoteChanges(rawRemoteDiff, root: root).sorted {
       $0.path < $1.path
     }
+    try requireNoIgnoredCollisions(remoteChanges, root: root)
     try validateRemoteTreeEntries(remoteChanges, remoteSHA: trackedRemote, root: root)
     let collisions = try validateOverlaps(
       local: localChanges,
@@ -407,6 +410,26 @@ public struct RepositorySafeSyncService: Sendable {
     }
   }
 
+  /// Include ignored directories as prefixes without recursively hashing caches.
+  /// Apply repeats this inspection; merge also refuses ignored overwrites to
+  /// protect files created after the final inspection.
+  private func requireNoIgnoredCollisions(
+    _ remote: [RepositorySafeSyncChange], root: URL
+  ) throws {
+    let ignored = try output(
+      ["ls-files", "--others", "--ignored", "--exclude-standard", "--directory", "-z"],
+      root: root
+    ).split(separator: "\0").map {
+      String($0).trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+    }
+    let collisions = ignored.filter { path in
+      remote.contains { !$0.isDeletion && pathsOverlap(path, $0.path) }
+    }
+    guard collisions.isEmpty else {
+      throw RepositorySafeSyncError.unsafeLocalChanges(Array(Set(collisions)).sorted())
+    }
+  }
+
   private func validateOverlaps(
     local: [RepositorySafeSyncChange],
     remote: [RepositorySafeSyncChange],
@@ -444,7 +467,7 @@ public struct RepositorySafeSyncService: Sendable {
   }
 
   private func remoteTreeEntry(path: String, sha: String, root: URL) throws -> RemoteTreeEntry {
-    let text = try output(["ls-tree", "-z", sha, "--", path], root: root)
+    let text = try output(["--literal-pathspecs", "ls-tree", "-z", sha, "--", path], root: root)
     guard let record = text.split(separator: "\0", omittingEmptySubsequences: true).first,
       let tab = record.firstIndex(of: "\t")
     else { throw RepositorySafeSyncError.unsafeRemoteChanges([path]) }

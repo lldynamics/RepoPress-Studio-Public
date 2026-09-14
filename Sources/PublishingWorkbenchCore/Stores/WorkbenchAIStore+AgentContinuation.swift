@@ -1207,7 +1207,10 @@ extension WorkbenchAIStore {
       prepared: authorizedTransport.payload,
       privacyService: privacyService
     )
-    let token = try aiChatAvailableAPIKey(for: afterApproval.profile)
+    let connectionProfileID = try aiChatConnectionProfileID(
+      for: afterApproval.profile,
+      matching: afterApproval.taskConfig
+    )
     guard
       let currentBinding = agentContinuationBinding(
         conversationID: conversationID,
@@ -1222,6 +1225,19 @@ extension WorkbenchAIStore {
       policy: afterApproval.conversationRevision.knowledgePolicy,
       failureState: knowledgeAuthorizationState
     )
+    try checkAIChatOperation(operationID)
+    let finalConfig = privacyService.sanitizedProviderConfig(
+      store.aiProviderConfig(for: afterApproval.profile)
+    )
+    guard finalConfig == afterApproval.taskConfig else {
+      throw AIOutboundPayloadConfirmationError.drifted
+    }
+    let token = try aiChatAvailableAPIKey(
+      for: afterApproval.profile,
+      matching: finalConfig,
+      connectionProfileID: connectionProfileID
+    )
+    try checkAIChatOperation(operationID)
     try authorization.consume()
     try checkAIChatOperation(operationID)
     return try await aiPublishingAssistantService.completePreparedResult(

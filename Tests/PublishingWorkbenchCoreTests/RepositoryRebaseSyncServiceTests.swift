@@ -195,7 +195,8 @@ final class RepositoryRebaseSyncServiceTests: XCTestCase {
       ),
       ""
     )
-    XCTAssertEqual(try git(["diff", "--name-only", "--diff-filter=U"], at: fixture.local), "base.md")
+    XCTAssertEqual(
+      try git(["diff", "--name-only", "--diff-filter=U"], at: fixture.local), "base.md")
   }
 
   func testRestoresExactStashAfterUserAbortsRebaseConflict() throws {
@@ -229,7 +230,9 @@ final class RepositoryRebaseSyncServiceTests: XCTestCase {
       phase: context.phase,
       createdAt: context.createdAt
     )
-    XCTAssertThrowsError(try service.restoreAfterRebase(profile: fixture.profile, recovery: wrongRoot)) {
+    XCTAssertThrowsError(
+      try service.restoreAfterRebase(profile: fixture.profile, recovery: wrongRoot)
+    ) {
       guard case .invalidRecoveryContext = $0 as? RepositoryRebaseSyncError else {
         return XCTFail("Unexpected error: \($0)")
       }
@@ -308,6 +311,31 @@ final class RepositoryRebaseSyncServiceTests: XCTestCase {
       }
       XCTAssertEqual(paths, ["unsafe-link.md"])
     }
+    XCTAssertThrowsError(try git(["rev-parse", "--verify", "refs/stash"], at: fixture.local))
+  }
+
+  func testRejectsMergeOnlyChangesBeforeStashingOrRewritingHistory() throws {
+    let fixture = try makeFixture()
+    defer { try? FileManager.default.removeItem(at: fixture.base) }
+    _ = try git(["checkout", "-b", "side"], at: fixture.local)
+    try commit("side\n", path: "side.md", message: "side", at: fixture.local)
+    _ = try git(["checkout", "main"], at: fixture.local)
+    try commit("main\n", path: "main.md", message: "main", at: fixture.local)
+    _ = try git(["merge", "--no-ff", "--no-commit", "side"], at: fixture.local)
+    try commit(
+      "merge only\n", path: "merge-only.md", message: "merge resolution", at: fixture.local)
+    try commit("remote\n", path: "remote.md", message: "remote", at: fixture.peer)
+    _ = try git(["push", "origin", "main"], at: fixture.peer)
+    try write("unsaved\n", to: fixture.local, path: "base.md")
+    let head = try git(["rev-parse", "HEAD"], at: fixture.local)
+    let status = try git(["status", "--porcelain=v1"], at: fixture.local)
+    XCTAssertThrowsError(try RepositoryRebaseSyncService().prepare(profile: fixture.profile)) {
+      XCTAssertEqual($0 as? RepositoryRebaseSyncError, .mergeHistoryRequiresReview)
+    }
+    XCTAssertEqual(try git(["rev-parse", "HEAD"], at: fixture.local), head)
+    XCTAssertEqual(try git(["status", "--porcelain=v1"], at: fixture.local), status)
+    XCTAssertEqual(try content(fixture.local, path: "merge-only.md"), "merge only\n")
+    XCTAssertEqual(try content(fixture.local, path: "base.md"), "unsaved\n")
     XCTAssertThrowsError(try git(["rev-parse", "--verify", "refs/stash"], at: fixture.local))
   }
 

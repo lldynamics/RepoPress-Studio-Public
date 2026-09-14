@@ -289,4 +289,24 @@ extension WorkbenchStore {
     buffer.revision &+= 1
     publishingStore.setDraftBodyEditorBuffer(buffer, for: draft.id)
   }
+
+  /// A recovery replaces the persisted draft body outside the normal editor
+  /// staging path. Give any already-open editor a newer buffer revision so an
+  /// input event captured before recovery cannot be accepted afterward.
+  func synchronizeRecoveredDraftBodyEditorBuffer(with draft: ArticleDraft) {
+    draftBodyCommitTasks[draft.id]?.cancel()
+    draftBodyCommitTasks[draft.id] = nil
+    draftBodyCommitFirstStagedAt[draft.id] = nil
+
+    let priorRevision = publishingStore.draftBodyEditorBuffers[draft.id]?.revision ?? 0
+    publishingStore.setDraftBodyEditorBuffer(
+      DraftBodyEditorBuffer(
+        draftID: draft.id,
+        bodyMarkdown: draft.bodyMarkdown,
+        revision: priorRevision &+ 1,
+        isDirty: false
+      ),
+      for: draft.id
+    )
+  }
 }

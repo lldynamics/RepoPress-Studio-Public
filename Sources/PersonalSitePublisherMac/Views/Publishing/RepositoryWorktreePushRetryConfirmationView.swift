@@ -33,6 +33,7 @@ struct RepositoryWorktreePushRetryConfirmationView: View {
         VStack(alignment: .leading, spacing: 14) {
           targetCard
           safetyCard
+          historyReview
           fileList
           Label(
             "确认时会重新验证工作区为空、远端仍是已审阅基线，且远端是本地 HEAD 的祖先。远端分叉时会停止，绝不强制推送。",
@@ -143,12 +144,25 @@ struct RepositoryWorktreePushRetryConfirmationView: View {
     .accessibilityIdentifier("publish-worktree-file-list")
   }
 
-  private var isReviewComplete: Bool {
-    RepositoryWorktreeFileReview.isComplete(
-      entries: confirmation.snapshot.entries,
-      reviews: confirmation.fileReviews
-    )
+  private var historyReview: some View {
+    VStack(alignment: .leading, spacing: 10) {
+      Text("全部待推送历史").font(.headline)
+      Text("推送包含这些提交中的历史内容，包括后来删除或改名的文件。请展开逐项审阅。")
+        .font(.caption).foregroundStyle(.secondary)
+      ForEach(confirmation.snapshot.commitReviews) { commit in
+        DisclosureGroup(RepositoryWorktreePublishPresentation.shortSHA(commit.commitSHA)) {
+          RepositoryWorktreeReviewFileList(entries: commit.entries, reviews: commit.fileReviews)
+        }
+      }
+    }
   }
 
+  private var isReviewComplete: Bool {
+    confirmation.snapshot.isHistoryReviewComplete
+      && RepositoryWorktreeFileReview.isComplete(
+        entries: confirmation.snapshot.entries,
+        reviews: confirmation.fileReviews
+      )
+  }
 
 }

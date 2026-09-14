@@ -7,13 +7,13 @@ import XCTest
 final class MarkdownEmbeddedHTMLServiceTests: XCTestCase {
   func testAllowsCommonFormattingHTMLWithoutChangingSourceSemantics() throws {
     let markdown = """
-    开始
+      开始
 
-    <details open class="note">
-    <summary>更多信息</summary>
-    <mark>重点</mark>
-    </details>
-    """
+      <details open class="note">
+      <summary>更多信息</summary>
+      <mark>重点</mark>
+      </details>
+      """
 
     let prepared = MarkdownEmbeddedHTMLService.prepare(markdown: markdown)
 
@@ -33,11 +33,14 @@ final class MarkdownEmbeddedHTMLServiceTests: XCTestCase {
     let opening = try XCTUnwrap(prepared.replacements.first)
 
     XCTAssertEqual(opening.html, "<a>链接</a>")
-    XCTAssertTrue(prepared.issues.contains {
-      $0.severity == .error && $0.title == CoreL10n.text("HTML 链接已拦截")
-    })
-    XCTAssertTrue(prepared.issues.contains { $0.severity == .error && $0.message.contains("onclick") })
-    XCTAssertTrue(prepared.issues.contains { $0.severity == .warning && $0.message.contains("style") })
+    XCTAssertTrue(
+      prepared.issues.contains {
+        $0.severity == .error && $0.title == CoreL10n.text("HTML 链接已拦截")
+      })
+    XCTAssertTrue(
+      prepared.issues.contains { $0.severity == .error && $0.message.contains("onclick") })
+    XCTAssertTrue(
+      prepared.issues.contains { $0.severity == .warning && $0.message.contains("style") })
   }
 
   func testUnsupportedExecutableTagRemainsEscapedByMarkdownRenderer() {
@@ -54,12 +57,12 @@ final class MarkdownEmbeddedHTMLServiceTests: XCTestCase {
 
   func testHTMLInsideFencedAndInlineCodeIsNotPrepared() {
     let markdown = """
-    `<mark>inline</mark>`
+      `<mark>inline</mark>`
 
-    ```html
-    <details><summary>code</summary></details>
-    ```
-    """
+      ```html
+      <details><summary>code</summary></details>
+      ```
+      """
 
     let prepared = MarkdownEmbeddedHTMLService.prepare(markdown: markdown)
 
@@ -70,14 +73,14 @@ final class MarkdownEmbeddedHTMLServiceTests: XCTestCase {
 
   func testHTMLInsideFourBacktickAndTildeFencesIsNotPrepared() {
     let markdown = """
-    ````html
-    <mark>four backticks</mark>
-    ````
+      ````html
+      <mark>four backticks</mark>
+      ````
 
-    ~~~html
-    <details><summary>tilde fence</summary></details>
-    ~~~
-    """
+      ~~~html
+      <details><summary>tilde fence</summary></details>
+      ~~~
+      """
 
     let prepared = MarkdownEmbeddedHTMLService.prepare(markdown: markdown)
 
@@ -88,14 +91,14 @@ final class MarkdownEmbeddedHTMLServiceTests: XCTestCase {
 
   func testCommonMarkCodeVariantsNeverRestoreEmbeddedHTML() {
     let markdown = """
-    ```html\r
-    <mark>closing fence may be longer</mark>\r
-    ````\r
+      ```html\r
+      <mark>closing fence may be longer</mark>\r
+      ````\r
 
-        <img src=\"https://example.com/code.png\">
+          <img src=\"https://example.com/code.png\">
 
-    ``<a href=\"https://example.com\">inline across delimiters</a>``
-    """
+      ``<a href=\"https://example.com\">inline across delimiters</a>``
+      """
 
     let prepared = MarkdownEmbeddedHTMLService.prepare(markdown: markdown)
 
@@ -106,9 +109,9 @@ final class MarkdownEmbeddedHTMLServiceTests: XCTestCase {
 
   func testUnclosedFenceProtectsCodeThroughEndOfDocument() {
     let markdown = """
-    ~~~html
-    <details><summary>literal source</summary></details>
-    """
+      ~~~html
+      <details><summary>literal source</summary></details>
+      """
 
     let prepared = MarkdownEmbeddedHTMLService.prepare(markdown: markdown)
 
@@ -326,8 +329,9 @@ final class MarkdownEmbeddedHTMLServiceTests: XCTestCase {
     let replacement = try XCTUnwrap(prepared.replacements.first)
 
     XCTAssertFalse(replacement.html.contains("src="))
-    XCTAssertTrue(prepared.issues.contains {
-      $0.title == CoreL10n.text("HTML 链接已拦截")
-    })
+    XCTAssertTrue(
+      prepared.issues.contains {
+        $0.title == CoreL10n.text("HTML 链接已拦截")
+      })
   }
 }

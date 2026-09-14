@@ -1,4 +1,5 @@
 import XCTest
+
 @testable import PublishingWorkbenchCore
 
 @MainActor
@@ -120,7 +121,8 @@ final class MarkdownEditorSessionStateTests: XCTestCase {
       selectedRange: NSRange(location: 1, length: 0),
       invalidFrontMatterDocument: recoveredDocument,
       invalidFrontMatterBaseBodyMarkdown: baseBody,
-      invalidFrontMatterBaseBodyRevision: 42
+      invalidFrontMatterBaseBodyRevision: 42,
+      invalidFrontMatterBaseMetadataRevision: 7
     )
 
     let decoded = try JSONDecoder().decode(
@@ -131,6 +133,7 @@ final class MarkdownEditorSessionStateTests: XCTestCase {
     XCTAssertEqual(decoded.invalidFrontMatterDocument, recoveredDocument)
     XCTAssertEqual(decoded.invalidFrontMatterBaseBodyMarkdown, baseBody)
     XCTAssertEqual(decoded.invalidFrontMatterBaseBodyRevision, 42)
+    XCTAssertEqual(decoded.invalidFrontMatterBaseMetadataRevision, 7)
     XCTAssertEqual(
       decoded.normalized(bodyUTF16Count: 2).invalidFrontMatterDocument,
       recoveredDocument
@@ -139,6 +142,22 @@ final class MarkdownEditorSessionStateTests: XCTestCase {
       decoded.normalized(bodyUTF16Count: 2).invalidFrontMatterBaseBodyMarkdown,
       baseBody
     )
+    XCTAssertEqual(decoded.normalized(bodyUTF16Count: 2).invalidFrontMatterBaseMetadataRevision, 7)
+  }
+
+  func testLegacyInvalidFrontMatterSessionKeepsUnknownMetadataBaselineNil() throws {
+    let legacyState = MarkdownEditorSessionState(
+      invalidFrontMatterDocument: "---\ntitle broken\n---\n恢复正文",
+      invalidFrontMatterBaseBodyMarkdown: "原正文",
+      invalidFrontMatterBaseBodyRevision: 9
+    )
+
+    let decoded = try JSONDecoder().decode(
+      MarkdownEditorSessionState.self,
+      from: JSONEncoder().encode(legacyState)
+    )
+
+    XCTAssertNil(decoded.invalidFrontMatterBaseMetadataRevision)
   }
 
   func testInvalidFrontMatterRecoveryRebasesAfterEditorBufferRevisionResetsOnReload() throws {

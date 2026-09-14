@@ -168,23 +168,27 @@ final class MarkdownTextViewSemanticRenderingTests: XCTestCase {
     let denominatorLocation = numeratorLocation + 2
 
     XCTAssertGreaterThan(
-      try XCTUnwrap(rendered.attribute(
-        .baselineOffset, at: superscriptLocation, effectiveRange: nil) as? CGFloat),
+      try XCTUnwrap(
+        rendered.attribute(
+          .baselineOffset, at: superscriptLocation, effectiveRange: nil) as? CGFloat),
       0
     )
     XCTAssertLessThan(
-      try XCTUnwrap(rendered.attribute(
-        .baselineOffset, at: subscriptLocation, effectiveRange: nil) as? CGFloat),
+      try XCTUnwrap(
+        rendered.attribute(
+          .baselineOffset, at: subscriptLocation, effectiveRange: nil) as? CGFloat),
       0
     )
     XCTAssertGreaterThan(
-      try XCTUnwrap(rendered.attribute(
-        .baselineOffset, at: numeratorLocation, effectiveRange: nil) as? CGFloat),
+      try XCTUnwrap(
+        rendered.attribute(
+          .baselineOffset, at: numeratorLocation, effectiveRange: nil) as? CGFloat),
       0
     )
     XCTAssertLessThan(
-      try XCTUnwrap(rendered.attribute(
-        .baselineOffset, at: denominatorLocation, effectiveRange: nil) as? CGFloat),
+      try XCTUnwrap(
+        rendered.attribute(
+          .baselineOffset, at: denominatorLocation, effectiveRange: nil) as? CGFloat),
       0
     )
   }
@@ -208,14 +212,15 @@ final class MarkdownTextViewSemanticRenderingTests: XCTestCase {
     )
     XCTAssertEqual(font.pointSize, 16, accuracy: 0.01)
 
-    let frame = try XCTUnwrap(MarkdownInlineAttachmentDrawingLayout.frame(
-      sourceRect: NSRect(x: 140, y: 80, width: 124, height: 22),
-      textViewBounds: NSRect(x: 0, y: 0, width: 800, height: 600),
-      horizontalInset: 26,
-      mode: .inline,
-      preferredWidth: 96,
-      preferredHeight: 30
-    ))
+    let frame = try XCTUnwrap(
+      MarkdownInlineAttachmentDrawingLayout.frame(
+        sourceRect: NSRect(x: 140, y: 80, width: 124, height: 22),
+        textViewBounds: NSRect(x: 0, y: 0, width: 800, height: 600),
+        horizontalInset: 26,
+        mode: .inline,
+        preferredWidth: 96,
+        preferredHeight: 30
+      ))
     XCTAssertEqual(frame.origin.x, 140, accuracy: 0.01)
     XCTAssertEqual(frame.width, 96, accuracy: 0.01)
     XCTAssertEqual(frame.height, 30, accuracy: 0.01)
@@ -237,14 +242,15 @@ final class MarkdownTextViewSemanticRenderingTests: XCTestCase {
 
   func testBlockOverlayWidthIsClampedToNarrowTextContainer() throws {
     let bounds = NSRect(x: 0, y: 0, width: 80, height: 600)
-    let frame = try XCTUnwrap(MarkdownInlineAttachmentDrawingLayout.frame(
-      sourceRect: NSRect(x: 24, y: 80, width: 180, height: 22),
-      textViewBounds: bounds,
-      horizontalInset: 26,
-      mode: .block,
-      preferredWidth: nil,
-      preferredHeight: 164
-    ))
+    let frame = try XCTUnwrap(
+      MarkdownInlineAttachmentDrawingLayout.frame(
+        sourceRect: NSRect(x: 24, y: 80, width: 180, height: 22),
+        textViewBounds: bounds,
+        horizontalInset: 26,
+        mode: .block,
+        preferredWidth: nil,
+        preferredHeight: 164
+      ))
 
     XCTAssertGreaterThanOrEqual(frame.minX, bounds.minX)
     XCTAssertLessThanOrEqual(frame.maxX, bounds.maxX)
@@ -280,11 +286,12 @@ final class MarkdownTextViewSemanticRenderingTests: XCTestCase {
         sourceRange: sourceRange
       )
     )
-    XCTAssertNil(textView.textStorage?.attribute(
-      .attachment,
-      at: sourceRange.location,
-      effectiveRange: nil
-    ))
+    XCTAssertNil(
+      textView.textStorage?.attribute(
+        .attachment,
+        at: sourceRange.location,
+        effectiveRange: nil
+      ))
     XCTAssertEqual(textView.string, "![cover](cover.png)")
   }
 
@@ -313,11 +320,12 @@ final class MarkdownTextViewSemanticRenderingTests: XCTestCase {
     XCTAssertEqual(textView.string, source)
     XCTAssertTrue(textView.textLayoutManager != nil)
     XCTAssertTrue(attachment.usesTextAttachmentView)
-    let installedAttachment: NSTextAttachment? = textView.textStorage?.attribute(
-      .attachment,
-      at: sourceRange.location,
-      effectiveRange: nil
-    ) as? NSTextAttachment
+    let installedAttachment: NSTextAttachment? =
+      textView.textStorage?.attribute(
+        .attachment,
+        at: sourceRange.location,
+        effectiveRange: nil
+      ) as? NSTextAttachment
     XCTAssertTrue(installedAttachment === attachment)
 
     let layoutManager = try XCTUnwrap(textView.textLayoutManager)
@@ -360,11 +368,12 @@ final class MarkdownTextViewSemanticRenderingTests: XCTestCase {
       from: textView,
       sourceRange: sourceRange
     )
-    XCTAssertNil(textView.textStorage?.attribute(
-      .attachment,
-      at: sourceRange.location,
-      effectiveRange: nil
-    ))
+    XCTAssertNil(
+      textView.textStorage?.attribute(
+        .attachment,
+        at: sourceRange.location,
+        effectiveRange: nil
+      ))
     XCTAssertEqual(textView.string, source)
   }
 }

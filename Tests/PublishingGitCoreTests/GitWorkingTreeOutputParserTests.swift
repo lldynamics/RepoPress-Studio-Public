@@ -28,7 +28,8 @@ final class GitWorkingTreeOutputParserTests: XCTestCase {
   }
 
   func testParsesTextNameStatusForEveryStatusAndRenameCopyDirections() {
-    let output = "M\tmodified.md\nA\tadded.md\nD\tdeleted.md\nR100\told.md\tnew.md\nC075\tsource.md\tdestination.md\n"
+    let output =
+      "M\tmodified.md\nA\tadded.md\nD\tdeleted.md\nR100\told.md\tnew.md\nC075\tsource.md\tdestination.md\n"
 
     XCTAssertEqual(
       parser.parseNameStatus(output),
@@ -43,13 +44,14 @@ final class GitWorkingTreeOutputParserTests: XCTestCase {
   }
 
   func testParsesNULNameStatusForEveryStatusAndPreservesLiteralPaths() {
-    let output = [
-      "M", " modified file.md ",
-      "A", "添加 文件.md",
-      "D", "quoted \"file\".md",
-      "R100", "old\nname.md", "new\nname.md",
-      "C075", "copy source.md", "copy destination.md",
-    ].joined(separator: "\0") + "\0"
+    let output =
+      [
+        "M", " modified file.md ",
+        "A", "添加 文件.md",
+        "D", "quoted \"file\".md",
+        "R100", "old\nname.md", "new\nname.md",
+        "C075", "copy source.md", "copy destination.md",
+      ].joined(separator: "\0") + "\0"
 
     XCTAssertEqual(
       parser.parseNameStatus(output),
@@ -58,20 +60,22 @@ final class GitWorkingTreeOutputParserTests: XCTestCase {
         RepositoryChangedFile(status: "A", path: "添加 文件.md", kind: .added),
         RepositoryChangedFile(status: "D", path: "quoted \"file\".md", kind: .deleted),
         RepositoryChangedFile(status: "R100", path: "old\nname.md -> new\nname.md", kind: .renamed),
-        RepositoryChangedFile(status: "C075", path: "copy source.md -> copy destination.md", kind: .other),
+        RepositoryChangedFile(
+          status: "C075", path: "copy source.md -> copy destination.md", kind: .other),
       ]
     )
   }
 
   func testParsesPorcelainBranchAndNormalRecordsWithLiteralPaths() {
-    let output = [
-      "## feature/read-me...origin/feature/read-me [ahead 2, behind 1]",
-      " M  modified file.md",
-      "A  添加 文件.md",
-      "?? quoted \"file\".md",
-      "R  new\nname.md", "old\nname.md",
-      "C  destination.md", "source.md",
-    ].joined(separator: "\0") + "\0"
+    let output =
+      [
+        "## feature/read-me...origin/feature/read-me [ahead 2, behind 1]",
+        " M  modified file.md",
+        "A  添加 文件.md",
+        "?? quoted \"file\".md",
+        "R  new\nname.md", "old\nname.md",
+        "C  destination.md", "source.md",
+      ].joined(separator: "\0") + "\0"
 
     let result = parser.parsePorcelainV1Status(output)
 
@@ -109,15 +113,16 @@ final class GitWorkingTreeOutputParserTests: XCTestCase {
   }
 
   func testMalformedPorcelainRecordsAreSkippedWithoutDiscardingPreviousRecords() {
-    let output = [
-      " M valid-before.md",
-      "short",
-      " Mnot-a-space.md",
-      " M ",
-      "R  destination-without-source.md", "",
-      "C  destination-with-empty-source.md", "",
-      "A  valid-after.md",
-    ].joined(separator: "\0") + "\0"
+    let output =
+      [
+        " M valid-before.md",
+        "short",
+        " Mnot-a-space.md",
+        " M ",
+        "R  destination-without-source.md", "",
+        "C  destination-with-empty-source.md", "",
+        "A  valid-after.md",
+      ].joined(separator: "\0") + "\0"
 
     XCTAssertEqual(
       parser.parsePorcelainV1Status(output).changedFiles,
@@ -129,14 +134,15 @@ final class GitWorkingTreeOutputParserTests: XCTestCase {
   }
 
   func testMalformedNameStatusRecordsDoNotCreatePartialRenames() {
-    let nulOutput = [
-      "M", "valid.md",
-      "R100", "source-without-destination.md", "",
-      "C075", "", "",
-      "A", "",
-      "A", "valid-after.md",
-      "D",
-    ].joined(separator: "\0") + "\0"
+    let nulOutput =
+      [
+        "M", "valid.md",
+        "R100", "source-without-destination.md", "",
+        "C075", "", "",
+        "A", "",
+        "A", "valid-after.md",
+        "D",
+      ].joined(separator: "\0") + "\0"
 
     XCTAssertEqual(
       parser.parseNameStatus(nulOutput),
@@ -170,20 +176,26 @@ final class GitWorkingTreeOutputParserTests: XCTestCase {
         + "C075\tcopy -> source.md\tcopy -> destination.md\n"
     )
     XCTAssertEqual(textFiles.map(\.sourcePath), ["old -> source 中.md", "copy -> source.md"])
-    XCTAssertEqual(textFiles.map(\.destinationPath), ["new -> destination 中.md", "copy -> destination.md"])
+    XCTAssertEqual(
+      textFiles.map(\.destinationPath), ["new -> destination 中.md", "copy -> destination.md"])
 
-    let nulFiles = parser.parseNameStatus([
-      "R100", "旧 -> source\n 文件.md", "新 -> destination\n 文件.md",
-      "C075", "copy -> 源.md", "copy -> 目标.md",
-    ].joined(separator: "\0") + "\0")
+    let nulFiles = parser.parseNameStatus(
+      [
+        "R100", "旧 -> source\n 文件.md", "新 -> destination\n 文件.md",
+        "C075", "copy -> 源.md", "copy -> 目标.md",
+      ].joined(separator: "\0") + "\0")
     XCTAssertEqual(nulFiles.map(\.sourcePath), ["旧 -> source\n 文件.md", "copy -> 源.md"])
     XCTAssertEqual(nulFiles.map(\.destinationPath), ["新 -> destination\n 文件.md", "copy -> 目标.md"])
 
-    let porcelain = parser.parsePorcelainV1Status([
-      "R  新 -> destination.md", "旧 -> source.md",
-      "C  copy -> destination.md", "copy -> source.md",
-    ].joined(separator: "\0") + "\0")
-    XCTAssertEqual(porcelain.changedFiles.map(\.sourcePath), ["旧 -> source.md", "copy -> source.md"])
-    XCTAssertEqual(porcelain.changedFiles.map(\.destinationPath), ["新 -> destination.md", "copy -> destination.md"])
+    let porcelain = parser.parsePorcelainV1Status(
+      [
+        "R  新 -> destination.md", "旧 -> source.md",
+        "C  copy -> destination.md", "copy -> source.md",
+      ].joined(separator: "\0") + "\0")
+    XCTAssertEqual(
+      porcelain.changedFiles.map(\.sourcePath), ["旧 -> source.md", "copy -> source.md"])
+    XCTAssertEqual(
+      porcelain.changedFiles.map(\.destinationPath),
+      ["新 -> destination.md", "copy -> destination.md"])
   }
 }

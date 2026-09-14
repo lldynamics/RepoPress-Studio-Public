@@ -34,26 +34,28 @@ final class P3VisualPresentationTests: XCTestCase {
   func testCalendarTodayProjectionUsesInjectedNowAcrossMidnight() {
     var calendar = Calendar(identifier: .gregorian)
     calendar.timeZone = TimeZone(secondsFromGMT: 0)!
-    let beforeMidnight = calendar.date(from: DateComponents(
-      calendar: calendar,
-      timeZone: calendar.timeZone,
-      year: 2025,
-      month: 9,
-      day: 3,
-      hour: 23,
-      minute: 59,
-      second: 59
-    ))!
-    let afterMidnight = calendar.date(from: DateComponents(
-      calendar: calendar,
-      timeZone: calendar.timeZone,
-      year: 2025,
-      month: 9,
-      day: 4,
-      hour: 0,
-      minute: 0,
-      second: 1
-    ))!
+    let beforeMidnight = calendar.date(
+      from: DateComponents(
+        calendar: calendar,
+        timeZone: calendar.timeZone,
+        year: 2025,
+        month: 9,
+        day: 3,
+        hour: 23,
+        minute: 59,
+        second: 59
+      ))!
+    let afterMidnight = calendar.date(
+      from: DateComponents(
+        calendar: calendar,
+        timeZone: calendar.timeZone,
+        year: 2025,
+        month: 9,
+        day: 4,
+        hour: 0,
+        minute: 0,
+        second: 1
+      ))!
 
     XCTAssertTrue(
       MaintenanceCalendarDateProjection.isToday(

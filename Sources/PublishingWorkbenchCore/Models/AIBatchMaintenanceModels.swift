@@ -32,8 +32,10 @@ public enum AIBatchMaintenanceItemStatus: String, Codable, CaseIterable, Sendabl
 public struct AIBatchMaintenanceItem: Codable, Identifiable, Hashable, Sendable {
   public let id: UUID
   public let draftID: UUID
-  public let draftTitle: String
-  public let sourceFingerprint: String
+  public var draftTitle: String
+  public var sourceFingerprint: String
+  /// Nil is retained only for queues persisted before per-item model capture.
+  public var modelName: String?
   public var status: AIBatchMaintenanceItemStatus
   public var resultText: String?
   public var errorMessage: String?
@@ -43,6 +45,7 @@ public struct AIBatchMaintenanceItem: Codable, Identifiable, Hashable, Sendable 
     draftID: UUID,
     draftTitle: String,
     sourceFingerprint: String,
+    modelName: String? = nil,
     status: AIBatchMaintenanceItemStatus = .pending,
     resultText: String? = nil,
     errorMessage: String? = nil
@@ -51,6 +54,7 @@ public struct AIBatchMaintenanceItem: Codable, Identifiable, Hashable, Sendable 
     self.draftID = draftID
     self.draftTitle = draftTitle
     self.sourceFingerprint = sourceFingerprint
+    self.modelName = modelName
     self.status = status
     self.resultText = resultText
     self.errorMessage = errorMessage
@@ -61,7 +65,7 @@ public struct AIBatchMaintenanceQueue: Codable, Hashable, Sendable {
   public let id: UUID
   public let siteProfileID: UUID
   public let operation: AIBatchMaintenanceOperation
-  public let modelName: String
+  public var modelName: String
   public var items: [AIBatchMaintenanceItem]
   public var isPaused: Bool
   public let createdAt: Date
@@ -96,6 +100,14 @@ public struct AIBatchMaintenanceQueue: Codable, Hashable, Sendable {
   public var processedCount: Int { completedCount + failedCount }
   public var progressFraction: Double {
     totalCount == 0 ? 1 : Double(processedCount) / Double(totalCount)
+  }
+
+  /// Legacy queues carried one model for the whole batch. New queues display
+  /// the actual model captured for each result and explicitly mark a mixture.
+  public var displayModelName: String {
+    let names = Set(items.map { $0.modelName?.nilIfEmpty ?? modelName }.filter { !$0.isEmpty })
+    if names.isEmpty { return modelName }
+    return names.count == 1 ? (names.first ?? modelName) : CoreL10n.text("多个模型")
   }
 
   @discardableResult
@@ -150,6 +162,36 @@ public struct AIBatchMaintenanceQueue: Codable, Hashable, Sendable {
     items[index].status = .skipped
     items[index].resultText = nil
     items[index].errorMessage = nil
+  }
+
+  /// Rebuilds exactly one item from the latest local source. Other ready
+  /// results remain untouched, which makes a stale preview recoverable.
+  public mutating func requeue(
+    id: UUID,
+    draftTitle: String,
+    sourceFingerprint: String,
+    modelName: String
+  ) {
+    guard let index = items.firstIndex(where: { $0.id == id }),
+      items[index].status != .running,
+      !sourceFingerprint.isEmpty
+    else { return }
+    items[index].draftTitle = draftTitle
+    items[index].sourceFingerprint = sourceFingerprint
+    items[index].modelName = modelName
+    items[index].status = .pending
+    items[index].resultText = nil
+    items[index].errorMessage = nil
+  }
+
+  /// Captures the model actually used for a legacy item once dispatch starts.
+  /// This must work while the item is running, without changing its queue
+  /// position or clearing the result state of any other item.
+  public mutating func setModelName(id: UUID, modelName: String) {
+    guard let index = items.firstIndex(where: { $0.id == id }), !modelName.isEmpty else {
+      return
+    }
+    items[index].modelName = modelName
   }
 
   /// Requeues work that was interrupted by a process restart and leaves the queue paused.

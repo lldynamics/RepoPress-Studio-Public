@@ -110,6 +110,7 @@ final class MarkdownComposerEditorSessionState: ObservableObject {
   var liveBodyRevision: UInt64
   var invalidFrontMatterBaseBodyMarkdown: String?
   var invalidFrontMatterBaseBodyRevision: UInt64?
+  var invalidFrontMatterBaseMetadataRevision: UInt64?
   @Published var markdownCursorContextSnapshot: MarkdownCursorContextSnapshot?
   @Published var markdownCursorCompletionSnapshot: MarkdownCompletionContext?
 
@@ -132,6 +133,7 @@ final class MarkdownComposerEditorSessionState: ObservableObject {
     liveBodyRevision: UInt64? = nil,
     invalidFrontMatterBaseBodyMarkdown: String? = nil,
     invalidFrontMatterBaseBodyRevision: UInt64? = nil,
+    invalidFrontMatterBaseMetadataRevision: UInt64? = nil,
     markdownCursorContextSnapshot: MarkdownCursorContextSnapshot? = nil,
     markdownCursorCompletionSnapshot: MarkdownCompletionContext? = nil,
     findScopeSnapshot: MarkdownFindScopeSnapshot? = nil,
@@ -159,6 +161,7 @@ final class MarkdownComposerEditorSessionState: ObservableObject {
     self.liveBodyRevision = liveBodyRevision ?? editorBodyRevision
     self.invalidFrontMatterBaseBodyMarkdown = invalidFrontMatterBaseBodyMarkdown
     self.invalidFrontMatterBaseBodyRevision = invalidFrontMatterBaseBodyRevision
+    self.invalidFrontMatterBaseMetadataRevision = invalidFrontMatterBaseMetadataRevision
     self.markdownCursorContextSnapshot = markdownCursorContextSnapshot
     self.markdownCursorCompletionSnapshot = markdownCursorCompletionSnapshot
   }

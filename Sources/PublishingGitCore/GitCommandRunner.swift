@@ -357,7 +357,7 @@ public struct GitCommandRunner: Sendable {
   /// fsmonitor command and hooks from an untrusted .git/config while
   private static let cachedIsolatedGitEnvironment: [String: String] = {
     var environment = ProcessInfo.processInfo.environment
-    environment["GIT_CONFIG_COUNT"] = "5"
+    environment["GIT_CONFIG_COUNT"] = "6"
     environment["GIT_CONFIG_KEY_0"] = "core.fsmonitor"
     environment["GIT_CONFIG_VALUE_0"] = "false"
     environment["GIT_CONFIG_KEY_1"] = "core.hooksPath"
@@ -368,6 +368,12 @@ public struct GitCommandRunner: Sendable {
     environment["GIT_CONFIG_VALUE_3"] = "false"
     environment["GIT_CONFIG_KEY_4"] = "log.showSignature"
     environment["GIT_CONFIG_VALUE_4"] = "false"
+    environment["GIT_CONFIG_KEY_5"] = "advice.graftFileDeprecated"
+    environment["GIT_CONFIG_VALUE_5"] = "false"
+    // Review and mutation must traverse the same original objects that push
+    // sends. Local replacements and legacy grafts can hide outgoing parents.
+    environment["GIT_NO_REPLACE_OBJECTS"] = "1"
+    environment["GIT_GRAFT_FILE"] = "/dev/null"
     environment["GIT_EDITOR"] = "/usr/bin/false"
     environment["GIT_SEQUENCE_EDITOR"] = "/usr/bin/false"
     environment["GIT_PAGER"] = "/usr/bin/cat"
@@ -431,6 +437,7 @@ public struct GitCommandRunner: Sendable {
       gitDirectoryURL = URL(fileURLWithPath: path, relativeTo: root).standardizedFileURL
     }
 
+    var metadataDirectoryURLs = [gitDirectoryURL]
     var configurationURLs = [
       gitDirectoryURL.appendingPathComponent("config"),
       gitDirectoryURL.appendingPathComponent("config.worktree"),
@@ -453,8 +460,18 @@ public struct GitCommandRunner: Sendable {
         fileURLWithPath: commonPath,
         relativeTo: gitDirectoryURL
       ).standardizedFileURL
+      metadataDirectoryURLs.append(commonDirectoryURL)
       configurationURLs.append(commonDirectoryURL.appendingPathComponent("config"))
       configurationURLs.append(commonDirectoryURL.appendingPathComponent("config.worktree"))
+    }
+
+    // Fail closed instead of silently changing a grafted repository's visible
+    // history. GIT_GRAFT_FILE also neutralizes grafts created after this check.
+    for directoryURL in metadataDirectoryURLs {
+      let graftsURL = directoryURL.appendingPathComponent("info/grafts")
+      if fileManager.fileExists(atPath: graftsURL.path) || isSymbolicLink(graftsURL) {
+        return "Git info/grafts 改写了可见历史，请先在外部 Git 工具中审阅并移除此配置"
+      }
     }
 
     var visitedPaths = Set<String>()

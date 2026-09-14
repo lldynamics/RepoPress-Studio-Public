@@ -132,7 +132,8 @@ extension MacMarkdownComposerView {
     restoreInvalidFrontMatterDocument(
       editorSession.invalidFrontMatterDocument,
       baseBodyMarkdown: editorSession.invalidFrontMatterBaseBodyMarkdown,
-      baseBodyRevision: editorSession.invalidFrontMatterBaseBodyRevision
+      baseBodyRevision: editorSession.invalidFrontMatterBaseBodyRevision,
+      baseMetadataRevision: editorSession.invalidFrontMatterBaseMetadataRevision
     )
     findReplaceMessage =
       findQuery.isEmpty && isFindReplacePresented
@@ -158,18 +159,23 @@ extension MacMarkdownComposerView {
         : (editorSessionState.invalidFrontMatterBaseBodyMarkdown ?? editorBody),
       invalidFrontMatterBaseBodyRevision: frontMatterIssue == nil
         ? nil
-        : (editorSessionState.invalidFrontMatterBaseBodyRevision ?? editorBodyRevision)
+        : (editorSessionState.invalidFrontMatterBaseBodyRevision ?? editorBodyRevision),
+      invalidFrontMatterBaseMetadataRevision: frontMatterIssue == nil
+        ? nil
+        : editorSessionState.invalidFrontMatterBaseMetadataRevision
     )
   }
 
   func restoreInvalidFrontMatterDocument(
     _ recoveredDocument: String?,
     baseBodyMarkdown: String? = nil,
-    baseBodyRevision: UInt64? = nil
+    baseBodyRevision: UInt64? = nil,
+    baseMetadataRevision: UInt64? = nil
   ) {
     guard let recoveredDocument, !recoveredDocument.isEmpty else { return }
     editorSessionState.invalidFrontMatterBaseBodyMarkdown = baseBodyMarkdown ?? editorBody
     editorSessionState.invalidFrontMatterBaseBodyRevision = baseBodyRevision ?? editorBodyRevision
+    editorSessionState.invalidFrontMatterBaseMetadataRevision = baseMetadataRevision
     guard recoveredDocument != editorDocument else { return }
     let previousDocument = editorDocument
     editorDocument = recoveredDocument
@@ -178,6 +184,11 @@ extension MacMarkdownComposerView {
       localized: "已恢复上次未保存的 Front Matter 原文，请修正后再切换文章。"
     )
     EditorAccessibilityAnnouncementCenter.announce(selectionActionMessage)
+  }
+
+  func commitEditorDocumentForTermination(from previousDocument: String, to document: String) {
+    applyEditorDocument(from: previousDocument, to: document)
+    flushEditorSessionSave(for: draft.id)
   }
 
   func saveCurrentEditorSession() {
@@ -218,6 +229,8 @@ extension MacMarkdownComposerView {
       state.invalidFrontMatterBaseBodyMarkdown
     editorSessionState.invalidFrontMatterBaseBodyRevision =
       state.invalidFrontMatterBaseBodyRevision
+    editorSessionState.invalidFrontMatterBaseMetadataRevision =
+      state.invalidFrontMatterBaseMetadataRevision
     store.updateMarkdownEditorSessionState(
       state,
       for: draftID,
@@ -289,17 +302,21 @@ extension MacMarkdownComposerView {
       else {
         return
       }
-      guard MarkdownFindReplaceScopePlanner.scopeRange(
-        scope: session.findScope,
-        snapshot: session.findScopeSnapshot,
-        draftID: draft.id,
-        bodyRevision: bodyRevision,
-        body: text
-      ) == scopeRange else {
+      guard
+        MarkdownFindReplaceScopePlanner.scopeRange(
+          scope: session.findScope,
+          snapshot: session.findScopeSnapshot,
+          draftID: draft.id,
+          bodyRevision: bodyRevision,
+          body: text
+        ) == scopeRange
+      else {
         return
       }
       session.findMatchSnapshot = MarkdownFindMatchSnapshot(
-        ranges: result.ranges.map { NSRange(location: scopeRange.location + $0.location, length: $0.length) },
+        ranges: result.ranges.map {
+          NSRange(location: scopeRange.location + $0.location, length: $0.length)
+        },
         errorMessage: result.errorMessage
       )
     }

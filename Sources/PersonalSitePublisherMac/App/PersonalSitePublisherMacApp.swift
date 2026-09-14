@@ -682,6 +682,7 @@ final class PersonalSitePublisherMacAppDelegate: NSObject, NSApplicationDelegate
       return .terminateNow
     }
 
+    MacMarkdownEditorTerminationFlushRegistry.flushPendingWritesForTermination()
     isWaitingForTerminationLedgerFlush = true
     Task { @MainActor [weak self, weak workbenchStore] in
       guard let self, let workbenchStore else {
@@ -697,7 +698,8 @@ final class PersonalSitePublisherMacAppDelegate: NSObject, NSApplicationDelegate
       case .savedLocally(let count):
         let alert = NSAlert()
         alert.messageText = String(localized: "草稿已保存在本地")
-        alert.informativeText = String(format: String(localized: "%lld 篇草稿尚未同步到项目。退出后会保留待同步记录，项目文件不会被覆盖。"), count)
+        alert.informativeText = String(
+          format: String(localized: "%lld 篇草稿尚未同步到项目。退出后会保留待同步记录，项目文件不会被覆盖。"), count)
         alert.alertStyle = .informational
         alert.addButton(withTitle: String(localized: "保留草稿并退出"))
         alert.addButton(withTitle: String(localized: "查看冲突"))
@@ -707,7 +709,8 @@ final class PersonalSitePublisherMacAppDelegate: NSObject, NSApplicationDelegate
           isWaitingForTerminationLedgerFlush = false
           sender.reply(toApplicationShouldTerminate: false)
           if let failure = workbenchStore.siteDraftFileSaveFailureGroups
-            .first(where: { $0.reason == .externalChange })?.failures.first {
+            .first(where: { $0.reason == .externalChange })?.failures.first
+          {
             ProjectFileConflictReviewPanel.present(for: workbenchStore, draftID: failure.draftID)
           } else {
             ProjectFileSaveRecoveryPanel.present(for: workbenchStore)
@@ -732,7 +735,8 @@ final class PersonalSitePublisherMacAppDelegate: NSObject, NSApplicationDelegate
               let savedURL = try await workbenchStore.exportSafeTerminationRecovery(at: url)
               let confirmation = NSAlert()
               confirmation.messageText = String(localized: "恢复包已保存并校验")
-              confirmation.informativeText = String(localized: "原保存位置仍有问题。下次打开软件后，可从工作区备份中导入此恢复包继续编辑。") + "\n" + savedURL.path
+              confirmation.informativeText =
+                String(localized: "原保存位置仍有问题。下次打开软件后，可从工作区备份中导入此恢复包继续编辑。") + "\n" + savedURL.path
               confirmation.addButton(withTitle: String(localized: "退出"))
               confirmation.addButton(withTitle: String(localized: "继续编辑"))
               mayExit = confirmation.runModal() == .alertFirstButtonReturn
