@@ -1,5 +1,5 @@
 import AppKit
-import PublishingWorkbenchCore
+import PublishingMarkdownCore
 
 /// A source-preserving, read-only TextKit 2 presentation document.
 ///

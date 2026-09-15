@@ -12,7 +12,7 @@ struct SiteMaintenanceSnapshotPlaceholder: View {
       presentation: isRefreshing
         ? WorkbenchStatePresentation(
           kind: .loading(
-            detail: String(localized: "正在扫描内容日历、标签、旧文和链接…")
+            detail: String(localized: "正在扫描标签、旧文和链接…")
           )
         )
         : (errorMessage.map {
@@ -20,7 +20,7 @@ struct SiteMaintenanceSnapshotPlaceholder: View {
         } ?? WorkbenchStatePresentation(kind: .empty)),
       density: .compactPane,
       detail: errorMessage == nil && !isRefreshing
-        ? "点击生成后才会扫描内容日历、标签、旧文和链接，避免打开页面时自动重算。"
+        ? LocalizedStringKey("点击生成后才会扫描标签、旧文和链接，避免打开页面时自动重算。")
         : nil,
       actions: isRefreshing
         ? .none
@@ -47,8 +47,6 @@ struct SiteMaintenanceDetailContent: View {
   let copyItem: (MaintenanceActionItem) -> Void
   let recordItem: (MaintenanceActionItem) -> Void
   let sendToAI: (MaintenanceActionItem) -> Void
-  let scheduleChanges: [SiteMaintenanceScheduleChange]
-  let applySuggestedSchedule: ([UUID: Date], [UUID: Date]) -> Void
   let latestRelease: ReleaseRecord?
   let deploymentSnapshot: DeploymentStatusSnapshot?
   let canCheckDeployment: Bool
@@ -130,14 +128,6 @@ struct SiteMaintenanceDetailContent: View {
       )
       SiteMaintenanceOperationLogSection(report: report)
 
-    case .calendar:
-      SiteMaintenanceCalendarSection(
-        report: report,
-        scheduleChanges: scheduleChanges,
-        applySuggestedSchedule: applySuggestedSchedule,
-        openDraft: openDraft
-      )
-
     case .governance:
       SiteMaintenanceTaxonomySection(title: "标签治理", summary: report.tagSummary, systemImage: "tag")
       SiteMaintenanceTaxonomySection(
@@ -154,7 +144,6 @@ struct SiteMaintenanceDetailContent: View {
 private enum SiteMaintenancePage: String, CaseIterable, Identifiable {
   case overview
   case tasks
-  case calendar
   case governance
   case links
 
@@ -164,7 +153,6 @@ private enum SiteMaintenancePage: String, CaseIterable, Identifiable {
     switch self {
     case .overview: String(localized: "总览")
     case .tasks: String(localized: "待办")
-    case .calendar: String(localized: "内容日历")
     case .governance: String(localized: "分类治理")
     case .links: String(localized: "链接检查")
     }
@@ -174,7 +162,6 @@ private enum SiteMaintenancePage: String, CaseIterable, Identifiable {
     switch self {
     case .overview: "gauge.with.dots.needle.50percent"
     case .tasks: "checklist"
-    case .calendar: "calendar"
     case .governance: "tag"
     case .links: "link"
     }

@@ -421,7 +421,10 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
         .firstMatch
     )
 
-    firstWindow.click()
+    // Capture fixtures use identical window frames. A coordinate click on the
+    // first window would hit the frontmost second window instead. With exactly
+    // two windows, the system's cycle-window command raises the first one.
+    application.typeKey("`", modifierFlags: [.command])
     select("workspace-sidebar-sync", revealing: "repository-workspace", in: firstWindow)
     let preparePublish = firstWindow.descendants(matching: .any)
       .matching(identifier: "workspace-prepare-publish")
@@ -1419,23 +1422,30 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
       (tab: "ai", content: "ai-settings"),
       (tab: "dataManagement", content: "data-management-settings"),
       (tab: "appearance", content: "appearance-settings"),
+      (tab: "editor", content: "editor-settings"),
       (tab: "rss", content: "rss-maintenance-settings"),
       (tab: "privacy", content: "privacy-settings"),
     ]
     let contentIdentifiers = pages.map { $0.content }
 
     for page in pages {
-      assertUniqueIdentifier("settings-sidebar-\(page.tab)")
+      assertUniqueIdentifier("settings-tab-\(page.tab)")
     }
     assertSettingsWindowBaseline()
 
     for page in pages {
       select(
-        "settings-sidebar-\(page.tab)",
+        "settings-tab-\(page.tab)",
         revealing: page.content
       )
       assertUniqueIdentifier("settings-content")
       assertUniqueIdentifier(page.content)
+      if page.tab == "editor" {
+        XCTAssertTrue(
+          settingsWindow.sliders["字号"].waitForExistence(timeout: 10),
+          "The editor preferences slider must retain its accessible name."
+        )
+      }
 
       let visibleContentRoots = contentIdentifiers.filter {
         identifierExists($0, in: settingsWindow)
@@ -1451,7 +1461,7 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
   func testDataManagementSheetsOpenAndCloseWithoutRunningTheirActions() throws {
     openSettings()
     select(
-      "settings-sidebar-dataManagement",
+      "settings-tab-dataManagement",
       revealing: "data-management-settings"
     )
 
@@ -1513,11 +1523,11 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
   func testSettingsRestoresLastTopLevelPageAfterWindowReopens() throws {
     openSettings()
     select(
-      "settings-sidebar-configurationStatus",
+      "settings-tab-configurationStatus",
       revealing: "configuration-status-settings"
     )
     select(
-      "settings-sidebar-privacy",
+      "settings-tab-privacy",
       revealing: "privacy-settings"
     )
 
@@ -1539,7 +1549,7 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
     showSettingsWindow()
     let reopenedSettingsWindow = currentSettingsWindow()
     assertIdentifierExists("settings-content", in: reopenedSettingsWindow)
-    assertUniqueIdentifier("settings-sidebar-privacy")
+    assertUniqueIdentifier("settings-tab-privacy")
     assertIdentifierExists("privacy-settings", in: reopenedSettingsWindow)
     XCTAssertFalse(
       identifierExists("configuration-status-settings", in: reopenedSettingsWindow),
@@ -1605,7 +1615,10 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
       file: file,
       line: line
     )
-    settingsMenuItem.click()
+    // Inspect the menu, then use its keyboard equivalent. XCTest can retain
+    // an invalid menu hit point while resolving macOS accessibility queries.
+    application.typeKey(.escape, modifierFlags: [])
+    application.typeKey(",", modifierFlags: [.command])
   }
 
   private func currentSettingsWindow(
@@ -1644,7 +1657,12 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
       line: line
     )
     assertUniqueIdentifier("settings-content", file: file, line: line)
-    assertUniqueIdentifier("settings-save-status", file: file, line: line)
+    XCTAssertFalse(
+      identifierExists("settings-save-status", in: settingsWindow),
+      "Clean Settings must not show an unsaved, failed-save, or recovery status bar.",
+      file: file,
+      line: line
+    )
   }
 
   private func assertIdentifierExists(
@@ -1682,23 +1700,30 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
     file: StaticString = #filePath,
     line: UInt = #line
   ) {
-    let descendants = root.descendants(matching: .any).allElementsBoundByIndex
-    XCTAssertFalse(
-      descendants.isEmpty,
-      "The Settings accessibility tree was empty.",
-      file: file,
-      line: line
-    )
-    for descendant in descendants {
-      _ = descendant.identifier
-      _ = descendant.label
+    do {
+      // Freeze the tree before traversing; live index queries become stale
+      // when scrolling or dismissing a sheet changes the visible elements.
+      var descendants = try root.snapshot().children
+      XCTAssertFalse(
+        descendants.isEmpty,
+        "The Settings accessibility tree was empty.",
+        file: file,
+        line: line
+      )
+      while let descendant = descendants.popLast() {
+        _ = descendant.identifier
+        _ = descendant.label
+        descendants.append(contentsOf: descendant.children)
+      }
+    } catch {
+      XCTFail("Could not snapshot the Settings accessibility tree: \(error)", file: file, line: line)
     }
   }
 
   private func revealSettingsElement(
     _ identifier: String,
     scrollContainerIdentifier: String,
-    maxSwipes: Int = 8,
+    maxScrolls: Int = 16,
     file: StaticString = #filePath,
     line: UInt = #line
   ) {
@@ -1717,10 +1742,10 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
       return
     }
 
-    for _ in 0..<maxSwipes {
+    for _ in 0..<maxScrolls {
       application.activate()
-      forceAccessibilityTraversal(in: currentSettingsWindow())
-      scrollContainer.swipeUp()
+      // Use bounded macOS wheel events so a fast swipe cannot skip a task card.
+      scrollContainer.scroll(byDeltaX: 0, deltaY: -240)
       if destination.exists && destination.isHittable {
         return
       }

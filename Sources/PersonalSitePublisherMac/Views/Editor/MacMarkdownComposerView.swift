@@ -357,7 +357,6 @@ struct MacMarkdownComposerView: View {
     .onChange(of: selectedRange) { oldRange, newRange in
       selectionBubblePresentationState.selectionDidChange(to: newRange)
       if !NSEqualRanges(oldRange, newRange) {
-        isInlineSelectionPaletteDismissed = false
         if let selectionEditPreview,
           !NSEqualRanges(selectionEditPreview.range, newRange)
         {

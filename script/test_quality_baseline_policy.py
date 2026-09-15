@@ -68,6 +68,28 @@ def write(repo: Path, payload: dict[str, object]) -> None:
     path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
 
 
+def write_target(repo: Path, parent: str, target: str, *, present: bool) -> None:
+    directory = repo / parent / target
+    if present:
+        directory.mkdir(parents=True, exist_ok=True)
+        (directory / "Fixture.swift").write_text("fixture\n", encoding="utf-8")
+    else:
+        fixture = directory / "Fixture.swift"
+        if fixture.exists():
+            fixture.unlink()
+        if directory.exists():
+            directory.rmdir()
+
+
+def write_package(repo: Path, *, source_present: bool, test_present: bool) -> None:
+    names = []
+    if source_present:
+        names.append('name: "TargetA"')
+    if test_present:
+        names.append('name: "TargetATests"')
+    (repo / "Package.swift").write_text("\n".join(names) + "\n", encoding="utf-8")
+
+
 def invoke(repo: Path, base: str | None = None) -> subprocess.CompletedProcess[str]:
     command = ["python3", str(GATE), "--root", str(repo)]
     if base is not None:
@@ -87,7 +109,10 @@ def main() -> int:
         repo = Path(temporary)
         run("git", "init", "-q", cwd=repo)
         write(repo, v1())
-        run("git", "add", "script/quality_baselines.json", cwd=repo)
+        write_target(repo, "Sources", "TargetA", present=True)
+        write_target(repo, "Tests", "TargetATests", present=True)
+        write_package(repo, source_present=True, test_present=True)
+        run("git", "add", ".", cwd=repo)
         run("git", "-c", "user.name=gate", "-c", "user.email=gate@example.invalid", "commit", "-qm", "v1", cwd=repo)
 
         # The actual v1-to-v2 transition is permitted only because the v2
@@ -104,7 +129,7 @@ def main() -> int:
         expect_failure(repo, widened_migration, "total migration maximum increased")
         write(repo, v2())
 
-        run("git", "add", "script/quality_baselines.json", cwd=repo)
+        run("git", "add", ".", cwd=repo)
         run("git", "-c", "user.name=gate", "-c", "user.email=gate@example.invalid", "commit", "-qm", "v2", cwd=repo)
         base = v2()
 
@@ -129,6 +154,11 @@ def main() -> int:
         lower_target = v2()
         lower_target["sourceLineCoveragePercentMinimumByTarget"] = {"TargetA": 39}
         expect_failure(repo, lower_target, "target TargetA decreased")
+
+        partial_retirement = v2()
+        partial_retirement["sourceLineCoveragePercentMinimumByTarget"] = {"TargetB": 1}
+        partial_retirement["swiftFormatWarningMaximums"]["sourcesByTarget"] = {"TargetB": 0}
+        expect_failure(repo, partial_retirement, "without a full target retirement: TargetA")
 
         changed_coverage = v2()
         changed_coverage["changedExecutableSourceLineCoveragePercentMinimum"] = 99
@@ -189,7 +219,23 @@ def main() -> int:
         invalid_new_target["swiftTestMinimumCountsByTarget"]["TargetBTests"] = 0
         expect_failure(repo, invalid_new_target, "positive integer")
 
-        write(repo, base)
+        retired = v2()
+        retired["sourceLineCoveragePercentMinimumByTarget"] = {"TargetB": 1}
+        retired["swiftFormatWarningMaximums"]["sourcesByTarget"] = {"TargetB": 0}
+        retired["swiftTestMinimumCountsByTarget"] = {"TargetBTests": 1}
+        retired["swiftFormatWarningMaximums"]["testsByTarget"] = {"TargetBTests": 0}
+        write_target(repo, "Sources", "TargetA", present=False)
+        write_target(repo, "Tests", "TargetATests", present=False)
+        write_package(repo, source_present=False, test_present=False)
+        write(repo, retired)
+        accepted_retirement = invoke(repo)
+        assert accepted_retirement.returncode == 0, accepted_retirement.stderr
+        run("git", "add", "-A", cwd=repo)
+        run("git", "-c", "user.name=gate", "-c", "user.email=gate@example.invalid", "commit", "-qm", "retire", cwd=repo)
+        stable_retirement = invoke(repo)
+        assert stable_retirement.returncode == 0, stable_retirement.stderr
+
+        write(repo, retired)
         invalid_ref = invoke(repo, "does-not-exist")
         assert invalid_ref.returncode != 0 and "invalid-diff-base" in invalid_ref.stderr, invalid_ref.stderr
         zero_ref = invoke(repo, "0" * 40)

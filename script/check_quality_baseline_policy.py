@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -181,9 +182,98 @@ def compare_no_increase(label: str, current: int, base: int) -> None:
         fail(f"[policy:threshold-relaxed] {label} increased from {base} to {current}")
 
 
-def compare_target_minimums(current: dict[str, Any], base: dict[str, Any]) -> None:
+def target_was_fully_retired(
+    root: Path,
+    resolved_base: str,
+    *,
+    parent: str,
+    target: str,
+) -> bool:
+    """Accept a removed threshold only with its whole tracked target directory."""
+    directory = f"{parent}/{target}"
+    base_paths = [
+        path for path in git(root, "ls-tree", "-r", "--name-only", resolved_base, "--", directory).splitlines()
+        if path
+    ]
+    if not base_paths or (root / directory).exists():
+        return False
+    base_manifest = git(root, "show", f"{resolved_base}:Package.swift")
+    current_manifest = (root / "Package.swift").read_text(encoding="utf-8")
+    target_declaration = re.compile(rf'\bname\s*:\s*"{re.escape(target)}"')
+    if not target_declaration.search(base_manifest) or target_declaration.search(current_manifest):
+        return False
+    changed_paths = git(
+        root,
+        "diff",
+        "--name-status",
+        "--no-renames",
+        resolved_base,
+        "--",
+        directory,
+    ).splitlines()
+    deleted_paths = {
+        fields[1]
+        for line in changed_paths
+        if (fields := line.split("\t")) and len(fields) == 2 and fields[0] == "D"
+    }
+    return deleted_paths == set(base_paths)
+
+
+def retired_targets(
+    root: Path,
+    resolved_base: str,
+    *,
+    current_target_coverage: dict[str, Any],
+    base_target_coverage: dict[str, Any],
+    current_tests: dict[str, int],
+    base_tests: dict[str, int],
+    current_format: dict[str, int],
+    base_format: dict[str, int],
+) -> tuple[set[str], set[str]]:
+    source_targets = set(base_target_coverage) - set(current_target_coverage)
+    source_format_targets = {
+        bucket.removeprefix("sourcesByTarget.")
+        for bucket in set(base_format) - set(current_format)
+        if bucket.startswith("sourcesByTarget.")
+    }
+    if source_targets != source_format_targets:
+        fail("[policy:threshold-relaxed] source target retirement must remove matching coverage and format baselines")
+    test_targets = set(base_tests) - set(current_tests)
+    test_format_targets = {
+        bucket.removeprefix("testsByTarget.")
+        for bucket in set(base_format) - set(current_format)
+        if bucket.startswith("testsByTarget.")
+    }
+    if test_targets != test_format_targets:
+        fail("[policy:threshold-relaxed] Swift test target retirement must remove matching test and format baselines")
+    for target in source_targets:
+        if not target_was_fully_retired(
+            root,
+            resolved_base,
+            parent="Sources",
+            target=target,
+        ):
+            fail(f"[policy:threshold-relaxed] source coverage target baseline was removed without a full target retirement: {target}")
+    for target in test_targets:
+        if not target_was_fully_retired(
+            root,
+            resolved_base,
+            parent="Tests",
+            target=target,
+        ):
+            fail(f"[policy:threshold-relaxed] Swift test target baseline was removed without a full target retirement: {target}")
+    return source_targets, test_targets
+
+
+def compare_target_minimums(
+    current: dict[str, Any],
+    base: dict[str, Any],
+    retired: set[str],
+) -> None:
     for target, base_value in base.items():
         if target not in current:
+            if target in retired:
+                continue
             fail(f"[policy:threshold-relaxed] source coverage target baseline was removed: {target}")
         compare_no_decrease(
             f"source coverage target {target}", float(current[target]), float(base_value)
@@ -193,16 +283,24 @@ def compare_target_minimums(current: dict[str, Any], base: dict[str, Any]) -> No
             fail(f"[configuration:invalid-baseline] new source coverage target {target} must have a positive baseline")
 
 
-def compare_test_minimums(current: dict[str, int], base: dict[str, int]) -> None:
+def compare_test_minimums(
+    current: dict[str, int],
+    base: dict[str, int],
+    retired: set[str],
+) -> None:
     for target, base_value in base.items():
         if target not in current:
+            if target in retired:
+                continue
             fail(f"[policy:threshold-relaxed] Swift test target baseline was removed: {target}")
         compare_no_decrease(f"Swift test target {target}", current[target], base_value)
 
 
-def compare_format(current: dict[str, int], base: dict[str, int]) -> None:
+def compare_format(current: dict[str, int], base: dict[str, int], retired: set[str]) -> None:
     for bucket, base_value in base.items():
         if bucket not in current:
+            if bucket in retired:
+                continue
             fail(f"[policy:threshold-relaxed] Swift format bucket was removed: {bucket}")
         compare_no_increase(f"Swift format maximum {bucket}", current[bucket], base_value)
     compare_no_increase(
@@ -289,7 +387,7 @@ def enforce(root: Path, baseline_path: Path, requested_base: str | None) -> str:
             float(current["sourceLineCoveragePercentMinimum"]),
             base_coverage,
         )
-        compare_test_minimums(current_tests, base_tests)
+        compare_test_minimums(current_tests, base_tests, set())
         current_format_total = sum(current_format.values())
         compare_no_increase("Swift format total migration maximum", current_format_total, base_format_total)
         fallback = " via all-zero SHA fallback to HEAD^" if diff_base.used_all_zero_fallback else ""
@@ -308,14 +406,28 @@ def enforce(root: Path, baseline_path: Path, requested_base: str | None) -> str:
     )
     base_target_coverage = base["sourceLineCoveragePercentMinimumByTarget"]
     assert isinstance(base_target_coverage, dict)
+    retired_source_targets, retired_test_targets = retired_targets(
+        root,
+        resolved_base,
+        current_target_coverage=current_target_coverage,
+        base_target_coverage=base_target_coverage,
+        current_tests=current_tests,
+        base_tests=base_tests,
+        current_format=current_format,
+        base_format=base_format,
+    )
     compare_no_decrease(
         "source coverage global minimum",
         float(current["sourceLineCoveragePercentMinimum"]),
         float(base["sourceLineCoveragePercentMinimum"]),
     )
-    compare_target_minimums(current_target_coverage, base_target_coverage)
-    compare_test_minimums(current_tests, base_tests)
-    compare_format(current_format, base_format)
+    compare_target_minimums(current_target_coverage, base_target_coverage, retired_source_targets)
+    compare_test_minimums(current_tests, base_tests, retired_test_targets)
+    retired_format_buckets = {
+        *(f"sourcesByTarget.{target}" for target in retired_source_targets),
+        *(f"testsByTarget.{target}" for target in retired_test_targets),
+    }
+    compare_format(current_format, base_format, retired_format_buckets)
     compare_release_performance(current_performance, base_performance)
     if base_module_maximums is not None:
         compare_module_boundary_maximums(current_module_maximums, base_module_maximums)

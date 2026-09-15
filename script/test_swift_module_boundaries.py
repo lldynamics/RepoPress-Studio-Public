@@ -71,7 +71,6 @@ def valid_payload() -> dict[str, Any]:
             ),
             package_product("PublishingKnowledgeCore", "library", ["PublishingKnowledgeCore"]),
             package_product("PublishingWorkbenchCore", "library", ["PublishingWorkbenchCore"]),
-            package_product("PublishingMCPClient", "library", ["PublishingMCPClient"]),
             package_product("PersonalSitePublisherMac", "executable", ["PersonalSitePublisherMac"]),
         ],
         "targets": [
@@ -121,16 +120,6 @@ def valid_payload() -> dict[str, Any]:
                     dependency("PublishingAICore"),
                     dependency("PublishingAgentContracts"),
                     dependency("PublishingKnowledgeCore"),
-                ],
-            ),
-            target(
-                "PublishingMCPClient",
-                "regular",
-                [
-                    dependency("PublishingAICore"),
-                    dependency("PublishingAgentContracts"),
-                    product("MCP", "swift-sdk"),
-                    product("SystemPackage", "swift-system"),
                 ],
             ),
             target("BrowserExtensionProtocolSupport", "regular", []),
@@ -202,15 +191,6 @@ def valid_payload() -> dict[str, Any]:
                 ],
             ),
             target(
-                "PublishingMCPClientTests",
-                "test",
-                [
-                    dependency("PublishingAICore"),
-                    dependency("PublishingAgentContracts"),
-                    dependency("PublishingMCPClient"),
-                ],
-            ),
-            target(
                 "PersonalSitePublisherMacTests",
                 "test",
                 [
@@ -241,7 +221,6 @@ def prepare_fixture(root: Path, payload: dict[str, Any]) -> Path:
         "PublishingAgentContracts",
         "PublishingKnowledgeCore",
         "PublishingWorkbenchCore",
-        "PublishingMCPClient",
     ):
         directory = sources / target_name
         directory.mkdir(parents=True, exist_ok=True)
@@ -268,12 +247,6 @@ def prepare_fixture(root: Path, payload: dict[str, Any]) -> Path:
     contracts_test_source.mkdir(parents=True, exist_ok=True)
     (contracts_test_source / "FixtureTests.swift").write_text(
         "@testable import PublishingAgentContracts\n",
-        encoding="utf-8",
-    )
-    mcp_test_source = root / "Tests" / "PublishingMCPClientTests"
-    mcp_test_source.mkdir(parents=True, exist_ok=True)
-    (mcp_test_source / "FixtureTests.swift").write_text(
-        "import PublishingMCPClient\n",
         encoding="utf-8",
     )
     (root / "Package.swift").write_text("// fixture manifest\n", encoding="utf-8")
@@ -372,14 +345,13 @@ def main() -> int:
         assert decoded["status"] == "passed"
         assert decoded["schemaVersion"] == "2"
         assert decoded["policyVersion"] == "swift-module-boundaries-v2"
-        assert decoded["targetTypeCounts"] == {"executable": 1, "regular": 10, "test": 10}
+        assert decoded["targetTypeCounts"] == {"executable": 1, "regular": 9, "test": 9}
         assert [product["name"] for product in decoded["products"]] == [
             "PersonalSitePublisherMac",
             "PublishingAICore",
             "PublishingAgentContracts",
             "PublishingGitCore",
             "PublishingKnowledgeCore",
-            "PublishingMCPClient",
             "PublishingMarkdownCore",
             "PublishingWorkbenchCore",
         ]
@@ -392,7 +364,6 @@ def main() -> int:
         assert decoded["topologicalOrder"]
         assert decoded["coreSourceMetrics"]["PublishingAgentContracts"]["swiftFileCount"] == 1
         assert decoded["coreSourceMetrics"]["PublishingWorkbenchCore"]["swiftFileCount"] == 2
-        assert decoded["coreSourceMetrics"]["PublishingMCPClient"]["swiftFileCount"] == 1
         assert decoded["compatibilityUmbrellaConsumerMetrics"]["Tests"]["workbenchImportCount"] == 1
         assert decoded["umbrellaRetirement"]["enforced"] is False
 
@@ -439,15 +410,6 @@ def main() -> int:
         reverse_agent_contracts,
         message="dependency cycle",
     )
-
-    mcp_workbench_edge = valid_payload()
-    mcp_target = next(
-        item
-        for item in mcp_workbench_edge["targets"]
-        if item["name"] == "PublishingMCPClient"
-    )
-    mcp_target["dependencies"].append(dependency("PublishingWorkbenchCore"))
-    expect_rejected(mcp_workbench_edge, message="PublishingMCPClient dependencies differ")
 
     reverse_leaf = valid_payload()
     git_target = next(item for item in reverse_leaf["targets"] if item["name"] == "PublishingGitCore")

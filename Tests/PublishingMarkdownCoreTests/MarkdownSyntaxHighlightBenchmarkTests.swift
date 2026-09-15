@@ -78,17 +78,6 @@ final class MarkdownSyntaxHighlightBenchmarkTests: XCTestCase {
         + " delivered_runs=\(report.rapidTypingBurst.deliveredStyleRunCount)"
         + " total_p95_ms=\(Self.formatted(report.rapidTypingBurst.total.p95Milliseconds))"
     )
-    print(
-      "MARKDOWN_SYNTAX_CHUNKED_APPLICATION_BENCHMARK"
-        + " document_utf16=\(report.chunkedDenseApplication.documentUTF16Length)"
-        + " chunks=\(report.chunkedDenseApplication.chunkCount)"
-        + " max_chunk_utf16=\(report.chunkedDenseApplication.maximumChunkUTF16Length)"
-        + " first_chunk_utf16=\(report.chunkedDenseApplication.firstChunkUTF16Length)"
-        + " preparation_p95_ms=\(Self.formatted(report.chunkedDenseApplication.preparation.p95Milliseconds))"
-        + " per_chunk_p95_ms=\(Self.formatted(report.chunkedDenseApplication.perChunk.p95Milliseconds))"
-        + " total_p95_ms=\(Self.formatted(report.chunkedDenseApplication.total.p95Milliseconds))"
-        + " within_frame_budget=\(report.chunkedDenseApplication.perChunkP95WithinFrameBudget)"
-    )
     print("MARKDOWN_SYNTAX_BENCHMARK output=\(outputURL.path)")
   }
 
@@ -196,16 +185,6 @@ private enum MarkdownSyntaxHighlightBenchmarkRunner {
       parser: parser,
       iterations: iterations
     )
-    let largeDenseMarkdown = MarkdownSyntaxBenchmarkDocumentFactory.make(
-      targetUTF16Length: 100_000,
-      density: .dense
-    )
-    let chunkedDenseApplication = try await runChunkedApplicationScenario(
-      markdown: largeDenseMarkdown,
-      parser: parser,
-      palette: palette,
-      iterations: iterations
-    )
 
     return MarkdownSyntaxBenchmarkReport(
       generatedAt: ISO8601DateFormatter().string(from: Date()),
@@ -226,8 +205,7 @@ private enum MarkdownSyntaxHighlightBenchmarkRunner {
       iterations: iterations,
       scenarios: results,
       incrementalScenarios: incrementalResults,
-      rapidTypingBurst: rapidTypingBurst,
-      chunkedDenseApplication: chunkedDenseApplication
+      rapidTypingBurst: rapidTypingBurst
     )
   }
 
@@ -504,94 +482,6 @@ private enum MarkdownSyntaxHighlightBenchmarkRunner {
     )
   }
 
-  private static func runChunkedApplicationScenario(
-    markdown: String,
-    parser: MarkdownSyntaxHighlightParser,
-    palette: MarkdownSyntaxBenchmarkPalette,
-    iterations: Int
-  ) async throws -> MarkdownSyntaxChunkedApplicationBenchmarkResult {
-    guard let snapshot = await parser.snapshot(in: markdown) else {
-      throw MarkdownSyntaxBenchmarkError.parserReturnedNoSnapshot(
-        "large-dense-chunked-application"
-      )
-    }
-    let priorityLength = min(4_096, snapshot.range.length)
-    let priorityRange = NSRange(
-      location: snapshot.range.location + max(0, (snapshot.range.length - priorityLength) / 2),
-      length: priorityLength
-    )
-    let baselineApplicationSnapshots =
-      MarkdownSyntaxHighlightApplicationPlanner
-      .applicationSnapshots(
-        for: snapshot,
-        prioritizing: priorityRange
-      )
-    guard baselineApplicationSnapshots.first?.range == priorityRange,
-      !baselineApplicationSnapshots.isEmpty
-    else {
-      throw MarkdownSyntaxBenchmarkError.invalidChunkedApplicationPlan
-    }
-
-    var preparationSamples: [Double] = []
-    var perChunkSamples: [Double] = []
-    var totalSamples: [Double] = []
-    var appliedStyleSegmentCount = 0
-    for _ in 0..<iterations {
-      let preparationStart = ContinuousClock.now
-      let applicationSnapshots =
-        MarkdownSyntaxHighlightApplicationPlanner
-        .applicationSnapshots(
-          for: snapshot,
-          prioritizing: priorityRange
-        )
-      preparationSamples.append(milliseconds(since: preparationStart))
-      let fixture = MarkdownSyntaxBenchmarkTextKitFixture(markdown: markdown)
-      let totalStart = ContinuousClock.now
-      var iterationAppliedStyleSegmentCount = 0
-      for applicationSnapshot in applicationSnapshots {
-        let chunkStart = ContinuousClock.now
-        fixture.textStorage.beginEditing()
-        iterationAppliedStyleSegmentCount += MarkdownSyntaxHighlightAttributeApplier.apply(
-          applicationSnapshot,
-          to: fixture.textStorage,
-          defaultAttributes: palette.defaultAttributes,
-          styleAttributes: palette.styleAttributes
-        )
-        fixture.textStorage.endEditing()
-        perChunkSamples.append(milliseconds(since: chunkStart))
-      }
-      totalSamples.append(milliseconds(since: totalStart))
-      appliedStyleSegmentCount = iterationAppliedStyleSegmentCount
-    }
-
-    let frameBudgetMilliseconds = 1_000.0 / 60.0
-    let perChunk = MarkdownSyntaxBenchmarkStatistics(samples: perChunkSamples)
-    let perChunkP95WithinFrameBudget = perChunk.p95Milliseconds < frameBudgetMilliseconds
-    if ProcessInfo.processInfo.environment["PERFORMANCE_BENCHMARK_ENFORCE_WALL_TIME"] == "1",
-      !perChunkP95WithinFrameBudget
-    {
-      throw MarkdownSyntaxBenchmarkError.chunkedApplicationExceededFrameBudget(
-        p95Milliseconds: perChunk.p95Milliseconds,
-        frameBudgetMilliseconds: frameBudgetMilliseconds
-      )
-    }
-    return MarkdownSyntaxChunkedApplicationBenchmarkResult(
-      documentUTF16Length: (markdown as NSString).length,
-      styleRunCount: snapshot.runs.count,
-      appliedStyleSegmentCount: appliedStyleSegmentCount,
-      chunkCount: baselineApplicationSnapshots.count,
-      maximumChunkUTF16Length:
-        MarkdownSyntaxHighlightApplicationPlanner.defaultMaximumChunkUTF16Length,
-      prioritizedUTF16Length: priorityRange.length,
-      firstChunkUTF16Length: baselineApplicationSnapshots[0].range.length,
-      frameBudgetMilliseconds: frameBudgetMilliseconds,
-      perChunkP95WithinFrameBudget: perChunkP95WithinFrameBudget,
-      preparation: MarkdownSyntaxBenchmarkStatistics(samples: preparationSamples),
-      perChunk: perChunk,
-      total: MarkdownSyntaxBenchmarkStatistics(samples: totalSamples)
-    )
-  }
-
   private static let scenarios = [
     MarkdownSyntaxBenchmarkScenario(id: "short-mixed", targetUTF16Length: 2_000, density: .mixed),
     MarkdownSyntaxBenchmarkScenario(id: "medium-mixed", targetUTF16Length: 20_000, density: .mixed),
@@ -639,7 +529,7 @@ private enum MarkdownSyntaxHighlightBenchmarkRunner {
 }
 
 private struct MarkdownSyntaxBenchmarkReport: Encodable {
-  let schemaVersion = 6
+  let schemaVersion = 7
   let generatedAt: String
   let configuration: String
   let commit: String
@@ -661,7 +551,6 @@ private struct MarkdownSyntaxBenchmarkReport: Encodable {
   let scenarios: [MarkdownSyntaxBenchmarkScenarioResult]
   let incrementalScenarios: [MarkdownSyntaxIncrementalBenchmarkScenarioResult]
   let rapidTypingBurst: MarkdownSyntaxRapidTypingBurstBenchmarkResult
-  let chunkedDenseApplication: MarkdownSyntaxChunkedApplicationBenchmarkResult
 }
 
 private struct MarkdownSyntaxBenchmarkScenarioResult: Encodable {
@@ -711,21 +600,6 @@ private struct MarkdownSyntaxRapidTypingBurstBenchmarkResult: Encodable {
   let coalescedBeforeComputationCount: Int
   let latestRequestDelivered: Bool
   let deliveredStyleRunCount: Int
-  let total: MarkdownSyntaxBenchmarkStatistics
-}
-
-private struct MarkdownSyntaxChunkedApplicationBenchmarkResult: Encodable {
-  let documentUTF16Length: Int
-  let styleRunCount: Int
-  let appliedStyleSegmentCount: Int
-  let chunkCount: Int
-  let maximumChunkUTF16Length: Int
-  let prioritizedUTF16Length: Int
-  let firstChunkUTF16Length: Int
-  let frameBudgetMilliseconds: Double
-  let perChunkP95WithinFrameBudget: Bool
-  let preparation: MarkdownSyntaxBenchmarkStatistics
-  let perChunk: MarkdownSyntaxBenchmarkStatistics
   let total: MarkdownSyntaxBenchmarkStatistics
 }
 
@@ -984,11 +858,6 @@ private enum MarkdownSyntaxBenchmarkError: LocalizedError {
     delivered: Int,
     deliveredRequestIDs: [Int]
   )
-  case invalidChunkedApplicationPlan
-  case chunkedApplicationExceededFrameBudget(
-    p95Milliseconds: Double,
-    frameBudgetMilliseconds: Double
-  )
 
   var errorDescription: String? {
     switch self {
@@ -1022,11 +891,6 @@ private enum MarkdownSyntaxBenchmarkError: LocalizedError {
       let scheduled, let started, let delivered, let deliveredRequestIDs):
       return
         "Unexpected rapid typing burst: scheduled=\(scheduled), started=\(started), delivered=\(delivered), requestIDs=\(deliveredRequestIDs)."
-    case .invalidChunkedApplicationPlan:
-      return "Chunked application plan did not prioritize the requested visible range."
-    case .chunkedApplicationExceededFrameBudget(let p95, let frameBudget):
-      return
-        "Chunked attribute application exceeded the frame budget: p95=\(p95) ms, budget=\(frameBudget) ms."
     }
   }
 }

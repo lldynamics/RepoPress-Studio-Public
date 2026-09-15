@@ -723,25 +723,6 @@ public final class WorkbenchAIFeatureFacade: ObservableObject {
     return true
   }
 
-  public func chatPublishingPackage(for draft: ArticleDraft) -> PublishPackage {
-    store.publishingPackage(for: draft)
-  }
-
-  public func chatPreflightIssues(for draft: ArticleDraft) -> [PreflightIssue] {
-    store.preflightIssues(for: draft)
-  }
-
-  public func cachedChatImageWorkbenchReport(for draft: ArticleDraft) -> ImageWorkbenchReport? {
-    store.cachedImageWorkbenchReport(for: draft)
-  }
-
-  public func refreshChatImageWorkbenchReportInBackground(
-    for draft: ArticleDraft,
-    force: Bool = false
-  ) async {
-    await store.refreshImageWorkbenchReportInBackground(for: draft, force: force)
-  }
-
   public func relatedChatArticleSuggestions(
     for draft: ArticleDraft,
     limit: Int = 5
@@ -776,13 +757,6 @@ public final class WorkbenchAIFeatureFacade: ObservableObject {
 
   public func deleteChatCustomPrompt(_ promptID: AIPublishingCustomPrompt.ID) {
     store.deleteAIChatCustomPrompt(promptID)
-  }
-
-  public func setChatConversationTitle(
-    _ title: String?,
-    draft: ArticleDraft? = nil
-  ) {
-    store.setAIChatConversationTitle(title, draft: draft)
   }
 
   @discardableResult
@@ -961,16 +935,6 @@ public final class WorkbenchAIFeatureFacade: ObservableObject {
     )
   }
 
-  public func chatImageAttachments(
-    for draft: ArticleDraft,
-    attachmentIDs: Set<UUID>
-  ) async -> [AIChatImageAttachment] {
-    await store.aiChatImageAttachments(
-      for: draft,
-      attachmentIDs: attachmentIDs
-    )
-  }
-
   public func chatImageAttachmentLoadResult(
     for draft: ArticleDraft,
     attachmentIDs: Set<UUID>
@@ -985,42 +949,6 @@ public final class WorkbenchAIFeatureFacade: ObservableObject {
     for draft: ArticleDraft
   ) -> [AIContextReference] {
     store.aiStore.availableAIChatContextReferences(for: draft)
-  }
-
-  public func reviewedStructuredEditDraft(
-    message: AIPublishingChatMessage,
-    review: AIStructuredEditReview
-  ) -> ArticleDraft? {
-    guard
-      let payload = message.structuredEditPayload,
-      payload.document == review.document,
-      let current = store.drafts.first(where: { $0.id == payload.sourceDraftID })
-    else {
-      store.setAIChatMessage("找不到这份结构化修改对应的原稿。")
-      return nil
-    }
-    guard current.repositoryContentFingerprint == payload.sourceContentFingerprint else {
-      store.setAIChatMessage("文章已变化，结构化修改未应用；请重新校对。")
-      return nil
-    }
-
-    do {
-      let result = try AIStructuredEditReviewService.apply(
-        review,
-        to: current.bodyMarkdown
-      )
-      guard result.hasAppliedChanges else {
-        store.setAIChatMessage("尚未接受任何修改。")
-        return nil
-      }
-      var updated = current
-      updated.bodyMarkdown = result.finalBody
-      store.setAIChatMessage("已生成结构化修改差异，确认后才会写入文章。")
-      return updated
-    } catch {
-      store.setAIChatMessage("结构化修改未通过陈旧检查：\(error.localizedDescription)")
-      return nil
-    }
   }
 
   /// Begins a review in the editor rather than materializing an intermediate
@@ -1260,10 +1188,6 @@ public final class WorkbenchAIFeatureFacade: ObservableObject {
 
   public func consumePendingQuickPrompt() -> AIPublishingQuickPrompt? {
     store.consumePendingAIQuickPrompt()
-  }
-
-  public func focusedChatParagraph(for draft: ArticleDraft) -> AIPublishingChatDraftParagraph? {
-    store.focusedAIChatParagraph(for: draft)
   }
 
   @discardableResult

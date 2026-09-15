@@ -481,6 +481,7 @@ private struct MarkdownCustomSnippetEditorPanel: View {
             .focused($isTitleFocused)
             .accessibilityLabel("站点片段名称")
           TextField("说明（可选）", text: $detail)
+            .accessibilityLabel("说明（可选）")
           Picker("类型", selection: $kind) {
             Text("文章模板").tag(MarkdownSnippetKind.articleTemplate)
             Text("正文片段").tag(MarkdownSnippetKind.snippet)

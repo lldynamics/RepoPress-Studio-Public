@@ -10,8 +10,6 @@ public enum LocalAIEngineSetupRecommendation: Hashable, Sendable {
 /// AppKit bridge that opens these targets so this service remains testable and
 /// never starts a process itself.
 public struct LocalAIEngineSetupService: Sendable {
-  public static let ollamaModelLibraryURL = URL(string: "https://ollama.com/library")!
-
   public init() {}
 
   public func recommendation(

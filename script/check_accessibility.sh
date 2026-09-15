@@ -457,14 +457,19 @@ require_literal \
   "AI collaboration must expose the current-article/general-chat context switch"
 
 require_literal \
-  "Sources/PersonalSitePublisherMac/Views/AIChat/AIChatWorkspaceInspectorHeader.swift" \
-  ".accessibilityIdentifier(\"ai-assistant-general-model-menu\")" \
-  "general chat must expose connection and model controls inside the Inspector"
+  "Sources/PersonalSitePublisherMac/Views/AIChat/AIChatModelQuickSwitchSheet.swift" \
+  ".accessibilityIdentifier(\"ai-assistant-connection-status\")" \
+  "AI chat must expose its connection and model control"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/AIChat/AIChatModelQuickSwitchSheet.swift" \
+  ".accessibilityValue(statusDetail)" \
+  "AI chat connection and model controls must expose their current value"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/AIChat/AIChatWorkspaceInspectorHeader.swift" \
-  ".accessibilityValue(generalConnectionAndModelSummary)" \
-  "general chat connection and model controls must expose their current value"
+  "AIChatConnectionStatusCapsule(" \
+  "the Inspector must mount the accessible connection and model control"
 
 require_literal \
   "UITests/WorkspaceAccessibilityUITests/WorkspaceAccessibilityUITests.swift" \
@@ -704,7 +709,7 @@ require_literal_any_file \
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/Editor/WritingDraftColumn+Toolbar.swift" \
-  ".accessibilityLabel(\"搜索草稿\")" \
+  ".accessibilityLabel(\"搜索标题、摘要、标签或路径\")" \
   "draft search field must expose an accessibility label"
 
 require_literal \
@@ -1516,17 +1521,14 @@ require_literal \
   "if knowledgeLibraryCommands != nil { return String(localized: \"搜索资料库\") }" \
   "command-f must route to knowledge search while the library is active"
 
-textfield_gaps="$(
-  find "$ROOT_DIR/Sources/PersonalSitePublisherMac/Views" -type f -name '*.swift' \
-    -exec perl -0ne 'while(/(?<!NS)TextField\([^\n]*(?:\n[^\n]*){0,14}/g){$m=$&; if($m !~ /accessibilityLabel/){$prefix=substr($_,0,pos($_)); $line=1+($prefix=~tr/\n//); print "$ARGV:$line\n"}}' {} +
-)"
-[[ -z "$textfield_gaps" ]] || fail "text fields missing accessibility labels: $textfield_gaps"
-
-texteditor_gaps="$(
-  find "$ROOT_DIR/Sources/PersonalSitePublisherMac/Views" -type f -name '*.swift' \
-    -exec perl -0ne 'while(/TextEditor\([^\n]*(?:\n[^\n]*){0,14}/g){$m=$&; if($m !~ /accessibilityLabel/){$prefix=substr($_,0,pos($_)); $line=1+($prefix=~tr/\n//); print "$ARGV:$line\n"}}' {} +
-)"
-[[ -z "$texteditor_gaps" ]] || fail "text editors missing accessibility labels: $texteditor_gaps"
+if ! accessibility_field_gaps="$(
+  find "$ROOT_DIR/Sources/PersonalSitePublisherMac/Views" -type f -name '*.swift' -print0 \
+    | xargs -0 python3 "$ROOT_DIR/script/check_swift_accessibility_fields.py"
+)"; then
+  [[ -n "$accessibility_field_gaps" ]] || fail "could not scan text fields and editors"
+fi
+[[ -z "$accessibility_field_gaps" ]] \
+  || fail "text fields or editors missing direct accessibility labels: $accessibility_field_gaps"
 
 if command -v rg >/dev/null 2>&1; then
   prominent_style_gaps="$(

@@ -2,7 +2,7 @@ import XCTest
 @testable import PublishingWorkbenchCore
 
 final class SiteMaintenanceServiceTests: XCTestCase {
-  func testReportBuildsCalendarTaxonomyStaleArticlesAndLinkAudit() {
+  func testReportBuildsTaxonomyStaleArticlesAndLinkAudit() {
     var profile = SiteProfile.defaultProfile
     profile.markdownPathPattern = "content/posts/{slug}.md"
     let now = date(year: 2026, month: 7, day: 6)
@@ -61,12 +61,6 @@ final class SiteMaintenanceServiceTests: XCTestCase {
     XCTAssertEqual(report.publicDraftCount, 2)
     XCTAssertEqual(report.privateDraftCount, 1)
     XCTAssertEqual(report.readyCount, 1)
-    XCTAssertEqual(report.calendarBuckets.map(\.monthKey), ["2026-06", "2025-01"])
-    XCTAssertEqual(report.calendarBuckets.first?.articleCount, 2)
-    XCTAssertTrue(report.calendarInsights.contains { $0.id == "current-month-no-published" })
-    XCTAssertEqual(report.calendarScheduleItems.map(\.draftID), [newDraftID])
-    XCTAssertEqual(report.calendarScheduleItems.first?.scheduledDate, now)
-    XCTAssertTrue(report.calendarScheduleItems.first?.reason.contains("重新排期") == true)
     XCTAssertEqual(report.tagSummary.missingCount, 1)
     XCTAssertEqual(report.categorySummary.missingCount, 2)
     XCTAssertEqual(report.tagSummary.entries.first?.name, "Swift")
@@ -92,14 +86,14 @@ final class SiteMaintenanceServiceTests: XCTestCase {
     XCTAssertTrue(report.healthSummary.nextAction.contains("复查旧文：旧文"))
   }
 
-  func testReportBuildsStableMaintenanceHealthSummaryForCleanRecentSite() {
+  func testReportBuildsStableMaintenanceHealthSummaryAcrossPublicationGap() {
     var profile = SiteProfile.defaultProfile
     profile.markdownPathPattern = "content/posts/{slug}.md"
     let now = date(year: 2026, month: 7, day: 6)
     let first = ArticleDraft(
       siteProfileID: profile.id,
       title: "近期维护",
-      date: date(year: 2026, month: 7, day: 2),
+      date: date(year: 2026, month: 5, day: 2),
       slug: "recent-maintenance",
       tags: ["维护"],
       categories: ["工具"],
@@ -112,7 +106,7 @@ final class SiteMaintenanceServiceTests: XCTestCase {
     let second = ArticleDraft(
       siteProfileID: profile.id,
       title: "维护复盘",
-      date: date(year: 2026, month: 7, day: 4),
+      date: date(year: 2026, month: 5, day: 4),
       slug: "maintenance-review",
       tags: ["维护"],
       categories: ["工具"],
@@ -140,7 +134,9 @@ final class SiteMaintenanceServiceTests: XCTestCase {
 
     XCTAssertEqual(report.healthSummary.level, .stable)
     XCTAssertEqual(report.healthSummary.score, 100)
-    XCTAssertTrue(report.healthSummary.drivers.contains("内容日历、分类和链接审计未发现阻断项"))
+    XCTAssertTrue(
+      report.healthSummary.drivers.contains(CoreL10n.text("分类和链接审计未发现阻断项"))
+    )
     XCTAssertEqual(report.healthSummary.nextAction, "保持当前维护节奏，发布后继续记录操作日志。")
   }
 
@@ -165,104 +161,6 @@ final class SiteMaintenanceServiceTests: XCTestCase {
     XCTAssertTrue(markdown.contains("- 目标路径：/missing-page/"))
     XCTAssertTrue(markdown.contains("## 处理清单"))
     XCTAssertTrue(markdown.contains("确认链接目标是否仍然有效"))
-  }
-
-  func testReportBuildsCalendarCadenceInsightsForBacklogAndPublishGaps() {
-    var profile = SiteProfile.defaultProfile
-    profile.markdownPathPattern = "content/posts/{slug}.md"
-    let published = ArticleDraft(
-      siteProfileID: profile.id,
-      title: "年初发布",
-      date: date(year: 2026, month: 1, day: 5),
-      slug: "january-note",
-      tags: ["维护"],
-      categories: ["工具"],
-      draft: false,
-      bodyMarkdown: "正文",
-      status: .published,
-      updatedAt: date(year: 2026, month: 1, day: 5)
-    )
-    let readyA = ArticleDraft(
-      siteProfileID: profile.id,
-      title: "待发布 A",
-      date: date(year: 2026, month: 7, day: 1),
-      slug: "ready-a",
-      tags: ["维护"],
-      categories: ["工具"],
-      bodyMarkdown: "正文",
-      status: .ready,
-      updatedAt: date(year: 2026, month: 7, day: 1)
-    )
-    let readyB = ArticleDraft(
-      siteProfileID: profile.id,
-      title: "待发布 B",
-      date: date(year: 2026, month: 6, day: 20),
-      slug: "ready-b",
-      tags: ["维护"],
-      categories: ["工具"],
-      bodyMarkdown: "正文",
-      status: .ready,
-      updatedAt: date(year: 2026, month: 6, day: 20)
-    )
-
-    let report = SiteMaintenanceService(calendar: utcCalendar).report(
-      drafts: [published, readyA, readyB],
-      profile: profile,
-      releaseRecords: [],
-      now: date(year: 2026, month: 7, day: 6)
-    )
-
-    XCTAssertTrue(report.calendarInsights.contains {
-      $0.id == "ready-backlog"
-        && $0.summary.contains("2 篇公开文章已经标记待发布")
-        && $0.priority == .medium
-    })
-    XCTAssertTrue(report.calendarInsights.contains {
-      $0.id == "current-month-no-published"
-        && $0.title == "本月还没有公开发布"
-    })
-    XCTAssertTrue(report.calendarInsights.contains {
-      $0.id == "publish-gap"
-        && $0.summary.contains("约 6 个月")
-        && $0.priority == .high
-    })
-    XCTAssertEqual(report.calendarScheduleItems.map(\.title), ["待发布 B", "待发布 A"])
-    XCTAssertEqual(report.calendarScheduleItems.map(\.scheduledDate), [
-      date(year: 2026, month: 7, day: 6),
-      date(year: 2026, month: 7, day: 9),
-    ])
-    XCTAssertTrue(report.calendarScheduleItems.allSatisfy { $0.reason.contains("重新排期") })
-  }
-
-  func testReportKeepsFutureReadyDraftDatesInCalendarSchedule() {
-    var profile = SiteProfile.defaultProfile
-    profile.markdownPathPattern = "content/posts/{slug}.md"
-    let futureID = UUID(uuidString: "889613FD-3C69-489B-8129-A83F63D6FE23")!
-    let futureReady = ArticleDraft(
-      id: futureID,
-      siteProfileID: profile.id,
-      title: "未来发布",
-      date: date(year: 2026, month: 7, day: 12),
-      slug: "future-ready",
-      tags: ["维护"],
-      categories: ["工具"],
-      bodyMarkdown: "正文",
-      status: .ready,
-      updatedAt: date(year: 2026, month: 7, day: 5)
-    )
-
-    let report = SiteMaintenanceService(calendar: utcCalendar).report(
-      drafts: [futureReady],
-      profile: profile,
-      releaseRecords: [],
-      now: date(year: 2026, month: 7, day: 6)
-    )
-
-    XCTAssertEqual(report.calendarScheduleItems.count, 1)
-    XCTAssertEqual(report.calendarScheduleItems.first?.draftID, futureID)
-    XCTAssertEqual(report.calendarScheduleItems.first?.scheduledDate, date(year: 2026, month: 7, day: 12))
-    XCTAssertTrue(report.calendarScheduleItems.first?.reason.contains("沿用文章日期") == true)
-    XCTAssertEqual(report.calendarScheduleItems.first?.markdownPath, "content/posts/future-ready.md")
   }
 
   func testReportSuggestsInternalLinksFromSharedTaxonomy() {
@@ -399,10 +297,9 @@ final class SiteMaintenanceServiceTests: XCTestCase {
     XCTAssertTrue(markdown.contains("- 下一步："))
     XCTAssertTrue(markdown.contains("## 维护行动队列"))
     XCTAssertTrue(markdown.contains("复查旧文：旧文维护"))
-    XCTAssertTrue(markdown.contains("## 内容日历"))
-    XCTAssertTrue(markdown.contains("2026 年 7 月"))
-    XCTAssertTrue(markdown.contains("## 内容节奏提示"))
-    XCTAssertTrue(markdown.contains("## 待发布排期"))
+    XCTAssertFalse(markdown.contains("## 内容日历"))
+    XCTAssertFalse(markdown.contains("## 内容节奏提示"))
+    XCTAssertFalse(markdown.contains("## 待发布排期"))
     XCTAssertTrue(markdown.contains("Swift 新文"))
     XCTAssertTrue(markdown.contains("## 标签治理"))
     XCTAssertTrue(markdown.contains("- Swift：2 篇"))
@@ -421,7 +318,7 @@ final class SiteMaintenanceServiceTests: XCTestCase {
     XCTAssertTrue(sprint.contains("## 今日优先"))
     XCTAssertTrue(sprint.contains("复查旧文：旧文维护"))
     XCTAssertTrue(sprint.contains("可操作：打开草稿，必要时交给 AI 生成修复草案。"))
-    XCTAssertTrue(sprint.contains("## 本轮排期"))
+    XCTAssertFalse(sprint.contains("## 本轮排期"))
     XCTAssertTrue(sprint.contains("Swift 新文"))
     XCTAssertTrue(sprint.contains("## 旧文和链接"))
     XCTAssertTrue(sprint.contains("[警告] 旧文维护：/missing-page/"))
@@ -531,20 +428,32 @@ final class SiteMaintenanceServiceTests: XCTestCase {
   }
 
   @MainActor
-  func testStoreAppliesSuggestedMaintenanceScheduleAndPersistsDraftDates() async throws {
+  func testManualArticleDateEditSurvivesMaintenanceRefreshAndReload() async throws {
     let url = try temporaryPersistenceURL()
     let profile = SiteProfile.defaultProfile
     let draftID = UUID(uuidString: "45AFB1C2-F2BB-4C03-8E1D-BC8892865F21")!
     let oldDate = date(year: 2020, month: 1, day: 1)
+    let futureDate = date(year: 2099, month: 11, day: 18)
     let readyDraft = ArticleDraft(
       id: draftID,
       siteProfileID: profile.id,
-      title: "待排期文章",
+      title: "手动日期文章",
       date: oldDate,
-      slug: "ready-schedule",
+      slug: "manual-article-date",
       tags: ["维护"],
       categories: ["工具"],
       bodyMarkdown: "正文",
+      status: .ready,
+      updatedAt: oldDate
+    )
+    let futureDraft = ArticleDraft(
+      siteProfileID: profile.id,
+      title: "未来日期文章",
+      date: futureDate,
+      slug: "future-article-date",
+      tags: ["维护"],
+      categories: ["工具"],
+      bodyMarkdown: "未来正文",
       status: .ready,
       updatedAt: oldDate
     )
@@ -552,109 +461,29 @@ final class SiteMaintenanceServiceTests: XCTestCase {
       WorkbenchSnapshot(
         profiles: [profile],
         activeProfileID: profile.id,
-        drafts: [readyDraft],
+        drafts: [readyDraft, futureDraft],
         releaseRecords: []
       )
     )
 
     let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: url))
     await store.refreshSiteMaintenanceSnapshot(force: true)
-    let report = try XCTUnwrap(store.siteMaintenanceSnapshot?.report)
-    let suggestedDate = try XCTUnwrap(report.calendarScheduleItems.first?.scheduledDate)
+    XCTAssertNotNil(store.siteMaintenanceSnapshot)
+    XCTAssertEqual(store.drafts.first { $0.id == draftID }?.date, oldDate)
+    XCTAssertEqual(store.drafts.first { $0.id == futureDraft.id }?.date, futureDate)
 
-    await store.applySuggestedMaintenanceSchedule()
-
-    let updatedDraft = try XCTUnwrap(store.drafts.first { $0.id == draftID })
-    XCTAssertEqual(updatedDraft.date, suggestedDate)
-    XCTAssertEqual(store.publishActionMessage, "已应用 1 篇待发布文章的建议排期。")
+    let editedDate = date(year: 2026, month: 12, day: 31)
+    var editedDraft = try XCTUnwrap(store.drafts.first { $0.id == draftID })
+    editedDraft.date = editedDate
+    store.updateDraft(editedDraft)
+    await store.refreshSiteMaintenanceSnapshot(force: true)
+    XCTAssertEqual(store.drafts.first { $0.id == draftID }?.date, editedDate)
+    XCTAssertEqual(store.drafts.first { $0.id == draftID }?.bodyMarkdown, "正文")
 
     await store.waitForPendingSave()
     let reloaded = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: url))
-    XCTAssertEqual(reloaded.drafts.first { $0.id == draftID }?.date, suggestedDate)
-  }
-
-  @MainActor
-  func testConfirmedScheduleDoesNotOverwriteDateChangedAfterPreview() async throws {
-    let url = try temporaryPersistenceURL()
-    let profile = SiteProfile.defaultProfile
-    let draftID = UUID()
-    let originalDate = date(year: 2020, month: 1, day: 1)
-    let readyDraft = ArticleDraft(
-      id: draftID,
-      siteProfileID: profile.id,
-      title: "排期冲突文章",
-      date: originalDate,
-      slug: "schedule-conflict",
-      bodyMarkdown: "正文",
-      status: .ready,
-      updatedAt: originalDate
-    )
-    _ = try WorkbenchPersistence(fileURL: url).save(
-      WorkbenchSnapshot(
-        profiles: [profile],
-        activeProfileID: profile.id,
-        drafts: [readyDraft],
-        releaseRecords: []
-      )
-    )
-    let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: url))
-    await store.refreshSiteMaintenanceSnapshot(force: true)
-    let report = try XCTUnwrap(store.siteMaintenanceSnapshot?.report)
-    let suggestedDate = try XCTUnwrap(
-      report.calendarScheduleItems.first { $0.draftID == draftID }?.scheduledDate
-    )
-    let changedDate = date(year: 2026, month: 12, day: 31)
-    var editedDraft = try XCTUnwrap(store.drafts.first { $0.id == draftID })
-    editedDraft.date = changedDate
-    store.updateDraft(editedDraft)
-
-    let appliedCount = await store.applySuggestedMaintenanceSchedule(
-      approvedSuggestedDates: [draftID: suggestedDate],
-      expectedOriginalDates: [draftID: originalDate]
-    )
-
-    XCTAssertEqual(appliedCount, 0)
-    XCTAssertEqual(store.drafts.first { $0.id == draftID }?.date, changedDate)
-    XCTAssertEqual(
-      store.publishActionMessage,
-      "未应用排期：1 篇文章的日期已变化，请重新生成预览。"
-    )
-  }
-
-  @MainActor
-  func testConfirmedScheduleAppliesTheFrozenSuggestedDate() async throws {
-    let url = try temporaryPersistenceURL()
-    let profile = SiteProfile.defaultProfile
-    let draftID = UUID()
-    let originalDate = date(year: 2020, month: 1, day: 1)
-    let frozenSuggestedDate = date(year: 2026, month: 11, day: 18)
-    let readyDraft = ArticleDraft(
-      id: draftID,
-      siteProfileID: profile.id,
-      title: "冻结目标排期",
-      date: originalDate,
-      slug: "frozen-schedule-target",
-      bodyMarkdown: "正文",
-      status: .ready,
-      updatedAt: originalDate
-    )
-    _ = try WorkbenchPersistence(fileURL: url).save(
-      WorkbenchSnapshot(
-        profiles: [profile],
-        activeProfileID: profile.id,
-        drafts: [readyDraft],
-        releaseRecords: []
-      )
-    )
-    let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: url))
-
-    let appliedCount = await store.applySuggestedMaintenanceSchedule(
-      approvedSuggestedDates: [draftID: frozenSuggestedDate],
-      expectedOriginalDates: [draftID: originalDate]
-    )
-
-    XCTAssertEqual(appliedCount, 1)
-    XCTAssertEqual(store.drafts.first { $0.id == draftID }?.date, frozenSuggestedDate)
+    XCTAssertEqual(reloaded.drafts.first { $0.id == draftID }?.date, editedDate)
+    XCTAssertEqual(reloaded.drafts.first { $0.id == futureDraft.id }?.date, futureDate)
   }
 
   func testOperationLogIsScopedToCurrentProfileAndKeepsLegacyRecords() {

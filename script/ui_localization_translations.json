@@ -59,7 +59,6 @@
   "%@ 个匹配": "%@ matches",
   "%@ 个发布相关变更": "%@ publishing-related changes",
   "%@ 个发布相关远端变更": "%@ publishing-related remote changes",
-  "%@ 个月": "%@ months",
   "%@ 个未解决文件": "%@ unresolved files",
   "%@ 个片段": "%@ Chunks",
   "%@ 个章节/页面": "%@ sections/pages",
@@ -191,10 +190,6 @@
     "en": "%@, %lld articles",
     "zh-Hans": "%@，%lld 篇文章"
   },
-  "%@，%lld 篇文章，%lld 篇待发布": {
-    "en": "%@, %lld articles, %lld pending publication",
-    "zh-Hans": "%@，%lld 篇文章，%lld 篇待发布"
-  },
   "%@，%lld，%lld 个 Markdown 引用": {
     "en": "%@, %lld, %lld Markdown references",
     "zh-Hans": "%@，%lld，%lld 个 Markdown 引用"
@@ -263,10 +258,6 @@
     "en": "%lld items awaiting confirmation",
     "zh-Hans": "%lld 个待确认项"
   },
-  "%lld 个月": {
-    "en": "%lld Months",
-    "zh-Hans": "%lld 个月"
-  },
   "%lld 个未解决": "%lld unresolved",
   "%lld 个未解决文件": "%lld unresolved files",
   "%lld 个片段": "%lld snippets",
@@ -317,7 +308,6 @@
     "en": "%lld articles",
     "zh-Hans": "%lld 篇文章"
   },
-  "%lld 篇日期会变化": "Dates will change for %lld articles",
   "%lld 篇私密文章仅搜索标题": {
     "en": "%lld Private Articles Search Titles Only",
     "zh-Hans": "%lld 篇私密文章仅搜索标题"
@@ -755,8 +745,7 @@
     "zh-Hans": "OPML 导入与导出"
   },
   "OPML 订阅导入与备份": "OPML Subscription Import and Backup",
-  "Ollama 尚未安装任何模型。下载可能较大，请确认精确模型 ID 后开始。": "Ollama has no installed models. Downloads may be large; confirm the exact model ID before starting.",
-  "Ollama 模型 ID": "Ollama Model ID",
+  "Ollama 已响应，但尚未返回模型。请在 Ollama 中准备模型后重新检测。": "Ollama is responding but has not returned any models. Prepare a model in Ollama, then check again.",
   "Owner": "Owner",
   "P": "P",
   "PDF": "PDF",
@@ -2938,7 +2927,6 @@
     "zh-Hans": "下移"
   },
   "下线 PR/MR 已关闭？": "Is the Unpublish PR/MR Closed?",
-  "下载到 Ollama": "Download to Ollama",
   "不会自动重试，可手动重试。": "This subscription won’t retry automatically. You can retry it manually.",
   "不保存并关闭": {
     "en": "Close Without Saving",
@@ -3065,7 +3053,6 @@
     "en": "Switching from %1$@ to %2$@ updates the publishing rules below. The repository, access tokens, author, and default tags will not change.",
     "zh-Hans": "从 %1$@ 切换到 %2$@ 会更新以下发布规则。仓库、访问令牌、作者和默认标签不会改变。"
   },
-  "从 %@ 调整到 %@": "Change from %@ to %@",
   "从 Chrome 或 Firefox 保存网页": {
     "en": "Save webpages from Chrome or Firefox",
     "zh-Hans": "从 Chrome 或 Firefox 保存网页"
@@ -3366,7 +3353,6 @@
   "停止朗读": "Stop Reading Aloud",
   "停止检测": "Stop Detection",
   "停止生成": "Stop Generating",
-  "停止等待下载": "Stop Waiting for Download",
   "允许 AI 使用应用内工具 (Agent)": "Allow AI to Use In-App Tools (Agent)",
   "允许发送到远程 AI？": "Allow sending to remote AI?",
   "允许发送给远程 AI": {
@@ -3479,11 +3465,6 @@
   "全部选择已就绪；确认后统一校验，并只创建一次 PR/MR。": "All choices are ready. Confirmation validates them together and creates only one PR/MR.",
   "全部通过（已检查项未发现公开风险）": "All checks passed (enabled checks found no public exposure risk)",
   "公开": "Public",
-  "公开 %@ · 私密 %@": "Public %1$@ · Private %2$@",
-  "公开 %lld · 私密 %lld": {
-    "en": "Public %lld · Private %lld",
-    "zh-Hans": "公开 %lld · 私密 %lld"
-  },
   "公开 · %@ 字": "Public · %@ characters",
   "公开 · %lld 字": "Public · %lld characters",
   "公开仓库中的代码和内容可被任何人查看。": "Anyone can view the code and content in a public repository.",
@@ -3596,7 +3577,6 @@
   "内容只发送到这台 Mac 上配置的本地模型服务。": "Content is sent only to the local model service configured on this Mac.",
   "内容审查": "Content Review",
   "内容已遮挡": "Content is masked",
-  "内容日历": "Content Calendar",
   "内容根目录": "Content Root",
   "内容检查没有阻断项，请确认以下提醒。": "Content checks found no blocking issues. Review the following notices.",
   "内容检查通过，远端将在发布时预检": "Content checks passed; remote preflight will run when publishing",
@@ -3606,7 +3586,6 @@
   "内容目录：%@": "Content directory: %@",
   "内容相同的同路径文件": "Same-Path Files with Identical Content",
   "内容维护": "Content Maintenance",
-  "内容节奏提示": "Content Cadence Tips",
   "内容范围": "Content Scope",
   "内容规则": "Content Rules",
   "内容迁移": "Content Migration",
@@ -3999,7 +3978,6 @@
     "en": "The publish drawer retrieves page-level data for the current article's public URL path. It does not write to the analytics service, upload content, or save tokens in workspace files.",
     "zh-Hans": "发布抽屉会按当前文章的公开 URL 路径读取页面级数据；不会写入统计服务、上传内容或把令牌保存到工作区文件。"
   },
-  "发布日历视图": "Publishing Calendar View",
   "发布时自动验证仓库权限": "Automatically Verify Repository Access When Publishing",
   "发布时间": {
     "en": "Publish Time",
@@ -4887,8 +4865,6 @@
     "en": "Import repository articles into the writing list",
     "zh-Hans": "将仓库中的文章导入写作列表"
   },
-  "将修改 %@ / %@ 篇文章": "%@ of %@ articles will be changed",
-  "将修改 %lld / %lld 篇文章": "%lld of %lld articles will be changed",
   "将先生成预览，确认后保存到“%@”。": "A preview will be generated first. After confirmation, items will be saved to “%@”.",
   "将先生成预览，确认后保存到“未分类”。": "A preview will be generated first. After confirmation, items will be saved to Unfiled.",
   "将先生成预览，确认后保存到本机资料库。": "A preview will be generated first. After confirmation, items will be saved to the local knowledge library.",
@@ -5043,7 +5019,6 @@
   "已停止": "Stopped",
   "已停止准备。安装可能已部分完成，请重新检测组件状态。": "Preparation stopped. Installation may be partially complete; detect the component status again.",
   "已停止检测。": "Detection stopped.",
-  "已停止等待本机模型下载。": "Stopped waiting for the local model download.",
   "已允许发送": "Sending Allowed",
   "已关闭": {
     "en": "Closed",
@@ -5126,7 +5101,6 @@
     "en": "Opened HTML source file: %@",
     "zh-Hans": "已打开 HTML 源文件：%@"
   },
-  "已打开 Ollama 官方模型库。": "Opened the official Ollama model library.",
   "已扫描 %@ 个 Markdown 文件；远程 URL、代码块和行内代码不会被当作本地资源。": {
     "en": "Scanned %@ Markdown files; remote URLs, code blocks, and inline code are not treated as local resources.",
     "zh-Hans": "已扫描 %@ 个 Markdown 文件；远程 URL、代码块和行内代码不会被当作本地资源。"
@@ -5282,7 +5256,6 @@
   },
   "平台部署访问令牌只发送到平台官方 API；如需向状态端点发送 Bearer Token，请选择“自定义端点”平台并使用 HTTPS。": "Provider deployment access tokens are sent only to the provider's official API. To send a bearer token to a status endpoint, choose the Custom Endpoint provider and use HTTPS.",
   "应用": "Apply",
-  "应用 %lld 篇排期": "Apply schedule to %lld articles",
   "应用 AI 回复": {
     "en": "Apply AI Response",
     "zh-Hans": "应用 AI 回复"
@@ -5300,7 +5273,6 @@
   "应用到当前连接": "Apply to Current Connection",
   "应用到选区": "Apply to Selection",
   "应用前会再次校验本地草稿；如已变化将停止改写，也不会自动写入仓库。": "Local drafts are verified again before applying. If they changed, the import stops without modifying them or writing to the repository.",
-  "应用前会再次核对原日期；预览后被编辑的文章不会被覆盖。": "Original dates are checked again before applying; articles edited after preview will not be overwritten.",
   "应用后": "After",
   "应用地址": "Apply Address",
   "应用已接受": {
@@ -5567,7 +5539,6 @@
   },
   "当前站点还没有文章": "The Current Site Has No Articles Yet",
   "当前站点配置": "Current Site Configuration",
-  "当前站点配置没有可统计的文章。": "The current site configuration has no articles to summarize.",
   "当前站点，切换站点后可分别配置": "Current site; settings can be configured separately for each site",
   "当前站点：%@": "Current Site: %@",
   "当前筛选下没有待处理的文章问题。": "No article issues need attention for this filter.",
@@ -5617,7 +5588,6 @@
   "待修复向量": "Vectors to Repair",
   "待准备": "Not Ready",
   "待发布": "Ready to Publish",
-  "待发布排期": "Publishing Schedule",
   "待发送图片": {
     "en": "Images to Send",
     "zh-Hans": "待发送图片"
@@ -5896,7 +5866,6 @@
   },
   "打开站点首页": "Open Site Home",
   "打开统一发布流程后会生成最新发布检查。": "Opening the unified publish flow generates fresh publishing checks.",
-  "打开维护计划文章": "Open Maintenance Plan Article",
   "打开草稿": "Open Draft",
   "打开设置向导…": {
     "en": "Open Setup Assistant…",
@@ -6197,6 +6166,7 @@
   "搜索公开文章": "Search Public Articles",
   "搜索分支...": "Search branches...",
   "搜索动作、提示或工作流": "Search actions, prompts, or workflows",
+  "搜索可维护文章标题": "Search maintainable article titles",
   "搜索命令或按键": "Search Commands or Keys",
   "搜索对话": "Search Conversations",
   "搜索当前站点文章": "Search Articles in the Current Site",
@@ -6451,10 +6421,6 @@
   "文章已变化，未复制陈旧 AI Prompt；请重试。": "The article changed, so the stale AI prompt was not copied. Try again.",
   "文章已变化，请重新创建预览": "The article has changed. Create a new preview.",
   "文章已变化，这份 AI 修改预览未应用；请重新预览。": "The article changed, so this AI edit preview was not applied. Preview it again.",
-  "文章总数 %lld，待发布 %lld": {
-    "en": "%lld articles total, %lld pending publication",
-    "zh-Hans": "文章总数 %lld，待发布 %lld"
-  },
   "文章或站点配置在预览准备期间已变更，请重新打开预览。": "The article or site configuration changed while preparing the preview. Open the preview again.",
   "文章打开与阅读体验": {
     "en": "Article Opening and Reading Experience",
@@ -6531,6 +6497,7 @@
   "新建资料文件夹": "New Source Folder",
   "新建通用草稿": "New General Draft",
   "新数据文件夹未能完成初始化，未安装不完整的数据。": "The new data folder could not be initialized. Incomplete data was not installed.",
+  "新文章标题": "New article title",
   "新文章自动导入；本地已修改、远端删除或重命名仍保留手动审阅。": "New articles are imported automatically; local edits, remote deletions, and renames remain for manual review.",
   "新标签会追加到所选资料，已有标签不会被删除。": "New tags are appended to the selected items; existing tags are preserved.",
   "新的 RSS 或 Atom 订阅地址": "New RSS or Atom subscription address",
@@ -6549,7 +6516,6 @@
   "无法在默认浏览器中打开本地预览。": "The local preview could not be opened in the default browser.",
   "无法完整读取目录：%@": "Unable to read the directory completely: %@",
   "无法导出重定向 CSV：%@": "Unable to export the redirect CSV: %@",
-  "无法打开 Ollama 官方模型库。": "Unable to open the official Ollama model library.",
   "无法打开官方下载页面。": "Unable to open the official download page.",
   "无法打开本地预览": "Could Not Open Local Preview",
   "无法打开本次推送的提交页面，请到远端仓库检查部署结果。": "Unable to open this pushed commit. Check the deployment result in the remote repository.",
@@ -6776,7 +6742,6 @@
     "zh-Hans": "最近远端变更（候选路径）"
   },
   "最近：%@": "Latest: %@",
-  "月度内容分布": "Monthly Content Distribution",
   "有 %@ 个附件没有可复制的源文件；其元数据会保留，源文件需从原站点或仓库重新获取。": "%@ attachments have no source files that can be copied. Their metadata will be retained; retrieve the source files again from the original site or repository.",
   "有 %lld 个可用补全": "%lld completions available",
   "有 %lld 条旧版资料缺少可用网页归档，需要重新导入。": {
@@ -6894,7 +6859,6 @@
     "zh-Hans": "未能保存 HTML 源文件。"
   },
   "未能保存工作台修改": "Could Not Save Workspace Changes",
-  "未能保存活动记录": "Could Not Save Activity",
   "未能暂存仓库路径，请重新选择或检查文件夹是否存在。": "Could not stage the repository path. Select it again or check that the folder exists.",
   "未能自动切分出独立字段，可切换至“完整响应”查看或直接应用全量修复内容。": "Could not automatically split into individual fields. Switch to \"Full Response\" or apply all fixes directly.",
   "未能重置工作台": "Could Not Reset Workbench",
@@ -7004,7 +6968,6 @@
   },
   "本机 OCR 文字": "On-Device OCR Text",
   "本机文章": "Articles on This Mac",
-  "本机模型下载失败，请检查 Ollama 后重试。": "The local model download failed; check Ollama and try again.",
   "本机正文净化预览": {
     "en": "Local Content Sanitization Preview",
     "zh-Hans": "本机正文净化预览"
@@ -7265,7 +7228,7 @@
   "检测到已保存 GitHub 凭据；尚未验证此仓库的读写权限。": "Saved GitHub credentials detected; this repository's read and write permissions have not been verified.",
   "检测后可选择本机已有模型，并应用到当前 AI 连接档案。": "After detection, choose an installed local model and apply it to the current AI connection profile.",
   "检测本地 AI": "Detect Local AI",
-  "检测本地服务，按需启动或下载模型，然后应用到当前连接。": "Check the local service, start it or download a model if needed, then apply it to the current connection.",
+  "检测本地服务，按需启动本地引擎或准备模型，然后应用到当前连接。": "Check local services, start the local engine or prepare a model as needed, then apply it to the current connection.",
   "检测本机运行的 Ollama、LM Studio 和 vLLM 服务": "Detect Ollama, LM Studio, and vLLM services running on this Mac",
   "检测端口": "Check Port",
   "检测结果不明确：%@；当前仍按 %@ 的内容目录导入。": "The detection result is unclear: %@; the content directory will still be imported as %@.",
@@ -7273,8 +7236,6 @@
   "概览": "Overview",
   "概览与批量处理": "Overview and Batch Actions",
   "模型": "Model",
-  "模型 ID，例如 qwen3:8b": "Model ID, for example qwen3:8b",
-  "模型下载完成，正在刷新本地候选。": "Model download completed; refreshing local candidates.",
   "模型与思考等级": "Model and Reasoning Effort",
   "模型与连接": "Model and Connection",
   "模型列表刷新失败：%@": "Failed to refresh the model list: %@",
@@ -7391,12 +7352,9 @@
     "en": "Scanning Repository",
     "zh-Hans": "正在扫描仓库"
   },
-  "正在扫描内容日历、标签、旧文和链接…": {
-    "en": "Scanning the content calendar, tags, older posts, and links…",
-    "zh-Hans": "正在扫描内容日历、标签、旧文和链接…"
-  },
   "正在扫描图片资源…": "Scanning image resources…",
   "正在扫描新文章…": "Scanning for New Articles…",
+  "正在扫描标签、旧文和链接…": "Scanning tags, older articles, and links…",
   "正在扫描资源和 Markdown 引用…": {
     "en": "Scanning Assets and Markdown References…",
     "zh-Hans": "正在扫描资源和 Markdown 引用…"
@@ -7477,7 +7435,6 @@
   "正在翻译标题和正文…": "Translating title and body…",
   "正在计算存储空间…": "Calculating storage usage…",
   "正在计算版本差异…": "Calculating version differences…",
-  "正在请求本机 Ollama 下载模型。": "Requesting a model download from local Ollama.",
   "正在读取 ChatGPT 账户…": "Reading the ChatGPT account…",
   "正在读取…": "Loading…",
   "正在读取仓库图片…": "Reading Repository Images…",
@@ -7688,7 +7645,6 @@
   "活动摘要": "Activity Summary",
   "活动窗口会清空，但发布台账、维护记录等业务事实不会删除。": "The activity window will be cleared. Publishing ledgers, maintenance records, and other business facts will not be deleted.",
   "活动记录…": "Activity…",
-  "活动记录仍未持久化。应用将保持打开，请检查保存位置或权限后重试。": "Activity is not yet persisted. The app will remain open; check the save location or permissions and try again.",
   "活动记录已隐藏": "Activity Hidden",
   "活动记录状态": "Activity Status",
   "浅色": {
@@ -7707,7 +7663,6 @@
     "en": "Test Connection",
     "zh-Hans": "测试连接"
   },
-  "浏览 Ollama 模型库": "Browse Ollama Model Library",
   "浏览仓库中的图片、查看引用关系，并把图片加入目标文章。": "Browse repository images, review their references, and add an image to the selected article.",
   "浏览器回跳不可用时使用": "Use this when the browser callback is unavailable",
   "浏览器打开": {
@@ -7840,10 +7795,6 @@
     "zh-Hans": "源码编辑"
   },
   "满足任一规则": "Match Any Rule",
-  "灰色为历史内容沉淀": {
-    "en": "Historical content is shown in gray",
-    "zh-Hans": "灰色为历史内容沉淀"
-  },
   "点击“安装并继续”准备 ChatGPT 连接组件。也可按官方说明自行安装，再点“重新检测”。": "Click “Install and Continue” to prepare the ChatGPT connection component. You can also install it using the official instructions, then click “Check Again”.",
   "点击切换对话历史（当前草稿共 %lld 条对话）": "Click to switch conversation history (%lld conversations in the current draft)",
   "点击卡片定位源码": {
@@ -7855,6 +7806,7 @@
     "en": "Click to view detailed statistics and set target word count",
     "zh-Hans": "点击查看详细统计与设定目标字数"
   },
+  "点击生成后才会扫描标签、旧文和链接，避免打开页面时自动重算。": "Tags, older articles, and links are scanned only after you generate the report, avoiding automatic recalculation when opening this page.",
   "焦点导航": "Focus Navigation",
   "片段信息": "Snippet Details",
   "版本 %@": {
@@ -8031,7 +7983,6 @@
   "确认已关闭，重新加入下线队列": "Confirm Closed and Requeue Unpublish",
   "确认并启动": "Confirm and Start",
   "确认并开始（%d 张）": "Confirm and Start (%d Images)",
-  "确认建议排期": "Review Suggested Schedule",
   "确认开始图片瘦身？": "Start Image Optimization?",
   "确认执行": "Confirm Action",
   "确认批量复制": "Copy All",
@@ -8558,10 +8509,6 @@
   "草稿预览分支": "Draft Preview Branch",
   "获取 API Key": "Get API key",
   "获取并选择模型": "Fetch and choose a model",
-  "蓝色月份包含待发布文章": {
-    "en": "Months in blue contain articles waiting to be published",
-    "zh-Hans": "蓝色月份包含待发布文章"
-  },
   "薄荷绿 Emerald": "Emerald",
   "行 %@，列 %@": {
     "en": "Line %@, column %@",
@@ -8691,7 +8638,6 @@
   "说明（可选）": "Description (Optional)",
   "请从顶部发布状态打开统一发布流程。": "Open the unified publishing flow from the publishing status at the top.",
   "请修复保存位置或权限后重新检查。应用将保持打开。": "Fix the save location or permissions and check again. The app will remain open.",
-  "请修复保存位置或权限后重试。应用将保持打开，避免丢失未保存修改。": "Fix the save location or permissions and try again. The app will remain open to avoid losing unsaved changes.",
   "请先为当前站点选择本地仓库。": "Choose a local repository for the current site first.",
   "请先为当前站点选择本地仓库，然后扫描仓库以识别启动命令。": {
     "en": "Choose a local repository for the current site, then scan it to detect the startup command.",
@@ -8796,7 +8742,6 @@
     "zh-Hans": "请结束续跑并保留记录，或从这里新建对话。"
   },
   "请输入目标语言。": "Enter a target language.",
-  "请输入要下载的精确模型 ID。": "Enter the exact model ID to download.",
   "请运行发布前检查。": "Run the pre-publish checks.",
   "请返回编辑器检查文件权限或外部修改冲突。": {
     "en": "Return to the editor and check file permissions or external modification conflicts.",
@@ -8821,7 +8766,6 @@
     "zh-Hans": "读取网页"
   },
   "读取账户可用模型失败，请稍后重试。": "Failed to read models available to the account. Try again later.",
-  "调整 %@ 的发布日期": "Change the publication date for %@",
   "调整 Markdown 编辑区正文字号、行距倍数与文本舒适阅读宽度。": "Adjust Markdown editor font size, line spacing ratio, and comfortable reading width.",
   "调整字体、行距、段间距、对齐和代码高亮": "Adjust fonts, line spacing, paragraph spacing, alignment, and syntax highlighting",
   "调整工作区侧栏宽度": "Resize Workspace Sidebar",
@@ -9024,8 +8968,6 @@
   "运行组件可用": "Runtime available",
   "运行组件未返回版本号": "The runtime did not return a version",
   "运行组件版本过低": "Runtime version is too old",
-  "近 %@ 个月": "Last %@ months",
-  "近 %lld 个月": "Last %lld Months",
   "近 30 天": "Last 30 Days",
   "近 7 天": "Last 7 Days",
   "返回": {
@@ -9049,7 +8991,6 @@
     "zh-Hans": "还有 %lld 个片段"
   },
   "还没有其他文章链接到当前文章。": "No other articles link to the current article yet.",
-  "还没有内容节奏": "No Content Cadence Yet",
   "还没有发布或维护操作记录。": {
     "en": "There are no publishing or maintenance activity records yet.",
     "zh-Hans": "还没有发布或维护操作记录。"
@@ -9616,7 +9557,6 @@
   "预览并安全替换多篇文章的正文": "Preview and safely replace body text across multiple articles",
   "预览并追加": "Preview and Append",
   "预览并附引用": "Preview with Citations",
-  "预览建议排期": "Preview Suggested Schedule",
   "预览或复验计算已取消。": "Preview or revalidation calculation canceled.",
   "预览站点类型变化": {
     "en": "Preview Site Type Changes",

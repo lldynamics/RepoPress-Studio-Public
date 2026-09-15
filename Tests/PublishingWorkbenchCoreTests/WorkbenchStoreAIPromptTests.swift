@@ -347,33 +347,6 @@ final class WorkbenchStoreAIPromptTests: XCTestCase {
     XCTAssertTrue(prompt.contains("content/posts/ai-remote-risk.md"))
   }
 
-  func testPublishingContextPromptSummarizesMacWorkbenchStateForChatComposer() throws {
-    let store = WorkbenchStore(
-      persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL())
-    )
-    let draft = try XCTUnwrap(store.selectedDraft)
-    let profile = store.profile(for: draft)
-
-    let prompt = AIPublishingChatPromptTemplateService.publishingContextPrompt(
-      for: draft,
-      profile: profile,
-      issues: store.preflightIssues(for: draft),
-      package: store.publishingPackage(for: draft),
-      imageReport: store.imageWorkbenchReport(for: draft)
-    )
-
-    XCTAssertTrue(prompt.contains("[发布上下文]"))
-    XCTAssertTrue(prompt.contains("站点：\(profile.name)"))
-    XCTAssertTrue(prompt.contains("发布路径：\(profile.markdownPath(for: draft))"))
-    XCTAssertTrue(prompt.contains("发布文件"))
-    XCTAssertTrue(prompt.contains("发布检查"))
-    XCTAssertTrue(prompt.contains("图片检查"))
-    XCTAssertTrue(prompt.contains("封面状态"))
-    XCTAssertTrue(prompt.contains("不要编造已经完成的线上验证"))
-  }
-
-
-
   func testQuickPromptLibraryCoversMobilePublishingCapabilityGroups() {
     let sections = AIPublishingQuickPrompt.capabilitySections
     let sectionGroups = Set(sections.map(\.group))

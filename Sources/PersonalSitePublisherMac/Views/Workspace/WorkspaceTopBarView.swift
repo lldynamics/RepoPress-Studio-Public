@@ -167,43 +167,6 @@ extension WorkspaceSection {
   }
 }
 
-struct WorkspaceToolbarNavigationContent: View {
-  let store: WorkbenchStore
-  let canUseProtectedWorkbench: Bool
-  let selectedDraftID: UUID?
-  let selectedSection: WorkspaceSection
-  let isCompact: Bool
-  let openPublishFlow: () -> Void
-  let openRepositoryOverview: () -> Void
-  let openContentHealthOverview: () -> Void
-  let openReleaseHistory: () -> Void
-
-  var body: some View {
-    HStack(alignment: .center, spacing: 8) {
-      WorkspaceToolbarLeadingContent(
-        store: store,
-        isCompact: isCompact
-      )
-      .disabled(!canUseProtectedWorkbench)
-
-      if selectedSection.showsPublishingStatusToolbar {
-        PublishingStatusToolbarControl(
-          store: store,
-          canUseProtectedWorkbench: canUseProtectedWorkbench,
-          selectedDraftID: selectedDraftID,
-          selectedSection: selectedSection,
-          isCompact: isCompact,
-          openPublishFlow: openPublishFlow,
-          openRepositoryOverview: openRepositoryOverview,
-          openContentHealthOverview: openContentHealthOverview,
-          openReleaseHistory: openReleaseHistory
-        )
-      }
-    }
-    .fixedSize(horizontal: true, vertical: false)
-  }
-}
-
 struct WorkspaceToolbarMenuLabel: View {
   let title: String
   let systemImage: String

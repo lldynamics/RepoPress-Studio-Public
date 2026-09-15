@@ -4,49 +4,6 @@ import XCTest
 @testable import PublishingWorkbenchCore
 
 final class AIPublishingChatPromptTemplateServiceTests: XCTestCase {
-  func testQuotedMessagePromptIncludesImageAttachmentNamesForImageOnlyMessage() {
-    let message = AIPublishingChatMessage(
-      role: .user,
-      content: " \n ",
-      imageAttachments: [
-        AIChatImageAttachment(filename: "diagram.png", mimeType: "image/png", data: Data("image".utf8))
-      ]
-    )
-
-    let prompt = AIPublishingChatPromptTemplateService.quotedMessagePrompt(for: message)
-
-    XCTAssertTrue(prompt.contains("请基于下面这条用户消息继续讨论："))
-    XCTAssertTrue(prompt.contains("> 已附加图片：diagram.png"))
-  }
-
-  func testArticleContextPromptBuildsExplicitCurrentArticleReference() {
-    let profile = SiteProfile.defaultProfile
-    let draft = ArticleDraft(
-      siteProfileID: profile.id,
-      title: "Mac AI Context",
-      slug: "mac-ai-context",
-      tags: ["AI", "Mac"],
-      categories: ["Publishing"],
-      summary: "Explain the Mac AI workspace context.",
-      bodyMarkdown: "First paragraph.\n\nSecond paragraph with details."
-    )
-
-    let prompt = AIPublishingChatPromptTemplateService.articleContextPrompt(
-      for: draft,
-      profile: profile,
-      maxBodyLength: 18
-    )
-
-    XCTAssertTrue(prompt.contains("[当前文章]"))
-    XCTAssertTrue(prompt.contains("标题：Mac AI Context"))
-    XCTAssertTrue(prompt.contains("Slug：mac-ai-context"))
-    XCTAssertTrue(prompt.contains("Tags：AI, Mac"))
-    XCTAssertTrue(prompt.contains("Categories：Publishing"))
-    XCTAssertTrue(prompt.contains(profile.markdownPath(for: draft)))
-    XCTAssertTrue(prompt.contains("First paragraph."))
-    XCTAssertTrue(prompt.contains("...（已截断）"))
-    XCTAssertTrue(prompt.contains("不要声称已经修改文章"))
-  }
 
   func testMaintenanceActionPromptBuildsActionableWorkbenchContext() {
     let profile = SiteProfile.defaultProfile
@@ -240,55 +197,6 @@ final class AIPublishingChatPromptTemplateServiceTests: XCTestCase {
     XCTAssertTrue(prompt.contains("...（已截断）"))
   }
 
-  func testParagraphContextPromptBuildsFocusedArticleInstruction() throws {
-    let profile = SiteProfile.defaultProfile
-    let draft = ArticleDraft(
-      siteProfileID: profile.id,
-      title: "段落上下文",
-      slug: "paragraph-context",
-      bodyMarkdown: "第一段正文很长。\n\n第二段正文更长。"
-    )
-    let paragraph = try XCTUnwrap(
-      AIPublishingChatDraftParagraphParser.extract(from: draft.bodyMarkdown).first
-    )
-
-    let prompt = AIPublishingChatPromptTemplateService.paragraphContextPrompt(
-      for: paragraph,
-      draft: draft,
-      profile: profile,
-      maxParagraphLength: 5
-    )
-
-    XCTAssertTrue(prompt.contains("[当前文章段落]"))
-    XCTAssertTrue(prompt.contains("文章：段落上下文"))
-    XCTAssertTrue(prompt.contains(profile.markdownPath(for: draft)))
-    XCTAssertTrue(prompt.contains("段落：第一段正文很长。"))
-    XCTAssertTrue(prompt.contains("第一段正文...（已截断）"))
-    XCTAssertTrue(prompt.contains("不要默认改写整篇文章"))
-  }
-
-  func testWorkflowGuidePromptBuildsRunnableInstruction() {
-    let guide = AIPublishingWorkflowGuide(
-      id: "test-workflow",
-      title: "发布前 AI 审稿",
-      description: "集中检查发布阻塞、隐私和内链风险。",
-      systemImage: "checkmark.shield",
-      prompts: [.publishReview, .privacyCheck, .internalLinks]
-    )
-
-    let prompt = AIPublishingChatPromptTemplateService.workflowGuidePrompt(for: guide)
-
-    XCTAssertTrue(prompt.contains("执行“发布前 AI 审稿”AI 工作流"))
-    XCTAssertTrue(prompt.contains("目标：集中检查发布阻塞、隐私和内链风险。"))
-    XCTAssertTrue(prompt.contains("1. 发布检查："))
-    XCTAssertTrue(prompt.contains("2. 隐私检查："))
-    XCTAssertTrue(prompt.contains("3. 内链建议："))
-    XCTAssertTrue(prompt.contains("Front Matter"))
-    XCTAssertTrue(prompt.contains("图片字段"))
-    XCTAssertTrue(prompt.contains("发布素材"))
-    XCTAssertTrue(prompt.contains("不要编造正文没有提供的事实"))
-  }
-
   func testRelatedArticleSuggestionPromptBuildsInternalLinkInstruction() {
     var profile = SiteProfile.defaultProfile
     profile.markdownPathPattern = "content/posts/{slug}.md"
@@ -321,54 +229,6 @@ final class AIPublishingChatPromptTemplateServiceTests: XCTestCase {
     XCTAssertTrue(prompt.contains("目标路径：/seo-social-preview/"))
     XCTAssertTrue(prompt.contains("共享标签/分类：AI、SEO"))
     XCTAssertTrue(prompt.contains("必须包含指向 /seo-social-preview/ 的链接"))
-    XCTAssertTrue(prompt.contains("不要声称已经修改文章"))
-  }
-
-  func testGeneralDraftReusePlanPromptBuildsCrossSiteRewriteInstruction() {
-    var profile = SiteProfile.defaultProfile
-    profile.name = "目标站点"
-    let draft = ArticleDraft(
-      siteProfileID: profile.id,
-      title: "跨站点复用副本",
-      slug: "cross-site-copy",
-      tags: ["工程"],
-      summary: "目标站点摘要",
-      bodyMarkdown: "正文包含旧站点上下文和 TODO，需要按目标站点改写。"
-    )
-    let plan = GeneralDraftReusePlan(
-      sourceDraftID: UUID(),
-      targetDraftID: draft.id,
-      title: "跨站点复用副本",
-      sourceProfileName: "通用库",
-      targetProfileName: "目标站点",
-      targetMarkdownPath: "content/posts/cross-site-copy.md",
-      sourceRepositoryPath: "content/posts/original.md",
-      targetSiteKind: .zola,
-      attachmentCount: 2,
-      missingAltTextCount: 1,
-      missingCaptionCount: 1,
-      riskLevel: .high,
-      riskItems: ["正文包含旧站点上下文", "存在 TODO"],
-      checklistItems: ["重查 front matter", "确认内链和图片路径"],
-      generatedAt: Date(timeIntervalSince1970: 1_783_396_800)
-    )
-
-    let prompt = AIPublishingChatPromptTemplateService.generalDraftReusePlanPrompt(
-      for: plan,
-      draft: draft,
-      profile: profile
-    )
-
-    XCTAssertTrue(prompt.contains("[目标草稿]"))
-    XCTAssertTrue(prompt.contains("标题：跨站点复用副本"))
-    XCTAssertTrue(prompt.contains("建议发布路径：content/posts/cross-site-copy.md"))
-    XCTAssertTrue(prompt.contains("来源 Profile：通用库"))
-    XCTAssertTrue(prompt.contains("原发布路径：content/posts/original.md"))
-    XCTAssertTrue(prompt.contains("附件待补：alt 1 个，caption 1 个"))
-    XCTAssertTrue(prompt.contains("- 正文包含旧站点上下文"))
-    XCTAssertTrue(prompt.contains("- 重查 front matter"))
-    XCTAssertTrue(prompt.contains("正文包含旧站点上下文和 TODO"))
-    XCTAssertTrue(prompt.contains("输出建议的 Front Matter 调整"))
     XCTAssertTrue(prompt.contains("不要声称已经修改文章"))
   }
 
@@ -633,48 +493,4 @@ final class AIPublishingChatPromptTemplateServiceTests: XCTestCase {
     XCTAssertTrue(snapshot.promptSections.isEmpty)
   }
 
-  func testEditorActionPromptBuildsChatInstruction() {
-    let prompt = AIPublishingChatPromptTemplateService.editorActionPrompt(for: .rewriteSelection)
-
-    XCTAssertTrue(prompt.contains("围绕“改写选中文本”继续作为 AI 发布助手协作"))
-    XCTAssertTrue(prompt.contains("场景：改写当前选区"))
-    XCTAssertTrue(prompt.contains("请先要求我选中正文"))
-    XCTAssertTrue(prompt.contains("正文、Front Matter、图片字段还是发布素材"))
-    XCTAssertTrue(prompt.contains("不要声称已经修改文章"))
-  }
-
-  func testQuotedAssistantMessagePromptBuildsFollowUpInstruction() {
-    let message = AIPublishingChatMessage(
-      role: .assistant,
-      content: "  第一行建议\n第二行建议  "
-    )
-
-    let prompt = AIPublishingChatPromptTemplateService.quotedMessagePrompt(for: message)
-
-    XCTAssertTrue(prompt.contains("AI 回复"))
-    XCTAssertTrue(prompt.contains("> 第一行建议"))
-    XCTAssertTrue(prompt.contains("> 第二行建议"))
-    XCTAssertTrue(prompt.contains("可应用到文章的 Markdown"))
-  }
-
-  func testQuotedUserMessagePromptTrimsAndTruncatesLongContent() {
-    let message = AIPublishingChatMessage(role: .user, content: "  abcdef  ")
-
-    let prompt = AIPublishingChatPromptTemplateService.quotedMessagePrompt(
-      for: message,
-      maxContentLength: 3
-    )
-
-    XCTAssertTrue(prompt.contains("用户消息"))
-    XCTAssertTrue(prompt.contains("> abc...（已截断）"))
-    XCTAssertFalse(prompt.contains("def"))
-  }
-
-  func testQuotedMessagePromptReturnsEmptyForEmptyContent() {
-    let message = AIPublishingChatMessage(role: .assistant, content: " \n ")
-
-    let prompt = AIPublishingChatPromptTemplateService.quotedMessagePrompt(for: message)
-
-    XCTAssertEqual(prompt, "")
-  }
 }

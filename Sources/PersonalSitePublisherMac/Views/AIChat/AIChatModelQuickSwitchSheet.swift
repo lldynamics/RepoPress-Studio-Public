@@ -336,6 +336,7 @@ struct AIChatModelQuickSwitchSheet: View {
       TextField(String(localized: "搜索模型名称或配置档案…"), text: $searchText)
         .textFieldStyle(.plain)
         .font(.callout)
+        .accessibilityLabel(String(localized: "搜索模型名称或配置档案…"))
       if !searchText.isEmpty {
         Button {
           searchText = ""

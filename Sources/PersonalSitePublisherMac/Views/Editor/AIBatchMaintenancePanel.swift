@@ -108,6 +108,7 @@ struct AIBatchMaintenancePanel: View {
         }
         TextField("搜索文章标题", text: $draftSearch)
           .textFieldStyle(.roundedBorder)
+          .accessibilityLabel("搜索可维护文章标题")
           .accessibilityIdentifier("ai-batch-maintenance-draft-search")
         ScrollView {
           LazyVStack(alignment: .leading, spacing: 6) {

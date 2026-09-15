@@ -25,13 +25,6 @@ python3 -m json.tool "$CATALOG_FILE" >/dev/null || fail "Localizable.xcstrings i
 if grep -R -Fq 'Locale(identifier: "zh_Hans_CN")' "$ROOT_DIR/Sources/PersonalSitePublisherMac/Views"; then
   fail "user-facing dates must follow the current locale instead of forcing zh_Hans_CN"
 fi
-grep -Fq '.locale(.autoupdatingCurrent)' \
-  "$ROOT_DIR/Sources/PersonalSitePublisherMac/Views/Site/SiteMaintenanceCalendarSection.swift" \
-  || fail "maintenance calendar titles must use the current locale"
-grep -Fq 'calendar.locale = .autoupdatingCurrent' \
-  "$ROOT_DIR/Sources/PersonalSitePublisherMac/Views/Site/SiteMaintenanceCalendarSection.swift" \
-  || fail "maintenance calendar weekdays must use the current locale"
-
 required_info_plist_keys=(CFBundleDisplayName CFBundleName)
 required_localizable_keys=(
   app.name

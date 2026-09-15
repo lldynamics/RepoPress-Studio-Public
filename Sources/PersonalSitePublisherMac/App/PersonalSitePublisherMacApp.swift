@@ -119,7 +119,6 @@ struct PersonalSitePublisherMacApp: App {
     .commands {
       AppUpdateCommands(controller: appUpdateController)
       if let store = launchCoordinator.store {
-        PublishingConsoleSettingsCommands()
         PublishingConsoleCommands(store: store)
       }
     }
@@ -167,6 +166,9 @@ struct PersonalSitePublisherMacApp: App {
       .tint(selectedAccentPalette.color)
       .preferredColorScheme(selectedAppearanceMode.colorScheme)
       .controlSize(selectedInterfaceDensity.controlSize)
+    }
+    .commands {
+      PublishingConsoleSettingsCommands()
     }
   }
 
@@ -765,32 +767,6 @@ final class PersonalSitePublisherMacAppDelegate: NSObject, NSApplicationDelegate
       sender.reply(toApplicationShouldTerminate: mayExit)
     }
     return .terminateLater
-  }
-
-  private func presentWorkspaceSaveFailure(for workbenchStore: WorkbenchStore) {
-    if !workbenchStore.siteDraftFileSaveFailureGroups.isEmpty {
-      ProjectFileSaveRecoveryPanel.present(for: workbenchStore)
-      return
-    }
-    let alert = NSAlert()
-    alert.messageText = String(localized: "未能保存工作台修改")
-    alert.informativeText =
-      workbenchStore.lastSaveError
-      ?? String(localized: "请修复保存位置或权限后重试。应用将保持打开，避免丢失未保存修改。")
-    alert.alertStyle = .warning
-    alert.addButton(withTitle: String(localized: "继续编辑"))
-    alert.runModal()
-  }
-
-  private func presentOperationLedgerSaveFailure(for workbenchStore: WorkbenchStore?) {
-    let alert = NSAlert()
-    alert.messageText = String(localized: "未能保存活动记录")
-    alert.informativeText =
-      workbenchStore?.operationLogStatusMessage
-      ?? String(localized: "活动记录仍未持久化。应用将保持打开，请检查保存位置或权限后重试。")
-    alert.alertStyle = .warning
-    alert.addButton(withTitle: String(localized: "继续编辑"))
-    alert.runModal()
   }
 
   func applicationWillTerminate(_ notification: Notification) {

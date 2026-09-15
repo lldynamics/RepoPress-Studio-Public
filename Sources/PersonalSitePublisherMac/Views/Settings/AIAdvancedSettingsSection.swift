@@ -1,4 +1,5 @@
-import PublishingWorkbenchCore
+import PublishingAICore
+import PublishingCoreSupport
 import SwiftUI
 
 struct AIAdvancedSettingsSection: View {

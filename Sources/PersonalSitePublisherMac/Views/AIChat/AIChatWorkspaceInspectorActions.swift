@@ -389,28 +389,16 @@ extension AIChatContextInspectorView {
       let didAcceptUserMessage = currentMessages.contains {
         !existingMessageIDs.contains($0.id) && $0.role == .user
       }
-      if clearsComposerOnAccept,
-        reply != nil || didAcceptUserMessage,
-        surfaceState.composerText(for: submittedSurfaceConversationID)
-          .trimmingCharacters(in: .whitespacesAndNewlines) == message
-      {
-        updateInspectorSurfaceState { state in
-          state.setComposerText("", for: submittedSurfaceConversationID)
-        }
-        if surfaceState.imageAttachmentIDs(for: submittedImageAttachmentSelectionConversationID)
-          == requestedImageAttachmentIDs
-        {
-          updateInspectorSurfaceState { state in
-            state.setImageAttachmentIDs([], for: submittedImageAttachmentSelectionConversationID)
-          }
-        }
-        if surfaceState.contextReferences(for: submittedSurfaceConversationID)
-          == requestedContextReferences
-        {
-          updateInspectorSurfaceState { state in
-            state.setContextReferences([], for: submittedSurfaceConversationID)
-          }
-        }
+      updateInspectorSurfaceState { state in
+        state.completeSubmission(
+          conversationID: submittedSurfaceConversationID,
+          message: message,
+          imageAttachmentConversationID: submittedImageAttachmentSelectionConversationID,
+          submittedImageAttachmentIDs: requestedImageAttachmentIDs,
+          submittedContextReferences: requestedContextReferences,
+          clearsComposerOnAccept: clearsComposerOnAccept,
+          wasAccepted: reply != nil || didAcceptUserMessage
+        )
       }
       if submittedContextMode == .general,
         ai.chatContextMode == .general,

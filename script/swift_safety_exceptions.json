@@ -17,7 +17,7 @@
       "rationale": "All JSONDecoder access is serialized by the wrapper lock."
     },
     {
-      "file": "Sources/PublishingWorkbenchCore/Services/CodexAppServerClient.swift",
+      "file": "Sources/PublishingWorkbenchCore/Services/CodexAppServerProcessTransport.swift",
       "declaration": "CodexAppServerProcessTransport",
       "rationale": "Process and pipe lifecycle state is protected by one NSLock, while a separate write lock serializes complete JSONL frames; termination never waits on a potentially blocked writer and closes the pipe to unblock it."
     },
@@ -245,21 +245,6 @@
       "file": "Tests/PublishingWorkbenchCoreTests/LocalSitePreviewServiceTests.swift",
       "declaration": "LockedPreviewWatcherClassificationState",
       "rationale": "The watcher callback can cross task boundaries; its only mutable classification state is read and written under one NSLock."
-    },
-    {
-      "file": "Sources/PublishingMCPClient/PublishingMCPStdioSession.swift",
-      "declaration": "PublishingMCPStderrDrainer",
-      "rationale": "The stderr handle, readability handler, stop flag, and discarded-byte counter are accessed only while holding one NSLock as the callback crosses task boundaries."
-    },
-    {
-      "file": "Sources/PublishingMCPClient/PublishingMCPStdioSession.swift",
-      "declaration": "PublishingMCPProcessTerminator",
-      "rationale": "The immutable owned PID/PGID and termination flag cross into one blocking waitid observer and one delayed cleanup task; waitid uses WNOWAIT, while one NSLock serializes the single TERM/KILL sequence and the only waitpid reap."
-    },
-    {
-      "file": "Sources/PublishingMCPClient/PublishingMCPFrameRelay.swift",
-      "declaration": "PublishingMCPFrameRelay",
-      "rationale": "The input and output handles, readability handler, pending frame buffer, stop flag, and limit flag are accessed only while holding one NSLock as the callback crosses task boundaries."
     },
     {
       "file": "Tests/PersonalSitePublisherMacTests/WorkbenchLaunchCoordinatorTests.swift",
@@ -514,18 +499,6 @@
   ],
   "optionalOperations": [
     {
-      "file": "Sources/PublishingMCPClient/PublishingMCPAuthority.swift",
-      "category": "validationFallback",
-      "contains": "guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }",
-      "rationale": "An unreadable pinned launch artifact fails identity capture closed; configuration initialization rejects the missing identity and launches no process."
-    },
-    {
-      "file": "Sources/PublishingMCPClient/PublishingMCPClient.swift",
-      "category": "cancellation",
-      "contains": "if let connectionTask, let pendingSession = try? await connectionTask.value {",
-      "rationale": "Disconnect and deinit cancel the shared connection task; a successful late session is closed, while failure or cancellation already closes its provisional session and leaves no recoverable result."
-    },
-    {
       "file": "Sources/PublishingGitCore/GitCommandRunner.swift",
       "category": "validationFallback",
       "contains": "try? SafeFileReader.utf8String(",
@@ -610,19 +583,19 @@
       "rationale": "The source handle closes in defer after the copy result is already determined; a close failure must not hide the primary copy or cancellation outcome."
     },
     {
-      "file": "Sources/PublishingWorkbenchCore/Services/CodexAppServerClient.swift",
+      "file": "Sources/PublishingWorkbenchCore/Services/CodexAppServerProcessTransport.swift",
       "category": "ioBestEffort",
       "contains": "try? inputPipe.fileHandleForReading.close()",
       "rationale": "After posix_spawn duplicates the child stdin descriptor, closing the parent-only end is required for EOF and cannot change the launch outcome."
     },
     {
-      "file": "Sources/PublishingWorkbenchCore/Services/CodexAppServerClient.swift",
+      "file": "Sources/PublishingWorkbenchCore/Services/CodexAppServerProcessTransport.swift",
       "category": "ioBestEffort",
       "contains": "try? outputPipe.fileHandleForWriting.close()",
       "rationale": "After posix_spawn duplicates the child stdout descriptor, closing the parent-only write end is required for EOF and cannot change the launch outcome."
     },
     {
-      "file": "Sources/PublishingWorkbenchCore/Services/CodexAppServerClient.swift",
+      "file": "Sources/PublishingWorkbenchCore/Services/CodexAppServerProcessTransport.swift",
       "category": "ioBestEffort",
       "contains": "try? errorPipe.fileHandleForWriting.close()",
       "rationale": "After posix_spawn duplicates the child stderr descriptor, closing the parent-only write end prevents a retained pipe and cannot change the launch outcome."
@@ -824,12 +797,6 @@
       "category": "probeFallback",
       "contains": "try? readOperationLifecycle(rootURL: rootURL)",
       "rationale": "After a failed Git operation, lifecycle inspection only recognizes an existing unresolved rebase; a read failure falls through to the original operation failure without mutating recovery state."
-    },
-    {
-      "file": "Sources/PublishingWorkbenchCore/Services/RepositoryWorktreePublishService.swift",
-      "category": "probeFallback",
-      "contains": "try? output([\"rev-parse\", \"HEAD\"], root: root)",
-      "rationale": "The commit SHA appears only in failure diagnostics; an unavailable repository identity is displayed as unknown and cannot affect publish or rollback control flow."
     },
     {
       "file": "Sources/PublishingWorkbenchCore/Services/RepositoryWorktreePublishTransitionCoordinator.swift",

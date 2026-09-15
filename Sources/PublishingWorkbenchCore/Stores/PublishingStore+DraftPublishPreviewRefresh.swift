@@ -205,7 +205,4 @@ extension PublishingStore {
     draftPublishPreviewInputBaselines.removeValue(forKey: draftID)
   }
 
-  func forgetAllDraftPublishPreviewInputBaselines() {
-    draftPublishPreviewInputBaselines.removeAll(keepingCapacity: true)
-  }
 }

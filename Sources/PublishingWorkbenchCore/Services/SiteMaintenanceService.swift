@@ -105,12 +105,6 @@ public struct SiteMaintenanceService: Sendable {
     cancellationCheck: () throws -> Void
   ) rethrows -> SiteMaintenanceReport {
     try cancellationCheck()
-    let calendarBuckets = calendarBuckets(drafts: drafts)
-    try cancellationCheck()
-    let calendarInsights = calendarInsights(drafts: drafts, buckets: calendarBuckets, now: now)
-    try cancellationCheck()
-    let calendarScheduleItems = calendarScheduleItems(drafts: drafts, profile: profile, now: now)
-    try cancellationCheck()
     let tagSummary = taxonomySummary(title: "标签", drafts: drafts, values: \.tags)
     try cancellationCheck()
     let categorySummary = taxonomySummary(title: "分类", drafts: drafts, values: \.categories)
@@ -146,7 +140,6 @@ public struct SiteMaintenanceService: Sendable {
     let healthSummary = healthSummary(
       draftCount: drafts.count,
       publishedCount: drafts.filter { $0.status == .published || (!$0.draft && !$0.isPrivate) }.count,
-      calendarInsights: calendarInsights,
       tagSummary: tagSummary,
       categorySummary: categorySummary,
       staleArticles: staleArticles,
@@ -163,9 +156,6 @@ public struct SiteMaintenanceService: Sendable {
       privateDraftCount: drafts.filter(\.isPrivate).count,
       readyCount: drafts.filter { $0.status == .ready }.count,
       publishedCount: drafts.filter { $0.status == .published || (!$0.draft && !$0.isPrivate) }.count,
-      calendarBuckets: calendarBuckets,
-      calendarInsights: calendarInsights,
-      calendarScheduleItems: calendarScheduleItems,
       tagSummary: tagSummary,
       categorySummary: categorySummary,
       staleArticles: staleArticles,
@@ -180,7 +170,6 @@ public struct SiteMaintenanceService: Sendable {
   private func healthSummary(
     draftCount: Int,
     publishedCount: Int,
-    calendarInsights: [ContentCalendarInsight],
     tagSummary: TaxonomyGovernanceSummary,
     categorySummary: TaxonomyGovernanceSummary,
     staleArticles: [StaleArticleCandidate],
@@ -204,7 +193,6 @@ public struct SiteMaintenanceService: Sendable {
       - linkWarningCount * 8
       - staleArticles.count * 8
       - missingTaxonomyCount * 3
-      - calendarInsights.count * 5
       - (hasPublishedContentWithoutLog ? 6 : 0)
     let score = min(100, max(0, rawScore))
 
@@ -213,7 +201,7 @@ public struct SiteMaintenanceService: Sendable {
       level = .urgent
     } else if score < 70 || highActionCount > 0 || mediumActionCount >= 3 {
       level = .needsWork
-    } else if score < 88 || !calendarInsights.isEmpty || !actionItems.isEmpty {
+    } else if score < 88 || !actionItems.isEmpty {
       level = .watch
     } else {
       level = .stable
@@ -232,14 +220,11 @@ public struct SiteMaintenanceService: Sendable {
     if missingTaxonomyCount > 0 {
       drivers.append("\(missingTaxonomyCount) 篇缺少标签或分类")
     }
-    if !calendarInsights.isEmpty {
-      drivers.append("\(calendarInsights.count) 条内容节奏提示")
-    }
     if hasPublishedContentWithoutLog {
       drivers.append("已发布内容缺少操作日志")
     }
     if drivers.isEmpty && draftCount > 0 {
-      drivers.append("内容日历、分类和链接审计未发现阻断项")
+      drivers.append(CoreL10n.text("分类和链接审计未发现阻断项"))
     }
     if draftCount == 0 {
       drivers.append("当前 Profile 还没有文章")
@@ -250,8 +235,6 @@ public struct SiteMaintenanceService: Sendable {
       nextAction = "\(firstHigh.kind.displayName)：\(firstHigh.title)"
     } else if let firstMedium = actionItems.first(where: { $0.priority == .medium }) {
       nextAction = "\(firstMedium.kind.displayName)：\(firstMedium.title)"
-    } else if let insight = calendarInsights.first {
-      nextAction = insight.summary
     } else if draftCount == 0 {
       nextAction = "先创建或导入文章，再生成维护清单。"
     } else {
@@ -266,7 +249,7 @@ public struct SiteMaintenanceService: Sendable {
       message = "主要维护入口没有发现需要立即处理的阻断项。"
     case .watch:
       title = "站点维护需要关注"
-      message = "有轻量维护项或内容节奏提示，适合排入下一次整理。"
+      message = CoreL10n.text("有轻量维护项，适合排入下一次整理。")
     case .needsWork:
       title = "站点维护需要整理"
       message = "存在旧文、分类或链接风险，建议先处理行动队列前几项。"
@@ -420,155 +403,6 @@ public struct SiteMaintenanceService: Sendable {
           targetPath: nil,
           systemImage: "square.stack.3d.up"
         )
-      )
-    }
-  }
-
-  private func calendarBuckets(drafts: [ArticleDraft]) -> [ContentCalendarBucket] {
-    let grouped = Dictionary(grouping: drafts) { draft in
-      monthKey(for: draft.date)
-    }
-
-    return grouped.keys.sorted(by: >).map { key in
-      let bucketDrafts = grouped[key, default: []]
-      return ContentCalendarBucket(
-        monthKey: key,
-        title: monthTitle(for: bucketDrafts.first?.date ?? Date()),
-        articleCount: bucketDrafts.count,
-        draftCount: bucketDrafts.filter { $0.status == .draft || $0.draft }.count,
-        readyCount: bucketDrafts.filter { $0.status == .ready }.count,
-        publishedCount: bucketDrafts.filter { $0.status == .published || (!$0.draft && !$0.isPrivate) }.count,
-        publicCount: bucketDrafts.filter { !$0.isPrivate }.count,
-        privateCount: bucketDrafts.filter(\.isPrivate).count
-      )
-    }
-  }
-
-  private func calendarInsights(
-    drafts: [ArticleDraft],
-    buckets: [ContentCalendarBucket],
-    now: Date
-  ) -> [ContentCalendarInsight] {
-    guard !drafts.isEmpty else {
-      return []
-    }
-
-    let publicDrafts = drafts.filter { !$0.isPrivate }
-    let readyPublicDrafts = publicDrafts.filter { $0.status == .ready }
-    let currentMonthKey = monthKey(for: now)
-    let currentMonthBucket = buckets.first { $0.monthKey == currentMonthKey }
-    var insights: [ContentCalendarInsight] = []
-
-    if readyPublicDrafts.count >= 2 {
-      insights.append(
-        ContentCalendarInsight(
-          id: "ready-backlog",
-          title: "待发布积压",
-          summary: "\(readyPublicDrafts.count) 篇公开文章已经标记待发布。",
-          detail: "建议先选 1 到 2 篇完成链接、SEO 和发布检查，避免内容长期停在待发布队列。",
-          priority: readyPublicDrafts.count >= 5 ? .high : .medium,
-          systemImage: "tray.full"
-        )
-      )
-    }
-
-    if let currentMonthBucket,
-       currentMonthBucket.draftCount >= 3,
-       currentMonthBucket.draftCount > currentMonthBucket.readyCount + currentMonthBucket.publishedCount {
-      insights.append(
-        ContentCalendarInsight(
-          id: "current-month-draft-heavy",
-          title: "本月草稿偏多",
-          summary: "\(currentMonthBucket.title) 有 \(currentMonthBucket.draftCount) 篇草稿，高于待发布和已发布合计。",
-          detail: "适合从当月草稿里挑选可以收尾的文章，先补摘要、标签、分类和首屏结构。",
-          priority: .medium,
-          systemImage: "square.and.pencil"
-        )
-      )
-    }
-
-    if (currentMonthBucket?.publishedCount ?? 0) == 0,
-       !readyPublicDrafts.isEmpty {
-      insights.append(
-        ContentCalendarInsight(
-          id: "current-month-no-published",
-          title: "本月还没有公开发布",
-          summary: "当前月份暂无公开发布记录，但已有 \(readyPublicDrafts.count) 篇待发布文章。",
-          detail: "可以把待发布队列作为本月内容节奏的优先来源。",
-          priority: .medium,
-          systemImage: "calendar.badge.exclamationmark"
-        )
-      )
-    }
-
-    let latestPublishedDate = publicDrafts
-      .filter { $0.status == .published || (!$0.draft && !$0.isPrivate) }
-      .map(\.date)
-      .max()
-    if let latestPublishedDate {
-      let inactiveMonths = monthsBetween(latestPublishedDate, and: now)
-      if inactiveMonths >= 2 {
-        insights.append(
-          ContentCalendarInsight(
-            id: "publish-gap",
-            title: "公开发布断档",
-            summary: "最近一次公开发布距今约 \(inactiveMonths) 个月。",
-            detail: "建议复查是否有可快速更新的旧文或待发布文章，先恢复稳定更新节奏。",
-            priority: inactiveMonths >= 4 ? .high : .medium,
-            systemImage: "calendar.badge.clock"
-          )
-        )
-      }
-    }
-
-    return insights.sorted {
-      if $0.priority.rawValue == $1.priority.rawValue {
-        return $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending
-      }
-      return $0.priority.rawValue < $1.priority.rawValue
-    }
-  }
-
-  private func calendarScheduleItems(
-    drafts: [ArticleDraft],
-    profile: SiteProfile,
-    now: Date
-  ) -> [ContentCalendarScheduleItem] {
-    let startOfToday = calendar.startOfDay(for: now)
-    let readyPublicDrafts = drafts
-      .filter { !$0.isPrivate && $0.status == .ready }
-      .sorted {
-        if $0.date == $1.date {
-          return $0.updatedAt < $1.updatedAt
-        }
-        return $0.date < $1.date
-      }
-
-    var nextOverflowSlot = startOfToday
-    return readyPublicDrafts.map { draft in
-      let draftDay = calendar.startOfDay(for: draft.date)
-      let scheduledDate: Date
-      let reason: String
-      let systemImage: String
-      if draftDay >= startOfToday {
-        scheduledDate = draftDay
-        reason = "沿用文章日期作为发布槽位。"
-        systemImage = "calendar"
-      } else {
-        scheduledDate = nextOverflowSlot
-        reason = "文章日期已过，建议从当前维护节奏中重新排期。"
-        systemImage = "calendar.badge.clock"
-      }
-      if scheduledDate >= nextOverflowSlot {
-        nextOverflowSlot = calendar.date(byAdding: .day, value: 3, to: scheduledDate) ?? nextOverflowSlot
-      }
-      return ContentCalendarScheduleItem(
-        draftID: draft.id,
-        title: draft.title.nilIfEmpty ?? "未命名文章",
-        markdownPath: profile.markdownPath(for: draft),
-        scheduledDate: scheduledDate,
-        reason: reason,
-        systemImage: systemImage
       )
     }
   }
@@ -926,26 +760,8 @@ public struct SiteMaintenanceService: Sendable {
     }
   }
 
-  private func monthKey(for date: Date) -> String {
-    let components = calendar.dateComponents([.year, .month], from: date)
-    return String(format: "%04d-%02d", components.year ?? 0, components.month ?? 0)
-  }
-
-  private func monthTitle(for date: Date) -> String {
-    let components = calendar.dateComponents([.year, .month], from: date)
-    return "\(components.year ?? 0) 年 \(components.month ?? 0) 月"
-  }
-
   private func days(from start: Date, to end: Date) -> Int {
     max(0, calendar.dateComponents([.day], from: start, to: end).day ?? 0)
-  }
-
-  private func monthsBetween(_ start: Date, and end: Date) -> Int {
-    let startComponents = calendar.dateComponents([.year, .month], from: start)
-    let endComponents = calendar.dateComponents([.year, .month], from: end)
-    let startMonth = (startComponents.year ?? 0) * 12 + (startComponents.month ?? 0)
-    let endMonth = (endComponents.year ?? 0) * 12 + (endComponents.month ?? 0)
-    return max(0, endMonth - startMonth)
   }
 
   private func normalizedTaxonomyName(_ name: String) -> String {

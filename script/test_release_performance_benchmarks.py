@@ -4,8 +4,12 @@
 from __future__ import annotations
 
 import importlib.util
+import json
+import os
+import subprocess
 import sys
 import tempfile
+from unittest.mock import patch
 from pathlib import Path
 
 
@@ -151,11 +155,145 @@ def test_skip_is_not_silent() -> None:
         )
 
 
+def test_runner_reuses_build_and_stops_after_first_failure() -> None:
+    calls: list[tuple[str, list[str]]] = []
+    with tempfile.TemporaryDirectory(prefix="release-performance-cache-") as cache_directory, patch.object(MODULE, "metadata", metadata), patch.object(
+        MODULE,
+        "load_baseline",
+        return_value={
+            "minimumSampleCount": 3,
+            "siteMaintenanceRelation": {"sizes": [512], "labelGroupSize": 8},
+            "wallTime": {"blocking": False, "policy": "trend-only"},
+        },
+    ), patch.object(MODULE, "run_benchmark") as run_benchmark, patch.dict(
+        os.environ, {"SWIFT_BIN": "custom-swift", "SWIFT_BUILD_HOME": cache_directory}, clear=False
+    ):
+        def spy(name, command, environment, log_path):
+            calls.append((name, command))
+            report = {
+                "schemaVersion": 6,
+                "configuration": "release",
+                **{key: metadata()[key] for key in MODULE.BENCHMARK_REPORT_METADATA_KEYS},
+                "sampleCount": 3,
+                "iterations": 3,
+                "scenarios": [{"parse": statistics(sample_count=3)}],
+            }
+            if name == "site maintenance relation benchmark":
+                report["labelGroupSize"] = 8
+                report["scenarios"] = [{
+                    "articleCount": 512,
+                    "candidateEvaluationCount": 512 * 7,
+                    "suggestionCount": 512 * 7,
+                    "fullPairCount": 512 * 511,
+                    "timings": statistics(sample_count=3),
+                }]
+                output_key = "SITE_MAINTENANCE_RELATION_BENCHMARK_OUTPUT"
+            else:
+                output_key = "MARKDOWN_SYNTAX_BENCHMARK_OUTPUT"
+            Path(environment[output_key]).write_text(json.dumps(report), encoding="utf-8")
+            return ""
+
+        run_benchmark.side_effect = spy
+        with tempfile.TemporaryDirectory(prefix="release-performance-reuse-") as directory:
+            args = MODULE.parser().parse_args(
+                ["--iterations", "3", "--relation-sizes", "512", "--output-directory", directory]
+            )
+            assert MODULE.run_lane(args) == 0
+        assert [name for name, _ in calls] == [
+            "markdown syntax benchmark",
+            "site maintenance relation benchmark",
+        ], calls
+        relation_command = calls[1][1]
+        assert relation_command == [
+            "custom-swift",
+            "test",
+            "--configuration",
+            "release",
+            "--disable-sandbox",
+            "--skip-build",
+            "--filter",
+            "SiteMaintenanceRelationBenchmarkTests/testGeneratedRelationScanScaleBaseline",
+        ], relation_command
+
+        calls.clear()
+        def fail_first(name, command, environment, log_path):
+            calls.append((name, command))
+            raise MODULE.BenchmarkFailure("synthetic first benchmark failure")
+
+        run_benchmark.side_effect = fail_first
+        with tempfile.TemporaryDirectory(prefix="release-performance-short-circuit-") as directory:
+            args = MODULE.parser().parse_args(
+                ["--iterations", "3", "--relation-sizes", "512", "--output-directory", directory]
+            )
+            expect_failure(lambda: MODULE.run_lane(args), "first benchmark failure must stop lane")
+        assert [name for name, _ in calls] == ["markdown syntax benchmark"], calls
+
+
+def test_markdown_shell_uses_custom_swift_and_reuses_build() -> None:
+    with tempfile.TemporaryDirectory(prefix="release-performance-swift-") as directory:
+        root = Path(directory)
+        log = root / "swift.log"
+        fake_swift = root / "swift"
+        fake_swift.write_text(
+            "#!/bin/sh\n"
+            "printf '%s\\n' \"$*\" >> \"$FAKE_SWIFT_LOG\"\n"
+            "if [ \"$1\" = --version ]; then echo 'fake swift 1.0'; exit 0; fi\n"
+            "if [ \"${FAIL_FIRST:-0}\" = 1 ] && [ \"$1\" = test ] && ! printf '%s\\n' \"$*\" | grep -q -- --skip-build; then exit 7; fi\n"
+            "exit 0\n",
+            encoding="utf-8",
+        )
+        fake_swift.chmod(0o755)
+        output = root / "syntax.json"
+        environment = os.environ.copy()
+        environment.update({
+            "SWIFT_BIN": str(fake_swift),
+            "SWIFT_BUILD_HOME": str(root / "swift-home"),
+            "FAKE_SWIFT_LOG": str(log),
+            "MARKDOWN_VIEWPORT_BENCHMARK_OUTPUT": str(root / "viewport.json"),
+        })
+        environment.pop("PERFORMANCE_BENCHMARK_TOOLCHAIN", None)
+
+        def run_case(fail_first: bool) -> list[str]:
+            log.unlink(missing_ok=True)
+            case_environment = environment | {"FAIL_FIRST": "1" if fail_first else "0"}
+            result = subprocess.run(
+                [
+                    "bash",
+                    str(ROOT / "script/benchmark_markdown_syntax_highlighting.sh"),
+                    "--iterations",
+                    "3",
+                    "--configuration",
+                    "release",
+                    "--output",
+                    str(output),
+                ],
+                cwd=ROOT,
+                env=case_environment,
+                check=False,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+            )
+            assert result.returncode == (7 if fail_first else 0), result.stdout
+            return log.read_text(encoding="utf-8").splitlines()
+
+        commands = run_case(False)
+        assert commands[0] == "--version", commands
+        tests = [command for command in commands if command.startswith("test ")]
+        assert len(tests) == 2, commands
+        assert "--skip-build" not in tests[0], tests
+        assert "--skip-build" in tests[1], tests
+        failed_commands = run_case(True)
+        assert [command for command in failed_commands if command.startswith("test ")] == [tests[0]]
+
+
 def main() -> int:
     test_report_validation()
     test_source_tree_fingerprint_includes_untracked_contents()
     test_complexity_validation()
     test_skip_is_not_silent()
+    test_runner_reuses_build_and_stops_after_first_failure()
+    test_markdown_shell_uses_custom_swift_and_reuses_build()
     print("release performance runner contract tests: passed")
     return 0
 

@@ -124,7 +124,10 @@ final class WorkbenchFeatureFacadeTests: XCTestCase {
     // The normal automatic preflight is delayed by 600ms. It must refresh the
     // list's task-state badges once, without rebuilding presentation/search
     // projections that body autosave deliberately leaves untouched.
-    try await Task.sleep(for: .milliseconds(900))
+    let scheduledPreflight = try XCTUnwrap(store.preflightRefreshTask)
+    await scheduledPreflight.value
+    // The debounce task installs the calculation task when its delay ends.
+    await store.preflightRefreshTask?.value
     XCTAssertEqual(draftList.presentationRevision, initialPresentationRevision)
     XCTAssertEqual(draftList.taskQueueStateVersion, initialTaskQueueStateVersion + 1)
     _ = draftList.searchIndex(for: .activeSite)
@@ -511,29 +514,6 @@ final class WorkbenchFeatureFacadeTests: XCTestCase {
     withExtendedLifetime(cancellable) {}
   }
 
-  func testDraftListAndContentHealthFacadesIgnoreAIStreaming() {
-    let store = makeIsolatedStore()
-    let draftList = WorkbenchDraftListFeatureFacade(store: store)
-    let contentHealth = WorkbenchContentHealthFeatureFacade(store: store)
-    var draftListChanges = 0
-    var contentHealthChanges = 0
-    let draftListCancellable = draftList.objectWillChange.sink { draftListChanges += 1 }
-    let contentHealthCancellable = contentHealth.objectWillChange.sink { contentHealthChanges += 1 }
-
-    store.setAIChatMessages([
-      AIPublishingChatMessage(role: .assistant, content: "streamed")
-    ])
-    store.setAIChatMessage("stream status")
-
-    XCTAssertEqual(draftListChanges, 0)
-    XCTAssertEqual(contentHealthChanges, 0)
-
-    store.invalidateDraftDerivedCaches()
-    XCTAssertGreaterThan(draftListChanges, 0)
-    XCTAssertGreaterThan(contentHealthChanges, 0)
-    withExtendedLifetime([draftListCancellable, contentHealthCancellable]) {}
-  }
-
   func testShellFacadeIgnoresEquivalentRootStateAssignments() async {
     let store = makeIsolatedStore()
     let shell = store.shell
@@ -559,6 +539,26 @@ final class WorkbenchFeatureFacadeTests: XCTestCase {
     store.selectSection(differentSection)
     XCTAssertEqual(shellChanges, 1)
     withExtendedLifetime(cancellable) {}
+  }
+
+  func testContentHealthFacadeIgnoresAIStreaming() {
+    let store = makeIsolatedStore()
+    let contentHealth = WorkbenchContentHealthFeatureFacade(store: store)
+    var contentHealthChanges = 0
+    let contentHealthCancellable = contentHealth.objectWillChange.sink {
+      contentHealthChanges += 1
+    }
+
+    store.setAIChatMessages([
+      AIPublishingChatMessage(role: .assistant, content: "streamed")
+    ])
+    store.setAIChatMessage("stream status")
+
+    XCTAssertEqual(contentHealthChanges, 0)
+
+    store.invalidateDraftDerivedCaches()
+    XCTAssertGreaterThan(contentHealthChanges, 0)
+    withExtendedLifetime(contentHealthCancellable) {}
   }
 
   func testShellFacadeRoutesNavigationWithoutObservingUnrelatedPublishingProgress() async {
@@ -817,86 +817,16 @@ final class WorkbenchFeatureFacadeTests: XCTestCase {
     withExtendedLifetime([rootCancellable, publishingCancellable]) {}
   }
 
-  func testEditorNavigationFacadeIgnoresPublishingProgressChanges() async {
-    let store = makeIsolatedStore()
-    let editorNavigation = WorkbenchEditorNavigationFeatureFacade(store: store)
-    var editorChanges = 0
-    var observedSection = editorNavigation.selectedSection
-    let changed = expectation(description: "editor navigation forwarded")
-    let cancellable = editorNavigation.objectWillChange.sink {
-      editorChanges += 1
-      observedSection = editorNavigation.selectedSection
-      changed.fulfill()
-    }
-
-    store.setPublishActionMessage("正在生成发布预览…")
-    XCTAssertEqual(editorChanges, 0)
-
-    store.setSelectedSection(.images)
-    XCTAssertEqual(editorChanges, 0)
-    await fulfillment(of: [changed], timeout: 1)
-    XCTAssertEqual(editorChanges, 1)
-    XCTAssertEqual(observedSection, .images)
-    withExtendedLifetime(cancellable) {}
-  }
-
-  func testEditorNavigationFacadeIgnoresSelectedDraftContentOnlyUpdates() async throws {
-    let store = makeIsolatedStore()
-    let selectedDraft = try XCTUnwrap(store.selectedDraft)
-    let editorNavigation = WorkbenchEditorNavigationFeatureFacade(store: store)
-    var editorChanges = 0
-    let cancellable = editorNavigation.objectWillChange.sink {
-      editorChanges += 1
-    }
-
-    var updatedDraft = selectedDraft
-    updatedDraft.bodyMarkdown += "\n正文更新不应替换中央编辑器。"
-    store.setDrafts(
-      store.drafts.map { $0.id == updatedDraft.id ? updatedDraft : $0 }
-    )
-
-    try await Task.sleep(for: .milliseconds(80))
-    XCTAssertEqual(editorChanges, 0)
-    XCTAssertEqual(editorNavigation.selectedDraft?.bodyMarkdown, updatedDraft.bodyMarkdown)
-    withExtendedLifetime(cancellable) {}
-  }
-
-  func testEditorNavigationFacadePublishesWhenSelectedDraftIdentityChanges() async throws {
-    let store = makeIsolatedStore()
-    let selectedDraft = try XCTUnwrap(store.selectedDraft)
-    let otherDraft = ArticleDraft.empty(profile: store.activeProfile)
-    store.setDrafts(store.drafts + [otherDraft])
-    let editorNavigation = WorkbenchEditorNavigationFeatureFacade(store: store)
-    let changed = expectation(description: "selected draft identity changed")
-    var observedDraftID = editorNavigation.selectedDraft?.id
-    let cancellable = editorNavigation.objectWillChange.sink {
-      observedDraftID = editorNavigation.selectedDraft?.id
-      changed.fulfill()
-    }
-
-    store.setSelectedDraftID(otherDraft.id)
-    await fulfillment(of: [changed], timeout: 1)
-
-    XCTAssertEqual(observedDraftID, otherDraft.id)
-    XCTAssertNotEqual(observedDraftID, selectedDraft.id)
-    withExtendedLifetime(cancellable) {}
-  }
-
   func testRootPresentationFacadesRefreshWhileAppKitTracksInput() {
     let store = makeIsolatedStore()
     let shell = store.shell
-    let editorNavigation = WorkbenchEditorNavigationFeatureFacade(store: store)
     let contentPresentation = store.contentPresentation
     let nextSection: WorkspaceSection = shell.selectedSection == .images ? .sync : .images
 
     var shellObservedSection = shell.selectedSection
-    var editorObservedSection = editorNavigation.selectedSection
     var observedAssistantPresentation = contentPresentation.isAssistantPresented
     let shellCancellable = shell.objectWillChange.sink {
       shellObservedSection = shell.selectedSection
-    }
-    let editorCancellable = editorNavigation.objectWillChange.sink {
-      editorObservedSection = editorNavigation.selectedSection
     }
     let presentationCancellable = contentPresentation.objectWillChange.sink {
       observedAssistantPresentation = contentPresentation.isAssistantPresented
@@ -912,20 +842,15 @@ final class WorkbenchFeatureFacadeTests: XCTestCase {
         mode: eventTrackingMode,
         before: Date().addingTimeInterval(0.01)
       )
-      if shellObservedSection == nextSection,
-        editorObservedSection == nextSection,
-        observedAssistantPresentation
-      {
+      if shellObservedSection == nextSection, observedAssistantPresentation {
         break
       }
     }
 
     XCTAssertEqual(shellObservedSection, nextSection)
-    XCTAssertEqual(editorObservedSection, nextSection)
     XCTAssertTrue(observedAssistantPresentation)
     withExtendedLifetime([
       shellCancellable,
-      editorCancellable,
       presentationCancellable,
     ]) {}
   }

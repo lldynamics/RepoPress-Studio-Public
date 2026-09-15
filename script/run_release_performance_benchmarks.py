@@ -472,6 +472,7 @@ def run_lane(args: argparse.Namespace) -> int:
             "--configuration",
             "release",
             "--disable-sandbox",
+            "--skip-build",
             "--filter",
             "SiteMaintenanceRelationBenchmarkTests/testGeneratedRelationScanScaleBaseline",
         ],

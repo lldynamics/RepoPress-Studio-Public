@@ -192,7 +192,6 @@ struct MarkdownComposerSelectionActionState {
   var selectionAIActionTask: Task<Void, Never>?
   var selectionAIActionRequestID: UUID?
   var isInlineSelectionAIAction = false
-  var isInlineSelectionPaletteDismissed = false
   var inlineGhostText = ""
   var inlineGhostTask: Task<Void, Never>?
   var inlineGhostRequestID: UUID?
@@ -549,11 +548,6 @@ extension MacMarkdownComposerView {
   var isInlineSelectionAIAction: Bool {
     get { selectionActionState.isInlineSelectionAIAction }
     nonmutating set { selectionActionState.isInlineSelectionAIAction = newValue }
-  }
-
-  var isInlineSelectionPaletteDismissed: Bool {
-    get { selectionActionState.isInlineSelectionPaletteDismissed }
-    nonmutating set { selectionActionState.isInlineSelectionPaletteDismissed = newValue }
   }
 
   var inlineGhostText: String {

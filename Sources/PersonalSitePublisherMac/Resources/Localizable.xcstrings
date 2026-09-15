@@ -529,22 +529,6 @@
         }
       }
     },
-    "%@ 个月": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%@ months"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%@ 个月"
-          }
-        }
-      }
-    },
     "%@ 个未解决文件": {
       "localizations": {
         "en": {
@@ -1537,22 +1521,6 @@
         }
       }
     },
-    "%@，%lld 篇文章，%lld 篇待发布": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%@, %lld articles, %lld pending publication"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%@，%lld 篇文章，%lld 篇待发布"
-          }
-        }
-      }
-    },
     "%@，%lld，%lld 个 Markdown 引用": {
       "localizations": {
         "en": {
@@ -1985,22 +1953,6 @@
         }
       }
     },
-    "%lld 个月": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld Months"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld 个月"
-          }
-        }
-      }
-    },
     "%lld 个未解决": {
       "localizations": {
         "en": {
@@ -2365,22 +2317,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "%lld 篇文章"
-          }
-        }
-      }
-    },
-    "%lld 篇日期会变化": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Dates will change for %lld articles"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld 篇日期会变化"
           }
         }
       }
@@ -6353,34 +6289,18 @@
         }
       }
     },
-    "Ollama 尚未安装任何模型。下载可能较大，请确认精确模型 ID 后开始。": {
+    "Ollama 已响应，但尚未返回模型。请在 Ollama 中准备模型后重新检测。": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Ollama has no installed models. Downloads may be large; confirm the exact model ID before starting."
+            "value": "Ollama is responding but has not returned any models. Prepare a model in Ollama, then check again."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "Ollama 尚未安装任何模型。下载可能较大，请确认精确模型 ID 后开始。"
-          }
-        }
-      }
-    },
-    "Ollama 模型 ID": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Ollama Model ID"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Ollama 模型 ID"
+            "value": "Ollama 已响应，但尚未返回模型。请在 Ollama 中准备模型后重新检测。"
           }
         }
       }
@@ -16689,22 +16609,6 @@
         }
       }
     },
-    "下载到 Ollama": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Download to Ollama"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "下载到 Ollama"
-          }
-        }
-      }
-    },
     "不会再次提交文件；只会将下列已有提交以非强制方式推送到原分支。": {
       "localizations": {
         "en": {
@@ -18157,22 +18061,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "从 %1$@ 切换到 %2$@ 会更新以下发布规则。仓库、访问令牌、作者和默认标签不会改变。"
-          }
-        }
-      }
-    },
-    "从 %@ 调整到 %@": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Change from %@ to %@"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "从 %@ 调整到 %@"
           }
         }
       }
@@ -21361,22 +21249,6 @@
         }
       }
     },
-    "停止等待下载": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Stop Waiting for Download"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "停止等待下载"
-          }
-        }
-      }
-    },
     "允许 AI 使用应用内工具 (Agent)": {
       "localizations": {
         "en": {
@@ -22689,38 +22561,6 @@
         }
       }
     },
-    "公开 %@ · 私密 %@": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Public %1$@ · Private %2$@"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "公开 %1$@ · 私密 %2$@"
-          }
-        }
-      }
-    },
-    "公开 %lld · 私密 %lld": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Public %lld · Private %lld"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "公开 %lld · 私密 %lld"
-          }
-        }
-      }
-    },
     "公开 · %@ 字": {
       "localizations": {
         "en": {
@@ -23937,22 +23777,6 @@
         }
       }
     },
-    "内容日历": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Content Calendar"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "内容日历"
-          }
-        }
-      }
-    },
     "内容根目录": {
       "localizations": {
         "en": {
@@ -24093,22 +23917,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "内容维护"
-          }
-        }
-      }
-    },
-    "内容节奏提示": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Content Cadence Tips"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "内容节奏提示"
           }
         }
       }
@@ -28093,22 +27901,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "发布抽屉会按当前文章的公开 URL 路径读取页面级数据；不会写入统计服务、上传内容或把令牌保存到工作区文件。"
-          }
-        }
-      }
-    },
-    "发布日历视图": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Publishing Calendar View"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "发布日历视图"
           }
         }
       }
@@ -37089,38 +36881,6 @@
         }
       }
     },
-    "将修改 %@ / %@ 篇文章": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%@ of %@ articles will be changed"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "将修改 %1$@ / %2$@ 篇文章"
-          }
-        }
-      }
-    },
-    "将修改 %lld / %lld 篇文章": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld of %lld articles will be changed"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "将修改 %lld / %lld 篇文章"
-          }
-        }
-      }
-    },
     "将先生成预览，确认后保存到“%@”。": {
       "localizations": {
         "en": {
@@ -38913,22 +38673,6 @@
         }
       }
     },
-    "已停止等待本机模型下载。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Stopped waiting for the local model download."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "已停止等待本机模型下载。"
-          }
-        }
-      }
-    },
     "已允许发送": {
       "localizations": {
         "en": {
@@ -39805,22 +39549,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "已打开 HTML 源文件：%@"
-          }
-        }
-      }
-    },
-    "已打开 Ollama 官方模型库。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Opened the official Ollama model library."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "已打开 Ollama 官方模型库。"
           }
         }
       }
@@ -41537,22 +41265,6 @@
         }
       }
     },
-    "应用 %lld 篇排期": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Apply schedule to %lld articles"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "应用 %lld 篇排期"
-          }
-        }
-      }
-    },
     "应用 AI 回复": {
       "localizations": {
         "en": {
@@ -41789,22 +41501,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "应用前会再次校验本地草稿；如已变化将停止改写，也不会自动写入仓库。"
-          }
-        }
-      }
-    },
-    "应用前会再次核对原日期；预览后被编辑的文章不会被覆盖。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Original dates are checked again before applying; articles edited after preview will not be overwritten."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "应用前会再次核对原日期；预览后被编辑的文章不会被覆盖。"
           }
         }
       }
@@ -44673,22 +44369,6 @@
         }
       }
     },
-    "当前站点配置没有可统计的文章。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "The current site configuration has no articles to summarize."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "当前站点配置没有可统计的文章。"
-          }
-        }
-      }
-    },
     "当前站点，切换站点后可分别配置": {
       "localizations": {
         "en": {
@@ -45165,22 +44845,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "待发布"
-          }
-        }
-      }
-    },
-    "待发布排期": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Publishing Schedule"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "待发布排期"
           }
         }
       }
@@ -48193,22 +47857,6 @@
         }
       }
     },
-    "打开维护计划文章": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Open Maintenance Plan Article"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "打开维护计划文章"
-          }
-        }
-      }
-    },
     "打开草稿": {
       "localizations": {
         "en": {
@@ -51073,6 +50721,22 @@
         }
       }
     },
+    "搜索可维护文章标题": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Search maintainable article titles"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "搜索可维护文章标题"
+          }
+        }
+      }
+    },
     "搜索命令或按键": {
       "localizations": {
         "en": {
@@ -53761,22 +53425,6 @@
         }
       }
     },
-    "文章总数 %lld，待发布 %lld": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld articles total, %lld pending publication"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "文章总数 %lld，待发布 %lld"
-          }
-        }
-      }
-    },
     "文章或站点配置在预览准备期间已变更，请重新打开预览。": {
       "localizations": {
         "en": {
@@ -54657,6 +54305,22 @@
         }
       }
     },
+    "新文章标题": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "New article title"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "新文章标题"
+          }
+        }
+      }
+    },
     "新文章自动导入；本地已修改、远端删除或重命名仍保留手动审阅。": {
       "localizations": {
         "en": {
@@ -54925,22 +54589,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "无法打开 ChatGPT 登录页面，请检查默认浏览器设置。"
-          }
-        }
-      }
-    },
-    "无法打开 Ollama 官方模型库。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Unable to open the official Ollama model library."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "无法打开 Ollama 官方模型库。"
           }
         }
       }
@@ -57393,22 +57041,6 @@
         }
       }
     },
-    "月度内容分布": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Monthly Content Distribution"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "月度内容分布"
-          }
-        }
-      }
-    },
     "有 %@ 个附件没有可复制的源文件；其元数据会保留，源文件需从原站点或仓库重新获取。": {
       "localizations": {
         "en": {
@@ -58445,22 +58077,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "未能保存工作台修改"
-          }
-        }
-      }
-    },
-    "未能保存活动记录": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Could Not Save Activity"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "未能保存活动记录"
           }
         }
       }
@@ -59693,22 +59309,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "本机文章"
-          }
-        }
-      }
-    },
-    "本机模型下载失败，请检查 Ollama 后重试。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "The local model download failed; check Ollama and try again."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "本机模型下载失败，请检查 Ollama 后重试。"
           }
         }
       }
@@ -62385,18 +61985,18 @@
         }
       }
     },
-    "检测本地服务，按需启动或下载模型，然后应用到当前连接。": {
+    "检测本地服务，按需启动本地引擎或准备模型，然后应用到当前连接。": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Check the local service, start it or download a model if needed, then apply it to the current connection."
+            "value": "Check local services, start the local engine or prepare a model as needed, then apply it to the current connection."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "检测本地服务，按需启动或下载模型，然后应用到当前连接。"
+            "value": "检测本地服务，按需启动本地引擎或准备模型，然后应用到当前连接。"
           }
         }
       }
@@ -62509,38 +62109,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "模型"
-          }
-        }
-      }
-    },
-    "模型 ID，例如 qwen3:8b": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Model ID, for example qwen3:8b"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "模型 ID，例如 qwen3:8b"
-          }
-        }
-      }
-    },
-    "模型下载完成，正在刷新本地候选。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Model download completed; refreshing local candidates."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "模型下载完成，正在刷新本地候选。"
           }
         }
       }
@@ -63921,22 +63489,6 @@
         }
       }
     },
-    "正在扫描内容日历、标签、旧文和链接…": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Scanning the content calendar, tags, older posts, and links…"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "正在扫描内容日历、标签、旧文和链接…"
-          }
-        }
-      }
-    },
     "正在扫描图片资源…": {
       "localizations": {
         "en": {
@@ -63965,6 +63517,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "正在扫描新文章…"
+          }
+        }
+      }
+    },
+    "正在扫描标签、旧文和链接…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Scanning tags, older articles, and links…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在扫描标签、旧文和链接…"
           }
         }
       }
@@ -64845,22 +64413,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "正在计算版本差异…"
-          }
-        }
-      }
-    },
-    "正在请求本机 Ollama 下载模型。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Requesting a model download from local Ollama."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "正在请求本机 Ollama 下载模型。"
           }
         }
       }
@@ -67201,22 +66753,6 @@
         }
       }
     },
-    "活动记录仍未持久化。应用将保持打开，请检查保存位置或权限后重试。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Activity is not yet persisted. The app will remain open; check the save location or permissions and try again."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "活动记录仍未持久化。应用将保持打开，请检查保存位置或权限后重试。"
-          }
-        }
-      }
-    },
     "活动记录已隐藏": {
       "localizations": {
         "en": {
@@ -67357,22 +66893,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "测试连接"
-          }
-        }
-      }
-    },
-    "浏览 Ollama 模型库": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Browse Ollama Model Library"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "浏览 Ollama 模型库"
           }
         }
       }
@@ -68609,22 +68129,6 @@
         }
       }
     },
-    "灰色为历史内容沉淀": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Historical content is shown in gray"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "灰色为历史内容沉淀"
-          }
-        }
-      }
-    },
     "点击“安装并继续”准备 ChatGPT 连接组件。也可按官方说明自行安装，再点“重新检测”。": {
       "localizations": {
         "en": {
@@ -68701,6 +68205,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "点击查看详细统计与设定目标字数"
+          }
+        }
+      }
+    },
+    "点击生成后才会扫描标签、旧文和链接，避免打开页面时自动重算。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tags, older articles, and links are scanned only after you generate the report, avoiding automatic recalculation when opening this page."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "点击生成后才会扫描标签、旧文和链接，避免打开页面时自动重算。"
           }
         }
       }
@@ -70685,22 +70205,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "确认并重试推送"
-          }
-        }
-      }
-    },
-    "确认建议排期": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Review Suggested Schedule"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "确认建议排期"
           }
         }
       }
@@ -75921,22 +75425,6 @@
         }
       }
     },
-    "蓝色月份包含待发布文章": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Months in blue contain articles waiting to be published"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "蓝色月份包含待发布文章"
-          }
-        }
-      }
-    },
     "薄荷绿 Emerald": {
       "localizations": {
         "en": {
@@ -77393,22 +76881,6 @@
         }
       }
     },
-    "请修复保存位置或权限后重试。应用将保持打开，避免丢失未保存修改。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Fix the save location or permissions and try again. The app will remain open to avoid losing unsaved changes."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "请修复保存位置或权限后重试。应用将保持打开，避免丢失未保存修改。"
-          }
-        }
-      }
-    },
     "请先为当前站点选择本地仓库。": {
       "localizations": {
         "en": {
@@ -78481,22 +77953,6 @@
         }
       }
     },
-    "请输入要下载的精确模型 ID。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Enter the exact model ID to download."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "请输入要下载的精确模型 ID。"
-          }
-        }
-      }
-    },
     "请运行发布前检查。": {
       "localizations": {
         "en": {
@@ -78749,22 +78205,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "读取账户可用模型失败，请稍后重试。"
-          }
-        }
-      }
-    },
-    "调整 %@ 的发布日期": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Change the publication date for %@"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "调整 %@ 的发布日期"
           }
         }
       }
@@ -80673,38 +80113,6 @@
         }
       }
     },
-    "近 %@ 个月": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Last %@ months"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "近 %@ 个月"
-          }
-        }
-      }
-    },
-    "近 %lld 个月": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Last %lld Months"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "近 %lld 个月"
-          }
-        }
-      }
-    },
     "近 30 天": {
       "localizations": {
         "en": {
@@ -80941,22 +80349,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "还没有其他文章链接到当前文章。"
-          }
-        }
-      }
-    },
-    "还没有内容节奏": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "No Content Cadence Yet"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "还没有内容节奏"
           }
         }
       }
@@ -82413,22 +81805,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "连接档案可供多个站点复用。复制后仅当前站点改用副本；若服务需要 API Key，请为副本单独保存。"
-          }
-        }
-      }
-    },
-    "连接档案已失效": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Connection Profile Unavailable"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "连接档案已失效"
           }
         }
       }
@@ -87677,22 +87053,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "预览并附引用"
-          }
-        }
-      }
-    },
-    "预览建议排期": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Preview Suggested Schedule"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "预览建议排期"
           }
         }
       }

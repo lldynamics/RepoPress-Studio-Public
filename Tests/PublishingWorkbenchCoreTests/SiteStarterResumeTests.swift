@@ -225,22 +225,10 @@ final class SiteStarterResumeTests: XCTestCase {
 
   @discardableResult
   private func git(_ arguments: [String], root: URL) throws -> String {
-    let process = Process()
-    process.executableURL = URL(fileURLWithPath: "/usr/bin/git")
-    process.arguments = ["-C", root.path] + arguments
-    let output = Pipe()
-    let error = Pipe()
-    process.standardOutput = output
-    process.standardError = error
-    try process.run()
-    process.waitUntilExit()
-    let outputText = String(data: output.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
-    let errorText = String(data: error.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
-    guard process.terminationStatus == 0 else {
-      throw NSError(domain: "SiteStarterResumeTests", code: Int(process.terminationStatus), userInfo: [
-        NSLocalizedDescriptionKey: outputText + errorText
-      ])
-    }
-    return outputText.trimmingCharacters(in: .whitespacesAndNewlines)
+    try gitTestCommand(
+      arguments,
+      rootURL: root,
+      errorDomain: "SiteStarterResumeTests"
+    )
   }
 }

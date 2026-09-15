@@ -47,7 +47,7 @@ struct AIConnectionSetupSection: View {
 
   private var message: String {
     if config.usesCodexAppServer { return String(localized: "检查连接组件、登录账户，再选择账户可用模型。") }
-    if config.preset == .local { return String(localized: "检测本地服务，按需启动或下载模型，然后应用到当前连接。") }
+    if config.preset == .local { return String(localized: "检测本地服务，按需启动本地引擎或准备模型，然后应用到当前连接。") }
     return presentation.message
   }
 

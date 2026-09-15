@@ -49,6 +49,7 @@ struct AIWritingStyleSection: View {
             .foregroundStyle(.secondary)
         } else {
           TextField("搜索公开文章", text: $articleQuery)
+            .accessibilityLabel("搜索公开文章")
           ScrollView {
             LazyVStack(alignment: .leading, spacing: 6) {
               ForEach(filteredArticles) { article in
@@ -109,7 +110,7 @@ struct AIWritingStyleSection: View {
                 styleMessage = currentActionMessage() ?? String(localized: "写作风格预览无法应用，请重新提炼后再试。")
               }
             }
-            .buttonStyle(.borderedProminent)
+            .workbenchProminentActionStyle()
             .accessibilityIdentifier("settings-ai-writing-style-apply-preview")
           }
         }

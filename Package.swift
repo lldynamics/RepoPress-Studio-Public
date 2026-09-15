@@ -33,10 +33,6 @@ let package = Package(
       name: "PublishingWorkbenchCore",
       targets: ["PublishingWorkbenchCore"]
     ),
-    .library(
-      name: "PublishingMCPClient",
-      targets: ["PublishingMCPClient"]
-    ),
     .executable(
       name: "PersonalSitePublisherMac",
       targets: ["PersonalSitePublisherMac"]
@@ -55,14 +51,6 @@ let package = Package(
       url: "https://github.com/sparkle-project/Sparkle",
       from: "2.9.2"
     ),
-    .package(
-      url: "https://github.com/modelcontextprotocol/swift-sdk.git",
-      exact: "0.12.1",
-    ),
-    .package(
-      url: "https://github.com/apple/swift-system.git",
-      from: "1.0.0"
-    )
   ],
   targets: [
     .target(
@@ -154,18 +142,6 @@ let package = Package(
         .linkedLibrary("z"),
         .linkedFramework("PDFKit"),
         .linkedFramework("Vision"),
-      ]
-    ),
-    .target(
-      name: "PublishingMCPClient",
-      dependencies: [
-        "PublishingAICore",
-        "PublishingAgentContracts",
-        .product(name: "MCP", package: "swift-sdk"),
-        .product(name: "SystemPackage", package: "swift-system"),
-      ],
-      swiftSettings: [
-        .swiftLanguageMode(.v6)
       ]
     ),
     .executableTarget(
@@ -272,17 +248,6 @@ let package = Package(
         "PublishingKnowledgeCore",
         "PublishingMarkdownCore",
         "PublishingWorkbenchCore",
-      ],
-      swiftSettings: [
-        .swiftLanguageMode(.v6)
-      ]
-    ),
-    .testTarget(
-      name: "PublishingMCPClientTests",
-      dependencies: [
-        "PublishingAICore",
-        "PublishingAgentContracts",
-        "PublishingMCPClient",
       ],
       swiftSettings: [
         .swiftLanguageMode(.v6)

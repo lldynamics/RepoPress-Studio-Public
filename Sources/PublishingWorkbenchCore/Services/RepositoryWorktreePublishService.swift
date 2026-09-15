@@ -863,8 +863,4 @@ public struct RepositoryWorktreePublishService: Sendable {
     )
   }
 
-  private func commitSHAIfAvailable(root: URL) -> String {
-    (try? output(["rev-parse", "HEAD"], root: root))?.trimmedForPublishing
-      ?? "unknown"
-  }
 }

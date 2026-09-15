@@ -27,10 +27,6 @@ struct SiteMaintenanceDetailView: View {
   @ViewBuilder
   private var bodyContent: some View {
     if let snapshot = maintenanceState.snapshot {
-      let scheduleChanges = SiteMaintenanceScheduleChange.proposedChanges(
-        report: snapshot.report,
-        drafts: store.drafts
-      )
       VStack(alignment: .leading, spacing: 12) {
         if let errorMessage = maintenanceState.errorMessage {
           maintenanceRefreshFailure(errorMessage)
@@ -47,15 +43,6 @@ struct SiteMaintenanceDetailView: View {
           copyItem: copyItem,
           recordItem: recordItem,
           sendToAI: sendToAI,
-          scheduleChanges: scheduleChanges,
-          applySuggestedSchedule: { approvedSuggestedDates, expectedOriginalDates in
-            Task {
-              await store.applySuggestedMaintenanceSchedule(
-                approvedSuggestedDates: approvedSuggestedDates,
-                expectedOriginalDates: expectedOriginalDates
-              )
-            }
-          },
           latestRelease: maintenanceState.latestRelease,
           deploymentSnapshot: maintenanceState.latestRelease.flatMap(
             maintenanceState.deploymentStatusSnapshot),

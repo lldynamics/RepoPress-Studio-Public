@@ -47,6 +47,7 @@ struct WritingDraftTemplatePicker: View {
 
       TextField("文章标题（可稍后修改）", text: $articleTitle)
         .textFieldStyle(.roundedBorder)
+        .accessibilityLabel("新文章标题")
         .accessibilityIdentifier("writing-template-title")
 
       List(templates, selection: $selectedTemplateID) { template in
@@ -92,7 +93,7 @@ struct WritingDraftTemplatePicker: View {
             creationError = String(localized: "模板无法创建文章，请检查模板正文后重试。")
           }
         }
-        .buttonStyle(.borderedProminent)
+        .workbenchProminentActionStyle()
         .disabled(selectedTemplate == nil)
         .accessibilityIdentifier("writing-template-create")
       }

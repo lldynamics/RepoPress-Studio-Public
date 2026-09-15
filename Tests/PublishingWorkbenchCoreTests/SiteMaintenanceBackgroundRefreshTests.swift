@@ -82,7 +82,10 @@ final class SiteMaintenanceBackgroundRefreshTests: XCTestCase {
 
     let counts = await tracker.counts()
     XCTAssertEqual(counts.cancelled, 1)
-    XCTAssertEqual(store.siteMaintenanceSnapshot?.report.calendarScheduleItems.first?.title, "Final")
+    XCTAssertEqual(
+      store.siteMaintenanceSnapshot?.report.tagSummary.entries.first?.draftTitles,
+      ["Final"]
+    )
     XCTAssertFalse(store.isSiteMaintenanceSnapshotRefreshing)
     XCTAssertFalse(store.isSiteMaintenanceSnapshotStale)
   }

@@ -66,8 +66,9 @@ case "$VIEWPORT_OUTPUT_PATH" in
 esac
 
 SWIFT_HOME="${SWIFT_BUILD_HOME:-/private/tmp/personal-site-publisher-swift-home}"
+SWIFT_BINARY="${SWIFT_BIN:-swift}"
 PERFORMANCE_COMMIT="${PERFORMANCE_BENCHMARK_COMMIT:-$(git rev-parse HEAD)}"
-PERFORMANCE_TOOLCHAIN="${PERFORMANCE_BENCHMARK_TOOLCHAIN:-$(swift --version | head -n 1)}"
+PERFORMANCE_TOOLCHAIN="${PERFORMANCE_BENCHMARK_TOOLCHAIN:-$("$SWIFT_BINARY" --version | head -n 1)}"
 PERFORMANCE_ARCHITECTURE="${PERFORMANCE_BENCHMARK_ARCHITECTURE:-$(uname -m)}"
 PERFORMANCE_OPERATING_SYSTEM="${PERFORMANCE_BENCHMARK_OPERATING_SYSTEM:-$(sw_vers -productVersion 2>/dev/null || uname -sr)}"
 PERFORMANCE_MACHINE="${PERFORMANCE_BENCHMARK_MACHINE:-$(sysctl -n hw.model 2>/dev/null || uname -n)}"
@@ -94,7 +95,7 @@ env \
   PERFORMANCE_BENCHMARK_ARCHITECTURE="$PERFORMANCE_ARCHITECTURE" \
   PERFORMANCE_BENCHMARK_OPERATING_SYSTEM="$PERFORMANCE_OPERATING_SYSTEM" \
   PERFORMANCE_BENCHMARK_MACHINE="$PERFORMANCE_MACHINE" \
-  swift test \
+  "$SWIFT_BINARY" test \
     --configuration "$BUILD_CONFIGURATION" \
     --disable-sandbox \
     --filter MarkdownSyntaxHighlightBenchmarkTests/testGeneratedDocumentBaseline
@@ -107,9 +108,10 @@ env \
   MARKDOWN_VIEWPORT_BENCHMARK_ITERATIONS="$ITERATIONS" \
   MARKDOWN_VIEWPORT_BENCHMARK_OUTPUT="$VIEWPORT_OUTPUT_PATH" \
   MARKDOWN_SYNTAX_BENCHMARK_CONFIGURATION="$BUILD_CONFIGURATION" \
-  swift test \
+  "$SWIFT_BINARY" test \
     --configuration "$BUILD_CONFIGURATION" \
     --disable-sandbox \
+    --skip-build \
     --filter MarkdownViewportHighlightBenchmarkTests/testIncrementalViewportPipelineDocumentSizeIndependence
 
 echo "markdown syntax benchmark report: $OUTPUT_PATH"

@@ -2074,16 +2074,13 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
   }
 
   func testStreamingReplyStaysWithOriginalDraftAfterSwitchingDrafts() async throws {
-    let transport = RecordingAIChatTransport(
-      data: Data(),
-      statusCode: 200,
+    let transport = ControlledAIChatStreamingTransport(
       streamLines: [
         #"data: {"choices":[{"delta":{"content":"原文章"}}]}"#,
         "",
         #"data: {"choices":[{"delta":{"content":"回复"},"finish_reason":"stop"}]}"#,
         "",
-      ],
-      streamLineDelayNanoseconds: 20_000_000
+      ]
     )
     let persistenceURL = FileManager.default.temporaryDirectory
       .appendingPathComponent(UUID().uuidString)
@@ -2119,10 +2116,12 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
     let sendTask = Task {
       await store.sendAIChatMessage("检查第一篇。", draft: firstDraft)
     }
-    try await Task.sleep(nanoseconds: 5_000_000)
+    defer { sendTask.cancel() }
+    try await transport.waitForRequest(timeoutNanoseconds: 1_000_000_000)
 
     store.prepareAIChat(for: secondDraft)
     store.setAIChatMessages([secondMessage])
+    await transport.releaseResponse()
 
     let reply = await sendTask.value
 

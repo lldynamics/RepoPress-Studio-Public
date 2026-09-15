@@ -264,79 +264,6 @@ extension AIChatContextInspectorView {
     .accessibilityIdentifier("ai-assistant-context-mode")
   }
 
-  @ViewBuilder
-  var generalConnectionAndModelMenu: some View {
-    let conversation = displayedGeneralConversation
-    Menu {
-      Section(String(localized: "连接配置档案")) {
-        if ai.chatConnectionProfiles.isEmpty {
-          Text(String(localized: "还没有可复用的连接档案。"))
-        } else {
-          ForEach(ai.chatConnectionProfiles) { profile in
-            Button {
-              guard let conversation else { return }
-              _ = ai.setGeneralChatConnectionProfile(
-                profile.id,
-                conversationID: conversation.id
-              )
-            } label: {
-              Label(
-                profile.name,
-                systemImage: conversation?.connectionProfileID == profile.id
-                  ? "checkmark.circle.fill"
-                  : "circle"
-              )
-            }
-          }
-        }
-      }
-
-      Section(String(localized: "模型档位")) {
-        ForEach(AIChatModelGrade.allCases) { grade in
-          Button {
-            guard let conversation else { return }
-            _ = ai.setGeneralChatModelGrade(
-              grade,
-              conversationID: conversation.id
-            )
-          } label: {
-            Label(
-              grade.title,
-              systemImage: conversation?.modelGrade == grade
-                ? "checkmark.circle.fill"
-                : "circle"
-            )
-          }
-        }
-      }
-    } label: {
-      HStack(spacing: 5) {
-        Image(systemName: "cpu")
-          .foregroundStyle(WorkbenchTheme.primary)
-        VStack(alignment: .leading, spacing: 1) {
-          Text(selectedGeneralConnectionProfile?.name ?? String(localized: "连接档案已失效"))
-            .font(.caption.weight(.semibold))
-          Text(conversation?.modelGrade.title ?? String(localized: "未选择"))
-            .font(.workbenchMetadata)
-            .foregroundStyle(.secondary)
-        }
-        .lineLimit(1)
-        Image(systemName: "chevron.down")
-          .font(.workbenchMetadata.weight(.semibold))
-          .foregroundStyle(.secondary)
-      }
-      .frame(maxWidth: 138, alignment: .leading)
-    }
-    .menuStyle(.borderlessButton)
-    .menuIndicator(.hidden)
-    .controlSize(.small)
-    .disabled(isChatBusy || conversation == nil)
-    .help(generalConnectionAndModelSummary)
-    .accessibilityLabel(String(localized: "AI 连接与模型"))
-    .accessibilityValue(generalConnectionAndModelSummary)
-    .accessibilityIdentifier("ai-assistant-general-model-menu")
-  }
-
   var configurationRow: some View {
     let densityConfiguration = AIChatInspectorDensityPresentation.configuration(
       isExpanded: isAdvancedSettingsExpanded
@@ -658,29 +585,6 @@ extension AIChatContextInspectorView {
       providerConfig: selectedGeneralConnectionProfile?.config,
       activeTokenAvailability: ai.tokenAvailability
     )
-  }
-
-  var generalConnectionAndModelSummary: String {
-    let profile =
-      selectedGeneralConnectionProfile?.name
-      ?? String(localized: "连接档案已失效")
-    let conversation = displayedGeneralConversation
-    let activeModelName: String
-    if let selected = conversation?.selectedModel.nilIfEmpty {
-      activeModelName = selected
-    } else if let grade = conversation?.modelGrade,
-      let config = selectedGeneralConnectionProfile?.config
-    {
-      activeModelName =
-        AIChatModelSelectionPresentationService.presentation(
-          grade: grade,
-          selectedModel: "",
-          config: config
-        ).activeModel.nilIfEmpty ?? grade.title
-    } else {
-      activeModelName = conversation?.modelGrade.title ?? String(localized: "未选择")
-    }
-    return "\(profile) · \(activeModelName)"
   }
 
   var currentAIProviderConfig: AIProviderConfig {

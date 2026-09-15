@@ -1,7 +1,67 @@
 import XCTest
+
 @testable import PublishingWorkbenchCore
 
 final class AIChatSurfaceStateTests: XCTestCase {
+  func testAcceptedSubmissionClearsUnchangedInputAndAttachments() {
+    var fixture = SubmissionFixture()
+    fixture.state.setComposerText("  submitted\n", for: fixture.conversationID)
+    fixture.complete()
+
+    XCTAssertEqual(fixture.state.composerText(for: fixture.conversationID), "")
+    XCTAssertTrue(fixture.state.contextReferences(for: fixture.conversationID).isEmpty)
+    XCTAssertTrue(fixture.state.imageAttachmentIDs(for: fixture.attachmentConversationID).isEmpty)
+  }
+
+  func testUnacceptedSubmissionOrQuickPromptPreservesInput() {
+    for (clearsComposer, accepted) in [(true, false), (false, true)] {
+      var fixture = SubmissionFixture()
+      let original = fixture.state
+      fixture.complete(clearsComposer: clearsComposer, accepted: accepted)
+      XCTAssertEqual(fixture.state, original)
+    }
+  }
+
+  func testLateCompletionPreservesNewlyTypedInputAndItsAttachments() {
+    var fixture = SubmissionFixture()
+    fixture.state.setComposerText("new message", for: fixture.conversationID)
+    let original = fixture.state
+    fixture.complete()
+    XCTAssertEqual(fixture.state, original)
+  }
+
+  func testLateCompletionDoesNotClearAnotherConversationsInput() {
+    var fixture = SubmissionFixture()
+    let otherID = UUID()
+    fixture.state.selectedConversationID = otherID
+    fixture.state.setComposerText("other message", for: otherID)
+    fixture.state.setContextReferences([fixture.reference], for: otherID)
+    fixture.state.setImageAttachmentIDs([fixture.attachmentID], for: otherID)
+    fixture.complete()
+
+    XCTAssertEqual(fixture.state.selectedConversationID, otherID)
+    XCTAssertEqual(fixture.state.composerText(for: otherID), "other message")
+    XCTAssertEqual(fixture.state.contextReferences(for: otherID), [fixture.reference])
+    XCTAssertEqual(fixture.state.imageAttachmentIDs(for: otherID), [fixture.attachmentID])
+    XCTAssertEqual(fixture.state.composerText(for: fixture.conversationID), "")
+  }
+
+  func testLateCompletionPreservesChangedReferencesAndAttachmentSelection() {
+    var fixture = SubmissionFixture()
+    let newReference = AIContextReference(
+      kind: .knowledgeEntry, displayName: "new", characterCount: 3)
+    let newAttachmentID = UUID()
+    fixture.state.setContextReferences([newReference], for: fixture.conversationID)
+    fixture.state.setImageAttachmentIDs([newAttachmentID], for: fixture.attachmentConversationID)
+    fixture.complete()
+
+    XCTAssertEqual(fixture.state.composerText(for: fixture.conversationID), "")
+    XCTAssertEqual(fixture.state.contextReferences(for: fixture.conversationID), [newReference])
+    XCTAssertEqual(
+      fixture.state.imageAttachmentIDs(for: fixture.attachmentConversationID), [newAttachmentID]
+    )
+  }
+
   func testWorkspaceComposerStateIsScopedByConversation() {
     let firstConversationID = UUID()
     let secondConversationID = UUID()
@@ -42,12 +102,15 @@ final class AIChatSurfaceStateTests: XCTestCase {
       selectedConversationID: conversationID
     )
     state.setComposerText("不要在窗口销毁后保留", for: conversationID)
-    state.setContextReferences([
-      AIContextReference(kind: .knowledgeEntry, displayName: "资料", characterCount: 4)
-    ], for: conversationID)
-    state.setImageAttachments([
-      AIChatImageAttachment(filename: "private.png", mimeType: "image/png", data: Data([1, 2, 3]))
-    ], for: conversationID)
+    state.setContextReferences(
+      [
+        AIContextReference(kind: .knowledgeEntry, displayName: "资料", characterCount: 4)
+      ], for: conversationID)
+    state.setImageAttachments(
+      [
+        AIChatImageAttachment(
+          filename: "private.png", mimeType: "image/png", data: Data([1, 2, 3]))
+      ], for: conversationID)
     state.setImageAttachmentIDs([UUID()], for: conversationID)
 
     state.discardState(for: conversationID)
@@ -58,5 +121,33 @@ final class AIChatSurfaceStateTests: XCTestCase {
     XCTAssertTrue(state.contextReferences(for: conversationID).isEmpty)
     XCTAssertTrue(state.imageAttachments(for: conversationID).isEmpty)
     XCTAssertTrue(state.imageAttachmentIDs(for: conversationID).isEmpty)
+  }
+}
+
+private struct SubmissionFixture {
+  let conversationID = UUID()
+  let attachmentConversationID = UUID()
+  let attachmentID = UUID()
+  let reference = AIContextReference(
+    kind: .knowledgeEntry, displayName: "original", characterCount: 8)
+  var state = AIChatSurfaceState(surface: .inspector)
+
+  init() {
+    state.selectedConversationID = conversationID
+    state.setComposerText("submitted", for: conversationID)
+    state.setContextReferences([reference], for: conversationID)
+    state.setImageAttachmentIDs([attachmentID], for: attachmentConversationID)
+  }
+
+  mutating func complete(clearsComposer: Bool = true, accepted: Bool = true) {
+    state.completeSubmission(
+      conversationID: conversationID,
+      message: "submitted",
+      imageAttachmentConversationID: attachmentConversationID,
+      submittedImageAttachmentIDs: [attachmentID],
+      submittedContextReferences: [reference],
+      clearsComposerOnAccept: clearsComposer,
+      wasAccepted: accepted
+    )
   }
 }

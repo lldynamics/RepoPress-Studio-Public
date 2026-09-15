@@ -1,31 +1,6 @@
 import Combine
 import Foundation
 
-/// Compatibility facade for older sidebar call sites. The actual list
-/// observation boundary is the stable `WorkbenchStore.draftList` child store;
-/// this adapter forwards that child only. The image refresh token remains a
-/// read-only compatibility getter; image workbench updates are observed by
-/// their own leaf facade instead of invalidating the list adapter.
-@MainActor
-public final class WorkbenchDraftListFeatureFacade: ObservableObject {
-  private let listStore: DraftListStore
-  private var cancellables = Set<AnyCancellable>()
-
-  public init(store: WorkbenchStore) {
-    listStore = store.draftList
-    listStore.objectWillChange
-      .sink { [weak self] _ in self?.objectWillChange.send() }
-      .store(in: &cancellables)
-  }
-
-  public var presentationRevision: UInt64 { listStore.presentationRevision }
-  public var taskQueueStateVersion: Int { listStore.taskQueueStateVersion }
-  public var imageInputRevision: UInt64 { listStore.imageInputRevision }
-  public var selectedDraftID: UUID? { listStore.selectedDraftID }
-  public var contentScope: DraftListContentScope { listStore.contentScope }
-  public var repositoryReport: RepositoryScanReport? { listStore.repositoryReport }
-}
-
 /// Observation boundary for the content-health page. Publishing progress,
 /// editor typing details and AI streaming do not invalidate the full page.
 @MainActor

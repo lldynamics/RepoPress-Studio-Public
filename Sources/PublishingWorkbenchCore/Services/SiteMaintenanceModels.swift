@@ -8,9 +8,6 @@ public struct SiteMaintenanceReport: Hashable, Sendable {
   public var privateDraftCount: Int
   public var readyCount: Int
   public var publishedCount: Int
-  public var calendarBuckets: [ContentCalendarBucket]
-  public var calendarInsights: [ContentCalendarInsight]
-  public var calendarScheduleItems: [ContentCalendarScheduleItem]
   public var tagSummary: TaxonomyGovernanceSummary
   public var categorySummary: TaxonomyGovernanceSummary
   public var staleArticles: [StaleArticleCandidate]
@@ -39,7 +36,7 @@ extension SiteMaintenanceReport {
       "- 健康状态：\(healthSummary.level.displayName)（\(healthSummary.score)/100）",
       "- 本轮目标：\(healthSummary.nextAction)",
       "- 高优先级：\(actionItems.filter { $0.priority == .high }.count)",
-      "- 待发布：\(calendarScheduleItems.count)",
+      "- 待发布：\(readyCount)",
       "- 旧文候选：\(staleArticles.count)",
       "- 内链机会：\(relationSuggestions.count)",
       "- 链接风险：\(internalLinkIssueCount)",
@@ -63,18 +60,6 @@ extension SiteMaintenanceReport {
         if item.draftID != nil {
           lines.append("  - 可操作：打开草稿，必要时交给 AI 生成修复草案。")
         }
-      }
-    }
-
-    lines.append("")
-    lines.append("## 本轮排期")
-    if calendarScheduleItems.isEmpty {
-      lines.append("- 当前没有公开待发布文章需要排期。")
-    } else {
-      for item in calendarScheduleItems.prefix(5) {
-        lines.append("- [ ] \(formatterText(item.scheduledDate))：\(item.title)")
-        lines.append("  - \(item.reason)")
-        lines.append("  - \(item.markdownPath)")
       }
     }
 
@@ -135,7 +120,6 @@ extension SiteMaintenanceReport {
       "- 私密：\(privateDraftCount)",
       "- 待发布：\(readyCount)",
       "- 已发布：\(publishedCount)",
-      "- 日历提示：\(calendarInsights.count)",
       "- 行动项：\(actionItems.count)",
       "- 链接提示：\(linkAuditItems.count)",
       "- 内链机会：\(relationSuggestions.count)",
@@ -146,9 +130,6 @@ extension SiteMaintenanceReport {
 
     appendHealthSummary(to: &lines)
     appendActionItems(to: &lines)
-    appendCalendar(to: &lines)
-    appendCalendarInsights(to: &lines)
-    appendCalendarSchedule(to: &lines)
     appendTaxonomySummary(tagSummary, to: &lines)
     appendTaxonomySummary(categorySummary, to: &lines)
     appendStaleArticles(to: &lines)
@@ -183,52 +164,6 @@ extension SiteMaintenanceReport {
       if !item.detail.isEmpty {
         lines.append("  - \(item.detail)")
       }
-    }
-  }
-
-  private func appendCalendar(to lines: inout [String]) {
-    lines.append("")
-    lines.append("## 内容日历")
-    guard !calendarBuckets.isEmpty else {
-      lines.append("- 当前 Profile 没有可统计的文章。")
-      return
-    }
-
-    for bucket in calendarBuckets.prefix(12) {
-      lines.append(
-        "- \(bucket.title)：\(bucket.articleCount) 篇，已发布 \(bucket.publishedCount)，待发布 \(bucket.readyCount)，公开 \(bucket.publicCount)，私密 \(bucket.privateCount)"
-      )
-    }
-  }
-
-  private func appendCalendarInsights(to lines: inout [String]) {
-    lines.append("")
-    lines.append("## 内容节奏提示")
-    guard !calendarInsights.isEmpty else {
-      lines.append("- 当前内容节奏没有明显积压或断档。")
-      return
-    }
-
-    for insight in calendarInsights {
-      lines.append("- [\(insight.priority.displayName)] \(insight.title)：\(insight.summary)")
-      if !insight.detail.isEmpty {
-        lines.append("  - \(insight.detail)")
-      }
-    }
-  }
-
-  private func appendCalendarSchedule(to lines: inout [String]) {
-    lines.append("")
-    lines.append("## 待发布排期")
-    guard !calendarScheduleItems.isEmpty else {
-      lines.append("- 当前没有公开待发布文章需要排期。")
-      return
-    }
-
-    for item in calendarScheduleItems {
-      lines.append("- \(formatterText(item.scheduledDate))：\(item.title)")
-      lines.append("  - \(item.reason)")
-      lines.append("  - \(item.markdownPath)")
     }
   }
 
@@ -306,37 +241,6 @@ extension SiteMaintenanceReport {
   private func formatterText(_ date: Date) -> String {
     ISO8601DateFormatter().string(from: date)
   }
-}
-
-public struct ContentCalendarBucket: Identifiable, Hashable, Sendable {
-  public var id: String { monthKey }
-  public var monthKey: String
-  public var title: String
-  public var articleCount: Int
-  public var draftCount: Int
-  public var readyCount: Int
-  public var publishedCount: Int
-  public var publicCount: Int
-  public var privateCount: Int
-}
-
-public struct ContentCalendarInsight: Identifiable, Hashable, Sendable {
-  public var id: String
-  public var title: String
-  public var summary: String
-  public var detail: String
-  public var priority: MaintenanceActionPriority
-  public var systemImage: String
-}
-
-public struct ContentCalendarScheduleItem: Identifiable, Hashable, Sendable {
-  public var id: UUID { draftID }
-  public var draftID: UUID
-  public var title: String
-  public var markdownPath: String
-  public var scheduledDate: Date
-  public var reason: String
-  public var systemImage: String
 }
 
 public struct TaxonomyGovernanceSummary: Hashable, Sendable {

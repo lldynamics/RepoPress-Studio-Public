@@ -2,8 +2,9 @@ import AppKit
 import Foundation
 import SwiftUI
 import UniformTypeIdentifiers
+
 #if canImport(Darwin)
-import Darwin
+  import Darwin
 #endif
 struct FindReplaceBar: View {
   @Binding var findQuery: String
@@ -242,7 +243,7 @@ struct MarkdownFindReplacePreviewSheet: View {
         Spacer()
         Button("取消", action: onCancel)
         Button("确认替换", action: onConfirm)
-          .buttonStyle(.borderedProminent)
+          .workbenchProminentActionStyle()
           .disabled(preview.replacementCount == 0)
       }
     }

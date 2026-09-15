@@ -80,6 +80,30 @@ public struct AIChatSurfaceState: Equatable, Sendable {
     imageAttachmentIDsByConversation[conversationID] = attachmentIDs
   }
 
+  /// Completes only the submitted conversation's input. Edits made while the
+  /// request was running, including new references or attachments, survive.
+  public mutating func completeSubmission(
+    conversationID: UUID,
+    message: String,
+    imageAttachmentConversationID: UUID,
+    submittedImageAttachmentIDs: Set<UUID>,
+    submittedContextReferences: [AIContextReference],
+    clearsComposerOnAccept: Bool,
+    wasAccepted: Bool
+  ) {
+    guard clearsComposerOnAccept, wasAccepted,
+      composerText(for: conversationID).trimmingCharacters(in: .whitespacesAndNewlines) == message
+    else { return }
+
+    setComposerText("", for: conversationID)
+    if imageAttachmentIDs(for: imageAttachmentConversationID) == submittedImageAttachmentIDs {
+      setImageAttachmentIDs([], for: imageAttachmentConversationID)
+    }
+    if contextReferences(for: conversationID) == submittedContextReferences {
+      setContextReferences([], for: conversationID)
+    }
+  }
+
   public mutating func clearComposer(for conversationID: UUID) {
     composerTextByConversation[conversationID] = ""
     contextReferencesByConversation[conversationID] = []

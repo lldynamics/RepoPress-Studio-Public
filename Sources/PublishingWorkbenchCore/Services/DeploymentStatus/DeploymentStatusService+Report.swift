@@ -522,10 +522,6 @@ extension DeploymentStatusService {
     return nil
   }
 
-  func htmlAttributeValue(named name: String, in tag: String) -> String? {
-    HTMLMetadataScanner.attribute(named: name, in: tag)
-  }
-
   func normalizedComparableURL(_ value: String) -> String {
     let trimmed = value.trimmedForPublishing
     guard var components = URLComponents(string: trimmed) else {

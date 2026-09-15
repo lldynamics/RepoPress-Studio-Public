@@ -41,19 +41,4 @@ final class WorkspaceContextNavigationTests: XCTestCase {
     XCTAssertEqual(session.selectedDraftID, draftID)
   }
 
-  func testRSSReadingToolbarUsesNoLayoutStackThatCouldMergeToolbarAccessibility() throws {
-    let repositoryRoot = URL(fileURLWithPath: #filePath)
-      .deletingLastPathComponent()
-      .deletingLastPathComponent()
-      .deletingLastPathComponent()
-    let source = try String(
-      contentsOf: repositoryRoot.appendingPathComponent(
-        "Sources/PersonalSitePublisherMac/Views/Workspace/WorkspaceRSSReadingToolbar.swift"
-      ),
-      encoding: .utf8
-    )
-
-    XCTAssertTrue(source.contains("Group {"))
-    XCTAssertFalse(source.contains("HStack"))
-  }
 }

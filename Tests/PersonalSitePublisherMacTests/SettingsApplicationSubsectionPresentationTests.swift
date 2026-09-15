@@ -25,12 +25,4 @@ final class SettingsApplicationSubsectionPresentationTests: XCTestCase {
       [.privacyQuickHide, .privacyMasking, .privacyStatus]
     )
   }
-
-  func testApplicationTabsHaveFocusedDefaultSubsections() {
-    XCTAssertEqual(SettingsSubsection.defaultSection(for: .dataManagement), .dataDrafts)
-    XCTAssertEqual(SettingsSubsection.defaultSection(for: .appearance), .appearanceBehavior)
-    XCTAssertEqual(SettingsSubsection.defaultSection(for: .editor), .editorPreview)
-    XCTAssertEqual(SettingsSubsection.defaultSection(for: .rss), .rssRefresh)
-    XCTAssertEqual(SettingsSubsection.defaultSection(for: .privacy), .privacyQuickHide)
-  }
 }

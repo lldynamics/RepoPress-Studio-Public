@@ -1077,8 +1077,7 @@ final class WorkbenchPersistenceTests: XCTestCase {
     )
 
     persistenceStore.scheduleAutosave(input: { frozenInput })
-    try await Task.sleep(nanoseconds: 900_000_000)
-    await persistenceStore.waitForCurrentBackgroundSave()
+    await persistenceStore.waitForPendingSave()
 
     XCTAssertTrue(preparationProbe.didRun)
     XCTAssertFalse(preparationProbe.ranOnMainThread)

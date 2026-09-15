@@ -103,17 +103,6 @@ extension PublishingStore {
     }
   }
 
-  // MARK: Compatibility aliases for cache lifecycle call sites
-
-  @discardableResult
-  func removeDraftPublishPreviewCache(for draftID: UUID) -> DraftPublishPreviewSnapshot? {
-    removeDraftPublishPreviewSnapshot(for: draftID)
-  }
-
-  func removeAllDraftPublishPreviewCaches() {
-    removeAllDraftPublishPreviewSnapshots()
-  }
-
   /// Stores the task handle used by the draft-scoped scheduler and updates
   /// the old `isPublishPreviewRefreshing`/task projection only for the
   /// currently selected draft.

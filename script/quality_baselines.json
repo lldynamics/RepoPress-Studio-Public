@@ -11,14 +11,13 @@
     "PublishingGitCore": 89.0,
     "PublishingKnowledgeCore": 83.0,
     "PublishingMarkdownCore": 92.0,
-    "PublishingMCPClient": 88.0,
     "PublishingWorkbenchCore": 82.0
   },
   "changedExecutableSourceLineCoveragePercentMinimum": 100.0,
   "swiftFormatWarningMaximums": {
     "sourcesByTarget": {
       "BrowserExtensionProtocolSupport": 0,
-      "PersonalSitePublisherMac": 2036,
+      "PersonalSitePublisherMac": 1656,
       "PublishingAICore": 33,
       "PublishingAgentContracts": 0,
       "PublishingCoreSupport": 35,
@@ -26,8 +25,7 @@
       "PublishingGitCore": 230,
       "PublishingKnowledgeCore": 440,
       "PublishingMarkdownCore": 762,
-      "PublishingMCPClient": 0,
-      "PublishingWorkbenchCore": 4140
+      "PublishingWorkbenchCore": 3594
     },
     "testsByTarget": {
       "PersonalSitePublisherMacTests": 99,
@@ -38,7 +36,6 @@
       "PublishingGitCoreTests": 116,
       "PublishingKnowledgeCoreTests": 273,
       "PublishingMarkdownCoreTests": 134,
-      "PublishingMCPClientTests": 0,
       "PublishingWorkbenchCoreTests": 2177
     },
     "packageSwift": 6,
@@ -52,7 +49,6 @@
     "PublishingAgentContractsTests": 3,
     "PublishingCoreSupportTests": 22,
     "PublishingKnowledgeCoreTests": 57,
-    "PublishingMCPClientTests": 23,
     "PersonalSitePublisherMacTests": 592,
     "PublishingWorkbenchCoreTests": 2123
   },
@@ -67,7 +63,11 @@
     "configuration": "release",
     "minimumSampleCount": 7,
     "siteMaintenanceRelation": {
-      "sizes": [512, 2048, 4096],
+      "sizes": [
+        512,
+        2048,
+        4096
+      ],
       "labelGroupSize": 8,
       "complexity": "fixed-label-density-linear"
     },

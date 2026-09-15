@@ -19,134 +19,6 @@ import SwiftUI
   }
 #endif
 
-struct WorkspaceResponsiveLayoutSnapshot: Equatable {
-  enum Band: Equatable {
-    case constrained
-    case compactInspector
-    case standardInspector
-    case htmlSourceInspector
-  }
-
-  let band: Band
-
-  static let initial = WorkspaceResponsiveLayoutSnapshot(
-    width: WorkbenchLayoutMode.expandedWorkspaceWidth
-  )
-
-  init(width: CGFloat) {
-    if width >= WorkbenchLayoutMode.minimumHTMLSourceInspectorWorkspaceWidth {
-      band = .htmlSourceInspector
-    } else if WorkbenchLayoutMode.allowsInspector(width: width) {
-      band = .standardInspector
-    } else if WorkbenchLayoutMode.canManuallyRevealInspector(width: width) {
-      band = .compactInspector
-    } else {
-      band = .constrained
-    }
-  }
-
-  var isCompact: Bool {
-    band == .constrained || band == .compactInspector
-  }
-
-  var allowsStandardInspector: Bool {
-    band == .standardInspector || band == .htmlSourceInspector
-  }
-
-  var allowsHTMLSourceInspector: Bool { band == .htmlSourceInspector }
-  var canManuallyRevealInspector: Bool { band == .compactInspector }
-
-  func canManuallyRevealInspector(for section: WorkspaceSection) -> Bool {
-    canManuallyRevealInspector && [.writing, .library, .rss].contains(section)
-  }
-}
-
-struct PersistenceRecoveryResetFeedback: Identifiable {
-  let id = UUID()
-  let title: String
-  let message: String
-
-  static func success(archiveURL: URL) -> Self {
-    Self(
-      title: String(localized: "已重置为空白工作台"),
-      message: String(
-        format: String(localized: "故障数据已归档到：%@"),
-        archiveURL.path
-      )
-    )
-  }
-
-  static func failure(message: String) -> Self {
-    Self(
-      title: String(localized: "未能重置工作台"),
-      message: message
-    )
-  }
-}
-
-/// A single value keeps the inspector's min/ideal/max constraints coherent while
-/// moving between article and AI collaboration surfaces.
-struct WorkspaceInspectorWidthState: Equatable {
-  let constraints: WorkspaceInspectorColumnWidths
-  let preferredWidth: CGFloat
-
-  init(isAIAssistantPresented: Bool) {
-    constraints = WorkspaceInspectorColumnWidthPolicy.widths(
-      isAIAssistantPresented: isAIAssistantPresented
-    )
-    preferredWidth =
-      isAIAssistantPresented
-      ? constraints.ideal
-      : constraints.minimum
-  }
-}
-
-private struct WorkspaceResponsiveLayoutPreferenceKey: PreferenceKey {
-  static let defaultValue = WorkspaceResponsiveLayoutSnapshot.initial
-
-  static func reduce(
-    value: inout WorkspaceResponsiveLayoutSnapshot,
-    nextValue: () -> WorkspaceResponsiveLayoutSnapshot
-  ) {
-    value = nextValue()
-  }
-}
-
-/// Keeps continuous window measurements in a leaf view. The preference value
-/// compares by semantic layout band, so `ContentView` updates only at the
-/// 960/1180/1240 point decisions instead of for every resize pixel.
-private struct WorkspaceResponsiveLayoutReader: View {
-  var body: some View {
-    GeometryReader { geometry in
-      Color.clear.preference(
-        key: WorkspaceResponsiveLayoutPreferenceKey.self,
-        value: WorkspaceResponsiveLayoutSnapshot(width: geometry.size.width)
-      )
-    }
-    .allowsHitTesting(false)
-    .accessibilityHidden(true)
-  }
-}
-
-private struct WorkspaceResponsiveLayoutHost<Content: View>: View {
-  let content: Content
-  let onChange: (WorkspaceResponsiveLayoutSnapshot) -> Void
-
-  init(
-    onChange: @escaping (WorkspaceResponsiveLayoutSnapshot) -> Void,
-    @ViewBuilder content: () -> Content
-  ) {
-    self.content = content()
-    self.onChange = onChange
-  }
-
-  var body: some View {
-    content
-      .background(WorkspaceResponsiveLayoutReader())
-      .onPreferenceChange(WorkspaceResponsiveLayoutPreferenceKey.self, perform: onChange)
-  }
-}
-
 struct ContentView: View {
   let store: WorkbenchStore
   let rssStore: RSSReaderStore
@@ -176,8 +48,6 @@ struct ContentView: View {
     @State private var didApplyScreenshotDemoSurface = false
   #endif
   @State private var isDraftRecoveryPresented = false
-  @State private var isPersistenceResetConfirmationPresented = false
-  @State private var persistenceResetFeedback: PersistenceRecoveryResetFeedback?
   @State private var modalPresentation = WorkspaceModalPresentationState()
   @State private var fullTextSearchRequest: DraftFullTextSearchRequest?
   @State private var deferredFullTextSearchRequest: DraftFullTextSearchRequest?
@@ -313,182 +183,158 @@ struct ContentView: View {
   /// participate in lifecycle modifier type inference.
   private var workspaceToolbarAndEnvironmentContent: some View {
     workspaceRootContent
-    .environment(\.publishReadinessNavigationRequest, publishReadinessNavigationRequest)
-    .environment(\.workspaceWindowID, windowSession.windowID)
-    .environment(\.workspaceWindowSession, windowSession)
-    .modifier(WritingListWindowStorageModifier(state: windowSession.writingListState))
-    .environment(\.workspaceWindowIsKey, windowSession.isKeyWindow)
-    .environment(
-      \.settingsWorkspaceCommandAction,
-      settingsWorkspaceCommandAction
-    )
-    .background(WorkbenchAccessibilityStatusAnnouncer(store: store))
-    .safeAreaInset(edge: .top, spacing: 0) {
-      if store.isSafeMode {
-        WorkbenchSafeModeBanner()
+      .environment(\.publishReadinessNavigationRequest, publishReadinessNavigationRequest)
+      .environment(\.workspaceWindowID, windowSession.windowID)
+      .environment(\.workspaceWindowSession, windowSession)
+      .modifier(WritingListWindowStorageModifier(state: windowSession.writingListState))
+      .environment(\.workspaceWindowIsKey, windowSession.isKeyWindow)
+      .environment(
+        \.settingsWorkspaceCommandAction,
+        settingsWorkspaceCommandAction
+      )
+      .background(WorkbenchAccessibilityStatusAnnouncer(activityStatus: store.activityStatus))
+      .safeAreaInset(edge: .top, spacing: 0) {
+        if store.isSafeMode {
+          WorkbenchSafeModeBanner()
+        }
       }
-    }
-    .environment(
-      \.publishDrawerCommandAction,
-      PublishDrawerCommandAction { message in
-        openPublishDrawer(message: message)
-      }
-    )
-    .environment(
-      \.localSitePreviewCommandAction,
-      LocalSitePreviewCommandAction {
-        openLocalSitePreview()
-      }
-    )
-    .environment(
-      \.aiChatWorkspaceCommandAction,
-      AIChatWorkspaceCommandAction(
-        isAvailable: shellState.canUseProtectedWorkbench
-          && canRequestInspectorInCurrentLayout,
-        unavailableReason: canRequestInspectorInCurrentLayout
-          ? nil
-          : String(localized: "扩大窗口后可使用 Inspector"),
-        open: { draftID, quickPrompt in
-          openAIAssistantWorkspace(for: draftID, quickPrompt: quickPrompt)
+      .environment(
+        \.publishDrawerCommandAction,
+        PublishDrawerCommandAction { message in
+          openPublishDrawer(message: message)
         }
       )
-    )
-    .environmentObject(localSitePreviewState)
-    .environmentObject(sceneCommandRouter)
-    .focusedSceneObject(sceneCommandRouter)
-    .externalBrowserPreviewPresentation(coordinator: externalBrowserPreviewCoordinator)
-    .toolbar {
-      workspaceNavigationToolbar
-
-      if isSettingsWorkspacePresented {
-        ToolbarItem(placement: .principal) {
-          Text("设置")
-            .font(.headline)
-            .accessibilityAddTraits(.isHeader)
+      .environment(
+        \.localSitePreviewCommandAction,
+        LocalSitePreviewCommandAction {
+          openLocalSitePreview()
         }
-      } else {
-        // A principal ToolbarItem is an independent native host for the
-        // composed search button. Keeping it inside the navigation group lets
-        // AppKit omit the whole HStack from the toolbar AX tree.
-        ToolbarItem(placement: .principal) {
-          commandSearchToolbarButton
-            .accessibilityHidden(shellState.isQuickHideActive)
-        }
-      }
-
-      workspacePrimaryActionToolbar
-    }
-    .onChange(of: localSitePreviewState.activeProfileID) {
-      externalBrowserPreviewCoordinator.cancelPendingOpen()
-    }
-    .onChange(of: windowSession.selectedDraftID) { _, draftID in
-      externalBrowserPreviewCoordinator.cancelPendingOpen(ifDraftIsNoLongerCurrent: draftID)
-    }
-    .background(
-      MainWindowInitialSizeBridge(
-        sourceSession: repositorySourceSession,
-        profileProvider: { store.activeProfile }
       )
-    )
+      .environment(
+        \.aiChatWorkspaceCommandAction,
+        AIChatWorkspaceCommandAction(
+          isAvailable: shellState.canUseProtectedWorkbench
+            && canRequestInspectorInCurrentLayout,
+          unavailableReason: canRequestInspectorInCurrentLayout
+            ? nil
+            : String(localized: "扩大窗口后可使用 Inspector"),
+          open: { draftID, quickPrompt in
+            openAIAssistantWorkspace(for: draftID, quickPrompt: quickPrompt)
+          }
+        )
+      )
+      .environmentObject(localSitePreviewState)
+      .environmentObject(sceneCommandRouter)
+      .focusedSceneObject(sceneCommandRouter)
+      .externalBrowserPreviewPresentation(coordinator: externalBrowserPreviewCoordinator)
+      .toolbar {
+        workspaceNavigationToolbar
+
+        if isSettingsWorkspacePresented {
+          ToolbarItem(placement: .principal) {
+            Text("设置")
+              .font(.headline)
+              .accessibilityAddTraits(.isHeader)
+          }
+        } else {
+          // A principal ToolbarItem is an independent native host for the
+          // composed search button. Keeping it inside the navigation group lets
+          // AppKit omit the whole HStack from the toolbar AX tree.
+          ToolbarItem(placement: .principal) {
+            commandSearchToolbarButton
+              .accessibilityHidden(shellState.isQuickHideActive)
+          }
+        }
+
+        workspacePrimaryActionToolbar
+      }
+      .onChange(of: localSitePreviewState.activeProfileID) {
+        externalBrowserPreviewCoordinator.cancelPendingOpen()
+      }
+      .onChange(of: windowSession.selectedDraftID) { _, draftID in
+        externalBrowserPreviewCoordinator.cancelPendingOpen(ifDraftIsNoLongerCurrent: draftID)
+      }
+      .background(
+        MainWindowInitialSizeBridge(
+          sourceSession: repositorySourceSession,
+          profileProvider: { store.activeProfile }
+        )
+      )
   }
 
   /// Lifecycle, state synchronization, and sheet presentation are deliberately
   /// a second type-check boundary after the native toolbar chain.
   private var workspaceLifecycleContent: some View {
     workspaceToolbarAndEnvironmentContent
-    .onAppear {
-      restoreWindowSessionStorageIfNeeded()
-      synchronizeWindowSessionActivity()
-      configureRepositoryContentChangeMonitor()
-      configureOperationalPolling()
-    }
-    .onChange(of: sceneCommandRouterRootUpdateKey, initial: true) { _, _ in
-      updateSceneCommandRouterRootActions()
-    }
-    .onDisappear(perform: handleContentViewDisappear)
-    .task {
-      await MainRunLoopUpdateDeferral.waitForNextDefaultModeCycle()
-      guard !Task.isCancelled else { return }
-      handleContentViewAppear()
-    }
-    .onChange(of: autoRunPreflight) { _, newValue in
-      store.setAutomaticallyRefreshPreflightOnEdit(
-        store.isSafeMode ? false : newValue
-      )
-    }
-    .onChange(of: shellState.isQuickHideActive) { _, isActive in
-      if isActive {
-        deferredPaletteAIRequest.cancel()
-        deferredFullTextSearchRequest = nil
-        fullTextSearchRequest = nil
-        modalPresentation.dismiss()
+      .onAppear {
+        restoreWindowSessionStorageIfNeeded()
+        synchronizeWindowSessionActivity()
+        configureRepositoryContentChangeMonitor()
+        configureOperationalPolling()
       }
-    }
-    .onChange(of: scenePhase) { oldPhase, newPhase in
-      handleScenePhaseChange(oldPhase: oldPhase, newPhase: newPhase)
-    }
-    .onChange(of: controlActiveState) { _, _ in
-      synchronizeWindowSessionActivity()
-    }
-    .onChange(of: shellState.selectedSection) { _, section in
-      windowSession.receiveSharedSection(section)
-    }
-    .onChange(of: shellState.selectedDraftID) { _, draftID in
-      windowSession.receiveSharedDraft(draftID)
-    }
-    .onChange(of: windowSession.selectedSection) { _, section in
-      handleSelectedSectionChange(section: section)
-    }
-    .onChange(of: windowSession.selectedDraftID) { _, draftID in
-      handleSelectedDraftIDChange(draftID: draftID)
-    }
-    .onChange(of: repositoryContextStage) { _, stage in
-      handleRepositoryContextStageChange(stage: stage)
-    }
-    .onChange(of: contentHealthFilter) { _, filter in
-      handleContentHealthFilterChange(filter: filter)
-    }
-    .onChange(of: presentationState.isAssistantPresented) { _, isAssistant in
-      handleAssistantPresentationChange(isAssistant: isAssistant)
-    }
-    .alert(
-      String(localized: "工作台数据恢复"),
-      isPresented: persistenceRecoveryAlertPresented,
-      actions: persistenceRecoveryAlertActions,
-      message: persistenceRecoveryAlertMessage
-    )
-    .confirmationDialog(
-      String(localized: "重置为空白工作台？"),
-      isPresented: $isPersistenceResetConfirmationPresented,
-      titleVisibility: .visible
-    ) {
-      Button(String(localized: "归档后重置"), role: .destructive) {
-        resetPersistenceAfterConfirmation()
+      .onChange(of: sceneCommandRouterRootUpdateKey, initial: true) { _, _ in
+        updateSceneCommandRouterRootActions()
       }
-      Button(String(localized: "取消"), role: .cancel) {}
-    } message: {
-      Text("这会归档当前无法读取的数据文件，然后保存一个空白工作台。请先导出故障文件或恢复其他备份；此操作不能自动还原旧工作台。")
-    }
-    .alert(item: $persistenceResetFeedback) { feedback in
-      Alert(
-        title: Text(feedback.title),
-        message: Text(feedback.message),
-        dismissButton: .default(Text("好"))
+      .onDisappear(perform: handleContentViewDisappear)
+      .task {
+        await MainRunLoopUpdateDeferral.waitForNextDefaultModeCycle()
+        guard !Task.isCancelled else { return }
+        handleContentViewAppear()
+      }
+      .onChange(of: autoRunPreflight) { _, newValue in
+        store.setAutomaticallyRefreshPreflightOnEdit(
+          store.isSafeMode ? false : newValue
+        )
+      }
+      .onChange(of: shellState.isQuickHideActive) { _, isActive in
+        if isActive {
+          deferredPaletteAIRequest.cancel()
+          deferredFullTextSearchRequest = nil
+          fullTextSearchRequest = nil
+          modalPresentation.dismiss()
+        }
+      }
+      .onChange(of: scenePhase) { oldPhase, newPhase in
+        handleScenePhaseChange(oldPhase: oldPhase, newPhase: newPhase)
+      }
+      .onChange(of: controlActiveState) { _, _ in
+        synchronizeWindowSessionActivity()
+      }
+      .onChange(of: shellState.selectedSection) { _, section in
+        windowSession.receiveSharedSection(section)
+      }
+      .onChange(of: shellState.selectedDraftID) { _, draftID in
+        windowSession.receiveSharedDraft(draftID)
+      }
+      .onChange(of: windowSession.selectedSection) { _, section in
+        handleSelectedSectionChange(section: section)
+      }
+      .onChange(of: windowSession.selectedDraftID) { _, draftID in
+        handleSelectedDraftIDChange(draftID: draftID)
+      }
+      .onChange(of: repositoryContextStage) { _, stage in
+        handleRepositoryContextStageChange(stage: stage)
+      }
+      .onChange(of: contentHealthFilter) { _, filter in
+        handleContentHealthFilterChange(filter: filter)
+      }
+      .onChange(of: presentationState.isAssistantPresented) { _, isAssistant in
+        handleAssistantPresentationChange(isAssistant: isAssistant)
+      }
+      .workspacePersistenceRecovery(store: store)
+      .sheet(item: $readinessInspectorSheet) { request in
+        readinessInspectorSheetContent(request)
+      }
+      .sheet(isPresented: $isDraftRecoveryPresented, content: draftRecoveryPanel)
+      .sheet(
+        item: sheetModalPresentationBinding,
+        onDismiss: handleWorkspaceSheetDismissal,
+        content: modalContent
       )
-    }
-    .sheet(item: $readinessInspectorSheet) { request in
-      readinessInspectorSheetContent(request)
-    }
-    .sheet(isPresented: $isDraftRecoveryPresented, content: draftRecoveryPanel)
-    .sheet(
-      item: sheetModalPresentationBinding,
-      onDismiss: handleWorkspaceSheetDismissal,
-      content: modalContent
-    )
-    .knowledgeLibraryInspectorSheets(
-      knowledge: store.knowledge,
-      presentation: $knowledgeInspectorPresentation
-    )
+      .knowledgeLibraryInspectorSheets(
+        knowledge: store.knowledge,
+        presentation: $knowledgeInspectorPresentation
+      )
   }
 
   private func handleScenePhaseChange(oldPhase: ScenePhase, newPhase: ScenePhase) {
@@ -803,13 +649,6 @@ struct ContentView: View {
     }
   }
 
-  private var modalPresentationBinding: Binding<WorkspaceModalPresentation?> {
-    Binding(
-      get: { modalPresentation.presented },
-      set: { modalPresentation.replace(with: $0) }
-    )
-  }
-
   /// The publishing surface is a trailing workspace overlay rather than a
   /// modal sheet. All other modal presentations keep using the shared sheet
   /// router, and replacing the current presentation closes the overlay.
@@ -825,46 +664,6 @@ struct ContentView: View {
 
   private func draftRecoveryPanel() -> some View {
     DraftRecoveryPanel(store: store)
-  }
-
-  private var persistenceRecoveryAlertPresented: Binding<Bool> {
-    Binding(
-      get: { shellState.persistenceRecoveryMessage != nil },
-      set: {
-        if !$0 && !shellState.isPersistenceRecoveryWriteProtected {
-          store.dismissPersistenceRecoveryMessage()
-        }
-      }
-    )
-  }
-
-  @ViewBuilder
-  private func persistenceRecoveryAlertActions() -> some View {
-    if shellState.isPersistenceRecoveryWriteProtected {
-      Button(String(localized: "恢复其他备份…")) {
-        guard let sourceURL = WorkbenchRecoverySelectionPanel.chooseSnapshot() else { return }
-        if store.installPersistenceRecoverySnapshot(from: sourceURL) {
-          NSApp.terminate(nil)
-        }
-      }
-      Button(String(localized: "导出故障文件…")) {
-        guard let directoryURL = WorkbenchRecoverySelectionPanel.chooseExportDirectory() else {
-          return
-        }
-        _ = store.exportPersistenceRecoveryFiles(to: directoryURL)
-      }
-      Button(String(localized: "重置为空白工作台"), role: .destructive) {
-        isPersistenceResetConfirmationPresented = true
-      }
-    } else {
-      Button(String(localized: "继续")) {
-        store.dismissPersistenceRecoveryMessage()
-      }
-    }
-  }
-
-  private func persistenceRecoveryAlertMessage() -> some View {
-    Text(persistenceRecoveryMessage)
   }
 
   private func modalIsPresentedBinding(
@@ -1110,25 +909,6 @@ struct ContentView: View {
 
   private func skipFirstRunSetup() {
     modalPresentation.dismiss(.firstRunSetup)
-  }
-
-  private func resetPersistenceAfterConfirmation() {
-    switch store.resetPersistenceAfterUnrecoverableSnapshotResult() {
-    case .reset(let archiveURL):
-      persistenceResetFeedback = .success(archiveURL: archiveURL)
-    case .failed(let archiveURL, let message):
-      let archiveDetail =
-        archiveURL.map {
-          String(format: String(localized: "故障数据已归档到：%@\n\n"), $0.path)
-        } ?? ""
-      persistenceResetFeedback = .failure(
-        message: archiveDetail + message
-      )
-    }
-  }
-
-  private var persistenceRecoveryMessage: String {
-    shellState.persistenceRecoveryMessage ?? ""
   }
 
   private var supportsInspector: Bool {
@@ -1644,7 +1424,9 @@ struct ContentView: View {
   }
 
   @ViewBuilder
-  private func readinessInspectorSheetContent(_ request: PublishReadinessNavigationRequest) -> some View {
+  private func readinessInspectorSheetContent(_ request: PublishReadinessNavigationRequest)
+    -> some View
+  {
     if let initialDraft = store.draft(for: request.draftID) {
       VStack(spacing: 0) {
         WorkspaceTaskInspector(
@@ -1832,204 +1614,5 @@ struct ContentView: View {
     }
 
     isSidebarPresented.toggle()
-  }
-}
-
-@MainActor
-private struct WorkspaceCommandSearchToolbarControl: View {
-  @ObservedObject private var contextStore: WorkspaceToolbarEditorContextStore
-  let selectedDraftID: UUID?
-  let density: WorkspaceTopBarPresentation.Density
-  let isEnabled: Bool
-  let action: () -> Void
-
-  init(
-    contextStore: WorkspaceToolbarEditorContextStore,
-    selectedDraftID: UUID?,
-    density: WorkspaceTopBarPresentation.Density,
-    isEnabled: Bool,
-    action: @escaping () -> Void
-  ) {
-    _contextStore = ObservedObject(wrappedValue: contextStore)
-    self.selectedDraftID = selectedDraftID
-    self.density = density
-    self.isEnabled = isEnabled
-    self.action = action
-  }
-
-  var body: some View {
-    WorkspaceCommandSearchNativeHost(
-      density: density,
-      statistics: statistics,
-      isEnabled: isEnabled,
-      action: action
-    )
-    .frame(width: WorkspaceTopBarPresentation.searchWidth(for: density), height: 28)
-  }
-
-  private var statistics: WorkspaceTopBarPresentation.ContextStatistics {
-    guard let context = contextStore.context,
-      context.draftID == selectedDraftID
-    else {
-      return .init()
-    }
-    return .init(
-      wordCount: context.writingUnitCount,
-      readingMinutes: context.readingMinutes
-    )
-  }
-}
-
-
-struct WorkspacePublishDrawerLayoutPolicy {
-  static let minimumWidth: CGFloat = 380
-  static let idealWidth: CGFloat = 500
-  static let availableWidthRatio: CGFloat = 0.45
-
-  static func width(for availableWidth: CGFloat) -> CGFloat {
-    let nonnegativeWidth = max(0, availableWidth)
-    let proposedWidth = min(
-      idealWidth,
-      max(minimumWidth, nonnegativeWidth * availableWidthRatio)
-    )
-    return min(proposedWidth, nonnegativeWidth)
-  }
-}
-
-/// Publishing is presented above the workspace rather than as a native
-/// inspector column. A native inspector participates in split-view sizing and
-/// compresses the source list; this trailing overlay leaves the established
-/// sidebar and editor widths untouched while the user reviews the publish flow.
-private struct WorkspacePublishDrawerOverlay: View {
-  @ObservedObject var publishingFacade: WorkbenchPublishingFeatureFacade
-  let store: WorkbenchStore
-  @Binding var isPresented: Bool
-  let initialScope: PublishScope
-  let onNavigateIssue: (UUID, PublishReadinessTarget) -> Void
-
-  var body: some View {
-    GeometryReader { geometry in
-      HStack(spacing: 0) {
-        Spacer(minLength: 0)
-
-        Divider()
-
-        PublishDrawerView(
-          publishingFacade: publishingFacade,
-          store: store,
-          isPresented: $isPresented,
-          initialScope: initialScope,
-          onNavigateIssue: onNavigateIssue
-        )
-        .frame(width: WorkspacePublishDrawerLayoutPolicy.width(for: geometry.size.width))
-        .frame(maxHeight: .infinity)
-        .background(.regularMaterial)
-        .shadow(color: .black.opacity(0.16), radius: 18, x: -6, y: 0)
-      }
-    }
-    .accessibilityIdentifier("workspace-publish-drawer-overlay")
-  }
-}
-
-#if DEBUG || SCREENSHOT_CAPTURE_BUILD
-  private struct ScreenshotInlineAIInspector: View {
-    let store: WorkbenchStore
-    @State private var surfaceState = AIChatSurfaceState(surface: .inspector)
-    @StateObject private var operationSession = AIChatSurfaceOperationSession()
-
-    var body: some View {
-      GeometryReader { geometry in
-        HStack(spacing: 0) {
-          Spacer(minLength: 0)
-          Divider()
-          AIChatContextInspectorView(
-            store: store,
-            surfaceState: $surfaceState,
-            operationSession: operationSession
-          )
-          .frame(width: min(max(geometry.size.width * 0.38, 460), 520))
-          .frame(maxHeight: .infinity)
-          .background(Color(nsColor: .windowBackgroundColor))
-        }
-      }
-    }
-  }
-#endif
-
-private struct WorkbenchAccessibilityStatusAnnouncer: View {
-  @ObservedObject private var activityStatus: WorkbenchActivityStatusFacade
-  @State private var announcedStatus: WorkbenchAccessibilityStatus?
-
-  init(store: WorkbenchStore) {
-    _activityStatus = ObservedObject(wrappedValue: store.activityStatus)
-  }
-
-  var body: some View {
-    Color.clear
-      .frame(width: 1, height: 1)
-      .allowsHitTesting(false)
-      .onAppear {
-        announcedStatus = status
-      }
-      .onChange(of: status) { _, updatedStatus in
-        guard announcedStatus != updatedStatus else { return }
-        announcedStatus = updatedStatus
-        guard updatedStatus.shouldAnnounce else { return }
-        guard let application = NSApp else { return }
-        NSAccessibility.post(
-          element: application,
-          notification: .announcementRequested,
-          userInfo: [
-            .announcement: updatedStatus.message,
-            .priority: NSAccessibilityPriorityLevel.low.rawValue,
-          ]
-        )
-      }
-  }
-
-  private var status: WorkbenchAccessibilityStatus {
-    if activityStatus.isQuickHideActive { return .quickHideActive }
-    if activityStatus.repositoryScanState.isScanning {
-      return .repositoryScanning(activityStatus.repositoryScanState.message)
-    }
-    if activityStatus.isRemoteRepositoryPublishing { return .remotePublishing }
-    if activityStatus.isAIChatRunning { return .aiReplying }
-    if activityStatus.isDeploymentStatusChecking { return .deploymentChecking }
-    if let error = activityStatus.lastSaveError?.nilIfEmpty { return .saveFailed(error) }
-    return .saveStatus(activityStatus.lastSaveStatus)
-  }
-}
-
-private enum WorkbenchAccessibilityStatus: Equatable {
-  case quickHideActive
-  case repositoryScanning(String)
-  case remotePublishing
-  case aiReplying
-  case deploymentChecking
-  case saveFailed(String)
-  case saveStatus(String)
-
-  var shouldAnnounce: Bool {
-    switch self {
-    case .saveStatus:
-      return false
-    default:
-      return true
-    }
-  }
-
-  var message: String {
-    switch self {
-    case .quickHideActive: return String(localized: "快速隐藏已启用（仅界面遮挡）。")
-    case .repositoryScanning(let message):
-      return String(format: String(localized: "仓库状态更新：%@"), message)
-    case .remotePublishing: return String(localized: "正在执行线上发布。")
-    case .aiReplying: return String(localized: "AI 正在回复。")
-    case .deploymentChecking: return String(localized: "正在检查部署状态。")
-    case .saveFailed(let error):
-      return String(format: String(localized: "保存失败：%@"), error)
-    case .saveStatus(let status):
-      return String(format: String(localized: "保存状态：%@"), status)
-    }
   }
 }

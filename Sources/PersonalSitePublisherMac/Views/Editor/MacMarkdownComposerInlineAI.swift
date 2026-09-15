@@ -6,32 +6,6 @@ extension MacMarkdownComposerView {
     MarkdownInlineAIContextService()
   }
 
-  var shouldShowInlineSelectionPalette: Bool {
-    activeWritingContextPanel == nil
-      && !isInlineSelectionPaletteDismissed
-      && (isInlineSelectionAIAction || (hasSelectedText && selectionEditPreview == nil))
-  }
-
-  func inlineSelectionAIActionAvailability(
-    _ kind: AIPublishingActionKind
-  ) -> AIPublishingActionAvailabilityPresentation {
-    selectionAIActionAvailability(kind, respectActiveAction: false)
-  }
-
-  func performInlineSelectionAIAction(_ kind: AIPublishingActionKind) {
-    isInlineSelectionPaletteDismissed = false
-    performSelectionAIAction(kind, presentsInlineResult: true)
-  }
-
-  func performInlineConvergedSelectionAIAction(_ convergence: AIPublishingActionConvergence) {
-    isInlineSelectionPaletteDismissed = false
-    performSelectionAIAction(
-      convergence.canonicalActionKind,
-      convergence: convergence,
-      presentsInlineResult: true
-    )
-  }
-
   func requestInlineGhostText() {
     cancelInlineGhostText()
     guard !isFrontMatterSelection,

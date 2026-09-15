@@ -42,11 +42,4 @@ final class LocalAIEngineSetupServiceTests: XCTestCase {
     XCTAssertEqual(service.recommendation(for: .vLLM, applicationIsInstalled: true), .unavailable)
     XCTAssertEqual(service.recommendation(for: .mlx, applicationIsInstalled: false), .unavailable)
   }
-
-  func testOllamaModelLibraryUsesTheFixedOfficialURL() {
-    XCTAssertEqual(
-      LocalAIEngineSetupService.ollamaModelLibraryURL,
-      URL(string: "https://ollama.com/library")!
-    )
-  }
 }

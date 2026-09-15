@@ -97,7 +97,7 @@ grep -Fq 'timeout-minutes: 25' \
   || fail "pull-request quick lane must keep a bounded independent timeout"
 grep -Fq 'timeout-minutes: 45' \
   < <(sed -n '/^  quality-coverage:/,/^  quality-build:/p' "$WORKFLOW") \
-  || fail "pull-request coverage lane must keep its independent timeout"
+  || fail "scheduled and manual coverage lane must keep its independent timeout"
 grep -Fq 'timeout-minutes: 35' \
   < <(sed -n '/^  quality-build:/,/^  quality-runtime:/p' "$WORKFLOW") \
   || fail "pull-request build lane must keep a bounded independent timeout"
@@ -183,7 +183,23 @@ done
 grep -Fq -- '--quick' "$WORKFLOW" \
   || fail "workflow must run the shared quick gate"
 grep -Fq -- '--check swift-coverage' "$WORKFLOW" \
-  || fail "pull requests must enforce the measured Swift coverage baseline"
+  || fail "scheduled, version-tag, and manual deep runs must enforce measured Swift coverage"
+coverage_lane_body="$(sed -n '/^  quality-coverage:/,/^  quality-build:/p' "$WORKFLOW")"
+coverage_trigger="$(sed -n '/^    if:/,/^    runs-on:/p' <<<"$coverage_lane_body")"
+if grep -Fq "github.event_name == 'pull_request'" <<<"$coverage_trigger"; then
+  fail "PRs must not repeat the complete behavior suite in the coverage lane"
+fi
+grep -Fq "github.event.inputs.risk_level != 'quick'" <<<"$coverage_trigger" \
+  || fail "manual PR and release runs must retain the coverage lane"
+pr_aggregation_body="$(sed -n '/^  quality:/,/^  release-performance:/p' "$WORKFLOW")"
+grep -Fq "COVERAGE_EXPECTED: \${{ github.event_name == 'pull_request' && 'skipped' || 'success' }}" \
+  <<<"$pr_aggregation_body" \
+  || fail "only automatic PR runs may expect skipped coverage"
+grep -Fq '[[ "$COVERAGE_RESULT" == "$COVERAGE_EXPECTED" ]]' <<<"$pr_aggregation_body" \
+  || fail "PR aggregation must reject unexpected coverage failures or skips"
+if grep -E '^[[:space:]]*\[\[ .*_RESULT' "$WORKFLOW" | grep -Fv '|| exit 1' >/dev/null; then
+  fail "quality result assertions must exit explicitly on failure across Bash versions"
+fi
 if grep -Fq 'swift6-migration' "$WORKFLOW"; then
   fail "workflow must not retain a duplicate standalone Swift 6 migration lane"
 fi
@@ -244,6 +260,7 @@ grep -Fq '.build/*.diagnostics/' "$TOOLING_WORKFLOW" \
 pr_build_body="$(sed -n '/^  quality-build:/,/^  quality-runtime:/p' "$WORKFLOW")"
 release_runtime_body="$(sed -n '/^  quality-runtime:/,/^  quality:/p' "$WORKFLOW")"
 for runtime_contract in \
+  'RELEASE_ARTIFACT_MANIFEST: ${{ github.workspace }}/.build/release-artifact-manifest.json' \
   'bash script/check_ui_runtime.sh --launch' \
   'WORKBENCH_XCUI_APP_PATH="$PWD/dist/RepoPress Studio.app"' \
   'bash script/check_accessibility_runtime.sh --non-screenshot-regression' \
@@ -305,4 +322,4 @@ if grep -Eq '(github_pat_|ghp_[A-Za-z0-9_]{20,}|glpat-[A-Za-z0-9_-]{20,}|Authori
   fail "workflow contains token-like content"
 fi
 
-echo "CI quality workflow gate: main-push quick layer, parallel PR quick/coverage/strict-test-inventory/module-boundary/Release-build layer, nightly or version-tag/manual-release runtime/performance/UI layer, fail-closed aggregators, pinned actions, read-only permissions, summaries, and evidence verified"
+echo "CI quality workflow gate: one PR behavior-suite run, scheduled/version-tag/manual deep coverage, strict-test-inventory/module-boundary/Release-build checks, release runtime/performance/UI, fail-closed aggregators, pinned actions, read-only permissions, summaries, and evidence verified"

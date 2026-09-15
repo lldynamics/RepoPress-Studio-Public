@@ -12,7 +12,7 @@ final class SettingsSubsectionNavigationTests: XCTestCase {
     }
   }
 
-  func testSiteSettingsDestinationsResolveToExpectedSubsections() {
+  func testSiteSettingsTabsExposeStableSubsections() {
     XCTAssertEqual(
       SettingsSubsection.sections(for: .defaultRules),
       [.rulesBasics, .rulesDiscovery, .rulesFrontMatter, .rulesPaths]
@@ -25,10 +25,6 @@ final class SettingsSubsectionNavigationTests: XCTestCase {
       SettingsSubsection.sections(for: .ai),
       [.aiConnection, .aiAdvanced, .aiWritingStyle]
     )
-    XCTAssertEqual(SettingsSubsection.section(for: .rules(.paths)), .rulesPaths)
-    XCTAssertEqual(SettingsSubsection.section(for: .token(.deployment)), .tokenDeployment)
-    XCTAssertEqual(SettingsSubsection.section(for: .ai(.credentials)), .aiConnection)
-    XCTAssertEqual(SettingsSubsection.section(for: .data(.backup)), .dataBackup)
   }
 
   func testStructuredDestinationsCoverEveryDeepLinkRoute() {

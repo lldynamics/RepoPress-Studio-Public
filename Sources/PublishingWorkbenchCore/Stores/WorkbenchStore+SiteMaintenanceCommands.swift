@@ -112,63 +112,6 @@ extension WorkbenchStore {
     return record
   }
 
-  @discardableResult
-  public func applySuggestedMaintenanceSchedule() async -> Int {
-    await refreshSiteMaintenanceSnapshot()
-    guard let report = siteMaintenanceSnapshot?.report else { return 0 }
-    let appliedCount = publishingStore.applySuggestedMaintenanceSchedule(
-      report: report,
-      store: self
-    )
-    if appliedCount > 0 {
-      invalidateDraftDerivedCaches()
-    } else {
-      invalidateSiteMaintenanceSnapshot()
-    }
-    return appliedCount
-  }
-
-  @discardableResult
-  public func applySuggestedMaintenanceSchedule(
-    report: SiteMaintenanceReport,
-    selectedDraftIDs: Set<UUID>,
-    expectedOriginalDates: [UUID: Date]
-  ) async -> Int {
-    let appliedCount = publishingStore.applySuggestedMaintenanceSchedule(
-      report: report,
-      store: self,
-      selectedDraftIDs: selectedDraftIDs,
-      expectedOriginalDates: expectedOriginalDates
-    )
-    if appliedCount > 0 {
-      invalidateDraftDerivedCaches()
-    } else {
-      invalidateSiteMaintenanceSnapshot()
-    }
-    return appliedCount
-  }
-
-  /// Applies exactly the target dates that the user reviewed. Callers should
-  /// freeze this map together with `expectedOriginalDates` when opening a
-  /// confirmation surface so a later report refresh cannot change the action.
-  @discardableResult
-  public func applySuggestedMaintenanceSchedule(
-    approvedSuggestedDates: [UUID: Date],
-    expectedOriginalDates: [UUID: Date]
-  ) async -> Int {
-    let appliedCount = publishingStore.applySuggestedMaintenanceSchedule(
-      approvedSuggestedDates: approvedSuggestedDates,
-      store: self,
-      expectedOriginalDates: expectedOriginalDates
-    )
-    if appliedCount > 0 {
-      invalidateDraftDerivedCaches()
-    } else {
-      invalidateSiteMaintenanceSnapshot()
-    }
-    return appliedCount
-  }
-
   public func relatedArticleSuggestions(for draft: ArticleDraft, limit: Int = 5) -> [SiteRelationSuggestion] {
     siteMaintenanceStore.relatedArticleSuggestions(
       for: draft.id,

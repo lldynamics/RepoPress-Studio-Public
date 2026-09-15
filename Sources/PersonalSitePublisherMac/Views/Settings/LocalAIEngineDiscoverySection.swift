@@ -70,7 +70,6 @@ struct LocalAIEngineDiscoverySection: View {
       discoveryTask?.cancel()
       discoveryTask = nil
       isDiscovering = false
-      setupCoordinator.cancelDownload(announce: false)
     }
   }
 
@@ -136,10 +135,6 @@ struct LocalAIEngineDiscoverySection: View {
           .disabled(selectedModel(for: result).isEmpty)
           .accessibilityHint("使用所选模型更新当前 AI 连接档案")
         }
-
-        if result.kind == .ollama {
-          ollamaModelDownloadControls()
-        }
       } else {
         if !result.message.isEmpty {
           Text(verbatim: result.message)
@@ -156,11 +151,9 @@ struct LocalAIEngineDiscoverySection: View {
   @ViewBuilder
   private func engineSetupControls(for result: LocalAIEngineDiscoveryResult) -> some View {
     if result.kind == .ollama, result.isAvailable {
-      Text("Ollama 尚未安装任何模型。下载可能较大，请确认精确模型 ID 后开始。")
+      Text("Ollama 已响应，但尚未返回模型。请在 Ollama 中准备模型后重新检测。")
         .font(.caption)
         .foregroundStyle(.secondary)
-
-      ollamaModelDownloadControls()
     } else if result.kind == .lmStudio, result.isAvailable {
       Text("LM Studio 已响应，但尚未返回模型。请在 LM Studio 中下载或加载模型后重新检测。")
         .font(.caption)
@@ -201,57 +194,6 @@ struct LocalAIEngineDiscoverySection: View {
       Text(setupMessage)
         .font(.caption)
         .foregroundStyle(.secondary)
-    }
-  }
-
-  @ViewBuilder
-  private func ollamaModelDownloadControls() -> some View {
-    TextField("模型 ID，例如 qwen3:8b", text: $setupCoordinator.ollamaModelID)
-      .textFieldStyle(.roundedBorder)
-      .disabled(setupCoordinator.isDownloading)
-      .accessibilityLabel("Ollama 模型 ID")
-
-    HStack(spacing: 8) {
-      if setupCoordinator.isDownloading {
-        ProgressView()
-          .controlSize(.small)
-        Button("停止等待下载", role: .cancel) {
-          setupCoordinator.cancelDownload()
-        }
-      } else {
-        Button("下载到 Ollama") {
-          setupCoordinator.startOllamaDownload(onCompletion: startDiscovery)
-        }
-        .workbenchProminentActionStyle()
-        .controlSize(.small)
-      }
-      Button("浏览 Ollama 模型库") {
-        setupCoordinator.openOllamaModelLibrary()
-      }
-      .controlSize(.small)
-      .disabled(setupCoordinator.isDownloading)
-      Spacer(minLength: 0)
-    }
-
-    if let progress = setupCoordinator.downloadProgress {
-      VStack(alignment: .leading, spacing: 4) {
-        Text(verbatim: progress.status)
-          .font(.caption)
-          .foregroundStyle(.secondary)
-        if let fractionCompleted = progress.fractionCompleted {
-          ProgressView(value: fractionCompleted)
-        }
-        if let completedBytes = progress.completedBytes,
-          let totalBytes = progress.totalBytes,
-          totalBytes > 0
-        {
-          Text(
-            "\(ByteCountFormatter.string(fromByteCount: completedBytes, countStyle: .file)) / \(ByteCountFormatter.string(fromByteCount: totalBytes, countStyle: .file))"
-          )
-          .font(.workbenchMetadata.monospacedDigit())
-          .foregroundStyle(.secondary)
-        }
-      }
     }
   }
 

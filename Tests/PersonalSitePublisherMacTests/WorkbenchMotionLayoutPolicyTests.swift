@@ -21,10 +21,4 @@ final class WorkbenchMotionLayoutPolicyTests: XCTestCase {
     XCTAssertEqual(state.constraints.maximum, 620)
   }
 
-  func testReduceMotionPolicySuppressesStatusAndDrawerMotion() {
-    let policy = WorkbenchMotionPolicy(reduceMotion: true)
-
-    XCTAssertEqual(policy.style(for: .statusChange), .none)
-    XCTAssertEqual(policy.style(for: .drawerPresentation), .none)
-  }
 }

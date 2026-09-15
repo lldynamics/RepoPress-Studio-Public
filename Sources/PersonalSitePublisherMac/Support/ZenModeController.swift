@@ -33,12 +33,6 @@ final class ZenModeController: ObservableObject {
     didSet { recalculateToolbarOpacity() }
   }
 
-  @available(*, deprecated, renamed: "isRecentlyTyped")
-  var isTyping: Bool {
-    get { isRecentlyTyped }
-    set { isRecentlyTyped = newValue }
-  }
-
   @Published var isHovered: Bool = false {
     didSet { recalculateToolbarOpacity() }
   }
@@ -178,7 +172,4 @@ final class ZenModeController: ObservableObject {
     isZenModeActive.toggle()
   }
 
-  func toggleFormattingBar() {
-    isFormattingBarVisible.toggle()
-  }
 }

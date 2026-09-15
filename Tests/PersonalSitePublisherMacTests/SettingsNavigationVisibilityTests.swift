@@ -1,46 +1,9 @@
-import Foundation
 import XCTest
 
 @testable import PersonalSitePublisherMac
 
-/// Protects the user-visible nine-page Settings navigation contract.
+/// Protects Settings entry points and subsection discovery.
 final class SettingsNavigationVisibilityTests: XCTestCase {
-  func testSidebarRendersEveryPageAndExplicitlyDisclosedSubsectionRows() throws {
-    let repositoryRoot = URL(fileURLWithPath: #filePath)
-      .deletingLastPathComponent()
-      .deletingLastPathComponent()
-      .deletingLastPathComponent()
-    let sidebarSourceURL = repositoryRoot.appendingPathComponent(
-      "Sources/PersonalSitePublisherMac/Views/Settings/SettingsNavigationSidebar.swift"
-    )
-    let source = try String(contentsOf: sidebarSourceURL, encoding: .utf8)
-
-    XCTAssertTrue(source.contains("pageSection(\"当前站点\", tabs: SettingsTab.siteSettings)"))
-    XCTAssertTrue(source.contains("pageSection(\"应用\", tabs: SettingsTab.applicationSettings)"))
-    XCTAssertTrue(source.contains("DisclosureGroup(isExpanded: expansionBinding(for: tab))"))
-    XCTAssertTrue(source.contains("ForEach(SettingsSubsection.sections(for: tab))"))
-    XCTAssertTrue(
-      source.contains("@SceneStorage(SettingsNavigationExpansionState.sceneStorageKey)"))
-    XCTAssertTrue(source.contains("settings-tab-\\(tab.id)"))
-    XCTAssertTrue(source.contains("settings-subsection-\\(subsection.id)"))
-    XCTAssertTrue(source.contains(".scrollIndicators(.hidden)"))
-  }
-
-  func testSidebarExposesAllNineSettingsPagesInStableSections() {
-    XCTAssertEqual(
-      SettingsTab.siteSettings,
-      [.configurationStatus, .defaultRules, .token, .ai]
-    )
-    XCTAssertEqual(
-      SettingsTab.applicationSettings,
-      [.dataManagement, .appearance, .editor, .rss, .privacy]
-    )
-    let visibleTabs = SettingsTab.siteSettings + SettingsTab.applicationSettings
-    XCTAssertEqual(visibleTabs.count, SettingsTab.allCases.count)
-    XCTAssertEqual(Set(visibleTabs), Set(SettingsTab.allCases))
-    XCTAssertEqual(Set(visibleTabs).count, visibleTabs.count)
-  }
-
   func testEveryVisiblePageHasAtLeastOneDiscoverableSubsection() {
     for tab in SettingsTab.allCases {
       XCTAssertFalse(

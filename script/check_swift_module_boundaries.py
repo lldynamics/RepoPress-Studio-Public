@@ -42,10 +42,6 @@ GOVERNED_DEPENDENCIES: dict[str, set[str]] = {
         "PublishingKnowledgeCore",
         "PublishingMarkdownCore",
     },
-    "PublishingMCPClient": {
-        "PublishingAICore",
-        "PublishingAgentContracts",
-    },
     "BrowserExtensionProtocolSupport": set(),
     "PersonalSitePublisherMac": {
         "BrowserExtensionProtocolSupport",
@@ -67,7 +63,6 @@ EXPECTED_PRODUCTION_TARGET_TYPES = {
     "PublishingAgentContracts": "regular",
     "PublishingKnowledgeCore": "regular",
     "PublishingWorkbenchCore": "regular",
-    "PublishingMCPClient": "regular",
     "BrowserExtensionProtocolSupport": "regular",
     "PersonalSitePublisherMac": "executable",
 }
@@ -92,11 +87,6 @@ TEST_TARGET_DEPENDENCIES: dict[str, set[str]] = {
         "PublishingMarkdownCore",
         "PublishingWorkbenchCore",
     },
-    "PublishingMCPClientTests": {
-        "PublishingAICore",
-        "PublishingAgentContracts",
-        "PublishingMCPClient",
-    },
     "PersonalSitePublisherMacTests": {
         "BrowserExtensionProtocolSupport",
         "PersonalSitePublisherMac",
@@ -117,7 +107,6 @@ EXPECTED_PRODUCTS = {
     },
     "PublishingKnowledgeCore": {"type": "library", "targets": {"PublishingKnowledgeCore"}},
     "PublishingWorkbenchCore": {"type": "library", "targets": {"PublishingWorkbenchCore"}},
-    "PublishingMCPClient": {"type": "library", "targets": {"PublishingMCPClient"}},
     "PersonalSitePublisherMac": {"type": "executable", "targets": {"PersonalSitePublisherMac"}},
 }
 EXPECTED_EXTERNAL_PRODUCTS: dict[str, dict[str, str]] = {
@@ -133,10 +122,6 @@ EXPECTED_EXTERNAL_PRODUCTS: dict[str, dict[str, str]] = {
     "PublishingAgentContracts": {},
     "PublishingKnowledgeCore": {},
     "PublishingWorkbenchCore": {},
-    "PublishingMCPClient": {
-        "MCP": "swift-sdk",
-        "SystemPackage": "swift-system",
-    },
     "BrowserExtensionProtocolSupport": {},
     "PersonalSitePublisherMac": {"Sparkle": "Sparkle"},
 }
@@ -167,7 +152,6 @@ CORE_SOURCE_TARGETS = (
     "PublishingAgentContracts",
     "PublishingKnowledgeCore",
     "PublishingWorkbenchCore",
-    "PublishingMCPClient",
 )
 EXPECTED_EXPORTS = {
     "PublishingAICore",

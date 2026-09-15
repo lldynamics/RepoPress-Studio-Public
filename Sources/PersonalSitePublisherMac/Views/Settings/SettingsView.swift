@@ -592,10 +592,6 @@ struct SettingsView: View {
     requestedSettingsTabID = ""
   }
 
-  private func selectTopLevelSettingsTab(_ tab: SettingsTab) {
-    selectSettingsDestination(.tab(tab), healthDestination: nil)
-  }
-
   private func selectSettingsDestination(
     _ destination: SettingsDestination,
     healthDestination: SettingsConfigurationHealthDestination?,
