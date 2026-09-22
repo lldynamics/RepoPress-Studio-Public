@@ -1,4 +1,5 @@
 import Foundation
+import PublishingDomainContracts
 
 extension WorkbenchStore {
   public func makeVideoAttachment(
@@ -618,6 +619,14 @@ extension WorkbenchStore {
   public func createDraft() {
     publishingStore.createDraft(store: self)
     invalidateDraftDerivedCaches()
+  }
+
+  /// Creates content for a window-owned action without changing the shared
+  /// navigation context of another window. The caller focuses the returned ID.
+  public func createDraftWithoutChangingSelection() -> UUID {
+    let draftID = publishingStore.createDraft(store: self, selectCreatedDraft: false)
+    invalidateDraftDerivedCaches()
+    return draftID
   }
 
   public func createGeneralDraft() {

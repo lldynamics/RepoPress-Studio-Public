@@ -6,7 +6,8 @@ and safe for a public repository.
 ## Before opening a pull request
 
 1. Create a focused branch and avoid unrelated formatting or generated files.
-2. Run `swift test` on macOS 14 or later.
+2. Run `./script/check_release_gate.sh --quick` on macOS 14 or later; it includes
+   the Swift behavior tests and shared development checks.
 3. For browser-extension changes, run `npm ci --ignore-scripts` followed by the
    relevant tests documented in `README.md`.
 4. Confirm that no credential, personal data, private repository name, local
@@ -25,6 +26,47 @@ Use XCTest when the test depends on XCTest-only integration or UI lifecycle
 behavior. Keep those cases isolated and avoid adding new XCTest suites for
 pure models, services, projections, or persistence rules. Every new test must
 still run through the package's normal `swift test` gate.
+
+## Module dependencies
+
+Module and dependency changes follow the [module boundary guide](docs/module-dependencies.md).
+Update the manifest, executable policy, and regression fixtures together, then run
+the existing module boundary gate and its tests. Review audit candidates before
+removing a dependency; do not relax compatibility-import ceilings to pass a check.
+
+## Script maintenance
+
+Use the existing entrypoints in [`script/README.md`](script/README.md).
+Product behavior belongs in `Sources/` with behavior tests in `Tests/`;
+scripts orchestrate tools, check a single contract, or collect evidence.
+Prefer extending an existing module or mode over adding another executable.
+
+A permanent script needs a documented responsibility, inputs, outputs, failure
+semantics, caller, validation, and retirement condition. Update the responsibility
+index in the same change. Register quality checks in `script/release_checks.json`
+instead of maintaining another check list in CI or another wrapper script.
+Run `./script/check_release_gate.sh --tooling` when changing tooling.
+
+Keep one-off experiments in ignored `.build/tmp/` and remove them when the task
+ends. Move a reusable capability into its owning module before retaining it.
+Remove retired tracked scripts and their obsolete callers together; Git retains
+their history. Translation increments used during parallel editing must be
+merged into the reviewed master dictionary and archived before the change is
+finished, using the existing localization synchronizer.
+
+## Documentation sources
+
+Follow the [source map and documentation rules](docs/README.md). Change the
+owning configuration or implementation first, then update its operational
+guide. Keep README files as summaries that link to that guide, and query the
+manifest or CLI help for check lists, thresholds, and modes. Configuration and
+implementation disagreements require a fix, not a prose-only workaround.
+
+Mark documents as current guides, proposals, or historical implementation and
+validation records. Preserve the source, date, failures, and unverified scope of
+historical evidence. Verify links in the development checkout and an exported
+temporary snapshot when shared documentation changes; update source documents
+instead of maintaining exported copies independently.
 
 Do not commit `.env` files, signing material, provisioning profiles, database
 files, diagnostic archives, or generated release packages. Use `example.com`,

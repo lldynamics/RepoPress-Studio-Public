@@ -1,5 +1,6 @@
 import CryptoKit
 import Foundation
+import PublishingKnowledgeCore
 import PublishingWorkbenchCore
 
 enum RSSArticleHTMLRenderer {

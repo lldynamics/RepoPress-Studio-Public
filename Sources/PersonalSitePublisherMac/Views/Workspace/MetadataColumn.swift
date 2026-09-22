@@ -1,3 +1,4 @@
+import PublishingKnowledgeCore
 import PublishingWorkbenchCore
 import SwiftUI
 
@@ -70,7 +71,10 @@ struct MetadataColumn: View {
           )
         }
       case .knowledgeLibrary:
-        knowledgeInspector
+        KnowledgeInspectorContentView(
+          knowledge: store.knowledge,
+          presentation: $knowledgeInspectorPresentation
+        )
       case .rssLibrary:
         ScrollView {
           RSSLibraryInspectorPanel(
@@ -116,30 +120,42 @@ struct MetadataColumn: View {
     }
   }
 
+  /// AI is an overlay only for Writing. The underlying article Inspector stays
+  /// at a stable tree position, so its selected tab and ScrollView state can
+  /// survive a temporary AI presentation without exposing a second host.
+  private var isAssistantOverlayPresented: Bool {
+    selectedSection == .writing && contentPresentation.isAssistantPresented
+  }
+}
+
+private struct KnowledgeInspectorContentView: View {
+  @ObservedObject var knowledge: KnowledgeStore
+  @Binding var presentation: KnowledgeLibraryInspectorPresentationState
+
   @ViewBuilder
-  private var knowledgeInspector: some View {
-    if let document = store.knowledge.selectedDocument {
+  var body: some View {
+    if let document = knowledge.selectedDocument {
       KnowledgeLibraryInspectorPanel(
-        knowledge: store.knowledge,
+        knowledge: knowledge,
         document: document,
         activeSearchResult: activeKnowledgeSearchResult,
-        onEditMetadata: { knowledgeInspectorPresentation.editMetadata(for: document) },
-        onAddAnnotation: { knowledgeInspectorPresentation.addAnnotation(to: document) },
+        onEditMetadata: { presentation.editMetadata(for: document) },
+        onAddAnnotation: { presentation.addAnnotation(to: document) },
         onAnnotateSearchHit: {
-          knowledgeInspectorPresentation.annotateSearchResult(
+          presentation.annotateSearchResult(
             activeKnowledgeSearchResult,
             in: document
           )
         },
-        onEditAnnotation: { knowledgeInspectorPresentation.editAnnotation($0) },
+        onEditAnnotation: { presentation.editAnnotation($0) },
         onDeleteAnnotation: { annotationID in
-          Task { await store.knowledge.deleteAnnotation(annotationID) }
+          Task { await knowledge.deleteAnnotation(annotationID) }
         },
         onOpenSourceHistory: {
-          knowledgeInspectorPresentation.openSourceHistory(for: document.id)
+          presentation.openSourceHistory(for: document.id)
         },
         onReportContentIssue: {
-          knowledgeInspectorPresentation.openSourceHistory(
+          presentation.openSourceHistory(
             for: document.id,
             preparesLocalRepairOnAppear: true
           )
@@ -158,14 +174,17 @@ struct MetadataColumn: View {
   }
 
   private var activeKnowledgeSearchResult: KnowledgeSearchResult? {
-    guard let result = store.knowledge.selectedSearchResult,
-      result.document.id == store.knowledge.selectedDocumentID
+    guard let result = knowledge.selectedSearchResult,
+      result.document.id == knowledge.selectedDocumentID
     else { return nil }
     return result
   }
 
+}
+
+extension MetadataColumn {
   @ViewBuilder
-  private var articleInspector: some View {
+  fileprivate var articleInspector: some View {
     if let selectedDraftID, let fallbackDraft = store.draft(for: selectedDraftID) {
       let draft = Binding<ArticleDraft>(
         get: { store.draft(for: selectedDraftID) ?? fallbackDraft },
@@ -196,12 +215,6 @@ struct MetadataColumn: View {
     }
   }
 
-  /// AI is an overlay only for Writing. The underlying article Inspector stays
-  /// at a stable tree position, so its selected tab and ScrollView state can
-  /// survive a temporary AI presentation without exposing a second host.
-  private var isAssistantOverlayPresented: Bool {
-    selectedSection == .writing && contentPresentation.isAssistantPresented
-  }
 }
 
 private struct InspectorWidthResetControl: View {

@@ -33,6 +33,7 @@ struct MacMarkdownComposerView: View {
   @State var editorSessionSaveGeneration: UInt64 = 0
   @State var pendingInlineStructuredEditApplyRequestID: UUID?
   @State var pendingFindReplacement: MarkdownPendingFindReplacement?
+  @State var pendingAttachmentInsertion: MarkdownPendingAttachmentInsertion?
   @StateObject var findMatchRefreshCoordinator = MarkdownFindMatchRefreshCoordinator()
   @State var markdownAnalysisTaskIsAutomatic = false
   @State var sceneCommandOwnerID = UUID()
@@ -66,6 +67,7 @@ struct MacMarkdownComposerView: View {
   @State private var slashCommandQuery: String? = nil
   @State private var isSlashMenuPresented: Bool = false
   @State private var slashCommandSelectedIndex = 0
+  @State private var pendingSlashAIRequest: (requestID: UUID, draftID: UUID)?
   @State private var contextualPopoverAnchor: MarkdownContextualPopoverAnchor?
   @State private var isDiscardInvalidFrontMatterConfirmationPresented = false
   @State var isArticleInformationExpanded = false
@@ -303,24 +305,7 @@ struct MacMarkdownComposerView: View {
       )
     }
     .task {
-      // Editor restoration updates shared selection and presentation state.
-      // Do it after the mounting transaction so ObservableObject publishers
-      // never fire while SwiftUI is still installing focused values.
-      await MainRunLoopUpdateDeferral.waitForNextDefaultModeCycle()
-      guard !Task.isCancelled else { return }
-      syncEditorBodyFromStore()
-      let restoredSession = store.markdownEditorSessionState(for: draft.id)
-      restoreInvalidFrontMatterDocument(
-        restoredSession.invalidFrontMatterDocument,
-        baseBodyMarkdown: restoredSession.invalidFrontMatterBaseBodyMarkdown,
-        baseBodyRevision: restoredSession.invalidFrontMatterBaseBodyRevision,
-        baseMetadataRevision: restoredSession.invalidFrontMatterBaseMetadataRevision
-      )
-      refreshFindMatchSnapshot()
-      syncActiveEditorSelection()
-      refreshMarkdownCursorContextSnapshot()
-      applyEditorFocusRequest()
-      scheduleMarkdownAnalysis(isAutomatic: true)
+      await restoreEditorAfterMount()
     }
     .task(id: markdownSelectionBubbleTaskID) {
       let selection = selectedRange
@@ -355,6 +340,10 @@ struct MacMarkdownComposerView: View {
       applyEditorFocusRequest()
     }
     .onChange(of: selectedRange) { oldRange, newRange in
+      // AppKit coalesces text and selection bindings separately. Re-evaluate
+      // when the caret arrives after the text so a valid slash trigger is not
+      // lost merely because the body observer ran with the previous range.
+      checkSlashCommandTrigger()
       selectionBubblePresentationState.selectionDidChange(to: newRange)
       if !NSEqualRanges(oldRange, newRange) {
         if let selectionEditPreview,
@@ -376,91 +365,121 @@ struct MacMarkdownComposerView: View {
       checkSlashCommandTrigger()
       pendingFindReplacePreview = nil
     }
-    .onChange(of: isRealtimeAnalysisEnabled) { _, isEnabled in
-      if isEnabled {
-        scheduleMarkdownAnalysis(isAutomatic: true)
-      } else {
-        invalidateMarkdownAnalysis()
+  }
+
+  private var editorWorkspaceDocumentLifecycle: some View {
+    editorWorkspaceLifecycle
+      .onChange(of: isRealtimeAnalysisEnabled) { _, isEnabled in
+        if isEnabled {
+          scheduleMarkdownAnalysis(isAutomatic: true)
+        } else {
+          invalidateMarkdownAnalysis()
+        }
       }
-    }
-    .onChange(of: isFrontMatterSelection) { _, isSelected in
-      if isSelected {
-        store.clearActiveEditorSelection(for: draft.id)
-      } else {
-        syncActiveEditorSelection()
+      .onChange(of: isFrontMatterSelection) { _, isSelected in
+        if isSelected {
+          store.clearActiveEditorSelection(for: draft.id)
+        } else {
+          syncActiveEditorSelection()
+        }
       }
-    }
-    .onChange(of: findQuery) { _, _ in
-      findReplaceMessage = ""
-      refreshFindMatchSnapshot()
-      saveCurrentEditorSession()
-    }
-    .onChange(of: findOptions) { _, _ in
-      findReplaceMessage = ""
-      refreshFindMatchSnapshot()
-      saveCurrentEditorSession()
-    }
-    .onChange(of: replacementText) { _, _ in
-      saveCurrentEditorSession()
-    }
-    .onChange(of: isFindReplacePresented) { _, _ in
-      if !isFindReplacePresented {
-        findScopeSnapshot = nil
-        if findScope == .selection { findScope = .body }
-        discardPendingFindReplacePreview()
+      .onChange(of: findQuery) { _, _ in
+        findReplaceMessage = ""
+        refreshFindMatchSnapshot()
+        saveCurrentEditorSession()
       }
-      saveCurrentEditorSession()
-    }
-    .onChange(of: editorBodyRevision) { _, _ in
-      pendingFindReplacePreview = nil
-      refreshFindMatchSnapshot()
-    }
-    .modifier(
-      MarkdownDocumentSynchronizationModifier(
-        editorDocument: editorDocument,
-        editorBody: editorBody,
-        canonicalFrontMatter: canonicalFrontMatter,
-        onEditorDocumentChange: applyEditorDocument,
-        onEditorBodyChange: handleEditorBodyChange,
-        onCanonicalFrontMatterChange: handleCanonicalFrontMatterChange
+      .onChange(of: findOptions) { _, _ in
+        findReplaceMessage = ""
+        refreshFindMatchSnapshot()
+        saveCurrentEditorSession()
+      }
+      .onChange(of: replacementText) { _, _ in
+        saveCurrentEditorSession()
+      }
+      .onChange(of: isFindReplacePresented) { _, _ in
+        if !isFindReplacePresented {
+          findScopeSnapshot = nil
+          if findScope == .selection { findScope = .body }
+          discardPendingFindReplacePreview()
+        }
+        saveCurrentEditorSession()
+      }
+      .onChange(of: editorBodyRevision) { _, _ in
+        pendingFindReplacePreview = nil
+        refreshFindMatchSnapshot()
+      }
+      .modifier(
+        MarkdownDocumentSynchronizationModifier(
+          editorDocument: editorDocument,
+          editorBody: editorBody,
+          canonicalFrontMatter: canonicalFrontMatter,
+          onEditorDocumentChange: applyEditorDocument,
+          onEditorBodyChange: handleEditorBodyChange,
+          onCanonicalFrontMatterChange: handleCanonicalFrontMatterChange
+        )
       )
+      .onChange(of: draft.bodyMarkdown) { _, _ in
+        aiActions.invalidateInlineStructuredEditReviewIfStale(for: draft, body: editorBody)
+        syncEditorBodyFromStore()
+      }
+      .onChange(of: draft.editorObservationProjection) { _, _ in
+        aiActions.invalidateInlineStructuredEditReviewIfStale(for: draft, body: editorBody)
+      }
+      .onChange(of: editorEditRequest?.id) { _, requestID in
+        if let pending = pendingAttachmentInsertion, pending.requestID != requestID {
+          cancelAttachmentImport()
+        }
+      }
+      .onChange(of: editorBufferRevision) { _, _ in
+        syncEditorBodyFromStore()
+      }
+      .onChange(of: draft.id) { oldDraftID, _ in
+        pendingInlineStructuredEditApplyRequestID = nil
+        pendingFindReplacement = nil
+        // Review state is application-scoped and draft-keyed. Switching one
+        // window must not destroy a review still visible in another window; the
+        // destination composer simply hides sessions for other draft IDs.
+        selectionBubblePresentationState.reset()
+        cancelFindMatchRefresh()
+        editorStatisticsState.update(.empty)
+        editorState.trackDraft(draft.id)
+        flushEditorSessionSave(for: oldDraftID)
+        cancelAttachmentImport()
+        dismissInsertedImageMetadata()
+        cancelSelectionAIAction()
+        cancelInlineGhostText()
+        activeWritingContextPanel = nil
+        cancelAIPromptClipboardTask()
+        editorEditRequest = nil
+        markdownTextFocusRequest = nil
+        store.flushDraftBodyEditorBuffer(for: oldDraftID)
+        syncEditorBodyFromStore(force: true)
+        resetEditorDocumentFromDraft()
+        restoreEditorSession(for: draft.id)
+        syncActiveEditorSelection()
+        scheduleMarkdownAnalysis(isAutomatic: true)
+      }
+  }
+
+  private func restoreEditorAfterMount() async {
+    // Editor restoration updates shared selection and presentation state.
+    // Do it after the mounting transaction so ObservableObject publishers
+    // never fire while SwiftUI is still installing focused values.
+    await MainRunLoopUpdateDeferral.waitForNextDefaultModeCycle()
+    guard !Task.isCancelled else { return }
+    syncEditorBodyFromStore()
+    let restoredSession = store.markdownEditorSessionState(for: draft.id)
+    restoreInvalidFrontMatterDocument(
+      restoredSession.invalidFrontMatterDocument,
+      baseBodyMarkdown: restoredSession.invalidFrontMatterBaseBodyMarkdown,
+      baseBodyRevision: restoredSession.invalidFrontMatterBaseBodyRevision,
+      baseMetadataRevision: restoredSession.invalidFrontMatterBaseMetadataRevision
     )
-    .onChange(of: draft.bodyMarkdown) { _, _ in
-      aiActions.invalidateInlineStructuredEditReviewIfStale(for: draft, body: editorBody)
-      syncEditorBodyFromStore()
-    }
-    .onChange(of: draft.editorObservationProjection) { _, _ in
-      aiActions.invalidateInlineStructuredEditReviewIfStale(for: draft, body: editorBody)
-    }
-    .onChange(of: editorBufferRevision) { _, _ in
-      syncEditorBodyFromStore()
-    }
-    .onChange(of: draft.id) { oldDraftID, _ in
-      pendingInlineStructuredEditApplyRequestID = nil
-      pendingFindReplacement = nil
-      // Review state is application-scoped and draft-keyed. Switching one
-      // window must not destroy a review still visible in another window; the
-      // destination composer simply hides sessions for other draft IDs.
-      selectionBubblePresentationState.reset()
-      cancelFindMatchRefresh()
-      editorStatisticsState.update(.empty)
-      editorState.trackDraft(draft.id)
-      flushEditorSessionSave(for: oldDraftID)
-      cancelAttachmentImport()
-      dismissInsertedImageMetadata()
-      cancelSelectionAIAction()
-      cancelInlineGhostText()
-      activeWritingContextPanel = nil
-      cancelAIPromptClipboardTask()
-      editorEditRequest = nil
-      markdownTextFocusRequest = nil
-      store.flushDraftBodyEditorBuffer(for: oldDraftID)
-      syncEditorBodyFromStore(force: true)
-      resetEditorDocumentFromDraft()
-      restoreEditorSession(for: draft.id)
-      syncActiveEditorSelection()
-      scheduleMarkdownAnalysis(isAutomatic: true)
-    }
+    refreshFindMatchSnapshot()
+    syncActiveEditorSelection()
+    refreshMarkdownCursorContextSnapshot()
+    applyEditorFocusRequest()
+    scheduleMarkdownAnalysis(isAutomatic: true)
   }
 
   private var editorOverlaySurface: some View {
@@ -553,7 +572,7 @@ struct MacMarkdownComposerView: View {
   }
 
   var body: some View {
-    editorWorkspaceLifecycle
+    editorWorkspaceDocumentLifecycle
       .onAppear {
         zenModeController.refreshAccessibilityState(
           voiceOverEnabled: accessibilityVoiceOverEnabled,
@@ -737,6 +756,7 @@ struct MacMarkdownComposerView: View {
           inlineAIReviewPresentation: reviewPresentation?.textViewPresentation,
           ghostText: inlineGhostText,
           ssgSnippets: markdownSSGSnippets,
+          reportsScrollSourceLine: false,
           scrollSyncUpdate: nil,
           scrollRestorationUpdate: editorScrollRestorationUpdate,
           onStatisticsChanged: { statistics in
@@ -750,7 +770,14 @@ struct MacMarkdownComposerView: View {
           onEditRequestHandled: { outcome in
             guard editorEditRequest?.id == outcome.id else { return }
             editorEditRequest = nil
+            handleAttachmentInsertionOutcome(outcome)
             handleFindReplacementOutcome(outcome)
+            if let pending = pendingSlashAIRequest, pending.requestID == outcome.id {
+              pendingSlashAIRequest = nil
+              if outcome.wasApplied, pending.draftID == draft.id {
+                performArticleAIAction(.continueArticle)
+              }
+            }
             guard pendingInlineStructuredEditApplyRequestID == outcome.id else { return }
             pendingInlineStructuredEditApplyRequestID = nil
             if outcome.wasApplied {
@@ -761,6 +788,7 @@ struct MacMarkdownComposerView: View {
             }
             EditorAccessibilityAnnouncementCenter.announce(selectionActionMessage)
           },
+          onEditRequestWillApply: attachmentInsertionAdmission,
           onGhostTextAccepted: { _ in
             acceptInlineGhostText()
           },
@@ -773,8 +801,8 @@ struct MacMarkdownComposerView: View {
           onSSGSnippetShortcut: { candidate in
             handleAutomaticSSGSnippetShortcut(candidate)
           },
-          onSlashCommandKey: { key in
-            handleSlashCommandKey(key)
+          onSlashCommandKey: { key, applyReplacement in
+            handleSlashCommandKey(key, applyReplacement: applyReplacement)
           },
           onLiveBodyChange: { previousBody, updatedBody in
             handleLiveEditorBodyChange(from: previousBody, to: updatedBody)
@@ -977,15 +1005,18 @@ struct MacMarkdownComposerView: View {
     )
   }
 
-  private func buildDefaultSlashCommands() -> [SlashCommandItem] {
-    [
+  private func buildDefaultSlashCommands(
+    applySnippet: ((String) -> Bool)? = nil
+  ) -> [SlashCommandItem] {
+    let apply = applySnippet ?? { snippet in applySlashCommand(snippet) }
+    return [
       SlashCommandItem(
         id: "h1",
         title: String(localized: "一级标题"),
         subtitle: String(localized: "# 大标题"),
         systemImage: "textformat.size"
       ) {
-        applySlashCommand("# ")
+        _ = apply("# ")
       },
       SlashCommandItem(
         id: "h2",
@@ -993,7 +1024,7 @@ struct MacMarkdownComposerView: View {
         subtitle: String(localized: "## 中标题"),
         systemImage: "textformat.size"
       ) {
-        applySlashCommand("## ")
+        _ = apply("## ")
       },
       SlashCommandItem(
         id: "h3",
@@ -1001,7 +1032,7 @@ struct MacMarkdownComposerView: View {
         subtitle: String(localized: "### 小标题"),
         systemImage: "textformat.size"
       ) {
-        applySlashCommand("### ")
+        _ = apply("### ")
       },
       SlashCommandItem(
         id: "code",
@@ -1009,7 +1040,7 @@ struct MacMarkdownComposerView: View {
         subtitle: String(localized: "``` 代码语法高亮"),
         systemImage: "curlybraces.square"
       ) {
-        applySlashCommand("```swift\n\n```")
+        _ = apply("```swift\n\n```")
       },
       SlashCommandItem(
         id: "table",
@@ -1017,7 +1048,7 @@ struct MacMarkdownComposerView: View {
         subtitle: String(localized: "| 表头 |"),
         systemImage: "tablecells"
       ) {
-        applySlashCommand("| 列 1 | 列 2 |\n| --- | --- |\n| 内容 | 内容 |")
+        _ = apply("| 列 1 | 列 2 |\n| --- | --- |\n| 内容 | 内容 |")
       },
       SlashCommandItem(
         id: "quote",
@@ -1025,7 +1056,7 @@ struct MacMarkdownComposerView: View {
         subtitle: String(localized: "> 引用文本"),
         systemImage: "text.quote"
       ) {
-        applySlashCommand("> ")
+        _ = apply("> ")
       },
       SlashCommandItem(
         id: "task",
@@ -1033,7 +1064,7 @@ struct MacMarkdownComposerView: View {
         subtitle: String(localized: "- [ ] 待办事项"),
         systemImage: "checklist"
       ) {
-        applySlashCommand("- [ ] ")
+        _ = apply("- [ ] ")
       },
       SlashCommandItem(
         id: "hr",
@@ -1041,7 +1072,7 @@ struct MacMarkdownComposerView: View {
         subtitle: String(localized: "--- 分隔线"),
         systemImage: "minus"
       ) {
-        applySlashCommand("\n---\n")
+        _ = apply("\n---\n")
       },
       SlashCommandItem(
         id: "ai",
@@ -1049,8 +1080,12 @@ struct MacMarkdownComposerView: View {
         subtitle: String(localized: "使用 AI 自动生成段落"),
         systemImage: "wand.and.stars"
       ) {
-        applySlashCommand("")
-        performArticleAIAction(.continueArticle)
+        if let applySnippet {
+          guard applySnippet("") else { return }
+          performArticleAIAction(.continueArticle)
+        } else {
+          _ = applySlashCommand("", startsAIContinuation: true)
+        }
       },
     ]
   }
@@ -1071,26 +1106,39 @@ struct MacMarkdownComposerView: View {
     isSlashMenuPresented = true
   }
 
-  private func applySlashCommand(_ snippet: String) {
+  private func applySlashCommand(_ snippet: String, startsAIContinuation: Bool = false) -> Bool {
     let location = editorSessionState.selectedRange.location
     guard
       let replaceRange = MarkdownSlashCommandText.replacementRange(
         in: editorBody,
         caretUTF16Location: location
       )
-    else { return }
+    else { return false }
 
-    if let currentRange = Range(replaceRange, in: editorBody) {
-      editorBody.replaceSubrange(currentRange, with: snippet)
-      dismissSlashCommandMenu()
-    }
+    let request = MarkdownTextEditRequest(
+      expectedText: editorBody,
+      edit: MarkdownSmartEdit(
+        replacedRange: replaceRange,
+        replacement: snippet,
+        selectedRange: NSRange(
+          location: replaceRange.location + (snippet as NSString).length, length: 0
+        )
+      )
+    )
+    pendingSlashAIRequest = startsAIContinuation ? (request.id, draft.id) : nil
+    editorEditRequest = request
+    dismissSlashCommandMenu()
+    return true
   }
 
-  private func handleSlashCommandKey(_ key: MarkdownSlashCommandKey) -> Bool {
+  private func handleSlashCommandKey(
+    _ key: MarkdownSlashCommandKey,
+    applyReplacement: @escaping (String) -> Bool
+  ) -> Bool {
     guard isSlashMenuPresented else { return false }
 
     let filteredItems = MarkdownSlashCommandMenu.filteredItems(
-      from: buildDefaultSlashCommands(),
+      from: buildDefaultSlashCommands(applySnippet: applyReplacement),
       matching: slashCommandQuery ?? ""
     )
     switch key {

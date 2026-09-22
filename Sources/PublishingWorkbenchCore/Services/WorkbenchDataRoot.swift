@@ -1,4 +1,5 @@
 import Foundation
+import PublishingKnowledgeCore
 
 /// Paths owned by a data root. Every component declared by the manifest must
 /// already exist; missing entries are treated as possible data loss instead of

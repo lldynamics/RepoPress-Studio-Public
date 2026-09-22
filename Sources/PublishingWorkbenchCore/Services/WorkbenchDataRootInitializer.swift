@@ -1,5 +1,6 @@
 import Foundation
 import OSLog
+import PublishingKnowledgeCore
 
 private let workbenchDataRootLogger = Logger(
   subsystem: "com.jinfang.PersonalSitePublisherMac",
@@ -174,8 +175,7 @@ public struct WorkbenchDataRootInitializer: Sendable {
     at fileURL: URL,
     fileManager: FileManager
   ) throws {
-    let database = try RSSReaderDatabase(fileURL: fileURL, fileManager: fileManager)
-    _ = try database.statistics()
+    try RSSReaderBootstrap.createDatabaseAndValidate(at: fileURL, fileManager: fileManager)
   }
 
   private func install(
@@ -230,8 +230,7 @@ public struct WorkbenchDataRootInitializer: Sendable {
       )
     }
     _ = try knowledgePersistenceLifecycle.createOrOpenAndValidate(at: layout.knowledgeDatabaseURL)
-    let rssDatabase = try RSSReaderDatabase(fileURL: layout.rssReaderDatabaseURL)
-    _ = try rssDatabase.statistics()
+    try RSSReaderBootstrap.createDatabaseAndValidate(at: layout.rssReaderDatabaseURL)
 
     let attachmentValues = try layout.managedAttachmentsURL.resourceValues(
       forKeys: [.isDirectoryKey, .isSymbolicLinkKey]

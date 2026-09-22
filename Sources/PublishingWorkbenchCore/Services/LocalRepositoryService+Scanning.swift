@@ -1,4 +1,5 @@
 import Foundation
+import PublishingCoreSupport
 
 extension LocalRepositoryService {
   func scan(

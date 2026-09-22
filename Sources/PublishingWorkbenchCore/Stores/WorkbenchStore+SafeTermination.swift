@@ -1,4 +1,5 @@
 import Foundation
+import PublishingKnowledgeCore
 
 enum ProjectSaveRecoveryError: LocalizedError {
   case message(String)
@@ -78,8 +79,7 @@ extension WorkbenchStore {
   private func savedSnapshotMatches(_ snapshot: WorkbenchSnapshot) throws -> Bool {
     let expectedData = try JSONEncoder.workbench.encode(snapshot)
     let expected = try JSONDecoder.workbench.decode(WorkbenchSnapshot.self, from: expectedData)
-    let actualData = try Data(contentsOf: persistenceStore.persistence.fileURL)
-    let actual = try JSONDecoder.workbench.decode(WorkbenchSnapshot.self, from: actualData)
+    let actual = try persistenceStore.persistence.loadPrimarySnapshot()
     return actual == expected
   }
 

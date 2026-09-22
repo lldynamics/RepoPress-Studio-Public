@@ -1,4 +1,5 @@
 import Foundation
+import PublishingKnowledgeCore
 import PublishingWorkbenchCore
 
 struct RSSHighlightDraft: Identifiable {

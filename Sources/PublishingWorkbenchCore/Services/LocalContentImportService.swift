@@ -1,4 +1,5 @@
 import Foundation
+import PublishingDomainContracts
 
 public struct LocalContentImportResult: Codable, Hashable, Sendable {
   public var importedDrafts: [ArticleDraft]

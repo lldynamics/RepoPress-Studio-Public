@@ -1,3 +1,4 @@
+import PublishingKnowledgeCore
 import PublishingWorkbenchCore
 import SwiftUI
 
@@ -23,6 +24,9 @@ struct RSSMaintenanceSettingsView: View {
   @AppStorage(RSSReaderUserPreferences.automaticTranslationEnabledKey)
   private var automaticTranslationEnabled = RSSReaderUserPreferences
     .defaultAutomaticTranslationEnabled
+  @AppStorage(RSSReaderUserPreferences.automaticTitleTranslationEnabledKey)
+  private var automaticTitleTranslationEnabled = RSSReaderUserPreferences
+    .defaultAutomaticTitleTranslationEnabled
   @AppStorage(RSSReaderUserPreferences.translationBackendKey)
   private var translationBackendRawValue =
     RSSReaderUserPreferences.defaultTranslationBackend.rawValue
@@ -196,6 +200,13 @@ struct RSSMaintenanceSettingsView: View {
             detail: automaticTranslationDescription,
             isOn: $automaticTranslationEnabled,
             accessibilityIdentifier: "rss-automatic-translation"
+          )
+
+          settingsToggle(
+            title: String(localized: "自动翻译列表标题"),
+            detail: automaticTitleTranslationDescription,
+            isOn: $automaticTitleTranslationEnabled,
+            accessibilityIdentifier: "rss-automatic-title-translation"
           )
 
           settingsToggle(
@@ -463,6 +474,15 @@ struct RSSMaintenanceSettingsView: View {
       return String(localized: "Apple 本机翻译只会在目标语言包已安装时自动翻译；未安装时不会自动下载或弹出提示，标题和正文在本机设备端处理。")
     case .ai:
       return String(localized: "会把当前文章标题和正文发送给当前 AI 服务，并受 AI 远程总闸与目的地授权约束；文章内仍可手动关闭或重新翻译。")
+    }
+  }
+
+  private var automaticTitleTranslationDescription: String {
+    switch selectedTranslationBackend {
+    case .apple:
+      return String(localized: "只翻译当前已加载列表中的标题；需要已安装对应语言包，不会自动下载。")
+    case .ai:
+      return String(localized: "只翻译当前已加载列表中的标题；仅在已允许 AI 发送权限时使用，不会发送正文。")
     }
   }
 

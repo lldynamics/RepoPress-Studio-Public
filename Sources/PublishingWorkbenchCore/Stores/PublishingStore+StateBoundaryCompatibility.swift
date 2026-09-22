@@ -1,4 +1,5 @@
 import Foundation
+import PublishingDomainContracts
 
 extension PublishingStore {
   public internal(set) var releaseRecords: [ReleaseRecord] {

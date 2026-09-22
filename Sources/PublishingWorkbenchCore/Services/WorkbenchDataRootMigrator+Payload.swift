@@ -1,4 +1,5 @@
 import Foundation
+import PublishingDomainContracts
 
 extension WorkbenchDataRootMigrator {
   func copyComponents(
@@ -121,13 +122,13 @@ extension WorkbenchDataRootMigrator {
       at: snapshotURL,
       maximumByteCount: WorkbenchFileReadLimits.maximumRecoverySnapshotByteCount
     )
-    guard let snapshot = try? JSONDecoder.workbench.decode(
-      WorkbenchSnapshot.self,
-      from: originalData
-    ), (try? WorkbenchSnapshotSemanticValidator.validate(snapshot)) != nil else {
+    let persistence = WorkbenchPersistence(fileURL: snapshotURL)
+    guard let snapshot = try? persistence.loadStoredSnapshot(at: snapshotURL) else {
       return
     }
-    guard var object = try JSONSerialization.jsonObject(with: originalData) as? [String: Any]
+    let manifest = try persistence.recordManifest(from: originalData)
+    let portableData = try JSONEncoder.workbench.encode(snapshot)
+    guard var object = try JSONSerialization.jsonObject(with: portableData) as? [String: Any]
     else {
       return
     }
@@ -148,7 +149,12 @@ extension WorkbenchDataRootMigrator {
       from: rewrittenData
     )
     try WorkbenchSnapshotSemanticValidator.validate(rewrittenSnapshot)
-    try rewrittenData.write(to: snapshotURL, options: .atomic)
+    if let manifest {
+      try persistence.replaceStagedRecordSnapshot(
+        rewrittenSnapshot, manifest: manifest, at: snapshotURL)
+    } else {
+      try rewrittenData.write(to: snapshotURL, options: .atomic)
+    }
   }
 
   func rewriteSnapshotAttachmentPaths(

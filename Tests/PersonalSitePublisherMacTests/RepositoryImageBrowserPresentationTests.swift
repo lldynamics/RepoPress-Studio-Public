@@ -1,5 +1,6 @@
-import PublishingWorkbenchCore
+import PublishingDomainContracts
 import XCTest
+
 @testable import PersonalSitePublisherMac
 
 final class RepositoryImageBrowserPresentationTests: XCTestCase {

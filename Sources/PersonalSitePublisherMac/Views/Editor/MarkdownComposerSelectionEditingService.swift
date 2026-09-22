@@ -5,6 +5,59 @@ struct MarkdownComposerSelectionMutation {
   var draft: ArticleDraft
   var selectedRange: NSRange
 }
+
+/// The body, selection and optimistic revisions that an asynchronous media
+/// import must still match before it can insert its Markdown. Keeping this
+/// value immutable prevents a later caret move from redirecting the import.
+struct MarkdownComposerAttachmentInsertionSnapshot: Equatable {
+  let bodyMarkdown: String
+  let selectedRange: NSRange
+  let bodyRevision: UInt64
+  let editorMetadataRevision: UInt64
+
+  init(
+    bodyMarkdown: String,
+    selectedRange: NSRange,
+    bodyRevision: UInt64,
+    editorMetadataRevision: UInt64,
+    selectionEditingService: MarkdownComposerSelectionEditingService =
+      MarkdownComposerSelectionEditingService()
+  ) {
+    self.bodyMarkdown = bodyMarkdown
+    self.selectedRange = selectionEditingService.clamped(
+      selectedRange,
+      length: (bodyMarkdown as NSString).length
+    )
+    self.bodyRevision = bodyRevision
+    self.editorMetadataRevision = editorMetadataRevision
+  }
+
+  func matches(
+    bodyMarkdown: String,
+    bodyRevision: UInt64,
+    editorMetadataRevision: UInt64
+  ) -> Bool {
+    self.bodyMarkdown == bodyMarkdown
+      && self.bodyRevision == bodyRevision
+      && self.editorMetadataRevision == editorMetadataRevision
+  }
+
+  func replacingSelection(
+    in draft: ArticleDraft,
+    with markdown: String,
+    selectionEditingService: MarkdownComposerSelectionEditingService =
+      MarkdownComposerSelectionEditingService()
+  ) -> MarkdownComposerSelectionMutation {
+    var sourceDraft = draft
+    sourceDraft.bodyMarkdown = bodyMarkdown
+    return selectionEditingService.replacingSelection(
+      in: sourceDraft,
+      selectedRange: selectedRange,
+      with: markdown
+    )
+  }
+}
+
 struct MarkdownComposerSelectionEditingService {
   func replacingSelection(
     in draft: ArticleDraft,
@@ -14,8 +67,10 @@ struct MarkdownComposerSelectionEditingService {
     var updated = draft
     let source = updated.bodyMarkdown as NSString
     let range = editingRange(in: source, selectedRange: selectedRange)
-    let needsLeadingBreak = range.location > 0 && !source.substring(to: range.location).hasSuffix("\n")
-    let needsTrailingBreak = range.location + range.length < source.length
+    let needsLeadingBreak =
+      range.location > 0 && !source.substring(to: range.location).hasSuffix("\n")
+    let needsTrailingBreak =
+      range.location + range.length < source.length
       && !source.substring(from: range.location + range.length).hasPrefix("\n")
     let insertion = "\(needsLeadingBreak ? "\n" : "")\(markdown)\(needsTrailingBreak ? "\n" : "")"
     updated.bodyMarkdown = source.replacingCharacters(in: range, with: insertion)
@@ -106,16 +161,12 @@ struct MarkdownComposerSelectionEditingService {
   }
 
   func editingRange(in source: NSString, selectedRange: NSRange) -> NSRange {
-    let range = clamped(selectedRange, length: source.length)
-    if range.length > 0 {
-      return range
-    }
-    return NSRange(location: source.length, length: 0)
+    clamped(selectedRange, length: source.length)
   }
 
   func clamped(_ range: NSRange, length: Int) -> NSRange {
     let location = min(max(range.location, 0), length)
     let maxLength = max(0, length - location)
-    return NSRange(location: location, length: min(range.length, maxLength))
+    return NSRange(location: location, length: min(max(range.length, 0), maxLength))
   }
 }

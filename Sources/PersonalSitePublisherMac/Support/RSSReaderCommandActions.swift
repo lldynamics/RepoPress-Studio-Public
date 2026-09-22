@@ -1,3 +1,4 @@
+import PublishingKnowledgeCore
 import SwiftUI
 
 struct RSSReaderCommandActions {

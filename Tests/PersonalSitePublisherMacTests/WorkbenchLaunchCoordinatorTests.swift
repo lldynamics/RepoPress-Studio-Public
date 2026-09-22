@@ -2,6 +2,7 @@ import Foundation
 import XCTest
 
 @testable import PersonalSitePublisherMac
+@testable import PublishingKnowledgeCore
 @testable import PublishingWorkbenchCore
 
 @MainActor

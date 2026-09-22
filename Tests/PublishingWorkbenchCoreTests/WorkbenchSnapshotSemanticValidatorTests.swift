@@ -1,5 +1,6 @@
 import Foundation
 import XCTest
+
 @testable import PublishingWorkbenchCore
 
 final class WorkbenchSnapshotSemanticValidatorTests: XCTestCase {
@@ -137,7 +138,7 @@ final class WorkbenchSnapshotSemanticValidatorTests: XCTestCase {
       },
       archiveExistingSnapshots: {
         didArchive = true
-        return try fixture.persistence.archiveUnrecoverableSnapshotFiles()
+        return try fixture.persistence.archiveUnrecoverableSnapshotFilesUnlocked()
       }
     )
 
@@ -197,7 +198,7 @@ final class WorkbenchSnapshotSemanticValidatorTests: XCTestCase {
         try self.liveAtomicWrite(data, destinationURL)
       },
       archiveExistingSnapshots: {
-        try fixture.persistence.archiveUnrecoverableSnapshotFiles()
+        try fixture.persistence.archiveUnrecoverableSnapshotFilesUnlocked()
       }
     )
 
@@ -229,7 +230,7 @@ final class WorkbenchSnapshotSemanticValidatorTests: XCTestCase {
         try self.liveAtomicWrite(data, destinationURL)
       },
       archiveExistingSnapshots: {
-        try fixture.persistence.archiveUnrecoverableSnapshotFiles()
+        try fixture.persistence.archiveUnrecoverableSnapshotFilesUnlocked()
       }
     )
 

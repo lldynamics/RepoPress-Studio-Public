@@ -1,5 +1,6 @@
 import Combine
 import Foundation
+import PublishingDomainContracts
 
 /// Owns state that exists only while preparing, previewing, or completing a
 /// publish operation. `PublishingStore` keeps compatibility accessors while
@@ -7,6 +8,7 @@ import Foundation
 @MainActor
 public final class PublishSessionStore: ObservableObject {
   @Published public internal(set) var releaseRecords: [ReleaseRecord]
+  @Published public internal(set) var executionRecords: [PublishExecutionRecord] = []
   @Published public internal(set) var publishPackage: PublishPackage?
   @Published public internal(set) var localPublishPreview: LocalPublishPreview?
   @Published public internal(set) var localPublishReadiness: LocalPublishReadiness?

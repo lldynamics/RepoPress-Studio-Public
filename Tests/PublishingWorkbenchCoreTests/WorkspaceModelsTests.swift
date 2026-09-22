@@ -49,6 +49,13 @@ final class WorkspaceModelsTests: XCTestCase {
       [.writing, .library, .rss, .sync, .contentHealth]
     )
     XCTAssertEqual(
+      WorkspaceNavigationPresentation.commandMenuItems.map(\.displayNameLocalizationKey),
+      [
+        "workspace.writing.page", "workspace.library", "workspace.rss", "workspace.sync.page",
+        "workspace.contentHealth",
+      ]
+    )
+    XCTAssertEqual(
       WorkspaceNavigationPresentation.secondaryEntryItems.map(\.section),
       [.siteStarter]
     )
@@ -65,6 +72,25 @@ final class WorkspaceModelsTests: XCTestCase {
       WorkspaceNavigationPresentation.commandPaletteSections,
       [.writing, .library, .rss, .sync, .contentHealth, .siteStarter]
     )
+  }
+
+  func testWorkspaceAreasGroupStableAtomicRoutesWithoutChangingTheirPersistenceIDs() {
+    XCTAssertEqual(WorkspaceArea.allCases, [.writing, .resources, .site])
+    XCTAssertEqual(WorkspaceNavigationPresentation.primaryAreas, WorkspaceArea.allCases)
+    XCTAssertEqual(WorkspaceArea.writing.sections, [.writing])
+    XCTAssertEqual(WorkspaceArea.resources.sections, [.library, .rss])
+    XCTAssertEqual(WorkspaceArea.site.sections, [.sync, .contentHealth, .images, .siteStarter])
+    XCTAssertEqual(WorkspaceArea.writing.defaultSection, .writing)
+    XCTAssertEqual(WorkspaceArea.resources.defaultSection, .library)
+    XCTAssertEqual(WorkspaceArea.site.defaultSection, .sync)
+    XCTAssertEqual(WorkspaceArea.area(for: .rss), .resources)
+    XCTAssertEqual(WorkspaceArea.area(for: .images), .site)
+    XCTAssertEqual(WorkspaceArea.area(for: .writing), .writing)
+    let groupedSections = WorkspaceArea.allCases.flatMap(\.sections)
+    XCTAssertEqual(Set(groupedSections), Set(WorkspaceSection.allCases))
+    XCTAssertEqual(groupedSections.count, WorkspaceSection.allCases.count)
+    XCTAssertEqual(WorkspaceSection.writing.rawValue, "writing")
+    XCTAssertEqual(WorkspaceSection.sync.rawValue, "sync")
   }
 
   func testCommandPaletteUsesCanonicalWorkspaceAllowlist() {

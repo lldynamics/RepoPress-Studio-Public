@@ -76,19 +76,25 @@ extension WorkbenchAIStore {
   /// their network child tasks, so a late completion cannot reinstall state
   /// for a deleted draft.
   func reconcileAIDraftSuggestionState(validDraftIDs: Set<UUID>) {
+    let invalidRequests = aiRequestBaselines.filter { !validDraftIDs.contains($0.value.draft.id) }
+    for lane in invalidRequests.keys {
+      if let generation = currentAIRequestGeneration(lane) {
+        cancelAIRequest(lane, generation: generation)
+      }
+    }
     var knownDraftIDs = Set(aiMetadataSuggestionsByDraftID.keys)
-        .union(aiImageTextSuggestionsByDraftID.keys)
-        .union(aiMetadataSuggestionBaselinesByDraftID.keys)
-        .union(aiMetadataSuggestionProfilesByDraftID.keys)
-        .union(aiImageTextSuggestionBaselinesByDraftID.keys)
-        .union(aiImageTextSuggestionProfilesByDraftID.keys)
-        .union(aiImageTextSuggestionSignaturesByDraftID.keys)
-        .union(aiMetadataSuggestionGenerationsByDraftID.keys)
-        .union(aiImageTextSuggestionGenerationsByDraftID.keys)
-        .union(aiMetadataSuggestionRunningDraftIDs)
-        .union(aiImageTextSuggestionRunningDraftIDs)
-        .union(aiMetadataSuggestionCancellationHandlersByDraftID.keys)
-        .union(aiImageTextSuggestionCancellationHandlersByDraftID.keys)
+      .union(aiImageTextSuggestionsByDraftID.keys)
+      .union(aiMetadataSuggestionBaselinesByDraftID.keys)
+      .union(aiMetadataSuggestionProfilesByDraftID.keys)
+      .union(aiImageTextSuggestionBaselinesByDraftID.keys)
+      .union(aiImageTextSuggestionProfilesByDraftID.keys)
+      .union(aiImageTextSuggestionSignaturesByDraftID.keys)
+      .union(aiMetadataSuggestionGenerationsByDraftID.keys)
+      .union(aiImageTextSuggestionGenerationsByDraftID.keys)
+      .union(aiMetadataSuggestionRunningDraftIDs)
+      .union(aiImageTextSuggestionRunningDraftIDs)
+      .union(aiMetadataSuggestionCancellationHandlersByDraftID.keys)
+      .union(aiImageTextSuggestionCancellationHandlersByDraftID.keys)
     if let projectedDraftID = workspace.aiMetadataSuggestionDraftID {
       knownDraftIDs.insert(projectedDraftID)
     }
@@ -99,13 +105,21 @@ extension WorkbenchAIStore {
     var didChange = false
 
     for draftID in removedDraftIDs {
-      if let cancellation = aiMetadataSuggestionCancellationHandlersByDraftID
+      for lane in [AIGenerationLane.metadata(draftID), .imageText(draftID)] {
+        if let generation = currentAIRequestGeneration(lane) {
+          cancelAIRequest(lane, generation: generation)
+          didChange = true
+        }
+      }
+      if let cancellation =
+        aiMetadataSuggestionCancellationHandlersByDraftID
         .removeValue(forKey: draftID)
       {
         cancellation()
         didChange = true
       }
-      if let cancellation = aiImageTextSuggestionCancellationHandlersByDraftID
+      if let cancellation =
+        aiImageTextSuggestionCancellationHandlersByDraftID
         .removeValue(forKey: draftID)
       {
         cancellation()
@@ -170,7 +184,9 @@ extension WorkbenchAIStore {
     generation: UInt64,
     handler: @escaping () -> Void
   ) {
-    guard aiMetadataSuggestionGenerationsByDraftID[draftID] == generation else {
+    guard !Task.isCancelled, store.canUseProtectedWorkbench,
+      aiMetadataSuggestionGenerationsByDraftID[draftID] == generation
+    else {
       handler()
       return
     }
@@ -182,7 +198,9 @@ extension WorkbenchAIStore {
     generation: UInt64,
     handler: @escaping () -> Void
   ) {
-    guard aiImageTextSuggestionGenerationsByDraftID[draftID] == generation else {
+    guard !Task.isCancelled, store.canUseProtectedWorkbench,
+      aiImageTextSuggestionGenerationsByDraftID[draftID] == generation
+    else {
       handler()
       return
     }
@@ -191,7 +209,7 @@ extension WorkbenchAIStore {
 
   func beginAIMetadataSuggestionOperation(for draftID: UUID) -> UInt64 {
     aiMetadataSuggestionCancellationHandlersByDraftID.removeValue(forKey: draftID)?()
-    let generation = (aiMetadataSuggestionGenerationsByDraftID[draftID] ?? 0) &+ 1
+    let generation = nextAIRequestGeneration()
     aiMetadataSuggestionGenerationsByDraftID[draftID] = generation
     aiMetadataSuggestionRunningDraftIDs.insert(draftID)
     workspaceIsAIMetadataSuggestionRunning = true
@@ -217,7 +235,9 @@ extension WorkbenchAIStore {
     for draftID: UUID,
     generation: UInt64
   ) -> Bool {
-    guard aiMetadataSuggestionGenerationsByDraftID[draftID] == generation else {
+    guard !Task.isCancelled, store.canUseProtectedWorkbench,
+      aiMetadataSuggestionGenerationsByDraftID[draftID] == generation
+    else {
       return false
     }
     guard let baseline = store.draftOperationBaseline(for: draftID) else {
@@ -245,9 +265,40 @@ extension WorkbenchAIStore {
     }
   }
 
+  /// Consumes fields explicitly accepted by the caller. Remaining metadata
+  /// candidates are rebased to the post-application draft so an author can
+  /// accept title, summary, and tags one at a time from the same AI result.
+  func consumeAIMetadataSuggestion(
+    _ appliedSuggestion: AIPublishingMetadataSuggestion,
+    for updatedDraft: ArticleDraft
+  ) {
+    guard var remaining = aiMetadataSuggestionsByDraftID[updatedDraft.id] else { return }
+
+    if !appliedSuggestion.titles.isEmpty { remaining.titles = [] }
+    if !appliedSuggestion.slugs.isEmpty { remaining.slugs = [] }
+    if appliedSuggestion.summary != nil { remaining.summary = nil }
+    if !appliedSuggestion.tags.isEmpty { remaining.tags = [] }
+
+    guard remaining.hasSuggestions,
+      let baseline = store.draftOperationBaseline(for: updatedDraft.id)
+    else {
+      removeAIMetadataSuggestion(for: updatedDraft.id)
+      return
+    }
+
+    aiMetadataSuggestionsByDraftID[updatedDraft.id] = remaining
+    aiMetadataSuggestionBaselinesByDraftID[updatedDraft.id] = baseline
+    aiMetadataSuggestionProfilesByDraftID[updatedDraft.id] = store.profile(for: updatedDraft)
+    if store.selectedDraftID == updatedDraft.id {
+      restoreDraftSuggestionProjectionForCurrentSelection()
+    } else {
+      bumpAIDraftSuggestionStateRevision()
+    }
+  }
+
   func beginAIImageTextSuggestionOperation(for draftID: UUID) -> UInt64 {
     aiImageTextSuggestionCancellationHandlersByDraftID.removeValue(forKey: draftID)?()
-    let generation = (aiImageTextSuggestionGenerationsByDraftID[draftID] ?? 0) &+ 1
+    let generation = nextAIRequestGeneration()
     aiImageTextSuggestionGenerationsByDraftID[draftID] = generation
     aiImageTextSuggestionRunningDraftIDs.insert(draftID)
     workspaceIsAIImageTextRunning = true
@@ -273,7 +324,9 @@ extension WorkbenchAIStore {
     for draftID: UUID,
     generation: UInt64
   ) -> Bool {
-    guard aiImageTextSuggestionGenerationsByDraftID[draftID] == generation else {
+    guard !Task.isCancelled, store.canUseProtectedWorkbench,
+      aiImageTextSuggestionGenerationsByDraftID[draftID] == generation
+    else {
       return false
     }
     guard let baseline = store.draftOperationBaseline(for: draftID) else {
@@ -377,11 +430,7 @@ extension WorkbenchAIStore {
   }
 
   func prepareDraftOperationBaseline(for draftID: UUID) async -> DraftOperationBaseline? {
-    store.flushDraftBodyEditorBuffer(for: draftID)
-    while let wordCountTask = store.draftWordCountRefreshTasks[draftID] {
-      await wordCountTask.value
-      await Task.yield()
-    }
+    await store.flushDraftBodyEditorBufferAndWaitForWordCount(for: draftID)
     guard !Task.isCancelled else { return nil }
     return store.draftOperationBaseline(for: draftID)
   }
@@ -390,19 +439,81 @@ extension WorkbenchAIStore {
     _ baseline: DraftOperationBaseline,
     profile: SiteProfile
   ) -> Bool {
-    guard let currentDraft = store.draft(for: baseline.draft.id) else {
-      return false
+    let currentDraft = store.draft(for: baseline.draft.id)
+    return AIApplicationContract.draftStillMatches(
+      baseline: baseline,
+      profile: profile,
+      currentDraft: currentDraft,
+      currentProfile: currentDraft.map { store.profile(for: $0) } ?? profile,
+      bodyBuffer: store.draftBodyEditorBuffer(for: baseline.draft.id)
+    )
+  }
+
+  /// Validates that an application request refers to the retained metadata
+  /// suggestion for this draft. Generated suggestions install this state with
+  /// their request baseline before any caller can apply their values.
+  func currentDraftForAIMetadataApplication(
+    _ suggestion: AIPublishingMetadataSuggestion,
+    requestedDraft: ArticleDraft
+  ) -> ArticleDraft? {
+    guard let currentDraft = store.draft(for: requestedDraft.id) else {
+      aiActionMessage = "找不到要应用 AI 元数据建议的文章。"
+      return nil
     }
-    let buffer = store.draftBodyEditorBuffer(for: baseline.draft.id)
-    guard !buffer.isDirty, buffer.revision == baseline.bodyRevision else {
-      return false
+    guard let retained = aiMetadataSuggestionsByDraftID[requestedDraft.id] else {
+      aiActionMessage = "AI 元数据建议已过期，未应用。"
+      return nil
     }
-    var baselineDraft = baseline.draft
-    var normalizedCurrentDraft = currentDraft
-    _ = baselineDraft.storeWordCount(0, for: baselineDraft.bodyMarkdown)
-    _ = normalizedCurrentDraft.storeWordCount(0, for: normalizedCurrentDraft.bodyMarkdown)
-    return normalizedCurrentDraft == baselineDraft
-      && store.profile(for: currentDraft) == profile
+    guard let baseline = aiMetadataSuggestionBaselinesByDraftID[requestedDraft.id],
+      let profile = aiMetadataSuggestionProfilesByDraftID[requestedDraft.id]
+    else {
+      removeAIMetadataSuggestion(for: requestedDraft.id)
+      aiActionMessage = "AI 元数据建议已过期，未应用。"
+      return nil
+    }
+    guard draftOperationStillMatches(baseline, profile: profile) else {
+      removeAIMetadataSuggestion(for: requestedDraft.id)
+      aiActionMessage = "AI 元数据建议已过期，未应用。"
+      return nil
+    }
+    guard AIApplicationContract.metadataSuggestion(suggestion, belongsTo: retained) else {
+      aiActionMessage = "AI 元数据建议与当前文章不匹配，未应用。"
+      return nil
+    }
+    return currentDraft
+  }
+
+  func currentDraftForAIImageTextApplication(
+    _ suggestions: [AIPublishingImageTextSuggestion],
+    draftID: UUID
+  ) -> ArticleDraft? {
+    guard let currentDraft = store.draft(for: draftID) else {
+      aiActionMessage = "找不到要应用图片文案的文章。"
+      return nil
+    }
+    guard let retained = aiImageTextSuggestionsByDraftID[draftID],
+      let baseline = aiImageTextSuggestionBaselinesByDraftID[draftID],
+      let profile = aiImageTextSuggestionProfilesByDraftID[draftID],
+      let signature = aiImageTextSuggestionSignaturesByDraftID[draftID]
+    else {
+      aiActionMessage = "图片文案建议已过期，未应用。"
+      return nil
+    }
+    guard draftOperationStillMatches(baseline, profile: profile),
+      ImageWorkbenchReportInputSignature(
+        draft: currentDraft,
+        profile: store.profile(for: currentDraft)
+      ) == signature
+    else {
+      removeAllAIImageTextSuggestions(for: draftID)
+      aiActionMessage = "图片文案建议已过期，未应用。"
+      return nil
+    }
+    guard AIApplicationContract.imageTextSuggestions(suggestions, belongTo: retained) else {
+      aiActionMessage = "图片文案建议与当前文章不匹配，未应用。"
+      return nil
+    }
+    return currentDraft
   }
 
   // These small aliases keep the operation helpers from calling the public

@@ -1,4 +1,5 @@
 import Foundation
+import PublishingMarkdownCore
 
 public struct MarkdownOutlineItem: Identifiable, Hashable, Sendable {
   public var id: String { "\(headingLocation)-\(headingLength)" }
@@ -53,8 +54,15 @@ public struct MarkdownOutlineService {
     let source = markdown as NSString
     guard source.length > 0 else { return [] }
 
+    let codeBlockRanges = MarkdownCodeRangeScanner.scan(markdown).blockRanges
     let mdRegex = try? NSRegularExpression(pattern: #"(?m)^(#{1,3})[ \t]+(.+?)[ \t#]*$"#)
-    let mdMatches = mdRegex?.matches(in: markdown, range: NSRange(location: 0, length: source.length)) ?? []
+    let mdMatches =
+      (mdRegex?.matches(in: markdown, range: NSRange(location: 0, length: source.length)) ?? [])
+      .filter { match in
+        !codeBlockRanges.contains { codeRange in
+          NSIntersectionRange(match.range, codeRange).length > 0
+        }
+      }
 
     if !mdMatches.isEmpty {
       let headingLevels = mdMatches.map { match in
@@ -98,7 +106,13 @@ public struct MarkdownOutlineService {
       pattern: #"(?i)<(h[1-3])\b[^>]*>(.*?)</\1>"#,
       options: []
     )
-    let htmlMatches = htmlRegex?.matches(in: markdown, range: NSRange(location: 0, length: source.length)) ?? []
+    let htmlMatches =
+      (htmlRegex?.matches(in: markdown, range: NSRange(location: 0, length: source.length)) ?? [])
+      .filter { match in
+        !codeBlockRanges.contains { codeRange in
+          NSIntersectionRange(match.range, codeRange).length > 0
+        }
+      }
     guard !htmlMatches.isEmpty else { return [] }
 
     return htmlMatches.map { match in

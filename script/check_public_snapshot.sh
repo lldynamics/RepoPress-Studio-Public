@@ -45,6 +45,11 @@ required_paths=(
   Package.resolved
   Package.swift
   README.md
+  docs/README.md
+  docs/direct-release.md
+  docs/release-versioning.md
+  docs/performance-profiling.md
+  docs/module-dependencies.md
   SECURITY.md
   TRADEMARKS.md
   package-lock.json

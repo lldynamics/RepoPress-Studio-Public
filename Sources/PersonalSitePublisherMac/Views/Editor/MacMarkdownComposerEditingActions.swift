@@ -34,7 +34,12 @@ extension MacMarkdownComposerView {
     let generation = markdownAnalysisGeneration
     let requestedMarkdown = editorBody
     let requestedDraftID = draft.id
-    let shouldIncludeOutline = includeOutline ?? true
+    // Outline parsing is demand-driven. Diagnostics stay available while the
+    // context panel is closed, but an automatic pass must not pay for a full
+    // outline that cannot be observed. Explicit outline presentation passes
+    // `includeOutline: true` below so it always gets a complete current
+    // snapshot rather than relying on a diagnostics-only result.
+    let shouldIncludeOutline = includeOutline ?? (activeWritingContextPanel == .outline)
     let diagnosticContext = MarkdownInlineDiagnosticContext(
       knownArticleTitles: store.knownArticleTitlesForMarkdownDiagnostics,
       attachmentPaths: Set(
@@ -320,18 +325,6 @@ extension MacMarkdownComposerView {
 
   func discardPendingFindReplacePreview() {
     pendingFindReplacePreview = nil
-  }
-
-  func applyFindReplaceMutation(_ mutation: MarkdownFindReplaceMutation) {
-    if let edit = mutation.edit {
-      editorEditRequest = MarkdownTextEditRequest(expectedText: editorBody, edit: edit)
-      return
-    }
-
-    var updated = previewDraft
-    updated.bodyMarkdown = mutation.text
-    requestUndoableBodyUpdate(updated)
-    selectedRange = mutation.selectedRange
   }
 
   func replacingSelection(in draft: ArticleDraft, with markdown: String) -> ArticleDraft {

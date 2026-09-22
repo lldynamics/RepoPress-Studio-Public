@@ -1,6 +1,6 @@
 import AppKit
 import ImageIO
-import PublishingWorkbenchCore
+import PublishingMarkdownCore
 
 final class MarkdownInlineAttachmentOverlayView: NSView {
   enum Content {

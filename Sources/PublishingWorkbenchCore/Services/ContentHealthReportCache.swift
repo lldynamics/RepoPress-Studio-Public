@@ -1,5 +1,6 @@
 import CryptoKit
 import Foundation
+import PublishingDomainContracts
 
 /// Lightweight observability for the in-memory content-health cache.
 ///

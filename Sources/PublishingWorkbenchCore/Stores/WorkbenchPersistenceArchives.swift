@@ -69,7 +69,10 @@ extension WorkbenchPersistence {
     var archivesByFileName: [String: WorkbenchRetiredFeatureArchive] = [:]
 
     for sourceURL in sourceURLs where FileManager.default.fileExists(atPath: sourceURL.path) {
-      let sourceData = try Data(contentsOf: sourceURL)
+      guard
+        let sourceData = try? BoundedFileReader.data(
+          at: sourceURL, maximumByteCount: WorkbenchFileReadLimits.maximumRecoverySnapshotByteCount)
+      else { continue }  // The original is retained by the migration archive.
       guard let archive = retiredFeatureArchive(from: sourceData) else { continue }
       archivesByFileName[archive.fileName] = archive
     }
@@ -137,7 +140,10 @@ extension WorkbenchPersistence {
     for archive in archives {
       let archiveURL = retiredFeatureArchiveDirectoryURL.appendingPathComponent(archive.fileName)
       if FileManager.default.fileExists(atPath: archiveURL.path) {
-        guard try Data(contentsOf: archiveURL) == archive.data else {
+        guard
+          try BoundedFileReader.data(at: archiveURL, maximumByteCount: archive.data.count)
+            == archive.data
+        else {
           throw WorkbenchPersistenceError.retiredFeatureArchiveConflict(archive.fileName)
         }
         continue
@@ -151,7 +157,8 @@ extension WorkbenchPersistence {
           try FileManager.default.moveItem(at: temporaryURL, to: archiveURL)
         } catch {
           if FileManager.default.fileExists(atPath: archiveURL.path),
-            try Data(contentsOf: archiveURL) == archive.data
+            try BoundedFileReader.data(at: archiveURL, maximumByteCount: archive.data.count)
+              == archive.data
           {
             try? FileManager.default.removeItem(at: temporaryURL)
             continue

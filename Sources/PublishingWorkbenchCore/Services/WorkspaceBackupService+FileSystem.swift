@@ -45,6 +45,9 @@ extension WorkspaceBackupService {
         if data.isEmpty { break }
         try output.write(contentsOf: data)
         copiedByteCount += Int64(data.count)
+        guard copiedByteCount <= sourceSize,
+          copiedByteCount <= limits.maximumSingleFileByteCount
+        else { throw WorkspaceBackupError.fileSizeMismatch(relativePath) }
         fileCopyProgressHook(relativePath, copiedByteCount)
       }
       try Task.checkCancellation()

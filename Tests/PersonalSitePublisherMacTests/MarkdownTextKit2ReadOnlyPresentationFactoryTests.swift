@@ -1,5 +1,5 @@
 import AppKit
-import PublishingWorkbenchCore
+import PublishingDomainContracts
 import XCTest
 
 @testable import PersonalSitePublisherMac

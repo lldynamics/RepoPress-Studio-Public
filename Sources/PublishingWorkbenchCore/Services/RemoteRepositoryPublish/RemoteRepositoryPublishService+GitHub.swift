@@ -162,7 +162,8 @@ extension RemoteRepositoryPublishService {
     repository: RemoteRepository,
     sourceBranch: String,
     targetBranch: String,
-    token: String
+    token: String,
+    includeClosed: Bool = false
   ) async throws -> String? {
     let request = githubRequest(
       repository: repository,
@@ -170,7 +171,7 @@ extension RemoteRepositoryPublishService {
       path: "/repos/\(encodedPathComponent(repository.owner))/\(encodedPathComponent(repository.name))/pulls",
       token: token,
       queryItems: [
-        URLQueryItem(name: "state", value: "open"),
+        URLQueryItem(name: "state", value: includeClosed ? "all" : "open"),
         URLQueryItem(name: "head", value: "\(repository.owner):\(sourceBranch)"),
         URLQueryItem(name: "base", value: targetBranch),
       ]

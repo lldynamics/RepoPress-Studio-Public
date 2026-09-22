@@ -135,8 +135,9 @@ struct KnowledgeLibraryInspectorPanel: View {
       }
       .padding(14)
       .frame(maxWidth: .infinity, alignment: .topLeading)
+      .accessibilityElement(children: .contain)
+      .accessibilityIdentifier("knowledge-library-inspector")
     }
-    .accessibilityIdentifier("knowledge-library-inspector")
     .onChange(of: document.id) { _, _ in
       showsAllRelatedContent = false
     }

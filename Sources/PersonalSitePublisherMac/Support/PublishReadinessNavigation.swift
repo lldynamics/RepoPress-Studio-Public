@@ -1,42 +1,7 @@
 import PublishingWorkbenchCore
 import SwiftUI
 
-enum PublishReadinessTarget: Equatable {
-  case body(query: String?)
-  case metadata(field: String?)
-  case images(attachmentID: UUID?)
-  case seo
-  case repository
-
-  static func preflight(_ issue: PreflightIssue) -> Self {
-    field(issue.field, bodyQuery: issue.editorQuery)
-  }
-
-  static func image(_ issue: ImageWorkbenchIssue) -> Self {
-    if let id = issue.attachmentID { return .images(attachmentID: id) }
-    if issue.preflightIssue?.structuredField == .body {
-      return .body(query: issue.relatedValue)
-    }
-    return .images(attachmentID: nil)
-  }
-
-  static func seo(_ finding: SEOAuditFinding) -> Self {
-    guard finding.field != nil else { return .seo }
-    return field(finding.field)
-  }
-
-  private static func field(_ field: String?, bodyQuery: String? = nil) -> Self {
-    switch field.flatMap(PreflightIssueField.init(rawValue:)) {
-    case .body: return .body(query: bodyQuery)
-    case .attachments, .cover, .coverAlt: return .images(attachmentID: nil)
-    case .repository, .repositoryPath, .repositoryToken, .contentRoot,
-      .assetRoot, .markdownPathPattern, .siteKind:
-      return .repository
-    case .jsonLD: return .seo
-    default: return .metadata(field: field)
-    }
-  }
-
+extension PublishReadinessTarget {
   var title: String {
     switch self {
     case .body: String(localized: "定位正文")

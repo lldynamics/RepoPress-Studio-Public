@@ -1,4 +1,5 @@
 import Foundation
+import PublishingDomainContracts
 
 public enum ArticleProvenanceUpdateResult: Equatable, Sendable {
   case applied

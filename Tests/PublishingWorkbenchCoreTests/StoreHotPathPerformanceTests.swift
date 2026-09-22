@@ -40,7 +40,7 @@ final class StoreHotPathPerformanceTests: XCTestCase {
     #endif
 
     var publicationCount = 0
-    let subscription = store.publishingStore.$drafts
+    let subscription = store.publishingStore.documents.$drafts
       .dropFirst()
       .sink { _ in publicationCount += 1 }
     defer { subscription.cancel() }

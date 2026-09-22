@@ -1,7 +1,6 @@
-import PublishingAICore
 import XCTest
 
-@testable import PublishingWorkbenchCore
+@testable import PublishingAICore
 
 final class AIChatRequestTokenBudgetIntegrationTests: XCTestCase {
   func testNormalizationFailsClosedWhenAtomicSchemaCannotFit() throws {

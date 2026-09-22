@@ -6,6 +6,7 @@ import SwiftUI
 /// Provider input is already bounded and redacted by `DeploymentStatusSignal`.
 struct WorkspaceDeploymentLogInspectorSection: View {
   let snapshot: DeploymentStatusSnapshot
+  let sourceContext: DeploymentSourceContext?
 
   private var entries: [DeploymentLogEntry] {
     snapshot.signals
@@ -43,6 +44,9 @@ struct WorkspaceDeploymentLogInspectorSection: View {
                 .font(.caption.monospaced())
                 .foregroundStyle(.secondary)
                 .textSelection(.enabled)
+              if let sourceContext {
+                DeploymentSourceLocationButton(entry: primaryFailure, context: sourceContext)
+              }
             }
 
             DeploymentLogCodeBlock(
@@ -78,6 +82,9 @@ struct WorkspaceDeploymentLogInspectorSection: View {
                         .foregroundStyle(.secondary)
                     }
                     Spacer()
+                    if let sourceContext {
+                      DeploymentSourceLocationButton(entry: entry, context: sourceContext)
+                    }
                     CopyLogButton(
                       text: fullLogPayload(for: entry),
                       label: "复制"
@@ -97,6 +104,7 @@ struct WorkspaceDeploymentLogInspectorSection: View {
         }
       }
     }
+    .accessibilityElement(children: .contain)
     .accessibilityIdentifier("workspace-inspector-deployment-logs")
   }
 

@@ -1,7 +1,9 @@
 import CoreGraphics
 import ImageIO
+import PublishingDomainContracts
 import UniformTypeIdentifiers
 import XCTest
+
 @testable import PublishingWorkbenchCore
 
 @MainActor

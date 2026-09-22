@@ -1,6 +1,41 @@
 import Foundation
 
 extension WorkbenchStore {
+  /// Prepares the first writing session without changing any window's article
+  /// selection. The result belongs to this invocation, not the shared banner.
+  public func prepareRepositoryForWriting(
+    expectedProfile: SiteProfile
+  ) async -> LocalContentImportOperationResult {
+    guard !Task.isCancelled, activeProfile == expectedProfile else {
+      return .empty(outcome: .cancelled)
+    }
+    let startedAt = Date()
+    await repositoryStore.scanRepositoryAsync(store: self)
+    guard !Task.isCancelled, activeProfile == expectedProfile,
+      let report = repositoryReport(for: expectedProfile),
+      report.scannedAt >= startedAt
+    else { return .empty(outcome: .cancelled) }
+    guard !report.rootPath.isEmpty, report.contentRootExists,
+      !report.preflightIssues.contains(where: {
+        $0.severity == .error && ($0.field == "repository" || $0.field == "contentRoot")
+      })
+    else { return .empty(outcome: .failed) }
+
+    let result = await publishingStore.importMissingDraftsFromLocalRepositoryOperation(
+      store: self,
+      focusImportedDraft: false,
+      expectedProfile: expectedProfile
+    )
+    guard !Task.isCancelled, activeProfile == expectedProfile else {
+      return .empty(outcome: .cancelled)
+    }
+    if result.summary.insertedCount > 0 {
+      invalidateDraftDerivedCaches()
+      recordContentImport(result, profileID: expectedProfile.id, actor: .background)
+    }
+    return result
+  }
+
   public func scanRepositoryAsync() async {
     await repositoryStore.scanRepositoryAsync(store: self)
     _ = await importMissingDraftsFromLocalRepository()

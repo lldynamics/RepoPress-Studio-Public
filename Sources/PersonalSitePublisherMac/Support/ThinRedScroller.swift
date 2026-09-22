@@ -8,8 +8,6 @@ public final class ThinRedScroller: NSScroller {
   /// system hit area remains available for pointer and accessibility input.
   public static let thinWidth: CGFloat = 2.5
 
-  private var settingsKnobLayer: CALayer?
-
   private static func knobColor(for appearance: NSAppearance) -> NSColor {
     let appearanceName = appearance.name.rawValue.lowercased()
     let isDark = appearanceName.contains("dark")
@@ -36,79 +34,6 @@ public final class ThinRedScroller: NSScroller {
     // keeps ownership of hit testing, dragging, keyboard scrolling, and
     // auto-hide while the track remains transparent.
     drawKnob()
-  }
-
-  override public var doubleValue: Double {
-    didSet {
-      updateSettingsKnobLayer()
-    }
-  }
-
-  override public var knobProportion: CGFloat {
-    didSet {
-      updateSettingsKnobLayer()
-    }
-  }
-
-  override public func layout() {
-    super.layout()
-    updateSettingsKnobLayer()
-  }
-
-  /// Enables the settings-only layer fallback for overlay scrollers whose
-  /// AppKit implementation bypasses NSScroller.drawKnob(). The layer remains
-  /// inside this native NSScroller, so the system still owns hit testing,
-  /// dragging, keyboard scrolling, accessibility and auto-hide.
-  func enableSettingsKnobLayer() {
-    if settingsKnobLayer == nil {
-      wantsLayer = true
-      let layer = CALayer()
-      layer.zPosition = 1
-      layer.masksToBounds = true
-      settingsKnobLayer = layer
-      self.layer?.addSublayer(layer)
-    }
-    updateSettingsKnobLayer()
-  }
-
-  private func updateSettingsKnobLayer() {
-    guard let layer = settingsKnobLayer else { return }
-
-    let rect = self.rect(for: .knob)
-    guard !rect.isEmpty,
-          bounds.width > 0,
-          bounds.height > 0,
-          isEnabled,
-          knobProportion > 0 else {
-      layer.isHidden = true
-      return
-    }
-
-    let knobRect: NSRect
-    let isVertical = bounds.width < bounds.height
-    if isVertical {
-      knobRect = NSRect(
-        x: bounds.maxX - Self.thinWidth,
-        y: rect.minY,
-        width: Self.thinWidth,
-        height: rect.height
-      )
-    } else {
-      knobRect = NSRect(
-        x: rect.minX,
-        y: bounds.maxY - Self.thinWidth,
-        width: rect.width,
-        height: Self.thinWidth
-      )
-    }
-
-    CATransaction.begin()
-    CATransaction.setDisableActions(true)
-    layer.frame = knobRect
-    layer.backgroundColor = Self.knobColor(for: effectiveAppearance).cgColor
-    layer.cornerRadius = Self.thinWidth / 2.0
-    layer.isHidden = false
-    CATransaction.commit()
   }
 
   override public func drawKnob() {

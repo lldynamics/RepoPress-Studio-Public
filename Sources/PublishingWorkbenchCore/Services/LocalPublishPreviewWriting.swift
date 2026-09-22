@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 
 extension LocalPublishPreviewService {
@@ -54,10 +55,12 @@ extension LocalPublishPreviewService {
           repositoryPath: file.repositoryPath
         )
         let normalizedPath = file.repositoryPath.normalizedRelativePath()
-        expectedSourceState = previewSourceStates?[normalizedPath]
-        if let expectedSourceState, currentSourceState != expectedSourceState {
+        if let previewSourceState = previewSourceStates?[normalizedPath],
+          currentSourceState != previewSourceState
+        {
           throw LocalPublishPreviewError.sourcePreviewOutdated(file.repositoryPath)
         }
+        expectedSourceState = currentSourceState
         sourceURL = candidate
       }
       return PreparedLocalPublishWrite(
@@ -88,6 +91,7 @@ extension LocalPublishPreviewService {
 
     var writtenPaths: [String] = []
     var rollbackEntries: [LocalPublishRollbackEntry] = []
+    var transactionEntries: [LocalPublishTransactionEntry] = []
     var appliedStates: [LocalPublishFileState] = []
     let transactionURL = localPublishTransactionURL(for: rootURL)
     var transactionCommitted = false
@@ -121,17 +125,35 @@ extension LocalPublishPreviewService {
             didMutateDestination: false
           )
         )
+        let originalState: LocalPublishFileState
+        if let backupURL {
+          originalState = try localPublishFileState(at: backupURL, fileManager: fileManager)
+        } else {
+          originalState = .missing
+        }
+        let intendedState: LocalPublishFileState
+        if prepared.file.operation == .delete {
+          intendedState = .missing
+        } else if let sourceState = prepared.expectedSourceState {
+          intendedState = .fileDigest(sourceState.sha256)
+        } else {
+          intendedState = .fileDigest(
+            Data(SHA256.hash(data: Data((prepared.file.content ?? "").utf8))))
+        }
+        transactionEntries.append(
+          LocalPublishTransactionEntry(
+            repositoryPath: prepared.file.repositoryPath.normalizedRelativePath(),
+            backupFileName: backupURL?.lastPathComponent,
+            originalState: originalState,
+            intendedState: intendedState
+          )
+        )
       }
       try persistLocalPublishTransaction(
         LocalPublishTransaction(
           phase: .applying,
           rollbackDirectoryPath: rollbackDirectory.path,
-          entries: rollbackEntries.enumerated().map { index, entry in
-            LocalPublishTransactionEntry(
-              repositoryPath: preparedWrites[index].file.repositoryPath.normalizedRelativePath(),
-              backupFileName: entry.backupURL?.lastPathComponent
-            )
-          }
+          entries: transactionEntries
         ),
         at: transactionURL
       )
@@ -149,6 +171,12 @@ extension LocalPublishPreviewService {
           destinationURL: destinationURL,
           expectedBaseStates: previewBaseStates
         )
+        guard
+          try localPublishFileState(at: destinationURL, fileManager: fileManager)
+            == transactionEntries[index].originalState
+        else {
+          throw LocalPublishPreviewError.rollbackConflict(prepared.file.repositoryPath)
+        }
         switch prepared.file.operation {
         case .delete:
           if fileManager.fileExists(atPath: destinationURL.path) {
@@ -183,12 +211,7 @@ extension LocalPublishPreviewService {
         LocalPublishTransaction(
           phase: .committed,
           rollbackDirectoryPath: rollbackDirectory.path,
-          entries: rollbackEntries.enumerated().map { index, entry in
-            LocalPublishTransactionEntry(
-              repositoryPath: preparedWrites[index].file.repositoryPath.normalizedRelativePath(),
-              backupFileName: entry.backupURL?.lastPathComponent
-            )
-          }
+          entries: transactionEntries
         ),
         at: transactionURL
       )

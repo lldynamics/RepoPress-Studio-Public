@@ -1,4 +1,7 @@
+import PublishingDomainContracts
 import XCTest
+
+@testable import PublishingKnowledgeCore
 @testable import PublishingWorkbenchCore
 
 final class WorkspaceBackupServiceTests: XCTestCase {
@@ -968,6 +971,425 @@ final class WorkspaceBackupServiceTests: XCTestCase {
       feedTitle: feedTitle,
       articleID: articleID
     )
+  }
+
+  func testPrepareArticleRestorePreservesSelectedContentAndCreatesIndependentAttachmentCopy()
+    throws
+  {
+    let rootURL = try TestWorkbenchFactory.temporaryDirectoryURL(prefix: "WorkspaceArticleRestore")
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let sourceAttachmentURL = rootURL.appendingPathComponent("source.png")
+    let attachmentBytes = Data("independent attachment bytes".utf8)
+    try attachmentBytes.write(to: sourceAttachmentURL)
+
+    let sourceProfile = SiteProfile.defaultProfile
+    let targetProfileID = UUID()
+    let coveredAttachment = DraftAttachment(
+      originalFilename: "source.png",
+      relativePublishPath: "/images/source.png",
+      repositoryPath: "static/images/source.png",
+      altText: "保留替代文本",
+      caption: "保留说明",
+      byteSize: Int64(attachmentBytes.count),
+      sourceFilePath: sourceAttachmentURL.path,
+      repositorySHA: "source-sha",
+      remoteObjectKey: "remote/key",
+      remoteURL: "https://example.invalid/source.png",
+      remoteETag: "remote-etag"
+    )
+    let unresolvedAttachment = DraftAttachment(
+      originalFilename: "missing.pdf",
+      relativePublishPath: "/files/missing.pdf",
+      repositoryPath: "static/files/missing.pdf",
+      altText: "仍显示附件元数据",
+      caption: "源文件缺失",
+      byteSize: 42,
+      sourceFilePath: nil,
+      repositorySHA: "missing-sha",
+      remoteObjectKey: "remote/missing",
+      remoteURL: "https://example.invalid/missing.pdf",
+      remoteETag: "missing-etag"
+    )
+    let sourceDraft = ArticleDraft(
+      siteProfileID: sourceProfile.id,
+      title: "仅恢复这一篇",
+      date: Date(timeIntervalSince1970: 1_700_000_000),
+      slug: "selected-article",
+      tags: ["tag"],
+      categories: ["category"],
+      authors: ["author"],
+      aliases: ["old-route"],
+      pendingSlugRedirectPaths: ["/old-route/"],
+      permalink: "/forced-route/",
+      draft: false,
+      visibility: .private,
+      summary: "保留摘要",
+      coverAttachmentID: coveredAttachment.id,
+      bodyMarkdown: "![本地路径](/images/source.png)\n\n正文保持不变。",
+      attachments: [coveredAttachment, unresolvedAttachment],
+      status: .published,
+      repositoryPath: "content/selected-article.md",
+      repositorySHA: "published-sha",
+      repositoryImportFingerprint: "import-fingerprint",
+      softwareGuideID: "guide-id",
+      softwareGuideTemplateVersion: 7
+    )
+    let unselectedDraft = ArticleDraft(
+      siteProfileID: sourceProfile.id,
+      title: "不应恢复",
+      bodyMarkdown: "Unselected"
+    )
+    let archiveURL = try createArticleRestoreBackup(
+      at: rootURL.appendingPathComponent("source.psworkspacebackup"),
+      profile: sourceProfile,
+      drafts: [sourceDraft, unselectedDraft],
+      knowledgeRootURL: rootURL.appendingPathComponent("KnowledgeLibrary")
+    )
+    try FileManager.default.removeItem(at: sourceAttachmentURL)
+
+    let service = WorkspaceBackupService()
+    let preview = try service.inspectArticlesForRestore(at: archiveURL)
+    XCTAssertEqual(preview.articles.map(\.id), [sourceDraft.id, unselectedDraft.id])
+    XCTAssertEqual(preview.articles.first?.unresolvedAttachmentCount, 1)
+
+    let attachmentRootURL = rootURL.appendingPathComponent("ManagedAttachments", isDirectory: true)
+    let prepared = try service.prepareArticleRestore(
+      preview: preview,
+      selectedDraftIDs: [sourceDraft.id],
+      editingProfileID: targetProfileID,
+      attachmentRootURL: attachmentRootURL
+    )
+    defer {
+      try? FileManager.default.removeItem(at: prepared.stagingURL)
+      try? FileManager.default.removeItem(at: prepared.destinationURL)
+    }
+    XCTAssertEqual(prepared.drafts.count, 1)
+    let restored = try XCTUnwrap(prepared.drafts.first)
+    XCTAssertNotEqual(restored.id, sourceDraft.id)
+    XCTAssertEqual(restored.siteProfileID, targetProfileID)
+    XCTAssertEqual(restored.scope, .general)
+    XCTAssertEqual(restored.status, .draft)
+    XCTAssertTrue(restored.draft)
+    XCTAssertEqual(restored.title, sourceDraft.title)
+    XCTAssertEqual(restored.bodyMarkdown, sourceDraft.bodyMarkdown)
+    XCTAssertEqual(restored.visibility, .private)
+    XCTAssertEqual(restored.summary, sourceDraft.summary)
+    XCTAssertEqual(restored.aliases, [])
+    XCTAssertNil(restored.permalink)
+    XCTAssertNil(restored.repositoryPath)
+    XCTAssertNil(restored.repositorySHA)
+    XCTAssertNil(restored.repositoryImportFingerprint)
+    XCTAssertNil(restored.repositoryBinding)
+    XCTAssertNil(restored.softwareGuideID)
+    XCTAssertNil(restored.softwareGuideTemplateVersion)
+
+    let restoredCovered = try XCTUnwrap(restored.attachments.first)
+    let restoredUnresolved = try XCTUnwrap(restored.attachments.last)
+    XCTAssertNotEqual(restoredCovered.id, coveredAttachment.id)
+    XCTAssertEqual(restored.coverAttachmentID, restoredCovered.id)
+    XCTAssertEqual(restoredCovered.relativePublishPath, coveredAttachment.relativePublishPath)
+    XCTAssertEqual(restoredCovered.repositoryPath, coveredAttachment.repositoryPath)
+    XCTAssertEqual(restoredCovered.altText, coveredAttachment.altText)
+    XCTAssertEqual(restoredCovered.caption, coveredAttachment.caption)
+    XCTAssertNil(restoredCovered.repositorySHA)
+    XCTAssertNil(restoredCovered.remoteObjectKey)
+    XCTAssertNil(restoredCovered.remoteURL)
+    XCTAssertNil(restoredCovered.remoteETag)
+    XCTAssertNil(restoredUnresolved.sourceFilePath)
+    XCTAssertEqual(restoredUnresolved.altText, unresolvedAttachment.altText)
+    XCTAssertEqual(restoredUnresolved.caption, unresolvedAttachment.caption)
+    XCTAssertNil(restoredUnresolved.repositorySHA)
+    XCTAssertNil(restoredUnresolved.remoteObjectKey)
+    XCTAssertNil(restoredUnresolved.remoteURL)
+    XCTAssertNil(restoredUnresolved.remoteETag)
+
+    try FileManager.default.createDirectory(
+      at: attachmentRootURL, withIntermediateDirectories: true)
+    try FileManager.default.moveItem(at: prepared.stagingURL, to: prepared.destinationURL)
+    let copiedURL = URL(fileURLWithPath: try XCTUnwrap(restoredCovered.sourceFilePath))
+    XCTAssertTrue(copiedURL.path.hasPrefix(prepared.destinationURL.path))
+    XCTAssertEqual(try Data(contentsOf: copiedURL), attachmentBytes)
+  }
+
+  func testPrepareArticleRestoreSharesOneCopiedFileForRepeatedArchiveAttachment() throws {
+    let rootURL = try TestWorkbenchFactory.temporaryDirectoryURL(
+      prefix: "WorkspaceArticleRestoreShared")
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let sourceAttachmentURL = rootURL.appendingPathComponent("shared.mov")
+    let attachmentBytes = Data("shared attachment".utf8)
+    try attachmentBytes.write(to: sourceAttachmentURL)
+    let profile = SiteProfile.defaultProfile
+    let first = ArticleDraft(
+      siteProfileID: profile.id,
+      title: "第一篇",
+      attachments: [
+        DraftAttachment(
+          originalFilename: "shared.mov",
+          relativePublishPath: "/video/shared.mov",
+          repositoryPath: "static/video/shared.mov",
+          sourceFilePath: sourceAttachmentURL.path
+        )
+      ]
+    )
+    let second = ArticleDraft(
+      siteProfileID: profile.id,
+      title: "第二篇",
+      attachments: [
+        DraftAttachment(
+          originalFilename: "shared.mov",
+          relativePublishPath: "/video/shared.mov",
+          repositoryPath: "static/video/shared.mov",
+          sourceFilePath: sourceAttachmentURL.path
+        )
+      ]
+    )
+    let archiveURL = try createArticleRestoreBackup(
+      at: rootURL.appendingPathComponent("source.psworkspacebackup"),
+      profile: profile,
+      drafts: [first, second],
+      knowledgeRootURL: rootURL.appendingPathComponent("KnowledgeLibrary")
+    )
+    let service = WorkspaceBackupService()
+    let prepared = try service.prepareArticleRestore(
+      preview: try service.inspectArticlesForRestore(at: archiveURL),
+      selectedDraftIDs: [first.id, second.id],
+      editingProfileID: UUID(),
+      attachmentRootURL: rootURL.appendingPathComponent("ManagedAttachments")
+    )
+    defer {
+      try? FileManager.default.removeItem(at: prepared.stagingURL)
+      try? FileManager.default.removeItem(at: prepared.destinationURL)
+    }
+
+    let firstAttachment = try XCTUnwrap(prepared.drafts.first?.attachments.first)
+    let secondAttachment = try XCTUnwrap(prepared.drafts.last?.attachments.first)
+    XCTAssertNotEqual(firstAttachment.id, secondAttachment.id)
+    XCTAssertEqual(firstAttachment.sourceFilePath, secondAttachment.sourceFilePath)
+    XCTAssertEqual(
+      try FileManager.default.contentsOfDirectory(atPath: prepared.stagingURL.path).count,
+      1
+    )
+    try FileManager.default.createDirectory(
+      at: prepared.destinationURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+    try FileManager.default.moveItem(at: prepared.stagingURL, to: prepared.destinationURL)
+    let destinationURL = URL(fileURLWithPath: try XCTUnwrap(firstAttachment.sourceFilePath))
+    XCTAssertEqual(try Data(contentsOf: destinationURL), attachmentBytes)
+  }
+
+  func testPrepareArticleRestoreRejectsEmptyUnknownAndChangedSelections() throws {
+    let rootURL = try TestWorkbenchFactory.temporaryDirectoryURL(
+      prefix: "WorkspaceArticleRestoreSelection")
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let profile = SiteProfile.defaultProfile
+    let draft = ArticleDraft(siteProfileID: profile.id, title: "可选文章")
+    let archiveURL = try createArticleRestoreBackup(
+      at: rootURL.appendingPathComponent("source.psworkspacebackup"),
+      profile: profile,
+      drafts: [draft],
+      knowledgeRootURL: rootURL.appendingPathComponent("KnowledgeLibrary")
+    )
+    let service = WorkspaceBackupService()
+    let preview = try service.inspectArticlesForRestore(at: archiveURL)
+    let attachmentRootURL = rootURL.appendingPathComponent("ManagedAttachments")
+
+    assertArticleRestoreError(.invalidSelection) {
+      _ = try service.prepareArticleRestore(
+        preview: preview,
+        selectedDraftIDs: [],
+        editingProfileID: UUID(),
+        attachmentRootURL: attachmentRootURL
+      )
+    }
+    assertArticleRestoreError(.invalidSelection) {
+      _ = try service.prepareArticleRestore(
+        preview: preview,
+        selectedDraftIDs: [UUID()],
+        editingProfileID: UUID(),
+        attachmentRootURL: attachmentRootURL
+      )
+    }
+
+    let manifestURL = archiveURL.appendingPathComponent(WorkspaceBackupService.manifestFileName)
+    let decoder = JSONDecoder()
+    decoder.dateDecodingStrategy = .iso8601
+    var manifest = try decoder.decode(
+      WorkspaceBackupManifest.self, from: Data(contentsOf: manifestURL))
+    manifest.createdAt = manifest.createdAt.addingTimeInterval(1)
+    let encoder = JSONEncoder()
+    encoder.dateEncodingStrategy = .iso8601
+    try encoder.encode(manifest).write(to: manifestURL, options: .atomic)
+    assertArticleRestoreError(.backupChanged) {
+      _ = try service.prepareArticleRestore(
+        preview: preview,
+        selectedDraftIDs: [draft.id],
+        editingProfileID: UUID(),
+        attachmentRootURL: attachmentRootURL
+      )
+    }
+  }
+
+  func testPrepareArticleRestoreRejectsTamperedAttachmentArchive() throws {
+    let rootURL = try TestWorkbenchFactory.temporaryDirectoryURL(
+      prefix: "WorkspaceArticleRestoreTamper")
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let sourceAttachmentURL = rootURL.appendingPathComponent("source.bin")
+    try Data("original".utf8).write(to: sourceAttachmentURL)
+    let profile = SiteProfile.defaultProfile
+    let draft = ArticleDraft(
+      siteProfileID: profile.id,
+      title: "校验附件",
+      attachments: [
+        DraftAttachment(
+          originalFilename: "source.bin",
+          relativePublishPath: "/files/source.bin",
+          repositoryPath: "static/files/source.bin",
+          sourceFilePath: sourceAttachmentURL.path
+        )
+      ]
+    )
+    let archiveURL = try createArticleRestoreBackup(
+      at: rootURL.appendingPathComponent("source.psworkspacebackup"),
+      profile: profile,
+      drafts: [draft],
+      knowledgeRootURL: rootURL.appendingPathComponent("KnowledgeLibrary")
+    )
+    let service = WorkspaceBackupService()
+    let preview = try service.inspectArticlesForRestore(at: archiveURL)
+    let manifest = try decodedWorkspaceBackupManifest(at: archiveURL)
+    let attachmentPath = try XCTUnwrap(
+      manifest.files.first {
+        $0.component == .draftAttachments
+      }?.relativePath)
+    try Data("tampered".utf8).write(to: archiveURL.appendingPathComponent(attachmentPath))
+
+    XCTAssertThrowsError(
+      try service.prepareArticleRestore(
+        preview: preview,
+        selectedDraftIDs: [draft.id],
+        editingProfileID: UUID(),
+        attachmentRootURL: rootURL.appendingPathComponent("ManagedAttachments")
+      )
+    ) { error in
+      guard case WorkspaceBackupError.checksumMismatch = error else {
+        return XCTFail("unexpected error: \(error)")
+      }
+    }
+  }
+
+  func testCancelledArticleRestoreRemovesStagingWithoutChangingBackup() async throws {
+    let root = try TestWorkbenchFactory.temporaryDirectoryURL(prefix: "ArticleRestoreCancellation")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let source = root.appendingPathComponent("large.bin")
+    try Data(repeating: 42, count: 2 * 1_024 * 1_024).write(to: source)
+    let snapshot = makeCancellationSnapshot(sourceURL: source)
+    let archive = root.appendingPathComponent("backup.psworkspacebackup")
+    let service = WorkspaceBackupService()
+    _ = try service.createBackup(
+      at: archive, snapshot: snapshot,
+      knowledgeRootURL: root.appendingPathComponent("KnowledgeLibrary"), applicationVersion: "test"
+    )
+    let preview = try service.inspectArticlesForRestore(at: archive)
+    let gate = WorkspaceBackupCopyGate()
+    let cancellableService = WorkspaceBackupService(
+      fileManager: .default, restoreMutationHook: { _ in },
+      fileCopyProgressHook: { _, _ in
+        gate.signalCopyStarted()
+        gate.waitUntilCancellationIsForwarded()
+      }
+    )
+    let worker = Task.detached {
+      try cancellableService.prepareArticleRestore(
+        preview: preview, selectedDraftIDs: Set(preview.articles.map(\.id)),
+        editingProfileID: UUID(),
+        attachmentRootURL: root.appendingPathComponent("ManagedAttachments")
+      )
+    }
+    XCTAssertTrue(gate.waitForCopyStart(timeout: 5))
+    worker.cancel()
+    gate.allowCancellationToProceed()
+    switch await worker.result {
+    case .success: XCTFail("cancelled preparation unexpectedly succeeded")
+    case .failure(let error): XCTAssertTrue(error is CancellationError)
+    }
+    XCTAssertEqual(try temporaryEntries(in: root, prefix: ".article-restore-"), [])
+    XCTAssertFalse(
+      FileManager.default.fileExists(atPath: root.appendingPathComponent("ManagedAttachments").path)
+    )
+    XCTAssertEqual(try service.inspectArticlesForRestore(at: archive).manifest, preview.manifest)
+  }
+
+  func testBackupCopyRejectsGrowingSourceAndRemovesPartialDestination() throws {
+    let root = try TestWorkbenchFactory.temporaryDirectoryURL(prefix: "BackupGrowingSource")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let source = root.appendingPathComponent("source.bin")
+    let destination = root.appendingPathComponent("copy.bin")
+    try Data(repeating: 1, count: 1_048_576).write(to: source)
+    let service = WorkspaceBackupService(
+      fileManager: .default, restoreMutationHook: { _ in },
+      fileCopyProgressHook: { _, _ in
+        let handle = try? FileHandle(forWritingTo: source)
+        defer { try? handle?.close() }
+        _ = try? handle?.seekToEnd()
+        try? handle?.write(contentsOf: Data([2]))
+      }
+    )
+    XCTAssertThrowsError(
+      try service.copyRegularFile(
+        from: source, to: destination, relativePath: "attachments/source.bin",
+        component: .draftAttachments
+      ))
+    XCTAssertFalse(FileManager.default.fileExists(atPath: destination.path))
+  }
+
+  private func createArticleRestoreBackup(
+    at archiveURL: URL,
+    profile: SiteProfile,
+    drafts: [ArticleDraft],
+    knowledgeRootURL: URL
+  ) throws -> URL {
+    _ = try WorkspaceBackupService().createBackup(
+      at: archiveURL,
+      snapshot: WorkbenchSnapshot(
+        profiles: [profile],
+        activeProfileID: profile.id,
+        drafts: drafts,
+        releaseRecords: []
+      ),
+      knowledgeRootURL: knowledgeRootURL,
+      applicationVersion: "test"
+    )
+    return archiveURL
+  }
+
+  private func decodedWorkspaceBackupManifest(at archiveURL: URL) throws -> WorkspaceBackupManifest
+  {
+    let decoder = JSONDecoder()
+    decoder.dateDecodingStrategy = .iso8601
+    return try decoder.decode(
+      WorkspaceBackupManifest.self,
+      from: Data(
+        contentsOf: archiveURL.appendingPathComponent(WorkspaceBackupService.manifestFileName))
+    )
+  }
+
+  private func assertArticleRestoreError(
+    _ expected: WorkspaceBackupArticleRestoreError,
+    operation: () throws -> Void
+  ) {
+    XCTAssertThrowsError(try operation()) { error in
+      guard let actual = error as? WorkspaceBackupArticleRestoreError else {
+        return XCTFail("unexpected error: \(error)")
+      }
+      switch (expected, actual) {
+      case (.invalidSelection, .invalidSelection),
+        (.backupChanged, .backupChanged),
+        (.unavailable, .unavailable),
+        (.persistenceFailed, .persistenceFailed):
+        break
+      default:
+        XCTFail("unexpected article restore error: \(actual)")
+      }
+    }
   }
 
   private func makeRestoreTransactionFixture(

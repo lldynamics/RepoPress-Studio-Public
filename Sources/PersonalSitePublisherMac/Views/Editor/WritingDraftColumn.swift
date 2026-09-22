@@ -133,7 +133,8 @@ struct WritingDraftListCache {
     maskedDraftIDs: Set<UUID>,
     universeSourceRevision: UInt64? = nil
   ) {
-    let shouldEvaluateUniverse = universeSourceRevision == nil
+    let shouldEvaluateUniverse =
+      universeSourceRevision == nil
       || universeFolderProjection == nil
       || universeFolderProjectionSourceRevision != universeSourceRevision
       || universeFolderProjectionKey?.profileID != profile.id
@@ -435,6 +436,11 @@ struct WritingDraftColumn: View {
     .onChange(of: store.activeProfileID) { _, _ in
       synchronizeFolderExpansionState()
     }
+    .onChange(of: store.isQuickHideActive) { _, isActive in
+      if isActive {
+        draftPendingUnpublish = nil
+      }
+    }
     .onChange(of: writingListState.restorationRevision) { _, _ in
       applyWindowListState()
     }
@@ -453,27 +459,57 @@ struct WritingDraftColumn: View {
     .onChange(of: folderExpansionState.userExpandedFolderIDs) { _, value in
       writingListState.setUserExpandedFolderIDs(value)
     }
-    .confirmationDialog(
-      "从网站下线这篇文章？",
-      isPresented: unpublishConfirmationPresented,
-      titleVisibility: .visible,
-      presenting: draftPendingUnpublish
-    ) { draft in
-      Button("确认下线", role: .destructive) {
-        let draftID = draft.id
-        draftPendingUnpublish = nil
-        Task {
-          await store.unpublishDraft(id: draftID)
+    .sheet(item: $draftPendingUnpublish) { draft in
+      let profile = store.profile(for: draft)
+      DraftUnpublishReviewView(
+        target: draft,
+        profile: profile,
+        displayTitle: { sourceID, fallback in
+          guard let source = store.draft(for: sourceID) else { return fallback }
+          return store.privateContentDisplay(for: source).title
+        },
+        isMasked: { sourceID in
+          guard let source = store.draft(for: sourceID) else { return true }
+          return store.privateContentDisplay(for: source).isMasked
+        },
+        loadSnapshot: {
+          guard store.canUseProtectedWorkbench else { throw CancellationError() }
+          store.flushDraftBodyEditorBuffers()
+          guard let current = store.draft(for: draft.id), !current.isGeneralDraft else {
+            throw NSError(
+              domain: "SiteUnpublishImpact", code: 1,
+              userInfo: [NSLocalizedDescriptionKey: String(localized: "文章已不存在或已移出站点，请关闭预览。")]
+            )
+          }
+          let currentProfile = store.profile(for: current)
+          return try await SiteUnpublishImpactService().previewAsync(
+            target: current,
+            drafts: store.drafts,
+            profile: currentProfile
+          )
+        },
+        onOpenSource: { sourceID in
+          guard store.canUseProtectedWorkbench, store.draft(for: sourceID) != nil else { return }
+          draftPendingUnpublish = nil
+          onFocusDraft(sourceID, .writing)
+        },
+        onConfirm: { preview in
+          guard store.canUseProtectedWorkbench else { return false }
+          store.flushDraftBodyEditorBuffers()
+          guard let current = store.draft(for: draft.id),
+            preview.remainsValid(
+              target: current, sources: store.drafts, profile: store.profile(for: current)
+            )
+          else { return false }
+          let draftID = draft.id
+          draftPendingUnpublish = nil
+          _ = await store.unpublishDraft(id: draftID)
+          return true
+        },
+        onCancel: {
+          draftPendingUnpublish = nil
         }
-      }
-      Button("取消", role: .cancel) {
-        draftPendingUnpublish = nil
-      }
-    } message: { draft in
-      let strategy = store.profile(for: draft).repositoryPublishStrategy == .direct
-        ? String(localized: "直接提交远端删除")
-        : String(localized: "创建下线 PR/MR")
-      Text("软件会把「\(draft.title.nilIfEmpty ?? String(localized: "未命名文章"))」移到回收站、\(strategy)，并清理本地 Markdown；图片资源不会自动删除。失败项会保留在发布抽屉中重试。")
+      )
     }
     .confirmationDialog(
       "移到回收站？",
@@ -504,7 +540,10 @@ struct WritingDraftColumn: View {
     }
     .sheet(isPresented: $isTemplatePickerPresented) {
       WritingDraftTemplatePicker(store: store) { template, asGeneralDraft, title in
-        guard let draftID = store.createDraft(from: template, asGeneralDraft: asGeneralDraft, title: title) else {
+        guard
+          let draftID = store.createDraft(
+            from: template, asGeneralDraft: asGeneralDraft, title: title)
+        else {
           return false
         }
         onFocusDraft(draftID, .writing)

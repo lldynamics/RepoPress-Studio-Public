@@ -1,6 +1,7 @@
 import Foundation
-import SwiftUI
+import PublishingKnowledgeCore
 import PublishingWorkbenchCore
+import SwiftUI
 
 extension RSSArticleList {
   func listState(
@@ -297,6 +298,7 @@ extension RSSArticleList {
   func articleRow(_ article: RSSArticleHeader, feed: RSSFeed?) -> some View {
     RSSArticleRow(
       article: article,
+      translatedTitle: translatedListTitle(for: article),
       feed: feed,
       summary: article.readableSummary,
       readingProgress: readingProgressByArticle[article.id] ?? 0,

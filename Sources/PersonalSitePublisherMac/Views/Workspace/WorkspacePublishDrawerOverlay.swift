@@ -25,7 +25,7 @@ struct WorkspacePublishDrawerOverlay: View {
   let store: WorkbenchStore
   @Binding var isPresented: Bool
   let initialScope: PublishScope
-  let onNavigateIssue: (UUID, PublishReadinessTarget) -> Void
+  let onNavigateIssue: (UUID, PublishReadinessTarget, PublishScope) -> Void
 
   var body: some View {
     GeometryReader { geometry in
@@ -47,6 +47,7 @@ struct WorkspacePublishDrawerOverlay: View {
         .shadow(color: .black.opacity(0.16), radius: 18, x: -6, y: 0)
       }
     }
+    .accessibilityElement(children: .contain)
     .accessibilityIdentifier("workspace-publish-drawer-overlay")
   }
 }

@@ -1,4 +1,5 @@
 import Foundation
+import PublishingKnowledgeCore
 import SwiftUI
 
 struct RSSSubscriptionDiscovery: Identifiable, Equatable {

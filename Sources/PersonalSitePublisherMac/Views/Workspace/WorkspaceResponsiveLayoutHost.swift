@@ -1,32 +1,7 @@
 import SwiftUI
 
-private struct WorkspaceResponsiveLayoutPreferenceKey: PreferenceKey {
-  static let defaultValue = WorkspaceResponsiveLayoutSnapshot.initial
-
-  static func reduce(
-    value: inout WorkspaceResponsiveLayoutSnapshot,
-    nextValue: () -> WorkspaceResponsiveLayoutSnapshot
-  ) {
-    value = nextValue()
-  }
-}
-
-/// Keeps continuous window measurements in a leaf view. The preference value
-/// compares by semantic layout band, so `ContentView` updates only at the
-/// 960/1180/1240 point decisions instead of for every resize pixel.
-private struct WorkspaceResponsiveLayoutReader: View {
-  var body: some View {
-    GeometryReader { geometry in
-      Color.clear.preference(
-        key: WorkspaceResponsiveLayoutPreferenceKey.self,
-        value: WorkspaceResponsiveLayoutSnapshot(width: geometry.size.width)
-      )
-    }
-    .allowsHitTesting(false)
-    .accessibilityHidden(true)
-  }
-}
-
+/// Observe this container directly so native Inspector hosting cannot swallow
+/// the width preference. Only semantic band changes reach the workspace owner.
 struct WorkspaceResponsiveLayoutHost<Content: View>: View {
   let content: Content
   let onChange: (WorkspaceResponsiveLayoutSnapshot) -> Void
@@ -41,7 +16,10 @@ struct WorkspaceResponsiveLayoutHost<Content: View>: View {
 
   var body: some View {
     content
-      .background(WorkspaceResponsiveLayoutReader())
-      .onPreferenceChange(WorkspaceResponsiveLayoutPreferenceKey.self, perform: onChange)
+      .onGeometryChange(for: WorkspaceResponsiveLayoutSnapshot.self) { geometry in
+        WorkspaceResponsiveLayoutSnapshot(width: geometry.size.width)
+      } action: { snapshot in
+        onChange(snapshot)
+      }
   }
 }

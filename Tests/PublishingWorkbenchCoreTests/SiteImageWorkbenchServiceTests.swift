@@ -1,6 +1,7 @@
 import CoreGraphics
 import Foundation
 import ImageIO
+import PublishingDomainContracts
 import UniformTypeIdentifiers
 import XCTest
 

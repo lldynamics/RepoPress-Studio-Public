@@ -1,5 +1,6 @@
 import Foundation
 import OSLog
+import PublishingKnowledgeCore
 import SwiftUI
 
 private let rssReadingProgressLogger = Logger(

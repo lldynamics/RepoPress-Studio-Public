@@ -193,6 +193,53 @@ import XCTest
       XCTAssertEqual(operationEvent.outcome, .cancelled)
     }
 
+    func testWritingPreparationRejectsProfileEditsAndCancellationDuringImport() async throws {
+      for cancelTask in [false, true] {
+        let fixture = try makeFixture()
+        defer { try? FileManager.default.removeItem(at: fixture.rootURL) }
+        let store = try makeStore(
+          importService: LocalContentImportService(isContentIndexEnabled: false))
+        var profile = store.activeProfile
+        profile.repositoryProvider = .github
+        profile.contentRoot = "content"
+        profile.markdownPathPattern = "content/posts/{slug}.md"
+        _ = profile.rememberLocalRepositoryRoot(fixture.rootURL)
+        store.updateActiveProfile(profile)
+        let selectedID = store.selectedDraftID
+        let selectedSection = store.selectedSection
+
+        let gate = RemoteSnapshotGate()
+        store.repositoryStore.remoteFileSnapshotTestHook = {
+          await gate.waitUntilReleased()
+        }
+        let preparation = Task { @MainActor in
+          await store.prepareRepositoryForWriting(expectedProfile: profile)
+        }
+        for _ in 0..<200 {
+          if await gate.hasEntered { break }
+          try await Task.sleep(nanoseconds: 10_000_000)
+        }
+        let didEnter = await gate.hasEntered
+        if cancelTask {
+          preparation.cancel()
+        } else {
+          var editedProfile = store.activeProfile
+          editedProfile.name = "Edited during preparation"
+          store.updateActiveProfile(editedProfile)
+        }
+        await gate.release()
+        let result = await preparation.value
+        store.repositoryStore.remoteFileSnapshotTestHook = nil
+
+        XCTAssertTrue(didEnter, "The test must interrupt an in-flight import.")
+        XCTAssertEqual(result.outcome, .cancelled)
+        XCTAssertEqual(result.summary.insertedCount, 0)
+        XCTAssertFalse(store.drafts.contains { $0.repositoryPath == fixture.articlePath })
+        XCTAssertEqual(store.selectedDraftID, selectedID)
+        XCTAssertEqual(store.selectedSection, selectedSection)
+      }
+    }
+
     private func makeStore(importService: LocalContentImportService) throws -> WorkbenchStore {
       let persistenceURL = FileManager.default.temporaryDirectory
         .appendingPathComponent("RepositoryImportBackground-\(UUID().uuidString).json")

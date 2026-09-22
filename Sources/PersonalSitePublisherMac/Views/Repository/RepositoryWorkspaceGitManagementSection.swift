@@ -39,8 +39,9 @@ struct RepositoryWorkspaceGitManagementSection: View {
       Label("分支管理", systemImage: "arrow.triangle.branch")
         .font(.headline)
     }
-    .accessibilityElement(children: .contain)
-    .accessibilityIdentifier("repository-section-git-management")
+    .disclosureGroupStyle(
+      WorkbenchDisclosureGroupStyle(toggleIdentifier: "repository-section-git-management")
+    )
   }
 
   private var branchSummary: some View {

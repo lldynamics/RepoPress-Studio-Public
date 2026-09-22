@@ -1,6 +1,7 @@
 import CoreGraphics
 import Foundation
 import ImageIO
+import PublishingDomainContracts
 
 public struct SEOSocialPreviewService: Sendable {
   public init() {}

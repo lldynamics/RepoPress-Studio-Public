@@ -1,4 +1,5 @@
 import AppKit
+import PublishingKnowledgeCore
 import PublishingWorkbenchCore
 import SwiftUI
 
@@ -35,9 +36,16 @@ struct PersonalSitePublisherMacApp: App {
       if ScreenshotDemoDataService.isEnabledFromEnvironment {
         let persistence = ScreenshotDemoDataService.preparePersistenceIfEnabled()
         let demoRootURL = persistence.fileURL.deletingLastPathComponent()
-        let knowledgeLibraryService = KnowledgeLibraryService(
-          rootURL: demoRootURL.appendingPathComponent("KnowledgeLibrary", isDirectory: true)
+        let knowledgeLibraryRoot = demoRootURL.appendingPathComponent(
+          "KnowledgeLibrary", isDirectory: true
         )
+        try? FileManager.default.createDirectory(
+          at: knowledgeLibraryRoot, withIntermediateDirectories: true
+        )
+        let knowledgeLibraryService =
+          ScreenshotDemoDataService.requestedSurfaceFromEnvironment == .knowledgeLibrary
+          ? ScreenshotDemoDataService.prepareKnowledgeLibraryServiceIfEnabled()
+          : KnowledgeLibraryService(rootURL: knowledgeLibraryRoot)
         _launchCoordinator = StateObject(
           wrappedValue: WorkbenchLaunchCoordinator(
             persistence: persistence,

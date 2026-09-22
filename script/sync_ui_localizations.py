@@ -58,8 +58,8 @@ SUSPICIOUS_LITERAL_EXPRESSION_PATTERN = re.compile(
     r"(?:\s*[-+*/]\s*\d+)?\)"
 )
 WORKSPACE_SECTION_PATTERN = re.compile(
-    r"public enum WorkspaceSection.*?(?=public enum WorkspaceCenterSurface)",
-    re.DOTALL,
+    r"public enum WorkspaceSection\b.*?^\}",
+    re.DOTALL | re.MULTILINE,
 )
 WORKSPACE_SECTION_CASE_PATTERN = re.compile(r"^\s*case\s+([A-Za-z][A-Za-z0-9_]*)\s*$", re.MULTILINE)
 LITERAL_LOCALIZATION_CALL_PREFIX_PATTERN = re.compile(
@@ -224,11 +224,18 @@ def extract_workspace_navigation_keys() -> dict[str, str]:
     sections = WORKSPACE_SECTION_CASE_PATTERN.findall(section_source)
     if not sections:
         raise RuntimeError("WorkspaceSection has no cases to localize")
-    return {
+    keys = {
         key: key
         for section in sections
         for key in (f"workspace.{section}", f"workspace.{section}.detail")
     }
+    keys.update({key: key for key in re.findall(r'"(workspace\.[a-zA-Z.]+)"', section_source)})
+    area_match = re.search(r"public enum WorkspaceArea\b.*?^\}", source, re.DOTALL | re.MULTILINE)
+    if area_match:
+        for area in WORKSPACE_SECTION_CASE_PATTERN.findall(area_match.group(0)):
+            key = f"workspace.area.{area}"
+            keys[key] = key
+    return keys
 
 
 def extract_literal_localization_calls() -> dict[str, str]:

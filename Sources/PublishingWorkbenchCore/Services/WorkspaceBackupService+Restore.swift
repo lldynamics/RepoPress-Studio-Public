@@ -1,5 +1,7 @@
 import CryptoKit
 import Foundation
+import PublishingDomainContracts
+import PublishingKnowledgeCore
 
 extension WorkspaceBackupService {
   func applyPendingRestore(
@@ -94,10 +96,10 @@ extension WorkspaceBackupService {
       }
     }
     do {
-      _ = try KnowledgeLibraryBackupService(
+      _ = try KnowledgeLibraryService(
         rootURL: stagedKnowledgeURL,
         fileManager: fileManager
-      ).inspectBackup(at: stagedKnowledgeURL)
+      ).inspectBackupSynchronously(at: stagedKnowledgeURL)
     } catch {
       throw WorkspaceBackupError.knowledgeLibraryInvalid(error.localizedDescription)
     }
@@ -298,6 +300,7 @@ extension WorkspaceBackupService {
 
   enum RestoreItemKind: String, Codable, CaseIterable, Hashable, Sendable {
     case workbench
+    case documentRecords
     case lastKnownGood
     case draftRecoveryJournal
     case operationLedger
@@ -314,7 +317,7 @@ extension WorkspaceBackupService {
   }
 
   struct RestoreTransaction: Codable, Hashable, Sendable {
-    static let currentFormatVersion = 2
+    static let currentFormatVersion = 3
 
     var formatVersion: Int
     var transactionID: UUID
@@ -334,6 +337,7 @@ extension WorkspaceBackupService {
   ) -> RestoreTransaction {
     var kinds: [RestoreItemKind] = [
       .workbench,
+      .documentRecords,
       .lastKnownGood,
       .draftRecoveryJournal,
       .operationLedger,
@@ -482,6 +486,9 @@ extension WorkspaceBackupService {
       throw CocoaError(.fileReadCorruptFile)
     }
     var expectedKinds = Set(RestoreItemKind.allCases)
+    if transaction.formatVersion < 3 {
+      expectedKinds.remove(.documentRecords)
+    }
     if transaction.formatVersion == 1 {
       expectedKinds.remove(.operationLedger)
       expectedKinds.remove(.operationLedgerLastKnownGood)
@@ -507,6 +514,12 @@ extension WorkspaceBackupService {
       return RestoreItemPaths(
         currentURL: runtimePaths.persistenceFileURL,
         recoveryURL: recoveryRoot.appendingPathComponent("workbench.json")
+      )
+    case .documentRecords:
+      return RestoreItemPaths(
+        currentURL: persistence.recordStoreDirectoryURL,
+        recoveryURL: recoveryRoot.appendingPathComponent(
+          persistence.recordStoreDirectoryURL.lastPathComponent)
       )
     case .lastKnownGood:
       return RestoreItemPaths(
@@ -548,7 +561,7 @@ extension WorkspaceBackupService {
       )
     case .pendingKnowledgeRestore:
       return RestoreItemPaths(
-        currentURL: KnowledgeLibraryBackupService.pendingRestoreURL(
+        currentURL: KnowledgeLibraryService.pendingRestoreURL(
           for: runtimePaths.knowledgeRootURL
         ),
         recoveryURL: recoveryRoot.appendingPathComponent(

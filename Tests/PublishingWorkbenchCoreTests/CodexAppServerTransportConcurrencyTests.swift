@@ -2,7 +2,7 @@ import Darwin
 import Foundation
 import XCTest
 
-@testable import PublishingWorkbenchCore
+@testable import PublishingAICore
 
 final class CodexAppServerTransportConcurrencyTests: XCTestCase {
   func testProcessTransportSerializesConcurrentJSONLFrameWrites() async throws {

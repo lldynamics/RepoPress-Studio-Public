@@ -1,6 +1,7 @@
 import Foundation
-import SwiftUI
+import PublishingKnowledgeCore
 import PublishingWorkbenchCore
+import SwiftUI
 
 /// RSS 文章列表的骨架屏占位：模拟文章行，列表在后台准备时显示，
 /// 避免空白或转圈带来的跳动感。
@@ -70,6 +71,7 @@ struct RSSArticleRefreshProgressLine: View {
 
 struct RSSArticleRow: View {
   let article: RSSArticleHeader
+  let translatedTitle: String?
   let feed: RSSFeed?
   let summary: String
   let readingProgress: Double
@@ -97,7 +99,7 @@ struct RSSArticleRow: View {
           )
           .toggleStyle(.checkbox)
           .labelsHidden()
-          .accessibilityLabel("选择文章：\(article.title)")
+          .accessibilityLabel("选择文章：\(translatedTitle ?? article.title)")
           .accessibilityValue(isBatchSelected ? "已选择" : "未选择")
         }
         Circle()
@@ -111,10 +113,11 @@ struct RSSArticleRow: View {
           .accessibilityHidden(true)
 
         VStack(alignment: .leading, spacing: 5) {
-          Text(article.title)
+          Text(translatedTitle ?? article.title)
             .font(article.isRead ? .body : .body.weight(.semibold))
             .lineLimit(2)
             .fixedSize(horizontal: false, vertical: true)
+            .help(article.title)
           HStack(spacing: 6) {
             if let feed {
               Text(feed.displayTitle)
@@ -150,7 +153,7 @@ struct RSSArticleRow: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(article.title)
+        .accessibilityLabel(translatedTitle ?? article.title)
         .accessibilityValue(accessibilityValue(relativeDate: relativeDate))
 
         if let coverURL = article.coverURL {

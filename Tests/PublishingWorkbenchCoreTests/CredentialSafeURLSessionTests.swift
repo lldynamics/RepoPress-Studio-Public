@@ -1,7 +1,8 @@
 import CoreFoundation
 import XCTest
 
-@testable import PublishingWorkbenchCore
+@testable import PublishingCoreSupport
+@testable import PublishingKnowledgeCore
 
 final class CredentialSafeURLSessionTests: XCTestCase {
   private var publicResolver: RSSNetworkURLPolicy.Resolver {

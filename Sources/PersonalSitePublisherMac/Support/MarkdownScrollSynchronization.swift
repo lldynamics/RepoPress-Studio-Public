@@ -97,6 +97,7 @@ final class MarkdownScrollViewSyncBridge: NSObject {
   private weak var scrollView: NSScrollView?
   private var sourceLineProvider: ((NSScrollView) -> Int?)?
   private var sourceLineApplier: ((Int, NSScrollView) -> Bool)?
+  private var reportsSourceLine = true
   private var onViewportChanged: (() -> Void)?
   private var lastAppliedSynchronizationUpdateID: UUID?
   private var lastAppliedRestorationUpdateID: UUID?
@@ -129,10 +130,15 @@ final class MarkdownScrollViewSyncBridge: NSObject {
     hasPendingDisplayLinkDelivery = false
   }
 
+  func setReportsSourceLine(_ reportsSourceLine: Bool) {
+    self.reportsSourceLine = reportsSourceLine
+  }
+
   func observe(
     _ scrollView: NSScrollView,
     sourceLineProvider: ((NSScrollView) -> Int?)? = nil,
     sourceLineApplier: ((Int, NSScrollView) -> Bool)? = nil,
+    reportsSourceLine: Bool = true,
     onViewportChanged: (() -> Void)? = nil
   ) {
     NotificationCenter.default.removeObserver(self)
@@ -140,6 +146,7 @@ final class MarkdownScrollViewSyncBridge: NSObject {
     self.scrollView = scrollView
     self.sourceLineProvider = sourceLineProvider
     self.sourceLineApplier = sourceLineApplier
+    self.reportsSourceLine = reportsSourceLine
     self.onViewportChanged = onViewportChanged
     lastAppliedSynchronizationUpdateID = nil
     lastAppliedRestorationUpdateID = nil
@@ -197,6 +204,7 @@ final class MarkdownScrollViewSyncBridge: NSObject {
       return
     }
 
+    (scrollView as? MarkdownEditorScrollView)?.cancelPendingSelectionReveal()
     scrollView.layoutSubtreeIfNeeded()
     if let sourceLine = update.sourceLine,
       purpose == .synchronization,
@@ -291,11 +299,16 @@ final class MarkdownScrollViewSyncBridge: NSObject {
     displayLink.isPaused = true
     onViewportChanged?()
     guard let progress = progressCoalescer.deliverLatest(), let scrollView else { return }
-    onPositionChanged(
-      MarkdownScrollSyncPosition(
-        sourceLine: sourceLineProvider?(scrollView),
-        progress: progress
-      )
+    onPositionChanged(reportedPosition(for: scrollView, progress: progress))
+  }
+
+  func reportedPosition(
+    for scrollView: NSScrollView,
+    progress: Double
+  ) -> MarkdownScrollSyncPosition {
+    MarkdownScrollSyncPosition(
+      sourceLine: reportsSourceLine ? sourceLineProvider?(scrollView) : nil,
+      progress: progress
     )
   }
 }

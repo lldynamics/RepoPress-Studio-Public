@@ -1,7 +1,6 @@
 import Foundation
+import PublishingCoreSupport
 import Testing
-
-@testable import PublishingWorkbenchCore
 
 struct ImageFileSupportTests {
   @Test func acceptsStaticSiteImageFormatsCaseInsensitively() {

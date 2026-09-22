@@ -159,7 +159,9 @@ extension ReleaseHistoryDetailView {
               }
 
               if !signal.logExcerpt.isEmpty {
-                deploymentLogExcerpt(signal.logExcerpt)
+                deploymentLogExcerpt(
+                  signal.logExcerpt,
+                  profile: DeploymentSourceContext.profile(for: record, in: store.profiles))
               }
             }
           }
@@ -245,7 +247,9 @@ extension ReleaseHistoryDetailView {
     }
   }
 
-  private func deploymentLogExcerpt(_ entries: [DeploymentLogEntry]) -> some View {
+  private func deploymentLogExcerpt(_ entries: [DeploymentLogEntry], profile: SiteProfile?)
+    -> some View
+  {
     let orderedEntries = entries.sorted { lhs, rhs in
       deploymentLogPriority(lhs.level) > deploymentLogPriority(rhs.level)
     }
@@ -289,6 +293,11 @@ extension ReleaseHistoryDetailView {
                   .font(.caption.monospaced())
                   .foregroundStyle(.secondary)
                   .workbenchTruncatedIdentity(locationText)
+                if let profile {
+                  DeploymentSourceLocationButton(
+                    entry: entry,
+                    context: DeploymentSourceContext(profile: profile, shell: store.shell))
+                }
               }
             }
             Text(entry.message)
@@ -301,6 +310,7 @@ extension ReleaseHistoryDetailView {
         }
       }
     }
+    .accessibilityElement(children: .contain)
     .accessibilityIdentifier("release-deployment-log-excerpt")
   }
 

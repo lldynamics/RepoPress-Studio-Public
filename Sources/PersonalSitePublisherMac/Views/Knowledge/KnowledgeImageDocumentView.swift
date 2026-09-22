@@ -106,6 +106,7 @@ private struct ThumbnailRequestID: Hashable {
 struct KnowledgeImageDocumentView: View {
   let imageURL: URL?
   let title: String
+  let sourceName: String
   let ocrText: String
   let highlightedAnchor: KnowledgeVisualAnchor?
 
@@ -262,11 +263,22 @@ struct KnowledgeImageDocumentView: View {
           Label("拖出图片文件", systemImage: "hand.draw")
         }
         .onDrag {
-          NSItemProvider(contentsOf: imageURL) ?? NSItemProvider(object: imageURL as NSURL)
+          Self.imageFileItemProvider(imageURL: imageURL, sourceName: sourceName)
         }
         .accessibilityLabel("拖出图片文件到其他应用")
       }
     }
+  }
+
+  static func imageFileItemProvider(imageURL: URL, sourceName: String) -> NSItemProvider {
+    let provider = NSItemProvider(contentsOf: imageURL) ?? NSItemProvider(object: imageURL as NSURL)
+    // The managed URL is content-addressed; use the original filename for the
+    // file copy delivered by the system, without decoding or rewriting it.
+    let filename = (sourceName as NSString).lastPathComponent
+    provider.suggestedName =
+      ["", ".", "..", "/"].contains(filename)
+      ? imageURL.lastPathComponent : filename
+    return provider
   }
 
   private func imageCanvas(_ decodedImage: CGImage) -> some View {

@@ -16,6 +16,36 @@ SPEC.loader.exec_module(SYNC)
 
 
 class SwiftLocalizationExtractionTests(unittest.TestCase):
+    def test_workspace_areas_do_not_become_atomic_section_keys(self) -> None:
+        source = '''public enum WorkspaceSection {
+  case writing
+  var page: String { "workspace.writing.page" }
+}
+public enum WorkspaceArea {
+  case writing
+  case resources
+  case site
+}
+public enum WorkspaceCenterSurface {
+  case inspector
+}
+'''
+        previous = SYNC.WORKSPACE_MODELS_PATH
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "WorkspaceModels.swift"
+            path.write_text(source, encoding="utf-8")
+            SYNC.WORKSPACE_MODELS_PATH = path
+            try:
+                keys = SYNC.extract_workspace_navigation_keys()
+            finally:
+                SYNC.WORKSPACE_MODELS_PATH = previous
+        self.assertIn("workspace.writing.detail", keys)
+        self.assertIn("workspace.writing.page", keys)
+        self.assertIn("workspace.area.resources", keys)
+        self.assertIn("workspace.area.site", keys)
+        self.assertNotIn("workspace.resources", keys)
+        self.assertNotIn("workspace.inspector", keys)
+
     def extracted_literal(self, source: str) -> Optional[str]:
         match = SYNC.LITERAL_LOCALIZATION_CALL_PREFIX_PATTERN.search(source)
         if match is None:

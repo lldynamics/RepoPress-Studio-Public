@@ -1,4 +1,5 @@
 import XCTest
+
 @testable import PersonalSitePublisherMac
 @testable import PublishingWorkbenchCore
 
@@ -49,5 +50,21 @@ final class PublishReadinessNavigationTests: XCTestCase {
     XCTAssertNotEqual(first.id, next.id)
     XCTAssertEqual(first.draftID, next.draftID)
     XCTAssertEqual(first.target.inspectorTab, .metadata)
+  }
+
+  func testArticleRepairSessionPreservesTheCurrentPublishScopeAndExactDraft() {
+    let draftID = UUID()
+    let session = ArticlePublishRepairSession(
+      draftID: draftID,
+      target: .images(attachmentID: UUID()),
+      publishScope: .currentArticle
+    )
+
+    XCTAssertEqual(session.draftID, draftID)
+    XCTAssertEqual(session.publishScope, .currentArticle)
+    XCTAssertEqual(
+      ArticlePublishRepairRoutePolicy.route(for: session.target).workspaceSection,
+      .writing
+    )
   }
 }

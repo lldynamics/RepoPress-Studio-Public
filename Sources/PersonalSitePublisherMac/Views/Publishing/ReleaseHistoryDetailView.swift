@@ -1,4 +1,5 @@
 import AppKit
+import PublishingDomainContracts
 import PublishingWorkbenchCore
 import SwiftUI
 
@@ -35,6 +36,11 @@ struct ReleaseHistoryDetailView: View {
           if let focusedRecordID, !showsAllRecords {
             focusedReleaseRecordContent(focusedRecordID)
           } else {
+            PublishExecutionHistorySection(
+              store: store,
+              activeProfileID: store.activeProfileID,
+              records: store.publishExecutionRecords
+            )
             releasePrimaryMetrics(ledger.summary)
             releaseSecondaryMetrics(ledger.summary)
             releaseOperationalContent(

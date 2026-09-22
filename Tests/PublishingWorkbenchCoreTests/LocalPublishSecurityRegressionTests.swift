@@ -87,7 +87,10 @@ final class LocalPublishSecurityRegressionTests: XCTestCase {
       entries: [
         LocalPublishTransactionEntry(
           repositoryPath: "content/posts/article.md",
-          backupFileName: "0-backup"
+          backupFileName: "0-backup",
+          originalState: try localPublishFileState(
+            at: rollbackDirectory.appendingPathComponent("0-backup"), fileManager: .default),
+          intendedState: try localPublishFileState(at: articleURL, fileManager: .default)
         )
       ]
     )

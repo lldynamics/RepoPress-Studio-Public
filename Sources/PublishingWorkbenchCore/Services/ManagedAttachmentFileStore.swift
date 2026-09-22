@@ -1,4 +1,5 @@
 import Foundation
+import PublishingDomainContracts
 
 public enum ManagedAttachmentFileStoreError: LocalizedError, Equatable, Sendable {
   case sourceUnavailable(String)

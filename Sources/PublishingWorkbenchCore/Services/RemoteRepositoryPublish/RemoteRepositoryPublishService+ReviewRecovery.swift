@@ -59,12 +59,16 @@ extension RemoteRepositoryPublishService {
       branch: draft.branchName,
       token: token
     )
+    guard branchSHA == draft.recordedCommitSHA else {
+      throw RemoteRepositoryPublishError.reviewRecoveryUnavailable(
+        CoreL10n.text("远端分支已偏离已记录的提交，请重新核对后再继续创建评审。"))
+    }
     let reviewURL: String?
     if let existing = try await githubExistingPullRequestURL(
       repository: repository,
       sourceBranch: draft.branchName,
       targetBranch: draft.targetBranch,
-      token: token
+      token: token, includeClosed: true
     ) {
       reviewURL = existing
     } else {
@@ -107,21 +111,18 @@ extension RemoteRepositoryPublishService {
     repository: RemoteRepository,
     token: String
   ) async throws -> RemoteRepositoryPublishResult {
-    guard try await gitLabBranchExists(
-      repository: repository,
-      branch: draft.branchName,
-      token: token
-    ) else {
+    let branchSHA = try await gitLabBranchSHA(
+      repository: repository, branch: draft.branchName, token: token)
+    guard branchSHA == draft.recordedCommitSHA else {
       throw RemoteRepositoryPublishError.reviewRecoveryUnavailable(
-        CoreL10n.format("远端分支 %@ 不存在。", draft.branchName)
-      )
+        CoreL10n.text("远端分支已偏离已记录的提交，请重新核对后再继续创建评审。"))
     }
     let reviewURL: String?
     if let existing = try await gitLabExistingMergeRequestURL(
       repository: repository,
       sourceBranch: draft.branchName,
       targetBranch: draft.targetBranch,
-      token: token
+      token: token, includeClosed: true
     ) {
       reviewURL = existing
     } else {
@@ -153,7 +154,7 @@ extension RemoteRepositoryPublishService {
       branchName: draft.branchName,
       targetBranch: draft.targetBranch,
       changedPaths: draft.changedPaths,
-      commitSHA: draft.recordedCommitSHA,
+      commitSHA: branchSHA,
       reviewNumber: reviewURL.flatMap { reviewNumber(from: $0, provider: .gitlab) },
       reviewURL: reviewURL,
       reviewTitle: draft.title

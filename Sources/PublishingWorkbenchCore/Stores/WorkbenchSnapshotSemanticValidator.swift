@@ -37,6 +37,13 @@ enum WorkbenchSnapshotSemanticValidationError: LocalizedError, Equatable, Sendab
 
 enum WorkbenchSnapshotSemanticValidator {
   static func validate(_ snapshot: WorkbenchSnapshot) throws {
+    guard
+      Set(snapshot.publishExecutionRecords.map(\.id)).count
+        == snapshot.publishExecutionRecords.count
+    else {
+      throw WorkbenchRecordStorageError.invalidData("发布执行记录标识重复。")
+    }
+    for execution in snapshot.publishExecutionRecords { try execution.plan.validate() }
     guard !snapshot.profiles.isEmpty else {
       throw WorkbenchSnapshotSemanticValidationError.profilesEmpty
     }

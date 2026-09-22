@@ -440,6 +440,9 @@ struct LocalPublishRollbackEntry {
 struct PreparedLocalPublishRecovery {
   let destinationURL: URL
   let backupURL: URL?
+  let originalState: LocalPublishFileState
+  let observedState: LocalPublishFileState
+  let backupSourceState: LocalPublishSourceFileState?
 }
 
 enum LocalPublishTransactionPhase: String, Codable {
@@ -450,6 +453,10 @@ enum LocalPublishTransactionPhase: String, Codable {
 struct LocalPublishTransactionEntry: Codable {
   var repositoryPath: String
   var backupFileName: String?
+  // Optional only for journals written by older versions. Those journals may
+  // be cleaned up when already restored, but cannot overwrite changed files.
+  var originalState: LocalPublishFileState? = nil
+  var intendedState: LocalPublishFileState? = nil
 }
 
 struct LocalPublishTransaction: Codable {

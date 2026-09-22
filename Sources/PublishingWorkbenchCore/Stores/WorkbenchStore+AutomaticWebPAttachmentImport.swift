@@ -1,5 +1,6 @@
 import Foundation
 import OSLog
+import PublishingDomainContracts
 
 private let automaticWebPAttachmentImportLogger = Logger(
   subsystem: "com.jinfang.PersonalSitePublisherMac",

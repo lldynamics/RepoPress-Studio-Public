@@ -58,6 +58,28 @@ enum RepositoryContentChangeEventDecision: Equatable, Sendable {
       if metadataPath == "objects" || metadataPath.hasPrefix("objects/")
         || metadataPath == "logs" || metadataPath.hasPrefix("logs/")
       { return .ignore }
+      // Git's temporary locks also change parent directory metadata. Neither
+      // event represents a new repository state; observe the final files.
+      if flags.contains(.itemIsDir) {
+        let isTopologyChange = flags.intersection([
+          .itemCreated,
+          .itemRemoved,
+          .itemRenamed,
+        ]).isEmpty == false
+        return isTopologyChange ? .fullScan : .ignore
+      }
+      let hasLockLifecycleEvent = flags.intersection([
+        .itemCreated,
+        .itemRemoved,
+        .itemRenamed,
+        .itemModified,
+        .itemInodeMetaMod,
+      ]).isEmpty == false
+      if hasLockLifecycleEvent,
+        components.last?.hasSuffix(".lock") == true
+      {
+        return .ignore
+      }
       return .fullScan
     }
     if flags.contains(.itemIsDir) {

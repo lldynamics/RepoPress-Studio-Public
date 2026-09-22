@@ -1,5 +1,6 @@
 import XCTest
-@testable import PublishingWorkbenchCore
+
+@testable import PublishingKnowledgeCore
 
 final class AIPublishingAssistantHTMLTranslationTests: XCTestCase {
   func testTargetPresetsAndCustomLanguageAreStable() throws {

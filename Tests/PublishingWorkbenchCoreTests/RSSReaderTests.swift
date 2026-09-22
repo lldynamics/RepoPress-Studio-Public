@@ -1,7 +1,8 @@
 import Foundation
 import SQLite3
 import XCTest
-@testable import PublishingWorkbenchCore
+
+@testable import PublishingKnowledgeCore
 
 @MainActor
 final class RSSReaderTests: XCTestCase {

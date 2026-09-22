@@ -182,7 +182,11 @@ struct AIWritingStyleSection: View {
       styleMessage = nil
       preview = initialPreview?.profileID == profileID ? initialPreview : nil
     }
-    .onDisappear { extractionTask?.cancel() }
+    .onDisappear {
+      extractionRequestID = UUID()
+      extractionTask?.cancel()
+      extractionTask = nil
+    }
   }
 
   private var filteredArticles: [ArticleDraft] {
@@ -202,6 +206,9 @@ struct AIWritingStyleSection: View {
     extractionRequestID = requestID
     styleMessage = nil
     extractionTask = Task { @MainActor in
+      guard !Task.isCancelled, extractionRequestID == requestID, siteProfileID == profileID else {
+        return
+      }
       defer {
         if extractionRequestID == requestID { extractionTask = nil }
       }
@@ -211,8 +218,6 @@ struct AIWritingStyleSection: View {
       }
       if let result, result.profileID == profileID {
         preview = result
-      } else {
-        styleMessage = currentActionMessage() ?? String(localized: "写作风格提炼未完成，请检查 AI 设置后重试。")
       }
     }
   }

@@ -1,6 +1,7 @@
 import Foundation
-import SwiftUI
+import PublishingKnowledgeCore
 import PublishingWorkbenchCore
+import SwiftUI
 
 extension RSSArticleList {
   var selectedScope: RSSArticleScope {

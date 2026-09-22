@@ -1,4 +1,4 @@
-import PublishingWorkbenchCore
+import PublishingAICore
 import SwiftUI
 
 struct AIConnectionSetupSection: View {

@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import PublishingDomainContracts
 import PublishingWorkbenchCore
 
 /// Builds the derived, read-only TextKit 2 document used while an editor is

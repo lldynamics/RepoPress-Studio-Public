@@ -1,4 +1,5 @@
 import Foundation
+import PublishingDomainContracts
 import Testing
 
 @testable import PublishingWorkbenchCore
@@ -201,13 +202,12 @@ extension WorkbenchDataRootMigrationTests {
 
     let snapshotNames = Set(["workbench.json", "workbench.last-known-good.json"])
     var validSnapshotCount = 0
-    for (relativePath, sourceData) in sourceFiles
+    for relativePath in sourceFiles.keys
     where snapshotNames.contains((relativePath as NSString).lastPathComponent) {
-      guard validSnapshot(from: sourceData) != nil else { continue }
-      guard let destinationData = destinationFiles[relativePath],
-            let destinationSnapshot = validSnapshot(from: destinationData) else {
-        throw FixtureError.invalidWorkbenchSnapshot
-      }
+      guard (try? requiredSnapshot(at: sourceRootURL.appendingPathComponent(relativePath))) != nil
+      else { continue }
+      let destinationSnapshot = try requiredSnapshot(
+        at: destinationRootURL.appendingPathComponent(relativePath))
       try verifyAttachmentPaths(
         in: destinationSnapshot,
         sourceLayout: sourceLayout,
@@ -232,20 +232,6 @@ extension WorkbenchDataRootMigrationTests {
   }
 
   func requiredSnapshot(at url: URL) throws -> WorkbenchSnapshot {
-    let data = try Data(contentsOf: url)
-    guard let snapshot = validSnapshot(from: data) else {
-      throw FixtureError.invalidWorkbenchSnapshot
-    }
-    return snapshot
-  }
-
-  func validSnapshot(from data: Data) -> WorkbenchSnapshot? {
-    guard let snapshot = try? JSONDecoder.workbench.decode(
-      WorkbenchSnapshot.self,
-      from: data
-    ), (try? WorkbenchSnapshotSemanticValidator.validate(snapshot)) != nil else {
-      return nil
-    }
-    return snapshot
+    try WorkbenchPersistence(fileURL: url).loadStoredSnapshot(at: url)
   }
 }

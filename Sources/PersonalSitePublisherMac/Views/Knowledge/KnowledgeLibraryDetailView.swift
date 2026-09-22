@@ -105,6 +105,7 @@ struct KnowledgeLibraryDetailView: View {
               KnowledgeImageDocumentView(
                 imageURL: selectedImageURL,
                 title: document.title,
+                sourceName: document.sourceName,
                 ocrText: knowledge.selectedDocumentCapturedText
                   ?? knowledge.selectedDocumentText,
                 highlightedAnchor: activeSearchResult?.chunk.visualAnchor

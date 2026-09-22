@@ -406,7 +406,7 @@ extension WorkbenchAIStore {
         // General retrieval is driven by the user's question only. In
         // particular, no current draft, editor selection, repository or publish
         // status is read to enrich this query.
-        automaticContext = await store.knowledge.context(
+        automaticContext = await store.knowledgeContext(
           query: query,
           policy: conversation.knowledgePolicy
         )

@@ -1,5 +1,7 @@
 import AppKit
 import Foundation
+import PublishingDomainContracts
+import PublishingKnowledgeCore
 import PublishingWorkbenchCore
 
 enum KnowledgeArticleInsertionStyle: String {

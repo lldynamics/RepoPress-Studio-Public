@@ -1,8 +1,9 @@
 import Foundation
+import PublishingDomainContracts
 
 public struct WorkbenchSnapshot: Codable, Equatable, Sendable {
   /// Bump this only together with a backwards-compatible decode migration.
-  public static let currentFormatVersion = 16
+  public static let currentFormatVersion = 17
   public static let maximumAIConversationsPerDraft =
     AIConversationRetentionPolicy.maximumConversationsPerDraft
   public static let maximumAIConversationCount =
@@ -20,6 +21,7 @@ public struct WorkbenchSnapshot: Codable, Equatable, Sendable {
   public var recycledDrafts: [RecycledDraft]
   public var draftRepositoryCleanupRequests: [DraftRepositoryCleanupRequest]
   public var releaseRecords: [ReleaseRecord]
+  public var publishExecutionRecords: [PublishExecutionRecord]
   public var maintenanceOperationRecords: [MaintenanceOperationRecord]
   public var aiMetadataApplicationRecords: [AIPublishingMetadataApplicationRecord]
   public var automationRunRecords: [WorkbenchAutomationRunRecord]
@@ -63,6 +65,7 @@ public struct WorkbenchSnapshot: Codable, Equatable, Sendable {
     recycledDrafts: [RecycledDraft] = [],
     draftRepositoryCleanupRequests: [DraftRepositoryCleanupRequest] = [],
     releaseRecords: [ReleaseRecord],
+    publishExecutionRecords: [PublishExecutionRecord] = [],
     maintenanceOperationRecords: [MaintenanceOperationRecord] = [],
     aiMetadataApplicationRecords: [AIPublishingMetadataApplicationRecord] = [],
     automationRunRecords: [WorkbenchAutomationRunRecord] = [],
@@ -114,6 +117,7 @@ public struct WorkbenchSnapshot: Codable, Equatable, Sendable {
         .prefix(DraftLifecycleService.maximumRepositoryCleanupRequests)
     )
     self.releaseRecords = ReleaseRecord.limitedHistory(releaseRecords)
+    self.publishExecutionRecords = PublishExecutionRecord.retained(publishExecutionRecords)
     self.maintenanceOperationRecords = Self.limitedMaintenanceOperationRecords(
       maintenanceOperationRecords)
     self.aiMetadataApplicationRecords = Self.limitedMetadataApplicationRecords(
@@ -203,6 +207,7 @@ public struct WorkbenchSnapshot: Codable, Equatable, Sendable {
     case recycledDrafts
     case draftRepositoryCleanupRequests
     case releaseRecords
+    case publishExecutionRecords
     case maintenanceOperationRecords
     case aiMetadataApplicationRecords
     case automationRunRecords
@@ -290,6 +295,10 @@ public struct WorkbenchSnapshot: Codable, Equatable, Sendable {
     )
     releaseRecords = ReleaseRecord.limitedHistory(
       try container.decode([ReleaseRecord].self, forKey: .releaseRecords)
+    )
+    publishExecutionRecords = PublishExecutionRecord.retained(
+      try container.decodeIfPresent([PublishExecutionRecord].self, forKey: .publishExecutionRecords)
+        ?? []
     )
     maintenanceOperationRecords = Self.limitedMaintenanceOperationRecords(
       try container.decodeIfPresent(

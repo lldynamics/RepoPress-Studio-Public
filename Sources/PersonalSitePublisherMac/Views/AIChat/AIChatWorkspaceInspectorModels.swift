@@ -589,8 +589,6 @@ struct AIChatContextInspectorActions {
   let recordStructuredEditFeedback:
     (AILocalEditFeedbackDecision, AIStructuredEditProposal, String?) -> Void
   let createTranslationDraft: (AITranslationDraftPlan) -> Void
-  let localFeedbackDecision: (AIPublishingChatMessage) -> AILocalEditFeedbackDecision?
-  let recordLocalFeedback: (AILocalEditFeedbackDecision, AIPublishingChatMessage) -> Void
   let executeAutomationPlan: (UUID, AIPublishingChatMessage.ID) -> Void
   let executeAutomationStep: (UUID, AIPublishingChatMessage.ID, UUID) -> Void
   let acceptAutomationStep: (UUID, AIPublishingChatMessage.ID, UUID, String) -> Void

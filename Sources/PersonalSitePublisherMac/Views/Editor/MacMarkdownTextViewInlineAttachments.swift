@@ -1,5 +1,6 @@
 import AppKit
 import ImageIO
+import PublishingDomainContracts
 import PublishingWorkbenchCore
 import UniformTypeIdentifiers
 
@@ -27,6 +28,7 @@ struct MarkdownInlineAttachmentDrawing: Equatable {
   let key: String
   let content: Content
   let documentRange: NSRange
+  let sourceText: String
   let frame: NSRect
   let renderingAttributesSnapshots: [RenderingAttributesSnapshot]
   let originalParagraphStyle: NSParagraphStyle?
@@ -45,11 +47,25 @@ struct MarkdownInlineAttachmentDrawing: Equatable {
     lhs.key == rhs.key
       && lhs.content == rhs.content
       && lhs.documentRange == rhs.documentRange
+      && lhs.sourceText == rhs.sourceText
       && lhs.frame == rhs.frame
       && lhs.minimumLineHeight == rhs.minimumLineHeight
       && lhs.image === rhs.image
       && lhs.isImageLoading == rhs.isImageLoading
   }
+}
+
+/// The layout reservation outlives an on-screen drawing.  Attachment cards are
+/// intentionally viewport-scoped, but their Markdown line still occupies space
+/// in the document while the card is off screen.  Keeping that small piece of
+/// state separate prevents a viewport repaint from changing the scrollable
+/// height of unrelated text.
+struct MarkdownInlineAttachmentGeometryReservation {
+  let content: MarkdownInlineAttachmentDrawing.Content
+  let documentRange: NSRange
+  let sourceText: String
+  let originalParagraphStyle: NSParagraphStyle?
+  let minimumLineHeight: CGFloat
 }
 
 /// Accessibility-only representation of a paint-only inline attachment.
@@ -189,7 +205,10 @@ extension MacMarkdownTextView.Coordinator {
     inlineAttachmentReferenceLookupCache = nil
   }
 
-  func clearInlineAttachmentDrawings(in textView: NSTextView? = nil) {
+  func clearInlineAttachmentDrawings(
+    in textView: NSTextView? = nil,
+    preservingGeometry: Bool = false
+  ) {
     let targetTextView = textView ?? self.textView
     let paintedDescriptors = Array(inlineAttachmentDrawingDescriptors.values)
     let paintedRanges = inlineAttachmentPaintedRanges
@@ -203,18 +222,47 @@ extension MacMarkdownTextView.Coordinator {
     if let droppableTextView = targetTextView as? DroppableMarkdownTextView {
       droppableTextView.markdownInlineAttachmentDrawings = [:]
     }
-    guard let targetTextView else { return }
+    guard let targetTextView else {
+      inlineAttachmentGeometryReservations.removeAll()
+      return
+    }
     let documentLength = (targetTextView.string as NSString).length
     var restoredRanges = Set<NSRange>()
+    let descriptorRanges = Set(paintedDescriptors.map(\.documentRange))
     for descriptor in paintedDescriptors
-      where descriptor.documentRange.location != NSNotFound
-        && NSMaxRange(descriptor.documentRange) <= documentLength
+    where descriptor.documentRange.location != NSNotFound
+      && descriptor.documentRange.location >= 0
+      && descriptor.documentRange.location < documentLength
     {
+      guard
+        inlineAttachmentDrawingMatchesCurrentReservation(
+          descriptor,
+          in: targetTextView
+        )
+      else {
+        if !preservingGeometry {
+          // A full cleanup cannot leave a stale card's transparent rendering
+          // attributes behind. Do not replay its old snapshot or paragraph
+          // style onto a range that may now contain different source text.
+          restoreInlineAttachmentRendering(
+            in: NSIntersectionRange(
+              descriptor.documentRange,
+              NSRange(location: 0, length: documentLength)
+            ),
+            textView: targetTextView,
+            restoringGeometry: false
+          )
+        }
+        continue
+      }
       restoreInlineAttachmentRendering(
         in: descriptor.documentRange,
         textView: targetTextView,
         renderingAttributesSnapshots: descriptor.renderingAttributesSnapshots,
-        originalParagraphStyle: descriptor.originalParagraphStyle
+        originalParagraphStyle: descriptor.originalParagraphStyle,
+        restoringGeometry:
+          !preservingGeometry
+          && inlineAttachmentGeometryReservations[descriptor.key] == nil
       )
       restoredRanges.insert(descriptor.documentRange)
     }
@@ -223,12 +271,23 @@ extension MacMarkdownTextView.Coordinator {
     // descriptor is normally present for every painted range, but restoring a
     // remaining range is safer than leaving the source permanently hidden.
     for range in paintedRanges
-      where !restoredRanges.contains(range)
-        && range.location != NSNotFound
-        && NSMaxRange(range) <= documentLength
+    where !restoredRanges.contains(range)
+      && !descriptorRanges.contains(range)
+      && range.location != NSNotFound
+      && range.location >= 0
+      && range.location < documentLength
     {
-      restoreInlineAttachmentRendering(in: range, textView: targetTextView)
+      restoreInlineAttachmentRendering(
+        in: NSIntersectionRange(range, NSRange(location: 0, length: documentLength)),
+        textView: targetTextView,
+        restoringGeometry: !preservingGeometry
+      )
     }
+    guard !preservingGeometry else { return }
+    for reservation in inlineAttachmentGeometryReservations.values {
+      restoreInlineAttachmentGeometry(reservation, in: targetTextView)
+    }
+    inlineAttachmentGeometryReservations.removeAll()
   }
 
   func applyInlineAttachmentDrawings(
@@ -237,20 +296,34 @@ extension MacMarkdownTextView.Coordinator {
     preservingExisting: Bool = false
   ) {
     guard let droppableTextView = textView as? DroppableMarkdownTextView else { return }
+    self.textView = textView
     if !preservingExisting {
-      clearInlineAttachmentDrawings(in: textView)
+      clearInlineAttachmentDrawings(in: textView, preservingGeometry: true)
     }
     let document = textView.string as NSString
     guard bodyUTF16Offset >= 0, bodyUTF16Offset <= document.length else { return }
-    guard let rangeResolver = MarkdownTextKit2RangeAdapter.rangeResolver(
-      for: applicationRange,
-      in: textView
-    ) else {
+    guard
+      let rangeResolver = MarkdownTextKit2RangeAdapter.rangeResolver(
+        for: applicationRange,
+        in: textView
+      )
+    else {
       return
     }
     let plan = cachedInlineAttachmentPlan(in: document)
+    reconcileInlineAttachmentGeometryReservations(
+      in: document,
+      plan: plan,
+      textView: textView
+    )
 
     let selection = textView.selectedRange()
+    restoreSelectedInlineAttachmentGeometry(
+      for: selection,
+      in: document,
+      plan: plan,
+      textView: textView
+    )
     let attachmentByReference = attachmentReferenceLookup()
     var desiredCandidates: [String: MarkdownInlineAttachmentDrawingCandidate] = [:]
     var desiredKeys = Set<String>()
@@ -284,14 +357,14 @@ extension MacMarkdownTextView.Coordinator {
         desiredKeys.insert(key)
         desiredCandidates[key] =
           MarkdownInlineAttachmentDrawingCandidate(
-          content: .image(path: sourceURL.path, accessibilityText: accessibilityText),
-          sourceURL: sourceURL,
-          documentRange: documentRange,
-          layout: .block,
-          preferredWidth: nil,
-          preferredHeight: 164,
-          minimumLineHeight: 180
-        )
+            content: .image(path: sourceURL.path, accessibilityText: accessibilityText),
+            sourceURL: sourceURL,
+            documentRange: documentRange,
+            layout: .block,
+            preferredWidth: nil,
+            preferredHeight: 164,
+            minimumLineHeight: 180
+          )
       case .formula(let source, let displayMode):
         let isMultiline = source.contains("\n") || source.contains("\r")
         let fontSize =
@@ -306,22 +379,22 @@ extension MacMarkdownTextView.Coordinator {
         desiredKeys.insert(key)
         desiredCandidates[key] =
           MarkdownInlineAttachmentDrawingCandidate(
-          content: .formula(
-            source: source,
-            displayMode: displayMode,
-            fontSize: fontSize
-          ),
-          sourceURL: nil,
-          documentRange: documentRange,
-          layout: isInline ? .inline : .block,
-          preferredWidth: isInline ? ceil(renderedSize.width) + 24 : nil,
-          preferredHeight: isInline
-            ? max(28, ceil(renderedSize.height) + 8)
-            : (isMultiline ? 68 : max(52, ceil(renderedSize.height) + 12)),
-          minimumLineHeight: isInline
-            ? max(32, ceil(renderedSize.height) + 10)
-            : (isMultiline ? 24 : 64)
-        )
+            content: .formula(
+              source: source,
+              displayMode: displayMode,
+              fontSize: fontSize
+            ),
+            sourceURL: nil,
+            documentRange: documentRange,
+            layout: isInline ? .inline : .block,
+            preferredWidth: isInline ? ceil(renderedSize.width) + 24 : nil,
+            preferredHeight: isInline
+              ? max(28, ceil(renderedSize.height) + 8)
+              : (isMultiline ? 68 : max(52, ceil(renderedSize.height) + 12)),
+            minimumLineHeight: isInline
+              ? max(32, ceil(renderedSize.height) + 10)
+              : (isMultiline ? 24 : 64)
+          )
       }
     }
 
@@ -332,7 +405,25 @@ extension MacMarkdownTextView.Coordinator {
       return current.content != desired.content || current.documentRange != desired.documentRange
     }
     for key in obsoleteKeys {
-      removeInlineAttachmentDrawing(forKey: key, in: textView)
+      let currentRange =
+        inlineAttachmentDrawingDescriptors[key]?.documentRange
+        ?? NSRange(location: NSNotFound, length: 0)
+      // A selected card is deliberately shown as editable Markdown.  Its
+      // geometry must be restored immediately, unlike a card merely leaving
+      // the viewport.
+      let isLeavingViewport = NSIntersectionRange(currentRange, applicationRange).length == 0
+      let preservesGeometry =
+        isLeavingViewport
+        && inlineAttachmentGeometryIsCurrent(
+          forKey: key,
+          in: document,
+          plan: plan
+        )
+      removeInlineAttachmentDrawing(
+        forKey: key,
+        in: textView,
+        preservingGeometry: preservesGeometry
+      )
     }
 
     var didMutateDrawings = !obsoleteKeys.isEmpty
@@ -370,6 +461,7 @@ extension MacMarkdownTextView.Coordinator {
         key: current.key,
         content: current.content,
         documentRange: current.documentRange,
+        sourceText: current.sourceText,
         frame: frame,
         renderingAttributesSnapshots: current.renderingAttributesSnapshots,
         originalParagraphStyle: current.originalParagraphStyle,
@@ -407,11 +499,13 @@ extension MacMarkdownTextView.Coordinator {
     // Resolve once before changing rendering attributes so an unsafe inline
     // source span remains visible. The final frame is deliberately measured
     // again after the attachment line-height takes part in TextKit layout.
-    guard inlineAttachmentDrawingFrame(
-      for: candidate,
-      in: textView,
-      rangeResolver: rangeResolver
-    ) != nil else {
+    guard
+      inlineAttachmentDrawingFrame(
+        for: candidate,
+        in: textView,
+        rangeResolver: rangeResolver
+      ) != nil
+    else {
       return
     }
 
@@ -420,15 +514,26 @@ extension MacMarkdownTextView.Coordinator {
       in: textView,
       rangeResolver: rangeResolver
     )
-    let originalParagraphStyle = textView.textStorage?.attribute(
-      .paragraphStyle,
-      at: candidate.documentRange.location,
-      effectiveRange: nil
-    ) as? NSParagraphStyle
+    let originalParagraphStyle =
+      textView.textStorage?.attribute(
+        .paragraphStyle,
+        at: candidate.documentRange.location,
+        effectiveRange: nil
+      ) as? NSParagraphStyle
+    let sourceText = (textView.string as NSString).substring(
+      with: candidate.documentRange
+    )
+    reserveInlineAttachmentGeometry(
+      key: key,
+      candidate: candidate,
+      originalParagraphStyle: originalParagraphStyle,
+      in: textView
+    )
     let provisionalDrawing = MarkdownInlineAttachmentDrawing(
       key: key,
       content: candidate.content,
       documentRange: candidate.documentRange,
+      sourceText: sourceText,
       frame: .zero,
       renderingAttributesSnapshots: renderingAttributesSnapshots,
       originalParagraphStyle: originalParagraphStyle,
@@ -438,11 +543,13 @@ extension MacMarkdownTextView.Coordinator {
     )
     applyInlineAttachmentDrawingRendering(provisionalDrawing, in: textView)
     rangeResolver.manager.ensureLayout(for: rangeResolver.baseTextRange)
-    guard let frame = inlineAttachmentDrawingFrame(
-      for: candidate,
-      in: textView,
-      rangeResolver: rangeResolver
-    ) else {
+    guard
+      let frame = inlineAttachmentDrawingFrame(
+        for: candidate,
+        in: textView,
+        rangeResolver: rangeResolver
+      )
+    else {
       restoreInlineAttachmentRendering(
         in: candidate.documentRange,
         textView: textView,
@@ -455,6 +562,7 @@ extension MacMarkdownTextView.Coordinator {
       key: key,
       content: candidate.content,
       documentRange: candidate.documentRange,
+      sourceText: sourceText,
       frame: frame,
       renderingAttributesSnapshots: renderingAttributesSnapshots,
       originalParagraphStyle: originalParagraphStyle,
@@ -475,6 +583,10 @@ extension MacMarkdownTextView.Coordinator {
         let current = self.inlineAttachmentDrawingDescriptors[key],
         current.content == candidate.content
       else { return }
+      guard self.inlineAttachmentDrawingMatchesCurrentReservation(current, in: textView) else {
+        self.removeInlineAttachmentDrawing(forKey: key, in: textView)
+        return
+      }
       guard let payload else {
         self.inlineAttachmentFailedImagePaths.insert(sourceURL.path)
         self.removeInlineAttachmentDrawing(forKey: key, in: textView)
@@ -484,6 +596,7 @@ extension MacMarkdownTextView.Coordinator {
         key: current.key,
         content: current.content,
         documentRange: current.documentRange,
+        sourceText: current.sourceText,
         frame: current.frame,
         renderingAttributesSnapshots: current.renderingAttributesSnapshots,
         originalParagraphStyle: current.originalParagraphStyle,
@@ -494,7 +607,8 @@ extension MacMarkdownTextView.Coordinator {
       self.inlineAttachmentDrawingDescriptors[key] = updated
       self.inlineAttachmentImageTasks[key] = nil
       if let droppableTextView = textView as? DroppableMarkdownTextView {
-        droppableTextView.markdownInlineAttachmentDrawings = self
+        droppableTextView.markdownInlineAttachmentDrawings =
+          self
           .inlineAttachmentDrawingDescriptors
       }
     }
@@ -556,8 +670,23 @@ extension MacMarkdownTextView.Coordinator {
     previousRevision: UInt64
   ) {
     guard bodyUTF16Offset == previousBodyUTF16Offset,
-      documentEdit.replacedRange.location >= previousBodyUTF16Offset,
-      inlineAttachmentPlanDocumentRevision == previousRevision,
+      documentEdit.replacedRange.location >= previousBodyUTF16Offset
+    else {
+      conservativelyClearInlineAttachmentGeometryReservations(after: documentEdit)
+      return
+    }
+
+    // Geometry range relocation does not depend on the attachment planner
+    // accepting the edit. Structural attachment edits intentionally make that
+    // planner fall back, but unrelated cards must still move or be restored.
+    relocateInlineAttachmentGeometryReservations(
+      previousBodyMarkdown: previousBodyMarkdown,
+      currentBodyMarkdown: currentBodyMarkdown,
+      documentEdit: documentEdit,
+      previousBodyUTF16Offset: previousBodyUTF16Offset
+    )
+
+    guard inlineAttachmentPlanDocumentRevision == previousRevision,
       inlineAttachmentPlanBodyUTF16Offset == previousBodyUTF16Offset,
       let inlineAttachmentPlan
     else { return }
@@ -566,13 +695,16 @@ extension MacMarkdownTextView.Coordinator {
       location: documentEdit.replacedRange.location - previousBodyUTF16Offset,
       length: documentEdit.replacedRange.length
     )
-    guard let updatedPlan = MarkdownInlineAttachmentPlanService.incrementallyUpdatedPlan(
-      inlineAttachmentPlan,
-      previousMarkdown: previousBodyMarkdown,
-      currentMarkdown: currentBodyMarkdown,
-      replacedRange: bodyReplacedRange
-    ) else { return }
-
+    guard
+      let updatedPlan = MarkdownInlineAttachmentPlanService.incrementallyUpdatedPlan(
+        inlineAttachmentPlan,
+        previousMarkdown: previousBodyMarkdown,
+        currentMarkdown: currentBodyMarkdown,
+        replacedRange: bodyReplacedRange
+      )
+    else {
+      return
+    }
     self.inlineAttachmentPlan = updatedPlan
     inlineAttachmentPlanDocumentRevision = syntaxDocumentRevision
     inlineAttachmentPlanBodyUTF16Offset = bodyUTF16Offset
@@ -616,12 +748,14 @@ extension MacMarkdownTextView.Coordinator {
     in textView: NSTextView,
     rangeResolver: MarkdownTextKit2RangeAdapter.RangeResolver
   ) -> NSRect? {
-    guard let sourceRect = MarkdownTextKit2RangeAdapter.rect(
-      for: candidate.documentRange,
-      using: rangeResolver,
-      in: textView,
-      ensuringLayout: false
-    ) else { return nil }
+    guard
+      let sourceRect = MarkdownTextKit2RangeAdapter.rect(
+        for: candidate.documentRange,
+        using: rangeResolver,
+        in: textView,
+        ensuringLayout: false
+      )
+    else { return nil }
     let horizontalInset = textView.textContainerInset.width + 6
     let containerSize = textView.textContainer?.containerSize ?? .zero
     // Unit tests and the initial TextKit construction can have a zero-sized
@@ -662,10 +796,12 @@ extension MacMarkdownTextView.Coordinator {
     var snapshots: [MarkdownInlineAttachmentDrawing.RenderingAttributesSnapshot] = []
     manager.enumerateRenderingAttributes(from: textRange.location, reverse: false) {
       _, attributes, renderingRange in
-      guard let fullRenderingRange = MarkdownTextKit2RangeAdapter.range(
-        for: renderingRange,
-        in: textView
-      ) else {
+      guard
+        let fullRenderingRange = MarkdownTextKit2RangeAdapter.range(
+          for: renderingRange,
+          in: textView
+        )
+      else {
         return true
       }
       let intersection = NSIntersectionRange(fullRenderingRange, range)
@@ -686,18 +822,31 @@ extension MacMarkdownTextView.Coordinator {
     return snapshots
   }
 
-  private func removeInlineAttachmentDrawing(forKey key: String, in textView: NSTextView) {
+  private func removeInlineAttachmentDrawing(
+    forKey key: String,
+    in textView: NSTextView,
+    preservingGeometry: Bool = false
+  ) {
     inlineAttachmentImageTasks[key]?.cancel()
     inlineAttachmentImageTasks[key] = nil
     guard let descriptor = inlineAttachmentDrawingDescriptors.removeValue(forKey: key) else {
       return
     }
-    restoreInlineAttachmentRendering(
-      in: descriptor.documentRange,
-      textView: textView,
-      renderingAttributesSnapshots: descriptor.renderingAttributesSnapshots,
-      originalParagraphStyle: descriptor.originalParagraphStyle
-    )
+    if inlineAttachmentDrawingMatchesCurrentReservation(descriptor, in: textView) {
+      restoreInlineAttachmentRendering(
+        in: descriptor.documentRange,
+        textView: textView,
+        renderingAttributesSnapshots: descriptor.renderingAttributesSnapshots,
+        originalParagraphStyle: descriptor.originalParagraphStyle,
+        restoringGeometry:
+          !preservingGeometry && inlineAttachmentGeometryReservations[key] == nil
+      )
+      if !preservingGeometry,
+        let reservation = inlineAttachmentGeometryReservations.removeValue(forKey: key)
+      {
+        restoreInlineAttachmentGeometry(reservation, in: textView)
+      }
+    }
     inlineAttachmentPaintedRanges.removeAll { $0 == descriptor.documentRange }
     if let droppableTextView = textView as? DroppableMarkdownTextView {
       droppableTextView.markdownInlineAttachmentDrawings = inlineAttachmentDrawingDescriptors
@@ -707,8 +856,10 @@ extension MacMarkdownTextView.Coordinator {
   private func restoreInlineAttachmentRendering(
     in range: NSRange,
     textView: NSTextView,
-    renderingAttributesSnapshots: [MarkdownInlineAttachmentDrawing.RenderingAttributesSnapshot] = [],
-    originalParagraphStyle: NSParagraphStyle? = nil
+    renderingAttributesSnapshots: [MarkdownInlineAttachmentDrawing.RenderingAttributesSnapshot] =
+      [],
+    originalParagraphStyle: NSParagraphStyle? = nil,
+    restoringGeometry: Bool = true
   ) {
     let documentLength = (textView.string as NSString).length
     guard range.location != NSNotFound, NSMaxRange(range) <= documentLength else { return }
@@ -726,16 +877,19 @@ extension MacMarkdownTextView.Coordinator {
       )
     } else if let manager = textView.textLayoutManager {
       for snapshot in renderingAttributesSnapshots {
-        guard let textRange = MarkdownTextKit2RangeAdapter.textRange(
-          for: snapshot.range,
-          in: textView
-        ) else {
+        guard
+          let textRange = MarkdownTextKit2RangeAdapter.textRange(
+            for: snapshot.range,
+            in: textView
+          )
+        else {
           continue
         }
         manager.setRenderingAttributes(snapshot.attributes, for: textRange)
       }
     }
 
+    guard restoringGeometry else { return }
     if let originalParagraphStyle {
       textView.textStorage?.addAttribute(
         .paragraphStyle,
@@ -745,6 +899,310 @@ extension MacMarkdownTextView.Coordinator {
     } else if let paragraphStyle = syntaxHighlightPalette.defaultAttributes[.paragraphStyle] {
       textView.textStorage?.addAttribute(.paragraphStyle, value: paragraphStyle, range: range)
     }
+  }
+
+  private func reserveInlineAttachmentGeometry(
+    key: String,
+    candidate: MarkdownInlineAttachmentDrawingCandidate,
+    originalParagraphStyle: NSParagraphStyle?,
+    in textView: NSTextView
+  ) {
+    let document = textView.string as NSString
+    guard candidate.documentRange.location != NSNotFound,
+      NSMaxRange(candidate.documentRange) <= document.length
+    else { return }
+    let sourceText = document.substring(with: candidate.documentRange)
+    if let existing = inlineAttachmentGeometryReservations[key],
+      existing.documentRange == candidate.documentRange,
+      existing.content == candidate.content,
+      existing.sourceText == sourceText,
+      existing.minimumLineHeight == candidate.minimumLineHeight
+    {
+      return
+    }
+    if let existing = inlineAttachmentGeometryReservations.removeValue(forKey: key) {
+      restoreInlineAttachmentGeometry(existing, in: textView)
+    }
+    inlineAttachmentGeometryReservations[key] = MarkdownInlineAttachmentGeometryReservation(
+      content: candidate.content,
+      documentRange: candidate.documentRange,
+      sourceText: sourceText,
+      originalParagraphStyle: originalParagraphStyle,
+      minimumLineHeight: candidate.minimumLineHeight
+    )
+  }
+
+  private func restoreInlineAttachmentGeometry(
+    _ reservation: MarkdownInlineAttachmentGeometryReservation,
+    in textView: NSTextView
+  ) {
+    let document = textView.string as NSString
+    guard reservation.documentRange.location != NSNotFound,
+      NSMaxRange(reservation.documentRange) <= document.length,
+      document.substring(with: reservation.documentRange) == reservation.sourceText
+    else { return }
+    if let originalParagraphStyle = reservation.originalParagraphStyle {
+      textView.textStorage?.addAttribute(
+        .paragraphStyle,
+        value: originalParagraphStyle,
+        range: reservation.documentRange
+      )
+    } else if let paragraphStyle = syntaxHighlightPalette.defaultAttributes[.paragraphStyle] {
+      textView.textStorage?.addAttribute(
+        .paragraphStyle,
+        value: paragraphStyle,
+        range: reservation.documentRange
+      )
+    }
+  }
+
+  private func inlineAttachmentGeometryIsCurrent(
+    forKey key: String,
+    in document: NSString,
+    plan: MarkdownInlineAttachmentPlan
+  ) -> Bool {
+    guard let reservation = inlineAttachmentGeometryReservations[key],
+      reservation.documentRange.location != NSNotFound,
+      NSMaxRange(reservation.documentRange) <= document.length,
+      document.substring(with: reservation.documentRange) == reservation.sourceText
+    else { return false }
+    let bodyRange = NSRange(
+      location: reservation.documentRange.location - bodyUTF16Offset,
+      length: reservation.documentRange.length
+    )
+    guard bodyRange.location >= 0,
+      let item = plan.items.first(where: { $0.range == bodyRange })
+    else { return false }
+    switch (reservation.content, item.kind) {
+    case (.formula(let source, let displayMode, _), .formula(let itemSource, let itemDisplayMode)):
+      return source == itemSource && displayMode == itemDisplayMode
+    case (.image(let path, _), .image(let reference, _)):
+      let attachment = Self.referenceVariants(reference).compactMap {
+        attachmentReferenceLookup()[$0]
+      }.first
+      return attachment?.sourceFilePath.flatMap(resolvedInlineAttachmentImageURL)?.path == path
+    default:
+      return false
+    }
+  }
+
+  private func reconcileInlineAttachmentGeometryReservations(
+    in document: NSString,
+    plan: MarkdownInlineAttachmentPlan,
+    textView: NSTextView
+  ) {
+    for key in Array(inlineAttachmentGeometryReservations.keys) {
+      guard !inlineAttachmentGeometryIsCurrent(forKey: key, in: document, plan: plan),
+        let reservation = inlineAttachmentGeometryReservations[key]
+      else { continue }
+      if inlineAttachmentDrawingDescriptors[key] != nil {
+        removeInlineAttachmentDrawing(forKey: key, in: textView)
+        continue
+      }
+      inlineAttachmentGeometryReservations.removeValue(forKey: key)
+      if reservationSourceMatchesDocument(reservation, document: document) {
+        restoreInlineAttachmentGeometry(reservation, in: textView)
+      } else {
+        resetInlineAttachmentGeometry(at: reservation.documentRange, in: textView)
+      }
+    }
+  }
+
+  private func relocateInlineAttachmentGeometryReservations(
+    previousBodyMarkdown: String,
+    currentBodyMarkdown: String,
+    documentEdit: MarkdownTextEdit,
+    previousBodyUTF16Offset: Int
+  ) {
+    guard bodyUTF16Offset == previousBodyUTF16Offset else {
+      conservativelyClearInlineAttachmentGeometryReservations(after: documentEdit)
+      return
+    }
+    let previousLength = previousBodyMarkdown.utf16.count + previousBodyUTF16Offset
+    let currentLength = currentBodyMarkdown.utf16.count + bodyUTF16Offset
+    guard (documentEdit.previousText as NSString).length == previousLength else {
+      conservativelyClearInlineAttachmentGeometryReservations(after: documentEdit)
+      return
+    }
+    let currentBody = currentBodyMarkdown as NSString
+    var relocated: [String: MarkdownInlineAttachmentGeometryReservation] = [:]
+    var needsEditedParagraphReset = false
+    var resetRanges: [NSRange] = []
+    for reservation in inlineAttachmentGeometryReservations.values {
+      let transformedRange = MarkdownSyntaxPaintedRangeTransform.range(
+        reservation.documentRange,
+        previousLength: previousLength,
+        currentLength: currentLength,
+        replacedRange: documentEdit.replacedRange
+      )
+      guard !editRange(documentEdit.replacedRange, touches: reservation.documentRange),
+        let transformedRange,
+        transformedRange.location >= bodyUTF16Offset
+      else {
+        needsEditedParagraphReset = true
+        if let transformedRange {
+          resetRanges.append(transformedRange)
+        }
+        continue
+      }
+      let bodyRange = NSRange(
+        location: transformedRange.location - bodyUTF16Offset,
+        length: transformedRange.length
+      )
+      guard NSMaxRange(bodyRange) <= currentBody.length,
+        currentBody.substring(with: bodyRange) == reservation.sourceText
+      else {
+        needsEditedParagraphReset = true
+        resetRanges.append(transformedRange)
+        continue
+      }
+      let key = inlineAttachmentDrawingKey(for: transformedRange)
+      guard relocated[key] == nil else {
+        needsEditedParagraphReset = true
+        resetRanges.append(transformedRange)
+        continue
+      }
+      relocated[key] = MarkdownInlineAttachmentGeometryReservation(
+        content: reservation.content,
+        documentRange: transformedRange,
+        sourceText: reservation.sourceText,
+        originalParagraphStyle: reservation.originalParagraphStyle,
+        minimumLineHeight: reservation.minimumLineHeight
+      )
+    }
+    inlineAttachmentGeometryReservations = relocated
+    if let textView {
+      for range in resetRanges {
+        resetInlineAttachmentGeometry(in: range, in: textView)
+      }
+    }
+    if needsEditedParagraphReset {
+      resetInlineAttachmentGeometryAroundEdit(documentEdit, in: textView)
+    }
+  }
+
+  private func resetInlineAttachmentGeometryAroundEdit(
+    _ edit: MarkdownTextEdit,
+    in textView: NSTextView?
+  ) {
+    guard let textView,
+      let storage = textView.textStorage,
+      (textView.string as NSString).length > 0
+    else { return }
+    let document = textView.string as NSString
+    let location = min(max(edit.replacedRange.location, 0), max(document.length - 1, 0))
+    let paragraphRange = document.paragraphRange(for: NSRange(location: location, length: 0))
+    guard let paragraphStyle = syntaxHighlightPalette.defaultAttributes[.paragraphStyle] else {
+      return
+    }
+    storage.addAttribute(.paragraphStyle, value: paragraphStyle, range: paragraphRange)
+  }
+
+  private func resetInlineAttachmentGeometry(at range: NSRange, in textView: NSTextView) {
+    let document = textView.string as NSString
+    guard range.location != NSNotFound,
+      range.location >= 0,
+      range.location < document.length
+    else { return }
+    resetInlineAttachmentGeometry(
+      in: NSRange(location: range.location, length: min(1, document.length - range.location)),
+      in: textView
+    )
+  }
+
+  private func resetInlineAttachmentGeometry(in range: NSRange, in textView: NSTextView) {
+    let document = textView.string as NSString
+    guard range.location != NSNotFound,
+      range.location >= 0,
+      range.location < document.length
+    else { return }
+    let boundedRange = NSIntersectionRange(
+      range,
+      NSRange(location: 0, length: document.length)
+    )
+    guard boundedRange.length > 0 else { return }
+    let paragraphRange = document.paragraphRange(for: boundedRange)
+    guard let paragraphStyle = syntaxHighlightPalette.defaultAttributes[.paragraphStyle] else {
+      return
+    }
+    textView.textStorage?.addAttribute(
+      .paragraphStyle, value: paragraphStyle, range: paragraphRange)
+  }
+
+  private func reservationSourceMatchesDocument(
+    _ reservation: MarkdownInlineAttachmentGeometryReservation,
+    document: NSString
+  ) -> Bool {
+    reservation.documentRange.location != NSNotFound
+      && NSMaxRange(reservation.documentRange) <= document.length
+      && document.substring(with: reservation.documentRange) == reservation.sourceText
+  }
+
+  private func inlineAttachmentDrawingMatchesCurrentReservation(
+    _ drawing: MarkdownInlineAttachmentDrawing,
+    in textView: NSTextView
+  ) -> Bool {
+    let document = textView.string as NSString
+    guard drawing.documentRange.location != NSNotFound,
+      NSMaxRange(drawing.documentRange) <= document.length,
+      document.substring(with: drawing.documentRange) == drawing.sourceText
+    else { return false }
+    guard let reservation = inlineAttachmentGeometryReservations[drawing.key] else {
+      // A partially installed drawing may have lost its reservation while an
+      // image task was being cancelled. Its own source check still makes the
+      // defensive source restoration safe.
+      return true
+    }
+    return reservation.content == drawing.content
+      && reservation.documentRange == drawing.documentRange
+      && reservationSourceMatchesDocument(reservation, document: document)
+  }
+
+  private func restoreSelectedInlineAttachmentGeometry(
+    for selection: NSRange,
+    in document: NSString,
+    plan: MarkdownInlineAttachmentPlan,
+    textView: NSTextView
+  ) {
+    for key in Array(inlineAttachmentGeometryReservations.keys) {
+      guard let reservation = inlineAttachmentGeometryReservations[key],
+        inlineAttachmentDrawingDescriptors[key] == nil,
+        Self.selection(selection, touches: reservation.documentRange),
+        inlineAttachmentGeometryIsCurrent(forKey: key, in: document, plan: plan)
+      else {
+        continue
+      }
+      inlineAttachmentGeometryReservations.removeValue(forKey: key)
+      restoreInlineAttachmentGeometry(reservation, in: textView)
+    }
+  }
+
+  private func conservativelyClearInlineAttachmentGeometryReservations(after edit: MarkdownTextEdit)
+  {
+    guard !inlineAttachmentGeometryReservations.isEmpty else { return }
+    if let textView {
+      let document = textView.string as NSString
+      for reservation in inlineAttachmentGeometryReservations.values {
+        if reservationSourceMatchesDocument(reservation, document: document) {
+          restoreInlineAttachmentGeometry(reservation, in: textView)
+        } else {
+          // We cannot safely reattach the old style to a transformed range,
+          // but leaving its 64/180pt paragraph behind is worse. Reset the
+          // current paragraph conservatively; the syntax pass reapplies any
+          // non-attachment styling immediately afterwards.
+          resetInlineAttachmentGeometry(at: reservation.documentRange, in: textView)
+        }
+      }
+    }
+    resetInlineAttachmentGeometryAroundEdit(edit, in: textView)
+    inlineAttachmentGeometryReservations.removeAll()
+  }
+
+  private func editRange(_ editRange: NSRange, touches range: NSRange) -> Bool {
+    if editRange.length == 0 {
+      return editRange.location >= range.location && editRange.location <= NSMaxRange(range)
+    }
+    return NSIntersectionRange(editRange, range).length > 0
   }
 
   private func attachmentReferenceLookup() -> [String: DraftAttachment] {

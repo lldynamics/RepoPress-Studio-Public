@@ -1,5 +1,7 @@
 #if DEBUG || SCREENSHOT_CAPTURE_BUILD
   import Foundation
+  import PublishingKnowledgeCore
+  import PublishingDomainContracts
 
   public struct ScreenshotDemoDataService {
     public static let environmentKey = "PERSONAL_SITE_PUBLISHER_SCREENSHOT_DEMO"
@@ -607,6 +609,7 @@
       _ persistence: WorkbenchPersistence,
       resetsDraftRecovery: Bool
     ) throws {
+      _ = try persistence.loadWithRecovery()
       _ = try persistence.save(ScreenshotDemoDataService().makeSnapshot())
       let ledgerPersistence = WorkbenchOperationLedgerPersistence(
         fileURL: persistence.operationLedgerURL
@@ -628,37 +631,23 @@
         let feedURL = URL(string: "https://demo.example.com/feed.xml")
       else { return }
 
-      do {
-        let feedID = try store.addFeed(
-          url: feedURL,
-          title: "RepoPress 演示订阅",
-          siteURL: URL(string: "https://demo.example.com")
-        )
-        guard let feedIndex = store.feeds.firstIndex(where: { $0.id == feedID }) else {
-          return
-        }
-        var feed = store.feeds[feedIndex]
-        feed.lastUpdatedAt = Date(timeIntervalSince1970: 1_900_000_000)
-        try store.database?.upsertFeed(feed)
-        store.feeds[feedIndex] = feed
-        store.merge(
-          [
-            RSSParsedArticle(
-              id: "repopress-ui-test-rss-article",
-              title: "RepoPress Studio 发布工作流",
-              link: URL(string: "https://demo.example.com/posts/repopress-studio"),
-              author: "Demo Author",
-              publishedAt: Date(timeIntervalSince1970: 1_899_913_600),
-              summaryHTML: "<p>从写作、检查到发布的本地优先流程。</p>",
-              contentHTML: "<h1>RepoPress Studio</h1><p>这是离线 UI 测试专用文章。</p>"
-            )
-          ],
-          into: feed
-        )
-        store.articleHeaderCount = store.articleHeaders.count
-      } catch {
-        store.lastError = "RSS UI 测试数据准备失败：\(error.localizedDescription)"
-      }
+      store.loadPreviewFeed(
+        url: feedURL,
+        title: "RepoPress 演示订阅",
+        siteURL: URL(string: "https://demo.example.com"),
+        updatedAt: Date(timeIntervalSince1970: 1_900_000_000),
+        articles: [
+          RSSParsedArticle(
+            id: "repopress-ui-test-rss-article",
+            title: "RepoPress Studio 发布工作流",
+            link: URL(string: "https://demo.example.com/posts/repopress-studio"),
+            author: "Demo Author",
+            publishedAt: Date(timeIntervalSince1970: 1_899_913_600),
+            summaryHTML: "<p>从写作、检查到发布的本地优先流程。</p>",
+            contentHTML: "<h1>RepoPress Studio</h1><p>这是离线 UI 测试专用文章。</p>"
+          )
+        ]
+      )
     }
 
     @MainActor
@@ -684,14 +673,6 @@
             }
           }
         }
-      }
-      if surface == .writing,
-        isUITest
-      {
-        // Sidebar accessibility coverage does not exercise the AppKit Markdown
-        // editor. Leave the deterministic list populated but avoid mounting an
-        // unrelated editor during this focused UI test.
-        store.selectDraft(nil)
       }
       if surface == .knowledgeLibrary {
         Task { @MainActor in
@@ -873,11 +854,25 @@
         captureMode: .cleanedArticle,
         allowsAIUse: false
       )
-      _ = try? await knowledge.importBrowserCapture(
-        capture,
-        folderID: nil,
-        newFolderName: nil
-      )
+      let statusURL = ProcessInfo.processInfo.environment[knowledgeRootEnvironmentKey].map {
+        URL(fileURLWithPath: $0, isDirectory: true)
+          .appendingPathComponent("fixture-seed-status.txt")
+      }
+      func recordStatus(_ value: String) {
+        guard let statusURL else { return }
+        try? Data(value.utf8).write(to: statusURL, options: .atomic)
+      }
+      recordStatus("started")
+      do {
+        _ = try await knowledge.importBrowserCapture(
+          capture,
+          folderID: nil,
+          newFolderName: nil
+        )
+        recordStatus("completed: \(knowledge.documents.count) documents")
+      } catch {
+        recordStatus("failed: \(error.localizedDescription)")
+      }
     }
   }
 

@@ -1,8 +1,7 @@
 import Foundation
-import PublishingAICore
 import XCTest
 
-@testable import PublishingWorkbenchCore
+@testable import PublishingAICore
 
 final class AIChatStreamRecoveryTests: XCTestCase {
   func testPlainTextInterruptionRecoversWithTwoPOSTsWithoutDuplicateText() async throws {

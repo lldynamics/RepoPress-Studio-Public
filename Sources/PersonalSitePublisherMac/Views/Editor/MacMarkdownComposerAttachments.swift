@@ -1,8 +1,38 @@
 import AppKit
+import PublishingCoreSupport
+import PublishingDomainContracts
 import PublishingWorkbenchCore
 import SwiftUI
 
+@MainActor
+final class MarkdownPendingAttachmentInsertion {
+  let requestID: UUID
+  let sourceDraft: ArticleDraft
+  let snapshot: MarkdownComposerAttachmentInsertionSnapshot
+  let attachments: [DraftAttachment]
+  let continuation: CheckedContinuation<ArticleDraft?, Never>
+  var committedDraft: ArticleDraft?
+  var failureMessage = String(localized: "正文已变化，媒体导入未插入。")
+
+  init(
+    requestID: UUID, sourceDraft: ArticleDraft,
+    snapshot: MarkdownComposerAttachmentInsertionSnapshot,
+    attachments: [DraftAttachment], continuation: CheckedContinuation<ArticleDraft?, Never>
+  ) {
+    self.requestID = requestID
+    self.sourceDraft = sourceDraft
+    self.snapshot = snapshot
+    self.attachments = attachments
+    self.continuation = continuation
+  }
+}
+
 extension MacMarkdownComposerView {
+  var attachmentInsertionAdmission: ((MarkdownTextEditRequest) -> Bool)? {
+    guard pendingAttachmentInsertion != nil else { return nil }
+    return { request in prepareAttachmentInsertion(request) }
+  }
+
   func insertImageReferences(
     _ urls: [URL],
     automaticallyConvertToWebP: Bool = false
@@ -21,8 +51,19 @@ extension MacMarkdownComposerView {
     cancelAttachmentImport()
     let requestID = UUID()
     let expectedDraftID = draft.id
-    let sourceDraft = previewDraft
-    let selectedAlt = selectedText(in: sourceDraft.bodyMarkdown).trimmedForPublishing
+    var sourceDraft = previewDraft
+    sourceDraft.bodyMarkdown = editorBody
+    let insertionSnapshot = MarkdownComposerAttachmentInsertionSnapshot(
+      bodyMarkdown: sourceDraft.bodyMarkdown,
+      selectedRange: selectedRange,
+      bodyRevision: editorBodyRevision,
+      editorMetadataRevision: sourceDraft.editorMetadataRevision,
+      selectionEditingService: selectionEditingService
+    )
+    let selectedAlt = selectionEditingService.selectedText(
+      in: sourceDraft.bodyMarkdown,
+      selectedRange: insertionSnapshot.selectedRange
+    ).trimmedForPublishing
     let fileStore = store.managedAttachmentFileStore
     attachmentImportRequestID = requestID
     attachmentImportTask = Task { @MainActor in
@@ -83,19 +124,20 @@ extension MacMarkdownComposerView {
         return
       }
 
-      var updated = previewDraft
-      updated.attachments.append(contentsOf: importedAttachments)
       let markdownBlocks = importedAttachments.map { attachment in
         imageMetadataEditingService.markdownReference(
           altText: attachment.altText,
           imagePath: attachment.relativePublishPath
         )
       }
-      let insertedDraft = replacingSelection(
-        in: updated,
-        with: markdownBlocks.joined(separator: "\n")
-      )
-      guard applyDraftUpdate(insertedDraft) else {
+      guard
+        let insertedDraft = await applyAttachmentInsertion(
+          sourceDraft: sourceDraft,
+          snapshot: insertionSnapshot,
+          attachments: importedAttachments,
+          markdown: markdownBlocks.joined(separator: "\n")
+        )
+      else {
         discardManagedAttachments(importedAttachments, fileStore: fileStore)
         return
       }
@@ -103,7 +145,7 @@ extension MacMarkdownComposerView {
       let insertedMetadata = importedAttachments.map { attachment in
         InsertedImageMetadataDraft(
           attachment: attachment,
-          coverAttachmentID: updated.coverAttachmentID
+          coverAttachmentID: insertedDraft.coverAttachmentID
         )
       }
 
@@ -150,8 +192,19 @@ extension MacMarkdownComposerView {
     cancelAttachmentImport()
     let requestID = UUID()
     let expectedDraftID = draft.id
-    let sourceDraft = previewDraft
-    let selectedTitle = selectedText(in: sourceDraft.bodyMarkdown).trimmedForPublishing
+    var sourceDraft = previewDraft
+    sourceDraft.bodyMarkdown = editorBody
+    let insertionSnapshot = MarkdownComposerAttachmentInsertionSnapshot(
+      bodyMarkdown: sourceDraft.bodyMarkdown,
+      selectedRange: selectedRange,
+      bodyRevision: editorBodyRevision,
+      editorMetadataRevision: sourceDraft.editorMetadataRevision,
+      selectionEditingService: selectionEditingService
+    )
+    let selectedTitle = selectionEditingService.selectedText(
+      in: sourceDraft.bodyMarkdown,
+      selectedRange: insertionSnapshot.selectedRange
+    ).trimmedForPublishing
     let fileStore = store.managedAttachmentFileStore
     attachmentImportRequestID = requestID
     attachmentImportTask = Task { @MainActor in
@@ -203,8 +256,6 @@ extension MacMarkdownComposerView {
         return
       }
 
-      var updated = previewDraft
-      updated.attachments.append(contentsOf: importedAttachments.map { $0.attachment })
       let htmlBlocks = importedAttachments.map { item in
         let accessibleTitle =
           importedAttachments.count == 1 && !selectedTitle.isEmpty
@@ -215,11 +266,14 @@ extension MacMarkdownComposerView {
           accessibleTitle: accessibleTitle
         )
       }
-      let insertedDraft = replacingSelection(
-        in: updated,
-        with: htmlBlocks.joined(separator: "\n\n")
-      )
-      guard applyDraftUpdate(insertedDraft) else {
+      guard
+        await applyAttachmentInsertion(
+          sourceDraft: sourceDraft,
+          snapshot: insertionSnapshot,
+          attachments: importedAttachments.map(\.attachment),
+          markdown: htmlBlocks.joined(separator: "\n\n")
+        ) != nil
+      else {
         discardManagedAttachments(
           importedAttachments.map { $0.attachment },
           fileStore: fileStore
@@ -239,6 +293,11 @@ extension MacMarkdownComposerView {
   }
 
   func cancelAttachmentImport() {
+    if let pending = pendingAttachmentInsertion {
+      pendingAttachmentInsertion = nil
+      if editorEditRequest?.id == pending.requestID { editorEditRequest = nil }
+      pending.continuation.resume(returning: nil)
+    }
     attachmentImportRequestID = nil
     attachmentImportTask?.cancel()
     attachmentImportTask = nil
@@ -291,9 +350,15 @@ extension MacMarkdownComposerView {
     _ attachments: [DraftAttachment],
     fileStore: ManagedAttachmentFileStore
   ) {
+    let referencedSourcePaths = Set(
+      store.drafts.flatMap(\.attachments).compactMap(\.sourceFilePath)
+    )
     var cleanupFailures: [String] = []
     for attachment in attachments {
       guard let sourceFilePath = attachment.sourceFilePath else { continue }
+      // Failed imports are the only cleanup path. An attachment already held
+      // by any draft can remain after Undo, and its managed file must survive.
+      guard !referencedSourcePaths.contains(sourceFilePath) else { continue }
       do {
         try fileStore.discardStoredFile(at: URL(fileURLWithPath: sourceFilePath))
       } catch {
@@ -305,6 +370,86 @@ extension MacMarkdownComposerView {
       .joined(separator: "\n")
     selectionActionMessage = message
     EditorAccessibilityAnnouncementCenter.announce(message, priority: .high)
+  }
+
+  private func applyAttachmentInsertion(
+    sourceDraft: ArticleDraft,
+    snapshot: MarkdownComposerAttachmentInsertionSnapshot,
+    attachments: [DraftAttachment],
+    markdown: String
+  ) async -> ArticleDraft? {
+    guard
+      attachmentImportCanInsert(snapshot),
+      editorEditRequest == nil
+    else {
+      selectionActionMessage = String(localized: "正文已变化，媒体导入未插入。")
+      EditorAccessibilityAnnouncementCenter.announce(selectionActionMessage, priority: .high)
+      return nil
+    }
+
+    let mutation = snapshot.replacingSelection(
+      in: sourceDraft,
+      with: markdown,
+      selectionEditingService: selectionEditingService
+    )
+    guard
+      requestUndoableBodyUpdate(
+        mutation.draft,
+        selectionOverride: mutation.selectedRange
+      ), let request = editorEditRequest
+    else {
+      selectionActionMessage = String(localized: "正文已变化，媒体导入未插入。")
+      EditorAccessibilityAnnouncementCenter.announce(selectionActionMessage, priority: .high)
+      return nil
+    }
+    return await withCheckedContinuation { continuation in
+      pendingAttachmentInsertion = MarkdownPendingAttachmentInsertion(
+        requestID: request.id, sourceDraft: sourceDraft, snapshot: snapshot,
+        attachments: attachments, continuation: continuation
+      )
+    }
+  }
+
+  func prepareAttachmentInsertion(_ request: MarkdownTextEditRequest) -> Bool {
+    guard let pending = pendingAttachmentInsertion, pending.requestID == request.id,
+      draft.id == pending.sourceDraft.id, attachmentImportCanInsert(pending.snapshot)
+    else { return false }
+    var metadataDraft = pending.sourceDraft
+    metadataDraft.bodyMarkdown = pending.snapshot.bodyMarkdown
+    metadataDraft.attachments.append(contentsOf: pending.attachments)
+    guard store.updateDraftFromEditor(metadataDraft),
+      let committedDraft = store.draft(for: metadataDraft.id)
+    else {
+      pending.failureMessage = String(localized: "另一窗口已更新文章，媒体导入未插入。")
+      return false
+    }
+    // TextKit has validated the live text and immediately applies this same
+    // request after admission; no suspension separates these two operations.
+    draft = committedDraft
+    pending.committedDraft = committedDraft
+    return true
+  }
+
+  func handleAttachmentInsertionOutcome(_ outcome: MarkdownTextEditRequestOutcome) {
+    guard let pending = pendingAttachmentInsertion, pending.requestID == outcome.id else { return }
+    pendingAttachmentInsertion = nil
+    if !outcome.wasApplied {
+      selectionActionMessage = pending.failureMessage
+      EditorAccessibilityAnnouncementCenter.announce(selectionActionMessage, priority: .high)
+    }
+    pending.continuation.resume(returning: outcome.wasApplied ? pending.committedDraft : nil)
+  }
+
+  private func attachmentImportCanInsert(
+    _ snapshot: MarkdownComposerAttachmentInsertionSnapshot
+  ) -> Bool {
+    snapshot.matches(
+      bodyMarkdown: editorBody,
+      bodyRevision: editorBodyRevision,
+      editorMetadataRevision: draft.editorMetadataRevision
+    )
+      && editorSessionState.liveBodyMarkdown == snapshot.bodyMarkdown
+      && editorSessionState.liveBodyRevision == snapshot.bodyRevision
   }
 
   var activeInsertedImageMetadataIndex: Int? {

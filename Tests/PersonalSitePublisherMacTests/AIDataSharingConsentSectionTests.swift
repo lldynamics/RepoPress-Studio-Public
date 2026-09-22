@@ -1,7 +1,7 @@
 import XCTest
 
 @testable import PersonalSitePublisherMac
-@testable import PublishingWorkbenchCore
+@testable import PublishingAICore
 
 final class AIDataSharingConsentSectionTests: XCTestCase {
   func testUnconfiguredDestinationDoesNotRenderAsLocalService() {

@@ -1,5 +1,5 @@
 import Foundation
-import PublishingWorkbenchCore
+import PublishingDomainContracts
 
 enum SiteStarterDeploymentLink {
   /// A first Starter push predates article release history. Its own commit

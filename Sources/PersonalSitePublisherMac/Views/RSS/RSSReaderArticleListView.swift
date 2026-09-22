@@ -1,4 +1,6 @@
 import AppKit
+import PublishingAICore
+import PublishingKnowledgeCore
 import PublishingWorkbenchCore
 import SwiftUI
 
@@ -22,6 +24,8 @@ struct RSSPreparedPresentationSnapshot: Equatable, Sendable {
 }
 struct RSSArticleList: View {
   @ObservedObject var store: RSSReaderStore
+  @ObservedObject var ai: WorkbenchRSSListTitleTranslationFeatureFacade
+  let aiConfiguration: () -> AIProviderConfig
   @ObservedObject var presentation: RSSReaderPresentationState
   @ObservedObject var searchDraft: RSSArticleSearchDraft
   @Binding var selectedArticleID: String?
@@ -34,6 +38,16 @@ struct RSSArticleList: View {
   @FocusState var isArticleListFocused: Bool
   /// 后台准备的列表数据（过滤/排序/分组）。nil 表示首次准备中。
   @State var preparedList: RSSPreparedPresentationSnapshot?
+  @StateObject var titleTranslator = RSSListTitleTranslationController()
+  @StateObject var titleAppleBridge = RSSListTitleAppleTranslationBridge()
+  @State var titleTranslationRetryRevision = 0
+  @AppStorage(RSSReaderUserPreferences.automaticTitleTranslationEnabledKey)
+  var automaticTitleTranslationEnabled = RSSReaderUserPreferences.defaultAutomaticTitleTranslationEnabled
+  @AppStorage(RSSReaderUserPreferences.translationBackendKey)
+  var titleTranslationBackendRawValue = RSSReaderUserPreferences.defaultTranslationBackend.rawValue
+  @AppStorage("rssReaderTranslationTargetCode")
+  var titleTranslationTargetCode = RSSArticleTranslationTarget.simplifiedChinese.languageCode
+  @AppStorage("rssReaderTranslationCustomLanguage") var titleTranslationCustomLanguage = ""
 
   var body: some View {
     let prepared = preparedList
@@ -71,6 +85,7 @@ struct RSSArticleList: View {
             .foregroundStyle(.secondary)
           }
           Spacer(minLength: 8)
+          listTitleTranslationMenu
           if !isBatchSelectionMode {
             Menu {
               if !unreadMatchingArticleIDs.isEmpty {
@@ -109,6 +124,7 @@ struct RSSArticleList: View {
         if isBatchSelectionMode {
           batchSelectionControls(visibleArticles: visibleArticles)
         }
+        listTitleTranslationStatus
       }
       .padding(WorkbenchSpacing.section)
 
@@ -171,6 +187,16 @@ struct RSSArticleList: View {
     }
     .task(id: prepareInput) {
       await prepareList()
+    }
+    .task(id: titleTranslationInput) {
+      await translateListTitles(titleTranslationInput)
+    }
+    .background {
+      RSSListTitleAppleTranslationHost(bridge: titleAppleBridge)
+    }
+    .onDisappear {
+      titleTranslator.cancel()
+      titleAppleBridge.cancel()
     }
     .sheet(item: $feedPendingAddressEdit) { feed in
       RSSEditFeedURLSheet(feed: feed) { newURL in

@@ -1,3 +1,4 @@
+import PublishingKnowledgeCore
 import PublishingWorkbenchCore
 import SwiftUI
 
@@ -132,6 +133,7 @@ struct WorkspacePrimarySidebar: View {
     .frame(maxWidth: .infinity, maxHeight: .infinity)
     .workbenchGlassContainer(material: .thinMaterial, drawsBorder: false)
     .accessibilityElement(children: .contain)
+    .accessibilityLabel("侧栏")
     .accessibilityIdentifier("workspace-sidebar")
   }
 

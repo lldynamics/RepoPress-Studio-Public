@@ -21,7 +21,7 @@ public final class WorkbenchSettingsFeatureFacade: ObservableObject {
     observe(store.publishingStore.$profiles)
     observe(store.publishingStore.$activeProfileID)
     observe(
-      store.publishingStore.$drafts
+      store.publishingStore.documents.$drafts
         .map { drafts in
           drafts.map {
             DraftCountSignature(

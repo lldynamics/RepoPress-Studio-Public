@@ -1,6 +1,100 @@
 import Foundation
+import PublishingKnowledgeCore
 
 extension WorkbenchStore {
+  public var canRestoreBackupArticles: Bool {
+    canUseProtectedWorkbench && !isPersistenceRecoveryWriteProtected
+  }
+
+  public func workspaceBackupArticleSelectionPreview(from backupURL: URL) async throws
+    -> WorkspaceBackupArticleSelectionPreview
+  {
+    guard canRestoreBackupArticles else { throw WorkspaceBackupArticleRestoreError.unavailable }
+    let currentVersion = Self.workspaceBackupApplicationVersion
+    let preview = try await runWorkspaceBackupIO {
+      try WorkspaceBackupService().inspectArticlesForRestore(
+        at: backupURL, currentApplicationVersion: currentVersion
+      )
+    }
+    try Task.checkCancellation()
+    guard canRestoreBackupArticles else { throw WorkspaceBackupArticleRestoreError.unavailable }
+    return preview
+  }
+
+  @discardableResult
+  public func restoreWorkspaceBackupArticles(
+    preview: WorkspaceBackupArticleSelectionPreview,
+    selectedDraftIDs: Set<UUID>
+  ) async throws -> Int {
+    guard canRestoreBackupArticles else { throw WorkspaceBackupArticleRestoreError.unavailable }
+    let editingProfileID = activeProfileID
+    let attachmentRootURL = managedAttachmentFileStore.rootDirectoryURL
+    let prepared = try await runWorkspaceBackupIO {
+      try WorkspaceBackupService().prepareArticleRestore(
+        preview: preview,
+        selectedDraftIDs: selectedDraftIDs,
+        editingProfileID: editingProfileID,
+        attachmentRootURL: attachmentRootURL
+      )
+    }
+    let fileManager = FileManager.default
+    var ownsDestination = false
+    var committed = false
+    var persistenceAttempted = false
+    defer {
+      // Only this operation's unique directories are eligible for cleanup.
+      try? fileManager.removeItem(at: prepared.stagingURL)
+      if ownsDestination && !committed && !persistenceAttempted {
+        try? fileManager.removeItem(at: prepared.destinationURL)
+      }
+    }
+    try Task.checkCancellation()
+    guard canRestoreBackupArticles, profiles.contains(where: { $0.id == editingProfileID }) else {
+      throw WorkspaceBackupArticleRestoreError.unavailable
+    }
+    try fileManager.createDirectory(at: attachmentRootURL, withIntermediateDirectories: true)
+    try fileManager.moveItem(at: prepared.stagingURL, to: prepared.destinationURL)
+    ownsDestination = true
+
+    // No suspension between append, durable save and rollback: editor changes
+    // made during preparation are retained. This does not write site files.
+    flushDraftBodyEditorBuffers()
+    let previousDrafts = drafts
+    publishingStore.drafts.append(contentsOf: prepared.drafts)
+    invalidateDraftDerivedCaches()
+    persistenceStore.markUnsavedChanges()
+    persistenceAttempted = true
+    let persisted = persistenceStore.flush(
+      input: persistenceStore.persistence.snapshotInput(from: self))
+    guard persisted, !persistenceStore.isRecoveryWriteProtected else {
+      publishingStore.drafts = previousDrafts
+      invalidateDraftDerivedCaches()
+      persistenceStore.markUnsavedChanges()
+      // A save can throw after the SQLite commit. Keep promoted attachments
+      // even on failure: the primary or its recovery generation may reference
+      // them. Read only the exact primary, without advancing the writer baseline.
+      let persistence = persistenceStore.persistence
+      let newIDs = Set(prepared.drafts.map(\.id))
+      let primaryIsUnchanged: Bool
+      do {
+        let stored = try persistence.withRecordFileLock {
+          try persistence.loadStoredSnapshot(at: persistence.fileURL)
+        }
+        primaryIsUnchanged = stored.drafts.allSatisfy { !newIDs.contains($0.id) }
+      } catch {
+        primaryIsUnchanged = false
+      }
+      if !primaryIsUnchanged {
+        persistenceStore.protectWritesForUnrecoverableSnapshot(
+          message: persistenceStore.lastSaveError ?? persistenceStore.status
+        )
+      }
+      throw WorkspaceBackupArticleRestoreError.persistenceFailed
+    }
+    committed = true
+    return prepared.drafts.count
+  }
+
   public func createWorkspaceBackup(
     at destinationURL: URL,
     applicationVersion: String? = nil,

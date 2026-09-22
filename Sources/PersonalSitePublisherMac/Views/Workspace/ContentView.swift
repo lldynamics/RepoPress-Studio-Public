@@ -1,5 +1,6 @@
 import AppKit
 import OSLog
+import PublishingKnowledgeCore
 import PublishingWorkbenchCore
 import SwiftUI
 
@@ -49,11 +50,14 @@ struct ContentView: View {
   #endif
   @State private var isDraftRecoveryPresented = false
   @State private var modalPresentation = WorkspaceModalPresentationState()
+  @State private var firstRunHandoffProfile: SiteProfile?
   @State private var fullTextSearchRequest: DraftFullTextSearchRequest?
   @State private var deferredFullTextSearchRequest: DraftFullTextSearchRequest?
   @State private var publishDrawerInitialScope: PublishScope = .repository
   @State private var publishReadinessNavigationRequest: PublishReadinessNavigationRequest?
   @State private var readinessInspectorSheet: PublishReadinessNavigationRequest?
+  @State private var articlePublishRepairSession: ArticlePublishRepairSession?
+  @State private var isReturningToPublishChecks = false
   @State private var articleInspectorPresentation = ArticleInspectorPresentationState()
   @State private var isSettingsWorkspacePresented = false
   @State private var settingsWorkspaceDestination: SettingsDestination?
@@ -61,6 +65,7 @@ struct ContentView: View {
   @State private var commandPaletteEditorCommands: MarkdownEditorCommandActions?
   @State private var commandPaletteDraftID: UUID?
   @State private var deferredPaletteAIRequest = WorkspaceDeferredAIRequestState()
+  @State private var deferredContentSearchRequest = WorkspaceDeferredContentSearchRequest()
   @State private var responsiveLayout = WorkspaceResponsiveLayoutSnapshot.initial
   @State private var repositoryContentMonitorClientID = UUID()
   @State private var operationalPollingClientID = UUID()
@@ -68,6 +73,7 @@ struct ContentView: View {
   // These reference models need stable window lifetime, but ContentView does
   // not read their published values. Feature leaves observe them directly.
   @State private var aiChatInspectorOperationSession = AIChatSurfaceOperationSession()
+  @State private var rssPresentation = RSSReaderPresentationState()
   @State private var contentHealthFilter: ContentHealthContextFilter = .overview
   @State private var imageWorkbenchContextStage: ImageWorkbenchContextStage = .overview
   @State private var repositoryContextStage: RepositoryContextStage = .overview
@@ -129,7 +135,7 @@ struct ContentView: View {
       let isInspectorVisible = inspectorPresentation.wrappedValue
       let inspectorColumnWidthState = inspectorWidthState
 
-      ZStack {
+      ZStack(alignment: .bottom) {
         if isSettingsWorkspacePresented {
           SettingsView(
             store: store,
@@ -161,6 +167,18 @@ struct ContentView: View {
               WorkbenchMotion.drawerTransition(reduceMotion: accessibilityReduceMotion)
             )
             .zIndex(2)
+          }
+
+          if let repairSession = articlePublishRepairSession {
+            ArticlePublishRepairBar(
+              session: repairSession,
+              isReturningToPublishChecks: isReturningToPublishChecks,
+              returnToPublishChecks: { returnToPublishChecks(from: repairSession) },
+              endRepair: { endArticlePublishRepair(repairSession) }
+            )
+            .padding(.bottom, 16)
+            .transition(.move(edge: .bottom).combined(with: .opacity))
+            .zIndex(1)
           }
 
           #if DEBUG || SCREENSHOT_CAPTURE_BUILD
@@ -378,6 +396,12 @@ struct ContentView: View {
 
   private func handleSelectedDraftIDChange(draftID: UUID?) {
     selectedDraftIDRawValue = draftID?.uuidString ?? ""
+    if let repairSession = articlePublishRepairSession, repairSession.draftID != draftID {
+      endArticlePublishRepair(
+        repairSession,
+        message: String(localized: "已切换文章，已结束当前发布问题修复。")
+      )
+    }
   }
 
   private func handleRepositoryContextStageChange(stage: RepositoryContextStage) {
@@ -417,6 +441,7 @@ struct ContentView: View {
       knowledgeInspectorPresentation: $knowledgeInspectorPresentation,
       repositorySourceSession: repositorySourceSession,
       rssStore: rssStore,
+      rssPresentation: rssPresentation,
       onSelectSection: selectWorkspaceSection,
       onSelectDraft: selectWindowDraft,
       onFocusDraft: focusWindowDraft,
@@ -536,6 +561,7 @@ struct ContentView: View {
     }
     performDeferredPaletteAIRequestIfReady()
     performDeferredFullTextSearchIfReady()
+    performDeferredContentSearchIfReady()
   }
 
   private var sceneCommandRouterRootUpdateKey: WorkspaceSceneCommandRouter.RootUpdateKey {
@@ -575,6 +601,7 @@ struct ContentView: View {
       ),
       workspaceFirstRunSetupCommandAction: WorkspaceFirstRunSetupCommandAction {
         guard shellState.canUseProtectedWorkbench else { return }
+        firstRunHandoffProfile = nil
         modalPresentation.present(.firstRunSetup)
       },
       settingsWorkspaceCommandAction: settingsWorkspaceCommandAction,
@@ -712,14 +739,56 @@ struct ContentView: View {
     case .localSitePreview:
       LocalSitePreviewPanelView(store: store)
     case .firstRunSetup:
-      FirstRunSetupView(
-        store: store,
-        finish: finishFirstRunSetup,
-        skip: skipFirstRunSetup
-      )
+      if let profile = firstRunHandoffProfile {
+        FirstRunRepositoryHandoffView(
+          prepare: { isRetry in
+            guard
+              let expectedProfile = FirstRunRepositoryHandoffPresentation.profileForPreparation(
+                original: profile, current: store.activeProfile, isRetry: isRetry
+              )
+            else { return .cancelled }
+            firstRunHandoffProfile = expectedProfile
+            let result = await store.prepareRepositoryForWriting(expectedProfile: expectedProfile)
+            return FirstRunRepositoryHandoffPresentation.state(
+              result: result, drafts: store.drafts, profileID: expectedProfile.id
+            )
+          },
+          openDraft: { draftID in
+            guard shellState.canUseProtectedWorkbench, store.activeProfile == profile,
+              store.drafts.contains(where: {
+                $0.id == draftID && $0.belongs(toSiteProfileID: profile.id)
+              })
+            else { return false }
+            skipFirstRunSetup()
+            focusWindowDraft(draftID, section: .writing)
+            return true
+          },
+          createDraft: {
+            guard shellState.canUseProtectedWorkbench, store.activeProfile == profile else {
+              return false
+            }
+            let draftID = store.createDraftWithoutChangingSelection()
+            skipFirstRunSetup()
+            focusWindowDraft(draftID, section: .writing)
+            return true
+          },
+          inspectRepository: {
+            skipFirstRunSetup()
+            if store.activeProfile == profile { selectWorkspaceSection(.sync) }
+          },
+          close: skipFirstRunSetup
+        )
+      } else {
+        FirstRunSetupView(
+          store: store,
+          finish: finishFirstRunSetup,
+          skip: skipFirstRunSetup
+        )
+      }
     case .commandPalette:
       WorkspaceCommandPalette(
         store: store,
+        rssStore: rssStore,
         editorCommands: commandPaletteEditorCommands,
         contextDraftID: commandPaletteDraftID,
         onSelectSection: selectWorkspaceSection,
@@ -732,6 +801,12 @@ struct ContentView: View {
         },
         onOpenFullTextSearch: { request in
           deferredFullTextSearchRequest = request
+        },
+        onOpenKnowledgeResult: { result, query in
+          deferredContentSearchRequest.enqueue(.knowledge(result, query: query))
+        },
+        onOpenRSSArticle: { articleID, query in
+          deferredContentSearchRequest.enqueue(.rss(articleID: articleID, query: query))
         }
       )
     case .draftFullTextSearch:
@@ -881,6 +956,7 @@ struct ContentView: View {
         isScreenshotDemo: isScreenshotDemo
       )
     else { return }
+    firstRunHandoffProfile = nil
     modalPresentation.present(.firstRunSetup)
   }
 
@@ -891,24 +967,21 @@ struct ContentView: View {
     guard commitResult == .completed else { return commitResult }
 
     didCompleteFirstRunSetup = true
-    modalPresentation.dismiss(.firstRunSetup)
     switch completion.path.destination {
     case .repositoryWizard:
-      store.runPreflight()
-      selectWorkspaceSection(.sync)
-      Task {
-        await store.repository.scanAsync()
-      }
+      firstRunHandoffProfile = store.activeProfile
     case .siteStarter:
+      modalPresentation.dismiss(.firstRunSetup)
       selectWorkspaceSection(.siteStarter)
     case .localDrafts:
-      break
+      modalPresentation.dismiss(.firstRunSetup)
     }
     return .completed
   }
 
   private func skipFirstRunSetup() {
     modalPresentation.dismiss(.firstRunSetup)
+    firstRunHandoffProfile = nil
   }
 
   private var supportsInspector: Bool {
@@ -1160,9 +1233,30 @@ struct ContentView: View {
   }
 
   private func handleWorkspaceSheetDismissal() {
+    firstRunHandoffProfile = nil
     deferredPaletteAIRequest.sheetDidDismiss()
+    deferredContentSearchRequest.sheetDidDismiss()
     performDeferredPaletteAIRequestIfReady()
     performDeferredFullTextSearchIfReady()
+    performDeferredContentSearchIfReady()
+  }
+
+  private func performDeferredContentSearchIfReady() {
+    guard shellState.canUseProtectedWorkbench else {
+      deferredContentSearchRequest.cancel()
+      return
+    }
+    guard modalPresentation.presented == nil,
+      let destination = deferredContentSearchRequest.consume(isKeyWindow: windowSession.isKeyWindow)
+    else { return }
+    switch destination {
+    case .knowledge(let result, let query):
+      selectWorkspaceSection(.library)
+      _ = store.knowledge.revealSearchResult(result, query: query)
+    case .rss(let articleID, _):
+      selectWorkspaceSection(.rss)
+      _ = rssPresentation.openContentSearchResult(articleID, in: rssStore)
+    }
   }
 
   private func performDeferredPaletteAIRequestIfReady() {
@@ -1359,11 +1453,16 @@ struct ContentView: View {
     }
   }
 
-  private func openPublishDrawer(message: String?) {
+  private func openPublishDrawer(
+    message: String?,
+    preferredScope: PublishScope? = nil
+  ) {
     guard activateCurrentWindowSharedContext() else { return }
+    clearArticlePublishRepair()
     store.ensureEditableDraftSelected()
     windowSession.receiveSharedDraft(store.selectedDraftID)
-    publishDrawerInitialScope = PublishScope.initialScope(for: windowSession.selectedSection)
+    publishDrawerInitialScope =
+      preferredScope ?? PublishScope.initialScope(for: windowSession.selectedSection)
     hideInspectorIfNeeded()
     withAnimation(
       WorkbenchMotion.animation(
@@ -1379,40 +1478,105 @@ struct ContentView: View {
     )
   }
 
-  private func navigateToPublishIssue(draftID: UUID, target: PublishReadinessTarget) {
+  private func navigateToPublishIssue(
+    draftID: UUID,
+    target: PublishReadinessTarget,
+    publishScope: PublishScope
+  ) {
     guard shellState.canUseProtectedWorkbench, store.draft(for: draftID) != nil else { return }
     dismissPublishDrawerIfNeeded()
     presentationState.hideAssistant()
     isFocusMode = false
-    let section: WorkspaceSection
-    switch target {
-    case .repository: section = .sync
-    case .images: section = .images
-    default: section = .writing
-    }
-    focusWindowDraft(draftID, section: section)
-    let request = PublishReadinessNavigationRequest(draftID: draftID, target: target)
-    publishReadinessNavigationRequest = request
-    if let tab = target.inspectorTab {
-      articleInspectorPresentation.select(tab, for: draftID, section: section)
-    }
-    switch target {
-    case .body(let query):
-      store.requestEditorFocus(draftID: draftID, field: "body", query: query)
-      if let request = store.editorFocusRequest {
-        windowSession.registerEditorFocusRequest(request.id)
-      }
-    case .images(let attachmentID):
-      imageWorkbenchContextStage = .overview
-      if let attachmentID {
-        _ = store.focusImageInspector(draftID: draftID, attachmentID: attachmentID)
-      }
-      revealPublishIssueInspector(request)
-    case .metadata, .seo:
-      revealPublishIssueInspector(request)
+    let route = ArticlePublishRepairRoutePolicy.route(for: target)
+
+    switch route {
     case .repository:
+      clearArticlePublishRepair()
+      focusWindowDraft(draftID, section: route.workspaceSection)
       repositoryContextStage = .overview
+
+    case .article(let articleTarget):
+      focusWindowDraft(draftID, section: route.workspaceSection)
+      let repairSession = ArticlePublishRepairSession(
+        draftID: draftID,
+        target: articleTarget,
+        publishScope: publishScope
+      )
+      articlePublishRepairSession = repairSession
+      let request = PublishReadinessNavigationRequest(draftID: draftID, target: articleTarget)
+      publishReadinessNavigationRequest = request
+      if let tab = articleTarget.inspectorTab {
+        articleInspectorPresentation.select(tab, for: draftID, section: .writing)
+      }
+      switch articleTarget {
+      case .body(let query):
+        store.requestEditorFocus(draftID: draftID, field: "body", query: query)
+        if let request = store.editorFocusRequest {
+          windowSession.registerEditorFocusRequest(request.id)
+        }
+      case .images(let attachmentID):
+        if let attachmentID {
+          _ = store.focusImageInspector(draftID: draftID, attachmentID: attachmentID)
+        }
+        revealPublishIssueInspector(request)
+      case .metadata, .seo:
+        revealPublishIssueInspector(request)
+      case .repository:
+        break
+      }
     }
+  }
+
+  private func returnToPublishChecks(from repairSession: ArticlePublishRepairSession) {
+    guard articlePublishRepairSession?.id == repairSession.id, !isReturningToPublishChecks else {
+      return
+    }
+    guard let draft = store.draft(for: repairSession.draftID) else {
+      endArticlePublishRepair(
+        repairSession,
+        message: String(localized: "文章已不存在，无法返回发布检查。")
+      )
+      return
+    }
+
+    isReturningToPublishChecks = true
+    Task { @MainActor in
+      store.runPreflight()
+      _ = await store.refreshPublishPreview(for: draft.id)
+      guard articlePublishRepairSession?.id == repairSession.id else { return }
+      guard windowSession.selectedDraftID == repairSession.draftID else {
+        endArticlePublishRepair(
+          repairSession,
+          message: String(localized: "已切换文章，已结束当前发布问题修复。")
+        )
+        return
+      }
+      isReturningToPublishChecks = false
+      // The drawer clears repair state only after it accepts this window's
+      // context. Keep the return path when focus changed during the refresh.
+      openPublishDrawer(
+        message: String(localized: "发布预览已刷新，请重新审阅后再发布。"),
+        preferredScope: repairSession.publishScope
+      )
+    }
+  }
+
+  private func endArticlePublishRepair(
+    _ repairSession: ArticlePublishRepairSession,
+    message: String? = nil
+  ) {
+    guard articlePublishRepairSession?.id == repairSession.id else { return }
+    clearArticlePublishRepair()
+    if let message {
+      store.setPublishActionMessage(message, status: .information)
+    }
+  }
+
+  private func clearArticlePublishRepair() {
+    articlePublishRepairSession = nil
+    isReturningToPublishChecks = false
+    publishReadinessNavigationRequest = nil
+    readinessInspectorSheet = nil
   }
 
   private func revealPublishIssueInspector(_ request: PublishReadinessNavigationRequest) {
@@ -1430,7 +1594,7 @@ struct ContentView: View {
     if let initialDraft = store.draft(for: request.draftID) {
       VStack(spacing: 0) {
         WorkspaceTaskInspector(
-          section: request.target.inspectorTab == .images ? .images : .writing,
+          section: .writing,
           draft: Binding(
             get: { store.draft(for: request.draftID) ?? initialDraft },
             set: { store.updateDraftFromEditor($0) }

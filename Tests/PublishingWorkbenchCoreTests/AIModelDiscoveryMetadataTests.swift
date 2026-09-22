@@ -2,7 +2,6 @@ import Foundation
 import XCTest
 
 @testable import PublishingAICore
-@testable import PublishingWorkbenchCore
 
 final class AIModelDiscoveryMetadataTests: XCTestCase {
 

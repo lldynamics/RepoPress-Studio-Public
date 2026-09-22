@@ -1,4 +1,5 @@
 import AppKit
+import PublishingDomainContracts
 import PublishingWorkbenchCore
 import SwiftUI
 
@@ -25,6 +26,7 @@ struct WorkspaceTaskMetadataSection: View {
   @State private var summaryGenerationRequestID: UUID?
   @State private var summaryGenerationTask: Task<Void, Never>?
   @State private var isAddingDraftToProject = false
+  @State private var provenancePresentationCache = ArticleProvenancePresentationCache()
   @State private var slugText: String
   @FocusState private var isSlugFocused: Bool
 
@@ -232,7 +234,13 @@ struct WorkspaceTaskMetadataSection: View {
   }
 
   private var selectedProvenance: ArticleProvenance {
-    ArticleProvenanceService().provenance(for: draft)
+    provenancePresentationCache.provenance(
+      draftID: draft.id,
+      tags: draft.tags,
+      bodyMarkdown: draft.bodyMarkdown
+    ) {
+      ArticleProvenanceService().provenance(for: draft)
+    }
   }
 
   private var provenanceBinding: Binding<ArticleProvenance> {
@@ -410,6 +418,9 @@ struct WorkspaceTaskMetadataSection: View {
         }
       }
 
+      guard !Task.isCancelled, summaryGenerationRequestID == requestID,
+        draft.id == requestedDraft.id
+      else { return }
       let result = await store.performAIAction(.suggestSummary, draft: requestedDraft)
       guard !Task.isCancelled,
         summaryGenerationRequestID == requestID,
@@ -417,15 +428,16 @@ struct WorkspaceTaskMetadataSection: View {
       else {
         return
       }
-      guard let result,
+      // nil also represents a cancelled/superseded request. Do not relabel it
+      // with another request's global action message.
+      guard let result else { return }
+      guard
         let generatedSummary =
           AIPublishingMetadataActionSuggestionFactory
           .suggestion(from: result)?
           .summary
       else {
-        summaryGenerationMessage =
-          summaryAI.actionMessage
-          ?? String(localized: "AI 没有返回可用的摘要。")
+        summaryGenerationMessage = String(localized: "AI 没有返回可用的摘要。")
         return
       }
       guard let latestDraft = store.drafts.first(where: { $0.id == requestedDraft.id }) else {
@@ -1065,6 +1077,7 @@ struct WorkspaceTaskChecksState {
   let issues: [PreflightIssue]
   let publicRisk: PublicRiskSummary
   let deploymentStatus: DeploymentStatusSnapshot?
+  let deploymentSourceContext: DeploymentSourceContext?
 
   var errorCount: Int {
     issues.filter { $0.severity == .error }.count
@@ -1110,7 +1123,8 @@ struct WorkspaceTaskChecksSection: View {
          deploymentStatus.level == .failed
            || deploymentStatus.level == .running
            || deploymentStatus.signals.contains(where: { !$0.logExcerpt.isEmpty }) {
-        WorkspaceDeploymentLogInspectorSection(snapshot: deploymentStatus)
+        WorkspaceDeploymentLogInspectorSection(
+          snapshot: deploymentStatus, sourceContext: state.deploymentSourceContext)
       }
 
       InspectorSection("问题队列") {

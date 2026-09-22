@@ -9,7 +9,8 @@ struct KnowledgeSourceListColumn: View {
   @EnvironmentObject private var browserBridge: KnowledgeBrowserBridge
   @Environment(\.openSettings) var openSettings
   @Environment(\.settingsWorkspaceCommandAction) var settingsWorkspaceCommandAction
-  @AppStorage("dataManagementRequestedSection") var dataManagementRequestedSection = DataManagementSection.backup.rawValue
+  @AppStorage("dataManagementRequestedSection") var dataManagementRequestedSection =
+    DataManagementSection.backup.rawValue
   @State var searchText = ""
   @State var isImportPresented = false
   @State var isBrowserExtensionPresented = false
@@ -26,6 +27,7 @@ struct KnowledgeSourceListColumn: View {
   @State var isSettingsPresented = false
   @State var isBatchRecycleConfirmationPresented = false
   @State var isBatchTagEditorPresented = false
+  @State var isImageBatchExportPresented = false
   @State var batchTags = ""
   @State var hoveredDocumentID: UUID?
   @State var isInsertingKnowledgeImage = false
@@ -88,6 +90,13 @@ struct KnowledgeSourceListColumn: View {
         }
       )
       .workbenchSheetSize(.detail)
+    }
+    .sheet(isPresented: $isImageBatchExportPresented) {
+      KnowledgeImageBatchExportSheet(
+        knowledge: knowledge,
+        documentIDs: selectedDocumentIDs,
+        isPresented: $isImageBatchExportPresented
+      )
     }
     .alert(folderEditorTitle, isPresented: $isFolderEditorPresented) {
       TextField(String(localized: "文件夹名称"), text: $folderName)
@@ -159,8 +168,12 @@ struct KnowledgeSourceListColumn: View {
       Text("共 \(selectedDocumentIDs.count) 条资料。移入后可以从回收站恢复。")
     }
     .onAppear {
+      searchText = knowledge.searchText
       refreshListPresentationSnapshot()
       synchronizeListSelection()
+    }
+    .onChange(of: knowledge.searchText) { _, value in
+      if searchText != value { searchText = value }
     }
     .onChange(of: knowledge.selectedDocumentID) { _, _ in
       synchronizeListSelection()
@@ -174,7 +187,8 @@ struct KnowledgeSourceListColumn: View {
     }
     .onChange(of: knowledge.isSearching) { wasSearching, isSearching in
       guard wasSearching, !isSearching,
-            !searchText.trimmedForPublishing.isEmpty else { return }
+        !searchText.trimmedForPublishing.isEmpty
+      else { return }
       refreshListPresentationSnapshot()
       let documentCount = Set(listPresentation.searchResults.map { $0.document.id }).count
       EditorAccessibilityAnnouncementCenter.announce(

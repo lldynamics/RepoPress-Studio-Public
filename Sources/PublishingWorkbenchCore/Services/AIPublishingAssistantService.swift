@@ -1,4 +1,5 @@
 import Foundation
+import PublishingAICore
 
 /// A task-resolved, privacy-bound transport. The request and its prepared
 /// client seal are intentionally exposed to Core callers so an authorization gate
@@ -52,6 +53,12 @@ public struct AIPublishingAssistantService: Sendable {
 
   public init(client: AIChatCompletionClient = AIChatCompletionClient()) {
     self.client = client
+  }
+
+  func authorizingNonStreamingRequests(
+    _ authorization: @escaping @Sendable () async throws -> Void
+  ) -> AIPublishingAssistantService {
+    AIPublishingAssistantService(client: client.authorizingNonStreamingRequests(authorization))
   }
 
   public func perform(

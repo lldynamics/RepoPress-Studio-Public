@@ -14,7 +14,7 @@ public final class WorkbenchPublishingFeatureFacade: ObservableObject {
     // publish-progress mutations invalidate every publishing subscriber.
     observe(store.publishingStore.$profiles)
     observe(store.publishingStore.$activeProfileID)
-    observe(store.publishingStore.$drafts)
+    observe(store.publishingStore.documents.$drafts)
     observe(store.publishingStore.$selectedSection)
     observe(store.publishingStore.$selectedDraftID)
     observe(store.publishingStore.$draftListContentScope)

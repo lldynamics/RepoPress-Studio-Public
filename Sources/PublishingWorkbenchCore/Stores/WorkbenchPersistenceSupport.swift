@@ -11,12 +11,12 @@ public enum WorkbenchPersistenceSaveResult: Sendable, Equatable {
   case savedWithoutBackup(String)
 }
 
-/// A fully encoded snapshot that is ready for the short, atomic disk commit.
+/// Individually encoded records ready for a serialized document/database commit.
 /// Construct and commit this off the main actor. The persistence store checks
 /// revisions before and after its serialized commit so newer editor state is
 /// never marked as saved by an older snapshot.
 public struct WorkbenchPreparedPersistenceSave: Sendable {
-  let data: Data
+  let records: WorkbenchRecordPayload
   let retiredFeatureArchives: [WorkbenchRetiredFeatureArchive]
 }
 

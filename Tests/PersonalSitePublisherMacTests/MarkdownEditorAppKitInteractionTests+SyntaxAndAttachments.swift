@@ -1,5 +1,6 @@
 import AppKit
-import PublishingWorkbenchCore
+import PublishingDomainContracts
+import PublishingMarkdownCore
 import SwiftUI
 import XCTest
 
@@ -1146,6 +1147,15 @@ final class MarkdownEditorAppKitInteractionSyntaxAndAttachmentTests:
       ) as? NSColor,
       NSColor.clear
     )
+    XCTAssertNil(coordinator.inlineAttachmentGeometryReservations[formulaKey])
+    XCTAssertLessThan(
+      (textView.textStorage?.attribute(
+        .paragraphStyle,
+        at: formulaRange.location,
+        effectiveRange: nil
+      ) as? NSParagraphStyle)?.minimumLineHeight ?? .greatestFiniteMagnitude,
+      64
+    )
 
     sentinel.cancel()
     for _ in 0..<8 { await Task.yield() }
@@ -1255,6 +1265,617 @@ final class MarkdownEditorAppKitInteractionSyntaxAndAttachmentTests:
     )
     XCTAssertNotNil(coordinator.inlineAttachmentImageTasks[imageKey])
     coordinator.clearInlineAttachmentDrawings(in: textView)
+  }
+
+  func testOffscreenInlineAttachmentsKeepGeometryUntilAFullCleanup() async throws {
+    let fixtureURL = try makeInlineAttachmentImageFixture(width: 16, height: 8)
+    defer { try? FileManager.default.removeItem(at: fixtureURL) }
+
+    let source = "$$\nE = mc^2\n$$\n\n![cover](cover.png)\n\nEOF"
+    let coordinator = makeCoordinator(
+      source: source,
+      bodyMarkdown: source,
+      bodyUTF16Offset: 0
+    )
+    coordinator.attachments = [
+      DraftAttachment(
+        originalFilename: "cover.png",
+        relativePublishPath: "cover.png",
+        repositoryPath: "cover.png",
+        sourceFilePath: fixtureURL.path
+      )
+    ]
+    let textView = DroppableMarkdownTextView.makeTextKit2(
+      containerSize: NSSize(width: 640, height: 480)
+    )
+    textView.string = source
+    textView.setSelectedRange(NSRange(location: source.utf16.count, length: 0))
+    let formulaRange = (source as NSString).range(of: "$$\nE = mc^2\n$$")
+    let imageRange = (source as NSString).range(of: "![cover](cover.png)")
+    let eofRange = (source as NSString).range(of: "EOF")
+
+    coordinator.applyInlineAttachmentDrawings(
+      in: textView,
+      applicationRange: NSRange(location: 0, length: source.utf16.count)
+    )
+    XCTAssertEqual(coordinator.inlineAttachmentGeometryReservations.count, 2)
+
+    // A content repaint at EOF tears down the paint-only cards, but must not
+    // collapse their two source paragraphs while they remain valid Markdown.
+    coordinator.applyInlineAttachmentDrawings(in: textView, applicationRange: eofRange)
+    XCTAssertTrue(coordinator.inlineAttachmentDrawingDescriptors.isEmpty)
+    XCTAssertEqual(coordinator.inlineAttachmentGeometryReservations.count, 2)
+    let formulaLineHeight = try XCTUnwrap(
+      (textView.textStorage?.attribute(
+        .paragraphStyle,
+        at: formulaRange.location,
+        effectiveRange: nil
+      ) as? NSParagraphStyle)?.minimumLineHeight
+    )
+    let imageLineHeight = try XCTUnwrap(
+      (textView.textStorage?.attribute(
+        .paragraphStyle,
+        at: imageRange.location,
+        effectiveRange: nil
+      ) as? NSParagraphStyle)?.minimumLineHeight
+    )
+    XCTAssertEqual(formulaLineHeight, 64, accuracy: 0.5)
+    XCTAssertEqual(imageLineHeight, 180, accuracy: 0.5)
+
+    // This is the external-source/cache invalidation boundary used before a
+    // complete replacement or read-only presentation transition.
+    coordinator.invalidateHighlightedTextCache(in: textView)
+    XCTAssertTrue(coordinator.inlineAttachmentGeometryReservations.isEmpty)
+    XCTAssertLessThan(
+      (textView.textStorage?.attribute(
+        .paragraphStyle,
+        at: formulaRange.location,
+        effectiveRange: nil
+      ) as? NSParagraphStyle)?.minimumLineHeight ?? .greatestFiniteMagnitude,
+      64
+    )
+    XCTAssertLessThan(
+      (textView.textStorage?.attribute(
+        .paragraphStyle,
+        at: imageRange.location,
+        effectiveRange: nil
+      ) as? NSParagraphStyle)?.minimumLineHeight ?? .greatestFiniteMagnitude,
+      180
+    )
+  }
+
+  func testInlineAttachmentGeometryRelocatesBeforeItAndClearsWhenItIsReplaced() throws {
+    let source = "before\n$$\nE = mc^2\n$$\nsecond\n$$\na^2 + b^2\n$$\nafter\n"
+    let coordinator = makeCoordinator(
+      source: source,
+      bodyMarkdown: source,
+      bodyUTF16Offset: 0
+    )
+    let textView = DroppableMarkdownTextView.makeTextKit2(
+      containerSize: NSSize(width: 640, height: 480)
+    )
+    textView.string = source
+    textView.setSelectedRange(NSRange(location: source.utf16.count, length: 0))
+    let formulaRange = (source as NSString).range(of: "$$\nE = mc^2\n$$")
+    let secondFormulaRange = (source as NSString).range(of: "$$\na^2 + b^2\n$$")
+    coordinator.applyInlineAttachmentDrawings(
+      in: textView,
+      applicationRange: NSRange(location: 0, length: source.utf16.count)
+    )
+    XCTAssertNotNil(
+      coordinator.inlineAttachmentGeometryReservations["attachment:\(formulaRange.location)"]
+    )
+    XCTAssertNotNil(
+      coordinator.inlineAttachmentGeometryReservations["attachment:\(secondFormulaRange.location)"]
+    )
+
+    let insertedPrefix = "heading\n"
+    textView.replaceCharacters(
+      in: NSRange(location: 0, length: 0),
+      with: insertedPrefix
+    )
+    let shiftedSource = insertedPrefix + source
+    coordinator.syntaxDocumentRevision = 1
+    coordinator.incrementallyUpdateInlineAttachmentPlan(
+      previousBodyMarkdown: source,
+      currentBodyMarkdown: shiftedSource,
+      documentEdit: MarkdownTextEdit(
+        previousText: source,
+        replacedRange: NSRange(location: 0, length: 0)
+      ),
+      previousBodyUTF16Offset: 0,
+      previousRevision: 0
+    )
+    let shiftedFormulaRange = NSRange(
+      location: formulaRange.location + insertedPrefix.utf16.count,
+      length: formulaRange.length
+    )
+    let shiftedSecondFormulaRange = NSRange(
+      location: secondFormulaRange.location + insertedPrefix.utf16.count,
+      length: secondFormulaRange.length
+    )
+    XCTAssertNil(
+      coordinator.inlineAttachmentGeometryReservations["attachment:\(formulaRange.location)"]
+    )
+    XCTAssertNotNil(
+      coordinator.inlineAttachmentGeometryReservations["attachment:\(shiftedFormulaRange.location)"]
+    )
+    XCTAssertNotNil(
+      coordinator.inlineAttachmentGeometryReservations[
+        "attachment:\(shiftedSecondFormulaRange.location)"
+      ]
+    )
+    let shiftedLineHeight = try XCTUnwrap(
+      (textView.textStorage?.attribute(
+        .paragraphStyle,
+        at: shiftedFormulaRange.location,
+        effectiveRange: nil
+      ) as? NSParagraphStyle)?.minimumLineHeight
+    )
+    XCTAssertEqual(shiftedLineHeight, 64, accuracy: 0.5)
+
+    textView.replaceCharacters(in: shiftedFormulaRange, with: "plain")
+    let deletedSource = (shiftedSource as NSString).replacingCharacters(
+      in: shiftedFormulaRange,
+      with: "plain"
+    )
+    let deletedSecondFormulaRange = NSRange(
+      location: shiftedSecondFormulaRange.location
+        + ("plain" as NSString).length - shiftedFormulaRange.length,
+      length: shiftedSecondFormulaRange.length
+    )
+    coordinator.syntaxDocumentRevision = 2
+    coordinator.incrementallyUpdateInlineAttachmentPlan(
+      previousBodyMarkdown: shiftedSource,
+      currentBodyMarkdown: deletedSource,
+      documentEdit: MarkdownTextEdit(
+        previousText: shiftedSource,
+        replacedRange: shiftedFormulaRange
+      ),
+      previousBodyUTF16Offset: 0,
+      previousRevision: 1
+    )
+    XCTAssertNil(
+      coordinator.inlineAttachmentGeometryReservations["attachment:\(shiftedFormulaRange.location)"]
+    )
+    XCTAssertNotNil(
+      coordinator.inlineAttachmentGeometryReservations[
+        "attachment:\(deletedSecondFormulaRange.location)"
+      ]
+    )
+    let retainedSecondLineHeight = try XCTUnwrap(
+      (textView.textStorage?.attribute(
+        .paragraphStyle,
+        at: deletedSecondFormulaRange.location,
+        effectiveRange: nil
+      ) as? NSParagraphStyle)?.minimumLineHeight
+    )
+    XCTAssertEqual(retainedSecondLineHeight, 64, accuracy: 0.5)
+    let replacementRange = (deletedSource as NSString).range(of: "plain")
+    XCTAssertLessThan(
+      (textView.textStorage?.attribute(
+        .paragraphStyle,
+        at: replacementRange.location,
+        effectiveRange: nil
+      ) as? NSParagraphStyle)?.minimumLineHeight ?? .greatestFiniteMagnitude,
+      64
+    )
+    coordinator.clearInlineAttachmentDrawings(in: textView)
+    XCTAssertTrue(coordinator.inlineAttachmentGeometryReservations.isEmpty)
+    XCTAssertLessThan(
+      (textView.textStorage?.attribute(
+        .paragraphStyle,
+        at: deletedSecondFormulaRange.location,
+        effectiveRange: nil
+      ) as? NSParagraphStyle)?.minimumLineHeight ?? .greatestFiniteMagnitude,
+      64
+    )
+  }
+
+  func testSelectingOffscreenAttachmentRestoresItsGeometryReservation() throws {
+    let source = "$$\nE = mc^2\n$$\n\ntrailing text"
+    let coordinator = makeCoordinator(
+      source: source,
+      bodyMarkdown: source,
+      bodyUTF16Offset: 0
+    )
+    let textView = DroppableMarkdownTextView.makeTextKit2(
+      containerSize: NSSize(width: 640, height: 480)
+    )
+    textView.string = source
+    let formulaRange = (source as NSString).range(of: "$$\nE = mc^2\n$$")
+    let formulaKey = "attachment:\(formulaRange.location)"
+    let trailingRange = (source as NSString).range(of: "trailing text")
+    textView.setSelectedRange(NSRange(location: trailingRange.location, length: 0))
+
+    coordinator.applyInlineAttachmentDrawings(
+      in: textView,
+      applicationRange: NSRange(location: 0, length: source.utf16.count)
+    )
+    coordinator.applyInlineAttachmentDrawings(
+      in: textView,
+      applicationRange: trailingRange
+    )
+    XCTAssertTrue(coordinator.inlineAttachmentDrawingDescriptors.isEmpty)
+    XCTAssertNotNil(coordinator.inlineAttachmentGeometryReservations[formulaKey])
+
+    textView.setSelectedRange(NSRange(location: formulaRange.location + 1, length: 0))
+    coordinator.applyInlineAttachmentDrawings(
+      in: textView,
+      applicationRange: formulaRange
+    )
+
+    XCTAssertTrue(coordinator.inlineAttachmentDrawingDescriptors.isEmpty)
+    XCTAssertNil(coordinator.inlineAttachmentGeometryReservations[formulaKey])
+    XCTAssertLessThan(
+      (textView.textStorage?.attribute(
+        .paragraphStyle,
+        at: formulaRange.location,
+        effectiveRange: nil
+      ) as? NSParagraphStyle)?.minimumLineHeight ?? .greatestFiniteMagnitude,
+      64
+    )
+  }
+
+  func testSelectingReenteredAttachmentRestoresOriginalParagraphHeight() throws {
+    let source = "$$\nE = mc^2\n$$\n\ntrailing text"
+    let coordinator = makeCoordinator(source: source, bodyMarkdown: source, bodyUTF16Offset: 0)
+    let textView = DroppableMarkdownTextView.makeTextKit2(
+      containerSize: NSSize(width: 640, height: 480)
+    )
+    textView.string = source
+    let formulaRange = (source as NSString).range(of: "$$\nE = mc^2\n$$")
+    let trailingRange = (source as NSString).range(of: "trailing text")
+    textView.setSelectedRange(NSRange(location: trailingRange.location, length: 0))
+    let wholeRange = NSRange(location: 0, length: source.utf16.count)
+    coordinator.applyInlineAttachmentDrawings(in: textView, applicationRange: wholeRange)
+    coordinator.applyInlineAttachmentDrawings(in: textView, applicationRange: trailingRange)
+    XCTAssertTrue(coordinator.inlineAttachmentDrawingDescriptors.isEmpty)
+    coordinator.applyInlineAttachmentDrawings(in: textView, applicationRange: wholeRange)
+    XCTAssertEqual(coordinator.inlineAttachmentDrawingDescriptors.count, 1)
+
+    textView.setSelectedRange(NSRange(location: formulaRange.location + 1, length: 0))
+    coordinator.applyInlineAttachmentDrawings(
+      in: textView, applicationRange: wholeRange, preservingExisting: true
+    )
+    XCTAssertTrue(coordinator.inlineAttachmentGeometryReservations.isEmpty)
+    XCTAssertTrue(coordinator.inlineAttachmentDrawingDescriptors.isEmpty)
+    let restoredStyle = try XCTUnwrap(
+      textView.textStorage?.attribute(
+        .paragraphStyle, at: formulaRange.location, effectiveRange: nil
+      ) as? NSParagraphStyle
+    )
+    XCTAssertLessThan(restoredStyle.minimumLineHeight, 64)
+  }
+
+  func testTextDidChangeDeferredAttachmentRepaintDiscardsStaleSnapshots() async throws {
+    let source = "$$\nE = mc^2\n$$\n\ntrailing text"
+    let coordinator = makeCoordinator(
+      source: source,
+      bodyMarkdown: source,
+      bodyUTF16Offset: 0
+    )
+    let textView = DroppableMarkdownTextView.makeTextKit2(
+      frame: NSRect(x: 0, y: 0, width: 640, height: 480),
+      containerSize: NSSize(width: 640, height: CGFloat.greatestFiniteMagnitude)
+    )
+    textView.textContainer?.widthTracksTextView = false
+    textView.textContainer?.heightTracksTextView = false
+    textView.string = source
+    textView.setSelectedRange(NSRange(location: source.utf16.count, length: 0))
+    let scrollView = NSScrollView(frame: textView.frame)
+    scrollView.documentView = textView
+    let window = NSWindow(
+      contentRect: textView.frame,
+      styleMask: .borderless,
+      backing: .buffered,
+      defer: false
+    )
+    window.contentView = scrollView
+    window.orderFront(nil)
+    window.layoutIfNeeded()
+    defer { window.orderOut(nil) }
+
+    let formulaRange = (source as NSString).range(of: "$$\nE = mc^2\n$$")
+    let oldKey = "attachment:\(formulaRange.location)"
+    coordinator.applyInlineAttachmentDrawings(
+      in: textView,
+      applicationRange: NSRange(location: 0, length: source.utf16.count)
+    )
+    XCTAssertNotNil(coordinator.inlineAttachmentDrawingDescriptors[oldKey])
+
+    let prefix = "prefix\n"
+    let updated = prefix + source
+    textView.replaceCharacters(in: NSRange(location: 0, length: 0), with: prefix)
+    textView.setSelectedRange(NSRange(location: updated.utf16.count, length: 0))
+    coordinator.textDidChange(
+      Notification(name: NSText.didChangeNotification, object: textView)
+    )
+    await coordinator.syntaxHighlightDebouncer.waitUntilIdle()
+
+    let shiftedRange = NSRange(
+      location: formulaRange.location + prefix.utf16.count,
+      length: formulaRange.length
+    )
+    let shiftedKey = "attachment:\(shiftedRange.location)"
+    await coordinator.syntaxAttributeApplicationTask?.value
+    await coordinator.inlineAttachmentDrawingApplicationTask?.value
+
+    XCTAssertNil(coordinator.inlineAttachmentDrawingDescriptors[oldKey])
+    XCTAssertNotNil(coordinator.inlineAttachmentDrawingDescriptors[shiftedKey])
+    XCTAssertNil(coordinator.inlineAttachmentGeometryReservations[oldKey])
+    XCTAssertNotNil(coordinator.inlineAttachmentGeometryReservations[shiftedKey])
+    let prefixRange = (updated as NSString).range(of: "prefix")
+    let prefixTextRange = try XCTUnwrap(
+      MarkdownTextKit2RangeAdapter.textRange(for: prefixRange, in: textView)
+    )
+    var prefixWasCleared = false
+    textView.textLayoutManager?.enumerateRenderingAttributes(
+      from: prefixTextRange.location,
+      reverse: false
+    ) { _, attributes, renderingRange in
+      guard
+        let range = MarkdownTextKit2RangeAdapter.range(
+          for: renderingRange,
+          in: textView
+        )
+      else {
+        return true
+      }
+      if NSIntersectionRange(range, prefixRange).length > 0,
+        (attributes[.foregroundColor] as? NSColor)?.isEqual(NSColor.clear) == true
+      {
+        prefixWasCleared = true
+        return false
+      }
+      return NSMaxRange(range) < NSMaxRange(prefixRange)
+    }
+    XCTAssertFalse(prefixWasCleared)
+    let shiftedLineHeight = try XCTUnwrap(
+      (textView.textStorage?.attribute(
+        .paragraphStyle,
+        at: shiftedRange.location,
+        effectiveRange: nil
+      ) as? NSParagraphStyle)?.minimumLineHeight
+    )
+    XCTAssertEqual(shiftedLineHeight, 64, accuracy: 0.5)
+  }
+
+  func testImageCompletionDiscardsAnAttachmentMovedByAnEdit() async throws {
+    let fixtureURL = try makeInlineAttachmentImageFixture(width: 16, height: 8)
+    defer { try? FileManager.default.removeItem(at: fixtureURL) }
+    let source = "before\n![cover](cover.png)\n\ntrailing text"
+    let attachmentLocation = (source as NSString).range(of: "![cover](cover.png)").location
+    let oldKey = "attachment:\(attachmentLocation)"
+    let coordinator = makeCoordinator(source: source, bodyMarkdown: source, bodyUTF16Offset: 0)
+    coordinator.attachments = [
+      DraftAttachment(
+        originalFilename: "cover.png", relativePublishPath: "cover.png",
+        repositoryPath: "cover.png", sourceFilePath: fixtureURL.path
+      )
+    ]
+    let textView = DroppableMarkdownTextView.makeTextKit2(
+      containerSize: NSSize(width: 640, height: 480)
+    )
+    textView.string = source
+    textView.setSelectedRange(NSRange(location: source.utf16.count, length: 0))
+    coordinator.applyInlineAttachmentDrawings(
+      in: textView, applicationRange: NSRange(location: 0, length: source.utf16.count)
+    )
+    let imageTask = try XCTUnwrap(coordinator.inlineAttachmentImageTasks[oldKey])
+    let prefix = "prefix\n"
+    textView.replaceCharacters(in: NSRange(location: 0, length: 0), with: prefix)
+    coordinator.syntaxDocumentRevision = 1
+    coordinator.incrementallyUpdateInlineAttachmentPlan(
+      previousBodyMarkdown: source, currentBodyMarkdown: prefix + source,
+      documentEdit: MarkdownTextEdit(
+        previousText: source, replacedRange: NSRange(location: 0, length: 0)
+      ),
+      previousBodyUTF16Offset: 0, previousRevision: 0
+    )
+    // The old attachment location now points into the preceding paragraph.
+    // A stale completion must not restore its image snapshot over that text.
+    let prefixRange = NSRange(location: attachmentLocation, length: 6)
+    MarkdownTextKit2RangeAdapter.addRenderingAttributes(
+      [.foregroundColor: NSColor.systemOrange], for: prefixRange, in: textView
+    )
+    await imageTask.value
+
+    XCTAssertNil(coordinator.inlineAttachmentDrawingDescriptors[oldKey])
+    XCTAssertNil(coordinator.inlineAttachmentImageTasks[oldKey])
+    XCTAssertNotNil(
+      coordinator.inlineAttachmentGeometryReservations[
+        "attachment:\(attachmentLocation + prefix.utf16.count)"
+      ]
+    )
+    let range = try XCTUnwrap(
+      MarkdownTextKit2RangeAdapter.textRange(for: prefixRange, in: textView)
+    )
+    var prefixColor: NSColor?
+    textView.textLayoutManager?.enumerateRenderingAttributes(from: range.location, reverse: false) {
+      _, attributes, _ in
+      prefixColor = attributes[.foregroundColor] as? NSColor
+      return false
+    }
+    XCTAssertEqual(prefixColor, NSColor.systemOrange)
+  }
+
+  func testBreakingMultilineFormulaResetsEveryAffectedParagraph() throws {
+    let source = "before\n$$\nfirst formula line\nsecond formula line\n$$"
+    let coordinator = makeCoordinator(
+      source: source,
+      bodyMarkdown: source,
+      bodyUTF16Offset: 0
+    )
+    let textView = DroppableMarkdownTextView.makeTextKit2(
+      containerSize: NSSize(width: 640, height: 480)
+    )
+    textView.string = source
+    textView.setSelectedRange(NSRange(location: 0, length: 0))
+    let formulaRange = (source as NSString).range(
+      of: "$$\nfirst formula line\nsecond formula line\n$$")
+    let formulaKey = "attachment:\(formulaRange.location)"
+    coordinator.applyInlineAttachmentDrawings(
+      in: textView,
+      applicationRange: NSRange(location: 0, length: source.utf16.count)
+    )
+    XCTAssertNotNil(coordinator.inlineAttachmentGeometryReservations[formulaKey])
+
+    let closingDelimiterRange = (source as NSString).range(
+      of: "$$",
+      options: .backwards
+    )
+    textView.replaceCharacters(in: closingDelimiterRange, with: "")
+    let updated = (source as NSString).replacingCharacters(
+      in: closingDelimiterRange,
+      with: ""
+    )
+    coordinator.syntaxDocumentRevision = 1
+    coordinator.incrementallyUpdateInlineAttachmentPlan(
+      previousBodyMarkdown: source,
+      currentBodyMarkdown: updated,
+      documentEdit: MarkdownTextEdit(
+        previousText: source,
+        replacedRange: closingDelimiterRange
+      ),
+      previousBodyUTF16Offset: 0,
+      previousRevision: 0
+    )
+
+    XCTAssertNil(coordinator.inlineAttachmentGeometryReservations[formulaKey])
+    for marker in ["$$", "first formula line", "second formula line"] {
+      let range = (updated as NSString).range(of: marker)
+      XCTAssertLessThan(
+        (textView.textStorage?.attribute(
+          .paragraphStyle,
+          at: range.location,
+          effectiveRange: nil
+        ) as? NSParagraphStyle)?.minimumLineHeight ?? .greatestFiniteMagnitude,
+        24
+      )
+    }
+
+    coordinator.clearInlineAttachmentDrawings(in: textView)
+    let openingRange = (updated as NSString).range(of: "$$")
+    let openingTextRange = try XCTUnwrap(
+      MarkdownTextKit2RangeAdapter.textRange(for: openingRange, in: textView)
+    )
+    var openingWasCleared = false
+    textView.textLayoutManager?.enumerateRenderingAttributes(
+      from: openingTextRange.location,
+      reverse: false
+    ) { _, attributes, renderingRange in
+      guard
+        let range = MarkdownTextKit2RangeAdapter.range(
+          for: renderingRange,
+          in: textView
+        )
+      else {
+        return true
+      }
+      if NSIntersectionRange(range, openingRange).length > 0,
+        (attributes[.foregroundColor] as? NSColor)?.isEqual(NSColor.clear) == true
+      {
+        openingWasCleared = true
+        return false
+      }
+      return NSMaxRange(range) < NSMaxRange(openingRange)
+    }
+    XCTAssertFalse(openingWasCleared)
+  }
+
+  func testContentFallbackRepaintRetainsOffscreenAttachmentGeometryReservations() async throws {
+    let fixtureURL = try makeInlineAttachmentImageFixture(width: 16, height: 8)
+    defer { try? FileManager.default.removeItem(at: fixtureURL) }
+    let source =
+      "$$\nE = mc^2\n$$\n\n![cover](cover.png)\n\n"
+      + (0..<120).map { "paragraph \($0) keeps the EOF viewport away from attachments." }
+      .joined(separator: "\n\n")
+    let coordinator = makeCoordinator(
+      source: source,
+      bodyMarkdown: source,
+      bodyUTF16Offset: 0
+    )
+    coordinator.attachments = [
+      DraftAttachment(
+        originalFilename: "cover.png",
+        relativePublishPath: "cover.png",
+        repositoryPath: "cover.png",
+        sourceFilePath: fixtureURL.path
+      )
+    ]
+    let textView = DroppableMarkdownTextView.makeTextKit2(
+      containerSize: NSSize(
+        width: 640,
+        height: CGFloat.greatestFiniteMagnitude
+      )
+    )
+    textView.textContainer?.widthTracksTextView = false
+    textView.textContainer?.heightTracksTextView = false
+    textView.string = source
+    textView.setSelectedRange(NSRange(location: source.utf16.count, length: 0))
+    let scrollView = NSScrollView(
+      frame: NSRect(x: 0, y: 0, width: 640, height: 360)
+    )
+    scrollView.documentView = textView
+    let window = NSWindow(
+      contentRect: scrollView.frame,
+      styleMask: .borderless,
+      backing: .buffered,
+      defer: false
+    )
+    window.contentView = scrollView
+    window.orderFront(nil)
+    defer { window.orderOut(nil) }
+    let manager = try XCTUnwrap(textView.textLayoutManager)
+    let eofRange = NSRange(location: source.utf16.count - 1, length: 1)
+    let eofTextRange = try XCTUnwrap(
+      MarkdownTextKit2RangeAdapter.textRange(for: eofRange, in: textView)
+    )
+    manager.ensureLayout(for: eofTextRange)
+    textView.setFrameSize(
+      NSSize(
+        width: 640,
+        height: max(720, manager.usageBoundsForTextContainer.height + 32)
+      ))
+    let eofRect = try XCTUnwrap(
+      MarkdownTextKit2RangeAdapter.rect(for: eofRange, in: textView)
+    )
+    scrollView.contentView.scroll(
+      to: NSPoint(
+        x: 0,
+        y: max(0, min(eofRect.minY, textView.frame.height - scrollView.contentView.bounds.height))
+      ))
+    scrollView.reflectScrolledClipView(scrollView.contentView)
+    window.layoutIfNeeded()
+    XCTAssertTrue(scrollView.documentVisibleRect.intersects(eofRect))
+
+    coordinator.applyInlineAttachmentDrawings(
+      in: textView,
+      applicationRange: NSRange(location: 0, length: source.utf16.count)
+    )
+    XCTAssertEqual(coordinator.inlineAttachmentGeometryReservations.count, 2)
+
+    // Force the real non-incremental `.content` path. It clears drawings
+    // before the deferred viewport attachment pass, which must retain the
+    // reservations for the now-offscreen cards.
+    coordinator.syntaxPaintedDocumentRevision = nil
+    coordinator.scheduleMarkdownSyntaxHighlighting(for: textView, text: source)
+    await coordinator.syntaxHighlightDebouncer.waitUntilIdle()
+    await coordinator.syntaxAttributeApplicationTask?.value
+    await coordinator.inlineAttachmentDrawingApplicationTask?.value
+
+    XCTAssertEqual(coordinator.inlineAttachmentGeometryReservations.count, 2)
+    XCTAssertTrue(coordinator.inlineAttachmentDrawingDescriptors.isEmpty)
+    for (marker, expectedHeight) in [("$$\nE = mc^2\n$$", 64.0), ("![cover](cover.png)", 180.0)] {
+      let range = (source as NSString).range(of: marker)
+      let style = try XCTUnwrap(
+        textView.textStorage?.attribute(
+          .paragraphStyle, at: range.location, effectiveRange: nil
+        ) as? NSParagraphStyle
+      )
+      XCTAssertEqual(style.minimumLineHeight, expectedHeight, accuracy: 0.5)
+    }
   }
 
   func testParagraphHighlightSkipsUnchangedViewportAndRefreshesOnlyInvalidatedIntersection() throws

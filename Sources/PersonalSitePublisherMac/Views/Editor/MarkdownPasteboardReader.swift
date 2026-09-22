@@ -1,4 +1,5 @@
 import AppKit
+import PublishingCoreSupport
 import PublishingWorkbenchCore
 
 protocol MarkdownPasteboardSource {

@@ -134,7 +134,7 @@ if [[ -e "$ROOT_DIR/Packaging/CodexRuntime" ]]; then
 fi
 for path in \
   "$ROOT_DIR/script/build_and_run.sh" \
-  "$ROOT_DIR/Sources/PublishingWorkbenchCore/Services/CodexAppServerClient.swift"; do
+  "$ROOT_DIR/Sources/PublishingAICore/Services/CodexAppServerClient.swift"; do
   if grep -Eq 'CodexRuntime|REPOPRESS_CODEX_RUNTIME_PATH|REPOPRESS_CODEX_LICENSE_PATH' "$path"; then
     fail "${path#$ROOT_DIR/} still exposes bundled Codex runtime packaging"
   fi

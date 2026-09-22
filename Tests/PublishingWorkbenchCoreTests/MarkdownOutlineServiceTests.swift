@@ -22,6 +22,38 @@ final class MarkdownOutlineServiceTests: XCTestCase {
     XCTAssertEqual(outline.map(\.title), ["Title", "Plan", "Detail"])
   }
 
+  func testIgnoresMarkdownHeadingsInsideBacktickAndTildeFences() {
+    let outline = MarkdownOutlineService().outline(
+      in: """
+        # Actual
+
+        ```swift
+        ## Backtick heading
+        ```
+
+        ~~~markdown
+        ### Tilde heading
+        ~~~
+
+        ## Also actual
+        """
+    )
+
+    XCTAssertEqual(outline.map(\.title), ["Actual", "Also actual"])
+  }
+
+  func testUnclosedFenceHidesMarkdownAndHTMLHeadingsFromOutline() {
+    let outline = MarkdownOutlineService().outline(
+      in: """
+        ```html
+        ## Markdown heading
+        <h2>HTML heading</h2>
+        """
+    )
+
+    XCTAssertTrue(outline.isEmpty)
+  }
+
   func testSectionRangesJumpToHeadingStarts() throws {
     let markdown = """
       Intro
@@ -132,6 +164,31 @@ final class MarkdownOutlineServiceTests: XCTestCase {
       try XCTUnwrap(updated.range(of: "## Beta")?.lowerBound),
       try XCTUnwrap(updated.range(of: "## Alpha")?.lowerBound)
     )
+  }
+
+  func testSectionEditPreservesFenceAndUTF16HeadingLocations() throws {
+    let markdown = """
+      ## 😀 First
+      ```swift
+      ## Inside fence
+      ```
+
+      ## 第二
+      Body
+      """
+    let service = MarkdownOutlineService()
+    let outline = service.outline(in: markdown)
+    XCTAssertEqual(outline.map(\.title), ["😀 First", "第二"])
+
+    let first = try XCTUnwrap(outline.first)
+    let edit = try XCTUnwrap(service.duplicateSectionEdit(in: markdown, item: first))
+    let updated = applying(edit, to: markdown)
+
+    XCTAssertEqual(updated.components(separatedBy: "## Inside fence").count - 1, 2)
+    XCTAssertEqual(updated.components(separatedBy: "```swift").count - 1, 2)
+    XCTAssertEqual(updated.components(separatedBy: "```").count - 1, 4)
+    XCTAssertEqual(
+      MarkdownOutlineService().outline(in: updated).map(\.title), ["😀 First", "😀 First", "第二"])
   }
 
   func testMovesChildOnlyWithinItsParentSection() throws {

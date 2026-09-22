@@ -1,4 +1,6 @@
 import Foundation
+import PublishingAICore
+import PublishingDomainContracts
 import PublishingWorkbenchCore
 import SwiftUI
 

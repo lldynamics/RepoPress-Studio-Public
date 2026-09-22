@@ -22,16 +22,20 @@ public final class WorkbenchMarkdownEditorLiveContextFeatureFacade: ObservableOb
   public init(store: WorkbenchStore, draftID: UUID) {
     self.store = store
     trackedDraftID = draftID
-    lastProjection = Self.projection(for: draftID, in: store)
+    lastProjection = Self.projection(
+      for: draftID,
+      documents: store.publishingStore.documents,
+      session: store.publishingStore.documentSession
+    )
 
-    store.publishingStore.draftBodyEditorBufferDidChange
+    store.publishingStore.documentSession.draftBodyEditorBufferDidChange
       .sink { [weak self] changedDraftID in
         guard let self, self.trackedDraftID == changedDraftID else { return }
         self.publishProjectionIfChanged()
       }
       .store(in: &cancellables)
 
-    store.publishingStore.activeEditorSelectionDidChange
+    store.publishingStore.documentSession.activeEditorSelectionDidChange
       .sink { [weak self] changedDraftID in
         guard let self, self.trackedDraftID == changedDraftID else { return }
         self.publishProjectionIfChanged()
@@ -62,12 +66,20 @@ public final class WorkbenchMarkdownEditorLiveContextFeatureFacade: ObservableOb
   public func trackDraft(_ draftID: UUID) {
     guard trackedDraftID != draftID else { return }
     trackedDraftID = draftID
-    lastProjection = Self.projection(for: draftID, in: store)
+    lastProjection = Self.projection(
+      for: draftID,
+      documents: store.publishingStore.documents,
+      session: store.publishingStore.documentSession
+    )
     objectWillChange.send()
   }
 
   private var currentProjection: Projection {
-    Self.projection(for: trackedDraftID, in: store)
+    Self.projection(
+      for: trackedDraftID,
+      documents: store.publishingStore.documents,
+      session: store.publishingStore.documentSession
+    )
   }
 
   private func publishProjectionIfChanged() {
@@ -77,10 +89,22 @@ public final class WorkbenchMarkdownEditorLiveContextFeatureFacade: ObservableOb
     objectWillChange.send()
   }
 
-  private static func projection(for draftID: UUID, in store: WorkbenchStore) -> Projection {
-    let buffer = store.draftBodyEditorBuffer(for: draftID)
-    let selection = store.activeEditorSelection?.draftID == draftID
-      ? store.activeEditorSelection
+  private static func projection(
+    for draftID: UUID,
+    documents: DocumentStore,
+    session documentSession: DocumentSessionStore
+  ) -> Projection {
+    let buffer =
+      documentSession.draftBodyEditorBuffers[draftID]
+      ?? DraftBodyEditorBuffer(
+        draftID: draftID,
+        bodyMarkdown: documents.draft(for: draftID)?.bodyMarkdown ?? "",
+        revision: 0,
+        isDirty: false
+      )
+    let selection =
+      documentSession.activeEditorSelection?.draftID == draftID
+      ? documentSession.activeEditorSelection
       : nil
     let validatedRange: NSRange?
     if let selection {
@@ -321,7 +345,7 @@ public final class WorkbenchRepositoryWorkspaceObservationFacade: ObservableObje
     )
     observe(
       Publishers.CombineLatest(
-        store.publishingStore.$drafts,
+        store.publishingStore.documents.$drafts,
         store.publishingStore.$selectedDraftID
       )
       .map { drafts, selectedDraftID in
@@ -367,12 +391,13 @@ public final class WorkbenchReleaseHistoryObservationFacade: ObservableObject {
       .removeDuplicates()
     )
     observe(
-      store.publishingStore.$drafts.map { drafts in
+      store.publishingStore.documents.$drafts.map { drafts in
         Dictionary(uniqueKeysWithValues: drafts.map { ($0.id, $0.scope) })
       }.removeDuplicates()
     )
     observe(store.publishingStore.publishSession.$batchPublishPlan)
     observe(store.publishingStore.publishSession.$releaseRecords)
+    observe(store.publishingStore.publishSession.$executionRecords)
     observe(store.publishingStore.publishSession.$publishActionFeedback)
     observe(store.repositoryStore.$isRemoteRepositoryPublishing)
     observe(store.repositoryStore.$localRepositoryReleaseHistory)

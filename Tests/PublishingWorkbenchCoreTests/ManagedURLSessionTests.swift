@@ -1,6 +1,7 @@
 import Foundation
 import XCTest
 
+@testable import PublishingCoreSupport
 @testable import PublishingWorkbenchCore
 
 final class ManagedURLSessionTests: XCTestCase {

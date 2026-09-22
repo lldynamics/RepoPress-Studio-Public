@@ -23,6 +23,21 @@ public enum WorkspaceSection: String, CaseIterable, Codable, Identifiable, Senda
     "\(localizationKey).detail"
   }
 
+  /// The concise label used when this stable route is shown beneath a parent
+  /// workspace area. Keep the route's original localization key for saved
+  /// commands and deep links, but avoid presenting a child named "Writing"
+  /// beneath a parent also named "Writing".
+  public var navigationPageLocalizationKey: String {
+    switch self {
+    case .writing:
+      return "workspace.writing.page"
+    case .sync:
+      return "workspace.sync.page"
+    case .library, .rss, .siteStarter, .images, .contentHealth:
+      return localizationKey
+    }
+  }
+
   public var systemImage: String {
     switch self {
     case .writing:
@@ -63,6 +78,58 @@ public enum WorkspaceSection: String, CaseIterable, Codable, Identifiable, Senda
 
   public var keyboardShortcutLabel: String {
     "⌘\(keyboardShortcutKey)"
+  }
+}
+
+/// The three durable, user-facing groups in the workspace navigator. The
+/// atomic `WorkspaceSection` remains the selected/persisted route; areas only
+/// describe how those routes are presented and grouped in navigation.
+public enum WorkspaceArea: String, CaseIterable, Identifiable, Sendable {
+  case writing
+  case resources
+  case site
+
+  public var id: String { rawValue }
+
+  public var localizationKey: String {
+    "workspace.area.\(rawValue)"
+  }
+
+  public var systemImage: String {
+    switch self {
+    case .writing:
+      return "square.and.pencil"
+    case .resources:
+      return "books.vertical"
+    case .site:
+      return "globe"
+    }
+  }
+
+  public var sections: [WorkspaceSection] {
+    switch self {
+    case .writing:
+      return [.writing]
+    case .resources:
+      return [.library, .rss]
+    case .site:
+      return [.sync, .contentHealth, .images, .siteStarter]
+    }
+  }
+
+  public var defaultSection: WorkspaceSection {
+    switch self {
+    case .writing:
+      return .writing
+    case .resources:
+      return .library
+    case .site:
+      return .sync
+    }
+  }
+
+  public static func area(for section: WorkspaceSection) -> Self {
+    allCases.first(where: { $0.sections.contains(section) }) ?? .writing
   }
 }
 
@@ -209,7 +276,7 @@ public struct WorkspaceNavigationItem: Identifiable, Hashable, Sendable {
 
   public init(section: WorkspaceSection) {
     self.section = section
-    self.displayNameLocalizationKey = section.displayNameLocalizationKey
+    self.displayNameLocalizationKey = section.navigationPageLocalizationKey
     self.detailLocalizationKey = section.detailLocalizationKey
     self.systemImage = section.systemImage
     self.keyboardShortcutKey = section.keyboardShortcutKey
@@ -251,6 +318,7 @@ public enum WorkspaceVisibilityPolicy {
 
 public enum WorkspaceNavigationPresentation {
   public static let defaultSection: WorkspaceSection = .writing
+  public static let primaryAreas = WorkspaceArea.allCases
   public static let commandMenuItems = WorkspaceVisibilityPolicy.commandMenuPrimarySections.map(
     WorkspaceNavigationItem.init(section:)
   )

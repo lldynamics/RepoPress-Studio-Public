@@ -1,4 +1,5 @@
 import Foundation
+import PublishingDomainContracts
 
 public enum DraftAttachmentMediaKind: String, Sendable {
   case image

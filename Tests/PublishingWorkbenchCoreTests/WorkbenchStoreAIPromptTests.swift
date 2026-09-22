@@ -850,6 +850,12 @@ final class WorkbenchStoreAIPromptTests: XCTestCase {
     )
     let draft = try XCTUnwrap(store.selectedDraft)
 
+    installAIMetadataSuggestionForApplicationTest(
+      AIPublishingMetadataSuggestion(
+        titles: ["  AI 生成标题  "], slugs: ["  AI Generated Slug.md  "],
+        summary: "  这是一段 AI 生成的摘要，用于检查写回行为。  ",
+        tags: ["#SwiftUI", "AI，发布"]), draft: draft, store: store)
+
     var updated = try XCTUnwrap(
       store.applyAIMetadataSuggestion(field: .title, value: "  AI 生成标题  ", draft: draft)
     )
@@ -900,6 +906,8 @@ final class WorkbenchStoreAIPromptTests: XCTestCase {
       tags: ["#SwiftUI", "AI，发布", "SwiftUI"]
     )
 
+    installAIMetadataSuggestionForApplicationTest(suggestion, draft: draft, store: store)
+
     let updated = try XCTUnwrap(
       store.applyAIMetadataSuggestion(suggestion, draft: draft)
     )
@@ -925,6 +933,8 @@ final class WorkbenchStoreAIPromptTests: XCTestCase {
       summary: draft.summary,
       tags: draft.tags
     )
+
+    installAIMetadataSuggestionForApplicationTest(suggestion, draft: draft, store: store)
 
     XCTAssertNil(store.applyAIMetadataSuggestion(suggestion, draft: draft))
     XCTAssertEqual(
@@ -1151,6 +1161,8 @@ final class WorkbenchStoreAIPromptTests: XCTestCase {
       tags: ["AI", "回滚"]
     )
 
+    installAIMetadataSuggestionForApplicationTest(suggestion, draft: draft, store: store)
+
     let updated = try XCTUnwrap(
       store.applyAIMetadataSuggestion(suggestion, draft: draft)
     )
@@ -1201,7 +1213,9 @@ final class WorkbenchStoreAIPromptTests: XCTestCase {
       tags: ["AI", "批量回滚"]
     )
 
+    installAIMetadataSuggestionForApplicationTest(titleSuggestion, draft: draft, store: store)
     let firstUpdate = try XCTUnwrap(store.applyAIMetadataSuggestion(titleSuggestion, draft: draft))
+    installAIMetadataSuggestionForApplicationTest(tagSuggestion, draft: firstUpdate, store: store)
     let secondUpdate = try XCTUnwrap(store.applyAIMetadataSuggestion(tagSuggestion, draft: firstUpdate))
     let records = store.recentAIMetadataApplicationRecords(for: secondUpdate)
 

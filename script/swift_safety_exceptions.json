@@ -2,6 +2,16 @@
   "schemaVersion": 1,
   "uncheckedSendable": [
     {
+      "file": "Tests/PublishingWorkbenchCoreTests/DraftAISuggestionStateTests.swift",
+      "declaration": "PublishingKnowledgeSearchGate",
+      "rationale": "The test-only query embedding gate protects its expected-query state with NSLock; its immutable DispatchSemaphore references are thread-safe, and the lock is released before the bounded wait."
+    },
+    {
+      "file": "Tests/PublishingKnowledgeCoreTests/WorkspacePaletteContentSearchTests.swift",
+      "declaration": "RSSQueryProgressGate",
+      "rationale": "The test-only SQLite cancellation gate protects its sole mutable one-shot flag with NSLock; its two immutable DispatchSemaphore references are thread-safe, and the lock is released before waiting."
+    },
+    {
       "file": "Sources/PersonalSitePublisherMac/Views/Knowledge/KnowledgeImageDocumentView.swift",
       "declaration": "KnowledgeDecodedImage",
       "rationale": "The wrapper owns an immutable CGImage produced by ImageIO; the reference crosses one detached decode boundary and is only read by SwiftUI rendering."
@@ -17,12 +27,12 @@
       "rationale": "All JSONDecoder access is serialized by the wrapper lock."
     },
     {
-      "file": "Sources/PublishingWorkbenchCore/Services/CodexAppServerProcessTransport.swift",
+      "file": "Sources/PublishingAICore/Services/CodexAppServerProcessTransport.swift",
       "declaration": "CodexAppServerProcessTransport",
       "rationale": "Process and pipe lifecycle state is protected by one NSLock, while a separate write lock serializes complete JSONL frames; termination never waits on a potentially blocked writer and closes the pipe to unblock it."
     },
     {
-      "file": "Sources/PublishingWorkbenchCore/Services/CodexRuntimeVersionProbe.swift",
+      "file": "Sources/PublishingAICore/Services/CodexRuntimeVersionProbe.swift",
       "declaration": "CodexRuntimeVersionProbe",
       "rationale": "POSIX process-group lifecycle callbacks, bounded output, stop state, timeout ownership, and the single continuation are protected by one NSLock; group cleanup and reader cleanup are each admitted exactly once before callbacks cross queues."
     },
@@ -87,12 +97,12 @@
       "rationale": "All mutable credential operations are serialized by the mutation coordinator."
     },
     {
-      "file": "Sources/PublishingWorkbenchCore/Services/KnowledgeLibraryBackupService.swift",
+      "file": "Sources/PublishingKnowledgeCore/Services/KnowledgeLibraryBackupService.swift",
       "declaration": "KnowledgeLibraryBackupService",
       "rationale": "Service dependencies are immutable and each operation uses isolated local state."
     },
     {
-      "file": "Sources/PublishingWorkbenchCore/Services/KnowledgeLibraryService.swift",
+      "file": "Sources/PublishingKnowledgeCore/Services/KnowledgeLibraryService.swift",
       "declaration": "KnowledgeLibraryService",
       "rationale": "Mutable database access is delegated to its serialized database boundary."
     },
@@ -112,12 +122,12 @@
       "rationale": "The synchronous HTML LRU is shared by WebView renders; its cache and recency mutations are protected by one NSLock."
     },
     {
-      "file": "Sources/PublishingWorkbenchCore/Stores/RSSReaderDatabase.swift",
+      "file": "Sources/PublishingKnowledgeCore/Stores/RSSReaderDatabase.swift",
       "declaration": "RSSReaderDatabase",
       "rationale": "SQLite connection state remains synchronous for the reader store; every handle and statement operation is serialized by the database lock."
     },
     {
-      "file": "Sources/PublishingWorkbenchCore/Stores/SQLitePreparedStatementCache.swift",
+      "file": "Sources/PublishingKnowledgeCore/Stores/SQLitePreparedStatementCache.swift",
       "declaration": "SQLitePreparedStatementCache",
       "rationale": "The SQLite prepared statement cache is used within the serial database lock boundary; all cache insertions, lookups, resets, and finalizations are coordinated by the parent database lock."
     },
@@ -167,7 +177,7 @@
       "rationale": "JSONEncoder access is serialized by the wrapper lock."
     },
     {
-      "file": "Sources/PublishingWorkbenchCore/Stores/KnowledgeDatabase.swift",
+      "file": "Sources/PublishingKnowledgeCore/Stores/KnowledgeDatabase.swift",
       "declaration": "KnowledgeDatabase",
       "rationale": "SQLite access and mutable database state are confined to the database queue."
     },
@@ -297,12 +307,12 @@
       "rationale": "Each request owns one buffer, and its receive callbacks append serially on the NWConnection bridge queue before the value is handed off."
     },
     {
-      "file": "Sources/PublishingWorkbenchCore/Services/AIChatCompletionClient.swift",
+      "file": "Sources/PublishingAICore/Services/AIChatCompletionClient.swift",
       "declaration": "AIChatTransportCache",
       "rationale": "All cache entries, recency counters, and eviction decisions are serialized by the cache NSLock."
     },
     {
-      "file": "Sources/PublishingWorkbenchCore/Services/AIDataSharingConsentStore.swift",
+      "file": "Sources/PublishingAICore/Services/AIDataSharingConsentStore.swift",
       "declaration": "AIDataSharingConsentStore",
       "rationale": "The store has immutable configuration and delegates synchronized preference access to thread-safe UserDefaults without retaining mutable grant state."
     },
@@ -427,7 +437,7 @@
       "rationale": "Process identity, output buffers, stop reasons, timeout task, pipe state, and the single continuation are all read or mutated while holding one NSLock; callbacks only publish immutable output fragments."
     },
     {
-      "file": "Sources/PublishingWorkbenchCore/Services/ManagedURLSession.swift",
+      "file": "Sources/PublishingCoreSupport/ManagedURLSession.swift",
       "declaration": "ManagedURLSession",
       "rationale": "Lazy session creation and cached-session access are serialized by one NSLock; injected session ownership is immutable and deinit only invalidates an owned session."
     },
@@ -445,6 +455,11 @@
       "file": "Tests/PublishingWorkbenchCoreTests/RepositoryRebaseSyncServiceTests.swift",
       "declaration": "RecoveryPhaseRecorder",
       "rationale": "The test recorder's phase array is appended and read only while holding one NSLock as recovery callbacks may cross concurrency boundaries."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/Stores/WorkbenchPersistenceBaseline.swift",
+      "declaration": "WorkbenchPersistenceBaseline",
+      "rationale": "The sole mutable revision dictionary is private and every read/write is enclosed by the same NSLock; copies of the persistence value intentionally share this synchronized baseline."
     }
   ],
   "forcedOperations": [
@@ -517,13 +532,13 @@
       "rationale": "Fingerprint encoding has a deterministic SHA-256 fallback over stable draft identity and content metadata, and the debug build also records an assertion."
     },
     {
-      "file": "Sources/PublishingWorkbenchCore/Services/AIModelDiscoveryService.swift",
+      "file": "Sources/PublishingAICore/Services/AIModelDiscoveryService.swift",
       "category": "parsing",
       "contains": "try? parsePage(from: data)",
       "rationale": "The public non-throwing compatibility parser maps malformed model-list payloads to an empty list without caching or mutating provider state."
     },
     {
-      "file": "Sources/PublishingWorkbenchCore/Services/CredentialSafeURLSession.swift",
+      "file": "Sources/PublishingCoreSupport/CredentialSafeURLSession.swift",
       "category": "validationFallback",
       "contains": "try? validatedProxyConfiguration(trimmed)",
       "rationale": "The legacy permissive session factory treats an invalid optional proxy as absent; credentialed AI requests use the separate strict throwing factory."
@@ -559,7 +574,7 @@
       "rationale": "Optional feed discovery is a non-mutating enhancement; the UI keeps the current feed state when discovery fails."
     },
     {
-      "file": "Sources/PublishingWorkbenchCore/Models/RSSReaderModels.swift",
+      "file": "Sources/PublishingKnowledgeCore/Models/RSSReaderModels.swift",
       "category": "parsing",
       "contains": "try? container.decodeIfPresent(Date.self",
       "rationale": "Older RSS records may omit or contain an invalid optional date; decoding falls back to the record timestamp policy."
@@ -571,7 +586,7 @@
       "rationale": "Directory fsync is a durability hint after the primary file operation; the caller still reports the primary write result."
     },
     {
-      "file": "Sources/PublishingWorkbenchCore/Services/KnowledgeLibraryBackupService.swift",
+      "file": "Sources/PublishingKnowledgeCore/Services/KnowledgeLibraryBackupService.swift",
       "category": "temporaryCleanup",
       "contains": "try? output.close()",
       "rationale": "The output handle is closed during temporary backup cleanup after the package operation has completed."
@@ -583,19 +598,19 @@
       "rationale": "The source handle closes in defer after the copy result is already determined; a close failure must not hide the primary copy or cancellation outcome."
     },
     {
-      "file": "Sources/PublishingWorkbenchCore/Services/CodexAppServerProcessTransport.swift",
+      "file": "Sources/PublishingAICore/Services/CodexAppServerProcessTransport.swift",
       "category": "ioBestEffort",
       "contains": "try? inputPipe.fileHandleForReading.close()",
       "rationale": "After posix_spawn duplicates the child stdin descriptor, closing the parent-only end is required for EOF and cannot change the launch outcome."
     },
     {
-      "file": "Sources/PublishingWorkbenchCore/Services/CodexAppServerProcessTransport.swift",
+      "file": "Sources/PublishingAICore/Services/CodexAppServerProcessTransport.swift",
       "category": "ioBestEffort",
       "contains": "try? outputPipe.fileHandleForWriting.close()",
       "rationale": "After posix_spawn duplicates the child stdout descriptor, closing the parent-only write end is required for EOF and cannot change the launch outcome."
     },
     {
-      "file": "Sources/PublishingWorkbenchCore/Services/CodexAppServerProcessTransport.swift",
+      "file": "Sources/PublishingAICore/Services/CodexAppServerProcessTransport.swift",
       "category": "ioBestEffort",
       "contains": "try? errorPipe.fileHandleForWriting.close()",
       "rationale": "After posix_spawn duplicates the child stderr descriptor, closing the parent-only write end prevents a retained pipe and cannot change the launch outcome."
@@ -673,12 +688,6 @@
       "rationale": "The boolean validation helper intentionally maps an invalid automation plan to false before execution."
     },
     {
-      "file": "Sources/PublishingWorkbenchCore/Services/WorkbenchDataRootMigrator+Payload.swift",
-      "category": "validationFallback",
-      "contains": "try? WorkbenchSnapshotSemanticValidator.validate(snapshot)",
-      "rationale": "Migration inventory validation treats an invalid candidate snapshot as unusable and continues searching for a valid source."
-    },
-    {
       "file": "Sources/PublishingWorkbenchCore/Stores/DeploymentStore.swift",
       "category": "silentFallback",
       "contains": "try? RemoteRepositoryRollbackDraft.make(record: record)",
@@ -691,7 +700,7 @@
       "rationale": "A release record without a review identity has no safe withdrawal action; returning nil hides only that unavailable action."
     },
     {
-      "file": "Sources/PublishingWorkbenchCore/Stores/RSSReaderDatabase+Persistence.swift",
+      "file": "Sources/PublishingKnowledgeCore/Stores/RSSReaderDatabase+Persistence.swift",
       "category": "parsing",
       "contains": "try? decoder.decode(RSSFeedIssue.self",
       "rationale": "Persisted feed issue JSON is optional diagnostic metadata; malformed metadata does not invalidate the feed row."
@@ -733,19 +742,19 @@
       "rationale": "Invalid step arguments make the candidate automation plan unusable, so the parser returns no plan before any command can execute."
     },
     {
-      "file": "Sources/PublishingWorkbenchCore/Stores/RSSReaderStore.swift",
+      "file": "Sources/PublishingKnowledgeCore/Stores/RSSReaderStore.swift",
       "category": "probeFallback",
       "contains": "try? database.unreadArticleCount()",
       "rationale": "While the article index is incomplete, the read-only total-count query is advisory; a database failure keeps the UI on the safe zero-count fallback."
     },
     {
-      "file": "Sources/PublishingWorkbenchCore/Stores/RSSReaderStore.swift",
+      "file": "Sources/PublishingKnowledgeCore/Stores/RSSReaderStore.swift",
       "category": "probeFallback",
       "contains": "try? database.unreadArticleCount(feedID: feedID)",
       "rationale": "While the article index is incomplete, the read-only feed-count query is advisory; a database failure keeps the UI on the safe zero-count fallback."
     },
     {
-      "file": "Sources/PublishingWorkbenchCore/Stores/RSSReaderStore.swift",
+      "file": "Sources/PublishingKnowledgeCore/Stores/RSSReaderStore.swift",
       "category": "probeFallback",
       "contains": "try? database.articleHeader(id: id)",
       "rationale": "A header lookup during incomplete database bootstrap is a non-mutating probe; failure returns nil so the article is treated as unavailable until a later refresh."
@@ -781,7 +790,7 @@
       "rationale": "A media digest failure makes the immutable publish expectation mismatch, so the caller must rebuild and review rather than treating the package as current."
     },
     {
-      "file": "Sources/PublishingWorkbenchCore/Services/AIModelDiscoveryService.swift",
+      "file": "Sources/PublishingAICore/Services/AIModelDiscoveryService.swift",
       "category": "parsing",
       "contains": "try? container.decodeIfPresent(",
       "rationale": "Provider model metadata fields are optional and independently malformed values are omitted while the required model identifier remains decoded and validated."
@@ -821,6 +830,30 @@
       "category": "validationFallback",
       "contains": "try? savedSnapshotMatches(proof.snapshot)",
       "rationale": "Termination proof is valid only when the primary persisted snapshot can be read and matches exactly; failure rejects safe termination."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/Services/WorkbenchDataRootMigrator+Payload.swift",
+      "category": "validationFallback",
+      "contains": "try? persistence.loadStoredSnapshot(at: snapshotURL)",
+      "rationale": "Unreadable archive snapshots remain unchanged; only fully validated legacy or record snapshots have attachment paths rewritten in the staged copy, whose inventory is verified before installation."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/Stores/WorkbenchRecordDatabase.swift",
+      "category": "externalRollbackCleanup",
+      "contains": "try? execute(\"ROLLBACK\")",
+      "rationale": "Rollback is best-effort error cleanup after a failed transaction; the original database error is rethrown, and closing the short-lived SQLite connection also rolls back an open transaction."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/Stores/WorkbenchRecordPersistence.swift",
+      "category": "validationFallback",
+      "contains": "try? recordManifest(from: $0)",
+      "rationale": "The writer lock and currentStorageVersion reject future storage before this probe. A corrupt marker selects a new generation and the original bytes are preserved before marker replacement."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/Stores/WorkbenchRecordPersistence.swift",
+      "category": "validationFallback",
+      "contains": "try? loadRecordSnapshot(existingManifest)",
+      "rationale": "Generation reuse requires a fully validated current snapshot. Failure selects a fresh generation, retaining the old database and its independent recovery copy; unsupported versions already fail closed at the locked revision check."
     }
   ],
   "optionalOperationRules": [
@@ -985,6 +1018,12 @@
       "category": "protocolFallback",
       "contains": "JSONSerialization.data(withJSONObject:",
       "rationale": "The browser/protocol response has a valid empty-object fallback when an optional value cannot be encoded."
+    },
+    {
+      "file": "Sources/PersonalSitePublisherMac/App/PersonalSitePublisherMacApp.swift",
+      "category": "debugSupport",
+      "contains": "try? FileManager.default.createDirectory(",
+      "rationale": "Inside the explicitly enabled screenshot/demo branch only, create the isolated synthetic knowledge directory before opening SQLite. Failure leaves fixture setup unavailable; no production save or user data directory is modified."
     },
     {
       "file": "Sources/PublishingWorkbenchCore/DebugSupport/*",

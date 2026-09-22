@@ -1,5 +1,6 @@
 import Combine
 import Foundation
+import PublishingDomainContracts
 
 @MainActor
 public final class DeploymentStore: ObservableObject {

@@ -1,5 +1,7 @@
+import PublishingCoreSupport
 import PublishingWorkbenchCore
 import XCTest
+
 @testable import PersonalSitePublisherMac
 
 final class TokenSettingsFlowPresentationTests: XCTestCase {

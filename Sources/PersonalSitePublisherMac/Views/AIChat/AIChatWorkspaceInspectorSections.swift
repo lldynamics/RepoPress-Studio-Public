@@ -154,23 +154,15 @@ struct AIChatConversationInspectorSection: View {
             }
 
             if message.role == .assistant {
-              HStack(spacing: 7) {
-                Button {
-                  actions.copyReply(message)
-                } label: {
-                  Image(systemName: "doc.on.doc")
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(.secondary)
-                .help(String(localized: "复制"))
-                .accessibilityLabel(String(localized: "复制"))
-
-                AIChatAssistantFeedbackControls(
-                  initialDecision: actions.localFeedbackDecision(message)
-                ) { decision in
-                  actions.recordLocalFeedback(decision, message)
-                }
+              Button {
+                actions.copyReply(message)
+              } label: {
+                Image(systemName: "doc.on.doc")
               }
+              .buttonStyle(.plain)
+              .foregroundStyle(.secondary)
+              .help(String(localized: "复制"))
+              .accessibilityLabel(String(localized: "复制"))
             }
           }
           .id(message.id)

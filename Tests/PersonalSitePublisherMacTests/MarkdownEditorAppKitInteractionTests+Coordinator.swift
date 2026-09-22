@@ -566,6 +566,130 @@ final class MarkdownEditorAppKitInteractionCoordinatorTests: MarkdownEditorAppKi
     XCTAssertEqual(textWriteCount, 0)
   }
 
+  func testStaleSwiftUISelectionEchoDoesNotReplaceNewerAppKitCaret() {
+    var text = "正文"
+    var selectedRange = NSRange(location: 0, length: 0)
+    var isFrontMatterSelection = false
+    let coordinator = MacMarkdownTextView.Coordinator(
+      text: Binding(get: { text }, set: { text = $0 }),
+      bodyMarkdown: text,
+      bodyUTF16Offset: 0,
+      selectedRange: Binding(get: { selectedRange }, set: { selectedRange = $0 }),
+      isFrontMatterSelection: Binding(
+        get: { isFrontMatterSelection },
+        set: { isFrontMatterSelection = $0 }
+      ),
+      comfortConfiguration: MarkdownEditorComfortConfiguration(),
+      diagnostics: [],
+      onStatisticsChanged: { _ in },
+      onPasteMessage: { _ in },
+      onScrollPositionChanged: { _ in },
+      onDroppedFiles: { _ in }
+    )
+    let textView = NSTextView()
+    textView.string = "正文\n"
+    textView.setSelectedRange(NSRange(location: 3, length: 0))
+    coordinator.textDidChange(
+      Notification(name: NSText.didChangeNotification, object: textView)
+    )
+
+    textView.string = "正文\n/"
+    textView.setSelectedRange(NSRange(location: 4, length: 0))
+    coordinator.textDidChange(
+      Notification(name: NSText.didChangeNotification, object: textView)
+    )
+
+    // The delayed document bridge has not committed either local selection,
+    // so its companion selection remains the original `{0, 0}`. AppKit is
+    // already at the second edit's caret and must retain that live selection.
+    XCTAssertFalse(
+      coordinator.shouldApplyRepresentedSelection(
+        selectedRange: NSRange(location: 0, length: 0),
+        isFrontMatterSelection: false,
+        in: textView
+      )
+    )
+    XCTAssertEqual(textView.string, "正文\n/")
+    XCTAssertEqual(textView.selectedRange(), NSRange(location: 4, length: 0))
+  }
+
+  func testCommittedSelectionEchoAfterFlushKeepsNewerCaretAndAcceptsExternalSelection() {
+    let header = "---\ntitle: Selection ordering\n---\n"
+    let body = "正文\n最后一段"
+    var text = header + body
+    var selectedRange = NSRange(location: 0, length: 0)
+    var isFrontMatterSelection = false
+    let coordinator = MacMarkdownTextView.Coordinator(
+      text: Binding(get: { text }, set: { text = $0 }),
+      bodyMarkdown: body,
+      bodyUTF16Offset: (header as NSString).length,
+      selectedRange: Binding(get: { selectedRange }, set: { selectedRange = $0 }),
+      isFrontMatterSelection: Binding(
+        get: { isFrontMatterSelection },
+        set: { isFrontMatterSelection = $0 }
+      ),
+      comfortConfiguration: MarkdownEditorComfortConfiguration(),
+      diagnostics: [],
+      onStatisticsChanged: { _ in },
+      onPasteMessage: { _ in },
+      onScrollPositionChanged: { _ in },
+      onDroppedFiles: { _ in }
+    )
+    let textView = NSTextView()
+    textView.string = text + "\n/"
+    let oldBodySelection = NSRange(location: 2, length: 0)
+    textView.setSelectedRange(
+      NSRange(location: (header as NSString).length + oldBodySelection.location, length: 0)
+    )
+    coordinator.textDidChange(
+      Notification(name: NSText.didChangeNotification, object: textView)
+    )
+    coordinator.flushPendingBindingWrites()
+    XCTAssertEqual(selectedRange, oldBodySelection)
+    XCTAssertNil(coordinator.pendingTextBindingValue)
+    XCTAssertNil(coordinator.pendingSelectedRangeBindingValue)
+
+    // TextKit can finish moving the native caret after textDidChange has
+    // committed its earlier range, before the selection delegate fires.
+    // A SwiftUI redraw in that gap must not restore and reveal the old range.
+    let documentEnd = NSRange(location: (textView.string as NSString).length, length: 0)
+    textView.setSelectedRange(documentEnd)
+    XCTAssertFalse(
+      coordinator.shouldApplyRepresentedSelection(
+        selectedRange: oldBodySelection,
+        isFrontMatterSelection: false,
+        in: textView
+      )
+    )
+    XCTAssertEqual(textView.selectedRange(), documentEnd)
+
+    coordinator.textViewDidChangeSelection(
+      Notification(name: NSTextView.didChangeSelectionNotification, object: textView)
+    )
+    coordinator.flushPendingBindingWrites()
+    XCTAssertEqual(
+      selectedRange,
+      NSRange(location: ((body + "\n/") as NSString).length, length: 0)
+    )
+    XCTAssertFalse(isFrontMatterSelection)
+    XCTAssertTrue(
+      coordinator.shouldApplyRepresentedSelection(
+        selectedRange: selectedRange,
+        isFrontMatterSelection: false,
+        in: textView
+      ),
+      "A matching body-relative selection must account for the Front Matter offset."
+    )
+    XCTAssertTrue(
+      coordinator.shouldApplyRepresentedSelection(
+        selectedRange: NSRange(location: 1, length: 1),
+        isFrontMatterSelection: false,
+        in: textView
+      ),
+      "A distinct external selection must still be accepted after a local commit."
+    )
+  }
+
   func testDismantleFlushesLastLiveTextBinding() {
     var text = "正文"
     var textWriteCount = 0

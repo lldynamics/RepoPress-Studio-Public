@@ -1,5 +1,6 @@
 
 import Foundation
+import PublishingDomainContracts
 struct WorkbenchPersistenceSnapshotInput: Sendable {
   let profiles: [SiteProfile]
   let aiConnectionProfiles: [AIConnectionProfile]
@@ -12,6 +13,7 @@ struct WorkbenchPersistenceSnapshotInput: Sendable {
   let recycledDrafts: [RecycledDraft]
   let draftRepositoryCleanupRequests: [DraftRepositoryCleanupRequest]
   let releaseRecords: [ReleaseRecord]
+  let publishExecutionRecords: [PublishExecutionRecord]
   let maintenanceOperationRecords: [MaintenanceOperationRecord]
   let aiMetadataApplicationRecords: [AIPublishingMetadataApplicationRecord]
   let automationRunRecords: [WorkbenchAutomationRunRecord]
@@ -48,6 +50,7 @@ struct WorkbenchPersistenceSnapshotInput: Sendable {
     recycledDrafts: [RecycledDraft],
     draftRepositoryCleanupRequests: [DraftRepositoryCleanupRequest],
     releaseRecords: [ReleaseRecord],
+    publishExecutionRecords: [PublishExecutionRecord] = [],
     maintenanceOperationRecords: [MaintenanceOperationRecord],
     aiMetadataApplicationRecords: [AIPublishingMetadataApplicationRecord],
     automationRunRecords: [WorkbenchAutomationRunRecord],
@@ -83,6 +86,7 @@ struct WorkbenchPersistenceSnapshotInput: Sendable {
     self.recycledDrafts = recycledDrafts
     self.draftRepositoryCleanupRequests = draftRepositoryCleanupRequests
     self.releaseRecords = releaseRecords
+    self.publishExecutionRecords = publishExecutionRecords
     self.maintenanceOperationRecords = maintenanceOperationRecords
     self.aiMetadataApplicationRecords = aiMetadataApplicationRecords
     self.automationRunRecords = automationRunRecords
@@ -124,6 +128,7 @@ extension WorkbenchPersistence {
       recycledDrafts: input.recycledDrafts,
       draftRepositoryCleanupRequests: input.draftRepositoryCleanupRequests,
       releaseRecords: input.releaseRecords,
+      publishExecutionRecords: input.publishExecutionRecords,
       maintenanceOperationRecords: input.maintenanceOperationRecords,
       aiMetadataApplicationRecords: input.aiMetadataApplicationRecords,
       automationRunRecords: input.automationRunRecords,
@@ -168,6 +173,7 @@ extension WorkbenchPersistence {
       recycledDrafts: store.recycledDrafts,
       draftRepositoryCleanupRequests: store.draftRepositoryCleanupRequests,
       releaseRecords: store.releaseRecords,
+      publishExecutionRecords: store.publishingStore.publishSession.executionRecords,
       maintenanceOperationRecords: store.maintenanceOperationRecords,
       aiMetadataApplicationRecords: store.aiMetadataApplicationRecords,
       automationRunRecords: store.automationRunRecords,

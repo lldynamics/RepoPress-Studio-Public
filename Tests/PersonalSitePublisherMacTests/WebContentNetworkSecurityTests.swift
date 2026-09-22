@@ -1,5 +1,5 @@
 import Foundation
-import PublishingWorkbenchCore
+import PublishingKnowledgeCore
 import WebKit
 import XCTest
 

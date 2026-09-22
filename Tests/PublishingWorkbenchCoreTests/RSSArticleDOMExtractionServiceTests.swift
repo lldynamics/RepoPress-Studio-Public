@@ -2,7 +2,7 @@ import CoreFoundation
 import Foundation
 import XCTest
 
-@testable import PublishingWorkbenchCore
+@testable import PublishingKnowledgeCore
 
 final class RSSArticleDOMExtractionServiceTests: XCTestCase {
   private let service = RSSArticleDOMExtractionService()

@@ -26,7 +26,7 @@ public enum CoreL10n {
     String(format: text(key, locale: locale), locale: locale, arguments: arguments)
   }
 
-  private static var localizedBundle: Bundle {
+  private static let localizedBundle: Bundle = {
     let bundleNames = [
       "PersonalSitePublisherMac_PublishingCoreSupport.bundle",
       "PersonalSitePublisherMac_PublishingWorkbenchCore.bundle",
@@ -39,15 +39,20 @@ public enum CoreL10n {
       }
     }
     return Bundle.module
-  }
+  }()
+
+  private static let chineseBundle = bundle(forLanguage: "zh-Hans")
+  private static let englishBundle = bundle(forLanguage: "en")
 
   private static func bundle(for locale: Locale) -> Bundle {
-    let language = locale.identifier.lowercased().hasPrefix("zh") ? "zh-Hans" : "en"
-    let rootBundle = localizedBundle
-    let bundleURL = rootBundle.bundleURL
+    locale.identifier.lowercased().hasPrefix("zh") ? chineseBundle : englishBundle
+  }
+
+  private static func bundle(forLanguage language: String) -> Bundle {
+    let bundleURL = localizedBundle.bundleURL
       .appendingPathComponent("\(language).lproj", isDirectory: true)
     guard let bundle = Bundle(url: bundleURL) else {
-      return rootBundle
+      return localizedBundle
     }
     return bundle
   }

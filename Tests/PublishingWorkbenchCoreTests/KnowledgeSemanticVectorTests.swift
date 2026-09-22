@@ -1,6 +1,7 @@
 import Foundation
 import XCTest
-@testable import PublishingWorkbenchCore
+
+@testable import PublishingKnowledgeCore
 
 final class KnowledgeSemanticVectorTests: XCTestCase {
   func testVectorRejectsNonFiniteAndZeroPayloadsBeforePersistence() {

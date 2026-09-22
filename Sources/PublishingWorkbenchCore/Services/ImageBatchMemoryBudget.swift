@@ -1,5 +1,6 @@
 import Foundation
 import ImageIO
+import PublishingDomainContracts
 
 /// A bounded estimate of the decoded memory needed by one image batch item.
 ///

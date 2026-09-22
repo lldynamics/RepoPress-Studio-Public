@@ -179,7 +179,7 @@ final class WorkbenchStoreSiteDraftAutosaveTests: XCTestCase {
       )
     )
     var draftPublications = 0
-    let draftPublication = store.publishingStore.$drafts
+    let draftPublication = store.publishingStore.documents.$drafts
       .dropFirst()
       .sink { _ in draftPublications += 1 }
     defer { draftPublication.cancel() }
@@ -240,7 +240,7 @@ final class WorkbenchStoreSiteDraftAutosaveTests: XCTestCase {
       )
     )
     var draftPublications = 0
-    let draftPublication = store.publishingStore.$drafts
+    let draftPublication = store.publishingStore.documents.$drafts
       .dropFirst()
       .sink { _ in draftPublications += 1 }
     defer { draftPublication.cancel() }

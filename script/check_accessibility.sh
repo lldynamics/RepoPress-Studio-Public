@@ -428,8 +428,8 @@ require_literal \
 
 require_literal \
   "UITests/WorkspaceAccessibilityUITests/WorkspaceAccessibilityUITests.swift" \
-  "matching(identifier: \"markdown-ai-assistant-entry\")" \
-  "runtime accessibility coverage must locate the writing-page AI entry"
+  "matching(identifier: \"ai-assistant-toolbar-button\")" \
+  "runtime accessibility coverage must locate the workspace toolbar AI entry"
 
 require_literal \
   "UITests/WorkspaceAccessibilityUITests/WorkspaceAccessibilityUITests.swift" \
@@ -918,7 +918,7 @@ require_literal \
   '.accessibilityIdentifier("workspace-sidebar-\(section.rawValue)")' \
   "workspace task navigation buttons must expose stable accessibility identifiers"
 
-for workspace_section in writing library rss sync contentHealth; do
+for workspace_section in rss library sync contentHealth writing; do
   require_literal \
     "Sources/PersonalSitePublisherMac/Views/Workspace/WorkspaceNavigationRouteDescriptor.swift" \
     ".$workspace_section" \
@@ -934,6 +934,16 @@ require_literal \
   "Sources/PersonalSitePublisherMac/Views/Workspace/WorkspaceCompactNavigationRail.swift" \
   "WorkspaceNavigationRouteDescriptor.primarySections" \
   "compact navigation must render the same primary routes as the full sidebar"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/Workspace/WorkspaceCompactNavigationRail.swift" \
+  '.accessibilityIdentifier("workspace-compact-rail-\(section.rawValue)")' \
+  "compact navigation must expose each primary route as a direct icon button"
+
+require_absent_literal \
+  "Sources/PersonalSitePublisherMac/Views/Workspace/WorkspaceRailView.swift" \
+  "workspace-sidebar-area-" \
+  "full navigation must not require product-area clicks"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/RSS/RSSReaderSidebarViews.swift" \
@@ -1011,8 +1021,21 @@ done
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/Repository/RepositoryWorkspaceGitManagementSection.swift" \
-  ".accessibilityIdentifier(\"repository-section-git-management\")" \
+  'WorkbenchDisclosureGroupStyle(toggleIdentifier: "repository-section-git-management")' \
   "repository overview must expose repository-section-git-management"
+
+for disclosure_contract in \
+  'Button {' \
+  'configuration.isExpanded.toggle()' \
+  '.contentShape(Rectangle())' \
+  '.accessibilityIdentifier(toggleIdentifier)' \
+  '.accessibilityValue(configuration.isExpanded' \
+  'configuration.content'; do
+  require_literal \
+    "Sources/PersonalSitePublisherMac/Views/Workspace/WorkbenchDisclosureGroupStyle.swift" \
+    "$disclosure_contract" \
+    "full-row disclosures must expose their action, state, and content"
+done
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/Repository/RepositoryWorkspaceGitManagementSection.swift" \

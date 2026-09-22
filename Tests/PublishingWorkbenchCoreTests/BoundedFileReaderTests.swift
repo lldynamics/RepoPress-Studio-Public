@@ -1,6 +1,7 @@
 import Foundation
 import XCTest
-@testable import PublishingWorkbenchCore
+
+@testable import PublishingCoreSupport
 
 final class BoundedFileReaderTests: XCTestCase {
   func testFacadeReadsRegularFileWithinLimit() throws {

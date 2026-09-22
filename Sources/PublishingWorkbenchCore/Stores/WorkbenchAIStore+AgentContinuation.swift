@@ -140,7 +140,7 @@ extension WorkbenchAIStore {
       return false
     }
     let didFlush = store.flushPendingChanges()
-    guard didFlush, !store.persistenceStore.isRecoveryWriteProtected else {
+    guard didFlush, !store.isRecoveryWriteProtected else {
       restoreAgentContinuationStoreSnapshot(transactionSnapshot)
       store.setAIChatMessage(
         CoreL10n.text("无法安全保存 AI 审阅状态，未执行修改。")
@@ -202,7 +202,7 @@ extension WorkbenchAIStore {
     guard didUpdate else { return false }
 
     let didFlush = store.flushPendingChanges()
-    guard didFlush, !store.persistenceStore.isRecoveryWriteProtected else {
+    guard didFlush, !store.isRecoveryWriteProtected else {
       restoreAgentContinuationStoreSnapshot(originalSnapshot)
       store.setAIChatMessage(
         CoreL10n.text("无法安全保存处置状态，结果不确定的 AI 续跑仍待处理。")
@@ -294,7 +294,7 @@ extension WorkbenchAIStore {
       return false
     }
     let didFlush = store.flushPendingChanges()
-    guard didFlush, !store.persistenceStore.isRecoveryWriteProtected else {
+    guard didFlush, !store.isRecoveryWriteProtected else {
       // The reviewed operation may already have changed the draft. Keep the
       // resolution, plan, and tool-run audit in memory and fail closed until
       // the user explicitly disposes the uncertain delivery.
@@ -444,7 +444,7 @@ extension WorkbenchAIStore {
 
       let didPersistResumeTransition = store.flushPendingChanges()
       guard didPersistResumeTransition,
-        !store.persistenceStore.isRecoveryWriteProtected
+        !store.isRecoveryWriteProtected
       else {
         restoreAgentContinuationStoreSnapshot(resumeTransitionSnapshot)
         store.setAIChatMessage(
@@ -520,7 +520,7 @@ extension WorkbenchAIStore {
       }
       let didPersistSendingTransition = store.flushPendingChanges()
       guard didPersistSendingTransition,
-        !store.persistenceStore.isRecoveryWriteProtected
+        !store.isRecoveryWriteProtected
       else {
         restoreAgentContinuationStoreSnapshot(sendingTransitionSnapshot)
         markAgentContinuationDeliveryUncertain(
@@ -816,7 +816,7 @@ extension WorkbenchAIStore {
         return false
       }
       let didPersistActiveStep = store.flushPendingChanges()
-      guard didPersistActiveStep, !store.persistenceStore.isRecoveryWriteProtected else {
+      guard didPersistActiveStep, !store.isRecoveryWriteProtected else {
         restoreAgentContinuationStoreSnapshot(activeStepSnapshot)
         if didExecuteAutomaticTool {
           markAgentContinuationDeliveryUncertain(
@@ -881,7 +881,7 @@ extension WorkbenchAIStore {
       let didFlushResolution = didPersistResolution && store.flushPendingChanges()
       guard didPersistResolution,
         didFlushResolution,
-        !store.persistenceStore.isRecoveryWriteProtected
+        !store.isRecoveryWriteProtected
       else {
         if !didPersistResolution {
           _ = updateAgentContinuation(
@@ -1107,7 +1107,7 @@ extension WorkbenchAIStore {
     failureState: AgentContinuationKnowledgeAuthorizationState? = nil
   ) async throws {
     guard
-      await store.knowledge.validateKnowledgeAuthorizationBindings(
+      await store.validateKnowledgeAuthorizationBindings(
         continuation.knowledgeAuthorizationBindings,
         policy: policy
       )
@@ -1299,7 +1299,7 @@ extension WorkbenchAIStore {
       messages.append(assistantMessage)
     }
     let didFlush = store.flushPendingChanges()
-    guard didFlush, !store.persistenceStore.isRecoveryWriteProtected else {
+    guard didFlush, !store.isRecoveryWriteProtected else {
       restoreAgentContinuationStoreSnapshot(transactionSnapshot)
       markAgentContinuationDeliveryUncertain(
         conversationID: binding.identity.conversationID,
@@ -1384,7 +1384,7 @@ extension WorkbenchAIStore {
       messages.append(assistantMessage)
     }
     let didFlush = store.flushPendingChanges()
-    guard didFlush, !store.persistenceStore.isRecoveryWriteProtected else {
+    guard didFlush, !store.isRecoveryWriteProtected else {
       restoreAgentContinuationStoreSnapshot(transactionSnapshot)
       markAgentContinuationDeliveryUncertain(
         conversationID: binding.identity.conversationID,

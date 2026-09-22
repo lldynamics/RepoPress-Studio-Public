@@ -1,4 +1,5 @@
 import AppKit
+import PublishingKnowledgeCore
 import PublishingWorkbenchCore
 import SwiftUI
 
@@ -68,7 +69,7 @@ enum ArticleInspectorTab: String, CaseIterable, Identifiable {
   static func availableTabs(for section: WorkspaceSection) -> [ArticleInspectorTab] {
     switch section {
     case .writing:
-      return [.knowledge, .metadata, .seo]
+      return [.knowledge, .metadata, .seo, .images]
     case .contentHealth:
       return [.checks]
     case .images:
@@ -368,14 +369,20 @@ struct ArticleInspectorTabs: View {
       }
       return $0.severity.sortRank < $1.severity.sortRank
     }
-    let deploymentStatus = store.activeProfileReleaseRecords
+    let deploymentRecord = store.activeProfileReleaseRecords
       .first(where: { $0.draftID == draft.id })
-      .flatMap { store.deploymentStatusSnapshot(for: $0) }
+    let deploymentStatus = deploymentRecord.flatMap { store.deploymentStatusSnapshot(for: $0) }
+    let sourceProfile = deploymentRecord.flatMap {
+      DeploymentSourceContext.profile(for: $0, in: store.profiles)
+    }
     return WorkspaceTaskChecksSection(
       state: WorkspaceTaskChecksState(
         issues: issues,
         publicRisk: PublicRiskSummary(issues: issues),
-        deploymentStatus: deploymentStatus
+        deploymentStatus: deploymentStatus,
+        deploymentSourceContext: sourceProfile.map {
+          DeploymentSourceContext(profile: $0, shell: store.shell)
+        }
       ),
       actions: WorkspaceTaskChecksActions(
         rerunPreflight: {

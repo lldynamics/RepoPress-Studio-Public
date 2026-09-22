@@ -169,7 +169,9 @@ extension RepositoryWorkspaceView {
     VStack(alignment: .leading, spacing: 16) {
       RepositoryWorkspaceGitManagementSection(store: store)
 
-      DisclosureGroup {
+      // The context column is lazily mounted. Keep disclosure state in the
+      // workspace so scrolling it offscreen does not collapse the tools.
+      DisclosureGroup(isExpanded: $isOverviewMoreToolsExpanded) {
         VStack(alignment: .leading, spacing: 16) {
           repositoryInformationSection
           repositoryAutoSyncSection
@@ -182,7 +184,9 @@ extension RepositoryWorkspaceView {
         Label("更多信息与工具", systemImage: "slider.horizontal.3")
           .font(.workbenchSectionTitle)
       }
-      .accessibilityIdentifier("repository-section-more-tools")
+      .disclosureGroupStyle(
+        WorkbenchDisclosureGroupStyle(toggleIdentifier: "repository-section-more-tools")
+      )
     }
   }
 

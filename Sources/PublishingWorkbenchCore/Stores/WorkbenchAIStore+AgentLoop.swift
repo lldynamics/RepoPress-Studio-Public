@@ -430,7 +430,7 @@ extension WorkbenchAIStore {
     failureState: AgentKnowledgeAuthorizationState? = nil
   ) async throws {
     guard
-      await store.knowledge.validateKnowledgeAuthorizationBindings(
+      await store.validateKnowledgeAuthorizationBindings(
         bindings,
         policy: policy
       )
@@ -467,9 +467,8 @@ extension WorkbenchAIStore {
       steps: [step],
       source: .agentLoop
     )
-    let result = await WorkbenchAutomationExecutor.execute(
-      plan: plan,
-      in: store,
+    let result = await store.executeAutomationPlan(
+      plan,
       onlyStepID: step.id,
       shouldCancel: { [weak self] in
         guard let self else { return true }

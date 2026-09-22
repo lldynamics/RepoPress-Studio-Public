@@ -88,6 +88,10 @@ extension PublishingStore {
       } else {
         prependReleaseRecord(recoveredRecord)
       }
+      for execution in publishSession.executionRecords where execution.releaseRecordID == record.id
+      {
+        finishPublishExecution(execution.id, record: recoveredRecord, store: store)
+      }
       setPublishActionMessage(
         CoreL10n.format("PR/MR 已恢复：%@", result.reviewURL ?? result.branchName),
         status: .success
@@ -515,6 +519,7 @@ extension PublishingStore {
             self.remoteRepositoryMutationIsCurrent(operation, store: store)
           else { return }
           store.setRemoteRepositoryPublishProgress(progress)
+          self.observePublishExecution(operation.id, progress: progress, store: store)
         }
       }
       if mode == .directCommit {
@@ -572,6 +577,9 @@ extension PublishingStore {
       if let expectedReview {
         packageForRemoteAttempt = expectedReview.bindingMediaContent(in: packageForRemoteAttempt)
       }
+      packageForRemoteAttempt = try beginPublishExecution(
+        id: operation.id, package: packageForRemoteAttempt,
+        profile: profile, mode: mode, store: store)
       var result = try await remoteRepositoryPublishService.publish(
         package: packageForRemoteAttempt,
         profile: profile,
@@ -590,6 +598,7 @@ extension PublishingStore {
       result.releaseRecordID = releaseRecord.id
       store.setRemoteRepositoryPublishResult(result)
       prependReleaseRecord(releaseRecord)
+      finishPublishExecution(operation.id, record: releaseRecord, store: store)
       if !deferDraftLifecycleMutation {
         confirmDirectRemotePublishLifecycle(packages: [package], result: result)
         if mode.createsReview {
@@ -641,6 +650,7 @@ extension PublishingStore {
       return result
     } catch {
       guard remoteRepositoryMutationIsCurrent(operation, store: store) else { return nil }
+      failPublishExecution(operation.id, error: error, store: store)
       if mode == .directCommit,
         isRemoteVersionConflictError(error),
         let refreshedSession = await refreshedRemoteConflictSessionAfterVersionRace(
@@ -702,6 +712,9 @@ extension PublishingStore {
         commitSHA: partialFailure?.commitSHA
       )
       prependReleaseRecord(releaseRecord)
+      updatePublishExecution(
+        operation.id, state: .needsVerification, message: message, releaseRecordID: releaseRecord.id
+      )
       if !deferDraftLifecycleMutation {
         markRemotePublishFailure(packages: [package], error: error)
       }

@@ -825,7 +825,8 @@ final class WorkbenchPersistenceTests: XCTestCase {
     XCTAssertEqual(try persistence.save(loadedSnapshot), .saved)
 
     let upgradedObject = try XCTUnwrap(
-      try JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any]
+      try JSONSerialization.jsonObject(
+        with: JSONEncoder.workbench.encode(persistence.loadPrimarySnapshot())) as? [String: Any]
     )
     XCTAssertEqual(upgradedObject["formatVersion"] as? Int, WorkbenchSnapshot.currentFormatVersion)
     XCTAssertNil(upgradedObject["contentPerformanceSnapshots"])

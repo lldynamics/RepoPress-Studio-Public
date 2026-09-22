@@ -1,8 +1,0 @@
-{
-  "部署配置已在生成站点前锁定：%@": "Deployment configuration used to generate this site: %@",
-  "以下是已提交版本的冻结复核。确认后只会推送显示的 SHA；任一项变化都会停止。": "This review covers the existing commit. Only the displayed SHA will be pushed after confirmation; any change stops the operation.",
-  "允许推送的已提交 SHA": "Approved commit SHA",
-  "复核重试推送": "Review Push Retry",
-  "已提交 %lld 个文件": "%lld Files Committed",
-  "确认重试推送": "Confirm Push Retry"
-}

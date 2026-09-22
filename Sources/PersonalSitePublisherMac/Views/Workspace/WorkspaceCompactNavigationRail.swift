@@ -29,7 +29,8 @@ struct WorkspaceCompactNavigationRail: View {
 
   private func sectionButton(_ section: WorkspaceSection) -> some View {
     let title = WorkspaceNavigationRouteDescriptor.title(for: section)
-    let isSelected = selectedSection == section
+    let isSelected =
+      WorkspaceNavigationRouteDescriptor.primarySection(for: selectedSection) == section
 
     return Button {
       if section == .contentHealth, !isSelected {

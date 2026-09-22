@@ -4,8 +4,7 @@ import SwiftUI
 
 struct RepositoryWorkspaceView: View {
   let store: WorkbenchStore
-  @ObservedObject private var workspaceObservation:
-    WorkbenchRepositoryWorkspaceObservationFacade
+  @ObservedObject private var workspaceObservation: WorkbenchRepositoryWorkspaceObservationFacade
   @StateObject var externalBrowserPreviewCoordinator: ExternalBrowserPreviewCoordinator
   @Binding var stage: RepositoryContextStage
   @Binding var changedFileSelection: RepositoryChangedFileSelection?
@@ -14,9 +13,12 @@ struct RepositoryWorkspaceView: View {
   @Environment(\.publishDrawerCommandAction) var publishDrawerCommandAction
   @Environment(\.localSitePreviewCommandAction) var localSitePreviewCommandAction
   @Environment(\.settingsWorkspaceCommandAction) var settingsWorkspaceCommandAction
-  @AppStorage("dataManagementRequestedSection") var dataManagementRequestedSection = DataManagementSection.migration.rawValue
-  @SceneStorage("siteStarterSelectedStep") var siteStarterSelectedStepRaw = SiteStarterWizardStep.template.rawValue
+  @AppStorage("dataManagementRequestedSection") var dataManagementRequestedSection =
+    DataManagementSection.migration.rawValue
+  @SceneStorage("siteStarterSelectedStep") var siteStarterSelectedStepRaw = SiteStarterWizardStep
+    .template.rawValue
   @SceneStorage("siteStarterMode") var siteStarterModeRaw = SiteStarterMode.create.rawValue
+  @State var isOverviewMoreToolsExpanded = false
   @State var isRepositoryCreationConfirmationPresented = false
   @State var createsPrivateRepository = true
   @State var repositoryCreationFailureMessage: String?
@@ -44,7 +46,7 @@ struct RepositoryWorkspaceView: View {
 
   var body: some View {
     VStack(spacing: 0) {
-      if (stage == .history || stage == .source), hasPendingRepositoryRecovery {
+      if stage == .history || stage == .source, hasPendingRepositoryRecovery {
         repositoryWorkflowBanner
           .padding(.horizontal, 20)
           .padding(.top, 12)
@@ -166,6 +168,9 @@ struct RepositoryWorkspaceView: View {
       }
       .workbenchOperationalPageLayout()
     }
+    // Each page starts with its own viewport. Reusing a deeply scrolled lazy
+    // stack for a shorter page can leave its content outside the visible area.
+    .id(stage)
   }
 
   private var repositoryPageTitle: LocalizedStringKey {

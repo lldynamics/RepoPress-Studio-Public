@@ -1,3 +1,5 @@
+import PublishingAICore
+import PublishingKnowledgeCore
 import PublishingWorkbenchCore
 import SwiftUI
 
@@ -16,6 +18,9 @@ struct RSSArticleTranslationControls: View {
   let dataSharingConsent: AIDataSharingConsentPresentation
   let onOpenAISettings: () -> Void
 
+  @AppStorage(RSSReaderUserPreferences.automaticTitleTranslationEnabledKey)
+  private var automaticTitleTranslationEnabled =
+    RSSReaderUserPreferences.defaultAutomaticTitleTranslationEnabled
   @State private var isCustomLanguagePresented = false
 
   var body: some View {
@@ -77,6 +82,15 @@ struct RSSArticleTranslationControls: View {
         .accessibilityValue(automaticTranslation ? "开启" : "关闭")
         .accessibilityHint(automaticTranslationDescription)
       Text(automaticTranslationDescription)
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
+
+      Toggle("自动翻译列表标题", isOn: $automaticTitleTranslationEnabled)
+        .accessibilityValue(automaticTitleTranslationEnabled ? "开启" : "关闭")
+        .accessibilityHint(automaticTitleTranslationDescription)
+        .accessibilityIdentifier("rss-reader-automatic-title-translation")
+      Text(automaticTitleTranslationDescription)
         .font(.caption)
         .foregroundStyle(.secondary)
         .fixedSize(horizontal: false, vertical: true)
@@ -187,6 +201,15 @@ struct RSSArticleTranslationControls: View {
       return String(localized: "Apple 本机翻译只会在目标语言包已安装时自动翻译；未安装时不会自动下载或弹出提示，标题和正文在本机设备端处理。")
     case .ai:
       return String(localized: "自动翻译会将当前文章标题和正文发送给当前 AI 服务，并受发送权限约束。")
+    }
+  }
+
+  private var automaticTitleTranslationDescription: String {
+    switch translationBackend {
+    case .apple:
+      return String(localized: "只翻译当前已加载列表中的标题；需要已安装对应语言包，不会自动下载。")
+    case .ai:
+      return String(localized: "只翻译当前已加载列表中的标题；仅在已允许 AI 发送权限时使用，不会发送正文。")
     }
   }
 

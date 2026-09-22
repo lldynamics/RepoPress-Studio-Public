@@ -40,7 +40,7 @@ released iOS app.
 ## Requirements
 
 - macOS 14 or later
-- Full Xcode 16 or later for macOS app-bundle workflows
+- Full Xcode with a toolchain compatible with `Package.swift` for app-bundle workflows
 - A Swift 6-compatible toolchain for SwiftPM-only builds and tests
 - Python 3 and the macOS development tools for quality scripts
 - Git, Hugo, Zola, Codex CLI, and Node.js/npm as required by the selected local
@@ -48,12 +48,11 @@ released iOS app.
   system, Homebrew, or `PATH` and does not embed them in the app bundle.
 - Browser-extension tests and packaging also require Node.js and npm
 
-The package manifest uses Swift tools 6.0. Every declared SwiftPM target must
-use Swift 6 language mode, and the module-boundary gate inventories the manifest
-dynamically instead of relying on a stale target count. The strict build gate
-inherits those manifest-declared modes while enforcing complete concurrency
-checking and warnings-as-errors; a separate migration diagnostic explicitly
-exercises Swift 6 mode as a regression check.
+The authoritative deployment target, Swift tools version, language modes, and
+dependencies are in [Package.swift](Package.swift). CI pins its Xcode environment
+in the [installed workflow](.github/workflows). The
+[documentation source map](docs/README.md) defines which configuration or
+implementation owns each fact and how to resolve conflicting prose.
 
 ## Build and test
 
@@ -75,31 +74,31 @@ The macOS app contains no embedded browser extension; install and update the
 Chrome and Firefox extensions separately. A plain `swift build` does not
 produce the complete distributable app bundle.
 
-Run the fast development gate or all strict release profiles:
+Run the fast development gate:
 
 ```bash
 ./script/check_release_gate.sh --quick
-./script/check_release_gate.sh --profile all
 ```
 
-Inspect the per-module build plan, or collect opt-in cold, warm, and isolated
-incremental build evidence:
+Use `./script/check_release_gate.sh --tooling` for tooling regressions and
+`--list` / `--check ID` to discover or select individual checks. The
+[script contracts and responsibility index](script/README.md) describe the
+maintained entrypoints and when a temporary tool must be retired.
+See the [module dependency guide](docs/module-dependencies.md) for module ownership,
+the executable dependency policy, and cross-module audit reports.
 
-```bash
-python3 script/benchmark_swift_module_builds.py --plan
-python3 script/benchmark_swift_module_builds.py \
-  --configuration release \
-  --repetitions 3 \
-  --scenario cold \
-  --scenario warm \
-  --scenario incremental
-```
+The exported public snapshot uses its own [installed CI workflow](.github/workflows/quality.yml).
+Full release profiles belong to the development checkout and require its
+maintenance workflows, channel records, and release artifacts; a public source
+snapshot is not a complete release environment.
 
-Dependency resolution runs outside the measured samples and shares one isolated
-download cache for the run. Each cold sample gets fresh compiler caches, while
-its warm sample reuses only the matching cold state. The incremental probe edits
-only a temporary source snapshot, never the working tree. Host wall-clock values
-are trend evidence rather than a release threshold.
+Module build benchmarks, Release performance measurements, and manual trace
+capture are documented in the [performance guide](docs/performance-profiling.md).
+Developer ID prerequisites, modes, and artifact verification are maintained in
+the [direct-release guide](docs/direct-release.md); version changes follow the
+[versioning rules](docs/release-versioning.md). Check lists come from
+[release_checks.json](script/release_checks.json); use the selected mode with
+`--list` to inspect them without executing the checks.
 
 Browser-extension tests use pinned npm dependencies and install a local
 Chromium runtime. The complete Firefox path also requires Firefox on the Mac.

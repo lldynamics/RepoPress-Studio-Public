@@ -1,5 +1,6 @@
 import Combine
 import Foundation
+import PublishingDomainContracts
 
 /// Immutable routing ownership for the latest image batch. This survives
 /// completion or failure so task-center navigation never follows a later
@@ -485,8 +486,9 @@ public final class ImageWorkbenchStore: ObservableObject {
     }
     guard imageReportGenerations[draftID] == generation else { return }
     if !force,
-       imageReportBaselines[draftID] == signature,
-       cachedImageWorkbenchReport(for: draftID) != nil {
+      imageReportBaselines[draftID] == signature,
+      backgroundImageReports[draftID]?.draftID == draftID
+    {
       _ = finishImageReportGeneration(for: draftID, generation: generation)
       return
     }

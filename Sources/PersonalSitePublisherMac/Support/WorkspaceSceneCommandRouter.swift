@@ -1,5 +1,6 @@
 import Combine
 import Foundation
+import PublishingKnowledgeCore
 import PublishingWorkbenchCore
 
 @MainActor

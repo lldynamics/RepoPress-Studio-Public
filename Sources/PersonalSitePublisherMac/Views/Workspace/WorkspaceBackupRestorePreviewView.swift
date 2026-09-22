@@ -4,11 +4,13 @@ import SwiftUI
 
 struct WorkspaceBackupRestorePreviewView: View {
   let preview: WorkspaceBackupPreview
+  @ObservedObject var dataManagement: WorkbenchDataManagementFeatureFacade
   let stageWorkspaceBackupRestore: @MainActor (URL) async -> Bool
 
   @Environment(\.dismiss) private var dismiss
   @State private var isRestoring = false
   @State private var isCompatibilityConfirmationPresented = false
+  @State private var isArticleSelectionPresented = false
 
   var body: some View {
     VStack(alignment: .leading, spacing: 18) {
@@ -101,6 +103,10 @@ struct WorkspaceBackupRestorePreviewView: View {
 
       HStack {
         Spacer()
+        Button(String(localized: "选择文章恢复"), systemImage: "checklist") {
+          isArticleSelectionPresented = true
+        }
+        .disabled(!dataManagement.canRestoreBackupArticles || isRestoring)
         Button("取消") { dismiss() }
           .keyboardShortcut(.cancelAction)
           .disabled(isRestoring)
@@ -113,7 +119,21 @@ struct WorkspaceBackupRestorePreviewView: View {
     }
     .padding(24)
     .frame(width: 640)
+    .accessibilityElement(children: .contain)
     .accessibilityIdentifier("workspace-backup-restore-preview")
+    .sheet(isPresented: $isArticleSelectionPresented) {
+      WorkspaceBackupArticleSelectionView(
+        dataManagement: dataManagement,
+        backupPreview: preview,
+        requiresCompatibilityConfirmation: preview.compatibility.requiresConfirmation,
+        compatibilityMessage: compatibilityMessage
+      )
+    }
+    .onChange(of: dataManagement.canRestoreBackupArticles) { _, canRestore in
+      if !canRestore {
+        isArticleSelectionPresented = false
+      }
+    }
     .alert(String(localized: "版本兼容性提示"), isPresented: $isCompatibilityConfirmationPresented) {
       Button(String(localized: "仍然恢复"), role: .destructive) {
         stageRestoreAndRestart()
@@ -221,6 +241,241 @@ struct WorkspaceBackupRestorePreviewView: View {
       isRestoring = false
       guard succeeded else { return }
       NSApp.terminate(nil)
+    }
+  }
+}
+
+private struct WorkspaceBackupArticleSelectionView: View {
+  @ObservedObject var dataManagement: WorkbenchDataManagementFeatureFacade
+  let backupPreview: WorkspaceBackupPreview
+  let requiresCompatibilityConfirmation: Bool
+  let compatibilityMessage: String
+
+  @Environment(\.dismiss) private var dismiss
+  @State private var selectionPreview: WorkspaceBackupArticleSelectionPreview?
+  @State private var selectedDraftIDs = Set<UUID>()
+  @State private var searchText = ""
+  @State private var isLoading = false
+  @State private var isRestoring = false
+  @State private var errorMessage: String?
+  @State private var successMessage: String?
+  @State private var isCompatibilityConfirmationPresented = false
+  @State private var restoreTask: Task<Void, Never>?
+
+  private var backupURL: URL { backupPreview.backupURL }
+
+  private var filteredArticles: [WorkspaceBackupArticleSummary] {
+    guard let articles = selectionPreview?.articles else { return [] }
+    guard !searchText.isEmpty else { return articles }
+    return articles.filter { $0.title.localizedCaseInsensitiveContains(searchText) }
+  }
+
+  private var allVisibleIDs: Set<UUID> { Set(filteredArticles.map(\.id)) }
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 14) {
+      HStack {
+        VStack(alignment: .leading, spacing: 4) {
+          Text("选择文章恢复")
+            .font(.title2.weight(.semibold))
+          Text(backupURL.lastPathComponent)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .textSelection(.enabled)
+        }
+        Spacer()
+        if isLoading || isRestoring { ProgressView().controlSize(.small) }
+      }
+
+      if let selectionPreview {
+        Text("只会读取所选文章的当前版本，并将其恢复为新建的通用草稿；现有文章、设置和历史记录不会改变。缺失附件会保留元数据。")
+          .font(.callout)
+          .foregroundStyle(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
+
+        HStack(spacing: 12) {
+          Text(String(format: String(localized: "已选择 %@ 篇文章"), selectedDraftIDs.count.formatted()))
+          Spacer()
+          Button("全选") { selectedDraftIDs = allVisibleIDs }
+            .disabled(filteredArticles.isEmpty || isRestoring || successMessage != nil)
+          Button("清空") { selectedDraftIDs.removeAll() }
+            .disabled(selectedDraftIDs.isEmpty || isRestoring || successMessage != nil)
+        }
+        .font(.callout)
+
+        if selectionPreview.articles.isEmpty {
+          ContentUnavailableView("备份中没有可恢复的文章", systemImage: "doc.text.magnifyingglass")
+        } else {
+          ScrollView {
+            LazyVStack(alignment: .leading, spacing: 6) {
+              ForEach(filteredArticles) { article in
+                Button {
+                  toggle(article.id)
+                } label: {
+                  HStack(alignment: .top, spacing: 10) {
+                    Image(
+                      systemName: selectedDraftIDs.contains(article.id)
+                        ? "checkmark.circle.fill" : "circle"
+                    )
+                    .foregroundStyle(
+                      selectedDraftIDs.contains(article.id) ? WorkbenchTheme.success : .secondary)
+                    VStack(alignment: .leading, spacing: 3) {
+                      Text(article.title).frame(maxWidth: .infinity, alignment: .leading)
+                      Text(attachmentSummary(for: article))
+                        .font(.caption)
+                        .foregroundStyle(
+                          article.unresolvedAttachmentCount > 0
+                            ? WorkbenchTheme.warning : .secondary)
+                    }
+                  }
+                  .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .disabled(isRestoring || successMessage != nil)
+                .padding(.vertical, 5)
+                .accessibilityValue(selectedDraftIDs.contains(article.id) ? "已选择" : "未选择")
+              }
+            }
+          }
+          .frame(maxHeight: 300)
+          TextField("搜索文章", text: $searchText)
+            .textFieldStyle(.roundedBorder)
+            .accessibilityLabel("搜索文章")
+            .disabled(isRestoring || successMessage != nil)
+        }
+      } else if isLoading {
+        ProgressView("正在读取备份文章…")
+      }
+
+      if let errorMessage {
+        AccessibleStatusMessage(message: errorMessage, severity: .error)
+          .fixedSize(horizontal: false, vertical: true)
+      }
+      if let successMessage {
+        AccessibleStatusMessage(
+          message: successMessage, severity: .success, announcesNonUrgentStatus: true
+        )
+        .fixedSize(horizontal: false, vertical: true)
+      }
+      if !dataManagement.canRestoreBackupArticles {
+        AccessibleStatusMessage(
+          message: String(localized: "当前工作台暂不可写入，无法恢复文章。"), severity: .warning)
+      }
+
+      HStack {
+        Spacer()
+        Button(isRestoring ? "取消恢复" : "取消") {
+          if isRestoring {
+            restoreTask?.cancel()
+          }
+          dismiss()
+        }
+        .keyboardShortcut(.cancelAction)
+        .disabled(false)
+        if successMessage != nil {
+          Button("完成") { dismiss() }
+            .keyboardShortcut(.defaultAction)
+        } else {
+          Button("恢复所选文章") { requestRestore() }
+            .keyboardShortcut(.defaultAction)
+            .disabled(
+              selectedDraftIDs.isEmpty || isRestoring || isLoading
+                || !dataManagement.canRestoreBackupArticles)
+        }
+      }
+    }
+    .padding(24)
+    .frame(width: 620)
+    .accessibilityElement(children: .contain)
+    .accessibilityIdentifier("workspace-backup-article-selection")
+    .task { await loadPreview() }
+    .onDisappear { restoreTask?.cancel() }
+    .onChange(of: dataManagement.canRestoreBackupArticles) { _, canRestore in
+      if !canRestore {
+        selectionPreview = nil
+        selectedDraftIDs.removeAll()
+        dismiss()
+      }
+    }
+    .alert(String(localized: "版本兼容性提示"), isPresented: $isCompatibilityConfirmationPresented) {
+      Button("仍然恢复") { restoreSelectedArticles() }
+      Button("取消", role: .cancel) {}
+    } message: {
+      Text(compatibilityMessage)
+    }
+  }
+
+  private func toggle(_ id: UUID) {
+    if selectedDraftIDs.contains(id) {
+      selectedDraftIDs.remove(id)
+    } else {
+      selectedDraftIDs.insert(id)
+    }
+  }
+
+  private func attachmentSummary(for article: WorkspaceBackupArticleSummary) -> String {
+    if article.unresolvedAttachmentCount > 0 {
+      return String(
+        format: String(localized: "%@ 个附件；%@ 个本地附件缺失，将仅保留元数据"), article.attachmentCount.formatted(),
+        article.unresolvedAttachmentCount.formatted())
+    }
+    return String(format: String(localized: "%@ 个附件"), article.attachmentCount.formatted())
+  }
+
+  private func loadPreview() async {
+    guard dataManagement.canRestoreBackupArticles else { return }
+    isLoading = true
+    defer { isLoading = false }
+    do {
+      let loaded = try await dataManagement.workspaceBackupArticleSelectionPreview(
+        from: backupURL)
+      guard loaded.backupPreview == backupPreview else {
+        throw WorkspaceBackupArticleRestoreError.backupChanged
+      }
+      selectionPreview = loaded
+    } catch {
+      errorMessage = localizedError(error)
+    }
+  }
+
+  private func requestRestore() {
+    if requiresCompatibilityConfirmation {
+      isCompatibilityConfirmationPresented = true
+    } else {
+      restoreSelectedArticles()
+    }
+  }
+
+  private func restoreSelectedArticles() {
+    guard let selectionPreview, !selectedDraftIDs.isEmpty else { return }
+    let selectedIDs = selectedDraftIDs
+    isRestoring = true
+    errorMessage = nil
+    restoreTask = Task {
+      do {
+        let count = try await dataManagement.restoreWorkspaceBackupArticles(
+          preview: selectionPreview,
+          selectedDraftIDs: selectedIDs
+        )
+        guard !Task.isCancelled else { return }
+        successMessage = String(format: String(localized: "已恢复 %@ 篇文章为新建通用草稿。"), count.formatted())
+      } catch {
+        if !Task.isCancelled { errorMessage = localizedError(error) }
+      }
+      isRestoring = false
+    }
+  }
+
+  private func localizedError(_ error: Error) -> String {
+    guard let restoreError = error as? WorkspaceBackupArticleRestoreError else {
+      return error.localizedDescription
+    }
+    switch restoreError {
+    case .invalidSelection: return String(localized: "所选文章无效，请重新选择。")
+    case .backupChanged: return String(localized: "备份内容已变化，请关闭此预览后重新读取。")
+    case .unavailable: return String(localized: "当前工作台暂不可用，无法恢复文章。")
+    case .persistenceFailed:
+      return String(localized: "未能确认草稿保存结果。请检查存储空间，并重新打开工作区核对后再试。")
     }
   }
 }

@@ -7,7 +7,8 @@ extension LocalPublishPreviewService {
     sourceURL: URL,
     expectedSourceState: LocalPublishSourceFileState?,
     destinationURL: URL,
-    repositoryPath: String
+    repositoryPath: String,
+    requiresMissingDestination: Bool = false
   ) throws {
     let stagingURL =
       destinationURL
@@ -67,11 +68,29 @@ extension LocalPublishPreviewService {
       try data.write(to: stagingURL, options: .withoutOverwriting)
     #endif
 
-    if fileManager.fileExists(atPath: destinationURL.path) {
+    if requiresMissingDestination {
+      try moveRecoveryFileExclusively(from: stagingURL, to: destinationURL)
+    } else if fileManager.fileExists(atPath: destinationURL.path) {
       _ = try fileManager.replaceItemAt(destinationURL, withItemAt: stagingURL)
     } else {
       try fileManager.moveItem(at: stagingURL, to: destinationURL)
     }
+  }
+
+  /// rename with NOREPLACE semantics closes the existence-check/write gap.
+  private func moveRecoveryFileExclusively(from source: URL, to destination: URL) throws {
+    #if canImport(Darwin)
+      let result = source.path.withCString { sourcePath in
+        destination.path.withCString { destinationPath in
+          Darwin.renamex_np(sourcePath, destinationPath, UInt32(RENAME_EXCL))
+        }
+      }
+      guard result == 0 else {
+        throw LocalPublishPreviewError.rollbackConflict(destination.path)
+      }
+    #else
+      try fileManager.moveItem(at: source, to: destination)
+    #endif
   }
 
   func localPublishTransactionURL(for rootURL: URL) -> URL {
@@ -105,7 +124,11 @@ extension LocalPublishPreviewService {
     try handle.close()
   }
 
-  func recoverInterruptedTransaction(at rootURL: URL) throws {
+  func recoverInterruptedTransaction(
+    at rootURL: URL,
+    beforeDestinationIsolation: ((URL) throws -> Void)? = nil,
+    afterDestinationIsolation: ((URL) throws -> Void)? = nil
+  ) throws {
     let transactionURL = localPublishTransactionURL(for: rootURL)
     guard fileManager.fileExists(atPath: transactionURL.path) else { return }
     do {
@@ -126,11 +149,20 @@ extension LocalPublishPreviewService {
       else {
         throw LocalPublishPreviewError.recoveryFailed("恢复目录不在本地仓库内")
       }
+      if fileManager.fileExists(atPath: rollbackDirectory.path),
+        try fileManager.contentsOfDirectory(atPath: rollbackDirectory.path)
+          .contains(where: { $0.hasPrefix("recovery-current-") })
+      {
+        // A crash or concurrent save during isolation must keep both copies.
+        // Never let an apparently restored target silently discard evidence.
+        throw LocalPublishPreviewError.recoveryFailed("恢复隔离文件待核对：\(rollbackDirectory.path)")
+      }
 
       // Validate the complete journal and every referenced backup before
       // changing any destination. A forged or incomplete entry later in the
       // list must not allow an earlier content path to be removed first.
       var preparedRecoveries: [PreparedLocalPublishRecovery] = []
+      var seenDestinations = Set<String>()
       for entry in transaction.entries {
         guard !isGitControlPath(entry.repositoryPath) else {
           throw LocalPublishPreviewError.recoveryFailed("恢复路径属于 Git 管理目录：\(entry.repositoryPath)")
@@ -139,6 +171,9 @@ extension LocalPublishPreviewService {
           rootURL: root,
           repositoryPath: entry.repositoryPath
         )
+        guard seenDestinations.insert(destinationURL.path).inserted else {
+          throw LocalPublishPreviewError.unsafePath(entry.repositoryPath)
+        }
         let backupURL: URL?
         if let backupFileName = entry.backupFileName {
           guard !backupFileName.contains("/"),
@@ -165,10 +200,32 @@ extension LocalPublishPreviewService {
         } else {
           backupURL = nil
         }
+        // Committed journals only need validated cleanup paths; content may
+        // legitimately have changed since the completed publish.
+        guard transaction.phase == .applying else { continue }
+        let backupSourceState = try backupURL.map {
+          try localPublishSourceFileState(at: $0, repositoryPath: entry.repositoryPath)
+        }
+        let originalState: LocalPublishFileState =
+          backupSourceState.map { .fileDigest($0.sha256) } ?? .missing
+        let observedState = try localPublishFileState(at: destinationURL, fileManager: fileManager)
+        if transaction.phase == .applying {
+          // Check the entire transaction before touching any file. A legacy
+          // journal has no proof of what it wrote, so changed files are kept.
+          guard entry.originalState == nil || entry.originalState == originalState,
+            observedState == originalState
+              || (entry.originalState != nil && observedState == entry.intendedState)
+          else {
+            throw LocalPublishPreviewError.rollbackConflict(entry.repositoryPath)
+          }
+        }
         preparedRecoveries.append(
           PreparedLocalPublishRecovery(
             destinationURL: destinationURL,
-            backupURL: backupURL
+            backupURL: backupURL,
+            originalState: originalState,
+            observedState: observedState,
+            backupSourceState: backupSourceState
           )
         )
       }
@@ -182,15 +239,57 @@ extension LocalPublishPreviewService {
       }
 
       for recovery in preparedRecoveries.reversed() {
-        if fileManager.fileExists(atPath: recovery.destinationURL.path) {
-          try fileManager.removeItem(at: recovery.destinationURL)
+        let currentState = try localPublishFileState(
+          at: recovery.destinationURL, fileManager: fileManager)
+        guard currentState == recovery.observedState else {
+          throw LocalPublishPreviewError.rollbackConflict(recovery.destinationURL.path)
         }
-        if let backupURL = recovery.backupURL {
-          try fileManager.createDirectory(
-            at: recovery.destinationURL.deletingLastPathComponent(),
-            withIntermediateDirectories: true
-          )
-          try fileManager.copyItem(at: backupURL, to: recovery.destinationURL)
+        // Also makes recovery restartable if a prior recovery was interrupted.
+        guard currentState != recovery.originalState else { continue }
+        try beforeDestinationIsolation?(recovery.destinationURL)
+        let isolatedURL = rollbackDirectory.appendingPathComponent("recovery-current-\(UUID())")
+        var hasIsolatedDestination = false
+        do {
+          if currentState != .missing {
+            // Capture the actual path atomically, then validate the captured
+            // bytes. A save after the earlier digest check is preserved.
+            try moveRecoveryFileExclusively(from: recovery.destinationURL, to: isolatedURL)
+            hasIsolatedDestination = true
+            guard
+              try localPublishFileState(at: isolatedURL, fileManager: fileManager) == currentState
+            else { throw LocalPublishPreviewError.rollbackConflict(recovery.destinationURL.path) }
+          }
+          try afterDestinationIsolation?(recovery.destinationURL)
+          if let backupURL = recovery.backupURL {
+            try fileManager.createDirectory(
+              at: recovery.destinationURL.deletingLastPathComponent(),
+              withIntermediateDirectories: true
+            )
+            try replaceBinaryFileAtomically(
+              sourceURL: backupURL,
+              expectedSourceState: recovery.backupSourceState,
+              destinationURL: recovery.destinationURL,
+              repositoryPath: recovery.destinationURL.path,
+              requiresMissingDestination: true
+            )
+          }
+          if hasIsolatedDestination {
+            guard
+              try localPublishFileState(at: isolatedURL, fileManager: fileManager) == currentState
+            else { throw LocalPublishPreviewError.rollbackConflict(recovery.destinationURL.path) }
+            try fileManager.removeItem(at: isolatedURL)
+          }
+        } catch {
+          if hasIsolatedDestination, fileManager.fileExists(atPath: isolatedURL.path) {
+            // Restore only into an empty path. A newer destination wins and
+            // the isolated copy stays beside the journal for manual recovery.
+            do {
+              try moveRecoveryFileExclusively(from: isolatedURL, to: recovery.destinationURL)
+            } catch {
+              throw LocalPublishPreviewError.recoveryFailed("并发修改已保留，需核对：\(isolatedURL.path)")
+            }
+          }
+          throw error
         }
       }
       try fileManager.removeItem(at: rollbackDirectory)

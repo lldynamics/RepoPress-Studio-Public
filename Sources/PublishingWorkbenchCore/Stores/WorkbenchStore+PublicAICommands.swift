@@ -1,4 +1,6 @@
 import Foundation
+import PublishingAICore
+import PublishingDomainContracts
 
 extension WorkbenchStore {
   public func prepareAIChat(for draft: ArticleDraft) {

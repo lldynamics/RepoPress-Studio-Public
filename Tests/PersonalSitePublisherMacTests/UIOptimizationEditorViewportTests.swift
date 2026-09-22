@@ -251,6 +251,100 @@ final class UIOptimizationEditorViewportTests: XCTestCase {
     XCTAssertEqual(fixture.textView.selectedRange(), initialSelection)
   }
 
+  func testSelectionRevealSurvivesNativeScrollAndLaterParagraphReflow() throws {
+    let fixture = try makeFixture(width: 800, paragraph: 159)
+    let window = makeFocusedWindow(for: fixture.scrollView, textView: fixture.textView)
+    defer { window.orderOut(nil) }
+    fixture.scrollView.invalidateDocumentHeight(immediately: true, revealingSelection: true)
+    // Native caret scrolling can change the clip origin before our next layout.
+    fixture.scrollView.contentView.scroll(to: NSPoint(x: 0, y: 100))
+    fixture.scrollView.layout()
+    try assertSelectionVisible(in: fixture.textView, scrollView: fixture.scrollView)
+
+    // A later attachment paragraph-height update does not carry a new input
+    // event. The existing selection must still be revealed after frame growth.
+    let firstParagraph = (fixture.textView.string as NSString).paragraphRange(
+      for: NSRange(location: 0, length: 1))
+    let style = NSMutableParagraphStyle()
+    style.minimumLineHeight = 500
+    fixture.textView.textStorage?.addAttribute(.paragraphStyle, value: style, range: firstParagraph)
+    let manager = try XCTUnwrap(fixture.textView.textLayoutManager)
+    manager.ensureLayout(for: manager.documentRange)
+    let previousHeight = fixture.textView.frame.height
+    fixture.scrollView.invalidateDocumentHeight(immediately: true)
+    fixture.scrollView.layout()
+    XCTAssertGreaterThan(fixture.textView.frame.height, previousHeight)
+    try assertSelectionVisible(in: fixture.textView, scrollView: fixture.scrollView)
+  }
+
+  func testViewportHeightShrinkKeepsActiveSelectionVisible() throws {
+    let fixture = try makeFixture(width: 800, paragraph: 159)
+    let window = makeFocusedWindow(for: fixture.scrollView, textView: fixture.textView)
+    defer { window.orderOut(nil) }
+    fixture.scrollView.invalidateDocumentHeight(immediately: true, revealingSelection: true)
+    fixture.scrollView.layout()
+    let rect = try XCTUnwrap(
+      MarkdownTextKit2RangeAdapter.rect(for: fixture.textView.selectedRange(), in: fixture.textView)
+    )
+    fixture.scrollView.contentView.scroll(
+      to: NSPoint(x: 0, y: max(0, rect.maxY - fixture.scrollView.contentSize.height)))
+    try assertSelectionVisible(in: fixture.textView, scrollView: fixture.scrollView)
+
+    // A save-error banner consumes editor height without changing the text or
+    // container width, so the cached document height remains valid.
+    let documentHeight = fixture.textView.frame.height
+    window.setContentSize(NSSize(width: 800, height: 240))
+    window.layoutIfNeeded()
+    fixture.scrollView.layout()
+    XCTAssertEqual(fixture.textView.frame.height, documentHeight, accuracy: 1)
+    try assertSelectionVisible(in: fixture.textView, scrollView: fixture.scrollView)
+  }
+
+  func testLiveScrollAndFocusLossSupersedeSelectionReveal() throws {
+    let fixture = try makeFixture(width: 800, paragraph: 159)
+    let window = makeFocusedWindow(for: fixture.scrollView, textView: fixture.textView)
+    defer { window.orderOut(nil) }
+    fixture.scrollView.invalidateDocumentHeight(immediately: true, revealingSelection: true)
+    NotificationCenter.default.post(
+      name: NSScrollView.willStartLiveScrollNotification, object: fixture.scrollView)
+    fixture.scrollView.contentView.scroll(to: NSPoint(x: 0, y: 100))
+    fixture.scrollView.layout()
+    XCTAssertEqual(fixture.scrollView.contentView.bounds.minY, 100, accuracy: 1)
+
+    fixture.scrollView.invalidateDocumentHeight(immediately: true, revealingSelection: true)
+    NotificationCenter.default.post(name: NSWindow.didResignKeyNotification, object: window)
+    fixture.scrollView.contentView.scroll(to: NSPoint(x: 0, y: 200))
+    fixture.scrollView.layout()
+    XCTAssertEqual(fixture.scrollView.contentView.bounds.minY, 200, accuracy: 1)
+  }
+
+  private func makeFocusedWindow(for scrollView: MarkdownEditorScrollView, textView: NSTextView)
+    -> NSWindow
+  {
+    // The command-line test host cannot reliably activate a key window. This
+    // fixture controls only that focus input; production focus is checked in
+    // the packaged app, while all text layout and scrolling here remain AppKit.
+    let window = SelectionRevealTestWindow(
+      contentRect: scrollView.frame, styleMask: .titled, backing: .buffered, defer: false)
+    window.contentView = scrollView
+    window.layoutIfNeeded()
+    scrollView.layout()
+    scrollView.invalidateDocumentHeight(immediately: true)
+    scrollView.layout()
+    XCTAssertTrue(window.makeFirstResponder(textView))
+    return window
+  }
+
+  private func assertSelectionVisible(
+    in textView: NSTextView, scrollView: NSScrollView, file: StaticString = #filePath,
+    line: UInt = #line
+  ) throws {
+    let rect = try XCTUnwrap(
+      MarkdownTextKit2RangeAdapter.rect(for: textView.selectedRange(), in: textView), file: file,
+      line: line)
+    XCTAssertTrue(scrollView.documentVisibleRect.intersects(rect), file: file, line: line)
+  }
+
   private func verifyResize(
     from initialWidth: CGFloat, to finalWidth: CGFloat, paragraph: Int = 70
   ) throws {
@@ -263,7 +357,7 @@ final class UIOptimizationEditorViewportTests: XCTestCase {
     )
     textView.textContainer?.widthTracksTextView = false
     textView.textContainer?.heightTracksTextView = false
-    textView.isVerticallyResizable = true
+    textView.isVerticallyResizable = false
     textView.isHorizontallyResizable = false
     textView.autoresizingMask = [.width]
     textView.font = .systemFont(ofSize: 14)
@@ -308,7 +402,9 @@ final class UIOptimizationEditorViewportTests: XCTestCase {
   private func makeFixture(
     width: CGFloat,
     paragraph: Int
-  ) throws -> (scrollView: MarkdownEditorScrollView, textView: DroppableMarkdownTextView, anchor: NSRange) {
+  ) throws -> (
+    scrollView: MarkdownEditorScrollView, textView: DroppableMarkdownTextView, anchor: NSRange
+  ) {
     _ = NSApplication.shared
     let scrollView = MarkdownEditorScrollView(
       frame: NSRect(x: 0, y: 0, width: width, height: 400)
@@ -318,7 +414,7 @@ final class UIOptimizationEditorViewportTests: XCTestCase {
     )
     textView.textContainer?.widthTracksTextView = false
     textView.textContainer?.heightTracksTextView = false
-    textView.isVerticallyResizable = true
+    textView.isVerticallyResizable = false
     textView.isHorizontallyResizable = false
     textView.autoresizingMask = [.width]
     textView.font = .systemFont(ofSize: 14)
@@ -341,4 +437,9 @@ final class UIOptimizationEditorViewportTests: XCTestCase {
     scrollView.reflectScrolledClipView(scrollView.contentView)
     return (scrollView, textView, anchor)
   }
+}
+
+@MainActor
+private final class SelectionRevealTestWindow: NSWindow {
+  override var isKeyWindow: Bool { true }
 }

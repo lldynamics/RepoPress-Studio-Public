@@ -1,7 +1,9 @@
 import CoreGraphics
 import ImageIO
+import PublishingDomainContracts
 import UniformTypeIdentifiers
 import XCTest
+
 @testable import PublishingWorkbenchCore
 
 @MainActor
@@ -702,14 +704,14 @@ final class SEOSocialPreviewServiceTests: XCTestCase {
 	    store.prepareSEOSocialPreview(for: draft)
 	    let originalTitle = try XCTUnwrap(store.seoSocialPreviewSnapshot(for: draft)?.cards.first?.title)
 
-	    let updated = try XCTUnwrap(
+    let suggestion = AIPublishingMetadataSuggestion(
+      titles: ["AI 刷新的社交标题"],
+      summary: "AI 生成的社交摘要，用来验证应用元数据后会刷新 SEO 社交预览。", tags: ["SEO", "AI"])
+    installAIMetadataSuggestionForApplicationTest(suggestion, draft: draft, store: store)
+    let updated = try XCTUnwrap(
 	      store.applyAIMetadataSuggestion(
-	        AIPublishingMetadataSuggestion(
-	          titles: ["AI 刷新的社交标题"],
-	          summary: "AI 生成的社交摘要，用来验证应用元数据后会刷新 SEO 社交预览。",
-	          tags: ["SEO", "AI"]
-	        ),
-	        draft: draft
+        suggestion,
+        draft: draft
 	      )
 	    )
 

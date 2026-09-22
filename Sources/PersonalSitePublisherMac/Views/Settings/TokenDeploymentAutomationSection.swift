@@ -1,3 +1,4 @@
+import PublishingDomainContracts
 import PublishingWorkbenchCore
 import SwiftUI
 

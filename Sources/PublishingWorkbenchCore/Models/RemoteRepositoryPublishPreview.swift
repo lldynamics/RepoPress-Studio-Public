@@ -5,7 +5,7 @@ import Foundation
 /// endpoint, or publish mode changed while the confirmation sheet was open.
 /// The generated review-request source branch is intentionally excluded: batch
 /// packages derive it from the current time, so it is not a user-selected target.
-public struct RemoteRepositoryPublishTargetSnapshot: Hashable, Sendable {
+public struct RemoteRepositoryPublishTargetSnapshot: Codable, Hashable, Sendable {
   public var profileID: UUID
   public var siteName: String
   public var provider: RepositoryProvider

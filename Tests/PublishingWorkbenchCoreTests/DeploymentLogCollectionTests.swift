@@ -4,6 +4,99 @@ import XCTest
 
 @MainActor
 final class DeploymentLogCollectionTests: XCTestCase {
+  func testSourcePreviewReadsRepositoryFileAndSelectsUnicodeLine() throws {
+    let root = try makeSourcePreviewRepository()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let file = root.appendingPathComponent("文章.md")
+    let source = "标题😀\r\n错误所在行🪶\r\n结尾"
+    try source.write(to: file, atomically: true, encoding: .utf8)
+    let service = DeploymentSourceFileService()
+    let profile = SiteProfile(name: "Source", localRepositoryRootPath: root.path)
+    for path in ["./文章.md", file.path] {
+      let document = try service.open(profile: profile, entry: sourceEntry(path, line: 2))
+      XCTAssertEqual(document.repositoryPath, "文章.md")
+      XCTAssertEqual(document.text, source)
+      XCTAssertEqual(document.lineNumber, 2)
+      XCTAssertEqual((source as NSString).substring(with: document.selectionRange), "错误所在行🪶")
+      XCTAssertFalse(document.didClampLine)
+    }
+    XCTAssertEqual(try String(contentsOf: file, encoding: .utf8), source)
+  }
+
+  func testSourcePreviewLineBoundsIncludeEmptyTrailingLine() {
+    let cases: [(String, Int?, Int, String, Bool)] = [
+      ("", 8, 1, "", true), ("one", nil, 1, "one", false),
+      ("one", 99, 1, "one", true), ("one\n", 2, 2, "", false),
+      ("one\r\n", 99, 2, "", true), ("\n\n", 2, 2, "", false),
+      ("one\nlast", 99, 2, "last", true),
+    ]
+    for (source, requested, line, selected, clamped) in cases {
+      let result = DeploymentSourceFileService.lineSelection(in: source, requestedLine: requested)
+      XCTAssertEqual(result.line, line)
+      XCTAssertEqual((source as NSString).substring(with: result.range), selected)
+      XCTAssertEqual(result.wasClamped, clamped)
+    }
+  }
+
+  func testSourcePreviewRejectsUntrustedPathsBeforeReading() throws {
+    let root = try makeSourcePreviewRepository()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let service = DeploymentSourceFileService()
+    let unsafePaths = [
+      "../outside.md", "content/../outside.md", "/other/root/article.md",
+      root.path + "-other/article.md", "https://example.com/article.md", "file:///tmp/article.md",
+      "content\\article.md", "content//article.md", "content/./article.md", ".git/config.json",
+      ".env.json", "content/hidden\u{0001}.md",
+    ]
+    for path in unsafePaths {
+      XCTAssertThrowsError(try service.repositoryPath(path, root: root), path)
+    }
+    XCTAssertThrowsError(try service.repositoryPath(nil, root: root))
+    XCTAssertThrowsError(try service.repositoryPath("asset.png", root: root))
+    XCTAssertEqual(
+      try service.repositoryPath(".github/workflows/build.yml", root: root),
+      ".github/workflows/build.yml")
+  }
+
+  func testSourcePreviewRejectsSymlinksAndUnsupportedFileContents() throws {
+    let root = try makeSourcePreviewRepository()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let target = root.appendingPathComponent("real.md")
+    try "source".write(to: target, atomically: true, encoding: .utf8)
+    try FileManager.default.createSymbolicLink(
+      at: root.appendingPathComponent("linked.md"), withDestinationURL: target)
+    try FileManager.default.createSymbolicLink(
+      at: root.appendingPathComponent("linked-directory"), withDestinationURL: root)
+    try FileManager.default.createDirectory(
+      at: root.appendingPathComponent("directory.md"), withIntermediateDirectories: false)
+    try Data([0xFF, 0xFE]).write(to: root.appendingPathComponent("binary.md"))
+    try "before\0after".write(
+      to: root.appendingPathComponent("nul.md"), atomically: true, encoding: .utf8)
+    try Data(repeating: 65, count: DeploymentSourceFileService.maximumByteCount + 1)
+      .write(to: root.appendingPathComponent("large.md"))
+    let profile = SiteProfile(name: "Source", localRepositoryRootPath: root.path)
+    for path in [
+      "linked.md", "linked-directory/real.md", "directory.md", "binary.md", "nul.md", "large.md",
+      "missing.md",
+    ] {
+      XCTAssertThrowsError(
+        try DeploymentSourceFileService().open(profile: profile, entry: sourceEntry(path)), path)
+    }
+  }
+
+  private func makeSourcePreviewRepository() throws -> URL {
+    let root = FileManager.default.temporaryDirectory
+      .appendingPathComponent("DeploymentSourceTests-\(UUID().uuidString)", isDirectory: true)
+      .resolvingSymlinksInPath()
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    return root
+  }
+
+  private func sourceEntry(_ path: String, line: Int? = nil) -> DeploymentLogEntry {
+    DeploymentLogEntry(
+      level: .error, source: "test", message: "Build failed", filePath: path, line: line)
+  }
+
   func testLegacySignalJSONDecodesWithoutLogExcerpt() throws {
     let id = UUID()
     let data = try JSONSerialization.data(withJSONObject: [

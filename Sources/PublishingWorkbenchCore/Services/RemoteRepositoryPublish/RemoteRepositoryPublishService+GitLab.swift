@@ -67,7 +67,8 @@ extension RemoteRepositoryPublishService {
     repository: RemoteRepository,
     sourceBranch: String,
     targetBranch: String,
-    token: String
+    token: String,
+    includeClosed: Bool = false
   ) async throws -> String? {
     let request = gitLabRequest(
       repository: repository,
@@ -75,7 +76,7 @@ extension RemoteRepositoryPublishService {
       path: "/projects/\(encodedPathComponent(repository.projectPath))/merge_requests",
       token: token,
       queryItems: [
-        URLQueryItem(name: "state", value: "opened"),
+        URLQueryItem(name: "state", value: includeClosed ? "all" : "opened"),
         URLQueryItem(name: "source_branch", value: sourceBranch),
         URLQueryItem(name: "target_branch", value: targetBranch),
       ]

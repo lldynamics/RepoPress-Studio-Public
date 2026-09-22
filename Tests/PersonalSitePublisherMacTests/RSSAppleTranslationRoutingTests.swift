@@ -1,5 +1,6 @@
-import PublishingWorkbenchCore
+import PublishingKnowledgeCore
 import XCTest
+
 @testable import PersonalSitePublisherMac
 
 final class RSSAppleTranslationRoutingTests: XCTestCase {

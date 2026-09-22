@@ -4,54 +4,85 @@ import ImageIO
 import SQLite3
 import XCTest
 
-@testable import PublishingWorkbenchCore
+@testable import PublishingKnowledgeCore
 
 final class KnowledgeImageImportTests: XCTestCase {
-  func testImageImportStoresSanitizedOriginalWithoutExternalSourceAndDisablesSemanticIndex()
+  func testImageImportPreservesOriginalBytesAndMetadataWithoutExternalSource()
     async throws
   {
-    let rootURL = try temporaryDirectory(named: "knowledge-image-import")
-    defer { try? FileManager.default.removeItem(at: rootURL) }
-    let sourceURL = rootURL.appendingPathComponent("外部图片.png")
-    try makePNG().write(to: sourceURL, options: .atomic)
-    let service = KnowledgeLibraryService(rootURL: rootURL.appendingPathComponent("store"))
+    let fixtures: [(extension: String, data: Data, metadataDescription: String)] = [
+      ("png", try makePNG(description: "PNG fixture metadata"), "PNG fixture metadata"),
+      ("jpg", try makeJPEG(description: "JPEG fixture metadata"), "JPEG fixture metadata"),
+    ]
+    for fixture in fixtures {
+      let rootURL = try temporaryDirectory(named: "knowledge-image-import-\(fixture.extension)")
+      defer { try? FileManager.default.removeItem(at: rootURL) }
+      let sourceURL = rootURL.appendingPathComponent("外部图片.\(fixture.extension)")
+      try fixture.data.write(to: sourceURL, options: .atomic)
+      let sourceBytesBeforeImport = try Data(contentsOf: sourceURL)
+      let service = KnowledgeLibraryService(rootURL: rootURL.appendingPathComponent("store"))
+      let options = KnowledgeImportOptions(performsImageOCR: false)
 
-    let preview = try await service.makeImportPreview(sourceURL: sourceURL)
-    let candidate = try XCTUnwrap(preview.candidates.first)
-    XCTAssertEqual(candidate.kind, .image)
-    XCTAssertNil(candidate.sourceURL)
-    XCTAssertEqual(candidate.allowsLocalSemanticIndex, false)
-    XCTAssertEqual(candidate.imageMetadata?.wasPrivacySanitized, true)
+      let preview = try await service.makeImportPreview(sourceURL: sourceURL, options: options)
+      let candidate = try XCTUnwrap(preview.candidates.first)
+      XCTAssertEqual(candidate.kind, .image)
+      XCTAssertNil(candidate.sourceURL)
+      XCTAssertEqual(candidate.allowsLocalSemanticIndex, false)
+      XCTAssertEqual(candidate.imageMetadata?.wasPrivacySanitized, false)
+      XCTAssertEqual(candidate.originalData, sourceBytesBeforeImport)
 
-    let result = try await service.commit(preview)
-    let documentID = try XCTUnwrap(result.documentIDs.first)
-    let document = try XCTUnwrap(service.document(id: documentID))
-    XCTAssertEqual(document.kind, .image)
-    XCTAssertNil(document.sourceURL)
-    XCTAssertFalse(document.allowsLocalSemanticIndex)
-    let managedURL = try XCTUnwrap(try service.originalFileURL(documentID: documentID))
-    XCTAssertTrue(FileManager.default.fileExists(atPath: managedURL.path))
-    XCTAssertNotEqual(managedURL.standardizedFileURL, sourceURL.standardizedFileURL)
-    XCTAssertTrue(managedURL.path.hasPrefix(rootURL.appendingPathComponent("store").path + "/"))
-    XCTAssertEqual(
-      try sqliteInt(
-        "SELECT COUNT(*) FROM knowledge_chunk_embeddings;",
-        at: rootURL.appendingPathComponent("store/library.sqlite")
-      ), 0)
+      let result = try await service.commit(preview)
+      let documentID = try XCTUnwrap(result.documentIDs.first)
+      let document = try XCTUnwrap(service.document(id: documentID))
+      XCTAssertEqual(document.kind, .image)
+      XCTAssertNil(document.sourceURL)
+      XCTAssertFalse(document.allowsLocalSemanticIndex)
+      let managedURL = try XCTUnwrap(try service.originalFileURL(documentID: documentID))
+      XCTAssertTrue(FileManager.default.fileExists(atPath: managedURL.path))
+      XCTAssertNotEqual(managedURL.standardizedFileURL, sourceURL.standardizedFileURL)
+      XCTAssertTrue(managedURL.path.hasPrefix(rootURL.appendingPathComponent("store").path + "/"))
+      XCTAssertEqual(try Data(contentsOf: managedURL), sourceBytesBeforeImport)
+      XCTAssertEqual(try imageDescription(at: managedURL), fixture.metadataDescription)
+      XCTAssertEqual(try Data(contentsOf: sourceURL), sourceBytesBeforeImport)
+      try FileManager.default.removeItem(at: sourceURL)
+      XCTAssertEqual(try Data(contentsOf: managedURL), sourceBytesBeforeImport)
+      XCTAssertEqual(try imageDescription(at: managedURL), fixture.metadataDescription)
+      XCTAssertEqual(
+        try sqliteInt(
+          "SELECT COUNT(*) FROM knowledge_chunk_embeddings;",
+          at: rootURL.appendingPathComponent("store/library.sqlite")
+        ), 0)
+    }
   }
 
-  func testExactSanitizedImageHashIsDuplicateAndOCRAnchorRoundTripsThroughSQLite() async throws {
+  func testExactImageBytesAreDuplicateButMetadataDifferencesRemainDistinct() async throws {
     let rootURL = try temporaryDirectory(named: "knowledge-image-dedup")
     defer { try? FileManager.default.removeItem(at: rootURL) }
-    let sourceURL = rootURL.appendingPathComponent("same.png")
-    let imageData = try makePNG()
+    let firstDirectory = rootURL.appendingPathComponent("first", isDirectory: true)
+    let secondDirectory = rootURL.appendingPathComponent("second", isDirectory: true)
+    try FileManager.default.createDirectory(at: firstDirectory, withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(at: secondDirectory, withIntermediateDirectories: true)
+    let sourceURL = firstDirectory.appendingPathComponent("same.png")
+    let duplicateURL = secondDirectory.appendingPathComponent("same.png")
+    let imageData = try makePNG(description: "same bytes")
     try imageData.write(to: sourceURL, options: .atomic)
+    try imageData.write(to: duplicateURL, options: .atomic)
     let service = KnowledgeLibraryService(rootURL: rootURL.appendingPathComponent("store"))
+    let options = KnowledgeImportOptions(performsImageOCR: false)
 
-    let firstPreview = try await service.makeImportPreview(sourceURL: sourceURL)
+    let firstPreview = try await service.makeImportPreview(sourceURL: sourceURL, options: options)
     _ = try await service.commit(firstPreview)
-    let secondPreview = try await service.makeImportPreview(sourceURL: sourceURL)
+    let secondPreview = try await service.makeImportPreview(
+      sourceURL: duplicateURL, options: options)
     XCTAssertEqual(secondPreview.candidates.first?.disposition, .duplicate)
+    let metadataDifferentData = try makePNG(description: "different metadata")
+    try metadataDifferentData.write(to: duplicateURL, options: .atomic)
+    let distinctPreview = try await service.makeImportPreview(
+      sourceURL: duplicateURL, options: options)
+    XCTAssertEqual(distinctPreview.candidates.first?.disposition, .new)
+    XCTAssertNotEqual(
+      distinctPreview.candidates.first?.originalContentHash,
+      firstPreview.candidates.first?.originalContentHash)
 
     let anchor = KnowledgeVisualAnchor(
       x: 0.2, y: 0.3, width: 0.4, height: 0.2, confidence: 0.8
@@ -65,7 +96,7 @@ final class KnowledgeImageImportTests: XCTestCase {
       originalFilenameExtension: "png",
       imageMetadata: KnowledgeImageMetadata(
         imageTypeIdentifier: "public.png", pixelWidth: 2, pixelHeight: 2,
-        frameCount: 1, recognizedRegionCount: 1, wasPrivacySanitized: true
+        frameCount: 1, recognizedRegionCount: 1, wasPrivacySanitized: false
       ),
       originalData: imageData,
       capturedText: text,
@@ -93,7 +124,7 @@ final class KnowledgeImageImportTests: XCTestCase {
   func testImageStoreLoadsCleanCapturedTextInsteadOfLocatorDecoratedNormalizedText() async throws {
     let rootURL = try temporaryDirectory(named: "knowledge-image-captured-text")
     defer { try? FileManager.default.removeItem(at: rootURL) }
-    let imageData = try makePNG()
+    let imageData = try makePNG(description: "captured text fixture")
     let capturedText = "第一行 OCR 文字\n第二行 OCR 文字"
     let normalizedText = "[OCR 区域]\n\n第一行 OCR 文字\n\n[OCR 区域]\n\n第二行 OCR 文字"
     let candidate = KnowledgeImportCandidate(
@@ -104,7 +135,7 @@ final class KnowledgeImageImportTests: XCTestCase {
       originalFilenameExtension: "png",
       imageMetadata: KnowledgeImageMetadata(
         imageTypeIdentifier: "public.png", pixelWidth: 2, pixelHeight: 2,
-        frameCount: 1, recognizedRegionCount: 2, wasPrivacySanitized: true
+        frameCount: 1, recognizedRegionCount: 2, wasPrivacySanitized: false
       ),
       originalData: imageData,
       capturedText: capturedText,
@@ -152,7 +183,15 @@ final class KnowledgeImageImportTests: XCTestCase {
     }
   }
 
-  private func makePNG() throws -> Data {
+  private func makePNG(description: String = "fixture metadata") throws -> Data {
+    try makeImageData(type: "public.png", description: description)
+  }
+
+  private func makeJPEG(description: String) throws -> Data {
+    try makeImageData(type: "public.jpeg", description: description)
+  }
+
+  private func makeImageData(type: String, description: String) throws -> Data {
     let colorSpace = CGColorSpaceCreateDeviceRGB()
     guard
       let context = CGContext(
@@ -166,12 +205,36 @@ final class KnowledgeImageImportTests: XCTestCase {
     let data = NSMutableData()
     guard
       let destination = CGImageDestinationCreateWithData(
-        data, "public.png" as CFString, 1, nil
+        data, type as CFString, 1, nil
       )
     else { throw TestError.imageCreation }
-    CGImageDestinationAddImage(destination, image, nil)
+    var properties: [CFString: Any] = [:]
+    if type == "public.png" {
+      properties[kCGImagePropertyPNGDictionary] = [
+        kCGImagePropertyPNGDescription: description
+      ]
+    } else {
+      properties[kCGImagePropertyExifDictionary] = [
+        kCGImagePropertyExifUserComment: description
+      ]
+      properties[kCGImageDestinationLossyCompressionQuality] = 1.0
+    }
+    CGImageDestinationAddImage(destination, image, properties as CFDictionary)
     guard CGImageDestinationFinalize(destination) else { throw TestError.imageCreation }
     return data as Data
+  }
+
+  private func imageDescription(at url: URL) throws -> String? {
+    guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+      let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any]
+    else { throw TestError.imageCreation }
+    if let png = properties[kCGImagePropertyPNGDictionary] as? [CFString: Any] {
+      return png[kCGImagePropertyPNGDescription] as? String
+    }
+    if let exif = properties[kCGImagePropertyExifDictionary] as? [CFString: Any] {
+      return exif[kCGImagePropertyExifUserComment] as? String
+    }
+    return nil
   }
 
   private func temporaryDirectory(named name: String) throws -> URL {

@@ -1,4 +1,6 @@
 import XCTest
+
+@testable import PublishingKnowledgeCore
 @testable import PublishingWorkbenchCore
 
 final class WorkbenchProjectionTests: XCTestCase {

@@ -1,5 +1,6 @@
 import AppKit
 import OSLog
+import PublishingDomainContracts
 import PublishingWorkbenchCore
 import SwiftUI
 
@@ -92,17 +93,24 @@ struct MacMarkdownTextView: NSViewRepresentable {
   var inlineAIReviewPresentation: MarkdownEditorInlineAIReviewPresentation? = nil
   var ghostText: String
   var ssgSnippets: [MarkdownSnippet]
+  /// Consumers that persist only normalized progress can explicitly disable
+  /// the exact AppKit source-line lookup. The default preserves existing
+  /// source-line reporting for other callers.
+  var reportsScrollSourceLine = true
   var scrollSyncUpdate: MarkdownScrollSyncUpdate?
   var scrollRestorationUpdate: MarkdownScrollSyncUpdate?
   var onStatisticsChanged: (MarkdownEditorStatistics) -> Void
   var onFileDropTargetChanged: (Bool) -> Void
   var onPasteMessage: (String) -> Void
   var onEditRequestHandled: (MarkdownTextEditRequestOutcome) -> Void
+  var onEditRequestWillApply: ((MarkdownTextEditRequest) -> Bool)? = nil
   var onGhostTextAccepted: (String) -> Void
   var onGhostTextDismissed: () -> Void
   var onInlineAICompletionRequested: () -> Void
   var onSSGSnippetShortcut: (MarkdownCompletionCandidate) -> Void
-  var onSlashCommandKey: (MarkdownSlashCommandKey) -> Bool = { _ in false }
+  var onSlashCommandKey: (MarkdownSlashCommandKey, @escaping (String) -> Bool) -> Bool = {
+    _, _ in false
+  }
   var onLiveBodyChange: (String, String) -> Void = { _, _ in }
   var onDocumentTextCommitted: (String, String) -> Void = { _, _ in }
   var onContextualAnchorChanged: (MarkdownContextualPopoverAnchor?) -> Void = { _ in }
@@ -190,7 +198,7 @@ struct MacMarkdownTextView: NSViewRepresentable {
     textView.markdownTableEditingHandler = { textView, command in
       context.coordinator.handleTableEditing(command, in: textView)
     }
-    textView.slashCommandKeyHandler = onSlashCommandKey
+    configureSlashCommandHandler(on: textView, coordinator: context.coordinator)
     textView.inlineAIRequestHandler = onInlineAICompletionRequested
     textView.string = text
     let initialSelection =
@@ -233,7 +241,10 @@ struct MacMarkdownTextView: NSViewRepresentable {
     textView.minSize = NSSize(width: 0, height: 0)
     textView.maxSize = NSSize(
       width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
-    textView.isVerticallyResizable = true
+    // MarkdownEditorScrollView owns the document frame. AppKit's automatic
+    // fitting can briefly shrink it during TextKit 2 attribute updates and
+    // clamp the user's viewport before the next measured layout restores it.
+    textView.isVerticallyResizable = false
     textView.isHorizontallyResizable = false
     textView.autoresizingMask = [NSView.AutoresizingMask.width]
     textView.textContainer?.containerSize = NSSize(
@@ -243,7 +254,10 @@ struct MacMarkdownTextView: NSViewRepresentable {
     context.coordinator.installGhostTextOverlay(on: textView)
     context.coordinator.configureReadOnlyPresentationFocusBridge(on: textView)
     scrollView.documentView = textView
-    context.coordinator.observeScrolling(in: scrollView)
+    context.coordinator.observeScrolling(
+      in: scrollView,
+      reportsSourceLine: reportsScrollSourceLine
+    )
     context.coordinator.scheduleFullStatistics(for: bodyMarkdown, isInitialLoad: true)
     context.coordinator.scheduleMarkdownSyntaxHighlighting(for: textView, text: text)
     context.coordinator.updateDiagnostics(diagnostics, in: textView, force: true)
@@ -255,6 +269,7 @@ struct MacMarkdownTextView: NSViewRepresentable {
 
   func updateNSView(_ nsView: NSScrollView, context: Context) {
     guard let textView = nsView.documentView as? NSTextView else { return }
+    context.coordinator.setReportsScrollSourceLine(reportsScrollSourceLine)
     context.coordinator.isFrontMatterFolded = isFrontMatterFolded
     (nsView as? MarkdownEditorScrollView)?.foldedFrontMatterBodyOffset =
       isFrontMatterFolded ? bodyUTF16Offset : 0
@@ -334,7 +349,7 @@ struct MacMarkdownTextView: NSViewRepresentable {
       droppableTextView.markdownTableEditingHandler = { textView, command in
         context.coordinator.handleTableEditing(command, in: textView)
       }
-      droppableTextView.slashCommandKeyHandler = onSlashCommandKey
+      configureSlashCommandHandler(on: droppableTextView, coordinator: context.coordinator)
       droppableTextView.inlineAIRequestHandler = onInlineAICompletionRequested
       // NSTextViewDelegate.doCommandBy is the sole ghost command owner. A
       // second keyDown route would schedule duplicate completion insertions.
@@ -409,7 +424,17 @@ struct MacMarkdownTextView: NSViewRepresentable {
 
     context.coordinator.refreshCachedTypingAttributes(in: textView)
     context.coordinator.updateGhostText(ghostText, in: textView)
-    if let outcome = context.coordinator.handle(editRequest, in: textView) {
+    if let editRequest, let onEditRequestWillApply {
+      // Attachment admission commits metadata only after live TextKit checks.
+      // Run outside representable updates so that commit may publish state.
+      DispatchQueue.main.async {
+        if let outcome = context.coordinator.handle(
+          editRequest, in: textView, beforeApply: onEditRequestWillApply
+        ) {
+          onEditRequestHandled(outcome)
+        }
+      }
+    } else if let outcome = context.coordinator.handle(editRequest, in: textView) {
       DispatchQueue.main.async {
         onEditRequestHandled(outcome)
       }
@@ -421,8 +446,23 @@ struct MacMarkdownTextView: NSViewRepresentable {
     context.coordinator.scheduleReadOnlyPresentationIfNeeded(in: textView)
   }
 
+  private func configureSlashCommandHandler(
+    on textView: DroppableMarkdownTextView,
+    coordinator: Coordinator
+  ) {
+    let handler = onSlashCommandKey
+    textView.slashCommandKeyHandler = { [weak textView, weak coordinator] key in
+      guard let textView, let coordinator, !textView.hasMarkedText() else { return false }
+      return handler(key) { [weak textView, weak coordinator] snippet in
+        guard let textView, let coordinator else { return false }
+        return coordinator.applySlashCommand(snippet, in: textView)
+      }
+    }
+  }
+
   static func dismantleNSView(_ nsView: NSScrollView, coordinator: Coordinator) {
     coordinator.flushPendingBindingWrites(notifyingDocumentCommit: true)
+    coordinator.invalidateContextualAnchorPublication()
     MacMarkdownEditorTerminationFlushRegistry.unregister(coordinator)
     coordinator.inlineAttachmentDrawingApplicationTask?.cancel()
     coordinator.cancelReadOnlyPresentationTasks()
@@ -430,6 +470,7 @@ struct MacMarkdownTextView: NSViewRepresentable {
       textView.willBecomeFirstResponderHandler = nil
       textView.didResignFirstResponderHandler = nil
       textView.inlineAIRequestHandler = nil
+      textView.slashCommandKeyHandler = nil
       textView.delegate = nil
     } else {
       (nsView.documentView as? NSTextView)?.delegate = nil
@@ -459,6 +500,11 @@ struct MacMarkdownTextView: NSViewRepresentable {
     var onGhostTextDismissed: () -> Void
     var onSSGSnippetShortcut: (MarkdownCompletionCandidate) -> Void
     var onContextualAnchorChanged: (MarkdownContextualPopoverAnchor?) -> Void
+    private var contextualAnchorPublicationTask: Task<Void, Never>?
+    private var pendingContextualAnchor: MarkdownContextualPopoverAnchor?
+    private var lastPublishedContextualAnchor: MarkdownContextualPopoverAnchor?
+    private var hasPublishedContextualAnchor = false
+    private var isContextualAnchorPublicationInvalidated = false
     let onScrollPositionChanged: (MarkdownScrollSyncPosition) -> Void
     let onDroppedFiles: ([URL]) -> Void
     let onDroppedMarkdown: (String, NSRange, KnowledgeCitation?) -> Void
@@ -542,6 +588,8 @@ struct MacMarkdownTextView: NSViewRepresentable {
     var readOnlyPresentationTask: Task<Void, Never>?
     var readOnlyPresentationImageTasks: [Task<Void, Never>] = []
     var inlineAttachmentDrawingDescriptors: [String: MarkdownInlineAttachmentDrawing] = [:]
+    var inlineAttachmentGeometryReservations:
+      [String: MarkdownInlineAttachmentGeometryReservation] = [:]
     var inlineAttachmentImageTasks: [String: Task<Void, Never>] = [:]
     var inlineAttachmentPaintedRanges: [NSRange] = []
     var inlineAttachmentFailedImagePaths: Set<String> = []
@@ -794,6 +842,7 @@ struct MacMarkdownTextView: NSViewRepresentable {
       inlineAIReviewPresentation = presentation
       editor.markdownInlineAIReviewRange = documentRange
       if let documentRange {
+        (editor.enclosingScrollView as? MarkdownEditorScrollView)?.cancelPendingSelectionReveal()
         editor.scrollRangeToVisible(documentRange)
       }
     }
@@ -820,6 +869,7 @@ struct MacMarkdownTextView: NSViewRepresentable {
     /// boundary: it clears only the stale local history before installing the
     /// new source.
     func replaceDocumentTextFromExternalUpdate(_ text: String, in textView: NSTextView) {
+      (textView.enclosingScrollView as? MarkdownEditorScrollView)?.cancelPendingSelectionReveal()
       textView.undoManager?.removeAllActions()
       isApplyingRepresentedText = true
       textView.string = text
@@ -831,6 +881,18 @@ struct MacMarkdownTextView: NSViewRepresentable {
       isFrontMatterSelection incomingFrontMatterSelection: Bool,
       in textView: NSTextView
     ) -> Bool {
+      let isCommittedEcho =
+        NSEqualRanges(lastCommittedSelectedRange, incomingRange)
+        && lastCommittedIsFrontMatterSelection == incomingFrontMatterSelection
+      if isCommittedEcho {
+        // A binding flush clears pending values before SwiftUI redraws. The
+        // native caret can already be ahead of the committed selection even
+        // in that gap, before its final selection notification arrives.
+        let representedDocumentRange =
+          incomingFrontMatterSelection ? incomingRange : documentRange(from: incomingRange)
+        return textView.selectedRange() == representedDocumentRange
+      }
+
       guard
         pendingTextBindingValue != nil
           || pendingSelectedRangeBindingValue != nil
@@ -844,16 +906,6 @@ struct MacMarkdownTextView: NSViewRepresentable {
         && pendingFrontMatterBindingValue == incomingFrontMatterSelection
       if isPendingEcho {
         return false
-      }
-
-      let isCommittedEcho =
-        NSEqualRanges(lastCommittedSelectedRange, incomingRange)
-        && lastCommittedIsFrontMatterSelection == incomingFrontMatterSelection
-      if isCommittedEcho {
-        // SwiftUI can re-render with the committed cursor while AppKit is
-        // already ahead of it. Keep the live NSTextView cursor intact until
-        // the coalesced binding write reaches SwiftUI.
-        return textView.selectedRange() == incomingRange
       }
 
       pendingSelectedRangeBindingValue = nil
@@ -1162,6 +1214,7 @@ struct MacMarkdownTextView: NSViewRepresentable {
     }
 
     deinit {
+      contextualAnchorPublicationTask?.cancel()
       syntaxAttributeApplicationTask?.cancel()
       inlineAttachmentDrawingApplicationTask?.cancel()
       inlineAttachmentImageTasks.values.forEach { $0.cancel() }
@@ -1451,10 +1504,34 @@ struct MacMarkdownTextView: NSViewRepresentable {
       updateSelectionBinding(from: edit.selectedRange)
     }
 
+    /// Keyboard acceptance must finish its native edit before the next input
+    /// event. SwiftUI supplies the chosen snippet; the coordinator resolves
+    /// the replacement against the live text and owns its undo/selection.
+    func applySlashCommand(_ snippet: String, in textView: NSTextView) -> Bool {
+      let selection = textView.selectedRange()
+      guard allowsLiveBodyChanges, !isShowingReadOnlyPresentation,
+        selection.length == 0, selection.location >= bodyUTF16Offset,
+        let range = MarkdownSlashCommandText.replacementRange(
+          in: bodyMarkdown,
+          caretUTF16Location: selection.location - bodyUTF16Offset
+        )
+      else { return false }
+      let edit = MarkdownSmartEdit(
+        replacedRange: range,
+        replacement: snippet,
+        selectedRange: NSRange(
+          location: range.location + (snippet as NSString).length, length: 0
+        )
+      )
+      return handle(MarkdownTextEditRequest(expectedText: bodyMarkdown, edit: edit), in: textView)?
+        .wasApplied == true
+    }
+
     @discardableResult
     func handle(
       _ request: MarkdownTextEditRequest?,
-      in textView: NSTextView
+      in textView: NSTextView,
+      beforeApply: (MarkdownTextEditRequest) -> Bool = { _ in true }
     ) -> MarkdownTextEditRequestOutcome? {
       guard let request,
         request.id != lastAppliedEditRequestID
@@ -1492,6 +1569,9 @@ struct MacMarkdownTextView: NSViewRepresentable {
         replacement: request.edit.replacement,
         selectedRange: documentRange(from: request.edit.selectedRange)
       )
+      guard beforeApply(request) else {
+        return MarkdownTextEditRequestOutcome(id: request.id, wasApplied: false)
+      }
       apply(documentEdit, in: textView)
       return MarkdownTextEditRequestOutcome(id: request.id, wasApplied: true)
     }
@@ -1573,7 +1653,10 @@ struct MacMarkdownTextView: NSViewRepresentable {
       textView.scrollRangeToVisible(range)
     }
 
-    func observeScrolling(in scrollView: NSScrollView) {
+    func observeScrolling(
+      in scrollView: NSScrollView,
+      reportsSourceLine: Bool = true
+    ) {
       scrollSyncBridge.observe(
         scrollView,
         sourceLineProvider: { [weak self] scrollView in
@@ -1582,6 +1665,7 @@ struct MacMarkdownTextView: NSViewRepresentable {
         sourceLineApplier: { [weak self] sourceLine, scrollView in
           self?.scroll(toSourceLine: sourceLine, in: scrollView) == true
         },
+        reportsSourceLine: reportsSourceLine,
         onViewportChanged: { [weak self] in
           guard let self, let textView = self.textView else { return }
           self.repaintVisibleSyntaxViewport(in: textView, reason: .viewport)
@@ -1589,6 +1673,10 @@ struct MacMarkdownTextView: NSViewRepresentable {
           self.publishContextualAnchor(in: textView)
         }
       )
+    }
+
+    func setReportsScrollSourceLine(_ reportsSourceLine: Bool) {
+      scrollSyncBridge.setReportsSourceLine(reportsSourceLine)
     }
 
     func publishContextualAnchor(in textView: NSTextView) {
@@ -1601,7 +1689,7 @@ struct MacMarkdownTextView: NSViewRepresentable {
           in: textView
         )
       else {
-        onContextualAnchorChanged(nil)
+        enqueueContextualAnchorPublication(nil)
         return
       }
       guard
@@ -1618,12 +1706,12 @@ struct MacMarkdownTextView: NSViewRepresentable {
         ),
         let scrollView = textView.enclosingScrollView
       else {
-        onContextualAnchorChanged(nil)
+        enqueueContextualAnchorPublication(nil)
         return
       }
       let visibleRect = scrollView.documentVisibleRect
       let viewport = CGRect(origin: .zero, size: scrollView.contentView.bounds.size)
-      onContextualAnchorChanged(
+      enqueueContextualAnchorPublication(
         MarkdownContextualPopoverAnchorResolver.anchor(
           selection: selection,
           textRect: textRect,
@@ -1631,6 +1719,42 @@ struct MacMarkdownTextView: NSViewRepresentable {
           viewport: viewport
         )
       )
+    }
+
+    func enqueueContextualAnchorPublication(_ anchor: MarkdownContextualPopoverAnchor?) {
+      guard !isContextualAnchorPublicationInvalidated else { return }
+      pendingContextualAnchor = anchor
+      guard contextualAnchorPublicationTask == nil else { return }
+      guard !hasPublishedContextualAnchor || lastPublishedContextualAnchor != anchor else {
+        return
+      }
+      // updateNSView also measures the anchor. Writing its callback into
+      // SwiftUI State inline can leave the current render with the old value.
+      // Deliver once after that update, keeping only the latest geometry,
+      // including a nil that clears an anchor which has left the viewport.
+      contextualAnchorPublicationTask = Task { @MainActor [weak self] in
+        guard !Task.isCancelled, let self,
+          !self.isContextualAnchorPublicationInvalidated
+        else { return }
+        self.contextualAnchorPublicationTask = nil
+        let latest = self.pendingContextualAnchor
+        self.pendingContextualAnchor = nil
+        guard !self.hasPublishedContextualAnchor || self.lastPublishedContextualAnchor != latest
+        else {
+          return
+        }
+        self.hasPublishedContextualAnchor = true
+        self.lastPublishedContextualAnchor = latest
+        self.onContextualAnchorChanged(latest)
+      }
+    }
+
+    func invalidateContextualAnchorPublication() {
+      isContextualAnchorPublicationInvalidated = true
+      contextualAnchorPublicationTask?.cancel()
+      contextualAnchorPublicationTask = nil
+      pendingContextualAnchor = nil
+      onContextualAnchorChanged = { _ in }
     }
 
     private func contextualTextRect(
@@ -1768,7 +1892,8 @@ struct MacMarkdownTextView: NSViewRepresentable {
       guard let textView = notification.object as? NSTextView else { return }
       guard !isApplyingRepresentedText else { return }
       guard !isShowingReadOnlyPresentation else { return }
-      (textView.enclosingScrollView as? MarkdownEditorScrollView)?.invalidateDocumentHeight()
+      (textView.enclosingScrollView as? MarkdownEditorScrollView)?.invalidateDocumentHeight(
+        immediately: true, revealingSelection: true)
       let updatedText = textView.string
       invalidateDocumentEnvelopeCache()
       let previousBodyMarkdown = bodyMarkdown
@@ -1971,9 +2096,10 @@ struct MacMarkdownTextView: NSViewRepresentable {
       {
         readOnlyPresentationSourceSelection = sourceRange
         updateSelectionBinding(from: sourceRange)
-        onContextualAnchorChanged(nil)
+        enqueueContextualAnchorPublication(nil)
         return
       }
+      (textView.enclosingScrollView as? MarkdownEditorScrollView)?.requestSelectionReveal()
       updateSelectionBinding(from: textView.selectedRange())
       publishContextualAnchor(in: textView)
       updateGhostText(ghostText, in: textView)

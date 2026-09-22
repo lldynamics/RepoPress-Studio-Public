@@ -1,3 +1,4 @@
+import PublishingDomainContracts
 import XCTest
 
 @testable import PublishingWorkbenchCore
@@ -739,22 +740,22 @@ final class LocalPublishPreviewServiceTests: XCTestCase {
       atomically: true,
       encoding: .utf8
     )
-    let transaction =
-      [
-        "phase": "applying",
-        "rollbackDirectoryPath": rollbackDirectory.path,
-        "entries": [
-          [
-            "repositoryPath": "content/posts/existing.md",
-            "backupFileName": "0-backup",
-          ]
-        ],
-      ] as [String: Any]
-    let transactionURL = rootURL.appendingPathComponent(
-      ".repopress-local-publish-transaction.json"
+    let service = LocalPublishPreviewService()
+    let transaction = LocalPublishTransaction(
+      phase: .applying,
+      rollbackDirectoryPath: rollbackDirectory.path,
+      entries: [
+        LocalPublishTransactionEntry(
+          repositoryPath: "content/posts/existing.md",
+          backupFileName: "0-backup",
+          originalState: try localPublishFileState(
+            at: rollbackDirectory.appendingPathComponent("0-backup"), fileManager: .default),
+          intendedState: try localPublishFileState(at: destinationURL, fileManager: .default)
+        )
+      ]
     )
-    try JSONSerialization.data(withJSONObject: transaction, options: [.sortedKeys])
-      .write(to: transactionURL, options: .atomic)
+    let transactionURL = service.localPublishTransactionURL(for: rootURL)
+    try JSONEncoder().encode(transaction).write(to: transactionURL, options: .atomic)
 
     let package = publishPackage(files: [
       .init(
@@ -763,7 +764,6 @@ final class LocalPublishPreviewServiceTests: XCTestCase {
         content: "final published content"
       )
     ])
-    let service = LocalPublishPreviewService()
     let preview = service.preview(package: package, rootURL: rootURL)
     XCTAssertTrue(
       preview.issues.contains {
@@ -777,6 +777,220 @@ final class LocalPublishPreviewServiceTests: XCTestCase {
     )
     XCTAssertFalse(FileManager.default.fileExists(atPath: transactionURL.path))
     XCTAssertFalse(FileManager.default.fileExists(atPath: rollbackDirectory.path))
+  }
+
+  func testRecoveryPreservesSaveBetweenValidationAndIsolationOrRestore() throws {
+    for afterIsolation in [false, true] {
+      for originallyExisted in [false, true] {
+        let root = try makeRepositoryFixture()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let target = root.appendingPathComponent("article.md")
+        let archive = root.appendingPathComponent(".repopress-local-publish-rollback-race")
+        try FileManager.default.createDirectory(at: archive, withIntermediateDirectories: true)
+        let backup = archive.appendingPathComponent("0-backup")
+        if originallyExisted { try Data("original".utf8).write(to: backup) }
+        try Data("published".utf8).write(to: target)
+        let service = LocalPublishPreviewService()
+        let journal = service.localPublishTransactionURL(for: root)
+        try service.persistLocalPublishTransaction(
+          LocalPublishTransaction(
+            phase: .applying, rollbackDirectoryPath: archive.path,
+            entries: [
+              .init(
+                repositoryPath: "article.md", backupFileName: originallyExisted ? "0-backup" : nil,
+                originalState: try localPublishFileState(at: backup, fileManager: .default),
+                intendedState: try localPublishFileState(at: target, fileManager: .default)
+              )
+            ]
+          ), at: journal
+        )
+        let externalSave: (URL) throws -> Void = {
+          try Data("concurrent user edit".utf8).write(to: $0, options: .atomic)
+        }
+        do {
+          try service.recoverInterruptedTransaction(
+            at: root,
+            beforeDestinationIsolation: afterIsolation ? nil : externalSave,
+            afterDestinationIsolation: afterIsolation ? externalSave : nil
+          )
+          XCTAssertTrue(afterIsolation && !originallyExisted)
+        } catch {
+          XCTAssertTrue(FileManager.default.fileExists(atPath: journal.path))
+        }
+        XCTAssertEqual(try String(contentsOf: target, encoding: .utf8), "concurrent user edit")
+      }
+    }
+  }
+
+  func testRecoveryKeepsInterruptedIsolationEvidenceEvenWhenTargetLooksRestored() throws {
+    let root = try makeRepositoryFixture()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let archive = root.appendingPathComponent(".repopress-local-publish-rollback-isolated")
+    try FileManager.default.createDirectory(at: archive, withIntermediateDirectories: true)
+    let isolated = archive.appendingPathComponent("recovery-current-interrupted")
+    try Data("unverified user edit".utf8).write(to: isolated)
+    let service = LocalPublishPreviewService()
+    let journal = service.localPublishTransactionURL(for: root)
+    try service.persistLocalPublishTransaction(
+      LocalPublishTransaction(
+        phase: .applying, rollbackDirectoryPath: archive.path,
+        entries: [
+          .init(
+            repositoryPath: "new.md", backupFileName: nil,
+            originalState: .missing, intendedState: .missing
+          )
+        ]
+      ), at: journal
+    )
+    XCTAssertThrowsError(try service.recoverInterruptedTransaction(at: root))
+    XCTAssertEqual(try String(contentsOf: isolated, encoding: .utf8), "unverified user edit")
+    XCTAssertTrue(FileManager.default.fileExists(atPath: journal.path))
+  }
+
+  func testRecoveryPreservesExternalEditsAndKeepsEvidence() throws {
+    for legacy in [false, true] {
+      for originallyExisted in [false, true] {
+        let root = try makeRepositoryFixture()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let target = root.appendingPathComponent("article.md")
+        let archive = root.appendingPathComponent(".repopress-local-publish-rollback-conflict")
+        try FileManager.default.createDirectory(at: archive, withIntermediateDirectories: true)
+        let backup = archive.appendingPathComponent("0-backup")
+        if originallyExisted { try Data("original".utf8).write(to: backup) }
+        try Data("interrupted publish".utf8).write(to: target)
+        let intended = try localPublishFileState(at: target, fileManager: .default)
+        let original = try localPublishFileState(at: backup, fileManager: .default)
+        let service = LocalPublishPreviewService()
+        let journal = service.localPublishTransactionURL(for: root)
+        try JSONEncoder().encode(
+          LocalPublishTransaction(
+            phase: .applying,
+            rollbackDirectoryPath: archive.path,
+            entries: [
+              LocalPublishTransactionEntry(
+                repositoryPath: "article.md",
+                backupFileName: originallyExisted ? "0-backup" : nil,
+                originalState: legacy ? nil : original,
+                intendedState: legacy ? nil : intended
+              )
+            ]
+          )
+        ).write(to: journal)
+        try Data("later user edit".utf8).write(to: target)
+
+        XCTAssertThrowsError(try service.recoverInterruptedTransaction(at: root)) { error in
+          guard case .rollbackConflict = error as? LocalPublishPreviewError else {
+            return XCTFail("Expected a preserved conflict, got \(error)")
+          }
+        }
+        XCTAssertEqual(try String(contentsOf: target, encoding: .utf8), "later user edit")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: journal.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: archive.path))
+      }
+    }
+  }
+
+  func testRecoveryRejectsAllPathsBeforeRestoringAnyAndDetectsBackupChanges() throws {
+    for changedBackup in [false, true] {
+      let root = try makeRepositoryFixture()
+      defer { try? FileManager.default.removeItem(at: root) }
+      let archive = root.appendingPathComponent(".repopress-local-publish-rollback-prevalidate")
+      try FileManager.default.createDirectory(at: archive, withIntermediateDirectories: true)
+      var entries: [LocalPublishTransactionEntry] = []
+      for index in 0..<2 {
+        let target = root.appendingPathComponent("article-\(index).md")
+        let backup = archive.appendingPathComponent("\(index)-backup")
+        try Data("original-\(index)".utf8).write(to: backup)
+        try Data("published-\(index)".utf8).write(to: target)
+        entries.append(
+          LocalPublishTransactionEntry(
+            repositoryPath: target.lastPathComponent,
+            backupFileName: backup.lastPathComponent,
+            originalState: try localPublishFileState(at: backup, fileManager: .default),
+            intendedState: try localPublishFileState(at: target, fileManager: .default)
+          )
+        )
+      }
+      let service = LocalPublishPreviewService()
+      try JSONEncoder().encode(
+        LocalPublishTransaction(
+          phase: .applying, rollbackDirectoryPath: archive.path, entries: entries)
+      ).write(to: service.localPublishTransactionURL(for: root))
+      let conflict =
+        changedBackup
+        ? archive.appendingPathComponent("0-backup") : root.appendingPathComponent("article-0.md")
+      try Data("external edit".utf8).write(to: conflict)
+
+      XCTAssertThrowsError(try service.recoverInterruptedTransaction(at: root))
+      XCTAssertEqual(
+        try String(contentsOf: root.appendingPathComponent("article-1.md"), encoding: .utf8),
+        "published-1")
+      XCTAssertEqual(try String(contentsOf: conflict, encoding: .utf8), "external edit")
+    }
+  }
+
+  func testRecoveryHandlesCreatedDeletedAndAlreadyRestoredFiles() throws {
+    let root = try makeRepositoryFixture()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let archive = root.appendingPathComponent(".repopress-local-publish-rollback-restart")
+    try FileManager.default.createDirectory(at: archive, withIntermediateDirectories: true)
+    var entries: [LocalPublishTransactionEntry] = []
+    for (index, original) in [nil, "deleted original", "already restored"].enumerated() {
+      let target = root.appendingPathComponent("article-\(index).md")
+      let backup = archive.appendingPathComponent("\(index)-backup")
+      if let original { try Data(original.utf8).write(to: backup) }
+      if index != 1 { try Data("published".utf8).write(to: target) }
+      entries.append(
+        LocalPublishTransactionEntry(
+          repositoryPath: target.lastPathComponent,
+          backupFileName: original == nil ? nil : backup.lastPathComponent,
+          originalState: try localPublishFileState(at: backup, fileManager: .default),
+          intendedState: try localPublishFileState(at: target, fileManager: .default)
+        )
+      )
+      if index == 2 { try Data("already restored".utf8).write(to: target) }
+    }
+    let service = LocalPublishPreviewService()
+    let journal = service.localPublishTransactionURL(for: root)
+    try JSONEncoder().encode(
+      LocalPublishTransaction(
+        phase: .applying, rollbackDirectoryPath: archive.path, entries: entries)
+    ).write(to: journal)
+
+    try service.recoverInterruptedTransaction(at: root)
+    try service.recoverInterruptedTransaction(at: root)
+
+    XCTAssertFalse(
+      FileManager.default.fileExists(atPath: root.appendingPathComponent("article-0.md").path))
+    XCTAssertEqual(
+      try String(contentsOf: root.appendingPathComponent("article-1.md"), encoding: .utf8),
+      "deleted original")
+    XCTAssertEqual(
+      try String(contentsOf: root.appendingPathComponent("article-2.md"), encoding: .utf8),
+      "already restored")
+    XCTAssertFalse(FileManager.default.fileExists(atPath: journal.path))
+  }
+
+  func testLegacyRecoveryOnlyCleansUpAlreadyRestoredFiles() throws {
+    let root = try makeRepositoryFixture()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let archive = root.appendingPathComponent(".repopress-local-publish-rollback-legacy")
+    try FileManager.default.createDirectory(at: archive, withIntermediateDirectories: true)
+    try Data("original".utf8).write(to: archive.appendingPathComponent("0-backup"))
+    try Data("original".utf8).write(to: root.appendingPathComponent("article.md"))
+    let service = LocalPublishPreviewService()
+    let journal = service.localPublishTransactionURL(for: root)
+    try JSONEncoder().encode(
+      LocalPublishTransaction(
+        phase: .applying, rollbackDirectoryPath: archive.path,
+        entries: [.init(repositoryPath: "article.md", backupFileName: "0-backup")]
+      )
+    ).write(to: journal)
+    try service.recoverInterruptedTransaction(at: root)
+    XCTAssertEqual(
+      try String(contentsOf: root.appendingPathComponent("article.md"), encoding: .utf8), "original"
+    )
+    XCTAssertFalse(FileManager.default.fileExists(atPath: journal.path))
   }
 
   func testRecoveryPrevalidatesEveryBackupBeforeChangingAnyDestination() throws {

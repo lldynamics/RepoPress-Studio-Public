@@ -1,4 +1,6 @@
 import Foundation
+import PublishingDomainContracts
+import PublishingKnowledgeCore
 
 extension WorkbenchAIStore {
   @discardableResult
@@ -34,7 +36,15 @@ extension WorkbenchAIStore {
     _ suggestion: AIPublishingMetadataSuggestion,
     draft: ArticleDraft
   ) -> ArticleDraft? {
-    var updated = draft
+    guard
+      let currentDraft = currentDraftForAIMetadataApplication(
+        suggestion,
+        requestedDraft: draft
+      )
+    else {
+      return nil
+    }
+    var updated = currentDraft
     var fields: [AIPublishingMetadataField] = []
     var previousTitle: String?
     var newTitle: String?
@@ -103,7 +113,7 @@ extension WorkbenchAIStore {
 
     updated.updatedAt = Date()
     store.updateDraft(updated)
-    removeAIMetadataSuggestion(for: updated.id)
+    consumeAIMetadataSuggestion(suggestion, for: updated)
     aiMetadataApplicationRecords.insert(
       AIPublishingMetadataApplicationRecord(
         siteProfileID: updated.siteProfileID,
@@ -235,110 +245,95 @@ extension WorkbenchAIStore {
     selectedText: String? = nil,
     convergence: AIPublishingActionConvergence? = nil
   ) async -> AIPublishingActionResult? {
+    guard !Task.isCancelled else { return nil }
     guard store.canUseProtectedWorkbench else {
       aiActionMessage = store.quickHideOperationMessage
       return nil
     }
     let effectiveKind = convergence?.canonicalActionKind ?? kind
     let actionName = convergence?.displayName ?? effectiveKind.displayName
-    guard let baseline = await prepareDraftOperationBaseline(for: draft.id) else {
-      aiActionMessage = "找不到要执行 AI 操作的文章。"
-      return nil
-    }
-    let profile = store.profile(for: baseline.draft)
+    let lane: AIGenerationLane =
+      effectiveKind.producesMetadataSuggestion
+      ? .metadata(draft.id) : .action
+    let generation = beginPublishingAIRequest(lane)
+    let knowledgePolicy = aiChatKnowledgePolicy
+    defer { finishAIRequest(lane, generation: generation) }
     do {
-      let token = try aiChatAvailableAPIKey(for: profile)
-      let actionOperationID = beginAIActionOperation()
-      defer { finishAIActionOperation(actionOperationID) }
-      let metadataGeneration = effectiveKind.producesMetadataSuggestion
-        ? beginAIMetadataSuggestionOperation(for: draft.id)
-        : nil
-      defer {
-        if let metadataGeneration {
-          finishAIMetadataSuggestionOperation(
-            for: draft.id,
-            generation: metadataGeneration
+      let result = try await awaitAIRequest(lane, generation: generation) {
+        [self]
+        () async throws -> AIPublishingActionResult? in
+        guard let baseline = await prepareDraftOperationBaseline(for: draft.id) else {
+          if canPresentAIRequest(lane, generation: generation) {
+            aiActionMessage = "找不到要执行 AI 操作的文章。"
+          }
+          return nil
+        }
+        try checkAIRequest(lane, generation: generation)
+        let profile = store.profile(for: baseline.draft)
+        bindAIRequest(lane, baseline: baseline, profile: profile)
+        let token = try aiChatAvailableAPIKey(for: profile)
+        let artifacts = await store.aiPublishingRequestArtifacts(for: baseline.draft)
+        try checkAIRequest(lane, generation: generation)
+        let knowledgeContext = await store.knowledgeContext(
+          query: knowledgeQuery(
+            draft: artifacts.draft,
+            selectedText: selectedText,
+            instruction: actionName
+          ),
+          policy: knowledgePolicy
+        )
+        try await checkPublishingKnowledgeAuthorization(
+          knowledgeContext, policy: knowledgePolicy, lane: lane, generation: generation
+        )
+        let request = AIPublishingActionRequest(
+          kind: effectiveKind,
+          draft: artifacts.draft,
+          profile: artifacts.profile,
+          convergence: convergence,
+          selectedText: selectedText,
+          preflightIssues: artifacts.preflightIssues,
+          publishPackage: artifacts.publishPackage,
+          remoteReviewDraft: artifacts.remoteReviewDraft,
+          workflowContext: artifacts.workflowContext,
+          knowledgeContext: knowledgeContext
+        )
+        let assistant = aiPublishingAssistantService.authorizingNonStreamingRequests {
+          @MainActor [weak self] in
+          guard let self else { throw CancellationError() }
+          try await self.checkPublishingKnowledgeAuthorization(
+            knowledgeContext, policy: knowledgePolicy, lane: lane, generation: generation
           )
         }
-      }
-      let artifacts = await store.aiPublishingRequestArtifacts(for: baseline.draft)
-      let knowledgeContext = await store.knowledge.context(
-        query: knowledgeQuery(
-          draft: artifacts.draft,
-          selectedText: selectedText,
-          instruction: actionName
-        ),
-        policy: aiChatKnowledgePolicy
-      )
-      let request = AIPublishingActionRequest(
-        kind: effectiveKind,
-        draft: artifacts.draft,
-        profile: artifacts.profile,
-        convergence: convergence,
-        selectedText: selectedText,
-        preflightIssues: artifacts.preflightIssues,
-        publishPackage: artifacts.publishPackage,
-        remoteReviewDraft: artifacts.remoteReviewDraft,
-        workflowContext: artifacts.workflowContext,
-        knowledgeContext: knowledgeContext
-      )
-      let assistant = aiPublishingAssistantService
-      let requestConfig = store.aiProviderConfig(for: profile)
-      let requestTask = Task {
-        try await assistant.perform(
+        let requestConfig = store.aiProviderConfig(for: profile)
+        return try await assistant.perform(
           request,
           config: requestConfig,
           apiKey: token
         )
       }
-      if let metadataGeneration {
-        registerAIMetadataSuggestionCancellationHandler(
-          for: draft.id,
-          generation: metadataGeneration
-        ) {
-          requestTask.cancel()
-        }
-      }
-      let requestResult = await withTaskCancellationHandler {
-        await requestTask.result
-      } onCancel: {
-        requestTask.cancel()
-      }
-      let result: AIPublishingActionResult
-      switch requestResult {
-      case .success(let value):
-        result = value
-      case .failure(let error):
-        if error is CancellationError
-          || Task.isCancelled
-          || (metadataGeneration != nil
-            && aiMetadataSuggestionGenerationsByDraftID[draft.id] != metadataGeneration)
-        {
+      guard let result else { return nil }
+      if let suggestion = AIPublishingMetadataActionSuggestionFactory.suggestion(from: result),
+        effectiveKind.producesMetadataSuggestion
+      {
+        guard
+          installAIMetadataSuggestion(
+            suggestion,
+            for: draft.id,
+            generation: generation
+          )
+        else {
           return nil
         }
-        throw error
       }
-      aiActionResult = result
-      if let suggestion = AIPublishingMetadataActionSuggestionFactory.suggestion(from: result),
-        let metadataGeneration
-      {
-        guard draftOperationStillMatches(baseline, profile: profile) else {
-          aiActionMessage = "文章在 AI 建议生成期间发生变化，元数据建议未安装。"
-          return result
-        }
-        guard installAIMetadataSuggestion(
-          suggestion,
-          for: draft.id,
-          generation: metadataGeneration
-        ) else {
-          aiActionMessage = "文章的较新 AI 建议已生成，当前结果已丢弃。"
-          return result
-        }
+      if canPresentAIRequest(lane, generation: generation) {
+        aiActionResult = result
+        aiActionMessage = "\(actionName)完成。"
       }
-      aiActionMessage = "\(actionName)完成。"
       return result
     } catch {
-      aiActionMessage = "\(actionName)失败：\(error.localizedDescription)"
+      if !(error is CancellationError), canPresentAIRequest(lane, generation: generation) {
+        aiActionMessage = "\(actionName)失败：\(error.localizedDescription)"
+      }
       return nil
     }
   }
@@ -365,6 +360,24 @@ extension WorkbenchAIStore {
     )
   }
 
+  public func translateRSSTitles(
+    _ titles: [RSSArticleTranslationTextRequest],
+    target: RSSArticleTranslationTarget
+  ) async throws -> [String: String] {
+    guard store.canUseProtectedWorkbench else {
+      throw RSSArticleTranslationError.protectedWorkbenchUnavailable
+    }
+    let profile = store.activeProfile
+    let config = store.aiProviderConfig(for: profile)
+    let apiKey = try aiChatAvailableAPIKey(for: profile)
+    return try await aiPublishingAssistantService.translateRSSTitles(
+      titles,
+      target: target,
+      config: config,
+      apiKey: apiKey
+    )
+  }
+
   @discardableResult
   public func performAIAction(
     _ convergence: AIPublishingActionConvergence,
@@ -383,81 +396,72 @@ extension WorkbenchAIStore {
   public func generateAIMetadataSuggestions(
     draft: ArticleDraft
   ) async -> AIPublishingMetadataSuggestion? {
+    guard !Task.isCancelled else { return nil }
     guard store.canUseProtectedWorkbench else {
       aiActionMessage = store.quickHideOperationMessage
       return nil
     }
-    guard let baseline = await prepareDraftOperationBaseline(for: draft.id) else {
-      aiActionMessage = "找不到要生成 AI 建议的文章。"
-      return nil
-    }
-    let profile = store.profile(for: baseline.draft)
+    let lane = AIGenerationLane.metadata(draft.id)
+    let generation = beginAIRequest(lane)
+    let knowledgePolicy = aiChatKnowledgePolicy
+    defer { finishAIRequest(lane, generation: generation) }
     do {
-      let token = try aiChatAvailableAPIKey(for: profile)
-      let generation = beginAIMetadataSuggestionOperation(for: draft.id)
-      defer {
-        finishAIMetadataSuggestionOperation(for: draft.id, generation: generation)
-      }
-      let artifacts = await store.aiPublishingRequestArtifacts(for: baseline.draft)
-      let knowledgeContext = await store.knowledge.context(
-        query: knowledgeQuery(draft: artifacts.draft, instruction: "标题 摘要 标签 元数据"),
-        policy: aiChatKnowledgePolicy
-      )
-      let request = AIPublishingActionRequest(
-        kind: .draftFrontMatterPack,
-        draft: artifacts.draft,
-        profile: artifacts.profile,
-        preflightIssues: artifacts.preflightIssues,
-        publishPackage: artifacts.publishPackage,
-        remoteReviewDraft: artifacts.remoteReviewDraft,
-        workflowContext: artifacts.workflowContext,
-        knowledgeContext: knowledgeContext
-      )
-      let assistant = aiPublishingAssistantService
-      let requestConfig = store.aiProviderConfig(for: profile)
-      let requestTask = Task {
-        try await assistant.suggestMetadata(
+      let suggestion = try await awaitAIRequest(lane, generation: generation) {
+        [self]
+        () async throws -> AIPublishingMetadataSuggestion? in
+        guard let baseline = await prepareDraftOperationBaseline(for: draft.id) else {
+          if canPresentAIRequest(lane, generation: generation) {
+            aiActionMessage = "找不到要生成 AI 建议的文章。"
+          }
+          return nil
+        }
+        try checkAIRequest(lane, generation: generation)
+        let profile = store.profile(for: baseline.draft)
+        bindAIRequest(lane, baseline: baseline, profile: profile)
+        let token = try aiChatAvailableAPIKey(for: profile)
+        let artifacts = await store.aiPublishingRequestArtifacts(for: baseline.draft)
+        try checkAIRequest(lane, generation: generation)
+        let knowledgeContext = await store.knowledgeContext(
+          query: knowledgeQuery(draft: artifacts.draft, instruction: "标题 摘要 标签 元数据"),
+          policy: knowledgePolicy
+        )
+        try await checkPublishingKnowledgeAuthorization(
+          knowledgeContext, policy: knowledgePolicy, lane: lane, generation: generation
+        )
+        let request = AIPublishingActionRequest(
+          kind: .draftFrontMatterPack,
+          draft: artifacts.draft,
+          profile: artifacts.profile,
+          preflightIssues: artifacts.preflightIssues,
+          publishPackage: artifacts.publishPackage,
+          remoteReviewDraft: artifacts.remoteReviewDraft,
+          workflowContext: artifacts.workflowContext,
+          knowledgeContext: knowledgeContext
+        )
+        let assistant = aiPublishingAssistantService.authorizingNonStreamingRequests {
+          @MainActor [weak self] in
+          guard let self else { throw CancellationError() }
+          try await self.checkPublishingKnowledgeAuthorization(
+            knowledgeContext, policy: knowledgePolicy, lane: lane, generation: generation
+          )
+        }
+        return try await assistant.suggestMetadata(
           for: request,
-          config: requestConfig,
+          config: store.aiProviderConfig(for: profile),
           apiKey: token
         )
       }
-      registerAIMetadataSuggestionCancellationHandler(
-        for: draft.id,
-        generation: generation
-      ) {
-        requestTask.cancel()
+      guard let suggestion,
+        installAIMetadataSuggestion(suggestion, for: draft.id, generation: generation)
+      else { return nil }
+      if canPresentAIRequest(lane, generation: generation) {
+        aiActionMessage = "AI 元数据建议已生成。"
       }
-      let requestResult = await withTaskCancellationHandler {
-        await requestTask.result
-      } onCancel: {
-        requestTask.cancel()
-      }
-      let suggestion: AIPublishingMetadataSuggestion
-      switch requestResult {
-      case .success(let value):
-        suggestion = value
-      case .failure(let error):
-        if error is CancellationError
-          || Task.isCancelled
-          || aiMetadataSuggestionGenerationsByDraftID[draft.id] != generation
-        {
-          return nil
-        }
-        throw error
-      }
-      guard draftOperationStillMatches(baseline, profile: profile) else {
-        aiActionMessage = "文章在 AI 建议生成期间发生变化，结果已丢弃。"
-        return nil
-      }
-      guard installAIMetadataSuggestion(suggestion, for: draft.id, generation: generation) else {
-        aiActionMessage = "文章的较新 AI 建议已生成，当前结果已丢弃。"
-        return nil
-      }
-      aiActionMessage = "AI 元数据建议已生成。"
       return suggestion
     } catch {
-      aiActionMessage = "AI 元数据建议生成失败：\(error.localizedDescription)"
+      if !(error is CancellationError), canPresentAIRequest(lane, generation: generation) {
+        aiActionMessage = "AI 元数据建议生成失败：\(error.localizedDescription)"
+      }
       return nil
     }
   }
@@ -473,121 +477,100 @@ extension WorkbenchAIStore {
   public func generateAIImageTextSuggestions(draft: ArticleDraft) async
     -> [AIPublishingImageTextSuggestion]
   {
+    guard !Task.isCancelled else { return [] }
     guard store.canUseProtectedWorkbench else {
       aiActionMessage = store.quickHideOperationMessage
       store.setImageActionMessage(store.quickHideOperationMessage)
       return []
     }
-    guard let baseline = await prepareDraftOperationBaseline(for: draft.id) else {
-      aiActionMessage = "找不到要生成图片文案的文章。"
-      store.setImageActionMessage(aiActionMessage)
-      return []
-    }
-    let requestDraft = baseline.draft
-    let profile = store.profile(for: requestDraft)
-    let report = store.imageWorkbenchReport(for: requestDraft)
-    let targets = imageWorkbenchService.imageTextTargets(
-      draft: requestDraft, profile: profile, report: report)
-    guard !targets.isEmpty else {
-      aiActionMessage = "当前文章没有需要补全 alt/caption 的图片。"
-      store.setImageActionMessage(aiActionMessage)
-      return []
-    }
+    let lane = AIGenerationLane.imageText(draft.id)
+    let generation = beginAIRequest(lane)
+    defer { finishAIRequest(lane, generation: generation) }
     do {
-      let token = try aiChatAvailableAPIKey(for: profile)
-      let generation = beginAIImageTextSuggestionOperation(for: draft.id)
-      defer {
-        finishAIImageTextSuggestionOperation(for: draft.id, generation: generation)
-      }
-      let visionCandidates = Array(
-        targets
-          .prefix(AIPublishingChatImageAttachmentPresentation.maxSelectedImageCount)
-          .compactMap { target -> (String, DraftAttachment)? in
-            guard
-              let attachment = requestDraft.attachments.first(where: {
-                $0.id == target.attachmentID && $0.mediaKind == .image
-              })
-            else {
-              return nil
-            }
-            return (target.id, attachment)
+      let result = try await awaitAIRequest(lane, generation: generation) {
+        [self]
+        () async throws -> ([AIPublishingImageTextSuggestion], Int)? in
+        guard let baseline = await prepareDraftOperationBaseline(for: draft.id) else {
+          if canPresentAIRequest(lane, generation: generation) {
+            aiActionMessage = "找不到要生成图片文案的文章。"
+            store.setImageActionMessage(aiActionMessage)
           }
-      )
-      let visionInputs: [AIPublishingImageTextVisionInput]
-      if store.aiProviderConfig(for: profile).supportsImageInput {
-        visionInputs = await Task.detached(priority: .userInitiated) {
-          visionCandidates.compactMap { candidate in
-            let (targetID, attachment) = candidate
-            guard let image = AIChatImageAttachmentLoader.load([attachment]).images.first else {
-              return nil
-            }
-            return AIPublishingImageTextVisionInput(
-              targetID: targetID,
-              attachment: image
-            )
+          return nil
+        }
+        try checkAIRequest(lane, generation: generation)
+        let requestDraft = baseline.draft
+        let profile = store.profile(for: requestDraft)
+        bindAIRequest(lane, baseline: baseline, profile: profile)
+        let report = store.imageWorkbenchReport(for: requestDraft)
+        let targets = imageWorkbenchService.imageTextTargets(
+          draft: requestDraft, profile: profile, report: report)
+        guard !targets.isEmpty else {
+          if canPresentAIRequest(lane, generation: generation) {
+            aiActionMessage = "当前文章没有需要补全 alt/caption 的图片。"
+            store.setImageActionMessage(aiActionMessage)
           }
-        }.value
-      } else {
-        visionInputs = []
-      }
-      let assistant = aiPublishingAssistantService
-      let requestConfig = store.aiProviderConfig(for: profile)
-      let requestTask = Task {
-        try await assistant.suggestImageText(
+          return nil
+        }
+        let token = try aiChatAvailableAPIKey(for: profile)
+        let requestConfig = store.aiProviderConfig(for: profile)
+        let visionCandidates = Array(
+          targets
+            .prefix(AIPublishingChatImageAttachmentPresentation.maxSelectedImageCount)
+            .compactMap { target -> (String, DraftAttachment)? in
+              guard
+                let attachment = requestDraft.attachments.first(where: {
+                  $0.id == target.attachmentID && $0.mediaKind == .image
+                })
+              else { return nil }
+              return (target.id, attachment)
+            }
+        )
+        let visionInputs: [AIPublishingImageTextVisionInput]
+        if requestConfig.supportsImageInput {
+          let loader = Task.detached(priority: .userInitiated) {
+            try visionCandidates.compactMap { candidate -> AIPublishingImageTextVisionInput? in
+              try Task.checkCancellation()
+              let (targetID, attachment) = candidate
+              guard let image = AIChatImageAttachmentLoader.load([attachment]).images.first else {
+                return nil
+              }
+              return AIPublishingImageTextVisionInput(targetID: targetID, attachment: image)
+            }
+          }
+          visionInputs = try await withTaskCancellationHandler {
+            try await loader.value
+          } onCancel: {
+            loader.cancel()
+          }
+        } else {
+          visionInputs = []
+        }
+        try checkAIRequest(lane, generation: generation)
+        let suggestions = try await aiPublishingAssistantService.suggestImageText(
           for: targets,
           visionInputs: visionInputs,
           profile: profile,
           config: requestConfig,
           apiKey: token
         )
+        return (suggestions, visionInputs.count)
       }
-      registerAIImageTextSuggestionCancellationHandler(
-        for: draft.id,
-        generation: generation
-      ) {
-        requestTask.cancel()
-      }
-      let requestResult = await withTaskCancellationHandler {
-        await requestTask.result
-      } onCancel: {
-        requestTask.cancel()
-      }
-      let suggestions: [AIPublishingImageTextSuggestion]
-      switch requestResult {
-      case .success(let value):
-        suggestions = value
-      case .failure(let error):
-        if error is CancellationError
-          || Task.isCancelled
-          || aiImageTextSuggestionGenerationsByDraftID[draft.id] != generation
-        {
-          return []
-        }
-        throw error
-      }
-      guard draftOperationStillMatches(baseline, profile: profile) else {
-        aiActionMessage = "文章在图片文案生成期间发生变化，结果已丢弃。"
+      guard let (suggestions, visionCount) = result,
+        installAIImageTextSuggestions(suggestions, for: draft.id, generation: generation)
+      else { return [] }
+      if canPresentAIRequest(lane, generation: generation) {
+        aiActionMessage =
+          visionCount == 0
+          ? "已根据文章上下文生成 \(suggestions.count) 条图片文案建议。"
+          : "已实际分析 \(visionCount) 张图片，生成 \(suggestions.count) 条图片文案建议。"
         store.setImageActionMessage(aiActionMessage)
-        return []
       }
-      guard installAIImageTextSuggestions(
-        suggestions,
-        for: draft.id,
-        generation: generation
-      ) else {
-        aiActionMessage = "文章的较新图片文案已生成，当前结果已丢弃。"
-        store.setImageActionMessage(aiActionMessage)
-        return []
-      }
-      aiActionMessage =
-        visionInputs.isEmpty
-        ? "已根据文章上下文生成 \(suggestions.count) 条图片文案建议。"
-        : "已实际分析 \(visionInputs.count) 张图片，生成 \(suggestions.count) 条图片文案建议。"
-      store.setImageActionMessage(aiActionMessage)
       return suggestions
     } catch {
-      aiActionMessage = "图片文案生成失败：\(error.localizedDescription)"
-      store.setImageActionMessage(aiActionMessage)
+      if !(error is CancellationError), canPresentAIRequest(lane, generation: generation) {
+        aiActionMessage = "图片文案生成失败：\(error.localizedDescription)"
+        store.setImageActionMessage(aiActionMessage)
+      }
       return []
     }
   }
@@ -599,10 +582,12 @@ extension WorkbenchAIStore {
   public func applyAIImageTextSuggestions(_ suggestions: [AIPublishingImageTextSuggestion]) {
     guard let draftID = suggestions.first?.draftID,
       !suggestions.isEmpty,
-      suggestions.allSatisfy({ $0.draftID == draftID }),
-      let draft = store.drafts.first(where: { $0.id == draftID })
+      suggestions.allSatisfy({ $0.draftID == draftID })
     else {
       aiActionMessage = "找不到要应用图片文案的文章。"
+      return
+    }
+    guard let draft = currentDraftForAIImageTextApplication(suggestions, draftID: draftID) else {
       return
     }
     let result = imageWorkbenchService.applyImageTextSuggestions(suggestions, to: draft)

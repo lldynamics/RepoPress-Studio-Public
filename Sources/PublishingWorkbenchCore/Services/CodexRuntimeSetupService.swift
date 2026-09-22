@@ -1,4 +1,5 @@
 import Foundation
+import PublishingAICore
 
 /// Installation always follows the existing package manager. Unknown/custom
 /// installations remain user-managed, rather than silently creating a second CLI.

@@ -1,6 +1,6 @@
 import XCTest
 
-@testable import PublishingWorkbenchCore
+@testable import PublishingKnowledgeCore
 
 #if DEBUG
   @MainActor

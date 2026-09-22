@@ -1,4 +1,5 @@
 import Foundation
+import PublishingDomainContracts
 
 @MainActor
 final class AIChatOperationCoordinator {

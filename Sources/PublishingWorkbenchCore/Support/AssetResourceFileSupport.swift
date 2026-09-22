@@ -1,4 +1,5 @@
 import Foundation
+import PublishingCoreSupport
 
 /// File types that the asset manager is allowed to inspect inside a site's
 /// configured asset root. The list intentionally stays bounded so a source

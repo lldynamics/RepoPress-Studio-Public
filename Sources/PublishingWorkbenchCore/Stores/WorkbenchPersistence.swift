@@ -3,6 +3,7 @@ import Foundation
 /// synchronous default for source compatibility.
 public struct WorkbenchPersistence: Sendable {
   public var fileURL: URL
+  let baseline = WorkbenchPersistenceBaseline()
 
   public init(fileURL: URL? = nil) {
     if let fileURL {
@@ -23,6 +24,25 @@ public struct WorkbenchPersistence: Sendable {
   }
 
   public func loadWithRecovery() throws -> WorkbenchSnapshotLoadResult {
+    if !FileManager.default.fileExists(atPath: fileURL.path),
+      !FileManager.default.fileExists(atPath: lastKnownGoodURL.path)
+    {
+      // Loading a new workspace must not require a writable parent. A writer
+      // racing this read is detected by the missing baseline at commit time.
+      baseline.observe("missing", for: fileURL.path)
+      return WorkbenchSnapshotLoadResult(snapshot: nil)
+    }
+    return try withRecordFileLock {
+      // Retain the observed revision even when the payload is corrupt, so an
+      // explicitly requested recovery still detects a concurrent writer.
+      let version = try currentStorageVersion()
+      baseline.observe(version, for: fileURL.path)
+      let result = try loadWithRecoveryUnlocked()
+      return result
+    }
+  }
+
+  func loadWithRecoveryUnlocked() throws -> WorkbenchSnapshotLoadResult {
     guard FileManager.default.fileExists(atPath: fileURL.path) else {
       guard FileManager.default.fileExists(atPath: lastKnownGoodURL.path) else {
         return WorkbenchSnapshotLoadResult(snapshot: nil)
@@ -34,6 +54,8 @@ public struct WorkbenchPersistence: Sendable {
           snapshot: snapshot,
           recoveryMessage: "工作台数据文件缺失，已从上次有效备份恢复。"
         )
+      } catch WorkbenchRecordStorageError.unsupportedVersion(let message) {
+        throw WorkbenchRecordStorageError.unsupportedVersion(message)
       } catch {
         throw WorkbenchPersistenceError.unrecoverableSnapshot(
           primary: "主工作台数据文件不存在。",
@@ -44,6 +66,8 @@ public struct WorkbenchPersistence: Sendable {
 
     do {
       return WorkbenchSnapshotLoadResult(snapshot: try decodeValidatedSnapshot(at: fileURL))
+    } catch WorkbenchRecordStorageError.unsupportedVersion(let message) {
+      throw WorkbenchRecordStorageError.unsupportedVersion(message)
     } catch {
       let primaryError = error.localizedDescription
       guard FileManager.default.fileExists(atPath: lastKnownGoodURL.path) else {
@@ -56,6 +80,8 @@ public struct WorkbenchPersistence: Sendable {
           snapshot: snapshot,
           recoveryMessage: "工作台数据文件损坏，已从上次有效备份恢复。原始文件保留在原处。"
         )
+      } catch WorkbenchRecordStorageError.unsupportedVersion(let message) {
+        throw WorkbenchRecordStorageError.unsupportedVersion(message)
       } catch {
         throw WorkbenchPersistenceError.unrecoverableSnapshot(
           primary: primaryError,
@@ -70,7 +96,7 @@ public struct WorkbenchPersistence: Sendable {
     reclaimUnreferencedAttachments _: Bool = true
   ) throws -> WorkbenchPreparedPersistenceSave {
     return WorkbenchPreparedPersistenceSave(
-      data: try JSONEncoder.workbench.encode(snapshot),
+      records: try WorkbenchRecordPayload(snapshot: snapshot),
       retiredFeatureArchives: try retiredFeatureArchivesFromPersistedSnapshots()
     )
   }
@@ -78,62 +104,11 @@ public struct WorkbenchPersistence: Sendable {
   public func commit(_ preparedSave: WorkbenchPreparedPersistenceSave) throws
     -> WorkbenchPersistenceSaveResult
   {
-    let fileManager = FileManager.default
-    try fileManager.createDirectory(
-      at: fileURL.deletingLastPathComponent(),
-      withIntermediateDirectories: true
-    )
-    let data = preparedSave.data
-    try validateSnapshotData(data)
-
-    let previousPrimaryExisted = fileManager.fileExists(atPath: fileURL.path)
-    let previousPrimaryData: Data?
-    let previousPrimaryWarning: String?
-    if previousPrimaryExisted {
-      do {
-        let previousData = try Data(contentsOf: fileURL, options: .mappedIfSafe)
-        try validateSnapshotData(previousData)
-        previousPrimaryData = previousData
-        previousPrimaryWarning = nil
-      } catch {
-        previousPrimaryData = nil
-        previousPrimaryWarning = "保存前的主快照无法验证：\(error.localizedDescription)"
-      }
-    } else {
-      previousPrimaryData = nil
-      previousPrimaryWarning = nil
-    }
-
-    try persistRetiredFeatureArchives(preparedSave.retiredFeatureArchives)
-    try data.write(to: fileURL, options: [.atomic])
-
-    do {
-      if let previousPrimaryData {
-        try previousPrimaryData.write(to: lastKnownGoodURL, options: [.atomic])
-      } else if !previousPrimaryExisted
-        || !fileManager.fileExists(atPath: lastKnownGoodURL.path)
-      {
-        try data.write(to: lastKnownGoodURL, options: [.atomic])
-      }
-      if let previousPrimaryWarning {
-        return .savedWithoutBackup(
-          "\(previousPrimaryWarning)；新主快照已保存，已有恢复点未被覆盖。"
-        )
-      }
-      return .saved
-    } catch {
-      // The primary write succeeded. Surface the degraded recovery guarantee
-      // instead of incorrectly reporting an unsaved document.
-      return .savedWithoutBackup(error.localizedDescription)
-    }
+    try commitRecords(preparedSave.records, retiredArchives: preparedSave.retiredFeatureArchives)
   }
 
   private func decodeValidatedSnapshot(at url: URL) throws -> WorkbenchSnapshot {
-    let data = try BoundedFileReader.data(
-      at: url,
-      maximumByteCount: WorkbenchFileReadLimits.maximumRecoverySnapshotByteCount
-    )
-    return try decodeValidatedSnapshot(from: data)
+    try loadStoredSnapshot(at: url)
   }
 
   @discardableResult

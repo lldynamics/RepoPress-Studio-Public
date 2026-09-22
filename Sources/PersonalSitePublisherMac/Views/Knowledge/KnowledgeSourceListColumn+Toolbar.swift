@@ -7,8 +7,10 @@ extension KnowledgeSourceListColumn {
       if searchText.trimmedForPublishing.isEmpty {
         Text("\(listPresentation.documentRows.count) 条")
       } else {
-        Text("\(listPresentation.searchGroups.count) 篇 · \(listPresentation.searchResults.count) 片段")
-          .monospacedDigit()
+        Text(
+          "\(listPresentation.searchGroups.count) 篇 · \(listPresentation.searchResults.count) 片段"
+        )
+        .monospacedDigit()
       }
     } actions: {
       Menu {
@@ -68,8 +70,6 @@ extension KnowledgeSourceListColumn {
   @ViewBuilder
   var knowledgeInsertionActions: some View {
     VStack(alignment: .leading, spacing: 8) {
-      KnowledgeWritingContextView(store: store)
-
       if let document = knowledge.selectedDocument {
         HStack(spacing: 8) {
           if document.kind == .image {
@@ -107,7 +107,9 @@ extension KnowledgeSourceListColumn {
             }
             .workbenchProminentActionStyle()
             .controlSize(.small)
-            .disabled(knowledge.selectedDocumentText.trimmedForPublishing.isEmpty || knowledge.isBusy)
+            .disabled(
+              knowledge.selectedDocumentText.trimmedForPublishing.isEmpty || knowledge.isBusy
+            )
             .help("将当前资料正文插入正在编辑的文章")
             .accessibilityIdentifier("knowledge-insert-current-article")
           }
@@ -129,6 +131,8 @@ extension KnowledgeSourceListColumn {
           .accessibilityIdentifier("knowledge-insert-citation")
 
           Spacer(minLength: 0)
+
+          KnowledgeWritingContextView(store: store, presentation: .menu)
         }
         .padding(.horizontal, WorkspaceSidebarMetrics.horizontalPadding)
         .padding(.vertical, 8)
@@ -150,7 +154,9 @@ extension KnowledgeSourceListColumn {
           .textFieldStyle(.plain)
           .focused($isSearchFocused)
           .onChange(of: searchText) { _, value in
-            knowledge.updateSearchText(value)
+            if knowledge.searchText != value {
+              knowledge.updateSearchText(value)
+            }
           }
           .accessibilityLabel("搜索资料全文")
           .accessibilityIdentifier("knowledge-source-search")
@@ -241,7 +247,8 @@ extension KnowledgeSourceListColumn {
         ScrollView(.horizontal, showsIndicators: true) {
           HStack(spacing: 5) {
             if knowledge.searchFilter.scope == .currentCollection,
-               knowledge.folderScope != .all {
+              knowledge.folderScope != .all
+            {
               filterChip(selectedFolderTitle) {
                 knowledge.setFolderScope(.all)
               }
@@ -268,7 +275,8 @@ extension KnowledgeSourceListColumn {
   @ViewBuilder
   private var savedCollectionRuleBar: some View {
     if case .savedCollection(let collection) = knowledge.folderScope,
-       !collection.rules.isEmpty {
+      !collection.rules.isEmpty
+    {
       ScrollView(.horizontal, showsIndicators: true) {
         HStack(spacing: 5) {
           ForEach(collection.rules, id: \.id) { rule in
@@ -315,7 +323,8 @@ extension KnowledgeSourceListColumn {
 
   private var searchScopeTitle: String {
     if knowledge.searchFilter.scope == .currentCollection,
-       knowledge.folderScope != .all {
+      knowledge.folderScope != .all
+    {
       return selectedFolderTitle
     }
     return knowledge.searchFilter.scope.localizedDisplayName

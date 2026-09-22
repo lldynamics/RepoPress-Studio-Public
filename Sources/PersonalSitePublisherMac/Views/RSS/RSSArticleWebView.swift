@@ -1,6 +1,7 @@
 import AppKit
 import CryptoKit
 import Foundation
+import PublishingKnowledgeCore
 import PublishingWorkbenchCore
 import SwiftUI
 import WebKit

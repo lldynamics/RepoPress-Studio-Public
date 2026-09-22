@@ -88,7 +88,7 @@ public final class WorkbenchMarkdownEditorFeatureFacade: ObservableObject {
     // may be shared by the publishing store, but an unrelated draft changing
     // cannot produce an editor facade event after this projection is compared.
     observeValue(
-      store.publishingStore.$drafts
+      store.publishingStore.documents.$drafts
         .map { [weak self] drafts in
           self?.trackedDraftMetadataProjection(in: drafts)
         }
@@ -114,7 +114,7 @@ public final class WorkbenchMarkdownEditorFeatureFacade: ObservableObject {
           return activeProfileID
         }
     )
-    observeValue(store.publishingStore.$customMarkdownSnippets)
+    observeValue(store.publishingStore.documents.$customMarkdownSnippets)
     observeValue(
       store.publishingStore.$editorFocusRequest
         .map { [weak self] request -> EditorFocusRequest? in
@@ -290,7 +290,7 @@ public final class WorkbenchMarkdownEditorSaveStatusFeatureFacade: ObservableObj
       }
       .store(in: &cancellables)
 
-    store.publishingStore.$drafts
+    store.publishingStore.documents.$drafts
       .map { [weak self] drafts -> WorkbenchMarkdownEditorSaveDraftContext? in
         guard let self else { return nil }
         guard let draft = drafts.first(where: { $0.id == self.trackedDraftID }) else {
@@ -395,7 +395,14 @@ public final class WorkbenchMarkdownEditorSaveStatusFeatureFacade: ObservableObj
       _ = store.saveCurrentStateSynchronously()
     case .project:
       guard case .some(.failed) = store.siteDraftFileSaveStates[trackedDraftID] else { return }
-      store.scheduleSiteDraftFileAutosave(for: draft, immediate: true)
+      let draftID = draft.id
+      store.flushDraftBodyEditorBuffer(for: draftID)
+      // Automatic saves deliberately leave known failures alone. An explicit
+      // retry must revalidate the project file, using the article selected when
+      // the user clicked rather than whichever article this facade tracks later.
+      Task { [weak store] in
+        _ = await store?.writeSiteDraftToProject(draftID: draftID)
+      }
     }
   }
 

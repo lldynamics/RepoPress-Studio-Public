@@ -30,8 +30,11 @@ final class MarkdownEditorScrollView: NSScrollView {
     let viewportOriginY: CGFloat
   }
 
+  private var previousViewportSize: NSSize?
   private var cachedLayoutWidth: CGFloat = 0
   private var cachedTextHeight: CGFloat?
+  private var selectionToKeepVisible: NSRange?
+  private var selectionRevealUsesCachedLayout = false
   private var heightInvalidationWorkItem: DispatchWorkItem?
   private var liveResizeSession: LiveResizeSession?
   private var pendingLiveResizeAnchor: MarkdownEditorViewportAnchor?
@@ -106,6 +109,21 @@ final class MarkdownEditorScrollView: NSScrollView {
 
   override func viewDidMoveToWindow() {
     super.viewDidMoveToWindow()
+    NotificationCenter.default.removeObserver(
+      self, name: NSScrollView.willStartLiveScrollNotification, object: self)
+    NotificationCenter.default.removeObserver(
+      self, name: NSWindow.didResignKeyNotification, object: nil)
+    cancelPendingSelectionReveal()
+    if let window {
+      NotificationCenter.default.addObserver(
+        self, selector: #selector(cancelSelectionRevealForUserInteraction(_:)),
+        name: NSScrollView.willStartLiveScrollNotification, object: self
+      )
+      NotificationCenter.default.addObserver(
+        self, selector: #selector(cancelSelectionRevealForUserInteraction(_:)),
+        name: NSWindow.didResignKeyNotification, object: window
+      )
+    }
     #if DEBUG || SCREENSHOT_CAPTURE_BUILD
       if window == nil {
         stopPerformanceAutoScroll()
@@ -121,6 +139,7 @@ final class MarkdownEditorScrollView: NSScrollView {
   /// window drag avoids doing that full reflow for every pointer update.
   override func viewWillStartLiveResize() {
     super.viewWillStartLiveResize()
+    cancelPendingSelectionReveal()
     cancelDeferredFrameReflow()
     let textView = documentView as? NSTextView
     let text = textView?.string ?? ""
@@ -161,7 +180,14 @@ final class MarkdownEditorScrollView: NSScrollView {
     layoutSubtreeIfNeeded()
   }
 
-  func invalidateDocumentHeight(immediately: Bool = false) {
+  func invalidateDocumentHeight(
+    immediately: Bool = false,
+    revealingSelection: Bool = false
+  ) {
+    selectionRevealUsesCachedLayout = false
+    if revealingSelection {
+      selectionToKeepVisible = (documentView as? NSTextView)?.selectedRange()
+    }
     cancelDeferredFrameReflow()
     requiresImmediateReflow = true
     heightInvalidationWorkItem?.cancel()
@@ -179,7 +205,59 @@ final class MarkdownEditorScrollView: NSScrollView {
     DispatchQueue.main.asyncAfter(deadline: .now() + 0.075, execute: workItem)
   }
 
+  /// Keeps the measured document height only for a selection that TextKit has
+  /// already laid out in the current viewport. An offscreen or unknown caret
+  /// still uses the full reflow path so its document geometry is exact before
+  /// AppKit scrolls it into view.
+  func requestSelectionReveal() {
+    guard let textView = documentView as? NSTextView else { return }
+    let selection = textView.selectedRange()
+    guard
+      cachedTextHeight != nil,
+      let visibleSelection = MarkdownTextKit2RangeAdapter.visibleGeometryRange(
+        for: selection,
+        in: textView
+      ),
+      NSEqualRanges(visibleSelection, selection)
+    else {
+      invalidateDocumentHeight(immediately: true, revealingSelection: true)
+      return
+    }
+    selectionToKeepVisible = selection
+    selectionRevealUsesCachedLayout = true
+    needsLayout = true
+  }
+
+  var cachedDocumentHeightForTesting: CGFloat? {
+    cachedTextHeight
+  }
+
+  func cancelPendingSelectionReveal() {
+    selectionToKeepVisible = nil
+    selectionRevealUsesCachedLayout = false
+  }
+
+  @objc private func cancelSelectionRevealForUserInteraction(_ notification: Notification) {
+    cancelPendingSelectionReveal()
+  }
+
+  override func scrollWheel(with event: NSEvent) {
+    // Legacy wheel events need not begin a live-scroll notification sequence.
+    cancelPendingSelectionReveal()
+    super.scrollWheel(with: event)
+  }
+
   override func layout() {
+    // AppKit may scroll before our frame reflow, and attachment painting can
+    // invalidate height again later. Keep the active selection visible across
+    // those passes until an explicit user scroll or focus change supersedes it.
+    // Clip-origin changes alone also include AppKit's own caret reveal.
+    let textViewForSelection = documentView as? NSTextView
+    if window?.isKeyWindow != true || window?.firstResponder !== textViewForSelection
+      || selectionToKeepVisible != textViewForSelection?.selectedRange()
+    {
+      cancelPendingSelectionReveal()
+    }
     let nextBodyWidth = min(preferredBodyWidth, max(contentSize.width - 32, 1))
     let defersWidthChangeForLiveResize = liveResizeSession != nil
     let normalViewportAnchor =
@@ -193,6 +271,13 @@ final class MarkdownEditorScrollView: NSScrollView {
     super.layout()
     guard let textView = documentView as? NSTextView else { return }
 
+    let viewportSizeChanged = previousViewportSize != contentSize
+    previousViewportSize = contentSize
+    // Banners and toolbars can shrink the viewport while cached document
+    // geometry remains valid. The caret still needs a reveal in that case.
+    let shouldRevealSelection =
+      selectionToKeepVisible != nil
+      && (cachedTextHeight == nil || viewportSizeChanged || selectionRevealUsesCachedLayout)
     let contentHeight = contentSize.height
     let contentWidth = max(contentSize.width, 1)
     let availableBodyWidth = max(contentWidth - 32, 1)
@@ -264,6 +349,15 @@ final class MarkdownEditorScrollView: NSScrollView {
       : nil
     let textHeight =
       textView.textLayoutManager.map { textLayoutManager in
+        if shouldRevealSelection {
+          let selection = textView.selectedRange()
+          let length = (textView.string as NSString).length
+          let location = min(max(0, selection.location - 1), max(0, length - 1))
+          let caretRange = NSRange(location: location, length: min(1, length))
+          if let range = MarkdownTextKit2RangeAdapter.textRange(for: caretRange, in: textView) {
+            textLayoutManager.ensureLayout(for: range)
+          }
+        }
         if let cachedTextHeight {
           return cachedTextHeight
         }
@@ -316,6 +410,13 @@ final class MarkdownEditorScrollView: NSScrollView {
       let targetY = foldedPrefixHeight == 0 ? 0 : max(origin.y, foldedPrefixHeight)
       contentView.scroll(to: NSPoint(x: origin.x, y: targetY))
       reflectScrolledClipView(contentView)
+    }
+    if shouldRevealSelection, textView.isEditable {
+      textView.scrollRangeToVisible(textView.selectedRange())
+      // A cache-preserving selection reveal is a one-shot request. Retain the
+      // selection for a later actual reflow, but do not take the viewport back
+      // from subsequent user scrolling or ordinary cached layout passes.
+      selectionRevealUsesCachedLayout = false
     }
     #if DEBUG || SCREENSHOT_CAPTURE_BUILD
       schedulePerformanceInteractionIfNeeded()

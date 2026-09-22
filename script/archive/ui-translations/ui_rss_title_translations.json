@@ -1,0 +1,8 @@
+{
+  "只翻译当前已加载列表中的标题；仅在已允许 AI 发送权限时使用，不会发送正文。": "Translate only titles in the loaded list, subject to AI sharing permissions. Article bodies are not sent.",
+  "只翻译当前已加载列表中的标题；需要已安装对应语言包，不会自动下载。": "Translate only titles in the loaded list. Requires installed language packs; packs are not downloaded automatically.",
+  "正在翻译列表标题…": "Translating list titles…",
+  "自动翻译列表标题": "Automatically translate list titles",
+  "部分标题未翻译，已保留原文": "Some titles could not be translated; originals are shown",
+  "重试翻译列表标题": "Retry list title translation"
+}

@@ -189,12 +189,6 @@ extension AIChatContextInspectorView {
       createTranslationDraft: { plan in
         _ = ai.createLinkedTranslationDraft(from: plan)
       },
-      localFeedbackDecision: { message in
-        ai.localFeedbackDecision(for: message)
-      },
-      recordLocalFeedback: { decision, message in
-        ai.recordLocalFeedback(decision, for: message)
-      },
       executeAutomationPlan: { conversationID, messageID in
         Task {
           _ = await ai.executeAutomationPlan(

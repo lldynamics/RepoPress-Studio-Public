@@ -139,6 +139,8 @@ def main() -> int:
             f"missing={sorted(expected_tooling_ids - tooling_ids)}, "
             f"unexpected={sorted(tooling_ids - expected_tooling_ids)}"
         )
+    if "build-version-tests" not in tooling_ids:
+        fail("version behavior tests must remain in tooling mode")
     included_excluded_ids = quick_ids & EXCLUDED_QUICK_IDS
     if included_excluded_ids:
         fail(f"quick selection retains tooling checks: {sorted(included_excluded_ids)}")

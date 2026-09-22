@@ -1,7 +1,8 @@
 import Foundation
 import SQLite3
 import XCTest
-@testable import PublishingWorkbenchCore
+
+@testable import PublishingKnowledgeCore
 
 final class KnowledgeDatabaseCompatibilityTests: XCTestCase {
   func testVersion4DatabaseMigratesManagementTablesAtomically() throws {

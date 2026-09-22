@@ -374,24 +374,40 @@ def signpost_rows(
     native_projection: bool = False,
     native_attachment_count: int = 12,
     native_image_count: int = 4,
+    drawings_attachment_count: int = 0,
+    attachment_duration_ns: int = 1_000_000,
+    block_marker_drawings_count: int = 1,
+    drawings_start_offset_ns: int = 150_000_000,
+    unpaired_drawings_count: int = 0,
+    scenario: str = "markdown-scroll",
 ):
+    is_typing = scenario == "markdown-typing"
+    interaction_name = "AutoTyping" if is_typing else "AutoScroll"
+    interaction_message = (
+        "documentLength: 1000 requestedEdits: 5"
+        if is_typing
+        else "documentLength: 1000 pattern: ping-pong cycles: 1"
+    )
+    completion_message = (
+        "completedEdits: 5" if is_typing else "completedCycles: 1"
+    )
     rows = [] if manual else [
         {
-            "name": "AutoScroll",
+            "name": interaction_name,
             "subsystem": APP_SUBSYSTEM,
             "event-type": "Begin",
             "time": str(START),
             "identifier": "auto",
-            "message": "documentLength: 1000 pattern: ping-pong cycles: 1",
+            "message": interaction_message,
             "process": APP,
         },
         {
-            "name": "AutoScroll",
+            "name": interaction_name,
             "subsystem": APP_SUBSYSTEM,
             "event-type": "End",
             "time": str(END),
             "identifier": "auto",
-            "message": "completedCycles: 1",
+            "message": completion_message,
             "process": APP,
         },
     ]
@@ -461,15 +477,20 @@ def signpost_rows(
         rows.extend(
             [
                 {
-                    "name": "AutoScrollStep",
+                    "name": "AutoTypingStep" if is_typing else "AutoScrollStep",
                     "subsystem": APP_SUBSYSTEM,
                     "event-type": "Begin",
                     "time": str(begin + 2_000_000),
                     "identifier": f"scroll-{index}",
+                    "message": (
+                        "unicode: chinese" if is_typing and index == 0
+                        else "unicode: emoji" if is_typing and index == 1
+                        else ""
+                    ),
                     "process": APP,
                 },
                 {
-                    "name": "AutoScrollStep",
+                    "name": "AutoTypingStep" if is_typing else "AutoScrollStep",
                     "subsystem": APP_SUBSYSTEM,
                     "event-type": "End",
                     "time": str(begin + 3_000_000),
@@ -500,8 +521,68 @@ def signpost_rows(
                 },
             ]
         )
+    for index in range(drawings_attachment_count):
+        begin = START + drawings_start_offset_ns + index * 100_000_000
+        rows.extend(
+            [
+                {
+                    "name": "ApplyInlineAttachmentDrawings",
+                    "subsystem": APP_SUBSYSTEM,
+                    "event-type": "Begin",
+                    "time": str(begin),
+                    "identifier": f"drawing-inline-{index}",
+                    "process": APP,
+                },
+                {
+                    "name": "ApplyInlineAttachmentDrawings",
+                    "subsystem": APP_SUBSYSTEM,
+                    "event-type": "End",
+                    "time": str(begin + attachment_duration_ns),
+                    "identifier": f"drawing-inline-{index}",
+                    "process": APP,
+                },
+            ]
+        )
+    for index in range(unpaired_drawings_count):
+        begin = START + drawings_start_offset_ns + index * 100_000_000
+        rows.append(
+            {
+                "name": "ApplyInlineAttachmentDrawings",
+                "subsystem": APP_SUBSYSTEM,
+                "event-type": "Begin",
+                "time": str(begin),
+                "identifier": f"drawing-inline-unpaired-{index}",
+                "process": APP,
+            }
+        )
+    for index in range(block_marker_drawings_count):
+        begin = START + 125_000_000 + index * 100_000_000
+        rows.extend(
+            [
+                {
+                    "name": "ApplyBlockMarkerDrawings",
+                    "subsystem": APP_SUBSYSTEM,
+                    "event-type": "Begin",
+                    "time": str(begin),
+                    "identifier": f"drawing-block-{index}",
+                    "process": APP,
+                },
+                {
+                    "name": "ApplyBlockMarkerDrawings",
+                    "subsystem": APP_SUBSYSTEM,
+                    "event-type": "End",
+                    "time": str(begin + 1_000_000),
+                    "identifier": f"drawing-block-{index}",
+                    "process": APP,
+                },
+            ]
+        )
     if manual:
-        rows = [row for row in rows if row["name"] != "AutoScrollStep"]
+        rows = [
+            row
+            for row in rows
+            if row["name"] not in ("AutoScrollStep", "AutoTypingStep")
+        ]
     if include_fallback:
         rows.append(
             {
@@ -553,6 +634,11 @@ def analyze_fixture(
     native_projection=False,
     native_attachment_count=12,
     native_image_count=4,
+    drawings_attachment_count=0,
+    attachment_duration_ns=1_000_000,
+    block_marker_drawings_count=1,
+    drawings_start_offset_ns=150_000_000,
+    unpaired_drawings_count=0,
 ):
     signposts = root / f"{name}-signposts.xml"
     samples = root / f"{name}-samples.xml"
@@ -568,6 +654,12 @@ def analyze_fixture(
             native_projection=native_projection,
             native_attachment_count=native_attachment_count,
             native_image_count=native_image_count,
+            drawings_attachment_count=drawings_attachment_count,
+            attachment_duration_ns=attachment_duration_ns,
+            block_marker_drawings_count=block_marker_drawings_count,
+            drawings_start_offset_ns=drawings_start_offset_ns,
+            unpaired_drawings_count=unpaired_drawings_count,
+            scenario=scenario,
         ),
     )
     write_table(
@@ -641,6 +733,147 @@ with tempfile.TemporaryDirectory() as temporary_directory:
         "requiredByScenario": True,
     }
 
+    current_rich_report, interaction_valid, performance_passed = analyze_fixture(
+        root,
+        "current-rich-attachments",
+        scenario="markdown-rich-scroll",
+        drawings_attachment_count=5,
+    )
+    assert interaction_valid and performance_passed
+    assert current_rich_report["inlineAttachmentEvidence"]["phaseName"] == (
+        "ApplyInlineAttachmentDrawings"
+    )
+    assert current_rich_report["inlineAttachmentEvidence"]["intervalCount"] == 5
+    assert current_rich_report["inlineAttachmentDrawings"]["intervalCount"] == 5
+    assert current_rich_report["inlineAttachmentOverlays"]["intervalCount"] == 5
+    assert current_rich_report["applyAttributePhases"][
+        "ApplyInlineAttachmentOverlays"
+    ]["intervalCount"] == 0
+    assert current_rich_report["applyAttributePhases"]["ApplyBlockMarkerDrawings"][
+        "intervalCount"
+    ] == 1
+
+    tail_rich_report, interaction_valid, performance_passed = analyze_fixture(
+        root,
+        "tail-rich-attachments",
+        scenario="markdown-rich-scroll",
+        drawings_attachment_count=5,
+        drawings_start_offset_ns=1_100_000_000,
+    )
+    assert interaction_valid and performance_passed
+    assert tail_rich_report["inlineAttachmentEvidence"]["intervalCount"] == 5
+    assert tail_rich_report["inlineAttachmentEvidence"][
+        "settleGraceMilliseconds"
+    ] == 500.0
+
+    tail_slow_drawings_report, interaction_valid, performance_passed = analyze_fixture(
+        root,
+        "tail-slow-rich-attachments",
+        scenario="markdown-rich-scroll",
+        drawings_attachment_count=5,
+        drawings_start_offset_ns=1_100_000_000,
+        attachment_duration_ns=20_000_000,
+    )
+    assert interaction_valid and not performance_passed
+
+    late_end_slow_drawings_report, interaction_valid, performance_passed = analyze_fixture(
+        root,
+        "late-end-slow-rich-attachments",
+        scenario="markdown-rich-scroll",
+        drawings_attachment_count=1,
+        drawings_start_offset_ns=1_400_000_000,
+        attachment_duration_ns=600_000_000,
+    )
+    assert interaction_valid and not performance_passed
+    assert late_end_slow_drawings_report["inlineAttachmentEvidence"][
+        "intervalCount"
+    ] == 1
+    assert late_end_slow_drawings_report["inlineAttachmentEvidence"][
+        "p95Milliseconds"
+    ] == 600.0
+
+    outside_settle_report, interaction_valid, performance_passed = analyze_fixture(
+        root,
+        "outside-settle-rich-attachments",
+        scenario="markdown-rich-scroll",
+        drawings_attachment_count=1,
+        drawings_start_offset_ns=1_600_000_000,
+    )
+    assert outside_settle_report["inlineAttachmentEvidence"]["intervalCount"] == 0
+    assert not outside_settle_report["inlineAttachmentEvidence"][
+        "sampleCountSufficient"
+    ]
+
+    unpaired_drawings_report, interaction_valid, performance_passed = analyze_fixture(
+        root,
+        "unpaired-tail-rich-attachments",
+        scenario="markdown-rich-scroll",
+        drawings_attachment_count=5,
+        drawings_start_offset_ns=1_100_000_000,
+        unpaired_drawings_count=1,
+    )
+    assert interaction_valid and not performance_passed
+    assert unpaired_drawings_report["inlineAttachmentEvidence"][
+        "incompleteIntervalCount"
+    ] == 1
+
+    mixed_rich_report, interaction_valid, performance_passed = analyze_fixture(
+        root,
+        "mixed-rich-attachments",
+        scenario="markdown-rich-scroll",
+        inline_attachment_count=5,
+        drawings_attachment_count=5,
+    )
+    assert interaction_valid and performance_passed
+    assert mixed_rich_report["inlineAttachmentEvidence"]["phaseName"] == (
+        "ApplyInlineAttachmentDrawings"
+    )
+    assert mixed_rich_report["inlineAttachmentEvidence"]["intervalCount"] == 5
+
+    current_short_legacy_long_report, interaction_valid, performance_passed = analyze_fixture(
+        root,
+        "current-short-legacy-long-rich-attachments",
+        scenario="markdown-rich-scroll",
+        inline_attachment_count=5,
+        drawings_attachment_count=4,
+    )
+    assert interaction_valid and not performance_passed
+    assert current_short_legacy_long_report["inlineAttachmentEvidence"]["phaseName"] == (
+        "ApplyInlineAttachmentDrawings"
+    )
+    assert current_short_legacy_long_report["inlineAttachmentEvidence"][
+        "intervalCount"
+    ] == 4
+    assert not current_short_legacy_long_report["inlineAttachmentOverlays"][
+        "sampleCountSufficient"
+    ]
+
+    missing_current_rich_report, interaction_valid, performance_passed = analyze_fixture(
+        root,
+        "missing-current-rich-attachments",
+        scenario="markdown-rich-scroll",
+        drawings_attachment_count=4,
+    )
+    assert interaction_valid and not performance_passed
+    assert not missing_current_rich_report["validation"][
+        "inlineAttachmentSampleCountSufficient"
+    ]
+    assert not missing_current_rich_report["inlineAttachmentOverlays"][
+        "sampleCountSufficient"
+    ]
+
+    slow_drawings_report, interaction_valid, performance_passed = analyze_fixture(
+        root,
+        "slow-current-rich-attachments",
+        scenario="markdown-rich-scroll",
+        drawings_attachment_count=5,
+        attachment_duration_ns=20_000_000,
+    )
+    assert interaction_valid and not performance_passed
+    assert not slow_drawings_report["validation"][
+        "inlineAttachmentP95WithinFrameBudget"
+    ]
+
     missing_rich_report, interaction_valid, performance_passed = analyze_fixture(
         root,
         "missing-rich-attachments",
@@ -711,6 +944,20 @@ with tempfile.TemporaryDirectory() as temporary_directory:
     }
     assert manual_report["manualTyping"] is None
 
+    typing_report, interaction_valid, performance_passed = analyze_fixture(
+        root,
+        "typing-drawings",
+        scenario="markdown-typing",
+        drawings_attachment_count=1,
+    )
+    assert interaction_valid and performance_passed
+    assert typing_report["inlineAttachmentEvidence"][
+        "settleGraceMilliseconds"
+    ] == 500.0
+    assert typing_report["validation"][
+        "inlineAttachmentSettleGraceMilliseconds"
+    ] == 500.0
+
     manual_typing_report, interaction_valid, performance_passed = analyze_fixture(
         root,
         "manual-typing",
@@ -727,6 +974,12 @@ with tempfile.TemporaryDirectory() as temporary_directory:
     assert manual_typing_report["manualScroll"] is None
     assert manual_typing_report["automaticTyping"]["programmaticEditing"] is False
     assert manual_typing_report["automaticTyping"]["imeComposition"] is None
+    assert manual_typing_report["inlineAttachmentEvidence"][
+        "settleGraceMilliseconds"
+    ] == 0.0
+    assert manual_typing_report["validation"][
+        "inlineAttachmentSettleGraceMilliseconds"
+    ] == 0.0
     assert manual_typing_report["manualTyping"] == {
         "analysisWindowDurationMilliseconds": 401.0,
         "automaticInteractionDetected": False,

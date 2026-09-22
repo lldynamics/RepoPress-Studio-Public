@@ -149,6 +149,9 @@ struct KnowledgeImportAssistantView: View {
             Text("支持 JPEG、PNG、HEIC、EPUB、Markdown、TXT、HTML、PDF；文件夹会批量分析。")
               .font(.caption)
               .foregroundStyle(.secondary)
+            Text("图片按原文件保存，保留拍摄与位置信息；预览和 OCR 不修改图片。")
+              .font(.caption)
+              .foregroundStyle(.secondary)
           }
           Spacer()
           Button {
@@ -642,7 +645,10 @@ struct KnowledgeImportAssistantView: View {
     if let image = candidate.imageMetadata {
       parts.append("\(image.pixelWidth) × \(image.pixelHeight)")
       parts.append("识别 \(image.recognizedRegionCount) 个区域")
-      parts.append(image.wasPrivacySanitized ? "已通过隐私清理" : "未执行隐私清理")
+      parts.append(
+        image.wasPrivacySanitized
+          ? String(localized: "已通过隐私清理") : String(localized: "保留原文件")
+      )
       return parts.joined(separator: " · ")
     }
     if !candidate.authors.isEmpty {

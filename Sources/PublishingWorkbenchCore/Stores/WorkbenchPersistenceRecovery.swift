@@ -2,10 +2,9 @@ import Foundation
 
 extension WorkbenchPersistence {
   public func exportRecoveryFiles(to directoryURL: URL) throws -> URL {
-    return try archiveRecoveryFiles(
-      in: directoryURL,
-      folderPrefix: "PersonalSitePublisher-Recovery"
-    )
+    try withRecordFileLock {
+      try archiveRecoveryFiles(in: directoryURL, folderPrefix: "PersonalSitePublisher-Recovery")
+    }
   }
 
   /// Validates a chosen snapshot before archiving the unreadable files and
@@ -17,10 +16,10 @@ extension WorkbenchPersistence {
       from: sourceURL,
       fileOperations: WorkbenchRecoveryFileOperations(
         writeAtomically: { data, destinationURL in
-          try data.write(to: destinationURL, options: .atomic)
+          try writeStorageData(data, to: destinationURL)
         },
         archiveExistingSnapshots: {
-          try archiveUnrecoverableSnapshotFiles()
+          try archiveUnrecoverableSnapshotFilesUnlocked()
         }
       )
     )
@@ -31,12 +30,25 @@ extension WorkbenchPersistence {
     from sourceURL: URL,
     fileOperations: WorkbenchRecoveryFileOperations
   ) throws -> URL {
+    try withRecordFileLock {
+      try validateRecoveryBaseline()
+      let archive = try installRecoverySnapshotUnlocked(
+        from: sourceURL, fileOperations: fileOperations)
+      baseline.observe(try currentStorageVersion(), for: fileURL.path)
+      return archive
+    }
+  }
+
+  private func installRecoverySnapshotUnlocked(
+    from sourceURL: URL,
+    fileOperations: WorkbenchRecoveryFileOperations
+  ) throws -> URL {
     let data: Data
     do {
-      data = try BoundedFileReader.data(
-        at: sourceURL,
-        maximumByteCount: WorkbenchFileReadLimits.maximumRecoverySnapshotByteCount
-      )
+      // Resolve either a portable legacy snapshot or a record manifest while
+      // its sibling document directory is still in the source location.
+      let snapshot = try loadStoredSnapshot(at: sourceURL)
+      data = try JSONEncoder.workbench.encode(snapshot)
     } catch {
       throw WorkbenchPersistenceError.invalidRecoverySnapshot(error.localizedDescription)
     }
@@ -113,16 +125,35 @@ extension WorkbenchPersistence {
   /// Preserves both unreadable persistence copies before an explicit reset.
   @discardableResult
   public func archiveUnrecoverableSnapshotFiles() throws -> URL {
+    try withRecordFileLock {
+      try validateRecoveryBaseline()
+      let archive = try archiveUnrecoverableSnapshotFilesUnlocked()
+      baseline.observe(try currentStorageVersion(), for: fileURL.path)
+      return archive
+    }
+  }
+
+  /// Caller must hold the record file lock, including injected recovery operations.
+  func archiveUnrecoverableSnapshotFilesUnlocked() throws -> URL {
     try archiveRecoveryFiles(
       in: recoveryArchiveDirectoryURL,
       folderPrefix: "UnrecoverableWorkbench"
     )
   }
 
+  private func validateRecoveryBaseline() throws {
+    let current = try currentStorageVersion()
+    if let expected = baseline.version(for: fileURL.path), expected != current {
+      throw WorkbenchRecordStorageError.invalidData("工作台已被另一个写入者更新。请重新载入后再恢复数据。")
+    }
+  }
+
   private func archiveRecoveryFiles(in parentDirectoryURL: URL, folderPrefix: String) throws -> URL
   {
     let fileManager = FileManager.default
-    let sourceURLs = [fileURL, lastKnownGoodURL].filter { fileManager.fileExists(atPath: $0.path) }
+    let sourceURLs = [fileURL, lastKnownGoodURL, recordStoreDirectoryURL].filter {
+      fileManager.fileExists(atPath: $0.path)
+    }
     guard !sourceURLs.isEmpty else {
       throw WorkbenchPersistenceError.recoveryFilesUnavailable
     }

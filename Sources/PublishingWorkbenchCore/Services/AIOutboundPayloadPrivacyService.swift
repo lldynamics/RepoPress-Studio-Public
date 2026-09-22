@@ -1,6 +1,7 @@
 import Combine
 import CryptoKit
 import Foundation
+import PublishingAICore
 
 public struct AIOutboundPayloadSanitizationResult: Hashable, Sendable {
   public let text: String

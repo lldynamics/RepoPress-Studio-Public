@@ -13,4 +13,17 @@ enum KnowledgeBatchExportSelectionPanel {
     panel.allowsMultipleSelection = false
     return panel.runModal() == .OK ? panel.url : nil
   }
+
+  @MainActor
+  static func chooseImageDestinationDirectory() -> URL? {
+    let panel = NSOpenPanel()
+    panel.title = String(localized: "选择图片导出文件夹")
+    panel.prompt = String(localized: "导出到此处")
+    panel.message = String(localized: "会在此文件夹中创建图片副本；资料库中的原图不会被修改。")
+    panel.canChooseFiles = false
+    panel.canChooseDirectories = true
+    panel.canCreateDirectories = true
+    panel.allowsMultipleSelection = false
+    return panel.runModal() == .OK ? panel.url : nil
+  }
 }

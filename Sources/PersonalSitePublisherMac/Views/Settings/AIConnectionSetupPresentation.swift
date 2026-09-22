@@ -1,4 +1,5 @@
 import Foundation
+import PublishingAICore
 import PublishingWorkbenchCore
 
 enum AIConnectionSetupNextStep: Equatable {

@@ -42,7 +42,8 @@ struct WorkspaceTaskNavigation: View {
     prominence: NavigationButtonProminence
   ) -> some View {
     let title = WorkspaceNavigationRouteDescriptor.title(for: section)
-    let isSelected = selectedSection == section
+    let isSelected =
+      WorkspaceNavigationRouteDescriptor.primarySection(for: selectedSection) == section
 
     return Button {
       if section == .contentHealth, !isSelected {
@@ -88,14 +89,17 @@ struct WorkspaceTaskNavigation: View {
     .buttonStyle(WorkbenchFocusRingButtonStyle())
     .help(title + shortcutHint(for: section))
     .accessibilityLabel(WorkspaceNavigationRouteDescriptor.accessibilityLabel(for: section))
+    .accessibilityValue(isSelected ? "已选中" : "未选中")
     .accessibilityAddTraits(isSelected ? .isSelected : [])
     .accessibilityIdentifier("workspace-sidebar-\(section.rawValue)")
   }
 
   private func shortcutHint(for section: WorkspaceSection) -> String {
-    guard WorkspaceNavigationPresentation.commandMenuItems.contains(where: {
-      $0.section == section
-    }) else {
+    guard
+      WorkspaceNavigationPresentation.commandMenuItems.contains(where: {
+        $0.section == section
+      })
+    else {
       return ""
     }
     return "（\(section.keyboardShortcutLabel)）"

@@ -1,4 +1,5 @@
 import Foundation
+import PublishingDomainContracts
 
 public struct SiteStarterService: Sendable {
   typealias CreateSiteOperation = @Sendable (SiteStarterRequest) throws -> SiteStarterResult

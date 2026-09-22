@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import copy
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -107,7 +108,7 @@ def valid_payload() -> dict[str, Any]:
             target(
                 "PublishingKnowledgeCore",
                 "regular",
-                [dependency("PublishingCoreSupport")],
+                [dependency("PublishingCoreSupport"), dependency("PublishingMarkdownCore")],
             ),
             target(
                 "PublishingWorkbenchCore",
@@ -184,6 +185,7 @@ def valid_payload() -> dict[str, Any]:
                     dependency("PublishingAICore"),
                     dependency("PublishingAgentContracts"),
                     dependency("PublishingCoreSupport"),
+                    dependency("PublishingDomainContracts"),
                     dependency("PublishingGitCore"),
                     dependency("PublishingKnowledgeCore"),
                     dependency("PublishingMarkdownCore"),
@@ -197,6 +199,8 @@ def valid_payload() -> dict[str, Any]:
                     dependency("BrowserExtensionProtocolSupport"),
                     dependency("PersonalSitePublisherMac"),
                     dependency("PublishingAICore"),
+                    dependency("PublishingCoreSupport"),
+                    dependency("PublishingDomainContracts"),
                     dependency("PublishingGitCore"),
                     dependency("PublishingKnowledgeCore"),
                     dependency("PublishingMarkdownCore"),
@@ -344,7 +348,8 @@ def main() -> int:
         decoded = json.loads(first_report)
         assert decoded["status"] == "passed"
         assert decoded["schemaVersion"] == "2"
-        assert decoded["policyVersion"] == "swift-module-boundaries-v2"
+        assert decoded["policyVersion"] == "swift-module-boundaries-v3"
+        assert decoded["tool"]["version"] == "3"
         assert decoded["targetTypeCounts"] == {"executable": 1, "regular": 9, "test": 9}
         assert [product["name"] for product in decoded["products"]] == [
             "PersonalSitePublisherMac",
@@ -366,6 +371,75 @@ def main() -> int:
         assert decoded["coreSourceMetrics"]["PublishingWorkbenchCore"]["swiftFileCount"] == 2
         assert decoded["compatibilityUmbrellaConsumerMetrics"]["Tests"]["workbenchImportCount"] == 1
         assert decoded["umbrellaRetirement"]["enforced"] is False
+        dependency_audit = decoded["dependencyAudit"]
+        assert set(dependency_audit) == {
+            "declaredDependenciesWithoutImports",
+            "transitiveDependencies",
+        }
+        assert dependency_audit["declaredDependenciesWithoutImports"] == sorted(
+            dependency_audit["declaredDependenciesWithoutImports"],
+            key=lambda edge: (edge["from"], edge["to"]),
+        )
+        assert dependency_audit["transitiveDependencies"] == sorted(
+            dependency_audit["transitiveDependencies"],
+            key=lambda edge: edge["target"],
+        )
+        assert all(
+            edge["reachableTargets"] == sorted(edge["reachableTargets"])
+            for edge in dependency_audit["transitiveDependencies"]
+        )
+        missing_import_edges = {
+            (edge["from"], edge["to"])
+            for edge in dependency_audit["declaredDependenciesWithoutImports"]
+        }
+        assert ("PublishingGitCore", "PublishingCoreSupport") in missing_import_edges
+        assert ("PublishingGitCore", "PublishingDomainContracts") in missing_import_edges
+        assert ("PublishingWorkbenchCore", "PublishingAICore") not in missing_import_edges
+        workbench_reachable = next(
+            edge["reachableTargets"]
+            for edge in dependency_audit["transitiveDependencies"]
+            if edge["target"] == "PublishingWorkbenchCore"
+        )
+        assert workbench_reachable == sorted(
+            [
+                "PublishingAICore",
+                "PublishingAgentContracts",
+                "PublishingCoreSupport",
+                "PublishingDomainContracts",
+                "PublishingGitCore",
+                "PublishingKnowledgeCore",
+                "PublishingMarkdownCore",
+            ]
+        )
+
+        policy_root = Path(temporary) / "does-not-exist"
+        policy = subprocess.run(
+            [sys.executable, str(GATE), "--describe-policy", "--package-root", str(policy_root)],
+            text=True,
+            capture_output=True,
+            check=False,
+            env={**os.environ, "SWIFT_BIN": "/definitely/missing/swift"},
+        )
+        assert policy.returncode == 0, policy.stderr
+        policy_json = json.loads(policy.stdout)
+        assert set(policy_json) == {
+            "productionDependencies",
+            "testDependencies",
+            "externalProductModules",
+            "externalProductDependencies",
+        }
+        assert "Sparkle" in policy_json["externalProductModules"]
+        assert policy_json["externalProductModules"]["TreeSitterMarkdown"] == [
+            "TreeSitterMarkdown",
+            "TreeSitterMarkdownInline",
+        ]
+        assert "PublishingMarkdownCoreTests" in policy_json["testDependencies"]
+        assert policy_json["externalProductDependencies"]["PersonalSitePublisherMac"]["Sparkle"] == "Sparkle"
+        assert policy_json["externalProductDependencies"]["PublishingMarkdownCore"] == {
+            "SwiftTreeSitter": "swift-tree-sitter",
+            "SwiftTreeSitterLayer": "swift-tree-sitter",
+            "TreeSitterMarkdown": "tree-sitter-markdown",
+        }
 
         bounded = run_fixture(
             root,
@@ -466,6 +540,165 @@ def main() -> int:
         },
         message="imports internal module(s) without direct target dependency",
     )
+
+    import_syntax_fixture = valid_payload()
+    with tempfile.TemporaryDirectory(prefix="swift-module-boundaries-fixture.") as syntax_temporary:
+        syntax_root = Path(syntax_temporary)
+        syntax_result = run_fixture(
+            syntax_root,
+            import_syntax_fixture,
+            extra_sources={
+                "Sources/PublishingGitCore/ImportSyntax.swift": """/* import PublishingWorkbenchCore */
+let ordinary = "import PublishingWorkbenchCore"
+let raw = #\"import PublishingWorkbenchCore\"#
+let multiline = \"\"\"
+import PublishingWorkbenchCore
+\"\"\"
+let rawMultiline = #\"\"\"
+\"#import PublishingWorkbenchCore
+\"\"\"#
+@preconcurrency public import PublishingCoreSupport
+@_spi(Test) internal import PublishingDomainContracts
+@_spi(Test)@preconcurrency import PublishingCoreSupport
+@_implementationOnly import PublishingCoreSupport
+@testable import PublishingDomainContracts
+package import struct PublishingCoreSupport.SupportFixture
+private import func PublishingDomainContracts.ContractsFixture
+fileprivate import PublishingDomainContracts
+import PublishingCoreSupport; import PublishingDomainContracts
+#if DEBUG
+import PublishingCoreSupport
+#else
+import PublishingDomainContracts
+#endif
+""",
+            },
+        )
+        assert syntax_result.returncode == 0, syntax_result.stderr
+
+    syntax_rejections = {
+        "preconcurrency-inline": ("@preconcurrency import PublishingMarkdownCore\n", 1),
+        "spi-inline": ("@_spi(Test) import PublishingMarkdownCore\n", 1),
+        "spi-adjacent-import": ("@_spi(Test)import PublishingMarkdownCore\n", 1),
+        "spi-adjacent-access": ("@_spi(Test)public import PublishingMarkdownCore\n", 1),
+        "spi-adjacent-attribute": ("@_spi(Test)@preconcurrency import PublishingMarkdownCore\n", 1),
+        "implementation-only-inline": ("@_implementationOnly import PublishingMarkdownCore\n", 1),
+        "preconcurrency": ("@preconcurrency\nimport PublishingMarkdownCore\n", 2),
+        "spi": ("@_spi(Test)\nimport PublishingMarkdownCore\n", 2),
+        "implementation-only": ("@_implementationOnly\nimport PublishingMarkdownCore\n", 2),
+        "public": ("public import PublishingMarkdownCore\n", 1),
+        "package": ("package import PublishingMarkdownCore\n", 1),
+        "private": ("private import PublishingMarkdownCore\n", 1),
+        "fileprivate": ("fileprivate import PublishingMarkdownCore\n", 1),
+        "scoped": ("import struct PublishingMarkdownCore.MarkdownCoreFixture\n", 1),
+        "cross-line": ("import\nPublishingMarkdownCore\n", 1),
+        "semicolon": ("import PublishingCoreSupport; import PublishingMarkdownCore\n", 1),
+        "inactive-branch": ("#if false\nimport PublishingMarkdownCore\n#endif\n", 2),
+    }
+    for name, (rejected_source, line) in syntax_rejections.items():
+        syntax_payload = valid_payload()
+        expect_rejected(
+            syntax_payload,
+            extra_sources={f"Sources/PublishingAICore/Import-{name}.swift": rejected_source},
+            message=f"Import-{name}.swift:{line}",
+        )
+
+    missing_direct_with_location = valid_payload()
+    expect_rejected(
+        missing_direct_with_location,
+        extra_sources={
+            "Sources/PublishingGitCore/TransitiveImport.swift": "import PublishingMarkdownCore\n",
+        },
+        message="TransitiveImport.swift:1",
+    )
+
+    third_party_import = valid_payload()
+    expect_rejected(
+        third_party_import,
+        extra_sources={"Sources/PublishingAICore/External.swift": "import Sparkle\n"},
+        message="without direct product dependency",
+    )
+
+    third_party_inline = valid_payload()
+    with tempfile.TemporaryDirectory(prefix="swift-module-boundaries-fixture.") as inline_temporary:
+        inline_result = run_fixture(
+            Path(inline_temporary),
+            third_party_inline,
+            extra_sources={
+                "Sources/PublishingMarkdownCore/Inline.swift": (
+                    "import TreeSitterMarkdownInline\n"
+                )
+            },
+        )
+        assert inline_result.returncode == 0, inline_result.stderr
+
+    external_reexport = valid_payload()
+    expect_rejected(
+        external_reexport,
+        extra_sources={
+            "Sources/PublishingAICore/Reexport.swift": "@_exported import PublishingCoreSupport\n",
+        },
+        message="re-export outside compatibility umbrella",
+    )
+    expect_rejected(
+        valid_payload(),
+        extra_sources={
+            "Sources/PublishingAICore/Reexport.swift": "@_spi(Test)@_exported import PublishingCoreSupport\n",
+        },
+        message="re-export outside compatibility umbrella",
+    )
+
+    with tempfile.TemporaryDirectory(prefix="swift-module-boundaries-fixture.") as layout_temporary:
+        standard_layout = valid_payload()
+        git_target = next(item for item in standard_layout["targets"] if item["name"] == "PublishingGitCore")
+        git_target.update({"path": "Sources/PublishingGitCore", "sources": [], "exclude": []})
+        assert run_fixture(Path(layout_temporary), standard_layout).returncode == 0
+
+    with tempfile.TemporaryDirectory(prefix="swift-module-boundaries-fixture.") as null_temporary:
+        null_layout = valid_payload()
+        git_target = next(item for item in null_layout["targets"] if item["name"] == "PublishingGitCore")
+        git_target.update({"path": None, "sources": None, "exclude": None})
+        assert run_fixture(Path(null_temporary), null_layout).returncode == 0
+
+    nonstandard_path = valid_payload()
+    git_target = next(item for item in nonstandard_path["targets"] if item["name"] == "PublishingGitCore")
+    git_target["path"] = "Sources/Elsewhere"
+    expect_rejected(nonstandard_path, message="source layout")
+
+    nonempty_sources = valid_payload()
+    git_target = next(item for item in nonempty_sources["targets"] if item["name"] == "PublishingGitCore")
+    git_target["sources"] = ["Fixture.swift"]
+    expect_rejected(nonempty_sources, message="source layout")
+
+    nonempty_exclude = valid_payload()
+    git_target = next(item for item in nonempty_exclude["targets"] if item["name"] == "PublishingGitCore")
+    git_target["exclude"] = ["Fixture.swift"]
+    expect_rejected(nonempty_exclude, message="source layout")
+
+    with tempfile.TemporaryDirectory(prefix="swift-module-boundaries-fixture.") as stale_temporary:
+        stale_root = Path(stale_temporary)
+        assert run_fixture(stale_root, valid_payload()).returncode == 0
+        stale_report_payload = valid_payload()
+        stale_report_payload["targets"].append(copy.deepcopy(stale_report_payload["targets"][0]))
+        stale_result = run_fixture(stale_root, stale_report_payload)
+        assert stale_result.returncode != 0
+        failed_report = json.loads((stale_root / "report.json").read_text(encoding="utf-8"))
+        assert failed_report["status"] == "failed"
+        assert failed_report["error"]
+
+        for invalid_baseline in ([], None):
+            successful = run_fixture(stale_root, valid_payload())
+            assert successful.returncode == 0
+            baseline = stale_root / "malformed-baseline.json"
+            baseline.write_text(json.dumps(invalid_baseline), encoding="utf-8")
+            invalid_result = subprocess.run(
+                [*successful.args, "--quality-baseline", str(baseline)],
+                text=True, capture_output=True, check=False,
+            )
+            assert invalid_result.returncode != 0
+            failed_report = json.loads((stale_root / "report.json").read_text(encoding="utf-8"))
+            assert failed_report["status"] == "failed"
+            assert "quality baseline must be an object" in failed_report["error"]
 
     leaf_test_reverse_edge = valid_payload()
     markdown_tests = next(

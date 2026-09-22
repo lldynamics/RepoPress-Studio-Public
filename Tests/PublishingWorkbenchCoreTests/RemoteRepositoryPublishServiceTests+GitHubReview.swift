@@ -365,7 +365,7 @@ final class RemoteRepositoryPublishServiceGitHubReviewTests: RemoteRepositoryPub
       title: "Publish 2 articles",
       body: "Recovered review body",
       changedPaths: ["content/posts/one.md", "content/posts/two.md"],
-      recordedCommitSHA: "recorded-sha"
+      recordedCommitSHA: "remote-branch-sha"
     )
 
     let result = try await service.resumeReview(
@@ -411,7 +411,7 @@ final class RemoteRepositoryPublishServiceGitHubReviewTests: RemoteRepositoryPub
       title: "Publish",
       body: "Body",
       changedPaths: ["content/posts/one.md"],
-      recordedCommitSHA: "recorded-sha"
+      recordedCommitSHA: "remote-branch-sha"
     )
 
     do {
@@ -426,6 +426,33 @@ final class RemoteRepositoryPublishServiceGitHubReviewTests: RemoteRepositoryPub
       XCTAssertTrue(error.localizedDescription.contains("Resource not accessible"))
       XCTAssertFalse(error.localizedDescription.contains("请确认 Contents: Read and write"))
     }
+  }
+
+  func testGitHubReviewRecoveryRejectsChangedBranchHeadBeforePullRequestLookup() async throws {
+    let transport = SequencedRemoteRepositoryTransport(responses: [
+      response(json: #"{"object":{"sha":"new-branch-head"}}"#)
+    ])
+    let service = RemoteRepositoryPublishService(transport: transport)
+    var profile = SiteProfile.defaultProfile
+    profile.repositoryProvider = .github
+    profile.repoOwner = "owner"
+    profile.repoName = "site"
+    let draft = RemoteRepositoryReviewRecoveryDraft(
+      recordID: UUID(), branchName: "publish/batch-recovery", targetBranch: "main",
+      title: "Publish", body: "Body", changedPaths: ["content/posts/one.md"],
+      recordedCommitSHA: "recorded-branch-head")
+
+    do {
+      _ = try await service.resumeReview(draft: draft, profile: profile, token: "secret-token")
+      XCTFail("Expected changed-head recovery failure")
+    } catch let error as RemoteRepositoryPublishError {
+      guard case .reviewRecoveryUnavailable = error else {
+        return XCTFail("Expected reviewRecoveryUnavailable, got \(error)")
+      }
+    }
+    let requests = await transport.capturedRequests()
+    XCTAssertEqual(requests.map(\.httpMethod), ["GET"])
+    XCTAssertFalse(requests.contains { $0.httpMethod == "POST" })
   }
 
 }

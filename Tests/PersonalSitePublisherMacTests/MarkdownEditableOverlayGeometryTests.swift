@@ -1,6 +1,6 @@
 import AppKit
+import PublishingDomainContracts
 import PublishingMarkdownCore
-import PublishingWorkbenchCore
 import SwiftUI
 import XCTest
 

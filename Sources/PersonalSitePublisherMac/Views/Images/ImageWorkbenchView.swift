@@ -1,4 +1,5 @@
 import AppKit
+import PublishingDomainContracts
 import PublishingWorkbenchCore
 import SwiftUI
 

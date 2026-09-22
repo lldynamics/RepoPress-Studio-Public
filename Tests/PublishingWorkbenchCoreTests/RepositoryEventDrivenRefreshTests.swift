@@ -81,6 +81,90 @@ final class RepositoryEventDrivenRefreshTests: XCTestCase {
     )
   }
 
+  func testEventClassificationIgnoresGitLockLifecycleAndDirectoryMetadata() {
+    let lockEvents: [RepositoryContentChangeEventFlags] = [
+      .itemCreated,
+      .itemModified,
+      .itemRemoved,
+      .itemRenamed,
+      .itemInodeMetaMod,
+    ]
+    for relativePath in [".git/index.lock", ".git/HEAD.lock", ".git/refs/heads/main.lock"] {
+      for flags in lockEvents {
+        XCTAssertEqual(
+          RepositoryContentChangeEventDecision.classify(
+            flags: flags,
+            relativePath: relativePath,
+            allowedPrefixes: []
+          ),
+          .ignore,
+          "Expected \(relativePath) event \(flags) to be ignored"
+        )
+      }
+    }
+
+    for relativePath in [".git", ".git/refs"] {
+      XCTAssertEqual(
+        RepositoryContentChangeEventDecision.classify(
+          flags: [.itemIsDir, .itemModified],
+          relativePath: relativePath,
+          allowedPrefixes: []
+        ),
+        .ignore
+      )
+      XCTAssertEqual(
+        RepositoryContentChangeEventDecision.classify(
+          flags: [.itemIsDir, .itemInodeMetaMod],
+          relativePath: relativePath,
+          allowedPrefixes: []
+        ),
+        .ignore
+      )
+    }
+  }
+
+  func testEventClassificationKeepsRealGitStateChangesAsFullScan() {
+    for relativePath in [
+      ".git/index",
+      ".git/HEAD",
+      ".git/refs/heads/main",
+      ".git/packed-refs",
+      ".git/config",
+      "content/article.lock",
+    ] {
+      XCTAssertEqual(
+        RepositoryContentChangeEventDecision.classify(
+          flags: [.itemModified],
+          relativePath: relativePath,
+          allowedPrefixes: []
+        ),
+        .fullScan,
+        "Expected real Git state \(relativePath) to trigger a full scan"
+      )
+    }
+
+    let topologyEvents: [RepositoryContentChangeEventFlags] = [.itemCreated, .itemRemoved, .itemRenamed]
+    for flags in topologyEvents {
+      XCTAssertEqual(
+        RepositoryContentChangeEventDecision.classify(
+          flags: flags.union(.itemIsDir),
+          relativePath: ".git/refs/heads",
+          allowedPrefixes: []
+        ),
+        .fullScan
+      )
+    }
+
+    XCTAssertEqual(
+      RepositoryContentChangeEventDecision.classify(
+        flags: [.userDropped, .itemRemoved],
+        relativePath: ".git/index.lock",
+        allowedPrefixes: []
+      ),
+      .fullScan
+    )
+  }
+
   func testMonitorCoalescesMarkdownAndAssetNoiseIntoOneSafeNotification() async throws {
     let rootURL = FileManager.default.temporaryDirectory
       .appendingPathComponent("repository-event-monitor-\(UUID().uuidString)", isDirectory: true)

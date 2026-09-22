@@ -1,7 +1,8 @@
 import Foundation
 import XCTest
 
-@testable import PublishingWorkbenchCore
+@testable import PublishingAICore
+@testable import PublishingCoreSupport
 
 final class AIConnectionTestServiceTests: XCTestCase {
   func testConnectionUsesOpenAICompatiblePingRequest() async throws {

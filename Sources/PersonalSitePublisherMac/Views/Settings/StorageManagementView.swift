@@ -1,4 +1,5 @@
 import AppKit
+import PublishingKnowledgeCore
 import PublishingWorkbenchCore
 import SwiftUI
 
@@ -73,6 +74,7 @@ struct StorageManagementView: View {
     .sheet(item: $workspaceBackupPreview) { preview in
       WorkspaceBackupRestorePreviewView(
         preview: preview,
+        dataManagement: dataManagement,
         stageWorkspaceBackupRestore: { backupURL in
           await dataManagement.stageWorkspaceBackupRestore(from: backupURL)
         }

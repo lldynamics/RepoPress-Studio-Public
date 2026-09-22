@@ -1,9 +1,62 @@
+import AppKit
+import SwiftUI
 import XCTest
 
 @testable import PersonalSitePublisherMac
 @testable import PublishingWorkbenchCore
 
 final class ReleaseHistoryPresentationTests: XCTestCase {
+  func testSourcePreviewRequiresExplicitExistingRecordSite() {
+    let profile = SiteProfile.defaultProfile
+    var record = ReleaseRecord(title: "Old release", summary: "")
+    XCTAssertNil(DeploymentSourceContext.profile(for: record, in: [profile]))
+    record.siteProfileID = UUID()
+    XCTAssertNil(DeploymentSourceContext.profile(for: record, in: [profile]))
+    record.siteProfileID = profile.id
+    XCTAssertEqual(DeploymentSourceContext.profile(for: record, in: [profile]), profile)
+  }
+
+  func testSourcePreviewRequestRejectsConfigurationChangesAndQuickHide() {
+    let profile = SiteProfile.defaultProfile
+    let request = DeploymentSourceRequest(
+      profile: profile,
+      entry: DeploymentLogEntry(level: .error, source: "test", message: "failure", filePath: "a.md")
+    )
+    XCTAssertTrue(request.isValid(activeProfile: profile, canUseProtectedWorkbench: true))
+    XCTAssertFalse(request.isValid(activeProfile: profile, canUseProtectedWorkbench: false))
+    var changed = profile
+    changed.localRepositoryRootPath = "/another/repository"
+    XCTAssertFalse(request.isValid(activeProfile: changed, canUseProtectedWorkbench: true))
+  }
+
+  @MainActor
+  func testSourcePreviewUsesReadOnlySelectableTextAndSelectsReportedLine() throws {
+    let root = FileManager.default.temporaryDirectory
+      .appendingPathComponent("SourcePreviewView-\(UUID().uuidString)").resolvingSymlinksInPath()
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let source = "first\n错误😀\nlast"
+    try source.write(
+      to: root.appendingPathComponent("article.md"), atomically: true, encoding: .utf8)
+    let document = try DeploymentSourceFileService().open(
+      profile: SiteProfile(name: "Preview", localRepositoryRootPath: root.path),
+      entry: DeploymentLogEntry(
+        level: .error, source: "test", message: "failure", filePath: "article.md", line: 2))
+    let host = NSHostingView(rootView: DeploymentSourceTextView(document: document))
+    host.frame = NSRect(x: 0, y: 0, width: 480, height: 240)
+    host.layoutSubtreeIfNeeded()
+    func findText(in view: NSView) -> NSTextView? {
+      if let text = view as? NSTextView { return text }
+      return view.subviews.lazy.compactMap { findText(in: $0) }.first
+    }
+    let text = try XCTUnwrap(findText(in: host))
+    XCTAssertEqual(text.string, source)
+    XCTAssertFalse(text.isEditable)
+    XCTAssertTrue(text.isSelectable)
+    XCTAssertEqual(text.selectedRange(), document.selectionRange)
+    XCTAssertEqual(text.accessibilityIdentifier(), "deployment-source-text")
+  }
+
   func testRepeatedFailuresGroupByStableStatusMessageAtFirstOccurrence() {
     let first = failure(title: "第一次", message: "构建失败：找不到 Hugo 模板", at: 10)
     let success = entry(title: "成功", status: .succeeded, message: "已上线", at: 9)

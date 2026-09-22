@@ -1,3 +1,4 @@
+import PublishingKnowledgeCore
 import PublishingWorkbenchCore
 import SwiftUI
 
@@ -18,6 +19,7 @@ struct WorkspaceShellSplitLayout: View {
   @Binding var knowledgeInspectorPresentation: KnowledgeLibraryInspectorPresentationState
   let repositorySourceSession: RepositoryHTMLSourceSession
   let rssStore: RSSReaderStore
+  let rssPresentation: RSSReaderPresentationState
   let onSelectSection: (WorkspaceSection) -> Void
   let onSelectDraft: (UUID?) -> Void
   let onFocusDraft: (UUID, WorkspaceSection) -> Void
@@ -25,7 +27,6 @@ struct WorkspaceShellSplitLayout: View {
   private var storedSidebarWidth = Double(WorkbenchLayoutMode.defaultSidebarWidth)
   @State private var sidebarResizeStartWidth: CGFloat?
   @StateObject private var contentHealthSidebarProjection = ContentHealthSidebarProjection()
-  @StateObject private var rssPresentation = RSSReaderPresentationState()
 
   init(
     store: WorkbenchStore,
@@ -42,6 +43,7 @@ struct WorkspaceShellSplitLayout: View {
     knowledgeInspectorPresentation: Binding<KnowledgeLibraryInspectorPresentationState>,
     repositorySourceSession: RepositoryHTMLSourceSession,
     rssStore: RSSReaderStore,
+    rssPresentation: RSSReaderPresentationState,
     onSelectSection: @escaping (WorkspaceSection) -> Void,
     onSelectDraft: @escaping (UUID?) -> Void,
     onFocusDraft: @escaping (UUID, WorkspaceSection) -> Void,
@@ -64,6 +66,7 @@ struct WorkspaceShellSplitLayout: View {
     _knowledgeInspectorPresentation = knowledgeInspectorPresentation
     self.repositorySourceSession = repositorySourceSession
     self.rssStore = rssStore
+    self.rssPresentation = rssPresentation
     self.onSelectSection = onSelectSection
     self.onSelectDraft = onSelectDraft
     self.onFocusDraft = onFocusDraft

@@ -100,10 +100,7 @@ for consumer in \
     || fail "$consumer does not consume the shared version gate"
 done
 
-quick_checks="$(bash "$ROOT_DIR/script/check_release_gate.sh" --quick --list)"
-grep -q $'^build-version\talways\t' <<<"$quick_checks" \
-  || fail "quick release gate omitted the lightweight version check"
-grep -q $'^build-version-tests\talways\t' <<<"$quick_checks" \
-  || fail "quick release gate omitted version behavior tests"
+# Quick/tooling membership is owned by test_release_gate_selection.py.
+# Keep this suite focused on version behavior and packaging consumers.
 
 echo "build version gate test: passed"

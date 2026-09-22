@@ -2,6 +2,7 @@ import CoreGraphics
 import Darwin
 import Foundation
 import ImageIO
+import PublishingCoreSupport
 import UniformTypeIdentifiers
 
 public struct AssetResourceManagerService: Sendable {

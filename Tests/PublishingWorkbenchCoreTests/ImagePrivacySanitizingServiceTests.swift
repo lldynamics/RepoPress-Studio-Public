@@ -4,7 +4,7 @@ import ImageIO
 import UniformTypeIdentifiers
 import XCTest
 
-@testable import PublishingWorkbenchCore
+@testable import PublishingCoreSupport
 
 final class ImagePrivacySanitizingServiceTests: XCTestCase {
   private let service = ImagePrivacySanitizingService()

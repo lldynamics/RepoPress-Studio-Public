@@ -1,4 +1,6 @@
+import PublishingDomainContracts
 import XCTest
+
 @testable import PublishingWorkbenchCore
 
 final class DraftVersionComparisonServiceTests: XCTestCase {

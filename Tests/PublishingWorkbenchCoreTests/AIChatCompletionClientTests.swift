@@ -2,7 +2,8 @@ import CoreFoundation
 import Foundation
 import XCTest
 
-@testable import PublishingWorkbenchCore
+@testable import PublishingAICore
+@testable import PublishingCoreSupport
 
 final class AIChatCompletionClientTests: XCTestCase {
   func testCompleteRejectsOversizedResponseBeforeDecoding() async {

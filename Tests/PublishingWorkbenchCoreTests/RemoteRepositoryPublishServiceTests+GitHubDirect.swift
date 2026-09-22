@@ -1,5 +1,6 @@
 import CryptoKit
 import Foundation
+import PublishingDomainContracts
 import XCTest
 
 @testable import PublishingWorkbenchCore

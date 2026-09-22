@@ -2,8 +2,9 @@ import Combine
 import Foundation
 import SQLite3
 import XCTest
+
 @testable import PersonalSitePublisherMac
-@testable import PublishingWorkbenchCore
+@testable import PublishingKnowledgeCore
 
 @MainActor
 final class RSSReaderFullTextTests: XCTestCase {

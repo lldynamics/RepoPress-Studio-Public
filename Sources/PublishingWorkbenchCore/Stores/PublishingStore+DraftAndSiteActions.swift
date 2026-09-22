@@ -105,18 +105,25 @@ extension PublishingStore {
   }
 
   public func createDraft(store: WorkbenchStore) {
+    _ = createDraft(store: store, selectCreatedDraft: true)
+  }
+
+  func createDraft(store: WorkbenchStore, selectCreatedDraft: Bool) -> UUID {
     let draft = ArticleDraft.empty(profile: store.activeProfile)
     drafts.insert(draft, at: 0)
-    draftListContentScope = .currentSite
-    draftNavigationHistory.recordVisit(draft.id)
-    selectedDraftID = draft.id
-    selectedSection = .writing
-    store.setAIPublishingAssistantPresented(false)
-    store.restoreSEOSocialPreviewSnapshotForCurrentSelection()
-    store.runPreflight()
-    store.scheduleImageWorkbenchReportRefresh(for: draft)
+    if selectCreatedDraft {
+      draftListContentScope = .currentSite
+      draftNavigationHistory.recordVisit(draft.id)
+      selectedDraftID = draft.id
+      selectedSection = .writing
+      store.setAIPublishingAssistantPresented(false)
+      store.restoreSEOSocialPreviewSnapshotForCurrentSelection()
+      store.runPreflight()
+      store.scheduleImageWorkbenchReportRefresh(for: draft)
+    }
     store.save()
     store.scheduleDraftWordCountRefresh(for: draft.id, bodyMarkdown: draft.bodyMarkdown)
+    return draft.id
   }
 
   public func createGeneralDraft(store: WorkbenchStore) {

@@ -1,4 +1,5 @@
 import Foundation
+import PublishingDomainContracts
 import PublishingGitCore
 
 extension WorkbenchStore {

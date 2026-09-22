@@ -4,7 +4,7 @@ import PDFKit
 import SQLite3
 import XCTest
 
-@testable import PublishingWorkbenchCore
+@testable import PublishingKnowledgeCore
 
 final class KnowledgeLibraryServiceTests: XCTestCase {
   private final class ControlledDenseProvider: @unchecked Sendable,

@@ -1,5 +1,27 @@
 import Foundation
 
+/// An immutable selection is tied to the validated manifest shown to the user.
+public struct WorkspaceBackupArticleSelectionPreview: Sendable {
+  public let backupURL: URL
+  public let backupPreview: WorkspaceBackupPreview
+  public let articles: [WorkspaceBackupArticleSummary]
+  let manifest: WorkspaceBackupManifest
+}
+
+public struct WorkspaceBackupArticleSummary: Identifiable, Sendable {
+  public let id: UUID
+  public let title: String
+  public let attachmentCount: Int
+  public let unresolvedAttachmentCount: Int
+}
+
+public enum WorkspaceBackupArticleRestoreError: Error {
+  case invalidSelection
+  case backupChanged
+  case unavailable
+  case persistenceFailed
+}
+
 public enum WorkspaceBackupComponent: String, Codable, CaseIterable, Hashable, Sendable {
   case workbenchState = "工作台数据"
   case draftAttachments = "草稿附件"

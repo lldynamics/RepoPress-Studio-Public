@@ -13,21 +13,25 @@ final class WorkspaceContextNavigationTests: XCTestCase {
     XCTAssertEqual(WorkspaceResponsiveLayoutSnapshot(width: 1_240).band, .htmlSourceInspector)
   }
 
-  func testCompactRailExposesTheFivePrimaryWorkspaceRoutesThatMatchFullRailOrder() {
+  func testCompactRailExposesTheFiveDirectWorkspaceRoutes() {
     XCTAssertEqual(
       WorkspaceCompactNavigationRail.primarySections,
       [.rss, .library, .sync, .contentHealth, .writing]
     )
   }
 
-  func testFullAndCompactRailsShareTheSamePrimaryRouteOrder() {
+  func testFullAndCompactRailsShareTheOriginalTwoPlusTwoPlusOneOrder() {
     XCTAssertEqual(
-      WorkspaceNavigationRouteDescriptor.primarySections,
-      WorkspaceCompactNavigationRail.primarySections
+      WorkspaceNavigationRouteDescriptor.primaryRows,
+      [[.rss, .library], [.sync, .contentHealth], [.writing]]
     )
     XCTAssertEqual(
       WorkspaceNavigationRouteDescriptor.primaryRows.flatMap { $0 },
-      WorkspaceNavigationRouteDescriptor.primarySections
+      WorkspaceCompactNavigationRail.primarySections
+    )
+    XCTAssertEqual(
+      Set(WorkspaceCompactNavigationRail.primarySections).count,
+      5
     )
   }
 

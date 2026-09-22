@@ -1,5 +1,6 @@
 import CryptoKit
 import Foundation
+import PublishingDomainContracts
 
 public struct ArticleDraft: Identifiable, Codable, Hashable, Sendable {
   public var id: UUID

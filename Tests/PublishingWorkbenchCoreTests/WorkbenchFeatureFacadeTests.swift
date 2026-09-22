@@ -37,6 +37,7 @@ final class WorkbenchFeatureFacadeTests: XCTestCase {
     let store = makeIsolatedStore()
 
     XCTAssertTrue(store.ai === store.ai)
+    XCTAssertTrue(store.rssListTitleTranslation === store.rssListTitleTranslation)
     XCTAssertTrue(store.repository === store.repository)
     XCTAssertTrue(store.publishing === store.publishing)
     XCTAssertTrue(store.contentPresentation === store.contentPresentation)
@@ -696,6 +697,106 @@ final class WorkbenchFeatureFacadeTests: XCTestCase {
     XCTAssertEqual(activityChanges, 0)
 
     withExtendedLifetime([rootCancellable, aiCancellable, activityCancellable]) {}
+  }
+
+  func testRSSListTitleTranslationFacadeIgnoresChatAndImageProgress() async throws {
+    let store = makeIsolatedStore()
+    let facade = store.rssListTitleTranslation
+    var changes = 0
+    let cancellable = facade.objectWillChange.sink { changes += 1 }
+
+    store.setAIChatMessages([
+      AIPublishingChatMessage(role: .assistant, content: "RSS 列表不应随聊天流刷新")
+    ])
+    store.setAIChatMessage("聊天进度")
+    store.setImageActionMessage("图片进度")
+    try await Task.sleep(nanoseconds: 50_000_000)
+
+    XCTAssertEqual(changes, 0)
+    withExtendedLifetime(cancellable) {}
+  }
+
+  func testRSSListTitleTranslationFacadePublishesCommittedRelevantState() async throws {
+    let defaultsSuite = "rss-list-title-facade-\(UUID().uuidString)"
+    let defaults = try XCTUnwrap(UserDefaults(suiteName: defaultsSuite))
+    defer { defaults.removePersistentDomain(forName: defaultsSuite) }
+    let consentStore = AIDataSharingConsentStore(
+      defaults: defaults,
+      storageKey: "rss-list-title-facade-consent"
+    )
+    let directory = FileManager.default.temporaryDirectory
+      .appendingPathComponent("rss-list-title-facade-\(UUID().uuidString)")
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let persistenceURL = directory.appendingPathComponent("workbench.json")
+    let tokens = KeychainTokenStore(
+      service: "rss-list-title-facade-\(UUID())", accountPrefix: "rss-tests", inMemory: true)
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: persistenceURL),
+      safeMode: true,
+      keychainTokenStore: tokens,
+      aiDataSharingConsentStore: consentStore
+    )
+    let facade = store.rssListTitleTranslation
+
+    var connection = store.activeAIConnectionProfile
+    connection.config = AIProviderConfig(
+      preset: .custom, baseURL: "https://rss-title.example/v1", model: "rss-title-model",
+      requiresAPIKey: true)
+    let configurationChange = expectation(description: "RSS provider configuration changed")
+    let configurationObserver = facade.objectWillChange.sink {
+      configurationChange.fulfill()
+    }
+    XCTAssertTrue(store.updateAIConnectionProfile(connection))
+    await fulfillment(of: [configurationChange], timeout: 1)
+    XCTAssertEqual(facade.providerConfiguration.model, "rss-title-model")
+    configurationObserver.cancel()
+
+    let tokenChange = expectation(description: "RSS credential availability changed")
+    let tokenObserver = facade.objectWillChange.sink { tokenChange.fulfill() }
+    let tokenUpdatedAt = Date(timeIntervalSinceReferenceDate: 42)
+    store.setAITokenAvailability(
+      KeychainTokenAvailability(hasToken: true, updatedAt: tokenUpdatedAt))
+    await fulfillment(of: [tokenChange], timeout: 1)
+    XCTAssertEqual(facade.tokenAvailability.updatedAt, tokenUpdatedAt)
+    tokenObserver.cancel()
+
+    let remoteAIEnabled = !facade.dataSharingConsent.isRemoteAIEnabled
+    let authorizationChange = expectation(description: "RSS remote authorization changed")
+    let authorizationObserver = facade.objectWillChange.sink { authorizationChange.fulfill() }
+    store.ai.setRemoteAIEnabled(remoteAIEnabled)
+    await fulfillment(of: [authorizationChange], timeout: 1)
+    XCTAssertEqual(facade.dataSharingConsent.isRemoteAIEnabled, remoteAIEnabled)
+    authorizationObserver.cancel()
+
+    let grantChange = expectation(description: "RSS grant changed")
+    let grantObserver = facade.objectWillChange.sink { grantChange.fulfill() }
+    store.ai.grantDataSharingConsent(for: facade.providerConfiguration, enablingRemoteAI: true)
+    await fulfillment(of: [grantChange], timeout: 1)
+    XCTAssertTrue(facade.dataSharingConsent.isGranted)
+    grantObserver.cancel()
+
+    let revokeChange = expectation(description: "RSS revocation changed")
+    let revokeObserver = facade.objectWillChange.sink { revokeChange.fulfill() }
+    store.ai.revokeDataSharingConsent()
+    await fulfillment(of: [revokeChange], timeout: 1)
+    XCTAssertFalse(facade.dataSharingConsent.isGranted)
+    revokeObserver.cancel()
+
+    let quickHideChange = expectation(description: "RSS quick hide changed")
+    let quickHideObserver = facade.objectWillChange.sink { quickHideChange.fulfill() }
+    store.activateQuickHide(reason: "RSS privacy test")
+    await fulfillment(of: [quickHideChange], timeout: 1)
+    XCTAssertTrue(facade.isQuickHideActive)
+    XCTAssertFalse(facade.canUseProtectedWorkbench)
+    quickHideObserver.cancel()
+
+    let quickHideRelease = expectation(description: "RSS quick hide released")
+    let quickHideReleaseObserver = facade.objectWillChange.sink { quickHideRelease.fulfill() }
+    store.deactivateQuickHide()
+    await fulfillment(of: [quickHideRelease], timeout: 1)
+    XCTAssertFalse(facade.isQuickHideActive)
+    XCTAssertTrue(facade.canUseProtectedWorkbench)
+    quickHideReleaseObserver.cancel()
   }
 
   func testActivityStatusFacadeObservesAIWithoutRebroadcastingRootStore() {

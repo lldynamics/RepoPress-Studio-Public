@@ -113,11 +113,21 @@ extension PublishingStore {
   /// editor cannot overwrite unsaved or newer work in this app.
   @discardableResult
   public func importMissingDraftsFromLocalRepository(store: WorkbenchStore) async -> Int {
-    await importMissingDraftsFromLocalRepository(
+    await importMissingDraftsFromLocalRepositoryOperation(store: store).summary.insertedCount
+  }
+
+  func importMissingDraftsFromLocalRepositoryOperation(
+    store: WorkbenchStore,
+    focusImportedDraft: Bool = true,
+    expectedProfile: SiteProfile? = nil
+  ) async -> LocalContentImportOperationResult {
+    await discoverMissingDraftsFromLocalRepository(
       store: store,
       privateDraftsOnly: false,
       announcesInsertions: true,
-      repositoryPaths: nil
+      repositoryPaths: nil,
+      focusImportedDraft: focusImportedDraft,
+      expectedProfile: expectedProfile
     )
   }
 
@@ -129,38 +139,43 @@ extension PublishingStore {
     repositoryPaths: [String],
     store: WorkbenchStore
   ) async -> Int {
-    await importMissingDraftsFromLocalRepository(
+    await discoverMissingDraftsFromLocalRepository(
       store: store,
       privateDraftsOnly: false,
       announcesInsertions: false,
       repositoryPaths: repositoryPaths
-    )
+    ).summary.insertedCount
   }
 
   /// Keeps the narrower private-only migration available for older callers.
   @discardableResult
   public func importMissingPrivateDraftsFromLocalRepository(store: WorkbenchStore) async -> Int {
-    await importMissingDraftsFromLocalRepository(
+    await discoverMissingDraftsFromLocalRepository(
       store: store,
       privateDraftsOnly: true,
       announcesInsertions: false,
       repositoryPaths: nil
-    )
+    ).summary.insertedCount
   }
 
-  private func importMissingDraftsFromLocalRepository(
+  private func discoverMissingDraftsFromLocalRepository(
     store: WorkbenchStore,
     privateDraftsOnly: Bool,
     announcesInsertions: Bool,
-    repositoryPaths: [String]?
-  ) async -> Int {
+    repositoryPaths: [String]?,
+    focusImportedDraft: Bool = true,
+    expectedProfile: SiteProfile? = nil
+  ) async -> LocalContentImportOperationResult {
     let profile = store.activeProfile
+    guard !Task.isCancelled, expectedProfile == nil || expectedProfile == profile else {
+      return .empty(outcome: .cancelled)
+    }
     guard !profile.localRepositoryRootPath.trimmedForPublishing.isEmpty else {
-      return 0
+      return .empty(outcome: .failed)
     }
 
     guard localImportOperationContext == nil else {
-      return 0
+      return .empty(outcome: .cancelled)
     }
     let operation = LocalRepositoryOperationContext(profile: profile)
     localImportOperationContext = operation
@@ -176,7 +191,7 @@ extension PublishingStore {
           }
         guard !candidatePaths.isEmpty else {
           localImportOperationContext = nil
-          return 0
+          return .empty(outcome: .succeeded)
         }
         result = try await localContentImportService.importDraftsAsync(
           profile: profile,
@@ -192,7 +207,7 @@ extension PublishingStore {
       if localImportOperationContext == operation {
         localImportOperationContext = nil
       }
-      return 0
+      return .empty(outcome: .cancelled)
     } catch {
       if localImportOperationContext == operation {
         localImportOperationContext = nil
@@ -200,33 +215,37 @@ extension PublishingStore {
       if announcesInsertions {
         setPublishActionMessage(error.localizedDescription, status: .failure)
       }
-      return 0
+      return .empty(outcome: .failed)
     }
-    guard localImportOperationContext == operation,
-      operation.stillMatches(store.activeProfile)
+    guard !Task.isCancelled, localImportOperationContext == operation,
+      operation.stillMatches(store.activeProfile),
+      expectedProfile == nil || expectedProfile == store.activeProfile
     else {
       if localImportOperationContext == operation {
         localImportOperationContext = nil
       }
-      return 0
+      return .empty(outcome: .cancelled)
     }
-    guard let hydratedResult = await hydrateLocalRepositoryBaselinesAsync(
-      result,
-      profile: profile,
-      store: store
-    ) else {
-      if localImportOperationContext == operation {
-        localImportOperationContext = nil
-      }
-      return 0
-    }
-    guard localImportOperationContext == operation,
-      operation.stillMatches(store.activeProfile)
+    guard
+      let hydratedResult = await hydrateLocalRepositoryBaselinesAsync(
+        result,
+        profile: profile,
+        store: store
+      )
     else {
       if localImportOperationContext == operation {
         localImportOperationContext = nil
       }
-      return 0
+      return .empty(outcome: .cancelled)
+    }
+    guard !Task.isCancelled, localImportOperationContext == operation,
+      operation.stillMatches(store.activeProfile),
+      expectedProfile == nil || expectedProfile == store.activeProfile
+    else {
+      if localImportOperationContext == operation {
+        localImportOperationContext = nil
+      }
+      return .empty(outcome: .cancelled)
     }
     localImportOperationContext = nil
 
@@ -244,11 +263,11 @@ extension PublishingStore {
       if announcesInsertions, let issue = hydratedResult.issues.first {
         setPublishActionMessage(issue.message, status: .failure)
       }
-      return 0
+      return .empty(outcome: hydratedResult.issues.isEmpty ? .succeeded : .failed)
     }
 
     drafts.append(contentsOf: missingDrafts)
-    if let firstImportedDraft = missingDrafts.first {
+    if focusImportedDraft, let firstImportedDraft = missingDrafts.first {
       _ = focusDraft(firstImportedDraft.id, store: store)
     }
     if automaticallyRefreshPreflightOnEdit {
@@ -265,7 +284,14 @@ extension PublishingStore {
       }
     }
     store.save()
-    return missingDrafts.count
+    return LocalContentImportOperationResult(
+      summary: LocalContentImportMergeSummary(
+        insertedCount: missingDrafts.count,
+        updatedCount: 0,
+        skippedCount: hydratedResult.skippedPaths.count
+      ),
+      outcome: hydratedResult.issues.isEmpty ? .succeeded : .partial
+    )
   }
 
   @discardableResult

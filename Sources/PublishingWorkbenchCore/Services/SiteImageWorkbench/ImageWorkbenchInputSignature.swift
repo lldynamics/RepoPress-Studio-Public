@@ -1,4 +1,5 @@
 import Foundation
+import PublishingDomainContracts
 
 /// The Markdown-only portion of an image report input. It is intentionally
 /// separate from file attributes so edit commits can decide whether an image

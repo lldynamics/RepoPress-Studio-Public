@@ -357,6 +357,10 @@ extension WorkbenchStore {
     let profile = profile(for: draft)
     let repositoryPath = draft.repositoryPath?.normalizedRelativePath()
       ?? profile.markdownPath(for: draft)
+    // An explicit write starts a new attempt. Keeping the prior failure here
+    // would suppress a follow-up autosave if the article changes during I/O.
+    // The file writer still checks the recorded baseline before any overwrite.
+    siteDraftFileSaveFailures[draftID] = nil
     siteDraftFileSaveStates[draftID] = .pending(repositoryPath: repositoryPath)
     siteDraftFileWritesInProgress.insert(draftID)
 

@@ -1,6 +1,6 @@
 import XCTest
 
-@testable import PublishingWorkbenchCore
+@testable import PublishingAICore
 
 final class LocalAIEngineSetupServiceTests: XCTestCase {
   private let service = LocalAIEngineSetupService()

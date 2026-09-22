@@ -73,6 +73,41 @@ final class WorkbenchFocusedObservationFacadeTests: XCTestCase {
     withExtendedLifetime(cancellable) {}
   }
 
+  func testDocumentStoresAreTheSingleOwnersOfDraftAndLiveEditorState() throws {
+    let store = makeStore()
+    let publishing = store.publishingStore
+    let documents = publishing.documents
+    let documentSession = publishing.documentSession
+    var draft = try XCTUnwrap(documents.drafts.first)
+
+    draft.title = "文档 Store 所有者"
+    documents.drafts = [draft]
+    XCTAssertEqual(publishing.drafts, [draft])
+    XCTAssertEqual(store.drafts, [draft])
+
+    let staged = DraftBodyEditorBuffer(
+      draftID: draft.id,
+      bodyMarkdown: "仅文档会话持有的实时正文",
+      revision: 4,
+      isDirty: true
+    )
+    documentSession.setDraftBodyEditorBuffer(
+      staged,
+      for: draft.id,
+      notifyObservers: false
+    )
+    XCTAssertEqual(store.draftBodyEditorBuffer(for: draft.id), staged)
+
+    let selection = ActiveEditorSelection(
+      draftID: draft.id,
+      range: NSRange(location: 0, length: 0),
+      selectedText: "",
+      bodyUTF16Count: (staged.bodyMarkdown as NSString).length
+    )
+    documentSession.activeEditorSelection = selection
+    XCTAssertEqual(publishing.activeEditorSelection, selection)
+  }
+
   func testLiveEditorContextFacadeTracksOnlyCurrentDraftAndDeduplicates() throws {
     let store = makeStore()
     var trackedDraft = try XCTUnwrap(store.selectedDraft)
@@ -115,7 +150,7 @@ final class WorkbenchFocusedObservationFacadeTests: XCTestCase {
     )
     XCTAssertEqual(changes, 1)
 
-    store.publishingStore.setDraftBodyEditorBuffer(
+    store.publishingStore.documentSession.setDraftBodyEditorBuffer(
       DraftBodyEditorBuffer(
         draftID: otherDraft.id,
         bodyMarkdown: "另一篇实时正文",
@@ -127,7 +162,7 @@ final class WorkbenchFocusedObservationFacadeTests: XCTestCase {
     )
     XCTAssertEqual(changes, 1)
 
-    store.publishingStore.setDraftBodyEditorBuffer(
+    store.publishingStore.documentSession.setDraftBodyEditorBuffer(
       DraftBodyEditorBuffer(
         draftID: trackedDraft.id,
         bodyMarkdown: "当前实时正文",

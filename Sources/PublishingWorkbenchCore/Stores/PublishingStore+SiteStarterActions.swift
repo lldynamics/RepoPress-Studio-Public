@@ -1,4 +1,5 @@
 import Foundation
+import PublishingDomainContracts
 
 /// The result of importing an existing site, separated from transient UI
 /// feedback so callers can record an accurate operation outcome even if a

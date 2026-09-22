@@ -194,6 +194,44 @@ def interval_durations(
     return intervals
 
 
+def completed_intervals_started_in_window(
+    rows: list[dict[str, tuple[str, int | None]]],
+    name: str,
+    lower_bound: int | None,
+    upper_bound: int | None,
+    allowed_subsystems: tuple[str, ...] = ("", APP_SUBSYSTEM),
+) -> tuple[list[tuple[int, int]], int]:
+    """Pair intervals whose Begin is in the window, including a late End.
+
+    Current drawing work is dispatched onto the next run loop. Its End may
+    occur after the sampling window, so the legacy interval helper cannot be
+    used for this phase. The second result counts Begins in the window that
+    never received an End in the trace.
+    """
+    starts: dict[str, int] = {}
+    intervals: list[tuple[int, int]] = []
+    for row in rows:
+        if not belongs_to_app(row) or text(row, "name") != name:
+            continue
+        if text(row, "subsystem") not in allowed_subsystems:
+            continue
+        timestamp = integer(row, "time")
+        identifier = text(row, "identifier")
+        if timestamp is None or not identifier:
+            continue
+        event_type = text(row, "event-type")
+        if event_type == "Begin":
+            if (
+                lower_bound is not None
+                and upper_bound is not None
+                and lower_bound <= timestamp <= upper_bound
+            ):
+                starts[identifier] = timestamp
+        elif event_type == "End" and identifier in starts:
+            intervals.append((starts.pop(identifier), timestamp))
+    return intervals, len(starts)
+
+
 def completed_interval_records(
     rows: list[dict[str, tuple[str, int | None]]],
     name: str,
@@ -326,6 +364,18 @@ def analyze(arguments: argparse.Namespace) -> tuple[dict[str, Any], bool, bool]:
         auto_end + int(DEFAULT_TYPING_SETTLE_GRACE_MILLISECONDS * 1_000_000)
         if is_typing and auto_end is not None
         else interaction_end
+    )
+    # Report and select the drawing window from the raw interaction end. This
+    # keeps typing's existing analysis grace from being counted twice while
+    # exposing the same effective 500 ms tail for both automatic scenarios.
+    drawing_settle_grace_milliseconds = (
+        DEFAULT_TYPING_SETTLE_GRACE_MILLISECONDS if not is_manual else 0.0
+    )
+    drawing_analysis_end = (
+        interaction_end
+        + int(drawing_settle_grace_milliseconds * 1_000_000)
+        if interaction_end is not None
+        else None
     )
 
     document_utf16_length: int | None = None
@@ -527,7 +577,9 @@ def analyze(arguments: argparse.Namespace) -> tuple[dict[str, Any], bool, bool]:
     phase_names = (
         "ApplyRenderingAttributes",
         "ApplyMarkerAttributes",
+        "ApplyBlockMarkerDrawings",
         "ApplyBlockMarkerOverlays",
+        "ApplyInlineAttachmentDrawings",
         "ApplyInlineAttachmentOverlays",
         "ApplyEditorOverlays",
     )
@@ -552,9 +604,77 @@ def analyze(arguments: argparse.Namespace) -> tuple[dict[str, Any], bool, bool]:
                 round(max(phase_durations), 3) if phase_durations else None
             ),
         }
-    inline_attachment_sample_count = phase_metrics[
+    current_drawing_intervals: dict[str, list[tuple[int, int]]] = {}
+    current_drawing_incomplete_counts: dict[str, int] = {}
+    for phase_name in ("ApplyBlockMarkerDrawings", "ApplyInlineAttachmentDrawings"):
+        intervals, incomplete_count = completed_intervals_started_in_window(
+            signposts,
+            phase_name,
+            lower_bound=interaction_start,
+            upper_bound=drawing_analysis_end,
+        )
+        current_drawing_intervals[phase_name] = intervals
+        current_drawing_incomplete_counts[phase_name] = incomplete_count
+        phase_durations = [milliseconds(end - start) for start, end in intervals]
+        phase_metrics[phase_name] = {
+            "intervalCount": len(phase_durations),
+            "medianMilliseconds": (
+                round(statistics.median(phase_durations), 3) if phase_durations else None
+            ),
+            "p95Milliseconds": (
+                round(percentile(phase_durations, 0.95) or 0, 3)
+                if phase_durations
+                else None
+            ),
+            "maximumMilliseconds": (
+                round(max(phase_durations), 3) if phase_durations else None
+            ),
+            "incompleteIntervalCount": incomplete_count,
+        }
+    inline_attachment_drawings_sample_count = phase_metrics[
+        "ApplyInlineAttachmentDrawings"
+    ]["intervalCount"]
+    inline_attachment_overlays_sample_count = phase_metrics[
         "ApplyInlineAttachmentOverlays"
     ]["intervalCount"]
+    # The drawings signpost is the current attachment path.  Keep the old
+    # overlay path as a fallback for traces captured before the signpost was
+    # renamed, but never combine both populations into one sample set.
+    if inline_attachment_drawings_sample_count > 0:
+        inline_attachment_evidence_name = "ApplyInlineAttachmentDrawings"
+        inline_attachment_sample_count = inline_attachment_drawings_sample_count
+    elif inline_attachment_overlays_sample_count > 0:
+        inline_attachment_evidence_name = "ApplyInlineAttachmentOverlays"
+        inline_attachment_sample_count = inline_attachment_overlays_sample_count
+    else:
+        inline_attachment_evidence_name = None
+        inline_attachment_sample_count = 0
+    selected_attachment_intervals = (
+        current_drawing_intervals["ApplyInlineAttachmentDrawings"]
+        if inline_attachment_evidence_name == "ApplyInlineAttachmentDrawings"
+        else interval_durations(
+            signposts,
+            inline_attachment_evidence_name,
+            lower_bound=interaction_start,
+            upper_bound=interaction_analysis_end,
+        )
+        if inline_attachment_evidence_name is not None
+        else []
+    )
+    selected_attachment_durations = [
+        milliseconds(end - start) for start, end in selected_attachment_intervals
+    ]
+    inline_attachment_incomplete_count = current_drawing_incomplete_counts[
+        "ApplyInlineAttachmentDrawings"
+    ]
+    attachment_p95_milliseconds = percentile(selected_attachment_durations, 0.95)
+    attachment_p95_within_frame_budget = (
+        not selected_attachment_durations
+        or (
+            attachment_p95_milliseconds is not None
+            and attachment_p95_milliseconds <= frame_budget_milliseconds
+        )
+    )
     minimum_inline_attachment_samples = (
         0 if uses_native_rich_presentation else minimum_apply_samples
     ) if is_rich_scroll else 0
@@ -690,6 +810,8 @@ def analyze(arguments: argparse.Namespace) -> tuple[dict[str, Any], bool, bool]:
         interaction_valid
         and apply_sample_count_sufficient
         and inline_attachment_sample_count_sufficient
+        and inline_attachment_incomplete_count == 0
+        and attachment_p95_within_frame_budget
         and p95_within_frame_budget
         and typing_step_p95_within_frame_budget
         and scroll_step_p95_within_frame_budget
@@ -825,10 +947,44 @@ def analyze(arguments: argparse.Namespace) -> tuple[dict[str, Any], bool, bool]:
             "requiredByRenderPath": not uses_native_rich_presentation,
         },
         "applyAttributePhases": phase_metrics,
+        "inlineAttachmentDrawings": {
+            **phase_metrics["ApplyInlineAttachmentDrawings"],
+            "minimumSampleCount": minimum_inline_attachment_samples,
+            "sampleCountSufficient": (
+                inline_attachment_evidence_name != "ApplyInlineAttachmentDrawings"
+                or inline_attachment_sample_count_sufficient
+            ),
+            "requiredByScenario": (
+                is_rich_scroll
+                and not uses_native_rich_presentation
+                and inline_attachment_evidence_name == "ApplyInlineAttachmentDrawings"
+            ),
+        },
         "inlineAttachmentOverlays": {
+            # Compatibility alias: consumers historically read this key as
+            # the attachment evidence used by the gate. The raw legacy phase
+            # remains available under applyAttributePhases.
             "intervalCount": inline_attachment_sample_count,
             "minimumSampleCount": minimum_inline_attachment_samples,
             "sampleCountSufficient": inline_attachment_sample_count_sufficient,
+            "requiredByScenario": is_rich_scroll and not uses_native_rich_presentation,
+        },
+        "inlineAttachmentEvidence": {
+            "phaseName": inline_attachment_evidence_name,
+            "intervalCount": inline_attachment_sample_count,
+            "minimumSampleCount": minimum_inline_attachment_samples,
+            "sampleCountSufficient": inline_attachment_sample_count_sufficient,
+            "p95Milliseconds": (
+                round(attachment_p95_milliseconds, 3)
+                if attachment_p95_milliseconds is not None
+                else None
+            ),
+            "frameBudgetMilliseconds": round(frame_budget_milliseconds, 3),
+            "p95WithinFrameBudget": attachment_p95_within_frame_budget,
+            "analysisWindowStartNanoseconds": interaction_start,
+            "analysisWindowEndNanoseconds": drawing_analysis_end,
+            "settleGraceMilliseconds": round(drawing_settle_grace_milliseconds, 3),
+            "incompleteIntervalCount": inline_attachment_incomplete_count,
             "requiredByScenario": is_rich_scroll and not uses_native_rich_presentation,
         },
         "readOnlyPresentation": {
@@ -871,6 +1027,12 @@ def analyze(arguments: argparse.Namespace) -> tuple[dict[str, Any], bool, bool]:
             "minimumInlineAttachmentSamples": minimum_inline_attachment_samples,
             "inlineAttachmentSampleCountSufficient": (
                 inline_attachment_sample_count_sufficient
+            ),
+            "inlineAttachmentEvidencePhase": inline_attachment_evidence_name,
+            "inlineAttachmentP95WithinFrameBudget": attachment_p95_within_frame_budget,
+            "inlineAttachmentIncompleteCount": inline_attachment_incomplete_count,
+            "inlineAttachmentSettleGraceMilliseconds": round(
+                drawing_settle_grace_milliseconds, 3
             ),
             "frameBudgetMilliseconds": round(frame_budget_milliseconds, 3),
             "p95WithinFrameBudget": p95_within_frame_budget,

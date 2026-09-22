@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 
+@testable import PublishingKnowledgeCore
 @testable import PublishingWorkbenchCore
 
 struct WorkbenchDataRootInitializationTests {

@@ -38,7 +38,6 @@ for source in \
   Repository/RepositoryWorkspaceOverviewSections.swift:repository-action-open-images \
   Repository/RepositoryWorkspaceOverviewSections.swift:repository-next-action \
   Repository/RepositoryWorkspaceOverviewSections.swift:repository-section-summary \
-  Repository/RepositoryWorkspaceOverviewSections.swift:repository-section-more-tools \
   Repository/RepositoryWorkspaceOverviewSections.swift:repository-section-information \
   Repository/RepositoryWorkspacePublishingSections.swift:repository-section-online-publish \
   Repository/RepositoryWorkspaceAutoSyncSection.swift:repository-section-auto-sync \
@@ -50,6 +49,11 @@ for source in \
   Publishing/ReleaseHistoryDetailView.swift:repository-section-release-history; do
   file="${source%%:*}"; identifier="${source#*:}"
   grep -Fq ".accessibilityIdentifier(\"$identifier\")" "$VIEWS/$file" || fail "repository UI identifier missing: $identifier"
+done
+grep -Fq 'WorkbenchDisclosureGroupStyle(toggleIdentifier: "repository-section-more-tools")' "$VIEWS/Repository/RepositoryWorkspaceOverviewSections.swift" || fail "repository more-tools disclosure identifier is missing"
+disclosure_style="$VIEWS/Workspace/WorkbenchDisclosureGroupStyle.swift"
+for required in 'Button {' 'configuration.isExpanded.toggle()' '.contentShape(Rectangle())' '.accessibilityIdentifier(toggleIdentifier)' '.accessibilityValue(configuration.isExpanded' 'configuration.content'; do
+  grep -Fq "$required" "$disclosure_style" || fail "accessible disclosure contract is missing: $required"
 done
 grep -Fq 'onlinePublishCenterSection' "$VIEWS/Repository/RepositoryWorkspaceOverviewSections.swift" || fail "online publish center is missing"
 overview_sections="$VIEWS/Repository/RepositoryWorkspaceOverviewSections.swift"

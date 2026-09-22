@@ -1,5 +1,6 @@
 import Combine
 import Foundation
+import PublishingDomainContracts
 
 /// Observation boundary for repository and deployment automation settings.
 ///

@@ -4,6 +4,99 @@ import XCTest
 @testable import PublishingWorkbenchCore
 
 final class FirstRunSetupPresentationTests: XCTestCase {
+  func testWritingHandoffRetryAdoptsEditsOnlyForTheSameSite() {
+    let original = SiteProfile.defaultProfile
+    var edited = original
+    edited.contentRoot = "fixed/content"
+    XCTAssertNil(
+      FirstRunRepositoryHandoffPresentation.profileForPreparation(
+        original: original, current: edited, isRetry: false))
+    XCTAssertEqual(
+      FirstRunRepositoryHandoffPresentation.profileForPreparation(
+        original: original, current: edited, isRetry: true), edited)
+    let otherSite = SiteProfile(name: "Other site")
+    XCTAssertNil(
+      FirstRunRepositoryHandoffPresentation.profileForPreparation(
+        original: original, current: otherSite, isRetry: true))
+  }
+
+  @MainActor
+  func testCreatingHandoffArticleLeavesOtherWindowSharedSelectionUntouched() throws {
+    let rootURL = FileManager.default.temporaryDirectory
+      .appendingPathComponent("FirstRunWindowCreation-\(UUID().uuidString)", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: rootURL.appendingPathComponent("workbench.json"))
+    )
+    let original = ArticleDraft(siteProfileID: store.activeProfileID, title: "Other window")
+    store.setDrafts([original])
+    store.setSelectedDraftID(original.id)
+    store.selectSection(.sync)
+    let originalScope = store.draftListContentScope
+
+    let createdID = store.createDraftWithoutChangingSelection()
+
+    XCTAssertNotEqual(createdID, original.id)
+    XCTAssertTrue(
+      store.drafts.contains { $0.id == createdID && $0.siteProfileID == store.activeProfileID })
+    XCTAssertEqual(store.selectedDraftID, original.id)
+    XCTAssertEqual(store.selectedSection, .sync)
+    XCTAssertEqual(store.draftListContentScope, originalScope)
+  }
+
+  func testWritingHandoffOffersOnlyArticlesFromTheConnectedSite() {
+    let profileID = UUID()
+    let older = ArticleDraft(siteProfileID: profileID, title: "Older")
+    var recent = ArticleDraft(siteProfileID: profileID, title: "Recent")
+    recent.updatedAt = older.updatedAt.addingTimeInterval(10)
+    var otherSite = ArticleDraft(siteProfileID: UUID(), title: "Other site")
+    otherSite.updatedAt = recent.updatedAt.addingTimeInterval(10)
+    let result = LocalContentImportOperationResult(
+      summary: .init(insertedCount: 1, updatedCount: 0, skippedCount: 0),
+      outcome: .succeeded
+    )
+
+    XCTAssertEqual(
+      FirstRunRepositoryHandoffPresentation.state(
+        result: result, drafts: [otherSite, older, recent], profileID: profileID
+      ),
+      .ready(insertedCount: 1, availableCount: 2, latestDraftID: recent.id, hasWarnings: false)
+    )
+  }
+
+  func testWritingHandoffDistinguishesEmptyRepositoryFailureAndCancellation() {
+    let profileID = UUID()
+    XCTAssertEqual(
+      FirstRunRepositoryHandoffPresentation.state(
+        result: .empty(outcome: .succeeded), drafts: [], profileID: profileID
+      ),
+      .ready(insertedCount: 0, availableCount: 0, latestDraftID: nil, hasWarnings: false)
+    )
+    XCTAssertEqual(
+      FirstRunRepositoryHandoffPresentation.state(
+        result: .empty(outcome: .failed), drafts: [], profileID: profileID
+      ), .failed
+    )
+    XCTAssertEqual(
+      FirstRunRepositoryHandoffPresentation.state(
+        result: .empty(outcome: .cancelled), drafts: [], profileID: profileID
+      ), .cancelled
+    )
+  }
+
+  func testWritingHandoffKeepsPartialImportVisibleAsAWarning() {
+    let profileID = UUID()
+    let draft = ArticleDraft(siteProfileID: profileID, title: "Imported")
+    XCTAssertEqual(
+      FirstRunRepositoryHandoffPresentation.state(
+        result: .init(
+          summary: .init(insertedCount: 1, updatedCount: 0, skippedCount: 1), outcome: .partial),
+        drafts: [draft], profileID: profileID
+      ),
+      .ready(insertedCount: 1, availableCount: 1, latestDraftID: draft.id, hasWarnings: true)
+    )
+  }
+
   func testFirstRunOffersTheThreePathsInProductOrder() {
     XCTAssertEqual(
       FirstRunSetupPath.allCases.map(\.rawValue),

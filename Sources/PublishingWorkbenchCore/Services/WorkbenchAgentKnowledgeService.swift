@@ -1,4 +1,5 @@
 import Foundation
+import PublishingKnowledgeCore
 
 /// Errors exposed by the read-only knowledge tools.
 ///
@@ -276,12 +277,9 @@ public struct WorkbenchAgentKnowledgeService: Sendable {
     let library = self.library
     let task = Task.detached(priority: .userInitiated) {
       try Task.checkCancellation()
-      let database = try library.database()
-      try Task.checkCancellation()
-      return try database.search(
+      return try library.lexicalSearchForRemoteAI(
         query: query,
-        limit: limit,
-        onlyRemoteAIAllowed: true
+        limit: limit
       )
     }
     return try await withTaskCancellationHandler {
@@ -318,7 +316,7 @@ public struct WorkbenchAgentKnowledgeService: Sendable {
       // Reading an explicitly authorized chunk does not require permission to
       // build a local semantic index. Bind the direct lookup to the exact
       // document revision instead of scanning semantic-index-eligible records.
-      let chunk = try library.database().chunk(
+      let chunk = try library.chunk(
         id: chunkID, documentID: documentID, revisionID: revisionID
       )
       try Task.checkCancellation()

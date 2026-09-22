@@ -1,4 +1,5 @@
 import Combine
+import PublishingDomainContracts
 import XCTest
 
 @testable import PublishingWorkbenchCore

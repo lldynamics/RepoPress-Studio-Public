@@ -51,6 +51,7 @@
     "zh-Hans": "%@ · 127.0.0.1:%@"
   },
   "%@ · 已验证可写": "%@ · Write Access Verified",
+  "%@ · 第 %@ 行": "%@ · Line %@",
   "%@ · 路径与规则可用于本地发布": "%@ · Paths and rules are ready for local publishing",
   "%@ · 路径规则已配置": "%@ · Path rules are configured",
   "%@ → %@": "%@ → %@",
@@ -64,6 +65,8 @@
   "%@ 个章节/页面": "%@ sections/pages",
   "%@ 个自动备份校验失败，已从一键恢复列表中隐藏；请检查备份目录或重新创建备份。": "%@ automatic backups failed validation and were hidden from Quick Restore. Check the backup folder or create new backups.",
   "%@ 个订阅 · %@ 篇未读": "%@ feeds · %@ unread articles",
+  "%@ 个附件": "%@ attachment(s)",
+  "%@ 个附件；%@ 个本地附件缺失，将仅保留元数据": "%@ attachment(s); %@ local attachment(s) missing, metadata only will be retained",
   "%@ 个顶层项目 · %@/ 中 %@ 个 Markdown/MDX 文件 · %@ · %@": "%@ top-level items · %@/: %@ Markdown/MDX files · %@ · %@",
   "%@ 分钟": "%@ minutes",
   "%@ 到 %@": {
@@ -104,6 +107,10 @@
     "en": "%1$@ articles can be changed, with %2$@ matches in total",
     "zh-Hans": "%1$@ 篇可替换，共 %2$@ 处"
   },
+  "%@ 篇文章，%@ 处引用": {
+    "en": "%@ articles, %@ references",
+    "zh-Hans": "%@ 篇文章，%@ 处引用"
+  },
   "%@ 篇私密文章仅搜索标题": "Title-only search for %@ private articles",
   "%@ 级标题 (H%@)": {
     "en": "%1$@ Heading (H%2$@)",
@@ -126,6 +133,10 @@
   },
   "%@/%@ 已协调": "%1$@/%2$@ resolved",
   "%@/100": "%@/100",
+  "%@:%@": {
+    "en": "%@:%@",
+    "zh-Hans": "%@:%@"
+  },
   "%@:%@ · %@": {
     "en": "%@:%@ · %@",
     "zh-Hans": "%@:%@ · %@"
@@ -135,6 +146,7 @@
     "en": "%1$@. %2$@",
     "zh-Hans": "%1$@。%2$@"
   },
+  "%@。推荐原因：%@": "%@. Recommended because: %@",
   "%@倍速": "%@× speed",
   "%@分布": {
     "en": "%@ Distribution",
@@ -157,7 +169,10 @@
     "en": "%@ Preview",
     "zh-Hans": "%@预览"
   },
-  "%@（%@）": "%@ (%@)",
+  "%@（%@）": {
+    "en": "%@ (%@)",
+    "zh-Hans": "%@（%@）"
+  },
   "%@（待验证）": "%@ (pending verification)",
   "%@（约 %lld 字）": {
     "en": "%@ (about %lld characters)",
@@ -211,10 +226,12 @@
     "zh-Hans": "%@：%@ · %@"
   },
   "%@：%@。点击查看状态和发布操作。": "%@: %@. Click to view status and publishing actions.",
+  "%d 个待下线请求未纳入本次发布，请到回收站单独处理。": "%d pending unpublish requests are excluded. Handle them separately in Trash.",
   "%d 个文件": {
     "en": "%d Files",
     "zh-Hans": "%d 个文件"
   },
+  "%d 个文件路径": "%d file paths",
   "%d 个最终合并版无效或仍含冲突标记。": "%d final merged documents are invalid or still contain conflict markers.",
   "%d 分钟": {
     "en": "%d minutes",
@@ -227,6 +244,8 @@
     "en": "%d Articles",
     "zh-Hans": "%d 篇文章"
   },
+  "%d 篇文章已不存在或无权访问，未写入任何文章。": "%d articles no longer exist or are unavailable. No articles were written.",
+  "%d 篇文章的目标字段已变化，未写入任何文章；请重新预览。": "The target fields in %d articles changed. No articles were written; generate a new preview.",
   "%d 篇网站草稿未纳入发布，请单独同步": "%d website drafts are excluded from publishing; sync them individually",
   "%lld": {
     "en": "%lld",
@@ -308,10 +327,15 @@
     "en": "%lld articles",
     "zh-Hans": "%lld 篇文章"
   },
+  "%lld 篇文章，%lld 处引用": {
+    "en": "%lld articles, %lld references",
+    "zh-Hans": "%lld 篇文章，%lld 处引用"
+  },
   "%lld 篇私密文章仅搜索标题": {
     "en": "%lld Private Articles Search Titles Only",
     "zh-Hans": "%lld 篇私密文章仅搜索标题"
   },
+  "%lld 篇草稿尚未同步到项目。退出后会保留待同步记录，项目文件不会被覆盖。": "%lld drafts have not been synced to the project. Pending sync records will be retained after quitting, and project files will not be overwritten.",
   "%lld 警告": {
     "en": "%lld warnings",
     "zh-Hans": "%lld 警告"
@@ -645,6 +669,7 @@
   },
   "H%@": "H%@",
   "H1": "H1",
+  "HEAD": "HEAD",
   "HTML": {
     "en": "HTML",
     "zh-Hans": "HTML"
@@ -759,6 +784,11 @@
   "PR/MR 描述": "PR/MR Description",
   "RSS": "RSS",
   "RSS / Atom 地址或博客首页": "RSS / Atom address or blog homepage",
+  "RSS 已保存文章": {
+    "en": "Saved RSS Articles",
+    "ja": "保存済み RSS 記事",
+    "zh-Hans": "RSS 已保存文章"
+  },
   "RSS 插入失败": "RSS Insert Failed",
   "RSS 撤销操作": "Undo RSS Action",
   "RSS 文章正文正在读取": "RSS Article Body Is Loading",
@@ -2818,6 +2848,7 @@
   "“%@”将作用于文章“%@”。软件只执行这一项，不会自动确认后续步骤。": "\"%@\" will act on article \"%@\". The app runs only this action and does not automatically confirm later steps.",
   "“%@”的未保存恢复内容将从恢复记录中移除，之后无法从此面板找回。": "The unsaved recovery content for “%@” will be removed and cannot be recovered from this panel afterward.",
   "“%@”读取失败": "Couldn’t Load “%@”",
+  "“保留两份”不会改写项目文件；“采用项目版本”会先保留软件草稿恢复副本。": "Keep both does not change the project file; Use project version first keeps a recovery copy of the app draft.",
   "“未登记”只表示已载入文章的附件列表中没有该图片；主题、CSS 或其他文件仍可能引用它。": "\"Unregistered\" only means the image does not appear in the attachment lists of loaded articles. Themes, CSS, or other files may still reference it.",
   "•": "•",
   "…以及另外 %lld 个未列出的资源文件。": "...and %lld other unlisted asset files.",
@@ -2915,6 +2946,7 @@
     "zh-Hans": "下一步"
   },
   "下一篇文章": "Next Article",
+  "下方两份内容都是完整 Markdown，包含 Front Matter 元数据。处理前请先核对外部修改。": "Both documents below are complete Markdown, including Front Matter metadata. Review the external changes before proceeding.",
   "下次启动仍可从这三个入口开始。": {
     "en": "You can still choose from these three options the next time you open the app.",
     "zh-Hans": "下次启动仍可从这三个入口开始。"
@@ -2927,6 +2959,13 @@
     "zh-Hans": "下移"
   },
   "下线 PR/MR 已关闭？": "Is the Unpublish PR/MR Closed?",
+  "下线前检查引用影响": {
+    "en": "Review link impact before unpublishing",
+    "ja": "非公開にする前にリンクの影響を確認",
+    "zh-Hans": "下线前检查引用影响"
+  },
+  "不会再次提交文件；只会将下列已有提交以非强制方式推送到原分支。": "No files will be committed again. The existing commits below will only be pushed to the original branch without force.",
+  "不会直接写入文章；请先确认逐篇变化。": "Review the changes for each article before applying them.",
   "不会自动重试，可手动重试。": "This subscription won’t retry automatically. You can retry it manually.",
   "不保存并关闭": {
     "en": "Close Without Saving",
@@ -2941,6 +2980,7 @@
   "不可写": "Not writable",
   "不可用": "Unavailable",
   "不可读": "Not readable",
+  "不相关": "Not relevant",
   "不绑定站点": "Not Assigned to a Site",
   "不能使用替身或符号链接作为数据文件夹。": "Aliases and symbolic links cannot be used as the data folder.",
   "不读取当前文章正文、仓库状态或发布检查。": "Does not read the current article body, repository state, or publishing checks.",
@@ -3020,6 +3060,7 @@
   "仅 Markdown 文件支持逐块协调，已使用完整源码。": "Only Markdown files support hunk-by-hunk resolution. Full Source is used.",
   "仅保存在本机 · %@": "Stored Locally Only · %@",
   "仅保存在软件": "Saved Only in App",
+  "仅包含应用管理的文章发布包；待下线请求请到回收站单独处理，不包含 CSS、模板、脚本等其他 Git 工作区变更。发布前会显示完整批次与文件差异。": "Includes only app-managed article packages. Handle unpublish requests separately in Trash. CSS, templates, scripts, and other Git working-tree changes are excluded. Review the complete batch and file differences before publishing.",
   "仅发布当前文章": "Publish Current Article",
   "仅发布当前文章…": "Publish Current Article…",
   "仅固定资料": "Pinned Sources Only",
@@ -3036,6 +3077,7 @@
   "仅显示当前站点的非私密文章 · 已选 %lld / 最多 100 篇": "Non-private articles from the current site only · %lld selected / maximum 100",
   "仅显示最近 30 条 RSS 稍后阅读文章与高亮。": "Shows only the 30 most recent RSS articles saved for later and highlights.",
   "仅替换以下链接目标，保留链接文字、查询参数和锚点；更新前会创建恢复版本。": "Only the link targets below will change. Link labels, query parameters, and fragments are preserved. Recovery versions will be created first.",
+  "仅有本机语义或泛词检索信号，未发现可展示的具体主题词": "Only local semantic or broad search signals were found, with no specific topic terms to show.",
   "仅本地": "Local Only",
   "仅本次会话": "This Session Only",
   "仅此列可编辑": "Editable Column Only",
@@ -3047,6 +3089,15 @@
   "仅问答": "Text Only",
   "今天": "Today",
   "仍有修改未能保存，未更改存储位置。请先解决保存错误。": "Some changes could not be saved, so the storage location was not changed. Resolve the save error first.",
+  "仍然下线": {
+    "en": "Unpublish anyway",
+    "ja": "それでも非公開にする",
+    "zh-Hans": "仍然下线"
+  },
+  "仍然下线会把「%@」移到回收站、%@，并清理本地 Markdown；图片资源不会自动删除。失败项会保留在发布抽屉中重试。": {
+    "en": "Unpublishing moves “%@” to the trash, will %@, and removes the local Markdown file. Images are kept. Failed actions remain in the publishing drawer for retry.",
+    "zh-Hans": "仍然下线会把「%@」移到回收站、%@，并清理本地 Markdown；图片资源不会自动删除。失败项会保留在发布抽屉中重试。"
+  },
   "仍然恢复": "Restore Anyway",
   "仍要重新生成": "Regenerate Anyway",
   "从 %@ 切换到 %@ 会更新以下发布规则。仓库、访问令牌、作者和默认标签不会改变。": {
@@ -3171,7 +3222,9 @@
     "zh-Hans": "代码语言补全"
   },
   "代码高亮": "Syntax Highlighting",
+  "以下为本次确认的全部文章；差异以本地仓库为基线，远端版本仍会在写入前预检。": "These are all articles in this confirmation. Differences use the local repository as the baseline; remote versions will still be checked before writing.",
   "以下是刚刚冻结的快照。确认后会再次校验；任一项变化都会停止，不会提交或推送。": "This is the snapshot just frozen. It will be validated again after confirmation; any change stops the operation without committing or pushing.",
+  "以下是已提交版本的冻结复核。确认后只会推送显示的 SHA；任一项变化都会停止。": "This review covers the existing commit. Only the displayed SHA will be pushed after confirmation; any change stops the operation.",
   "以下选中的 %@ 个资源未在任何 Markdown 文章中找到引用。执行后将移入系统废纸篓，不会被永久删除。": "The %@ selected assets were not referenced in any Markdown articles. They will be moved to the macOS Trash and not permanently deleted.",
   "以下选中的 %lld 个资源未在任何 Markdown 文章中找到引用。执行后将移入系统废纸篓，不会被永久删除。": "The %lld selected assets were not referenced in any Markdown articles. They will be moved to the macOS Trash and not permanently deleted.",
   "以今天的日期和 my-first-post 为示例，仅预览路径，不创建文件。": "Uses today’s date and my-first-post as an example. This previews the path without creating a file.",
@@ -3183,6 +3236,11 @@
   "任务列表": "Task List",
   "任务进度": "Task Progress",
   "任务进行中": "Task in Progress",
+  "会在此文件夹中创建图片副本；资料库中的原图不会被修改。": {
+    "en": "Image copies will be created in this folder; originals in the knowledge library will not be changed.",
+    "ja": "このフォルダに画像コピーを作成します。資料ライブラリ内の元画像は変更されません。",
+    "zh-Hans": "会在此文件夹中创建图片副本；资料库中的原图不会被修改。"
+  },
   "会把当前文章标题和正文发送给当前 AI 服务，并受 AI 远程总闸与目的地授权约束；文章内仍可手动关闭或重新翻译。": "The current article title and body are sent to the active AI service, subject to the Remote AI master switch and destination consent. You can still turn this off or translate again from the article.",
   "位置 %@": "Position %@",
   "位置已配置，可管理占用与备份": "The location is configured. You can manage storage usage and backups.",
@@ -3253,6 +3311,10 @@
     "zh-Hans": "保存到本地"
   },
   "保存到软件失败": "Failed to save to the app",
+  "保存前需要确认；只提交当前编辑的完整 Markdown": "Confirmation is required before saving; only the currently edited complete Markdown is submitted.",
+  "保存合并后的文档？": "Save the merged document?",
+  "保存合并稿": "Save merged document",
+  "保存合并稿…": "Save merged document…",
   "保存后关闭可保留源码更改；也可以返回编辑器继续处理。": {
     "en": "Save before closing to keep your source changes, or return to the editor to continue working.",
     "zh-Hans": "保存后关闭可保留源码更改；也可以返回编辑器继续处理。"
@@ -3262,6 +3324,8 @@
     "zh-Hans": "保存后退出可保留源码更改；也可以返回编辑器继续处理。"
   },
   "保存在此 Mac 的应用支持目录，文件权限限制为仅当前用户可读写（0600）。内容以明文保存，请勿共享或上传该配置文件。应用不会访问 AI 钥匙串项目。": "Stored in this Mac's Application Support directory with owner-only read/write permissions (0600). The contents are plain text; do not share or upload this file. The app does not access AI Keychain items.",
+  "保存失败，已保留 %d 个恢复版本；部分文章文件可能已保存。请通过版本恢复检查后重新预览。": "Saving failed. %d recovery versions were retained; some article files may already have been saved. Inspect and restore from versions before generating a new preview.",
+  "保存失败，未写入元数据或创建恢复版本；请检查存储和文章文件状态后重新预览。": "Saving failed. No metadata or recovery version was written; check storage and article files, then generate a new preview.",
   "保存失败：%@": "Save failed: %@",
   "保存失败：无法写入%@。请检查存储权限后重试；输入内容仍保留。": "Save failed: could not write to %@. Check storage permissions and try again; your input is still preserved.",
   "保存失败：无法写入系统钥匙串。请检查钥匙串权限后重试；输入内容仍保留。": "Save failed: could not write to System Keychain. Check Keychain permissions and try again; your input is still preserved.",
@@ -3312,12 +3376,15 @@
     "en": "Protection Status, Shortcuts, and Support",
     "zh-Hans": "保护状态、快捷键和支持"
   },
+  "保留两份": "Keep both",
+  "保留原文件": "Original file preserved",
   "保留周期和数据库整理": {
     "en": "Retention and Database Maintenance",
     "zh-Hans": "保留周期和数据库整理"
   },
   "保留并稍后处理": "Keep and Handle Later",
   "保留当前对话并新建": "Keep Current Conversation and Start New",
+  "保留恢复副本并采用项目版本": "Keep recovery copy and use project version",
   "保留我的修改": "Keep My Changes",
   "保留我的删除": "Keep My Deletion",
   "保留最近": "Keep Latest",
@@ -3329,6 +3396,8 @@
     "zh-Hans": "保留标题、列表、引用、代码块和链接的文章正文"
   },
   "保留正文的自然字距": "Preserve the body text's natural spacing",
+  "保留草稿并退出": "Keep drafts and quit",
+  "保留软件草稿和项目版本，不会改写项目文件": "Keep the app draft and project version without changing the project file.",
   "信息": "Information",
   "修复 %lld 条资料": {
     "en": "Repair %lld items",
@@ -3360,6 +3429,7 @@
     "zh-Hans": "允许发送给远程 AI"
   },
   "允许发送识别文字给远程 AI": "Allow Sending Recognized Text to Remote AI",
+  "允许推送的已提交 SHA": "Approved commit SHA",
   "允许远程 AI": "Allow Remote AI",
   "元数据": "Metadata",
   "元数据 %@ 项": "%@ metadata changes",
@@ -3376,12 +3446,14 @@
     "en": "Save your changes before previewing in the system browser.",
     "zh-Hans": "先保存更改，再用系统浏览器预览。"
   },
+  "先保留软件草稿恢复副本，再采用当前项目版本": "Keep a recovery copy of the app draft before using the current project version.",
   "先克隆主题仓库，再回到这里选择“导入已有站点”。导入会保留主题文件，不会把主题改造成 Starter。": "Clone the theme repository first, then return here and choose “Import Existing Site.” The import keeps the theme files intact and does not convert the theme into a starter.",
   "先写文章": "Write an Article First",
   "先写本地 Markdown 草稿，不要求仓库、站点类型或发布配置。": {
     "en": "Start with local Markdown drafts without configuring a repository, site type, or publishing settings.",
     "zh-Hans": "先写本地 Markdown 草稿，不要求仓库、站点类型或发布配置。"
   },
+  "先冻结完整 Git 工作区清单；确认后创建一次非强制推送的提交": "Freeze the complete Git worktree list first; after confirmation, create one commit and push without force.",
   "先冻结并复核远端、分支、提交说明和精确文件清单；确认后会重新校验，再提交并推送。": "First freeze and review the remote, branch, commit message, and exact file list. After confirmation, they are validated again before committing and pushing.",
   "先冻结当前分叉与工作区；确认后封存未提交改动、对已审阅远端提交变基，再恢复改动。": "Freeze the divergence and worktree first. After confirmation, stash uncommitted changes, rebase onto the reviewed remote commit, and restore the changes.",
   "先分析内容，再确认导入。原始文件、图片与仓库都不会在预览阶段被改写。": "Analyze the content before confirming the import. Source files, images, and the repository are not modified during preview.",
@@ -3407,6 +3479,7 @@
     "en": "Generate Replacement Preview First",
     "zh-Hans": "先生成替换预览"
   },
+  "先生成预览": "Generate a preview first",
   "先生成预览，确认后才写入本地草稿": "Generate a preview first; nothing is written to local drafts until you confirm",
   "先结束当前续跑并保留审计记录，再从此消息创建新对话。": {
     "en": "End this continuation while preserving its audit record, then start a new conversation from this message.",
@@ -3525,6 +3598,7 @@
     "zh-Hans": "关闭上下文面板"
   },
   "关闭仓库连接诊断": "Close Repository Connection Diagnostics",
+  "关闭反馈": "Dismiss feedback",
   "关闭发布流程": "Close Publishing Workflow",
   "关闭后仅使用普通文本对话，不会声明或执行应用内工具。": "When off, only standard text chat is used; no in-app tools are declared or run.",
   "关闭后仍会保存阅读进度，但读到正文末尾不会改变已读状态。": "When off, reading progress is still saved, but reaching the end of the article does not change its read status.",
@@ -3554,6 +3628,7 @@
     "zh-Hans": "其中 %lld 项已列入更高优先级队列。"
   },
   "其他": "Other",
+  "其他发布方式": "Other publishing methods",
   "其他变更：%lld": {
     "en": "Other changes: %lld",
     "zh-Hans": "其他变更：%lld"
@@ -3577,6 +3652,7 @@
   "内容只发送到这台 Mac 上配置的本地模型服务。": "Content is sent only to the local model service configured on this Mac.",
   "内容审查": "Content Review",
   "内容已遮挡": "Content is masked",
+  "内容已遮挡，打开文章或关闭私密遮挡后查看。": "Content is masked. Open the article or turn off private-content masking to view it.",
   "内容根目录": "Content Root",
   "内容检查没有阻断项，请确认以下提醒。": "Content checks found no blocking issues. Review the following notices.",
   "内容检查通过，远端将在发布时预检": "Content checks passed; remote preflight will run when publishing",
@@ -3614,7 +3690,6 @@
   "写作生成": "Writing Generation",
   "写作阶段": "Writing Stage",
   "写作风格": "Writing Style",
-  "写作风格提炼未完成，请检查 AI 设置后重试。": "Writing-style extraction did not finish. Check AI settings and try again.",
   "写作风格预览无法应用，请重新提炼后再试。": "The writing-style preview cannot be applied. Extract it again and retry.",
   "写入": "Write",
   "写入 aliases 保留旧地址": "Write aliases to preserve legacy URL",
@@ -3630,6 +3705,7 @@
   "冲突共 %d 个，超过单次安全协调上限；请缩小发布批次后重试。": "There are %d conflicts, exceeding the safe per-session limit. Reduce the publish batch and try again.",
   "冲突协调进度": "Conflict resolution progress",
   "冲突合并 - %@": "Conflict Merge - %@",
+  "冲突处理完成": "Conflict resolution complete",
   "冲突快捷选择": "Conflict Quick Choices",
   "冲突快照不完整，请重新扫描后再处理": "The conflict snapshot is incomplete. Rescan before resolving it.",
   "冲突文件": "Conflicting Files",
@@ -3654,6 +3730,11 @@
   "分享…": {
     "en": "Share…",
     "zh-Hans": "分享…"
+  },
+  "分享副本会移除 EXIF、GPS 等敏感元数据，可能重新编码；资料库中的原图不会被修改。": {
+    "en": "Share copies remove sensitive metadata such as EXIF and GPS and may be re-encoded; originals in the knowledge library will not be changed.",
+    "ja": "共有コピーでは EXIF や GPS などの機密メタデータを削除します。再エンコードされる場合がありますが、資料ライブラリ内の元画像は変更されません。",
+    "zh-Hans": "分享副本会移除 EXIF、GPS 等敏感元数据，可能重新编码；资料库中的原图不会被修改。"
   },
   "分享文案": {
     "en": "Share Text",
@@ -3745,6 +3826,11 @@
   "创建时间": "Created",
   "创建本地空白文章，开始文字与图文排版": "Create a local blank article to start writing and layout",
   "创建私有仓库": "Create Private Repository",
+  "创建移除敏感元数据的分享副本": {
+    "en": "Create share copies with sensitive metadata removed",
+    "ja": "機密メタデータを削除した共有コピーを作成",
+    "zh-Hans": "创建移除敏感元数据的分享副本"
+  },
   "创建第一篇文章后会显示在这里。": {
     "en": "Your first article will appear here after you create it.",
     "zh-Hans": "创建第一篇文章后会显示在这里。"
@@ -3918,7 +4004,10 @@
     "en": "Compare Historical and Current Versions",
     "zh-Hans": "历史版本与当前版本比较"
   },
+  "历史记录未保存公开路径，当前结果使用文件路径推导。": "This historical record has no saved public route; the current check infers it from the file path.",
+  "原保存位置仍有问题。下次打开软件后，可从工作区备份中导入此恢复包继续编辑。": "The original save location still has a problem. Next time you open the app, import this package through workspace backup to continue editing.",
   "原值": "Original Value",
+  "原分支：%@": "Original branch: %@",
   "原因：%@": "Reason: %@",
   "原始内容": "Original Content",
   "原始抓取正文读取失败：%@": "Could not read the original captured text: %@",
@@ -3927,15 +4016,23 @@
     "en": "Source location: %@",
     "zh-Hans": "原文位置：%@"
   },
+  "原文章内容已变化，未写入引用；请重新尝试。": "The original article changed. No reference was inserted. Please try again.",
+  "原文章在插入前已被其他窗口修改，未写入引用；请重新尝试。": "Another window edited the original article before insertion. No reference was inserted. Please try again.",
+  "原文章已删除，未写入引用；请重新尝试。": "The original article was deleted. No reference was inserted. Please try again.",
+  "原文章所属站点已变化，未写入引用；请重新尝试。": "The original article changed sites. No reference was inserted. Please try again.",
+  "原标签或分类": "Original tag or category",
+  "原目标分支：%@": "Original target branch: %@",
   "原目标：%@": "Previous target: %@",
   "原稿保持不变，在目标站点创建一份可独立编辑的新草稿。": "The original remains unchanged, and a separately editable draft is created for the target site.",
   "原稿将改为归属目标站点，并重置发布状态与仓库关联。": "The original draft will be assigned to the target site, with publishing status and repository links reset.",
+  "原记录、站点或文章已变化，请关闭后重新核对。": "The original record, site, or article has changed. Close this review and check again.",
   "参数与网络": "Parameters and Network",
   "双语发布元数据": "Bilingual Publishing Metadata",
   "双语发布套件": "Bilingual Publishing Kit",
   "反向链接": "Backlinks",
   "发布": "Publish",
   "发布中心已打开；默认操作为发布所有变更，也可以仅发布当前文章。": "The publishing center is open. Publish All Changes is the default, or you can publish only the current article.",
+  "发布仓库全部变更": "Publish all repository changes",
   "发布健康检查卡片": "Publishing Health Cards",
   "发布分支": "Publishing Branch",
   "发布前 AI 审稿": "AI Pre-publish Review",
@@ -4017,6 +4114,7 @@
     "en": "Publishing History",
     "zh-Hans": "发布记录"
   },
+  "发布记录已不可用": "Release record unavailable",
   "发布记录：%@": "Release Record: %@",
   "发布资产包": "Publishing Asset Pack",
   "发布进度请在“准备发布”中查看。": "View publishing progress in “Prepare to Publish”.",
@@ -4070,12 +4168,16 @@
   "变更方式": "Change Method",
   "另一窗口已修改正文；恢复原文仍保留，未覆盖另一窗口的内容。": "Another window changed the body. The recovery source is still preserved and did not overwrite the other window's content.",
   "另一窗口已修改正文；恢复原文仍保留，请复制原文后决定如何合并。": "Another window changed the body. The recovery source is still preserved; copy it before deciding how to merge.",
+  "另外 %lld 个片段": "%lld more excerpts",
+  "另存恢复包…": "Save recovery package elsewhere…",
+  "另存退出恢复包": "Save recovery package before quitting",
   "另有 %@ 条图片路径映射。": "%@ additional image path mappings.",
   "另有 %@ 条重定向候选。": "%@ additional redirect candidates.",
   "另有 %@ 项": {
     "en": "%@ more",
     "zh-Hans": "另有 %@ 项"
   },
+  "另有 %lld 个同源相关片段，可在资料库中查看全部结果。": "There are %lld more excerpts from these sources. View all results in the library.",
   "另有 %lld 条图片路径映射。": {
     "en": "There are %lld additional image path mappings.",
     "zh-Hans": "另有 %lld 条图片路径映射。"
@@ -4097,6 +4199,7 @@
   "只会把尚未登记的本地文章加入工作台，不会改写仓库文件或覆盖已有草稿。": "Only local articles not yet registered are added to the workbench; repository files are not rewritten and existing drafts are not overwritten.",
   "只会清理超过保留期限、已读、未加入稍后阅读且没有高亮的文章；稍后阅读文章和批注不会被误删。": "Only read articles beyond the retention period that are not saved for later and have no highlights are removed. Saved articles and annotations are preserved.",
   "只会移除软件的恢复记录；Git stash 与工作区不会被删除或改写。之后软件不会再自动恢复这份 stash。": "Only the app recovery record will be removed. The Git stash and worktree will not be deleted or changed, and the app will no longer restore this stash automatically.",
+  "只会读取所选文章的当前版本，并将其恢复为新建的通用草稿；现有文章、设置和历史记录不会改变。缺失附件会保留元数据。": "Only the current versions of selected articles are read and restored as new general drafts. Existing articles, settings, and history remain unchanged. Missing attachments retain their metadata.",
   "只保存在应用内存中，退出 RepoPress Studio 后自动清除，不写配置文件或钥匙串。": "Keep the key only in app memory. It is cleared when RepoPress Studio quits and is not written to a configuration file or Keychain.",
   "只准备最终内容，不会写入或暂存。": "Only prepares the final content; it does not write or stage changes.",
   "只可选择当前站点的公开文章。仅发送所选范例，提炼结果经你确认后保存。": "Only public articles from the current site can be selected. Only the selected examples are sent, and the extracted result is saved after your confirmation.",
@@ -4128,6 +4231,8 @@
   "只检测本机回环地址。应用后当前连接将改为本地模式，不再要求 API Key。": "Only local loopback addresses are checked. Applying a result changes the current connection to local mode and removes the API key requirement.",
   "只清理超过期限、已读、未加入稍后阅读且没有高亮的文章。": "Removes only articles that are older than the limit, read, not saved for later, and have no highlights.",
   "只清空已经移入资料库回收站的内容；仍在资料库中的正文和原始外部文件不会被删除。": "Only items already in the library recycle bin are removed. Content still in the library and original external files are not deleted.",
+  "只翻译当前已加载列表中的标题；仅在已允许 AI 发送权限时使用，不会发送正文。": "Translate only titles in the loaded list, subject to AI sharing permissions. Article bodies are not sent.",
+  "只翻译当前已加载列表中的标题；需要已安装对应语言包，不会自动下载。": "Translate only titles in the loaded list. Requires installed language packs; packs are not downloaded automatically.",
   "只读访问令牌": {
     "en": "Read-Only Access Token",
     "zh-Hans": "只读访问令牌"
@@ -4138,6 +4243,8 @@
     "en": "Configure only what this path requires. You can change these settings at any time.",
     "zh-Hans": "只配置当前路径需要的信息，之后可以随时在设置中修改。"
   },
+  "只重试保存当前文章的资料引用，不会再次修改正文。": "Retry saving references for this article without changing its body again.",
+  "只隐藏本次查询中的这份资料，不会影响其他文章或查询。": "Hide this source for this query only. Other articles and queries are unaffected.",
   "可以保留订阅并将疑似凭证值替换为 REDACTED，或整个排除这些订阅。": "You can keep the subscriptions and replace suspected credential values with REDACTED, or exclude those subscriptions entirely.",
   "可以先确认变化内容，再决定保存到本地或发布上线。": {
     "en": "Review the changes first, then decide whether to save locally or publish online.",
@@ -4163,6 +4270,7 @@
   "可写": "Writable",
   "可写入": "Ready to Write",
   "可压缩 JPEG": "Compressible JPEGs",
+  "可发布 %d 篇 · %d 个文件 · 不包含 %d 个待下线请求": "%d articles ready · %d files · %d unpublish requests excluded",
   "可发布 %d 篇文章 · %d 个文章文件": "%d Publishable Articles · %d Article Files",
   "可回滚": "Rollback Available",
   "可导入": "Available to Import",
@@ -4189,6 +4297,7 @@
   },
   "可直接拖入文件或文件夹": "Drop Files or Folders Here",
   "可缩放图片": "Resizable Images",
+  "可能相关（%lld）": "Possibly related (%lld)",
   "可见性": "Visibility",
   "可读": "Readable",
   "可转 WebP": "WebP-convertible Images",
@@ -4201,12 +4310,16 @@
   },
   "合并协调区": "Merge Workspace",
   "合并双方内容": "Merge Both Versions",
+  "合并后保存": "Save merged document",
+  "合并后的完整 Markdown": "Merged complete Markdown",
+  "合并后的完整 Markdown 已保存。": "The merged complete Markdown was saved.",
   "合并尚未完成": "Merge Not Finished",
   "合并方式": "Merge Mode",
   "同一字段的问题已合并，可逐篇处理。": {
     "en": "Issues for the same field are grouped; address them article by article.",
     "zh-Hans": "同一字段的问题已合并，可逐篇处理。"
   },
+  "同一篇文章一次只能保留一个待应用替换；已替换该文章先前的预览。": "Only one pending replacement is supported per article. The previous preview for this article was replaced.",
   "同意并发送": "Allow and Send",
   "同意并启用此 AI 服务": {
     "en": "Agree and Enable This AI Service",
@@ -4332,6 +4445,7 @@
   "图片已是 WebP，无需转换": "The image is already WebP; no conversion is needed",
   "图片批处理影响预览": "Image Batch Impact Preview",
   "图片批量处理": "Image Batch Actions",
+  "图片按原文件保存，保留拍摄与位置信息；预览和 OCR 不修改图片。": "Images are saved unchanged, including capture and location metadata. Previews and OCR do not modify them.",
   "图片排序": "Image Sorting",
   "图片替代文本缺失": {
     "en": "Missing image alternative text",
@@ -4343,6 +4457,7 @@
     "zh-Hans": "图片瘦身（%lld）"
   },
   "图片目录": "Image Directory",
+  "图片目录中还没有图片": "No images in the image directory yet",
   "图片范围": {
     "en": "Image Scope",
     "zh-Hans": "图片范围"
@@ -4370,6 +4485,7 @@
   "在下方输入问题，AI 会结合当前文章回答。": "Ask a question below. AI will answer using the current article.",
   "在主区域选择本地或远端文件后，这里会显示完整状态和可选差异。": "Select a local or remote file in the main area to view its full status and selectable diff here.",
   "在内容健康中选择文章，可在 Inspector 直接处理检查结果。": "Select an article in Content Health to handle its findings directly in the Inspector.",
+  "在写作页插入图片，或把图片文件放入当前站点的图片目录。": "Insert images in the writing workspace, or add image files to the current site's image directory.",
   "在右侧插入列": "Insert Column to the Right",
   "在右侧知识建议中插入引用后，这里会自动显示资料反向链接。": {
     "en": "After you insert a citation from the knowledge suggestions on the right, backlinks to the knowledge item will appear here automatically.",
@@ -4390,6 +4506,10 @@
     "zh-Hans": "在当前文章中查找或替换文本"
   },
   "在当前范围内搜索标题、元数据和正文": "Search titles, metadata, and full text in the current scope",
+  "在检查范围内未发现指向这篇文章的链接。": {
+    "en": "No links to this article were found within the checked scope.",
+    "zh-Hans": "在检查范围内未发现指向这篇文章的链接。"
+  },
   "在正文中添加 ## 或 ### 标题后，就能从这里快速跳转。": "Add ## or ### headings in the article to jump to sections from here.",
   "在正文中选择文字后，可以添加高亮或批注。": "Select text in the body to add highlights or notes.",
   "在此独立大窗口中比对并编辑最终合并内容。": "Compare and edit the final merged content in this dedicated window.",
@@ -4413,6 +4533,8 @@
     "en": "Open “%@” in the Knowledge Library",
     "zh-Hans": "在资料库中打开“%@”"
   },
+  "在资料库中打开并定位这个来源片段。": "Open the library at this source passage.",
+  "在资料库中用当前上下文检索查看全部片段。": "Search the library with the current context to view all passages.",
   "在软件任何界面按下全局快捷键即可快速遮挡或隐藏工作台。": "Use the global shortcut anywhere in the app to quickly cover or hide the workspace.",
   "在这里输入提示内容": {
     "en": "Enter callout content here",
@@ -4465,12 +4587,15 @@
     "en": "Processing",
     "zh-Hans": "处理中"
   },
+  "处理冲突": "Resolve conflict",
+  "处理冲突…": "Resolve conflict…",
   "处理阻断项后再发布。": "Resolve blocking issues before publishing.",
   "处理项目保存问题…": "Resolve Project Save Issue…",
   "备份": "Backups",
   "备份与导入": "Backup and Import",
   "备份与恢复": "Backup and Restore",
   "备份会包含资料数据库、分类、固定状态以及数据库实际引用的原文与正文。": "The backup includes the knowledge database, folders, pinned state, and the source files and extracted text actually referenced by the database.",
+  "备份内容已变化，请关闭此预览后重新读取。": "The backup changed. Close this preview and load it again.",
   "备份大小": "Backup Size",
   "备份完整工作区": "Back Up Complete Workspace",
   "备份完整性校验通过": "Backup Integrity Check Passed",
@@ -4633,6 +4758,7 @@
     "zh-Hans": "复制链接"
   },
   "复制锚点链接": "Copy Anchor Link",
+  "复核重试推送": "Review Push Retry",
   "复核首次提交": "Review First Commit",
   "复验通过，正在分批写入所选文章…": "Revalidation passed; writing the selected articles in batches…",
   "外观": {
@@ -4675,6 +4801,7 @@
   },
   "如何创建 GitHub 个人访问令牌 (PAT)？": "How to create GitHub Personal Access Token (PAT)?",
   "如果正文缺失、混入导航、订阅或网页页脚，可以先比较当前正文与重新净化结果，再决定是否创建新版本。": "If the body is missing or includes navigation, subscription prompts, or a page footer, compare it with a newly sanitized version before creating a new revision.",
+  "如需保留两边内容，请在这里编辑完整 Markdown。提交前还会再次确认。": "To keep content from both versions, edit the complete Markdown here. You will confirm again before submitting.",
   "字/词": "characters/words",
   "字体与布局": {
     "en": "Typography and Layout",
@@ -4688,6 +4815,7 @@
   },
   "字数 %lld": "%lld words",
   "字数 %lld，预计阅读 %lld 分钟": "%lld words, estimated reading time %lld min",
+  "字段": "Field",
   "字段、模板与预览": {
     "en": "Fields, Templates, and Preview",
     "zh-Hans": "字段、模板与预览"
@@ -4722,7 +4850,7 @@
   "完善图片": "Complete Image Details",
   "完成": "Done",
   "完成合并并提交": "Complete Merge and Commit",
-  "完成后会进入同步工作区并扫描仓库；发布前仍会要求检查和差异确认。": "When setup finishes, the app opens the Sync workspace and scans the repository. Checks and difference review are still required before publishing.",
+  "完成后会整理仓库中的文章，你可以打开最近文章或新建文章；发布前仍会要求检查和差异确认。": "After setup, articles in the repository will be prepared so you can open a recent article or create one. Publishing still requires checks and diff review.",
   "完成并开始写作": "Finish and Start Writing",
   "完成批量选择": "Finish Batch Selection",
   "完成本地改动恢复": "Finish Local Change Recovery",
@@ -4736,7 +4864,10 @@
   "完整差异": "Full Diff",
   "完整性校验、恢复预览与安全回退": "Integrity checks, restore previews, and safe rollback",
   "完整成稿工作台": "Complete Article Workbench",
+  "完整批次": "Complete batch",
+  "完整批次文章与差异": "All batch articles and differences",
   "完整文件清单": "Full File List",
+  "完整清单": "Complete list",
   "完整源码": "Full Source",
   "完整源码已确认": "Full Source Confirmed",
   "完整源码模式会保留你的手工稿；可随时返回逐块协调，已做出的选择不会丢失。": "Full Source preserves your manual draft. You can return to hunk-by-hunk resolution without losing existing choices.",
@@ -4746,16 +4877,25 @@
     "en": "Go to %@",
     "zh-Hans": "定位到%@"
   },
+  "定位到文件": "Locate File",
   "定位到第 %@ 行的%@": {
     "en": "Go to line %@: %@",
     "zh-Hans": "定位到第 %@ 行的%@"
   },
+  "定位文章": "Locate article",
   "定位正文": "Focus Body",
+  "定位目标": "Locate target",
   "实时分析正文诊断与大纲": "Analyze Body Diagnostics and Outline in Real Time",
   "实时预览": "Live Preview",
   "实际支持范围取决于服务和模型": "Actual support depends on the service and model",
   "审阅 %lld 处引用更新…": "Review %lld Reference Updates…",
   "审阅 Slug 引用更新": "Review Slug Reference Updates",
+  "审阅并创建 PR/MR…": "Review and Create PR/MR…",
+  "审阅并发布…": "Review and Publish…",
+  "审阅并发布仓库全部变更": "Review and publish all repository changes",
+  "审阅并发布仓库全部变更…": "Review and publish all repository changes…",
+  "审阅并发布文章变更": "Review and publish article changes",
+  "审阅并发布文章变更…": "Review and Publish Article Changes…",
   "审阅并变基同步…": "Review and Rebase Sync…",
   "审阅并安全同步远端…": "Review and Safe Sync Remote…",
   "审阅文件内容": "Review file contents",
@@ -4833,9 +4973,24 @@
     "zh-Hans": "导出为 Markdown…"
   },
   "导出为独立 Markdown 文件；软件中的通用草稿会继续保留。": "Export a standalone Markdown file. The general draft remains in the app.",
+  "导出位置": {
+    "en": "Export Location",
+    "ja": "書き出し先",
+    "zh-Hans": "导出位置"
+  },
   "导出到此处": "Export Here",
   "导出前处理可能的访问凭证": "Handle Possible Access Credentials Before Exporting",
   "导出包含文章、素材和配置的完整工作区归档，或从已有备份还原。": "Export complete workspace archive with articles, assets, and configs, or restore from existing backup.",
+  "导出图片": {
+    "en": "Export Images",
+    "ja": "画像を書き出し",
+    "zh-Hans": "导出图片"
+  },
+  "导出图片…": {
+    "en": "Export Images…",
+    "ja": "画像を書き出し…",
+    "zh-Hans": "导出图片…"
+  },
   "导出工作台故障文件": "Export Workbench Recovery Files",
   "导出故障文件…": "Export Recovery Files…",
   "导出文件超过 100 MB，请拆分后分批导入。": "The export file exceeds 100 MB. Split it and import the parts in batches.",
@@ -4865,6 +5020,7 @@
     "en": "Import repository articles into the writing list",
     "zh-Hans": "将仓库中的文章导入写作列表"
   },
+  "将保存当前编辑的完整 Markdown。系统会再次校验项目文件；若已变更，合并稿会保留在此面板中供你重新审阅。": "The currently edited complete Markdown will be saved. The app checks the project file again; if it changed, the merged document remains in this panel for review.",
   "将先生成预览，确认后保存到“%@”。": "A preview will be generated first. After confirmation, items will be saved to “%@”.",
   "将先生成预览，确认后保存到“未分类”。": "A preview will be generated first. After confirmation, items will be saved to Unfiled.",
   "将先生成预览，确认后保存到本机资料库。": "A preview will be generated first. After confirmation, items will be saved to the local knowledge library.",
@@ -4942,6 +5098,7 @@
     "en": "No sync recommendation is available yet. Scan the repository and confirm that the current branch has an upstream.",
     "zh-Hans": "尚未生成同步建议。请先扫描仓库，并确认当前分支已经设置 upstream。"
   },
+  "尚未生成站点检查证据。": "No site preflight evidence was generated.",
   "尚未登录 ChatGPT": "Not signed in to ChatGPT",
   "尚未绑定 ChatGPT 账户；请在上方账户区登录并重新同意。": "No ChatGPT account is bound yet. Sign in and consent again in the account section above.",
   "尚未记录部署检查结果。": "No deployment check result has been recorded yet.",
@@ -4954,6 +5111,11 @@
     "zh-Hans": "尚未识别可用的本地预览命令。请先扫描仓库，或在站点配置中补充预览设置。"
   },
   "尚未读取当前仓库状态。": "The current repository status has not been read yet.",
+  "尚未选择文件夹": {
+    "en": "No folder selected",
+    "ja": "フォルダが選択されていません",
+    "zh-Hans": "尚未选择文件夹"
+  },
   "尚未选择文章，请先选择一个写作目标。": "No article is selected. Choose a writing target first.",
   "尚未选择本地仓库": "No Local Repository Selected",
   "尚未选择模型": "No model selected",
@@ -4973,6 +5135,7 @@
   "展开后可查看完整来源、设置和快捷提示。": "Expand to view all sources, settings, and quick prompts.",
   "展开子章节": "Expand Subsections",
   "展开工具失败摘要": "Expand failed tool summary",
+  "展开当前文章差异；完整批次会在发布确认页显示": "Expand this article's differences; the publishing confirmation shows the complete batch",
   "展开摘要": "Expand summary",
   "展开更多分支并搜索（共 %lld 个）": "Expand More Branches and Search (%lld total)",
   "展开检查结果和文件差异": "Expand Checks and File Differences",
@@ -5002,6 +5165,7 @@
   "已为当前站点复制配置，请为副本单独保存 API Key。": "Settings copied for this site. Save an API key separately for the copy.",
   "已从开头继续查找。": "Search continued from the beginning.",
   "已从末尾继续查找。": "Search continued from the end.",
+  "已从索引删除": "Removed from the index",
   "已使用自定义网关": "Using a custom gateway",
   "已保存": "Saved",
   "已保存 %@": {
@@ -5013,9 +5177,15 @@
   "已保存仓库访问令牌": "Repository Access Token Saved",
   "已保存到项目": "Saved to the project",
   "已保存在软件": "Saved in the app",
+  "已保存的 RSS 文章中没有匹配结果。": {
+    "en": "No matches were found in saved RSS articles.",
+    "ja": "保存済み RSS 記事に一致する結果はありません。",
+    "zh-Hans": "已保存的 RSS 文章中没有匹配结果。"
+  },
   "已保存部署访问令牌": "Deployment Access Token Saved",
   "已保存，可生成建议": "Saved and ready to generate suggestions",
   "已保存，可用于线上发布": "Saved and ready for remote publishing",
+  "已保留软件草稿恢复副本，并采用了当前项目版本。": "A recovery copy of the app draft was retained and the current project version was used.",
   "已停止": "Stopped",
   "已停止准备。安装可能已部分完成，请重新检测组件状态。": "Preparation stopped. Installation may be partially complete; detect the component status again.",
   "已停止检测。": "Detection stopped.",
@@ -5044,9 +5214,12 @@
   "已启用 %@": "%@ enabled",
   "已启用 %lld": "%lld enabled",
   "已固定到 AI": "Pinned for AI",
+  "已在 Finder 中显示 %@ 第 %@ 行所在文件。": "Shown the file containing %@ line %@ in Finder.",
   "已在光标位置插入 %@ 个视频。": "Inserted %@ Videos at the Cursor.",
   "已在光标位置插入 %@ 张图片。": "Inserted %@ images at the cursor.",
   "已在目标文章中": "Already in Target Article",
+  "已在默认编辑器打开 %@；请编辑第 %@ 行。": "Opened %@ in the default editor; edit line %@.",
+  "已复制任务诊断。": "Task diagnostics copied.",
   "已复制到剪贴板。": "Copied to the clipboard.",
   "已复制同步建议命令。": "Sync recommendation command copied.",
   "已复制完整 Markdown 代码块。": {
@@ -5067,6 +5240,8 @@
     "en": "Offline caching completed. Extracted and persisted full text for %@ truncated articles.",
     "zh-Hans": "已完成离线缓存，共提取并持久化 %@ 篇截断文章全文。"
   },
+  "已定位到任务目标。": "Task target located.",
+  "已定位到指定发布记录": "Located specified release record",
   "已审阅远端": "Reviewed Remote",
   "已导入": {
     "en": "Imported",
@@ -5076,17 +5251,30 @@
     "en": "Imported %@",
     "zh-Hans": "已导入 %@"
   },
+  "已导出 %@ 张，跳过 %@ 项，失败 %@ 项。": {
+    "en": "Exported %@ images, skipped %@ items, failed %@ items.",
+    "zh-Hans": "已导出 %@ 张，跳过 %@ 项，失败 %@ 项。"
+  },
+  "已导出 %lld 张，跳过 %lld 项，失败 %lld 项。": {
+    "en": "Exported %lld images, skipped %lld items, failed %lld items.",
+    "zh-Hans": "已导出 %lld 张，跳过 %lld 项，失败 %lld 项。"
+  },
   "已导出重定向 CSV：%@": "Redirect CSV exported: %@",
   "已将 %@ 应用到当前连接。": "%@ was applied to the current connection.",
   "已将所选版本装入最终编辑区；尚未写入或暂存。": "The selected version is in the final editor; it has not been written or staged.",
   "已将资料写作目标切换为《%@》。": "Research will now be added to “%@”.",
   "已展开": "Expanded",
+  "已应用 %d 个字段。": "Applied %d fields.",
+  "已应用 %d 个字段，跳过 %d 个当前不支持的字段。": "Applied %d fields; skipped %d unsupported fields.",
+  "已应用 %d 个字段；%d 个字段已在其他窗口变化，保留当前值：%@。": "Applied %d fields. Kept the current values of %d fields changed in another window: %@.",
   "已应用/已审阅": "Applied/reviewed",
+  "已应用替换并保存可恢复版本，正在重新扫描。": "Replacements applied with recoverable versions saved; rescanning now.",
   "已建立本地语义索引": {
     "en": "Local Semantic Index Ready",
     "zh-Hans": "已建立本地语义索引"
   },
   "已归档": "Archived",
+  "已恢复 %@ 篇文章为新建通用草稿。": "Restored %@ article(s) as new general drafts.",
   "已恢复上次未保存的 Front Matter 原文，请修正后再切换文章。": "Restored the previously unsaved Front Matter source. Fix it before switching articles.",
   "已手动快速隐藏工作台内容。": {
     "en": "Workspace content was manually hidden.",
@@ -5101,6 +5289,8 @@
     "en": "Opened HTML source file: %@",
     "zh-Hans": "已打开 HTML 源文件：%@"
   },
+  "已打开文章并选中第 %@ 行的失效引用。": "Opened the article and selected the broken reference on line %@.",
+  "已打开文章；第 %@ 行的位置已变化，未自动选择。": "Opened the article; line %@ changed, so it was not selected automatically.",
   "已扫描 %@ 个 Markdown 文件；远程 URL、代码块和行内代码不会被当作本地资源。": {
     "en": "Scanned %@ Markdown files; remote URLs, code blocks, and inline code are not treated as local resources.",
     "zh-Hans": "已扫描 %@ 个 Markdown 文件；远程 URL、代码块和行内代码不会被当作本地资源。"
@@ -5124,6 +5314,7 @@
     "zh-Hans": "已推送"
   },
   "已推送 %@；下一步确认部署。": "Pushed %@; confirm deployment next.",
+  "已提交 %lld 个文件": "%lld Files Committed",
   "已插入 %@ 个视频。": "Inserted %@ Videos.",
   "已插入 %@ 张图片，请完善图片信息。": "Inserted %@ images. Complete their image details.",
   "已插入图片，当前格式保留原文件": "Image inserted; the original file was kept for this format",
@@ -5142,6 +5333,7 @@
     "zh-Hans": "已显示全部 %lld 个变化，可展开逐文件审阅。"
   },
   "已暂存全部冲突": "All Conflicts Staged",
+  "已更新 %d 篇文章，并保存 %d 个恢复版本。": "Updated %d articles and saved %d recovery versions.",
   "已替换 %d 处，可撤销。": "Replaced %d matches. You can undo this change.",
   "已替换 %lld 篇文章、%lld 处；可用“回滚上次替换”恢复。": "Replaced content in %lld articles at %lld occurrences; use “Roll Back Last Replacement” to restore them.",
   "已有扫描、发布或仓库写入正在进行，请等待完成。": "A scan, publication, or repository write is already running. Wait for it to finish.",
@@ -5165,6 +5357,7 @@
     "en": "Generated at %@",
     "zh-Hans": "已生成到 %@"
   },
+  "已生成替换预览；应用前会重新校验文章、编辑缓冲和资源路径。": "Replacement preview created; the article, editor buffer, and resource path will be revalidated before applying.",
   "已生成转换预览，可检查文章、图片路径和重定向后再导入。": "The conversion preview is ready. Review the articles, image paths, and redirects before importing.",
   "已登录其他账户": "Signed in with another account",
   "已登记": "Registered",
@@ -5186,6 +5379,7 @@
   "已获取远端最新状态并刷新发布清单。": "Fetched the latest remote state and refreshed the publish list.",
   "已观察": "Observed",
   "已记录": "Recorded",
+  "已请求停止该任务。": "A stop request was sent for this task.",
   "已请求启动 %@，请稍后重新检测。": "Requested %@ to start; check again in a moment.",
   "已读": "Read",
   "已读 %@%": "Read %@%",
@@ -5215,6 +5409,7 @@
   "已选择 %@ / 最多 4 篇": "%@ selected / maximum 4",
   "已选择 %@ 条": "%@ selected",
   "已选择 %@ 篇": "%@ articles selected",
+  "已选择 %@ 篇文章": "Selected %@ article(s)",
   "已选择 %@/%@": "Selected %1$@/%2$@",
   "已选择 %lld / %lld 篇": {
     "en": "Selected %lld of %lld Articles",
@@ -5230,6 +5425,7 @@
   "已选择 %lld/%lld": "Selected %lld/%lld",
   "已选择删除作为最终结果；尚未删除或暂存。": "Deletion is selected as the final result; the file has not been deleted or staged.",
   "已选择：%@": "Selected: %@",
+  "已通过隐私清理": "Privacy metadata removed",
   "已配置": {
     "en": "Configured",
     "zh-Hans": "已配置"
@@ -5256,6 +5452,7 @@
   },
   "平台部署访问令牌只发送到平台官方 API；如需向状态端点发送 Bearer Token，请选择“自定义端点”平台并使用 HTTPS。": "Provider deployment access tokens are sent only to the provider's official API. To send a bearer token to a status endpoint, choose the Custom Endpoint provider and use HTTPS.",
   "应用": "Apply",
+  "应用 %@ 字段": "Apply the %@ field",
   "应用 AI 回复": {
     "en": "Apply AI Response",
     "zh-Hans": "应用 AI 回复"
@@ -5267,6 +5464,7 @@
   "应用全部协调": "Apply All Resolutions",
   "应用全部协调并创建 PR/MR": "Apply All Resolutions and Create PR/MR",
   "应用内操作计划": "In-App Action Plan",
+  "应用内等待写入的版本": "Version waiting to be written by the app",
   "应用内附件": "App-managed Attachments",
   "应用删除并暂存": "Apply Deletion and Stage",
   "应用到当前站点": "Apply to Current Site",
@@ -5279,6 +5477,7 @@
     "en": "Apply Accepted",
     "zh-Hans": "应用已接受"
   },
+  "应用已选变化": "Apply selected changes",
   "应用并开始写作": "Apply and Start Writing",
   "应用所选替换": {
     "en": "Apply Selected Replacements",
@@ -5302,6 +5501,7 @@
     "en": "App Language and Translation",
     "zh-Hans": "应用语言与翻译"
   },
+  "应用选中的替换（%lld）": "Apply selected replacements (%lld)",
   "建立本地语义索引": {
     "en": "Build Local Semantic Index",
     "zh-Hans": "建立本地语义索引"
@@ -5312,6 +5512,7 @@
   "建站步骤": "Site Setup Steps",
   "建站风险": "Site Setup Risks",
   "建议下一步：": "Suggested Next Steps:",
+  "建议值": "Suggested value",
   "建议创建并校验第一个工作区备份": "Create and validate the first workspace backup",
   "建议摘要：%@": "Suggested summary: %@",
   "建议标签：%@": "Suggested tags: %@",
@@ -5323,6 +5524,7 @@
     "en": "Get Started",
     "zh-Hans": "开始使用"
   },
+  "开始写作": "Start writing",
   "开始前会为每篇受影响文章创建“批处理前”版本点。": "A pre-batch version point will be created for every affected article before processing begins.",
   "开始对话": "Start Conversation",
   "开始瘦身": {
@@ -5360,6 +5562,10 @@
   "引用状态 (已登记优先)": "Reference Status (Referenced First)",
   "引用状态 (未登记优先)": "Reference Status (Unreferenced First)",
   "引用站点：%@": "Used by: %@",
+  "引用详情已隐藏": {
+    "en": "Reference details are hidden",
+    "zh-Hans": "引用详情已隐藏"
+  },
   "引用选中文本创建新博客草稿": "Create a New Blog Draft from the Selected Text",
   "引用：%@": {
     "en": "Reference: %@",
@@ -5389,6 +5595,7 @@
   "当前 ChatGPT 账户授权已失效，请重新明确同意后再测试连接。": "The current ChatGPT account authorization has expired. Explicitly agree again before testing the connection.",
   "当前 Codex 运行组件版本过低；请更新到 0.142.0 或更高版本后重新检测。": "The current Codex runtime is too old. Update to version 0.142.0 or later, then check again.",
   "当前 upstream 没有待拉取的文件变化。": "The current upstream has no pending file changes.",
+  "当前不支持应用": "Applying this field is not supported",
   "当前为截断摘要，可提取原站全文阅读": {
     "en": "This is a preview summary. You can fetch the full article to read.",
     "zh-Hans": "当前为截断摘要，可提取原站全文阅读"
@@ -5396,6 +5603,7 @@
   "当前仓库": "Current Repository",
   "当前仓库未设置 upstream，发布时仍会通过远端 API 核对。": "The current branch has no upstream. The remote API will still be checked before publishing.",
   "当前仓库配置与扫描到的 origin 不一致，请完成或修正 Owner/Namespace 和 Repo/Project。": "The configured repository does not match the detected origin. Complete or correct Owner/Namespace and Repo/Project.",
+  "当前修复结果没有可用的应用目标，未更改文章。": "This fix has no available target. The article was not changed.",
   "当前值": "Current",
   "当前光标位置；点击或按 ⌘L 跳转到指定行": {
     "en": "Current cursor position; click or press ⌘L to jump to a line",
@@ -5421,15 +5629,19 @@
   "当前工作区远端发布自动化": "Remote Publishing Automation for Current Workspace",
   "当前工作区远端自动检查最短间隔": "Minimum Automatic Remote Check Interval for This Workspace",
   "当前工作台处于恢复保护状态，普通设置不会覆盖原始数据。": "The current workbench is recovery-protected. Regular settings will not overwrite the original data.",
+  "当前工作台暂不可写入，无法恢复文章。": "The current workbench is not writable, so articles cannot be restored.",
+  "当前工作台暂不可用，无法恢复文章。": "The current workbench is unavailable, so articles cannot be restored.",
   "当前工作台没有可恢复的未保存编辑。": {
     "en": "There are no recoverable unsaved edits in the current workspace.",
     "zh-Hans": "当前工作台没有可恢复的未保存编辑。"
   },
   "当前工作树没有变更。": "The current working tree has no changes.",
+  "当前库存有图片，但没有符合搜索或筛选条件的结果。": "The repository contains images, but none match the current search or filter.",
   "当前扫描到的本地图片和附件路径都能定位到资源目录中的文件。": {
     "en": "All local image and attachment paths found in the current scan resolve to files in the asset directory.",
     "zh-Hans": "当前扫描到的本地图片和附件路径都能定位到资源目录中的文件。"
   },
+  "当前扫描检测到 %lld 个变更；确认页会重新完整扫描。": "The current scan found %lld changes; the confirmation view will perform a new complete scan.",
   "当前摘要：%@": "Current summary: %@",
   "当前操作完成后可刷新发布检查和差异": "Refresh publishing checks and differences after the current operation finishes.",
   "当前操作完成后可继续发布。": "Publishing can continue after the current operation finishes.",
@@ -5452,6 +5664,7 @@
     "zh-Hans": "当前文章存在 %lld 个发布阻断项"
   },
   "当前文章存在发布阻断项。": "The current article has publishing blockers.",
+  "当前文章差异": "Current article differences",
   "当前文章已具备写入和提交条件。": "The current article is ready to write and commit.",
   "当前文章已在浏览器中打开。": "The current article was opened in the browser.",
   "当前文章或所选对比版本已不存在。": "The current article or selected comparison version no longer exists.",
@@ -5504,6 +5717,7 @@
     "zh-Hans": "当前没有可导入的已选资料。"
   },
   "当前没有可由 AI 修复的文章": "No AI-Fixable Articles",
+  "当前没有可选文章；仍可发布图片、配置、主题、CSS/脚本等仓库变更。": "No article is currently selected; you can still publish repository changes such as images, configuration, themes, CSS, and scripts.",
   "当前没有站点引用此档案。": "No sites currently use this profile.",
   "当前没有符合此操作的图片。": "No images currently match this action.",
   "当前没有需要优先处理的维护事项。": "There are no high-priority maintenance items.",
@@ -5517,6 +5731,7 @@
     "en": "Current Status and Next Step",
     "zh-Hans": "当前状态和下一步"
   },
+  "当前磁盘上的外部修改": "Current external changes on disk",
   "当前站点": "Current Site",
   "当前站点使用": {
     "en": "Use on Current Site",
@@ -5606,6 +5821,7 @@
     "en": "Pending Push",
     "zh-Hans": "待推送"
   },
+  "待推送提交": "Commits waiting to be pushed",
   "待检查": "Check Required",
   "待清理代表性文件预览（前 %@ 项）：": "Preview of Sample Files to Clean (First %@ items):",
   "待清理代表性文件预览（前 %lld 项）：": "Preview of Sample Files to Clean (First %lld items):",
@@ -5671,6 +5887,8 @@
   "恢复其他备份…": "Restore Another Backup…",
   "恢复前会自动保存当前内容，因此仍可从版本历史回到恢复前状态。": "The current content is saved automatically before restoration, so you can return to the pre-restore state from version history.",
   "恢复前会自动保存当前内容；仓库路径、远端版本和内部发布状态会保留。": "Current content is saved automatically before restoration; repository path, remote revision, and internal publishing status are preserved.",
+  "恢复包已保存并校验": "Recovery package saved and verified",
+  "恢复包未能完成": "Recovery package could not be completed",
   "恢复原始摘要": {
     "en": "Show Original Summary",
     "zh-Hans": "恢复原始摘要"
@@ -5694,6 +5912,7 @@
     "en": "Restore Selected",
     "zh-Hans": "恢复所选"
   },
+  "恢复所选文章": "Restore Selected Articles",
   "恢复所选版本": "Restore Selected Version",
   "恢复摘要": {
     "en": "Show Summary",
@@ -5703,6 +5922,8 @@
   "恢复文章并取消尚未执行的仓库清理请求": "Restore the article and cancel any pending repository cleanup request",
   "恢复此文件夹": "Restore This Folder",
   "恢复版本": "Restore Version",
+  "恢复版本保存失败，未写入元数据；请检查存储后重新预览。": "Saving the recovery version failed. No metadata was written; check storage, then generate a new preview.",
+  "恢复版本未覆盖全部文章，未应用修改；请减少本次选择的文章数量。": "Recovery versions do not cover every article. No changes were applied; select fewer articles.",
   "恢复编辑器默认": "Restore Editor Defaults",
   "恢复自动参数": "Restore Automatic Parameters",
   "恢复自动标题": "Restore Automatic Title",
@@ -5754,7 +5975,11 @@
   "所有者 / 命名空间": "Owner / Namespace",
   "所选 JSON 必须是由本应用保存的有效工作台快照。成功后应用会退出，重新打开即可载入。": "The selected JSON must be a valid workbench snapshot saved by this app. After recovery, the app will quit; reopen it to load the snapshot.",
   "所选位置包含多个数据文件夹，请打开其中一个并直接选择它。": "The selected location contains multiple data folders. Open one and select it directly.",
+  "所选字段已在其他窗口变化，未覆盖当前值：%@。请重新生成预览。": "The selected fields changed in another window. Their current values were preserved: %@. Generate a new preview.",
+  "所选字段当前不能应用，文章未更改。": "The selected fields cannot be applied. The article was not changed.",
   "所选文件夹是空的。如果要使用它，请选择“新建数据文件夹”。": "The selected folder is empty. To use it, choose \"Create New Data Folder.\"",
+  "所选文章中没有匹配的目标字段。": "No matching values were found in the selected articles.",
+  "所选文章无效，请重新选择。": "The selected articles are invalid. Select them again.",
   "所选版本": "Selected Version",
   "所选路径不是目录；生成或导入前会再次验证路径。": "The selected path is not a directory; it will be verified again before generation or import.",
   "所选路径中的数据已变成另一个工作区。为避免打开错误数据，请手动重新选择。": "The data at the saved path now belongs to a different workspace. Select it manually to avoid opening the wrong data.",
@@ -5822,6 +6047,7 @@
   "打开图片目录": "Open Images Folder",
   "打开外部调试页": "Open External Debug Page",
   "打开安装说明": "Open Installation Guide",
+  "打开完整批次确认页，审阅全部文章和文件差异后再发布": "Open the complete batch confirmation to review every article and file difference before publishing",
   "打开当前文章": {
     "en": "Open Current Article",
     "zh-Hans": "打开当前文章"
@@ -5842,10 +6068,17 @@
   },
   "打开数据管理": "Open Data Management",
   "打开文章%@": "Open Article %@",
+  "打开文章处理引用": {
+    "en": "Open article to handle references",
+    "ja": "記事を開いて参照を処理",
+    "zh-Hans": "打开文章处理引用"
+  },
   "打开文章并定位到匹配内容": "Open the article and jump to this match",
   "打开文章并进入写作页面": "Open the article in Writing",
   "打开文章时自动翻译": "Automatically translate when opening an article",
+  "打开文章页面": "Open article page",
   "打开旧文整理文章": "Open Article Refresh Item",
+  "打开最近文章": "Open most recent article",
   "打开本次发布清单和一键发布流程": "Open the publish checklist and one-click publishing flow",
   "打开查找时没有可用选区。": "There was no selection when Find opened.",
   "打开检查页面": "Open checks page",
@@ -5855,11 +6088,13 @@
     "en": "Open Snippet Library",
     "zh-Hans": "打开片段库"
   },
+  "打开版本恢复": "Open version recovery",
   "打开目标": "Open Target",
   "打开目标文章": {
     "en": "Open Target Article",
     "zh-Hans": "打开目标文章"
   },
+  "打开确认页时会完整扫描所有未忽略变更。": "Opening the confirmation view will scan all non-ignored changes.",
   "打开站点": {
     "en": "Open Site",
     "zh-Hans": "打开站点"
@@ -5873,7 +6108,9 @@
   },
   "打开访问令牌设置": "Open Access Token Settings",
   "打开资料库": "Open Library",
+  "打开资料库并跳转到当前推荐片段。": "Open the library and jump to this recommended passage.",
   "打开资料库管理集合": "Open Library to Manage Collections",
+  "打开资料库，并保留当前文章上下文作为检索词。": "Open the library using the current article context as the search query.",
   "打开资料：%@": {
     "en": "Open Knowledge Item: %@",
     "zh-Hans": "打开资料：%@"
@@ -5941,8 +6178,14 @@
     "en": "Note (Optional)",
     "zh-Hans": "批注（可选）"
   },
+  "批量发布范围已变化，请先在发布面板核对批次。": "The batch publication scope has changed. Review the batch in the publishing panel first.",
   "批量处理": "Batch Actions",
   "批量复制到站点": "Copy Multiple to Site",
+  "批量导出图片": {
+    "en": "Export Images in Batch",
+    "ja": "画像を一括書き出し",
+    "zh-Hans": "批量导出图片"
+  },
   "批量归属变更仍可在文章列表的批量操作中使用。": "Batch ownership changes remain available from the article list's batch actions.",
   "批量操作，已选择 %lld 条资料": {
     "en": "Batch actions, %lld items selected",
@@ -5959,6 +6202,7 @@
   "批量移动、复制或转为通用草稿": "Move, copy, or convert the selected drafts to general drafts",
   "批量移动到站点": "Move Multiple to Site",
   "批量移动所选资料": "Move Selected Items in Batch",
+  "批量维护标签与分类": "Batch manage tags and categories",
   "批量设置资料权限": {
     "en": "Set Knowledge Permissions in Bulk",
     "zh-Hans": "批量设置资料权限"
@@ -6005,6 +6249,8 @@
     "en": "Drag into the Article to Insert a Quote Block",
     "zh-Hans": "拖入正文插入引用块"
   },
+  "拖出图片文件": "Drag Image File Out",
+  "拖出图片文件到其他应用": "Drag the image file into another app",
   "拖动下方滑块或切换开关，此处会即时呈现文章在编辑器内的排版与视觉氛围。": "Drag the sliders or toggle the switches below to preview the editor typography and visual atmosphere in real time.",
   "拖放资料文件或文件夹": "Drop Knowledge Files or Folders",
   "拼写、配对与聚光灯": {
@@ -6096,6 +6342,8 @@
     "en": "Commit and Push Starter",
     "zh-Hans": "提交并推送 Starter"
   },
+  "提交数": "Commit count",
+  "提交说明": "Commit message",
   "提取全文": {
     "en": "Fetch Full Text",
     "zh-Hans": "提取全文"
@@ -6187,9 +6435,12 @@
     "zh-Hans": "搜索文件名或路径"
   },
   "搜索文件路径": "Search file paths",
-  "搜索文章、AI 功能、工作区或命令…": {
-    "en": "Search articles, AI features, workspaces, or commands…",
-    "zh-Hans": "搜索文章、AI 功能、工作区或命令…"
+  "搜索文章": "Search articles",
+  "搜索文章、站点或路径": "Search articles, sites, or paths",
+  "搜索文章、资料库、RSS、AI 功能、工作区或命令…": {
+    "en": "Search articles, references, RSS, AI features, workspace, or commands…",
+    "ja": "記事、資料、RSS、AI 機能、ワークスペース、またはコマンドを検索…",
+    "zh-Hans": "搜索文章、资料库、RSS、AI 功能、工作区或命令…"
   },
   "搜索文章标题": "Search article titles",
   "搜索本地分支": "Search Local Branches",
@@ -6214,6 +6465,7 @@
   "搜索草稿": "Search Drafts",
   "搜索草稿、标签与指令…": "Search drafts, tags & commands…",
   "搜索资料全文": "Search Library",
+  "搜索资料写作目标": "Search research writing targets",
   "搜索：“%@”": "Search: \"%@\"",
   "摘要": "Summary",
   "摘要 %@": "Summary %@",
@@ -6239,6 +6491,7 @@
     "zh-Hans": "撤销授权"
   },
   "撤销本次本地修改": "Undo Local Changes",
+  "操作": "Operation",
   "操作失败：%@": "Operation failed: %@",
   "操作日志": "Operation Log",
   "支持 JPEG、PNG、HEIC 图片、EPUB、Markdown、文本、HTML、PDF 和包含这些文件的文件夹。": "Supports JPEG, PNG, HEIC images, EPUB, Markdown, text, HTML, PDF, and folders containing them.",
@@ -6385,6 +6638,7 @@
     "zh-Hans": "文章元数据不完整"
   },
   "文章关系": "Article Relationships",
+  "文章准备未完成。请检查仓库访问权限、内容目录和文件读取问题后重试。": "Article preparation could not finish. Check repository access, the content directory, and file reading issues, then try again.",
   "文章分组": "Article Groups",
   "文章分组方式": "Article Grouping",
   "文章列表": "Article List",
@@ -6418,9 +6672,17 @@
   "文章封面缩略图": "Article Cover Thumbnail",
   "文章将解除站点归属并保留正文，之后不能直接发布。": "The article will keep its content but lose its site assignment, so it cannot be published directly.",
   "文章已不存在。": "Article no longer exists.",
+  "文章已不存在或已移出站点，请关闭预览。": {
+    "en": "The article no longer exists or has moved out of the site. Close this preview.",
+    "zh-Hans": "文章已不存在或已移出站点，请关闭预览。"
+  },
   "文章已变化，未复制陈旧 AI Prompt；请重试。": "The article changed, so the stale AI prompt was not copied. Try again.",
   "文章已变化，请重新创建预览": "The article has changed. Create a new preview.",
   "文章已变化，这份 AI 修改预览未应用；请重新预览。": "The article changed, so this AI edit preview was not applied. Preview it again.",
+  "文章或引用内容已变化，预览已更新；请重新确认。": {
+    "en": "The article or its references changed. The preview has been updated; please confirm again.",
+    "zh-Hans": "文章或引用内容已变化，预览已更新；请重新确认。"
+  },
   "文章或站点配置在预览准备期间已变更，请重新打开预览。": "The article or site configuration changed while preparing the preview. Open the preview again.",
   "文章打开与阅读体验": {
     "en": "Article Opening and Reading Experience",
@@ -6429,6 +6691,7 @@
   "文章排序": "Sort Articles",
   "文章摘要": "Article Summary",
   "文章操作": "Article Actions",
+  "文章操作菜单": "Article actions menu",
   "文章标签": "Article Tags",
   "文章标签已保存。": {
     "en": "Article tags saved.",
@@ -6500,6 +6763,7 @@
   "新文章标题": "New article title",
   "新文章自动导入；本地已修改、远端删除或重命名仍保留手动审阅。": "New articles are imported automatically; local edits, remote deletions, and renames remain for manual review.",
   "新标签会追加到所选资料，已有标签不会被删除。": "New tags are appended to the selected items; existing tags are preserved.",
+  "新标签或分类（已有值会合并）": "New tag or category (existing values are merged)",
   "新的 RSS 或 Atom 订阅地址": "New RSS or Atom subscription address",
   "新目标：%@": "New target: %@",
   "方式": "Method",
@@ -6516,7 +6780,9 @@
   "无法在默认浏览器中打开本地预览。": "The local preview could not be opened in the default browser.",
   "无法完整读取目录：%@": "Unable to read the directory completely: %@",
   "无法导出重定向 CSV：%@": "Unable to export the redirect CSV: %@",
+  "无法打开仓库文件 %@。": "Could not open repository file %@.",
   "无法打开官方下载页面。": "Unable to open the official download page.",
+  "无法打开文章的版本恢复入口。": "Could not open the article's version recovery entry.",
   "无法打开本地预览": "Could Not Open Local Preview",
   "无法打开本次推送的提交页面，请到远端仓库检查部署结果。": "Unable to open this pushed commit. Check the deployment result in the remote repository.",
   "无法新建数据文件夹：%@": "Could not create the data folder: %@",
@@ -6529,10 +6795,14 @@
   "无法识别导出内容：%@": "Unable to recognize the exported content: %@",
   "无法读取": "Unable to read",
   "无法读取 GitHub 凭据：%@": "Unable to read GitHub credentials: %@",
+  "无法读取冲突内容": "Could not read conflict content",
   "无法读取导入来源：%@": "Unable to read the import source: %@",
+  "无法读取待审阅的附件，请检查文件后重新准备发布。": "The attachments could not be read for review. Check the files and prepare the publication again.",
+  "无法读取日志中的文件。请确认它是当前仓库内的文本源码，文件存在且不超过 2 MB；符号链接和仓库外路径不会打开。": "Unable to read the logged file. It must be an existing text source file of 2 MB or less in the current repository. Symbolic links and paths outside the repository cannot be opened.",
   "无法读取这篇文章的本机正文。": "Could Not Load This Article's Local Body.",
   "无进行中或失败任务": "No Running or Failed Tasks",
   "无需 API Key": "No API Key Required",
+  "日志行号超出当前文件，已定位到最后一行。": "The logged line is beyond the current file. Showing the last line.",
   "日期": "Date",
   "日期格式": "Date Format",
   "日语": "Japanese",
@@ -6563,6 +6833,7 @@
   "显示全部 %lld 条": "Show All %lld Items",
   "显示原文": "Show Original",
   "显示当前已保存的完整摘要": "Show the complete saved summary",
+  "显示当前本地文件，可能与日志对应的构建版本不同。此预览不会修改文件。": "This is the current local file and may differ from the build in the log. This preview does not modify the file.",
   "显示更多": {
     "en": "Show More",
     "zh-Hans": "显示更多"
@@ -6669,16 +6940,27 @@
   },
   "替换复验已取消，正文没有修改。": "Replacement revalidation was canceled; article bodies were not changed.",
   "替换失败：%@": "Replacement failed: %@",
+  "替换已写入工作区并保留恢复版本，但持久化失败；请从版本入口恢复或重试。": "The workspace changes and recovery versions were retained, but saving failed. Restore from versions or try again.",
   "替换当前": "Replace Current",
   "替换当前匹配": "Replace Current Match",
   "替换文本": "Replace Text",
   "替换正文": "Replace in Body",
+  "替换预览": "Replacement preview",
   "最多保留 30 个去重版本；连续编辑每 5 分钟最多记录一次。": "Keeps up to 30 deduplicated versions and records continuous editing at most once every five minutes.",
+  "最多显示 %@ 个资料片段。": {
+    "en": "Showing up to %@ reference snippets.",
+    "zh-Hans": "最多显示 %@ 个资料片段。"
+  },
+  "最多显示 %@ 篇 RSS 文章。": {
+    "en": "Showing up to %@ RSS articles.",
+    "zh-Hans": "最多显示 %@ 篇 RSS 文章。"
+  },
   "最大化冲突合并窗口": "Maximize Conflict Merge Window",
   "最大化合并窗口": "Maximize Merge Window",
   "最大输出 Tokens": "Maximum Output Tokens",
   "最大输出：%@ tokens": "Maximum output: %@ tokens",
   "最新优先": "Newest First",
+  "最新内容仍保留在软件中，请再次退出以保存这些修改。": "The latest content is still in the app. Quit again to save these changes.",
   "最早优先": "Oldest First",
   "最短检查间隔": {
     "en": "Minimum Check Interval",
@@ -6783,6 +7065,7 @@
   },
   "未包含图片变更": "No image changes",
   "未发现 SEO 问题": "No SEO Issues Found",
+  "未发现可展示的具体主题词": "No specific topic terms were found to show.",
   "未发现明确特征；已使用安全默认值。": "No clear site signature was found; safe defaults are being used.",
   "未发现正在运行的本地 AI 服务。": "No running local AI services were found.",
   "未启动": "Not Started",
@@ -6795,6 +7078,11 @@
     "en": "Unnamed Site",
     "zh-Hans": "未命名站点"
   },
+  "未命名资料": {
+    "en": "Untitled Reference",
+    "ja": "無題の資料",
+    "zh-Hans": "未命名资料"
+  },
   "未在所选文件夹中发现 Git 仓库；可以先确认规则，但发布前需要初始化 Git。": "No Git repository was found in the selected folder. You can confirm the rules now, but Git must be initialized before publishing.",
   "未在本机找到可迁移的旧版工作台、资料库或 RSS 数据。": "No legacy workspace, library, or RSS data was found on this Mac.",
   "未填写": {
@@ -6802,6 +7090,11 @@
     "zh-Hans": "未填写"
   },
   "未完成": "Incomplete",
+  "未导出“%@”：%@": {
+    "en": "Not exported “%@”: %@",
+    "ja": "「%@」を書き出せませんでした：%@",
+    "zh-Hans": "未导出“%@”：%@"
+  },
   "未建立本地语义索引": {
     "en": "Local Semantic Index Not Built",
     "zh-Hans": "未建立本地语义索引"
@@ -6837,6 +7130,7 @@
     "zh-Hans": "未检测到仓库写入角色：%@"
   },
   "未检测到可用分支。": "No available branches detected.",
+  "未检测到需要额外复核的发布风险。": "No publication risks requiring extra review were found.",
   "未激活": "Inactive",
   "未生成": {
     "en": "Not Generated",
@@ -6859,7 +7153,9 @@
     "zh-Hans": "未能保存 HTML 源文件。"
   },
   "未能保存工作台修改": "Could Not Save Workspace Changes",
+  "未能找到原文章，未应用任何字段。": "The original article could not be found. No fields were applied.",
   "未能暂存仓库路径，请重新选择或检查文件夹是否存在。": "Could not stage the repository path. Select it again or check that the folder exists.",
+  "未能确认草稿保存结果。请检查存储空间，并重新打开工作区核对后再试。": "Could not confirm whether drafts were saved. Check storage space, then reopen the workspace and verify the result before retrying.",
   "未能自动切分出独立字段，可切换至“完整响应”查看或直接应用全量修复内容。": "Could not automatically split into individual fields. Switch to \"Full Response\" or apply all fixes directly.",
   "未能重置工作台": "Could Not Reset Workbench",
   "未记录": "Not Recorded",
@@ -6905,6 +7201,7 @@
     "en": "No Model Configured",
     "zh-Hans": "未配置模型"
   },
+  "未配置路径": "Path not configured",
   "本地 AI 发现": "Local AI Discovery",
   "本地 AI 服务": "Local AI Service",
   "本地 AI 检测完成。": "Local AI discovery complete.",
@@ -6940,6 +7237,11 @@
     "en": "%lld local changes",
     "zh-Hans": "本地有 %lld 项变化"
   },
+  "本地检索失败：%@": {
+    "en": "Local search failed: %@",
+    "ja": "ローカル検索に失敗しました: %@",
+    "zh-Hans": "本地检索失败：%@"
+  },
   "本地模型": "Local Model",
   "本地目录": "Local Directory",
   "本地站点预览": {
@@ -6950,6 +7252,7 @@
     "en": "Local Cache and Background Refresh",
     "zh-Hans": "本地缓存和后台刷新"
   },
+  "本地草稿尚未安全保存": "Local drafts have not been saved safely",
   "本地语义检索与索引维护": "Local semantic search and index maintenance",
   "本地语义索引": {
     "en": "Local Semantic Index",
@@ -6993,6 +7296,8 @@
     "zh-Hans": "本次不发送额外上下文。"
   },
   "本次仅包含当前文章及其发布包中的资源；具体文件与发布策略将在确认页展示。": "This includes only the current article and resources in its publication bundle; exact files and publication strategy are shown on the confirmation page.",
+  "本次加入 %@ 篇文章，当前站点共有 %@ 篇可用文章。": "Added %@ articles. This site now has %@ available articles.",
+  "本次加入 %lld 篇文章，当前站点共有 %lld 篇可用文章。": "Added %lld articles. This site now has %lld available articles.",
   "本次发布结果": "Publication result",
   "本次审阅的图片：%@": "Image in this review: %@",
   "本次本地修改已撤销": "Local Changes Undone",
@@ -7059,6 +7364,8 @@
   "查看全部 %lld 篇文章": "View all %lld articles",
   "查看全部 AI 可修复项": "View All AI-Fixable Items",
   "查看全部活动记录…": "View All Activity…",
+  "查看全部结果": "View all results",
+  "查看全部记录": "View all records",
   "查看全部资料": "View All Sources",
   "查看共同基线": "View Common Base",
   "查看共同基线（stage 1）": "View Common Base (stage 1)",
@@ -7066,6 +7373,7 @@
   "查看其余 %@ 条资料": "Show %@ More Items",
   "查看其余 %lld 条提醒": "Show %lld More Warnings",
   "查看其余 %lld 条资料": "Show %lld More Items",
+  "查看冲突": "Review conflicts",
   "查看冲突文章：《%@》": "View Conflicting Article: <%@>",
   "查看发布检查": {
     "en": "View Publishing Check",
@@ -7075,6 +7383,7 @@
   "查看图片": "View Image",
   "查看完整差异": "View Full Diff",
   "查看工作台数据占用、执行全库图片无损/有损瘦身与孤立附件清理。": "View workbench data usage, optimize images across library, and clean up orphaned attachments.",
+  "查看当前文章差异": "View Current Article Differences",
   "查看当前文章的标签、高亮与批注": "View tags, highlights, and notes for the current article",
   "查看当前站点的发布基础、凭据和功能就绪状态。": "Review publishing prerequisites, credentials, and feature readiness for the current site.",
   "查看恢复状态": "View Recovery Status",
@@ -7086,6 +7395,8 @@
   "查看更新差异": "Review Update Differences",
   "查看更新文章与恢复版本": "Updated Articles and Recovery Versions",
   "查看本地仓库路径、发布规则完整性与当前发布目标。": "View local repository root path, rule completeness, and current publish target.",
+  "查看来源": "View source",
+  "查看来源：%@": "View source: %@",
   "查看标注": "View Annotations",
   "查看检查": {
     "en": "View Checks",
@@ -7094,6 +7405,9 @@
   "查看版本历史、回收站、草稿归属和待清理的仓库文件。": "Review version history, Trash, draft assignments, and repository files awaiting cleanup.",
   "查看目标文章的恢复版本": "View Recovery Versions of the Target Article",
   "查看空间占用，清理资料库数据，或更改存储位置。": "Review storage usage, clean up library data, or change the storage location.",
+  "查看站点检查": "View site checks",
+  "查看详情": "View details",
+  "查看资料库全部结果": "View all library results",
   "标准": "Standard",
   "标注与反向链接": {
     "en": "Annotations and Backlinks",
@@ -7138,8 +7452,10 @@
   "标题、日期、标签等信息已收起，展开可编辑源码。": "Title, date, tags, and other information are collapsed. Expand to edit their source.",
   "标题与 Front Matter": "Title and Front Matter",
   "标题命中": "Title Matches",
+  "标题命中：%@": "Title matches: %@",
   "标题和正文仅在本机处理，不需要 AI 发送授权。": "The article title and body are processed only on this Mac; AI sending permission is not required.",
   "标题和正文会按当前 AI 发送权限发送给 AI 服务。": "The title and body are sent to the AI service according to the current AI sending permission.",
+  "标题和正文命中：%@": "Title and content match: %@",
   "标题和正文在设备端处理，不会发送给 AI；首次使用某种语言时，Apple 可能要求下载语言包。": "The article title and body are processed on this device and are not sent to AI. Apple may ask to download a language pack the first time you use a language.",
   "标题层级": {
     "en": "Heading Levels",
@@ -7154,6 +7470,7 @@
     "en": "Format",
     "zh-Hans": "格式"
   },
+  "格式不支持（仅支持 PNG、JPEG、GIF 或 WebP）": "Unsupported format (PNG, JPEG, GIF, or WebP only)",
   "格式化表格": "Format Table",
   "格式工具栏": "Formatting Toolbar",
   "档案名称": "Profile Name",
@@ -7183,6 +7500,7 @@
   "检查已有仓库是否可读且可写": "Check whether the existing repository is readable and writable",
   "检查并启动预览": "Review and Start Preview",
   "检查并编辑后才会保存到当前站点。": "Review and edit the result before saving it to this site.",
+  "检查并重试未推送提交…": "Review and retry unpushed commits…",
   "检查当前文章并打开发布准备": {
     "en": "Check the Current Article and Open Publishing Readiness",
     "zh-Hans": "检查当前文章并打开发布准备"
@@ -7330,13 +7648,25 @@
   "正在后台读取并导入已有站点…": "Reading and importing the existing site in the background…",
   "正在向当前服务发送一次最小请求。": "Sending one minimal request to the current service.",
   "正在启动": "Starting",
+  "正在处理 %@ / %@ 项…": {
+    "en": "Processing %@ / %@ items…",
+    "zh-Hans": "正在处理 %@ / %@ 项…"
+  },
+  "正在处理 %lld / %lld 项…": {
+    "en": "Processing %lld / %lld items…",
+    "zh-Hans": "正在处理 %lld / %lld 项…"
+  },
   "正在处理 Git 操作": "Handling Git Operation",
   "正在处理分支": "Updating Branch",
+  "正在处理另一项 RSS 操作，请稍候再保存批注。": "Another RSS operation is running. Wait before saving the highlight.",
+  "正在处理另一项 RSS 操作，请稍候再保存笔记。": "Another RSS operation is running. Wait before saving the note.",
   "正在复制并校验当前数据…": "Copying and verifying current data…",
   "正在复制并校验旧版数据…": "Copying and validating legacy data…",
   "正在复制并校验，请勿断开硬盘…": "Copying and verifying. Do not disconnect the drive…",
+  "正在完成另一项 RSS 操作，请稍候保存。": "Another RSS operation is finishing. Please wait before saving.",
   "正在导入": "Importing",
   "正在导入已有仓库…": "Importing existing repository…",
+  "正在应用已确认的处理方式…": "Applying the confirmed resolution…",
   "正在建立索引": "Building Index",
   "正在执行全文与本地语义检索…": "Searching full text and the local semantic index…",
   "正在执行线上发布...": {
@@ -7361,6 +7691,9 @@
   },
   "正在拉取可用模型": "Fetching Available Models",
   "正在推送草稿预览分支": "Pushing draft preview branch",
+  "正在提交并推送全部文件": "Committing and pushing all files",
+  "正在提交并推送，完成前不能关闭发布抽屉": "A commit and push are in progress. The publish drawer cannot be closed until they finish.",
+  "正在提交并推送，请等待操作完成。": "A commit and push are in progress. Wait for the operation to finish.",
   "正在提取正文并检查重复内容…": {
     "en": "Extracting content and checking for duplicates…",
     "zh-Hans": "正在提取正文并检查重复内容…"
@@ -7369,6 +7702,11 @@
   "正在搜索": "Searching",
   "正在搜索 RSS 文章": "Searching RSS Articles",
   "正在搜索…": "Searching…",
+  "正在搜索已保存的内容…": {
+    "en": "Searching saved content…",
+    "ja": "保存済みコンテンツを検索中…",
+    "zh-Hans": "正在搜索已保存的内容…"
+  },
   "正在搜索资料全文和本地语义索引": "Searching source text and the local semantic index",
   "正在新建 RepoPress Studio 数据文件夹…": "Creating the RepoPress Studio data folder…",
   "正在更新资料库推荐": {
@@ -7396,6 +7734,7 @@
   "正在检查 ChatGPT 账户": "Checking ChatGPT account",
   "正在检查 ChatGPT 账户…": "Checking ChatGPT account…",
   "正在检查 Front Matter、链接、SEO 与内容风险。当前分析未提供可显示的分阶段进度。": "Checking Front Matter, links, SEO, and content risks. This analysis does not provide displayable phase-by-phase progress.",
+  "正在检查…": "Checking…",
   "正在检查仓库写入权限": "Checking Repository Write Access",
   "正在检查仓库权限...": {
     "en": "Checking repository permissions…",
@@ -7431,15 +7770,18 @@
   },
   "正在等待预览页面就绪…": "Waiting for the preview page to become ready…",
   "正在翻译…": "Translating...",
+  "正在翻译列表标题…": "Translating list titles…",
   "正在翻译当前 RSS 文章的标题和正文": "Translating the current RSS article title and body",
   "正在翻译标题和正文…": "Translating title and body…",
   "正在计算存储空间…": "Calculating storage usage…",
   "正在计算版本差异…": "Calculating version differences…",
   "正在读取 ChatGPT 账户…": "Reading the ChatGPT account…",
   "正在读取…": "Loading…",
+  "正在读取两份完整 Markdown…": "Reading both complete Markdown documents…",
   "正在读取仓库图片…": "Reading Repository Images…",
   "正在读取仓库配置…": "Reading repository settings…",
   "正在读取当前文章图片…": "Loading images for the current article…",
+  "正在读取当前版本…": "Reading the current versions…",
   "正在读取文章…": "Loading Articles…",
   "正在读取文章正文": "Loading Article Body",
   "正在读取最新检查结果…": {
@@ -7455,12 +7797,17 @@
     "zh-Hans": "正在读取本文引用…"
   },
   "正在读取本机正文…": "Loading the Local Article Body…",
+  "正在读取源码…": "Reading source…",
   "正在读取目录信息…": "Reading directory information…",
+  "正在读取站点并整理文章…": "Reading the site and preparing articles…",
   "正在读取账户可用模型": "Reading Models Available to the Account",
   "正在读取账户可用模型…": "Reading models available to the account…",
+  "正在读取软件草稿和项目文件…": "Reading the app draft and project file…",
   "正在载入图片…": "Loading image…",
   "正在运行": "Running",
   "正在重新写入项目文件…": "Retrying project file writes…",
+  "正在重试保存本篇文章的资料引用…": "Retrying reference saving for this article…",
+  "正在重试推送本地提交": "Retrying local commit push",
   "正在验证…": "Verifying…",
   "正在验证连接": "Verifying connection",
   "正常": "Healthy",
@@ -7481,6 +7828,7 @@
     "zh-Hans": "正文内容需要检查"
   },
   "正文冲突 · 基线第 %d–%d 行": "Body conflict · base lines %d–%d",
+  "正文命中：%@": "Content matches: %@",
   "正文字体": "Body Font",
   "正文字号": "Body Font Size",
   "正文宽度": "Content Width",
@@ -7488,11 +7836,17 @@
   "正文差异过于复杂，已切换到完整源码。": "The body diff is too complex. Switched to Full Source.",
   "正文已变化，替换预览已失效。": "The body changed. The replacement preview is out of date.",
   "正文已变化，未应用替换。请重新预览。": "The body changed. The replacement was not applied. Preview it again.",
+  "正文已更新，但资料引用记录未保存；可在上方重试。": "The body was updated, but references were not saved. Retry above.",
+  "正文已更新，但资料引用记录未保存；可重试。": "The body was updated, but references were not saved. You can retry.",
+  "正文已更新，正在保存资料引用…": "The body was updated. Saving references…",
+  "正文已更新，资料引用尚未保存": "Body updated; references not yet saved",
   "正文插入点 · 基线第 %d 行前": "Body insertion · before base line %d",
   "正文正在同步，请稍后重试。": "The body is syncing. Try again shortly.",
   "正文没有变化": "No body changes",
   "正文片段": "Body Snippets",
   "正文版本": "Content Version",
+  "正文版本尚未确认": "Body version not yet confirmed",
+  "正文版本已确认": "Body version confirmed",
   "正文补料工具": "Draft Enrichment Toolkit",
   "正文诊断": "Body Diagnostics",
   "正文诊断：%lld 项": {
@@ -7529,6 +7883,7 @@
     "en": "This file mixes multiple line-ending styles. Source editing is read-only to avoid a whole-file diff; normalize the line endings in an external tool first.",
     "zh-Hans": "此文件混用了多种换行符。为避免产生整文件差异，源码编辑保持只读；请先在外部工具中统一换行符。"
   },
+  "此文章尚未验证，请检查全部文章。": "This article has not been verified. Check all articles.",
   "此资料没有可重新读取的来源，但仍可恢复已有版本。": {
     "en": "This resource has no source to reload, but an existing version can still be restored.",
     "zh-Hans": "此资料没有可重新读取的来源，但仍可恢复已有版本。"
@@ -7547,6 +7902,7 @@
     "en": "Show up to %@ more articles at a time",
     "zh-Hans": "每次再显示最多 %@ 篇文章"
   },
+  "每次只审阅一篇文章。系统会重新读取软件草稿和项目文件，之后由你明确选择处理方式。": "Review one article at a time. The app reloads the draft and project file, then you explicitly choose how to proceed.",
   "每项任务会在单独界面中打开，设置页保持简洁。": "Each task opens in a separate view to keep Settings uncluttered.",
   "比较": "Compare",
   "比较版本：%@": "Compared Version: %@",
@@ -7577,10 +7933,11 @@
   "没有仓库或发布阻断": "No Repository or Publishing Blockers",
   "没有元数据": "No Metadata",
   "没有净文件差异。": "No net file changes.",
+  "没有匹配的仓库图片": "No matching repository images",
   "没有匹配的可维护文章。": "No matching maintainable articles.",
   "没有匹配的对话": "No Matching Conversations",
   "没有匹配的文件。": "No matching files.",
-  "没有匹配的文章": "No Matching Articles",
+  "没有匹配的文章": "No matching articles",
   "没有匹配的活动记录": "No Matching Activity",
   "没有匹配资料": "No Matching Sources",
   "没有发现失效引用": {
@@ -7600,10 +7957,12 @@
     "zh-Hans": "没有发现需要优先复查的旧文。"
   },
   "没有可发布文章": "No Publishable Articles",
+  "没有可发布文章；待下线请求请到回收站单独处理": "No articles to publish. Handle pending unpublish requests separately in Trash",
   "没有可在本机重新净化的网页资料。": {
     "en": "There are no web items that can be sanitized again on this Mac.",
     "zh-Hans": "没有可在本机重新净化的网页资料。"
   },
+  "没有可应用的变化。": "No changes to apply.",
   "没有可插入的图片文件。": "No supported image files to insert.",
   "没有可插入的视频文件。": "No Supported Video Files to Insert.",
   "没有可显示正文": "No Readable Content",
@@ -7638,6 +7997,7 @@
     "zh-Hans": "没有选中的资料"
   },
   "没有问题": "No Issues",
+  "没有需要修改的文章": "No articles need changes",
   "没有需要替换的站内引用。确认后将清除本次待处理的 Slug 变更。": "No internal references need replacement. Confirming clears this pending slug change.",
   "法语": "French",
   "注意": "Attention",
@@ -7774,6 +8134,7 @@
     "en": "Clear Search and Filters",
     "zh-Hans": "清除搜索与筛选"
   },
+  "清除搜索和筛选": "Clear Search and Filters",
   "清除筛选": {
     "en": "Clear Filters",
     "zh-Hans": "清除筛选"
@@ -7802,6 +8163,10 @@
     "zh-Hans": "点击卡片定位源码"
   },
   "点击文章后，可使用上下箭头浏览，按 Return 打开文章": "After clicking an article, use the arrow keys to browse and press Return to open it",
+  "点击来源文章处理引用，本次下线操作会取消。": {
+    "en": "Open a source article to edit its links. This cancels the current unpublish action.",
+    "zh-Hans": "点击来源文章处理引用，本次下线操作会取消。"
+  },
   "点击查看详细统计与设定目标字数": {
     "en": "Click to view detailed statistics and set target word count",
     "zh-Hans": "点击查看详细统计与设定目标字数"
@@ -7865,6 +8230,7 @@
   "生成导入预览": "Generate Import Preview",
   "生成已选择的 %lld 项": "Generate %lld Selected Items",
   "生成归属变更预览": "Generate Ownership Change Preview",
+  "生成时原值": "Value at generation time",
   "生成模板和首篇文章": {
     "en": "Generate Template and First Article",
     "zh-Hans": "生成模板和首篇文章"
@@ -7874,6 +8240,7 @@
   "生成精简后的 SVG 副本，保留 SVG 格式。": "Generate optimized SVG copies while keeping the SVG format.",
   "生成迁移预览": "Generate Migration Preview",
   "生成适合社交分享的封面副本": "Create a cover copy sized for social sharing",
+  "生成逐篇预览": "Generate per-article preview",
   "生成预览": "Generate Preview",
   "用于写作": "For Writing",
   "用于检查材质、边框与明暗外观。": {
@@ -7905,6 +8272,7 @@
   "目录尚不存在，且父目录不可写。": "The directory does not exist, and its parent directory is not writable.",
   "目录尚不存在；生成时会创建它，实际写入前仍会验证。": "The directory will be created when generating the site. It will be checked again before writing.",
   "目标": "Target",
+  "目标 origin": "Target origin",
   "目标位置已存在同名文件夹，请换一个位置。": "A folder with that name already exists at the destination. Choose another location.",
   "目标分支": "Target Branch",
   "目标分支尚不存在": "The target branch does not exist yet",
@@ -7918,6 +8286,7 @@
     "en": "Target Article",
     "zh-Hans": "目标文章"
   },
+  "目标文章在读取 RSS 内容期间已变化；未写入，请重新尝试。": "The target article changed while RSS content was loading. Nothing was inserted. Please try again.",
   "目标目录必须是空文件夹；生成后会成为本地站点仓库。": {
     "en": "The destination must be an empty folder. After generation, it becomes the local site repository.",
     "zh-Hans": "目标目录必须是空文件夹；生成后会成为本地站点仓库。"
@@ -7930,6 +8299,7 @@
   },
   "目标路径重复、无效，或本地草稿在生成预览后已变化。请检查源文件并重新生成预览。": "The target path is duplicate or invalid, or the local draft changed after the preview was generated. Check the source files and generate a new preview.",
   "目标：%@": "Target: %@",
+  "目标：origin/%@": "Target: origin/%@",
   "直接提交远端删除": "commit the remote deletion directly",
   "相关内容": "Related Content",
   "相同": "Identical",
@@ -7961,12 +8331,16 @@
   "确认全部替换": "Confirm Replace All",
   "确认创建仓库": "Confirm Repository Creation",
   "确认前不会改变 HEAD、索引、工作区或 stash；冲突时会停止并保留 sequencer 与恢复 stash。": "HEAD, the index, worktree, and stash remain unchanged until confirmation. Conflicts stop the operation while preserving the sequencer and recovery stash.",
+  "确认前会重新扫描冻结快照；确认后仅创建一次提交并以非强制方式推送。": "The snapshot will be rescanned and frozen before confirmation; after confirmation, exactly one commit will be created and pushed without force.",
+  "确认前会重新运行站点检查，并逐项核对完整变更清单、HEAD、远端 SHA、文件 blob 与权限。不会强制推送；远端变化或快照变化会停止本次发布。": "Before confirmation, site checks will run again and the complete change list, HEAD, remote SHA, file blobs, and modes will be verified. Force push is never used; remote or snapshot drift stops the publication.",
   "确认危险操作": "Confirm Risky Action",
+  "确认发布仓库全部文件": "Confirm publishing all repository files",
   "确认同步网站草稿": "Confirm Website Draft Sync",
   "确认后依次执行": "Steps After Confirmation",
   "确认后才创建项目 Markdown；以后编辑会自动保存到该文件。": "Project Markdown is created only after confirmation. Future edits are saved to that file automatically.",
   "确认后立即同步当前网站草稿": "Sync the current website draft after confirmation",
   "确认后立即执行远端发布": "Publishes to the remote repository immediately after confirmation",
+  "确认处理冲突？": "Confirm conflict resolution?",
   "确认复制": "Copy",
   "确认外部操作": "Confirm External Action",
   "确认导入": {
@@ -7981,8 +8355,10 @@
   },
   "确认已关闭并恢复文章": "Confirm Closed and Restore Article",
   "确认已关闭，重新加入下线队列": "Confirm Closed and Requeue Unpublish",
+  "确认并发布全部文件": "Confirm and publish all files",
   "确认并启动": "Confirm and Start",
   "确认并开始（%d 张）": "Confirm and Start (%d Images)",
+  "确认并重试推送": "Confirm and retry push",
   "确认开始图片瘦身？": "Start Image Optimization?",
   "确认执行": "Confirm Action",
   "确认批量复制": "Copy All",
@@ -7996,8 +8372,10 @@
     "en": "Confirm old address references, aliases, or the redirect strategy.",
     "zh-Hans": "确认旧地址引用、aliases 或重定向策略。"
   },
+  "确认时会重新验证工作区为空、远端仍是已审阅基线，且远端是本地 HEAD 的祖先。远端分叉时会停止，绝不强制推送。": "On confirmation, the app rechecks that the worktree is clean, the remote still matches the reviewed baseline, and the remote is an ancestor of local HEAD. A divergence stops the operation; force push is never used.",
   "确认更新 %lld 处引用": "Confirm %lld Reference Updates",
   "确认替换": "Confirm Replacement",
+  "确认期间内容发生变化": "Content changed during confirmation",
   "确认清理孤立资源？": "Clean Up Orphan Assets?",
   "确认源码已协调": "Confirm Source Resolution",
   "确认移动": "Move",
@@ -8005,6 +8383,7 @@
   "确认自动探测的发布规则": "Confirm Detected Publishing Rules",
   "确认转换": "Convert",
   "确认运行本地预览命令": "Confirm Local Preview Command",
+  "确认重试推送": "Confirm Push Retry",
   "磁盘修改": {
     "en": "Modified on Disk",
     "zh-Hans": "磁盘修改"
@@ -8054,6 +8433,7 @@
   "移动到文件夹": "Move to Folder",
   "移动到站点": "Move to Site",
   "移动草稿归属": "Move Draft Assignment",
+  "移除": "Remove",
   "移除上下文 %@": {
     "en": "Remove context %@",
     "zh-Hans": "移除上下文 %@"
@@ -8118,12 +8498,14 @@
   "站点上下文": "Site Context",
   "站点仓库": "Site Repository",
   "站点内容维护助手": "Site Content Maintenance Assistant",
+  "站点发布前检查": "Site pre-publish checks",
   "站点发布建议": "Site Publishing Suggestions",
   "站点发布配置": {
     "en": "Site publishing configuration",
     "zh-Hans": "站点发布配置"
   },
   "站点已切换，请重新打开模板选择。": "The site changed. Reopen the template picker.",
+  "站点已切换，请重新扫描后再定位引用。": "The site changed. Rescan before locating this reference.",
   "站点引擎与基本参数": "Site Engine and Basic Parameters",
   "站点或仓库在刷新期间发生变化，请重试。": "The site or repository changed during refresh. Try again.",
   "站点指标": "Site Metrics",
@@ -8149,6 +8531,7 @@
   "站点路径和仓库状态没有阻塞问题。": "The site path and repository status have no blocking issues.",
   "站点配置": "Site Configuration",
   "站点配置名称": "Site Configuration Name",
+  "站点配置已变化，或文章准备已中断。请核对当前站点后重试。": "The site configuration changed or article preparation was interrupted. Check the current site and try again.",
   "站点问题": "Site Issues",
   "站点阅读统计与分析": "Site Readership Analytics",
   "站点首页已在浏览器中打开。": "The site home was opened in the browser.",
@@ -8279,6 +8662,10 @@
     "en": "Unified Status",
     "zh-Hans": "统一状态"
   },
+  "统计当前站点已纳入工作台的文章，包括未发布文章；不包含回收站、其他站点和自身引用，也不扫描外部网站。": {
+    "en": "Checks articles loaded in this workspace for the current site, including unpublished articles. Excludes the trash, other sites, and self-links; external websites are not scanned.",
+    "zh-Hans": "统计当前站点已纳入工作台的文章，包括未发布文章；不包含回收站、其他站点和自身引用，也不扫描外部网站。"
+  },
   "统计接口 URL": {
     "en": "Analytics API URL",
     "zh-Hans": "统计接口 URL"
@@ -8310,6 +8697,7 @@
   },
   "继续前请确认新建/导入方式、目录、站点名称和分支。": "Before continuing, confirm the create/import mode, directory, site name, and branch.",
   "继续变基": "Continue Rebase",
+  "继续建站": "Continue site setup",
   "继续显示 %lld 篇": "Show %lld More",
   "继续显示本机文章，当前 %lld 篇，共 %lld 篇": "Continue showing articles on this Mac: %lld of %lld",
   "继续编辑": "Continue Editing",
@@ -8321,6 +8709,7 @@
   },
   "维护": "Maintenance",
   "维护操作": "Maintenance Operation",
+  "维护标签与分类": "Manage tags and categories",
   "维护行动队列": {
     "en": "Maintenance Action Queue",
     "zh-Hans": "维护行动队列"
@@ -8345,6 +8734,7 @@
     "zh-Hans": "编辑元数据…"
   },
   "编辑后自动刷新发布检查": "Automatically Refresh Publishing Checks After Edits",
+  "编辑后需点击保存合并稿并确认": "After editing, click Save merged document and confirm.",
   "编辑器": "Editor",
   "编辑器内 AI 修改审阅": {
     "en": "In-Editor AI Edit Review",
@@ -8447,6 +8837,7 @@
   "自动检索": "Automatic Retrieval",
   "自动清理历史文章": "Automatically Clean Up Article History",
   "自动翻译会将当前文章标题和正文发送给当前 AI 服务，并受发送权限约束。": "Automatic translation sends the current article title and body to the current AI service, subject to sending permissions.",
+  "自动翻译列表标题": "Automatically translate list titles",
   "自动补全括号、引号与代码标记": {
     "en": "Automatically Close Brackets, Quotes, and Code Markers",
     "zh-Hans": "自动补全括号、引号与代码标记"
@@ -8501,6 +8892,7 @@
   "草稿": "Drafts",
   "草稿与版本": "Drafts and Versions",
   "草稿同步目标": "Draft Sync Target",
+  "草稿已保存在本地": "Drafts saved locally",
   "草稿归属": "Draft Ownership",
   "草稿版本历史与回收站": "Draft Version History and Trash",
   "草稿状态": "Draft Status",
@@ -8543,6 +8935,8 @@
     "zh-Hans": "被%1$@“%2$@”引用，"
   },
   "西班牙语": "Spanish",
+  "要添加的标签或分类": "Tag or category to add",
+  "要移除的标签或分类": "Tag or category to remove",
   "规则": "Rule",
   "规则关系": {
     "en": "Rule Relationships",
@@ -8589,6 +8983,7 @@
   "设置会自动保存，并在下次打开文章时继续使用。": "Settings are saved automatically and remain in effect the next time you open an article.",
   "设置发布账户": "Set Up Publishing Account",
   "设置外语 RSS 文章在打开时是否自动调用 AI 翻译并指定目标语言。": "Set whether foreign RSS articles automatically trigger AI translation with target language.",
+  "设置已保存。整理完成后，你可以选择打开文章或新建文章。": "Settings are saved. Once preparation finishes, you can open an article or create one.",
   "设置已保存，但备份副本失败：%@": "Settings were saved, but the backup copy failed: %@",
   "设置已读文章的自动清理周期与数据库空间压缩。": "Set automatic cleanup retention period for read articles and compress database.",
   "设置应用语言、启动行为、主题和强调色。": "Configure the app language, launch behavior, theme, and accent color.",
@@ -8618,6 +9013,8 @@
   "诊断完成：%@ 个错误，%@ 个警告，%@ 个提示。": "Diagnostics complete: %@ errors, %@ warnings, and %@ notices.",
   "诊断当前配置仓库的连接并重新验证写入能力": "Diagnose the configured repository connection and reverify write capability",
   "询问当前文章…": "Ask About the Current Article…",
+  "该发布记录属于另一个站点；当前未自动替换为其它记录。": "This release record belongs to another site; it was not replaced with another record.",
+  "该发布记录已被清理或当前无权访问；未跳转到其他记录。": "This release record was removed or is unavailable; no other record was opened.",
   "该图片已在目标文章的图片列表中。": "This image is already in the target article's image list.",
   "该文件夹不是有效的数据文件夹：它包含文件，但缺少数据根标记。": "This is not a valid data folder: it contains files but has no data-root marker.",
   "该本地服务需要手动启动后再检测。": "This local service must be started manually before checking.",
@@ -8696,6 +9093,7 @@
   },
   "请先配置 API 基础地址。配置完成后，应用会判断数据只发送到本机，还是需要第三方授权。": "Configure the API Base URL first. The app will then determine whether data stays on this Mac or requires third-party authorization.",
   "请先配置仓库 Owner/Namespace 和 Repo/Project，或扫描包含 origin 的站点仓库。": "Configure the repository Owner/Namespace and Repo/Project, or scan a site repository with an origin.",
+  "请先配置本地仓库与 origin，才能审阅完整工作区。": "Configure the local repository and origin before reviewing the complete worktree.",
   "请先重新扫描仓库，确认当前分支与 upstream。": "Rescan the repository and verify the current branch and upstream first.",
   "请关闭面板并重新运行发布预检。": "Close this panel and run publish preflight again.",
   "请再次确认本地预览命令。": "Confirm the local preview command again.",
@@ -8706,6 +9104,7 @@
     "zh-Hans": "请在“设置 → 仓库与部署 → 阅读数据”保存令牌，发布后即可在这里刷新表现。"
   },
   "请在内容健康页面点击“重新开始”，生成 AI 可修复队列。": "Choose Restart on the Content Health page to rebuild the AI repair queue.",
+  "请在原记录核对分支与发布方式，重新审阅后执行；未自动提交或推送。": "Check the branch and publishing method in the original record, then review before proceeding. No automatic commit or push was performed.",
   "请在右侧重新检查内容健康快照。": "Run the content health check again on the right.",
   "请在浏览器完成登录；完成后此处会自动更新。": "Complete sign-in in your browser. This view updates automatically when you finish.",
   "请在站点设置中选择仓库并完成扫描。": "Select a repository in Site Settings and complete a scan.",
@@ -8757,6 +9156,7 @@
   "请选择新的存储位置。": "Choose a new storage location.",
   "请逐个审阅冲突文件；全部暂存后才能完成合并。": "Review each conflicted file. The merge can finish only after all conflicts are staged.",
   "请逐个审阅并暂存当前变基冲突。本地改动的精确 stash 将继续保留。": "Review and stage each current rebase conflict. The exact local-change stash remains retained.",
+  "请重新读取；应用不会自动覆盖未审阅内容。": "Reload the documents; the app will not automatically overwrite unreviewed content.",
   "读到文章末尾时自动标记为已读": "Mark as Read at the End of an Article",
   "读取 Git 差异": "Read Git Diff",
   "读取仓库状态后，这里会显示发布准备情况和下一步建议。": "After reading the repository state, this area shows publishing readiness and recommended next steps.",
@@ -8784,6 +9184,7 @@
   "资料会移到回收站并停止参与搜索与 AI 检索；之后可以恢复。": "The item will move to the Trash and stop appearing in search and AI retrieval. You can restore it later.",
   "资料会移到回收站并停止参与搜索与 AI 检索；本地副本会保留，之后可以恢复。": "The item will move to the Trash and stop appearing in search and AI retrieval. Its local copy is preserved for restoration.",
   "资料写作目标": "Research Writing Target",
+  "资料写作目标列表": "Research writing target list",
   "资料回收站": {
     "en": "Library Trash",
     "zh-Hans": "资料回收站"
@@ -8814,6 +9215,11 @@
     "zh-Hans": "资料库推荐暂时不可用"
   },
   "资料库概览": "Library Overview",
+  "资料库正文和 OCR 中没有匹配结果。": {
+    "en": "No matches were found in reference text or OCR content.",
+    "ja": "資料本文と OCR コンテンツに一致する結果はありません。",
+    "zh-Hans": "资料库正文和 OCR 中没有匹配结果。"
+  },
   "资料库清理": "Library Cleanup",
   "资料库清理完成：永久删除 %@ 条资料。": "Library cleanup complete: permanently deleted %@ items.",
   "资料库管理": "Knowledge Library Management",
@@ -8827,6 +9233,7 @@
     "en": "Knowledge Base (Only Items Allowed for Remote AI)",
     "zh-Hans": "资料库（仅限已允许发送给远程 AI 的资料）"
   },
+  "资料引用已保存。": "References saved.",
   "资料排序": "Sort Sources",
   "资料操作": "Source Actions",
   "资料整理": "Organize Library",
@@ -8865,6 +9272,7 @@
   },
   "起止分隔符缺失或与当前站点的 Front Matter 格式不匹配。": "The opening or closing delimiter is missing or does not match the current site's Front Matter format.",
   "起步模板": "Starter Template",
+  "超过 %@ 限制": "Exceeds the %@ limit",
   "超长文档阅读保护": "Large Document Reading Mode",
   "跟随 macOS": "Follow macOS",
   "跟随模型默认": "Follow Model Default",
@@ -8902,6 +9310,11 @@
     "zh-Hans": "跳转到行"
   },
   "跳过 AI 设置": "Skip AI Setup",
+  "跳过“%@”：%@": {
+    "en": "Skipped “%@”: %@",
+    "ja": "「%@」をスキップしました：%@",
+    "zh-Hans": "跳过“%@”：%@"
+  },
   "跳过文件": "Skipped Files",
   "跳过此步骤（不更改）": "Skip This Step (No Changes)",
   "转为通用草稿": "Convert to General Draft",
@@ -8911,13 +9324,16 @@
     "en": "Convert to list (bulleted, numbered, task list)",
     "zh-Hans": "转换为列表（无序、有序、任务列表）"
   },
-  "软件会把「%@」移到回收站、%@，并清理本地 Markdown；图片资源不会自动删除。失败项会保留在发布抽屉中重试。": "The app will move “%@” to the Trash, %@, and remove its local Markdown. Image assets are not deleted automatically. Failed steps remain in the publish drawer for retry.",
   "软件会读取同步状态，不会自动修改文件。": {
     "en": "The app reads sync status without modifying files automatically.",
     "zh-Hans": "软件会读取同步状态，不会自动修改文件。"
   },
   "软件在 stash 应用期间中断。为避免重复应用造成数据损坏，已禁止自动重试，请检查工作区。": "The app stopped while applying the stash. Automatic retry is disabled to prevent duplicate application; inspect the worktree.",
   "软件在变基前的安全点中断。可按已记录的精确 stash 恢复本地改动；不会猜测其他 stash。": "The app stopped at the safe point before rebase. Restore local changes from the recorded exact stash without guessing another stash.",
+  "软件草稿": "App draft",
+  "软件草稿会先保留为恢复副本，再采用当前项目版本。此操作仍会校验项目文件是否在审阅后变更。": "The app draft will first be kept as a recovery copy, then the current project version will be used. The project file is still checked for changes made after review.",
+  "软件草稿和项目版本均已保留，项目文件未被写入。": "The app draft and project version were both retained; the project file was not written.",
+  "软件草稿和项目版本都会保留，不会写入项目文件。": "The app draft and project version will both be retained; the project file will not be written.",
   "载入期间源码发生了新的编辑；为避免丢失内容，本次打开已取消。": {
     "en": "The source changed while it was loading, so opening was cancelled to avoid losing edits.",
     "zh-Hans": "载入期间源码发生了新的编辑；为避免丢失内容，本次打开已取消。"
@@ -8981,7 +9397,9 @@
   "返回修改": "Back to Edit",
   "返回写作": "Return to Writing",
   "返回当前文章的写作界面": "Return to the current article's writing view",
+  "返回搜索结果": "Back to Search Results",
   "返回结果": "Back to Results",
+  "返回部署日志": "Back to Deployment Log",
   "还有 %@ 个片段": {
     "en": "%@ more excerpts",
     "zh-Hans": "还有 %@ 个片段"
@@ -9065,9 +9483,11 @@
   "这是旧版备份：恢复会替换当前工作台、资料库和应用内附件，但会保留现有 RSS 数据。当前数据会先保留在恢复目录。": "This is an older backup: restoring replaces the current workspace, library, and managed attachments but preserves existing RSS data. Current data is first kept in a recovery folder.",
   "这里仅显示配置就绪状态，不会自动发起线上部署测试。实际结果来自已有的发布后校验。": "This section shows configuration readiness only and does not automatically run an online deployment test. Actual results come from the existing post-publish verification.",
   "这里会汇总站点类型、内容目录、图片目录和 Git 状态。": "This area summarizes the site type, content and image directories, and Git status.",
+  "这里只显示当前文章；发布前还会打开完整批次确认页。": "Only the current article is shown here. A complete batch confirmation opens before publishing.",
   "这里汇总内容检查；发布连接与账户权限请查看发布按钮旁的状态。": "Content checks are summarized here; see the status beside the Publish button for the publishing connection and account permissions.",
   "进度": "Progress",
   "进行中": "In Progress",
+  "进行中 %@ · 失败 %@ · 等待处理 %@": "Running %@ · Failed %@ · Awaiting action %@",
   "进行中 %@ · 失败待处理 %@": {
     "en": "In progress %@ · Failed %@",
     "zh-Hans": "进行中 %@ · 失败待处理 %@"
@@ -9085,6 +9505,7 @@
   },
   "远程仓库": "Remote Repository",
   "远端": "Remote",
+  "远端 SHA": "Remote SHA",
   "远端 diff 预览": "Remote Diff Preview",
   "远端%@变更": "Remote %@ changes",
   "远端三方冲突协调": "Remote Three-Way Conflict Resolution",
@@ -9103,6 +9524,7 @@
   "远端变更": "Remote Changes",
   "远端同步": "Remote Sync",
   "远端同路径变更": "Remote Path Changed",
+  "远端基线": "Remote baseline",
   "远端存在冲突，请先核对": "Remote Conflicts Detected; Review Them First",
   "远端平台": "Remote Platform",
   "远端待确认": "Remote Confirmation",
@@ -9223,6 +9645,11 @@
   "选择博客导出包或 Markdown 文件夹": "Choose a Blog Export or Markdown Folder",
   "选择发布资产": "Select Publishing Assets",
   "选择后会填入输入框，可修改后再发送。": "The prompt will be inserted into the input field so you can edit it before sending.",
+  "选择图片导出文件夹": {
+    "en": "Choose Image Export Folder",
+    "ja": "画像書き出しフォルダを選択",
+    "zh-Hans": "选择图片导出文件夹"
+  },
   "选择导出文件的保存位置。": {
     "en": "Choose where to save the exported file.",
     "zh-Hans": "选择导出文件的保存位置。"
@@ -9230,6 +9657,7 @@
   "选择导出来源": "Choose Export Source",
   "选择工作区备份": "Choose Workspace Backup",
   "选择工作台恢复文件": "Choose a Workbench Recovery File",
+  "选择已导入文章中的断链来预览替换。其他文件可定位后编辑。": "Select a broken link in an imported article to preview its replacement. Open other files to edit them.",
   "选择已有站点文件夹": "Choose an existing site folder",
   "选择并重试": "Choose and Retry",
   "选择开始方式": "Choose How to Start",
@@ -9243,6 +9671,11 @@
   "选择或新建文章后，这里会显示文章头信息（Front Matter）、SEO、图片、检查和发布任务。": "After selecting or creating an article, its article metadata (Front Matter), SEO, images, checks, and publishing tasks appear here.",
   "选择数据保存位置": "Choose Data Storage Location",
   "选择文件…": "Choose Files…",
+  "选择文件夹…": {
+    "en": "Choose Folder…",
+    "ja": "フォルダを選択…",
+    "zh-Hans": "选择文件夹…"
+  },
   "选择文章": "Choose articles",
   "选择文章后可打开统一发布流程。": "Select an article to open the unified publish flow.",
   "选择文章后可查看其发布检查状态。": "Select an article to view its publishing check status.",
@@ -9255,6 +9688,7 @@
     "zh-Hans": "选择文章后，可以只保存到本地，也可以直接发布上线。"
   },
   "选择文章后，这里显示 AI 对话上下文。": "Select an article to show the AI conversation context here.",
+  "选择文章恢复": "Select Articles to Restore",
   "选择本地仓库": "Choose Local Repository",
   "选择本地仓库后才能生成同步建议命令。": "Select a local repository before generating sync recommendation commands.",
   "选择本地站点仓库": "Choose Local Site Repository",
@@ -9262,6 +9696,7 @@
   "选择本地静态站点仓库文件夹。": "Choose the local static-site repository folder.",
   "选择本机或外置硬盘中的目标位置。RepoPress Studio 会新建数据文件夹，复制并校验全部资料库、RSS 和附件后再切换；原文件夹会保留。": "Choose a location on this Mac or an external drive. RepoPress Studio creates a new data folder and switches only after the entire library, RSS data, and attachments are copied and verified. The original folder is kept.",
   "选择本次发送给 AI 的额外上下文": "Choose additional context to send to AI with this request",
+  "选择本次扫描中的资源": "Choose a resource from this scan",
   "选择模型": "Choose Model",
   "选择模板": {
     "en": "Choose a Template",
@@ -9293,12 +9728,15 @@
     "zh-Hans": "选择诊断包导出位置"
   },
   "选择该站点的新项目根目录。随后会重试待写入草稿，外部修改不会被强制覆盖。": "Choose the new project root for this site. Pending drafts will then be retried; external changes will not be forcibly overwritten.",
+  "选择资料写作目标": "Choose a writing target for research",
   "选择资料导出文件夹": "Choose Knowledge Export Folder",
   "选择资料库备份": "Select Knowledge Library Backup",
   "选择迁移目的地": "Choose Migration Destination",
   "选择需要修复的站点": "Choose a Site to Repair",
+  "选择需要处理的文章冲突": "Choose an article conflict to resolve",
   "逐块协调": "Resolve by Hunk",
   "逐块协调 Front Matter 与正文，并通过 PR/MR 交付": "Resolve Front Matter and body hunks individually, then deliver through a PR/MR",
+  "逐篇预览后批量添加、移除、重命名或合并标签和分类": "Preview each article, then add, remove, rename, or merge tags and categories in bulk",
   "通用与外观": "General and Appearance",
   "通用聊天": "General Chat",
   "通用草稿": "General Drafts",
@@ -9330,6 +9768,8 @@
   "部分回复已保留；确认后才会重新发起请求": "The partial reply is preserved; a new request starts only after confirmation.",
   "部分媒体文件未能清理。": "Some media files could not be cleaned up.",
   "部分完成": "Partially Complete",
+  "部分文件未能导入，可在站点检查中查看详情；已加入的文章可以继续编辑。": "Some files could not be imported. See site checks for details; imported articles can still be edited.",
+  "部分标题未翻译，已保留原文": "Some titles could not be translated; originals are shown",
   "部分网站可能启用了反爬虫拦截或动态渲染；若重试仍失败，建议直接在浏览器中打开。": "Some websites use anti-scraping protections or dynamic rendering; if retries keep failing, open directly in browser.",
   "部署": "Deployment",
   "部署中": "Deploying",
@@ -9341,6 +9781,7 @@
   "部署平台自动化发布": "Deployment Platform Automation",
   "部署平台访问令牌": "Deployment Provider Access Token",
   "部署构建": "Deployment Build",
+  "部署源码预览": "Deployment Source Preview",
   "部署状态": "Deployment Status",
   "部署状态尚未返回构建日志摘录。": "Deployment status has not returned build log excerpts yet.",
   "部署状态平台": "Deployment Status Platform",
@@ -9348,6 +9789,8 @@
   "部署账号 / Team / Account ID": "Deployment Account / Team / Account ID",
   "部署账号、Team 或 Account ID": "Deployment Account, Team, or Account ID",
   "部署趋势": "Deployment Trends",
+  "部署配置已在生成站点前锁定：%@": "Deployment configuration used to generate this site: %@",
+  "部署错误源码": "Deployment Error Source",
   "部署项目 / Site ID": "Deployment Project / Site ID",
   "部署项目或 Site ID": "Deployment Project or Site ID",
   "配置": "Configuration",
@@ -9359,6 +9802,8 @@
   "配置新建文章时的默认作者、预设标签、预设分类和自定义键值对。": "Configure default author, preset tags, categories, and custom key-value pairs for new articles.",
   "配置状态": "Configuration Status",
   "配置自动化构建触发钩子与各静态托管平台的部署令牌。": "Configure automated build triggers and deployment tokens for static hosting platforms.",
+  "采用当前项目版本？": "Use the current project version?",
+  "采用项目版本": "Use project version",
   "采纳 AI 续写": {
     "en": "Accept AI Continuation",
     "zh-Hans": "采纳 AI 续写"
@@ -9367,6 +9812,7 @@
   "释放后生成导入预览，不会立即保存": "Dropping creates an import preview and does not save immediately",
   "重命名": "Rename",
   "重命名对话": "Rename Conversation",
+  "重命名或合并": "Rename or merge",
   "重命名文件夹…": "Rename Folder…",
   "重命名资料文件夹": "Rename Source Folder",
   "重复": "Duplicates",
@@ -9388,6 +9834,9 @@
   "重新加载模型": "Reload Models",
   "重新同意并启用此 AI 服务": "Consent Again and Enable This AI Service",
   "重新审阅": "Review again",
+  "重新审阅发布": "Review publication again",
+  "重新审阅发布…": "Review publication again…",
+  "重新审阅本地领先提交，仅在远端基线未变时非强制重试推送": "Review local-ahead commits again and retry without force only when the remote baseline is unchanged.",
   "重新开始": "Start Again",
   "重新扫描": {
     "en": "Rescan",
@@ -9400,7 +9849,10 @@
   },
   "重新提取": "Extract Again",
   "重新提取原站全文": "Re-extract Full Text from Original Site",
+  "重新核对发布范围和目标分支；不会自动重放原操作。": "Review the publication scope and target branch again. The original operation will not be repeated automatically.",
   "重新检查": "Recheck",
+  "重新检查冻结快照，创建一次提交并以非强制方式推送全部路径": "Recheck the frozen snapshot, create one commit, and push all paths without force.",
+  "重新检查此文章": "Recheck this article",
   "重新检测": "Check Again",
   "重新检测本地 AI": "Detect Local AI Again",
   "重新清洗…": "Re-clean…",
@@ -9417,6 +9869,7 @@
     "en": "Reload Content from Disk",
     "zh-Hans": "重新读取磁盘内容"
   },
+  "重新读取软件草稿和项目文件；不会保存修改": "Reload the app draft and project file without saving changes.",
   "重新载入": "Reload",
   "重新载入磁盘版本": {
     "en": "Reload Version from Disk",
@@ -9430,15 +9883,19 @@
   "重置会丢弃当前队列中的预览结果。": "Resetting discards the preview results in the current queue.",
   "重置所有筛选与搜索条件": "Reset all filter and search conditions",
   "重试": "Retry",
+  "重试保存": "Retry saving",
   "重试全部失败订阅（%lld）": "Retry all failed subscriptions (%lld)",
   "重试失败": "Retry Failed",
   "重试失败订阅（%lld）": "Retry failed subscriptions (%lld)",
+  "重试推送本地提交": "Retry pushing local commits",
   "重试检查": {
     "en": "Retry Check",
     "zh-Hans": "重试检查"
   },
+  "重试翻译列表标题": "Retry list title translation",
   "重试读取": "Retry Loading",
   "重试账本写入": "Retry Ledger Write",
+  "重试资料引用": "Retry references",
   "钥匙串读取失败": "Failed to read Keychain",
   "链接": "Link",
   "链接图片发布包": "Link and Image Publishing Kit",
@@ -9518,6 +9975,7 @@
     "en": "Needs Attention",
     "zh-Hans": "需要处理"
   },
+  "需要处理冲突的文章": "Article with a conflict to resolve",
   "需要安装运行组件": "Runtime installation required",
   "需要手动处理": "Manual Action Required",
   "需要更改项目目录的站点": "Site whose project folder needs to change",
@@ -9535,13 +9993,17 @@
   "项目保存失败": "Project Save Failed",
   "项目写入失败：%@": "Project write failed: %@",
   "项目文件写入详情": "Project File Save Details",
+  "项目文件冲突审阅": "Project file conflict review",
   "项目文件和工作台修改已保存。应用将保持打开。": "Project files and workspace changes have been saved. The app will remain open.",
   "项目文件尚未写入": "Project files have not been saved",
+  "项目根目录：%@": "Project root: %@",
+  "项目版本": "Project version",
   "顺序": "Order",
   "预览": {
     "en": "Preview",
     "zh-Hans": "预览"
   },
+  "预览会冻结生成时的目标字段；应用前将逐篇复验该字段，发生变化时必须重新预览。正文和其它 Front Matter 字段不会写入。": "The preview freezes the target field at generation time. Each field is checked again before applying; changes require a new preview. Body content and other Front Matter fields are not written.",
   "预览会转换文章头信息（Front Matter）、Slug、图片目标路径和重定向候选，但不会复制文件或访问网络。": "The preview converts article metadata (Front Matter), slugs, image destination paths, and redirect candidates without copying files or accessing the network.",
   "预览修改": "Preview Changes",
   "预览全部替换": "Preview Replace All",
@@ -9558,6 +10020,7 @@
   "预览并追加": "Preview and Append",
   "预览并附引用": "Preview with Citations",
   "预览或复验计算已取消。": "Preview or revalidation calculation canceled.",
+  "预览替换": "Preview replacement",
   "预览站点类型变化": {
     "en": "Preview Site Type Changes",
     "zh-Hans": "预览站点类型变化"
@@ -9650,8 +10113,14 @@
   "默认分类": "Default Categories",
   "默认分类：%@": "Default categories: %@",
   "默认加载远程图片": "Load Remote Images by Default",
+  "默认导出原图文件，按原始字节复制；资料库中的原图不会被修改。": {
+    "en": "By default, original image files are copied byte-for-byte; originals in the knowledge library will not be changed.",
+    "ja": "デフォルトでは元画像ファイルをバイト単位でコピーします。資料ライブラリ内の元画像は変更されません。",
+    "zh-Hans": "默认导出原图文件，按原始字节复制；资料库中的原图不会被修改。"
+  },
   "默认标签": "Default Tags",
   "默认标签：%@": "Default tags: %@",
+  "默认流程会审阅 Git 工作区的全部待提交变更：文章、图片、配置、主题、CSS/脚本，以及删除和重命名。确认前会冻结并重新扫描完整清单。": "The default flow reviews every pending Git worktree change, including articles, images, configuration, themes, CSS and scripts, deletions, and renames. The complete list is frozen and rescanned before confirmation.",
   "（此版本没有该内容）": "(No content in this version)",
   "（源文过长，已按安全上限截取）": "(Source content was too long and was truncated at the safety limit.)",
   "（空代码块）": {
@@ -9667,5 +10136,13 @@
   "🎉 已达成目标字数！（超出 %lld 字）": {
     "en": "🎉 Word count target reached! (%lld characters over)",
     "zh-Hans": "🎉 已达成目标字数！（超出 %lld 字）"
+  },
+  "正文已变化，媒体导入未插入。": {
+    "en": "The document changed. Imported media was not inserted.",
+    "zh-Hans": "正文已变化，媒体导入未插入。"
+  },
+  "另一窗口已更新文章，媒体导入未插入。": {
+    "en": "Another window updated the article. Imported media was not inserted.",
+    "zh-Hans": "另一窗口已更新文章，媒体导入未插入。"
   }
 }

@@ -1,5 +1,7 @@
 import Combine
 import Foundation
+import PublishingAICore
+import PublishingKnowledgeCore
 
 /// Draft-scoped state for the editor's inline structured-edit review.  It is
 /// deliberately value state: AppKit receives a derived presentation only and
@@ -94,6 +96,142 @@ public final class AIInlineStructuredEditReviewState: ObservableObject {
 
   fileprivate func endReview(for draftID: UUID) {
     sessionsByDraftID.removeValue(forKey: draftID)
+  }
+}
+
+/// Read-only state needed by the RSS article-list title translator.
+///
+/// Keeping this value separate from the command facade prevents chat streams,
+/// image progress, and site-maintenance changes from invalidating an RSS list.
+public struct WorkbenchRSSListTitleTranslationState: Equatable, Sendable {
+  public let providerConfiguration: AIProviderConfig
+  public let tokenAvailability: KeychainTokenAvailability
+  public let dataSharingConsent: AIDataSharingConsentPresentation
+  public let canUseProtectedWorkbench: Bool
+  public let isQuickHideActive: Bool
+
+}
+
+/// Narrow observation and command boundary for RSS list-title translation.
+///
+/// A list needs the active provider, credential availability, data-sharing
+/// authorization, and the protected-workbench gate. It deliberately does not
+/// subscribe to the broad AI command facade because chat and image updates can
+/// arrive frequently without changing any title-translation input.
+@MainActor
+public final class WorkbenchRSSListTitleTranslationFeatureFacade: ObservableObject {
+  private struct ActiveSiteAIConfiguration: Equatable {
+    let connectionProfileID: UUID?
+    let fallbackConfiguration: AIProviderConfig
+  }
+
+  @Published public private(set) var state: WorkbenchRSSListTitleTranslationState
+
+  private unowned let store: WorkbenchStore
+  private var cancellables = Set<AnyCancellable>()
+  private var isStateRefreshScheduled = false
+
+  init(store: WorkbenchStore) {
+    self.store = store
+    state = Self.makeState(store: store)
+
+    let activeSiteConfiguration = Publishers.CombineLatest(
+      store.publishingStore.$profiles,
+      store.publishingStore.$activeProfileID
+    )
+    .map { [unowned store] profiles, activeProfileID in
+      let profile =
+        profiles.first(where: { $0.id == activeProfileID })
+        ?? profiles.first
+        ?? store.activeProfile
+      return ActiveSiteAIConfiguration(
+        connectionProfileID: profile.aiConnectionProfileID,
+        fallbackConfiguration: profile.aiProviderConfig
+      )
+    }
+    .removeDuplicates()
+
+    let providerConfiguration = Publishers.CombineLatest(
+      activeSiteConfiguration,
+      store.$aiConnectionProfiles
+    )
+    .map { site, connections in
+      site.connectionProfileID.flatMap { connectionID in
+        connections.first(where: { $0.id == connectionID })?.config
+      } ?? site.fallbackConfiguration
+    }
+    .removeDuplicates()
+
+    observe(providerConfiguration)
+    observe(store.aiWorkspaceStore.$aiTokenAvailability)
+    observe(store.privacyProtectionStore.$isQuickHideActive)
+  }
+
+  public var providerConfiguration: AIProviderConfig { state.providerConfiguration }
+
+  public var tokenAvailability: KeychainTokenAvailability { state.tokenAvailability }
+
+  public var dataSharingConsent: AIDataSharingConsentPresentation { state.dataSharingConsent }
+
+  public var canUseProtectedWorkbench: Bool { state.canUseProtectedWorkbench }
+
+  public var isQuickHideActive: Bool { state.isQuickHideActive }
+
+  public func translateRSSTitles(
+    _ titles: [RSSArticleTranslationTextRequest],
+    target: RSSArticleTranslationTarget
+  ) async throws -> [String: String] {
+    try await store.aiStore.translateRSSTitles(titles, target: target)
+  }
+
+  /// The consent store persists authorization outside Combine. Existing AI
+  /// commands call this after changing that store so RSS lists refresh without
+  /// observing unrelated AI command publications.
+  func refreshAuthorizationState() {
+    scheduleStateRefresh()
+  }
+
+  private func observe<P: Publisher>(_ publisher: P)
+  where P.Failure == Never, P.Output: Equatable {
+    publisher
+      .removeDuplicates()
+      .dropFirst()
+      .sink { [weak self] _ in self?.scheduleStateRefresh() }
+      .store(in: &cancellables)
+  }
+
+  private func scheduleStateRefresh() {
+    guard !isStateRefreshScheduled else { return }
+    isStateRefreshScheduled = true
+
+    // @Published sends from willSet. Deferring lets the derived state read the
+    // committed value and also coalesces related profile/token updates.
+    RunLoop.main.perform(inModes: [
+      .default,
+      RunLoop.Mode("NSEventTrackingRunLoopMode"),
+    ]) { [weak self] in
+      MainActor.assumeIsolated {
+        guard let self else { return }
+        self.isStateRefreshScheduled = false
+        let updatedState = Self.makeState(store: self.store)
+        guard updatedState != self.state else { return }
+        self.state = updatedState
+      }
+    }
+  }
+
+  private static func makeState(store: WorkbenchStore) -> WorkbenchRSSListTitleTranslationState {
+    let providerConfiguration = store.aiProviderConfig(for: store.activeProfile)
+    let isQuickHideActive = store.isQuickHideActive
+    return WorkbenchRSSListTitleTranslationState(
+      providerConfiguration: providerConfiguration,
+      tokenAvailability: store.aiTokenAvailability,
+      dataSharingConsent: store.aiStore.aiDataSharingConsentPresentation(
+        for: providerConfiguration
+      ),
+      canUseProtectedWorkbench: store.canUseProtectedWorkbench,
+      isQuickHideActive: isQuickHideActive
+    )
   }
 }
 
@@ -526,6 +664,7 @@ public final class WorkbenchAIFeatureFacade: ObservableObject {
 
   public func grantDataSharingConsent() {
     store.aiStore.grantAIDataSharingConsent()
+    store.rssListTitleTranslation.refreshAuthorizationState()
   }
 
   public func grantDataSharingConsent(
@@ -538,20 +677,24 @@ public final class WorkbenchAIFeatureFacade: ObservableObject {
       enablingRemoteAI: enablingRemoteAI,
       codexAccountStatus: codexAccountStatus
     )
+    store.rssListTitleTranslation.refreshAuthorizationState()
   }
 
   public func grantCodexDataSharingConsent(
     for accountStatus: CodexAppServerAccountStatus
   ) {
     store.aiStore.grantCodexAIDataSharingConsent(for: accountStatus)
+    store.rssListTitleTranslation.refreshAuthorizationState()
   }
 
   public func revokeDataSharingConsent() {
     store.aiStore.revokeAIDataSharingConsent()
+    store.rssListTitleTranslation.refreshAuthorizationState()
   }
 
   public func setRemoteAIEnabled(_ enabled: Bool) {
     store.aiStore.setRemoteAIEnabled(enabled)
+    store.rssListTitleTranslation.refreshAuthorizationState()
   }
 
   @discardableResult
@@ -1137,38 +1280,6 @@ public final class WorkbenchAIFeatureFacade: ObservableObject {
     }
   }
 
-  public func localFeedbackDecision(
-    for message: AIPublishingChatMessage
-  ) -> AILocalEditFeedbackDecision? {
-    let actionIdentifier = feedbackActionIdentifier(for: message)
-    return localFeedbackRecords()
-      .filter {
-        $0.actionIdentifier == actionIdentifier
-          && $0.modelIdentifier == feedbackModelIdentifier(for: message)
-      }
-      .max(by: { $0.recordedAt < $1.recordedAt })?
-      .decision
-  }
-
-  public func recordLocalFeedback(
-    _ decision: AILocalEditFeedbackDecision,
-    for message: AIPublishingChatMessage
-  ) {
-    let actionIdentifier = feedbackActionIdentifier(for: message)
-    let modelIdentifier = feedbackModelIdentifier(for: message)
-    var records = localFeedbackRecords().filter {
-      !($0.actionIdentifier == actionIdentifier && $0.modelIdentifier == modelIdentifier)
-    }
-    records.append(
-      AILocalEditFeedbackRecord(
-        decision: decision,
-        actionIdentifier: actionIdentifier,
-        modelIdentifier: modelIdentifier
-      )
-    )
-    persistLocalFeedbackRecords(records)
-  }
-
   public func recordStructuredEditFeedback(
     _ decision: AILocalEditFeedbackDecision,
     proposal: AIStructuredEditProposal,
@@ -1215,16 +1326,11 @@ public final class WorkbenchAIFeatureFacade: ObservableObject {
     try await store.aiStore.translateRSSArticle(article, target: target)
   }
 
-  private func feedbackActionIdentifier(
-    for message: AIPublishingChatMessage
-  ) -> String {
-    "chat.reply.\(message.id.uuidString)"
-  }
-
-  private func feedbackModelIdentifier(
-    for message: AIPublishingChatMessage
-  ) -> String {
-    message.model?.nilIfEmpty ?? "unknown"
+  public func translateRSSTitles(
+    _ titles: [RSSArticleTranslationTextRequest],
+    target: RSSArticleTranslationTarget
+  ) async throws -> [String: String] {
+    try await store.aiStore.translateRSSTitles(titles, target: target)
   }
 
   private func localFeedbackRecords() -> [AILocalEditFeedbackRecord] {

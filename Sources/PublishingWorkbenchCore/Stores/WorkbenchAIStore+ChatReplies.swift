@@ -488,7 +488,7 @@ extension WorkbenchAIStore {
     request: AIPublishingChatRequest
   ) async {
     guard !message.knowledgeCitations.isEmpty else { return }
-    await store.knowledge.recordBacklinks(
+    await store.recordKnowledgeBacklinks(
       citations: message.knowledgeCitations,
       target: KnowledgeBacklinkTarget(
         kind: .aiResponse,

@@ -1,5 +1,7 @@
 import Combine
 import Foundation
+import PublishingAICore
+import PublishingKnowledgeCore
 
 public enum FreshWorkspaceSeedPolicy: Sendable {
   case blank
@@ -39,11 +41,14 @@ public final class WorkbenchStore: ObservableObject {
   let siteMaintenanceStore: SiteMaintenanceStore
   let siteLinkAuditSnapshotStore = SiteLinkAuditSnapshotStore()
   public let knowledge: KnowledgeStore
+  let knowledgeAgentService: WorkbenchAgentKnowledgeService
   public let operationHistory: WorkbenchOperationHistoryStore
   let persistenceStore: WorkbenchPersistenceStore
   let repositoryDeploymentCoordinator: RepositoryDeploymentCoordinator
 
   public lazy var ai: WorkbenchAIFeatureFacade = WorkbenchAIFeatureFacade(store: self)
+  public lazy var rssListTitleTranslation: WorkbenchRSSListTitleTranslationFeatureFacade =
+    WorkbenchRSSListTitleTranslationFeatureFacade(store: self)
   public lazy var repository: WorkbenchRepositoryFeatureFacade = WorkbenchRepositoryFeatureFacade(
     store: self)
   public lazy var publishing: WorkbenchPublishingFeatureFacade = WorkbenchPublishingFeatureFacade(
@@ -62,7 +67,11 @@ public final class WorkbenchStore: ObservableObject {
   /// Stable, narrow observation boundary for the Writing sidebar.  The child
   /// owns list revisions so body autosaves do not invalidate the workbench
   /// root or the editor's presentation tree.
-  public lazy var draftList: DraftListStore = DraftListStore(store: self)
+  public lazy var draftList: DraftListStore = DraftListStore(
+    documents: publishingStore.documents,
+    navigation: PublishingDraftListNavigationReadModel(publishing: publishingStore),
+    auxiliary: WorkbenchDraftListAuxiliaryReadModel(workbench: self)
+  )
   public lazy var siteMaintenance: WorkbenchSiteMaintenanceFeatureFacade =
     WorkbenchSiteMaintenanceFeatureFacade(store: self)
   public lazy var contentPresentation: WorkbenchContentPresentationFeatureFacade =
@@ -94,6 +103,7 @@ public final class WorkbenchStore: ObservableObject {
   @Published public private(set) var contentHealthSnapshotVersion = 0
   @Published public private(set) var draftMutationRevision: UInt64 = 0
   @Published public private(set) var imageWorkbenchInputRevision: UInt64 = 0
+  private var observedDraftIDs = Set<UUID>()
   @Published public internal(set) var aiConnectionProfiles: [AIConnectionProfile]
   @Published public internal(set) var siteDraftFileSaveStates: [UUID: SiteDraftFileSaveState] = [:]
   @Published var siteDraftFileFlushFailureIDs: Set<UUID> = []
@@ -149,7 +159,7 @@ public final class WorkbenchStore: ObservableObject {
   public lazy var aiBatchMaintenance = AIBatchMaintenanceStore(store: self)
 
   lazy var aiStore: WorkbenchAIStore = WorkbenchAIStore(
-    store: self,
+    context: WorkbenchAIContextAdapter(root: self),
     workspace: aiWorkspaceStore,
     aiPublishingAssistantService: aiPublishingAssistantService,
     aiCredentialStore: aiCredentialStore,
@@ -315,10 +325,11 @@ public final class WorkbenchStore: ObservableObject {
     self.draftRecoveryJournal = draftRecoveryJournal
     self.draftRecoveryRecords = Self.mergedRecoveryRecords(from: loadedDraftRecoveryRecords)
     self.siteMaintenanceStore = SiteMaintenanceStore()
+    self.knowledgeAgentService = WorkbenchAgentKnowledgeService(library: knowledgeLibraryService)
     self.knowledge = KnowledgeStore(
       service: knowledgeLibraryService,
-      operationEventRecorder: { record in
-        _ = operationHistory.record(record)
+      operationEventRecorder: { event in
+        _ = operationHistory.record(WorkbenchOperationEventRecord(knowledgeImport: event))
       }
     )
 
@@ -602,6 +613,16 @@ public final class WorkbenchStore: ObservableObject {
       siteMaintenanceService: siteMaintenanceService,
       imageWorkbenchService: imageWorkbenchService
     )
+    observedDraftIDs = Set(initialDrafts.map(\.id))
+    self.publishingStore.publishSession.executionRecords = (snapshot?.publishExecutionRecords ?? [])
+      .map { record in
+        var restored = record
+        if restored.state == .awaitingRemoteResult {
+          restored.state = .needsVerification
+          restored.message = CoreL10n.text("上次运行未保存最终结果，请核对远端后再重试。")
+        }
+        return restored
+      }
     // Install the stable child observation boundary before any startup
     // services can mutate drafts or repository/privacy projections.
     _ = draftList
@@ -616,7 +637,7 @@ public final class WorkbenchStore: ObservableObject {
     publishingStore.objectWillChange
       .sink { [weak self] _ in self?.objectWillChange.send() }
       .store(in: &childStoreCancellables)
-    publishingStore.$drafts
+    publishingStore.documents.$drafts
       .dropFirst()
       .sink { [weak self] _ in
         guard let self else { return }
@@ -624,14 +645,17 @@ public final class WorkbenchStore: ObservableObject {
         self.knownArticleTitlesCacheRevision = nil
       }
       .store(in: &childStoreCancellables)
-    publishingStore.$drafts
+    publishingStore.documents.$drafts
       .dropFirst()
       .receive(on: RunLoop.main)
       .sink { [weak self] drafts in
         guard let self else { return }
         let validDraftIDs = Set(drafts.map(\.id))
         self.aiStore.reconcileAIDraftSuggestionState(validDraftIDs: validDraftIDs)
-        self.imageStore.reconcileDraftReportState(validDraftIDs: validDraftIDs)
+        if self.observedDraftIDs != validDraftIDs {
+          self.observedDraftIDs = validDraftIDs
+          self.imageStore.reconcileDraftReportState(validDraftIDs: validDraftIDs)
+        }
         // A surviving draft may have changed enough to invalidate a cached
         // suggestion or image report even when its identifier remains valid.
         self.aiStore.restoreDraftSuggestionProjectionForCurrentSelection()

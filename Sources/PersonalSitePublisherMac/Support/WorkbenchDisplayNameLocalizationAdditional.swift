@@ -1,3 +1,5 @@
+import PublishingAICore
+import PublishingDomainContracts
 import PublishingWorkbenchCore
 
 extension ArticleProvenance: WorkbenchDisplayNameLocalizable {

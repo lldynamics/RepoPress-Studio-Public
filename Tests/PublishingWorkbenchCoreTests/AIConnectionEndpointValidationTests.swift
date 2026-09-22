@@ -1,6 +1,6 @@
 import XCTest
 
-@testable import PublishingWorkbenchCore
+@testable import PublishingAICore
 
 final class AIConnectionEndpointValidationTests: XCTestCase {
   func testRejectsMalformedAndCredentialedHTTPURLs() {

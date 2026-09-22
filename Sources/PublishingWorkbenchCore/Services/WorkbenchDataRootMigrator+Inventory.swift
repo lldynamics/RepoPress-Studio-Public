@@ -114,6 +114,7 @@ extension WorkbenchDataRootMigrator {
     var candidates = [
       MigrationPayloadItem(url: persistence.fileURL, expectedKind: .regularFile),
       MigrationPayloadItem(url: persistence.lastKnownGoodURL, expectedKind: .regularFile),
+      MigrationPayloadItem(url: persistence.recordStoreDirectoryURL, expectedKind: .directory),
       MigrationPayloadItem(url: persistence.draftRecoveryJournalURL, expectedKind: .regularFile),
       MigrationPayloadItem(
         url: operationLedgerPersistence.fileURL,

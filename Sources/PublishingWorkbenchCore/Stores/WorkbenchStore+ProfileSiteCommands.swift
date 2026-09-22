@@ -1,4 +1,5 @@
 import Foundation
+import PublishingDomainContracts
 
 extension WorkbenchStore {
   public func stopLocalSitePreview() {

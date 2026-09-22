@@ -605,4 +605,123 @@ final class MarkdownEditorAppKitInteractionCommandAndPaintingTests:
     XCTAssertNil(coordinator.paintedSyntaxViewportRange)
   }
 
+  func testContextualAnchorPublicationDeliversOnlyTheLatestQueuedValue() async {
+    let coordinator = makeCoordinator(
+      source: "正文",
+      bodyMarkdown: "正文",
+      bodyUTF16Offset: 0
+    )
+    var delivered: [MarkdownContextualPopoverAnchor?] = []
+    coordinator.onContextualAnchorChanged = { delivered.append($0) }
+    let first = MarkdownContextualPopoverAnchor(
+      selection: NSRange(location: 5, length: 0),
+      rect: CGRect(x: 12, y: 20, width: 1, height: 18),
+      viewport: CGRect(x: 0, y: 0, width: 320, height: 180)
+    )
+    let latest = MarkdownContextualPopoverAnchor(
+      selection: NSRange(location: 7, length: 1),
+      rect: CGRect(x: 28, y: 42, width: 12, height: 18),
+      viewport: CGRect(x: 0, y: 0, width: 320, height: 180)
+    )
+
+    coordinator.enqueueContextualAnchorPublication(first)
+    coordinator.enqueueContextualAnchorPublication(latest)
+    coordinator.enqueueContextualAnchorPublication(nil)
+
+    XCTAssertTrue(delivered.isEmpty)
+    await drainMainActorQueue()
+
+    XCTAssertEqual(delivered.count, 1)
+    XCTAssertNil(delivered[0])
+  }
+
+  func testContextualAnchorPublicationDeduplicatesConsecutiveDeliveredValues() async {
+    let coordinator = makeCoordinator(
+      source: "正文",
+      bodyMarkdown: "正文",
+      bodyUTF16Offset: 0
+    )
+    var delivered: [MarkdownContextualPopoverAnchor?] = []
+    coordinator.onContextualAnchorChanged = { delivered.append($0) }
+    let first = MarkdownContextualPopoverAnchor(
+      selection: NSRange(location: 5, length: 0),
+      rect: CGRect(x: 12, y: 20, width: 1, height: 18),
+      viewport: CGRect(x: 0, y: 0, width: 320, height: 180)
+    )
+    let second = MarkdownContextualPopoverAnchor(
+      selection: NSRange(location: 7, length: 1),
+      rect: CGRect(x: 28, y: 42, width: 12, height: 18),
+      viewport: CGRect(x: 0, y: 0, width: 320, height: 180)
+    )
+
+    coordinator.enqueueContextualAnchorPublication(first)
+    await drainMainActorQueue()
+    coordinator.enqueueContextualAnchorPublication(first)
+    await drainMainActorQueue()
+    coordinator.enqueueContextualAnchorPublication(second)
+    await drainMainActorQueue()
+    coordinator.enqueueContextualAnchorPublication(second)
+    await drainMainActorQueue()
+    coordinator.enqueueContextualAnchorPublication(nil)
+    await drainMainActorQueue()
+    coordinator.enqueueContextualAnchorPublication(nil)
+    await drainMainActorQueue()
+
+    XCTAssertEqual(delivered, [first, second, nil])
+  }
+
+  func testContextualAnchorPublicationInvalidationDropsPendingAndFutureValues() async {
+    let coordinator = makeCoordinator(
+      source: "正文",
+      bodyMarkdown: "正文",
+      bodyUTF16Offset: 0
+    )
+    var delivered: [MarkdownContextualPopoverAnchor?] = []
+    coordinator.onContextualAnchorChanged = { delivered.append($0) }
+    let anchor = MarkdownContextualPopoverAnchor(
+      selection: NSRange(location: 5, length: 0),
+      rect: CGRect(x: 12, y: 20, width: 1, height: 18),
+      viewport: CGRect(x: 0, y: 0, width: 320, height: 180)
+    )
+
+    coordinator.enqueueContextualAnchorPublication(anchor)
+    coordinator.invalidateContextualAnchorPublication()
+    await drainMainActorQueue()
+    coordinator.enqueueContextualAnchorPublication(anchor)
+    await drainMainActorQueue()
+
+    XCTAssertTrue(delivered.isEmpty)
+  }
+
+  func testDismantleInvalidatesContextualAnchorPublication() async {
+    let coordinator = makeCoordinator(
+      source: "正文",
+      bodyMarkdown: "正文",
+      bodyUTF16Offset: 0
+    )
+    var delivered: [MarkdownContextualPopoverAnchor?] = []
+    coordinator.onContextualAnchorChanged = { delivered.append($0) }
+    let anchor = MarkdownContextualPopoverAnchor(
+      selection: NSRange(location: 5, length: 0),
+      rect: CGRect(x: 12, y: 20, width: 1, height: 18),
+      viewport: CGRect(x: 0, y: 0, width: 320, height: 180)
+    )
+    let scrollView = NSScrollView()
+    scrollView.documentView = makeTextView()
+
+    coordinator.enqueueContextualAnchorPublication(anchor)
+    MacMarkdownTextView.dismantleNSView(scrollView, coordinator: coordinator)
+    await drainMainActorQueue()
+    coordinator.enqueueContextualAnchorPublication(anchor)
+    await drainMainActorQueue()
+
+    XCTAssertTrue(delivered.isEmpty)
+  }
+
+  private func drainMainActorQueue() async {
+    for _ in 0..<4 {
+      await Task.yield()
+    }
+  }
+
 }

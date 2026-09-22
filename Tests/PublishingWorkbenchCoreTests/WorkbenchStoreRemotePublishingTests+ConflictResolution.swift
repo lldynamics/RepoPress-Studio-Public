@@ -832,6 +832,10 @@ final class WorkbenchStoreRemotePublishingConflictResolutionTests:
         json: #"{"content":{"sha":"merged-file-sha"},"commit":{"sha":"written-commit"}}"#
       ),
       workbenchRemoteResponse(statusCode: 500, json: #"{"message":"pull request failed"}"#),
+      workbenchRemoteResponse(json: #"{"object":{"sha":"written-commit"}}"#),
+      workbenchRemoteResponse(json: "{\"sha\":\"\(mergedBlobSHA)\"}"),
+      workbenchRemoteResponse(json: #"{"object":{"sha":"written-commit"}}"#),
+      workbenchRemoteResponse(json: #"[]"#),
       currentResponse,
       baseResponse,
       workbenchRemoteResponse(json: #"{"object":{"sha":"target-sha"}}"#),
@@ -885,6 +889,17 @@ final class WorkbenchStoreRemotePublishingConflictResolutionTests:
     var requests = await transport.capturedRequests()
     XCTAssertEqual(requests.filter { $0.httpMethod == "PUT" }.count, 1)
     XCTAssertEqual(requests.filter { $0.httpMethod == "POST" && $0.url?.path.hasSuffix("/pulls") == true }.count, 1)
+
+    let execution = try XCTUnwrap(store.publishExecutionRecords.first)
+    XCTAssertTrue(execution.state.needsVerification)
+    let requestCountBeforeVerification = requests.count
+    await store.verifyPublishExecution(execution.id)
+    XCTAssertEqual(store.publishExecutionRecords.first?.state, .remoteAccepted)
+    XCTAssertEqual(
+      store.drafts, originalDrafts, "Verification must not apply the pending local merge")
+    requests = await transport.capturedRequests()
+    XCTAssertTrue(
+      requests.dropFirst(requestCountBeforeVerification).allSatisfy { $0.httpMethod == "GET" })
 
     let retryOutcome = await store.resolveRemoteRepositoryConflicts(
       plan: RemoteRepositoryConflictResolutionPlan(

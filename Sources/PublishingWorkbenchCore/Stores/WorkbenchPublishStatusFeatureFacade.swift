@@ -26,7 +26,7 @@ public final class WorkbenchPublishStatusFeatureFacade: ObservableObject {
     // metadata can invalidate this toolbar; another row changing must not.
     observe(
       Publishers.CombineLatest(
-        store.publishingStore.$drafts,
+        store.publishingStore.documents.$drafts,
         store.publishingStore.$selectedDraftID
       )
       .map { drafts, selectedDraftID in

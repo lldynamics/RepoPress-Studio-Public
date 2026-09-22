@@ -36,6 +36,10 @@ extension MacMarkdownComposerView {
   func toggleOutlinePinned() {
     isOutlinePinned.toggle()
     activeWritingContextPanel = .outline
+    // Pinning changes the presentation boundary. Always refresh from the
+    // current draft so a diagnostics-only or older generation cannot supply
+    // the outline shown in the newly pinned panel.
+    scheduleMarkdownAnalysis(immediate: true, includeOutline: true)
   }
 
   var activeOutlineItemID: String? {

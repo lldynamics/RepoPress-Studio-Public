@@ -676,6 +676,69 @@ final class LocalContentImportServiceTests: XCTestCase {
     XCTAssertEqual(store.selectedDraftID, importedDraft.id)
   }
 
+  func testWritingPreparationImportsWithoutChangingSelectionOrSection() async throws {
+    let rootURL = try temporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let postsURL = rootURL.appendingPathComponent("content/posts", isDirectory: true)
+    try FileManager.default.createDirectory(at: postsURL, withIntermediateDirectories: true)
+    try "---\ntitle: Imported\nslug: imported\n---\n\nBody".write(
+      to: postsURL.appendingPathComponent("imported.md"), atomically: true, encoding: .utf8
+    )
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()))
+    var profile = store.activeProfile
+    profile.rememberLocalRepositoryRoot(rootURL)
+    profile.contentRoot = "content"
+    profile.markdownPathPattern = "content/posts/{slug}.md"
+    store.updateActiveProfile(profile)
+    let existing = ArticleDraft(siteProfileID: profile.id, title: "Keep editing")
+    store.setDrafts([existing])
+    store.setSelectedDraftID(existing.id)
+    store.selectSection(.sync)
+
+    let result = await store.prepareRepositoryForWriting(expectedProfile: profile)
+
+    XCTAssertEqual(result.outcome, .succeeded)
+    XCTAssertEqual(result.summary.insertedCount, 1)
+    XCTAssertEqual(store.selectedDraftID, existing.id)
+    XCTAssertEqual(store.selectedSection, .sync)
+    XCTAssertTrue(store.drafts.contains { $0.repositoryPath == "content/posts/imported.md" })
+  }
+
+  func testWritingPreparationDistinguishesEmptyDirectoryAndUnreadableRepository() async throws {
+    let rootURL = try temporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    try FileManager.default.createDirectory(
+      at: rootURL.appendingPathComponent("content", isDirectory: true),
+      withIntermediateDirectories: true
+    )
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()))
+    var profile = store.activeProfile
+    profile.rememberLocalRepositoryRoot(rootURL)
+    profile.contentRoot = "content"
+    store.updateActiveProfile(profile)
+    let emptyResult = await store.prepareRepositoryForWriting(expectedProfile: profile)
+    XCTAssertEqual(emptyResult.outcome, .succeeded)
+    XCTAssertEqual(emptyResult.summary.insertedCount, 0)
+
+    try FileManager.default.removeItem(at: rootURL)
+    let failedResult = await store.prepareRepositoryForWriting(expectedProfile: profile)
+    XCTAssertEqual(failedResult.outcome, .failed)
+  }
+
+  func testWritingPreparationRejectsChangedProfileBeforeScanning() async throws {
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()))
+    var staleProfile = store.activeProfile
+    staleProfile.contentRoot = "a-different-content-root"
+
+    let result = await store.prepareRepositoryForWriting(expectedProfile: staleProfile)
+
+    XCTAssertEqual(result.outcome, .cancelled)
+    XCTAssertNil(store.repositoryReport)
+  }
+
   func testMissingPrivateBackfillAddsOnlyNewPrivateDraftsWithoutOverwriting() async throws {
     let rootURL = try temporaryDirectory()
     try FileManager.default.createDirectory(

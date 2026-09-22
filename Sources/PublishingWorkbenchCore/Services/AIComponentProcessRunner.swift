@@ -1,6 +1,7 @@
 import Darwin
 import Dispatch
 import Foundation
+import PublishingAICore
 
 /// Runs one explicitly selected component installer with bounded output and time.
 /// Owns a separate process group; cancellation never targets an existing AI server.

@@ -1,6 +1,7 @@
 import Foundation
 import XCTest
-@testable import PublishingWorkbenchCore
+
+@testable import PublishingKnowledgeCore
 
 final class RSSSubscriptionURLPrivacyTests: XCTestCase {
   func testWriterRejectsFeedAndSiteURLUserInfoWithoutEchoingCredentials() throws {

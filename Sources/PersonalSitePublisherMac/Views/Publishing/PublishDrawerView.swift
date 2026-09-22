@@ -44,7 +44,7 @@ struct PublishDrawerView: View {
   @ObservedObject private var drawerObservation: WorkbenchPublishDrawerObservationFacade
   // 部分属性尚未迁移到 Facade，保留 store 访问，但去除 @ObservedObject 以避免全局不相关事件触发重绘
   let store: WorkbenchStore
-  private let onNavigateIssue: ((UUID, PublishReadinessTarget) -> Void)?
+  private let onNavigateIssue: ((UUID, PublishReadinessTarget, PublishScope) -> Void)?
   @Binding var isPresented: Bool
   @State private var pendingWorktreeReview: RepositoryWorktreePublishConfirmation?
   @State private var pendingWorktreePushRetryReview: RepositoryWorktreePushRetryConfirmation?
@@ -64,7 +64,7 @@ struct PublishDrawerView: View {
     store: WorkbenchStore,
     isPresented: Binding<Bool>,
     initialScope: PublishScope = .repository,
-    onNavigateIssue: ((UUID, PublishReadinessTarget) -> Void)? = nil
+    onNavigateIssue: ((UUID, PublishReadinessTarget, PublishScope) -> Void)? = nil
   ) {
     self.publishingFacade = publishingFacade
     _drawerObservation = ObservedObject(wrappedValue: store.publishDrawerObservation)
@@ -206,6 +206,9 @@ struct PublishDrawerView: View {
             DisclosureGroup(String(localized: "本地保存与隔离预览")) {
               publishPrimaryActions(draft: draft, issues: issues)
             }
+            .disclosureGroupStyle(
+              WorkbenchDisclosureGroupStyle(toggleIdentifier: "publish-drawer-local-actions")
+            )
             if store.profile(for: draft).siteAnalytics?.isEnabled == true {
               postPublishAnalytics(draft: draft)
             } else {
@@ -217,6 +220,7 @@ struct PublishDrawerView: View {
           }
           .padding(16)
         }
+        .accessibilityIdentifier("publish-drawer-scroll-content")
         Divider()
         drawerFooter
       }
@@ -236,6 +240,7 @@ struct PublishDrawerView: View {
           }
           .padding(16)
         }
+        .accessibilityIdentifier("publish-drawer-scroll-content")
         Divider()
         drawerFooter
       }
@@ -307,7 +312,7 @@ struct PublishDrawerView: View {
         socialSnapshot: store.seoSocialPreviewSnapshot(for: draft),
         isSocialPreviewStale: store.isSEOSocialPreviewStale(for: draft),
         onNavigate: onNavigateIssue.map { navigate in
-          { target in navigate(draft.id, target) }
+          { target in navigate(draft.id, target, scope) }
         }
       )
 
@@ -410,7 +415,7 @@ struct PublishDrawerView: View {
     case .issue(let issue):
       if let onNavigateIssue {
         let target = PublishReadinessTarget.preflight(issue)
-        Button(target.title) { onNavigateIssue(draft.id, target) }.buttonStyle(.link)
+        Button(target.title) { onNavigateIssue(draft.id, target, scope) }.buttonStyle(.link)
       }
     }
   }

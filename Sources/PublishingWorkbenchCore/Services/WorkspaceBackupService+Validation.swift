@@ -1,5 +1,6 @@
 import CryptoKit
 import Foundation
+import PublishingKnowledgeCore
 
 extension WorkspaceBackupService {
   func validatedBackup(
@@ -156,10 +157,10 @@ extension WorkspaceBackupService {
 
     let knowledgeURL = packageURL.appendingPathComponent(Self.knowledgePackageName)
     do {
-      _ = try KnowledgeLibraryBackupService(
+      _ = try KnowledgeLibraryService(
         rootURL: knowledgeURL,
         fileManager: fileManager
-      ).inspectBackup(at: knowledgeURL)
+      ).inspectBackupSynchronously(at: knowledgeURL)
     } catch {
       throw WorkspaceBackupError.knowledgeLibraryInvalid(error.localizedDescription)
     }

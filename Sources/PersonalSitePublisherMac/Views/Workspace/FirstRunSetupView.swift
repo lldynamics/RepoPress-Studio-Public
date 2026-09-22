@@ -71,6 +71,41 @@ enum FirstRunSetupCommitResult: Equatable {
   case failed(message: String, requiresSamePathRetry: Bool = false)
 }
 
+enum FirstRunRepositoryHandoffPresentation {
+  static func profileForPreparation(
+    original: SiteProfile, current: SiteProfile, isRetry: Bool
+  ) -> SiteProfile? {
+    guard original.id == current.id, isRetry || original == current else { return nil }
+    return current
+  }
+
+  static func state(
+    result: LocalContentImportOperationResult,
+    drafts: [ArticleDraft],
+    profileID: UUID
+  ) -> FirstRunRepositoryHandoffState {
+    switch result.outcome {
+    case .succeeded, .partial:
+      let availableDrafts = drafts.filter {
+        !$0.isGeneralDraft && $0.belongs(toSiteProfileID: profileID)
+      }.sorted {
+        if $0.updatedAt != $1.updatedAt { return $0.updatedAt > $1.updatedAt }
+        return $0.id.uuidString < $1.id.uuidString
+      }
+      return .ready(
+        insertedCount: result.summary.insertedCount,
+        availableCount: availableDrafts.count,
+        latestDraftID: availableDrafts.first?.id,
+        hasWarnings: result.outcome == .partial
+      )
+    case .cancelled:
+      return .cancelled
+    case .failed, .recorded, .observed:
+      return .failed
+    }
+  }
+}
+
 @MainActor
 enum FirstRunSetupPersistenceCommit {
   static func apply(
@@ -585,7 +620,7 @@ struct FirstRunSetupView: View {
       setupSummary(
         systemImage: "checkmark.seal",
         title: String(localized: "准备开始写作"),
-        detail: String(localized: "完成后会进入同步工作区并扫描仓库；发布前仍会要求检查和差异确认。")
+        detail: String(localized: "完成后会整理仓库中的文章，你可以打开最近文章或新建文章；发布前仍会要求检查和差异确认。")
       )
     }
   }

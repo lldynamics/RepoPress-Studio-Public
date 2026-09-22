@@ -1,4 +1,5 @@
 import Foundation
+import PublishingDomainContracts
 import XCTest
 
 @testable import PublishingWorkbenchCore
@@ -985,7 +986,7 @@ final class WorkbenchStoreRemotePublishingLifecycleTests: WorkbenchStoreRemotePu
       repoName: "site",
       branchName: "publish/batch-recovery",
       targetBranch: "main",
-      commitSHA: "recorded-sha"
+      commitSHA: "remote-branch-sha"
     )
     store.setReleaseRecords([original])
     XCTAssertEqual(store.activeProfileReleaseLedger.entries.first?.status, .pendingRemoteRecovery)
@@ -1050,7 +1051,7 @@ final class WorkbenchStoreRemotePublishingLifecycleTests: WorkbenchStoreRemotePu
       repoName: "site",
       branchName: "publish/batch-recovery",
       targetBranch: "main",
-      commitSHA: "recorded-sha"
+      commitSHA: "remote-branch-sha"
     )
     store.setReleaseRecords([original])
 

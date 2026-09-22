@@ -14,10 +14,10 @@ public final class WorkbenchDataManagementFeatureFacade: ObservableObject {
   init(store: WorkbenchStore) {
     self.store = store
 
-    observe(store.publishingStore.$drafts.map(\.count).removeDuplicates())
-    observe(store.publishingStore.$recycledDrafts.map(\.count).removeDuplicates())
+    observe(store.publishingStore.documents.$drafts.map(\.count).removeDuplicates())
+    observe(store.publishingStore.documents.$recycledDrafts.map(\.count).removeDuplicates())
     observe(
-      store.publishingStore.$draftRepositoryCleanupRequests
+      store.publishingStore.documents.$draftRepositoryCleanupRequests
         .map { requests in
           requests.lazy.filter {
             $0.status == .pending || $0.remoteStatus == .pending
@@ -36,6 +36,8 @@ public final class WorkbenchDataManagementFeatureFacade: ObservableObject {
     observe(store.knowledge.$documents.map(\.count).removeDuplicates())
     observe(store.knowledge.$recycledDocuments.map(\.count).removeDuplicates())
     observe(store.knowledge.$isBusy.removeDuplicates())
+    observe(store.privacyProtectionStore.$isQuickHideActive.removeDuplicates())
+    observe(store.persistenceStore.$isRecoveryWriteProtected.removeDuplicates())
   }
 
   public var draftCount: Int { store.drafts.count }
@@ -59,6 +61,23 @@ public final class WorkbenchDataManagementFeatureFacade: ObservableObject {
   public var knowledge: KnowledgeStore { store.knowledge }
 
   public var lastSaveStatus: String { store.lastSaveStatus }
+
+  public var canRestoreBackupArticles: Bool { store.canRestoreBackupArticles }
+
+  public func workspaceBackupArticleSelectionPreview(from backupURL: URL) async throws
+    -> WorkspaceBackupArticleSelectionPreview
+  {
+    try await store.workspaceBackupArticleSelectionPreview(from: backupURL)
+  }
+
+  @discardableResult
+  public func restoreWorkspaceBackupArticles(
+    preview: WorkspaceBackupArticleSelectionPreview,
+    selectedDraftIDs: Set<UUID>
+  ) async throws -> Int {
+    try await store.restoreWorkspaceBackupArticles(
+      preview: preview, selectedDraftIDs: selectedDraftIDs)
+  }
 
   public func makeContentMigrationPlan(sourceURL: URL) async throws -> ContentMigrationPlan {
     try await store.makeContentMigrationPlan(sourceURL: sourceURL)

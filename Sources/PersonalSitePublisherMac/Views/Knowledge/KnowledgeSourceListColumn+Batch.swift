@@ -1,4 +1,4 @@
-import PublishingWorkbenchCore
+import PublishingKnowledgeCore
 import SwiftUI
 
 extension KnowledgeSourceListColumn {
@@ -78,6 +78,12 @@ extension KnowledgeSourceListColumn {
           Label("导出为 Markdown…", systemImage: "square.and.arrow.up")
         }
         Button {
+          isImageBatchExportPresented = true
+        } label: {
+          Label("导出图片…", systemImage: "photo.badge.arrow.down")
+        }
+        .disabled(!selectedDocumentIDs.contains(where: isSelectedImageDocument))
+        Button {
           let ids = selectedDocumentIDs
           Task { await knowledge.rebuildSemanticIndex(for: ids) }
         } label: {
@@ -144,13 +150,18 @@ extension KnowledgeSourceListColumn {
   }
 
   private func exportBatchSelection() {
-    guard let destinationURL = KnowledgeBatchExportSelectionPanel.chooseDestinationDirectory() else {
+    guard let destinationURL = KnowledgeBatchExportSelectionPanel.chooseDestinationDirectory()
+    else {
       return
     }
     let ids = selectedDocumentIDs
     Task {
       _ = await knowledge.exportDocuments(ids, to: destinationURL)
     }
+  }
+
+  private func isSelectedImageDocument(_ documentID: UUID) -> Bool {
+    knowledge.documents.contains { $0.id == documentID && $0.kind == .image }
   }
 
   func handleListSelectionChange(previous: Set<UUID>, current: Set<UUID>) {
@@ -168,7 +179,8 @@ extension KnowledgeSourceListColumn {
   func synchronizeListSelection() {
     guard searchText.trimmedForPublishing.isEmpty else { return }
     guard let selectedID = knowledge.selectedDocumentID,
-          listPresentation.documentRows.contains(where: { $0.id == selectedID }) else {
+      listPresentation.documentRows.contains(where: { $0.id == selectedID })
+    else {
       selectedDocumentIDs = []
       return
     }

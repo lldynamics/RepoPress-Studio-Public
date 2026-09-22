@@ -70,9 +70,12 @@ extension MacMarkdownComposerView {
 
   func handleEditorBodyChange(
     from previousBody: String,
-    to _: String
+    to updatedBody: String
   ) {
-    guard frontMatterIssue == nil else { return }
+    // SwiftUI may deliver a queued observer snapshot after the session state
+    // has moved on. Rebuilding the document from that snapshot would pair an
+    // old body with the current document and feed stale text back to AppKit.
+    guard frontMatterIssue == nil, updatedBody == editorBody else { return }
     syncActiveEditorSelection()
     stageEditorBody(replacingBaseBody: previousBody)
     refreshFindMatchSnapshot()
@@ -95,6 +98,18 @@ extension MacMarkdownComposerView {
     guard force || frontMatterIssue == nil else { return }
     let buffer = editorState.draftBodyEditorBuffer(for: draft.id)
     guard force || buffer.revision != editorBodyRevision else { return }
+    // A buffer revision staged by this live NSTextView is already represented
+    // by the unpublished live state. Publishing it through `editorBody` here
+    // would create an intermediate body/document onChange cycle before the
+    // coordinator's coalesced document binding flush commits the same edit.
+    guard
+      force
+        || buffer.revision != editorSessionState.liveBodyRevision
+        || buffer.bodyMarkdown != editorSessionState.liveBodyMarkdown
+        || editorBody == buffer.bodyMarkdown
+    else {
+      return
+    }
     editorSessionState.markdownCursorContextService.invalidateCache()
     editorBody = buffer.bodyMarkdown
     editorBodyRevision = buffer.revision
@@ -105,6 +120,9 @@ extension MacMarkdownComposerView {
   }
 
   func applyEditorDocument(from previousDocument: String, to document: String) {
+    // The modifier's callback carries a value snapshot. Ignore it if a newer
+    // document has already been installed in the shared session state.
+    guard document == editorDocument else { return }
     // Keyboard edits normally change only the body. Reuse the previous
     // front-matter boundary instead of normalizing and splitting the entire
     // document once for the document binding and again for the body binding.

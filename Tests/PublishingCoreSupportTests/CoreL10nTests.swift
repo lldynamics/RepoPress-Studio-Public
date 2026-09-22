@@ -1,5 +1,6 @@
 import Foundation
 import XCTest
+import os
 
 @testable import PublishingCoreSupport
 
@@ -66,5 +67,50 @@ final class CoreL10nTests: XCTestCase {
       CoreL10n.text("自定义云端接口", locale: Locale(identifier: "en")),
       "Custom cloud endpoint"
     )
+  }
+
+  func testExplicitLocaleResolutionCanAlternateAcrossConcurrentReads() {
+    let failures = ConcurrentReadFailures()
+
+    DispatchQueue.concurrentPerform(iterations: 128) { index in
+      let isChinese = index.isMultiple(of: 2)
+      let locale = Locale(identifier: isChinese ? "zh-CN" : "en-US")
+      let expected = isChinese ? "标题为空" : "Missing title"
+      let value = CoreL10n.text("标题为空", locale: locale)
+      if value != expected {
+        failures.append("text[\(index)] = \(value)")
+      }
+
+      let formatted = CoreL10n.format(
+        "%@ 已被另一篇草稿占用。",
+        locale: locale,
+        arguments: ["content/post.md"]
+      )
+      let expectedFormatted =
+        isChinese
+        ? "content/post.md 已被另一篇草稿占用。"
+        : "content/post.md is already used by another draft."
+      if formatted != expectedFormatted {
+        failures.append("format[\(index)] = \(formatted)")
+      }
+    }
+
+    XCTAssertTrue(failures.isEmpty, failures.values.joined(separator: "; "))
+  }
+}
+
+private final class ConcurrentReadFailures: Sendable {
+  private let state = OSAllocatedUnfairLock(initialState: [String]())
+
+  var values: [String] {
+    state.withLock { $0 }
+  }
+
+  var isEmpty: Bool {
+    state.withLock { $0.isEmpty }
+  }
+
+  func append(_ value: String) {
+    state.withLock { $0.append(value) }
   }
 }

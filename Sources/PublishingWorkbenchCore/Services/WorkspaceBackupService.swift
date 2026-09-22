@@ -1,5 +1,6 @@
 import CryptoKit
 import Foundation
+import PublishingKnowledgeCore
 
 enum WorkspaceBackupRestoreMutationCheckpoint: Hashable, Sendable {
   case transactionRecorded
@@ -196,14 +197,9 @@ public final class WorkspaceBackupService: Sendable {
       rootURL: knowledgeRootURL,
       fileManager: fileManager
     )
-    let knowledgeDatabase = try knowledgeService.database()
     try Task.checkCancellation()
-    _ = try KnowledgeLibraryBackupService(
-      rootURL: knowledgeRootURL,
-      fileManager: fileManager
-    ).createBackup(
+    _ = try knowledgeService.createBackupSynchronously(
       at: knowledgePackageURL,
-      database: knowledgeDatabase,
       applicationVersion: applicationVersion
     )
     records.append(contentsOf: try recordsInDirectory(

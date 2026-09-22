@@ -1,7 +1,7 @@
 import Foundation
 import XCTest
 
-@testable import PublishingWorkbenchCore
+@testable import PublishingKnowledgeCore
 
 @MainActor
 final class RSSReaderMaintenanceTests: XCTestCase {

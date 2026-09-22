@@ -1,4 +1,5 @@
 import Foundation
+import PublishingDomainContracts
 import XCTest
 
 @testable import PublishingWorkbenchCore
@@ -233,7 +234,16 @@ final class WorkbenchSafeTerminationTests: XCTestCase {
     }
     _ = await fixture.store.prepareForSafeTermination()
     XCTAssertTrue(fixture.store.validatePreparedSafeTermination())
-    let original = try Data(contentsOf: fixture.persistence.fileURL)
+    let manifest = try JSONDecoder().decode(
+      WorkbenchRecordManifest.self,
+      from: Data(contentsOf: fixture.persistence.fileURL))
+    let database = try WorkbenchRecordDatabase(
+      url: fixture.persistence.recordStoreDirectoryURL
+        .appendingPathComponent(manifest.storeID.uuidString).appendingPathComponent(
+          "records.sqlite"))
+    var rows = try database.records()
+    let envelopeIndex = try XCTUnwrap(rows.firstIndex { $0.collection == "workspace" })
+    let original = rows[envelopeIndex].data
     var object = try XCTUnwrap(JSONSerialization.jsonObject(with: original) as? [String: Any])
     let pairs = try XCTUnwrap(object["markdownEditorSessionStates"] as? [Any])
     XCTAssertEqual(pairs.count, 6)
@@ -241,14 +251,17 @@ final class WorkbenchSafeTerminationTests: XCTestCase {
       .flatMap { [pairs[$0], pairs[$0 + 1]] }
     let reordered = try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])
     XCTAssertNotEqual(original, reordered)
-    try reordered.write(to: fixture.persistence.fileURL, options: .atomic)
+    let envelope = rows[envelopeIndex]
+    rows[envelopeIndex] = WorkbenchStorageRecord(
+      collection: envelope.collection,
+      id: envelope.id, position: envelope.position, data: reordered)
+    _ = try database.replace(with: rows)
     XCTAssertTrue(fixture.store.validatePreparedSafeTermination())
 
-    var drafts = try XCTUnwrap(object["drafts"] as? [[String: Any]])
-    drafts[0]["bodyMarkdown"] = "Disk content changed during confirmation"
-    object["drafts"] = drafts
-    try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])
-      .write(to: fixture.persistence.fileURL, options: .atomic)
+    let externalWriter = WorkbenchPersistence(fileURL: fixture.persistence.fileURL)
+    var changed = try XCTUnwrap(externalWriter.load())
+    changed.drafts[0].bodyMarkdown = "Disk content changed during confirmation"
+    _ = try externalWriter.save(changed)
     XCTAssertFalse(fixture.store.validatePreparedSafeTermination())
   }
 

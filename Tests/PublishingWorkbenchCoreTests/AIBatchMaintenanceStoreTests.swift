@@ -6,6 +6,17 @@ import XCTest
 final class AIBatchMaintenanceStoreTests: XCTestCase {
   private let summary = "这是一段根据文章内容生成的摘要，保留原文事实并说明主要内容。"
 
+  private func makeStore() throws -> WorkbenchStore {
+    WorkbenchStore(
+      persistence: try TestWorkbenchFactory.persistence(prefix: "AIBatchMaintenanceStoreTests"),
+      keychainTokenStore: KeychainTokenStore(
+        service: "AIBatchMaintenanceStoreTests.\(UUID().uuidString)",
+        accountPrefix: "test",
+        inMemory: true
+      )
+    )
+  }
+
   private func makeDrafts(store: WorkbenchStore, count: Int = 2) -> [ArticleDraft] {
     let drafts = (0..<count).map {
       ArticleDraft(
@@ -24,7 +35,7 @@ final class AIBatchMaintenanceStoreTests: XCTestCase {
   }
 
   func testPauseFinishesCurrentAndResumePreservesCompletedResults() async throws {
-    let store = try TestWorkbenchFactory.makeStore()
+    let store = try makeStore()
     let drafts = makeDrafts(store: store)
     let siteID = store.activeProfileID
     let started = expectation(description: "first request")
@@ -61,7 +72,7 @@ final class AIBatchMaintenanceStoreTests: XCTestCase {
   }
 
   func testChangedBodyAfterRequestRejectsResultAndCannotOverwriteDraft() async throws {
-    let store = try TestWorkbenchFactory.makeStore()
+    let store = try makeStore()
     let drafts = makeDrafts(store: store, count: 1)
     let siteID = store.activeProfileID
     let batch = AIBatchMaintenanceStore(store: store) { _, draft, _ in
@@ -80,7 +91,7 @@ final class AIBatchMaintenanceStoreTests: XCTestCase {
   }
 
   func testDiscardingStaleResultAndRegeneratingOneItemRetainsOtherReadyResults() async throws {
-    let store = try TestWorkbenchFactory.makeStore()
+    let store = try makeStore()
     let drafts = makeDrafts(store: store)
     let siteID = store.activeProfileID
     var calls = 0
@@ -115,7 +126,7 @@ final class AIBatchMaintenanceStoreTests: XCTestCase {
   }
 
   func testRegeneratingOneItemCapturesNewModelWithoutRelabelingRetainedReadyResult() async throws {
-    let store = try TestWorkbenchFactory.makeStore()
+    let store = try makeStore()
     let initialModel = "initial-batch-model"
     let refreshedModel = "regenerated-item-model"
     var initialConnection = store.activeAIConnectionProfile
@@ -151,7 +162,7 @@ final class AIBatchMaintenanceStoreTests: XCTestCase {
   }
 
   func testSkippingPendingItemKeepsItOutOfTheLaterRun() async throws {
-    let store = try TestWorkbenchFactory.makeStore()
+    let store = try makeStore()
     let drafts = makeDrafts(store: store)
     let siteID = store.activeProfileID
     var calls = 0
@@ -173,7 +184,7 @@ final class AIBatchMaintenanceStoreTests: XCTestCase {
   }
 
   func testRetryFailedDoesNotDispatchUntouchedPendingArticles() async throws {
-    let store = try TestWorkbenchFactory.makeStore()
+    let store = try makeStore()
     let drafts = makeDrafts(store: store)
     let siteID = store.activeProfileID
     var calls = 0
@@ -200,7 +211,7 @@ final class AIBatchMaintenanceStoreTests: XCTestCase {
   }
 
   func testApplyOnlyReviewedMetadataAndRetainsRecoveryVersion() async throws {
-    let store = try TestWorkbenchFactory.makeStore()
+    let store = try makeStore()
     let drafts = makeDrafts(store: store, count: 1)
     let siteID = store.activeProfileID
     let batch = AIBatchMaintenanceStore(store: store) { _, _, _ in
@@ -226,7 +237,7 @@ final class AIBatchMaintenanceStoreTests: XCTestCase {
   }
 
   func testApplyRefusesDirtyEditorBufferAndChangedRules() async throws {
-    let store = try TestWorkbenchFactory.makeStore()
+    let store = try makeStore()
     let drafts = makeDrafts(store: store, count: 1)
     let siteID = store.activeProfileID
     let batch = AIBatchMaintenanceStore(store: store) { _, _, _ in self.summary }
@@ -243,7 +254,7 @@ final class AIBatchMaintenanceStoreTests: XCTestCase {
   }
 
   func testPrivateAndOtherSiteArticlesNeverEnterQueue() throws {
-    let store = try TestWorkbenchFactory.makeStore()
+    let store = try makeStore()
     var drafts = makeDrafts(store: store)
     drafts[0].visibility = .private
     var otherProfile = SiteProfile.defaultProfile
@@ -260,7 +271,7 @@ final class AIBatchMaintenanceStoreTests: XCTestCase {
   }
 
   func testMalformedPersistedQueueIsNotOverwritten() throws {
-    let store = try TestWorkbenchFactory.makeStore()
+    let store = try makeStore()
     let drafts = makeDrafts(store: store, count: 1)
     let file = store.persistenceStore.persistence.fileURL.appendingPathExtension(
       "ai-maintenance.json")
@@ -302,6 +313,11 @@ final class AIBatchMaintenanceStoreTests: XCTestCase {
       data: try JSONSerialization.data(withJSONObject: payload), statusCode: 200)
     let store = WorkbenchStore(
       persistence: try TestWorkbenchFactory.persistence(),
+      keychainTokenStore: KeychainTokenStore(
+        service: "AIBatchMaintenanceStoreTests.\(UUID().uuidString)",
+        accountPrefix: "test",
+        inMemory: true
+      ),
       aiPublishingAssistantService: AIPublishingAssistantService(
         client: AIChatCompletionClient(transport: transport)))
     var connection = store.activeAIConnectionProfile
@@ -326,7 +342,7 @@ final class AIBatchMaintenanceStoreTests: XCTestCase {
   }
 
   func testAuthorizationFailurePausesBeforeOtherArticlesAreDispatched() async throws {
-    let store = try TestWorkbenchFactory.makeStore()
+    let store = try makeStore()
     let drafts = makeDrafts(store: store)
     var calls = 0
     let batch = AIBatchMaintenanceStore(store: store) { _, _, _ in

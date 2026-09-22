@@ -1,7 +1,7 @@
+import PublishingDomainContracts
 import XCTest
 
 @testable import PersonalSitePublisherMac
-@testable import PublishingWorkbenchCore
 
 final class ArticleProvenanceLocalizationTests: XCTestCase {
   func testArticleProvenanceUsesStableSemanticDisplayNameKeys() {

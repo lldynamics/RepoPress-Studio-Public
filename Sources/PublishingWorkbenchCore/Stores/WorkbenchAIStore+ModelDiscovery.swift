@@ -1,4 +1,5 @@
 import Foundation
+import PublishingAICore
 
 extension WorkbenchAIStore {
   /// Resolves the credential only after the UI's request is proven to still

@@ -1,5 +1,6 @@
 import Combine
 import Foundation
+import PublishingDomainContracts
 
 public enum PublishActionMessageStatus: String, Hashable, Sendable {
   case information
@@ -34,7 +35,7 @@ public struct RecentlyDeletedProfile: Sendable {
 
 extension PublishingStore {
   public func draft(for draftID: UUID) -> ArticleDraft? {
-    drafts.first(where: { $0.id == draftID })
+    documents.draft(for: draftID)
   }
 
   func repositoryAccessToken(for profile: SiteProfile) throws -> String? {
@@ -127,6 +128,10 @@ public final class PublishingStore: ObservableObject {
   let draftLifecycleService: DraftLifecycleService
   let contentHealthReportService: ContentHealthReportService
   let aiFixQueueService: AIPublishingFixQueueService
+  /// Durable article data belongs to the document domain, not publishing.
+  public let documents: DocumentStore
+  /// Per-document editing state remains process-local and narrowly observed.
+  public let documentSession: DocumentSessionStore
   public let publishSession: PublishSessionStore
   public let siteStarter: SiteStarterStore
   private var childStateCancellables = Set<AnyCancellable>()
@@ -144,12 +149,29 @@ public final class PublishingStore: ObservableObject {
       projectSelectedDraftPublishPreview()
     }
   }
-  @Published public internal(set) var drafts: [ArticleDraft]
-  @Published public internal(set) var customMarkdownSnippets: [MarkdownSnippet]
-  @Published public internal(set) var draftVersions: [DraftVersionSnapshot]
-  @Published public internal(set) var recycledDrafts: [RecycledDraft]
-  @Published public internal(set) var draftRepositoryCleanupRequests:
-    [DraftRepositoryCleanupRequest]
+  /// Compatibility forwarding for existing actions. Source state is held by
+  /// `documents`; new document consumers should depend on that store directly.
+  public internal(set) var drafts: [ArticleDraft] {
+    get { documents.drafts }
+    set { documents.drafts = newValue }
+  }
+  public internal(set) var customMarkdownSnippets: [MarkdownSnippet] {
+    get { documents.customMarkdownSnippets }
+    set { documents.customMarkdownSnippets = newValue }
+  }
+  public internal(set) var draftVersions: [DraftVersionSnapshot] {
+    get { documents.draftVersions }
+    set { documents.draftVersions = newValue }
+  }
+  public internal(set) var recycledDrafts: [RecycledDraft] {
+    get { documents.recycledDrafts }
+    set { documents.recycledDrafts = newValue }
+  }
+  public internal(set) var draftRepositoryCleanupRequests: [DraftRepositoryCleanupRequest]
+  {
+    get { documents.draftRepositoryCleanupRequests }
+    set { documents.draftRepositoryCleanupRequests = newValue }
+  }
   @Published public internal(set) var selectedSection: WorkspaceSection
   @Published public internal(set) var selectedDraftID: UUID? {
     didSet {
@@ -163,19 +185,28 @@ public final class PublishingStore: ObservableObject {
   @Published public internal(set) var isInspectorPresented: Bool
   @Published public internal(set) var editorFocusRequest: EditorFocusRequest?
   @Published public internal(set) var imageInspectorFocusRequest: ImageInspectorFocusRequest?
-  public internal(set) var markdownEditorSessionStates: [UUID: MarkdownEditorSessionState]
-  public internal(set) var draftBodyEditorBuffers: [UUID: DraftBodyEditorBuffer] = [:]
-  let draftBodyEditorBufferWillChange = PassthroughSubject<UUID, Never>()
+  public internal(set) var markdownEditorSessionStates: [UUID: MarkdownEditorSessionState] {
+    get { documentSession.markdownEditorSessionStates }
+    set { documentSession.markdownEditorSessionStates = newValue }
+  }
+  public internal(set) var draftBodyEditorBuffers: [UUID: DraftBodyEditorBuffer] {
+    get { documentSession.draftBodyEditorBuffers }
+    set { documentSession.draftBodyEditorBuffers = newValue }
+  }
+  let draftBodyEditorBufferWillChange: PassthroughSubject<UUID, Never>
   /// The live editor selection is intentionally kept out of the broad
   /// PublishingStore observation graph. High-frequency caret changes belong to
   /// a draft-scoped observation facade, not to the whole workbench.
-  public internal(set) var activeEditorSelection: ActiveEditorSelection?
-  let activeEditorSelectionDidChange = PassthroughSubject<UUID, Never>()
+  public internal(set) var activeEditorSelection: ActiveEditorSelection? {
+    get { documentSession.activeEditorSelection }
+    set { documentSession.activeEditorSelection = newValue }
+  }
+  let activeEditorSelectionDidChange: PassthroughSubject<UUID, Never>
   /// Sent after a buffer has been committed to the in-memory projection. The
   /// existing `willChange` subject remains for broad editor facades that use
   /// its historical pre-mutation timing; this subject is the narrow, live
   /// projection boundary and is emitted even when those observers are muted.
-  let draftBodyEditorBufferDidChange = PassthroughSubject<UUID, Never>()
+  let draftBodyEditorBufferDidChange: PassthroughSubject<UUID, Never>
   @Published public internal(set) var automaticallyRefreshPreflightOnEdit: Bool
   @Published public internal(set) var lastSaveStatus: String
   public internal(set) var publishActionMessage: String? {
@@ -197,19 +228,15 @@ public final class PublishingStore: ObservableObject {
     for draftID: UUID,
     notifyObservers: Bool = true
   ) {
-    guard draftBodyEditorBuffers[draftID] != buffer else { return }
-    if notifyObservers {
-      draftBodyEditorBufferWillChange.send(draftID)
-    }
-    draftBodyEditorBuffers[draftID] = buffer
-    draftBodyEditorBufferDidChange.send(draftID)
+    documentSession.setDraftBodyEditorBuffer(
+      buffer,
+      for: draftID,
+      notifyObservers: notifyObservers
+    )
   }
 
   func removeDraftBodyEditorBuffer(for draftID: UUID) {
-    guard draftBodyEditorBuffers[draftID] != nil else { return }
-    draftBodyEditorBufferWillChange.send(draftID)
-    draftBodyEditorBuffers.removeValue(forKey: draftID)
-    draftBodyEditorBufferDidChange.send(draftID)
+    documentSession.removeDraftBodyEditorBuffer(for: draftID)
   }
 
   init(
@@ -325,7 +352,7 @@ public final class PublishingStore: ObservableObject {
     self.profiles = profiles
     self.activeProfileID = activeProfileID
     let profilesByID = Dictionary(uniqueKeysWithValues: profiles.map { ($0.id, $0) })
-    self.drafts = drafts.map { draft in
+    let normalizedDrafts = drafts.map { draft in
       var normalized = draft
       if normalized.isGeneralDraft {
         normalized.detachFromRepository()
@@ -334,10 +361,20 @@ public final class PublishingStore: ObservableObject {
       }
       return normalized
     }
-    self.customMarkdownSnippets = customMarkdownSnippets
-    self.draftVersions = draftVersions
-    self.recycledDrafts = recycledDrafts
-    self.draftRepositoryCleanupRequests = draftRepositoryCleanupRequests
+    self.documents = DocumentStore(
+      drafts: normalizedDrafts,
+      customMarkdownSnippets: customMarkdownSnippets,
+      draftVersions: draftVersions,
+      recycledDrafts: recycledDrafts,
+      draftRepositoryCleanupRequests: draftRepositoryCleanupRequests
+    )
+    self.documentSession = DocumentSessionStore(
+      markdownEditorSessionStates: markdownEditorSessionStates,
+      activeEditorSelection: activeEditorSelection
+    )
+    self.draftBodyEditorBufferWillChange = documentSession.draftBodyEditorBufferWillChange
+    self.draftBodyEditorBufferDidChange = documentSession.draftBodyEditorBufferDidChange
+    self.activeEditorSelectionDidChange = documentSession.activeEditorSelectionDidChange
     self.selectedSection = selectedSection
     self.selectedDraftID = selectedDraftID
     self.draftListContentScope = draftListContentScope
@@ -348,8 +385,6 @@ public final class PublishingStore: ObservableObject {
     self.isInspectorPresented = isInspectorPresented
     self.editorFocusRequest = editorFocusRequest
     self.imageInspectorFocusRequest = imageInspectorFocusRequest
-    self.markdownEditorSessionStates = markdownEditorSessionStates
-    self.activeEditorSelection = activeEditorSelection
     self.automaticallyRefreshPreflightOnEdit = automaticallyRefreshPreflightOnEdit
     self.lastSaveStatus = lastSaveStatus
     self.imageActionMessage = imageActionMessage
@@ -357,6 +392,9 @@ public final class PublishingStore: ObservableObject {
     self.latestGeneralDraftReusePlan = latestGeneralDraftReusePlan
     self.recentlyDeletedProfile = recentlyDeletedProfile
     publishSession.objectWillChange
+      .sink { [weak self] _ in self?.objectWillChange.send() }
+      .store(in: &childStateCancellables)
+    documents.objectWillChange
       .sink { [weak self] _ in self?.objectWillChange.send() }
       .store(in: &childStateCancellables)
     siteStarter.objectWillChange

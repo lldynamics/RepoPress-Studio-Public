@@ -1,7 +1,8 @@
+import PublishingCoreSupport
 import XCTest
 
 @testable import PersonalSitePublisherMac
-@testable import PublishingWorkbenchCore
+@testable import PublishingAICore
 
 final class AISettingsFlowPresentationTests: XCTestCase {
   func testProviderPresetsCollapseIntoThreeUserFacingConnectionKinds() {

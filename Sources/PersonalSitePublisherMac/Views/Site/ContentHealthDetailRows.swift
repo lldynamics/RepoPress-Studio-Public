@@ -121,9 +121,32 @@ extension ContentHealthDetailView {
     guard let draft = store.publishing.visibleDrafts.first(where: { $0.id == item.draftID }) else {
       return
     }
+    cancelAIFixTask()
     store.publishing.selectDraft(item.draftID)
-    Task {
-      guard let result = await store.ai.performAction(item.recommendedAction, draft: draft) else {
+    let requestID = UUID()
+    let profileID = store.activeProfile.id
+    let draftID = draft.id
+    aiFixRequestID = requestID
+    aiFixTask = Task { @MainActor in
+      defer {
+        if aiFixRequestID == requestID {
+          aiFixTask = nil
+          aiFixRequestID = nil
+        }
+      }
+      guard !Task.isCancelled,
+        aiFixRequestID == requestID,
+        store.activeProfile.id == profileID,
+        store.publishing.visibleDrafts.contains(where: { $0.id == draftID })
+      else {
+        return
+      }
+      guard let result = await store.ai.performAction(item.recommendedAction, draft: draft),
+        !Task.isCancelled,
+        aiFixRequestID == requestID,
+        store.activeProfile.id == profileID,
+        store.publishing.visibleDrafts.contains(where: { $0.id == draftID })
+      else {
         return
       }
       aiFixResultPreview = ContentHealthAIFixResultPreview(

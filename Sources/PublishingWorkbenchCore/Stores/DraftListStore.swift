@@ -10,7 +10,9 @@ import Foundation
 /// badges and repository/privacy context have explicit, independent inputs.
 @MainActor
 public final class DraftListStore: ObservableObject {
-  private unowned let store: WorkbenchStore
+  private let documents: DocumentStore
+  private let navigation: any DraftListNavigationReadModel
+  private let auxiliary: any DraftListAuxiliaryReadModel
   private var cancellables = Set<AnyCancellable>()
   let presentationDidChange = CurrentValueSubject<UInt64, Never>(0)
 
@@ -26,13 +28,19 @@ public final class DraftListStore: ObservableObject {
   private var presentationInputNeedsSynchronization = false
   private var presentationInputSynchronizationGeneration: UInt64 = 0
 
-  public init(store: WorkbenchStore) {
-    self.store = store
+  public init(
+    documents: DocumentStore,
+    navigation: any DraftListNavigationReadModel,
+    auxiliary: any DraftListAuxiliaryReadModel
+  ) {
+    self.documents = documents
+    self.navigation = navigation
+    self.auxiliary = auxiliary
     // Structural changes are an O(1) fallback. Ordinary metadata mutations
     // enter through WorkbenchStore's explicit invalidation boundary, so a
     // body flush never walks the draft collection merely to suppress a UI
     // notification afterward.
-    store.publishingStore.$drafts
+    documents.$drafts
       .map(\.count)
       .removeDuplicates()
       .dropFirst()
@@ -43,8 +51,8 @@ public final class DraftListStore: ObservableObject {
 
     observe(
       Publishers.CombineLatest(
-        store.publishingStore.$profiles,
-        store.publishingStore.$activeProfileID
+        navigation.profilesDidChange,
+        navigation.activeProfileIDDidChange
       )
       .map { profiles, activeProfileID in
         SearchProfileProjection(
@@ -55,22 +63,22 @@ public final class DraftListStore: ObservableObject {
         )
       }
     )
-    observe(store.publishingStore.$draftListContentScope)
-    observeTaskQueueValue(store.repositoryStore.$repositoryReport)
-    observe(store.privacyProtectionStore.$privacySettings)
+    observe(navigation.contentScopeDidChange)
+    observeTaskQueueValue(auxiliary.repositoryReportDidChange)
+    observe(auxiliary.masksPrivateContentDidChange)
     _ = recordCurrentPresentationInputIfChanged()
   }
 
   public var selectedDraftID: UUID? {
-    store.publishingStore.selectedDraftID
+    navigation.selectedDraftID
   }
 
   public var contentScope: DraftListContentScope {
-    store.publishingStore.draftListContentScope
+    navigation.contentScope
   }
 
   public var repositoryReport: RepositoryScanReport? {
-    store.repositoryReport
+    auxiliary.repositoryReport
   }
 
   /// Returns a long-lived index for the requested corpus.  Metadata, privacy,
@@ -80,7 +88,7 @@ public final class DraftListStore: ObservableObject {
     let key = SearchIndexCacheKey(
       revision: presentationRevision,
       corpus: corpus,
-      masksPrivateContent: store.privacyProtectionStore.privacySettings.masksPrivateContent
+      masksPrivateContent: auxiliary.masksPrivateContent
     )
     if let cached = searchIndexCache[key] {
       return cached
@@ -89,13 +97,13 @@ public final class DraftListStore: ObservableObject {
     let drafts: [ArticleDraft]
     switch corpus {
     case .activeSite:
-      drafts = store.visibleDrafts
+      drafts = navigation.visibleDrafts
     case .allDrafts:
-      drafts = store.drafts
+      drafts = documents.drafts
     }
     let index = DraftSearchIndex(
       drafts: drafts,
-      profile: { [store] draft in store.profile(for: draft) },
+      profile: { [navigation] draft in navigation.profile(for: draft) },
       masksPrivateContent: key.masksPrivateContent,
       revision: presentationRevision
     )
@@ -111,7 +119,7 @@ public final class DraftListStore: ObservableObject {
   /// use the image workbench's independent refresh token.  It is deliberately
   /// not observed by this store because image refresh is not list topology.
   public var imageInputRevision: UInt64 {
-    store.imageWorkbenchInputRevision
+    auxiliary.imageInputRevision
   }
 
   /// Invalidates task badges without changing the folder/search projection.
@@ -191,13 +199,13 @@ public final class DraftListStore: ObservableObject {
 
   private func currentPresentationInput() -> PresentationInput {
     PresentationInput(
-      drafts: store.drafts.map(\.listMetadataProjection),
-      activeProfileID: store.activeProfileID,
-      contentScope: store.publishingStore.draftListContentScope,
-      profiles: store.publishingStore.profiles.map(ProfileProjection.init).sorted {
+      drafts: documents.drafts.map(\.listMetadataProjection),
+      activeProfileID: navigation.activeProfileID,
+      contentScope: navigation.contentScope,
+      profiles: navigation.profiles.map(ProfileProjection.init).sorted {
         $0.id.uuidString < $1.id.uuidString
       },
-      masksPrivateContent: store.privacyProtectionStore.privacySettings.masksPrivateContent
+      masksPrivateContent: auxiliary.masksPrivateContent
     )
   }
 

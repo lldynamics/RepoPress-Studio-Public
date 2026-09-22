@@ -147,12 +147,14 @@ extension MacMarkdownComposerView {
     let promptSelectedText = rawSelectedText.trimmedForPublishing
     let availability = selectionAIActionAvailability(kind)
     guard availability.isEnabled else {
-      selectionActionMessage = "\(kind.localizedDisplayName)：\(availability.unavailableReason ?? "需要更多上下文")"
+      selectionActionMessage =
+        "\(kind.localizedDisplayName)：\(availability.unavailableReason ?? "需要更多上下文")"
       return
     }
 
     cancelInlineGhostText()
     let requestedDraft = previewDraft
+    let requestedProfileID = editorState.profile(for: requestedDraft).id
     let requestID = UUID()
     activeSelectionAIAction = kind
     selectionAIActionRequestID = requestID
@@ -165,6 +167,17 @@ extension MacMarkdownComposerView {
     let previewRange = clamped(selectedRange, length: (editorBody as NSString).length)
     selectionEditPreview = nil
     selectionAIActionTask = Task { @MainActor in
+      defer {
+        if selectionAIActionRequestID == requestID {
+          if selectionActionMessage == actionName + "处理中…" { selectionActionMessage = "" }
+          finishSelectionAIAction(requestID: requestID)
+        }
+      }
+      guard !Task.isCancelled,
+        selectionAIActionRequestID == requestID,
+        draft.id == requestedDraft.id,
+        editorState.profile(for: draft).id == requestedProfileID
+      else { return }
       let result: AIPublishingActionResult?
       if let convergence {
         result = await aiActions.performAction(
@@ -180,7 +193,6 @@ extension MacMarkdownComposerView {
         )
       }
       guard selectionAIActionRequestID == requestID else { return }
-      defer { finishSelectionAIAction(requestID: requestID) }
       guard !Task.isCancelled, draft.id == requestedDraft.id else { return }
 
       if let result {
@@ -211,11 +223,9 @@ extension MacMarkdownComposerView {
           characterCount: (preview.trimmedReplacementText as NSString).length
         )
       } else {
-        selectionActionMessage = actionName + "失败。"
-        EditorAccessibilityAnnouncementCenter.announce(
-          selectionActionMessage,
-          priority: .high
-        )
+        if selectionActionMessage == "\(actionName)处理中…" {
+          selectionActionMessage = ""
+        }
       }
     }
   }
@@ -234,13 +244,15 @@ extension MacMarkdownComposerView {
   ) {
     let availability = articleAIActionAvailability(kind, respectActiveAction: false)
     guard availability.isEnabled else {
-      selectionActionMessage = "\(kind.localizedDisplayName)：\(availability.unavailableReason ?? "需要更多文章内容")"
+      selectionActionMessage =
+        "\(kind.localizedDisplayName)：\(availability.unavailableReason ?? "需要更多文章内容")"
       return
     }
 
     cancelInlineGhostText()
     cancelSelectionAIAction()
     let requestedDraft = previewDraft
+    let requestedProfileID = editorState.profile(for: requestedDraft).id
     let requestID = UUID()
     activeSelectionAIAction = kind
     selectionAIActionRequestID = requestID
@@ -249,6 +261,17 @@ extension MacMarkdownComposerView {
     let previewRange = articleInsertionRange(for: kind)
     selectionEditPreview = nil
     selectionAIActionTask = Task { @MainActor in
+      defer {
+        if selectionAIActionRequestID == requestID {
+          if selectionActionMessage == actionName + "处理中…" { selectionActionMessage = "" }
+          finishSelectionAIAction(requestID: requestID)
+        }
+      }
+      guard !Task.isCancelled,
+        selectionAIActionRequestID == requestID,
+        draft.id == requestedDraft.id,
+        editorState.profile(for: draft).id == requestedProfileID
+      else { return }
       let result: AIPublishingActionResult?
       if let convergence {
         result = await aiActions.performAction(convergence, draft: requestedDraft)
@@ -256,7 +279,6 @@ extension MacMarkdownComposerView {
         result = await aiActions.performAction(kind, draft: requestedDraft)
       }
       guard selectionAIActionRequestID == requestID else { return }
-      defer { finishSelectionAIAction(requestID: requestID) }
       guard !Task.isCancelled, draft.id == requestedDraft.id else { return }
 
       if let result {
@@ -290,16 +312,17 @@ extension MacMarkdownComposerView {
           )
         }
       } else {
-        selectionActionMessage = actionName + "失败。"
-        EditorAccessibilityAnnouncementCenter.announce(
-          selectionActionMessage,
-          priority: .high
-        )
+        if selectionActionMessage == "\(actionName)处理中…" {
+          selectionActionMessage = ""
+        }
       }
     }
   }
 
   func cancelSelectionAIAction() {
+    let ownsProcessingMessage =
+      activeSelectionAIAction != nil
+      && selectionActionMessage.hasSuffix("处理中…")
     selectionAIActionTask?.cancel()
     selectionAIActionTask = nil
     selectionAIActionRequestID = nil
@@ -308,6 +331,9 @@ extension MacMarkdownComposerView {
     selectionEditPreview = nil
     if activeWritingContextPanel == .aiReview {
       activeWritingContextPanel = hasSelectedText ? .selectionTools : nil
+    }
+    if ownsProcessingMessage {
+      selectionActionMessage = ""
     }
   }
 

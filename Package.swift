@@ -112,11 +112,13 @@ let package = Package(
       name: "PublishingKnowledgeCore",
       dependencies: [
         "PublishingCoreSupport",
+        "PublishingMarkdownCore",
       ],
       swiftSettings: [
         .swiftLanguageMode(.v6)
       ],
       linkerSettings: [
+        .linkedLibrary("sqlite3"),
         .linkedLibrary("z"),
         .linkedFramework("PDFKit"),
         .linkedFramework("Vision"),
@@ -244,6 +246,7 @@ let package = Package(
         "PublishingAICore",
         "PublishingAgentContracts",
         "PublishingCoreSupport",
+        "PublishingDomainContracts",
         "PublishingGitCore",
         "PublishingKnowledgeCore",
         "PublishingMarkdownCore",
@@ -259,6 +262,8 @@ let package = Package(
         "PersonalSitePublisherMac",
         "BrowserExtensionProtocolSupport",
         "PublishingAICore",
+        "PublishingCoreSupport",
+        "PublishingDomainContracts",
         "PublishingGitCore",
         "PublishingKnowledgeCore",
         "PublishingMarkdownCore",

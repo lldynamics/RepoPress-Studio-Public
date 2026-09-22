@@ -1,8 +1,8 @@
 import Foundation
 import XCTest
 
-@testable import PublishingWorkbenchCore
 @testable import PersonalSitePublisherMac
+@testable import PublishingKnowledgeCore
 
 final class RSSArticleWorkflowTests: XCTestCase {
   @MainActor

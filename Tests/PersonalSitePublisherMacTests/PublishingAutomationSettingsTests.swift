@@ -1,4 +1,5 @@
-import PublishingWorkbenchCore
+import PublishingDomainContracts
+import PublishingGitCore
 import XCTest
 
 @testable import PersonalSitePublisherMac

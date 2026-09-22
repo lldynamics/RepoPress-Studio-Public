@@ -488,9 +488,7 @@ public enum WorkbenchAutomationExecutor {
       guard let query = step.arguments.query?.trimmedForPublishing.nilIfEmpty else {
         throw WorkbenchAutomationValidationError.missingArgument("query")
       }
-      let hits = try await WorkbenchAgentKnowledgeService(
-        library: store.knowledge.service
-      ).search(query: query, limit: 8)
+      let hits = try await store.knowledgeAgentService.search(query: query, limit: 8)
       let rows = hits.map { hit in
         var fields = [
           "documentID=\(hit.documentID.uuidString)",
@@ -533,9 +531,7 @@ public enum WorkbenchAutomationExecutor {
       guard let documentID = step.arguments.documentID else {
         throw WorkbenchAutomationValidationError.missingArgument("documentID")
       }
-      let document = try await WorkbenchAgentKnowledgeService(
-        library: store.knowledge.service
-      ).read(
+      let document = try await store.knowledgeAgentService.read(
         documentID: documentID,
         chunkID: step.arguments.chunkID,
         cursor: step.arguments.readCursor ?? 0,

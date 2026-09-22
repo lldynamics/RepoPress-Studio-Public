@@ -32,6 +32,7 @@ extension RemoteRepositoryPublishService {
     }
     let reviewDraft = RemoteReviewDraftBuilder().build(package: package, profile: repository.profile)
     var didCreateReviewBranch = false
+    var didAttemptContentMutation = false
 
     onProgress?(
       .init(
@@ -126,6 +127,7 @@ extension RemoteRepositoryPublishService {
             reviewPendingPaths.append(file.repositoryPath)
           }
           if let existingSHA {
+            didAttemptContentMutation = true
             let response: GitHubContentMutationResponse = try await send(
               githubRequest(
                 repository: repository,
@@ -149,6 +151,7 @@ extension RemoteRepositoryPublishService {
           }
         } else {
           let data = try unwrapContentData(content, for: file)
+          didAttemptContentMutation = true
           let response: GitHubContentMutationResponse = try await send(
             githubRequest(
               repository: repository,
@@ -192,7 +195,7 @@ extension RemoteRepositoryPublishService {
       }
 
       if createsReview && changedPaths.isEmpty {
-        if didCreateReviewBranch {
+        if didCreateReviewBranch && createsReview {
           try await githubDeleteBranch(repository: repository, branch: branchName, token: token)
         } else {
           reviewURL = try await githubExistingPullRequestURL(
@@ -278,7 +281,7 @@ extension RemoteRepositoryPublishService {
         }
       }
     } catch let error as RemoteRepositoryPublishError {
-      if didCreateReviewBranch && changedPaths.isEmpty {
+      if didCreateReviewBranch && changedPaths.isEmpty && !didAttemptContentMutation {
         do {
           try await githubDeleteBranch(repository: repository, branch: branchName, token: token)
         } catch let cleanupError {
@@ -302,7 +305,7 @@ extension RemoteRepositoryPublishService {
         underlyingMessage: reviewCreationFailureDescription(error, provider: .github)
       )
     } catch {
-      if didCreateReviewBranch && changedPaths.isEmpty {
+      if didCreateReviewBranch && changedPaths.isEmpty && !didAttemptContentMutation {
         do {
           try await githubDeleteBranch(repository: repository, branch: branchName, token: token)
         } catch let cleanupError {
@@ -376,6 +379,7 @@ extension RemoteRepositoryPublishService {
     let reviewDraft = RemoteReviewDraftBuilder().build(package: package, profile: repository.profile)
     var didCreateReviewBranch = false
     var didUpdateReference = false
+    var didAttemptReferenceUpdate = false
     var changedPaths: [String] = []
     var remoteVersionsByPath: [String: String] = [:]
     var reviewPendingPaths: [String] = []
@@ -531,7 +535,7 @@ extension RemoteRepositoryPublishService {
 
       guard !treeEntries.isEmpty else {
         var existingReviewURL: String?
-        if didCreateReviewBranch {
+        if didCreateReviewBranch && createsReview {
           try await githubDeleteBranch(repository: repository, branch: branchName, token: token)
           existingReviewURL = nil
         } else if createsReview {
@@ -612,6 +616,7 @@ extension RemoteRepositoryPublishService {
           )
         )
       )
+      didAttemptReferenceUpdate = true
       let _: GitHubReferenceResponse = try await send(
         githubRequest(
           repository: repository,
@@ -662,7 +667,7 @@ extension RemoteRepositoryPublishService {
         }
       }
     } catch {
-      if didCreateReviewBranch && !didUpdateReference {
+      if didCreateReviewBranch && !didUpdateReference && !didAttemptReferenceUpdate {
         do {
           try await githubDeleteBranch(repository: repository, branch: branchName, token: token)
         } catch let cleanupError {

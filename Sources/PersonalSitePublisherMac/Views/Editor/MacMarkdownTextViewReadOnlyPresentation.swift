@@ -225,6 +225,7 @@ extension MacMarkdownTextView.Coordinator {
     readOnlyPresentationEditableAttributedSnapshot = NSAttributedString(
       attributedString: textStorage
     )
+    (textView.enclosingScrollView as? MarkdownEditorScrollView)?.cancelPendingSelectionReveal()
     cancelReadOnlyPresentationTasks(keepingScheduledTask: true)
     suspendSyntaxHighlightingForReadOnlyPresentation(in: textView)
     readOnlyPresentationDocument = output.document
@@ -280,6 +281,7 @@ extension MacMarkdownTextView.Coordinator {
     readOnlyPresentationTask?.cancel()
     readOnlyPresentationTask = nil
     guard let document = readOnlyPresentationDocument else { return }
+    (textView.enclosingScrollView as? MarkdownEditorScrollView)?.cancelPendingSelectionReveal()
 
     let source = representedText
     let sourceLength = (source as NSString).length

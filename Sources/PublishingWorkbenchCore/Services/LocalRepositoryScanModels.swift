@@ -1,4 +1,5 @@
 import Foundation
+import PublishingCoreSupport
 
 public struct RepositoryScanReport: Codable, Hashable, Sendable {
   public var rootPath: String

@@ -12,6 +12,11 @@ final class AIWritingStyleIntegrationTests: XCTestCase {
       ]), statusCode: 200)
     let store = WorkbenchStore(
       persistence: try TestWorkbenchFactory.persistence(),
+      keychainTokenStore: KeychainTokenStore(
+        service: "AIWritingStyleIntegrationTests.\(UUID().uuidString)",
+        accountPrefix: "test",
+        inMemory: true
+      ),
       aiPublishingAssistantService: AIPublishingAssistantService(
         client: AIChatCompletionClient(transport: transport)))
     var connection = store.activeAIConnectionProfile

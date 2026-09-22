@@ -119,7 +119,7 @@ public final class WorkbenchAIChatFeatureFacade: ObservableObject {
       usesWindowDraftSelection
       ? observedDraftIDSubject.eraseToAnyPublisher()
       : publishing.$selectedDraftID.eraseToAnyPublisher()
-    Publishers.CombineLatest(publishing.$drafts, inspectedDraftID)
+    Publishers.CombineLatest(publishing.documents.$drafts, inspectedDraftID)
       .map { drafts, draftID in
         draftID.flatMap { draftID in
           drafts.first(where: { $0.id == draftID })?.metadataProjection

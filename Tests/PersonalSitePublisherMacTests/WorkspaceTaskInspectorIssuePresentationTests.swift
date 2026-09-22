@@ -1,4 +1,5 @@
 import XCTest
+
 @testable import PersonalSitePublisherMac
 @testable import PublishingWorkbenchCore
 
@@ -60,7 +61,7 @@ final class WorkspaceTaskInspectorIssuePresentationTests: XCTestCase {
     XCTAssertEqual(ArticleInspectorTab.defaultTab(for: .writing), .knowledge)
     XCTAssertEqual(
       ArticleInspectorTab.availableTabs(for: .writing),
-      [.knowledge, .metadata, .seo]
+      [.knowledge, .metadata, .seo, .images]
     )
     XCTAssertEqual(ArticleInspectorTab.knowledge.title, "上下文知识建议")
     XCTAssertEqual(ArticleInspectorTab.knowledge.pickerTitle, "知识建议")

@@ -1,9 +1,8 @@
 import Foundation
 import PublishingCoreSupport
-import PublishingKnowledgeCore
 import XCTest
 
-@testable import PublishingWorkbenchCore
+@testable import PublishingKnowledgeCore
 
 final class KnowledgeContextQueryClippingTests: XCTestCase {
   private let tokenizer = LocalBPETokenizer(encoding: .o200kBase)

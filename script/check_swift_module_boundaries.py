@@ -21,9 +21,9 @@ from typing import Any
 
 
 ROOT = Path(__file__).resolve().parent.parent
-POLICY_VERSION = "swift-module-boundaries-v2"
+POLICY_VERSION = "swift-module-boundaries-v3"
 SCHEMA_VERSION = "2"
-TOOL_VERSION = "2"
+TOOL_VERSION = "3"
 
 GOVERNED_DEPENDENCIES: dict[str, set[str]] = {
     "PublishingCoreSupport": set(),
@@ -32,7 +32,7 @@ GOVERNED_DEPENDENCIES: dict[str, set[str]] = {
     "PublishingGitCore": {"PublishingCoreSupport", "PublishingDomainContracts"},
     "PublishingAICore": {"PublishingCoreSupport"},
     "PublishingAgentContracts": {"PublishingAICore"},
-    "PublishingKnowledgeCore": {"PublishingCoreSupport"},
+    "PublishingKnowledgeCore": {"PublishingCoreSupport", "PublishingMarkdownCore"},
     "PublishingWorkbenchCore": {
         "PublishingAICore",
         "PublishingAgentContracts",
@@ -82,6 +82,7 @@ TEST_TARGET_DEPENDENCIES: dict[str, set[str]] = {
         "PublishingAICore",
         "PublishingAgentContracts",
         "PublishingCoreSupport",
+        "PublishingDomainContracts",
         "PublishingGitCore",
         "PublishingKnowledgeCore",
         "PublishingMarkdownCore",
@@ -91,6 +92,8 @@ TEST_TARGET_DEPENDENCIES: dict[str, set[str]] = {
         "BrowserExtensionProtocolSupport",
         "PersonalSitePublisherMac",
         "PublishingAICore",
+        "PublishingCoreSupport",
+        "PublishingDomainContracts",
         "PublishingGitCore",
         "PublishingKnowledgeCore",
         "PublishingMarkdownCore",
@@ -128,6 +131,15 @@ EXPECTED_EXTERNAL_PRODUCTS: dict[str, dict[str, str]] = {
 EXPECTED_EXTERNAL_PRODUCTS.update(
     {target_name: {} for target_name in TEST_TARGET_DEPENDENCIES}
 )
+# Product names and importable module names are not interchangeable. Keep this
+# mapping with the external-product policy, not in documentation or CI copies.
+EXTERNAL_PRODUCT_MODULES = {
+    "SwiftTreeSitter": {"SwiftTreeSitter"},
+    "SwiftTreeSitterLayer": {"SwiftTreeSitterLayer"},
+    "TreeSitterMarkdown": {"TreeSitterMarkdown", "TreeSitterMarkdownInline"},
+    "Sparkle": {"Sparkle"},
+}
+UMBRELLA_SOURCE = "Sources/PublishingWorkbenchCore/Support/PublishingCoreModuleExports.swift"
 LEAF_TARGETS = {
     "PublishingCoreSupport",
     "PublishingDomainContracts",
@@ -167,7 +179,13 @@ EXPORT_DECLARATION = re.compile(
     r"^\s*@_exported\s+import\s+([A-Za-z_][A-Za-z0-9_]*)\s*$"
 )
 IMPORT_DECLARATION = re.compile(
-    r"^\s*(?:(?:@testable|@_exported)\s+)*import\s+([A-Za-z_][A-Za-z0-9_]*)\b"
+    r"(?:^|(?<=;))\s*"
+    r"(?P<attributes>(?:@[A-Za-z_][A-Za-z0-9_]*(?:\s*\([^()]*\))?\s*)*)"
+    r"(?:(?:public|internal|package|private|fileprivate)\s+)?"
+    r"(?P<keyword>import)\s+"
+    r"(?:(?:typealias|struct|class|enum|protocol|let|var|func)\s+)?"
+    r"`?(?P<module>[A-Za-z_][A-Za-z0-9_]*)`?\b",
+    re.MULTILINE,
 )
 
 
@@ -378,15 +396,13 @@ def _strip_comments_for_import_scan(source: str) -> str:
     block_depth = 0
     in_line_comment = False
     string_terminator: str | None = None
+    string_escape = "\\"
     while index < len(source):
         if string_terminator is not None:
-            if string_terminator == '"' and source[index] == "\\":
-                output.append(" ")
-                if index + 1 < len(source):
-                    output.append("\n" if source[index + 1] == "\n" else " ")
-                    index += 2
-                else:
-                    index += 1
+            if source.startswith(string_escape, index):
+                end = min(len(source), index + len(string_escape) + 1)
+                output.extend("\n" if c == "\n" else " " for c in source[index:end])
+                index = end
                 continue
             if source.startswith(string_terminator, index):
                 output.extend(" " for _ in string_terminator)
@@ -436,17 +452,21 @@ def _strip_comments_for_import_scan(source: str) -> str:
             while index + hash_count < len(source) and source[index + hash_count] == "#":
                 hash_count += 1
             if index + hash_count < len(source) and source[index + hash_count] == '"':
-                string_terminator = '"' + ("#" * hash_count)
-                output.extend(" " for _ in range(hash_count + 1))
-                index += hash_count + 1
+                quotes = '"""' if source.startswith('"""', index + hash_count) else '"'
+                string_terminator = quotes + ("#" * hash_count)
+                string_escape = "\\" + ("#" * hash_count)
+                output.extend(" " for _ in range(hash_count + len(quotes)))
+                index += hash_count + len(quotes)
                 continue
         if source.startswith('"""', index):
             string_terminator = '"""'
+            string_escape = "\\"
             output.extend((" ", " ", " "))
             index += 3
             continue
         if character == '"':
             string_terminator = '"'
+            string_escape = "\\"
             output.append(" ")
             index += 1
             continue
@@ -536,22 +556,28 @@ def _validate_products(
     return normalized
 
 
-def _source_imports(source: str) -> list[str]:
+def _source_import_sites(source: str) -> list[dict[str, Any]]:
     stripped = _strip_comments_for_import_scan(source)
-    imports: list[str] = []
-    for line in stripped.splitlines():
-        match = IMPORT_DECLARATION.match(line)
-        if match is not None:
-            imports.append(match.group(1))
-    return imports
+    return [
+        {
+            "module": match.group("module"),
+            "line": stripped.count("\n", 0, match.start("keyword")) + 1,
+            "exported": bool(re.search(r"@_exported\b", match.group("attributes"))),
+        }
+        for match in IMPORT_DECLARATION.finditer(stripped)
+    ]
 
 
-def _read_swift_imports(path: Path) -> list[str]:
+def _source_imports(source: str) -> list[str]:
+    return [site["module"] for site in _source_import_sites(source)]
+
+
+def _read_swift_import_sites(path: Path) -> list[dict[str, Any]]:
     try:
         source = path.read_text(encoding="utf-8")
     except (OSError, UnicodeError) as error:
         raise BoundaryError(f"cannot read Swift source {path}: {error}") from error
-    return _source_imports(source)
+    return _source_import_sites(source)
 
 
 def _consumer_metrics(
@@ -587,7 +613,25 @@ def _consumer_metrics(
                         continue
                     target_file_count += 1
                     scope_file_count += 1
-                    imports = _read_swift_imports(path)
+                    sites = _read_swift_import_sites(path)
+                    imports = [site["module"] for site in sites]
+                    relative_path = path.relative_to(package_root).as_posix()
+                    for site in sites:
+                        location = f"{relative_path}:{site['line']}"
+                        imported = site["module"]
+                        if site["exported"] and relative_path != UMBRELLA_SOURCE:
+                            raise BoundaryError(
+                                f"{location}: re-export outside compatibility umbrella: {imported}"
+                            )
+                        providers = {
+                            product for product, modules in EXTERNAL_PRODUCT_MODULES.items()
+                            if imported in modules
+                        }
+                        if providers and not providers.intersection(EXPECTED_EXTERNAL_PRODUCTS[target_name]):
+                            raise BoundaryError(
+                                f"{location} imports {imported} without direct product dependency "
+                                f"for {target_name}: expected one of {sorted(providers)}"
+                            )
                     imported_internal = set(imports) & target_names
                     missing_dependencies = sorted(
                         imported
@@ -595,9 +639,9 @@ def _consumer_metrics(
                         if imported != target_name and imported not in edges[target_name]
                     )
                     if missing_dependencies:
-                        relative_path = path.relative_to(package_root).as_posix()
+                        line = next(site["line"] for site in sites if site["module"] in missing_dependencies)
                         raise BoundaryError(
-                            f"{relative_path} imports internal module(s) without direct "
+                            f"{relative_path}:{line} imports internal module(s) without direct "
                             f"target dependency for {target_name}: {missing_dependencies}"
                         )
                     workbench_occurrences = imports.count("PublishingWorkbenchCore")
@@ -660,13 +704,7 @@ def _consumer_metrics(
 
 
 def _validate_umbrella_exports(package_root: Path) -> list[str]:
-    path = (
-        package_root
-        / "Sources"
-        / "PublishingWorkbenchCore"
-        / "Support"
-        / "PublishingCoreModuleExports.swift"
-    )
+    path = package_root / UMBRELLA_SOURCE
     if not path.is_file():
         raise BoundaryError(f"missing compatibility umbrella source: {path}")
     try:
@@ -743,6 +781,45 @@ def _source_metrics(package_root: Path, target_name: str) -> dict[str, Any]:
     }
 
 
+def _validate_source_layout(target: dict[str, Any], name: str, kind: str) -> None:
+    # Imports, umbrella validation and metrics all use this same canonical tree.
+    # Fail closed if SwiftPM would move or selectively omit sources from it.
+    scope = "Tests" if kind == "test" else "Sources"
+    expected_path = f"{scope}/{name}"
+    if target.get("path") not in (None, expected_path):
+        raise BoundaryError(f"target {name} source layout must use {expected_path}")
+    for field in ("sources", "exclude"):
+        if target.get(field) not in (None, []):
+            raise BoundaryError(f"target {name} source layout must not customize {field}")
+
+
+def _dependency_audit(
+    edges: dict[str, set[str]], source_import_edges: list[dict[str, Any]]
+) -> dict[str, Any]:
+    observed = {(edge["from"], edge["to"]) for edge in source_import_edges}
+    transitive = []
+    for target in sorted(edges):
+        reachable: set[str] = set()
+        pending = list(edges[target])
+        while pending:
+            dependency = pending.pop()
+            if dependency not in reachable:
+                reachable.add(dependency)
+                pending.extend(edges[dependency])
+        transitive.append({"target": target, "reachableTargets": sorted(reachable)})
+    return {
+        # A re-export or generated source can use a dependency without a direct
+        # import. These are review candidates, never automatic removal advice.
+        "declaredDependenciesWithoutImports": [
+            {"from": target, "to": dependency}
+            for target in sorted(edges)
+            for dependency in sorted(edges[target])
+            if (target, dependency) not in observed
+        ],
+        "transitiveDependencies": transitive,
+    }
+
+
 def analyze_package(
     package_payload: dict[str, Any],
     package_root: Path,
@@ -769,6 +846,7 @@ def analyze_package(
         )
         if target_type not in TARGET_TYPES:
             raise BoundaryError(f"target {target_name} has unknown type {target_type!r}")
+        _validate_source_layout(target, target_name, target_type)
         targets_by_name[target_name] = target
         target_types[target_name] = target_type
         swift_six_targets.add(target_name) if _target_uses_swift_six(target) else None
@@ -913,6 +991,7 @@ def analyze_package(
         "compatibilityUmbrellaExports": exports,
         "compatibilityUmbrellaConsumerMetrics": umbrella_metrics,
         "sourceImportEdges": source_import_edges,
+        "dependencyAudit": _dependency_audit(edges, source_import_edges),
         "umbrellaRetirement": {
             "enforced": enforce_umbrella_retirement,
             "remainingWorkbenchImportCount": sum(
@@ -1020,6 +1099,7 @@ def _load_workbench_import_maximums(path: Path) -> dict[str, int]:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeError, json.JSONDecodeError) as error:
         raise BoundaryError(f"cannot read quality baseline {path}: {error}") from error
+    payload = _require_object(payload, "quality baseline")
     module_maximums = payload.get("swiftModuleBoundaryMaximums")
     if not isinstance(module_maximums, dict):
         raise BoundaryError("quality baseline must define swiftModuleBoundaryMaximums")
@@ -1064,6 +1144,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--report", type=Path, default=None)
     parser.add_argument("--dump-package-json", type=Path, default=None)
     parser.add_argument(
+        "--describe-policy", action="store_true",
+        help="print the dependency allowlists as JSON without reading a package or invoking Swift",
+    )
+    parser.add_argument(
         "--quality-baseline",
         type=Path,
         default=None,
@@ -1075,6 +1159,14 @@ def main(argv: list[str] | None = None) -> int:
         help="fail while any source or test still imports PublishingWorkbenchCore",
     )
     args = parser.parse_args(argv)
+    if args.describe_policy:
+        print(json.dumps({
+            "productionDependencies": {name: sorted(deps) for name, deps in GOVERNED_DEPENDENCIES.items()},
+            "testDependencies": {name: sorted(deps) for name, deps in TEST_TARGET_DEPENDENCIES.items()},
+            "externalProductModules": {name: sorted(modules) for name, modules in EXTERNAL_PRODUCT_MODULES.items()},
+            "externalProductDependencies": EXPECTED_EXTERNAL_PRODUCTS,
+        }, indent=2, sort_keys=True))
+        return 0
     package_root = args.package_root.resolve()
     report_path = (
         args.report.resolve()
@@ -1110,6 +1202,16 @@ def main(argv: list[str] | None = None) -> int:
         _write_report(report_path, report)
     except (BoundaryError, OSError) as error:
         print(f"swift module boundaries: {error}", file=sys.stderr)
+        try:
+            _write_report(report_path, {
+                "status": "failed",
+                "schemaVersion": SCHEMA_VERSION,
+                "policyVersion": POLICY_VERSION,
+                "tool": {"name": "check_swift_module_boundaries.py", "version": TOOL_VERSION},
+                "error": str(error),
+            })
+        except BoundaryError as report_error:
+            print(f"swift module boundaries: {report_error}", file=sys.stderr)
         return 1
     print(
         "swift module boundaries: passed "

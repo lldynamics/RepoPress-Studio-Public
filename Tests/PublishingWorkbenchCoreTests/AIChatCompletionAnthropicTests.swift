@@ -1,7 +1,7 @@
 import Foundation
 import XCTest
 
-@testable import PublishingWorkbenchCore
+@testable import PublishingAICore
 
 final class AIChatCompletionAnthropicTests: XCTestCase {
   func testAnthropicCompleteUsesNativeMessagesHeadersAndCanonicalBody() async throws {

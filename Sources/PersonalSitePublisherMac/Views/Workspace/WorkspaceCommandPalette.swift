@@ -1,3 +1,4 @@
+import PublishingKnowledgeCore
 import PublishingWorkbenchCore
 import SwiftUI
 
@@ -9,6 +10,7 @@ struct WorkspaceCommandPalette: View {
   @ObservedObject private var draftListState: DraftListStore
   @ObservedObject private var shell: WorkbenchShellFeatureFacade
   let store: WorkbenchStore
+  let rssStore: RSSReaderStore
   let editorCommands: MarkdownEditorCommandActions?
   let contextDraftID: UUID?
   /// The presenting workspace owns navigation. A native sheet can make that
@@ -19,6 +21,8 @@ struct WorkspaceCommandPalette: View {
   let onToggleFocusMode: () -> Void
   let onOpenAI: (UUID?, AIPublishingQuickPrompt?) -> Void
   let onOpenFullTextSearch: (DraftFullTextSearchRequest) -> Void
+  let onOpenKnowledgeResult: (KnowledgeSearchResult, String) -> Void
+  let onOpenRSSArticle: (String, String) -> Void
   @AppStorage("workspaceCommandPaletteRecentAIPromptIDs")
   private var recentAIPromptIDs = ""
   @AppStorage("workspaceCommandPaletteRecentSettingsItemIDs")
@@ -27,20 +31,25 @@ struct WorkspaceCommandPalette: View {
   @State private var scope: WorkspaceUnifiedSearchScope = .all
   @State private var showsAllArticleResults = false
   @State private var selectionState = WorkspaceCommandPaletteSelection()
+  @StateObject private var contentSearch = WorkspaceCommandPaletteContentSearch()
   private var selectedResultID: String? { selectionState.selectedID }
   @FocusState private var isSearchFocused: Bool
 
   init(
     store: WorkbenchStore,
+    rssStore: RSSReaderStore,
     editorCommands: MarkdownEditorCommandActions? = nil,
     contextDraftID: UUID?,
     onSelectSection: @escaping (WorkspaceSection) -> Void,
     onFocusDraft: @escaping (UUID) -> Void,
     onToggleFocusMode: @escaping () -> Void,
     onOpenAI: @escaping (UUID?, AIPublishingQuickPrompt?) -> Void,
-    onOpenFullTextSearch: @escaping (DraftFullTextSearchRequest) -> Void = { _ in }
+    onOpenFullTextSearch: @escaping (DraftFullTextSearchRequest) -> Void = { _ in },
+    onOpenKnowledgeResult: @escaping (KnowledgeSearchResult, String) -> Void = { _, _ in },
+    onOpenRSSArticle: @escaping (String, String) -> Void = { _, _ in }
   ) {
     self.store = store
+    self.rssStore = rssStore
     self.editorCommands = editorCommands
     self.contextDraftID = contextDraftID
     self.onSelectSection = onSelectSection
@@ -48,6 +57,8 @@ struct WorkspaceCommandPalette: View {
     self.onToggleFocusMode = onToggleFocusMode
     self.onOpenAI = onOpenAI
     self.onOpenFullTextSearch = onOpenFullTextSearch
+    self.onOpenKnowledgeResult = onOpenKnowledgeResult
+    self.onOpenRSSArticle = onOpenRSSArticle
     _commandPresentation = ObservedObject(wrappedValue: store.commandPresentation)
     _draftListState = ObservedObject(wrappedValue: store.draftList)
     _shell = ObservedObject(wrappedValue: store.shell)
@@ -59,12 +70,17 @@ struct WorkspaceCommandPalette: View {
       HStack(spacing: 10) {
         Image(systemName: "command")
           .foregroundStyle(.secondary)
-        TextField("搜索文章、AI 功能、工作区或命令…", text: $query)
-          .textFieldStyle(.plain)
-          .font(.title3)
-          .focused($isSearchFocused)
-          .accessibilityLabel("搜索文章、AI 功能、工作区或命令…")
-          .onSubmit(performSelectedResult)
+        TextField(
+          String(localized: "搜索文章、资料库、RSS、AI 功能、工作区或命令…"),
+          text: $query
+        )
+        .textFieldStyle(.plain)
+        .font(.title3)
+        .focused($isSearchFocused)
+        .accessibilityLabel(
+          String(localized: "搜索文章、资料库、RSS、AI 功能、工作区或命令…")
+        )
+        .onSubmit(performSelectedResult)
         Text("⌘P")
           .font(.caption.monospaced())
           .foregroundStyle(.tertiary)
@@ -148,6 +164,8 @@ struct WorkspaceCommandPalette: View {
               }
             }
 
+            contentSearchSections(snapshot: snapshot)
+
             if !snapshot.resourceSections.isEmpty {
               paletteSection(String(localized: "资料")) {
                 ForEach(snapshot.resourceSections) { section in
@@ -220,15 +238,24 @@ struct WorkspaceCommandPalette: View {
     .frame(width: 620, height: 560)
     .onAppear {
       isSearchFocused = true
+      updateContentSearch()
       synchronizeSelection()
     }
     .onChange(of: query) { _, _ in
       showsAllArticleResults = false
+      updateContentSearch()
       synchronizeSelection()
     }
     .onChange(of: scope) { _, _ in
       showsAllArticleResults = false
+      updateContentSearch()
       synchronizeSelection()
+    }
+    .onChange(of: contentSearch.resultsRevision) { _, _ in
+      synchronizeSelection()
+    }
+    .onDisappear {
+      contentSearch.cancel()
     }
     .onChange(of: shell.isQuickHideActive) { _, isActive in
       if isActive {
@@ -306,6 +333,7 @@ struct WorkspaceCommandPalette: View {
     results.reserveCapacity(
       commandItems.count + promptItems.count + drafts.count + resourceSections.count
         + rssSections.count + workspaceSections.count + settings.count
+        + contentSearch.knowledgeResults.count + contentSearch.rssResults.count
     )
     for command in commandItems {
       results.append(PaletteResult(id: commandResultID(command), action: command.action))
@@ -315,6 +343,22 @@ struct WorkspaceCommandPalette: View {
     }
     for draft in drafts {
       results.append(PaletteResult(id: draftResultID(draft), action: { openDraft(draft.id) }))
+    }
+    for result in contentSearch.knowledgeResults {
+      results.append(
+        PaletteResult(
+          id: knowledgeResultID(result),
+          action: { openKnowledgeResult(result) }
+        )
+      )
+    }
+    for result in contentSearch.rssResults {
+      results.append(
+        PaletteResult(
+          id: rssResultID(result),
+          action: { openRSSArticle(result.article.id) }
+        )
+      )
     }
     for section in resourceSections + rssSections + workspaceSections {
       results.append(PaletteResult(id: sectionResultID(section), action: { openSection(section) }))
@@ -327,6 +371,8 @@ struct WorkspaceCommandPalette: View {
       aiPrompts: promptItems,
       drafts: drafts,
       articleMatchCount: matchingDrafts.count,
+      knowledgeResults: contentSearch.knowledgeResults,
+      rssResults: contentSearch.rssResults,
       resourceSections: resourceSections,
       rssSections: rssSections,
       workspaceSections: workspaceSections,
@@ -566,6 +612,96 @@ struct WorkspaceCommandPalette: View {
   }
 
   @ViewBuilder
+  private func contentSearchSections(snapshot: PaletteSnapshot) -> some View {
+    if !normalizedQuery.isEmpty {
+      if scope.includesResources {
+        paletteSection(String(localized: "资料库")) {
+          contentSearchStateRow(
+            hasResults: !snapshot.knowledgeResults.isEmpty,
+            emptyMessage: String(localized: "资料库正文和 OCR 中没有匹配结果。")
+          )
+          ForEach(snapshot.knowledgeResults) { result in
+            let hit = KnowledgeSearchPresentationService().presentation(
+              for: result,
+              query: normalizedQuery,
+              maximumSnippetCharacters: 150
+            )
+            row(
+              id: knowledgeResultID(result),
+              title: result.document.title.nilIfEmpty ?? String(localized: "未命名资料"),
+              detail: hit.snippet,
+              systemImage: result.document.kind.systemImage,
+              action: { openKnowledgeResult(result) }
+            )
+          }
+          if snapshot.knowledgeResults.count == WorkspaceCommandPaletteContentSearch.resultLimit {
+            Text(
+              String(localized: "最多显示 \(WorkspaceCommandPaletteContentSearch.resultLimit) 个资料片段。")
+            )
+            .font(.caption)
+            .foregroundStyle(.secondary)
+          }
+        }
+      }
+
+      if scope.includesRSS {
+        paletteSection(String(localized: "RSS 已保存文章")) {
+          contentSearchStateRow(
+            hasResults: !snapshot.rssResults.isEmpty,
+            emptyMessage: String(localized: "已保存的 RSS 文章中没有匹配结果。")
+          )
+          ForEach(snapshot.rssResults) { result in
+            row(
+              id: rssResultID(result),
+              title: result.article.title.nilIfEmpty ?? String(localized: "未命名文章"),
+              detail: result.snippet,
+              systemImage: "dot.radiowaves.left.and.right",
+              action: { openRSSArticle(result.article.id) }
+            )
+          }
+          if snapshot.rssResults.count == WorkspaceCommandPaletteContentSearch.resultLimit {
+            Text(
+              String(
+                localized: "最多显示 \(WorkspaceCommandPaletteContentSearch.resultLimit) 篇 RSS 文章。")
+            )
+            .font(.caption)
+            .foregroundStyle(.secondary)
+          }
+        }
+      }
+    }
+  }
+
+  @ViewBuilder
+  private func contentSearchStateRow(hasResults: Bool, emptyMessage: String) -> some View {
+    switch contentSearch.state {
+    case .searching:
+      HStack(spacing: 8) {
+        ProgressView().controlSize(.small)
+        Text(String(localized: "正在搜索已保存的内容…"))
+          .font(.caption)
+          .foregroundStyle(.secondary)
+      }
+      .accessibilityIdentifier("workspace-command-palette-content-searching")
+    case .failed(let message):
+      Label(
+        String(localized: "本地检索失败：\(message)"),
+        systemImage: "exclamationmark.triangle"
+      )
+      .font(.caption)
+      .foregroundStyle(.secondary)
+      .accessibilityIdentifier("workspace-command-palette-content-search-failed")
+    case .ready where !hasResults:
+      Text(emptyMessage)
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .accessibilityIdentifier("workspace-command-palette-content-search-empty")
+    case .idle, .ready:
+      EmptyView()
+    }
+  }
+
+  @ViewBuilder
   private func articleSearchActions(snapshot: PaletteSnapshot) -> some View {
     if WorkspacePaletteArticleResultPresentation.shouldOfferViewAll(
       visibleCount: snapshot.drafts.count,
@@ -673,6 +809,14 @@ struct WorkspaceCommandPalette: View {
     "draft:\(draft.id.uuidString)"
   }
 
+  private func knowledgeResultID(_ result: KnowledgeSearchResult) -> String {
+    "knowledge:\(result.id.uuidString)"
+  }
+
+  private func rssResultID(_ result: RSSWorkspacePaletteSearchResult) -> String {
+    "rss:\(result.article.id)"
+  }
+
   private func aiPromptResultID(_ prompt: AIPublishingQuickPrompt) -> String {
     "ai-prompt:\(prompt.rawValue)"
   }
@@ -709,6 +853,25 @@ struct WorkspaceCommandPalette: View {
   private func openDraft(_ draftID: UUID) {
     onFocusDraft(draftID)
     dismiss()
+  }
+
+  private func openKnowledgeResult(_ result: KnowledgeSearchResult) {
+    onOpenKnowledgeResult(result, normalizedQuery)
+    dismiss()
+  }
+
+  private func openRSSArticle(_ articleID: String) {
+    onOpenRSSArticle(articleID, normalizedQuery)
+    dismiss()
+  }
+
+  private func updateContentSearch() {
+    contentSearch.update(
+      query: normalizedQuery,
+      scope: scope,
+      knowledge: store.knowledge,
+      rssStore: rssStore
+    )
   }
 
   private func openSection(_ section: WorkspaceSection) {
@@ -815,6 +978,8 @@ private struct PaletteSnapshot {
   let aiPrompts: [AIPublishingQuickPrompt]
   let drafts: [ArticleDraft]
   let articleMatchCount: Int
+  let knowledgeResults: [KnowledgeSearchResult]
+  let rssResults: [RSSWorkspacePaletteSearchResult]
   let resourceSections: [WorkspaceSection]
   let rssSections: [WorkspaceSection]
   let workspaceSections: [WorkspaceSection]

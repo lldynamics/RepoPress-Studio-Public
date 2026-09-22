@@ -1,8 +1,8 @@
 import Foundation
 import PublishingWorkbenchCore
 
-struct WorkspaceResponsiveLayoutSnapshot: Equatable {
-  enum Band: Equatable {
+struct WorkspaceResponsiveLayoutSnapshot: Equatable, Sendable {
+  enum Band: Equatable, Sendable {
     case constrained
     case compactInspector
     case standardInspector

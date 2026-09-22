@@ -17,6 +17,8 @@ struct ContentHealthDetailView: View {
   @State private var wasHealthSnapshotCancelled = false
   @State private var healthSnapshotRequestID = UUID()
   @State private var articlePresentationRequestID = UUID()
+  @State var aiFixTask: Task<Void, Never>?
+  @State var aiFixRequestID: UUID?
   @State var aiFixResultPreview: ContentHealthAIFixResultPreview?
   @State private var selectedHealthDraftID: UUID?
   @State private var articlePresentation: ContentHealthArticlePresentation?
@@ -74,6 +76,7 @@ struct ContentHealthDetailView: View {
       .onChange(of: store.activeProfileID) {
         slugReferenceReview = nil
         slugReferenceResult = nil
+        cancelAIFixTask()
       }
       .accessibilityElement(children: .contain)
       .accessibilityLabel("内容健康")
@@ -435,6 +438,7 @@ struct ContentHealthDetailView: View {
   }
 
   private func cancelContentHealthWork(showsCancelledState: Bool) {
+    cancelAIFixTask()
     sidebarProjection.cancelLoading()
     healthSnapshotRequestID = UUID()
     articlePresentationRequestID = UUID()
@@ -446,6 +450,13 @@ struct ContentHealthDetailView: View {
     if showsCancelledState {
       wasHealthSnapshotCancelled = true
     }
+  }
+
+  func cancelAIFixTask() {
+    aiFixRequestID = UUID()
+    aiFixTask?.cancel()
+    aiFixTask = nil
+    aiFixResultPreview = nil
   }
 
   private var snapshotCancelledState: some View {

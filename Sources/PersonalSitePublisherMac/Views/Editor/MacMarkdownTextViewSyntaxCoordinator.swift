@@ -878,7 +878,15 @@ extension MacMarkdownTextView.Coordinator {
     )
     let preserveInlineAttachmentDrawings = repaintReason.preservesInlineAttachmentDrawings
     if !canApplyIncrementalUpdate, !preserveInlineAttachmentDrawings {
-      clearInlineAttachmentDrawings(in: textView)
+      // A content fallback still represents the same editable document.  Its
+      // cards may be repainted after the next run-loop turn, so keep their
+      // paragraph geometry until attachment reconciliation has proved that a
+      // source span or reference is no longer valid. Appearance changes and
+      // explicit cache invalidation remain complete cleanup boundaries.
+      clearInlineAttachmentDrawings(
+        in: textView,
+        preservingGeometry: repaintReason == .content
+      )
     }
     if canApplyIncrementalUpdate {
       restoreCollapsedSyntaxMarkerLayout(

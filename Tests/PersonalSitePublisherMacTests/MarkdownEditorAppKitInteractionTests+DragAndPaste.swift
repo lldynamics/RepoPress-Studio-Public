@@ -1,9 +1,10 @@
 import AppKit
-import PublishingWorkbenchCore
+import PublishingCoreSupport
 import SwiftUI
 import XCTest
 
 @testable import PersonalSitePublisherMac
+@testable import PublishingKnowledgeCore
 
 @MainActor
 final class MarkdownEditorAppKitInteractionDragAndPasteTests:

@@ -1,7 +1,5 @@
 import Foundation
 
-import Foundation
-
 public enum KnowledgeDocumentKind: String, Codable, CaseIterable, Identifiable, Sendable {
   case article
   case book

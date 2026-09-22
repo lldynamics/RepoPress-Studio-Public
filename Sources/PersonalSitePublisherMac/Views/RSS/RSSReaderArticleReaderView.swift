@@ -1,4 +1,6 @@
 import AppKit
+import PublishingAICore
+import PublishingKnowledgeCore
 import PublishingWorkbenchCore
 import SwiftUI
 

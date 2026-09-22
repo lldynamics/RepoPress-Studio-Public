@@ -1,5 +1,6 @@
 import Combine
 import Foundation
+import PublishingAICore
 
 public struct AIChatManualRetryState: Equatable, Sendable {
   public let draftID: UUID
@@ -46,7 +47,10 @@ struct AIChatConversationIdentity: Equatable, Sendable {
 
 @MainActor
   public final class WorkbenchAIStore: ObservableObject {
-  unowned let store: WorkbenchStore
+  private let context: WorkbenchAIContext
+  /// Extensions retain their existing `store` spelling while the compiler
+  /// limits every call to the AI capability contract above.
+  var store: WorkbenchAIContext { context }
   let workspace: AIWorkspaceStore
   let aiPublishingAssistantService: AIPublishingAssistantService
   let aiCredentialStore: AICredentialStore
@@ -99,9 +103,18 @@ struct AIChatConversationIdentity: Equatable, Sendable {
   var aiMetadataSuggestionCancellationHandlersByDraftID: [UUID: () -> Void] = [:]
   var aiImageTextSuggestionCancellationHandlersByDraftID: [UUID: () -> Void] = [:]
   var aiActionOperationIDs: Set<UUID> = []
+  var aiRequestGeneration: UInt64 = 0
+  var aiRequestPresentationGeneration: UInt64?
+  var aiRequestGenerations: [AIGenerationLane: UInt64] = [:]
+  var aiRequestCancellations: [AIGenerationLane: () -> Void] = [:]
+  var aiRequestActionOperations: [AIGenerationLane: UUID] = [:]
+  var aiRequestBaselines: [AIGenerationLane: DraftOperationBaseline] = [:]
+  var aiRequestProfiles: [AIGenerationLane: SiteProfile] = [:]
+  var aiRequestContextChecks: [AIGenerationLane: () -> Bool] = [:]
+  var aiPublishingActionRequest: (lane: AIGenerationLane, generation: UInt64)?
 
   init(
-    store: WorkbenchStore,
+    context: WorkbenchAIContext,
     workspace: AIWorkspaceStore,
     aiPublishingAssistantService: AIPublishingAssistantService = AIPublishingAssistantService(),
     aiCredentialStore: AICredentialStore,
@@ -111,7 +124,7 @@ struct AIChatConversationIdentity: Equatable, Sendable {
     seoAuditService: SEOAuditService = SEOAuditService(),
     seoSocialPreviewService: SEOSocialPreviewService = SEOSocialPreviewService()
   ) {
-    self.store = store
+    self.context = context
     self.workspace = workspace
     self.aiCredentialStore = aiCredentialStore
     self.aiConnectionTestService = aiConnectionTestService
@@ -137,16 +150,16 @@ struct AIChatConversationIdentity: Equatable, Sendable {
     // does not discard a still-useful suggestion.
     if let draftID = workspace.aiMetadataSuggestionDraftID,
       let suggestion = workspace.aiMetadataSuggestion,
-      let baseline = store.draftOperationBaseline(for: draftID)
+      let baseline = context.draftOperationBaseline(for: draftID)
     {
       aiMetadataSuggestionsByDraftID[draftID] = suggestion
       aiMetadataSuggestionBaselinesByDraftID[draftID] = baseline
-      aiMetadataSuggestionProfilesByDraftID[draftID] = store.profile(for: baseline.draft)
+      aiMetadataSuggestionProfilesByDraftID[draftID] = context.profile(for: baseline.draft)
     }
     if let draftID = workspace.aiImageTextSuggestionDraftID,
-      let baseline = store.draftOperationBaseline(for: draftID)
+      let baseline = context.draftOperationBaseline(for: draftID)
     {
-      let profile = store.profile(for: baseline.draft)
+      let profile = context.profile(for: baseline.draft)
       aiImageTextSuggestionsByDraftID[draftID] = workspace.aiImageTextSuggestions
       aiImageTextSuggestionBaselinesByDraftID[draftID] = baseline
       aiImageTextSuggestionProfilesByDraftID[draftID] = profile
@@ -582,19 +595,30 @@ struct AIChatConversationIdentity: Equatable, Sendable {
   public func testAIConnection(
     probeCapabilities: Set<AIProviderCapabilityProbeKind> = []
   ) async -> AIConnectionTestReport? {
-    let actionOperationID = beginAIActionOperation()
-    defer { finishAIActionOperation(actionOperationID) }
+    guard !Task.isCancelled, store.canUseProtectedWorkbench else { return nil }
+    let lane = AIGenerationLane.connectionTest
+    let generation = beginAIRequest(lane, showsActionLoading: true)
+    defer { finishAIRequest(lane, generation: generation) }
     let connection = store.activeAIConnectionProfile
     let config = connection.config
+    aiRequestContextChecks[lane] = { [weak self] in
+      guard let self else { return false }
+      return self.store.activeAIConnectionProfile.id == connection.id
+        && self.store.activeAIConnectionProfile.config == config
+    }
     let configKey = AIProviderCapabilityCacheKey(config: config)
     let consent = aiDataSharingConsentStore.presentation(for: config)
     if config.usesCodexAppServer {
       do {
-        try await CodexAppServerRequestAuthorizer(
-          consentStore: aiDataSharingConsentStore,
-          accountStatusProvider: CodexAppServerClient.shared
-        ).authorize(config: config)
+        try await awaitAIRequest(lane, generation: generation) { [self] in
+          try await CodexAppServerRequestAuthorizer(
+            consentStore: aiDataSharingConsentStore,
+            accountStatusProvider: CodexAppServerClient.shared
+          ).authorize(config: config)
+        }
       } catch {
+        guard !(error is CancellationError), canPresentAIRequest(lane, generation: generation)
+        else { return nil }
         aiActionMessage = error.localizedDescription
         return nil
       }
@@ -611,18 +635,26 @@ struct AIChatConversationIdentity: Equatable, Sendable {
         // client. Route Codex's test through the already-bound publishing
         // client so this prompt uses the same account authorization dependency
         // as every other AI request.
-        report = try await testCodexConnection(
-          config: config,
-          probeCapabilities: probeCapabilities
-        )
+        report = try await awaitAIRequest(lane, generation: generation) { [self] in
+          try await testCodexConnection(
+            config: config,
+            probeCapabilities: probeCapabilities
+          )
+        }
       } else {
-        report = try await aiConnectionTestService.testConnection(
-          config: config,
-          apiKey: token,
-          probeCapabilities: probeCapabilities
-        )
+        report = try await awaitAIRequest(lane, generation: generation) { [self] in
+          try await aiConnectionTestService.testConnection(
+            config: config,
+            apiKey: token,
+            probeCapabilities: probeCapabilities
+          )
+        }
       }
-      try Task.checkCancellation()
+      try checkAIRequest(lane, generation: generation)
+      guard store.activeAIConnectionProfile.id == connection.id,
+        store.activeAIConnectionProfile.config == config
+      else { return nil }
+      let presentsReport = canPresentAIRequest(lane, generation: generation)
 
       if let capabilityProbeReport = report.capabilityProbeReport {
         let currentConnection = store.activeAIConnectionProfile
@@ -647,10 +679,15 @@ struct AIChatConversationIdentity: Equatable, Sendable {
         }
       }
       refreshAIKeyAvailability()
-      aiActionMessage = report.headline
-      aiChatMessage = "AI 连接正常，可以发送消息。"
+      if presentsReport {
+        aiActionMessage = report.headline
+        aiChatMessage = "AI 连接正常，可以发送消息。"
+      }
       return report
     } catch {
+      guard !(error is CancellationError), canPresentAIRequest(lane, generation: generation) else {
+        return nil
+      }
       aiActionMessage = "AI 连接测试失败：\(error.localizedDescription)"
       return nil
     }

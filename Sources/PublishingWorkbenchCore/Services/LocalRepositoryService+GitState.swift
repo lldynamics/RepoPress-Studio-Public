@@ -8,8 +8,10 @@ struct RepositoryGitStatus {
 }
 extension LocalRepositoryService {
   func gitStatus(rootURL: URL) -> RepositoryGitStatus {
+    // Background scans must not refresh the on-disk index: its optional lock
+    // and rewrite generate file events that can schedule another scan.
     let result = gitCommandRunner.run(
-      ["status", "--porcelain=v1", "--branch", "-z"],
+      ["--no-optional-locks", "status", "--porcelain=v1", "--branch", "-z"],
       rootURL: rootURL
     )
     guard result.terminationStatus == 0 else {

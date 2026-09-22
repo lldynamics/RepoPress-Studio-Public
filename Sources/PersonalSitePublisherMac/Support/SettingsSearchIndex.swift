@@ -386,12 +386,4 @@ enum SettingsSearchIndex {
     return allItems.filter { $0.matches(query: normalized) }
   }
 
-  static func matchingTabs(query: String) -> Set<SettingsTab> {
-    let normalized = query.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard !normalized.isEmpty else { return Set(SettingsTab.allCases) }
-    let matchedItemTabs = Set(search(query: normalized).map(\.tab))
-    let matchedDirectTabs = Set(
-      SettingsTab.allCases.filter { $0.matchesSearchDirectly(normalized) })
-    return matchedItemTabs.union(matchedDirectTabs)
-  }
 }

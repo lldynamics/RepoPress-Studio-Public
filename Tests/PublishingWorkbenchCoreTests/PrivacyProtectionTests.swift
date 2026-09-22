@@ -96,6 +96,8 @@ final class PrivacyProtectionTests: XCTestCase {
     store.deactivateQuickHide()
     await store.waitForPendingSave()
 
+    XCTAssertNil(store.lastSaveError)
+    XCTAssertFalse(store.hasUnsavedChanges)
     let snapshot = try XCTUnwrap(try persistence.load())
     XCTAssertTrue(snapshot.privacyProtectionEvents.isEmpty)
   }

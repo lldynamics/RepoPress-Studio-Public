@@ -1,4 +1,5 @@
 import Foundation
+import PublishingKnowledgeCore
 import PublishingWorkbenchCore
 
 /// UserDefaults keys shared by the RSS settings page, reader workspace, and
@@ -9,6 +10,7 @@ enum RSSReaderUserPreferences {
   static let backgroundRefreshIntervalMinutesKey = "rssReaderBackgroundRefreshIntervalMinutes"
   static let automaticMarkReadAtEndEnabledKey = "rssReaderAutomaticMarkReadAtEndEnabled"
   static let automaticTranslationEnabledKey = "rssReaderAutomaticTranslationEnabled"
+  static let automaticTitleTranslationEnabledKey = "rssReaderAutomaticTitleTranslationEnabled"
   /// Persist only the raw backend identifier so the reader and maintenance
   /// settings share one stable preference without coupling UserDefaults to a
   /// view-local binding.
@@ -21,6 +23,7 @@ enum RSSReaderUserPreferences {
   static let defaultBackgroundRefreshIntervalMinutes = 30
   static let defaultAutomaticMarkReadAtEndEnabled = true
   static let defaultAutomaticTranslationEnabled = false
+  static let defaultAutomaticTitleTranslationEnabled = false
   /// Apple Translation is available to the app only from macOS 15 onward.
   /// Keep the macOS 14 default on the existing AI path so older systems do
   /// not silently lose the translation action.
@@ -69,6 +72,11 @@ enum RSSReaderUserPreferences {
   static func automaticMarkReadAtEndEnabled(defaults: UserDefaults = .standard) -> Bool {
     defaults.object(forKey: automaticMarkReadAtEndEnabledKey) as? Bool
       ?? defaultAutomaticMarkReadAtEndEnabled
+  }
+
+  static func automaticTitleTranslationEnabled(defaults: UserDefaults = .standard) -> Bool {
+    defaults.object(forKey: automaticTitleTranslationEnabledKey) as? Bool
+      ?? defaultAutomaticTitleTranslationEnabled
   }
 
   static func translationBackend(defaults: UserDefaults = .standard) -> RSSArticleTranslationBackend {

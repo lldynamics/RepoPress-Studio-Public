@@ -1,9 +1,10 @@
 import Foundation
+import PublishingKnowledgeCore
 import PublishingWorkbenchCore
 import SwiftUI
 
 #if canImport(Translation)
-import Translation
+  import Translation
 #endif
 
 /// The small set of availability states that matters to RSS routing. Keeping

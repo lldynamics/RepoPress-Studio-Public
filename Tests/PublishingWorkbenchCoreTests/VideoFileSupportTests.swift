@@ -1,5 +1,7 @@
 import Foundation
+import PublishingDomainContracts
 import XCTest
+
 @testable import PublishingWorkbenchCore
 
 final class VideoFileSupportTests: XCTestCase {

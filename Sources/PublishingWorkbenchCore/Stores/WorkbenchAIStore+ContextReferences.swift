@@ -55,7 +55,7 @@ extension WorkbenchAIStore {
       }
     )
     references.append(
-      contentsOf: store.knowledge.documents
+      contentsOf: store.knowledgeDocuments
         .filter { !$0.isArchived && $0.allowsRemoteAIUse }
         .prefix(30)
         .map { document in
@@ -111,7 +111,7 @@ extension WorkbenchAIStore {
         guard let documentID = reference.resourceID.flatMap(UUID.init(uuidString:)) else {
           return false
         }
-        return store.knowledge.documents.contains {
+        return store.knowledgeDocuments.contains {
           $0.id == documentID && !$0.isArchived && $0.allowsRemoteAIUse
         }
       }
@@ -187,8 +187,8 @@ extension WorkbenchAIStore {
       case .knowledgeEntry:
         guard
           let documentID = reference.resourceID.flatMap(UUID.init(uuidString:)),
-          let document = store.knowledge.documents.first(where: { $0.id == documentID }),
-          let snapshot = await store.knowledge.explicitAIContextSnapshot(documentID: documentID)
+          let document = store.knowledgeDocuments.first(where: { $0.id == documentID }),
+          let snapshot = await store.explicitKnowledgeContextSnapshot(documentID: documentID)
         else { continue }
         appendSection(
           """
@@ -217,12 +217,6 @@ extension WorkbenchAIStore {
       prompt: prompt,
       authorizationBindings: authorizationBindings
     )
-  }
-
-  func explicitGeneralAIChatContextPrompt(
-    references: [AIContextReference]
-  ) async -> String? {
-    await explicitGeneralAIChatContextPromptSnapshot(references: references)?.prompt
   }
 
   public func availableAIChatContextReferences(
@@ -277,7 +271,7 @@ extension WorkbenchAIStore {
         }
     )
     references.append(
-      contentsOf: store.knowledge.documents
+      contentsOf: store.knowledgeDocuments
         .filter { !$0.isArchived && $0.allowsRemoteAIUse }
         .prefix(30)
         .map { document in
@@ -336,7 +330,7 @@ extension WorkbenchAIStore {
         guard let id = reference.resourceID.flatMap(UUID.init(uuidString:)) else {
           return false
         }
-        return store.knowledge.documents.contains {
+        return store.knowledgeDocuments.contains {
           $0.id == id && !$0.isArchived && $0.allowsRemoteAIUse
         }
       }
@@ -410,8 +404,8 @@ extension WorkbenchAIStore {
       case .knowledgeEntry:
         guard
           let id = reference.resourceID.flatMap(UUID.init(uuidString:)),
-          let document = store.knowledge.documents.first(where: { $0.id == id }),
-          let snapshot = await store.knowledge.explicitAIContextSnapshot(documentID: id)
+          let document = store.knowledgeDocuments.first(where: { $0.id == id }),
+          let snapshot = await store.explicitKnowledgeContextSnapshot(documentID: id)
         else {
           continue
         }
@@ -438,13 +432,6 @@ extension WorkbenchAIStore {
       prompt: prompt,
       authorizationBindings: authorizationBindings
     )
-  }
-
-  func explicitAIChatContextPrompt(
-    references: [AIContextReference],
-    draft: ArticleDraft
-  ) async -> String? {
-    await explicitAIChatContextPromptSnapshot(references: references, draft: draft)?.prompt
   }
 
   func articleContext(_ article: ArticleDraft, tag: String) -> String {

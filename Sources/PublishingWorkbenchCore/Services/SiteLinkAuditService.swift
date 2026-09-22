@@ -1,4 +1,5 @@
 import Foundation
+import PublishingKnowledgeCore
 
 public enum SiteLinkSyntaxKind: String, Hashable, Sendable {
   case markdown

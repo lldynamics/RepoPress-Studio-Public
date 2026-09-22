@@ -579,7 +579,7 @@ extension WorkbenchAIStore {
         draft: artifacts.draft
       )
       explicitContextPrompt = explicitSnapshot?.prompt
-      let automaticContext = await store.knowledge.context(
+      let automaticContext = await store.knowledgeContext(
         query: knowledgeQuery(
           draft: artifacts.draft,
           selectedText: editorSelection?.selectedText ?? focusedParagraph?.text,
@@ -681,7 +681,7 @@ extension WorkbenchAIStore {
     policy: KnowledgeRetrievalPolicy
   ) async throws {
     guard !bindings.isEmpty else { return }
-    let valid = await store.knowledge.validateKnowledgeAuthorizationBindings(
+    let valid = await store.validateKnowledgeAuthorizationBindings(
       bindings,
       policy: policy
     )

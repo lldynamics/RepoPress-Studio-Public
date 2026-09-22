@@ -1,5 +1,5 @@
 import Foundation
-import PublishingWorkbenchCore
+import PublishingKnowledgeCore
 import XCTest
 
 @testable import PersonalSitePublisherMac
@@ -9,6 +9,7 @@ final class RSSAutomationSettingsTests: XCTestCase {
     XCTAssertTrue(RSSReaderUserPreferences.defaultBackgroundRefreshEnabled)
     XCTAssertEqual(RSSReaderUserPreferences.defaultBackgroundRefreshIntervalMinutes, 30)
     XCTAssertTrue(RSSReaderUserPreferences.defaultAutomaticMarkReadAtEndEnabled)
+    XCTAssertFalse(RSSReaderUserPreferences.defaultAutomaticTitleTranslationEnabled)
     XCTAssertEqual(
       RSSReaderUserPreferences.backgroundRefreshIntervalOptions,
       [15, 30, 60, 120]
@@ -29,6 +30,22 @@ final class RSSAutomationSettingsTests: XCTestCase {
       RSSReaderUserPreferences.backgroundRefreshIntervalSeconds(60),
       60 * 60
     )
+  }
+
+  func testAutomaticTitleTranslationPersistsIndependentlyFromArticleTranslation() {
+    let suiteName = "RSSAutomationSettingsTests-\(UUID().uuidString)"
+    let defaults = UserDefaults(suiteName: suiteName)!
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+
+    XCTAssertFalse(RSSReaderUserPreferences.automaticTitleTranslationEnabled(defaults: defaults))
+    defaults.set(true, forKey: RSSReaderUserPreferences.automaticTranslationEnabledKey)
+    XCTAssertFalse(RSSReaderUserPreferences.automaticTitleTranslationEnabled(defaults: defaults))
+
+    defaults.set(true, forKey: RSSReaderUserPreferences.automaticTitleTranslationEnabledKey)
+    XCTAssertTrue(RSSReaderUserPreferences.automaticTitleTranslationEnabled(defaults: defaults))
+    defaults.set(false, forKey: RSSReaderUserPreferences.automaticTitleTranslationEnabledKey)
+    XCTAssertFalse(RSSReaderUserPreferences.automaticTitleTranslationEnabled(defaults: defaults))
+    XCTAssertTrue(defaults.bool(forKey: RSSReaderUserPreferences.automaticTranslationEnabledKey))
   }
 
   func testMarkReadPolicyKeepsProgressPersistenceIndependentFromReadGating() {

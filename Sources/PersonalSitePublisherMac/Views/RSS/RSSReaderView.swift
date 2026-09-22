@@ -1,4 +1,5 @@
 import AppKit
+import PublishingKnowledgeCore
 import PublishingWorkbenchCore
 import SwiftUI
 
@@ -506,6 +507,8 @@ struct RSSReaderView: View {
   private var articleColumn: some View {
     RSSArticleList(
       store: store,
+      ai: workbenchStore.rssListTitleTranslation,
+      aiConfiguration: { workbenchStore.rssListTitleTranslation.providerConfiguration },
       presentation: presentation,
       searchDraft: presentation.searchDraft,
       selectedArticleID: $presentation.selectedArticleID,

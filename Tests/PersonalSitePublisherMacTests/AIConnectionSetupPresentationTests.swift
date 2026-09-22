@@ -1,8 +1,9 @@
 import Foundation
+import PublishingCoreSupport
 import XCTest
 
 @testable import PersonalSitePublisherMac
-@testable import PublishingWorkbenchCore
+@testable import PublishingAICore
 
 final class AIConnectionSetupPresentationTests: XCTestCase {
 

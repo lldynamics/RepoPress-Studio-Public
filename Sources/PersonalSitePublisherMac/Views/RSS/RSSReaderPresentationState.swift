@@ -1,4 +1,5 @@
 import AppKit
+import PublishingKnowledgeCore
 import PublishingWorkbenchCore
 import SwiftUI
 
@@ -59,7 +60,12 @@ final class RSSReaderPresentationState: ObservableObject {
   static let articlePageSize = 120
 
   @Published var selectedScope: RSSArticleScope? = .all
-  @Published var selectedArticleID: String?
+  @Published var selectedArticleID: String? {
+    didSet {
+      if selectedArticleID != contentSearchArticleID { contentSearchArticleID = nil }
+    }
+  }
+  private var contentSearchArticleID: String?
   @Published var debouncedSearchText = ""
   @Published var unreadOnly = false
   @Published var sortOrder: RSSArticleSortOrder = .newest
@@ -222,6 +228,21 @@ final class RSSReaderPresentationState: ObservableObject {
     searchFocusRequestID = UUID()
   }
 
+  @discardableResult
+  func openContentSearchResult(_ articleID: String, in store: RSSReaderStore) -> Bool {
+    guard store.articleHeader(id: articleID) != nil else {
+      errorMessage = String(localized: "找不到这篇文章的本地正文。")
+      return false
+    }
+    // Keep the reader's filters intact. Its existing out-of-results banner
+    // explains why a globally selected article may be outside the list.
+    contentSearchArticleID = articleID
+    showingFullTextIDs.insert(articleID)
+    selectedArticleID = articleID
+    revealArticle(articleID, in: store)
+    return true
+  }
+
   func loadMoreArticles(totalCount: Int) {
     let nextLimit = min(totalCount, articleDisplayLimit + Self.articlePageSize)
     guard nextLimit != articleDisplayLimit else { return }
@@ -356,7 +377,7 @@ final class RSSReaderPresentationState: ObservableObject {
     preservingExistingArticle: Bool = false
   ) {
     guard let selectedArticleID else { return }
-    if preservingExistingArticle,
+    if preservingExistingArticle || selectedArticleID == contentSearchArticleID,
       store.articleHeader(id: selectedArticleID) != nil
     {
       return
@@ -476,8 +497,9 @@ final class RSSReaderPresentationState: ObservableObject {
 
   public func effectiveArticle(for article: RSSArticle) -> RSSArticle {
     if showingFullTextIDs.contains(article.id),
-       let fullText = fullTextArticles[article.id],
-       fullText.link?.absoluteString == article.link?.absoluteString {
+      let fullText = fullTextArticles[article.id],
+      fullText.link?.absoluteString == article.link?.absoluteString
+    {
       return fullText
     }
     return article
@@ -501,9 +523,10 @@ final class RSSReaderPresentationState: ObservableObject {
           // Adopt only a newer successful record, without changing this
           // window's current summary/full-text toggle.
           if let persistedRecord,
-             persistedRecord.status == .ready,
-             Self.record(persistedRecord, matches: article),
-             persistedRecord.attemptedAt > record.attemptedAt {
+            persistedRecord.status == .ready,
+            Self.record(persistedRecord, matches: article),
+            persistedRecord.attemptedAt > record.attemptedAt
+          {
             cacheFullText(persistedRecord, for: article)
           }
           touchFullTextArticle(article.id)
@@ -515,8 +538,9 @@ final class RSSReaderPresentationState: ObservableObject {
       }
     }
     guard let persistedRecord,
-          persistedRecord.status == .ready,
-          Self.record(persistedRecord, matches: article) else {
+      persistedRecord.status == .ready,
+      Self.record(persistedRecord, matches: article)
+    else {
       return false
     }
     cacheFullText(persistedRecord, for: article)
@@ -529,8 +553,9 @@ final class RSSReaderPresentationState: ObservableObject {
     now: Date = Date()
   ) -> Bool {
     guard let record = fullTextRecords[article.id],
-          record.status == .ready,
-          Self.record(record, matches: article) else {
+      record.status == .ready,
+      Self.record(record, matches: article)
+    else {
       return false
     }
     if let retryAfter = record.retryAfter, retryAfter > now { return false }
@@ -567,7 +592,8 @@ final class RSSReaderPresentationState: ObservableObject {
     if let store {
       do {
         if let persistedRecord = try store.fullTextRecord(articleID: articleID),
-           Self.record(persistedRecord, matches: article) {
+          Self.record(persistedRecord, matches: article)
+        {
           if cachedRecord.map({ persistedRecord.attemptedAt > $0.attemptedAt }) ?? true {
             cachedRecord = persistedRecord
           }
@@ -577,8 +603,9 @@ final class RSSReaderPresentationState: ObservableObject {
       }
     }
     if respectsRetryAfter,
-       let retryAfter = cachedRecord?.retryAfter,
-       retryAfter > Date() {
+      let retryAfter = cachedRecord?.retryAfter,
+      retryAfter > Date()
+    {
       return
     }
 
@@ -606,11 +633,13 @@ final class RSSReaderPresentationState: ObservableObject {
         service: fullTextService
       )
       if record.status == .ready {
-        guard let currentArticle = await persistAndConfirmCurrentFullTextRecord(
-          record,
-          requestedArticle: article,
-          store: store
-        ) else { return }
+        guard
+          let currentArticle = await persistAndConfirmCurrentFullTextRecord(
+            record,
+            requestedArticle: article,
+            store: store
+          )
+        else { return }
         guard isCurrentFullTextRequest(articleID: articleID, requestID: requestID) else { return }
         let fullTextArticle = fullTextService.articleByApplying(record, to: currentArticle)
         let bodyMetrics = await Task.detached(priority: .userInitiated) {
@@ -635,21 +664,25 @@ final class RSSReaderPresentationState: ObservableObject {
           preserving: cachedRecord,
           afterFailedAttempt: record
         )
-        guard let currentArticle = await persistAndConfirmCurrentFullTextRecord(
-          preservedRecord,
-          requestedArticle: article,
-          store: store
-        ) else { return }
+        guard
+          let currentArticle = await persistAndConfirmCurrentFullTextRecord(
+            preservedRecord,
+            requestedArticle: article,
+            store: store
+          )
+        else { return }
         guard isCurrentFullTextRequest(articleID: articleID, requestID: requestID) else { return }
         cacheFullText(preservedRecord, for: currentArticle)
         showingFullTextIDs.insert(articleID)
       }
       if cachedRecord?.status != .ready {
-        guard await persistAndConfirmCurrentFullTextRecord(
-          record,
-          requestedArticle: article,
-          store: store
-        ) != nil else { return }
+        guard
+          await persistAndConfirmCurrentFullTextRecord(
+            record,
+            requestedArticle: article,
+            store: store
+          ) != nil
+        else { return }
       }
       guard isCurrentFullTextRequest(articleID: articleID, requestID: requestID) else { return }
       recordFullTextError(
@@ -667,20 +700,24 @@ final class RSSReaderPresentationState: ObservableObject {
           preserving: cachedRecord,
           afterFailedAttempt: failedRecord
         )
-        guard let currentArticle = await persistAndConfirmCurrentFullTextRecord(
-          preservedRecord,
-          requestedArticle: article,
-          store: store
-        ) else { return }
+        guard
+          let currentArticle = await persistAndConfirmCurrentFullTextRecord(
+            preservedRecord,
+            requestedArticle: article,
+            store: store
+          )
+        else { return }
         guard isCurrentFullTextRequest(articleID: articleID, requestID: requestID) else { return }
         cacheFullText(preservedRecord, for: currentArticle)
         showingFullTextIDs.insert(articleID)
       } else {
-        guard await persistAndConfirmCurrentFullTextRecord(
-          failedRecord,
-          requestedArticle: article,
-          store: store
-        ) != nil else { return }
+        guard
+          await persistAndConfirmCurrentFullTextRecord(
+            failedRecord,
+            requestedArticle: article,
+            store: store
+          ) != nil
+        else { return }
       }
       guard isCurrentFullTextRequest(articleID: articleID, requestID: requestID) else { return }
       recordFullTextError(error.localizedDescription, articleID: articleID)
@@ -725,7 +762,7 @@ final class RSSReaderPresentationState: ObservableObject {
       // used after a successful persistence boundary.
     }
     guard let currentArticle = try? await store.loadArticle(id: record.articleID),
-          Self.record(record, matches: currentArticle)
+      Self.record(record, matches: currentArticle)
     else { return nil }
     return currentArticle
   }
@@ -780,8 +817,9 @@ final class RSSReaderPresentationState: ObservableObject {
     matches article: RSSArticle
   ) -> Bool {
     guard record.articleID == article.id,
-          let sourceURL = record.sourceURL,
-          let articleURL = article.link else { return false }
+      let sourceURL = record.sourceURL,
+      let articleURL = article.link
+    else { return false }
     return sourceURL.absoluteString == articleURL.absoluteString
   }
 
